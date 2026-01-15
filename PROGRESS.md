@@ -23,7 +23,7 @@
 | Tag | Opis |
 |-----|------|
 | `v0.0.1` | Setup complete - Sprint 0.1 |
-| `v0.1.0` | CP1 - Health endpoint |
+| `v0.1.0` | CP1 - Health endpoint ✅ |
 | `v0.2.0` | (planowany) CP2 - Watershed delineation |
 | `v0.3.0` | (planowany) CP3 - Hydrograph generation |
 | `v0.4.0` | (planowany) CP4 - Frontend map |
