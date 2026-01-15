@@ -87,7 +87,7 @@ git checkout develop
 Na początku każdej sesji przeczytaj:
 
 1. `PROGRESS.md` (ten plik)
-2. `docs/DEVELOPMENT_STANDARDS.md` - konwencje kodowania
+2. `DEVELOPMENT_STANDARDS.md` - konwencje kodowania
 3. Pliki wymienione poniżej w zależności od aktualnej pracy
 
 ### Dla pracy nad bazą danych:
