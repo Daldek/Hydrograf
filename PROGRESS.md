@@ -9,6 +9,37 @@
 | **Ostatnia sesja** | 1 |
 | **Data** | 2026-01-15 |
 | **Następny checkpoint** | CP1: Health endpoint |
+| **Gałąź robocza** | develop |
+
+---
+
+## Git Strategy
+
+### Gałęzie
+- `main` - stabilna wersja, tylko merge z develop po ukończeniu checkpointu
+- `develop` - aktywny rozwój, wszystkie commity tutaj
+
+### Tagi
+| Tag | Opis |
+|-----|------|
+| `v0.0.1` | Setup complete - Sprint 0.1 |
+| `v0.1.0` | (planowany) CP1 - Health endpoint |
+| `v0.2.0` | (planowany) CP2 - Watershed delineation |
+| `v0.3.0` | (planowany) CP3 - Hydrograph generation |
+| `v0.4.0` | (planowany) CP4 - Frontend map |
+| `v1.0.0` | (planowany) CP5 - MVP |
+
+### Workflow
+```bash
+# Praca na develop
+git checkout develop
+
+# Po ukończeniu checkpointu
+git checkout main
+git merge develop
+git tag -a vX.Y.Z -m "Opis"
+git checkout develop
+```
 
 ---
 
