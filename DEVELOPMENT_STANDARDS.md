@@ -505,7 +505,7 @@ function displayWatershed(boundaryGeoJSON, map) {
 def test_hietogram_beta_suma_equals_total_rainfall():
     pass
 
-def test_wyznacz_zlewnię_returns_error_for_area_over_limit():
+def test_wyznacz_zlewnię_large_returns_hydrograph_unavailable():
     pass
 
 def test_calculate_cn_with_100_percent_forest():
@@ -601,9 +601,9 @@ Closes #12
 
 ---
 
-fix(api): napraw błąd dla zlewni > 200 km²
+fix(api): napraw flagę hydrograph_available dla dużych zlewni
 
-Dodano walidację powierzchni i zwracanie 400 Bad Request.
+Poprawiono logikę sprawdzania limitu 250 km² dla SCS-CN.
 
 Fixes #45
 
@@ -907,7 +907,7 @@ logger.debug(f"Traversing upstream from cell {cell_id}")
 logger.info(f"Watershed delineated: {area_km2:.2f} km²")
 
 # WARNING - ostrzeżenia (nie błędy)
-logger.warning(f"Watershed area {area_km2:.2f} km² close to limit")
+logger.warning(f"Watershed area {area_km2:.2f} km² exceeds SCS-CN limit (250 km²)")
 
 # ERROR - błędy które nie przerywają działania
 logger.error(f"Failed to query precipitation data: {e}")
