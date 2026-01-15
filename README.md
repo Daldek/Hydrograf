@@ -4,7 +4,15 @@ System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fiz
 
 ## Status
 
-🚧 **W budowie** - Faza 0: Setup
+🚧 **W budowie** - CP1 osiągnięty (Health endpoint)
+
+### Dostępne endpointy
+
+| Endpoint | Opis | Status |
+|----------|------|--------|
+| `GET /health` | Status systemu i bazy danych | ✅ |
+| `POST /api/delineate-watershed` | Wyznaczanie zlewni | ⏳ |
+| `POST /api/generate-hydrograph` | Generowanie hydrogramu | ⏳ |
 
 ## Funkcjonalności (planowane)
 
@@ -115,8 +123,8 @@ Wersjonowanie semantyczne (`vMAJOR.MINOR.PATCH`):
 
 | Tag | Checkpoint | Opis |
 |-----|------------|------|
-| `v0.0.1` | - | Setup complete |
-| `v0.1.0` | CP1 | Health endpoint działa |
+| `v0.0.1` | - | Setup complete ✅ |
+| `v0.1.0` | CP1 | Health endpoint działa ✅ |
 | `v0.2.0` | CP2 | Wyznaczanie zlewni |
 | `v0.3.0` | CP3 | Generowanie hydrogramu |
 | `v0.4.0` | CP4 | Frontend z mapą |
