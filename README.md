@@ -74,8 +74,8 @@ HydroLOG/
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - Architektura systemu
 - [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) - Model danych
 - [`docs/PRD.md`](docs/PRD.md) - Wymagania produktowe
-- [`docs/DEVELOPMENT_STANDARDS.md`](docs/DEVELOPMENT_STANDARDS.md) - Standardy kodowania
-- [`docs/IMPLEMENTATION_PROMPT.md`](docs/IMPLEMENTATION_PROMPT.md) - Prompt dla AI
+- [`DEVELOPMENT_STANDARDS.md`](DEVELOPMENT_STANDARDS.md) - Standardy kodowania
+- [`IMPLEMENTATION_PROMPT.md`](IMPLEMENTATION_PROMPT.md) - Prompt dla AI
 - [`PROGRESS.md`](PROGRESS.md) - Aktualny postęp implementacji
 
 ## Rozwój
