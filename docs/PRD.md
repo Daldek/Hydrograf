@@ -11,7 +11,7 @@
 ## 1. Podsumowanie Wykonawcze
 
 ### 1.1 Cel Produktu
-Stworzenie wewnętrznego narzędzia webowego do szybkiego wyznaczania granic zlewni, parametrów fizjograficznych i hydrogramów odpływu dla obszarów do 250 km². System ma być alternatywą dla komercyjnego oprogramowania, wykorzystującą otwarte dane GUGIK i IMGW.
+Stworzenie wewnętrznego narzędzia webowego do szybkiego wyznaczania granic zlewni, parametrów fizjograficznych i hydrogramów odpływu. System ma być alternatywą dla komercyjnego oprogramowania, wykorzystującą otwarte dane GUGIK i IMGW. Uwaga: generowanie hydrogramów metodą SCS-CN ograniczone do zlewni ≤ 250 km² (ograniczenie metody).
 
 ### 1.2 Problem Biznesowy
 Obecnie profesjonalne narzędzia do analiz hydrologicznych są:
@@ -390,10 +390,13 @@ END
 
 [4b] Zlewnia > 250 km²
      ↓
-     Komunikat: "Zlewnia przekracza 250 km². 
-                  Wybierz punkt dalej w górę cieku."
+     Zlewnia wyznaczona poprawnie, ale:
+     - Komunikat ostrzegawczy: "Zlewnia przekracza 250 km².
+       Obliczenie hydrogramu metodą SCS-CN niedostępne."
+     - Przycisk "OBLICZ HYDROGRAM" nieaktywny
+     - Wyznaczanie zlewni i parametry fizjograficzne działają normalnie
      ↓
-     Powrót do [3]
+     Użytkownik może eksportować granicę zlewni i parametry
 
 ---
 

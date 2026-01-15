@@ -154,8 +154,7 @@ def delineate_watershed(lat, lon):
     # 2. Find nearest stream cell
     # 3. Traverse upstream (recursive)
     # 4. Build boundary (ConvexHull or ConcaveHull)
-    # 5. Validate area < 250 km²
-    # 6. Return GeoJSON
+    # 5. Return GeoJSON + flag hydrograph_available (area <= 250 km²)
 ```
 
 #### 5.3 Implementuj Backend
@@ -181,17 +180,16 @@ async def delineate_watershed(
 ):
     """
     Wyznacza granicę zlewni dla podanego punktu.
-    
+
     Args:
         request: Współrzędne punktu (WGS84)
         db: Sesja bazy danych
-    
+
     Returns:
-        DelineateResponse: Granica zlewni jako GeoJSON
-    
+        DelineateResponse: Granica zlewni jako GeoJSON + hydrograph_available flag
+
     Raises:
         HTTPException 404: Nie znaleziono cieku
-        HTTPException 400: Zlewnia przekracza limit
     """
     try:
         # 1. Transform coordinates
@@ -214,30 +212,20 @@ async def delineate_watershed(
         # 4. Calculate area
         total_area_m2 = sum(c.cell_area for c in cells)
         area_km2 = total_area_m2 / 1_000_000
-        
-        # 5. Validate
-        if area_km2 > 250:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "code": "WATERSHED_TOO_LARGE",
-                    "message": "Zlewnia przekracza 250 km²",
-                    "details": {
-                        "area_km2": area_km2,
-                        "max_allowed_km2": 250
-                    }
-                }
-            )
-        
+
+        # 5. Check if hydrograph available (SCS-CN limit: 250 km²)
+        hydrograph_available = area_km2 <= 250
+
         # 6. Build boundary
         boundary = build_boundary(cells)
         boundary_geojson = geojson_from_shapely(boundary)
-        
+
         # 7. Return response
         return DelineateResponse(
             watershed={
                 "boundary_geojson": boundary_geojson,
                 "area_km2": area_km2,
+                "hydrograph_available": hydrograph_available,
                 "outlet": {
                     "latitude": request.latitude,
                     "longitude": request.longitude,
@@ -531,21 +519,23 @@ def test_delineate_watershed_no_stream():
     assert "Nie znaleziono cieku" in response.json()["detail"]
 
 
-def test_delineate_watershed_too_large():
-    """Test gdy zlewnia przekracza limit."""
+def test_delineate_watershed_large_no_hydrograph():
+    """Test dla dużej zlewni - wyznaczenie OK, hydrogram niedostępny."""
     # Mock: punkt który generuje > 250 km²
     response = client.post(
         "/api/delineate-watershed",
         json={
-            "latitude": 52.5,  
+            "latitude": 52.5,
             "longitude": 21.5
         }
     )
-    
-    assert response.status_code == 400
-    data = response.json()["detail"]
-    assert data["code"] == "WATERSHED_TOO_LARGE"
-    assert data["details"]["area_km2"] > 250
+
+    # Zlewnia wyznaczona poprawnie
+    assert response.status_code == 200
+    data = response.json()["watershed"]
+    assert data["area_km2"] > 250
+    # Ale hydrogram SCS-CN niedostępny
+    assert data["hydrograph_available"] is False
 ```
 
 #### 5.6 Dokumentuj
@@ -581,7 +571,8 @@ Wyznacza granicę zlewni dla podanego punktu.
 
 **Errors:**
 - 404: Nie znaleziono cieku
-- 400: Zlewnia przekracza 250 km²
+
+**Note:** Pole `hydrograph_available` wskazuje czy hydrogram SCS-CN jest dostępny (zlewnia ≤ 250 km²).
 ```
 
 #### 5.7 Commit i PR
@@ -595,7 +586,7 @@ Dodano:
 - Endpoint POST /api/delineate-watershed
 - Core logic: find_nearest_stream, traverse_upstream, build_boundary
 - Testy jednostkowe i integracyjne (pokrycie 95%)
-- Walidacja: max 250 km², komunikaty błędów
+- Flaga hydrograph_available (SCS-CN limit: 250 km²)
 
 Closes #12"
 
