@@ -87,15 +87,15 @@ git checkout develop
 Na początku każdej sesji przeczytaj:
 
 1. `PROGRESS.md` (ten plik)
-2. `DEVELOPMENT_STANDARDS.md` - konwencje kodowania
+2. `docs/DEVELOPMENT_STANDARDS.md` - konwencje kodowania
 3. Pliki wymienione poniżej w zależności od aktualnej pracy
 
 ### Dla pracy nad bazą danych:
-- `DATA_MODEL.md`
+- `docs/DATA_MODEL.md`
 - `backend/migrations/versions/` (ostatnia migracja)
 
 ### Dla pracy nad API:
-- `ARCHITECTURE.md`
+- `docs/ARCHITECTURE.md`
 - `backend/api/main.py`
 
 ### Dla pracy nad frontendem:
