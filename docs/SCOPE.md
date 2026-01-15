@@ -166,7 +166,7 @@ Ten dokument precyzyjnie definiuje:
 - Opad równomierny na całą zlewnię
 - Warunki wilgotnościowe: AMC-II (przeciętne)
 - Brak routingu w kanale (natychmiastowa agregacja)
-- Model dla zlewni niekontrolowanych o powierzchni do 250 km²
+- Model SCS-CN dla zlewni niekontrolowanych o powierzchni do 250 km² (ograniczenie metody)
 
 ---
 
@@ -635,12 +635,13 @@ FAZA 3: Generowanie hydrogramów
 
 ### 10.2 Średnie Ryzyko
 
-**Ryzyko 3: Wydajność dla dużych zlewni (200-250 km²)**
+**Ryzyko 3: Wydajność dla dużych zlewni**
 - **Prawdopodobieństwo:** Wysokie
-- **Wpływ:** Średni (czas > 10s)
+- **Wpływ:** Średni (czas > 10s dla zlewni > 200 km²)
 - **Mitigacja:**
   - Optymalizacja algorytmów (early termination)
   - Indeksy w bazie danych
+- **Uwaga:** Dla zlewni > 250 km² hydrogram SCS-CN niedostępny (ograniczenie metody)
 
 **Ryzyko 4: Brak doświadczenia użytkowników**
 - **Prawdopodobieństwo:** Średnie
