@@ -158,7 +158,7 @@ CREATE TABLE precipitation_data (
     duration VARCHAR(10) NOT NULL,
     probability INT NOT NULL,
     precipitation_mm FLOAT NOT NULL CHECK (precipitation_mm >= 0),
-    source VARCHAR(50) DEFAULT 'IMGW_API',
+    source VARCHAR(50) NOT NULL,  -- IMGW_PMAXTP (atlas) lub IMGW_HISTORICAL (własna analiza)
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     CONSTRAINT valid_duration CHECK (duration IN ('15min', '30min', '1h', '2h', '6h', '12h', '24h')),
@@ -188,15 +188,15 @@ COMMENT ON COLUMN precipitation_data.precipitation_mm IS 'Wysokość opadu [mm]'
 | `duration` | VARCHAR(10) | NO | - | Czas trwania | '15min', '30min', '1h', '2h', '6h', '12h', '24h' |
 | `probability` | INT | NO | - | Prawdopodobieństwo [%] | 1, 2, 5, 10, 20, 50 |
 | `precipitation_mm` | FLOAT | NO | - | Opad [mm] | ≥ 0 |
-| `source` | VARCHAR(50) | YES | 'IMGW_API' | Źródło danych | dowolny string |
+| `source` | VARCHAR(50) | NO | - | Źródło danych | IMGW_PMAXTP (atlas), IMGW_HISTORICAL (własna analiza) |
 | `updated_at` | TIMESTAMP | YES | NOW() | Data aktualizacji | timestamp |
 
 **Przykładowe rekordy:**
 ```sql
-INSERT INTO precipitation_data (geom, duration, probability, precipitation_mm) VALUES
-(ST_SetSRID(ST_Point(520000, 610000), 2180), '1h', 10, 38.5),
-(ST_SetSRID(ST_Point(520000, 610000), 2180), '24h', 10, 65.2),
-(ST_SetSRID(ST_Point(525000, 615000), 2180), '1h', 10, 40.1);
+INSERT INTO precipitation_data (geom, duration, probability, precipitation_mm, source) VALUES
+(ST_SetSRID(ST_Point(520000, 610000), 2180), '1h', 10, 38.5, 'IMGW_PMAXTP'),
+(ST_SetSRID(ST_Point(520000, 610000), 2180), '24h', 10, 65.2, 'IMGW_PMAXTP'),
+(ST_SetSRID(ST_Point(525000, 615000), 2180), '1h', 10, 40.1, 'IMGW_PMAXTP');
 ```
 
 **Liczba rekordów:**

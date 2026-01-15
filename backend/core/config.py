@@ -1,0 +1,70 @@
+"""
+Application configuration module.
+
+Loads settings from environment variables with sensible defaults.
+"""
+
+import os
+from functools import lru_cache
+from typing import Optional
+
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    """
+    Application settings loaded from environment variables.
+
+    Attributes
+    ----------
+    database_url : str
+        PostgreSQL connection string
+    log_level : str
+        Logging level (DEBUG, INFO, WARNING, ERROR)
+    imgw_grid_spacing_km : float
+        Grid spacing for IMGW data preprocessing [km]
+    imgw_rate_limit_delay_s : float
+        Delay between IMGW API requests [s]
+    """
+
+    # Database
+    postgres_db: str = "hydro_db"
+    postgres_user: str = "hydro_user"
+    postgres_password: str = "hydro_password"
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+
+    # API
+    log_level: str = "INFO"
+
+    # IMGW preprocessing
+    imgw_grid_spacing_km: float = 2.0
+    imgw_rate_limit_delay_s: float = 0.5
+
+    @property
+    def database_url(self) -> str:
+        """Build PostgreSQL connection URL."""
+        return (
+            f"postgresql://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    class Config:
+        """Pydantic settings configuration."""
+
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = False
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    """
+    Get cached settings instance.
+
+    Returns
+    -------
+    Settings
+        Application settings
+    """
+    return Settings()
