@@ -37,8 +37,8 @@
 - [x] `docker/nginx.conf`
 - [x] `.env.example`
 - [x] `PROGRESS.md`
-- [ ] `README.md`
-- [ ] Pierwszy commit
+- [x] `README.md`
+- [x] Pierwszy commit (6cafd17)
 
 ### Sprint 0.2: Baza danych (Sesje 3-5)
 
@@ -56,15 +56,15 @@
 Na początku każdej sesji przeczytaj:
 
 1. `PROGRESS.md` (ten plik)
-2. `docs/DEVELOPMENT_STANDARDS.md` - konwencje kodowania
+2. `DEVELOPMENT_STANDARDS.md` - konwencje kodowania
 3. Pliki wymienione poniżej w zależności od aktualnej pracy
 
 ### Dla pracy nad bazą danych:
-- `docs/DATA_MODEL.md`
+- `DATA_MODEL.md`
 - `backend/migrations/versions/` (ostatnia migracja)
 
 ### Dla pracy nad API:
-- `docs/ARCHITECTURE.md`
+- `ARCHITECTURE.md`
 - `backend/api/main.py`
 
 ### Dla pracy nad frontendem:
@@ -131,11 +131,11 @@ pytest tests/unit/test_geometry.py -v
 
 ## Ostatnia Sesja
 
-### Sesja 1 (2026-01-15)
+### Sesja 1 (2026-01-15) - UKOŃCZONA
 
 **Wykonane:**
 - Zainicjalizowano repozytorium Git
-- Utworzono strukturę katalogów
+- Utworzono strukturę katalogów (`backend/`, `frontend/`, `docker/`)
 - Utworzono `docker-compose.yml` z PostgreSQL + PostGIS
 - Utworzono `backend/requirements.txt`
 - Skonfigurowano Alembic dla migracji
@@ -143,15 +143,15 @@ pytest tests/unit/test_geometry.py -v
 - Utworzono `docker/nginx.conf`
 - Utworzono `.env.example`
 - Utworzono `PROGRESS.md`
+- Utworzono `README.md`
+- Wykonano pierwszy commit (6cafd17)
 
-**W trakcie:**
-- `README.md`
-- Pierwszy commit
+**Sprint 0.1 zakończony.**
 
-**Następne kroki:**
-1. Utworzyć `README.md`
-2. Wykonać pierwszy commit
-3. (Sesja 2) Rozpocząć Sprint 0.2 - konfiguracja bazy danych
+**Następne kroki (Sesja 2):**
+1. Rozpocząć Sprint 0.2 - konfiguracja bazy danych
+2. Utworzyć migrację 001 z tabelami: `flow_network`, `precipitation_data`, `land_cover`, `stream_network`
+3. Utworzyć `backend/core/config.py` i `backend/core/database.py`
 
 ---
 

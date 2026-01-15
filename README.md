@@ -63,18 +63,18 @@ HydroLOG/
 │   ├── css/
 │   └── js/
 ├── docker/            # Konfiguracja Docker
-├── docs/              # Dokumentacja projektowa
 ├── PROGRESS.md        # Status implementacji
+├── *.md               # Dokumentacja projektowa
 └── docker-compose.yml
 ```
 
 ## Dokumentacja
 
-- `docs/SCOPE.md` - Zakres MVP
-- `docs/ARCHITECTURE.md` - Architektura systemu
-- `docs/DATA_MODEL.md` - Model danych
-- `docs/PRD.md` - Wymagania produktowe
-- `docs/DEVELOPMENT_STANDARDS.md` - Standardy kodowania
+- `SCOPE.md` - Zakres MVP
+- `ARCHITECTURE.md` - Architektura systemu
+- `DATA_MODEL.md` - Model danych
+- `PRD.md` - Wymagania produktowe
+- `DEVELOPMENT_STANDARDS.md` - Standardy kodowania
 - `PROGRESS.md` - Aktualny postęp implementacji
 
 ## Rozwój
