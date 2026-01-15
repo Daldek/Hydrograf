@@ -31,7 +31,7 @@ System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fiz
 
 ```bash
 # Klonowanie repozytorium
-git clone <repo-url>
+git clone https://github.com/Daldek/HydroLOG.git
 cd HydroLOG
 
 # Konfiguracja środowiska
@@ -97,6 +97,52 @@ alembic upgrade head
 ```bash
 cd backend
 pytest --cov=. --cov-report=html
+```
+
+## Git Strategy
+
+### Gałęzie
+
+| Gałąź | Przeznaczenie |
+|-------|---------------|
+| `main` | Wersja stabilna. Merge tylko po ukończeniu checkpointu. |
+| `develop` | Aktywny rozwój. Wszystkie commity tutaj. |
+
+### Tagi
+
+Wersjonowanie semantyczne (`vMAJOR.MINOR.PATCH`):
+
+| Tag | Checkpoint | Opis |
+|-----|------------|------|
+| `v0.0.1` | - | Setup complete |
+| `v0.1.0` | CP1 | Health endpoint działa |
+| `v0.2.0` | CP2 | Wyznaczanie zlewni |
+| `v0.3.0` | CP3 | Generowanie hydrogramu |
+| `v0.4.0` | CP4 | Frontend z mapą |
+| `v1.0.0` | CP5 | MVP |
+
+### Workflow dla kontrybutorów
+
+```bash
+# Sklonuj i przełącz na develop
+git clone https://github.com/Daldek/HydroLOG.git
+cd HydroLOG
+git checkout develop
+
+# Po ukończeniu pracy
+git add .
+git commit -m "feat: opis zmian"
+git push origin develop
+```
+
+### Workflow dla maintainera (po checkpoincie)
+
+```bash
+git checkout main
+git merge develop
+git tag -a vX.Y.Z -m "Opis checkpointu"
+git push origin main --tags
+git checkout develop
 ```
 
 ## Licencja
