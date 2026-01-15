@@ -5,10 +5,10 @@
 | Pole | Wartość |
 |------|---------|
 | **Faza** | 0 - Setup |
-| **Sprint** | 0.1 - Inicjalizacja |
-| **Ostatnia sesja** | 1 |
+| **Sprint** | 0.2 - Baza danych |
+| **Ostatnia sesja** | 2 |
 | **Data** | 2026-01-15 |
-| **Następny checkpoint** | CP1: Health endpoint |
+| **Następny checkpoint** | CP2: Watershed delineation |
 | **Gałąź robocza** | develop |
 
 ---
@@ -23,7 +23,7 @@
 | Tag | Opis |
 |-----|------|
 | `v0.0.1` | Setup complete - Sprint 0.1 |
-| `v0.1.0` | (planowany) CP1 - Health endpoint |
+| `v0.1.0` | CP1 - Health endpoint |
 | `v0.2.0` | (planowany) CP2 - Watershed delineation |
 | `v0.3.0` | (planowany) CP3 - Hydrograph generation |
 | `v0.4.0` | (planowany) CP4 - Frontend map |
@@ -47,7 +47,7 @@ git checkout develop
 
 | CP | Opis | Status |
 |----|------|--------|
-| CP1 | `curl localhost:8000/health` zwraca `{"status": "healthy", "database": "connected"}` | ⏳ |
+| CP1 | `curl localhost:8000/health` zwraca `{"status": "healthy", "database": "connected"}` | ✅ |
 | CP2 | `POST /api/delineate-watershed` zwraca granicę zlewni jako GeoJSON | ⏳ |
 | CP3 | `POST /api/generate-hydrograph` zwraca kompletny JSON z hydrogramem | ⏳ |
 | CP4 | Mapa działa, kliknięcie wyświetla zlewnię | ⏳ |
@@ -57,7 +57,7 @@ git checkout develop
 
 ## Faza 0: Setup
 
-### Sprint 0.1: Inicjalizacja (Sesje 1-2)
+### Sprint 0.1: Inicjalizacja (Sesje 1-2) - UKOŃCZONY
 
 - [x] Struktura katalogów (`backend/`, `frontend/`, `docker/`)
 - [x] `.gitignore`
@@ -71,14 +71,19 @@ git checkout develop
 - [x] `README.md`
 - [x] Pierwszy commit (6cafd17)
 
-### Sprint 0.2: Baza danych (Sesje 3-5)
+### Sprint 0.2: Baza danych i API (Sesje 3-5) - UKOŃCZONY
 
-- [ ] Migracja 001: `flow_network`, `precipitation_data`, `land_cover`, `stream_network`
-- [ ] Indeksy GIST i B-tree
-- [ ] `backend/core/config.py`
-- [ ] `backend/core/database.py`
-- [ ] Dane testowe/mocki
-- [ ] Health endpoint (`/health`)
+- [x] Migracja 001: `precipitation_data`
+- [x] Migracja 002: `flow_network`, `land_cover`, `stream_network`
+- [x] Indeksy GIST i B-tree
+- [x] `backend/core/config.py`
+- [x] `backend/core/database.py`
+- [x] `backend/core/precipitation.py`
+- [x] `backend/api/main.py`
+- [x] `backend/api/endpoints/health.py`
+- [x] Testy integracyjne health endpoint (5/5 pass)
+
+**CP1 OSIĄGNIĘTY**
 
 ---
 
@@ -162,27 +167,20 @@ pytest tests/unit/test_geometry.py -v
 
 ## Ostatnia Sesja
 
-### Sesja 1 (2026-01-15) - UKOŃCZONA
+### Sesja 2 (2026-01-15) - UKOŃCZONA
 
 **Wykonane:**
-- Zainicjalizowano repozytorium Git
-- Utworzono strukturę katalogów (`backend/`, `frontend/`, `docker/`)
-- Utworzono `docker-compose.yml` z PostgreSQL + PostGIS
-- Utworzono `backend/requirements.txt`
-- Skonfigurowano Alembic dla migracji
-- Utworzono `backend/Dockerfile`
-- Utworzono `docker/nginx.conf`
-- Utworzono `.env.example`
-- Utworzono `PROGRESS.md`
-- Utworzono `README.md`
-- Wykonano pierwszy commit (6cafd17)
+- Utworzono migrację 002 z tabelami: `flow_network`, `land_cover`, `stream_network`
+- Utworzono `backend/api/main.py` - FastAPI aplikacja
+- Utworzono `backend/api/endpoints/health.py` - health endpoint
+- Utworzono testy integracyjne dla health endpoint (5/5 pass)
+- **CP1 osiągnięty**
 
-**Sprint 0.1 zakończony.**
-
-**Następne kroki (Sesja 2):**
-1. Rozpocząć Sprint 0.2 - konfiguracja bazy danych
-2. Utworzyć migrację 001 z tabelami: `flow_network`, `precipitation_data`, `land_cover`, `stream_network`
-3. Utworzyć `backend/core/config.py` i `backend/core/database.py`
+**Następne kroki (Sesja 3):**
+1. Rozpocząć CP2 - Watershed delineation
+2. Utworzyć `backend/core/watershed.py`
+3. Utworzyć endpoint `POST /api/delineate-watershed`
+4. Utworzyć `backend/models/schemas.py` z Pydantic models
 
 ---
 
@@ -214,4 +212,4 @@ pytest tests/unit/test_geometry.py -v
 
 ### Znane Problemy
 
-(Brak na ten moment)
+- Warning Pydantic: "Support for class-based `config` is deprecated" - do naprawy w przyszłości
