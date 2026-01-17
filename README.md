@@ -4,15 +4,40 @@ System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fiz
 
 ## Status
 
-🚧 **W budowie** - CP1 osiągnięty (Health endpoint)
+🚧 **W budowie** - CP2 osiągnięty (Watershed delineation)
 
 ### Dostępne endpointy
 
 | Endpoint | Opis | Status |
 |----------|------|--------|
 | `GET /health` | Status systemu i bazy danych | ✅ |
-| `POST /api/delineate-watershed` | Wyznaczanie zlewni | ⏳ |
+| `POST /api/delineate-watershed` | Wyznaczanie zlewni (GeoJSON) | ✅ |
 | `POST /api/generate-hydrograph` | Generowanie hydrogramu | ⏳ |
+
+### Przykład użycia API
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Wyznaczanie zlewni (współrzędne WGS84)
+curl -X POST http://localhost:8000/api/delineate-watershed \
+  -H "Content-Type: application/json" \
+  -d '{"latitude": 52.23, "longitude": 21.01}'
+```
+
+**Response:**
+```json
+{
+  "watershed": {
+    "boundary_geojson": {"type": "Feature", "geometry": {...}, "properties": {...}},
+    "outlet": {"latitude": 52.23, "longitude": 21.01, "elevation_m": 150.0},
+    "cell_count": 1234,
+    "area_km2": 45.67,
+    "hydrograph_available": true
+  }
+}
+```
 
 ## Funkcjonalności (planowane)
 
@@ -125,7 +150,7 @@ Wersjonowanie semantyczne (`vMAJOR.MINOR.PATCH`):
 |-----|------------|------|
 | `v0.0.1` | - | Setup complete ✅ |
 | `v0.1.0` | CP1 | Health endpoint działa ✅ |
-| `v0.2.0` | CP2 | Wyznaczanie zlewni |
+| `v0.2.0` | CP2 | Wyznaczanie zlewni ✅ |
 | `v0.3.0` | CP3 | Generowanie hydrogramu |
 | `v0.4.0` | CP4 | Frontend z mapą |
 | `v1.0.0` | CP5 | MVP |
