@@ -5,9 +5,9 @@
 | Pole | Wartość |
 |------|---------|
 | **Faza** | 0 - Setup |
-| **Sprint** | 0.3 - Watershed API |
-| **Ostatnia sesja** | 4 |
-| **Data** | 2026-01-17 |
+| **Sprint** | 0.3 - Watershed API + Kartograf Integration |
+| **Ostatnia sesja** | 7 |
+| **Data** | 2026-01-18 |
 | **Następny checkpoint** | CP3: Hydrograph generation |
 | **Gałąź robocza** | develop |
 
@@ -201,6 +201,77 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 
 ## Ostatnia Sesja
 
+### Sesja 7 (2026-01-18) - UKOŃCZONA
+
+**Wykonane:**
+- Zaktualizowano Kartograf do wersji 0.2.0 (z GitHub)
+- Kartograf 0.2.0 rozwiązuje problem z API GUGiK:
+  - `download_sheet(godło)` → ASC via OpenData (WMS GetFeatureInfo)
+  - `download_bbox(bbox)` → GeoTIFF/PNG/JPEG via WCS
+- Zaktualizowano `backend/scripts/download_dem.py` do nowego API:
+  - Usunięto parametr `--format` (zawsze ASC dla godeł)
+  - Dodano parametr `--no-skip-existing`
+  - Zaktualizowano importy i wywołania Kartografa
+- Przetestowano pobieranie - działa prawidłowo:
+  - Pobranie arkusza N-34-131-C-c-2-1: 37MB, 27.8s
+  - Skip existing działa (0.1s przy ponownym uruchomieniu)
+
+**BLOKADA ROZWIĄZANA:**
+- Automatyczne pobieranie NMT z GUGiK teraz działa przez OpenData
+
+**Następne kroki (Sesja 8):**
+1. Rozpocząć CP3 - Hydrograph generation
+2. Opcjonalnie: zaktualizować `prepare_area.py` do nowego API Kartografa
+
+---
+
+### Sesja 6 (2026-01-17) - UKOŃCZONA
+
+**Wykonane:**
+- Zainstalowano Kartograf w środowisku wirtualnym
+- Przetestowano `sheet_finder.py` - naprawiono błędy:
+  - `_lat_to_zone_letter()`: poprawiono mapowanie liter IMW (pominięcie I i O)
+  - `_get_1m_bounds()`: poprawiono obliczanie szerokości geograficznej dla stref
+- Przetestowano `download_dem.py` - naprawiono wywołania API Kartografa
+- **BLOKADA: API GUGiK WCS zmieniło się**
+  - Kartograf nie może pobierać danych NMT
+  - WCS GetCapabilities zwraca tylko jeden CoverageId: `DTM_PL-KRON86-NH_TIFF` (cała Polska)
+  - Pobieranie po godłach arkuszy (`N-34-139-A-c-1-1`) zwraca 404
+  - SUBSET z bbox również nie działa
+  - **Kartograf wymaga aktualizacji** - przygotowano prompt do nowej sesji
+
+**Zablokowane:**
+- Automatyczne pobieranie NMT z GUGiK (wymaga aktualizacji Kartografa)
+
+**Następne kroki (Sesja 7):**
+1. ~~**Opcja A:** Zaktualizować Kartograf do nowego API GUGiK~~ ✅ Rozwiązane w Sesji 7
+2. ~~**Opcja B:** Tymczasowo używać ręcznego pobierania NMT z Geoportalu~~
+3. Rozpocząć CP3 - Hydrograph generation (niezależnie od Kartografa)
+
+---
+
+### Sesja 5 (2026-01-17) - UKOŃCZONA
+
+**Wykonane:**
+- Analiza integracji z [Kartograf](https://github.com/Daldek/Kartograf) - narzędzie do automatycznego pobierania NMT z GUGiK
+- Dodano Kartograf do `requirements.txt` jako zależność
+- Utworzono `backend/utils/sheet_finder.py`:
+  - Konwersja współrzędnych → godła arkuszy map (wszystkie skale 1:1M → 1:10k)
+  - Funkcje: `coordinates_to_sheet_code()`, `get_sheets_for_point_with_buffer()`, `get_neighboring_sheets()`
+- Utworzono `backend/scripts/download_dem.py`:
+  - Wrapper na Kartograf do pobierania NMT z GUGiK
+  - Obsługa pobierania dla punktu z buforem lub listy godeł
+  - Formaty: AAIGrid, GTiff, XYZ
+- Utworzono `backend/scripts/prepare_area.py`:
+  - Pełny pipeline: pobieranie + przetwarzanie
+  - Integracja download_dem + process_dem
+- Zaktualizowano dokumentację:
+  - `README.md` - sekcja o integracji z Kartografem
+  - `backend/scripts/README.md` - dokumentacja nowych skryptów
+  - `docs/KARTOGRAF_INTEGRATION.md` - szczegółowa dokumentacja integracji
+
+---
+
 ### Sesja 4 (2026-01-17) - UKOŃCZONA
 
 **Wykonane:**
@@ -218,12 +289,6 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
   - `backend/scripts/README.md` - dokumentacja skryptów
   - `PROGRESS.md` - sekcja Komendy → Preprocessing NMT
 - Utworzono tag `v0.2.1`
-
-**Następne kroki (Sesja 5):**
-1. Rozpocząć CP3 - Hydrograph generation
-2. Utworzyć `backend/core/hydrograph.py` z metodą SCS-CN
-3. Utworzyć endpoint `POST /api/generate-hydrograph`
-4. Testy jednostkowe i integracyjne dla hydrogramu
 
 ---
 

@@ -7,8 +7,95 @@ Skrypty do jednorazowego przetwarzania danych wejściowych przed uruchomieniem s
 - Python 3.12+ ze środowiskiem wirtualnym (`backend/.venv`)
 - Uruchomiona baza PostgreSQL/PostGIS
 - Wykonane migracje Alembic
+- [Kartograf](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
 
 ## Dostępne skrypty
+
+### `prepare_area.py` - Pełny pipeline (ZALECANY)
+
+Pipeline łączący automatyczne pobieranie NMT z GUGiK i przetwarzanie do bazy danych.
+**Użyj tego skryptu gdy chcesz przygotować dane dla nowego obszaru.**
+
+**Użycie:**
+
+```bash
+cd backend
+
+# Przygotowanie obszaru 5 km wokół punktu
+.venv/bin/python -m scripts.prepare_area \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5
+
+# Z niższym progiem strumieni (więcej szczegółów)
+.venv/bin/python -m scripts.prepare_area \
+    --lat 52.23 --lon 21.01 \
+    --buffer 10 \
+    --stream-threshold 50
+
+# Dry run - tylko pokaż jakie arkusze byłyby pobrane
+.venv/bin/python -m scripts.prepare_area \
+    --lat 52.23 --lon 21.01 \
+    --dry-run
+```
+
+**Parametry:**
+
+| Parametr | Opis | Domyślnie |
+|----------|------|-----------|
+| `--lat`, `--lon` | Współrzędne centrum obszaru (WGS84) | (wymagane) |
+| `--buffer` | Promień bufora w km | 5 |
+| `--stream-threshold` | Próg akumulacji dla strumieni | 100 |
+| `--scale` | Skala arkuszy (1:10000, 1:25000, 1:50000, 1:100000) | 1:10000 |
+| `--keep-downloads` | Zachowaj pobrane pliki .asc | true |
+| `--save-intermediates` | Zapis plików GeoTIFF | false |
+| `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
+| `--dry-run` | Tylko pokaż co byłoby zrobione | false |
+
+---
+
+### `download_dem.py` - Pobieranie NMT z GUGiK
+
+Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.2.0+).
+**Użyj gdy chcesz tylko pobrać dane bez przetwarzania.**
+
+> **Uwaga:** Kartograf 0.2.0 pobiera dane przez OpenData API w formacie ASC.
+> Format nie jest konfigurowalny przy pobieraniu przez godła arkuszy.
+
+**Użycie:**
+
+```bash
+cd backend
+
+# Pobieranie dla punktu z buforem
+.venv/bin/python -m scripts.download_dem \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5 \
+    --output ../data/nmt/
+
+# Pobieranie konkretnych arkuszy
+.venv/bin/python -m scripts.download_dem \
+    --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \
+    --output ../data/nmt/
+
+# Dry run - tylko pokaż jakie arkusze byłyby pobrane
+.venv/bin/python -m scripts.download_dem \
+    --lat 52.23 --lon 21.01 \
+    --dry-run
+```
+
+**Parametry:**
+
+| Parametr | Opis | Domyślnie |
+|----------|------|-----------|
+| `--lat`, `--lon` | Współrzędne centrum (WGS84) | - |
+| `--buffer` | Promień bufora w km | 5 |
+| `--sheets` | Lista godeł arkuszy do pobrania | - |
+| `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
+| `--scale` | Skala arkuszy | 1:10000 |
+| `--no-skip-existing` | Pobierz ponownie istniejące pliki | false |
+| `--dry-run` | Tylko pokaż co byłoby pobrane | false |
+
+---
 
 ### `process_dem.py` - Przetwarzanie NMT
 
