@@ -5,10 +5,10 @@
 | Pole | Wartość |
 |------|---------|
 | **Faza** | 0 - Setup |
-| **Sprint** | 0.2 - Baza danych |
-| **Ostatnia sesja** | 2 |
-| **Data** | 2026-01-15 |
-| **Następny checkpoint** | CP2: Watershed delineation |
+| **Sprint** | 0.3 - Watershed API |
+| **Ostatnia sesja** | 3 |
+| **Data** | 2026-01-17 |
+| **Następny checkpoint** | CP3: Hydrograph generation |
 | **Gałąź robocza** | develop |
 
 ---
@@ -24,7 +24,7 @@
 |-----|------|
 | `v0.0.1` | Setup complete - Sprint 0.1 |
 | `v0.1.0` | CP1 - Health endpoint ✅ |
-| `v0.2.0` | (planowany) CP2 - Watershed delineation |
+| `v0.2.0` | CP2 - Watershed delineation ✅ |
 | `v0.3.0` | (planowany) CP3 - Hydrograph generation |
 | `v0.4.0` | (planowany) CP4 - Frontend map |
 | `v1.0.0` | (planowany) CP5 - MVP |
@@ -48,7 +48,7 @@ git checkout develop
 | CP | Opis | Status |
 |----|------|--------|
 | CP1 | `curl localhost:8000/health` zwraca `{"status": "healthy", "database": "connected"}` | ✅ |
-| CP2 | `POST /api/delineate-watershed` zwraca granicę zlewni jako GeoJSON | ⏳ |
+| CP2 | `POST /api/delineate-watershed` zwraca granicę zlewni jako GeoJSON | ✅ |
 | CP3 | `POST /api/generate-hydrograph` zwraca kompletny JSON z hydrogramem | ⏳ |
 | CP4 | Mapa działa, kliknięcie wyświetla zlewnię | ⏳ |
 | CP5 | MVP: Pełny flow klik → zlewnia → parametry → hydrogram → eksport | ⏳ |
@@ -71,7 +71,7 @@ git checkout develop
 - [x] `README.md`
 - [x] Pierwszy commit (6cafd17)
 
-### Sprint 0.2: Baza danych i API (Sesje 3-5) - UKOŃCZONY
+### Sprint 0.2: Baza danych i API (Sesje 2) - UKOŃCZONY
 
 - [x] Migracja 001: `precipitation_data`
 - [x] Migracja 002: `flow_network`, `land_cover`, `stream_network`
@@ -84,6 +84,20 @@ git checkout develop
 - [x] Testy integracyjne health endpoint (5/5 pass)
 
 **CP1 OSIĄGNIĘTY**
+
+### Sprint 0.3: Watershed API (Sesja 3) - UKOŃCZONY
+
+- [x] `backend/models/schemas.py` - Pydantic modele (DelineateRequest, WatershedResponse)
+- [x] `backend/utils/__init__.py` i `geometry.py` - transformacje współrzędnych (WGS84 ↔ PL-1992)
+- [x] `backend/core/watershed.py` - logika biznesowa (FlowCell, find_nearest_stream, traverse_upstream, build_boundary)
+- [x] `backend/api/endpoints/watershed.py` - endpoint POST /api/delineate-watershed
+- [x] `backend/tests/conftest.py` - fixtures dla testów
+- [x] `backend/tests/unit/test_geometry.py` - 19 testów jednostkowych
+- [x] `backend/tests/unit/test_watershed.py` - 21 testów jednostkowych
+- [x] `backend/tests/integration/test_watershed.py` - 17 testów integracyjnych
+- [x] Pokrycie kodu: 89.52% (wymagane >= 80%)
+
+**CP2 OSIĄGNIĘTY**
 
 ---
 
@@ -167,20 +181,22 @@ pytest tests/unit/test_geometry.py -v
 
 ## Ostatnia Sesja
 
-### Sesja 2 (2026-01-15) - UKOŃCZONA
+### Sesja 3 (2026-01-17) - UKOŃCZONA
 
 **Wykonane:**
-- Utworzono migrację 002 z tabelami: `flow_network`, `land_cover`, `stream_network`
-- Utworzono `backend/api/main.py` - FastAPI aplikacja
-- Utworzono `backend/api/endpoints/health.py` - health endpoint
-- Utworzono testy integracyjne dla health endpoint (5/5 pass)
-- **CP1 osiągnięty**
+- Utworzono `backend/models/schemas.py` z modelami Pydantic (DelineateRequest, WatershedResponse)
+- Utworzono `backend/utils/geometry.py` z transformacjami współrzędnych (WGS84 ↔ PL-1992)
+- Utworzono `backend/core/watershed.py` z logiką biznesową (FlowCell, find_nearest_stream, traverse_upstream, build_boundary)
+- Utworzono `backend/api/endpoints/watershed.py` z endpointem POST /api/delineate-watershed
+- Utworzono pełny zestaw testów: 57 nowych testów (40 unit + 17 integration)
+- Naprawiono problemy z Shapely 2.0+ (concave_hull jako funkcja modułu)
+- **CP2 osiągnięty** - 135 testów przechodzi, pokrycie 89.52%
 
-**Następne kroki (Sesja 3):**
-1. Rozpocząć CP2 - Watershed delineation
-2. Utworzyć `backend/core/watershed.py`
-3. Utworzyć endpoint `POST /api/delineate-watershed`
-4. Utworzyć `backend/models/schemas.py` z Pydantic models
+**Następne kroki (Sesja 4):**
+1. Utworzyć tag v0.2.0
+2. Rozpocząć CP3 - Hydrograph generation
+3. Utworzyć `backend/core/hydrograph.py` z metodą SCS-CN
+4. Utworzyć endpoint `POST /api/generate-hydrograph`
 
 ---
 

@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import get_settings
-from api.endpoints import health
+from api.endpoints import health, watershed
 
 # Configure logging
 settings = get_settings()
@@ -48,6 +48,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
+app.include_router(watershed.router, prefix="/api", tags=["Watershed"])
 
 
 @app.get("/")
