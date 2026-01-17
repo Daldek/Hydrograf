@@ -6,7 +6,7 @@
 |------|---------|
 | **Faza** | 0 - Setup |
 | **Sprint** | 0.3 - Watershed API |
-| **Ostatnia sesja** | 3 |
+| **Ostatnia sesja** | 4 |
 | **Data** | 2026-01-17 |
 | **Następny checkpoint** | CP3: Hydrograph generation |
 | **Gałąź robocza** | develop |
@@ -25,6 +25,7 @@
 | `v0.0.1` | Setup complete - Sprint 0.1 |
 | `v0.1.0` | CP1 - Health endpoint ✅ |
 | `v0.2.0` | CP2 - Watershed delineation ✅ |
+| `v0.2.1` | Fix: poprawne wypełnianie zagłębień (pysheds) ✅ |
 | `v0.3.0` | (planowany) CP3 - Hydrograph generation |
 | `v0.4.0` | (planowany) CP4 - Frontend map |
 | `v1.0.0` | (planowany) CP5 - MVP |
@@ -200,25 +201,29 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 
 ## Ostatnia Sesja
 
-### Sesja 4 (2026-01-17) - W TRAKCIE
+### Sesja 4 (2026-01-17) - UKOŃCZONA
 
 **Wykonane:**
 - Przetestowano skrypt `process_dem.py` z rzeczywistymi danymi NMT z Geoportalu
 - Naprawiono błąd konwersji `numpy.bool` → `bool` (psycopg2)
 - Naprawiono problem FK violation - dwufazowy insert (najpierw bez FK, potem UPDATE)
 - Naprawiono konfigurację `DATABASE_URL` dla Docker (obsługa zmiennej środowiskowej)
-- Zaimportowano 196,822 rekordów do tabeli `flow_network`
-- Przetestowano endpoint `/api/delineate-watershed` z rzeczywistymi danymi
+- **KRYTYCZNA POPRAWKA:** Zidentyfikowano i naprawiono błąd w `fill_depressions`:
+  - Stara implementacja zostawiała wewnętrzne zagłębienia bez odpływu
+  - Zastąpiono biblioteką `pysheds` (fill_pits → fill_depressions → resolve_flats → flowdir)
+  - Teraz wszystkie komórki mają poprawny kierunek odpływu
+- Przetestowano endpoint `/api/delineate-watershed` - zwraca prawidłową zlewnię
 - Uzupełniono dokumentację:
   - `README.md` - sekcja Preprocessing
   - `backend/scripts/README.md` - dokumentacja skryptów
   - `PROGRESS.md` - sekcja Komendy → Preprocessing NMT
+- Utworzono tag `v0.2.1`
 
 **Następne kroki (Sesja 5):**
-1. Utworzyć tag v0.2.0
-2. Rozpocząć CP3 - Hydrograph generation
-3. Utworzyć `backend/core/hydrograph.py` z metodą SCS-CN
-4. Utworzyć endpoint `POST /api/generate-hydrograph`
+1. Rozpocząć CP3 - Hydrograph generation
+2. Utworzyć `backend/core/hydrograph.py` z metodą SCS-CN
+3. Utworzyć endpoint `POST /api/generate-hydrograph`
+4. Testy jednostkowe i integracyjne dla hydrogramu
 
 ---
 
