@@ -107,21 +107,44 @@ HydroLOG/
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) - Architektura systemu
 - [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) - Model danych
 - [`docs/PRD.md`](docs/PRD.md) - Wymagania produktowe
+- [`docs/KARTOGRAF_INTEGRATION.md`](docs/KARTOGRAF_INTEGRATION.md) - Integracja z Kartografem (pobieranie NMT)
 - [`DEVELOPMENT_STANDARDS.md`](DEVELOPMENT_STANDARDS.md) - Standardy kodowania
 - [`IMPLEMENTATION_PROMPT.md`](IMPLEMENTATION_PROMPT.md) - Prompt dla AI
 - [`PROGRESS.md`](PROGRESS.md) - Aktualny postęp implementacji
 
 ## Preprocessing danych NMT
 
-Przed uruchomieniem systemu wymagane jest jednorazowe przetworzenie danych NMT (Numeryczny Model Terenu) z Geoportalu GUGIK.
+Przed uruchomieniem systemu wymagane jest jednorazowe przetworzenie danych NMT (Numeryczny Model Terenu) z GUGiK.
 
-### Wymagania
+### Integracja z Kartografem
 
-- Plik NMT w formacie ASCII GRID (.asc) z Geoportalu
-- Uruchomiona baza PostgreSQL/PostGIS (`docker-compose up -d db`)
-- Wykonane migracje (`cd backend && alembic upgrade head`)
+HydroLOG wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) do automatycznego pobierania danych NMT z GUGiK. Kartograf eliminuje konieczność ręcznego pobierania plików z Geoportalu.
 
-### Uruchomienie
+#### Automatyczne pobieranie i przetwarzanie (zalecane)
+
+```bash
+cd backend
+
+# Przygotowanie danych dla obszaru (pobieranie + przetwarzanie)
+.venv/bin/python -m scripts.prepare_area \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5
+
+# Tylko pobieranie NMT (bez przetwarzania)
+.venv/bin/python -m scripts.download_dem \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5 \
+    --output ../data/nmt/
+```
+
+| Parametr | Opis | Domyślnie |
+|----------|------|-----------|
+| `--lat`, `--lon` | Współrzędne centrum obszaru (WGS84) | (wymagane) |
+| `--buffer` | Promień bufora w km | 5 |
+| `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
+| `--format` | Format pobierania (AAIGrid, GTiff) | AAIGrid |
+
+#### Ręczne przetwarzanie (gdy masz już pliki .asc)
 
 ```bash
 cd backend
@@ -140,6 +163,12 @@ cd backend
     --input ../data/nmt/nazwa_pliku.asc \
     --dry-run
 ```
+
+### Wymagania
+
+- Uruchomiona baza PostgreSQL/PostGIS (`docker-compose up -d db`)
+- Wykonane migracje (`cd backend && alembic upgrade head`)
+- Połączenie z internetem (dla automatycznego pobierania)
 
 ### Opcje
 

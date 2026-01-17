@@ -42,3 +42,6 @@ mypy>=1.8.0
 
 # Utilities
 python-dotenv>=1.0.0
+
+# NMT data download (Kartograf)
+kartograf @ git+https://github.com/Daldek/Kartograf.git@main
