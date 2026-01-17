@@ -111,6 +111,64 @@ HydroLOG/
 - [`IMPLEMENTATION_PROMPT.md`](IMPLEMENTATION_PROMPT.md) - Prompt dla AI
 - [`PROGRESS.md`](PROGRESS.md) - Aktualny postęp implementacji
 
+## Preprocessing danych NMT
+
+Przed uruchomieniem systemu wymagane jest jednorazowe przetworzenie danych NMT (Numeryczny Model Terenu) z Geoportalu GUGIK.
+
+### Wymagania
+
+- Plik NMT w formacie ASCII GRID (.asc) z Geoportalu
+- Uruchomiona baza PostgreSQL/PostGIS (`docker-compose up -d db`)
+- Wykonane migracje (`cd backend && alembic upgrade head`)
+
+### Uruchomienie
+
+```bash
+cd backend
+
+# Podstawowe użycie - import do bazy danych
+.venv/bin/python -m scripts.process_dem \
+    --input ../data/nmt/nazwa_pliku.asc
+
+# Z zapisem plików pośrednich (dla zaawansowanych użytkowników)
+.venv/bin/python -m scripts.process_dem \
+    --input ../data/nmt/nazwa_pliku.asc \
+    --save-intermediates
+
+# Tylko statystyki (bez importu)
+.venv/bin/python -m scripts.process_dem \
+    --input ../data/nmt/nazwa_pliku.asc \
+    --dry-run
+```
+
+### Opcje
+
+| Parametr | Opis | Domyślnie |
+|----------|------|-----------|
+| `--input`, `-i` | Ścieżka do pliku .asc | (wymagane) |
+| `--stream-threshold` | Próg akumulacji dla strumieni | 100 |
+| `--batch-size` | Rozmiar batch przy imporcie | 10000 |
+| `--dry-run` | Tylko statystyki, bez importu | false |
+| `--save-intermediates`, `-s` | Zapis plików GeoTIFF | false |
+| `--output-dir`, `-o` | Katalog wyjściowy dla GeoTIFF | (katalog wejściowy) |
+
+### Pliki pośrednie (dla weryfikacji obliczeń)
+
+Opcja `--save-intermediates` zapisuje pliki GeoTIFF do weryfikacji w QGIS:
+
+| Plik | Opis |
+|------|------|
+| `*_01_dem.tif` | Oryginalny NMT |
+| `*_02_filled.tif` | NMT po wypełnieniu zagłębień |
+| `*_03_flowdir.tif` | Kierunek przepływu (D8) |
+| `*_04_flowacc.tif` | Akumulacja przepływu |
+| `*_05_slope.tif` | Spadek terenu [%] |
+| `*_06_streams.tif` | Maska strumieni |
+
+> **Uwaga:** Pliki pośrednie są przeznaczone dla zaawansowanych użytkowników do weryfikacji poprawności obliczeń hydrologicznych.
+
+---
+
 ## Rozwój
 
 ### Uruchomienie środowiska deweloperskiego

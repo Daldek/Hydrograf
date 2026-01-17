@@ -177,9 +177,50 @@ pytest tests/unit/
 pytest tests/unit/test_geometry.py -v
 ```
 
+### Preprocessing NMT
+
+```bash
+cd backend
+
+# Import danych NMT do bazy (wymagane przed użyciem API)
+.venv/bin/python -m scripts.process_dem --input ../data/nmt/plik.asc
+
+# Z zapisem plików pośrednich GeoTIFF (do weryfikacji w QGIS)
+.venv/bin/python -m scripts.process_dem \
+    --input ../data/nmt/plik.asc \
+    --save-intermediates
+
+# Tylko statystyki (bez importu)
+.venv/bin/python -m scripts.process_dem --input ../data/nmt/plik.asc --dry-run
+```
+
+Szczegółowa dokumentacja: `backend/scripts/README.md`
+
 ---
 
 ## Ostatnia Sesja
+
+### Sesja 4 (2026-01-17) - W TRAKCIE
+
+**Wykonane:**
+- Przetestowano skrypt `process_dem.py` z rzeczywistymi danymi NMT z Geoportalu
+- Naprawiono błąd konwersji `numpy.bool` → `bool` (psycopg2)
+- Naprawiono problem FK violation - dwufazowy insert (najpierw bez FK, potem UPDATE)
+- Naprawiono konfigurację `DATABASE_URL` dla Docker (obsługa zmiennej środowiskowej)
+- Zaimportowano 196,822 rekordów do tabeli `flow_network`
+- Przetestowano endpoint `/api/delineate-watershed` z rzeczywistymi danymi
+- Uzupełniono dokumentację:
+  - `README.md` - sekcja Preprocessing
+  - `backend/scripts/README.md` - dokumentacja skryptów
+  - `PROGRESS.md` - sekcja Komendy → Preprocessing NMT
+
+**Następne kroki (Sesja 5):**
+1. Utworzyć tag v0.2.0
+2. Rozpocząć CP3 - Hydrograph generation
+3. Utworzyć `backend/core/hydrograph.py` z metodą SCS-CN
+4. Utworzyć endpoint `POST /api/generate-hydrograph`
+
+---
 
 ### Sesja 3 (2026-01-17) - UKOŃCZONA
 
@@ -191,12 +232,6 @@ pytest tests/unit/test_geometry.py -v
 - Utworzono pełny zestaw testów: 57 nowych testów (40 unit + 17 integration)
 - Naprawiono problemy z Shapely 2.0+ (concave_hull jako funkcja modułu)
 - **CP2 osiągnięty** - 135 testów przechodzi, pokrycie 89.52%
-
-**Następne kroki (Sesja 4):**
-1. Utworzyć tag v0.2.0
-2. Rozpocząć CP3 - Hydrograph generation
-3. Utworzyć `backend/core/hydrograph.py` z metodą SCS-CN
-4. Utworzyć endpoint `POST /api/generate-hydrograph`
 
 ---
 
