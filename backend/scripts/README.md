@@ -14,14 +14,16 @@ Skrypty do jednorazowego przetwarzania danych wejściowych przed uruchomieniem s
 
 Przetwarza plik NMT (Numeryczny Model Terenu) z formatu ASCII GRID i ładuje dane do tabeli `flow_network`.
 
-**Etapy przetwarzania:**
+**Etapy przetwarzania (używa biblioteki `pysheds`):**
 1. Odczyt pliku ASCII GRID (.asc)
-2. Wypełnienie zagłębień (sink filling)
-3. Obliczenie kierunku przepływu (D8)
-4. Obliczenie akumulacji przepływu
-5. Obliczenie spadku terenu
-6. Identyfikacja strumieni
-7. Import do bazy PostgreSQL/PostGIS
+2. Wypełnienie pojedynczych zagłębień (`fill_pits`)
+3. Wypełnienie większych depresji (`fill_depressions`)
+4. Rozwiązanie płaskich obszarów (`resolve_flats`)
+5. Obliczenie kierunku przepływu D8 (`flowdir`)
+6. Obliczenie akumulacji przepływu (`accumulation`)
+7. Obliczenie spadku terenu (Sobel)
+8. Identyfikacja strumieni (próg akumulacji)
+9. Import do bazy PostgreSQL/PostGIS
 
 **Użycie:**
 
