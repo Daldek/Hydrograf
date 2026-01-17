@@ -27,7 +27,8 @@ class Settings(BaseSettings):
         Delay between IMGW API requests [s]
     """
 
-    # Database
+    # Database - can be set via DATABASE_URL or individual components
+    database_url_override: Optional[str] = None
     postgres_db: str = "hydro_db"
     postgres_user: str = "hydro_user"
     postgres_password: str = "hydro_password"
@@ -44,6 +45,12 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Build PostgreSQL connection URL."""
+        # Check for DATABASE_URL environment variable first (used in Docker)
+        env_url = os.getenv("DATABASE_URL")
+        if env_url:
+            return env_url
+        if self.database_url_override:
+            return self.database_url_override
         return (
             f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
