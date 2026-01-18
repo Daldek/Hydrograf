@@ -1,5 +1,5 @@
 """
-Preprocessing scripts for HydroLOG.
+Preprocessing scripts for Hydrograf.
 
 This package contains scripts for data preprocessing:
 - preprocess_precipitation: Download IMGW PMAXTP data

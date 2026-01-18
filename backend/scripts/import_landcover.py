@@ -5,7 +5,7 @@ Reads BDOT10k or CORINE land cover data from GeoPackage files and imports
 them into the land_cover table with appropriate CN (Curve Number) values
 for hydrological calculations.
 
-BDOT10k layer mapping to HydroLOG categories:
+BDOT10k layer mapping to Hydrograf categories:
     PTLZ -> las (forest)
     PTTR -> grunt_orny (arable land)
     PTUT -> grunt_orny (permanent crops)
@@ -75,7 +75,7 @@ BDOT10K_LAYERS = [
     "PTZB",  # Tereny zabudowane (buildings)
 ]
 
-# Mapping BDOT10k classes to HydroLOG categories with CN values
+# Mapping BDOT10k classes to Hydrograf categories with CN values
 # CN values for AMC-II (average antecedent moisture condition)
 BDOT10K_MAPPING: Dict[str, Tuple[str, int, float]] = {
     # bdot_class: (category, cn_value, imperviousness)
