@@ -79,4 +79,4 @@ def test_root_endpoint(client):
     assert response.status_code == 200
     data = response.json()
     assert "message" in data
-    assert data["message"] == "HydroLOG API"
+    assert data["message"] == "Hydrograf API"

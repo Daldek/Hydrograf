@@ -1,4 +1,4 @@
-# HydroLOG
+# Hydrograf
 
 System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fizjograficznych i generowania hydrogramów odpływu.
 
@@ -64,8 +64,8 @@ curl -X POST http://localhost:8000/api/delineate-watershed \
 
 ```bash
 # Klonowanie repozytorium
-git clone https://github.com/Daldek/HydroLOG.git
-cd HydroLOG
+git clone https://github.com/Daldek/Hydrograf.git
+cd Hydrograf
 
 # Konfiguracja środowiska
 cp .env.example .env
@@ -85,7 +85,7 @@ docker-compose ps
 ## Struktura projektu
 
 ```
-HydroLOG/
+Hydrograf/
 ├── backend/           # API FastAPI
 │   ├── api/           # Endpointy
 │   ├── core/          # Logika biznesowa
@@ -118,7 +118,7 @@ Przed uruchomieniem systemu wymagane jest jednorazowe przetworzenie danych NMT (
 
 ### Integracja z Kartografem
 
-HydroLOG wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) do automatycznego pobierania danych NMT z GUGiK. Kartograf eliminuje konieczność ręcznego pobierania plików z Geoportalu.
+Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) do automatycznego pobierania danych NMT z GUGiK. Kartograf eliminuje konieczność ręcznego pobierania plików z Geoportalu.
 
 #### Automatyczne pobieranie i przetwarzanie (zalecane)
 
@@ -247,8 +247,8 @@ Wersjonowanie semantyczne (`vMAJOR.MINOR.PATCH`):
 
 ```bash
 # Sklonuj i przełącz na develop
-git clone https://github.com/Daldek/HydroLOG.git
-cd HydroLOG
+git clone https://github.com/Daldek/Hydrograf.git
+cd Hydrograf
 git checkout develop
 
 # Po ukończeniu pracy

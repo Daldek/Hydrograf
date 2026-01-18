@@ -1,4 +1,4 @@
-# HydroLOG - Progress Tracker
+# Hydrograf - Progress Tracker
 
 ## Aktualny Status
 
@@ -26,6 +26,7 @@
 | `v0.1.0` | CP1 - Health endpoint ✅ |
 | `v0.2.0` | CP2 - Watershed delineation ✅ |
 | `v0.2.1` | Fix: poprawne wypełnianie zagłębień (pysheds) ✅ |
+| `v0.2.2` | Land cover support (Kartograf 0.3.0) ✅ |
 | `v0.3.0` | (planowany) CP3 - Hydrograph generation |
 | `v0.4.0` | (planowany) CP4 - Frontend map |
 | `v1.0.0` | (planowany) CP5 - MVP |
@@ -217,7 +218,7 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
   - Obsługa: punkt+bufor, TERYT, godło, bbox
 - Utworzono `backend/scripts/import_landcover.py`:
   - Import GeoPackage → tabela land_cover
-  - Mapowanie BDOT10k → kategorie HydroLOG z wartościami CN
+  - Mapowanie BDOT10k → kategorie Hydrograf z wartościami CN
 - Zaktualizowano `backend/scripts/prepare_area.py`:
   - Nowa opcja `--with-landcover`
   - Nowa opcja `--landcover-provider` (bdot10k/corine)

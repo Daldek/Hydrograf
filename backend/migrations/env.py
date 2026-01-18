@@ -1,5 +1,5 @@
 """
-Alembic environment configuration for HydroLOG.
+Alembic environment configuration for Hydrograf.
 """
 import os
 from logging.config import fileConfig

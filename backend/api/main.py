@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    logger.info("Starting HydroLOG API...")
+    logger.info("Starting Hydrograf API...")
     yield
-    logger.info("Shutting down HydroLOG API...")
+    logger.info("Shutting down Hydrograf API...")
 
 
 app = FastAPI(
-    title="HydroLOG API",
+    title="Hydrograf API",
     description="System analizy hydrologicznej - wyznaczanie zlewni i hydrogramów",
     version="1.0.0",
     lifespan=lifespan,
@@ -55,7 +55,7 @@ app.include_router(watershed.router, prefix="/api", tags=["Watershed"])
 async def root():
     """Root endpoint - redirect info."""
     return {
-        "message": "HydroLOG API",
+        "message": "Hydrograf API",
         "docs": "/docs",
         "health": "/health",
     }
