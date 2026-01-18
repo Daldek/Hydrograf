@@ -269,4 +269,8 @@ git checkout develop
 
 ## Licencja
 
-MIT
+Projekt udostępniony na licencji MIT. Szczegóły w pliku `LICENSE`.
+
+## Autor
+
+[Piotr de Bever](https://www.linkedin.com/in/piotr-de-bever/)

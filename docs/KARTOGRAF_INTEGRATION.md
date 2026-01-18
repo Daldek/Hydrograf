@@ -1,20 +1,25 @@
 # Integracja z Kartografem
 
-**Wersja:** 1.0
-**Data:** 2026-01-17
-**Status:** W implementacji
+**Wersja:** 2.0
+**Data:** 2026-01-18
+**Status:** Aktywna
 
 ---
 
 ## 1. Przegląd
 
-HydroLOG wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) do automatycznego pobierania danych NMT (Numeryczny Model Terenu) z zasobów GUGiK. Eliminuje to konieczność ręcznego pobierania plików z Geoportalu.
+HydroLOG wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.3.0+) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
+
+- **NMT/NMPT** - Numeryczny Model Terenu z GUGiK
+- **BDOT10k** - Dane o pokryciu terenu z GUGiK (12 warstw)
+- **CORINE** - Europejska klasyfikacja pokrycia terenu z Copernicus (44 klasy)
 
 ### 1.1 Co to jest Kartograf?
 
 Kartograf to narzędzie Python do:
 - **Parsowania godeł** arkuszy map topograficznych (układ 1992 i 2000)
-- **Pobierania danych NMT** z GUGiK przez WCS API
+- **Pobierania danych NMT** z GUGiK przez OpenData/WCS API
+- **Pobierania danych o pokryciu terenu** z BDOT10k i CORINE
 - **Zarządzania hierarchią arkuszy** (od 1:1M do 1:10k)
 - **Batch download** z retry logic i progress tracking
 
@@ -25,7 +30,8 @@ Kartograf to narzędzie Python do:
 | Ręczne pobieranie NMT z Geoportalu | Automatyczne pobieranie przez Kartograf |
 | Użytkownik musi znać godła arkuszy | Konwersja współrzędnych → godło |
 | Wiele arkuszy dla dużych zlewni | Automatyczne pobieranie sąsiednich arkuszy |
-| Brak spójności formatów | Jednolity format AAIGrid (.asc) |
+| Brak spójności formatów | Jednolity format AAIGrid (.asc) / GeoPackage (.gpkg) |
+| Brak danych CN dla hydrogramów | Automatyczne pobieranie BDOT10k z wartościami CN |
 
 ---
 
@@ -371,8 +377,98 @@ pytest tests/integration/test_download_dem.py -v --run-network
 
 ---
 
-## 10. Przyszłe Rozszerzenia
+## 10. Land Cover (Kartograf 0.3.0+)
 
+### 10.1 Dostępne źródła danych
+
+| Źródło | Opis | Skala/Rozdzielczość |
+|--------|------|---------------------|
+| **BDOT10k** | Baza Danych Obiektów Topograficznych (GUGiK) | 1:10 000 |
+| **CORINE** | European Land Cover (Copernicus) | 100m raster |
+
+### 10.2 Warstwy BDOT10k
+
+| Kod | Opis | → HydroLOG category | CN |
+|-----|------|---------------------|-----|
+| PTLZ | Tereny leśne | `las` | 60 |
+| PTTR | Tereny rolne | `grunt_orny` | 78 |
+| PTUT | Uprawy trwałe | `grunt_orny` | 78 |
+| PTWP | Wody powierzchniowe | `woda` | 100 |
+| PTWZ | Tereny zabagnione | `łąka` | 70 |
+| PTRK | Roślinność krzewiasta | `łąka` | 70 |
+| PTZB | Tereny zabudowane | `zabudowa_mieszkaniowa` | 85 |
+| PTKM | Tereny komunikacyjne | `droga` | 98 |
+| PTPL | Place | `droga` | 98 |
+| PTGN | Grunty nieużytkowe | `inny` | 75 |
+| PTNZ | Tereny niezabudowane | `inny` | 75 |
+| PTSO | Składowiska | `inny` | 75 |
+
+### 10.3 Skrypty land cover
+
+**Pobieranie danych:**
+
+```bash
+# BDOT10k dla punktu z buforem
+.venv/bin/python -m scripts.download_landcover \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5
+
+# BDOT10k po kodzie TERYT (powiat)
+.venv/bin/python -m scripts.download_landcover \
+    --teryt 1465
+
+# CORINE Land Cover
+.venv/bin/python -m scripts.download_landcover \
+    --lat 52.23 --lon 21.01 \
+    --provider corine \
+    --year 2018
+```
+
+**Import do bazy danych:**
+
+```bash
+.venv/bin/python -m scripts.import_landcover \
+    --input ../data/landcover/bdot10k_teryt_1465.gpkg
+```
+
+**Pełny pipeline z land cover:**
+
+```bash
+.venv/bin/python -m scripts.prepare_area \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5 \
+    --with-landcover
+```
+
+### 10.4 API Python
+
+```python
+from kartograf.landcover import LandCoverManager
+from kartograf import BBox
+
+# Inicjalizacja (domyślnie BDOT10k)
+manager = LandCoverManager(output_dir="./data/landcover")
+
+# Pobieranie przez godło arkusza
+gpkg_path = manager.download(godlo="N-34-131-C-c-2-1")
+
+# Pobieranie przez bounding box (EPSG:2180)
+bbox = BBox(450000, 550000, 460000, 560000, "EPSG:2180")
+gpkg_path = manager.download(bbox=bbox)
+
+# Pobieranie przez TERYT powiatu
+gpkg_path = manager.download(teryt="1465")
+
+# Zmiana na CORINE Land Cover
+manager.set_provider("corine")
+gpkg_path = manager.download(godlo="N-34-130-D", year=2018)
+```
+
+---
+
+## 11. Przyszłe Rozszerzenia
+
+- [x] **Land Cover** - pobieranie BDOT10k i CORINE (Kartograf 0.3.0)
 - [ ] **Cache lokalny** - unikanie ponownego pobierania
 - [ ] **Progress bar** - wizualizacja postępu pobierania
 - [ ] **Parallel download** - równoległe pobieranie wielu arkuszy
@@ -381,5 +477,5 @@ pytest tests/integration/test_download_dem.py -v --run-network
 
 ---
 
-**Wersja dokumentu:** 1.0
-**Ostatnia aktualizacja:** 2026-01-17
+**Wersja dokumentu:** 2.0
+**Ostatnia aktualizacja:** 2026-01-18

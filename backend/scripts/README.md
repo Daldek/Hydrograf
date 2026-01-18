@@ -7,7 +7,10 @@ Skrypty do jednorazowego przetwarzania danych wejściowych przed uruchomieniem s
 - Python 3.12+ ze środowiskiem wirtualnym (`backend/.venv`)
 - Uruchomiona baza PostgreSQL/PostGIS
 - Wykonane migracje Alembic
-- [Kartograf](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
+- [Kartograf 0.3.0+](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
+  - NMT/NMPT: Dane wysokościowe z GUGiK
+  - BDOT10k: Dane o pokryciu terenu z GUGiK (12 warstw)
+  - CORINE: Europejska klasyfikacja pokrycia terenu z Copernicus
 
 ## Dostępne skrypty
 
@@ -21,10 +24,16 @@ Pipeline łączący automatyczne pobieranie NMT z GUGiK i przetwarzanie do bazy 
 ```bash
 cd backend
 
-# Przygotowanie obszaru 5 km wokół punktu
+# Przygotowanie obszaru 5 km wokół punktu (tylko NMT)
 .venv/bin/python -m scripts.prepare_area \
     --lat 52.23 --lon 21.01 \
     --buffer 5
+
+# Z danymi o pokryciu terenu (BDOT10k) - wymagane dla hydrogramów!
+.venv/bin/python -m scripts.prepare_area \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5 \
+    --with-landcover
 
 # Z niższym progiem strumieni (więcej szczegółów)
 .venv/bin/python -m scripts.prepare_area \
@@ -46,6 +55,8 @@ cd backend
 | `--buffer` | Promień bufora w km | 5 |
 | `--stream-threshold` | Próg akumulacji dla strumieni | 100 |
 | `--scale` | Skala arkuszy (1:10000, 1:25000, 1:50000, 1:100000) | 1:10000 |
+| `--with-landcover` | Pobierz też dane o pokryciu terenu (BDOT10k) | false |
+| `--landcover-provider` | Źródło danych: bdot10k lub corine | bdot10k |
 | `--keep-downloads` | Zachowaj pobrane pliki .asc | true |
 | `--save-intermediates` | Zapis plików GeoTIFF | false |
 | `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
@@ -202,6 +213,94 @@ Processing complete!
   Time elapsed: 264.2s
 ============================================================
 ```
+
+---
+
+### `download_landcover.py` - Pobieranie danych o pokryciu terenu
+
+Pobiera dane o pokryciu terenu z BDOT10k (GUGiK) lub CORINE (Copernicus) używając Kartograf 0.3.0+.
+
+**Użycie:**
+
+```bash
+cd backend
+
+# BDOT10k dla punktu z buforem
+.venv/bin/python -m scripts.download_landcover \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5
+
+# BDOT10k po kodzie TERYT (powiat)
+.venv/bin/python -m scripts.download_landcover \
+    --teryt 1465
+
+# CORINE Land Cover
+.venv/bin/python -m scripts.download_landcover \
+    --lat 52.23 --lon 21.01 \
+    --provider corine \
+    --year 2018
+```
+
+**Parametry:**
+
+| Parametr | Opis | Domyślnie |
+|----------|------|-----------|
+| `--lat`, `--lon` | Współrzędne centrum (WGS84) | - |
+| `--buffer` | Promień bufora w km | 5 |
+| `--teryt` | Kod TERYT powiatu (4 cyfry) | - |
+| `--godlo` | Godło arkusza mapy | - |
+| `--provider`, `-p` | Źródło: bdot10k lub corine | bdot10k |
+| `--year` | Rok dla CORINE (1990-2018) | 2018 |
+| `--output`, `-o` | Katalog wyjściowy | `../data/landcover/` |
+
+**Format wyjściowy:** GeoPackage (.gpkg)
+
+---
+
+### `import_landcover.py` - Import pokrycia terenu do bazy
+
+Importuje dane z GeoPackage do tabeli `land_cover` z przypisaniem wartości CN.
+
+**Użycie:**
+
+```bash
+cd backend
+
+# Import danych BDOT10k
+.venv/bin/python -m scripts.import_landcover \
+    --input ../data/landcover/bdot10k_teryt_1465.gpkg
+
+# Dry run (tylko pokaż co byłoby zaimportowane)
+.venv/bin/python -m scripts.import_landcover \
+    --input ../data/landcover/bdot10k_teryt_1465.gpkg \
+    --dry-run
+
+# Wyczyść istniejące dane przed importem
+.venv/bin/python -m scripts.import_landcover \
+    --input ../data/landcover/bdot10k_teryt_1465.gpkg \
+    --clear-existing
+```
+
+**Parametry:**
+
+| Parametr | Opis | Domyślnie |
+|----------|------|-----------|
+| `--input`, `-i` | Ścieżka do pliku .gpkg (wymagane) | - |
+| `--batch-size` | Rekordów na batch | 1000 |
+| `--clear-existing` | Wyczyść istniejące dane | false |
+| `--dry-run` | Tylko pokaż co byłoby zaimportowane | false |
+
+**Mapowanie BDOT10k → CN:**
+
+| Kod BDOT10k | Kategoria HydroLOG | CN | Imperviousness |
+|-------------|--------------------|----|----------------|
+| PTLZ | las | 60 | 0.0 |
+| PTTR, PTUT | grunt_orny | 78 | 0.1 |
+| PTWP | woda | 100 | 1.0 |
+| PTWZ, PTRK | łąka | 70 | 0.0 |
+| PTZB | zabudowa_mieszkaniowa | 85 | 0.5 |
+| PTKM, PTPL | droga | 98 | 0.95 |
+| PTGN, PTNZ, PTSO | inny | 75 | 0.2 |
 
 ---
 
