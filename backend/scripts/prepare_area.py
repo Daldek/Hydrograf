@@ -370,7 +370,7 @@ def main():
 
     # Log configuration
     logger.info("=" * 60)
-    logger.info("HydroLOG - Prepare Area Pipeline")
+    logger.info("Hydrograf - Prepare Area Pipeline")
     logger.info("=" * 60)
     logger.info(f"Point: ({args.lat}, {args.lon})")
     logger.info(f"Buffer: {args.buffer} km")

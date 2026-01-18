@@ -8,7 +8,7 @@
 
 ## 1. Przegląd
 
-HydroLOG wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.3.0+) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
+Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.3.0+) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
 
 - **NMT/NMPT** - Numeryczny Model Terenu z GUGiK
 - **BDOT10k** - Dane o pokryciu terenu z GUGiK (12 warstw)
@@ -388,7 +388,7 @@ pytest tests/integration/test_download_dem.py -v --run-network
 
 ### 10.2 Warstwy BDOT10k
 
-| Kod | Opis | → HydroLOG category | CN |
+| Kod | Opis | → Hydrograf category | CN |
 |-----|------|---------------------|-----|
 | PTLZ | Tereny leśne | `las` | 60 |
 | PTTR | Tereny rolne | `grunt_orny` | 78 |

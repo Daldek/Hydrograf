@@ -1,5 +1,5 @@
 """
-Utility functions for HydroLOG backend.
+Utility functions for Hydrograf backend.
 """
 
 from utils.geometry import (

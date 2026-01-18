@@ -292,7 +292,7 @@ cd backend
 
 **Mapowanie BDOT10k → CN:**
 
-| Kod BDOT10k | Kategoria HydroLOG | CN | Imperviousness |
+| Kod BDOT10k | Kategoria Hydrograf | CN | Imperviousness |
 |-------------|--------------------|----|----------------|
 | PTLZ | las | 60 | 0.0 |
 | PTTR, PTUT | grunt_orny | 78 | 0.1 |
