@@ -6,7 +6,7 @@
 |------|---------|
 | **Faza** | 0 - Setup |
 | **Sprint** | 0.3 - Watershed API + Kartograf Integration |
-| **Ostatnia sesja** | 7 |
+| **Ostatnia sesja** | 8 |
 | **Data** | 2026-01-18 |
 | **Następny checkpoint** | CP3: Hydrograph generation |
 | **Gałąź robocza** | develop |
@@ -201,6 +201,38 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 
 ## Ostatnia Sesja
 
+### Sesja 8 (2026-01-18) - UKOŃCZONA
+
+**Wykonane:**
+- Przygotowano integrację z Kartograf 0.3.0 (gałąź develop → wkrótce main)
+- Kartograf 0.3.0 dodaje obsługę **Land Cover**:
+  - **BDOT10k** - 12 warstw pokrycia terenu z GUGiK
+  - **CORINE** - europejska klasyfikacja (44 klasy) z Copernicus
+  - Format wyjściowy: GeoPackage (.gpkg)
+- Zaktualizowano `backend/requirements.txt`:
+  - Kartograf @ git+https://github.com/Daldek/Kartograf.git@main
+  - Dodano geopandas>=0.14.2, fiona>=1.9.5
+- Utworzono `backend/scripts/download_landcover.py`:
+  - Pobieranie BDOT10k/CORINE przez LandCoverManager
+  - Obsługa: punkt+bufor, TERYT, godło, bbox
+- Utworzono `backend/scripts/import_landcover.py`:
+  - Import GeoPackage → tabela land_cover
+  - Mapowanie BDOT10k → kategorie HydroLOG z wartościami CN
+- Zaktualizowano `backend/scripts/prepare_area.py`:
+  - Nowa opcja `--with-landcover`
+  - Nowa opcja `--landcover-provider` (bdot10k/corine)
+- Zaktualizowano dokumentację:
+  - `docs/KARTOGRAF_INTEGRATION.md` - sekcja 10. Land Cover
+  - `backend/scripts/README.md` - nowe skrypty
+
+**Gotowe do użycia po opublikowaniu Kartograf 0.3.0 na main!**
+
+**Następne kroki (Sesja 9):**
+1. Przetestować pobieranie land cover po publikacji Kartograf 0.3.0
+2. Rozpocząć CP3 - Hydrograph generation
+
+---
+
 ### Sesja 7 (2026-01-18) - UKOŃCZONA
 
 **Wykonane:**
@@ -218,10 +250,6 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 
 **BLOKADA ROZWIĄZANA:**
 - Automatyczne pobieranie NMT z GUGiK teraz działa przez OpenData
-
-**Następne kroki (Sesja 8):**
-1. Rozpocząć CP3 - Hydrograph generation
-2. Opcjonalnie: zaktualizować `prepare_area.py` do nowego API Kartografa
 
 ---
 
