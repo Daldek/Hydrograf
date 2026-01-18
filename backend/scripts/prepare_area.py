@@ -1,10 +1,14 @@
 """
-Pipeline script to download and process NMT data for a specified area.
+Pipeline script to download and process spatial data for a specified area.
 
 This script combines:
 1. Downloading NMT data from GUGiK using Kartograf
 2. Processing DEM files with pysheds
 3. Loading data into PostgreSQL/PostGIS flow_network table
+4. (Optional) Downloading land cover data from BDOT10k/CORINE
+5. (Optional) Loading land cover into land_cover table
+
+Requires Kartograf 0.3.0+ for land cover support.
 
 Usage
 -----
@@ -14,10 +18,16 @@ Usage
 
 Examples
 --------
-    # Full pipeline for area
+    # Full pipeline for area (NMT only)
     python -m scripts.prepare_area \\
         --lat 52.23 --lon 21.01 \\
         --buffer 5
+
+    # With land cover data (BDOT10k)
+    python -m scripts.prepare_area \\
+        --lat 52.23 --lon 21.01 \\
+        --buffer 5 \\
+        --with-landcover
 
     # With custom stream threshold
     python -m scripts.prepare_area \\
@@ -60,6 +70,8 @@ def prepare_area(
     keep_downloads: bool = True,
     save_intermediates: bool = False,
     output_dir: Path | None = None,
+    with_landcover: bool = False,
+    landcover_provider: str = "bdot10k",
 ) -> dict:
     """
     Download and process NMT data for an area around a point.
@@ -84,6 +96,10 @@ def prepare_area(
         If True, save intermediate GeoTIFF files
     output_dir : Path, optional
         Output directory for downloads (default: temp directory)
+    with_landcover : bool
+        If True, also download and import land cover data
+    landcover_provider : str
+        Land cover provider: 'bdot10k' or 'corine'
 
     Returns
     -------
@@ -94,6 +110,7 @@ def prepare_area(
         - sheets_processed: number of sheets processed
         - total_cells: total cells imported
         - stream_cells: number of stream cells
+        - landcover_features: number of land cover features (if with_landcover)
     """
     # Add parent to path for imports
     sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -191,6 +208,57 @@ def prepare_area(
             logger.error(f"  FAILED: {e}")
             stats["errors"].append(f"{dem_file.name}: {e}")
 
+    # Step 4: Download and import land cover (optional)
+    if with_landcover:
+        logger.info("=" * 60)
+        logger.info("Step 4: Downloading land cover data")
+        logger.info("=" * 60)
+
+        try:
+            from scripts.download_landcover import download_landcover
+            from scripts.import_landcover import import_landcover
+
+            # Create landcover output directory
+            landcover_dir = output_dir.parent / "landcover" if output_dir else Path("../data/landcover")
+            landcover_dir.mkdir(parents=True, exist_ok=True)
+
+            # Download land cover
+            gpkg_file = download_landcover(
+                output_dir=landcover_dir,
+                provider=landcover_provider,
+                lat=lat,
+                lon=lon,
+                buffer_km=buffer_km,
+            )
+
+            if gpkg_file and gpkg_file.exists():
+                logger.info(f"Downloaded: {gpkg_file}")
+
+                # Import to database
+                logger.info("=" * 60)
+                logger.info("Step 5: Importing land cover to database")
+                logger.info("=" * 60)
+
+                lc_stats = import_landcover(
+                    input_path=gpkg_file,
+                    batch_size=batch_size,
+                    dry_run=False,
+                    clear_existing=False,
+                )
+
+                stats["landcover_features"] = lc_stats.get("records_inserted", 0)
+                logger.info(f"Imported {stats['landcover_features']} land cover features")
+            else:
+                logger.warning("Land cover download failed!")
+                stats["errors"].append("Land cover download failed")
+
+        except ImportError as e:
+            logger.warning(f"Land cover support not available: {e}")
+            stats["errors"].append(f"Land cover import error: {e}")
+        except Exception as e:
+            logger.error(f"Land cover processing failed: {e}")
+            stats["errors"].append(f"Land cover error: {e}")
+
     # Cleanup temp directory if not keeping downloads
     if not keep_downloads and output_dir.name.startswith("hydrolog_nmt_"):
         logger.info(f"Cleaning up temp directory: {output_dir}")
@@ -250,6 +318,21 @@ def main():
         help="Map scale (default: 1:10000)",
     )
 
+    # Land cover options
+    landcover_group = parser.add_argument_group("Land cover options (requires Kartograf 0.3.0+)")
+    landcover_group.add_argument(
+        "--with-landcover",
+        action="store_true",
+        help="Also download and import land cover data (BDOT10k)",
+    )
+    landcover_group.add_argument(
+        "--landcover-provider",
+        type=str,
+        default="bdot10k",
+        choices=["bdot10k", "corine"],
+        help="Land cover provider (default: bdot10k)",
+    )
+
     # Output options
     output_group = parser.add_argument_group("Output options")
     output_group.add_argument(
@@ -295,6 +378,9 @@ def main():
     logger.info(f"Stream threshold: {args.stream_threshold}")
     logger.info(f"Keep downloads: {args.keep_downloads}")
     logger.info(f"Save intermediates: {args.save_intermediates}")
+    logger.info(f"With land cover: {args.with_landcover}")
+    if args.with_landcover:
+        logger.info(f"Land cover provider: {args.landcover_provider}")
     logger.info("=" * 60)
 
     if args.dry_run:
@@ -307,9 +393,12 @@ def main():
         )
 
         logger.info("DRY RUN - would download and process:")
+        logger.info("NMT sheets:")
         for sheet in sheets:
             logger.info(f"  {sheet}")
         logger.info(f"Total: {len(sheets)} sheets")
+        if args.with_landcover:
+            logger.info(f"Would also download land cover ({args.landcover_provider})")
         return
 
     # Run pipeline
@@ -326,6 +415,8 @@ def main():
             keep_downloads=args.keep_downloads,
             save_intermediates=args.save_intermediates,
             output_dir=Path(args.output) if args.output else None,
+            with_landcover=args.with_landcover,
+            landcover_provider=args.landcover_provider,
         )
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
@@ -342,6 +433,8 @@ def main():
     logger.info(f"  Sheets processed: {stats['sheets_processed']}")
     logger.info(f"  Total cells: {stats['total_cells']:,}")
     logger.info(f"  Stream cells: {stats['stream_cells']:,}")
+    if "landcover_features" in stats:
+        logger.info(f"  Land cover features: {stats['landcover_features']:,}")
     logger.info(f"  Time elapsed: {elapsed:.1f}s")
 
     if stats["errors"]:

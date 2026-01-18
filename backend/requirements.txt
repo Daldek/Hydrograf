@@ -43,5 +43,13 @@ mypy>=1.8.0
 # Utilities
 python-dotenv>=1.0.0
 
-# NMT data download (Kartograf)
-kartograf @ git+https://github.com/Daldek/Kartograf.git@main
+# Spatial data download (Kartograf 0.3.0+)
+# - NMT/NMPT: Digital Elevation Models from GUGiK
+# - BDOT10k: Land cover data from GUGiK (12 layers)
+# - CORINE: European land cover classification from Copernicus
+# NOTE: Use @develop until v0.3.0 is published to main, then switch to @main
+kartograf @ git+https://github.com/Daldek/Kartograf.git@develop
+
+# GeoPackage support (for land cover data)
+geopandas>=0.14.2
+fiona>=1.9.5
