@@ -1141,6 +1141,53 @@ async def health_check(db = Depends(get_db)):
 
 ## 10. Performance Optimization
 
+### 10.0 Benchmark Results (Test Sesja 9, 2026-01-20)
+
+**Dane testowe:** Arkusz NMT N-33-131-D-a-1-4 (2177 × 2367 komórek, 1m rozdzielczość)
+
+#### Preprocessing NMT
+
+| Etap | Czas | Uwagi |
+|------|------|-------|
+| Pobieranie z GUGiK (Kartograf) | ~30s | ✅ Akceptowalne |
+| Fill pits (pysheds) | <1s | ✅ Świetnie |
+| Fill depressions (pysheds) | ~1s | ✅ Świetnie |
+| Resolve flats (pysheds) | ~1s | ✅ Świetnie |
+| Flow direction (pysheds) | <1s | ✅ Świetnie |
+| Flow accumulation (pysheds) | <1s | ✅ Świetnie |
+| Slope calculation | <1s | ✅ Świetnie |
+| **Razem analiza rastrowa** | **~5s** | ✅ Świetnie |
+| INSERT do flow_network (5M rekordów) | ~55 min | ⚠️ WĄSKIE GARDŁO |
+| UPDATE downstream_id (5M rekordów) | ~47 min | ⚠️ WĄSKIE GARDŁO |
+| **Razem import do DB** | **~102 min** | ⚠️ Do optymalizacji |
+
+#### Runtime (API)
+
+| Operacja | Czas | Cel |
+|----------|------|-----|
+| find_nearest_stream (SQL) | <100ms | < 500ms ✅ |
+| traverse_upstream (CTE, 2.24 km²) | ~30s | < 10s ⚠️ |
+| build_boundary (convex hull) | ~8s | < 5s ⚠️ |
+| build_morphometric_params | ~4 min | < 30s ⚠️ |
+| Generowanie hydrogramu (Hydrolog) | <1s | < 5s ✅ |
+
+#### Wnioski
+
+1. **Analiza rastrowa (pysheds) jest bardzo szybka** - 5 sekund dla 5M komórek
+2. **Wąskie gardło to operacje bazodanowe** - INSERT/UPDATE zajmują 99% czasu preprocessingu
+3. **Runtime API jest akceptowalny** dla małych zlewni, ale dla dużych (>2 km²) może przekraczać limity
+
+#### Rekomendowane optymalizacje
+
+| ID | Opis | Oczekiwany zysk | Priorytet |
+|----|------|-----------------|-----------|
+| OPT-1 | COPY zamiast INSERT | 10-20x szybszy import | Wysoki |
+| OPT-2 | PostGIS Raster | Eliminacja INSERT | Średni |
+| OPT-3 | Lazy loading | Szybszy start | Niski |
+| OPT-4 | Optymalizacja find_main_stream | 10x szybszy runtime | Wysoki |
+
+---
+
 ### 10.1 Backend Optimizations
 
 **Database:**
@@ -1321,9 +1368,13 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 1.0  
-**Data ostatniej aktualizacji:** 2026-01-14  
-**Status:** Approved for implementation  
+**Wersja dokumentu:** 1.1
+**Data ostatniej aktualizacji:** 2026-01-20
+**Status:** Approved for implementation
+
+**Historia zmian:**
+- 1.1 (2026-01-20): Dodano sekcję 10.0 z wynikami benchmarków z testu end-to-end
+- 1.0 (2026-01-14): Wersja początkowa  
 
 ---
 

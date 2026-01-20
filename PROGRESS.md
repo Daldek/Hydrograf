@@ -5,10 +5,10 @@
 | Pole | Wartość |
 |------|---------|
 | **Faza** | 0 - Setup |
-| **Sprint** | 0.3 - Watershed API + Kartograf Integration |
-| **Ostatnia sesja** | 8 |
-| **Data** | 2026-01-18 |
-| **Następny checkpoint** | CP3: Hydrograph generation |
+| **Sprint** | 0.4 - Hydrograph Generation |
+| **Ostatnia sesja** | 9 |
+| **Data** | 2026-01-20 |
+| **Następny checkpoint** | CP3: Hydrograph generation (✅ przetestowane) |
 | **Gałąź robocza** | develop |
 
 ---
@@ -51,7 +51,7 @@ git checkout develop
 |----|------|--------|
 | CP1 | `curl localhost:8000/health` zwraca `{"status": "healthy", "database": "connected"}` | ✅ |
 | CP2 | `POST /api/delineate-watershed` zwraca granicę zlewni jako GeoJSON | ✅ |
-| CP3 | `POST /api/generate-hydrograph` zwraca kompletny JSON z hydrogramem | ⏳ |
+| CP3 | `POST /api/generate-hydrograph` zwraca kompletny JSON z hydrogramem | ✅ (przetestowane manualnie) |
 | CP4 | Mapa działa, kliknięcie wyświetla zlewnię | ⏳ |
 | CP5 | MVP: Pełny flow klik → zlewnia → parametry → hydrogram → eksport | ⏳ |
 
@@ -201,6 +201,107 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 ---
 
 ## Ostatnia Sesja
+
+### Sesja 9 (2026-01-20) - UKOŃCZONA
+
+**Cel:** Pełny test end-to-end na rzeczywistych danych dla arkusza mapy N-33-131-D-a-1-4
+
+**Wykonane:**
+
+1. **Pobieranie NMT (Kartograf)**
+   - Arkusz: N-33-131-D-a-1-4
+   - Rozmiar: 2177 × 2367 komórek (1m rozdzielczość)
+   - Pochodzenie: (383254.5, 511610.5) EPSG:2180
+   - Czas pobierania: ~30s
+
+2. **Przetwarzanie NMT (pysheds → PostgreSQL)**
+   - Analiza rastrowa (pysheds): **5 sekund** ✅
+     - Fill pits, fill depressions, resolve flats
+     - Flow direction, flow accumulation
+     - Slope calculation
+   - Import do bazy danych: **~102 minuty** ⚠️
+     - 4,917,704 rekordów
+     - Faza 1: INSERT (99 batchy po 50,000)
+     - Faza 2: UPDATE downstream_id
+   - **WĄSKIE GARDŁO: Operacje INSERT/UPDATE, NIE analiza rastrowa**
+
+3. **Znalezienie punktu outlet**
+   - ID: 33377
+   - Współrzędne: (383976, 513962) PL-1992
+   - WGS84: (52.4792°N, 17.2911°E)
+   - Flow accumulation: 2,241,705 komórek
+   - Elevation: 99.1 m n.p.m.
+
+4. **Pobranie danych opadowych (IMGWTools)**
+   - Źródło: PMAXTP atlas (p=1%, 60 min)
+   - Metoda KS: 41.9 mm
+   - Metoda SG: 48.87 mm
+
+5. **Generowanie hydrogramu (Hydrolog)**
+   - Delineacja zlewni: ~30 sekund (2.24 km², 2,241,705 komórek)
+   - Obliczenie morfometrii: ~4 minuty (find_main_stream przez graf)
+   - Generowanie hydrogramu: < 1 sekunda
+
+**Wyniki hydrogramu:**
+
+| Parametr | Wartość |
+|----------|---------|
+| Powierzchnia zlewni | 2.24 km² |
+| Długość cieku głównego | 4.23 km |
+| Spadek cieku | 0.43% |
+| Czas koncentracji (Kirpich) | 98.3 min |
+| **Qmax** | **25.21 m³/s** |
+| Czas do szczytu | 85 min |
+| Objętość odpływu | 127,467 m³ |
+| Współczynnik odpływu | 0.136 |
+| CN użyte | 75 |
+
+**Wnioski dotyczące wydajności:**
+
+| Operacja | Czas | Ocena |
+|----------|------|-------|
+| Pobieranie NMT (Kartograf) | ~30s | ✅ OK |
+| Analiza rastrowa (pysheds) | 5s | ✅ Świetnie |
+| Import do DB (INSERT) | ~55 min | ⚠️ Do optymalizacji |
+| Aktualizacja downstream_id | ~47 min | ⚠️ Do optymalizacji |
+| Delineacja zlewni (SQL CTE) | 30s | ✅ OK |
+| Obliczenie morfometrii | 4 min | ⚠️ Wolne dla dużych zlewni |
+| Generowanie hydrogramu | <1s | ✅ Świetnie |
+
+**Rekomendacje optymalizacji (backlog):**
+
+1. **[OPT-1] PostgreSQL COPY zamiast INSERT**
+   - Obecny: ~55 min dla 5M rekordów
+   - Oczekiwany: <5 min
+   - Implementacja: `COPY flow_network FROM STDIN WITH CSV`
+
+2. **[OPT-2] PostGIS Raster zamiast punktów**
+   - Obecny: 5M punktów w `flow_network`
+   - Alternatywa: Przechowywać rastry jako `raster` type
+   - Zysk: Brak potrzeby INSERT, natywne operacje rastrowe
+
+3. **[OPT-3] Lazy loading / przetwarzanie na żądanie**
+   - Obecny: Cały arkusz przetwarzany z góry
+   - Alternatywa: Przetwarzanie tylko potrzebnych fragmentów
+   - Zysk: Szybszy start, mniejsze zużycie pamięci
+
+4. **[OPT-4] Optymalizacja find_main_stream**
+   - Obecny: ~4 min dla 2.24 km² zlewni
+   - Przyczyna: Iteracja przez wszystkie head cells
+   - Rozwiązanie: Ograniczyć do komórek z wysokim flow_accumulation
+
+**Status bibliotek zewnętrznych:**
+- ✅ Kartograf 0.2.0+ - pobieranie NMT działa
+- ✅ IMGWTools - pobieranie PMAXTP działa
+- ✅ Hydrolog - generowanie hydrogramu działa
+- ✅ pysheds - analiza rastrowa działa
+
+**Następne kroki:**
+1. Zaimplementować endpoint `/api/generate-hydrograph` (już istnieje w kodzie)
+2. Przetestować endpoint przez API
+3. Rozpocząć CP4 - Frontend map
+
+---
 
 ### Sesja 8 (2026-01-18) - UKOŃCZONA
 
@@ -363,3 +464,35 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 ### Znane Problemy
 
 - Warning Pydantic: "Support for class-based `config` is deprecated" - do naprawy w przyszłości
+
+### Znane Problemy Wydajności (z testu Sesji 9)
+
+| Problem | Opis | Priorytet | Status |
+|---------|------|-----------|--------|
+| Wolny import NMT | INSERT 5M rekordów trwa ~55 min | Wysoki | Do zrobienia |
+| Wolny UPDATE downstream_id | Aktualizacja FK trwa ~47 min | Wysoki | Do zrobienia |
+| Wolny find_main_stream | 4 min dla 2.24 km² zlewni | Średni | Do zrobienia |
+
+**Planowane optymalizacje:**
+
+```
+[OPT-1] COPY zamiast INSERT
+  - Plik: scripts/process_dem.py
+  - Zmiana: Użyć COPY FROM STDIN zamiast batch INSERT
+  - Oczekiwany zysk: 10-20x szybciej
+
+[OPT-2] PostGIS Raster
+  - Plik: migrations/, scripts/process_dem.py
+  - Zmiana: Przechowywać rastry jako typ `raster`
+  - Oczekiwany zysk: Eliminacja INSERT, natywne operacje rastrowe
+
+[OPT-3] Lazy loading
+  - Plik: scripts/process_dem.py, core/watershed.py
+  - Zmiana: Przetwarzać fragmenty na żądanie
+  - Oczekiwany zysk: Szybszy start, mniejsze użycie pamięci
+
+[OPT-4] Optymalizacja find_main_stream
+  - Plik: core/morphometry.py
+  - Zmiana: Szukać tylko w komórkach z wysokim flow_accumulation
+  - Oczekiwany zysk: 10-100x szybciej
+```
