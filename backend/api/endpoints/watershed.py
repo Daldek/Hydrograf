@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from core.database import get_db
+from core.morphometry import build_morphometric_params
 from core.watershed import (
     build_boundary,
     calculate_watershed_area_km2,
@@ -20,6 +21,7 @@ from core.watershed import (
 from models.schemas import (
     DelineateRequest,
     DelineateResponse,
+    MorphometricParameters,
     OutletInfo,
     WatershedResponse,
 )
@@ -99,21 +101,24 @@ def delineate_watershed(
         # 6. Build boundary polygon
         boundary_2180 = build_boundary(cells, method="convex")
 
-        # 7. Transform boundary to WGS84
+        # 7. Calculate morphometric parameters
+        morph_dict = build_morphometric_params(cells, boundary_2180, outlet_cell)
+
+        # 8. Transform boundary to WGS84
         boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_2180)
 
-        # 8. Create GeoJSON Feature
+        # 9. Create GeoJSON Feature
         boundary_geojson = polygon_to_geojson_feature(
             boundary_wgs84,
             properties={"area_km2": round(area_km2, 2)},
         )
 
-        # 9. Transform outlet coords back to WGS84
+        # 10. Transform outlet coords back to WGS84
         outlet_lon, outlet_lat = transform_pl1992_to_wgs84(
             outlet_cell.x, outlet_cell.y
         )
 
-        # 10. Build response
+        # 11. Build response
         response = DelineateResponse(
             watershed=WatershedResponse(
                 boundary_geojson=boundary_geojson,
@@ -125,6 +130,7 @@ def delineate_watershed(
                 cell_count=len(cells),
                 area_km2=round(area_km2, 2),
                 hydrograph_available=hydrograph_available,
+                morphometry=MorphometricParameters(**morph_dict),
             )
         )
 
