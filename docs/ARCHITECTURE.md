@@ -1177,14 +1177,31 @@ async def health_check(db = Depends(get_db)):
 2. **Wąskie gardło to operacje bazodanowe** - INSERT/UPDATE zajmują 99% czasu preprocessingu
 3. **Runtime API jest akceptowalny** dla małych zlewni, ale dla dużych (>2 km²) może przekraczać limity
 
-#### Rekomendowane optymalizacje
+#### Przetestowane optymalizacje (Sesja 10)
 
-| ID | Opis | Oczekiwany zysk | Priorytet |
-|----|------|-----------------|-----------|
-| OPT-1 | COPY zamiast INSERT | 10-20x szybszy import | Wysoki |
-| OPT-2 | PostGIS Raster | Eliminacja INSERT | Średni |
-| OPT-3 | Lazy loading | Szybszy start | Niski |
-| OPT-4 | Optymalizacja find_main_stream | 10x szybszy runtime | Wysoki |
+| ID | Opis | Testowany zysk | Status |
+|----|------|----------------|--------|
+| OPT-1 | COPY zamiast INSERT | **21x szybciej** (1.5 min vs 31 min) | ✅ Potwierdzone |
+| OPT-2 | PostGIS Raster | - | Niski priorytet |
+| OPT-3 | Lazy loading | - | Niski priorytet |
+| OPT-4 | find_main_stream (reverse trace) | **257x szybciej** (1s vs 4 min) | ✅ Potwierdzone |
+
+#### Szczegółowe wyniki benchmarków
+
+**OPT-1: COPY vs INSERT** (100,000 rekordów)
+
+| Metoda | Czas | Rate | Przyspieszenie |
+|--------|------|------|----------------|
+| Individual INSERT | 37.82s | 2,644/s | 1.0x |
+| executemany | 31.29s | 3,196/s | 1.2x |
+| COPY FROM | 1.82s | 55,063/s | **20.8x** |
+
+**OPT-4: find_main_stream** (2.24 km², 835k head cells)
+
+| Metoda | Czas | Przyspieszenie |
+|--------|------|----------------|
+| Original (iterate all heads) | 246.4s | 1.0x |
+| Reverse trace (follow max acc) | 0.96s | **257x** |
 
 ---
 
@@ -1368,11 +1385,12 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 1.1
+**Wersja dokumentu:** 1.2
 **Data ostatniej aktualizacji:** 2026-01-20
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 1.2 (2026-01-20): Dodano wyniki testów optymalizacji (COPY 21x, reverse trace 257x)
 - 1.1 (2026-01-20): Dodano sekcję 10.0 z wynikami benchmarków z testu end-to-end
 - 1.0 (2026-01-14): Wersja początkowa  
 
