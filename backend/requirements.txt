@@ -53,3 +53,6 @@ kartograf @ git+https://github.com/Daldek/Kartograf.git@develop
 # GeoPackage support (for land cover data)
 geopandas>=0.14.2
 fiona>=1.9.5
+
+# Hydrolog - hydrological calculations (SCS-CN, unit hydrographs, tc)
+hydrolog @ git+https://github.com/Daldek/Hydrolog.git@develop
