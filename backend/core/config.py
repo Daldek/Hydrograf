@@ -8,7 +8,7 @@ import os
 from functools import lru_cache
 from typing import Optional
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -21,6 +21,8 @@ class Settings(BaseSettings):
         PostgreSQL connection string
     log_level : str
         Logging level (DEBUG, INFO, WARNING, ERROR)
+    cors_origins : str
+        Comma-separated list of allowed CORS origins
     imgw_grid_spacing_km : float
         Grid spacing for IMGW data preprocessing [km]
     imgw_rate_limit_delay_s : float
@@ -37,6 +39,9 @@ class Settings(BaseSettings):
 
     # API
     log_level: str = "INFO"
+    cors_origins: str = (
+        "http://localhost,http://localhost:8080,http://127.0.0.1,http://127.0.0.1:8080"
+    )
 
     # IMGW preprocessing
     imgw_grid_spacing_km: float = 2.0
@@ -56,12 +61,11 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
-    class Config:
-        """Pydantic settings configuration."""
-
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
 
 
 @lru_cache()

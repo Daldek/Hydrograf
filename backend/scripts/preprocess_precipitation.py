@@ -214,7 +214,8 @@ def insert_precipitation_data(
 
         try:
             db_session.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO precipitation_data
                         (geom, duration, probability, precipitation_mm, source, updated_at)
                     VALUES
@@ -224,7 +225,8 @@ def insert_precipitation_data(
                     DO UPDATE SET
                         precipitation_mm = EXCLUDED.precipitation_mm,
                         updated_at = EXCLUDED.updated_at
-                """),
+                """
+                ),
                 {
                     "x": x,
                     "y": y,
@@ -353,9 +355,7 @@ def main():
     start_time = time.time()
 
     try:
-        total, successful, records = asyncio.run(
-            process_grid(bbox, args.spacing, args.delay)
-        )
+        total, successful, records = asyncio.run(process_grid(bbox, args.spacing, args.delay))
     except KeyboardInterrupt:
         logger.warning("Interrupted by user")
         sys.exit(1)

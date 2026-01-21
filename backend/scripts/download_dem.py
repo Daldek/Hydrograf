@@ -33,7 +33,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 # Configure logging
 logging.basicConfig(
@@ -212,7 +212,8 @@ def main():
     # Output options
     output_group = parser.add_argument_group("Output")
     output_group.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=str,
         default="../data/nmt/",
         help="Output directory (default: ../data/nmt/)",
@@ -252,9 +253,7 @@ def main():
             sys.path.insert(0, str(Path(__file__).parent.parent))
             from utils.sheet_finder import get_sheets_for_point_with_buffer
 
-        sheets = get_sheets_for_point_with_buffer(
-            args.lat, args.lon, args.buffer, args.scale
-        )
+        sheets = get_sheets_for_point_with_buffer(args.lat, args.lon, args.buffer, args.scale)
     else:
         parser.error("Either --sheets or both --lat and --lon are required")
         return

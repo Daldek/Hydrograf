@@ -96,7 +96,8 @@ def find_nearest_stream(
     >>> if cell:
     ...     print(f"Found stream at elevation {cell.elevation} m")
     """
-    query = text("""
+    query = text(
+        """
         SELECT
             id,
             ST_X(geom) as x,
@@ -113,7 +114,8 @@ def find_nearest_stream(
           AND ST_DWithin(geom, ST_SetSRID(ST_Point(:x, :y), 2180), :max_dist)
         ORDER BY distance
         LIMIT 1
-    """)
+    """
+    )
 
     result = db.execute(
         query,
@@ -122,14 +124,11 @@ def find_nearest_stream(
 
     if result is None:
         logger.warning(
-            f"No stream found within {max_distance_m}m of "
-            f"({point.x:.1f}, {point.y:.1f})"
+            f"No stream found within {max_distance_m}m of " f"({point.x:.1f}, {point.y:.1f})"
         )
         return None
 
-    logger.debug(
-        f"Found stream cell {result.id} at distance {result.distance:.1f}m"
-    )
+    logger.debug(f"Found stream cell {result.id} at distance {result.distance:.1f}m")
 
     return FlowCell(
         id=result.id,
@@ -181,7 +180,8 @@ def traverse_upstream(
     """
     # Recursive CTE for upstream traversal
     # Follows the downstream_id links in reverse direction
-    query = text("""
+    query = text(
+        """
         WITH RECURSIVE upstream AS (
             -- Base case: outlet cell
             SELECT
@@ -219,7 +219,8 @@ def traverse_upstream(
         SELECT id, x, y, elevation, flow_accumulation, slope,
                downstream_id, cell_area, is_stream
         FROM upstream
-    """)
+    """
+    )
 
     results = db.execute(
         query,
@@ -227,9 +228,7 @@ def traverse_upstream(
     ).fetchall()
 
     if len(results) > max_cells:
-        logger.error(
-            f"Watershed too large: {len(results):,} cells > {max_cells:,} limit"
-        )
+        logger.error(f"Watershed too large: {len(results):,} cells > {max_cells:,} limit")
         raise ValueError(
             f"Watershed too large: {len(results):,} cells exceeds limit of {max_cells:,}"
         )
@@ -285,9 +284,7 @@ def build_boundary(
     >>> print(f"Boundary area: {boundary.area / 1e6:.2f} km²")
     """
     if len(cells) < 3:
-        raise ValueError(
-            f"Need at least 3 cells to build boundary, got {len(cells)}"
-        )
+        raise ValueError(f"Need at least 3 cells to build boundary, got {len(cells)}")
 
     # Create MultiPoint from cell centroids
     points = MultiPoint([Point(c.x, c.y) for c in cells])
@@ -299,18 +296,14 @@ def build_boundary(
         # ratio parameter controls the "tightness" of the hull
         boundary = shapely.concave_hull(points, ratio=0.3)
     else:
-        raise ValueError(
-            f"Unknown method: '{method}'. Use 'convex' or 'concave'"
-        )
+        raise ValueError(f"Unknown method: '{method}'. Use 'convex' or 'concave'")
 
     # Handle edge case where hull degenerates to LineString
     if boundary.geom_type == "LineString":
         logger.warning("Boundary degenerated to LineString, buffering to Polygon")
         boundary = boundary.buffer(1.0)  # 1 meter buffer
 
-    logger.debug(
-        f"Built {method} boundary with area {boundary.area / 1e6:.4f} km²"
-    )
+    logger.debug(f"Built {method} boundary with area {boundary.area / 1e6:.4f} km²")
 
     return boundary
 

@@ -1,7 +1,6 @@
 """Unit tests for morphometry module."""
 
 import pytest
-import numpy as np
 from shapely.geometry import Polygon
 
 from core.morphometry import (
@@ -34,24 +33,59 @@ def sample_cells() -> list[FlowCell]:
     """
     return [
         FlowCell(
-            id=1, x=0, y=0, elevation=100.0, flow_accumulation=5,
-            slope=2.0, downstream_id=None, cell_area=10000.0, is_stream=True
+            id=1,
+            x=0,
+            y=0,
+            elevation=100.0,
+            flow_accumulation=5,
+            slope=2.0,
+            downstream_id=None,
+            cell_area=10000.0,
+            is_stream=True,
         ),
         FlowCell(
-            id=2, x=100, y=0, elevation=110.0, flow_accumulation=3,
-            slope=3.0, downstream_id=1, cell_area=10000.0, is_stream=True
+            id=2,
+            x=100,
+            y=0,
+            elevation=110.0,
+            flow_accumulation=3,
+            slope=3.0,
+            downstream_id=1,
+            cell_area=10000.0,
+            is_stream=True,
         ),
         FlowCell(
-            id=3, x=200, y=0, elevation=115.0, flow_accumulation=1,
-            slope=4.0, downstream_id=2, cell_area=10000.0, is_stream=False
+            id=3,
+            x=200,
+            y=0,
+            elevation=115.0,
+            flow_accumulation=1,
+            slope=4.0,
+            downstream_id=2,
+            cell_area=10000.0,
+            is_stream=False,
         ),
         FlowCell(
-            id=4, x=0, y=100, elevation=125.0, flow_accumulation=1,
-            slope=5.0, downstream_id=1, cell_area=10000.0, is_stream=False
+            id=4,
+            x=0,
+            y=100,
+            elevation=125.0,
+            flow_accumulation=1,
+            slope=5.0,
+            downstream_id=1,
+            cell_area=10000.0,
+            is_stream=False,
         ),
         FlowCell(
-            id=5, x=100, y=100, elevation=120.0, flow_accumulation=1,
-            slope=2.5, downstream_id=2, cell_area=10000.0, is_stream=False
+            id=5,
+            x=100,
+            y=100,
+            elevation=120.0,
+            flow_accumulation=1,
+            slope=2.5,
+            downstream_id=2,
+            cell_area=10000.0,
+            is_stream=False,
         ),
     ]
 
@@ -65,9 +99,7 @@ def sample_outlet(sample_cells: list[FlowCell]) -> FlowCell:
 @pytest.fixture
 def sample_boundary() -> Polygon:
     """Create sample boundary polygon (1km x 1km square)."""
-    return Polygon([
-        (0, 0), (1000, 0), (1000, 1000), (0, 1000), (0, 0)
-    ])
+    return Polygon([(0, 0), (1000, 0), (1000, 1000), (0, 1000), (0, 0)])
 
 
 # ===== TEST: calculate_perimeter_km =====
@@ -101,9 +133,7 @@ class TestCalculatePerimeterKm:
 class TestCalculateWatershedLengthKm:
     """Tests for calculate_watershed_length_km function."""
 
-    def test_length_calculation(
-        self, sample_cells: list[FlowCell], sample_outlet: FlowCell
-    ):
+    def test_length_calculation(self, sample_cells: list[FlowCell], sample_outlet: FlowCell):
         """Test max distance from outlet."""
         result = calculate_watershed_length_km(sample_cells, sample_outlet)
         # Max distance from (0,0) to (200,0) = 200m = 0.2km
@@ -147,12 +177,26 @@ class TestCalculateElevationStats:
         """Test that mean is weighted by area."""
         cells = [
             FlowCell(
-                id=1, x=0, y=0, elevation=100.0, flow_accumulation=1,
-                slope=1.0, downstream_id=None, cell_area=9000.0, is_stream=True
+                id=1,
+                x=0,
+                y=0,
+                elevation=100.0,
+                flow_accumulation=1,
+                slope=1.0,
+                downstream_id=None,
+                cell_area=9000.0,
+                is_stream=True,
             ),
             FlowCell(
-                id=2, x=100, y=0, elevation=200.0, flow_accumulation=1,
-                slope=1.0, downstream_id=1, cell_area=1000.0, is_stream=False
+                id=2,
+                x=100,
+                y=0,
+                elevation=200.0,
+                flow_accumulation=1,
+                slope=1.0,
+                downstream_id=1,
+                cell_area=1000.0,
+                is_stream=False,
             ),
         ]
         result = calculate_elevation_stats(cells)
@@ -188,12 +232,26 @@ class TestCalculateMeanSlope:
         """Test that None slopes are ignored."""
         cells = [
             FlowCell(
-                id=1, x=0, y=0, elevation=100.0, flow_accumulation=1,
-                slope=10.0, downstream_id=None, cell_area=1000.0, is_stream=True
+                id=1,
+                x=0,
+                y=0,
+                elevation=100.0,
+                flow_accumulation=1,
+                slope=10.0,
+                downstream_id=None,
+                cell_area=1000.0,
+                is_stream=True,
             ),
             FlowCell(
-                id=2, x=100, y=0, elevation=110.0, flow_accumulation=1,
-                slope=None, downstream_id=1, cell_area=1000.0, is_stream=False
+                id=2,
+                x=100,
+                y=0,
+                elevation=110.0,
+                flow_accumulation=1,
+                slope=None,
+                downstream_id=1,
+                cell_area=1000.0,
+                is_stream=False,
             ),
         ]
         result = calculate_mean_slope(cells)
@@ -207,9 +265,7 @@ class TestCalculateMeanSlope:
 class TestFindMainStream:
     """Tests for find_main_stream function."""
 
-    def test_stream_found(
-        self, sample_cells: list[FlowCell], sample_outlet: FlowCell
-    ):
+    def test_stream_found(self, sample_cells: list[FlowCell], sample_outlet: FlowCell):
         """Test main stream detection."""
         length_km, slope = find_main_stream(sample_cells, sample_outlet)
         assert length_km > 0
@@ -221,9 +277,7 @@ class TestFindMainStream:
         assert length_km == 0.0
         assert slope == 0.0
 
-    def test_longest_path(
-        self, sample_cells: list[FlowCell], sample_outlet: FlowCell
-    ):
+    def test_longest_path(self, sample_cells: list[FlowCell], sample_outlet: FlowCell):
         """Test that longest path is found."""
         length_km, slope = find_main_stream(sample_cells, sample_outlet)
         # Longest path: 3 -> 2 -> 1 (200m) or 5 -> 2 -> 1 (~241m)
@@ -232,9 +286,7 @@ class TestFindMainStream:
         # Path 5->2->1: distance = sqrt(100) + 100 = 100 + 100 = 200m
         assert length_km > 0.1  # At least 100m
 
-    def test_positive_slope(
-        self, sample_cells: list[FlowCell], sample_outlet: FlowCell
-    ):
+    def test_positive_slope(self, sample_cells: list[FlowCell], sample_outlet: FlowCell):
         """Test that slope is always non-negative."""
         _, slope = find_main_stream(sample_cells, sample_outlet)
         assert slope >= 0
@@ -253,9 +305,7 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test that function returns proper dict."""
-        result = build_morphometric_params(
-            sample_cells, sample_boundary, sample_outlet, cn=72
-        )
+        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet, cn=72)
         assert isinstance(result, dict)
 
     def test_required_keys(
@@ -265,13 +315,8 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test that all required keys are present."""
-        result = build_morphometric_params(
-            sample_cells, sample_boundary, sample_outlet
-        )
-        required = [
-            "area_km2", "perimeter_km", "length_km",
-            "elevation_min_m", "elevation_max_m"
-        ]
+        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet)
+        required = ["area_km2", "perimeter_km", "length_km", "elevation_min_m", "elevation_max_m"]
         for key in required:
             assert key in result
 
@@ -282,13 +327,15 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test that optional keys are present."""
-        result = build_morphometric_params(
-            sample_cells, sample_boundary, sample_outlet, cn=72
-        )
+        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet, cn=72)
         optional = [
-            "elevation_mean_m", "mean_slope_m_per_m",
-            "channel_length_km", "channel_slope_m_per_m",
-            "cn", "source", "crs"
+            "elevation_mean_m",
+            "mean_slope_m_per_m",
+            "channel_length_km",
+            "channel_slope_m_per_m",
+            "cn",
+            "source",
+            "crs",
         ]
         for key in optional:
             assert key in result
@@ -300,9 +347,7 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test that CN is passed through."""
-        result = build_morphometric_params(
-            sample_cells, sample_boundary, sample_outlet, cn=72
-        )
+        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet, cn=72)
         assert result["cn"] == 72
 
     def test_source_and_crs(
@@ -312,9 +357,7 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test that source and crs are set correctly."""
-        result = build_morphometric_params(
-            sample_cells, sample_boundary, sample_outlet
-        )
+        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet)
         assert result["source"] == "Hydrograf"
         assert result["crs"] == "EPSG:2180"
 
@@ -325,9 +368,7 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test area calculation."""
-        result = build_morphometric_params(
-            sample_cells, sample_boundary, sample_outlet
-        )
+        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet)
         # 5 cells * 10000 m² = 50000 m² = 0.05 km²
         assert result["area_km2"] == pytest.approx(0.05, rel=0.01)
 
@@ -338,12 +379,11 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test compatibility with Hydrolog's WatershedParameters."""
-        result = build_morphometric_params(
-            sample_cells, sample_boundary, sample_outlet, cn=72
-        )
+        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet, cn=72)
 
         # This should not raise
         from hydrolog.morphometry import WatershedParameters
+
         wp = WatershedParameters.from_dict(result)
 
         assert wp.area_km2 == result["area_km2"]

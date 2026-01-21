@@ -56,7 +56,6 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import List
 
 # Configure logging
 logging.basicConfig(
@@ -248,6 +247,7 @@ def prepare_area(
         logger.error(f"DEM processing failed: {e}")
         stats["errors"].append(f"DEM processing: {e}")
         import traceback
+
         logger.error(traceback.format_exc())
 
     # Step 5: Download and import land cover (optional)
@@ -261,7 +261,9 @@ def prepare_area(
             from scripts.import_landcover import import_landcover
 
             # Create landcover output directory
-            landcover_dir = output_dir.parent / "landcover" if output_dir else Path("../data/landcover")
+            landcover_dir = (
+                output_dir.parent / "landcover" if output_dir else Path("../data/landcover")
+            )
             landcover_dir.mkdir(parents=True, exist_ok=True)
 
             # Download land cover
@@ -378,7 +380,8 @@ def main():
     # Output options
     output_group = parser.add_argument_group("Output options")
     output_group.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=str,
         default=None,
         help="Output directory for downloads (default: ../data/nmt/)",
@@ -396,7 +399,8 @@ def main():
         help="Delete downloaded .asc files after processing",
     )
     output_group.add_argument(
-        "--save-intermediates", "-s",
+        "--save-intermediates",
+        "-s",
         action="store_true",
         help="Save intermediate GeoTIFF files",
     )
@@ -430,9 +434,7 @@ def main():
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from utils.sheet_finder import get_sheets_for_point_with_buffer
 
-        sheets = get_sheets_for_point_with_buffer(
-            args.lat, args.lon, args.buffer, args.scale
-        )
+        sheets = get_sheets_for_point_with_buffer(args.lat, args.lon, args.buffer, args.scale)
 
         logger.info("DRY RUN - would download and process:")
         logger.info("NMT sheets:")

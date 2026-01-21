@@ -14,6 +14,8 @@ from core.database import get_db
 from core.morphometry import build_morphometric_params
 from core.precipitation import (
     DURATION_STR_TO_MIN,
+    VALID_DURATIONS_STR,
+    VALID_PROBABILITIES,
     get_precipitation,
     validate_duration,
     validate_probability,
@@ -143,7 +145,8 @@ def generate_hydrograph(
         if precip_mm is None:
             raise HTTPException(
                 status_code=400,
-                detail=f"Brak danych opadowych dla ({request.latitude:.4f}, {request.longitude:.4f})",
+                detail=f"Brak danych opadowych dla ({request.latitude:.4f}, "
+                f"{request.longitude:.4f})",
             )
 
         logger.debug(f"Precipitation: {precip_mm:.1f} mm for {duration_str}, p={probability}%")
@@ -254,3 +257,25 @@ def generate_hydrograph(
             status_code=500,
             detail="Internal server error during hydrograph generation",
         )
+
+
+@router.get("/scenarios")
+def list_scenarios() -> dict:
+    """
+    List available hydrograph generation scenarios.
+
+    Returns the valid combinations of duration and probability values
+    that can be used for hydrograph generation.
+
+    Returns
+    -------
+    dict
+        Available durations, probabilities, tc_methods, and hietogram_types
+    """
+    return {
+        "durations": sorted(VALID_DURATIONS_STR),
+        "probabilities": sorted(VALID_PROBABILITIES),
+        "tc_methods": ["kirpich", "scs_lag", "giandotti"],
+        "hietogram_types": ["beta", "block", "euler_ii"],
+        "area_limit_km2": HYDROGRAPH_AREA_LIMIT_KM2,
+    }

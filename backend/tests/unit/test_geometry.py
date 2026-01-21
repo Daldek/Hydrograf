@@ -2,7 +2,6 @@
 Unit tests for geometry utilities module.
 """
 
-import pytest
 from shapely.geometry import Point, Polygon
 
 from utils.geometry import (
@@ -99,13 +98,15 @@ class TestTransformPolygonPl1992ToWgs84:
 
     def test_returns_polygon(self):
         """Test that function returns Shapely Polygon."""
-        polygon_2180 = Polygon([
-            (500000, 600000),
-            (500100, 600000),
-            (500100, 600100),
-            (500000, 600100),
-            (500000, 600000),
-        ])
+        polygon_2180 = Polygon(
+            [
+                (500000, 600000),
+                (500100, 600000),
+                (500100, 600100),
+                (500000, 600100),
+                (500000, 600000),
+            ]
+        )
 
         result = transform_polygon_pl1992_to_wgs84(polygon_2180)
 
@@ -113,13 +114,15 @@ class TestTransformPolygonPl1992ToWgs84:
 
     def test_polygon_is_valid(self):
         """Test that transformed polygon is valid."""
-        polygon_2180 = Polygon([
-            (500000, 600000),
-            (500100, 600000),
-            (500100, 600100),
-            (500000, 600100),
-            (500000, 600000),
-        ])
+        polygon_2180 = Polygon(
+            [
+                (500000, 600000),
+                (500100, 600000),
+                (500100, 600100),
+                (500000, 600100),
+                (500000, 600000),
+            ]
+        )
 
         result = transform_polygon_pl1992_to_wgs84(polygon_2180)
 
@@ -127,13 +130,15 @@ class TestTransformPolygonPl1992ToWgs84:
 
     def test_coordinates_in_wgs84_range(self):
         """Test that output coordinates are in WGS84 range."""
-        polygon_2180 = Polygon([
-            (500000, 600000),
-            (500100, 600000),
-            (500100, 600100),
-            (500000, 600100),
-            (500000, 600000),
-        ])
+        polygon_2180 = Polygon(
+            [
+                (500000, 600000),
+                (500100, 600000),
+                (500100, 600100),
+                (500000, 600100),
+                (500000, 600000),
+            ]
+        )
 
         result = transform_polygon_pl1992_to_wgs84(polygon_2180)
 
@@ -143,13 +148,15 @@ class TestTransformPolygonPl1992ToWgs84:
 
     def test_preserves_polygon_structure(self):
         """Test that transformation preserves number of vertices."""
-        polygon_2180 = Polygon([
-            (500000, 600000),
-            (500100, 600000),
-            (500100, 600100),
-            (500000, 600100),
-            (500000, 600000),
-        ])
+        polygon_2180 = Polygon(
+            [
+                (500000, 600000),
+                (500100, 600000),
+                (500100, 600100),
+                (500000, 600100),
+                (500000, 600000),
+            ]
+        )
 
         result = transform_polygon_pl1992_to_wgs84(polygon_2180)
 
@@ -185,13 +192,15 @@ class TestPolygonToGeojsonFeature:
 
     def test_returns_feature_dict(self):
         """Test that function returns valid GeoJSON Feature."""
-        polygon = Polygon([
-            (21.0, 52.0),
-            (21.1, 52.0),
-            (21.1, 52.1),
-            (21.0, 52.1),
-            (21.0, 52.0),
-        ])
+        polygon = Polygon(
+            [
+                (21.0, 52.0),
+                (21.1, 52.0),
+                (21.1, 52.1),
+                (21.0, 52.1),
+                (21.0, 52.0),
+            ]
+        )
 
         result = polygon_to_geojson_feature(polygon)
 
@@ -220,13 +229,15 @@ class TestPolygonToGeojsonFeature:
 
     def test_geometry_has_coordinates(self):
         """Test that geometry includes coordinates array."""
-        polygon = Polygon([
-            (21.0, 52.0),
-            (21.1, 52.0),
-            (21.1, 52.1),
-            (21.0, 52.1),
-            (21.0, 52.0),
-        ])
+        polygon = Polygon(
+            [
+                (21.0, 52.0),
+                (21.1, 52.0),
+                (21.1, 52.1),
+                (21.0, 52.1),
+                (21.0, 52.0),
+            ]
+        )
 
         result = polygon_to_geojson_feature(polygon)
 
@@ -237,13 +248,15 @@ class TestPolygonToGeojsonFeature:
 
     def test_coordinates_are_correct(self):
         """Test that coordinates match input polygon."""
-        polygon = Polygon([
-            (21.0, 52.0),
-            (21.1, 52.0),
-            (21.1, 52.1),
-            (21.0, 52.1),
-            (21.0, 52.0),
-        ])
+        polygon = Polygon(
+            [
+                (21.0, 52.0),
+                (21.1, 52.0),
+                (21.1, 52.1),
+                (21.0, 52.1),
+                (21.0, 52.0),
+            ]
+        )
 
         result = polygon_to_geojson_feature(polygon)
         coords = result["geometry"]["coordinates"][0]  # Exterior ring

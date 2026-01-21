@@ -49,7 +49,6 @@ from pathlib import Path
 from typing import Tuple, Optional
 
 import numpy as np
-from pyproj import CRS
 from sqlalchemy import text
 
 # Configure logging
@@ -63,14 +62,14 @@ logger = logging.getLogger(__name__)
 # D8 flow direction encoding (pysheds default)
 # Direction values and their (row_offset, col_offset) for downstream cell
 D8_DIRECTIONS = {
-    1: (0, 1),    # E
-    2: (1, 1),    # SE
-    4: (1, 0),    # S
-    8: (1, -1),   # SW
+    1: (0, 1),  # E
+    2: (1, 1),  # SE
+    4: (1, 0),  # S
+    8: (1, -1),  # SW
     16: (0, -1),  # W
-    32: (-1, -1), # NW
+    32: (-1, -1),  # NW
     64: (-1, 0),  # N
-    128: (-1, 1), # NE
+    128: (-1, 1),  # NE
 }
 
 
@@ -79,7 +78,7 @@ def save_raster_geotiff(
     metadata: dict,
     output_path: Path,
     nodata: float = -9999.0,
-    dtype: str = 'float32',
+    dtype: str = "float32",
 ) -> None:
     """
     Save numpy array as GeoTIFF with PL-1992 (EPSG:2180) CRS.
@@ -101,9 +100,9 @@ def save_raster_geotiff(
     from rasterio.transform import from_bounds
 
     nrows, ncols = data.shape
-    cellsize = metadata['cellsize']
-    xll = metadata['xllcorner']
-    yll = metadata['yllcorner']
+    cellsize = metadata["cellsize"]
+    xll = metadata["xllcorner"]
+    yll = metadata["yllcorner"]
 
     # Calculate bounds
     xmin = xll
@@ -115,11 +114,11 @@ def save_raster_geotiff(
 
     # Map dtype string to numpy/rasterio dtype
     dtype_map = {
-        'float32': (np.float32, rasterio.float32),
-        'float64': (np.float64, rasterio.float64),
-        'int32': (np.int32, rasterio.int32),
-        'int16': (np.int16, rasterio.int16),
-        'uint8': (np.uint8, rasterio.uint8),
+        "float32": (np.float32, rasterio.float32),
+        "float64": (np.float64, rasterio.float64),
+        "int32": (np.int32, rasterio.int32),
+        "int16": (np.int16, rasterio.int16),
+        "uint8": (np.uint8, rasterio.uint8),
     }
 
     np_dtype, rio_dtype = dtype_map.get(dtype, (np.float32, rasterio.float32))
@@ -129,16 +128,16 @@ def save_raster_geotiff(
 
     with rasterio.open(
         output_path,
-        'w',
-        driver='GTiff',
+        "w",
+        driver="GTiff",
         height=nrows,
         width=ncols,
         count=1,
         dtype=rio_dtype,
-        crs='EPSG:2180',
+        crs="EPSG:2180",
         transform=transform,
         nodata=nodata,
-        compress='lzw',
+        compress="lzw",
     ) as dst:
         dst.write(out_data, 1)
 
@@ -231,7 +230,7 @@ def read_ascii_grid(filepath: Path) -> Tuple[np.ndarray, dict]:
     metadata = {}
     header_lines = 6
 
-    with open(filepath, 'r') as f:
+    with open(filepath, "r") as f:
         # Read header
         for i in range(header_lines):
             line = f.readline().strip()
@@ -241,35 +240,41 @@ def read_ascii_grid(filepath: Path) -> Tuple[np.ndarray, dict]:
             if len(parts) >= 2:
                 key = parts[0].lower()
                 value = parts[1]
-                if key in ('ncols', 'nrows'):
+                if key in ("ncols", "nrows"):
                     metadata[key] = int(value)
-                elif key in ('xllcorner', 'yllcorner', 'xllcenter', 'yllcenter',
-                             'cellsize', 'nodata_value'):
+                elif key in (
+                    "xllcorner",
+                    "yllcorner",
+                    "xllcenter",
+                    "yllcenter",
+                    "cellsize",
+                    "nodata_value",
+                ):
                     metadata[key] = float(value)
 
     # Handle center vs corner coordinates
     # If center is provided, convert to corner
-    if 'xllcenter' in metadata and 'xllcorner' not in metadata:
-        metadata['xllcorner'] = metadata['xllcenter'] - metadata.get('cellsize', 0) / 2
+    if "xllcenter" in metadata and "xllcorner" not in metadata:
+        metadata["xllcorner"] = metadata["xllcenter"] - metadata.get("cellsize", 0) / 2
         logger.info("Converted xllcenter to xllcorner")
-    if 'yllcenter' in metadata and 'yllcorner' not in metadata:
-        metadata['yllcorner'] = metadata['yllcenter'] - metadata.get('cellsize', 0) / 2
+    if "yllcenter" in metadata and "yllcorner" not in metadata:
+        metadata["yllcorner"] = metadata["yllcenter"] - metadata.get("cellsize", 0) / 2
         logger.info("Converted yllcenter to yllcorner")
 
     # Validate required fields
-    required = ['ncols', 'nrows', 'xllcorner', 'yllcorner', 'cellsize']
+    required = ["ncols", "nrows", "xllcorner", "yllcorner", "cellsize"]
     for field in required:
         if field not in metadata:
             raise ValueError(f"Missing required header field: {field}")
 
     # Set default nodata if not present
-    if 'nodata_value' not in metadata:
-        metadata['nodata_value'] = -9999.0
+    if "nodata_value" not in metadata:
+        metadata["nodata_value"] = -9999.0
 
     # Read data
     data = np.loadtxt(filepath, skiprows=header_lines)
 
-    if data.shape != (metadata['nrows'], metadata['ncols']):
+    if data.shape != (metadata["nrows"], metadata["ncols"]):
         raise ValueError(
             f"Data shape {data.shape} doesn't match header "
             f"({metadata['nrows']}, {metadata['ncols']})"
@@ -312,11 +317,11 @@ def process_hydrology_pysheds(
 
     logger.info("Processing hydrology with pysheds...")
 
-    nodata = metadata['nodata_value']
+    nodata = metadata["nodata_value"]
     nrows, ncols = dem.shape
-    cellsize = metadata['cellsize']
-    xll = metadata['xllcorner']
-    yll = metadata['yllcorner']
+    cellsize = metadata["cellsize"]
+    xll = metadata["xllcorner"]
+    yll = metadata["yllcorner"]
 
     # Calculate bounds
     xmin = xll
@@ -325,20 +330,20 @@ def process_hydrology_pysheds(
     ymax = yll + nrows * cellsize
 
     # Create temporary GeoTIFF for pysheds (it needs a file)
-    with tempfile.NamedTemporaryFile(suffix='.tif', delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
         tmp_path = tmp.name
 
     transform = from_bounds(xmin, ymin, xmax, ymax, ncols, nrows)
 
     with rasterio.open(
         tmp_path,
-        'w',
-        driver='GTiff',
+        "w",
+        driver="GTiff",
         height=nrows,
         width=ncols,
         count=1,
         dtype=rasterio.float32,
-        crs='EPSG:2180',
+        crs="EPSG:2180",
         transform=transform,
         nodata=nodata,
     ) as dst:
@@ -383,6 +388,7 @@ def process_hydrology_pysheds(
 
     # Cleanup temp file
     import os
+
     os.unlink(tmp_path)
 
     # Verify no internal sinks
@@ -450,7 +456,9 @@ def compute_flow_direction(dem: np.ndarray, nodata: float) -> np.ndarray:
     np.ndarray
         Flow direction array (D8 encoding)
     """
-    logger.warning("Using legacy compute_flow_direction - consider using process_hydrology_pysheds()")
+    logger.warning(
+        "Using legacy compute_flow_direction - consider using process_hydrology_pysheds()"
+    )
 
     nrows, ncols = dem.shape
     fdir = np.zeros((nrows, ncols), dtype=np.int16)
@@ -499,7 +507,9 @@ def compute_flow_accumulation(fdir: np.ndarray) -> np.ndarray:
     np.ndarray
         Flow accumulation array (number of upstream cells)
     """
-    logger.warning("Using legacy compute_flow_accumulation - consider using process_hydrology_pysheds()")
+    logger.warning(
+        "Using legacy compute_flow_accumulation - consider using process_hydrology_pysheds()"
+    )
 
     from collections import deque
 
@@ -565,8 +575,8 @@ def compute_slope(dem: np.ndarray, cellsize: float, nodata: float) -> np.ndarray
     dem_calc[dem == nodata] = np.nan
 
     # Compute gradients
-    dy = ndimage.sobel(dem_calc, axis=0, mode='constant', cval=np.nan) / (8 * cellsize)
-    dx = ndimage.sobel(dem_calc, axis=1, mode='constant', cval=np.nan) / (8 * cellsize)
+    dy = ndimage.sobel(dem_calc, axis=0, mode="constant", cval=np.nan) / (8 * cellsize)
+    dx = ndimage.sobel(dem_calc, axis=1, mode="constant", cval=np.nan) / (8 * cellsize)
 
     # Slope in percent
     slope = np.sqrt(dx**2 + dy**2) * 100
@@ -618,10 +628,10 @@ def create_flow_network_records(
     logger.info("Creating flow_network records...")
 
     nrows, ncols = dem.shape
-    cellsize = metadata['cellsize']
-    xll = metadata['xllcorner']
-    yll = metadata['yllcorner']
-    nodata = metadata['nodata_value']
+    cellsize = metadata["cellsize"]
+    xll = metadata["xllcorner"]
+    yll = metadata["yllcorner"]
+    nodata = metadata["nodata_value"]
     cell_area = cellsize * cellsize
 
     # Check for potential ID overflow (INT max = 2^31 - 1 = 2,147,483,647)
@@ -662,20 +672,22 @@ def create_flow_network_records(
                     if dem[ni, nj] != nodata:
                         downstream_id = get_cell_index(ni, nj)
 
-            records.append({
-                'id': cell_id,
-                'x': x,
-                'y': y,
-                'elevation': float(dem[i, j]),
-                'flow_accumulation': int(acc[i, j]),
-                'slope': float(slope[i, j]),
-                'downstream_id': downstream_id,
-                'cell_area': cell_area,
-                'is_stream': bool(acc[i, j] >= stream_threshold),
-            })
+            records.append(
+                {
+                    "id": cell_id,
+                    "x": x,
+                    "y": y,
+                    "elevation": float(dem[i, j]),
+                    "flow_accumulation": int(acc[i, j]),
+                    "slope": float(slope[i, j]),
+                    "downstream_id": downstream_id,
+                    "cell_area": cell_area,
+                    "is_stream": bool(acc[i, j] >= stream_threshold),
+                }
+            )
 
     logger.info(f"Created {len(records)} records")
-    stream_count = sum(1 for r in records if r['is_stream'])
+    stream_count = sum(1 for r in records if r["is_stream"])
     logger.info(f"Stream cells (acc >= {stream_threshold}): {stream_count}")
 
     return records
@@ -717,7 +729,9 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
     cursor.execute("DROP INDEX IF EXISTS idx_downstream")
     cursor.execute("DROP INDEX IF EXISTS idx_is_stream")
     cursor.execute("DROP INDEX IF EXISTS idx_flow_accumulation")
-    cursor.execute("ALTER TABLE flow_network DROP CONSTRAINT IF EXISTS flow_network_downstream_id_fkey")
+    cursor.execute(
+        "ALTER TABLE flow_network DROP CONSTRAINT IF EXISTS flow_network_downstream_id_fkey"
+    )
     raw_conn.commit()
     logger.info("  Indexes and FK constraint dropped")
 
@@ -725,7 +739,8 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
     logger.info("Phase 2: Bulk inserting records with COPY...")
 
     # Create temporary table for COPY
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TEMP TABLE temp_flow_import (
             id INT,
             x FLOAT,
@@ -737,13 +752,14 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
             cell_area FLOAT,
             is_stream BOOLEAN
         )
-    """)
+    """
+    )
 
     # Create TSV buffer
     tsv_buffer = io.StringIO()
     for r in records:
-        downstream = '' if r['downstream_id'] is None else str(r['downstream_id'])
-        is_stream = 't' if r['is_stream'] else 'f'
+        downstream = "" if r["downstream_id"] is None else str(r["downstream_id"])
+        is_stream = "t" if r["is_stream"] else "f"
         tsv_buffer.write(
             f"{r['id']}\t{r['x']}\t{r['y']}\t{r['elevation']}\t"
             f"{r['flow_accumulation']}\t{r['slope']}\t{downstream}\t"
@@ -754,15 +770,20 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
 
     # COPY to temp table
     cursor.copy_expert(
-        "COPY temp_flow_import FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '')",
-        tsv_buffer
+        "COPY temp_flow_import FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '')", tsv_buffer
     )
     logger.info(f"  COPY to temp table: {len(records):,} records")
 
     # Insert from temp table with geometry construction AND downstream_id
-    cursor.execute("""
-        INSERT INTO flow_network (id, geom, elevation, flow_accumulation, slope, downstream_id, cell_area, is_stream)
-        SELECT id, ST_SetSRID(ST_Point(x, y), 2180), elevation, flow_accumulation, slope, downstream_id, cell_area, is_stream
+    cursor.execute(
+        """
+        INSERT INTO flow_network (
+            id, geom, elevation, flow_accumulation, slope,
+            downstream_id, cell_area, is_stream
+        )
+        SELECT
+            id, ST_SetSRID(ST_Point(x, y), 2180), elevation,
+            flow_accumulation, slope, downstream_id, cell_area, is_stream
         FROM temp_flow_import
         ON CONFLICT (id) DO UPDATE SET
             geom = EXCLUDED.geom,
@@ -772,7 +793,8 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
             downstream_id = EXCLUDED.downstream_id,
             cell_area = EXCLUDED.cell_area,
             is_stream = EXCLUDED.is_stream
-    """)
+    """
+    )
 
     total_inserted = cursor.rowcount
     raw_conn.commit()
@@ -781,11 +803,13 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
     # Phase 3: Restore FK constraint and indexes
     logger.info("Phase 3: Restoring indexes and constraints...")
 
-    cursor.execute("""
+    cursor.execute(
+        """
         ALTER TABLE flow_network
         ADD CONSTRAINT flow_network_downstream_id_fkey
         FOREIGN KEY (downstream_id) REFERENCES flow_network(id) ON DELETE SET NULL
-    """)
+    """
+    )
     logger.info("  FK constraint restored")
 
     cursor.execute("CREATE INDEX idx_flow_geom ON flow_network USING GIST (geom)")
@@ -858,76 +882,70 @@ def process_dem(
 
     # 1. Read DEM (supports ASC, VRT, GeoTIFF)
     suffix = input_path.suffix.lower()
-    if suffix in ('.vrt', '.tif', '.tiff'):
+    if suffix in (".vrt", ".tif", ".tiff"):
         dem, metadata = read_raster(input_path)
     else:
         # Fallback to ASCII grid parser for .asc files
         dem, metadata = read_ascii_grid(input_path)
 
-    stats['ncols'] = metadata['ncols']
-    stats['nrows'] = metadata['nrows']
-    stats['cellsize'] = metadata['cellsize']
-    stats['total_cells'] = metadata['ncols'] * metadata['nrows']
+    stats["ncols"] = metadata["ncols"]
+    stats["nrows"] = metadata["nrows"]
+    stats["cellsize"] = metadata["cellsize"]
+    stats["total_cells"] = metadata["ncols"] * metadata["nrows"]
 
-    nodata = metadata['nodata_value']
+    nodata = metadata["nodata_value"]
     valid_cells = np.sum(dem != nodata)
-    stats['valid_cells'] = int(valid_cells)
+    stats["valid_cells"] = int(valid_cells)
 
     # Save original DEM as GeoTIFF
     if save_intermediates:
         save_raster_geotiff(
-            dem, metadata,
-            output_dir / f"{base_name}_01_dem.tif",
-            nodata=nodata, dtype='float32'
+            dem, metadata, output_dir / f"{base_name}_01_dem.tif", nodata=nodata, dtype="float32"
         )
 
     # 2-4. Process hydrology using pysheds (fill, resolve flats, flow dir, accumulation)
     filled_dem, fdir, acc = process_hydrology_pysheds(dem, metadata)
-    stats['max_accumulation'] = int(acc.max())
+    stats["max_accumulation"] = int(acc.max())
 
     if save_intermediates:
         save_raster_geotiff(
-            filled_dem, metadata,
+            filled_dem,
+            metadata,
             output_dir / f"{base_name}_02_filled.tif",
-            nodata=nodata, dtype='float32'
+            nodata=nodata,
+            dtype="float32",
         )
         save_raster_geotiff(
-            fdir, metadata,
-            output_dir / f"{base_name}_03_flowdir.tif",
-            nodata=0, dtype='int16'
+            fdir, metadata, output_dir / f"{base_name}_03_flowdir.tif", nodata=0, dtype="int16"
         )
         save_raster_geotiff(
-            acc, metadata,
-            output_dir / f"{base_name}_04_flowacc.tif",
-            nodata=0, dtype='int32'
+            acc, metadata, output_dir / f"{base_name}_04_flowacc.tif", nodata=0, dtype="int32"
         )
 
     # 5. Compute slope
-    slope = compute_slope(filled_dem, metadata['cellsize'], nodata)
-    stats['mean_slope'] = float(np.mean(slope[dem != nodata]))
+    slope = compute_slope(filled_dem, metadata["cellsize"], nodata)
+    stats["mean_slope"] = float(np.mean(slope[dem != nodata]))
 
     if save_intermediates:
         save_raster_geotiff(
-            slope, metadata,
-            output_dir / f"{base_name}_05_slope.tif",
-            nodata=-1, dtype='float32'
+            slope, metadata, output_dir / f"{base_name}_05_slope.tif", nodata=-1, dtype="float32"
         )
 
     # 6. Create stream mask
     stream_mask = (acc >= stream_threshold).astype(np.uint8)
     if save_intermediates:
         save_raster_geotiff(
-            stream_mask, metadata,
+            stream_mask,
+            metadata,
             output_dir / f"{base_name}_06_streams.tif",
-            nodata=255, dtype='uint8'
+            nodata=255,
+            dtype="uint8",
         )
 
     # 7. Create records
-    records = create_flow_network_records(
-        filled_dem, fdir, acc, slope, metadata, stream_threshold
-    )
-    stats['records'] = len(records)
-    stats['stream_cells'] = sum(1 for r in records if r['is_stream'])
+    records = create_flow_network_records(filled_dem, fdir, acc, slope, metadata, stream_threshold)
+    stats["records"] = len(records)
+    stats["stream_cells"] = sum(1 for r in records if r["is_stream"])
 
     # 8. Insert into database
     if not dry_run:
@@ -940,10 +958,10 @@ def process_dem(
                 db.commit()
 
             inserted = insert_records_batch(db, records, batch_size)
-            stats['inserted'] = inserted
+            stats["inserted"] = inserted
     else:
         logger.info("Dry run - skipping database insert")
-        stats['inserted'] = 0
+        stats["inserted"] = 0
 
     return stats
 
@@ -956,7 +974,8 @@ def main():
         epilog=__doc__,
     )
     parser.add_argument(
-        "--input", "-i",
+        "--input",
+        "-i",
         type=str,
         required=True,
         help="Path to input ASCII GRID (.asc) file",
@@ -979,12 +998,14 @@ def main():
         help="Only compute statistics without database insert",
     )
     parser.add_argument(
-        "--save-intermediates", "-s",
+        "--save-intermediates",
+        "-s",
         action="store_true",
         help="Save intermediate rasters as GeoTIFF (for QGIS verification)",
     )
     parser.add_argument(
-        "--output-dir", "-o",
+        "--output-dir",
+        "-o",
         type=str,
         default=None,
         help="Output directory for intermediate files (default: same as input)",
