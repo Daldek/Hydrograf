@@ -6,9 +6,9 @@
 |------|---------|
 | **Faza** | 0 - Setup |
 | **Sprint** | 0.4 - Hydrograph Generation |
-| **Ostatnia sesja** | 11 |
+| **Ostatnia sesja** | 12 |
 | **Data** | 2026-01-21 |
-| **Następny checkpoint** | CP3: Hydrograph generation (✅ przetestowane) |
+| **Następny checkpoint** | CP4: Frontend map |
 | **Gałąź robocza** | develop |
 
 ---
@@ -201,6 +201,56 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 ---
 
 ## Ostatnia Sesja
+
+### Sesja 12 (2026-01-21) - UKOŃCZONA
+
+**Cel:** Naprawa kompatybilności z Hydrolog, Kartograf, IMGWTools
+
+**Wykonane:**
+
+#### 1. Aktualizacja zależności do stabilnych wersji
+
+| Biblioteka | Poprzednia | Nowa | Zmiana |
+|------------|------------|------|--------|
+| IMGWTools | 2.0.1 (PyPI) | v2.1.0 (GitHub) | Nowe API |
+| Kartograf | @develop | @v0.3.1 | Stabilny tag |
+| Hydrolog | @develop | @v0.5.1 | Naprawiona stała SCS |
+
+**Plik:** `backend/requirements.txt`
+
+#### 2. Implementacja CN z land_cover
+
+Utworzono nowy moduł `backend/core/land_cover.py`:
+- Funkcja `calculate_weighted_cn(boundary, db)` - oblicza ważony CN z tabeli land_cover
+- Funkcja `get_land_cover_for_boundary(boundary, db)` - szczegółowe informacje o pokryciu
+- Fallback do `DEFAULT_CN=75` gdy brak danych
+
+**Integracja z API:**
+- Zmodyfikowano `backend/api/endpoints/hydrograph.py`
+- Usunięto hardcoded `DEFAULT_CN = 75`
+- Dodano wywołanie `calculate_weighted_cn()` w generowaniu hydrogramu
+
+#### 3. Testy jednostkowe
+
+Utworzono `backend/tests/unit/test_land_cover.py`:
+- 20 testów dla modułu land_cover
+- Pokrycie: 100% dla nowego modułu
+
+**Metryki:**
+- Testy przed: 180
+- Testy po: **200** (+20)
+- Wszystkie testy przechodzą
+
+#### 4. Aktualizacja dokumentacji
+
+- `docs/CROSS_PROJECT_ANALYSIS.md` - dodano IMGWTools v2.1.0
+- `PROGRESS.md` - dodano sesję 12
+
+**Następne kroki:**
+1. CP4 - Frontend map
+2. Testy integracyjne z rzeczywistymi danymi land_cover
+
+---
 
 ### Sesja 11 (2026-01-21) - UKOŃCZONA
 
