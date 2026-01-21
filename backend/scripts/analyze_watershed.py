@@ -64,10 +64,12 @@ class AnalysisConfig:
     # Parametry pobierania danych
     buffer_km: float = 3.0  # Bufor wokół punktu dla pobierania NMT
     scale: str = "1:10000"  # Skala mapy (1:10000, 1:25000, 1:50000)
+    tiles: Optional[List[str]] = None  # Lista godeł kafli NMT (zamiast buffer)
 
     # Parametry hydrologiczne
     cn: Optional[int] = None  # CN (None = oblicz z land_cover lub użyj 75)
     default_cn: int = 75  # Domyślny CN gdy brak danych
+    teryt: Optional[str] = None  # Kod TERYT powiatu dla BDOT10k (4 cyfry)
 
     # Parametry opadu (IMGW PMAXTP)
     probability: float = 1.0  # Prawdopodobieństwo [%]: 1, 2, 5, 10, 20, 50
@@ -81,8 +83,10 @@ class AnalysisConfig:
 
     # Parametry przetwarzania
     stream_threshold: int = 100  # Próg akumulacji dla cieków
-    max_cells: int = 5_000_000  # Maksymalna liczba komórek zlewni
+    max_cells: int = 10_000_000  # Maksymalna liczba komórek zlewni
     timestep_min: float = 5.0  # Krok czasowy hydrogramu [min]
+    max_stream_distance_m: float = 500.0  # Maks. odległość szukania cieku [m]
+    dem_resolution_m: float = 1.0  # Rozdzielczość DEM [m] (1.0 = oryginalna)
 
     # Ścieżki
     data_dir: Path = Path("../data")
@@ -94,6 +98,8 @@ class AnalysisConfig:
     generate_plots: bool = True  # Generuj wizualizacje
     save_json: bool = True  # Zapisz wyniki do JSON
     use_kartograf_cn: bool = True  # Używaj Kartografa do obliczania CN
+    save_qgis_layers: bool = False  # Zapisz warstwy pośrednie dla QGIS
+    use_cached: bool = False  # Użyj cache'owanych wyników (pomiń delineację i morfometrię)
 
     def __post_init__(self):
         self.data_dir = Path(self.data_dir)
@@ -111,18 +117,26 @@ def download_nmt_data(config: AnalysisConfig) -> List[Path]:
     logger.info("KROK 1: Pobieranie NMT z GUGiK")
     logger.info("=" * 60)
 
-    from scripts.download_dem import download_for_point
-
     nmt_dir = config.data_dir / "nmt"
     nmt_dir.mkdir(parents=True, exist_ok=True)
 
-    downloaded = download_for_point(
-        lat=config.latitude,
-        lon=config.longitude,
-        buffer_km=config.buffer_km,
-        output_dir=nmt_dir,
-        scale=config.scale,
-    )
+    # Jeśli podano konkretne kafle, użyj ich
+    if config.tiles:
+        from scripts.download_dem import download_sheets
+
+        logger.info(f"Pobieranie {len(config.tiles)} kafli: {config.tiles}")
+        downloaded = download_sheets(config.tiles, nmt_dir)
+    else:
+        # Użyj bufora wokół punktu
+        from scripts.download_dem import download_for_point
+
+        downloaded = download_for_point(
+            lat=config.latitude,
+            lon=config.longitude,
+            buffer_km=config.buffer_km,
+            output_dir=nmt_dir,
+            scale=config.scale,
+        )
 
     logger.info(f"Pobrano {len(downloaded)} arkuszy NMT")
     return downloaded
@@ -134,7 +148,7 @@ def process_nmt_data(config: AnalysisConfig, input_files: List[Path]) -> Dict:
     logger.info("KROK 2: Przetwarzanie NMT")
     logger.info("=" * 60)
 
-    from utils.raster_utils import create_vrt_mosaic
+    from utils.raster_utils import create_vrt_mosaic, resample_raster
     from scripts.process_dem import process_dem
 
     # Utwórz mozaikę
@@ -142,11 +156,26 @@ def process_nmt_data(config: AnalysisConfig, input_files: List[Path]) -> Dict:
     mosaic_path = create_vrt_mosaic(input_files, mosaic_path)
     logger.info(f"Utworzono mozaikę: {mosaic_path}")
 
+    # Resample do zadanej rozdzielczości jeśli różna od 1m
+    if config.dem_resolution_m > 1.0:
+        resampled_path = config.data_dir / "nmt" / f"mosaic_{int(config.dem_resolution_m)}m.tif"
+        mosaic_path = resample_raster(
+            mosaic_path, resampled_path, config.dem_resolution_m, method="bilinear"
+        )
+        logger.info(f"Resamplowano do {config.dem_resolution_m}m: {mosaic_path}")
+
+    # Katalog na rastery pośrednie (QGIS)
+    qgis_dir = config.output_dir / "qgis" if config.save_qgis_layers else None
+    if qgis_dir:
+        qgis_dir.mkdir(parents=True, exist_ok=True)
+
     # Przetwórz i zaimportuj
     stats = process_dem(
         input_path=mosaic_path,
         stream_threshold=config.stream_threshold,
         clear_existing=True,
+        save_intermediates=config.save_qgis_layers,
+        output_dir=qgis_dir,
     )
 
     logger.info(f"Zaimportowano {stats.get('records_inserted', 0):,} rekordów")
@@ -175,7 +204,7 @@ def delineate_watershed(config: AnalysisConfig, db) -> Dict:
 
     # Znajdź najbliższą komórkę cieku
     start = time.time()
-    outlet = find_nearest_stream(point, db, max_distance_m=500)
+    outlet = find_nearest_stream(point, db, max_distance_m=config.max_stream_distance_m)
 
     if not outlet:
         raise ValueError("Nie znaleziono cieku w pobliżu punktu!")
@@ -186,8 +215,11 @@ def delineate_watershed(config: AnalysisConfig, db) -> Dict:
     cells = traverse_upstream(outlet.id, db, max_cells=config.max_cells)
     logger.info(f"Komórek w zlewni: {len(cells):,}")
 
-    # Zbuduj granicę
-    boundary = build_boundary(cells, method="convex")
+    # Zbuduj granicę (polygonize = dokładna granica śledząca komórki)
+    # Oblicz rzeczywisty cell_size z cell_area (sqrt), nie z konfiguracji
+    # (resampling może dać nieokrągłą wartość, np. 5.0015 zamiast 5.0)
+    actual_cell_size = (cells[0].cell_area ** 0.5) if cells else config.dem_resolution_m
+    boundary = build_boundary(cells, method="polygonize", cell_size=actual_cell_size)
     area_km2 = calculate_watershed_area_km2(cells)
 
     elapsed = time.time() - start
@@ -233,6 +265,7 @@ def calculate_morphometry(
         use_kartograf=config.use_kartograf_cn,
         boundary_wgs84=watershed["boundary_wgs84"],
         data_dir=config.data_dir,
+        teryt=config.teryt,
     )
 
     start = time.time()
@@ -241,6 +274,7 @@ def calculate_morphometry(
         boundary=watershed["boundary"],
         outlet=watershed["outlet"],
         cn=cn,
+        include_stream_coords=config.save_qgis_layers,
     )
     elapsed = time.time() - start
 
@@ -333,10 +367,13 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> Dict:
             P_sg = result.data.sg[duration_key][prob_key]
             P_rb = result.data.rb.get(duration_key, {}).get(prob_key)
 
-        logger.info(f"Opad (metoda KS): {P_ks:.1f} mm")
-        logger.info(f"Opad (metoda SG): {P_sg:.1f} mm")
+        # ks = kwantyle (quantiles) - właściwa wartość opadu
+        # sg = górna granica przedziału ufności (upper confidence bounds)
+        # rb = błędy estymacji (estimation errors)
+        logger.info(f"Opad (kwantyl KS): {P_ks:.1f} mm")
+        logger.info(f"Opad (górna granica SG): {P_sg:.1f} mm")
         if P_rb:
-            logger.info(f"Opad (metoda RB): {P_rb:.1f} mm")
+            logger.info(f"Błąd estymacji (RB): {P_rb:.1f} mm")
 
         return {
             "source": "IMGW PMAXTP",
@@ -345,11 +382,11 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> Dict:
             "precipitation_ks_mm": P_ks,
             "precipitation_sg_mm": P_sg,
             "precipitation_rb_mm": P_rb,
-            "precipitation_mm": P_sg,  # SG jako domyślny
+            "precipitation_mm": P_ks,  # KS (kwantyl) jako wartość projektowa
             "all_distributions": {
-                "ks": P_ks,
-                "sg": P_sg,
-                "rb": P_rb,
+                "ks": P_ks,  # kwantyl
+                "sg": P_sg,  # górna granica przedziału ufności
+                "rb": P_rb,  # błąd estymacji
             },
         }
 
@@ -368,16 +405,24 @@ def generate_hydrograph(
     morph: Dict,
     precipitation: Optional[Dict],
 ) -> Dict:
-    """Generuj hydrogram odpływu."""
+    """Generuj hydrogram odpływu z konwolucją hietogramu.
+
+    Dla krótkich opadów (duration <= tc) używa uproszczonego podejścia.
+    Dla długich opadów (duration > tc) używa konwolucji z hietogramem Beta.
+    """
     logger.info("=" * 60)
     logger.info("KROK 6: Generowanie hydrogramu")
     logger.info("=" * 60)
 
     from hydrolog.morphometry import WatershedParameters
-    from hydrolog.runoff import SCSCN, SCSUnitHydrograph
+    from hydrolog.precipitation import BetaHietogram
+    from hydrolog.runoff import HydrographGenerator, SCSCN, SCSUnitHydrograph
 
     # Parametry zlewni - filtruj niestandardowe klucze
-    excluded_keys = {'cn', 'cn_source', 'cn_details', 'elapsed_s', 'source', 'crs'}
+    excluded_keys = {
+        'cn', 'cn_source', 'cn_details', 'elapsed_s', 'source', 'crs',
+        'main_stream_coords',  # Tylko dla QGIS, nie dla WatershedParameters
+    }
     ws = WatershedParameters(**{k: v for k, v in morph.items()
                                 if k not in excluded_keys})
 
@@ -387,75 +432,312 @@ def generate_hydrograph(
 
     # Model SCS-CN
     cn = morph["cn"]
-    scs = SCSCN(cn=cn)
-
-    # Unit hydrograph
-    uh = SCSUnitHydrograph(
-        area_km2=morph["area_km2"],
-        tc_min=tc_min,
-    )
-
+    area_km2 = morph["area_km2"]
     timestep = config.timestep_min
+
+    # Określ czas trwania opadu
+    if precipitation:
+        duration_min = precipitation.get("duration_min", config.duration_min)
+        P_design = precipitation["precipitation_mm"]
+    else:
+        duration_min = config.duration_min
+        P_design = 50.0
+
+    logger.info(f"Czas trwania opadu: {duration_min} min")
+    logger.info(f"Opad projektowy: {P_design:.1f} mm")
+
+    # Dla długich opadów używamy konwolucji z hietogramem
+    use_convolution = duration_min > tc_min
+    if use_convolution:
+        logger.info("Metoda: Konwolucja z hietogramem Beta (alpha=2, beta=5)")
+    else:
+        logger.info("Metoda: Opad chwilowy (duration <= tc)")
+
+    # Unit hydrograph (do wyświetlania parametrów)
+    uh = SCSUnitHydrograph(area_km2=area_km2, tc_min=tc_min)
     t_peak = uh.time_to_peak(timestep)
     q_peak_unit = uh.peak_discharge(timestep)
 
-    logger.info(f"Czas do szczytu: {t_peak:.1f} min")
-    logger.info(f"Przepływ jednostkowy: {q_peak_unit:.3f} m³/s/mm")
+    logger.info(f"Czas do szczytu UH: {t_peak:.1f} min")
+    logger.info(f"Przepływ jednostkowy UH: {q_peak_unit:.3f} m³/s/mm")
 
     # Określ scenariusze opadowe
     if config.precipitation_scenarios_mm:
         P_values = config.precipitation_scenarios_mm
     elif precipitation:
-        P_design = precipitation["precipitation_mm"]
         P_values = [P_design * 0.6, P_design * 0.8, P_design, P_design * 1.2, P_design * 1.5]
     else:
         P_values = [30, 40, 50, 60, 80, 100]
 
+    # Inicjalizuj generator hydrogramu (z konwolucją)
+    generator = HydrographGenerator(
+        area_km2=area_km2,
+        cn=cn,
+        tc_min=tc_min,
+        uh_model="scs",
+    )
+
+    # Hietogram Beta (asymetryczny - alpha=2, beta=5) z maksimum na początku
+    hietogram = BetaHietogram(alpha=2.0, beta=5.0)
+
     # Oblicz scenariusze
     scenarios = []
     for P_mm in P_values:
-        result = scs.effective_precipitation(P_mm)
-        Q_mm = result.effective_mm
-        Qmax = q_peak_unit * Q_mm
+        if use_convolution:
+            # Generuj hietogram i hydrogram z konwolucją
+            precip_series = hietogram.generate(
+                total_mm=P_mm,
+                duration_min=duration_min,
+                timestep_min=timestep,
+            )
+            result = generator.generate(precip_series)
+            Qmax = result.peak_discharge_m3s
+            Q_mm = result.total_effective_mm  # Całkowity odpływ efektywny [mm]
+        else:
+            # Uproszczona metoda dla krótkich opadów
+            scs = SCSCN(cn=cn)
+            eff_result = scs.effective_precipitation(P_mm)
+            Q_mm = eff_result.effective_mm
+            Qmax = q_peak_unit * Q_mm
 
         scenarios.append({
             "P_mm": round(P_mm, 1),
             "Q_mm": round(Q_mm, 2),
-            "Ia_mm": round(result.initial_abstraction_mm, 2),
             "Qmax_m3s": round(Qmax, 2),
         })
         logger.info(f"  P={P_mm:.0f}mm -> Q={Q_mm:.1f}mm, Qmax={Qmax:.2f}m³/s")
 
-    # Generuj hydrogram dla opadu projektowego
-    if precipitation:
-        P_design = precipitation["precipitation_mm"]
+    # Generuj pełny hydrogram dla opadu projektowego
+    if use_convolution:
+        precip_design = hietogram.generate(
+            total_mm=P_design,
+            duration_min=duration_min,
+            timestep_min=timestep,
+        )
+        hydro_result = generator.generate(precip_design)
+        # Wyniki z zagnieżdżonego obiektu hydrograph
+        hydrograph_times = hydro_result.hydrograph.times_min.tolist()
+        hydrograph_q = hydro_result.hydrograph.discharge_m3s.tolist()
+        Q_design = hydro_result.total_effective_mm
+        Qmax_design = hydro_result.peak_discharge_m3s
+        time_to_peak_hydro = hydro_result.time_to_peak_min
     else:
-        P_design = 50.0
+        # Uproszczona metoda
+        uh_result = uh.generate(timestep_min=timestep)
+        scs = SCSCN(cn=cn)
+        runoff_result = scs.effective_precipitation(P_design)
+        Q_design = runoff_result.effective_mm
+        hydrograph_times = uh_result.times_min.tolist()
+        hydrograph_q = (uh_result.ordinates_m3s * Q_design).tolist()
+        Qmax_design = max(hydrograph_q)
+        time_to_peak_hydro = t_peak
 
-    uh_result = uh.generate(timestep_min=timestep)
-    runoff_result = scs.effective_precipitation(P_design)
-    Q_design = runoff_result.effective_mm
-
-    hydrograph_times = uh_result.times_min.tolist()
-    hydrograph_q = (uh_result.ordinates_m3s * Q_design).tolist()
+    logger.info(f"Hydrogram: Qmax={Qmax_design:.2f} m³/s, czas do szczytu={time_to_peak_hydro:.1f} min")
 
     return {
         "tc_method": config.tc_method,
         "tc_min": round(tc_min, 2),
-        "time_to_peak_min": round(t_peak, 2),
+        "time_to_peak_min": round(time_to_peak_hydro, 2),
         "unit_peak_m3s_mm": round(q_peak_unit, 4),
         "timestep_min": timestep,
         "cn": cn,
+        "duration_min": duration_min,
+        "method": "convolution" if use_convolution else "instantaneous",
+        "hietogram": "Beta(2,2)" if use_convolution else None,
         "scenarios": scenarios,
         "design_storm": {
             "P_mm": round(P_design, 1),
             "Q_mm": round(Q_design, 2),
-            "Qmax_m3s": round(max(hydrograph_q), 2),
+            "Qmax_m3s": round(Qmax_design, 2),
             "time_min": [round(t, 1) for t in hydrograph_times],
             "Q_m3s": [round(q, 3) for q in hydrograph_q],
         },
         "precipitation_source": precipitation["source"] if precipitation else "manual",
     }
+
+
+def save_qgis_layers(
+    config: AnalysisConfig,
+    watershed: Dict,
+    morph: Dict,
+) -> Dict[str, Path]:
+    """
+    Zapisz warstwy pośrednie w formatach GeoPackage/GeoTIFF dla QGIS.
+
+    Parameters
+    ----------
+    config : AnalysisConfig
+        Konfiguracja analizy
+    watershed : Dict
+        Wyniki delineacji zlewni
+    morph : Dict
+        Parametry morfometryczne
+
+    Returns
+    -------
+    Dict[str, Path]
+        Słownik ścieżek do zapisanych plików
+    """
+    logger.info("=" * 60)
+    logger.info("Zapisywanie warstw QGIS")
+    logger.info("=" * 60)
+
+    import geopandas as gpd
+    from shapely.geometry import Point, LineString
+
+    qgis_dir = config.output_dir / "qgis"
+    qgis_dir.mkdir(parents=True, exist_ok=True)
+
+    output_files = {}
+    crs = "EPSG:2180"
+
+    # 1. Granica zlewni (polygon)
+    boundary_gdf = gpd.GeoDataFrame(
+        {"area_km2": [watershed["area_km2"]], "cell_count": [watershed["cell_count"]]},
+        geometry=[watershed["boundary"]],
+        crs=crs,
+    )
+    path = qgis_dir / "watershed_boundary.gpkg"
+    boundary_gdf.to_file(path, driver="GPKG")
+    output_files["boundary"] = path
+    logger.info(f"  ✅ {path.name}")
+
+    # 2. Komórki zlewni (punkty)
+    cells_data = [
+        {
+            "id": c.id,
+            "elevation": c.elevation,
+            "flow_acc": c.flow_accumulation,
+            "slope": c.slope,
+            "is_stream": c.is_stream,
+            "geometry": Point(c.x, c.y),
+        }
+        for c in watershed["cells"]
+    ]
+    cells_gdf = gpd.GeoDataFrame(cells_data, crs=crs)
+    path = qgis_dir / "watershed_cells.gpkg"
+    cells_gdf.to_file(path, driver="GPKG")
+    output_files["cells"] = path
+    logger.info(f"  ✅ {path.name}")
+
+    # 3. Outlet (punkt)
+    outlet = watershed["outlet"]
+    outlet_gdf = gpd.GeoDataFrame(
+        {
+            "id": [outlet.id],
+            "elevation": [outlet.elevation],
+            "flow_acc": [outlet.flow_accumulation],
+        },
+        geometry=[Point(outlet.x, outlet.y)],
+        crs=crs,
+    )
+    path = qgis_dir / "outlet.gpkg"
+    outlet_gdf.to_file(path, driver="GPKG")
+    output_files["outlet"] = path
+    logger.info(f"  ✅ {path.name}")
+
+    # 4. Ciek główny (linia) - jeśli mamy współrzędne
+    if "main_stream_coords" in morph and morph["main_stream_coords"]:
+        coords = morph["main_stream_coords"]
+        if len(coords) >= 2:
+            stream_gdf = gpd.GeoDataFrame(
+                {
+                    "length_km": [morph["channel_length_km"]],
+                    "slope_m_per_m": [morph["channel_slope_m_per_m"]],
+                },
+                geometry=[LineString(coords)],
+                crs=crs,
+            )
+            path = qgis_dir / "main_stream.gpkg"
+            stream_gdf.to_file(path, driver="GPKG")
+            output_files["main_stream"] = path
+            logger.info(f"  ✅ {path.name}")
+
+    # 5. Sieć cieków (linie) - wszystkie cieki z bazy danych
+    try:
+        from core.database import get_db_session
+        stream_lines = extract_stream_network(qgis_dir, crs)
+        if stream_lines:
+            output_files["stream_network"] = stream_lines
+            logger.info(f"  ✅ {stream_lines.name}")
+    except Exception as e:
+        logger.warning(f"Nie udało się wyeksportować sieci cieków: {e}")
+
+    logger.info(f"Zapisano {len(output_files)} warstw do {qgis_dir}")
+    return output_files
+
+
+def extract_stream_network(output_dir: Path, crs: str = "EPSG:2180") -> Optional[Path]:
+    """
+    Wyeksportuj całą sieć cieków jako warstwę wektorową.
+
+    Tworzy linie przez śledzenie połączeń downstream dla wszystkich
+    komórek ciekowych (is_stream=True).
+
+    Parameters
+    ----------
+    output_dir : Path
+        Katalog wyjściowy
+    crs : str
+        Układ współrzędnych
+
+    Returns
+    -------
+    Path or None
+        Ścieżka do pliku GeoPackage lub None jeśli brak cieków
+    """
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    from sqlalchemy import text
+    from core.database import get_db_session
+
+    with get_db_session() as db:
+        # Pobierz wszystkie komórki ciekowe z połączeniami downstream
+        query = text("""
+            SELECT
+                s.id,
+                ST_X(s.geom) as x,
+                ST_Y(s.geom) as y,
+                s.flow_accumulation,
+                s.downstream_id,
+                ST_X(d.geom) as downstream_x,
+                ST_Y(d.geom) as downstream_y
+            FROM flow_network s
+            LEFT JOIN flow_network d ON s.downstream_id = d.id
+            WHERE s.is_stream = TRUE
+            ORDER BY s.flow_accumulation DESC
+        """)
+
+        results = db.execute(query).fetchall()
+
+    if not results:
+        logger.warning("Brak komórek ciekowych w bazie")
+        return None
+
+    # Twórz segmenty linii (każda komórka -> jej downstream)
+    segments = []
+    for row in results:
+        if row.downstream_x is not None and row.downstream_y is not None:
+            segments.append({
+                "id": row.id,
+                "flow_acc": row.flow_accumulation,
+                "geometry": LineString([
+                    (row.x, row.y),
+                    (row.downstream_x, row.downstream_y)
+                ])
+            })
+
+    if not segments:
+        logger.warning("Brak segmentów cieków do eksportu")
+        return None
+
+    logger.info(f"Created {len(segments):,} records")
+
+    gdf = gpd.GeoDataFrame(segments, crs=crs)
+    path = output_dir / "stream_network.gpkg"
+    gdf.to_file(path, driver="GPKG")
+
+    return path
 
 
 def generate_visualizations(
@@ -646,6 +928,60 @@ def save_results(
     return json_path
 
 
+def load_cached_results(config: AnalysisConfig) -> tuple[Dict, Dict]:
+    """
+    Załaduj cache'owane wyniki zlewni i morfometrii z poprzedniej analizy.
+
+    Returns
+    -------
+    tuple[Dict, Dict]
+        (watershed, morphometry) - dane potrzebne do ponownych obliczeń hydrologicznych
+    """
+    json_path = config.output_dir / "analysis_results.json"
+
+    if not json_path.exists():
+        raise FileNotFoundError(
+            f"Brak pliku cache: {json_path}. "
+            "Uruchom najpierw pełną analizę bez --use-cached."
+        )
+
+    logger.info(f"Ładowanie cache z: {json_path}")
+
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    # Walidacja - sprawdź czy punkt się zgadza
+    cached_point = data.get("metadata", {}).get("input_point", {})
+    cached_lat = cached_point.get("latitude")
+    cached_lon = cached_point.get("longitude")
+
+    if cached_lat != config.latitude or cached_lon != config.longitude:
+        raise ValueError(
+            f"Punkt w cache ({cached_lat}, {cached_lon}) nie zgadza się "
+            f"z żądanym ({config.latitude}, {config.longitude}). "
+            "Uruchom pełną analizę bez --use-cached."
+        )
+
+    watershed = data.get("watershed", {})
+    morphometry = data.get("morphometry", {})
+
+    if not watershed or not morphometry:
+        raise ValueError("Cache nie zawiera danych watershed lub morphometry.")
+
+    # Odtwórz boundary_wgs84 z GeoJSON (potrzebne do save_results)
+    boundary_geojson = watershed.get("boundary_geojson", {})
+    if boundary_geojson:
+        geometry = boundary_geojson.get("geometry", {})
+        coords = geometry.get("coordinates", [[]])
+        watershed["boundary_wgs84"] = coords[0] if coords else []
+
+    logger.info(f"  Powierzchnia: {watershed.get('area_km2', 'N/A'):.2f} km²")
+    logger.info(f"  CN: {morphometry.get('cn', 'N/A')}")
+    logger.info(f"  Długość cieku: {morphometry.get('channel_length_km', 'N/A'):.2f} km")
+
+    return watershed, morphometry
+
+
 # =============================================================================
 # GŁÓWNA FUNKCJA
 # =============================================================================
@@ -675,23 +1011,46 @@ def analyze_watershed(config: AnalysisConfig) -> Dict:
     start_total = time.time()
 
     # Opcjonalnie: pobierz dane NMT
+    downloaded_files = []
     if config.download_dem:
         downloaded_files = download_nmt_data(config)
 
-        if config.process_dem and downloaded_files:
-            process_nmt_data(config, downloaded_files)
+    # Przetwórz NMT (jeśli --process)
+    if config.process_dem:
+        # Znajdź pliki NMT jeśli nie pobrano nowych
+        if not downloaded_files:
+            nmt_dir = config.data_dir / "nmt"
+            downloaded_files = list(nmt_dir.glob("**/*.asc"))
+            if not downloaded_files:
+                downloaded_files = list(nmt_dir.glob("**/*.tif"))
+            logger.info(f"Znaleziono {len(downloaded_files)} istniejących plików NMT")
 
-    # Połącz z bazą danych
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from core.database import get_db
-    db = next(get_db())
+        if downloaded_files:
+            process_nmt_data(config, downloaded_files)
+        else:
+            logger.warning("Brak plików NMT do przetworzenia!")
+
+    # Użyj cache lub oblicz od nowa
+    if config.use_cached:
+        # Załaduj dane z poprzedniej analizy
+        logger.info("=" * 60)
+        logger.info("UŻYCIE CACHE (pominięcie delineacji i morfometrii)")
+        logger.info("=" * 60)
+        watershed, morph = load_cached_results(config)
+        db = None  # Nie potrzebujemy bazy danych
+    else:
+        # Połącz z bazą danych
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from core.database import get_db
+        db = next(get_db())
 
     try:
-        # 1. Wyznacz zlewnię
-        watershed = delineate_watershed(config, db)
+        if not config.use_cached:
+            # 1. Wyznacz zlewnię
+            watershed = delineate_watershed(config, db)
 
-        # 2. Oblicz morfometrię
-        morph = calculate_morphometry(config, watershed, db)
+            # 2. Oblicz morfometrię
+            morph = calculate_morphometry(config, watershed, db)
 
         # 3. Pobierz dane opadowe z IMGW
         precipitation = fetch_precipitation_imgw(config)
@@ -699,11 +1058,19 @@ def analyze_watershed(config: AnalysisConfig) -> Dict:
         # 4. Generuj hydrogram
         hydrograph = generate_hydrograph(config, morph, precipitation)
 
-        # 5. Generuj wizualizacje
-        if config.generate_plots:
-            plot_files = generate_visualizations(config, watershed, morph, hydrograph)
+        # 5. Zapisz warstwy QGIS (tylko przy pełnej analizie, nie z cache)
+        if config.save_qgis_layers and not config.use_cached:
+            qgis_files = save_qgis_layers(config, watershed, morph)
+        elif config.save_qgis_layers and config.use_cached:
+            logger.info("Pominięto zapis warstw QGIS (użyto cache, pliki już istnieją)")
 
-        # 6. Zapisz wyniki
+        # 6. Generuj wizualizacje (tylko przy pełnej analizie)
+        if config.generate_plots and not config.use_cached:
+            plot_files = generate_visualizations(config, watershed, morph, hydrograph)
+        elif config.generate_plots and config.use_cached:
+            logger.info("Pominięto wizualizacje (użyto cache)")
+
+        # 7. Zapisz wyniki
         if config.save_json:
             json_path = save_results(config, watershed, morph, precipitation, hydrograph)
 
@@ -735,7 +1102,8 @@ def analyze_watershed(config: AnalysisConfig) -> Dict:
         }
 
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 # =============================================================================
@@ -755,10 +1123,15 @@ def main():
     loc.add_argument("--lat", type=float, required=True, help="Szerokość geograficzna (WGS84)")
     loc.add_argument("--lon", type=float, required=True, help="Długość geograficzna (WGS84)")
     loc.add_argument("--buffer", type=float, default=3.0, help="Bufor dla NMT [km] (default: 3)")
+    loc.add_argument("--tiles", type=str, nargs="+",
+                     help="Lista godeł kafli NMT (zamiast --buffer)")
+    loc.add_argument("--max-stream-distance", type=float, default=500.0,
+                     help="Maks. odległość szukania cieku [m] (default: 500)")
 
     # Parametry hydrologiczne
     hydro = parser.add_argument_group("Parametry hydrologiczne")
     hydro.add_argument("--cn", type=int, help="Wartość CN (default: z land_cover lub 75)")
+    hydro.add_argument("--teryt", type=str, help="Kod TERYT powiatu dla BDOT10k (4 cyfry, np. 3021)")
     hydro.add_argument("--probability", "-p", type=float, default=1.0,
                        help="Prawdopodobieństwo opadu [%%] (default: 1)")
     hydro.add_argument("--duration", "-d", type=int, default=60,
@@ -774,6 +1147,8 @@ def main():
     proc.add_argument("--process", action="store_true", help="Przetwórz NMT i zaimportuj do DB")
     proc.add_argument("--stream-threshold", type=int, default=100,
                       help="Próg akumulacji dla cieków (default: 100)")
+    proc.add_argument("--resolution", type=float, default=1.0,
+                      help="Rozdzielczość DEM [m] (default: 1.0 = oryginalna)")
 
     # Wyjście
     out = parser.add_argument_group("Wyjście")
@@ -783,6 +1158,13 @@ def main():
     out.add_argument("--no-json", action="store_true", help="Nie zapisuj JSON")
     out.add_argument("--no-kartograf-cn", action="store_true",
                      help="Nie używaj Kartografa do obliczania CN (HSG)")
+    out.add_argument("--save-qgis", action="store_true",
+                     help="Zapisz warstwy pośrednie do QGIS (GeoPackage/GeoTIFF)")
+
+    # Cache
+    cache = parser.add_argument_group("Cache")
+    cache.add_argument("--use-cached", action="store_true",
+                       help="Użyj cache'owanych wyników zlewni i morfometrii (pomiń delineację)")
 
     args = parser.parse_args()
 
@@ -791,18 +1173,24 @@ def main():
         latitude=args.lat,
         longitude=args.lon,
         buffer_km=args.buffer,
+        tiles=args.tiles,
+        max_stream_distance_m=args.max_stream_distance,
         cn=args.cn,
+        teryt=args.teryt,
         probability=args.probability,
         duration_min=args.duration,
         tc_method=args.tc_method,
         timestep_min=args.timestep,
         stream_threshold=args.stream_threshold,
+        dem_resolution_m=args.resolution,
         download_dem=args.download,
         process_dem=args.process,
         output_dir=Path(args.output),
         generate_plots=not args.no_plots,
         save_json=not args.no_json,
         use_kartograf_cn=not args.no_kartograf_cn,
+        save_qgis_layers=args.save_qgis,
+        use_cached=args.use_cached,
     )
 
     # Uruchom analizę

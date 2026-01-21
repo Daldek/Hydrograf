@@ -83,12 +83,15 @@ def save_raster_geotiff(
     """
     Save numpy array as GeoTIFF with PL-1992 (EPSG:2180) CRS.
 
+    Uses the original transform from input raster if available to ensure
+    perfect alignment with source DEM.
+
     Parameters
     ----------
     data : np.ndarray
         Raster data array
     metadata : dict
-        Grid metadata with xllcorner, yllcorner, cellsize
+        Grid metadata with transform (preferred) or xllcorner, yllcorner, cellsize
     output_path : Path
         Output GeoTIFF path
     nodata : float
@@ -100,17 +103,20 @@ def save_raster_geotiff(
     from rasterio.transform import from_bounds
 
     nrows, ncols = data.shape
-    cellsize = metadata["cellsize"]
-    xll = metadata["xllcorner"]
-    yll = metadata["yllcorner"]
 
-    # Calculate bounds
-    xmin = xll
-    ymin = yll
-    xmax = xll + ncols * cellsize
-    ymax = yll + nrows * cellsize
-
-    transform = from_bounds(xmin, ymin, xmax, ymax, ncols, nrows)
+    # Preferuj oryginalną transformację z pliku wejściowego (idealne wyrównanie)
+    if "transform" in metadata:
+        transform = metadata["transform"]
+    else:
+        # Fallback: oblicz z bounds (może być niedokładne)
+        cellsize = metadata["cellsize"]
+        xll = metadata["xllcorner"]
+        yll = metadata["yllcorner"]
+        xmin = xll
+        ymin = yll
+        xmax = xll + ncols * cellsize
+        ymax = yll + nrows * cellsize
+        transform = from_bounds(xmin, ymin, xmax, ymax, ncols, nrows)
 
     # Map dtype string to numpy/rasterio dtype
     dtype_map = {
@@ -290,7 +296,7 @@ def read_ascii_grid(filepath: Path) -> Tuple[np.ndarray, dict]:
 def process_hydrology_pysheds(
     dem: np.ndarray,
     metadata: dict,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Process DEM using pysheds library for hydrological analysis.
 
@@ -308,7 +314,11 @@ def process_hydrology_pysheds(
     Returns
     -------
     tuple
-        (filled_dem, flow_direction, flow_accumulation) arrays
+        (filled_dem, inflated_dem, flow_direction, flow_accumulation) arrays
+        - filled_dem: DEM po wypełnieniu zagłębień (rzeczywiste wysokości)
+        - inflated_dem: DEM po resolve_flats (wejście do flowdir, sztucznie zmodyfikowany)
+        - flow_direction: kierunki spływu D8
+        - flow_accumulation: akumulacja przepływu
     """
     from pysheds.grid import Grid
     import tempfile
@@ -376,9 +386,12 @@ def process_hydrology_pysheds(
     # Convert pysheds arrays back to numpy
     # Handle NaN values from pysheds
     # IMPORTANT: Use 'flooded' for elevation (actual filled DEM)
-    # Do NOT use 'inflated' - it has artificially modified elevations for flat routing
+    # 'inflated' has artificially modified elevations for flat routing - saved separately
     filled_dem = np.array(flooded)
     filled_dem[np.isnan(filled_dem)] = nodata
+
+    inflated_dem = np.array(inflated)
+    inflated_dem[np.isnan(inflated_dem)] = nodata
 
     fdir_arr = np.array(fdir, dtype=np.int16)
     fdir_arr[np.isnan(fdir_arr)] = 0
@@ -410,7 +423,156 @@ def process_hydrology_pysheds(
         logger.info("  All internal cells have valid flow direction")
 
     logger.info("Hydrology processing complete")
-    return filled_dem, fdir_arr, acc_arr
+    return filled_dem, inflated_dem, fdir_arr, acc_arr
+
+
+def process_hydrology_whitebox(
+    dem: np.ndarray,
+    metadata: dict,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Process DEM using WhiteboxTools for hydrological analysis.
+
+    WhiteboxTools uses more robust algorithms for depression filling
+    and flat area resolution than pysheds, especially for large flat areas.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        Input DEM array
+    metadata : dict
+        Grid metadata with xllcorner, yllcorner, cellsize, nodata_value
+
+    Returns
+    -------
+    tuple
+        (filled_dem, filled_dem, flow_direction, flow_accumulation) arrays
+        Note: inflated_dem is same as filled_dem for WhiteboxTools
+    """
+    import tempfile
+    import rasterio
+    from rasterio.transform import from_bounds
+    from whitebox import WhiteboxTools
+
+    logger.info("Processing hydrology with WhiteboxTools...")
+
+    wbt = WhiteboxTools()
+    wbt.set_verbose_mode(False)
+
+    nodata = metadata["nodata_value"]
+    nrows, ncols = dem.shape
+    cellsize = metadata["cellsize"]
+    xll = metadata["xllcorner"]
+    yll = metadata["yllcorner"]
+
+    # Calculate bounds
+    xmin = xll
+    ymin = yll
+    xmax = xll + ncols * cellsize
+    ymax = yll + nrows * cellsize
+
+    transform = from_bounds(xmin, ymin, xmax, ymax, ncols, nrows)
+
+    # Create temp directory for intermediate files
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_dem = f"{tmpdir}/dem.tif"
+        filled_dem_path = f"{tmpdir}/filled.tif"
+        flowdir_path = f"{tmpdir}/flowdir.tif"
+        flowacc_path = f"{tmpdir}/flowacc.tif"
+
+        # Write input DEM
+        with rasterio.open(
+            input_dem,
+            "w",
+            driver="GTiff",
+            height=nrows,
+            width=ncols,
+            count=1,
+            dtype=rasterio.float32,
+            crs="EPSG:2180",
+            transform=transform,
+            nodata=nodata,
+        ) as dst:
+            dst.write(dem.astype(np.float32), 1)
+
+        # Step 1: Fill depressions (breach preferred for realistic results)
+        logger.info("  Step 1/3: Filling depressions (breach algorithm)...")
+        try:
+            wbt.breach_depressions_least_cost(
+                input_dem,
+                filled_dem_path,
+                dist=10,  # max breach distance
+                fill=True,  # fill remaining depressions
+            )
+        except Exception as e:
+            logger.warning(f"  Breach failed ({e}), trying fill_depressions...")
+            wbt.fill_depressions(input_dem, filled_dem_path)
+
+        # Step 2: Compute flow direction (D8)
+        logger.info("  Step 2/3: Computing flow direction (D8)...")
+        wbt.d8_pointer(filled_dem_path, flowdir_path)
+
+        # Step 3: Compute flow accumulation (using the D8 pointer for consistency)
+        logger.info("  Step 3/3: Computing flow accumulation...")
+        wbt.d8_flow_accumulation(flowdir_path, flowacc_path, pntr=True)
+
+        # Read results
+        with rasterio.open(filled_dem_path) as src:
+            filled_dem = src.read(1)
+
+        with rasterio.open(flowdir_path) as src:
+            fdir_wbt = src.read(1)
+
+        with rasterio.open(flowacc_path) as src:
+            acc = src.read(1)
+
+    # Convert WhiteboxTools flow direction to pysheds/standard D8 encoding
+    # WBT uses: 1=E, 2=NE, 4=N, 8=NW, 16=W, 32=SW, 64=S, 128=SE
+    # Standard: 1=E, 2=SE, 4=S, 8=SW, 16=W, 32=NW, 64=N, 128=NE
+    # Need to remap: WBT -> Standard
+    wbt_to_d8 = {
+        1: 1,      # E -> E
+        2: 128,    # NE -> NE
+        4: 64,     # N -> N
+        8: 32,     # NW -> NW
+        16: 16,    # W -> W
+        32: 8,     # SW -> SW
+        64: 4,     # S -> S
+        128: 2,    # SE -> SE
+        0: 0,      # nodata/outlet
+    }
+
+    fdir_arr = np.zeros_like(fdir_wbt, dtype=np.int16)
+    for wbt_val, d8_val in wbt_to_d8.items():
+        fdir_arr[fdir_wbt == wbt_val] = d8_val
+
+    acc_arr = acc.astype(np.int32)
+
+    # Handle nodata
+    filled_dem[filled_dem == nodata] = nodata
+    fdir_arr[dem == nodata] = 0
+    acc_arr[dem == nodata] = 0
+
+    # Verify no internal sinks
+    valid = filled_dem != nodata
+    edge_mask = np.zeros_like(valid)
+    edge_mask[0, :] = True
+    edge_mask[-1, :] = True
+    edge_mask[:, 0] = True
+    edge_mask[:, -1] = True
+
+    no_flow = (fdir_arr == 0) & valid
+    internal_no_flow = no_flow & ~edge_mask
+
+    if np.sum(internal_no_flow) > 0:
+        logger.warning(
+            f"  {np.sum(internal_no_flow)} internal cells without flow direction"
+        )
+    else:
+        logger.info("  All internal cells have valid flow direction")
+
+    logger.info("Hydrology processing complete (WhiteboxTools)")
+    return filled_dem, filled_dem, fdir_arr, acc_arr
 
 
 def fill_depressions(dem: np.ndarray, nodata: float) -> np.ndarray:
@@ -697,7 +859,12 @@ def create_flow_network_records(
     return records
 
 
-def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> int:
+def insert_records_batch(
+    db_session,
+    records: list,
+    batch_size: int = 10000,
+    table_empty: bool = True,
+) -> int:
     """
     Insert records into flow_network table using PostgreSQL COPY.
 
@@ -712,6 +879,9 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
         List of record dicts
     batch_size : int
         Number of records per batch (unused, kept for API compatibility)
+    table_empty : bool
+        If True, skip ON CONFLICT check (much faster for empty tables)
+        If False, use ON CONFLICT DO UPDATE for upsert behavior
 
     Returns
     -------
@@ -778,24 +948,38 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
     logger.info(f"  COPY to temp table: {len(records):,} records")
 
     # Insert from temp table with geometry construction AND downstream_id
-    cursor.execute("""
-        INSERT INTO flow_network (
-            id, geom, elevation, flow_accumulation, slope,
-            downstream_id, cell_area, is_stream
-        )
-        SELECT
-            id, ST_SetSRID(ST_Point(x, y), 2180), elevation,
-            flow_accumulation, slope, downstream_id, cell_area, is_stream
-        FROM temp_flow_import
-        ON CONFLICT (id) DO UPDATE SET
-            geom = EXCLUDED.geom,
-            elevation = EXCLUDED.elevation,
-            flow_accumulation = EXCLUDED.flow_accumulation,
-            slope = EXCLUDED.slope,
-            downstream_id = EXCLUDED.downstream_id,
-            cell_area = EXCLUDED.cell_area,
-            is_stream = EXCLUDED.is_stream
-    """)
+    # When table is empty (after TRUNCATE), skip ON CONFLICT for much faster insert
+    if table_empty:
+        cursor.execute("""
+            INSERT INTO flow_network (
+                id, geom, elevation, flow_accumulation, slope,
+                downstream_id, cell_area, is_stream
+            )
+            SELECT
+                id, ST_SetSRID(ST_Point(x, y), 2180), elevation,
+                flow_accumulation, slope, downstream_id, cell_area, is_stream
+            FROM temp_flow_import
+        """)
+    else:
+        # For incremental updates, use ON CONFLICT to handle existing rows
+        cursor.execute("""
+            INSERT INTO flow_network (
+                id, geom, elevation, flow_accumulation, slope,
+                downstream_id, cell_area, is_stream
+            )
+            SELECT
+                id, ST_SetSRID(ST_Point(x, y), 2180), elevation,
+                flow_accumulation, slope, downstream_id, cell_area, is_stream
+            FROM temp_flow_import
+            ON CONFLICT (id) DO UPDATE SET
+                geom = EXCLUDED.geom,
+                elevation = EXCLUDED.elevation,
+                flow_accumulation = EXCLUDED.flow_accumulation,
+                slope = EXCLUDED.slope,
+                downstream_id = EXCLUDED.downstream_id,
+                cell_area = EXCLUDED.cell_area,
+                is_stream = EXCLUDED.is_stream
+        """)
 
     total_inserted = cursor.rowcount
     raw_conn.commit()
@@ -911,7 +1095,8 @@ def process_dem(
         )
 
     # 2-4. Process hydrology using pysheds (fill, resolve flats, flow dir, accumulation)
-    filled_dem, fdir, acc = process_hydrology_pysheds(dem, metadata)
+    # Note: WhiteboxTools was tested but produces inconsistent fdir/acc, pysheds is reliable
+    filled_dem, inflated_dem, fdir, acc = process_hydrology_pysheds(dem, metadata)
     stats["max_accumulation"] = int(acc.max())
 
     if save_intermediates:
@@ -919,6 +1104,13 @@ def process_dem(
             filled_dem,
             metadata,
             output_dir / f"{base_name}_02_filled.tif",
+            nodata=nodata,
+            dtype="float32",
+        )
+        save_raster_geotiff(
+            inflated_dem,
+            metadata,
+            output_dir / f"{base_name}_02b_inflated.tif",
             nodata=nodata,
             dtype="float32",
         )
@@ -978,7 +1170,10 @@ def process_dem(
                 db.execute(text("TRUNCATE TABLE flow_network CASCADE"))
                 db.commit()
 
-            inserted = insert_records_batch(db, records, batch_size)
+            # table_empty=True when we just truncated, speeds up INSERT significantly
+            inserted = insert_records_batch(
+                db, records, batch_size, table_empty=clear_existing
+            )
             stats["inserted"] = inserted
     else:
         logger.info("Dry run - skipping database insert")
