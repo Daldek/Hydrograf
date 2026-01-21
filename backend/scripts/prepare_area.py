@@ -183,7 +183,9 @@ def prepare_area(
     logger.info(f"Downloaded {len(downloaded_files)} files")
 
     if not downloaded_files:
-        logger.error("No files downloaded! Check network connection and GUGiK availability.")
+        logger.error(
+            "No files downloaded! Check network connection and GUGiK availability."
+        )
         return stats
 
     # Step 3: Create mosaic from all tiles (VRT or GeoTIFF)
@@ -206,7 +208,9 @@ def prepare_area(
 
         # Log mosaic info
         mosaic_info = get_mosaic_info(mosaic_path)
-        logger.info(f"Mosaic dimensions: {mosaic_info['width']} x {mosaic_info['height']}")
+        logger.info(
+            f"Mosaic dimensions: {mosaic_info['width']} x {mosaic_info['height']}"
+        )
         logger.info(f"Total cells: {mosaic_info['total_cells']:,}")
         logger.info(f"Cell size: {mosaic_info['cell_size_m']} m")
         logger.info(f"Estimated memory: {mosaic_info['estimated_memory_mb']:.1f} MB")
@@ -262,7 +266,9 @@ def prepare_area(
 
             # Create landcover output directory
             landcover_dir = (
-                output_dir.parent / "landcover" if output_dir else Path("../data/landcover")
+                output_dir.parent / "landcover"
+                if output_dir
+                else Path("../data/landcover")
             )
             landcover_dir.mkdir(parents=True, exist_ok=True)
 
@@ -291,7 +297,9 @@ def prepare_area(
                 )
 
                 stats["landcover_features"] = lc_stats.get("records_inserted", 0)
-                logger.info(f"Imported {stats['landcover_features']} land cover features")
+                logger.info(
+                    f"Imported {stats['landcover_features']} land cover features"
+                )
             else:
                 logger.warning("Land cover download failed!")
                 stats["errors"].append("Land cover download failed")
@@ -363,7 +371,9 @@ def main():
     )
 
     # Land cover options
-    landcover_group = parser.add_argument_group("Land cover options (requires Kartograf 0.3.0+)")
+    landcover_group = parser.add_argument_group(
+        "Land cover options (requires Kartograf 0.3.0+)"
+    )
     landcover_group.add_argument(
         "--with-landcover",
         action="store_true",
@@ -434,7 +444,9 @@ def main():
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from utils.sheet_finder import get_sheets_for_point_with_buffer
 
-        sheets = get_sheets_for_point_with_buffer(args.lat, args.lon, args.buffer, args.scale)
+        sheets = get_sheets_for_point_with_buffer(
+            args.lat, args.lon, args.buffer, args.scale
+        )
 
         logger.info("DRY RUN - would download and process:")
         logger.info("NMT sheets:")

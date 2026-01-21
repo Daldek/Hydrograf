@@ -403,7 +403,9 @@ def process_hydrology_pysheds(
     internal_no_flow = no_flow & ~edge_mask
 
     if np.sum(internal_no_flow) > 0:
-        logger.warning(f"  {np.sum(internal_no_flow)} internal cells without flow direction")
+        logger.warning(
+            f"  {np.sum(internal_no_flow)} internal cells without flow direction"
+        )
     else:
         logger.info("  All internal cells have valid flow direction")
 
@@ -431,7 +433,9 @@ def fill_depressions(dem: np.ndarray, nodata: float) -> np.ndarray:
     np.ndarray
         Filled DEM
     """
-    logger.warning("Using legacy fill_depressions - consider using process_hydrology_pysheds()")
+    logger.warning(
+        "Using legacy fill_depressions - consider using process_hydrology_pysheds()"
+    )
     # Return unchanged - actual filling happens in process_hydrology_pysheds
     return dem.copy()
 
@@ -739,8 +743,7 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
     logger.info("Phase 2: Bulk inserting records with COPY...")
 
     # Create temporary table for COPY
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TEMP TABLE temp_flow_import (
             id INT,
             x FLOAT,
@@ -752,8 +755,7 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
             cell_area FLOAT,
             is_stream BOOLEAN
         )
-    """
-    )
+    """)
 
     # Create TSV buffer
     tsv_buffer = io.StringIO()
@@ -770,13 +772,13 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
 
     # COPY to temp table
     cursor.copy_expert(
-        "COPY temp_flow_import FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '')", tsv_buffer
+        "COPY temp_flow_import FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '')",
+        tsv_buffer,
     )
     logger.info(f"  COPY to temp table: {len(records):,} records")
 
     # Insert from temp table with geometry construction AND downstream_id
-    cursor.execute(
-        """
+    cursor.execute("""
         INSERT INTO flow_network (
             id, geom, elevation, flow_accumulation, slope,
             downstream_id, cell_area, is_stream
@@ -793,8 +795,7 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
             downstream_id = EXCLUDED.downstream_id,
             cell_area = EXCLUDED.cell_area,
             is_stream = EXCLUDED.is_stream
-    """
-    )
+    """)
 
     total_inserted = cursor.rowcount
     raw_conn.commit()
@@ -803,13 +804,11 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
     # Phase 3: Restore FK constraint and indexes
     logger.info("Phase 3: Restoring indexes and constraints...")
 
-    cursor.execute(
-        """
+    cursor.execute("""
         ALTER TABLE flow_network
         ADD CONSTRAINT flow_network_downstream_id_fkey
         FOREIGN KEY (downstream_id) REFERENCES flow_network(id) ON DELETE SET NULL
-    """
-    )
+    """)
     logger.info("  FK constraint restored")
 
     cursor.execute("CREATE INDEX idx_flow_geom ON flow_network USING GIST (geom)")
@@ -818,10 +817,14 @@ def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> 
     cursor.execute("CREATE INDEX idx_downstream ON flow_network (downstream_id)")
     logger.info("  Index idx_downstream created")
 
-    cursor.execute("CREATE INDEX idx_is_stream ON flow_network (is_stream) WHERE is_stream = TRUE")
+    cursor.execute(
+        "CREATE INDEX idx_is_stream ON flow_network (is_stream) WHERE is_stream = TRUE"
+    )
     logger.info("  Index idx_is_stream created")
 
-    cursor.execute("CREATE INDEX idx_flow_accumulation ON flow_network (flow_accumulation)")
+    cursor.execute(
+        "CREATE INDEX idx_flow_accumulation ON flow_network (flow_accumulation)"
+    )
     logger.info("  Index idx_flow_accumulation created")
 
     cursor.execute("ANALYZE flow_network")
@@ -900,7 +903,11 @@ def process_dem(
     # Save original DEM as GeoTIFF
     if save_intermediates:
         save_raster_geotiff(
-            dem, metadata, output_dir / f"{base_name}_01_dem.tif", nodata=nodata, dtype="float32"
+            dem,
+            metadata,
+            output_dir / f"{base_name}_01_dem.tif",
+            nodata=nodata,
+            dtype="float32",
         )
 
     # 2-4. Process hydrology using pysheds (fill, resolve flats, flow dir, accumulation)
@@ -916,10 +923,18 @@ def process_dem(
             dtype="float32",
         )
         save_raster_geotiff(
-            fdir, metadata, output_dir / f"{base_name}_03_flowdir.tif", nodata=0, dtype="int16"
+            fdir,
+            metadata,
+            output_dir / f"{base_name}_03_flowdir.tif",
+            nodata=0,
+            dtype="int16",
         )
         save_raster_geotiff(
-            acc, metadata, output_dir / f"{base_name}_04_flowacc.tif", nodata=0, dtype="int32"
+            acc,
+            metadata,
+            output_dir / f"{base_name}_04_flowacc.tif",
+            nodata=0,
+            dtype="int32",
         )
 
     # 5. Compute slope
@@ -928,7 +943,11 @@ def process_dem(
 
     if save_intermediates:
         save_raster_geotiff(
-            slope, metadata, output_dir / f"{base_name}_05_slope.tif", nodata=-1, dtype="float32"
+            slope,
+            metadata,
+            output_dir / f"{base_name}_05_slope.tif",
+            nodata=-1,
+            dtype="float32",
         )
 
     # 6. Create stream mask
@@ -943,7 +962,9 @@ def process_dem(
         )
 
     # 7. Create records
-    records = create_flow_network_records(filled_dem, fdir, acc, slope, metadata, stream_threshold)
+    records = create_flow_network_records(
+        filled_dem, fdir, acc, slope, metadata, stream_threshold
+    )
     stats["records"] = len(records)
     stats["stream_cells"] = sum(1 for r in records if r["is_stream"])
 

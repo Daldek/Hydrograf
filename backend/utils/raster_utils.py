@@ -194,7 +194,9 @@ def _create_mosaic_rasterio(
             src.close()
 
     logger.info(f"Mosaic created: {output_path}")
-    logger.info(f"Mosaic file size: {output_path.stat().st_size / (1024 * 1024):.1f} MB")
+    logger.info(
+        f"Mosaic file size: {output_path.stat().st_size / (1024 * 1024):.1f} MB"
+    )
 
     return output_path
 
@@ -275,7 +277,8 @@ def get_mosaic_info(vrt_path: Path) -> dict:
             "cell_size_m": src.transform.a,
             "nodata": src.nodata,
             "dtype": src.dtypes[0],
-            "estimated_memory_mb": (src.width * src.height * 4) / (1024 * 1024),  # float32
+            "estimated_memory_mb": (src.width * src.height * 4)
+            / (1024 * 1024),  # float32
         }
 
     return info
@@ -346,7 +349,8 @@ def validate_tiles_compatibility(input_files: List[Path]) -> dict:
         if meta["crs"] != reference["crs"]:
             results["valid"] = False
             results["issues"].append(
-                f"CRS mismatch: {meta['file']} has {meta['crs']}, " f"expected {reference['crs']}"
+                f"CRS mismatch: {meta['file']} has {meta['crs']}, "
+                f"expected {reference['crs']}"
             )
 
         if abs(meta["cell_size"] - reference["cell_size"]) > 0.0001:

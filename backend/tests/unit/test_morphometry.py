@@ -13,7 +13,6 @@ from core.morphometry import (
 )
 from core.watershed import FlowCell
 
-
 # ===== FIXTURES =====
 
 
@@ -133,7 +132,9 @@ class TestCalculatePerimeterKm:
 class TestCalculateWatershedLengthKm:
     """Tests for calculate_watershed_length_km function."""
 
-    def test_length_calculation(self, sample_cells: list[FlowCell], sample_outlet: FlowCell):
+    def test_length_calculation(
+        self, sample_cells: list[FlowCell], sample_outlet: FlowCell
+    ):
         """Test max distance from outlet."""
         result = calculate_watershed_length_km(sample_cells, sample_outlet)
         # Max distance from (0,0) to (200,0) = 200m = 0.2km
@@ -286,7 +287,9 @@ class TestFindMainStream:
         # Path 5->2->1: distance = sqrt(100) + 100 = 100 + 100 = 200m
         assert length_km > 0.1  # At least 100m
 
-    def test_positive_slope(self, sample_cells: list[FlowCell], sample_outlet: FlowCell):
+    def test_positive_slope(
+        self, sample_cells: list[FlowCell], sample_outlet: FlowCell
+    ):
         """Test that slope is always non-negative."""
         _, slope = find_main_stream(sample_cells, sample_outlet)
         assert slope >= 0
@@ -305,7 +308,9 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test that function returns proper dict."""
-        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet, cn=72)
+        result = build_morphometric_params(
+            sample_cells, sample_boundary, sample_outlet, cn=72
+        )
         assert isinstance(result, dict)
 
     def test_required_keys(
@@ -316,7 +321,13 @@ class TestBuildMorphometricParams:
     ):
         """Test that all required keys are present."""
         result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet)
-        required = ["area_km2", "perimeter_km", "length_km", "elevation_min_m", "elevation_max_m"]
+        required = [
+            "area_km2",
+            "perimeter_km",
+            "length_km",
+            "elevation_min_m",
+            "elevation_max_m",
+        ]
         for key in required:
             assert key in result
 
@@ -327,7 +338,9 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test that optional keys are present."""
-        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet, cn=72)
+        result = build_morphometric_params(
+            sample_cells, sample_boundary, sample_outlet, cn=72
+        )
         optional = [
             "elevation_mean_m",
             "mean_slope_m_per_m",
@@ -347,7 +360,9 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test that CN is passed through."""
-        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet, cn=72)
+        result = build_morphometric_params(
+            sample_cells, sample_boundary, sample_outlet, cn=72
+        )
         assert result["cn"] == 72
 
     def test_source_and_crs(
@@ -379,7 +394,9 @@ class TestBuildMorphometricParams:
         sample_outlet: FlowCell,
     ):
         """Test compatibility with Hydrolog's WatershedParameters."""
-        result = build_morphometric_params(sample_cells, sample_boundary, sample_outlet, cn=72)
+        result = build_morphometric_params(
+            sample_cells, sample_boundary, sample_outlet, cn=72
+        )
 
         # This should not raise
         from hydrolog.morphometry import WatershedParameters

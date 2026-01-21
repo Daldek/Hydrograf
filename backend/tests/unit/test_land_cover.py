@@ -122,7 +122,9 @@ class TestCalculateWeightedCN:
         cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
 
         # Average of all CN values: (60+70+78+85+92+98+100+75)/8 = 82.25 -> 82
-        expected_cn = round(sum(c[1] for c in categories_with_cn) / len(categories_with_cn))
+        expected_cn = round(
+            sum(c[1] for c in categories_with_cn) / len(categories_with_cn)
+        )
         assert cn == expected_cn
         assert len(stats) == 8
 
