@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from core.database import get_db
+from core.land_cover import calculate_weighted_cn, DEFAULT_CN
 from core.morphometry import build_morphometric_params
 from core.precipitation import (
     DURATION_STR_TO_MIN,
@@ -54,9 +55,6 @@ router = APIRouter()
 
 # SCS-CN method limit [km2]
 HYDROGRAPH_AREA_LIMIT_KM2 = 250.0
-
-# Default CN if land cover data unavailable
-DEFAULT_CN = 75
 
 # Hietogram factory
 HIETOGRAM_CLASSES = {
@@ -133,8 +131,17 @@ def generate_hydrograph(
         # ===== STEP 4: Build boundary and morphometry =====
         boundary_2180 = build_boundary(cells, method="convex")
 
-        # TODO: Calculate CN from land cover when available
-        cn = DEFAULT_CN
+        # Calculate CN from land cover data (with fallback to default)
+        try:
+            cn, land_cover_stats = calculate_weighted_cn(boundary_2180, db)
+            if land_cover_stats:
+                logger.info(f"CN={cn} calculated from land cover: {land_cover_stats}")
+            else:
+                logger.info(f"CN={cn} (default, no land cover data)")
+        except Exception as e:
+            logger.warning(f"Failed to calculate CN from land cover: {e}, using default")
+            cn = DEFAULT_CN
+            land_cover_stats = {}
 
         morph_dict = build_morphometric_params(cells, boundary_2180, outlet_cell, cn)
 
