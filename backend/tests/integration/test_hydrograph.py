@@ -162,7 +162,9 @@ class TestGenerateHydrographEndpoint:
 
         app.dependency_overrides.clear()
 
-    def test_hydrograph_data_structure(self, client, mock_db_with_stream_and_precipitation):
+    def test_hydrograph_data_structure(
+        self, client, mock_db_with_stream_and_precipitation
+    ):
         """Test hydrograph data has correct structure."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_stream_and_precipitation
 
@@ -193,7 +195,9 @@ class TestGenerateHydrographEndpoint:
 
         app.dependency_overrides.clear()
 
-    def test_water_balance_structure(self, client, mock_db_with_stream_and_precipitation):
+    def test_water_balance_structure(
+        self, client, mock_db_with_stream_and_precipitation
+    ):
         """Test water balance data has correct structure."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_stream_and_precipitation
 
@@ -251,7 +255,9 @@ class TestGenerateHydrographEndpoint:
 
         app.dependency_overrides.clear()
 
-    def test_morphometry_in_response(self, client, mock_db_with_stream_and_precipitation):
+    def test_morphometry_in_response(
+        self, client, mock_db_with_stream_and_precipitation
+    ):
         """Test that morphometry is included in watershed response."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_stream_and_precipitation
 
@@ -332,7 +338,9 @@ class TestGenerateHydrographEndpoint:
 
         assert response.status_code == 422
 
-    def test_invalid_probability_returns_400(self, client, mock_db_with_stream_and_precipitation):
+    def test_invalid_probability_returns_400(
+        self, client, mock_db_with_stream_and_precipitation
+    ):
         """Test that invalid probability returns 400."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_stream_and_precipitation
 
@@ -415,7 +423,9 @@ class TestGenerateHydrographEndpoint:
 
         app.dependency_overrides.clear()
 
-    def test_different_hietogram_types(self, client, mock_db_with_stream_and_precipitation):
+    def test_different_hietogram_types(
+        self, client, mock_db_with_stream_and_precipitation
+    ):
         """Test different hietogram types."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_stream_and_precipitation
 
@@ -461,7 +471,9 @@ class TestGenerateHydrographEndpoint:
 
         app.dependency_overrides.clear()
 
-    def test_precipitation_info_structure(self, client, mock_db_with_stream_and_precipitation):
+    def test_precipitation_info_structure(
+        self, client, mock_db_with_stream_and_precipitation
+    ):
         """Test precipitation info has correct structure."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_stream_and_precipitation
 

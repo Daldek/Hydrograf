@@ -21,16 +21,18 @@ logger = logging.getLogger(__name__)
 DEFAULT_CN = 75
 
 # Valid land cover categories (from database constraint)
-VALID_CATEGORIES = frozenset([
-    "las",
-    "łąka",
-    "grunt_orny",
-    "zabudowa_mieszkaniowa",
-    "zabudowa_przemysłowa",
-    "droga",
-    "woda",
-    "inny",
-])
+VALID_CATEGORIES = frozenset(
+    [
+        "las",
+        "łąka",
+        "grunt_orny",
+        "zabudowa_mieszkaniowa",
+        "zabudowa_przemysłowa",
+        "droga",
+        "woda",
+        "inny",
+    ]
+)
 
 
 def calculate_weighted_cn(
@@ -232,13 +234,15 @@ def get_land_cover_for_boundary(
     # Build category details
     categories = []
     for row in result:
-        categories.append({
-            "category": row.category,
-            "cn_value": row.cn_value,
-            "imperviousness": row.imperviousness,
-            "area_m2": round(row.total_area_m2, 1),
-            "percentage": round((row.total_area_m2 / total_area) * 100, 1),
-        })
+        categories.append(
+            {
+                "category": row.category,
+                "cn_value": row.cn_value,
+                "imperviousness": row.imperviousness,
+                "area_m2": round(row.total_area_m2, 1),
+                "percentage": round((row.total_area_m2 / total_area) * 100, 1),
+            }
+        )
 
     return {
         "categories": categories,

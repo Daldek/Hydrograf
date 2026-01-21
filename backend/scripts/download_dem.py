@@ -253,7 +253,9 @@ def main():
             sys.path.insert(0, str(Path(__file__).parent.parent))
             from utils.sheet_finder import get_sheets_for_point_with_buffer
 
-        sheets = get_sheets_for_point_with_buffer(args.lat, args.lon, args.buffer, args.scale)
+        sheets = get_sheets_for_point_with_buffer(
+            args.lat, args.lon, args.buffer, args.scale
+        )
     else:
         parser.error("Either --sheets or both --lat and --lon are required")
         return
