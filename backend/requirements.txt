@@ -26,8 +26,8 @@ scipy>=1.12.0
 pysheds>=0.4
 rasterio>=1.3.9
 
-# IMGW data - installed as transitive dependency via Hydrolog
-# (Hydrolog depends on imgwtools from GitHub)
+# IMGW data (precipitation PMAXTP, hydro stations, warnings)
+imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
 
 # Testing
 pytest>=7.4.4
@@ -54,5 +54,5 @@ geopandas>=0.14.2
 fiona>=1.9.5
 
 # Hydrolog - hydrological calculations (SCS-CN, unit hydrographs, tc)
-# v0.5.1: Fixed SCS constant (0.208 instead of 2.08)
-hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.5.1
+# v0.5.2: Removed unused imgwtools dependency (now direct in Hydrograf)
+hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.5.2

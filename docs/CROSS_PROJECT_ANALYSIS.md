@@ -18,17 +18,15 @@
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐             │
 │  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │             │
 │  │  (dane IMGW)  │   │ (dane GIS)    │   │ (obliczenia)  │             │
-│  └───────┬───────┘   └───────┬───────┘   └───────┬───────┘             │
-│          │                   │                   │                      │
-└──────────┼───────────────────┼───────────────────┼──────────────────────┘
-           │                   │                   │
-           │                   │        ┌──────────┴──────────┐
-           │                   │        │                     │
-           ▼                   ▼        ▼                     ▼
-    ┌─────────────┐      ┌──────────┐  ┌─────────────┐  ┌──────────────┐
-    │ IMGWTools   │      │Kartograf │  │ IMGWTools   │  │  Kartograf   │
-    │ (standalone)│      │(optional)│  │ (wymagany)  │  │  (opcja)     │
-    └─────────────┘      └──────────┘  └─────────────┘  └──────────────┘
+│  └───────────────┘   └───────────────┘   └───────┬───────┘             │
+│                                                  │                      │
+└──────────────────────────────────────────────────┼──────────────────────┘
+                                                   │
+                                                   ▼
+                                            ┌──────────────┐
+                                            │  Kartograf   │
+                                            │  (opcja)     │
+                                            └──────────────┘
 ```
 
 ### Szczegóły zależności
@@ -38,8 +36,9 @@
 | **Hydrograf** | IMGWTools | bezpośrednia (requirements.txt) |
 | **Hydrograf** | Kartograf | bezpośrednia (requirements.txt) |
 | **Hydrograf** | Hydrolog | bezpośrednia (requirements.txt) |
-| **Hydrolog** | IMGWTools | wymagana (pyproject.toml) |
 | **Hydrolog** | Kartograf | opcjonalna (`[spatial]`) |
+
+**Uwaga:** Hydrolog nie ma już zależności od IMGWTools (usunięta w v0.5.2).
 
 ---
 
