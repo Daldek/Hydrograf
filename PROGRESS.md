@@ -7,7 +7,7 @@
 | **Faza** | 0 - Setup |
 | **Sprint** | 0.4 - Frontend |
 | **Wersja** | v0.3.0 |
-| **Ostatnia sesja** | 14 |
+| **Ostatnia sesja** | 15 |
 | **Data** | 2026-01-21 |
 | **Następny checkpoint** | CP4: Frontend map |
 | **Gałąź robocza** | develop |
@@ -202,6 +202,53 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 ---
 
 ## Ostatnia Sesja
+
+### Sesja 15 (2026-01-21) - UKOŃCZONA
+
+**Cel:** Utworzenie kompleksowego skryptu analizy hydrologicznej z integracją wszystkich zależności
+
+**Wykonane:**
+
+1. **Utworzono `backend/scripts/analyze_watershed.py`** (1082 linii)
+   - Pełny workflow analizy hydrologicznej w jednym skrypcie
+   - Konfigurowalne parametry przez `AnalysisConfig` dataclass
+   - CLI z argparse dla wszystkich opcji
+
+2. **Integracja IMGW PMAXTP (IMGWTools)**
+   - Poprawna obsługa zagnieżdżonej struktury danych `result.data.ks[duration][probability]`
+   - Wsparcie dla trzech rozkładów: KS, SG, RB
+   - Automatyczne dopasowanie do dostępnych czasów trwania i prawdopodobieństw
+
+3. **Integracja Kartograf - HSG-based CN calculation**
+   - Pobieranie Hydrologic Soil Groups z SoilGrids przez `HSGCalculator`
+   - Obszerna tabela CN dla różnych pokryć terenu:
+     - Standardowe kategorie (forest, meadow, arable, urban)
+     - Kody BDOT10k (PTLZ, BUBD, SKDR, etc.)
+     - Klasy CORINE (11-52)
+   - Hierarchia źródeł CN: config → database → Kartograf HSG → default
+
+4. **Wyniki testowe** (dla 52.454937°N, 17.312501°E):
+   - HSG: C (51.4% clay loam soils)
+   - CN: 81 (obliczone z HSG + szacunkowe pokrycie)
+   - Opad IMGW: 48.9 mm (SG, 60 min, p=1%)
+   - Qmax: 8.19 m³/s
+
+**Commit:**
+```
+c27899a feat(scripts): add comprehensive watershed analysis script
+```
+
+**Użycie skryptu:**
+```bash
+cd backend
+python -m scripts.analyze_watershed --lat 52.45 --lon 17.31 --probability 1 --duration 60
+```
+
+**Następne kroki:**
+1. CP4 - Frontend map
+2. Rozszerzyć analizę pokrycia terenu z BDOT10k/CORINE (zamiast szacunkowych wartości)
+
+---
 
 ### Sesja 14 (2026-01-21) - UKOŃCZONA
 
