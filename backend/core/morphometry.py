@@ -153,7 +153,8 @@ def calculate_mean_slope(cells: list[FlowCell]) -> float:
 def find_main_stream(
     cells: list[FlowCell],
     outlet: FlowCell,
-) -> tuple[float, float]:
+    return_coords: bool = False,
+) -> tuple[float, float] | tuple[float, float, list[tuple[float, float]]]:
     """
     Find main stream parameters using reverse trace algorithm.
 
@@ -167,11 +168,14 @@ def find_main_stream(
         All cells in the watershed
     outlet : FlowCell
         Outlet cell (pour point)
+    return_coords : bool, optional
+        If True, also return list of (x, y) coordinates for the stream path
 
     Returns
     -------
-    tuple[float, float]
+    tuple[float, float] or tuple[float, float, list]
         (channel_length_km, channel_slope_m_per_m)
+        or (channel_length_km, channel_slope_m_per_m, coords) if return_coords=True
 
     Notes
     -----
@@ -187,8 +191,13 @@ def find_main_stream(
     --------
     >>> length_km, slope = find_main_stream(cells, outlet)
     >>> print(f"Main stream: {length_km:.2f} km, slope {slope:.4f} m/m")
+
+    >>> length_km, slope, coords = find_main_stream(cells, outlet, return_coords=True)
+    >>> # coords can be used to create LineString for GIS export
     """
     if not cells:
+        if return_coords:
+            return (0.0, 0.0, [])
         return (0.0, 0.0)
 
     cell_by_id: dict[int, FlowCell] = {c.id: c for c in cells}
@@ -204,6 +213,7 @@ def find_main_stream(
     # Trace upstream from outlet, always picking highest accumulation
     path_length_m = 0.0
     path_elevations: list[float] = [outlet.elevation]
+    path_coords: list[tuple[float, float]] = [(outlet.x, outlet.y)]
     current_cell = outlet
 
     while True:
@@ -230,6 +240,7 @@ def find_main_stream(
         ) ** 0.5
         path_length_m += dist
         path_elevations.append(best_upstream.elevation)
+        path_coords.append((best_upstream.x, best_upstream.y))
         current_cell = best_upstream
 
     # Calculate slope (elevation difference / length)
@@ -244,9 +255,11 @@ def find_main_stream(
 
     logger.debug(
         f"Main stream found: {channel_length_km:.2f} km, "
-        f"slope {channel_slope:.4f} m/m"
+        f"slope {channel_slope:.4f} m/m, {len(path_coords)} points"
     )
 
+    if return_coords:
+        return (channel_length_km, max(0.0, channel_slope), path_coords)
     return (channel_length_km, max(0.0, channel_slope))
 
 
@@ -255,6 +268,7 @@ def build_morphometric_params(
     boundary: Polygon,
     outlet: FlowCell,
     cn: Optional[int] = None,
+    include_stream_coords: bool = False,
 ) -> dict:
     """
     Build complete morphometric parameters dictionary.
@@ -271,6 +285,8 @@ def build_morphometric_params(
         Outlet cell (pour point)
     cn : int, optional
         SCS Curve Number (will be calculated separately if None)
+    include_stream_coords : bool, optional
+        If True, include main_stream_coords in output for GIS export
 
     Returns
     -------
@@ -285,7 +301,15 @@ def build_morphometric_params(
     >>> wp = WatershedParameters.from_dict(params)
     """
     elev_stats = calculate_elevation_stats(cells)
-    channel_length_km, channel_slope = find_main_stream(cells, outlet)
+
+    # Get main stream with coordinates if requested
+    if include_stream_coords:
+        channel_length_km, channel_slope, stream_coords = find_main_stream(
+            cells, outlet, return_coords=True
+        )
+    else:
+        channel_length_km, channel_slope = find_main_stream(cells, outlet)
+        stream_coords = None
 
     params = {
         "area_km2": sum(c.cell_area for c in cells) / 1_000_000,
@@ -301,6 +325,9 @@ def build_morphometric_params(
         "source": "Hydrograf",
         "crs": "EPSG:2180",
     }
+
+    if include_stream_coords and stream_coords:
+        params["main_stream_coords"] = stream_coords
 
     logger.info(
         f"Built morphometric params: area={params['area_km2']:.2f} km2, "
