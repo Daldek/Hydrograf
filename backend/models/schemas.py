@@ -102,9 +102,7 @@ class MorphometricParameters(BaseModel):
     mean_slope_m_per_m: Optional[float] = Field(
         None, ge=0, description="Area-weighted mean slope [m/m]"
     )
-    channel_length_km: Optional[float] = Field(
-        None, ge=0, description="Main channel length [km]"
-    )
+    channel_length_km: Optional[float] = Field(None, ge=0, description="Main channel length [km]")
     channel_slope_m_per_m: Optional[float] = Field(
         None, ge=0, description="Main channel slope [m/m]"
     )
@@ -157,9 +155,7 @@ class DelineateResponse(BaseModel):
         Watershed delineation results
     """
 
-    watershed: WatershedResponse = Field(
-        ..., description="Watershed delineation results"
-    )
+    watershed: WatershedResponse = Field(..., description="Watershed delineation results")
 
 
 # ===================== HYDROGRAPH MODELS =====================
@@ -212,9 +208,7 @@ class HydrographRequest(BaseModel):
         description="Exceedance probability [%]",
         examples=[10],
     )
-    timestep_min: float = Field(
-        5.0, ge=1, le=60, description="Time step for calculations [min]"
-    )
+    timestep_min: float = Field(5.0, ge=1, le=60, description="Time step for calculations [min]")
     tc_method: str = Field(
         "kirpich",
         pattern=r"^(kirpich|scs_lag|giandotti)$",
@@ -252,17 +246,11 @@ class WaterBalance(BaseModel):
     """Water balance information from SCS-CN calculation."""
 
     total_precip_mm: float = Field(..., ge=0, description="Total precipitation [mm]")
-    total_effective_mm: float = Field(
-        ..., ge=0, description="Effective precipitation [mm]"
-    )
-    runoff_coefficient: float = Field(
-        ..., ge=0, le=1, description="Runoff coefficient [-]"
-    )
+    total_effective_mm: float = Field(..., ge=0, description="Effective precipitation [mm]")
+    runoff_coefficient: float = Field(..., ge=0, le=1, description="Runoff coefficient [-]")
     cn_used: int = Field(..., ge=0, le=100, description="Curve Number used")
     retention_mm: float = Field(..., ge=0, description="Maximum retention S [mm]")
-    initial_abstraction_mm: float = Field(
-        ..., ge=0, description="Initial abstraction Ia [mm]"
-    )
+    initial_abstraction_mm: float = Field(..., ge=0, description="Initial abstraction Ia [mm]")
 
 
 class HydrographMetadata(BaseModel):

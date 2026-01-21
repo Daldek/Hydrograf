@@ -48,7 +48,10 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    import geopandas
 
 # Configure logging
 logging.basicConfig(
@@ -108,6 +111,7 @@ def get_database_url() -> str:
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from core.config import settings
+
         return settings.database_url
     except ImportError:
         pass
@@ -200,9 +204,7 @@ def prepare_records(
 
     for layer_code, gdf in layers.items():
         # Get mapping for this layer
-        category, cn_value, imperviousness = BDOT10K_MAPPING.get(
-            layer_code, DEFAULT_MAPPING
-        )
+        category, cn_value, imperviousness = BDOT10K_MAPPING.get(layer_code, DEFAULT_MAPPING)
 
         # Transform to EPSG:2180
         gdf = transform_to_2180(gdf)
@@ -217,6 +219,7 @@ def prepare_records(
             # Ensure MultiPolygon type
             if geom.geom_type == "Polygon":
                 from shapely.geometry import MultiPolygon
+
                 geom = MultiPolygon([geom])
             elif geom.geom_type != "MultiPolygon":
                 logger.warning(f"Skipping non-polygon geometry: {geom.geom_type}")
@@ -229,13 +232,15 @@ def prepare_records(
                     logger.warning(f"Skipping invalid geometry in {layer_code}")
                     continue
 
-            records.append({
-                "geom_wkb": wkb.dumps(geom, include_srid=False),
-                "category": category,
-                "cn_value": cn_value,
-                "imperviousness": imperviousness,
-                "bdot_class": layer_code,
-            })
+            records.append(
+                {
+                    "geom_wkb": wkb.dumps(geom, include_srid=False),
+                    "category": category,
+                    "cn_value": cn_value,
+                    "imperviousness": imperviousness,
+                    "bdot_class": layer_code,
+                }
+            )
 
     return records
 
@@ -280,7 +285,7 @@ def import_to_database(
         inserted = 0
 
         for i in range(0, len(records), batch_size):
-            batch = records[i:i + batch_size]
+            batch = records[i : i + batch_size]
 
             # Build INSERT statement
             values = []
@@ -370,6 +375,7 @@ def import_landcover(
 
     # Show category distribution
     from collections import Counter
+
     categories = Counter(r["category"] for r in records)
     logger.info("Category distribution:")
     for cat, count in sorted(categories.items()):
@@ -404,7 +410,8 @@ def main():
 
     # Input
     parser.add_argument(
-        "--input", "-i",
+        "--input",
+        "-i",
         type=str,
         required=True,
         help="Path to GeoPackage file (.gpkg)",

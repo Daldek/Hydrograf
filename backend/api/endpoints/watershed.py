@@ -72,9 +72,7 @@ def delineate_watershed(
         On internal server error
     """
     try:
-        logger.info(
-            f"Delineating watershed for ({request.latitude:.6f}, {request.longitude:.6f})"
-        )
+        logger.info(f"Delineating watershed for ({request.latitude:.6f}, {request.longitude:.6f})")
 
         # 1. Transform WGS84 -> PL-1992
         point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
@@ -114,9 +112,7 @@ def delineate_watershed(
         )
 
         # 10. Transform outlet coords back to WGS84
-        outlet_lon, outlet_lat = transform_pl1992_to_wgs84(
-            outlet_cell.x, outlet_cell.y
-        )
+        outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_cell.x, outlet_cell.y)
 
         # 11. Build response
         response = DelineateResponse(

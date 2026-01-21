@@ -4,7 +4,7 @@ Integration tests for hydrograph generation endpoint.
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from api.main import app
 from core.database import get_db
@@ -486,3 +486,46 @@ class TestGenerateHydrographEndpoint:
         assert len(precip["intensities_mm"]) > 0
 
         app.dependency_overrides.clear()
+
+
+class TestScenariosEndpoint:
+    """Tests for GET /api/scenarios endpoint."""
+
+    def test_scenarios_returns_200(self, client):
+        """Test scenarios endpoint returns 200."""
+        response = client.get("/api/scenarios")
+        assert response.status_code == 200
+
+    def test_scenarios_response_structure(self, client):
+        """Test scenarios response has correct structure."""
+        response = client.get("/api/scenarios")
+        data = response.json()
+
+        assert "durations" in data
+        assert "probabilities" in data
+        assert "tc_methods" in data
+        assert "hietogram_types" in data
+        assert "area_limit_km2" in data
+
+    def test_scenarios_valid_durations(self, client):
+        """Test scenarios returns valid durations."""
+        response = client.get("/api/scenarios")
+        data = response.json()
+
+        expected = ["12h", "15min", "1h", "24h", "2h", "30min", "6h"]
+        assert data["durations"] == expected
+
+    def test_scenarios_valid_probabilities(self, client):
+        """Test scenarios returns valid probabilities."""
+        response = client.get("/api/scenarios")
+        data = response.json()
+
+        expected = [1, 2, 5, 10, 20, 50]
+        assert data["probabilities"] == expected
+
+    def test_scenarios_area_limit(self, client):
+        """Test scenarios returns area limit."""
+        response = client.get("/api/scenarios")
+        data = response.json()
+
+        assert data["area_limit_km2"] == 250.0

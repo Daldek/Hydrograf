@@ -6,8 +6,8 @@
 |------|---------|
 | **Faza** | 0 - Setup |
 | **Sprint** | 0.4 - Hydrograph Generation |
-| **Ostatnia sesja** | 9 |
-| **Data** | 2026-01-20 |
+| **Ostatnia sesja** | 11 |
+| **Data** | 2026-01-21 |
 | **Następny checkpoint** | CP3: Hydrograph generation (✅ przetestowane) |
 | **Gałąź robocza** | develop |
 
@@ -201,6 +201,87 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 ---
 
 ## Ostatnia Sesja
+
+### Sesja 11 (2026-01-21) - UKOŃCZONA
+
+**Cel:** Kompleksowy audyt jakości (QA) repozytorium
+
+**Wykonane:**
+
+#### QA Audit - Podsumowanie
+
+Przeprowadzono kompleksowy przegląd jakości w 8 obszarach:
+1. Spójność wewnętrzna dokumentacji
+2. Spójność dokumentacji z kodem
+3. Czystość i reużywalność kodu
+4. Pokrycie testami i jakość testów
+5. Bezpieczeństwo
+6. Wydajność i optymalizacje
+7. DevOps i CI/CD
+8. Kierunek rozwoju
+
+**Ocena końcowa: 7/10** (przed naprawami) → **8.5/10** (po naprawach)
+
+#### Naprawione Issues
+
+| Priorytet | Liczba | Opis |
+|-----------|--------|------|
+| CRITICAL | 1 | CORS vulnerability (allow_origins=["*"] + credentials) |
+| HIGH | 4 | Rate limiting, CI/CD, CHANGELOG, CHECK constraint |
+| MEDIUM | 6 | Pydantic deprecation, pre-commit, /api/scenarios, dokumentacja TD |
+| LOW | 16 | Black formatting (17 plików), flake8 errors, package updates |
+
+#### Szczegóły napraw
+
+**CRITICAL - Bezpieczeństwo CORS:**
+- Zmieniono z `allow_origins=["*"]` + `allow_credentials=True` (niebezpieczne!)
+- Na: `CORS_ORIGINS` z .env + `allow_credentials=False`
+- Pliki: `api/main.py`, `core/config.py`
+
+**HIGH - Infrastruktura:**
+- Dodano rate limiting w Nginx (10 req/s API, 30 req/s ogólne)
+- Utworzono `.github/workflows/ci.yml` (lint + test + coverage)
+- Utworzono `CHANGELOG.md` (Keep a Changelog format)
+- Dodano CHECK constraint dla `land_cover.category`
+- Dodano UNIQUE index dla `stream_network`
+
+**MEDIUM - Jakość kodu:**
+- Naprawiono Pydantic deprecation (class Config → SettingsConfigDict)
+- Utworzono `pyproject.toml` z konfiguracją narzędzi
+- Utworzono `.pre-commit-config.yaml`
+- Dodano endpoint `GET /api/scenarios` (5 nowych testów)
+- Utworzono `TECHNICAL_DEBT.md` z listą hardcoded values
+
+**LOW - Linting i formatowanie:**
+- Black: 17 plików przeformatowanych
+- Flake8: 16 błędów naprawionych (F401, E501, E203, E226)
+- Zaktualizowano `black` 25.12→26.1
+
+#### Dokumentacja techniczna
+
+Utworzono `TECHNICAL_DEBT.md` dokumentujący znane problemy do naprawy:
+- Q3.9: Hardcoded values (konwersje jednostek, CRS identifiers)
+- S5.3: Default passwords w config.py i migrations/env.py
+- TD-2: Brakujący moduł land_cover.py (CN=75 hardcoded)
+- T4.8: Brak testów dla scripts/ (0% coverage)
+- C2.x: Rozbieżności dokumentacja vs kod
+
+#### Metryki końcowe
+
+| Metryka | Przed QA | Po QA |
+|---------|----------|-------|
+| Testy | 175 | 180 |
+| Warnings | 2 | 1 (external) |
+| Flake8 errors | 16 | 0 |
+| Black issues | 17 plików | 0 |
+| CRITICAL issues | 1 | 0 |
+| HIGH issues | 4 | 0 |
+
+**Następne kroki:**
+1. Naprawić issues z TECHNICAL_DEBT.md (przy okazji)
+2. Kontynuować CP4 - Frontend map
+
+---
 
 ### Sesja 10 (2026-01-20) - UKOŃCZONA
 
@@ -525,7 +606,8 @@ Benchmark na zlewni 2.24 km² (2,241,705 komórek, 835,377 head cells):
 
 ### Znane Problemy
 
-- Warning Pydantic: "Support for class-based `config` is deprecated" - do naprawy w przyszłości
+- ~~Warning Pydantic: "Support for class-based `config` is deprecated"~~ ✅ Naprawione (Sesja 11)
+- Warning hydrolog: "giandotti: area_km2 is outside typical range" - external library, ignorowane
 
 ### Znane Problemy Wydajności (z testu Sesji 9-10)
 
