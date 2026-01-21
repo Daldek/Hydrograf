@@ -26,8 +26,8 @@ scipy>=1.12.0
 pysheds>=0.4
 rasterio>=1.3.9
 
-# IMGW data
-imgwtools>=0.1.0
+# IMGW data - installed as transitive dependency via Hydrolog
+# (Hydrolog depends on imgwtools from GitHub)
 
 # Testing
 pytest>=7.4.4
@@ -43,16 +43,16 @@ mypy>=1.8.0
 # Utilities
 python-dotenv>=1.0.0
 
-# Spatial data download (Kartograf 0.3.0+)
+# Spatial data download (Kartograf 0.3.1)
 # - NMT/NMPT: Digital Elevation Models from GUGiK
 # - BDOT10k: Land cover data from GUGiK (12 layers)
 # - CORINE: European land cover classification from Copernicus
-# NOTE: Use @develop until v0.3.0 is published to main, then switch to @main
-kartograf @ git+https://github.com/Daldek/Kartograf.git@develop
+kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.3.1
 
 # GeoPackage support (for land cover data)
 geopandas>=0.14.2
 fiona>=1.9.5
 
 # Hydrolog - hydrological calculations (SCS-CN, unit hydrographs, tc)
-hydrolog @ git+https://github.com/Daldek/Hydrolog.git@develop
+# v0.5.1: Fixed SCS constant (0.208 instead of 2.08)
+hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.5.1

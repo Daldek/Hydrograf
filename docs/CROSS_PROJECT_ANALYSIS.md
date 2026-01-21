@@ -80,6 +80,7 @@ qp = 0.208 * self.area_km2 / tp_hours
 **Wersje po naprawie:**
 - Hydrolog: v0.5.1
 - Kartograf: v0.3.1 (SCOPE.md/PRD.md zaktualizowane do v2.0)
+- IMGWTools: v2.1.0 (Hydrograf zaktualizowany 2026-01-21)
 
 ### 3.2 🟠 POZOSTAŁE DO ROZWAŻENIA
 
@@ -239,4 +240,4 @@ fail_under = 80
 
 ---
 
-**Ostatnia aktualizacja:** 2026-01-21 (weryfikacja napraw)
+**Ostatnia aktualizacja:** 2026-01-21 (sesja 12: aktualizacja zależności do stabilnych tagów, implementacja CN z land_cover)
