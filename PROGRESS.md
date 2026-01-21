@@ -6,7 +6,7 @@
 |------|---------|
 | **Faza** | 0 - Setup |
 | **Sprint** | 0.4 - Hydrograph Generation |
-| **Ostatnia sesja** | 12 |
+| **Ostatnia sesja** | 13 |
 | **Data** | 2026-01-21 |
 | **Następny checkpoint** | CP4: Frontend map |
 | **Gałąź robocza** | develop |
@@ -201,6 +201,44 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 ---
 
 ## Ostatnia Sesja
+
+### Sesja 13 (2026-01-21) - UKOŃCZONA
+
+**Cel:** Refaktoryzacja zależności - IMGWTools bezpośrednio w Hydrograf
+
+**Kontekst:**
+Analiza wykazała, że IMGWTools było zadeklarowane jako zależność w Hydrolog, ale nigdzie tam nie używane. Faktyczne użycie (`fetch_pmaxtp()`) jest w Hydrograf (`backend/scripts/preprocess_precipitation.py`).
+
+**Wykonane:**
+
+1. **Hydrograf: Dodano bezpośrednią zależność IMGWTools**
+   - Plik: `backend/requirements.txt`
+   - Dodano: `imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0`
+
+2. **Hydrolog: Usunięto nieużywaną zależność** (v0.5.2)
+   - Plik: `pyproject.toml` - usunięto imgwtools z dependencies
+   - Zaktualizowano dokumentację CLAUDE.md i SCOPE.md
+
+3. **Zaktualizowano CROSS_PROJECT_ANALYSIS.md**
+   - Nowa mapa zależności (bez strzałki Hydrolog → IMGWTools)
+   - Zaktualizowana tabela zależności
+
+**Commity:**
+```
+e61f139 refactor: add direct imgwtools dependency
+489eee8 docs: update cross-project analysis - all issues resolved
+```
+
+**Nowa architektura:**
+```
+Hydrograf
+  ├─ IMGWTools (bezpośrednio) ← NOWE
+  ├─ Kartograf
+  └─ Hydrolog v0.5.2
+       └─ Kartograf (opcjonalnie)
+```
+
+---
 
 ### Sesja 12 (2026-01-21) - UKOŃCZONA
 
