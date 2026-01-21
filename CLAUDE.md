@@ -10,3 +10,4 @@ Używaj środowiska wirtualnego z `backend/.venv`:
 - `IMPLEMENTATION_PROMPT.md` - wymagania i architektura projektu
 - `DEVELOPMENT_STANDARDS.md` - standardy kodowania
 - `docs/` - szczegółowa dokumentacja (SCOPE, ARCHITECTURE, DATA_MODEL, PRD)
+- `docs/CROSS_PROJECT_ANALYSIS.md` - analiza integracji z Hydrolog, Kartograf, IMGWTools
