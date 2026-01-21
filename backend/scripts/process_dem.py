@@ -1,8 +1,16 @@
 """
 Script to process DEM (Digital Elevation Model) and populate flow_network table.
 
-Reads ASCII GRID DEM file, computes hydrological parameters (flow direction,
-flow accumulation, slope), and loads data into PostgreSQL/PostGIS.
+Reads ASCII GRID DEM file or VRT mosaic, computes hydrological parameters
+(flow direction, flow accumulation, slope), and loads data into PostgreSQL/PostGIS.
+
+Supports:
+- Single ASCII GRID (.asc) files
+- VRT mosaics (.vrt) created from multiple tiles
+- GeoTIFF (.tif) files
+
+For multi-tile processing, use VRT mosaic to ensure hydrological continuity
+across tile boundaries. See utils/raster_utils.py for VRT creation.
 
 Usage
 -----
@@ -15,6 +23,11 @@ Examples
     # Process single DEM tile
     python -m scripts.process_dem \\
         --input ../data/nmt/N-33-131-D-a-3-2.asc \\
+        --stream-threshold 100
+
+    # Process VRT mosaic (multiple tiles)
+    python -m scripts.process_dem \\
+        --input ../data/nmt/mosaic.vrt \\
         --stream-threshold 100
 
     # Dry run (only show statistics)
@@ -132,12 +145,68 @@ def save_raster_geotiff(
     logger.info(f"Saved: {output_path} ({output_path.stat().st_size / 1024:.1f} KB)")
 
 
+def read_raster(filepath: Path) -> Tuple[np.ndarray, dict]:
+    """
+    Read raster file (ASC, VRT, or GeoTIFF) using rasterio.
+
+    This is the preferred method as it handles all formats uniformly
+    and works with VRT mosaics for multi-tile processing.
+
+    Parameters
+    ----------
+    filepath : Path
+        Path to raster file (.asc, .vrt, .tif)
+
+    Returns
+    -------
+    tuple
+        (data array, metadata dict with ncols, nrows, xllcorner, yllcorner, cellsize, nodata)
+
+    Raises
+    ------
+    FileNotFoundError
+        If file does not exist
+    """
+    import rasterio
+
+    if not filepath.exists():
+        raise FileNotFoundError(f"Raster file not found: {filepath}")
+
+    logger.info(f"Reading raster: {filepath}")
+
+    with rasterio.open(filepath) as src:
+        data = src.read(1)
+
+        # Build metadata compatible with ASCII grid format
+        metadata = {
+            "ncols": src.width,
+            "nrows": src.height,
+            "xllcorner": src.bounds.left,
+            "yllcorner": src.bounds.bottom,
+            "cellsize": abs(src.transform.a),  # Pixel width
+            "nodata_value": src.nodata if src.nodata is not None else -9999.0,
+            # Additional info
+            "crs": str(src.crs),
+            "bounds": src.bounds,
+            "transform": src.transform,
+        }
+
+    logger.info(f"Read raster: {metadata['nrows']}x{metadata['ncols']} cells")
+    logger.info(f"Origin: ({metadata['xllcorner']:.1f}, {metadata['yllcorner']:.1f})")
+    logger.info(f"Cell size: {metadata['cellsize']} m")
+    logger.info(f"Total cells: {metadata['nrows'] * metadata['ncols']:,}")
+
+    return data, metadata
+
+
 def read_ascii_grid(filepath: Path) -> Tuple[np.ndarray, dict]:
     """
     Read ARC/INFO ASCII GRID file.
 
     Supports both corner (xllcorner/yllcorner) and center (xllcenter/yllcenter)
     coordinate formats. Center coordinates are converted to corner.
+
+    Note: For VRT mosaics or GeoTIFF files, use read_raster() instead.
 
     Parameters
     ----------
@@ -520,6 +589,12 @@ def create_flow_network_records(
     """
     Create flow_network records from raster data.
 
+    Cell IDs are computed as: row * ncols + col + 1 (1-based).
+    This ensures unique IDs across the entire raster, including VRT mosaics.
+
+    Note: For very large areas (>40,000 x 40,000 cells), IDs may exceed
+    PostgreSQL INTEGER range (2^31). Consider using BIGINT for such cases.
+
     Parameters
     ----------
     dem : np.ndarray
@@ -549,10 +624,19 @@ def create_flow_network_records(
     nodata = metadata['nodata_value']
     cell_area = cellsize * cellsize
 
+    # Check for potential ID overflow (INT max = 2^31 - 1 = 2,147,483,647)
+    max_id = nrows * ncols
+    if max_id > 2_000_000_000:
+        logger.warning(
+            f"Large raster ({nrows}x{ncols} = {max_id:,} cells) may cause "
+            f"ID overflow. Consider using BIGINT for flow_network.id"
+        )
+
     records = []
 
     # Create index map for downstream_id lookup
     # Index = row * ncols + col + 1 (1-based for DB)
+    # This ensures unique IDs across the entire VRT mosaic
     def get_cell_index(row, col):
         return row * ncols + col + 1
 
@@ -730,29 +814,39 @@ def process_dem(
     dry_run: bool = False,
     save_intermediates: bool = False,
     output_dir: Optional[Path] = None,
+    clear_existing: bool = False,
 ) -> dict:
     """
-    Process DEM file and load into flow_network table.
+    Process DEM file (ASC, VRT, or GeoTIFF) and load into flow_network table.
+
+    Supports VRT mosaics for multi-tile processing with hydrological continuity
+    across tile boundaries.
 
     Parameters
     ----------
     input_path : Path
-        Path to input ASCII GRID file
+        Path to input raster file (.asc, .vrt, or .tif)
     stream_threshold : int
         Flow accumulation threshold for stream identification
     batch_size : int
-        Database insert batch size
+        Database insert batch size (unused with COPY, kept for API compatibility)
     dry_run : bool
         If True, only compute statistics without inserting
     save_intermediates : bool
         If True, save intermediate rasters as GeoTIFF
     output_dir : Path, optional
         Output directory for intermediate files (default: same as input)
+    clear_existing : bool
+        If True, clear existing data before insert (TRUNCATE).
+        Default False to support incremental processing.
 
     Returns
     -------
     dict
-        Processing statistics
+        Processing statistics including:
+        - ncols, nrows, cellsize, total_cells
+        - valid_cells, max_accumulation, mean_slope
+        - stream_cells, records, inserted
     """
     stats = {}
 
@@ -762,8 +856,14 @@ def process_dem(
     output_dir = Path(output_dir)
     base_name = input_path.stem
 
-    # 1. Read DEM
-    dem, metadata = read_ascii_grid(input_path)
+    # 1. Read DEM (supports ASC, VRT, GeoTIFF)
+    suffix = input_path.suffix.lower()
+    if suffix in ('.vrt', '.tif', '.tiff'):
+        dem, metadata = read_raster(input_path)
+    else:
+        # Fallback to ASCII grid parser for .asc files
+        dem, metadata = read_ascii_grid(input_path)
+
     stats['ncols'] = metadata['ncols']
     stats['nrows'] = metadata['nrows']
     stats['cellsize'] = metadata['cellsize']
@@ -834,10 +934,10 @@ def process_dem(
         from core.database import get_db_session
 
         with get_db_session() as db:
-            # Clear existing data (optional - can be removed for append mode)
-            logger.info("Clearing existing flow_network data...")
-            db.execute(text("TRUNCATE TABLE flow_network CASCADE"))
-            db.commit()
+            if clear_existing:
+                logger.info("Clearing existing flow_network data...")
+                db.execute(text("TRUNCATE TABLE flow_network CASCADE"))
+                db.commit()
 
             inserted = insert_records_batch(db, records, batch_size)
             stats['inserted'] = inserted
@@ -889,6 +989,11 @@ def main():
         default=None,
         help="Output directory for intermediate files (default: same as input)",
     )
+    parser.add_argument(
+        "--clear-existing",
+        action="store_true",
+        help="Clear existing flow_network data before insert (TRUNCATE)",
+    )
 
     args = parser.parse_args()
 
@@ -903,6 +1008,7 @@ def main():
     logger.info(f"Batch size: {args.batch_size}")
     logger.info(f"Dry run: {args.dry_run}")
     logger.info(f"Save intermediates: {args.save_intermediates}")
+    logger.info(f"Clear existing: {args.clear_existing}")
     if output_dir:
         logger.info(f"Output dir: {output_dir}")
     logger.info("=" * 60)
@@ -917,6 +1023,7 @@ def main():
             dry_run=args.dry_run,
             save_intermediates=args.save_intermediates,
             output_dir=output_dir,
+            clear_existing=args.clear_existing,
         )
     except FileNotFoundError as e:
         logger.error(str(e))
