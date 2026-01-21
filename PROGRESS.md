@@ -255,7 +255,7 @@ Benchmark na zlewni 2.24 km² (2,241,705 komórek, 835,377 head cells):
 
 **Łączny efekt dla pipeline:**
 - Preprocessing NMT: 102 min → **3.8 min** (27x szybciej) ✅ WDROŻONE
-- Runtime morphometry: 4 min → <1s (250x szybciej) - do wdrożenia
+- Runtime morphometry: 246s → **0.74s** (330x szybciej) ✅ WDROŻONE
 
 **Następne kroki:**
 1. Wdrożyć COPY w `scripts/process_dem.py`
@@ -532,7 +532,7 @@ Benchmark na zlewni 2.24 km² (2,241,705 komórek, 835,377 head cells):
 | Problem | Opis | Priorytet | Status |
 |---------|------|-----------|--------|
 | Wolny import NMT | INSERT 5M rekordów trwa ~102 min | Wysoki | ✅ WDROŻONE (COPY: 27x → 3.8 min) |
-| Wolny find_main_stream | 4 min dla 2.24 km² zlewni | Średni | ⏳ Przetestowane (257x), do wdrożenia |
+| Wolny find_main_stream | 246s dla 2.24 km² zlewni | Średni | ✅ WDROŻONE (reverse trace: 330x → 0.74s) |
 
 **Status optymalizacji:**
 
@@ -548,9 +548,10 @@ Benchmark na zlewni 2.24 km² (2,241,705 komórek, 835,377 head cells):
 [OPT-3] Lazy loading - POMINIĘTE
   - Powód: Niski priorytet
 
-[OPT-4] Optymalizacja find_main_stream ⏳ DO WDROŻENIA
+[OPT-4] Optymalizacja find_main_stream ✅ WDROŻONE
   - Plik: core/morphometry.py
   - Metoda: "reverse trace" - śledź upstream od outlet wg max accumulation
-  - Wynik testowy: 257x szybciej (246s → 0.96s)
-  - Dokładność: -2% błąd (akceptowalne)
+  - Wynik produkcyjny: 330x szybciej (246s → 0.74s)
+  - Dokładność: <2% błąd (akceptowalne)
+  - Commit: a146dfd
 ```
