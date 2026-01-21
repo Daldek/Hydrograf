@@ -5,8 +5,9 @@
 | Pole | Wartość |
 |------|---------|
 | **Faza** | 0 - Setup |
-| **Sprint** | 0.4 - Hydrograph Generation |
-| **Ostatnia sesja** | 13 |
+| **Sprint** | 0.4 - Frontend |
+| **Wersja** | v0.3.0 |
+| **Ostatnia sesja** | 14 |
 | **Data** | 2026-01-21 |
 | **Następny checkpoint** | CP4: Frontend map |
 | **Gałąź robocza** | develop |
@@ -27,7 +28,7 @@
 | `v0.2.0` | CP2 - Watershed delineation ✅ |
 | `v0.2.1` | Fix: poprawne wypełnianie zagłębień (pysheds) ✅ |
 | `v0.2.2` | Land cover support (Kartograf 0.3.0) ✅ |
-| `v0.3.0` | (planowany) CP3 - Hydrograph generation |
+| `v0.3.0` | CP3 - Hydrograph generation ✅ |
 | `v0.4.0` | (planowany) CP4 - Frontend map |
 | `v1.0.0` | (planowany) CP5 - MVP |
 
@@ -201,6 +202,45 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 ---
 
 ## Ostatnia Sesja
+
+### Sesja 14 (2026-01-21) - UKOŃCZONA
+
+**Cel:** Wydanie wersji v0.3.0
+
+**Wykonane:**
+
+1. **Testy integracyjne z zależnościami**
+   - Hydrolog v0.5.2
+   - Kartograf v0.3.1
+   - IMGWTools v2.1.0
+   - Wynik: 200/200 testów przeszło ✅
+
+2. **Ujednolicenie standardów kodu**
+   - Zmiana line-length 100 → 88 (spójność z Hydrolog, Kartograf, IMGWTools)
+   - 18 plików przeformatowanych z black
+   - Commit: `c90611d style: unify line-length to 88`
+
+3. **Aktualizacja dokumentacji**
+   - `CHANGELOG.md` - scalono [Unreleased] do [0.3.0]
+   - `PROGRESS.md` - oznaczono v0.3.0 jako wydane
+   - `docs/CROSS_PROJECT_ANALYSIS.md` - zaktualizowano status
+
+4. **Wydanie v0.3.0**
+   - Tag: `v0.3.0`
+   - Główne zmiany: hydrograph generation, land cover CN, optymalizacje COPY/reverse-trace
+
+**Zależności w tej wersji:**
+```
+hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.5.2
+kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.3.1
+imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
+```
+
+**Następne kroki:**
+1. CP4 - Frontend map
+2. Merge develop → main
+
+---
 
 ### Sesja 13 (2026-01-21) - UKOŃCZONA
 
