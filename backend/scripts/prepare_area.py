@@ -2,13 +2,20 @@
 Pipeline script to download and process spatial data for a specified area.
 
 This script combines:
-1. Downloading NMT data from GUGiK using Kartograf
-2. Processing DEM files with pysheds
-3. Loading data into PostgreSQL/PostGIS flow_network table
-4. (Optional) Downloading land cover data from BDOT10k/CORINE
-5. (Optional) Loading land cover into land_cover table
+1. Downloading NMT data from GUGiK using Kartograf (multiple tiles)
+2. Creating VRT mosaic from downloaded tiles (ensures hydrological continuity)
+3. Processing mosaic with pysheds (fill, flow direction, accumulation)
+4. Loading data into PostgreSQL/PostGIS flow_network table
+5. (Optional) Downloading land cover data from BDOT10k/CORINE
+6. (Optional) Loading land cover into land_cover table
 
-Requires Kartograf 0.3.0+ for land cover support.
+IMPORTANT: Multiple tiles are merged into a VRT (Virtual Raster) before
+hydrological analysis. This ensures correct flow routing across tile
+boundaries - water can flow from one tile to another without artifacts.
+
+Requires:
+- Kartograf 0.3.0+ for data download
+- GDAL for VRT creation (gdalbuildvrt)
 
 Usage
 -----
@@ -180,38 +187,73 @@ def prepare_area(
         logger.error("No files downloaded! Check network connection and GUGiK availability.")
         return stats
 
-    # Step 3: Process each downloaded file
+    # Step 3: Create mosaic from all tiles (VRT or GeoTIFF)
     logger.info("=" * 60)
-    logger.info("Step 3: Processing DEM files")
+    logger.info("Step 3: Creating DEM mosaic")
     logger.info("=" * 60)
 
-    for i, dem_file in enumerate(downloaded_files, 1):
-        logger.info(f"[{i}/{len(downloaded_files)}] Processing {dem_file.name}...")
+    from utils.raster_utils import create_vrt_mosaic, get_mosaic_info
 
-        try:
-            dem_stats = process_dem(
-                input_path=dem_file,
-                stream_threshold=stream_threshold,
-                batch_size=batch_size,
-                dry_run=False,
-                save_intermediates=save_intermediates,
-                output_dir=output_dir if save_intermediates else None,
-            )
+    # Try VRT first, fallback to GeoTIFF if GDAL unavailable
+    mosaic_path = output_dir / "dem_mosaic.vrt"
 
-            stats["sheets_processed"] += 1
-            stats["total_cells"] += dem_stats.get("valid_cells", 0)
-            stats["stream_cells"] += dem_stats.get("stream_cells", 0)
+    try:
+        mosaic_path = create_vrt_mosaic(
+            input_files=downloaded_files,
+            output_vrt=mosaic_path,
+            resolution="highest",
+            nodata=-9999.0,
+        )
 
-            logger.info(f"  Processed: {dem_stats.get('valid_cells', 0):,} cells")
+        # Log mosaic info
+        mosaic_info = get_mosaic_info(mosaic_path)
+        logger.info(f"Mosaic dimensions: {mosaic_info['width']} x {mosaic_info['height']}")
+        logger.info(f"Total cells: {mosaic_info['total_cells']:,}")
+        logger.info(f"Cell size: {mosaic_info['cell_size_m']} m")
+        logger.info(f"Estimated memory: {mosaic_info['estimated_memory_mb']:.1f} MB")
 
-        except Exception as e:
-            logger.error(f"  FAILED: {e}")
-            stats["errors"].append(f"{dem_file.name}: {e}")
+        stats["mosaic_path"] = str(mosaic_path)
+        stats["mosaic_cells"] = mosaic_info["total_cells"]
 
-    # Step 4: Download and import land cover (optional)
+    except Exception as e:
+        logger.error(f"Mosaic creation failed: {e}")
+        stats["errors"].append(f"Mosaic creation: {e}")
+        return stats
+
+    # Step 4: Process the mosaic as single continuous DEM
+    logger.info("=" * 60)
+    logger.info("Step 4: Processing DEM mosaic (hydrological analysis)")
+    logger.info("=" * 60)
+
+    try:
+        dem_stats = process_dem(
+            input_path=mosaic_path,
+            stream_threshold=stream_threshold,
+            batch_size=batch_size,
+            dry_run=False,
+            save_intermediates=save_intermediates,
+            output_dir=output_dir if save_intermediates else None,
+            clear_existing=True,  # Clear before processing
+        )
+
+        stats["sheets_processed"] = len(downloaded_files)
+        stats["total_cells"] = dem_stats.get("valid_cells", 0)
+        stats["stream_cells"] = dem_stats.get("stream_cells", 0)
+
+        logger.info(f"Processed: {dem_stats.get('valid_cells', 0):,} cells")
+        logger.info(f"Stream cells: {dem_stats.get('stream_cells', 0):,}")
+        logger.info(f"Max accumulation: {dem_stats.get('max_accumulation', 0):,}")
+
+    except Exception as e:
+        logger.error(f"DEM processing failed: {e}")
+        stats["errors"].append(f"DEM processing: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+    # Step 5: Download and import land cover (optional)
     if with_landcover:
         logger.info("=" * 60)
-        logger.info("Step 4: Downloading land cover data")
+        logger.info("Step 5: Downloading land cover data")
         logger.info("=" * 60)
 
         try:
@@ -236,7 +278,7 @@ def prepare_area(
 
                 # Import to database
                 logger.info("=" * 60)
-                logger.info("Step 5: Importing land cover to database")
+                logger.info("Step 6: Importing land cover to database")
                 logger.info("=" * 60)
 
                 lc_stats = import_landcover(
