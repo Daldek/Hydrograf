@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `core/cn_tables.py` - centralized CN lookup tables for HSG × land cover combinations
+- `core/cn_calculator.py` - Kartograf integration for HSG-based CN calculation
+- `determine_cn()` function in `core/land_cover.py` - unified CN hierarchy
+- 71 new unit tests for CN modules
+
+### Changed
+- Refactored `scripts/analyze_watershed.py` - removed ~260 lines of CN logic
+- CN calculation now uses modular approach: config → database → Kartograf → default
+
 ## [0.3.0] - 2026-01-21
 
 ### Added
