@@ -7,7 +7,7 @@
 | **Faza** | 0 - Setup |
 | **Sprint** | 0.4 - Frontend |
 | **Wersja** | v0.3.0 |
-| **Ostatnia sesja** | 16 |
+| **Ostatnia sesja** | 17 |
 | **Data** | 2026-01-21 |
 | **Następny checkpoint** | CP4: Frontend map |
 | **Gałąź robocza** | develop |
@@ -202,6 +202,86 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 ---
 
 ## Ostatnia Sesja
+
+### Sesja 17 (2026-01-21) - UKOŃCZONA
+
+**Cel:** Poprawa obliczeń hydrologicznych - właściwe wartości opadu i konwolucja z hietogramem
+
+**Wykonane:**
+
+#### 1. Poprawka wartości opadu z IMGW PMAXTP
+
+Zidentyfikowano błąd: używano SG (górna granica przedziału ufności) zamiast KS (kwantyl) jako opad projektowy.
+
+| Symbol | Znaczenie | Poprzednio | Teraz |
+|--------|-----------|------------|-------|
+| **KS** | Kwantyl (estymata) | ignorowane | ✅ wartość projektowa |
+| **SG** | Górna granica ufności | używane błędnie | tylko informacyjnie |
+| **RB** | Błąd estymacji | - | tylko informacyjnie |
+
+**Efekt:** P = 81.5 mm (KS) zamiast 95.6 mm (SG)
+
+#### 2. Konwolucja z hietogramem Beta
+
+Dla opadów długotrwałych (duration > tc) zaimplementowano właściwą metodę:
+- Użycie `HydrographGenerator` z biblioteki Hydrolog
+- Hietogram `BetaHietogram(alpha=2, beta=5)` - asymetryczny z maksimum na początku
+- Dyskretna konwolucja zamiast traktowania opadu jako chwilowego
+
+**Porównanie wyników (P=1%, t=12h):**
+
+| Parametr | Przed | Po | Zmiana |
+|----------|-------|-----|--------|
+| Opad projektowy | 95.6 mm (SG) | 81.5 mm (KS) | -15% |
+| Qmax | 22.93 m³/s | 7.60 m³/s | -67% |
+| Czas do szczytu | ~100 min | 375 min | +275 min |
+| q (l/s/ha) | 4.13 | 1.37 | -67% |
+
+**Nowe wyniki są realistyczne** dla polskiej zlewni rolniczej przy P=1%.
+
+#### 3. Opcja `--use-cached`
+
+Dodano możliwość pominięcia delineacji i morfometrii przy przeliczeniach:
+
+```bash
+# Pełna analiza (~200s)
+python -m scripts.analyze_watershed --lat 52.49 --lon 17.31 ...
+
+# Szybkie przeliczenie hydrogramu (~0.5s)
+python -m scripts.analyze_watershed --lat 52.49 --lon 17.31 --use-cached
+```
+
+**Przyspieszenie: 400x** (200s → 0.5s)
+
+Funkcje:
+- `load_cached_results()` - ładuje dane z `analysis_results.json`
+- Walidacja punktu (czy cache dotyczy tego samego miejsca)
+- Automatyczne pomijanie zapisu warstw QGIS i wizualizacji
+
+#### 4. Nowe opcje CLI
+
+| Opcja | Opis |
+|-------|------|
+| `--use-cached` | Pomiń delineację, użyj cache |
+| `--tiles` | Lista godeł kafli NMT |
+| `--teryt` | Kod TERYT powiatu dla BDOT10k |
+| `--save-qgis` | Zapisz warstwy pośrednie |
+| `--max-stream-distance` | Maks. odległość szukania cieku |
+
+**Commit:**
+```
+51e6511 feat(watershed): add --use-cached option and Beta hyetograph convolution
+```
+
+**Zmodyfikowane pliki:**
+- `scripts/analyze_watershed.py` - główne zmiany
+- `scripts/process_dem.py` - wsparcie dla resamplingu
+- `core/morphometry.py` - współrzędne cieku głównego
+- `core/cn_calculator.py` - integracja Kartografa
+- `core/land_cover.py` - hierarchia CN
+- `utils/raster_utils.py` - nowe funkcje rastrowe
+
+---
 
 ### Sesja 16 (2026-01-21) - UKOŃCZONA
 
