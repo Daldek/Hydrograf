@@ -58,45 +58,41 @@
 
 ## 3. Wykryte problemy
 
-### 3.1 🔴 KRYTYCZNE
+### 3.1 ✅ NAPRAWIONE (2026-01-21)
 
-| # | Projekt | Problem | Plik | Status |
-|---|---------|---------|------|--------|
-| 1 | **Hydrolog** | Błąd stałej SCS - Qmax zawyżony ~10x | `hydrolog/runoff/unit_hydrograph.py:214` | DO NAPRAWY |
-| 2 | **Hydrolog** | Niespójność wersji (pyproject vs __init__) | `__init__.py`: 0.4.0, `pyproject.toml`: 0.5.0 | DO NAPRAWY |
+| # | Projekt | Problem | Commit | Status |
+|---|---------|---------|--------|--------|
+| 1 | **Hydrolog** | Błąd stałej SCS - Qmax zawyżony ~10x | `cc3e2a7` | ✅ NAPRAWIONE |
+| 2 | **Hydrolog** | Niespójność wersji | v0.5.1 | ✅ NAPRAWIONE |
+| 3 | **Kartograf** | Brak eksportów `SoilGridsProvider`, `HSGCalculator` | `23887db` | ✅ NAPRAWIONE |
+| 4 | **Kartograf** | SCOPE.md/PRD.md nieaktualne | `b99c08e` | ✅ NAPRAWIONE |
 
-#### Szczegóły błędu SCS
+#### Szczegóły naprawy SCS (Hydrolog)
 
 ```python
-# BŁĘDNIE (obecnie w kodzie):
+# BYŁO (błędnie):
 qp = 2.08 * self.area_km2 / tp_hours
 
-# Docstring twierdzi:
-# "0.208 * 1000 / 3600 = 2.08"  ← BŁĄD MATEMATYCZNY!
-
-# Prawidłowo:
-# 0.208 * 1000 / 3600 = 0.0578
-
-# POPRAWNA WARTOŚĆ:
+# JEST (poprawnie):
 qp = 0.208 * self.area_km2 / tp_hours
 ```
 
-**Skutek:** Przepływ maksymalny (Qmax) jest zawyżony ~10x.
+**Wersje po naprawie:**
+- Hydrolog: v0.5.1
+- Kartograf: v0.3.1 (SCOPE.md/PRD.md zaktualizowane do v2.0)
 
-### 3.2 🟠 WAŻNE
-
-| # | Projekt | Problem | Status |
-|---|---------|---------|--------|
-| 3 | IMGWTools | Python `>=3.11` (inne `>=3.12`) | DO ROZWAŻENIA |
-| 4 | Kartograf | Brak eksportów `SoilGridsProvider`, `HSGCalculator` | DO NAPRAWY |
-
-### 3.3 🟡 NISKI PRIORYTET
+### 3.2 🟠 POZOSTAŁE DO ROZWAŻENIA
 
 | # | Projekt | Problem | Status |
 |---|---------|---------|--------|
-| 5 | IMGWTools | Używa `ruff` (inne `black+flake8`) | INFO |
-| 6 | IMGWTools | Używa `hatchling` (inne `setuptools`) | INFO |
-| 7 | Kartograf | SCOPE.md/PRD.md nieaktualne | BACKLOG |
+| 5 | IMGWTools | Python `>=3.11` (inne `>=3.12`) | DO ROZWAŻENIA |
+
+### 3.3 🟡 INFORMACYJNE (bez akcji)
+
+| # | Projekt | Obserwacja | Status |
+|---|---------|------------|--------|
+| 6 | IMGWTools | Używa `ruff` (inne `black+flake8`) | OK (nowoczesne) |
+| 7 | IMGWTools | Używa `hatchling` (inne `setuptools`) | OK |
 | 8 | IMGWTools | Brak DEVELOPMENT_STANDARDS.md | BACKLOG |
 
 ---
@@ -133,33 +129,34 @@ qp = 0.208 * self.area_km2 / tp_hours
 
 ## 6. Plan naprawy
 
-### Priorytet 1: KRYTYCZNE (natychmiast)
+### ✅ Priorytet 1: KRYTYCZNE - UKOŃCZONE
 
 ```markdown
-□ Hydrolog: Naprawić stałą SCS
+✅ Hydrolog: Naprawić stałą SCS (commit cc3e2a7)
   - Plik: hydrolog/runoff/unit_hydrograph.py:214
   - Zmiana: 2.08 → 0.208
-  - Zaktualizować docstring z poprawną matematyką
+  - Zaktualizowano docstring z poprawną matematyką
 
-□ Hydrolog: Zsynchronizować wersję
+✅ Hydrolog: Zsynchronizować wersję (v0.5.1)
   - Plik: hydrolog/__init__.py
-  - Zmiana: __version__ = "0.4.0" → "0.5.0"
+  - Zmiana: __version__ = "0.4.0" → "0.5.1"
 ```
 
-### Priorytet 2: WAŻNE (w ciągu tygodnia)
+### ✅ Priorytet 2: WAŻNE - UKOŃCZONE
 
 ```markdown
-□ Kartograf: Dodać brakujące eksporty
+✅ Kartograf: Dodać brakujące eksporty (commit 23887db)
   - Plik: kartograf/__init__.py
-  - Dodać: SoilGridsProvider, HSGCalculator
+  - Dodano: SoilGridsProvider, HSGCalculator
 
-□ IMGWTools: Rozważyć podniesienie Python do >=3.12
+✅ Kartograf: Zaktualizować SCOPE.md i PRD.md (commit b99c08e)
+  - Dokumentacja zaktualizowana do v2.0
 ```
 
-### Priorytet 3: BACKLOG
+### Priorytet 3: BACKLOG (pozostałe)
 
 ```markdown
-□ Kartograf: Zaktualizować SCOPE.md i PRD.md
+□ IMGWTools: Rozważyć podniesienie Python do >=3.12
 □ IMGWTools: Utworzyć DEVELOPMENT_STANDARDS.md
 □ Wszystkie: Rozważyć migrację do ruff
 □ Wszystkie: Ujednolicić docstrings do EN
@@ -227,13 +224,19 @@ fail_under = 80
 - ✅ Testy z pokryciem >80% (Hydrolog, Kartograf)
 - ✅ Integracja WatershedParameters (Hydrograf ↔ Hydrolog)
 
-### Do naprawy
+### ✅ Naprawione (2026-01-21)
 
-- ❌ KRYTYCZNY błąd w Hydrolog (stała SCS)
-- ⚠️ Niespójność wersji w Hydrolog
-- ⚠️ Brakujące eksporty w Kartograf
-- ⚠️ Różne wersje Pythona (3.11 vs 3.12)
+- ✅ ~~KRYTYCZNY błąd w Hydrolog (stała SCS)~~ → naprawione w v0.5.1
+- ✅ ~~Niespójność wersji w Hydrolog~~ → zsynchronizowane do v0.5.1
+- ✅ ~~Brakujące eksporty w Kartograf~~ → dodane SoilGridsProvider, HSGCalculator
+- ✅ ~~SCOPE.md/PRD.md nieaktualne w Kartograf~~ → zaktualizowane do v2.0
+
+### Pozostałe (backlog)
+
+- ⚠️ Różne wersje Pythona (IMGWTools: 3.11, inne: 3.12)
+- 📋 IMGWTools: DEVELOPMENT_STANDARDS.md
+- 📋 Migracja do ruff (opcjonalne)
 
 ---
 
-**Ostatnia aktualizacja:** 2026-01-21
+**Ostatnia aktualizacja:** 2026-01-21 (weryfikacja napraw)
