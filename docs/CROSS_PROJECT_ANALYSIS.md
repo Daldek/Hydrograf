@@ -82,19 +82,19 @@ qp = 0.208 * self.area_km2 / tp_hours
 - Kartograf: v0.3.1 (SCOPE.md/PRD.md zaktualizowane do v2.0)
 - IMGWTools: v2.1.0 (Hydrograf zaktualizowany 2026-01-21)
 
-### 3.2 🟠 POZOSTAŁE DO ROZWAŻENIA
+### 3.2 ✅ NAPRAWIONE (IMGWTools - 2026-01-21)
 
-| # | Projekt | Problem | Status |
-|---|---------|---------|--------|
-| 5 | IMGWTools | Python `>=3.11` (inne `>=3.12`) | DO ROZWAŻENIA |
+| # | Projekt | Problem | Commit | Status |
+|---|---------|---------|--------|--------|
+| 5 | **IMGWTools** | Python `>=3.11` (inne `>=3.12`) | `4bacf36` | ✅ NAPRAWIONE |
+| 6 | **IMGWTools** | Brak DEVELOPMENT_STANDARDS.md | `4bacf36` | ✅ NAPRAWIONE |
 
 ### 3.3 🟡 INFORMACYJNE (bez akcji)
 
 | # | Projekt | Obserwacja | Status |
 |---|---------|------------|--------|
-| 6 | IMGWTools | Używa `ruff` (inne `black+flake8`) | OK (nowoczesne) |
-| 7 | IMGWTools | Używa `hatchling` (inne `setuptools`) | OK |
-| 8 | IMGWTools | Brak DEVELOPMENT_STANDARDS.md | BACKLOG |
+| 7 | IMGWTools | Używa `ruff` (inne `black+flake8`) | OK (nowoczesne) |
+| 8 | IMGWTools | Używa `hatchling` (inne `setuptools`) | OK |
 
 ---
 
@@ -102,7 +102,7 @@ qp = 0.208 * self.area_km2 / tp_hours
 
 | Aspekt | Hydrograf | Hydrolog | Kartograf | IMGWTools |
 |--------|-----------|----------|-----------|-----------|
-| **Python** | >=3.12 (implicit) | >=3.12 | >=3.12 | >=3.11 ⚠️ |
+| **Python** | >=3.12 (implicit) | >=3.12 | >=3.12 | >=3.12 ✅ |
 | **Line length** | 88 | 88 | 88 | 88 |
 | **Formatter** | black | black | black | ruff |
 | **Linter** | flake8 | flake8 | flake8 | ruff |
@@ -154,11 +154,22 @@ qp = 0.208 * self.area_km2 / tp_hours
   - Dokumentacja zaktualizowana do v2.0
 ```
 
-### Priorytet 3: BACKLOG (pozostałe)
+### ✅ Priorytet 3: IMGWTools - UKOŃCZONE
 
 ```markdown
-□ IMGWTools: Rozważyć podniesienie Python do >=3.12
-□ IMGWTools: Utworzyć DEVELOPMENT_STANDARDS.md
+✅ IMGWTools: Podniesiono Python do >=3.12 (commit 4bacf36)
+  - Plik: pyproject.toml
+  - Zmiana: requires-python = ">=3.11" → ">=3.12"
+  - Wersja: v2.1.0
+
+✅ IMGWTools: Utworzono DEVELOPMENT_STANDARDS.md (commit 4bacf36)
+  - Plik: docs/DEVELOPMENT_STANDARDS.md
+  - 425 linii, pełne standardy kodowania
+```
+
+### Priorytet 4: BACKLOG (opcjonalne)
+
+```markdown
 □ Wszystkie: Rozważyć migrację do ruff
 □ Wszystkie: Ujednolicić docstrings do EN
 ```
@@ -167,18 +178,19 @@ qp = 0.208 * self.area_km2 / tp_hours
 
 ## 7. Dokumentacja w projektach
 
-| Projekt | PROGRESS.md | Status |
-|---------|-------------|--------|
-| Hydrograf | ❌ Brak | Utworzyć |
-| Hydrolog | ✅ Szczegółowy | Zaktualizowany (sesja 18) |
-| Kartograf | ✅ Szczegółowy | Zaktualizowany (cross-project) |
-| IMGWTools | ✅ Nowy | Utworzony (2026-01-21) |
+| Projekt | PROGRESS.md | DEVELOPMENT_STANDARDS.md | Status |
+|---------|-------------|--------------------------|--------|
+| Hydrograf | ✅ Szczegółowy | ✅ | Zaktualizowany (sesja 12) |
+| Hydrolog | ✅ Szczegółowy | ✅ | Zaktualizowany (sesja 18) |
+| Kartograf | ✅ Szczegółowy | ✅ | Zaktualizowany (cross-project) |
+| IMGWTools | ✅ Szczegółowy | ✅ | Zaktualizowany (2026-01-21) |
 
 ### Odnośniki do dokumentacji
 
+- **Hydrograf:** `PROGRESS.md` - 12 sesji, checkpointy, optymalizacje
 - **Hydrolog:** `docs/PROGRESS.md` - sesja 18 z planem naprawy
 - **Kartograf:** `docs/PROGRESS.md` - sekcja Cross-Project Analysis
-- **IMGWTools:** `docs/PROGRESS.md` - nowy plik
+- **IMGWTools:** `docs/PROGRESS.md` + `docs/DEVELOPMENT_STANDARDS.md`
 
 ---
 
@@ -231,13 +243,15 @@ fail_under = 80
 - ✅ ~~Niespójność wersji w Hydrolog~~ → zsynchronizowane do v0.5.1
 - ✅ ~~Brakujące eksporty w Kartograf~~ → dodane SoilGridsProvider, HSGCalculator
 - ✅ ~~SCOPE.md/PRD.md nieaktualne w Kartograf~~ → zaktualizowane do v2.0
+- ✅ ~~IMGWTools: Python 3.11~~ → podniesione do >=3.12 w v2.1.0
+- ✅ ~~IMGWTools: brak DEVELOPMENT_STANDARDS.md~~ → utworzone
+- ✅ ~~Hydrograf: brak PROGRESS.md~~ → utworzone (sesja 12)
 
-### Pozostałe (backlog)
+### Pozostałe (backlog opcjonalny)
 
-- ⚠️ Różne wersje Pythona (IMGWTools: 3.11, inne: 3.12)
-- 📋 IMGWTools: DEVELOPMENT_STANDARDS.md
 - 📋 Migracja do ruff (opcjonalne)
+- 📋 Ujednolicenie docstrings do EN (opcjonalne)
 
 ---
 
-**Ostatnia aktualizacja:** 2026-01-21 (sesja 12: aktualizacja zależności do stabilnych tagów, implementacja CN z land_cover)
+**Ostatnia aktualizacja:** 2026-01-21 (weryfikacja IMGWTools Python 3.12+ i DEVELOPMENT_STANDARDS.md)
