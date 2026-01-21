@@ -59,14 +59,16 @@ def validate_duration(duration: int | str) -> str:
     if isinstance(duration, int):
         if duration not in VALID_DURATIONS_MIN:
             raise ValueError(
-                f"Invalid duration: {duration}. " f"Must be one of {sorted(VALID_DURATIONS_MIN)}"
+                f"Invalid duration: {duration}. "
+                f"Must be one of {sorted(VALID_DURATIONS_MIN)}"
             )
         return DURATION_MIN_TO_STR[duration]
 
     if isinstance(duration, str):
         if duration not in VALID_DURATIONS_STR:
             raise ValueError(
-                f"Invalid duration: {duration}. " f"Must be one of {sorted(VALID_DURATIONS_STR)}"
+                f"Invalid duration: {duration}. "
+                f"Must be one of {sorted(VALID_DURATIONS_STR)}"
             )
         return duration
 
@@ -94,7 +96,8 @@ def validate_probability(probability: int) -> int:
     """
     if probability not in VALID_PROBABILITIES:
         raise ValueError(
-            f"Invalid probability: {probability}. " f"Must be one of {sorted(VALID_PROBABILITIES)}"
+            f"Invalid probability: {probability}. "
+            f"Must be one of {sorted(VALID_PROBABILITIES)}"
         )
     return probability
 
@@ -147,8 +150,7 @@ def get_precipitation(
     # IDW interpolation query
     # Uses 4 nearest points to interpolate value
     # Adding small epsilon (0.001) to avoid division by zero
-    query = text(
-        """
+    query = text("""
         WITH nearest AS (
             SELECT
                 precipitation_mm,
@@ -169,8 +171,7 @@ def get_precipitation(
             END as precipitation_interpolated
         FROM nearest
         WHERE dist IS NOT NULL
-    """
-    )
+    """)
 
     result = db.execute(
         query,
@@ -294,8 +295,7 @@ def check_data_coverage(
     """
     min_x, min_y, max_x, max_y = bbox
 
-    query = text(
-        """
+    query = text("""
         SELECT
             COUNT(DISTINCT geom) as point_count,
             COUNT(*) as total_records,
@@ -305,8 +305,7 @@ def check_data_coverage(
             geom,
             ST_MakeEnvelope(:min_x, :min_y, :max_x, :max_y, 2180)
         )
-    """
-    )
+    """)
 
     result = db.execute(
         query,

@@ -72,11 +72,15 @@ def delineate_watershed(
         On internal server error
     """
     try:
-        logger.info(f"Delineating watershed for ({request.latitude:.6f}, {request.longitude:.6f})")
+        logger.info(
+            f"Delineating watershed for ({request.latitude:.6f}, {request.longitude:.6f})"
+        )
 
         # 1. Transform WGS84 -> PL-1992
         point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
-        logger.debug(f"Transformed to PL-1992: ({point_2180.x:.1f}, {point_2180.y:.1f})")
+        logger.debug(
+            f"Transformed to PL-1992: ({point_2180.x:.1f}, {point_2180.y:.1f})"
+        )
 
         # 2. Find nearest stream cell
         outlet_cell = find_nearest_stream(point_2180, db)

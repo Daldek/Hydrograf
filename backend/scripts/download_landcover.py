@@ -166,7 +166,9 @@ def download_landcover(
             buffer_m = buffer_km * 1000
             from kartograf import BBox
 
-            bbox = BBox(x - buffer_m, y - buffer_m, x + buffer_m, y + buffer_m, "EPSG:2180")
+            bbox = BBox(
+                x - buffer_m, y - buffer_m, x + buffer_m, y + buffer_m, "EPSG:2180"
+            )
 
             output_path = output_dir / f"{provider}_bbox_{int(x)}_{int(y)}.gpkg"
 
@@ -184,7 +186,9 @@ def download_landcover(
             return None
 
     else:
-        raise ValueError("Either --teryt, --godlo, or both --lat and --lon are required")
+        raise ValueError(
+            "Either --teryt, --godlo, or both --lat and --lon are required"
+        )
 
 
 def main():

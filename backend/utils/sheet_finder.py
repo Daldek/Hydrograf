@@ -189,7 +189,9 @@ def _get_1m_bounds(zone_letter: str, zone_number: int) -> SheetBounds:
     return SheetBounds(min_lat, max_lat, min_lon, max_lon)
 
 
-def _subdivide_bounds(bounds: SheetBounds, rows: int, cols: int, row: int, col: int) -> SheetBounds:
+def _subdivide_bounds(
+    bounds: SheetBounds, rows: int, cols: int, row: int, col: int
+) -> SheetBounds:
     """
     Get bounds of a subdivision within parent bounds.
 
@@ -421,7 +423,11 @@ def get_sheet_bounds(sheet_code: str) -> SheetBounds:
 
 
 def get_sheets_for_bbox(
-    min_lat: float, min_lon: float, max_lat: float, max_lon: float, scale: str = "1:10000"
+    min_lat: float,
+    min_lon: float,
+    max_lat: float,
+    max_lon: float,
+    scale: str = "1:10000",
 ) -> List[str]:
     """
     Get all map sheet codes that cover a bounding box.
@@ -476,7 +482,9 @@ def get_sheets_for_bbox(
         lon = min_lon
         while lon <= max_lon + step_lon:
             try:
-                code = coordinates_to_sheet_code(min(lat, max_lat), min(lon, max_lon), scale)
+                code = coordinates_to_sheet_code(
+                    min(lat, max_lat), min(lon, max_lon), scale
+                )
                 sheets.add(code)
             except ValueError:
                 pass  # Outside Poland
@@ -486,7 +494,9 @@ def get_sheets_for_bbox(
     return sorted(sheets)
 
 
-def get_neighboring_sheets(sheet_code: str, include_diagonals: bool = True) -> List[str]:
+def get_neighboring_sheets(
+    sheet_code: str, include_diagonals: bool = True
+) -> List[str]:
     """
     Get neighboring sheet codes.
 

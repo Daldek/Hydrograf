@@ -101,16 +101,18 @@ qp = 0.208 * self.area_km2 / tp_hours
 
 | Aspekt | Hydrograf | Hydrolog | Kartograf | IMGWTools |
 |--------|-----------|----------|-----------|-----------|
-| **Python** | >=3.12 (implicit) | >=3.12 | >=3.12 | >=3.12 ✅ |
-| **Line length** | 88 | 88 | 88 | 88 |
+| **Python** | >=3.12 | >=3.12 | >=3.12 | >=3.12 |
+| **Line length** | 88 ✅ | 88 | 88 | 88 |
 | **Formatter** | black | black | black | ruff |
 | **Linter** | flake8 | flake8 | flake8 | ruff |
 | **Type checker** | mypy | mypy | - | mypy |
 | **Docstrings** | NumPy (PL) | NumPy (EN) | NumPy (PL/EN) | NumPy (EN) |
-| **Build** | - | setuptools | setuptools | hatchling |
+| **Build** | setuptools | setuptools | setuptools | hatchling |
 | **Tests** | pytest | pytest | pytest | pytest |
 | **Coverage** | ≥80% | ≥80% | ≥80% | 80% (cel) |
 | **Git workflow** | main/develop | main/develop | main/develop | master/slave |
+
+**✅ Wszystkie projekty używają teraz spójnej długości linii 88 znaków.**
 
 ---
 
@@ -166,7 +168,16 @@ qp = 0.208 * self.area_km2 / tp_hours
   - 425 linii, pełne standardy kodowania
 ```
 
-### Priorytet 4: BACKLOG (opcjonalne)
+### ✅ Priorytet 4: NAPRAWIONE (2026-01-21 sesja 2)
+
+```markdown
+✅ Hydrograf: line-length = 100 → 88
+  - Plik: backend/pyproject.toml (zmieniono tool.black i tool.flake8)
+  - 18 plików przeformatowanych z black
+  - Wszystkie 200 testów przechodzą
+```
+
+### Priorytet 5: BACKLOG (opcjonalne)
 
 ```markdown
 □ Wszystkie: Rozważyć migrację do ruff
@@ -231,7 +242,7 @@ fail_under = 80
 
 - ✅ Jasna architektura zależności
 - ✅ Każdy projekt może działać niezależnie
-- ✅ Spójna konwencja 88 znaków linii
+- ✅ Spójna konwencja 88 znaków linii (naprawiono w sesji 2)
 - ✅ Dobra dokumentacja CLAUDE.md
 - ✅ Testy z pokryciem >80% (Hydrolog, Kartograf)
 - ✅ Integracja WatershedParameters (Hydrograf ↔ Hydrolog)
@@ -245,6 +256,7 @@ fail_under = 80
 - ✅ ~~IMGWTools: Python 3.11~~ → podniesione do >=3.12 w v2.1.0
 - ✅ ~~IMGWTools: brak DEVELOPMENT_STANDARDS.md~~ → utworzone
 - ✅ ~~Hydrograf: brak PROGRESS.md~~ → utworzone (sesja 12)
+- ✅ ~~Hydrograf: line-length = 100~~ → zmieniono na 88, 18 plików przeformatowanych
 
 ### Pozostałe (backlog opcjonalny)
 
@@ -253,4 +265,4 @@ fail_under = 80
 
 ---
 
-**Ostatnia aktualizacja:** 2026-01-21 (weryfikacja IMGWTools Python 3.12+ i DEVELOPMENT_STANDARDS.md)
+**Ostatnia aktualizacja:** 2026-01-21 (sesja 2: naprawiono line-length 100→88 w Hydrograf)

@@ -139,7 +139,9 @@ def generate_hydrograph(
             else:
                 logger.info(f"CN={cn} (default, no land cover data)")
         except Exception as e:
-            logger.warning(f"Failed to calculate CN from land cover: {e}, using default")
+            logger.warning(
+                f"Failed to calculate CN from land cover: {e}, using default"
+            )
             cn = DEFAULT_CN
             land_cover_stats = {}
 
@@ -156,7 +158,9 @@ def generate_hydrograph(
                 f"{request.longitude:.4f})",
             )
 
-        logger.debug(f"Precipitation: {precip_mm:.1f} mm for {duration_str}, p={probability}%")
+        logger.debug(
+            f"Precipitation: {precip_mm:.1f} mm for {duration_str}, p={probability}%"
+        )
 
         # ===== STEP 6: Create Hydrolog objects =====
         watershed_params = WatershedParameters.from_dict(morph_dict)
@@ -220,11 +224,15 @@ def generate_hydrograph(
                 probability_percent=probability,
                 timestep_min=request.timestep_min,
                 times_min=precip_result.times_min.tolist(),
-                intensities_mm=[round(x, 3) for x in precip_result.intensities_mm.tolist()],
+                intensities_mm=[
+                    round(x, 3) for x in precip_result.intensities_mm.tolist()
+                ],
             ),
             hydrograph=HydrographInfo(
                 times_min=hydro_result.hydrograph.times_min.tolist(),
-                discharge_m3s=[round(x, 4) for x in hydro_result.hydrograph.discharge_m3s.tolist()],
+                discharge_m3s=[
+                    round(x, 4) for x in hydro_result.hydrograph.discharge_m3s.tolist()
+                ],
                 peak_discharge_m3s=round(hydro_result.peak_discharge_m3s, 3),
                 time_to_peak_min=round(hydro_result.time_to_peak_min, 1),
                 total_volume_m3=round(hydro_result.total_volume_m3, 0),

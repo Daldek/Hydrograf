@@ -204,7 +204,9 @@ def prepare_records(
 
     for layer_code, gdf in layers.items():
         # Get mapping for this layer
-        category, cn_value, imperviousness = BDOT10K_MAPPING.get(layer_code, DEFAULT_MAPPING)
+        category, cn_value, imperviousness = BDOT10K_MAPPING.get(
+            layer_code, DEFAULT_MAPPING
+        )
 
         # Transform to EPSG:2180
         gdf = transform_to_2180(gdf)
@@ -360,7 +362,9 @@ def import_landcover(
     stats["layers_read"] = len(layers)
     stats["features_total"] = sum(len(gdf) for gdf in layers.values())
 
-    logger.info(f"Read {stats['layers_read']} layers, {stats['features_total']} features")
+    logger.info(
+        f"Read {stats['layers_read']} layers, {stats['features_total']} features"
+    )
 
     if stats["features_total"] == 0:
         logger.warning("No features found to import!")

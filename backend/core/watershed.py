@@ -96,8 +96,7 @@ def find_nearest_stream(
     >>> if cell:
     ...     print(f"Found stream at elevation {cell.elevation} m")
     """
-    query = text(
-        """
+    query = text("""
         SELECT
             id,
             ST_X(geom) as x,
@@ -114,8 +113,7 @@ def find_nearest_stream(
           AND ST_DWithin(geom, ST_SetSRID(ST_Point(:x, :y), 2180), :max_dist)
         ORDER BY distance
         LIMIT 1
-    """
-    )
+    """)
 
     result = db.execute(
         query,
@@ -124,7 +122,8 @@ def find_nearest_stream(
 
     if result is None:
         logger.warning(
-            f"No stream found within {max_distance_m}m of " f"({point.x:.1f}, {point.y:.1f})"
+            f"No stream found within {max_distance_m}m of "
+            f"({point.x:.1f}, {point.y:.1f})"
         )
         return None
 
@@ -180,8 +179,7 @@ def traverse_upstream(
     """
     # Recursive CTE for upstream traversal
     # Follows the downstream_id links in reverse direction
-    query = text(
-        """
+    query = text("""
         WITH RECURSIVE upstream AS (
             -- Base case: outlet cell
             SELECT
@@ -219,8 +217,7 @@ def traverse_upstream(
         SELECT id, x, y, elevation, flow_accumulation, slope,
                downstream_id, cell_area, is_stream
         FROM upstream
-    """
-    )
+    """)
 
     results = db.execute(
         query,
@@ -228,7 +225,9 @@ def traverse_upstream(
     ).fetchall()
 
     if len(results) > max_cells:
-        logger.error(f"Watershed too large: {len(results):,} cells > {max_cells:,} limit")
+        logger.error(
+            f"Watershed too large: {len(results):,} cells > {max_cells:,} limit"
+        )
         raise ValueError(
             f"Watershed too large: {len(results):,} cells exceeds limit of {max_cells:,}"
         )
