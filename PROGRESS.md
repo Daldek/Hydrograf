@@ -7,7 +7,7 @@
 | **Faza** | 0 - Setup |
 | **Sprint** | 0.4 - Frontend |
 | **Wersja** | v0.3.0 |
-| **Ostatnia sesja** | 15 |
+| **Ostatnia sesja** | 16 |
 | **Data** | 2026-01-21 |
 | **Następny checkpoint** | CP4: Frontend map |
 | **Gałąź robocza** | develop |
@@ -202,6 +202,86 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 ---
 
 ## Ostatnia Sesja
+
+### Sesja 16 (2026-01-21) - UKOŃCZONA
+
+**Cel:** Refaktoryzacja logiki CN - wydzielenie z `analyze_watershed.py` do osobnych modułów
+
+**Wykonane:**
+
+#### 1. Utworzono `core/cn_tables.py` (NOWY)
+
+Centralne miejsce dla tabel lookup CN:
+- `DEFAULT_CN = 75`
+- `VALID_HSG = frozenset(["A", "B", "C", "D"])`
+- `CN_LOOKUP_TABLE` - ~40 wpisów dla różnych pokryć terenu:
+  - Standardowe kategorie (forest, meadow, arable, urban)
+  - Kody BDOT10k (PTLZ, BUBD, SKDR, etc.)
+  - Klasy CORINE (11-52)
+  - Polskie nazwy (las, łąka, grunt_orny)
+- Funkcje: `lookup_cn()`, `calculate_weighted_cn_from_stats()`
+
+#### 2. Utworzono `core/cn_calculator.py` (NOWY)
+
+Kalkulator CN z integracją Kartografa:
+- `CNCalculationResult` dataclass - wynik obliczeń
+- `calculate_cn_from_kartograf()` - pobiera HSG z SoilGrids + land cover
+- Helper functions: `convert_boundary_to_bbox()`, `get_hsg_from_soilgrids()`, `get_land_cover_stats()`
+
+#### 3. Rozszerzono `core/land_cover.py`
+
+Dodano funkcję `determine_cn()` - zunifikowana hierarchia CN:
+```
+1. config_cn (jawnie podane przez użytkownika)
+2. calculate_weighted_cn() z bazy land_cover
+3. calculate_cn_from_kartograf() (HSG + land cover)
+4. default_cn (75)
+```
+
+#### 4. Uproszczono `scripts/analyze_watershed.py`
+
+Usunięto ~260 linii kodu:
+- `CN_LOOKUP_TABLE` (~50 linii)
+- `calculate_cn_from_kartograf()` (~160 linii)
+- Rozproszoną hierarchię CN w `calculate_morphometry()`
+
+Zastąpiono jednym wywołaniem:
+```python
+cn, cn_source, cn_details = determine_cn(
+    boundary=watershed["boundary"],
+    db=db,
+    config_cn=config.cn,
+    ...
+)
+```
+
+#### 5. Testy jednostkowe
+
+| Plik | Nowe testy |
+|------|------------|
+| `tests/unit/test_cn_tables.py` | 41 |
+| `tests/unit/test_cn_calculator.py` | 20 |
+| `tests/unit/test_land_cover.py` | +10 |
+
+**Metryki:**
+
+| Metryka | Przed | Po |
+|---------|-------|-----|
+| Linie w `analyze_watershed.py` | ~1083 | ~820 |
+| Moduły w `core/` | 5 | 7 |
+| Testy jednostkowe | 200 | 271 |
+
+**Commit:**
+```
+d7bebc4 refactor(core): extract CN logic from analyze_watershed.py
+```
+
+**Korzyści:**
+- **Testowalność** - każdy poziom hierarchii CN ma osobne testy
+- **Reużywalność** - `CN_LOOKUP_TABLE` dostępne w całym projekcie
+- **Modularność** - Kartograf odizolowany od głównej logiki
+
+---
 
 ### Sesja 15 (2026-01-21) - UKOŃCZONA
 
