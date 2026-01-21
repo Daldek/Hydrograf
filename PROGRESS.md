@@ -208,19 +208,28 @@ Szczegółowa dokumentacja: `backend/scripts/README.md`
 
 **Wykonane:**
 
-#### OPT-1: PostgreSQL COPY zamiast INSERT
+#### OPT-1: PostgreSQL COPY zamiast INSERT ✅ WDROŻONE
 
-Benchmark na 100,000 rekordach:
+**Benchmark na 100k rekordów:**
 
-| Metoda | Czas | Rate | Przyspieszenie |
-|--------|------|------|----------------|
-| Individual INSERT | 37.82s | 2,644/s | 1.0x |
-| SQLAlchemy executemany | 31.29s | 3,196/s | 1.2x |
-| **COPY FROM (CSV)** | **1.82s** | **55,063/s** | **20.8x** |
-| COPY (copy_expert) | 1.81s | 55,386/s | 20.9x |
+| Metoda | Czas | Przyspieszenie |
+|--------|------|----------------|
+| Individual INSERT | 37.82s | 1.0x |
+| COPY FROM | 1.82s | 20.8x |
 
-**Szacowany czas dla pełnego datasetu (4.9M rekordów):**
-- INSERT: ~31 min → **COPY: ~1.5 min** (20x szybciej)
+**Produkcyjny test na 4.9M rekordów:**
+
+| Wersja | Czas | Przyspieszenie |
+|--------|------|----------------|
+| Oryginalna (INSERT) | 102 min | 1x |
+| COPY v1 | 19 min | 5.4x |
+| **COPY v2 (z index mgmt)** | **3.8 min** | **27x** |
+
+**Kluczowe optymalizacje:**
+1. COPY FROM do temp table (32s)
+2. Wyłączenie indeksów/FK przed INSERT
+3. INSERT with geometry w jednym przejściu (129s)
+4. Odbudowa indeksów po INSERT (56s)
 
 #### OPT-4: Optymalizacja find_main_stream
 
@@ -245,8 +254,8 @@ Benchmark na zlewni 2.24 km² (2,241,705 komórek, 835,377 head cells):
 | OPT-4: reverse trace | 257x | ✅ Potwierdzone | Wdrożyć |
 
 **Łączny efekt dla pipeline:**
-- Preprocessing NMT: 102 min → ~5 min (20x szybciej)
-- Runtime morphometry: 4 min → <1s (250x szybciej)
+- Preprocessing NMT: 102 min → **3.8 min** (27x szybciej) ✅ WDROŻONE
+- Runtime morphometry: 4 min → <1s (250x szybciej) - do wdrożenia
 
 **Następne kroki:**
 1. Wdrożyć COPY w `scripts/process_dem.py`
@@ -518,37 +527,30 @@ Benchmark na zlewni 2.24 km² (2,241,705 komórek, 835,377 head cells):
 
 - Warning Pydantic: "Support for class-based `config` is deprecated" - do naprawy w przyszłości
 
-### Znane Problemy Wydajności (z testu Sesji 9)
+### Znane Problemy Wydajności (z testu Sesji 9-10)
 
 | Problem | Opis | Priorytet | Status |
 |---------|------|-----------|--------|
-| Wolny import NMT | INSERT 5M rekordów trwa ~55 min | Wysoki | ✅ Rozwiązane (COPY: 21x szybciej) |
-| Wolny UPDATE downstream_id | Aktualizacja FK trwa ~47 min | Wysoki | ⏳ Do optymalizacji |
-| Wolny find_main_stream | 4 min dla 2.24 km² zlewni | Średni | ✅ Rozwiązane (reverse trace: 257x szybciej) |
+| Wolny import NMT | INSERT 5M rekordów trwa ~102 min | Wysoki | ✅ WDROŻONE (COPY: 27x → 3.8 min) |
+| Wolny find_main_stream | 4 min dla 2.24 km² zlewni | Średni | ⏳ Przetestowane (257x), do wdrożenia |
 
-**Przetestowane optymalizacje (Sesja 10):**
+**Status optymalizacji:**
 
 ```
-[OPT-1] COPY zamiast INSERT ✅ PRZETESTOWANE
+[OPT-1] COPY zamiast INSERT ✅ WDROŻONE
   - Plik: scripts/process_dem.py
-  - Wynik: 21x szybciej (37.8s → 1.8s na 100k rekordów)
-  - Szacowany czas dla 5M: 31 min → 1.5 min
-  - Status: Do wdrożenia
+  - Wynik produkcyjny: 27x szybciej (102 min → 3.8 min)
+  - Commit: 53032e7
 
-[OPT-2] PostGIS Raster
-  - Plik: migrations/, scripts/process_dem.py
-  - Zmiana: Przechowywać rastry jako typ `raster`
-  - Status: Niski priorytet (COPY wystarcza)
+[OPT-2] PostGIS Raster - POMINIĘTE
+  - Powód: COPY wystarcza, nie ma potrzeby
 
-[OPT-3] Lazy loading
-  - Plik: scripts/process_dem.py, core/watershed.py
-  - Zmiana: Przetwarzać fragmenty na żądanie
-  - Status: Niski priorytet
+[OPT-3] Lazy loading - POMINIĘTE
+  - Powód: Niski priorytet
 
-[OPT-4] Optymalizacja find_main_stream ✅ PRZETESTOWANE
+[OPT-4] Optymalizacja find_main_stream ⏳ DO WDROŻENIA
   - Plik: core/morphometry.py
   - Metoda: "reverse trace" - śledź upstream od outlet wg max accumulation
-  - Wynik: 257x szybciej (246s → 0.96s)
+  - Wynik testowy: 257x szybciej (246s → 0.96s)
   - Dokładność: -2% błąd (akceptowalne)
-  - Status: Do wdrożenia
 ```
