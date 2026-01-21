@@ -8,14 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `--use-cached` CLI option for `analyze_watershed.py` - skip delineation/morphometry (200x faster re-runs)
+- `--tiles` option for specifying exact NMT sheet codes
+- `--teryt` option for BDOT10k county code
+- `--save-qgis` option for exporting intermediate layers
+- `--max-stream-distance` option for outlet search radius
+- `load_cached_results()` function for fast hydrograph recalculation
 - `core/cn_tables.py` - centralized CN lookup tables for HSG × land cover combinations
 - `core/cn_calculator.py` - Kartograf integration for HSG-based CN calculation
 - `determine_cn()` function in `core/land_cover.py` - unified CN hierarchy
 - 71 new unit tests for CN modules
+- Raster utilities: `resample_raster()`, `polygonize_raster()`
 
 ### Changed
+- **BREAKING**: Precipitation now uses KS (quantile) instead of SG (upper confidence bound)
+- Hydrograph generation uses Beta hyetograph convolution for long-duration events
+- Beta distribution parameters changed to (2, 5) for asymmetric rainfall
+- Increased `max_cells` limit from 5M to 10M
 - Refactored `scripts/analyze_watershed.py` - removed ~260 lines of CN logic
 - CN calculation now uses modular approach: config → database → Kartograf → default
+
+### Fixed
+- Unrealistic Q results caused by using SG instead of KS for design precipitation
+- Instantaneous rainfall assumption for long-duration events (now uses convolution)
 
 ## [0.3.0] - 2026-01-21
 
