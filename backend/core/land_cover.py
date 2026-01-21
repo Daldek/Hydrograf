@@ -9,7 +9,8 @@ direct runoff from rainfall.
 """
 
 import logging
-from typing import Dict, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from shapely.geometry import Polygon
 from sqlalchemy import text
@@ -250,3 +251,98 @@ def get_land_cover_for_boundary(
         "weighted_cn": weighted_cn,
         "weighted_imperviousness": round(weighted_imperviousness, 3),
     }
+
+
+def determine_cn(
+    boundary: Polygon,
+    db: Session,
+    config_cn: Optional[int] = None,
+    default_cn: int = DEFAULT_CN,
+    use_kartograf: bool = True,
+    boundary_wgs84: Optional[List[List[float]]] = None,
+    data_dir: Optional[Path] = None,
+) -> Tuple[int, str, Optional[Dict[str, Any]]]:
+    """
+    Okresl wartosc CN wedlug hierarchii zrodel.
+
+    Hierarchia:
+    1. Jawnie podana wartosc w konfiguracji (config_cn)
+    2. Z tabeli land_cover w bazie danych
+    3. Z Kartografa (HSG + land cover) - jesli use_kartograf=True
+    4. Wartosc domyslna (default_cn)
+
+    Parameters
+    ----------
+    boundary : Polygon
+        Granica zlewni w EPSG:2180
+    db : Session
+        Sesja bazy danych
+    config_cn : int, optional
+        Wartosc CN z konfiguracji (najwyzszy priorytet)
+    default_cn : int, optional
+        Domyslna wartosc CN, domyslnie 75
+    use_kartograf : bool, optional
+        Czy uzywac Kartografa, domyslnie True
+    boundary_wgs84 : List[List[float]], optional
+        Granica w WGS84 (wymagana dla Kartografa)
+    data_dir : Path, optional
+        Katalog danych (wymagany dla Kartografa)
+
+    Returns
+    -------
+    Tuple[int, str, Optional[Dict[str, Any]]]
+        (cn_value, source, details)
+        - cn_value: wartosc CN (0-100)
+        - source: zrodlo ('config', 'database_land_cover', 'kartograf_hsg', 'default')
+        - details: dodatkowe informacje (dla kartograf)
+
+    Examples
+    --------
+    >>> cn, source, details = determine_cn(boundary, db, config_cn=80)
+    >>> print(f"CN={cn} (zrodlo: {source})")
+    CN=80 (zrodlo: config)
+
+    >>> cn, source, details = determine_cn(boundary, db)
+    >>> print(f"CN={cn} (zrodlo: {source})")
+    CN=72 (zrodlo: database_land_cover)
+    """
+    # 1. Jawnie podana wartosc
+    if config_cn is not None:
+        logger.info(f"CN z konfiguracji: {config_cn}")
+        return (config_cn, "config", None)
+
+    # 2. Z tabeli land_cover w DB
+    try:
+        cn_value, land_cover_stats = calculate_weighted_cn(boundary, db)
+
+        if land_cover_stats:  # Prawdziwe dane (nie DEFAULT_CN z braku danych)
+            logger.info(f"CN z bazy danych (land_cover): {cn_value}")
+            return (cn_value, "database_land_cover", {"stats": land_cover_stats})
+
+    except Exception as e:
+        logger.debug(f"Blad pobierania land_cover z bazy: {e}")
+
+    # 3. Z Kartografa
+    if use_kartograf and boundary_wgs84 and data_dir:
+        from core.cn_calculator import calculate_cn_from_kartograf
+
+        result = calculate_cn_from_kartograf(boundary_wgs84, data_dir)
+
+        if result and result.cn:
+            logger.info(
+                f"CN z Kartografa (HSG={result.dominant_hsg}): {result.cn}"
+            )
+            return (
+                result.cn,
+                "kartograf_hsg",
+                {
+                    "dominant_hsg": result.dominant_hsg,
+                    "hsg_stats": result.hsg_stats,
+                    "land_cover_stats": result.land_cover_stats,
+                    "cn_details": result.cn_details,
+                },
+            )
+
+    # 4. Wartosc domyslna
+    logger.warning(f"Brak danych CN, uzyto wartosci domyslnej: {default_cn}")
+    return (default_cn, "default", None)
