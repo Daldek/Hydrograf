@@ -11,6 +11,7 @@ from shapely.geometry import Polygon, box
 from core.land_cover import (
     calculate_weighted_cn,
     get_land_cover_for_boundary,
+    determine_cn,
     DEFAULT_CN,
     VALID_CATEGORIES,
 )
@@ -306,3 +307,194 @@ class TestGetLandCoverForBoundary:
 
         assert result is not None
         assert result["weighted_imperviousness"] == 0.0
+
+
+class TestDetermineCN:
+    """Tests for determine_cn function (CN hierarchy)."""
+
+    @pytest.fixture
+    def sample_boundary(self):
+        """Create a sample boundary polygon in EPSG:2180."""
+        return box(500000, 600000, 501000, 601000)
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock database session."""
+        return MagicMock()
+
+    def test_config_cn_has_highest_priority(self, sample_boundary, mock_db):
+        """Test config_cn has highest priority."""
+        cn, source, details = determine_cn(
+            boundary=sample_boundary,
+            db=mock_db,
+            config_cn=80,
+        )
+
+        assert cn == 80
+        assert source == "config"
+        assert details is None
+        # DB should not be queried
+        mock_db.execute.assert_not_called()
+
+    def test_uses_database_when_no_config(self, sample_boundary, mock_db):
+        """Test uses database land_cover when no config_cn."""
+        mock_results = [
+            MagicMock(category="las", cn_value=60, total_area_m2=1000000),
+        ]
+        mock_db.execute.return_value.fetchall.return_value = mock_results
+
+        cn, source, details = determine_cn(
+            boundary=sample_boundary,
+            db=mock_db,
+            config_cn=None,
+            use_kartograf=False,
+        )
+
+        assert cn == 60
+        assert source == "database_land_cover"
+        assert details is not None
+        assert "stats" in details
+
+    def test_returns_default_when_no_data(self, sample_boundary, mock_db):
+        """Test returns default CN when no data available."""
+        mock_db.execute.return_value.fetchall.return_value = []
+
+        cn, source, details = determine_cn(
+            boundary=sample_boundary,
+            db=mock_db,
+            config_cn=None,
+            use_kartograf=False,
+            default_cn=75,
+        )
+
+        assert cn == 75
+        assert source == "default"
+        assert details is None
+
+    def test_custom_default_cn(self, sample_boundary, mock_db):
+        """Test custom default_cn value is used."""
+        mock_db.execute.return_value.fetchall.return_value = []
+
+        cn, source, _ = determine_cn(
+            boundary=sample_boundary,
+            db=mock_db,
+            config_cn=None,
+            use_kartograf=False,
+            default_cn=80,
+        )
+
+        assert cn == 80
+        assert source == "default"
+
+    def test_handles_database_error(self, sample_boundary, mock_db):
+        """Test handles database error gracefully."""
+        mock_db.execute.side_effect = Exception("Connection failed")
+
+        cn, source, _ = determine_cn(
+            boundary=sample_boundary,
+            db=mock_db,
+            config_cn=None,
+            use_kartograf=False,
+            default_cn=75,
+        )
+
+        assert cn == 75
+        assert source == "default"
+
+    def test_config_cn_zero_is_valid(self, sample_boundary, mock_db):
+        """Test config_cn=0 is treated as valid explicit value."""
+        # CN=0 is technically invalid but should be accepted if explicitly set
+        cn, source, _ = determine_cn(
+            boundary=sample_boundary,
+            db=mock_db,
+            config_cn=0,
+        )
+
+        assert cn == 0
+        assert source == "config"
+
+    @patch("core.cn_calculator.calculate_cn_from_kartograf")
+    def test_uses_kartograf_when_db_empty(
+        self, mock_kartograf, sample_boundary, mock_db, tmp_path
+    ):
+        """Test uses Kartograf when database has no data."""
+        from core.cn_calculator import CNCalculationResult
+
+        mock_db.execute.return_value.fetchall.return_value = []
+        mock_kartograf.return_value = CNCalculationResult(
+            cn=72,
+            method="kartograf_hsg",
+            dominant_hsg="B",
+            hsg_stats={"B": 100.0},
+            land_cover_stats={"forest": 100.0},
+            cn_details=[{"land_cover": "forest", "cn": 55}],
+        )
+
+        cn, source, details = determine_cn(
+            boundary=sample_boundary,
+            db=mock_db,
+            config_cn=None,
+            use_kartograf=True,
+            boundary_wgs84=[[17.31, 52.45], [17.32, 52.46]],
+            data_dir=tmp_path,
+        )
+
+        assert cn == 72
+        assert source == "kartograf_hsg"
+        assert details is not None
+        assert details["dominant_hsg"] == "B"
+
+    @patch("core.cn_calculator.calculate_cn_from_kartograf")
+    def test_kartograf_skipped_when_disabled(
+        self, mock_kartograf, sample_boundary, mock_db
+    ):
+        """Test Kartograf is skipped when use_kartograf=False."""
+        mock_db.execute.return_value.fetchall.return_value = []
+
+        cn, source, _ = determine_cn(
+            boundary=sample_boundary,
+            db=mock_db,
+            config_cn=None,
+            use_kartograf=False,
+        )
+
+        assert source == "default"
+        mock_kartograf.assert_not_called()
+
+    @patch("core.cn_calculator.calculate_cn_from_kartograf")
+    def test_kartograf_skipped_when_missing_params(
+        self, mock_kartograf, sample_boundary, mock_db
+    ):
+        """Test Kartograf is skipped when boundary_wgs84 or data_dir missing."""
+        mock_db.execute.return_value.fetchall.return_value = []
+
+        # Missing boundary_wgs84
+        cn, source, _ = determine_cn(
+            boundary=sample_boundary,
+            db=mock_db,
+            config_cn=None,
+            use_kartograf=True,
+            boundary_wgs84=None,
+            data_dir=None,
+        )
+
+        assert source == "default"
+        mock_kartograf.assert_not_called()
+
+    def test_return_types(self, sample_boundary, mock_db):
+        """Test correct return types."""
+        mock_db.execute.return_value.fetchall.return_value = []
+
+        result = determine_cn(
+            boundary=sample_boundary,
+            db=mock_db,
+            config_cn=None,
+            use_kartograf=False,
+        )
+
+        assert isinstance(result, tuple)
+        assert len(result) == 3
+        cn, source, details = result
+        assert isinstance(cn, int)
+        assert isinstance(source, str)
+        assert details is None or isinstance(details, dict)
