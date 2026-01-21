@@ -68,10 +68,7 @@ def calculate_watershed_length_km(
     if not cells:
         return 0.0
 
-    distances = [
-        ((c.x - outlet.x) ** 2 + (c.y - outlet.y) ** 2) ** 0.5
-        for c in cells
-    ]
+    distances = [((c.x - outlet.x) ** 2 + (c.y - outlet.y) ** 2) ** 0.5 for c in cells]
     max_distance_m = max(distances)
 
     return max_distance_m / 1000.0
@@ -228,8 +225,7 @@ def find_main_stream(
 
         # Calculate distance between cells
         dist = (
-            (current_cell.x - best_upstream.x) ** 2
-            + (current_cell.y - best_upstream.y) ** 2
+            (current_cell.x - best_upstream.x) ** 2 + (current_cell.y - best_upstream.y) ** 2
         ) ** 0.5
         path_length_m += dist
         path_elevations.append(best_upstream.elevation)
@@ -246,8 +242,7 @@ def find_main_stream(
     channel_length_km = path_length_m / 1000.0
 
     logger.debug(
-        f"Main stream found: {channel_length_km:.2f} km, "
-        f"slope {channel_slope:.4f} m/m"
+        f"Main stream found: {channel_length_km:.2f} km, " f"slope {channel_slope:.4f} m/m"
     )
 
     return (channel_length_km, max(0.0, channel_slope))

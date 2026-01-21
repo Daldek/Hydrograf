@@ -161,6 +161,11 @@ def upgrade() -> None:
             "imperviousness IS NULL OR (imperviousness >= 0 AND imperviousness <= 1)",
             name="valid_imperviousness",
         ),
+        sa.CheckConstraint(
+            "category IN ('las', 'łąka', 'grunt_orny', 'zabudowa_mieszkaniowa', "
+            "'zabudowa_przemysłowa', 'droga', 'woda', 'inny')",
+            name="valid_category",
+        ),
         comment="Land cover from BDOT10k with CN values",
     )
 
@@ -248,11 +253,19 @@ def upgrade() -> None:
         "stream_network",
         ["strahler_order"],
     )
+    # Unique constraint to prevent duplicate stream segments
+    op.create_index(
+        "idx_stream_unique",
+        "stream_network",
+        [sa.text("COALESCE(name, '')"), sa.text("ST_GeoHash(geom, 12)")],
+        unique=True,
+    )
 
 
 def downgrade() -> None:
     """Drop core tables."""
     # stream_network
+    op.drop_index("idx_stream_unique", table_name="stream_network")
     op.drop_index("idx_strahler_order", table_name="stream_network")
     op.drop_index("idx_stream_name", table_name="stream_network")
     op.drop_index("idx_stream_geom", table_name="stream_network")

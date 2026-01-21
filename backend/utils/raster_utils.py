@@ -105,9 +105,12 @@ def _create_vrt_gdal(
     """Create VRT using GDAL's gdalbuildvrt command."""
     cmd = [
         "gdalbuildvrt",
-        "-resolution", resolution,
-        "-srcnodata", str(nodata),
-        "-vrtnodata", str(nodata),
+        "-resolution",
+        resolution,
+        "-srcnodata",
+        str(nodata),
+        "-vrtnodata",
+        str(nodata),
         "-overwrite",
         str(output_vrt),
     ]
@@ -165,19 +168,21 @@ def _create_mosaic_rasterio(
         mosaic, out_transform = merge(
             src_files,
             nodata=nodata,
-            method='first',  # Use first non-nodata value
+            method="first",  # Use first non-nodata value
         )
 
         # Get metadata from first file
         out_meta = src_files[0].meta.copy()
-        out_meta.update({
-            "driver": "GTiff",
-            "height": mosaic.shape[1],
-            "width": mosaic.shape[2],
-            "transform": out_transform,
-            "nodata": nodata,
-            "compress": "lzw",
-        })
+        out_meta.update(
+            {
+                "driver": "GTiff",
+                "height": mosaic.shape[1],
+                "width": mosaic.shape[2],
+                "transform": out_transform,
+                "nodata": nodata,
+                "compress": "lzw",
+            }
+        )
 
         # Write output
         with rasterio.open(output_path, "w", **out_meta) as dest:
@@ -189,7 +194,7 @@ def _create_mosaic_rasterio(
             src.close()
 
     logger.info(f"Mosaic created: {output_path}")
-    logger.info(f"Mosaic file size: {output_path.stat().st_size / (1024*1024):.1f} MB")
+    logger.info(f"Mosaic file size: {output_path.stat().st_size / (1024 * 1024):.1f} MB")
 
     return output_path
 
@@ -314,13 +319,15 @@ def validate_tiles_compatibility(input_files: List[Path]) -> dict:
 
         try:
             with rasterio.open(f) as src:
-                metadata_list.append({
-                    "file": f.name,
-                    "crs": str(src.crs),
-                    "cell_size": round(src.transform.a, 6),
-                    "dtype": src.dtypes[0],
-                    "nodata": src.nodata,
-                })
+                metadata_list.append(
+                    {
+                        "file": f.name,
+                        "crs": str(src.crs),
+                        "cell_size": round(src.transform.a, 6),
+                        "dtype": src.dtypes[0],
+                        "nodata": src.nodata,
+                    }
+                )
         except Exception as e:
             results["issues"].append(f"Cannot read {f}: {e}")
 
@@ -339,8 +346,7 @@ def validate_tiles_compatibility(input_files: List[Path]) -> dict:
         if meta["crs"] != reference["crs"]:
             results["valid"] = False
             results["issues"].append(
-                f"CRS mismatch: {meta['file']} has {meta['crs']}, "
-                f"expected {reference['crs']}"
+                f"CRS mismatch: {meta['file']} has {meta['crs']}, " f"expected {reference['crs']}"
             )
 
         if abs(meta["cell_size"] - reference["cell_size"]) > 0.0001:
@@ -388,9 +394,12 @@ def convert_asc_to_geotiff(
 
     cmd = [
         "gdal_translate",
-        "-of", "GTiff",
-        "-co", f"COMPRESS={compress}",
-        "-co", "TILED=YES",
+        "-of",
+        "GTiff",
+        "-co",
+        f"COMPRESS={compress}",
+        "-co",
+        "TILED=YES",
         str(input_asc),
         str(output_tif),
     ]

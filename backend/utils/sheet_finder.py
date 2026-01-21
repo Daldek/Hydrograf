@@ -29,7 +29,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Tuple
 
-from utils.geometry import transform_wgs84_to_pl1992
+# Note: transform_wgs84_to_pl1992 is available via utils.geometry if needed
 
 
 @dataclass
@@ -43,10 +43,7 @@ class SheetBounds:
 
     def contains(self, lat: float, lon: float) -> bool:
         """Check if point is within bounds."""
-        return (
-            self.min_lat <= lat < self.max_lat
-            and self.min_lon <= lon < self.max_lon
-        )
+        return self.min_lat <= lat < self.max_lat and self.min_lon <= lon < self.max_lon
 
     @property
     def center(self) -> Tuple[float, float]:
@@ -192,8 +189,7 @@ def _get_1m_bounds(zone_letter: str, zone_number: int) -> SheetBounds:
     return SheetBounds(min_lat, max_lat, min_lon, max_lon)
 
 
-def _subdivide_bounds(bounds: SheetBounds, rows: int, cols: int,
-                      row: int, col: int) -> SheetBounds:
+def _subdivide_bounds(bounds: SheetBounds, rows: int, cols: int, row: int, col: int) -> SheetBounds:
     """
     Get bounds of a subdivision within parent bounds.
 
@@ -227,8 +223,9 @@ def _subdivide_bounds(bounds: SheetBounds, rows: int, cols: int,
     return SheetBounds(min_lat, max_lat, min_lon, max_lon)
 
 
-def _find_subdivision(bounds: SheetBounds, lat: float, lon: float,
-                      rows: int, cols: int) -> Tuple[int, int]:
+def _find_subdivision(
+    bounds: SheetBounds, lat: float, lon: float, rows: int, cols: int
+) -> Tuple[int, int]:
     """
     Find which subdivision contains the point.
 
@@ -264,11 +261,7 @@ def _find_subdivision(bounds: SheetBounds, lat: float, lon: float,
     return row, col
 
 
-def coordinates_to_sheet_code(
-    lat: float,
-    lon: float,
-    scale: str = "1:10000"
-) -> str:
+def coordinates_to_sheet_code(lat: float, lon: float, scale: str = "1:10000") -> str:
     """
     Convert geographic coordinates to map sheet code (godło).
 
@@ -302,9 +295,7 @@ def coordinates_to_sheet_code(
     """
     # Validate coordinates are roughly in Poland
     if not (49.0 <= lat <= 55.0 and 14.0 <= lon <= 24.5):
-        raise ValueError(
-            f"Coordinates ({lat}, {lon}) are outside Poland bounds"
-        )
+        raise ValueError(f"Coordinates ({lat}, {lon}) are outside Poland bounds")
 
     # 1:1,000,000 sheet
     zone_letter = _lat_to_zone_letter(lat)
@@ -430,11 +421,7 @@ def get_sheet_bounds(sheet_code: str) -> SheetBounds:
 
 
 def get_sheets_for_bbox(
-    min_lat: float,
-    min_lon: float,
-    max_lat: float,
-    max_lon: float,
-    scale: str = "1:10000"
+    min_lat: float, min_lon: float, max_lat: float, max_lon: float, scale: str = "1:10000"
 ) -> List[str]:
     """
     Get all map sheet codes that cover a bounding box.
@@ -489,11 +476,7 @@ def get_sheets_for_bbox(
         lon = min_lon
         while lon <= max_lon + step_lon:
             try:
-                code = coordinates_to_sheet_code(
-                    min(lat, max_lat),
-                    min(lon, max_lon),
-                    scale
-                )
+                code = coordinates_to_sheet_code(min(lat, max_lat), min(lon, max_lon), scale)
                 sheets.add(code)
             except ValueError:
                 pass  # Outside Poland
@@ -503,10 +486,7 @@ def get_sheets_for_bbox(
     return sorted(sheets)
 
 
-def get_neighboring_sheets(
-    sheet_code: str,
-    include_diagonals: bool = True
-) -> List[str]:
+def get_neighboring_sheets(sheet_code: str, include_diagonals: bool = True) -> List[str]:
     """
     Get neighboring sheet codes.
 
@@ -551,9 +531,7 @@ def get_neighboring_sheets(
     neighbors = []
 
     # Offsets for neighbors
-    offsets = [
-        (-1, 0), (1, 0), (0, -1), (0, 1)  # N, S, W, E
-    ]
+    offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # N, S, W, E
     if include_diagonals:
         offsets += [(-1, -1), (-1, 1), (1, -1), (1, 1)]  # NW, NE, SW, SE
 
@@ -562,9 +540,7 @@ def get_neighboring_sheets(
         neighbor_lon = center_lon + dlon * lon_size
 
         try:
-            neighbor_code = coordinates_to_sheet_code(
-                neighbor_lat, neighbor_lon, scale
-            )
+            neighbor_code = coordinates_to_sheet_code(neighbor_lat, neighbor_lon, scale)
             if neighbor_code != sheet_code:
                 neighbors.append(neighbor_code)
         except ValueError:
@@ -574,10 +550,7 @@ def get_neighboring_sheets(
 
 
 def get_sheets_for_point_with_buffer(
-    lat: float,
-    lon: float,
-    buffer_km: float = 5.0,
-    scale: str = "1:10000"
+    lat: float, lon: float, buffer_km: float = 5.0, scale: str = "1:10000"
 ) -> List[str]:
     """
     Get all sheet codes covering area around a point.
@@ -612,9 +585,5 @@ def get_sheets_for_point_with_buffer(
     buffer_lon = buffer_km / km_per_deg_lon
 
     return get_sheets_for_bbox(
-        lat - buffer_lat,
-        lon - buffer_lon,
-        lat + buffer_lat,
-        lon + buffer_lon,
-        scale
+        lat - buffer_lat, lon - buffer_lon, lat + buffer_lat, lon + buffer_lon, scale
     )

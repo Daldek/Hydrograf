@@ -3,7 +3,6 @@ Unit tests for watershed delineation module.
 """
 
 import pytest
-from unittest.mock import MagicMock
 from shapely.geometry import Point, Polygon
 
 from core.watershed import (
@@ -145,10 +144,28 @@ class TestBuildBoundary:
     def test_raises_on_two_cells(self):
         """Test that function raises with exactly 2 cells."""
         cells = [
-            FlowCell(id=1, x=0, y=0, elevation=0, flow_accumulation=0,
-                     slope=0, downstream_id=None, cell_area=25, is_stream=True),
-            FlowCell(id=2, x=10, y=0, elevation=0, flow_accumulation=0,
-                     slope=0, downstream_id=1, cell_area=25, is_stream=False),
+            FlowCell(
+                id=1,
+                x=0,
+                y=0,
+                elevation=0,
+                flow_accumulation=0,
+                slope=0,
+                downstream_id=None,
+                cell_area=25,
+                is_stream=True,
+            ),
+            FlowCell(
+                id=2,
+                x=10,
+                y=0,
+                elevation=0,
+                flow_accumulation=0,
+                slope=0,
+                downstream_id=1,
+                cell_area=25,
+                is_stream=False,
+            ),
         ]
 
         with pytest.raises(ValueError, match="at least 3 cells"):
