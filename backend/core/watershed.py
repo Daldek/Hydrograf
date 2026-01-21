@@ -9,8 +9,11 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
+import numpy as np
 import shapely
-from shapely.geometry import MultiPoint, Point, Polygon
+from affine import Affine
+from rasterio.features import shapes
+from shapely.geometry import MultiPoint, Point, Polygon, shape
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -250,9 +253,107 @@ def traverse_upstream(
     ]
 
 
+def build_boundary_polygonize(
+    cells: list[FlowCell],
+    cell_size: float = 1.0,
+) -> Polygon:
+    """
+    Build watershed boundary by raster polygonization.
+
+    Creates a binary raster mask from cell positions and converts it to
+    a polygon using rasterio. This produces an accurate boundary that
+    follows actual cell edges, similar to GIS software.
+
+    Parameters
+    ----------
+    cells : list[FlowCell]
+        List of cells in watershed
+    cell_size : float, optional
+        Cell size in meters, default 1.0 (matches NMT 1m resolution)
+
+    Returns
+    -------
+    Polygon
+        Watershed boundary polygon in EPSG:2180
+
+    Raises
+    ------
+    ValueError
+        If cells list is empty or has less than 3 cells
+
+    Examples
+    --------
+    >>> boundary = build_boundary_polygonize(cells, cell_size=1.0)
+    >>> print(f"Boundary area: {boundary.area / 1e6:.2f} km²")
+    """
+    if len(cells) < 3:
+        raise ValueError(f"Need at least 3 cells to build boundary, got {len(cells)}")
+
+    # 1. Determine extent from cell coordinates
+    xs = [c.x for c in cells]
+    ys = [c.y for c in cells]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+
+    # 2. Add buffer of one cell around the extent
+    min_x -= cell_size
+    max_x += cell_size
+    min_y -= cell_size
+    max_y += cell_size
+
+    # 3. Create binary raster
+    cols = int(round((max_x - min_x) / cell_size)) + 1
+    rows = int(round((max_y - min_y) / cell_size)) + 1
+    raster = np.zeros((rows, cols), dtype=np.uint8)
+
+    # 4. Mark watershed cells in raster
+    for c in cells:
+        col = int(round((c.x - min_x) / cell_size))
+        row = int(round((max_y - c.y) / cell_size))
+        # Bounds check
+        if 0 <= row < rows and 0 <= col < cols:
+            raster[row, col] = 1
+
+    # 5. Define affine transform (top-left corner, cell size)
+    transform = Affine.translation(min_x - cell_size / 2, max_y + cell_size / 2) * \
+        Affine.scale(cell_size, -cell_size)
+
+    # 6. Polygonize raster
+    polygon_generator = shapes(raster, mask=raster == 1, transform=transform)
+
+    # 7. Collect all polygons with value 1 (watershed)
+    polygons = []
+    for geom, value in polygon_generator:
+        if value == 1:
+            poly = shape(geom)
+            if poly.is_valid and not poly.is_empty:
+                polygons.append(poly)
+
+    if not polygons:
+        logger.warning("Polygonization produced no polygons, falling back to convex hull")
+        points = MultiPoint([Point(c.x, c.y) for c in cells])
+        return points.convex_hull
+
+    # 8. Union all polygons (handles multipart watersheds)
+    if len(polygons) == 1:
+        boundary = polygons[0]
+    else:
+        from shapely.ops import unary_union
+        boundary = unary_union(polygons)
+
+    # 9. Extract largest polygon if result is MultiPolygon
+    if boundary.geom_type == "MultiPolygon":
+        boundary = max(boundary.geoms, key=lambda p: p.area)
+
+    logger.debug(f"Built polygonized boundary with area {boundary.area / 1e6:.4f} km²")
+
+    return boundary
+
+
 def build_boundary(
     cells: list[FlowCell],
-    method: str = "convex",
+    method: str = "polygonize",
+    cell_size: float = 1.0,
 ) -> Polygon:
     """
     Build watershed boundary polygon from cells.
@@ -264,8 +365,12 @@ def build_boundary(
     cells : list[FlowCell]
         List of cells in watershed
     method : str, optional
-        Boundary method: 'convex' for ConvexHull (default),
-        'concave' for ConcaveHull (more detailed but slower)
+        Boundary method:
+        - 'polygonize' (default): raster polygonization, accurate boundary
+        - 'convex': ConvexHull, fast but approximate
+        - 'concave': ConcaveHull, tighter fit than convex
+    cell_size : float, optional
+        Cell size in meters for polygonize method, default 1.0
 
     Returns
     -------
@@ -279,11 +384,14 @@ def build_boundary(
 
     Examples
     --------
-    >>> boundary = build_boundary(cells, method='convex')
+    >>> boundary = build_boundary(cells, method='polygonize')
     >>> print(f"Boundary area: {boundary.area / 1e6:.2f} km²")
     """
     if len(cells) < 3:
         raise ValueError(f"Need at least 3 cells to build boundary, got {len(cells)}")
+
+    if method == "polygonize":
+        return build_boundary_polygonize(cells, cell_size=cell_size)
 
     # Create MultiPoint from cell centroids
     points = MultiPoint([Point(c.x, c.y) for c in cells])
@@ -295,7 +403,9 @@ def build_boundary(
         # ratio parameter controls the "tightness" of the hull
         boundary = shapely.concave_hull(points, ratio=0.3)
     else:
-        raise ValueError(f"Unknown method: '{method}'. Use 'convex' or 'concave'")
+        raise ValueError(
+            f"Unknown method: '{method}'. Use 'polygonize', 'convex' or 'concave'"
+        )
 
     # Handle edge case where hull degenerates to LineString
     if boundary.geom_type == "LineString":

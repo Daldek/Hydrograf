@@ -8,6 +8,7 @@ from shapely.geometry import Point, Polygon
 from core.watershed import (
     FlowCell,
     build_boundary,
+    build_boundary_polygonize,
     calculate_watershed_area_km2,
     find_nearest_stream,
     traverse_upstream,
@@ -112,6 +113,116 @@ class TestTraverseUpstream:
         assert cells == []
 
 
+class TestBuildBoundaryPolygonize:
+    """Tests for build_boundary_polygonize function."""
+
+    @pytest.fixture
+    def grid_cells(self):
+        """Create a 5x5 grid of cells for testing polygonization."""
+        cells = []
+        cell_id = 1
+        for row in range(5):
+            for col in range(5):
+                cells.append(
+                    FlowCell(
+                        id=cell_id,
+                        x=500000.0 + col,
+                        y=600000.0 + row,
+                        elevation=150.0 - row,
+                        flow_accumulation=100,
+                        slope=2.0,
+                        downstream_id=cell_id - 1 if cell_id > 1 else None,
+                        cell_area=1.0,
+                        is_stream=cell_id == 1,
+                    )
+                )
+                cell_id += 1
+        return cells
+
+    def test_polygonize_returns_polygon(self, grid_cells):
+        """Test that polygonize returns valid polygon."""
+        boundary = build_boundary_polygonize(grid_cells, cell_size=1.0)
+
+        assert isinstance(boundary, Polygon)
+        assert boundary.is_valid
+
+    def test_polygonize_area_matches_cells(self, grid_cells):
+        """Test that polygon area roughly matches cell count."""
+        boundary = build_boundary_polygonize(grid_cells, cell_size=1.0)
+
+        # 25 cells * 1m² = 25 m² (approximately, due to rasterization)
+        assert boundary.area == pytest.approx(25.0, rel=0.1)
+
+    def test_polygonize_boundary_contains_cells(self, grid_cells):
+        """Test that boundary contains all cell centroids."""
+        boundary = build_boundary_polygonize(grid_cells, cell_size=1.0)
+
+        # Buffer slightly to handle edge cases
+        buffered = boundary.buffer(0.5)
+        for cell in grid_cells:
+            assert buffered.contains(Point(cell.x, cell.y))
+
+    def test_polygonize_raises_on_too_few_cells(self):
+        """Test that function raises with less than 3 cells."""
+        cells = [
+            FlowCell(
+                id=1, x=0, y=0, elevation=0, flow_accumulation=0,
+                slope=0, downstream_id=None, cell_area=1, is_stream=True,
+            ),
+        ]
+
+        with pytest.raises(ValueError, match="at least 3 cells"):
+            build_boundary_polygonize(cells)
+
+    def test_polygonize_with_custom_cell_size(self, sample_cells):
+        """Test polygonize with non-default cell size."""
+        boundary = build_boundary_polygonize(sample_cells, cell_size=5.0)
+
+        assert isinstance(boundary, Polygon)
+        assert boundary.is_valid
+
+    def test_polygonize_l_shaped_watershed(self):
+        """Test polygonize correctly handles L-shaped watershed."""
+        # Create L-shaped pattern
+        cells = []
+        cell_id = 1
+        # Vertical part (5 cells)
+        for row in range(5):
+            cells.append(
+                FlowCell(
+                    id=cell_id, x=500000.0, y=600000.0 + row,
+                    elevation=150.0, flow_accumulation=100, slope=2.0,
+                    downstream_id=None, cell_area=1.0, is_stream=False,
+                )
+            )
+            cell_id += 1
+        # Horizontal part (4 cells, excluding corner)
+        for col in range(1, 5):
+            cells.append(
+                FlowCell(
+                    id=cell_id, x=500000.0 + col, y=600000.0,
+                    elevation=150.0, flow_accumulation=100, slope=2.0,
+                    downstream_id=None, cell_area=1.0, is_stream=False,
+                )
+            )
+            cell_id += 1
+
+        boundary = build_boundary_polygonize(cells, cell_size=1.0)
+
+        assert isinstance(boundary, Polygon)
+        assert boundary.is_valid
+        # L-shape should have 9 cells
+        assert boundary.area == pytest.approx(9.0, rel=0.1)
+
+    def test_default_method_is_polygonize(self, grid_cells):
+        """Test that default method is polygonize."""
+        boundary_default = build_boundary(grid_cells)
+        boundary_explicit = build_boundary(grid_cells, method="polygonize")
+
+        # Areas should be identical
+        assert boundary_default.area == boundary_explicit.area
+
+
 class TestBuildBoundary:
     """Tests for build_boundary function."""
 
@@ -175,6 +286,13 @@ class TestBuildBoundary:
         """Test that invalid method raises ValueError."""
         with pytest.raises(ValueError, match="Unknown method"):
             build_boundary(sample_cells, method="invalid")
+
+    def test_polygonize_method_returns_polygon(self, sample_cells):
+        """Test that polygonize method returns valid polygon."""
+        boundary = build_boundary(sample_cells, method="polygonize")
+
+        assert isinstance(boundary, Polygon)
+        assert boundary.is_valid
 
     def test_concave_hull_returns_polygon(self, sample_cells):
         """Test concave hull method with enough cells."""
