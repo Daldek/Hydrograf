@@ -153,230 +153,6 @@ def process_nmt_data(config: AnalysisConfig, input_files: List[Path]) -> Dict:
     return stats
 
 
-# =============================================================================
-# TABELE CN DLA RÓŻNYCH POKRYĆ TERENU I GRUP HSG
-# =============================================================================
-
-# Standard SCS CN lookup table: land_cover -> {HSG: CN}
-CN_LOOKUP_TABLE = {
-    # Lasy i tereny leśne
-    "forest": {"A": 30, "B": 55, "C": 70, "D": 77},
-    "las": {"A": 30, "B": 55, "C": 70, "D": 77},
-    "PTLZ": {"A": 30, "B": 55, "C": 70, "D": 77},  # BDOT10k: lasy i zagajniki
-    # Łąki i pastwiska
-    "meadow": {"A": 30, "B": 58, "C": 71, "D": 78},
-    "łąka": {"A": 30, "B": 58, "C": 71, "D": 78},
-    "PTZB": {"A": 30, "B": 58, "C": 71, "D": 78},  # BDOT10k: zakrzewienia
-    # Grunty orne
-    "arable": {"A": 72, "B": 81, "C": 88, "D": 91},
-    "grunt_orny": {"A": 72, "B": 81, "C": 88, "D": 91},
-    "PTUT": {"A": 72, "B": 81, "C": 88, "D": 91},  # BDOT10k: uprawy trwałe
-    "PTRK": {"A": 72, "B": 81, "C": 88, "D": 91},  # BDOT10k: roślinność krzewiasta
-    # Zabudowa mieszkaniowa
-    "urban_residential": {"A": 77, "B": 85, "C": 90, "D": 92},
-    "zabudowa_mieszkaniowa": {"A": 77, "B": 85, "C": 90, "D": 92},
-    "BUBD": {"A": 77, "B": 85, "C": 90, "D": 92},  # BDOT10k: budynki
-    # Zabudowa przemysłowa/komercyjna
-    "urban_commercial": {"A": 89, "B": 92, "C": 94, "D": 95},
-    "zabudowa_przemysłowa": {"A": 89, "B": 92, "C": 94, "D": 95},
-    "BUIN": {"A": 89, "B": 92, "C": 94, "D": 95},  # BDOT10k: budynki przemysłowe
-    # Drogi i utwardzone powierzchnie
-    "road": {"A": 98, "B": 98, "C": 98, "D": 98},
-    "droga": {"A": 98, "B": 98, "C": 98, "D": 98},
-    "SKDR": {"A": 98, "B": 98, "C": 98, "D": 98},  # BDOT10k: drogi
-    "SKJZ": {"A": 98, "B": 98, "C": 98, "D": 98},  # BDOT10k: jezdnie
-    # Wody
-    "water": {"A": 100, "B": 100, "C": 100, "D": 100},
-    "woda": {"A": 100, "B": 100, "C": 100, "D": 100},
-    "PTWP": {"A": 100, "B": 100, "C": 100, "D": 100},  # BDOT10k: wody
-    "SWRS": {"A": 100, "B": 100, "C": 100, "D": 100},  # BDOT10k: rzeki
-    # CORINE klasy (2-digit codes)
-    "11": {"A": 89, "B": 92, "C": 94, "D": 95},  # Urban fabric
-    "12": {"A": 89, "B": 92, "C": 94, "D": 95},  # Industrial
-    "13": {"A": 98, "B": 98, "C": 98, "D": 98},  # Mines/dumps
-    "14": {"A": 49, "B": 69, "C": 79, "D": 84},  # Artificial green
-    "21": {"A": 72, "B": 81, "C": 88, "D": 91},  # Arable land
-    "22": {"A": 72, "B": 81, "C": 88, "D": 91},  # Permanent crops
-    "23": {"A": 39, "B": 61, "C": 74, "D": 80},  # Pastures
-    "24": {"A": 62, "B": 71, "C": 78, "D": 81},  # Heterogeneous agri
-    "31": {"A": 30, "B": 55, "C": 70, "D": 77},  # Forests
-    "32": {"A": 30, "B": 58, "C": 71, "D": 78},  # Shrub/herbaceous
-    "33": {"A": 77, "B": 86, "C": 91, "D": 94},  # Open spaces
-    "41": {"A": 100, "B": 100, "C": 100, "D": 100},  # Inland wetlands
-    "42": {"A": 100, "B": 100, "C": 100, "D": 100},  # Coastal wetlands
-    "51": {"A": 100, "B": 100, "C": 100, "D": 100},  # Inland waters
-    "52": {"A": 100, "B": 100, "C": 100, "D": 100},  # Marine waters
-    # Domyślne
-    "other": {"A": 60, "B": 70, "C": 80, "D": 85},
-    "inny": {"A": 60, "B": 70, "C": 80, "D": 85},
-    "unknown": {"A": 60, "B": 70, "C": 80, "D": 85},
-}
-
-
-def calculate_cn_from_kartograf(
-    config: AnalysisConfig,
-    boundary_wgs84: List[List[float]],
-) -> Optional[Dict]:
-    """
-    Oblicz CN na podstawie danych z Kartografa (HSG + pokrycie terenu).
-
-    Wykorzystuje:
-    - HSGCalculator do pobrania grup hydrologicznych gleby z SoilGrids
-    - LandCoverManager do pobrania pokrycia terenu z BDOT10k/CORINE
-
-    Parameters
-    ----------
-    config : AnalysisConfig
-        Konfiguracja analizy
-    boundary_wgs84 : List[List[float]]
-        Granica zlewni jako lista [lon, lat]
-
-    Returns
-    -------
-    Optional[Dict]
-        Słownik z CN i statystykami lub None jeśli błąd
-    """
-    logger.info("-" * 40)
-    logger.info("Obliczanie CN z Kartografa (HSG + Land Cover)")
-    logger.info("-" * 40)
-
-    try:
-        from kartograf import BBox, LandCoverManager
-        from kartograf.hydrology import HSGCalculator
-        import tempfile
-
-        # Oblicz bbox z granicy zlewni
-        lons = [p[0] for p in boundary_wgs84]
-        lats = [p[1] for p in boundary_wgs84]
-        min_lon, max_lon = min(lons), max(lons)
-        min_lat, max_lat = min(lats), max(lats)
-
-        # Konwersja do EPSG:2180
-        from utils.geometry import transform_wgs84_to_pl1992
-        sw = transform_wgs84_to_pl1992(min_lat, min_lon)
-        ne = transform_wgs84_to_pl1992(max_lat, max_lon)
-
-        # Dodaj mały bufor
-        buffer_m = 100
-        bbox = BBox(
-            min_x=sw.x - buffer_m,
-            min_y=sw.y - buffer_m,
-            max_x=ne.x + buffer_m,
-            max_y=ne.y + buffer_m,
-            crs="EPSG:2180",
-        )
-        logger.info(f"Bbox: ({bbox.min_x:.0f}, {bbox.min_y:.0f}) - "
-                    f"({bbox.max_x:.0f}, {bbox.max_y:.0f})")
-
-        # 1. Oblicz HSG z SoilGrids
-        logger.info("Pobieranie HSG z SoilGrids...")
-        hsg_calc = HSGCalculator()
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            hsg_path = Path(tmpdir) / "hsg.tif"
-
-            try:
-                hsg_calc.calculate_hsg_by_bbox(bbox, hsg_path)
-                hsg_stats = hsg_calc.get_hsg_statistics(hsg_path)
-                logger.info(f"HSG rozkład: {hsg_stats}")
-
-                # Dominujący HSG - obsłuż różne formaty wyniku
-                if hsg_stats:
-                    # Nowy format: {'A': {'count': N, 'percent': X}, ...}
-                    # Stary format: {'A': X, 'B': Y, ...}
-                    first_val = list(hsg_stats.values())[0]
-                    if isinstance(first_val, dict):
-                        # Nowy format - użyj 'percent' lub 'count'
-                        dominant_hsg = max(
-                            hsg_stats.items(),
-                            key=lambda x: x[1].get('percent', x[1].get('count', 0))
-                        )[0]
-                    else:
-                        # Stary format - wartość to procent
-                        dominant_hsg = max(hsg_stats.items(), key=lambda x: x[1])[0]
-                else:
-                    dominant_hsg = "B"  # Domyślny
-                    logger.warning("Brak danych HSG, przyjęto domyślnie: B")
-
-            except Exception as e:
-                logger.warning(f"Błąd pobierania HSG: {e}")
-                dominant_hsg = "B"
-                hsg_stats = {"B": 100.0}
-
-        logger.info(f"Dominujący HSG: {dominant_hsg}")
-
-        # 2. Pobierz pokrycie terenu (BDOT10k lub CORINE)
-        logger.info("Pobieranie pokrycia terenu...")
-
-        # Spróbuj BDOT10k najpierw
-        land_cover_stats = {}
-        try:
-            lc_manager = LandCoverManager(
-                output_dir=str(config.data_dir / "landcover"),
-            )
-            # Pobierz przez bbox
-            lc_path = lc_manager.download_by_bbox(bbox)
-            if lc_path:
-                logger.info(f"Pobrano pokrycie terenu: {lc_path}")
-                # TODO: Analiza pokrycia terenu z pliku
-                # Na razie użyj uproszczonego podejścia
-        except Exception as e:
-            logger.warning(f"Błąd pobierania pokrycia terenu: {e}")
-
-        # 3. Oblicz CN
-        # Jeśli brak szczegółowych danych, użyj uproszczonej metody
-        if not land_cover_stats:
-            # Przyjmij typowe pokrycie dla Polski centralnej
-            # (można rozszerzyć o analizę CORINE)
-            land_cover_stats = {
-                "arable": 50.0,  # Grunty orne
-                "meadow": 25.0,  # Łąki
-                "forest": 15.0,  # Lasy
-                "urban_residential": 10.0,  # Zabudowa
-            }
-            logger.warning("Użyto szacunkowego pokrycia terenu")
-
-        # Oblicz ważone CN
-        weighted_cn = 0.0
-        cn_details = []
-
-        for land_cover, percentage in land_cover_stats.items():
-            cn_values = CN_LOOKUP_TABLE.get(land_cover, CN_LOOKUP_TABLE["other"])
-            cn = cn_values.get(dominant_hsg, cn_values.get("B", 75))
-            weighted_cn += cn * (percentage / 100)
-
-            cn_details.append({
-                "land_cover": land_cover,
-                "percentage": percentage,
-                "hsg": dominant_hsg,
-                "cn": cn,
-            })
-
-        final_cn = round(weighted_cn)
-        final_cn = max(0, min(100, final_cn))  # Clamp to 0-100
-
-        logger.info(f"Obliczone CN: {final_cn}")
-        logger.info(f"Szczegóły: {cn_details}")
-
-        return {
-            "cn": final_cn,
-            "method": "kartograf_hsg",
-            "dominant_hsg": dominant_hsg,
-            "hsg_stats": hsg_stats,
-            "land_cover_stats": land_cover_stats,
-            "cn_details": cn_details,
-        }
-
-    except ImportError as e:
-        logger.warning(f"Kartograf niedostępny: {e}")
-        return None
-    except Exception as e:
-        logger.warning(f"Błąd obliczania CN z Kartografa: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
 def delineate_watershed(config: AnalysisConfig, db) -> Dict:
     """Wyznacz zlewnię dla punktu."""
     logger.info("=" * 60)
@@ -446,57 +222,18 @@ def calculate_morphometry(
     logger.info("=" * 60)
 
     from core.morphometry import build_morphometric_params
+    from core.land_cover import determine_cn
 
-    # Określ CN - hierarchia źródeł:
-    # 1. Jawnie podane w konfiguracji
-    # 2. Z tabeli land_cover w bazie danych
-    # 3. Z Kartografa (HSG + land cover)
-    # 4. Wartość domyślna
-    cn = config.cn
-    cn_source = "config" if cn else None
-    cn_details = None
-
-    if cn is None:
-        # Próba 1: Spróbuj obliczyć z land_cover w bazie danych
-        try:
-            from core.land_cover import calculate_weighted_cn, DEFAULT_CN
-            cn_result = calculate_weighted_cn(watershed["boundary"], db)
-            if isinstance(cn_result, tuple):
-                cn_value, land_cover_stats = cn_result
-            else:
-                cn_value = cn_result
-                land_cover_stats = {}
-
-            # Sprawdź czy to prawdziwe dane czy domyślna wartość
-            # (calculate_weighted_cn zwraca DEFAULT_CN gdy brak danych)
-            if cn_value and land_cover_stats:
-                cn = cn_value
-                cn_source = "database_land_cover"
-                logger.info(f"CN z bazy danych (land_cover): {cn}")
-            else:
-                logger.debug(f"Brak rzeczywistych danych land_cover (CN={cn_value})")
-                cn = None
-        except Exception as e:
-            logger.debug(f"Błąd pobierania land_cover z bazy: {e}")
-            cn = None
-
-    if cn is None and config.use_kartograf_cn:
-        # Próba 2: Oblicz z Kartografa (HSG + land cover)
-        kartograf_result = calculate_cn_from_kartograf(
-            config,
-            watershed["boundary_wgs84"],
-        )
-        if kartograf_result and kartograf_result.get("cn"):
-            cn = kartograf_result["cn"]
-            cn_source = "kartograf_hsg"
-            cn_details = kartograf_result
-            logger.info(f"CN z Kartografa (HSG={kartograf_result.get('dominant_hsg')}): {cn}")
-
-    if cn is None:
-        # Próba 3: Użyj wartości domyślnej
-        cn = config.default_cn
-        cn_source = "default"
-        logger.warning(f"Brak danych CN, użyto wartości domyślnej: {cn}")
+    # Okresl CN - zunifikowana logika w determine_cn()
+    cn, cn_source, cn_details = determine_cn(
+        boundary=watershed["boundary"],
+        db=db,
+        config_cn=config.cn,
+        default_cn=config.default_cn,
+        use_kartograf=config.use_kartograf_cn,
+        boundary_wgs84=watershed["boundary_wgs84"],
+        data_dir=config.data_dir,
+    )
 
     start = time.time()
     morph = build_morphometric_params(
@@ -507,11 +244,11 @@ def calculate_morphometry(
     )
     elapsed = time.time() - start
 
-    logger.info(f"Długość cieku: {morph['channel_length_km']:.2f} km")
+    logger.info(f"Dlugosc cieku: {morph['channel_length_km']:.2f} km")
     logger.info(f"Spadek cieku: {morph['channel_slope_m_per_m']*100:.2f}%")
-    logger.info(f"Wysokość średnia: {morph['elevation_mean_m']:.1f} m")
-    logger.info(f"CN: {cn} (źródło: {cn_source})")
-    logger.info(f"Czas obliczeń: {elapsed:.1f}s")
+    logger.info(f"Wysokosc srednia: {morph['elevation_mean_m']:.1f} m")
+    logger.info(f"CN: {cn} (zrodlo: {cn_source})")
+    logger.info(f"Czas obliczen: {elapsed:.1f}s")
 
     morph["cn"] = cn
     morph["cn_source"] = cn_source
