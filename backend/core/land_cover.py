@@ -261,6 +261,7 @@ def determine_cn(
     use_kartograf: bool = True,
     boundary_wgs84: Optional[List[List[float]]] = None,
     data_dir: Optional[Path] = None,
+    teryt: Optional[str] = None,
 ) -> Tuple[int, str, Optional[Dict[str, Any]]]:
     """
     Okresl wartosc CN wedlug hierarchii zrodel.
@@ -326,7 +327,7 @@ def determine_cn(
     if use_kartograf and boundary_wgs84 and data_dir:
         from core.cn_calculator import calculate_cn_from_kartograf
 
-        result = calculate_cn_from_kartograf(boundary_wgs84, data_dir)
+        result = calculate_cn_from_kartograf(boundary_wgs84, data_dir, teryt=teryt)
 
         if result and result.cn:
             logger.info(

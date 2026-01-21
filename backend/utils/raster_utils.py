@@ -368,6 +368,95 @@ def validate_tiles_compatibility(input_files: List[Path]) -> dict:
     return results
 
 
+def resample_raster(
+    input_path: Path,
+    output_path: Path,
+    target_resolution: float,
+    method: str = "bilinear",
+) -> Path:
+    """
+    Resample raster to target resolution.
+
+    Parameters
+    ----------
+    input_path : Path
+        Input raster file
+    output_path : Path
+        Output resampled raster file
+    target_resolution : float
+        Target cell size in meters
+    method : str
+        Resampling method: 'nearest', 'bilinear', 'cubic', 'average'
+        Default 'bilinear' for continuous data like elevation.
+
+    Returns
+    -------
+    Path
+        Path to resampled raster
+    """
+    import rasterio
+    from rasterio.enums import Resampling
+
+    resampling_methods = {
+        "nearest": Resampling.nearest,
+        "bilinear": Resampling.bilinear,
+        "cubic": Resampling.cubic,
+        "average": Resampling.average,
+    }
+
+    resample_method = resampling_methods.get(method, Resampling.bilinear)
+
+    with rasterio.open(input_path) as src:
+        from rasterio.transform import from_bounds
+
+        # Calculate new dimensions (zachowaj proporcje)
+        src_resolution = abs(src.transform.a)
+        scale_factor = src_resolution / target_resolution
+
+        new_width = int(src.width * scale_factor)
+        new_height = int(src.height * scale_factor)
+
+        # Oblicz rzeczywistą rozdzielczość zachowując dokładne bounds
+        bounds = src.bounds
+        actual_res_x = (bounds.right - bounds.left) / new_width
+        actual_res_y = (bounds.top - bounds.bottom) / new_height
+
+        logger.info(
+            f"Resampling {input_path.name}: {src.width}x{src.height} ({src_resolution:.6f}m) "
+            f"-> {new_width}x{new_height} ({actual_res_x:.6f}m)"
+        )
+
+        # Transform zachowujący dokładne bounds (extent) - EPSG:2180
+        new_transform = from_bounds(
+            bounds.left, bounds.bottom, bounds.right, bounds.top,
+            new_width, new_height
+        )
+
+        # Read and resample data
+        data = src.read(
+            out_shape=(src.count, new_height, new_width),
+            resampling=resample_method,
+        )
+
+        # Update metadata
+        out_meta = src.meta.copy()
+        out_meta.update({
+            "width": new_width,
+            "height": new_height,
+            "transform": new_transform,
+            "compress": "lzw",
+        })
+
+        # Write output
+        with rasterio.open(output_path, "w", **out_meta) as dst:
+            dst.write(data)
+
+    logger.info(f"Resampled raster saved: {output_path}")
+    logger.info(f"File size: {output_path.stat().st_size / (1024 * 1024):.1f} MB")
+
+    return output_path
+
+
 def convert_asc_to_geotiff(
     input_asc: Path,
     output_tif: Optional[Path] = None,

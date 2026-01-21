@@ -161,6 +161,7 @@ def get_hsg_from_soilgrids(bbox: "BBox") -> Tuple[str, Dict[str, float]]:
 def get_land_cover_stats(
     bbox: "BBox",
     data_dir: Path,
+    teryt: Optional[str] = None,
 ) -> Dict[str, float]:
     """
     Pobierz statystyki pokrycia terenu z BDOT10k/CORINE.
@@ -171,6 +172,10 @@ def get_land_cover_stats(
         Bounding box w EPSG:2180
     data_dir : Path
         Katalog na pobrane dane
+    teryt : str, optional
+        Kod TERYT powiatu (4 cyfry). Jeśli podany, używany zamiast
+        automatycznego wykrywania (przydatne gdy punkt jest blisko
+        granicy powiatu lub wykrywanie nie działa).
 
     Returns
     -------
@@ -181,7 +186,12 @@ def get_land_cover_stats(
         from kartograf import LandCoverManager
 
         lc_manager = LandCoverManager(output_dir=str(data_dir / "landcover"))
-        lc_path = lc_manager.download_by_bbox(bbox)
+
+        if teryt:
+            logger.info(f"Pobieranie BDOT10k dla TERYT: {teryt}")
+            lc_path = lc_manager.download_by_teryt(teryt)
+        else:
+            lc_path = lc_manager.download_by_bbox(bbox)
 
         if lc_path:
             logger.info(f"Pobrano pokrycie terenu: {lc_path}")
@@ -219,6 +229,7 @@ def calculate_cn_from_kartograf(
     boundary_wgs84: List[List[float]],
     data_dir: Path,
     use_default_land_cover: bool = True,
+    teryt: Optional[str] = None,
 ) -> Optional[CNCalculationResult]:
     """
     Oblicz CN na podstawie danych z Kartografa.
@@ -235,6 +246,9 @@ def calculate_cn_from_kartograf(
         Katalog na pobrane dane
     use_default_land_cover : bool, optional
         Czy uzywac domyslnego pokrycia gdy brak danych, domyslnie True
+    teryt : str, optional
+        Kod TERYT powiatu (4 cyfry) do pobrania BDOT10k.
+        Przydatny gdy automatyczne wykrywanie nie działa.
 
     Returns
     -------
@@ -244,7 +258,7 @@ def calculate_cn_from_kartograf(
     Examples
     --------
     >>> boundary = [[17.31, 52.45], [17.32, 52.46], ...]
-    >>> result = calculate_cn_from_kartograf(boundary, Path("./data"))
+    >>> result = calculate_cn_from_kartograf(boundary, Path("./data"), teryt="3021")
     >>> if result:
     ...     print(f"CN = {result.cn}, HSG = {result.dominant_hsg}")
     """
@@ -271,7 +285,7 @@ def calculate_cn_from_kartograf(
 
         # 3. Pobierz pokrycie terenu
         logger.info("Pobieranie pokrycia terenu...")
-        land_cover_stats = get_land_cover_stats(bbox, data_dir)
+        land_cover_stats = get_land_cover_stats(bbox, data_dir, teryt=teryt)
 
         if not land_cover_stats and use_default_land_cover:
             land_cover_stats = get_default_land_cover_stats()
