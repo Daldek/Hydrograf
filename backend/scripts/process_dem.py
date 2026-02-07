@@ -1325,6 +1325,277 @@ def compute_twi(
     return twi_result
 
 
+def vectorize_streams(
+    dem: np.ndarray,
+    fdir: np.ndarray,
+    acc: np.ndarray,
+    slope: np.ndarray,
+    strahler: np.ndarray,
+    metadata: dict,
+    stream_threshold: int = 100,
+) -> list[dict]:
+    """
+    Vectorize stream network from raster data as LineString segments.
+
+    Traces connected stream cells from headwaters downstream to junctions
+    or outlets. Each segment becomes a LineString with attributes.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        Filled DEM array
+    fdir : np.ndarray
+        Flow direction array (D8 encoding)
+    acc : np.ndarray
+        Flow accumulation array
+    slope : np.ndarray
+        Slope array (percent)
+    strahler : np.ndarray
+        Strahler stream order array (0 = non-stream)
+    metadata : dict
+        Grid metadata (xllcorner, yllcorner, cellsize, nodata_value)
+    stream_threshold : int
+        Flow accumulation threshold for stream identification
+
+    Returns
+    -------
+    list[dict]
+        List of stream segment dicts with keys:
+        - coords: list of (x, y) tuples
+        - strahler_order: int
+        - length_m: float
+        - upstream_area_km2: float (at segment end)
+        - mean_slope_percent: float
+    """
+    logger.info("Vectorizing stream network...")
+
+    nrows, ncols = dem.shape
+    cellsize = metadata["cellsize"]
+    xll = metadata["xllcorner"]
+    yll = metadata["yllcorner"]
+    nodata = metadata["nodata_value"]
+    cell_area = cellsize * cellsize
+
+    stream_mask = (acc >= stream_threshold) & (dem != nodata)
+
+    def cell_xy(row, col):
+        """Get cell center coordinates in PL-1992."""
+        x = xll + (col + 0.5) * cellsize
+        y = yll + (nrows - row - 0.5) * cellsize
+        return (x, y)
+
+    def downstream_cell(row, col):
+        """Get downstream cell (row, col) or None."""
+        d = fdir[row, col]
+        if d not in D8_DIRECTIONS:
+            return None
+        di, dj = D8_DIRECTIONS[d]
+        ni, nj = row + di, col + dj
+        if 0 <= ni < nrows and 0 <= nj < ncols and dem[ni, nj] != nodata:
+            return (ni, nj)
+        return None
+
+    # Count upstream stream neighbors for each cell
+    upstream_count = np.zeros((nrows, ncols), dtype=np.int32)
+    for i in range(nrows):
+        for j in range(ncols):
+            if not stream_mask[i, j]:
+                continue
+            ds = downstream_cell(i, j)
+            if ds is not None and stream_mask[ds[0], ds[1]]:
+                upstream_count[ds[0], ds[1]] += 1
+
+    # Headwaters: stream cells with no upstream stream neighbors
+    headwaters = []
+    for i in range(nrows):
+        for j in range(ncols):
+            if stream_mask[i, j] and upstream_count[i, j] == 0:
+                headwaters.append((i, j))
+
+    logger.info(f"  Found {len(headwaters)} headwater cells")
+
+    # Trace segments from headwaters
+    visited = np.zeros((nrows, ncols), dtype=bool)
+    segments = []
+
+    for hw_row, hw_col in headwaters:
+        row, col = hw_row, hw_col
+
+        while True:
+            if visited[row, col]:
+                break
+
+            # Start new segment
+            coords = [cell_xy(row, col)]
+            slopes = [float(slope[row, col])]
+            seg_order = int(strahler[row, col])
+            length_m = 0.0
+            visited[row, col] = True
+
+            # Trace downstream while same order
+            while True:
+                ds = downstream_cell(row, col)
+                if ds is None:
+                    break
+                nr, nc = ds
+                if not stream_mask[nr, nc]:
+                    break
+                if visited[nr, nc]:
+                    # Add final point for connection
+                    coords.append(cell_xy(nr, nc))
+                    dist = (
+                        (coords[-1][0] - coords[-2][0]) ** 2
+                        + (coords[-1][1] - coords[-2][1]) ** 2
+                    ) ** 0.5
+                    length_m += dist
+                    break
+
+                next_order = int(strahler[nr, nc])
+                if next_order != seg_order:
+                    # Order changes: end segment, add junction pt
+                    coords.append(cell_xy(nr, nc))
+                    dist = (
+                        (coords[-1][0] - coords[-2][0]) ** 2
+                        + (coords[-1][1] - coords[-2][1]) ** 2
+                    ) ** 0.5
+                    length_m += dist
+                    break
+
+                visited[nr, nc] = True
+                new_pt = cell_xy(nr, nc)
+                dist = (
+                    (new_pt[0] - coords[-1][0]) ** 2
+                    + (new_pt[1] - coords[-1][1]) ** 2
+                ) ** 0.5
+                length_m += dist
+                coords.append(new_pt)
+                slopes.append(float(slope[nr, nc]))
+                row, col = nr, nc
+
+            # Only create segment if >= 2 points
+            if len(coords) >= 2:
+                upstream_area_km2 = (
+                    float(acc[row, col]) * cell_area / 1_000_000
+                )
+                segments.append(
+                    {
+                        "coords": coords,
+                        "strahler_order": seg_order,
+                        "length_m": round(length_m, 1),
+                        "upstream_area_km2": round(
+                            upstream_area_km2, 4
+                        ),
+                        "mean_slope_percent": round(
+                            float(np.mean(slopes)), 2
+                        ),
+                    }
+                )
+
+            # Continue from junction point if order changed
+            ds = downstream_cell(row, col)
+            if ds is None or not stream_mask[ds[0], ds[1]]:
+                break
+            if visited[ds[0], ds[1]]:
+                break
+            row, col = ds
+
+    logger.info(
+        f"Vectorized {len(segments)} stream segments "
+        f"(total length: "
+        f"{sum(s['length_m'] for s in segments) / 1000:.1f} km)"
+    )
+
+    return segments
+
+
+def insert_stream_segments(
+    db_session,
+    segments: list[dict],
+) -> int:
+    """
+    Insert vectorized stream segments into stream_network table.
+
+    Uses COPY for bulk loading via temporary table.
+
+    Parameters
+    ----------
+    db_session : Session
+        SQLAlchemy database session
+    segments : list[dict]
+        List of segment dicts from vectorize_streams()
+
+    Returns
+    -------
+    int
+        Number of segments inserted
+    """
+    import io
+
+    if not segments:
+        logger.info("No stream segments to insert")
+        return 0
+
+    logger.info(
+        f"Inserting {len(segments)} stream segments "
+        f"into stream_network..."
+    )
+
+    raw_conn = db_session.connection().connection
+    cursor = raw_conn.cursor()
+
+    # Create temp table
+    cursor.execute("""
+        CREATE TEMP TABLE temp_stream_import (
+            wkt TEXT,
+            strahler_order INT,
+            length_m FLOAT,
+            upstream_area_km2 FLOAT,
+            mean_slope_percent FLOAT,
+            source TEXT
+        )
+    """)
+
+    # Build TSV
+    tsv_buffer = io.StringIO()
+    for seg in segments:
+        coords_wkt = ", ".join(
+            f"{x} {y}" for x, y in seg["coords"]
+        )
+        wkt = f"LINESTRING({coords_wkt})"
+        tsv_buffer.write(
+            f"{wkt}\t{seg['strahler_order']}\t"
+            f"{seg['length_m']}\t{seg['upstream_area_km2']}\t"
+            f"{seg['mean_slope_percent']}\tDEM_DERIVED\n"
+        )
+
+    tsv_buffer.seek(0)
+
+    cursor.copy_expert(
+        "COPY temp_stream_import FROM STDIN"
+        " WITH (FORMAT text, DELIMITER E'\\t', NULL '')",
+        tsv_buffer,
+    )
+
+    # Insert with geometry construction
+    cursor.execute("""
+        INSERT INTO stream_network (
+            geom, strahler_order, length_m,
+            upstream_area_km2, mean_slope_percent, source
+        )
+        SELECT
+            ST_SetSRID(ST_GeomFromText(wkt), 2180),
+            strahler_order, length_m,
+            upstream_area_km2, mean_slope_percent, source
+        FROM temp_stream_import
+    """)
+
+    total = cursor.rowcount
+    raw_conn.commit()
+    logger.info(f"  Inserted {total} stream segments")
+
+    return total
+
+
 def create_flow_network_records(
     dem: np.ndarray,
     fdir: np.ndarray,
@@ -1332,6 +1603,7 @@ def create_flow_network_records(
     slope: np.ndarray,
     metadata: dict,
     stream_threshold: int = 100,
+    strahler: np.ndarray | None = None,
 ) -> list:
     """
     Create flow_network records from raster data.
@@ -1356,6 +1628,8 @@ def create_flow_network_records(
         Grid metadata (xllcorner, yllcorner, cellsize, nodata_value)
     stream_threshold : int
         Flow accumulation threshold for stream identification
+    strahler : np.ndarray, optional
+        Strahler stream order array (0 = non-stream)
 
     Returns
     -------
@@ -1405,9 +1679,17 @@ def create_flow_network_records(
             if d in D8_DIRECTIONS:
                 di, dj = D8_DIRECTIONS[d]
                 ni, nj = i + di, j + dj
-                if 0 <= ni < nrows and 0 <= nj < ncols:
-                    if dem[ni, nj] != nodata:
-                        downstream_id = get_cell_index(ni, nj)
+                if (
+                    0 <= ni < nrows
+                    and 0 <= nj < ncols
+                    and dem[ni, nj] != nodata
+                ):
+                    downstream_id = get_cell_index(ni, nj)
+
+            # Strahler order (None for non-stream cells)
+            strahler_val = None
+            if strahler is not None and strahler[i, j] > 0:
+                strahler_val = int(strahler[i, j])
 
             records.append(
                 {
@@ -1420,6 +1702,7 @@ def create_flow_network_records(
                     "downstream_id": downstream_id,
                     "cell_area": cell_area,
                     "is_stream": bool(acc[i, j] >= stream_threshold),
+                    "strahler_order": strahler_val,
                 }
             )
 
@@ -1474,8 +1757,11 @@ def insert_records_batch(
     cursor.execute("DROP INDEX IF EXISTS idx_downstream")
     cursor.execute("DROP INDEX IF EXISTS idx_is_stream")
     cursor.execute("DROP INDEX IF EXISTS idx_flow_accumulation")
+    cursor.execute("DROP INDEX IF EXISTS idx_strahler")
     cursor.execute(
-        "ALTER TABLE flow_network DROP CONSTRAINT IF EXISTS flow_network_downstream_id_fkey"
+        "ALTER TABLE flow_network"
+        " DROP CONSTRAINT IF EXISTS"
+        " flow_network_downstream_id_fkey"
     )
     raw_conn.commit()
     logger.info("  Indexes and FK constraint dropped")
@@ -1494,53 +1780,68 @@ def insert_records_batch(
             slope FLOAT,
             downstream_id INT,
             cell_area FLOAT,
-            is_stream BOOLEAN
+            is_stream BOOLEAN,
+            strahler_order SMALLINT
         )
     """)
 
     # Create TSV buffer
     tsv_buffer = io.StringIO()
     for r in records:
-        downstream = "" if r["downstream_id"] is None else str(r["downstream_id"])
+        downstream = (
+            "" if r["downstream_id"] is None
+            else str(r["downstream_id"])
+        )
         is_stream = "t" if r["is_stream"] else "f"
+        strahler = (
+            "" if r.get("strahler_order") is None
+            else str(r["strahler_order"])
+        )
         tsv_buffer.write(
-            f"{r['id']}\t{r['x']}\t{r['y']}\t{r['elevation']}\t"
-            f"{r['flow_accumulation']}\t{r['slope']}\t{downstream}\t"
-            f"{r['cell_area']}\t{is_stream}\n"
+            f"{r['id']}\t{r['x']}\t{r['y']}\t"
+            f"{r['elevation']}\t{r['flow_accumulation']}\t"
+            f"{r['slope']}\t{downstream}\t{r['cell_area']}\t"
+            f"{is_stream}\t{strahler}\n"
         )
 
     tsv_buffer.seek(0)
 
     # COPY to temp table
     cursor.copy_expert(
-        "COPY temp_flow_import FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '')",
+        "COPY temp_flow_import FROM STDIN"
+        " WITH (FORMAT text, DELIMITER E'\\t', NULL '')",
         tsv_buffer,
     )
     logger.info(f"  COPY to temp table: {len(records):,} records")
 
-    # Insert from temp table with geometry construction AND downstream_id
-    # When table is empty (after TRUNCATE), skip ON CONFLICT for much faster insert
+    # Insert from temp table with geometry construction
+    # When table is empty, skip ON CONFLICT for faster insert
     if table_empty:
         cursor.execute("""
             INSERT INTO flow_network (
                 id, geom, elevation, flow_accumulation, slope,
-                downstream_id, cell_area, is_stream
+                downstream_id, cell_area, is_stream,
+                strahler_order
             )
             SELECT
-                id, ST_SetSRID(ST_Point(x, y), 2180), elevation,
-                flow_accumulation, slope, downstream_id, cell_area, is_stream
+                id, ST_SetSRID(ST_Point(x, y), 2180),
+                elevation, flow_accumulation, slope,
+                downstream_id, cell_area, is_stream,
+                strahler_order
             FROM temp_flow_import
         """)
     else:
-        # For incremental updates, use ON CONFLICT to handle existing rows
         cursor.execute("""
             INSERT INTO flow_network (
                 id, geom, elevation, flow_accumulation, slope,
-                downstream_id, cell_area, is_stream
+                downstream_id, cell_area, is_stream,
+                strahler_order
             )
             SELECT
-                id, ST_SetSRID(ST_Point(x, y), 2180), elevation,
-                flow_accumulation, slope, downstream_id, cell_area, is_stream
+                id, ST_SetSRID(ST_Point(x, y), 2180),
+                elevation, flow_accumulation, slope,
+                downstream_id, cell_area, is_stream,
+                strahler_order
             FROM temp_flow_import
             ON CONFLICT (id) DO UPDATE SET
                 geom = EXCLUDED.geom,
@@ -1549,7 +1850,8 @@ def insert_records_batch(
                 slope = EXCLUDED.slope,
                 downstream_id = EXCLUDED.downstream_id,
                 cell_area = EXCLUDED.cell_area,
-                is_stream = EXCLUDED.is_stream
+                is_stream = EXCLUDED.is_stream,
+                strahler_order = EXCLUDED.strahler_order
         """)
 
     total_inserted = cursor.rowcount
@@ -1578,9 +1880,17 @@ def insert_records_batch(
     logger.info("  Index idx_is_stream created")
 
     cursor.execute(
-        "CREATE INDEX idx_flow_accumulation ON flow_network (flow_accumulation)"
+        "CREATE INDEX idx_flow_accumulation"
+        " ON flow_network (flow_accumulation)"
     )
     logger.info("  Index idx_flow_accumulation created")
+
+    cursor.execute(
+        "CREATE INDEX idx_strahler"
+        " ON flow_network (strahler_order)"
+        " WHERE strahler_order IS NOT NULL"
+    )
+    logger.info("  Index idx_strahler created")
 
     cursor.execute("ANALYZE flow_network")
     raw_conn.commit()
@@ -1599,6 +1909,7 @@ def process_dem(
     clear_existing: bool = False,
     burn_streams_path: Path | None = None,
     burn_depth_m: float = 5.0,
+    skip_streams_vectorize: bool = False,
 ) -> dict:
     """
     Process DEM file (ASC, VRT, or GeoTIFF) and load into flow_network table.
@@ -1627,6 +1938,8 @@ def process_dem(
         Path to GeoPackage/Shapefile with stream lines for DEM burning
     burn_depth_m : float
         Burn depth in meters (default: 5.0)
+    skip_streams_vectorize : bool
+        If True, skip stream vectorization (default: False)
 
     Returns
     -------
@@ -1785,12 +2098,22 @@ def process_dem(
             dtype="uint8",
         )
 
-    # 7. Create records
+    # 7. Create records (with strahler_order)
     records = create_flow_network_records(
-        filled_dem, fdir, acc, slope, metadata, stream_threshold
+        filled_dem, fdir, acc, slope, metadata, stream_threshold,
+        strahler=strahler,
     )
     stats["records"] = len(records)
     stats["stream_cells"] = sum(1 for r in records if r["is_stream"])
+
+    # 7b. Vectorize streams
+    stream_segments = []
+    if not skip_streams_vectorize:
+        stream_segments = vectorize_streams(
+            filled_dem, fdir, acc, slope, strahler,
+            metadata, stream_threshold,
+        )
+        stats["stream_segments"] = len(stream_segments)
 
     # 8. Insert into database
     if not dry_run:
@@ -1800,13 +2123,26 @@ def process_dem(
             if clear_existing:
                 logger.info("Clearing existing flow_network data...")
                 db.execute(text("TRUNCATE TABLE flow_network CASCADE"))
+                db.execute(
+                    text(
+                        "DELETE FROM stream_network"
+                        " WHERE source = 'DEM_DERIVED'"
+                    )
+                )
                 db.commit()
 
-            # table_empty=True when we just truncated, speeds up INSERT significantly
+            # table_empty=True when we just truncated
             inserted = insert_records_batch(
                 db, records, batch_size, table_empty=clear_existing
             )
             stats["inserted"] = inserted
+
+            # Insert stream segments
+            if stream_segments:
+                seg_inserted = insert_stream_segments(
+                    db, stream_segments
+                )
+                stats["stream_segments_inserted"] = seg_inserted
     else:
         logger.info("Dry run - skipping database insert")
         stats["inserted"] = 0
@@ -1875,6 +2211,11 @@ def main():
         default=5.0,
         help="Burn depth in meters (default: 5.0)",
     )
+    parser.add_argument(
+        "--skip-streams-vectorize",
+        action="store_true",
+        help="Skip stream vectorization (useful without DB)",
+    )
 
     args = parser.parse_args()
 
@@ -1910,6 +2251,7 @@ def main():
             clear_existing=args.clear_existing,
             burn_streams_path=burn_streams_path,
             burn_depth_m=args.burn_depth,
+            skip_streams_vectorize=args.skip_streams_vectorize,
         )
     except FileNotFoundError as e:
         logger.error(str(e))
@@ -1931,8 +2273,17 @@ def main():
     if "burn_cells" in stats:
         logger.info(f"  Burned cells: {stats['burn_cells']:,}")
     logger.info(f"  Stream cells: {stats['stream_cells']:,}")
+    if "stream_segments" in stats:
+        logger.info(
+            f"  Stream segments: {stats['stream_segments']:,}"
+        )
     logger.info(f"  Records created: {stats['records']:,}")
     logger.info(f"  Records inserted: {stats['inserted']:,}")
+    if "stream_segments_inserted" in stats:
+        logger.info(
+            f"  Stream segments inserted: "
+            f"{stats['stream_segments_inserted']:,}"
+        )
     logger.info(f"  Time elapsed: {elapsed:.1f}s")
     logger.info("=" * 60)
 
