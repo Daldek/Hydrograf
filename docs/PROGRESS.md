@@ -47,24 +47,22 @@
 **Data:** 2026-02-07
 
 ### Co zrobiono
+- Naprawa flowacc: cieki konczace sie w srodku rastra
+  - `fill_internal_nodata_holes()` — wypelnianie wewnetrznych dziur nodata przed pysheds
+  - `fix_internal_sinks()` — 3-strategiowa naprawa zlewow po pysheds (steepest/max_acc/any_valid)
+  - `recompute_flow_accumulation()` — rekompozycja acc po naprawie fdir (BFS Kahn)
+  - Integracja w `process_hydrology_pysheds()` (Level 1 + Level 2)
+- Testy jednostkowe: 14 nowych testow w `tests/unit/test_process_dem.py`
+- 293/293 testow przechodzi (14 nowych + 279 istniejacych)
+
+### Poprzednia sesja
 - Migracja na .venv-first development workflow (ADR-011)
-- Rozdzielenie deps: runtime w requirements.txt, dev w pyproject.toml [project.optional-dependencies]
-- Usuniecie black/flake8 z requirements.txt, dodanie ruff/pytest/mypy do [dev]
-- Aktualizacja CLAUDE.md, README.md, ARCHITECTURE.md, DEVELOPMENT_STANDARDS.md na .venv-first
-- docker-compose → docker compose w calej dokumentacji
-- ADR-011 dodany do DECISIONS.md
-- Naprawa pyproject.toml: readme path + setuptools packages.find (editable install)
-- Test E2E pipeline: N-33-131-C-b (5 m) — Kartograf + pysheds + IMGWTools
-  - 8 arkuszy NMT pobranych z GUGiK (256 MB)
-  - VRT mozaika → resample 5 m (1721×969, 1.57M komorek)
-  - 7 plikow posrednich GeoTIFF (DEM, filled, flowdir, flowacc, slope, streams)
-  - 1,573,441 rekordow flow_network w PostGIS
-  - 168 rekordow opadowych IMGW PMAXTP (4 pkt × 42 scenariusze)
-- 279/279 testow jednostkowych przechodzi
+- Test E2E pipeline: N-33-131-C-b (5 m, 1.57M komorek)
+- Naprawa pyproject.toml: readme path + setuptools packages.find
 
 ### Nastepne kroki
 1. CP4 — frontend z mapa Leaflet.js
-2. Testy dla scripts/ (process_dem.py, import_landcover.py)
+2. Re-run process_dem na danych E2E i weryfikacja SQL (stream cells z downstream_id=NULL)
 3. Dlug techniczny: constants.py, hardcoded secrets
 
 ## Backlog
