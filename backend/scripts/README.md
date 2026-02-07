@@ -114,12 +114,17 @@ Przetwarza plik NMT (Numeryczny Model Terenu) z formatu ASCII GRID i ładuje dan
 
 **Etapy przetwarzania (używa biblioteki `pyflwdir` — Deltares):**
 1. Odczyt pliku rastrowego (.asc, .vrt, .tif)
-2. Wypełnienie wewnętrznych dziur nodata
-3. Wypełnienie depresji + obliczenie kierunku przepływu D8 (`fill_depressions`)
-4. Obliczenie akumulacji przepływu (`upstream_area`)
-7. Obliczenie spadku terenu (Sobel)
-8. Identyfikacja strumieni (próg akumulacji)
-9. Import do bazy PostgreSQL/PostGIS
+2. Wypalanie cieków w DEM (opcjonalne, `--burn-streams`)
+3. Wypełnienie wewnętrznych dziur nodata
+4. Wypełnienie depresji + obliczenie kierunku przepływu D8 (`fill_depressions`)
+5. Obliczenie akumulacji przepływu (`upstream_area`)
+6. Obliczenie spadku terenu (Sobel)
+7. Obliczenie aspektu (ekspozycja stoku, 0-360°)
+8. Obliczenie rzędu Strahlera (`flw.stream_order`)
+9. Obliczenie TWI (Topographic Wetness Index)
+10. Identyfikacja strumieni (próg akumulacji)
+11. Wektoryzacja cieków jako LineString (`vectorize_streams`)
+12. Import do bazy PostgreSQL/PostGIS (COPY)
 
 **Użycie:**
 
@@ -149,6 +154,10 @@ cd backend
 | `--dry-run` | - | Tylko obliczenia i statystyki, bez importu | false |
 | `--save-intermediates` | `-s` | Zapis rastrów pośrednich jako GeoTIFF | false |
 | `--output-dir` | `-o` | Katalog dla plików GeoTIFF | (katalog wejściowy) |
+| `--clear-existing` | - | Wyczyść istniejące dane (TRUNCATE flow_network) | false |
+| `--burn-streams` | - | Ścieżka do GeoPackage/Shapefile z ciekami | - |
+| `--burn-depth` | - | Głębokość wypalania [m] | 5.0 |
+| `--skip-streams-vectorize` | - | Pomiń wektoryzację cieków | false |
 
 **Pliki pośrednie (GeoTIFF):**
 
@@ -157,11 +166,15 @@ Opcja `--save-intermediates` generuje pliki do weryfikacji obliczeń w oprogramo
 | Plik | Opis | Typ danych |
 |------|------|------------|
 | `*_01_dem.tif` | Oryginalny NMT | float32 |
+| `*_02a_burned.tif` | NMT po wypaleniu cieków (jeśli `--burn-streams`) | float32 |
 | `*_02_filled.tif` | NMT po wypełnieniu zagłębień | float32 |
 | `*_03_flowdir.tif` | Kierunek przepływu (D8 encoding) | int16 |
 | `*_04_flowacc.tif` | Akumulacja przepływu (liczba komórek upstream) | int32 |
 | `*_05_slope.tif` | Spadek terenu [%] | float32 |
 | `*_06_streams.tif` | Maska strumieni (0/1) | uint8 |
+| `*_07_stream_order.tif` | Rząd Strahlera (1-8+, 0=nie-ciek) | uint8 |
+| `*_08_twi.tif` | TWI — Topographic Wetness Index | float32 |
+| `*_09_aspect.tif` | Aspekt — ekspozycja stoku (0-360°, N=0) | float32 |
 
 **Kodowanie D8 (flowdir):**
 

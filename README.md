@@ -13,6 +13,7 @@ System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fiz
 | `GET /health` | Status systemu i bazy danych | ✅ |
 | `POST /api/delineate-watershed` | Wyznaczanie zlewni (GeoJSON) | ✅ |
 | `POST /api/generate-hydrograph` | Generowanie hydrogramu | ✅ |
+| `GET /api/scenarios` | Lista dostępnych scenariuszy | ✅ |
 
 ### Przykład użycia API
 
@@ -34,7 +35,8 @@ curl -X POST http://localhost:8000/api/delineate-watershed \
     "outlet": {"latitude": 52.23, "longitude": 21.01, "elevation_m": 150.0},
     "cell_count": 1234,
     "area_km2": 45.67,
-    "hydrograph_available": true
+    "hydrograph_available": true,
+    "morphometry": {"area_km2": 45.67, "perimeter_km": 32.1, "...": "..."}
   }
 }
 ```
