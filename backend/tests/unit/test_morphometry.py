@@ -5,6 +5,7 @@ from shapely.geometry import Polygon
 
 from core.morphometry import (
     build_morphometric_params,
+    calculate_drainage_indices,
     calculate_elevation_stats,
     calculate_hypsometric_curve,
     calculate_mean_slope,
@@ -626,3 +627,79 @@ class TestCalculateHypsometricCurve:
         ]
         result = calculate_hypsometric_curve(cells)
         assert len(result) >= 2
+
+
+# ===== TEST: calculate_drainage_indices =====
+
+
+class TestCalculateDrainageIndices:
+    """Tests for calculate_drainage_indices function."""
+
+    def test_basic_drainage(self):
+        """Known stream stats produce correct indices."""
+        stream_stats = {
+            "total_stream_length_km": 20.0,
+            "n_segments": 10,
+            "max_strahler_order": 3,
+        }
+        result = calculate_drainage_indices(
+            stream_stats, area_km2=10.0, relief_m=400.0
+        )
+
+        # Dd = 20/10 = 2.0
+        assert result["drainage_density_km_per_km2"] == pytest.approx(
+            2.0, abs=0.01
+        )
+        # Fs = 10/10 = 1.0
+        assert result["stream_frequency_per_km2"] == pytest.approx(
+            1.0, abs=0.01
+        )
+        # Rn = (400/1000) * 2.0 = 0.8
+        assert result["ruggedness_number"] == pytest.approx(
+            0.8, abs=0.01
+        )
+        assert result["max_strahler_order"] == 3
+
+    def test_zero_area_returns_none(self):
+        """Zero area → all None values."""
+        stream_stats = {
+            "total_stream_length_km": 5.0,
+            "n_segments": 3,
+            "max_strahler_order": 1,
+        }
+        result = calculate_drainage_indices(
+            stream_stats, area_km2=0, relief_m=100.0
+        )
+        assert all(v is None for v in result.values())
+
+    def test_zero_relief_rn_none(self):
+        """Zero relief → ruggedness_number is None."""
+        stream_stats = {
+            "total_stream_length_km": 10.0,
+            "n_segments": 5,
+            "max_strahler_order": 2,
+        }
+        result = calculate_drainage_indices(
+            stream_stats, area_km2=5.0, relief_m=0
+        )
+        assert result["ruggedness_number"] is None
+        # Other indices should still work
+        assert result["drainage_density_km_per_km2"] is not None
+
+    def test_returns_all_keys(self):
+        """All expected keys are present."""
+        stream_stats = {
+            "total_stream_length_km": 10.0,
+            "n_segments": 5,
+            "max_strahler_order": 2,
+        }
+        result = calculate_drainage_indices(
+            stream_stats, area_km2=5.0, relief_m=200.0
+        )
+        expected_keys = {
+            "drainage_density_km_per_km2",
+            "stream_frequency_per_km2",
+            "ruggedness_number",
+            "max_strahler_order",
+        }
+        assert set(result.keys()) == expected_keys
