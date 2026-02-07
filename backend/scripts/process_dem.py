@@ -292,6 +292,300 @@ def read_ascii_grid(filepath: Path) -> tuple[np.ndarray, dict]:
     return data, metadata
 
 
+def fill_internal_nodata_holes(
+    dem: np.ndarray,
+    nodata: float,
+    min_valid_neighbors: int = 5,
+    max_iterations: int = 3,
+) -> tuple[np.ndarray, int]:
+    """
+    Wypelnia wewnetrzne dziury nodata w DEM.
+
+    Iteracyjnie wypelnia komorki nodata otoczone wystarczajaca liczba
+    validnych sasiadow (okno 3x3). Komorki brzegowe i duze bloki nodata
+    nie sa wypelniane.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        Input DEM array
+    nodata : float
+        NoData value
+    min_valid_neighbors : int
+        Minimalna liczba validnych sasiadow (z 8) aby uznac za dziure wewnetrzna
+    max_iterations : int
+        Maksymalna liczba iteracji wypelniania
+
+    Returns
+    -------
+    tuple
+        (patched_dem, total_filled) — naprawiony DEM i liczba wypelnionych komorek
+    """
+    from scipy.ndimage import generic_filter
+
+    patched = dem.copy()
+    total_filled = 0
+
+    for iteration in range(max_iterations):
+        nodata_mask = patched == nodata
+        if not np.any(nodata_mask):
+            break
+
+        # Count valid neighbors for each cell (3x3 window)
+        valid_map = (patched != nodata).astype(np.float64)
+
+        def count_valid_neighbors(window):
+            # window is 3x3 flattened (9 elements), center is index 4
+            return np.sum(window) - window[4]
+
+        neighbor_count = generic_filter(
+            valid_map, count_valid_neighbors, size=3, mode="constant", cval=0.0
+        )
+
+        # Internal holes: nodata cells with enough valid neighbors
+        fillable = nodata_mask & (neighbor_count >= min_valid_neighbors)
+
+        if not np.any(fillable):
+            break
+
+        # Compute mean of valid neighbors for each cell
+        def mean_valid_neighbors(window):
+            center = window[4]
+            neighbors = np.concatenate([window[:4], window[5:]])
+            valid = neighbors[neighbors != nodata]
+            if len(valid) == 0:
+                return center
+            return np.mean(valid)
+
+        neighbor_mean = generic_filter(
+            patched, mean_valid_neighbors, size=3, mode="constant", cval=nodata
+        )
+
+        filled_count = int(np.sum(fillable))
+        patched[fillable] = neighbor_mean[fillable]
+        total_filled += filled_count
+
+        logger.debug(
+            f"  fill_internal_nodata_holes iteration {iteration + 1}: "
+            f"filled {filled_count} cells"
+        )
+
+        if filled_count == 0:
+            break
+
+    return patched, total_filled
+
+
+def recompute_flow_accumulation(
+    fdir: np.ndarray,
+    dem: np.ndarray,
+    nodata: float,
+) -> np.ndarray:
+    """
+    Rekompozycja flow accumulation z algorytmem Kahna (BFS topological sort).
+
+    W odroznieniu od legacy compute_flow_accumulation():
+    - Pomija komorki nodata (acc=0)
+    - Brak deprecation warning
+    - Obsluguje komorki z fdir=0 (brzeg/outlet) jako terminale
+
+    Parameters
+    ----------
+    fdir : np.ndarray
+        Flow direction array (D8 encoding)
+    dem : np.ndarray
+        DEM array (for nodata detection)
+    nodata : float
+        NoData value
+
+    Returns
+    -------
+    np.ndarray
+        Flow accumulation array (number of upstream cells including self)
+    """
+    from collections import deque
+
+    nrows, ncols = fdir.shape
+    acc = np.zeros((nrows, ncols), dtype=np.int32)
+    inflow_count = np.zeros((nrows, ncols), dtype=np.int32)
+
+    # Set acc=1 for valid cells, 0 for nodata
+    valid = dem != nodata
+    acc[valid] = 1
+
+    # Count inflows for each cell
+    for i in range(nrows):
+        for j in range(ncols):
+            if not valid[i, j]:
+                continue
+            d = fdir[i, j]
+            if d in D8_DIRECTIONS:
+                di, dj = D8_DIRECTIONS[d]
+                ni, nj = i + di, j + dj
+                if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
+                    inflow_count[ni, nj] += 1
+
+    # BFS from headwaters (valid cells with no inflows and valid fdir)
+    queue = deque()
+    for i in range(nrows):
+        for j in range(ncols):
+            if valid[i, j] and inflow_count[i, j] == 0:
+                queue.append((i, j))
+
+    while queue:
+        i, j = queue.popleft()
+        d = fdir[i, j]
+        if d in D8_DIRECTIONS:
+            di, dj = D8_DIRECTIONS[d]
+            ni, nj = i + di, j + dj
+            if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
+                acc[ni, nj] += acc[i, j]
+                inflow_count[ni, nj] -= 1
+                if inflow_count[ni, nj] == 0:
+                    queue.append((ni, nj))
+
+    return acc
+
+
+def fix_internal_sinks(
+    fdir: np.ndarray,
+    acc: np.ndarray,
+    inflated_dem: np.ndarray,
+    dem: np.ndarray,
+    nodata: float,
+    max_iterations: int = 3,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """
+    Naprawia wewnetrzne zlewy po pysheds.
+
+    Dla kazdej wewnetrznej komorki z fdir=0 (nie na brzegu, nie nodata):
+    1. Steepest descent — najstromiszy spadek do sasiada (z inflated_dem)
+    2. Max accumulation — sasiad z najwyzsza akumulacja
+    3. Any valid — dowolny validny sasiad
+
+    Po naprawie rekompozycja flow accumulation.
+
+    Parameters
+    ----------
+    fdir : np.ndarray
+        Flow direction array (D8 encoding)
+    acc : np.ndarray
+        Flow accumulation array
+    inflated_dem : np.ndarray
+        DEM po resolve_flats (z mikro-gradientami)
+    dem : np.ndarray
+        Oryginalny filled DEM (for nodata detection)
+    nodata : float
+        NoData value
+    max_iterations : int
+        Maksymalna liczba iteracji naprawy
+
+    Returns
+    -------
+    tuple
+        (fixed_fdir, recomputed_acc, diagnostics)
+        diagnostics: dict with 'total_fixed', 'by_strategy', 'iterations'
+    """
+    nrows, ncols = fdir.shape
+    fdir_fixed = fdir.copy()
+
+    directions = [1, 2, 4, 8, 16, 32, 64, 128]
+    offsets = [(0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1)]
+    distances = [1.0, 1.414, 1.0, 1.414, 1.0, 1.414, 1.0, 1.414]
+
+    valid = dem != nodata
+    edge_mask = np.zeros((nrows, ncols), dtype=bool)
+    edge_mask[0, :] = True
+    edge_mask[-1, :] = True
+    edge_mask[:, 0] = True
+    edge_mask[:, -1] = True
+
+    diag = {
+        "total_fixed": 0,
+        "by_strategy": {"steepest": 0, "max_acc": 0, "any_valid": 0},
+        "iterations": 0,
+    }
+
+    for iteration in range(max_iterations):
+        # Find internal sinks: fdir==0, valid, not on edge
+        internal_sinks = (fdir_fixed == 0) & valid & ~edge_mask
+        sink_rows, sink_cols = np.where(internal_sinks)
+        sink_indices = list(zip(sink_rows, sink_cols, strict=True))
+
+        if not sink_indices:
+            break
+
+        diag["iterations"] = iteration + 1
+        fixed_this_iter = 0
+
+        for i, j in sink_indices:
+            best_dir = None
+            strategy = None
+
+            # Strategy 1: steepest descent using inflated_dem
+            max_slope = 0.0
+            for d, (di, dj), dist in zip(
+                directions, offsets, distances, strict=True
+            ):
+                ni, nj = i + di, j + dj
+                if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
+                    slope = (inflated_dem[i, j] - inflated_dem[ni, nj]) / dist
+                    if slope > max_slope:
+                        max_slope = slope
+                        best_dir = d
+                        strategy = "steepest"
+
+            # Strategy 2: max accumulation neighbor
+            if best_dir is None:
+                max_acc_val = -1
+                for d, (di, dj), _dist in zip(
+                    directions, offsets, distances, strict=True
+                ):
+                    ni, nj = i + di, j + dj
+                    if (
+                        0 <= ni < nrows
+                        and 0 <= nj < ncols
+                        and valid[ni, nj]
+                        and acc[ni, nj] > max_acc_val
+                    ):
+                        max_acc_val = acc[ni, nj]
+                        best_dir = d
+                        strategy = "max_acc"
+
+            # Strategy 3: any valid neighbor
+            if best_dir is None:
+                for d, (di, dj), _dist in zip(
+                    directions, offsets, distances, strict=True
+                ):
+                    ni, nj = i + di, j + dj
+                    if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
+                        best_dir = d
+                        strategy = "any_valid"
+                        break
+
+            if best_dir is not None:
+                fdir_fixed[i, j] = best_dir
+                diag["total_fixed"] += 1
+                diag["by_strategy"][strategy] += 1
+                fixed_this_iter += 1
+
+        logger.debug(
+            f"  fix_internal_sinks iteration {iteration + 1}: "
+            f"fixed {fixed_this_iter} sinks"
+        )
+
+        if fixed_this_iter == 0:
+            break
+
+    # Recompute flow accumulation after fixes
+    if diag["total_fixed"] > 0:
+        acc_fixed = recompute_flow_accumulation(fdir_fixed, dem, nodata)
+    else:
+        acc_fixed = acc.copy()
+
+    return fdir_fixed, acc_fixed, diag
+
+
 def process_hydrology_pysheds(
     dem: np.ndarray,
     metadata: dict,
@@ -339,6 +633,11 @@ def process_hydrology_pysheds(
     xmax = xll + ncols * cellsize
     ymax = yll + nrows * cellsize
 
+    # Level 1: Fill internal nodata holes before pysheds
+    dem_patched, holes_filled = fill_internal_nodata_holes(dem, nodata)
+    if holes_filled > 0:
+        logger.info(f"  Filled {holes_filled} internal nodata holes")
+
     # Create temporary GeoTIFF for pysheds (it needs a file)
     with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
         tmp_path = tmp.name
@@ -357,7 +656,7 @@ def process_hydrology_pysheds(
         transform=transform,
         nodata=nodata,
     ) as dst:
-        dst.write(dem.astype(np.float32), 1)
+        dst.write(dem_patched.astype(np.float32), 1)
 
     # Load into pysheds
     grid = Grid.from_raster(tmp_path)
@@ -404,7 +703,7 @@ def process_hydrology_pysheds(
 
     os.unlink(tmp_path)
 
-    # Verify no internal sinks
+    # Level 2: Fix internal sinks
     valid = filled_dem != nodata
     edge_mask = np.zeros_like(valid)
     edge_mask[0, :] = True
@@ -412,12 +711,19 @@ def process_hydrology_pysheds(
     edge_mask[:, 0] = True
     edge_mask[:, -1] = True
 
-    no_flow = (fdir_arr == 0) & valid
-    internal_no_flow = no_flow & ~edge_mask
+    internal_sinks = (fdir_arr == 0) & valid & ~edge_mask
+    sink_count = int(np.sum(internal_sinks))
 
-    if np.sum(internal_no_flow) > 0:
-        logger.warning(
-            f"  {np.sum(internal_no_flow)} internal cells without flow direction"
+    if sink_count > 0:
+        logger.info(f"  Found {sink_count} internal sinks, fixing...")
+        fdir_arr, acc_arr, diag = fix_internal_sinks(
+            fdir_arr, acc_arr, inflated_dem, filled_dem, nodata
+        )
+        logger.info(
+            f"  Fixed {diag['total_fixed']} sinks "
+            f"(steepest: {diag['by_strategy']['steepest']}, "
+            f"max_acc: {diag['by_strategy']['max_acc']}, "
+            f"any_valid: {diag['by_strategy']['any_valid']})"
         )
     else:
         logger.info("  All internal cells have valid flow direction")
