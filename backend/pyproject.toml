@@ -18,6 +18,16 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Hydrology",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-asyncio>=0.23.3",
+    "httpx>=0.26.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
 [project.urls]
 Repository = "https://github.com/Daldek/Hydrograf"
 
