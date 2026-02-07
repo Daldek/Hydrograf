@@ -10,7 +10,7 @@ direct runoff from rainfall.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from shapely.geometry import Polygon
 from sqlalchemy import text
@@ -39,7 +39,7 @@ VALID_CATEGORIES = frozenset(
 def calculate_weighted_cn(
     boundary: Polygon,
     db: Session,
-) -> Tuple[int, Dict[str, float]]:
+) -> tuple[int, dict[str, float]]:
     """
     Calculate area-weighted CN from land cover data.
 
@@ -131,7 +131,7 @@ def calculate_weighted_cn(
     weighted_cn = max(0, min(100, weighted_cn))
 
     # Build stats dictionary with category percentages
-    land_cover_stats: Dict[str, float] = {}
+    land_cover_stats: dict[str, float] = {}
     for row in result:
         category = row.category
         percentage = (row.total_area_m2 / total_area) * 100
@@ -145,7 +145,7 @@ def calculate_weighted_cn(
 
     logger.info(
         f"Calculated CN={weighted_cn} from {len(result)} land cover categories "
-        f"(total area: {total_area/1e6:.2f} km²)"
+        f"(total area: {total_area / 1e6:.2f} km²)"
     )
 
     return (weighted_cn, land_cover_stats)
@@ -154,7 +154,7 @@ def calculate_weighted_cn(
 def get_land_cover_for_boundary(
     boundary: Polygon,
     db: Session,
-) -> Optional[Dict]:
+) -> dict | None:
     """
     Get detailed land cover information for a watershed boundary.
 
@@ -256,13 +256,13 @@ def get_land_cover_for_boundary(
 def determine_cn(
     boundary: Polygon,
     db: Session,
-    config_cn: Optional[int] = None,
+    config_cn: int | None = None,
     default_cn: int = DEFAULT_CN,
     use_kartograf: bool = True,
-    boundary_wgs84: Optional[List[List[float]]] = None,
-    data_dir: Optional[Path] = None,
-    teryt: Optional[str] = None,
-) -> Tuple[int, str, Optional[Dict[str, Any]]]:
+    boundary_wgs84: list[list[float]] | None = None,
+    data_dir: Path | None = None,
+    teryt: str | None = None,
+) -> tuple[int, str, dict[str, Any] | None]:
     """
     Okresl wartosc CN wedlug hierarchii zrodel.
 
@@ -330,9 +330,7 @@ def determine_cn(
         result = calculate_cn_from_kartograf(boundary_wgs84, data_dir, teryt=teryt)
 
         if result and result.cn:
-            logger.info(
-                f"CN z Kartografa (HSG={result.dominant_hsg}): {result.cn}"
-            )
+            logger.info(f"CN z Kartografa (HSG={result.dominant_hsg}): {result.cn}")
             return (
                 result.cn,
                 "kartograf_hsg",

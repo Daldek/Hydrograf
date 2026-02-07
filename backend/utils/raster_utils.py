@@ -15,7 +15,6 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -23,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 def create_vrt_mosaic(
-    input_files: List[Path],
-    output_vrt: Optional[Path] = None,
+    input_files: list[Path],
+    output_vrt: Path | None = None,
     resolution: str = "highest",
     nodata: float = -9999.0,
 ) -> Path:
@@ -97,7 +96,7 @@ def create_vrt_mosaic(
 
 
 def _create_vrt_gdal(
-    input_files: List[Path],
+    input_files: list[Path],
     output_vrt: Path,
     resolution: str,
     nodata: float,
@@ -136,7 +135,7 @@ def _create_vrt_gdal(
         raise RuntimeError(
             "gdalbuildvrt not found. Install GDAL: "
             "apt-get install gdal-bin (Linux) or brew install gdal (macOS)"
-        )
+        ) from None
 
     logger.info(f"VRT created: {output_vrt}")
     logger.info(f"VRT file size: {output_vrt.stat().st_size / 1024:.1f} KB")
@@ -145,7 +144,7 @@ def _create_vrt_gdal(
 
 
 def _create_mosaic_rasterio(
-    input_files: List[Path],
+    input_files: list[Path],
     output_path: Path,
     nodata: float,
 ) -> Path:
@@ -203,7 +202,7 @@ def _create_mosaic_rasterio(
 
 def read_vrt_as_array(
     vrt_path: Path,
-) -> Tuple[np.ndarray, dict]:
+) -> tuple[np.ndarray, dict]:
     """
     Read VRT mosaic as numpy array with metadata.
 
@@ -284,7 +283,7 @@ def get_mosaic_info(vrt_path: Path) -> dict:
     return info
 
 
-def validate_tiles_compatibility(input_files: List[Path]) -> dict:
+def validate_tiles_compatibility(input_files: list[Path]) -> dict:
     """
     Validate that all tiles are compatible for mosaicking.
 
@@ -419,7 +418,7 @@ def resample_raster(
         # Oblicz rzeczywistą rozdzielczość zachowując dokładne bounds
         bounds = src.bounds
         actual_res_x = (bounds.right - bounds.left) / new_width
-        actual_res_y = (bounds.top - bounds.bottom) / new_height
+        _ = (bounds.top - bounds.bottom) / new_height  # actual_res_y not used
 
         logger.info(
             f"Resampling {input_path.name}: {src.width}x{src.height} ({src_resolution:.6f}m) "
@@ -428,8 +427,7 @@ def resample_raster(
 
         # Transform zachowujący dokładne bounds (extent) - EPSG:2180
         new_transform = from_bounds(
-            bounds.left, bounds.bottom, bounds.right, bounds.top,
-            new_width, new_height
+            bounds.left, bounds.bottom, bounds.right, bounds.top, new_width, new_height
         )
 
         # Read and resample data
@@ -440,12 +438,14 @@ def resample_raster(
 
         # Update metadata
         out_meta = src.meta.copy()
-        out_meta.update({
-            "width": new_width,
-            "height": new_height,
-            "transform": new_transform,
-            "compress": "lzw",
-        })
+        out_meta.update(
+            {
+                "width": new_width,
+                "height": new_height,
+                "transform": new_transform,
+                "compress": "lzw",
+            }
+        )
 
         # Write output
         with rasterio.open(output_path, "w", **out_meta) as dst:
@@ -459,7 +459,7 @@ def resample_raster(
 
 def convert_asc_to_geotiff(
     input_asc: Path,
-    output_tif: Optional[Path] = None,
+    output_tif: Path | None = None,
     compress: str = "LZW",
 ) -> Path:
     """

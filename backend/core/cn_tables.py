@@ -10,7 +10,6 @@ Zrodlo wartosci: SCS TR-55 (1986), dostosowane do warunkow polskich.
 """
 
 import logging
-from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ VALID_HSG = frozenset(["A", "B", "C", "D"])
 
 # Standard SCS CN lookup table: land_cover -> {HSG: CN}
 # Klucze: BDOT10k (PTLZ, PTZB, ...), CORINE (11, 12, ...), nazwy ogolne
-CN_LOOKUP_TABLE: Dict[str, Dict[str, int]] = {
+CN_LOOKUP_TABLE: dict[str, dict[str, int]] = {
     # === Lasy i tereny lesne ===
     "forest": {"A": 30, "B": 55, "C": 70, "D": 77},
     "las": {"A": 30, "B": 55, "C": 70, "D": 77},
@@ -135,7 +134,7 @@ def lookup_cn(
 
 
 def calculate_weighted_cn_from_stats(
-    land_cover_stats: Dict[str, float],
+    land_cover_stats: dict[str, float],
     dominant_hsg: str,
 ) -> int:
     """

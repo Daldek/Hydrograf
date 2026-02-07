@@ -6,13 +6,13 @@ import pytest
 from shapely.geometry import Point, Polygon
 
 from core.watershed import (
+    MAX_STREAM_DISTANCE_M,
     FlowCell,
     build_boundary,
     build_boundary_polygonize,
     calculate_watershed_area_km2,
     find_nearest_stream,
     traverse_upstream,
-    MAX_STREAM_DISTANCE_M,
 )
 
 
@@ -166,8 +166,15 @@ class TestBuildBoundaryPolygonize:
         """Test that function raises with less than 3 cells."""
         cells = [
             FlowCell(
-                id=1, x=0, y=0, elevation=0, flow_accumulation=0,
-                slope=0, downstream_id=None, cell_area=1, is_stream=True,
+                id=1,
+                x=0,
+                y=0,
+                elevation=0,
+                flow_accumulation=0,
+                slope=0,
+                downstream_id=None,
+                cell_area=1,
+                is_stream=True,
             ),
         ]
 
@@ -190,9 +197,15 @@ class TestBuildBoundaryPolygonize:
         for row in range(5):
             cells.append(
                 FlowCell(
-                    id=cell_id, x=500000.0, y=600000.0 + row,
-                    elevation=150.0, flow_accumulation=100, slope=2.0,
-                    downstream_id=None, cell_area=1.0, is_stream=False,
+                    id=cell_id,
+                    x=500000.0,
+                    y=600000.0 + row,
+                    elevation=150.0,
+                    flow_accumulation=100,
+                    slope=2.0,
+                    downstream_id=None,
+                    cell_area=1.0,
+                    is_stream=False,
                 )
             )
             cell_id += 1
@@ -200,9 +213,15 @@ class TestBuildBoundaryPolygonize:
         for col in range(1, 5):
             cells.append(
                 FlowCell(
-                    id=cell_id, x=500000.0 + col, y=600000.0,
-                    elevation=150.0, flow_accumulation=100, slope=2.0,
-                    downstream_id=None, cell_area=1.0, is_stream=False,
+                    id=cell_id,
+                    x=500000.0 + col,
+                    y=600000.0,
+                    elevation=150.0,
+                    flow_accumulation=100,
+                    slope=2.0,
+                    downstream_id=None,
+                    cell_area=1.0,
+                    is_stream=False,
                 )
             )
             cell_id += 1

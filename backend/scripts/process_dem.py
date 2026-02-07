@@ -46,7 +46,6 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Tuple, Optional
 
 import numpy as np
 from sqlalchemy import text
@@ -150,7 +149,7 @@ def save_raster_geotiff(
     logger.info(f"Saved: {output_path} ({output_path.stat().st_size / 1024:.1f} KB)")
 
 
-def read_raster(filepath: Path) -> Tuple[np.ndarray, dict]:
+def read_raster(filepath: Path) -> tuple[np.ndarray, dict]:
     """
     Read raster file (ASC, VRT, or GeoTIFF) using rasterio.
 
@@ -204,7 +203,7 @@ def read_raster(filepath: Path) -> Tuple[np.ndarray, dict]:
     return data, metadata
 
 
-def read_ascii_grid(filepath: Path) -> Tuple[np.ndarray, dict]:
+def read_ascii_grid(filepath: Path) -> tuple[np.ndarray, dict]:
     """
     Read ARC/INFO ASCII GRID file.
 
@@ -236,9 +235,9 @@ def read_ascii_grid(filepath: Path) -> Tuple[np.ndarray, dict]:
     metadata = {}
     header_lines = 6
 
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         # Read header
-        for i in range(header_lines):
+        for _i in range(header_lines):
             line = f.readline().strip()
             if not line:
                 continue
@@ -296,7 +295,7 @@ def read_ascii_grid(filepath: Path) -> Tuple[np.ndarray, dict]:
 def process_hydrology_pysheds(
     dem: np.ndarray,
     metadata: dict,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Process DEM using pysheds library for hydrological analysis.
 
@@ -320,9 +319,10 @@ def process_hydrology_pysheds(
         - flow_direction: kierunki spływu D8
         - flow_accumulation: akumulacja przepływu
     """
-    from pysheds.grid import Grid
     import tempfile
+
     import rasterio
+    from pysheds.grid import Grid
     from rasterio.transform import from_bounds
 
     logger.info("Processing hydrology with pysheds...")
@@ -429,7 +429,7 @@ def process_hydrology_pysheds(
 def process_hydrology_whitebox(
     dem: np.ndarray,
     metadata: dict,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Process DEM using WhiteboxTools for hydrological analysis.
 
@@ -450,6 +450,7 @@ def process_hydrology_whitebox(
         Note: inflated_dem is same as filled_dem for WhiteboxTools
     """
     import tempfile
+
     import rasterio
     from rasterio.transform import from_bounds
     from whitebox import WhiteboxTools
@@ -531,15 +532,15 @@ def process_hydrology_whitebox(
     # Standard: 1=E, 2=SE, 4=S, 8=SW, 16=W, 32=NW, 64=N, 128=NE
     # Need to remap: WBT -> Standard
     wbt_to_d8 = {
-        1: 1,      # E -> E
-        2: 128,    # NE -> NE
-        4: 64,     # N -> N
-        8: 32,     # NW -> NW
-        16: 16,    # W -> W
-        32: 8,     # SW -> SW
-        64: 4,     # S -> S
-        128: 2,    # SE -> SE
-        0: 0,      # nodata/outlet
+        1: 1,  # E -> E
+        2: 128,  # NE -> NE
+        4: 64,  # N -> N
+        8: 32,  # NW -> NW
+        16: 16,  # W -> W
+        32: 8,  # SW -> SW
+        64: 4,  # S -> S
+        128: 2,  # SE -> SE
+        0: 0,  # nodata/outlet
     }
 
     fdir_arr = np.zeros_like(fdir_wbt, dtype=np.int16)
@@ -1024,7 +1025,7 @@ def process_dem(
     batch_size: int = 10000,
     dry_run: bool = False,
     save_intermediates: bool = False,
-    output_dir: Optional[Path] = None,
+    output_dir: Path | None = None,
     clear_existing: bool = False,
 ) -> dict:
     """

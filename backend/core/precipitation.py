@@ -6,7 +6,6 @@ with spatial interpolation for points not directly on the grid.
 """
 
 import logging
-from typing import Optional
 
 from shapely.geometry import Point
 from sqlalchemy import text
@@ -107,7 +106,7 @@ def get_precipitation(
     duration: int | str,
     probability: int,
     db: Session,
-) -> Optional[float]:
+) -> float | None:
     """
     Get interpolated precipitation value for a point.
 
@@ -199,7 +198,7 @@ def get_precipitation_wgs84(
     duration: int | str,
     probability: int,
     db: Session,
-) -> Optional[float]:
+) -> float | None:
     """
     Get interpolated precipitation value for WGS84 coordinates.
 

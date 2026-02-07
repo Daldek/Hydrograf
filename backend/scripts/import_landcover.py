@@ -48,7 +48,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import geopandas
@@ -80,7 +80,7 @@ BDOT10K_LAYERS = [
 
 # Mapping BDOT10k classes to Hydrograf categories with CN values
 # CN values for AMC-II (average antecedent moisture condition)
-BDOT10K_MAPPING: Dict[str, Tuple[str, int, float]] = {
+BDOT10K_MAPPING: dict[str, tuple[str, int, float]] = {
     # bdot_class: (category, cn_value, imperviousness)
     "PTLZ": ("las", 60, 0.0),
     "PTTR": ("grunt_orny", 78, 0.1),
@@ -120,7 +120,7 @@ def get_database_url() -> str:
     return "postgresql://hydro_user:hydro_pass@localhost:5432/hydro_db"
 
 
-def read_gpkg_layers(gpkg_path: Path) -> Dict[str, "geopandas.GeoDataFrame"]:
+def read_gpkg_layers(gpkg_path: Path) -> dict[str, "geopandas.GeoDataFrame"]:
     """
     Read all land cover layers from a GeoPackage file.
 
@@ -134,8 +134,8 @@ def read_gpkg_layers(gpkg_path: Path) -> Dict[str, "geopandas.GeoDataFrame"]:
     Dict[str, GeoDataFrame]
         Dictionary mapping layer names to GeoDataFrames
     """
-    import geopandas as gpd
     import fiona
+    import geopandas as gpd
 
     layers = {}
 
@@ -183,8 +183,8 @@ def transform_to_2180(gdf: "geopandas.GeoDataFrame") -> "geopandas.GeoDataFrame"
 
 
 def prepare_records(
-    layers: Dict[str, "geopandas.GeoDataFrame"],
-) -> List[Dict]:
+    layers: dict[str, "geopandas.GeoDataFrame"],
+) -> list[dict]:
     """
     Prepare database records from GeoDataFrames.
 
@@ -211,7 +211,7 @@ def prepare_records(
         # Transform to EPSG:2180
         gdf = transform_to_2180(gdf)
 
-        for idx, row in gdf.iterrows():
+        for _idx, row in gdf.iterrows():
             geom = row.geometry
 
             # Skip invalid geometries
@@ -248,7 +248,7 @@ def prepare_records(
 
 
 def import_to_database(
-    records: List[Dict],
+    records: list[dict],
     database_url: str,
     batch_size: int = 1000,
     clear_existing: bool = False,
@@ -308,7 +308,7 @@ def import_to_database(
 
             sql = f"""
                 INSERT INTO land_cover (geom, category, cn_value, imperviousness, bdot_class)
-                VALUES {', '.join(values)}
+                VALUES {", ".join(values)}
             """
 
             conn.execute(text(sql), params)
@@ -322,11 +322,11 @@ def import_to_database(
 
 def import_landcover(
     input_path: Path,
-    database_url: Optional[str] = None,
+    database_url: str | None = None,
     batch_size: int = 1000,
     dry_run: bool = False,
     clear_existing: bool = False,
-) -> Dict:
+) -> dict:
     """
     Import land cover data from GeoPackage to database.
 

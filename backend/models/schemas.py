@@ -4,7 +4,7 @@ Pydantic models for API request/response schemas.
 Defines data structures for watershed delineation and hydrograph generation API endpoints.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -96,21 +96,21 @@ class MorphometricParameters(BaseModel):
     length_km: float = Field(..., ge=0, description="Watershed length [km]")
     elevation_min_m: float = Field(..., description="Minimum elevation [m a.s.l.]")
     elevation_max_m: float = Field(..., description="Maximum elevation [m a.s.l.]")
-    elevation_mean_m: Optional[float] = Field(
+    elevation_mean_m: float | None = Field(
         None, description="Area-weighted mean elevation [m a.s.l.]"
     )
-    mean_slope_m_per_m: Optional[float] = Field(
+    mean_slope_m_per_m: float | None = Field(
         None, ge=0, description="Area-weighted mean slope [m/m]"
     )
-    channel_length_km: Optional[float] = Field(
+    channel_length_km: float | None = Field(
         None, ge=0, description="Main channel length [km]"
     )
-    channel_slope_m_per_m: Optional[float] = Field(
+    channel_slope_m_per_m: float | None = Field(
         None, ge=0, description="Main channel slope [m/m]"
     )
-    cn: Optional[int] = Field(None, ge=0, le=100, description="SCS Curve Number")
-    source: Optional[str] = Field("Hydrograf", description="Data source")
-    crs: Optional[str] = Field("EPSG:2180", description="Coordinate reference system")
+    cn: int | None = Field(None, ge=0, le=100, description="SCS Curve Number")
+    source: str | None = Field("Hydrograf", description="Data source")
+    crs: str | None = Field("EPSG:2180", description="Coordinate reference system")
 
 
 class WatershedResponse(BaseModel):
@@ -142,7 +142,7 @@ class WatershedResponse(BaseModel):
     hydrograph_available: bool = Field(
         ..., description="Whether hydrograph generation is available (area <= 250 km2)"
     )
-    morphometry: Optional[MorphometricParameters] = Field(
+    morphometry: MorphometricParameters | None = Field(
         None, description="Full morphometric parameters for hydrological calculations"
     )
 
