@@ -198,6 +198,28 @@ Format: numer, data, kontekst (dlaczego temat powstal), rozwazone opcje, decyzja
 
 ---
 
+## ADR-012: Migracja z pysheds na pyflwdir (Deltares)
+
+**Data:** 2026-02-07
+**Status:** Przyjeta
+
+**Kontekst:** pysheds zwraca nieudokumentowane wartosci fdir (-1, -2) dla pitow i nierozwiazanych platow, co powoduje broken stream chains w flow_network (233 przy E2E). Fix wymaga dodatkowych krokow (fill_internal_sinks). Ponadto pysheds ma 10 zaleznosci i wymaga tymczasowego pliku GeoTIFF na dysku.
+
+**Opcje:**
+- A) Zostawic pysheds z fix_internal_sinks — dziala, ale 233 broken streams i duzo workaroundow
+- B) pyflwdir (Deltares, MIT) — 3 zaleznosci (numpy, numba, scipy — juz w projekcie), praca na numpy arrays, Wang & Liu 2006
+
+**Decyzja:** Opcja B. Nowa funkcja `process_hydrology_pyflwdir()` zastepuje `process_hydrology_pysheds()`. Jedno wywolanie `fill_depressions()` zastepuje 5 krokow pysheds. `fix_internal_sinks()` zachowane jako safety net.
+
+**Konsekwencje:**
+- Broken streams: 233 → 1 (jedyny to efekt brzegowy)
+- Max accumulation: 1,067,456 → 1,823,073 (+71% — lepsza ciaglosc sieci)
+- Pipeline 17% szybciej (173s vs 208s)
+- Brak temp file (pysheds wymaga GeoTIFF na dysku)
+- Mniej zaleznosci (3 vs 10)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

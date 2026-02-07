@@ -112,13 +112,11 @@ cd backend
 
 Przetwarza plik NMT (Numeryczny Model Terenu) z formatu ASCII GRID i ładuje dane do tabeli `flow_network`.
 
-**Etapy przetwarzania (używa biblioteki `pysheds`):**
-1. Odczyt pliku ASCII GRID (.asc)
-2. Wypełnienie pojedynczych zagłębień (`fill_pits`)
-3. Wypełnienie większych depresji (`fill_depressions`)
-4. Rozwiązanie płaskich obszarów (`resolve_flats`)
-5. Obliczenie kierunku przepływu D8 (`flowdir`)
-6. Obliczenie akumulacji przepływu (`accumulation`)
+**Etapy przetwarzania (używa biblioteki `pyflwdir` — Deltares):**
+1. Odczyt pliku rastrowego (.asc, .vrt, .tif)
+2. Wypełnienie wewnętrznych dziur nodata
+3. Wypełnienie depresji + obliczenie kierunku przepływu D8 (`fill_depressions`)
+4. Obliczenie akumulacji przepływu (`upstream_area`)
 7. Obliczenie spadku terenu (Sobel)
 8. Identyfikacja strumieni (próg akumulacji)
 9. Import do bazy PostgreSQL/PostGIS

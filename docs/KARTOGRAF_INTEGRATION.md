@@ -68,7 +68,7 @@ Kartograf to narzędzie Python do:
 │              ┌──────────────────┐                                   │
 │              │  process_dem.py  │                                   │
 │              │                  │                                   │
-│              │  pysheds →       │                                   │
+│              │  pyflwdir →      │                                   │
 │              │  flow_network    │                                   │
 │              └────────┬─────────┘                                   │
 │                       │                                             │
