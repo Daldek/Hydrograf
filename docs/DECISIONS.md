@@ -220,6 +220,30 @@ Format: numer, data, kontekst (dlaczego temat powstal), rozwazone opcje, decyzja
 
 ---
 
+## ADR-013: Wypalanie ciekow w DEM (stream burning)
+
+**Data:** 2026-02-07
+**Status:** Przyjeta
+
+**Kontekst:** Cieki wyznaczone wylacznie z akumulacji przeplywu (threshold na flow accumulation) moga odchodzic od rzeczywistych w obszarach plaskich lub z niskiej jakosci NMT. Dostepna jest warstwa BDOT10k z rzeczywista siecia rzeczna.
+
+**Opcje:**
+- A) Tylko DEM-derived — cieki wyznaczane wylacznie z akumulacji, brak korekty
+- B) Stream burning AGREE — zaawansowany algorytm (Hellweger 1997), wymaga bufora i wygładzania
+- C) Stream burning proste — obnizenie DEM o stala wartosc wzdluz znanych ciekow
+
+**Decyzja:** Opcja C. Proste obnizenie DEM o stala wartosc (domyslnie 5m) wzdluz ciekow z GeoPackage. Rasteryzacja ciekow na siatke DEM za pomoca `rasterio.features.rasterize(all_touched=True)`, nastepnie `dem[stream_mask] -= burn_depth`.
+
+**Konsekwencje:**
+- Lepsza zgodnosc wyznaczonych ciekow z BDOT10k w obszarach plaskich
+- Narzut obliczeniowy ~2-3s (rasteryzacja + odejmowanie)
+- Opcjonalne — aktywowane flaga `--burn-streams <path.gpkg>`
+- Domyslna glebokosc 5m (konfigurowalna `--burn-depth`)
+- Wypalanie przed depression filling (pyflwdir) — depresje po wypalaniu sa wypelniane normalnie
+- Usuniecie warstwy `02b_inflated` (zbedna po migracji na pyflwdir)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

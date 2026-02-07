@@ -377,6 +377,100 @@ def fill_internal_nodata_holes(
     return patched, total_filled
 
 
+def burn_streams_into_dem(
+    dem: np.ndarray,
+    transform,
+    streams_path: Path,
+    burn_depth_m: float = 5.0,
+    nodata: float = -9999.0,
+) -> tuple[np.ndarray, dict]:
+    """
+    Wypalanie ciekow w DEM — obniza DEM wzdluz znanych ciekow.
+
+    Wymusza zgodnosc modelu hydrologicznego z rzeczywista siecia rzeczna
+    (np. BDOT10k) przed analiza hydrologiczna pyflwdir.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        Input DEM array
+    transform : Affine
+        Rasterio Affine transform for the DEM grid
+    streams_path : Path
+        Path to GeoPackage/Shapefile with stream line geometries
+    burn_depth_m : float
+        Depth to burn streams (meters), default 5.0
+    nodata : float
+        NoData value in DEM
+
+    Returns
+    -------
+    tuple
+        (burned_dem, diagnostics) where diagnostics is a dict with:
+        - cells_burned: number of DEM cells lowered
+        - streams_loaded: number of stream features loaded
+        - streams_in_extent: number of stream features intersecting DEM extent
+    """
+    import geopandas as gpd
+    from rasterio.features import rasterize
+    from shapely.geometry import box
+
+    diagnostics = {"cells_burned": 0, "streams_loaded": 0, "streams_in_extent": 0}
+    burned = dem.copy()
+
+    # 1. Load streams
+    streams = gpd.read_file(streams_path)
+    diagnostics["streams_loaded"] = len(streams)
+
+    if streams.empty:
+        logger.info("Stream burning: empty GeoDataFrame, skipping")
+        return burned, diagnostics
+
+    # 2. Validate/reproject CRS to EPSG:2180
+    if streams.crs is not None and streams.crs.to_epsg() != 2180:
+        logger.info(f"  Reprojecting streams from {streams.crs} to EPSG:2180")
+        streams = streams.to_crs(epsg=2180)
+
+    # 3. Clip to DEM extent
+    nrows, ncols = dem.shape
+    xmin = transform.c
+    ymax = transform.f
+    xmax = xmin + ncols * transform.a
+    ymin = ymax + nrows * transform.e  # transform.e is negative
+
+    dem_box = box(xmin, ymin, xmax, ymax)
+    streams = streams[streams.intersects(dem_box)]
+    streams = streams.clip(dem_box)
+    diagnostics["streams_in_extent"] = len(streams)
+
+    if streams.empty:
+        logger.info("Stream burning: no streams within DEM extent, skipping")
+        return burned, diagnostics
+
+    # 4. Rasterize streams onto DEM grid
+    geometries = [(geom, 1) for geom in streams.geometry if geom is not None]
+    stream_mask = rasterize(
+        geometries,
+        out_shape=dem.shape,
+        transform=transform,
+        fill=0,
+        dtype=np.uint8,
+        all_touched=True,
+    )
+
+    # 5. Burn: lower DEM at stream cells (skip nodata)
+    burn_cells = (stream_mask == 1) & (dem != nodata)
+    burned[burn_cells] -= burn_depth_m
+    diagnostics["cells_burned"] = int(np.sum(burn_cells))
+
+    logger.info(
+        f"Stream burning: {diagnostics['cells_burned']} cells burned "
+        f"(depth={burn_depth_m}m, streams={diagnostics['streams_in_extent']})"
+    )
+
+    return burned, diagnostics
+
+
 def recompute_flow_accumulation(
     fdir: np.ndarray,
     dem: np.ndarray,
@@ -451,16 +545,16 @@ def recompute_flow_accumulation(
 def fix_internal_sinks(
     fdir: np.ndarray,
     acc: np.ndarray,
-    inflated_dem: np.ndarray,
+    filled_dem: np.ndarray,
     dem: np.ndarray,
     nodata: float,
     max_iterations: int = 3,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """
-    Naprawia wewnetrzne zlewy po pysheds.
+    Naprawia wewnetrzne zlewy po pyflwdir.
 
     Dla kazdej wewnetrznej komorki z fdir=0 (nie na brzegu, nie nodata):
-    1. Steepest descent — najstromiszy spadek do sasiada (z inflated_dem)
+    1. Steepest descent — najstromiszy spadek do sasiada (z filled_dem)
     2. Max accumulation — sasiad z najwyzsza akumulacja
     3. Any valid — dowolny validny sasiad
 
@@ -472,8 +566,8 @@ def fix_internal_sinks(
         Flow direction array (D8 encoding)
     acc : np.ndarray
         Flow accumulation array
-    inflated_dem : np.ndarray
-        DEM po resolve_flats (z mikro-gradientami)
+    filled_dem : np.ndarray
+        DEM po depression filling
     dem : np.ndarray
         Oryginalny filled DEM (for nodata detection)
     nodata : float
@@ -525,14 +619,12 @@ def fix_internal_sinks(
             best_dir = None
             strategy = None
 
-            # Strategy 1: steepest descent using inflated_dem
+            # Strategy 1: steepest descent using filled_dem
             max_slope = 0.0
-            for d, (di, dj), dist in zip(
-                directions, offsets, distances, strict=True
-            ):
+            for d, (di, dj), dist in zip(directions, offsets, distances, strict=True):
                 ni, nj = i + di, j + dj
                 if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
-                    slope = (inflated_dem[i, j] - inflated_dem[ni, nj]) / dist
+                    slope = (filled_dem[i, j] - filled_dem[ni, nj]) / dist
                     if slope > max_slope:
                         max_slope = slope
                         best_dir = d
@@ -592,7 +684,7 @@ def fix_internal_sinks(
 def process_hydrology_pyflwdir(
     dem: np.ndarray,
     metadata: dict,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Process DEM using pyflwdir (Deltares) for hydrological analysis.
 
@@ -611,9 +703,8 @@ def process_hydrology_pyflwdir(
     Returns
     -------
     tuple
-        (filled_dem, filled_dem, flow_direction, flow_accumulation) arrays
+        (filled_dem, flow_direction, flow_accumulation) arrays
         - filled_dem: DEM po wypelnieniu zaglebie (rzeczywiste wysokosci)
-        - filled_dem: (repeated — pyflwdir nie produkuje osobnego inflated DEM)
         - flow_direction: kierunki splywy D8
         - flow_accumulation: akumulacja przeplywu
     """
@@ -697,14 +788,13 @@ def process_hydrology_pyflwdir(
         logger.info("  All internal cells have valid flow direction")
 
     logger.info("Hydrology processing complete")
-    # Return filled_dem twice (pyflwdir has no separate inflated DEM)
-    return filled_dem, filled_dem, fdir_arr, acc_arr
+    return filled_dem, fdir_arr, acc_arr
 
 
 def process_hydrology_whitebox(
     dem: np.ndarray,
     metadata: dict,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Process DEM using WhiteboxTools for hydrological analysis.
 
@@ -721,8 +811,7 @@ def process_hydrology_whitebox(
     Returns
     -------
     tuple
-        (filled_dem, filled_dem, flow_direction, flow_accumulation) arrays
-        Note: inflated_dem is same as filled_dem for WhiteboxTools
+        (filled_dem, flow_direction, flow_accumulation) arrays
     """
     import tempfile
 
@@ -848,7 +937,7 @@ def process_hydrology_whitebox(
         logger.info("  All internal cells have valid flow direction")
 
     logger.info("Hydrology processing complete (WhiteboxTools)")
-    return filled_dem, filled_dem, fdir_arr, acc_arr
+    return filled_dem, fdir_arr, acc_arr
 
 
 def fill_depressions(dem: np.ndarray, nodata: float) -> np.ndarray:
@@ -1304,6 +1393,8 @@ def process_dem(
     save_intermediates: bool = False,
     output_dir: Path | None = None,
     clear_existing: bool = False,
+    burn_streams_path: Path | None = None,
+    burn_depth_m: float = 5.0,
 ) -> dict:
     """
     Process DEM file (ASC, VRT, or GeoTIFF) and load into flow_network table.
@@ -1328,6 +1419,10 @@ def process_dem(
     clear_existing : bool
         If True, clear existing data before insert (TRUNCATE).
         Default False to support incremental processing.
+    burn_streams_path : Path, optional
+        Path to GeoPackage/Shapefile with stream lines for DEM burning
+    burn_depth_m : float
+        Burn depth in meters (default: 5.0)
 
     Returns
     -------
@@ -1336,6 +1431,7 @@ def process_dem(
         - ncols, nrows, cellsize, total_cells
         - valid_cells, max_accumulation, mean_slope
         - stream_cells, records, inserted
+        - burn_cells (if burn_streams_path provided)
     """
     stats = {}
 
@@ -1372,9 +1468,34 @@ def process_dem(
             dtype="float32",
         )
 
-    # 2-4. Process hydrology using pyflwdir (fill depressions, flow dir, accumulation)
+    # 2. Burn streams (optional) — before depression filling
+    if burn_streams_path is not None:
+        transform = metadata.get("transform")
+        if transform is None:
+            from rasterio.transform import from_bounds
+
+            xll, yll = metadata["xllcorner"], metadata["yllcorner"]
+            nrows, ncols = dem.shape
+            cs = metadata["cellsize"]
+            transform = from_bounds(
+                xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
+            )
+        dem, burn_diag = burn_streams_into_dem(
+            dem, transform, burn_streams_path, burn_depth_m, nodata
+        )
+        stats["burn_cells"] = burn_diag["cells_burned"]
+        if save_intermediates:
+            save_raster_geotiff(
+                dem,
+                metadata,
+                output_dir / f"{base_name}_02a_burned.tif",
+                nodata=nodata,
+                dtype="float32",
+            )
+
+    # 3-5. Process hydrology using pyflwdir (fill depressions, flow dir, accumulation)
     # Note: Migrated from pysheds to pyflwdir (Deltares) — fewer deps, no temp files
-    filled_dem, inflated_dem, fdir, acc = process_hydrology_pyflwdir(dem, metadata)
+    filled_dem, fdir, acc = process_hydrology_pyflwdir(dem, metadata)
     stats["max_accumulation"] = int(acc.max())
 
     if save_intermediates:
@@ -1382,13 +1503,6 @@ def process_dem(
             filled_dem,
             metadata,
             output_dir / f"{base_name}_02_filled.tif",
-            nodata=nodata,
-            dtype="float32",
-        )
-        save_raster_geotiff(
-            inflated_dem,
-            metadata,
-            output_dir / f"{base_name}_02b_inflated.tif",
             nodata=nodata,
             dtype="float32",
         )
@@ -1509,11 +1623,24 @@ def main():
         action="store_true",
         help="Clear existing flow_network data before insert (TRUNCATE)",
     )
+    parser.add_argument(
+        "--burn-streams",
+        type=str,
+        default=None,
+        help="Path to GeoPackage/Shapefile with stream lines for DEM burning",
+    )
+    parser.add_argument(
+        "--burn-depth",
+        type=float,
+        default=5.0,
+        help="Burn depth in meters (default: 5.0)",
+    )
 
     args = parser.parse_args()
 
     input_path = Path(args.input)
     output_dir = Path(args.output_dir) if args.output_dir else None
+    burn_streams_path = Path(args.burn_streams) if args.burn_streams else None
 
     logger.info("=" * 60)
     logger.info("DEM Processing Script")
@@ -1524,6 +1651,8 @@ def main():
     logger.info(f"Dry run: {args.dry_run}")
     logger.info(f"Save intermediates: {args.save_intermediates}")
     logger.info(f"Clear existing: {args.clear_existing}")
+    if burn_streams_path:
+        logger.info(f"Burn streams: {burn_streams_path} (depth={args.burn_depth}m)")
     if output_dir:
         logger.info(f"Output dir: {output_dir}")
     logger.info("=" * 60)
@@ -1539,6 +1668,8 @@ def main():
             save_intermediates=args.save_intermediates,
             output_dir=output_dir,
             clear_existing=args.clear_existing,
+            burn_streams_path=burn_streams_path,
+            burn_depth_m=args.burn_depth,
         )
     except FileNotFoundError as e:
         logger.error(str(e))
@@ -1557,6 +1688,8 @@ def main():
     logger.info(f"  Valid cells: {stats['valid_cells']:,}")
     logger.info(f"  Max accumulation: {stats['max_accumulation']:,}")
     logger.info(f"  Mean slope: {stats['mean_slope']:.1f}%")
+    if "burn_cells" in stats:
+        logger.info(f"  Burned cells: {stats['burn_cells']:,}")
     logger.info(f"  Stream cells: {stats['stream_cells']:,}")
     logger.info(f"  Records created: {stats['records']:,}")
     logger.info(f"  Records inserted: {stats['inserted']:,}")
