@@ -244,6 +244,31 @@ Format: numer, data, kontekst (dlaczego temat powstal), rozwazone opcje, decyzja
 
 ---
 
+## ADR-014: Rozszerzenie parametrow morfometrycznych i analiz rastrowych
+
+**Data:** 2026-02-07
+**Status:** Przyjeta
+
+**Kontekst:** Hydrograf (v0.3.0) obliczal podstawowe parametry morfometryczne (area, perimeter, length, elevation, slope, CN). Brakowalo wskaznikow ksztaltu zlewni (Kc, Rc, Re, Ff), wskaznikow rzezbowych (Rh, HI, krzywa hipsometryczna), wskaznikow sieci rzecznej (Dd, Fs, Rn, max Strahler) oraz dodatkowych warstw rastrowych (aspect, TWI, Strahler stream order). Brak wektoryzacji ciekow jako LineString w bazie.
+
+**Opcje:**
+- A) Minimalna rozbudowa — tylko wskazniki ksztaltu (obliczane z istniejacych danych)
+- B) Pelna rozbudowa — nowe rastery (aspect, TWI, Strahler), wektoryzacja ciekow, 15 nowych parametrow morfometrycznych, krzywa hipsometryczna
+- C) Rozbudowa z zewnetrzna biblioteka (SAGA GIS / WhiteboxTools) — wiecej wskaznikow, ale nowa zaleznosc
+
+**Decyzja:** Opcja B. Pelna rozbudowa z wykorzystaniem istniejacych narzedzi (pyflwdir, scipy, numpy). Implementacja w 4 etapach: (1) nowe rastery, (2) wektoryzacja ciekow, (3) parametry morfometryczne, (4) rozszerzenie API.
+
+**Konsekwencje:**
+- 3 nowe warstwy rastrowe: `07_stream_order.tif` (Strahler), `08_twi.tif` (TWI), `09_aspect.tif`
+- Wektoryzacja ciekow z DEM jako LineString w `stream_network` (source='DEM_DERIVED')
+- Kolumna `strahler_order` w `flow_network` (migracja 003)
+- 11 nowych pol Optional w `MorphometricParameters` (backward compatible)
+- Krzywa hipsometryczna dostepna opcjonalnie (`include_hypsometric_curve=true`)
+- Nowe wskazniki obliczane z istniejacych danych — brak dodatkowych zaleznosci
+- Wskazniki sieci (Dd, Fs, Rn) wymagaja wektoryzacji ciekow w bazie
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
