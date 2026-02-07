@@ -5,8 +5,9 @@ Provides mock database sessions, sample data, and common fixtures
 used across unit and integration tests.
 """
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from core.watershed import FlowCell
 

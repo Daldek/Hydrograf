@@ -33,10 +33,9 @@ import json
 import logging
 import sys
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
 
 import numpy as np
 
@@ -53,6 +52,7 @@ logger = logging.getLogger(__name__)
 # KONFIGURACJA - ZMIEŃ PARAMETRY TUTAJ
 # =============================================================================
 
+
 @dataclass
 class AnalysisConfig:
     """Konfiguracja analizy hydrologicznej."""
@@ -64,19 +64,19 @@ class AnalysisConfig:
     # Parametry pobierania danych
     buffer_km: float = 3.0  # Bufor wokół punktu dla pobierania NMT
     scale: str = "1:10000"  # Skala mapy (1:10000, 1:25000, 1:50000)
-    tiles: Optional[List[str]] = None  # Lista godeł kafli NMT (zamiast buffer)
+    tiles: list[str] | None = None  # Lista godeł kafli NMT (zamiast buffer)
 
     # Parametry hydrologiczne
-    cn: Optional[int] = None  # CN (None = oblicz z land_cover lub użyj 75)
+    cn: int | None = None  # CN (None = oblicz z land_cover lub użyj 75)
     default_cn: int = 75  # Domyślny CN gdy brak danych
-    teryt: Optional[str] = None  # Kod TERYT powiatu dla BDOT10k (4 cyfry)
+    teryt: str | None = None  # Kod TERYT powiatu dla BDOT10k (4 cyfry)
 
     # Parametry opadu (IMGW PMAXTP)
     probability: float = 1.0  # Prawdopodobieństwo [%]: 1, 2, 5, 10, 20, 50
     duration_min: int = 60  # Czas trwania opadu [min]: 5, 10, 15, 30, 45, 60, ...
 
     # Scenariusze opadowe do analizy (jeśli None, użyj IMGW)
-    precipitation_scenarios_mm: Optional[List[float]] = None
+    precipitation_scenarios_mm: list[float] | None = None
 
     # Metoda czasu koncentracji
     tc_method: str = "kirpich"  # kirpich, scs, giandotti
@@ -99,7 +99,9 @@ class AnalysisConfig:
     save_json: bool = True  # Zapisz wyniki do JSON
     use_kartograf_cn: bool = True  # Używaj Kartografa do obliczania CN
     save_qgis_layers: bool = False  # Zapisz warstwy pośrednie dla QGIS
-    use_cached: bool = False  # Użyj cache'owanych wyników (pomiń delineację i morfometrię)
+    use_cached: bool = (
+        False  # Użyj cache'owanych wyników (pomiń delineację i morfometrię)
+    )
 
     def __post_init__(self):
         self.data_dir = Path(self.data_dir)
@@ -111,7 +113,8 @@ class AnalysisConfig:
 # GŁÓWNE FUNKCJE
 # =============================================================================
 
-def download_nmt_data(config: AnalysisConfig) -> List[Path]:
+
+def download_nmt_data(config: AnalysisConfig) -> list[Path]:
     """Pobierz dane NMT z GUGiK."""
     logger.info("=" * 60)
     logger.info("KROK 1: Pobieranie NMT z GUGiK")
@@ -142,14 +145,14 @@ def download_nmt_data(config: AnalysisConfig) -> List[Path]:
     return downloaded
 
 
-def process_nmt_data(config: AnalysisConfig, input_files: List[Path]) -> Dict:
+def process_nmt_data(config: AnalysisConfig, input_files: list[Path]) -> dict:
     """Przetwórz NMT i zaimportuj do bazy danych."""
     logger.info("=" * 60)
     logger.info("KROK 2: Przetwarzanie NMT")
     logger.info("=" * 60)
 
-    from utils.raster_utils import create_vrt_mosaic, resample_raster
     from scripts.process_dem import process_dem
+    from utils.raster_utils import create_vrt_mosaic, resample_raster
 
     # Utwórz mozaikę
     mosaic_path = config.data_dir / "nmt" / "mosaic.tif"
@@ -158,7 +161,9 @@ def process_nmt_data(config: AnalysisConfig, input_files: List[Path]) -> Dict:
 
     # Resample do zadanej rozdzielczości jeśli różna od 1m
     if config.dem_resolution_m > 1.0:
-        resampled_path = config.data_dir / "nmt" / f"mosaic_{int(config.dem_resolution_m)}m.tif"
+        resampled_path = (
+            config.data_dir / "nmt" / f"mosaic_{int(config.dem_resolution_m)}m.tif"
+        )
         mosaic_path = resample_raster(
             mosaic_path, resampled_path, config.dem_resolution_m, method="bilinear"
         )
@@ -182,20 +187,19 @@ def process_nmt_data(config: AnalysisConfig, input_files: List[Path]) -> Dict:
     return stats
 
 
-def delineate_watershed(config: AnalysisConfig, db) -> Dict:
+def delineate_watershed(config: AnalysisConfig, db) -> dict:
     """Wyznacz zlewnię dla punktu."""
     logger.info("=" * 60)
     logger.info("KROK 3: Wyznaczanie zlewni")
     logger.info("=" * 60)
 
-    from shapely.geometry import Point
     from core.watershed import (
-        find_nearest_stream,
-        traverse_upstream,
         build_boundary,
         calculate_watershed_area_km2,
+        find_nearest_stream,
+        traverse_upstream,
     )
-    from utils.geometry import transform_wgs84_to_pl1992, transform_pl1992_to_wgs84
+    from utils.geometry import transform_pl1992_to_wgs84, transform_wgs84_to_pl1992
 
     # Transformacja współrzędnych
     point = transform_wgs84_to_pl1992(config.latitude, config.longitude)
@@ -243,18 +247,14 @@ def delineate_watershed(config: AnalysisConfig, db) -> Dict:
     }
 
 
-def calculate_morphometry(
-    config: AnalysisConfig,
-    watershed: Dict,
-    db
-) -> Dict:
+def calculate_morphometry(config: AnalysisConfig, watershed: dict, db) -> dict:
     """Oblicz parametry morfometryczne zlewni."""
     logger.info("=" * 60)
     logger.info("KROK 4: Obliczanie morfometrii")
     logger.info("=" * 60)
 
-    from core.morphometry import build_morphometric_params
     from core.land_cover import determine_cn
+    from core.morphometry import build_morphometric_params
 
     # Okresl CN - zunifikowana logika w determine_cn()
     cn, cn_source, cn_details = determine_cn(
@@ -279,7 +279,7 @@ def calculate_morphometry(
     elapsed = time.time() - start
 
     logger.info(f"Dlugosc cieku: {morph['channel_length_km']:.2f} km")
-    logger.info(f"Spadek cieku: {morph['channel_slope_m_per_m']*100:.2f}%")
+    logger.info(f"Spadek cieku: {morph['channel_slope_m_per_m'] * 100:.2f}%")
     logger.info(f"Wysokosc srednia: {morph['elevation_mean_m']:.1f} m")
     logger.info(f"CN: {cn} (zrodlo: {cn_source})")
     logger.info(f"Czas obliczen: {elapsed:.1f}s")
@@ -293,7 +293,7 @@ def calculate_morphometry(
     return morph
 
 
-def fetch_precipitation_imgw(config: AnalysisConfig) -> Dict:
+def fetch_precipitation_imgw(config: AnalysisConfig) -> dict:
     """
     Pobierz dane opadowe z IMGW PMAXTP.
 
@@ -326,16 +326,32 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> Dict:
         )
 
         # Dostępne czasy trwania w PMAXTP
-        valid_durations = [5, 10, 15, 30, 45, 60, 90, 120, 180, 360, 720,
-                          1080, 1440, 2160, 2880, 4320]
+        valid_durations = [
+            5,
+            10,
+            15,
+            30,
+            45,
+            60,
+            90,
+            120,
+            180,
+            360,
+            720,
+            1080,
+            1440,
+            2160,
+            2880,
+            4320,
+        ]
 
         # Znajdź najbliższy dostępny czas trwania
-        duration_key = str(min(valid_durations,
-                               key=lambda x: abs(x - config.duration_min)))
+        duration_key = str(
+            min(valid_durations, key=lambda x: abs(x - config.duration_min))
+        )
         if int(duration_key) != config.duration_min:
             logger.warning(
-                f"Czas {config.duration_min}min niedostępny, "
-                f"użyto {duration_key}min"
+                f"Czas {config.duration_min}min niedostępny, użyto {duration_key}min"
             )
 
         # Formatuj klucz prawdopodobieństwa
@@ -359,8 +375,11 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> Dict:
             # Znajdź najbliższe prawdopodobieństwo
             prob_values = [float(p) for p in available_probs]
             closest_prob = min(prob_values, key=lambda x: abs(x - prob))
-            prob_key = str(int(closest_prob)) if closest_prob == int(closest_prob) \
-                       else str(closest_prob)
+            prob_key = (
+                str(int(closest_prob))
+                if closest_prob == int(closest_prob)
+                else str(closest_prob)
+            )
             logger.warning(f"Użyto najbliższego: {prob_key}%")
 
             P_ks = result.data.ks[duration_key][prob_key]
@@ -396,15 +415,16 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> Dict:
     except Exception as e:
         logger.warning(f"Błąd pobierania z IMGW: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
 
 def generate_hydrograph(
     config: AnalysisConfig,
-    morph: Dict,
-    precipitation: Optional[Dict],
-) -> Dict:
+    morph: dict,
+    precipitation: dict | None,
+) -> dict:
     """Generuj hydrogram odpływu z konwolucją hietogramu.
 
     Dla krótkich opadów (duration <= tc) używa uproszczonego podejścia.
@@ -416,15 +436,21 @@ def generate_hydrograph(
 
     from hydrolog.morphometry import WatershedParameters
     from hydrolog.precipitation import BetaHietogram
-    from hydrolog.runoff import HydrographGenerator, SCSCN, SCSUnitHydrograph
+    from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
     # Parametry zlewni - filtruj niestandardowe klucze
     excluded_keys = {
-        'cn', 'cn_source', 'cn_details', 'elapsed_s', 'source', 'crs',
-        'main_stream_coords',  # Tylko dla QGIS, nie dla WatershedParameters
+        "cn",
+        "cn_source",
+        "cn_details",
+        "elapsed_s",
+        "source",
+        "crs",
+        "main_stream_coords",  # Tylko dla QGIS, nie dla WatershedParameters
     }
-    ws = WatershedParameters(**{k: v for k, v in morph.items()
-                                if k not in excluded_keys})
+    ws = WatershedParameters(
+        **{k: v for k, v in morph.items() if k not in excluded_keys}
+    )
 
     # Czas koncentracji
     tc_min = ws.calculate_tc(config.tc_method)
@@ -465,7 +491,13 @@ def generate_hydrograph(
     if config.precipitation_scenarios_mm:
         P_values = config.precipitation_scenarios_mm
     elif precipitation:
-        P_values = [P_design * 0.6, P_design * 0.8, P_design, P_design * 1.2, P_design * 1.5]
+        P_values = [
+            P_design * 0.6,
+            P_design * 0.8,
+            P_design,
+            P_design * 1.2,
+            P_design * 1.5,
+        ]
     else:
         P_values = [30, 40, 50, 60, 80, 100]
 
@@ -500,11 +532,13 @@ def generate_hydrograph(
             Q_mm = eff_result.effective_mm
             Qmax = q_peak_unit * Q_mm
 
-        scenarios.append({
-            "P_mm": round(P_mm, 1),
-            "Q_mm": round(Q_mm, 2),
-            "Qmax_m3s": round(Qmax, 2),
-        })
+        scenarios.append(
+            {
+                "P_mm": round(P_mm, 1),
+                "Q_mm": round(Q_mm, 2),
+                "Qmax_m3s": round(Qmax, 2),
+            }
+        )
         logger.info(f"  P={P_mm:.0f}mm -> Q={Q_mm:.1f}mm, Qmax={Qmax:.2f}m³/s")
 
     # Generuj pełny hydrogram dla opadu projektowego
@@ -532,7 +566,9 @@ def generate_hydrograph(
         Qmax_design = max(hydrograph_q)
         time_to_peak_hydro = t_peak
 
-    logger.info(f"Hydrogram: Qmax={Qmax_design:.2f} m³/s, czas do szczytu={time_to_peak_hydro:.1f} min")
+    logger.info(
+        f"Hydrogram: Qmax={Qmax_design:.2f} m³/s, czas do szczytu={time_to_peak_hydro:.1f} min"
+    )
 
     return {
         "tc_method": config.tc_method,
@@ -558,9 +594,9 @@ def generate_hydrograph(
 
 def save_qgis_layers(
     config: AnalysisConfig,
-    watershed: Dict,
-    morph: Dict,
-) -> Dict[str, Path]:
+    watershed: dict,
+    morph: dict,
+) -> dict[str, Path]:
     """
     Zapisz warstwy pośrednie w formatach GeoPackage/GeoTIFF dla QGIS.
 
@@ -583,7 +619,7 @@ def save_qgis_layers(
     logger.info("=" * 60)
 
     import geopandas as gpd
-    from shapely.geometry import Point, LineString
+    from shapely.geometry import LineString, Point
 
     qgis_dir = config.output_dir / "qgis"
     qgis_dir.mkdir(parents=True, exist_ok=True)
@@ -655,7 +691,6 @@ def save_qgis_layers(
 
     # 5. Sieć cieków (linie) - wszystkie cieki z bazy danych
     try:
-        from core.database import get_db_session
         stream_lines = extract_stream_network(qgis_dir, crs)
         if stream_lines:
             output_files["stream_network"] = stream_lines
@@ -667,7 +702,7 @@ def save_qgis_layers(
     return output_files
 
 
-def extract_stream_network(output_dir: Path, crs: str = "EPSG:2180") -> Optional[Path]:
+def extract_stream_network(output_dir: Path, crs: str = "EPSG:2180") -> Path | None:
     """
     Wyeksportuj całą sieć cieków jako warstwę wektorową.
 
@@ -689,6 +724,7 @@ def extract_stream_network(output_dir: Path, crs: str = "EPSG:2180") -> Optional
     import geopandas as gpd
     from shapely.geometry import LineString
     from sqlalchemy import text
+
     from core.database import get_db_session
 
     with get_db_session() as db:
@@ -718,14 +754,15 @@ def extract_stream_network(output_dir: Path, crs: str = "EPSG:2180") -> Optional
     segments = []
     for row in results:
         if row.downstream_x is not None and row.downstream_y is not None:
-            segments.append({
-                "id": row.id,
-                "flow_acc": row.flow_accumulation,
-                "geometry": LineString([
-                    (row.x, row.y),
-                    (row.downstream_x, row.downstream_y)
-                ])
-            })
+            segments.append(
+                {
+                    "id": row.id,
+                    "flow_acc": row.flow_accumulation,
+                    "geometry": LineString(
+                        [(row.x, row.y), (row.downstream_x, row.downstream_y)]
+                    ),
+                }
+            )
 
     if not segments:
         logger.warning("Brak segmentów cieków do eksportu")
@@ -742,17 +779,18 @@ def extract_stream_network(output_dir: Path, crs: str = "EPSG:2180") -> Optional
 
 def generate_visualizations(
     config: AnalysisConfig,
-    watershed: Dict,
-    morph: Dict,
-    hydrograph: Dict,
-) -> List[Path]:
+    watershed: dict,
+    morph: dict,
+    hydrograph: dict,
+) -> list[Path]:
     """Generuj wizualizacje."""
     logger.info("=" * 60)
     logger.info("KROK 7: Generowanie wizualizacji")
     logger.info("=" * 60)
 
     import matplotlib
-    matplotlib.use('Agg')
+
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     output_files = []
@@ -765,43 +803,56 @@ def generate_visualizations(
     times = design["time_min"]
     Q = design["Q_m3s"]
 
-    ax1.fill_between(times, Q, alpha=0.3, color='blue')
-    ax1.plot(times, Q, 'b-', lw=2, label=f'P={design["P_mm"]}mm')
-    ax1.axvline(hydrograph["time_to_peak_min"], color='red', ls='--',
-                alpha=0.7, label=f'Tp={hydrograph["time_to_peak_min"]:.0f}min')
-    ax1.axhline(design["Qmax_m3s"], color='green', ls=':',
-                alpha=0.7, label=f'Qmax={design["Qmax_m3s"]:.2f}m³/s')
+    ax1.fill_between(times, Q, alpha=0.3, color="blue")
+    ax1.plot(times, Q, "b-", lw=2, label=f"P={design['P_mm']}mm")
+    ax1.axvline(
+        hydrograph["time_to_peak_min"],
+        color="red",
+        ls="--",
+        alpha=0.7,
+        label=f"Tp={hydrograph['time_to_peak_min']:.0f}min",
+    )
+    ax1.axhline(
+        design["Qmax_m3s"],
+        color="green",
+        ls=":",
+        alpha=0.7,
+        label=f"Qmax={design['Qmax_m3s']:.2f}m³/s",
+    )
 
-    ax1.set_xlabel('Czas [min]', fontsize=11)
-    ax1.set_ylabel('Przepływ Q [m³/s]', fontsize=11)
-    ax1.set_title(f'Hydrogram SCS | A={area:.2f}km², CN={cn}, P={design["P_mm"]}mm',
-                  fontsize=12)
+    ax1.set_xlabel("Czas [min]", fontsize=11)
+    ax1.set_ylabel("Przepływ Q [m³/s]", fontsize=11)
+    ax1.set_title(
+        f"Hydrogram SCS | A={area:.2f}km², CN={cn}, P={design['P_mm']}mm", fontsize=12
+    )
     ax1.legend(fontsize=10)
     ax1.grid(True, alpha=0.3)
     ax1.set_xlim(0, max(times))
 
     path1 = config.output_dir / "hydrograph.png"
-    fig1.savefig(path1, dpi=150, bbox_inches='tight')
+    fig1.savefig(path1, dpi=150, bbox_inches="tight")
     output_files.append(path1)
     logger.info(f"  ✅ {path1.name}")
 
     # 2. Qmax vs P
     fig2, ax2 = plt.subplots(figsize=(10, 6))
     scenarios = hydrograph["scenarios"]
-    P_vals = [s['P_mm'] for s in scenarios]
-    Q_vals = [s['Qmax_m3s'] for s in scenarios]
+    P_vals = [s["P_mm"] for s in scenarios]
+    Q_vals = [s["Qmax_m3s"] for s in scenarios]
 
-    ax2.bar(P_vals, Q_vals, width=max(P_vals)*0.08, color='steelblue', edgecolor='navy')
+    ax2.bar(
+        P_vals, Q_vals, width=max(P_vals) * 0.08, color="steelblue", edgecolor="navy"
+    )
     for p, q in zip(P_vals, Q_vals):
-        ax2.text(p, q + max(Q_vals)*0.02, f'{q:.1f}', ha='center', fontsize=10)
+        ax2.text(p, q + max(Q_vals) * 0.02, f"{q:.1f}", ha="center", fontsize=10)
 
-    ax2.set_xlabel('Opad P [mm]', fontsize=11)
-    ax2.set_ylabel('Qmax [m³/s]', fontsize=11)
-    ax2.set_title(f'Qmax vs Opad | A={area:.2f}km², CN={cn}', fontsize=12)
-    ax2.grid(True, alpha=0.3, axis='y')
+    ax2.set_xlabel("Opad P [mm]", fontsize=11)
+    ax2.set_ylabel("Qmax [m³/s]", fontsize=11)
+    ax2.set_title(f"Qmax vs Opad | A={area:.2f}km², CN={cn}", fontsize=12)
+    ax2.grid(True, alpha=0.3, axis="y")
 
     path2 = config.output_dir / "qmax_scenarios.png"
-    fig2.savefig(path2, dpi=150, bbox_inches='tight')
+    fig2.savefig(path2, dpi=150, bbox_inches="tight")
     output_files.append(path2)
     logger.info(f"  ✅ {path2.name}")
 
@@ -809,38 +860,50 @@ def generate_visualizations(
     fig3, (ax3a, ax3b) = plt.subplots(1, 2, figsize=(14, 5))
 
     elevations = np.array([c.elevation for c in watershed["cells"]])
-    ax3a.hist(elevations, bins=50, color='saddlebrown', edgecolor='black', alpha=0.7)
-    ax3a.axvline(morph['elevation_mean_m'], color='red', ls='--', lw=2,
-                 label=f'Średnia: {morph["elevation_mean_m"]:.1f}m')
-    ax3a.set_xlabel('Wysokość [m n.p.m.]', fontsize=11)
-    ax3a.set_ylabel('Liczba komórek', fontsize=11)
-    ax3a.set_title('Rozkład wysokości', fontsize=12)
+    ax3a.hist(elevations, bins=50, color="saddlebrown", edgecolor="black", alpha=0.7)
+    ax3a.axvline(
+        morph["elevation_mean_m"],
+        color="red",
+        ls="--",
+        lw=2,
+        label=f"Średnia: {morph['elevation_mean_m']:.1f}m",
+    )
+    ax3a.set_xlabel("Wysokość [m n.p.m.]", fontsize=11)
+    ax3a.set_ylabel("Liczba komórek", fontsize=11)
+    ax3a.set_title("Rozkład wysokości", fontsize=12)
     ax3a.legend()
 
-    ax3b.axis('off')
+    ax3b.axis("off")
     txt = f"""PARAMETRY ZLEWNI
-{'─'*32}
-Powierzchnia:     {morph['area_km2']:.2f} km²
-Obwód:            {morph['perimeter_km']:.2f} km
-Długość:          {morph['length_km']:.2f} km
+{"─" * 32}
+Powierzchnia:     {morph["area_km2"]:.2f} km²
+Obwód:            {morph["perimeter_km"]:.2f} km
+Długość:          {morph["length_km"]:.2f} km
 
-Ciek główny:      {morph['channel_length_km']:.2f} km
-Spadek cieku:     {morph['channel_slope_m_per_m']*100:.2f} %
+Ciek główny:      {morph["channel_length_km"]:.2f} km
+Spadek cieku:     {morph["channel_slope_m_per_m"] * 100:.2f} %
 
-Wys. min:         {morph['elevation_min_m']:.1f} m
-Wys. max:         {morph['elevation_max_m']:.1f} m
-Wys. średnia:     {morph['elevation_mean_m']:.1f} m
+Wys. min:         {morph["elevation_min_m"]:.1f} m
+Wys. max:         {morph["elevation_max_m"]:.1f} m
+Wys. średnia:     {morph["elevation_mean_m"]:.1f} m
 
-Średni spadek:    {morph['mean_slope_m_per_m']*100:.1f} %
+Średni spadek:    {morph["mean_slope_m_per_m"] * 100:.1f} %
 CN:               {cn}
-Tc ({hydrograph['tc_method']}):   {hydrograph['tc_min']:.1f} min"""
+Tc ({hydrograph["tc_method"]}):   {hydrograph["tc_min"]:.1f} min"""
 
-    ax3b.text(0.1, 0.5, txt, transform=ax3b.transAxes, fontsize=12,
-              va='center', family='monospace',
-              bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    ax3b.text(
+        0.1,
+        0.5,
+        txt,
+        transform=ax3b.transAxes,
+        fontsize=12,
+        va="center",
+        family="monospace",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+    )
 
     path3 = config.output_dir / "watershed_profile.png"
-    fig3.savefig(path3, dpi=150, bbox_inches='tight')
+    fig3.savefig(path3, dpi=150, bbox_inches="tight")
     output_files.append(path3)
     logger.info(f"  ✅ {path3.name}")
 
@@ -850,35 +913,36 @@ Tc ({hydrograph['tc_method']}):   {hydrograph['tc_min']:.1f} min"""
     x_coords = [c[0] for c in boundary.exterior.coords]
     y_coords = [c[1] for c in boundary.exterior.coords]
 
-    ax4.fill(x_coords, y_coords, alpha=0.3, color='blue', edgecolor='navy', lw=2)
+    ax4.fill(x_coords, y_coords, alpha=0.3, color="blue", edgecolor="navy", lw=2)
 
     from utils.geometry import transform_wgs84_to_pl1992
-    point = transform_wgs84_to_pl1992(config.latitude, config.longitude)
-    ax4.plot(point.x, point.y, 'ro', ms=12, label='Outlet', zorder=5)
 
-    ax4.set_xlabel('X [m] EPSG:2180', fontsize=11)
-    ax4.set_ylabel('Y [m] EPSG:2180', fontsize=11)
-    ax4.set_title(f'Granica zlewni: {area:.2f} km²', fontsize=12)
+    point = transform_wgs84_to_pl1992(config.latitude, config.longitude)
+    ax4.plot(point.x, point.y, "ro", ms=12, label="Outlet", zorder=5)
+
+    ax4.set_xlabel("X [m] EPSG:2180", fontsize=11)
+    ax4.set_ylabel("Y [m] EPSG:2180", fontsize=11)
+    ax4.set_title(f"Granica zlewni: {area:.2f} km²", fontsize=12)
     ax4.legend()
-    ax4.set_aspect('equal')
+    ax4.set_aspect("equal")
     ax4.grid(True, alpha=0.3)
 
     path4 = config.output_dir / "watershed_boundary.png"
-    fig4.savefig(path4, dpi=150, bbox_inches='tight')
+    fig4.savefig(path4, dpi=150, bbox_inches="tight")
     output_files.append(path4)
     logger.info(f"  ✅ {path4.name}")
 
-    plt.close('all')
+    plt.close("all")
 
     return output_files
 
 
 def save_results(
     config: AnalysisConfig,
-    watershed: Dict,
-    morph: Dict,
-    precipitation: Optional[Dict],
-    hydrograph: Dict,
+    watershed: dict,
+    morph: dict,
+    precipitation: dict | None,
+    hydrograph: dict,
 ) -> Path:
     """Zapisz wyniki do JSON."""
     logger.info("=" * 60)
@@ -921,14 +985,14 @@ def save_results(
     }
 
     json_path = config.output_dir / "analysis_results.json"
-    with open(json_path, 'w', encoding='utf-8') as f:
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
 
     logger.info(f"Zapisano: {json_path}")
     return json_path
 
 
-def load_cached_results(config: AnalysisConfig) -> tuple[Dict, Dict]:
+def load_cached_results(config: AnalysisConfig) -> tuple[dict, dict]:
     """
     Załaduj cache'owane wyniki zlewni i morfometrii z poprzedniej analizy.
 
@@ -947,7 +1011,7 @@ def load_cached_results(config: AnalysisConfig) -> tuple[Dict, Dict]:
 
     logger.info(f"Ładowanie cache z: {json_path}")
 
-    with open(json_path, 'r', encoding='utf-8') as f:
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
     # Walidacja - sprawdź czy punkt się zgadza
@@ -977,7 +1041,9 @@ def load_cached_results(config: AnalysisConfig) -> tuple[Dict, Dict]:
 
     logger.info(f"  Powierzchnia: {watershed.get('area_km2', 'N/A'):.2f} km²")
     logger.info(f"  CN: {morphometry.get('cn', 'N/A')}")
-    logger.info(f"  Długość cieku: {morphometry.get('channel_length_km', 'N/A'):.2f} km")
+    logger.info(
+        f"  Długość cieku: {morphometry.get('channel_length_km', 'N/A'):.2f} km"
+    )
 
     return watershed, morphometry
 
@@ -986,7 +1052,8 @@ def load_cached_results(config: AnalysisConfig) -> tuple[Dict, Dict]:
 # GŁÓWNA FUNKCJA
 # =============================================================================
 
-def analyze_watershed(config: AnalysisConfig) -> Dict:
+
+def analyze_watershed(config: AnalysisConfig) -> dict:
     """
     Wykonaj pełną analizę hydrologiczną zlewni.
 
@@ -1042,6 +1109,7 @@ def analyze_watershed(config: AnalysisConfig) -> Dict:
         # Połącz z bazą danych
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from core.database import get_db
+
         db = next(get_db())
 
     try:
@@ -1060,19 +1128,19 @@ def analyze_watershed(config: AnalysisConfig) -> Dict:
 
         # 5. Zapisz warstwy QGIS (tylko przy pełnej analizie, nie z cache)
         if config.save_qgis_layers and not config.use_cached:
-            qgis_files = save_qgis_layers(config, watershed, morph)
+            save_qgis_layers(config, watershed, morph)
         elif config.save_qgis_layers and config.use_cached:
             logger.info("Pominięto zapis warstw QGIS (użyto cache, pliki już istnieją)")
 
         # 6. Generuj wizualizacje (tylko przy pełnej analizie)
         if config.generate_plots and not config.use_cached:
-            plot_files = generate_visualizations(config, watershed, morph, hydrograph)
+            generate_visualizations(config, watershed, morph, hydrograph)
         elif config.generate_plots and config.use_cached:
             logger.info("Pominięto wizualizacje (użyto cache)")
 
         # 7. Zapisz wyniki
         if config.save_json:
-            json_path = save_results(config, watershed, morph, precipitation, hydrograph)
+            save_results(config, watershed, morph, precipitation, hydrograph)
 
         elapsed_total = time.time() - start_total
 
@@ -1110,6 +1178,7 @@ def analyze_watershed(config: AnalysisConfig) -> Dict:
 # CLI
 # =============================================================================
 
+
 def main():
     """Główna funkcja CLI."""
     parser = argparse.ArgumentParser(
@@ -1120,51 +1189,110 @@ def main():
 
     # Lokalizacja
     loc = parser.add_argument_group("Lokalizacja")
-    loc.add_argument("--lat", type=float, required=True, help="Szerokość geograficzna (WGS84)")
-    loc.add_argument("--lon", type=float, required=True, help="Długość geograficzna (WGS84)")
-    loc.add_argument("--buffer", type=float, default=3.0, help="Bufor dla NMT [km] (default: 3)")
-    loc.add_argument("--tiles", type=str, nargs="+",
-                     help="Lista godeł kafli NMT (zamiast --buffer)")
-    loc.add_argument("--max-stream-distance", type=float, default=500.0,
-                     help="Maks. odległość szukania cieku [m] (default: 500)")
+    loc.add_argument(
+        "--lat", type=float, required=True, help="Szerokość geograficzna (WGS84)"
+    )
+    loc.add_argument(
+        "--lon", type=float, required=True, help="Długość geograficzna (WGS84)"
+    )
+    loc.add_argument(
+        "--buffer", type=float, default=3.0, help="Bufor dla NMT [km] (default: 3)"
+    )
+    loc.add_argument(
+        "--tiles", type=str, nargs="+", help="Lista godeł kafli NMT (zamiast --buffer)"
+    )
+    loc.add_argument(
+        "--max-stream-distance",
+        type=float,
+        default=500.0,
+        help="Maks. odległość szukania cieku [m] (default: 500)",
+    )
 
     # Parametry hydrologiczne
     hydro = parser.add_argument_group("Parametry hydrologiczne")
-    hydro.add_argument("--cn", type=int, help="Wartość CN (default: z land_cover lub 75)")
-    hydro.add_argument("--teryt", type=str, help="Kod TERYT powiatu dla BDOT10k (4 cyfry, np. 3021)")
-    hydro.add_argument("--probability", "-p", type=float, default=1.0,
-                       help="Prawdopodobieństwo opadu [%%] (default: 1)")
-    hydro.add_argument("--duration", "-d", type=int, default=60,
-                       help="Czas trwania opadu [min] (default: 60)")
-    hydro.add_argument("--tc-method", choices=["kirpich", "scs", "giandotti"],
-                       default="kirpich", help="Metoda czasu koncentracji")
-    hydro.add_argument("--timestep", type=float, default=5.0,
-                       help="Krok czasowy hydrogramu [min] (default: 5)")
+    hydro.add_argument(
+        "--cn", type=int, help="Wartość CN (default: z land_cover lub 75)"
+    )
+    hydro.add_argument(
+        "--teryt", type=str, help="Kod TERYT powiatu dla BDOT10k (4 cyfry, np. 3021)"
+    )
+    hydro.add_argument(
+        "--probability",
+        "-p",
+        type=float,
+        default=1.0,
+        help="Prawdopodobieństwo opadu [%%] (default: 1)",
+    )
+    hydro.add_argument(
+        "--duration",
+        "-d",
+        type=int,
+        default=60,
+        help="Czas trwania opadu [min] (default: 60)",
+    )
+    hydro.add_argument(
+        "--tc-method",
+        choices=["kirpich", "scs", "giandotti"],
+        default="kirpich",
+        help="Metoda czasu koncentracji",
+    )
+    hydro.add_argument(
+        "--timestep",
+        type=float,
+        default=5.0,
+        help="Krok czasowy hydrogramu [min] (default: 5)",
+    )
 
     # Przetwarzanie
     proc = parser.add_argument_group("Przetwarzanie danych")
-    proc.add_argument("--download", action="store_true", help="Pobierz dane NMT z GUGiK")
-    proc.add_argument("--process", action="store_true", help="Przetwórz NMT i zaimportuj do DB")
-    proc.add_argument("--stream-threshold", type=int, default=100,
-                      help="Próg akumulacji dla cieków (default: 100)")
-    proc.add_argument("--resolution", type=float, default=1.0,
-                      help="Rozdzielczość DEM [m] (default: 1.0 = oryginalna)")
+    proc.add_argument(
+        "--download", action="store_true", help="Pobierz dane NMT z GUGiK"
+    )
+    proc.add_argument(
+        "--process", action="store_true", help="Przetwórz NMT i zaimportuj do DB"
+    )
+    proc.add_argument(
+        "--stream-threshold",
+        type=int,
+        default=100,
+        help="Próg akumulacji dla cieków (default: 100)",
+    )
+    proc.add_argument(
+        "--resolution",
+        type=float,
+        default=1.0,
+        help="Rozdzielczość DEM [m] (default: 1.0 = oryginalna)",
+    )
 
     # Wyjście
     out = parser.add_argument_group("Wyjście")
-    out.add_argument("--output", "-o", type=str, default="../data/results",
-                     help="Katalog wyjściowy (default: ../data/results)")
+    out.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        default="../data/results",
+        help="Katalog wyjściowy (default: ../data/results)",
+    )
     out.add_argument("--no-plots", action="store_true", help="Nie generuj wykresów")
     out.add_argument("--no-json", action="store_true", help="Nie zapisuj JSON")
-    out.add_argument("--no-kartograf-cn", action="store_true",
-                     help="Nie używaj Kartografa do obliczania CN (HSG)")
-    out.add_argument("--save-qgis", action="store_true",
-                     help="Zapisz warstwy pośrednie do QGIS (GeoPackage/GeoTIFF)")
+    out.add_argument(
+        "--no-kartograf-cn",
+        action="store_true",
+        help="Nie używaj Kartografa do obliczania CN (HSG)",
+    )
+    out.add_argument(
+        "--save-qgis",
+        action="store_true",
+        help="Zapisz warstwy pośrednie do QGIS (GeoPackage/GeoTIFF)",
+    )
 
     # Cache
     cache = parser.add_argument_group("Cache")
-    cache.add_argument("--use-cached", action="store_true",
-                       help="Użyj cache'owanych wyników zlewni i morfometrii (pomiń delineację)")
+    cache.add_argument(
+        "--use-cached",
+        action="store_true",
+        help="Użyj cache'owanych wyników zlewni i morfometrii (pomiń delineację)",
+    )
 
     args = parser.parse_args()
 
@@ -1199,6 +1327,7 @@ def main():
     except Exception as e:
         logger.error(f"Błąd analizy: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

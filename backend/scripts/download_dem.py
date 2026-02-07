@@ -33,7 +33,6 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import List
 
 # Configure logging
 logging.basicConfig(
@@ -45,10 +44,10 @@ logger = logging.getLogger(__name__)
 
 
 def download_sheets(
-    sheets: List[str],
+    sheets: list[str],
     output_dir: Path,
     skip_existing: bool = True,
-) -> List[Path]:
+) -> list[Path]:
     """
     Download NMT data for specified sheet codes using Kartograf.
 
@@ -129,7 +128,7 @@ def download_for_point(
     output_dir: Path,
     scale: str = "1:10000",
     skip_existing: bool = True,
-) -> List[Path]:
+) -> list[Path]:
     """
     Download NMT data for area around a point.
 

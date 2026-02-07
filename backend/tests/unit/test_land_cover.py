@@ -4,16 +4,17 @@ Unit tests for land cover module.
 Tests for CN (Curve Number) calculation from land cover data.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from shapely.geometry import Polygon, box
 
 from core.land_cover import (
-    calculate_weighted_cn,
-    get_land_cover_for_boundary,
-    determine_cn,
     DEFAULT_CN,
     VALID_CATEGORIES,
+    calculate_weighted_cn,
+    determine_cn,
+    get_land_cover_for_boundary,
 )
 
 
@@ -44,7 +45,7 @@ class TestValidCategories:
             "woda",
             "inny",
         }
-        assert VALID_CATEGORIES == expected
+        assert expected == VALID_CATEGORIES
 
     def test_categories_is_frozenset(self):
         """Test categories is immutable."""

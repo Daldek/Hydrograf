@@ -27,7 +27,6 @@ N-34-131-C-c-2-1
 
 import math
 from dataclasses import dataclass
-from typing import List, Tuple
 
 # Note: transform_wgs84_to_pl1992 is available via utils.geometry if needed
 
@@ -46,7 +45,7 @@ class SheetBounds:
         return self.min_lat <= lat < self.max_lat and self.min_lon <= lon < self.max_lon
 
     @property
-    def center(self) -> Tuple[float, float]:
+    def center(self) -> tuple[float, float]:
         """Return center point (lat, lon)."""
         return (
             (self.min_lat + self.max_lat) / 2,
@@ -227,7 +226,7 @@ def _subdivide_bounds(
 
 def _find_subdivision(
     bounds: SheetBounds, lat: float, lon: float, rows: int, cols: int
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """
     Find which subdivision contains the point.
 
@@ -428,7 +427,7 @@ def get_sheets_for_bbox(
     max_lat: float,
     max_lon: float,
     scale: str = "1:10000",
-) -> List[str]:
+) -> list[str]:
     """
     Get all map sheet codes that cover a bounding box.
 
@@ -496,7 +495,7 @@ def get_sheets_for_bbox(
 
 def get_neighboring_sheets(
     sheet_code: str, include_diagonals: bool = True
-) -> List[str]:
+) -> list[str]:
     """
     Get neighboring sheet codes.
 
@@ -561,7 +560,7 @@ def get_neighboring_sheets(
 
 def get_sheets_for_point_with_buffer(
     lat: float, lon: float, buffer_km: float = 5.0, scale: str = "1:10000"
-) -> List[str]:
+) -> list[str]:
     """
     Get all sheet codes covering area around a point.
 

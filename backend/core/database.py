@@ -4,8 +4,8 @@ Database connection and session management.
 Provides SQLAlchemy engine and session factory with connection pooling.
 """
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker

@@ -6,7 +6,6 @@ from flow network cells, compatible with Hydrolog's WatershedParameters.
 """
 
 import logging
-from typing import Optional
 
 import numpy as np
 from shapely.geometry import Polygon
@@ -267,7 +266,7 @@ def build_morphometric_params(
     cells: list[FlowCell],
     boundary: Polygon,
     outlet: FlowCell,
-    cn: Optional[int] = None,
+    cn: int | None = None,
     include_stream_coords: bool = False,
 ) -> dict:
     """

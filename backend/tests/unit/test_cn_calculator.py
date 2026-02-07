@@ -4,14 +4,15 @@ Unit tests for cn_calculator module.
 Tests for CN calculation using Kartograf integration.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from core.cn_calculator import (
     CNCalculationResult,
+    calculate_cn_from_kartograf,
     check_kartograf_available,
     get_default_land_cover_stats,
-    calculate_cn_from_kartograf,
 )
 
 

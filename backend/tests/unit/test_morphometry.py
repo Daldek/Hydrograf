@@ -4,12 +4,12 @@ import pytest
 from shapely.geometry import Polygon
 
 from core.morphometry import (
-    calculate_perimeter_km,
-    calculate_watershed_length_km,
+    build_morphometric_params,
     calculate_elevation_stats,
     calculate_mean_slope,
+    calculate_perimeter_km,
+    calculate_watershed_length_km,
     find_main_stream,
-    build_morphometric_params,
 )
 from core.watershed import FlowCell
 

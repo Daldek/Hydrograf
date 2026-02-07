@@ -7,8 +7,8 @@ Tests grid generation and bounding box parsing.
 import pytest
 
 from scripts.preprocess_precipitation import (
-    parse_bbox,
     generate_grid_points,
+    parse_bbox,
 )
 
 
