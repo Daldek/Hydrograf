@@ -1116,11 +1116,8 @@ async def health_check(db = Depends(get_db)):
 | Etap | Czas | Uwagi |
 |------|------|-------|
 | Pobieranie z GUGiK (Kartograf) | ~30s | ✅ Akceptowalne |
-| Fill pits (pysheds) | <1s | ✅ Świetnie |
-| Fill depressions (pysheds) | ~1s | ✅ Świetnie |
-| Resolve flats (pysheds) | ~1s | ✅ Świetnie |
-| Flow direction (pysheds) | <1s | ✅ Świetnie |
-| Flow accumulation (pysheds) | <1s | ✅ Świetnie |
+| Fill depressions + D8 fdir (pyflwdir) | ~8s | ✅ Świetnie |
+| Flow accumulation (pyflwdir) | ~2s | ✅ Świetnie |
 | Slope calculation | <1s | ✅ Świetnie |
 | **Razem analiza rastrowa** | **~5s** | ✅ Świetnie |
 | INSERT do flow_network (5M rekordów) | ~55 min | ⚠️ WĄSKIE GARDŁO |
@@ -1139,7 +1136,7 @@ async def health_check(db = Depends(get_db)):
 
 #### Wnioski
 
-1. **Analiza rastrowa (pysheds) jest bardzo szybka** - 5 sekund dla 5M komórek
+1. **Analiza rastrowa (pyflwdir) jest bardzo szybka** - ~27 sekund dla 5M komórek (fill + fdir + acc)
 2. **Wąskie gardło to operacje bazodanowe** - INSERT/UPDATE zajmują 99% czasu preprocessingu
 3. **Runtime API jest akceptowalny** dla małych zlewni, ale dla dużych (>2 km²) może przekraczać limity
 

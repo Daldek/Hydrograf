@@ -14,7 +14,7 @@ Pracujesz nad **Hydrograf** — hubem hydrologicznym integrujacym FastAPI + Post
 - **Wyznaczanie zlewni** — klikniecie na mape → granica zlewni w <10s (traverse_upstream w PostGIS)
 - **Parametry fizjograficzne** — powierzchnia, CN, spadki, pokrycie terenu, morfometria
 - **Hydrogramy odplywu** — metoda SCS-CN, 42 scenariusze (7 czasow trwania x 6 prawdopodobienstw)
-- **Preprocessing NMT** — Kartograf → pysheds → COPY → graf flow_network w PostGIS
+- **Preprocessing NMT** — Kartograf → pyflwdir → COPY → graf flow_network w PostGIS
 
 **Stack technologiczny:**
 - Python 3.12+, FastAPI, SQLAlchemy 2.0, GeoAlchemy2
@@ -80,7 +80,7 @@ backend/
 │
 ├── scripts/                 # Skrypty CLI (preprocessing)
 │   ├── prepare_area.py      # Pipeline: download + process (glowny entry point)
-│   ├── process_dem.py       # pysheds → flow_network (COPY do PostGIS)
+│   ├── process_dem.py       # pyflwdir → flow_network (COPY do PostGIS)
 │   ├── download_dem.py      # Pobieranie NMT przez Kartograf
 │   ├── download_landcover.py # Pobieranie BDOT10k/CORINE
 │   └── import_landcover.py  # Import pokrycia do PostGIS
@@ -99,7 +99,7 @@ frontend/
 ```
 User → Leaflet.js → POST /api/delineate-watershed → watershed.py → PostGIS CTE → GeoJSON
 User → Leaflet.js → POST /api/generate-hydrograph → Hydrolog (SCS-CN, splot) → Chart.js
-Preprocessing: Kartograf → NMT (.asc) → pysheds → COPY → PostGIS flow_network
+Preprocessing: Kartograf → NMT (.asc) → pyflwdir → COPY → PostGIS flow_network
 Preprocessing: Kartograf → BDOT10k (.gpkg) → import_landcover → PostGIS land_cover
 ```
 
