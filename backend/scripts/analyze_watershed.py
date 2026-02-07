@@ -4,7 +4,7 @@ Kompleksowy skrypt do analizy hydrologicznej zlewni.
 
 Workflow:
 1. Pobieranie NMT z GUGiK (Kartograf)
-2. Tworzenie mozaiki i przetwarzanie (pysheds)
+2. Tworzenie mozaiki i przetwarzanie (pyflwdir)
 3. Import do PostgreSQL
 4. Wyznaczanie zlewni
 5. Obliczanie parametrów morfometrycznych

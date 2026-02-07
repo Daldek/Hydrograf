@@ -4,7 +4,7 @@ Pipeline script to download and process spatial data for a specified area.
 This script combines:
 1. Downloading NMT data from GUGiK using Kartograf (multiple tiles)
 2. Creating VRT mosaic from downloaded tiles (ensures hydrological continuity)
-3. Processing mosaic with pysheds (fill, flow direction, accumulation)
+3. Processing mosaic with pyflwdir (fill depressions, flow direction, accumulation)
 4. Loading data into PostgreSQL/PostGIS flow_network table
 5. (Optional) Downloading land cover data from BDOT10k/CORINE
 6. (Optional) Loading land cover into land_cover table

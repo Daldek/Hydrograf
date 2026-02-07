@@ -58,7 +58,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# D8 flow direction encoding (pysheds default)
+# D8 flow direction encoding (standard D8, compatible with pyflwdir/pysheds/ArcGIS)
 # Direction values and their (row_offset, col_offset) for downstream cell
 D8_DIRECTIONS = {
     1: (0, 1),  # E
@@ -70,6 +70,7 @@ D8_DIRECTIONS = {
     64: (-1, 0),  # N
     128: (-1, 1),  # NE
 }
+VALID_D8_SET = frozenset(D8_DIRECTIONS.keys())
 
 
 def save_raster_geotiff(
@@ -507,8 +508,10 @@ def fix_internal_sinks(
     }
 
     for iteration in range(max_iterations):
-        # Find internal sinks: fdir==0, valid, not on edge
-        internal_sinks = (fdir_fixed == 0) & valid & ~edge_mask
+        # Find internal sinks: fdir not a valid D8 direction, valid, not on edge
+        # pysheds returns 0 (nodata), -1 (pit/outlet), -2 (unresolved flat)
+        is_valid_d8 = np.isin(fdir_fixed, list(VALID_D8_SET))
+        internal_sinks = ~is_valid_d8 & valid & ~edge_mask
         sink_rows, sink_cols = np.where(internal_sinks)
         sink_indices = list(zip(sink_rows, sink_cols, strict=True))
 
@@ -586,124 +589,81 @@ def fix_internal_sinks(
     return fdir_fixed, acc_fixed, diag
 
 
-def process_hydrology_pysheds(
+def process_hydrology_pyflwdir(
     dem: np.ndarray,
     metadata: dict,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Process DEM using pysheds library for hydrological analysis.
+    Process DEM using pyflwdir (Deltares) for hydrological analysis.
 
-    Uses pysheds for proper depression filling, flat resolution, and flow routing.
-    This replaces the previous naive implementations that had issues with
-    internal sinks and flat areas.
+    Uses pyflwdir for depression filling (Wang & Liu 2006), D8 flow direction,
+    and flow accumulation. Replaces pysheds — fewer dependencies, no temp files,
+    works directly on numpy arrays.
 
     Parameters
     ----------
     dem : np.ndarray
         Input DEM array
     metadata : dict
-        Grid metadata with xllcorner, yllcorner, cellsize, nodata_value
+        Grid metadata with xllcorner, yllcorner, cellsize, nodata_value,
+        and optionally transform (rasterio Affine)
 
     Returns
     -------
     tuple
-        (filled_dem, inflated_dem, flow_direction, flow_accumulation) arrays
-        - filled_dem: DEM po wypełnieniu zagłębień (rzeczywiste wysokości)
-        - inflated_dem: DEM po resolve_flats (wejście do flowdir, sztucznie zmodyfikowany)
-        - flow_direction: kierunki spływu D8
-        - flow_accumulation: akumulacja przepływu
+        (filled_dem, filled_dem, flow_direction, flow_accumulation) arrays
+        - filled_dem: DEM po wypelnieniu zaglebie (rzeczywiste wysokosci)
+        - filled_dem: (repeated — pyflwdir nie produkuje osobnego inflated DEM)
+        - flow_direction: kierunki splywy D8
+        - flow_accumulation: akumulacja przeplywu
     """
-    import tempfile
+    import pyflwdir
+    from pyflwdir.dem import fill_depressions as pyflwdir_fill_depressions
 
-    import rasterio
-    from pysheds.grid import Grid
-    from rasterio.transform import from_bounds
-
-    logger.info("Processing hydrology with pysheds...")
+    logger.info("Processing hydrology with pyflwdir (Deltares)...")
 
     nodata = metadata["nodata_value"]
-    nrows, ncols = dem.shape
-    cellsize = metadata["cellsize"]
-    xll = metadata["xllcorner"]
-    yll = metadata["yllcorner"]
 
-    # Calculate bounds
-    xmin = xll
-    ymin = yll
-    xmax = xll + ncols * cellsize
-    ymax = yll + nrows * cellsize
-
-    # Level 1: Fill internal nodata holes before pysheds
+    # Level 1: Fill internal nodata holes before depression filling
     dem_patched, holes_filled = fill_internal_nodata_holes(dem, nodata)
     if holes_filled > 0:
         logger.info(f"  Filled {holes_filled} internal nodata holes")
 
-    # Create temporary GeoTIFF for pysheds (it needs a file)
-    with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
-        tmp_path = tmp.name
+    # Core: depression filling + D8 flow direction (Wang & Liu 2006)
+    # Replaces pysheds fill_pits + fill_depressions + resolve_flats + flowdir
+    logger.info("  Filling depressions and computing D8 flow direction...")
+    filled_dem, d8_fdir = pyflwdir_fill_depressions(
+        dem_patched, nodata=nodata, max_depth=-1.0, outlets="edge"
+    )
 
-    transform = from_bounds(xmin, ymin, xmax, ymax, ncols, nrows)
+    # Convert fdir types:
+    # pyflwdir d8_fdir: uint8, nodata=247, pit=0
+    # Our convention: int16, nodata=0
+    fdir_arr = d8_fdir.astype(np.int16)
+    fdir_arr[d8_fdir == 247] = 0  # pyflwdir nodata → 0
 
-    with rasterio.open(
-        tmp_path,
-        "w",
-        driver="GTiff",
-        height=nrows,
-        width=ncols,
-        count=1,
-        dtype=rasterio.float32,
-        crs="EPSG:2180",
-        transform=transform,
-        nodata=nodata,
-    ) as dst:
-        dst.write(dem_patched.astype(np.float32), 1)
+    # Build transform for FlwdirRaster
+    transform = metadata.get("transform")
+    if transform is None:
+        from rasterio.transform import from_bounds
 
-    # Load into pysheds
-    grid = Grid.from_raster(tmp_path)
-    dem_grid = grid.read_raster(tmp_path)
+        xll, yll = metadata["xllcorner"], metadata["yllcorner"]
+        nrows, ncols = dem.shape
+        cs = metadata["cellsize"]
+        transform = from_bounds(
+            xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
+        )
 
-    # Step 1: Fill pits (single-cell depressions)
-    logger.info("  Step 1/4: Filling pits...")
-    pit_filled = grid.fill_pits(dem_grid)
-
-    # Step 2: Fill depressions (multi-cell depressions)
-    logger.info("  Step 2/4: Filling depressions...")
-    flooded = grid.fill_depressions(pit_filled)
-
-    # Step 3: Resolve flats (assign flow direction to flat areas)
-    logger.info("  Step 3/4: Resolving flats...")
-    inflated = grid.resolve_flats(flooded)
-
-    # Step 4: Compute flow direction
-    logger.info("  Step 4/4: Computing flow direction...")
-    fdir = grid.flowdir(inflated)
-
-    # Step 5: Compute flow accumulation
+    # Flow accumulation via FlwdirRaster
     logger.info("  Computing flow accumulation...")
-    acc = grid.accumulation(fdir)
+    flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
+    acc_float = flw.upstream_area(unit="cell")
+    acc_arr = np.where(acc_float == -9999, 0, acc_float).astype(np.int32)
 
-    # Convert pysheds arrays back to numpy
-    # Handle NaN values from pysheds
-    # IMPORTANT: Use 'flooded' for elevation (actual filled DEM)
-    # 'inflated' has artificially modified elevations for flat routing - saved separately
-    filled_dem = np.array(flooded)
-    filled_dem[np.isnan(filled_dem)] = nodata
+    # Restore nodata in filled_dem
+    filled_dem[dem == nodata] = nodata
 
-    inflated_dem = np.array(inflated)
-    inflated_dem[np.isnan(inflated_dem)] = nodata
-
-    fdir_arr = np.array(fdir, dtype=np.int16)
-    fdir_arr[np.isnan(fdir_arr)] = 0
-
-    acc_arr = np.array(acc, dtype=np.int32)
-    acc_arr[np.isnan(acc_arr)] = 0
-
-    # Cleanup temp file
-    import os
-
-    os.unlink(tmp_path)
-
-    # Level 2: Fix internal sinks
+    # Safety net: fix internal sinks (if pyflwdir left any)
     valid = filled_dem != nodata
     edge_mask = np.zeros_like(valid)
     edge_mask[0, :] = True
@@ -711,13 +671,21 @@ def process_hydrology_pysheds(
     edge_mask[:, 0] = True
     edge_mask[:, -1] = True
 
-    internal_sinks = (fdir_arr == 0) & valid & ~edge_mask
+    is_valid_d8 = np.isin(fdir_arr, list(VALID_D8_SET))
+    internal_sinks = ~is_valid_d8 & valid & ~edge_mask
     sink_count = int(np.sum(internal_sinks))
 
     if sink_count > 0:
+        # Log breakdown of invalid fdir values
+        invalid_fdir = fdir_arr[internal_sinks]
+        unique_vals, counts = np.unique(invalid_fdir, return_counts=True)
+        breakdown = ", ".join(
+            f"fdir={v}: {c}" for v, c in zip(unique_vals, counts, strict=True)
+        )
+        logger.info(f"  Invalid fdir breakdown: {breakdown}")
         logger.info(f"  Found {sink_count} internal sinks, fixing...")
         fdir_arr, acc_arr, diag = fix_internal_sinks(
-            fdir_arr, acc_arr, inflated_dem, filled_dem, nodata
+            fdir_arr, acc_arr, filled_dem, filled_dem, nodata
         )
         logger.info(
             f"  Fixed {diag['total_fixed']} sinks "
@@ -729,7 +697,8 @@ def process_hydrology_pysheds(
         logger.info("  All internal cells have valid flow direction")
 
     logger.info("Hydrology processing complete")
-    return filled_dem, inflated_dem, fdir_arr, acc_arr
+    # Return filled_dem twice (pyflwdir has no separate inflated DEM)
+    return filled_dem, filled_dem, fdir_arr, acc_arr
 
 
 def process_hydrology_whitebox(
@@ -868,12 +837,12 @@ def process_hydrology_whitebox(
     edge_mask[:, 0] = True
     edge_mask[:, -1] = True
 
-    no_flow = (fdir_arr == 0) & valid
-    internal_no_flow = no_flow & ~edge_mask
+    is_valid_d8 = np.isin(fdir_arr, list(VALID_D8_SET))
+    internal_no_flow = ~is_valid_d8 & valid & ~edge_mask
 
     if np.sum(internal_no_flow) > 0:
         logger.warning(
-            f"  {np.sum(internal_no_flow)} internal cells without flow direction"
+            f"  {np.sum(internal_no_flow)} internal cells without valid flow direction"
         )
     else:
         logger.info("  All internal cells have valid flow direction")
@@ -887,7 +856,7 @@ def fill_depressions(dem: np.ndarray, nodata: float) -> np.ndarray:
     Fill depressions (sinks) in DEM.
 
     Note: This is a legacy wrapper. The main processing now uses
-    process_hydrology_pysheds() which handles fill, resolve flats,
+    process_hydrology_pyflwdir() which handles fill, resolve flats,
     and flow direction together for correct results.
 
     Parameters
@@ -903,9 +872,9 @@ def fill_depressions(dem: np.ndarray, nodata: float) -> np.ndarray:
         Filled DEM
     """
     logger.warning(
-        "Using legacy fill_depressions - consider using process_hydrology_pysheds()"
+        "Using legacy fill_depressions - consider using process_hydrology_pyflwdir()"
     )
-    # Return unchanged - actual filling happens in process_hydrology_pysheds
+    # Return unchanged - actual filling happens in process_hydrology_pyflwdir
     return dem.copy()
 
 
@@ -914,7 +883,7 @@ def compute_flow_direction(dem: np.ndarray, nodata: float) -> np.ndarray:
     Compute D8 flow direction.
 
     Note: This is a legacy wrapper. The main processing now uses
-    process_hydrology_pysheds() which handles fill, resolve flats,
+    process_hydrology_pyflwdir() which handles fill, resolve flats,
     and flow direction together for correct results.
 
     Parameters
@@ -930,7 +899,8 @@ def compute_flow_direction(dem: np.ndarray, nodata: float) -> np.ndarray:
         Flow direction array (D8 encoding)
     """
     logger.warning(
-        "Using legacy compute_flow_direction - consider using process_hydrology_pysheds()"
+        "Using legacy compute_flow_direction"
+        " - consider using process_hydrology_pyflwdir()"
     )
 
     nrows, ncols = dem.shape
@@ -968,7 +938,7 @@ def compute_flow_accumulation(fdir: np.ndarray) -> np.ndarray:
     Compute flow accumulation from flow direction.
 
     Note: This is a legacy wrapper. The main processing now uses
-    process_hydrology_pysheds() which computes accumulation correctly.
+    process_hydrology_pyflwdir() which computes accumulation correctly.
 
     Parameters
     ----------
@@ -981,7 +951,8 @@ def compute_flow_accumulation(fdir: np.ndarray) -> np.ndarray:
         Flow accumulation array (number of upstream cells)
     """
     logger.warning(
-        "Using legacy compute_flow_accumulation - consider using process_hydrology_pysheds()"
+        "Using legacy compute_flow_accumulation"
+        " - consider using process_hydrology_pyflwdir()"
     )
 
     from collections import deque
@@ -1401,9 +1372,9 @@ def process_dem(
             dtype="float32",
         )
 
-    # 2-4. Process hydrology using pysheds (fill, resolve flats, flow dir, accumulation)
-    # Note: WhiteboxTools was tested but produces inconsistent fdir/acc, pysheds is reliable
-    filled_dem, inflated_dem, fdir, acc = process_hydrology_pysheds(dem, metadata)
+    # 2-4. Process hydrology using pyflwdir (fill depressions, flow dir, accumulation)
+    # Note: Migrated from pysheds to pyflwdir (Deltares) — fewer deps, no temp files
+    filled_dem, inflated_dem, fdir, acc = process_hydrology_pyflwdir(dem, metadata)
     stats["max_accumulation"] = int(acc.max())
 
     if save_intermediates:
