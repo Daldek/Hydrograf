@@ -140,7 +140,7 @@ Total: 52% (2933 statements, 1411 missed)
 |------------|--------------|--------|-------|
 | kartograf | ✅ KARTOGRAF_INTEGRATION.md | GitHub only | @develop branch |
 | hydrolog | ⚠️ Częściowa | GitHub only | @develop branch |
-| pysheds | ❌ Nieudokumentowana | PyPI | Zastąpiła WhiteboxTools |
+| pyflwdir | ✅ Udokumentowana | PyPI | Zastąpiła pysheds (ADR-012) |
 
 ---
 

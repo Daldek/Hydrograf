@@ -84,7 +84,7 @@ backend/
 │   └── sheet_finder.py      # Wyszukiwanie arkuszy NMT
 │
 ├── scripts/                 # Skrypty CLI (preprocessing)
-│   ├── process_dem.py       # Import NMT do bazy (pysheds → PostGIS)
+│   ├── process_dem.py       # Import NMT do bazy (pyflwdir → PostGIS)
 │   ├── analyze_watershed.py # Pelna analiza zlewni (CLI)
 │   ├── prepare_area.py      # Pobieranie + przetwarzanie obszaru
 │   ├── download_dem.py      # Pobieranie NMT przez Kartograf
