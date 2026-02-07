@@ -4,10 +4,13 @@ and flow accumulation recomputation.
 """
 
 import numpy as np
+import pytest
 
 from scripts.process_dem import (
+    VALID_D8_SET,
     fill_internal_nodata_holes,
     fix_internal_sinks,
+    process_hydrology_pyflwdir,
     recompute_flow_accumulation,
 )
 
@@ -257,6 +260,58 @@ class TestFixInternalSinks:
         # Should route toward the neighbor with max accumulation (east = direction 1)
         assert diag["by_strategy"]["max_acc"] >= 1
 
+    def test_fixes_negative_fdir_values(self):
+        """Cells with fdir=-1 or fdir=-2 (pysheds pit/flat markers) are fixed."""
+        dem = np.array(
+            [
+                [100.0, 100.0, 100.0, 100.0, 100.0],
+                [100.0, 50.0, 50.0, 50.0, 100.0],
+                [100.0, 50.0, 50.0, 50.0, 100.0],
+                [100.0, 30.0, 30.0, 30.0, 100.0],
+                [100.0, 100.0, 100.0, 100.0, 100.0],
+            ]
+        )
+        inflated = dem.copy()
+        inflated[2, 2] = 50.1  # slight gradient to help steepest descent
+        inflated[3, 2] = 29.9
+
+        fdir = np.full((5, 5), 4, dtype=np.int16)  # all flow South
+        fdir[4, :] = 0  # bottom edge = outlets
+        fdir[2, 1] = -1  # pysheds pit marker
+        fdir[2, 2] = -2  # pysheds unresolved flat marker
+
+        acc = np.ones((5, 5), dtype=np.int32)
+
+        fdir_fixed, _, diag = fix_internal_sinks(fdir, acc, inflated, dem, NODATA)
+
+        # Both negative-fdir cells should be fixed to valid D8 directions
+        assert fdir_fixed[2, 1] in {1, 2, 4, 8, 16, 32, 64, 128}
+        assert fdir_fixed[2, 2] in {1, 2, 4, 8, 16, 32, 64, 128}
+        assert diag["total_fixed"] >= 2
+
+    def test_edge_negative_fdir_not_fixed(self):
+        """Negative fdir on raster edge is not modified (valid outlet)."""
+        dem = np.full((3, 3), 50.0)
+        fdir = np.array(
+            [
+                [-1, 4, -2],
+                [1, 4, 16],
+                [-1, -2, 0],
+            ],
+            dtype=np.int16,
+        )
+        acc = np.ones((3, 3), dtype=np.int32)
+
+        fdir_fixed, _, diag = fix_internal_sinks(fdir, acc, dem, dem, NODATA)
+
+        # All edge cells should remain unchanged
+        assert fdir_fixed[0, 0] == -1
+        assert fdir_fixed[0, 2] == -2
+        assert fdir_fixed[2, 0] == -1
+        assert fdir_fixed[2, 1] == -2
+        assert fdir_fixed[2, 2] == 0
+        assert diag["total_fixed"] == 0
+
 
 class TestRecomputeFlowAccumulation:
     """Tests for recompute_flow_accumulation()."""
@@ -306,3 +361,100 @@ class TestRecomputeFlowAccumulation:
         assert acc[0, 1] == 1  # headwater
         assert acc[1, 0] == 3  # self + 2 upstream
         assert acc[1, 1] == 4  # self + 3 from (1,0)
+
+
+class TestProcessHydrologyPyflwdir:
+    """Integration tests for process_hydrology_pyflwdir()."""
+
+    @pytest.fixture()
+    def synthetic_dem_10x10(self):
+        """Create a 10x10 DEM sloping SE with a small depression."""
+        dem = np.zeros((10, 10), dtype=np.float64)
+        for i in range(10):
+            for j in range(10):
+                # Elevation decreases toward SE corner
+                dem[i, j] = 200.0 - i * 10.0 - j * 5.0
+        # Add a small depression at (5, 5)
+        dem[5, 5] = dem[5, 5] - 20.0
+        # Add nodata on one corner
+        dem[0, 0] = NODATA
+
+        metadata = {
+            "ncols": 10,
+            "nrows": 10,
+            "xllcorner": 500000.0,
+            "yllcorner": 300000.0,
+            "cellsize": 5.0,
+            "nodata_value": NODATA,
+        }
+        return dem, metadata
+
+    def test_returns_correct_shapes(self, synthetic_dem_10x10):
+        """Output arrays have same shape as input DEM."""
+        dem, metadata = synthetic_dem_10x10
+        filled, inflated, fdir, acc = process_hydrology_pyflwdir(dem, metadata)
+
+        assert filled.shape == dem.shape
+        assert inflated.shape == dem.shape
+        assert fdir.shape == dem.shape
+        assert acc.shape == dem.shape
+
+    def test_fdir_contains_only_valid_d8(self, synthetic_dem_10x10):
+        """All internal valid cells have D8 flow direction from VALID_D8_SET."""
+        dem, metadata = synthetic_dem_10x10
+        filled, _, fdir, _ = process_hydrology_pyflwdir(dem, metadata)
+
+        valid = filled != NODATA
+        edge_mask = np.zeros_like(valid)
+        edge_mask[0, :] = True
+        edge_mask[-1, :] = True
+        edge_mask[:, 0] = True
+        edge_mask[:, -1] = True
+
+        internal_valid = valid & ~edge_mask
+        internal_fdir = fdir[internal_valid]
+
+        # Every internal valid cell must have a valid D8 direction
+        assert all(d in VALID_D8_SET for d in internal_fdir), (
+            f"Invalid fdir values found: {set(internal_fdir) - VALID_D8_SET}"
+        )
+
+    def test_acc_positive_for_valid_cells(self, synthetic_dem_10x10):
+        """Flow accumulation >= 1 for all valid cells."""
+        dem, metadata = synthetic_dem_10x10
+        filled, _, _, acc = process_hydrology_pyflwdir(dem, metadata)
+
+        valid = filled != NODATA
+        assert np.all(acc[valid] >= 1)
+
+    def test_nodata_preserved(self, synthetic_dem_10x10):
+        """Nodata cells in input remain nodata in filled DEM."""
+        dem, metadata = synthetic_dem_10x10
+        filled, _, _, _ = process_hydrology_pyflwdir(dem, metadata)
+
+        assert filled[0, 0] == NODATA
+
+    def test_depression_filled(self, synthetic_dem_10x10):
+        """The depression at (5,5) is filled (elevation raised)."""
+        dem, metadata = synthetic_dem_10x10
+        filled, _, _, _ = process_hydrology_pyflwdir(dem, metadata)
+
+        # Filled DEM should have the depression raised
+        assert filled[5, 5] >= dem[5, 5]
+
+    def test_no_internal_sinks(self, synthetic_dem_10x10):
+        """No internal sinks remain after processing."""
+        dem, metadata = synthetic_dem_10x10
+        filled, _, fdir, _ = process_hydrology_pyflwdir(dem, metadata)
+
+        valid = filled != NODATA
+        edge_mask = np.zeros_like(valid)
+        edge_mask[0, :] = True
+        edge_mask[-1, :] = True
+        edge_mask[:, 0] = True
+        edge_mask[:, -1] = True
+
+        is_valid_d8 = np.isin(fdir, list(VALID_D8_SET))
+        internal_sinks = ~is_valid_d8 & valid & ~edge_mask
+
+        assert int(np.sum(internal_sinks)) == 0

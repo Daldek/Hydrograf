@@ -7,7 +7,7 @@ creating virtual rasters (VRT), and reading mosaicked data.
 VRT (Virtual Raster) is preferred over physical merge because:
 - No data duplication on disk
 - Instant creation (~1s vs minutes for large areas)
-- Transparent to GDAL/rasterio/pysheds
+- Transparent to GDAL/rasterio/pyflwdir
 - Original tiles can be updated independently
 """
 

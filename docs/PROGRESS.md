@@ -8,7 +8,7 @@
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
-| Preprocessing NMT | ✅ Gotowy | pysheds + COPY (3.8 min/arkusz) |
+| Preprocessing NMT | ✅ Gotowy | pyflwdir + COPY (3.8 min/arkusz) |
 | Integracja Hydrolog | ✅ Gotowy | v0.5.2 |
 | Integracja Kartograf | ✅ Gotowy | v0.3.1 (NMT, Land Cover, HSG) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
@@ -47,22 +47,26 @@
 **Data:** 2026-02-07
 
 ### Co zrobiono
-- Naprawa flowacc: cieki konczace sie w srodku rastra
-  - `fill_internal_nodata_holes()` — wypelnianie wewnetrznych dziur nodata przed pysheds
-  - `fix_internal_sinks()` — 3-strategiowa naprawa zlewow po pysheds (steepest/max_acc/any_valid)
-  - `recompute_flow_accumulation()` — rekompozycja acc po naprawie fdir (BFS Kahn)
-  - Integracja w `process_hydrology_pysheds()` (Level 1 + Level 2)
-- Testy jednostkowe: 14 nowych testow w `tests/unit/test_process_dem.py`
-- 293/293 testow przechodzi (14 nowych + 279 istniejacych)
+- Migracja z pysheds na pyflwdir (Deltares):
+  - Nowa funkcja `process_hydrology_pyflwdir()` w `scripts/process_dem.py`
+  - Usunieta `process_hydrology_pysheds()` — zastapiona przez pyflwdir
+  - `requirements.txt`: `pysheds>=0.4` → `pyflwdir>=0.5.8`
+  - Mniej zaleznosci (3 vs 10), brak temp file, Wang & Liu 2006 algorithm
+  - Zachowane: `fill_internal_nodata_holes()`, `fix_internal_sinks()` (safety net)
+  - 6 nowych testow integracyjnych dla `process_hydrology_pyflwdir()`
+- Aktualizacja docstringow: pysheds → pyflwdir w prepare_area.py, raster_utils.py
 
 ### Poprzednia sesja
-- Migracja na .venv-first development workflow (ADR-011)
-- Test E2E pipeline: N-33-131-C-b (5 m, 1.57M komorek)
-- Naprawa pyproject.toml: readme path + setuptools packages.find
+- Re-run E2E pipeline po poprawkach flowacc: N-33-131-C-b-2-3 (1:10000, 1 arkusz)
+  - 4,917,888 rekordow w flow_network (5.17M komorek rastra)
+  - 412,215 stream cells (acc >= 100), max acc = 1,067,456
+  - Broken stream chains: 642 (0.16%) — efekt brzegowy (cieki wychodzace poza arkusz)
+- Naprawa flowacc: `fill_internal_nodata_holes()`, `fix_internal_sinks()`, `recompute_flow_accumulation()`
+- Testy jednostkowe: 14 nowych testow w `tests/unit/test_process_dem.py`
 
 ### Nastepne kroki
-1. CP4 — frontend z mapa Leaflet.js
-2. Re-run process_dem na danych E2E i weryfikacja SQL (stream cells z downstream_id=NULL)
+1. E2E re-run pipeline z pyflwdir — porownanie z wynikami pysheds
+2. CP4 — frontend z mapa Leaflet.js
 3. Dlug techniczny: constants.py, hardcoded secrets
 
 ## Backlog

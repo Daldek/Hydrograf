@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Przerwane lancuchy downstream_id w flow_network spowodowane NaN fdir i nodata holes
 
 ### Changed
+- Migracja z pysheds na pyflwdir (Deltares) — mniej zaleznosci, brak temp file, Wang & Liu 2006
 - Migracja na .venv-first development workflow (ADR-011)
 - Rozdzielenie deps runtime/dev (requirements.txt + pyproject.toml [dev])
 - Usuniecie black/flake8 z requirements.txt, dodanie ruff do [dev]
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Przeniesienie 6 plików MD z root do docs/
 
 ### Tested
+- E2E pipeline: N-33-131-C-b-2-3 (1:10000, 1 arkusz, 4.9M komorek) — flowacc fix verified
 - E2E pipeline: N-33-131-C-b (5 m) — Kartograf download, pysheds processing, IMGW precipitation
 
 ### Added
