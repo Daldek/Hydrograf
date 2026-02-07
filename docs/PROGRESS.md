@@ -6,7 +6,7 @@
 |---------|--------|-------|
 | API (FastAPI + PostGIS) | ✅ Gotowy | 3 endpointy, v0.3.0 |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
-| Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN |
+| Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir + COPY (3.8 min/arkusz), stream burning |
 | Integracja Hydrolog | ✅ Gotowy | v0.5.2 |
@@ -14,7 +14,7 @@
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | ⏳ Zaplanowany | CP4 — mapa Leaflet.js |
-| Testy scripts/ | ⏳ W trakcie | 28 testow process_dem (burn, fill, sinks, pyflwdir) |
+| Testy scripts/ | ⏳ W trakcie | 46 testow process_dem (burn, fill, sinks, pyflwdir, aspect, TWI, Strahler) |
 | Dokumentacja | ✅ Gotowy | Standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -47,33 +47,29 @@
 **Data:** 2026-02-07
 
 ### Co zrobiono
-- Wypalanie ciekow w DEM (stream burning) (ADR-013):
-  - Nowa funkcja `burn_streams_into_dem()` w `scripts/process_dem.py`
-  - Nowe argumenty CLI: `--burn-streams <path.gpkg>`, `--burn-depth <m>`
-  - Algorytm: wczytanie GeoPackage → walidacja CRS → clip do zasiegu DEM → rasteryzacja → obnizenie DEM
-  - 6 nowych testow jednostkowych w `TestBurnStreamsIntoDem`
-- Usuniecie warstwy `02b_inflated`:
-  - `process_hydrology_pyflwdir()` zwraca 3 wartosci zamiast 4
-  - `process_hydrology_whitebox()` analogicznie
-  - Parametr `inflated_dem` → `filled_dem` w `fix_internal_sinks()`
-  - Usuniecie zapisu `02b_inflated.tif` z `process_dem()`
-  - Aktualizacja istniejacych testow (unpacking 4→3)
-- Wszystkie 28 testow przechodzi, ruff check + format OK
-- E2E pipeline z stream burning: N-33-131-C-b-2-3 (55s):
-  - 2,856 komorek wypalonych (1 ciek z Rzeki.gpkg, depth=5m)
-  - 820 internal sinks naprawionych (85 steepest, 735 max_acc)
-  - Max acc: 1,823,073, stream cells: 450,325
-  - 7 plikow GeoTIFF w `data/nmt/` (01_dem → 06_streams + 02a_burned)
-- **Stan:** 5 plikow zmienionych, niezacommitowane (develop)
+- Rozszerzenie analiz rastrowych, wektoryzacji i parametrow morfometrycznych (ADR-014):
+  - **Nowe rastery:** aspect (09), TWI (08), Strahler stream order (07) w `process_dem.py`
+  - **Wektoryzacja ciekow:** `vectorize_streams()` — tracing headwaters→junction, zapis do `stream_network` (source='DEM_DERIVED')
+  - **Migracja 003:** `strahler_order` w `flow_network`, `upstream_area_km2`/`mean_slope_percent` w `stream_network`
+  - **Wskazniki ksztaltu:** Kc, Rc, Re, Ff, mean_width_km w `calculate_shape_indices()`
+  - **Wskazniki rzezbowe:** Rh, HI w `calculate_relief_indices()`
+  - **Krzywa hipsometryczna:** `calculate_hypsometric_curve()` — 20 binow, opcjonalna w API
+  - **Wskazniki sieci:** Dd, Fs, Rn, max_strahler w `calculate_drainage_indices()` + SQL query
+  - **Integracja:** rozbudowa `build_morphometric_params()` o nowe wskazniki, opcjonalny `db` i `include_hypsometric_curve`
+  - **API:** 11 nowych pol Optional w `MorphometricParameters`, `HypsometricPoint`, `hypsometric_curve` w `WatershedResponse`
+  - **Flaga CLI:** `--skip-streams-vectorize`
+  - **Testy:** 38 nowych (18 DEM + 21 morfometria), lacznie 345 przechodzi
+  - **8 commitow** na galezi `develop`
+- **Stan:** git clean, develop, 345 testow OK
 
 ### Poprzednia sesja
+- Wypalanie ciekow w DEM (stream burning) (ADR-013)
 - Migracja z pysheds na pyflwdir (Deltares) (ADR-012)
-- E2E re-run pipeline z pyflwdir: N-33-131-C-b-2-3
-- Naprawa flowacc: `fill_internal_nodata_holes()`, `fix_internal_sinks()`
 
 ### Nastepne kroki
 1. CP4 — frontend z mapa Leaflet.js
 2. Dlug techniczny: constants.py, hardcoded secrets
+3. E2E re-run pipeline z nowymi warstwami (07, 08, 09)
 
 ## Backlog
 
