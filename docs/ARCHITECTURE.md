@@ -839,15 +839,15 @@ server {
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      DEVELOPMENT                        │
-│  - docker-compose up                                    │
-│  - Hot reload (FastAPI --reload, Vite/etc for frontend)│
+│  - .venv + docker compose up -d db (tylko PostGIS)     │
+│  - uvicorn api.main:app --reload                       │
 │  - Debug logs (DEBUG level)                            │
 │  - Sample data in database                             │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
 │                       STAGING                           │
-│  - docker-compose -f docker-compose.prod.yml up        │
+│  - docker compose -f docker-compose.prod.yml up         │
 │  - Production-like data                                │
 │  - INFO logs                                           │
 │  - Manual deployment                                   │
@@ -855,7 +855,7 @@ server {
 
 ┌─────────────────────────────────────────────────────────┐
 │                      PRODUCTION                         │
-│  - docker-compose -f docker-compose.prod.yml up -d     │
+│  - docker compose -f docker-compose.prod.yml up -d      │
 │  - Full preprocessing data                             │
 │  - WARNING+ logs only                                  │
 │  - HTTPS enabled                                       │
@@ -1087,9 +1087,9 @@ async def health_check(db = Depends(get_db)):
 ### 9.2 Recovery Procedures
 
 **Scenariusz 1: Database corruption**
-1. Stop aplikację: `docker-compose down`
+1. Stop aplikację: `docker compose down`
 2. Restore z backupu: `gunzip -c backup.sql.gz | docker exec -i hydro_db psql -U hydro_user hydro_db`
-3. Restart: `docker-compose up -d`
+3. Restart: `docker compose up -d`
 4. Verify: Check `/health` endpoint
 
 **Scenariusz 2: Server failure**
@@ -1097,7 +1097,7 @@ async def health_check(db = Depends(get_db)):
 2. Install Docker
 3. Clone repo: `git clone ...`
 4. Restore database z backupu
-5. Deploy: `docker-compose up -d`
+5. Deploy: `docker compose up -d`
 6. Update DNS (jeśli dotyczy)
 
 **RTO (Recovery Time Objective):** < 4 godziny  
@@ -1271,35 +1271,49 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Black
-        run: black --check backend/
-      - name: Flake8
-        run: flake8 backend/
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install -e ".[dev]"
+      - name: Ruff check
+        run: cd backend && ruff check .
+      - name: Ruff format
+        run: cd backend && ruff format --check .
 
   test:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgis/postgis:15-3.3
+        image: postgis/postgis:16-3.4
         env:
           POSTGRES_DB: test_db
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_pass
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Install deps
-        run: pip install -r requirements.txt
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install -e ".[dev]"
       - name: Run tests
-        run: pytest tests/ --cov=backend/
+        run: cd backend && pytest tests/ --cov=.
       - name: Upload coverage
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@v4
 
   build:
     runs-on: ubuntu-latest
     needs: [lint, test]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Build Docker image
         run: docker build -t hydro:latest .
 ```

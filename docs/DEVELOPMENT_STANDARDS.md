@@ -36,6 +36,7 @@ FastAPI + PostGIS z bibliotekami Hydrolog, Kartograf i IMGWTools.
 
 **Architektura:** Backend (FastAPI async + SQLAlchemy + PostGIS), Frontend
 (Leaflet.js + Chart.js + Bootstrap), Deployment (Docker Compose: db + api + nginx).
+Development: .venv + PostGIS w Docker (`docker compose up -d db`).
 
 **Integracje:** Hydrolog (obliczenia SCS-CN), Kartograf (NMT, Land Cover),
 IMGWTools (opady projektowe).
@@ -800,12 +801,16 @@ LOG_LEVEL=INFO
 ### 12.5 Komendy
 
 ```bash
-docker-compose up -d              # Uruchomienie stacku
-docker-compose down               # Zatrzymanie
-docker-compose build api          # Rebuild po zmianach
-docker-compose logs -f api        # Logi
-docker-compose exec api bash      # Shell w kontenerze
-docker-compose exec db psql -U hydro_user -d hydro_db  # DB shell
+# Development (baza danych)
+docker compose up -d db           # Uruchomienie PostGIS
+docker compose down               # Zatrzymanie
+docker compose exec db psql -U hydro_user -d hydro_db  # DB shell
+
+# Pelny stack (testowanie / produkcja)
+docker compose up -d              # Uruchomienie calego stacku
+docker compose build api          # Rebuild po zmianach
+docker compose logs -f api        # Logi
+docker compose exec api bash      # Shell w kontenerze
 ```
 
 ---
@@ -1064,7 +1069,7 @@ async def delineate(request: Request):
 - [ ] Error handling z user-friendly komunikatami
 
 ### Docker
-- [ ] `docker-compose up -d` dziala bez bledow
+- [ ] `docker compose up -d` dziala bez bledow
 - [ ] Healthcheck przechodzi
 - [ ] Brak secrets w docker-compose.yml (uzywaj .env)
 

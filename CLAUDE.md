@@ -6,7 +6,7 @@ Hydrograf — hub hydrologiczny integrujacy FastAPI + PostGIS z bibliotekami Hyd
 
 Architektura: preprocessing NMT → graf w PostGIS → szybkie zapytania SQL runtime.
 Frontend: Leaflet.js (mapa) + Chart.js (wykresy) + Bootstrap (UI).
-Deployment: Docker Compose (db + api + nginx).
+Development: .venv + PostGIS w Docker. Deployment: Docker Compose (db + api + nginx).
 
 ## Srodowisko Python
 
@@ -15,14 +15,28 @@ Uzywaj srodowiska wirtualnego z `backend/.venv`:
 - Pip: `backend/.venv/bin/pip`
 - Wymagany Python: 3.12+
 
+Setup .venv:
+```bash
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -e ".[dev]"
+```
+
+Baza danych (jedyny wymagany serwis Docker do developmentu):
+```bash
+docker compose up -d db
+```
+
+Serwer dev:
+```bash
+cd backend && .venv/bin/python -m uvicorn api.main:app --reload
+```
+
 Zmienne srodowiskowe (plik `.env` w korzeniu):
-- `DATABASE_URL` — polaczenie z PostgreSQL+PostGIS
+- `POSTGRES_*` — polaczenie z PostgreSQL+PostGIS (uzywane przez .venv i docker compose)
 - `CORS_ORIGINS` — dozwolone originy (domyslnie `http://localhost`)
 - `LOG_LEVEL` — poziom logowania (domyslnie `INFO`)
-
-Docker:
-- `docker-compose up -d` — uruchomienie calego stacku (db + api + nginx)
-- `docker-compose exec api bash` — shell w kontenerze API
 
 ## Dokumentacja
 
@@ -91,10 +105,8 @@ frontend/
 ## Komendy
 
 ```bash
-# Docker
-docker-compose up -d                          # Uruchomienie stacku
-docker-compose down                           # Zatrzymanie
-docker-compose logs -f api                    # Logi API
+# Serwer dev
+cd backend && .venv/bin/python -m uvicorn api.main:app --reload
 
 # Testy
 cd backend && .venv/bin/python -m pytest tests/ -v
@@ -117,6 +129,15 @@ cd backend && alembic revision --autogenerate -m "opis"
 cd backend && .venv/bin/python -m scripts.process_dem --input ../data/nmt/plik.asc
 cd backend && .venv/bin/python -m scripts.analyze_watershed --lat 52.23 --lon 21.01
 cd backend && .venv/bin/python -m scripts.prepare_area --lat 52.23 --lon 21.01 --buffer 5
+
+# Docker — baza danych (development)
+docker compose up -d db                       # Uruchomienie PostGIS
+docker compose down                           # Zatrzymanie
+
+# Docker — pelny stack (testowanie / produkcja)
+docker compose up -d                          # Uruchomienie calego stacku
+docker compose logs -f api                    # Logi API
+docker compose exec api bash                  # Shell w kontenerze
 ```
 
 ## Workflow sesji

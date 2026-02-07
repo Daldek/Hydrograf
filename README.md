@@ -57,10 +57,18 @@ curl -X POST http://localhost:8000/api/delineate-watershed \
 
 ## Wymagania
 
+### Development
+- Python 3.12+
+- Git
+- Docker (tylko dla PostGIS)
+
+### Deployment
 - Docker i Docker Compose
 - Git
 
 ## Szybki start
+
+### Development (.venv + PostGIS w Docker)
 
 ```bash
 # Klonowanie repozytorium
@@ -69,13 +77,32 @@ cd Hydrograf
 
 # Konfiguracja środowiska
 cp .env.example .env
-# Edytuj .env jeśli potrzebne
 
-# Uruchomienie
-docker-compose up -d
+# Uruchomienie bazy danych
+docker compose up -d db
 
-# Sprawdzenie statusu
-docker-compose ps
+# Setup .venv
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -e ".[dev]"
+
+# Migracje
+alembic upgrade head
+
+# Serwer dev
+.venv/bin/python -m uvicorn api.main:app --reload
+# API dostępne pod http://localhost:8000
+```
+
+### Pełny stack (Docker Compose)
+
+```bash
+git clone https://github.com/Daldek/Hydrograf.git
+cd Hydrograf
+cp .env.example .env
+
+docker compose up -d
 
 # Aplikacja dostępna pod:
 # http://localhost (frontend)
@@ -171,7 +198,7 @@ cd backend
 
 ### Wymagania
 
-- Uruchomiona baza PostgreSQL/PostGIS (`docker-compose up -d db`)
+- Uruchomiona baza PostgreSQL/PostGIS (`docker compose up -d db`)
 - Wykonane migracje (`cd backend && alembic upgrade head`)
 - Połączenie z internetem (dla automatycznego pobierania)
 
@@ -208,7 +235,8 @@ Opcja `--save-intermediates` zapisuje pliki GeoTIFF do weryfikacji w QGIS:
 ### Uruchomienie środowiska deweloperskiego
 
 ```bash
-docker-compose up -d
+docker compose up -d db
+cd backend && .venv/bin/python -m uvicorn api.main:app --reload
 ```
 
 ### Migracje bazy danych
