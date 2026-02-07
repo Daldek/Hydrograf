@@ -1,791 +1,350 @@
-# IMPLEMENTATION_PROMPT.md
-## Prompt dla Asystenta AI - Implementacja Systemu Analizy Hydrologicznej
+# Prompt implementacyjny — Hydrograf
 
-**Wersja:** 1.0  
-**Data:** 2026-01-14  
-**Dla:** Claude / GPT-4 / inni asystenci AI
+**Wersja:** 2.0
+**Data:** 2026-02-07
+**Dla:** Claude Code i inni asystenci AI
 
 ---
 
-## 1. Kontekst Projektu
+## 1. Kontekst projektu
 
-Jesteś doświadczonym deweloperem pracującym nad systemem analizy hydrologicznej. System ma być alternatywą dla komercyjnych rozwiazan do użytku wewnętrznego.
+Pracujesz nad **Hydrograf** — hubem hydrologicznym integrujacym FastAPI + PostGIS z bibliotekami Hydrolog, Kartograf i IMGWTools.
 
-**Główne cele:**
-- Wyznaczanie granic zlewni
-- Obliczanie parametrów fizjograficznych
-- Generowanie hydrogramów odpływu
+**Funkcjonalnosci:**
+- **Wyznaczanie zlewni** — klikniecie na mape → granica zlewni w <10s (traverse_upstream w PostGIS)
+- **Parametry fizjograficzne** — powierzchnia, CN, spadki, pokrycie terenu, morfometria
+- **Hydrogramy odplywu** — metoda SCS-CN, 42 scenariusze (7 czasow trwania x 6 prawdopodobienstw)
+- **Preprocessing NMT** — Kartograf → pysheds → COPY → graf flow_network w PostGIS
 
 **Stack technologiczny:**
-- Backend: Python 3.12+, FastAPI, PostgreSQL + PostGIS
-- Frontend: Vanilla JavaScript, Leaflet.js, Chart.js
-- Deployment: Docker + Docker Compose
+- Python 3.12+, FastAPI, SQLAlchemy 2.0, GeoAlchemy2
+- PostgreSQL 16 + PostGIS 3.4
+- Frontend: Vanilla JS, Leaflet.js, Chart.js, Bootstrap 5
+- Deployment: Docker Compose (db + api + nginx)
+- Linting: ruff (rules: E, F, I, UP, B, SIM) — NIE black+flake8
+
+**Zaleznosci wlasne (GitHub, branch develop):**
+- Hydrolog v0.5.2 — obliczenia hydrologiczne (SCS-CN, UH, splot)
+- Kartograf v0.3.1 — dane GIS (NMT z GUGiK, BDOT10k, SoilGrids, HSG)
+- IMGWTools v2.1.0 — dane opadowe IMGW (kwantyle, stacje)
 
 ---
 
-## 2. Dokumentacja Projektu
+## 2. Dokumentacja — przeczytaj PRZED praca
 
-Masz dostęp do następujących dokumentów (przeczytaj je PRZED rozpoczęciem pracy):
+1. **CLAUDE.md** (korzen projektu) — kontekst sesji, komendy, workflow
+2. **docs/PROGRESS.md** — aktualny stan, co zrobiono, nastepne kroki
+3. **docs/SCOPE.md** — zakres (co JEST i czego NIE MA w MVP)
+4. **docs/PRD.md** — wymagania produktowe
+5. **docs/ARCHITECTURE.md** — architektura systemu i ADR
+6. **docs/DEVELOPMENT_STANDARDS.md** — standardy kodowania
+7. **docs/DATA_MODEL.md** — schemat bazy danych PostGIS
+8. **docs/CHANGELOG.md** — historia zmian
 
-1. **SCOPE.md** - Dokładny zakres projektu (co JEST i czego NIE MA w MVP)
-2. **ARCHITECTURE.md** - Architektura systemu, komponenty, przepływ danych
-3. **DATA_MODEL.md** - Schemat bazy danych, typy danych, struktury API
-4. **DEVELOPMENT_STANDARDS.md** - Zasady kodowania, testowania, git workflow, konwencje nazewnictwa
-5. **PRD.md** - Product Requirements Document (user stories, metryki)
+Dodatkowe (w razie potrzeby):
+- **docs/KARTOGRAF_INTEGRATION.md** — integracja NMT i Land Cover
+- **docs/HYDROLOG_INTEGRATION.md** — integracja obliczen hydrologicznych
+- **docs/DECISIONS.md** — rejestr decyzji architektonicznych (ADR)
 
-**KRYTYCZNIE WAŻNE:** Przed napisaniem JAKIEGOKOLWIEK kodu, upewnij się że przeczytałeś i zrozumiałeś wszystkie te dokumenty.
-
----
-
-## 3. Twoja Rola i Odpowiedzialności
-
-### 3.1 Co POWINIENEŚ Robić
-
-✅ **Pisać kod zgodny z dokumentacją:**
-- Przestrzegaj SCOPE.md (nie dodawaj funkcji poza MVP)
-- Używaj architektury z ARCHITECTURE.md
-- Stosuj schemat z DATA_MODEL.md
-- Koduj według DEVELOPMENT_STANDARDS.md
-
-✅ **Zadawać pytania gdy:**
-- Coś jest niejasne w dokumentacji
-- Znajdujesz sprzeczności między dokumentami
-- Potrzebujesz decyzji biznesowej (poza zakresem technicznym)
-- Widzisz potencjalny problem w architekturze
-
-✅ **Proponować ulepszenia:**
-- Optymalizacje wydajności
-- Lepsze podejścia architektoniczne
-- Dodatkowe testy
-- **ALE** zawsze z uzasadnieniem i szacunkiem nakładu
-
-✅ **Dokumentować swoją pracę:**
-- Docstrings dla wszystkich funkcji
-- Komentarze dla nieoczywistych fragmentów
-- Update dokumentacji jeśli coś się zmienia
+**WAZNE:** Przed napisaniem JAKIEGOKOLWIEK kodu, przeczytaj CLAUDE.md i PROGRESS.md.
 
 ---
 
-### 3.2 Czego NIE POWINIENEŚ Robić
+## 3. Architektura modulow
 
-❌ **Nie dodawaj funkcji poza MVP:**
-- Jeśli coś jest w SCOPE.md jako "Out of Scope" lub "Future", NIE implementuj tego
-
-❌ **Nie zmieniaj architektury bez konsultacji:**
-- Architektura jest przemyślana, nie zmieniaj jej arbitralnie
-
-❌ **Nie pomijaj testów:**
-- Minimum 80% pokrycia kodu
-
-❌ **Nie używaj różnych konwencji:**
-- Trzymaj się DEVELOPMENT_STANDARDS.md (snake_case dla Python, camelCase dla JS, itp.)
-
-❌ **Nie hardcode'uj wartości:**
-- Używaj stałych, zmiennych środowiskowych, konfiguracji
-
-❌ **Nie twórz zależności od zewnętrznych serwisów (oprócz wymienionych w SCOPE.md):**
-- MVP działa offline po preprocessingu
-
----
-
-## 4. Workflow Implementacji
-
-### Krok 1: Zrozumienie Zadania
 ```
-1. Przeczytaj user story / issue
-2. Znajdź relevantne sekcje w dokumentacji
-3. Zadaj pytania jeśli coś niejasne
-4. Zaplanuj podejście (pseudokod, diagram)
-5. Omów plan z zespołem (jeśli duże zadanie)
-```
+backend/
+├── api/                     # Warstwa API (FastAPI)
+│   ├── main.py              # App instance, CORS, middleware
+│   └── endpoints/           # Endpointy REST
+│       ├── watershed.py     # POST /api/delineate-watershed
+│       ├── hydrograph.py    # POST /api/generate-hydrograph
+│       └── health.py        # GET /health
+│
+├── core/                    # Logika biznesowa
+│   ├── config.py            # Settings (Pydantic BaseSettings, env vars)
+│   ├── database.py          # Connection pool (SQLAlchemy 2.0 + PostGIS)
+│   ├── watershed.py         # traverse_upstream, build_boundary, find_nearest_stream
+│   ├── morphometry.py       # Parametry fizjograficzne (area, slope, length, shape)
+│   ├── precipitation.py     # Zapytania opadowe (IDW interpolation)
+│   ├── land_cover.py        # Analiza pokrycia terenu, determine_cn()
+│   ├── cn_tables.py         # Tablice CN dla HSG x pokrycie terenu
+│   └── cn_calculator.py     # Integracja z Kartografem dla HSG-based CN
+│
+├── models/schemas.py        # Modele Pydantic (request/response)
+│
+├── utils/                   # Narzedzia pomocnicze
+│   ├── geometry.py          # CRS, transformacje (WGS84 ↔ PL-1992)
+│   ├── raster_utils.py      # Resample, polygonize
+│   └── sheet_finder.py      # Konwersja wspolrzednych → godla arkuszy NMT
+│
+├── scripts/                 # Skrypty CLI (preprocessing)
+│   ├── prepare_area.py      # Pipeline: download + process (glowny entry point)
+│   ├── process_dem.py       # pysheds → flow_network (COPY do PostGIS)
+│   ├── download_dem.py      # Pobieranie NMT przez Kartograf
+│   ├── download_landcover.py # Pobieranie BDOT10k/CORINE
+│   └── import_landcover.py  # Import pokrycia do PostGIS
+│
+├── migrations/              # Alembic (PostgreSQL + PostGIS)
+├── tests/                   # pytest (unit/ + integration/)
+└── pyproject.toml           # Konfiguracja (ruff, pytest, mypy)
 
-### Krok 2: Implementacja
-```
-1. Stwórz branch: feature/nazwa-funkcji
-2. Pisz kod zgodnie z DEVELOPMENT_STANDARDS.md
-3. Dodaj docstrings i komentarze
-4. Dodaj type hints (Python)
-5. Uruchom formattery (black, prettier)
-```
-
-### Krok 3: Testowanie
-```
-1. Napisz testy jednostkowe (unit tests)
-2. Napisz testy integracyjne (jeśli dotyczy)
-3. Sprawdź pokrycie (pytest --cov)
-4. Uruchom testy lokalnie (pytest)
-5. Ręczne testy (jeśli frontend/API)
+frontend/
+├── css/                     # Bootstrap 5 + custom
+└── js/                      # Leaflet.js, Chart.js, API client (Vanilla JS)
 ```
 
-### Krok 4: Code Review
+### Przeplywy danych
+
 ```
-1. Self-review (przejrzyj własny kod)
-2. Stwórz Pull Request
-3. Wypełnij szablon PR (opis, checklist)
-4. Adresuj komentarze reviewera
-5. Merge po aprobacie
+User → Leaflet.js → POST /api/delineate-watershed → watershed.py → PostGIS CTE → GeoJSON
+User → Leaflet.js → POST /api/generate-hydrograph → Hydrolog (SCS-CN, splot) → Chart.js
+Preprocessing: Kartograf → NMT (.asc) → pysheds → COPY → PostGIS flow_network
+Preprocessing: Kartograf → BDOT10k (.gpkg) → import_landcover → PostGIS land_cover
 ```
 
 ---
 
-## 5. Przykładowe Zadania z Implementacją
+## 4. Zrodla danych i API
 
-### Zadanie 1: Implementacja Endpoint'u do Wyznaczania Zlewni
+| Zrodlo | Typ danych | Uzycie w Hydrograf | Via |
+|--------|-----------|---------------------|-----|
+| GUGiK | NMT (ASC/GeoTIFF) | Graf flow_network | Kartograf |
+| GUGiK | BDOT10k (GeoPackage) | Land cover, CN | Kartograf |
+| Copernicus | CORINE (GeoTIFF) | Land cover (fallback) | Kartograf |
+| ISRIC | SoilGrids + HSG | CN grupy hydrologiczne | Kartograf |
+| IMGW | Opady Pmax_PT | precipitation_data | IMGWTools |
 
-**User Story:**
-```
-Jako użytkownik
-Chcę kliknąć punkt na mapie i zobaczyć granicę zlewni
-Aby określić obszar oddziaływania dla inwestycji
-```
+### Tabele PostGIS
 
-**Kroki implementacji:**
+| Tabela | Geometria | SRID | Opis |
+|--------|-----------|------|------|
+| flow_network | Point | 2180 | Graf splywu (elevation, slope, downstream_id, is_stream) |
+| land_cover | MultiPolygon | 2180 | Pokrycie terenu (category, cn_value) |
+| precipitation_data | Point | 2180 | Opady (duration, probability, precipitation_mm) |
+| stream_network | LineString | 2180 | Siec rzeczna (name, strahler_order) |
 
-#### 5.1 Przeczytaj Dokumentację
-- SCOPE.md → Sekcja 2.1.1 "Wyznaczanie Granic Zlewni"
-- ARCHITECTURE.md → Sekcja 2.2.2 "Delineate Watershed"
-- DATA_MODEL.md → Sekcja 6.1-6.2 "Request/Response format"
+---
 
-#### 5.2 Zaplanuj
-```python
-# Pseudokod
-def delineate_watershed(lat, lon):
-    # 1. Transform WGS84 → PL-1992
-    # 2. Find nearest stream cell
-    # 3. Traverse upstream (recursive)
-    # 4. Build boundary (ConvexHull or ConcaveHull)
-    # 5. Return GeoJSON + flag hydrograph_available (area <= 250 km²)
-```
-
-#### 5.3 Implementuj Backend
-
-**Plik:** `backend/api/endpoints/watershed.py`
-```python
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
-from typing import Dict, List
-from sqlalchemy.orm import Session
-
-from core.database import get_db
-from core.watershed import find_nearest_stream, traverse_upstream, build_boundary
-from core.geometry import transform_wgs84_to_2180, geojson_from_shapely
-from models.schemas import DelineateRequest, DelineateResponse
-
-router = APIRouter()
-
-@router.post("/delineate-watershed", response_model=DelineateResponse)
-async def delineate_watershed(
-    request: DelineateRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    Wyznacza granicę zlewni dla podanego punktu.
-
-    Args:
-        request: Współrzędne punktu (WGS84)
-        db: Sesja bazy danych
-
-    Returns:
-        DelineateResponse: Granica zlewni jako GeoJSON + hydrograph_available flag
-
-    Raises:
-        HTTPException 404: Nie znaleziono cieku
-    """
-    try:
-        # 1. Transform coordinates
-        point_2180 = transform_wgs84_to_2180(
-            request.latitude, 
-            request.longitude
-        )
-        
-        # 2. Find nearest stream
-        outlet_cell = find_nearest_stream(point_2180, db)
-        if outlet_cell is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Nie znaleziono cieku w tym miejscu"
-            )
-        
-        # 3. Traverse upstream
-        cells = traverse_upstream(outlet_cell.id, db)
-        
-        # 4. Calculate area
-        total_area_m2 = sum(c.cell_area for c in cells)
-        area_km2 = total_area_m2 / 1_000_000
-
-        # 5. Check if hydrograph available (SCS-CN limit: 250 km²)
-        hydrograph_available = area_km2 <= 250
-
-        # 6. Build boundary
-        boundary = build_boundary(cells)
-        boundary_geojson = geojson_from_shapely(boundary)
-
-        # 7. Return response
-        return DelineateResponse(
-            watershed={
-                "boundary_geojson": boundary_geojson,
-                "area_km2": area_km2,
-                "hydrograph_available": hydrograph_available,
-                "outlet": {
-                    "latitude": request.latitude,
-                    "longitude": request.longitude,
-                    "elevation_m": outlet_cell.elevation
-                },
-                "cell_count": len(cells)
-            }
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error delineating watershed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error"
-        )
-```
-
-#### 5.4 Implementuj Core Logic
-
-**Plik:** `backend/core/watershed.py`
-```python
-from typing import List, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from shapely.geometry import Point, Polygon
-from shapely.ops import unary_union
-
-from models.database import Cell
-
-def find_nearest_stream(
-    point: Point, 
-    db: Session, 
-    max_distance_m: float = 1000
-) -> Optional[Cell]:
-    """
-    Znajduje najbliższą komórkę cieku.
-    
-    Args:
-        point: Punkt w PL-1992
-        max_distance_m: Maksymalna odległość wyszukiwania [m]
-        db: Sesja bazy danych
-    
-    Returns:
-        Cell lub None jeśli nie znaleziono
-    """
-    query = text("""
-        SELECT 
-            id, 
-            ST_AsText(geom) as geom_wkt,
-            elevation,
-            flow_accumulation,
-            slope,
-            downstream_id,
-            cell_area,
-            is_stream,
-            ST_Distance(geom, ST_SetSRID(ST_Point(:x, :y), 2180)) as distance
-        FROM flow_network
-        WHERE is_stream = TRUE
-          AND ST_DWithin(geom, ST_SetSRID(ST_Point(:x, :y), 2180), :max_dist)
-        ORDER BY distance
-        LIMIT 1
-    """)
-    
-    result = db.execute(
-        query, 
-        {"x": point.x, "y": point.y, "max_dist": max_distance_m}
-    ).fetchone()
-    
-    if result is None:
-        return None
-    
-    return Cell(
-        id=result.id,
-        geom=Point.from_wkt(result.geom_wkt),
-        elevation=result.elevation,
-        flow_accumulation=result.flow_accumulation,
-        slope=result.slope,
-        downstream_id=result.downstream_id,
-        cell_area=result.cell_area,
-        is_stream=result.is_stream
-    )
-
-
-def traverse_upstream(
-    outlet_id: int, 
-    db: Session,
-    max_cells: int = 10_000_000
-) -> List[Cell]:
-    """
-    Przechodzi graf w górę (upstream) rekurencyjnie.
-    
-    Args:
-        outlet_id: ID komórki wylotowej
-        db: Sesja bazy danych
-        max_cells: Limit komórek (safety)
-    
-    Returns:
-        Lista wszystkich komórek w zlewni
-    
-    Raises:
-        ValueError: Jeśli przekroczono max_cells
-    """
-    # Rekurencyjne CTE w SQL (wydajniejsze niż Python recursion)
-    query = text("""
-        WITH RECURSIVE upstream AS (
-            -- Base case
-            SELECT 
-                id, 
-                ST_AsText(geom) as geom_wkt, 
-                elevation,
-                flow_accumulation,
-                slope,
-                downstream_id,
-                cell_area,
-                is_stream
-            FROM flow_network
-            WHERE id = :outlet_id
-            
-            UNION ALL
-            
-            -- Recursive case
-            SELECT 
-                f.id,
-                ST_AsText(f.geom) as geom_wkt,
-                f.elevation,
-                f.flow_accumulation,
-                f.slope,
-                f.downstream_id,
-                f.cell_area,
-                f.is_stream
-            FROM flow_network f
-            INNER JOIN upstream u ON f.downstream_id = u.id
-        )
-        SELECT * FROM upstream
-    """)
-    
-    results = db.execute(query, {"outlet_id": outlet_id}).fetchall()
-    
-    if len(results) > max_cells:
-        raise ValueError(f"Watershed too large: {len(results)} cells")
-    
-    cells = [
-        Cell(
-            id=r.id,
-            geom=Point.from_wkt(r.geom_wkt),
-            elevation=r.elevation,
-            flow_accumulation=r.flow_accumulation,
-            slope=r.slope,
-            downstream_id=r.downstream_id,
-            cell_area=r.cell_area,
-            is_stream=r.is_stream
-        )
-        for r in results
-    ]
-    
-    return cells
-
-
-def build_boundary(cells: List[Cell], method: str = 'convex') -> Polygon:
-    """
-    Tworzy boundary zlewni z listy komórek.
-    
-    Args:
-        cells: Lista komórek w zlewni
-        method: 'convex' dla ConvexHull, 'concave' dla ConcaveHull
-    
-    Returns:
-        Polygon reprezentujący granicę zlewni
-    """
-    from shapely.geometry import MultiPoint
-    
-    points = MultiPoint([c.geom for c in cells])
-    
-    if method == 'convex':
-        boundary = points.convex_hull
-    elif method == 'concave':
-        # ConcaveHull (wymaga shapely >= 2.0)
-        boundary = points.concave_hull(ratio=0.99)
-    else:
-        raise ValueError(f"Unknown method: {method}")
-    
-    return boundary
-```
-
-#### 5.5 Napisz Testy
-
-**Plik:** `backend/tests/unit/test_watershed.py`
-```python
-import pytest
-from shapely.geometry import Point
-
-from core.watershed import find_nearest_stream, traverse_upstream, build_boundary
-from models.database import Cell
-
-def test_find_nearest_stream_success(mock_db):
-    """Test znajdowania najbliższego cieku."""
-    point = Point(500000, 600000)  # PL-1992
-    
-    result = find_nearest_stream(point, mock_db)
-    
-    assert result is not None
-    assert result.is_stream is True
-    assert isinstance(result, Cell)
-
-
-def test_find_nearest_stream_not_found(mock_db_empty):
-    """Test gdy brak cieków w pobliżu."""
-    point = Point(500000, 600000)
-    
-    result = find_nearest_stream(point, mock_db_empty)
-    
-    assert result is None
-
-
-def test_traverse_upstream_returns_all_cells(mock_db):
-    """Test traversal grafu upstream."""
-    outlet_id = 1
-    
-    cells = traverse_upstream(outlet_id, mock_db)
-    
-    assert len(cells) > 0
-    assert all(isinstance(c, Cell) for c in cells)
-    # Sprawdź czy outlet jest w liście
-    assert any(c.id == outlet_id for c in cells)
-
-
-def test_traverse_upstream_raises_for_large_watershed(mock_db):
-    """Test limitu komórek."""
-    outlet_id = 1
-    
-    with pytest.raises(ValueError, match="Watershed too large"):
-        traverse_upstream(outlet_id, mock_db, max_cells=10)
-
-
-def test_build_boundary_convex_hull():
-    """Test budowania boundary ConvexHull."""
-    cells = [
-        Cell(id=1, geom=Point(0, 0), cell_area=1, ...),
-        Cell(id=2, geom=Point(1, 0), cell_area=1, ...),
-        Cell(id=3, geom=Point(0.5, 1), cell_area=1, ...)
-    ]
-    
-    boundary = build_boundary(cells, method='convex')
-    
-    assert boundary.is_valid
-    assert boundary.geom_type == 'Polygon'
-    assert boundary.contains(Point(0.5, 0.5))  # Punkt wewnątrz
-```
-
-**Plik:** `backend/tests/integration/test_api_watershed.py`
-```python
-import pytest
-from fastapi.testclient import TestClient
-
-from api.main import app
-
-client = TestClient(app)
-
-def test_delineate_watershed_success():
-    """Test pełnego flow API dla wyznaczania zlewni."""
-    response = client.post(
-        "/api/delineate-watershed",
-        json={
-            "latitude": 52.123456,
-            "longitude": 21.123456
-        }
-    )
-    
-    assert response.status_code == 200
-    data = response.json()
-    
-    assert "watershed" in data
-    assert "boundary_geojson" in data["watershed"]
-    assert data["watershed"]["area_km2"] > 0
-    assert data["watershed"]["area_km2"] <= 250
-
-
-def test_delineate_watershed_no_stream():
-    """Test gdy nie ma cieku w pobliżu."""
-    response = client.post(
-        "/api/delineate-watershed",
-        json={
-            "latitude": 52.0,  # Punkt poza obszarem danych
-            "longitude": 21.0
-        }
-    )
-    
-    assert response.status_code == 404
-    assert "Nie znaleziono cieku" in response.json()["detail"]
-
-
-def test_delineate_watershed_large_no_hydrograph():
-    """Test dla dużej zlewni - wyznaczenie OK, hydrogram niedostępny."""
-    # Mock: punkt który generuje > 250 km²
-    response = client.post(
-        "/api/delineate-watershed",
-        json={
-            "latitude": 52.5,
-            "longitude": 21.5
-        }
-    )
-
-    # Zlewnia wyznaczona poprawnie
-    assert response.status_code == 200
-    data = response.json()["watershed"]
-    assert data["area_km2"] > 250
-    # Ale hydrogram SCS-CN niedostępny
-    assert data["hydrograph_available"] is False
-```
-
-#### 5.6 Dokumentuj
-
-**Update:** `backend/README.md`
-```markdown
-# Backend - Hydrological Analysis System
-
-## API Endpoints
+## 5. Endpointy API
 
 ### POST /api/delineate-watershed
-
-Wyznacza granicę zlewni dla podanego punktu.
-
-**Request:**
 ```json
-{
-  "latitude": 52.123456,
-  "longitude": 21.123456
-}
-```
+// Request
+{ "latitude": 52.123456, "longitude": 21.123456 }
 
-**Response:**
-```json
+// Response 200
 {
   "watershed": {
-    "boundary_geojson": {...},
+    "boundary_geojson": { "type": "Feature", "geometry": {...} },
     "area_km2": 45.3,
-    ...
+    "hydrograph_available": true,
+    "outlet": { "latitude": 52.123, "longitude": 21.123, "elevation_m": 150.0 },
+    "cell_count": 234567
   }
 }
+// 404: "Nie znaleziono cieku w tym miejscu"
 ```
 
-**Errors:**
-- 404: Nie znaleziono cieku
+### POST /api/generate-hydrograph
+```json
+// Request
+{ "latitude": 52.123456, "longitude": 21.123456, "duration": "1h", "probability": 10 }
 
-**Note:** Pole `hydrograph_available` wskazuje czy hydrogram SCS-CN jest dostępny (zlewnia ≤ 250 km²).
+// Response 200 — pelna struktura w DATA_MODEL.md sekcja 6.4
 ```
 
-#### 5.7 Commit i PR
-
-```bash
-git checkout -b feature/watershed-delineation
-git add backend/
-git commit -m "feat(watershed): implementuj wyznaczanie granic zlewni
-
-Dodano:
-- Endpoint POST /api/delineate-watershed
-- Core logic: find_nearest_stream, traverse_upstream, build_boundary
-- Testy jednostkowe i integracyjne (pokrycie 95%)
-- Flaga hydrograph_available (SCS-CN limit: 250 km²)
-
-Closes #12"
-
-git push origin feature/watershed-delineation
-```
-
-Następnie stwórz Pull Request z opisem i checklist'ą.
-
----
-
-## 6. Częste Pytania (FAQ)
-
-### Q: Co robić gdy dokumentacja jest niejasna?
-**A:** Zadaj pytanie zespołowi. Nie zgaduj. Lepiej zapytać niż źle zaimplementować.
-
-### Q: Czy mogę użyć biblioteki X zamiast Y?
-**A:** Możesz zaproponować, ale uzasadnij dlaczego (wydajność, łatwość użycia, etc.). Decyzja należy do Tech Lead.
-
-### Q: Czy mogę dodać funkcję która wydaje się przydatna ale nie jest w SCOPE?
-**A:** NIE w MVP. Dodaj do backlogu jako "Future Enhancement" z opisem i uzasadnieniem.
-
-### Q: Co jeśli test nie przechodzi?
-**A:** Debuguj. Nie commituj kodu z failing tests. Jeśli test jest błędny (a kod dobry), popraw test.
-
-### Q: Czy muszę pisać docstringi dla prywatnych funkcji?
-**A:** Tak dla `_funkcja()` (protected). Opcjonalnie dla `__funkcja()` (private) jeśli logika złożona.
-
-### Q: Jak długo powinien być mój commit message?
-**A:** Subject: max 50 znaków. Body: szczegóły, max 72 znaki na linię.
-
----
-
-## 7. Przykładowe Prompt'y dla Ciebie (AI Assistant)
-
-### Prompt 1: Generowanie Kodu
-```
-"Zaimplementuj funkcję `calculate_cn` w `backend/core/land_cover.py` zgodnie z:
-- ARCHITECTURE.md sekcja 2.4.5
-- DATA_MODEL.md tabela land_cover
-- DEVELOPMENT_STANDARDS.md dla nazewnictwa
-
-Funkcja powinna:
-1. Przyjąć boundary GeoJSON
-2. Zrobić intersection z land_cover
-3. Obliczyć ważony CN
-4. Zwrócić dict z CN i rozkładem pokrycia
-
-Dodaj:
-- Type hints
-- Docstring NumPy style
-- Error handling
-- Logging
-- Unit testy"
-```
-
-### Prompt 2: Code Review
-```
-"Przejrzyj ten kod pod kątem:
-- Zgodności z DEVELOPMENT_STANDARDS.md
-- Wydajności (czy są oczywiste bottleneck'i?)
-- Bezpieczeństwa (SQL injection, input validation)
-- Testowania (czy są edge cases do pokrycia?)
-
-Kod:
-[wklej kod]
-
-Zasugeruj konkretne ulepszenia z przykładami."
-```
-
-### Prompt 3: Debugging
-```
-"Mam problem: endpoint /api/generate-hydrograph zwraca 500.
-
-Logi:
-[wklej logi]
-
-Kod:
-[wklej relevantny kod]
-
-Pomóż znaleźć przyczynę i zaproponuj fix zgodny z projektem (ARCHITECTURE.md, DATA_MODEL.md)."
-```
-
-### Prompt 4: Refactoring
-```
-"Ta funkcja działa ale jest długa i skomplikowana:
-
-[wklej kod]
-
-Zrefaktoruj ją zgodnie z:
-- DEVELOPMENT_STANDARDS.md (max 50 linii na funkcję, nazewnictwo)
-- Principle of Single Responsibility
-
-Zaproponuj podział na mniejsze funkcje z testami."
+### GET /health
+```json
+{ "status": "healthy", "database": "connected", "version": "2.0.0" }
 ```
 
 ---
 
-## 8. Checklist dla Każdego Zadania
+## 6. Workflow implementacji
 
-Przed rozpoczęciem:
-- [ ] Przeczytałem relevantne sekcje dokumentacji
-- [ ] Zrozumiałem user story / requirement
-- [ ] Mam plan implementacji (pseudokod/diagram)
-- [ ] Zadałem pytania jeśli coś niejasne
+### 6.1 Przed rozpoczeciem
 
-Podczas implementacji:
-- [ ] Kod zgodny z DEVELOPMENT_STANDARDS.md
-- [ ] Type hints (Python) / JSDoc (JavaScript)
-- [ ] Docstrings / komentarze
-- [ ] Error handling i logging
-- [ ] Input validation
-
-Przed commitem:
-- [ ] Testy jednostkowe napisane
-- [ ] Testy przechodzą (pytest / jest)
-- [ ] Pokrycie >= 80%
-- [ ] Kod sformatowany (black / prettier)
-- [ ] Linting przeszedł (flake8 / eslint)
-- [ ] Self-review zrobiony
-
-Przed merge:
-- [ ] PR description wypełniony
-- [ ] Checklist w PR zrobiony
-- [ ] CI/CD pipeline green
-- [ ] Code review approval
-- [ ] Dokumentacja updated (jeśli potrzeba)
-
----
-
-## 9. Poziomy Trudności Zadań
-
-### 🟢 EASY
-- Dodanie nowego pola do API response
-- Prosty endpoint GET
-- Formatowanie/refactoring
-- Dokumentacja
-
-**Przykład:** "Dodaj pole `mean_elevation_m` do parametrów zlewni"
-
-### 🟡 MEDIUM
-- Nowy endpoint POST z logiką biznesową
-- Nowa funkcja core logic z algorytmem
-- Integration tests
-- Optymalizacja wydajności
-
-**Przykład:** "Implementuj hietogram Beta"
-
-### 🔴 HARD
-- Pełny feature (backend + frontend + testy)
-- Preprocessing scripts
-- Migracje bazy danych
-- Komponenty wymagające research
-
-**Przykład:** "Preprocessing NMT → graf flow_network"
-
----
-
-## 10. Zasady Komunikacji z Zespołem
-
-### Kiedy zadać pytanie:
-- ❓ Dokumentacja niejasna
-- ❓ Sprzeczności między dokumentami
-- ❓ Potrzebujesz decyzji biznesowej
-- ❓ Blokujący problem > 2 godziny
-
-### Jak zadać dobre pytanie:
 ```
-1. Kontekst: "Implementuję funkcję X zgodnie z Y.md"
-2. Problem: "Nie jestem pewien jak obsłużyć przypadek Z"
-3. Co próbowałem: "Sprawdziłem A i B, ale..."
-4. Pytanie: "Czy powinienem użyć podejścia C czy D?"
-5. Propozycja: "Myślę że C jest lepsze bo..."
+1. Przeczytaj CLAUDE.md i PROGRESS.md
+2. Sprawdz galaz: git branch --show-current (powinno byc: develop)
+3. Sprawdz status: git status
+4. Zrozum zadanie — znajdz relevantne sekcje w SCOPE.md / PRD.md
+5. Zadaj pytania jesli cos niejasne
 ```
 
-### Kiedy NIE zadawać pytania:
-- ✋ Odpowiedź jest w dokumentacji (szukaj najpierw!)
-- ✋ Pytanie o podstawy Python/JavaScript (Google najpierw)
-- ✋ Problem który możesz debugować sam (< 30 min)
+### 6.2 Implementacja
+
+```
+1. Pisz kod zgodnie z DEVELOPMENT_STANDARDS.md
+2. Type hints (Python 3.12+ style: X | None zamiast Optional[X])
+3. Docstrings NumPy style, po angielsku
+4. Walidacja inputu na granicy systemu (Pydantic models)
+5. Parametryzowane SQL (SQLAlchemy text() z :param, NIGDY f-stringi)
+6. raise ... from err (zachowaj lancuch wyjatkow)
+7. Konwencja jednostek w nazwach: area_km2, elevation_m, discharge_m3s, time_min
+```
+
+### 6.3 Testowanie
+
+```
+1. Napisz testy (pytest, AAA pattern)
+2. Uzyj fixtures i mocking (nie wywoluj prawdziwych API ani bazy prod)
+3. Pokrycie: 80% core / 60% utility
+4. Uruchom: cd backend && .venv/bin/python -m pytest tests/ -v --tb=short
+5. Sprawdz linting: cd backend && .venv/bin/python -m ruff check .
+6. Sprawdz formatowanie: cd backend && .venv/bin/python -m ruff format --check .
+```
+
+### 6.4 Commit
+
+```
+1. Conventional Commits z scope: feat(api): add CN endpoint
+2. Scopes: api, core, db, frontend, tests, docs, docker
+3. Commituj czesto, male zmiany
+4. Zaktualizuj CHANGELOG.md (sekcja [Unreleased])
+5. Zaktualizuj PROGRESS.md na koniec sesji
+```
 
 ---
 
-## 11. Podsumowanie: Twoje Priorytety
+## 7. Czego NIE robic
 
-1. **Jakość > Szybkość** - Lepiej wolniej ale dobrze
-2. **Dokumentacja > Kod** - Czytaj PRZED pisaniem
-3. **Testy > Features** - Nie commituj bez testów
-4. **Pytania > Zgadywanie** - Lepiej zapytać niż źle zrobić
-5. **Konwencje > Preferencje** - Trzymaj się standardów projektu
-
----
-
-**Powodzenia! Jesteś częścią zespołu budującego coś wartościowego. 🚀**
-
----
-
-**Wersja dokumentu:** 1.0  
-**Data ostatniej aktualizacji:** 2026-01-14  
-**Status:** Aktywny dla wszystkich AI assistants pracujących nad projektem  
+- **Nie dodawaj funkcji poza zakresem** — sprawdz SCOPE.md sekcja "Out of Scope"
+- **Nie zmieniaj architektury** bez konsultacji — struktura jest przemyslana (ADR w DECISIONS.md)
+- **Nie pomijaj testow** — minimum 80% pokrycia core
+- **Nie hardcoduj secrets** — uzyj zmiennych srodowiskowych (.env)
+- **Nie uzywaj Optional/Union** — uzyj `X | None` i `X | Y` (Python 3.12+)
+- **Nie uzywaj f-stringow w loggerze** — uzyj `logger.info("Area: %s km2", area_km2)`
+- **Nie uzywaj black/flake8** — projekt uzywa **ruff** (check + format)
+- **Nie uzywaj raw SQL concat** — zawsze `text("... :param ...")` z parametrami
+- **Nie wywoluj prawdziwych API w testach** — mockuj requesty i baze
+- **Nie twrz osobnych plikow konfiguracyjnych** — konfiguracja w pyproject.toml i .env
 
 ---
 
-*Ten dokument jest żywym dokumentem. Jeśli znajdziesz coś niejasnego lub brakującego, zaproponuj update.*
+## 8. Typowe zadania
+
+### 8.1 Nowy endpoint API
+
+```python
+# 1. Dodaj Pydantic models w models/schemas.py
+# 2. Stworz endpoint w api/endpoints/nowy.py (APIRouter)
+# 3. Zarejestruj router w api/main.py (app.include_router)
+# 4. Logika biznesowa w core/nowy.py (NIE w endpoincie)
+# 5. Napisz testy: tests/unit/test_nowy.py + tests/integration/test_api_nowy.py
+# 6. Zaktualizuj CHANGELOG.md
+```
+
+### 8.2 Nowy modul core
+
+```python
+# 1. Stworz backend/core/nowy_modul.py
+# 2. Dodaj type hints, docstrings NumPy style
+# 3. Waliduj inputy na poczatku funkcji (ValueError dla zlych danych)
+# 4. SQL przez SQLAlchemy text() z parametrami
+# 5. Napisz testy w tests/unit/test_nowy_modul.py
+# 6. Import w odpowiednim endpoincie
+```
+
+### 8.3 Naprawa bledu
+
+```python
+# 1. Zidentyfikuj warstwe (api/ core/ utils/ scripts/)
+# 2. Napisz test reprodukujacy blad (test MUSI failowac przed fixem)
+# 3. Napraw blad
+# 4. Potwierdz testem (test MUSI przechodzic po fixie)
+# 5. Sprawdz czy nie zepsules istniejacych testow
+# 6. Commit: fix(scope): opis bledu
+```
+
+### 8.4 Nowy skrypt preprocessing
+
+```python
+# 1. Stworz backend/scripts/nowy_skrypt.py
+# 2. Uzyj argparse dla parametrow CLI
+# 3. Logowanie przez logging (nie print)
+# 4. Obsluz bledy (try/except z komunikatami)
+# 5. Uzyj Kartograf/IMGWTools jako zrodla danych
+# 6. Import do PostGIS przez COPY (nie INSERT) — patrz ADR-006
+```
+
+---
+
+## 9. Ograniczenia techniczne
+
+- **PostGIS wymagany** — cala logika runtime oparta na SQL spatial queries + recursive CTE
+- **SCS-CN limit** — metoda ograniczona do zlewni <= 250 km² (flaga hydrograph_available)
+- **Preprocessing jednorazowy** — ~3.8 min per arkusz NMT (po optymalizacji COPY, ADR-006)
+- **Synchroniczny preprocessing** — brak async (pipeline sekwencyjny)
+- **Frontend statyczny** — Vanilla JS, brak bundlera/frameworka
+- **API timeout** — 30s (nginx proxy_read_timeout)
+- **Runtime targets** — wyznaczanie zlewni <10s, hydrogram <5s (p95)
+- **Brak cache** — kazde zapytanie od nowa (zaplanowane na przyszlosc)
+- **Brak autentykacji** — MVP dziala w sieci wewnetrznej (LAN)
+- **10 rownoleglych uzytkownikow** — connection pool: 10 + 5 overflow
+
+---
+
+## 10. Integracje z innymi projektami
+
+### Kartograf (dane GIS)
+```python
+from kartograf import GugikProvider, DownloadManager, SheetParser, BBox
+from kartograf import LandCoverManager, Bdot10kProvider
+from kartograf import HSGCalculator, SoilGridsProvider
+
+# Pobieranie NMT
+manager = DownloadManager(output_dir="./data/nmt")
+manager.download_hierarchy("N-34-130-D", target_scale="1:10000")
+
+# Pobieranie BDOT10k
+lc = LandCoverManager(output_dir="./data/landcover")
+lc.download(teryt="1465")
+
+# HSG (nowe w v0.3.1 — integracja z cn_calculator.py)
+hsg = HSGCalculator()
+hsg_path = hsg.calculate_hsg_by_godlo("N-34-130-D")
+```
+
+### Hydrolog (obliczenia hydrologiczne)
+```python
+from hydrolog import HietogramBeta, SCSMethod, UnitHydrograph
+
+# Hietogram → opad efektywny → hydrogram
+hietogram = HietogramBeta(precipitation_mm=38.5, duration_min=60)
+scs = SCSMethod(cn=72.4)
+pe = scs.effective_rainfall(hietogram.intensities)
+uh = UnitHydrograph.scs(area_km2=45.3, tc_min=68.5)
+discharge = uh.convolve(pe)
+```
+
+### IMGWTools (dane opadowe)
+```python
+from imgwtools import PrecipitationData
+
+# Pobieranie kwantyli opadowych
+precip = PrecipitationData()
+value = precip.get_pmax(lat=52.23, lon=21.01, duration="1h", probability=10)
+```
+
+---
+
+## 11. Checklist przed zakonczeniem sesji
+
+```markdown
+- [ ] Kod sformatowany (`cd backend && .venv/bin/python -m ruff format .`)
+- [ ] Linting OK (`cd backend && .venv/bin/python -m ruff check .`)
+- [ ] Testy przechodza (`cd backend && .venv/bin/python -m pytest tests/ -v`)
+- [ ] CHANGELOG.md zaktualizowany (sekcja [Unreleased])
+- [ ] PROGRESS.md zaktualizowany (sekcja "Ostatnia sesja")
+- [ ] Commity zgodne z Conventional Commits (feat/fix/docs + scope)
+- [ ] Brak hardcoded secrets (sprawdz .env, credentials)
+- [ ] Migracje Alembic (jesli zmieniles schemat bazy)
+```
+
+---
+
+**Wersja dokumentu:** 2.0
+**Data ostatniej aktualizacji:** 2026-02-07
+**Status:** Aktywny dla wszystkich asystentow AI pracujacych nad projektem
