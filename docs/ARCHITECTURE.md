@@ -79,53 +79,19 @@
 
 ### 1.2 Kluczowe Decyzje Architektoniczne (ADR)
 
-#### ADR-001: Graf w Bazie Zamiast Rastrów w Runtime
-**Status:** Zaakceptowane  
-**Kontekst:** Operacje rastrowe są zbyt wolne (> 30s) i wymagają przesyłania dużych plików.  
-**Decyzja:** Preprocessing NMT raz → graf punktów w PostGIS. Runtime: tylko SQL queries.  
-**Konsekwencje:**
-- ✅ Szybkie obliczenia (< 10s)
-- ✅ Małe przesyły sieciowe (GeoJSON ~ 100KB)
-- ❌ Jednorazowy preprocessing (2 tygodnie)
-- ❌ Wymaga PostgreSQL z PostGIS
+Pełny rejestr decyzji architektonicznych: [docs/DECISIONS.md](DECISIONS.md)
 
-#### ADR-002: Monolityczna Aplikacja (Nie Microservices)
-**Status:** Zaakceptowane  
-**Kontekst:** MVP dla 10 użytkowników, deployment na pojedynczym serwerze.  
-**Decyzja:** Jedna aplikacja FastAPI + jedna baza danych.  
-**Konsekwencje:**
-- ✅ Prostsze deployment i debugging
-- ✅ Niższa latencja (brak network calls)
-- ❌ Trudniejsze skalowanie w przyszłości (ale wystarczające dla MVP)
+Podsumowanie kluczowych ADR:
 
-#### ADR-003: Leaflet.js Zamiast Google Maps
-**Status:** Zaakceptowane  
-**Kontekst:** Potrzeba interaktywnej mapy z możliwością wyboru punktu.  
-**Decyzja:** Leaflet.js z podkładem OpenStreetMap.  
-**Konsekwencje:**
-- ✅ Open-source, darmowy
-- ✅ Lekki (40KB gzipped)
-- ✅ Bogata ekosystem pluginów
-- ❌ Wymaga samodzielnego hostingu tiles (lub użycie OSM tiles)
-
-#### ADR-004: Hietogram Beta Zamiast Blokowego
-**Status:** Zaakceptowane  
-**Kontekst:** Hietogram blokowy jest zbyt uproszczony.  
-**Decyzja:** Rozkład Beta (α=2, β=5) dla realistycznego rozkładu opadu.  
-**Konsekwencje:**
-- ✅ Bardziej realistyczny hydrogram
-- ✅ Sprawdzony w literaturze
-- ❌ Wymaga SciPy (dodatkowa zależność)
-
-#### ADR-005: Docker dla Deployment
-**Status:** Zaakceptowane  
-**Kontekst:** Potrzeba powtarzalnego i izolowanego środowiska.  
-**Decyzja:** Konteneryzacja z Docker Compose.  
-**Konsekwencje:**
-- ✅ Environment parity (dev = production)
-- ✅ Łatwe deployment na nowym serwerze
-- ✅ Izolacja zależności
-- ❌ Wymaga Docker na serwerze
+| ADR | Decyzja | Uzasadnienie |
+|-----|---------|--------------|
+| ADR-001 | Graf w bazie zamiast rastrów runtime | Szybkość runtime (< 10s) kosztem jednorazowego preprocessingu |
+| ADR-002 | Monolityczna aplikacja FastAPI | Prostota deployment dla MVP (10 użytkowników) |
+| ADR-003 | Leaflet.js zamiast Google Maps | Open-source, darmowy, lekki (40KB) |
+| ADR-004 | Hietogram Beta zamiast blokowego | Realistyczny rozkład opadu (α=2, β=5) |
+| ADR-005 | Docker Compose dla deployment | Environment parity, izolacja zależności |
+| ADR-006 | COPY zamiast INSERT | Import DEM 27x szybciej (3.8 min vs 102 min) |
+| ADR-007 | Reverse trace | find_main_stream 330x szybciej (0.74s vs 246s) |
 
 ---
 
