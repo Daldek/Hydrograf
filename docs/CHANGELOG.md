@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Wypalanie ciekow BDOT10k w DEM (`--burn-streams`) — obnizenie DEM wzdluz znanych ciekow przed analiza hydrologiczna (ADR-013)
 - 6 nowych testow jednostkowych dla `burn_streams_into_dem()`
+- Nowe warstwy rastrowe w preprocessingu DEM (ADR-014):
+  - Aspect (`09_aspect.tif`) — ekspozycja stoku 0-360° (N=0, zgodnie z zegarem)
+  - TWI (`08_twi.tif`) — Topographic Wetness Index = ln(SCA / tan(slope))
+  - Strahler stream order (`07_stream_order.tif`) — rzad cieku wg Strahlera
+- Wektoryzacja ciekow z DEM jako LineString w `stream_network` (source='DEM_DERIVED')
+- Migracja 003: `strahler_order` w `flow_network`, `upstream_area_km2` i `mean_slope_percent` w `stream_network`
+- Wskazniki ksztaltu zlewni: wspolczynnik zwartosci Kc, kolowosci Rc, wydluzenia Re, ksztaltu Ff, szerokosc srednia
+- Wskazniki rzezbowe: wspolczynnik rzezbowy Rh, calka hipsometryczna HI
+- Krzywa hipsometryczna (opcjonalna, `include_hypsometric_curve=true`)
+- Wskazniki sieci rzecznej: gestosc sieci Dd, czest. ciekow Fs, liczba chropowatosci Rn, max rzad Strahlera
+- 11 nowych pol w `MorphometricParameters` (Optional, backward compatible)
+- `HypsometricPoint` model i `hypsometric_curve` w `WatershedResponse`
+- 38 nowych testow jednostkowych (18 DEM + 21 morfometria)
+- Flaga `--skip-streams-vectorize` w CLI process_dem
 
 ### Removed
 - Warstwa `02b_inflated` — zbedna po migracji na pyflwdir (Wang & Liu 2006 obsluguje plaskowyzyzny wewnetrznie)
