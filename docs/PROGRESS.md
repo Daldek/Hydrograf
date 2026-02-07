@@ -53,6 +53,14 @@
 - Aktualizacja CLAUDE.md, README.md, ARCHITECTURE.md, DEVELOPMENT_STANDARDS.md na .venv-first
 - docker-compose → docker compose w calej dokumentacji
 - ADR-011 dodany do DECISIONS.md
+- Naprawa pyproject.toml: readme path + setuptools packages.find (editable install)
+- Test E2E pipeline: N-33-131-C-b (5 m) — Kartograf + pysheds + IMGWTools
+  - 8 arkuszy NMT pobranych z GUGiK (256 MB)
+  - VRT mozaika → resample 5 m (1721×969, 1.57M komorek)
+  - 7 plikow posrednich GeoTIFF (DEM, filled, flowdir, flowacc, slope, streams)
+  - 1,573,441 rekordow flow_network w PostGIS
+  - 168 rekordow opadowych IMGW PMAXTP (4 pkt × 42 scenariusze)
+- 279/279 testow jednostkowych przechodzi
 
 ### Nastepne kroki
 1. CP4 — frontend z mapa Leaflet.js
