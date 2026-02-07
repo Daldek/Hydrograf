@@ -262,6 +262,181 @@ def find_main_stream(
     return (channel_length_km, max(0.0, channel_slope))
 
 
+def calculate_shape_indices(
+    area_km2: float,
+    perimeter_km: float,
+    length_km: float,
+) -> dict:
+    """
+    Calculate watershed shape indices.
+
+    Parameters
+    ----------
+    area_km2 : float
+        Watershed area [km2]
+    perimeter_km : float
+        Watershed perimeter [km]
+    length_km : float
+        Watershed length (max distance from outlet) [km]
+
+    Returns
+    -------
+    dict
+        Dictionary with keys:
+        - compactness_coefficient: Gravelius compactness Kc = P / (2*sqrt(pi*A))
+        - circularity_ratio: Miller circularity Rc = 4*pi*A / P^2
+        - elongation_ratio: Schumm elongation Re = (2/L)*sqrt(A/pi)
+        - form_factor: Horton form factor Ff = A / L^2
+        - mean_width_km: mean width W = A / L [km]
+    """
+    result = {}
+
+    if area_km2 <= 0 or perimeter_km <= 0 or length_km <= 0:
+        return {
+            "compactness_coefficient": None,
+            "circularity_ratio": None,
+            "elongation_ratio": None,
+            "form_factor": None,
+            "mean_width_km": None,
+        }
+
+    # Kc — Gravelius compactness coefficient
+    # Kc = P / (2 * sqrt(pi * A)), Kc=1 for circle
+    result["compactness_coefficient"] = round(
+        perimeter_km / (2 * np.sqrt(np.pi * area_km2)), 4
+    )
+
+    # Rc — Miller circularity ratio
+    # Rc = 4 * pi * A / P^2, Rc=1 for circle
+    result["circularity_ratio"] = round(
+        4 * np.pi * area_km2 / (perimeter_km**2), 4
+    )
+
+    # Re — Schumm elongation ratio
+    # Re = (2/L) * sqrt(A/pi), Re=1 for circle
+    result["elongation_ratio"] = round(
+        (2 / length_km) * np.sqrt(area_km2 / np.pi), 4
+    )
+
+    # Ff — Horton form factor
+    # Ff = A / L^2
+    result["form_factor"] = round(area_km2 / (length_km**2), 4)
+
+    # W — mean width
+    # W = A / L [km]
+    result["mean_width_km"] = round(area_km2 / length_km, 4)
+
+    return result
+
+
+def calculate_relief_indices(
+    elev_stats: dict,
+    length_km: float,
+) -> dict:
+    """
+    Calculate watershed relief indices.
+
+    Parameters
+    ----------
+    elev_stats : dict
+        Dictionary with elevation_min_m, elevation_max_m, elevation_mean_m
+    length_km : float
+        Watershed length [km]
+
+    Returns
+    -------
+    dict
+        Dictionary with keys:
+        - relief_ratio: Rh = (Hmax - Hmin) / (L * 1000)
+        - hypsometric_integral: HI = (Hmean - Hmin) / (Hmax - Hmin)
+    """
+    h_min = elev_stats.get("elevation_min_m", 0)
+    h_max = elev_stats.get("elevation_max_m", 0)
+    h_mean = elev_stats.get("elevation_mean_m", 0)
+    relief = h_max - h_min
+
+    result = {}
+
+    # Rh — relief ratio
+    if length_km > 0 and relief > 0:
+        result["relief_ratio"] = round(relief / (length_km * 1000), 6)
+    else:
+        result["relief_ratio"] = None
+
+    # HI — hypsometric integral
+    if relief > 0:
+        result["hypsometric_integral"] = round(
+            (h_mean - h_min) / relief, 4
+        )
+    else:
+        result["hypsometric_integral"] = None
+
+    return result
+
+
+def calculate_hypsometric_curve(
+    cells: list[FlowCell],
+    n_bins: int = 20,
+) -> list[dict]:
+    """
+    Calculate hypsometric curve (relative area vs relative height).
+
+    Parameters
+    ----------
+    cells : list[FlowCell]
+        All cells in the watershed
+    n_bins : int
+        Number of equal height bins (default: 20)
+
+    Returns
+    -------
+    list[dict]
+        List of {relative_height: float, relative_area: float} dicts,
+        sorted from highest to lowest relative_height.
+        relative_height and relative_area are both in [0, 1].
+    """
+    if not cells or n_bins <= 0:
+        return []
+
+    elevations = np.array([c.elevation for c in cells])
+    areas = np.array([c.cell_area for c in cells])
+
+    h_min = float(np.min(elevations))
+    h_max = float(np.max(elevations))
+    relief = h_max - h_min
+
+    if relief <= 0:
+        # Flat watershed — all area at relative height 0.5
+        return [
+            {"relative_height": 1.0, "relative_area": 0.0},
+            {"relative_height": 0.0, "relative_area": 1.0},
+        ]
+
+    total_area = float(np.sum(areas))
+
+    # Create bins from top (1.0) to bottom (0.0)
+    bin_edges = np.linspace(0, 1, n_bins + 1)  # 0 to 1
+    curve = []
+
+    for i in range(len(bin_edges)):
+        # relative_height threshold
+        rh = 1.0 - bin_edges[i]
+        # Absolute height threshold
+        h_threshold = h_min + rh * relief
+        # Area above this threshold
+        area_above = float(np.sum(areas[elevations >= h_threshold]))
+        relative_area = area_above / total_area
+
+        curve.append(
+            {
+                "relative_height": round(rh, 4),
+                "relative_area": round(relative_area, 4),
+            }
+        )
+
+    return curve
+
+
 def build_morphometric_params(
     cells: list[FlowCell],
     boundary: Polygon,
