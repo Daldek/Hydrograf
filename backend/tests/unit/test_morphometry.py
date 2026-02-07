@@ -6,8 +6,11 @@ from shapely.geometry import Polygon
 from core.morphometry import (
     build_morphometric_params,
     calculate_elevation_stats,
+    calculate_hypsometric_curve,
     calculate_mean_slope,
     calculate_perimeter_km,
+    calculate_relief_indices,
+    calculate_shape_indices,
     calculate_watershed_length_km,
     find_main_stream,
 )
@@ -406,3 +409,220 @@ class TestBuildMorphometricParams:
         assert wp.area_km2 == result["area_km2"]
         assert wp.cn == result["cn"]
         assert wp.source == result["source"]
+
+
+# ===== TEST: calculate_shape_indices =====
+
+
+class TestCalculateShapeIndices:
+    """Tests for calculate_shape_indices function."""
+
+    def test_circle_shape(self):
+        """Circle: Kc≈1, Rc≈1, Re≈1."""
+        import math
+
+        area = 10.0  # km2
+        radius = math.sqrt(area / math.pi)  # km
+        perimeter = 2 * math.pi * radius
+        # For circle, length = diameter
+        length = 2 * radius
+
+        result = calculate_shape_indices(area, perimeter, length)
+
+        assert result["compactness_coefficient"] == pytest.approx(
+            1.0, abs=0.01
+        )
+        assert result["circularity_ratio"] == pytest.approx(
+            1.0, abs=0.01
+        )
+        assert result["elongation_ratio"] == pytest.approx(
+            1.0, abs=0.01
+        )
+
+    def test_elongated_rectangle(self):
+        """Elongated rectangle: Kc > 1, Rc < 1."""
+        # 10 km x 1 km rectangle
+        area = 10.0  # km2
+        perimeter = 2 * (10 + 1)  # 22 km
+        length = 10.0  # km
+
+        result = calculate_shape_indices(area, perimeter, length)
+
+        assert result["compactness_coefficient"] > 1.0
+        assert result["circularity_ratio"] < 1.0
+        assert result["form_factor"] == pytest.approx(0.1, abs=0.01)
+        assert result["mean_width_km"] == pytest.approx(1.0, abs=0.01)
+
+    def test_returns_all_keys(self):
+        """All expected keys are present."""
+        result = calculate_shape_indices(10.0, 15.0, 5.0)
+        expected_keys = {
+            "compactness_coefficient",
+            "circularity_ratio",
+            "elongation_ratio",
+            "form_factor",
+            "mean_width_km",
+        }
+        assert set(result.keys()) == expected_keys
+
+    def test_zero_values_return_none(self):
+        """Zero area/perimeter/length → all None."""
+        result = calculate_shape_indices(0, 0, 0)
+        assert all(v is None for v in result.values())
+
+    def test_positive_values(self):
+        """All shape indices are positive for valid input."""
+        result = calculate_shape_indices(5.0, 12.0, 3.0)
+        for key, value in result.items():
+            assert value is not None
+            assert value > 0, f"{key} should be positive"
+
+
+# ===== TEST: calculate_relief_indices =====
+
+
+class TestCalculateReliefIndices:
+    """Tests for calculate_relief_indices function."""
+
+    def test_basic_relief(self):
+        """Known values produce expected relief indices."""
+        elev_stats = {
+            "elevation_min_m": 100.0,
+            "elevation_max_m": 500.0,
+            "elevation_mean_m": 300.0,
+        }
+        result = calculate_relief_indices(elev_stats, length_km=10.0)
+
+        # Rh = (500-100) / (10*1000) = 0.04
+        assert result["relief_ratio"] == pytest.approx(
+            0.04, abs=0.001
+        )
+        # HI = (300-100) / (500-100) = 0.5
+        assert result["hypsometric_integral"] == pytest.approx(
+            0.5, abs=0.01
+        )
+
+    def test_hi_range(self):
+        """HI should be between 0 and 1."""
+        elev_stats = {
+            "elevation_min_m": 50.0,
+            "elevation_max_m": 200.0,
+            "elevation_mean_m": 150.0,
+        }
+        result = calculate_relief_indices(elev_stats, length_km=5.0)
+
+        assert 0 <= result["hypsometric_integral"] <= 1
+
+    def test_flat_returns_none(self):
+        """Zero relief → None values."""
+        elev_stats = {
+            "elevation_min_m": 100.0,
+            "elevation_max_m": 100.0,
+            "elevation_mean_m": 100.0,
+        }
+        result = calculate_relief_indices(elev_stats, length_km=5.0)
+
+        assert result["relief_ratio"] is None
+        assert result["hypsometric_integral"] is None
+
+    def test_zero_length_returns_none(self):
+        """Zero length → relief_ratio is None."""
+        elev_stats = {
+            "elevation_min_m": 100.0,
+            "elevation_max_m": 500.0,
+            "elevation_mean_m": 300.0,
+        }
+        result = calculate_relief_indices(elev_stats, length_km=0)
+
+        assert result["relief_ratio"] is None
+
+
+# ===== TEST: calculate_hypsometric_curve =====
+
+
+class TestCalculateHypsometricCurve:
+    """Tests for calculate_hypsometric_curve function."""
+
+    @pytest.fixture
+    def uniform_cells(self) -> list[FlowCell]:
+        """Create cells with linearly distributed elevations."""
+        cells = []
+        for i in range(100):
+            cells.append(
+                FlowCell(
+                    id=i + 1,
+                    x=float(i),
+                    y=0.0,
+                    elevation=100.0 + i * 1.0,  # 100 to 199
+                    flow_accumulation=1,
+                    slope=5.0,
+                    downstream_id=None if i == 0 else i,
+                    cell_area=100.0,
+                    is_stream=False,
+                )
+            )
+        return cells
+
+    def test_returns_list(self, uniform_cells):
+        """Returns list of dicts."""
+        result = calculate_hypsometric_curve(uniform_cells)
+        assert isinstance(result, list)
+        assert len(result) > 0
+        assert all(isinstance(p, dict) for p in result)
+
+    def test_monotonicity(self, uniform_cells):
+        """Relative area decreases as relative height increases."""
+        result = calculate_hypsometric_curve(uniform_cells)
+        areas = [p["relative_area"] for p in result]
+        # First point: rh=1.0, area=0 (nothing above max)
+        # Last point: rh=0.0, area=1.0 (everything above min)
+        assert areas[0] <= areas[-1]
+        # Check monotonic non-decreasing from top to bottom
+        for i in range(len(areas) - 1):
+            assert areas[i] <= areas[i + 1]
+
+    def test_boundary_values(self, uniform_cells):
+        """First point rh=1.0 area≈0, last point rh=0.0 area=1.0."""
+        result = calculate_hypsometric_curve(uniform_cells)
+        # Top: relative_height=1.0, only max elevation cell above
+        assert result[0]["relative_height"] == pytest.approx(1.0)
+        assert result[0]["relative_area"] <= 0.02  # ~1 cell out of 100
+        # Bottom: relative_height=0.0, all cells above minimum
+        assert result[-1]["relative_height"] == pytest.approx(0.0)
+        assert result[-1]["relative_area"] == pytest.approx(1.0)
+
+    def test_values_in_0_1(self, uniform_cells):
+        """All relative_height and relative_area in [0, 1]."""
+        result = calculate_hypsometric_curve(uniform_cells)
+        for p in result:
+            assert 0 <= p["relative_height"] <= 1
+            assert 0 <= p["relative_area"] <= 1
+
+    def test_empty_cells(self):
+        """Empty cell list returns empty curve."""
+        result = calculate_hypsometric_curve([])
+        assert result == []
+
+    def test_custom_bins(self, uniform_cells):
+        """Custom n_bins produces correct number of points."""
+        result = calculate_hypsometric_curve(uniform_cells, n_bins=10)
+        assert len(result) == 11  # n_bins + 1 edges
+
+    def test_flat_watershed(self):
+        """Flat watershed returns degenerate curve."""
+        cells = [
+            FlowCell(
+                id=i + 1,
+                x=float(i),
+                y=0.0,
+                elevation=100.0,
+                flow_accumulation=1,
+                slope=0.0,
+                downstream_id=None,
+                cell_area=100.0,
+                is_stream=False,
+            )
+            for i in range(10)
+        ]
+        result = calculate_hypsometric_curve(cells)
+        assert len(result) >= 2
