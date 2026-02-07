@@ -9,6 +9,9 @@ import pytest
 from scripts.process_dem import (
     VALID_D8_SET,
     burn_streams_into_dem,
+    compute_aspect,
+    compute_strahler_order,
+    compute_twi,
     fill_internal_nodata_holes,
     fix_internal_sinks,
     process_hydrology_pyflwdir,
@@ -608,3 +611,237 @@ class TestBurnStreamsIntoDem:
         assert diag["cells_burned"] == 0
         assert diag["streams_loaded"] == 0
         np.testing.assert_array_equal(burned, original)
+
+
+class TestComputeAspect:
+    """Tests for compute_aspect()."""
+
+    def test_north_facing_slope(self):
+        """Slope descending northward (row 0 is lower) → aspect ≈ 0° (N)."""
+        # Row 0 = top = lower elevation, rows increase = higher elevation
+        # In raster convention: row 0 is top (north), so elevation increasing
+        # southward means the slope faces north.
+        dem = np.array(
+            [
+                [10.0, 10.0, 10.0],
+                [20.0, 20.0, 20.0],
+                [30.0, 30.0, 30.0],
+            ]
+        )
+        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        # Center cell should face north (~0° or ~360°)
+        center = aspect[1, 1]
+        assert center >= 0  # not flat
+        assert center < 45 or center > 315  # roughly north
+
+    def test_east_facing_slope(self):
+        """Slope descending eastward → aspect ≈ 90° (E)."""
+        dem = np.array(
+            [
+                [30.0, 20.0, 10.0],
+                [30.0, 20.0, 10.0],
+                [30.0, 20.0, 10.0],
+            ]
+        )
+        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        center = aspect[1, 1]
+        assert center >= 0
+        assert 45 < center < 135  # roughly east
+
+    def test_south_facing_slope(self):
+        """Slope descending southward → aspect ≈ 180° (S)."""
+        dem = np.array(
+            [
+                [30.0, 30.0, 30.0],
+                [20.0, 20.0, 20.0],
+                [10.0, 10.0, 10.0],
+            ]
+        )
+        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        center = aspect[1, 1]
+        assert center >= 0
+        assert 135 < center < 225  # roughly south
+
+    def test_west_facing_slope(self):
+        """Slope descending westward → aspect ≈ 270° (W)."""
+        dem = np.array(
+            [
+                [10.0, 20.0, 30.0],
+                [10.0, 20.0, 30.0],
+                [10.0, 20.0, 30.0],
+            ]
+        )
+        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        center = aspect[1, 1]
+        assert center >= 0
+        assert 225 < center < 315  # roughly west
+
+    def test_flat_area_negative(self):
+        """Flat DEM → aspect = -1 for all cells."""
+        dem = np.full((5, 5), 100.0)
+        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        # All interior cells should be flat (-1)
+        assert aspect[2, 2] == -1.0
+
+    def test_nodata_handling(self):
+        """Nodata cells get aspect = -1."""
+        dem = np.array(
+            [
+                [NODATA, 20.0, 30.0],
+                [10.0, 20.0, 30.0],
+                [10.0, 20.0, 30.0],
+            ]
+        )
+        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        assert aspect[0, 0] == -1.0
+
+    def test_output_range_0_360(self):
+        """All valid aspect values are in [0, 360) range."""
+        dem = np.zeros((10, 10))
+        for i in range(10):
+            for j in range(10):
+                dem[i, j] = 200.0 - i * 10.0 - j * 5.0
+        aspect = compute_aspect(dem, cellsize=1.0, nodata=NODATA)
+        valid = aspect[aspect >= 0]
+        assert np.all(valid >= 0)
+        assert np.all(valid < 360)
+
+
+class TestComputeTwi:
+    """Tests for compute_twi()."""
+
+    def test_flat_dem_uniform_twi(self):
+        """Flat DEM with uniform accumulation → uniform TWI."""
+        acc = np.full((5, 5), 10, dtype=np.int32)
+        slope = np.full((5, 5), 5.0)  # 5% slope
+        cellsize = 1.0
+        twi = compute_twi(acc, slope, cellsize, nodata_acc=0)
+        # All cells should have same TWI
+        assert np.std(twi[twi > -9999]) < 0.01
+
+    def test_low_slope_high_twi(self):
+        """Lower slope → higher TWI (wetter)."""
+        acc = np.full((3, 3), 100, dtype=np.int32)
+        slope_low = np.full((3, 3), 1.0)  # 1%
+        slope_high = np.full((3, 3), 20.0)  # 20%
+        cellsize = 1.0
+
+        twi_low = compute_twi(acc, slope_low, cellsize, nodata_acc=0)
+        twi_high = compute_twi(acc, slope_high, cellsize, nodata_acc=0)
+
+        assert twi_low[1, 1] > twi_high[1, 1]
+
+    def test_high_accumulation_high_twi(self):
+        """Higher accumulation → higher TWI (wetter)."""
+        acc_low = np.full((3, 3), 10, dtype=np.int32)
+        acc_high = np.full((3, 3), 1000, dtype=np.int32)
+        slope = np.full((3, 3), 5.0)
+        cellsize = 1.0
+
+        twi_low = compute_twi(acc_low, slope, cellsize, nodata_acc=0)
+        twi_high = compute_twi(acc_high, slope, cellsize, nodata_acc=0)
+
+        assert twi_high[1, 1] > twi_low[1, 1]
+
+    def test_zero_slope_clamped(self):
+        """Zero slope is clamped to min value (no division by zero)."""
+        acc = np.full((3, 3), 10, dtype=np.int32)
+        slope = np.full((3, 3), 0.0)  # flat
+        cellsize = 1.0
+        twi = compute_twi(acc, slope, cellsize, nodata_acc=0)
+        # Should not contain inf or nan
+        assert np.all(np.isfinite(twi[twi > -9999]))
+
+    def test_nodata_accumulation_excluded(self):
+        """Cells with acc=0 (nodata) get TWI nodata value."""
+        acc = np.array(
+            [
+                [10, 10, 10],
+                [10, 0, 10],
+                [10, 10, 10],
+            ],
+            dtype=np.int32,
+        )
+        slope = np.full((3, 3), 5.0)
+        cellsize = 1.0
+        twi = compute_twi(acc, slope, cellsize, nodata_acc=0)
+        assert twi[1, 1] == -9999.0
+
+    def test_positive_twi_values(self):
+        """Typical TWI values are positive for reasonable inputs."""
+        acc = np.full((5, 5), 100, dtype=np.int32)
+        slope = np.full((5, 5), 5.0)
+        cellsize = 5.0
+        twi = compute_twi(acc, slope, cellsize, nodata_acc=0)
+        valid = twi[twi > -9999]
+        assert np.all(valid > 0)
+
+
+class TestComputeStrahlerOrder:
+    """Tests for compute_strahler_order()."""
+
+    @pytest.fixture()
+    def v_shaped_dem_20x20(self):
+        """
+        Create 20x20 V-shaped DEM (valley running south down center).
+
+        Elevation profile: higher at edges (east/west), lowest at center column,
+        decreasing southward. This creates two ridge-to-valley streams that merge.
+        """
+        dem = np.zeros((20, 20), dtype=np.float64)
+        for i in range(20):
+            for j in range(20):
+                # V-shape across columns: center (col 10) is low
+                dist_from_center = abs(j - 10)
+                # Decrease south (row increases)
+                dem[i, j] = 200.0 + dist_from_center * 10.0 - i * 5.0
+        # Ensure no negative
+        dem = np.maximum(dem, 1.0)
+
+        metadata = {
+            "ncols": 20,
+            "nrows": 20,
+            "xllcorner": 500000.0,
+            "yllcorner": 300000.0,
+            "cellsize": 5.0,
+            "nodata_value": NODATA,
+        }
+        return dem, metadata
+
+    def test_returns_correct_shape(self, v_shaped_dem_20x20):
+        """Output array has same shape as input DEM."""
+        dem, metadata = v_shaped_dem_20x20
+        strahler = compute_strahler_order(dem, metadata, stream_threshold=5)
+        assert strahler.shape == dem.shape
+
+    def test_non_stream_cells_zero(self, v_shaped_dem_20x20):
+        """Non-stream cells have Strahler order 0."""
+        dem, metadata = v_shaped_dem_20x20
+        strahler = compute_strahler_order(dem, metadata, stream_threshold=50)
+        # Many cells should be 0 (non-stream)
+        assert np.sum(strahler == 0) > 0
+
+    def test_headwaters_order_one(self, v_shaped_dem_20x20):
+        """Headwater stream cells have Strahler order 1."""
+        dem, metadata = v_shaped_dem_20x20
+        strahler = compute_strahler_order(dem, metadata, stream_threshold=5)
+        # At least some cells should have order 1
+        assert np.any(strahler == 1)
+
+    def test_max_order_increases_with_network(self, v_shaped_dem_20x20):
+        """Lower threshold → more stream cells → potentially higher max order."""
+        dem, metadata = v_shaped_dem_20x20
+        strahler_low = compute_strahler_order(dem, metadata, stream_threshold=3)
+        strahler_high = compute_strahler_order(dem, metadata, stream_threshold=100)
+
+        max_low = int(strahler_low.max())
+        max_high = int(strahler_high.max()) if np.any(strahler_high > 0) else 0
+
+        # More stream cells should give same or higher max order
+        assert max_low >= max_high
+
+    def test_output_dtype_uint8(self, v_shaped_dem_20x20):
+        """Output array is uint8."""
+        dem, metadata = v_shaped_dem_20x20
+        strahler = compute_strahler_order(dem, metadata, stream_threshold=5)
+        assert strahler.dtype == np.uint8
