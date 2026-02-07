@@ -97,7 +97,10 @@ Hydrograf/
 │   └── js/
 ├── docker/            # Konfiguracja Docker
 ├── docs/              # Dokumentacja projektowa
-├── PROGRESS.md        # Status implementacji
+│   ├── PROGRESS.md    # Status implementacji
+│   ├── CHANGELOG.md   # Historia zmian
+│   ├── DECISIONS.md   # Decyzje architektoniczne (ADR)
+│   └── ...            # PRD, SCOPE, ARCHITECTURE, integracje
 └── docker-compose.yml
 ```
 
@@ -108,9 +111,11 @@ Hydrograf/
 - [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) - Model danych
 - [`docs/PRD.md`](docs/PRD.md) - Wymagania produktowe
 - [`docs/KARTOGRAF_INTEGRATION.md`](docs/KARTOGRAF_INTEGRATION.md) - Integracja z Kartografem (pobieranie NMT)
-- [`DEVELOPMENT_STANDARDS.md`](DEVELOPMENT_STANDARDS.md) - Standardy kodowania
-- [`IMPLEMENTATION_PROMPT.md`](IMPLEMENTATION_PROMPT.md) - Prompt dla AI
-- [`PROGRESS.md`](PROGRESS.md) - Aktualny postęp implementacji
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) - Decyzje architektoniczne (ADR)
+- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) - Historia zmian
+- [`docs/DEVELOPMENT_STANDARDS.md`](docs/DEVELOPMENT_STANDARDS.md) - Standardy kodowania
+- [`docs/IMPLEMENTATION_PROMPT.md`](docs/IMPLEMENTATION_PROMPT.md) - Prompt dla AI
+- [`docs/PROGRESS.md`](docs/PROGRESS.md) - Aktualny postęp implementacji
 
 ## Preprocessing danych NMT
 

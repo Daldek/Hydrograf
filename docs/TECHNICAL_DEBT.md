@@ -72,22 +72,7 @@ config.set_main_option(
 
 ---
 
-## Brakujący moduł land_cover (TD-2)
-
-**Problem:** Moduł `core/land_cover.py` wymieniony w dokumentacji nie istnieje. Wartość CN jest hardcoded na 75.
-
-**Lokalizacja:** `core/morphometry.py` - funkcja `build_morphometric_params()`
-
-**Rekomendacja:**
-1. Utworzyć `core/land_cover.py` z funkcjami:
-   - `calculate_weighted_cn(cells, db)` - obliczanie ważonego CN
-   - `get_land_cover_stats(boundary, db)` - statystyki pokrycia terenu
-2. Zintegrować z endpointem hydrograph
-3. Dodać testy jednostkowe
-
----
-
-## Brakujące testy dla scripts/ (T4.8)
+##Brakujące testy dla scripts/ (T4.8)
 
 **Problem:** Skrypty preprocessingu (`scripts/*.py`) mają 0% pokrycia testami.
 
@@ -117,4 +102,4 @@ config.set_main_option(
 
 ---
 
-*Ostatnia aktualizacja: 2026-01-21*
+*Ostatnia aktualizacja: 2026-02-07*
