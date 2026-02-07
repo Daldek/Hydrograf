@@ -21,6 +21,7 @@ from core.watershed import (
 from models.schemas import (
     DelineateRequest,
     DelineateResponse,
+    HypsometricPoint,
     MorphometricParameters,
     OutletInfo,
     WatershedResponse,
@@ -42,6 +43,7 @@ HYDROGRAPH_AREA_LIMIT_KM2 = 250.0
 @router.post("/delineate-watershed", response_model=DelineateResponse)
 def delineate_watershed(
     request: DelineateRequest,
+    include_hypsometric_curve: bool = False,
     db: Session = Depends(get_db),
 ) -> DelineateResponse:
     """
@@ -104,7 +106,11 @@ def delineate_watershed(
         boundary_2180 = build_boundary(cells, method="convex")
 
         # 7. Calculate morphometric parameters
-        morph_dict = build_morphometric_params(cells, boundary_2180, outlet_cell)
+        morph_dict = build_morphometric_params(
+            cells, boundary_2180, outlet_cell,
+            db=db,
+            include_hypsometric_curve=include_hypsometric_curve,
+        )
 
         # 8. Transform boundary to WGS84
         boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_2180)
@@ -119,6 +125,14 @@ def delineate_watershed(
         outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_cell.x, outlet_cell.y)
 
         # 11. Build response
+        # Extract hypsometric curve if present
+        hypso_data = morph_dict.pop("hypsometric_curve", None)
+        hypso_curve = None
+        if hypso_data:
+            hypso_curve = [
+                HypsometricPoint(**p) for p in hypso_data
+            ]
+
         response = DelineateResponse(
             watershed=WatershedResponse(
                 boundary_geojson=boundary_geojson,
@@ -131,6 +145,7 @@ def delineate_watershed(
                 area_km2=round(area_km2, 2),
                 hydrograph_available=hydrograph_available,
                 morphometry=MorphometricParameters(**morph_dict),
+                hypsometric_curve=hypso_curve,
             )
         )
 

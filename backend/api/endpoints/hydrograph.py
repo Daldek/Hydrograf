@@ -145,7 +145,9 @@ def generate_hydrograph(
             cn = DEFAULT_CN
             land_cover_stats = {}
 
-        morph_dict = build_morphometric_params(cells, boundary_2180, outlet_cell, cn)
+        morph_dict = build_morphometric_params(
+            cells, boundary_2180, outlet_cell, cn, db=db
+        )
 
         # ===== STEP 5: Get precipitation =====
         centroid_2180 = boundary_2180.centroid

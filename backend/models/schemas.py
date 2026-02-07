@@ -112,6 +112,56 @@ class MorphometricParameters(BaseModel):
     source: str | None = Field("Hydrograf", description="Data source")
     crs: str | None = Field("EPSG:2180", description="Coordinate reference system")
 
+    # Shape indices
+    compactness_coefficient: float | None = Field(
+        None, description="Gravelius compactness coefficient Kc"
+    )
+    circularity_ratio: float | None = Field(
+        None, description="Miller circularity ratio Rc"
+    )
+    elongation_ratio: float | None = Field(
+        None, description="Schumm elongation ratio Re"
+    )
+    form_factor: float | None = Field(
+        None, description="Horton form factor Ff"
+    )
+    mean_width_km: float | None = Field(
+        None, ge=0, description="Mean width A/L [km]"
+    )
+
+    # Relief indices
+    relief_ratio: float | None = Field(
+        None, description="Relief ratio Rh"
+    )
+    hypsometric_integral: float | None = Field(
+        None, ge=0, le=1, description="Hypsometric integral HI"
+    )
+
+    # Drainage network indices
+    drainage_density_km_per_km2: float | None = Field(
+        None, ge=0, description="Drainage density Dd [km/km2]"
+    )
+    stream_frequency_per_km2: float | None = Field(
+        None, ge=0, description="Stream frequency Fs [1/km2]"
+    )
+    ruggedness_number: float | None = Field(
+        None, ge=0, description="Ruggedness number Rn"
+    )
+    max_strahler_order: int | None = Field(
+        None, ge=1, description="Maximum Strahler stream order"
+    )
+
+
+class HypsometricPoint(BaseModel):
+    """Single point on hypsometric curve."""
+
+    relative_height: float = Field(
+        ..., ge=0, le=1, description="Relative height h/H"
+    )
+    relative_area: float = Field(
+        ..., ge=0, le=1, description="Relative area a/A"
+    )
+
 
 class WatershedResponse(BaseModel):
     """
@@ -131,19 +181,32 @@ class WatershedResponse(BaseModel):
         Whether SCS-CN hydrograph can be generated (area <= 250 km2)
     morphometry : MorphometricParameters, optional
         Full morphometric parameters for hydrological calculations
+    hypsometric_curve : list of HypsometricPoint, optional
+        Hypsometric curve data (only if requested)
     """
 
     boundary_geojson: dict[str, Any] = Field(
         ..., description="Watershed boundary as GeoJSON Feature"
     )
     outlet: OutletInfo = Field(..., description="Outlet point information")
-    cell_count: int = Field(..., ge=0, description="Number of cells in watershed")
-    area_km2: float = Field(..., ge=0, description="Watershed area [km2]")
+    cell_count: int = Field(
+        ..., ge=0, description="Number of cells in watershed"
+    )
+    area_km2: float = Field(
+        ..., ge=0, description="Watershed area [km2]"
+    )
     hydrograph_available: bool = Field(
-        ..., description="Whether hydrograph generation is available (area <= 250 km2)"
+        ...,
+        description="Whether hydrograph generation is available"
+        " (area <= 250 km2)",
     )
     morphometry: MorphometricParameters | None = Field(
-        None, description="Full morphometric parameters for hydrological calculations"
+        None,
+        description="Full morphometric parameters"
+        " for hydrological calculations",
+    )
+    hypsometric_curve: list[HypsometricPoint] | None = Field(
+        None, description="Hypsometric curve (if requested)"
     )
 
 
