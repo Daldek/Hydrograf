@@ -47,26 +47,30 @@
 **Data:** 2026-02-07
 
 ### Co zrobiono
+- Audyt dokumentacji — 7 plikow poprawionych (ARCHITECTURE, DATA_MODEL, SCOPE, README, scripts/README, TECHNICAL_DEBT, QA_REPORT)
 - E2E re-run pipeline N-33-131-C-b-2-3 z nowymi warstwami (07, 08, 09):
   - **Wyniki:** `data/results/` — 9 warstw GeoTIFF (01-09)
   - **Czas:** 198s (3.3 min), 4,917,888 komorek, max_acc=1,823,073
-  - **Strahler:** max rzad 8, 490,130 komorek z rzedem, rozklad: {1: 326k, 2: 88k, ..., 8: 789}
-  - **Wektoryzacja:** 19,005 segmentow (641.6 km) w `stream_network` (5 duplikatow pominiete)
-  - **Naprawione bugi E2E:**
-    - `ST_GeoHash` w `idx_stream_unique` wymaga WGS84 → dodano `ST_Transform(geom, 4326)`
-    - `strahler_order=0` dla stream cells z acc>=threshold ale pyflwdir order=0 → `max(order, 1)`
-    - Duplikaty geohash → `ON CONFLICT DO NOTHING`
-  - **Migracja 003:** zastosowana (strahler_order, upstream_area_km2, mean_slope_percent)
-  - **9 commitow** na galezi `develop`, 345 testow OK
+  - **Strahler:** max rzad 8, 490,130 komorek z rzedem
+  - **Wektoryzacja:** 19,005 segmentow (641.6 km) w `stream_network`
+  - **3 bugi naprawione** (ST_GeoHash WGS84, strahler floor, duplikaty geohash)
+- Rozszerzenie analiz rastrowych i parametrow morfometrycznych (ADR-014)
+- Rozpoznanie integracji z Kartografem v0.4.0 (rozpoczete, niezakonczone)
+- **11 commitow** na galezi `develop`, 345 testow OK
 
-### Poprzednia sesja
-- Rozszerzenie analiz rastrowych, wektoryzacji i parametrow morfometrycznych (ADR-014)
-- Wypalanie ciekow w DEM (stream burning) (ADR-013)
-- Migracja z pysheds na pyflwdir (Deltares) (ADR-012)
+### W trakcie
+- Integracja z Kartografem v0.4.0 — przeprowadzono pelna analize obecnych punktow integracji:
+  - `requirements.txt` — pin na v0.3.1
+  - `core/cn_calculator.py` — BBox, HSGCalculator, LandCoverManager
+  - `scripts/download_dem.py` — DownloadManager, GugikProvider
+  - `scripts/download_landcover.py` — LandCoverManager
+  - `scripts/prepare_area.py` — pipeline orchestrator
+  - Nie zbadano jeszcze co dokladnie zmienilo sie w Kartograf v0.4.0
 
 ### Nastepne kroki
-1. CP4 — frontend z mapa Leaflet.js
-2. Dlug techniczny: constants.py, hardcoded secrets
+1. **Kartograf v0.4.0** — zbadac zmiany w nowej wersji, zaplanowac i wdrozyc aktualizacje
+2. CP4 — frontend z mapa Leaflet.js
+3. Dlug techniczny: constants.py, hardcoded secrets
 
 ## Backlog
 
