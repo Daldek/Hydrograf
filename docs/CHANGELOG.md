@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Migracja na .venv-first development workflow (ADR-011)
+- Rozdzielenie deps runtime/dev (requirements.txt + pyproject.toml [dev])
+- Usuniecie black/flake8 z requirements.txt, dodanie ruff do [dev]
+- Aktualizacja docker-compose → docker compose w dokumentacji
 - Restrukturyzacja dokumentacji wg shared/standards/DOCUMENTATION_STANDARDS.md
 - CLAUDE.md rozbudowany z 14 do ~185 linii (7 sekcji)
 - PROGRESS.md skondensowany z 975 do ~71 linii (4 sekcje)
