@@ -20,11 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migracja z black+flake8 na ruff (E, F, I, UP, B, SIM)
 - Przeniesienie 6 plików MD z root do docs/
 
+### Tested
+- E2E pipeline: N-33-131-C-b (5 m) — Kartograf download, pysheds processing, IMGW precipitation
+
 ### Added
 - docs/DECISIONS.md — 10 Architecture Decision Records
 - .editorconfig (UTF-8, LF, 4 spacje Python, 2 spacje YAML/MD)
 
 ### Fixed
+- pyproject.toml: readme path outside package root, flat-layout discovery error (editable install)
 - Cross-referencje w README.md (ścieżki do docs/)
 - Usunięcie rozwiązanego TD-2 z TECHNICAL_DEBT.md (land_cover.py istnieje)
 - Naprawa URL repozytorium w pyproject.toml
