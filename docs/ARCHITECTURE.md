@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - Architektura Systemu
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.0  
-**Data:** 2026-01-14  
+**Wersja:** 1.3
+**Data:** 2026-02-07
 **Status:** Approved
 
 ---
@@ -116,10 +116,11 @@ backend/
 │   ├── config.py                  # Settings (environment variables)
 │   ├── database.py                # Database connection pool
 │   ├── watershed.py               # Watershed delineation logic
-│   ├── parameters.py              # Physical parameters calculation
-│   ├── hydrograph.py              # Hydrograph generation
+│   ├── morphometry.py             # Morphometric parameters calculation
 │   ├── precipitation.py           # Precipitation queries
-│   └── land_cover.py              # Land cover analysis
+│   ├── land_cover.py              # Land cover analysis, determine_cn()
+│   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
+│   └── cn_calculator.py           # Kartograf HSG-based CN calculation
 │
 ├── models/
 │   ├── __init__.py
@@ -127,9 +128,9 @@ backend/
 │
 ├── utils/
 │   ├── __init__.py
-│   ├── geometry.py                # Geometric operations
-│   ├── hydrology.py               # Hydrological formulas
-│   └── export.py                  # Export functions (GeoJSON, CSV)
+│   ├── geometry.py                # Geometric operations, CRS transforms
+│   ├── raster_utils.py            # Raster tools (resample, polygonize)
+│   └── sheet_finder.py            # NMT sheet code lookup
 │
 ├── tests/
 │   ├── unit/
@@ -307,47 +308,19 @@ def find_main_stream(outlet: Cell, cells: List[Cell]) -> Stream:
     pass
 ```
 
-#### 2.4.3 `core/hydrograph.py`
-**Odpowiedzialności:**
-- Generowanie hietogramu Beta
+#### 2.4.3 Biblioteka Hydrolog (zewnetrzna)
+**Odpowiedzialnosci:** (delegowane do `hydrolog` v0.5.2)
+- Generowanie hietogramu (Beta, Block, Euler II)
 - Model SCS CN (opad efektywny)
 - Hydrogram jednostkowy SCS
 - Splot numeryczny
+- Czas koncentracji (Kirpich, SCS Lag, Giandotti)
 
-**Główne funkcje:**
+Hydrograf wywoluje Hydrolog przez endpoint `api/endpoints/hydrograph.py`:
 ```python
-def hietogram_beta(
-    opad_mm: float,
-    czas_min: int,
-    dt_min: int = 5,
-    alpha: float = 2.0,
-    beta_param: float = 5.0
-) -> Dict[str, List[float]]:
-    """Generuje hietogram z rozkładu Beta."""
-    pass
-
-def oblicz_opad_efektywny_scs(
-    intensywnosci: List[float],
-    cn: float,
-    dt_min: int = 5
-) -> List[float]:
-    """Oblicza opad efektywny metodą SCS."""
-    pass
-
-def hydrogram_jednostkowy_scs(
-    area_km2: float,
-    tc_min: float,
-    dt_min: int = 5
-) -> List[float]:
-    """Generuje hydrogram jednostkowy SCS."""
-    pass
-
-def splot_dyskretny(
-    opad_efektywny: List[float],
-    hydrogram_jednostkowy: List[float]
-) -> List[float]:
-    """Splot numeryczny Pe * UH."""
-    pass
+from hydrolog.precipitation import BetaHietogram
+from hydrolog.runoff import HydrographGenerator
+from hydrolog.morphometry import WatershedParameters
 ```
 
 #### 2.4.4 `core/precipitation.py`
@@ -1362,14 +1335,15 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 1.2
-**Data ostatniej aktualizacji:** 2026-01-20
+**Wersja dokumentu:** 1.3
+**Data ostatniej aktualizacji:** 2026-02-07
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 1.3 (2026-02-07): Aktualizacja struktury modulow (morphometry, cn_tables, cn_calculator, raster_utils, sheet_finder), usuniecie core/hydrograph.py (przeniesiony do Hydrolog)
 - 1.2 (2026-01-20): Dodano wyniki testów optymalizacji (COPY 21x, reverse trace 257x)
 - 1.1 (2026-01-20): Dodano sekcję 10.0 z wynikami benchmarków z testu end-to-end
-- 1.0 (2026-01-14): Wersja początkowa  
+- 1.0 (2026-01-14): Wersja początkowa
 
 ---
 

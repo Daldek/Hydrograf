@@ -3,7 +3,7 @@
 
 **Wersja:** 1.0  
 **Data:** 2026-01-14  
-**Status:** Nieatwierdzony
+**Status:** Zatwierdzony
 
 ---
 

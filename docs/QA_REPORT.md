@@ -4,6 +4,11 @@
 **Wersja repozytorium:** develop (commit f3b0b25)
 **Autor:** Claude Code QA
 
+> **Aktualizacja 2026-02-07:** Raport pochodzi z wersji v0.3.0. Od tego czasu naprawiono:
+> CRITICAL CORS (`allow_origins` z listy), HIGH rate limiting (nginx 10/30 req/s),
+> HIGH CHANGELOG (istnieje). Testy: 175 → 345. Pokrycie `process_dem.py`: 0% → 46 testów.
+> Migracja na ruff (ADR-009), pyflwdir (ADR-012), nowe parametry morfometryczne (ADR-014).
+
 ---
 
 ## Executive Summary
