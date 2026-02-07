@@ -181,6 +181,23 @@ Format: numer, data, kontekst (dlaczego temat powstal), rozwazone opcje, decyzja
 
 ---
 
+## ADR-011: .venv jako podstawowe srodowisko deweloperskie
+
+**Data:** 2026-02-07
+**Status:** Przyjeta
+
+**Kontekst:** Docker Compose prezentowany jako glowne srodowisko dev, ale w praktyce testy, linting i skrypty CLI juz dzialaly przez .venv. Jedyny potrzebny serwis Docker = PostGIS. Dodatkowo requirements.txt zawieralo przestarzale dev deps (black, flake8) mimo migracji na ruff (ADR-009).
+
+**Opcje:**
+- A) Zostawic Docker Compose jako primary — wymaga budowania obrazu po kazdej zmianie
+- B) .venv + docker compose up -d db — szybki cykl dev, Docker dla pelnego stacku
+
+**Decyzja:** Opcja B. .venv = development, Docker = testowanie pelnego stacku i produkcja. Dev deps przeniesione do pyproject.toml [project.optional-dependencies]. requirements.txt zawiera tylko runtime deps (Dockerfile instaluje lekki obraz).
+
+**Konsekwencje:** Szybszy cykl dev (brak rebuild obrazu). Wymaga Python 3.12+ na hoscie. Zgodnosc z wzorcem Kartograf. Czysty podzial runtime/dev dependencies.
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
