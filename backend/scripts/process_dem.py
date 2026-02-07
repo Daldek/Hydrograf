@@ -1121,6 +1121,210 @@ def compute_slope(dem: np.ndarray, cellsize: float, nodata: float) -> np.ndarray
     return slope
 
 
+def compute_aspect(dem: np.ndarray, cellsize: float, nodata: float) -> np.ndarray:
+    """
+    Compute aspect (slope direction) in degrees.
+
+    Uses Sobel operator for gradient computation (same as compute_slope).
+    Convention: 0=North, 90=East, 180=South, 270=West (clockwise from North).
+    Flat areas (no gradient) get value -1.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        DEM array
+    cellsize : float
+        Cell size in meters
+    nodata : float
+        NoData value
+
+    Returns
+    -------
+    np.ndarray
+        Aspect array in degrees (0-360, -1 for flat areas)
+    """
+    logger.info("Computing aspect...")
+
+    from scipy import ndimage
+
+    dem_calc = dem.astype(np.float64)
+    dem_calc[dem == nodata] = np.nan
+
+    # Compute gradients (same Sobel as slope)
+    dy = ndimage.sobel(dem_calc, axis=0, mode="constant", cval=np.nan) / (8 * cellsize)
+    dx = ndimage.sobel(dem_calc, axis=1, mode="constant", cval=np.nan) / (8 * cellsize)
+
+    # Aspect: atan2(-dy, dx) gives angle from East, counter-clockwise
+    # Convert to geographic convention: 0=N, clockwise
+    # Geographic aspect = 90 - degrees(atan2(-dy, dx))
+    # Equivalently: atan2(-dx, dy) gives 0=N clockwise directly
+    aspect_rad = np.arctan2(-dx, dy)
+    aspect_deg = np.degrees(aspect_rad)
+
+    # Convert to 0-360 range
+    aspect_deg = np.where(aspect_deg < 0, aspect_deg + 360.0, aspect_deg)
+
+    # Mark flat areas (no gradient) as -1
+    flat_mask = (dx == 0) & (dy == 0)
+    aspect_deg[flat_mask] = -1.0
+
+    # Mark nodata areas as -1
+    aspect_deg = np.nan_to_num(aspect_deg, nan=-1.0)
+
+    valid = aspect_deg[aspect_deg >= 0]
+    if len(valid) > 0:
+        logger.info(
+            f"Aspect computed (range: {valid.min():.1f}° - {valid.max():.1f}°)"
+        )
+    else:
+        logger.info("Aspect computed (all flat)")
+
+    return aspect_deg
+
+
+def compute_strahler_order(
+    dem: np.ndarray,
+    metadata: dict,
+    stream_threshold: int = 100,
+) -> np.ndarray:
+    """
+    Compute Strahler stream order using pyflwdir.
+
+    Uses pyflwdir's FlwdirRaster.stream_order() method.
+    Only stream cells (flow_accumulation >= threshold) get an order.
+    Non-stream cells have order 0 (nodata).
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        Filled DEM array
+    metadata : dict
+        Grid metadata with transform or xllcorner/yllcorner/cellsize, nodata_value
+    stream_threshold : int
+        Flow accumulation threshold for stream identification
+
+    Returns
+    -------
+    np.ndarray
+        Strahler stream order array (uint8, nodata=0)
+    """
+    import pyflwdir
+    from pyflwdir.dem import fill_depressions as pyflwdir_fill_depressions
+
+    logger.info("Computing Strahler stream order via pyflwdir...")
+
+    nodata = metadata["nodata_value"]
+
+    # Patch internal nodata holes (same as main pipeline)
+    dem_patched, _ = fill_internal_nodata_holes(dem, nodata)
+
+    # Depression filling + D8 flow direction
+    _filled, d8_fdir = pyflwdir_fill_depressions(
+        dem_patched, nodata=nodata, max_depth=-1.0, outlets="edge"
+    )
+
+    # Build transform
+    transform = metadata.get("transform")
+    if transform is None:
+        from rasterio.transform import from_bounds
+
+        xll, yll = metadata["xllcorner"], metadata["yllcorner"]
+        nrows, ncols = dem.shape
+        cs = metadata["cellsize"]
+        transform = from_bounds(
+            xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
+        )
+
+    # Build FlwdirRaster
+    flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
+
+    # Compute upstream area for mask
+    acc_float = flw.upstream_area(unit="cell")
+    acc = np.where(acc_float == -9999, 0, acc_float).astype(np.int32)
+
+    # Stream mask
+    stream_mask = acc >= stream_threshold
+
+    # Compute Strahler order
+    strahler = flw.stream_order(type="strahler", mask=stream_mask)
+    strahler = strahler.astype(np.uint8)
+
+    # Non-stream cells → 0 (nodata)
+    strahler[~stream_mask] = 0
+
+    max_order = int(strahler.max()) if np.any(strahler > 0) else 0
+    stream_count = int(np.sum(strahler > 0))
+    logger.info(
+        f"Strahler order computed (max order: {max_order}, "
+        f"stream cells: {stream_count:,})"
+    )
+
+    return strahler
+
+
+def compute_twi(
+    acc: np.ndarray,
+    slope: np.ndarray,
+    cellsize: float,
+    nodata_acc: int = 0,
+    min_slope_percent: float = 0.1,
+) -> np.ndarray:
+    """
+    Compute Topographic Wetness Index (TWI).
+
+    TWI = ln(SCA / tan(slope_rad)) where:
+    - SCA = specific catchment area = upstream_area_m2 / cellsize
+    - slope_rad = arctan(slope_percent / 100)
+    - Minimum slope is clamped to avoid division by zero
+
+    Parameters
+    ----------
+    acc : np.ndarray
+        Flow accumulation array (number of upstream cells including self)
+    slope : np.ndarray
+        Slope array in percent
+    cellsize : float
+        Cell size in meters
+    nodata_acc : int
+        NoData value for accumulation (cells with this value are excluded)
+    min_slope_percent : float
+        Minimum slope in percent to avoid division by zero (default: 0.1%)
+
+    Returns
+    -------
+    np.ndarray
+        TWI array (float32, nodata=-9999)
+    """
+    logger.info("Computing TWI (Topographic Wetness Index)...")
+
+    cell_area = cellsize * cellsize
+
+    # Upstream area in m2 and specific catchment area (SCA)
+    upstream_area_m2 = acc.astype(np.float64) * cell_area
+    sca = upstream_area_m2 / cellsize
+
+    # Clamp slope to minimum to avoid division by zero
+    slope_clamped = np.maximum(slope, min_slope_percent)
+    slope_rad = np.arctan(slope_clamped / 100.0)
+
+    # TWI = ln(SCA / tan(slope_rad)), only for valid cells
+    valid_mask = acc != nodata_acc
+    tan_slope = np.tan(slope_rad)
+
+    twi_result = np.full(acc.shape, -9999.0, dtype=np.float32)
+    twi_result[valid_mask] = np.log(sca[valid_mask] / tan_slope[valid_mask]).astype(
+        np.float32
+    )
+
+    valid = twi_result[twi_result > -9999]
+    if len(valid) > 0:
+        logger.info(
+            f"TWI computed (range: {valid.min():.1f} - {valid.max():.1f})"
+        )
+
+    return twi_result
+
+
 def create_flow_network_records(
     dem: np.ndarray,
     fdir: np.ndarray,
@@ -1531,6 +1735,42 @@ def process_dem(
             metadata,
             output_dir / f"{base_name}_05_slope.tif",
             nodata=-1,
+            dtype="float32",
+        )
+
+    # 5b. Compute aspect
+    aspect = compute_aspect(filled_dem, metadata["cellsize"], nodata)
+
+    if save_intermediates:
+        save_raster_geotiff(
+            aspect,
+            metadata,
+            output_dir / f"{base_name}_09_aspect.tif",
+            nodata=-1,
+            dtype="float32",
+        )
+
+    # 5c. Compute Strahler stream order via pyflwdir
+    strahler = compute_strahler_order(filled_dem, metadata, stream_threshold)
+
+    if save_intermediates:
+        save_raster_geotiff(
+            strahler,
+            metadata,
+            output_dir / f"{base_name}_07_stream_order.tif",
+            nodata=0,
+            dtype="uint8",
+        )
+
+    # 5d. Compute TWI
+    twi = compute_twi(acc, slope, metadata["cellsize"], nodata_acc=0)
+
+    if save_intermediates:
+        save_raster_geotiff(
+            twi,
+            metadata,
+            output_dir / f"{base_name}_08_twi.tif",
+            nodata=-9999,
             dtype="float32",
         )
 
