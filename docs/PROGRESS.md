@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | ⏳ Zaplanowany | CP4 — mapa Leaflet.js |
 | Testy scripts/ | ⏳ Zaplanowany | process_dem, import_landcover |
-| Dokumentacja | 🔧 W trakcie | Standaryzacja wg shared/standards |
+| Dokumentacja | ✅ Gotowy | Standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
 
