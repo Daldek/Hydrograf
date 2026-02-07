@@ -47,29 +47,26 @@
 **Data:** 2026-02-07
 
 ### Co zrobiono
-- Rozszerzenie analiz rastrowych, wektoryzacji i parametrow morfometrycznych (ADR-014):
-  - **Nowe rastery:** aspect (09), TWI (08), Strahler stream order (07) w `process_dem.py`
-  - **Wektoryzacja ciekow:** `vectorize_streams()` — tracing headwaters→junction, zapis do `stream_network` (source='DEM_DERIVED')
-  - **Migracja 003:** `strahler_order` w `flow_network`, `upstream_area_km2`/`mean_slope_percent` w `stream_network`
-  - **Wskazniki ksztaltu:** Kc, Rc, Re, Ff, mean_width_km w `calculate_shape_indices()`
-  - **Wskazniki rzezbowe:** Rh, HI w `calculate_relief_indices()`
-  - **Krzywa hipsometryczna:** `calculate_hypsometric_curve()` — 20 binow, opcjonalna w API
-  - **Wskazniki sieci:** Dd, Fs, Rn, max_strahler w `calculate_drainage_indices()` + SQL query
-  - **Integracja:** rozbudowa `build_morphometric_params()` o nowe wskazniki, opcjonalny `db` i `include_hypsometric_curve`
-  - **API:** 11 nowych pol Optional w `MorphometricParameters`, `HypsometricPoint`, `hypsometric_curve` w `WatershedResponse`
-  - **Flaga CLI:** `--skip-streams-vectorize`
-  - **Testy:** 38 nowych (18 DEM + 21 morfometria), lacznie 345 przechodzi
-  - **8 commitow** na galezi `develop`
-- **Stan:** git clean, develop, 345 testow OK
+- E2E re-run pipeline N-33-131-C-b-2-3 z nowymi warstwami (07, 08, 09):
+  - **Wyniki:** `data/results/` — 9 warstw GeoTIFF (01-09)
+  - **Czas:** 198s (3.3 min), 4,917,888 komorek, max_acc=1,823,073
+  - **Strahler:** max rzad 8, 490,130 komorek z rzedem, rozklad: {1: 326k, 2: 88k, ..., 8: 789}
+  - **Wektoryzacja:** 19,005 segmentow (641.6 km) w `stream_network` (5 duplikatow pominiete)
+  - **Naprawione bugi E2E:**
+    - `ST_GeoHash` w `idx_stream_unique` wymaga WGS84 → dodano `ST_Transform(geom, 4326)`
+    - `strahler_order=0` dla stream cells z acc>=threshold ale pyflwdir order=0 → `max(order, 1)`
+    - Duplikaty geohash → `ON CONFLICT DO NOTHING`
+  - **Migracja 003:** zastosowana (strahler_order, upstream_area_km2, mean_slope_percent)
+  - **9 commitow** na galezi `develop`, 345 testow OK
 
 ### Poprzednia sesja
+- Rozszerzenie analiz rastrowych, wektoryzacji i parametrow morfometrycznych (ADR-014)
 - Wypalanie ciekow w DEM (stream burning) (ADR-013)
 - Migracja z pysheds na pyflwdir (Deltares) (ADR-012)
 
 ### Nastepne kroki
 1. CP4 — frontend z mapa Leaflet.js
 2. Dlug techniczny: constants.py, hardcoded secrets
-3. E2E re-run pipeline z nowymi warstwami (07, 08, 09)
 
 ## Backlog
 
