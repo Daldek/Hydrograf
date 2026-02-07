@@ -96,7 +96,8 @@ CREATE TABLE flow_network (
     downstream_id INT REFERENCES flow_network(id),
     cell_area FLOAT NOT NULL CHECK (cell_area > 0),
     is_stream BOOLEAN NOT NULL DEFAULT FALSE,
-    
+    strahler_order SMALLINT,                        -- migracja 003
+
     CONSTRAINT valid_elevation CHECK (elevation >= -50 AND elevation <= 3000),
     CONSTRAINT valid_accumulation CHECK (flow_accumulation >= 0)
 );
@@ -106,6 +107,8 @@ CREATE INDEX idx_flow_geom ON flow_network USING GIST(geom);
 CREATE INDEX idx_downstream ON flow_network(downstream_id);
 CREATE INDEX idx_is_stream ON flow_network(is_stream) WHERE is_stream = TRUE;
 CREATE INDEX idx_accumulation ON flow_network(flow_accumulation);
+CREATE INDEX idx_strahler ON flow_network(strahler_order)
+    WHERE strahler_order IS NOT NULL;               -- migracja 003
 
 -- Komentarze
 COMMENT ON TABLE flow_network IS 'Graf kierunków spływu wody z NMT';
@@ -116,6 +119,7 @@ COMMENT ON COLUMN flow_network.slope IS 'Spadek terenu [%]';
 COMMENT ON COLUMN flow_network.downstream_id IS 'ID komórki do której spływa woda (NULL dla outletów)';
 COMMENT ON COLUMN flow_network.cell_area IS 'Powierzchnia komórki [m²]';
 COMMENT ON COLUMN flow_network.is_stream IS 'Czy komórka należy do sieci rzecznej (flow_accumulation > threshold)';
+COMMENT ON COLUMN flow_network.strahler_order IS 'Rząd Strahlera (NULL dla nie-cieków)';
 ```
 
 **Kolumny - szczegóły:**
@@ -130,6 +134,7 @@ COMMENT ON COLUMN flow_network.is_stream IS 'Czy komórka należy do sieci rzecz
 | `downstream_id` | INT | YES | NULL | FK do flow_network(id) | NULL lub valid ID |
 | `cell_area` | FLOAT | NO | - | Powierzchnia [m²] | > 0 |
 | `is_stream` | BOOLEAN | NO | FALSE | Czy to ciek | TRUE/FALSE |
+| `strahler_order` | SMALLINT | YES | NULL | Rząd Strahlera | 1..8+ (NULL = nie-ciek) |
 
 **Typowe wartości:**
 - Komórka NMT 1m: `cell_area = 1.0` m²
@@ -275,14 +280,18 @@ CREATE TABLE stream_network (
     length_m FLOAT CHECK (length_m > 0),
     strahler_order INT CHECK (strahler_order > 0),
     source VARCHAR(50) DEFAULT 'MPHP',
-    
-    CONSTRAINT unique_name_geom UNIQUE (name, geom)
+    upstream_area_km2 FLOAT,                        -- migracja 003
+    mean_slope_percent FLOAT,                       -- migracja 003
+
+    CONSTRAINT valid_strahler CHECK (strahler_order IS NULL OR strahler_order > 0)
 );
 
 -- Indeksy
 CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
 CREATE INDEX idx_stream_name ON stream_network(name);
 CREATE INDEX idx_strahler_order ON stream_network(strahler_order);
+CREATE UNIQUE INDEX idx_stream_unique ON stream_network
+    (COALESCE(name, ''), ST_GeoHash(ST_Transform(geom, 4326), 12));
 
 -- Komentarze
 COMMENT ON TABLE stream_network IS 'Sieć rzeczna - osie cieków';
@@ -300,7 +309,9 @@ COMMENT ON COLUMN stream_network.strahler_order IS 'Rząd Strahlera (hierarchia 
 | `name` | VARCHAR(100) | YES | NULL | Nazwa cieku |
 | `length_m` | FLOAT | YES | NULL | Długość [m] (obliczana: ST_Length(geom)) |
 | `strahler_order` | INT | YES | NULL | Rząd Strahlera (1=źródłowy, wyższe=większe) |
-| `source` | VARCHAR(50) | YES | 'MPHP' | Źródło danych |
+| `source` | VARCHAR(50) | YES | 'MPHP' | Źródło danych ('MPHP' lub 'DEM_DERIVED') |
+| `upstream_area_km2` | FLOAT | YES | NULL | Powierzchnia zlewni na końcu segmentu [km²] |
+| `mean_slope_percent` | FLOAT | YES | NULL | Średni spadek wzdłuż segmentu [%] |
 
 **Przykładowe rekordy:**
 ```sql

@@ -72,18 +72,17 @@ config.set_main_option(
 
 ---
 
-##Brakujące testy dla scripts/ (T4.8)
+## Brakujące testy dla scripts/ (T4.8)
 
-**Problem:** Skrypty preprocessingu (`scripts/*.py`) mają 0% pokrycia testami.
+**Problem:** Większość skryptów preprocessingu (`scripts/*.py`) ma niskie pokrycie testami.
 
-**Pliki bez testów:**
-- `scripts/process_dem.py` - krytyczny skrypt DEM
-- `scripts/import_landcover.py` - import pokrycia terenu
-- `scripts/import_streams.py` - import sieci rzecznej
-- `utils/raster_utils.py` - utilities rasterowe
-- `utils/sheet_finder.py` - wyszukiwanie arkuszy NMT
+**Stan testów:**
+- `scripts/process_dem.py` — **46 testów** (compute_slope, compute_aspect, compute_twi, compute_strahler, burn_streams, fill_sinks, pyflwdir)
+- `scripts/import_landcover.py` — 0% pokrycia
+- `utils/raster_utils.py` — 0% pokrycia
+- `utils/sheet_finder.py` — 0% pokrycia
 
-**Priorytet:** HIGH dla `process_dem.py`, MEDIUM dla pozostałych
+**Priorytet:** MEDIUM (process_dem pokryty, pozostałe do zrobienia)
 
 ---
 
