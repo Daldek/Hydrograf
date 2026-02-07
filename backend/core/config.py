@@ -6,7 +6,6 @@ Loads settings from environment variables with sensible defaults.
 
 import os
 from functools import lru_cache
-from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,7 +29,7 @@ class Settings(BaseSettings):
     """
 
     # Database - can be set via DATABASE_URL or individual components
-    database_url_override: Optional[str] = None
+    database_url_override: str | None = None
     postgres_db: str = "hydro_db"
     postgres_user: str = "hydro_user"
     postgres_password: str = "hydro_password"
@@ -68,7 +67,7 @@ class Settings(BaseSettings):
     )
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """
     Get cached settings instance.

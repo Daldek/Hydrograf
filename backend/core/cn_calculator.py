@@ -12,7 +12,7 @@ import logging
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from kartograf import BBox
@@ -44,9 +44,9 @@ class CNCalculationResult:
     cn: int
     method: str
     dominant_hsg: str
-    hsg_stats: Dict[str, float]
-    land_cover_stats: Dict[str, float]
-    cn_details: List[Dict]
+    hsg_stats: dict[str, float]
+    land_cover_stats: dict[str, float]
+    cn_details: list[dict]
 
 
 def check_kartograf_available() -> bool:
@@ -68,7 +68,7 @@ def check_kartograf_available() -> bool:
 
 
 def convert_boundary_to_bbox(
-    boundary_wgs84: List[List[float]],
+    boundary_wgs84: list[list[float]],
     buffer_m: float = 100,
 ) -> "BBox":
     """
@@ -109,7 +109,7 @@ def convert_boundary_to_bbox(
     )
 
 
-def get_hsg_from_soilgrids(bbox: "BBox") -> Tuple[str, Dict[str, float]]:
+def get_hsg_from_soilgrids(bbox: "BBox") -> tuple[str, dict[str, float]]:
     """
     Pobierz HSG z SoilGrids przez Kartograf HSGCalculator.
 
@@ -161,8 +161,8 @@ def get_hsg_from_soilgrids(bbox: "BBox") -> Tuple[str, Dict[str, float]]:
 def get_land_cover_stats(
     bbox: "BBox",
     data_dir: Path,
-    teryt: Optional[str] = None,
-) -> Dict[str, float]:
+    teryt: str | None = None,
+) -> dict[str, float]:
     """
     Pobierz statystyki pokrycia terenu z BDOT10k/CORINE.
 
@@ -205,7 +205,7 @@ def get_land_cover_stats(
     return {}
 
 
-def get_default_land_cover_stats() -> Dict[str, float]:
+def get_default_land_cover_stats() -> dict[str, float]:
     """
     Zwroc domyslne statystyki pokrycia terenu.
 
@@ -226,11 +226,11 @@ def get_default_land_cover_stats() -> Dict[str, float]:
 
 
 def calculate_cn_from_kartograf(
-    boundary_wgs84: List[List[float]],
+    boundary_wgs84: list[list[float]],
     data_dir: Path,
     use_default_land_cover: bool = True,
-    teryt: Optional[str] = None,
-) -> Optional[CNCalculationResult]:
+    teryt: str | None = None,
+) -> CNCalculationResult | None:
     """
     Oblicz CN na podstawie danych z Kartografa.
 

@@ -43,7 +43,6 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 # Configure logging
 logging.basicConfig(
@@ -57,14 +56,14 @@ logger = logging.getLogger(__name__)
 def download_landcover(
     output_dir: Path,
     provider: str = "bdot10k",
-    teryt: Optional[str] = None,
-    godlo: Optional[str] = None,
-    lat: Optional[float] = None,
-    lon: Optional[float] = None,
+    teryt: str | None = None,
+    godlo: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
     buffer_km: float = 5.0,
     year: int = 2018,
     skip_existing: bool = True,
-) -> Optional[Path]:
+) -> Path | None:
     """
     Download land cover data using Kartograf.
 

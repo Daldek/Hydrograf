@@ -10,8 +10,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.config import get_settings
 from api.endpoints import health, hydrograph, watershed
+from core.config import get_settings
 
 # Configure logging
 settings = get_settings()

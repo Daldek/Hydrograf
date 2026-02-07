@@ -148,11 +148,11 @@ def delineate_watershed(
     except ValueError as e:
         # Handle validation errors (e.g., watershed too large)
         logger.error(f"Validation error in watershed delineation: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         # Handle unexpected errors
         logger.error(f"Error delineating watershed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Internal server error during watershed delineation",
-        )
+        ) from e

@@ -2,9 +2,10 @@
 Integration tests for hydrograph generation endpoint.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock
 
 from api.main import app
 from core.database import get_db

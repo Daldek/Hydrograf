@@ -7,11 +7,11 @@ Tests for CN lookup tables and functions.
 import pytest
 
 from core.cn_tables import (
+    CN_LOOKUP_TABLE,
     DEFAULT_CN,
     VALID_HSG,
-    CN_LOOKUP_TABLE,
-    lookup_cn,
     calculate_weighted_cn_from_stats,
+    lookup_cn,
 )
 
 
@@ -28,7 +28,7 @@ class TestConstants:
 
     def test_valid_hsg_contains_all_groups(self):
         """Test VALID_HSG contains A, B, C, D."""
-        assert VALID_HSG == frozenset(["A", "B", "C", "D"])
+        assert frozenset(["A", "B", "C", "D"]) == VALID_HSG
 
     def test_valid_hsg_is_frozenset(self):
         """Test VALID_HSG is immutable."""

@@ -7,7 +7,6 @@ and constructing watershed boundary polygon.
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import shapely
@@ -61,8 +60,8 @@ class FlowCell:
     y: float
     elevation: float
     flow_accumulation: int
-    slope: Optional[float]
-    downstream_id: Optional[int]
+    slope: float | None
+    downstream_id: int | None
     cell_area: float
     is_stream: bool
 
@@ -71,7 +70,7 @@ def find_nearest_stream(
     point: Point,
     db: Session,
     max_distance_m: float = MAX_STREAM_DISTANCE_M,
-) -> Optional[FlowCell]:
+) -> FlowCell | None:
     """
     Find the nearest stream cell to a given point.
 
@@ -315,8 +314,9 @@ def build_boundary_polygonize(
             raster[row, col] = 1
 
     # 5. Define affine transform (top-left corner, cell size)
-    transform = Affine.translation(min_x - cell_size / 2, max_y + cell_size / 2) * \
-        Affine.scale(cell_size, -cell_size)
+    transform = Affine.translation(
+        min_x - cell_size / 2, max_y + cell_size / 2
+    ) * Affine.scale(cell_size, -cell_size)
 
     # 6. Polygonize raster
     polygon_generator = shapes(raster, mask=raster == 1, transform=transform)
@@ -330,7 +330,9 @@ def build_boundary_polygonize(
                 polygons.append(poly)
 
     if not polygons:
-        logger.warning("Polygonization produced no polygons, falling back to convex hull")
+        logger.warning(
+            "Polygonization produced no polygons, falling back to convex hull"
+        )
         points = MultiPoint([Point(c.x, c.y) for c in cells])
         return points.convex_hull
 
@@ -339,6 +341,7 @@ def build_boundary_polygonize(
         boundary = polygons[0]
     else:
         from shapely.ops import unary_union
+
         boundary = unary_union(polygons)
 
     # 9. Extract largest polygon if result is MultiPolygon

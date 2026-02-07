@@ -8,10 +8,15 @@ using the Hydrolog library.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+
+# Hydrolog imports
+from hydrolog.morphometry import WatershedParameters
+from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogram
+from hydrolog.runoff import HydrographGenerator
 from sqlalchemy.orm import Session
 
 from core.database import get_db
-from core.land_cover import calculate_weighted_cn, DEFAULT_CN
+from core.land_cover import DEFAULT_CN, calculate_weighted_cn
 from core.morphometry import build_morphometric_params
 from core.precipitation import (
     DURATION_STR_TO_MIN,
@@ -44,11 +49,6 @@ from utils.geometry import (
     transform_polygon_pl1992_to_wgs84,
     transform_wgs84_to_pl1992,
 )
-
-# Hydrolog imports
-from hydrolog.morphometry import WatershedParameters
-from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogram
-from hydrolog.runoff import HydrographGenerator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -265,13 +265,13 @@ def generate_hydrograph(
         raise
     except ValueError as e:
         logger.error(f"Validation error in hydrograph generation: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Error generating hydrograph: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Internal server error during hydrograph generation",
-        )
+        ) from e
 
 
 @router.get("/scenarios")
