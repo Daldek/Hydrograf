@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Warstwa `02b_inflated` — zbedna po migracji na pyflwdir (Wang & Liu 2006 obsluguje plaskowyzyzny wewnetrznie)
 
 ### Fixed
+- `idx_stream_unique` uzywal `ST_GeoHash(geom, 12)` na geometrii EPSG:2180 — naprawiono na `ST_GeoHash(ST_Transform(geom, 4326), 12)`
+- `strahler_order=0` dla komorek z acc>=threshold ale pyflwdir order=0 — clamp do min 1
+- Duplikaty geohash przy insercie stream segments — `ON CONFLICT DO NOTHING`
 - Cieki konczace sie w srodku rastra — wypelnianie wewnetrznych dziur nodata + naprawa zlewow po pysheds
 - Przerwane lancuchy downstream_id w flow_network spowodowane NaN fdir i nodata holes
 
@@ -47,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Przeniesienie 6 plików MD z root do docs/
 
 ### Tested
+- E2E pipeline: N-33-131-C-b-2-3 z warstwami 01-09 — 198s, 4.9M komorek, max_strahler=8, 19,005 segmentow (641.6 km), wyniki w `data/results/`
 - E2E pipeline: N-33-131-C-b-2-3 z stream burning — 2,856 cells burned, 55s, wyniki w `data/nmt/`
 - E2E pipeline: N-33-131-C-b-2-3 z pyflwdir — broken streams: 233→1, max acc +71%, pipeline 17% szybciej
 - E2E pipeline: N-33-131-C-b-2-3 (1:10000, 1 arkusz, 4.9M komorek) — flowacc fix verified
