@@ -1,0 +1,26 @@
+# EditorConfig — spójne formatowanie niezależnie od edytora
+# Źródło: shared/standards/DEVELOPMENT_STANDARDS.md
+# Użycie: skopiuj do korzenia nowego projektu
+# Wspierane natywnie przez większość edytorów (VS Code wymaga rozszerzenia)
+
+root = true
+
+# Domyślne ustawienia dla wszystkich plików
+[*]
+indent_style = space
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# Python — wcięcia 4 spacje (PEP 8)
+[*.py]
+indent_size = 4
+
+# Pliki konfiguracyjne i dokumentacja — wcięcia 2 spacje
+[*.{md,yaml,yml,json,toml}]
+indent_size = 2
+
+# Makefile wymaga tabulatorów (składnia make)
+[Makefile]
+indent_style = tab
