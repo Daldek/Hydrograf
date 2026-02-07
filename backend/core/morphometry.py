@@ -548,11 +548,14 @@ def build_morphometric_params(
     outlet: FlowCell,
     cn: int | None = None,
     include_stream_coords: bool = False,
+    db=None,
+    include_hypsometric_curve: bool = False,
 ) -> dict:
     """
     Build complete morphometric parameters dictionary.
 
     Creates a dictionary compatible with Hydrolog's WatershedParameters.from_dict().
+    Optionally includes shape/relief/drainage indices and hypsometric curve.
 
     Parameters
     ----------
@@ -566,6 +569,10 @@ def build_morphometric_params(
         SCS Curve Number (will be calculated separately if None)
     include_stream_coords : bool, optional
         If True, include main_stream_coords in output for GIS export
+    db : Session, optional
+        Database session for drainage network indices query
+    include_hypsometric_curve : bool, optional
+        If True, include hypsometric curve data (default: False)
 
     Returns
     -------
@@ -590,16 +597,24 @@ def build_morphometric_params(
         channel_length_km, channel_slope = find_main_stream(cells, outlet)
         stream_coords = None
 
+    area_km2 = sum(c.cell_area for c in cells) / 1_000_000
+    perimeter_km = calculate_perimeter_km(boundary)
+    length_km = calculate_watershed_length_km(cells, outlet)
+
     params = {
-        "area_km2": sum(c.cell_area for c in cells) / 1_000_000,
-        "perimeter_km": calculate_perimeter_km(boundary),
-        "length_km": calculate_watershed_length_km(cells, outlet),
+        "area_km2": area_km2,
+        "perimeter_km": perimeter_km,
+        "length_km": length_km,
         "elevation_min_m": elev_stats["elevation_min_m"],
         "elevation_max_m": elev_stats["elevation_max_m"],
         "elevation_mean_m": elev_stats["elevation_mean_m"],
         "mean_slope_m_per_m": calculate_mean_slope(cells),
-        "channel_length_km": channel_length_km if channel_length_km > 0 else None,
-        "channel_slope_m_per_m": channel_slope if channel_slope > 0 else None,
+        "channel_length_km": (
+            channel_length_km if channel_length_km > 0 else None
+        ),
+        "channel_slope_m_per_m": (
+            channel_slope if channel_slope > 0 else None
+        ),
         "cn": cn,
         "source": "Hydrograf",
         "crs": "EPSG:2180",
@@ -608,10 +623,43 @@ def build_morphometric_params(
     if include_stream_coords and stream_coords:
         params["main_stream_coords"] = stream_coords
 
+    # Shape indices
+    shape = calculate_shape_indices(area_km2, perimeter_km, length_km)
+    params.update(shape)
+
+    # Relief indices
+    relief = calculate_relief_indices(elev_stats, length_km)
+    params.update(relief)
+
+    # Hypsometric curve (optional — can be large)
+    if include_hypsometric_curve:
+        params["hypsometric_curve"] = calculate_hypsometric_curve(cells)
+
+    # Drainage network indices (requires DB with stream_network data)
+    if db is not None:
+        try:
+            boundary_wkt = boundary.wkt
+            stream_stats = get_stream_stats_in_watershed(
+                boundary_wkt, db
+            )
+            if stream_stats is not None:
+                relief_m = (
+                    elev_stats["elevation_max_m"]
+                    - elev_stats["elevation_min_m"]
+                )
+                drainage = calculate_drainage_indices(
+                    stream_stats, area_km2, relief_m
+                )
+                params.update(drainage)
+        except Exception as e:
+            logger.warning(f"Failed to get drainage indices: {e}")
+
     logger.info(
-        f"Built morphometric params: area={params['area_km2']:.2f} km2, "
+        f"Built morphometric params: "
+        f"area={params['area_km2']:.2f} km2, "
         f"length={params['length_km']:.2f} km, "
-        f"relief={params['elevation_max_m'] - params['elevation_min_m']:.0f} m"
+        f"relief="
+        f"{params['elevation_max_m'] - params['elevation_min_m']:.0f} m"
     )
 
     return params
