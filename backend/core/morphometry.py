@@ -437,6 +437,111 @@ def calculate_hypsometric_curve(
     return curve
 
 
+def get_stream_stats_in_watershed(
+    boundary_wkt: str,
+    db_session,
+) -> dict | None:
+    """
+    Get stream network statistics within a watershed boundary.
+
+    Queries stream_network for DEM-derived segments that intersect
+    the watershed boundary polygon.
+
+    Parameters
+    ----------
+    boundary_wkt : str
+        Watershed boundary as WKT polygon (EPSG:2180)
+    db_session : Session
+        SQLAlchemy database session
+
+    Returns
+    -------
+    dict or None
+        Dictionary with keys:
+        - total_stream_length_km: total length of streams [km]
+        - n_segments: number of stream segments
+        - max_strahler_order: maximum Strahler stream order
+        Returns None if no DEM-derived stream data exists.
+    """
+    from sqlalchemy import text
+
+    result = db_session.execute(
+        text("""
+            SELECT
+                COALESCE(SUM(length_m), 0) AS total_length_m,
+                COUNT(*) AS n_segments,
+                COALESCE(MAX(strahler_order), 0) AS max_order
+            FROM stream_network
+            WHERE source = 'DEM_DERIVED'
+              AND ST_Intersects(
+                  geom,
+                  ST_SetSRID(ST_GeomFromText(:wkt), 2180)
+              )
+        """),
+        {"wkt": boundary_wkt},
+    ).fetchone()
+
+    if result is None or result[1] == 0:
+        return None
+
+    return {
+        "total_stream_length_km": round(result[0] / 1000.0, 4),
+        "n_segments": result[1],
+        "max_strahler_order": result[2],
+    }
+
+
+def calculate_drainage_indices(
+    stream_stats: dict,
+    area_km2: float,
+    relief_m: float,
+) -> dict:
+    """
+    Calculate drainage network indices from stream statistics.
+
+    Parameters
+    ----------
+    stream_stats : dict
+        From get_stream_stats_in_watershed(), with keys:
+        total_stream_length_km, n_segments, max_strahler_order
+    area_km2 : float
+        Watershed area [km2]
+    relief_m : float
+        Relief (Hmax - Hmin) [m]
+
+    Returns
+    -------
+    dict
+        Dictionary with keys:
+        - drainage_density_km_per_km2: Dd = total_length / area
+        - stream_frequency_per_km2: Fs = n_segments / area
+        - ruggedness_number: Rn = (relief/1000) * Dd
+        - max_strahler_order: max stream order
+    """
+    if area_km2 <= 0:
+        return {
+            "drainage_density_km_per_km2": None,
+            "stream_frequency_per_km2": None,
+            "ruggedness_number": None,
+            "max_strahler_order": None,
+        }
+
+    total_length = stream_stats["total_stream_length_km"]
+    n_segments = stream_stats["n_segments"]
+    max_order = stream_stats["max_strahler_order"]
+
+    dd = round(total_length / area_km2, 4)
+    fs = round(n_segments / area_km2, 4)
+    rn = round((relief_m / 1000.0) * dd, 4) if relief_m > 0 else None
+
+    return {
+        "drainage_density_km_per_km2": dd,
+        "stream_frequency_per_km2": fs,
+        "ruggedness_number": rn,
+        "max_strahler_order": max_order,
+    }
+
+
 def build_morphometric_params(
     cells: list[FlowCell],
     boundary: Polygon,
