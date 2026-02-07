@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Cieki konczace sie w srodku rastra — wypelnianie wewnetrznych dziur nodata + naprawa zlewow po pysheds
+- Przerwane lancuchy downstream_id w flow_network spowodowane NaN fdir i nodata holes
+
 ### Changed
 - Migracja na .venv-first development workflow (ADR-011)
 - Rozdzielenie deps runtime/dev (requirements.txt + pyproject.toml [dev])
