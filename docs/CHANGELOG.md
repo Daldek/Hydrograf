@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Restrukturyzacja dokumentacji wg shared/standards/DOCUMENTATION_STANDARDS.md
+- CLAUDE.md rozbudowany z 14 do ~185 linii (7 sekcji)
+- PROGRESS.md skondensowany z 975 do ~71 linii (4 sekcje)
+- DEVELOPMENT_STANDARDS.md przepisany z Ruff (zamiast black+flake8)
+- IMPLEMENTATION_PROMPT.md przepisany do stanu v0.3.0
+- Migracja z black+flake8 na ruff (E, F, I, UP, B, SIM)
+- Przeniesienie 6 plików MD z root do docs/
+
+### Added
+- docs/DECISIONS.md — 10 Architecture Decision Records
+- .editorconfig (UTF-8, LF, 4 spacje Python, 2 spacje YAML/MD)
+
+### Fixed
+- Cross-referencje w README.md (ścieżki do docs/)
+- Usunięcie rozwiązanego TD-2 z TECHNICAL_DEBT.md (land_cover.py istnieje)
+- Naprawa URL repozytorium w pyproject.toml
+- 208 błędów ruff naprawionych (202 auto-fix + 6 ręcznie B904)
+
+---
+
 ### Added
 - `--use-cached` CLI option for `analyze_watershed.py` - skip delineation/morphometry (200x faster re-runs)
 - `--tiles` option for specifying exact NMT sheet codes
@@ -98,5 +119,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/Daldek/Hydrograf/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/Daldek/Hydrograf/compare/v0.2.2...v0.3.0
-[0.2.0]: https://github.com/user/hydrograf/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/user/hydrograf/releases/tag/v0.1.0
+[0.2.0]: https://github.com/Daldek/Hydrograf/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/Daldek/Hydrograf/releases/tag/v0.1.0
