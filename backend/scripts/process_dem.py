@@ -1428,7 +1428,7 @@ def vectorize_streams(
             # Start new segment
             coords = [cell_xy(row, col)]
             slopes = [float(slope[row, col])]
-            seg_order = int(strahler[row, col])
+            seg_order = max(int(strahler[row, col]), 1)
             length_m = 0.0
             visited[row, col] = True
 
@@ -1450,7 +1450,7 @@ def vectorize_streams(
                     length_m += dist
                     break
 
-                next_order = int(strahler[nr, nc])
+                next_order = max(int(strahler[nr, nc]), 1)
                 if next_order != seg_order:
                     # Order changes: end segment, add junction pt
                     coords.append(cell_xy(nr, nc))
@@ -1576,7 +1576,7 @@ def insert_stream_segments(
         tsv_buffer,
     )
 
-    # Insert with geometry construction
+    # Insert with geometry construction (skip geohash duplicates)
     cursor.execute("""
         INSERT INTO stream_network (
             geom, strahler_order, length_m,
@@ -1587,6 +1587,7 @@ def insert_stream_segments(
             strahler_order, length_m,
             upstream_area_km2, mean_slope_percent, source
         FROM temp_stream_import
+        ON CONFLICT DO NOTHING
     """)
 
     total = cursor.rowcount
