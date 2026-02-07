@@ -47,14 +47,12 @@
 **Data:** 2026-02-07
 
 ### Co zrobiono
-- Standaryzacja dokumentacji wg shared/standards/DOCUMENTATION_STANDARDS.md
-- Przeniesienie 6 plikow MD do docs/
-- CLAUDE.md rozbudowany (14 → ~185 linii, 7 sekcji)
-- PROGRESS.md skondensowany (975 → ~75 linii, 4 sekcje)
-- Utworzenie docs/DECISIONS.md (10 ADR)
-- Dodanie .editorconfig
-- Migracja black+flake8 → ruff
-- Aktualizacja cross-referencji w README i docs/
+- Migracja na .venv-first development workflow (ADR-011)
+- Rozdzielenie deps: runtime w requirements.txt, dev w pyproject.toml [project.optional-dependencies]
+- Usuniecie black/flake8 z requirements.txt, dodanie ruff/pytest/mypy do [dev]
+- Aktualizacja CLAUDE.md, README.md, ARCHITECTURE.md, DEVELOPMENT_STANDARDS.md na .venv-first
+- docker-compose → docker compose w calej dokumentacji
+- ADR-011 dodany do DECISIONS.md
 
 ### Nastepne kroki
 1. CP4 — frontend z mapa Leaflet.js
