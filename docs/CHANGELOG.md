@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Wypalanie ciekow BDOT10k w DEM (`--burn-streams`) — obnizenie DEM wzdluz znanych ciekow przed analiza hydrologiczna (ADR-013)
+- 6 nowych testow jednostkowych dla `burn_streams_into_dem()`
+
+### Removed
+- Warstwa `02b_inflated` — zbedna po migracji na pyflwdir (Wang & Liu 2006 obsluguje plaskowyzyzny wewnetrznie)
+
 ### Fixed
 - Cieki konczace sie w srodku rastra — wypelnianie wewnetrznych dziur nodata + naprawa zlewow po pysheds
 - Przerwane lancuchy downstream_id w flow_network spowodowane NaN fdir i nodata holes
@@ -26,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Przeniesienie 6 plików MD z root do docs/
 
 ### Tested
+- E2E pipeline: N-33-131-C-b-2-3 z stream burning — 2,856 cells burned, 55s, wyniki w `data/nmt/`
 - E2E pipeline: N-33-131-C-b-2-3 z pyflwdir — broken streams: 233→1, max acc +71%, pipeline 17% szybciej
 - E2E pipeline: N-33-131-C-b-2-3 (1:10000, 1 arkusz, 4.9M komorek) — flowacc fix verified
 - E2E pipeline: N-33-131-C-b (5 m) — Kartograf download, pysheds processing, IMGW precipitation

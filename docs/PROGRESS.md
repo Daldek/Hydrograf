@@ -8,13 +8,13 @@
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
-| Preprocessing NMT | ✅ Gotowy | pyflwdir + COPY (3.8 min/arkusz) |
+| Preprocessing NMT | ✅ Gotowy | pyflwdir + COPY (3.8 min/arkusz), stream burning |
 | Integracja Hydrolog | ✅ Gotowy | v0.5.2 |
 | Integracja Kartograf | ✅ Gotowy | v0.3.1 (NMT, Land Cover, HSG) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | ⏳ Zaplanowany | CP4 — mapa Leaflet.js |
-| Testy scripts/ | ⏳ Zaplanowany | process_dem, import_landcover |
+| Testy scripts/ | ⏳ W trakcie | 28 testow process_dem (burn, fill, sinks, pyflwdir) |
 | Dokumentacja | ✅ Gotowy | Standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -47,26 +47,29 @@
 **Data:** 2026-02-07
 
 ### Co zrobiono
-- Migracja z pysheds na pyflwdir (Deltares) (ADR-012):
-  - Nowa funkcja `process_hydrology_pyflwdir()` w `scripts/process_dem.py`
-  - Usunieta `process_hydrology_pysheds()` — zastapiona przez pyflwdir
-  - `requirements.txt`: `pysheds>=0.4` → `pyflwdir>=0.5.8`
-  - Mniej zaleznosci (3 vs 10), brak temp file, Wang & Liu 2006 algorithm
-  - Zachowane: `fill_internal_nodata_holes()`, `fix_internal_sinks()` (safety net)
-  - 6 nowych testow integracyjnych dla `process_hydrology_pyflwdir()`
-- E2E re-run pipeline z pyflwdir: N-33-131-C-b-2-3 (1:10000, 1 arkusz)
-  - 4,917,888 rekordow w flow_network (5.17M komorek rastra)
-  - 489,930 stream cells (acc >= 100), max acc = 1,823,073
-  - Broken stream chains: **1** (vs 233 z pysheds) — jedyny to efekt brzegowy
-  - 819 internal sinks naprawionych strategia max_acc
-  - Czas pipeline: 173s (pyflwdir 27s, COPY 102s) — 17% szybciej niz pysheds
-  - Kroki posrednie zapisane jako GeoTIFF w `data/nmt/`
-- Aktualizacja dokumentacji: pysheds → pyflwdir w 10 plikach
+- Wypalanie ciekow w DEM (stream burning) (ADR-013):
+  - Nowa funkcja `burn_streams_into_dem()` w `scripts/process_dem.py`
+  - Nowe argumenty CLI: `--burn-streams <path.gpkg>`, `--burn-depth <m>`
+  - Algorytm: wczytanie GeoPackage → walidacja CRS → clip do zasiegu DEM → rasteryzacja → obnizenie DEM
+  - 6 nowych testow jednostkowych w `TestBurnStreamsIntoDem`
+- Usuniecie warstwy `02b_inflated`:
+  - `process_hydrology_pyflwdir()` zwraca 3 wartosci zamiast 4
+  - `process_hydrology_whitebox()` analogicznie
+  - Parametr `inflated_dem` → `filled_dem` w `fix_internal_sinks()`
+  - Usuniecie zapisu `02b_inflated.tif` z `process_dem()`
+  - Aktualizacja istniejacych testow (unpacking 4→3)
+- Wszystkie 28 testow przechodzi, ruff check + format OK
+- E2E pipeline z stream burning: N-33-131-C-b-2-3 (55s):
+  - 2,856 komorek wypalonych (1 ciek z Rzeki.gpkg, depth=5m)
+  - 820 internal sinks naprawionych (85 steepest, 735 max_acc)
+  - Max acc: 1,823,073, stream cells: 450,325
+  - 7 plikow GeoTIFF w `data/nmt/` (01_dem → 06_streams + 02a_burned)
+- **Stan:** 5 plikow zmienionych, niezacommitowane (develop)
 
 ### Poprzednia sesja
-- Naprawa flowacc: `fill_internal_nodata_holes()`, `fix_internal_sinks()`, `recompute_flow_accumulation()`
-- Testy jednostkowe: 14 nowych testow w `tests/unit/test_process_dem.py`
-- Migracja na .venv-first development workflow (ADR-011)
+- Migracja z pysheds na pyflwdir (Deltares) (ADR-012)
+- E2E re-run pipeline z pyflwdir: N-33-131-C-b-2-3
+- Naprawa flowacc: `fill_internal_nodata_holes()`, `fix_internal_sinks()`
 
 ### Nastepne kroki
 1. CP4 — frontend z mapa Leaflet.js

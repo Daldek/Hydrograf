@@ -8,6 +8,7 @@ import pytest
 
 from scripts.process_dem import (
     VALID_D8_SET,
+    burn_streams_into_dem,
     fill_internal_nodata_holes,
     fix_internal_sinks,
     process_hydrology_pyflwdir,
@@ -176,9 +177,7 @@ class TestFixInternalSinks:
         )
         acc = np.ones((3, 3), dtype=np.int32)
 
-        fdir_fixed, acc_fixed, diag = fix_internal_sinks(
-            fdir, acc, dem, dem, NODATA
-        )
+        fdir_fixed, acc_fixed, diag = fix_internal_sinks(fdir, acc, dem, dem, NODATA)
 
         assert diag["total_fixed"] == 0
         np.testing.assert_array_equal(fdir_fixed, fdir)
@@ -392,17 +391,16 @@ class TestProcessHydrologyPyflwdir:
     def test_returns_correct_shapes(self, synthetic_dem_10x10):
         """Output arrays have same shape as input DEM."""
         dem, metadata = synthetic_dem_10x10
-        filled, inflated, fdir, acc = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, acc = process_hydrology_pyflwdir(dem, metadata)
 
         assert filled.shape == dem.shape
-        assert inflated.shape == dem.shape
         assert fdir.shape == dem.shape
         assert acc.shape == dem.shape
 
     def test_fdir_contains_only_valid_d8(self, synthetic_dem_10x10):
         """All internal valid cells have D8 flow direction from VALID_D8_SET."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, fdir, _ = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, _ = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         edge_mask = np.zeros_like(valid)
@@ -422,7 +420,7 @@ class TestProcessHydrologyPyflwdir:
     def test_acc_positive_for_valid_cells(self, synthetic_dem_10x10):
         """Flow accumulation >= 1 for all valid cells."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, _, acc = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, acc = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         assert np.all(acc[valid] >= 1)
@@ -430,14 +428,14 @@ class TestProcessHydrologyPyflwdir:
     def test_nodata_preserved(self, synthetic_dem_10x10):
         """Nodata cells in input remain nodata in filled DEM."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, _, _ = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, _ = process_hydrology_pyflwdir(dem, metadata)
 
         assert filled[0, 0] == NODATA
 
     def test_depression_filled(self, synthetic_dem_10x10):
         """The depression at (5,5) is filled (elevation raised)."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, _, _ = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, _ = process_hydrology_pyflwdir(dem, metadata)
 
         # Filled DEM should have the depression raised
         assert filled[5, 5] >= dem[5, 5]
@@ -445,7 +443,7 @@ class TestProcessHydrologyPyflwdir:
     def test_no_internal_sinks(self, synthetic_dem_10x10):
         """No internal sinks remain after processing."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, fdir, _ = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, _ = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         edge_mask = np.zeros_like(valid)
@@ -458,3 +456,155 @@ class TestProcessHydrologyPyflwdir:
         internal_sinks = ~is_valid_d8 & valid & ~edge_mask
 
         assert int(np.sum(internal_sinks)) == 0
+
+
+class TestBurnStreamsIntoDem:
+    """Tests for burn_streams_into_dem()."""
+
+    @pytest.fixture()
+    def sample_dem_with_transform(self):
+        """10x10 DEM with Affine transform in EPSG:2180."""
+        from rasterio.transform import from_bounds
+
+        dem = np.full((10, 10), 100.0)
+        # Add some variation
+        dem[5, :] = 90.0
+        dem[0, 0] = NODATA
+
+        xmin, ymin = 500000.0, 300000.0
+        cellsize = 5.0
+        xmax = xmin + 10 * cellsize
+        ymax = ymin + 10 * cellsize
+        transform = from_bounds(xmin, ymin, xmax, ymax, 10, 10)
+
+        return dem, transform
+
+    @pytest.fixture()
+    def tmp_streams_gpkg(self, tmp_path, sample_dem_with_transform):
+        """Create a temporary GeoPackage with a LineString crossing the DEM."""
+        import geopandas as gpd
+        from shapely.geometry import LineString
+
+        _, transform = sample_dem_with_transform
+        # Line across middle of DEM (y = 300025, from x=500000 to x=500050)
+        xmin = transform.c
+        ymin = transform.f + 10 * transform.e
+        xmax = xmin + 10 * transform.a
+        ymid = (ymin + transform.f) / 2
+
+        line = LineString([(xmin, ymid), (xmax, ymid)])
+        gdf = gpd.GeoDataFrame({"name": ["Glowna"]}, geometry=[line], crs="EPSG:2180")
+        path = tmp_path / "streams.gpkg"
+        gdf.to_file(path, driver="GPKG")
+        return path
+
+    @pytest.fixture()
+    def tmp_streams_outside_gpkg(self, tmp_path):
+        """Create a GeoPackage with a stream outside the DEM extent."""
+        import geopandas as gpd
+        from shapely.geometry import LineString
+
+        line = LineString([(600000, 400000), (600100, 400100)])
+        gdf = gpd.GeoDataFrame({"name": ["Daleka"]}, geometry=[line], crs="EPSG:2180")
+        path = tmp_path / "streams_outside.gpkg"
+        gdf.to_file(path, driver="GPKG")
+        return path
+
+    @pytest.fixture()
+    def tmp_empty_gpkg(self, tmp_path):
+        """Create an empty GeoPackage."""
+        import geopandas as gpd
+
+        gdf = gpd.GeoDataFrame({"name": []}, geometry=[], crs="EPSG:2180")
+        gdf = gdf.set_geometry(gpd.GeoSeries([], crs="EPSG:2180"))
+        path = tmp_path / "empty.gpkg"
+        gdf.to_file(path, driver="GPKG")
+        return path
+
+    def test_burns_stream_cells(self, sample_dem_with_transform, tmp_streams_gpkg):
+        """Stream cells are lowered by burn_depth_m."""
+        dem, transform = sample_dem_with_transform
+        original = dem.copy()
+
+        burned, diag = burn_streams_into_dem(
+            dem, transform, tmp_streams_gpkg, burn_depth_m=5.0, nodata=NODATA
+        )
+
+        assert diag["cells_burned"] > 0
+        # Burned cells should be lower than original
+        lowered = burned < original
+        assert np.any(lowered)
+        # Non-burned valid cells should be unchanged
+        not_lowered_valid = ~lowered & (original != NODATA)
+        np.testing.assert_array_equal(
+            burned[not_lowered_valid], original[not_lowered_valid]
+        )
+
+    def test_preserves_nodata(self, sample_dem_with_transform, tmp_streams_gpkg):
+        """Nodata cells under a stream are not modified."""
+        dem, transform = sample_dem_with_transform
+        # Ensure (0,0) is nodata
+        assert dem[0, 0] == NODATA
+
+        burned, _ = burn_streams_into_dem(
+            dem, transform, tmp_streams_gpkg, burn_depth_m=5.0, nodata=NODATA
+        )
+
+        assert burned[0, 0] == NODATA
+
+    def test_no_intersection_returns_unchanged(
+        self, sample_dem_with_transform, tmp_streams_outside_gpkg
+    ):
+        """Stream outside DEM extent — DEM unchanged, cells_burned=0."""
+        dem, transform = sample_dem_with_transform
+        original = dem.copy()
+
+        burned, diag = burn_streams_into_dem(
+            dem, transform, tmp_streams_outside_gpkg, burn_depth_m=5.0, nodata=NODATA
+        )
+
+        assert diag["cells_burned"] == 0
+        np.testing.assert_array_equal(burned, original)
+
+    def test_custom_burn_depth(self, sample_dem_with_transform, tmp_streams_gpkg):
+        """Custom burn depth is applied correctly."""
+        dem, transform = sample_dem_with_transform
+        original = dem.copy()
+
+        burned, diag = burn_streams_into_dem(
+            dem, transform, tmp_streams_gpkg, burn_depth_m=10.0, nodata=NODATA
+        )
+
+        assert diag["cells_burned"] > 0
+        # Check that burned cells are exactly 10m lower
+        lowered_mask = burned < original
+        diffs = original[lowered_mask] - burned[lowered_mask]
+        np.testing.assert_allclose(diffs, 10.0)
+
+    def test_diagnostics_correct(self, sample_dem_with_transform, tmp_streams_gpkg):
+        """Diagnostics dict contains correct keys and values."""
+        dem, transform = sample_dem_with_transform
+
+        _, diag = burn_streams_into_dem(
+            dem, transform, tmp_streams_gpkg, burn_depth_m=5.0, nodata=NODATA
+        )
+
+        assert "cells_burned" in diag
+        assert "streams_loaded" in diag
+        assert "streams_in_extent" in diag
+        assert diag["streams_loaded"] == 1
+        assert diag["streams_in_extent"] >= 1
+        assert diag["cells_burned"] > 0
+
+    def test_empty_geodataframe(self, sample_dem_with_transform, tmp_empty_gpkg):
+        """Empty GeoPackage — DEM unchanged."""
+        dem, transform = sample_dem_with_transform
+        original = dem.copy()
+
+        burned, diag = burn_streams_into_dem(
+            dem, transform, tmp_empty_gpkg, burn_depth_m=5.0, nodata=NODATA
+        )
+
+        assert diag["cells_burned"] == 0
+        assert diag["streams_loaded"] == 0
+        np.testing.assert_array_equal(burned, original)
