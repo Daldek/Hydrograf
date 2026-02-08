@@ -47,12 +47,15 @@
 **Data:** 2026-02-08
 
 ### Co zrobiono
-- Aktualizacja Kartograf v0.3.1 → v0.4.0:
+- Audyt i commit zmian z przerwanej sesji (integracja Kartograf v0.3.1 → v0.4.0):
   - `requirements.txt` — pin na v0.4.0
   - `download_dem.py` — obsluga `Path | list[Path]` z `download_sheet()` (auto-ekspansja godel)
   - `download_landcover.py`, `prepare_area.py` — aktualizacja wersji w docstrings
   - `KARTOGRAF_INTEGRATION.md` — v3.0, nowe produkty (NMPT, Ortofoto), auto-ekspansja
-- Weryfikacja: 345 testow OK, ruff OK, `kartograf.__version__` = 0.4.0
+- Dodatkowy audyt dokumentacji — poprawiono 2 pominięte pliki:
+  - `IMPLEMENTATION_PROMPT.md` — v0.3.1 → v0.4.0
+  - `scripts/README.md` — v0.2.0/v0.3.0 → v0.4.0 (4 referencje)
+- Commit `9ecb2db` wypchniety na `origin/develop`
 
 ### W trakcie
 - Brak
