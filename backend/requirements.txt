@@ -34,11 +34,12 @@ imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
 # Utilities
 python-dotenv>=1.0.0
 
-# Spatial data download (Kartograf 0.4.0)
+# Spatial data download (Kartograf 0.4.1)
 # - NMT/NMPT: Digital Elevation Models from GUGiK
-# - BDOT10k: Land cover data from GUGiK (12 layers)
+# - BDOT10k: Land cover (12 layers) + hydrography (SWRS, SWKN, SWRM, PTWP)
 # - CORINE: European land cover classification from Copernicus
-kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.4.0
+# - Geometry-based tile selection (find_sheets_for_geometry)
+kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.4.1
 
 # GeoPackage support (for land cover data)
 geopandas>=0.14.2
