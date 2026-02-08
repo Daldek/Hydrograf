@@ -1,7 +1,7 @@
 # Prompt implementacyjny — Hydrograf
 
-**Wersja:** 2.0
-**Data:** 2026-02-07
+**Wersja:** 2.1
+**Data:** 2026-02-08
 **Dla:** Claude Code i inni asystenci AI
 
 ---
