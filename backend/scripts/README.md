@@ -7,9 +7,10 @@ Skrypty do jednorazowego przetwarzania danych wejściowych przed uruchomieniem s
 - Python 3.12+ ze środowiskiem wirtualnym (`backend/.venv`)
 - Uruchomiona baza PostgreSQL/PostGIS
 - Wykonane migracje Alembic
-- [Kartograf 0.4.0](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
+- [Kartograf 0.4.1](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
   - NMT/NMPT: Dane wysokościowe z GUGiK
   - BDOT10k: Dane o pokryciu terenu z GUGiK (12 warstw)
+  - BDOT10k hydro: Dane hydrograficzne z GUGiK (SWRS rzeki, SWKN kanały, SWRM rowy, PTWP wody)
   - CORINE: Europejska klasyfikacja pokrycia terenu z Copernicus
 
 ## Dostępne skrypty
@@ -56,6 +57,7 @@ cd backend
 | `--stream-threshold` | Próg akumulacji dla strumieni | 100 |
 | `--scale` | Skala arkuszy (1:10000, 1:25000, 1:50000, 1:100000) | 1:10000 |
 | `--with-landcover` | Pobierz też dane o pokryciu terenu (BDOT10k) | false |
+| `--with-hydro` | Pobierz też dane hydrograficzne BDOT10k (SWRS, SWKN, SWRM, PTWP) | false |
 | `--landcover-provider` | Źródło danych: bdot10k lub corine | bdot10k |
 | `--keep-downloads` | Zachowaj pobrane pliki .asc | true |
 | `--save-intermediates` | Zapis plików GeoTIFF | false |
@@ -66,10 +68,10 @@ cd backend
 
 ### `download_dem.py` - Pobieranie NMT z GUGiK
 
-Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.4.0).
+Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.4.1).
 **Użyj gdy chcesz tylko pobrać dane bez przetwarzania.**
 
-> **Uwaga:** Kartograf 0.4.0 pobiera dane przez OpenData API w formacie ASC z auto-ekspansją godeł.
+> **Uwaga:** Kartograf 0.4.1 pobiera dane przez OpenData API w formacie ASC z auto-ekspansją godeł.
 > Format nie jest konfigurowalny przy pobieraniu przez godła arkuszy.
 
 **Użycie:**
@@ -229,7 +231,7 @@ Processing complete!
 
 ### `download_landcover.py` - Pobieranie danych o pokryciu terenu
 
-Pobiera dane o pokryciu terenu z BDOT10k (GUGiK) lub CORINE (Copernicus) używając Kartograf 0.4.0.
+Pobiera dane o pokryciu terenu z BDOT10k (GUGiK) lub CORINE (Copernicus) używając Kartograf 0.4.1.
 
 **Użycie:**
 
@@ -262,6 +264,9 @@ cd backend
 | `--godlo` | Godło arkusza mapy | - |
 | `--provider`, `-p` | Źródło: bdot10k lub corine | bdot10k |
 | `--year` | Rok dla CORINE (1990-2018) | 2018 |
+| `--category`, `-c` | Kategoria BDOT10k do pobrania (np. PTLZ, SWRS) | (wszystkie) |
+| `--geometry` | Plik geometrii do filtrowania (GeoJSON/GPKG) | - |
+| `--with-hydro` | Pobierz też dane hydrograficzne (SWRS, SWKN, SWRM, PTWP) | false |
 | `--output`, `-o` | Katalog wyjściowy | `../data/landcover/` |
 
 **Format wyjściowy:** GeoPackage (.gpkg)

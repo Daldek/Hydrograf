@@ -25,7 +25,7 @@ Pracujesz nad **Hydrograf** — hubem hydrologicznym integrujacym FastAPI + Post
 
 **Zaleznosci wlasne (GitHub, branch develop):**
 - Hydrolog v0.5.2 — obliczenia hydrologiczne (SCS-CN, UH, splot)
-- Kartograf v0.4.0 — dane GIS (NMT/NMPT z GUGiK, BDOT10k, SoilGrids, HSG, Ortofotomapa)
+- Kartograf v0.4.1 — dane GIS (NMT/NMPT z GUGiK, BDOT10k, BDOT10k hydro, SoilGrids, HSG, Ortofotomapa)
 - IMGWTools v2.1.0 — dane opadowe IMGW (kwantyle, stacje)
 
 ---

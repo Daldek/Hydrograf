@@ -8,12 +8,13 @@
 
 ## 1. Przegląd
 
-Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.4.0) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
+Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.4.1) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
 
 - **NMT** - Numeryczny Model Terenu z GUGiK
 - **NMPT** - Numeryczny Model Pokrycia Terenu z GUGiK (nowy w v0.4.0)
 - **Ortofotomapa** - Ortofotomapy z GUGiK (nowy w v0.4.0)
 - **BDOT10k** - Dane o pokryciu terenu z GUGiK (12 warstw)
+- **BDOT10k hydro** - Dane hydrograficzne z GUGiK (nowy w v0.4.1)
 - **CORINE** - Europejska klasyfikacja pokrycia terenu z Copernicus (44 klasy)
 
 ### 1.1 Co to jest Kartograf?
@@ -23,8 +24,10 @@ Kartograf to narzędzie Python do:
 - **Pobierania danych NMT/NMPT** z GUGiK przez OpenData/WCS API
 - **Pobierania ortofotomap** z GUGiK (nowy w v0.4.0)
 - **Pobierania danych o pokryciu terenu** z BDOT10k i CORINE
+- **Pobierania danych hydrograficznych** z BDOT10k (nowy w v0.4.1)
 - **Zarządzania hierarchią arkuszy** (od 1:1M do 1:10k)
 - **Auto-ekspansji godeł** — automatyczne rozwijanie godeł grubszych skal do arkuszy 1:10000 (nowy w v0.4.0)
+- **Filtrowania po geometrii** — ograniczanie danych do zadanego zasięgu (nowy w v0.4.1)
 - **Batch download** z retry logic i progress tracking
 
 ### 1.2 Dlaczego integracja?
@@ -334,7 +337,7 @@ provider = GugikProvider()
 manager = DownloadManager(output_dir="./data/nmt/", provider=provider)
 
 for sheet in sheets:
-    # v0.4.0: download_sheet() zwraca Path | list[Path]
+    # v0.4.1: download_sheet() zwraca Path | list[Path]
     result = manager.download_sheet(sheet, skip_existing=True)
     if isinstance(result, list):
         for path in result:
@@ -386,7 +389,7 @@ pytest tests/integration/test_download_dem.py -v --run-network
 
 ---
 
-## 10. Land Cover (Kartograf 0.4.0)
+## 10. Land Cover (Kartograf 0.4.1)
 
 ### 10.1 Dostępne źródła danych
 
@@ -475,11 +478,76 @@ gpkg_path = manager.download_by_godlo("N-34-130-D", year=2018)
 
 ---
 
-## 11. Przyszłe Rozszerzenia
+## 11. BDOT10k Hydro (Kartograf 0.4.1)
+
+### 11.1 Kategorie hydrograficzne
+
+Kartograf 0.4.1 dodaje obsługę kategorii hydrograficznych z BDOT10k, umożliwiając pobieranie danych o sieci wodnej.
+
+| Kod BDOT10k | Opis | Typ geometrii |
+|-------------|------|---------------|
+| **SWRS** | Rzeki i strumienie | LineString |
+| **SWKN** | Kanały | LineString |
+| **SWRM** | Rowy melioracyjne | LineString |
+| **PTWP** | Wody powierzchniowe (jeziora, stawy) | Polygon |
+
+### 11.2 Użycie w skryptach
+
+**Pobieranie danych hydrograficznych:**
+
+```bash
+# Pobieranie kategorii hydro osobno
+.venv/bin/python -m scripts.download_landcover \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5 \
+    --category SWRS
+
+# Pobieranie wszystkich kategorii hydro
+.venv/bin/python -m scripts.download_landcover \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5 \
+    --with-hydro
+
+# Pipeline z danymi hydro (do stream burning)
+.venv/bin/python -m scripts.prepare_area \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5 \
+    --with-hydro
+```
+
+### 11.3 Filtrowanie po geometrii
+
+Kartograf 0.4.1 umożliwia ograniczenie pobieranych danych do zadanego zasięgu przestrzennego:
+
+```bash
+# Pobieranie NMT ograniczone do geometrii zlewni
+.venv/bin/python -m scripts.download_dem \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5 \
+    --geometry ../data/watershed_boundary.geojson
+
+# Pobieranie land cover z geometrią
+.venv/bin/python -m scripts.download_landcover \
+    --lat 52.23 --lon 21.01 \
+    --geometry ../data/watershed_boundary.gpkg
+```
+
+### 11.4 Zastosowanie w Hydrograf
+
+Dane hydrograficzne z BDOT10k służą do:
+- **Stream burning** — wypalanie cieków w NMT dla lepszego odwzorowania kierunków przepływu
+- **Walidacja sieci rzecznej** — porównanie wygenerowanej sieci z danymi referencyjnymi BDOT10k
+- **Uzupełnienie informacji** — nazwy cieków, klasyfikacja (rzeka/kanał/rów)
+
+---
+
+## 12. Przyszłe Rozszerzenia
 
 - [x] **Land Cover** - pobieranie BDOT10k i CORINE (Kartograf 0.3.0)
 - [x] **Auto-ekspansja godeł** - automatyczne rozwijanie godeł grubszych skal (Kartograf 0.4.0)
 - [x] **Progress callback** - `on_progress` w `download_sheet()` (Kartograf 0.4.0)
+- [x] **BDOT10k hydro** - kategorie hydrograficzne SWRS, SWKN, SWRM, PTWP (Kartograf 0.4.1)
+- [x] **Geometry file selection** - filtrowanie danych po pliku geometrii (Kartograf 0.4.1)
 - [ ] **NMPT integration** - wykorzystanie NMPT w analizach (dostępny od Kartograf 0.4.0)
 - [ ] **Cache lokalny** - unikanie ponownego pobierania
 - [ ] **Parallel download** - równoległe pobieranie wielu arkuszy

@@ -177,7 +177,7 @@ Scope: `api`, `core`, `db`, `frontend`, `tests`, `docs`, `docker`
 
 ### Zaleznosci zewnetrzne (biblioteki wlasne)
 - **Hydrolog** v0.5.2 — obliczenia hydrologiczne (SCS-CN, hydrogramy, morfometria)
-- **Kartograf** v0.4.0 — pobieranie danych GIS (NMT z GUGiK, Land Cover, SoilGrids)
+- **Kartograf** v0.4.1 — pobieranie danych GIS (NMT z GUGiK, Land Cover, SoilGrids, BDOT10k hydro)
 - **IMGWTools** v2.1.0 — dane obserwacyjne IMGW (opady projektowe)
 
 Wszystkie trzy dostepne z GitHub (branch develop), nie z PyPI.
