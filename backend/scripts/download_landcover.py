@@ -223,7 +223,7 @@ def download_landcover(
 def main():
     """Main entry point for land cover download script."""
     parser = argparse.ArgumentParser(
-        description="Download land cover data from GUGiK (BDOT10k) or Copernicus (CORINE)",
+        description="Download land cover data from GUGiK/Copernicus",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -272,7 +272,7 @@ def main():
         type=str,
         default="pt",
         choices=["pt", "hydro"],
-        help="BDOT10k category: 'pt' (land cover) or 'hydro' (hydrography) (default: pt)",
+        help="BDOT10k category: 'pt' (land cover) or 'hydro' (default: pt)",
     )
     provider_group.add_argument(
         "--year",

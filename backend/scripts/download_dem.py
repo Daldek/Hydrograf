@@ -8,7 +8,8 @@ Uses Kartograf 0.4.1+ library for OpenData/WCS API communication with GUGiK serv
 Note: Kartograf 0.4.1 API:
 - download_sheet(godlo) -> returns Path | list[Path] (auto-expansion for coarse scales)
 - download_bbox(bbox, filename, format) -> returns GeoTIFF/PNG/JPEG via WCS
-- find_sheets_for_geometry(filepath, target_scale) -> precise tile selection from SHP/GPKG
+- find_sheets_for_geometry(filepath, target_scale) -> tile selection
+  from SHP/GPKG
 
 Usage
 -----
