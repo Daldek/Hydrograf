@@ -1,12 +1,14 @@
 """
 Script to download DEM (Digital Elevation Model) data from GUGiK using Kartograf.
 
-Downloads NMT data for a specified area (point + buffer) or list of sheet codes.
-Uses Kartograf 0.4.0+ library for OpenData/WCS API communication with GUGiK servers.
+Downloads NMT data for a specified area (point + buffer), list of sheet codes,
+or geometry file (SHP/GPKG).
+Uses Kartograf 0.4.1+ library for OpenData/WCS API communication with GUGiK servers.
 
-Note: Kartograf 0.4.0 API:
-- download_sheet(godło) -> returns Path | list[Path] (auto-expansion for coarse scales)
+Note: Kartograf 0.4.1 API:
+- download_sheet(godlo) -> returns Path | list[Path] (auto-expansion for coarse scales)
 - download_bbox(bbox, filename, format) -> returns GeoTIFF/PNG/JPEG via WCS
+- find_sheets_for_geometry(filepath, target_scale) -> precise tile selection from SHP/GPKG
 
 Usage
 -----
@@ -25,6 +27,11 @@ Examples
     # Download specific sheets
     python -m scripts.download_dem \\
         --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \\
+        --output ../data/nmt/
+
+    # Download tiles covering a geometry file
+    python -m scripts.download_dem \\
+        --geometry ../data/boundary.gpkg \\
         --output ../data/nmt/
 """
 
@@ -51,13 +58,13 @@ def download_sheets(
     """
     Download NMT data for specified sheet codes using Kartograf.
 
-    In Kartograf 0.4.0+, download_sheet() returns ASC format via OpenData.
+    In Kartograf 0.4.1+, download_sheet() returns ASC format via OpenData.
     Returns Path for 1:10000 sheets, or list[Path] for coarser scales (auto-expansion).
 
     Parameters
     ----------
     sheets : List[str]
-        List of sheet codes (godła) to download
+        List of sheet codes (godla) to download
     output_dir : Path
         Output directory for downloaded files
     skip_existing : bool
@@ -78,14 +85,14 @@ def download_sheets(
     except ImportError as e:
         logger.error(
             "Kartograf not installed. Install with: "
-            "pip install git+https://github.com/Daldek/Kartograf.git"
+            "pip install git+https://github.com/Daldek/Kartograf.git@v0.4.1"
         )
         raise ImportError("Kartograf library not found") from e
 
     # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize Kartograf components (Kartograf 0.4.0 API)
+    # Initialize Kartograf components (Kartograf 0.4.1 API)
     provider = GugikProvider()
     manager = DownloadManager(output_dir=str(output_dir), provider=provider)
 
@@ -99,7 +106,7 @@ def download_sheets(
         logger.info(f"[{i}/{len(sheets)}] Downloading {sheet}...")
 
         try:
-            # Download using Kartograf (v0.4.0: returns Path | list[Path])
+            # Download using Kartograf (returns Path | list[Path])
             result = manager.download_sheet(sheet, skip_existing=skip_existing)
             if result:
                 if isinstance(result, list):
@@ -181,10 +188,62 @@ def download_for_point(
     return download_sheets(sheets, output_dir, skip_existing=skip_existing)
 
 
+def download_for_geometry(
+    geometry_path: Path,
+    output_dir: Path,
+    scale: str = "1:10000",
+    layer: str | None = None,
+    skip_existing: bool = True,
+) -> list[Path]:
+    """
+    Download NMT data for area covered by a geometry file (SHP/GPKG).
+
+    Uses Kartograf's find_sheets_for_geometry() for precise tile selection
+    based on per-feature bounding boxes (more efficient than overall bbox).
+
+    Parameters
+    ----------
+    geometry_path : Path
+        Path to SHP or GPKG file with geometries
+    output_dir : Path
+        Output directory
+    scale : str
+        Map scale (default "1:10000")
+    layer : str, optional
+        Layer name in GPKG file (default: first layer)
+    skip_existing : bool
+        Skip download if file already exists (default: True)
+
+    Returns
+    -------
+    List[Path]
+        List of downloaded file paths
+    """
+    from kartograf import find_sheets_for_geometry
+
+    logger.info(f"Finding sheets for geometry: {geometry_path}")
+    if layer:
+        logger.info(f"Layer: {layer}")
+
+    sheets = find_sheets_for_geometry(
+        str(geometry_path), target_scale=scale, layer=layer
+    )
+
+    logger.info(f"Found {len(sheets)} sheets for geometry:")
+    for sheet in sheets:
+        logger.info(f"  {sheet}")
+
+    if not sheets:
+        logger.warning("No sheets found for geometry")
+        return []
+
+    return download_sheets(sheets, output_dir, skip_existing=skip_existing)
+
+
 def main():
     """Main entry point for DEM download script."""
     parser = argparse.ArgumentParser(
-        description="Download NMT data from GUGiK using Kartograf 0.4.0+",
+        description="Download NMT data from GUGiK using Kartograf 0.4.1+",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -211,6 +270,17 @@ def main():
         "--sheets",
         nargs="+",
         help="List of sheet codes to download (e.g., N-34-131-C-c-2-1)",
+    )
+    location_group.add_argument(
+        "--geometry",
+        type=str,
+        help="Path to SHP/GPKG file for tile selection (alternative to --lat/--lon)",
+    )
+    location_group.add_argument(
+        "--layer",
+        type=str,
+        default=None,
+        help="Layer name in GPKG file (default: first layer)",
     )
 
     # Output options
@@ -244,13 +314,15 @@ def main():
 
     args = parser.parse_args()
 
-    # Validate arguments
+    # Validate arguments and determine sheets
+    sheets = None
     if args.sheets:
-        # Download specific sheets
         sheets = args.sheets
+    elif args.geometry:
+        if not Path(args.geometry).exists():
+            parser.error(f"Geometry file not found: {args.geometry}")
+        # Sheets will be determined via find_sheets_for_geometry
     elif args.lat is not None and args.lon is not None:
-        # Download for point
-        # Import sheet finder
         try:
             from utils.sheet_finder import get_sheets_for_point_with_buffer
         except ImportError:
@@ -261,7 +333,9 @@ def main():
             args.lat, args.lon, args.buffer, args.scale
         )
     else:
-        parser.error("Either --sheets or both --lat and --lon are required")
+        parser.error(
+            "Either --sheets, --geometry, or both --lat and --lon are required"
+        )
         return
 
     output_dir = Path(args.output)
@@ -269,17 +343,22 @@ def main():
 
     # Log configuration
     logger.info("=" * 60)
-    logger.info("NMT Download Script (using Kartograf 0.4.0)")
+    logger.info("NMT Download Script (using Kartograf 0.4.1)")
     logger.info("=" * 60)
 
-    if args.lat is not None:
+    if args.geometry:
+        logger.info(f"Geometry: {args.geometry}")
+        if args.layer:
+            logger.info(f"Layer: {args.layer}")
+    elif args.lat is not None:
         logger.info(f"Point: ({args.lat}, {args.lon})")
         logger.info(f"Buffer: {args.buffer} km")
-        logger.info(f"Scale: {args.scale}")
 
-    logger.info(f"Sheets to download: {len(sheets)}")
-    for sheet in sheets:
-        logger.info(f"  {sheet}")
+    logger.info(f"Scale: {args.scale}")
+    if sheets:
+        logger.info(f"Sheets to download: {len(sheets)}")
+        for sheet in sheets:
+            logger.info(f"  {sheet}")
 
     logger.info(f"Output: {output_dir}")
     logger.info("Format: ASC (OpenData)")
@@ -287,18 +366,38 @@ def main():
     logger.info("=" * 60)
 
     if args.dry_run:
-        logger.info("DRY RUN - no files will be downloaded")
+        if args.geometry and sheets is None:
+            # Need to resolve sheets for dry run display
+            from kartograf import find_sheets_for_geometry
+
+            sheets = find_sheets_for_geometry(
+                args.geometry, target_scale=args.scale, layer=args.layer
+            )
+            logger.info(f"DRY RUN - would download {len(sheets)} sheets:")
+            for sheet in sheets:
+                logger.info(f"  {sheet}")
+        else:
+            logger.info("DRY RUN - no files will be downloaded")
         return
 
     # Download
     start_time = time.time()
 
     try:
-        downloaded = download_sheets(
-            sheets,
-            output_dir,
-            skip_existing=skip_existing,
-        )
+        if args.geometry:
+            downloaded = download_for_geometry(
+                geometry_path=Path(args.geometry),
+                output_dir=output_dir,
+                scale=args.scale,
+                layer=args.layer,
+                skip_existing=skip_existing,
+            )
+        else:
+            downloaded = download_sheets(
+                sheets,
+                output_dir,
+                skip_existing=skip_existing,
+            )
     except ImportError as e:
         logger.error(str(e))
         sys.exit(1)
