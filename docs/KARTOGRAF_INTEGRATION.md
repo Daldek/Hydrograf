@@ -1,16 +1,18 @@
 # Integracja z Kartografem
 
-**Wersja:** 2.0
-**Data:** 2026-01-18
+**Wersja:** 3.0
+**Data:** 2026-02-08
 **Status:** Aktywna
 
 ---
 
 ## 1. Przegląd
 
-Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.3.0+) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
+Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.4.0) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
 
-- **NMT/NMPT** - Numeryczny Model Terenu z GUGiK
+- **NMT** - Numeryczny Model Terenu z GUGiK
+- **NMPT** - Numeryczny Model Pokrycia Terenu z GUGiK (nowy w v0.4.0)
+- **Ortofotomapa** - Ortofotomapy z GUGiK (nowy w v0.4.0)
 - **BDOT10k** - Dane o pokryciu terenu z GUGiK (12 warstw)
 - **CORINE** - Europejska klasyfikacja pokrycia terenu z Copernicus (44 klasy)
 
@@ -18,9 +20,11 @@ Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.3.0+
 
 Kartograf to narzędzie Python do:
 - **Parsowania godeł** arkuszy map topograficznych (układ 1992 i 2000)
-- **Pobierania danych NMT** z GUGiK przez OpenData/WCS API
+- **Pobierania danych NMT/NMPT** z GUGiK przez OpenData/WCS API
+- **Pobierania ortofotomap** z GUGiK (nowy w v0.4.0)
 - **Pobierania danych o pokryciu terenu** z BDOT10k i CORINE
 - **Zarządzania hierarchią arkuszy** (od 1:1M do 1:10k)
+- **Auto-ekspansji godeł** — automatyczne rozwijanie godeł grubszych skal do arkuszy 1:10000 (nowy w v0.4.0)
 - **Batch download** z retry logic i progress tracking
 
 ### 1.2 Dlaczego integracja?
@@ -327,11 +331,16 @@ sheets = get_sheets_for_point_with_buffer(52.23, 21.01, buffer_km=5)
 
 # Pobierz dane
 provider = GugikProvider()
-manager = DownloadManager(provider, output_dir="./data/nmt/")
+manager = DownloadManager(output_dir="./data/nmt/", provider=provider)
 
 for sheet in sheets:
-    path = manager.download(sheet, format="AAIGrid")
-    print(f"Pobrano: {path}")
+    # v0.4.0: download_sheet() zwraca Path | list[Path]
+    result = manager.download_sheet(sheet, skip_existing=True)
+    if isinstance(result, list):
+        for path in result:
+            print(f"Pobrano: {path}")
+    elif result:
+        print(f"Pobrano: {result}")
 ```
 
 ---
@@ -377,7 +386,7 @@ pytest tests/integration/test_download_dem.py -v --run-network
 
 ---
 
-## 10. Land Cover (Kartograf 0.3.0+)
+## 10. Land Cover (Kartograf 0.4.0)
 
 ### 10.1 Dostępne źródła danych
 
@@ -450,18 +459,18 @@ from kartograf import BBox
 manager = LandCoverManager(output_dir="./data/landcover")
 
 # Pobieranie przez godło arkusza
-gpkg_path = manager.download(godlo="N-34-131-C-c-2-1")
+gpkg_path = manager.download_by_godlo("N-34-131-C-c-2-1")
 
 # Pobieranie przez bounding box (EPSG:2180)
 bbox = BBox(450000, 550000, 460000, 560000, "EPSG:2180")
-gpkg_path = manager.download(bbox=bbox)
+gpkg_path = manager.download_by_bbox(bbox)
 
 # Pobieranie przez TERYT powiatu
-gpkg_path = manager.download(teryt="1465")
+gpkg_path = manager.download_by_teryt("1465")
 
 # Zmiana na CORINE Land Cover
-manager.set_provider("corine")
-gpkg_path = manager.download(godlo="N-34-130-D", year=2018)
+manager = LandCoverManager(output_dir="./data/landcover", provider="corine")
+gpkg_path = manager.download_by_godlo("N-34-130-D", year=2018)
 ```
 
 ---
@@ -469,13 +478,15 @@ gpkg_path = manager.download(godlo="N-34-130-D", year=2018)
 ## 11. Przyszłe Rozszerzenia
 
 - [x] **Land Cover** - pobieranie BDOT10k i CORINE (Kartograf 0.3.0)
+- [x] **Auto-ekspansja godeł** - automatyczne rozwijanie godeł grubszych skal (Kartograf 0.4.0)
+- [x] **Progress callback** - `on_progress` w `download_sheet()` (Kartograf 0.4.0)
+- [ ] **NMPT integration** - wykorzystanie NMPT w analizach (dostępny od Kartograf 0.4.0)
 - [ ] **Cache lokalny** - unikanie ponownego pobierania
-- [ ] **Progress bar** - wizualizacja postępu pobierania
 - [ ] **Parallel download** - równoległe pobieranie wielu arkuszy
 - [ ] **API endpoint** - `/api/prepare-area` dla pobierania on-demand
 - [ ] **Automatyczne łączenie** - merge wielu arkuszy w jeden raster
 
 ---
 
-**Wersja dokumentu:** 2.0
-**Ostatnia aktualizacja:** 2026-01-18
+**Wersja dokumentu:** 3.0
+**Ostatnia aktualizacja:** 2026-02-08

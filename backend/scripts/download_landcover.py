@@ -1,7 +1,7 @@
 """
 Script to download land cover data from GUGiK (BDOT10k) or Copernicus (CORINE).
 
-Downloads land cover data for a specified area using Kartograf 0.3.0+ library.
+Downloads land cover data for a specified area using Kartograf 0.4.0+ library.
 Supports downloading by:
 - Point + buffer (finds TERYT code for the area)
 - Sheet code (godło)
@@ -104,8 +104,8 @@ def download_landcover(
         from kartograf.landcover import LandCoverManager
     except ImportError as e:
         logger.error(
-            "Kartograf 0.3.0+ not installed. Install with: "
-            "pip install git+https://github.com/Daldek/Kartograf.git@main"
+            "Kartograf 0.4.0+ not installed. Install with: "
+            "pip install git+https://github.com/Daldek/Kartograf.git@v0.4.0"
         )
         raise ImportError("Kartograf library not found or version too old") from e
 
@@ -283,7 +283,7 @@ def main():
 
     # Log configuration
     logger.info("=" * 60)
-    logger.info("Land Cover Download Script (Kartograf 0.3.0)")
+    logger.info("Land Cover Download Script (Kartograf 0.4.0)")
     logger.info("=" * 60)
     logger.info(f"Provider: {args.provider.upper()}")
 

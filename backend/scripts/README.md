@@ -7,7 +7,7 @@ Skrypty do jednorazowego przetwarzania danych wejściowych przed uruchomieniem s
 - Python 3.12+ ze środowiskiem wirtualnym (`backend/.venv`)
 - Uruchomiona baza PostgreSQL/PostGIS
 - Wykonane migracje Alembic
-- [Kartograf 0.3.0+](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
+- [Kartograf 0.4.0](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
   - NMT/NMPT: Dane wysokościowe z GUGiK
   - BDOT10k: Dane o pokryciu terenu z GUGiK (12 warstw)
   - CORINE: Europejska klasyfikacja pokrycia terenu z Copernicus
@@ -66,10 +66,10 @@ cd backend
 
 ### `download_dem.py` - Pobieranie NMT z GUGiK
 
-Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.2.0+).
+Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.4.0).
 **Użyj gdy chcesz tylko pobrać dane bez przetwarzania.**
 
-> **Uwaga:** Kartograf 0.2.0 pobiera dane przez OpenData API w formacie ASC.
+> **Uwaga:** Kartograf 0.4.0 pobiera dane przez OpenData API w formacie ASC z auto-ekspansją godeł.
 > Format nie jest konfigurowalny przy pobieraniu przez godła arkuszy.
 
 **Użycie:**
@@ -229,7 +229,7 @@ Processing complete!
 
 ### `download_landcover.py` - Pobieranie danych o pokryciu terenu
 
-Pobiera dane o pokryciu terenu z BDOT10k (GUGiK) lub CORINE (Copernicus) używając Kartograf 0.3.0+.
+Pobiera dane o pokryciu terenu z BDOT10k (GUGiK) lub CORINE (Copernicus) używając Kartograf 0.4.0.
 
 **Użycie:**
 

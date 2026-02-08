@@ -10,7 +10,7 @@
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir + COPY (3.8 min/arkusz), stream burning |
 | Integracja Hydrolog | ✅ Gotowy | v0.5.2 |
-| Integracja Kartograf | ✅ Gotowy | v0.3.1 (NMT, Land Cover, HSG) |
+| Integracja Kartograf | ✅ Gotowy | v0.4.0 (NMT, NMPT, Orto, Land Cover, HSG) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | ⏳ Zaplanowany | CP4 — mapa Leaflet.js |
@@ -44,33 +44,22 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-07
+**Data:** 2026-02-08
 
 ### Co zrobiono
-- Audyt dokumentacji — 7 plikow poprawionych (ARCHITECTURE, DATA_MODEL, SCOPE, README, scripts/README, TECHNICAL_DEBT, QA_REPORT)
-- E2E re-run pipeline N-33-131-C-b-2-3 z nowymi warstwami (07, 08, 09):
-  - **Wyniki:** `data/results/` — 9 warstw GeoTIFF (01-09)
-  - **Czas:** 198s (3.3 min), 4,917,888 komorek, max_acc=1,823,073
-  - **Strahler:** max rzad 8, 490,130 komorek z rzedem
-  - **Wektoryzacja:** 19,005 segmentow (641.6 km) w `stream_network`
-  - **3 bugi naprawione** (ST_GeoHash WGS84, strahler floor, duplikaty geohash)
-- Rozszerzenie analiz rastrowych i parametrow morfometrycznych (ADR-014)
-- Rozpoznanie integracji z Kartografem v0.4.0 (rozpoczete, niezakonczone)
-- **11 commitow** na galezi `develop`, 345 testow OK
+- Aktualizacja Kartograf v0.3.1 → v0.4.0:
+  - `requirements.txt` — pin na v0.4.0
+  - `download_dem.py` — obsluga `Path | list[Path]` z `download_sheet()` (auto-ekspansja godel)
+  - `download_landcover.py`, `prepare_area.py` — aktualizacja wersji w docstrings
+  - `KARTOGRAF_INTEGRATION.md` — v3.0, nowe produkty (NMPT, Ortofoto), auto-ekspansja
+- Weryfikacja: 345 testow OK, ruff OK, `kartograf.__version__` = 0.4.0
 
 ### W trakcie
-- Integracja z Kartografem v0.4.0 — przeprowadzono pelna analize obecnych punktow integracji:
-  - `requirements.txt` — pin na v0.3.1
-  - `core/cn_calculator.py` — BBox, HSGCalculator, LandCoverManager
-  - `scripts/download_dem.py` — DownloadManager, GugikProvider
-  - `scripts/download_landcover.py` — LandCoverManager
-  - `scripts/prepare_area.py` — pipeline orchestrator
-  - Nie zbadano jeszcze co dokladnie zmienilo sie w Kartograf v0.4.0
+- Brak
 
 ### Nastepne kroki
-1. **Kartograf v0.4.0** — zbadac zmiany w nowej wersji, zaplanowac i wdrozyc aktualizacje
-2. CP4 — frontend z mapa Leaflet.js
-3. Dlug techniczny: constants.py, hardcoded secrets
+1. CP4 — frontend z mapa Leaflet.js
+2. Dlug techniczny: constants.py, hardcoded secrets
 
 ## Backlog
 

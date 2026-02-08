@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Aktualizacja Kartograf v0.3.1 → v0.4.0 (nowe produkty: NMPT, Ortofotomapa, auto-ekspansja godel)
+- `download_dem.py`: obsluga `Path | list[Path]` z `download_sheet()` (auto-ekspansja godel grubszych skal)
+
 ### Added
 - Wypalanie ciekow BDOT10k w DEM (`--burn-streams`) — obnizenie DEM wzdluz znanych ciekow przed analiza hydrologiczna (ADR-013)
 - 6 nowych testow jednostkowych dla `burn_streams_into_dem()`
