@@ -25,7 +25,7 @@ Pracujesz nad **Hydrograf** — hubem hydrologicznym integrujacym FastAPI + Post
 
 **Zaleznosci wlasne (GitHub, branch develop):**
 - Hydrolog v0.5.2 — obliczenia hydrologiczne (SCS-CN, UH, splot)
-- Kartograf v0.3.1 — dane GIS (NMT z GUGiK, BDOT10k, SoilGrids, HSG)
+- Kartograf v0.4.0 — dane GIS (NMT/NMPT z GUGiK, BDOT10k, SoilGrids, HSG, Ortofotomapa)
 - IMGWTools v2.1.0 — dane opadowe IMGW (kwantyle, stacje)
 
 ---
@@ -302,7 +302,7 @@ manager.download_hierarchy("N-34-130-D", target_scale="1:10000")
 lc = LandCoverManager(output_dir="./data/landcover")
 lc.download(teryt="1465")
 
-# HSG (nowe w v0.3.1 — integracja z cn_calculator.py)
+# HSG (integracja z cn_calculator.py)
 hsg = HSGCalculator()
 hsg_path = hsg.calculate_hsg_by_godlo("N-34-130-D")
 ```

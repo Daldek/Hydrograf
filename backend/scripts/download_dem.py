@@ -2,10 +2,10 @@
 Script to download DEM (Digital Elevation Model) data from GUGiK using Kartograf.
 
 Downloads NMT data for a specified area (point + buffer) or list of sheet codes.
-Uses Kartograf 0.2.0+ library for OpenData/WCS API communication with GUGiK servers.
+Uses Kartograf 0.4.0+ library for OpenData/WCS API communication with GUGiK servers.
 
-Note: Kartograf 0.2.0 changed the download API:
-- download_sheet(godło) -> always returns ASC format via OpenData
+Note: Kartograf 0.4.0 API:
+- download_sheet(godło) -> returns Path | list[Path] (auto-expansion for coarse scales)
 - download_bbox(bbox, filename, format) -> returns GeoTIFF/PNG/JPEG via WCS
 
 Usage
@@ -51,7 +51,8 @@ def download_sheets(
     """
     Download NMT data for specified sheet codes using Kartograf.
 
-    In Kartograf 0.2.0+, download_sheet() always returns ASC format via OpenData.
+    In Kartograf 0.4.0+, download_sheet() returns ASC format via OpenData.
+    Returns Path for 1:10000 sheets, or list[Path] for coarser scales (auto-expansion).
 
     Parameters
     ----------
@@ -84,7 +85,7 @@ def download_sheets(
     # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize Kartograf components (Kartograf 0.2.0 API)
+    # Initialize Kartograf components (Kartograf 0.4.0 API)
     provider = GugikProvider()
     manager = DownloadManager(output_dir=str(output_dir), provider=provider)
 
@@ -98,11 +99,15 @@ def download_sheets(
         logger.info(f"[{i}/{len(sheets)}] Downloading {sheet}...")
 
         try:
-            # Download using Kartograf (always ASC in 0.2.0+)
-            file_path = manager.download_sheet(sheet, skip_existing=skip_existing)
-            if file_path:
-                downloaded_files.append(Path(file_path))
-                logger.info(f"  OK: {file_path}")
+            # Download using Kartograf (v0.4.0: returns Path | list[Path])
+            result = manager.download_sheet(sheet, skip_existing=skip_existing)
+            if result:
+                if isinstance(result, list):
+                    downloaded_files.extend(Path(p) for p in result)
+                    logger.info(f"  OK: {sheet} → {len(result)} files (auto-expanded)")
+                else:
+                    downloaded_files.append(Path(result))
+                    logger.info(f"  OK: {result}")
             else:
                 logger.warning(f"  FAILED: {sheet} - no file returned")
                 failed_sheets.append(sheet)
@@ -179,7 +184,7 @@ def download_for_point(
 def main():
     """Main entry point for DEM download script."""
     parser = argparse.ArgumentParser(
-        description="Download NMT data from GUGiK using Kartograf 0.2.0+",
+        description="Download NMT data from GUGiK using Kartograf 0.4.0+",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -264,7 +269,7 @@ def main():
 
     # Log configuration
     logger.info("=" * 60)
-    logger.info("NMT Download Script (using Kartograf 0.2.0)")
+    logger.info("NMT Download Script (using Kartograf 0.4.0)")
     logger.info("=" * 60)
 
     if args.lat is not None:
