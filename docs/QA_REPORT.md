@@ -80,7 +80,7 @@ Total: 52% (2933 statements, 1411 missed)
 | black | 25.12.0 | 26.1.0 | ✅ Do aktualizacji |
 | numpy | 2.3.5 | 2.4.1 | ⚠️ Blokuje numba <2.4 |
 
-**Uwaga:** Kartograf (0.3.0) jest dostępny **tylko z GitHub** (https://github.com/Daldek/Kartograf), nie z PyPI.
+**Uwaga:** Kartograf (0.4.1) jest dostępny **tylko z GitHub** (https://github.com/Daldek/Kartograf), nie z PyPI.
 
 ---
 
