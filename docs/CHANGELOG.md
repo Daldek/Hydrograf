@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Ochrona przed resource exhaustion (OOM) w `traverse_upstream()` (ADR-015):
+  - Pre-flight check (`check_watershed_size()`) — odrzuca zlewnie >2M komorek przed CTE (<1ms)
+  - LIMIT w rekurencyjnym CTE — ogranicza wyniki SQL jako safety net
+  - `statement_timeout=30s` w polaczeniach z baza (30s API, 600s skrypty CLI)
+  - Docker resource limits: db=2G, api=1G, PostgreSQL tuning (shared_buffers=512MB)
+- `MAX_CELLS_DEFAULT` zmniejszony z 10M do 2M (bezpieczne dla 15 GB RAM)
+
 ### Changed
 - Aktualizacja Kartograf v0.4.0 → v0.4.1 (BDOT10k hydro, geometry selection, rtree fix)
 - Aktualizacja Kartograf v0.3.1 → v0.4.0 (nowe produkty: NMPT, Ortofotomapa, auto-ekspansja godel)

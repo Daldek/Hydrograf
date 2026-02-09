@@ -47,24 +47,25 @@
 **Data:** 2026-02-09
 
 ### Co zrobiono
-- Domkniecie sesji Kartograf v0.4.1 (Tasks 10–11):
-  - Zaktualizowano PROGRESS.md i CHANGELOG.md (wersja Kartograf, wyniki E2E, awaria Task 9)
-  - Raport sesji: `docs/plans/2026-02-08-kartograf-v041-report.md` — root cause analysis + prevention
-  - 2 commity: `2eacfd2`, `860a610`
-- Sesja wlasciwa (2026-02-08): upgrade Kartograf v0.4.0 → v0.4.1, 6 commitow, E2E Tasks 7–8 OK, Task 9 FAILED
-- Pelny raport: `docs/plans/2026-02-08-kartograf-v041-report.md`
+- Ochrona przed resource exhaustion (OOM) — ADR-015:
+  - `check_watershed_size()` — pre-flight check, odrzuca zlewnie >2M komorek (<1ms)
+  - LIMIT w rekurencyjnym CTE — safety net na poziomie SQL
+  - `statement_timeout=30s` w polaczeniach z baza (600s dla skryptow CLI)
+  - Docker resource limits: db=2G, api=1G, PostgreSQL tuning (shared_buffers=512MB)
+  - 6 nowych testow jednostkowych, update mockow w testach integracyjnych
+  - 5 commitow, 351 testow pass, ruff clean
+- Poprzednia sesja: domkniecie Kartograf v0.4.1 + E2E raport
 
 ### W trakcie
 - Brak
 
 ### Nastepne kroki
-1. Fix traverse_upstream — zabezpieczenia przed resource exhaustion (statement_timeout, pre-flight check, LIMIT w CTE, konfiguracja zasobow Docker)
-2. CP4 — frontend z mapa Leaflet.js
-3. Dlug techniczny: constants.py, hardcoded secrets
+1. CP4 — frontend z mapa Leaflet.js
+2. Dlug techniczny: constants.py, hardcoded secrets
 
 ## Backlog
 
-- [ ] Fix traverse_upstream resource exhaustion (CTE LIMIT, statement_timeout, pre-flight acc check, Docker resource config)
+- [x] Fix traverse_upstream resource exhaustion (ADR-015: pre-flight check, CTE LIMIT, statement_timeout, Docker limits)
 - [ ] CP4: Frontend z mapa (Leaflet.js + Chart.js)
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
