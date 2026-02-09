@@ -278,12 +278,16 @@
     }
 
     /**
-     * Build layers panel entries with checkboxes.
+     * Add a layer entry to the layers panel.
+     *
+     * @param {HTMLElement} list - Parent list element
+     * @param {string} label - Display label
+     * @param {Function} getLayer - Returns L.ImageOverlay or null
+     * @param {Function} fitBounds - Zoom to layer extent
+     * @param {Function} setOpacity - Set layer opacity (0–1)
+     * @param {number} defaultTransparency - Default transparency % (0=opaque, 100=invisible)
      */
-    function initLayersPanel() {
-        var list = document.getElementById('layers-list');
-
-        // Layer item container
+    function addLayerEntry(list, label, getLayer, fitBounds, setOpacity, defaultTransparency) {
         var item = document.createElement('div');
         item.className = 'layer-item';
 
@@ -292,13 +296,13 @@
         headerRow.className = 'layer-header';
         var cb = document.createElement('input');
         cb.type = 'checkbox';
-        var text = document.createTextNode(' NMT (wysokości)');
+        var text = document.createTextNode(' ' + label);
         var zoomBtn = document.createElement('button');
         zoomBtn.className = 'layer-zoom-btn';
         zoomBtn.title = 'Przybliż do zasięgu warstwy';
         zoomBtn.textContent = '\u2316';
         zoomBtn.addEventListener('click', function () {
-            Hydrograf.map.fitDemBounds();
+            fitBounds();
         });
         headerRow.appendChild(cb);
         headerRow.appendChild(text);
@@ -314,13 +318,13 @@
         slider.type = 'range';
         slider.min = '0';
         slider.max = '100';
-        slider.value = '30';
+        slider.value = String(defaultTransparency);
         var sliderValue = document.createElement('span');
         sliderValue.className = 'layer-opacity-val';
-        sliderValue.textContent = '30%';
+        sliderValue.textContent = defaultTransparency + '%';
         slider.addEventListener('input', function () {
             var opacity = (100 - slider.value) / 100;
-            Hydrograf.map.setDemOpacity(opacity);
+            setOpacity(opacity);
             sliderValue.textContent = slider.value + '%';
         });
         sliderRow.appendChild(sliderLabel);
@@ -330,7 +334,7 @@
 
         // Checkbox toggle
         cb.addEventListener('change', function () {
-            var layer = Hydrograf.map.getDemLayer();
+            var layer = getLayer();
             if (!layer) return;
             if (cb.checked) {
                 layer.addTo(Hydrograf.map._getMap());
@@ -342,6 +346,31 @@
         });
 
         list.appendChild(item);
+    }
+
+    /**
+     * Build layers panel entries with checkboxes.
+     */
+    function initLayersPanel() {
+        var list = document.getElementById('layers-list');
+
+        addLayerEntry(
+            list,
+            'NMT (wysokości)',
+            Hydrograf.map.getDemLayer,
+            Hydrograf.map.fitDemBounds,
+            Hydrograf.map.setDemOpacity,
+            30
+        );
+
+        addLayerEntry(
+            list,
+            'Cieki (Strahler)',
+            Hydrograf.map.getStreamsLayer,
+            Hydrograf.map.fitStreamsBounds,
+            Hydrograf.map.setStreamsOpacity,
+            0
+        );
     }
 
     /**
