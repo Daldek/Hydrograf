@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     libgeos-dev \
     libproj-dev \
     gcc \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

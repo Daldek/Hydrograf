@@ -1,0 +1,83 @@
+/* Hydrograf — Frontend styles */
+
+/* Navbar */
+.navbar {
+    background-color: #007BFF;
+}
+
+/* Layout */
+.main-content {
+    height: calc(100vh - 56px);
+}
+
+/* Map */
+#map {
+    height: 100%;
+    width: 100%;
+}
+
+.leaflet-container {
+    cursor: crosshair;
+}
+
+/* Side panel */
+.panel-col {
+    background-color: #f8f9fa;
+    overflow-y: auto;
+}
+
+#panel {
+    max-height: 100%;
+}
+
+/* Section headers */
+.section-header {
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 0.25rem;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.section-header:first-of-type {
+    margin-top: 0;
+}
+
+/* Parameter tables */
+.param-table {
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+}
+
+.param-table td {
+    padding: 0.2rem 0.4rem;
+    border: none;
+}
+
+.param-table td:first-child {
+    color: #6c757d;
+    white-space: nowrap;
+}
+
+.param-table td:last-child {
+    font-family: 'Courier New', Courier, monospace;
+    text-align: right;
+    font-weight: 500;
+}
+
+/* Responsive: stack vertically on smaller screens */
+@media (max-width: 991.98px) {
+    .main-content {
+        height: auto;
+    }
+
+    .map-col {
+        height: 50vh;
+    }
+
+    .panel-col {
+        height: 50vh;
+        overflow-y: auto;
+    }
+}

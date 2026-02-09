@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hydrograf — Hub hydrologiczny</title>
+
+    <!-- Leaflet 1.9.4 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin="anonymous">
+
+    <!-- Bootstrap 5.3.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YcnS/3xqQ7mJrkFZOab5BwAEdGMDf/1ZJQH"
+          crossorigin="anonymous">
+
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-dark px-3">
+        <span class="navbar-brand mb-0 h1">Hydrograf</span>
+        <span class="navbar-text d-none d-md-inline" id="system-status"></span>
+    </nav>
+
+    <!-- Main content -->
+    <div class="container-fluid main-content">
+        <div class="row h-100">
+            <!-- Map -->
+            <div class="col-lg-8 p-0 map-col">
+                <div id="map"></div>
+            </div>
+
+            <!-- Side panel -->
+            <div class="col-lg-4 p-0 panel-col">
+                <div id="panel" class="p-3">
+                    <!-- Instruction -->
+                    <div id="panel-instruction">
+                        <h5>Wyznaczanie zlewni</h5>
+                        <p class="text-muted">Kliknij na mapie w pobliżu cieku, aby wyznaczyć zlewnię i obliczyć parametry morfometryczne.</p>
+                    </div>
+
+                    <!-- Loading spinner -->
+                    <div id="panel-loading" class="text-center py-5 d-none">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Wyznaczanie zlewni...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Wyznaczanie zlewni...</p>
+                    </div>
+
+                    <!-- Error alert -->
+                    <div id="panel-error" class="alert alert-danger d-none" role="alert">
+                        <strong>Błąd:</strong> <span id="error-message"></span>
+                    </div>
+
+                    <!-- Results -->
+                    <div id="panel-results" class="d-none">
+                        <!-- Basic parameters -->
+                        <h6 class="section-header">Parametry podstawowe</h6>
+                        <table class="table table-sm param-table">
+                            <tbody id="params-basic"></tbody>
+                        </table>
+
+                        <!-- Shape indices -->
+                        <h6 class="section-header">Wskaźniki kształtu</h6>
+                        <table class="table table-sm param-table">
+                            <tbody id="params-shape"></tbody>
+                        </table>
+
+                        <!-- Relief indices -->
+                        <h6 class="section-header">Rzeźba terenu</h6>
+                        <table class="table table-sm param-table">
+                            <tbody id="params-relief"></tbody>
+                        </table>
+
+                        <!-- Drainage network -->
+                        <h6 class="section-header">Sieć rzeczna</h6>
+                        <table class="table table-sm param-table">
+                            <tbody id="params-drainage"></tbody>
+                        </table>
+
+                        <!-- Outlet info -->
+                        <h6 class="section-header">Punkt ujściowy</h6>
+                        <table class="table table-sm param-table">
+                            <tbody id="params-outlet"></tbody>
+                        </table>
+
+                        <!-- Hydrograph availability -->
+                        <div id="hydrograph-info" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet 1.9.4 JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin="anonymous"></script>
+
+    <!-- Bootstrap 5.3.3 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+            crossorigin="anonymous"></script>
+
+    <!-- Application modules -->
+    <script src="js/api.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
