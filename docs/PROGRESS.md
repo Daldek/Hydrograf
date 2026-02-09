@@ -13,7 +13,7 @@
 | Integracja Kartograf | ✅ Gotowy | v0.4.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Frontend | ⏳ Zaplanowany | CP4 — mapa Leaflet.js |
+| Frontend | 🔶 Faza 1 gotowa | CP4 — mapa + zlewnia + parametry (brak: hydrogram, Chart.js) |
 | Testy scripts/ | ⏳ W trakcie | 46 testow process_dem (burn, fill, sinks, pyflwdir, aspect, TWI, Strahler) |
 | Dokumentacja | ✅ Gotowy | Standaryzacja wg shared/standards (2026-02-07) |
 
@@ -47,32 +47,32 @@
 **Data:** 2026-02-09
 
 ### Co zrobiono
-- Ochrona przed resource exhaustion (OOM) — ADR-015:
-  - `check_watershed_size()` — pre-flight check, odrzuca zlewnie >2M komorek (<1ms)
-  - LIMIT w rekurencyjnym CTE — safety net na poziomie SQL
-  - `statement_timeout=30s` w polaczeniach z baza (600s dla skryptow CLI)
-  - Docker resource limits: db=2G, api=1G, PostgreSQL tuning (shared_buffers=512MB)
-  - 6 nowych testow jednostkowych, update mockow w testach integracyjnych
-  - 7 commitow, 351 testow pass, ruff clean
-- E2E Task 9 ponowiony — WSZYSTKIE 4 TESTY PRZESZLY:
-  - A: Sredni outlet (493k cells, 0.49 km², 6.5s) — pelna delineacja + morfometria
-  - B: Duzy outlet (1.5M cells, 1.50 km², 21s) — pelna delineacja + morfometria
-  - C: Pre-flight reject (sztuczny limit 100k) — natychmiastowe odrzucenie
-  - D: Max outlet (1.76M, CTE > 2M) — LIMIT safety net poprawnie zlapal nadmiar
-- Eksport wynikow do GeoPackage (`data/e2e_test/task9_results.gpkg`, 13 MB, 4 warstwy)
+- CP4 Faza 1 — Frontend (mapa + zlewnia + parametry):
+  - 5 nowych plikow: index.html, style.css, api.js, map.js, app.js
+  - Mapa Leaflet.js z OSM, klikniecie → wyznaczanie zlewni → polygon + ~20 parametrow
+  - Panel boczny z 5 sekcjami parametrow (podstawowe, ksztalt, rzezba, siec rzeczna, ujscie)
+  - Obsluga bledow (polskie komunikaty, walidacja granic Polski)
+  - CDN: Leaflet 1.9.4, Bootstrap 5.3.3 (integrity hashes)
+- Security hardening:
+  - Naglowki nginx: CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
+  - Cache statycznych plikow (7d, immutable)
+  - Porty API i DB ograniczone do 127.0.0.1 (jedyny punkt wejscia: nginx:80)
+- Bugfix: Dockerfile brak `git`, docker-compose `effective_cache_size=1G` → `1GB`
+- Weryfikacja: pelny stack uruchomiony, naglowki CSP potwierdzone, API proxy OK
 
 ### W trakcie
 - Brak
 
 ### Nastepne kroki
-1. CP4 — frontend z mapa Leaflet.js
+1. CP4 Faza 2 — hydrogram (Chart.js, formularz parametrow, POST /api/generate-hydrograph)
 2. Dlug techniczny: constants.py, hardcoded secrets
-3. Restart kontenera `db` zeby zaaplikowac tuning PostgreSQL z docker-compose.yml
+3. Testy frontend (opcjonalne)
 
 ## Backlog
 
 - [x] Fix traverse_upstream resource exhaustion (ADR-015: pre-flight check, CTE LIMIT, statement_timeout, Docker limits)
-- [ ] CP4: Frontend z mapa (Leaflet.js + Chart.js)
+- [x] CP4 Faza 1: Frontend — mapa + zlewnia + parametry (Leaflet.js, Bootstrap 5)
+- [ ] CP4 Faza 2: Frontend — hydrogram (Chart.js, formularz)
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
 - [ ] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
