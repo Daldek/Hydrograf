@@ -32,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Suwak przezroczystosci 0–100% — `setDemOpacity()`, pojawia sie po wlaczeniu warstwy
 - Warstwa ciekow (Strahler order) jako `L.imageOverlay`:
   - `scripts/generate_streams_overlay.py` — skrypt generujacy PNG z rzedami Strahlera (dyskretna paleta niebieska 1-8, przezroczyste tlo)
-  - `frontend/data/streams.png` + `streams.json` — pre-generowany overlay ciekow (22 KB, max order=5)
+  - `frontend/data/streams.png` + `streams.json` — pre-generowany overlay ciekow (48 KB, max order=5)
+  - Dylatacja morfologiczna (`maximum_filter`) — grubosc linii proporcjonalna do rzedu (1→3px, 5→11px)
   - `map.js`: `loadStreamsOverlay()`, `getStreamsLayer()`, `fitStreamsBounds()`, `setStreamsOpacity()`
   - `app.js`: refaktor `initLayersPanel()` — wyodrebniony `addLayerEntry()`, dwa wpisy: NMT (30%) i Cieki (0%)
 
