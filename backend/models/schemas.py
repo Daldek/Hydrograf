@@ -122,17 +122,11 @@ class MorphometricParameters(BaseModel):
     elongation_ratio: float | None = Field(
         None, description="Schumm elongation ratio Re"
     )
-    form_factor: float | None = Field(
-        None, description="Horton form factor Ff"
-    )
-    mean_width_km: float | None = Field(
-        None, ge=0, description="Mean width A/L [km]"
-    )
+    form_factor: float | None = Field(None, description="Horton form factor Ff")
+    mean_width_km: float | None = Field(None, ge=0, description="Mean width A/L [km]")
 
     # Relief indices
-    relief_ratio: float | None = Field(
-        None, description="Relief ratio Rh"
-    )
+    relief_ratio: float | None = Field(None, description="Relief ratio Rh")
     hypsometric_integral: float | None = Field(
         None, ge=0, le=1, description="Hypsometric integral HI"
     )
@@ -155,58 +149,56 @@ class MorphometricParameters(BaseModel):
 class HypsometricPoint(BaseModel):
     """Single point on hypsometric curve."""
 
-    relative_height: float = Field(
-        ..., ge=0, le=1, description="Relative height h/H"
+    relative_height: float = Field(..., ge=0, le=1, description="Relative height h/H")
+    relative_area: float = Field(..., ge=0, le=1, description="Relative area a/A")
+
+
+class LandCoverCategory(BaseModel):
+    """Single land cover category with statistics."""
+
+    category: str = Field(..., description="Land cover category name")
+    percentage: float = Field(..., ge=0, le=100, description="Area percentage [%]")
+    area_m2: float = Field(..., ge=0, description="Area [m2]")
+    cn_value: int = Field(..., ge=0, le=100, description="CN value for category")
+
+
+class LandCoverStats(BaseModel):
+    """Land cover statistics for a watershed."""
+
+    categories: list[LandCoverCategory] = Field(
+        ..., description="Per-category statistics"
     )
-    relative_area: float = Field(
-        ..., ge=0, le=1, description="Relative area a/A"
+    weighted_cn: int = Field(..., ge=0, le=100, description="Area-weighted CN")
+    weighted_imperviousness: float = Field(
+        ..., ge=0, le=1, description="Area-weighted imperviousness fraction"
     )
 
 
 class WatershedResponse(BaseModel):
-    """
-    Watershed delineation result.
-
-    Attributes
-    ----------
-    boundary_geojson : dict
-        Watershed boundary as GeoJSON Feature (Polygon)
-    outlet : OutletInfo
-        Information about outlet point
-    cell_count : int
-        Number of cells in the watershed
-    area_km2 : float
-        Watershed area in square kilometers
-    hydrograph_available : bool
-        Whether SCS-CN hydrograph can be generated (area <= 250 km2)
-    morphometry : MorphometricParameters, optional
-        Full morphometric parameters for hydrological calculations
-    hypsometric_curve : list of HypsometricPoint, optional
-        Hypsometric curve data (only if requested)
-    """
+    """Watershed delineation result."""
 
     boundary_geojson: dict[str, Any] = Field(
         ..., description="Watershed boundary as GeoJSON Feature"
     )
     outlet: OutletInfo = Field(..., description="Outlet point information")
-    cell_count: int = Field(
-        ..., ge=0, description="Number of cells in watershed"
-    )
-    area_km2: float = Field(
-        ..., ge=0, description="Watershed area [km2]"
-    )
+    cell_count: int = Field(..., ge=0, description="Number of cells in watershed")
+    area_km2: float = Field(..., ge=0, description="Watershed area [km2]")
     hydrograph_available: bool = Field(
         ...,
-        description="Whether hydrograph generation is available"
-        " (area <= 250 km2)",
+        description="Whether hydrograph generation is available (area <= 250 km2)",
     )
     morphometry: MorphometricParameters | None = Field(
         None,
-        description="Full morphometric parameters"
-        " for hydrological calculations",
+        description="Full morphometric parameters for hydrological calculations",
     )
     hypsometric_curve: list[HypsometricPoint] | None = Field(
         None, description="Hypsometric curve (if requested)"
+    )
+    land_cover_stats: LandCoverStats | None = Field(
+        None, description="Land cover statistics"
+    )
+    main_stream_geojson: dict[str, Any] | None = Field(
+        None, description="Main stream as GeoJSON LineString (WGS84)"
     )
 
 
@@ -360,3 +352,21 @@ class HydrographResponse(BaseModel):
     hydrograph: HydrographInfo = Field(..., description="Generated hydrograph")
     water_balance: WaterBalance = Field(..., description="Water balance")
     metadata: HydrographMetadata = Field(..., description="Calculation metadata")
+
+
+# ===================== TERRAIN PROFILE MODELS =====================
+
+
+class TerrainProfileRequest(BaseModel):
+    """Request model for terrain profile extraction."""
+
+    geometry: dict[str, Any] = Field(..., description="GeoJSON LineString geometry")
+    n_samples: int = Field(100, ge=2, le=1000, description="Number of sample points")
+
+
+class TerrainProfileResponse(BaseModel):
+    """Response model for terrain profile."""
+
+    distances_m: list[float] = Field(..., description="Cumulative distances [m]")
+    elevations_m: list[float] = Field(..., description="Elevations [m a.s.l.]")
+    total_length_m: float = Field(..., ge=0, description="Total line length [m]")

@@ -1,7 +1,7 @@
 /**
  * Hydrograf Application module.
  *
- * Orchestrates map clicks, API calls, and parameter display.
+ * Orchestrates map clicks, API calls, floating results panel, and parameter display.
  */
 (function () {
     'use strict';
@@ -19,49 +19,21 @@
     // DOM references (set on init)
     var els = {};
 
-    /**
-     * Format a numeric value with unit.
-     *
-     * @param {*} val - Value to format
-     * @param {string} unit - Unit string
-     * @param {number} decimals - Decimal places
-     * @returns {string} Formatted string or '—' if null
-     */
     function formatValue(val, unit, decimals) {
         if (val === null || val === undefined) return '—';
         return val.toFixed(decimals) + ' ' + unit;
     }
 
-    /**
-     * Format slope from m/m to %.
-     *
-     * @param {*} val - Slope in m/m
-     * @returns {string} Formatted percentage or '—'
-     */
     function formatSlope(val) {
         if (val === null || val === undefined) return '—';
         return (val * 100).toFixed(2) + ' %';
     }
 
-    /**
-     * Format a dimensionless ratio.
-     *
-     * @param {*} val - Value
-     * @param {number} decimals - Decimal places
-     * @returns {string} Formatted string or '—'
-     */
     function formatRatio(val, decimals) {
         if (val === null || val === undefined) return '—';
         return val.toFixed(decimals);
     }
 
-    /**
-     * Build a table row (using textContent for safety).
-     *
-     * @param {string} label - Row label
-     * @param {string} value - Formatted value
-     * @returns {HTMLTableRowElement}
-     */
     function buildRow(label, value) {
         var tr = document.createElement('tr');
         var tdLabel = document.createElement('td');
@@ -73,12 +45,6 @@
         return tr;
     }
 
-    /**
-     * Fill a table body with parameter rows, skipping null values.
-     *
-     * @param {HTMLElement} tbody - Target tbody element
-     * @param {Array} rows - Array of [label, value] pairs
-     */
     function fillTable(tbody, rows) {
         tbody.innerHTML = '';
         rows.forEach(function (row) {
@@ -89,16 +55,13 @@
     }
 
     /**
-     * Display watershed parameters in the side panel.
-     *
-     * @param {Object} data - API response (DelineateResponse)
+     * Display watershed parameters in the floating panel.
      */
     function displayParameters(data) {
         var w = data.watershed;
         var m = w.morphometry || {};
         var o = w.outlet;
 
-        // Basic parameters
         fillTable(els.paramsBasic, [
             ['Powierzchnia', formatValue(m.area_km2, 'km²', 2)],
             ['Obwód', formatValue(m.perimeter_km, 'km', 2)],
@@ -113,7 +76,6 @@
             ['CN', m.cn !== null && m.cn !== undefined ? String(m.cn) : '—'],
         ]);
 
-        // Shape indices
         fillTable(els.paramsShape, [
             ['Wsp. zwartości Kc', formatRatio(m.compactness_coefficient, 3)],
             ['Wsp. kołowości Rc', formatRatio(m.circularity_ratio, 3)],
@@ -121,13 +83,11 @@
             ['Wsp. kształtu Ff', formatRatio(m.form_factor, 3)],
         ]);
 
-        // Relief indices
         fillTable(els.paramsRelief, [
             ['Wsp. rzeźbowy Rh', formatRatio(m.relief_ratio, 4)],
             ['Całka hipsometryczna HI', formatRatio(m.hypsometric_integral, 3)],
         ]);
 
-        // Drainage network
         fillTable(els.paramsDrainage, [
             ['Gęstość sieci Dd', formatValue(m.drainage_density_km_per_km2, 'km/km²', 2)],
             ['Częstość cieków Fs', formatValue(m.stream_frequency_per_km2, '1/km²', 2)],
@@ -135,7 +95,6 @@
             ['Max rząd Strahlera', m.max_strahler_order !== null && m.max_strahler_order !== undefined ? String(m.max_strahler_order) : '—'],
         ]);
 
-        // Outlet info
         fillTable(els.paramsOutlet, [
             ['Szerokość', formatValue(o.latitude, '°N', 6)],
             ['Długość', formatValue(o.longitude, '°E', 6)],
@@ -143,24 +102,68 @@
             ['Liczba komórek', String(w.cell_count)],
         ]);
 
+        // Charts: land cover donut
+        if (w.land_cover_stats && w.land_cover_stats.categories && w.land_cover_stats.categories.length > 0) {
+            Hydrograf.charts.renderLandCoverChart('chart-landcover', w.land_cover_stats.categories);
+            document.getElementById('acc-landcover').classList.remove('collapsed');
+        } else {
+            Hydrograf.charts.destroyChart('chart-landcover');
+            document.getElementById('acc-landcover').classList.add('collapsed');
+        }
+
+        // Chart: hypsometric curve
+        if (w.hypsometric_curve && w.hypsometric_curve.length > 0) {
+            Hydrograf.charts.renderHypsometricChart('chart-hypsometric', w.hypsometric_curve);
+        } else {
+            Hydrograf.charts.destroyChart('chart-hypsometric');
+        }
+
         // Hydrograph availability
         els.hydrographInfo.innerHTML = '';
         var badge = document.createElement('span');
         if (w.hydrograph_available) {
             badge.className = 'badge bg-success';
             badge.textContent = 'Hydrogram dostępny (SCS-CN)';
+            document.getElementById('acc-hydrograph').classList.remove('collapsed');
+            // Init hydrograph form
+            if (Hydrograf.hydrograph) {
+                Hydrograf.hydrograph.initScenarioForm();
+            }
         } else {
             badge.className = 'badge bg-secondary';
             badge.textContent = 'Hydrogram niedostępny (zlewnia > 250 km²)';
+            document.getElementById('acc-hydrograph').classList.add('collapsed');
         }
         els.hydrographInfo.appendChild(badge);
+
+        // Profile: enable auto-profile if main stream available
+        if (w.main_stream_geojson && Hydrograf.profile) {
+            document.getElementById('btn-profile-auto').disabled = false;
+        }
     }
 
-    /**
-     * Set loading state.
-     *
-     * @param {boolean} loading
-     */
+    // ======== Floating panel management ========
+
+    function showPanel() {
+        els.panel.classList.remove('d-none');
+        els.restoreBtn.classList.add('d-none');
+    }
+
+    function hidePanel() {
+        els.panel.classList.add('d-none');
+        els.restoreBtn.classList.add('d-none');
+    }
+
+    function minimizePanel() {
+        els.panel.classList.add('d-none');
+        els.restoreBtn.classList.remove('d-none');
+    }
+
+    function restorePanel() {
+        els.panel.classList.remove('d-none');
+        els.restoreBtn.classList.add('d-none');
+    }
+
     function setLoading(loading) {
         state.isLoading = loading;
 
@@ -177,11 +180,6 @@
         }
     }
 
-    /**
-     * Show error message in panel.
-     *
-     * @param {string} msg - Error message (Polish)
-     */
     function showError(msg) {
         showPanel();
         els.instruction.classList.add('d-none');
@@ -189,23 +187,19 @@
         els.errorMessage.textContent = msg;
     }
 
-    /**
-     * Hide error message.
-     */
     function hideError() {
         els.error.classList.add('d-none');
     }
 
     /**
-     * Handle map click — validate, call API, display results.
-     *
-     * @param {number} lat
-     * @param {number} lng
+     * Handle map click.
      */
     async function onMapClick(lat, lng) {
         if (state.isLoading) return;
 
-        // Validate: within Poland bounds
+        // Check drawing mode
+        if (Hydrograf.map.isDrawing && Hydrograf.map.isDrawing()) return;
+
         if (lat < BOUNDS.latMin || lat > BOUNDS.latMax ||
             lng < BOUNDS.lngMin || lng > BOUNDS.lngMax) {
             showError('Kliknij w granicach Polski (49–55°N, 14–24.2°E).');
@@ -217,17 +211,13 @@
 
         try {
             var data = await Hydrograf.api.delineateWatershed(lat, lng);
-
             state.currentWatershed = data;
 
-            // Show watershed on map
             Hydrograf.map.showWatershed(data.watershed.boundary_geojson);
 
-            // Show outlet marker
             var outlet = data.watershed.outlet;
             Hydrograf.map.showOutlet(outlet.latitude, outlet.longitude, outlet.elevation_m);
 
-            // Show parameters in panel
             displayParameters(data);
             els.results.classList.remove('d-none');
         } catch (err) {
@@ -238,9 +228,6 @@
         }
     }
 
-    /**
-     * Check system health on startup.
-     */
     async function checkSystemHealth() {
         try {
             var health = await Hydrograf.api.checkHealth();
@@ -260,120 +247,6 @@
     }
 
     /**
-     * Show the right side panel (parameters).
-     */
-    function showPanel() {
-        els.panelCol.classList.remove('d-none');
-        els.mapCol.classList.remove('map-col-full');
-        Hydrograf.map.invalidateSize();
-    }
-
-    /**
-     * Hide the right side panel.
-     */
-    function hidePanel() {
-        els.panelCol.classList.add('d-none');
-        els.mapCol.classList.add('map-col-full');
-        Hydrograf.map.invalidateSize();
-    }
-
-    /**
-     * Add a layer entry to the layers panel.
-     *
-     * @param {HTMLElement} list - Parent list element
-     * @param {string} label - Display label
-     * @param {Function} getLayer - Returns L.ImageOverlay or null
-     * @param {Function} fitBounds - Zoom to layer extent
-     * @param {Function} setOpacity - Set layer opacity (0–1)
-     * @param {number} defaultTransparency - Default transparency % (0=opaque, 100=invisible)
-     */
-    function addLayerEntry(list, label, getLayer, fitBounds, setOpacity, defaultTransparency) {
-        var item = document.createElement('div');
-        item.className = 'layer-item';
-
-        // Header row: checkbox + label + zoom button
-        var headerRow = document.createElement('div');
-        headerRow.className = 'layer-header';
-        var cb = document.createElement('input');
-        cb.type = 'checkbox';
-        var text = document.createTextNode(' ' + label);
-        var zoomBtn = document.createElement('button');
-        zoomBtn.className = 'layer-zoom-btn';
-        zoomBtn.title = 'Przybliż do zasięgu warstwy';
-        zoomBtn.textContent = '\u2316';
-        zoomBtn.addEventListener('click', function () {
-            fitBounds();
-        });
-        headerRow.appendChild(cb);
-        headerRow.appendChild(text);
-        headerRow.appendChild(zoomBtn);
-        item.appendChild(headerRow);
-
-        // Opacity slider (hidden until layer enabled)
-        var sliderRow = document.createElement('div');
-        sliderRow.className = 'layer-opacity d-none';
-        var sliderLabel = document.createElement('span');
-        sliderLabel.textContent = 'Przezr.:';
-        var slider = document.createElement('input');
-        slider.type = 'range';
-        slider.min = '0';
-        slider.max = '100';
-        slider.value = String(defaultTransparency);
-        var sliderValue = document.createElement('span');
-        sliderValue.className = 'layer-opacity-val';
-        sliderValue.textContent = defaultTransparency + '%';
-        slider.addEventListener('input', function () {
-            var opacity = (100 - slider.value) / 100;
-            setOpacity(opacity);
-            sliderValue.textContent = slider.value + '%';
-        });
-        sliderRow.appendChild(sliderLabel);
-        sliderRow.appendChild(slider);
-        sliderRow.appendChild(sliderValue);
-        item.appendChild(sliderRow);
-
-        // Checkbox toggle
-        cb.addEventListener('change', function () {
-            var layer = getLayer();
-            if (!layer) return;
-            if (cb.checked) {
-                layer.addTo(Hydrograf.map._getMap());
-                sliderRow.classList.remove('d-none');
-            } else {
-                Hydrograf.map._getMap().removeLayer(layer);
-                sliderRow.classList.add('d-none');
-            }
-        });
-
-        list.appendChild(item);
-    }
-
-    /**
-     * Build layers panel entries with checkboxes.
-     */
-    function initLayersPanel() {
-        var list = document.getElementById('layers-list');
-
-        addLayerEntry(
-            list,
-            'NMT (wysokości)',
-            Hydrograf.map.getDemLayer,
-            Hydrograf.map.fitDemBounds,
-            Hydrograf.map.setDemOpacity,
-            30
-        );
-
-        addLayerEntry(
-            list,
-            'Cieki (Strahler)',
-            Hydrograf.map.getStreamsLayer,
-            Hydrograf.map.fitStreamsBounds,
-            Hydrograf.map.setStreamsOpacity,
-            0
-        );
-    }
-
-    /**
      * Toggle layers panel visibility.
      */
     function toggleLayers() {
@@ -384,13 +257,16 @@
     }
 
     /**
-     * Initialize application.
+     * Get current watershed data (for use by other modules).
      */
+    function getCurrentWatershed() {
+        return state.currentWatershed;
+    }
+
     function init() {
-        // Cache DOM references
         els = {
-            mapCol: document.getElementById('map-col'),
-            panelCol: document.getElementById('panel-col'),
+            panel: document.getElementById('results-panel'),
+            restoreBtn: document.getElementById('results-restore'),
             instruction: document.getElementById('panel-instruction'),
             loading: document.getElementById('panel-loading'),
             error: document.getElementById('panel-error'),
@@ -407,11 +283,42 @@
         // Layers toggle
         document.getElementById('layers-toggle').addEventListener('click', toggleLayers);
 
-        // Panel close button
-        document.getElementById('panel-close').addEventListener('click', hidePanel);
+        // Floating panel controls
+        document.getElementById('results-close').addEventListener('click', hidePanel);
+        document.getElementById('results-minimize').addEventListener('click', minimizePanel);
+        document.getElementById('results-restore').addEventListener('click', restorePanel);
 
+        // Make panel draggable (desktop only)
+        if (window.innerWidth > 768) {
+            Hydrograf.draggable.makeDraggable(
+                els.panel,
+                document.getElementById('results-header')
+            );
+        }
+
+        // Init map
         Hydrograf.map.init(onMapClick);
-        initLayersPanel();
+
+        // Init layers panel (delegated to layers.js)
+        if (Hydrograf.layers) {
+            Hydrograf.layers.init();
+        }
+
+        // Init profile module
+        if (Hydrograf.profile) {
+            Hydrograf.profile.init();
+        }
+
+        // Init hydrograph module
+        if (Hydrograf.hydrograph) {
+            Hydrograf.hydrograph.init();
+        }
+
+        // Init depressions module
+        if (Hydrograf.depressions) {
+            Hydrograf.depressions.init();
+        }
+
         checkSystemHealth();
     }
 
@@ -419,5 +326,7 @@
 
     window.Hydrograf.app = {
         init: init,
+        getCurrentWatershed: getCurrentWatershed,
+        showPanel: showPanel,
     };
 })();
