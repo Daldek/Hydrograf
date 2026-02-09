@@ -10,6 +10,7 @@
 
     var map = null;
     var demLayer = null;
+    var demBounds = null;
     var watershedLayer = null;
     var outletMarker = null;
     var clickEnabled = true;
@@ -52,8 +53,8 @@
                 return res.json();
             })
             .then(function (meta) {
-                var bounds = L.latLngBounds(meta.bounds);
-                demLayer = L.imageOverlay('/data/dem.png', bounds, {
+                demBounds = L.latLngBounds(meta.bounds);
+                demLayer = L.imageOverlay('/data/dem.png', demBounds, {
                     opacity: 0.7,
                     attribution: 'NMT &copy; GUGiK',
                 });
@@ -70,6 +71,26 @@
      */
     function getDemLayer() {
         return demLayer;
+    }
+
+    /**
+     * Zoom map to DEM overlay extent.
+     */
+    function fitDemBounds() {
+        if (demBounds && map) {
+            map.fitBounds(demBounds, { padding: [20, 20] });
+        }
+    }
+
+    /**
+     * Set DEM overlay opacity.
+     *
+     * @param {number} opacity - 0.0 to 1.0
+     */
+    function setDemOpacity(opacity) {
+        if (demLayer) {
+            demLayer.setOpacity(opacity);
+        }
     }
 
     /**
@@ -159,6 +180,8 @@
         init: init,
         _getMap: function () { return map; },
         getDemLayer: getDemLayer,
+        fitDemBounds: fitDemBounds,
+        setDemOpacity: setDemOpacity,
         showWatershed: showWatershed,
         showOutlet: showOutlet,
         clearWatershed: clearWatershed,

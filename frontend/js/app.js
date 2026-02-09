@@ -283,23 +283,65 @@
     function initLayersPanel() {
         var list = document.getElementById('layers-list');
 
-        var label = document.createElement('label');
-        label.className = 'layer-item';
+        // Layer item container
+        var item = document.createElement('div');
+        item.className = 'layer-item';
+
+        // Header row: checkbox + label + zoom button
+        var headerRow = document.createElement('div');
+        headerRow.className = 'layer-header';
         var cb = document.createElement('input');
         cb.type = 'checkbox';
+        var text = document.createTextNode(' NMT (wysokości)');
+        var zoomBtn = document.createElement('button');
+        zoomBtn.className = 'layer-zoom-btn';
+        zoomBtn.title = 'Przybliż do zasięgu warstwy';
+        zoomBtn.textContent = '\u2316';
+        zoomBtn.addEventListener('click', function () {
+            Hydrograf.map.fitDemBounds();
+        });
+        headerRow.appendChild(cb);
+        headerRow.appendChild(text);
+        headerRow.appendChild(zoomBtn);
+        item.appendChild(headerRow);
+
+        // Opacity slider (hidden until layer enabled)
+        var sliderRow = document.createElement('div');
+        sliderRow.className = 'layer-opacity d-none';
+        var sliderLabel = document.createElement('span');
+        sliderLabel.textContent = 'Przezr.:';
+        var slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = '100';
+        slider.value = '70';
+        var sliderValue = document.createElement('span');
+        sliderValue.className = 'layer-opacity-val';
+        sliderValue.textContent = '70%';
+        slider.addEventListener('input', function () {
+            var opacity = slider.value / 100;
+            Hydrograf.map.setDemOpacity(opacity);
+            sliderValue.textContent = slider.value + '%';
+        });
+        sliderRow.appendChild(sliderLabel);
+        sliderRow.appendChild(slider);
+        sliderRow.appendChild(sliderValue);
+        item.appendChild(sliderRow);
+
+        // Checkbox toggle
         cb.addEventListener('change', function () {
             var layer = Hydrograf.map.getDemLayer();
             if (!layer) return;
             if (cb.checked) {
                 layer.addTo(Hydrograf.map._getMap());
+                sliderRow.classList.remove('d-none');
             } else {
                 Hydrograf.map._getMap().removeLayer(layer);
+                sliderRow.classList.add('d-none');
             }
         });
-        var text = document.createTextNode(' NMT (wysokości)');
-        label.appendChild(cb);
-        label.appendChild(text);
-        list.appendChild(label);
+
+        list.appendChild(item);
     }
 
     /**
