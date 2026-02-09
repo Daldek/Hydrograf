@@ -2121,6 +2121,9 @@ def process_dem(
         from core.database import get_db_session
 
         with get_db_session() as db:
+            # Bulk import can take minutes — override statement_timeout
+            db.execute(text("SET LOCAL statement_timeout = '600s'"))
+
             if clear_existing:
                 logger.info("Clearing existing flow_network data...")
                 db.execute(text("TRUNCATE TABLE flow_network CASCADE"))

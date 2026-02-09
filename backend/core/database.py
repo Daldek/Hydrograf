@@ -32,6 +32,9 @@ def get_engine():
         pool_timeout=30,
         pool_recycle=3600,
         echo=settings.log_level == "DEBUG",
+        connect_args={
+            "options": f"-c statement_timeout={settings.db_statement_timeout_ms}",
+        },
     )
 
 
