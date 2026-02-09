@@ -8,8 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Aktualizacja Kartograf v0.4.0 → v0.4.1 (BDOT10k hydro, geometry selection, rtree fix)
 - Aktualizacja Kartograf v0.3.1 → v0.4.0 (nowe produkty: NMPT, Ortofotomapa, auto-ekspansja godel)
 - `download_dem.py`: obsluga `Path | list[Path]` z `download_sheet()` (auto-ekspansja godel grubszych skal)
+
+### Added (Kartograf v0.4.1)
+- `download_landcover.py --category hydro` — pobieranie warstw BDOT10k hydrograficznych (SWRS, SWKN, SWRM, PTWP)
+- `download_dem.py --geometry` — precyzyjny wybor arkuszy NMT z pliku SHP/GPKG
+- `prepare_area.py --with-hydro` — automatyczne pobieranie danych hydro i stream burning
 
 ### Added
 - Wypalanie ciekow BDOT10k w DEM (`--burn-streams`) — obnizenie DEM wzdluz znanych ciekow przed analiza hydrologiczna (ADR-013)
@@ -54,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Przeniesienie 6 plików MD z root do docs/
 
 ### Tested
+- E2E Kartograf v0.4.1: N-33-131-C-b-2 — NMT download (4 sub-sheets), BDOT10k hydro (8.1 MB GPKG), stream burning, 20 rasterow posrednich (~444 MB); Task 9 FAILED (traverse_upstream resource exhaustion, outlet acc=1.76M, mozliwe ograniczenia zasobow Docker)
 - E2E pipeline: N-33-131-C-b-2-3 z warstwami 01-09 — 198s, 4.9M komorek, max_strahler=8, 19,005 segmentow (641.6 km), wyniki w `data/results/`
 - E2E pipeline: N-33-131-C-b-2-3 z stream burning — 2,856 cells burned, 55s, wyniki w `data/nmt/`
 - E2E pipeline: N-33-131-C-b-2-3 z pyflwdir — broken streams: 233→1, max acc +71%, pipeline 17% szybciej
