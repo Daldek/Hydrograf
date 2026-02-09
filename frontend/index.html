@@ -30,15 +30,24 @@
     <div class="container-fluid main-content">
         <div class="row h-100">
             <!-- Map -->
-            <div class="col-lg-8 p-0 map-col">
-                <div id="map"></div>
+            <div class="p-0 map-col" id="map-col">
+                <div id="map-wrapper">
+                    <div id="map"></div>
+                    <div id="layers-panel" class="layers-hidden">
+                        <h6 class="layers-header">Warstwy</h6>
+                        <div id="layers-list"></div>
+                    </div>
+                    <button id="layers-toggle" class="layers-toggle" title="Warstwy">&#9776;</button>
+                </div>
             </div>
 
             <!-- Side panel -->
-            <div class="col-lg-4 p-0 panel-col">
+            <div class="p-0 panel-col d-none" id="panel-col">
                 <div id="panel" class="p-3">
+                    <!-- Close button -->
+                    <button id="panel-close" class="btn btn-sm btn-outline-secondary float-end" title="Zamknij panel">&times;</button>
                     <!-- Instruction -->
-                    <div id="panel-instruction">
+                    <div id="panel-instruction" class="d-none">
                         <h5>Wyznaczanie zlewni</h5>
                         <p class="text-muted">Kliknij na mapie w pobliżu cieku, aby wyznaczyć zlewnię i obliczyć parametry morfometryczne.</p>
                     </div>
