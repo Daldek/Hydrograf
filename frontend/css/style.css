@@ -1,20 +1,17 @@
-/* Hydrograf — Frontend styles */
+/* Hydrograf — Frontend styles (glassmorphism redesign) */
 
-/* Navbar */
+/* ============ NAVBAR ============ */
 .navbar {
-    background-color: #007BFF;
+    z-index: 1100;
 }
 
-/* Layout */
-.main-content {
-    height: calc(100vh - 56px);
-}
-
-/* Map */
+/* ============ MAP ============ */
 #map-wrapper {
-    position: relative;
-    height: 100%;
-    width: 100%;
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    bottom: 0;
 }
 
 #map {
@@ -22,49 +19,70 @@
     width: 100%;
 }
 
-/* Layers panel */
+.leaflet-container {
+    cursor: crosshair;
+}
+
+/* ============ LAYERS PANEL (left) ============ */
 #layers-panel {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 200px;
-    height: 100%;
-    background: rgba(255, 255, 255, 0.95);
-    border-right: 1px solid #dee2e6;
+    top: 10px;
+    left: 10px;
+    width: 240px;
+    max-height: calc(100% - 20px);
     z-index: 1000;
     padding: 0.5rem;
     overflow-y: auto;
-    transition: transform 0.2s ease;
+    transition: transform var(--transition-default), opacity var(--transition-default);
 }
 
 #layers-panel.layers-hidden {
-    transform: translateX(-100%);
+    transform: translateX(-260px);
+    opacity: 0;
+    pointer-events: none;
 }
 
 .layers-header {
     font-size: 0.85rem;
-    color: #495057;
-    border-bottom: 1px solid #dee2e6;
+    font-weight: 600;
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-divider);
     padding-bottom: 0.35rem;
     margin-bottom: 0.5rem;
 }
 
 #layers-list {
     font-size: 0.8rem;
-    color: #333;
+    color: var(--color-text);
+}
+
+.layer-group-header {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-secondary);
+    padding: 6px 0 3px;
+    margin-top: 4px;
+    border-bottom: 1px solid var(--color-divider);
+}
+
+.layer-group-header:first-child {
+    margin-top: 0;
 }
 
 .layer-item {
     display: block;
     padding: 0.25rem 0;
-    cursor: pointer;
 }
 
 .layer-item:hover {
-    background: #e9ecef;
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 6px;
 }
 
-.layer-item input[type="checkbox"] {
+.layer-item input[type="checkbox"],
+.layer-item input[type="radio"] {
     margin-right: 0.4rem;
 }
 
@@ -73,21 +91,34 @@
     align-items: center;
 }
 
-.layer-zoom-btn {
+.layer-zoom-btn,
+.layer-gear-btn {
     margin-left: auto;
     background: none;
-    border: 1px solid #ccc;
-    border-radius: 3px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     line-height: 1;
-    padding: 1px 4px;
-    color: #555;
+    padding: 1px 5px;
+    color: var(--color-text-secondary);
+    transition: all var(--transition-default);
 }
 
-.layer-zoom-btn:hover {
-    background: #dee2e6;
-    color: #000;
+.layer-zoom-btn:hover,
+.layer-gear-btn:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--color-text);
+}
+
+.layer-gear-btn {
+    margin-left: 4px;
+}
+
+.layer-settings {
+    padding: 4px 0 4px 1.4rem;
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
 }
 
 .layer-opacity {
@@ -96,7 +127,7 @@
     gap: 0.3rem;
     padding: 0.2rem 0 0 1.4rem;
     font-size: 0.75rem;
-    color: #6c757d;
+    color: var(--color-text-secondary);
 }
 
 .layer-opacity input[type="range"] {
@@ -104,6 +135,7 @@
     min-width: 0;
     height: 4px;
     cursor: pointer;
+    accent-color: var(--color-primary);
 }
 
 .layer-opacity-val {
@@ -119,96 +151,251 @@
     z-index: 1001;
     width: 34px;
     height: 34px;
-    background: #fff;
-    border: 2px solid rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
+    border: none;
     cursor: pointer;
     font-size: 1.1rem;
     line-height: 30px;
     text-align: center;
     padding: 0;
-    color: #333;
-    transition: left 0.2s ease;
+    color: var(--color-text);
+    transition: left var(--transition-default);
 }
 
 .layers-toggle:hover {
-    background: #f4f4f4;
+    background: rgba(255, 255, 255, 0.95);
 }
 
 .layers-toggle.layers-open {
-    left: 210px;
+    left: 260px;
 }
 
-.leaflet-container {
-    cursor: crosshair;
+/* ============ FLOATING RESULTS PANEL ============ */
+#results-panel {
+    position: fixed;
+    right: 16px;
+    top: 72px;
+    width: 380px;
+    max-height: calc(100vh - 88px);
+    z-index: 1050;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
-/* Map column — full width by default */
-.map-col {
-    flex: 1 1 100%;
-    max-width: 100%;
+.results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-divider);
+    flex-shrink: 0;
 }
 
-/* Side panel */
-.panel-col {
-    flex: 0 0 33.333%;
-    max-width: 33.333%;
-    background-color: #f8f9fa;
-    overflow-y: auto;
-}
-
-#panel {
-    max-height: 100%;
-}
-
-/* Section headers */
-.section-header {
-    color: #495057;
-    border-bottom: 1px solid #dee2e6;
-    padding-bottom: 0.25rem;
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
-    font-size: 0.9rem;
-}
-
-.section-header:first-of-type {
-    margin-top: 0;
-}
-
-/* Parameter tables */
-.param-table {
+.results-title {
     font-size: 0.85rem;
-    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.results-header-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.results-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 6px;
+    color: var(--color-text-secondary);
+    transition: all var(--transition-default);
+}
+
+.results-btn:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--color-text);
+}
+
+.results-body {
+    overflow-y: auto;
+    flex: 1;
+    padding: 8px 0;
+}
+
+/* Minimized restore button */
+.results-restore {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 1050;
+    width: 44px;
+    height: 44px;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 44px;
+    text-align: center;
+    padding: 0;
+    color: var(--color-primary);
+    border-radius: 50%;
+}
+
+.results-restore:hover {
+    background: rgba(255, 255, 255, 0.95);
+}
+
+/* ============ PARAMETER TABLES ============ */
+.param-table {
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
 }
 
 .param-table td {
-    padding: 0.2rem 0.4rem;
+    padding: 0.15rem 0.4rem;
     border: none;
 }
 
 .param-table td:first-child {
-    color: #6c757d;
+    color: var(--color-text-secondary);
     white-space: nowrap;
 }
 
 .param-table td:last-child {
-    font-family: 'Courier New', Courier, monospace;
+    font-family: 'SF Mono', 'Menlo', 'Courier New', monospace;
     text-align: right;
+    font-weight: 500;
+    color: var(--color-text);
+}
+
+/* ============ DUAL RANGE SLIDERS (depressions) ============ */
+.dual-slider {
+    position: relative;
+    height: 24px;
+    margin: 4px 0;
+}
+
+.dual-slider input[type="range"] {
+    position: absolute;
+    width: 100%;
+    pointer-events: none;
+    appearance: none;
+    -webkit-appearance: none;
+    height: 4px;
+    background: transparent;
+    top: 10px;
+}
+
+.dual-slider input[type="range"]::-webkit-slider-thumb {
+    pointer-events: all;
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--color-primary);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.dual-slider input[type="range"]::-moz-range-thumb {
+    pointer-events: all;
+    width: 14px;
+    height: 14px;
+    background: var(--color-primary);
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+}
+
+.dual-slider-track {
+    position: absolute;
+    height: 4px;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
+    top: 10px;
+    width: 100%;
+}
+
+.dual-slider-range {
+    position: absolute;
+    height: 4px;
+    background: var(--color-primary);
+    border-radius: 2px;
+    top: 10px;
+}
+
+.dual-slider-values {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+}
+
+/* ============ PROFILE ACTIONS ============ */
+.profile-actions .btn {
+    font-size: 0.75rem;
+}
+
+/* ============ WATER BALANCE TABLE ============ */
+.balance-table {
+    font-size: 0.75rem;
+    width: 100%;
+}
+
+.balance-table td {
+    padding: 2px 6px;
+    border-bottom: 1px solid var(--color-divider);
+}
+
+.balance-table td:last-child {
+    text-align: right;
+    font-family: 'SF Mono', 'Menlo', 'Courier New', monospace;
     font-weight: 500;
 }
 
-/* Responsive: stack vertically on smaller screens */
-@media (max-width: 991.98px) {
-    .main-content {
-        height: auto;
+/* ============ RESPONSIVE: MOBILE ============ */
+@media (max-width: 768px) {
+    #results-panel {
+        right: 0;
+        left: 0;
+        top: auto;
+        bottom: 0;
+        width: 100%;
+        max-height: 45vh;
+        border-radius: 14px 14px 0 0;
+        border-bottom: none;
     }
 
-    .map-col {
-        height: 50vh;
+    .results-header {
+        justify-content: center;
+        position: relative;
     }
 
-    .panel-col {
-        height: 50vh;
-        overflow-y: auto;
+    .results-header::before {
+        content: '';
+        position: absolute;
+        top: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 36px;
+        height: 4px;
+        background: rgba(0, 0, 0, 0.15);
+        border-radius: 2px;
+    }
+
+    .results-restore {
+        right: 50%;
+        transform: translateX(50%);
+    }
+
+    #layers-panel {
+        width: 200px;
+    }
+
+    .layers-toggle.layers-open {
+        left: 210px;
     }
 }
