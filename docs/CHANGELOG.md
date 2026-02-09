@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Docker resource limits: db=2G, api=1G, PostgreSQL tuning (shared_buffers=512MB)
 - `MAX_CELLS_DEFAULT` zmniejszony z 10M do 2M (bezpieczne dla 15 GB RAM)
 
+### Tested
+- E2E Task 9 (retry): N-33-131-C-b-2 — 4 testy pass:
+  - A: 493k cells (0.49 km², 6.5s, Strahler=4, Dd=15.3 km/km²)
+  - B: 1.5M cells (1.50 km², 21s, Strahler=4, Dd=14.7 km/km²)
+  - C: Pre-flight reject (limit 100k) — natychmiastowe odrzucenie
+  - D: Max outlet (1.76M, CTE=2M+1) — LIMIT safety net poprawnie zlapal nadmiar
+
 ### Changed
 - Aktualizacja Kartograf v0.4.0 → v0.4.1 (BDOT10k hydro, geometry selection, rtree fix)
 - Aktualizacja Kartograf v0.3.1 → v0.4.0 (nowe produkty: NMPT, Ortofotomapa, auto-ekspansja godel)
