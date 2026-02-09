@@ -9,7 +9,6 @@
     window.Hydrograf = window.Hydrograf || {};
 
     var map = null;
-    var layerControl = null;
     var watershedLayer = null;
     var outletMarker = null;
     var clickEnabled = true;
@@ -26,16 +25,10 @@
             zoomControl: true,
         });
 
-        var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
             maxZoom: 19,
         }).addTo(map);
-
-        layerControl = L.control.layers(
-            { 'OpenStreetMap': osm },
-            {},
-            { position: 'topright', collapsed: true }
-        ).addTo(map);
 
         map.on('click', function (e) {
             if (!clickEnabled) return;
@@ -120,12 +113,12 @@
     }
 
     /**
-     * Get the layer control instance (for adding overlays externally).
-     *
-     * @returns {L.Control.Layers|null}
+     * Notify Leaflet that the map container size changed.
      */
-    function getLayerControl() {
-        return layerControl;
+    function invalidateSize() {
+        if (map) {
+            setTimeout(function () { map.invalidateSize(); }, 50);
+        }
     }
 
     window.Hydrograf.map = {
@@ -135,6 +128,6 @@
         clearWatershed: clearWatershed,
         disableClick: disableClick,
         enableClick: enableClick,
-        getLayerControl: getLayerControl,
+        invalidateSize: invalidateSize,
     };
 })();

@@ -165,6 +165,7 @@
         state.isLoading = loading;
 
         if (loading) {
+            showPanel();
             els.instruction.classList.add('d-none');
             els.loading.classList.remove('d-none');
             els.error.classList.add('d-none');
@@ -182,6 +183,7 @@
      * @param {string} msg - Error message (Polish)
      */
     function showError(msg) {
+        showPanel();
         els.instruction.classList.add('d-none');
         els.error.classList.remove('d-none');
         els.errorMessage.textContent = msg;
@@ -258,11 +260,41 @@
     }
 
     /**
+     * Show the right side panel (parameters).
+     */
+    function showPanel() {
+        els.panelCol.classList.remove('d-none');
+        els.mapCol.classList.remove('map-col-full');
+        Hydrograf.map.invalidateSize();
+    }
+
+    /**
+     * Hide the right side panel.
+     */
+    function hidePanel() {
+        els.panelCol.classList.add('d-none');
+        els.mapCol.classList.add('map-col-full');
+        Hydrograf.map.invalidateSize();
+    }
+
+    /**
+     * Toggle layers panel visibility.
+     */
+    function toggleLayers() {
+        var panel = document.getElementById('layers-panel');
+        var btn = document.getElementById('layers-toggle');
+        panel.classList.toggle('layers-hidden');
+        btn.classList.toggle('layers-open');
+    }
+
+    /**
      * Initialize application.
      */
     function init() {
         // Cache DOM references
         els = {
+            mapCol: document.getElementById('map-col'),
+            panelCol: document.getElementById('panel-col'),
             instruction: document.getElementById('panel-instruction'),
             loading: document.getElementById('panel-loading'),
             error: document.getElementById('panel-error'),
@@ -275,6 +307,12 @@
             paramsOutlet: document.getElementById('params-outlet'),
             hydrographInfo: document.getElementById('hydrograph-info'),
         };
+
+        // Layers toggle
+        document.getElementById('layers-toggle').addEventListener('click', toggleLayers);
+
+        // Panel close button
+        document.getElementById('panel-close').addEventListener('click', hidePanel);
 
         Hydrograf.map.init(onMapClick);
         checkSystemHealth();
