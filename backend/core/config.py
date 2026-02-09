@@ -42,6 +42,9 @@ class Settings(BaseSettings):
         "http://localhost,http://localhost:8080,http://127.0.0.1,http://127.0.0.1:8080"
     )
 
+    # Database safety
+    db_statement_timeout_ms: int = 30000  # 30s
+
     # IMGW preprocessing
     imgw_grid_spacing_km: float = 2.0
     imgw_rate_limit_delay_s: float = 0.5
