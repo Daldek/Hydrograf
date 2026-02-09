@@ -269,6 +269,32 @@ Format: numer, data, kontekst (dlaczego temat powstal), rozwazone opcje, decyzja
 
 ---
 
+## ADR-015: Ochrona przed resource exhaustion (OOM)
+
+**Data:** 2026-02-09
+**Status:** Przyjeta
+
+**Kontekst:** Podczas E2E testu (2026-02-08) `traverse_upstream()` zostal wywolany na ujaciu z `flow_accumulation=1,760,000`. Brak jakichkolwiek limitow spowodowal OOM crash (~800-1000 MB peak), co zabilo sesje. Python `.fetchall()` ladowal 1.76M wierszy bez limitu, PostgreSQL mial `statement_timeout=0` (nieograniczony), brak LIMIT w CTE, brak limitow zasobow Docker. Kontener PostGIS nie byl problemem (172 MB, 1.08% RAM) — winny byl proces Python.
+
+**Opcje:**
+- A) Tylko LIMIT w CTE — chroni przed duzymi wynikami, ale nie zapobiega dlugim zapytaniom
+- B) Wielowarstwowa ochrona: pre-flight check + CTE LIMIT + statement_timeout + Docker limits
+- C) Jak B, ale z przetwarzaniem strumieniowym (server-side cursor) — bardziej skomplikowane
+
+**Decyzja:** Opcja B. Cztery warstwy ochrony:
+1. Pre-flight check (`check_watershed_size()`) — sprawdzenie `flow_accumulation` ujscia przed CTE (<1ms, PK lookup)
+2. LIMIT w rekurencyjnym CTE — ograniczenie wynikow SQL
+3. `statement_timeout=30s` w polaczeniu z baza — timeout na poziomie sesji PostgreSQL
+4. Docker resource limits — `memory: 2G` (db), `memory: 1G` (api), PostgreSQL tuning
+
+**Konsekwencje:**
+- Zlewnie >2M komorek odrzucane natychmiast z czytelnym komunikatem
+- Dlugie zapytania przerywane po 30s (API) lub 600s (skrypty CLI)
+- Kontenery Docker nie moga wyczerpac calego RAM hosta
+- PostgreSQL optymalnie skonfigurowany dla 2 GB kontenera (shared_buffers=512MB, work_mem=16MB)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
