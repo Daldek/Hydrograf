@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 import rasterio
 from PIL import Image
-from pyproj import Transformer
+from rasterio.warp import Resampling, calculate_default_transform, reproject
 from scipy.ndimage import maximum_filter
 
 # Discrete color palette for Strahler orders 1–8 (blue gradient)
@@ -37,22 +37,38 @@ STRAHLER_COLORS = {
 
 
 def generate_overlay(
-    input_path: str, output_png: str, output_meta: str, max_size: int = 1024
+    input_path: str,
+    output_png: str,
+    output_meta: str,
+    max_size: int = 1024,
+    source_crs: str | None = None,
 ) -> None:
     """Generate colored PNG and metadata JSON from stream order raster."""
+    dst_crs = "EPSG:4326"
+
     with rasterio.open(input_path) as src:
+        src_crs = src.crs or source_crs
+        if src_crs is None:
+            print("Error: raster has no CRS. Use --source-crs.", file=sys.stderr)
+            sys.exit(1)
+
         data = src.read(1)
-        crs = src.crs
-        bounds = src.bounds
-        height, width = data.shape
+        src_height, src_width = data.shape
+
+        # Reproject parameters
+        dst_transform, dst_width, dst_height = calculate_default_transform(
+            src_crs, dst_crs, src.width, src.height, *src.bounds
+        )
 
     # Find max order present in data
     max_order = int(np.max(data))
     stream_pixels = int(np.count_nonzero(data))
-    print(f"Stream order: {width}x{height}, max order={max_order}, "
-          f"stream pixels={stream_pixels}")
+    print(
+        f"Stream order: {src_width}x{src_height}, max order={max_order}, "
+        f"stream pixels={stream_pixels}"
+    )
 
-    # Dilate streams to make them visible after downsampling.
+    # Dilate streams in source CRS (uniform pixel size).
     # Line width grows with Strahler order (order 1 → 3px, order 5 → 7px).
     # Process low→high so higher orders paint over lower ones.
     dilated = np.zeros_like(data)
@@ -66,13 +82,33 @@ def generate_overlay(
         dilated = np.where(expanded > 0, expanded, dilated)
 
     dilated_pixels = int(np.count_nonzero(dilated))
-    print(f"After dilation: {dilated_pixels} visible pixels "
-          f"({100 * dilated_pixels / (width * height):.1f}%)")
+    print(
+        f"After dilation: {dilated_pixels} visible pixels "
+        f"({100 * dilated_pixels / (src_width * src_height):.1f}%)"
+    )
+
+    # Reproject dilated data to EPSG:4326
+    with rasterio.open(input_path) as src:
+        reprojected = np.zeros((dst_height, dst_width), dtype=dilated.dtype)
+        reproject(
+            source=dilated,
+            destination=reprojected,
+            src_transform=src.transform,
+            src_crs=src_crs,
+            dst_transform=dst_transform,
+            dst_crs=dst_crs,
+            resampling=Resampling.nearest,
+            src_nodata=0,
+            dst_nodata=0,
+        )
+
+    height, width = reprojected.shape
+    print(f"Reprojected to {dst_crs}: {width}x{height}")
 
     # Build RGBA image
     rgba = np.zeros((height, width, 4), dtype=np.uint8)
     for order, (r, g, b) in STRAHLER_COLORS.items():
-        mask = dilated == order
+        mask = reprojected == order
         rgba[mask, 0] = r
         rgba[mask, 1] = g
         rgba[mask, 2] = b
@@ -84,29 +120,30 @@ def generate_overlay(
     if max_size and (width > max_size or height > max_size):
         img.thumbnail((max_size, max_size), Image.NEAREST)
         print(f"Downsampled: {width}x{height} → {img.width}x{img.height}")
-        width, height = img.width, img.height
     img.save(output_png, optimize=True)
     file_size = Path(output_png).stat().st_size
     print(f"PNG saved: {output_png} ({file_size / 1024:.0f} KB)")
 
-    # Transform bounds to WGS84
-    transformer = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
-    lon_min, lat_min = transformer.transform(bounds.left, bounds.bottom)
-    lon_max, lat_max = transformer.transform(bounds.right, bounds.top)
+    # Bounds from reprojected transform (already in EPSG:4326)
+    lon_min = dst_transform.c
+    lat_max = dst_transform.f
+    lon_max = lon_min + dst_width * dst_transform.a
+    lat_min = lat_max + dst_height * dst_transform.e
 
     meta = {
         "bounds": [[lat_min, lon_min], [lat_max, lon_max]],
         "max_order": max_order,
-        "width": width,
-        "height": height,
-        "crs_source": str(crs),
+        "width": img.width,
+        "height": img.height,
+        "crs_source": str(src_crs),
     }
 
     with open(output_meta, "w") as f:
         json.dump(meta, f, indent=2)
     print(f"Metadata: {output_meta}")
-    print(f"WGS84 bounds: [{lat_min:.6f}, {lon_min:.6f}] → "
-          f"[{lat_max:.6f}, {lon_max:.6f}]")
+    print(
+        f"WGS84 bounds: [{lat_min:.6f}, {lon_min:.6f}] → [{lat_max:.6f}, {lon_max:.6f}]"
+    )
 
 
 def main() -> None:
@@ -124,13 +161,18 @@ def main() -> None:
         default=1024,
         help="Max image dimension in pixels (default: 1024)",
     )
+    parser.add_argument(
+        "--source-crs",
+        default=None,
+        help="Source CRS override (e.g. EPSG:2180) if raster has no CRS metadata",
+    )
     args = parser.parse_args()
 
     if not Path(args.input).exists():
         print(f"Error: input file not found: {args.input}", file=sys.stderr)
         sys.exit(1)
 
-    generate_overlay(args.input, args.output, args.meta, args.max_size)
+    generate_overlay(args.input, args.output, args.meta, args.max_size, args.source_crs)
 
 
 if __name__ == "__main__":
