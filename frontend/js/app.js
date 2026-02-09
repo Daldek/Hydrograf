@@ -314,12 +314,12 @@
         slider.type = 'range';
         slider.min = '0';
         slider.max = '100';
-        slider.value = '70';
+        slider.value = '30';
         var sliderValue = document.createElement('span');
         sliderValue.className = 'layer-opacity-val';
-        sliderValue.textContent = '70%';
+        sliderValue.textContent = '30%';
         slider.addEventListener('input', function () {
-            var opacity = slider.value / 100;
+            var opacity = (100 - slider.value) / 100;
             Hydrograf.map.setDemOpacity(opacity);
             sliderValue.textContent = slider.value + '%';
         });
