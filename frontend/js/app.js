@@ -282,17 +282,18 @@
      */
     function initLayersPanel() {
         var list = document.getElementById('layers-list');
-        var demLayer = Hydrograf.map.getDemLayer();
 
         var label = document.createElement('label');
         label.className = 'layer-item';
         var cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.addEventListener('change', function () {
+            var layer = Hydrograf.map.getDemLayer();
+            if (!layer) return;
             if (cb.checked) {
-                demLayer.addTo(Hydrograf.map._getMap());
+                layer.addTo(Hydrograf.map._getMap());
             } else {
-                Hydrograf.map._getMap().removeLayer(demLayer);
+                Hydrograf.map._getMap().removeLayer(layer);
             }
         });
         var text = document.createTextNode(' NMT (wysokości)');

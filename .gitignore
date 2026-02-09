@@ -78,6 +78,7 @@ Thumbs.db
 *.geojson
 data/
 !data/.gitkeep
+!frontend/data/
 
 # Alembic
 alembic/versions/*.pyc
