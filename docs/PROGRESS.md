@@ -44,26 +44,15 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-08 (domkniecie dokumentacji: 2026-02-09)
+**Data:** 2026-02-09
 
 ### Co zrobiono
-- Upgrade Kartograf v0.4.0 → v0.4.1 (6 commitow na `develop`):
-  - `a046400` — upgrade dependency w requirements.txt
-  - `f003699` — `download_landcover.py --category hydro` (BDOT10k SWRS/SWKN/SWRM/PTWP)
-  - `5a26feb` — `download_dem.py --geometry` (precyzyjny wybor arkuszy z SHP/GPKG)
-  - `51b830e` — `prepare_area.py --with-hydro` (automatyczny stream burning)
-  - `d0fff0e` — aktualizacja referencji wersji w dokumentacji
-  - `6582be4` — lint fix E501 w 3 skryptach
-- E2E test na arkuszu N-33-131-C-b-2 (Tasks 7–8 OK):
-  - NMT: 4 sub-sheets (1–4), po ~32 MB kazdy
-  - Hydro: BDOT10k GPKG 8.1 MB
-  - Stream burning + preprocessing: 20 rasterow posrednich (~444 MB)
-  - process_dem z burn_streams: 2 serie (dem_mosaic 4 tiles + N-33-131-C-b-2-3 single)
-- Task 9 FAILED — traverse_upstream resource exhaustion:
-  - Outlet z flow_accumulation = 1.76M cells
-  - Recursive CTE bez LIMIT wyczerpalo zasoby PostgreSQL
-  - Mozliwe ograniczenia zasobow Docker (pamiec, CPU)
-  - TCP connection established, brak wymiany banera serwera
+- Domkniecie sesji Kartograf v0.4.1 (Tasks 10–11):
+  - Zaktualizowano PROGRESS.md i CHANGELOG.md (wersja Kartograf, wyniki E2E, awaria Task 9)
+  - Raport sesji: `docs/plans/2026-02-08-kartograf-v041-report.md` — root cause analysis + prevention
+  - 2 commity: `2eacfd2`, `860a610`
+- Sesja wlasciwa (2026-02-08): upgrade Kartograf v0.4.0 → v0.4.1, 6 commitow, E2E Tasks 7–8 OK, Task 9 FAILED
+- Pelny raport: `docs/plans/2026-02-08-kartograf-v041-report.md`
 
 ### W trakcie
 - Brak
