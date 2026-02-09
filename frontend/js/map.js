@@ -11,6 +11,8 @@
     var map = null;
     var demLayer = null;
     var demBounds = null;
+    var streamsLayer = null;
+    var streamsBounds = null;
     var watershedLayer = null;
     var outletMarker = null;
     var clickEnabled = true;
@@ -32,8 +34,9 @@
             maxZoom: 19,
         }).addTo(map);
 
-        // Load DEM overlay (imageOverlay instead of tileLayer)
+        // Load overlays (imageOverlay instead of tileLayer)
         loadDemOverlay();
+        loadStreamsOverlay();
 
         map.on('click', function (e) {
             if (!clickEnabled) return;
@@ -90,6 +93,56 @@
     function setDemOpacity(opacity) {
         if (demLayer) {
             demLayer.setOpacity(opacity);
+        }
+    }
+
+    /**
+     * Load streams overlay from static files (async).
+     */
+    function loadStreamsOverlay() {
+        fetch('/data/streams.json')
+            .then(function (res) {
+                if (!res.ok) throw new Error('Streams metadata not found');
+                return res.json();
+            })
+            .then(function (meta) {
+                streamsBounds = L.latLngBounds(meta.bounds);
+                streamsLayer = L.imageOverlay('/data/streams.png', streamsBounds, {
+                    opacity: 1.0,
+                    attribution: 'Cieki (Strahler)',
+                });
+            })
+            .catch(function (err) {
+                console.warn('Streams overlay not available:', err.message);
+            });
+    }
+
+    /**
+     * Get the streams overlay layer (for layers panel).
+     *
+     * @returns {L.ImageOverlay|null}
+     */
+    function getStreamsLayer() {
+        return streamsLayer;
+    }
+
+    /**
+     * Zoom map to streams overlay extent.
+     */
+    function fitStreamsBounds() {
+        if (streamsBounds && map) {
+            map.fitBounds(streamsBounds, { padding: [20, 20] });
+        }
+    }
+
+    /**
+     * Set streams overlay opacity.
+     *
+     * @param {number} opacity - 0.0 to 1.0
+     */
+    function setStreamsOpacity(opacity) {
+        if (streamsLayer) {
+            streamsLayer.setOpacity(opacity);
         }
     }
 
@@ -182,6 +235,9 @@
         getDemLayer: getDemLayer,
         fitDemBounds: fitDemBounds,
         setDemOpacity: setDemOpacity,
+        getStreamsLayer: getStreamsLayer,
+        fitStreamsBounds: fitStreamsBounds,
+        setStreamsOpacity: setStreamsOpacity,
         showWatershed: showWatershed,
         showOutlet: showOutlet,
         clearWatershed: clearWatershed,
