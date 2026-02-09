@@ -50,11 +50,17 @@ def mock_db_with_stream():
         r.is_stream = i == 0
         upstream_results.append(r)
 
+    # Mock pre-flight check result (check_watershed_size)
+    preflight_result = MagicMock()
+    preflight_result.flow_accumulation = 3  # small watershed
+
     def execute_side_effect(query, params=None):
         result = MagicMock()
         query_str = str(query)
         if "is_stream = TRUE" in query_str:
             result.fetchone.return_value = stream_result
+        elif "flow_accumulation FROM flow_network WHERE id" in query_str:
+            result.fetchone.return_value = preflight_result
         elif "RECURSIVE upstream" in query_str:
             result.fetchall.return_value = upstream_results
         return result
@@ -277,11 +283,17 @@ class TestDelineateWatershedEndpoint:
             r.is_stream = i == 0
             upstream_results.append(r)
 
+        # Mock pre-flight check result (check_watershed_size)
+        preflight_result = MagicMock()
+        preflight_result.flow_accumulation = 299  # small enough to pass pre-flight
+
         def execute_side_effect(query, params=None):
             result = MagicMock()
             query_str = str(query)
             if "is_stream = TRUE" in query_str:
                 result.fetchone.return_value = stream_result
+            elif "flow_accumulation FROM flow_network WHERE id" in query_str:
+                result.fetchone.return_value = preflight_result
             elif "RECURSIVE upstream" in query_str:
                 result.fetchall.return_value = upstream_results
             return result
