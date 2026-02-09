@@ -16,16 +16,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `frontend/js/app.js` — logika aplikacji (walidacja, wyswietlanie ~20 parametrow)
 - CDN: Leaflet 1.9.4, Bootstrap 5.3.3 (z integrity hashes)
 - Vanilla JS (ES6+, IIFE modules), bez bundlera
+- Panel warstw (lewy, chowany) z przyciskiem toggle (hamburger)
+- Panel parametrow domyslnie ukryty — auto-otwiera sie po wyznaczeniu zlewni, zamykany X
+- Warstwa NMT (WIP): PostGIS raster + endpoint XYZ tiles + kolorystyka hipsometryczna
+  - `scripts/import_dem_raster.py` — import DEM GeoTIFF do PostGIS jako kafelki 256x256
+  - `api/endpoints/tiles.py` — `GET /api/tiles/dem/{z}/{x}/{y}.png` z PostGIS raster
+  - Rampa kolorow: zielony (doliny) → zolty → brazowy → bialy (szczyty), semi-transparent
+  - **Status:** backend dziala (tile PNG z bazy), frontend nie wyswietla (do debugowania)
+- `scripts/generate_dem_overlay.py` — skrypt generujacy statyczny PNG z NMT (narzedzie pomocnicze)
+- `Pillow>=10.0.0` w requirements.txt (rendering tile PNG)
 
 ### Security
 - Naglowki bezpieczenstwa nginx: CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy
 - Cache statycznych plikow (7d, immutable)
-- Ograniczenie portow API (127.0.0.1:8000) i DB (127.0.0.1:5432) — jedyny punkt wejscia z sieci: nginx:80
+- Ograniczenie portow API (127.0.0.1:8000) i DB (127.0.0.1:5432) — jedyny punkt wejscia z sieci: nginx:8080
 - Frontend: wylacznie `textContent` dla danych dynamicznych (brak innerHTML z danymi)
 
 ### Fixed
 - Dockerfile: dodano `git` do system dependencies (wymagany przez `git+https://` w requirements.txt)
 - docker-compose.yml: `effective_cache_size=1G` → `1GB` (poprawna jednostka PostgreSQL)
+- Bootstrap 5.3.3 CSS integrity hash (zly hash blokowal zaladowanie stylow → mapa niewidoczna)
+- Nginx: `^~` prefix na `/api/tiles/` (regex `.png` przechwytywal tile requesty jako statyczne pliki)
 
 ### Fixed
 - Ochrona przed resource exhaustion (OOM) w `traverse_upstream()` (ADR-015):

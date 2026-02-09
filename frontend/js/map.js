@@ -9,6 +9,7 @@
     window.Hydrograf = window.Hydrograf || {};
 
     var map = null;
+    var demLayer = null;
     var watershedLayer = null;
     var outletMarker = null;
     var clickEnabled = true;
@@ -30,12 +31,28 @@
             maxZoom: 19,
         }).addTo(map);
 
+        // DEM overlay layer (not added to map by default)
+        demLayer = L.tileLayer('/api/tiles/dem/{z}/{x}/{y}.png', {
+            attribution: 'NMT &copy; GUGiK',
+            maxZoom: 19,
+            opacity: 0.7,
+        });
+
         map.on('click', function (e) {
             if (!clickEnabled) return;
             if (onClickCallback) {
                 onClickCallback(e.latlng.lat, e.latlng.lng);
             }
         });
+    }
+
+    /**
+     * Get the DEM tile layer (for layers panel).
+     *
+     * @returns {L.TileLayer|null}
+     */
+    function getDemLayer() {
+        return demLayer;
     }
 
     /**
@@ -123,6 +140,8 @@
 
     window.Hydrograf.map = {
         init: init,
+        _getMap: function () { return map; },
+        getDemLayer: getDemLayer,
         showWatershed: showWatershed,
         showOutlet: showOutlet,
         clearWatershed: clearWatershed,

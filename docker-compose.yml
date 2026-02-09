@@ -8,6 +8,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-hydro_db}
       POSTGRES_USER: ${POSTGRES_USER:-hydro_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hydro_password}
+      POSTGIS_GDAL_ENABLED_DRIVERS: ENABLE_ALL
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init_scripts:/docker-entrypoint-initdb.d:ro
