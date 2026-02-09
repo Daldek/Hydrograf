@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# Maximum cells for safety limit
-MAX_CELLS_DEFAULT = 10_000_000
+# Maximum cells for safety limit (~200 km² @ 1m resolution, safe for 15 GB RAM)
+MAX_WATERSHED_CELLS = 2_000_000
 
 # Maximum distance to search for stream [m]
 MAX_STREAM_DISTANCE_M = 1000.0
@@ -144,10 +144,59 @@ def find_nearest_stream(
     )
 
 
+def check_watershed_size(
+    outlet_id: int,
+    db: Session,
+    max_cells: int = MAX_WATERSHED_CELLS,
+) -> int:
+    """
+    Pre-flight check: verify watershed size before expensive CTE traversal.
+
+    Uses flow_accumulation of the outlet cell as an estimate of watershed size.
+    This is a single-row PK lookup (<1ms) that prevents OOM from large watersheds.
+
+    Parameters
+    ----------
+    outlet_id : int
+        ID of outlet cell
+    db : Session
+        SQLAlchemy database session
+    max_cells : int, optional
+        Maximum allowed cells, default 2,000,000
+
+    Returns
+    -------
+    int
+        Estimated number of cells in the watershed
+
+    Raises
+    ------
+    ValueError
+        If outlet not found or watershed exceeds max_cells
+    """
+    result = db.execute(
+        text("SELECT flow_accumulation FROM flow_network WHERE id = :id"),
+        {"id": outlet_id},
+    ).fetchone()
+
+    if result is None:
+        raise ValueError(f"Outlet {outlet_id} not found in flow_network")
+
+    estimated = result.flow_accumulation + 1
+    if estimated > max_cells:
+        raise ValueError(
+            f"Zlewnia zbyt duza: ~{estimated:,} komorek (limit: {max_cells:,}). "
+            f"Wybierz punkt blizej zrodla cieku."
+        )
+
+    logger.debug(f"Pre-flight check OK: outlet {outlet_id}, ~{estimated:,} cells")
+    return estimated
+
+
 def traverse_upstream(
     outlet_id: int,
     db: Session,
-    max_cells: int = MAX_CELLS_DEFAULT,
+    max_cells: int = MAX_WATERSHED_CELLS,
 ) -> list[FlowCell]:
     """
     Traverse flow network upstream from outlet using recursive CTE.
@@ -162,7 +211,7 @@ def traverse_upstream(
     db : Session
         SQLAlchemy database session
     max_cells : int, optional
-        Safety limit for maximum cells, default 10,000,000
+        Safety limit for maximum cells, default 2,000,000
 
     Returns
     -------
@@ -179,8 +228,12 @@ def traverse_upstream(
     >>> cells = traverse_upstream(outlet_id=123, db=db)
     >>> print(f"Watershed has {len(cells)} cells")
     """
+    # Pre-flight check: fail fast if watershed is too large (<1ms PK lookup)
+    check_watershed_size(outlet_id, db, max_cells)
+
     # Recursive CTE for upstream traversal
     # Follows the downstream_id links in reverse direction
+    # LIMIT prevents OOM if pre-flight estimate was inaccurate
     query = text("""
         WITH RECURSIVE upstream AS (
             -- Base case: outlet cell
@@ -219,19 +272,24 @@ def traverse_upstream(
         SELECT id, x, y, elevation, flow_accumulation, slope,
                downstream_id, cell_area, is_stream
         FROM upstream
+        LIMIT :max_rows
     """)
 
     results = db.execute(
         query,
-        {"outlet_id": outlet_id, "max_depth": MAX_RECURSION_DEPTH},
+        {
+            "outlet_id": outlet_id,
+            "max_depth": MAX_RECURSION_DEPTH,
+            "max_rows": max_cells + 1,
+        },
     ).fetchall()
 
     if len(results) > max_cells:
         logger.error(
-            f"Watershed too large: {len(results):,} cells > {max_cells:,} limit"
+            f"Watershed too large: {len(results):,}+ cells > {max_cells:,} limit"
         )
         raise ValueError(
-            f"Watershed too large: {len(results):,} cells exceeds limit of {max_cells:,}"
+            f"Zlewnia zbyt duza: {len(results):,}+ komorek (limit: {max_cells:,})"
         )
 
     logger.info(f"Traversed {len(results):,} cells upstream from outlet {outlet_id}")
