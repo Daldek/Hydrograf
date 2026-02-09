@@ -10,7 +10,7 @@
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir + COPY (3.8 min/arkusz), stream burning |
 | Integracja Hydrolog | ✅ Gotowy | v0.5.2 |
-| Integracja Kartograf | ✅ Gotowy | v0.4.0 (NMT, NMPT, Orto, Land Cover, HSG) |
+| Integracja Kartograf | ✅ Gotowy | v0.4.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | ⏳ Zaplanowany | CP4 — mapa Leaflet.js |
@@ -44,28 +44,38 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-08
+**Data:** 2026-02-08 (domkniecie dokumentacji: 2026-02-09)
 
 ### Co zrobiono
-- Audyt i commit zmian z przerwanej sesji (integracja Kartograf v0.3.1 → v0.4.0):
-  - `requirements.txt` — pin na v0.4.0
-  - `download_dem.py` — obsluga `Path | list[Path]` z `download_sheet()` (auto-ekspansja godel)
-  - `download_landcover.py`, `prepare_area.py` — aktualizacja wersji w docstrings
-  - `KARTOGRAF_INTEGRATION.md` — v3.0, nowe produkty (NMPT, Ortofoto), auto-ekspansja
-- Dodatkowy audyt dokumentacji — poprawiono 2 pominięte pliki:
-  - `IMPLEMENTATION_PROMPT.md` — v0.3.1 → v0.4.0
-  - `scripts/README.md` — v0.2.0/v0.3.0 → v0.4.0 (4 referencje)
-- Commit `9ecb2db` wypchniety na `origin/develop`
+- Upgrade Kartograf v0.4.0 → v0.4.1 (6 commitow na `develop`):
+  - `a046400` — upgrade dependency w requirements.txt
+  - `f003699` — `download_landcover.py --category hydro` (BDOT10k SWRS/SWKN/SWRM/PTWP)
+  - `5a26feb` — `download_dem.py --geometry` (precyzyjny wybor arkuszy z SHP/GPKG)
+  - `51b830e` — `prepare_area.py --with-hydro` (automatyczny stream burning)
+  - `d0fff0e` — aktualizacja referencji wersji w dokumentacji
+  - `6582be4` — lint fix E501 w 3 skryptach
+- E2E test na arkuszu N-33-131-C-b-2 (Tasks 7–8 OK):
+  - NMT: 4 sub-sheets (1–4), po ~32 MB kazdy
+  - Hydro: BDOT10k GPKG 8.1 MB
+  - Stream burning + preprocessing: 20 rasterow posrednich (~444 MB)
+  - process_dem z burn_streams: 2 serie (dem_mosaic 4 tiles + N-33-131-C-b-2-3 single)
+- Task 9 FAILED — traverse_upstream resource exhaustion:
+  - Outlet z flow_accumulation = 1.76M cells
+  - Recursive CTE bez LIMIT wyczerpalo zasoby PostgreSQL
+  - Mozliwe ograniczenia zasobow Docker (pamiec, CPU)
+  - TCP connection established, brak wymiany banera serwera
 
 ### W trakcie
 - Brak
 
 ### Nastepne kroki
-1. CP4 — frontend z mapa Leaflet.js
-2. Dlug techniczny: constants.py, hardcoded secrets
+1. Fix traverse_upstream — zabezpieczenia przed resource exhaustion (statement_timeout, pre-flight check, LIMIT w CTE, konfiguracja zasobow Docker)
+2. CP4 — frontend z mapa Leaflet.js
+3. Dlug techniczny: constants.py, hardcoded secrets
 
 ## Backlog
 
+- [ ] Fix traverse_upstream resource exhaustion (CTE LIMIT, statement_timeout, pre-flight acc check, Docker resource config)
 - [ ] CP4: Frontend z mapa (Leaflet.js + Chart.js)
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
