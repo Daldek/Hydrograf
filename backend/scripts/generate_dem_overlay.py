@@ -51,7 +51,9 @@ def build_colormap(n_steps: int = 256) -> np.ndarray:
     return cmap
 
 
-def generate_overlay(input_path: str, output_png: str, output_meta: str) -> None:
+def generate_overlay(
+    input_path: str, output_png: str, output_meta: str, max_size: int = 1024
+) -> None:
     """Generate colored PNG and metadata JSON from DEM raster."""
     with rasterio.open(input_path) as src:
         dem = src.read(1)
@@ -91,8 +93,12 @@ def generate_overlay(input_path: str, output_png: str, output_meta: str) -> None
     rgba[..., 2] = cmap[indices, 2]
     rgba[..., 3] = np.where(valid, 200, 0).astype(np.uint8)  # semi-transparent
 
-    # Save PNG
+    # Save PNG (with optional downsampling)
     img = Image.fromarray(rgba, mode="RGBA")
+    if max_size and (width > max_size or height > max_size):
+        img.thumbnail((max_size, max_size), Image.LANCZOS)
+        print(f"Downsampled: {width}x{height} → {img.width}x{img.height}")
+        width, height = img.width, img.height
     img.save(output_png, optimize=True)
     file_size = Path(output_png).stat().st_size
     print(f"PNG saved: {output_png} ({file_size / 1024:.0f} KB)")
@@ -122,13 +128,19 @@ def main() -> None:
     parser.add_argument("--input", required=True, help="Input DEM raster (GeoTIFF/VRT)")
     parser.add_argument("--output", required=True, help="Output PNG path")
     parser.add_argument("--meta", required=True, help="Output metadata JSON path")
+    parser.add_argument(
+        "--max-size",
+        type=int,
+        default=1024,
+        help="Max image dimension in pixels (default: 1024)",
+    )
     args = parser.parse_args()
 
     if not Path(args.input).exists():
         print(f"Error: input file not found: {args.input}", file=sys.stderr)
         sys.exit(1)
 
-    generate_overlay(args.input, args.output, args.meta)
+    generate_overlay(args.input, args.output, args.meta, args.max_size)
 
 
 if __name__ == "__main__":

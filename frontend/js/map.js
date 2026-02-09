@@ -31,12 +31,8 @@
             maxZoom: 19,
         }).addTo(map);
 
-        // DEM overlay layer (not added to map by default)
-        demLayer = L.tileLayer('/api/tiles/dem/{z}/{x}/{y}.png', {
-            attribution: 'NMT &copy; GUGiK',
-            maxZoom: 19,
-            opacity: 0.7,
-        });
+        // Load DEM overlay (imageOverlay instead of tileLayer)
+        loadDemOverlay();
 
         map.on('click', function (e) {
             if (!clickEnabled) return;
@@ -47,9 +43,30 @@
     }
 
     /**
-     * Get the DEM tile layer (for layers panel).
+     * Load DEM overlay from static files (async).
+     */
+    function loadDemOverlay() {
+        fetch('/data/dem.json')
+            .then(function (res) {
+                if (!res.ok) throw new Error('DEM metadata not found');
+                return res.json();
+            })
+            .then(function (meta) {
+                var bounds = L.latLngBounds(meta.bounds);
+                demLayer = L.imageOverlay('/data/dem.png', bounds, {
+                    opacity: 0.7,
+                    attribution: 'NMT &copy; GUGiK',
+                });
+            })
+            .catch(function (err) {
+                console.warn('DEM overlay not available:', err.message);
+            });
+    }
+
+    /**
+     * Get the DEM overlay layer (for layers panel).
      *
-     * @returns {L.TileLayer|null}
+     * @returns {L.ImageOverlay|null}
      */
     function getDemLayer() {
         return demLayer;
