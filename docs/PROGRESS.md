@@ -47,12 +47,12 @@
 **Data:** 2026-02-09
 
 ### Co zrobiono
-- **Warstwa ciekow (Strahler order)** — analogicznie do NMT overlay:
-  - `generate_streams_overlay.py` — nowy skrypt: wczytuje `07_stream_order.tif`, dyskretna paleta niebieska (1-8), piksele 0 = przezroczyste, downsampling `NEAREST` (dane kategoryczne)
-  - Dylatacja morfologiczna (`scipy.ndimage.maximum_filter`) — grubosc linii proporcjonalna do rzedu Strahlera (rzad 1 → 3px, rzad 5 → 11px), pokrycie 1% → 6.1%
-  - Wygenerowano `frontend/data/streams.png` (48 KB, 942x1024) + `streams.json` (bounds, max_order=5)
-  - `map.js` — `loadStreamsOverlay()`, `getStreamsLayer()`, `fitStreamsBounds()`, `setStreamsOpacity()`
-  - `app.js` — refaktor: wyodrebniony `addLayerEntry(list, label, getLayer, fitBounds, setOpacity, defaultTransparency)`, dwa wpisy: NMT (30%) i Cieki (0%)
+- **Fix: reprojekcja overlayow do EPSG:4326** — warstwy NMT i ciekow byly przesuniete ~26 m wzgledem OSM:
+  - Przyczyna: siatka EPSG:2180 obrocona ~0.63° (zbieznosc poludnikow PL-2000 strefa 6), skrypty transformowaly tylko narozniki
+  - `generate_dem_overlay.py` — `rasterio.warp.reproject(Resampling.bilinear)` zamiast `pyproj` corner-only
+  - `generate_streams_overlay.py` — dylatacja w EPSG:2180, potem `reproject(Resampling.nearest)`
+  - Dodano `--source-crs` fallback dla rastrow bez metadanych CRS
+  - Zregenerowano `dem.png` (551 KB, 1024x677) i `streams.png` (33 KB, 1024x677)
 
 ### W trakcie
 - Brak

@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `app.js`: refaktor `initLayersPanel()` — wyodrebniony `addLayerEntry()`, dwa wpisy: NMT (30%) i Cieki (0%)
 
 ### Fixed
+- Overlay NMT i ciekow przesuniety ~26 m wzgledem OSM — reprojekcja rastra do EPSG:4326:
+  - Przyczyna: skrypty transformowaly tylko 2 narozniki (SW/NE), a obraz pozostawal w siatce EPSG:2180 obróconej ~0.63° wzgledem WGS84 (zbieznosc poludnikow PL-2000 strefa 6)
+  - `generate_dem_overlay.py`: `rasterio.warp.reproject()` z `Resampling.bilinear` zamiast `pyproj` corner-only transform
+  - `generate_streams_overlay.py`: dylatacja w EPSG:2180, nastepnie `reproject()` z `Resampling.nearest` (dane kategoryczne)
+  - Bounds obliczane z transformu reprojekcji (nie z naroznikow)
+  - Dodano `--source-crs` fallback gdy raster nie ma metadanych CRS
 - Warstwa NMT "jezdzila" po mapie i miala artefakty — zamiana `L.tileLayer` na `L.imageOverlay`:
   - Przyczyna: `ST_Clip/ST_Resize` nieodpowiednia dla malego rastra (~2km x 2km); przy niskim zoomie DEM bylo rozciagniete na caly kafelek web
   - `map.js`: async `loadDemOverlay()` — fetch `/data/dem.json` → `L.imageOverlay` z georeferencjonowanymi granicami
