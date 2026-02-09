@@ -47,19 +47,11 @@
 **Data:** 2026-02-09
 
 ### Co zrobiono
-- **Naprawa warstwy NMT** — zamiana `L.tileLayer` na `L.imageOverlay`:
-  - Przyczyna: `L.tileLayer` + PostGIS `ST_Clip/ST_Resize` nieodpowiednia dla malego rastra (~2km x 2km) — DEM "jezdzilo" po mapie i mialo artefakty przy niskim zoomie
-  - Rozwiazanie: `L.imageOverlay` z pre-generowanym PNG — Leaflet sam obsuguje pozycjonowanie na kazdym zoomie
-  - `generate_dem_overlay.py` — dodano `--max-size` (domyslnie 1024) z downsamplingiem LANCZOS, alpha=255 (pelne krycie)
-  - Wygenerowano `frontend/data/dem.png` (792 KB, 942x1024) + `frontend/data/dem.json` (metadane WGS84 bounds)
-  - `map.js` — async `loadDemOverlay()` zamiast synchronicznego `L.tileLayer`
-  - `app.js` — null-guard w `initLayersPanel()` (layer moze byc null przed zaladowaniem)
-  - `.gitignore` — wyjatek `!frontend/data/` aby overlay files mogly byc commitowane
-  - Endpoint `tiles.py` zachowany (moze byc przydatny w przyszlosci)
-- **Kontrolki warstwy NMT** w panelu warstw:
-  - Przycisk zoom-to-extent (`fitDemBounds`) — przybliza mape do zasiegu warstwy
-  - Suwak przezroczystosci 0–100% (0% = pelne krycie, 100% = niewidoczne, domyslnie 30%)
-  - Suwak pojawia sie po wlaczeniu warstwy checkboxem
+- **Warstwa ciekow (Strahler order)** — analogicznie do NMT overlay:
+  - `generate_streams_overlay.py` — nowy skrypt: wczytuje `07_stream_order.tif`, dyskretna paleta niebieska (1-8), piksele 0 = przezroczyste, downsampling `NEAREST` (dane kategoryczne)
+  - Wygenerowano `frontend/data/streams.png` (22 KB, 942x1024) + `streams.json` (bounds, max_order=5)
+  - `map.js` — `loadStreamsOverlay()`, `getStreamsLayer()`, `fitStreamsBounds()`, `setStreamsOpacity()`
+  - `app.js` — refaktor: wyodrebniony `addLayerEntry(list, label, getLayer, fitBounds, setOpacity, defaultTransparency)`, dwa wpisy: NMT (30%) i Cieki (0%)
 
 ### W trakcie
 - Brak
