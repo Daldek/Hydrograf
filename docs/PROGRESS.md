@@ -49,7 +49,8 @@
 ### Co zrobiono
 - **Warstwa ciekow (Strahler order)** — analogicznie do NMT overlay:
   - `generate_streams_overlay.py` — nowy skrypt: wczytuje `07_stream_order.tif`, dyskretna paleta niebieska (1-8), piksele 0 = przezroczyste, downsampling `NEAREST` (dane kategoryczne)
-  - Wygenerowano `frontend/data/streams.png` (22 KB, 942x1024) + `streams.json` (bounds, max_order=5)
+  - Dylatacja morfologiczna (`scipy.ndimage.maximum_filter`) — grubosc linii proporcjonalna do rzedu Strahlera (rzad 1 → 3px, rzad 5 → 11px), pokrycie 1% → 6.1%
+  - Wygenerowano `frontend/data/streams.png` (48 KB, 942x1024) + `streams.json` (bounds, max_order=5)
   - `map.js` — `loadStreamsOverlay()`, `getStreamsLayer()`, `fitStreamsBounds()`, `setStreamsOpacity()`
   - `app.js` — refaktor: wyodrebniony `addLayerEntry(list, label, getLayer, fitBounds, setOpacity, defaultTransparency)`, dwa wpisy: NMT (30%) i Cieki (0%)
 
@@ -65,6 +66,7 @@
 - [x] Fix traverse_upstream resource exhaustion (ADR-015: pre-flight check, CTE LIMIT, statement_timeout, Docker limits)
 - [x] CP4 Faza 1: Frontend — mapa + zlewnia + parametry (Leaflet.js, Bootstrap 5)
 - [x] CP4: Warstwa NMT — naprawiona (L.imageOverlay zamiast L.tileLayer)
+- [x] CP4: Warstwa ciekow (Strahler) — L.imageOverlay z dylatacja morfologiczna
 - [ ] CP4 Faza 2: Frontend — hydrogram (Chart.js, formularz)
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
