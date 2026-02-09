@@ -27,6 +27,7 @@ scipy>=1.12.0
 # DEM processing
 pyflwdir>=0.5.8
 rasterio>=1.3.9
+Pillow>=10.0.0
 
 # IMGW data (precipitation PMAXTP, hydro stations, warnings)
 imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
