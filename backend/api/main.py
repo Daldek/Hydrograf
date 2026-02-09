@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.endpoints import health, hydrograph, tiles, watershed
+from api.endpoints import depressions, health, hydrograph, profile, tiles, watershed
 from core.config import get_settings
 
 # Configure logging
@@ -52,6 +52,8 @@ app.include_router(health.router, tags=["Health"])
 app.include_router(watershed.router, prefix="/api", tags=["Watershed"])
 app.include_router(hydrograph.router, prefix="/api", tags=["Hydrograph"])
 app.include_router(tiles.router, prefix="/api", tags=["Tiles"])
+app.include_router(profile.router, prefix="/api", tags=["Profile"])
+app.include_router(depressions.router, prefix="/api", tags=["Depressions"])
 
 
 @app.get("/")

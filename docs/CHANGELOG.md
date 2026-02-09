@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Frontend CP4 Faza 2 — redesign glassmorphism + nowe funkcjonalnosci:
+  - **Redesign wizualny (WP1):** glassmorphism (glass.css), mapa 100% szerokosc, plywajacy przesuwalny panel wynikow (draggable.js), sekcje akordeonowe, minimalizacja do ikony, bottom sheet na mobile
+  - **Panel warstw (WP2):** akordeon z grupami (Podklady / Warstwy podkladowe / Wyniki analiz), przelaczanie podkladow (OSM / ESRI Satellite / OpenTopoMap), per-layer opacity + zoom-to-extent
+  - **Pokrycie terenu (WP3):** `LandCoverStats` model, integracja `get_land_cover_for_boundary()` w watershed response, wykres donut Chart.js z paleta PL (las/laka/grunt_orny/zabudowa/woda)
+  - **Krzywa hipsometryczna (WP3):** Chart.js liniowy z wypelnieniem, dane z `include_hypsometric_curve=true`
+  - **Profil terenu (WP4):** endpoint `POST /api/terrain-profile` (sampling po flow_network), tryb auto (ciek glowny) + rysowanie polilinii na mapie (click/dblclick/Escape)
+  - **Zaglebie terrain (WP5):** migracja Alembic 004 (tabela `depressions`), endpoint `GET /api/depressions` z filtrami (volume/area/bbox), overlay loader, suwaki SCALGO-style
+  - **Hydrogram (WP6):** formularz scenariusza (duration + probability z `/api/scenarios`), wykres hydrogramu + hietogram, tabela bilansu wodnego
+  - `main_stream_geojson` (LineString WGS84) w watershed response — transformacja coords 2180→4326
+- Nowe pliki frontend: `glass.css`, `draggable.js`, `charts.js`, `layers.js`, `profile.js`, `hydrograph.js`, `depressions.js`
+- Nowe pliki backend: `api/endpoints/profile.py`, `api/endpoints/depressions.py`
+- Chart.js 4.4.7 CDN w `index.html`
+- Nginx CSP: dodano `server.arcgisonline.com` i `*.tile.opentopomap.org` do `img-src`
+
+### Changed
+- `index.html` — przebudowa z 2-kolumnowego layoutu na full-screen mapa + plywajacy panel
+- `style.css` — glassmorphism, CSS variables, responsive bottom sheet (mobile)
+- `app.js` — floating panel (show/hide/minimize/restore), delegacja warstw do layers.js
+- `map.js` — base layer management, drawing mode (polyline), profile line display, `getWatershedLayer()`
+- `api.js` — 6 nowych metod API, `include_hypsometric_curve=true` domyslnie
+- `schemas.py` — `LandCoverCategory`, `LandCoverStats`, `TerrainProfileRequest/Response`, `main_stream_geojson` i `land_cover_stats` w `WatershedResponse`
+- `watershed.py` — integracja land cover stats + main stream coords transform
+
 - Frontend CP4 Faza 1 — mapa + wyznaczanie zlewni + parametry:
   - `frontend/index.html` — layout Bootstrap 5 (navbar + mapa + panel boczny)
   - `frontend/css/style.css` — style (crosshair, responsywnosc, tabele parametrow)

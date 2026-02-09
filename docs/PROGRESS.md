@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 4 endpointy (+ tiles), v0.3.0 |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 6 endpointow (+ tiles): delineate, hydrograph, scenarios, profile, depressions, health |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -13,7 +13,7 @@
 | Integracja Kartograf | ✅ Gotowy | v0.4.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Frontend | 🔶 Faza 1 gotowa | CP4 — mapa + zlewnia + parametry (brak: hydrogram, Chart.js) |
+| Frontend | 🔶 Faza 2 gotowa | CP4 — redesign glassmorphism + Chart.js + hydrogram + profil + zaglebie |
 | Testy scripts/ | ⏳ W trakcie | 46 testow process_dem (burn, fill, sinks, pyflwdir, aspect, TWI, Strahler) |
 | Dokumentacja | ✅ Gotowy | Standaryzacja wg shared/standards (2026-02-07) |
 
@@ -47,19 +47,23 @@
 **Data:** 2026-02-09
 
 ### Co zrobiono
-- **Fix: reprojekcja overlayow do EPSG:4326** — warstwy NMT i ciekow byly przesuniete ~26 m wzgledem OSM:
-  - Przyczyna: siatka EPSG:2180 obrocona ~0.63° (zbieznosc poludnikow PL-2000 strefa 6), skrypty transformowaly tylko narozniki
-  - `generate_dem_overlay.py` — `rasterio.warp.reproject(Resampling.bilinear)` zamiast `pyproj` corner-only
-  - `generate_streams_overlay.py` — dylatacja w EPSG:2180, potem `reproject(Resampling.nearest)`
-  - Dodano `--source-crs` fallback dla rastrow bez metadanych CRS
-  - Zregenerowano `dem.png` (551 KB, 1024x677) i `streams.png` (33 KB, 1024x677)
+- **Redesign frontend (CP4 Faza 2)** — kompletna przebudowa w 6 pakietach roboczych:
+  - **WP1 — Glassmorphism:** `glass.css` (design tokens, CSS variables), `draggable.js` (pointer events), mapa 100% szerokosc, plywajacy panel wynikow (drag, minimize, close, bottom sheet mobile)
+  - **WP2 — Panel warstw:** `layers.js` z akordeonowymi grupami, przelaczanie podkladow (OSM/ESRI/OpenTopoMap), opacity per-layer
+  - **WP3 — Pokrycie terenu:** `LandCoverStats` schema, `get_land_cover_for_boundary()` w watershed response, `charts.js` (donut Chart.js, krzywa hipsometryczna), Chart.js 4.4.7 CDN
+  - **WP4 — Profil terenu:** `profile.py` endpoint (ST_LineInterpolatePoint sampling), `profile.js` (auto ciek glowny + rysowanie polilinii), `main_stream_geojson` w watershed response
+  - **WP5 — Zaglebie (blue spots):** migracja Alembic 004, `depressions.py` endpoint (filtr volume/area/bbox), `depressions.js` (overlay + suwaki SCALGO-style)
+  - **WP6 — Hydrogram:** `hydrograph.js` (formularz scenariusza, wykres hydrogramu + hietogram, tabela bilansu wodnego)
+  - Nginx CSP: ESRI + OpenTopoMap img-src
 
 ### W trakcie
 - Brak
 
 ### Nastepne kroki
-1. CP4 Faza 2 — hydrogram (Chart.js, formularz parametrow)
-2. Dlug techniczny: constants.py, hardcoded secrets
+1. Wygenerowanie `depressions.png` + `depressions.json` (skrypt preprocessing)
+2. Testy integracyjne e2e nowych endpointow (profile, depressions)
+3. Dlug techniczny: constants.py, hardcoded secrets
+4. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
@@ -67,7 +71,7 @@
 - [x] CP4 Faza 1: Frontend — mapa + zlewnia + parametry (Leaflet.js, Bootstrap 5)
 - [x] CP4: Warstwa NMT — naprawiona (L.imageOverlay zamiast L.tileLayer)
 - [x] CP4: Warstwa ciekow (Strahler) — L.imageOverlay z dylatacja morfologiczna
-- [ ] CP4 Faza 2: Frontend — hydrogram (Chart.js, formularz)
+- [x] CP4 Faza 2: Redesign glassmorphism + Chart.js + hydrogram + profil + zaglebie
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
 - [ ] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
