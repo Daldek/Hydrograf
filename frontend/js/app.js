@@ -278,6 +278,30 @@
     }
 
     /**
+     * Build layers panel entries with checkboxes.
+     */
+    function initLayersPanel() {
+        var list = document.getElementById('layers-list');
+        var demLayer = Hydrograf.map.getDemLayer();
+
+        var label = document.createElement('label');
+        label.className = 'layer-item';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.addEventListener('change', function () {
+            if (cb.checked) {
+                demLayer.addTo(Hydrograf.map._getMap());
+            } else {
+                Hydrograf.map._getMap().removeLayer(demLayer);
+            }
+        });
+        var text = document.createTextNode(' NMT (wysokości)');
+        label.appendChild(cb);
+        label.appendChild(text);
+        list.appendChild(label);
+    }
+
+    /**
      * Toggle layers panel visibility.
      */
     function toggleLayers() {
@@ -315,6 +339,7 @@
         document.getElementById('panel-close').addEventListener('click', hidePanel);
 
         Hydrograf.map.init(onMapClick);
+        initLayersPanel();
         checkSystemHealth();
     }
 

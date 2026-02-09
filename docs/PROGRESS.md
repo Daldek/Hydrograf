@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 3 endpointy, v0.3.0 |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 4 endpointy (+ tiles), v0.3.0 |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -53,25 +53,35 @@
   - Panel boczny z 5 sekcjami parametrow (podstawowe, ksztalt, rzezba, siec rzeczna, ujscie)
   - Obsluga bledow (polskie komunikaty, walidacja granic Polski)
   - CDN: Leaflet 1.9.4, Bootstrap 5.3.3 (integrity hashes)
+- UI: panel warstw (chowany, hamburger toggle), panel parametrow ukryty domyslnie
 - Security hardening:
   - Naglowki nginx: CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
   - Cache statycznych plikow (7d, immutable)
-  - Porty API i DB ograniczone do 127.0.0.1 (jedyny punkt wejscia: nginx:80)
-- Bugfix: Dockerfile brak `git`, docker-compose `effective_cache_size=1G` → `1GB`
-- Weryfikacja: pelny stack uruchomiony, naglowki CSP potwierdzone, API proxy OK
+  - Porty API i DB ograniczone do 127.0.0.1 (jedyny punkt wejscia: nginx:8080)
+- Warstwa NMT z PostGIS raster (WIP):
+  - Import DEM do PostGIS: `import_dem_raster.py` → 90 kafelkow 256x256 w tabeli `dem_raster`
+  - Endpoint: `GET /api/tiles/dem/{z}/{x}/{y}.png` (ST_Clip + ST_Resize + kolorystyka hipsometryczna)
+  - Backend dziala (curl zwraca 49KB PNG), frontend checkbox w panelu warstw podpiety
+  - **Problem: warstwa NMT nie wyswietla sie w przegladarce — wymaga debugowania**
+  - Mozliwe przyczyny: CSP blokuje, bledne tile coords, brak CORS na tile response
+- Bugfixy: Dockerfile brak `git`, docker-compose `effective_cache_size=1G`→`1GB`,
+  Bootstrap CSS integrity hash, nginx `^~` prefix dla tile proxy
+- Infrastruktura: PostGIS raster extension, GDAL drivers wlaczone (`ALTER DATABASE`),
+  Pillow w requirements.txt, nginx port 8080 (80 zajety na hoscie)
 
 ### W trakcie
-- Brak
+- Warstwa NMT: backend gotowy, frontend nie wyswietla — do debugowania w nastepnej sesji
 
 ### Nastepne kroki
-1. CP4 Faza 2 — hydrogram (Chart.js, formularz parametrow, POST /api/generate-hydrograph)
-2. Dlug techniczny: constants.py, hardcoded secrets
-3. Testy frontend (opcjonalne)
+1. **Debug warstwy NMT** — sprawdzic konsole przegladarki, CSP, tile URL format
+2. CP4 Faza 2 — hydrogram (Chart.js, formularz parametrow)
+3. Dlug techniczny: constants.py, hardcoded secrets
 
 ## Backlog
 
 - [x] Fix traverse_upstream resource exhaustion (ADR-015: pre-flight check, CTE LIMIT, statement_timeout, Docker limits)
 - [x] CP4 Faza 1: Frontend — mapa + zlewnia + parametry (Leaflet.js, Bootstrap 5)
+- [ ] CP4: Warstwa NMT — backend gotowy, frontend nie wyswietla (debug)
 - [ ] CP4 Faza 2: Frontend — hydrogram (Chart.js, formularz)
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
