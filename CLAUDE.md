@@ -185,7 +185,7 @@ Wszystkie trzy dostepne z GitHub (branch develop), nie z PyPI.
 ### Integracje
 - Hydrograf jest **hubem** — integruje Hydrolog, Kartograf, IMGWTools
 - Hydrolog wykonuje obliczenia (splot, UH, opad efektywny)
-- Kartograf pobiera dane przestrzenne (NMT, pokrycie terenu, gleby)
+- Kartograf pobiera dane przestrzenne (NMT, pokrycie terenu, gleby i inne)
 - IMGWTools dostarcza dane opadowe (kwantyle, stacje)
 
 ### Ograniczenia
