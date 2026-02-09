@@ -91,7 +91,7 @@ def generate_overlay(
     rgba[..., 0] = cmap[indices, 0]
     rgba[..., 1] = cmap[indices, 1]
     rgba[..., 2] = cmap[indices, 2]
-    rgba[..., 3] = np.where(valid, 200, 0).astype(np.uint8)  # semi-transparent
+    rgba[..., 3] = np.where(valid, 255, 0).astype(np.uint8)
 
     # Save PNG (with optional downsampling)
     img = Image.fromarray(rgba, mode="RGBA")
