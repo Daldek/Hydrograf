@@ -21,6 +21,7 @@ import numpy as np
 import rasterio
 from PIL import Image
 from pyproj import Transformer
+from scipy.ndimage import maximum_filter
 
 # Discrete color palette for Strahler orders 1–8 (blue gradient)
 STRAHLER_COLORS = {
@@ -51,10 +52,27 @@ def generate_overlay(
     print(f"Stream order: {width}x{height}, max order={max_order}, "
           f"stream pixels={stream_pixels}")
 
+    # Dilate streams to make them visible after downsampling.
+    # Line width grows with Strahler order (order 1 → 3px, order 5 → 7px).
+    # Process low→high so higher orders paint over lower ones.
+    dilated = np.zeros_like(data)
+    for order in range(1, max_order + 1):
+        mask = data == order
+        if not np.any(mask):
+            continue
+        kernel_size = 2 * order + 1  # 3, 5, 7, 9, 11, 13, 15, 17
+        order_arr = np.where(mask, order, 0).astype(data.dtype)
+        expanded = maximum_filter(order_arr, size=kernel_size)
+        dilated = np.where(expanded > 0, expanded, dilated)
+
+    dilated_pixels = int(np.count_nonzero(dilated))
+    print(f"After dilation: {dilated_pixels} visible pixels "
+          f"({100 * dilated_pixels / (width * height):.1f}%)")
+
     # Build RGBA image
     rgba = np.zeros((height, width, 4), dtype=np.uint8)
     for order, (r, g, b) in STRAHLER_COLORS.items():
-        mask = data == order
+        mask = dilated == order
         rgba[mask, 0] = r
         rgba[mask, 1] = g
         rgba[mask, 2] = b
