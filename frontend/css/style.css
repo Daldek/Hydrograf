@@ -11,17 +11,91 @@
 }
 
 /* Map */
+#map-wrapper {
+    position: relative;
+    height: 100%;
+    width: 100%;
+}
+
 #map {
     height: 100%;
     width: 100%;
+}
+
+/* Layers panel */
+#layers-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 200px;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.95);
+    border-right: 1px solid #dee2e6;
+    z-index: 1000;
+    padding: 0.5rem;
+    overflow-y: auto;
+    transition: transform 0.2s ease;
+}
+
+#layers-panel.layers-hidden {
+    transform: translateX(-100%);
+}
+
+.layers-header {
+    font-size: 0.85rem;
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 0.35rem;
+    margin-bottom: 0.5rem;
+}
+
+#layers-list {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+/* Layers toggle button */
+.layers-toggle {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1001;
+    width: 34px;
+    height: 34px;
+    background: #fff;
+    border: 2px solid rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 30px;
+    text-align: center;
+    padding: 0;
+    color: #333;
+    transition: left 0.2s ease;
+}
+
+.layers-toggle:hover {
+    background: #f4f4f4;
+}
+
+.layers-toggle.layers-open {
+    left: 210px;
 }
 
 .leaflet-container {
     cursor: crosshair;
 }
 
+/* Map column — full width by default */
+.map-col {
+    flex: 1 1 100%;
+    max-width: 100%;
+}
+
 /* Side panel */
 .panel-col {
+    flex: 0 0 33.333%;
+    max-width: 33.333%;
     background-color: #f8f9fa;
     overflow-y: auto;
 }
