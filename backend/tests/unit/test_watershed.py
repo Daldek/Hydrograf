@@ -2,15 +2,19 @@
 Unit tests for watershed delineation module.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 from shapely.geometry import Point, Polygon
 
 from core.watershed import (
     MAX_STREAM_DISTANCE_M,
+    MAX_WATERSHED_CELLS,
     FlowCell,
     build_boundary,
     build_boundary_polygonize,
     calculate_watershed_area_km2,
+    check_watershed_size,
     find_nearest_stream,
     traverse_upstream,
 )
@@ -75,11 +79,74 @@ class TestFindNearestStream:
         assert params["y"] == 789012.0
 
 
+class TestCheckWatershedSize:
+    """Tests for check_watershed_size pre-flight check."""
+
+    def test_passes_for_small_watershed(self, mock_db):
+        """Test that small watershed passes pre-flight check."""
+        mock_result = MagicMock()
+        mock_result.flow_accumulation = 1000
+        mock_db.execute.return_value.fetchone.return_value = mock_result
+
+        estimated = check_watershed_size(1, mock_db)
+
+        assert estimated == 1001
+
+    def test_raises_for_oversized_watershed(self, mock_db):
+        """Test that oversized watershed raises ValueError."""
+        mock_result = MagicMock()
+        mock_result.flow_accumulation = 3_000_000
+        mock_db.execute.return_value.fetchone.return_value = mock_result
+
+        with pytest.raises(ValueError, match="zbyt duza"):
+            check_watershed_size(1, mock_db)
+
+    def test_raises_for_missing_outlet(self, mock_db):
+        """Test that missing outlet raises ValueError."""
+        mock_db.execute.return_value.fetchone.return_value = None
+
+        with pytest.raises(ValueError, match="not found"):
+            check_watershed_size(999, mock_db)
+
+    def test_custom_max_cells_limit(self, mock_db):
+        """Test with custom max_cells parameter."""
+        mock_result = MagicMock()
+        mock_result.flow_accumulation = 500
+        mock_db.execute.return_value.fetchone.return_value = mock_result
+
+        estimated = check_watershed_size(1, mock_db, max_cells=1000)
+
+        assert estimated == 501
+
+    def test_raises_at_exact_limit(self, mock_db):
+        """Test that watershed at exact limit is rejected (> not >=)."""
+        mock_result = MagicMock()
+        mock_result.flow_accumulation = 100  # +1 = 101 > 100
+        mock_db.execute.return_value.fetchone.return_value = mock_result
+
+        with pytest.raises(ValueError, match="zbyt duza"):
+            check_watershed_size(1, mock_db, max_cells=100)
+
+    def test_default_max_cells_is_constant(self):
+        """Test that default max_cells matches MAX_WATERSHED_CELLS."""
+        assert MAX_WATERSHED_CELLS == 2_000_000
+
+
 class TestTraverseUpstream:
     """Tests for traverse_upstream function."""
 
+    def _setup_preflight_pass(self, mock_db, flow_accumulation=1000):
+        """Configure mock_db so pre-flight check passes, then CTE returns results."""
+        mock_preflight = MagicMock()
+        mock_preflight.flow_accumulation = flow_accumulation
+
+        # First call: check_watershed_size (fetchone)
+        # Second call: CTE query (fetchall)
+        mock_db.execute.return_value.fetchone.return_value = mock_preflight
+
     def test_returns_all_cells(self, mock_db, mock_upstream_query_results):
         """Test that function returns all upstream cells."""
+        self._setup_preflight_pass(mock_db)
         mock_db.execute.return_value.fetchall.return_value = mock_upstream_query_results
 
         cells = traverse_upstream(1, mock_db)
@@ -88,24 +155,29 @@ class TestTraverseUpstream:
         assert all(isinstance(c, FlowCell) for c in cells)
 
     def test_raises_on_too_many_cells(self, mock_db, large_upstream_results):
-        """Test that function raises ValueError for large watersheds."""
-        mock_db.execute.return_value.fetchall.return_value = large_upstream_results
+        """Test that function raises ValueError for large watersheds via pre-flight."""
+        mock_result = MagicMock()
+        mock_result.flow_accumulation = 100  # +1 = 101 > 50
+        mock_db.execute.return_value.fetchone.return_value = mock_result
 
-        with pytest.raises(ValueError, match="too large"):
+        with pytest.raises(ValueError, match="zbyt duza"):
             traverse_upstream(1, mock_db, max_cells=50)
 
     def test_passes_outlet_id_correctly(self, mock_db):
         """Test that outlet_id is passed correctly."""
+        self._setup_preflight_pass(mock_db)
         mock_db.execute.return_value.fetchall.return_value = []
 
         traverse_upstream(123, mock_db)
 
+        # Second call is the CTE query
         call_args = mock_db.execute.call_args
         params = call_args[0][1]
         assert params["outlet_id"] == 123
 
     def test_returns_empty_list_when_no_cells(self, mock_db):
         """Test handling of empty result."""
+        self._setup_preflight_pass(mock_db)
         mock_db.execute.return_value.fetchall.return_value = []
 
         cells = traverse_upstream(1, mock_db)
