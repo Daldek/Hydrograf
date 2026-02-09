@@ -70,4 +70,5 @@
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
 - [ ] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
 - [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
+- [ ] Problem jezior bezodplywowych (endorheic basins) — komorki bez odplywu moga powodowac niepoprawne wyznaczanie zlewni
 - [ ] CI/CD pipeline (GitHub Actions)
