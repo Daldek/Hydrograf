@@ -50,12 +50,16 @@
 - **Naprawa warstwy NMT** — zamiana `L.tileLayer` na `L.imageOverlay`:
   - Przyczyna: `L.tileLayer` + PostGIS `ST_Clip/ST_Resize` nieodpowiednia dla malego rastra (~2km x 2km) — DEM "jezdzilo" po mapie i mialo artefakty przy niskim zoomie
   - Rozwiazanie: `L.imageOverlay` z pre-generowanym PNG — Leaflet sam obsuguje pozycjonowanie na kazdym zoomie
-  - `generate_dem_overlay.py` — dodano `--max-size` (domyslnie 1024) z downsamplingiem LANCZOS
-  - Wygenerowano `frontend/data/dem.png` (863 KB, 942x1024) + `frontend/data/dem.json` (metadane WGS84 bounds)
+  - `generate_dem_overlay.py` — dodano `--max-size` (domyslnie 1024) z downsamplingiem LANCZOS, alpha=255 (pelne krycie)
+  - Wygenerowano `frontend/data/dem.png` (792 KB, 942x1024) + `frontend/data/dem.json` (metadane WGS84 bounds)
   - `map.js` — async `loadDemOverlay()` zamiast synchronicznego `L.tileLayer`
   - `app.js` — null-guard w `initLayersPanel()` (layer moze byc null przed zaladowaniem)
   - `.gitignore` — wyjatek `!frontend/data/` aby overlay files mogly byc commitowane
   - Endpoint `tiles.py` zachowany (moze byc przydatny w przyszlosci)
+- **Kontrolki warstwy NMT** w panelu warstw:
+  - Przycisk zoom-to-extent (`fitDemBounds`) — przybliza mape do zasiegu warstwy
+  - Suwak przezroczystosci 0–100% (0% = pelne krycie, 100% = niewidoczne, domyslnie 30%)
+  - Suwak pojawia sie po wlaczeniu warstwy checkboxem
 
 ### W trakcie
 - Brak

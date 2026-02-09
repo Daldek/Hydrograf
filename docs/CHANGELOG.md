@@ -27,12 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--max-size` w `generate_dem_overlay.py` — downsampling LANCZOS (domyslnie 1024 px)
 - `frontend/data/dem.png` + `dem.json` — pre-generowany overlay NMT z metadanymi WGS84 bounds
 - `Pillow>=10.0.0` w requirements.txt (rendering tile PNG)
+- Kontrolki warstwy NMT w panelu warstw:
+  - Przycisk zoom-to-extent (⌖) — `fitDemBounds()` przybliza mape do zasiegu warstwy
+  - Suwak przezroczystosci 0–100% — `setDemOpacity()`, pojawia sie po wlaczeniu warstwy
 
 ### Fixed
 - Warstwa NMT "jezdzila" po mapie i miala artefakty — zamiana `L.tileLayer` na `L.imageOverlay`:
   - Przyczyna: `ST_Clip/ST_Resize` nieodpowiednia dla malego rastra (~2km x 2km); przy niskim zoomie DEM bylo rozciagniete na caly kafelek web
   - `map.js`: async `loadDemOverlay()` — fetch `/data/dem.json` → `L.imageOverlay` z georeferencjonowanymi granicami
   - `app.js`: null-guard w `initLayersPanel()` (layer moze byc null przed zaladowaniem)
+- Suwak przezroczystosci odwrocony (0% = pelne krycie, 100% = niewidoczne) — dopasowanie do etykiety "Przezr."
+- DEM overlay PNG: alpha 200→255 — przezroczystosc sterowana wylacznie przez Leaflet, nie wbudowana w obraz
 
 ### Security
 - Naglowki bezpieczenstwa nginx: CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy
