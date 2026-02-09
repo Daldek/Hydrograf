@@ -9,6 +9,7 @@
     window.Hydrograf = window.Hydrograf || {};
 
     var map = null;
+    var layerControl = null;
     var watershedLayer = null;
     var outletMarker = null;
     var clickEnabled = true;
@@ -25,10 +26,16 @@
             zoomControl: true,
         });
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
             maxZoom: 19,
         }).addTo(map);
+
+        layerControl = L.control.layers(
+            { 'OpenStreetMap': osm },
+            {},
+            { position: 'topright', collapsed: true }
+        ).addTo(map);
 
         map.on('click', function (e) {
             if (!clickEnabled) return;
@@ -112,6 +119,15 @@
         clickEnabled = true;
     }
 
+    /**
+     * Get the layer control instance (for adding overlays externally).
+     *
+     * @returns {L.Control.Layers|null}
+     */
+    function getLayerControl() {
+        return layerControl;
+    }
+
     window.Hydrograf.map = {
         init: init,
         showWatershed: showWatershed,
@@ -119,5 +135,6 @@
         clearWatershed: clearWatershed,
         disableClick: disableClick,
         enableClick: enableClick,
+        getLayerControl: getLayerControl,
     };
 })();
