@@ -47,41 +47,28 @@
 **Data:** 2026-02-09
 
 ### Co zrobiono
-- CP4 Faza 1 — Frontend (mapa + zlewnia + parametry):
-  - 5 nowych plikow: index.html, style.css, api.js, map.js, app.js
-  - Mapa Leaflet.js z OSM, klikniecie → wyznaczanie zlewni → polygon + ~20 parametrow
-  - Panel boczny z 5 sekcjami parametrow (podstawowe, ksztalt, rzezba, siec rzeczna, ujscie)
-  - Obsluga bledow (polskie komunikaty, walidacja granic Polski)
-  - CDN: Leaflet 1.9.4, Bootstrap 5.3.3 (integrity hashes)
-- UI: panel warstw (chowany, hamburger toggle), panel parametrow ukryty domyslnie
-- Security hardening:
-  - Naglowki nginx: CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
-  - Cache statycznych plikow (7d, immutable)
-  - Porty API i DB ograniczone do 127.0.0.1 (jedyny punkt wejscia: nginx:8080)
-- Warstwa NMT z PostGIS raster (WIP):
-  - Import DEM do PostGIS: `import_dem_raster.py` → 90 kafelkow 256x256 w tabeli `dem_raster`
-  - Endpoint: `GET /api/tiles/dem/{z}/{x}/{y}.png` (ST_Clip + ST_Resize + kolorystyka hipsometryczna)
-  - Backend dziala (curl zwraca 49KB PNG), frontend checkbox w panelu warstw podpiety
-  - **Problem: warstwa NMT nie wyswietla sie w przegladarce — wymaga debugowania**
-  - Mozliwe przyczyny: CSP blokuje, bledne tile coords, brak CORS na tile response
-- Bugfixy: Dockerfile brak `git`, docker-compose `effective_cache_size=1G`→`1GB`,
-  Bootstrap CSS integrity hash, nginx `^~` prefix dla tile proxy
-- Infrastruktura: PostGIS raster extension, GDAL drivers wlaczone (`ALTER DATABASE`),
-  Pillow w requirements.txt, nginx port 8080 (80 zajety na hoscie)
+- **Naprawa warstwy NMT** — zamiana `L.tileLayer` na `L.imageOverlay`:
+  - Przyczyna: `L.tileLayer` + PostGIS `ST_Clip/ST_Resize` nieodpowiednia dla malego rastra (~2km x 2km) — DEM "jezdzilo" po mapie i mialo artefakty przy niskim zoomie
+  - Rozwiazanie: `L.imageOverlay` z pre-generowanym PNG — Leaflet sam obsuguje pozycjonowanie na kazdym zoomie
+  - `generate_dem_overlay.py` — dodano `--max-size` (domyslnie 1024) z downsamplingiem LANCZOS
+  - Wygenerowano `frontend/data/dem.png` (863 KB, 942x1024) + `frontend/data/dem.json` (metadane WGS84 bounds)
+  - `map.js` — async `loadDemOverlay()` zamiast synchronicznego `L.tileLayer`
+  - `app.js` — null-guard w `initLayersPanel()` (layer moze byc null przed zaladowaniem)
+  - `.gitignore` — wyjatek `!frontend/data/` aby overlay files mogly byc commitowane
+  - Endpoint `tiles.py` zachowany (moze byc przydatny w przyszlosci)
 
 ### W trakcie
-- Warstwa NMT: backend gotowy, frontend nie wyswietla — do debugowania w nastepnej sesji
+- Brak
 
 ### Nastepne kroki
-1. **Debug warstwy NMT** — sprawdzic konsole przegladarki, CSP, tile URL format
-2. CP4 Faza 2 — hydrogram (Chart.js, formularz parametrow)
-3. Dlug techniczny: constants.py, hardcoded secrets
+1. CP4 Faza 2 — hydrogram (Chart.js, formularz parametrow)
+2. Dlug techniczny: constants.py, hardcoded secrets
 
 ## Backlog
 
 - [x] Fix traverse_upstream resource exhaustion (ADR-015: pre-flight check, CTE LIMIT, statement_timeout, Docker limits)
 - [x] CP4 Faza 1: Frontend — mapa + zlewnia + parametry (Leaflet.js, Bootstrap 5)
-- [ ] CP4: Warstwa NMT — backend gotowy, frontend nie wyswietla (debug)
+- [x] CP4: Warstwa NMT — naprawiona (L.imageOverlay zamiast L.tileLayer)
 - [ ] CP4 Faza 2: Frontend — hydrogram (Chart.js, formularz)
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)

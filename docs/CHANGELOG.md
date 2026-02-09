@@ -24,7 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Rampa kolorow: zielony (doliny) → zolty → brazowy → bialy (szczyty), semi-transparent
   - **Status:** backend dziala (tile PNG z bazy), frontend nie wyswietla (do debugowania)
 - `scripts/generate_dem_overlay.py` — skrypt generujacy statyczny PNG z NMT (narzedzie pomocnicze)
+- `--max-size` w `generate_dem_overlay.py` — downsampling LANCZOS (domyslnie 1024 px)
+- `frontend/data/dem.png` + `dem.json` — pre-generowany overlay NMT z metadanymi WGS84 bounds
 - `Pillow>=10.0.0` w requirements.txt (rendering tile PNG)
+
+### Fixed
+- Warstwa NMT "jezdzila" po mapie i miala artefakty — zamiana `L.tileLayer` na `L.imageOverlay`:
+  - Przyczyna: `ST_Clip/ST_Resize` nieodpowiednia dla malego rastra (~2km x 2km); przy niskim zoomie DEM bylo rozciagniete na caly kafelek web
+  - `map.js`: async `loadDemOverlay()` — fetch `/data/dem.json` → `L.imageOverlay` z georeferencjonowanymi granicami
+  - `app.js`: null-guard w `initLayersPanel()` (layer moze byc null przed zaladowaniem)
 
 ### Security
 - Naglowki bezpieczenstwa nginx: CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy
