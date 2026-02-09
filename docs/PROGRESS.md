@@ -53,7 +53,12 @@
   - `statement_timeout=30s` w polaczeniach z baza (600s dla skryptow CLI)
   - Docker resource limits: db=2G, api=1G, PostgreSQL tuning (shared_buffers=512MB)
   - 6 nowych testow jednostkowych, update mockow w testach integracyjnych
-  - 5 commitow, 351 testow pass, ruff clean
+  - 6 commitow, 351 testow pass, ruff clean
+- E2E Task 9 ponowiony — WSZYSTKIE 4 TESTY PRZESZLY:
+  - A: Sredni outlet (493k cells, 0.49 km², 6.5s) — pelna delineacja + morfometria
+  - B: Duzy outlet (1.5M cells, 1.50 km², 21s) — pelna delineacja + morfometria
+  - C: Pre-flight reject (sztuczny limit 100k) — natychmiastowe odrzucenie
+  - D: Max outlet (1.76M, CTE > 2M) — LIMIT safety net poprawnie zlapal nadmiar
 - Poprzednia sesja: domkniecie Kartograf v0.4.1 + E2E raport
 
 ### W trakcie
