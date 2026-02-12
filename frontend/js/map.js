@@ -111,6 +111,21 @@
         return STRAHLER_COLORS[Math.min(order, 8) - 1] || '#039BE5';
     }
 
+    /**
+     * Get tile URL for a given layer and threshold.
+     * Uses pre-generated PMTiles if available, falls back to API.
+     */
+    function getTileUrl(layer, threshold) {
+        // Check for pre-generated tiles metadata
+        var meta = window.Hydrograf._tilesMeta;
+        if (meta && meta.format === 'pmtiles' &&
+            meta.thresholds && meta.thresholds.indexOf(threshold) !== -1) {
+            return '/tiles/' + layer + '_' + threshold + '.pmtiles';
+        }
+        // Fallback: dynamic PostGIS MVT
+        return '/api/tiles/' + layer + '/{z}/{x}/{y}.pbf?threshold=' + threshold;
+    }
+
     function loadStreamsVector(threshold) {
         if (streamsLayer && map.hasLayer(streamsLayer)) {
             map.removeLayer(streamsLayer);
@@ -118,7 +133,7 @@
         currentThreshold = threshold || currentThreshold;
 
         streamsLayer = L.vectorGrid.protobuf(
-            '/api/tiles/streams/{z}/{x}/{y}.pbf?threshold=' + currentThreshold,
+            getTileUrl('streams', currentThreshold),
             {
                 vectorTileLayerStyles: {
                     streams: function (properties) {
@@ -213,7 +228,7 @@
         currentCatchmentThreshold = threshold || currentCatchmentThreshold;
 
         catchmentsLayer = L.vectorGrid.protobuf(
-            '/api/tiles/catchments/{z}/{x}/{y}.pbf?threshold=' + currentCatchmentThreshold,
+            getTileUrl('catchments', currentCatchmentThreshold),
             {
                 vectorTileLayerStyles: {
                     catchments: function (properties) {
