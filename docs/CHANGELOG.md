@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (stream_network deduplication — ADR-019)
+- **Migracja 010:** `idx_stream_unique` nie zawieral `threshold_m2` — cieki z roznych progow FA w tym samym miejscu byly traktowane jako duplikaty i cicho pomijane (`ON CONFLICT DO NOTHING`). Utrata: 2257 segmentow (26-42% przy wyzszych progach). Naprawiono: dodano `threshold_m2` do unique index.
+- **Diagnostyka:** warning w `insert_stream_segments()` gdy segmenty pominiete przez constraint
+- **Walidacja:** sprawdzenie stream_count vs catchment_count per threshold w `process_dem.py`
+- **5 nowych testow:** multi-threshold insert, warning on dropped, empty segments, TSV threshold
+
 ### Added (PostGIS optimization — ADR-018)
 - **In-memory flow graph** (`core/flow_graph.py`): ladowanie grafu 19.7M komorek do numpy arrays + scipy sparse CSR matrix przy starcie API, BFS traversal via `breadth_first_order` (~50-200ms vs 2-5s SQL CTE)
 - **Pre-generacja MVT tiles** (`scripts/generate_tiles.py`): eksport PostGIS → GeoJSON → tippecanoe .mbtiles → PMTiles; auto-detekcja w frontend z API fallback

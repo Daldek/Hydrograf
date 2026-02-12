@@ -765,6 +765,12 @@ def insert_stream_segments(
     raw_conn.commit()
     logger.info(f"  Inserted {total} stream segments")
 
+    if total < len(segments):
+        logger.warning(
+            f"  {len(segments) - total} segments dropped by unique constraint "
+            f"(threshold={threshold_m2} m²)"
+        )
+
     return total
 
 

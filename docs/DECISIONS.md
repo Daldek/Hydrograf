@@ -380,6 +380,28 @@ Dowody awarii:
 
 ---
 
+## ADR-019: Naprawa deduplikacji ciekow multi-threshold
+
+**Data:** 2026-02-12
+**Status:** Przyjeta
+
+**Kontekst:** Siec ciekow (`stream_network`) byla pofragmentowana przy wyzszych progach akumulacji (FA). Analiza wykazala, ze `idx_stream_unique` (migracja 002) nie zawieral `threshold_m2` — wszystkie cieki DEM-derived maja `name=NULL` (COALESCE=''), wiec cieki z roznych progow w tym samym miejscu (ten sam geohash) byly traktowane jako duplikaty. `ON CONFLICT DO NOTHING` w `insert_stream_segments()` cicho pomijal "duplikaty". Utrata: 2257 segmentow (26-42% przy wyzszych progach).
+
+**Opcje:**
+- A) Dodac `threshold_m2` do unique index — najprostsza zmiana, cieki z roznych progow nie koliduja
+- B) Usunac unique index calkowicie — ryzyko prawdziwych duplikatow przy reimporcie
+- C) Zmieniac INSERT na upsert — komplikuje logike, nie rozwiazuje problemu indexu
+
+**Decyzja:** Opcja A. Migracja 010: DROP + CREATE idx_stream_unique z `threshold_m2`. Dodano diagnostyke (warning w `insert_stream_segments()` gdy segmenty pominiete) i walidacje (stream vs catchment count per threshold w `process_dem.py`).
+
+**Konsekwencje:**
+- Po ponownym uruchomieniu pipeline: 82624 → ~84881 ciekow (zgodnosc z catchments)
+- Brak utraty segmentow przy wyzszych progach
+- Przyszle cieki MPHP (z name != NULL) nadal deduplikowane poprawnie
+- Wymaga `alembic upgrade head` + re-run pipeline z `--clear-existing`
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
