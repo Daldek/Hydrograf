@@ -1,8 +1,8 @@
 # DATA_MODEL.md - Model Danych
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.0  
-**Data:** 2026-01-14  
+**Wersja:** 1.1
+**Data:** 2026-02-12
 **Status:** Approved
 
 ---
@@ -74,6 +74,33 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 │ name                │
 │ length_m            │
 │ strahler_order      │
+│ threshold_m2        │
+│ upstream_area_km2   │
+│ mean_slope_percent  │
+└─────────────────────┘
+
+┌─────────────────────┐
+│ stream_catchments   │
+├─────────────────────┤
+│ id (PK)             │
+│ geom                │
+│ segment_idx         │
+│ threshold_m2        │
+│ area_km2            │
+│ mean_elevation_m    │
+│ mean_slope_percent  │
+│ strahler_order      │
+└─────────────────────┘
+
+┌─────────────────────┐
+│    depressions      │
+├─────────────────────┤
+│ id (PK)             │
+│ geom                │
+│ volume_m3           │
+│ area_m2             │
+│ max_depth_m         │
+│ mean_depth_m        │
 └─────────────────────┘
 ```
 
@@ -282,6 +309,7 @@ CREATE TABLE stream_network (
     source VARCHAR(50) DEFAULT 'MPHP',
     upstream_area_km2 FLOAT,                        -- migracja 003
     mean_slope_percent FLOAT,                       -- migracja 003
+    threshold_m2 INT NOT NULL DEFAULT 100,          -- migracja 005
 
     CONSTRAINT valid_strahler CHECK (strahler_order IS NULL OR strahler_order > 0)
 );
@@ -292,6 +320,10 @@ CREATE INDEX idx_stream_name ON stream_network(name);
 CREATE INDEX idx_strahler_order ON stream_network(strahler_order);
 CREATE UNIQUE INDEX idx_stream_unique ON stream_network
     (COALESCE(name, ''), ST_GeoHash(ST_Transform(geom, 4326), 12));
+CREATE INDEX idx_stream_threshold ON stream_network
+    (threshold_m2, strahler_order);                 -- migracja 005
+CREATE INDEX idx_stream_upstream_area ON stream_network
+    (upstream_area_km2);                            -- migracja 006
 
 -- Komentarze
 COMMENT ON TABLE stream_network IS 'Sieć rzeczna - osie cieków';
@@ -320,6 +352,55 @@ INSERT INTO stream_network (geom, name, length_m, strahler_order) VALUES
  'Ciek Bezimienni', 111.8, 1),
 (ST_SetSRID(ST_GeomFromText('LINESTRING(500100 600005, 500200 600020, 500300 600015)'), 2180),
  'Rzeka Przykładowa', 223.6, 2);
+```
+
+---
+
+### 3.5 Tabela: `stream_catchments`
+
+**Opis:** Zlewnie czastkowe — poligony odpowiadajace segmentom sieci cieków (migracja 007).
+
+**Schemat SQL:**
+```sql
+CREATE TABLE stream_catchments (
+    id SERIAL PRIMARY KEY,
+    geom GEOMETRY(MULTIPOLYGON, 2180) NOT NULL,
+    segment_idx INTEGER NOT NULL,
+    threshold_m2 INTEGER NOT NULL,
+    area_km2 DOUBLE PRECISION NOT NULL,
+    mean_elevation_m DOUBLE PRECISION,
+    mean_slope_percent DOUBLE PRECISION,
+    strahler_order INTEGER
+);
+
+-- Indeksy
+CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST(geom);
+CREATE INDEX idx_catchments_threshold ON stream_catchments(threshold_m2, strahler_order);
+CREATE INDEX idx_catchments_area ON stream_catchments(area_km2);
+```
+
+---
+
+### 3.6 Tabela: `depressions`
+
+**Opis:** Zaglbienia terenowe (blue spots) — poligony z metrykami (migracja 004, indeksy migracja 008).
+
+**Schemat SQL:**
+```sql
+CREATE TABLE depressions (
+    id SERIAL PRIMARY KEY,
+    geom GEOMETRY(POLYGON, 2180) NOT NULL,
+    volume_m3 FLOAT NOT NULL,
+    area_m2 FLOAT NOT NULL,
+    max_depth_m FLOAT NOT NULL,
+    mean_depth_m FLOAT
+);
+
+-- Indeksy
+CREATE INDEX idx_depressions_geom ON depressions USING GIST(geom);
+CREATE INDEX idx_depressions_volume ON depressions(volume_m3);      -- migracja 008
+CREATE INDEX idx_depressions_area ON depressions(area_m2);          -- migracja 008
+CREATE INDEX idx_depressions_max_depth ON depressions(max_depth_m); -- migracja 008
 ```
 
 ---
@@ -378,6 +459,8 @@ CREATE INDEX idx_flow_geom ON flow_network USING GIST(geom);
 CREATE INDEX idx_precipitation_geom ON precipitation_data USING GIST(geom);
 CREATE INDEX idx_landcover_geom ON land_cover USING GIST(geom);
 CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
+CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST(geom);
+CREATE INDEX idx_depressions_geom ON depressions USING GIST(geom);
 ```
 
 **Dlaczego GIST:**
@@ -675,9 +758,14 @@ migrations/
 ├── alembic.ini
 ├── env.py
 └── versions/
-    ├── 001_initial_schema.py
-    ├── 002_add_precipitation_data.py
-    └── 003_add_indexes.py
+    ├── 001_create_precipitation_data.py
+    ├── 002_create_core_tables.py
+    ├── 003_extend_stream_network.py
+    ├── 004_create_depressions_table.py
+    ├── 005_add_threshold_to_stream_network.py
+    ├── 006_add_upstream_area_index.py
+    ├── 007_create_stream_catchments.py
+    └── 008_add_depressions_filter_indexes.py
 ```
 
 **Przykład migracji:**
@@ -870,7 +958,7 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ### 12.1 Kluczowe Punkty
 
-- **4 główne tabele:** flow_network, precipitation_data, land_cover, stream_network
+- **6 tabel:** flow_network, precipitation_data, land_cover, stream_network, stream_catchments, depressions
 - **Układ współrzędnych:** EPSG:2180 (PL-1992)
 - **Indeksy przestrzenne (GIST)** dla wszystkich geometrii
 - **Walidacja** przez CHECK constraints i triggers
@@ -885,8 +973,8 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ---
 
-**Wersja dokumentu:** 1.0  
-**Data ostatniej aktualizacji:** 2026-01-14  
+**Wersja dokumentu:** 1.1
+**Data ostatniej aktualizacji:** 2026-02-12
 **Status:** Approved  
 
 ---
