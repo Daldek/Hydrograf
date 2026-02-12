@@ -326,6 +326,29 @@ Dowody awarii:
 
 ---
 
+## ADR-017: Podzial process_dem.py na moduly core/ i optymalizacja pipeline
+
+**Data:** 2026-02-12
+**Status:** Przyjeta
+
+**Kontekst:** Skrypt `process_dem.py` (2843 linii) realizowal caly pipeline przetwarzania DEM jako monolith. Glowne problemy: (1) trudnosc utrzymania i testowania, (2) dwa bottlenecki wydajnosciowe — `vectorize_streams()` ~300s (czyste petle Python po 20M komorkach) i `create_flow_network_records()` ~120s (budowanie 20M dictow, ~490MB RAM), (3) zduplikowane obliczenia gradientow Sobel (slope i aspect niezaleznie). Calkowity czas pipeline: ~22 min.
+
+**Opcje:**
+- A) Refaktoryzacja in-place — optymalizacja bez zmiany struktury pliku
+- B) Podzial na moduly `core/` + optymalizacja (Numba, NumPy) — lepsze SoC, testowalnosc
+- C) Przepisanie na Cython/Rust — maksymalna wydajnosc, ale duzy naklad pracy
+
+**Decyzja:** Opcja B. Podzial `process_dem.py` na 6 modulow w `core/`: `raster_io`, `hydrology`, `morphometry_raster`, `stream_extraction`, `db_bulk`, `zonal_stats`. Orchestrator z re-eksportami dla backward compat. Optymalizacje: (1) wspolne gradienty Sobel, (2) Numba `@njit` dla upstream counting i headwater detection, (3) NumPy wektoryzacja `create_flow_network_tsv()` z bezposrednim TSV do COPY.
+
+**Konsekwencje:**
+- `process_dem.py` z 2843 do ~700 linii (orchestrator + re-eksporty)
+- 6 nowych modulow `core/` z 85 nowymi testami jednostkowymi
+- Numba 0.63.1 — transitive dep od pyflwdir, bez nowej zaleznosci
+- Szacowane przyspieszenie: ~22 min → ~6-8 min (vectorize_streams 300s→10s, flow_network 120s→5s)
+- Backward compat: re-eksporty w `scripts/process_dem.py`, stare `create_flow_network_records()` zachowane
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

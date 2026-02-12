@@ -120,7 +120,13 @@ backend/
 │   ├── precipitation.py           # Precipitation queries
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
-│   └── cn_calculator.py           # Kartograf HSG-based CN calculation
+│   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
+│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
+│   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning
+│   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
+│   ├── stream_extraction.py       # Stream vectorization, subcatchments
+│   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
+│   └── zonal_stats.py             # Zonal statistics (bincount, max)
 │
 ├── models/
 │   ├── __init__.py
