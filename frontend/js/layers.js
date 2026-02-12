@@ -239,7 +239,7 @@
         headerRow.className = 'layer-header';
         var cb = document.createElement('input');
         cb.type = 'checkbox';
-        var text = document.createTextNode(' Cieki (Strahler)');
+        var text = document.createTextNode(' Cieki');
         var zoomBtn = document.createElement('button');
         zoomBtn.className = 'layer-zoom-btn';
         zoomBtn.title = 'Przybliż do zasięgu';

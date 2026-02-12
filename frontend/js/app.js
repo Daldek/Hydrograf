@@ -11,7 +11,10 @@
     var state = {
         isLoading: false,
         currentWatershed: null,
+        clickMode: 'watershed',
     };
+
+    var _clickDebounceTimer = null;
 
     // Poland bounding box (approximate)
     var BOUNDS = { latMin: 49.0, latMax: 55.0, lngMin: 14.0, lngMax: 24.2 };
@@ -111,9 +114,13 @@
             document.getElementById('acc-landcover').classList.add('collapsed');
         }
 
-        // Chart: hypsometric curve
-        if (w.hypsometric_curve && w.hypsometric_curve.length > 0) {
-            Hydrograf.charts.renderHypsometricChart('chart-hypsometric', w.hypsometric_curve);
+        // Chart: elevation histogram (from hypsometric curve data)
+        if (w.hypsometric_curve && w.hypsometric_curve.length > 0 &&
+            m.elevation_min_m != null && m.elevation_max_m != null) {
+            Hydrograf.charts.renderElevationHistogram(
+                'chart-hypsometric', w.hypsometric_curve,
+                m.elevation_min_m, m.elevation_max_m
+            );
         } else {
             Hydrograf.charts.destroyChart('chart-hypsometric');
         }
@@ -192,9 +199,9 @@
     }
 
     /**
-     * Handle map click.
+     * Handle map click with 300ms debounce.
      */
-    async function onMapClick(lat, lng) {
+    function onMapClick(lat, lng) {
         if (state.isLoading) return;
 
         // Check drawing mode
@@ -206,8 +213,28 @@
             return;
         }
 
+        // Debounce: prevent double API calls from rapid clicking
+        if (_clickDebounceTimer) clearTimeout(_clickDebounceTimer);
+        _clickDebounceTimer = setTimeout(function () {
+            _clickDebounceTimer = null;
+            if (state.clickMode === 'select') {
+                onSelectClick(lat, lng);
+            } else {
+                onWatershedClick(lat, lng);
+            }
+        }, 300);
+    }
+
+    /**
+     * Handle watershed delineation click (default mode).
+     */
+    async function onWatershedClick(lat, lng) {
         hideError();
         setLoading(true);
+
+        // Clear any selection highlights
+        Hydrograf.map.clearCatchmentHighlights();
+        Hydrograf.map.clearSelectionBoundary();
 
         try {
             var data = await Hydrograf.api.delineateWatershed(lat, lng);
@@ -226,6 +253,68 @@
         } finally {
             setLoading(false);
         }
+    }
+
+    /**
+     * Handle stream selection click.
+     */
+    async function onSelectClick(lat, lng) {
+        hideError();
+        setLoading(true);
+
+        // Clear previous watershed display
+        Hydrograf.map.clearWatershed();
+
+        // Determine active threshold from streams layer
+        var threshold = Hydrograf.map.getStreamsThreshold() || 10000;
+
+        try {
+            var data = await Hydrograf.api.selectStream(lat, lng, threshold);
+
+            // Show selection boundary
+            Hydrograf.map.showSelectionBoundary(data.boundary_geojson);
+
+            // Highlight upstream catchments
+            if (data.upstream_segment_indices && data.upstream_segment_indices.length > 0) {
+                Hydrograf.map.highlightUpstreamCatchments(data.upstream_segment_indices);
+            }
+
+            // Display stream info in panel
+            displayStreamInfo(data.stream);
+            els.results.classList.remove('d-none');
+        } catch (err) {
+            Hydrograf.map.clearCatchmentHighlights();
+            Hydrograf.map.clearSelectionBoundary();
+            showError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    /**
+     * Display selected stream info in the results panel.
+     */
+    function displayStreamInfo(stream) {
+        fillTable(els.paramsBasic, [
+            ['Segment', String(stream.segment_idx)],
+            ['Rząd Strahlera', stream.strahler_order != null ? String(stream.strahler_order) : '—'],
+            ['Długość', stream.length_m != null ? (stream.length_m / 1000).toFixed(2) + ' km' : '—'],
+            ['Zlewnia', stream.upstream_area_km2 != null ? stream.upstream_area_km2.toFixed(2) + ' km²' : '—'],
+        ]);
+
+        // Hide other accordions
+        ['acc-shape', 'acc-drainage', 'acc-landcover', 'acc-outlet',
+         'acc-profile', 'acc-hydrograph'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.add('collapsed');
+        });
+
+        // Clear charts
+        Hydrograf.charts.destroyChart('chart-hypsometric');
+        Hydrograf.charts.destroyChart('chart-landcover');
+
+        // Clear relief table
+        if (els.paramsRelief) els.paramsRelief.innerHTML = '';
     }
 
     async function checkSystemHealth() {
@@ -257,6 +346,27 @@
     }
 
     /**
+     * Switch click mode between 'watershed' and 'select'.
+     */
+    function setClickMode(mode) {
+        state.clickMode = mode;
+
+        // Update button classes
+        var btnWatershed = document.getElementById('mode-watershed');
+        var btnSelect = document.getElementById('mode-select');
+        if (btnWatershed && btnSelect) {
+            btnWatershed.classList.toggle('mode-btn-active', mode === 'watershed');
+            btnSelect.classList.toggle('mode-btn-active', mode === 'select');
+        }
+
+        // Clear previous results when switching mode
+        Hydrograf.map.clearWatershed();
+        Hydrograf.map.clearCatchmentHighlights();
+        Hydrograf.map.clearSelectionBoundary();
+        hidePanel();
+    }
+
+    /**
      * Get current watershed data (for use by other modules).
      */
     function getCurrentWatershed() {
@@ -282,6 +392,14 @@
 
         // Layers toggle
         document.getElementById('layers-toggle').addEventListener('click', toggleLayers);
+
+        // Mode toolbar
+        document.getElementById('mode-watershed').addEventListener('click', function () {
+            setClickMode('watershed');
+        });
+        document.getElementById('mode-select').addEventListener('click', function () {
+            setClickMode('select');
+        });
 
         // Floating panel controls
         document.getElementById('results-close').addEventListener('click', hidePanel);
