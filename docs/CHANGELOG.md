@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Diagnostyka:** warning w `insert_stream_segments()` gdy segmenty pominiete przez constraint
 - **Walidacja:** sprawdzenie stream_count vs catchment_count per threshold w `process_dem.py`
 - **5 nowych testow:** multi-threshold insert, warning on dropped, empty segments, TSV threshold
+- **Pipeline re-run:** migracje 008-010 zastosowane, pipeline z `--clear-existing` — siec ciekow naprawiona: progi 1000/10000/100000 m² idealnie sparowane ze zlewniami, prog 100 m² ma 9 geohash collisions (0.012%)
 
 ### Added (PostGIS optimization — ADR-018)
 - **In-memory flow graph** (`core/flow_graph.py`): ladowanie grafu 19.7M komorek do numpy arrays + scipy sparse CSR matrix przy starcie API, BFS traversal via `breadth_first_order` (~50-200ms vs 2-5s SQL CTE)
