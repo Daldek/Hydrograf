@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 6 endpointow (+ tiles DEM/MVT streams): delineate, hydrograph, scenarios, profile, depressions, health |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 6 endpointow (+ tiles MVT streams/catchments): delineate, hydrograph, scenarios, profile, depressions, health |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -44,28 +44,37 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-12 (sesja 3)
+**Data:** 2026-02-12 (sesja 4)
 
 ### Co zrobiono
 
-- **Faza 1 — Refaktoryzacja process_dem.py (ADR-017):**
-  - Podzial monolitu 2843 linii na 6 modulow `core/`: `raster_io`, `hydrology`, `morphometry_raster`, `stream_extraction`, `db_bulk`, `zonal_stats`
-  - `scripts/process_dem.py` → cienki orchestrator ~700 linii z re-eksportami (backward compat)
-  - Usunieto martwy kod: `fill_depressions()`, `compute_flow_direction()`, `compute_flow_accumulation()`, `process_hydrology_whitebox()`
+- **Analiza pozycji PostGIS w workflow (ADR-018):**
+  - Analiza: preprocessing juz 100% numpy/pyflwdir; DB tylko na koniec i w runtime
+  - PostGIS nie ma kluczowych algorytmow hydrologicznych (fill, fdir, acc, strahler)
+  - Zidentyfikowano 4 optymalizacje hybrydowe (C1-C4)
 
-- **Faza 2 — Optymalizacja wydajnosci:**
-  - Wspolne gradienty Sobel: `_compute_gradients()` reuzywane przez slope i aspect (~12s → ~7s)
-  - Numba `@njit`: `_count_upstream_and_find_headwaters()` w `stream_extraction.py` (~300s → ~10s)
-  - NumPy wektoryzacja: `create_flow_network_tsv()` + `insert_records_batch_tsv()` — TSV bezposrednio do COPY (~120s → ~5s, 490MB → 200MB RAM)
+- **C3: Usuniety martwy kod DEM raster:**
+  - Usuniety endpoint `GET /tiles/dem/` i `GET /tiles/dem/metadata` z tiles.py (lines 1-238)
+  - Usuniety `scripts/import_dem_raster.py`
+  - tiles.py: 427 → 204 linii
 
-- **Faza 3 — Jakosc i testy:**
-  - Migracja 008: indeksy filtrujace na `depressions` (volume_m3, area_m2, max_depth_m)
-  - Centralizacja `override_statement_timeout()` context manager w `db_bulk.py`
-  - `generate_depressions.py` — integracja `zonal_stats` utility zamiast inline bincount
-  - 85 nowych testow: `test_zonal_stats.py`, `test_raster_io.py`, `test_hydrology.py`, `test_stream_extraction.py`, `test_db_bulk.py`
-  - ADR-017: dokumentacja decyzji o podziale i optymalizacji
+- **C2: In-memory flow graph (core/flow_graph.py):**
+  - Klasa `FlowGraph`: ladowanie 19.7M komorek do numpy arrays + scipy sparse CSR
+  - BFS via `scipy.sparse.csgraph.breadth_first_order` (~50-200ms vs 2-5s SQL CTE)
+  - `watershed.py`: nowe `traverse_upstream()` z in-memory path + SQL fallback
+  - `api/main.py`: lifespan event laduje graf przy starcie API
+  - `docker-compose.yml`: API memory 1G → 3G
+  - 18 nowych testow w `test_flow_graph.py`
 
-- **Laczny wynik:** 347 testow (262 istniejacych + 85 nowych), wszystkie przechodza
+- **C1: Pre-generacja MVT tiles (scripts/generate_tiles.py):**
+  - Skrypt: export GeoJSON → tippecanoe .mbtiles → PMTiles per threshold
+  - Frontend: auto-detekcja statycznych tiles z API fallback
+  - `map.js`: nowe `getTileUrl()` z dynamic/static switching
+
+- **C4: Partial index na stream_network:**
+  - Migracja 009: `idx_stream_geom_dem_derived` GIST WHERE source='DEM_DERIVED'
+
+- **Laczny wynik:** 408 testow (347 + 18 flow_graph + 43 inne), wszystkie przechodza
 
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
@@ -87,10 +96,13 @@
 - stream_network ma mniej segmentow niz catchments (82624 vs 84881) — roznica wynika z filtrowania duplikatow przy INSERT
 
 ### Nastepne kroki
-1. Benchmark pipeline po optymalizacji (~22 min → szacowane ~6-8 min)
-2. Testy integracyjne e2e endpointow (streams MVT, catchments MVT, thresholds, profile, depressions)
-3. Dlug techniczny: constants.py, hardcoded secrets
-4. CP5: MVP — pelna integracja, deploy
+1. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
+2. Benchmark `traverse_upstream`: in-memory vs SQL na 3 rozmiarach zlewni
+3. Uruchomienie `alembic upgrade head` (migracja 009: partial index)
+4. Benchmark pipeline po optymalizacji (~22 min → szacowane ~6-8 min)
+5. Testy integracyjne e2e endpointow
+6. Dlug techniczny: constants.py, hardcoded secrets
+7. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 

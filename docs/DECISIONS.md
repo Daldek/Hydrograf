@@ -349,6 +349,37 @@ Dowody awarii:
 
 ---
 
+## ADR-018: Optymalizacja PostGIS w workflow — in-memory flow graph + pre-gen tiles
+
+**Data:** 2026-02-12
+**Status:** Przyjeta
+
+**Kontekst:** Analiza roli PostGIS w workflow Hydrograf wykazala, ze preprocessing juz pracuje w natywnych formatach rastrowych (numpy/pyflwdir), a DB jest tylko magazynem wynikow. W runtime kluczowe operacje to: (1) `traverse_upstream()` — recursive CTE na 19.7M wierszach (2-5s), (2) MVT tile serving — `ST_AsMVT` per-request (50-200ms), (3) martwy kod DEM tiles (`dem_raster`). PostGIS nie ma kluczowych algorytmow hydrologicznych (fill, fdir, acc, strahler), wiec przeniesienie calego pipeline do PostGIS jest niewykonalne.
+
+**Opcje:**
+- A) DB na sam koniec — juz zaimplementowane (preprocessing jest 100% numpy)
+- B) Wszystko w PostGIS — niewykonalne (brak 4/5 kluczowych algorytmow)
+- C) Optymalizacje hybrydowe:
+  - C1: Pre-generacja kafelkow MVT (tippecanoe) — tile serving z ~50-200ms → ~1ms
+  - C2: Graf przeplywow in-memory (scipy.sparse) — traverse_upstream z 2-5s → 50-200ms
+  - C3: Usunac martwy kod dem_raster — klarownosc kodu
+  - C4: Partial index na stream_network dla DEM_DERIVED
+
+**Decyzja:** Opcja C. Cztery optymalizacje hybrydowe:
+1. **In-memory flow graph** (`core/flow_graph.py`): ladowanie 19.7M komorek do numpy arrays + scipy sparse CSR matrix przy starcie API. BFS traversal via `scipy.sparse.csgraph.breadth_first_order` (~50-200ms). SQL fallback gdy graf nie zaladowany. API memory limit: 1G → 3G.
+2. **Pre-generacja MVT tiles** (`scripts/generate_tiles.py`): eksport GeoJSON + tippecanoe → .mbtiles → .pmtiles. Frontend: auto-detekcja statycznych tiles z fallback na API.
+3. **Usuniety martwy kod**: DEM tile endpoint (lines 1-238 z tiles.py), `import_dem_raster.py`, colormap/elevation helpers.
+4. **Migracja 009**: partial GIST index na `stream_network WHERE source = 'DEM_DERIVED'`.
+
+**Konsekwencje:**
+- `traverse_upstream`: 2-5s → 50-200ms (10-100x przyspieszenie)
+- Tile serving: 50-200ms → ~1ms (z pre-gen tiles, wymaga tippecanoe)
+- API memory: 1G → 3G (numpy arrays + sparse matrix ~1 GB)
+- tiles.py: z 427 do ~200 linii (usuniety DEM raster endpoint)
+- Fallback: SQL CTE dziala nadal gdy graf nie zaladowany
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
