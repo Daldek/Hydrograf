@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.endpoints import depressions, health, hydrograph, profile, tiles, watershed
 from core.config import get_settings
+from core.database import get_db_session
+from core.flow_graph import get_flow_graph
 
 # Configure logging
 settings = get_settings()
@@ -24,8 +26,19 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan handler."""
+    """Application lifespan handler — loads in-memory flow graph."""
     logger.info("Starting Hydrograf API...")
+
+    # Load flow graph for fast upstream traversal
+    graph = get_flow_graph()
+    try:
+        with get_db_session() as db:
+            graph.load(db)
+    except Exception as e:
+        logger.warning(
+            f"Flow graph loading failed, using SQL fallback: {e}"
+        )
+
     yield
     logger.info("Shutting down Hydrograf API...")
 
