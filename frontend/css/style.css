@@ -169,6 +169,46 @@
     left: 260px;
 }
 
+/* ============ MODE TOOLBAR ============ */
+.mode-toolbar {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+}
+
+.mode-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    cursor: pointer;
+    padding: 5px 14px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    transition: all var(--transition-default);
+}
+
+.mode-btn:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--color-text);
+}
+
+.mode-btn-active {
+    background: var(--color-primary);
+    color: #fff;
+    border-color: var(--color-primary);
+}
+
+.mode-btn-active:hover {
+    background: var(--color-primary);
+    color: #fff;
+}
+
 /* ============ FLOATING RESULTS PANEL ============ */
 #results-panel {
     position: fixed;

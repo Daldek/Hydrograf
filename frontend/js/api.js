@@ -122,6 +122,29 @@
         return response.json();
     }
 
+    /**
+     * Select a stream and get upstream catchment info.
+     *
+     * @param {number} lat - Latitude (WGS84)
+     * @param {number} lng - Longitude (WGS84)
+     * @param {number} threshold - Flow accumulation threshold [m2]
+     * @returns {Promise<Object>} { stream, upstream_segment_indices, boundary_geojson }
+     */
+    async function selectStream(lat, lng, threshold) {
+        const response = await fetch('/api/select-stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                latitude: lat,
+                longitude: lng,
+                threshold_m2: threshold,
+            }),
+        });
+
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
     window.Hydrograf.api = {
         delineateWatershed: delineateWatershed,
         checkHealth: checkHealth,
@@ -129,5 +152,6 @@
         generateHydrograph: generateHydrograph,
         getScenarios: getScenarios,
         getDepressions: getDepressions,
+        selectStream: selectStream,
     };
 })();

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (frontend redesign — 7 poprawek UX)
+- **Tryb wyboru obiektow**: toolbar "Zlewnia/Wybor" na gorze mapy, przelaczanie miedzy wyznaczaniem zlewni a selekcja ciekow
+- **Endpoint `POST /api/select-stream`**: selekcja segmentu cieku + traversal upstream + granica zlewni + upstream segment indices
+- **Podswietlanie zlewni czastkowych**: po kliknieciu cieku w trybie "Wybor" — upstream catchments podswietlone na zielono, reszta wygaszona
+- **Histogram wysokosci**: `renderElevationHistogram()` w charts.js — wykres slupkowy pasm wysokosciowych zamiast krzywej hipsometrycznej
+- **Kolorowanie ciekow po flow accumulation**: gradient log10 od jasnego (male zlewnie) do ciemnego (duze) zamiast dyskretnych kolorow Strahlera
+- **Debounce klikniec**: 300ms debounce na onMapClick — zapobiega podwojnym wywolaniom API
+
+### Fixed (frontend + nginx)
+- **Zoom controls**: przeniesione z topleft (kolidowal z layers panel) do topright
+- **Przezroczystosc zlewni czastkowych**: naprawiony fillOpacity (1.0 initial zamiast 0.3, bez mnoznika ×0.5 w setCatchmentsOpacity)
+- **Rate limiting 429**: oddzielna strefa nginx `tile_limit` (30r/s) dla `/api/tiles/` — nie interferuje z `api_limit` (10r/s) dla reszty API
+
 ### Added (endorheic lake drain points — ADR-020)
 - **`classify_endorheic_lakes()`** w `core/hydrology.py`: klasyfikacja zbiornikow wodnych z BDOT10k (OT_PTWP_A) jako bezodplywowe/przeplywowe na podstawie topologii ciekow i elewacji DEM
 - **Klastrowanie zbiornikow:** bufor 20m + `unary_union` — stykajace sie jeziora i mokradla tworza klaster; odpływ w dowolnym elemencie klastra → caly klaster przepływowy
