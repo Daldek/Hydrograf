@@ -1685,7 +1685,7 @@ def insert_stream_segments(
 
 
 def delineate_subcatchments(
-    fdir: np.ndarray,
+    flw,
     label_raster: np.ndarray,
     dem: np.ndarray,
     nodata: float,
@@ -1693,14 +1693,13 @@ def delineate_subcatchments(
     """
     Assign every non-stream cell to the stream segment it drains to.
 
-    Traces downstream via D8 flow direction until hitting a cell that
-    already has a label (stream cell). Memoized: once a cell is labeled,
-    future traces through it terminate immediately.
+    Uses pyflwdir.FlwdirRaster.basins() for O(n) upstream label propagation
+    instead of pure-Python downstream tracing. See ADR-016.
 
     Parameters
     ----------
-    fdir : np.ndarray
-        D8 flow direction array (int16)
+    flw : pyflwdir.FlwdirRaster
+        Flow direction raster object built from d8_fdir
     label_raster : np.ndarray
         int32 array, pre-painted with stream segment labels (1-based).
         Modified in-place: non-stream cells get the label of the
@@ -1717,54 +1716,25 @@ def delineate_subcatchments(
     """
     logger.info("Delineating sub-catchments...")
 
-    nrows, ncols = fdir.shape
-    labeled_count = 0
-    unlabeled_count = 0
+    flat = label_raster.ravel()
+    stream_mask = flat > 0
+    stream_idxs = np.where(stream_mask)[0]
+    stream_ids = flat[stream_mask].astype(np.uint32)
 
-    for i in range(nrows):
-        for j in range(ncols):
-            if dem[i, j] == nodata:
-                continue
-            if label_raster[i, j] != 0:
-                continue
+    logger.info(
+        f"  Seeding {len(stream_idxs):,} stream cells "
+        f"({len(np.unique(stream_ids))} segments)"
+    )
 
-            # Trace downstream, collecting path
-            path = []
-            r, c = i, j
-            found_label = 0
-
-            while True:
-                if label_raster[r, c] != 0:
-                    found_label = label_raster[r, c]
-                    break
-
-                path.append((r, c))
-                d = fdir[r, c]
-                if d not in D8_DIRECTIONS:
-                    break
-
-                dr, dc = D8_DIRECTIONS[d]
-                nr, nc = r + dr, c + dc
-                if not (0 <= nr < nrows and 0 <= nc < ncols):
-                    break
-                if dem[nr, nc] == nodata:
-                    break
-
-                r, c = nr, nc
-
-            # Assign label to entire path
-            if found_label != 0:
-                for pr, pc in path:
-                    label_raster[pr, pc] = found_label
-                labeled_count += len(path)
-            else:
-                unlabeled_count += len(path)
+    basin_map = flw.basins(idxs=stream_idxs, ids=stream_ids)
+    label_raster[:] = basin_map.astype(np.int32)
 
     total_valid = int(np.sum(dem != nodata))
     total_labeled = int(np.sum(label_raster != 0))
+    unlabeled = total_valid - total_labeled
     logger.info(
         f"  Sub-catchments: {total_labeled:,}/{total_valid:,} cells labeled "
-        f"({unlabeled_count:,} drain outside area)"
+        f"({unlabeled:,} drain outside area)"
     )
 
     return label_raster
@@ -2414,6 +2384,23 @@ def process_dem(
     filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(dem, metadata)
     stats["max_accumulation"] = int(acc.max())
 
+    # Build FlwdirRaster once for reuse (subcatchments, potentially strahler)
+    import pyflwdir
+
+    transform = metadata.get("transform")
+    if transform is None:
+        from rasterio.transform import from_bounds
+
+        xll, yll = metadata["xllcorner"], metadata["yllcorner"]
+        nrows, ncols = dem.shape
+        cs = metadata["cellsize"]
+        transform = from_bounds(
+            xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
+        )
+    flw = pyflwdir.from_array(
+        d8_fdir, ftype="d8", transform=transform, latlon=False
+    )
+
     if save_intermediates:
         save_raster_geotiff(
             filled_dem,
@@ -2570,7 +2557,7 @@ def process_dem(
 
             # Delineate and polygonize sub-catchments
             if not skip_catchments and label_raster is not None:
-                delineate_subcatchments(fdir, label_raster, filled_dem, nodata)
+                delineate_subcatchments(flw, label_raster, filled_dem, nodata)
 
                 if save_intermediates:
                     save_raster_geotiff(
