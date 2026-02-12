@@ -13,7 +13,7 @@
 | Integracja Kartograf | ✅ Gotowy | v0.4.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Frontend | 🔶 Faza 3 gotowa | CP4 — wektorowe cieki MVT, hillshade, zaglbienia preprocessing |
+| Frontend | 🔶 Faza 3 gotowa | CP4 — wektorowe cieki MVT, BDOT10k zbiorniki+cieki, hillshade, zaglbienia preprocessing |
 | Testy scripts/ | ⏳ W trakcie | 46 testow process_dem (burn, fill, sinks, pyflwdir, aspect, TWI, Strahler) |
 | Dokumentacja | ✅ Gotowy | Standaryzacja wg shared/standards (2026-02-07) |
 
@@ -44,46 +44,52 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-12 (sesja 6)
+**Data:** 2026-02-12 (sesja 8)
 
 ### Co zrobiono
 
-- **Testy integracyjne e2e dla 3 nowych endpointow (51 testow):**
-  - `test_profile.py` (13 testow): `POST /api/terrain-profile` — struktura odpowiedzi, walidacja geometry, n_samples limits, pusty wynik 404, multi-point LineString
-  - `test_depressions.py` (17 testow): `GET /api/depressions` — GeoJSON FeatureCollection, properties, filtry (volume/area/bbox), walidacja 422, zaokraglenia, sortowanie
-  - `test_tiles.py` (21 testow): streams/catchments MVT + thresholds — content-type protobuf, cache headers, puste tile, threshold walidacja, zoom levels, graceful fallback
+- **Klastrowanie zbiornikow w `classify_endorheic_lakes()`:**
+  - Bufor 20m + `unary_union` — stykajace sie jeziora/mokradla sa lączone w klastry
+  - Jezeli dowolny element klastra ma odplyw → caly klaster jest przeplywowy
+  - Naprawia blad: male jeziorka polaczone przez szuwary z duzym jeziorem przeplywowym byly blednie klasyfikowane jako bezodplywowe
+  - 4 nowe testy klastrowania w `test_lake_drain.py` (laczenie, propagacja, odleglosc, lancuch)
+  - Diagnostyka rozszerzona o `clusters` count
 
-- **Naprawa kontenera API (OOM):**
-  - Kontener API mial limit pamieci 1 GiB zamiast 3 GiB (stary kontener, `deploy.resources.limits` nie zastosowany)
-  - Flow graph (938 MB) + Python + uvicorn reload nie miescily sie w 1 GiB → OOM → API nie odpowiadalo (504 Gateway Timeout)
-  - Naprawiono: `docker compose up -d --force-recreate api` — poprawny limit 3 GiB, startup 85s
+- **Frontend — warstwy BDOT10k:**
+  - Zbiorniki wodne (OT_PTWP_A) jako warstwa GeoJSON z checkbox + suwak przezroczystosci
+  - Cieki BDOT10k (OT_SWRS_L/SWKN_L/SWRM_L) jako warstwa GeoJSON, kolorowanie wg typu cieku
+  - Eksport `bdot_lakes.geojson` (68 features, 107 KB) + `bdot_streams.geojson` (92 features, 67 KB)
+  - Nowa funkcja `addBdotOverlayEntry()` w `layers.js` — async loading GeoJSON
 
-- **Migracje 008-010 + re-run pipeline:**
-  - `alembic upgrade head` — migracje 008 (indeksy depressions), 009 (partial GIST), 010 (threshold_m2 w unique index)
-  - Re-run pipeline z `--clear-existing --thresholds 100,1000,10000,100000` — 17.5 min
-  - Progi 1000/10000/100000 m²: stream_network == stream_catchments (naprawa ADR-019 potwierdzona)
-  - Prog 100 m²: 9 segmentow odrzuconych przez geohash collision (0.012%) — akceptowalne
+- **Frontend — wylaczanie podkladu:**
+  - Opcja "Brak" w podkladach kartograficznych — calkowite wylaczenie warstwy podkladowej
+  - `setBaseLayer('none')` bezpiecznie usuwa biezacy podklad
 
-- **Laczny wynik:** 464 testow (413 + 51 nowych), wszystkie przechodza
+- **nginx:** obsluga `.geojson`, kompresja `application/geo+json`
+
+- **Zmiana domyslnej glebokosci wypalania ciekow:** `burn_depth_m` 5m → 10m w `burn_streams_into_dem()`
+
+- **Laczny wynik:** 484 testy, wszystkie przechodza
 
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
-| flow_network | 19,667,699 | 4 progi FA, re-run 2026-02-12 |
-| stream_network | 84,872 | 100: 76587, 1000: 7427, 10000: 779, 100000: 79 (9 geohash collisions w progu 100) |
-| stream_catchments | 84,881 | 100: 76596, 1000: 7427, 10000: 779, 100000: 79 |
-| depressions | 560,198 | vol=4.6M m³, max_depth=7.01 m |
+| flow_network | 19,667,650 | 4 progi FA, re-run z endorheic lakes |
+| stream_network | 86,789 | 100: 78101, 1000: 7784, 10000: 812, 100000: 92 (17 geohash collisions) |
+| stream_catchments | 86,806 | 100: 78113, 1000: 7788, 10000: 813, 100000: 92 |
+| depressions | 581,553 | vol=1.16M m³, max_depth=7.01 m |
 
 ### Znane problemy
 - Frontend wymaga dalszego audytu jakosci kodu
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
 - Flow graph: `downstream_id` nie jest przechowywany w pamięci (zwracany jako None) — nie uzywany przez callery
-- 9 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem (0.012%)
+- 17 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
+- Pliki `bdot_*.geojson` sa statyczne — po re-run pipeline wymagaja ponownego eksportu
 
 ### Nastepne kroki
-1. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
-2. Benchmark `traverse_upstream`: in-memory vs SQL na 3 rozmiarach zlewni
-3. Benchmark pipeline po optymalizacji (wynik: 17.5 min)
+1. Re-run pipeline z klastrowaniem zbiornikow (weryfikacja wynikow)
+2. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
+3. Benchmark `traverse_upstream`: in-memory vs SQL na 3 rozmiarach zlewni
 4. Dlug techniczny: constants.py, hardcoded secrets
 5. CP5: MVP — pelna integracja, deploy
 
@@ -99,5 +105,5 @@
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
 - [ ] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
 - [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
-- [ ] Problem jezior bezodplywowych (endorheic basins) — komorki bez odplywu moga powodowac niepoprawne wyznaczanie zlewni
+- [x] Problem jezior bezodplywowych (endorheic basins) — ADR-020: klasyfikacja + drain points
 - [ ] CI/CD pipeline (GitHub Actions)
