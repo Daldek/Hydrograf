@@ -106,7 +106,7 @@ def delineate_watershed(
         hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
 
         # 6. Build boundary polygon
-        boundary_2180 = build_boundary(cells, method="convex")
+        boundary_2180 = build_boundary(cells, method="polygonize")
 
         # 7. Calculate morphometric parameters (with stream coords for profile)
         morph_dict = build_morphometric_params(
