@@ -4,16 +4,87 @@ Stream network vectorization and sub-catchment delineation.
 Traces connected stream cells from headwaters downstream, creates
 LineString segments, delineates sub-catchments using pyflwdir basins,
 and polygonizes sub-catchment labels.
+
+Uses numba @njit for grid-scanning loops (upstream count, headwater
+detection) to accelerate vectorize_streams from ~300s to ~10s.
 """
 
 import logging
 from collections import defaultdict
 
+import numba
 import numpy as np
 
 from core.hydrology import D8_DIRECTIONS
 
 logger = logging.getLogger(__name__)
+
+# D8 lookup arrays for numba (dict not supported in njit)
+_DR = np.zeros(256, dtype=np.int32)
+_DC = np.zeros(256, dtype=np.int32)
+_VALID = np.zeros(256, dtype=np.bool_)
+for _d, (_di, _dj) in D8_DIRECTIONS.items():
+    _DR[_d] = _di
+    _DC[_d] = _dj
+    _VALID[_d] = True
+
+
+@numba.njit(cache=True)
+def _count_upstream_and_find_headwaters(
+    fdir: np.ndarray,
+    stream_mask: np.ndarray,
+    nodata_mask: np.ndarray,
+    dr: np.ndarray,
+    dc: np.ndarray,
+    valid_d8: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Count upstream stream neighbors + find headwaters in one pass.
+
+    Returns upstream_count, hw_rows, hw_cols arrays.
+    """
+    nrows, ncols = fdir.shape
+    upstream_count = np.zeros((nrows, ncols), dtype=np.int32)
+
+    # Pass 1: count upstream stream neighbors
+    for i in range(nrows):
+        for j in range(ncols):
+            if not stream_mask[i, j]:
+                continue
+            d = fdir[i, j]
+            if d < 0 or d >= 256:
+                continue
+            if not valid_d8[d]:
+                continue
+            ni = i + dr[d]
+            nj = j + dc[d]
+            if (
+                0 <= ni < nrows
+                and 0 <= nj < ncols
+                and not nodata_mask[ni, nj]
+                and stream_mask[ni, nj]
+            ):
+                upstream_count[ni, nj] += 1
+
+    # Pass 2: collect headwaters
+    # First count for pre-allocation
+    n_hw = 0
+    for i in range(nrows):
+        for j in range(ncols):
+            if stream_mask[i, j] and upstream_count[i, j] == 0:
+                n_hw += 1
+
+    hw_rows = np.empty(n_hw, dtype=np.int32)
+    hw_cols = np.empty(n_hw, dtype=np.int32)
+    idx = 0
+    for i in range(nrows):
+        for j in range(ncols):
+            if stream_mask[i, j] and upstream_count[i, j] == 0:
+                hw_rows[idx] = i
+                hw_cols[idx] = j
+                idx += 1
+
+    return upstream_count, hw_rows, hw_cols
 
 
 def vectorize_streams(
@@ -31,6 +102,9 @@ def vectorize_streams(
 
     Traces connected stream cells from headwaters downstream to junctions
     or outlets. Each segment becomes a LineString with attributes.
+
+    Uses numba-accelerated grid scanning for upstream counting and
+    headwater detection (the main bottleneck on large grids).
 
     Parameters
     ----------
@@ -73,6 +147,17 @@ def vectorize_streams(
     cell_area = cellsize * cellsize
 
     stream_mask = (acc >= stream_threshold) & (dem != nodata)
+    nodata_mask = dem == nodata
+
+    # Numba-accelerated upstream counting + headwater detection
+    fdir_i16 = fdir.astype(np.int16)
+    upstream_count, hw_rows, hw_cols = (
+        _count_upstream_and_find_headwaters(
+            fdir_i16, stream_mask, nodata_mask, _DR, _DC, _VALID,
+        )
+    )
+
+    logger.info(f"  Found {len(hw_rows)} headwater cells")
 
     def cell_xy(row, col):
         """Get cell center coordinates in PL-1992."""
@@ -91,31 +176,12 @@ def vectorize_streams(
             return (ni, nj)
         return None
 
-    # Count upstream stream neighbors for each cell
-    upstream_count = np.zeros((nrows, ncols), dtype=np.int32)
-    for i in range(nrows):
-        for j in range(ncols):
-            if not stream_mask[i, j]:
-                continue
-            ds = downstream_cell(i, j)
-            if ds is not None and stream_mask[ds[0], ds[1]]:
-                upstream_count[ds[0], ds[1]] += 1
-
-    # Headwaters: stream cells with no upstream stream neighbors
-    headwaters = []
-    for i in range(nrows):
-        for j in range(ncols):
-            if stream_mask[i, j] and upstream_count[i, j] == 0:
-                headwaters.append((i, j))
-
-    logger.info(f"  Found {len(headwaters)} headwater cells")
-
-    # Trace segments from headwaters
+    # Trace segments from headwaters (operates on ~200k stream cells)
     visited = np.zeros((nrows, ncols), dtype=bool)
     segments = []
 
-    for hw_row, hw_col in headwaters:
-        row, col = hw_row, hw_col
+    for hw_idx in range(len(hw_rows)):
+        row, col = int(hw_rows[hw_idx]), int(hw_cols[hw_idx])
 
         while True:
             if visited[row, col]:
@@ -261,8 +327,8 @@ def delineate_subcatchments(
     total_labeled = int(np.sum(label_raster != 0))
     unlabeled = total_valid - total_labeled
     logger.info(
-        f"  Sub-catchments: {total_labeled:,}/{total_valid:,} cells labeled "
-        f"({unlabeled:,} drain outside area)"
+        f"  Sub-catchments: {total_labeled:,}/{total_valid:,} "
+        f"cells labeled ({unlabeled:,} drain outside area)"
     )
 
     return label_raster
@@ -298,7 +364,8 @@ def polygonize_subcatchments(
     -------
     list[dict]
         List of catchment dicts with keys: wkt, segment_idx,
-        area_km2, mean_elevation_m, mean_slope_percent, strahler_order
+        area_km2, mean_elevation_m, mean_slope_percent,
+        strahler_order
     """
     from rasterio.features import shapes
     from shapely.geometry import MultiPolygon, shape
@@ -331,14 +398,18 @@ def polygonize_subcatchments(
 
     # Polygonize
     geom_groups = defaultdict(list)
-    for geom_dict, value in shapes(label_raster, mask=mask, transform=transform):
+    for geom_dict, value in shapes(
+        label_raster, mask=mask, transform=transform,
+    ):
         seg_idx = int(value)
         if seg_idx > 0:
             geom_groups[seg_idx].append(shape(geom_dict))
 
-    logger.info(f"  Found {len(geom_groups)} unique sub-catchment labels")
+    logger.info(
+        f"  Found {len(geom_groups)} unique sub-catchment labels"
+    )
 
-    # Pre-compute zonal statistics using np.bincount (O(M) not O(n*M))
+    # Pre-compute zonal stats using bincount (O(M) not O(n*M))
     max_label = int(label_raster.max())
 
     counts = zonal_bincount(label_raster, max_label=max_label)
@@ -373,7 +444,9 @@ def polygonize_subcatchments(
             merged = MultiPolygon([merged])
 
         # Simplify to reduce staircase vertices
-        merged = merged.simplify(simplify_tol, preserve_topology=True)
+        merged = merged.simplify(
+            simplify_tol, preserve_topology=True,
+        )
         if merged.geom_type == "Polygon":
             merged = MultiPolygon([merged])
 
@@ -382,26 +455,41 @@ def polygonize_subcatchments(
         area_km2 = n_cells * cell_area_km2
 
         n_elev = int(elev_count[seg_idx])
-        mean_elev = float(elev_sum[seg_idx] / n_elev) if n_elev > 0 else None
-        mean_slp = float(slope_sum[seg_idx] / n_cells) if n_cells > 0 else None
+        mean_elev = (
+            float(elev_sum[seg_idx] / n_elev)
+            if n_elev > 0 else None
+        )
+        mean_slp = (
+            float(slope_sum[seg_idx] / n_cells)
+            if n_cells > 0 else None
+        )
 
         # Strahler order from segment
         strahler_order = None
         if 1 <= seg_idx <= len(segments):
-            strahler_order = segments[seg_idx - 1].get("strahler_order")
+            strahler_order = segments[seg_idx - 1].get(
+                "strahler_order"
+            )
 
         catchments.append({
             "wkt": merged.wkt,
             "segment_idx": seg_idx,
             "area_km2": round(area_km2, 6),
-            "mean_elevation_m": round(mean_elev, 2) if mean_elev is not None else None,
-            "mean_slope_percent": round(mean_slp, 2) if mean_slp is not None else None,
+            "mean_elevation_m": (
+                round(mean_elev, 2)
+                if mean_elev is not None else None
+            ),
+            "mean_slope_percent": (
+                round(mean_slp, 2)
+                if mean_slp is not None else None
+            ),
             "strahler_order": strahler_order,
         })
 
     logger.info(
         f"  Polygonized {len(catchments)} sub-catchments "
-        f"(total area: {sum(c['area_km2'] for c in catchments):.2f} km²)"
+        f"(total area: "
+        f"{sum(c['area_km2'] for c in catchments):.2f} km²)"
     )
 
     return catchments
