@@ -58,32 +58,34 @@
   - Flow graph (938 MB) + Python + uvicorn reload nie miescily sie w 1 GiB → OOM → API nie odpowiadalo (504 Gateway Timeout)
   - Naprawiono: `docker compose up -d --force-recreate api` — poprawny limit 3 GiB, startup 85s
 
+- **Migracje 008-010 + re-run pipeline:**
+  - `alembic upgrade head` — migracje 008 (indeksy depressions), 009 (partial GIST), 010 (threshold_m2 w unique index)
+  - Re-run pipeline z `--clear-existing --thresholds 100,1000,10000,100000` — 17.5 min
+  - Progi 1000/10000/100000 m²: stream_network == stream_catchments (naprawa ADR-019 potwierdzona)
+  - Prog 100 m²: 9 segmentow odrzuconych przez geohash collision (0.012%) — akceptowalne
+
 - **Laczny wynik:** 464 testow (413 + 51 nowych), wszystkie przechodza
 
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
-| flow_network | 19,667,699 | 4 progi FA |
-| stream_network | 82,624 | **2257 segmentow utraconych** — naprawa wymaga re-run pipeline |
+| flow_network | 19,667,699 | 4 progi FA, re-run 2026-02-12 |
+| stream_network | 84,872 | 100: 76587, 1000: 7427, 10000: 779, 100000: 79 (9 geohash collisions w progu 100) |
 | stream_catchments | 84,881 | 100: 76596, 1000: 7427, 10000: 779, 100000: 79 |
 | depressions | 560,198 | vol=4.6M m³, max_depth=7.01 m |
 
 ### Znane problemy
 - Frontend wymaga dalszego audytu jakosci kodu
-- ~~stream_network ma mniej segmentow niz catchments (82624 vs 84881)~~ — **naprawione ADR-019**: migracja 010. Wymaga `alembic upgrade head` + re-run pipeline z `--clear-existing`
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
 - Flow graph: `downstream_id` nie jest przechowywany w pamięci (zwracany jako None) — nie uzywany przez callery
-- Migracja 009, 010 jeszcze nie uruchomione (`alembic upgrade head`)
+- 9 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem (0.012%)
 
 ### Nastepne kroki
-1. `alembic upgrade head` (migracje 009 + 010)
-2. Re-run pipeline z `--clear-existing` i weryfikacja: stream_count == catchment_count per threshold
-3. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
-4. Benchmark `traverse_upstream`: in-memory vs SQL na 3 rozmiarach zlewni
-5. Benchmark pipeline po optymalizacji (~22 min → szacowane ~6-8 min)
-6. ~~Testy integracyjne e2e endpointow~~ — **zrobione**: 51 testow (profile, depressions, tiles)
-7. Dlug techniczny: constants.py, hardcoded secrets
-8. CP5: MVP — pelna integracja, deploy
+1. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
+2. Benchmark `traverse_upstream`: in-memory vs SQL na 3 rozmiarach zlewni
+3. Benchmark pipeline po optymalizacji (wynik: 17.5 min)
+4. Dlug techniczny: constants.py, hardcoded secrets
+5. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
