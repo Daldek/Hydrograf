@@ -3,6 +3,10 @@ Watershed delineation core logic.
 
 Provides functions for finding stream outlet, traversing flow network upstream,
 and constructing watershed boundary polygon.
+
+Supports two traversal modes:
+- In-memory BFS via FlowGraph (10-100x faster, default when graph is loaded)
+- SQL recursive CTE fallback (when graph is not available)
 """
 
 import logging
@@ -15,6 +19,8 @@ from rasterio.features import shapes
 from shapely.geometry import MultiPoint, Point, Polygon, shape
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+from core.flow_graph import get_flow_graph
 
 logger = logging.getLogger(__name__)
 
@@ -199,10 +205,10 @@ def traverse_upstream(
     max_cells: int = MAX_WATERSHED_CELLS,
 ) -> list[FlowCell]:
     """
-    Traverse flow network upstream from outlet using recursive CTE.
+    Traverse flow network upstream from outlet.
 
-    Finds all cells that drain to the outlet cell, effectively
-    delineating the watershed boundary.
+    Uses in-memory BFS when the flow graph is loaded (10-100x faster),
+    with automatic fallback to SQL recursive CTE.
 
     Parameters
     ----------
@@ -228,6 +234,53 @@ def traverse_upstream(
     >>> cells = traverse_upstream(outlet_id=123, db=db)
     >>> print(f"Watershed has {len(cells)} cells")
     """
+    graph = get_flow_graph()
+    if graph.loaded:
+        return _traverse_upstream_inmemory(graph, outlet_id, max_cells)
+    return _traverse_upstream_sql(outlet_id, db, max_cells)
+
+
+def _traverse_upstream_inmemory(
+    graph,
+    outlet_id: int,
+    max_cells: int,
+) -> list[FlowCell]:
+    """In-memory BFS traversal via FlowGraph."""
+    import time
+
+    t0 = time.time()
+
+    indices = graph.traverse_upstream(outlet_id, max_cells)
+    cell_data = graph.get_flow_cells(indices)
+
+    elapsed_ms = (time.time() - t0) * 1000
+    logger.info(
+        f"In-memory traversal: {len(indices):,} cells "
+        f"from outlet {outlet_id} in {elapsed_ms:.0f}ms"
+    )
+
+    return [
+        FlowCell(
+            id=c[0],
+            x=c[1],
+            y=c[2],
+            elevation=c[3],
+            flow_accumulation=c[4],
+            slope=c[5],
+            downstream_id=c[6],
+            cell_area=c[7],
+            is_stream=c[8],
+        )
+        for c in cell_data
+    ]
+
+
+def _traverse_upstream_sql(
+    outlet_id: int,
+    db: Session,
+    max_cells: int,
+) -> list[FlowCell]:
+    """SQL recursive CTE fallback for upstream traversal."""
     # Pre-flight check: fail fast if watershed is too large (<1ms PK lookup)
     check_watershed_size(outlet_id, db, max_cells)
 
@@ -286,13 +339,18 @@ def traverse_upstream(
 
     if len(results) > max_cells:
         logger.error(
-            f"Watershed too large: {len(results):,}+ cells > {max_cells:,} limit"
+            f"Watershed too large: {len(results):,}+ cells "
+            f"> {max_cells:,} limit"
         )
         raise ValueError(
-            f"Zlewnia zbyt duza: {len(results):,}+ komorek (limit: {max_cells:,})"
+            f"Zlewnia zbyt duza: {len(results):,}+ komorek "
+            f"(limit: {max_cells:,})"
         )
 
-    logger.info(f"Traversed {len(results):,} cells upstream from outlet {outlet_id}")
+    logger.info(
+        f"SQL traversal: {len(results):,} cells "
+        f"upstream from outlet {outlet_id}"
+    )
 
     return [
         FlowCell(
