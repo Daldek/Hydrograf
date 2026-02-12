@@ -395,10 +395,11 @@ Dowody awarii:
 **Decyzja:** Opcja A. Migracja 010: DROP + CREATE idx_stream_unique z `threshold_m2`. Dodano diagnostyke (warning w `insert_stream_segments()` gdy segmenty pominiete) i walidacje (stream vs catchment count per threshold w `process_dem.py`).
 
 **Konsekwencje:**
-- Po ponownym uruchomieniu pipeline: 82624 → ~84881 ciekow (zgodnosc z catchments)
-- Brak utraty segmentow przy wyzszych progach
+- Po re-runie pipeline: 82624 → 84872 ciekow (z 84881 catchments)
+- Progi 1000/10000/100000 m²: stream == catchment count (idealnie sparowane)
+- Prog 100 m²: 9 segmentow odrzuconych przez geohash collision (0.012%) — rozne segmenty o identycznym 12-znakowym geohash (precyzja ~3.7cm przy 1m DEM)
 - Przyszle cieki MPHP (z name != NULL) nadal deduplikowane poprawnie
-- Wymaga `alembic upgrade head` + re-run pipeline z `--clear-existing`
+- Zrealizowano 2026-02-12: `alembic upgrade head` (migracje 008-010) + pipeline re-run z `--clear-existing` (17.5 min)
 
 ---
 
