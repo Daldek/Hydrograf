@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `GET /api/tiles/thresholds` — endpoint zwracajacy dostepne progi FA z bazy (`SELECT DISTINCT threshold_m2`)
+- `docs/COMPUTATION_PIPELINE.md` — kompletna dokumentacja procedury obliczeniowej backendu
+- Wektoryzacja ciekow MVT, multi-prog FA, hillshade, zaglbienia preprocessing (CP4 Faza 3):
+  - **Migracja 005:** kolumna `threshold_m2 INTEGER NOT NULL DEFAULT 100` w `stream_network`, indeks kompozytowy `idx_stream_threshold(threshold_m2, strahler_order)`
+  - **Multi-prog FA:** `--thresholds` CLI w `process_dem.py` (np. `100,1000,10000,100000` m²), osobna siec ciekow (Strahler + wektoryzacja) per prog FA, `insert_stream_segments()` z `threshold_m2`
+  - **MVT endpoint:** `GET /api/tiles/streams/{z}/{x}/{y}.pbf?threshold=N` — Mapbox Vector Tiles z PostGIS (`ST_AsMVT`), `ST_Simplify` wg zoom, cache 1h, filtr progu FA
+  - **Frontend MVT:** Leaflet.VectorGrid 1.3.0 CDN, `loadStreamsVector()` z kolorami Strahler (8-stopniowa paleta niebieska), selector progu FA (dropdown: 100/1000/10000/100000 m²), tooltip na klik (rzad, dlugosc, zlewnia)
+  - **Hillshade:** `compute_hillshade()` w `generate_dem_overlay.py` — cieniowanie Lambertian (azimuth=315°, altitude=45°), multiply blend z rampa hipsometryczna (`rgb * (0.3 + 0.7 * hillshade)`), gradient w CRS zrodlowym (metry), `--no-hillshade` CLI
+  - **Preprocessing zaglebie:** nowy skrypt `generate_depressions.py` — depth map (filled-original DEM), connected components (`scipy.ndimage.label`), wektoryzacja (`rasterio.features.shapes`), metryki (volume_m3, area_m2, max/mean_depth_m), COPY bulk insert do tabeli `depressions`
+  - **Overlay zaglebie:** generacja `depressions.png` + `depressions.json` w `generate_depressions.py` — depth colormap (gradient niebieski), reprojekcja 2180→4326, `--output-png`/`--output-meta` CLI
+
+### Changed
+- `layers.js` — dynamiczne progi FA z backendu zamiast hardcoded listy: `fetch('/api/tiles/thresholds')` → `populateThresholdSelect()`; domyslny prog = pierwszy dostepny w bazie (nie zawsze 10000)
+- `map.js` — `currentThreshold` i `currentCatchmentThreshold` domyslnie `null` (ustawiane dynamicznie z frontendu)
+
+### Fixed
+- Dropdown progu FA pokazywal 4 opcje (100/1000/10000/100000 m²) mimo ze baza miala dane tylko dla jednego progu — teraz dropdown dynamicznie pobiera dostepne progi z `GET /api/tiles/thresholds`
+- Duplikat `var layer` w checkbox handlerach `addStreamsEntry()` i `addCatchmentsEntry()` — deklaracja przeniesiona przed `if`/`else`
+
+### Changed (previous)
+- `map.js` — zamiana rasterowego overlay ciekow (`L.imageOverlay` + `streams.png`) na wektorowy MVT (`L.vectorGrid.protobuf`)
+- `layers.js` — nowa kontrolka `addStreamsEntry()` z dropdown progu FA zamiast prostego checkboxa
+- `tiles.py` — nowa funkcja `_tile_to_bbox_3857()` i endpoint MVT streams obok istniejacego DEM tiles
+- `process_dem.py` — parametr `thresholds: list[int]` w `process_dem()`, petla po progach z reuzyciem `compute_strahler_order()` i `vectorize_streams()`
+
+### Added (previous)
 - Frontend CP4 Faza 2 — redesign glassmorphism + nowe funkcjonalnosci:
   - **Redesign wizualny (WP1):** glassmorphism (glass.css), mapa 100% szerokosc, plywajacy przesuwalny panel wynikow (draggable.js), sekcje akordeonowe, minimalizacja do ikony, bottom sheet na mobile
   - **Panel warstw (WP2):** akordeon z grupami (Podklady / Warstwy podkladowe / Wyniki analiz), przelaczanie podkladow (OSM / ESRI Satellite / OpenTopoMap), per-layer opacity + zoom-to-extent
