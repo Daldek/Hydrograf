@@ -13,7 +13,8 @@
     var demLayer = null;
     var demBounds = null;
     var streamsLayer = null;
-    var streamsBounds = null;
+    var currentThreshold = null;
+    var streamTooltip = null;
     var watershedLayer = null;
     var outletMarker = null;
     var clickEnabled = true;
@@ -41,7 +42,6 @@
 
         // Load overlays
         loadDemOverlay();
-        loadStreamsOverlay();
 
         map.on('click', function (e) {
             // Drawing mode: add vertex
@@ -100,32 +100,188 @@
         if (demLayer) demLayer.setOpacity(opacity);
     }
 
-    // ===== Streams Overlay =====
+    // ===== Streams Vector (MVT) =====
 
-    function loadStreamsOverlay() {
-        fetch('/data/streams.json')
-            .then(function (res) {
-                if (!res.ok) throw new Error('Streams metadata not found');
-                return res.json();
-            })
-            .then(function (meta) {
-                streamsBounds = L.latLngBounds(meta.bounds);
-                streamsLayer = L.imageOverlay('/data/streams.png', streamsBounds, {
-                    opacity: 1.0,
-                    attribution: 'Cieki (Strahler)',
-                });
-            })
-            .catch(function (err) {
-                console.warn('Streams overlay not available:', err.message);
-            });
+    var STRAHLER_COLORS = [
+        '#B3E5FC', '#81D4FA', '#4FC3F7', '#29B6F6',
+        '#039BE5', '#0277BD', '#01579B', '#002F6C'
+    ];
+
+    function strahlerColor(order) {
+        return STRAHLER_COLORS[Math.min(order, 8) - 1] || '#039BE5';
+    }
+
+    function loadStreamsVector(threshold) {
+        if (streamsLayer && map.hasLayer(streamsLayer)) {
+            map.removeLayer(streamsLayer);
+        }
+        currentThreshold = threshold || currentThreshold;
+
+        streamsLayer = L.vectorGrid.protobuf(
+            '/api/tiles/streams/{z}/{x}/{y}.pbf?threshold=' + currentThreshold,
+            {
+                vectorTileLayerStyles: {
+                    streams: function (properties) {
+                        var order = properties.strahler_order || 1;
+                        return {
+                            weight: order * 0.8 + 0.5,
+                            color: strahlerColor(order),
+                            opacity: 0.9,
+                        };
+                    }
+                },
+                interactive: true,
+                maxNativeZoom: 18,
+                attribution: 'Cieki (Strahler)',
+            }
+        );
+
+        // Re-fire click to map so watershed delineation works even on stream features
+        streamsLayer.on('click', function (e) {
+            map.fire('click', { latlng: e.latlng });
+        });
+
+        // Stream info via hover tooltip (not click popup)
+        streamsLayer.on('mouseover', function (e) {
+            var props = e.layer.properties;
+            var content =
+                '<b>Rząd Strahlera:</b> ' + (props.strahler_order || '?') + '<br>' +
+                '<b>Długość:</b> ' + (props.length_m ? (props.length_m / 1000).toFixed(2) + ' km' : '?') + '<br>' +
+                '<b>Zlewnia:</b> ' + (props.upstream_area_km2 ? props.upstream_area_km2.toFixed(2) + ' km²' : '?');
+            streamTooltip = L.tooltip({ sticky: true, direction: 'top', offset: [0, -8] })
+                .setLatLng(e.latlng)
+                .setContent(content)
+                .addTo(map);
+        });
+        streamsLayer.on('mouseout', function () {
+            if (streamTooltip) {
+                map.removeLayer(streamTooltip);
+                streamTooltip = null;
+            }
+        });
+
+        return streamsLayer;
     }
 
     function getStreamsLayer() { return streamsLayer; }
+
+    function getStreamsThreshold() { return currentThreshold; }
+
     function fitStreamsBounds() {
-        if (streamsBounds && map) map.fitBounds(streamsBounds, { padding: [20, 20] });
+        // MVT layers don't have predefined bounds; fit to DEM bounds if available
+        if (demBounds && map) map.fitBounds(demBounds, { padding: [20, 20] });
     }
+
     function setStreamsOpacity(opacity) {
-        if (streamsLayer) streamsLayer.setOpacity(opacity);
+        if (streamsLayer) {
+            // VectorGrid uses setFeatureStyle or direct opacity via options
+            // Re-set styles with new opacity
+            streamsLayer.options.vectorTileLayerStyles.streams = function (properties) {
+                var order = properties.strahler_order || 1;
+                return {
+                    weight: order * 0.8 + 0.5,
+                    color: strahlerColor(order),
+                    opacity: opacity,
+                };
+            };
+            // Force redraw
+            if (map.hasLayer(streamsLayer)) {
+                streamsLayer.redraw();
+            }
+        }
+    }
+
+    // ===== Catchments Vector (MVT) =====
+
+    var catchmentsLayer = null;
+    var currentCatchmentThreshold = null;
+    var catchmentTooltip = null;
+
+    var CATCHMENT_COLORS = [
+        '#E1F5FE', '#B3E5FC', '#81D4FA', '#4FC3F7',
+        '#29B6F6', '#03A9F4', '#039BE5', '#0288D1'
+    ];
+
+    function catchmentColor(order) {
+        return CATCHMENT_COLORS[Math.min(order, 8) - 1] || '#03A9F4';
+    }
+
+    function loadCatchmentsVector(threshold) {
+        if (catchmentsLayer && map.hasLayer(catchmentsLayer)) {
+            map.removeLayer(catchmentsLayer);
+        }
+        currentCatchmentThreshold = threshold || currentCatchmentThreshold;
+
+        catchmentsLayer = L.vectorGrid.protobuf(
+            '/api/tiles/catchments/{z}/{x}/{y}.pbf?threshold=' + currentCatchmentThreshold,
+            {
+                vectorTileLayerStyles: {
+                    catchments: function (properties) {
+                        var order = properties.strahler_order || 1;
+                        return {
+                            weight: 0.5,
+                            color: '#666',
+                            fillColor: catchmentColor(order),
+                            fillOpacity: 0.3,
+                            fill: true,
+                        };
+                    }
+                },
+                interactive: true,
+                maxNativeZoom: 18,
+                attribution: 'Zlewnie cząstkowe',
+            }
+        );
+
+        // Re-fire click to map so watershed delineation works
+        catchmentsLayer.on('click', function (e) {
+            map.fire('click', { latlng: e.latlng });
+        });
+
+        // Catchment info via hover tooltip
+        catchmentsLayer.on('mouseover', function (e) {
+            var props = e.layer.properties;
+            var content =
+                '<b>Rząd Strahlera:</b> ' + (props.strahler_order || '?') + '<br>' +
+                '<b>Powierzchnia:</b> ' + (props.area_km2 ? props.area_km2.toFixed(4) + ' km²' : '?') + '<br>' +
+                '<b>Śr. wysokość:</b> ' + (props.mean_elevation_m ? props.mean_elevation_m.toFixed(1) + ' m' : '?');
+            catchmentTooltip = L.tooltip({ sticky: true, direction: 'top', offset: [0, -8] })
+                .setLatLng(e.latlng)
+                .setContent(content)
+                .addTo(map);
+        });
+        catchmentsLayer.on('mouseout', function () {
+            if (catchmentTooltip) {
+                map.removeLayer(catchmentTooltip);
+                catchmentTooltip = null;
+            }
+        });
+
+        return catchmentsLayer;
+    }
+
+    function getCatchmentsLayer() { return catchmentsLayer; }
+
+    function fitCatchmentsBounds() {
+        if (demBounds && map) map.fitBounds(demBounds, { padding: [20, 20] });
+    }
+
+    function setCatchmentsOpacity(opacity) {
+        if (catchmentsLayer) {
+            catchmentsLayer.options.vectorTileLayerStyles.catchments = function (properties) {
+                var order = properties.strahler_order || 1;
+                return {
+                    weight: 0.5,
+                    color: '#666',
+                    fillColor: catchmentColor(order),
+                    fillOpacity: opacity * 0.5,
+                    fill: true,
+                };
+            };
+            if (map.hasLayer(catchmentsLayer)) {
+                catchmentsLayer.redraw();
+            }
+        }
     }
 
     // ===== Watershed display =====
@@ -272,8 +428,14 @@
         fitDemBounds: fitDemBounds,
         setDemOpacity: setDemOpacity,
         getStreamsLayer: getStreamsLayer,
+        getStreamsThreshold: getStreamsThreshold,
+        loadStreamsVector: loadStreamsVector,
         fitStreamsBounds: fitStreamsBounds,
         setStreamsOpacity: setStreamsOpacity,
+        getCatchmentsLayer: getCatchmentsLayer,
+        loadCatchmentsVector: loadCatchmentsVector,
+        fitCatchmentsBounds: fitCatchmentsBounds,
+        setCatchmentsOpacity: setCatchmentsOpacity,
         showWatershed: showWatershed,
         getWatershedLayer: getWatershedLayer,
         showOutlet: showOutlet,
