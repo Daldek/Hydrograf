@@ -134,6 +134,221 @@
     }
 
     /**
+     * Format threshold value for display (e.g. 10000 → "10 000 m²").
+     */
+    function formatThreshold(value) {
+        return value.toLocaleString('pl-PL') + ' m\u00B2';
+    }
+
+    /**
+     * Populate a threshold <select> with values from the backend.
+     */
+    function populateThresholdSelect(select, thresholds) {
+        // Clear existing options
+        select.innerHTML = '';
+        thresholds.forEach(function (t, idx) {
+            var opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = formatThreshold(t);
+            if (idx === 0) opt.selected = true;
+            select.appendChild(opt);
+        });
+    }
+
+    /**
+     * Create a streams layer entry with checkbox, threshold selector, and opacity slider.
+     */
+    function addStreamsEntry(list, availableThresholds) {
+        var item = document.createElement('div');
+        item.className = 'layer-item';
+
+        // Header row: checkbox + label + zoom button
+        var headerRow = document.createElement('div');
+        headerRow.className = 'layer-header';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        var text = document.createTextNode(' Cieki (Strahler)');
+        var zoomBtn = document.createElement('button');
+        zoomBtn.className = 'layer-zoom-btn';
+        zoomBtn.title = 'Przybliż do zasięgu';
+        zoomBtn.textContent = '\u2316';
+        zoomBtn.addEventListener('click', function () { Hydrograf.map.fitStreamsBounds(); });
+        headerRow.appendChild(cb);
+        headerRow.appendChild(text);
+        headerRow.appendChild(zoomBtn);
+        item.appendChild(headerRow);
+
+        // Controls wrapper (hidden until checkbox is on)
+        var controlsRow = document.createElement('div');
+        controlsRow.className = 'layer-opacity d-none';
+
+        // Threshold selector
+        var threshLabel = document.createElement('span');
+        threshLabel.textContent = 'Próg FA:';
+        var select = document.createElement('select');
+        select.className = 'form-select form-select-sm';
+        select.style.width = 'auto';
+        select.style.display = 'inline-block';
+        select.style.marginLeft = '4px';
+        select.style.fontSize = '0.75rem';
+
+        populateThresholdSelect(select, availableThresholds);
+
+        select.addEventListener('change', function () {
+            var layer = Hydrograf.map.loadStreamsVector(parseInt(select.value));
+            if (cb.checked && layer) {
+                layer.addTo(Hydrograf.map._getMap());
+            }
+        });
+
+        controlsRow.appendChild(threshLabel);
+        controlsRow.appendChild(select);
+
+        // Opacity slider
+        var sliderWrap = document.createElement('div');
+        sliderWrap.style.marginTop = '4px';
+        var sliderLabel = document.createElement('span');
+        sliderLabel.textContent = 'Przezr.:';
+        var slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = '100';
+        slider.value = '0';
+        var sliderValue = document.createElement('span');
+        sliderValue.className = 'layer-opacity-val';
+        sliderValue.textContent = '0%';
+        slider.addEventListener('input', function () {
+            var opacity = (100 - parseInt(slider.value)) / 100;
+            Hydrograf.map.setStreamsOpacity(opacity);
+            sliderValue.textContent = slider.value + '%';
+        });
+        sliderWrap.appendChild(sliderLabel);
+        sliderWrap.appendChild(slider);
+        sliderWrap.appendChild(sliderValue);
+        controlsRow.appendChild(sliderWrap);
+        item.appendChild(controlsRow);
+
+        cb.addEventListener('change', function () {
+            var map = Hydrograf.map._getMap();
+            var layer;
+            if (cb.checked) {
+                layer = Hydrograf.map.getStreamsLayer();
+                if (!layer) {
+                    layer = Hydrograf.map.loadStreamsVector(parseInt(select.value));
+                }
+                if (layer) layer.addTo(map);
+                controlsRow.classList.remove('d-none');
+            } else {
+                layer = Hydrograf.map.getStreamsLayer();
+                if (layer && map.hasLayer(layer)) {
+                    map.removeLayer(layer);
+                }
+                controlsRow.classList.add('d-none');
+            }
+        });
+
+        list.appendChild(item);
+    }
+
+    /**
+     * Create a catchments layer entry with checkbox, threshold selector, and opacity slider.
+     */
+    function addCatchmentsEntry(list, availableThresholds) {
+        var item = document.createElement('div');
+        item.className = 'layer-item';
+
+        // Header row: checkbox + label + zoom button
+        var headerRow = document.createElement('div');
+        headerRow.className = 'layer-header';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        var text = document.createTextNode(' Zlewnie cząstkowe');
+        var zoomBtn = document.createElement('button');
+        zoomBtn.className = 'layer-zoom-btn';
+        zoomBtn.title = 'Przybliż do zasięgu';
+        zoomBtn.textContent = '\u2316';
+        zoomBtn.addEventListener('click', function () { Hydrograf.map.fitCatchmentsBounds(); });
+        headerRow.appendChild(cb);
+        headerRow.appendChild(text);
+        headerRow.appendChild(zoomBtn);
+        item.appendChild(headerRow);
+
+        // Controls wrapper (hidden until checkbox is on)
+        var controlsRow = document.createElement('div');
+        controlsRow.className = 'layer-opacity d-none';
+
+        // Threshold selector
+        var threshLabel = document.createElement('span');
+        threshLabel.textContent = 'Próg FA:';
+        var select = document.createElement('select');
+        select.className = 'form-select form-select-sm';
+        select.style.width = 'auto';
+        select.style.display = 'inline-block';
+        select.style.marginLeft = '4px';
+        select.style.fontSize = '0.75rem';
+
+        populateThresholdSelect(select, availableThresholds);
+
+        select.addEventListener('change', function () {
+            var layer = Hydrograf.map.loadCatchmentsVector(parseInt(select.value));
+            if (cb.checked && layer) {
+                layer.addTo(Hydrograf.map._getMap());
+            }
+        });
+
+        controlsRow.appendChild(threshLabel);
+        controlsRow.appendChild(select);
+
+        // Opacity slider
+        var sliderWrap = document.createElement('div');
+        sliderWrap.style.marginTop = '4px';
+        var sliderLabel = document.createElement('span');
+        sliderLabel.textContent = 'Przezr.:';
+        var slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = '100';
+        slider.value = '0';
+        var sliderValue = document.createElement('span');
+        sliderValue.className = 'layer-opacity-val';
+        sliderValue.textContent = '0%';
+        slider.addEventListener('input', function () {
+            var opacity = (100 - parseInt(slider.value)) / 100;
+            Hydrograf.map.setCatchmentsOpacity(opacity);
+            sliderValue.textContent = slider.value + '%';
+        });
+        sliderWrap.appendChild(sliderLabel);
+        sliderWrap.appendChild(slider);
+        sliderWrap.appendChild(sliderValue);
+        controlsRow.appendChild(sliderWrap);
+        item.appendChild(controlsRow);
+
+        cb.addEventListener('change', function () {
+            var map = Hydrograf.map._getMap();
+            var layer;
+            if (cb.checked) {
+                layer = Hydrograf.map.getCatchmentsLayer();
+                if (!layer) {
+                    layer = Hydrograf.map.loadCatchmentsVector(parseInt(select.value));
+                }
+                if (layer) layer.addTo(map);
+                controlsRow.classList.remove('d-none');
+            } else {
+                layer = Hydrograf.map.getCatchmentsLayer();
+                if (layer && map.hasLayer(layer)) {
+                    map.removeLayer(layer);
+                }
+                controlsRow.classList.add('d-none');
+            }
+        });
+
+        list.appendChild(item);
+    }
+
+    /** Fallback thresholds if backend is unavailable. */
+    var FALLBACK_THRESHOLDS = [100, 1000, 10000, 100000];
+
+    /**
      * Initialize the layers panel.
      */
     function init() {
@@ -179,17 +394,28 @@
             30
         );
 
-        addOverlayEntry(
-            list,
-            'Cieki (Strahler)',
-            Hydrograf.map.getStreamsLayer,
-            Hydrograf.map.fitStreamsBounds,
-            Hydrograf.map.setStreamsOpacity,
-            0
-        );
+        // Placeholder for stream/catchment entries (async populated)
+        var streamsPlaceholder = document.createElement('div');
+        list.appendChild(streamsPlaceholder);
 
         // ===== Analysis results group =====
         list.appendChild(createGroupHeader('Wyniki analiz'));
+
+        // Fetch available thresholds, then build stream/catchment entries
+        fetch('/api/tiles/thresholds')
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                var streamsThresholds = data.streams && data.streams.length > 0
+                    ? data.streams : FALLBACK_THRESHOLDS;
+                var catchmentsThresholds = data.catchments && data.catchments.length > 0
+                    ? data.catchments : streamsThresholds;
+                addStreamsEntry(streamsPlaceholder, streamsThresholds);
+                addCatchmentsEntry(streamsPlaceholder, catchmentsThresholds);
+            })
+            .catch(function () {
+                addStreamsEntry(streamsPlaceholder, FALLBACK_THRESHOLDS);
+                addCatchmentsEntry(streamsPlaceholder, FALLBACK_THRESHOLDS);
+            });
 
         addOverlayEntry(
             list,
