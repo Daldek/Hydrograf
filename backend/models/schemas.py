@@ -357,6 +357,54 @@ class HydrographResponse(BaseModel):
 # ===================== TERRAIN PROFILE MODELS =====================
 
 
+class SelectStreamRequest(BaseModel):
+    """Request model for selecting a stream and its upstream catchment."""
+
+    latitude: float = Field(
+        ...,
+        ge=-90,
+        le=90,
+        description="Latitude in WGS84 (decimal degrees)",
+        examples=[52.23],
+    )
+    longitude: float = Field(
+        ...,
+        ge=-180,
+        le=180,
+        description="Longitude in WGS84 (decimal degrees)",
+        examples=[21.01],
+    )
+    threshold_m2: int = Field(
+        ...,
+        gt=0,
+        description="Flow accumulation threshold [m2] for stream network",
+        examples=[10000],
+    )
+
+
+class StreamInfo(BaseModel):
+    """Information about the selected stream segment."""
+
+    segment_idx: int = Field(..., description="Stream segment index")
+    strahler_order: int | None = Field(None, description="Strahler stream order")
+    length_m: float | None = Field(None, ge=0, description="Segment length [m]")
+    upstream_area_km2: float | None = Field(
+        None, ge=0, description="Upstream catchment area [km2]"
+    )
+
+
+class SelectStreamResponse(BaseModel):
+    """Response for stream selection endpoint."""
+
+    stream: StreamInfo = Field(..., description="Selected stream info")
+    upstream_segment_indices: list[int] = Field(
+        ..., description="Segment indices of upstream catchments"
+    )
+    boundary_geojson: dict[str, Any] = Field(
+        ..., description="Upstream catchment boundary as GeoJSON Feature"
+    )
+
+
 class TerrainProfileRequest(BaseModel):
     """Request model for terrain profile extraction."""
 

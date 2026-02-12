@@ -10,7 +10,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.endpoints import depressions, health, hydrograph, profile, tiles, watershed
+from api.endpoints import (
+    depressions,
+    health,
+    hydrograph,
+    profile,
+    select_stream,
+    tiles,
+    watershed,
+)
 from core.config import get_settings
 from core.database import get_db_session
 from core.flow_graph import get_flow_graph
@@ -35,9 +43,7 @@ async def lifespan(app: FastAPI):
         with get_db_session() as db:
             graph.load(db)
     except Exception as e:
-        logger.warning(
-            f"Flow graph loading failed, using SQL fallback: {e}"
-        )
+        logger.warning(f"Flow graph loading failed, using SQL fallback: {e}")
 
     yield
     logger.info("Shutting down Hydrograf API...")
@@ -67,6 +73,7 @@ app.include_router(hydrograph.router, prefix="/api", tags=["Hydrograph"])
 app.include_router(tiles.router, prefix="/api", tags=["Tiles"])
 app.include_router(profile.router, prefix="/api", tags=["Profile"])
 app.include_router(depressions.router, prefix="/api", tags=["Depressions"])
+app.include_router(select_stream.router, prefix="/api", tags=["Selection"])
 
 
 @app.get("/")

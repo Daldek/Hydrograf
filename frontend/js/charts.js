@@ -218,9 +218,124 @@
         });
     }
 
+    /**
+     * Render elevation histogram from hypsometric curve data.
+     *
+     * Divides elevation range into bands and computes % area per band
+     * by differencing the cumulative hypsometric curve.
+     *
+     * @param {string} canvasId - Canvas element ID
+     * @param {Array} curveData - Array of { relative_height, relative_area }
+     * @param {number} elevMin - Minimum elevation [m a.s.l.]
+     * @param {number} elevMax - Maximum elevation [m a.s.l.]
+     */
+    function renderElevationHistogram(canvasId, curveData, elevMin, elevMax) {
+        destroyChart(canvasId);
+
+        var canvas = document.getElementById(canvasId);
+        if (!canvas || typeof Chart === 'undefined') return;
+        if (!curveData || curveData.length < 2) return;
+
+        var elevRange = elevMax - elevMin;
+        if (elevRange <= 0) return;
+
+        // Sort curve by relative_height ascending
+        var sorted = curveData.slice().sort(function (a, b) {
+            return a.relative_height - b.relative_height;
+        });
+
+        // Determine number of bands (max 10, min step 1m)
+        var nBands = Math.min(10, Math.max(3, Math.round(elevRange / 10)));
+        var bandSize = elevRange / nBands;
+
+        var labels = [];
+        var data = [];
+
+        for (var i = 0; i < nBands; i++) {
+            var hLow = elevMin + i * bandSize;
+            var hHigh = elevMin + (i + 1) * bandSize;
+
+            // Relative heights for band boundaries
+            var rLow = (hLow - elevMin) / elevRange;
+            var rHigh = (hHigh - elevMin) / elevRange;
+
+            // Interpolate relative_area at rLow and rHigh from the curve
+            // The curve gives "fraction of area ABOVE relative_height"
+            var areaAboveLow = interpolateCurve(sorted, rLow);
+            var areaAboveHigh = interpolateCurve(sorted, rHigh);
+
+            // Area in band = area above lower boundary - area above upper boundary
+            var pct = (areaAboveLow - areaAboveHigh) * 100;
+            if (pct < 0) pct = 0;
+
+            labels.push(Math.round(hLow) + '–' + Math.round(hHigh));
+            data.push(Math.round(pct * 10) / 10);
+        }
+
+        charts[canvasId] = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Powierzchnia [%]',
+                    data: data,
+                    backgroundColor: 'rgba(10, 132, 255, 0.6)',
+                    borderColor: '#0A84FF',
+                    borderWidth: 1,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function (ctx) { return ctx.parsed.y.toFixed(1) + '% powierzchni'; },
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Wysokość [m n.p.m.]', font: { size: 10 } },
+                        ticks: { font: { size: 8 }, maxRotation: 45 },
+                    },
+                    y: {
+                        title: { display: true, text: 'Powierzchnia [%]', font: { size: 10 } },
+                        ticks: { font: { size: 9 } },
+                        beginAtZero: true,
+                    },
+                },
+            },
+        });
+    }
+
+    /**
+     * Interpolate the hypsometric curve (relative_area as function of relative_height).
+     * Returns area_above for a given relative height.
+     */
+    function interpolateCurve(sorted, relHeight) {
+        if (relHeight <= 0) return 1.0;
+        if (relHeight >= 1) return 0.0;
+
+        // Find surrounding points
+        for (var i = 0; i < sorted.length - 1; i++) {
+            var p1 = sorted[i];
+            var p2 = sorted[i + 1];
+            if (relHeight >= p1.relative_height && relHeight <= p2.relative_height) {
+                var t = (relHeight - p1.relative_height) / (p2.relative_height - p1.relative_height);
+                return p1.relative_area + t * (p2.relative_area - p1.relative_area);
+            }
+        }
+
+        // Fallback: return nearest endpoint
+        return sorted[sorted.length - 1].relative_area;
+    }
+
     window.Hydrograf.charts = {
         renderLandCoverChart: renderLandCoverChart,
         renderHypsometricChart: renderHypsometricChart,
+        renderElevationHistogram: renderElevationHistogram,
         renderProfileChart: renderProfileChart,
         destroyChart: destroyChart,
     };

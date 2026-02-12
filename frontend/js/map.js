@@ -42,8 +42,9 @@
         map = L.map('map', {
             center: [51.9, 19.5],
             zoom: 7,
-            zoomControl: true,
+            zoomControl: false,
         });
+        L.control.zoom({ position: 'topright' }).addTo(map);
 
         // Load overlays
         loadDemOverlay();
@@ -107,13 +108,32 @@
 
     // ===== Streams Vector (MVT) =====
 
-    var STRAHLER_COLORS = [
-        '#B3E5FC', '#81D4FA', '#4FC3F7', '#29B6F6',
-        '#039BE5', '#0277BD', '#01579B', '#002F6C'
-    ];
+    /**
+     * Compute stream color from upstream_area_km2 using log10 scale.
+     * Gradient: light cyan (#B3E5FC) → navy (#002F6C).
+     */
+    function flowAccColor(area_km2) {
+        // Map log10(area) from [-4, 1.3] (0.0001–20 km²) to [0, 1]
+        var logVal = Math.log10(Math.max(area_km2, 0.0001));
+        var t = (logVal - (-4)) / (1.3 - (-4)); // range 5.3
+        t = Math.max(0, Math.min(1, t));
 
-    function strahlerColor(order) {
-        return STRAHLER_COLORS[Math.min(order, 8) - 1] || '#039BE5';
+        // Interpolate between light cyan and navy (RGB)
+        var r = Math.round(179 * (1 - t) + 0 * t);
+        var g = Math.round(229 * (1 - t) + 47 * t);
+        var b = Math.round(252 * (1 - t) + 108 * t);
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+
+    /**
+     * Compute stream width from upstream_area_km2 using log10 scale.
+     * Range: 0.5px (tiny streams) → 4px (large rivers).
+     */
+    function flowAccWidth(area_km2) {
+        var logVal = Math.log10(Math.max(area_km2, 0.0001));
+        var t = (logVal - (-4)) / (1.3 - (-4));
+        t = Math.max(0, Math.min(1, t));
+        return 0.5 + t * 3.5;
     }
 
     /**
@@ -142,17 +162,17 @@
             {
                 vectorTileLayerStyles: {
                     streams: function (properties) {
-                        var order = properties.strahler_order || 1;
+                        var area = properties.upstream_area_km2 || 0.0001;
                         return {
-                            weight: order * 0.8 + 0.5,
-                            color: strahlerColor(order),
+                            weight: flowAccWidth(area),
+                            color: flowAccColor(area),
                             opacity: 0.9,
                         };
                     }
                 },
                 interactive: true,
                 maxNativeZoom: 18,
-                attribution: 'Cieki (Strahler)',
+                attribution: 'Cieki (flow acc)',
             }
         );
 
@@ -165,9 +185,9 @@
         streamsLayer.on('mouseover', function (e) {
             var props = e.layer.properties;
             var content =
+                '<b>Zlewnia:</b> ' + (props.upstream_area_km2 ? props.upstream_area_km2.toFixed(2) + ' km²' : '?') + '<br>' +
                 '<b>Rząd Strahlera:</b> ' + (props.strahler_order || '?') + '<br>' +
-                '<b>Długość:</b> ' + (props.length_m ? (props.length_m / 1000).toFixed(2) + ' km' : '?') + '<br>' +
-                '<b>Zlewnia:</b> ' + (props.upstream_area_km2 ? props.upstream_area_km2.toFixed(2) + ' km²' : '?');
+                '<b>Długość:</b> ' + (props.length_m ? (props.length_m / 1000).toFixed(2) + ' km' : '?');
             streamTooltip = L.tooltip({ sticky: true, direction: 'top', offset: [0, -8] })
                 .setLatLng(e.latlng)
                 .setContent(content)
@@ -197,10 +217,10 @@
             // VectorGrid uses setFeatureStyle or direct opacity via options
             // Re-set styles with new opacity
             streamsLayer.options.vectorTileLayerStyles.streams = function (properties) {
-                var order = properties.strahler_order || 1;
+                var area = properties.upstream_area_km2 || 0.0001;
                 return {
-                    weight: order * 0.8 + 0.5,
-                    color: strahlerColor(order),
+                    weight: flowAccWidth(area),
+                    color: flowAccColor(area),
                     opacity: opacity,
                 };
             };
@@ -215,7 +235,10 @@
 
     var catchmentsLayer = null;
     var currentCatchmentThreshold = null;
+    var currentCatchmentOpacity = 1.0;
     var catchmentTooltip = null;
+    var highlightedSegments = new Set();
+    var selectionBoundaryLayer = null;
 
     var CATCHMENT_COLORS = [
         '#E1F5FE', '#B3E5FC', '#81D4FA', '#4FC3F7',
@@ -242,7 +265,7 @@
                             weight: 0.5,
                             color: '#666',
                             fillColor: catchmentColor(order),
-                            fillOpacity: 0.3,
+                            fillOpacity: 1.0,
                             fill: true,
                         };
                     }
@@ -287,6 +310,7 @@
     }
 
     function setCatchmentsOpacity(opacity) {
+        currentCatchmentOpacity = opacity;
         if (catchmentsLayer) {
             catchmentsLayer.options.vectorTileLayerStyles.catchments = function (properties) {
                 var order = properties.strahler_order || 1;
@@ -294,13 +318,78 @@
                     weight: 0.5,
                     color: '#666',
                     fillColor: catchmentColor(order),
-                    fillOpacity: opacity * 0.5,
+                    fillOpacity: opacity,
                     fill: true,
                 };
             };
             if (map.hasLayer(catchmentsLayer)) {
                 catchmentsLayer.redraw();
             }
+        }
+    }
+
+    /**
+     * Highlight upstream catchments by segment indices.
+     */
+    function highlightUpstreamCatchments(segmentIndices) {
+        highlightedSegments = new Set(segmentIndices);
+        if (catchmentsLayer) {
+            catchmentsLayer.options.vectorTileLayerStyles.catchments = function (props) {
+                if (highlightedSegments.has(props.segment_idx)) {
+                    return {
+                        weight: 2,
+                        color: '#28A745',
+                        fillColor: '#28A745',
+                        fillOpacity: 0.5,
+                        fill: true,
+                    };
+                }
+                return {
+                    weight: 0.3,
+                    color: '#999',
+                    fillColor: '#ddd',
+                    fillOpacity: 0.15,
+                    fill: true,
+                };
+            };
+            if (map.hasLayer(catchmentsLayer)) {
+                catchmentsLayer.redraw();
+            }
+        }
+    }
+
+    /**
+     * Clear catchment highlights, restore default style.
+     */
+    function clearCatchmentHighlights() {
+        highlightedSegments.clear();
+        setCatchmentsOpacity(currentCatchmentOpacity);
+    }
+
+    /**
+     * Show upstream catchment boundary polygon.
+     */
+    function showSelectionBoundary(geojsonFeature) {
+        clearSelectionBoundary();
+        selectionBoundaryLayer = L.geoJSON(geojsonFeature, {
+            style: {
+                color: '#FF6B00',
+                weight: 2.5,
+                fillColor: '#FF6B00',
+                fillOpacity: 0.1,
+                dashArray: '6, 4',
+            },
+        }).addTo(map);
+        map.fitBounds(selectionBoundaryLayer.getBounds(), { padding: [20, 20] });
+    }
+
+    /**
+     * Clear selection boundary layer.
+     */
+    function clearSelectionBoundary() {
+        if (selectionBoundaryLayer) {
+            map.removeLayer(selectionBoundaryLayer);
+            selectionBoundaryLayer = null;
         }
     }
 
@@ -532,6 +621,10 @@
         loadCatchmentsVector: loadCatchmentsVector,
         fitCatchmentsBounds: fitCatchmentsBounds,
         setCatchmentsOpacity: setCatchmentsOpacity,
+        highlightUpstreamCatchments: highlightUpstreamCatchments,
+        clearCatchmentHighlights: clearCatchmentHighlights,
+        showSelectionBoundary: showSelectionBoundary,
+        clearSelectionBoundary: clearSelectionBoundary,
         showWatershed: showWatershed,
         getWatershedLayer: getWatershedLayer,
         showOutlet: showOutlet,
