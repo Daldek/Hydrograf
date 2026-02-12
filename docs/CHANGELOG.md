@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (refactor + perf)
+- **Refaktoryzacja process_dem.py (ADR-017):** podzial monolitu 2843 linii na 6 modulow `core/`:
+  - `core/raster_io.py` — odczyt/zapis rastrow (ASC, VRT, GeoTIFF)
+  - `core/hydrology.py` — hydrologia: fill, fdir, acc, stream burning
+  - `core/morphometry_raster.py` — nachylenie, aspekt, TWI, Strahler
+  - `core/stream_extraction.py` — wektoryzacja ciekow, zlewnie czastkowe
+  - `core/db_bulk.py` — bulk INSERT via COPY, timeout management
+  - `core/zonal_stats.py` — statystyki strefowe (bincount, max)
+- **Numba @njit:** `_count_upstream_and_find_headwaters()` w `stream_extraction.py` (~300s → ~10s)
+- **NumPy wektoryzacja:** `create_flow_network_tsv()` + `insert_records_batch_tsv()` (~120s → ~5s, 490MB → 200MB RAM)
+- **Wspolne gradienty Sobel:** `_compute_gradients()` reuzywane przez slope i aspect (~12s → ~7s)
+- **Migracja 008:** indeksy filtrujace na `depressions` (volume_m3, area_m2, max_depth_m)
+- **Context manager:** `override_statement_timeout()` w `db_bulk.py` — centralizacja timeout
+- **85 nowych testow:** test_zonal_stats, test_raster_io, test_hydrology, test_stream_extraction, test_db_bulk
+
 ### Added
 - `GET /api/tiles/thresholds` — endpoint zwracajacy dostepne progi FA z bazy (`SELECT DISTINCT threshold_m2`)
 - `docs/COMPUTATION_PIPELINE.md` — kompletna dokumentacja procedury obliczeniowej backendu
