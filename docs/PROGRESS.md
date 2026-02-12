@@ -94,6 +94,9 @@
 ### Znane problemy
 - Frontend wymaga dalszego audytu jakosci kodu
 - stream_network ma mniej segmentow niz catchments (82624 vs 84881) — roznica wynika z filtrowania duplikatow przy INSERT
+- `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
+- Flow graph: `downstream_id` nie jest przechowywany w pamięci (zwracany jako None) — nie uzywany przez callery
+- Migracja 009 jeszcze nie uruchomiona (`alembic upgrade head`)
 
 ### Nastepne kroki
 1. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
