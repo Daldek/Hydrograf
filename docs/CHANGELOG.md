@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (PostGIS optimization — ADR-018)
+- **In-memory flow graph** (`core/flow_graph.py`): ladowanie grafu 19.7M komorek do numpy arrays + scipy sparse CSR matrix przy starcie API, BFS traversal via `breadth_first_order` (~50-200ms vs 2-5s SQL CTE)
+- **Pre-generacja MVT tiles** (`scripts/generate_tiles.py`): eksport PostGIS → GeoJSON → tippecanoe .mbtiles → PMTiles; auto-detekcja w frontend z API fallback
+- **Migracja 009:** partial GIST index na `stream_network WHERE source = 'DEM_DERIVED'`
+- **18 nowych testow:** test_flow_graph.py (traversal, resolve, cells, loaded state)
+
+### Removed
+- DEM raster tile endpoint (`GET /tiles/dem/`, `GET /tiles/dem/metadata`) — martwy kod, frontend uzywa statycznego PNG
+- `scripts/import_dem_raster.py` — niepotrzebny po usunieciu DEM tile endpoint
+- Helpers: `_build_colormap()`, `_get_elev_range()`, `_tile_to_bbox_2180()`, `_empty_tile_png()` z tiles.py
+
+### Changed
+- `watershed.py traverse_upstream()`: in-memory BFS (domyslnie) + SQL CTE fallback
+- `api/main.py lifespan`: ladowanie FlowGraph przy starcie API
+- `docker-compose.yml`: API memory limit 1G → 3G (numpy arrays + sparse matrix)
+- `tiles.py`: z 427 do 204 linii (usuniety DEM raster endpoint + helpers)
+
 ### Added (refactor + perf)
 - **Refaktoryzacja process_dem.py (ADR-017):** podzial monolitu 2843 linii na 6 modulow `core/`:
   - `core/raster_io.py` — odczyt/zapis rastrow (ASC, VRT, GeoTIFF)
