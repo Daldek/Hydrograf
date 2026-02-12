@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     )
 
     # Database safety
-    db_statement_timeout_ms: int = 30000  # 30s
+    db_statement_timeout_ms: int = 120000  # 120s
 
     # IMGW preprocessing
     imgw_grid_spacing_km: float = 2.0
