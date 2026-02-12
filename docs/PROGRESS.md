@@ -13,7 +13,7 @@
 | Integracja Kartograf | ✅ Gotowy | v0.4.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Frontend | 🔶 Faza 3 gotowa | CP4 — wektorowe cieki MVT, hillshade, zaglebieniaprzed procesowanie |
+| Frontend | 🔶 Faza 3 gotowa | CP4 — wektorowe cieki MVT, hillshade, zaglbienia preprocessing |
 | Testy scripts/ | ⏳ W trakcie | 46 testow process_dem (burn, fill, sinks, pyflwdir, aspect, TWI, Strahler) |
 | Dokumentacja | ✅ Gotowy | Standaryzacja wg shared/standards (2026-02-07) |
 
@@ -65,7 +65,7 @@
   - 85 nowych testow: `test_zonal_stats.py`, `test_raster_io.py`, `test_hydrology.py`, `test_stream_extraction.py`, `test_db_bulk.py`
   - ADR-017: dokumentacja decyzji o podziale i optymalizacji
 
-- **Laczny wynik:** 347 testow (z 46 wczesniejszych → 347), wszystkie przechodza
+- **Laczny wynik:** 347 testow (262 istniejacych + 85 nowych), wszystkie przechodza
 
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
