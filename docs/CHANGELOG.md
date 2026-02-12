@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (e2e integration tests)
+- **test_profile.py** (13 testow): `POST /api/terrain-profile` — struktura odpowiedzi, walidacja geometry (LineString/Point), n_samples limits, pusty wynik 404, multi-point LineString
+- **test_depressions.py** (17 testow): `GET /api/depressions` — GeoJSON FeatureCollection, properties, filtry (volume/area/bbox), walidacja ujemnych wartosci 422, zaokraglenia, sortowanie
+- **test_tiles.py** (21 testow): `GET /api/tiles/streams|catchments/{z}/{x}/{y}.pbf` + `GET /api/tiles/thresholds` — content-type protobuf, cache headers, puste tile, threshold walidacja, rozne zoom levels, graceful fallback brak tabeli
+
 ### Fixed (stream_network deduplication — ADR-019)
 - **Migracja 010:** `idx_stream_unique` nie zawieral `threshold_m2` — cieki z roznych progow FA w tym samym miejscu byly traktowane jako duplikaty i cicho pomijane (`ON CONFLICT DO NOTHING`). Utrata: 2257 segmentow (26-42% przy wyzszych progach). Naprawiono: dodano `threshold_m2` do unique index.
 - **Diagnostyka:** warning w `insert_stream_segments()` gdy segmenty pominiete przez constraint
