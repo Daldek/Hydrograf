@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (endorheic lake drain points — ADR-020)
+- **`classify_endorheic_lakes()`** w `core/hydrology.py`: klasyfikacja zbiornikow wodnych z BDOT10k (OT_PTWP_A) jako bezodplywowe/przeplywowe na podstawie topologii ciekow i elewacji DEM
+- **Klastrowanie zbiornikow:** bufor 20m + `unary_union` — stykajace sie jeziora i mokradla tworza klaster; odpływ w dowolnym elemencie klastra → caly klaster przepływowy
+- **`_sample_dem_at_point()`**: probkowanie DEM z fallback na najblizszego sasiada gdy komorka jest NoData
+- **Wstrzykniecie drain points** w `process_hydrology_pyflwdir()`: nowy parametr `drain_points`, NoData po fill_holes / przed pyflwdir
+- **Krok 2b w `process_dem.py`**: automatyczna klasyfikacja jezior gdy `--burn-streams` wskazuje GPKG z OT_PTWP_A
+- **20 testow** w `test_lake_drain.py`: klasyfikacja, probkowanie DEM, klastrowanie, drain point injection, integracja pipeline
+
+### Changed
+- **`burn_streams_into_dem()`**: domyslna glebokosc wypalania ciekow zwiekszona z 5m do 10m
+
+### Added (frontend — warstwy BDOT10k + wyłączanie podkładu)
+- **Zbiorniki wodne BDOT10k** w `map.js` + `layers.js`: warstwa GeoJSON z poligonami z OT_PTWP_A, checkbox + suwak przezroczystosci
+- **Cieki BDOT10k** w `map.js` + `layers.js`: warstwa GeoJSON z liniami z OT_SWRS_L/SWKN_L/SWRM_L, kolorowanie wg typu
+- **Opcja "Brak"** w podkladach kartograficznych: mozliwosc calkowitego wylaczenia warstwy podkladowej
+- **GeoJSON export**: pliki `bdot_lakes.geojson` + `bdot_streams.geojson` w `frontend/data/`
+- **nginx**: obsluga plikow `.geojson`, kompresja `application/geo+json`
+
 ### Added (e2e integration tests)
 - **test_profile.py** (13 testow): `POST /api/terrain-profile` — struktura odpowiedzi, walidacja geometry (LineString/Point), n_samples limits, pusty wynik 404, multi-point LineString
 - **test_depressions.py** (17 testow): `GET /api/depressions` — GeoJSON FeatureCollection, properties, filtry (volume/area/bbox), walidacja ujemnych wartosci 422, zaokraglenia, sortowanie

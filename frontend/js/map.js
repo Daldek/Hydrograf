@@ -29,6 +29,11 @@
     // Profile line
     var profileLine = null;
 
+    // BDOT10k vector layers (lakes + streams)
+    var bdotLakesLayer = null;
+    var bdotStreamsLayer = null;
+    var bdotBounds = null;
+
     /**
      * Initialize the Leaflet map.
      * Base layer is NOT added here — layers.js handles it via setBaseLayer().
@@ -427,6 +432,82 @@
         if (profileLine) { map.removeLayer(profileLine); profileLine = null; }
     }
 
+    // ===== BDOT10k vector layers (lakes + streams) =====
+
+    function loadBdotLakes() {
+        return fetch('/data/bdot_lakes.geojson')
+            .then(function (res) {
+                if (!res.ok) throw new Error('No BDOT lakes data');
+                return res.json();
+            })
+            .then(function (geojson) {
+                bdotLakesLayer = L.geoJSON(geojson, {
+                    style: {
+                        color: '#1565C0',
+                        weight: 1,
+                        fillColor: '#42A5F5',
+                        fillOpacity: 0.4,
+                    },
+                });
+                bdotBounds = bdotLakesLayer.getBounds();
+                return bdotLakesLayer;
+            })
+            .catch(function () { return null; });
+    }
+
+    function getBdotLakesLayer() { return bdotLakesLayer; }
+
+    function setBdotLakesOpacity(opacity) {
+        if (bdotLakesLayer) {
+            bdotLakesLayer.setStyle({
+                fillOpacity: opacity * 0.4,
+                opacity: opacity,
+            });
+        }
+    }
+
+    function loadBdotStreams() {
+        return fetch('/data/bdot_streams.geojson')
+            .then(function (res) {
+                if (!res.ok) throw new Error('No BDOT streams data');
+                return res.json();
+            })
+            .then(function (geojson) {
+                bdotStreamsLayer = L.geoJSON(geojson, {
+                    style: function (feature) {
+                        var src = feature.properties.source_layer || '';
+                        if (src === 'OT_SWRS_L') {
+                            return { color: '#0D47A1', weight: 2, opacity: 0.8 };
+                        } else if (src === 'OT_SWKN_L') {
+                            return { color: '#1976D2', weight: 1.5, opacity: 0.7, dashArray: '6,3' };
+                        }
+                        return { color: '#64B5F6', weight: 1, opacity: 0.6, dashArray: '4,4' };
+                    },
+                });
+                if (!bdotBounds) {
+                    bdotBounds = bdotStreamsLayer.getBounds();
+                } else {
+                    bdotBounds.extend(bdotStreamsLayer.getBounds());
+                }
+                return bdotStreamsLayer;
+            })
+            .catch(function () { return null; });
+    }
+
+    function getBdotStreamsLayer() { return bdotStreamsLayer; }
+
+    function setBdotStreamsOpacity(opacity) {
+        if (bdotStreamsLayer) {
+            bdotStreamsLayer.setStyle({ opacity: opacity });
+        }
+    }
+
+    function fitBdotBounds() {
+        if (bdotBounds && bdotBounds.isValid()) {
+            map.fitBounds(bdotBounds, { padding: [20, 20] });
+        }
+    }
+
     // ===== Utilities =====
 
     function disableClick() { clickEnabled = false; }
@@ -465,5 +546,13 @@
         // Profile
         showProfileLine: showProfileLine,
         clearProfileLine: clearProfileLine,
+        // BDOT10k vectors
+        loadBdotLakes: loadBdotLakes,
+        getBdotLakesLayer: getBdotLakesLayer,
+        setBdotLakesOpacity: setBdotLakesOpacity,
+        loadBdotStreams: loadBdotStreams,
+        getBdotStreamsLayer: getBdotStreamsLayer,
+        setBdotStreamsOpacity: setBdotStreamsOpacity,
+        fitBdotBounds: fitBdotBounds,
     };
 })();

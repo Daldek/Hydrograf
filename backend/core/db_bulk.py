@@ -44,9 +44,12 @@ def override_statement_timeout(db_session, timeout_s: int = 0):
     try:
         yield
     finally:
-        # Restore original timeout
-        cursor.execute(f"SET statement_timeout = '{original_timeout}'")
-        raw_conn.commit()
+        # Restore original timeout (connection may already be closed)
+        try:
+            cursor.execute(f"SET statement_timeout = '{original_timeout}'")
+            raw_conn.commit()
+        except Exception:
+            pass
 
 
 def create_flow_network_tsv(

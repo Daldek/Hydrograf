@@ -76,6 +76,7 @@ Thumbs.db
 *.prj
 *.cpg
 *.geojson
+!frontend/data/*.geojson
 data/
 !data/.gitkeep
 !frontend/data/

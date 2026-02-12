@@ -63,6 +63,7 @@ from core.hydrology import (
     D8_DIRECTIONS,
     VALID_D8_SET,
     burn_streams_into_dem,
+    classify_endorheic_lakes,
     fill_internal_nodata_holes,
     fix_internal_sinks,
     process_hydrology_pyflwdir,
@@ -90,6 +91,7 @@ __all__ = [
     "D8_DIRECTIONS",
     "VALID_D8_SET",
     "burn_streams_into_dem",
+    "classify_endorheic_lakes",
     "compute_aspect",
     "compute_slope",
     "compute_strahler_from_fdir",
@@ -244,9 +246,30 @@ def process_dem(
                 dtype="float32",
             )
 
+    # 2b. Classify endorheic lakes and compute drain points (optional)
+    drain_points = None
+    if burn_streams_path is not None:
+        transform_for_lakes = metadata.get("transform")
+        if transform_for_lakes is None:
+            from rasterio.transform import from_bounds as _from_bounds
+
+            _xll, _yll = metadata["xllcorner"], metadata["yllcorner"]
+            _nr, _nc = dem.shape
+            _cs = metadata["cellsize"]
+            transform_for_lakes = _from_bounds(
+                _xll, _yll, _xll + _nc * _cs, _yll + _nr * _cs, _nc, _nr
+            )
+        drain_points, drain_diag = classify_endorheic_lakes(
+            dem, transform_for_lakes, burn_streams_path, nodata
+        )
+        stats["endorheic_lakes"] = drain_diag["endorheic"]
+        stats["drain_points"] = len(drain_points)
+
     # 3-5. Process hydrology using pyflwdir (fill depressions, flow dir, accumulation)
     # Note: Migrated from pysheds to pyflwdir (Deltares) — fewer deps, no temp files
-    filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(dem, metadata)
+    filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
+        dem, metadata, drain_points=drain_points
+    )
     stats["max_accumulation"] = int(acc.max())
 
     # Build FlwdirRaster once for reuse (subcatchments, potentially strahler)
@@ -677,6 +700,11 @@ def main():
     logger.info(f"  Mean slope: {stats['mean_slope']:.1f}%")
     if "burn_cells" in stats:
         logger.info(f"  Burned cells: {stats['burn_cells']:,}")
+    if "endorheic_lakes" in stats:
+        logger.info(
+            f"  Endorheic lakes: {stats['endorheic_lakes']}, "
+            f"drain points: {stats.get('drain_points', 0)}"
+        )
     logger.info(f"  Stream cells: {stats['stream_cells']:,}")
     if "stream_segments" in stats:
         logger.info(
