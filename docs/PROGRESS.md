@@ -44,24 +44,28 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-12 (sesja 2)
+**Data:** 2026-02-12 (sesja 3)
 
 ### Co zrobiono
-- **Pelny pipeline obliczeniowy uruchomiony pomyslnie:**
-  - `process_dem.py` — 4 progi FA (100, 1000, 10000, 100000 m²), 19.7M flow_network, 82624 stream segments, 84881 sub-catchments
-  - `generate_depressions.py` — 560198 zaglebien (4.6M m³ lacznej objetosci)
-  - `export_pipeline_gpkg.py` — GeoPackage 556 MB, 9 warstw, 727703 features + raport MD
-  - Calkowity czas pipeline: ~22 min (process_dem 20 min + depressions 55s + export 39s)
 
-- **Optymalizacja zonal stats O(n*M) → O(M) w dwoch skryptach:**
-  - `process_dem.py:polygonize_subcatchments()` — zamiana petli `label_raster == seg_idx` na `np.bincount` (76596 iteracji × 20M → 1 przebieg)
-  - `generate_depressions.py:compute_depressions()` — analogiczna zmiana (560198 iteracji × 20M → `np.bincount` + `scipy.ndimage.maximum`)
-  - Przyspieszenie: polygonizacja subcatchments z ~5h (szacowane) do ~3 min, depressions z >1h do ~37s
+- **Faza 1 — Refaktoryzacja process_dem.py (ADR-017):**
+  - Podzial monolitu 2843 linii na 6 modulow `core/`: `raster_io`, `hydrology`, `morphometry_raster`, `stream_extraction`, `db_bulk`, `zonal_stats`
+  - `scripts/process_dem.py` → cienki orchestrator ~700 linii z re-eksportami (backward compat)
+  - Usunieto martwy kod: `fill_depressions()`, `compute_flow_direction()`, `compute_flow_accumulation()`, `process_hydrology_whitebox()`
 
-- **Fix: statement_timeout i temp table reuse:**
-  - `insert_records_batch()` — `SET statement_timeout = 0` na raw connection (SET LOCAL nie przechodzi przez commit)
-  - `insert_stream_segments()` i `insert_catchments()` — `DROP TABLE IF EXISTS` przed CREATE TEMP TABLE (multi-threshold reuse)
-  - `insert_depressions()` — analogiczny fix timeout + drop
+- **Faza 2 — Optymalizacja wydajnosci:**
+  - Wspolne gradienty Sobel: `_compute_gradients()` reuzywane przez slope i aspect (~12s → ~7s)
+  - Numba `@njit`: `_count_upstream_and_find_headwaters()` w `stream_extraction.py` (~300s → ~10s)
+  - NumPy wektoryzacja: `create_flow_network_tsv()` + `insert_records_batch_tsv()` — TSV bezposrednio do COPY (~120s → ~5s, 490MB → 200MB RAM)
+
+- **Faza 3 — Jakosc i testy:**
+  - Migracja 008: indeksy filtrujace na `depressions` (volume_m3, area_m2, max_depth_m)
+  - Centralizacja `override_statement_timeout()` context manager w `db_bulk.py`
+  - `generate_depressions.py` — integracja `zonal_stats` utility zamiast inline bincount
+  - 85 nowych testow: `test_zonal_stats.py`, `test_raster_io.py`, `test_hydrology.py`, `test_stream_extraction.py`, `test_db_bulk.py`
+  - ADR-017: dokumentacja decyzji o podziale i optymalizacji
+
+- **Laczny wynik:** 347 testow (z 46 wczesniejszych → 347), wszystkie przechodza
 
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
@@ -83,9 +87,10 @@
 - stream_network ma mniej segmentow niz catchments (82624 vs 84881) — roznica wynika z filtrowania duplikatow przy INSERT
 
 ### Nastepne kroki
-1. Testy integracyjne e2e endpointow (streams MVT, catchments MVT, thresholds, profile, depressions)
-2. Dlug techniczny: constants.py, hardcoded secrets
-3. CP5: MVP — pelna integracja, deploy
+1. Benchmark pipeline po optymalizacji (~22 min → szacowane ~6-8 min)
+2. Testy integracyjne e2e endpointow (streams MVT, catchments MVT, thresholds, profile, depressions)
+3. Dlug techniczny: constants.py, hardcoded secrets
+4. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
