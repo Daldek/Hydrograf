@@ -50,12 +50,52 @@ def build_colormap(n_steps: int = 256) -> np.ndarray:
     return cmap
 
 
+def compute_hillshade(
+    dem: np.ndarray,
+    cellsize: float,
+    azimuth: float = 315.0,
+    altitude: float = 45.0,
+) -> np.ndarray:
+    """
+    Compute hillshade from DEM using Lambertian reflectance.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        DEM array (in metric CRS for correct gradients)
+    cellsize : float
+        Cell size in meters
+    azimuth : float
+        Light source azimuth in degrees (default: 315 = NW)
+    altitude : float
+        Light source altitude in degrees (default: 45)
+
+    Returns
+    -------
+    np.ndarray
+        Hillshade array, values 0–1 (float64)
+    """
+    dx = np.gradient(dem, cellsize, axis=1)  # dz/dx
+    dy = np.gradient(dem, cellsize, axis=0)  # dz/dy
+    slope_rad = np.arctan(np.sqrt(dx**2 + dy**2))
+    aspect_rad = np.arctan2(-dy, dx)
+
+    az_rad = np.radians(azimuth)
+    alt_rad = np.radians(altitude)
+
+    hillshade = np.sin(alt_rad) * np.cos(slope_rad) + np.cos(alt_rad) * np.sin(
+        slope_rad
+    ) * np.cos(az_rad - aspect_rad)
+    return np.clip(hillshade, 0, 1)
+
+
 def generate_overlay(
     input_path: str,
     output_png: str,
     output_meta: str,
     max_size: int = 1024,
     source_crs: str | None = None,
+    no_hillshade: bool = False,
 ) -> None:
     """Generate colored PNG and metadata JSON from DEM raster."""
     dst_crs = "EPSG:4326"
@@ -66,18 +106,32 @@ def generate_overlay(
             print("Error: raster has no CRS. Use --source-crs.", file=sys.stderr)
             sys.exit(1)
 
+        dem_raw = src.read(1)
+        nodata = src.nodata
+        src_transform = src.transform
+
+        # Compute hillshade in source CRS (metric) before reprojection
+        hillshade_src = None
+        if not no_hillshade:
+            # Estimate cellsize from transform (metres)
+            cellsize = abs(src_transform.a)
+            # Mask nodata for gradient computation
+            dem_for_hs = dem_raw.astype(np.float64)
+            if nodata is not None:
+                dem_for_hs[dem_raw == nodata] = np.nan
+            hillshade_src = compute_hillshade(dem_for_hs, cellsize)
+            print(f"Hillshade computed (cellsize={cellsize:.2f} m)")
+
         # Reproject DEM to EPSG:4326 so pixels align with geographic grid
         dst_transform, dst_width, dst_height = calculate_default_transform(
             src_crs, dst_crs, src.width, src.height, *src.bounds
         )
-        dem_raw = src.read(1)
-        nodata = src.nodata
 
         dem = np.empty((dst_height, dst_width), dtype=dem_raw.dtype)
         reproject(
             source=dem_raw,
             destination=dem,
-            src_transform=src.transform,
+            src_transform=src_transform,
             src_crs=src_crs,
             dst_transform=dst_transform,
             dst_crs=dst_crs,
@@ -85,6 +139,22 @@ def generate_overlay(
             src_nodata=nodata,
             dst_nodata=nodata,
         )
+
+        # Reproject hillshade to EPSG:4326 too
+        hillshade = None
+        if hillshade_src is not None:
+            hillshade = np.zeros((dst_height, dst_width), dtype=np.float64)
+            reproject(
+                source=hillshade_src,
+                destination=hillshade,
+                src_transform=src_transform,
+                src_crs=src_crs,
+                dst_transform=dst_transform,
+                dst_crs=dst_crs,
+                resampling=Resampling.bilinear,
+                src_nodata=np.nan,
+                dst_nodata=0.0,
+            )
 
     height, width = dem.shape
 
@@ -115,6 +185,15 @@ def generate_overlay(
     rgba[..., 1] = cmap[indices, 1]
     rgba[..., 2] = cmap[indices, 2]
     rgba[..., 3] = np.where(valid, 255, 0).astype(np.uint8)
+
+    # Apply hillshade as multiply blend: rgb = rgb * (0.3 + 0.7 * hillshade)
+    if hillshade is not None:
+        blend_factor = (0.3 + 0.7 * hillshade).astype(np.float64)
+        for ch in range(3):
+            rgba[..., ch] = np.clip(
+                rgba[..., ch].astype(np.float64) * blend_factor, 0, 255
+            ).astype(np.uint8)
+        print("Hillshade blended with hypsometric ramp")
 
     # Save PNG (with optional downsampling)
     img = Image.fromarray(rgba, mode="RGBA")
@@ -164,13 +243,25 @@ def main() -> None:
         default=None,
         help="Source CRS override (e.g. EPSG:2180) if raster has no CRS metadata",
     )
+    parser.add_argument(
+        "--no-hillshade",
+        action="store_true",
+        help="Disable hillshade blending (default: hillshade enabled)",
+    )
     args = parser.parse_args()
 
     if not Path(args.input).exists():
         print(f"Error: input file not found: {args.input}", file=sys.stderr)
         sys.exit(1)
 
-    generate_overlay(args.input, args.output, args.meta, args.max_size, args.source_crs)
+    generate_overlay(
+        args.input,
+        args.output,
+        args.meta,
+        args.max_size,
+        args.source_crs,
+        no_hillshade=args.no_hillshade,
+    )
 
 
 if __name__ == "__main__":
