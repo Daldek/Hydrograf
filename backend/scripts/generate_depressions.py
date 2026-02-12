@@ -129,16 +129,30 @@ def compute_depressions(
     labeled, n_features = label(depression_mask)
     logger.info(f"Found {n_features} connected depression regions")
 
+    # Pre-compute zonal statistics in one pass using np.bincount (O(M) not O(n*M))
+    flat_labels = labeled.ravel()
+    flat_depth = depth.ravel()
+
+    counts = np.bincount(flat_labels, minlength=n_features + 1)
+    depth_sum = np.bincount(flat_labels, weights=flat_depth, minlength=n_features + 1)
+
+    # Max depth per label — use scipy.ndimage for O(M) computation
+    from scipy.ndimage import maximum
+    max_depths = maximum(depth, labeled, index=np.arange(1, n_features + 1))
+
+    logger.info("  Zonal statistics computed (single-pass bincount)")
+
     # Vectorize and compute metrics per depression
     depressions = []
     for geom_dict, value in shapes(labeled.astype(np.int32), transform=transform):
         if value == 0:
             continue
         depression_id = int(value)
-        mask_i = labeled == depression_id
-        area_m2 = float(np.sum(mask_i)) * cell_area
-        volume_m3 = float(np.sum(depth[mask_i])) * cell_area
-        max_depth_m = float(np.max(depth[mask_i]))
+
+        n_cells = int(counts[depression_id])
+        area_m2 = n_cells * cell_area
+        volume_m3 = float(depth_sum[depression_id]) * cell_area
+        max_depth_m = float(max_depths[depression_id - 1])
         mean_depth_m = volume_m3 / area_m2 if area_m2 > 0 else 0
 
         polygon = shape(geom_dict)
@@ -190,7 +204,12 @@ def insert_depressions(db_session, depressions: list[dict], srid: int = 2180) ->
     raw_conn = db_session.connection().connection
     cursor = raw_conn.cursor()
 
-    # Create temp table
+    # Bulk import can take minutes — disable statement_timeout
+    cursor.execute("SET statement_timeout = 0")
+    raw_conn.commit()
+
+    # Create temp table (drop first for safety)
+    cursor.execute("DROP TABLE IF EXISTS temp_depressions_import")
     cursor.execute("""
         CREATE TEMP TABLE temp_depressions_import (
             wkt TEXT,

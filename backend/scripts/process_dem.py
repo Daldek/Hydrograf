@@ -1626,7 +1626,8 @@ def insert_stream_segments(
     raw_conn = db_session.connection().connection
     cursor = raw_conn.cursor()
 
-    # Create temp table
+    # Create temp table (drop first in case of multi-threshold re-use)
+    cursor.execute("DROP TABLE IF EXISTS temp_stream_import")
     cursor.execute("""
         CREATE TEMP TABLE temp_stream_import (
             wkt TEXT,
@@ -1810,6 +1811,25 @@ def polygonize_subcatchments(
 
     logger.info(f"  Found {len(geom_groups)} unique sub-catchment labels")
 
+    # Pre-compute zonal statistics in one pass using np.bincount (O(M) instead of O(n*M))
+    max_label = int(label_raster.max())
+    flat_labels = label_raster.ravel()
+
+    counts = np.bincount(flat_labels, minlength=max_label + 1)
+
+    # Elevation: mask nodata before bincount
+    flat_dem = dem.ravel().copy()
+    valid_elev = flat_dem != nodata
+    flat_dem_masked = np.where(valid_elev, flat_dem, 0.0)
+    flat_labels_elev = np.where(valid_elev, flat_labels, 0)
+    elev_sum = np.bincount(flat_labels_elev, weights=flat_dem_masked, minlength=max_label + 1)
+    elev_count = np.bincount(flat_labels_elev, minlength=max_label + 1)
+
+    # Slope
+    slope_sum = np.bincount(flat_labels, weights=slope.ravel(), minlength=max_label + 1)
+
+    logger.info("  Zonal statistics computed (single-pass bincount)")
+
     # Build catchment records
     catchments = []
     simplify_tol = cellsize / 2
@@ -1827,17 +1847,13 @@ def polygonize_subcatchments(
         if merged.geom_type == "Polygon":
             merged = MultiPolygon([merged])
 
-        # Zonal statistics from raster mask
-        cell_mask = label_raster == seg_idx
-        n_cells = int(np.sum(cell_mask))
+        # Zonal statistics from pre-computed arrays
+        n_cells = int(counts[seg_idx])
         area_km2 = n_cells * cell_area_km2
 
-        # Mean elevation (exclude nodata)
-        elev_mask = cell_mask & (dem != nodata)
-        mean_elev = float(np.mean(dem[elev_mask])) if np.any(elev_mask) else None
-
-        # Mean slope
-        mean_slp = float(np.mean(slope[cell_mask])) if n_cells > 0 else None
+        n_elev = int(elev_count[seg_idx])
+        mean_elev = float(elev_sum[seg_idx] / n_elev) if n_elev > 0 else None
+        mean_slp = float(slope_sum[seg_idx] / n_cells) if n_cells > 0 else None
 
         # Strahler order from segment
         strahler_order = None
@@ -1899,7 +1915,8 @@ def insert_catchments(
     raw_conn = db_session.connection().connection
     cursor = raw_conn.cursor()
 
-    # Create temp table
+    # Create temp table (drop first in case of multi-threshold re-use)
+    cursor.execute("DROP TABLE IF EXISTS temp_catchments_import")
     cursor.execute("""
         CREATE TEMP TABLE temp_catchments_import (
             wkt TEXT,
@@ -2109,6 +2126,10 @@ def insert_records_batch(
     # Get raw connection for COPY operation
     raw_conn = db_session.connection().connection
     cursor = raw_conn.cursor()
+
+    # Bulk import can take minutes — disable statement_timeout for this session
+    cursor.execute("SET statement_timeout = 0")
+    raw_conn.commit()
 
     # Phase 1: Disable indexes and FK for faster bulk insert
     logger.info("Phase 1: Preparing for bulk insert...")
