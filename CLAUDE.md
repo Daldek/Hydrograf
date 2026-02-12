@@ -73,7 +73,13 @@ backend/
 │   ├── precipitation.py     # Zapytania opadowe (IDW interpolation)
 │   ├── land_cover.py        # Analiza pokrycia terenu, determine_cn()
 │   ├── cn_tables.py         # Tablice CN dla HSG × pokrycie terenu
-│   └── cn_calculator.py     # Integracja z Kartografem dla HSG-based CN
+│   ├── cn_calculator.py     # Integracja z Kartografem dla HSG-based CN
+│   ├── raster_io.py         # Odczyt/zapis rastrow (ASC, VRT, GeoTIFF)
+│   ├── hydrology.py         # Hydrologia: fill, fdir, acc, stream burning
+│   ├── morphometry_raster.py # Nachylenie, aspekt, TWI, Strahler
+│   ├── stream_extraction.py # Wektoryzacja ciekow, zlewnie czastkowe
+│   ├── db_bulk.py           # Bulk INSERT via COPY, timeout management
+│   └── zonal_stats.py       # Statystyki strefowe (bincount, max)
 │
 ├── models/
 │   └── schemas.py           # Modele Pydantic (request/response)
@@ -84,7 +90,9 @@ backend/
 │   └── sheet_finder.py      # Wyszukiwanie arkuszy NMT
 │
 ├── scripts/                 # Skrypty CLI (preprocessing)
-│   ├── process_dem.py       # Import NMT do bazy (pyflwdir → PostGIS)
+│   ├── process_dem.py       # Import NMT do bazy (orchestrator → core/)
+│   ├── generate_depressions.py # Generowanie zaglebie (blue spots)
+│   ├── export_pipeline_gpkg.py # Export GeoPackage + raport
 │   ├── analyze_watershed.py # Pelna analiza zlewni (CLI)
 │   ├── prepare_area.py      # Pobieranie + przetwarzanie obszaru
 │   ├── download_dem.py      # Pobieranie NMT przez Kartograf
