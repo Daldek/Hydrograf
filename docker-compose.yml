@@ -51,7 +51,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 3G
           cpus: "2.0"
     volumes:
       - ./backend:/app
