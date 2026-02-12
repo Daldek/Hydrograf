@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 6 endpointow (+ tiles MVT streams/catchments): delineate, hydrograph, scenarios, profile, depressions, health |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 6 endpointow (+ tiles MVT streams/catchments): delineate, hydrograph, scenarios, profile, depressions, health. 464 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -44,19 +44,21 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-12 (sesja 5)
+**Data:** 2026-02-12 (sesja 6)
 
 ### Co zrobiono
 
-- **Naprawa pofragmentowanej sieci ciekow (ADR-019):**
-  - Przyczyna: `idx_stream_unique` (migracja 002) nie zawieral `threshold_m2` — cieki DEM-derived z roznych progow FA w tym samym miejscu (ten sam geohash) byly traktowane jako duplikaty. `ON CONFLICT DO NOTHING` cicho pomijal 2257 segmentow (26-42% przy wyzszych progach).
-  - Migracja 010: DROP + CREATE `idx_stream_unique` z `threshold_m2`
-  - Diagnostyka: warning w `insert_stream_segments()` gdy segmenty pominiete
-  - Walidacja: sprawdzenie stream_count vs catchment_count per threshold w `process_dem.py`
-  - 5 nowych testow w `test_db_bulk.py` (mock DB, caplog)
-  - ADR-019, CHANGELOG, PROGRESS zaktualizowane
+- **Testy integracyjne e2e dla 3 nowych endpointow (51 testow):**
+  - `test_profile.py` (13 testow): `POST /api/terrain-profile` — struktura odpowiedzi, walidacja geometry, n_samples limits, pusty wynik 404, multi-point LineString
+  - `test_depressions.py` (17 testow): `GET /api/depressions` — GeoJSON FeatureCollection, properties, filtry (volume/area/bbox), walidacja 422, zaokraglenia, sortowanie
+  - `test_tiles.py` (21 testow): streams/catchments MVT + thresholds — content-type protobuf, cache headers, puste tile, threshold walidacja, zoom levels, graceful fallback
 
-- **Laczny wynik:** 413 testow (408 + 5 nowych), wszystkie przechodza, ruff clean
+- **Naprawa kontenera API (OOM):**
+  - Kontener API mial limit pamieci 1 GiB zamiast 3 GiB (stary kontener, `deploy.resources.limits` nie zastosowany)
+  - Flow graph (938 MB) + Python + uvicorn reload nie miescily sie w 1 GiB → OOM → API nie odpowiadalo (504 Gateway Timeout)
+  - Naprawiono: `docker compose up -d --force-recreate api` — poprawny limit 3 GiB, startup 85s
+
+- **Laczny wynik:** 464 testow (413 + 51 nowych), wszystkie przechodza
 
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
@@ -79,7 +81,7 @@
 3. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
 4. Benchmark `traverse_upstream`: in-memory vs SQL na 3 rozmiarach zlewni
 5. Benchmark pipeline po optymalizacji (~22 min → szacowane ~6-8 min)
-6. Testy integracyjne e2e endpointow
+6. ~~Testy integracyjne e2e endpointow~~ — **zrobione**: 51 testow (profile, depressions, tiles)
 7. Dlug techniczny: constants.py, hardcoded secrets
 8. CP5: MVP — pelna integracja, deploy
 
