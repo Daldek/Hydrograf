@@ -53,8 +53,10 @@ from sqlalchemy import text
 # ---- Core module imports ----
 from core.db_bulk import (
     create_flow_network_records,
+    create_flow_network_tsv,
     insert_catchments,
     insert_records_batch,
+    insert_records_batch_tsv,
     insert_stream_segments,
 )
 from core.hydrology import (
@@ -67,8 +69,11 @@ from core.hydrology import (
     recompute_flow_accumulation,
 )
 from core.morphometry_raster import (
+    _compute_gradients,
     compute_aspect,
+    compute_aspect_from_gradients,
     compute_slope,
+    compute_slope_from_gradients,
     compute_strahler_from_fdir,
     compute_strahler_order,
     compute_twi,
@@ -91,11 +96,13 @@ __all__ = [
     "compute_strahler_order",
     "compute_twi",
     "create_flow_network_records",
+    "create_flow_network_tsv",
     "delineate_subcatchments",
     "fill_internal_nodata_holes",
     "fix_internal_sinks",
     "insert_catchments",
     "insert_records_batch",
+    "insert_records_batch_tsv",
     "insert_stream_segments",
     "main",
     "polygonize_subcatchments",
@@ -282,8 +289,14 @@ def process_dem(
             dtype="int32",
         )
 
-    # 5. Compute slope
-    slope = compute_slope(filled_dem, metadata["cellsize"], nodata)
+    # 5. Compute slope and aspect (shared Sobel gradients)
+    logger.info("Computing slope and aspect (shared gradients)...")
+    dx, dy = _compute_gradients(filled_dem, metadata["cellsize"], nodata)
+    slope = compute_slope_from_gradients(dx, dy)
+    logger.info(
+        f"Slope computed "
+        f"(range: {slope.min():.1f}% - {slope.max():.1f}%)"
+    )
     stats["mean_slope"] = float(np.mean(slope[dem != nodata]))
 
     if save_intermediates:
@@ -295,8 +308,15 @@ def process_dem(
             dtype="float32",
         )
 
-    # 5b. Compute aspect
-    aspect = compute_aspect(filled_dem, metadata["cellsize"], nodata)
+    aspect = compute_aspect_from_gradients(dx, dy)
+    valid_aspect = aspect[aspect >= 0]
+    if len(valid_aspect) > 0:
+        logger.info(
+            f"Aspect computed "
+            f"(range: {valid_aspect.min():.1f}° - "
+            f"{valid_aspect.max():.1f}°)"
+        )
+    del dx, dy  # Free gradient memory
 
     if save_intermediates:
         save_raster_geotiff(
@@ -365,13 +385,13 @@ def process_dem(
             dtype="uint8",
         )
 
-    # 7. Create records (with strahler_order from lowest threshold)
-    records = create_flow_network_records(
-        filled_dem, fdir, acc, slope, metadata, lowest_threshold_cells,
-        strahler=strahler,
+    # 7. Create flow_network TSV (vectorized numpy — ~5s vs ~120s)
+    tsv_buffer, n_records, n_stream = create_flow_network_tsv(
+        filled_dem, fdir, acc, slope, metadata,
+        lowest_threshold_cells, strahler=strahler,
     )
-    stats["records"] = len(records)
-    stats["stream_cells"] = sum(1 for r in records if r["is_stream"])
+    stats["records"] = n_records
+    stats["stream_cells"] = n_stream
 
     # 7b. Vectorize streams per threshold
     all_stream_segments = {}  # threshold_m2 → segments
@@ -451,9 +471,6 @@ def process_dem(
         from core.database import get_db_session
 
         with get_db_session() as db:
-            # Bulk import can take minutes — override statement_timeout
-            db.execute(text("SET LOCAL statement_timeout = '600s'"))
-
             if clear_existing:
                 logger.info("Clearing existing flow_network data...")
                 db.execute(text("TRUNCATE TABLE flow_network CASCADE"))
@@ -466,9 +483,10 @@ def process_dem(
                 db.execute(text("DELETE FROM stream_catchments"))
                 db.commit()
 
-            # table_empty=True when we just truncated
-            inserted = insert_records_batch(
-                db, records, batch_size, table_empty=clear_existing
+            # TSV fast path — COPY directly from buffer
+            inserted = insert_records_batch_tsv(
+                db, tsv_buffer, n_records,
+                table_empty=clear_existing,
             )
             stats["inserted"] = inserted
 
