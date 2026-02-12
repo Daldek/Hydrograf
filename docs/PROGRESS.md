@@ -44,27 +44,39 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-11
+**Data:** 2026-02-12
 
 ### Co zrobiono
-- **Fix progow FA (frontend + backend)**:
-  - Nowy endpoint `GET /api/tiles/thresholds` — zwraca dostepne progi z `stream_network` i `stream_catchments` (DISTINCT)
-  - `layers.js` — dynamiczne budowanie dropdown z backendu zamiast hardcoded `[100, 1000, 10000, 100000]`; fallback do FALLBACK_THRESHOLDS gdy backend niedostepny
-  - `map.js` — `currentThreshold` / `currentCatchmentThreshold` ustawione na `null` (inicjalizowane dynamicznie)
-  - Fix duplikatu `var layer` w checkbox handlerach (streams + catchments)
-  - Helpery: `formatThreshold()` (lokalizacja PL), `populateThresholdSelect()` (budowanie opcji)
-- **Dokumentacja procedury obliczeniowej**: `docs/COMPUTATION_PIPELINE.md` — kompletny opis pipeline'u (6 faz, algorytmy, wzory, SQL, wydajnosc)
+- **Naprawa ADR-016 — przepisanie `delineate_subcatchments()` na pyflwdir:**
+  - `delineate_subcatchments()` — zastapienie podwojnej petli Pythonowej przez `pyflwdir.FlwdirRaster.basins()` (O(n), C/Numba)
+  - Obiekt `FlwdirRaster` tworzony raz w `process_dem()` i reuzywany (zamiast tworzenia lokalnie w kazdej funkcji)
+  - Call site zaktualizowany: `fdir` → `flw`
+  - ADR-016: status Oczekuje → Przyjeta (opcja B)
+  - Dokumentacja: COMPUTATION_PIPELINE.md (sekcja 1.7, tabela algorytmow), PROGRESS.md
 
 ### Znane problemy
-- Baza danych ma dane ciekow/zlewni tylko dla jednego progu FA (100 m²) — `process_dem.py` musi byc ponownie uruchomiony z `--thresholds 100,1000,10000,100000` zeby wygenerowac dane dla wszystkich progow
-- Warstwa catchments i streams — warstwy laduja sie poprawnie ale wymagaja weryfikacji e2e z pelnym zestawem progow
+- **Baza danych — niekompletne dane:** `stream_network` ma dane tylko dla progu 100 m² (397 seg.), `stream_catchments` = 0 rekordow, `depressions` = 0. Pliki posrednie GeoTIFF (10 plikow, 356 MB) zapisane poprawnie.
+- Warstwa catchments i streams — wymagaja weryfikacji e2e z pelnym zestawem progow
 - Frontend wymaga dalszego audytu jakosci kodu
 
 ### Nastepne kroki
-1. Re-run `process_dem.py --thresholds 100,1000,10000,100000` dla aktualnego arkusza NMT
-2. Testy integracyjne e2e nowych endpointow (streams MVT, catchments MVT, thresholds, profile, depressions)
-3. Dlug techniczny: constants.py, hardcoded secrets
-4. CP5: MVP — pelna integracja, deploy
+1. **Uruchomic pelny pipeline obliczeniowy:**
+   ```bash
+   docker compose up -d db
+   cd backend && .venv/bin/python -m scripts.process_dem \
+     --input ../data/e2e_test/dem_mosaic.vrt \
+     --burn-streams ../data/e2e_test/hydro/bdot10k_hydro_godlo_N_33_131_C_b_2.gpkg \
+     --burn-depth 5.0 \
+     --thresholds "100,1000,10000,100000" \
+     --save-intermediates \
+     --output-dir ../data/e2e_test/intermediates \
+     --clear-existing
+   ```
+2. Zweryfikowac baze: `stream_network` (4 progi), `stream_catchments` (>0), pliki posrednie
+3. Uruchomic `generate_depressions.py` + `export_pipeline_gpkg.py`
+4. Testy integracyjne e2e nowych endpointow (streams MVT, catchments MVT, thresholds, profile, depressions)
+5. Dlug techniczny: constants.py, hardcoded secrets
+6. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
