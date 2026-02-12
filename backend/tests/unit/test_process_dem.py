@@ -394,7 +394,7 @@ class TestProcessHydrologyPyflwdir:
     def test_returns_correct_shapes(self, synthetic_dem_10x10):
         """Output arrays have same shape as input DEM."""
         dem, metadata = synthetic_dem_10x10
-        filled, fdir, acc = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, acc, _d8 = process_hydrology_pyflwdir(dem, metadata)
 
         assert filled.shape == dem.shape
         assert fdir.shape == dem.shape
@@ -403,7 +403,7 @@ class TestProcessHydrologyPyflwdir:
     def test_fdir_contains_only_valid_d8(self, synthetic_dem_10x10):
         """All internal valid cells have D8 flow direction from VALID_D8_SET."""
         dem, metadata = synthetic_dem_10x10
-        filled, fdir, _ = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         edge_mask = np.zeros_like(valid)
@@ -423,7 +423,7 @@ class TestProcessHydrologyPyflwdir:
     def test_acc_positive_for_valid_cells(self, synthetic_dem_10x10):
         """Flow accumulation >= 1 for all valid cells."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, acc = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, acc, _d8 = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         assert np.all(acc[valid] >= 1)
@@ -431,14 +431,14 @@ class TestProcessHydrologyPyflwdir:
     def test_nodata_preserved(self, synthetic_dem_10x10):
         """Nodata cells in input remain nodata in filled DEM."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, _ = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
 
         assert filled[0, 0] == NODATA
 
     def test_depression_filled(self, synthetic_dem_10x10):
         """The depression at (5,5) is filled (elevation raised)."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, _ = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
 
         # Filled DEM should have the depression raised
         assert filled[5, 5] >= dem[5, 5]
@@ -446,7 +446,7 @@ class TestProcessHydrologyPyflwdir:
     def test_no_internal_sinks(self, synthetic_dem_10x10):
         """No internal sinks remain after processing."""
         dem, metadata = synthetic_dem_10x10
-        filled, fdir, _ = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         edge_mask = np.zeros_like(valid)
