@@ -44,68 +44,44 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-12 (sesja 4)
+**Data:** 2026-02-12 (sesja 5)
 
 ### Co zrobiono
 
-- **Analiza pozycji PostGIS w workflow (ADR-018):**
-  - Analiza: preprocessing juz 100% numpy/pyflwdir; DB tylko na koniec i w runtime
-  - PostGIS nie ma kluczowych algorytmow hydrologicznych (fill, fdir, acc, strahler)
-  - Zidentyfikowano 4 optymalizacje hybrydowe (C1-C4)
+- **Naprawa pofragmentowanej sieci ciekow (ADR-019):**
+  - Przyczyna: `idx_stream_unique` (migracja 002) nie zawieral `threshold_m2` — cieki DEM-derived z roznych progow FA w tym samym miejscu (ten sam geohash) byly traktowane jako duplikaty. `ON CONFLICT DO NOTHING` cicho pomijal 2257 segmentow (26-42% przy wyzszych progach).
+  - Migracja 010: DROP + CREATE `idx_stream_unique` z `threshold_m2`
+  - Diagnostyka: warning w `insert_stream_segments()` gdy segmenty pominiete
+  - Walidacja: sprawdzenie stream_count vs catchment_count per threshold w `process_dem.py`
+  - 5 nowych testow w `test_db_bulk.py` (mock DB, caplog)
+  - ADR-019, CHANGELOG, PROGRESS zaktualizowane
 
-- **C3: Usuniety martwy kod DEM raster:**
-  - Usuniety endpoint `GET /tiles/dem/` i `GET /tiles/dem/metadata` z tiles.py (lines 1-238)
-  - Usuniety `scripts/import_dem_raster.py`
-  - tiles.py: 427 → 204 linii
-
-- **C2: In-memory flow graph (core/flow_graph.py):**
-  - Klasa `FlowGraph`: ladowanie 19.7M komorek do numpy arrays + scipy sparse CSR
-  - BFS via `scipy.sparse.csgraph.breadth_first_order` (~50-200ms vs 2-5s SQL CTE)
-  - `watershed.py`: nowe `traverse_upstream()` z in-memory path + SQL fallback
-  - `api/main.py`: lifespan event laduje graf przy starcie API
-  - `docker-compose.yml`: API memory 1G → 3G
-  - 18 nowych testow w `test_flow_graph.py`
-
-- **C1: Pre-generacja MVT tiles (scripts/generate_tiles.py):**
-  - Skrypt: export GeoJSON → tippecanoe .mbtiles → PMTiles per threshold
-  - Frontend: auto-detekcja statycznych tiles z API fallback
-  - `map.js`: nowe `getTileUrl()` z dynamic/static switching
-
-- **C4: Partial index na stream_network:**
-  - Migracja 009: `idx_stream_geom_dem_derived` GIST WHERE source='DEM_DERIVED'
-
-- **Laczny wynik:** 408 testow (347 + 18 flow_graph + 43 inne), wszystkie przechodza
+- **Laczny wynik:** 413 testow (408 + 5 nowych), wszystkie przechodza, ruff clean
 
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
 | flow_network | 19,667,699 | 4 progi FA |
-| stream_network | 82,624 | 100: 76587, 1000: 5461, 10000: 530, 100000: 46 |
+| stream_network | 82,624 | **2257 segmentow utraconych** — naprawa wymaga re-run pipeline |
 | stream_catchments | 84,881 | 100: 76596, 1000: 7427, 10000: 779, 100000: 79 |
 | depressions | 560,198 | vol=4.6M m³, max_depth=7.01 m |
 
-### Pliki wyjsciowe
-- `data/e2e_test/pipeline_results.gpkg` — 556 MB, 9 warstw
-- `data/e2e_test/PIPELINE_REPORT.md` — raport pipeline
-- `frontend/data/depressions.png` — overlay 1024×677 px
-- `frontend/data/depressions.json` — metadane (bounds WGS84)
-- `data/e2e_test/intermediates/` — 17 plikow GeoTIFF
-
 ### Znane problemy
 - Frontend wymaga dalszego audytu jakosci kodu
-- stream_network ma mniej segmentow niz catchments (82624 vs 84881) — roznica wynika z filtrowania duplikatow przy INSERT
+- ~~stream_network ma mniej segmentow niz catchments (82624 vs 84881)~~ — **naprawione ADR-019**: migracja 010. Wymaga `alembic upgrade head` + re-run pipeline z `--clear-existing`
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
 - Flow graph: `downstream_id` nie jest przechowywany w pamięci (zwracany jako None) — nie uzywany przez callery
-- Migracja 009 jeszcze nie uruchomiona (`alembic upgrade head`)
+- Migracja 009, 010 jeszcze nie uruchomione (`alembic upgrade head`)
 
 ### Nastepne kroki
-1. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
-2. Benchmark `traverse_upstream`: in-memory vs SQL na 3 rozmiarach zlewni
-3. Uruchomienie `alembic upgrade head` (migracja 009: partial index)
-4. Benchmark pipeline po optymalizacji (~22 min → szacowane ~6-8 min)
-5. Testy integracyjne e2e endpointow
-6. Dlug techniczny: constants.py, hardcoded secrets
-7. CP5: MVP — pelna integracja, deploy
+1. `alembic upgrade head` (migracje 009 + 010)
+2. Re-run pipeline z `--clear-existing` i weryfikacja: stream_count == catchment_count per threshold
+3. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
+4. Benchmark `traverse_upstream`: in-memory vs SQL na 3 rozmiarach zlewni
+5. Benchmark pipeline po optymalizacji (~22 min → szacowane ~6-8 min)
+6. Testy integracyjne e2e endpointow
+7. Dlug techniczny: constants.py, hardcoded secrets
+8. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
