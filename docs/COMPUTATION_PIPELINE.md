@@ -100,10 +100,11 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 
 ### 1.7 Delimitacja zlewni cząstkowych
 
-**Funkcja:** `delineate_subcatchments()` (linie 1687-1770)
-- Algorytm: dla każdej komórki nie-ciekowej — śledzenie w dół do komórki z etykietą (ciek)
-- Memoizacja: raz oznakowana komórka kończy śledzenie następnych
-- Wzór: `label[cell] = label[downstream_terminal]`
+**Funkcja:** `delineate_subcatchments()` (linie 1687-1740)
+- Algorytm: `pyflwdir.FlwdirRaster.basins(idxs=stream_idxs, ids=segment_ids)` — propagacja etykiet upstream po grafie D8 w C/Numba (ADR-016)
+- Złożoność: O(n), jedno przejście downstream→upstream po posortowanej sekwencji
+- Seed: komórki ciekowe z `label_raster` (1-based segment_id z `vectorize_streams()`)
+- Wzór: `label[cell] = label[downstream_stream_cell]`
 
 ### 1.8 Poligonizacja zlewni cząstkowych
 
@@ -670,7 +671,7 @@ CREATE TABLE land_cover (
 | 3 | Akumulacja spływu | Sortowanie topologiczne (Kahn) + BFS |
 | 4 | Rząd Strahlera | Strahler 1952 |
 | 5 | Wektoryzacja cieków | Śledzenie od źródeł do skrzyżowań |
-| 6 | Delimitacja zlewni cząstkowych | Śledzenie w dół z memoizacją |
+| 6 | Delimitacja zlewni cząstkowych | pyflwdir.basins() — propagacja upstream (ADR-016) |
 | 7 | Budowanie granicy zlewni | Poligonizacja rastrowa (rasterio) |
 | 8 | Ciek główny | Reverse trace (max akumulacja) |
 | 9 | Interpolacja opadów | IDW (p=2, 4 najbliższe stacje) |

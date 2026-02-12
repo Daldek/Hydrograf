@@ -295,6 +295,37 @@ Format: numer, data, kontekst (dlaczego temat powstal), rozwazone opcje, decyzja
 
 ---
 
+## ADR-016: Przepisanie delineate_subcatchments na pyflwdir.basins()
+
+**Data:** 2026-02-12
+**Status:** Przyjeta
+
+**Kontekst:** Pipeline `process_dem.py --thresholds "100,1000,10000,100000"` zostal zabity po ~20 minutach pracy (exit code 144, sygnal 16) podczas delimitacji zlewni czastkowych dla progu 100 m² (najgestszego, 76 596 segmentow).
+
+Przyczyna: funkcja `delineate_subcatchments()` (linie 1687-1770) uzywala podwojnej petli w czystym Pythonie (`for i in range(nrows): for j in range(ncols)`) iterujacej po ~4.9M aktywnych komorkach rastra 20.6M (4737×4358). Dla kazdej nielabelowanej komorki wykonywala sledzenie w dol (trace downstream) tworzac dynamiczna liste `path`. Szacowany czas: 30-60+ minut na jeden prog FA.
+
+Dowody awarii:
+- Exit code 144 (128+16) — sygnal od srodowiska hostingowego
+- Brak OOM killera w `dmesg` — limit na poziomie sesji, nie kernela
+- 1.5 GB swap zajete po awarii — system pod presja pamieciowa
+- Transkrypt sesji konczy sie bez odpowiedzi po otrzymaniu bledu — cala sesja przerwana
+- Stan bazy: `flow_network` 4.9M rekordow (OK), `stream_network` 397 seg. (tylko prog 100), `stream_catchments` 0, `depressions` 0
+
+**Opcje:**
+- A) `scipy.ndimage.watershed_ift` — rozlewanie etykiet strumieniowych po rasterze
+- B) `pyflwdir.FlwdirRaster.basins()` — juz zaimportowany w skrypcie, dedykowany do D8
+- C) Numba `@njit` — kompilacja istniejacego algorytmu do C
+
+**Decyzja:** Opcja B. `pyflwdir.FlwdirRaster.basins(idxs=stream_idxs, ids=segment_ids)` — propagacja etykiet upstream po grafie D8 w C/Numba (O(n), jedno przejscie). Obiekt `FlwdirRaster` tworzony raz w `process_dem()` i reuzywany. Identyczny algorytm co petla Pythonowa, ale skompilowany.
+
+**Konsekwencje:**
+- Pipeline z 4 progami FA ukonczy sie w minutach zamiast godzin
+- Brak nowych zaleznosci (pyflwdir juz w requirements.txt)
+- Etykiety zgodne z `vectorize_streams()` label raster (ten sam 1-based segment_id)
+- `FlwdirRaster` tworzony raz w `process_dem()` (~0.5s) zamiast wielokrotnie w funkcjach
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
