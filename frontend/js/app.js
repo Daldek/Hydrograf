@@ -296,6 +296,15 @@
             );
         }
 
+        // Try loading pre-generated tile metadata
+        fetch('/tiles/tiles_metadata.json')
+            .then(function (res) {
+                if (!res.ok) throw new Error('No pre-generated tiles');
+                return res.json();
+            })
+            .then(function (meta) { window.Hydrograf._tilesMeta = meta; })
+            .catch(function () { /* Use API fallback */ });
+
         // Init map
         Hydrograf.map.init(onMapClick);
 
