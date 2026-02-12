@@ -129,16 +129,14 @@ def compute_depressions(
     labeled, n_features = label(depression_mask)
     logger.info(f"Found {n_features} connected depression regions")
 
-    # Pre-compute zonal statistics in one pass using np.bincount (O(M) not O(n*M))
-    flat_labels = labeled.ravel()
-    flat_depth = depth.ravel()
+    # Pre-compute zonal statistics in one pass using bincount (O(M) not O(n*M))
+    from core.zonal_stats import zonal_bincount, zonal_max
 
-    counts = np.bincount(flat_labels, minlength=n_features + 1)
-    depth_sum = np.bincount(flat_labels, weights=flat_depth, minlength=n_features + 1)
-
-    # Max depth per label — use scipy.ndimage for O(M) computation
-    from scipy.ndimage import maximum
-    max_depths = maximum(depth, labeled, index=np.arange(1, n_features + 1))
+    counts = zonal_bincount(labeled, max_label=n_features)
+    depth_sum = zonal_bincount(
+        labeled, weights=depth, max_label=n_features,
+    )
+    max_depths = zonal_max(labeled, depth, n_features)
 
     logger.info("  Zonal statistics computed (single-pass bincount)")
 
@@ -415,10 +413,11 @@ def main() -> None:
         from sqlalchemy import text
 
         from core.database import get_db_session
+        from core.db_bulk import override_statement_timeout
 
-        with get_db_session() as db:
-            db.execute(text("SET LOCAL statement_timeout = '600s'"))
-
+        with get_db_session() as db, override_statement_timeout(
+            db, timeout_s=600,
+        ):
             if args.clear_existing:
                 logger.info("Clearing existing depressions...")
                 db.execute(text("TRUNCATE TABLE depressions"))
