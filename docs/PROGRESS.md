@@ -44,39 +44,48 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-12
+**Data:** 2026-02-12 (sesja 2)
 
 ### Co zrobiono
-- **Naprawa ADR-016 — przepisanie `delineate_subcatchments()` na pyflwdir:**
-  - `delineate_subcatchments()` — zastapienie podwojnej petli Pythonowej przez `pyflwdir.FlwdirRaster.basins()` (O(n), C/Numba)
-  - Obiekt `FlwdirRaster` tworzony raz w `process_dem()` i reuzywany (zamiast tworzenia lokalnie w kazdej funkcji)
-  - Call site zaktualizowany: `fdir` → `flw`
-  - ADR-016: status Oczekuje → Przyjeta (opcja B)
-  - Dokumentacja: COMPUTATION_PIPELINE.md (sekcja 1.7, tabela algorytmow), PROGRESS.md
+- **Pelny pipeline obliczeniowy uruchomiony pomyslnie:**
+  - `process_dem.py` — 4 progi FA (100, 1000, 10000, 100000 m²), 19.7M flow_network, 82624 stream segments, 84881 sub-catchments
+  - `generate_depressions.py` — 560198 zaglebien (4.6M m³ lacznej objetosci)
+  - `export_pipeline_gpkg.py` — GeoPackage 556 MB, 9 warstw, 727703 features + raport MD
+  - Calkowity czas pipeline: ~22 min (process_dem 20 min + depressions 55s + export 39s)
+
+- **Optymalizacja zonal stats O(n*M) → O(M) w dwoch skryptach:**
+  - `process_dem.py:polygonize_subcatchments()` — zamiana petli `label_raster == seg_idx` na `np.bincount` (76596 iteracji × 20M → 1 przebieg)
+  - `generate_depressions.py:compute_depressions()` — analogiczna zmiana (560198 iteracji × 20M → `np.bincount` + `scipy.ndimage.maximum`)
+  - Przyspieszenie: polygonizacja subcatchments z ~5h (szacowane) do ~3 min, depressions z >1h do ~37s
+
+- **Fix: statement_timeout i temp table reuse:**
+  - `insert_records_batch()` — `SET statement_timeout = 0` na raw connection (SET LOCAL nie przechodzi przez commit)
+  - `insert_stream_segments()` i `insert_catchments()` — `DROP TABLE IF EXISTS` przed CREATE TEMP TABLE (multi-threshold reuse)
+  - `insert_depressions()` — analogiczny fix timeout + drop
+
+### Stan bazy danych
+| Tabela | Rekordy | Uwagi |
+|--------|---------|-------|
+| flow_network | 19,667,699 | 4 progi FA |
+| stream_network | 82,624 | 100: 76587, 1000: 5461, 10000: 530, 100000: 46 |
+| stream_catchments | 84,881 | 100: 76596, 1000: 7427, 10000: 779, 100000: 79 |
+| depressions | 560,198 | vol=4.6M m³, max_depth=7.01 m |
+
+### Pliki wyjsciowe
+- `data/e2e_test/pipeline_results.gpkg` — 556 MB, 9 warstw
+- `data/e2e_test/PIPELINE_REPORT.md` — raport pipeline
+- `frontend/data/depressions.png` — overlay 1024×677 px
+- `frontend/data/depressions.json` — metadane (bounds WGS84)
+- `data/e2e_test/intermediates/` — 17 plikow GeoTIFF
 
 ### Znane problemy
-- **Baza danych — niekompletne dane:** `stream_network` ma dane tylko dla progu 100 m² (397 seg.), `stream_catchments` = 0 rekordow, `depressions` = 0. Pliki posrednie GeoTIFF (10 plikow, 356 MB) zapisane poprawnie.
-- Warstwa catchments i streams — wymagaja weryfikacji e2e z pelnym zestawem progow
 - Frontend wymaga dalszego audytu jakosci kodu
+- stream_network ma mniej segmentow niz catchments (82624 vs 84881) — roznica wynika z filtrowania duplikatow przy INSERT
 
 ### Nastepne kroki
-1. **Uruchomic pelny pipeline obliczeniowy:**
-   ```bash
-   docker compose up -d db
-   cd backend && .venv/bin/python -m scripts.process_dem \
-     --input ../data/e2e_test/dem_mosaic.vrt \
-     --burn-streams ../data/e2e_test/hydro/bdot10k_hydro_godlo_N_33_131_C_b_2.gpkg \
-     --burn-depth 5.0 \
-     --thresholds "100,1000,10000,100000" \
-     --save-intermediates \
-     --output-dir ../data/e2e_test/intermediates \
-     --clear-existing
-   ```
-2. Zweryfikowac baze: `stream_network` (4 progi), `stream_catchments` (>0), pliki posrednie
-3. Uruchomic `generate_depressions.py` + `export_pipeline_gpkg.py`
-4. Testy integracyjne e2e nowych endpointow (streams MVT, catchments MVT, thresholds, profile, depressions)
-5. Dlug techniczny: constants.py, hardcoded secrets
-6. CP5: MVP — pelna integracja, deploy
+1. Testy integracyjne e2e endpointow (streams MVT, catchments MVT, thresholds, profile, depressions)
+2. Dlug techniczny: constants.py, hardcoded secrets
+3. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
