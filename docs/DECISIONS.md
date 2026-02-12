@@ -403,6 +403,32 @@ Dowody awarii:
 
 ---
 
+## ADR-020: Punkty drenazu w zbiornikach bezodplywowych (BDOT10k)
+
+**Data:** 2026-02-12
+**Status:** Przyjeta
+
+**Kontekst:** `pyflwdir_fill_depressions(outlets="edge", max_depth=-1.0)` wypelnia WSZYSTKIE zaglebienia i kieruje wode do krawedzi DEM. Dla jezior bezodplywowych (endorheic) jest to niepoprawne — woda wplywaja do zbiornika, ale nie wyplywa. Zbiornik powinien byc sinkiem w grafie przeplywu.
+
+**Opcje:**
+- A) Ignorowac — akceptacja bledu routingu (woda z jeziora plynie do krawedzi rastra)
+- B) Post-processing fdir — reczna korekta flow direction po pyflwdir (skomplikowane, podatne na bledy)
+- C) Pre-processing DEM — wstrzykniecie NoData w punkcie drenazu przed pyflwdir, aby pyflwdir traktowal go jako lokalny outlet
+
+**Decyzja:** Opcja C. Dwuetapowy algorytm:
+1. **Klasyfikacja** (`classify_endorheic_lakes()`): analiza topologii ciekow BDOT10k (OT_PTWP_A + OT_SWRS_L/SWKN_L/SWRM_L) + porownanie elewacji DEM (far_end vs near_end). Brak ciekow lub tylko doplywy → bezodplywowy. Przynajmniej 1 odplyw → przeplywowy.
+2. **Wstrzykniecie NoData** po `fill_internal_nodata_holes()`, przed `pyflwdir_fill_depressions()` — pyflwdir traktuje NoData jako outlet, routuje wode do drain point.
+
+**Konsekwencje:**
+- Zbiorniki bezodplywowe staja sie poprawnymi sinkami w grafie przeplywu
+- Wymaga BDOT10k GPKG z warstwami OT_PTWP_A + OT_SWRS_L/SWKN_L/SWRM_L (pobierane przez Kartograf)
+- Opcjonalne — aktywowane automatycznie gdy `--burn-streams` wskazuje na GPKG z warstwami wodnymi
+- Drain points wstrzykiwane PO fill_holes (inaczej zostana wypelnione) i PRZED pyflwdir
+- Komórki wskazujace na drain point dostaja `downstream_id = NULL` w flow_network (sink)
+- Diagnostyka w logach: `endorheic: N, exorheic: M, drain_points: N`
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

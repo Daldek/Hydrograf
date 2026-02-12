@@ -2,11 +2,12 @@
 Hydrological processing: depression filling, flow direction, flow accumulation.
 
 Core D8 flow direction constants, internal nodata hole filling,
-stream burning, pyflwdir-based hydrology, sink fixing, and
-flow accumulation recomputation.
+stream burning, endorheic lake classification, pyflwdir-based hydrology,
+sink fixing, and flow accumulation recomputation.
 """
 
 import logging
+from pathlib import Path
 
 import numpy as np
 
@@ -115,7 +116,7 @@ def burn_streams_into_dem(
     dem: np.ndarray,
     transform,
     streams_path,
-    burn_depth_m: float = 5.0,
+    burn_depth_m: float = 10.0,
     nodata: float = -9999.0,
 ) -> tuple[np.ndarray, dict]:
     """
@@ -203,6 +204,305 @@ def burn_streams_into_dem(
     )
 
     return burned, diagnostics
+
+
+def _sample_dem_at_point(
+    dem: np.ndarray,
+    transform,
+    x: float,
+    y: float,
+    nodata: float,
+    search_radius: int = 3,
+) -> float | None:
+    """
+    Sample DEM elevation at a geographic point.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        DEM array
+    transform : Affine
+        Rasterio Affine transform
+    x, y : float
+        Coordinates in DEM CRS (e.g. EPSG:2180)
+    nodata : float
+        NoData value
+    search_radius : int
+        Search radius (in cells) when the exact cell is NoData
+
+    Returns
+    -------
+    float or None
+        Elevation value, or None if no valid cell found within search radius.
+    """
+    inv_transform = ~transform
+    col_f, row_f = inv_transform * (x, y)
+    row, col = int(row_f), int(col_f)
+    nrows, ncols = dem.shape
+
+    if 0 <= row < nrows and 0 <= col < ncols and dem[row, col] != nodata:
+        return float(dem[row, col])
+
+    # Search neighbors in expanding square
+    best_val = None
+    best_dist_sq = float("inf")
+    for dr in range(-search_radius, search_radius + 1):
+        for dc in range(-search_radius, search_radius + 1):
+            nr, nc = row + dr, col + dc
+            if 0 <= nr < nrows and 0 <= nc < ncols and dem[nr, nc] != nodata:
+                dist_sq = dr * dr + dc * dc
+                if dist_sq < best_dist_sq:
+                    best_dist_sq = dist_sq
+                    best_val = float(dem[nr, nc])
+    return best_val
+
+
+def classify_endorheic_lakes(
+    dem: np.ndarray,
+    transform,
+    gpkg_path: str | Path,
+    nodata: float,
+) -> tuple[list[tuple[int, int]], dict]:
+    """
+    Classify water bodies and return drain points for endorheic lakes.
+
+    Reads water body polygons (OT_PTWP_A) and stream lines (OT_SWRS_L,
+    OT_SWKN_L, OT_SWRM_L) from a BDOT10k GeoPackage. For each water body,
+    determines if it is endorheic (no outflow) or exorheic (has outflow)
+    based on touching streams and DEM elevation analysis.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        Input DEM array
+    transform : Affine
+        Rasterio Affine transform for the DEM grid
+    gpkg_path : str or Path
+        Path to BDOT10k GeoPackage with water body and stream layers
+    nodata : float
+        NoData value in DEM
+
+    Returns
+    -------
+    tuple
+        (drain_points, diagnostics) where:
+        - drain_points: list of (row, col) for each endorheic lake
+        - diagnostics: dict with classification stats
+    """
+    import geopandas as gpd
+    from shapely.geometry import Point, box
+
+    gpkg_path = Path(gpkg_path)
+    diagnostics = {
+        "total_lakes": 0,
+        "endorheic": 0,
+        "exorheic": 0,
+        "clusters": 0,
+        "streams_analyzed": 0,
+        "undetermined": 0,
+    }
+    drain_points: list[tuple[int, int]] = []
+
+    # Build DEM extent box
+    nrows, ncols = dem.shape
+    xmin = transform.c
+    ymax = transform.f
+    xmax = xmin + ncols * transform.a
+    ymin = ymax + nrows * transform.e  # transform.e is negative
+    dem_box = box(xmin, ymin, xmax, ymax)
+
+    # 1. Load water body polygons (OT_PTWP_A)
+    try:
+        import fiona
+
+        layers = fiona.listlayers(str(gpkg_path))
+    except Exception:
+        logger.warning(
+            f"Cannot read layers from {gpkg_path}, skipping lake classification"
+        )
+        return drain_points, diagnostics
+
+    water_layer = None
+    for layer in layers:
+        if "PTWP" in layer.upper():
+            water_layer = layer
+            break
+
+    if water_layer is None:
+        logger.info("No OT_PTWP_A layer in GeoPackage, skipping")
+        return drain_points, diagnostics
+
+    lakes = gpd.read_file(gpkg_path, layer=water_layer)
+    if lakes.crs is not None and lakes.crs.to_epsg() != 2180:
+        lakes = lakes.to_crs(epsg=2180)
+    lakes = lakes[lakes.intersects(dem_box)]
+    lakes = lakes.clip(dem_box)
+
+    if lakes.empty:
+        logger.info("No water bodies within DEM extent")
+        return drain_points, diagnostics
+
+    diagnostics["total_lakes"] = len(lakes)
+
+    # 2. Load stream lines (OT_SWRS_L, OT_SWKN_L, OT_SWRM_L)
+    stream_layer_prefixes = ["SWRS", "SWKN", "SWRM"]
+    stream_gdfs = []
+    for layer in layers:
+        for prefix in stream_layer_prefixes:
+            if prefix in layer.upper():
+                try:
+                    gdf = gpd.read_file(gpkg_path, layer=layer)
+                    if gdf.crs is not None and gdf.crs.to_epsg() != 2180:
+                        gdf = gdf.to_crs(epsg=2180)
+                    gdf = gdf[gdf.intersects(dem_box)]
+                    if not gdf.empty:
+                        stream_gdfs.append(gdf)
+                except Exception:
+                    logger.debug(f"Could not read layer {layer}")
+                break
+
+    if stream_gdfs:
+        import pandas as pd
+
+        streams = gpd.GeoDataFrame(pd.concat(stream_gdfs, ignore_index=True))
+        if hasattr(stream_gdfs[0], "crs"):
+            streams = streams.set_crs(stream_gdfs[0].crs)
+    else:
+        streams = gpd.GeoDataFrame(geometry=[], crs="EPSG:2180")
+
+    # 3. Cluster touching lakes (buffer → merge → explode)
+    #    Bridges gaps through reeds/marshes so connected water bodies
+    #    are classified as a single unit.
+    from shapely.ops import unary_union
+
+    CLUSTER_BUFFER_M = 20
+    lake_geoms = [g for g in lakes.geometry if g is not None and not g.is_empty]
+    buffered = unary_union([g.buffer(CLUSTER_BUFFER_M) for g in lake_geoms])
+
+    # Explode multipolygon into individual clusters
+    if buffered.geom_type == "MultiPolygon":
+        cluster_hulls = list(buffered.geoms)
+    else:
+        cluster_hulls = [buffered]
+
+    # Map each original lake to its cluster index
+    lake_to_cluster: dict[int, int] = {}
+    for i, geom in enumerate(lake_geoms):
+        for ci, hull in enumerate(cluster_hulls):
+            if hull.intersects(geom):
+                lake_to_cluster[i] = ci
+                break
+
+    # Build cluster → original geometries mapping
+    cluster_lakes: dict[int, list] = {}
+    for i, ci in lake_to_cluster.items():
+        cluster_lakes.setdefault(ci, []).append(lake_geoms[i])
+
+    diagnostics["clusters"] = len(cluster_lakes)
+    logger.info(
+        f"  {len(lake_geoms)} lakes grouped into "
+        f"{len(cluster_lakes)} clusters (buffer={CLUSTER_BUFFER_M}m)"
+    )
+
+    # 4. Classify each cluster
+    for _ci, members in cluster_lakes.items():
+        # Union of all lake geometries in this cluster
+        cluster_geom = unary_union(members) if len(members) > 1 else members[0]
+
+        # Find touching streams (20m buffer for snapping tolerance)
+        if streams.empty:
+            touching = streams.iloc[0:0]
+        else:
+            touching = streams[
+                streams.intersects(cluster_geom.buffer(CLUSTER_BUFFER_M))
+            ]
+
+        if touching.empty:
+            # No streams at all → endorheic
+            diagnostics["endorheic"] += len(members)
+            for lake_geom in members:
+                _add_drain_point(
+                    dem, transform, lake_geom, nodata, drain_points
+                )
+            continue
+
+        # Analyze each touching stream for inflow/outflow
+        has_outflow = False
+        diagnostics["streams_analyzed"] += len(touching)
+
+        for _s_idx, stream_row in touching.iterrows():
+            stream_geom = stream_row.geometry
+            if stream_geom is None or stream_geom.is_empty:
+                continue
+
+            coords = list(stream_geom.coords)
+            if len(coords) < 2:
+                continue
+
+            start_pt = Point(coords[0])
+            end_pt = Point(coords[-1])
+
+            start_dist = cluster_geom.distance(start_pt)
+            end_dist = cluster_geom.distance(end_pt)
+
+            if start_dist <= end_dist:
+                near_pt = start_pt
+                far_pt = end_pt
+            else:
+                near_pt = end_pt
+                far_pt = start_pt
+
+            near_elev = _sample_dem_at_point(
+                dem, transform, near_pt.x, near_pt.y, nodata
+            )
+            far_elev = _sample_dem_at_point(
+                dem, transform, far_pt.x, far_pt.y, nodata
+            )
+
+            if near_elev is None or far_elev is None:
+                diagnostics["undetermined"] += 1
+                continue  # treat as inflow (conservative)
+
+            if far_elev < near_elev - 0.1:
+                # Far end is lower → outflow (water flows away)
+                has_outflow = True
+                break
+
+        if has_outflow:
+            diagnostics["exorheic"] += len(members)
+        else:
+            diagnostics["endorheic"] += len(members)
+            for lake_geom in members:
+                _add_drain_point(
+                    dem, transform, lake_geom, nodata, drain_points
+                )
+
+    logger.info(
+        f"Lake classification: {diagnostics['total_lakes']} total, "
+        f"{diagnostics['endorheic']} endorheic, "
+        f"{diagnostics['exorheic']} exorheic, "
+        f"{diagnostics['clusters']} clusters, "
+        f"{diagnostics['streams_analyzed']} streams analyzed"
+    )
+
+    return drain_points, diagnostics
+
+
+def _add_drain_point(
+    dem: np.ndarray,
+    transform,
+    lake_geom,
+    nodata: float,
+    drain_points: list[tuple[int, int]],
+) -> None:
+    """Add drain point (row, col) for an endorheic lake."""
+    rep_pt = lake_geom.representative_point()
+    inv_transform = ~transform
+    col_f, row_f = inv_transform * (rep_pt.x, rep_pt.y)
+    row, col = int(row_f), int(col_f)
+    nrows, ncols = dem.shape
+    if 0 <= row < nrows and 0 <= col < ncols:
+        drain_points.append((row, col))
 
 
 def recompute_flow_accumulation(
@@ -418,6 +718,7 @@ def fix_internal_sinks(
 def process_hydrology_pyflwdir(
     dem: np.ndarray,
     metadata: dict,
+    drain_points: list[tuple[int, int]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Process DEM using pyflwdir (Deltares) for hydrological analysis.
@@ -433,6 +734,10 @@ def process_hydrology_pyflwdir(
     metadata : dict
         Grid metadata with xllcorner, yllcorner, cellsize, nodata_value,
         and optionally transform (rasterio Affine)
+    drain_points : list of (row, col), optional
+        Drain points for endorheic lakes. Each point is injected as NoData
+        after hole filling but before pyflwdir, so pyflwdir treats them
+        as local outlets (sinks).
 
     Returns
     -------
@@ -454,6 +759,13 @@ def process_hydrology_pyflwdir(
     dem_patched, holes_filled = fill_internal_nodata_holes(dem, nodata)
     if holes_filled > 0:
         logger.info(f"  Filled {holes_filled} internal nodata holes")
+
+    # Inject drain points AFTER hole filling, BEFORE pyflwdir
+    # pyflwdir treats NoData as local outlets → water routes to drain point
+    if drain_points:
+        for row, col in drain_points:
+            dem_patched[row, col] = nodata
+        logger.info(f"  Injected {len(drain_points)} endorheic drain points")
 
     # Core: depression filling + D8 flow direction (Wang & Liu 2006)
     # Replaces pysheds fill_pits + fill_depressions + resolve_flats + flowdir
@@ -486,8 +798,12 @@ def process_hydrology_pyflwdir(
     acc_float = flw.upstream_area(unit="cell")
     acc_arr = np.where(acc_float == -9999, 0, acc_float).astype(np.int32)
 
-    # Restore nodata in filled_dem
-    filled_dem[dem == nodata] = nodata
+    # Restore nodata in filled_dem (original nodata + drain points)
+    restore_mask = dem == nodata
+    if drain_points:
+        for row, col in drain_points:
+            restore_mask[row, col] = True
+    filled_dem[restore_mask] = nodata
 
     # Safety net: fix internal sinks (if pyflwdir left any)
     valid = filled_dem != nodata

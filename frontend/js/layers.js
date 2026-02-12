@@ -55,7 +55,7 @@
     }
 
     /**
-     * Switch base layer.
+     * Switch base layer. Pass 'none' to disable all base layers.
      */
     function setBaseLayer(name) {
         var map = Hydrograf.map._getMap();
@@ -63,7 +63,10 @@
 
         if (currentBaseLayer) {
             map.removeLayer(currentBaseLayer);
+            currentBaseLayer = null;
         }
+
+        if (name === 'none') return;
 
         var factory = baseLayers[name];
         if (factory) {
@@ -126,6 +129,75 @@
                 sliderRow.classList.remove('d-none');
             } else {
                 Hydrograf.map._getMap().removeLayer(layer);
+                sliderRow.classList.add('d-none');
+            }
+        });
+
+        list.appendChild(item);
+    }
+
+    /**
+     * Overlay entry for async-loaded layers (BDOT10k GeoJSON).
+     * getLayer returns the existing layer, loadLayer returns a Promise.
+     */
+    function addBdotOverlayEntry(list, label, getLayer, loadLayer, fitBounds, setOpacity, defaultTransparency) {
+        var item = document.createElement('div');
+        item.className = 'layer-item';
+
+        var headerRow = document.createElement('div');
+        headerRow.className = 'layer-header';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        var text = document.createTextNode(' ' + label);
+        var zoomBtn = document.createElement('button');
+        zoomBtn.className = 'layer-zoom-btn';
+        zoomBtn.title = 'Przybliż do zasięgu';
+        zoomBtn.textContent = '\u2316';
+        zoomBtn.addEventListener('click', function () { fitBounds(); });
+        headerRow.appendChild(cb);
+        headerRow.appendChild(text);
+        headerRow.appendChild(zoomBtn);
+        item.appendChild(headerRow);
+
+        var sliderRow = document.createElement('div');
+        sliderRow.className = 'layer-opacity d-none';
+        var sliderLabel = document.createElement('span');
+        sliderLabel.textContent = 'Przezr.:';
+        var slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = '100';
+        slider.value = String(defaultTransparency);
+        var sliderValue = document.createElement('span');
+        sliderValue.className = 'layer-opacity-val';
+        sliderValue.textContent = defaultTransparency + '%';
+        slider.addEventListener('input', function () {
+            var opacity = (100 - slider.value) / 100;
+            setOpacity(opacity);
+            sliderValue.textContent = slider.value + '%';
+        });
+        sliderRow.appendChild(sliderLabel);
+        sliderRow.appendChild(slider);
+        sliderRow.appendChild(sliderValue);
+        item.appendChild(sliderRow);
+
+        cb.addEventListener('change', function () {
+            var mapObj = Hydrograf.map._getMap();
+            if (cb.checked) {
+                var layer = getLayer();
+                if (layer) {
+                    layer.addTo(mapObj);
+                } else {
+                    loadLayer().then(function (l) {
+                        if (l) l.addTo(mapObj);
+                    });
+                }
+                sliderRow.classList.remove('d-none');
+            } else {
+                var existing = getLayer();
+                if (existing && mapObj.hasLayer(existing)) {
+                    mapObj.removeLayer(existing);
+                }
                 sliderRow.classList.add('d-none');
             }
         });
@@ -379,6 +451,8 @@
             });
         });
 
+        createBaseLayerEntry(list, 'none', 'Brak', null);
+
         // Set initial base layer
         setBaseLayer('osm');
 
@@ -392,6 +466,28 @@
             Hydrograf.map.fitDemBounds,
             Hydrograf.map.setDemOpacity,
             30
+        );
+
+        // BDOT10k water bodies
+        addBdotOverlayEntry(
+            list,
+            'Zbiorniki wodne (BDOT10k)',
+            function () { return Hydrograf.map.getBdotLakesLayer(); },
+            function () { return Hydrograf.map.loadBdotLakes(); },
+            Hydrograf.map.fitBdotBounds,
+            Hydrograf.map.setBdotLakesOpacity,
+            0
+        );
+
+        // BDOT10k streams
+        addBdotOverlayEntry(
+            list,
+            'Cieki BDOT10k',
+            function () { return Hydrograf.map.getBdotStreamsLayer(); },
+            function () { return Hydrograf.map.loadBdotStreams(); },
+            Hydrograf.map.fitBdotBounds,
+            Hydrograf.map.setBdotStreamsOpacity,
+            0
         );
 
         // Placeholder for stream/catchment entries (async populated)
