@@ -11,7 +11,98 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def compute_slope(dem: np.ndarray, cellsize: float, nodata: float) -> np.ndarray:
+def _compute_gradients(
+    dem: np.ndarray, cellsize: float, nodata: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute Sobel gradients dx, dy (shared by slope and aspect).
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        DEM array
+    cellsize : float
+        Cell size in meters
+    nodata : float
+        NoData value
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        (dx, dy) gradient arrays
+    """
+    from scipy import ndimage
+
+    dem_calc = dem.astype(np.float64)
+    dem_calc[dem == nodata] = np.nan
+
+    dy = ndimage.sobel(
+        dem_calc, axis=0, mode="constant", cval=np.nan,
+    ) / (8 * cellsize)
+    dx = ndimage.sobel(
+        dem_calc, axis=1, mode="constant", cval=np.nan,
+    ) / (8 * cellsize)
+
+    return dx, dy
+
+
+def compute_slope_from_gradients(
+    dx: np.ndarray, dy: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute slope in percent from pre-computed gradients.
+
+    Parameters
+    ----------
+    dx : np.ndarray
+        X gradient (from _compute_gradients)
+    dy : np.ndarray
+        Y gradient (from _compute_gradients)
+
+    Returns
+    -------
+    np.ndarray
+        Slope array in percent
+    """
+    slope = np.sqrt(dx**2 + dy**2) * 100
+    return np.nan_to_num(slope, nan=0.0)
+
+
+def compute_aspect_from_gradients(
+    dx: np.ndarray, dy: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute aspect in degrees from pre-computed gradients.
+
+    Convention: 0=North, 90=East, 180=South, 270=West.
+    Flat areas (no gradient) get value -1.
+
+    Parameters
+    ----------
+    dx : np.ndarray
+        X gradient (from _compute_gradients)
+    dy : np.ndarray
+        Y gradient (from _compute_gradients)
+
+    Returns
+    -------
+    np.ndarray
+        Aspect array in degrees (0-360, -1 for flat areas)
+    """
+    aspect_rad = np.arctan2(-dx, dy)
+    aspect_deg = np.degrees(aspect_rad)
+    aspect_deg = np.where(aspect_deg < 0, aspect_deg + 360.0, aspect_deg)
+
+    flat_mask = (dx == 0) & (dy == 0)
+    aspect_deg[flat_mask] = -1.0
+    aspect_deg = np.nan_to_num(aspect_deg, nan=-1.0)
+
+    return aspect_deg
+
+
+def compute_slope(
+    dem: np.ndarray, cellsize: float, nodata: float,
+) -> np.ndarray:
     """
     Compute slope in percent.
 
@@ -30,35 +121,23 @@ def compute_slope(dem: np.ndarray, cellsize: float, nodata: float) -> np.ndarray
         Slope array in percent
     """
     logger.info("Computing slope...")
-
-    # Use Sobel operator for gradient
-    from scipy import ndimage
-
-    # Replace nodata with nan for calculations
-    dem_calc = dem.astype(np.float64)
-    dem_calc[dem == nodata] = np.nan
-
-    # Compute gradients
-    dy = ndimage.sobel(dem_calc, axis=0, mode="constant", cval=np.nan) / (8 * cellsize)
-    dx = ndimage.sobel(dem_calc, axis=1, mode="constant", cval=np.nan) / (8 * cellsize)
-
-    # Slope in percent
-    slope = np.sqrt(dx**2 + dy**2) * 100
-
-    # Replace nan with 0
-    slope = np.nan_to_num(slope, nan=0.0)
-
-    logger.info(f"Slope computed (range: {slope.min():.1f}% - {slope.max():.1f}%)")
+    dx, dy = _compute_gradients(dem, cellsize, nodata)
+    slope = compute_slope_from_gradients(dx, dy)
+    logger.info(
+        f"Slope computed "
+        f"(range: {slope.min():.1f}% - {slope.max():.1f}%)"
+    )
     return slope
 
 
-def compute_aspect(dem: np.ndarray, cellsize: float, nodata: float) -> np.ndarray:
+def compute_aspect(
+    dem: np.ndarray, cellsize: float, nodata: float,
+) -> np.ndarray:
     """
     Compute aspect (slope direction) in degrees.
 
-    Uses Sobel operator for gradient computation (same as compute_slope).
-    Convention: 0=North, 90=East, 180=South, 270=West (clockwise from North).
-    Flat areas (no gradient) get value -1.
+    Convention: 0=North, 90=East, 180=South, 270=West
+    (clockwise from North). Flat areas get value -1.
 
     Parameters
     ----------
@@ -75,37 +154,14 @@ def compute_aspect(dem: np.ndarray, cellsize: float, nodata: float) -> np.ndarra
         Aspect array in degrees (0-360, -1 for flat areas)
     """
     logger.info("Computing aspect...")
-
-    from scipy import ndimage
-
-    dem_calc = dem.astype(np.float64)
-    dem_calc[dem == nodata] = np.nan
-
-    # Compute gradients (same Sobel as slope)
-    dy = ndimage.sobel(dem_calc, axis=0, mode="constant", cval=np.nan) / (8 * cellsize)
-    dx = ndimage.sobel(dem_calc, axis=1, mode="constant", cval=np.nan) / (8 * cellsize)
-
-    # Aspect: atan2(-dy, dx) gives angle from East, counter-clockwise
-    # Convert to geographic convention: 0=N, clockwise
-    # Geographic aspect = 90 - degrees(atan2(-dy, dx))
-    # Equivalently: atan2(-dx, dy) gives 0=N clockwise directly
-    aspect_rad = np.arctan2(-dx, dy)
-    aspect_deg = np.degrees(aspect_rad)
-
-    # Convert to 0-360 range
-    aspect_deg = np.where(aspect_deg < 0, aspect_deg + 360.0, aspect_deg)
-
-    # Mark flat areas (no gradient) as -1
-    flat_mask = (dx == 0) & (dy == 0)
-    aspect_deg[flat_mask] = -1.0
-
-    # Mark nodata areas as -1
-    aspect_deg = np.nan_to_num(aspect_deg, nan=-1.0)
+    dx, dy = _compute_gradients(dem, cellsize, nodata)
+    aspect_deg = compute_aspect_from_gradients(dx, dy)
 
     valid = aspect_deg[aspect_deg >= 0]
     if len(valid) > 0:
         logger.info(
-            f"Aspect computed (range: {valid.min():.1f}° - {valid.max():.1f}°)"
+            f"Aspect computed "
+            f"(range: {valid.min():.1f}° - {valid.max():.1f}°)"
         )
     else:
         logger.info("Aspect computed (all flat)")
