@@ -511,6 +511,16 @@ def process_dem(
                     total_catch_inserted += catch_inserted
             if total_catch_inserted > 0:
                 stats["catchments_inserted"] = total_catch_inserted
+
+            # Validate stream vs catchment counts per threshold
+            for threshold_m2 in all_stream_segments:
+                stream_count = len(all_stream_segments.get(threshold_m2, []))
+                catchment_count = len(all_catchment_data.get(threshold_m2, []))
+                if stream_count != catchment_count:
+                    logger.warning(
+                        f"Stream/catchment mismatch for threshold={threshold_m2} m²: "
+                        f"{stream_count} streams vs {catchment_count} catchments"
+                    )
     else:
         logger.info("Dry run - skipping database insert")
         stats["inserted"] = 0
