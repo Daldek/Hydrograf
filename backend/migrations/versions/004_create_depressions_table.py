@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
         sa.Column(
             "geom",
-            Geometry("POLYGON", srid=2180),
+            Geometry("POLYGON", srid=2180, spatial_index=False),
             nullable=False,
         ),
         sa.Column("volume_m3", sa.Float, nullable=False),
