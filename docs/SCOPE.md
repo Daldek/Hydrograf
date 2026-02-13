@@ -828,8 +828,8 @@ FAZA 3: Generowanie hydrogramów
 ---
 
 **Wersja dokumentu:** 1.0  
-**Data ostatniej aktualizacji:** 2026-01-14  
-**Status:** Niezatwierdzony do realizacji  
+**Data ostatniej aktualizacji:** 2026-02-13
+**Status:** Zatwierdzony — projekt w aktywnym rozwoju (v0.4.0)  
 
 ---
 

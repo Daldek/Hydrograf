@@ -1,5 +1,7 @@
 # Procedura obliczeniowa — Hydrograf
 
+> Wersja: 1.1 | Data: 2026-02-13
+
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
 ---
@@ -7,20 +9,24 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 ## Spis treści
 
 1. [Faza 1: Preprocessing NMT](#faza-1-preprocessing-nmt)
-2. [Faza 2: Wyznaczanie zlewni (runtime)](#faza-2-wyznaczanie-zlewni-runtime)
-3. [Faza 3: Parametry morfometryczne](#faza-3-parametry-morfometryczne)
-4. [Faza 4: Dane opadowe](#faza-4-dane-opadowe)
-5. [Faza 5: Krzywa CN](#faza-5-krzywa-cn)
-6. [Faza 6: Generowanie hydrogramu](#faza-6-generowanie-hydrogramu)
-7. [Schemat bazy danych](#schemat-bazy-danych)
-8. [Wydajność](#wydajność)
+2. [Faza 1b: Graf zlewni cząstkowych (startup API)](#faza-1b-graf-zlewni-cząstkowych-startup-api)
+3. [Faza 2: Wyznaczanie zlewni (runtime)](#faza-2-wyznaczanie-zlewni-runtime)
+4. [Faza 3: Parametry morfometryczne](#faza-3-parametry-morfometryczne)
+5. [Faza 4: Dane opadowe](#faza-4-dane-opadowe)
+6. [Faza 5: Krzywa CN](#faza-5-krzywa-cn)
+7. [Faza 6: Generowanie hydrogramu](#faza-6-generowanie-hydrogramu)
+8. [Schemat bazy danych](#schemat-bazy-danych)
+9. [Wydajność](#wydajność)
 
 ---
 
 ## Faza 1: Preprocessing NMT
 
-**Skrypt:** `backend/scripts/process_dem.py` (~2800 linii)
+**Skrypt:** `backend/scripts/process_dem.py` (~700 linii — cienki orkiestrator)
+**Moduły core:** `raster_io`, `hydrology`, `morphometry_raster`, `stream_extraction`, `db_bulk`, `zonal_stats`, `flow_graph` (ADR-017)
 **Uruchamianie:** jednorazowo per arkusz NMT, ~3-8 min
+
+> **Uwaga:** Skrypt `process_dem.py` został zrefaktoryzowany z ~2800 linii monolitu do ~700 linii cienkiego orkiestratora, ktory deleguje logike do 7 modulow w `backend/core/` (ADR-017). Funkcje opisane ponizej naleza teraz do odpowiednich modulow core.
 
 ### 1.1 Wczytanie NMT
 
@@ -140,6 +146,62 @@ Wszystkie inserty używają tego samego wzorca **COPY przez tabelę tymczasową*
 #### Zlewnie cząstkowe (stream_catchments)
 **Funkcja:** `insert_catchments()` (linie 1894-1986)
 - WKT: `MULTIPOLYGON(...)` po `unary_union`
+
+---
+
+## Faza 1b: Graf zlewni cząstkowych (startup API)
+
+**Moduł:** `backend/core/catchment_graph.py` (ADR-021)
+**Ładowanie:** automatycznie przy starcie serwera API (jednorazowo)
+
+### Kontekst
+
+Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~87k wierszy) — zawierają gotowe poligony zlewni cząstkowych z pre-computed statystykami. Zamiast wykonywać kosztowne operacje rastrowe na 19.7M komórkach w runtime, graf zlewni cząstkowych ładuje te dane do pamięci przy starcie API i umożliwia szybkie przejście BFS po ~87k węzłach.
+
+### 1b.1 Struktura grafu
+
+**Klasa:** `CatchmentGraph`
+
+| Element | Typ | Opis |
+|---------|-----|------|
+| **Węzły** | ~87k | Jeden węzeł = jedna zlewnia cząstkowa (per segment cieku per próg FA) |
+| **Krawędzie** | upstream adjacency | `adj[i, j] = 1` oznacza, że węzeł j spływa do węzła i |
+| **Macierz sąsiedztwa** | `scipy.sparse.csr_matrix` | Rzadka macierz CSR — wydajny BFS |
+| **Atrybuty węzłów** | `numpy arrays` (float32/int32) | `area_km2`, `elev_min/max/mean`, `slope_mean`, `perimeter_km`, `stream_length_km`, `strahler` |
+| **Lookup** | `dict[(threshold_m2, segment_idx) → idx]` | Szybkie mapowanie klucza biznesowego na indeks wewnętrzny |
+| **Histogramy wysokości** | `list[dict]` (JSONB z bazy) | Histogram ze stałym interwałem 1m — mergowalny przy agregacji |
+
+### 1b.2 Ładowanie danych
+
+**Metoda:** `CatchmentGraph.load(db: Session)`
+
+1. Odczyt wszystkich wierszy z `stream_catchments` (w partiach po 50k)
+2. Alokacja numpy arrays dla atrybutów (pre-allocated, ~8 MB łącznie)
+3. Budowa macierzy sąsiedztwa CSR z kolumny `downstream_segment_idx`
+4. Zapis lookup dict `(threshold_m2, segment_idx) → internal_idx`
+
+**Czas ładowania:** ~1-2s przy starcie API
+**Zużycie pamięci:** ~8 MB (vs ~1 GB dla rastrowego `flow_graph`)
+
+### 1b.3 Przejście BFS (runtime)
+
+**Metoda:** `CatchmentGraph.traverse_upstream(threshold_m2, segment_idx)`
+
+1. Lookup węzła startowego: `(threshold_m2, segment_idx) → idx`
+2. BFS po macierzy CSR: `scipy.sparse.csgraph.breadth_first_order(adj, idx)`
+3. Agregacja statystyk z numpy arrays (area, elevation, slope) — wektoryzowane operacje
+4. Merge histogramów wysokości dla krzywej hipsometrycznej
+
+**Czas przejścia:** ~5-50ms (w zależności od rozmiaru zlewni)
+
+### 1b.4 Korzyści architektoniczne
+
+| Aspekt | Przed (raster-based) | Po (CatchmentGraph) |
+|--------|----------------------|---------------------|
+| **Czas traversal** | 200ms - 5s | 5 - 50ms |
+| **Pamięć runtime** | ~1 GB (flow_graph) | ~8 MB |
+| **Operacje rastrowe** | BFS po 19.7M komórkach | Zero — pre-computed stats |
+| **Złożoność kodu** | Budowanie granicy z pikseli | `ST_Union` gotowych poligonów |
 
 ---
 
@@ -646,6 +708,7 @@ CREATE TABLE land_cover (
 | Find nearest stream | <1ms (GIST + ST_DWithin) |
 | Pre-flight size check | <1ms (PK lookup) |
 | Traverse upstream (CTE) | 1-5s (10k-100k komórek) |
+| Traverse upstream (CatchmentGraph BFS) | 5-50ms (~87k węzłów, ADR-021) |
 | Build boundary (polygonize) | 0.5-2s |
 | Morfometria | <0.5s |
 | Opad IDW | <5ms (KNN-GIST) |
@@ -653,10 +716,16 @@ CREATE TABLE land_cover (
 | **Łącznie wyznaczanie zlewni** | **2-10s** |
 | Hydrogram (Hydrolog) | <0.1s (numpy) |
 
+### Startup API
+| Operacja | Czas | Pamięć |
+|----------|------|--------|
+| Ładowanie CatchmentGraph (~87k węzłów) | ~1-2s | ~8 MB |
+
 ### Pamięć
 | Kontekst | Zużycie |
 |----------|---------|
 | Preprocessing (1000×1000 float32) | ~64 MB peak |
+| CatchmentGraph (startup API) | ~8 MB |
 | Runtime — typowa zlewnia (50k komórek) | ~5 MB |
 | Runtime — duża zlewnia (1M komórek) | ~100 MB |
 
@@ -680,6 +749,7 @@ CREATE TABLE land_cover (
 | 12 | Bulk load do bazy | PostgreSQL COPY przez temp tables |
 | 13 | Odpływ SCS-CN | Metoda SCS z konwolucją |
 | 14 | Czas koncentracji | Kirpich / SCS Lag / Giandotti |
+| 15 | Graf zlewni cząstkowych | BFS po sparse CSR (~87k węzłów, ADR-021) |
 
 ---
 

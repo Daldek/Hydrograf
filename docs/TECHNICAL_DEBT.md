@@ -34,7 +34,7 @@ Lista znanych problemów technicznych do naprawy w przyszłych iteracjach.
 |---------|-------------|--------------|
 | `"Hydrograf"` | `core/morphometry.py:304` | Config setting `app.name` |
 
-**Akcja:** Utworzyć `backend/core/constants.py` z wszystkimi stałymi.
+**Akcja:** ~~Utworzyć `backend/core/constants.py` z wszystkimi stałymi.~~ ZREALIZOWANE (v0.4.0, `core/constants.py` — CRS, konwersje jednostek, domyslne CN, limity zlewni i grafu).
 
 ---
 
@@ -84,6 +84,10 @@ config.set_main_option(
 
 **Priorytet:** MEDIUM (process_dem pokryty, pozostałe do zrobienia)
 
+> **Uwaga:** Pipeline CI/CD via GitHub Actions zostal wdrozony (v0.4.0). Obejmuje:
+> lint (ruff check + format --check), testy (pytest), type-check (mypy).
+> Kazdy push i PR na `develop`/`main` uruchamia pelna walidacje.
+
 ---
 
 ## Dokumentacja vs Kod (C2.x)
@@ -101,4 +105,4 @@ config.set_main_option(
 
 ---
 
-*Ostatnia aktualizacja: 2026-02-07*
+*Ostatnia aktualizacja: 2026-02-13*
