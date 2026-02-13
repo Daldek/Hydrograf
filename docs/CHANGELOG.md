@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (DEM tile pyramid + kolejnosc warstw)
+- **`scripts/generate_dem_tiles.py`**: generacja piramidy kafelkow XYZ z rastra DEM — koloryzacja hipsometryczna + hillshade → RGBA GeoTIFF → `gdal2tiles.py --xyz` (zoom 8–18, nearest-neighbor, `--processes=4`)
+- **`utils/dem_color.py`**: wspolny modul kolorow DEM — `COLOR_STOPS`, `build_colormap()`, `compute_hillshade()` wyekstrahowane z `generate_dem_overlay.py`
+- **Custom panes** w `map.js`: kolejnosc warstw z-index — demPane (250) → catchmentsPane (300) → streamsPane (350); NMT zawsze pod zlewniami i ciekami
+- **`L.tileLayer` z fallback**: DEM ladowany jako kafelki XYZ (`/data/dem_tiles/{z}/{x}/{y}.png`) z progresywnym ładowaniem; fallback na `L.imageOverlay` gdy `dem_tiles.json` brak
+
+### Changed (DEM tile pyramid)
+- **`generate_dem_overlay.py`**: refaktor — import `COLOR_STOPS`, `build_colormap`, `compute_hillshade` z `utils.dem_color` zamiast lokalnych definicji
+- **`map.js` MVT layers**: `pane: 'streamsPane'` dla ciekow, `pane: 'catchmentsPane'` dla zlewni czastkowych — gwarancja poprawnej kolejnosci renderowania
+
 ### Added (frontend redesign — 7 poprawek UX)
 - **Tryb wyboru obiektow**: toolbar "Zlewnia/Wybor" na gorze mapy, przelaczanie miedzy wyznaczaniem zlewni a selekcja ciekow
 - **Endpoint `POST /api/select-stream`**: selekcja segmentu cieku + traversal upstream + granica zlewni + upstream segment indices
@@ -15,10 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Kolorowanie ciekow po flow accumulation**: gradient log10 od jasnego (male zlewnie) do ciemnego (duze) zamiast dyskretnych kolorow Strahlera
 - **Debounce klikniec**: 300ms debounce na onMapClick — zapobiega podwojnym wywolaniom API
 
-### Fixed (frontend + nginx)
+### Added (frontend — legendy + UX)
+- **Legendy warstw**: cieki (gradient flow acc) i zlewnie czastkowe (paleta Strahler) — automatyczne wyswietlanie/ukrywanie przy przelaczaniu warstw
+- **Zoom do danych na starcie**: mapa automatycznie przybliża się do zasiegu NMT po zaladowaniu metadanych
+- **Warstwa "Zlewnia" reaktywna**: wpis w panelu warstw automatycznie aktywuje sie po wyznaczeniu zlewni (checkbox + suwak przezroczystosci + zoom)
+
+### Fixed (frontend + backend)
 - **Zoom controls**: przeniesione z topleft (kolidowal z layers panel) do topright
 - **Przezroczystosc zlewni czastkowych**: naprawiony fillOpacity (1.0 initial zamiast 0.3, bez mnoznika ×0.5 w setCatchmentsOpacity)
 - **Rate limiting 429**: oddzielna strefa nginx `tile_limit` (30r/s) dla `/api/tiles/` — nie interferuje z `api_limit` (10r/s) dla reszty API
+- **Flicker przezroczystosci**: suwak opacity dla ciekow i zlewni uzywa CSS container opacity zamiast redraw() — brak migotania
+- **Blad serwera select-stream**: dodano obsluge ValueError (zlewnia za duza/za mala) + uzycie snapped outlet coords zamiast oryginalnego klikniecia
 
 ### Added (endorheic lake drain points — ADR-020)
 - **`classify_endorheic_lakes()`** w `core/hydrology.py`: klasyfikacja zbiornikow wodnych z BDOT10k (OT_PTWP_A) jako bezodplywowe/przeplywowe na podstawie topologii ciekow i elewacji DEM
