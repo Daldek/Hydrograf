@@ -44,9 +44,29 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-13 (sesja 15)
+**Data:** 2026-02-13 (sesja 16)
 
 ### Co zrobiono
+
+- **Audyt dokumentacji — spojnosc, aktualnosc, wzajemne odwolania (9 plikow):**
+  - ARCHITECTURE.md: `parameters.py`→`morphometry.py`, zaktualizowane sygnatury, +catchment_graph.py/constants.py, v1.4
+  - CLAUDE.md: +2 moduly core, +2 endpointy, +5 skryptow w drzewie
+  - DATA_MODEL.md: +migracja 013, fix nazwy 010
+  - SCOPE.md: status zatwierdzony, data 2026-02-13
+  - QA_REPORT.md: nota deprecation (175→519 testow, CORS fixed, CI/CD)
+  - TECHNICAL_DEBT.md: constants.py ZREALIZOWANE, +CI/CD, data
+  - COMPUTATION_PIPELINE.md: +faza CatchmentGraph (ADR-021), LOC fix (~2800→~700)
+  - README.md: CP3→CP4, +6 endpointow w tabeli
+  - PROGRESS.md: 7→10 endpointow
+  - **Wynik:** 9 plikow, 151 linii dodanych / 45 usunietych, 7/7 weryfikacji grep
+
+- **Wdrozenie aktualizacji:**
+  - Migracja 013 zastosowana (`alembic upgrade head`)
+  - Obraz API przebudowany (`docker compose build api`)
+  - Kontener zrestartowany, CatchmentGraph zaladowany (86913 nodes, 3.0s)
+  - Weryfikacja: health OK, scenarios OK, thresholds OK
+
+### Poprzednia sesja (2026-02-13, sesja 15)
 
 - **Audyt QA — Wydajnosc i Efektywnosc Workflow (4 fazy):**
   - **Faza 1 (Quick Wins):** LATERAL JOIN w profile.py, Cache-Control headers na 4 endpointach, dedup `_compute_shape_indices()` (-30 LOC), SessionLocal.configure() jednorazowo
