@@ -429,6 +429,33 @@ Dowody awarii:
 
 ---
 
+## ADR-021: Graf zlewni czastkowych zamiast rastrowych operacji runtime
+
+**Data:** 2026-02-13
+**Status:** Przyjeta
+
+**Kontekst:** Endpoint `select-stream` dzialal na poziomie rastra (19.7M komorek): BFS po `flow_network` → budowanie granicy z pikseli → szukanie zlewni czastkowych wewnatrz granicy → obliczanie statystyk z komorek. Zlewnie czastkowe (~87k) juz istnialy jako gotowe poligony — operacje rastrowe w runtime byly niepotrzebne.
+
+**Opcje:**
+- A) Zostawic raster-based flow — dziala, ale wolne (200ms-5s) i zlozne architektonicznie
+- B) Graf zlewni czastkowych in-memory (~87k wezlow) z pre-computed stats — zero operacji rastrowych w runtime
+
+**Decyzja:** Opcja B. Nowy modul `core/catchment_graph.py` — in-memory graf (~8 MB) zaladowany przy starcie API. Flow: klik → `ST_Contains` na `stream_catchments` → BFS po grafie → agregacja pre-computed stats z numpy arrays → `ST_Union` poligonow dla granicy.
+
+Nowe kolumny w `stream_catchments` (migracja 012): `downstream_segment_idx`, `elevation_min_m`, `elevation_max_m`, `perimeter_km`, `stream_length_km`, `elev_histogram` (JSONB — histogram wysokosci ze stalym interwalem 1m, mergowalny).
+
+Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1 komorke z outlet kazdego segmentu), `zonal_min`/`zonal_max`/`zonal_elevation_histogram` obliczaja pre-computed stats.
+
+**Konsekwencje:**
+- `select-stream`: ~200ms-5s → ~5-50ms (10-100x przyspieszenie)
+- API memory: +8 MB (vs 1 GB flow graph — marginalny narzut)
+- Krzywa hipsometryczna z mergowania histogramow (O(k) per catchment, k≈20 bins)
+- Wymaga re-runu pipeline (nowe kolumny w `stream_catchments`)
+- Endpoint `select-stream` calkowicie przepisany — brak zaleznosci od flow graph i operacji rastrowych
+- 19 nowych testow jednostkowych (`test_catchment_graph.py`), 8 testow integracyjnych zaktualizowanych
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

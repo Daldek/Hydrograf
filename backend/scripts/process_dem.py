@@ -81,6 +81,7 @@ from core.morphometry_raster import (
 )
 from core.raster_io import read_ascii_grid, read_raster, save_raster_geotiff
 from core.stream_extraction import (
+    compute_downstream_links,
     delineate_subcatchments,
     polygonize_subcatchments,
     vectorize_streams,
@@ -93,6 +94,7 @@ __all__ = [
     "burn_streams_into_dem",
     "classify_endorheic_lakes",
     "compute_aspect",
+    "compute_downstream_links",
     "compute_slope",
     "compute_strahler_from_fdir",
     "compute_strahler_order",
@@ -285,9 +287,7 @@ def process_dem(
         transform = from_bounds(
             xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
         )
-    flw = pyflwdir.from_array(
-        d8_fdir, ftype="d8", transform=transform, latlon=False
-    )
+    flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
 
     if save_intermediates:
         save_raster_geotiff(
@@ -316,10 +316,7 @@ def process_dem(
     logger.info("Computing slope and aspect (shared gradients)...")
     dx, dy = _compute_gradients(filled_dem, metadata["cellsize"], nodata)
     slope = compute_slope_from_gradients(dx, dy)
-    logger.info(
-        f"Slope computed "
-        f"(range: {slope.min():.1f}% - {slope.max():.1f}%)"
-    )
+    logger.info(f"Slope computed (range: {slope.min():.1f}% - {slope.max():.1f}%)")
     stats["mean_slope"] = float(np.mean(slope[dem != nodata]))
 
     if save_intermediates:
@@ -359,17 +356,13 @@ def process_dem(
     else:
         threshold_list_m2 = sorted(DEFAULT_THRESHOLDS_M2)
 
-    logger.info(
-        f"Cell size: {metadata['cellsize']}m, cell area: {cell_area} m²"
-    )
+    logger.info(f"Cell size: {metadata['cellsize']}m, cell area: {cell_area} m²")
     for t_m2 in threshold_list_m2:
         t_cells = max(1, int(t_m2 / cell_area))
         logger.info(f"  Threshold {t_m2} m² = {t_cells} cells")
 
     # Use lowest threshold for flow_network (most detailed network)
-    lowest_threshold_cells = max(
-        1, int(threshold_list_m2[0] / cell_area)
-    )
+    lowest_threshold_cells = max(1, int(threshold_list_m2[0] / cell_area))
 
     # 5c. Compute Strahler stream order via pyflwdir (lowest threshold)
     strahler = compute_strahler_from_fdir(
@@ -410,8 +403,13 @@ def process_dem(
 
     # 7. Create flow_network TSV (vectorized numpy — ~5s vs ~120s)
     tsv_buffer, n_records, n_stream = create_flow_network_tsv(
-        filled_dem, fdir, acc, slope, metadata,
-        lowest_threshold_cells, strahler=strahler,
+        filled_dem,
+        fdir,
+        acc,
+        slope,
+        metadata,
+        lowest_threshold_cells,
+        strahler=strahler,
     )
     stats["records"] = n_records
     stats["stream_cells"] = n_stream
@@ -450,8 +448,13 @@ def process_dem(
                 label_raster = np.zeros_like(filled_dem, dtype=np.int32)
 
             segments = vectorize_streams(
-                filled_dem, fdir, acc, slope, strahler_t,
-                metadata, threshold_cells,
+                filled_dem,
+                fdir,
+                acc,
+                slope,
+                strahler_t,
+                metadata,
+                threshold_cells,
                 label_raster_out=label_raster,
             )
             all_stream_segments[threshold_m2] = segments
@@ -460,30 +463,37 @@ def process_dem(
             if not skip_catchments and label_raster is not None:
                 delineate_subcatchments(flw, label_raster, filled_dem, nodata)
 
+                # Compute downstream links for catchment graph
+                compute_downstream_links(
+                    segments,
+                    label_raster,
+                    fdir,
+                    metadata,
+                )
+
                 if save_intermediates:
                     save_raster_geotiff(
-                        label_raster, metadata,
+                        label_raster,
+                        metadata,
                         output_dir / f"{base_name}_10_subcatchments_{threshold_m2}.tif",
-                        nodata=0, dtype="int32",
+                        nodata=0,
+                        dtype="int32",
                     )
 
                 catchments = polygonize_subcatchments(
-                    label_raster, filled_dem, slope, metadata, segments,
+                    label_raster,
+                    filled_dem,
+                    slope,
+                    metadata,
+                    segments,
                 )
                 all_catchment_data[threshold_m2] = catchments
 
-            logger.info(
-                f"  Threshold {threshold_m2} m²: "
-                f"{len(segments)} segments"
-            )
+            logger.info(f"  Threshold {threshold_m2} m²: {len(segments)} segments")
 
-        total_segments = sum(
-            len(s) for s in all_stream_segments.values()
-        )
+        total_segments = sum(len(s) for s in all_stream_segments.values())
         stats["stream_segments"] = total_segments
-        stats["stream_thresholds"] = {
-            t: len(s) for t, s in all_stream_segments.items()
-        }
+        stats["stream_thresholds"] = {t: len(s) for t, s in all_stream_segments.items()}
         if all_catchment_data:
             stats["catchment_thresholds"] = {
                 t: len(c) for t, c in all_catchment_data.items()
@@ -498,17 +508,16 @@ def process_dem(
                 logger.info("Clearing existing flow_network data...")
                 db.execute(text("TRUNCATE TABLE flow_network CASCADE"))
                 db.execute(
-                    text(
-                        "DELETE FROM stream_network"
-                        " WHERE source = 'DEM_DERIVED'"
-                    )
+                    text("DELETE FROM stream_network WHERE source = 'DEM_DERIVED'")
                 )
                 db.execute(text("DELETE FROM stream_catchments"))
                 db.commit()
 
             # TSV fast path — COPY directly from buffer
             inserted = insert_records_batch_tsv(
-                db, tsv_buffer, n_records,
+                db,
+                tsv_buffer,
+                n_records,
                 table_empty=clear_existing,
             )
             stats["inserted"] = inserted
@@ -518,7 +527,9 @@ def process_dem(
             for threshold_m2, segments in all_stream_segments.items():
                 if segments:
                     seg_inserted = insert_stream_segments(
-                        db, segments, threshold_m2=threshold_m2,
+                        db,
+                        segments,
+                        threshold_m2=threshold_m2,
                     )
                     total_seg_inserted += seg_inserted
             if total_seg_inserted > 0:
@@ -529,7 +540,9 @@ def process_dem(
             for threshold_m2, catchments in all_catchment_data.items():
                 if catchments:
                     catch_inserted = insert_catchments(
-                        db, catchments, threshold_m2=threshold_m2,
+                        db,
+                        catchments,
+                        threshold_m2=threshold_m2,
                     )
                     total_catch_inserted += catch_inserted
             if total_catch_inserted > 0:
@@ -707,9 +720,7 @@ def main():
         )
     logger.info(f"  Stream cells: {stats['stream_cells']:,}")
     if "stream_segments" in stats:
-        logger.info(
-            f"  Stream segments: {stats['stream_segments']:,}"
-        )
+        logger.info(f"  Stream segments: {stats['stream_segments']:,}")
     if "stream_thresholds" in stats:
         for t, count in stats["stream_thresholds"].items():
             logger.info(f"    Threshold {t} m²: {count} segments")
@@ -717,17 +728,13 @@ def main():
     logger.info(f"  Records inserted: {stats['inserted']:,}")
     if "stream_segments_inserted" in stats:
         logger.info(
-            f"  Stream segments inserted: "
-            f"{stats['stream_segments_inserted']:,}"
+            f"  Stream segments inserted: {stats['stream_segments_inserted']:,}"
         )
     if "catchment_thresholds" in stats:
         for t, count in stats["catchment_thresholds"].items():
             logger.info(f"    Sub-catchments {t} m²: {count}")
     if "catchments_inserted" in stats:
-        logger.info(
-            f"  Sub-catchments inserted: "
-            f"{stats['catchments_inserted']:,}"
-        )
+        logger.info(f"  Sub-catchments inserted: {stats['catchments_inserted']:,}")
     logger.info(f"  Time elapsed: {elapsed:.1f}s")
     logger.info("=" * 60)
 
