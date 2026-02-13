@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation (audyt dokumentacji)
+- **9 plikow .md zaktualizowanych:** ARCHITECTURE, CLAUDE, DATA_MODEL, SCOPE, QA_REPORT, TECHNICAL_DEBT, COMPUTATION_PIPELINE, README, PROGRESS
+- **ARCHITECTURE.md v1.4:** `parameters.py`→`morphometry.py`, sygnatury, +catchment_graph.py/constants.py, +2 endpointy
+- **COMPUTATION_PIPELINE.md:** +faza CatchmentGraph (ADR-021), fix LOC (~2800→~700 orchestrator)
+- **QA_REPORT.md:** nota deprecation (175→519 testow, CORS fixed, CI/CD)
+- **README.md:** CP3→CP4, tabela endpointow rozszerzona z 4 do 10
+
+### Deployment
+- Migracja 013 zastosowana na bazie produkcyjnej
+- Obraz API przebudowany z commitami: LATERAL JOIN, cache, logging, constants
+
 ### Performance (audyt QA — wydajnosc)
 - **Profile LATERAL JOIN:** zamiana N+1 correlated subquery na `CROSS JOIN LATERAL` w `profile.py` — lepszy plan KNN na 19.7M wierszy (~50-100ms oszczednosci/req)
 - **Cache-Control headers:** `public, max-age=3600` na endpointach watershed, profile, select-stream, depressions — 0ms na powtorne zapytania
