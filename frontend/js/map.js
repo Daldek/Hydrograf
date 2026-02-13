@@ -91,7 +91,7 @@
 
     function loadDemOverlay() {
         // Try tiled DEM first, fall back to single PNG overlay
-        fetch('/data/dem_tiles.json')
+        fetch('/data/dem_tiles.json', { cache: 'force-cache' })
             .then(function (res) {
                 if (!res.ok) throw new Error('tiles not found');
                 return res.json();
@@ -112,7 +112,7 @@
             })
             .catch(function () {
                 // Fallback: single PNG overlay
-                fetch('/data/dem.json')
+                fetch('/data/dem.json', { cache: 'force-cache' })
                     .then(function (res) {
                         if (!res.ok) throw new Error('DEM metadata not found');
                         return res.json();
