@@ -86,48 +86,61 @@ def select_stream(
     Finds the nearest stream, traverses upstream, builds a boundary,
     and returns upstream segment indices for frontend highlighting.
     """
-    point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
-    logger.info(
-        f"select-stream: ({request.latitude:.4f}, {request.longitude:.4f}) "
-        f"threshold={request.threshold_m2}"
-    )
-
-    # 1. Find nearest stream cell
-    outlet = find_nearest_stream(point_2180, db)
-    if outlet is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Nie znaleziono cieku w pobliżu. Kliknij bliżej linii cieku.",
+    try:
+        point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
+        logger.info(
+            f"select-stream: ({request.latitude:.4f}, {request.longitude:.4f}) "
+            f"threshold={request.threshold_m2}"
         )
 
-    # 2. Find stream segment in stream_network
-    segment = _find_stream_segment(point_2180.x, point_2180.y, request.threshold_m2, db)
-    if segment is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Nie znaleziono segmentu cieku dla wybranego progu.",
+        # 1. Find nearest stream cell
+        outlet = find_nearest_stream(point_2180, db)
+        if outlet is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Nie znaleziono cieku w pobliżu. Kliknij bliżej linii cieku.",
+            )
+
+        # 2. Find stream segment in stream_network (use snapped outlet coords)
+        segment = _find_stream_segment(outlet.x, outlet.y, request.threshold_m2, db)
+        if segment is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Nie znaleziono segmentu cieku dla wybranego progu.",
+            )
+
+        # 3. Traverse upstream
+        cells = traverse_upstream(outlet.id, db)
+
+        # 4. Build boundary
+        boundary_2180 = build_boundary(cells)
+        boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_2180)
+        boundary_geojson = polygon_to_geojson_feature(boundary_wgs84)
+
+        # 5. Find upstream segment indices
+        upstream_indices = _find_upstream_segments(
+            boundary_2180.wkt, request.threshold_m2, db
         )
 
-    # 3. Traverse upstream
-    cells = traverse_upstream(outlet.id, db)
+        return SelectStreamResponse(
+            stream=StreamInfo(
+                segment_idx=segment["segment_idx"],
+                strahler_order=segment["strahler_order"],
+                length_m=segment["length_m"],
+                upstream_area_km2=segment["upstream_area_km2"],
+            ),
+            upstream_segment_indices=upstream_indices,
+            boundary_geojson=boundary_geojson,
+        )
 
-    # 4. Build boundary
-    boundary_2180 = build_boundary(cells)
-    boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_2180)
-    boundary_geojson = polygon_to_geojson_feature(boundary_wgs84)
-
-    # 5. Find upstream segment indices
-    upstream_indices = _find_upstream_segments(
-        boundary_2180.wkt, request.threshold_m2, db
-    )
-
-    return SelectStreamResponse(
-        stream=StreamInfo(
-            segment_idx=segment["segment_idx"],
-            strahler_order=segment["strahler_order"],
-            length_m=segment["length_m"],
-            upstream_area_km2=segment["upstream_area_km2"],
-        ),
-        upstream_segment_indices=upstream_indices,
-        boundary_geojson=boundary_geojson,
-    )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error(f"Validation error in stream selection: {e}")
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.error(f"Error in stream selection: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Błąd wewnętrzny podczas wyboru cieku",
+        ) from e

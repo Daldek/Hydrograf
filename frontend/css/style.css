@@ -396,6 +396,53 @@
     font-weight: 500;
 }
 
+/* ============ LAYER LEGENDS ============ */
+.layer-legend {
+    background: var(--glass-bg, rgba(255, 255, 255, 0.85));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.72rem;
+    color: var(--color-text);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    line-height: 1.4;
+}
+
+.layer-legend-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    font-size: 0.73rem;
+}
+
+.legend-gradient {
+    height: 10px;
+    border-radius: 3px;
+    margin: 3px 0;
+}
+
+.legend-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: var(--color-text-secondary);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 1px 0;
+}
+
+.legend-swatch {
+    width: 14px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    flex-shrink: 0;
+}
+
 /* ============ RESPONSIVE: MOBILE ============ */
 @media (max-width: 768px) {
     #results-panel {
