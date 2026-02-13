@@ -46,6 +46,15 @@
         });
         L.control.zoom({ position: 'topright' }).addTo(map);
 
+        // Custom panes for layer ordering:
+        // Base (tilePane z-200) → NMT → Zlewnie → Cieki → overlay (z-400)
+        map.createPane('demPane');
+        map.getPane('demPane').style.zIndex = 250;
+        map.createPane('catchmentsPane');
+        map.getPane('catchmentsPane').style.zIndex = 300;
+        map.createPane('streamsPane');
+        map.getPane('streamsPane').style.zIndex = 350;
+
         // Load overlays
         loadDemOverlay();
 
@@ -81,20 +90,45 @@
     // ===== DEM Overlay =====
 
     function loadDemOverlay() {
-        fetch('/data/dem.json')
+        // Try tiled DEM first, fall back to single PNG overlay
+        fetch('/data/dem_tiles.json')
             .then(function (res) {
-                if (!res.ok) throw new Error('DEM metadata not found');
+                if (!res.ok) throw new Error('tiles not found');
                 return res.json();
             })
             .then(function (meta) {
                 demBounds = L.latLngBounds(meta.bounds);
-                demLayer = L.imageOverlay('/data/dem.png', demBounds, {
+                demLayer = L.tileLayer('/data/dem_tiles/{z}/{x}/{y}.png', {
+                    minZoom: meta.min_zoom || 8,
+                    maxZoom: 22,
+                    maxNativeZoom: meta.max_zoom || 18,
+                    bounds: demBounds,
                     opacity: 0.7,
+                    pane: 'demPane',
                     attribution: 'NMT &copy; GUGiK',
+                    errorTileUrl: '',
                 });
+                if (map) map.fitBounds(demBounds, { padding: [20, 20] });
             })
-            .catch(function (err) {
-                console.warn('DEM overlay not available:', err.message);
+            .catch(function () {
+                // Fallback: single PNG overlay
+                fetch('/data/dem.json')
+                    .then(function (res) {
+                        if (!res.ok) throw new Error('DEM metadata not found');
+                        return res.json();
+                    })
+                    .then(function (meta) {
+                        demBounds = L.latLngBounds(meta.bounds);
+                        demLayer = L.imageOverlay('/data/dem.png', demBounds, {
+                            opacity: 0.7,
+                            pane: 'demPane',
+                            attribution: 'NMT &copy; GUGiK',
+                        });
+                        if (map) map.fitBounds(demBounds, { padding: [20, 20] });
+                    })
+                    .catch(function (err) {
+                        console.warn('DEM overlay not available:', err.message);
+                    });
             });
     }
 
@@ -160,6 +194,7 @@
         streamsLayer = L.vectorGrid.protobuf(
             getTileUrl('streams', currentThreshold),
             {
+                pane: 'streamsPane',
                 vectorTileLayerStyles: {
                     streams: function (properties) {
                         var area = properties.upstream_area_km2 || 0.0001;
@@ -214,19 +249,10 @@
 
     function setStreamsOpacity(opacity) {
         if (streamsLayer) {
-            // VectorGrid uses setFeatureStyle or direct opacity via options
-            // Re-set styles with new opacity
-            streamsLayer.options.vectorTileLayerStyles.streams = function (properties) {
-                var area = properties.upstream_area_km2 || 0.0001;
-                return {
-                    weight: flowAccWidth(area),
-                    color: flowAccColor(area),
-                    opacity: opacity,
-                };
-            };
-            // Force redraw
-            if (map.hasLayer(streamsLayer)) {
-                streamsLayer.redraw();
+            // Use CSS container opacity to avoid flicker from redraw()
+            var container = streamsLayer.getContainer();
+            if (container) {
+                container.style.opacity = opacity;
             }
         }
     }
@@ -258,6 +284,7 @@
         catchmentsLayer = L.vectorGrid.protobuf(
             getTileUrl('catchments', currentCatchmentThreshold),
             {
+                pane: 'catchmentsPane',
                 vectorTileLayerStyles: {
                     catchments: function (properties) {
                         var order = properties.strahler_order || 1;
@@ -312,18 +339,10 @@
     function setCatchmentsOpacity(opacity) {
         currentCatchmentOpacity = opacity;
         if (catchmentsLayer) {
-            catchmentsLayer.options.vectorTileLayerStyles.catchments = function (properties) {
-                var order = properties.strahler_order || 1;
-                return {
-                    weight: 0.5,
-                    color: '#666',
-                    fillColor: catchmentColor(order),
-                    fillOpacity: opacity,
-                    fill: true,
-                };
-            };
-            if (map.hasLayer(catchmentsLayer)) {
-                catchmentsLayer.redraw();
+            // Use CSS container opacity to avoid flicker from redraw()
+            var container = catchmentsLayer.getContainer();
+            if (container) {
+                container.style.opacity = opacity;
             }
         }
     }
@@ -390,6 +409,58 @@
         if (selectionBoundaryLayer) {
             map.removeLayer(selectionBoundaryLayer);
             selectionBoundaryLayer = null;
+        }
+    }
+
+    // ===== Legends =====
+
+    var streamsLegend = null;
+    var catchmentsLegend = null;
+
+    function createStreamsLegend() {
+        if (streamsLegend) return;
+        streamsLegend = L.control({ position: 'bottomleft' });
+        streamsLegend.onAdd = function () {
+            var div = L.DomUtil.create('div', 'layer-legend');
+            div.innerHTML =
+                '<div class="layer-legend-title">Cieki — zlewnia [km²]</div>' +
+                '<div class="legend-gradient" style="background: linear-gradient(to right, rgb(179,229,252), rgb(90,138,180), rgb(0,47,108));"></div>' +
+                '<div class="legend-labels"><span>0.001</span><span>0.1</span><span>20</span></div>';
+            return div;
+        };
+        streamsLegend.addTo(map);
+    }
+
+    function removeStreamsLegend() {
+        if (streamsLegend) {
+            map.removeControl(streamsLegend);
+            streamsLegend = null;
+        }
+    }
+
+    function createCatchmentsLegend() {
+        if (catchmentsLegend) return;
+        catchmentsLegend = L.control({ position: 'bottomleft' });
+        catchmentsLegend.onAdd = function () {
+            var div = L.DomUtil.create('div', 'layer-legend');
+            var html = '<div class="layer-legend-title">Zlewnie — rząd Strahlera</div>';
+            var orders = [1, 2, 3, 4, 5, 6, 7, 8];
+            var colors = CATCHMENT_COLORS;
+            for (var i = 0; i < orders.length; i++) {
+                html += '<div class="legend-item">' +
+                    '<span class="legend-swatch" style="background:' + colors[i] + '"></span>' +
+                    '<span>' + orders[i] + '</span></div>';
+            }
+            div.innerHTML = html;
+            return div;
+        };
+        catchmentsLegend.addTo(map);
+    }
+
+    function removeCatchmentsLegend() {
+        if (catchmentsLegend) {
+            map.removeControl(catchmentsLegend);
+            catchmentsLegend = null;
         }
     }
 
@@ -647,5 +718,10 @@
         getBdotStreamsLayer: getBdotStreamsLayer,
         setBdotStreamsOpacity: setBdotStreamsOpacity,
         fitBdotBounds: fitBdotBounds,
+        // Legends
+        createStreamsLegend: createStreamsLegend,
+        removeStreamsLegend: removeStreamsLegend,
+        createCatchmentsLegend: createCatchmentsLegend,
+        removeCatchmentsLegend: removeCatchmentsLegend,
     };
 })();
