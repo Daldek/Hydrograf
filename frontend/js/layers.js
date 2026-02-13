@@ -310,12 +310,14 @@
                 }
                 if (layer) layer.addTo(map);
                 controlsRow.classList.remove('d-none');
+                Hydrograf.map.createStreamsLegend();
             } else {
                 layer = Hydrograf.map.getStreamsLayer();
                 if (layer && map.hasLayer(layer)) {
                     map.removeLayer(layer);
                 }
                 controlsRow.classList.add('d-none');
+                Hydrograf.map.removeStreamsLegend();
             }
         });
 
@@ -405,12 +407,14 @@
                 }
                 if (layer) layer.addTo(map);
                 controlsRow.classList.remove('d-none');
+                Hydrograf.map.createCatchmentsLegend();
             } else {
                 layer = Hydrograf.map.getCatchmentsLayer();
                 if (layer && map.hasLayer(layer)) {
                     map.removeLayer(layer);
                 }
                 controlsRow.classList.add('d-none');
+                Hydrograf.map.removeCatchmentsLegend();
             }
         });
 
@@ -513,24 +517,96 @@
                 addCatchmentsEntry(streamsPlaceholder, FALLBACK_THRESHOLDS);
             });
 
-        addOverlayEntry(
-            list,
-            'Zlewnia',
-            Hydrograf.map.getWatershedLayer,
-            function () {
-                var layer = Hydrograf.map.getWatershedLayer();
-                if (layer) {
-                    Hydrograf.map._getMap().fitBounds(layer.getBounds(), { padding: [20, 20] });
-                }
-            },
-            function (opacity) {
-                var layer = Hydrograf.map.getWatershedLayer();
-                if (layer) {
-                    layer.setStyle({ fillOpacity: opacity * 0.5, opacity: opacity });
-                }
-            },
-            0
-        );
+        // Zlewnia — reactive entry that auto-enables when a watershed is drawn.
+        // Uses a polling approach: the checkbox enables/disables based on layer existence.
+        var watershedItem = document.createElement('div');
+        watershedItem.className = 'layer-item';
+        var whHeaderRow = document.createElement('div');
+        whHeaderRow.className = 'layer-header';
+        var whCb = document.createElement('input');
+        whCb.type = 'checkbox';
+        whCb.checked = true;
+        whCb.disabled = true;
+        var whText = document.createTextNode(' Zlewnia');
+        var whHint = document.createElement('span');
+        whHint.className = 'text-muted';
+        whHint.style.fontSize = '0.7rem';
+        whHint.style.marginLeft = '4px';
+        whHint.textContent = '(wyznacz najpierw)';
+        var whZoomBtn = document.createElement('button');
+        whZoomBtn.className = 'layer-zoom-btn';
+        whZoomBtn.title = 'Przybliż do zasięgu';
+        whZoomBtn.textContent = '\u2316';
+        whZoomBtn.addEventListener('click', function () {
+            var layer = Hydrograf.map.getWatershedLayer();
+            if (layer) {
+                Hydrograf.map._getMap().fitBounds(layer.getBounds(), { padding: [20, 20] });
+            }
+        });
+        whHeaderRow.appendChild(whCb);
+        whHeaderRow.appendChild(whText);
+        whHeaderRow.appendChild(whHint);
+        whHeaderRow.appendChild(whZoomBtn);
+        watershedItem.appendChild(whHeaderRow);
+
+        var whSliderRow = document.createElement('div');
+        whSliderRow.className = 'layer-opacity d-none';
+        var whSliderLabel = document.createElement('span');
+        whSliderLabel.textContent = 'Przezr.:';
+        var whSlider = document.createElement('input');
+        whSlider.type = 'range';
+        whSlider.min = '0';
+        whSlider.max = '100';
+        whSlider.value = '0';
+        var whSliderValue = document.createElement('span');
+        whSliderValue.className = 'layer-opacity-val';
+        whSliderValue.textContent = '0%';
+        whSlider.addEventListener('input', function () {
+            var opacity = (100 - parseInt(whSlider.value)) / 100;
+            var layer = Hydrograf.map.getWatershedLayer();
+            if (layer) {
+                layer.setStyle({ fillOpacity: opacity * 0.5, opacity: opacity });
+            }
+            whSliderValue.textContent = whSlider.value + '%';
+        });
+        whSliderRow.appendChild(whSliderLabel);
+        whSliderRow.appendChild(whSlider);
+        whSliderRow.appendChild(whSliderValue);
+        watershedItem.appendChild(whSliderRow);
+
+        whCb.addEventListener('change', function () {
+            var layer = Hydrograf.map.getWatershedLayer();
+            if (!layer) return;
+            var mapObj = Hydrograf.map._getMap();
+            if (whCb.checked) {
+                if (!mapObj.hasLayer(layer)) layer.addTo(mapObj);
+                whSliderRow.classList.remove('d-none');
+            } else {
+                if (mapObj.hasLayer(layer)) mapObj.removeLayer(layer);
+                whSliderRow.classList.add('d-none');
+            }
+        });
+
+        list.appendChild(watershedItem);
+
+        // Watch for watershed layer changes (check periodically)
+        var _lastWatershedLayer = null;
+        setInterval(function () {
+            var layer = Hydrograf.map.getWatershedLayer();
+            if (layer && layer !== _lastWatershedLayer) {
+                _lastWatershedLayer = layer;
+                whCb.disabled = false;
+                whCb.checked = true;
+                whHint.textContent = '';
+                whSliderRow.classList.remove('d-none');
+            } else if (!layer && _lastWatershedLayer) {
+                _lastWatershedLayer = null;
+                whCb.disabled = true;
+                whCb.checked = false;
+                whHint.textContent = '(wyznacz najpierw)';
+                whSliderRow.classList.add('d-none');
+            }
+        }, 500);
 
         // Depressions entry will be added by depressions.js if available
     }
