@@ -1,8 +1,8 @@
 # DATA_MODEL.md - Model Danych
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.1
-**Data:** 2026-02-12
+**Wersja:** 1.2
+**Data:** 2026-02-13
 **Status:** Approved
 
 ---
@@ -361,7 +361,7 @@ INSERT INTO stream_network (geom, name, length_m, strahler_order) VALUES
 
 ### 3.5 Tabela: `stream_catchments`
 
-**Opis:** Zlewnie czastkowe — poligony odpowiadajace segmentom sieci cieków (migracja 007).
+**Opis:** Zlewnie czastkowe — poligony odpowiadajace segmentom sieci cieków (migracja 007, rozszerzenie migracja 012).
 
 **Schemat SQL:**
 ```sql
@@ -373,14 +373,36 @@ CREATE TABLE stream_catchments (
     area_km2 DOUBLE PRECISION NOT NULL,
     mean_elevation_m DOUBLE PRECISION,
     mean_slope_percent DOUBLE PRECISION,
-    strahler_order INTEGER
+    strahler_order INTEGER,
+    -- Nowe kolumny (migracja 012):
+    downstream_segment_idx INTEGER,              -- graf: do którego segmentu spływa
+    elevation_min_m DOUBLE PRECISION,            -- min wys. w zlewni
+    elevation_max_m DOUBLE PRECISION,            -- max wys. w zlewni
+    perimeter_km DOUBLE PRECISION,               -- obwód poligonu [km]
+    stream_length_km DOUBLE PRECISION,           -- długość cieku w zlewni [km]
+    elev_histogram JSONB                         -- histogram wysokości (stały interwał 1m)
 );
 
 -- Indeksy
 CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST(geom);
 CREATE INDEX idx_catchments_threshold ON stream_catchments(threshold_m2, strahler_order);
 CREATE INDEX idx_catchments_area ON stream_catchments(area_km2);
+CREATE INDEX idx_catchments_downstream                   -- migracja 012
+    ON stream_catchments(threshold_m2, downstream_segment_idx);
 ```
+
+**Nowe kolumny (migracja 012) — szczegóły:**
+
+| Kolumna | Typ | Nullable | Opis |
+|---------|-----|----------|------|
+| `downstream_segment_idx` | INTEGER | YES | Segment do którego spływa (NULL = outlet) |
+| `elevation_min_m` | DOUBLE PRECISION | YES | Minimalna wysokość w zlewni [m n.p.m.] |
+| `elevation_max_m` | DOUBLE PRECISION | YES | Maksymalna wysokość w zlewni [m n.p.m.] |
+| `perimeter_km` | DOUBLE PRECISION | YES | Obwód poligonu zlewni [km] |
+| `stream_length_km` | DOUBLE PRECISION | YES | Długość cieku w zlewni [km] |
+| `elev_histogram` | JSONB | YES | Histogram wysokości: `{"base_m": 120, "interval_m": 1, "counts": [45, 82, ...]}` |
+
+**Format `elev_histogram`:** stały interwał 1m, klucze: `base_m` (dolna granica najniższego binu), `interval_m` (zawsze 1), `counts` (tablica liczności per bin). Mergowalny — histogramy na wspólnej osi bezwzględnej, agregacja = suma z offset.
 
 ---
 
@@ -770,7 +792,9 @@ migrations/
     ├── 007_create_stream_catchments.py
     ├── 008_add_depressions_filter_indexes.py
     ├── 009_add_stream_source_partial_index.py
-    └── 010_fix_stream_unique_index.py
+    ├── 010_fix_stream_unique_index.py
+    ├── 011_add_tile_spatial_indexes.py
+    └── 012_extend_stream_catchments.py
 ```
 
 **Przykład migracji:**
@@ -978,8 +1002,8 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ---
 
-**Wersja dokumentu:** 1.1
-**Data ostatniej aktualizacji:** 2026-02-12
+**Wersja dokumentu:** 1.2
+**Data ostatniej aktualizacji:** 2026-02-13
 **Status:** Approved  
 
 ---

@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from api.endpoints import (
     depressions,
@@ -19,6 +20,7 @@ from api.endpoints import (
     tiles,
     watershed,
 )
+from core.catchment_graph import get_catchment_graph
 from core.config import get_settings
 from core.database import get_db_session
 from core.flow_graph import get_flow_graph
@@ -45,6 +47,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Flow graph loading failed, using SQL fallback: {e}")
 
+    # Load catchment graph (~8 MB, ~100ms)
+    cg = get_catchment_graph()
+    try:
+        with get_db_session() as db:
+            cg.load(db)
+    except Exception as e:
+        logger.warning(f"Catchment graph loading failed: {e}")
+
     yield
     logger.info("Shutting down Hydrograf API...")
 
@@ -65,6 +75,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Accept"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Include routers
 app.include_router(health.router, tags=["Health"])

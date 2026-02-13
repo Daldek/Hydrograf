@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 7 endpointow (+ tiles MVT): delineate, hydrograph, scenarios, profile, depressions, select-stream, health. 493 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 7 endpointow (+ tiles MVT): delineate, hydrograph, scenarios, profile, depressions, select-stream, health. 519 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -44,15 +44,23 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-13 (sesja 13b)
+**Data:** 2026-02-13 (sesja 14)
 
 ### Co zrobiono
 
-- **Audyt i poprawki frontend (13 taskow, 3 fazy):**
-  - **Faza 1 — bugi:** memory leak wykresow (hydrograph.js), memory leak tooltipow (map.js), broken depressions filters (null-guard), dead code (profile.js), polling→events (layers.js)
-  - **Faza 2 — UX:** loading cursor na mapie, banner instrukcji rysowania profilu, accordion max-height 800→2000px, feedback bledow profilu, guard hydrogramu
-  - **Faza 3 — security/a11y:** CDN integrity hashes (Chart.js, VectorGrid), VectorGrid plugin guard, CSP `base-uri`+`form-action`+HSTS, ARIA (aria-live, aria-expanded, role=radiogroup, aria-checked, role=img+aria-label na canvasach), keyboard a11y (tabindex + Enter/Space na akordeonach), focus-visible styles
-  - **Cleanup:** usunieto ~55 linii dead CSS (.dual-slider)
+- **Graf zlewni czastkowych — ADR-021 (7 faz, caly plan zaimplementowany):**
+  - **Faza 1:** Migracja 012 — 6 nowych kolumn w `stream_catchments` (downstream_segment_idx, elevation_min/max, perimeter_km, stream_length_km, elev_histogram JSONB)
+  - **Faza 2:** `compute_downstream_links()` w stream_extraction.py — follow fdir z outlet cell kazdego segmentu, `_outlet_rc` w vectorize_streams()
+  - **Faza 3:** `zonal_min()` + `zonal_elevation_histogram()` w zonal_stats.py, rozszerzenie `polygonize_subcatchments()` o nowe stats
+  - **Faza 4:** Rozszerzenie `insert_catchments()` w db_bulk.py o 6 nowych kolumn + JSONB histogram
+  - **Faza 5:** Nowy modul `core/catchment_graph.py` — in-memory graf (~87k wezlow, ~8 MB), BFS via scipy sparse, agregacja stats z numpy arrays, krzywa hipsometryczna z mergowania histogramow
+  - **Faza 6:** Calkowity rewrite `select_stream.py` — graf zlewni zamiast rastra, ST_Union boundary, derived indices (Kc, Rc, Re, Ff)
+  - **Faza 7:** 19 testow catchment_graph, 7 testow zonal_stats, 8 testow integracyjnych select-stream (przepisane), dokumentacja (DATA_MODEL, DECISIONS, CHANGELOG)
+  - **Wynik:** 519 testow, 0 failures, lint clean
+
+### Poprzednia sesja (2026-02-13, sesja 13b)
+
+- **Audyt i poprawki frontend (13 taskow, 3 fazy)**
 
 ### Poprzednia sesja (2026-02-13, sesja 13)
 
@@ -143,15 +151,16 @@
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
 - Flow graph: `downstream_id` nie jest przechowywany w pamięci (zwracany jako None) — nie uzywany przez callery
 - 17 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
-- Endpoint `select-stream` wymaga zaladowanego flow graph (lub SQL fallback) + stream_network w bazie
+- **Catchment graph wymaga re-runu pipeline** (nowe kolumny z migracji 012 — downstream_segment_idx, elevation stats, histogramy)
 - 21 ruff check warnings w plikach nie modyfikowanych w tej sesji (hydrograph.py, watershed.py, morphometry.py, export_pipeline_gpkg.py)
 
 ### Nastepne kroki
-1. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
-2. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
-3. Dlug techniczny: constants.py, hardcoded secrets
-4. Naprawa 21 ruff check warnings w starszych plikach
-5. CP5: MVP — pelna integracja, deploy
+1. **Re-run pipeline** z migracja 012 (`alembic upgrade head` + `process_dem --clear-existing`) — wypelnienie nowych kolumn stream_catchments
+2. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
+3. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
+4. Dlug techniczny: constants.py, hardcoded secrets
+5. Naprawa 21 ruff check warnings w starszych plikach
+6. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
