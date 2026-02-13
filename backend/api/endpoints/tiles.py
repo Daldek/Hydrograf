@@ -18,10 +18,25 @@ router = APIRouter()
 
 # Simplification tolerance per zoom level (in EPSG:2180 metres)
 _MVT_SIMPLIFY_TOLERANCE = {
-    0: 5000, 1: 2500, 2: 1250, 3: 600, 4: 300,
-    5: 150, 6: 80, 7: 40, 8: 20, 9: 10,
-    10: 5, 11: 2.5, 12: 1.2, 13: 0.6, 14: 0.3,
-    15: 0.15, 16: 0.08, 17: 0.04, 18: 0.02,
+    0: 5000,
+    1: 2500,
+    2: 1250,
+    3: 600,
+    4: 300,
+    5: 150,
+    6: 80,
+    7: 40,
+    8: 20,
+    9: 10,
+    10: 5,
+    11: 2.5,
+    12: 1.2,
+    13: 0.6,
+    14: 0.3,
+    15: 0.15,
+    16: 0.08,
+    17: 0.04,
+    18: 0.02,
 }
 
 _EMPTY_MVT = b""
@@ -29,7 +44,7 @@ _EMPTY_MVT = b""
 
 def _tile_to_bbox_3857(z: int, x: int, y: int):
     """Convert XYZ tile coordinates to EPSG:3857 bounding box."""
-    n = 2 ** z
+    n = 2**z
     # Web Mercator bounds
     world = 20037508.3427892
     tile_size = 2 * world / n
@@ -103,7 +118,7 @@ def get_streams_mvt(
     return Response(
         content=bytes(tile_data),
         media_type="application/x-protobuf",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={"Cache-Control": "public, max-age=86400"},
     )
 
 
@@ -172,7 +187,7 @@ def get_catchments_mvt(
     return Response(
         content=bytes(tile_data),
         media_type="application/x-protobuf",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={"Cache-Control": "public, max-age=86400"},
     )
 
 
@@ -191,10 +206,12 @@ def get_available_thresholds(db: Session = Depends(get_db)) -> dict:
 
     # stream_catchments may not exist yet
     try:
-        catchments_rows = db.execute(text(
-            "SELECT DISTINCT threshold_m2"
-            " FROM stream_catchments ORDER BY threshold_m2"
-        )).fetchall()
+        catchments_rows = db.execute(
+            text(
+                "SELECT DISTINCT threshold_m2"
+                " FROM stream_catchments ORDER BY threshold_m2"
+            )
+        ).fetchall()
         catchments = [row[0] for row in catchments_rows]
     except Exception:
         catchments = []

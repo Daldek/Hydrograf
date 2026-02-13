@@ -1,0 +1,18 @@
+{
+  "bounds": [
+    [
+      52.457388,
+      17.185782
+    ],
+    [
+      52.500937,
+      17.251668
+    ]
+  ],
+  "min_zoom": 8,
+  "max_zoom": 16,
+  "elevation_min_m": 85.7,
+  "elevation_max_m": 119.1,
+  "tile_count": 267,
+  "total_size_mb": 15.5
+}
