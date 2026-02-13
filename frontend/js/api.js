@@ -16,6 +16,36 @@
         500: 'Błąd serwera. Spróbuj ponownie za chwilę.',
     };
 
+    // Simple TTL cache for API results
+    var _cache = new Map();
+    var _CACHE_MAX = 50;
+    var _CACHE_TTL = 300000; // 5 minutes
+
+    function _cacheKey(prefix, args) {
+        return prefix + ':' + Array.prototype.slice.call(arguments, 1).map(function(a) {
+            return typeof a === 'number' ? a.toFixed(5) : String(a);
+        }).join(',');
+    }
+
+    function _cacheGet(key) {
+        var entry = _cache.get(key);
+        if (!entry) return undefined;
+        if (Date.now() - entry.ts > _CACHE_TTL) {
+            _cache.delete(key);
+            return undefined;
+        }
+        return entry.value;
+    }
+
+    function _cacheSet(key, value) {
+        if (_cache.size >= _CACHE_MAX) {
+            // Evict oldest entry
+            var oldest = _cache.keys().next().value;
+            _cache.delete(oldest);
+        }
+        _cache.set(key, { value: value, ts: Date.now() });
+    }
+
     /**
      * Generic error handler for API responses.
      */
@@ -39,6 +69,10 @@
      * Delineate watershed for given coordinates.
      */
     async function delineateWatershed(lat, lng) {
+        var key = _cacheKey('ws', lat, lng);
+        var cached = _cacheGet(key);
+        if (cached) return cached;
+
         const response = await fetch('/api/delineate-watershed?include_hypsometric_curve=true', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -46,7 +80,9 @@
         });
 
         if (!response.ok) await handleError(response);
-        return response.json();
+        var data = await response.json();
+        _cacheSet(key, data);
+        return data;
     }
 
     /**
@@ -66,6 +102,10 @@
      * @returns {Promise<Object>} { distances_m, elevations_m, total_length_m }
      */
     async function getTerrainProfile(lineGeojson, nSamples) {
+        var key = _cacheKey('tp', JSON.stringify(lineGeojson), nSamples);
+        var cached = _cacheGet(key);
+        if (cached) return cached;
+
         const response = await fetch('/api/terrain-profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -73,7 +113,9 @@
         });
 
         if (!response.ok) await handleError(response);
-        return response.json();
+        var data = await response.json();
+        _cacheSet(key, data);
+        return data;
     }
 
     /**
@@ -131,6 +173,10 @@
      * @returns {Promise<Object>} { stream, upstream_segment_indices, boundary_geojson }
      */
     async function selectStream(lat, lng, threshold) {
+        var key = _cacheKey('ss', lat, lng, threshold);
+        var cached = _cacheGet(key);
+        if (cached) return cached;
+
         const response = await fetch('/api/select-stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -142,7 +188,9 @@
         });
 
         if (!response.ok) await handleError(response);
-        return response.json();
+        var data = await response.json();
+        _cacheSet(key, data);
+        return data;
     }
 
     window.Hydrograf.api = {
