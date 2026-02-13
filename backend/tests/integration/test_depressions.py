@@ -190,9 +190,7 @@ class TestDepressionsEndpoint:
         """Test bbox query parameter is accepted."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_depressions
 
-        response = client.get(
-            "/api/depressions?bbox=20.9,51.9,21.1,52.1"
-        )
+        response = client.get("/api/depressions?bbox=20.9,51.9,21.1,52.1")
 
         assert response.status_code == 200
         app.dependency_overrides.clear()

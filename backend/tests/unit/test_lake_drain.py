@@ -62,19 +62,13 @@ def _create_test_gpkg(lakes_wkt, streams_wkt, tmp_dir):
     gpkg_path = Path(tmp_dir) / "test.gpkg"
 
     if lakes_wkt:
-        lakes_gdf = gpd.GeoDataFrame(
-            {"geometry": lakes_wkt}, crs="EPSG:2180"
-        )
+        lakes_gdf = gpd.GeoDataFrame({"geometry": lakes_wkt}, crs="EPSG:2180")
         lakes_gdf.to_file(gpkg_path, layer="OT_PTWP_A", driver="GPKG")
 
     if streams_wkt:
-        streams_gdf = gpd.GeoDataFrame(
-            {"geometry": streams_wkt}, crs="EPSG:2180"
-        )
+        streams_gdf = gpd.GeoDataFrame({"geometry": streams_wkt}, crs="EPSG:2180")
         if gpkg_path.exists():
-            streams_gdf.to_file(
-                gpkg_path, layer="OT_SWRS_L", driver="GPKG", mode="a"
-            )
+            streams_gdf.to_file(gpkg_path, layer="OT_SWRS_L", driver="GPKG", mode="a")
         else:
             streams_gdf.to_file(gpkg_path, layer="OT_SWRS_L", driver="GPKG")
 
@@ -95,11 +89,13 @@ class TestSampleDemAtPoint:
         assert result == 100.0
 
     def test_sample_nodata_searches_neighbors(self):
-        dem = np.array([
-            [100.0, 200.0, 300.0],
-            [400.0, NODATA, 600.0],
-            [700.0, 800.0, 900.0],
-        ])
+        dem = np.array(
+            [
+                [100.0, 200.0, 300.0],
+                [400.0, NODATA, 600.0],
+                [700.0, 800.0, 900.0],
+            ]
+        )
         transform = Affine(1, 0, 0.0, 0, -1, 3.0)
         # Point (1.5, 1.5) → row=1, col=1 which is NODATA
         result = _sample_dem_at_point(dem, transform, 1.5, 1.5, NODATA)
@@ -131,16 +127,18 @@ class TestClassifyEndorheicLakes:
         """Lake with no touching streams → endorheic."""
         dem = _make_dem()
         # Lake polygon inside DEM extent
-        lake = Polygon([
-            (500040, 600060), (500060, 600060),
-            (500060, 600040), (500040, 600040),
-        ])
+        lake = Polygon(
+            [
+                (500040, 600060),
+                (500060, 600060),
+                (500060, 600040),
+                (500040, 600040),
+            ]
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             gpkg = _create_test_gpkg([lake], [], tmp)
-            drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA
-            )
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         assert diag["total_lakes"] == 1
         assert diag["endorheic"] == 1
@@ -150,23 +148,28 @@ class TestClassifyEndorheicLakes:
     def test_lake_only_inflows_is_endorheic(self):
         """Lake with only inflow streams (far_elev > near_elev) → endorheic."""
         dem = _make_dem()
-        lake = Polygon([
-            (500040, 600060), (500060, 600060),
-            (500060, 600040), (500040, 600040),
-        ])
+        lake = Polygon(
+            [
+                (500040, 600060),
+                (500060, 600060),
+                (500060, 600040),
+                (500040, 600040),
+            ]
+        )
         # Stream flowing toward lake: start far and high, end near lake and low
         # Far point (500020, 600080) → row=20, col=20 → elev ~ 100-2-2=96
         # Near point (500040, 600060) → row=40, col=40 → elev ~ 100-4-4=92
         # far_elev (96) > near_elev (92) → inflow
-        stream = LineString([
-            (500020, 600080), (500040, 600060),
-        ])
+        stream = LineString(
+            [
+                (500020, 600080),
+                (500040, 600060),
+            ]
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             gpkg = _create_test_gpkg([lake], [stream], tmp)
-            drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA
-            )
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         assert diag["endorheic"] == 1
         assert diag["exorheic"] == 0
@@ -175,23 +178,28 @@ class TestClassifyEndorheicLakes:
     def test_lake_with_outflow_is_exorheic(self):
         """Lake with outflow stream (far_elev < near_elev) → exorheic."""
         dem = _make_dem()
-        lake = Polygon([
-            (500040, 600060), (500060, 600060),
-            (500060, 600040), (500040, 600040),
-        ])
+        lake = Polygon(
+            [
+                (500040, 600060),
+                (500060, 600060),
+                (500060, 600040),
+                (500040, 600040),
+            ]
+        )
         # Stream flowing away from lake: start near lake and high, end far and low
         # Near point (500060, 600040) → row=60, col=60 → elev ~ 100-6-6=88
         # Far point (500080, 600020) → row=80, col=80 → elev ~ 100-8-8=84
         # far_elev (84) < near_elev (88) → outflow
-        stream = LineString([
-            (500060, 600040), (500080, 600020),
-        ])
+        stream = LineString(
+            [
+                (500060, 600040),
+                (500080, 600020),
+            ]
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             gpkg = _create_test_gpkg([lake], [stream], tmp)
-            drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA
-            )
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         assert diag["exorheic"] == 1
         assert diag["endorheic"] == 0
@@ -200,10 +208,14 @@ class TestClassifyEndorheicLakes:
     def test_lake_mixed_inflow_outflow_is_exorheic(self):
         """Lake with both inflow and outflow → exorheic (has outflow)."""
         dem = _make_dem()
-        lake = Polygon([
-            (500040, 600060), (500060, 600060),
-            (500060, 600040), (500040, 600040),
-        ])
+        lake = Polygon(
+            [
+                (500040, 600060),
+                (500060, 600060),
+                (500060, 600040),
+                (500040, 600040),
+            ]
+        )
         # Inflow stream
         inflow = LineString([(500020, 600080), (500040, 600060)])
         # Outflow stream
@@ -211,9 +223,7 @@ class TestClassifyEndorheicLakes:
 
         with tempfile.TemporaryDirectory() as tmp:
             gpkg = _create_test_gpkg([lake], [inflow, outflow], tmp)
-            drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA
-            )
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         assert diag["exorheic"] == 1
         assert diag["endorheic"] == 0
@@ -223,19 +233,24 @@ class TestClassifyEndorheicLakes:
         """Stream with |delta_elev| < 0.1m → treated as inflow → endorheic."""
         # Flat DEM where elevation difference is negligible
         dem = np.full((100, 100), 100.0, dtype=np.float64)
-        lake = Polygon([
-            (500040, 600060), (500060, 600060),
-            (500060, 600040), (500040, 600040),
-        ])
-        stream = LineString([
-            (500020, 600080), (500040, 600060),
-        ])
+        lake = Polygon(
+            [
+                (500040, 600060),
+                (500060, 600060),
+                (500060, 600040),
+                (500040, 600040),
+            ]
+        )
+        stream = LineString(
+            [
+                (500020, 600080),
+                (500040, 600060),
+            ]
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             gpkg = _create_test_gpkg([lake], [stream], tmp)
-            drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA
-            )
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         assert diag["endorheic"] == 1
         assert len(drain_pts) == 1
@@ -270,10 +285,14 @@ class TestDrainPointInjection:
     def test_drain_point_at_representative_point(self):
         """Drain point placed at representative_point of lake."""
         dem = _make_dem(20, 20)
-        lake = Polygon([
-            (500005, 600095), (500015, 600095),
-            (500015, 600085), (500005, 600085),
-        ])
+        lake = Polygon(
+            [
+                (500005, 600095),
+                (500015, 600095),
+                (500015, 600085),
+                (500005, 600085),
+            ]
+        )
         drain_points: list[tuple[int, int]] = []
         _add_drain_point(dem, TRANSFORM, lake, NODATA, drain_points)
         assert len(drain_points) == 1
@@ -285,23 +304,29 @@ class TestDrainPointInjection:
         """Multiple lakes: only endorheic ones get drain points."""
         dem = _make_dem()
         # Endorheic lake (no streams) — far from lake2 (no clustering)
-        lake1 = Polygon([
-            (500010, 600090), (500020, 600090),
-            (500020, 600080), (500010, 600080),
-        ])
+        lake1 = Polygon(
+            [
+                (500010, 600090),
+                (500020, 600090),
+                (500020, 600080),
+                (500010, 600080),
+            ]
+        )
         # Exorheic lake (has outflow) — far from lake1
-        lake2 = Polygon([
-            (500060, 600040), (500070, 600040),
-            (500070, 600030), (500060, 600030),
-        ])
+        lake2 = Polygon(
+            [
+                (500060, 600040),
+                (500070, 600040),
+                (500070, 600030),
+                (500060, 600030),
+            ]
+        )
         # Outflow from lake2
         outflow = LineString([(500070, 600030), (500090, 600010)])
 
         with tempfile.TemporaryDirectory() as tmp:
             gpkg = _create_test_gpkg([lake1, lake2], [outflow], tmp)
-            drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA
-            )
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         assert diag["endorheic"] == 1
         assert diag["exorheic"] == 1
@@ -315,20 +340,26 @@ class TestLakeClustering:
         """Two touching lakes are classified as a single cluster."""
         dem = _make_dem()
         # Lake A and Lake B are adjacent (within 20m buffer)
-        lake_a = Polygon([
-            (500040, 600060), (500050, 600060),
-            (500050, 600050), (500040, 600050),
-        ])
-        lake_b = Polygon([
-            (500052, 600060), (500062, 600060),
-            (500062, 600050), (500052, 600050),
-        ])
+        lake_a = Polygon(
+            [
+                (500040, 600060),
+                (500050, 600060),
+                (500050, 600050),
+                (500040, 600050),
+            ]
+        )
+        lake_b = Polygon(
+            [
+                (500052, 600060),
+                (500062, 600060),
+                (500062, 600050),
+                (500052, 600050),
+            ]
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             gpkg = _create_test_gpkg([lake_a, lake_b], [], tmp)
-            drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA
-            )
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         # Both in one cluster, both endorheic (no streams)
         assert diag["clusters"] == 1
@@ -339,25 +370,29 @@ class TestLakeClustering:
         """If one lake in a cluster has outflow, all lakes are exorheic."""
         dem = _make_dem()
         # Small lake (would be endorheic alone — no streams touch it directly)
-        small_lake = Polygon([
-            (500040, 600060), (500050, 600060),
-            (500050, 600050), (500040, 600050),
-        ])
+        small_lake = Polygon(
+            [
+                (500040, 600060),
+                (500050, 600060),
+                (500050, 600050),
+                (500040, 600050),
+            ]
+        )
         # Large lake adjacent (within 20m buffer) — has outflow stream
-        large_lake = Polygon([
-            (500055, 600060), (500070, 600060),
-            (500070, 600045), (500055, 600045),
-        ])
+        large_lake = Polygon(
+            [
+                (500055, 600060),
+                (500070, 600060),
+                (500070, 600045),
+                (500055, 600045),
+            ]
+        )
         # Outflow from large_lake
         outflow = LineString([(500070, 600045), (500090, 600020)])
 
         with tempfile.TemporaryDirectory() as tmp:
-            gpkg = _create_test_gpkg(
-                [small_lake, large_lake], [outflow], tmp
-            )
-            drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA
-            )
+            gpkg = _create_test_gpkg([small_lake, large_lake], [outflow], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         # Cluster has outflow → both lakes classified exorheic
         assert diag["clusters"] == 1
@@ -369,21 +404,27 @@ class TestLakeClustering:
         """Lakes far apart remain in separate clusters."""
         dem = _make_dem()
         # Lake A in NW corner
-        lake_a = Polygon([
-            (500005, 600095), (500015, 600095),
-            (500015, 600085), (500005, 600085),
-        ])
+        lake_a = Polygon(
+            [
+                (500005, 600095),
+                (500015, 600095),
+                (500015, 600085),
+                (500005, 600085),
+            ]
+        )
         # Lake B in SE corner (>20m apart)
-        lake_b = Polygon([
-            (500080, 600020), (500090, 600020),
-            (500090, 600010), (500080, 600010),
-        ])
+        lake_b = Polygon(
+            [
+                (500080, 600020),
+                (500090, 600020),
+                (500090, 600010),
+                (500080, 600010),
+            ]
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             gpkg = _create_test_gpkg([lake_a, lake_b], [], tmp)
-            drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA
-            )
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         assert diag["clusters"] == 2
         assert diag["endorheic"] == 2
@@ -393,28 +434,36 @@ class TestLakeClustering:
         """Chain A--B--C forms one cluster; outflow on C → all exorheic."""
         dem = _make_dem()
         # Three lakes in a chain, each 5m apart (within 20m buffer)
-        lake_a = Polygon([
-            (500020, 600070), (500030, 600070),
-            (500030, 600060), (500020, 600060),
-        ])
-        lake_b = Polygon([
-            (500035, 600070), (500045, 600070),
-            (500045, 600060), (500035, 600060),
-        ])
-        lake_c = Polygon([
-            (500050, 600070), (500060, 600070),
-            (500060, 600060), (500050, 600060),
-        ])
+        lake_a = Polygon(
+            [
+                (500020, 600070),
+                (500030, 600070),
+                (500030, 600060),
+                (500020, 600060),
+            ]
+        )
+        lake_b = Polygon(
+            [
+                (500035, 600070),
+                (500045, 600070),
+                (500045, 600060),
+                (500035, 600060),
+            ]
+        )
+        lake_c = Polygon(
+            [
+                (500050, 600070),
+                (500060, 600070),
+                (500060, 600060),
+                (500050, 600060),
+            ]
+        )
         # Outflow from lake_c
         outflow = LineString([(500060, 600060), (500080, 600040)])
 
         with tempfile.TemporaryDirectory() as tmp:
-            gpkg = _create_test_gpkg(
-                [lake_a, lake_b, lake_c], [outflow], tmp
-            )
-            drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA
-            )
+            gpkg = _create_test_gpkg([lake_a, lake_b, lake_c], [outflow], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         assert diag["clusters"] == 1
         assert diag["exorheic"] == 3
@@ -494,6 +543,4 @@ class TestPipelineIntegration:
         # Valid neighbors should have valid flow directions
         for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             nr, nc = 5 + dr, 5 + dc
-            assert fdir[nr, nc] != 0, (
-                f"Neighbor ({nr},{nc}) has invalid fdir=0"
-            )
+            assert fdir[nr, nc] != 0, f"Neighbor ({nr},{nc}) has invalid fdir=0"

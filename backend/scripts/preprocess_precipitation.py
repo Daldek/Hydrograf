@@ -163,7 +163,9 @@ async def fetch_pmaxtp_for_point(
         result = fetch_pmaxtp(latitude=lat, longitude=lon)
 
         scenarios = {}
-        for duration_str, duration_min in zip(DURATIONS, DURATION_MINUTES):
+        for duration_str, duration_min in zip(
+            DURATIONS, DURATION_MINUTES, strict=False
+        ):
             for prob in PROBABILITIES:
                 precip = result.data.get_precipitation(duration_min, prob)
                 scenarios[(duration_str, prob)] = precip
@@ -215,7 +217,8 @@ def insert_precipitation_data(
             db_session.execute(
                 text("""
                     INSERT INTO precipitation_data
-                        (geom, duration, probability, precipitation_mm, source, updated_at)
+                        (geom, duration, probability,
+                         precipitation_mm, source, updated_at)
                     VALUES
                         (ST_SetSRID(ST_Point(:x, :y), 2180), :duration, :probability,
                          :precipitation_mm, 'IMGW_PMAXTP', :updated_at)

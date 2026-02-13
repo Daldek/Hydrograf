@@ -53,11 +53,11 @@ def mock_db_with_thresholds():
     mock_session = MagicMock()
 
     streams_rows = [MagicMock(), MagicMock(), MagicMock()]
-    for r, v in zip(streams_rows, [100, 1000, 10000]):
+    for r, v in zip(streams_rows, [100, 1000, 10000], strict=False):
         r.__getitem__ = lambda self, idx, val=v: val if idx == 0 else None
 
     catchments_rows = [MagicMock(), MagicMock()]
-    for r, v in zip(catchments_rows, [1000, 10000]):
+    for r, v in zip(catchments_rows, [1000, 10000], strict=False):
         r.__getitem__ = lambda self, idx, val=v: val if idx == 0 else None
 
     def execute_side_effect(query, params=None):
@@ -213,9 +213,7 @@ class TestCatchmentsMVT:
         """Test custom threshold for catchment tiles."""
         app.dependency_overrides[get_db] = lambda: mock_db_with_tile
 
-        response = client.get(
-            "/api/tiles/catchments/10/550/340.pbf?threshold=100000"
-        )
+        response = client.get("/api/tiles/catchments/10/550/340.pbf?threshold=100000")
 
         assert response.status_code == 200
         app.dependency_overrides.clear()

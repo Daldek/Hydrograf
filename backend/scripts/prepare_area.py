@@ -528,9 +528,7 @@ def main():
             logger.info(f"  {sheet}")
         logger.info(f"Total: {len(sheets)} sheets")
         if args.with_hydro:
-            logger.info(
-                "Would also download BDOT10k hydro data for stream burning"
-            )
+            logger.info("Would also download BDOT10k hydro data for stream burning")
         if args.with_landcover:
             logger.info(f"Would also download land cover ({args.landcover_provider})")
         return

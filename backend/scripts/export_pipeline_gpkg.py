@@ -17,7 +17,6 @@ Usage:
 
 import argparse
 import logging
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -153,9 +152,7 @@ def generate_report(
 
     # --- Input data ---
     lines.append("## Dane wejsciowe\n")
-    row = db.execute(
-        text("SELECT COUNT(*) AS cnt FROM flow_network")
-    ).fetchone()
+    row = db.execute(text("SELECT COUNT(*) AS cnt FROM flow_network")).fetchone()
     flow_count = row.cnt if row else 0
 
     row = db.execute(
@@ -170,7 +167,9 @@ def generate_report(
 
     lines.append(f"- Komorki flow_network: **{flow_count:,}**")
     if row and row.elev_min is not None:
-        lines.append(f"- Zakres elewacji: {row.elev_min:.1f} – {row.elev_max:.1f} m n.p.m.")
+        lines.append(
+            f"- Zakres elewacji: {row.elev_min:.1f} – {row.elev_max:.1f} m n.p.m."
+        )
         lines.append(f"- Sredni spadek: {row.slope_avg:.2f}%")
         lines.append(f"- Max flow accumulation: {row.fa_max:,}")
     lines.append("")
@@ -214,12 +213,10 @@ def generate_report(
     total_catchments = db.execute(
         text("SELECT COUNT(*) FROM stream_catchments")
     ).scalar()
-    total_depressions = db.execute(
-        text("SELECT COUNT(*) FROM depressions")
-    ).scalar()
+    total_depressions = db.execute(text("SELECT COUNT(*) FROM depressions")).scalar()
 
-    lines.append(f"| Tabela | Liczba rekordow |")
-    lines.append(f"|:---|:---:|")
+    lines.append("| Tabela | Liczba rekordow |")
+    lines.append("|:---|:---:|")
     lines.append(f"| flow_network | {flow_count:,} |")
     lines.append(f"| stream_network (DEM_DERIVED) | {total_streams:,} |")
     lines.append(f"| stream_catchments | {total_catchments:,} |")
@@ -277,7 +274,8 @@ def main() -> None:
         description="Export DEM pipeline results to GeoPackage"
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         required=True,
         help="Output GeoPackage path",
     )
@@ -334,15 +332,23 @@ def main() -> None:
 
         elapsed = time.time() - start
         logger.info(f"GeoPackage gotowy: {output_path} ({elapsed:.1f}s)")
-        logger.info(f"Warstwy: {len(layer_counts)}, features: {sum(layer_counts.values()):,}")
+        logger.info(
+            f"Warstwy: {len(layer_counts)}, features: {sum(layer_counts.values()):,}"
+        )
 
         # Generate report
         if args.report:
             report_path = Path(args.report)
-            intermediates_dir = Path(args.intermediates_dir) if args.intermediates_dir else None
+            intermediates_dir = (
+                Path(args.intermediates_dir) if args.intermediates_dir else None
+            )
             generate_report(
-                db, report_path, thresholds, output_path,
-                intermediates_dir, layer_counts,
+                db,
+                report_path,
+                thresholds,
+                output_path,
+                intermediates_dir,
+                layer_counts,
             )
 
 

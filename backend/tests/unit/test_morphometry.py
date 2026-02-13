@@ -430,15 +430,9 @@ class TestCalculateShapeIndices:
 
         result = calculate_shape_indices(area, perimeter, length)
 
-        assert result["compactness_coefficient"] == pytest.approx(
-            1.0, abs=0.01
-        )
-        assert result["circularity_ratio"] == pytest.approx(
-            1.0, abs=0.01
-        )
-        assert result["elongation_ratio"] == pytest.approx(
-            1.0, abs=0.01
-        )
+        assert result["compactness_coefficient"] == pytest.approx(1.0, abs=0.01)
+        assert result["circularity_ratio"] == pytest.approx(1.0, abs=0.01)
+        assert result["elongation_ratio"] == pytest.approx(1.0, abs=0.01)
 
     def test_elongated_rectangle(self):
         """Elongated rectangle: Kc > 1, Rc < 1."""
@@ -495,13 +489,9 @@ class TestCalculateReliefIndices:
         result = calculate_relief_indices(elev_stats, length_km=10.0)
 
         # Rh = (500-100) / (10*1000) = 0.04
-        assert result["relief_ratio"] == pytest.approx(
-            0.04, abs=0.001
-        )
+        assert result["relief_ratio"] == pytest.approx(0.04, abs=0.001)
         # HI = (300-100) / (500-100) = 0.5
-        assert result["hypsometric_integral"] == pytest.approx(
-            0.5, abs=0.01
-        )
+        assert result["hypsometric_integral"] == pytest.approx(0.5, abs=0.01)
 
     def test_hi_range(self):
         """HI should be between 0 and 1."""
@@ -642,22 +632,14 @@ class TestCalculateDrainageIndices:
             "n_segments": 10,
             "max_strahler_order": 3,
         }
-        result = calculate_drainage_indices(
-            stream_stats, area_km2=10.0, relief_m=400.0
-        )
+        result = calculate_drainage_indices(stream_stats, area_km2=10.0, relief_m=400.0)
 
         # Dd = 20/10 = 2.0
-        assert result["drainage_density_km_per_km2"] == pytest.approx(
-            2.0, abs=0.01
-        )
+        assert result["drainage_density_km_per_km2"] == pytest.approx(2.0, abs=0.01)
         # Fs = 10/10 = 1.0
-        assert result["stream_frequency_per_km2"] == pytest.approx(
-            1.0, abs=0.01
-        )
+        assert result["stream_frequency_per_km2"] == pytest.approx(1.0, abs=0.01)
         # Rn = (400/1000) * 2.0 = 0.8
-        assert result["ruggedness_number"] == pytest.approx(
-            0.8, abs=0.01
-        )
+        assert result["ruggedness_number"] == pytest.approx(0.8, abs=0.01)
         assert result["max_strahler_order"] == 3
 
     def test_zero_area_returns_none(self):
@@ -667,9 +649,7 @@ class TestCalculateDrainageIndices:
             "n_segments": 3,
             "max_strahler_order": 1,
         }
-        result = calculate_drainage_indices(
-            stream_stats, area_km2=0, relief_m=100.0
-        )
+        result = calculate_drainage_indices(stream_stats, area_km2=0, relief_m=100.0)
         assert all(v is None for v in result.values())
 
     def test_zero_relief_rn_none(self):
@@ -679,9 +659,7 @@ class TestCalculateDrainageIndices:
             "n_segments": 5,
             "max_strahler_order": 2,
         }
-        result = calculate_drainage_indices(
-            stream_stats, area_km2=5.0, relief_m=0
-        )
+        result = calculate_drainage_indices(stream_stats, area_km2=5.0, relief_m=0)
         assert result["ruggedness_number"] is None
         # Other indices should still work
         assert result["drainage_density_km_per_km2"] is not None
@@ -693,9 +671,7 @@ class TestCalculateDrainageIndices:
             "n_segments": 5,
             "max_strahler_order": 2,
         }
-        result = calculate_drainage_indices(
-            stream_stats, area_km2=5.0, relief_m=200.0
-        )
+        result = calculate_drainage_indices(stream_stats, area_km2=5.0, relief_m=200.0)
         expected_keys = {
             "drainage_density_km_per_km2",
             "stream_frequency_per_km2",

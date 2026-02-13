@@ -5,8 +5,10 @@ Configures the API with routers, middleware, and exception handlers.
 """
 
 import logging
+import uuid
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -25,11 +27,34 @@ from core.config import get_settings
 from core.database import get_db_session
 from core.flow_graph import get_flow_graph
 
-# Configure logging
+# Configure structured logging
 settings = get_settings()
+log_level = getattr(logging, settings.log_level)
+
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.processors.JSONRenderer()
+        if settings.log_level != "DEBUG"
+        else structlog.dev.ConsoleRenderer(),
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
 logging.basicConfig(
-    level=getattr(logging, settings.log_level),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(message)s",
+    level=log_level,
 )
 logger = logging.getLogger(__name__)
 
@@ -76,6 +101,18 @@ app.add_middleware(
     allow_headers=["Content-Type", "Accept"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+
+@app.middleware("http")
+async def add_request_id(request, call_next):
+    """Add unique request ID to each request for log traceability."""
+    request_id = str(uuid.uuid4())[:8]
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
 
 # Include routers
 app.include_router(health.router, tags=["Health"])

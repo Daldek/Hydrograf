@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import get_catchment_graph
+from core.constants import HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.land_cover import get_land_cover_for_boundary
 from core.morphometry import calculate_shape_indices
@@ -371,7 +372,6 @@ def select_stream(
         )
 
         # 10. Land cover statistics
-        HYDROGRAPH_AREA_LIMIT_KM2 = 250.0
         hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
 
         lc_stats = None

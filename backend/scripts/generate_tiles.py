@@ -61,10 +61,9 @@ def check_prerequisites() -> dict[str, str | None]:
 
 def get_thresholds(db) -> list[int]:
     """Get available FA thresholds from database."""
-    rows = db.execute(text(
-        "SELECT DISTINCT threshold_m2 "
-        "FROM stream_network ORDER BY threshold_m2"
-    )).fetchall()
+    rows = db.execute(
+        text("SELECT DISTINCT threshold_m2 FROM stream_network ORDER BY threshold_m2")
+    ).fetchall()
     return [r[0] for r in rows]
 
 
@@ -96,11 +95,13 @@ def export_geojson(
         for i, col in enumerate(columns):
             props[col] = r[i]
         geom = r[len(columns)]
-        features.append({
-            "type": "Feature",
-            "geometry": geom,
-            "properties": props,
-        })
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geom,
+                "properties": props,
+            }
+        )
 
     geojson = {
         "type": "FeatureCollection",
@@ -123,7 +124,8 @@ def run_tippecanoe(
     """Run tippecanoe to generate .mbtiles from GeoJSON."""
     cmd = [
         "tippecanoe",
-        "-o", str(output_path),
+        "-o",
+        str(output_path),
         f"-z{max_zoom}",
         f"-Z{min_zoom}",
         f"--layer={layer_name}",
@@ -162,8 +164,7 @@ def generate_tiles(output_dir: Path) -> None:
     tools = check_prerequisites()
     if not tools.get("tippecanoe"):
         logger.error(
-            "tippecanoe is required. Install: "
-            "https://github.com/felt/tippecanoe"
+            "tippecanoe is required. Install: https://github.com/felt/tippecanoe"
         )
         sys.exit(1)
 
@@ -196,14 +197,10 @@ def generate_tiles(output_dir: Path) -> None:
                         "upstream_area_km2",
                     ],
                 )
-                logger.info(
-                    f"Exported {n_streams} stream features"
-                )
+                logger.info(f"Exported {n_streams} stream features")
 
                 # Export catchments
-                catchments_json = (
-                    tmp / f"catchments_{threshold}.geojson"
-                )
+                catchments_json = tmp / f"catchments_{threshold}.geojson"
                 n_catch = export_geojson(
                     db,
                     "stream_catchments",
@@ -216,23 +213,17 @@ def generate_tiles(output_dir: Path) -> None:
                         "segment_idx",
                     ],
                 )
-                logger.info(
-                    f"Exported {n_catch} catchment features"
-                )
+                logger.info(f"Exported {n_catch} catchment features")
 
                 # Generate .mbtiles
-                streams_mbt = (
-                    output_dir / f"streams_{threshold}.mbtiles"
-                )
+                streams_mbt = output_dir / f"streams_{threshold}.mbtiles"
                 run_tippecanoe(
                     streams_json,
                     streams_mbt,
                     "streams",
                 )
 
-                catchments_mbt = (
-                    output_dir / f"catchments_{threshold}.mbtiles"
-                )
+                catchments_mbt = output_dir / f"catchments_{threshold}.mbtiles"
                 run_tippecanoe(
                     catchments_json,
                     catchments_mbt,
@@ -247,8 +238,7 @@ def generate_tiles(output_dir: Path) -> None:
                     )
                     convert_to_pmtiles(
                         catchments_mbt,
-                        output_dir
-                        / f"catchments_{threshold}.pmtiles",
+                        output_dir / f"catchments_{threshold}.pmtiles",
                     )
 
     # Write metadata
@@ -264,16 +254,13 @@ def generate_tiles(output_dir: Path) -> None:
 
     elapsed = time.time() - t0
     logger.info(
-        f"Tile generation complete: {len(thresholds)} thresholds "
-        f"in {elapsed:.1f}s"
+        f"Tile generation complete: {len(thresholds)} thresholds in {elapsed:.1f}s"
     )
     logger.info(f"Output: {output_dir}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Pre-generate MVT tiles from PostGIS"
-    )
+    parser = argparse.ArgumentParser(description="Pre-generate MVT tiles from PostGIS")
     parser.add_argument(
         "--output-dir",
         default="../frontend/tiles",
