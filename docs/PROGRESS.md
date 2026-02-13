@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 7 endpointow (+ tiles MVT): delineate, hydrograph, scenarios, profile, depressions, select-stream, health. 492 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 7 endpointow (+ tiles MVT): delineate, hydrograph, scenarios, profile, depressions, select-stream, health. 493 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -44,32 +44,42 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-13 (sesja 12)
+**Data:** 2026-02-13 (sesja 13b)
 
 ### Co zrobiono
 
-- **Select-stream z pelnymi statystykami zlewni (Z1):**
-  - Endpoint `/api/select-stream` rozszerzony o `WatershedResponse` (morfometria, land cover, krzywa hipsometryczna, ciek glowny)
-  - Schema `SelectStreamResponse` z opcjonalnym polem `watershed: WatershedResponse | None`
-  - Wzorzec z `watershed.py`: `calculate_watershed_area_km2`, `build_morphometric_params`, `get_land_cover_for_boundary`, `transform_pl1992_to_wgs84`
+- **Audyt i poprawki frontend (13 taskow, 3 fazy):**
+  - **Faza 1 — bugi:** memory leak wykresow (hydrograph.js), memory leak tooltipow (map.js), broken depressions filters (null-guard), dead code (profile.js), polling→events (layers.js)
+  - **Faza 2 — UX:** loading cursor na mapie, banner instrukcji rysowania profilu, accordion max-height 800→2000px, feedback bledow profilu, guard hydrogramu
+  - **Faza 3 — security/a11y:** CDN integrity hashes (Chart.js, VectorGrid), VectorGrid plugin guard, CSP `base-uri`+`form-action`+HSTS, ARIA (aria-live, aria-expanded, role=radiogroup, aria-checked, role=img+aria-label na canvasach), keyboard a11y (tabindex + Enter/Space na akordeonach), focus-visible styles
+  - **Cleanup:** usunieto ~55 linii dead CSS (.dual-slider)
 
-- **Siec rzeczna BDOT10k (Z2):**
-  - `get_stream_stats_in_watershed()`: `source != 'DEM_DERIVED'` (zamiast `= 'DEM_DERIVED'`)
-  - `SUM(ST_Length(ST_Intersection(...)))` dla dokladnych dlugosci w granicach zlewni
+### Poprzednia sesja (2026-02-13, sesja 13)
 
-- **Naprawa UI (Z3, Z4, Z5, Z6, Z7, Z8):**
-  - Przyciski close/minimize: `draggable.js` — early return dla `.results-btn` w `onPointerDown`
-  - Akordeony: inline `onclick` → event listenery w `app.js init()`
-  - Podklady GUGiK WMTS: ortofoto + topo w `layers.js`
-  - Suwaki przezroczystosci: `overflow-x: hidden`, `padding-left: 0.8rem`, `flex-wrap: wrap`, `box-sizing` w CSS
-  - Histogram: 10-25 klas, `height="100"`, krotsza etykiety (`Math.round(hLow)`), rotacja 45-90°
-  - Tryb "Wybor": `onSelectClick()` uzywa `displayParameters(data)` gdy `data.watershed` dostepny
+- **Naprawa 4 krytycznych bledow (post-e2e):**
+  1. **Stream burning (KRYTYCZNY):** `hydrology.py` `burn_streams_into_dem()` — wykrywanie multi-layer GeoPackage via `fiona.listlayers()`, ladowanie warstw liniowych (SWRS, SWKN, SWRM) + poligonowych (PTWP), `pd.concat`. Wczesniej czytalo domyslna warstwe (jeziora poligonowe) zamiast ciekow liniowych.
+  2. **select-stream 500:** `select_stream.py` — `segment_idx` → `id` w SQL SELECT (kolumna nie istniala w `stream_network`)
+  3. **Wydajnosc MVT:** GZip middleware (`GZipMiddleware, minimum_size=500`), migracja 011 (czesciowe indeksy GIST per threshold), cache TTL 86400s, `minZoom: 12` dla catchments, nginx `gzip_types` protobuf
+  4. **UI diagnostyka:** `console.warn` w BDOT catch blocks, CSP `img-src` += `mapy.geoportal.gov.pl`
 
-- **Testy integracyjne select-stream (Z9):**
-  - 8 testow: sukces, watershed, morfometria, upstream segments, 404 brak cieku, 404 brak segmentu, 422 invalid coords, 422 missing threshold
-  - Wzorzec z `test_watershed.py`: TestClient + MagicMock + `app.dependency_overrides`
+- **Re-run pipeline z poprawionym stream burning:**
+  - process_dem: 927.6s, 19.67M records, 4 warstwy BDOT10k zaladowane (10726 features), 1,073,455 cells burned
+  - max_acc: 8,846,427 (vs 3.45M przed — poprawa o 156% dzieki poprawnemu stream burning)
+  - generate_depressions: 602,092 zaglebie w 59.9s
+  - export_pipeline_gpkg: 9 warstw, 777,455 features
+  - generate_dem_tiles: 267 kafelkow, 15.5 MB
+  - BDOT GeoJSON: 3529 jezior, 7197 ciekow
 
-- **Laczny wynik:** 492 testy, wszystkie przechodza
+- **Weryfikacja endpointow:**
+  - `/health` — 200, `select-stream` — 200 (brak 500), MVT streams — 44 KB → 26 KB z GZip (41%), catchments — 394 KB → 146 KB (64%)
+
+- **Laczny wynik:** 493 testy, wszystkie przechodza
+
+### Poprzednia sesja (2026-02-13, sesja 12)
+
+- **Select-stream z pelnymi statystykami zlewni, siec rzeczna BDOT10k, naprawy UI**
+- **8 testow integracyjnych select-stream**
+- 492 testy
 
 ### Poprzednia sesja (2026-02-13, sesja 11)
 
@@ -124,24 +134,23 @@
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
-| flow_network | 19,667,650 | 4 progi FA, re-run z endorheic lakes |
-| stream_network | 86,789 | 100: 78101, 1000: 7784, 10000: 812, 100000: 92 (17 geohash collisions) |
+| flow_network | 19,667,662 | 4 progi FA, re-run z poprawionym stream burning |
+| stream_network | 86,789 | 100: 78101, 1000: 7784, 10000: 812, 100000: 92 |
 | stream_catchments | 86,806 | 100: 78113, 1000: 7788, 10000: 813, 100000: 92 |
-| depressions | 581,553 | vol=1.16M m³, max_depth=7.01 m |
+| depressions | 602,092 | re-run po poprawionym stream burning |
 
 ### Znane problemy
-- Frontend wymaga dalszego audytu jakosci kodu
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
 - Flow graph: `downstream_id` nie jest przechowywany w pamięci (zwracany jako None) — nie uzywany przez callery
 - 17 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
-- Pliki `bdot_*.geojson` sa statyczne — po re-run pipeline wymagaja ponownego eksportu
 - Endpoint `select-stream` wymaga zaladowanego flow graph (lub SQL fallback) + stream_network w bazie
+- 21 ruff check warnings w plikach nie modyfikowanych w tej sesji (hydrograph.py, watershed.py, morphometry.py, export_pipeline_gpkg.py)
 
 ### Nastepne kroki
-1. Wygenerowanie kafelkow DEM: `python -m scripts.generate_dem_tiles --input ... --output-dir ../frontend/data/dem_tiles --meta ../frontend/data/dem_tiles.json --source-crs EPSG:2180`
-2. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
-3. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
-4. Dlug techniczny: constants.py, hardcoded secrets
+1. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
+2. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
+3. Dlug techniczny: constants.py, hardcoded secrets
+4. Naprawa 21 ruff check warnings w starszych plikach
 5. CP5: MVP — pelna integracja, deploy
 
 ## Backlog

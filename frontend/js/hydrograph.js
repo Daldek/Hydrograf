@@ -9,6 +9,7 @@
     window.Hydrograf = window.Hydrograf || {};
 
     var scenariosLoaded = false;
+    var _charts = {};
 
     /**
      * Fetch available scenarios and populate dropdowns.
@@ -54,6 +55,7 @@
     async function generateHydrograph() {
         var data = Hydrograf.app.getCurrentWatershed();
         if (!data) return;
+        if (!data.watershed.hydrograph_available) return;
 
         var outlet = data.watershed.outlet;
         var duration = document.getElementById('hydro-duration').value;
@@ -100,12 +102,12 @@
      * Render hydrograph (discharge vs time) chart.
      */
     function renderHydrographChart(hydro) {
-        Hydrograf.charts.destroyChart('chart-hydrograph');
+        if (_charts['chart-hydrograph']) { _charts['chart-hydrograph'].destroy(); }
 
         var canvas = document.getElementById('chart-hydrograph');
         if (!canvas || typeof Chart === 'undefined') return;
 
-        new Chart(canvas, {
+        _charts['chart-hydrograph'] = new Chart(canvas, {
             type: 'line',
             data: {
                 labels: hydro.times_min,
@@ -153,12 +155,12 @@
      * Render hietogram (precipitation intensities) chart.
      */
     function renderHietogramChart(precip) {
-        Hydrograf.charts.destroyChart('chart-hietogram');
+        if (_charts['chart-hietogram']) { _charts['chart-hietogram'].destroy(); }
 
         var canvas = document.getElementById('chart-hietogram');
         if (!canvas || typeof Chart === 'undefined') return;
 
-        new Chart(canvas, {
+        _charts['chart-hietogram'] = new Chart(canvas, {
             type: 'bar',
             data: {
                 labels: precip.times_min,
