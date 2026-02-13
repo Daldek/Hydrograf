@@ -7,7 +7,7 @@ by sampling the flow_network elevation data.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,7 @@ router = APIRouter()
 @router.post("/terrain-profile", response_model=TerrainProfileResponse)
 def terrain_profile(
     request: TerrainProfileRequest,
+    response: Response,
     db: Session = Depends(get_db),
 ) -> TerrainProfileResponse:
     """
@@ -90,13 +91,14 @@ def terrain_profile(
             SELECT
                 p.idx,
                 p.distance_m,
-                (
-                    SELECT fn.elevation
-                    FROM flow_network fn
-                    ORDER BY fn.geom <-> p.geom
-                    LIMIT 1
-                ) AS elevation_m
+                nearest.elevation AS elevation_m
             FROM points p
+            CROSS JOIN LATERAL (
+                SELECT fn.elevation
+                FROM flow_network fn
+                ORDER BY fn.geom <-> p.geom
+                LIMIT 1
+            ) AS nearest
             ORDER BY p.idx
         """)
 
@@ -112,6 +114,7 @@ def terrain_profile(
         elevations = [float(r.elevation_m) for r in result]
         total_length = distances[-1] if distances else 0.0
 
+        response.headers["Cache-Control"] = "public, max-age=3600"
         return TerrainProfileResponse(
             distances_m=distances,
             elevations_m=elevations,

@@ -9,7 +9,7 @@ boundary with full morphometry. Zero raster operations in runtime.
 import logging
 import math
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from shapely import wkb
 from shapely.geometry import MultiPolygon
 from sqlalchemy import text
@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from core.catchment_graph import get_catchment_graph
 from core.database import get_db
 from core.land_cover import get_land_cover_for_boundary
+from core.morphometry import calculate_shape_indices
 from models.schemas import (
     HypsometricPoint,
     LandCoverCategory,
@@ -146,40 +147,6 @@ def _get_outlet_elevation(
     return result.elevation if result else None
 
 
-def _compute_shape_indices(
-    area_km2: float,
-    perimeter_km: float,
-    length_km: float,
-) -> dict:
-    """Compute shape indices from area, perimeter, and length."""
-    result = {}
-
-    if area_km2 > 0 and perimeter_km > 0:
-        # Gravelius compactness coefficient Kc = P / (2 * sqrt(pi * A))
-        result["compactness_coefficient"] = round(
-            perimeter_km / (2 * math.sqrt(math.pi * area_km2)),
-            4,
-        )
-        # Miller circularity ratio Rc = 4*pi*A / P^2
-        result["circularity_ratio"] = round(
-            4 * math.pi * area_km2 / (perimeter_km**2),
-            4,
-        )
-
-    if area_km2 > 0 and length_km > 0:
-        # Schumm elongation ratio Re = 2*sqrt(A/pi) / L
-        result["elongation_ratio"] = round(
-            2 * math.sqrt(area_km2 / math.pi) / length_km,
-            4,
-        )
-        # Horton form factor Ff = A / L^2
-        result["form_factor"] = round(area_km2 / (length_km**2), 4)
-        # Mean width
-        result["mean_width_km"] = round(area_km2 / length_km, 4)
-
-    return result
-
-
 def _compute_watershed_length(
     boundary,
     outlet_x: float,
@@ -234,6 +201,7 @@ def _get_main_stream_geojson(
 @router.post("/select-stream", response_model=SelectStreamResponse)
 def select_stream(
     request: SelectStreamRequest,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     """
@@ -348,7 +316,7 @@ def select_stream(
             _compute_watershed_length(boundary_2180, outlet_x, outlet_y),
             4,
         )
-        shape_indices = _compute_shape_indices(area_km2, perimeter_km, length_km)
+        shape_indices = calculate_shape_indices(area_km2, perimeter_km, length_km)
 
         # Relief indices
         relief_ratio = None
@@ -467,6 +435,7 @@ def select_stream(
             main_stream_geojson=main_stream_geojson,
         )
 
+        response.headers["Cache-Control"] = "public, max-age=3600"
         return SelectStreamResponse(
             stream=StreamInfo(
                 segment_idx=segment["segment_idx"],

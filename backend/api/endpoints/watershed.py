@@ -7,7 +7,7 @@ based on a clicked point location.
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from core.database import get_db
@@ -46,6 +46,7 @@ HYDROGRAPH_AREA_LIMIT_KM2 = 250.0
 @router.post("/delineate-watershed", response_model=DelineateResponse)
 def delineate_watershed(
     request: DelineateRequest,
+    response: Response,
     include_hypsometric_curve: bool = False,
     db: Session = Depends(get_db),
 ) -> DelineateResponse:
@@ -78,7 +79,8 @@ def delineate_watershed(
     """
     try:
         logger.info(
-            f"Delineating watershed for ({request.latitude:.6f}, {request.longitude:.6f})"
+            "Delineating watershed for "
+            f"({request.latitude:.6f}, {request.longitude:.6f})"
         )
 
         # 1. Transform WGS84 -> PL-1992
@@ -170,7 +172,7 @@ def delineate_watershed(
             logger.debug(f"Land cover stats not available: {e}")
 
         # 14. Build response
-        response = DelineateResponse(
+        result = DelineateResponse(
             watershed=WatershedResponse(
                 boundary_geojson=boundary_geojson,
                 outlet=OutletInfo(
@@ -194,7 +196,8 @@ def delineate_watershed(
             f"hydrograph={'available' if hydrograph_available else 'unavailable'}"
         )
 
-        return response
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        return result
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
