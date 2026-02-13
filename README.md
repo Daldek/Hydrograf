@@ -4,7 +4,7 @@ System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fiz
 
 ## Status
 
-🚧 **W budowie** - CP3 osiągnięty (Hydrograph generation)
+🚧 **W budowie** - CP4 osiągnięty (Frontend z mapą interaktywną)
 
 ### Dostępne endpointy
 
@@ -14,6 +14,12 @@ System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fiz
 | `POST /api/delineate-watershed` | Wyznaczanie zlewni (GeoJSON) | ✅ |
 | `POST /api/generate-hydrograph` | Generowanie hydrogramu | ✅ |
 | `GET /api/scenarios` | Lista dostępnych scenariuszy | ✅ |
+| `POST /api/terrain-profile` | Profil terenu wzdłuż cieku | ✅ |
+| `GET /api/depressions` | Zagłębienia terenu (blue spots) | ✅ |
+| `POST /api/select-stream` | Wybór cieku i zlewnia cząstkowa | ✅ |
+| `GET /api/tiles/streams/{z}/{x}/{y}.pbf` | Kafelki MVT — cieki | ✅ |
+| `GET /api/tiles/catchments/{z}/{x}/{y}.pbf` | Kafelki MVT — zlewnie cząstkowe | ✅ |
+| `GET /api/tiles/thresholds` | Dostępne progi akumulacji | ✅ |
 
 ### Przykład użycia API
 
@@ -275,7 +281,7 @@ Wersjonowanie semantyczne (`vMAJOR.MINOR.PATCH`):
 | `v0.2.0` | CP2 | Wyznaczanie zlewni ✅ |
 | `v0.2.1` | - | Fix: poprawne wypełnianie zagłębień ✅ |
 | `v0.3.0` | CP3 | Generowanie hydrogramu ✅ |
-| `v0.4.0` | CP4 | Frontend z mapą |
+| `v0.4.0` | CP4 | Frontend z mapą interaktywną ✅ |
 | `v1.0.0` | CP5 | MVP |
 
 ### Workflow dla kontrybutorów

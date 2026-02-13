@@ -792,9 +792,10 @@ migrations/
     ├── 007_create_stream_catchments.py
     ├── 008_add_depressions_filter_indexes.py
     ├── 009_add_stream_source_partial_index.py
-    ├── 010_fix_stream_unique_index.py
+    ├── 010_fix_stream_unique_constraint.py
     ├── 011_add_tile_spatial_indexes.py
-    └── 012_extend_stream_catchments.py
+    ├── 012_extend_stream_catchments.py
+    └── 013_add_stream_partial_index.py
 ```
 
 **Przykład migracji:**

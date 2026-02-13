@@ -62,15 +62,17 @@ backend/
 │   ├── main.py              # FastAPI app instance, CORS, middleware
 │   └── endpoints/           # Endpointy REST API
 │       ├── watershed.py     # POST /api/delineate-watershed
-│       ├── hydrograph.py    # POST /api/generate-hydrograph
+│       ├── hydrograph.py    # POST /api/generate-hydrograph, GET /api/scenarios
 │       ├── profile.py       # POST /api/terrain-profile
 │       ├── depressions.py   # GET /api/depressions
-│       ├── tiles.py         # GET /api/tiles/{streams|catchments}/{z}/{x}/{y}.pbf
+│       ├── tiles.py         # GET /api/tiles/{streams|catchments}/{z}/{x}/{y}.pbf, GET /api/tiles/thresholds
 │       ├── select_stream.py # POST /api/select-stream
 │       └── health.py        # GET /health
 │
 ├── core/                    # Logika biznesowa
+│   ├── catchment_graph.py   # Graf zlewni czastkowych in-memory (BFS, ~87k nodes, ~8 MB)
 │   ├── config.py            # Settings (Pydantic, zmienne srodowiskowe)
+│   ├── constants.py         # Stale projektowe (CRS, jednostki, limity)
 │   ├── database.py          # Connection pool (SQLAlchemy + PostGIS)
 │   ├── watershed.py         # Wyznaczanie zlewni (traverse_upstream, build_boundary)
 │   ├── morphometry.py       # Parametry fizjograficzne (area, slope, length)
@@ -100,9 +102,14 @@ backend/
 │   ├── generate_depressions.py # Generowanie zaglebie (blue spots)
 │   ├── generate_tiles.py    # Pre-generacja kafelkow MVT (tippecanoe)
 │   ├── generate_dem_tiles.py # Piramida kafelkow DEM (XYZ)
+│   ├── generate_dem_overlay.py # Kolorowa nakladka PNG z DEM dla Leaflet
+│   ├── generate_streams_overlay.py # Nakladka PNG z rzedami ciekow (Strahler)
 │   ├── export_pipeline_gpkg.py # Export GeoPackage + raport
+│   ├── export_task9_gpkg.py # Export wynikow E2E Task 9 do GeoPackage
+│   ├── e2e_task9.py         # Test E2E wyznaczania zlewni (OOM safeguards)
 │   ├── analyze_watershed.py # Pelna analiza zlewni (CLI)
 │   ├── prepare_area.py      # Pobieranie + przetwarzanie obszaru
+│   ├── preprocess_precipitation.py # Pobieranie danych opadowych IMGW do bazy
 │   ├── download_dem.py      # Pobieranie NMT przez Kartograf
 │   ├── download_landcover.py # Pobieranie pokrycia terenu
 │   └── import_landcover.py  # Import pokrycia do bazy
