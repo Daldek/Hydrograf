@@ -11,6 +11,7 @@
 
     var currentBaseLayer = null;
     var baseLayers = {};
+    var _notifyWatershedChanged = null;
 
     /**
      * Create a group header element.
@@ -603,24 +604,21 @@
 
         list.appendChild(watershedItem);
 
-        // Watch for watershed layer changes (check periodically)
-        var _lastWatershedLayer = null;
-        setInterval(function () {
+        // Notify callback — called by app.js when watershed layer changes
+        _notifyWatershedChanged = function () {
             var layer = Hydrograf.map.getWatershedLayer();
-            if (layer && layer !== _lastWatershedLayer) {
-                _lastWatershedLayer = layer;
+            if (layer) {
                 whCb.disabled = false;
                 whCb.checked = true;
                 whHint.textContent = '';
                 whSliderRow.classList.remove('d-none');
-            } else if (!layer && _lastWatershedLayer) {
-                _lastWatershedLayer = null;
+            } else {
                 whCb.disabled = true;
                 whCb.checked = false;
                 whHint.textContent = '(wyznacz najpierw)';
                 whSliderRow.classList.add('d-none');
             }
-        }, 500);
+        };
 
         // Depressions entry will be added by depressions.js if available
     }
@@ -629,5 +627,8 @@
         init: init,
         addOverlayEntry: addOverlayEntry,
         createGroupHeader: createGroupHeader,
+        notifyWatershedChanged: function () {
+            if (_notifyWatershedChanged) _notifyWatershedChanged();
+        },
     };
 })();

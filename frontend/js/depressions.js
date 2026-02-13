@@ -76,10 +76,16 @@
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(function () {
             // Read slider values (if they exist)
-            var minVol = parseFloat(document.getElementById('dep-vol-min')?.value || '0');
-            var maxVol = parseFloat(document.getElementById('dep-vol-max')?.value || '999999');
-            var minArea = parseFloat(document.getElementById('dep-area-min')?.value || '0');
-            var maxArea = parseFloat(document.getElementById('dep-area-max')?.value || '999999');
+            var volMinEl = document.getElementById('dep-vol-min');
+            var volMaxEl = document.getElementById('dep-vol-max');
+            var areaMinEl = document.getElementById('dep-area-min');
+            var areaMaxEl = document.getElementById('dep-area-max');
+            if (!volMinEl || !volMaxEl || !areaMinEl || !areaMaxEl) return;
+
+            var minVol = parseFloat(volMinEl.value || '0');
+            var maxVol = parseFloat(volMaxEl.value || '999999');
+            var minArea = parseFloat(areaMinEl.value || '0');
+            var maxArea = parseFloat(areaMaxEl.value || '999999');
 
             fetchFiltered(minVol, maxVol, minArea, maxArea).then(function (geojson) {
                 // Clear old layer

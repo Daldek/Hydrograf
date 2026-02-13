@@ -173,6 +173,7 @@
 
     function setLoading(loading) {
         state.isLoading = loading;
+        Hydrograf.map.setLoadingCursor(loading);
 
         if (loading) {
             showPanel();
@@ -247,6 +248,8 @@
 
             displayParameters(data);
             els.results.classList.remove('d-none');
+
+            if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
         } catch (err) {
             Hydrograf.map.clearWatershed();
             showError(err.message);
@@ -279,12 +282,13 @@
                 Hydrograf.map.highlightUpstreamCatchments(data.upstream_segment_indices);
             }
 
+            if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
+
             // Display full watershed stats if available, otherwise fallback to stream info
             if (data.watershed) {
                 state.currentWatershed = data;
 
-                // Show watershed boundary and outlet on map
-                Hydrograf.map.showWatershed(data.watershed.boundary_geojson);
+                // Show outlet marker (but NOT watershed polygon — selection boundary is enough)
                 var outlet = data.watershed.outlet;
                 Hydrograf.map.showOutlet(outlet.latitude, outlet.longitude, outlet.elevation_m);
 
@@ -354,6 +358,7 @@
         var btn = document.getElementById('layers-toggle');
         panel.classList.toggle('layers-hidden');
         btn.classList.toggle('layers-open');
+        btn.setAttribute('aria-expanded', String(!panel.classList.contains('layers-hidden')));
     }
 
     /**
@@ -368,12 +373,15 @@
         if (btnWatershed && btnSelect) {
             btnWatershed.classList.toggle('mode-btn-active', mode === 'watershed');
             btnSelect.classList.toggle('mode-btn-active', mode === 'select');
+            btnWatershed.setAttribute('aria-checked', String(mode === 'watershed'));
+            btnSelect.setAttribute('aria-checked', String(mode === 'select'));
         }
 
         // Clear previous results when switching mode
         Hydrograf.map.clearWatershed();
         Hydrograf.map.clearCatchmentHighlights();
         Hydrograf.map.clearSelectionBoundary();
+        if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
         hidePanel();
     }
 
@@ -414,8 +422,15 @@
 
         // Accordion collapse/expand (replaces inline onclick)
         document.querySelectorAll('.glass-accordion-header').forEach(function (header) {
+            header.setAttribute('tabindex', '0');
             header.addEventListener('click', function () {
                 this.parentElement.classList.toggle('collapsed');
+            });
+            header.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.parentElement.classList.toggle('collapsed');
+                }
             });
         });
 

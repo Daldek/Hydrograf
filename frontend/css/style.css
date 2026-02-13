@@ -320,68 +320,16 @@
     color: var(--color-text);
 }
 
-/* ============ DUAL RANGE SLIDERS (depressions) ============ */
-.dual-slider {
-    position: relative;
-    height: 24px;
-    margin: 4px 0;
-}
-
-.dual-slider input[type="range"] {
+/* ============ DRAWING INSTRUCTIONS BANNER ============ */
+.draw-banner {
     position: absolute;
-    width: 100%;
-    pointer-events: none;
-    appearance: none;
-    -webkit-appearance: none;
-    height: 4px;
-    background: transparent;
-    top: 10px;
-}
-
-.dual-slider input[type="range"]::-webkit-slider-thumb {
-    pointer-events: all;
-    appearance: none;
-    -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    background: var(--color-primary);
-    border-radius: 50%;
-    cursor: pointer;
-}
-
-.dual-slider input[type="range"]::-moz-range-thumb {
-    pointer-events: all;
-    width: 14px;
-    height: 14px;
-    background: var(--color-primary);
-    border-radius: 50%;
-    border: none;
-    cursor: pointer;
-}
-
-.dual-slider-track {
-    position: absolute;
-    height: 4px;
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 2px;
-    top: 10px;
-    width: 100%;
-}
-
-.dual-slider-range {
-    position: absolute;
-    height: 4px;
-    background: var(--color-primary);
-    border-radius: 2px;
-    top: 10px;
-}
-
-.dual-slider-values {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.7rem;
-    color: var(--color-text-secondary);
-    margin-top: 2px;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    padding: 6px 16px;
+    font-size: 0.8rem;
+    white-space: nowrap;
 }
 
 /* ============ PROFILE ACTIONS ============ */
@@ -495,4 +443,15 @@
     .layers-toggle.layers-open {
         left: 210px;
     }
+}
+
+/* ============ FOCUS-VISIBLE ============ */
+.mode-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.layer-item:focus-within {
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 6px;
 }

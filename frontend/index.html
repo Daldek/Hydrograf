@@ -25,7 +25,7 @@
     <!-- Navbar -->
     <nav class="navbar navbar-dark navbar-glass px-3">
         <span class="navbar-brand mb-0 h1">Hydrograf</span>
-        <span class="navbar-text d-none d-md-inline" id="system-status"></span>
+        <span class="navbar-text d-none d-md-inline" id="system-status" aria-live="polite"></span>
     </nav>
 
     <!-- Full-screen map -->
@@ -37,14 +37,17 @@
             <h6 class="layers-header">Warstwy</h6>
             <div id="layers-list"></div>
         </div>
-        <button id="layers-toggle" class="layers-toggle glass-panel" title="Warstwy">&#9776;</button>
+        <button id="layers-toggle" class="layers-toggle glass-panel" title="Warstwy" aria-label="Warstwy" aria-expanded="false">&#9776;</button>
+
+        <!-- Drawing instructions banner -->
+        <div id="draw-instructions" class="draw-banner d-none glass-panel">Klik = wierzchołek, Podwójny klik = zakończ, Esc = anuluj</div>
 
         <!-- Click mode toolbar -->
-        <div id="mode-toolbar" class="mode-toolbar glass-panel">
-            <button id="mode-watershed" class="mode-btn mode-btn-active" title="Wyznacz zlewnię">
+        <div id="mode-toolbar" class="mode-toolbar glass-panel" role="radiogroup" aria-label="Tryb kliknięcia">
+            <button id="mode-watershed" class="mode-btn mode-btn-active" title="Wyznacz zlewnię" role="radio" aria-checked="true">
                 <span>Zlewnia</span>
             </button>
-            <button id="mode-select" class="mode-btn" title="Wybierz obiekt">
+            <button id="mode-select" class="mode-btn" title="Wybierz obiekt" role="radio" aria-checked="false">
                 <span>Wybór</span>
             </button>
         </div>
@@ -113,7 +116,7 @@
                     </div>
                     <div class="glass-accordion-body">
                         <table class="table table-sm param-table"><tbody id="params-relief"></tbody></table>
-                        <canvas id="chart-hypsometric" height="100"></canvas>
+                        <canvas id="chart-hypsometric" height="20" role="img" aria-label="Histogram wysokości"></canvas>
                     </div>
                 </div>
 
@@ -135,7 +138,7 @@
                         <span class="glass-accordion-chevron">&#9660;</span>
                     </div>
                     <div class="glass-accordion-body">
-                        <canvas id="chart-landcover" height="180"></canvas>
+                        <canvas id="chart-landcover" height="180" role="img" aria-label="Wykres pokrycia terenu"></canvas>
                     </div>
                 </div>
 
@@ -161,7 +164,7 @@
                             <button id="btn-profile-auto" class="btn btn-sm btn-outline-primary me-1">Ciek główny</button>
                             <button id="btn-profile-draw" class="btn btn-sm btn-outline-secondary">Rysuj linię</button>
                         </div>
-                        <canvas id="chart-profile" height="140"></canvas>
+                        <canvas id="chart-profile" height="140" role="img" aria-label="Profil terenu"></canvas>
                     </div>
                 </div>
 
@@ -187,8 +190,8 @@
                         </div>
                         <div id="hydrograph-results" class="d-none">
                             <div id="hydro-summary" class="small text-secondary mb-1"></div>
-                            <canvas id="chart-hydrograph" height="160"></canvas>
-                            <canvas id="chart-hietogram" height="100" class="mt-2"></canvas>
+                            <canvas id="chart-hydrograph" height="160" role="img" aria-label="Hydrogram odpływu"></canvas>
+                            <canvas id="chart-hietogram" height="100" class="mt-2" role="img" aria-label="Hietogram opadu"></canvas>
                             <div id="hydro-balance" class="mt-2"></div>
                         </div>
                         <div id="hydrograph-info" class="mt-1"></div>
@@ -215,10 +218,12 @@
 
     <!-- Chart.js 4.4.7 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+            integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC"
             crossorigin="anonymous"></script>
 
     <!-- Leaflet.VectorGrid 1.3.0 (MVT support) -->
     <script src="https://unpkg.com/leaflet.vectorgrid@1.3.0/dist/Leaflet.VectorGrid.bundled.min.js"
+            integrity="sha384-QDTA8MXPewzk8Ryt7UyfUmk+WcHcVYLcxAydowJk1WPgwjdXOIlJIDz25ITLVwTl"
             crossorigin="anonymous"></script>
 
     <!-- Application modules -->
