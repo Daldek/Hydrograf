@@ -33,7 +33,16 @@
     z-index: 1000;
     padding: 0.5rem;
     overflow-y: auto;
+    overflow-x: hidden;
     transition: transform var(--transition-default), opacity var(--transition-default);
+}
+
+#layers-panel * {
+    box-sizing: border-box;
+}
+
+#layers-panel .form-select-sm {
+    max-width: 110px;
 }
 
 #layers-panel.layers-hidden {
@@ -124,8 +133,9 @@
 .layer-opacity {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.3rem;
-    padding: 0.2rem 0 0 1.4rem;
+    padding: 0.2rem 0 0 0.8rem;
     font-size: 0.75rem;
     color: var(--color-text-secondary);
 }

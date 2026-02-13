@@ -63,6 +63,10 @@ backend/
 │   └── endpoints/           # Endpointy REST API
 │       ├── watershed.py     # POST /api/delineate-watershed
 │       ├── hydrograph.py    # POST /api/generate-hydrograph
+│       ├── profile.py       # POST /api/terrain-profile
+│       ├── depressions.py   # GET /api/depressions
+│       ├── tiles.py         # GET /api/tiles/{streams|catchments}/{z}/{x}/{y}.pbf
+│       ├── select_stream.py # POST /api/select-stream
 │       └── health.py        # GET /health
 │
 ├── core/                    # Logika biznesowa
@@ -79,7 +83,8 @@ backend/
 │   ├── morphometry_raster.py # Nachylenie, aspekt, TWI, Strahler
 │   ├── stream_extraction.py # Wektoryzacja ciekow, zlewnie czastkowe
 │   ├── db_bulk.py           # Bulk INSERT via COPY, timeout management
-│   └── zonal_stats.py       # Statystyki strefowe (bincount, max)
+│   ├── zonal_stats.py       # Statystyki strefowe (bincount, max)
+│   └── flow_graph.py        # Graf przeplywu in-memory (scipy sparse CSR)
 │
 ├── models/
 │   └── schemas.py           # Modele Pydantic (request/response)
@@ -87,11 +92,14 @@ backend/
 ├── utils/
 │   ├── geometry.py          # Operacje geometryczne (CRS, transformacje)
 │   ├── raster_utils.py      # Narzedzia rastrowe (resample, polygonize)
+│   ├── dem_color.py         # Wspolny modul kolorow DEM (colormap, hillshade)
 │   └── sheet_finder.py      # Wyszukiwanie arkuszy NMT
 │
 ├── scripts/                 # Skrypty CLI (preprocessing)
 │   ├── process_dem.py       # Import NMT do bazy (orchestrator → core/)
 │   ├── generate_depressions.py # Generowanie zaglebie (blue spots)
+│   ├── generate_tiles.py    # Pre-generacja kafelkow MVT (tippecanoe)
+│   ├── generate_dem_tiles.py # Piramida kafelkow DEM (XYZ)
 │   ├── export_pipeline_gpkg.py # Export GeoPackage + raport
 │   ├── analyze_watershed.py # Pelna analiza zlewni (CLI)
 │   ├── prepare_area.py      # Pobieranie + przetwarzanie obszaru

@@ -244,8 +244,8 @@
             return a.relative_height - b.relative_height;
         });
 
-        // Determine number of bands (max 10, min step 1m)
-        var nBands = Math.min(10, Math.max(3, Math.round(elevRange / 10)));
+        // Determine number of bands (10-25, ~5m per band)
+        var nBands = Math.max(10, Math.min(25, Math.round(elevRange / 5)));
         var bandSize = elevRange / nBands;
 
         var labels = [];
@@ -268,7 +268,7 @@
             var pct = (areaAboveLow - areaAboveHigh) * 100;
             if (pct < 0) pct = 0;
 
-            labels.push(Math.round(hLow) + '–' + Math.round(hHigh));
+            labels.push(Math.round(hLow));
             data.push(Math.round(pct * 10) / 10);
         }
 
@@ -297,8 +297,8 @@
                 },
                 scales: {
                     x: {
-                        title: { display: true, text: 'Wysokość [m n.p.m.]', font: { size: 10 } },
-                        ticks: { font: { size: 8 }, maxRotation: 45 },
+                        title: { display: true, text: 'Wysokość [m n.p.m.]', font: { size: 9 } },
+                        ticks: { font: { size: 7 }, maxRotation: 90, minRotation: 45 },
                     },
                     y: {
                         title: { display: true, text: 'Powierzchnia [%]', font: { size: 10 } },

@@ -2,7 +2,8 @@
 Stream selection endpoint.
 
 Selects a stream segment, traverses upstream, and returns the upstream
-catchment boundary and segment indices for frontend highlighting.
+catchment boundary and segment indices for frontend highlighting,
+along with full watershed statistics (morphometry, land cover, etc.).
 """
 
 import logging
@@ -12,18 +13,28 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.database import get_db
+from core.land_cover import get_land_cover_for_boundary
+from core.morphometry import build_morphometric_params
 from core.watershed import (
     build_boundary,
+    calculate_watershed_area_km2,
     find_nearest_stream,
     traverse_upstream,
 )
 from models.schemas import (
+    HypsometricPoint,
+    LandCoverCategory,
+    LandCoverStats,
+    MorphometricParameters,
+    OutletInfo,
     SelectStreamRequest,
     SelectStreamResponse,
     StreamInfo,
+    WatershedResponse,
 )
 from utils.geometry import (
     polygon_to_geojson_feature,
+    transform_pl1992_to_wgs84,
     transform_polygon_pl1992_to_wgs84,
     transform_wgs84_to_pl1992,
 )
@@ -122,6 +133,78 @@ def select_stream(
             boundary_2180.wkt, request.threshold_m2, db
         )
 
+        # 6. Compute full watershed statistics
+        HYDROGRAPH_AREA_LIMIT_KM2 = 250.0
+        area_km2 = calculate_watershed_area_km2(cells)
+        hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
+
+        morph_dict = build_morphometric_params(
+            cells,
+            boundary_2180,
+            outlet,
+            db=db,
+            include_hypsometric_curve=True,
+            include_stream_coords=True,
+        )
+
+        # Transform outlet to WGS84
+        outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet.x, outlet.y)
+
+        # Extract hypsometric curve
+        hypso_data = morph_dict.pop("hypsometric_curve", None)
+        hypso_curve = None
+        if hypso_data:
+            hypso_curve = [HypsometricPoint(**p) for p in hypso_data]
+
+        # Extract and transform main stream coords to WGS84 GeoJSON
+        stream_coords_2180 = morph_dict.pop("main_stream_coords", None)
+        main_stream_geojson = None
+        if stream_coords_2180 and len(stream_coords_2180) >= 2:
+            wgs84_coords = [
+                list(transform_pl1992_to_wgs84(x, y)) for x, y in stream_coords_2180
+            ]
+            main_stream_geojson = {
+                "type": "LineString",
+                "coordinates": wgs84_coords,
+            }
+
+        # Get land cover statistics
+        lc_stats = None
+        try:
+            lc_data = get_land_cover_for_boundary(boundary_2180, db)
+            if lc_data:
+                lc_stats = LandCoverStats(
+                    categories=[
+                        LandCoverCategory(
+                            category=cat["category"],
+                            percentage=cat["percentage"],
+                            area_m2=cat["area_m2"],
+                            cn_value=cat["cn_value"],
+                        )
+                        for cat in lc_data["categories"]
+                    ],
+                    weighted_cn=lc_data["weighted_cn"],
+                    weighted_imperviousness=lc_data["weighted_imperviousness"],
+                )
+        except Exception as e:
+            logger.debug(f"Land cover stats not available: {e}")
+
+        watershed_response = WatershedResponse(
+            boundary_geojson=boundary_geojson,
+            outlet=OutletInfo(
+                latitude=outlet_lat,
+                longitude=outlet_lon,
+                elevation_m=outlet.elevation,
+            ),
+            cell_count=len(cells),
+            area_km2=round(area_km2, 2),
+            hydrograph_available=hydrograph_available,
+            morphometry=MorphometricParameters(**morph_dict),
+            hypsometric_curve=hypso_curve,
+            land_cover_stats=lc_stats,
+            main_stream_geojson=main_stream_geojson,
+        )
+
         return SelectStreamResponse(
             stream=StreamInfo(
                 segment_idx=segment["segment_idx"],
@@ -131,6 +214,7 @@ def select_stream(
             ),
             upstream_segment_indices=upstream_indices,
             boundary_geojson=boundary_geojson,
+            watershed=watershed_response,
         )
 
     except HTTPException:

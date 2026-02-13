@@ -448,6 +448,20 @@
             });
         });
 
+        createBaseLayerEntry(list, 'gugik-orto', 'Ortofotomapa (GUGiK)', function () {
+            return L.tileLayer('https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/HighResolution?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTOFOTOMAPA&STYLE=default&FORMAT=image/jpeg&TILEMATRIXSET=EPSG:3857&TILEMATRIX=EPSG:3857:{z}&TILEROW={y}&TILECOL={x}', {
+                attribution: '&copy; <a href="https://www.geoportal.gov.pl">GUGiK</a>',
+                maxZoom: 19,
+            });
+        });
+
+        createBaseLayerEntry(list, 'gugik-topo', 'Mapa topograficzna (GUGiK)', function () {
+            return L.tileLayer('https://mapy.geoportal.gov.pl/wss/service/WMTS/guest/wmts/TOPO?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=MAPA_TOPOGRAFICZNA&STYLE=default&FORMAT=image/jpeg&TILEMATRIXSET=EPSG:3857&TILEMATRIX=EPSG:3857:{z}&TILEROW={y}&TILECOL={x}', {
+                attribution: '&copy; <a href="https://www.geoportal.gov.pl">GUGiK</a>',
+                maxZoom: 18,
+            });
+        });
+
         createBaseLayerEntry(list, 'topo', 'OpenTopoMap', function () {
             return L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>',

@@ -279,8 +279,19 @@
                 Hydrograf.map.highlightUpstreamCatchments(data.upstream_segment_indices);
             }
 
-            // Display stream info in panel
-            displayStreamInfo(data.stream);
+            // Display full watershed stats if available, otherwise fallback to stream info
+            if (data.watershed) {
+                state.currentWatershed = data;
+
+                // Show watershed boundary and outlet on map
+                Hydrograf.map.showWatershed(data.watershed.boundary_geojson);
+                var outlet = data.watershed.outlet;
+                Hydrograf.map.showOutlet(outlet.latitude, outlet.longitude, outlet.elevation_m);
+
+                displayParameters(data);
+            } else {
+                displayStreamInfo(data.stream);
+            }
             els.results.classList.remove('d-none');
         } catch (err) {
             Hydrograf.map.clearCatchmentHighlights();
@@ -303,7 +314,7 @@
         ]);
 
         // Hide other accordions
-        ['acc-shape', 'acc-drainage', 'acc-landcover', 'acc-outlet',
+        ['acc-shape', 'acc-relief', 'acc-drainage', 'acc-landcover', 'acc-outlet',
          'acc-profile', 'acc-hydrograph'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.classList.add('collapsed');
@@ -399,6 +410,13 @@
         });
         document.getElementById('mode-select').addEventListener('click', function () {
             setClickMode('select');
+        });
+
+        // Accordion collapse/expand (replaces inline onclick)
+        document.querySelectorAll('.glass-accordion-header').forEach(function (header) {
+            header.addEventListener('click', function () {
+                this.parentElement.classList.toggle('collapsed');
+            });
         });
 
         // Floating panel controls
