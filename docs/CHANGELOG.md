@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (audyt frontend — 5 bugow)
+- **Memory leak wykresow hydrogramu:** `hydrograph.js` tworzyl `new Chart()` bez zapisywania instancji — dodano lokalny rejestr `_charts` z `destroy()` przed ponownym tworzeniem
+- **Memory leak tooltipow:** `map.js` — tooltip ciekow/zlewni czastkowych tworzony ponownie bez usuwania starego; dodano `removeLayer()` przed kazdym `mouseover`
+- **Broken depressions filters:** `depressions.js` — `document.getElementById('dep-vol-min')` zwracalo null (brak elementow w HTML); dodano null-guard z early return
+- **Dead code:** `profile.js` — usunieto 3 nieuzywane zmienne (`drawingVertices`, `drawingMarkers`, `drawingPolyline`) i ich martwe przypisania
+- **Polling CPU waste:** `layers.js` — `setInterval(fn, 500)` sprawdzajacy warste zlewni; zamieniono na event-driven `notifyWatershedChanged()` wywolywany z `app.js`
+
+### Added (audyt frontend — UX + security + a11y)
+- **Loading cursor:** kursor `wait` na mapie podczas wywolan API (nowa funkcja `setLoadingCursor` w `map.js`)
+- **Banner instrukcji rysowania:** „Klik = wierzcholek, Podwojny klik = zakoncz, Esc = anuluj" wyswietlany na dole mapy w trybie rysowania profilu
+- **Feedback bledow profilu:** `alert()` zamiast cichego `console.warn` przy bledach profilu terenu
+- **Guard hydrogramu:** sprawdzenie `hydrograph_available` przed wywolaniem API generowania hydrogramu
+- **CDN integrity hashes:** dodano `integrity="sha384-..."` do Chart.js 4.4.7 i Leaflet.VectorGrid 1.3.0
+- **VectorGrid plugin guard:** `if (!L.vectorGrid)` w `loadStreamsVector()` i `loadCatchmentsVector()`
+- **CSP wzmocniony:** `base-uri 'self'; form-action 'self'` + naglowek `Strict-Transport-Security` (HSTS)
+- **ARIA attributes:** `aria-live` na status, `aria-expanded` na layers toggle, `role="radiogroup"` + `aria-checked` na mode buttons, `role="img"` + `aria-label` na 5 canvasach chartow
+- **Keyboard a11y:** `tabindex="0"` + Enter/Space na akordeonach, `focus-visible` na mode buttons i layer items
+
+### Changed (audyt frontend)
+- **Accordion max-height:** 800px → 2000px w `glass.css` (zapobiega obcinaniu duzych sekcji)
+- **Usunieto dead CSS:** sekcja `.dual-slider` (~55 linii) z `style.css` — nieuzywana przez zaden element HTML
+
+### Fixed (4 krytyczne bledy post-e2e)
+- **Stream burning — zla warstwa BDOT10k (KRYTYCZNY):** `burn_streams_into_dem()` czytal domyslna warstwe GeoPackage (OT_PTWP_A — jeziora poligonowe) zamiast warstw liniowych ciekow. Naprawiono: wykrywanie multi-layer GPKG via `fiona.listlayers()`, ladowanie warstw SWRS/SWKN/SWRM (liniowe) + PTWP (poligonowe), `pd.concat`. Wynik: 4 warstwy, 10726 features, 1.07M cells burned, max_acc +156% (8.85M vs 3.45M).
+- **select-stream 500:** zapytanie SQL odwolywal sie do nieistniejącej kolumny `segment_idx` w tabeli `stream_network` — naprawiono na `id`
+- **Wydajnosc MVT:** GZip middleware (FastAPI `GZipMiddleware`), czesciowe indeksy GIST per threshold (migracja 011), cache TTL 1 dzien, `minZoom: 12` dla catchments, nginx gzip dla protobuf. Kompresja: streams 41%, catchments 64%.
+- **UI diagnostyka:** `console.warn` zamiast cichego `catch(() => null)` w BDOT loaderach, CSP `img-src` += `mapy.geoportal.gov.pl` (GUGiK WMTS)
+
+### Added (e2e pipeline re-run)
+- **Migracja 011:** czesciowe indeksy GIST na `stream_network` i `stream_catchments` per threshold (100, 1000, 10000, 100000 m²)
+- **Nowy test** `test_multilayer_gpkg_loads_all_layers` — weryfikacja multi-layer GeoPackage w stream burning
+- **Re-run pipeline:** 602,092 zaglebie (vs 581,553), GeoPackage 9 warstw / 777,455 features, DEM tiles 267 / 15.5 MB, BDOT GeoJSON (3529 jezior, 7197 ciekow)
+
 ### Added (select-stream stats + UI fixes)
 - **Pelne statystyki zlewni w trybie "Wybor"**: endpoint `select-stream` zwraca `WatershedResponse` z morfometria, pokryciem terenu, krzywa hipsometryczna, ciekiem glownym
 - **Podklady GUGiK WMTS**: ortofotomapa (HighResolution) i mapa topograficzna w panelu warstw

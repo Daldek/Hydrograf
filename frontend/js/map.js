@@ -186,6 +186,7 @@
     }
 
     function loadStreamsVector(threshold) {
+        if (!L.vectorGrid) { console.warn('VectorGrid plugin not loaded'); return null; }
         if (streamsLayer && map.hasLayer(streamsLayer)) {
             map.removeLayer(streamsLayer);
         }
@@ -211,13 +212,15 @@
             }
         );
 
-        // Re-fire click to map so watershed delineation works even on stream features
+        // Re-fire click to map so click mode routing works on stream features
         streamsLayer.on('click', function (e) {
+            L.DomEvent.stopPropagation(e);
             map.fire('click', { latlng: e.latlng });
         });
 
         // Stream info via hover tooltip (not click popup)
         streamsLayer.on('mouseover', function (e) {
+            if (streamTooltip) { map.removeLayer(streamTooltip); streamTooltip = null; }
             var props = e.layer.properties;
             var content =
                 '<b>Zlewnia:</b> ' + (props.upstream_area_km2 ? props.upstream_area_km2.toFixed(2) + ' km²' : '?') + '<br>' +
@@ -276,6 +279,7 @@
     }
 
     function loadCatchmentsVector(threshold) {
+        if (!L.vectorGrid) { console.warn('VectorGrid plugin not loaded'); return null; }
         if (catchmentsLayer && map.hasLayer(catchmentsLayer)) {
             map.removeLayer(catchmentsLayer);
         }
@@ -298,18 +302,21 @@
                     }
                 },
                 interactive: true,
+                minZoom: 12,
                 maxNativeZoom: 18,
                 attribution: 'Zlewnie cząstkowe',
             }
         );
 
-        // Re-fire click to map so watershed delineation works
+        // Re-fire click to map so click mode routing works on catchment features
         catchmentsLayer.on('click', function (e) {
+            L.DomEvent.stopPropagation(e);
             map.fire('click', { latlng: e.latlng });
         });
 
         // Catchment info via hover tooltip
         catchmentsLayer.on('mouseover', function (e) {
+            if (catchmentTooltip) { map.removeLayer(catchmentTooltip); catchmentTooltip = null; }
             var props = e.layer.properties;
             var content =
                 '<b>Rząd Strahlera:</b> ' + (props.strahler_order || '?') + '<br>' +
@@ -512,6 +519,8 @@
         map.getContainer().style.cursor = 'crosshair';
         // Disable double-click zoom during drawing
         map.doubleClickZoom.disable();
+        var banner = document.getElementById('draw-instructions');
+        if (banner) banner.classList.remove('d-none');
     }
 
     function addDrawVertex(latlng) {
@@ -547,6 +556,8 @@
         drawMode = false;
         map.getContainer().style.cursor = '';
         map.doubleClickZoom.enable();
+        var banner = document.getElementById('draw-instructions');
+        if (banner) banner.classList.add('d-none');
 
         // Clean up markers
         drawMarkers.forEach(function (m) { map.removeLayer(m); });
@@ -566,6 +577,8 @@
         drawMode = false;
         map.getContainer().style.cursor = '';
         map.doubleClickZoom.enable();
+        var banner = document.getElementById('draw-instructions');
+        if (banner) banner.classList.add('d-none');
         drawMarkers.forEach(function (m) { map.removeLayer(m); });
         drawMarkers = [];
         if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
@@ -612,7 +625,7 @@
                 bdotBounds = bdotLakesLayer.getBounds();
                 return bdotLakesLayer;
             })
-            .catch(function () { return null; });
+            .catch(function (err) { console.warn('BDOT lakes not available:', err.message); return null; });
     }
 
     function getBdotLakesLayer() { return bdotLakesLayer; }
@@ -651,7 +664,7 @@
                 }
                 return bdotStreamsLayer;
             })
-            .catch(function () { return null; });
+            .catch(function (err) { console.warn('BDOT streams not available:', err.message); return null; });
     }
 
     function getBdotStreamsLayer() { return bdotStreamsLayer; }
@@ -672,6 +685,10 @@
 
     function disableClick() { clickEnabled = false; }
     function enableClick() { clickEnabled = true; }
+
+    function setLoadingCursor(loading) {
+        if (map) map.getContainer().style.cursor = loading ? 'wait' : '';
+    }
 
     function invalidateSize() {
         if (map) setTimeout(function () { map.invalidateSize(); }, 50);
@@ -702,6 +719,7 @@
         clearWatershed: clearWatershed,
         disableClick: disableClick,
         enableClick: enableClick,
+        setLoadingCursor: setLoadingCursor,
         invalidateSize: invalidateSize,
         // Drawing
         startDrawing: startDrawing,

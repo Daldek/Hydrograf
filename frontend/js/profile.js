@@ -8,10 +8,6 @@
 
     window.Hydrograf = window.Hydrograf || {};
 
-    var drawingVertices = [];
-    var drawingMarkers = [];
-    var drawingPolyline = null;
-
     /**
      * Activate auto-profile using main stream geometry from watershed response.
      */
@@ -31,6 +27,7 @@
             Hydrograf.map.showProfileLine(lineGeojson.coordinates);
         } catch (err) {
             console.warn('Profile error:', err.message);
+            alert('Błąd profilu: ' + err.message);
         }
     }
 
@@ -39,8 +36,6 @@
      */
     function activateDrawProfile() {
         deactivateProfile();
-        drawingVertices = [];
-        drawingMarkers = [];
 
         Hydrograf.map.startDrawing(function (coords) {
             // Drawing complete
@@ -57,6 +52,7 @@
                 );
             }).catch(function (err) {
                 console.warn('Profile error:', err.message);
+                alert('Błąd profilu: ' + err.message);
             });
         });
     }
