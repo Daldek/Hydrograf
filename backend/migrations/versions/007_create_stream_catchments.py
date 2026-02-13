@@ -37,8 +37,7 @@ def upgrade() -> None:
 
     # Spatial index (critical for MVT tile queries)
     op.execute(
-        "CREATE INDEX idx_catchments_geom "
-        "ON stream_catchments USING GIST (geom)"
+        "CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST (geom)"
     )
 
     # Composite index for MVT filtering (threshold + strahler)
@@ -48,10 +47,7 @@ def upgrade() -> None:
     )
 
     # B-tree index on area for analytical queries
-    op.execute(
-        "CREATE INDEX idx_catchments_area "
-        "ON stream_catchments (area_km2)"
-    )
+    op.execute("CREATE INDEX idx_catchments_area ON stream_catchments (area_km2)")
 
 
 def downgrade() -> None:

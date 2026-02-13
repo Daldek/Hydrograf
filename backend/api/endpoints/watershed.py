@@ -10,6 +10,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
+from core.constants import HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.land_cover import get_land_cover_for_boundary
 from core.morphometry import build_morphometric_params
@@ -38,9 +39,6 @@ from utils.geometry import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# SCS-CN method limit for hydrograph generation [km²]
-HYDROGRAPH_AREA_LIMIT_KM2 = 250.0
 
 
 @router.post("/delineate-watershed", response_model=DelineateResponse)

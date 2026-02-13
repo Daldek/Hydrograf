@@ -91,9 +91,9 @@ class FlowGraph:
         logger.info("Loading flow graph into memory...")
 
         # 1. Get table stats
-        stats = db.execute(text(
-            "SELECT COUNT(*), MIN(id), MAX(id) FROM flow_network"
-        )).fetchone()
+        stats = db.execute(
+            text("SELECT COUNT(*), MIN(id), MAX(id) FROM flow_network")
+        ).fetchone()
 
         n = stats[0]
         if n == 0:
@@ -103,7 +103,7 @@ class FlowGraph:
         min_id = stats[1]
         max_id = stats[2]
         id_range = max_id - min_id + 1
-        contiguous = (id_range == n)
+        contiguous = id_range == n
 
         logger.info(
             f"flow_network: {n:,} cells, "
@@ -307,8 +307,7 @@ class FlowGraph:
 
         if len(node_order) > max_cells:
             raise ValueError(
-                f"Zlewnia zbyt duza: {len(node_order):,} komorek "
-                f"(limit: {max_cells:,})"
+                f"Zlewnia zbyt duza: {len(node_order):,} komorek (limit: {max_cells:,})"
             )
 
         # Cache result
@@ -329,17 +328,19 @@ class FlowGraph:
             slope_val = float(self._slope[idx])
             slope_out = slope_val if not np.isnan(slope_val) else None
 
-            result.append((
-                db_id,
-                float(self._x[idx]),
-                float(self._y[idx]),
-                float(self._elevation[idx]),
-                int(self._flow_acc[idx]),
-                slope_out,
-                None,  # downstream_id not needed by callers
-                float(self._cell_area[idx]),
-                bool(self._is_stream[idx]),
-            ))
+            result.append(
+                (
+                    db_id,
+                    float(self._x[idx]),
+                    float(self._y[idx]),
+                    float(self._elevation[idx]),
+                    int(self._flow_acc[idx]),
+                    slope_out,
+                    None,  # downstream_id not needed by callers
+                    float(self._cell_area[idx]),
+                    bool(self._is_stream[idx]),
+                )
+            )
         return result
 
 

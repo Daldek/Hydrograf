@@ -34,11 +34,14 @@ class TestFillInternalNodataHoles:
     """Tests for fill_internal_nodata_holes."""
 
     def test_fills_single_hole(self):
-        dem = np.array([
-            [10, 10, 10],
-            [10, -9999, 10],
-            [10, 10, 10],
-        ], dtype=np.float64)
+        dem = np.array(
+            [
+                [10, 10, 10],
+                [10, -9999, 10],
+                [10, 10, 10],
+            ],
+            dtype=np.float64,
+        )
         filled, n = fill_internal_nodata_holes(dem, -9999)
         assert filled[1, 1] != -9999
         assert n == 1
@@ -50,11 +53,14 @@ class TestFillInternalNodataHoles:
         np.testing.assert_array_equal(filled, dem)
 
     def test_boundary_nodata_preserved(self):
-        dem = np.array([
-            [-9999, 10, 10],
-            [10, 10, 10],
-            [10, 10, -9999],
-        ], dtype=np.float64)
+        dem = np.array(
+            [
+                [-9999, 10, 10],
+                [10, 10, 10],
+                [10, 10, -9999],
+            ],
+            dtype=np.float64,
+        )
         filled, n = fill_internal_nodata_holes(dem, -9999)
         assert filled[0, 0] == -9999
         assert filled[2, 2] == -9999

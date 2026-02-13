@@ -32,6 +32,9 @@ Pillow>=10.0.0
 # IMGW data (precipitation PMAXTP, hydro stations, warnings)
 imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
 
+# Logging
+structlog>=24.1.0
+
 # Utilities
 python-dotenv>=1.0.0
 

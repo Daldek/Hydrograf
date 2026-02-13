@@ -30,7 +30,12 @@ class TestCreateFlowNetworkRecords:
     def test_returns_list_of_dicts(self):
         dem, fdir, acc, slope, meta = self._make_simple_data()
         records = create_flow_network_records(
-            dem, fdir, acc, slope, meta, stream_threshold=3,
+            dem,
+            fdir,
+            acc,
+            slope,
+            meta,
+            stream_threshold=3,
         )
         assert isinstance(records, list)
         assert len(records) == 4  # 2x2 grid, no nodata
@@ -38,11 +43,23 @@ class TestCreateFlowNetworkRecords:
     def test_record_has_required_keys(self):
         dem, fdir, acc, slope, meta = self._make_simple_data()
         records = create_flow_network_records(
-            dem, fdir, acc, slope, meta, stream_threshold=3,
+            dem,
+            fdir,
+            acc,
+            slope,
+            meta,
+            stream_threshold=3,
         )
         required = {
-            "id", "x", "y", "elevation", "flow_accumulation",
-            "slope", "downstream_id", "cell_area", "is_stream",
+            "id",
+            "x",
+            "y",
+            "elevation",
+            "flow_accumulation",
+            "slope",
+            "downstream_id",
+            "cell_area",
+            "is_stream",
             "strahler_order",
         }
         for r in records:
@@ -60,14 +77,23 @@ class TestCreateFlowNetworkRecords:
             "nodata_value": -9999.0,
         }
         records = create_flow_network_records(
-            dem, fdir, acc, slope, metadata,
+            dem,
+            fdir,
+            acc,
+            slope,
+            metadata,
         )
         assert len(records) == 3  # one nodata cell excluded
 
     def test_is_stream_threshold(self):
         dem, fdir, acc, slope, meta = self._make_simple_data()
         records = create_flow_network_records(
-            dem, fdir, acc, slope, meta, stream_threshold=3,
+            dem,
+            fdir,
+            acc,
+            slope,
+            meta,
+            stream_threshold=3,
         )
         stream_records = [r for r in records if r["is_stream"]]
         non_stream = [r for r in records if not r["is_stream"]]
@@ -78,7 +104,11 @@ class TestCreateFlowNetworkRecords:
         dem, fdir, acc, slope, meta = self._make_simple_data()
         strahler = np.array([[0, 0], [1, 2]], dtype=np.uint8)
         records = create_flow_network_records(
-            dem, fdir, acc, slope, meta,
+            dem,
+            fdir,
+            acc,
+            slope,
+            meta,
             strahler=strahler,
         )
         strahler_vals = {r["id"]: r["strahler_order"] for r in records}
@@ -107,7 +137,12 @@ class TestCreateFlowNetworkTsv:
     def test_returns_buffer_and_counts(self):
         dem, fdir, acc, slope, meta = self._make_simple_data()
         tsv_buffer, n_records, n_stream = create_flow_network_tsv(
-            dem, fdir, acc, slope, meta, stream_threshold=3,
+            dem,
+            fdir,
+            acc,
+            slope,
+            meta,
+            stream_threshold=3,
         )
         assert n_records == 4
         assert n_stream == 2  # acc >= 3
@@ -115,7 +150,11 @@ class TestCreateFlowNetworkTsv:
     def test_tsv_has_correct_line_count(self):
         dem, fdir, acc, slope, meta = self._make_simple_data()
         tsv_buffer, n_records, _ = create_flow_network_tsv(
-            dem, fdir, acc, slope, meta,
+            dem,
+            fdir,
+            acc,
+            slope,
+            meta,
         )
         lines = tsv_buffer.read().strip().split("\n")
         assert len(lines) == n_records
@@ -123,7 +162,11 @@ class TestCreateFlowNetworkTsv:
     def test_tsv_fields_count(self):
         dem, fdir, acc, slope, meta = self._make_simple_data()
         tsv_buffer, _, _ = create_flow_network_tsv(
-            dem, fdir, acc, slope, meta,
+            dem,
+            fdir,
+            acc,
+            slope,
+            meta,
         )
         lines = [line for line in tsv_buffer.read().split("\n") if line]
         for line in lines:
@@ -142,7 +185,11 @@ class TestCreateFlowNetworkTsv:
             "nodata_value": -9999.0,
         }
         _, n_records, _ = create_flow_network_tsv(
-            dem, fdir, acc, slope, metadata,
+            dem,
+            fdir,
+            acc,
+            slope,
+            metadata,
         )
         assert n_records == 3
 
@@ -150,10 +197,20 @@ class TestCreateFlowNetworkTsv:
         """TSV and records versions should produce same counts."""
         dem, fdir, acc, slope, meta = self._make_simple_data()
         records = create_flow_network_records(
-            dem, fdir, acc, slope, meta, stream_threshold=3,
+            dem,
+            fdir,
+            acc,
+            slope,
+            meta,
+            stream_threshold=3,
         )
         _, n_records, n_stream = create_flow_network_tsv(
-            dem, fdir, acc, slope, meta, stream_threshold=3,
+            dem,
+            fdir,
+            acc,
+            slope,
+            meta,
+            stream_threshold=3,
         )
         assert n_records == len(records)
         assert n_stream == sum(1 for r in records if r["is_stream"])
@@ -212,6 +269,7 @@ class TestInsertStreamSegments:
         db, cursor, _ = self._make_mock_db(rowcount=1)
 
         import logging
+
         with caplog.at_level(logging.WARNING, logger="core.db_bulk"):
             result = insert_stream_segments(db, segments, threshold_m2=1000)
 
@@ -226,6 +284,7 @@ class TestInsertStreamSegments:
         db, cursor, _ = self._make_mock_db(rowcount=2)
 
         import logging
+
         with caplog.at_level(logging.WARNING, logger="core.db_bulk"):
             result = insert_stream_segments(db, segments, threshold_m2=100)
 
@@ -247,10 +306,7 @@ class TestInsertStreamSegments:
         insert_stream_segments(db, [segment], threshold_m2=5000)
 
         # Find the copy_expert call and check buffer contents
-        copy_calls = [
-            c for c in cursor.method_calls
-            if c[0] == "copy_expert"
-        ]
+        copy_calls = [c for c in cursor.method_calls if c[0] == "copy_expert"]
         assert len(copy_calls) == 1
         tsv_buffer = copy_calls[0][1][1]  # second positional arg
         tsv_buffer.seek(0)

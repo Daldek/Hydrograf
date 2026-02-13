@@ -421,7 +421,8 @@ def resample_raster(
         _ = (bounds.top - bounds.bottom) / new_height  # actual_res_y not used
 
         logger.info(
-            f"Resampling {input_path.name}: {src.width}x{src.height} ({src_resolution:.6f}m) "
+            f"Resampling {input_path.name}: "
+            f"{src.width}x{src.height} ({src_resolution:.6f}m) "
             f"-> {new_width}x{new_height} ({actual_res_x:.6f}m)"
         )
 

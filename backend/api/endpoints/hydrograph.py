@@ -15,8 +15,9 @@ from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogr
 from hydrolog.runoff import HydrographGenerator
 from sqlalchemy.orm import Session
 
+from core.constants import DEFAULT_CN, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
-from core.land_cover import DEFAULT_CN, get_land_cover_for_boundary
+from core.land_cover import get_land_cover_for_boundary
 from core.morphometry import build_morphometric_params
 from core.precipitation import (
     DURATION_STR_TO_MIN,
@@ -52,9 +53,6 @@ from utils.geometry import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# SCS-CN method limit [km2]
-HYDROGRAPH_AREA_LIMIT_KM2 = 250.0
 
 # Hietogram factory
 HIETOGRAM_CLASSES = {
