@@ -141,7 +141,7 @@ def calculate_mean_slope(cells: list[FlowCell]) -> float:
         logger.warning("No cells with valid slope data")
         return 0.0
 
-    slopes, areas = zip(*valid)
+    slopes, areas = zip(*valid, strict=False)
     slopes_array = np.array(slopes)
     areas_array = np.array(areas)
 

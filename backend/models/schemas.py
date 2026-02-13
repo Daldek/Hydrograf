@@ -1,7 +1,8 @@
 """
 Pydantic models for API request/response schemas.
 
-Defines data structures for watershed delineation and hydrograph generation API endpoints.
+Defines data structures for watershed delineation and hydrograph
+generation API endpoints.
 """
 
 from typing import Any

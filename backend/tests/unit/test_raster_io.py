@@ -64,7 +64,11 @@ class TestSaveRasterGeotiff:
         }
         out_path = tmp_path / "test.tif"
         save_raster_geotiff(
-            dem, metadata, out_path, nodata=-9999, dtype="float32",
+            dem,
+            metadata,
+            out_path,
+            nodata=-9999,
+            dtype="float32",
         )
         assert out_path.exists()
 

@@ -124,9 +124,7 @@ def run_delineation(db, outlet: FlowCell, label: str) -> dict:
         t1 = time.time()
         estimated = check_watershed_size(outlet.id, db)
         preflight_ms = (time.time() - t1) * 1000
-        logger.info(
-            f"  Pre-flight OK: ~{estimated:,} cells ({preflight_ms:.1f}ms)"
-        )
+        logger.info(f"  Pre-flight OK: ~{estimated:,} cells ({preflight_ms:.1f}ms)")
         result["preflight_ms"] = preflight_ms
         result["estimated_cells"] = estimated
     except ValueError as e:
@@ -141,9 +139,7 @@ def run_delineation(db, outlet: FlowCell, label: str) -> dict:
         t2 = time.time()
         cells = traverse_upstream(outlet.id, db)
         traverse_s = time.time() - t2
-        logger.info(
-            f"  Traverse OK: {len(cells):,} cells ({traverse_s:.2f}s)"
-        )
+        logger.info(f"  Traverse OK: {len(cells):,} cells ({traverse_s:.2f}s)")
         result["cells"] = len(cells)
         result["traverse_s"] = traverse_s
     except ValueError as e:
@@ -172,18 +168,28 @@ def run_delineation(db, outlet: FlowCell, label: str) -> dict:
     # 5. Morphometric parameters
     t4 = time.time()
     morph = build_morphometric_params(
-        cells, boundary, outlet, db=db,
+        cells,
+        boundary,
+        outlet,
+        db=db,
         include_hypsometric_curve=False,
     )
     morph_s = time.time() - t4
     logger.info(f"  Morphometry ({morph_s:.2f}s):")
     for key in [
-        "area_km2", "perimeter_km", "main_stream_length_km",
-        "mean_slope_percent", "mean_elevation_m",
-        "compactness_coeff_kc", "circularity_ratio_rc",
-        "elongation_ratio_re", "form_factor_ff",
-        "relief_ratio_rh", "hypsometric_integral",
-        "drainage_density_km_per_km2", "max_strahler_order",
+        "area_km2",
+        "perimeter_km",
+        "main_stream_length_km",
+        "mean_slope_percent",
+        "mean_elevation_m",
+        "compactness_coeff_kc",
+        "circularity_ratio_rc",
+        "elongation_ratio_re",
+        "form_factor_ff",
+        "relief_ratio_rh",
+        "hypsometric_integral",
+        "drainage_density_km_per_km2",
+        "max_strahler_order",
     ]:
         val = morph.get(key)
         if val is not None:
@@ -209,9 +215,7 @@ def main():
 
     with get_db_session() as db:
         # Sprawdz stan bazy
-        count = db.execute(
-            text("SELECT COUNT(*) FROM flow_network")
-        ).scalar()
+        count = db.execute(text("SELECT COUNT(*) FROM flow_network")).scalar()
         max_acc = db.execute(
             text("SELECT MAX(flow_accumulation) FROM flow_network")
         ).scalar()
@@ -224,18 +228,14 @@ def main():
         # --- TEST A: Sredni outlet (~500k cells) ---
         outlet_a = find_outlet_by_accumulation(db, 100_000, 500_000)
         if outlet_a:
-            results.append(
-                run_delineation(db, outlet_a, "A: Sredni outlet (~500k)")
-            )
+            results.append(run_delineation(db, outlet_a, "A: Sredni outlet (~500k)"))
         else:
             logger.warning("Nie znaleziono outletu w zakresie 100k-500k")
 
         # --- TEST B: Duzy outlet (~1.5M cells) ---
         outlet_b = find_outlet_by_accumulation(db, 1_000_000, 1_500_000)
         if outlet_b:
-            results.append(
-                run_delineation(db, outlet_b, "B: Duzy outlet (~1.5M)")
-            )
+            results.append(run_delineation(db, outlet_b, "B: Duzy outlet (~1.5M)"))
         else:
             logger.warning("Nie znaleziono outletu w zakresie 1M-1.5M")
 
@@ -259,27 +259,30 @@ def main():
         logger.info(SEPARATOR)
         if outlet_max:
             logger.info(
-                f"Outlet max: id={outlet_max.id}, "
-                f"acc={outlet_max.flow_accumulation:,}"
+                f"Outlet max: id={outlet_max.id}, acc={outlet_max.flow_accumulation:,}"
             )
             try:
                 cells = traverse_upstream(outlet_max.id, db)
                 # Jesli przeszlo — tez OK (oznacza ze CTE < 2M)
                 logger.info(f"  Traverse OK: {len(cells):,} cells")
-                results.append({
-                    "label": "D: Max outlet safety net",
-                    "success": True,
-                    "cells": len(cells),
-                    "elapsed_s": 0,
-                })
+                results.append(
+                    {
+                        "label": "D: Max outlet safety net",
+                        "success": True,
+                        "cells": len(cells),
+                        "elapsed_s": 0,
+                    }
+                )
             except ValueError as e:
                 # Oczekiwane — LIMIT safety net zlapal nadmiar
                 logger.info(f"  CTE LIMIT safety net OK: {e}")
-                results.append({
-                    "label": "D: Max outlet safety net",
-                    "success": True,
-                    "elapsed_s": 0,
-                })
+                results.append(
+                    {
+                        "label": "D: Max outlet safety net",
+                        "success": True,
+                        "elapsed_s": 0,
+                    }
+                )
 
     # --- PODSUMOWANIE ---
     logger.info(f"\n{SEPARATOR}")

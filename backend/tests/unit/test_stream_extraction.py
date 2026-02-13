@@ -19,10 +19,13 @@ class TestCountUpstreamAndFindHeadwaters:
         fdir = np.array([[1, 1, 1]], dtype=np.int16)
         stream_mask = np.array([[True, True, True]])
         nodata_mask = np.array([[False, False, False]])
-        upstream_count, hw_rows, hw_cols = (
-            _count_upstream_and_find_headwaters(
-                fdir, stream_mask, nodata_mask, _DR, _DC, _VALID,
-            )
+        upstream_count, hw_rows, hw_cols = _count_upstream_and_find_headwaters(
+            fdir,
+            stream_mask,
+            nodata_mask,
+            _DR,
+            _DC,
+            _VALID,
         )
         # Cell 0 has no upstream → headwater
         assert upstream_count[0, 0] == 0
@@ -36,10 +39,13 @@ class TestCountUpstreamAndFindHeadwaters:
         fdir = np.array([[1, 1]], dtype=np.int16)
         stream_mask = np.array([[False, False]])
         nodata_mask = np.array([[False, False]])
-        upstream_count, hw_rows, hw_cols = (
-            _count_upstream_and_find_headwaters(
-                fdir, stream_mask, nodata_mask, _DR, _DC, _VALID,
-            )
+        upstream_count, hw_rows, hw_cols = _count_upstream_and_find_headwaters(
+            fdir,
+            stream_mask,
+            nodata_mask,
+            _DR,
+            _DC,
+            _VALID,
         )
         assert len(hw_rows) == 0
 
@@ -65,10 +71,13 @@ class TestCountUpstreamAndFindHeadwaters:
         stream_mask[1, 1] = True
 
         nodata_mask = np.zeros((3, 3), dtype=bool)
-        upstream_count, hw_rows, hw_cols = (
-            _count_upstream_and_find_headwaters(
-                fdir, stream_mask, nodata_mask, _DR, _DC, _VALID,
-            )
+        upstream_count, hw_rows, hw_cols = _count_upstream_and_find_headwaters(
+            fdir,
+            stream_mask,
+            nodata_mask,
+            _DR,
+            _DC,
+            _VALID,
         )
         assert upstream_count[1, 1] == 4  # 4 corners flow to center
         assert len(hw_rows) == 4  # 4 headwaters
@@ -107,7 +116,12 @@ class TestVectorizeStreams:
     def test_returns_segments(self):
         dem, fdir, acc, slope, strahler, meta = self._make_simple_data()
         segments = vectorize_streams(
-            dem, fdir, acc, slope, strahler, meta,
+            dem,
+            fdir,
+            acc,
+            slope,
+            strahler,
+            meta,
             stream_threshold=50,
         )
         assert len(segments) > 0
@@ -115,12 +129,20 @@ class TestVectorizeStreams:
     def test_segment_has_required_keys(self):
         dem, fdir, acc, slope, strahler, meta = self._make_simple_data()
         segments = vectorize_streams(
-            dem, fdir, acc, slope, strahler, meta,
+            dem,
+            fdir,
+            acc,
+            slope,
+            strahler,
+            meta,
             stream_threshold=50,
         )
         required = {
-            "coords", "strahler_order", "length_m",
-            "upstream_area_km2", "mean_slope_percent",
+            "coords",
+            "strahler_order",
+            "length_m",
+            "upstream_area_km2",
+            "mean_slope_percent",
         }
         for seg in segments:
             assert required.issubset(seg.keys())
@@ -128,7 +150,12 @@ class TestVectorizeStreams:
     def test_segment_coords_are_tuples(self):
         dem, fdir, acc, slope, strahler, meta = self._make_simple_data()
         segments = vectorize_streams(
-            dem, fdir, acc, slope, strahler, meta,
+            dem,
+            fdir,
+            acc,
+            slope,
+            strahler,
+            meta,
             stream_threshold=50,
         )
         for seg in segments:
@@ -140,7 +167,12 @@ class TestVectorizeStreams:
         dem, fdir, acc, slope, strahler, meta = self._make_simple_data()
         label_raster = np.zeros_like(dem, dtype=np.int32)
         vectorize_streams(
-            dem, fdir, acc, slope, strahler, meta,
+            dem,
+            fdir,
+            acc,
+            slope,
+            strahler,
+            meta,
             stream_threshold=50,
             label_raster_out=label_raster,
         )

@@ -134,7 +134,9 @@ def compute_depressions(
 
     counts = zonal_bincount(labeled, max_label=n_features)
     depth_sum = zonal_bincount(
-        labeled, weights=depth, max_label=n_features,
+        labeled,
+        weights=depth,
+        max_label=n_features,
     )
     max_depths = zonal_max(labeled, depth, n_features)
 
@@ -415,8 +417,12 @@ def main() -> None:
         from core.database import get_db_session
         from core.db_bulk import override_statement_timeout
 
-        with get_db_session() as db, override_statement_timeout(
-            db, timeout_s=600,
+        with (
+            get_db_session() as db,
+            override_statement_timeout(
+                db,
+                timeout_s=600,
+            ),
         ):
             if args.clear_existing:
                 logger.info("Clearing existing depressions...")

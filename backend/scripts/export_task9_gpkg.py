@@ -62,11 +62,15 @@ def find_outlet(db, min_acc: int, max_acc: int) -> FlowCell | None:
     if result is None:
         return None
     return FlowCell(
-        id=result.id, x=result.x, y=result.y,
+        id=result.id,
+        x=result.x,
+        y=result.y,
         elevation=result.elevation,
         flow_accumulation=result.flow_accumulation,
-        slope=result.slope, downstream_id=result.downstream_id,
-        cell_area=result.cell_area, is_stream=result.is_stream,
+        slope=result.slope,
+        downstream_id=result.downstream_id,
+        cell_area=result.cell_area,
+        is_stream=result.is_stream,
     )
 
 
@@ -87,9 +91,7 @@ def main():
                 logger.warning("  Outlet nie znaleziony")
                 continue
 
-            logger.info(
-                f"  Outlet: id={outlet.id}, acc={outlet.flow_accumulation:,}"
-            )
+            logger.info(f"  Outlet: id={outlet.id}, acc={outlet.flow_accumulation:,}")
 
             # Pre-flight
             check_watershed_size(outlet.id, db)
@@ -97,31 +99,33 @@ def main():
             # Traverse
             t0 = time.time()
             cells = traverse_upstream(outlet.id, db)
-            logger.info(
-                f"  Traverse: {len(cells):,} cells ({time.time()-t0:.1f}s)"
-            )
+            logger.info(f"  Traverse: {len(cells):,} cells ({time.time() - t0:.1f}s)")
 
             # Boundary
             boundary = build_boundary(cells, method="polygonize", cell_size=1.0)
             area_km2 = calculate_watershed_area_km2(cells)
 
-            boundaries.append({
-                "geometry": boundary,
-                "label": label,
-                "cell_count": len(cells),
-                "area_km2": round(area_km2, 4),
-                "outlet_id": outlet.id,
-                "outlet_acc": outlet.flow_accumulation,
-                "outlet_elev": outlet.elevation,
-            })
+            boundaries.append(
+                {
+                    "geometry": boundary,
+                    "label": label,
+                    "cell_count": len(cells),
+                    "area_km2": round(area_km2, 4),
+                    "outlet_id": outlet.id,
+                    "outlet_acc": outlet.flow_accumulation,
+                    "outlet_elev": outlet.elevation,
+                }
+            )
 
-            outlets_data.append({
-                "geometry": Point(outlet.x, outlet.y),
-                "label": label,
-                "id": outlet.id,
-                "flow_accumulation": outlet.flow_accumulation,
-                "elevation": outlet.elevation,
-            })
+            outlets_data.append(
+                {
+                    "geometry": Point(outlet.x, outlet.y),
+                    "label": label,
+                    "id": outlet.id,
+                    "flow_accumulation": outlet.flow_accumulation,
+                    "elevation": outlet.elevation,
+                }
+            )
 
             # Sample cells for point cloud (max 50k per watershed)
             sample_size = min(len(cells), 50_000)
@@ -134,24 +138,28 @@ def main():
                 sampled = cells
 
             for c in sampled:
-                all_cells.append({
-                    "geometry": Point(c.x, c.y),
-                    "label": label,
-                    "elevation": c.elevation,
-                    "flow_accumulation": c.flow_accumulation,
-                    "slope": c.slope,
-                    "is_stream": c.is_stream,
-                })
+                all_cells.append(
+                    {
+                        "geometry": Point(c.x, c.y),
+                        "label": label,
+                        "elevation": c.elevation,
+                        "flow_accumulation": c.flow_accumulation,
+                        "slope": c.slope,
+                        "is_stream": c.is_stream,
+                    }
+                )
 
         # Stream network from DB
         logger.info("\nPobieranie stream_network z bazy...")
-        streams = db.execute(text("""
+        streams = db.execute(
+            text("""
             SELECT ST_AsText(geom) as wkt,
                    strahler_order, length_m,
                    upstream_area_km2, mean_slope_percent
             FROM stream_network
             WHERE source = 'DEM_DERIVED'
-        """)).fetchall()
+        """)
+        ).fetchall()
         logger.info(f"  {len(streams)} segmentow")
 
     # --- Write GeoPackage ---
@@ -167,8 +175,10 @@ def main():
     if outlets_data:
         gdf = gpd.GeoDataFrame(outlets_data, crs="EPSG:2180")
         gdf.to_file(
-            OUTPUT_PATH, layer="outlet_points",
-            driver="GPKG", mode="a",
+            OUTPUT_PATH,
+            layer="outlet_points",
+            driver="GPKG",
+            mode="a",
         )
         logger.info(f"  outlet_points: {len(gdf)} features")
 
@@ -176,8 +186,10 @@ def main():
     if all_cells:
         gdf = gpd.GeoDataFrame(all_cells, crs="EPSG:2180")
         gdf.to_file(
-            OUTPUT_PATH, layer="watershed_cells",
-            driver="GPKG", mode="a",
+            OUTPUT_PATH,
+            layer="watershed_cells",
+            driver="GPKG",
+            mode="a",
         )
         logger.info(f"  watershed_cells: {len(gdf)} features")
 
@@ -186,17 +198,21 @@ def main():
         stream_records = []
         for s in streams:
             geom = wkt.loads(s.wkt)
-            stream_records.append({
-                "geometry": geom,
-                "strahler_order": s.strahler_order,
-                "length_m": s.length_m,
-                "upstream_area_km2": s.upstream_area_km2,
-                "mean_slope_percent": s.mean_slope_percent,
-            })
+            stream_records.append(
+                {
+                    "geometry": geom,
+                    "strahler_order": s.strahler_order,
+                    "length_m": s.length_m,
+                    "upstream_area_km2": s.upstream_area_km2,
+                    "mean_slope_percent": s.mean_slope_percent,
+                }
+            )
         gdf = gpd.GeoDataFrame(stream_records, crs="EPSG:2180")
         gdf.to_file(
-            OUTPUT_PATH, layer="stream_network",
-            driver="GPKG", mode="a",
+            OUTPUT_PATH,
+            layer="stream_network",
+            driver="GPKG",
+            mode="a",
         )
         logger.info(f"  stream_network: {len(gdf)} features")
 

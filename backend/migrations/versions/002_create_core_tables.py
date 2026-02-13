@@ -256,7 +256,10 @@ def upgrade() -> None:
     op.create_index(
         "idx_stream_unique",
         "stream_network",
-        [sa.text("COALESCE(name, '')"), sa.text("ST_GeoHash(ST_Transform(geom, 4326), 12)")],
+        [
+            sa.text("COALESCE(name, '')"),
+            sa.text("ST_GeoHash(ST_Transform(geom, 4326), 12)"),
+        ],
         unique=True,
     )
 

@@ -20,15 +20,10 @@ from shapely.geometry import MultiPoint, Point, Polygon, shape
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.constants import MAX_STREAM_DISTANCE_M, MAX_WATERSHED_CELLS
 from core.flow_graph import get_flow_graph
 
 logger = logging.getLogger(__name__)
-
-# Maximum cells for safety limit (~200 km² @ 1m resolution, safe for 15 GB RAM)
-MAX_WATERSHED_CELLS = 2_000_000
-
-# Maximum distance to search for stream [m]
-MAX_STREAM_DISTANCE_M = 1000.0
 
 # Maximum recursion depth for upstream traversal
 MAX_RECURSION_DEPTH = 10000
@@ -339,17 +334,14 @@ def _traverse_upstream_sql(
 
     if len(results) > max_cells:
         logger.error(
-            f"Watershed too large: {len(results):,}+ cells "
-            f"> {max_cells:,} limit"
+            f"Watershed too large: {len(results):,}+ cells > {max_cells:,} limit"
         )
         raise ValueError(
-            f"Zlewnia zbyt duza: {len(results):,}+ komorek "
-            f"(limit: {max_cells:,})"
+            f"Zlewnia zbyt duza: {len(results):,}+ komorek (limit: {max_cells:,})"
         )
 
     logger.info(
-        f"SQL traversal: {len(results):,} cells "
-        f"upstream from outlet {outlet_id}"
+        f"SQL traversal: {len(results):,} cells upstream from outlet {outlet_id}"
     )
 
     return [

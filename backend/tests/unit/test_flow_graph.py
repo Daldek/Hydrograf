@@ -48,9 +48,7 @@ def _make_graph(n_cells, edges, flow_acc=None):
             dtype=np.int8,
         )
     else:
-        g._upstream_adj = sparse.csr_matrix(
-            (n_cells, n_cells), dtype=np.int8
-        )
+        g._upstream_adj = sparse.csr_matrix((n_cells, n_cells), dtype=np.int8)
 
     # Set flow_accumulation
     if flow_acc:

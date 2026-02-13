@@ -307,7 +307,8 @@ def import_to_database(
                 params[f"{param_prefix}bdot_class"] = rec["bdot_class"]
 
             sql = f"""
-                INSERT INTO land_cover (geom, category, cn_value, imperviousness, bdot_class)
+                INSERT INTO land_cover
+                    (geom, category, cn_value, imperviousness, bdot_class)
                 VALUES {", ".join(values)}
             """
 

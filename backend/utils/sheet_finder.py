@@ -117,10 +117,8 @@ def _lat_to_zone_letter(lat: float) -> str:
     else:
         # Southern hemisphere (not used for Poland)
         zone_idx = int((-lat - 0.001) / SCALE_1M_LAT_SIZE)
-        if zone_idx <= 7:
-            letter_idx = 7 - zone_idx  # H, G, F, ...
-        else:
-            letter_idx = 8 - zone_idx
+        # H, G, F, ...
+        letter_idx = 7 - zone_idx if zone_idx <= 7 else 8 - zone_idx
         return IMW_ZONE_LETTERS[max(0, letter_idx)]
 
 

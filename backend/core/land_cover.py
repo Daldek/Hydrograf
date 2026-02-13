@@ -16,10 +16,9 @@ from shapely.geometry import Polygon
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
+from core.constants import DEFAULT_CN  # re-exported for backwards compat
 
-# Default CN if land cover data unavailable (average condition)
-DEFAULT_CN = 75
+logger = logging.getLogger(__name__)
 
 # Valid land cover categories (from database constraint)
 VALID_CATEGORIES = frozenset(

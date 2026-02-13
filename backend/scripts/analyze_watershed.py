@@ -356,10 +356,7 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> dict:
 
         # Formatuj klucz prawdopodobieństwa
         prob = config.probability
-        if prob == int(prob):
-            prob_key = str(int(prob))
-        else:
-            prob_key = str(prob)
+        prob_key = str(int(prob)) if prob == int(prob) else str(prob)
 
         # Pobierz wartości dla wszystkich trzech rozkładów
         try:
@@ -567,7 +564,8 @@ def generate_hydrograph(
         time_to_peak_hydro = t_peak
 
     logger.info(
-        f"Hydrogram: Qmax={Qmax_design:.2f} m³/s, czas do szczytu={time_to_peak_hydro:.1f} min"
+        f"Hydrogram: Qmax={Qmax_design:.2f} m³/s, "
+        f"czas do szczytu={time_to_peak_hydro:.1f} min"
     )
 
     return {
@@ -843,7 +841,7 @@ def generate_visualizations(
     ax2.bar(
         P_vals, Q_vals, width=max(P_vals) * 0.08, color="steelblue", edgecolor="navy"
     )
-    for p, q in zip(P_vals, Q_vals):
+    for p, q in zip(P_vals, Q_vals, strict=False):
         ax2.text(p, q + max(Q_vals) * 0.02, f"{q:.1f}", ha="center", fontsize=10)
 
     ax2.set_xlabel("Opad P [mm]", fontsize=11)

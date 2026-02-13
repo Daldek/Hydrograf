@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 def _compute_gradients(
-    dem: np.ndarray, cellsize: float, nodata: float,
+    dem: np.ndarray,
+    cellsize: float,
+    nodata: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute Sobel gradients dx, dy (shared by slope and aspect).
@@ -37,17 +39,24 @@ def _compute_gradients(
     dem_calc[dem == nodata] = np.nan
 
     dy = ndimage.sobel(
-        dem_calc, axis=0, mode="constant", cval=np.nan,
+        dem_calc,
+        axis=0,
+        mode="constant",
+        cval=np.nan,
     ) / (8 * cellsize)
     dx = ndimage.sobel(
-        dem_calc, axis=1, mode="constant", cval=np.nan,
+        dem_calc,
+        axis=1,
+        mode="constant",
+        cval=np.nan,
     ) / (8 * cellsize)
 
     return dx, dy
 
 
 def compute_slope_from_gradients(
-    dx: np.ndarray, dy: np.ndarray,
+    dx: np.ndarray,
+    dy: np.ndarray,
 ) -> np.ndarray:
     """
     Compute slope in percent from pre-computed gradients.
@@ -69,7 +78,8 @@ def compute_slope_from_gradients(
 
 
 def compute_aspect_from_gradients(
-    dx: np.ndarray, dy: np.ndarray,
+    dx: np.ndarray,
+    dy: np.ndarray,
 ) -> np.ndarray:
     """
     Compute aspect in degrees from pre-computed gradients.
@@ -101,7 +111,9 @@ def compute_aspect_from_gradients(
 
 
 def compute_slope(
-    dem: np.ndarray, cellsize: float, nodata: float,
+    dem: np.ndarray,
+    cellsize: float,
+    nodata: float,
 ) -> np.ndarray:
     """
     Compute slope in percent.
@@ -123,15 +135,14 @@ def compute_slope(
     logger.info("Computing slope...")
     dx, dy = _compute_gradients(dem, cellsize, nodata)
     slope = compute_slope_from_gradients(dx, dy)
-    logger.info(
-        f"Slope computed "
-        f"(range: {slope.min():.1f}% - {slope.max():.1f}%)"
-    )
+    logger.info(f"Slope computed (range: {slope.min():.1f}% - {slope.max():.1f}%)")
     return slope
 
 
 def compute_aspect(
-    dem: np.ndarray, cellsize: float, nodata: float,
+    dem: np.ndarray,
+    cellsize: float,
+    nodata: float,
 ) -> np.ndarray:
     """
     Compute aspect (slope direction) in degrees.
@@ -159,10 +170,7 @@ def compute_aspect(
 
     valid = aspect_deg[aspect_deg >= 0]
     if len(valid) > 0:
-        logger.info(
-            f"Aspect computed "
-            f"(range: {valid.min():.1f}° - {valid.max():.1f}°)"
-        )
+        logger.info(f"Aspect computed (range: {valid.min():.1f}° - {valid.max():.1f}°)")
     else:
         logger.info("Aspect computed (all flat)")
 
@@ -373,8 +381,6 @@ def compute_twi(
 
     valid = twi_result[twi_result > -9999]
     if len(valid) > 0:
-        logger.info(
-            f"TWI computed (range: {valid.min():.1f} - {valid.max():.1f})"
-        )
+        logger.info(f"TWI computed (range: {valid.min():.1f} - {valid.max():.1f})")
 
     return twi_result
