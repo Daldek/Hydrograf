@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance (audyt QA — wydajnosc)
+- **Profile LATERAL JOIN:** zamiana N+1 correlated subquery na `CROSS JOIN LATERAL` w `profile.py` — lepszy plan KNN na 19.7M wierszy (~50-100ms oszczednosci/req)
+- **Cache-Control headers:** `public, max-age=3600` na endpointach watershed, profile, select-stream, depressions — 0ms na powtorne zapytania
+- **TTL cache traverse_upstream:** `cachetools.TTLCache(128, 3600s)` w FlowGraph — workflow delineate→hydrograph reuzytkowuje BFS (~100-400ms oszczednosci)
+- **Partial GiST index (migracja 013):** `idx_flow_network_stream_geom WHERE is_stream=TRUE` — KNN na ~87k stream cells zamiast 19.7M
+- **PostgreSQL tuning:** `effective_cache_size=1536MB`, `random_page_cost=1.1` (SSD), `jit=off` (szybsze proste zapytania KNN)
+- **Land cover merge:** `hydrograph.py` uzywa `get_land_cover_for_boundary()` zamiast osobnego `calculate_weighted_cn()` — eliminacja duplikatu spatial intersection
+- **Client-side cache:** `api.js` — Map cache (50 wpisow, TTL 5min) dla delineateWatershed, selectStream, getTerrainProfile — instant response na powtorne klikniecie
+- **JS defer + preconnect:** `defer` na 13 script tagow, `preconnect` do CDN — szybsze First Contentful Paint
+- **DEM fetch cache:** `force-cache` na metadata fetch w `map.js`
+
+### Added (devops + code quality)
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): lint (ruff), test (pytest z PostGIS service container), security audit (pip-audit)
+- **Pre-commit hooks** (`.pre-commit-config.yaml`): ruff check+format, trailing whitespace, YAML lint, large file guard
+- **Structured logging** (`structlog`): JSON w produkcji, console w DEBUG; middleware `request_id` (X-Request-ID) per-request traceability
+- **`core/constants.py`:** scentralizowane stale — `CRS_PL1992`, `CRS_WGS84`, `M_PER_KM`, `M2_PER_KM2`, `DEFAULT_CN`, `HYDROGRAPH_AREA_LIMIT_KM2`, `MAX_WATERSHED_CELLS`
+
+### Changed (refactor)
+- **Dedup shape indices:** usunieto `_compute_shape_indices()` z `select_stream.py`, import kanoniczny `calculate_shape_indices()` z `core/morphometry.py` (-30 LOC)
+- **SessionLocal.configure():** przeniesiony z per-request `get_db()`/`get_db_session()` do jednorazowego `get_db_engine()`
+- **Migracja 013:** partial GiST index na `flow_network WHERE is_stream = TRUE`
+
+### Fixed
+- **19 ruff warnings:** E501 (line too long), B905 (zip strict=), SIM108 (ternary operator)
+- **ruff format:** 19 plikow przeformatowanych
+
+### Dependencies
+- `cachetools>=5.3.0` — TTL cache dla FlowGraph
+- `structlog>=24.1.0` — structured logging
+
 ### Added (graf zlewni czastkowych — ADR-021)
 - **`core/catchment_graph.py`** (nowy modul): in-memory graf zlewni czastkowych (~87k wezlow, ~8 MB) z numpy arrays + scipy sparse CSR matrix. Metody: `load()`, `find_catchment_at_point()`, `traverse_upstream()`, `aggregate_stats()`, `aggregate_hypsometric()`. Zaladowany przy starcie API obok FlowGraph.
 - **Migracja 012:** 6 nowych kolumn w `stream_catchments`: `downstream_segment_idx`, `elevation_min_m`, `elevation_max_m`, `perimeter_km`, `stream_length_km`, `elev_histogram` (JSONB). Indeks `idx_catchments_downstream`.
