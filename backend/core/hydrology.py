@@ -153,8 +153,49 @@ def burn_streams_into_dem(
     diagnostics = {"cells_burned": 0, "streams_loaded": 0, "streams_in_extent": 0}
     burned = dem.copy()
 
-    # 1. Load streams
-    streams = gpd.read_file(streams_path)
+    # 1. Load streams (multi-layer GeoPackage support)
+    streams_path = Path(streams_path)
+    try:
+        import fiona
+
+        layers = fiona.listlayers(str(streams_path))
+        if len(layers) > 1:
+            # Multi-layer GeoPackage: load stream lines + lake polygons
+            import pandas as pd
+
+            target_prefixes = ["SWRS", "SWKN", "SWRM", "PTWP"]
+            loaded_gdfs = []
+            loaded_layer_names = []
+            for layer in layers:
+                for prefix in target_prefixes:
+                    if prefix in layer.upper():
+                        try:
+                            gdf = gpd.read_file(streams_path, layer=layer)
+                            if not gdf.empty:
+                                loaded_gdfs.append(gdf)
+                                loaded_layer_names.append(layer)
+                        except Exception:
+                            logger.debug(f"Could not read layer {layer}")
+                        break
+
+            if loaded_gdfs:
+                streams = gpd.GeoDataFrame(pd.concat(loaded_gdfs, ignore_index=True))
+                if hasattr(loaded_gdfs[0], "crs") and loaded_gdfs[0].crs is not None:
+                    streams = streams.set_crs(loaded_gdfs[0].crs)
+                logger.info(
+                    f"Multi-layer GeoPackage: loaded {len(loaded_gdfs)} layers "
+                    f"({', '.join(loaded_layer_names)}), "
+                    f"{len(streams)} features total"
+                )
+            else:
+                streams = gpd.GeoDataFrame(geometry=[], crs="EPSG:2180")
+        else:
+            # Single-layer file
+            streams = gpd.read_file(streams_path)
+    except Exception:
+        # Fallback: fiona not available or file not readable as multi-layer
+        streams = gpd.read_file(streams_path)
+
     diagnostics["streams_loaded"] = len(streams)
 
     if streams.empty:
@@ -421,9 +462,7 @@ def classify_endorheic_lakes(
             # No streams at all → endorheic
             diagnostics["endorheic"] += len(members)
             for lake_geom in members:
-                _add_drain_point(
-                    dem, transform, lake_geom, nodata, drain_points
-                )
+                _add_drain_point(dem, transform, lake_geom, nodata, drain_points)
             continue
 
         # Analyze each touching stream for inflow/outflow
@@ -455,9 +494,7 @@ def classify_endorheic_lakes(
             near_elev = _sample_dem_at_point(
                 dem, transform, near_pt.x, near_pt.y, nodata
             )
-            far_elev = _sample_dem_at_point(
-                dem, transform, far_pt.x, far_pt.y, nodata
-            )
+            far_elev = _sample_dem_at_point(dem, transform, far_pt.x, far_pt.y, nodata)
 
             if near_elev is None or far_elev is None:
                 diagnostics["undetermined"] += 1
@@ -473,9 +510,7 @@ def classify_endorheic_lakes(
         else:
             diagnostics["endorheic"] += len(members)
             for lake_geom in members:
-                _add_drain_point(
-                    dem, transform, lake_geom, nodata, drain_points
-                )
+                _add_drain_point(dem, transform, lake_geom, nodata, drain_points)
 
     logger.info(
         f"Lake classification: {diagnostics['total_lakes']} total, "

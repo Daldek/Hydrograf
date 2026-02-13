@@ -845,3 +845,94 @@ class TestComputeStrahlerOrder:
         dem, metadata = v_shaped_dem_20x20
         strahler = compute_strahler_order(dem, metadata, stream_threshold=5)
         assert strahler.dtype == np.uint8
+
+
+class TestBurnStreamsMultilayer:
+    """Tests for burn_streams_into_dem() with multi-layer GeoPackage."""
+
+    def test_multilayer_gpkg_loads_all_layers(self, tmp_path):
+        """Multi-layer GPKG with stream lines and lake polygons loads both layers."""
+        import fiona
+        from fiona.crs import CRS
+        from rasterio.transform import from_bounds
+
+        # 1. Create a small 10x10 DEM
+        dem = np.full((10, 10), 100.0, dtype=np.float64)
+        xmin, ymin = 500000.0, 300000.0
+        cellsize = 5.0
+        xmax = xmin + 10 * cellsize
+        ymax = ymin + 10 * cellsize
+        transform = from_bounds(xmin, ymin, xmax, ymax, 10, 10)
+
+        # 2. Create multi-layer GeoPackage with fiona
+        gpkg_path = tmp_path / "bdot10k_multilayer.gpkg"
+        crs = CRS.from_epsg(2180)
+
+        # Layer 1: OT_SWRS_L — stream line across the DEM
+        schema_line = {"geometry": "LineString", "properties": {}}
+        xmid = (xmin + xmax) / 2
+        ymid = (ymin + ymax) / 2
+        with fiona.open(
+            str(gpkg_path),
+            "w",
+            driver="GPKG",
+            schema=schema_line,
+            crs=crs,
+            layer="OT_SWRS_L",
+        ) as dst:
+            dst.write(
+                {
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": [(xmin + 5, ymid), (xmax - 5, ymid)],
+                    },
+                    "properties": {},
+                }
+            )
+
+        # Layer 2: OT_PTWP_A — lake polygon within the DEM
+        schema_poly = {"geometry": "Polygon", "properties": {}}
+        lake_coords = [
+            (xmid - 5, ymid + 5),
+            (xmid + 5, ymid + 5),
+            (xmid + 5, ymid + 15),
+            (xmid - 5, ymid + 15),
+            (xmid - 5, ymid + 5),
+        ]
+        with fiona.open(
+            str(gpkg_path),
+            "w",
+            driver="GPKG",
+            schema=schema_poly,
+            crs=crs,
+            layer="OT_PTWP_A",
+        ) as dst:
+            dst.write(
+                {
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [lake_coords],
+                    },
+                    "properties": {},
+                }
+            )
+
+        # Verify we created 2 layers
+        layers = fiona.listlayers(str(gpkg_path))
+        assert len(layers) == 2
+
+        # 3. Call burn_streams_into_dem
+        burned, diag = burn_streams_into_dem(
+            dem, transform, gpkg_path, burn_depth_m=10.0, nodata=NODATA
+        )
+
+        # 4. Assert both layers were loaded (stream line + lake polygon)
+        assert diag["streams_loaded"] >= 2, (
+            f"Expected features from both layers, "
+            f"got streams_loaded={diag['streams_loaded']}"
+        )
+
+        # 5. Assert cells were actually burned
+        assert diag["cells_burned"] > 0, (
+            f"Expected burned cells > 0, got {diag['cells_burned']}"
+        )
