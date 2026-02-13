@@ -58,6 +58,14 @@
   - **Faza 7:** 19 testow catchment_graph, 7 testow zonal_stats, 8 testow integracyjnych select-stream (przepisane), dokumentacja (DATA_MODEL, DECISIONS, CHANGELOG)
   - **Wynik:** 519 testow, 0 failures, lint clean
 
+- **Re-run pipeline + deploy CatchmentGraph:**
+  - Migracja 012 zastosowana (`alembic upgrade head`)
+  - Pipeline re-run: 1114s (~18.5 min), 86913 zlewni z pelnym zestawem danych
+  - Nowe kolumny: downstream_segment_idx 99%, elevation/perimeter/histogram 100%
+  - Obraz API przebudowany (`docker compose build api`), kontener zrestartowany
+  - CatchmentGraph zaladowany: 86913 nodes, 86178 edges, 3.0s, 3.8 MB RAM
+  - Weryfikacja `select-stream`: 16 upstream segments, area 0.26 km², pelna morfometria + krzywa hipsometryczna (21 pkt)
+
 ### Poprzednia sesja (2026-02-13, sesja 13b)
 
 - **Audyt i poprawki frontend (13 taskow, 3 fazy)**
@@ -142,25 +150,23 @@
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
-| flow_network | 19,667,662 | 4 progi FA, re-run z poprawionym stream burning |
-| stream_network | 86,789 | 100: 78101, 1000: 7784, 10000: 812, 100000: 92 |
-| stream_catchments | 86,806 | 100: 78113, 1000: 7788, 10000: 813, 100000: 92 |
+| flow_network | 19,667,662 | 4 progi FA, re-run z CatchmentGraph |
+| stream_network | 86,898 | 100: 78186, 1000: 7812, 10000: 827, 100000: 88 (po re-run z migracja 012) |
+| stream_catchments | 86,913 | 100: 78186, 1000: 7812, 10000: 827, 100000: 88 + nowe kolumny (downstream, elev, histogram) |
 | depressions | 602,092 | re-run po poprawionym stream burning |
 
 ### Znane problemy
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
 - Flow graph: `downstream_id` nie jest przechowywany w pamięci (zwracany jako None) — nie uzywany przez callery
-- 17 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
-- **Catchment graph wymaga re-runu pipeline** (nowe kolumny z migracji 012 — downstream_segment_idx, elevation stats, histogramy)
+- 15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
 - 21 ruff check warnings w plikach nie modyfikowanych w tej sesji (hydrograph.py, watershed.py, morphometry.py, export_pipeline_gpkg.py)
 
 ### Nastepne kroki
-1. **Re-run pipeline** z migracja 012 (`alembic upgrade head` + `process_dem --clear-existing`) — wypelnienie nowych kolumn stream_catchments
-2. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
-3. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
-4. Dlug techniczny: constants.py, hardcoded secrets
-5. Naprawa 21 ruff check warnings w starszych plikach
-6. CP5: MVP — pelna integracja, deploy
+1. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
+2. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
+3. Dlug techniczny: constants.py, hardcoded secrets
+4. Naprawa 21 ruff check warnings w starszych plikach
+5. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
@@ -172,6 +178,7 @@
 - [x] CP4 Faza 2: Redesign glassmorphism + Chart.js + hydrogram + profil + zaglebie
 - [x] CP4 Faza 3: Wektoryzacja ciekow MVT, multi-prog FA, hillshade, zaglbienia preprocessing
 - [x] CP4 Faza 4: Select-stream pelne statystyki, GUGiK WMTS, UI fixes (492 testy)
+- [x] Graf zlewni czastkowych (ADR-021): CatchmentGraph in-memory, migracja 012, pipeline re-run, select-stream rewrite
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
 - [ ] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
