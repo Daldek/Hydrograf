@@ -44,11 +44,30 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-12 (sesja 9)
+**Data:** 2026-02-13 (sesja 11)
 
 ### Co zrobiono
 
-- **Frontend — 7 poprawek UX (przeprojektowanie):**
+- **DEM tile pyramid (`scripts/generate_dem_tiles.py`):**
+  - Nowy skrypt: koloryzacja DEM + hillshade → RGBA GeoTIFF w EPSG:3857 → `gdal2tiles.py --xyz`
+  - Zoom 8–18, nearest-neighbor (ostre krawedzie komorek 1m przy duzym zoomie)
+  - Metadane JSON (bounds, zoom range, elevation stats)
+  - Argumenty: `--input`, `--output-dir`, `--meta`, `--source-crs`, `--min-zoom`, `--max-zoom`, `--no-hillshade`
+
+- **Wspolny modul `utils/dem_color.py`:**
+  - Wyekstrahowane z `generate_dem_overlay.py`: `COLOR_STOPS`, `build_colormap()`, `compute_hillshade()`
+  - Stary skrypt zrefaktoryzowany na importy — backwards compatible
+
+- **Frontend — custom panes + L.tileLayer:**
+  - Custom panes z-index: demPane (250) → catchmentsPane (300) → streamsPane (350)
+  - `loadDemOverlay()`: L.tileLayer z `/data/dem_tiles/{z}/{x}/{y}.png`, fallback na L.imageOverlay
+  - MVT layers: `pane: 'streamsPane'` i `pane: 'catchmentsPane'`
+
+- **Laczny wynik:** 484 testy, wszystkie przechodza
+
+### Poprzednia sesja (2026-02-12, sesja 10)
+
+- **Frontend — 7 poprawek UX (przeprojektowanie, sesja 9):**
   - **Zoom controls** przeniesione do topright (nie koliduja z layers panel)
   - **Przezroczystosc zlewni czastkowych** naprawiona (fillOpacity=1.0 initial, bez ×0.5)
   - **Histogram wysokosci** zamiast krzywej hipsometrycznej — `renderElevationHistogram()` w charts.js
@@ -67,6 +86,13 @@
   - `highlightUpstreamCatchments()` / `clearCatchmentHighlights()` w map.js
   - `showSelectionBoundary()` / `clearSelectionBoundary()` — warstwa boundary z dash
   - `selectStream()` w api.js — POST /api/select-stream
+
+- **5 bugfixow (sesja 10):**
+  - **Blad serwera select-stream**: dodano try/except ValueError + Exception (wzorzec z watershed.py), uzycie snapped outlet coords
+  - **Flicker przezroczystosci**: setCatchmentsOpacity/setStreamsOpacity uzywaja CSS container opacity zamiast redraw()
+  - **Legendy warstw**: L.control legendy dla ciekow (gradient flow acc) i zlewni (paleta Strahler), auto show/hide
+  - **Zoom do danych na starcie**: fitBounds po zaladowaniu metadanych DEM
+  - **Warstwa "Zlewnia" reaktywna**: wpis w panelu warstw aktywuje sie automatycznie po wyznaczeniu zlewni (polling 500ms)
 
 - **Laczny wynik:** 484 testy, wszystkie przechodza
 
@@ -87,9 +113,9 @@
 - Endpoint `select-stream` wymaga zaladowanego flow graph (lub SQL fallback) + stream_network w bazie
 
 ### Nastepne kroki
-1. Testy dla `select_stream.py` (unit + integration)
-2. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
-3. Benchmark `traverse_upstream`: in-memory vs SQL na 3 rozmiarach zlewni
+1. Wygenerowanie kafelkow DEM: `python -m scripts.generate_dem_tiles --input ... --output-dir ../frontend/data/dem_tiles --meta ../frontend/data/dem_tiles.json --source-crs EPSG:2180`
+2. Testy dla `select_stream.py` (unit + integration)
+3. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
 4. Dlug techniczny: constants.py, hardcoded secrets
 5. CP5: MVP — pelna integracja, deploy
 
@@ -97,8 +123,9 @@
 
 - [x] Fix traverse_upstream resource exhaustion (ADR-015: pre-flight check, CTE LIMIT, statement_timeout, Docker limits)
 - [x] CP4 Faza 1: Frontend — mapa + zlewnia + parametry (Leaflet.js, Bootstrap 5)
-- [x] CP4: Warstwa NMT — naprawiona (L.imageOverlay zamiast L.tileLayer)
+- [x] CP4: Warstwa NMT — naprawiona (L.imageOverlay → tile pyramid XYZ + fallback)
 - [x] CP4: Warstwa ciekow (Strahler) — L.imageOverlay z dylatacja morfologiczna → zamieniona na MVT
+- [x] CP4: DEM tile pyramid + kolejnosc warstw (demPane/catchmentsPane/streamsPane)
 - [x] CP4 Faza 2: Redesign glassmorphism + Chart.js + hydrogram + profil + zaglebie
 - [x] CP4 Faza 3: Wektoryzacja ciekow MVT, multi-prog FA, hillshade, zaglbienia preprocessing
 - [ ] CP5: MVP — pelna integracja, deploy
