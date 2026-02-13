@@ -10,6 +10,7 @@ import logging
 import time
 
 import numpy as np
+from cachetools import TTLCache
 from scipy import sparse
 from scipy.sparse.csgraph import breadth_first_order
 from sqlalchemy import text
@@ -36,6 +37,7 @@ class FlowGraph:
         self._n = 0
         self._min_id = 0
         self._contiguous = False
+        self._traverse_cache: TTLCache = TTLCache(maxsize=128, ttl=3600)
 
         # DB ids sorted (for non-contiguous case)
         self._ids: np.ndarray | None = None
@@ -280,6 +282,10 @@ class FlowGraph:
         if not self._loaded:
             raise RuntimeError("Flow graph not loaded")
 
+        # Check cache
+        if outlet_id in self._traverse_cache:
+            return self._traverse_cache[outlet_id]
+
         outlet_idx = self._resolve_idx(outlet_id)
 
         # Pre-flight check using flow_accumulation
@@ -305,6 +311,8 @@ class FlowGraph:
                 f"(limit: {max_cells:,})"
             )
 
+        # Cache result
+        self._traverse_cache[outlet_id] = node_order
         return node_order
 
     def get_flow_cells(self, indices: np.ndarray):

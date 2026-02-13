@@ -16,7 +16,7 @@ from hydrolog.runoff import HydrographGenerator
 from sqlalchemy.orm import Session
 
 from core.database import get_db
-from core.land_cover import DEFAULT_CN, calculate_weighted_cn
+from core.land_cover import DEFAULT_CN, get_land_cover_for_boundary
 from core.morphometry import build_morphometric_params
 from core.precipitation import (
     DURATION_STR_TO_MIN,
@@ -98,7 +98,8 @@ def generate_hydrograph(
     """
     try:
         logger.info(
-            f"Generating hydrograph for ({request.latitude:.6f}, {request.longitude:.6f}), "
+            "Generating hydrograph for "
+            f"({request.latitude:.6f}, {request.longitude:.6f}), "
             f"duration={request.duration}, p={request.probability}%"
         )
 
@@ -133,17 +134,18 @@ def generate_hydrograph(
 
         # Calculate CN from land cover data (with fallback to default)
         try:
-            cn, land_cover_stats = calculate_weighted_cn(boundary_2180, db)
-            if land_cover_stats:
-                logger.info(f"CN={cn} calculated from land cover: {land_cover_stats}")
+            lc_data = get_land_cover_for_boundary(boundary_2180, db)
+            if lc_data:
+                cn = lc_data["weighted_cn"]
+                logger.info(f"CN={cn} calculated from land cover")
             else:
+                cn = DEFAULT_CN
                 logger.info(f"CN={cn} (default, no land cover data)")
         except Exception as e:
             logger.warning(
                 f"Failed to calculate CN from land cover: {e}, using default"
             )
             cn = DEFAULT_CN
-            land_cover_stats = {}
 
         morph_dict = build_morphometric_params(
             cells, boundary_2180, outlet_cell, cn, db=db
