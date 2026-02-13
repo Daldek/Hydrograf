@@ -44,9 +44,18 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-13 (sesja 14)
+**Data:** 2026-02-13 (sesja 15)
 
 ### Co zrobiono
+
+- **Audyt QA — Wydajnosc i Efektywnosc Workflow (4 fazy):**
+  - **Faza 1 (Quick Wins):** LATERAL JOIN w profile.py, Cache-Control headers na 4 endpointach, dedup `_compute_shape_indices()` (-30 LOC), SessionLocal.configure() jednorazowo
+  - **Faza 2 (Backend Perf):** TTLCache na traverse_upstream (128 wpisow, 1h), migracja 013 partial GiST index `WHERE is_stream=TRUE`, PG tuning (effective_cache_size=1536MB, random_page_cost=1.1, jit=off), land cover query merge w hydrograph.py
+  - **Faza 3 (Frontend Perf):** Client-side Map cache w api.js (50 wpisow, 5min TTL), defer na 13 script tagow + preconnect CDN, force-cache na DEM metadata fetch
+  - **Faza 4 (DevOps):** GitHub Actions CI (lint+test+security), pre-commit hooks (ruff+format), structured logging (structlog JSON + request_id middleware), core/constants.py, naprawiono 19 ruff warnings, ruff format 19 plikow
+  - **Wynik:** 519 testow, 0 failures, ruff check+format clean, 4 commity
+
+### Poprzednia sesja (2026-02-13, sesja 14)
 
 - **Graf zlewni czastkowych — ADR-021 (7 faz, caly plan zaimplementowany):**
   - **Faza 1:** Migracja 012 — 6 nowych kolumn w `stream_catchments` (downstream_segment_idx, elevation_min/max, perimeter_km, stream_length_km, elev_histogram JSONB)
@@ -159,13 +168,13 @@
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
 - Flow graph: `downstream_id` nie jest przechowywany w pamięci (zwracany jako None) — nie uzywany przez callery
 - 15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
-- 21 ruff check warnings w plikach nie modyfikowanych w tej sesji (hydrograph.py, watershed.py, morphometry.py, export_pipeline_gpkg.py)
+- Migracja 013 (partial GiST index) wymaga `alembic upgrade head` na bazie produkcyjnej
 
 ### Nastepne kroki
 1. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
 2. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
-3. Dlug techniczny: constants.py, hardcoded secrets
-4. Naprawa 21 ruff check warnings w starszych plikach
+3. Usuniecie hardcoded secrets z config.py i migrations/env.py
+4. Faza 5 (opcjonalna): PMTiles, pre-computed watersheds, MapLibre GL JS, mmap FlowGraph
 5. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
@@ -181,7 +190,8 @@
 - [x] Graf zlewni czastkowych (ADR-021): CatchmentGraph in-memory, migracja 012, pipeline re-run, select-stream rewrite
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
-- [ ] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
+- [x] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
 - [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
 - [x] Problem jezior bezodplywowych (endorheic basins) — ADR-020: klasyfikacja + drain points
-- [ ] CI/CD pipeline (GitHub Actions)
+- [x] CI/CD pipeline (GitHub Actions)
+- [x] Audyt QA wydajnosci: LATERAL JOIN, cache headers, TTL cache, partial index, PG tuning, client cache, defer, structlog
