@@ -8,7 +8,7 @@ optional filtering by volume and area.
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ router = APIRouter()
 
 @router.get("/depressions")
 def get_depressions(
+    response: Response,
     min_volume: float = Query(0, ge=0, description="Minimum volume [m3]"),
     max_volume: float = Query(1e9, ge=0, description="Maximum volume [m3]"),
     min_area: float = Query(0, ge=0, description="Minimum area [m2]"),
@@ -127,6 +128,7 @@ def get_depressions(
                 }
             )
 
+        response.headers["Cache-Control"] = "public, max-age=3600"
         return {
             "type": "FeatureCollection",
             "features": features,
