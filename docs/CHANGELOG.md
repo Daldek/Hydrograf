@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (select-stream stats + UI fixes)
+- **Pelne statystyki zlewni w trybie "Wybor"**: endpoint `select-stream` zwraca `WatershedResponse` z morfometria, pokryciem terenu, krzywa hipsometryczna, ciekiem glownym
+- **Podklady GUGiK WMTS**: ortofotomapa (HighResolution) i mapa topograficzna w panelu warstw
+- **8 testow integracyjnych** `test_select_stream.py`: sukces, watershed w odpowiedzi, morfometria, 404, 422
+
+### Changed (select-stream + UI)
+- **Siec rzeczna BDOT10k**: `get_stream_stats_in_watershed()` uzywa `source != 'DEM_DERIVED'` z `ST_Intersection` dla dokladnych dlugosci w granicach zlewni
+- **Histogram**: 10-25 klas (5m/klase), krotsza etykiety osi X (`Math.round(hLow)`), wysokosc 100px, rotacja 45-90 stopni
+- **Akordeony**: inline `onclick` zastapione event listenerami w `app.js init()`
+
+### Fixed (UI)
+- **Przyciski zamkniecia/minimalizacji panelu**: `draggable.js` nie przechwytuje klikniec w `.results-btn` (early return w `onPointerDown`)
+- **Suwaki przezroczystosci**: `overflow-x: hidden`, `padding-left: 0.8rem`, `flex-wrap: wrap`, `box-sizing: border-box` w panelu warstw
+- **Frontend select mode**: pelne statystyki zlewni (zamiast tylko StreamInfo) wyswietlane po kliknieciu cieku
+
 ### Added (DEM tile pyramid + kolejnosc warstw)
 - **`scripts/generate_dem_tiles.py`**: generacja piramidy kafelkow XYZ z rastra DEM — koloryzacja hipsometryczna + hillshade → RGBA GeoTIFF → `gdal2tiles.py --xyz` (zoom 8–18, nearest-neighbor, `--processes=4`)
 - **`utils/dem_color.py`**: wspolny modul kolorow DEM — `COLOR_STOPS`, `build_colormap()`, `compute_hillshade()` wyekstrahowane z `generate_dem_overlay.py`

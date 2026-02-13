@@ -109,6 +109,10 @@ backend/
 │       ├── __init__.py
 │       ├── watershed.py           # POST /delineate-watershed
 │       ├── hydrograph.py          # POST /generate-hydrograph
+│       ├── profile.py             # POST /terrain-profile
+│       ├── depressions.py         # GET /depressions
+│       ├── tiles.py               # GET /tiles/streams|catchments/{z}/{x}/{y}.pbf
+│       ├── select_stream.py       # POST /select-stream
 │       └── health.py              # GET /health
 │
 ├── core/
@@ -126,7 +130,8 @@ backend/
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
-│   └── zonal_stats.py             # Zonal statistics (bincount, max)
+│   ├── zonal_stats.py             # Zonal statistics (bincount, max)
+│   └── flow_graph.py              # In-memory flow graph (scipy sparse CSR)
 │
 ├── models/
 │   ├── __init__.py
@@ -223,6 +228,66 @@ Response: 200 OK
   "durations": ["15min", "30min", "1h", "2h", "6h", "12h", "24h"],
   "probabilities": [1, 2, 5, 10, 20, 50]
 }
+```
+
+#### 2.2.5 Terrain Profile
+```
+POST /api/terrain-profile
+Content-Type: application/json
+
+Request:
+{
+  "geometry": { "type": "LineString", "coordinates": [[lon, lat], ...] },
+  "n_samples": 100
+}
+
+Response: 200 OK
+{
+  "distances_m": [0.0, 10.5, ...],
+  "elevations_m": [150.0, 151.2, ...],
+  "total_length_m": 1050.0
+}
+```
+
+#### 2.2.6 Depressions (Blue Spots)
+```
+GET /api/depressions?bbox=xmin,ymin,xmax,ymax&min_volume=0&max_volume=1000
+
+Response: 200 OK (GeoJSON FeatureCollection)
+```
+
+#### 2.2.7 Select Stream
+```
+POST /api/select-stream
+Content-Type: application/json
+
+Request:
+{
+  "latitude": 52.123456,
+  "longitude": 21.123456,
+  "threshold_m2": 10000
+}
+
+Response: 200 OK
+{
+  "stream": { "segment_idx": 42, "strahler_order": 3, ... },
+  "upstream_segment_indices": [42, 43, 44, ...],
+  "boundary_geojson": { "type": "Feature", ... },
+  "watershed": { "outlet": {...}, "morphometry": {...}, ... }
+}
+
+Errors:
+- 404: "Nie znaleziono cieku/segmentu"
+- 422: Walidacja (niepoprawne wspolrzedne, brak threshold_m2)
+```
+
+#### 2.2.8 MVT Tiles
+```
+GET /api/tiles/streams/{z}/{x}/{y}.pbf?threshold_m2=10000
+GET /api/tiles/catchments/{z}/{x}/{y}.pbf?threshold_m2=10000
+GET /api/tiles/thresholds
+
+Response: Mapbox Vector Tiles (PBF) / JSON
 ```
 
 ---
@@ -533,23 +598,20 @@ engine = create_engine(
 
 ```
 frontend/
-├── index.html
+├── index.html               # SPA — Leaflet + Bootstrap + Chart.js (CDN)
 ├── css/
-│   ├── main.css
-│   └── map.css
-├── js/
-│   ├── app.js                # Main application logic
-│   ├── map.js                # Leaflet map initialization
-│   ├── api.js                # API calls
-│   ├── chart.js              # Chart.js hydrograph
-│   └── export.js             # Export functions
-├── assets/
-│   ├── images/
-│   └── icons/
-└── lib/
-    ├── leaflet/
-    ├── chart.js/
-    └── bootstrap/
+│   ├── glass.css             # Glassmorphism CSS variables
+│   └── style.css             # Custom styles
+└── js/
+    ├── api.js                # API calls (fetch wrappers)
+    ├── map.js                # Leaflet map, layers, drawing, MVT
+    ├── draggable.js          # Pointer-event drag for floating panel
+    ├── charts.js             # Chart.js: donut, histogram, profile, hydrograph
+    ├── layers.js             # Layers panel: base layers, overlays, opacity
+    ├── profile.js            # Terrain profile (draw line / auto)
+    ├── hydrograph.js         # Hydrograph scenario form + chart
+    ├── depressions.js        # Depressions (blue spots) overlay
+    └── app.js                # Orchestrator: init, click routing, panel
 ```
 
 ---

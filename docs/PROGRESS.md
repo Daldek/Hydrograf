@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 7 endpointow (+ tiles MVT): delineate, hydrograph, scenarios, profile, depressions, select-stream, health. 484 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 7 endpointow (+ tiles MVT): delineate, hydrograph, scenarios, profile, depressions, select-stream, health. 492 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -34,9 +34,9 @@
 - **Wersja:** v0.3.0
 - **Zakres:** POST /generate-hydrograph, SCS-CN, 42 scenariusze, COPY 27x, reverse trace 330x, Land Cover, IMGWTools
 
-### CP4 — Frontend z mapa ⏳
-- **Wersja:** v0.4.0 (planowana)
-- **Zakres:** Leaflet.js, Chart.js, interaktywna mapa, panel parametrow
+### CP4 — Frontend z mapa ✅
+- **Wersja:** v0.4.0
+- **Zakres:** Leaflet.js, Chart.js, interaktywna mapa, panel parametrow, glassmorphism, MVT, select-stream, GUGiK WMTS
 
 ### CP5 — MVP ⏳
 - **Wersja:** v1.0.0 (planowana)
@@ -44,9 +44,34 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-13 (sesja 11)
+**Data:** 2026-02-13 (sesja 12)
 
 ### Co zrobiono
+
+- **Select-stream z pelnymi statystykami zlewni (Z1):**
+  - Endpoint `/api/select-stream` rozszerzony o `WatershedResponse` (morfometria, land cover, krzywa hipsometryczna, ciek glowny)
+  - Schema `SelectStreamResponse` z opcjonalnym polem `watershed: WatershedResponse | None`
+  - Wzorzec z `watershed.py`: `calculate_watershed_area_km2`, `build_morphometric_params`, `get_land_cover_for_boundary`, `transform_pl1992_to_wgs84`
+
+- **Siec rzeczna BDOT10k (Z2):**
+  - `get_stream_stats_in_watershed()`: `source != 'DEM_DERIVED'` (zamiast `= 'DEM_DERIVED'`)
+  - `SUM(ST_Length(ST_Intersection(...)))` dla dokladnych dlugosci w granicach zlewni
+
+- **Naprawa UI (Z3, Z4, Z5, Z6, Z7, Z8):**
+  - Przyciski close/minimize: `draggable.js` — early return dla `.results-btn` w `onPointerDown`
+  - Akordeony: inline `onclick` → event listenery w `app.js init()`
+  - Podklady GUGiK WMTS: ortofoto + topo w `layers.js`
+  - Suwaki przezroczystosci: `overflow-x: hidden`, `padding-left: 0.8rem`, `flex-wrap: wrap`, `box-sizing` w CSS
+  - Histogram: 10-25 klas, `height="100"`, krotsza etykiety (`Math.round(hLow)`), rotacja 45-90°
+  - Tryb "Wybor": `onSelectClick()` uzywa `displayParameters(data)` gdy `data.watershed` dostepny
+
+- **Testy integracyjne select-stream (Z9):**
+  - 8 testow: sukces, watershed, morfometria, upstream segments, 404 brak cieku, 404 brak segmentu, 422 invalid coords, 422 missing threshold
+  - Wzorzec z `test_watershed.py`: TestClient + MagicMock + `app.dependency_overrides`
+
+- **Laczny wynik:** 492 testy, wszystkie przechodza
+
+### Poprzednia sesja (2026-02-13, sesja 11)
 
 - **DEM tile pyramid (`scripts/generate_dem_tiles.py`):**
   - Nowy skrypt: koloryzacja DEM + hillshade → RGBA GeoTIFF w EPSG:3857 → `gdal2tiles.py --xyz`
@@ -63,7 +88,7 @@
   - `loadDemOverlay()`: L.tileLayer z `/data/dem_tiles/{z}/{x}/{y}.png`, fallback na L.imageOverlay
   - MVT layers: `pane: 'streamsPane'` i `pane: 'catchmentsPane'`
 
-- **Laczny wynik:** 484 testy, wszystkie przechodza
+- **Laczny wynik:** 484 testy (teraz 492), wszystkie przechodza
 
 ### Poprzednia sesja (2026-02-12, sesja 10)
 
@@ -114,7 +139,7 @@
 
 ### Nastepne kroki
 1. Wygenerowanie kafelkow DEM: `python -m scripts.generate_dem_tiles --input ... --output-dir ../frontend/data/dem_tiles --meta ../frontend/data/dem_tiles.json --source-crs EPSG:2180`
-2. Testy dla `select_stream.py` (unit + integration)
+2. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
 3. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
 4. Dlug techniczny: constants.py, hardcoded secrets
 5. CP5: MVP — pelna integracja, deploy
@@ -128,6 +153,7 @@
 - [x] CP4: DEM tile pyramid + kolejnosc warstw (demPane/catchmentsPane/streamsPane)
 - [x] CP4 Faza 2: Redesign glassmorphism + Chart.js + hydrogram + profil + zaglebie
 - [x] CP4 Faza 3: Wektoryzacja ciekow MVT, multi-prog FA, hillshade, zaglbienia preprocessing
+- [x] CP4 Faza 4: Select-stream pelne statystyki, GUGiK WMTS, UI fixes (492 testy)
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
 - [ ] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
