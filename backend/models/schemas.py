@@ -354,7 +354,7 @@ class HydrographResponse(BaseModel):
     metadata: HydrographMetadata = Field(..., description="Calculation metadata")
 
 
-# ===================== TERRAIN PROFILE MODELS =====================
+# ===================== STREAM SELECTION MODELS =====================
 
 
 class SelectStreamRequest(BaseModel):
@@ -403,6 +403,12 @@ class SelectStreamResponse(BaseModel):
     boundary_geojson: dict[str, Any] = Field(
         ..., description="Upstream catchment boundary as GeoJSON Feature"
     )
+    watershed: WatershedResponse | None = Field(
+        None, description="Full watershed statistics (morphometry, land cover, etc.)"
+    )
+
+
+# ===================== TERRAIN PROFILE MODELS =====================
 
 
 class TerrainProfileRequest(BaseModel):

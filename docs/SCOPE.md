@@ -203,7 +203,7 @@ Ten dokument precyzyjnie definiuje:
 - ❌ Animacja przepływu wody
 - ❌ Heatmapy intensywności opadu
 - ❌ Mapy głębokości zalewu
-- ❌ Profile podłużne cieku
+- ✅ Profile podłużne cieku (zaimplementowane: POST /api/terrain-profile)
 - ❌ Przekroje poprzeczne
 
 #### 2.2.4 Integracje i Dane Real-Time
@@ -415,7 +415,7 @@ Ten dokument precyzyjnie definiuje:
 **Mapa:** Leaflet.js 1.9+  
 **Wykresy:** Chart.js 4.0+  
 **UI Framework:** Bootstrap 5  
-**Podkład mapy:** OpenStreetMap
+**Podkład mapy:** OpenStreetMap, ESRI Satellite, OpenTopoMap, GUGiK WMTS (ortofoto + topo)
 
 #### Infrastruktura
 **Konteneryzacja:** Docker + Docker Compose  

@@ -319,11 +319,14 @@ CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
 CREATE INDEX idx_stream_name ON stream_network(name);
 CREATE INDEX idx_strahler_order ON stream_network(strahler_order);
 CREATE UNIQUE INDEX idx_stream_unique ON stream_network
-    (COALESCE(name, ''), ST_GeoHash(ST_Transform(geom, 4326), 12));
+    (COALESCE(name, ''), ST_GeoHash(ST_Transform(geom, 4326), 12), threshold_m2);
+                                                    -- migracja 010: dodano threshold_m2
 CREATE INDEX idx_stream_threshold ON stream_network
     (threshold_m2, strahler_order);                 -- migracja 005
 CREATE INDEX idx_stream_upstream_area ON stream_network
     (upstream_area_km2);                            -- migracja 006
+CREATE INDEX idx_stream_dem_derived_geom ON stream_network
+    USING GIST(geom) WHERE source = 'DEM_DERIVED'; -- migracja 009
 
 -- Komentarze
 COMMENT ON TABLE stream_network IS 'Sieć rzeczna - osie cieków';
@@ -765,7 +768,9 @@ migrations/
     ├── 005_add_threshold_to_stream_network.py
     ├── 006_add_upstream_area_index.py
     ├── 007_create_stream_catchments.py
-    └── 008_add_depressions_filter_indexes.py
+    ├── 008_add_depressions_filter_indexes.py
+    ├── 009_add_stream_source_partial_index.py
+    └── 010_fix_stream_unique_index.py
 ```
 
 **Przykład migracji:**

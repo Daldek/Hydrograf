@@ -308,15 +308,11 @@ def calculate_shape_indices(
 
     # Rc — Miller circularity ratio
     # Rc = 4 * pi * A / P^2, Rc=1 for circle
-    result["circularity_ratio"] = round(
-        4 * np.pi * area_km2 / (perimeter_km**2), 4
-    )
+    result["circularity_ratio"] = round(4 * np.pi * area_km2 / (perimeter_km**2), 4)
 
     # Re — Schumm elongation ratio
     # Re = (2/L) * sqrt(A/pi), Re=1 for circle
-    result["elongation_ratio"] = round(
-        (2 / length_km) * np.sqrt(area_km2 / np.pi), 4
-    )
+    result["elongation_ratio"] = round((2 / length_km) * np.sqrt(area_km2 / np.pi), 4)
 
     # Ff — Horton form factor
     # Ff = A / L^2
@@ -365,9 +361,7 @@ def calculate_relief_indices(
 
     # HI — hypsometric integral
     if relief > 0:
-        result["hypsometric_integral"] = round(
-            (h_mean - h_min) / relief, 4
-        )
+        result["hypsometric_integral"] = round((h_mean - h_min) / relief, 4)
     else:
         result["hypsometric_integral"] = None
 
@@ -444,8 +438,9 @@ def get_stream_stats_in_watershed(
     """
     Get stream network statistics within a watershed boundary.
 
-    Queries stream_network for DEM-derived segments that intersect
-    the watershed boundary polygon.
+    Queries stream_network for BDOT10k (non-DEM-derived) segments that
+    intersect the watershed boundary polygon. Uses ST_Intersection for
+    accurate stream length calculation within the boundary.
 
     Parameters
     ----------
@@ -458,21 +453,24 @@ def get_stream_stats_in_watershed(
     -------
     dict or None
         Dictionary with keys:
-        - total_stream_length_km: total length of streams [km]
+        - total_stream_length_km: total length of streams within boundary [km]
         - n_segments: number of stream segments
         - max_strahler_order: maximum Strahler stream order
-        Returns None if no DEM-derived stream data exists.
+        Returns None if no BDOT10k stream data exists in the area.
     """
     from sqlalchemy import text
 
     result = db_session.execute(
         text("""
             SELECT
-                COALESCE(SUM(length_m), 0) AS total_length_m,
+                COALESCE(SUM(ST_Length(ST_Intersection(
+                    geom,
+                    ST_SetSRID(ST_GeomFromText(:wkt), 2180)
+                ))), 0) AS total_length_m,
                 COUNT(*) AS n_segments,
                 COALESCE(MAX(strahler_order), 0) AS max_order
             FROM stream_network
-            WHERE source = 'DEM_DERIVED'
+            WHERE source != 'DEM_DERIVED'
               AND ST_Intersects(
                   geom,
                   ST_SetSRID(ST_GeomFromText(:wkt), 2180)
@@ -609,12 +607,8 @@ def build_morphometric_params(
         "elevation_max_m": elev_stats["elevation_max_m"],
         "elevation_mean_m": elev_stats["elevation_mean_m"],
         "mean_slope_m_per_m": calculate_mean_slope(cells),
-        "channel_length_km": (
-            channel_length_km if channel_length_km > 0 else None
-        ),
-        "channel_slope_m_per_m": (
-            channel_slope if channel_slope > 0 else None
-        ),
+        "channel_length_km": (channel_length_km if channel_length_km > 0 else None),
+        "channel_slope_m_per_m": (channel_slope if channel_slope > 0 else None),
         "cn": cn,
         "source": "Hydrograf",
         "crs": "EPSG:2180",
@@ -639,17 +633,10 @@ def build_morphometric_params(
     if db is not None:
         try:
             boundary_wkt = boundary.wkt
-            stream_stats = get_stream_stats_in_watershed(
-                boundary_wkt, db
-            )
+            stream_stats = get_stream_stats_in_watershed(boundary_wkt, db)
             if stream_stats is not None:
-                relief_m = (
-                    elev_stats["elevation_max_m"]
-                    - elev_stats["elevation_min_m"]
-                )
-                drainage = calculate_drainage_indices(
-                    stream_stats, area_km2, relief_m
-                )
+                relief_m = elev_stats["elevation_max_m"] - elev_stats["elevation_min_m"]
+                drainage = calculate_drainage_indices(stream_stats, area_km2, relief_m)
                 params.update(drainage)
         except Exception as e:
             logger.warning(f"Failed to get drainage indices: {e}")

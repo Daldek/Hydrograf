@@ -31,6 +31,8 @@
         function onPointerDown(e) {
             // Only primary button
             if (e.button !== 0) return;
+            // Don't intercept clicks on action buttons (close, minimize)
+            if (e.target.closest('.results-btn')) return;
             e.preventDefault();
 
             isDragging = true;
