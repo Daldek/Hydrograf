@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - Architektura Systemu
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.3
-**Data:** 2026-02-07
+**Wersja:** 1.4
+**Data:** 2026-02-13
 **Status:** Approved
 
 ---
@@ -117,21 +117,23 @@ backend/
 │
 ├── core/
 │   ├── __init__.py
-│   ├── config.py                  # Settings (environment variables)
-│   ├── database.py                # Database connection pool
-│   ├── watershed.py               # Watershed delineation logic
-│   ├── morphometry.py             # Morphometric parameters calculation
-│   ├── precipitation.py           # Precipitation queries
-│   ├── land_cover.py              # Land cover analysis, determine_cn()
-│   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
+│   ├── catchment_graph.py         # In-memory sub-catchment graph (~87k nodes, scipy CSR + BFS)
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
-│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
-│   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning
-│   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
-│   ├── stream_extraction.py       # Stream vectorization, subcatchments
+│   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
+│   ├── config.py                  # Settings (environment variables)
+│   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
+│   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
-│   ├── zonal_stats.py             # Zonal statistics (bincount, max)
-│   └── flow_graph.py              # In-memory flow graph (scipy sparse CSR)
+│   ├── flow_graph.py              # In-memory flow graph (scipy sparse CSR)
+│   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning
+│   ├── land_cover.py              # Land cover analysis, determine_cn()
+│   ├── morphometry.py             # Morphometric parameters calculation
+│   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
+│   ├── precipitation.py           # Precipitation queries
+│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
+│   ├── stream_extraction.py       # Stream vectorization, subcatchments
+│   ├── watershed.py               # Watershed delineation logic
+│   └── zonal_stats.py             # Zonal statistics (bincount, max)
 │
 ├── models/
 │   ├── __init__.py
@@ -359,23 +361,32 @@ def build_boundary(cells: List[Cell]) -> GeoJSON:
     pass
 ```
 
-#### 2.4.2 `core/parameters.py`
+#### 2.4.2 `core/morphometry.py`
 **Odpowiedzialności:**
 - Obliczanie parametrów geometrycznych (area, perimeter, length)
 - Obliczanie parametrów morfometrycznych (slope, elevation)
-- Współczynniki kształtu
+- Współczynniki kształtu, indeksy rzeźby, krzywa hipsometryczna
 
 **Główne funkcje:**
 ```python
-def calculate_physical_parameters(
-    watershed: Dict,
-    cells: List[Cell]
-) -> Dict:
-    """Zwraca słownik parametrów fizjograficznych."""
+def build_morphometric_params(
+    cells: list[FlowCell],
+    boundary: Polygon,
+    outlet: FlowCell,
+    cn: int | None = None,
+    include_stream_coords: bool = False,
+    db=None,
+    include_hypsometric_curve: bool = False,
+) -> dict:
+    """Buduje kompletny słownik parametrów morfometrycznych (kompatybilny z Hydrolog)."""
     pass
 
-def find_main_stream(outlet: Cell, cells: List[Cell]) -> Stream:
-    """Znajduje główny ciek (DFS/BFS)."""
+def find_main_stream(
+    cells: list[FlowCell],
+    outlet: FlowCell,
+    return_coords: bool = False,
+) -> tuple[float, float] | tuple[float, float, list[tuple[float, float]]]:
+    """Znajduje główny ciek algorytmem reverse trace (podążając za max flow accumulation)."""
     pass
 ```
 
@@ -1403,11 +1414,12 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 1.3
-**Data ostatniej aktualizacji:** 2026-02-07
+**Wersja dokumentu:** 1.4
+**Data ostatniej aktualizacji:** 2026-02-13
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 1.4 (2026-02-13): Dodano catchment_graph.py i constants.py do core, zaktualizowano sygnatury morphometry.py, alfabetyczne uporządkowanie modulow core
 - 1.3 (2026-02-07): Aktualizacja struktury modulow (morphometry, cn_tables, cn_calculator, raster_utils, sheet_finder), usuniecie core/hydrograph.py (przeniesiony do Hydrolog)
 - 1.2 (2026-01-20): Dodano wyniki testów optymalizacji (COPY 21x, reverse trace 257x)
 - 1.1 (2026-01-20): Dodano sekcję 10.0 z wynikami benchmarków z testu end-to-end
