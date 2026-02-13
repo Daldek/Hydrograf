@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (graf zlewni czastkowych — ADR-021)
+- **`core/catchment_graph.py`** (nowy modul): in-memory graf zlewni czastkowych (~87k wezlow, ~8 MB) z numpy arrays + scipy sparse CSR matrix. Metody: `load()`, `find_catchment_at_point()`, `traverse_upstream()`, `aggregate_stats()`, `aggregate_hypsometric()`. Zaladowany przy starcie API obok FlowGraph.
+- **Migracja 012:** 6 nowych kolumn w `stream_catchments`: `downstream_segment_idx`, `elevation_min_m`, `elevation_max_m`, `perimeter_km`, `stream_length_km`, `elev_histogram` (JSONB). Indeks `idx_catchments_downstream`.
+- **`compute_downstream_links()`** w `stream_extraction.py`: wyznaczanie grafu connectivity — follow fdir 1 komorke z outlet kazdego segmentu → downstream segment label
+- **`zonal_min()`** i **`zonal_elevation_histogram()`** w `zonal_stats.py`: nowe funkcje statystyk strefowych — min elewacji per label, histogram wysokosci z fixed interval 1m
+- **Pre-computed stats** w pipeline: elevation min/max, perimeter_km, stream_length_km, elev_histogram obliczane w `polygonize_subcatchments()` i zapisywane przez `insert_catchments()`
+- **19 testow jednostkowych** `test_catchment_graph.py`: BFS traversal, aggregate stats, hypsometric curve, find_catchment_at_point
+- **7 testow** `test_zonal_stats.py`: zonal_min (3) + zonal_elevation_histogram (4)
+
+### Changed (graf zlewni czastkowych)
+- **`select_stream.py` — calkowity rewrite:** graf zlewni zamiast rastra. Flow: ST_Contains → BFS graph → aggregate numpy → ST_Union boundary → derived indices. Usunieto zaleznosc od FlowGraph i operacji rastrowych.
+- **`api/main.py`:** ladowanie CatchmentGraph w lifespan obok FlowGraph
+- **`db_bulk.py insert_catchments()`:** rozszerzony o 6 nowych kolumn + JSONB histogram
+- **`stream_extraction.py vectorize_streams()`:** dodany `_outlet_rc` (outlet cell per segment)
+- **`stream_extraction.py polygonize_subcatchments()`:** rozszerzony o elevation min/max, perimeter, stream_length, histogram, downstream_segment_idx
+- **`test_select_stream.py`:** przepisany z CatchmentGraph mocks (8 testow)
+
 ### Fixed (audyt frontend — 5 bugow)
 - **Memory leak wykresow hydrogramu:** `hydrograph.js` tworzyl `new Chart()` bez zapisywania instancji — dodano lokalny rejestr `_charts` z `destroy()` przed ponownym tworzeniem
 - **Memory leak tooltipow:** `map.js` — tooltip ciekow/zlewni czastkowych tworzony ponownie bez usuwania starego; dodano `removeLayer()` przed kazdym `mouseover`

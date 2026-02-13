@@ -6,6 +6,7 @@ Provides high-performance bulk INSERT via temp tables and COPY FROM.
 """
 
 import io
+import json
 import logging
 from contextlib import contextmanager
 
@@ -102,8 +103,7 @@ def create_flow_network_tsv(
     max_id = nrows * ncols
     if max_id > 2_000_000_000:
         logger.warning(
-            f"Large raster ({nrows}x{ncols} = {max_id:,} cells) "
-            f"may cause ID overflow."
+            f"Large raster ({nrows}x{ncols} = {max_id:,} cells) may cause ID overflow."
         )
 
     # Valid cells mask
@@ -141,11 +141,7 @@ def create_flow_network_tsv(
     nj = cols + dc_lookup[fdirs_safe]
 
     # Bounds check
-    in_bounds = (
-        has_valid_dir
-        & (ni >= 0) & (ni < nrows)
-        & (nj >= 0) & (nj < ncols)
-    )
+    in_bounds = has_valid_dir & (ni >= 0) & (ni < nrows) & (nj >= 0) & (nj < ncols)
 
     # Downstream nodata check (only where in bounds)
     ds_valid = np.zeros(n_valid, dtype=np.bool_)
@@ -157,9 +153,7 @@ def create_flow_network_tsv(
     # Downstream IDs
     downstream_ids = np.full(n_valid, -1, dtype=np.int64)
     has_ds = ds_valid
-    downstream_ids[has_ds] = (
-        ni[has_ds] * ncols + nj[has_ds] + 1
-    )
+    downstream_ids[has_ds] = ni[has_ds] * ncols + nj[has_ds] + 1
 
     # Is stream
     is_stream = accumulations >= stream_threshold
@@ -174,14 +168,9 @@ def create_flow_network_tsv(
     logger.info(f"  Writing {n_valid:,} records to TSV buffer...")
     tsv_buffer = io.StringIO()
     for k in range(n_valid):
-        ds_str = "" if downstream_ids[k] < 0 else str(
-            int(downstream_ids[k])
-        )
+        ds_str = "" if downstream_ids[k] < 0 else str(int(downstream_ids[k]))
         is_stream_str = "t" if is_stream[k] else "f"
-        strahler_str = (
-            "" if strahler_vals[k] == 0
-            else str(int(strahler_vals[k]))
-        )
+        strahler_str = "" if strahler_vals[k] == 0 else str(int(strahler_vals[k]))
         tsv_buffer.write(
             f"{int(cell_ids[k])}\t"
             f"{xs[k]}\t{ys[k]}\t"
@@ -195,9 +184,7 @@ def create_flow_network_tsv(
     tsv_buffer.seek(0)
     n_stream = int(np.sum(is_stream))
     logger.info(f"Created {n_valid:,} records")
-    logger.info(
-        f"Stream cells (acc >= {stream_threshold}): {n_stream:,}"
-    )
+    logger.info(f"Stream cells (acc >= {stream_threshold}): {n_stream:,}")
 
     return tsv_buffer, n_valid, n_stream
 
@@ -253,8 +240,7 @@ def create_flow_network_records(
     max_id = nrows * ncols
     if max_id > 2_000_000_000:
         logger.warning(
-            f"Large raster ({nrows}x{ncols} = {max_id:,} cells) "
-            f"may cause ID overflow."
+            f"Large raster ({nrows}x{ncols} = {max_id:,} cells) may cause ID overflow."
         )
 
     records = []
@@ -276,11 +262,7 @@ def create_flow_network_records(
             if d in D8_DIRECTIONS:
                 di, dj = D8_DIRECTIONS[d]
                 ni, nj = i + di, j + dj
-                if (
-                    0 <= ni < nrows
-                    and 0 <= nj < ncols
-                    and dem[ni, nj] != nodata
-                ):
+                if 0 <= ni < nrows and 0 <= nj < ncols and dem[ni, nj] != nodata:
                     downstream_id = get_cell_index(ni, nj)
 
             strahler_val = None
@@ -297,19 +279,14 @@ def create_flow_network_records(
                     "slope": float(slope[i, j]),
                     "downstream_id": downstream_id,
                     "cell_area": cell_area,
-                    "is_stream": bool(
-                        acc[i, j] >= stream_threshold
-                    ),
+                    "is_stream": bool(acc[i, j] >= stream_threshold),
                     "strahler_order": strahler_val,
                 }
             )
 
     logger.info(f"Created {len(records)} records")
     stream_count = sum(1 for r in records if r["is_stream"])
-    logger.info(
-        f"Stream cells (acc >= {stream_threshold}): "
-        f"{stream_count}"
-    )
+    logger.info(f"Stream cells (acc >= {stream_threshold}): {stream_count}")
 
     return records
 
@@ -391,15 +368,9 @@ def insert_records_batch(
     # Create TSV buffer
     tsv_buffer = io.StringIO()
     for r in records:
-        downstream = (
-            "" if r["downstream_id"] is None
-            else str(r["downstream_id"])
-        )
+        downstream = "" if r["downstream_id"] is None else str(r["downstream_id"])
         is_stream = "t" if r["is_stream"] else "f"
-        strahler = (
-            "" if r.get("strahler_order") is None
-            else str(r["strahler_order"])
-        )
+        strahler = "" if r.get("strahler_order") is None else str(r["strahler_order"])
         tsv_buffer.write(
             f"{r['id']}\t{r['x']}\t{r['y']}\t"
             f"{r['elevation']}\t{r['flow_accumulation']}\t"
@@ -483,8 +454,7 @@ def insert_records_batch(
     logger.info("  Index idx_is_stream created")
 
     cursor.execute(
-        "CREATE INDEX idx_flow_accumulation"
-        " ON flow_network (flow_accumulation)"
+        "CREATE INDEX idx_flow_accumulation ON flow_network (flow_accumulation)"
     )
     logger.info("  Index idx_flow_accumulation created")
 
@@ -530,10 +500,7 @@ def insert_records_batch_tsv(
     int
         Total records inserted
     """
-    logger.info(
-        f"Inserting {n_records:,} records using COPY "
-        f"(TSV direct)..."
-    )
+    logger.info(f"Inserting {n_records:,} records using COPY (TSV direct)...")
 
     raw_conn = db_session.connection().connection
     cursor = raw_conn.cursor()
@@ -623,9 +590,7 @@ def insert_records_batch_tsv(
 
     total_inserted = cursor.rowcount
     raw_conn.commit()
-    logger.info(
-        f"  Inserted {total_inserted:,} records into flow_network"
-    )
+    logger.info(f"  Inserted {total_inserted:,} records into flow_network")
 
     # Phase 3: Restore indexes
     logger.info("Phase 3: Restoring indexes and constraints...")
@@ -637,28 +602,19 @@ def insert_records_batch_tsv(
     """)
     logger.info("  FK constraint restored")
 
-    cursor.execute(
-        "CREATE INDEX idx_flow_geom"
-        " ON flow_network USING GIST (geom)"
-    )
+    cursor.execute("CREATE INDEX idx_flow_geom ON flow_network USING GIST (geom)")
     logger.info("  Index idx_flow_geom created")
 
-    cursor.execute(
-        "CREATE INDEX idx_downstream"
-        " ON flow_network (downstream_id)"
-    )
+    cursor.execute("CREATE INDEX idx_downstream ON flow_network (downstream_id)")
     logger.info("  Index idx_downstream created")
 
     cursor.execute(
-        "CREATE INDEX idx_is_stream"
-        " ON flow_network (is_stream)"
-        " WHERE is_stream = TRUE"
+        "CREATE INDEX idx_is_stream ON flow_network (is_stream) WHERE is_stream = TRUE"
     )
     logger.info("  Index idx_is_stream created")
 
     cursor.execute(
-        "CREATE INDEX idx_flow_accumulation"
-        " ON flow_network (flow_accumulation)"
+        "CREATE INDEX idx_flow_accumulation ON flow_network (flow_accumulation)"
     )
     logger.info("  Index idx_flow_accumulation created")
 
@@ -729,9 +685,7 @@ def insert_stream_segments(
     # Build TSV
     tsv_buffer = io.StringIO()
     for seg in segments:
-        coords_wkt = ", ".join(
-            f"{x} {y}" for x, y in seg["coords"]
-        )
+        coords_wkt = ", ".join(f"{x} {y}" for x, y in seg["coords"])
         wkt = f"LINESTRING({coords_wkt})"
         tsv_buffer.write(
             f"{wkt}\t{seg['strahler_order']}\t"
@@ -823,22 +777,36 @@ def insert_catchments(
             area_km2 FLOAT,
             mean_elevation_m FLOAT,
             mean_slope_percent FLOAT,
-            strahler_order INT
+            strahler_order INT,
+            downstream_segment_idx INT,
+            elevation_min_m FLOAT,
+            elevation_max_m FLOAT,
+            perimeter_km FLOAT,
+            stream_length_km FLOAT,
+            elev_histogram JSONB
         )
     """)
 
     # Build TSV
+    def _tsv_val(v):
+        return "" if v is None else str(v)
+
     tsv_buffer = io.StringIO()
     for cat in catchments:
-        elev = cat["mean_elevation_m"]
-        slp = cat["mean_slope_percent"]
-        mean_elev = "" if elev is None else str(elev)
-        mean_slp = "" if slp is None else str(slp)
-        strahler = "" if cat["strahler_order"] is None else str(cat["strahler_order"])
+        histogram = cat.get("elev_histogram")
+        hist_str = "" if histogram is None else json.dumps(histogram)
         tsv_buffer.write(
             f"{cat['wkt']}\t{cat['segment_idx']}\t"
             f"{threshold_m2}\t{cat['area_km2']}\t"
-            f"{mean_elev}\t{mean_slp}\t{strahler}\n"
+            f"{_tsv_val(cat['mean_elevation_m'])}\t"
+            f"{_tsv_val(cat['mean_slope_percent'])}\t"
+            f"{_tsv_val(cat.get('strahler_order'))}\t"
+            f"{_tsv_val(cat.get('downstream_segment_idx'))}\t"
+            f"{_tsv_val(cat.get('elevation_min_m'))}\t"
+            f"{_tsv_val(cat.get('elevation_max_m'))}\t"
+            f"{_tsv_val(cat.get('perimeter_km'))}\t"
+            f"{_tsv_val(cat.get('stream_length_km'))}\t"
+            f"{hist_str}\n"
         )
 
     tsv_buffer.seek(0)
@@ -854,13 +822,17 @@ def insert_catchments(
         INSERT INTO stream_catchments (
             geom, segment_idx, threshold_m2,
             area_km2, mean_elevation_m, mean_slope_percent,
-            strahler_order
+            strahler_order, downstream_segment_idx,
+            elevation_min_m, elevation_max_m,
+            perimeter_km, stream_length_km, elev_histogram
         )
         SELECT
             ST_SetSRID(ST_GeomFromText(wkt), 2180),
             segment_idx, threshold_m2,
             area_km2, mean_elevation_m, mean_slope_percent,
-            strahler_order
+            strahler_order, downstream_segment_idx,
+            elevation_min_m, elevation_max_m,
+            perimeter_km, stream_length_km, elev_histogram
         FROM temp_catchments_import
     """)
 
