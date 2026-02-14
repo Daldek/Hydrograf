@@ -632,10 +632,19 @@
 
     function setBdotLakesOpacity(opacity) {
         if (bdotLakesLayer) {
-            bdotLakesLayer.setStyle({
-                fillOpacity: opacity * 0.4,
-                opacity: opacity,
-            });
+            if (opacity === 0) {
+                bdotLakesLayer.setStyle({
+                    weight: 0,
+                    fillOpacity: 0,
+                    opacity: 0,
+                });
+            } else {
+                bdotLakesLayer.setStyle({
+                    weight: 1,
+                    fillOpacity: opacity * 0.4,
+                    opacity: opacity,
+                });
+            }
         }
     }
 
