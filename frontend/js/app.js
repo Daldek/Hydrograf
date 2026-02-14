@@ -373,6 +373,7 @@
         Hydrograf.map.clearCatchmentHighlights();
         Hydrograf.map.clearSelectionBoundary();
         Hydrograf.map.clearProfileLine();
+        if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
         if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
         hidePanel();
     }
@@ -436,6 +437,7 @@
             Hydrograf.map.clearSelectionBoundary();
             Hydrograf.map.clearCatchmentHighlights();
             Hydrograf.map.clearProfileLine();
+            if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
             if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
             state.currentWatershed = null;
             hidePanel();
@@ -448,6 +450,21 @@
             Hydrograf.draggable.makeDraggable(
                 els.panel,
                 document.getElementById('results-header')
+            );
+        }
+
+        // Profile panel: close button + draggable
+        var profilePanel = document.getElementById('profile-panel');
+        var profileClose = document.getElementById('profile-close');
+        if (profileClose) {
+            profileClose.addEventListener('click', function () {
+                if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
+            });
+        }
+        if (profilePanel && window.innerWidth > 768) {
+            Hydrograf.draggable.makeDraggable(
+                profilePanel,
+                document.getElementById('profile-header')
             );
         }
 
