@@ -9,6 +9,32 @@
     window.Hydrograf = window.Hydrograf || {};
 
     /**
+     * Show an inline error message near the profile chart canvas.
+     */
+    function showProfileError(message) {
+        var canvas = document.getElementById('chart-profile');
+        if (!canvas) return;
+        var container = canvas.parentElement;
+        // Remove any existing profile error alert
+        var existing = container.querySelector('.profile-error-alert');
+        if (existing) existing.remove();
+        // Determine message based on error content
+        var isDemError = /503|DEM|dane wysoko/.test(message);
+        var text = isDemError
+            ? 'DEM niedostępny — profil terenu wymaga wgranych danych wysokościowych'
+            : 'Nie udało się pobrać profilu terenu';
+        var alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-warning alert-dismissible small py-1 px-2 mb-1 profile-error-alert';
+        alertDiv.setAttribute('role', 'alert');
+        alertDiv.innerHTML = text +
+            '<button type="button" class="btn-close btn-close-sm" style="padding:0.15rem 0.25rem;font-size:0.65rem;" aria-label="Zamknij"></button>';
+        alertDiv.querySelector('.btn-close').addEventListener('click', function () {
+            alertDiv.remove();
+        });
+        container.insertBefore(alertDiv, canvas);
+    }
+
+    /**
      * Activate auto-profile using main stream geometry from watershed response.
      */
     async function activateAutoProfile() {
@@ -27,7 +53,7 @@
             Hydrograf.map.showProfileLine(lineGeojson.coordinates);
         } catch (err) {
             console.warn('Profile error:', err.message);
-            alert('Błąd profilu: ' + err.message);
+            showProfileError(err.message);
         }
     }
 
@@ -52,7 +78,7 @@
                 );
             }).catch(function (err) {
                 console.warn('Profile error:', err.message);
-                alert('Błąd profilu: ' + err.message);
+                showProfileError(err.message);
             });
         });
     }
