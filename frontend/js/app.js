@@ -190,6 +190,9 @@
     function onMapClick(lat, lng) {
         if (state.isLoading) return;
 
+        // Profile mode — map clicks handled by drawing callback, not here
+        if (state.clickMode === 'profile') return;
+
         // Check drawing mode
         if (Hydrograf.map.isDrawing && Hydrograf.map.isDrawing()) return;
 
@@ -347,7 +350,7 @@
     }
 
     /**
-     * Switch click mode between 'watershed' and 'select'.
+     * Switch click mode between 'watershed', 'select', and 'profile'.
      */
     function setClickMode(mode) {
         state.clickMode = mode;
@@ -355,17 +358,21 @@
         // Update button classes
         var btnWatershed = document.getElementById('mode-watershed');
         var btnSelect = document.getElementById('mode-select');
-        if (btnWatershed && btnSelect) {
+        var btnProfile = document.getElementById('mode-profile');
+        if (btnWatershed && btnSelect && btnProfile) {
             btnWatershed.classList.toggle('mode-btn-active', mode === 'watershed');
             btnSelect.classList.toggle('mode-btn-active', mode === 'select');
+            btnProfile.classList.toggle('mode-btn-active', mode === 'profile');
             btnWatershed.setAttribute('aria-checked', String(mode === 'watershed'));
             btnSelect.setAttribute('aria-checked', String(mode === 'select'));
+            btnProfile.setAttribute('aria-checked', String(mode === 'profile'));
         }
 
         // Clear previous results when switching mode
         Hydrograf.map.clearWatershed();
         Hydrograf.map.clearCatchmentHighlights();
         Hydrograf.map.clearSelectionBoundary();
+        Hydrograf.map.clearProfileLine();
         if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
         hidePanel();
     }
@@ -403,6 +410,10 @@
         });
         document.getElementById('mode-select').addEventListener('click', function () {
             setClickMode('select');
+        });
+        document.getElementById('mode-profile').addEventListener('click', function () {
+            setClickMode('profile');
+            if (Hydrograf.profile) Hydrograf.profile.activateDrawProfile();
         });
 
         // Accordion collapse/expand (replaces inline onclick)

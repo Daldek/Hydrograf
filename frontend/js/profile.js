@@ -76,6 +76,37 @@
                     result.distances_m,
                     result.elevations_m
                 );
+
+                // Show results panel with only the profile accordion visible
+                var panel = document.getElementById('results-panel');
+                var panelResults = document.getElementById('panel-results');
+                var panelInstruction = document.getElementById('panel-instruction');
+                var panelLoading = document.getElementById('panel-loading');
+                var panelError = document.getElementById('panel-error');
+                if (panel && panelResults) {
+                    panel.classList.remove('d-none');
+                    panelResults.classList.remove('d-none');
+                    if (panelInstruction) panelInstruction.classList.add('d-none');
+                    if (panelLoading) panelLoading.classList.add('d-none');
+                    if (panelError) panelError.classList.add('d-none');
+
+                    // Hide all accordions except profile
+                    var accordionIds = [
+                        'acc-basic', 'acc-shape', 'acc-relief', 'acc-drainage',
+                        'acc-landcover', 'acc-outlet', 'acc-hydrograph'
+                    ];
+                    accordionIds.forEach(function (id) {
+                        var el = document.getElementById(id);
+                        if (el) el.classList.add('d-none');
+                    });
+
+                    // Show and expand the profile accordion
+                    var accProfile = document.getElementById('acc-profile');
+                    if (accProfile) {
+                        accProfile.classList.remove('d-none');
+                        accProfile.classList.remove('collapsed');
+                    }
+                }
             }).catch(function (err) {
                 console.warn('Profile error:', err.message);
                 showProfileError(err.message);
