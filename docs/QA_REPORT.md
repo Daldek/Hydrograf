@@ -7,11 +7,12 @@
 > **⚠️ UWAGA: Dokument przestarzały** (stan na commit f3b0b25, ~v0.3.0)
 >
 > Od czasu powstania tego raportu wprowadzono istotne zmiany:
-> - Liczba testów: 175 → 519 (493 unit + integration)
+> - Liczba testów: 175 → 548 (unit + integration)
 > - CRITICAL: Problem CORS — **naprawiony** (middleware w main.py)
 > - Dodano CI/CD: GitHub Actions (lint, test, type-check)
-> - Architektura: refaktor na 7 modułów core/ (ADR-017)
-> - Dodano `constants.py`, `catchment_graph.py`, structured logging
+> - Architektura: refaktor na 8 modułów core/ (ADR-017, ADR-022)
+> - Dodano `constants.py`, `catchment_graph.py`, `watershed_service.py`, structured logging
+> - FlowGraph usunięty z runtime API (ADR-022) — RAM: 1.1 GB → 40 MB
 >
 > Aktualny stan projektu: patrz `PROGRESS.md` i `CHANGELOG.md`.
 
