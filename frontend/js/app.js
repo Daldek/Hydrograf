@@ -125,23 +125,9 @@
             Hydrograf.charts.destroyChart('chart-hypsometric');
         }
 
-        // Hydrograph availability
+        // Hydrograph section — hidden (w przygotowaniu)
         els.hydrographInfo.innerHTML = '';
-        var badge = document.createElement('span');
-        if (w.hydrograph_available) {
-            badge.className = 'badge bg-success';
-            badge.textContent = 'Hydrogram dostępny (SCS-CN)';
-            document.getElementById('acc-hydrograph').classList.remove('collapsed');
-            // Init hydrograph form
-            if (Hydrograf.hydrograph) {
-                Hydrograf.hydrograph.initScenarioForm();
-            }
-        } else {
-            badge.className = 'badge bg-secondary';
-            badge.textContent = 'Hydrogram niedostępny (zlewnia > 250 km²)';
-            document.getElementById('acc-hydrograph').classList.add('collapsed');
-        }
-        els.hydrographInfo.appendChild(badge);
+        document.getElementById('acc-hydrograph').classList.add('d-none');
 
         // Profile: enable auto-profile if main stream available
         if (w.main_stream_geojson && Hydrograf.profile) {
