@@ -23,7 +23,7 @@ def get_depressions(
     response: Response,
     min_volume: float = Query(0, ge=0, description="Minimum volume [m3]"),
     max_volume: float = Query(1e9, ge=0, description="Maximum volume [m3]"),
-    min_area: float = Query(0, ge=0, description="Minimum area [m2]"),
+    min_area: float = Query(100, ge=0, description="Minimum area [m2]"),
     max_area: float = Query(1e9, ge=0, description="Maximum area [m2]"),
     bbox: str | None = Query(
         None,
