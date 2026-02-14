@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (profil terenu — osobny panel)
+- **`#profile-panel` (nowy floating panel):** niezalezny od "Parametrow zlewni", pozycja left-bottom, draggable, close button
+- **`profile.js` refaktor:** `activateDrawProfile()` renderuje w `#chart-profile-standalone` zamiast przejmowac `#results-panel`; nowa funkcja `hideProfilePanel()`
+- **`map.js` — cofanie wierzcholkow:** `undoLastVertex()` + Backspace handler w trybie rysowania
+- **Chart.js fix:** canvasy wykresow owiniete w `.chart-container` (height: 160px) — zapobiega rozciaganiu przez `maintainAspectRatio: false`
+- **`app.js`:** init close/draggable na `#profile-panel`, czyszczenie profilu przy zmianie trybu
+
 ### Fixed (10 bugfixes — A1-A5, B1-B4, C1)
 - **A1 — odznaczanie zlewni:** przycisk "×" w panelu wyników teraz czyści warstwę zlewni z mapy (`clearWatershed`, `clearSelectionBoundary`, `clearCatchmentHighlights`, `clearProfileLine`)
 - **A2 — min_area zagłębień:** domyślny filtr min_area zmieniony z 0 na 100 m² (API + frontend)
