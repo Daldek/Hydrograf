@@ -2,7 +2,9 @@
 Watershed delineation endpoint.
 
 Provides API endpoint for delineating watershed boundaries
-based on a clicked point location.
+based on a clicked point location. Uses CatchmentGraph (~87k nodes)
+for BFS traversal and pre-computed stat aggregation instead of
+FlowGraph (19.7M cells). Zero raster operations in runtime.
 """
 
 import logging
@@ -10,15 +12,17 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from core.constants import HYDROGRAPH_AREA_LIMIT_KM2
+from core.catchment_graph import get_catchment_graph
+from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.land_cover import get_land_cover_for_boundary
-from core.morphometry import build_morphometric_params
-from core.watershed import (
-    build_boundary,
-    calculate_watershed_area_km2,
-    find_nearest_stream,
-    traverse_upstream,
+from core.watershed_service import (
+    boundary_to_polygon,
+    build_morph_dict_from_graph,
+    find_nearest_stream_segment,
+    get_main_stream_geojson,
+    get_segment_outlet,
+    merge_catchment_boundaries,
 )
 from models.schemas import (
     DelineateRequest,
@@ -51,13 +55,17 @@ def delineate_watershed(
     """
     Delineate watershed boundary for a given point.
 
-    Finds the nearest stream to the clicked point and traces
-    all upstream cells to determine the watershed boundary.
+    Uses the in-memory catchment graph (~87k nodes) for BFS traversal
+    and pre-computed stat aggregation. Zero raster operations.
 
     Parameters
     ----------
     request : DelineateRequest
         Point coordinates in WGS84 (latitude, longitude)
+    response : Response
+        FastAPI response for setting headers
+    include_hypsometric_curve : bool
+        Whether to include hypsometric curve data
     db : Session
         Database session (injected by FastAPI)
 
@@ -72,6 +80,8 @@ def delineate_watershed(
         When no stream found near the point
     HTTPException 400
         When watershed is too large or invalid
+    HTTPException 503
+        When catchment graph is not loaded
     HTTPException 500
         On internal server error
     """
@@ -87,68 +97,121 @@ def delineate_watershed(
             f"Transformed to PL-1992: ({point_2180.x:.1f}, {point_2180.y:.1f})"
         )
 
-        # 2. Find nearest stream cell
-        outlet_cell = find_nearest_stream(point_2180, db)
-        if outlet_cell is None:
+        # 2. Get CatchmentGraph instance, check if loaded
+        cg = get_catchment_graph()
+        if not cg.loaded:
+            raise HTTPException(
+                status_code=503,
+                detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
+            )
+
+        # 3. Find nearest stream segment
+        segment = find_nearest_stream_segment(
+            point_2180.x,
+            point_2180.y,
+            DEFAULT_THRESHOLD_M2,
+            db,
+        )
+        if segment is None:
             raise HTTPException(
                 status_code=404,
                 detail="Nie znaleziono cieku w tym miejscu",
             )
 
-        # 3. Traverse upstream to find all watershed cells
-        cells = traverse_upstream(outlet_cell.id, db)
+        # 4. Find catchment at click point via catchment graph
+        try:
+            clicked_idx = cg.find_catchment_at_point(
+                point_2180.x,
+                point_2180.y,
+                DEFAULT_THRESHOLD_M2,
+                db,
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=404,
+                detail="Nie znaleziono zlewni cząstkowej. Kliknij w obszarze zlewni.",
+            ) from e
 
-        # 4. Calculate watershed area
-        area_km2 = calculate_watershed_area_km2(cells)
-        logger.debug(f"Watershed area: {area_km2:.2f} km²")
-
-        # 5. Check if hydrograph generation is available (SCS-CN limit)
-        hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
-
-        # 6. Build boundary polygon
-        boundary_2180 = build_boundary(cells, method="polygonize")
-
-        # 7. Calculate morphometric parameters (with stream coords for profile)
-        morph_dict = build_morphometric_params(
-            cells,
-            boundary_2180,
-            outlet_cell,
-            db=db,
-            include_hypsometric_curve=include_hypsometric_curve,
-            include_stream_coords=True,
+        # 5. Traverse upstream via catchment graph BFS
+        upstream_indices = cg.traverse_upstream(clicked_idx)
+        segment_idxs = cg.get_segment_indices(
+            upstream_indices,
+            DEFAULT_THRESHOLD_M2,
         )
 
-        # 8. Transform boundary to WGS84
-        boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_2180)
+        # 6. Aggregate pre-computed stats (zero raster ops)
+        stats = cg.aggregate_stats(upstream_indices)
+        area_km2 = stats["area_km2"]
+        logger.debug(f"Watershed area: {area_km2:.2f} km2")
 
-        # 9. Create GeoJSON Feature
+        # 7. Check if hydrograph generation is available (SCS-CN limit)
+        hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
+
+        # 8. Build boundary from ST_Union of catchment polygons
+        boundary_2180 = merge_catchment_boundaries(
+            segment_idxs,
+            DEFAULT_THRESHOLD_M2,
+            db,
+        )
+        if boundary_2180 is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Nie udało się zbudować granicy zlewni.",
+            )
+
+        # 9. Extract largest polygon from MultiPolygon
+        boundary_poly = boundary_to_polygon(boundary_2180)
+
+        # 10. Transform boundary to WGS84 + GeoJSON
+        boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_poly)
         boundary_geojson = polygon_to_geojson_feature(
             boundary_wgs84,
             properties={"area_km2": round(area_km2, 2)},
         )
 
-        # 10. Transform outlet coords back to WGS84
-        outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_cell.x, outlet_cell.y)
+        # 11. Get outlet from segment downstream endpoint
+        outlet_info = get_segment_outlet(
+            segment["segment_idx"],
+            DEFAULT_THRESHOLD_M2,
+            db,
+        )
+        if outlet_info is None:
+            outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
+        else:
+            outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
 
-        # 11. Extract hypsometric curve if present
-        hypso_data = morph_dict.pop("hypsometric_curve", None)
+        # 12. Outlet elevation from CatchmentGraph stats (elevation_min_m of outlet)
+        outlet_elevation = stats.get("elevation_min_m") or 0.0
+
+        # 13. Transform outlet coords to WGS84
+        outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)
+
+        # 14. Build morphometric parameters from graph
+        morph_dict = build_morph_dict_from_graph(
+            cg,
+            upstream_indices,
+            boundary_2180,
+            outlet_x,
+            outlet_y,
+            segment["segment_idx"],
+            DEFAULT_THRESHOLD_M2,
+        )
+
+        # 15. Hypsometric curve
         hypso_curve = None
-        if hypso_data:
-            hypso_curve = [HypsometricPoint(**p) for p in hypso_data]
+        if include_hypsometric_curve:
+            hypso_data = cg.aggregate_hypsometric(upstream_indices)
+            if hypso_data:
+                hypso_curve = [HypsometricPoint(**p) for p in hypso_data]
 
-        # 12. Extract and transform main stream coords to WGS84 GeoJSON
-        stream_coords_2180 = morph_dict.pop("main_stream_coords", None)
-        main_stream_geojson = None
-        if stream_coords_2180 and len(stream_coords_2180) >= 2:
-            wgs84_coords = [
-                list(transform_pl1992_to_wgs84(x, y)) for x, y in stream_coords_2180
-            ]
-            main_stream_geojson = {
-                "type": "LineString",
-                "coordinates": wgs84_coords,
-            }
+        # 16. Main stream GeoJSON
+        main_stream_geojson = get_main_stream_geojson(
+            segment["segment_idx"],
+            DEFAULT_THRESHOLD_M2,
+            db,
+        )
 
-        # 13. Get land cover statistics
+        # 17. Land cover statistics
         lc_stats = None
         try:
             lc_data = get_land_cover_for_boundary(boundary_2180, db)
@@ -169,16 +232,16 @@ def delineate_watershed(
         except Exception as e:
             logger.debug(f"Land cover stats not available: {e}")
 
-        # 14. Build response
+        # 18. Build response
         result = DelineateResponse(
             watershed=WatershedResponse(
                 boundary_geojson=boundary_geojson,
                 outlet=OutletInfo(
                     latitude=outlet_lat,
                     longitude=outlet_lon,
-                    elevation_m=outlet_cell.elevation,
+                    elevation_m=outlet_elevation,
                 ),
-                cell_count=len(cells),
+                cell_count=0,  # Not applicable for graph-based approach
                 area_km2=round(area_km2, 2),
                 hydrograph_available=hydrograph_available,
                 morphometry=MorphometricParameters(**morph_dict),
@@ -189,8 +252,8 @@ def delineate_watershed(
         )
 
         logger.info(
-            f"Watershed delineated: {area_km2:.2f} km², "
-            f"{len(cells):,} cells, "
+            f"Watershed delineated: {area_km2:.2f} km2, "
+            f"{len(segment_idxs)} segments, "
             f"hydrograph={'available' if hydrograph_available else 'unavailable'}"
         )
 

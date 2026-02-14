@@ -25,7 +25,6 @@ from api.endpoints import (
 from core.catchment_graph import get_catchment_graph
 from core.config import get_settings
 from core.database import get_db_session
-from core.flow_graph import get_flow_graph
 
 # Configure structured logging
 settings = get_settings()
@@ -61,16 +60,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan handler — loads in-memory flow graph."""
+    """Application lifespan handler — loads in-memory catchment graph."""
     logger.info("Starting Hydrograf API...")
-
-    # Load flow graph for fast upstream traversal
-    graph = get_flow_graph()
-    try:
-        with get_db_session() as db:
-            graph.load(db)
-    except Exception as e:
-        logger.warning(f"Flow graph loading failed, using SQL fallback: {e}")
 
     # Load catchment graph (~8 MB, ~100ms)
     cg = get_catchment_graph()

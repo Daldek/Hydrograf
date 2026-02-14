@@ -2,40 +2,44 @@
 Terrain profile endpoint.
 
 Extracts elevation profile along a GeoJSON LineString
-by sampling the flow_network elevation data.
+by sampling the DEM raster file via rasterio.
 """
 
 import logging
+import os
 
-from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+import rasterio
+from fastapi import APIRouter, HTTPException, Response
+from pyproj import Transformer
+from shapely.geometry import LineString
 
-from core.database import get_db
+from core.config import get_settings
 from models.schemas import TerrainProfileRequest, TerrainProfileResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Reusable CRS transformer (WGS84 lon,lat -> PL-1992 x,y)
+_transformer_4326_to_2180 = Transformer.from_crs(
+    "EPSG:4326", "EPSG:2180", always_xy=True
+)
 
 
 @router.post("/terrain-profile", response_model=TerrainProfileResponse)
 def terrain_profile(
     request: TerrainProfileRequest,
     response: Response,
-    db: Session = Depends(get_db),
 ) -> TerrainProfileResponse:
     """
     Extract terrain elevation profile along a line.
 
     Samples N equally spaced points along the input LineString and
-    finds the nearest flow_network cell elevation for each.
+    reads elevation values directly from the DEM raster file.
 
     Parameters
     ----------
     request : TerrainProfileRequest
         GeoJSON LineString geometry and number of samples
-    db : Session
-        Database session
 
     Returns
     -------
@@ -59,66 +63,51 @@ def terrain_profile(
 
         n_samples = request.n_samples
 
-        # Build WKT from coordinates (lon, lat order in GeoJSON)
-        coord_str = ", ".join(f"{c[0]} {c[1]}" for c in coords)
-        wkt = f"LINESTRING({coord_str})"
+        # Transform GeoJSON coords (lon, lat) to PL-1992 (x, y)
+        coords_2180 = [_transformer_4326_to_2180.transform(c[0], c[1]) for c in coords]
+        line = LineString(coords_2180)
+        total_length_m = line.length
 
-        query = text("""
-            WITH input_line AS (
-                SELECT ST_Transform(
-                    ST_SetSRID(ST_GeomFromText(:wkt), 4326),
-                    2180
-                ) AS geom
-            ),
-            line_length AS (
-                SELECT ST_Length(geom) AS total_m FROM input_line
-            ),
-            sample_points AS (
-                SELECT
-                    generate_series(0, :n_samples - 1) AS idx,
-                    generate_series(0, :n_samples - 1)::float
-                        / GREATEST(:n_samples - 1, 1) AS frac
-            ),
-            points AS (
-                SELECT
-                    sp.idx,
-                    sp.frac * ll.total_m AS distance_m,
-                    ST_LineInterpolatePoint(il.geom, sp.frac) AS geom
-                FROM sample_points sp
-                CROSS JOIN input_line il
-                CROSS JOIN line_length ll
+        # Generate sample points along the line
+        sample_points = []
+        distances = []
+        for i in range(n_samples):
+            frac = i / max(n_samples - 1, 1)
+            point = line.interpolate(frac, normalized=True)
+            sample_points.append((point.x, point.y))
+            distances.append(frac * total_length_m)
+
+        # Read elevations from DEM file
+        settings = get_settings()
+        dem_path = settings.dem_path
+
+        if not os.path.exists(dem_path):
+            raise HTTPException(
+                status_code=503,
+                detail=f"Plik DEM nie jest dostepny: {dem_path}. Skonfiguruj DEM_PATH.",
             )
-            SELECT
-                p.idx,
-                p.distance_m,
-                nearest.elevation AS elevation_m
-            FROM points p
-            CROSS JOIN LATERAL (
-                SELECT fn.elevation
-                FROM flow_network fn
-                ORDER BY fn.geom <-> p.geom
-                LIMIT 1
-            ) AS nearest
-            ORDER BY p.idx
-        """)
 
-        result = db.execute(query, {"wkt": wkt, "n_samples": n_samples}).fetchall()
+        elevations: list[float] = []
+        with rasterio.open(dem_path) as dataset:
+            for val in dataset.sample(sample_points):
+                elev = float(val[0])
+                # Handle nodata
+                if dataset.nodata is not None and elev == dataset.nodata:
+                    elevations.append(0.0)
+                else:
+                    elevations.append(elev)
 
-        if not result:
+        if not elevations or all(e == 0.0 for e in elevations):
             raise HTTPException(
                 status_code=404,
-                detail="Brak danych wysokościowych dla podanej linii",
+                detail="Brak danych wysokosciowych dla podanej linii",
             )
-
-        distances = [float(r.distance_m) for r in result]
-        elevations = [float(r.elevation_m) for r in result]
-        total_length = distances[-1] if distances else 0.0
 
         response.headers["Cache-Control"] = "public, max-age=3600"
         return TerrainProfileResponse(
             distances_m=distances,
             elevations_m=elevations,
-            total_length_m=total_length,
+            total_length_m=total_length_m,
         )
 
     except HTTPException:

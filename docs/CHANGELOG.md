@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (eliminacja FlowGraph z runtime — ADR-022)
+- **`core/watershed_service.py` (nowy modul):** ~400 linii reużywalnych funkcji wyekstrahowanych z `select_stream.py` — `find_nearest_stream_segment()`, `merge_catchment_boundaries()`, `get_segment_outlet()`, `compute_watershed_length()`, `get_main_stream_geojson()`, `get_main_stream_coords_2180()`, `build_morph_dict_from_graph()`
+- **`watershed.py` endpoint rewrite:** FlowGraph BFS (19.7M) → CatchmentGraph BFS (87k) + `watershed_service` — boundary z ST_Union, main_stream_geojson naprawiony (było broken/None)
+- **`hydrograph.py` endpoint rewrite:** j.w., morph_dict z `build_morph_dict_from_graph(cn=cn)` → `WatershedParameters.from_dict()`
+- **`select_stream.py` refactor:** 6 lokalnych funkcji (~155 LOC) zastąpionych importami z `watershed_service`, `_get_outlet_elevation()` → `stats["elevation_min_m"]` z CatchmentGraph
+- **`profile.py` rewrite:** SQL LATERAL JOIN na 19.67M wierszach `flow_network` → bezpośredni odczyt z pliku DEM przez rasterio + pyproj transformer
+- **`api/main.py`:** usunięte ładowanie FlowGraph z lifespan (~1 GB RAM, ~90s startup)
+- **`core/flow_graph.py`:** oznaczony jako DEPRECATED — zachowany dla skryptów CLI
+- **`core/watershed.py`:** legacy functions (find_nearest_stream, traverse_upstream) zachowane dla CLI
+- **`docker-compose.yml`:** API memory limit 3G → 512M, nowa zmienna `DEM_PATH`
+- **`core/config.py`:** nowe pole `dem_path` w Settings
+- **`core/constants.py`:** nowa stała `DEFAULT_THRESHOLD_M2 = 100`
+- **29 nowych testów:** 25 unit (test_watershed_service.py) + 4 integracyjne; łącznie 548 testów
+
 ### Documentation (audyt dokumentacji)
 - **9 plikow .md zaktualizowanych:** ARCHITECTURE, CLAUDE, DATA_MODEL, SCOPE, QA_REPORT, TECHNICAL_DEBT, COMPUTATION_PIPELINE, README, PROGRESS
 - **ARCHITECTURE.md v1.4:** `parameters.py`→`morphometry.py`, sygnatury, +catchment_graph.py/constants.py, +2 endpointy

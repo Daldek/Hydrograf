@@ -44,6 +44,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:-hydro_password}@db:5432/${POSTGRES_DB:-hydro_db}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEM_PATH: ${DEM_PATH:-/data/dem/dem.vrt}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -53,7 +54,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3G
+          memory: 512M
           cpus: "2.0"
     volumes:
       - ./backend:/app
