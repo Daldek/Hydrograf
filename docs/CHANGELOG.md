@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (10 bugfixes — A1-A5, B1-B4, C1)
+- **A1 — odznaczanie zlewni:** przycisk "×" w panelu wyników teraz czyści warstwę zlewni z mapy (`clearWatershed`, `clearSelectionBoundary`, `clearCatchmentHighlights`, `clearProfileLine`)
+- **A2 — min_area zagłębień:** domyślny filtr min_area zmieniony z 0 na 100 m² (API + frontend)
+- **A3 — próg FA:** domyślny próg flow accumulation zmieniony z 10000 na 100000 m² (tiles.py + app.js + layers.js)
+- **A4 — histogram height:** wysokość canvas histogramu wysokości zmieniona z 20px na 140px
+- **A5 — BDOT opacity:** zbiorniki wodne BDOT10k ukrywane całkowicie przy opacity=0 (weight + fillOpacity + opacity)
+- **B1 — profil DEM error:** zamiana alert() na inline Bootstrap alert-warning gdy DEM niedostępny (503) lub inny błąd
+- **B3 — hydrogram ukryty:** sekcja hydrogramu ukryta z badge "w przygotowaniu" (d-none + tekst nagłówka)
+- **C1 — usunięcie cell_count:** pole `cell_count` usunięte z WatershedResponse, 3 endpointów, frontendu i dokumentacji
+
+### Added (nowe funkcje — B2, B4)
+- **B2 — tryb "Profil":** nowy przycisk w toolbar pozwalający rysować profil terenu niezależnie od zlewni
+- **B4 — traverse_to_confluence:** nowa metoda w CatchmentGraph — BFS upstream z zatrzymaniem na konfluencji, parametr `to_confluence` w select-stream
+
+### Removed
+- Pole `cell_count` z `WatershedResponse` i powiązane wyświetlanie w UI (wartość zawsze wynosiła 0 po migracji z FlowGraph)
+
 ### Changed (eliminacja FlowGraph z runtime — ADR-022)
 - **`core/watershed_service.py` (nowy modul):** ~400 linii reużywalnych funkcji wyekstrahowanych z `select_stream.py` — `find_nearest_stream_segment()`, `merge_catchment_boundaries()`, `get_segment_outlet()`, `compute_watershed_length()`, `get_main_stream_geojson()`, `get_main_stream_coords_2180()`, `build_morph_dict_from_graph()`
 - **`watershed.py` endpoint rewrite:** FlowGraph BFS (19.7M) → CatchmentGraph BFS (87k) + `watershed_service` — boundary z ST_Union, main_stream_geojson naprawiony (było broken/None)
