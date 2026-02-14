@@ -1,6 +1,11 @@
 """
 In-memory flow graph for fast upstream traversal.
 
+DEPRECATED: This module is no longer used by the API runtime.
+Watershed delineation now uses CatchmentGraph (~87k nodes, ~8 MB)
+instead of FlowGraph (~19.7M cells, ~1 GB). This module is retained
+for potential use by CLI scripts (e.g., process_dem.py).
+
 Loads the flow_network graph structure and cell attributes from PostGIS
 into numpy arrays and a scipy sparse matrix at API startup, enabling
 BFS traversal in ~50-200ms instead of 2-5s via SQL recursive CTE.

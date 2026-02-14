@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 519 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 548 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -44,9 +44,24 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-13 (sesja 16)
+**Data:** 2026-02-14 (sesja 17)
 
 ### Co zrobiono
+
+- **Eliminacja FlowGraph z runtime API (ADR-022, 10 faz):**
+  - **Faza 1:** Nowy modul `core/watershed_service.py` (~400 linii) — reużywalne funkcje wyekstrahowane z `select_stream.py`: find_nearest_stream_segment, merge_catchment_boundaries, get_segment_outlet, compute_watershed_length, get_main_stream_geojson, build_morph_dict_from_graph
+  - **Faza 2:** Rewrite `watershed.py` — FlowGraph BFS (19.7M) → CatchmentGraph BFS (87k) + watershed_service
+  - **Faza 3:** Rewrite `hydrograph.py` — j.w., morph_dict → WatershedParameters.from_dict()
+  - **Faza 4:** Refactor `select_stream.py` — 6 lokalnych funkcji zastąpionych importami z watershed_service
+  - **Faza 5:** Rewrite `profile.py` — SQL LATERAL JOIN → rasterio DEM sampling + pyproj
+  - **Faza 6:** Usunięcie FlowGraph z `api/main.py` lifespan
+  - **Faza 7:** Cleanup `watershed.py` (legacy functions zachowane dla CLI), deprecation notice w `flow_graph.py`
+  - **Faza 8:** 29 nowych testów (25 unit + 4 integracyjne) — łącznie 548 testów, 0 failures
+  - **Faza 9:** Docker config — API memory 3G → 512M, DEM_PATH env var
+  - **Faza 10:** Dokumentacja — ADR-022, CHANGELOG, PROGRESS
+  - **Efekty:** RAM -96% (1.1 GB → 40 MB), startup -97% (93s → 3s), flow_network runtime queries: 0, main_stream_geojson naprawiony
+
+### Poprzednia sesja (2026-02-13, sesja 16)
 
 - **Audyt dokumentacji — spojnosc, aktualnosc, wzajemne odwolania (9 plikow):**
   - ARCHITECTURE.md: `parameters.py`→`morphometry.py`, zaktualizowane sygnatury, +catchment_graph.py/constants.py, v1.4
@@ -186,15 +201,15 @@
 
 ### Znane problemy
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
-- Flow graph: `downstream_id` nie jest przechowywany w pamięci (zwracany jako None) — nie uzywany przez callery
+- FlowGraph (core/flow_graph.py) — DEPRECATED, zachowany dla skryptow CLI, nie ladowany przez API
 - 15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
-- Migracja 013 (partial GiST index) wymaga `alembic upgrade head` na bazie produkcyjnej
+- Endpoint `profile.py` wymaga pliku DEM (VRT/GeoTIFF) pod sciezka `DEM_PATH` — zwraca 503 gdy brak
 
 ### Nastepne kroki
 1. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
 2. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
 3. Usuniecie hardcoded secrets z config.py i migrations/env.py
-4. Faza 5 (opcjonalna): PMTiles, pre-computed watersheds, MapLibre GL JS, mmap FlowGraph
+4. Faza 5 (opcjonalna): PMTiles, pre-computed watersheds, MapLibre GL JS
 5. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
@@ -215,3 +230,4 @@
 - [x] Problem jezior bezodplywowych (endorheic basins) — ADR-020: klasyfikacja + drain points
 - [x] CI/CD pipeline (GitHub Actions)
 - [x] Audyt QA wydajnosci: LATERAL JOIN, cache headers, TTL cache, partial index, PG tuning, client cache, defer, structlog
+- [x] Eliminacja FlowGraph z runtime API (ADR-022): RAM -96%, startup -97%, 548 testow

@@ -21,3 +21,6 @@ HYDROGRAPH_AREA_LIMIT_KM2 = 250.0
 # Flow graph safety limit (~200 km² @ 1m resolution)
 MAX_WATERSHED_CELLS = 2_000_000
 MAX_STREAM_DISTANCE_M = 1000.0
+
+# Default flow accumulation threshold (finest resolution)
+DEFAULT_THRESHOLD_M2 = 100

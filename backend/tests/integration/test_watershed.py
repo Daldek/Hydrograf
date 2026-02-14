@@ -1,14 +1,34 @@
 """
 Integration tests for watershed delineation endpoint.
+
+Tests the POST /api/delineate-watershed endpoint using mocked
+CatchmentGraph and watershed_service functions. The endpoint
+flow is:
+  1. Transform coords (WGS84 -> PL-1992)
+  2. Get CatchmentGraph (503 if not loaded)
+  3. find_nearest_stream_segment -> segment dict (404 if None)
+  4. cg.find_catchment_at_point -> clicked_idx (404 if ValueError)
+  5. cg.traverse_upstream -> upstream_indices (numpy array)
+  6. cg.get_segment_indices -> segment_idxs list
+  7. cg.aggregate_stats -> stats dict with area_km2
+  8. merge_catchment_boundaries -> MultiPolygon (500 if None)
+  9. boundary_to_polygon -> Polygon
+ 10. get_segment_outlet -> outlet coords
+ 11. stats["elevation_min_m"] -> outlet_elevation
+ 12. build_morph_dict_from_graph -> morph_dict
+ 13. Response with cell_count=0
 """
 
-from unittest.mock import MagicMock
+import contextlib
+from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from shapely.geometry import MultiPolygon, Polygon
 
 from api.main import app
-from core.database import get_db
+from core.catchment_graph import CatchmentGraph
 
 
 @pytest.fixture
@@ -17,81 +37,160 @@ def client():
     return TestClient(app)
 
 
-@pytest.fixture
-def mock_db_with_stream():
-    """Mock database with stream data for successful delineation."""
-    mock_session = MagicMock()
+def _make_mock_cg(area_km2: float = 10.0) -> MagicMock:
+    """Create a mock CatchmentGraph with sensible defaults."""
+    cg = MagicMock(spec=CatchmentGraph)
+    cg.loaded = True
+    cg.find_catchment_at_point.return_value = 0  # internal idx
+    cg.traverse_upstream.return_value = np.array([0, 1, 2])
+    cg.get_segment_indices.return_value = [10, 11, 12]
+    cg.aggregate_stats.return_value = {
+        "area_km2": area_km2,
+        "elevation_min_m": 120.0,
+        "elevation_max_m": 190.0,
+        "elevation_mean_m": 155.0,
+        "mean_slope_m_per_m": 0.04,
+        "stream_length_km": 6.5,
+        "drainage_density_km_per_km2": 0.65,
+        "max_strahler_order": 2,
+        "stream_frequency_per_km2": 0.3,
+    }
+    cg.aggregate_hypsometric.return_value = []
+    return cg
 
-    # Mock find_nearest_stream query
-    stream_result = MagicMock()
-    stream_result.id = 1
-    stream_result.x = 639139.0  # Warsaw area PL-1992
-    stream_result.y = 486706.0
-    stream_result.elevation = 150.0
-    stream_result.flow_accumulation = 1000
-    stream_result.slope = 2.5
-    stream_result.downstream_id = None
-    stream_result.cell_area = 25.0
-    stream_result.is_stream = True
-    stream_result.distance = 50.0
 
-    # Mock traverse_upstream results (4 cells = 100 m² = 0.0001 km²)
-    upstream_results = []
-    for i in range(4):
-        r = MagicMock()
-        r.id = i + 1
-        r.x = 639139.0 + i * 5
-        r.y = 486706.0 + (i % 2) * 5
-        r.elevation = 150.0 + i * 2
-        r.flow_accumulation = 1000 - i * 250
-        r.slope = 2.5
-        r.downstream_id = i if i > 0 else None
-        r.cell_area = 25.0
-        r.is_stream = i == 0
-        upstream_results.append(r)
+def _make_segment() -> dict:
+    """Create a mock stream segment dict as returned by find_nearest_stream_segment."""
+    return {
+        "segment_idx": 12,
+        "strahler_order": 2,
+        "length_m": 3000.0,
+        "upstream_area_km2": 10.0,
+        "downstream_x": 639139.0,
+        "downstream_y": 486706.0,
+    }
 
-    # Mock pre-flight check result (check_watershed_size)
-    preflight_result = MagicMock()
-    preflight_result.flow_accumulation = 3  # small watershed
 
-    def execute_side_effect(query, params=None):
-        result = MagicMock()
-        query_str = str(query)
-        if "is_stream = TRUE" in query_str:
-            result.fetchone.return_value = stream_result
-        elif "flow_accumulation FROM flow_network WHERE id" in query_str:
-            result.fetchone.return_value = preflight_result
-        elif "RECURSIVE upstream" in query_str:
-            result.fetchall.return_value = upstream_results
-        return result
+def _make_boundary() -> MultiPolygon:
+    """Create a simple rectangular MultiPolygon boundary in PL-1992."""
+    poly = Polygon(
+        [
+            (639100, 486650),
+            (639200, 486650),
+            (639200, 486750),
+            (639100, 486750),
+            (639100, 486650),
+        ]
+    )
+    return MultiPolygon([poly])
 
-    mock_session.execute.side_effect = execute_side_effect
-    return mock_session
+
+def _make_morph_dict(area_km2: float = 10.0) -> dict:
+    """Create a morphometric parameter dict matching MorphometricParameters schema."""
+    return {
+        "area_km2": area_km2,
+        "perimeter_km": 0.4,
+        "length_km": 0.15,
+        "elevation_min_m": 120.0,
+        "elevation_max_m": 190.0,
+        "elevation_mean_m": 155.0,
+        "mean_slope_m_per_m": 0.04,
+        "channel_length_km": 6.5,
+        "channel_slope_m_per_m": 0.0108,
+        "cn": None,
+        "source": "Hydrograf",
+        "crs": "EPSG:2180",
+        "compactness_coefficient": 1.13,
+        "circularity_ratio": 0.79,
+        "elongation_ratio": 1.2,
+        "form_factor": 0.44,
+        "mean_width_km": 0.067,
+        "relief_ratio": 0.47,
+        "hypsometric_integral": 0.5,
+        "drainage_density_km_per_km2": 0.65,
+        "stream_frequency_per_km2": 0.3,
+        "ruggedness_number": 0.046,
+        "max_strahler_order": 2,
+    }
+
+
+# Patch target prefix for the watershed endpoint module
+_WS = "api.endpoints.watershed"
 
 
 class TestDelineateWatershedEndpoint:
     """Tests for POST /api/delineate-watershed."""
 
-    def test_success_returns_200(self, client, mock_db_with_stream):
-        """Test successful delineation returns 200."""
-        app.dependency_overrides[get_db] = lambda: mock_db_with_stream
+    def _patch_all(
+        self,
+        cg=None,
+        segment=None,
+        boundary=None,
+        morph=None,
+    ):
+        """Create a list of context managers for all required patches.
 
-        response = client.post(
-            "/api/delineate-watershed",
-            json={"latitude": 52.23, "longitude": 21.01},
-        )
+        Parameters
+        ----------
+        cg : MagicMock | None
+            Mock CatchmentGraph instance (defaults to _make_mock_cg())
+        segment : dict | None
+            Mock segment dict (defaults to _make_segment())
+        boundary : MultiPolygon | None
+            Mock boundary geometry (defaults to _make_boundary())
+        morph : dict | None
+            Mock morphometric dict (defaults to _make_morph_dict())
+
+        Returns
+        -------
+        list
+            List of unittest.mock._patch context managers
+        """
+        if cg is None:
+            cg = _make_mock_cg()
+        if segment is None:
+            segment = _make_segment()
+        if boundary is None:
+            boundary = _make_boundary()
+        if morph is None:
+            morph = _make_morph_dict()
+
+        return [
+            patch(f"{_WS}.get_catchment_graph", return_value=cg),
+            patch(f"{_WS}.find_nearest_stream_segment", return_value=segment),
+            patch(f"{_WS}.merge_catchment_boundaries", return_value=boundary),
+            patch(
+                f"{_WS}.get_segment_outlet",
+                return_value={"x": 639139.0, "y": 486706.0},
+            ),
+            patch(f"{_WS}.build_morph_dict_from_graph", return_value=morph),
+            patch(f"{_WS}.get_main_stream_geojson", return_value=None),
+            patch(f"{_WS}.get_land_cover_for_boundary", return_value=None),
+        ]
+
+    def test_success_returns_200(self, client):
+        """Test successful delineation returns 200."""
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all():
+                stack.enter_context(p)
+
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
 
         assert response.status_code == 200
-        app.dependency_overrides.clear()
 
-    def test_response_structure(self, client, mock_db_with_stream):
+    def test_response_structure(self, client):
         """Test response has correct structure."""
-        app.dependency_overrides[get_db] = lambda: mock_db_with_stream
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all():
+                stack.enter_context(p)
 
-        response = client.post(
-            "/api/delineate-watershed",
-            json={"latitude": 52.23, "longitude": 21.01},
-        )
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
 
         data = response.json()
         assert "watershed" in data
@@ -101,16 +200,16 @@ class TestDelineateWatershedEndpoint:
         assert "area_km2" in data["watershed"]
         assert "hydrograph_available" in data["watershed"]
 
-        app.dependency_overrides.clear()
-
-    def test_outlet_info_structure(self, client, mock_db_with_stream):
+    def test_outlet_info_structure(self, client):
         """Test outlet info has correct structure."""
-        app.dependency_overrides[get_db] = lambda: mock_db_with_stream
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all():
+                stack.enter_context(p)
 
-        response = client.post(
-            "/api/delineate-watershed",
-            json={"latitude": 52.23, "longitude": 21.01},
-        )
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
 
         data = response.json()
         outlet = data["watershed"]["outlet"]
@@ -119,16 +218,16 @@ class TestDelineateWatershedEndpoint:
         assert "longitude" in outlet
         assert "elevation_m" in outlet
 
-        app.dependency_overrides.clear()
+    def test_boundary_is_valid_geojson(self, client):
+        """Test that boundary is valid GeoJSON Feature with Polygon geometry."""
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all():
+                stack.enter_context(p)
 
-    def test_boundary_is_valid_geojson(self, client, mock_db_with_stream):
-        """Test that boundary is valid GeoJSON."""
-        app.dependency_overrides[get_db] = lambda: mock_db_with_stream
-
-        response = client.post(
-            "/api/delineate-watershed",
-            json={"latitude": 52.23, "longitude": 21.01},
-        )
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
 
         data = response.json()
         geojson = data["watershed"]["boundary_geojson"]
@@ -139,39 +238,42 @@ class TestDelineateWatershedEndpoint:
         assert "coordinates" in geojson["geometry"]
         assert "properties" in geojson
 
-        app.dependency_overrides.clear()
+    def test_boundary_has_area_property(self, client):
+        """Test that boundary GeoJSON has area_km2 property."""
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all():
+                stack.enter_context(p)
 
-    def test_boundary_has_area_property(self, client, mock_db_with_stream):
-        """Test that boundary GeoJSON has area property."""
-        app.dependency_overrides[get_db] = lambda: mock_db_with_stream
-
-        response = client.post(
-            "/api/delineate-watershed",
-            json={"latitude": 52.23, "longitude": 21.01},
-        )
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
 
         data = response.json()
         geojson = data["watershed"]["boundary_geojson"]
 
         assert "area_km2" in geojson["properties"]
 
-        app.dependency_overrides.clear()
-
     def test_no_stream_returns_404(self, client):
-        """Test that missing stream returns 404."""
-        mock_session = MagicMock()
-        mock_session.execute.return_value.fetchone.return_value = None
-        app.dependency_overrides[get_db] = lambda: mock_session
+        """Test that missing stream returns 404 with Polish error message."""
+        cg = _make_mock_cg()
 
-        response = client.post(
-            "/api/delineate-watershed",
-            json={"latitude": 52.0, "longitude": 21.0},
-        )
+        patches = [
+            patch(f"{_WS}.get_catchment_graph", return_value=cg),
+            patch(f"{_WS}.find_nearest_stream_segment", return_value=None),
+        ]
+
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.0, "longitude": 21.0},
+            )
 
         assert response.status_code == 404
         assert "Nie znaleziono cieku" in response.json()["detail"]
-
-        app.dependency_overrides.clear()
 
     def test_invalid_latitude_too_high_returns_422(self, client):
         """Test that latitude > 90 returns 422."""
@@ -236,108 +338,67 @@ class TestDelineateWatershedEndpoint:
 
         assert response.status_code == 422
 
-    def test_small_watershed_hydrograph_available(self, client, mock_db_with_stream):
-        """Test that small watershed has hydrograph_available=True."""
-        app.dependency_overrides[get_db] = lambda: mock_db_with_stream
+    def test_small_watershed_hydrograph_available(self, client):
+        """Test small watershed has hydrograph_available=True."""
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all():
+                stack.enter_context(p)
 
-        response = client.post(
-            "/api/delineate-watershed",
-            json={"latitude": 52.23, "longitude": 21.01},
-        )
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
 
         data = response.json()
-        # 4 cells * 25 m² = 100 m² = 0.0001 km² < 250 km²
         assert data["watershed"]["hydrograph_available"] is True
 
-        app.dependency_overrides.clear()
-
     def test_large_watershed_hydrograph_unavailable(self, client):
-        """Test that large watershed has hydrograph_available=False."""
-        mock_session = MagicMock()
+        """Test large watershed has hydrograph_available=False."""
+        area_km2 = 300.0
+        cg = _make_mock_cg(area_km2=area_km2)
+        morph = _make_morph_dict(area_km2=area_km2)
 
-        # Mock find_nearest_stream query
-        stream_result = MagicMock()
-        stream_result.id = 1
-        stream_result.x = 639139.0
-        stream_result.y = 486706.0
-        stream_result.elevation = 150.0
-        stream_result.flow_accumulation = 1000
-        stream_result.slope = 2.5
-        stream_result.downstream_id = None
-        stream_result.cell_area = 1_000_000.0  # 1 km² per cell
-        stream_result.is_stream = True
-        stream_result.distance = 50.0
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all(cg=cg, morph=morph):
+                stack.enter_context(p)
 
-        # Create 300 cells = 300 km² > 250 km² limit
-        upstream_results = []
-        for i in range(300):
-            r = MagicMock()
-            r.id = i + 1
-            r.x = 639139.0 + (i % 30) * 100
-            r.y = 486706.0 + (i // 30) * 100
-            r.elevation = 150.0 + i
-            r.flow_accumulation = 1000 - i * 3
-            r.slope = 2.5
-            r.downstream_id = i if i > 0 else None
-            r.cell_area = 1_000_000.0  # 1 km² per cell
-            r.is_stream = i == 0
-            upstream_results.append(r)
-
-        # Mock pre-flight check result (check_watershed_size)
-        preflight_result = MagicMock()
-        preflight_result.flow_accumulation = 299  # small enough to pass pre-flight
-
-        def execute_side_effect(query, params=None):
-            result = MagicMock()
-            query_str = str(query)
-            if "is_stream = TRUE" in query_str:
-                result.fetchone.return_value = stream_result
-            elif "flow_accumulation FROM flow_network WHERE id" in query_str:
-                result.fetchone.return_value = preflight_result
-            elif "RECURSIVE upstream" in query_str:
-                result.fetchall.return_value = upstream_results
-            return result
-
-        mock_session.execute.side_effect = execute_side_effect
-        app.dependency_overrides[get_db] = lambda: mock_session
-
-        response = client.post(
-            "/api/delineate-watershed",
-            json={"latitude": 52.23, "longitude": 21.01},
-        )
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
 
         data = response.json()
-        # 300 cells * 1 km² = 300 km² > 250 km²
         assert data["watershed"]["hydrograph_available"] is False
         assert data["watershed"]["area_km2"] == 300.0
 
-        app.dependency_overrides.clear()
+    def test_cell_count_is_zero(self, client):
+        """Test cell_count is 0 for graph-based approach."""
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all():
+                stack.enter_context(p)
 
-    def test_cell_count_matches(self, client, mock_db_with_stream):
-        """Test that cell_count matches number of cells."""
-        app.dependency_overrides[get_db] = lambda: mock_db_with_stream
-
-        response = client.post(
-            "/api/delineate-watershed",
-            json={"latitude": 52.23, "longitude": 21.01},
-        )
-
-        data = response.json()
-        assert data["watershed"]["cell_count"] == 4
-
-        app.dependency_overrides.clear()
-
-    def test_area_calculation_correct(self, client, mock_db_with_stream):
-        """Test that area is calculated correctly."""
-        app.dependency_overrides[get_db] = lambda: mock_db_with_stream
-
-        response = client.post(
-            "/api/delineate-watershed",
-            json={"latitude": 52.23, "longitude": 21.01},
-        )
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
 
         data = response.json()
-        # 4 cells * 25 m² = 100 m² = 0.0001 km²
-        assert data["watershed"]["area_km2"] == 0.0
+        assert data["watershed"]["cell_count"] == 0
 
-        app.dependency_overrides.clear()
+    def test_area_calculation_correct(self, client):
+        """Test that area_km2 matches the value from CatchmentGraph stats."""
+        area_km2 = 45.67
+        cg = _make_mock_cg(area_km2=area_km2)
+        morph = _make_morph_dict(area_km2=area_km2)
+
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all(cg=cg, morph=morph):
+                stack.enter_context(p)
+
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
+
+        data = response.json()
+        assert data["watershed"]["area_km2"] == 45.67
