@@ -380,6 +380,10 @@ class SelectStreamRequest(BaseModel):
         description="Flow accumulation threshold [m2] for stream network",
         examples=[10000],
     )
+    to_confluence: bool = Field(
+        False,
+        description="Traverse only to first confluence upstream",
+    )
 
 
 class StreamInfo(BaseModel):
