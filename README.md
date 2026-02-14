@@ -39,7 +39,6 @@ curl -X POST http://localhost:8000/api/delineate-watershed \
   "watershed": {
     "boundary_geojson": {"type": "Feature", "geometry": {...}, "properties": {...}},
     "outlet": {"latitude": 52.23, "longitude": 21.01, "elevation_m": 150.0},
-    "cell_count": 1234,
     "area_km2": 45.67,
     "hydrograph_available": true,
     "morphometry": {"area_km2": 45.67, "perimeter_km": 32.1, "...": "..."}

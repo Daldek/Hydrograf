@@ -261,7 +261,6 @@ def select_stream(
                 longitude=outlet_lon,
                 elevation_m=outlet_elevation or 0.0,
             ),
-            cell_count=0,  # Not applicable for graph-based approach
             area_km2=round(area_km2, 2),
             hydrograph_available=hydrograph_available,
             morphometry=morphometry,

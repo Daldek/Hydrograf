@@ -591,8 +591,7 @@ class DelineateRequest(BaseModel):
       "latitude": 52.123456,
       "longitude": 21.123456,
       "elevation_m": 145.5
-    },
-    "cell_count": 1812000
+    }
   }
 }
 ```
@@ -610,7 +609,6 @@ class OutletInfo(BaseModel):
 class WatershedResponse(BaseModel):
     boundary_geojson: Dict  # GeoJSON Feature
     outlet: OutletInfo
-    cell_count: int
 
 class DelineateResponse(BaseModel):
     watershed: WatershedResponse

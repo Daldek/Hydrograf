@@ -214,7 +214,6 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
   "watershed": {
     "boundary_geojson": {...},
     "outlet": {"latitude": 52.23, "longitude": 21.01, "elevation_m": 150.0},
-    "cell_count": 1000,
     "area_km2": 45.3,
     "hydrograph_available": true,
     "morphometry": {

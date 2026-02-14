@@ -182,7 +182,6 @@ class WatershedResponse(BaseModel):
         ..., description="Watershed boundary as GeoJSON Feature"
     )
     outlet: OutletInfo = Field(..., description="Outlet point information")
-    cell_count: int = Field(..., ge=0, description="Number of cells in watershed")
     area_km2: float = Field(..., ge=0, description="Watershed area [km2]")
     hydrograph_available: bool = Field(
         ...,

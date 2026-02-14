@@ -16,7 +16,6 @@ flow is:
  10. get_segment_outlet -> outlet coords
  11. stats["elevation_min_m"] -> outlet_elevation
  12. build_morph_dict_from_graph -> morph_dict
- 13. Response with cell_count=0
 """
 
 import contextlib
@@ -196,7 +195,6 @@ class TestDelineateWatershedEndpoint:
         assert "watershed" in data
         assert "boundary_geojson" in data["watershed"]
         assert "outlet" in data["watershed"]
-        assert "cell_count" in data["watershed"]
         assert "area_km2" in data["watershed"]
         assert "hydrograph_available" in data["watershed"]
 
@@ -370,20 +368,6 @@ class TestDelineateWatershedEndpoint:
         data = response.json()
         assert data["watershed"]["hydrograph_available"] is False
         assert data["watershed"]["area_km2"] == 300.0
-
-    def test_cell_count_is_zero(self, client):
-        """Test cell_count is 0 for graph-based approach."""
-        with contextlib.ExitStack() as stack:
-            for p in self._patch_all():
-                stack.enter_context(p)
-
-            response = client.post(
-                "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
-            )
-
-        data = response.json()
-        assert data["watershed"]["cell_count"] == 0
 
     def test_area_calculation_correct(self, client):
         """Test that area_km2 matches the value from CatchmentGraph stats."""
