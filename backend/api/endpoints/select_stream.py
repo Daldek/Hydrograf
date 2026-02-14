@@ -7,12 +7,8 @@ boundary with full morphometry. Zero raster operations in runtime.
 """
 
 import logging
-import math
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from shapely import wkb
-from shapely.geometry import MultiPolygon
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import get_catchment_graph
@@ -20,6 +16,14 @@ from core.constants import HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.land_cover import get_land_cover_for_boundary
 from core.morphometry import calculate_shape_indices
+from core.watershed_service import (
+    boundary_to_polygon,
+    compute_watershed_length,
+    find_nearest_stream_segment,
+    get_main_stream_geojson,
+    get_segment_outlet,
+    merge_catchment_boundaries,
+)
 from models.schemas import (
     HypsometricPoint,
     LandCoverCategory,
@@ -40,163 +44,6 @@ from utils.geometry import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-def _find_stream_segment(
-    x: float,
-    y: float,
-    threshold_m2: int,
-    db: Session,
-) -> dict | None:
-    """Find the nearest stream_network segment to a point."""
-    query = text("""
-        SELECT
-            id,
-            strahler_order,
-            ST_Length(geom) as length_m,
-            upstream_area_km2,
-            ST_X(ST_EndPoint(geom)) as downstream_x,
-            ST_Y(ST_EndPoint(geom)) as downstream_y
-        FROM stream_network
-        WHERE threshold_m2 = :threshold
-          AND ST_DWithin(geom, ST_SetSRID(ST_Point(:x, :y), 2180), 1000)
-        ORDER BY ST_Distance(geom, ST_SetSRID(ST_Point(:x, :y), 2180))
-        LIMIT 1
-    """)
-    result = db.execute(
-        query,
-        {"x": x, "y": y, "threshold": threshold_m2},
-    ).fetchone()
-    if result is None:
-        return None
-    return {
-        "segment_idx": result.id,
-        "strahler_order": result.strahler_order,
-        "length_m": result.length_m,
-        "upstream_area_km2": result.upstream_area_km2,
-        "downstream_x": result.downstream_x,
-        "downstream_y": result.downstream_y,
-    }
-
-
-def _merge_catchment_boundaries(
-    segment_idxs: list[int],
-    threshold_m2: int,
-    db: Session,
-) -> MultiPolygon | None:
-    """Merge sub-catchment polygons via ST_Union in PostGIS."""
-    if not segment_idxs:
-        return None
-
-    query = text("""
-        SELECT ST_AsBinary(
-            ST_Multi(ST_Union(geom))
-        ) as geom
-        FROM stream_catchments
-        WHERE threshold_m2 = :threshold
-          AND segment_idx = ANY(:idxs)
-    """)
-    result = db.execute(
-        query,
-        {"threshold": threshold_m2, "idxs": segment_idxs},
-    ).fetchone()
-
-    if result is None or result.geom is None:
-        return None
-
-    return wkb.loads(bytes(result.geom))
-
-
-def _get_segment_outlet(
-    segment_idx: int,
-    threshold_m2: int,
-    db: Session,
-) -> dict | None:
-    """Get outlet point (downstream endpoint) of a stream segment."""
-    query = text("""
-        SELECT
-            ST_X(ST_EndPoint(geom)) as x,
-            ST_Y(ST_EndPoint(geom)) as y
-        FROM stream_network
-        WHERE id = :seg_idx
-          AND threshold_m2 = :threshold
-        LIMIT 1
-    """)
-    result = db.execute(
-        query,
-        {"seg_idx": segment_idx, "threshold": threshold_m2},
-    ).fetchone()
-    if result is None:
-        return None
-    return {"x": result.x, "y": result.y}
-
-
-def _get_outlet_elevation(
-    x: float,
-    y: float,
-    db: Session,
-) -> float | None:
-    """Get elevation at a point from flow_network (nearest stream cell)."""
-    query = text("""
-        SELECT elevation
-        FROM flow_network
-        WHERE is_stream = TRUE
-        ORDER BY geom <-> ST_SetSRID(ST_Point(:x, :y), 2180)
-        LIMIT 1
-    """)
-    result = db.execute(query, {"x": x, "y": y}).fetchone()
-    return result.elevation if result else None
-
-
-def _compute_watershed_length(
-    boundary,
-    outlet_x: float,
-    outlet_y: float,
-) -> float:
-    """Estimate watershed length as max distance from outlet to boundary."""
-    # Sample boundary points and find max distance from outlet
-    if hasattr(boundary, "geoms"):
-        # MultiPolygon
-        coords = []
-        for poly in boundary.geoms:
-            coords.extend(poly.exterior.coords)
-    else:
-        coords = list(boundary.exterior.coords)
-
-    if not coords:
-        return 0.0
-
-    max_dist = max(
-        math.sqrt((x - outlet_x) ** 2 + (y - outlet_y) ** 2) for x, y in coords
-    )
-    return max_dist / 1000  # m → km
-
-
-def _get_main_stream_geojson(
-    segment_idx: int,
-    threshold_m2: int,
-    db: Session,
-) -> dict | None:
-    """Get the main stream line as WGS84 GeoJSON from stream_network."""
-    query = text("""
-        SELECT ST_AsGeoJSON(
-            ST_Transform(geom, 4326)
-        ) as geojson
-        FROM stream_network
-        WHERE id = :seg_idx
-          AND threshold_m2 = :threshold
-        LIMIT 1
-    """)
-    result = db.execute(
-        query,
-        {"seg_idx": segment_idx, "threshold": threshold_m2},
-    ).fetchone()
-    if result is None or result.geojson is None:
-        return None
-
-    import json
-
-    return json.loads(result.geojson)
 
 
 @router.post("/select-stream", response_model=SelectStreamResponse)
@@ -224,7 +71,7 @@ def select_stream(
         cg = get_catchment_graph()
 
         # 1. Find stream segment nearest to click point
-        segment = _find_stream_segment(
+        segment = find_nearest_stream_segment(
             point_2180.x,
             point_2180.y,
             request.threshold_m2,
@@ -268,7 +115,7 @@ def select_stream(
         area_km2 = stats["area_km2"]
 
         # 5. Build boundary from ST_Union of catchment polygons
-        boundary_2180 = _merge_catchment_boundaries(
+        boundary_2180 = merge_catchment_boundaries(
             segment_idxs,
             request.threshold_m2,
             db,
@@ -279,26 +126,14 @@ def select_stream(
                 detail="Nie udało się zbudować granicy zlewni.",
             )
 
-        # Convert MultiPolygon to Polygon if single part
-        from shapely.geometry import Polygon
-
-        if hasattr(boundary_2180, "geoms"):
-            polys = list(boundary_2180.geoms)
-            if len(polys) == 1:
-                boundary_poly = polys[0]
-            else:
-                # Use largest polygon as boundary
-                boundary_poly = max(polys, key=lambda p: p.area)
-        elif isinstance(boundary_2180, Polygon):
-            boundary_poly = boundary_2180
-        else:
-            boundary_poly = boundary_2180
+        # Convert MultiPolygon to Polygon (largest component)
+        boundary_poly = boundary_to_polygon(boundary_2180)
 
         boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_poly)
         boundary_geojson = polygon_to_geojson_feature(boundary_wgs84)
 
         # 6. Outlet point (from clicked segment's downstream endpoint)
-        outlet_info = _get_segment_outlet(
+        outlet_info = get_segment_outlet(
             segment["segment_idx"],
             request.threshold_m2,
             db,
@@ -308,13 +143,13 @@ def select_stream(
         else:
             outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
 
-        outlet_elevation = _get_outlet_elevation(outlet_x, outlet_y, db)
+        outlet_elevation = stats.get("elevation_min_m")
         outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)
 
         # 7. Derived metrics requiring boundary geometry
         perimeter_km = round(boundary_2180.length / 1000, 4)
         length_km = round(
-            _compute_watershed_length(boundary_2180, outlet_x, outlet_y),
+            compute_watershed_length(boundary_2180, outlet_x, outlet_y),
             4,
         )
         shape_indices = calculate_shape_indices(area_km2, perimeter_km, length_km)
@@ -354,7 +189,7 @@ def select_stream(
         hypsometric_integral = None
         if hypso_data:
             hypso_curve = [HypsometricPoint(**p) for p in hypso_data]
-            # HI ≈ trapezoidal integration of relative_area over relative_height
+            # HI ~ trapezoidal integration of relative_area over relative_height
             areas = [p["relative_area"] for p in hypso_data]
             heights = [p["relative_height"] for p in hypso_data]
             if len(areas) >= 2:
@@ -365,7 +200,7 @@ def select_stream(
                 hypsometric_integral = round(max(0, min(1, hi)), 4)
 
         # 9. Main stream GeoJSON
-        main_stream_geojson = _get_main_stream_geojson(
+        main_stream_geojson = get_main_stream_geojson(
             segment["segment_idx"],
             request.threshold_m2,
             db,

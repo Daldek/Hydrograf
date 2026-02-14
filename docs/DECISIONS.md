@@ -456,6 +456,33 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 
 ---
 
+## ADR-022: Eliminacja FlowGraph z runtime API
+
+**Data:** 2026-02-14
+**Status:** Przyjeta
+
+**Kontekst:** API ladowalo FlowGraph (~19.7M komorek, ~1 GB RAM, ~90s startup) do pamieci przy starcie serwera, mimo ze CatchmentGraph (~87k wezlow, ~8 MB, ~3s) juz dostarczal te same dane w formie zagregowanej (ADR-021). FlowGraph byl redundantny — endpointy `delineate-watershed`, `generate-hydrograph` i `select-stream` wszystkie mogly korzystac z CatchmentGraph. Dodatkowo `find_main_stream()` w sciezce FlowGraph zwracal `channel_length=0` (bug — downstream_id=None w pamieci). Endpoint `terrain-profile` wykonywal LATERAL JOIN na 19.67M wierszach `flow_network` — jedyne pozostale runtime-query do tej tabeli.
+
+**Opcje:**
+- A) Zostawic FlowGraph obok CatchmentGraph — 1.1 GB RAM, redundantne dane, wolny startup
+- B) Usunac FlowGraph z runtime, zastapic CatchmentGraph + rasterio DEM sampling — 40 MB RAM, 3s startup
+
+**Decyzja:** Opcja B. Nowy modul `core/watershed_service.py` z reuzywalnymi funkcjami (wzorzec z `select_stream.py`). Endpointy `watershed.py` i `hydrograph.py` przepisane na CatchmentGraph. Endpoint `profile.py` zmieniony z SQL LATERAL JOIN na bezposredni odczyt z pliku DEM przez rasterio. FlowGraph usuniety z `api/main.py` lifespan — zachowany w `core/flow_graph.py` dla skryptow CLI.
+
+**Konsekwencje:**
+- RAM API: ~1.1 GB → ~40 MB (-96%)
+- Startup: ~93s → ~3s (-97%)
+- Docker memory limit: 3 GB → 512 MB (-83%)
+- flow_network runtime queries: 3 endpointy → 0 (-100%)
+- Boundary quality: raster polygonize / convex hull → ST_Union pre-computed (lepsza)
+- main_stream_geojson: broken (None) → z stream_network (naprawione)
+- Profile endpoint: LATERAL JOIN 19.7M → rasterio plik DEM (szybsze, dokladniejsze)
+- Legacy functions (find_nearest_stream, traverse_upstream) zachowane w `core/watershed.py` dla skryptow CLI
+- Nowy modul `core/watershed_service.py` (~400 linii) — wspolna logika dla 3 endpointow
+- 29 nowych testow (25 unit + 4 integracyjne), 548 testow lacznie
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

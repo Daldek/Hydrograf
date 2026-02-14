@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Database safety
     db_statement_timeout_ms: int = 120000  # 120s
 
+    # DEM raster path (for terrain profile sampling)
+    dem_path: str = "/data/dem/dem.vrt"
+
     # IMGW preprocessing
     imgw_grid_spacing_km: float = 2.0
     imgw_rate_limit_delay_s: float = 0.5
