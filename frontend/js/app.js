@@ -269,7 +269,7 @@
         Hydrograf.map.clearWatershed();
 
         // Determine active threshold from streams layer
-        var threshold = Hydrograf.map.getStreamsThreshold() || 10000;
+        var threshold = Hydrograf.map.getStreamsThreshold() || 100000;
 
         try {
             var data = await Hydrograf.api.selectStream(lat, lng, threshold);
