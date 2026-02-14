@@ -102,7 +102,6 @@
             ['Szerokość', formatValue(o.latitude, '°N', 6)],
             ['Długość', formatValue(o.longitude, '°E', 6)],
             ['Wysokość', formatValue(o.elevation_m, 'm n.p.m.', 1)],
-            ['Liczba komórek', String(w.cell_count)],
         ]);
 
         // Charts: land cover donut
