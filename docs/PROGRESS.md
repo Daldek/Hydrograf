@@ -61,6 +61,12 @@
   - **Faza 10:** Dokumentacja — ADR-022, CHANGELOG, PROGRESS
   - **Efekty:** RAM -96% (1.1 GB → 40 MB), startup -97% (93s → 3s), flow_network runtime queries: 0, main_stream_geojson naprawiony
 
+- **Audyt dokumentacji post-ADR-022 (4 pliki):**
+  - ARCHITECTURE.md v1.5: diagram "Flow Graph" → "Catchment Graph", +watershed_service.py, przepływ danych ADR-022, testy 548
+  - COMPUTATION_PIPELINE.md v1.2: flow_graph DEPRECATED, Faza 2/6 zaktualizowane
+  - CLAUDE.md: +watershed_service.py, flow_graph.py DEPRECATED
+  - QA_REPORT.md: warning 519 → 548 testów, +ADR-022
+
 ### Poprzednia sesja (2026-02-13, sesja 16)
 
 - **Audyt dokumentacji — spojnosc, aktualnosc, wzajemne odwolania (9 plikow):**

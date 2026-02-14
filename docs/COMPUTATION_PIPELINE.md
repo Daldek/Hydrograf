@@ -1,6 +1,6 @@
 # Procedura obliczeniowa — Hydrograf
 
-> Wersja: 1.1 | Data: 2026-02-13
+> Wersja: 1.2 | Data: 2026-02-14
 
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
@@ -23,7 +23,7 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 ## Faza 1: Preprocessing NMT
 
 **Skrypt:** `backend/scripts/process_dem.py` (~700 linii — cienki orkiestrator)
-**Moduły core:** `raster_io`, `hydrology`, `morphometry_raster`, `stream_extraction`, `db_bulk`, `zonal_stats`, `flow_graph` (ADR-017)
+**Moduły core:** `raster_io`, `hydrology`, `morphometry_raster`, `stream_extraction`, `db_bulk`, `zonal_stats`, `flow_graph` (DEPRECATED, ADR-017)
 **Uruchamianie:** jednorazowo per arkusz NMT, ~3-8 min
 
 > **Uwaga:** Skrypt `process_dem.py` został zrefaktoryzowany z ~2800 linii monolitu do ~700 linii cienkiego orkiestratora, ktory deleguje logike do 7 modulow w `backend/core/` (ADR-017). Funkcje opisane ponizej naleza teraz do odpowiednich modulow core.
@@ -207,12 +207,15 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~87k wierszy) —
 
 ## Faza 2: Wyznaczanie zlewni (runtime)
 
-**Moduł:** `backend/core/watershed.py` (509 linii)
+**Moduł:** `backend/core/watershed_service.py` (ADR-022)
 **Endpoint:** `POST /api/delineate-watershed`
+
+> **Uwaga (ADR-022):** Od 2026-02-14 endpointy API (`watershed.py`, `hydrograph.py`, `select_stream.py`) korzystają z CatchmentGraph (~87k węzłów, ~8 MB) zamiast FlowGraph (~19.7M komórek, ~1 GB). Poniższe opisy SQL dotyczą legacy CLI scripts — API runtime używa `watershed_service.py` z BFS po grafie zlewni cząstkowych.
 
 ### 2.1 Znalezienie najbliższego cieku
 
-**Funkcja:** `find_nearest_stream()` (linie 69-144)
+**Funkcja (API):** `watershed_service.find_nearest_stream_segment()` — query do `stream_network` (~87k)
+**Funkcja (legacy CLI):** `watershed.find_nearest_stream()` — query do `flow_network` (19.7M)
 
 ```sql
 SELECT id, ST_X(geom) as x, ST_Y(geom) as y,
@@ -499,14 +502,14 @@ CN = clamp(CN, 0, 100)
 ## Faza 6: Generowanie hydrogramu
 
 **Endpoint:** `POST /api/generate-hydrograph`
-**Moduł:** `backend/api/endpoints/hydrograph.py` (299 linii)
+**Moduł:** `backend/api/endpoints/hydrograph.py`
 
 ### 6.1 Flow procesu
 
 1. **Walidacja** parametrów (czas trwania, prawdopodobieństwo)
-2. **Wyznaczenie zlewni** (find_nearest_stream → traverse_upstream)
+2. **Wyznaczenie zlewni** (CatchmentGraph BFS → `watershed_service`, ADR-022)
 3. **Kontrola limitu**: `area_km2 ≤ 250` (ograniczenie SCS-CN)
-4. **Morfometria + CN** (build_morphometric_params, calculate_weighted_cn)
+4. **Morfometria + CN** (build_morph_dict_from_graph, get_land_cover_for_boundary)
 5. **Opad projektowy** (get_precipitation z IDW)
 6. **Czas koncentracji** (calculate_tc)
 7. **Hietogram** (rozkład opadu w czasie)

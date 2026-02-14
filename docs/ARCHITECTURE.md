@@ -52,8 +52,8 @@
 │  └──────────────┘  └──────────────┘  └─────────────────┘   │
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐   │
-│  │ Flow Graph   │  │Precipitation │  │   Land Cover    │   │
-│  │  Traversal   │  │   Queries    │  │   Analyzer      │   │
+│  │  Catchment   │  │Precipitation │  │   Land Cover    │   │
+│  │    Graph     │  │   Queries    │  │   Analyzer      │   │
 │  └──────────────┘  └──────────────┘  └─────────────────┘   │
 └───────────┬───────────────────────────────────────────────────┘
             │
@@ -124,7 +124,7 @@ backend/
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
-│   ├── flow_graph.py              # In-memory flow graph (scipy sparse CSR)
+│   ├── flow_graph.py              # DEPRECATED — in-memory flow graph (CLI scripts only)
 │   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
 │   ├── morphometry.py             # Morphometric parameters calculation
@@ -132,7 +132,8 @@ backend/
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
-│   ├── watershed.py               # Watershed delineation logic
+│   ├── watershed.py               # Watershed boundary building + legacy CLI functions
+│   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022)
 │   └── zonal_stats.py             # Zonal statistics (bincount, max)
 │
 ├── models/
@@ -305,19 +306,20 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
                              stream      upstream
 ```
 
-**Szczegółowy przepływ:**
+**Szczegółowy przepływ (ADR-022):**
 1. **Frontend:** Użytkownik klika punkt (lat, lon) → POST /api/delineate-watershed
 2. **API (FastAPI):** Walidacja Pydantic (czy lat/lon w zakresie)
-3. **Core Logic:**
-   - `watershed.find_nearest_stream(lat, lon)` → SQL query do `flow_network`
-   - `watershed.traverse_upstream(outlet_id)` → rekurencyjne przejście grafu
-   - `watershed.build_boundary(cells)` → ST_ConvexHull lub ST_ConcaveHull
-4. **Database:** Zapytania PostGIS (z indeksami GIST)
+3. **Core Logic** (`watershed_service.py` + `catchment_graph.py`):
+   - `find_nearest_stream_segment(x, y)` → SQL query do `stream_network` (~87k)
+   - `CatchmentGraph.traverse_upstream()` → BFS po grafie zlewni cząstkowych (~5-50ms)
+   - `merge_catchment_boundaries()` → ST_Union gotowych poligonów w PostGIS
+   - `build_morph_dict_from_graph()` → parametry z agregacji numpy arrays
+4. **Database:** Zapytania PostGIS do `stream_network` + `stream_catchments`
 5. **Core Logic:** Konwersja do GeoJSON
 6. **API:** Return JSON response
 7. **Frontend:** Leaflet.js renderuje polygon na mapie
 
-**Czas wykonania:** < 10s (95th percentile)
+**Czas wykonania:** < 1s (typowy), < 5s (duże zlewnie)
 
 ---
 
@@ -1301,10 +1303,9 @@ def oblicz_opad_efektywny_slow(intensywnosci, cn):
 /--------------------\ - Mocked dependencies
 ```
 
-**Test counts (target):**
-- Unit: ~100 tests
-- Integration: ~30 tests
-- E2E: ~5 tests
+**Test counts (stan na 2026-02-14):**
+- Unit + Integration: 548 testów
+- E2E: skrypty CLI (process_dem, e2e_task9)
 
 ---
 
@@ -1414,11 +1415,12 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 1.4
-**Data ostatniej aktualizacji:** 2026-02-13
+**Wersja dokumentu:** 1.5
+**Data ostatniej aktualizacji:** 2026-02-14
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 1.5 (2026-02-14): Eliminacja FlowGraph z runtime (ADR-022) — diagram, moduły, przepływ danych zaktualizowane; +watershed_service.py, flow_graph.py DEPRECATED
 - 1.4 (2026-02-13): Dodano catchment_graph.py i constants.py do core, zaktualizowano sygnatury morphometry.py, alfabetyczne uporządkowanie modulow core
 - 1.3 (2026-02-07): Aktualizacja struktury modulow (morphometry, cn_tables, cn_calculator, raster_utils, sheet_finder), usuniecie core/hydrograph.py (przeniesiony do Hydrolog)
 - 1.2 (2026-01-20): Dodano wyniki testów optymalizacji (COPY 21x, reverse trace 257x)
