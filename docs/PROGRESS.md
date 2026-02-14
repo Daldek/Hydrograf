@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 548 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 550 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -44,9 +44,24 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-14 (sesja 17)
+**Data:** 2026-02-14 (sesja 18)
 
 ### Co zrobiono
+
+- **Naprawa 10 bugów (zgłoszenie 2026-02-14, A1-A5, B1-B4, C1):**
+  - **A1:** Przycisk "×" w panelu wyników czyści warstwę zlewni z mapy (clearWatershed + clearSelectionBoundary + clearCatchmentHighlights + clearProfileLine)
+  - **A2:** Domyślny min_area zagłębień 0 → 100 m² (API + frontend)
+  - **A3:** Domyślny próg FA 10000 → 100000 m² (tiles.py + app.js + layers.js)
+  - **A4:** Wysokość canvas histogramu 20 → 140px
+  - **A5:** Zbiorniki BDOT ukryte przy opacity=0 (weight + fillOpacity + opacity)
+  - **B1:** Inline alert-warning zamiast alert() gdy DEM niedostępny
+  - **B2:** Nowy przycisk "Profil" w toolbar — rysowanie profilu terenu niezależne od zlewni
+  - **B3:** Sekcja hydrogramu ukryta z badge "w przygotowaniu"
+  - **B4:** Nowa metoda traverse_to_confluence w CatchmentGraph + parametr to_confluence w select-stream
+  - **C1:** Usunięcie cell_count z WatershedResponse, 3 endpointów, frontendu i dokumentacji
+  - **Wynik:** 550 testów, 0 failures, ruff check+format clean, 10 commitów
+
+### Poprzednia sesja (2026-02-14, sesja 17)
 
 - **Eliminacja FlowGraph z runtime API (ADR-022, 10 faz):**
   - **Faza 1:** Nowy modul `core/watershed_service.py` (~400 linii) — reużywalne funkcje wyekstrahowane z `select_stream.py`: find_nearest_stream_segment, merge_catchment_boundaries, get_segment_outlet, compute_watershed_length, get_main_stream_geojson, build_morph_dict_from_graph
@@ -205,11 +220,81 @@
 | stream_catchments | 86,913 | 100: 78186, 1000: 7812, 10000: 827, 100000: 88 + nowe kolumny (downstream, elev, histogram) |
 | depressions | 602,092 | re-run po poprawionym stream burning |
 
-### Znane problemy
+### Znane problemy (infrastruktura)
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
 - FlowGraph (core/flow_graph.py) — DEPRECATED, zachowany dla skryptow CLI, nie ladowany przez API
 - 15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
 - Endpoint `profile.py` wymaga pliku DEM (VRT/GeoTIFF) pod sciezka `DEM_PATH` — zwraca 503 gdy brak
+
+### Bledy do naprawy (zgloszenie 2026-02-14)
+
+**Status: ✅ Wszystkie 10 bugów naprawione (sesja 18)**
+
+#### A. Frontend — interakcja z mapa
+
+**A1. Brak odznaczania zlewni** (priorytet: wysoki)
+- Po zaznaczeniu (delineate-watershed) lub wybraniu (select-stream) zlewni nie da sie jej odznaczyc
+- Przycisk "×" (`results-close`) chowa panel, ale NIE czyści warstwy z mapy (`clearWatershed()` nie jest wywolywany)
+- Jedyny sposob odznaczenia: przelaczenie trybu (Zlewnia ↔ Wybor) w `setClickMode()`
+- **Lokalizacja:** `app.js:438` (handler `results-close`), `map.js:506-509` (`clearWatershed()`)
+- **Propozycja:** Dodac przycisk "Wyczysc" w panelu wynikow LUB podpiac `clearWatershed()` pod przycisk "×"
+
+**A2. Zaglebie widoczne jako "dziury" w poligonie zlewni** (priorytet: wysoki)
+- Po wybraniu zlewni wszystkie zaglębienia sa widoczne jako odrebne poligony nakladajace sie na zlewnie
+- Brak filtra minimalnej powierzchni — wyswietlane sa nawet mikroskopijne zaglębienia (<1 m²)
+- **Lokalizacja:** `depressions.js` (fetchFiltered), `depressions.py` (defaults min_area=0)
+- **Propozycja:** Ustawic domyslny filtr `min_area=100` m² (granica odciecia) w API lub frontendzie
+
+**A3. Domyslny prog zlewni czastkowych i ciekow za niski** (priorytet: sredni)
+- Po wlaczeniu warstw "Cieki" i "Zlewnie czastkowe" domyslny prog to 100 m² lub 10000 m² — za duzo detali
+- **Lokalizacja:** `app.js:272` (fallback `10000`), `tiles.py:63,130` (default `10000`), `constants.py:26` (`DEFAULT_THRESHOLD_M2=100`)
+- **Propozycja:** Zmienic domyslny prog na 100 000 m² (frontend fallback + API defaults)
+
+**A4. Wysokosc histogramu w "Rzezba terenu" absurdalnie wysoka** (priorytet: sredni)
+- Canvas `chart-hypsometric` ma `height="20"` podczas gdy inne wykresy maja 140-180
+- Z `maintainAspectRatio: false` Chart.js rozciaga wykres na caly kontener
+- **Lokalizacja:** `index.html:123` (`height="20"`), `charts.js:287-310` (konfiguracja Chart.js)
+- **Propozycja:** Zmienic `height="20"` na `height="140"` (zgodnie z innymi wykresami)
+
+**A5. Zbiorniki wodne widoczne przy przezroczystosci 0%** (priorytet: niski)
+- Slider "Zbiorniki wodne (BDOT10k)" ustawiony na 100% przezroczystosci nie ukrywa w pelni warstwy
+- `setBdotLakesOpacity()` mnozy fillOpacity * 0.4, ale moze nakladac sie z innymi warstwami wodnymi (depressions, BDOT streams)
+- **Lokalizacja:** `map.js:633-640` (`setBdotLakesOpacity`), `layers.js:498` (slider config)
+- **Propozycja:** Sprawdzic czy nie nakladaja sie warstwy; przy opacity=0 ukrywac warstwe calkowicie (`removeLayer`)
+
+#### B. Backend — logika obliczen
+
+**B1. Profil terenu nie jest generowany** (priorytet: wysoki)
+- Profil w sekcji parametrow zlewni ("Ciek glowny") nie jest generowany — prawdopodobnie brak pliku DEM pod `DEM_PATH`
+- Przycisk "Ciek glowny" wymaga najpierw wyznaczenia zlewni (wlacza sie dopiero po delineacji z `main_stream_geojson`)
+- **Lokalizacja:** `profile.js:14-32` (auto-profile), `profile.py` (endpoint, wymaga DEM_PATH)
+- **Propozycja:** Upewnic sie, ze DEM_PATH jest skonfigurowany; dodac komunikat bledu w UI gdy brak DEM
+
+**B2. Rysowanie profilu powinno byc niezalezne od zlewni** (priorytet: sredni)
+- Tryb "Rysuj linie" w profile.js (linia 37-58) technicznie dziala niezaleznie od zlewni
+- Ale UX sugeruje zaleznosc — sekcja profilu jest wewnatrz panelu wynikow zlewni
+- **Lokalizacja:** `profile.js:37-58` (draw mode), `index.html` (sekcja profilu w panelu)
+- **Propozycja:** Wyniesc "Rysuj linie profilu" jako niezalezny tryb dostepny z toolbar (obok Zlewnia/Wybor)
+
+**B3. Generowanie hydrogramu nie dziala** (priorytet: sredni — do tymczasowego wylaczenia)
+- Przycisk "Generuj" jest widoczny po delineacji zlewni < 250 km², ale generowanie nie dziala
+- Mozliwe przyczyny: brak danych opadowych IMGW, brak konfiguracji Hydrolog, blad runtime
+- **Lokalizacja:** `hydrograph.js:55-99`, `hydrograph.py:70-327`, `app.js:128-144`
+- **Propozycja:** Tymczasowo ukryc/zablokowac sekcje hydrogramu w UI (collapsed + disabled)
+
+**B4. Selekcja cieku obejmuje caly ciek do zmiany rzedu Strahlera** (priorytet: sredni)
+- `traverse_upstream()` w CatchmentGraph robi pelny BFS — zbiera WSZYSTKIE segmenty powyzej
+- Uzytkownik chce selekcji tylko do najblizszego doplywu (konfluencji)
+- **Lokalizacja:** `catchment_graph.py:278-300` (`traverse_upstream`), `select_stream.py:106-111`
+- **Propozycja:** Dodac tryb "do pierwszej konfluencji" — BFS z warunkiem stopu gdy wiecej niz 1 upstream
+
+#### C. Do usuniecia
+
+**C1. Liczba komorek dla punktu ujsciowego** (priorytet: niski)
+- Wyswietla "Liczba komórek: 0" — wartosc nieustawiana po przejsciu z FlowGraph na CatchmentGraph
+- Pole `cell_count` w schema ustawiane na 0 we wszystkich endpointach (watershed, hydrograph, select-stream)
+- **Lokalizacja:** `app.js:101-106` (wiersz tabeli), `schemas.py:185` (pole w modelu), endpointy: `watershed.py`, `hydrograph.py`, `select_stream.py` (cell_count=0)
+- **Propozycja:** Usunac wiersz "Liczba komórek" z tabeli wynikow i pole `cell_count` z modelu
 
 ### Nastepne kroki
 1. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
@@ -230,6 +315,7 @@
 - [x] CP4 Faza 4: Select-stream pelne statystyki, GUGiK WMTS, UI fixes (492 testy)
 - [x] Graf zlewni czastkowych (ADR-021): CatchmentGraph in-memory, migracja 012, pipeline re-run, select-stream rewrite
 - [ ] CP5: MVP — pelna integracja, deploy
+- [x] Naprawa bledow frontend/backend (zgloszenie 2026-02-14, 10 pozycji — A1-A5, B1-B4, C1)
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
 - [x] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
 - [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
