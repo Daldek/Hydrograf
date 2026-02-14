@@ -84,7 +84,7 @@
 
             var minVol = parseFloat(volMinEl.value || '0');
             var maxVol = parseFloat(volMaxEl.value || '999999');
-            var minArea = parseFloat(areaMinEl.value || '0');
+            var minArea = parseFloat(areaMinEl.value || '100');
             var maxArea = parseFloat(areaMaxEl.value || '999999');
 
             fetchFiltered(minVol, maxVol, minArea, maxArea).then(function (geojson) {
