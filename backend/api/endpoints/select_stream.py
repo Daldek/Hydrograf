@@ -104,7 +104,10 @@ def select_stream(
             ) from e
 
         # 3. Traverse upstream via catchment graph BFS
-        upstream_indices = cg.traverse_upstream(clicked_idx)
+        if request.to_confluence:
+            upstream_indices = cg.traverse_to_confluence(clicked_idx)
+        else:
+            upstream_indices = cg.traverse_upstream(clicked_idx)
         segment_idxs = cg.get_segment_indices(
             upstream_indices,
             request.threshold_m2,
