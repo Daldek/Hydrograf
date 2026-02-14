@@ -60,7 +60,7 @@ def get_streams_mvt(
     z: int,
     x: int,
     y: int,
-    threshold: int = Query(default=10000, ge=1, description="FA threshold in m²"),
+    threshold: int = Query(default=100000, ge=1, description="FA threshold in m²"),
     db: Session = Depends(get_db),
 ) -> Response:
     """
@@ -127,7 +127,7 @@ def get_catchments_mvt(
     z: int,
     x: int,
     y: int,
-    threshold: int = Query(default=10000, ge=1, description="FA threshold in m²"),
+    threshold: int = Query(default=100000, ge=1, description="FA threshold in m²"),
     db: Session = Depends(get_db),
 ) -> Response:
     """
