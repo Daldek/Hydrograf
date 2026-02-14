@@ -435,7 +435,15 @@
         });
 
         // Floating panel controls
-        document.getElementById('results-close').addEventListener('click', hidePanel);
+        document.getElementById('results-close').addEventListener('click', function () {
+            Hydrograf.map.clearWatershed();
+            Hydrograf.map.clearSelectionBoundary();
+            Hydrograf.map.clearCatchmentHighlights();
+            Hydrograf.map.clearProfileLine();
+            if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
+            state.currentWatershed = null;
+            hidePanel();
+        });
         document.getElementById('results-minimize').addEventListener('click', minimizePanel);
         document.getElementById('results-restore').addEventListener('click', restorePanel);
 
