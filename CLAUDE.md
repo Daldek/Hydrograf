@@ -74,7 +74,8 @@ backend/
 │   ├── config.py            # Settings (Pydantic, zmienne srodowiskowe)
 │   ├── constants.py         # Stale projektowe (CRS, jednostki, limity)
 │   ├── database.py          # Connection pool (SQLAlchemy + PostGIS)
-│   ├── watershed.py         # Wyznaczanie zlewni (traverse_upstream, build_boundary)
+│   ├── watershed.py         # Granice zlewni (build_boundary) + legacy CLI functions
+│   ├── watershed_service.py # Wspolna logika delineacji (CatchmentGraph-based, ADR-022)
 │   ├── morphometry.py       # Parametry fizjograficzne (area, slope, length)
 │   ├── precipitation.py     # Zapytania opadowe (IDW interpolation)
 │   ├── land_cover.py        # Analiza pokrycia terenu, determine_cn()
@@ -86,7 +87,7 @@ backend/
 │   ├── stream_extraction.py # Wektoryzacja ciekow, zlewnie czastkowe
 │   ├── db_bulk.py           # Bulk INSERT via COPY, timeout management
 │   ├── zonal_stats.py       # Statystyki strefowe (bincount, max)
-│   └── flow_graph.py        # Graf przeplywu in-memory (scipy sparse CSR)
+│   └── flow_graph.py        # DEPRECATED — graf przeplywu (tylko CLI scripts)
 │
 ├── models/
 │   └── schemas.py           # Modele Pydantic (request/response)
