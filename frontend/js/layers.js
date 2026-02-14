@@ -219,11 +219,11 @@
     function populateThresholdSelect(select, thresholds) {
         // Clear existing options
         select.innerHTML = '';
-        thresholds.forEach(function (t, idx) {
+        thresholds.forEach(function (t) {
             var opt = document.createElement('option');
             opt.value = t;
             opt.textContent = formatThreshold(t);
-            if (idx === 0) opt.selected = true;
+            if (t === 100000) opt.selected = true;
             select.appendChild(opt);
         });
     }
