@@ -239,3 +239,77 @@ class TestCatchmentGraphFindAtPoint:
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.find_catchment_at_point(0, 0, 10000, MagicMock())
+
+
+class TestTraverseToConfluence:
+    """Tests for traverse_to_confluence."""
+
+    def test_traverse_to_confluence_linear(self):
+        """Linear chain A→B→C: traverse from C returns all [C, B, A]."""
+        cg = CatchmentGraph()
+        n = 3
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2, 3], dtype=np.int32)
+        cg._threshold_m2 = np.array([10000, 10000, 10000], dtype=np.int32)
+
+        # A(0)→B(1)→C(2): upstream adj[1,0]=1, adj[2,1]=1
+        row = np.array([1, 2], dtype=np.int32)
+        col = np.array([0, 1], dtype=np.int32)
+        data = np.ones(2, dtype=np.int8)
+        cg._upstream_adj = sparse.csr_matrix(
+            (data, (row, col)),
+            shape=(n, n),
+            dtype=np.int8,
+        )
+
+        result = cg.traverse_to_confluence(2)
+        assert set(result) == {0, 1, 2}
+
+    def test_traverse_to_confluence_stops_at_junction(self):
+        """A→C, B→C, C→D: traverse from D returns [D, C], stops at confluence C."""
+        cg = CatchmentGraph()
+        n = 4
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2, 3, 4], dtype=np.int32)
+        cg._threshold_m2 = np.array([10000, 10000, 10000, 10000], dtype=np.int32)
+
+        # A(0)→C(2), B(1)→C(2), C(2)→D(3)
+        # upstream adj: adj[2,0]=1, adj[2,1]=1, adj[3,2]=1
+        row = np.array([2, 2, 3], dtype=np.int32)
+        col = np.array([0, 1, 2], dtype=np.int32)
+        data = np.ones(3, dtype=np.int8)
+        cg._upstream_adj = sparse.csr_matrix(
+            (data, (row, col)),
+            shape=(n, n),
+            dtype=np.int8,
+        )
+
+        result = cg.traverse_to_confluence(3)
+        # C has 2 upstream neighbors → confluence → include but don't continue past
+        assert set(result) == {2, 3}
+        assert 0 not in result
+        assert 1 not in result
+
+    def test_traverse_to_confluence_single_node(self):
+        """Headwater with no upstream: returns just [start]."""
+        cg = CatchmentGraph()
+        n = 2
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2], dtype=np.int32)
+        cg._threshold_m2 = np.array([10000, 10000], dtype=np.int32)
+
+        # Only edge: 0→1 (upstream adj[1,0]=1)
+        row = np.array([1], dtype=np.int32)
+        col = np.array([0], dtype=np.int32)
+        data = np.ones(1, dtype=np.int8)
+        cg._upstream_adj = sparse.csr_matrix(
+            (data, (row, col)),
+            shape=(n, n),
+            dtype=np.int8,
+        )
+
+        result = cg.traverse_to_confluence(0)
+        assert list(result) == [0]
