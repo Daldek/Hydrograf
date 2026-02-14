@@ -79,10 +79,14 @@
             }
         });
 
-        // Escape cancels drawing
+        // Keyboard shortcuts for drawing mode
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && drawMode) {
+            if (!drawMode) return;
+            if (e.key === 'Escape') {
                 cancelDrawing();
+            } else if (e.key === 'Backspace') {
+                e.preventDefault();
+                undoLastVertex();
             }
         });
     }
@@ -546,6 +550,21 @@
         }
     }
 
+    function undoLastVertex() {
+        if (!drawMode || drawVertices.length === 0) return;
+        drawVertices.pop();
+        var lastMarker = drawMarkers.pop();
+        if (lastMarker) map.removeLayer(lastMarker);
+        if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
+        if (drawVertices.length > 1) {
+            drawPolyline = L.polyline(drawVertices, {
+                color: '#0A84FF',
+                weight: 2,
+                dashArray: '6, 4',
+            }).addTo(map);
+        }
+    }
+
     function finishDrawing() {
         if (drawVertices.length < 2) {
             cancelDrawing();
@@ -733,6 +752,7 @@
         // Drawing
         startDrawing: startDrawing,
         cancelDrawing: cancelDrawing,
+        undoLastVertex: undoLastVertex,
         isDrawing: isDrawing,
         // Profile
         showProfileLine: showProfileLine,

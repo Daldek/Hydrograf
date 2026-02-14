@@ -44,9 +44,23 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-14 (sesja 18)
+**Data:** 2026-02-14 (sesja 19)
 
 ### Co zrobiono
+
+- **Profil terenu jako osobny panel + UX drawing (plan z sesji 19):**
+  - Nowy floating panel `#profile-panel` (left: 16px, bottom: 16px, 420px, z-index 1050) — niezalezny od panelu "Parametry zlewni"
+  - `profile.js` refaktor: `activateDrawProfile()` renderuje w `#chart-profile-standalone`, pokazuje `#profile-panel`; dodana `hideProfilePanel()`
+  - `map.js`: nowa funkcja `undoLastVertex()` — cofanie ostatniego wierzcholka (Backspace)
+  - Banner rysowania zaktualizowany: "Klik = wierzcholek, Podwojny klik = zakoncz, Backspace = cofnij, Esc = anuluj"
+  - Chart.js fix: canvasy (#chart-hypsometric, #chart-landcover, #chart-profile) owiniete w `.chart-container` (height: 160px) — zapobiega rozciaganiu wykresow
+  - `app.js`: init close/draggable na `#profile-panel`, `hideProfilePanel()` przy zmianie trybu i zamknieciu panelu wynikow
+  - Mobile responsive: `#profile-panel` fullwidth na ekranach < 768px
+  - **Wynik:** 550 testow, 0 failures
+
+- **Zapisano 13 nowych bugów/uwag do naprawy (D1-D4, E1-E3, F1, G1-G4)**
+
+### Poprzednia sesja (2026-02-14, sesja 18)
 
 - **Naprawa 10 bugów (zgłoszenie 2026-02-14, A1-A5, B1-B4, C1):**
   - **A1:** Przycisk "×" w panelu wyników czyści warstwę zlewni z mapy (clearWatershed + clearSelectionBoundary + clearCatchmentHighlights + clearProfileLine)
@@ -226,75 +240,77 @@
 - 15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
 - Endpoint `profile.py` wymaga pliku DEM (VRT/GeoTIFF) pod sciezka `DEM_PATH` — zwraca 503 gdy brak
 
-### Bledy do naprawy (zgloszenie 2026-02-14)
+### Bledy do naprawy (zgloszenie sesja 18 — ZAMKNIETE)
 
-**Status: ✅ Wszystkie 10 bugów naprawione (sesja 18)**
+**Status: ✅ Wszystkie 10 bugów naprawione (sesja 18, A1-A5, B1-B4, C1)**
 
-#### A. Frontend — interakcja z mapa
+### Bledy do naprawy (zgloszenie 2026-02-14, sesja 19)
 
-**A1. Brak odznaczania zlewni** (priorytet: wysoki)
-- Po zaznaczeniu (delineate-watershed) lub wybraniu (select-stream) zlewni nie da sie jej odznaczyc
-- Przycisk "×" (`results-close`) chowa panel, ale NIE czyści warstwy z mapy (`clearWatershed()` nie jest wywolywany)
-- Jedyny sposob odznaczenia: przelaczenie trybu (Zlewnia ↔ Wybor) w `setClickMode()`
-- **Lokalizacja:** `app.js:438` (handler `results-close`), `map.js:506-509` (`clearWatershed()`)
-- **Propozycja:** Dodac przycisk "Wyczysc" w panelu wynikow LUB podpiac `clearWatershed()` pod przycisk "×"
+**Status: ⏳ Do rozwiazania w kolejnych sesjach**
 
-**A2. Zaglebie widoczne jako "dziury" w poligonie zlewni** (priorytet: wysoki)
-- Po wybraniu zlewni wszystkie zaglębienia sa widoczne jako odrebne poligony nakladajace sie na zlewnie
-- Brak filtra minimalnej powierzchni — wyswietlane sa nawet mikroskopijne zaglębienia (<1 m²)
-- **Lokalizacja:** `depressions.js` (fetchFiltered), `depressions.py` (defaults min_area=0)
-- **Propozycja:** Ustawic domyslny filtr `min_area=100` m² (granica odciecia) w API lub frontendzie
+#### D. Frontend — profil terenu
 
-**A3. Domyslny prog zlewni czastkowych i ciekow za niski** (priorytet: sredni)
-- Po wlaczeniu warstw "Cieki" i "Zlewnie czastkowe" domyslny prog to 100 m² lub 10000 m² — za duzo detali
-- **Lokalizacja:** `app.js:272` (fallback `10000`), `tiles.py:63,130` (default `10000`), `constants.py:26` (`DEFAULT_THRESHOLD_M2=100`)
-- **Propozycja:** Zmienic domyslny prog na 100 000 m² (frontend fallback + API defaults)
+**D1. Profil terenu nadal nie dziala** (priorytet: wysoki)
+- Po narysowaniu linii profilu nie pojawia sie okno z wynikami
+- Implementacja nowego panelu `#profile-panel` nie rozwiazala problemu
+- **Lokalizacja:** `profile.js` (activateDrawProfile), `index.html` (#profile-panel)
 
-**A4. Wysokosc histogramu w "Rzezba terenu" absurdalnie wysoka** (priorytet: sredni)
-- Canvas `chart-hypsometric` ma `height="20"` podczas gdy inne wykresy maja 140-180
-- Z `maintainAspectRatio: false` Chart.js rozciaga wykres na caly kontener
-- **Lokalizacja:** `index.html:123` (`height="20"`), `charts.js:287-310` (konfiguracja Chart.js)
-- **Propozycja:** Zmienic `height="20"` na `height="140"` (zgodnie z innymi wykresami)
+**D2. Dwuklik do zakonczenia rysowania zle dziala** (priorytet: wysoki)
+- Mechanizm double-click → finishDrawing() nie dziala poprawnie
+- **Lokalizacja:** `map.js` (dblclick handler, finishDrawing)
 
-**A5. Zbiorniki wodne widoczne przy przezroczystosci 0%** (priorytet: niski)
-- Slider "Zbiorniki wodne (BDOT10k)" ustawiony na 100% przezroczystosci nie ukrywa w pelni warstwy
-- `setBdotLakesOpacity()` mnozy fillOpacity * 0.4, ale moze nakladac sie z innymi warstwami wodnymi (depressions, BDOT streams)
-- **Lokalizacja:** `map.js:633-640` (`setBdotLakesOpacity`), `layers.js:498` (slider config)
-- **Propozycja:** Sprawdzic czy nie nakladaja sie warstwy; przy opacity=0 ukrywac warstwe calkowicie (`removeLayer`)
+**D3. Po Escape nie da sie usunac linii** (priorytet: sredni)
+- Po anulowaniu rysowania (Esc) linia pozostaje na mapie i nie mozna jej usunac
+- **Lokalizacja:** `map.js` (cancelDrawing), `profile.js` (deactivateProfile)
 
-#### B. Backend — logika obliczen
+**D4. Kontener "Profil terenu" nadal w panelu zlewni** (priorytet: sredni)
+- Akordeon `#acc-profile` z przyciskami "Ciek glowny" / "Rysuj linie" nadal widoczny w "Parametrach zlewni"
+- Powinien byc calkowicie usuniety z panelu zlewni — profil to samodzielne okno
+- **Lokalizacja:** `index.html:163-176` (#acc-profile), `profile.js`, `app.js`
 
-**B1. Profil terenu nie jest generowany** (priorytet: wysoki)
-- Profil w sekcji parametrow zlewni ("Ciek glowny") nie jest generowany — prawdopodobnie brak pliku DEM pod `DEM_PATH`
-- Przycisk "Ciek glowny" wymaga najpierw wyznaczenia zlewni (wlacza sie dopiero po delineacji z `main_stream_geojson`)
-- **Lokalizacja:** `profile.js:14-32` (auto-profile), `profile.py` (endpoint, wymaga DEM_PATH)
-- **Propozycja:** Upewnic sie, ze DEM_PATH jest skonfigurowany; dodac komunikat bledu w UI gdy brak DEM
+#### E. Frontend — zlewnia i mapa
 
-**B2. Rysowanie profilu powinno byc niezalezne od zlewni** (priorytet: sredni)
-- Tryb "Rysuj linie" w profile.js (linia 37-58) technicznie dziala niezaleznie od zlewni
-- Ale UX sugeruje zaleznosc — sekcja profilu jest wewnatrz panelu wynikow zlewni
-- **Lokalizacja:** `profile.js:37-58` (draw mode), `index.html` (sekcja profilu w panelu)
-- **Propozycja:** Wyniesc "Rysuj linie profilu" jako niezalezny tryb dostepny z toolbar (obok Zlewnia/Wybor)
+**E1. "Dziury" na granicach zlewni** (priorytet: wysoki)
+- Po wyborze zlewni na granicach pojawiaja sie widoczne "dziury"
+- Prawdopodobnie zaglbienia terenowe lub bledy laczenia obiektow wektorowych (ST_Union artifacts)
+- **Lokalizacja:** `watershed_service.py` (merge_catchment_boundaries), `watershed.py` (build_boundary)
 
-**B3. Generowanie hydrogramu nie dziala** (priorytet: sredni — do tymczasowego wylaczenia)
-- Przycisk "Generuj" jest widoczny po delineacji zlewni < 250 km², ale generowanie nie dziala
-- Mozliwe przyczyny: brak danych opadowych IMGW, brak konfiguracji Hydrolog, blad runtime
-- **Lokalizacja:** `hydrograph.js:55-99`, `hydrograph.py:70-327`, `app.js:128-144`
-- **Propozycja:** Tymczasowo ukryc/zablokowac sekcje hydrogramu w UI (collapsed + disabled)
+**E2. Brak mozliwosci odznaczenia zlewni** (priorytet: sredni)
+- Po wyborze zlewni nie da sie jej odznaczyc (zamkniecie panelu nie usunie warstwy z mapy?)
+- **Lokalizacja:** `app.js` (results-close handler), `map.js` (clearWatershed)
 
-**B4. Selekcja cieku obejmuje caly ciek do zmiany rzedu Strahlera** (priorytet: sredni)
-- `traverse_upstream()` w CatchmentGraph robi pelny BFS — zbiera WSZYSTKIE segmenty powyzej
-- Uzytkownik chce selekcji tylko do najblizszego doplywu (konfluencji)
-- **Lokalizacja:** `catchment_graph.py:278-300` (`traverse_upstream`), `select_stream.py:106-111`
-- **Propozycja:** Dodac tryb "do pierwszej konfluencji" — BFS z warunkiem stopu gdy wiecej niz 1 upstream
+**E3. Panel "Parametry zlewni" zaslania przyciski zoom** (priorytet: sredni)
+- Panel wynikow (right: 16px, top: 72px) naklada sie na kontrolki przybliżania/oddalania Leaflet (topright)
+- **Lokalizacja:** `style.css` (#results-panel), `map.js` (zoom control position)
 
-#### C. Do usuniecia
+#### F. Logika zlewni czastkowych
 
-**C1. Liczba komorek dla punktu ujsciowego** (priorytet: niski)
-- Wyswietla "Liczba komórek: 0" — wartosc nieustawiana po przejsciu z FlowGraph na CatchmentGraph
-- Pole `cell_count` w schema ustawiane na 0 we wszystkich endpointach (watershed, hydrograph, select-stream)
-- **Lokalizacja:** `app.js:101-106` (wiersz tabeli), `schemas.py:185` (pole w modelu), endpointy: `watershed.py`, `hydrograph.py`, `select_stream.py` (cell_count=0)
-- **Propozycja:** Usunac wiersz "Liczba komórek" z tabeli wynikow i pole `cell_count` z modelu
+**F1. Selekcja cieku zaznacza cala zlewnię zamiast czesci miedzy doplywami** (priorytet: wysoki)
+- Zaznaczenie zlewni rzedu 5 w dowolnym punkcie zaznacza cala zlewnię az do punktu zwiekszenia rzedu
+- Powinno zaznaczac odpowiednia zlewnię czastkowa (np. miedzy doplywami) oraz resztę zlewni POWYZEJ niej
+- Zlewnie czastkowe powinny byc generowane od doplywu do doplywu, a jezeli nie ma doplywu to dla calego cieku
+- **Lokalizacja:** `catchment_graph.py` (traverse_upstream/traverse_to_confluence), `select_stream.py`
+
+#### G. Frontend — panel warstw i dane
+
+**G1. Histogram "Rzezba terenu" za maly** (priorytet: niski)
+- Zwiekszyc kontener histogramu o 50% (z 160px na 240px)
+- **Lokalizacja:** `style.css` (.chart-container), `index.html` (#chart-hypsometric)
+
+**G2. Brak informacji o pokryciu terenu i glebach** (priorytet: sredni)
+- Sekcja "Pokrycie terenu" nie wyswietla danych mimo ze endpoint je zwraca
+- Brak danych o glebach (HSG) — do zintegrowania
+- **Lokalizacja:** `app.js` (displayParameters), `charts.js`, `land_cover.py`, `cn_calculator.py`
+
+**G3. Podklady kartograficzne na dole panelu warstw** (priorytet: niski)
+- W panelu warstw podklady kartograficzne (OSM/ESRI/OpenTopoMap) powinny trafic na sam dol okna
+- Obecnie sa na gorze
+- **Lokalizacja:** `layers.js` (initLayerGroups, kolejnosc grup)
+
+**G4. "Wyniki analiz" — reorganizacja** (priorytet: niski)
+- "Zlewnie (wyznacz najpierw)" — caly czas podswietlone po wygenerowaniu, mylace
+- "Zaglbienia" powinny trafic do grupy "Warstwy podkladowe" zamiast "Wyniki analiz"
+- **Lokalizacja:** `layers.js` (grupy warstw, addCatchmentsEntry, addDepressionsEntry)
 
 ### Nastepne kroki
 1. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
@@ -316,6 +332,7 @@
 - [x] Graf zlewni czastkowych (ADR-021): CatchmentGraph in-memory, migracja 012, pipeline re-run, select-stream rewrite
 - [ ] CP5: MVP — pelna integracja, deploy
 - [x] Naprawa bledow frontend/backend (zgloszenie 2026-02-14, 10 pozycji — A1-A5, B1-B4, C1)
+- [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
 - [x] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
 - [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py

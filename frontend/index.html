@@ -44,7 +44,7 @@
         <button id="layers-toggle" class="layers-toggle glass-panel" title="Warstwy" aria-label="Warstwy" aria-expanded="false">&#9776;</button>
 
         <!-- Drawing instructions banner -->
-        <div id="draw-instructions" class="draw-banner d-none glass-panel">Klik = wierzchołek, Podwójny klik = zakończ, Esc = anuluj</div>
+        <div id="draw-instructions" class="draw-banner d-none glass-panel">Klik = wierzchołek, Podwójny klik = zakończ, Backspace = cofnij, Esc = anuluj</div>
 
         <!-- Click mode toolbar -->
         <div id="mode-toolbar" class="mode-toolbar glass-panel" role="radiogroup" aria-label="Tryb kliknięcia">
@@ -123,7 +123,7 @@
                     </div>
                     <div class="glass-accordion-body">
                         <table class="table table-sm param-table"><tbody id="params-relief"></tbody></table>
-                        <canvas id="chart-hypsometric" height="140" role="img" aria-label="Histogram wysokości"></canvas>
+                        <div class="chart-container"><canvas id="chart-hypsometric" role="img" aria-label="Histogram wysokości"></canvas></div>
                     </div>
                 </div>
 
@@ -145,7 +145,7 @@
                         <span class="glass-accordion-chevron">&#9660;</span>
                     </div>
                     <div class="glass-accordion-body">
-                        <canvas id="chart-landcover" height="180" role="img" aria-label="Wykres pokrycia terenu"></canvas>
+                        <div class="chart-container"><canvas id="chart-landcover" role="img" aria-label="Wykres pokrycia terenu"></canvas></div>
                     </div>
                 </div>
 
@@ -171,7 +171,7 @@
                             <button id="btn-profile-auto" class="btn btn-sm btn-outline-primary me-1">Ciek główny</button>
                             <button id="btn-profile-draw" class="btn btn-sm btn-outline-secondary">Rysuj linię</button>
                         </div>
-                        <canvas id="chart-profile" height="140" role="img" aria-label="Profil terenu"></canvas>
+                        <div class="chart-container"><canvas id="chart-profile" role="img" aria-label="Profil terenu"></canvas></div>
                     </div>
                 </div>
 
@@ -205,6 +205,19 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Floating profile panel (independent from watershed results) -->
+    <div id="profile-panel" class="glass-panel d-none">
+        <div id="profile-header" class="results-header">
+            <span class="results-title">Profil terenu</span>
+            <div class="results-header-actions">
+                <button id="profile-close" class="results-btn" title="Zamknij">&times;</button>
+            </div>
+        </div>
+        <div class="results-body" style="padding: 8px 12px;">
+            <canvas id="chart-profile-standalone" height="160" role="img" aria-label="Profil terenu"></canvas>
         </div>
     </div>
 
