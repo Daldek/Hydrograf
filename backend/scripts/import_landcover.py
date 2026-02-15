@@ -144,10 +144,17 @@ def read_gpkg_layers(gpkg_path: Path) -> dict[str, "geopandas.GeoDataFrame"]:
     logger.info(f"Available layers in GeoPackage: {available_layers}")
 
     # Read each PT* layer
+    # Layer names may be either "PTLZ" or "OT_PTLZ_A" (BDOT10k convention)
     for layer_name in available_layers:
-        # Check if it's a BDOT10k land cover layer
-        layer_code = layer_name.upper()
-        if layer_code in BDOT10K_LAYERS or layer_name.startswith("PT"):
+        layer_upper = layer_name.upper()
+
+        # Extract PT code: "OT_PTLZ_A" → "PTLZ", "PTLZ" → "PTLZ"
+        layer_code = layer_upper
+        if layer_upper.startswith("OT_") and "_A" in layer_upper:
+            # Extract middle part: OT_PTLZ_A → PTLZ
+            layer_code = layer_upper.split("_")[1]
+
+        if layer_code in BDOT10K_LAYERS or layer_code.startswith("PT"):
             try:
                 gdf = gpd.read_file(gpkg_path, layer=layer_name)
                 if len(gdf) > 0:
