@@ -528,6 +528,14 @@
     }
 
     function addDrawVertex(latlng) {
+        // Ignore duplicate vertex from dblclick (browser fires click+click+dblclick)
+        if (drawVertices.length > 0) {
+            var last = drawVertices[drawVertices.length - 1];
+            if (Math.abs(last.lat - latlng.lat) < 0.00001 &&
+                Math.abs(last.lng - latlng.lng) < 0.00001) {
+                return;
+            }
+        }
         drawVertices.push(latlng);
 
         var marker = L.circleMarker(latlng, {
@@ -586,6 +594,7 @@
         if (drawPolyline) {
             if (profileLine) map.removeLayer(profileLine);
             profileLine = drawPolyline;
+            profileLine.setStyle({ color: '#8B4513', weight: 3, opacity: 0.8, dashArray: null });
             drawPolyline = null;
         }
 
