@@ -37,25 +37,28 @@
         <div id="map"></div>
 
         <!-- Layers panel (left side) -->
-        <div id="layers-panel" class="glass-panel layers-hidden">
+        <div id="layers-panel" class="glass-panel">
             <h6 class="layers-header">Warstwy</h6>
             <div id="layers-list"></div>
         </div>
-        <button id="layers-toggle" class="layers-toggle glass-panel" title="Warstwy" aria-label="Warstwy" aria-expanded="false">&#8250;</button>
+        <button id="layers-toggle" class="layers-toggle layers-open glass-panel" title="Warstwy" aria-label="Warstwy" aria-expanded="true">&#8249;</button>
 
         <!-- Drawing instructions banner -->
         <div id="draw-instructions" class="draw-banner d-none glass-panel">Klik = wierzchołek, Podwójny klik = zakończ, Backspace = cofnij, Esc = anuluj</div>
 
         <!-- Click mode toolbar -->
         <div id="mode-toolbar" class="mode-toolbar glass-panel" role="radiogroup" aria-label="Tryb kliknięcia">
-            <button id="mode-watershed" class="mode-btn mode-btn-active" title="Wyznacz zlewnię" role="radio" aria-checked="true">
-                <span>Zlewnia</span>
+            <button id="mode-browse" class="mode-btn mode-btn-active" title="Przeglądanie mapy" role="radio" aria-checked="true">
+                <span>Przeglądanie</span>
             </button>
-            <button id="mode-select" class="mode-btn" title="Wybierz obiekt" role="radio" aria-checked="false">
-                <span>Wybór</span>
+            <button id="mode-select" class="mode-btn" title="Wybierz pregenerowaną zlewnię" role="radio" aria-checked="false">
+                <span>Wybierz zlewnię</span>
+            </button>
+            <button id="mode-watershed" class="mode-btn" title="Wygeneruj zlewnię z dowolnego punktu" role="radio" aria-checked="false">
+                <span>Wygeneruj zlewnię</span>
             </button>
             <button id="mode-profile" class="mode-btn" title="Rysuj profil terenu" role="radio" aria-checked="false">
-                <span>Profil</span>
+                <span>Profil terenu</span>
             </button>
         </div>
 
@@ -102,7 +105,7 @@
                     </div>
 
                     <!-- Shape indices -->
-                    <div class="glass-accordion" id="acc-shape">
+                    <div class="glass-accordion collapsed" id="acc-shape">
                         <div class="glass-accordion-header">
                             <span>Wskaźniki kształtu</span>
                             <span class="glass-accordion-chevron">&#9660;</span>
@@ -113,7 +116,7 @@
                     </div>
 
                     <!-- Relief indices -->
-                    <div class="glass-accordion" id="acc-relief">
+                    <div class="glass-accordion collapsed" id="acc-relief">
                         <div class="glass-accordion-header">
                             <span>Rzeźba terenu</span>
                             <span class="glass-accordion-chevron">&#9660;</span>
@@ -125,7 +128,7 @@
                     </div>
 
                     <!-- Drainage network -->
-                    <div class="glass-accordion" id="acc-drainage">
+                    <div class="glass-accordion collapsed" id="acc-drainage">
                         <div class="glass-accordion-header">
                             <span>Sieć rzeczna</span>
                             <span class="glass-accordion-chevron">&#9660;</span>
@@ -136,24 +139,13 @@
                     </div>
 
                     <!-- Land cover -->
-                    <div class="glass-accordion" id="acc-landcover">
+                    <div class="glass-accordion collapsed" id="acc-landcover">
                         <div class="glass-accordion-header">
                             <span>Pokrycie terenu</span>
                             <span class="glass-accordion-chevron">&#9660;</span>
                         </div>
                         <div class="glass-accordion-body">
                             <div class="chart-container"><canvas id="chart-landcover" role="img" aria-label="Wykres pokrycia terenu"></canvas></div>
-                        </div>
-                    </div>
-
-                    <!-- Outlet info -->
-                    <div class="glass-accordion" id="acc-outlet">
-                        <div class="glass-accordion-header">
-                            <span>Punkt ujściowy</span>
-                            <span class="glass-accordion-chevron">&#9660;</span>
-                        </div>
-                        <div class="glass-accordion-body">
-                            <table class="table table-sm param-table"><tbody id="params-outlet"></tbody></table>
                         </div>
                     </div>
 

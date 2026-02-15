@@ -11,7 +11,7 @@
     var state = {
         isLoading: false,
         currentWatershed: null,
-        clickMode: 'watershed',
+        clickMode: 'browse',
     };
 
     var _clickDebounceTimer = null;
@@ -77,6 +77,9 @@
             ['Długość cieku gł.', formatValue(m.channel_length_km, 'km', 2)],
             ['Spadek cieku gł.', formatSlope(m.channel_slope_m_per_m)],
             ['CN', m.cn !== null && m.cn !== undefined ? String(m.cn) : '—'],
+            ['Ujście φ', formatValue(o.latitude, '°N', 6)],
+            ['Ujście λ', formatValue(o.longitude, '°E', 6)],
+            ['Ujście H', formatValue(o.elevation_m, 'm n.p.m.', 1)],
         ]);
 
         fillTable(els.paramsShape, [
@@ -98,19 +101,11 @@
             ['Max rząd Strahlera', m.max_strahler_order !== null && m.max_strahler_order !== undefined ? String(m.max_strahler_order) : '—'],
         ]);
 
-        fillTable(els.paramsOutlet, [
-            ['Szerokość', formatValue(o.latitude, '°N', 6)],
-            ['Długość', formatValue(o.longitude, '°E', 6)],
-            ['Wysokość', formatValue(o.elevation_m, 'm n.p.m.', 1)],
-        ]);
-
         // Charts: land cover donut
         if (w.land_cover_stats && w.land_cover_stats.categories && w.land_cover_stats.categories.length > 0) {
             Hydrograf.charts.renderLandCoverChart('chart-landcover', w.land_cover_stats.categories);
-            document.getElementById('acc-landcover').classList.remove('collapsed');
         } else {
             Hydrograf.charts.destroyChart('chart-landcover');
-            document.getElementById('acc-landcover').classList.add('collapsed');
         }
 
         // Chart: hypsometric curve
@@ -216,6 +211,9 @@
      */
     function onMapClick(lat, lng) {
         if (state.isLoading) return;
+
+        // Browse mode — do nothing
+        if (state.clickMode === 'browse') return;
 
         // Profile mode — re-activate drawing if not currently drawing
         if (state.clickMode === 'profile') {
@@ -342,7 +340,7 @@
         ]);
 
         // Hide other accordions
-        ['acc-shape', 'acc-relief', 'acc-drainage', 'acc-landcover', 'acc-outlet',
+        ['acc-shape', 'acc-relief', 'acc-drainage', 'acc-landcover',
          'acc-hydrograph'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.classList.add('collapsed');
@@ -394,27 +392,27 @@
         state.clickMode = mode;
 
         // Update button classes
+        var btnBrowse = document.getElementById('mode-browse');
         var btnWatershed = document.getElementById('mode-watershed');
         var btnSelect = document.getElementById('mode-select');
         var btnProfile = document.getElementById('mode-profile');
-        if (btnWatershed && btnSelect && btnProfile) {
-            btnWatershed.classList.toggle('mode-btn-active', mode === 'watershed');
-            btnSelect.classList.toggle('mode-btn-active', mode === 'select');
-            btnProfile.classList.toggle('mode-btn-active', mode === 'profile');
-            btnWatershed.setAttribute('aria-checked', String(mode === 'watershed'));
-            btnSelect.setAttribute('aria-checked', String(mode === 'select'));
-            btnProfile.setAttribute('aria-checked', String(mode === 'profile'));
+        [btnBrowse, btnWatershed, btnSelect, btnProfile].forEach(function (btn) {
+            if (!btn) return;
+            var m = btn.id.replace('mode-', '');
+            btn.classList.toggle('mode-btn-active', m === mode);
+            btn.setAttribute('aria-checked', String(m === mode));
+        });
+
+        // Cancel active drawing when leaving profile mode
+        if (mode !== 'profile' && Hydrograf.map.isDrawing()) {
+            Hydrograf.map.cancelDrawing();
         }
 
-        // Clear previous results when switching mode
-        Hydrograf.map.clearWatershed();
-        Hydrograf.map.clearCatchmentHighlights();
-        Hydrograf.map.clearSelectionBoundary();
-        Hydrograf.map.clearProfileLine();
-        if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
-        if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
-        state.currentWatershed = null;
-        hidePanel();
+        // Cursor: crosshair for action modes, grab for browse
+        var container = document.querySelector('.leaflet-container');
+        if (container) {
+            container.classList.toggle('cursor-crosshair', mode !== 'browse');
+        }
     }
 
     /**
@@ -437,7 +435,6 @@
             paramsShape: document.getElementById('params-shape'),
             paramsRelief: document.getElementById('params-relief'),
             paramsDrainage: document.getElementById('params-drainage'),
-            paramsOutlet: document.getElementById('params-outlet'),
             hydrographInfo: document.getElementById('hydrograph-info'),
         };
 
@@ -445,6 +442,9 @@
         document.getElementById('layers-toggle').addEventListener('click', toggleLayers);
 
         // Mode toolbar
+        document.getElementById('mode-browse').addEventListener('click', function () {
+            setClickMode('browse');
+        });
         document.getElementById('mode-watershed').addEventListener('click', function () {
             setClickMode('watershed');
         });

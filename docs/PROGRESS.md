@@ -44,9 +44,34 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-15 (sesja 22)
+**Data:** 2026-02-15 (sesja 23)
 
 ### Co zrobiono
+
+- **Liquid glass:**
+  - Panele "Warstwy" i "Parametry zlewni" + toggle buttons + legendy uzywaja stylu liquid glass
+  - Nowe tokeny CSS: `--liquid-bg`, `--liquid-border`, `--liquid-blur`, `--liquid-shadow`, `--liquid-highlight`
+  - Kolory czcionek zmienione na czarne (`--color-text: #000`, `--color-text-secondary: #1d1d1f`)
+  - Czarne czcionki na osiach i etykietach wykresow Chart.js
+
+- **Panel wynikow — zmiany UX:**
+  - Panel na pelna wysokosc okna (`top: 0; bottom: 0`), zaokraglone rogi tylko po lewej
+  - Akordeony domyslnie zwiniete (poza "Parametry podstawowe")
+  - "Punkt ujsciowy" przeniesiony do "Parametry podstawowe" (ujscie φ, λ, H)
+  - Usuniety akordeon `acc-outlet`
+
+- **Tryby klikniecia:**
+  - Nowy tryb "Przegladanie" (domyslny) — klikniecie nic nie robi, kursor `grab`
+  - Zmienione nazwy: "Wygeneruj zlewnię", "Wybierz zlewnię", "Profil terenu"
+  - Kolejnosc: Przegladanie → Wybierz → Wygeneruj → Profil
+  - Przelaczanie trybow nie czysci warstw z mapy
+  - Anulowanie rysowania profilu przy zmianie trybu
+
+- **Warstwy domyslnie wysunięte** (bez klasy `layers-hidden` na starcie)
+
+- **Bug E4 udokumentowany:** punkt ujsciowy poza granica zlewni (oba tryby)
+
+### Poprzednia sesja (2026-02-15, sesja 22)
 
 - **E3 — Panel wynikow dokowany z prawej (fix zoom overlap):**
   - `#results-panel` przeniesiony wewnatrz `#map-wrapper` z `position: absolute; right: 0`
@@ -309,6 +334,13 @@
 - **Lokalizacja:** `app.js` (results-close handler), `map.js` (clearWatershed)
 
 **E3. ✅ Panel "Parametry zlewni" zaslania przyciski zoom** → panel dokowany z prawej (slide in/out), zoom przesuwa sie automatycznie (sesja 22)
+
+**E4. Punkt ujsciowy poza granica zlewni** (priorytet: sredni)
+- Dotyczy obu trybow: "Wybierz zlewnię" i "Wygeneruj zlewnię"
+- Punkt ujsciowy (outlet) bywa przesuniety o kilkaset metrow poza granice wyznaczonej zlewni
+- Pojawia sie przy ujsciu doplywu do cieku wyzszego rzedu — outlet "przeskakuje" do nastepnego wezla w dol cieku
+- Prawdopodobna przyczyna: `traverse_upstream` zwraca segment_idx doplywu, ale outlet pobierany jest z downstream node cieku glownego
+- **Lokalizacja:** `watershed_service.py` (logika wyznaczania outlet), `catchment_graph.py` (traverse_upstream)
 
 #### F. Logika zlewni czastkowych
 
