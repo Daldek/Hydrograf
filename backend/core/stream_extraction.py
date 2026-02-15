@@ -217,8 +217,9 @@ def vectorize_streams(
                     break
 
                 next_order = max(int(strahler[nr, nc]), 1)
-                if next_order != seg_order:
-                    # Order changes: end segment, add junction pt
+                is_confluence = upstream_count[nr, nc] > 1
+                if next_order != seg_order or is_confluence:
+                    # Order change or confluence: end segment, add junction pt
                     coords.append(cell_xy(nr, nc))
                     dist = (
                         (coords[-1][0] - coords[-2][0]) ** 2
