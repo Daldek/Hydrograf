@@ -130,26 +130,42 @@
 
     }
 
-    // ======== Floating panel management ========
+    // ======== Docked panel management ========
 
     function showPanel() {
         els.panel.classList.remove('d-none');
-        els.restoreBtn.classList.add('d-none');
+        expandPanel();
     }
 
     function hidePanel() {
         els.panel.classList.add('d-none');
-        els.restoreBtn.classList.add('d-none');
+        els.panel.classList.add('results-hidden');
+        els.toggleBtn.classList.add('d-none');
+        els.toggleBtn.classList.remove('results-open');
+        Hydrograf.map.shiftZoomControls(false);
     }
 
-    function minimizePanel() {
-        els.panel.classList.add('d-none');
-        els.restoreBtn.classList.remove('d-none');
+    function expandPanel() {
+        els.panel.classList.remove('results-hidden');
+        els.toggleBtn.classList.remove('d-none');
+        els.toggleBtn.classList.add('results-open');
+        els.toggleBtn.innerHTML = '&#8250;';
+        Hydrograf.map.shiftZoomControls(true);
     }
 
-    function restorePanel() {
-        els.panel.classList.remove('d-none');
-        els.restoreBtn.classList.add('d-none');
+    function collapsePanel() {
+        els.panel.classList.add('results-hidden');
+        els.toggleBtn.classList.remove('results-open');
+        els.toggleBtn.innerHTML = '&#8249;';
+        Hydrograf.map.shiftZoomControls(false);
+    }
+
+    function togglePanel() {
+        if (els.panel.classList.contains('results-hidden')) {
+            expandPanel();
+        } else {
+            collapsePanel();
+        }
     }
 
     function setLoading(loading) {
@@ -178,6 +194,21 @@
 
     function hideError() {
         els.error.classList.add('d-none');
+    }
+
+    /**
+     * Close results panel and clear all map overlays.
+     * Used by "×" button and Escape key.
+     */
+    function closeResults() {
+        Hydrograf.map.clearWatershed();
+        Hydrograf.map.clearSelectionBoundary();
+        Hydrograf.map.clearCatchmentHighlights();
+        Hydrograf.map.clearProfileLine();
+        if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
+        if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
+        state.currentWatershed = null;
+        hidePanel();
     }
 
     /**
@@ -221,6 +252,7 @@
     async function onWatershedClick(lat, lng) {
         hideError();
         setLoading(true);
+        state.currentWatershed = null;
 
         // Clear any selection highlights
         Hydrograf.map.clearCatchmentHighlights();
@@ -241,6 +273,7 @@
             if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
         } catch (err) {
             Hydrograf.map.clearWatershed();
+            state.currentWatershed = null;
             showError(err.message);
         } finally {
             setLoading(false);
@@ -253,6 +286,7 @@
     async function onSelectClick(lat, lng) {
         hideError();
         setLoading(true);
+        state.currentWatershed = null;
 
         // Clear previous watershed display
         Hydrograf.map.clearWatershed();
@@ -289,6 +323,7 @@
         } catch (err) {
             Hydrograf.map.clearCatchmentHighlights();
             Hydrograf.map.clearSelectionBoundary();
+            state.currentWatershed = null;
             showError(err.message);
         } finally {
             setLoading(false);
@@ -347,7 +382,9 @@
         var btn = document.getElementById('layers-toggle');
         panel.classList.toggle('layers-hidden');
         btn.classList.toggle('layers-open');
-        btn.setAttribute('aria-expanded', String(!panel.classList.contains('layers-hidden')));
+        var isOpen = !panel.classList.contains('layers-hidden');
+        btn.setAttribute('aria-expanded', String(isOpen));
+        btn.innerHTML = isOpen ? '&#8249;' : '&#8250;';
     }
 
     /**
@@ -376,6 +413,7 @@
         Hydrograf.map.clearProfileLine();
         if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
         if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
+        state.currentWatershed = null;
         hidePanel();
     }
 
@@ -389,7 +427,7 @@
     function init() {
         els = {
             panel: document.getElementById('results-panel'),
-            restoreBtn: document.getElementById('results-restore'),
+            toggleBtn: document.getElementById('results-toggle-btn'),
             instruction: document.getElementById('panel-instruction'),
             loading: document.getElementById('panel-loading'),
             error: document.getElementById('panel-error'),
@@ -432,27 +470,27 @@
             });
         });
 
-        // Floating panel controls
-        document.getElementById('results-close').addEventListener('click', function () {
-            Hydrograf.map.clearWatershed();
-            Hydrograf.map.clearSelectionBoundary();
-            Hydrograf.map.clearCatchmentHighlights();
-            Hydrograf.map.clearProfileLine();
-            if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
-            if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
-            state.currentWatershed = null;
-            hidePanel();
-        });
-        document.getElementById('results-minimize').addEventListener('click', minimizePanel);
-        document.getElementById('results-restore').addEventListener('click', restorePanel);
+        // Panel controls
+        document.getElementById('results-close').addEventListener('click', closeResults);
+        document.getElementById('results-toggle-btn').addEventListener('click', togglePanel);
 
-        // Make panel draggable (desktop only)
-        if (window.innerWidth > 768) {
-            Hydrograf.draggable.makeDraggable(
-                els.panel,
-                document.getElementById('results-header')
-            );
-        }
+        // Escape: single = collapse, double = close (like ×)
+        var _escTimer = null;
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape' || Hydrograf.map.isDrawing()) return;
+            if (els.panel.classList.contains('d-none')) return;
+
+            if (_escTimer) {
+                clearTimeout(_escTimer);
+                _escTimer = null;
+                closeResults();
+            } else {
+                if (!els.panel.classList.contains('results-hidden')) {
+                    collapsePanel();
+                }
+                _escTimer = setTimeout(function () { _escTimer = null; }, 400);
+            }
+        });
 
         // Profile panel: close button + draggable
         var profilePanel = document.getElementById('profile-panel');
