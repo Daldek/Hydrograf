@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import get_catchment_graph
-from core.constants import HYDROGRAPH_AREA_LIMIT_KM2
+from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.land_cover import get_land_cover_for_boundary
 from core.morphometry import calculate_shape_indices
@@ -20,8 +20,10 @@ from core.watershed_service import (
     boundary_to_polygon,
     compute_watershed_length,
     find_nearest_stream_segment,
+    find_stream_catchment_at_point,
     get_main_stream_geojson,
     get_segment_outlet,
+    map_boundary_to_display_segments,
     merge_catchment_boundaries,
 )
 from models.schemas import (
@@ -70,11 +72,12 @@ def select_stream(
 
         cg = get_catchment_graph()
 
-        # 1. Find stream segment nearest to click point
+        # 1. Find stream segment nearest to click point (at display threshold)
+        display_threshold = request.threshold_m2
         segment = find_nearest_stream_segment(
             point_2180.x,
             point_2180.y,
-            request.threshold_m2,
+            display_threshold,
             db,
         )
         if segment is None:
@@ -83,44 +86,60 @@ def select_stream(
                 detail="Nie znaleziono cieku w pobliżu. Kliknij bliżej linii cieku.",
             )
 
-        # 2. Find catchment at click point via catchment graph
+        # 2. Find catchment at click point via fine threshold (snap-to-stream)
         if not cg.loaded:
             raise HTTPException(
                 status_code=503,
                 detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
             )
 
-        try:
-            clicked_idx = cg.find_catchment_at_point(
-                point_2180.x,
-                point_2180.y,
-                request.threshold_m2,
-                db,
-            )
-        except ValueError as e:
-            raise HTTPException(
-                status_code=404,
-                detail="Nie znaleziono zlewni cząstkowej. Kliknij w obszarze zlewni.",
-            ) from e
+        fine_threshold = DEFAULT_THRESHOLD_M2  # 100 m²
+        clicked_idx = None
 
-        # 3. Traverse upstream via catchment graph BFS
+        # Try fine threshold first for precise selection
+        fine_seg_idx = find_stream_catchment_at_point(
+            point_2180.x,
+            point_2180.y,
+            fine_threshold,
+            db,
+        )
+        if fine_seg_idx is not None:
+            clicked_idx = cg._lookup.get((fine_threshold, fine_seg_idx))
+
+        # Fallback to display threshold (old behavior)
+        if clicked_idx is None:
+            fine_threshold = display_threshold
+            try:
+                clicked_idx = cg.find_catchment_at_point(
+                    point_2180.x,
+                    point_2180.y,
+                    display_threshold,
+                    db,
+                )
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Nie znaleziono zlewni cząstkowej.",
+                ) from e
+
+        # 3. Traverse upstream via catchment graph BFS (at fine threshold)
         if request.to_confluence:
             upstream_indices = cg.traverse_to_confluence(clicked_idx)
         else:
             upstream_indices = cg.traverse_upstream(clicked_idx)
-        segment_idxs = cg.get_segment_indices(
+        fine_segment_idxs = cg.get_segment_indices(
             upstream_indices,
-            request.threshold_m2,
+            fine_threshold,
         )
 
         # 4. Aggregate pre-computed stats (zero raster ops)
         stats = cg.aggregate_stats(upstream_indices)
         area_km2 = stats["area_km2"]
 
-        # 5. Build boundary from ST_Union of catchment polygons
+        # 5. Build boundary from ST_Union of catchment polygons (fine threshold)
         boundary_2180 = merge_catchment_boundaries(
-            segment_idxs,
-            request.threshold_m2,
+            fine_segment_idxs,
+            fine_threshold,
             db,
         )
         if boundary_2180 is None:
@@ -128,6 +147,16 @@ def select_stream(
                 status_code=500,
                 detail="Nie udało się zbudować granicy zlewni.",
             )
+
+        # 5.5. Map to display threshold for MVT highlighting
+        if fine_threshold != display_threshold:
+            display_segment_idxs = map_boundary_to_display_segments(
+                boundary_2180,
+                display_threshold,
+                db,
+            )
+        else:
+            display_segment_idxs = fine_segment_idxs
 
         # Convert MultiPolygon to Polygon (largest component)
         boundary_poly = boundary_to_polygon(boundary_2180)
@@ -280,7 +309,7 @@ def select_stream(
                 length_m=segment["length_m"],
                 upstream_area_km2=segment["upstream_area_km2"],
             ),
-            upstream_segment_indices=segment_idxs,
+            upstream_segment_indices=display_segment_idxs,
             boundary_geojson=boundary_geojson,
             watershed=watershed_response,
         )
