@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 550 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 557 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -44,9 +44,17 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-15 (sesja 23)
+**Data:** 2026-02-15 (sesja 24)
 
 ### Co zrobiono
+
+- **F1 — precyzyjna selekcja cieku (ADR-024):**
+  - **Czesc A (preprocessing):** dodano warunek konfluencji w `vectorize_streams()` — segmenty lamia sie przy kazdym polaczeniu doplywow, nie tylko przy zmianie Strahlera. Szacowany wpływ: ~78k → ~120-160k segmentow (wymaga re-run pipeline).
+  - **Czesc B (query):** BFS na progu 100 m² zamiast display threshold. Nowe funkcje: `find_stream_catchment_at_point()` (snap-to-stream), `map_boundary_to_display_segments()` (mapowanie fine→display). Optymalizacja SQL: `ST_UnaryUnion + ST_SnapToGrid`. Fallback do display threshold.
+  - **Testy:** 557 testow, 0 failures (+3 nowe: confluence segmentation, multi-threshold BFS, fallback)
+  - **Dokumentacja:** ADR-024, CHANGELOG, PROGRESS
+
+### Poprzednia sesja (2026-02-15, sesja 23)
 
 - **Liquid glass:**
   - Panele "Warstwy" i "Parametry zlewni" + toggle buttons + legendy uzywaja stylu liquid glass
@@ -313,7 +321,7 @@
 
 ### Bledy do naprawy (zgloszenie 2026-02-14, sesja 19)
 
-**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E2 naprawione (sesja 18 jako A1), E3 naprawione (sesja 22), E1-F-H do rozwiazania**
+**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E2 naprawione (sesja 18 jako A1), E3 naprawione (sesja 22), F1 naprawione (sesja 24, ADR-024), E1-E4-H do rozwiazania**
 
 #### D. Frontend — profil terenu — ✅ NAPRAWIONE (sesja 20)
 
@@ -342,11 +350,7 @@
 
 #### F. Logika zlewni czastkowych
 
-**F1. Selekcja cieku zaznacza cala zlewnię zamiast czesci miedzy doplywami** (priorytet: wysoki)
-- Zaznaczenie zlewni rzedu 5 w dowolnym punkcie zaznacza cala zlewnię az do punktu zwiekszenia rzedu
-- Powinno zaznaczac odpowiednia zlewnię czastkowa (np. miedzy doplywami) oraz resztę zlewni POWYZEJ niej
-- Zlewnie czastkowe powinny byc generowane od doplywu do doplywu, a jezeli nie ma doplywu to dla calego cieku
-- **Lokalizacja:** `catchment_graph.py` (traverse_upstream/traverse_to_confluence), `select_stream.py`
+**F1. ✅ Selekcja cieku zaznacza cala zlewnię zamiast czesci miedzy doplywami** → ADR-024: segmentacja konfluencyjna + fine-threshold BFS (sesja 24). Wymaga re-run pipeline.
 
 #### G. Frontend — panel warstw i dane — ✅ NAPRAWIONE (sesja 21)
 

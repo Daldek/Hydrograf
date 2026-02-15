@@ -483,6 +483,34 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 
 ---
 
+## ADR-024: Precyzyjna selekcja cieku — segmentacja konfluencyjna + fine-threshold BFS
+
+**Data:** 2026-02-15
+**Status:** Przyjeta
+
+**Kontekst:** Klikniecie na ciek zaznaczalo cala zlewnię tego cieku, niezaleznie od miejsca klikniecia. Dwa powody: (1) grube progi (100000 m²) — caly ciek to 1 segment, (2) segmentacja Strahlerem — segmenty lamia sie TYLKO przy zmianie rzedu, wiec ciek rzedu 2 z 5 doplywami rzedu 1 to wciaz 1 segment. Poprzednia proba (branch `feature/f1-fix-hierarchical`) — hierarchiczne scalanie z catchment_merge.py — niepowodzenie z powodu ryzyk kaskadowych bledow danych i kruchej topologii.
+
+**Opcje:**
+- A) Hierarchiczne scalanie (catchment_merge.py, migracja 015) — kaskadowe ryzyko, artefakty geometrii
+- B) Segmentacja konfluencyjna (preprocessing) + fine-threshold BFS (query) — proste, lokalne zmiany
+
+**Decyzja:** Opcja B. Dwa niezalezne kroki:
+
+1. **Preprocessing — segmentacja konfluencyjna:** Dodanie warunku `upstream_count[nr, nc] > 1` w `vectorize_streams()` obok istniejacego warunku Strahlera. Segmenty lamia sie przy KAZDEJ konfluencji (dwoch lub wiecej doplywow), nie tylko przy zmianie rzedu. Istniejacy mechanizm (junction point, label raster, downstream links) obsluguje to bez zmian.
+
+2. **Query — fine-threshold BFS:** Nowa funkcja `find_stream_catchment_at_point()` snap-to-stream na progu 100 m² (najdrobniejszym). BFS po CatchmentGraph na progu 100 m². Granica z `ST_UnaryUnion(ST_Collect(ST_SnapToGrid(geom, 0.01)))`. Mapowanie na display threshold dla MVT via `map_boundary_to_display_segments()`. Fallback do display threshold gdy brak danych na progu 100.
+
+**Konsekwencje:**
+- Segmenty: ~78k → ~120-160k na progu 100 m² (po re-run pipeline)
+- CatchmentGraph: ~8 MB → ~16 MB RAM (miesci sie w limicie 512 MB)
+- Czas odpowiedzi: ~200-600ms → ~600ms-3s (wiecej segmentow do ST_Union)
+- Pipeline runtime: ~15-20 min (bez zmian)
+- Schemat DB: bez zmian (zero migracji)
+- Wymaga re-run pipeline po zmianach preprocessing
+- Backward compatible: fallback do display threshold gdy brak fine danych
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
