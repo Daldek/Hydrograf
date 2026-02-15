@@ -7,12 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Tryb "Przegladanie":** nowy domyslny tryb klikniecia — klikanie na mapie nic nie robi, bezpieczne przegladanie bez obciazania serwera. Kursor `grab` zamiast crosshair.
+
 ### Changed
 - **Panel wynikow dokowany z prawej:** `#results-panel` przeniesiony wewnatrz `#map-wrapper` z `position: absolute; right: 0` (bylo: `position: fixed; right: 16px`). Slide in/out z CSS transition (`translateX`). Przycisk toggle (chevron) przy krawedzi panelu — zachowanie identyczne jak panel "Warstwy" (lewa strona). Kontrolki zoom Leaflet przesuwaja sie automatycznie gdy panel jest otwarty (`#map-wrapper.results-visible`).
+- **Panel wynikow na pelna wysokosc:** `#results-panel` rozciaga sie od gory do dolu okna (`top: 0; bottom: 0`), zaokraglone rogi tylko po lewej stronie
+- **Liquid glass:** panele "Warstwy" i "Parametry zlewni" + toggle buttons + legendy uzywaja nowego stylu liquid glass (`--liquid-bg: rgba(255,255,255,0.22)`, blur 20px, specular highlight). Kolory czcionek zmienione na czarne dla lepszej czytelnosci.
+- **Akordeony domyslnie zwiniete:** wszystkie sekcje w panelu wynikow poza "Parametry podstawowe" sa domyslnie zwiniete
+- **Punkt ujsciowy w parametrach podstawowych:** dane z "Punkt ujsciowy" (φ, λ, H) przeniesione do tabeli "Parametry podstawowe", usuniety osobny akordeon
+- **Tryby klikniecia:** zmieniono nazwy ("Wygeneruj zlewnię", "Wybierz zlewnię", "Profil terenu") i kolejnosc (Przegladanie → Wybierz → Wygeneruj → Profil)
+- **Warstwy domyslnie wysunięte:** panel "Warstwy" jest widoczny od startu
+- **Czarne czcionki wykresow:** osie i etykiety Chart.js (krzywa hipsometryczna, histogram, donut) uzywaja `color: '#000'` i `grid: rgba(0,0,0,0.1)`
 - **Ikony chevron zamiast hamburger/minus:** layers toggle `☰` → `›`/`‹`, usuniety przycisk minimize `−` z naglowka panelu wynikow, usuniety `#results-restore` button
 - **Escape: pojedynczy = zwin, podwojny = zamknij:** single Escape zwija panel (slide out, overlay na mapie zostaje); double Escape (w ciagu 400ms) zamyka calkowicie jak `×` (czysc overlay + marker)
 - **Usuniety draggable na panelu wynikow:** panel jest teraz dokowany, nie przesuwalny (profil terenu nadal draggable)
 - **Krzywa hipsometryczna:** sekcja "Rzezba terenu" zmieniona z histogramu slupkowego na krzywa hipsometryczna (scatter + line); os Y: wysokosc [m n.p.m.], os X: % powierzchni powyzej (0–100, co 20)
+
+### Fixed
+- **Przelaczanie trybow nie czysci warstw:** zmiana trybu klikniecia nie usowa juz wynikow z mapy (zlewnie czastkowe, granice zlewni, profil); czyszczenie nastepuje dopiero przy nowym kliknieciu
+- **Anulowanie rysowania profilu:** przy przelaczeniu z "Profil terenu" na inny tryb aktywne rysowanie jest anulowane (`cancelDrawing()`)
 
 ### Fixed (4 bugfixes — G1-G4, panel warstw i dane)
 - **G1 — histogram za maly:** wysokosc `.chart-container` zwiekszona z 160px do 240px

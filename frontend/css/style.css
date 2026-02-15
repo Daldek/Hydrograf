@@ -20,6 +20,10 @@
 }
 
 .leaflet-container {
+    cursor: grab;
+}
+
+.leaflet-container.cursor-crosshair {
     cursor: crosshair;
 }
 
@@ -35,6 +39,12 @@
     overflow-y: auto;
     overflow-x: hidden;
     transition: transform var(--transition-default), opacity var(--transition-default);
+    /* liquid glass */
+    background: var(--liquid-bg);
+    backdrop-filter: blur(var(--liquid-blur));
+    -webkit-backdrop-filter: blur(var(--liquid-blur));
+    border: 1px solid var(--liquid-border);
+    box-shadow: var(--liquid-shadow), var(--liquid-highlight);
 }
 
 #layers-panel * {
@@ -161,7 +171,6 @@
     z-index: 1001;
     width: 34px;
     height: 34px;
-    border: none;
     cursor: pointer;
     font-size: 1.1rem;
     line-height: 30px;
@@ -169,10 +178,16 @@
     padding: 0;
     color: var(--color-text);
     transition: left var(--transition-default);
+    /* liquid glass */
+    background: var(--liquid-bg);
+    backdrop-filter: blur(var(--liquid-blur));
+    -webkit-backdrop-filter: blur(var(--liquid-blur));
+    border: 1px solid var(--liquid-border);
+    box-shadow: var(--liquid-shadow), var(--liquid-highlight);
 }
 
 .layers-toggle:hover {
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.35);
 }
 
 .layers-toggle.layers-open {
@@ -223,14 +238,22 @@
 #results-panel {
     position: absolute;
     right: 0;
-    top: 10px;
+    top: 0;
+    bottom: 0;
     width: 380px;
-    max-height: calc(100% - 20px);
     z-index: 1050;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     transition: transform var(--transition-default), opacity var(--transition-default);
+    /* liquid glass */
+    background: var(--liquid-bg);
+    backdrop-filter: blur(var(--liquid-blur));
+    -webkit-backdrop-filter: blur(var(--liquid-blur));
+    border: 1px solid var(--liquid-border);
+    box-shadow: var(--liquid-shadow), var(--liquid-highlight);
+    border-radius: var(--glass-radius) 0 0 var(--glass-radius);
+    border-right: none;
 }
 
 #results-panel.results-hidden {
@@ -290,7 +313,6 @@
     z-index: 1001;
     width: 34px;
     height: 34px;
-    border: none;
     cursor: pointer;
     font-size: 1.1rem;
     line-height: 30px;
@@ -298,10 +320,16 @@
     padding: 0;
     color: var(--color-text);
     transition: right var(--transition-default);
+    /* liquid glass */
+    background: var(--liquid-bg);
+    backdrop-filter: blur(var(--liquid-blur));
+    -webkit-backdrop-filter: blur(var(--liquid-blur));
+    border: 1px solid var(--liquid-border);
+    box-shadow: var(--liquid-shadow), var(--liquid-highlight);
 }
 
 .results-toggle:hover {
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.35);
 }
 
 .results-toggle.results-open {
@@ -395,14 +423,15 @@
 
 /* ============ LAYER LEGENDS ============ */
 .layer-legend {
-    background: var(--glass-bg, rgba(255, 255, 255, 0.85));
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: var(--liquid-bg);
+    backdrop-filter: blur(var(--liquid-blur));
+    -webkit-backdrop-filter: blur(var(--liquid-blur));
+    border: 1px solid var(--liquid-border);
     border-radius: 8px;
     padding: 8px 10px;
     font-size: 0.72rem;
     color: var(--color-text);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--liquid-shadow), var(--liquid-highlight);
     line-height: 1.4;
 }
 
