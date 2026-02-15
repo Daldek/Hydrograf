@@ -120,11 +120,14 @@ def mock_db_select_stream():
         result = MagicMock()
         query_str = str(query)
 
-        if "stream_network" in query_str and "ST_DWithin" in query_str:
+        if "ST_ClosestPoint" in query_str:
+            # find_stream_catchment_at_point — no fine threshold data
+            result.fetchone.return_value = None
+        elif "stream_network" in query_str and "ST_DWithin" in query_str:
             result.fetchone.return_value = segment_result
         elif "ST_Contains" in query_str and "stream_catchments" in query_str:
             result.fetchone.return_value = catchment_result
-        elif "ST_Union" in query_str:
+        elif "ST_UnaryUnion" in query_str:
             result.fetchone.return_value = boundary_result
         elif "ST_EndPoint" in query_str:
             result.fetchone.return_value = outlet_result
@@ -339,3 +342,243 @@ class TestSelectStreamEndpoint:
         )
 
         assert response.status_code == 422
+
+    def test_fine_threshold_bfs_with_display_mapping(self, client):
+        """Test BFS at fine threshold (100) with display mapping to 10000."""
+        # Build a CatchmentGraph with nodes at both threshold 100 and 10000
+        cg = CatchmentGraph()
+        # 5 nodes: 3 at threshold 100, 2 at threshold 10000
+        n = 5
+        cg._n = n
+        cg._loaded = True
+
+        cg._segment_idx = np.array([1, 2, 3, 10, 11], dtype=np.int32)
+        cg._threshold_m2 = np.array([100, 100, 100, 10000, 10000], dtype=np.int32)
+        cg._area_km2 = np.array([1.0, 1.5, 2.5, 5.0, 3.0], dtype=np.float32)
+        cg._elev_min = np.array([140.0, 150.0, 130.0, 130.0, 150.0], dtype=np.float32)
+        cg._elev_max = np.array([180.0, 190.0, 160.0, 190.0, 190.0], dtype=np.float32)
+        cg._elev_mean = np.array([160.0, 170.0, 145.0, 155.0, 170.0], dtype=np.float32)
+        cg._slope_mean = np.array([4.0, 5.0, 3.0, 4.0, 5.0], dtype=np.float32)
+        cg._perimeter_km = np.array([5.0, 6.0, 8.0, 12.0, 10.0], dtype=np.float32)
+        cg._stream_length_km = np.array([1.0, 1.2, 1.8, 3.0, 2.0], dtype=np.float32)
+        cg._strahler = np.array([1, 1, 2, 2, 1], dtype=np.int8)
+        cg._histograms = [
+            {"base_m": 140, "interval_m": 1, "counts": [10, 20, 30]},
+            {"base_m": 150, "interval_m": 1, "counts": [15, 25]},
+            {"base_m": 130, "interval_m": 1, "counts": [5, 10, 15, 20]},
+            {"base_m": 130, "interval_m": 1, "counts": [5, 10, 15, 20, 15, 10]},
+            {"base_m": 150, "interval_m": 1, "counts": [10, 20, 10]},
+        ]
+
+        cg._lookup = {
+            (100, 1): 0,
+            (100, 2): 1,
+            (100, 3): 2,
+            (10000, 10): 3,
+            (10000, 11): 4,
+        }
+
+        # Adjacency at threshold 100: 1→3, 2→3 (3 is outlet of fine)
+        row = np.array([2, 2], dtype=np.int32)
+        col = np.array([0, 1], dtype=np.int32)
+        data = np.ones(2, dtype=np.int8)
+        cg._upstream_adj = sparse.csr_matrix(
+            (data, (row, col)),
+            shape=(n, n),
+            dtype=np.int8,
+        )
+
+        from shapely.geometry import MultiPolygon, Polygon
+
+        poly = Polygon(
+            [
+                (639100, 486650),
+                (639200, 486650),
+                (639200, 486750),
+                (639100, 486750),
+                (639100, 486650),
+            ]
+        )
+        multi = MultiPolygon([poly])
+        boundary_wkb = multi.wkb
+
+        # Mock DB for fine threshold
+        mock_session = MagicMock()
+
+        segment_result = MagicMock()
+        segment_result.id = 10
+        segment_result.strahler_order = 2
+        segment_result.length_m = 3000.0
+        segment_result.upstream_area_km2 = 5.0
+        segment_result.downstream_x = 639139.0
+        segment_result.downstream_y = 486706.0
+
+        # Fine threshold snap result
+        fine_catchment_result = MagicMock()
+        fine_catchment_result.segment_idx = 3  # Maps to (100, 3) → idx 2
+
+        boundary_result = MagicMock()
+        boundary_result.geom = boundary_wkb
+
+        outlet_result = MagicMock()
+        outlet_result.x = 639139.0
+        outlet_result.y = 486706.0
+
+        stream_geojson_result = MagicMock()
+        stream_geojson_result.geojson = (
+            '{"type":"LineString","coordinates":[[21.01,52.23],[21.02,52.24]]}'
+        )
+
+        # Display mapping result
+        display_seg_result_1 = MagicMock()
+        display_seg_result_1.segment_idx = 10
+
+        def execute_side_effect_multi(query, params=None):
+            result = MagicMock()
+            query_str = str(query)
+
+            if "ST_ClosestPoint" in query_str:
+                # find_stream_catchment_at_point (snap to stream)
+                result.fetchone.return_value = fine_catchment_result
+            elif "stream_network" in query_str and "ST_DWithin" in query_str:
+                result.fetchone.return_value = segment_result
+            elif "ST_Contains" in query_str and "stream_catchments" in query_str:
+                result.fetchone.return_value = fine_catchment_result
+            elif "ST_UnaryUnion" in query_str:
+                result.fetchone.return_value = boundary_result
+            elif "ST_Intersects" in query_str and "ST_GeomFromWKB" in query_str:
+                result.fetchall.return_value = [display_seg_result_1]
+            elif "ST_EndPoint" in query_str:
+                result.fetchone.return_value = outlet_result
+            elif "ST_AsGeoJSON" in query_str:
+                result.fetchone.return_value = stream_geojson_result
+            elif "land_cover" in query_str:
+                result.fetchall.return_value = []
+                result.fetchone.return_value = None
+            else:
+                result.fetchone.return_value = None
+                result.fetchall.return_value = []
+            return result
+
+        mock_session.execute.side_effect = execute_side_effect_multi
+
+        with patch(
+            "api.endpoints.select_stream.get_catchment_graph",
+            return_value=cg,
+        ):
+            app.dependency_overrides[get_db] = lambda: mock_session
+
+            response = client.post(
+                "/api/select-stream",
+                json={
+                    "latitude": 52.23,
+                    "longitude": 21.01,
+                    "threshold_m2": 10000,
+                },
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # BFS was at fine threshold (100), so boundary built from fine segments
+            assert "upstream_segment_indices" in data
+            # Display mapping returns segment 10 at threshold 10000
+            assert data["upstream_segment_indices"] == [10]
+
+            # Watershed stats should reflect fine-threshold BFS (3 nodes)
+            assert data["watershed"]["area_km2"] > 0
+
+            app.dependency_overrides.clear()
+
+    def test_fallback_to_display_threshold(self, client):
+        """Test fallback when fine threshold has no data at click point."""
+        cg = _make_mock_catchment_graph()
+
+        mock_session = MagicMock()
+
+        segment_result = MagicMock()
+        segment_result.id = 12
+        segment_result.strahler_order = 2
+        segment_result.length_m = 3000.0
+        segment_result.upstream_area_km2 = 10.0
+        segment_result.downstream_x = 639139.0
+        segment_result.downstream_y = 486706.0
+
+        catchment_result = MagicMock()
+        catchment_result.segment_idx = 12
+
+        from shapely.geometry import MultiPolygon, Polygon
+
+        poly = Polygon(
+            [
+                (639100, 486650),
+                (639200, 486650),
+                (639200, 486750),
+                (639100, 486750),
+                (639100, 486650),
+            ]
+        )
+        multi = MultiPolygon([poly])
+        boundary_wkb = multi.wkb
+
+        boundary_result = MagicMock()
+        boundary_result.geom = boundary_wkb
+
+        outlet_result = MagicMock()
+        outlet_result.x = 639139.0
+        outlet_result.y = 486706.0
+
+        stream_geojson_result = MagicMock()
+        stream_geojson_result.geojson = (
+            '{"type":"LineString","coordinates":[[21.01,52.23],[21.02,52.24]]}'
+        )
+
+        def execute_side_effect_fallback(query, params=None):
+            result = MagicMock()
+            query_str = str(query)
+
+            if "ST_ClosestPoint" in query_str:
+                # Fine threshold has no data → returns None
+                result.fetchone.return_value = None
+            elif "stream_network" in query_str and "ST_DWithin" in query_str:
+                result.fetchone.return_value = segment_result
+            elif "ST_Contains" in query_str and "stream_catchments" in query_str:
+                # Fallback to display threshold
+                result.fetchone.return_value = catchment_result
+            elif "ST_UnaryUnion" in query_str:
+                result.fetchone.return_value = boundary_result
+            elif "ST_EndPoint" in query_str:
+                result.fetchone.return_value = outlet_result
+            elif "ST_AsGeoJSON" in query_str:
+                result.fetchone.return_value = stream_geojson_result
+            elif "land_cover" in query_str:
+                result.fetchall.return_value = []
+                result.fetchone.return_value = None
+            else:
+                result.fetchone.return_value = None
+                result.fetchall.return_value = []
+            return result
+
+        mock_session.execute.side_effect = execute_side_effect_fallback
+
+        with patch(
+            "api.endpoints.select_stream.get_catchment_graph",
+            return_value=cg,
+        ):
+            app.dependency_overrides[get_db] = lambda: mock_session
+
+            response = client.post(
+                "/api/select-stream",
+                json={
+                    "latitude": 52.23,
+                    "longitude": 21.01,
+                    "threshold_m2": 10000,
+                },
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            # Falls back to display threshold — same as old behavior
+            assert sorted(data["upstream_segment_indices"]) == [10, 11, 12]
+
+            app.dependency_overrides.clear()

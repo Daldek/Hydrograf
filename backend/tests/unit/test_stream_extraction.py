@@ -274,9 +274,19 @@ class TestVectorizeStreams:
         )
 
         # Label raster: each stream cell should have a label
-        for r, c in [(0, 0), (0, 1), (0, 2), (0, 3),
-                      (2, 0), (2, 1), (2, 2), (2, 3),
-                      (1, 4), (1, 5), (1, 6)]:
+        for r, c in [
+            (0, 0),
+            (0, 1),
+            (0, 2),
+            (0, 3),
+            (2, 0),
+            (2, 1),
+            (2, 2),
+            (2, 3),
+            (1, 4),
+            (1, 5),
+            (1, 6),
+        ]:
             if stream_mask[r, c]:
                 assert label_raster[r, c] > 0, (
                     f"Stream cell ({r},{c}) should have a label"
