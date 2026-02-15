@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (4 bugfixes — D1-D4, profil terenu)
+- **D1 — profil nie wyswietla wynikow:** `showProfileError()` przyjmuje `canvasId` zamiast hardkodowanego `#chart-profile`; w `activateDrawProfile().catch()` panel `#profile-panel` jest pokazywany przed renderowaniem bledu
+- **D2 — duplikaty wierzcholkow dblclick:** guard w `addDrawVertex()` ignoruje duplikaty z sekwencji click+click+dblclick; `finishDrawing()` zmienia styl linii z dashed blue na solid brown
+- **D3 — linia pozostaje po Escape:** `cancelDrawing()` czysci `profileLine`; `onMapClick()` w trybie profile re-aktywuje rysowanie gdy nie trwa (user moze kliknac mape po Escape)
+- **D4 — akordeon acc-profile usuniety:** akordeon `#acc-profile` usuniety z `#results-panel`; przycisk "Ciek glowny" przeniesiony do headera `#profile-panel` (disabled domyslnie, aktywny po wyznaczeniu zlewni)
+
 ### Changed (profil terenu — osobny panel)
 - **`#profile-panel` (nowy floating panel):** niezalezny od "Parametrow zlewni", pozycja left-bottom, draggable, close button
 - **`profile.js` refaktor:** `activateDrawProfile()` renderuje w `#chart-profile-standalone` zamiast przejmowac `#results-panel`; nowa funkcja `hideProfilePanel()`

@@ -44,9 +44,20 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-14 (sesja 19)
+**Data:** 2026-02-15 (sesja 20)
 
 ### Co zrobiono
+
+- **Naprawa 4 bugow profilu terenu (D1-D4):**
+  - **D2:** Guard w `addDrawVertex()` ignoruje duplikaty z dblclick; `finishDrawing()` zmienia styl linii na solid brown
+  - **D1:** `showProfileError()` przyjmuje `canvasId`; `activateDrawProfile().catch()` pokazuje `#profile-panel` przed bledem
+  - **D3:** `cancelDrawing()` czysci `profileLine`; `onMapClick()` w trybie profile re-aktywuje rysowanie po Escape
+  - **D4:** Usuniety akordeon `#acc-profile`; przycisk "Ciek glowny" w headerze `#profile-panel` (disabled/enabled dynamicznie)
+  - **Wynik:** 550 testow, 0 failures, 4 commity
+
+### Poprzednia sesja (2026-02-14, sesja 19)
+
+#### Co zrobiono
 
 - **Profil terenu jako osobny panel + UX drawing (plan z sesji 19):**
   - Nowy floating panel `#profile-panel` (left: 16px, bottom: 16px, 420px, z-index 1050) — niezalezny od panelu "Parametry zlewni"
@@ -246,27 +257,14 @@
 
 ### Bledy do naprawy (zgloszenie 2026-02-14, sesja 19)
 
-**Status: ⏳ Do rozwiazania w kolejnych sesjach**
+**Status: ⏳ D1-D4 naprawione (sesja 20), E-H do rozwiazania**
 
-#### D. Frontend — profil terenu
+#### D. Frontend — profil terenu — ✅ NAPRAWIONE (sesja 20)
 
-**D1. Profil terenu nadal nie dziala** (priorytet: wysoki)
-- Po narysowaniu linii profilu nie pojawia sie okno z wynikami
-- Implementacja nowego panelu `#profile-panel` nie rozwiazala problemu
-- **Lokalizacja:** `profile.js` (activateDrawProfile), `index.html` (#profile-panel)
-
-**D2. Dwuklik do zakonczenia rysowania zle dziala** (priorytet: wysoki)
-- Mechanizm double-click → finishDrawing() nie dziala poprawnie
-- **Lokalizacja:** `map.js` (dblclick handler, finishDrawing)
-
-**D3. Po Escape nie da sie usunac linii** (priorytet: sredni)
-- Po anulowaniu rysowania (Esc) linia pozostaje na mapie i nie mozna jej usunac
-- **Lokalizacja:** `map.js` (cancelDrawing), `profile.js` (deactivateProfile)
-
-**D4. Kontener "Profil terenu" nadal w panelu zlewni** (priorytet: sredni)
-- Akordeon `#acc-profile` z przyciskami "Ciek glowny" / "Rysuj linie" nadal widoczny w "Parametrach zlewni"
-- Powinien byc calkowicie usuniety z panelu zlewni — profil to samodzielne okno
-- **Lokalizacja:** `index.html:163-176` (#acc-profile), `profile.js`, `app.js`
+**D1. ✅ Profil terenu nadal nie dziala** → showProfileError z canvasId, panel pokazywany w catch
+**D2. ✅ Dwuklik do zakonczenia rysowania zle dziala** → guard duplikatow, styl linii solid brown
+**D3. ✅ Po Escape nie da sie usunac linii** → cancelDrawing czysci profileLine, re-aktywacja rysowania
+**D4. ✅ Kontener "Profil terenu" nadal w panelu zlewni** → acc-profile usuniety, btn-profile-auto w profile-panel
 
 #### E. Frontend — zlewnia i mapa
 
@@ -311,6 +309,15 @@
 - "Zlewnie (wyznacz najpierw)" — caly czas podswietlone po wygenerowaniu, mylace
 - "Zaglbienia" powinny trafic do grupy "Warstwy podkladowe" zamiast "Wyniki analiz"
 - **Lokalizacja:** `layers.js` (grupy warstw, addCatchmentsEntry, addDepressionsEntry)
+
+#### H. Do rozważenia (koncepcyjne)
+
+**H1. Zlewnie bezposrednie jezior przeplywowych i bezodplywowych** (priorytet: do ustalenia)
+- Jak wyznaczac zlewnię bezposrednia jeziora przeplywowego? Czy laczyc ze soba zlewnie czastkowe, zeby unikac ich nadmiernego rozdrobnienia?
+- Jak traktowac jeziora bezodplywowe (endorheic)? Powoduja one "dziury" w zlewniach rzecznych, a dwa blisko polozone obok siebie zborniki nie maja wyznaczonych swoich zlewni.
+- Jak wdrozyc zlewnie kanalizacyjne i przekazywac ich doplywu do wyplywu w innym miejscu analizowanego obszaru?
+- Powiazanie z istniejaca klasyfikacja jezior (ADR-020: 45 endorheic, 18 exorheic) i drain points
+- **Kontekst:** `core/hydrology.py` (classify_endorheic_lakes), `catchment_graph.py` (traverse_upstream)
 
 ### Nastepne kroki
 1. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
