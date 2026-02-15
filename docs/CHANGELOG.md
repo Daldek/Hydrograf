@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Panel wynikow dokowany z prawej:** `#results-panel` przeniesiony wewnatrz `#map-wrapper` z `position: absolute; right: 0` (bylo: `position: fixed; right: 16px`). Slide in/out z CSS transition (`translateX`). Przycisk toggle (chevron) przy krawedzi panelu — zachowanie identyczne jak panel "Warstwy" (lewa strona). Kontrolki zoom Leaflet przesuwaja sie automatycznie gdy panel jest otwarty (`#map-wrapper.results-visible`).
+- **Ikony chevron zamiast hamburger/minus:** layers toggle `☰` → `›`/`‹`, usuniety przycisk minimize `−` z naglowka panelu wynikow, usuniety `#results-restore` button
+- **Escape: pojedynczy = zwin, podwojny = zamknij:** single Escape zwija panel (slide out, overlay na mapie zostaje); double Escape (w ciagu 400ms) zamyka calkowicie jak `×` (czysc overlay + marker)
+- **Usuniety draggable na panelu wynikow:** panel jest teraz dokowany, nie przesuwalny (profil terenu nadal draggable)
 - **Krzywa hipsometryczna:** sekcja "Rzezba terenu" zmieniona z histogramu slupkowego na krzywa hipsometryczna (scatter + line); os Y: wysokosc [m n.p.m.], os X: % powierzchni powyzej (0–100, co 20)
 
 ### Fixed (4 bugfixes — G1-G4, panel warstw i dane)

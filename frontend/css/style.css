@@ -219,17 +219,24 @@
     color: #fff;
 }
 
-/* ============ FLOATING RESULTS PANEL ============ */
+/* ============ DOCKED RESULTS PANEL (right side) ============ */
 #results-panel {
-    position: fixed;
-    right: 16px;
-    top: 72px;
+    position: absolute;
+    right: 0;
+    top: 10px;
     width: 380px;
-    max-height: calc(100vh - 88px);
+    max-height: calc(100% - 20px);
     z-index: 1050;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    transition: transform var(--transition-default), opacity var(--transition-default);
+}
+
+#results-panel.results-hidden {
+    transform: translateX(400px);
+    opacity: 0;
+    pointer-events: none;
 }
 
 .results-header {
@@ -275,26 +282,39 @@
     padding: 8px 0;
 }
 
-/* Minimized restore button */
-.results-restore {
-    position: fixed;
-    right: 16px;
-    bottom: 16px;
-    z-index: 1050;
-    width: 44px;
-    height: 44px;
+/* Results toggle button (right edge) */
+.results-toggle {
+    position: absolute;
+    top: 10px;
+    right: 0;
+    z-index: 1001;
+    width: 34px;
+    height: 34px;
     border: none;
     cursor: pointer;
-    font-size: 1.2rem;
-    line-height: 44px;
+    font-size: 1.1rem;
+    line-height: 30px;
     text-align: center;
     padding: 0;
-    color: var(--color-primary);
-    border-radius: 50%;
+    color: var(--color-text);
+    transition: right var(--transition-default);
 }
 
-.results-restore:hover {
+.results-toggle:hover {
     background: rgba(255, 255, 255, 0.95);
+}
+
+.results-toggle.results-open {
+    right: 380px;
+}
+
+/* Zoom controls shift when results panel is visible */
+.leaflet-bottom.leaflet-right {
+    transition: right var(--transition-default);
+}
+
+#map-wrapper.results-visible .leaflet-bottom.leaflet-right {
+    right: 390px;
 }
 
 /* ============ FLOATING PROFILE PANEL ============ */
@@ -423,6 +443,7 @@
 /* ============ RESPONSIVE: MOBILE ============ */
 @media (max-width: 768px) {
     #results-panel {
+        position: fixed;
         right: 0;
         left: 0;
         top: auto;
@@ -431,6 +452,11 @@
         max-height: 45vh;
         border-radius: 14px 14px 0 0;
         border-bottom: none;
+        transform: none;
+    }
+
+    #results-panel.results-hidden {
+        transform: translateY(100%);
     }
 
     .results-header {
@@ -450,9 +476,8 @@
         border-radius: 2px;
     }
 
-    .results-restore {
-        right: 50%;
-        transform: translateX(50%);
+    .results-toggle {
+        display: none;
     }
 
     #profile-panel {

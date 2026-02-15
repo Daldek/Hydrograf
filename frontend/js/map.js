@@ -44,7 +44,7 @@
             zoom: 7,
             zoomControl: false,
         });
-        L.control.zoom({ position: 'topright' }).addTo(map);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
 
         // Custom panes for layer ordering:
         // Base (tilePane z-200) → NMT → Zlewnie → Cieki → overlay (z-400)
@@ -393,6 +393,22 @@
      */
     function clearCatchmentHighlights() {
         highlightedSegments.clear();
+        if (catchmentsLayer) {
+            // Restore default style function
+            catchmentsLayer.options.vectorTileLayerStyles.catchments = function (props) {
+                var order = props.strahler_order || 1;
+                return {
+                    weight: 0.5,
+                    color: '#666',
+                    fillColor: catchmentColor(order),
+                    fillOpacity: 1.0,
+                    fill: true,
+                };
+            };
+            if (map.hasLayer(catchmentsLayer)) {
+                catchmentsLayer.redraw();
+            }
+        }
         setCatchmentsOpacity(currentCatchmentOpacity);
     }
 
@@ -757,6 +773,13 @@
         if (map) setTimeout(function () { map.invalidateSize(); }, 50);
     }
 
+    function shiftZoomControls(show) {
+        var wrapper = document.getElementById('map-wrapper');
+        if (wrapper) {
+            wrapper.classList.toggle('results-visible', show);
+        }
+    }
+
     window.Hydrograf.map = {
         init: init,
         _getMap: function () { return map; },
@@ -802,6 +825,8 @@
         getBdotStreamsLayer: getBdotStreamsLayer,
         setBdotStreamsOpacity: setBdotStreamsOpacity,
         fitBdotBounds: fitBdotBounds,
+        // Panel/zoom interaction
+        shiftZoomControls: shiftZoomControls,
         // Legends
         createStreamsLegend: createStreamsLegend,
         removeStreamsLegend: removeStreamsLegend,
