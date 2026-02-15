@@ -24,6 +24,10 @@ from core.catchment_graph import CatchmentGraph
 
 logger = logging.getLogger(__name__)
 
+# Minimum area (m²) for interior holes to be preserved in watershed boundary.
+# Holes smaller than this threshold (~32×32m) are removed as artifacts.
+MIN_HOLE_AREA_M2 = 1000
+
 
 def find_nearest_stream_segment(
     x: float,
@@ -107,7 +111,7 @@ def merge_catchment_boundaries(
 
     query = text("""
         SELECT ST_AsBinary(
-            ST_Multi(ST_Union(geom))
+            ST_Multi(ST_MakeValid(ST_Buffer(ST_Union(geom), 0)))
         ) as geom
         FROM stream_catchments
         WHERE threshold_m2 = :threshold
@@ -287,6 +291,9 @@ def boundary_to_polygon(boundary_2180: MultiPolygon | Polygon) -> Polygon:
     """
     Extract largest Polygon from a MultiPolygon or pass through Polygon.
 
+    Removes interior holes smaller than MIN_HOLE_AREA_M2 to eliminate
+    micro-gap artifacts from ST_Union and small endorheic depressions.
+
     Parameters
     ----------
     boundary_2180 : MultiPolygon | Polygon
@@ -295,14 +302,21 @@ def boundary_to_polygon(boundary_2180: MultiPolygon | Polygon) -> Polygon:
     Returns
     -------
     Polygon
-        Largest polygon component
+        Largest polygon component with small holes removed
     """
     if hasattr(boundary_2180, "geoms"):
         polys = list(boundary_2180.geoms)
-        if len(polys) == 1:
-            return polys[0]
-        return max(polys, key=lambda p: p.area)
-    return boundary_2180
+        poly = polys[0] if len(polys) == 1 else max(polys, key=lambda p: p.area)
+    else:
+        poly = boundary_2180
+
+    # Filter out small interior holes (artifacts)
+    if poly.interiors:
+        kept = [r for r in poly.interiors if Polygon(r).area >= MIN_HOLE_AREA_M2]
+        if len(kept) < len(poly.interiors):
+            poly = Polygon(poly.exterior, kept)
+
+    return poly
 
 
 def build_morph_dict_from_graph(
