@@ -190,8 +190,13 @@
     function onMapClick(lat, lng) {
         if (state.isLoading) return;
 
-        // Profile mode — map clicks handled by drawing callback, not here
-        if (state.clickMode === 'profile') return;
+        // Profile mode — re-activate drawing if not currently drawing
+        if (state.clickMode === 'profile') {
+            if (!Hydrograf.map.isDrawing || !Hydrograf.map.isDrawing()) {
+                if (Hydrograf.profile) Hydrograf.profile.activateDrawProfile();
+            }
+            return;
+        }
 
         // Check drawing mode
         if (Hydrograf.map.isDrawing && Hydrograf.map.isDrawing()) return;

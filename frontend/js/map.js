@@ -612,6 +612,8 @@
         if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
         drawVertices = [];
         drawCallback = null;
+        // Clear profile line from previous completed drawing
+        if (profileLine) { map.removeLayer(profileLine); profileLine = null; }
     }
 
     function isDrawing() { return drawMode; }
