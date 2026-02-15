@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (4 bugfixes — G1-G4, panel warstw i dane)
+- **G1 — histogram za maly:** wysokosc `.chart-container` zwiekszona z 160px do 240px
+- **G2 — brak pokrycia terenu:** naprawiono parsowanie nazw warstw GeoPackage (OT_PTLZ_A → PTLZ); zaimportowano 38560 rekordow BDOT10k (12 warstw, 7 kategorii) do tabeli `land_cover`
+- **G3 — kolejnosc panelu warstw:** "Podklady kartograficzne" przeniesione na dol panelu (nowa kolejnosc: Warstwy podkladowe → Wyniki analiz → Podklady kartograficzne)
+- **G4a — zaglbienia:** przeniesione do grupy "Warstwy podkladowe" (nowy kontener `#overlay-group-entries`)
+- **G4b — checkbox zlewni:** auto-check tylko przy pierwszym wykryciu; odznaczenie recznie jest respektowane przy kolejnych wyznaczeniach; reset po usunieciu warstwy
+
 ### Fixed (4 bugfixes — D1-D4, profil terenu)
 - **D1 — profil nie wyswietla wynikow:** `showProfileError()` przyjmuje `canvasId` zamiast hardkodowanego `#chart-profile`; w `activateDrawProfile().catch()` panel `#profile-panel` jest pokazywany przed renderowaniem bledu
 - **D2 — duplikaty wierzcholkow dblclick:** guard w `addDrawVertex()` ignoruje duplikaty z sekwencji click+click+dblclick; `finishDrawing()` zmienia styl linii z dashed blue na solid

@@ -44,25 +44,28 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-15 (sesja 20)
+**Data:** 2026-02-15 (sesja 21)
 
 ### Co zrobiono
 
+- **Naprawa 4 bugow panelu warstw i danych (G1-G4):**
+  - **G1:** Wysokosc histogramu `.chart-container` zwiekszona z 160px do 240px
+  - **G2:** Import pokrycia terenu BDOT10k — naprawiono parsowanie nazw warstw GeoPackage (OT_PTLZ_A → PTLZ); 38560 rekordow z 12 warstw, 7 kategorii (las, grunt_orny, zabudowa_mieszkaniowa, woda, droga, inny, laka)
+  - **G3:** "Podklady kartograficzne" przeniesione na dol panelu warstw (nowa kolejnosc: Warstwy podkladowe → Wyniki analiz → Podklady kartograficzne)
+  - **G4a:** Zaglbienia przeniesione do grupy "Warstwy podkladowe" (nowy kontener `#overlay-group-entries`)
+  - **G4b:** Checkbox zlewni — auto-check tylko przy pierwszym wykryciu; flaga `_watershedFirstDetection` resetowana po usunieciu warstwy
+
+- **Wynik:** 550 testow, 0 failures, 5 commitow
+
+### Poprzednia sesja (2026-02-15, sesja 20)
+
 - **Naprawa 4 bugow profilu terenu (D1-D4):**
-  - **D2:** Guard w `addDrawVertex()` ignoruje duplikaty z dblclick; styl linii solid po zakonczeniu
-  - **D1:** `showProfileError()` przyjmuje `canvasId`; `activateDrawProfile().catch()` pokazuje `#profile-panel` przed bledem
-  - **D3:** `cancelDrawing()` czysci `profileLine`; `onMapClick()` w trybie profile re-aktywuje rysowanie po Escape
-  - **D4:** Usuniety akordeon `#acc-profile`; przycisk "Ciek glowny" usuniety (auto-profil do wdrozenia pozniej)
-
-- **Interaktywny profil terenu:**
-  - Hover nad wykresem → czerwony marker na narysowanej linii na mapie (interpolacja wzdluz wierzcholkow)
-  - Pionowa linia crosshair na wykresie w miejscu kursora
-  - Kolor linii i wykresu profilu zmieniony na czerwony (#DC3545)
-
-- **DEM w kontenerze Docker:**
-  - `docker-compose.yml`: zamontowano `data/e2e_test` jako `/data/dem:ro`, DEM_PATH → `dem_mosaic.vrt`
-  - Profil terenu dziala poprawnie w kontenerze
-
+  - D2: Guard duplikatow dblclick, styl linii solid
+  - D1: showProfileError z canvasId, panel pokazywany w catch
+  - D3: cancelDrawing czysci profileLine, re-aktywacja rysowania
+  - D4: Usuniety acc-profile, btn-profile-auto
+- **Interaktywny profil terenu:** hover → marker na mapie + crosshair
+- **DEM w Docker:** volume mount data/e2e_test → /data/dem
 - **Wynik:** 550 testow, 0 failures, 6 commitow
 
 ### Poprzednia sesja (2026-02-14, sesja 19)
@@ -253,6 +256,7 @@
 | flow_network | 19,667,662 | 4 progi FA, re-run z CatchmentGraph |
 | stream_network | 86,898 | 100: 78186, 1000: 7812, 10000: 827, 100000: 88 (po re-run z migracja 012) |
 | stream_catchments | 86,913 | 100: 78186, 1000: 7812, 10000: 827, 100000: 88 + nowe kolumny (downstream, elev, histogram) |
+| land_cover | 38,560 | 12 warstw BDOT10k (powiat 3021), 7 kategorii |
 | depressions | 602,092 | re-run po poprawionym stream burning |
 
 ### Znane problemy (infrastruktura)
@@ -267,7 +271,7 @@
 
 ### Bledy do naprawy (zgloszenie 2026-02-14, sesja 19)
 
-**Status: ⏳ D1-D4 naprawione (sesja 20), E-H do rozwiazania**
+**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E-F-H do rozwiazania**
 
 #### D. Frontend — profil terenu — ✅ NAPRAWIONE (sesja 20)
 
@@ -299,26 +303,12 @@
 - Zlewnie czastkowe powinny byc generowane od doplywu do doplywu, a jezeli nie ma doplywu to dla calego cieku
 - **Lokalizacja:** `catchment_graph.py` (traverse_upstream/traverse_to_confluence), `select_stream.py`
 
-#### G. Frontend — panel warstw i dane
+#### G. Frontend — panel warstw i dane — ✅ NAPRAWIONE (sesja 21)
 
-**G1. Histogram "Rzezba terenu" za maly** (priorytet: niski)
-- Zwiekszyc kontener histogramu o 50% (z 160px na 240px)
-- **Lokalizacja:** `style.css` (.chart-container), `index.html` (#chart-hypsometric)
-
-**G2. Brak informacji o pokryciu terenu i glebach** (priorytet: sredni)
-- Sekcja "Pokrycie terenu" nie wyswietla danych mimo ze endpoint je zwraca
-- Brak danych o glebach (HSG) — do zintegrowania
-- **Lokalizacja:** `app.js` (displayParameters), `charts.js`, `land_cover.py`, `cn_calculator.py`
-
-**G3. Podklady kartograficzne na dole panelu warstw** (priorytet: niski)
-- W panelu warstw podklady kartograficzne (OSM/ESRI/OpenTopoMap) powinny trafic na sam dol okna
-- Obecnie sa na gorze
-- **Lokalizacja:** `layers.js` (initLayerGroups, kolejnosc grup)
-
-**G4. "Wyniki analiz" — reorganizacja** (priorytet: niski)
-- "Zlewnie (wyznacz najpierw)" — caly czas podswietlone po wygenerowaniu, mylace
-- "Zaglbienia" powinny trafic do grupy "Warstwy podkladowe" zamiast "Wyniki analiz"
-- **Lokalizacja:** `layers.js` (grupy warstw, addCatchmentsEntry, addDepressionsEntry)
+**G1. ✅ Histogram "Rzezba terenu" za maly** → `.chart-container` height 160px → 240px
+**G2. ✅ Brak informacji o pokryciu terenu** → naprawiono parsowanie warstw GeoPackage (OT_PTLZ_A → PTLZ); import 38560 rekordow BDOT10k
+**G3. ✅ Podklady kartograficzne na dole panelu warstw** → przeniesione na koniec init(), nowa kolejnosc: Warstwy podkladowe → Wyniki analiz → Podklady kartograficzne
+**G4. ✅ Reorganizacja wynikow analiz** → zaglbienia do #overlay-group-entries; checkbox zlewni: auto-check tylko przy 1. wykryciu, reset po usunieciu
 
 #### H. Do rozważenia (koncepcyjne)
 
