@@ -313,7 +313,7 @@
 
 ### Bledy do naprawy (zgloszenie 2026-02-14, sesja 19)
 
-**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E3 naprawione (sesja 22), E1-E2-F-H do rozwiazania**
+**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E2 naprawione (sesja 18 jako A1), E3 naprawione (sesja 22), E1-F-H do rozwiazania**
 
 #### D. Frontend — profil terenu — ✅ NAPRAWIONE (sesja 20)
 
@@ -329,9 +329,7 @@
 - Prawdopodobnie zaglbienia terenowe lub bledy laczenia obiektow wektorowych (ST_Union artifacts)
 - **Lokalizacja:** `watershed_service.py` (merge_catchment_boundaries), `watershed.py` (build_boundary)
 
-**E2. Brak mozliwosci odznaczenia zlewni** (priorytet: sredni)
-- Po wyborze zlewni nie da sie jej odznaczyc (zamkniecie panelu nie usunie warstwy z mapy?)
-- **Lokalizacja:** `app.js` (results-close handler), `map.js` (clearWatershed)
+**E2. ✅ Brak mozliwosci odznaczenia zlewni** → naprawione w sesji 18 jako A1 (closeResults czysci wszystkie warstwy)
 
 **E3. ✅ Panel "Parametry zlewni" zaslania przyciski zoom** → panel dokowany z prawej (slide in/out), zoom przesuwa sie automatycznie (sesja 22)
 
