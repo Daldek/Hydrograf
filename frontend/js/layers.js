@@ -12,6 +12,7 @@
     var currentBaseLayer = null;
     var baseLayers = {};
     var _notifyWatershedChanged = null;
+    var _watershedFirstDetection = true;
 
     /**
      * Create a group header element.
@@ -435,8 +436,13 @@
         // ===== Overlay layers =====
         list.appendChild(createGroupHeader('Warstwy podkładowe'));
 
+        // Wrapper for overlay entries (depressions.js appends here)
+        var overlayGroup = document.createElement('div');
+        overlayGroup.id = 'overlay-group-entries';
+        list.appendChild(overlayGroup);
+
         addOverlayEntry(
-            list,
+            overlayGroup,
             'NMT (wysokości)',
             Hydrograf.map.getDemLayer,
             Hydrograf.map.fitDemBounds,
@@ -446,7 +452,7 @@
 
         // BDOT10k water bodies
         addBdotOverlayEntry(
-            list,
+            overlayGroup,
             'Zbiorniki wodne (BDOT10k)',
             function () { return Hydrograf.map.getBdotLakesLayer(); },
             function () { return Hydrograf.map.loadBdotLakes(); },
@@ -457,7 +463,7 @@
 
         // BDOT10k streams
         addBdotOverlayEntry(
-            list,
+            overlayGroup,
             'Cieki BDOT10k',
             function () { return Hydrograf.map.getBdotStreamsLayer(); },
             function () { return Hydrograf.map.loadBdotStreams(); },
@@ -566,14 +572,22 @@
             var layer = Hydrograf.map.getWatershedLayer();
             if (layer) {
                 whCb.disabled = false;
-                whCb.checked = true;
+                // Auto-check only on first detection; respect user toggle after that
+                if (_watershedFirstDetection) {
+                    whCb.checked = true;
+                    _watershedFirstDetection = false;
+                }
                 whHint.textContent = '';
-                whSliderRow.classList.remove('d-none');
+                if (whCb.checked) {
+                    whSliderRow.classList.remove('d-none');
+                }
             } else {
                 whCb.disabled = true;
                 whCb.checked = false;
                 whHint.textContent = '(wyznacz najpierw)';
                 whSliderRow.classList.add('d-none');
+                // Reset flag so next watershed detection auto-checks again
+                _watershedFirstDetection = true;
             }
         };
 
