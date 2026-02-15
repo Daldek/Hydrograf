@@ -1,14 +1,17 @@
 /**
  * Hydrograf Profile module.
  *
- * Terrain profile in two modes: auto (main stream) and manual line drawing.
- * Manual draw renders in a standalone floating panel (#profile-panel).
- * Auto profile renders inside the watershed results accordion (#chart-profile).
+ * Terrain profile via manual line drawing on the map.
+ * Renders in a standalone floating panel (#profile-panel).
+ * Hover over chart shows corresponding point on the map line.
  */
 (function () {
     'use strict';
 
     window.Hydrograf = window.Hydrograf || {};
+
+    // Store drawn line coords (lat/lng pairs) for hover interpolation
+    var _lineLatLngs = null;
 
     /**
      * Show an inline error message near the profile chart canvas.
@@ -17,10 +20,8 @@
         var canvas = document.getElementById(canvasId);
         if (!canvas) return;
         var container = canvas.parentElement;
-        // Remove any existing profile error alert
         var existing = container.querySelector('.profile-error-alert');
         if (existing) existing.remove();
-        // Determine message based on error content
         var isDemError = /503|DEM|dane wysoko/.test(message);
         var text = isDemError
             ? 'DEM niedostępny — profil terenu wymaga wgranych danych wysokościowych'
@@ -37,31 +38,46 @@
     }
 
     /**
-     * Activate auto-profile using main stream geometry from watershed response.
-     * Renders in the standalone floating panel (#chart-profile-standalone).
+     * Handle chart hover — show marker on map at corresponding position.
+     * @param {number} fraction - 0..1 along the line
      */
-    async function activateAutoProfile() {
-        var data = Hydrograf.app.getCurrentWatershed();
-        if (!data || !data.watershed.main_stream_geojson) return;
+    function onChartHover(fraction) {
+        if (!_lineLatLngs || _lineLatLngs.length < 2) return;
 
-        var lineGeojson = data.watershed.main_stream_geojson;
-
-        try {
-            var result = await Hydrograf.api.getTerrainProfile(lineGeojson, 100);
-            Hydrograf.charts.renderProfileChart(
-                'chart-profile-standalone',
-                result.distances_m,
-                result.elevations_m
-            );
-            Hydrograf.map.showProfileLine(lineGeojson.coordinates);
-            var panel = document.getElementById('profile-panel');
-            if (panel) panel.classList.remove('d-none');
-        } catch (err) {
-            console.warn('Profile error:', err.message);
-            var panel = document.getElementById('profile-panel');
-            if (panel) panel.classList.remove('d-none');
-            showProfileError('chart-profile-standalone', err.message);
+        // Compute cumulative distances between vertices
+        var dists = [0];
+        for (var i = 1; i < _lineLatLngs.length; i++) {
+            var prev = _lineLatLngs[i - 1];
+            var cur = _lineLatLngs[i];
+            var dlat = cur[0] - prev[0];
+            var dlng = cur[1] - prev[1];
+            dists.push(dists[i - 1] + Math.sqrt(dlat * dlat + dlng * dlng));
         }
+        var totalDist = dists[dists.length - 1];
+        if (totalDist === 0) return;
+
+        var targetDist = fraction * totalDist;
+
+        // Find segment
+        for (var j = 1; j < dists.length; j++) {
+            if (targetDist <= dists[j]) {
+                var segFrac = (targetDist - dists[j - 1]) / (dists[j] - dists[j - 1]);
+                var lat = _lineLatLngs[j - 1][0] + segFrac * (_lineLatLngs[j][0] - _lineLatLngs[j - 1][0]);
+                var lng = _lineLatLngs[j - 1][1] + segFrac * (_lineLatLngs[j][1] - _lineLatLngs[j - 1][1]);
+                Hydrograf.map.showProfileHoverMarker(lat, lng);
+                return;
+            }
+        }
+        // Edge case: at the very end
+        var last = _lineLatLngs[_lineLatLngs.length - 1];
+        Hydrograf.map.showProfileHoverMarker(last[0], last[1]);
+    }
+
+    /**
+     * Handle chart hover end — remove marker from map.
+     */
+    function onChartHoverEnd() {
+        Hydrograf.map.clearProfileHoverMarker();
     }
 
     /**
@@ -72,7 +88,10 @@
         hideProfilePanel();
 
         Hydrograf.map.startDrawing(function (coords) {
-            // Drawing complete — build GeoJSON line
+            // coords: [[lat, lng], ...] — store for hover interpolation
+            _lineLatLngs = coords;
+
+            // Build GeoJSON line (lon, lat order)
             var lineGeojson = {
                 type: 'LineString',
                 coordinates: coords.map(function (c) { return [c[1], c[0]]; }),
@@ -82,10 +101,11 @@
                 Hydrograf.charts.renderProfileChart(
                     'chart-profile-standalone',
                     result.distances_m,
-                    result.elevations_m
+                    result.elevations_m,
+                    onChartHover,
+                    onChartHoverEnd
                 );
 
-                // Show the standalone profile panel
                 var panel = document.getElementById('profile-panel');
                 if (panel) panel.classList.remove('d-none');
             }).catch(function (err) {
@@ -105,7 +125,9 @@
         if (panel) panel.classList.add('d-none');
         Hydrograf.map.cancelDrawing();
         Hydrograf.map.clearProfileLine();
+        Hydrograf.map.clearProfileHoverMarker();
         Hydrograf.charts.destroyChart('chart-profile-standalone');
+        _lineLatLngs = null;
     }
 
     /**
@@ -114,19 +136,17 @@
     function deactivateProfile() {
         Hydrograf.map.cancelDrawing();
         Hydrograf.map.clearProfileLine();
+        Hydrograf.map.clearProfileHoverMarker();
         Hydrograf.charts.destroyChart('chart-profile-standalone');
+        _lineLatLngs = null;
     }
 
     function init() {
-        var btnAuto = document.getElementById('btn-profile-auto');
-        if (btnAuto) {
-            btnAuto.addEventListener('click', activateAutoProfile);
-        }
+        // No buttons to bind — drawing is activated via mode toolbar
     }
 
     window.Hydrograf.profile = {
         init: init,
-        activateAutoProfile: activateAutoProfile,
         activateDrawProfile: activateDrawProfile,
         deactivateProfile: deactivateProfile,
         hideProfilePanel: hideProfilePanel,
