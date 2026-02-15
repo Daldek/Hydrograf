@@ -13,8 +13,8 @@
     /**
      * Show an inline error message near the profile chart canvas.
      */
-    function showProfileError(message) {
-        var canvas = document.getElementById('chart-profile');
+    function showProfileError(canvasId, message) {
+        var canvas = document.getElementById(canvasId);
         if (!canvas) return;
         var container = canvas.parentElement;
         // Remove any existing profile error alert
@@ -56,7 +56,7 @@
             Hydrograf.map.showProfileLine(lineGeojson.coordinates);
         } catch (err) {
             console.warn('Profile error:', err.message);
-            showProfileError(err.message);
+            showProfileError('chart-profile', err.message);
         }
     }
 
@@ -86,7 +86,9 @@
                 if (panel) panel.classList.remove('d-none');
             }).catch(function (err) {
                 console.warn('Profile error:', err.message);
-                showProfileError(err.message);
+                var panel = document.getElementById('profile-panel');
+                if (panel) panel.classList.remove('d-none');
+                showProfileError('chart-profile-standalone', err.message || 'Błąd');
             });
         });
     }
