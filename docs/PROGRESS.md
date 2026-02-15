@@ -44,9 +44,24 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-15 (sesja 21)
+**Data:** 2026-02-15 (sesja 22)
 
 ### Co zrobiono
+
+- **E3 — Panel wynikow dokowany z prawej (fix zoom overlap):**
+  - `#results-panel` przeniesiony wewnatrz `#map-wrapper` z `position: absolute; right: 0`
+  - Slide in/out z CSS transition (`translateX(400px)`, `opacity`)
+  - Przycisk toggle (chevron `‹`/`›`) przy krawedzi panelu — zachowanie jak panel "Warstwy"
+  - Kontrolki zoom Leaflet przesuwaja sie automatycznie (`#map-wrapper.results-visible .leaflet-bottom.leaflet-right { right: 390px }`)
+  - Usuniety draggable na panelu wynikow, usuniety `#results-restore`, usuniety przycisk minimize
+  - Ikony: layers toggle `☰` → `›`/`‹` (chevron kierunkowy)
+  - Escape: pojedynczy = zwin panel (overlay zostaje), podwojny (400ms) = zamknij jak `×`
+  - Mobile: bottom-sheet zachowany, toggle btn ukryty
+  - Zoom control przeniesiony z `topright` na `bottomright`
+
+- **Wynik:** 449 testow unit, 0 failures
+
+### Poprzednia sesja (2026-02-15, sesja 21)
 
 - **Naprawa 4 bugow panelu warstw i danych (G1-G4):**
   - **G1:** Wysokosc histogramu `.chart-container` zwiekszona z 160px do 240px
@@ -273,7 +288,7 @@
 
 ### Bledy do naprawy (zgloszenie 2026-02-14, sesja 19)
 
-**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E-F-H do rozwiazania**
+**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E3 naprawione (sesja 22), E1-E2-F-H do rozwiazania**
 
 #### D. Frontend — profil terenu — ✅ NAPRAWIONE (sesja 20)
 
@@ -293,9 +308,7 @@
 - Po wyborze zlewni nie da sie jej odznaczyc (zamkniecie panelu nie usunie warstwy z mapy?)
 - **Lokalizacja:** `app.js` (results-close handler), `map.js` (clearWatershed)
 
-**E3. Panel "Parametry zlewni" zaslania przyciski zoom** (priorytet: sredni)
-- Panel wynikow (right: 16px, top: 72px) naklada sie na kontrolki przybliżania/oddalania Leaflet (topright)
-- **Lokalizacja:** `style.css` (#results-panel), `map.js` (zoom control position)
+**E3. ✅ Panel "Parametry zlewni" zaslania przyciski zoom** → panel dokowany z prawej (slide in/out), zoom przesuwa sie automatycznie (sesja 22)
 
 #### F. Logika zlewni czastkowych
 

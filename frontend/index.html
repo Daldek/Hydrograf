@@ -41,7 +41,7 @@
             <h6 class="layers-header">Warstwy</h6>
             <div id="layers-list"></div>
         </div>
-        <button id="layers-toggle" class="layers-toggle glass-panel" title="Warstwy" aria-label="Warstwy" aria-expanded="false">&#9776;</button>
+        <button id="layers-toggle" class="layers-toggle glass-panel" title="Warstwy" aria-label="Warstwy" aria-expanded="false">&#8250;</button>
 
         <!-- Drawing instructions banner -->
         <div id="draw-instructions" class="draw-banner d-none glass-panel">Klik = wierzchołek, Podwójny klik = zakończ, Backspace = cofnij, Esc = anuluj</div>
@@ -58,139 +58,141 @@
                 <span>Profil</span>
             </button>
         </div>
-    </div>
 
-    <!-- Floating results panel -->
-    <div id="results-panel" class="glass-panel d-none">
-        <!-- Drag handle / header -->
-        <div id="results-header" class="results-header">
-            <span class="results-title">Parametry zlewni</span>
-            <div class="results-header-actions">
-                <button id="results-minimize" class="results-btn" title="Minimalizuj">&#8722;</button>
-                <button id="results-close" class="results-btn" title="Zamknij">&times;</button>
-            </div>
-        </div>
-
-        <!-- Content (scrollable) -->
-        <div id="results-body" class="results-body">
-            <!-- Instruction -->
-            <div id="panel-instruction">
-                <p class="text-secondary small mb-0">Kliknij na mapie w pobliżu cieku, aby wyznaczyć zlewnię.</p>
+        <!-- Results panel (docked right) -->
+        <div id="results-panel" class="glass-panel d-none results-hidden">
+            <div id="results-header" class="results-header">
+                <span class="results-title">Parametry zlewni</span>
+                <div class="results-header-actions">
+                    <button id="results-close" class="results-btn" title="Zamknij">&times;</button>
+                </div>
             </div>
 
-            <!-- Loading spinner -->
-            <div id="panel-loading" class="text-center py-4 d-none">
-                <div class="spinner-border spinner-border-sm text-primary" role="status">
-                    <span class="visually-hidden">Wyznaczanie zlewni...</span>
-                </div>
-                <p class="mt-2 text-secondary small">Wyznaczanie zlewni...</p>
-            </div>
-
-            <!-- Error alert -->
-            <div id="panel-error" class="alert alert-danger py-2 px-3 small d-none" role="alert">
-                <strong>Błąd:</strong> <span id="error-message"></span>
-            </div>
-
-            <!-- Results -->
-            <div id="panel-results" class="d-none">
-                <!-- Basic parameters -->
-                <div class="glass-accordion" id="acc-basic">
-                    <div class="glass-accordion-header">
-                        <span>Parametry podstawowe</span>
-                        <span class="glass-accordion-chevron">&#9660;</span>
-                    </div>
-                    <div class="glass-accordion-body">
-                        <table class="table table-sm param-table"><tbody id="params-basic"></tbody></table>
-                    </div>
+            <!-- Content (scrollable) -->
+            <div id="results-body" class="results-body">
+                <!-- Instruction -->
+                <div id="panel-instruction">
+                    <p class="text-secondary small mb-0">Kliknij na mapie w pobliżu cieku, aby wyznaczyć zlewnię.</p>
                 </div>
 
-                <!-- Shape indices -->
-                <div class="glass-accordion" id="acc-shape">
-                    <div class="glass-accordion-header">
-                        <span>Wskaźniki kształtu</span>
-                        <span class="glass-accordion-chevron">&#9660;</span>
+                <!-- Loading spinner -->
+                <div id="panel-loading" class="text-center py-4 d-none">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                        <span class="visually-hidden">Wyznaczanie zlewni...</span>
                     </div>
-                    <div class="glass-accordion-body">
-                        <table class="table table-sm param-table"><tbody id="params-shape"></tbody></table>
-                    </div>
+                    <p class="mt-2 text-secondary small">Wyznaczanie zlewni...</p>
                 </div>
 
-                <!-- Relief indices -->
-                <div class="glass-accordion" id="acc-relief">
-                    <div class="glass-accordion-header">
-                        <span>Rzeźba terenu</span>
-                        <span class="glass-accordion-chevron">&#9660;</span>
-                    </div>
-                    <div class="glass-accordion-body">
-                        <table class="table table-sm param-table"><tbody id="params-relief"></tbody></table>
-                        <div class="chart-container"><canvas id="chart-hypsometric" role="img" aria-label="Krzywa hipsometryczna"></canvas></div>
-                    </div>
+                <!-- Error alert -->
+                <div id="panel-error" class="alert alert-danger py-2 px-3 small d-none" role="alert">
+                    <strong>Błąd:</strong> <span id="error-message"></span>
                 </div>
 
-                <!-- Drainage network -->
-                <div class="glass-accordion" id="acc-drainage">
-                    <div class="glass-accordion-header">
-                        <span>Sieć rzeczna</span>
-                        <span class="glass-accordion-chevron">&#9660;</span>
+                <!-- Results -->
+                <div id="panel-results" class="d-none">
+                    <!-- Basic parameters -->
+                    <div class="glass-accordion" id="acc-basic">
+                        <div class="glass-accordion-header">
+                            <span>Parametry podstawowe</span>
+                            <span class="glass-accordion-chevron">&#9660;</span>
+                        </div>
+                        <div class="glass-accordion-body">
+                            <table class="table table-sm param-table"><tbody id="params-basic"></tbody></table>
+                        </div>
                     </div>
-                    <div class="glass-accordion-body">
-                        <table class="table table-sm param-table"><tbody id="params-drainage"></tbody></table>
-                    </div>
-                </div>
 
-                <!-- Land cover -->
-                <div class="glass-accordion" id="acc-landcover">
-                    <div class="glass-accordion-header">
-                        <span>Pokrycie terenu</span>
-                        <span class="glass-accordion-chevron">&#9660;</span>
+                    <!-- Shape indices -->
+                    <div class="glass-accordion" id="acc-shape">
+                        <div class="glass-accordion-header">
+                            <span>Wskaźniki kształtu</span>
+                            <span class="glass-accordion-chevron">&#9660;</span>
+                        </div>
+                        <div class="glass-accordion-body">
+                            <table class="table table-sm param-table"><tbody id="params-shape"></tbody></table>
+                        </div>
                     </div>
-                    <div class="glass-accordion-body">
-                        <div class="chart-container"><canvas id="chart-landcover" role="img" aria-label="Wykres pokrycia terenu"></canvas></div>
-                    </div>
-                </div>
 
-                <!-- Outlet info -->
-                <div class="glass-accordion" id="acc-outlet">
-                    <div class="glass-accordion-header">
-                        <span>Punkt ujściowy</span>
-                        <span class="glass-accordion-chevron">&#9660;</span>
+                    <!-- Relief indices -->
+                    <div class="glass-accordion" id="acc-relief">
+                        <div class="glass-accordion-header">
+                            <span>Rzeźba terenu</span>
+                            <span class="glass-accordion-chevron">&#9660;</span>
+                        </div>
+                        <div class="glass-accordion-body">
+                            <table class="table table-sm param-table"><tbody id="params-relief"></tbody></table>
+                            <div class="chart-container"><canvas id="chart-hypsometric" role="img" aria-label="Krzywa hipsometryczna"></canvas></div>
+                        </div>
                     </div>
-                    <div class="glass-accordion-body">
-                        <table class="table table-sm param-table"><tbody id="params-outlet"></tbody></table>
-                    </div>
-                </div>
 
-                <!-- Hydrograph -->
-                <div class="glass-accordion collapsed d-none" id="acc-hydrograph">
-                    <div class="glass-accordion-header">
-                        <span>Hydrogram (w przygotowaniu)</span>
-                        <span class="glass-accordion-chevron">&#9660;</span>
+                    <!-- Drainage network -->
+                    <div class="glass-accordion" id="acc-drainage">
+                        <div class="glass-accordion-header">
+                            <span>Sieć rzeczna</span>
+                            <span class="glass-accordion-chevron">&#9660;</span>
+                        </div>
+                        <div class="glass-accordion-body">
+                            <table class="table table-sm param-table"><tbody id="params-drainage"></tbody></table>
+                        </div>
                     </div>
-                    <div class="glass-accordion-body">
-                        <div id="hydrograph-form" class="mb-2">
-                            <div class="row g-1 mb-1">
-                                <div class="col-6">
-                                    <label class="form-label small mb-0">Czas trwania</label>
-                                    <select id="hydro-duration" class="form-select form-select-sm"></select>
+
+                    <!-- Land cover -->
+                    <div class="glass-accordion" id="acc-landcover">
+                        <div class="glass-accordion-header">
+                            <span>Pokrycie terenu</span>
+                            <span class="glass-accordion-chevron">&#9660;</span>
+                        </div>
+                        <div class="glass-accordion-body">
+                            <div class="chart-container"><canvas id="chart-landcover" role="img" aria-label="Wykres pokrycia terenu"></canvas></div>
+                        </div>
+                    </div>
+
+                    <!-- Outlet info -->
+                    <div class="glass-accordion" id="acc-outlet">
+                        <div class="glass-accordion-header">
+                            <span>Punkt ujściowy</span>
+                            <span class="glass-accordion-chevron">&#9660;</span>
+                        </div>
+                        <div class="glass-accordion-body">
+                            <table class="table table-sm param-table"><tbody id="params-outlet"></tbody></table>
+                        </div>
+                    </div>
+
+                    <!-- Hydrograph -->
+                    <div class="glass-accordion collapsed d-none" id="acc-hydrograph">
+                        <div class="glass-accordion-header">
+                            <span>Hydrogram (w przygotowaniu)</span>
+                            <span class="glass-accordion-chevron">&#9660;</span>
+                        </div>
+                        <div class="glass-accordion-body">
+                            <div id="hydrograph-form" class="mb-2">
+                                <div class="row g-1 mb-1">
+                                    <div class="col-6">
+                                        <label class="form-label small mb-0">Czas trwania</label>
+                                        <select id="hydro-duration" class="form-select form-select-sm"></select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small mb-0">Prawdopodobieństwo</label>
+                                        <select id="hydro-probability" class="form-select form-select-sm"></select>
+                                    </div>
                                 </div>
-                                <div class="col-6">
-                                    <label class="form-label small mb-0">Prawdopodobieństwo</label>
-                                    <select id="hydro-probability" class="form-select form-select-sm"></select>
-                                </div>
+                                <button id="btn-generate-hydro" class="btn btn-sm btn-primary w-100">Generuj</button>
                             </div>
-                            <button id="btn-generate-hydro" class="btn btn-sm btn-primary w-100">Generuj</button>
+                            <div id="hydrograph-results" class="d-none">
+                                <div id="hydro-summary" class="small text-secondary mb-1"></div>
+                                <canvas id="chart-hydrograph" height="160" role="img" aria-label="Hydrogram odpływu"></canvas>
+                                <canvas id="chart-hietogram" height="100" class="mt-2" role="img" aria-label="Hietogram opadu"></canvas>
+                                <div id="hydro-balance" class="mt-2"></div>
+                            </div>
+                            <div id="hydrograph-info" class="mt-1"></div>
                         </div>
-                        <div id="hydrograph-results" class="d-none">
-                            <div id="hydro-summary" class="small text-secondary mb-1"></div>
-                            <canvas id="chart-hydrograph" height="160" role="img" aria-label="Hydrogram odpływu"></canvas>
-                            <canvas id="chart-hietogram" height="100" class="mt-2" role="img" aria-label="Hietogram opadu"></canvas>
-                            <div id="hydro-balance" class="mt-2"></div>
-                        </div>
-                        <div id="hydrograph-info" class="mt-1"></div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <!-- External toggle button for collapsed results panel -->
+        <button id="results-toggle-btn" class="results-toggle glass-panel d-none"
+                title="Parametry zlewni" aria-label="Parametry zlewni">&#8249;</button>
     </div>
 
     <!-- Floating profile panel (independent from watershed results) -->
@@ -205,11 +207,6 @@
             <canvas id="chart-profile-standalone" height="160" role="img" aria-label="Profil terenu"></canvas>
         </div>
     </div>
-
-    <!-- Minimized panel indicator -->
-    <button id="results-restore" class="glass-panel results-restore d-none" title="Przywróć panel">
-        <span>&#9650;</span>
-    </button>
 
     <!-- Leaflet 1.9.4 JS -->
     <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
