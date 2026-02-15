@@ -128,11 +128,6 @@
         els.hydrographInfo.innerHTML = '';
         document.getElementById('acc-hydrograph').classList.add('d-none');
 
-        // Profile: enable auto-profile if main stream available
-        if (w.main_stream_geojson) {
-            var btnAuto = document.getElementById('btn-profile-auto');
-            if (btnAuto) btnAuto.disabled = false;
-        }
     }
 
     // ======== Floating panel management ========
@@ -445,8 +440,6 @@
             Hydrograf.map.clearProfileLine();
             if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
             if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
-            var btnAuto = document.getElementById('btn-profile-auto');
-            if (btnAuto) btnAuto.disabled = true;
             state.currentWatershed = null;
             hidePanel();
         });
