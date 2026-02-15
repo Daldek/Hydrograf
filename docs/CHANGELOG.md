@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Krzywa hipsometryczna:** sekcja "Rzezba terenu" zmieniona z histogramu slupkowego na krzywa hipsometryczna (scatter + line); os Y: wysokosc [m n.p.m.], os X: % powierzchni powyzej (0–100, co 20)
+
 ### Fixed (4 bugfixes — G1-G4, panel warstw i dane)
 - **G1 — histogram za maly:** wysokosc `.chart-container` zwiekszona z 160px do 240px
 - **G2 — brak pokrycia terenu:** naprawiono parsowanie nazw warstw GeoPackage (OT_PTLZ_A → PTLZ); zaimportowano 38560 rekordow BDOT10k (12 warstw, 7 kategorii) do tabeli `land_cover`

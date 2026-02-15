@@ -55,7 +55,9 @@
   - **G4a:** Zaglbienia przeniesione do grupy "Warstwy podkladowe" (nowy kontener `#overlay-group-entries`)
   - **G4b:** Checkbox zlewni — auto-check tylko przy pierwszym wykryciu; flaga `_watershedFirstDetection` resetowana po usunieciu warstwy
 
-- **Wynik:** 550 testow, 0 failures, 5 commitow
+- **Krzywa hipsometryczna:** sekcja "Rzezba terenu" zmieniona z histogramu na krzywa hipsometryczna — os Y: wysokosc [m n.p.m.], os X: % powierzchni powyzej (0–100, co 20)
+
+- **Wynik:** 550 testow, 0 failures, 6 commitow
 
 ### Poprzednia sesja (2026-02-15, sesja 20)
 
