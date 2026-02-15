@@ -312,6 +312,68 @@ class TestBoundaryToPolygon:
         # The larger polygon is the 10x10 square (area=100), not the 1x1 (area=1)
         assert result.area == pytest.approx(100.0, rel=1e-6)
 
+    def test_removes_small_interior_holes(self):
+        """Small interior hole (< MIN_HOLE_AREA_M2) is removed."""
+        # Outer ring: 200×200 m
+        outer = [(0, 0), (200, 0), (200, 200), (0, 200), (0, 0)]
+        # Small hole: ~3×3 m = 9 m² (well below 1000 m² threshold)
+        hole = [(90, 90), (93, 90), (93, 93), (90, 93), (90, 90)]
+        poly = Polygon(outer, [hole])
+
+        assert len(list(poly.interiors)) == 1
+
+        result = boundary_to_polygon(poly)
+
+        assert isinstance(result, Polygon)
+        assert len(list(result.interiors)) == 0
+        # Area should now be the full outer ring
+        assert result.area == pytest.approx(200 * 200, rel=1e-6)
+
+    def test_preserves_large_interior_holes(self):
+        """Large interior hole (>= MIN_HOLE_AREA_M2) is preserved."""
+        # Outer ring: 200×200 m
+        outer = [(0, 0), (200, 0), (200, 200), (0, 200), (0, 0)]
+        # Large hole: 50×50 m = 2500 m² (well above 1000 m² threshold)
+        hole = [(50, 50), (100, 50), (100, 100), (50, 100), (50, 50)]
+        poly = Polygon(outer, [hole])
+
+        result = boundary_to_polygon(poly)
+
+        assert isinstance(result, Polygon)
+        assert len(list(result.interiors)) == 1
+        assert result.area == pytest.approx(200 * 200 - 50 * 50, rel=1e-6)
+
+    def test_polygon_without_holes_unchanged(self):
+        """Polygon with no holes passes through without modification."""
+        poly = Polygon([(0, 0), (100, 0), (100, 100), (0, 100), (0, 0)])
+
+        result = boundary_to_polygon(poly)
+
+        assert isinstance(result, Polygon)
+        assert len(list(result.interiors)) == 0
+        assert result.area == pytest.approx(10000.0, rel=1e-6)
+
+    def test_multipolygon_holes_filtered(self):
+        """MultiPolygon: small holes are removed from the largest polygon."""
+        # Large polygon with a small hole
+        outer1 = [(0, 0), (200, 0), (200, 200), (0, 200), (0, 0)]
+        small_hole = [(90, 90), (92, 90), (92, 92), (90, 92), (90, 90)]
+        large_poly = Polygon(outer1, [small_hole])
+
+        # Small polygon (no holes)
+        small_poly = Polygon(
+            [(300, 300), (301, 300), (301, 301), (300, 301), (300, 300)]
+        )
+
+        multi = MultiPolygon([small_poly, large_poly])
+
+        result = boundary_to_polygon(multi)
+
+        assert isinstance(result, Polygon)
+        # Should be the largest polygon with small hole removed
+        assert result.area == pytest.approx(200 * 200, rel=1e-6)
+        assert len(list(result.interiors)) == 0
+
 
 # ---------------------------------------------------------------------------
 # build_morph_dict_from_graph
