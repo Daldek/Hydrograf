@@ -105,30 +105,45 @@
     /**
      * Render hypsometric curve chart.
      *
+     * X axis: % of area at or above given elevation (0–100, step 20).
+     * Y axis: elevation [m a.s.l.].
+     *
      * @param {string} canvasId - Canvas element ID
      * @param {Array} curveData - Array of { relative_height, relative_area }
+     *        where relative_area = fraction of total area ABOVE that height
+     * @param {number} elevMin - Minimum elevation [m a.s.l.]
+     * @param {number} elevMax - Maximum elevation [m a.s.l.]
      */
-    function renderHypsometricChart(canvasId, curveData) {
+    function renderHypsometricChart(canvasId, curveData, elevMin, elevMax) {
         destroyChart(canvasId);
 
         var canvas = document.getElementById(canvasId);
         if (!canvas || typeof Chart === 'undefined') return;
+        if (!curveData || curveData.length < 2) return;
 
-        // Sort by relative_area ascending
-        var sorted = curveData.slice().sort(function (a, b) {
-            return a.relative_area - b.relative_area;
+        var elevRange = elevMax - elevMin;
+        if (elevRange <= 0) return;
+
+        // Convert: X = % area above (relative_area * 100), Y = elevation
+        // Sort by area-above descending so curve goes from (100%, elevMin) to (0%, elevMax)
+        var points = curveData.map(function (p) {
+            return {
+                elevation: elevMin + p.relative_height * elevRange,
+                areaAbovePct: p.relative_area * 100,
+            };
         });
+        points.sort(function (a, b) { return b.areaAbovePct - a.areaAbovePct; });
 
         charts[canvasId] = new Chart(canvas, {
-            type: 'line',
+            type: 'scatter',
             data: {
-                labels: sorted.map(function (p) { return (p.relative_area * 100).toFixed(0); }),
                 datasets: [{
                     label: 'Krzywa hipsometryczna',
-                    data: sorted.map(function (p) { return (p.relative_height * 100).toFixed(1); }),
+                    data: points.map(function (p) { return { x: p.areaAbovePct, y: Math.round(p.elevation * 10) / 10 }; }),
                     borderColor: '#0A84FF',
                     backgroundColor: 'rgba(10, 132, 255, 0.1)',
                     fill: true,
+                    showLine: true,
                     tension: 0.3,
                     pointRadius: 0,
                     borderWidth: 2,
@@ -141,21 +156,23 @@
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            title: function (items) { return 'a/A = ' + items[0].label + '%'; },
-                            label: function (ctx) { return 'h/H = ' + ctx.parsed.y + '%'; },
+                            label: function (ctx) {
+                                return ctx.parsed.y.toFixed(1) + ' m n.p.m. (' + ctx.parsed.x.toFixed(0) + '% pow.)';
+                            },
                         },
                     },
                 },
                 scales: {
                     x: {
-                        title: { display: true, text: 'a/A [%]', font: { size: 10 } },
-                        ticks: { font: { size: 9 }, maxTicksLimit: 6 },
-                    },
-                    y: {
-                        title: { display: true, text: 'h/H [%]', font: { size: 10 } },
-                        ticks: { font: { size: 9 }, maxTicksLimit: 6 },
+                        type: 'linear',
+                        title: { display: true, text: 'Pow. powyżej [%]', font: { size: 10 } },
+                        ticks: { font: { size: 9 }, stepSize: 20 },
                         min: 0,
                         max: 100,
+                    },
+                    y: {
+                        title: { display: true, text: 'Wysokość [m n.p.m.]', font: { size: 10 } },
+                        ticks: { font: { size: 9 }, maxTicksLimit: 6 },
                     },
                 },
             },
