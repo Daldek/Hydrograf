@@ -38,7 +38,7 @@
 
     /**
      * Activate auto-profile using main stream geometry from watershed response.
-     * Renders in the accordion canvas (#chart-profile) inside #results-panel.
+     * Renders in the standalone floating panel (#chart-profile-standalone).
      */
     async function activateAutoProfile() {
         var data = Hydrograf.app.getCurrentWatershed();
@@ -49,14 +49,18 @@
         try {
             var result = await Hydrograf.api.getTerrainProfile(lineGeojson, 100);
             Hydrograf.charts.renderProfileChart(
-                'chart-profile',
+                'chart-profile-standalone',
                 result.distances_m,
                 result.elevations_m
             );
             Hydrograf.map.showProfileLine(lineGeojson.coordinates);
+            var panel = document.getElementById('profile-panel');
+            if (panel) panel.classList.remove('d-none');
         } catch (err) {
             console.warn('Profile error:', err.message);
-            showProfileError('chart-profile', err.message);
+            var panel = document.getElementById('profile-panel');
+            if (panel) panel.classList.remove('d-none');
+            showProfileError('chart-profile-standalone', err.message);
         }
     }
 
@@ -105,23 +109,18 @@
     }
 
     /**
-     * Deactivate profile and clean up (used for accordion chart).
+     * Deactivate profile and clean up.
      */
     function deactivateProfile() {
         Hydrograf.map.cancelDrawing();
         Hydrograf.map.clearProfileLine();
-        Hydrograf.charts.destroyChart('chart-profile');
+        Hydrograf.charts.destroyChart('chart-profile-standalone');
     }
 
     function init() {
         var btnAuto = document.getElementById('btn-profile-auto');
-        var btnDraw = document.getElementById('btn-profile-draw');
-
         if (btnAuto) {
             btnAuto.addEventListener('click', activateAutoProfile);
-        }
-        if (btnDraw) {
-            btnDraw.addEventListener('click', activateDrawProfile);
         }
     }
 
