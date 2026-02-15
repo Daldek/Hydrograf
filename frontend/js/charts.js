@@ -168,12 +168,64 @@
      * @param {string} canvasId - Canvas element ID
      * @param {Array} distances - Distance values [m]
      * @param {Array} elevations - Elevation values [m]
+     * @param {Function} [onHover] - Callback(fraction) when hovering, fraction 0..1
+     * @param {Function} [onHoverEnd] - Callback when mouse leaves chart
      */
-    function renderProfileChart(canvasId, distances, elevations) {
+    function renderProfileChart(canvasId, distances, elevations, onHover, onHoverEnd) {
         destroyChart(canvasId);
 
         var canvas = document.getElementById(canvasId);
         if (!canvas || typeof Chart === 'undefined') return;
+
+        var nSamples = distances.length;
+
+        // Vertical crosshair + hover callback plugin
+        var hoverPlugin = {
+            id: 'profileHover',
+            afterEvent: function (chart, args) {
+                var evt = args.event;
+                if (evt.type === 'mouseout') {
+                    chart._profileHoverIndex = -1;
+                    if (onHoverEnd) onHoverEnd();
+                    chart.draw();
+                    return;
+                }
+                if (evt.type !== 'mousemove') return;
+                var area = chart.chartArea;
+                if (!area) return;
+                if (evt.x < area.left || evt.x > area.right ||
+                    evt.y < area.top || evt.y > area.bottom) {
+                    if (chart._profileHoverIndex !== -1) {
+                        chart._profileHoverIndex = -1;
+                        if (onHoverEnd) onHoverEnd();
+                        chart.draw();
+                    }
+                    return;
+                }
+                var fraction = (evt.x - area.left) / (area.right - area.left);
+                var idx = Math.round(fraction * (nSamples - 1));
+                chart._profileHoverIndex = idx;
+                if (onHover) onHover(fraction);
+                chart.draw();
+            },
+            afterDraw: function (chart) {
+                var idx = chart._profileHoverIndex;
+                if (idx == null || idx < 0) return;
+                var area = chart.chartArea;
+                var meta = chart.getDatasetMeta(0);
+                if (!meta || !meta.data || !meta.data[idx]) return;
+                var x = meta.data[idx].x;
+                var ctx = chart.ctx;
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(x, area.top);
+                ctx.lineTo(x, area.bottom);
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = 'rgba(220, 53, 69, 0.7)';
+                ctx.stroke();
+                ctx.restore();
+            },
+        };
 
         charts[canvasId] = new Chart(canvas, {
             type: 'line',
@@ -182,8 +234,8 @@
                 datasets: [{
                     label: 'Wysokość [m n.p.m.]',
                     data: elevations,
-                    borderColor: '#8B4513',
-                    backgroundColor: 'rgba(139, 69, 19, 0.15)',
+                    borderColor: '#DC3545',
+                    backgroundColor: 'rgba(220, 53, 69, 0.12)',
                     fill: true,
                     tension: 0.2,
                     pointRadius: 0,
@@ -193,6 +245,10 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index',
+                },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -215,6 +271,7 @@
                     },
                 },
             },
+            plugins: [hoverPlugin],
         });
     }
 

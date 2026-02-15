@@ -594,7 +594,7 @@
         if (drawPolyline) {
             if (profileLine) map.removeLayer(profileLine);
             profileLine = drawPolyline;
-            profileLine.setStyle({ color: '#8B4513', weight: 3, opacity: 0.8, dashArray: null });
+            profileLine.setStyle({ color: '#DC3545', weight: 3, opacity: 0.8, dashArray: null });
             drawPolyline = null;
         }
 
@@ -625,7 +625,7 @@
         // coords: [[lng, lat], ...] (GeoJSON order)
         var latlngs = coords.map(function (c) { return [c[1], c[0]]; });
         profileLine = L.polyline(latlngs, {
-            color: '#8B4513',
+            color: '#DC3545',
             weight: 3,
             opacity: 0.8,
         }).addTo(map);
@@ -633,6 +633,30 @@
 
     function clearProfileLine() {
         if (profileLine) { map.removeLayer(profileLine); profileLine = null; }
+    }
+
+    // Profile hover marker (shows position on line when hovering over chart)
+    var profileHoverMarker = null;
+
+    function showProfileHoverMarker(lat, lng) {
+        if (profileHoverMarker) {
+            profileHoverMarker.setLatLng([lat, lng]);
+        } else {
+            profileHoverMarker = L.circleMarker([lat, lng], {
+                radius: 6,
+                color: '#fff',
+                fillColor: '#DC3545',
+                fillOpacity: 1,
+                weight: 2,
+            }).addTo(map);
+        }
+    }
+
+    function clearProfileHoverMarker() {
+        if (profileHoverMarker) {
+            map.removeLayer(profileHoverMarker);
+            profileHoverMarker = null;
+        }
     }
 
     // ===== BDOT10k vector layers (lakes + streams) =====
@@ -768,6 +792,8 @@
         // Profile
         showProfileLine: showProfileLine,
         clearProfileLine: clearProfileLine,
+        showProfileHoverMarker: showProfileHoverMarker,
+        clearProfileHoverMarker: clearProfileHoverMarker,
         // BDOT10k vectors
         loadBdotLakes: loadBdotLakes,
         getBdotLakesLayer: getBdotLakesLayer,

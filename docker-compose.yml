@@ -44,7 +44,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:-hydro_password}@db:5432/${POSTGRES_DB:-hydro_db}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DEM_PATH: ${DEM_PATH:-/data/dem/dem.vrt}
+      DEM_PATH: ${DEM_PATH:-/data/dem/dem_mosaic.vrt}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -58,6 +58,7 @@ services:
           cpus: "2.0"
     volumes:
       - ./backend:/app
+      - ./data/e2e_test:/data/dem:ro
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
   nginx:
