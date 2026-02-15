@@ -49,11 +49,21 @@
 ### Co zrobiono
 
 - **Naprawa 4 bugow profilu terenu (D1-D4):**
-  - **D2:** Guard w `addDrawVertex()` ignoruje duplikaty z dblclick; `finishDrawing()` zmienia styl linii na solid brown
+  - **D2:** Guard w `addDrawVertex()` ignoruje duplikaty z dblclick; styl linii solid po zakonczeniu
   - **D1:** `showProfileError()` przyjmuje `canvasId`; `activateDrawProfile().catch()` pokazuje `#profile-panel` przed bledem
   - **D3:** `cancelDrawing()` czysci `profileLine`; `onMapClick()` w trybie profile re-aktywuje rysowanie po Escape
-  - **D4:** Usuniety akordeon `#acc-profile`; przycisk "Ciek glowny" w headerze `#profile-panel` (disabled/enabled dynamicznie)
-  - **Wynik:** 550 testow, 0 failures, 4 commity
+  - **D4:** Usuniety akordeon `#acc-profile`; przycisk "Ciek glowny" usuniety (auto-profil do wdrozenia pozniej)
+
+- **Interaktywny profil terenu:**
+  - Hover nad wykresem → czerwony marker na narysowanej linii na mapie (interpolacja wzdluz wierzcholkow)
+  - Pionowa linia crosshair na wykresie w miejscu kursora
+  - Kolor linii i wykresu profilu zmieniony na czerwony (#DC3545)
+
+- **DEM w kontenerze Docker:**
+  - `docker-compose.yml`: zamontowano `data/e2e_test` jako `/data/dem:ro`, DEM_PATH → `dem_mosaic.vrt`
+  - Profil terenu dziala poprawnie w kontenerze
+
+- **Wynik:** 550 testow, 0 failures, 6 commitow
 
 ### Poprzednia sesja (2026-02-14, sesja 19)
 
