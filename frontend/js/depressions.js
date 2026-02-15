@@ -30,12 +30,13 @@
                     attribution: 'Zagłębienia (blue spots)',
                 });
 
-                // Add to layers panel if available
+                // Add to layers panel — "Warstwy podkładowe" group
                 if (Hydrograf.layers) {
-                    var list = document.getElementById('layers-list');
-                    if (list) {
+                    var overlayGroup = document.getElementById('overlay-group-entries')
+                        || document.getElementById('layers-list');
+                    if (overlayGroup) {
                         Hydrograf.layers.addOverlayEntry(
-                            list,
+                            overlayGroup,
                             'Zagłębienia',
                             function () { return depressionsOverlay; },
                             function () {
