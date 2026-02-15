@@ -160,21 +160,6 @@
                     </div>
                 </div>
 
-                <!-- Terrain profile -->
-                <div class="glass-accordion collapsed" id="acc-profile">
-                    <div class="glass-accordion-header">
-                        <span>Profil terenu</span>
-                        <span class="glass-accordion-chevron">&#9660;</span>
-                    </div>
-                    <div class="glass-accordion-body">
-                        <div class="profile-actions mb-2">
-                            <button id="btn-profile-auto" class="btn btn-sm btn-outline-primary me-1">Ciek główny</button>
-                            <button id="btn-profile-draw" class="btn btn-sm btn-outline-secondary">Rysuj linię</button>
-                        </div>
-                        <div class="chart-container"><canvas id="chart-profile" role="img" aria-label="Profil terenu"></canvas></div>
-                    </div>
-                </div>
-
                 <!-- Hydrograph -->
                 <div class="glass-accordion collapsed d-none" id="acc-hydrograph">
                     <div class="glass-accordion-header">
@@ -213,6 +198,8 @@
         <div id="profile-header" class="results-header">
             <span class="results-title">Profil terenu</span>
             <div class="results-header-actions">
+                <button id="btn-profile-auto" class="btn btn-sm btn-outline-primary me-1"
+                        disabled title="Wymaga wyznaczonej zlewni">Ciek główny</button>
                 <button id="profile-close" class="results-btn" title="Zamknij">&times;</button>
             </div>
         </div>

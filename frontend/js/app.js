@@ -129,8 +129,9 @@
         document.getElementById('acc-hydrograph').classList.add('d-none');
 
         // Profile: enable auto-profile if main stream available
-        if (w.main_stream_geojson && Hydrograf.profile) {
-            document.getElementById('btn-profile-auto').disabled = false;
+        if (w.main_stream_geojson) {
+            var btnAuto = document.getElementById('btn-profile-auto');
+            if (btnAuto) btnAuto.disabled = false;
         }
     }
 
@@ -312,7 +313,7 @@
 
         // Hide other accordions
         ['acc-shape', 'acc-relief', 'acc-drainage', 'acc-landcover', 'acc-outlet',
-         'acc-profile', 'acc-hydrograph'].forEach(function (id) {
+         'acc-hydrograph'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.classList.add('collapsed');
         });
@@ -444,6 +445,8 @@
             Hydrograf.map.clearProfileLine();
             if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
             if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
+            var btnAuto = document.getElementById('btn-profile-auto');
+            if (btnAuto) btnAuto.disabled = true;
             state.currentWatershed = null;
             hidePanel();
         });
