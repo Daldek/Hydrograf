@@ -7,12 +7,19 @@
     --glass-blur: 16px;
     --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.25);
     --glass-radius: 14px;
+
+    /* Liquid glass tokens */
+    --liquid-bg: rgba(255, 255, 255, 0.22);
+    --liquid-border: rgba(255, 255, 255, 0.4);
+    --liquid-blur: 20px;
+    --liquid-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    --liquid-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.5);
     --color-primary: #0A84FF;
     --color-success: #30D158;
     --color-danger: #FF453A;
     --color-warning: #FFD60A;
-    --color-text: #1d1d1f;
-    --color-text-secondary: #6e6e73;
+    --color-text: #000000;
+    --color-text-secondary: #1d1d1f;
     --color-divider: rgba(0, 0, 0, 0.08);
     --transition-default: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }

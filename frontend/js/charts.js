@@ -86,6 +86,7 @@
                             font: { size: 10 },
                             boxWidth: 12,
                             padding: 6,
+                            color: '#000',
                         },
                     },
                     tooltip: {
@@ -165,14 +166,16 @@
                 scales: {
                     x: {
                         type: 'linear',
-                        title: { display: true, text: 'Pow. powyżej [%]', font: { size: 10 } },
-                        ticks: { font: { size: 9 }, stepSize: 20 },
+                        title: { display: true, text: 'Pow. powyżej [%]', font: { size: 10 }, color: '#000' },
+                        ticks: { font: { size: 9 }, stepSize: 20, color: '#000' },
+                        grid: { color: 'rgba(0,0,0,0.1)' },
                         min: 0,
                         max: 100,
                     },
                     y: {
-                        title: { display: true, text: 'Wysokość [m n.p.m.]', font: { size: 10 } },
-                        ticks: { font: { size: 9 }, maxTicksLimit: 6 },
+                        title: { display: true, text: 'Wysokość [m n.p.m.]', font: { size: 10 }, color: '#000' },
+                        ticks: { font: { size: 9 }, maxTicksLimit: 6, color: '#000' },
+                        grid: { color: 'rgba(0,0,0,0.1)' },
                     },
                 },
             },
@@ -371,12 +374,14 @@
                 },
                 scales: {
                     x: {
-                        title: { display: true, text: 'Wysokość [m n.p.m.]', font: { size: 9 } },
-                        ticks: { font: { size: 7 }, maxRotation: 90, minRotation: 45 },
+                        title: { display: true, text: 'Wysokość [m n.p.m.]', font: { size: 9 }, color: '#000' },
+                        ticks: { font: { size: 7 }, maxRotation: 90, minRotation: 45, color: '#000' },
+                        grid: { color: 'rgba(0,0,0,0.1)' },
                     },
                     y: {
-                        title: { display: true, text: 'Powierzchnia [%]', font: { size: 10 } },
-                        ticks: { font: { size: 9 } },
+                        title: { display: true, text: 'Powierzchnia [%]', font: { size: 10 }, color: '#000' },
+                        ticks: { font: { size: 9 }, color: '#000' },
+                        grid: { color: 'rgba(0,0,0,0.1)' },
                         beginAtZero: true,
                     },
                 },
