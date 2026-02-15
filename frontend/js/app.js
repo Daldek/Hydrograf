@@ -113,10 +113,10 @@
             document.getElementById('acc-landcover').classList.add('collapsed');
         }
 
-        // Chart: elevation histogram (from hypsometric curve data)
+        // Chart: hypsometric curve
         if (w.hypsometric_curve && w.hypsometric_curve.length > 0 &&
             m.elevation_min_m != null && m.elevation_max_m != null) {
-            Hydrograf.charts.renderElevationHistogram(
+            Hydrograf.charts.renderHypsometricChart(
                 'chart-hypsometric', w.hypsometric_curve,
                 m.elevation_min_m, m.elevation_max_m
             );
