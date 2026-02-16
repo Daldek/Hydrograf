@@ -13,7 +13,12 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import get_catchment_graph
-from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
+from core.constants import (
+    DEFAULT_THRESHOLD_M2,
+    DELINEATION_MAX_AREA_M2,
+    HYDROGRAPH_AREA_LIMIT_KM2,
+    M2_PER_KM2,
+)
 from core.database import get_db
 from core.land_cover import get_land_cover_for_boundary
 from core.watershed_service import (
@@ -135,13 +140,39 @@ def delineate_watershed(
         area_km2 = stats["area_km2"]
         logger.debug(f"Watershed area: {area_km2:.2f} km2")
 
+        # 6a. Auto-selection check: area > limit → selection display
+        auto_selected = area_km2 > DELINEATION_MAX_AREA_M2 / M2_PER_KM2
+
         # 7. Check if hydrograph generation is available (SCS-CN limit)
         hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
 
-        # 8. Build boundary from ST_Union of catchment polygons
+        # 8. Build boundary from ST_Union of catchment polygons.
+        # For large catchments (500+ segments), cascade to coarser
+        # thresholds to avoid ST_UnaryUnion timeout (30s DB limit).
+        _MAX_MERGE = 500
+        merge_idxs = segment_idxs
+        merge_threshold = DEFAULT_THRESHOLD_M2
+
+        if len(segment_idxs) > _MAX_MERGE:
+            for t in [1000, 10000, 100000]:
+                if t <= DEFAULT_THRESHOLD_M2:
+                    continue
+                try:
+                    t_node = cg.find_catchment_at_point(
+                        point_2180.x, point_2180.y, t, db
+                    )
+                except ValueError:
+                    continue
+                t_up = cg.traverse_upstream(t_node)
+                t_segs = cg.get_segment_indices(t_up, t)
+                if len(t_segs) <= _MAX_MERGE or t == 100000:
+                    merge_idxs = t_segs
+                    merge_threshold = t
+                    break
+
         boundary_2180 = merge_catchment_boundaries(
-            segment_idxs,
-            DEFAULT_THRESHOLD_M2,
+            merge_idxs,
+            merge_threshold,
             db,
         )
         if boundary_2180 is None:
@@ -241,7 +272,16 @@ def delineate_watershed(
                 hypsometric_curve=hypso_curve,
                 land_cover_stats=lc_stats,
                 main_stream_geojson=main_stream_geojson,
-            )
+            ),
+            auto_selected=auto_selected,
+            upstream_segment_indices=segment_idxs if auto_selected else None,
+            display_threshold_m2=DEFAULT_THRESHOLD_M2 if auto_selected else None,
+            info_message=(
+                "Zlewnia przekracza 10 000 m² — wyświetlono "
+                "pre-obliczone zlewnie cząstkowe."
+                if auto_selected
+                else None
+            ),
         )
 
         logger.info(

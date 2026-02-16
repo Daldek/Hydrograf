@@ -24,3 +24,6 @@ MAX_STREAM_DISTANCE_M = 1000.0
 
 # Default flow accumulation threshold (finest resolution)
 DEFAULT_THRESHOLD_M2 = 1000
+
+# Delineation area limit — above this, auto-switch to selection display
+DELINEATION_MAX_AREA_M2 = 10_000  # 0.01 km²

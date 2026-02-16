@@ -200,6 +200,8 @@
         Hydrograf.map.clearSelectionBoundary();
         Hydrograf.map.clearCatchmentHighlights();
         Hydrograf.map.clearProfileLine();
+        var autoInfo = document.getElementById('panel-auto-select-info');
+        if (autoInfo) autoInfo.classList.add('d-none');
         if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
         if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
         state.currentWatershed = null;
@@ -252,15 +254,32 @@
         setLoading(true);
         state.currentWatershed = null;
 
-        // Clear any selection highlights
+        // Clear any selection highlights and auto-select banner
         Hydrograf.map.clearCatchmentHighlights();
         Hydrograf.map.clearSelectionBoundary();
+        var autoInfo = document.getElementById('panel-auto-select-info');
+        if (autoInfo) autoInfo.classList.add('d-none');
 
         try {
             var data = await Hydrograf.api.delineateWatershed(lat, lng);
             state.currentWatershed = data;
 
-            Hydrograf.map.showWatershed(data.watershed.boundary_geojson);
+            // Check auto-selection
+            if (data.auto_selected) {
+                // Show info banner
+                var autoMsg = document.getElementById('auto-select-message');
+                if (autoMsg) autoMsg.textContent = data.info_message;
+                if (autoInfo) autoInfo.classList.remove('d-none');
+
+                // Use selection display (orange boundary + MVT highlights)
+                Hydrograf.map.showSelectionBoundary(data.watershed.boundary_geojson);
+                if (data.upstream_segment_indices && data.upstream_segment_indices.length > 0) {
+                    Hydrograf.map.highlightUpstreamCatchments(data.upstream_segment_indices);
+                }
+            } else {
+                if (autoInfo) autoInfo.classList.add('d-none');
+                Hydrograf.map.showWatershed(data.watershed.boundary_geojson);
+            }
 
             var outlet = data.watershed.outlet;
             Hydrograf.map.showOutlet(outlet.latitude, outlet.longitude, outlet.elevation_m);
