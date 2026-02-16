@@ -44,12 +44,20 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-15 (sesja 24)
+**Data:** 2026-02-16 (sesja 25)
 
 ### Co zrobiono
 
+- **F1 — precyzyjna selekcja cieku — kontynuacja:**
+  - **Re-run pipeline:** 105492 segmentow (prog 100, bylo 78829, +34%), lacznie 117228 across 4 progi. CatchmentGraph: 117228 nodes, 5.1 MB RAM, 1.5s startup.
+  - **Fix wydajnosci duzych zlewni:** kaskadowe progi merge (100→1000→10000→100000) gdy fine segments >500 — zapobiega timeout ST_UnaryUnion na 30s. Fix mapowania stream_network.id ≠ stream_catchments.segment_idx.
+  - **Weryfikacja F1:** dwa klikniecia na tym samym cieku (idx=1002631, Strahler 2) daja rozne wyniki: Point A 0.04 km² (12 seg), Point B 0.05 km² (14 seg). Response time: 0.5-1.1s.
+  - **Weryfikacja duzych zlewni:** threshold 100000 → 8.23 km², 73 segs, 18s (bylo timeout).
+
+### Poprzednia sesja (2026-02-15, sesja 24)
+
 - **F1 — precyzyjna selekcja cieku (ADR-024):**
-  - **Czesc A (preprocessing):** dodano warunek konfluencji w `vectorize_streams()` — segmenty lamia sie przy kazdym polaczeniu doplywow, nie tylko przy zmianie Strahlera. Szacowany wpływ: ~78k → ~120-160k segmentow (wymaga re-run pipeline).
+  - **Czesc A (preprocessing):** dodano warunek konfluencji w `vectorize_streams()` — segmenty lamia sie przy kazdym polaczeniu doplywow, nie tylko przy zmianie Strahlera.
   - **Czesc B (query):** BFS na progu 100 m² zamiast display threshold. Nowe funkcje: `find_stream_catchment_at_point()` (snap-to-stream), `map_boundary_to_display_segments()` (mapowanie fine→display). Optymalizacja SQL: `ST_UnaryUnion + ST_SnapToGrid`. Fallback do display threshold.
   - **Testy:** 557 testow, 0 failures (+3 nowe: confluence segmentation, multi-threshold BFS, fallback)
   - **Dokumentacja:** ADR-024, CHANGELOG, PROGRESS
