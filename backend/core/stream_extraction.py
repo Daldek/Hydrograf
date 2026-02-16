@@ -461,7 +461,7 @@ def polygonize_subcatchments(
 
     # Build catchment records
     catchments = []
-    simplify_tol = cellsize / 2
+    simplify_tol = cellsize
 
     for seg_idx in sorted(geom_groups.keys()):
         geom_list = geom_groups[seg_idx]
