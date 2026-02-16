@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-02-16
 
+### Added
+- **Auto-selekcja dużych zlewni w trybie "Wygeneruj":** gdy powierzchnia zlewni przekracza 10 000 m² (0.01 km²), endpoint automatycznie przełącza wyświetlanie na styl selekcji (pomarańczowa granica + podświetlone zlewnie cząstkowe MVT) z banerem informacyjnym. Nowa stała `DELINEATION_MAX_AREA_M2` w `constants.py`, 4 nowe pola w `DelineateResponse` (`auto_selected`, `upstream_segment_indices`, `display_threshold_m2`, `info_message`), kaskadowe progi merge (>500 segmentów), banner `#panel-auto-select-info` w HTML, obsługa w `app.js`. 3 nowe testy integracyjne (560 łącznie).
+
 ### Zmieniono
 - **Selekcja zlewni (ADR-026):** bezpośredni lookup poligonu (`ST_Contains`) zamiast snap-to-stream — eliminuje błędne przypisanie kliknięcia do sąsiedniej zlewni
 - **`DEFAULT_THRESHOLD_M2`:** 100 → 1000 m² — najdrobniejszy próg zlewni cząstkowych

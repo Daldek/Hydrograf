@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 559 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 560 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -44,9 +44,20 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-16 (sesja 29)
+**Data:** 2026-02-16 (sesja 30)
 
 ### Co zrobiono
+
+- **Auto-selekcja dużych zlewni w trybie "Wygeneruj":**
+  - Gdy powierzchnia zlewni > 10 000 m² (0.01 km²), endpoint automatycznie przełącza wyświetlanie na styl selekcji (pomarańczowa granica + podświetlone zlewnie cząstkowe MVT) z banerem informacyjnym.
+  - Nowa stała `DELINEATION_MAX_AREA_M2 = 10_000` w `core/constants.py`.
+  - 4 nowe pola w `DelineateResponse`: `auto_selected`, `upstream_segment_indices`, `display_threshold_m2`, `info_message`.
+  - Kaskadowe progi merge (>500 segmentów) w `watershed.py` — wzorzec z `select_stream.py`.
+  - Banner `#panel-auto-select-info` w `index.html`, obsługa `auto_selected` w `app.js` (`onWatershedClick`, `closeResults`).
+  - 3 nowe testy integracyjne: small area (5000 m²) → not auto-selected, large area (50000 m²) → auto-selected, boundary (10000 m²) → not auto-selected (≤ not <).
+  - **Testy:** 560 testów, 0 failures, ruff clean.
+
+### Poprzednia sesja (2026-02-16, sesja 29)
 
 - **Naprawa niespójnych przebiegów cieków między zoomami MVT:**
   - **Przyczyna:** `ST_SimplifyPreserveTopology` z tolerancjami per-zoom (1-10m) tworzył dyskretne skoki w kształcie geometrii. 78% segmentów stawało się prostymi liniami (2 punkty) przy tolerancji 10m (zoomy 0-5), a przy 1m (zoomy 10+) miały 13+ punktów. Powodowało to co najmniej 3 wizualnie różne wersje sieci rzecznej.

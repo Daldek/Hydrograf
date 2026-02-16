@@ -390,3 +390,65 @@ class TestDelineateWatershedEndpoint:
 
         data = response.json()
         assert data["watershed"]["area_km2"] == 45.67
+
+    def test_small_area_not_auto_selected(self, client):
+        """Test area ≤ 10000 m² (0.005 km²) is not auto-selected."""
+        area_km2 = 0.005  # 5000 m² — below limit
+        cg = _make_mock_cg(area_km2=area_km2)
+        morph = _make_morph_dict(area_km2=area_km2)
+
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all(cg=cg, morph=morph):
+                stack.enter_context(p)
+
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
+
+        data = response.json()
+        assert data["auto_selected"] is False
+        assert data["upstream_segment_indices"] is None
+        assert data["display_threshold_m2"] is None
+        assert data["info_message"] is None
+
+    def test_large_area_auto_selected(self, client):
+        """Test area > 10000 m² (0.05 km²) triggers auto-selection."""
+        area_km2 = 0.05  # 50000 m² — above limit
+        cg = _make_mock_cg(area_km2=area_km2)
+        morph = _make_morph_dict(area_km2=area_km2)
+
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all(cg=cg, morph=morph):
+                stack.enter_context(p)
+
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
+
+        data = response.json()
+        assert data["auto_selected"] is True
+        assert data["upstream_segment_indices"] is not None
+        assert len(data["upstream_segment_indices"]) > 0
+        assert data["display_threshold_m2"] is not None
+        assert data["info_message"] is not None
+
+    def test_threshold_boundary_not_auto_selected(self, client):
+        """Test area exactly at 10000 m² (0.01 km²) is NOT auto-selected (≤ not <)."""
+        area_km2 = 0.01  # exactly 10000 m²
+        cg = _make_mock_cg(area_km2=area_km2)
+        morph = _make_morph_dict(area_km2=area_km2)
+
+        with contextlib.ExitStack() as stack:
+            for p in self._patch_all(cg=cg, morph=morph):
+                stack.enter_context(p)
+
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+            )
+
+        data = response.json()
+        assert data["auto_selected"] is False
+        assert data["upstream_segment_indices"] is None
