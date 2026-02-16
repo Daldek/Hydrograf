@@ -535,6 +535,29 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 
 ---
 
+### ADR-026: Selekcja oparta o poligon zlewni (2026-02-16)
+
+**Status:** Zatwierdzony
+
+**Kontekst:** Snap-to-stream (`ST_ClosestPoint`) powodował błędne przypisanie kliknięcia do sąsiedniej zlewni, gdy jej ciek płynął blisko granicy. Próg 100 m² generował 105k zlewni cząstkowych bez praktycznego zastosowania. Geometria poligonów była pikselowa (schodkowe krawędzie z rastra).
+
+**Decyzja:**
+1. Selekcja oparta o poligon (`ST_Contains` na `stream_catchments`) zamiast snap-to-stream
+2. Usunięcie progu 100 m² ze zlewni cząstkowych (cieki w `stream_network` zostają)
+3. Zwiększenie tolerancji simplify geometrii z `cellsize/2` do `cellsize` (1m)
+4. Dodanie kolumny `segment_idx` do `stream_network` (migracja 014)
+5. `DEFAULT_THRESHOLD_M2 = 1000` (było 100)
+
+**Konsekwencje:**
+- ADR-024 (fine-threshold BFS) i ADR-025 (warunkowy próg) stają się nieaktualne
+- `stream_catchments`: 117k → ~12k rekordów (po re-run pipeline)
+- CatchmentGraph: ~5 MB → <1 MB RAM
+- Eliminacja `find_nearest_stream_segment()` i `find_stream_catchment_at_point()` z flow selekcji
+- `map_boundary_to_display_segments()` nie jest potrzebna (ten sam próg dla BFS i display)
+- Wymaga re-run pipeline
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
