@@ -44,9 +44,29 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-16 (sesja 26)
+**Data:** 2026-02-16 (sesja 28)
 
 ### Co zrobiono
+
+- **Redesign selekcji zlewni cząstkowych (ADR-026):**
+  - **Selekcja oparta o poligon:** bezpośredni `ST_Contains` na `stream_catchments` zamiast snap-to-stream. Eliminuje błędne przypisanie kliknięcia do sąsiedniej zlewni.
+  - **Usunięcie progu 100 m²:** pipeline pomija generowanie catchmentów dla progu 100 (cieki zostają). `stream_catchments` zmniejsza się ze 117k do ~12k rekordów.
+  - **Geometria:** tolerancja simplify z `cellsize/2` do `cellsize` (1m) — gładsze poligony bez schodkowych krawędzi.
+  - **Migracja 014:** kolumna `segment_idx` w `stream_network` — spójny lookup z `stream_catchments` bez auto-increment offset.
+  - **API:** `DEFAULT_THRESHOLD_M2 = 1000`, usunięcie `display_threshold_m2` z request, uproszczenie `select_stream.py` (~75 linii mniej), usunięcie logiki ADR-024/025.
+  - **Frontend:** usunięcie progu 100 z FALLBACK_THRESHOLDS, usunięcie threshold mismatch guard.
+  - **Testy:** 557 testów, 0 failures. Usunięto 3 testy ADR-024/025, dodano 1 nowy.
+  - **Wymaga re-run pipeline** (Task 11 w planie)
+
+### Poprzednia sesja (2026-02-16, sesja 27)
+
+- **Diagnostyka i ochrona przed "zielonymi" zlewniami (DO WERYFIKACJI):**
+  - Problem: po selekcji cieku pojawiaja sie zielone zlewnie czastkowe o duzej powierzchni, niezwiazane z zaznaczeniem. Bug na progach 10000 i 100000 m².
+  - Hipoteza: `segment_idx` naklada sie miedzy progami (threshold 100 → [1..105492], threshold 10000 → [1..1101]). Jesli indeksy trafia na MVT z innego progu — zielone zlewnie "losowe".
+  - Implementacja: `display_threshold_m2` w response, walidacja progu w highlight, tooltip diagnostyczny
+  - 559 testow, 0 failures, ruff clean
+
+### Poprzednia sesja (2026-02-16, sesja 26)
 
 - **F2 — warunkowy prog selekcji cieku (ADR-025):**
   - Snap-to-stream i BFS na progu wyswietlanym na mapie (1000, 10000, 100000) zamiast zawsze na progu 100 m²
@@ -55,17 +75,6 @@
   - Rename: `fine_threshold` → `bfs_threshold`, `fine_segment_idxs` → `bfs_segment_idxs`
   - 2 nowe testy + 1 zaktualizowany (559 testow lacznie, 0 failures)
   - Dokumentacja: ADR-025, CHANGELOG
-
-### Znany problem: niska efektywnosc selekcji
-- **Czas odpowiedzi select-stream jest wysoki** — szczegolnie przy progu 100 m² dla duzych zlewni (~25s) i przy grubszych progach (~10-18s). Glowne bottlenecki: ST_UnaryUnion na wielu poligonach, snap-to-stream (ST_ClosestPoint), BFS aggregation.
-- Kaskadowe progi merge (ADR-024) pomagaja przy progu 100, ale nie eliminuja problemu calkowicie.
-- Potrzebna optymalizacja: pre-computed boundaries, cache wynikow, lub zmiana podejscia do budowy granicy.
-
-### Nastepne kroki
-- **Optymalizacja wydajnosci select-stream** (priorytet: wysoki) — czas odpowiedzi jest zbyt dlugi
-- Testy manualne frontendu z nowa segmentacja (klikanie na cieki na mapie)
-- Regeneracja kafelkow MVT (`generate_tiles.py`) jesli zmiana segmentow wplywa na streams/catchments tiles
-- Regeneracja overlayow PNG jesli potrzebne (`generate_streams_overlay.py`)
 
 ### Poprzednia sesja (2026-02-16, sesja 25)
 
