@@ -210,10 +210,31 @@ class DelineateResponse(BaseModel):
     ----------
     watershed : WatershedResponse
         Watershed delineation results
+    auto_selected : bool
+        True when area exceeded limit and pre-generated selection was used
+    upstream_segment_indices : list[int] | None
+        Segment indices for MVT highlighting (when auto_selected)
+    display_threshold_m2 : int | None
+        Threshold for MVT matching (when auto_selected)
+    info_message : str | None
+        User-facing info about auto-switch
     """
 
     watershed: WatershedResponse = Field(
         ..., description="Watershed delineation results"
+    )
+    auto_selected: bool = Field(
+        False,
+        description="True when area exceeded limit and selection was used",
+    )
+    upstream_segment_indices: list[int] | None = Field(
+        None, description="Segment indices for MVT highlighting (when auto_selected)"
+    )
+    display_threshold_m2: int | None = Field(
+        None, description="Threshold for MVT matching (when auto_selected)"
+    )
+    info_message: str | None = Field(
+        None, description="User-facing info about auto-switch"
     )
 
 
