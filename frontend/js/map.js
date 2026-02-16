@@ -318,14 +318,17 @@
             map.fire('click', { latlng: e.latlng });
         });
 
-        // Catchment info via hover tooltip
+        // Catchment info via hover tooltip (with diagnostic segment_idx)
         catchmentsLayer.on('mouseover', function (e) {
             if (catchmentTooltip) { map.removeLayer(catchmentTooltip); catchmentTooltip = null; }
             var props = e.layer.properties;
+            var isHighlighted = highlightedSegments.has(props.segment_idx);
             var content =
                 '<b>Rząd Strahlera:</b> ' + (props.strahler_order || '?') + '<br>' +
                 '<b>Powierzchnia:</b> ' + (props.area_km2 ? props.area_km2.toFixed(4) + ' km²' : '?') + '<br>' +
-                '<b>Śr. wysokość:</b> ' + (props.mean_elevation_m ? props.mean_elevation_m.toFixed(1) + ' m' : '?');
+                '<b>Śr. wysokość:</b> ' + (props.mean_elevation_m ? props.mean_elevation_m.toFixed(1) + ' m' : '?') + '<br>' +
+                '<b>segment_idx:</b> ' + props.segment_idx +
+                (highlightedSegments.size > 0 ? ' (' + (isHighlighted ? '&#10003; IN SET' : '&#10007; not in set') + ')' : '');
             catchmentTooltip = L.tooltip({ sticky: true, direction: 'top', offset: [0, -8] })
                 .setLatLng(e.latlng)
                 .setContent(content)
@@ -342,6 +345,7 @@
     }
 
     function getCatchmentsLayer() { return catchmentsLayer; }
+    function getCatchmentsThreshold() { return currentCatchmentThreshold; }
 
     function fitCatchmentsBounds() {
         if (demBounds && map) map.fitBounds(demBounds, { padding: [20, 20] });
@@ -360,6 +364,7 @@
 
     /**
      * Highlight upstream catchments by segment indices.
+     * @param {number[]} segmentIndices - segment_idx values from API
      */
     function highlightUpstreamCatchments(segmentIndices) {
         highlightedSegments = new Set(segmentIndices);
@@ -792,6 +797,7 @@
         fitStreamsBounds: fitStreamsBounds,
         setStreamsOpacity: setStreamsOpacity,
         getCatchmentsLayer: getCatchmentsLayer,
+        getCatchmentsThreshold: getCatchmentsThreshold,
         loadCatchmentsVector: loadCatchmentsVector,
         fitCatchmentsBounds: fitCatchmentsBounds,
         setCatchmentsOpacity: setCatchmentsOpacity,

@@ -366,6 +366,8 @@
         populateThresholdSelect(select, availableThresholds);
 
         select.addEventListener('change', function () {
+            Hydrograf.map.clearCatchmentHighlights();
+            Hydrograf.map.clearSelectionBoundary();
             var layer = Hydrograf.map.loadCatchmentsVector(parseInt(select.value));
             if (cb.checked && layer) {
                 layer.addTo(Hydrograf.map._getMap());
@@ -424,7 +426,7 @@
     }
 
     /** Fallback thresholds if backend is unavailable. */
-    var FALLBACK_THRESHOLDS = [100, 1000, 10000, 100000];
+    var FALLBACK_THRESHOLDS = [1000, 10000, 100000];
 
     /**
      * Initialize the layers panel.
