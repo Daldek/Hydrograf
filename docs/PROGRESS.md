@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 557 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 559 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -44,24 +44,36 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-16 (sesja 25)
+**Data:** 2026-02-16 (sesja 26)
 
 ### Co zrobiono
 
-- **F1 — precyzyjna selekcja cieku — kontynuacja:**
-  - **Re-run pipeline:** 105492 segmentow (prog 100, bylo 78829, +34%), lacznie 117228 across 4 progi. CatchmentGraph: 117228 nodes, 5.1 MB RAM, 1.5s startup.
-  - **Fix wydajnosci duzych zlewni:** kaskadowe progi merge (100→1000→10000→100000) gdy fine segments >500 — zapobiega timeout ST_UnaryUnion na 30s. Fix mapowania stream_network.id ≠ stream_catchments.segment_idx.
-  - **Weryfikacja F1:** dwa klikniecia na tym samym cieku (idx=1002631, Strahler 2) daja rozne wyniki: Point A 0.04 km² (12 seg), Point B 0.05 km² (14 seg). Response time: 0.5-1.1s.
-  - **Weryfikacja duzych zlewni:** threshold 100000 → 8.23 km², 73 segs, 18s (bylo timeout).
+- **F2 — warunkowy prog selekcji cieku (ADR-025):**
+  - Snap-to-stream i BFS na progu wyswietlanym na mapie (1000, 10000, 100000) zamiast zawsze na progu 100 m²
+  - Fine-BFS (ADR-024) aktywny tylko gdy display_threshold==100
+  - Eliminuje snap do niewidocznych doplywow przy grubszych progach
+  - Rename: `fine_threshold` → `bfs_threshold`, `fine_segment_idxs` → `bfs_segment_idxs`
+  - 2 nowe testy + 1 zaktualizowany (559 testow lacznie, 0 failures)
+  - Dokumentacja: ADR-025, CHANGELOG
 
-### W trakcie
-- Brak — F1 zamkniety, wszystkie progi działaja.
+### Znany problem: niska efektywnosc selekcji
+- **Czas odpowiedzi select-stream jest wysoki** — szczegolnie przy progu 100 m² dla duzych zlewni (~25s) i przy grubszych progach (~10-18s). Glowne bottlenecki: ST_UnaryUnion na wielu poligonach, snap-to-stream (ST_ClosestPoint), BFS aggregation.
+- Kaskadowe progi merge (ADR-024) pomagaja przy progu 100, ale nie eliminuja problemu calkowicie.
+- Potrzebna optymalizacja: pre-computed boundaries, cache wynikow, lub zmiana podejscia do budowy granicy.
 
 ### Nastepne kroki
+- **Optymalizacja wydajnosci select-stream** (priorytet: wysoki) — czas odpowiedzi jest zbyt dlugi
 - Testy manualne frontendu z nowa segmentacja (klikanie na cieki na mapie)
 - Regeneracja kafelkow MVT (`generate_tiles.py`) jesli zmiana segmentow wplywa na streams/catchments tiles
 - Regeneracja overlayow PNG jesli potrzebne (`generate_streams_overlay.py`)
-- Rozwazyc optymalizacje czasu odpowiedzi dla threshold=100 (obecnie ~25s dla duzych zlewni)
+
+### Poprzednia sesja (2026-02-16, sesja 25)
+
+- **F1 — precyzyjna selekcja cieku — kontynuacja:**
+  - **Re-run pipeline:** 105492 segmentow (prog 100, bylo 78829, +34%), lacznie 117228 across 4 progi. CatchmentGraph: 117228 nodes, 5.1 MB RAM, 1.5s startup.
+  - **Fix wydajnosci duzych zlewni:** kaskadowe progi merge (100→1000→10000→100000) gdy fine segments >500 — zapobiega timeout ST_UnaryUnion na 30s.
+  - **Weryfikacja F1:** dwa klikniecia na tym samym cieku daja rozne wyniki (precyzja miedzykonfluencyjna). Response time: 0.5-1.1s.
+  - **Weryfikacja duzych zlewni:** threshold 100000 → 8.23 km², 73 segs, 18s (bylo timeout).
 
 ### Poprzednia sesja (2026-02-15, sesja 24)
 
@@ -321,8 +333,8 @@
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
 | flow_network | 19,667,662 | 4 progi FA, re-run z CatchmentGraph |
-| stream_network | 86,898 | 100: 78186, 1000: 7812, 10000: 827, 100000: 88 (po re-run z migracja 012) |
-| stream_catchments | 86,913 | 100: 78186, 1000: 7812, 10000: 827, 100000: 88 + nowe kolumny (downstream, elev, histogram) |
+| stream_network | ~117,000 | 100: 105492, 1000: 10528, 10000: 1101, 100000: 107 (po re-run z konfluencyjna segmentacja) |
+| stream_catchments | 117,228 | 100: 105492, 1000: 10528, 10000: 1101, 100000: 107 + nowe kolumny (downstream, elev, histogram) |
 | land_cover | 38,560 | 12 warstw BDOT10k (powiat 3021), 7 kategorii |
 | depressions | 602,092 | re-run po poprawionym stream burning |
 

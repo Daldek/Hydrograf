@@ -511,6 +511,30 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 
 ---
 
+## ADR-025: Warunkowy próg selekcji cieku — fine BFS tylko dla display_threshold==100
+
+**Data:** 2026-02-16
+**Status:** Przyjeta
+
+**Kontekst:** Po ADR-024 endpoint `select_stream` zawsze wykonywal snap-to-stream i BFS na progu 100 m² (najdrobniejszym), niezaleznie od progu wyswietlanego na mapie. Powodowalo to snap do drobnych doplywow niewidocznych przy grubszych progach (1000, 10000, 100000), koniecznosc ekstremalnego przyblizenia do cieku oraz zwracanie zlewni niezgodnej z widokiem uzytkownika.
+
+**Opcje:**
+- A) Zawsze fine BFS (100) — precyzyjne, ale niespojne z widokiem mapy przy grubszych progach
+- B) Warunkowe rozgalezienie: fine BFS dla display_threshold==100, snap+BFS na progu wyswietlanym dla pozostalych
+
+**Decyzja:** Opcja B. Warunkowe rozgalezienie w `select_stream.py`:
+- `display_threshold == 100`: obecna logika ADR-024 (fine BFS, precyzyjna selekcja miedzykonfluencyjna) bez zmian
+- `display_threshold != 100` (1000, 10000, 100000): snap-to-stream i BFS na progu wyswietlanym — spojne z widokiem mapy
+
+**Konsekwencje:**
+- Klikniecie na ciek przy progu 10000 snap-uje do cieku widocznego na mapie (nie do drobnego doplywu)
+- Brak potrzeby ekstremalnego przyblizenia przy grubszych progach
+- Logika cascade merge dziala poprawnie niezaleznie od progu startowego
+- Display mapping (`map_boundary_to_display_segments`) dalej aktywne gdy merge_threshold != display_threshold
+- Zero zmian w `watershed_service.py`, `catchment_graph.py`, schemacie DB i frontendzie
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
