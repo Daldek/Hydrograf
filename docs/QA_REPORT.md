@@ -1,381 +1,426 @@
-# QA Report - Hydrograf
+# QA Report — Hydrograf
 
-**Data:** 2026-01-21
-**Wersja repozytorium:** develop (commit f3b0b25)
+**Data:** 2026-02-16
+**Wersja repozytorium:** develop (commit caeaa4a)
 **Autor:** Claude Code QA
-
-> **⚠️ UWAGA: Dokument przestarzały** (stan na commit f3b0b25, ~v0.3.0)
->
-> Od czasu powstania tego raportu wprowadzono istotne zmiany:
-> - Liczba testów: 175 → 548 (unit + integration)
-> - CRITICAL: Problem CORS — **naprawiony** (middleware w main.py)
-> - Dodano CI/CD: GitHub Actions (lint, test, type-check)
-> - Architektura: refaktor na 8 modułów core/ (ADR-017, ADR-022)
-> - Dodano `constants.py`, `catchment_graph.py`, `watershed_service.py`, structured logging
-> - FlowGraph usunięty z runtime API (ADR-022) — RAM: 1.1 GB → 40 MB
->
-> Aktualny stan projektu: patrz `PROGRESS.md` i `CHANGELOG.md`.
 
 ---
 
 ## Executive Summary
 
-| Metryka | Wartość |
+| Metryka | Wartosc |
 |---------|---------|
-| **Ogólna ocena** | **7/10** |
-| Issues CRITICAL | 1 |
-| Issues HIGH | 3 |
-| Issues MEDIUM | 12 |
-| Issues LOW | 15 |
-| **Pokrycie testami** | 52% (core: 85-100%) |
-| **Testy** | 175 passing |
+| **Ogolna ocena** | **8.5/10** |
+| Issues CRITICAL | 0 |
+| Issues HIGH | 2 |
+| Issues MEDIUM | 5 |
+| Issues LOW | 6 |
+| **Testy** | 559 passing (25 plikow testowych) |
+| **Lint (ruff)** | 0 bledow |
+| **Format (ruff)** | 1 plik do sformatowania |
+| **ADR** | 25 decyzji architektonicznych |
+| **Migracje** | 13 |
 
-### Główne problemy do natychmiastowej naprawy:
-1. **CRITICAL:** Niebezpieczna konfiguracja CORS (`allow_origins=["*"]` + `allow_credentials=True`)
-2. **HIGH:** Brak rate limiting w Nginx
-3. **HIGH:** Brak CI/CD pipeline
-4. **HIGH:** Brak CHANGELOG.md
+### Glowne problemy do rozwiazania:
+1. **HIGH:** Hardcoded default password w `config.py` i `migrations/env.py`
+2. **HIGH:** Znany bug — zielone zlewnie po selekcji cieku (diagnostyka w toku)
+
+### Postep od ostatniego raportu (2026-01-21):
+- CORS: ❌ → ✅ (env var, `allow_credentials=False`)
+- Rate limiting: ❌ → ✅ (3 strefy Nginx)
+- CI/CD: ❌ → ✅ (GitHub Actions: lint + test + security)
+- CHANGELOG: ❌ → ✅
+- pre-commit: ❌ → ✅ (ruff check + format)
+- pyproject.toml: ❌ → ✅
+- constants.py: ❌ → ✅
+- Testy: 175 → 559 (+220%)
+- Architektura: FlowGraph (1.1 GB RAM) → CatchmentGraph (5 MB RAM)
 
 ---
 
 ## 1. Analiza Automatyczna
 
-### 1.1 Pytest Coverage
+### 1.1 Testy (pytest)
 
 ```
-Total: 52% (2933 statements, 1411 missed)
+559 passed, 1 warning in 11.80s
 ```
 
-| Moduł | Pokrycie | Status |
-|-------|----------|--------|
-| api/endpoints/health.py | 100% | ✅ |
-| api/endpoints/watershed.py | 85% | ✅ |
-| api/endpoints/hydrograph.py | 92% | ✅ |
-| core/watershed.py | 97% | ✅ |
-| core/morphometry.py | 97% | ✅ |
-| core/precipitation.py | 92% | ✅ |
-| core/database.py | 71% | ⚠️ |
-| models/schemas.py | 100% | ✅ |
-| utils/geometry.py | 100% | ✅ |
-| **scripts/*.py** | **0%** | ❌ |
-| **utils/raster_utils.py** | **0%** | ❌ |
-| **utils/sheet_finder.py** | **0%** | ❌ |
+| Plik testowy | Liczba testow | Typ |
+|-------------|---------------|-----|
+| test_precipitation.py | 61 | unit |
+| test_process_dem.py | 47 | unit |
+| test_morphometry.py | 44 | unit |
+| test_cn_tables.py | 41 | unit |
+| test_watershed.py (unit) | 35 | unit |
+| test_land_cover.py | 30 | unit |
+| test_watershed_service.py | 29 | unit |
+| test_catchment_graph.py | 22 | unit |
+| test_hydrograph.py | 22 | integration |
+| test_tiles.py | 21 | integration |
+| test_lake_drain.py | 20 | unit |
+| test_cn_calculator.py | 20 | unit |
+| test_geometry.py | 19 | unit |
+| test_flow_graph.py | 18 | unit |
+| test_profile.py | 17 | integration |
+| test_depressions.py | 17 | integration |
+| test_zonal_stats.py | 16 | unit |
+| test_watershed.py (integ.) | 16 | integration |
+| test_db_bulk.py | 15 | unit |
+| test_preprocess_precipitation.py | 12 | unit |
+| test_select_stream.py | 12 | integration |
+| test_hydrology.py | 9 | unit |
+| test_stream_extraction.py | 8 | unit |
+| test_health.py | 5 | integration |
+| test_raster_io.py | 4 | unit |
+| **Razem** | **559** | **18 unit + 7 integ.** |
 
-**Wnioski:** Core logic ma bardzo dobre pokrycie (85-100%), ale skrypty preprocessingu i utility nie mają testów.
+### 1.2 Linting (ruff)
 
-### 1.2 Flake8 (kod projektu)
+```
+All checks passed!
+```
 
-| Typ | Liczba | Przykłady |
-|-----|--------|-----------|
-| F401 (unused import) | 8 | `typing.Optional`, `numpy as np` |
-| F821 (undefined name) | 4 | `geopandas` w type hints |
-| E261 (spacing) | 2 | inline comments |
-| E501 (line too long) | 1 | process_dem.py:765 |
-| **Razem** | **15** | |
+Brak bledow. Projekt uzywa ruff (zamiast flake8/black) skonfigurowanego w `pyproject.toml`.
 
-### 1.3 Black Formatting
+### 1.3 Formatowanie (ruff format)
 
-**3 pliki wymagają formatowania:**
-- `migrations/env.py`
-- `migrations/versions/001_create_precipitation_data.py`
-- `api/endpoints/watershed.py`
+```
+1 file would be reformatted (models/schemas.py), 95 files already formatted
+```
 
-### 1.4 Outdated Packages
+**Uwaga:** `models/schemas.py` ma niezacommitowane zmiany (sesja 27) — formatowanie zostanie naprawione po commicie.
 
-| Package | Current | Latest | Uwagi |
-|---------|---------|--------|-------|
-| black | 25.12.0 | 26.1.0 | ✅ Do aktualizacji |
-| numpy | 2.3.5 | 2.4.1 | ⚠️ Blokuje numba <2.4 |
+### 1.4 Pokrycie testami wg modulow
 
-**Uwaga:** Kartograf (0.4.1) jest dostępny **tylko z GitHub** (https://github.com/Daldek/Kartograf), nie z PyPI.
-
----
-
-## 2. Spójność Dokumentacji (D1.x)
-
-### 2.1 Wersje Dokumentów
-
-| Dokument | Wersja nagłówek | Wersja stopka | Data | Problem |
-|----------|-----------------|---------------|------|---------|
-| SCOPE.md | 1.0 | - | 2026-01-14 | Literówka "Nieatwierdzony" |
-| ARCHITECTURE.md | **1.0** | **1.2** | 2026-01-14 / **2026-01-20** | **NIESPÓJNOŚĆ** |
-| DATA_MODEL.md | 1.0 | 1.0 | 2026-01-14 | OK |
-| PRD.md | 1.0 | 1.0 | 2026-01-14 | OK |
-
-### 2.2 Checkpointy
-
-| ID | Problem | Priorytet |
-|----|---------|-----------|
-| D1.2-1 | PRD.md nie definiuje checkpointów CP1-CP5 | LOW |
-| D1.2-2 | CP3 status "przetestowane manualnie" niejasny | LOW |
-
-### 2.3 Schematy Tabel vs Migracje
-
-| ID | Problem | Lokalizacja | Priorytet |
-|----|---------|-------------|-----------|
-| D1.3-1 | `flow_network.slope` - różnica w dopuszczalności NULL | DATA_MODEL vs migration 002 | LOW |
-| D1.3-2 | **Brak CHECK constraint** dla `land_cover.category` | migration 002 | **HIGH** |
-| D1.3-3 | **Brak UNIQUE constraint** dla `stream_network(name, geom)` | migration 002 | MEDIUM |
-
-### 2.4 API Endpoints
-
-| Endpoint | Dokumentacja | Kod | Status |
-|----------|--------------|-----|--------|
-| GET /health | ✅ | ✅ | OK |
-| POST /api/delineate-watershed | ✅ | ✅ (rozszerzony) | ROZSZERZENIE |
-| POST /api/generate-hydrograph | ✅ | ✅ (rozszerzony) | ROZSZERZENIE |
-| **GET /api/scenarios** | ✅ | **BRAK** | **NIEZAIMPLEMENTOWANY** |
+| Modul | Testy | Status |
+|-------|-------|--------|
+| core/watershed.py | 35 unit + 16 integ. | ✅ |
+| core/morphometry.py | 44 unit | ✅ |
+| core/precipitation.py | 61 unit | ✅ |
+| core/catchment_graph.py | 22 unit | ✅ |
+| core/watershed_service.py | 29 unit | ✅ |
+| core/land_cover.py | 30 unit | ✅ |
+| core/cn_tables.py | 41 unit | ✅ |
+| core/cn_calculator.py | 20 unit | ✅ |
+| core/db_bulk.py | 15 unit | ✅ |
+| core/hydrology.py | 9 unit | ✅ |
+| core/stream_extraction.py | 8 unit | ✅ |
+| core/zonal_stats.py | 16 unit | ✅ |
+| core/raster_io.py | 4 unit | ⚠️ Niskie |
+| core/flow_graph.py | 18 unit | ✅ (DEPRECATED) |
+| core/morphometry_raster.py | — | ❌ Brak dedykowanych |
+| core/database.py | — | ❌ Brak dedykowanych |
+| api/endpoints/ (wszystkie) | 110 integ. | ✅ |
+| models/schemas.py | — | ✅ (testowane posrednio) |
+| utils/geometry.py | 19 unit | ✅ |
+| utils/raster_utils.py | — | ❌ Brak |
+| utils/sheet_finder.py | — | ❌ Brak |
+| scripts/process_dem.py | 47 unit | ✅ |
+| scripts/ (pozostale) | 12 unit | ⚠️ Niskie |
 
 ---
 
-## 3. Spójność Dokumentacji z Kodem (C2.x)
+## 2. Architektura i Moduly
 
-### 3.1 Brakujące moduły
+### 2.1 Struktura kodu (LOC)
 
-| Moduł (wg dokumentacji) | Status w kodzie |
-|------------------------|-----------------|
-| `core/land_cover.py` | **BRAK** - CN hardcoded na 75 |
-| `core/hydrograph.py` | **BRAK** - przeniesione do biblioteki Hydrolog |
+| Warstwa | Pliki | LOC | Uwagi |
+|---------|-------|-----|-------|
+| core/ | 17 modulow | ~7140 | Logika biznesowa |
+| api/endpoints/ | 7 endpointow | ~1560 | Warstwa API |
+| models/ | 1 | ~200 | Schematy Pydantic |
+| utils/ | 4 | ~400 | Narzedzia |
+| scripts/ | 12 | ~4500 | Preprocessing CLI |
+| **Razem backend** | **~41** | **~13800** | |
 
-### 3.2 Rozbieżności w strukturach API
+### 2.2 Moduly core/
 
-| Element | Dokumentacja | Kod | Rekomendacja |
-|---------|--------------|-----|--------------|
-| `outlet_coords` | `[lon, lat]` array | `outlet.latitude/longitude` objects | Aktualizacja docs |
-| `parameters` | sekcja `parameters` | `morphometry` | Aktualizacja docs |
-| `land_cover.land_cover_percent` | wymagane | **BRAK** | Implementacja lub usunięcie |
-| `water_balance` | **BRAK** | nowa sekcja | Aktualizacja docs |
+| Modul | LOC | Opis | Status |
+|-------|-----|------|--------|
+| hydrology.py | 877 | Fill, fdir, acc, stream burning | ✅ Aktywny |
+| db_bulk.py | 867 | Bulk INSERT via COPY | ✅ Aktywny |
+| morphometry.py | 652 | Parametry fizjograficzne | ✅ Aktywny |
+| stream_extraction.py | 603 | Wektoryzacja ciekow, zlewnie | ✅ Aktywny |
+| watershed_service.py | 567 | Wspolna logika delineacji (ADR-022) | ✅ Aktywny |
+| catchment_graph.py | 551 | Graf in-memory, BFS, agregacja | ✅ Aktywny |
+| watershed.py | 447 | build_boundary + legacy CLI | ✅ Aktywny |
+| morphometry_raster.py | 386 | Nachylenie, aspekt, TWI, Strahler | ✅ Aktywny |
+| flow_graph.py | 361 | Graf przeplywu | ⚠️ DEPRECATED (ADR-022) |
+| land_cover.py | 346 | Pokrycie terenu, CN | ✅ Aktywny |
+| cn_calculator.py | 334 | HSG-based CN | ✅ Aktywny |
+| precipitation.py | 320 | IDW interpolation | ✅ Aktywny |
+| raster_io.py | 235 | Odczyt/zapis rastrow | ✅ Aktywny |
+| zonal_stats.py | 185 | Statystyki strefowe (bincount) | ✅ Aktywny |
+| constants.py | 27 | Stale projektowe | ✅ Aktywny |
+| config.py | ~40 | Pydantic Settings | ✅ Aktywny |
+| database.py | ~30 | Connection pool | ✅ Aktywny |
 
-### 3.3 Zależności zewnętrzne
+### 2.3 Endpointy API
 
-| Biblioteka | Dokumentacja | Źródło | Uwagi |
-|------------|--------------|--------|-------|
-| kartograf | ✅ KARTOGRAF_INTEGRATION.md | GitHub only | @develop branch |
-| hydrolog | ⚠️ Częściowa | GitHub only | @develop branch |
-| pyflwdir | ✅ Udokumentowana | PyPI | Zastąpiła pysheds (ADR-012) |
+| Endpoint | Plik | LOC | Testy | Status |
+|----------|------|-----|-------|--------|
+| GET /health | health.py | 48 | 5 | ✅ |
+| POST /api/delineate-watershed | watershed.py | 275 | 16 | ✅ |
+| POST /api/generate-hydrograph | hydrograph.py | 359 | 22 | ✅ |
+| GET /api/scenarios | hydrograph.py | (w/w) | (w/w) | ✅ |
+| POST /api/terrain-profile | profile.py | 120 | 17 | ✅ |
+| GET /api/depressions | depressions.py | 142 | 17 | ✅ |
+| POST /api/select-stream | select_stream.py | 395 | 12 | ✅ |
+| GET /api/tiles/{layer}/{z}/{x}/{y}.pbf | tiles.py | 224 | 21 | ✅ |
+| GET /api/tiles/thresholds | tiles.py | (w/w) | (w/w) | ✅ |
+
+### 2.4 Decyzje architektoniczne (ADR)
+
+25 decyzji w `docs/DECISIONS.md`. Kluczowe:
+
+| ADR | Tytul | Status |
+|-----|-------|--------|
+| ADR-001 | Graf w bazie zamiast rastrow runtime | ✅ Przyjeta |
+| ADR-011 | Development: .venv + Docker db only | ✅ Przyjeta |
+| ADR-016 | pyflwdir zamiast Python pixel loops | ✅ Przyjeta |
+| ADR-017 | Modularna architektura core/ | ✅ Przyjeta |
+| ADR-021 | CatchmentGraph in-memory | ✅ Przyjeta |
+| ADR-022 | Eliminacja FlowGraph z runtime API | ✅ Przyjeta |
+| ADR-023 | Hierarchiczny merge zlewni | ✅ Przyjeta |
+| ADR-024 | Precyzyjna selekcja cieku (konfluencja) | ✅ Przyjeta |
+| ADR-025 | Warunkowy prog selekcji | ✅ Przyjeta |
+
+### 2.5 Migracje bazy danych
+
+13 migracji Alembic (`001`–`013`). Kluczowe tabele:
+- `flow_network` (19.67M rekordow, 4 progi FA)
+- `stream_network` (~117k segmentow, 4 progi)
+- `stream_catchments` (117k zlewni, 6 dodatkowych kolumn z migracji 012)
+- `land_cover` (38.5k rekordow, 12 warstw BDOT10k)
+- `depressions` (602k zaglebie)
+- `precipitation_data` (dane opadowe IMGW)
 
 ---
 
-## 4. Jakość Kodu (Q3.x)
+## 3. Bezpieczenstwo
 
-### 4.1 Docstrings i Type Hints
+### 3.1 SQL Injection
+
+**Status: ✅ BEZPIECZNY** — Wszystkie zapytania uzywaja parametryzacji z `text()` i `:param`
+
+### 3.2 Input Validation
+
+**Status: ✅ BEZPIECZNY** — Pydantic waliduje wszystkie inputy API
+
+### 3.3 CORS
+
+**Status: ✅ NAPRAWIONY**
+
+```python
+# api/main.py
+cors_origins = [origin.strip() for origin in settings.cors_origins.split(",")]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,         # Z env var CORS_ORIGINS
+    allow_credentials=False,            # Bezpieczne
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept"],
+)
+```
+
+### 3.4 Rate Limiting
+
+**Status: ✅ NAPRAWIONY**
+
+```nginx
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;    # API
+limit_req_zone $binary_remote_addr zone=tile_limit:10m rate=30r/s;   # Kafelki MVT
+limit_req_zone $binary_remote_addr zone=general_limit:10m rate=30r/s; # Ogolny
+```
+
+### 3.5 Security Headers (Nginx)
+
+**Status: ✅ WDROZONE**
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Content-Security-Policy` (script-src, style-src, img-src, connect-src)
+- `Strict-Transport-Security` (HSTS)
+
+### 3.6 Secrets
+
+**Status: ⚠️ MEDIUM — do poprawy**
+
+| Problem | Lokalizacja | Priorytet |
+|---------|-------------|-----------|
+| Domyslne haslo `hydro_password` | core/config.py | MEDIUM |
+| Hardcoded connection string | migrations/env.py | MEDIUM |
+
+**Uwaga:** Oba wartosci sa default fallback — produkcja powinna uzywac zmiennych srodowiskowych. Nie stanowia ryzyka w deploymencie z poprawnym `.env`, ale najlepiej usunac defaults.
+
+---
+
+## 4. DevOps
+
+### 4.1 CI/CD
+
+**Status: ✅ WDROZONE**
+
+GitHub Actions (`.github/workflows/ci.yml`) z 3 jobs:
+- **lint:** ruff check + ruff format check
+- **test:** pytest z PostGIS service container
+- **security:** pip-audit (continue-on-error)
+
+### 4.2 Pre-commit
+
+**Status: ✅ WDROZONE**
+
+`.pre-commit-config.yaml`:
+- trailing-whitespace, end-of-file-fixer, check-yaml, check-added-large-files
+- ruff check (--fix) + ruff format
+
+### 4.3 Dockerfile
+
+**Status: ⚠️ Do poprawy (LOW)**
+
+| Problem | Priorytet |
+|---------|-----------|
+| Brak multi-stage build | LOW |
+| Brak .dockerignore | LOW |
+| `COPY . .` kopiuje wszystko (w tym testy, docs) | LOW |
+
+Dockerfile jest funkcjonalny — poprawki to optymalizacja rozmiaru obrazu.
+
+### 4.4 Dokumentacja
+
+**Status: ✅ Kompletna**
+
+| Dokument | Status | Uwagi |
+|----------|--------|-------|
+| PROGRESS.md | ✅ Aktualny | 27 sesji udokumentowanych |
+| SCOPE.md | ✅ Zatwierdzony | Data 2026-02-13 |
+| PRD.md | ✅ | Wymagania produktowe |
+| ARCHITECTURE.md | ✅ v1.5 | Zaktualizowana po ADR-022 |
+| DATA_MODEL.md | ✅ | +migracja 013 |
+| DECISIONS.md | ✅ | 25 ADR |
+| CHANGELOG.md | ✅ | Historia zmian per-release |
+| COMPUTATION_PIPELINE.md | ✅ v1.2 | Pipeline preprocessing |
+| CLAUDE.md | ✅ | Instrukcje dla Claude Code |
+| QA_REPORT.md | ✅ | Niniejszy raport |
+| README.md | ✅ | CP4, 10 endpointow |
+
+### 4.5 Structured Logging
+
+**Status: ✅ WDROZONE**
+
+- structlog JSON format + request_id middleware w `api/main.py`
+
+---
+
+## 5. Jakosc Kodu
+
+### 5.1 Styl i konwencje
 
 | Metryka | Wynik |
 |---------|-------|
-| Funkcje publiczne z docstrings | **100%** ✅ |
-| Funkcje z type hints | **99%** ✅ |
-| Styl docstrings | NumPy ✅ |
+| Linter | ruff (0 bledow) |
+| Formatter | ruff format (1 plik — niezacommitowane zmiany) |
+| Type hints | Szerokie uzycie |
+| Docstrings | NumPy style, publiczne funkcje |
+| Konwencja nazw | `area_km2`, `elevation_m`, `discharge_m3s` |
+| Stale | Scentralizowane w `core/constants.py` |
 
-### 4.2 Funkcje > 50 linii
+### 5.2 Znane technical debt
 
-| Funkcja | Linie | Rekomendacja |
-|---------|-------|--------------|
-| `traverse_upstream` | 105 | Wydzielić query builder |
-| `find_main_stream` | 97 | Wydzielić graph builder |
-| `get_precipitation` | 88 | Wydzielić IDW logic |
-
-### 4.3 Hardcoded Values do Ekstrakcji
-
-| Wartość | Lokalizacja | Rekomendacja |
-|---------|-------------|--------------|
-| `1000.0` (m/km) | morphometry.py × 3 | Stała `M_PER_KM` |
-| `1_000_000` (m²/km²) | watershed.py, morphometry.py | Stała `M2_PER_KM2` |
-| `0.3` (concave hull ratio) | watershed.py:300 | Stała `CONCAVE_HULL_RATIO` |
-| `4` (IDW neighbors) | precipitation.py:163 | Stała `IDW_NUM_NEIGHBORS` |
-| `"EPSG:2180"`, `"EPSG:4326"` | geometry.py | Stałe `CRS_PL1992`, `CRS_WGS84` |
-| `"Hydrograf"` | morphometry.py:304 | Config setting |
-
-**Rekomendacja:** Utworzyć `backend/core/constants.py`
-
-### 4.4 Duplikacje
-
-| Wzorzec | Lokalizacje | Rekomendacja |
-|---------|-------------|--------------|
-| Konstrukcja FlowCell z SQL row | watershed.py:134, :239 | Helper `_row_to_flowcell()` |
-| Obliczanie odległości euklidesowej | morphometry.py:72, :231 | Helper `_euclidean_distance()` |
+| ID | Opis | Priorytet | Status |
+|----|------|-----------|--------|
+| TD-1 | `flow_graph.py` DEPRECATED, zachowany dla CLI | LOW | Swiadoma decyzja (ADR-022) |
+| TD-2 | Hardcoded secrets w defaults | MEDIUM | Do poprawy |
+| TD-3 | Brak .dockerignore | LOW | Do dodania |
+| TD-4 | Niska pokrywalnosc scripts/ (poza process_dem) | MEDIUM | Backlog |
+| TD-5 | `morphometry_raster.py` bez dedykowanych testow | MEDIUM | Testowany posrednio |
 
 ---
 
-## 5. Testy (T4.x)
+## 6. Znane Problemy
 
-### 5.1 Mapowanie Testów
+### 6.1 Zielone zlewnie po selekcji cieku (OTWARTY)
 
-| Moduł | Unit Tests | Integration Tests |
-|-------|------------|-------------------|
-| watershed.py | ✅ 21 testów | ✅ 17 testów |
-| morphometry.py | ✅ testy | - |
-| precipitation.py | ✅ testy | - |
-| geometry.py | ✅ 19 testów | - |
-| health.py | - | ✅ testy |
-| hydrograph.py | - | ✅ testy |
-| **scripts/*.py** | ❌ **BRAK** | ❌ **BRAK** |
+**Priorytet: HIGH**
+**Status:** Diagnostyka w toku (sesja 27)
 
-### 5.2 Brakujące Testy
+Po wybraniu cieku pojawiaja sie dodatkowe zielone zlewnie czastkowe niezwiazane z zaznaczeniem. Wdrozono narzedzia diagnostyczne:
+- `display_threshold_m2` w API response
+- Tooltip z `segment_idx` + status `IN SET / not in set`
+- Console warning `THRESHOLD MISMATCH!`
 
-| Priorytet | Moduł | Opis |
-|-----------|-------|------|
-| **HIGH** | scripts/process_dem.py | 0% coverage, krytyczny skrypt |
-| **HIGH** | scripts/import_landcover.py | 0% coverage |
-| MEDIUM | utils/raster_utils.py | 0% coverage |
-| MEDIUM | utils/sheet_finder.py | 0% coverage |
-| LOW | core/database.py | 71% coverage |
+Mozliwe przyczyny: VectorGrid cache, overlapping `segment_idx` miedzy progami, MVT encoding.
 
----
+### 6.2 Wydajnosc select-stream (OTWARTY)
 
-## 6. Bezpieczeństwo (S5.x)
+**Priorytet: MEDIUM**
 
-### 6.1 SQL Injection
+Czas odpowiedzi 10-25s dla duzych zlewni. Bottlenecki: ST_UnaryUnion na wielu poligonach, snap-to-stream, BFS. Kaskadowe progi merge (ADR-024) pomagaja, ale nie eliminuja problemu.
 
-**Status: ✅ BEZPIECZNY** - Wszystkie zapytania używają parametryzacji z `text()` i `:param`
+### 6.3 Drobne bugi UX (OTWARTE)
 
-### 6.2 Input Validation
-
-**Status: ✅ BEZPIECZNY** - Pydantic waliduje wszystkie inputy
-
-| ID | Problem | Priorytet |
-|----|---------|-----------|
-| S5.2a | Brak walidacji enum dla `probability` w Pydantic | LOW |
-
-### 6.3 CORS
-
-**Status: ❌ CRITICAL**
-
-```python
-# api/main.py:41-47
-allow_origins=["*"],        # NIEBEZPIECZNE
-allow_credentials=True,     # W połączeniu z ["*"] = CRITICAL
-```
-
-**Rekomendacja:**
-```python
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost").split(",")
-allow_origins=ALLOWED_ORIGINS,
-allow_methods=["GET", "POST"],
-```
-
-### 6.4 Rate Limiting
-
-**Status: ❌ HIGH - BRAK**
-
-Nginx config nie zawiera żadnego rate limiting. Dodać:
-```nginx
-limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
-```
-
-### 6.5 Secrets
-
-| ID | Problem | Lokalizacja | Priorytet |
-|----|---------|-------------|-----------|
-| S5.3a | Hardcoded default password | config.py:34 | MEDIUM |
-| S5.3b | Hardcoded connection string | migrations/env.py:27 | MEDIUM |
+- **E1:** Dziury na granicach zlewni (ST_Union artifacts)
+- **E4:** Punkt ujsciowy poza granica zlewni (outlet offset)
+- **H1:** Zlewnie bezposrednie jezior (koncepcyjne)
 
 ---
 
-## 7. DevOps (O7.x)
+## 7. Priorytetyzowane Akcje
 
-### 7.1 Brakujące Elementy
+### HIGH (przed nastepnym release)
 
-| Element | Status | Priorytet |
-|---------|--------|-----------|
-| **CI/CD pipeline** | ❌ BRAK `.github/workflows/` | **HIGH** |
-| **CHANGELOG.md** | ❌ BRAK | **HIGH** |
-| pyproject.toml | ❌ BRAK | MEDIUM |
-| .pre-commit-config.yaml | ❌ BRAK | MEDIUM |
-| pip-audit / safety | ❌ Niezainstalowane | MEDIUM |
+1. **[6.1] Diagnostyka zielonych zlewni** — uzyc tooltipa do ustalenia root cause
+2. **[3.6] Usun hardcoded default password** z `config.py` i `migrations/env.py`
 
-### 7.2 Dockerfile
+### MEDIUM (w najblizszym sprincie)
 
-**Status: ⚠️ Do poprawy**
-
-| Problem | Rekomendacja |
-|---------|--------------|
-| Brak multi-stage build | Dodać build stage dla mniejszego image |
-| Brak .dockerignore | Utworzyć plik |
-| COPY . . kopiuje wszystko | Selektywne COPY |
-
-### 7.3 Zależności zewnętrzne (GitHub only)
-
-**Status: ⚠️ RYZYKO**
-
-| Biblioteka | Źródło | Gałąź |
-|------------|--------|-------|
-| kartograf | https://github.com/Daldek/Kartograf | @develop |
-| hydrolog | https://github.com/user/hydrolog | @develop |
-
-**Uwagi:**
-- Kartograf i Hydrolog są dostępne **tylko z GitHub**, nie z PyPI
-- Zależności na gałęziach @develop mogą powodować nieoczekiwane zmiany
-- Rozważyć pin do konkretnych commitów lub tagów po stabilizacji
-
----
-
-## 8. Kierunek Rozwoju (R8.x)
-
-### 8.1 Status MVP
-
-| Faza | Opis | Status |
-|------|------|--------|
-| Faza 0 | Setup | ✅ Ukończona |
-| Faza 1 | Backend MVP | ✅ CP1, CP2 done |
-| Faza 2 | Model Hydrologiczny | ✅ CP3 (przetestowane) |
-| **Faza 3** | **Frontend** | ⏳ **PUSTE katalogi css/js** |
-| Faza 4 | Testy i Deploy | ⏳ |
-
-### 8.2 Technical Debt
-
-| ID | Opis | Priorytet |
-|----|------|-----------|
-| TD-1 | Pydantic deprecation warning (class-based config) | MEDIUM |
-| TD-2 | `land_cover.py` nieistniejący, CN=75 hardcoded | MEDIUM |
-| TD-3 | `/api/scenarios` nieimplementowany | MEDIUM |
-| TD-4 | Dokumentacja outdated vs kod | MEDIUM |
-
----
-
-## Priorytetyzowane Akcje
-
-### CRITICAL (natychmiast)
-
-1. **[S5.5] Napraw CORS** - `api/main.py:41-47`
-   - Zamień `allow_origins=["*"]` na listę dozwolonych domen
-   - Usuń `allow_credentials=True` lub ogranicz origins
-
-### HIGH (przed następnym release)
-
-2. **[S5.6] Dodaj rate limiting** - `docker/nginx.conf`
-3. **[O7.1] Utwórz CI/CD** - `.github/workflows/ci.yml`
-4. **[O7.6] Utwórz CHANGELOG.md**
-5. **[D1.3-2] Dodaj CHECK constraint** dla `land_cover.category`
-
-### MEDIUM (w najbliższym sprincie)
-
-6. **[Q3.9] Utwórz `constants.py`** z jednostkami i stałymi
-7. **[C2.x] Zaktualizuj dokumentację** do aktualnego stanu kodu
-8. **[T4.8] Dodaj testy dla scripts/** (szczególnie `process_dem.py`)
-9. **[O7.x] Dodaj pyproject.toml i pre-commit**
-10. **[S5.3] Usuń hardcoded secrets** z config.py i migrations/env.py
+3. **[6.2] Optymalizacja select-stream** — pre-computed boundaries lub cache
+4. **[5.2/TD-4] Testy scripts/** — pokrycie dla `generate_*.py`, `import_landcover.py`
+5. **[5.2/TD-5] Testy morphometry_raster.py** — dedykowane unit testy
+6. **[6.3/E1] Dziury na granicach zlewni** — ST_Union/SnapToGrid tuning
+7. **[6.3/E4] Outlet poza granica** — fix logiki outlet w watershed_service
 
 ### LOW (backlog)
 
-11. Napraw 15 błędów flake8
-12. Sformatuj 3 pliki black
-13. Zaktualizuj outdated packages
-14. Dodaj Examples do `check_data_coverage` docstring
-15. Zaimplementuj `/api/scenarios` lub usuń z dokumentacji
+8. **[4.3] Dockerfile** — multi-stage build, .dockerignore
+9. **[5.2/TD-1] Deprecation flow_graph.py** — usunac po odlaczeniu CLI scripts
+10. **[4.4] pyproject.toml version** — 0.3.0 → 0.4.0 (post CP4)
+11. Formatowanie `models/schemas.py` (po commicie zmian z sesji 27)
+12. Aktualizacja outdated packages
+13. Testy dla `utils/raster_utils.py` i `utils/sheet_finder.py`
+
+---
+
+## 8. Status MVP
+
+| Faza | Opis | Status |
+|------|------|--------|
+| Faza 0 | Setup | ✅ Ukonczona |
+| Faza 1 | Backend MVP | ✅ CP1, CP2 |
+| Faza 2 | Model Hydrologiczny | ✅ CP3 |
+| Faza 3 | Frontend | ✅ CP4 (4 fazy frontendu) |
+| **Faza 4** | **Testy i Deploy** | ⏳ **W trakcie** |
+| Faza 5 | MVP Release (CP5) | ⏳ Planowana |
+
+**Gotowe do CP5:** 10 endpointow, 559 testow, CI/CD, structured logging, security headers, rate limiting, CatchmentGraph in-memory.
+
+**Blokery CP5:** zielone zlewnie (bug), wydajnosc select-stream, hardcoded secrets.
 
 ---
 
 ## Podsumowanie
 
-Projekt Hydrograf ma solidną architekturę i dobrą jakość kodu w warstwie core logic. Główne obszary wymagające uwagi:
+Projekt Hydrograf przeszedl znaczaca ewolucje od ostatniego raportu QA (2026-01-21). Wszystkie problemy CRITICAL zostaly naprawione (CORS, rate limiting, CI/CD). Liczba testow wzrosla z 175 do 559. Architektura zostala zrefaktoryzowana — eliminacja FlowGraph z runtime API zmniejszyla zuzycie RAM o 96%.
 
-1. **Bezpieczeństwo** - CORS i rate limiting wymagają natychmiastowej naprawy
-2. **DevOps** - Brak CI/CD i CHANGELOG to poważne braki dla projektu produkcyjnego
-3. **Testy** - Skrypty preprocessingu nie mają żadnych testów
-4. **Dokumentacja** - Wymaga synchronizacji z aktualnym stanem kodu
+Glowne obszary wymagajace uwagi:
+1. **Bug zielonych zlewni** — wymaga diagnostyki (narzedzia juz wdrozone)
+2. **Wydajnosc** — select-stream zbyt wolny dla duzych zlewni
+3. **Hardcoded secrets** — jedyny pozostaly problem bezpieczenstwa
 
-Po naprawie problemów CRITICAL i HIGH, projekt będzie gotowy do dalszego rozwoju w kierunku MVP.
+Po rozwiazaniu tych problemow projekt bedzie gotowy do release MVP (CP5).
 
 ---
 
-*Raport wygenerowany przez Claude Code QA*
+*Raport wygenerowany przez Claude Code QA — 2026-02-16*
