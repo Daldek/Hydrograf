@@ -292,6 +292,8 @@
         // Determine active threshold from streams layer
         var threshold = Hydrograf.map.getStreamsThreshold() || 100000;
 
+        console.log('[select-stream] threshold:', threshold);
+
         try {
             var data = await Hydrograf.api.selectStream(lat, lng, threshold);
 
@@ -300,7 +302,12 @@
 
             // Highlight upstream catchments
             if (data.upstream_segment_indices && data.upstream_segment_indices.length > 0) {
-                Hydrograf.map.highlightUpstreamCatchments(data.upstream_segment_indices);
+                console.log('[select-stream] highlighting', data.upstream_segment_indices.length,
+                            'segments, indices:', data.upstream_segment_indices.slice(0, 20),
+                            data.upstream_segment_indices.length > 20 ? '...' : '');
+                Hydrograf.map.highlightUpstreamCatchments(
+                    data.upstream_segment_indices
+                );
             }
 
             if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
