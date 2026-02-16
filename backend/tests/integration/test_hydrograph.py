@@ -3,7 +3,7 @@ Integration tests for hydrograph generation endpoint.
 
 Tests the CatchmentGraph-based hydrograph endpoint by mocking:
 - get_catchment_graph() -> CatchmentGraph with traverse/aggregate
-- find_nearest_stream_segment() -> stream segment dict
+- get_stream_info_by_segment_idx() -> stream segment dict
 - merge_catchment_boundaries() -> MultiPolygon boundary
 - get_segment_outlet() -> outlet coordinates
 - build_morph_dict_from_graph() -> morphometric dict for Hydrolog
@@ -84,6 +84,7 @@ def _make_mock_cg():
     """Create a mock CatchmentGraph with valid traversal results."""
     cg = MagicMock()
     cg.loaded = True
+    cg._segment_idx = np.array([10, 11, 12], dtype=np.int32)
     cg.find_catchment_at_point.return_value = 0
     cg.traverse_upstream.return_value = np.array([0, 1, 2])
     cg.get_segment_indices.return_value = [10, 11, 12]
@@ -161,7 +162,7 @@ def _patch_happy_path(cn: int = 75):
 
     patches = {
         "cg": patch(f"{_HG}.get_catchment_graph", return_value=mock_cg),
-        "seg": patch(f"{_HG}.find_nearest_stream_segment", return_value=segment),
+        "seg": patch(f"{_HG}.get_stream_info_by_segment_idx", return_value=segment),
         "merge": patch(f"{_HG}.merge_catchment_boundaries", return_value=boundary),
         "outlet": patch(
             f"{_HG}.get_segment_outlet",
@@ -353,18 +354,18 @@ class TestGenerateHydrographEndpoint:
     # ---- 7. test_no_stream_returns_404 ----
 
     def test_no_stream_returns_404(self, client):
-        """Test that missing stream returns 404."""
+        """Test that missing catchment returns 404."""
         mock_db = MagicMock()
         app.dependency_overrides[get_db] = lambda: mock_db
 
         mock_cg = MagicMock()
         mock_cg.loaded = True
+        mock_cg.find_catchment_at_point.side_effect = ValueError(
+            "Nie znaleziono zlewni cząstkowej"
+        )
 
         try:
-            with (
-                patch(f"{_HG}.get_catchment_graph", return_value=mock_cg),
-                patch(f"{_HG}.find_nearest_stream_segment", return_value=None),
-            ):
+            with patch(f"{_HG}.get_catchment_graph", return_value=mock_cg):
                 response = self._post(
                     client,
                     {
@@ -376,7 +377,7 @@ class TestGenerateHydrographEndpoint:
                 )
 
             assert response.status_code == 404
-            assert "ciek" in response.json()["detail"].lower()
+            assert "zlewni" in response.json()["detail"].lower()
         finally:
             app.dependency_overrides.clear()
 
@@ -402,7 +403,7 @@ class TestGenerateHydrographEndpoint:
         try:
             with (
                 patch(f"{_HG}.get_catchment_graph", return_value=mock_cg),
-                patch(f"{_HG}.find_nearest_stream_segment", return_value=segment),
+                patch(f"{_HG}.get_stream_info_by_segment_idx", return_value=segment),
             ):
                 response = self._post(client)
 
