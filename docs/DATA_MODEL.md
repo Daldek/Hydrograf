@@ -77,6 +77,7 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 │ threshold_m2        │
 │ upstream_area_km2   │
 │ mean_slope_percent  │
+│ segment_idx         │
 └─────────────────────┘
 
 ┌─────────────────────┐
@@ -309,7 +310,8 @@ CREATE TABLE stream_network (
     source VARCHAR(50) DEFAULT 'MPHP',
     upstream_area_km2 FLOAT,                        -- migracja 003
     mean_slope_percent FLOAT,                       -- migracja 003
-    threshold_m2 INT NOT NULL DEFAULT 100,          -- migracja 005
+    threshold_m2 INT NOT NULL DEFAULT 1000,          -- migracja 005, ADR-026: 100 → 1000
+    segment_idx INTEGER,                              -- migracja 014 (ADR-026)
 
     CONSTRAINT valid_strahler CHECK (strahler_order IS NULL OR strahler_order > 0)
 );
@@ -347,6 +349,7 @@ COMMENT ON COLUMN stream_network.strahler_order IS 'Rząd Strahlera (hierarchia 
 | `source` | VARCHAR(50) | YES | 'MPHP' | Źródło danych ('MPHP' lub 'DEM_DERIVED') |
 | `upstream_area_km2` | FLOAT | YES | NULL | Powierzchnia zlewni na końcu segmentu [km²] |
 | `mean_slope_percent` | FLOAT | YES | NULL | Średni spadek wzdłuż segmentu [%] |
+| `segment_idx` | INTEGER | YES | NULL | Indeks segmentu spójny z `stream_catchments.segment_idx` (migracja 014, ADR-026) |
 
 **Przykładowe rekordy:**
 ```sql

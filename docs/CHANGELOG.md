@@ -5,7 +5,27 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — 2026-02-16
+
+### Zmieniono
+- **Selekcja zlewni (ADR-026):** bezpośredni lookup poligonu (`ST_Contains`) zamiast snap-to-stream — eliminuje błędne przypisanie kliknięcia do sąsiedniej zlewni
+- **`DEFAULT_THRESHOLD_M2`:** 100 → 1000 m² — najdrobniejszy próg zlewni cząstkowych
+- **Geometria poligonów:** tolerancja simplify z `cellsize/2` do `cellsize` (1m) — gładsze granice
+- **`stream_network`:** nowa kolumna `segment_idx` (migracja 014) — spójny lookup z `stream_catchments`
+
+### Usunięto
+- **Próg 100 m² ze zlewni cząstkowych** — pipeline pomija generowanie catchmentów dla tego progu (cieki zostają)
+- **ADR-024 (fine-threshold BFS)** i **ADR-025 (warunkowy próg)** — zastąpione przez ADR-026
+- **`display_threshold_m2`** z `SelectStreamRequest` — jeden próg dla BFS i display
+- **`find_nearest_stream_segment()`** z flow selekcji — zastąpione przez `cg.find_catchment_at_point()`
+
 ## [Unreleased]
+
+### Added (diagnostyka zielonych zlewni — DO WERYFIKACJI)
+- **`display_threshold_m2` w `SelectStreamResponse`:** nowe pole informujace frontend na jakim progu sa `upstream_segment_indices` — umozliwia walidacje zgodnosci z aktualnie wyswietlanymi kafelkami MVT
+- **Walidacja progu w highlight function:** `highlightUpstreamCatchments(indices, forThreshold)` sprawdza czy prog indeksow == prog kafelkow MVT; jesli mismatch → fallback do domyslnych kolorow zamiast blednego podswietlania losowych zlewni
+- **Tooltip diagnostyczny:** najechanie na zlewnie czastkowa pokazuje `segment_idx` oraz status `IN SET / not in set` (gdy aktywny highlight) — umozliwia ustalenie czy zielona zlewnia jest w zbiorze BFS czy to bug renderowania
+- **Mismatch warning w konsoli:** `[select-stream] THRESHOLD MISMATCH!` logowany gdy `display_threshold_m2` z API ≠ `getCatchmentsThreshold()` z MVT
 
 ### Fixed (F2 — warunkowy próg selekcji, ADR-025)
 - **Snap-to-stream przy wyświetlanym progu:** `select_stream.py` wykonuje snap-to-stream i BFS na progu wyswietlanym na mapie (1000, 10000, 100000), a fine-BFS (ADR-024) aktywny tylko przy progu 100 m². Eliminuje snap do niewidocznych doplywow przy grubszych progach.
