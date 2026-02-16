@@ -8,8 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed (F1 — precyzyjna selekcja cieku, ADR-024)
-- **Segmentacja konfluencyjna (preprocessing):** segmenty ciekow lamia sie teraz przy kazdej konfluencji (polaczeniu dwoch lub wiecej doplywow), nie tylko przy zmianie rzedu Strahlera. Zmiana 1 warunku w `vectorize_streams()` — `upstream_count[nr, nc] > 1`. Szacowany wzrost: ~78k → ~120-160k segmentow na progu 100 m².
+- **Segmentacja konfluencyjna (preprocessing):** segmenty ciekow lamia sie teraz przy kazdej konfluencji (polaczeniu dwoch lub wiecej doplywow), nie tylko przy zmianie rzedu Strahlera. Zmiana 1 warunku w `vectorize_streams()` — `upstream_count[nr, nc] > 1`. Wynik: 78829 → 105492 segmentow na progu 100 m² (+34%).
 - **Fine-threshold BFS (query):** `select_stream.py` wykonuje BFS na progu 100 m² (najdrobniejszym) zamiast progu wyswietlania. Nowa funkcja `find_stream_catchment_at_point()` (snap-to-stream → ST_Contains) eliminuje "hillslope problem". Granica budowana z fine segments, mapowana na display threshold dla MVT via `map_boundary_to_display_segments()`.
+- **Kaskadowe progi merge:** dla duzych zlewni (>500 fine segments) kaskadowe przechodzenie do grubszych progow (1000→10000→100000) — zapobiega timeout ST_UnaryUnion (30s DB limit).
 - **Optymalizacja ST_Union:** zamiana `ST_Union` na `ST_UnaryUnion(ST_Collect(ST_SnapToGrid(geom, 0.01)))` — szybszy cascaded union + eliminacja mikro-luk (1cm w EPSG:2180).
 
 ### Added
