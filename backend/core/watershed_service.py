@@ -135,6 +135,62 @@ def find_stream_catchment_at_point(
     return result.segment_idx
 
 
+def get_stream_info_by_segment_idx(
+    segment_idx: int,
+    threshold_m2: int,
+    db: Session,
+) -> dict | None:
+    """
+    Get stream segment info by segment_idx and threshold.
+
+    Uses the segment_idx column (1-based per threshold) for exact lookup
+    instead of spatial proximity search.
+
+    Parameters
+    ----------
+    segment_idx : int
+        Segment index (1-based per threshold, matches stream_catchments)
+    threshold_m2 : int
+        Flow accumulation threshold
+    db : Session
+        Database session
+
+    Returns
+    -------
+    dict | None
+        Segment info with keys: segment_idx, strahler_order, length_m,
+        upstream_area_km2, downstream_x, downstream_y.
+        None if no segment found.
+    """
+    query = text("""
+        SELECT
+            segment_idx,
+            strahler_order,
+            ST_Length(geom) as length_m,
+            upstream_area_km2,
+            ST_X(ST_EndPoint(geom)) as downstream_x,
+            ST_Y(ST_EndPoint(geom)) as downstream_y
+        FROM stream_network
+        WHERE threshold_m2 = :threshold
+          AND segment_idx = :seg_idx
+        LIMIT 1
+    """)
+    result = db.execute(
+        query,
+        {"threshold": threshold_m2, "seg_idx": segment_idx},
+    ).fetchone()
+    if result is None:
+        return None
+    return {
+        "segment_idx": result.segment_idx,
+        "strahler_order": result.strahler_order,
+        "length_m": result.length_m,
+        "upstream_area_km2": result.upstream_area_km2,
+        "downstream_x": result.downstream_x,
+        "downstream_y": result.downstream_y,
+    }
+
+
 def map_boundary_to_display_segments(
     boundary_2180: MultiPolygon | Polygon,
     display_threshold_m2: int,
@@ -250,7 +306,7 @@ def get_segment_outlet(
             ST_X(ST_EndPoint(geom)) as x,
             ST_Y(ST_EndPoint(geom)) as y
         FROM stream_network
-        WHERE id = :seg_idx
+        WHERE segment_idx = :seg_idx
           AND threshold_m2 = :threshold
         LIMIT 1
     """)
@@ -326,7 +382,7 @@ def get_main_stream_geojson(
             ST_Transform(geom, 4326)
         ) as geojson
         FROM stream_network
-        WHERE id = :seg_idx
+        WHERE segment_idx = :seg_idx
           AND threshold_m2 = :threshold
         LIMIT 1
     """)
@@ -365,7 +421,7 @@ def get_main_stream_coords_2180(
     query = text("""
         SELECT ST_AsText(geom) as wkt
         FROM stream_network
-        WHERE id = :seg_idx
+        WHERE segment_idx = :seg_idx
           AND threshold_m2 = :threshold
         LIMIT 1
     """)
