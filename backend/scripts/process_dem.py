@@ -351,6 +351,9 @@ def process_dem(
     cell_area = metadata["cellsize"] * metadata["cellsize"]
     DEFAULT_THRESHOLDS_M2 = [100, 1000, 10000, 100000]
 
+    # Catchments only for thresholds >= 1000 m² (ADR-026)
+    MIN_CATCHMENT_THRESHOLD_M2 = 1000
+
     if thresholds:
         threshold_list_m2 = sorted(thresholds)
     else:
@@ -460,7 +463,12 @@ def process_dem(
             all_stream_segments[threshold_m2] = segments
 
             # Delineate and polygonize sub-catchments
-            if not skip_catchments and label_raster is not None:
+            generate_catchments = (
+                not skip_catchments
+                and label_raster is not None
+                and threshold_m2 >= MIN_CATCHMENT_THRESHOLD_M2
+            )
+            if generate_catchments:
                 delineate_subcatchments(flw, label_raster, filled_dem, nodata)
 
                 # Compute downstream links for catchment graph
