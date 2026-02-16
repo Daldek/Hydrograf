@@ -34,8 +34,8 @@ from core.precipitation import (
 from core.watershed_service import (
     boundary_to_polygon,
     build_morph_dict_from_graph,
-    find_nearest_stream_segment,
     get_segment_outlet,
+    get_stream_info_by_segment_idx,
     merge_catchment_boundaries,
 )
 from models.schemas import (
@@ -125,19 +125,7 @@ def generate_hydrograph(
                 detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
             )
 
-        # ===== STEP 4: Find nearest stream segment =====
-        segment = find_nearest_stream_segment(
-            point_2180.x, point_2180.y, DEFAULT_THRESHOLD_M2, db
-        )
-        if segment is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Nie znaleziono cieku w tym miejscu",
-            )
-
-        segment_idx = segment["segment_idx"]
-
-        # ===== STEP 5: Find catchment at point and traverse upstream =====
+        # ===== STEP 4: Find catchment at click point (direct ST_Contains) =====
         try:
             clicked_idx = cg.find_catchment_at_point(
                 point_2180.x, point_2180.y, DEFAULT_THRESHOLD_M2, db
@@ -147,6 +135,12 @@ def generate_hydrograph(
                 status_code=404,
                 detail="Nie znaleziono zlewni cząstkowej. Kliknij w obszarze zlewni.",
             ) from e
+
+        # ===== STEP 5: Get segment info and traverse upstream =====
+        segment_idx = int(cg._segment_idx[clicked_idx])
+        segment = get_stream_info_by_segment_idx(
+            segment_idx, DEFAULT_THRESHOLD_M2, db
+        )
 
         upstream_indices = cg.traverse_upstream(clicked_idx)
         segment_idxs = cg.get_segment_indices(upstream_indices, DEFAULT_THRESHOLD_M2)
@@ -194,8 +188,10 @@ def generate_hydrograph(
         outlet_info = get_segment_outlet(segment_idx, DEFAULT_THRESHOLD_M2, db)
         if outlet_info is not None:
             outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
-        else:
+        elif segment:
             outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
+        else:
+            outlet_x, outlet_y = point_2180.x, point_2180.y
 
         morph_dict = build_morph_dict_from_graph(
             cg,
