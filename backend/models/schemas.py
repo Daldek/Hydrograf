@@ -407,6 +407,10 @@ class SelectStreamResponse(BaseModel):
     boundary_geojson: dict[str, Any] = Field(
         ..., description="Upstream catchment boundary as GeoJSON Feature"
     )
+    display_threshold_m2: int = Field(
+        ...,
+        description="Threshold used for upstream_segment_indices (for MVT matching)",
+    )
     watershed: WatershedResponse | None = Field(
         None, description="Full watershed statistics (morphometry, land cover, etc.)"
     )

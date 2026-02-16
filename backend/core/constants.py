@@ -23,4 +23,4 @@ MAX_WATERSHED_CELLS = 2_000_000
 MAX_STREAM_DISTANCE_M = 1000.0
 
 # Default flow accumulation threshold (finest resolution)
-DEFAULT_THRESHOLD_M2 = 100
+DEFAULT_THRESHOLD_M2 = 1000
