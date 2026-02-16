@@ -44,24 +44,23 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-16 (sesja 28)
+**Data:** 2026-02-16 (sesja 29)
 
 ### Co zrobiono
 
-- **Redesign selekcji zlewni cząstkowych (ADR-026):**
-  - **Selekcja oparta o poligon:** bezpośredni `ST_Contains` na `stream_catchments` zamiast snap-to-stream. Eliminuje błędne przypisanie kliknięcia do sąsiedniej zlewni.
-  - **Usunięcie progu 100 m²:** pipeline pomija generowanie catchmentów dla progu 100 (cieki zostają). `stream_catchments` zmniejsza się ze 117k do ~12k rekordów.
-  - **Geometria:** tolerancja simplify z `cellsize/2` do `cellsize` (1m) — gładsze poligony bez schodkowych krawędzi.
-  - **Migracja 014:** kolumna `segment_idx` w `stream_network` — spójny lookup z `stream_catchments` bez auto-increment offset.
-  - **API:** `DEFAULT_THRESHOLD_M2 = 1000`, usunięcie `display_threshold_m2` z request, uproszczenie `select_stream.py` (~75 linii mniej), usunięcie logiki ADR-024/025.
-  - **Frontend:** usunięcie progu 100 z FALLBACK_THRESHOLDS, usunięcie threshold mismatch guard.
-  - **Testy:** 557 testów, 0 failures. Usunięto 3 testy ADR-024/025, dodano 1 nowy.
-  - **Pipeline re-run:** baza wyzerowana i odtworzona od zera. 801.6s.
+- **Naprawa niespójnych przebiegów cieków między zoomami MVT:**
+  - **Przyczyna:** `ST_SimplifyPreserveTopology` z tolerancjami per-zoom (1-10m) tworzył dyskretne skoki w kształcie geometrii. 78% segmentów stawało się prostymi liniami (2 punkty) przy tolerancji 10m (zoomy 0-5), a przy 1m (zoomy 10+) miały 13+ punktów. Powodowało to co najmniej 3 wizualnie różne wersje sieci rzecznej.
+  - **Rozwiązanie:** usunięcie jawnej `ST_SimplifyPreserveTopology` z zapytań MVT (streams + catchments). Geometria jest pre-simplifikowana do 1m w pipeline, a `ST_AsMVTGeom` kwantyzuje współrzędne do siatki 4096×4096 kafla — płynna redukcja szczegółów bez skoków.
+  - **Efekty:** spójne przebiegi cieków na wszystkich zoomach, 2.5× szybsze generowanie kafli (355→139ms na zoom 8, 10k features), prostszy kod (usunięta tabela `_MVT_SIMPLIFY_TOLERANCE`).
+  - **Testy:** 557 testów, 0 failures, ruff clean.
 
-- **Naprawa wizualizacji MVT (kafelki cieków i zlewni):**
-  - **Cieki znikające przy oddalaniu:** `ST_Simplify` → `ST_SimplifyPreserveTopology` — krótkie segmenty nie są redukowane do pustej geometrii.
-  - **Różne przebiegi cieków między zoomami:** tolerancje upraszczania ograniczone do max 10m (było 40-5000m na zoomach 0-7). Dane w bazie są spójne (100% overlap między progami, 0.00m odległości), problem był wyłącznie w warstwie wizualizacji.
-  - **Znany problem:** mimo ograniczenia tolerancji, przy sąsiednich poziomach zoomu mogą występować drobne różnice w upraszczaniu geometrii (do 10m). Jest to inherentna cecha `ST_SimplifyPreserveTopology` z różnymi tolerancjami — nie jest to błąd danych.
+### Poprzednia sesja (2026-02-16, sesja 28)
+
+- **Redesign selekcji zlewni cząstkowych (ADR-026):**
+  - Selekcja oparta o poligon (`ST_Contains`), usunięcie progu 100 m², migracja 014 (`segment_idx`), uproszczenie API, pipeline re-run (801.6s).
+
+- **Naprawa wizualizacji MVT (częściowa):**
+  - `ST_Simplify` → `ST_SimplifyPreserveTopology`, tolerancje ograniczone do max 10m.
 
 ### Poprzednia sesja (2026-02-16, sesja 27)
 
