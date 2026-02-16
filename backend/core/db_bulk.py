@@ -678,20 +678,21 @@ def insert_stream_segments(
             upstream_area_km2 FLOAT,
             mean_slope_percent FLOAT,
             source TEXT,
-            threshold_m2 INT
+            threshold_m2 INT,
+            segment_idx INT
         )
     """)
 
     # Build TSV
     tsv_buffer = io.StringIO()
-    for seg in segments:
+    for i, seg in enumerate(segments, start=1):
         coords_wkt = ", ".join(f"{x} {y}" for x, y in seg["coords"])
         wkt = f"LINESTRING({coords_wkt})"
         tsv_buffer.write(
             f"{wkt}\t{seg['strahler_order']}\t"
             f"{seg['length_m']}\t{seg['upstream_area_km2']}\t"
             f"{seg['mean_slope_percent']}\tDEM_DERIVED\t"
-            f"{threshold_m2}\n"
+            f"{threshold_m2}\t{i}\n"
         )
 
     tsv_buffer.seek(0)
@@ -707,13 +708,13 @@ def insert_stream_segments(
         INSERT INTO stream_network (
             geom, strahler_order, length_m,
             upstream_area_km2, mean_slope_percent, source,
-            threshold_m2
+            threshold_m2, segment_idx
         )
         SELECT
             ST_SetSRID(ST_GeomFromText(wkt), 2180),
             strahler_order, length_m,
             upstream_area_km2, mean_slope_percent, source,
-            threshold_m2
+            threshold_m2, segment_idx
         FROM temp_stream_import
         ON CONFLICT DO NOTHING
     """)
@@ -839,5 +840,29 @@ def insert_catchments(
     total = cursor.rowcount
     raw_conn.commit()
     logger.info(f"  Inserted {total} sub-catchments")
+
+    # Clean up micro-fragments from raster polygonization.
+    # Multipolygon geometries can contain tiny (1 m²) detached parts
+    # that cause visual artifacts in MVT tile highlighting.
+    _min_part_area = 50  # m² in EPSG:2180
+    cursor.execute(
+        """
+        UPDATE stream_catchments
+        SET geom = COALESCE(
+            (SELECT ST_Multi(ST_Union(d.geom))
+             FROM ST_Dump(geom) AS d
+             WHERE ST_Area(d.geom) >= %s),
+            (SELECT ST_Multi(d.geom)
+             FROM ST_Dump(geom) AS d
+             ORDER BY ST_Area(d.geom) DESC LIMIT 1)
+        )
+        WHERE threshold_m2 = %s AND ST_NumGeometries(geom) > 1
+        """,
+        (_min_part_area, threshold_m2),
+    )
+    cleaned = cursor.rowcount
+    raw_conn.commit()
+    if cleaned:
+        logger.info(f"  Cleaned {cleaned} multi-part geometries")
 
     return total
