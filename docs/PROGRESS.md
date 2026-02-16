@@ -54,6 +54,15 @@
   - **Weryfikacja F1:** dwa klikniecia na tym samym cieku (idx=1002631, Strahler 2) daja rozne wyniki: Point A 0.04 km² (12 seg), Point B 0.05 km² (14 seg). Response time: 0.5-1.1s.
   - **Weryfikacja duzych zlewni:** threshold 100000 → 8.23 km², 73 segs, 18s (bylo timeout).
 
+### W trakcie
+- Brak — F1 zamkniety, wszystkie progi działaja.
+
+### Nastepne kroki
+- Testy manualne frontendu z nowa segmentacja (klikanie na cieki na mapie)
+- Regeneracja kafelkow MVT (`generate_tiles.py`) jesli zmiana segmentow wplywa na streams/catchments tiles
+- Regeneracja overlayow PNG jesli potrzebne (`generate_streams_overlay.py`)
+- Rozwazyc optymalizacje czasu odpowiedzi dla threshold=100 (obecnie ~25s dla duzych zlewni)
+
 ### Poprzednia sesja (2026-02-15, sesja 24)
 
 - **F1 — precyzyjna selekcja cieku (ADR-024):**
