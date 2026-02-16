@@ -44,9 +44,27 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-16 (sesja 30)
+**Data:** 2026-02-16 (sesja 31)
 
 ### Co zrobiono
+
+- **`scripts/bootstrap.py` — jednokomendowy setup srodowiska (~460 linii):**
+  - Nowy skrypt orkiestratora: 9 krokow pipeline'u od zera do dzialajacego systemu
+  - Kroki: infrastruktura (.venv, Docker DB, Alembic) → pobieranie NMT (Kartograf) → przetwarzanie DEM (VRT + process_dem, zawsze od zera) → pokrycie terenu (BDOT10k) → opady IMGW (async grid) → depresje (blue spots) → kafelki MVT (tippecanoe) → overlay PNG (DEM + streams) → uruchomienie serwera (docker compose)
+  - Dwa tryby wejscia: `--bbox "min_lon,min_lat,max_lon,max_lat"` lub `--sheets GODLO1 GODLO2`
+  - 7 flag `--skip-*` do pomijania opcjonalnych krokow
+  - `--dry-run` — podglad planu bez wykonywania
+  - `--port` — konfigurowalny port HTTP (zmienna `HYDROGRAF_PORT` w `.env`)
+  - Kroki 1-3 krytyczne (blad = przerwanie), kroki 4-9 opcjonalne (blad = warning + kontynuacja)
+  - Tracker postepu z symbolami: checkmark/bullet/cross/en-dash + czasy wykonania
+  - Reuzywane istniejace funkcje przez Python imports (wzorzec z `prepare_area.py`)
+
+- **`docker-compose.yml` — konfigurowalny port nginx:**
+  - `"8080:80"` → `"${HYDROGRAF_PORT:-8080}:80"`
+
+- **Testy:** 560 testow, 0 failures, ruff clean.
+
+### Poprzednia sesja (2026-02-16, sesja 30)
 
 - **Auto-selekcja dużych zlewni w trybie "Wygeneruj":**
   - Gdy powierzchnia zlewni > 10 000 m² (0.01 km²), endpoint automatycznie przełącza wyświetlanie na styl selekcji (pomarańczowa granica + podświetlone zlewnie cząstkowe MVT) z banerem informacyjnym.
@@ -422,12 +440,20 @@
 - Powiazanie z istniejaca klasyfikacja jezior (ADR-020: 45 endorheic, 18 exorheic) i drain points
 - **Kontekst:** `core/hydrology.py` (classify_endorheic_lakes), `catchment_graph.py` (traverse_upstream)
 
+**H2. Narzucenie kierunku splywu na podstawie warstwy wektorowej** (priorytet: do ustalenia)
+- Mozliwosc wymuszenia kierunku splywu (flow direction) w oparciu o zewnetrzna warstwe wektorowa (np. BDOT10k cieki, OSM waterways)
+- Przypadki uzycia: korygowanie bledow DEM na terenach plaskich (delty, polesia), kanaly, rowy melioracyjne
+- Mozliwe podejscia: stream burning (juz zaimplementowane w `hydrology.py` — `burn_streams_into_dem()`), flow direction forcing (nadpisywanie fdir w komorkach pokrywajacych sie z wektorem)
+- Pytanie: czy obecny stream burning jest wystarczajacy, czy potrzebna jest pelna kontrola fdir?
+- **Kontekst:** `core/hydrology.py` (burn_streams_into_dem, process_hydrology_pyflwdir), `scripts/process_dem.py`
+
 ### Nastepne kroki
-1. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
-2. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
-3. Usuniecie hardcoded secrets z config.py i migrations/env.py
-4. Faza 5 (opcjonalna): PMTiles, pre-computed watersheds, MapLibre GL JS
-5. CP5: MVP — pelna integracja, deploy
+1. Weryfikacja `bootstrap.py` na malym bbox (1-2 arkusze): `python -m scripts.bootstrap --bbox "20.95,52.2,21.05,52.25"`
+2. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
+3. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
+4. Usuniecie hardcoded secrets z config.py i migrations/env.py
+5. Faza 5 (opcjonalna): PMTiles, pre-computed watersheds, MapLibre GL JS
+6. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
