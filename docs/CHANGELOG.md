@@ -8,7 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — 2026-02-16
 
 ### Added
+- **`scripts/bootstrap.py` — jednokomendowy setup srodowiska:** nowy skrypt orkiestratora (~460 linii) wykonujacy 9 krokow pipeline'u od zera do dzialajacego systemu. Dwa tryby wejscia (`--bbox` / `--sheets`), 7 flag `--skip-*`, `--dry-run`, konfigurowalny `--port`. Kroki 1-3 krytyczne, 4-9 opcjonalne z graceful degradation. Reuzywane istniejace funkcje (download_dem, process_dem, generate_depressions, itp.).
 - **Auto-selekcja dużych zlewni w trybie "Wygeneruj":** gdy powierzchnia zlewni przekracza 10 000 m² (0.01 km²), endpoint automatycznie przełącza wyświetlanie na styl selekcji (pomarańczowa granica + podświetlone zlewnie cząstkowe MVT) z banerem informacyjnym. Nowa stała `DELINEATION_MAX_AREA_M2` w `constants.py`, 4 nowe pola w `DelineateResponse` (`auto_selected`, `upstream_segment_indices`, `display_threshold_m2`, `info_message`), kaskadowe progi merge (>500 segmentów), banner `#panel-auto-select-info` w HTML, obsługa w `app.js`. 3 nowe testy integracyjne (560 łącznie).
+
+### Zmieniono
+- **Port nginx w `docker-compose.yml`:** `"8080:80"` → `"${HYDROGRAF_PORT:-8080}:80"` — konfigurowalny port HTTP przez zmienna srodowiskowa
 
 ### Zmieniono
 - **Selekcja zlewni (ADR-026):** bezpośredni lookup poligonu (`ST_Contains`) zamiast snap-to-stream — eliminuje błędne przypisanie kliknięcia do sąsiedniej zlewni
