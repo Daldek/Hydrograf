@@ -3,6 +3,12 @@ Tile endpoints for stream and catchment vector layers (MVT).
 
 Serves stream network and sub-catchment tiles as Mapbox Vector Tiles
 (MVT/protobuf) from PostGIS tables.
+
+Geometry is pre-simplified at 1m (cellsize) during pipeline processing.
+No additional simplification is applied at query time — ST_AsMVTGeom
+handles coordinate quantization to the 4096-unit tile grid, which
+provides zoom-appropriate detail reduction without discrete visual
+jumps between zoom levels.
 """
 
 import logging
@@ -15,32 +21,6 @@ from core.database import get_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# Simplification tolerance per zoom level (in EPSG:2180 metres).
-# DB geometry is pre-simplified at 1m (cellsize), so tolerances >1m
-# add extra simplification; <=1m are effectively no-ops.
-# Capped at 10m to prevent visible stream shifts between zoom levels.
-_MVT_SIMPLIFY_TOLERANCE = {
-    0: 10,
-    1: 10,
-    2: 10,
-    3: 10,
-    4: 10,
-    5: 10,
-    6: 5,
-    7: 5,
-    8: 3,
-    9: 2,
-    10: 1,
-    11: 1,
-    12: 1,
-    13: 1,
-    14: 1,
-    15: 1,
-    16: 1,
-    17: 1,
-    18: 1,
-}
 
 _EMPTY_MVT = b""
 
@@ -74,18 +54,12 @@ def get_streams_mvt(
     """
     xmin, ymin, xmax, ymax = _tile_to_bbox_3857(z, x, y)
 
-    # Geometry simplification tolerance based on zoom
-    tolerance = _MVT_SIMPLIFY_TOLERANCE.get(z, 0.01)
-
     row = db.execute(
         text("""
         WITH mvt_data AS (
             SELECT
                 ST_AsMVTGeom(
-                    ST_Transform(
-                        ST_SimplifyPreserveTopology(s.geom, :tolerance),
-                        3857
-                    ),
+                    ST_Transform(s.geom, 3857),
                     ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
                     4096, 64, true
                 ) AS geom,
@@ -112,7 +86,6 @@ def get_streams_mvt(
             "xmax": xmax,
             "ymax": ymax,
             "threshold": threshold,
-            "tolerance": tolerance,
         },
     ).fetchone()
 
@@ -142,9 +115,6 @@ def get_catchments_mvt(
     """
     xmin, ymin, xmax, ymax = _tile_to_bbox_3857(z, x, y)
 
-    # Geometry simplification tolerance based on zoom
-    tolerance = _MVT_SIMPLIFY_TOLERANCE.get(z, 0.01)
-
     # Min polygon area to include in tiles (filters raster micro-fragments)
     min_geom_area = 50  # m² in EPSG:2180
 
@@ -153,10 +123,7 @@ def get_catchments_mvt(
         WITH mvt_data AS (
             SELECT
                 ST_AsMVTGeom(
-                    ST_Transform(
-                        ST_SimplifyPreserveTopology(c.geom, :tolerance),
-                        3857
-                    ),
+                    ST_Transform(c.geom, 3857),
                     ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
                     4096, 64, true
                 ) AS geom,
@@ -185,7 +152,6 @@ def get_catchments_mvt(
             "xmax": xmax,
             "ymax": ymax,
             "threshold": threshold,
-            "tolerance": tolerance,
             "min_geom_area": min_geom_area,
         },
     ).fetchone()
