@@ -137,7 +137,9 @@ def select_stream(
                     break
 
         boundary_2180 = merge_catchment_boundaries(
-            merge_idxs, merge_threshold, db,
+            merge_idxs,
+            merge_threshold,
+            db,
         )
 
         # Display indices = BFS indices (same threshold, no cross-threshold mapping)
