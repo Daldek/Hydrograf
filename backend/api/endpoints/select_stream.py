@@ -1,7 +1,7 @@
 """
 Stream selection endpoint.
 
-Selects a stream segment via catchment graph (~87k nodes), traverses
+Selects a stream segment via catchment graph (~117k nodes), traverses
 upstream, aggregates pre-computed stats, and returns the watershed
 boundary with full morphometry. Zero raster operations in runtime.
 """
@@ -12,18 +12,16 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import get_catchment_graph
-from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
+from core.constants import HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.land_cover import get_land_cover_for_boundary
 from core.morphometry import calculate_shape_indices
 from core.watershed_service import (
     boundary_to_polygon,
     compute_watershed_length,
-    find_nearest_stream_segment,
-    find_stream_catchment_at_point,
     get_main_stream_geojson,
     get_segment_outlet,
-    map_boundary_to_display_segments,
+    get_stream_info_by_segment_idx,
     merge_catchment_boundaries,
 )
 from models.schemas import (
@@ -57,7 +55,7 @@ def select_stream(
     """
     Select a stream segment and compute upstream catchment.
 
-    Uses the in-memory catchment graph (~87k nodes) for BFS traversal
+    Uses the in-memory catchment graph (~117k nodes) for BFS traversal
     and pre-computed stat aggregation. Zero raster operations.
     """
     try:
@@ -72,122 +70,61 @@ def select_stream(
 
         cg = get_catchment_graph()
 
-        # 1. Find stream segment nearest to click point (at display threshold)
-        display_threshold = request.threshold_m2
-        segment = find_nearest_stream_segment(
-            point_2180.x,
-            point_2180.y,
-            display_threshold,
-            db,
-        )
-        if segment is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Nie znaleziono cieku w pobliżu. Kliknij bliżej linii cieku.",
-            )
-
-        # 2. Find catchment at click point
+        # 1. Find catchment at click point (direct ST_Contains, no snap-to-stream)
         if not cg.loaded:
             raise HTTPException(
                 status_code=503,
                 detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
             )
 
-        use_fine_bfs = display_threshold == DEFAULT_THRESHOLD_M2
+        threshold = request.threshold_m2
 
-        if use_fine_bfs:
-            # ADR-024: precise inter-confluence BFS at finest threshold
-            bfs_threshold = DEFAULT_THRESHOLD_M2  # 100 m²
-            clicked_idx = None
-
-            fine_seg_idx = find_stream_catchment_at_point(
+        try:
+            clicked_idx = cg.find_catchment_at_point(
                 point_2180.x,
                 point_2180.y,
-                bfs_threshold,
+                threshold,
                 db,
             )
-            if fine_seg_idx is not None:
-                clicked_idx = cg._lookup.get((bfs_threshold, fine_seg_idx))
+        except ValueError as e:
+            raise HTTPException(
+                status_code=404,
+                detail="Nie znaleziono zlewni cząstkowej. Kliknij w obszarze zlewni.",
+            ) from e
 
-            # Fallback to display threshold
-            if clicked_idx is None:
-                bfs_threshold = display_threshold
-                try:
-                    clicked_idx = cg.find_catchment_at_point(
-                        point_2180.x,
-                        point_2180.y,
-                        display_threshold,
-                        db,
-                    )
-                except ValueError as e:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="Nie znaleziono zlewni cząstkowej.",
-                    ) from e
-        else:
-            # Coarse threshold: snap + BFS at display threshold (ADR-025)
-            bfs_threshold = display_threshold
-            clicked_idx = None
+        # 2. Get segment_idx from graph
+        segment_idx = int(cg._segment_idx[clicked_idx])
 
-            seg_idx = find_stream_catchment_at_point(
-                point_2180.x,
-                point_2180.y,
-                display_threshold,
-                db,
-            )
-            if seg_idx is not None:
-                clicked_idx = cg._lookup.get((display_threshold, seg_idx))
+        # 3. Get stream info for response
+        segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)
 
-            # Fallback
-            if clicked_idx is None:
-                try:
-                    clicked_idx = cg.find_catchment_at_point(
-                        point_2180.x,
-                        point_2180.y,
-                        display_threshold,
-                        db,
-                    )
-                except ValueError as e:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="Nie znaleziono zlewni cząstkowej.",
-                    ) from e
-
-        # 3. Traverse upstream via catchment graph BFS
+        # 4. Traverse upstream via catchment graph BFS
         if request.to_confluence:
             upstream_indices = cg.traverse_to_confluence(clicked_idx)
         else:
             upstream_indices = cg.traverse_upstream(clicked_idx)
-        bfs_segment_idxs = cg.get_segment_indices(
-            upstream_indices,
-            bfs_threshold,
-        )
+        bfs_segment_idxs = cg.get_segment_indices(upstream_indices, threshold)
 
-        # 4. Aggregate pre-computed stats (zero raster ops)
+        # 5. Aggregate pre-computed stats (zero raster ops)
         stats = cg.aggregate_stats(upstream_indices)
         area_km2 = stats["area_km2"]
 
-        # 5. Build boundary from ST_Union of catchment polygons.
+        # 6. Build boundary from ST_Union of catchment polygons.
         # For large catchments (500+ segments), cascade to coarser
         # thresholds to avoid ST_UnaryUnion timeout (30s DB limit).
         _MAX_MERGE = 500
         merge_idxs = bfs_segment_idxs
-        merge_threshold = bfs_threshold
+        merge_threshold = threshold
 
         if len(bfs_segment_idxs) > _MAX_MERGE:
             for t in [1000, 10000, 100000]:
-                if t <= bfs_threshold:
+                if t <= threshold:
                     continue
-                t_seg = find_stream_catchment_at_point(
-                    point_2180.x,
-                    point_2180.y,
-                    t,
-                    db,
-                )
-                if t_seg is None:
-                    continue
-                t_node = cg._lookup.get((t, t_seg))
-                if t_node is None:
+                try:
+                    t_node = cg.find_catchment_at_point(
+                        point_2180.x, point_2180.y, t, db
+                    )
+                except ValueError:
                     continue
                 if request.to_confluence:
                     t_up = cg.traverse_to_confluence(t_node)
@@ -200,20 +137,11 @@ def select_stream(
                     break
 
         boundary_2180 = merge_catchment_boundaries(
-            merge_idxs,
-            merge_threshold,
-            db,
+            merge_idxs, merge_threshold, db,
         )
 
-        # 5.5. Map to display threshold for MVT highlighting
-        if boundary_2180 and merge_threshold != display_threshold:
-            display_segment_idxs = map_boundary_to_display_segments(
-                boundary_2180,
-                display_threshold,
-                db,
-            )
-        else:
-            display_segment_idxs = merge_idxs
+        # Display indices = BFS indices (same threshold, no cross-threshold mapping)
+        display_segment_idxs = bfs_segment_idxs
 
         if boundary_2180 is None:
             raise HTTPException(
@@ -227,21 +155,21 @@ def select_stream(
         boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_poly)
         boundary_geojson = polygon_to_geojson_feature(boundary_wgs84)
 
-        # 6. Outlet point (from clicked segment's downstream endpoint)
-        outlet_info = get_segment_outlet(
-            segment["segment_idx"],
-            request.threshold_m2,
-            db,
-        )
+        # 7. Outlet point (from clicked segment's downstream endpoint)
+        outlet_info = get_segment_outlet(segment_idx, threshold, db)
         if outlet_info is None:
-            outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
+            if segment:
+                outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
+            else:
+                # Fallback: use click point
+                outlet_x, outlet_y = point_2180.x, point_2180.y
         else:
             outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
 
         outlet_elevation = stats.get("elevation_min_m")
         outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)
 
-        # 7. Derived metrics requiring boundary geometry
+        # 8. Derived metrics requiring boundary geometry
         perimeter_km = round(boundary_2180.length / 1000, 4)
         length_km = round(
             compute_watershed_length(boundary_2180, outlet_x, outlet_y),
@@ -278,7 +206,7 @@ def select_stream(
                 6,
             )
 
-        # 8. Hypsometric curve
+        # 9. Hypsometric curve
         hypso_data = cg.aggregate_hypsometric(upstream_indices)
         hypso_curve = None
         hypsometric_integral = None
@@ -294,14 +222,10 @@ def select_stream(
                 )
                 hypsometric_integral = round(max(0, min(1, hi)), 4)
 
-        # 9. Main stream GeoJSON
-        main_stream_geojson = get_main_stream_geojson(
-            segment["segment_idx"],
-            request.threshold_m2,
-            db,
-        )
+        # 10. Main stream GeoJSON
+        main_stream_geojson = get_main_stream_geojson(segment_idx, threshold, db)
 
-        # 10. Land cover statistics
+        # 11. Land cover statistics
         hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
 
         lc_stats = None
@@ -324,7 +248,7 @@ def select_stream(
         except Exception as e:
             logger.debug(f"Land cover stats not available: {e}")
 
-        # 11. Build morphometric parameters
+        # 12. Build morphometric parameters
         morphometry = MorphometricParameters(
             area_km2=round(area_km2, 2),
             perimeter_km=perimeter_km,
@@ -348,7 +272,7 @@ def select_stream(
             max_strahler_order=stats.get("max_strahler_order"),
         )
 
-        # 12. Build response
+        # 13. Build response
         watershed_response = WatershedResponse(
             boundary_geojson=boundary_geojson,
             outlet=OutletInfo(
@@ -367,13 +291,14 @@ def select_stream(
         response.headers["Cache-Control"] = "public, max-age=3600"
         return SelectStreamResponse(
             stream=StreamInfo(
-                segment_idx=segment["segment_idx"],
-                strahler_order=segment["strahler_order"],
-                length_m=segment["length_m"],
-                upstream_area_km2=segment["upstream_area_km2"],
+                segment_idx=segment_idx,
+                strahler_order=segment["strahler_order"] if segment else None,
+                length_m=segment["length_m"] if segment else None,
+                upstream_area_km2=segment["upstream_area_km2"] if segment else None,
             ),
             upstream_segment_indices=display_segment_idxs,
             boundary_geojson=boundary_geojson,
+            display_threshold_m2=threshold,
             watershed=watershed_response,
         )
 
