@@ -70,7 +70,7 @@ backend/
 │       └── health.py        # GET /health
 │
 ├── core/                    # Logika biznesowa
-│   ├── catchment_graph.py   # Graf zlewni czastkowych in-memory (BFS, ~87k nodes, ~8 MB)
+│   ├── catchment_graph.py   # Graf zlewni czastkowych in-memory (BFS, ~117k nodes, ~5 MB)
 │   ├── config.py            # Settings (Pydantic, zmienne srodowiskowe)
 │   ├── constants.py         # Stale projektowe (CRS, jednostki, limity)
 │   ├── database.py          # Connection pool (SQLAlchemy + PostGIS)
