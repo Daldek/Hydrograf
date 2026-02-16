@@ -177,14 +177,16 @@
         var cached = _cacheGet(key);
         if (cached) return cached;
 
+        var body = {
+            latitude: lat,
+            longitude: lng,
+            threshold_m2: threshold,
+        };
+
         const response = await fetch('/api/select-stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                latitude: lat,
-                longitude: lng,
-                threshold_m2: threshold,
-            }),
+            body: JSON.stringify(body),
         });
 
         if (!response.ok) await handleError(response);
