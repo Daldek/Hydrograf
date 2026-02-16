@@ -136,27 +136,59 @@ def select_stream(
         stats = cg.aggregate_stats(upstream_indices)
         area_km2 = stats["area_km2"]
 
-        # 5. Build boundary from ST_Union of catchment polygons (fine threshold)
+        # 5. Build boundary from ST_Union of catchment polygons.
+        # For large catchments (500+ segments), cascade to coarser
+        # thresholds to avoid ST_UnaryUnion timeout (30s DB limit).
+        _MAX_MERGE = 500
+        merge_idxs = fine_segment_idxs
+        merge_threshold = fine_threshold
+
+        if len(fine_segment_idxs) > _MAX_MERGE:
+            for t in [1000, 10000, 100000]:
+                if t <= fine_threshold:
+                    continue
+                t_seg = find_stream_catchment_at_point(
+                    point_2180.x,
+                    point_2180.y,
+                    t,
+                    db,
+                )
+                if t_seg is None:
+                    continue
+                t_node = cg._lookup.get((t, t_seg))
+                if t_node is None:
+                    continue
+                if request.to_confluence:
+                    t_up = cg.traverse_to_confluence(t_node)
+                else:
+                    t_up = cg.traverse_upstream(t_node)
+                t_segs = cg.get_segment_indices(t_up, t)
+                if len(t_segs) <= _MAX_MERGE or t == 100000:
+                    merge_idxs = t_segs
+                    merge_threshold = t
+                    break
+
         boundary_2180 = merge_catchment_boundaries(
-            fine_segment_idxs,
-            fine_threshold,
+            merge_idxs,
+            merge_threshold,
             db,
         )
-        if boundary_2180 is None:
-            raise HTTPException(
-                status_code=500,
-                detail="Nie udało się zbudować granicy zlewni.",
-            )
 
         # 5.5. Map to display threshold for MVT highlighting
-        if fine_threshold != display_threshold:
+        if boundary_2180 and merge_threshold != display_threshold:
             display_segment_idxs = map_boundary_to_display_segments(
                 boundary_2180,
                 display_threshold,
                 db,
             )
         else:
-            display_segment_idxs = fine_segment_idxs
+            display_segment_idxs = merge_idxs
+
+        if boundary_2180 is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Nie udało się zbudować granicy zlewni.",
+            )
 
         # Convert MultiPolygon to Polygon (largest component)
         boundary_poly = boundary_to_polygon(boundary_2180)
