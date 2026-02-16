@@ -6,16 +6,17 @@ CatchmentGraph and watershed_service functions. The endpoint
 flow is:
   1. Transform coords (WGS84 -> PL-1992)
   2. Get CatchmentGraph (503 if not loaded)
-  3. find_nearest_stream_segment -> segment dict (404 if None)
-  4. cg.find_catchment_at_point -> clicked_idx (404 if ValueError)
-  5. cg.traverse_upstream -> upstream_indices (numpy array)
-  6. cg.get_segment_indices -> segment_idxs list
-  7. cg.aggregate_stats -> stats dict with area_km2
-  8. merge_catchment_boundaries -> MultiPolygon (500 if None)
-  9. boundary_to_polygon -> Polygon
- 10. get_segment_outlet -> outlet coords
- 11. stats["elevation_min_m"] -> outlet_elevation
- 12. build_morph_dict_from_graph -> morph_dict
+  3. cg.find_catchment_at_point -> clicked_idx (404 if ValueError)
+  4. cg._segment_idx[clicked_idx] -> segment_idx
+  5. get_stream_info_by_segment_idx -> segment dict
+  6. cg.traverse_upstream -> upstream_indices (numpy array)
+  7. cg.get_segment_indices -> segment_idxs list
+  8. cg.aggregate_stats -> stats dict with area_km2
+  9. merge_catchment_boundaries -> MultiPolygon (500 if None)
+ 10. boundary_to_polygon -> Polygon
+ 11. get_segment_outlet -> outlet coords
+ 12. stats["elevation_min_m"] -> outlet_elevation
+ 13. build_morph_dict_from_graph -> morph_dict
 """
 
 import contextlib
@@ -40,6 +41,7 @@ def _make_mock_cg(area_km2: float = 10.0) -> MagicMock:
     """Create a mock CatchmentGraph with sensible defaults."""
     cg = MagicMock(spec=CatchmentGraph)
     cg.loaded = True
+    cg._segment_idx = np.array([10, 11, 12], dtype=np.int32)
     cg.find_catchment_at_point.return_value = 0  # internal idx
     cg.traverse_upstream.return_value = np.array([0, 1, 2])
     cg.get_segment_indices.return_value = [10, 11, 12]
@@ -156,7 +158,7 @@ class TestDelineateWatershedEndpoint:
 
         return [
             patch(f"{_WS}.get_catchment_graph", return_value=cg),
-            patch(f"{_WS}.find_nearest_stream_segment", return_value=segment),
+            patch(f"{_WS}.get_stream_info_by_segment_idx", return_value=segment),
             patch(f"{_WS}.merge_catchment_boundaries", return_value=boundary),
             patch(
                 f"{_WS}.get_segment_outlet",
@@ -253,12 +255,14 @@ class TestDelineateWatershedEndpoint:
         assert "area_km2" in geojson["properties"]
 
     def test_no_stream_returns_404(self, client):
-        """Test that missing stream returns 404 with Polish error message."""
+        """Test that missing catchment returns 404 with Polish error message."""
         cg = _make_mock_cg()
+        cg.find_catchment_at_point.side_effect = ValueError(
+            "Nie znaleziono zlewni cząstkowej"
+        )
 
         patches = [
             patch(f"{_WS}.get_catchment_graph", return_value=cg),
-            patch(f"{_WS}.find_nearest_stream_segment", return_value=None),
         ]
 
         with contextlib.ExitStack() as stack:
@@ -271,7 +275,7 @@ class TestDelineateWatershedEndpoint:
             )
 
         assert response.status_code == 404
-        assert "Nie znaleziono cieku" in response.json()["detail"]
+        assert "Nie znaleziono zlewni" in response.json()["detail"]
 
     def test_invalid_latitude_too_high_returns_422(self, client):
         """Test that latitude > 90 returns 422."""
