@@ -19,9 +19,9 @@ from core.land_cover import get_land_cover_for_boundary
 from core.watershed_service import (
     boundary_to_polygon,
     build_morph_dict_from_graph,
-    find_nearest_stream_segment,
     get_main_stream_geojson,
     get_segment_outlet,
+    get_stream_info_by_segment_idx,
     merge_catchment_boundaries,
 )
 from models.schemas import (
@@ -105,20 +105,7 @@ def delineate_watershed(
                 detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
             )
 
-        # 3. Find nearest stream segment
-        segment = find_nearest_stream_segment(
-            point_2180.x,
-            point_2180.y,
-            DEFAULT_THRESHOLD_M2,
-            db,
-        )
-        if segment is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Nie znaleziono cieku w tym miejscu",
-            )
-
-        # 4. Find catchment at click point via catchment graph
+        # 3. Find catchment at click point (direct ST_Contains)
         try:
             clicked_idx = cg.find_catchment_at_point(
                 point_2180.x,
@@ -131,6 +118,12 @@ def delineate_watershed(
                 status_code=404,
                 detail="Nie znaleziono zlewni cząstkowej. Kliknij w obszarze zlewni.",
             ) from e
+
+        # 4. Get segment info for outlet
+        segment_idx = int(cg._segment_idx[clicked_idx])
+        segment = get_stream_info_by_segment_idx(
+            segment_idx, DEFAULT_THRESHOLD_M2, db
+        )
 
         # 5. Traverse upstream via catchment graph BFS
         upstream_indices = cg.traverse_upstream(clicked_idx)
@@ -171,12 +164,15 @@ def delineate_watershed(
 
         # 11. Get outlet from segment downstream endpoint
         outlet_info = get_segment_outlet(
-            segment["segment_idx"],
+            segment_idx,
             DEFAULT_THRESHOLD_M2,
             db,
         )
         if outlet_info is None:
-            outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
+            if segment:
+                outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
+            else:
+                outlet_x, outlet_y = point_2180.x, point_2180.y
         else:
             outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
 
@@ -193,7 +189,7 @@ def delineate_watershed(
             boundary_2180,
             outlet_x,
             outlet_y,
-            segment["segment_idx"],
+            segment_idx,
             DEFAULT_THRESHOLD_M2,
         )
 
@@ -206,7 +202,7 @@ def delineate_watershed(
 
         # 16. Main stream GeoJSON
         main_stream_geojson = get_main_stream_geojson(
-            segment["segment_idx"],
+            segment_idx,
             DEFAULT_THRESHOLD_M2,
             db,
         )
