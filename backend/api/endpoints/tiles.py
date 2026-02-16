@@ -16,27 +16,30 @@ from core.database import get_db
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Simplification tolerance per zoom level (in EPSG:2180 metres)
+# Simplification tolerance per zoom level (in EPSG:2180 metres).
+# DB geometry is pre-simplified at 1m (cellsize), so tolerances >1m
+# add extra simplification; <=1m are effectively no-ops.
+# Capped at 10m to prevent visible stream shifts between zoom levels.
 _MVT_SIMPLIFY_TOLERANCE = {
-    0: 5000,
-    1: 2500,
-    2: 1250,
-    3: 600,
-    4: 300,
-    5: 150,
-    6: 80,
-    7: 40,
-    8: 20,
-    9: 10,
-    10: 5,
-    11: 2.5,
-    12: 1.2,
-    13: 0.6,
-    14: 0.3,
-    15: 0.15,
-    16: 0.08,
-    17: 0.04,
-    18: 0.02,
+    0: 10,
+    1: 10,
+    2: 10,
+    3: 10,
+    4: 10,
+    5: 10,
+    6: 5,
+    7: 5,
+    8: 3,
+    9: 2,
+    10: 1,
+    11: 1,
+    12: 1,
+    13: 1,
+    14: 1,
+    15: 1,
+    16: 1,
+    17: 1,
+    18: 1,
 }
 
 _EMPTY_MVT = b""
@@ -80,7 +83,7 @@ def get_streams_mvt(
             SELECT
                 ST_AsMVTGeom(
                     ST_Transform(
-                        ST_Simplify(s.geom, :tolerance),
+                        ST_SimplifyPreserveTopology(s.geom, :tolerance),
                         3857
                     ),
                     ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
@@ -142,13 +145,16 @@ def get_catchments_mvt(
     # Geometry simplification tolerance based on zoom
     tolerance = _MVT_SIMPLIFY_TOLERANCE.get(z, 0.01)
 
+    # Min polygon area to include in tiles (filters raster micro-fragments)
+    min_geom_area = 50  # m² in EPSG:2180
+
     row = db.execute(
         text("""
         WITH mvt_data AS (
             SELECT
                 ST_AsMVTGeom(
                     ST_Transform(
-                        ST_Simplify(c.geom, :tolerance),
+                        ST_SimplifyPreserveTopology(c.geom, :tolerance),
                         3857
                     ),
                     ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
@@ -161,6 +167,7 @@ def get_catchments_mvt(
             FROM stream_catchments c
             WHERE c.threshold_m2 = :threshold
               AND c.geom IS NOT NULL
+              AND ST_Area(c.geom) > :min_geom_area
               AND ST_Intersects(
                   c.geom,
                   ST_Transform(
@@ -179,6 +186,7 @@ def get_catchments_mvt(
             "ymax": ymax,
             "threshold": threshold,
             "tolerance": tolerance,
+            "min_geom_area": min_geom_area,
         },
     ).fetchone()
 
