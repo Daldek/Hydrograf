@@ -56,7 +56,12 @@
   - **API:** `DEFAULT_THRESHOLD_M2 = 1000`, usunięcie `display_threshold_m2` z request, uproszczenie `select_stream.py` (~75 linii mniej), usunięcie logiki ADR-024/025.
   - **Frontend:** usunięcie progu 100 z FALLBACK_THRESHOLDS, usunięcie threshold mismatch guard.
   - **Testy:** 557 testów, 0 failures. Usunięto 3 testy ADR-024/025, dodano 1 nowy.
-  - **Wymaga re-run pipeline** (Task 11 w planie)
+  - **Pipeline re-run:** baza wyzerowana i odtworzona od zera. 801.6s.
+
+- **Naprawa wizualizacji MVT (kafelki cieków i zlewni):**
+  - **Cieki znikające przy oddalaniu:** `ST_Simplify` → `ST_SimplifyPreserveTopology` — krótkie segmenty nie są redukowane do pustej geometrii.
+  - **Różne przebiegi cieków między zoomami:** tolerancje upraszczania ograniczone do max 10m (było 40-5000m na zoomach 0-7). Dane w bazie są spójne (100% overlap między progami, 0.00m odległości), problem był wyłącznie w warstwie wizualizacji.
+  - **Znany problem:** mimo ograniczenia tolerancji, przy sąsiednich poziomach zoomu mogą występować drobne różnice w upraszczaniu geometrii (do 10m). Jest to inherentna cecha `ST_SimplifyPreserveTopology` z różnymi tolerancjami — nie jest to błąd danych.
 
 ### Poprzednia sesja (2026-02-16, sesja 27)
 
@@ -341,11 +346,12 @@
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
-| flow_network | 19,667,662 | 4 progi FA, re-run z CatchmentGraph |
-| stream_network | ~117,000 | 100: 105492, 1000: 10528, 10000: 1101, 100000: 107 (po re-run z konfluencyjna segmentacja) |
-| stream_catchments | 117,228 | 100: 105492, 1000: 10528, 10000: 1101, 100000: 107 + nowe kolumny (downstream, elev, histogram) |
-| land_cover | 38,560 | 12 warstw BDOT10k (powiat 3021), 7 kategorii |
-| depressions | 602,092 | re-run po poprawionym stream burning |
+| flow_network | 19,667,699 | 4 progi FA |
+| stream_network | 114,883 | 100: 103733, 1000: 10000, 10000: 1045, 100000: 105 (z segment_idx, migracja 014) |
+| stream_catchments | 11,154 | 1000: 10004, 10000: 1045, 100000: 105 (bez progu 100, ADR-026) |
+| land_cover | 0 | wyzerowane — wymaga ponownego importu |
+| depressions | 0 | wyzerowane — wymaga ponownego generowania |
+| precipitation_data | 0 | wyzerowane — wymaga ponownego importu |
 
 ### Znane problemy (infrastruktura)
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)

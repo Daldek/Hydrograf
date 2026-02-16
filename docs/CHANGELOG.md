@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`DEFAULT_THRESHOLD_M2`:** 100 → 1000 m² — najdrobniejszy próg zlewni cząstkowych
 - **Geometria poligonów:** tolerancja simplify z `cellsize/2` do `cellsize` (1m) — gładsze granice
 - **`stream_network`:** nowa kolumna `segment_idx` (migracja 014) — spójny lookup z `stream_catchments`
+- **Kafelki MVT:** `ST_Simplify` → `ST_SimplifyPreserveTopology` — cieki nie znikają przy oddalaniu; tolerancje upraszczania ograniczone do max 10m (było do 5000m) — eliminuje przeskakiwanie cieków o setki metrów między zoomami
+
+### Naprawiono
+- **Cieki znikające przy zoomie:** `ST_Simplify` z dużą tolerancją redukował krótkie segmenty do pustej geometrii — zamiana na `ST_SimplifyPreserveTopology`
+- **Różne przebiegi cieków między zoomami:** tolerancje upraszczania MVT 40-5000m na niskich zoomach powodowały przesunięcia cieków o setki metrów — ograniczone do max 10m
 
 ### Usunięto
 - **Próg 100 m² ze zlewni cząstkowych** — pipeline pomija generowanie catchmentów dla tego progu (cieki zostają)
