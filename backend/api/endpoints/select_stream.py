@@ -86,50 +86,81 @@ def select_stream(
                 detail="Nie znaleziono cieku w pobliżu. Kliknij bliżej linii cieku.",
             )
 
-        # 2. Find catchment at click point via fine threshold (snap-to-stream)
+        # 2. Find catchment at click point
         if not cg.loaded:
             raise HTTPException(
                 status_code=503,
                 detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
             )
 
-        fine_threshold = DEFAULT_THRESHOLD_M2  # 100 m²
-        clicked_idx = None
+        use_fine_bfs = display_threshold == DEFAULT_THRESHOLD_M2
 
-        # Try fine threshold first for precise selection
-        fine_seg_idx = find_stream_catchment_at_point(
-            point_2180.x,
-            point_2180.y,
-            fine_threshold,
-            db,
-        )
-        if fine_seg_idx is not None:
-            clicked_idx = cg._lookup.get((fine_threshold, fine_seg_idx))
+        if use_fine_bfs:
+            # ADR-024: precise inter-confluence BFS at finest threshold
+            bfs_threshold = DEFAULT_THRESHOLD_M2  # 100 m²
+            clicked_idx = None
 
-        # Fallback to display threshold (old behavior)
-        if clicked_idx is None:
-            fine_threshold = display_threshold
-            try:
-                clicked_idx = cg.find_catchment_at_point(
-                    point_2180.x,
-                    point_2180.y,
-                    display_threshold,
-                    db,
-                )
-            except ValueError as e:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Nie znaleziono zlewni cząstkowej.",
-                ) from e
+            fine_seg_idx = find_stream_catchment_at_point(
+                point_2180.x,
+                point_2180.y,
+                bfs_threshold,
+                db,
+            )
+            if fine_seg_idx is not None:
+                clicked_idx = cg._lookup.get((bfs_threshold, fine_seg_idx))
 
-        # 3. Traverse upstream via catchment graph BFS (at fine threshold)
+            # Fallback to display threshold
+            if clicked_idx is None:
+                bfs_threshold = display_threshold
+                try:
+                    clicked_idx = cg.find_catchment_at_point(
+                        point_2180.x,
+                        point_2180.y,
+                        display_threshold,
+                        db,
+                    )
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Nie znaleziono zlewni cząstkowej.",
+                    ) from e
+        else:
+            # Coarse threshold: snap + BFS at display threshold (ADR-025)
+            bfs_threshold = display_threshold
+            clicked_idx = None
+
+            seg_idx = find_stream_catchment_at_point(
+                point_2180.x,
+                point_2180.y,
+                display_threshold,
+                db,
+            )
+            if seg_idx is not None:
+                clicked_idx = cg._lookup.get((display_threshold, seg_idx))
+
+            # Fallback
+            if clicked_idx is None:
+                try:
+                    clicked_idx = cg.find_catchment_at_point(
+                        point_2180.x,
+                        point_2180.y,
+                        display_threshold,
+                        db,
+                    )
+                except ValueError as e:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Nie znaleziono zlewni cząstkowej.",
+                    ) from e
+
+        # 3. Traverse upstream via catchment graph BFS
         if request.to_confluence:
             upstream_indices = cg.traverse_to_confluence(clicked_idx)
         else:
             upstream_indices = cg.traverse_upstream(clicked_idx)
-        fine_segment_idxs = cg.get_segment_indices(
+        bfs_segment_idxs = cg.get_segment_indices(
             upstream_indices,
-            fine_threshold,
+            bfs_threshold,
         )
 
         # 4. Aggregate pre-computed stats (zero raster ops)
@@ -140,12 +171,12 @@ def select_stream(
         # For large catchments (500+ segments), cascade to coarser
         # thresholds to avoid ST_UnaryUnion timeout (30s DB limit).
         _MAX_MERGE = 500
-        merge_idxs = fine_segment_idxs
-        merge_threshold = fine_threshold
+        merge_idxs = bfs_segment_idxs
+        merge_threshold = bfs_threshold
 
-        if len(fine_segment_idxs) > _MAX_MERGE:
+        if len(bfs_segment_idxs) > _MAX_MERGE:
             for t in [1000, 10000, 100000]:
-                if t <= fine_threshold:
+                if t <= bfs_threshold:
                     continue
                 t_seg = find_stream_catchment_at_point(
                     point_2180.x,
