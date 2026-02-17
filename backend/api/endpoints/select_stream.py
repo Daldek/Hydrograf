@@ -19,6 +19,7 @@ from core.morphometry import calculate_shape_indices
 from core.watershed_service import (
     boundary_to_polygon,
     compute_watershed_length,
+    find_nearest_stream_segment,
     get_main_stream_geojson,
     get_segment_outlet,
     get_stream_info_by_segment_idx,
@@ -70,7 +71,6 @@ def select_stream(
 
         cg = get_catchment_graph()
 
-        # 1. Find catchment at click point (direct ST_Contains, no snap-to-stream)
         if not cg.loaded:
             raise HTTPException(
                 status_code=503,
@@ -79,21 +79,30 @@ def select_stream(
 
         threshold = request.threshold_m2
 
-        try:
-            clicked_idx = cg.find_catchment_at_point(
-                point_2180.x,
-                point_2180.y,
-                threshold,
-                db,
-            )
-        except ValueError as e:
-            raise HTTPException(
-                status_code=404,
-                detail="Nie znaleziono zlewni cząstkowej. Kliknij w obszarze zlewni.",
-            ) from e
+        # 1. Snap to nearest stream (spatial proximity, not point-in-polygon)
+        nearest = find_nearest_stream_segment(
+            point_2180.x, point_2180.y, threshold, db
+        )
 
-        # 2. Get segment_idx from graph
-        segment_idx = int(cg._segment_idx[clicked_idx])
+        clicked_idx = None
+        if nearest is not None:
+            segment_idx = nearest["segment_idx"]
+            clicked_idx = cg.lookup_by_segment_idx(threshold, segment_idx)
+            if clicked_idx is None:
+                logger.warning(
+                    f"segment_idx={segment_idx} (threshold={threshold}) "
+                    f"not in graph, falling back to ST_Contains"
+                )
+
+        # Fallback: ST_Contains (for clicks far from any stream)
+        if clicked_idx is None:
+            try:
+                clicked_idx = cg.find_catchment_at_point(
+                    point_2180.x, point_2180.y, threshold, db
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e)) from e
+            segment_idx = int(cg._segment_idx[clicked_idx])
 
         # 3. Get stream info for response
         segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)

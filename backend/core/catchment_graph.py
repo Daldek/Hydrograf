@@ -216,7 +216,23 @@ class CatchmentGraph:
             f"in {elapsed:.1f}s ({total_mb:.1f} MB RAM)"
         )
 
+        # Quick integrity check (set _loaded temporarily for verify_graph)
         self._loaded = True
+        try:
+            report = self.verify_graph()
+            for t, info in report["thresholds"].items():
+                if not info["segment_idx_ok"]:
+                    logger.error(
+                        f"Threshold {t}: duplicate segment_idx! "
+                        f"{info['unique_segment_idx']}/{info['nodes']}"
+                    )
+                logger.info(
+                    f"Threshold {t}: {info['nodes']} nodes, "
+                    f"{info['outlets']} outlets, "
+                    f"{info['with_upstream']} with upstream"
+                )
+        except Exception:
+            logger.exception("Graph verification failed")
 
     def find_catchment_at_point(
         self,
@@ -274,6 +290,72 @@ class CatchmentGraph:
                 f"not found in catchment graph"
             )
         return idx
+
+    def lookup_by_segment_idx(
+        self,
+        threshold_m2: int,
+        segment_idx: int,
+    ) -> int | None:
+        """Look up internal graph index by (threshold_m2, segment_idx)."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        return self._lookup.get((threshold_m2, segment_idx))
+
+    def verify_graph(self, db: Session | None = None) -> dict:
+        """Verify graph integrity. Returns diagnostic dict."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+
+        thresholds = np.unique(self._threshold_m2)
+        report = {"thresholds": {}, "total_nodes": self._n}
+
+        for t in thresholds:
+            t = int(t)
+            mask = self._threshold_m2 == t
+            indices = np.where(mask)[0]
+            n_nodes = len(indices)
+
+            # Count edges (nodes with at least one upstream neighbor)
+            n_with_upstream = sum(
+                1 for idx in indices if self._upstream_adj[idx].nnz > 0
+            )
+            # Count outlets (nodes with no downstream = no node points to them)
+            col_sums = self._upstream_adj[:, indices].sum(axis=0).A1
+            n_outlets = int(np.sum(col_sums == 0))
+
+            # Check segment_idx consistency
+            seg_idxs = self._segment_idx[indices]
+            n_unique = len(np.unique(seg_idxs))
+
+            report["thresholds"][t] = {
+                "nodes": n_nodes,
+                "with_upstream": n_with_upstream,
+                "outlets": n_outlets,
+                "unique_segment_idx": n_unique,
+                "segment_idx_ok": n_unique == n_nodes,
+            }
+
+        if db is not None:
+            result = db.execute(
+                text("""
+                SELECT sn.threshold_m2, COUNT(*) as mismatches
+                FROM stream_network sn
+                LEFT JOIN stream_catchments sc
+                  ON sn.threshold_m2 = sc.threshold_m2
+                  AND sn.segment_idx = sc.segment_idx
+                WHERE sc.segment_idx IS NULL AND sn.segment_idx IS NOT NULL
+                GROUP BY sn.threshold_m2
+            """)
+            ).fetchall()
+            report["segment_idx_mismatches"] = {
+                r.threshold_m2: r.mismatches for r in result
+            }
+            if report["segment_idx_mismatches"]:
+                logger.warning(
+                    f"segment_idx mismatches: {report['segment_idx_mismatches']}"
+                )
+
+        return report
 
     def traverse_upstream(self, start_idx: int) -> np.ndarray:
         """

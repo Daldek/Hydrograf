@@ -56,7 +56,7 @@ def find_nearest_stream_segment(
     """
     query = text("""
         SELECT
-            id,
+            segment_idx,
             strahler_order,
             ST_Length(geom) as length_m,
             upstream_area_km2,
@@ -75,64 +75,13 @@ def find_nearest_stream_segment(
     if result is None:
         return None
     return {
-        "segment_idx": result.id,
+        "segment_idx": result.segment_idx,
         "strahler_order": result.strahler_order,
         "length_m": result.length_m,
         "upstream_area_km2": result.upstream_area_km2,
         "downstream_x": result.downstream_x,
         "downstream_y": result.downstream_y,
     }
-
-
-def find_stream_catchment_at_point(
-    x: float,
-    y: float,
-    threshold_m2: int,
-    db: Session,
-) -> int | None:
-    """
-    Find the sub-catchment at a point by snapping to the nearest stream first.
-
-    Avoids the "hillslope problem" where clicking between streams hits a
-    headwater catchment with no stream segment, giving tiny/empty results.
-
-    Parameters
-    ----------
-    x, y : float
-        Point coordinates in EPSG:2180 (PL-1992)
-    threshold_m2 : int
-        Flow accumulation threshold
-    db : Session
-        Database session
-
-    Returns
-    -------
-    int | None
-        segment_idx of the catchment, or None if not found
-    """
-    query = text("""
-        WITH nearest_stream AS (
-            SELECT ST_ClosestPoint(geom, ST_SetSRID(ST_Point(:x, :y), 2180)) as snap_pt
-            FROM stream_network
-            WHERE threshold_m2 = :threshold
-              AND ST_DWithin(geom, ST_SetSRID(ST_Point(:x, :y), 2180), 500)
-            ORDER BY ST_Distance(geom, ST_SetSRID(ST_Point(:x, :y), 2180))
-            LIMIT 1
-        )
-        SELECT sc.segment_idx
-        FROM stream_catchments sc, nearest_stream ns
-        WHERE sc.threshold_m2 = :threshold
-          AND ST_Contains(sc.geom, ns.snap_pt)
-        LIMIT 1
-    """)
-    result = db.execute(
-        query,
-        {"x": x, "y": y, "threshold": threshold_m2},
-    ).fetchone()
-
-    if result is None:
-        return None
-    return result.segment_idx
 
 
 def get_stream_info_by_segment_idx(
