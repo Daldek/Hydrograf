@@ -79,6 +79,7 @@ Thumbs.db
 !frontend/data/*.geojson
 data/
 frontend/data/
+frontend/tiles/
 !data/.gitkeep
 !frontend/data/
 
