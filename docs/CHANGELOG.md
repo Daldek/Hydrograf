@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipeline DEM pomija krok INSERT flow_network — oszczednosc ~17 min (58%)
 - Migracja 015: DROP TABLE flow_network
 - Testy: 581 → 538 (usuniete testy martwego kodu)
+- 4 skrypty CLI (`analyze_watershed`, `e2e_task9`, `export_pipeline_gpkg`, `export_task9_gpkg`) przepisane na stream_network
 
 ### Added
 - **`lookup_by_segment_idx()` w CatchmentGraph:** O(1) lookup wezla grafu po (threshold_m2, segment_idx) — eliminuje potrzebe zapytania do bazy
