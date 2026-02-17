@@ -202,7 +202,6 @@
         var autoInfo = document.getElementById('panel-auto-select-info');
         if (autoInfo) autoInfo.classList.add('d-none');
         if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
-        if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
         state.currentWatershed = null;
         hidePanel();
     }
@@ -281,8 +280,6 @@
 
             displayParameters(data);
             els.results.classList.remove('d-none');
-
-            if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
         } catch (err) {
             Hydrograf.map.clearWatershed();
             state.currentWatershed = null;
@@ -303,6 +300,10 @@
         // Clear previous watershed display
         Hydrograf.map.clearWatershed();
 
+        // Clear auto-select banner before new request
+        var autoInfo = document.getElementById('panel-auto-select-info');
+        if (autoInfo) autoInfo.classList.add('d-none');
+
         // Determine active threshold from streams layer
         var threshold = Hydrograf.map.getStreamsThreshold() || 100000;
 
@@ -314,7 +315,12 @@
             // Show selection boundary
             Hydrograf.map.showSelectionBoundary(data.boundary_geojson);
 
-            if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
+            // Show info banner if threshold was escalated
+            if (data.info_message) {
+                var autoMsg = document.getElementById('auto-select-message');
+                if (autoMsg) autoMsg.textContent = data.info_message;
+                if (autoInfo) autoInfo.classList.remove('d-none');
+            }
 
             // Display full watershed stats if available, otherwise fallback to stream info
             if (data.watershed) {
@@ -470,12 +476,26 @@
         document.querySelectorAll('.glass-accordion-header').forEach(function (header) {
             header.setAttribute('tabindex', '0');
             header.addEventListener('click', function () {
-                this.parentElement.classList.toggle('collapsed');
+                var acc = this.parentElement;
+                acc.classList.toggle('collapsed');
+                if (!acc.classList.contains('collapsed')) {
+                    var canvas = acc.querySelector('canvas');
+                    if (canvas && Hydrograf.charts) {
+                        setTimeout(function () { Hydrograf.charts.resizeChart(canvas.id); }, 50);
+                    }
+                }
             });
             header.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    this.parentElement.classList.toggle('collapsed');
+                    var acc = this.parentElement;
+                    acc.classList.toggle('collapsed');
+                    if (!acc.classList.contains('collapsed')) {
+                        var canvas = acc.querySelector('canvas');
+                        if (canvas && Hydrograf.charts) {
+                            setTimeout(function () { Hydrograf.charts.resizeChart(canvas.id); }, 50);
+                        }
+                    }
                 }
             });
         });
