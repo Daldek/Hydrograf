@@ -44,9 +44,34 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-17 (sesja 34)
+**Data:** 2026-02-17 (sesja 35)
 
 ### Co zrobiono
+
+- **Naprawa 6 bugów UX (E5, E6, E9, E10, E11, F3) — 5 równoległych subagentów:**
+  - **E5+E10 — Chart.js resize w ukrytych kontenerach:** `resizeChart()` w charts.js, accordion handler z 50ms setTimeout, profil terenu: d-none usunięte PRZED renderowaniem, canvas owinięty w `.chart-container`
+  - **E6 — Liquid glass na panelu profilu:** dodane tokeny CSS (`--liquid-bg`, `--liquid-blur`, `--liquid-border`, `--liquid-shadow`, `--liquid-highlight`) do `#profile-panel` w style.css
+  - **E9 — Usunięcie wpisu "Zlewnia" z panelu warstw:** ~101 linii usunięte z layers.js (zmienne, blok budowy, eksport), 3 wywołania `notifyWatershedChanged()` usunięte z app.js
+  - **E11 — Dyskretna skala kolorów zagłębień:** YlOrRd paleta (żółty→pomarańczowy→czerwony) z 5 progami wg `volume_m3` (<1, <10, <100, <1000, ≥1000 m³) w depressions.js
+  - **F3 — Fallback progu 100→1000 w select-stream:** automatyczna eskalacja progu gdy `threshold < DEFAULT_THRESHOLD_M2`, nowe pole `info_message` w `SelectStreamResponse`, banner informacyjny w app.js
+  - Wszystkie 538 testów przechodzą, ruff clean
+
+- **Naprawa krytycznego bugu CDN:**
+  - Hash integralności Chart.js 4.4.7 był nieprawidłowy — blokował ładowanie WSZYSTKICH wykresów (profil terenu, pokrycie terenu, hipsometria)
+  - Naprawiony hash w index.html, pozostałe 4 CDN hashe (Leaflet, Bootstrap CSS/JS, VectorGrid) zweryfikowane OK
+
+- **Skrypt weryfikacji hashów SRI (`scripts/verify_cdn_hashes.sh`):**
+  - Parsuje index.html (perl), pobiera zasoby CDN, oblicza hash (openssl), porównuje z deklarowanym
+  - Tryb `--fix` automatycznie naprawia nieprawidłowe hashe
+  - Exit code 1 przy niezgodności — gotowy do CI
+
+- **Integracja CDN w bootstrap.py (krok 1d):**
+  - Weryfikacja hashów SRI jako część kroku infrastruktury
+  - Warning-only (nie blokuje pipeline), loguje "CDN HASH MISMATCH" przy niezgodności
+
+- **9 commitów** w sesji, branch `develop`
+
+### Poprzednia sesja (2026-02-17, sesja 34)
 
 - **Reset bazy danych + pelny bootstrap (8 arkuszy NMT):**
   - `docker compose down -v` → pelny bootstrap z `scripts/bootstrap.py --sheets ...`
@@ -450,7 +475,7 @@
 
 ### Bledy do naprawy (zgloszenie 2026-02-14, sesja 19)
 
-**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E2 naprawione (sesja 18 jako A1), E3 naprawione (sesja 22), F1 naprawione (sesja 24, ADR-024), E1-E4-H do rozwiazania**
+**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E2 naprawione (sesja 18 jako A1), E3 naprawione (sesja 22), F1 naprawione (sesja 24, ADR-024), E5+E6+E9+E10+E11 naprawione (sesja 35), F3 naprawione (sesja 35). Pozostaje: E1, E4, E7, E8, F2, H**
 
 #### D. Frontend — profil terenu — ✅ NAPRAWIONE (sesja 20)
 
@@ -477,15 +502,9 @@
 - Prawdopodobna przyczyna: `traverse_upstream` zwraca segment_idx doplywu, ale outlet pobierany jest z downstream node cieku glownego
 - **Lokalizacja:** `watershed_service.py` (logika wyznaczania outlet), `catchment_graph.py` (traverse_upstream)
 
-**E5. Profil terenu nie generuje wykresu** (priorytet: wysoki)
-- Panel profilu terenu pojawia sie po narysowaniu linii, ale wykres nie jest renderowany — okienko puste.
-- Funkcjonalnosc dzialala wczesniej (potwierdzone w sesjach 19-20). Regresja — prawdopodobnie spowodowana zmianami w kolejnych sesjach.
-- **Lokalizacja:** `frontend/js/profile.js` (activateDrawProfile, renderowanie Chart.js), `api/endpoints/profile.py` (endpoint POST /api/terrain-profile), `frontend/js/app.js` (obsluga trybu profilu)
+**E5. ✅ Profil terenu nie generuje wykresu** → Chart.js resize w ukrytych kontenerach (d-none PRZED renderowaniem, resizeChart() z 50ms timeout, canvas w .chart-container) — sesja 35
 
-**E6. Panel profilu terenu — styl liquid glass** (priorytet: niski)
-- Panel `#profile-panel` nie uzywa stylu liquid glass — wyglada niespojnie z pozostalymi panelami (warstwy, parametry zlewni), ktore maja glassmorphism.
-- Zastosowac te same tokeny CSS: `--liquid-bg`, `--liquid-border`, `--liquid-blur`, `--liquid-shadow`, `--liquid-highlight`.
-- **Lokalizacja:** `frontend/css/glass.css`, `frontend/index.html` (`#profile-panel`)
+**E6. ✅ Panel profilu terenu — styl liquid glass** → tokeny CSS liquid glass dodane do #profile-panel w style.css — sesja 35
 
 **E7. Brak informacji o gruntach (HSG) w panelu wynikow** (priorytet: niski)
 - Po wyznaczeniu zlewni panel wynikow nie wyswietla informacji o gruntach (Hydrologic Soil Group / typy gleb).
@@ -500,31 +519,17 @@
 - Prawdopodobnie dane zostaly utracone po resecie bazy (`docker compose down -v`) w sesji 32 i nie zostaly ponownie wyeksportowane/zaladowane.
 - **Lokalizacja:** `frontend/js/layers.js` (ladowanie warstw BDOT), `scripts/bootstrap.py` (brak kroku eksportu GeoJSON BDOT), `frontend/js/app.js` (inicjalizacja warstw)
 
-**E10. Brak wykresu hipsometrii w sekcji "Rzezba terenu"** (priorytet: wysoki)
-- Po wyznaczeniu zlewni sekcja "Rzezba terenu" w panelu wynikow nie wyswietla wykresu krzywej hipsometrycznej.
-- Krzywa hipsometryczna byla zaimplementowana w sesji 21 (zamiana histogramu na krzywa — os Y: wysokosc m n.p.m., os X: % powierzchni powyzej).
-- Regresja — prawdopodobnie spowodowana zmianami w kolejnych sesjach lub brakiem danych hipsometrycznych po resecie bazy.
-- **Lokalizacja:** `frontend/js/charts.js` (renderElevationHistogram / krzywa hipsometryczna), `frontend/index.html` (sekcja #acc-elevation), `core/catchment_graph.py` (agregacja histogramow wysokosci)
+**E10. ✅ Brak wykresu hipsometrii w sekcji "Rzezba terenu"** → przyczyna ta sama co E5 (Chart.js nie załadowany przez zły hash CDN + resize w collapsed accordion). Naprawione hashami CDN + resizeChart() — sesja 35
 
-**E11. Zmiana kolorystyki zaglebien na dyskretne progi** (priorytet: niski)
-- Obecnie zaglbienia wyswietlane sa jednym ciaglym kolorem niebieskim niezaleznie od wielkosci/glebokosci.
-- Zmienic na dyskretna skale kolorow z progami — np. male zaglbienia jasniejsze, duze ciemniejsze. Konkretne kolory i wartosci progow do ustalenia.
-- **Lokalizacja:** `frontend/js/layers.js` (stylowanie warstwy zaglebien), `api/endpoints/depressions.py` (dane zaglebien)
+**E11. ✅ Zmiana kolorystyki zaglebien na dyskretne progi** → YlOrRd paleta (5 progów wg volume_m3) w depressions.js — sesja 35
 
-**E9. Usunac wpis "Zlewnia" z grupy "Wyniki analiz" w panelu Warstwy** (priorytet: niski)
-- Checkbox "Zlewnia" w sekcji "Wyniki analiz" panelu warstw jest zbedny — wszystkie informacje o zlewni (granica, parametry, zlewnie czastkowe) sa juz dostepne w panelu "Parametry zlewni".
-- Usunac wpis z panelu warstw oraz powiazana logike auto-check (`_watershedFirstDetection`).
-- **Lokalizacja:** `frontend/js/layers.js` (wpis "Zlewnia" w overlay group), `frontend/js/app.js` (logika auto-check)
+**E9. ✅ Usunac wpis "Zlewnia" z panelu Warstwy** → ~101 linii usunięte z layers.js + 3 wywołania z app.js — sesja 35
 
 #### F. Logika zlewni czastkowych
 
 **F1. ✅ Selekcja cieku zaznacza cala zlewnię zamiast czesci miedzy doplywami** → ADR-024: segmentacja konfluencyjna + fine-threshold BFS (sesja 24). Wymaga re-run pipeline.
 
-**F3. Automatyczny fallback na prog 1000 m² przy selekcji cieku z progu 100 m²** (priorytet: sredni)
-- Gdy uzytkownik kliknie na ciek o progu FA 100 m² (najdrobniejsze cieki), system powinien automatycznie przejsc na selekcje z progu 1000 m² (najdrobniejszy prog z wygenerowanymi zlewniami czastkowymi — ADR-026 pomija catchments dla progu 100).
-- W UI wyswietlic informacje o zmianie progu, np. banner: "Zlewnie czastkowe niedostepne dla progu 100 m². Zaznaczono z progu 1000 m². Uzyj trybu «Wygeneruj zlewnię» dla precyzyjniejszego wyniku."
-- Obecne zachowanie: brak zlewni czastkowych dla progu 100 → brak wyniku lub blad.
-- **Lokalizacja:** `api/endpoints/select_stream.py` (logika fallback progu), `frontend/js/app.js` (wyswietlanie baneru informacyjnego)
+**F3. ✅ Automatyczny fallback na prog 1000 m² przy selekcji cieku z progu 100 m²** → eskalacja progu w select_stream.py gdy threshold < DEFAULT_THRESHOLD_M2, nowe pole `info_message` w SelectStreamResponse, banner w app.js — sesja 35
 
 **F2. Snap-to-stream moze wybrac zlewnię sasiednia zamiast kliknietej** (priorytet: sredni)
 - Po naprawie ADR-027 selekcja opiera sie na snap-to-stream (`ST_Distance` na `stream_network`) — system znajduje najblizszy segment cieku i buduje zlewnię w gore od niego.
@@ -539,6 +544,69 @@
 **G2. ✅ Brak informacji o pokryciu terenu** → naprawiono parsowanie warstw GeoPackage (OT_PTLZ_A → PTLZ); import 38560 rekordow BDOT10k
 **G3. ✅ Podklady kartograficzne na dole panelu warstw** → przeniesione na koniec init(), nowa kolejnosc: Warstwy podkladowe → Wyniki analiz → Podklady kartograficzne
 **G4. ✅ Reorganizacja wynikow analiz** → zaglbienia do #overlay-group-entries; checkbox zlewni: auto-check tylko przy 1. wykryciu, reset po usunieciu
+
+#### I. Wizualizacja
+
+**I1. Ścieżka spływu z punktu ujścia zlewni** (priorytet: niski)
+- Po wyznaczeniu zlewni (tryb "Wybierz" lub "Wygeneruj") wyświetlić na mapie ścieżkę spływu wody od punktu ujścia zaznaczonej zlewni w dół cieku — pokazuje dokąd płynie woda opuszczająca zlewnię.
+- Ścieżka wyznaczana na podstawie sieci cieków (`stream_network`) lub grafu przepływu (downstream traversal od outlet do granicy analizowanego obszaru).
+- Wizualizacja jako linia na mapie (np. niebieska strzałka / animowana linia kierunku przepływu).
+- **Lokalizacja:** `core/catchment_graph.py` (downstream traversal), `core/watershed_service.py` (outlet point), `frontend/js/map.js` (wizualizacja linii), `frontend/js/app.js` (wywołanie po wyznaczeniu zlewni)
+
+**I2. Najdłuższa ścieżka spływu w zlewni** (priorytet: niski)
+- Po wyznaczeniu zlewni wyświetlić na mapie najdłuższą ścieżkę spływu (longest flow path) — od najdalszego punktu działu wodnego do ujścia zlewni. Parametr hydrologicznie istotny: długość zlewni (watershed length) używana do obliczenia czasu koncentracji.
+- Wymaga wyznaczenia najdalszej komórki od outletu wzdłuż sieci przepływu (upstream BFS z pomiarem odległości) lub geometrycznie (najdalszy punkt granicy zlewni mierzony wzdłuż cieku głównego + stoku).
+- Wizualizacja jako linia na mapie (np. przerywana linia z zaznaczeniem punktu startowego i ujścia).
+- **Lokalizacja:** `core/catchment_graph.py` (BFS z odległością), `core/watershed_service.py` (główny ciek + longest path), `frontend/js/map.js` (wizualizacja linii)
+
+**I3. Poprawa jakości wyświetlania NMT** (priorytet: średni)
+- Obecna piramida kafelków DEM (zoom 8–16, 267 plików, 15.5 MB) ma ograniczoną jakość — widoczna pikselizacja przy dużym zoomie, ograniczony zakres zoomów.
+- Możliwe usprawnienia: rozszerzenie zakresu zoomów (do 18), lepsza rampa kolorów (np. terrain-classic), poprawa hillshade (multi-directional zamiast single azimuth 315°), antyaliasing przy downsamplingu (bilinear/lanczos zamiast nearest-neighbor na niższych zoomach), wyższa rozdzielczość kafelków (512×512 zamiast 256×256).
+- Rozważyć dynamiczne generowanie kafelków DEM z serwera (endpoint XYZ z rasterio) zamiast pre-generowanych PNG — lepsza jakość kosztem wydajności.
+- **Lokalizacja:** `scripts/generate_dem_tiles.py` (generacja piramidy), `utils/dem_color.py` (rampa kolorów, hillshade), `frontend/js/map.js` (L.tileLayer konfiguracja)
+
+**I5. Pasek współrzędnych kursora (WGS 84 + PUWG 1992)** (priorytet: niski)
+- Cienki pasek na samym dole strony (wzór: Geoportal) wyświetlający aktualną pozycję kursora na mapie w dwóch układach: WGS 84 (φ, λ) i EPSG:2180 (X, Y).
+- Aktualizacja na zdarzeniu `mousemove` mapy Leaflet. Transformacja WGS 84 → PUWG 1992 po stronie klienta (proj4js lub prosta formuła Gaussa-Krügera).
+- Styl liquid glass (tokeny CSS `--liquid-bg`, `--liquid-blur`, `--liquid-border`) — spójność z panelami warstw i wyników.
+- **Lokalizacja:** `frontend/index.html` (nowy element `#coord-bar`), `frontend/css/style.css` (styl paska), `frontend/js/map.js` (nasłuch `mousemove`, transformacja współrzędnych)
+
+**I4. Eksport profilu podłużnego do CSV** (priorytet: niski)
+- Przycisk eksportu w panelu profilu terenu (`#profile-panel`) — pobieranie pliku CSV z danymi profilu.
+- Format: `X;Y;Station;Elevation` (separator średnik), współrzędne domyślnie w EPSG:2180. Station = odległość wzdłuż profilu od pierwszego punktu [m].
+- Dane dostępne po stronie frontendu (odpowiedź z `POST /api/terrain-profile` zawiera punkty z współrzędnymi i wysokościami). Transformacja WGS 84 → PUWG 1992 po stronie klienta lub rozszerzenie endpointu o opcjonalny parametr CRS.
+- **Lokalizacja:** `frontend/js/profile.js` (przycisk eksportu, generacja CSV, download), `frontend/index.html` (przycisk w `#profile-panel`), `api/endpoints/profile.py` (opcjonalnie: współrzędne w EPSG:2180 w response)
+
+#### J. Funkcjonalności użytkowe
+
+**J1. Formularz feedbacku zapisywany do bazy** (priorytet: niski)
+- Prosty formularz na stronie umożliwiający użytkownikom zgłaszanie uwag / błędów / sugestii.
+- Dane zapisywane do tabeli w PostgreSQL (np. `feedback`: id, message, email (opcjonalny), created_at, user_agent, page_url).
+- Endpoint `POST /api/feedback` z walidacją (max długość, rate limiting).
+- Frontend: przycisk w navbarze lub floating button, modal z polem tekstowym + opcjonalnym emailem.
+- **Lokalizacja:** nowa tabela `feedback` (migracja Alembic), `api/endpoints/feedback.py` (nowy endpoint), `frontend/index.html` (modal), `frontend/js/app.js` (obsługa formularza)
+
+**J2. Wgrywanie własnych warstw wektorowych** (priorytet: niski)
+- Użytkownik może wgrać plik wektorowy (SHP, GPKG, GeoJSON, KML) i wyświetlić go jako warstwę na mapie.
+- Preferowane rozwiązanie: przetwarzanie po stronie frontendu (bez wysyłania na serwer). Kandydaci do zbadania: biblioteka `shpjs` (SHP→GeoJSON), `gdal3.js` / `ogr2ogr WASM` (GPKG/KML→GeoJSON), natywne parsowanie GeoJSON. Leaflet obsługuje GeoJSON natively — wystarczy konwersja do tego formatu.
+- Pliki SHP wymagają ZIP (`.shp` + `.dbf` + `.shx` + opcjonalnie `.prj`) — obsługa via `JSZip` lub drag-and-drop folderu.
+- Warstwa dodawana do panelu warstw z checkboxem, suwakiem przezroczystości i zoom-to-extent.
+- **Lokalizacja:** `frontend/js/layers.js` (dodawanie warstwy użytkownika), `frontend/js/map.js` (rendering GeoJSON), `frontend/index.html` (przycisk upload / drag-and-drop zone)
+
+**J3. Dodawanie własnych serwisów WMS/WMTS/WFS** (priorytet: niski)
+- Użytkownik podaje URL serwisu OGC i wybiera warstwę do wyświetlenia — obsługa wyłącznie po stronie frontendu.
+- WMS: `L.tileLayer.wms(url, { layers, format, transparent })` — Leaflet natywnie.
+- WMTS: `L.tileLayer(templateUrl)` z parametrami z GetCapabilities.
+- WFS: pobranie GeoJSON przez `fetch(url + '&outputFormat=application/json')` → `L.geoJSON()`.
+- Formularz: pole URL + przycisk "Pobierz warstwy" (GetCapabilities) → lista warstw do wyboru → dodanie do panelu warstw z checkboxem i przezroczystością.
+- **Lokalizacja:** `frontend/js/layers.js` (dodawanie serwisu, parsowanie GetCapabilities XML), `frontend/js/map.js` (tworzenie warstw L.tileLayer.wms / L.tileLayer / L.geoJSON), `frontend/index.html` (modal z formularzem URL)
+
+**J4. Mapy glebowe i użytkowanie terenu w warstwach podkładowych** (priorytet: średni)
+- Dodanie warstw tematycznych do panelu "Warstwy podkładowe": mapa glebowa i użytkowanie/pokrycie terenu.
+- **Gleby:** serwis WMS z Geoportalu (mapy glebowo-rolnicze) lub dane SoilGrids (już pobierane przez Kartograf dla HSG). Alternatywnie: import danych glebowych do bazy i serwowanie jako MVT/GeoJSON z kolorowaniem wg typów gleb / grup HSG.
+- **Użytkowanie terenu:** dane BDOT10k pokrycia terenu (już w tabeli `land_cover` — 50406 rekordów) lub Corine Land Cover (CLC) z serwisu WMS. Wizualizacja z paletą kolorów wg kategorii (las, łąka, grunt orny, zabudowa, woda, droga, inny).
+- Obie warstwy z checkboxem, suwakiem przezroczystości i legendą kolorów w panelu warstw.
+- **Lokalizacja:** `frontend/js/layers.js` (wpisy warstw + legenda), `frontend/js/map.js` (rendering), `api/endpoints/tiles.py` (opcjonalnie: MVT endpoint dla land_cover), `core/land_cover.py` (dane)
 
 #### H. Do rozważenia (koncepcyjne)
 
@@ -572,9 +640,9 @@
 - **Kontekst:** `core/hydrology.py` (burn_streams_into_dem), `scripts/process_dem.py`
 
 ### Nastepne kroki
-1. Weryfikacja `bootstrap.py` na malym bbox (1-2 arkusze): `python -m scripts.bootstrap --bbox "20.95,52.2,21.05,52.25"`
-2. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
-3. Instalacja tippecanoe i uruchomienie `generate_tiles.py` na danych produkcyjnych
+1. Weryfikacja wizualna w przegladarce (hard refresh Cmd+Shift+R) — potwierdzenie 6 fixow UX
+2. Naprawa pozostalych bugow: E1 (dziury na granicach), E4 (outlet poza granica), E7 (HSG), E8 (BDOT warstwy), F2 (snap-to-stream sasiednia zlewnia)
+3. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
 4. Usuniecie hardcoded secrets z config.py i migrations/env.py
 5. Faza 5 (opcjonalna): PMTiles, pre-computed watersheds, MapLibre GL JS
 6. CP5: MVP — pelna integracja, deploy

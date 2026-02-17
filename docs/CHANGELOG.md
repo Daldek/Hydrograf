@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-02-17
 
+### Fixed (6 bugów UX — E5, E6, E9, E10, E11, F3)
+- **E5+E10 — Chart.js resize w ukrytych kontenerach:** wykresy renderowane w collapsed accordion lub d-none panelu miały wysokość 0px. Nowa funkcja `resizeChart()` w charts.js, accordion handler z 50ms setTimeout po rozwinięciu, profil terenu: usunięcie d-none PRZED renderowaniem, canvas profilu owinięty w `.chart-container`.
+- **E6 — liquid glass na panelu profilu:** `#profile-panel` używał opaque background zamiast liquid glass. Dodane tokeny CSS (`--liquid-bg`, `--liquid-blur`, `--liquid-border`, `--liquid-shadow`, `--liquid-highlight`) — spójność z panelami warstw i parametrów.
+- **E9 — usunięcie wpisu "Zlewnia" z panelu warstw:** ~101 linii usunięte z layers.js (zmienne `_notifyWatershedChanged`, `_watershedFirstDetection`, blok budowy wpisu, eksport), 3 wywołania `notifyWatershedChanged()` usunięte z app.js.
+- **E11 — dyskretna skala kolorów zagłębień:** zastąpienie jednolitego koloru (#4169E1) paletą YlOrRd (żółty→pomarańczowy→czerwony) z 5 progami wg `volume_m3` (<1, <10, <100, <1000, ≥1000 m³) w depressions.js.
+- **F3 — fallback progu 100→1000 w select-stream:** automatyczna eskalacja progu gdy `threshold < DEFAULT_THRESHOLD_M2` (ADR-026: brak catchments dla progu 100). Nowe pole `info_message` w `SelectStreamResponse`. Banner informacyjny `#panel-auto-select-info` w app.js.
+- **Chart.js CDN integrity hash:** nieprawidłowy hash SHA-384 blokował ładowanie Chart.js 4.4.7 — żadne wykresy nie działały (profil terenu, pokrycie terenu, hipsometria). Naprawiony hash w index.html.
+
+### Added
+- **`scripts/verify_cdn_hashes.sh`:** skrypt weryfikacji hashów SRI zasobów CDN w index.html. Parsuje HTML (perl), pobiera zasoby (curl), oblicza hash (openssl), porównuje z deklarowanym. Tryb `--fix` automatycznie naprawia. Exit code 1 przy niezgodności (CI-ready).
+- **Weryfikacja CDN w bootstrap.py (krok 1d):** automatyczna weryfikacja hashów SRI przy starcie pipeline — warning-only, nie blokuje.
+
 ### Fixed
 - **`generate_tiles.py` — crash na pustych eksportach:** tippecanoe konczyl sie bledem "Did not read any valid geometries" gdy eksport GeoJSON mial 0 features (np. catchments dla progu 100 m²). Dodano guard `if n_features > 0` przed wywolaniem tippecanoe.
 - **`generate_tiles.py` + `bootstrap.py` — tippecanoe w `.venv/bin/`:** `shutil.which("tippecanoe")` nie znajduje binarki zainstalowanej przez pip w `.venv/bin/`. Oba skrypty szukaja teraz w `.venv/bin/` oprócz systemowego PATH.
