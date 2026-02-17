@@ -56,12 +56,15 @@
 
 - **Usuniecie ~1000 linii martwego kodu:**
   - `core/flow_graph.py` — caly modul (~360 linii, DEPRECATED od ADR-022)
-  - `core/db_bulk.py` — 4 funkcje flow_network: `create_flow_network_tsv()`, `insert_records_batch_tsv()`, `insert_flow_network_copy()`, `update_strahler_in_db()` (~580 linii)
-  - `core/watershed.py` — 5 legacy CLI functions uzywajacych flow_network: `find_nearest_stream()`, `traverse_upstream_sql()`, `check_watershed_size()`, `build_boundary()`, `find_main_stream()`
+  - `core/db_bulk.py` — 4 funkcje flow_network: `create_flow_network_tsv()`, `create_flow_network_records()`, `insert_records_batch()`, `insert_records_batch_tsv()` (~580 linii)
+  - `core/watershed.py` — 5 legacy CLI functions: `find_nearest_stream()`, `check_watershed_size()`, `traverse_upstream()`, `_traverse_upstream_inmemory()`, `_traverse_upstream_sql()`
   - ~43 testow powiazanych z flow_network/flow_graph
 
+- **Aktualizacja 4 skryptow CLI** z zapytaniami SQL na flow_network:
+  - `analyze_watershed.py`, `e2e_task9.py`, `export_pipeline_gpkg.py`, `export_task9_gpkg.py` — przepisane na stream_network
+
 - **Testy:** 538 testow (bylo 581), 0 failures, ruff clean
-- **6 commitow** w sesji
+- **8 commitow** w sesji
 
 ### Poprzednia sesja (2026-02-17, sesja 32)
 
