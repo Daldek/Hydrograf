@@ -179,9 +179,13 @@
     function getTileUrl(layer, threshold) {
         // Check for pre-generated tiles metadata
         var meta = window.Hydrograf._tilesMeta;
-        if (meta && meta.format === 'pmtiles' &&
-            meta.thresholds && meta.thresholds.indexOf(threshold) !== -1) {
-            return '/tiles/' + layer + '_' + threshold + '.pmtiles';
+        if (meta && meta.thresholds && meta.thresholds.indexOf(threshold) !== -1) {
+            if (meta.format === 'pbf') {
+                return '/tiles/' + layer + '_' + threshold + '/{z}/{x}/{y}.pbf';
+            }
+            if (meta.format === 'pmtiles') {
+                return '/tiles/' + layer + '_' + threshold + '.pmtiles';
+            }
         }
         // Fallback: dynamic PostGIS MVT
         return '/api/tiles/' + layer + '/{z}/{x}/{y}.pbf?threshold=' + threshold;
