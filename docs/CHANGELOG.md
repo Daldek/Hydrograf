@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-02-17
 
+### Fixed
+- **`generate_tiles.py` — crash na pustych eksportach:** tippecanoe konczyl sie bledem "Did not read any valid geometries" gdy eksport GeoJSON mial 0 features (np. catchments dla progu 100 m²). Dodano guard `if n_features > 0` przed wywolaniem tippecanoe.
+- **`generate_tiles.py` + `bootstrap.py` — tippecanoe w `.venv/bin/`:** `shutil.which("tippecanoe")` nie znajduje binarki zainstalowanej przez pip w `.venv/bin/`. Oba skrypty szukaja teraz w `.venv/bin/` oprócz systemowego PATH.
+
 ### Removed
 - Tabela `flow_network` — eliminacja 39.4M rekordow z bazy (ADR-028)
 - `core/flow_graph.py` — DEPRECATED modul (~360 linii)
