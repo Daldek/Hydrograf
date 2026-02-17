@@ -47,11 +47,9 @@
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
         // Custom panes for layer ordering:
-        // Base (tilePane z-200) → NMT → Zlewnie → Cieki → overlay (z-400)
+        // Base (tilePane z-200) → NMT → Cieki → overlay (z-400)
         map.createPane('demPane');
         map.getPane('demPane').style.zIndex = 250;
-        map.createPane('catchmentsPane');
-        map.getPane('catchmentsPane').style.zIndex = 300;
         map.createPane('streamsPane');
         map.getPane('streamsPane').style.zIndex = 350;
 
@@ -264,158 +262,9 @@
         }
     }
 
-    // ===== Catchments Vector (MVT) =====
+    // ===== Selection boundary =====
 
-    var catchmentsLayer = null;
-    var currentCatchmentThreshold = null;
-    var currentCatchmentOpacity = 1.0;
-    var catchmentTooltip = null;
-    var highlightedSegments = new Set();
     var selectionBoundaryLayer = null;
-
-    var CATCHMENT_COLORS = [
-        '#E1F5FE', '#B3E5FC', '#81D4FA', '#4FC3F7',
-        '#29B6F6', '#03A9F4', '#039BE5', '#0288D1'
-    ];
-
-    function catchmentColor(order) {
-        return CATCHMENT_COLORS[Math.min(order, 8) - 1] || '#03A9F4';
-    }
-
-    function loadCatchmentsVector(threshold) {
-        if (!L.vectorGrid) { console.warn('VectorGrid plugin not loaded'); return null; }
-        if (catchmentsLayer && map.hasLayer(catchmentsLayer)) {
-            map.removeLayer(catchmentsLayer);
-        }
-        currentCatchmentThreshold = threshold || currentCatchmentThreshold;
-
-        catchmentsLayer = L.vectorGrid.protobuf(
-            getTileUrl('catchments', currentCatchmentThreshold),
-            {
-                pane: 'catchmentsPane',
-                vectorTileLayerStyles: {
-                    catchments: function (properties) {
-                        var order = properties.strahler_order || 1;
-                        return {
-                            weight: 0.5,
-                            color: '#666',
-                            fillColor: catchmentColor(order),
-                            fillOpacity: 1.0,
-                            fill: true,
-                        };
-                    }
-                },
-                interactive: true,
-                minZoom: 12,
-                maxNativeZoom: 18,
-                attribution: 'Zlewnie cząstkowe',
-            }
-        );
-
-        // Re-fire click to map so click mode routing works on catchment features
-        catchmentsLayer.on('click', function (e) {
-            L.DomEvent.stopPropagation(e);
-            map.fire('click', { latlng: e.latlng });
-        });
-
-        // Catchment info via hover tooltip (with diagnostic segment_idx)
-        catchmentsLayer.on('mouseover', function (e) {
-            if (catchmentTooltip) { map.removeLayer(catchmentTooltip); catchmentTooltip = null; }
-            var props = e.layer.properties;
-            var isHighlighted = highlightedSegments.has(props.segment_idx);
-            var content =
-                '<b>Rząd Strahlera:</b> ' + (props.strahler_order || '?') + '<br>' +
-                '<b>Powierzchnia:</b> ' + (props.area_km2 ? props.area_km2.toFixed(4) + ' km²' : '?') + '<br>' +
-                '<b>Śr. wysokość:</b> ' + (props.mean_elevation_m ? props.mean_elevation_m.toFixed(1) + ' m' : '?') + '<br>' +
-                '<b>segment_idx:</b> ' + props.segment_idx +
-                (highlightedSegments.size > 0 ? ' (' + (isHighlighted ? '&#10003; IN SET' : '&#10007; not in set') + ')' : '');
-            catchmentTooltip = L.tooltip({ sticky: true, direction: 'top', offset: [0, -8] })
-                .setLatLng(e.latlng)
-                .setContent(content)
-                .addTo(map);
-        });
-        catchmentsLayer.on('mouseout', function () {
-            if (catchmentTooltip) {
-                map.removeLayer(catchmentTooltip);
-                catchmentTooltip = null;
-            }
-        });
-
-        return catchmentsLayer;
-    }
-
-    function getCatchmentsLayer() { return catchmentsLayer; }
-    function getCatchmentsThreshold() { return currentCatchmentThreshold; }
-
-    function fitCatchmentsBounds() {
-        if (demBounds && map) map.fitBounds(demBounds, { padding: [20, 20] });
-    }
-
-    function setCatchmentsOpacity(opacity) {
-        currentCatchmentOpacity = opacity;
-        if (catchmentsLayer) {
-            // Use CSS container opacity to avoid flicker from redraw()
-            var container = catchmentsLayer.getContainer();
-            if (container) {
-                container.style.opacity = opacity;
-            }
-        }
-    }
-
-    /**
-     * Highlight upstream catchments by segment indices.
-     * @param {number[]} segmentIndices - segment_idx values from API
-     */
-    function highlightUpstreamCatchments(segmentIndices) {
-        highlightedSegments = new Set(segmentIndices);
-        if (catchmentsLayer) {
-            catchmentsLayer.options.vectorTileLayerStyles.catchments = function (props) {
-                if (highlightedSegments.has(props.segment_idx)) {
-                    return {
-                        weight: 2,
-                        color: '#28A745',
-                        fillColor: '#28A745',
-                        fillOpacity: 0.5,
-                        fill: true,
-                    };
-                }
-                return {
-                    weight: 0.3,
-                    color: '#999',
-                    fillColor: '#ddd',
-                    fillOpacity: 0.15,
-                    fill: true,
-                };
-            };
-            if (map.hasLayer(catchmentsLayer)) {
-                catchmentsLayer.redraw();
-            }
-        }
-    }
-
-    /**
-     * Clear catchment highlights, restore default style.
-     */
-    function clearCatchmentHighlights() {
-        highlightedSegments.clear();
-        if (catchmentsLayer) {
-            // Restore default style function
-            catchmentsLayer.options.vectorTileLayerStyles.catchments = function (props) {
-                var order = props.strahler_order || 1;
-                return {
-                    weight: 0.5,
-                    color: '#666',
-                    fillColor: catchmentColor(order),
-                    fillOpacity: 1.0,
-                    fill: true,
-                };
-            };
-            if (map.hasLayer(catchmentsLayer)) {
-                catchmentsLayer.redraw();
-            }
-        }
-        setCatchmentsOpacity(currentCatchmentOpacity);
-    }
 
     /**
      * Show upstream catchment boundary polygon.
@@ -447,7 +296,6 @@
     // ===== Legends =====
 
     var streamsLegend = null;
-    var catchmentsLegend = null;
 
     function createStreamsLegend() {
         if (streamsLegend) return;
@@ -467,32 +315,6 @@
         if (streamsLegend) {
             map.removeControl(streamsLegend);
             streamsLegend = null;
-        }
-    }
-
-    function createCatchmentsLegend() {
-        if (catchmentsLegend) return;
-        catchmentsLegend = L.control({ position: 'bottomleft' });
-        catchmentsLegend.onAdd = function () {
-            var div = L.DomUtil.create('div', 'layer-legend');
-            var html = '<div class="layer-legend-title">Zlewnie — rząd Strahlera</div>';
-            var orders = [1, 2, 3, 4, 5, 6, 7, 8];
-            var colors = CATCHMENT_COLORS;
-            for (var i = 0; i < orders.length; i++) {
-                html += '<div class="legend-item">' +
-                    '<span class="legend-swatch" style="background:' + colors[i] + '"></span>' +
-                    '<span>' + orders[i] + '</span></div>';
-            }
-            div.innerHTML = html;
-            return div;
-        };
-        catchmentsLegend.addTo(map);
-    }
-
-    function removeCatchmentsLegend() {
-        if (catchmentsLegend) {
-            map.removeControl(catchmentsLegend);
-            catchmentsLegend = null;
         }
     }
 
@@ -796,13 +618,6 @@
         loadStreamsVector: loadStreamsVector,
         fitStreamsBounds: fitStreamsBounds,
         setStreamsOpacity: setStreamsOpacity,
-        getCatchmentsLayer: getCatchmentsLayer,
-        getCatchmentsThreshold: getCatchmentsThreshold,
-        loadCatchmentsVector: loadCatchmentsVector,
-        fitCatchmentsBounds: fitCatchmentsBounds,
-        setCatchmentsOpacity: setCatchmentsOpacity,
-        highlightUpstreamCatchments: highlightUpstreamCatchments,
-        clearCatchmentHighlights: clearCatchmentHighlights,
         showSelectionBoundary: showSelectionBoundary,
         clearSelectionBoundary: clearSelectionBoundary,
         showWatershed: showWatershed,
@@ -836,7 +651,5 @@
         // Legends
         createStreamsLegend: createStreamsLegend,
         removeStreamsLegend: removeStreamsLegend,
-        createCatchmentsLegend: createCatchmentsLegend,
-        removeCatchmentsLegend: removeCatchmentsLegend,
     };
 })();
