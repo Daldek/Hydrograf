@@ -1,5 +1,5 @@
 """
-Script to process DEM (Digital Elevation Model) and populate flow_network table.
+Script to process DEM (Digital Elevation Model) and populate stream tables.
 
 Reads ASCII GRID DEM file or VRT mosaic, computes hydrological parameters
 (flow direction, flow accumulation, slope), and loads data into PostgreSQL/PostGIS.
@@ -34,11 +34,6 @@ Examples
     python -m scripts.process_dem \\
         --input ../data/nmt/N-33-131-D-a-3-2.asc \\
         --dry-run
-
-    # Process with custom batch size
-    python -m scripts.process_dem \\
-        --input ../data/nmt/N-33-131-D-a-3-2.asc \\
-        --batch-size 50000
 """
 
 import argparse
@@ -52,11 +47,7 @@ from sqlalchemy import text
 
 # ---- Core module imports ----
 from core.db_bulk import (
-    create_flow_network_records,
-    create_flow_network_tsv,
     insert_catchments,
-    insert_records_batch,
-    insert_records_batch_tsv,
     insert_stream_segments,
 )
 from core.hydrology import (
@@ -99,14 +90,10 @@ __all__ = [
     "compute_strahler_from_fdir",
     "compute_strahler_order",
     "compute_twi",
-    "create_flow_network_records",
-    "create_flow_network_tsv",
     "delineate_subcatchments",
     "fill_internal_nodata_holes",
     "fix_internal_sinks",
     "insert_catchments",
-    "insert_records_batch",
-    "insert_records_batch_tsv",
     "insert_stream_segments",
     "main",
     "polygonize_subcatchments",
@@ -131,7 +118,6 @@ logger = logging.getLogger(__name__)
 def process_dem(
     input_path: Path,
     stream_threshold: int = 100,
-    batch_size: int = 10000,
     dry_run: bool = False,
     save_intermediates: bool = False,
     output_dir: Path | None = None,
@@ -143,7 +129,7 @@ def process_dem(
     skip_catchments: bool = False,
 ) -> dict:
     """
-    Process DEM file (ASC, VRT, or GeoTIFF) and load into flow_network table.
+    Process DEM file (ASC, VRT, or GeoTIFF) and extract stream network.
 
     Supports VRT mosaics for multi-tile processing with hydrological continuity
     across tile boundaries.
@@ -153,10 +139,7 @@ def process_dem(
     input_path : Path
         Path to input raster file (.asc, .vrt, or .tif)
     stream_threshold : int
-        Flow accumulation threshold for stream identification (used for
-        flow_network.is_stream and single-threshold mode)
-    batch_size : int
-        Database insert batch size (unused with COPY, kept for API compatibility)
+        Flow accumulation threshold for stream identification (single-threshold mode)
     dry_run : bool
         If True, only compute statistics without inserting
     save_intermediates : bool
@@ -164,7 +147,7 @@ def process_dem(
     output_dir : Path, optional
         Output directory for intermediate files (default: same as input)
     clear_existing : bool
-        If True, clear existing data before insert (TRUNCATE).
+        If True, clear existing data before insert (DELETE).
         Default False to support incremental processing.
     burn_streams_path : Path, optional
         Path to GeoPackage/Shapefile with stream lines for DEM burning
@@ -177,7 +160,7 @@ def process_dem(
     thresholds : list[int], optional
         List of FA thresholds in m² for multi-density stream networks.
         If provided, generates separate stream networks per threshold.
-        The lowest threshold is used for flow_network.is_stream and strahler_order.
+        The lowest threshold is used for stream_mask and strahler_order.
 
     Returns
     -------
@@ -185,7 +168,7 @@ def process_dem(
         Processing statistics including:
         - ncols, nrows, cellsize, total_cells
         - valid_cells, max_accumulation, mean_slope
-        - stream_cells, records, inserted
+        - stream_cells
         - burn_cells (if burn_streams_path provided)
     """
     stats = {}
@@ -364,7 +347,7 @@ def process_dem(
         t_cells = max(1, int(t_m2 / cell_area))
         logger.info(f"  Threshold {t_m2} m² = {t_cells} cells")
 
-    # Use lowest threshold for flow_network (most detailed network)
+    # Use lowest threshold for stream mask (most detailed network)
     lowest_threshold_cells = max(1, int(threshold_list_m2[0] / cell_area))
 
     # 5c. Compute Strahler stream order via pyflwdir (lowest threshold)
@@ -404,18 +387,8 @@ def process_dem(
             dtype="uint8",
         )
 
-    # 7. Create flow_network TSV (vectorized numpy — ~5s vs ~120s)
-    tsv_buffer, n_records, n_stream = create_flow_network_tsv(
-        filled_dem,
-        fdir,
-        acc,
-        slope,
-        metadata,
-        lowest_threshold_cells,
-        strahler=strahler,
-    )
-    stats["records"] = n_records
-    stats["stream_cells"] = n_stream
+    # 7. Stream cell count (from stream mask)
+    stats["stream_cells"] = int(np.count_nonzero(stream_mask))
 
     # 7b. Vectorize streams per threshold
     all_stream_segments = {}  # threshold_m2 → segments
@@ -513,22 +486,12 @@ def process_dem(
 
         with get_db_session() as db:
             if clear_existing:
-                logger.info("Clearing existing flow_network data...")
-                db.execute(text("TRUNCATE TABLE flow_network CASCADE"))
+                logger.info("Clearing existing data...")
                 db.execute(
                     text("DELETE FROM stream_network WHERE source = 'DEM_DERIVED'")
                 )
                 db.execute(text("DELETE FROM stream_catchments"))
                 db.commit()
-
-            # TSV fast path — COPY directly from buffer
-            inserted = insert_records_batch_tsv(
-                db,
-                tsv_buffer,
-                n_records,
-                table_empty=clear_existing,
-            )
-            stats["inserted"] = inserted
 
             # Insert stream segments per threshold
             total_seg_inserted = 0
@@ -567,7 +530,6 @@ def process_dem(
                     )
     else:
         logger.info("Dry run - skipping database insert")
-        stats["inserted"] = 0
 
     return stats
 
@@ -575,7 +537,7 @@ def process_dem(
 def main():
     """Main entry point for DEM processing script."""
     parser = argparse.ArgumentParser(
-        description="Process DEM and populate flow_network table",
+        description="Process DEM and extract stream network",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -594,12 +556,6 @@ def main():
             "Flow accumulation threshold in cells (default: 100). "
             "Ignored when --thresholds is specified."
         ),
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=10000,
-        help="Database insert batch size (default: 10000)",
     )
     parser.add_argument(
         "--dry-run",
@@ -622,7 +578,7 @@ def main():
     parser.add_argument(
         "--clear-existing",
         action="store_true",
-        help="Clear existing flow_network data before insert (TRUNCATE)",
+        help="Clear existing stream data before insert (DELETE)",
     )
     parser.add_argument(
         "--burn-streams",
@@ -675,7 +631,6 @@ def main():
     logger.info(f"Stream threshold: {args.stream_threshold}")
     if threshold_list:
         logger.info(f"Multi-threshold FA: {threshold_list} m²")
-    logger.info(f"Batch size: {args.batch_size}")
     logger.info(f"Dry run: {args.dry_run}")
     logger.info(f"Save intermediates: {args.save_intermediates}")
     logger.info(f"Clear existing: {args.clear_existing}")
@@ -691,7 +646,6 @@ def main():
         stats = process_dem(
             input_path,
             stream_threshold=args.stream_threshold,
-            batch_size=args.batch_size,
             dry_run=args.dry_run,
             save_intermediates=args.save_intermediates,
             output_dir=output_dir,
@@ -732,8 +686,6 @@ def main():
     if "stream_thresholds" in stats:
         for t, count in stats["stream_thresholds"].items():
             logger.info(f"    Threshold {t} m²: {count} segments")
-    logger.info(f"  Records created: {stats['records']:,}")
-    logger.info(f"  Records inserted: {stats['inserted']:,}")
     if "stream_segments_inserted" in stats:
         logger.info(
             f"  Stream segments inserted: {stats['stream_segments_inserted']:,}"
