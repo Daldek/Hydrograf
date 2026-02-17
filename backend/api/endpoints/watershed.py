@@ -2,9 +2,9 @@
 Watershed delineation endpoint.
 
 Provides API endpoint for delineating watershed boundaries
-based on a clicked point location. Uses CatchmentGraph (~87k nodes)
-for BFS traversal and pre-computed stat aggregation instead of
-FlowGraph (19.7M cells). Zero raster operations in runtime.
+based on a clicked point location. Uses CatchmentGraph (~11k nodes,
+~0.5 MB) for BFS traversal and pre-computed stat aggregation.
+Zero raster operations in runtime.
 """
 
 import logging
