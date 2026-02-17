@@ -524,10 +524,11 @@ def step_depressions(output_dir: Path) -> str:
 
 def step_tiles() -> str:
     """Step 7: Generate MVT tiles (requires tippecanoe)."""
-    if not shutil.which("tippecanoe"):
+    venv_tippecanoe = BACKEND_DIR / ".venv" / "bin" / "tippecanoe"
+    if not venv_tippecanoe.exists() and not shutil.which("tippecanoe"):
         logger.warning(
             "tippecanoe nie znalezione — pomijam kafelki MVT. "
-            "Zainstaluj: https://github.com/felt/tippecanoe"
+            "Zainstaluj: pip install tippecanoe"
         )
         return "brak tippecanoe"
 
