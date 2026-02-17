@@ -1,13 +1,11 @@
 """
 E2E Task 9 — Ponowne wykonanie wyznaczania zlewni na N-33-131-C-b-2.
 
-Wykorzystuje dane z Tasks 7-8 (juz w bazie flow_network, 4.9M komorek).
-Testuje zabezpieczenia OOM dodane w ADR-015:
-- Pre-flight check (check_watershed_size)
-- LIMIT w CTE
-- statement_timeout=30s
+DEPRECATED: Ten skrypt wymagal starej tabeli komorek (usunieta w ADR-028).
+Delineacja odbywa sie teraz przez CatchmentGraph + stream_catchments.
+Skrypt zachowany jako referencja historyczna.
 
-Testy:
+Oryginalne testy:
 A) Sredni outlet (~500k cells, ~0.5 km²) — bezpieczny
 B) Duzy outlet (max acc ~1.76M cells, ~1.76 km²) — testuje granice
 C) Sztuczny outlet ponad limit — sprawdza reject
@@ -45,16 +43,25 @@ SEPARATOR = "=" * 70
 
 
 def find_outlet_by_accumulation(db, min_acc: int, max_acc: int) -> FlowCell | None:
-    """Find a stream outlet with flow_accumulation in given range."""
+    """Find a stream outlet with upstream_area in given range.
+
+    Uses stream_network table. Returns a FlowCell-like object with limited attributes.
+    """
     result = db.execute(
         text("""
-            SELECT id, ST_X(geom) as x, ST_Y(geom) as y,
-                   elevation, flow_accumulation, slope,
-                   downstream_id, cell_area, is_stream
-            FROM flow_network
-            WHERE is_stream = TRUE
-              AND flow_accumulation BETWEEN :min_acc AND :max_acc
-            ORDER BY flow_accumulation DESC
+            SELECT segment_idx as id,
+                   ST_X(ST_EndPoint(geom)) as x,
+                   ST_Y(ST_EndPoint(geom)) as y,
+                   0.0 as elevation,
+                   (upstream_area_km2 * 1e6)::bigint as flow_accumulation,
+                   mean_slope_percent as slope,
+                   NULL as downstream_id,
+                   upstream_area_km2 * 1e6 as cell_area,
+                   TRUE as is_stream
+            FROM stream_network
+            WHERE source = 'DEM_DERIVED'
+              AND (upstream_area_km2 * 1e6) BETWEEN :min_acc AND :max_acc
+            ORDER BY upstream_area_km2 DESC
             LIMIT 1
         """),
         {"min_acc": min_acc, "max_acc": max_acc},
@@ -77,15 +84,24 @@ def find_outlet_by_accumulation(db, min_acc: int, max_acc: int) -> FlowCell | No
 
 
 def find_max_outlet(db) -> FlowCell | None:
-    """Find the outlet with maximum flow accumulation."""
+    """Find the outlet with maximum upstream area.
+
+    Uses stream_network table.
+    """
     result = db.execute(
         text("""
-            SELECT id, ST_X(geom) as x, ST_Y(geom) as y,
-                   elevation, flow_accumulation, slope,
-                   downstream_id, cell_area, is_stream
-            FROM flow_network
-            WHERE is_stream = TRUE
-            ORDER BY flow_accumulation DESC
+            SELECT segment_idx as id,
+                   ST_X(ST_EndPoint(geom)) as x,
+                   ST_Y(ST_EndPoint(geom)) as y,
+                   0.0 as elevation,
+                   (upstream_area_km2 * 1e6)::bigint as flow_accumulation,
+                   mean_slope_percent as slope,
+                   NULL as downstream_id,
+                   upstream_area_km2 * 1e6 as cell_area,
+                   TRUE as is_stream
+            FROM stream_network
+            WHERE source = 'DEM_DERIVED'
+            ORDER BY upstream_area_km2 DESC
             LIMIT 1
         """),
     ).fetchone()
@@ -215,14 +231,19 @@ def main():
 
     with get_db_session() as db:
         # Sprawdz stan bazy
-        count = db.execute(text("SELECT COUNT(*) FROM flow_network")).scalar()
-        max_acc = db.execute(
-            text("SELECT MAX(flow_accumulation) FROM flow_network")
+        count = db.execute(
+            text("SELECT COUNT(*) FROM stream_network WHERE source = 'DEM_DERIVED'")
         ).scalar()
-        logger.info(f"Baza: {count:,} komorek, max_acc={max_acc:,}")
+        max_area = db.execute(
+            text(
+                "SELECT MAX(upstream_area_km2) FROM stream_network"
+                " WHERE source = 'DEM_DERIVED'"
+            )
+        ).scalar()
+        logger.info(f"Baza: {count:,} segmentow, max_area={max_area} km2")
 
         if count == 0:
-            logger.error("Baza pusta — uruchom najpierw Tasks 7-8")
+            logger.error("Baza pusta — uruchom najpierw pipeline (process_dem)")
             sys.exit(1)
 
         # --- TEST A: Sredni outlet (~500k cells) ---

@@ -742,8 +742,8 @@ def dry_run(
     steps = [
         "Infrastruktura: .venv, docker compose up -d db, alembic upgrade head",
         f"Pobieranie NMT: {len(sheets)} arkuszy do {output_dir / 'nmt'}",
-        "Przetwarzanie NMT: mozaika VRT, flow_network, "
-        "streams, catchments (ZAWSZE od zera)",
+        "Przetwarzanie NMT: mozaika VRT, "
+        "stream_network, stream_catchments (ZAWSZE od zera)",
         f"Pokrycie terenu: BDOT10k per-TERYT (auto-discovery z {len(sheets)} arkuszy)",
         f"Opady IMGW: grid 2km w bbox "
         f"{min_lon:.3f},{min_lat:.3f},"

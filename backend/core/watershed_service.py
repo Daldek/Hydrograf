@@ -6,8 +6,8 @@ outlet extraction, and morphometric dict construction. Used by
 watershed, hydrograph, and select_stream endpoints.
 
 All spatial queries target stream_network / stream_catchments tables
-(~87k rows each) instead of flow_network (19.7M rows), eliminating
-runtime dependency on the large table.
+(~87k rows each), using pre-computed catchment polygons for fast
+boundary merging and morphometric parameter lookup.
 """
 
 import json

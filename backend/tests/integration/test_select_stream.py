@@ -2,7 +2,7 @@
 Integration tests for select-stream endpoint.
 
 Tests the graph-based select-stream endpoint that uses CatchmentGraph
-instead of flow_network BFS + raster operations.
+and stream_catchments for watershed delineation.
 """
 
 from unittest.mock import MagicMock, patch
