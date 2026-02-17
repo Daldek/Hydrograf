@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import get_catchment_graph
-from core.constants import HYDROGRAPH_AREA_LIMIT_KM2
+from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.land_cover import get_land_cover_for_boundary
 from core.morphometry import calculate_shape_indices
@@ -78,6 +78,17 @@ def select_stream(
             )
 
         threshold = request.threshold_m2
+
+        # ADR-026: catchments only for threshold >= 1000
+        escalated = False
+        if threshold < DEFAULT_THRESHOLD_M2:
+            original_threshold = threshold
+            threshold = DEFAULT_THRESHOLD_M2
+            escalated = True
+            logger.info(
+                f"Threshold {original_threshold} escalated to {threshold} "
+                f"(no catchments below {DEFAULT_THRESHOLD_M2})"
+            )
 
         # 1. Snap to nearest stream (spatial proximity, not point-in-polygon)
         nearest = find_nearest_stream_segment(point_2180.x, point_2180.y, threshold, db)
@@ -297,6 +308,15 @@ def select_stream(
             main_stream_geojson=main_stream_geojson,
         )
 
+        info_message = (
+            (
+                f"Zlewnie cząstkowe niedostępne dla progu {original_threshold} m². "
+                f"Zaznaczono z progu {threshold} m²."
+            )
+            if escalated
+            else None
+        )
+
         response.headers["Cache-Control"] = "public, max-age=3600"
         return SelectStreamResponse(
             stream=StreamInfo(
@@ -309,6 +329,7 @@ def select_stream(
             boundary_geojson=boundary_geojson,
             display_threshold_m2=threshold,
             watershed=watershed_response,
+            info_message=info_message,
         )
 
     except HTTPException:
