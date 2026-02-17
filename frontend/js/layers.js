@@ -11,8 +11,6 @@
 
     var currentBaseLayer = null;
     var baseLayers = {};
-    var _notifyWatershedChanged = null;
-    var _watershedFirstDetection = true;
 
     /**
      * Create a group header element.
@@ -394,102 +392,6 @@
                 addStreamsEntry(streamsPlaceholder, FALLBACK_THRESHOLDS);
             });
 
-        // Zlewnia — reactive entry that auto-enables when a watershed is drawn.
-        // Uses a polling approach: the checkbox enables/disables based on layer existence.
-        var watershedItem = document.createElement('div');
-        watershedItem.className = 'layer-item';
-        var whHeaderRow = document.createElement('div');
-        whHeaderRow.className = 'layer-header';
-        var whCb = document.createElement('input');
-        whCb.type = 'checkbox';
-        whCb.checked = true;
-        whCb.disabled = true;
-        var whText = document.createTextNode(' Zlewnia');
-        var whHint = document.createElement('span');
-        whHint.className = 'text-muted';
-        whHint.style.fontSize = '0.7rem';
-        whHint.style.marginLeft = '4px';
-        whHint.textContent = '(wyznacz najpierw)';
-        var whZoomBtn = document.createElement('button');
-        whZoomBtn.className = 'layer-zoom-btn';
-        whZoomBtn.title = 'Przybliż do zasięgu';
-        whZoomBtn.textContent = '\u2316';
-        whZoomBtn.addEventListener('click', function () {
-            var layer = Hydrograf.map.getWatershedLayer();
-            if (layer) {
-                Hydrograf.map._getMap().fitBounds(layer.getBounds(), { padding: [20, 20] });
-            }
-        });
-        whHeaderRow.appendChild(whCb);
-        whHeaderRow.appendChild(whText);
-        whHeaderRow.appendChild(whHint);
-        whHeaderRow.appendChild(whZoomBtn);
-        watershedItem.appendChild(whHeaderRow);
-
-        var whSliderRow = document.createElement('div');
-        whSliderRow.className = 'layer-opacity d-none';
-        var whSliderLabel = document.createElement('span');
-        whSliderLabel.textContent = 'Przezr.:';
-        var whSlider = document.createElement('input');
-        whSlider.type = 'range';
-        whSlider.min = '0';
-        whSlider.max = '100';
-        whSlider.value = '0';
-        var whSliderValue = document.createElement('span');
-        whSliderValue.className = 'layer-opacity-val';
-        whSliderValue.textContent = '0%';
-        whSlider.addEventListener('input', function () {
-            var opacity = (100 - parseInt(whSlider.value)) / 100;
-            var layer = Hydrograf.map.getWatershedLayer();
-            if (layer) {
-                layer.setStyle({ fillOpacity: opacity * 0.5, opacity: opacity });
-            }
-            whSliderValue.textContent = whSlider.value + '%';
-        });
-        whSliderRow.appendChild(whSliderLabel);
-        whSliderRow.appendChild(whSlider);
-        whSliderRow.appendChild(whSliderValue);
-        watershedItem.appendChild(whSliderRow);
-
-        whCb.addEventListener('change', function () {
-            var layer = Hydrograf.map.getWatershedLayer();
-            if (!layer) return;
-            var mapObj = Hydrograf.map._getMap();
-            if (whCb.checked) {
-                if (!mapObj.hasLayer(layer)) layer.addTo(mapObj);
-                whSliderRow.classList.remove('d-none');
-            } else {
-                if (mapObj.hasLayer(layer)) mapObj.removeLayer(layer);
-                whSliderRow.classList.add('d-none');
-            }
-        });
-
-        list.appendChild(watershedItem);
-
-        // Notify callback — called by app.js when watershed layer changes
-        _notifyWatershedChanged = function () {
-            var layer = Hydrograf.map.getWatershedLayer();
-            if (layer) {
-                whCb.disabled = false;
-                // Auto-check only on first detection; respect user toggle after that
-                if (_watershedFirstDetection) {
-                    whCb.checked = true;
-                    _watershedFirstDetection = false;
-                }
-                whHint.textContent = '';
-                if (whCb.checked) {
-                    whSliderRow.classList.remove('d-none');
-                }
-            } else {
-                whCb.disabled = true;
-                whCb.checked = false;
-                whHint.textContent = '(wyznacz najpierw)';
-                whSliderRow.classList.add('d-none');
-                // Reset flag so next watershed detection auto-checks again
-                _watershedFirstDetection = true;
-            }
-        };
-
         // Depressions entry will be added by depressions.js if available
 
         // ===== Base layers (at the bottom of the panel) =====
@@ -540,8 +442,5 @@
         init: init,
         addOverlayEntry: addOverlayEntry,
         createGroupHeader: createGroupHeader,
-        notifyWatershedChanged: function () {
-            if (_notifyWatershedChanged) _notifyWatershedChanged();
-        },
     };
 })();
