@@ -257,7 +257,7 @@
                     borderColor: '#DC3545',
                     backgroundColor: 'rgba(220, 53, 69, 0.12)',
                     fill: true,
-                    tension: 0.2,
+                    tension: 0,
                     pointRadius: 0,
                     borderWidth: 1.5,
                 }],

@@ -132,8 +132,9 @@ def run_tippecanoe(
         f"-z{max_zoom}",
         f"-Z{min_zoom}",
         f"--layer={layer_name}",
-        "--drop-densest-as-needed",
+        "--coalesce-densest-as-needed",
         "--extend-zooms-if-still-dropping",
+        "--simplification=10",
         "--force",
         str(input_path),
     ]
@@ -157,6 +158,51 @@ def convert_to_pmtiles(
         logger.error(f"pmtiles convert failed: {result.stderr}")
         raise RuntimeError(f"pmtiles convert failed: {result.stderr}")
     logger.info(f"Generated {pmtiles_path}")
+
+
+def extract_mbtiles_to_pbf(mbtiles_path: Path, output_dir: Path, prefix: str) -> int:
+    """
+    Extract tiles from .mbtiles (SQLite) to static {z}/{x}/{y}.pbf files.
+
+    Parameters
+    ----------
+    mbtiles_path : Path
+        Path to the .mbtiles file
+    output_dir : Path
+        Base output directory (tiles will go into output_dir/prefix/{z}/{x}/{y}.pbf)
+    prefix : str
+        Subdirectory prefix, e.g. "streams_1000"
+
+    Returns
+    -------
+    int
+        Number of tiles extracted
+    """
+    import gzip
+    import sqlite3
+
+    tile_dir = output_dir / prefix
+    if tile_dir.exists():
+        shutil.rmtree(tile_dir)
+
+    conn = sqlite3.connect(str(mbtiles_path))
+    cursor = conn.execute("SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles")
+
+    count = 0
+    for zoom, col, row, data in cursor:
+        # MBTiles uses TMS (y flipped): y_xyz = 2^zoom - 1 - y_tms
+        y_xyz = (1 << zoom) - 1 - row
+        pbf_path = tile_dir / str(zoom) / str(col) / f"{y_xyz}.pbf"
+        pbf_path.parent.mkdir(parents=True, exist_ok=True)
+        # tippecanoe stores tiles gzip-compressed; decompress for static serving
+        if data[:2] == b"\x1f\x8b":
+            data = gzip.decompress(data)
+        pbf_path.write_bytes(data)
+        count += 1
+
+    conn.close()
+    logger.info(f"Extracted {count} tiles from {mbtiles_path.name} → {tile_dir}")
+    return count
 
 
 def generate_tiles(output_dir: Path) -> None:
@@ -242,6 +288,16 @@ def generate_tiles(output_dir: Path) -> None:
                 else:
                     logger.warning(f"No catchments for threshold {threshold}")
 
+                # Extract to static PBF files for Nginx serving
+                if streams_mbt.exists():
+                    extract_mbtiles_to_pbf(
+                        streams_mbt, output_dir, f"streams_{threshold}"
+                    )
+                if catchments_mbt.exists():
+                    extract_mbtiles_to_pbf(
+                        catchments_mbt, output_dir, f"catchments_{threshold}"
+                    )
+
                 # Convert to PMTiles if available
                 if has_pmtiles:
                     if streams_mbt.exists():
@@ -260,7 +316,7 @@ def generate_tiles(output_dir: Path) -> None:
         "thresholds": thresholds,
         "min_zoom": MIN_ZOOM,
         "max_zoom": MAX_ZOOM,
-        "format": "pmtiles" if has_pmtiles else "mbtiles",
+        "format": "pbf",
     }
     meta_path = output_dir / "tiles_metadata.json"
     with open(meta_path, "w") as f:
