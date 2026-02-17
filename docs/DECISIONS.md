@@ -599,6 +599,20 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+### ADR-028: Eliminacja tabeli flow_network (2026-02-17)
+
+**Status:** Zatwierdzony
+**Kontekst:** Tabela `flow_network` przechowywala dane kazdego piksela DEM (~39.4M wierszy dla 8 arkuszy). Ladowanie trwalo ~17 min (58% pipeline). Zadne API endpoint nie czyta z niej w runtime — wszystkie endpointy korzystaja z `stream_network`, `stream_catchments` i CatchmentGraph.
+**Decyzja:** Eliminacja tabeli flow_network z pipeline i bazy. Migracja 015 (DROP TABLE). Usuniecie ~1000 linii martwego kodu (db_bulk flow_network functions, flow_graph.py, watershed.py legacy CLI).
+**Konsekwencje:**
+- Pipeline 8 arkuszy: ~29 min → ~12 min (-58%)
+- Pipeline 25 arkuszy (powiat): ~3h → ~50 min (-60%)
+- Rozmiar DB: -2 GB (-80%)
+- Legacy CLI (watershed.py traverse_upstream_sql) usuniete
+- Nadpisa: ADR-006 (COPY vs INSERT) — COPY nie jest juz potrzebne dla flow_network
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
