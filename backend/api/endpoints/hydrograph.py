@@ -4,9 +4,8 @@ Hydrograph generation endpoint.
 Provides API endpoint for generating SCS-CN based direct runoff hydrographs
 using the Hydrolog library.
 
-Uses CatchmentGraph (~87k nodes) for watershed delineation instead of
-FlowGraph (19.7M cells), eliminating runtime dependency on the large
-flow_network table.
+Uses CatchmentGraph (~11k nodes, ~0.5 MB) for watershed delineation
+via BFS on pre-computed sub-catchments.
 """
 
 import logging
