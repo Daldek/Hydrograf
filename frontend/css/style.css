@@ -356,6 +356,12 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    /* liquid glass */
+    background: var(--liquid-bg);
+    backdrop-filter: blur(var(--liquid-blur));
+    -webkit-backdrop-filter: blur(var(--liquid-blur));
+    border: 1px solid var(--liquid-border);
+    box-shadow: var(--liquid-shadow), var(--liquid-highlight);
 }
 
 /* ============ CHART CONTAINER (fixed height for Chart.js) ============ */
