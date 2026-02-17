@@ -4,17 +4,17 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 581 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 538 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
-| Preprocessing NMT | ✅ Gotowy | pyflwdir + COPY (~29 min/2 arkusze), stream burning BDOT10k |
+| Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k |
 | Integracja Hydrolog | ✅ Gotowy | v0.5.2 |
 | Integracja Kartograf | ✅ Gotowy | v0.4.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | CP4 — tryb wyboru obiektow, flow acc coloring, histogram, debounce, zoom fix |
-| Testy scripts/ | ⏳ W trakcie | 46 testow process_dem (burn, fill, sinks, pyflwdir, aspect, TWI, Strahler) |
+| Testy scripts/ | ⏳ W trakcie | 538 testow lacznie (po usunieciu 43 testow martwego kodu flow_network/flow_graph) |
 | Dokumentacja | ✅ Gotowy | Standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -44,9 +44,26 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-17 (sesja 32)
+**Data:** 2026-02-17 (sesja 33)
 
 ### Co zrobiono
+
+- **Eliminacja tabeli flow_network (ADR-028, migracja 015):**
+  - Tabela `flow_network` przechowywala ~39.4M rekordow (dane kazdego piksela DEM) — zadne API endpoint nie czytalo z niej w runtime
+  - Migracja 015: `DROP TABLE flow_network`
+  - Pipeline DEM pomija krok INSERT flow_network — oszczednosc ~17 min (58% czasu pipeline)
+  - Pipeline 8 arkuszy: ~29 min → ~12 min
+
+- **Usuniecie ~1000 linii martwego kodu:**
+  - `core/flow_graph.py` — caly modul (~360 linii, DEPRECATED od ADR-022)
+  - `core/db_bulk.py` — 4 funkcje flow_network: `create_flow_network_tsv()`, `insert_records_batch_tsv()`, `insert_flow_network_copy()`, `update_strahler_in_db()` (~580 linii)
+  - `core/watershed.py` — 5 legacy CLI functions uzywajacych flow_network: `find_nearest_stream()`, `traverse_upstream_sql()`, `check_watershed_size()`, `build_boundary()`, `find_main_stream()`
+  - ~43 testow powiazanych z flow_network/flow_graph
+
+- **Testy:** 538 testow (bylo 581), 0 failures, ruff clean
+- **6 commitow** w sesji
+
+### Poprzednia sesja (2026-02-17, sesja 32)
 
 - **Naprawa blednej selekcji zlewni (ADR-027, 6 plikow, 581 testow):**
   - **Przyczyna glowna (2 bugi):**
@@ -392,7 +409,7 @@
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
-| flow_network | 39,377,780 | 4 progi FA, stream burning BDOT10k (706k cells) |
+| flow_network | **USUNIETA** | Wyeliminowana w ADR-028, migracja 015 (DROP TABLE) |
 | stream_network | 220,859 | 100: 198258, 1000: 20302, 10000: 2087, 100000: 212 (z segment_idx, migracja 014) |
 | stream_catchments | 22,613 | 1000: 20313, 10000: 2088, 100000: 212 (bez progu 100, ADR-026) |
 | land_cover | 0 | wyzerowane — wymaga ponownego importu |
@@ -401,7 +418,7 @@
 
 ### Znane problemy (infrastruktura)
 - `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
-- FlowGraph (core/flow_graph.py) — DEPRECATED, zachowany dla skryptow CLI, nie ladowany przez API
+- FlowGraph (core/flow_graph.py) — USUNIETY w ADR-028 (sesja 33)
 - 15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
 - Endpoint `profile.py` wymaga pliku DEM (VRT/GeoTIFF) pod sciezka `DEM_PATH` — zwraca 503 gdy brak
 - `bootstrap.py` nie importuje pokrycia terenu (land cover) — po pelnym bootstrap tabela `land_cover` jest pusta (0 rekordow), brak danych w UI. Wymaga dodania kroku importu land cover (skrypt `import_landcover.py`) do pipeline bootstrap. Priorytet: niski.

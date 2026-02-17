@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-02-17
 
+### Removed
+- Tabela `flow_network` — eliminacja 39.4M rekordow z bazy (ADR-028)
+- `core/flow_graph.py` — DEPRECATED modul (~360 linii)
+- Legacy CLI w `watershed.py` — 5 funkcji uzywajacych flow_network
+- 4 funkcje flow_network w `db_bulk.py` (~580 linii)
+- ~43 testow powiazanych z flow_network/flow_graph
+
+### Changed
+- Pipeline DEM pomija krok INSERT flow_network — oszczednosc ~17 min (58%)
+- Migracja 015: DROP TABLE flow_network
+- Testy: 581 → 538 (usuniete testy martwego kodu)
+
 ### Added
 - **`lookup_by_segment_idx()` w CatchmentGraph:** O(1) lookup wezla grafu po (threshold_m2, segment_idx) — eliminuje potrzebe zapytania do bazy
 - **`verify_graph()` w CatchmentGraph:** diagnostyka spojnosci grafu przy starcie — per-threshold: liczba wezlow, outlety, unikalne segment_idx, opcjonalnie walidacja z baza
