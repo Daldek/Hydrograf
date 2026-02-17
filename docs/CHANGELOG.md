@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-02-17
 
+### Fixed (3 bugi po teście E2E — sesja 37)
+- **Profil terenu wygładzony:** `tension: 0.2` → `tension: 0` w charts.js — wyłączenie interpolacji Béziera, ostre krawędzie między punktami próbkowania.
+- **Cieki MVT znikają przy oddaleniu:** tippecanoe `--drop-densest-as-needed` → `--coalesce-densest-as-needed` + `--simplification=10` (łączenie features zamiast usuwania). Nowa funkcja `extract_mbtiles_to_pbf()` ekstrahuje .mbtiles do statycznych `{z}/{x}/{y}.pbf` z dekompresją gzip. Frontend `getTileUrl()` obsługuje format `"pbf"` → Nginx serwuje statyczne pliki (~1ms).
+- **BDOT10k niepełne pokrycie:** `spacing_m` w `discover_teryts_for_bbox()` zmniejszony z 5000 na 2000m — gęstsza siatka sampling → lepsza detekcja małych/miejskich TERYT-ów. Logi podniesione z DEBUG na INFO.
+
 ### Fixed (6 bugów UX — E5, E6, E9, E10, E11, F3)
 - **E5+E10 — Chart.js resize w ukrytych kontenerach:** wykresy renderowane w collapsed accordion lub d-none panelu miały wysokość 0px. Nowa funkcja `resizeChart()` w charts.js, accordion handler z 50ms setTimeout po rozwinięciu, profil terenu: usunięcie d-none PRZED renderowaniem, canvas profilu owinięty w `.chart-container`.
 - **E6 — liquid glass na panelu profilu:** `#profile-panel` używał opaque background zamiast liquid glass. Dodane tokeny CSS (`--liquid-bg`, `--liquid-blur`, `--liquid-border`, `--liquid-shadow`, `--liquid-highlight`) — spójność z panelami warstw i parametrów.

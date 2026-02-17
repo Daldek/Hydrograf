@@ -44,9 +44,39 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-17 (sesja 35)
+**Data:** 2026-02-17 (sesja 37)
 
 ### Co zrobiono
+
+- **Naprawa 3 bugów po teście E2E (10 arkuszy):**
+  - **Bug A — BDOT10k spacing:** `spacing_m` w `discover_teryts_for_bbox()` zmniejszony z 5000 na 2000m (gęstsza siatka punktów → lepsza detekcja małych TERYT-ów). Logi point→TERYT podniesione z DEBUG na INFO.
+  - **Bug B — cieki MVT znikają przy oddaleniu:** 4-częściowa naprawa:
+    - tippecanoe: `--drop-densest-as-needed` → `--coalesce-densest-as-needed` + `--simplification=10` (łączenie features zamiast usuwania)
+    - Nowa funkcja `extract_mbtiles_to_pbf()` — ekstrakcja .mbtiles do statycznych `{z}/{x}/{y}.pbf` z dekompresją gzip
+    - `tiles_metadata.json`: format `"mbtiles"` → `"pbf"`
+    - `map.js`: `getTileUrl()` obsługa formatu `"pbf"` → `/tiles/{layer}_{threshold}/{z}/{x}/{y}.pbf`
+  - **Bug C — wygładzony profil terenu:** `tension: 0.2` → `tension: 0` w charts.js (wyłączenie interpolacji Béziera)
+
+- **Re-run BDOT10k hydro + regeneracja kafelków:**
+  - Hydro: TERYT 3021 (8.0 MB) + 3064 (1.4 MB) → merged 12,321 features (bez zmian — dane 3064 faktycznie uboższe w obszarze miejskim)
+  - Kafelki: 64,533 PBF tiles (4 progi × streams + catchments), 18 min (dominuje threshold 100: 390k features → 16 min tippecanoe)
+  - Fix krytyczny: pliki PBF z mbtiles są gzip-compressed — dodano dekompresję w `extract_mbtiles_to_pbf()`
+
+- **Testy:** 538 passed, 0 failures
+
+### Poprzednia sesja (2026-02-17, sesja 36)
+
+- **Test E2E bootstrap.py z rozszerzonym obszarem NMT (10 arkuszy):**
+  - Reset bazy danych (`docker compose down -v`) + pełny bootstrap od zera
+  - 10 arkuszy wejściowych → 16 arkuszy 1:10k (2 nowe arkusze 1:25k rozwinięte na 4+4)
+  - Raster: 9500×8754 = 83.2M komórek (vs 43.5M poprzednio, +91%)
+  - Czas całkowity: **1741.4s (~29 min)** vs 657.6s (~11 min) dla 8 arkuszy
+  - NMT processing: 975.3s (sublinearny: +91% danych → +48% czasu)
+  - Baza: 434,877 stream segments, 44,593 catchments, 2,239,703 depresji, 50,406 land cover, 1,050 precipitation
+  - Health check OK, serwer pod http://localhost:8080
+  - Raport: `data/e2e_report_sesja36.md`
+
+### Poprzednia sesja (2026-02-17, sesja 35)
 
 - **Naprawa 6 bugów UX (E5, E6, E9, E10, E11, F3) — 5 równoległych subagentów:**
   - **E5+E10 — Chart.js resize w ukrytych kontenerach:** `resizeChart()` w charts.js, accordion handler z 50ms setTimeout, profil terenu: d-none usunięte PRZED renderowaniem, canvas owinięty w `.chart-container`
@@ -640,12 +670,11 @@
 - **Kontekst:** `core/hydrology.py` (burn_streams_into_dem), `scripts/process_dem.py`
 
 ### Nastepne kroki
-1. Weryfikacja wizualna w przegladarce (hard refresh Cmd+Shift+R) — potwierdzenie 6 fixow UX
+1. Weryfikacja wizualna w przegladarce (hard refresh Ctrl+Shift+R) — potwierdzenie ciekow MVT na wszystkich zoomach + ostry profil terenu
 2. Naprawa pozostalych bugow: E1 (dziury na granicach), E4 (outlet poza granica), E7 (HSG), E8 (BDOT warstwy), F2 (snap-to-stream sasiednia zlewnia)
 3. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
 4. Usuniecie hardcoded secrets z config.py i migrations/env.py
-5. Faza 5 (opcjonalna): PMTiles, pre-computed watersheds, MapLibre GL JS
-6. CP5: MVP — pelna integracja, deploy
+5. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
@@ -659,6 +688,8 @@
 - [x] CP4 Faza 4: Select-stream pelne statystyki, GUGiK WMTS, UI fixes (492 testy)
 - [x] Graf zlewni czastkowych (ADR-021): CatchmentGraph in-memory, migracja 012, pipeline re-run, select-stream rewrite
 - [ ] CP5: MVP — pelna integracja, deploy
+- [ ] Plik konfiguracyjny YAML — niestandardowe parametry i sciezki (np. wlasne wektory ciekow zamiast BDOT10k). Priorytet: sredni.
+- [ ] Ikony trybow w toolbarze — lapka (przegladanie), kursor klikajacy (wybierz zlewnię), kafelki/siatka (wygeneruj zlewnię), profil terenu (profil). Priorytet: niski.
 - [x] Naprawa bledow frontend/backend (zgloszenie 2026-02-14, 10 pozycji — A1-A5, B1-B4, C1)
 - [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)

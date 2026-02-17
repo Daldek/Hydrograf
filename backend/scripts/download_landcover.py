@@ -324,7 +324,7 @@ def _generate_sample_coords(start: float, end: float, spacing: float) -> list[fl
 
 def discover_teryts_for_bbox(
     bbox_2180: tuple[float, float, float, float],
-    spacing_m: float = 5000.0,
+    spacing_m: float = 2000.0,
 ) -> list[str]:
     """
     Discover all TERYT codes (powiaty) that cover a bounding box.
@@ -358,7 +358,7 @@ def discover_teryts_for_bbox(
             try:
                 teryt = provider._get_teryt_for_point(x, y)
                 teryts.add(teryt)
-                logger.debug(f"Point ({x:.0f}, {y:.0f}) → TERYT {teryt}")
+                logger.info(f"Point ({x:.0f}, {y:.0f}) → TERYT {teryt}")
             except Exception as e:
                 logger.debug(f"Point ({x:.0f}, {y:.0f}) — no TERYT: {e}")
 
