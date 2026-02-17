@@ -313,3 +313,29 @@ class TestTraverseToConfluence:
 
         result = cg.traverse_to_confluence(0)
         assert list(result) == [0]
+
+
+class TestLookupBySegmentIdx:
+    """Tests for lookup_by_segment_idx."""
+
+    def test_found(self, small_graph):
+        """Known (threshold, segment_idx) returns correct internal index."""
+        # (10000, 3) → internal index 2 based on fixture setup
+        idx = small_graph.lookup_by_segment_idx(10000, 3)
+        assert idx == 2
+
+    def test_not_found_returns_none(self, small_graph):
+        """Unknown segment_idx returns None."""
+        idx = small_graph.lookup_by_segment_idx(10000, 999)
+        assert idx is None
+
+    def test_wrong_threshold_returns_none(self, small_graph):
+        """Correct segment_idx but wrong threshold returns None."""
+        idx = small_graph.lookup_by_segment_idx(99999, 3)
+        assert idx is None
+
+    def test_not_loaded_raises(self):
+        """RuntimeError if graph not loaded."""
+        cg = CatchmentGraph()
+        with pytest.raises(RuntimeError, match="not loaded"):
+            cg.lookup_by_segment_idx(10000, 1)
