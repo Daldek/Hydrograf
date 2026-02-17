@@ -98,6 +98,10 @@
             };
 
             Hydrograf.api.getTerrainProfile(lineGeojson, 100).then(function (result) {
+                // Ensure panel is visible BEFORE rendering the chart
+                var panel = document.getElementById('profile-panel');
+                if (panel) panel.classList.remove('d-none');
+
                 Hydrograf.charts.renderProfileChart(
                     'chart-profile-standalone',
                     result.distances_m,
@@ -106,8 +110,10 @@
                     onChartHoverEnd
                 );
 
-                var panel = document.getElementById('profile-panel');
-                if (panel) panel.classList.remove('d-none');
+                // Resize after render to ensure correct dimensions
+                setTimeout(function () {
+                    if (Hydrograf.charts) Hydrograf.charts.resizeChart('chart-profile-standalone');
+                }, 50);
             }).catch(function (err) {
                 console.warn('Profile error:', err.message);
                 var panel = document.getElementById('profile-panel');

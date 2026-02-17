@@ -411,11 +411,20 @@
         return sorted[sorted.length - 1].relative_area;
     }
 
+    /**
+     * Resize an existing chart (useful after container becomes visible).
+     * @param {string} canvasId - Canvas element ID
+     */
+    function resizeChart(canvasId) {
+        if (charts[canvasId]) charts[canvasId].resize();
+    }
+
     window.Hydrograf.charts = {
         renderLandCoverChart: renderLandCoverChart,
         renderHypsometricChart: renderHypsometricChart,
         renderElevationHistogram: renderElevationHistogram,
         renderProfileChart: renderProfileChart,
         destroyChart: destroyChart,
+        resizeChart: resizeChart,
     };
 })();
