@@ -6,7 +6,7 @@ This script combines:
 2. Creating VRT mosaic from downloaded tiles (ensures hydrological continuity)
 3. (Optional) Downloading BDOT10k hydrographic data for stream burning
 4. Processing mosaic with pyflwdir (fill depressions, flow direction, accumulation)
-5. Loading data into PostgreSQL/PostGIS flow_network table
+5. Loading data into PostgreSQL/PostGIS (stream_network, stream_catchments)
 6. (Optional) Downloading land cover data from BDOT10k/CORINE
 7. (Optional) Loading land cover into land_cover table
 
