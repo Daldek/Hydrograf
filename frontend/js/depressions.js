@@ -96,13 +96,18 @@
 
                 geojsonLayer = L.geoJSON(geojson, {
                     style: function (feature) {
-                        var depth = feature.properties.max_depth_m || 0;
-                        var opacity = Math.min(0.8, 0.3 + depth * 0.5);
+                        var vol = feature.properties.volume_m3 || 0;
+                        var fillColor, fillOpacity;
+                        if (vol < 1)         { fillColor = '#ffffb2'; fillOpacity = 0.5; }
+                        else if (vol < 10)   { fillColor = '#fecc5c'; fillOpacity = 0.6; }
+                        else if (vol < 100)  { fillColor = '#fd8d3c'; fillOpacity = 0.65; }
+                        else if (vol < 1000) { fillColor = '#f03b20'; fillOpacity = 0.7; }
+                        else                 { fillColor = '#bd0026'; fillOpacity = 0.8; }
                         return {
-                            color: '#4169E1',
+                            color: fillColor,
                             weight: 1,
-                            fillColor: '#4169E1',
-                            fillOpacity: opacity,
+                            fillColor: fillColor,
+                            fillOpacity: fillOpacity,
                         };
                     },
                     onEachFeature: function (feature, layer) {
