@@ -46,15 +46,22 @@ OUTLETS = [
 
 
 def find_outlet(db, min_acc: int, max_acc: int) -> FlowCell | None:
+    """Find outlet using stream_network."""
     result = db.execute(
         text("""
-            SELECT id, ST_X(geom) as x, ST_Y(geom) as y,
-                   elevation, flow_accumulation, slope,
-                   downstream_id, cell_area, is_stream
-            FROM flow_network
-            WHERE is_stream = TRUE
-              AND flow_accumulation BETWEEN :min_acc AND :max_acc
-            ORDER BY flow_accumulation DESC
+            SELECT segment_idx as id,
+                   ST_X(ST_EndPoint(geom)) as x,
+                   ST_Y(ST_EndPoint(geom)) as y,
+                   0.0 as elevation,
+                   (upstream_area_km2 * 1e6)::bigint as flow_accumulation,
+                   mean_slope_percent as slope,
+                   NULL as downstream_id,
+                   upstream_area_km2 * 1e6 as cell_area,
+                   TRUE as is_stream
+            FROM stream_network
+            WHERE source = 'DEM_DERIVED'
+              AND (upstream_area_km2 * 1e6) BETWEEN :min_acc AND :max_acc
+            ORDER BY upstream_area_km2 DESC
             LIMIT 1
         """),
         {"min_acc": min_acc, "max_acc": max_acc},

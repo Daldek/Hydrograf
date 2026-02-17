@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FlowCell:
     """
-    Represents a cell in flow_network table.
+    Represents a cell with flow attributes (legacy dataclass).
 
     Attributes
     ----------

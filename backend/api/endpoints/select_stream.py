@@ -80,9 +80,7 @@ def select_stream(
         threshold = request.threshold_m2
 
         # 1. Snap to nearest stream (spatial proximity, not point-in-polygon)
-        nearest = find_nearest_stream_segment(
-            point_2180.x, point_2180.y, threshold, db
-        )
+        nearest = find_nearest_stream_segment(point_2180.x, point_2180.y, threshold, db)
 
         clicked_idx = None
         if nearest is not None:

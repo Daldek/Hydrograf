@@ -702,10 +702,7 @@ def save_qgis_layers(
 
 def extract_stream_network(output_dir: Path, crs: str = "EPSG:2180") -> Path | None:
     """
-    Wyeksportuj całą sieć cieków jako warstwę wektorową.
-
-    Tworzy linie przez śledzenie połączeń downstream dla wszystkich
-    komórek ciekowych (is_stream=True).
+    Wyeksportuj sieć cieków z stream_network jako warstwę wektorową.
 
     Parameters
     ----------
@@ -720,51 +717,37 @@ def extract_stream_network(output_dir: Path, crs: str = "EPSG:2180") -> Path | N
         Ścieżka do pliku GeoPackage lub None jeśli brak cieków
     """
     import geopandas as gpd
-    from shapely.geometry import LineString
+    from shapely import wkt
     from sqlalchemy import text
 
     from core.database import get_db_session
 
     with get_db_session() as db:
-        # Pobierz wszystkie komórki ciekowe z połączeniami downstream
         query = text("""
-            SELECT
-                s.id,
-                ST_X(s.geom) as x,
-                ST_Y(s.geom) as y,
-                s.flow_accumulation,
-                s.downstream_id,
-                ST_X(d.geom) as downstream_x,
-                ST_Y(d.geom) as downstream_y
-            FROM flow_network s
-            LEFT JOIN flow_network d ON s.downstream_id = d.id
-            WHERE s.is_stream = TRUE
-            ORDER BY s.flow_accumulation DESC
+            SELECT ST_AsText(geom) AS wkt,
+                   strahler_order, length_m,
+                   upstream_area_km2, mean_slope_percent
+            FROM stream_network
+            WHERE source = 'DEM_DERIVED'
+            ORDER BY upstream_area_km2 DESC
         """)
 
         results = db.execute(query).fetchall()
 
     if not results:
-        logger.warning("Brak komórek ciekowych w bazie")
+        logger.warning("Brak segmentów ciekowych w bazie")
         return None
 
-    # Twórz segmenty linii (każda komórka -> jej downstream)
-    segments = []
-    for row in results:
-        if row.downstream_x is not None and row.downstream_y is not None:
-            segments.append(
-                {
-                    "id": row.id,
-                    "flow_acc": row.flow_accumulation,
-                    "geometry": LineString(
-                        [(row.x, row.y), (row.downstream_x, row.downstream_y)]
-                    ),
-                }
-            )
-
-    if not segments:
-        logger.warning("Brak segmentów cieków do eksportu")
-        return None
+    segments = [
+        {
+            "geometry": wkt.loads(r.wkt),
+            "strahler_order": r.strahler_order,
+            "length_m": r.length_m,
+            "upstream_area_km2": r.upstream_area_km2,
+            "mean_slope_percent": r.mean_slope_percent,
+        }
+        for r in results
+    ]
 
     logger.info(f"Created {len(segments):,} records")
 

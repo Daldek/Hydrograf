@@ -152,26 +152,20 @@ def generate_report(
 
     # --- Input data ---
     lines.append("## Dane wejsciowe\n")
-    row = db.execute(text("SELECT COUNT(*) AS cnt FROM flow_network")).fetchone()
-    flow_count = row.cnt if row else 0
-
     row = db.execute(
         text("""
-            SELECT MIN(elevation) AS elev_min,
-                   MAX(elevation) AS elev_max,
-                   AVG(slope) AS slope_avg,
-                   MAX(flow_accumulation) AS fa_max
-            FROM flow_network
+            SELECT COUNT(*) AS cnt,
+                   MAX(upstream_area_km2) AS max_area
+            FROM stream_network
+            WHERE source = 'DEM_DERIVED'
         """)
     ).fetchone()
+    stream_count = row.cnt if row else 0
+    max_area = row.max_area if row else 0
 
-    lines.append(f"- Komorki flow_network: **{flow_count:,}**")
-    if row and row.elev_min is not None:
-        lines.append(
-            f"- Zakres elewacji: {row.elev_min:.1f} – {row.elev_max:.1f} m n.p.m."
-        )
-        lines.append(f"- Sredni spadek: {row.slope_avg:.2f}%")
-        lines.append(f"- Max flow accumulation: {row.fa_max:,}")
+    lines.append(f"- Segmenty stream_network (DEM_DERIVED): **{stream_count:,}**")
+    if max_area:
+        lines.append(f"- Max upstream area: {max_area:.2f} km²")
     lines.append("")
 
     # --- Threshold table ---
@@ -217,7 +211,6 @@ def generate_report(
 
     lines.append("| Tabela | Liczba rekordow |")
     lines.append("|:---|:---:|")
-    lines.append(f"| flow_network | {flow_count:,} |")
     lines.append(f"| stream_network (DEM_DERIVED) | {total_streams:,} |")
     lines.append(f"| stream_catchments | {total_catchments:,} |")
     lines.append(f"| depressions | {total_depressions:,} |")
