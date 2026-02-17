@@ -105,4 +105,75 @@ config.set_main_option(
 
 ---
 
-*Ostatnia aktualizacja: 2026-02-13*
+## Wydajnosc bazy danych — bulk INSERT + indeksy (P1.x)
+
+**Problem:** Bulk INSERT `flow_network` (39.4M rekordow) + odbudowa indeksow to najciezszy krok pipeline'u — ~17 min z 29 min calkowitego czasu (58%). Pomiary z pipeline run 2026-02-16 (stream burning z BDOT10k):
+
+| Operacja | Czas | Rekordy |
+|----------|------|---------|
+| COPY do temp table | ~80s | 39,377,780 |
+| INSERT z temp do flow_network | ~12 min | 39,377,780 |
+| Odbudowa 5 indeksow + FK + ANALYZE | ~6 min | — |
+| **Lacznie bulk INSERT** | **~17 min** | **58% calkowitego czasu** |
+
+Porownanie z innymi krokami:
+| Krok | Czas | % |
+|------|------|---|
+| Bulk INSERT flow_network + indeksy | ~17 min | 58% |
+| Hydrologia pyflwdir (fill+fdir+acc) | ~4.6 min | 16% |
+| Wektoryzacja + polygonizacja (4 progi) | ~2 min | 7% |
+| Hydro download BDOT10k (siec) | ~2 min | 7% |
+| Raster I/O + slope/aspect/TWI | ~3.8 min | 12% |
+
+### P1.1 — Optymalizacja bulk INSERT flow_network
+
+**Obecne podejscie:** TSV buffer w pamieci → COPY do temp table → INSERT INTO flow_network SELECT FROM temp → DROP temp → CREATE INDEX ×5 → ALTER TABLE ADD FK → ANALYZE.
+
+**Mozliwe optymalizacje:**
+- `UNLOGGED TABLE` podczas importu (ryzyko utraty danych przy crash)
+- Zwiekszenie `maintenance_work_mem` (domyslnie 64 MB) na czas CREATE INDEX
+- Zwiekszenie `max_wal_size` + `checkpoint_completion_target` zmniejszy checkpointy
+- Rownolegle budowanie indeksow (`max_parallel_maintenance_workers`)
+- `COPY` bezposrednio do docelowej tabeli (bez temp, ale wymaga wylaczonych FK/indeksow)
+- Rozważenie `pg_bulkload` lub `timescaledb-parallel-copy`
+
+### P1.2 — Redukcja rozmiaru flow_network
+
+**Obecny stan:** 39.4M rekordow (42M komorek - ~2.6M nodata). Kazdy rekord zawiera: x, y, elevation, flow_direction, flow_accumulation, is_stream, strahler_order, geom (POINT).
+
+**Mozliwe optymalizacje:**
+- Usunięcie kolumny `geom` (POINT) — x, y wystarczą do odtworzenia geometrii w locie (ST_SetSRID(ST_MakePoint(x, y), 2180)). Oszczędność ~30% rozmiaru tabeli + eliminacja indeksu gist
+- Przechowywanie tylko komorek streamowych (`is_stream=TRUE`, ~3.2M z 39.4M = 8%) — reszta odtwarzalna z rastra
+- Partycjonowanie po `is_stream` lub `strahler_order`
+
+### P1.3 — Alternatywa: rezygnacja z flow_network
+
+**Kontekst:** Po wdrozeniu CatchmentGraph (ADR-021) i eliminacji FlowGraph (ADR-022) tabela `flow_network` nie jest juz uzywana w runtime API. Jedyne jej zastosowanie to preprocessing (budowa stream_network i stream_catchments).
+
+**Pytanie architektoniczne:** Czy `flow_network` jest nadal potrzebna, skoro:
+- Runtime API uzywa tylko `stream_network` + `stream_catchments` + `CatchmentGraph`
+- Raster DEM jest dostepny na dysku (profil terenu, morphometria)
+- 39.4M rekordow → ~2 GB w PostgreSQL (indeksy + WAL)
+
+**Mozliwe podejscie:** generowanie `stream_network` i `stream_catchments` bezposrednio z rastra (bez posrednictwa flow_network) i pominięcie INSERT 39.4M rekordów. Wymaga refaktoru `process_dem.py`.
+
+**Priorytet:** HIGH — eliminacja tego kroku skrocilaby pipeline o ~17 min (58%).
+
+---
+
+## Checklist po migracjach DB (zapobieganie regresji)
+
+**Problem:** Migracja 014 dodala `segment_idx` do `stream_network`, ale nie zaktualizowano `find_nearest_stream_segment()` w `watershed_service.py` — funkcja nadal pobierala `id` (auto-increment PK) i zwracala go jako `segment_idx`. Bug trwal przez 6 sesji (24-32).
+
+**Checklist po kazdej migracji:**
+1. `grep -r "TABLE_NAME" backend/` — znajdz WSZYSTKIE zapytania SQL do zmienionej tabeli
+2. Sprawdz czy nowa/zmieniona kolumna jest uzywana poprawnie w kazdym zapytaniu
+3. Sprawdz czy mapowanie wynikow (result.X → dict["Y"]) jest spojne z SQL SELECT
+4. Uruchom istniejace testy integracyjne — jesli testy nie pokrywaja nowej kolumny, dodaj
+5. `verify_graph()` przy starcie API — walidacja spojnosci danych miedzy tabelami
+
+**Priorytet:** HIGH — cichy bug tral 6 sesji bez wykrycia
+
+---
+
+*Ostatnia aktualizacja: 2026-02-17*

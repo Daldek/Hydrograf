@@ -558,6 +558,47 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 
 ---
 
+## ADR-027: Snap-to-stream zamiast ST_Contains w selekcji cieku (2026-02-17)
+
+**Status:** Zatwierdzony (zastepuje mechanizm z ADR-026)
+
+**Kontekst:** ADR-026 wprowadzil selekcje oparta wylacznie o `ST_Contains(geom, ST_Point(click))` na tabeli `stream_catchments`. Trzy problemy:
+
+1. **Bledna selekcja przy konfluencjach:** Klikniecie blisko granicy zlewni czastkowej moglo trafic w SASIEDNIA zlewnie zamiast tej zawierajacej widoczny ciek. BFS od zlego startu → calkowicie zly wynik.
+2. **Bug `id` vs `segment_idx`:** Funkcja `find_nearest_stream_segment()` uzywala kolumny `id` (auto-increment PK) zamiast `segment_idx` (1-based per threshold, migracja 014). Wartosci `id` i `segment_idx` sa ROZNE — lookup w grafie po blednym indeksie zawisze zwracal None.
+3. **Martwy kod:** `find_stream_catchment_at_point()` w `watershed_service.py` nigdzie nie uzywany (przywleczony z ADR-024/025).
+
+**Przyczyna glowna problemu #2:** Migracja 014 dodala kolumne `segment_idx` do `stream_network`, ale nie zaktualizowano wszystkich zapytan SQL odwolujacych sie do tej tabeli. Funkcja `find_nearest_stream_segment()` nadal pobierala `id` i zwracala go jako `segment_idx`.
+
+**Opcje:**
+- A) Naprawa ST_Contains — uzycie centroidu cieku zamiast punktu klikniecia → nie rozwiazuje problemu bliskosci granicy
+- B) Snap-to-stream + graph lookup — ST_Distance na stream_network → segment_idx → O(1) lookup w grafie → BFS. ST_Contains jako fallback
+
+**Decyzja:** Opcja B. Nowy flow selekcji:
+1. `find_nearest_stream_segment()` → `ST_DWithin(1000m)` + `ORDER BY ST_Distance` na `stream_network` → zwraca `segment_idx`
+2. `cg.lookup_by_segment_idx(threshold, segment_idx)` → O(1) dict lookup → internal graph index
+3. Jesli lookup fail → fallback: `cg.find_catchment_at_point()` (ST_Contains)
+4. BFS upstream + agregacja stats — bez zmian
+
+Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu przy starcie (per-threshold: nodes, outlets, unique segment_idx).
+
+**Konsekwencje:**
+- Eliminacja blednej selekcji przy konfluencjach — uzytkownik klika na WIDOCZNY ciek, system identyfikuje TEN ciek
+- Fix bugu `id` vs `segment_idx` — poprawny lookup w grafie
+- `verify_graph()` raportuje niespojnosci przy starcie API — wczesne wykrywanie problemow danych
+- Usuniety martwy kod `find_stream_catchment_at_point()`
+- ST_Contains zachowany jako fallback (klikniecia z dala od ciekow)
+- `watershed.py` (delineate) i `hydrograph.py` — BEZ ZMIAN (uzyja ST_Contains poprawnie — uzytkownik klika dowolnie na mape)
+
+**Lekcje na przyszlosc (zapobieganie):**
+1. Po kazdej migracji DB (nowa kolumna) — audyt WSZYSTKICH zapytan SQL do tej tabeli
+2. Nigdy nie aliasowac nazw kolumn w dict-ach — uzywac nazwy z bazy (`result.segment_idx`, nie `result.id` jako `"segment_idx"`)
+3. Testy integracyjne selekcji musza testowac edge cases: klikniecia blisko konfluencji, blisko granicy zlewni
+4. Weryfikacja spojnosci danych miedzy tabelami (`stream_network ↔ stream_catchments`) przy starcie
+5. Regularne czyszczenie martwego kodu — nieuzywane funkcje maskuja problemy
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
