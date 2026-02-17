@@ -5,10 +5,14 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-02-16
+## [Unreleased] — 2026-02-17
 
 ### Added
+- **`lookup_by_segment_idx()` w CatchmentGraph:** O(1) lookup wezla grafu po (threshold_m2, segment_idx) — eliminuje potrzebe zapytania do bazy
+- **`verify_graph()` w CatchmentGraph:** diagnostyka spojnosci grafu przy starcie — per-threshold: liczba wezlow, outlety, unikalne segment_idx, opcjonalnie walidacja z baza
 - **`scripts/bootstrap.py` — jednokomendowy setup srodowiska:** nowy skrypt orkiestratora (~460 linii) wykonujacy 9 krokow pipeline'u od zera do dzialajacego systemu. Dwa tryby wejscia (`--bbox` / `--sheets`), 7 flag `--skip-*`, `--dry-run`, konfigurowalny `--port`. Kroki 1-3 krytyczne, 4-9 opcjonalne z graceful degradation. Reuzywane istniejace funkcje (download_dem, process_dem, generate_depressions, itp.).
+- **Stream burning w bootstrap.py:** krok 3 (przetwarzanie DEM) automatycznie pobiera hydro BDOT10k per-TERYT, scala pliki (`merge_hydro_gpkgs()`) i przekazuje `burn_streams_path` do `process_dem()`. Graceful degradation — jesli download/merge fail, pipeline kontynuuje bez burning.
+- **`merge_hydro_gpkgs()` w `download_landcover.py`:** scala wiele per-TERYT hydro GeoPackage w jeden multi-layer GeoPackage z zachowaniem struktury warstw (SWRS, SWKN, SWRM, PTWP).
 - **Auto-selekcja dużych zlewni w trybie "Wygeneruj":** gdy powierzchnia zlewni przekracza 10 000 m² (0.01 km²), endpoint automatycznie przełącza wyświetlanie na styl selekcji (pomarańczowa granica + podświetlone zlewnie cząstkowe MVT) z banerem informacyjnym. Nowa stała `DELINEATION_MAX_AREA_M2` w `constants.py`, 4 nowe pola w `DelineateResponse` (`auto_selected`, `upstream_segment_indices`, `display_threshold_m2`, `info_message`), kaskadowe progi merge (>500 segmentów), banner `#panel-auto-select-info` w HTML, obsługa w `app.js`. 3 nowe testy integracyjne (560 łącznie).
 
 ### Zmieniono
@@ -22,9 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Kafelki MVT:** usunięcie jawnej simplifikacji (`ST_SimplifyPreserveTopology`) — `ST_AsMVTGeom` kwantyzuje geometrię do siatki 4096×4096 kafla, co eliminuje niespójne przebiegi cieków między zoomami i przyspiesza generowanie kafli 2.5× (355→139ms)
 
 ### Naprawiono
+- **Bledna selekcja zlewni (ADR-027):** tryb "Wybierz zlewnię" wybieralbledna zlewnię przy kliknieciu blisko konfluencji lub granicy zlewni czastkowej. Dwie przyczyny: (1) `ST_Contains` na poligonach `stream_catchments` moze trafic w sasiednia zlewnie zamiast tej zawierajacej widoczny ciek, (2) `find_nearest_stream_segment()` uzywala `id` (auto-increment PK) zamiast `segment_idx` (1-based per threshold). Naprawa: snap-to-stream (`ST_Distance` na `stream_network`) → O(1) lookup w grafie → BFS upstream, z ST_Contains jako fallback.
 - **Różne przebiegi cieków między zoomami:** `ST_SimplifyPreserveTopology` z tolerancjami per-zoom (1-10m) tworzył dyskretne skoki w kształcie geometrii — 78% segmentów stawało się prostymi liniami przy tolerancji 10m. Usunięcie jawnej simplifikacji na rzecz wbudowanej kwantyzacji `ST_AsMVTGeom` eliminuje problem i przyspiesza rendering
 
 ### Usunięto
+- **`find_stream_catchment_at_point()` z `watershed_service.py`** — martwy kod, nigdzie nie uzywany
 - **Próg 100 m² ze zlewni cząstkowych** — pipeline pomija generowanie catchmentów dla tego progu (cieki zostają)
 - **ADR-024 (fine-threshold BFS)** i **ADR-025 (warunkowy próg)** — zastąpione przez ADR-026
 - **`display_threshold_m2`** z `SelectStreamRequest` — jeden próg dla BFS i display

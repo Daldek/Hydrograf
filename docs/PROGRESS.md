@@ -4,11 +4,11 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 560 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 581 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
-| Preprocessing NMT | ✅ Gotowy | pyflwdir + COPY (3.8 min/arkusz), stream burning |
+| Preprocessing NMT | ✅ Gotowy | pyflwdir + COPY (~29 min/2 arkusze), stream burning BDOT10k |
 | Integracja Hydrolog | ✅ Gotowy | v0.5.2 |
 | Integracja Kartograf | ✅ Gotowy | v0.4.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
@@ -44,20 +44,38 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-16 (sesja 31)
+**Data:** 2026-02-17 (sesja 32)
 
 ### Co zrobiono
 
+- **Naprawa blednej selekcji zlewni (ADR-027, 6 plikow, 581 testow):**
+  - **Przyczyna glowna (2 bugi):**
+    1. `find_nearest_stream_segment()` uzywala `id` (auto-increment PK) zamiast `segment_idx` — lookup w grafie zawisze zwracal None
+    2. `ST_Contains` na `stream_catchments` moze trafic w sasiednia zlewnie przy kliknieciu blisko konfluencji
+  - **Naprawa:** snap-to-stream (`ST_Distance` na `stream_network`) → `lookup_by_segment_idx()` O(1) → BFS, z ST_Contains jako fallback
+  - **Nowe metody CatchmentGraph:** `lookup_by_segment_idx()`, `verify_graph()` (diagnostyka przy starcie)
+  - **Usuniety martwy kod:** `find_stream_catchment_at_point()` w `watershed_service.py`
+  - **Testy:** 581 testow, 0 failures, ruff clean
+
+- **Reset bazy danych + pelny bootstrap:**
+  - `docker compose down -v` → `docker compose up -d db`
+  - `bootstrap.py --sheets` z istniejacymi 8 arkuszami NMT (~30 min)
+  - Dane: flow_network 39.4M, stream_network ~221k (4 progi), stream_catchments ~22.6k (3 progi)
+
+### Poprzednia sesja (2026-02-16, sesja 31)
+
+- **Stream burning w bootstrap.py (rozszerzenie kroku 3):**
+  - `step_process_dem()` pobiera teraz hydro BDOT10k (per-TERYT) i scala pliki przed przetwarzaniem DEM
+  - Nowa funkcja `merge_hydro_gpkgs()` w `download_landcover.py` — scala multi-layer GeoPackage z zachowaniem warstw (SWRS, SWKN, SWRM, PTWP)
+  - Graceful degradation: jesli download/merge fail → process_dem bez burning
+  - Pipeline re-run: 1763s (~29.4 min), 706143 komorek wypalonych, 12321 features hydro z 2 powiatow (3021, 3064)
+  - 5 nowych testow `merge_hydro_gpkgs`, lacznie 577 testow, 0 failures
+  - Udokumentowane waskie gardla w `TECHNICAL_DEBT.md` (P1.x): bulk INSERT 58% czasu, pyflwdir 16%
+
 - **`scripts/bootstrap.py` — jednokomendowy setup srodowiska (~460 linii):**
   - Nowy skrypt orkiestratora: 9 krokow pipeline'u od zera do dzialajacego systemu
-  - Kroki: infrastruktura (.venv, Docker DB, Alembic) → pobieranie NMT (Kartograf) → przetwarzanie DEM (VRT + process_dem, zawsze od zera) → pokrycie terenu (BDOT10k) → opady IMGW (async grid) → depresje (blue spots) → kafelki MVT (tippecanoe) → overlay PNG (DEM + streams) → uruchomienie serwera (docker compose)
   - Dwa tryby wejscia: `--bbox "min_lon,min_lat,max_lon,max_lat"` lub `--sheets GODLO1 GODLO2`
-  - 7 flag `--skip-*` do pomijania opcjonalnych krokow
-  - `--dry-run` — podglad planu bez wykonywania
-  - `--port` — konfigurowalny port HTTP (zmienna `HYDROGRAF_PORT` w `.env`)
-  - Kroki 1-3 krytyczne (blad = przerwanie), kroki 4-9 opcjonalne (blad = warning + kontynuacja)
-  - Tracker postepu z symbolami: checkmark/bullet/cross/en-dash + czasy wykonania
-  - Reuzywane istniejace funkcje przez Python imports (wzorzec z `prepare_area.py`)
+  - 7 flag `--skip-*`, `--dry-run`, `--port`
 
 - **`docker-compose.yml` — konfigurowalny port nginx:**
   - `"8080:80"` → `"${HYDROGRAF_PORT:-8080}:80"`
@@ -374,9 +392,9 @@
 ### Stan bazy danych
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
-| flow_network | 19,667,699 | 4 progi FA |
-| stream_network | 114,883 | 100: 103733, 1000: 10000, 10000: 1045, 100000: 105 (z segment_idx, migracja 014) |
-| stream_catchments | 11,154 | 1000: 10004, 10000: 1045, 100000: 105 (bez progu 100, ADR-026) |
+| flow_network | 39,377,780 | 4 progi FA, stream burning BDOT10k (706k cells) |
+| stream_network | 220,859 | 100: 198258, 1000: 20302, 10000: 2087, 100000: 212 (z segment_idx, migracja 014) |
+| stream_catchments | 22,613 | 1000: 20313, 10000: 2088, 100000: 212 (bez progu 100, ADR-026) |
 | land_cover | 0 | wyzerowane — wymaga ponownego importu |
 | depressions | 0 | wyzerowane — wymaga ponownego generowania |
 | precipitation_data | 0 | wyzerowane — wymaga ponownego importu |
