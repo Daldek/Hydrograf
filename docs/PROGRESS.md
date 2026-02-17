@@ -44,9 +44,27 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-17 (sesja 33)
+**Data:** 2026-02-17 (sesja 34)
 
 ### Co zrobiono
+
+- **Reset bazy danych + pelny bootstrap (8 arkuszy NMT):**
+  - `docker compose down -v` → pelny bootstrap z `scripts/bootstrap.py --sheets ...`
+  - Czas calkowity: 657.6s (~11 min)
+  - Wyniki: 39.4M cells, 220944 stream segments, 50406 land cover, 630 precipitation, 1125699 depressions
+  - Serwer uruchomiony: http://localhost:8080, health OK
+
+- **Instalacja tippecanoe via pip + poprawki skryptow:**
+  - `pip install tippecanoe` (v2.72.0) — zainstalowany w `.venv/bin/`
+  - `bootstrap.py`: szuka tippecanoe w `.venv/bin/` oprócz systemowego PATH
+  - `generate_tiles.py`: szuka tippecanoe w `.venv/bin/`, przekazuje pelna sciezke do `run_tippecanoe()`, pomija puste eksporty (0 features — np. catchments dla progu 100 m² zgodnie z ADR-026)
+
+- **Generacja kafelkow MVT (tippecanoe):**
+  - 4 progi: 100, 1000, 10000, 100000 m²
+  - 7 plikow `.mbtiles` (streams × 4, catchments × 3 — brak catchments dla progu 100)
+  - Czas: 95.2s
+
+### Poprzednia sesja (2026-02-17, sesja 33)
 
 - **Eliminacja tabeli flow_network (ADR-028, migracja 015):**
   - Tabela `flow_network` przechowywala ~39.4M rekordow (dane kazdego piksela DEM) — zadne API endpoint nie czytalo z niej w runtime
@@ -415,12 +433,12 @@
 | flow_network | **USUNIETA** | Wyeliminowana w ADR-028, migracja 015 (DROP TABLE) |
 | stream_network | 220,859 | 100: 198258, 1000: 20302, 10000: 2087, 100000: 212 (z segment_idx, migracja 014) |
 | stream_catchments | 22,613 | 1000: 20313, 10000: 2088, 100000: 212 (bez progu 100, ADR-026) |
-| land_cover | 0 | wyzerowane — wymaga ponownego importu |
-| depressions | 0 | wyzerowane — wymaga ponownego generowania |
-| precipitation_data | 0 | wyzerowane — wymaga ponownego importu |
+| land_cover | 50,406 | 2 powiaty (3021, 3064), 7 kategorii |
+| depressions | 1,125,699 | pelny zestaw po bootstrap sesji 34 |
+| precipitation_data | 630 | 15 punktow × 42 scenariusze |
 
 ### Znane problemy (infrastruktura)
-- `generate_tiles.py` wymaga tippecanoe (nie jest w pip, trzeba zainstalowac systemowo)
+- `generate_tiles.py` wymaga tippecanoe (`pip install tippecanoe` w .venv)
 - FlowGraph (core/flow_graph.py) — USUNIETY w ADR-028 (sesja 33)
 - 15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
 - Endpoint `profile.py` wymaga pliku DEM (VRT/GeoTIFF) pod sciezka `DEM_PATH` — zwraca 503 gdy brak

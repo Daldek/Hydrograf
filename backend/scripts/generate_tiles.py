@@ -43,9 +43,10 @@ MAX_ZOOM = 18
 
 def check_prerequisites() -> dict[str, str | None]:
     """Check that required CLI tools are available."""
+    venv_bin = Path(__file__).resolve().parent.parent / ".venv" / "bin"
     tools = {}
     for tool in ("tippecanoe", "ogr2ogr", "pmtiles"):
-        path = shutil.which(tool)
+        path = shutil.which(tool) or shutil.which(tool, path=str(venv_bin))
         tools[tool] = path
         if path:
             logger.info(f"Found {tool}: {path}")
@@ -120,10 +121,12 @@ def run_tippecanoe(
     layer_name: str,
     min_zoom: int = MIN_ZOOM,
     max_zoom: int = MAX_ZOOM,
+    *,
+    executable: str = "tippecanoe",
 ) -> None:
     """Run tippecanoe to generate .mbtiles from GeoJSON."""
     cmd = [
-        "tippecanoe",
+        executable,
         "-o",
         str(output_path),
         f"-z{max_zoom}",
@@ -162,9 +165,10 @@ def generate_tiles(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     tools = check_prerequisites()
-    if not tools.get("tippecanoe"):
+    tippecanoe_path = tools.get("tippecanoe")
+    if not tippecanoe_path:
         logger.error(
-            "tippecanoe is required. Install: https://github.com/felt/tippecanoe"
+            "tippecanoe is required. Install: pip install tippecanoe"
         )
         sys.exit(1)
 
@@ -217,29 +221,39 @@ def generate_tiles(output_dir: Path) -> None:
 
                 # Generate .mbtiles
                 streams_mbt = output_dir / f"streams_{threshold}.mbtiles"
-                run_tippecanoe(
-                    streams_json,
-                    streams_mbt,
-                    "streams",
-                )
+                if n_streams > 0:
+                    run_tippecanoe(
+                        streams_json,
+                        streams_mbt,
+                        "streams",
+                        executable=tippecanoe_path,
+                    )
+                else:
+                    logger.warning(f"No streams for threshold {threshold} — skipping")
 
                 catchments_mbt = output_dir / f"catchments_{threshold}.mbtiles"
-                run_tippecanoe(
-                    catchments_json,
-                    catchments_mbt,
-                    "catchments",
-                )
+                if n_catch > 0:
+                    run_tippecanoe(
+                        catchments_json,
+                        catchments_mbt,
+                        "catchments",
+                        executable=tippecanoe_path,
+                    )
+                else:
+                    logger.warning(f"No catchments for threshold {threshold}")
 
                 # Convert to PMTiles if available
                 if has_pmtiles:
-                    convert_to_pmtiles(
-                        streams_mbt,
-                        output_dir / f"streams_{threshold}.pmtiles",
-                    )
-                    convert_to_pmtiles(
-                        catchments_mbt,
-                        output_dir / f"catchments_{threshold}.pmtiles",
-                    )
+                    if streams_mbt.exists():
+                        convert_to_pmtiles(
+                            streams_mbt,
+                            output_dir / f"streams_{threshold}.pmtiles",
+                        )
+                    if catchments_mbt.exists():
+                        convert_to_pmtiles(
+                            catchments_mbt,
+                            output_dir / f"catchments_{threshold}.pmtiles",
+                        )
 
     # Write metadata
     metadata = {
