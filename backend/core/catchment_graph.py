@@ -1,11 +1,11 @@
 """
 In-memory graph of sub-catchments for fast upstream traversal.
 
-Loads ~87k sub-catchment nodes (vs 19.7M cells in flow_graph) from
-PostGIS into numpy arrays and a scipy sparse matrix at API startup.
-Enables BFS traversal + stat aggregation in ~5-50ms.
+Loads ~11k sub-catchment nodes from PostGIS into numpy arrays and a
+scipy sparse matrix at API startup. Enables BFS traversal + stat
+aggregation in ~5-50ms.
 
-Memory usage: ~8 MB (vs ~1 GB for flow graph).
+Memory usage: ~0.5 MB RAM.
 """
 
 import logging
