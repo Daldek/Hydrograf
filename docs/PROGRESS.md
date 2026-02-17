@@ -404,6 +404,7 @@
 - FlowGraph (core/flow_graph.py) — DEPRECATED, zachowany dla skryptow CLI, nie ladowany przez API
 - 15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
 - Endpoint `profile.py` wymaga pliku DEM (VRT/GeoTIFF) pod sciezka `DEM_PATH` — zwraca 503 gdy brak
+- `bootstrap.py` nie importuje pokrycia terenu (land cover) — po pelnym bootstrap tabela `land_cover` jest pusta (0 rekordow), brak danych w UI. Wymaga dodania kroku importu land cover (skrypt `import_landcover.py`) do pipeline bootstrap. Priorytet: niski.
 
 ### Bledy do naprawy (zgloszenie sesja 18 — ZAMKNIETE)
 
@@ -438,9 +439,61 @@
 - Prawdopodobna przyczyna: `traverse_upstream` zwraca segment_idx doplywu, ale outlet pobierany jest z downstream node cieku glownego
 - **Lokalizacja:** `watershed_service.py` (logika wyznaczania outlet), `catchment_graph.py` (traverse_upstream)
 
+**E5. Profil terenu nie generuje wykresu** (priorytet: wysoki)
+- Panel profilu terenu pojawia sie po narysowaniu linii, ale wykres nie jest renderowany — okienko puste.
+- Funkcjonalnosc dzialala wczesniej (potwierdzone w sesjach 19-20). Regresja — prawdopodobnie spowodowana zmianami w kolejnych sesjach.
+- **Lokalizacja:** `frontend/js/profile.js` (activateDrawProfile, renderowanie Chart.js), `api/endpoints/profile.py` (endpoint POST /api/terrain-profile), `frontend/js/app.js` (obsluga trybu profilu)
+
+**E6. Panel profilu terenu — styl liquid glass** (priorytet: niski)
+- Panel `#profile-panel` nie uzywa stylu liquid glass — wyglada niespojnie z pozostalymi panelami (warstwy, parametry zlewni), ktore maja glassmorphism.
+- Zastosowac te same tokeny CSS: `--liquid-bg`, `--liquid-border`, `--liquid-blur`, `--liquid-shadow`, `--liquid-highlight`.
+- **Lokalizacja:** `frontend/css/glass.css`, `frontend/index.html` (`#profile-panel`)
+
+**E7. Brak informacji o gruntach (HSG) w panelu wynikow** (priorytet: niski)
+- Po wyznaczeniu zlewni panel wynikow nie wyswietla informacji o gruntach (Hydrologic Soil Group / typy gleb).
+- Dane HSG sa pobierane przez Kartograf (SoilGrids) i uzywane do obliczen CN, ale nie sa prezentowane uzytkownikowi.
+- Wyswietlenie w stylu analogicznym do sekcji "Pokrycie terenu" — wykres kolowy/slupkowy z podzialem na grupy gruntowe (A/B/C/D) i procentowym udzialem w zlewni.
+- **Lokalizacja:** `frontend/js/charts.js` (renderowanie wykresow), `frontend/index.html` (sekcja wynikow), `core/cn_calculator.py` / `core/land_cover.py` (dane HSG)
+
+**E8. Zbiorniki i cieki BDOT10k nie zaladowane do UI** (priorytet: wysoki)
+- Warstwy wektorowe BDOT10k (zbiorniki wodne i cieki) nie sa wyswietlane na mapie.
+- Dane BDOT10k hydro sa pobierane przez `bootstrap.py` (warstwy SWRS, SWKN, SWRM, PTWP) i uzywane do stream burning, ale nie sa serwowane do frontendu jako warstwy referencyjne.
+- Wczesniej dzialalo — GeoJSON z 3529 jeziorami i 7197 ciekami byl generowany (sesja 13).
+- Prawdopodobnie dane zostaly utracone po resecie bazy (`docker compose down -v`) w sesji 32 i nie zostaly ponownie wyeksportowane/zaladowane.
+- **Lokalizacja:** `frontend/js/layers.js` (ladowanie warstw BDOT), `scripts/bootstrap.py` (brak kroku eksportu GeoJSON BDOT), `frontend/js/app.js` (inicjalizacja warstw)
+
+**E10. Brak wykresu hipsometrii w sekcji "Rzezba terenu"** (priorytet: wysoki)
+- Po wyznaczeniu zlewni sekcja "Rzezba terenu" w panelu wynikow nie wyswietla wykresu krzywej hipsometrycznej.
+- Krzywa hipsometryczna byla zaimplementowana w sesji 21 (zamiana histogramu na krzywa — os Y: wysokosc m n.p.m., os X: % powierzchni powyzej).
+- Regresja — prawdopodobnie spowodowana zmianami w kolejnych sesjach lub brakiem danych hipsometrycznych po resecie bazy.
+- **Lokalizacja:** `frontend/js/charts.js` (renderElevationHistogram / krzywa hipsometryczna), `frontend/index.html` (sekcja #acc-elevation), `core/catchment_graph.py` (agregacja histogramow wysokosci)
+
+**E11. Zmiana kolorystyki zaglebien na dyskretne progi** (priorytet: niski)
+- Obecnie zaglbienia wyswietlane sa jednym ciaglym kolorem niebieskim niezaleznie od wielkosci/glebokosci.
+- Zmienic na dyskretna skale kolorow z progami — np. male zaglbienia jasniejsze, duze ciemniejsze. Konkretne kolory i wartosci progow do ustalenia.
+- **Lokalizacja:** `frontend/js/layers.js` (stylowanie warstwy zaglebien), `api/endpoints/depressions.py` (dane zaglebien)
+
+**E9. Usunac wpis "Zlewnia" z grupy "Wyniki analiz" w panelu Warstwy** (priorytet: niski)
+- Checkbox "Zlewnia" w sekcji "Wyniki analiz" panelu warstw jest zbedny — wszystkie informacje o zlewni (granica, parametry, zlewnie czastkowe) sa juz dostepne w panelu "Parametry zlewni".
+- Usunac wpis z panelu warstw oraz powiazana logike auto-check (`_watershedFirstDetection`).
+- **Lokalizacja:** `frontend/js/layers.js` (wpis "Zlewnia" w overlay group), `frontend/js/app.js` (logika auto-check)
+
 #### F. Logika zlewni czastkowych
 
 **F1. ✅ Selekcja cieku zaznacza cala zlewnię zamiast czesci miedzy doplywami** → ADR-024: segmentacja konfluencyjna + fine-threshold BFS (sesja 24). Wymaga re-run pipeline.
+
+**F3. Automatyczny fallback na prog 1000 m² przy selekcji cieku z progu 100 m²** (priorytet: sredni)
+- Gdy uzytkownik kliknie na ciek o progu FA 100 m² (najdrobniejsze cieki), system powinien automatycznie przejsc na selekcje z progu 1000 m² (najdrobniejszy prog z wygenerowanymi zlewniami czastkowymi — ADR-026 pomija catchments dla progu 100).
+- W UI wyswietlic informacje o zmianie progu, np. banner: "Zlewnie czastkowe niedostepne dla progu 100 m². Zaznaczono z progu 1000 m². Uzyj trybu «Wygeneruj zlewnię» dla precyzyjniejszego wyniku."
+- Obecne zachowanie: brak zlewni czastkowych dla progu 100 → brak wyniku lub blad.
+- **Lokalizacja:** `api/endpoints/select_stream.py` (logika fallback progu), `frontend/js/app.js` (wyswietlanie baneru informacyjnego)
+
+**F2. Snap-to-stream moze wybrac zlewnię sasiednia zamiast kliknietej** (priorytet: sredni)
+- Po naprawie ADR-027 selekcja opiera sie na snap-to-stream (`ST_Distance` na `stream_network`) — system znajduje najblizszy segment cieku i buduje zlewnię w gore od niego.
+- Problem: gdy uzytkownik kliknie wewnatrz jednej zlewni, ale najblizszy ciek nalezy do sasiedniej zlewni (np. blisko dzialu wodnego, przy konfluencji lub w szerokich zlewniach bez ciekow), system zaznaczy niewlasciwa zlewnię.
+- Wczesniejszy system oparty na `ST_Contains` (identyfikacja zlewni czastkowej pod kursorem) dzialal poprawnie w tym scenariuszu, ale mial inne bledy (klikniecie blisko granicy zlewni moglo trafic w sasiada — dlatego wycofany na rzecz snap-to-stream w ADR-027).
+- Mozliwe rozwiazanie: podejscie hybrydowe — najpierw `ST_Contains` na `stream_catchments` (ktora zlewnia pod kursorem?), a nastepnie snap-to-stream ograniczony do ciekow w obrebie tej zlewni. Fallback na obecny snap-to-stream gdy `ST_Contains` nie znajdzie wyniku.
+- **Lokalizacja:** `api/endpoints/select_stream.py`, `core/watershed_service.py` (`find_nearest_stream_segment`)
 
 #### G. Frontend — panel warstw i dane — ✅ NAPRAWIONE (sesja 21)
 
@@ -464,6 +517,21 @@
 - Mozliwe podejscia: stream burning (juz zaimplementowane w `hydrology.py` — `burn_streams_into_dem()`), flow direction forcing (nadpisywanie fdir w komorkach pokrywajacych sie z wektorem)
 - Pytanie: czy obecny stream burning jest wystarczajacy, czy potrzebna jest pelna kontrola fdir?
 - **Kontekst:** `core/hydrology.py` (burn_streams_into_dem, process_hydrology_pyflwdir), `scripts/process_dem.py`
+
+**H3. Podniesienie budynkow BDOT10k w NMT (building raising)** (priorytet: sredni)
+- Obecnie budynki sa usuwane z NMT (lub nieuwzgledniane), wiec woda moze swobodnie przeplywac przez nie. Prowadzi to do nierealistycznych kierunkow splywu i akumulacji — cieki "przechodzace" przez zabudowe.
+- Rozwiazanie: pobranie warstwy budynkow z BDOT10k i podniesienie wartosci NMT w obrebie ich footprintow o domyslna wartosc +5 m. Operacja powinna byc wykonywana **przed** wypalaniem ciekow (stream burning), aby cieki mogly nadpisac podniesione komorki tam, gdzie to konieczne.
+- Kolejnosc preprocessingu NMT: (1) fill sinks → (2) **building raising** → (3) stream burning → (4) flow direction → (5) flow accumulation.
+- Wymaga pobrania warstwy BUBD (budynki) z BDOT10k przez Kartograf — analogicznie do istniejacego pobierania warstw hydro (SWRS, SWKN, SWRM, PTWP).
+- Parametr `building_raise_m` (domyslnie 5.0) jako stala w `core/constants.py` lub argument CLI.
+- **Kontekst:** `core/hydrology.py` (burn_streams_into_dem, process_hydrology_pyflwdir), `scripts/process_dem.py` (orchestrator), `scripts/bootstrap.py` (step_process_dem)
+
+**H4. Monotoniczne wygladzanie ciekow zamiast stalego wypalania (stream gradient enforcement)** (priorytet: niski)
+- Obecny stream burning obniza NMT o stala wartosc wzdluz cieku. Problem: gdy ciek przechodzi przez obiekt o znacznej wysokosci (most, wiadukt, nasyp), nawet duze wypalenie moze byc niewystarczajace. Jednoczesnie stale wypalenie w normalnych odcinkach tworzy nadmierne obnizenia, ktore potem wymagaja duzego fill sinks — wypelnienie zaglebia moze zalewac okoliczne komorki.
+- Rozwiazanie: zamiast obnizania o stala wartosc, wygladazac wartosci NMT wzdluz linii cieku tak, aby wysokosci monotonicznie malaly w kierunku splywu. Kazda komorka na cieku powinna miec wartosc <= poprzedniej komorki w gore cieku. Jesli napotkana wartosc jest wyzsza (most, nasyp), zostaje zastapiona wartoscia poprzedniej komorki (lub interpolacja liniowa miedzy znanymi punktami po obu stronach przeszkody).
+- Algorytm: (1) pobranie profilu wysokosci wzdluz geometrii cieku (ordered vertices), (2) przejscie od zrodla do ujscia z wymuszeniem monotonicznosci (running minimum), (3) zapis wygladzonych wartosci do rastra NMT.
+- Zaleta: eliminuje problem mostow/nasypow bez tworzenia sztucznych zaglebie w normalnych odcinkach. Wypalanie stalą wartoscia pozostaje jako fallback tam, gdzie brak geometrii ciekow.
+- **Kontekst:** `core/hydrology.py` (burn_streams_into_dem), `scripts/process_dem.py`
 
 ### Nastepne kroki
 1. Weryfikacja `bootstrap.py` na malym bbox (1-2 arkusze): `python -m scripts.bootstrap --bbox "20.95,52.2,21.05,52.25"`
