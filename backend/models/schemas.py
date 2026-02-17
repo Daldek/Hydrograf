@@ -435,6 +435,10 @@ class SelectStreamResponse(BaseModel):
     watershed: WatershedResponse | None = Field(
         None, description="Full watershed statistics (morphometry, land cover, etc.)"
     )
+    info_message: str | None = Field(
+        None,
+        description="Informacja o automatycznej zmianie parametrów",
+    )
 
 
 # ===================== TERRAIN PROFILE MODELS =====================
