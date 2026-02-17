@@ -245,18 +245,32 @@ def prepare_area(
         logger.info("=" * 60)
 
         try:
-            from scripts.download_landcover import download_landcover
+            from kartograf import SheetParser
+
+            from scripts.download_landcover import (
+                discover_teryts_for_bbox,
+                download_landcover,
+            )
 
             hydro_dir = output_dir.parent / "hydro"
             hydro_dir.mkdir(parents=True, exist_ok=True)
 
-            # Download hydro data for each sheet
-            for sheet_code in sheets:
+            # Compute EPSG:2180 bbox from sheets and discover TERYTs
+            all_bboxes = [SheetParser(s).get_bbox(crs="EPSG:2180") for s in sheets]
+            bbox_2180 = (
+                min(b.min_x for b in all_bboxes),
+                min(b.min_y for b in all_bboxes),
+                max(b.max_x for b in all_bboxes),
+                max(b.max_y for b in all_bboxes),
+            )
+            teryts = discover_teryts_for_bbox(bbox_2180)
+
+            for teryt in teryts:
                 gpkg = download_landcover(
                     output_dir=hydro_dir,
                     provider="bdot10k",
                     category="hydro",
-                    godlo=sheet_code,
+                    teryt=teryt,
                 )
                 if gpkg and gpkg.exists():
                     burn_streams_path = gpkg
@@ -316,8 +330,12 @@ def prepare_area(
         logger.info("=" * 60)
 
         try:
-            from scripts.download_landcover import download_landcover
+            from scripts.download_landcover import (
+                discover_teryts_for_bbox,
+                download_landcover,
+            )
             from scripts.import_landcover import import_landcover
+            from utils.geometry import transform_wgs84_to_pl1992
 
             # Create landcover output directory
             landcover_dir = (
@@ -327,37 +345,45 @@ def prepare_area(
             )
             landcover_dir.mkdir(parents=True, exist_ok=True)
 
-            # Download land cover
-            gpkg_file = download_landcover(
-                output_dir=landcover_dir,
-                provider=landcover_provider,
-                lat=lat,
-                lon=lon,
-                buffer_km=buffer_km,
+            # Compute EPSG:2180 bbox from lat/lon + buffer
+            x, y = transform_wgs84_to_pl1992(lat, lon)
+            buffer_m = buffer_km * 1000
+            bbox_2180 = (
+                x - buffer_m,
+                y - buffer_m,
+                x + buffer_m,
+                y + buffer_m,
+            )
+            teryts = discover_teryts_for_bbox(bbox_2180)
+
+            total_features = 0
+            for teryt in teryts:
+                gpkg_file = download_landcover(
+                    output_dir=landcover_dir,
+                    provider=landcover_provider,
+                    teryt=teryt,
+                    skip_existing=True,
+                )
+                if gpkg_file and gpkg_file.exists():
+                    logger.info(f"Downloaded: {gpkg_file}")
+
+                    lc_stats = import_landcover(
+                        input_path=gpkg_file,
+                        batch_size=batch_size,
+                        dry_run=False,
+                        clear_existing=False,
+                    )
+                    total_features += lc_stats.get("records_inserted", 0)
+
+            stats["landcover_features"] = total_features
+            logger.info(
+                f"Imported {total_features} land cover features "
+                f"from {len(teryts)} TERYT(s)"
             )
 
-            if gpkg_file and gpkg_file.exists():
-                logger.info(f"Downloaded: {gpkg_file}")
-
-                # Import to database
-                logger.info("=" * 60)
-                logger.info("Step 6: Importing land cover to database")
-                logger.info("=" * 60)
-
-                lc_stats = import_landcover(
-                    input_path=gpkg_file,
-                    batch_size=batch_size,
-                    dry_run=False,
-                    clear_existing=False,
-                )
-
-                stats["landcover_features"] = lc_stats.get("records_inserted", 0)
-                logger.info(
-                    f"Imported {stats['landcover_features']} land cover features"
-                )
-            else:
-                logger.warning("Land cover download failed!")
-                stats["errors"].append("Land cover download failed")
+            if not teryts:
+                logger.warning("No TERYTs discovered for landcover area")
+                stats["errors"].append("No TERYTs discovered for landcover")
 
         except ImportError as e:
             logger.warning(f"Land cover support not available: {e}")

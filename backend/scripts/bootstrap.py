@@ -142,16 +142,35 @@ def parse_bbox(bbox_str: str) -> tuple[float, float, float, float]:
 
 
 def sheets_to_bbox(sheets: list[str]) -> tuple[float, float, float, float]:
-    """Compute bounding box from list of sheet codes."""
-    sys.path.insert(0, str(BACKEND_DIR))
-    from utils.sheet_finder import get_sheet_bounds
+    """Compute bounding box (WGS84) from list of sheet codes via Kartograf."""
+    from kartograf import SheetParser
+    from pyproj import Transformer
 
-    all_bounds = [get_sheet_bounds(s) for s in sheets]
+    t = Transformer.from_crs("EPSG:2180", "EPSG:4326", always_xy=True)
+
+    all_bboxes = [SheetParser(s).get_bbox() for s in sheets]
+    min_x = min(b.min_x for b in all_bboxes)
+    min_y = min(b.min_y for b in all_bboxes)
+    max_x = max(b.max_x for b in all_bboxes)
+    max_y = max(b.max_y for b in all_bboxes)
+
+    lon_min, lat_min = t.transform(min_x, min_y)
+    lon_max, lat_max = t.transform(max_x, max_y)
+    return (lon_min, lat_min, lon_max, lat_max)
+
+
+def sheets_to_bbox_2180(
+    sheets: list[str],
+) -> tuple[float, float, float, float]:
+    """Compute bounding box (EPSG:2180) from list of sheet codes."""
+    from kartograf import SheetParser
+
+    all_bboxes = [SheetParser(s).get_bbox(crs="EPSG:2180") for s in sheets]
     return (
-        min(b.min_lon for b in all_bounds),
-        min(b.min_lat for b in all_bounds),
-        max(b.max_lon for b in all_bounds),
-        max(b.max_lat for b in all_bounds),
+        min(b.min_x for b in all_bboxes),
+        min(b.min_y for b in all_bboxes),
+        max(b.max_x for b in all_bboxes),
+        max(b.max_y for b in all_bboxes),
     )
 
 
@@ -282,24 +301,25 @@ def step_infra() -> str:
             check=True,
             cwd=str(PROJECT_ROOT),
         )
-        # Wait for health check
+        # Wait for PostgreSQL to accept connections
+        logger.info("Czekanie na gotowość PostgreSQL...")
         deadline = time.time() + 60
         while time.time() < deadline:
-            check = subprocess.run(
+            ready = subprocess.run(
                 [
                     "docker",
                     "compose",
-                    "ps",
-                    "--status",
-                    "running",
-                    "--format",
-                    "{{.Name}}",
+                    "exec",
+                    "db",
+                    "pg_isready",
+                    "-U",
+                    "hydro_user",
                 ],
                 capture_output=True,
                 text=True,
                 cwd=str(PROJECT_ROOT),
             )
-            if "hydro_db" in check.stdout.strip():
+            if ready.returncode == 0:
                 break
             time.sleep(2)
         else:
@@ -343,9 +363,15 @@ def step_download_nmt(
 def step_process_dem(
     downloaded_files: list[Path],
     output_dir: Path,
+    sheets: list[str],
 ) -> tuple[dict, str]:
-    """Step 3: Process DEM — mosaic VRT + hydrological analysis."""
+    """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis."""
     sys.path.insert(0, str(BACKEND_DIR))
+    from scripts.download_landcover import (
+        discover_teryts_for_bbox,
+        download_landcover,
+        merge_hydro_gpkgs,
+    )
     from scripts.process_dem import process_dem
     from utils.raster_utils import create_vrt_mosaic
 
@@ -355,6 +381,36 @@ def step_process_dem(
         output_vrt=nmt_dir / "dem_mosaic.vrt",
     )
 
+    # Download & merge hydro BDOT10k for stream burning
+    burn_path = None
+    try:
+        bbox_2180 = sheets_to_bbox_2180(sheets)
+        teryts = discover_teryts_for_bbox(bbox_2180)
+
+        if teryts:
+            hydro_dir = output_dir / "hydro"
+            hydro_dir.mkdir(parents=True, exist_ok=True)
+
+            hydro_paths: list[Path] = []
+            for teryt in teryts:
+                gpkg = download_landcover(
+                    output_dir=hydro_dir,
+                    provider="bdot10k",
+                    category="hydro",
+                    teryt=teryt,
+                    skip_existing=True,
+                )
+                if gpkg:
+                    hydro_paths.append(gpkg)
+
+            if hydro_paths:
+                burn_path = merge_hydro_gpkgs(
+                    hydro_paths, hydro_dir / "hydro_merged.gpkg"
+                )
+    except Exception as e:
+        logger.warning(f"Hydro download/merge failed, proceeding without burning: {e}")
+        burn_path = None
+
     stats = process_dem(
         input_path=mosaic_path,
         stream_threshold=100,
@@ -362,31 +418,40 @@ def step_process_dem(
         save_intermediates=True,
         output_dir=nmt_dir,
         thresholds=[100, 1000, 10000, 100000],
+        burn_streams_path=burn_path,
     )
 
     cells = stats.get("valid_cells", 0)
     streams = stats.get("stream_segments", 0)
-    detail = f"{cells:,} cells, {streams} segments"
+    burn_info = f", burn={burn_path.name}" if burn_path else ""
+    detail = f"{cells:,} cells, {streams} segments{burn_info}"
 
     return stats, detail
 
 
 def step_landcover(sheets: list[str], output_dir: Path) -> str:
-    """Step 4: Download and import land cover data."""
+    """Step 4: Download and import land cover data (per-TERYT)."""
     sys.path.insert(0, str(BACKEND_DIR))
-    from scripts.download_landcover import download_landcover
+    from scripts.download_landcover import discover_teryts_for_bbox, download_landcover
     from scripts.import_landcover import import_landcover
 
     lc_dir = output_dir / "landcover"
     lc_dir.mkdir(parents=True, exist_ok=True)
 
+    bbox_2180 = sheets_to_bbox_2180(sheets)
+    teryts = discover_teryts_for_bbox(bbox_2180)
+
+    if not teryts:
+        logger.warning("Nie znaleziono TERYT-ów dla podanego obszaru")
+        return "0 obiektów, 0 powiatów"
+
     total_features = 0
-    for sheet in sheets:
+    for teryt in teryts:
         try:
             gpkg = download_landcover(
                 output_dir=lc_dir,
                 provider="bdot10k",
-                godlo=sheet,
+                teryt=teryt,
                 skip_existing=True,
             )
             if gpkg and gpkg.exists():
@@ -396,9 +461,9 @@ def step_landcover(sheets: list[str], output_dir: Path) -> str:
                 )
                 total_features += lc_stats.get("records_inserted", 0)
         except Exception as e:
-            logger.warning(f"Land cover dla {sheet}: {e}")
+            logger.warning(f"Land cover dla TERYT {teryt}: {e}")
 
-    return f"{total_features} obiektow"
+    return f"{total_features} obiektów, {len(teryts)} powiatów"
 
 
 def step_precipitation(bbox: tuple[float, float, float, float]) -> str:
@@ -424,10 +489,10 @@ def step_depressions(output_dir: Path) -> str:
     )
 
     nmt_dir = output_dir / "nmt"
-    dem_path = nmt_dir / "dem_mosaic.tif"
-    filled_path = nmt_dir / "dem_mosaic_filled.tif"
+    dem_path = nmt_dir / "dem_mosaic_01_dem.tif"
+    filled_path = nmt_dir / "dem_mosaic_02_filled.tif"
 
-    # Fallback: if GeoTIFF not saved, try VRT
+    # Fallback: try VRT for DEM
     if not dem_path.exists():
         dem_path = nmt_dir / "dem_mosaic.vrt"
     if not filled_path.exists():
@@ -509,7 +574,7 @@ def step_overlays(output_dir: Path) -> str:
         generated.append("DEM")
 
     # Streams overlay
-    stream_order_path = nmt_dir / "dem_mosaic_stream_order.tif"
+    stream_order_path = nmt_dir / "dem_mosaic_07_stream_order.tif"
     if stream_order_path.exists():
         streams_overlay(
             input_path=str(stream_order_path),
@@ -592,7 +657,7 @@ def run_pipeline(
     if not tracker.is_skipped(3):
         t0 = tracker.start(3)
         try:
-            _, detail = step_process_dem(downloaded_files, output_dir)
+            _, detail = step_process_dem(downloaded_files, output_dir, sheets)
             tracker.done(3, t0, detail)
         except Exception as e:
             tracker.fail(3, t0, str(e))
@@ -679,7 +744,7 @@ def dry_run(
         f"Pobieranie NMT: {len(sheets)} arkuszy do {output_dir / 'nmt'}",
         "Przetwarzanie NMT: mozaika VRT, flow_network, "
         "streams, catchments (ZAWSZE od zera)",
-        f"Pokrycie terenu: BDOT10k dla {len(sheets)} arkuszy",
+        f"Pokrycie terenu: BDOT10k per-TERYT (auto-discovery z {len(sheets)} arkuszy)",
         f"Opady IMGW: grid 2km w bbox "
         f"{min_lon:.3f},{min_lat:.3f},"
         f"{max_lon:.3f},{max_lat:.3f}",

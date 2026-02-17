@@ -78,6 +78,7 @@ Thumbs.db
 *.geojson
 !frontend/data/*.geojson
 data/
+frontend/data/
 !data/.gitkeep
 !frontend/data/
 
@@ -91,3 +92,6 @@ alembic/versions/*.pyc
 *.pem
 *.key
 credentials.json
+
+# Other
+*.png
