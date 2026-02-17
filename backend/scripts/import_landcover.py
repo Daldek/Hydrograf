@@ -110,14 +110,14 @@ def get_database_url() -> str:
     # Try config file
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from core.config import settings
+        from core.config import get_settings
 
-        return settings.database_url
+        return get_settings().database_url
     except ImportError:
         pass
 
     # Default for local development
-    return "postgresql://hydro_user:hydro_pass@localhost:5432/hydro_db"
+    return "postgresql://hydro_user:hydro_password@localhost:5432/hydro_db"
 
 
 def read_gpkg_layers(gpkg_path: Path) -> dict[str, "geopandas.GeoDataFrame"]:

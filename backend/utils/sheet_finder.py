@@ -412,8 +412,16 @@ def get_sheet_bounds(sheet_code: str) -> SheetBounds:
         return bounds
 
     # Parse 1:10k
-    row_10k = int(parts[5]) - 1
-    col_10k = int(parts[6]) - 1
+    # Two formats supported:
+    #   7-part row-col: N-33-131-C-a-2-1 (row 1-2, col 1-4)
+    #   6-part sequential: N-33-131-C-a-3 (number 1-8)
+    if len(parts) == 7:
+        row_10k = int(parts[5]) - 1
+        col_10k = int(parts[6]) - 1
+    else:
+        num = int(parts[5])
+        row_10k = (num - 1) // 4
+        col_10k = (num - 1) % 4
     bounds = _subdivide_bounds(bounds, 2, 4, row_10k, col_10k)
 
     return bounds
