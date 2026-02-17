@@ -198,7 +198,6 @@
     function closeResults() {
         Hydrograf.map.clearWatershed();
         Hydrograf.map.clearSelectionBoundary();
-        Hydrograf.map.clearCatchmentHighlights();
         Hydrograf.map.clearProfileLine();
         var autoInfo = document.getElementById('panel-auto-select-info');
         if (autoInfo) autoInfo.classList.add('d-none');
@@ -254,8 +253,7 @@
         setLoading(true);
         state.currentWatershed = null;
 
-        // Clear any selection highlights and auto-select banner
-        Hydrograf.map.clearCatchmentHighlights();
+        // Clear any selection boundary and auto-select banner
         Hydrograf.map.clearSelectionBoundary();
         var autoInfo = document.getElementById('panel-auto-select-info');
         if (autoInfo) autoInfo.classList.add('d-none');
@@ -271,11 +269,8 @@
                 if (autoMsg) autoMsg.textContent = data.info_message;
                 if (autoInfo) autoInfo.classList.remove('d-none');
 
-                // Use selection display (orange boundary + MVT highlights)
+                // Use selection display (orange boundary)
                 Hydrograf.map.showSelectionBoundary(data.watershed.boundary_geojson);
-                if (data.upstream_segment_indices && data.upstream_segment_indices.length > 0) {
-                    Hydrograf.map.highlightUpstreamCatchments(data.upstream_segment_indices);
-                }
             } else {
                 if (autoInfo) autoInfo.classList.add('d-none');
                 Hydrograf.map.showWatershed(data.watershed.boundary_geojson);
@@ -319,16 +314,6 @@
             // Show selection boundary
             Hydrograf.map.showSelectionBoundary(data.boundary_geojson);
 
-            // Highlight upstream catchments
-            if (data.upstream_segment_indices && data.upstream_segment_indices.length > 0) {
-                console.log('[select-stream] highlighting', data.upstream_segment_indices.length,
-                            'segments, indices:', data.upstream_segment_indices.slice(0, 20),
-                            data.upstream_segment_indices.length > 20 ? '...' : '');
-                Hydrograf.map.highlightUpstreamCatchments(
-                    data.upstream_segment_indices
-                );
-            }
-
             if (Hydrograf.layers) Hydrograf.layers.notifyWatershedChanged();
 
             // Display full watershed stats if available, otherwise fallback to stream info
@@ -345,7 +330,6 @@
             }
             els.results.classList.remove('d-none');
         } catch (err) {
-            Hydrograf.map.clearCatchmentHighlights();
             Hydrograf.map.clearSelectionBoundary();
             state.currentWatershed = null;
             showError(err.message);
