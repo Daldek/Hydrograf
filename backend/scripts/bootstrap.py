@@ -337,6 +337,24 @@ def step_infra() -> str:
     )
     details.append("migracje OK")
 
+    # 1d. CDN integrity hashes
+    cdn_script = PROJECT_ROOT / "scripts" / "verify_cdn_hashes.sh"
+    if cdn_script.exists():
+        logger.info("Weryfikacja hashów SRI zasobów CDN...")
+        result = subprocess.run(
+            ["bash", str(cdn_script)],
+            capture_output=True,
+            text=True,
+            cwd=str(PROJECT_ROOT),
+        )
+        if result.returncode != 0:
+            logger.warning(
+                "Niezgodność hashów CDN! Napraw: ./scripts/verify_cdn_hashes.sh --fix"
+            )
+            details.append("CDN HASH MISMATCH")
+        else:
+            details.append("CDN OK")
+
     return ", ".join(details)
 
 
