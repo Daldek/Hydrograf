@@ -72,7 +72,7 @@ def mock_db_select_stream():
 
     # Mock stream_network segment result
     segment_result = MagicMock()
-    segment_result.id = 12
+    segment_result.segment_idx = 12
     segment_result.strahler_order = 2
     segment_result.length_m = 3000.0
     segment_result.upstream_area_km2 = 10.0
@@ -294,7 +294,7 @@ class TestSelectStreamEndpoint:
 
         # Need stream to be found first
         segment_result = MagicMock()
-        segment_result.id = 12
+        segment_result.segment_idx = 12
         segment_result.strahler_order = 2
         segment_result.length_m = 3000.0
         segment_result.upstream_area_km2 = 10.0
@@ -350,7 +350,7 @@ class TestSelectStreamEndpoint:
         mock_session = MagicMock()
 
         segment_result = MagicMock()
-        segment_result.id = 12
+        segment_result.segment_idx = 12
         segment_result.strahler_order = 2
         segment_result.length_m = 3000.0
         segment_result.upstream_area_km2 = 10.0

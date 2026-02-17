@@ -102,7 +102,7 @@ class TestFindNearestStreamSegment:
     def test_returns_dict_when_found(self, mock_db):
         """When DB returns a row, function returns a dict with all expected keys."""
         row = MagicMock()
-        row.id = 42
+        row.segment_idx = 42
         row.strahler_order = 3
         row.length_m = 1234.5
         row.upstream_area_km2 = 12.3
