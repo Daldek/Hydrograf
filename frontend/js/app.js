@@ -108,6 +108,16 @@
             Hydrograf.charts.destroyChart('chart-landcover');
         }
 
+        // HSG soil groups
+        var accHsg = document.getElementById('acc-hsg');
+        if (w.hsg_stats && w.hsg_stats.categories && w.hsg_stats.categories.length > 0) {
+            if (accHsg) accHsg.classList.remove('d-none');
+            Hydrograf.charts.renderHsgChart('chart-hsg', w.hsg_stats.categories);
+        } else {
+            if (accHsg) accHsg.classList.add('d-none');
+            Hydrograf.charts.destroyChart('chart-hsg');
+        }
+
         // Chart: hypsometric curve
         if (w.hypsometric_curve && w.hypsometric_curve.length > 0 &&
             m.elevation_min_m != null && m.elevation_max_m != null) {

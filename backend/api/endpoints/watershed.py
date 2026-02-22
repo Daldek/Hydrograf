@@ -257,6 +257,28 @@ def delineate_watershed(
         except Exception as e:
             logger.debug(f"Land cover stats not available: {e}")
 
+        # 17a. HSG soil statistics
+        hsg_stats_data = None
+        try:
+            from core.soil_hsg import get_hsg_for_boundary
+            from models.schemas import HsgCategory, HsgStats
+
+            hsg_data = get_hsg_for_boundary(boundary_2180.wkb_hex, db)
+            if hsg_data:
+                hsg_stats_data = HsgStats(
+                    categories=[
+                        HsgCategory(
+                            group=cat["group"],
+                            percentage=cat["percentage"],
+                            area_m2=cat["area_m2"],
+                        )
+                        for cat in hsg_data["categories"]
+                    ],
+                    dominant_group=hsg_data["dominant_group"],
+                )
+        except Exception as e:
+            logger.debug(f"HSG stats not available: {e}")
+
         # 18. Build response
         result = DelineateResponse(
             watershed=WatershedResponse(
@@ -271,6 +293,7 @@ def delineate_watershed(
                 morphometry=MorphometricParameters(**morph_dict),
                 hypsometric_curve=hypso_curve,
                 land_cover_stats=lc_stats,
+                hsg_stats=hsg_stats_data,
                 main_stream_geojson=main_stream_geojson,
             ),
             auto_selected=auto_selected,
