@@ -94,3 +94,6 @@ credentials.json
 
 # Other
 *.png
+
+# Worktrees
+.worktrees/
