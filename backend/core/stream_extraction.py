@@ -569,7 +569,7 @@ def compute_downstream_links(
     nrows, ncols = fdir.shape
     n_linked = 0
 
-    for seg in segments:
+    for seg_idx_1based, seg in enumerate(segments, start=1):
         outlet_rc = seg.get("_outlet_rc")
         if outlet_rc is None:
             seg["downstream_segment_idx"] = None
@@ -589,7 +589,6 @@ def compute_downstream_links(
             continue
 
         ds_label = int(label_raster[nr, nc])
-        seg_idx_1based = segments.index(seg) + 1
 
         if ds_label > 0 and ds_label != seg_idx_1based:
             seg["downstream_segment_idx"] = ds_label
