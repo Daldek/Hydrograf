@@ -51,15 +51,16 @@ SYM_SKIP = "\u2013"  # en-dash
 
 # Pipeline step names
 STEP_NAMES = [
-    "Infrastruktura",
-    "Pobieranie NMT",
-    "Przetwarzanie NMT",
-    "Pokrycie terenu",
-    "Opady IMGW",
-    "Depresje",
-    "Kafelki MVT",
-    "Overlay PNG",
-    "Uruchom serwer",
+    "Infrastruktura",  # 1
+    "Pobieranie NMT",  # 2
+    "Przetwarzanie NMT",  # 3
+    "Pokrycie terenu",  # 4
+    "Dane glebowe HSG",  # 5
+    "Opady IMGW",  # 6
+    "Depresje",  # 7
+    "Kafelki MVT",  # 8
+    "Overlay PNG",  # 9
+    "Uruchom serwer",  # 10
 ]
 
 TOTAL_STEPS = len(STEP_NAMES)
@@ -429,6 +430,16 @@ def step_process_dem(
         logger.warning(f"Hydro download/merge failed, proceeding without burning: {e}")
         burn_path = None
 
+    # Export BDOT10k to GeoJSON for frontend
+    if burn_path:
+        try:
+            frontend_data = FRONTEND_DIR / "data"
+            frontend_data.mkdir(parents=True, exist_ok=True)
+            bdot_result = export_bdot_geojson(burn_path, frontend_data)
+            logger.info(f"BDOT10k GeoJSON exported: {bdot_result}")
+        except Exception as e:
+            logger.warning(f"BDOT10k GeoJSON export failed: {e}")
+
     stats = process_dem(
         input_path=mosaic_path,
         stream_threshold=100,
@@ -484,8 +495,149 @@ def step_landcover(sheets: list[str], output_dir: Path) -> str:
     return f"{total_features} obiektów, {len(teryts)} powiatów"
 
 
+def step_soil_hsg(sheets: list[str], output_dir: Path) -> str:
+    """Step 5: Download HSG data from SoilGrids and import to DB."""
+    try:
+        from kartograf import HSGCalculator
+    except ImportError:
+        return "pominięto (brak kartograf HSGCalculator)"
+
+    import rasterio
+    from rasterio.features import shapes
+    from shapely.geometry import MultiPolygon, shape
+
+    sys.path.insert(0, str(BACKEND_DIR))
+    from core.database import get_engine
+
+    hsg_dir = output_dir / "soil_hsg"
+    hsg_dir.mkdir(parents=True, exist_ok=True)
+
+    from kartograf import BBox
+
+    bbox_tuple = sheets_to_bbox_2180(sheets)
+    bbox_2180 = BBox(
+        min_x=bbox_tuple[0],
+        min_y=bbox_tuple[1],
+        max_x=bbox_tuple[2],
+        max_y=bbox_tuple[3],
+        crs="EPSG:2180",
+    )
+
+    # Download HSG raster
+    hsg_tif = hsg_dir / "hsg.tif"
+    try:
+        hsg_calc = HSGCalculator()
+        hsg_calc.calculate_hsg_by_bbox(
+            bbox=bbox_2180,
+            output_path=hsg_tif,
+            timeout=300,
+        )
+    except Exception as e:
+        return f"pominięto (SoilGrids: {e})"
+
+    if not hsg_tif.exists():
+        return "pominięto (brak rastra HSG)"
+
+    # Polygonize HSG raster and reproject to EPSG:2180
+    import pyproj
+    from shapely.ops import transform as shp_transform
+
+    hsg_map = {1: "A", 2: "B", 3: "C", 4: "D"}
+    records = []
+
+    with rasterio.open(hsg_tif) as src:
+        data = src.read(1)
+        src_transform = src.transform
+        src_crs = src.crs
+
+        # Prepare reprojection if needed (SoilGrids delivers EPSG:4326)
+        project = None
+        if src_crs and src_crs.to_epsg() != 2180:
+            project = pyproj.Transformer.from_crs(
+                src_crs, "EPSG:2180", always_xy=True
+            ).transform
+
+        for geom_dict, value in shapes(data, transform=src_transform):
+            value = int(value)
+            if value not in hsg_map:
+                continue
+            geom = shape(geom_dict)
+            if geom.is_empty:
+                continue
+            if project:
+                geom = shp_transform(project, geom)
+            if geom.area < 50:  # Skip micro-fragments (<50 m²)
+                continue
+            if geom.geom_type == "Polygon":
+                geom = MultiPolygon([geom])
+            records.append(
+                {
+                    "geom": geom.wkt,
+                    "hsg_group": hsg_map[value],
+                    "area_m2": geom.area,
+                }
+            )
+
+    if not records:
+        return "brak danych HSG"
+
+    # Bulk INSERT
+    engine = get_engine()
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM soil_hsg"))
+        conn.execute(
+            text("""
+                INSERT INTO soil_hsg (geom, hsg_group, area_m2)
+                VALUES (ST_SetSRID(ST_GeomFromText(:geom), 2180), :hsg_group, :area_m2)
+            """),
+            records,
+        )
+        conn.commit()
+
+    # Export GeoJSON for frontend map layer
+    try:
+        import json
+
+        rows = []
+        with engine.connect() as conn2:
+            result = conn2.execute(
+                text(
+                    "SELECT hsg_group, ST_AsGeoJSON(ST_Transform(geom, 4326)) AS geojson, "
+                    "area_m2 FROM soil_hsg"
+                )
+            ).fetchall()
+            for row in result:
+                rows.append(
+                    {
+                        "type": "Feature",
+                        "geometry": json.loads(row.geojson),
+                        "properties": {
+                            "hsg_group": row.hsg_group,
+                            "area_m2": round(row.area_m2, 1),
+                        },
+                    }
+                )
+
+        frontend_data = FRONTEND_DIR / "data"
+        frontend_data.mkdir(parents=True, exist_ok=True)
+        with open(frontend_data / "soil_hsg.geojson", "w") as f:
+            json.dump({"type": "FeatureCollection", "features": rows}, f)
+        logger.info(f"HSG GeoJSON exported: {len(rows)} features")
+    except Exception as e:
+        logger.warning(f"HSG GeoJSON export failed: {e}")
+
+    groups = {}
+    for r in records:
+        g = r["hsg_group"]
+        groups[g] = groups.get(g, 0) + 1
+    summary = ", ".join(f"{g}: {c}" for g, c in sorted(groups.items()))
+    return f"{len(records)} poligonów ({summary})"
+
+
 def step_precipitation(bbox: tuple[float, float, float, float]) -> str:
-    """Step 5: Download IMGW precipitation data."""
+    """Step 6: Download IMGW precipitation data."""
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.preprocess_precipitation import process_grid
 
@@ -497,7 +649,7 @@ def step_precipitation(bbox: tuple[float, float, float, float]) -> str:
 
 
 def step_depressions(output_dir: Path) -> str:
-    """Step 6: Generate depressions (blue spots)."""
+    """Step 7: Generate depressions (blue spots)."""
     sys.path.insert(0, str(BACKEND_DIR))
     from core.database import get_db_session
     from scripts.generate_depressions import (
@@ -541,7 +693,7 @@ def step_depressions(output_dir: Path) -> str:
 
 
 def step_tiles() -> str:
-    """Step 7: Generate MVT tiles (requires tippecanoe)."""
+    """Step 8: Generate MVT tiles (requires tippecanoe)."""
     venv_tippecanoe = BACKEND_DIR / ".venv" / "bin" / "tippecanoe"
     if not venv_tippecanoe.exists() and not shutil.which("tippecanoe"):
         logger.warning(
@@ -570,7 +722,7 @@ def step_tiles() -> str:
 
 
 def step_overlays(output_dir: Path) -> str:
-    """Step 8: Generate DEM and streams overlay PNG."""
+    """Step 9: Generate DEM and streams overlay PNG."""
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.generate_dem_overlay import generate_overlay as dem_overlay
     from scripts.generate_streams_overlay import generate_overlay as streams_overlay
@@ -606,8 +758,46 @@ def step_overlays(output_dir: Path) -> str:
     return ", ".join(generated) if generated else "brak danych"
 
 
+def export_bdot_geojson(hydro_gpkg: Path, output_dir: Path) -> str:
+    """Export BDOT10k hydro layers from GPKG to GeoJSON for frontend map."""
+    import fiona
+    import geopandas as gpd
+    import pandas as pd
+
+    layers = fiona.listlayers(str(hydro_gpkg))
+
+    # Lakes (polygons) — OT_PTWP_A
+    lakes_count = 0
+    if "OT_PTWP_A" in layers:
+        gdf = gpd.read_file(hydro_gpkg, layer="OT_PTWP_A")
+        if not gdf.empty:
+            gdf["source_layer"] = "OT_PTWP_A"
+            gdf = gdf.to_crs("EPSG:4326")
+            gdf.to_file(output_dir / "bdot_lakes.geojson", driver="GeoJSON")
+            lakes_count = len(gdf)
+
+    # Streams (lines) — OT_SWRS_L + OT_SWKN_L + OT_SWRM_L
+    stream_layers = ["OT_SWRS_L", "OT_SWKN_L", "OT_SWRM_L"]
+    stream_gdfs = []
+    for layer_name in stream_layers:
+        if layer_name in layers:
+            gdf = gpd.read_file(hydro_gpkg, layer=layer_name)
+            if not gdf.empty:
+                gdf["source_layer"] = layer_name
+                stream_gdfs.append(gdf)
+
+    streams_count = 0
+    if stream_gdfs:
+        merged = gpd.GeoDataFrame(pd.concat(stream_gdfs, ignore_index=True))
+        merged = merged.to_crs("EPSG:4326")
+        merged.to_file(output_dir / "bdot_streams.geojson", driver="GeoJSON")
+        streams_count = len(merged)
+
+    return f"{lakes_count} zbiorników, {streams_count} cieków"
+
+
 def step_serve(port: int) -> str:
-    """Step 9: Start full Docker Compose stack."""
+    """Step 10: Start full Docker Compose stack."""
     if port != 8080:
         update_env_file("HYDROGRAF_PORT", str(port))
 
@@ -637,7 +827,7 @@ def run_pipeline(
     port: int,
     skips: set[int],
 ):
-    """Run the full 9-step bootstrap pipeline."""
+    """Run the full 10-step bootstrap pipeline."""
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
 
@@ -693,55 +883,65 @@ def run_pipeline(
             tracker.fail(4, t0, str(e))
             logger.warning(f"Krok 4 (pokrycie terenu): {e}")
 
-    # Step 5: Precipitation (OPTIONAL)
+    # Step 5: HSG (OPTIONAL)
     if not tracker.is_skipped(5):
         t0 = tracker.start(5)
         try:
-            detail = step_precipitation(bbox)
+            detail = step_soil_hsg(sheets, output_dir)
             tracker.done(5, t0, detail)
         except Exception as e:
             tracker.fail(5, t0, str(e))
-            logger.warning(f"Krok 5 (opady IMGW): {e}")
+            logger.warning(f"Krok 5 (HSG): {e}")
 
-    # Step 6: Depressions (OPTIONAL)
+    # Step 6: Precipitation (OPTIONAL)
     if not tracker.is_skipped(6):
         t0 = tracker.start(6)
         try:
-            detail = step_depressions(output_dir)
+            detail = step_precipitation(bbox)
             tracker.done(6, t0, detail)
         except Exception as e:
             tracker.fail(6, t0, str(e))
-            logger.warning(f"Krok 6 (depresje): {e}")
+            logger.warning(f"Krok 6 (opady IMGW): {e}")
 
-    # Step 7: MVT tiles (OPTIONAL)
+    # Step 7: Depressions (OPTIONAL)
     if not tracker.is_skipped(7):
         t0 = tracker.start(7)
         try:
-            detail = step_tiles()
+            detail = step_depressions(output_dir)
             tracker.done(7, t0, detail)
         except Exception as e:
             tracker.fail(7, t0, str(e))
-            logger.warning(f"Krok 7 (kafelki MVT): {e}")
+            logger.warning(f"Krok 7 (depresje): {e}")
 
-    # Step 8: Overlay PNG (OPTIONAL)
+    # Step 8: MVT tiles (OPTIONAL)
     if not tracker.is_skipped(8):
         t0 = tracker.start(8)
         try:
-            detail = step_overlays(output_dir)
+            detail = step_tiles()
             tracker.done(8, t0, detail)
         except Exception as e:
             tracker.fail(8, t0, str(e))
-            logger.warning(f"Krok 8 (overlay PNG): {e}")
+            logger.warning(f"Krok 8 (kafelki MVT): {e}")
 
-    # Step 9: Start server (OPTIONAL)
+    # Step 9: Overlay PNG (OPTIONAL)
     if not tracker.is_skipped(9):
         t0 = tracker.start(9)
         try:
-            detail = step_serve(port)
+            detail = step_overlays(output_dir)
             tracker.done(9, t0, detail)
         except Exception as e:
             tracker.fail(9, t0, str(e))
-            logger.warning(f"Krok 9 (serwer): {e}")
+            logger.warning(f"Krok 9 (overlay PNG): {e}")
+
+    # Step 10: Start server (OPTIONAL)
+    if not tracker.is_skipped(10):
+        t0 = tracker.start(10)
+        try:
+            detail = step_serve(port)
+            tracker.done(10, t0, detail)
+        except Exception as e:
+            tracker.fail(10, t0, str(e))
+            logger.warning(f"Krok 10 (serwer): {e}")
 
     return tracker
 
@@ -764,6 +964,7 @@ def dry_run(
         "Przetwarzanie NMT: mozaika VRT, "
         "stream_network, stream_catchments (ZAWSZE od zera)",
         f"Pokrycie terenu: BDOT10k per-TERYT (auto-discovery z {len(sheets)} arkuszy)",
+        "Dane glebowe HSG: SoilGrids przez Kartograf HSGCalculator",
         f"Opady IMGW: grid 2km w bbox "
         f"{min_lon:.3f},{min_lat:.3f},"
         f"{max_lon:.3f},{max_lat:.3f}",
@@ -836,6 +1037,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pomin pokrycie terenu",
     )
     skip_group.add_argument(
+        "--skip-hsg",
+        action="store_true",
+        help="Pomin dane glebowe HSG",
+    )
+    skip_group.add_argument(
         "--skip-precipitation",
         action="store_true",
         help="Pomin opady IMGW",
@@ -894,16 +1100,18 @@ def main():
         skips.add(1)
     if args.skip_landcover:
         skips.add(4)
-    if args.skip_precipitation:
+    if args.skip_hsg:
         skips.add(5)
-    if args.skip_depressions:
+    if args.skip_precipitation:
         skips.add(6)
-    if args.skip_tiles:
+    if args.skip_depressions:
         skips.add(7)
-    if args.skip_overlays:
+    if args.skip_tiles:
         skips.add(8)
-    if args.skip_serve:
+    if args.skip_overlays:
         skips.add(9)
+    if args.skip_serve:
+        skips.add(10)
 
     # Print header
     print_header(bbox, sheets, args.port)

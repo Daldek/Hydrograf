@@ -67,7 +67,7 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 
-# Data files (large)
+# Data files
 *.tif
 *.tiff
 *.shp
@@ -76,12 +76,10 @@ Thumbs.db
 *.prj
 *.cpg
 *.geojson
-!frontend/data/*.geojson
 data/
 frontend/data/
 frontend/tiles/
 !data/.gitkeep
-!frontend/data/
 
 # Alembic
 alembic/versions/*.pyc
