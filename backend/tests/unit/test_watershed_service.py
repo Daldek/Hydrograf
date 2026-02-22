@@ -20,7 +20,9 @@ from core.watershed_service import (
     boundary_to_polygon,
     build_morph_dict_from_graph,
     compute_watershed_length,
+    ensure_outlet_within_boundary,
     find_nearest_stream_segment,
+    find_nearest_stream_segment_hybrid,
     get_main_stream_geojson,
     get_segment_outlet,
     merge_catchment_boundaries,
@@ -184,6 +186,14 @@ class TestMergeCatchmentBoundaries:
         assert result is None
         mock_db.execute.assert_not_called()
 
+    def test_merge_sql_no_snap_to_grid(self):
+        """merge_catchment_boundaries SQL should not use ST_SnapToGrid."""
+        import inspect
+
+        source = inspect.getsource(merge_catchment_boundaries)
+        assert "ST_SnapToGrid" not in source
+        assert "ST_Buffer" in source  # buffer-debuffer pattern
+
 
 # ---------------------------------------------------------------------------
 # get_segment_outlet
@@ -322,7 +332,7 @@ class TestBoundaryToPolygon:
         """Small interior hole (< MIN_HOLE_AREA_M2) is removed."""
         # Outer ring: 200×200 m
         outer = [(0, 0), (200, 0), (200, 200), (0, 200), (0, 0)]
-        # Small hole: ~3×3 m = 9 m² (well below 1000 m² threshold)
+        # Small hole: ~3×3 m = 9 m² (well below 100 m² threshold)
         hole = [(90, 90), (93, 90), (93, 93), (90, 93), (90, 90)]
         poly = Polygon(outer, [hole])
 
@@ -339,7 +349,7 @@ class TestBoundaryToPolygon:
         """Large interior hole (>= MIN_HOLE_AREA_M2) is preserved."""
         # Outer ring: 200×200 m
         outer = [(0, 0), (200, 0), (200, 200), (0, 200), (0, 0)]
-        # Large hole: 50×50 m = 2500 m² (well above 1000 m² threshold)
+        # Large hole: 50×50 m = 2500 m² (well above 100 m² threshold)
         hole = [(50, 50), (100, 50), (100, 100), (50, 100), (50, 50)]
         poly = Polygon(outer, [hole])
 
@@ -592,3 +602,79 @@ class TestComputeShapeIndices:
         assert result["elongation_ratio"] is None
         assert result["form_factor"] is None
         assert result["mean_width_km"] is None
+
+
+# ---------------------------------------------------------------------------
+# ensure_outlet_within_boundary (E4)
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureOutletWithinBoundary:
+    """Tests for ensure_outlet_within_boundary."""
+
+    def test_outlet_inside_unchanged(self):
+        """Outlet inside boundary returns unchanged."""
+        from shapely.geometry import box
+
+        boundary = box(0, 0, 100, 100)
+        x, y = ensure_outlet_within_boundary(50.0, 50.0, boundary)
+        assert x == 50.0
+        assert y == 50.0
+
+    def test_outlet_outside_snapped(self):
+        """Outlet outside boundary is snapped to nearest point."""
+        from shapely.geometry import box
+
+        boundary = box(0, 0, 100, 100)
+        x, y = ensure_outlet_within_boundary(150.0, 50.0, boundary)
+        assert abs(x - 100.0) < 0.01
+        assert abs(y - 50.0) < 0.01
+
+    def test_outlet_on_edge_unchanged(self):
+        """Outlet within 1m of boundary returns unchanged."""
+        from shapely.geometry import box
+
+        boundary = box(0, 0, 100, 100)
+        x, y = ensure_outlet_within_boundary(100.5, 50.0, boundary)
+        assert x == 100.5  # within 1m tolerance
+        assert y == 50.0
+
+    def test_multipolygon_boundary(self):
+        """Works with MultiPolygon boundary (uses .boundary not .exterior)."""
+        from shapely.geometry import box
+
+        poly1 = box(0, 0, 100, 100)
+        poly2 = box(200, 200, 300, 300)
+        multi = MultiPolygon([poly1, poly2])
+        # Point outside both polygons but closest to poly1
+        x, y = ensure_outlet_within_boundary(150.0, 50.0, multi)
+        assert abs(x - 100.0) < 0.01
+        assert abs(y - 50.0) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# find_nearest_stream_segment_hybrid (F2)
+# ---------------------------------------------------------------------------
+
+
+class TestFindNearestStreamSegmentHybrid:
+    """Tests for find_nearest_stream_segment_hybrid."""
+
+    def test_point_inside_catchment_returns_catchment_stream(self):
+        """When point is inside a catchment, return that catchment's stream."""
+        import inspect
+
+        sig = inspect.signature(find_nearest_stream_segment_hybrid)
+        assert "x" in sig.parameters
+        assert "y" in sig.parameters
+        assert "threshold_m2" in sig.parameters
+        assert "db" in sig.parameters
+
+    def test_hybrid_has_catchment_query(self):
+        """Hybrid function uses ST_Contains on stream_catchments."""
+        import inspect
+
+        source = inspect.getsource(find_nearest_stream_segment_hybrid)
+        assert "ST_Contains" in source
+        assert "stream_catchments" in source
+        assert "find_nearest_stream_segment" in source  # fallback
