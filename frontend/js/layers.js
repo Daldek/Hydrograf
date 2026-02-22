@@ -140,7 +140,7 @@
      * Overlay entry for async-loaded layers (BDOT10k GeoJSON).
      * getLayer returns the existing layer, loadLayer returns a Promise.
      */
-    function addBdotOverlayEntry(list, label, getLayer, loadLayer, fitBounds, setOpacity, defaultTransparency) {
+    function addBdotOverlayEntry(list, label, getLayer, loadLayer, fitBounds, setOpacity, defaultTransparency, onShow, onHide) {
         var item = document.createElement('div');
         item.className = 'layer-item';
 
@@ -193,12 +193,14 @@
                     });
                 }
                 sliderRow.classList.remove('d-none');
+                if (onShow) onShow();
             } else {
                 var existing = getLayer();
                 if (existing && mapObj.hasLayer(existing)) {
                     mapObj.removeLayer(existing);
                 }
                 sliderRow.classList.add('d-none');
+                if (onHide) onHide();
             }
         });
 
@@ -381,7 +383,9 @@
             function () { return Hydrograf.map.loadHsgLayer(); },
             Hydrograf.map.fitHsgBounds,
             Hydrograf.map.setHsgOpacity,
-            0
+            0,
+            Hydrograf.map.createHsgLegend,
+            Hydrograf.map.removeHsgLegend
         );
 
         // Placeholder for stream/catchment entries (async populated)
