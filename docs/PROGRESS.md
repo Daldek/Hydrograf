@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 538 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 544 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -505,7 +505,7 @@
 
 ### Bledy do naprawy (zgloszenie 2026-02-14, sesja 19)
 
-**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E2 naprawione (sesja 18 jako A1), E3 naprawione (sesja 22), F1 naprawione (sesja 24, ADR-024), E5+E6+E9+E10+E11 naprawione (sesja 35), F3 naprawione (sesja 35). Pozostaje: E1, E4, E7, E8, F2, H**
+**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E2 naprawione (sesja 18 jako A1), E3 naprawione (sesja 22), F1 naprawione (sesja 24, ADR-024), E5+E6+E9+E10+E11 naprawione (sesja 35), F3 naprawione (sesja 35), E7+E8 naprawione (sesja 38). Pozostaje: E1, E4, E12, E13, F2, H**
 
 #### D. Frontend — profil terenu — ✅ NAPRAWIONE (sesja 20)
 
@@ -536,24 +536,26 @@
 
 **E6. ✅ Panel profilu terenu — styl liquid glass** → tokeny CSS liquid glass dodane do #profile-panel w style.css — sesja 35
 
-**E7. Brak informacji o gruntach (HSG) w panelu wynikow** (priorytet: niski)
-- Po wyznaczeniu zlewni panel wynikow nie wyswietla informacji o gruntach (Hydrologic Soil Group / typy gleb).
-- Dane HSG sa pobierane przez Kartograf (SoilGrids) i uzywane do obliczen CN, ale nie sa prezentowane uzytkownikowi.
-- Wyswietlenie w stylu analogicznym do sekcji "Pokrycie terenu" — wykres kolowy/slupkowy z podzialem na grupy gruntowe (A/B/C/D) i procentowym udzialem w zlewni.
-- **Lokalizacja:** `frontend/js/charts.js` (renderowanie wykresow), `frontend/index.html` (sekcja wynikow), `core/cn_calculator.py` / `core/land_cover.py` (dane HSG)
+**E7. ✅ Brak informacji o gruntach (HSG) w panelu wynikow** → grupy glebowe HSG w panelu i na mapie — sesja 38
 
-**E8. Zbiorniki i cieki BDOT10k nie zaladowane do UI** (priorytet: wysoki)
-- Warstwy wektorowe BDOT10k (zbiorniki wodne i cieki) nie sa wyswietlane na mapie.
-- Dane BDOT10k hydro sa pobierane przez `bootstrap.py` (warstwy SWRS, SWKN, SWRM, PTWP) i uzywane do stream burning, ale nie sa serwowane do frontendu jako warstwy referencyjne.
-- Wczesniej dzialalo — GeoJSON z 3529 jeziorami i 7197 ciekami byl generowany (sesja 13).
-- Prawdopodobnie dane zostaly utracone po resecie bazy (`docker compose down -v`) w sesji 32 i nie zostaly ponownie wyeksportowane/zaladowane.
-- **Lokalizacja:** `frontend/js/layers.js` (ladowanie warstw BDOT), `scripts/bootstrap.py` (brak kroku eksportu GeoJSON BDOT), `frontend/js/app.js` (inicjalizacja warstw)
+**E8. ✅ Zbiorniki i cieki BDOT10k nie zaladowane do UI** → eksport BDOT10k GeoJSON dla frontendu — sesja 38
 
 **E10. ✅ Brak wykresu hipsometrii w sekcji "Rzezba terenu"** → przyczyna ta sama co E5 (Chart.js nie załadowany przez zły hash CDN + resize w collapsed accordion). Naprawione hashami CDN + resizeChart() — sesja 35
 
 **E11. ✅ Zmiana kolorystyki zaglebien na dyskretne progi** → YlOrRd paleta (5 progów wg volume_m3) w depressions.js — sesja 35
 
 **E9. ✅ Usunac wpis "Zlewnia" z panelu Warstwy** → ~101 linii usunięte z layers.js + 3 wywołania z app.js — sesja 35
+
+**E12. Brak legendy dla warstwy HSG** (priorytet: sredni)
+- Po wlaczeniu warstwy HSG na mapie brak legendy objasniajacej kolory grup glebowych (A/B/C/D).
+- Legenda powinna byc analogiczna do istniejacych legend ciekow i zlewni — auto show/hide przy wlaczeniu/wylaczeniu warstwy.
+- **Lokalizacja:** `frontend/js/layers.js` (legenda warstw), `frontend/js/map.js` (rendering HSG)
+
+**E13. Nieciaglosc danych HSG na terenach zurbanizowanych** (priorytet: sredni)
+- Dane HSG (SoilGrids) wykazuja nieciaglosci (brak danych / artefakty) na terenach zurbanizowanych — zabudowa i uszczelnione powierzchnie nie maja przypisanej grupy glebowej.
+- Powoduje luki w wizualizacji warstwy HSG i potencjalne niedokladnosci w obliczeniach CN dla zlewni z duza powierzchnia zurbanizowana.
+- Mozliwe rozwiazanie: interpolacja brakujacych wartosci z sasiednich komorek lub przypisanie domyslnej grupy (np. D — najslabsza infiltracja) dla terenow zabudowanych na podstawie pokrycia terenu (BDOT10k).
+- **Lokalizacja:** `core/cn_calculator.py` (pobieranie HSG), `core/land_cover.py` (pokrycie terenu), `scripts/bootstrap.py` (import danych glebowych)
 
 #### F. Logika zlewni czastkowych
 
@@ -638,6 +640,80 @@
 - Obie warstwy z checkboxem, suwakiem przezroczystości i legendą kolorów w panelu warstw.
 - **Lokalizacja:** `frontend/js/layers.js` (wpisy warstw + legenda), `frontend/js/map.js` (rendering), `api/endpoints/tiles.py` (opcjonalnie: MVT endpoint dla land_cover), `core/land_cover.py` (dane)
 
+#### CR. Wyniki code review (2026-02-22)
+
+**Status: ⏳ Nowe — 16 pozycji (3 krytyczne, 8 ważne, 5 sugestii)**
+
+##### Krytyczne (must fix)
+
+**CR1. `channel_slope_m_per_m` obliczany z całkowitej długości sieci rzecznej zamiast głównego cieku** (priorytet: krytyczny)
+- `aggregate_stats()` w `catchment_graph.py:507` oblicza `np.nansum(stream_lengths)` — sumę WSZYSTKICH segmentów, nie długość głównego cieku.
+- `watershed_service.py:472-484` i `select_stream.py:216-227` używają tej sumy jako `channel_length_km` do obliczenia spadku.
+- Zaniżony spadek → zawyżony czas koncentracji → zaniżone wezbranie powodziowe (krytyczne dla bezpieczeństwa).
+- **Rozwiązanie:** wyznaczanie głównego cieku (tracing downstream po max Strahler order) i przechowywanie jego długości osobno.
+- **Lokalizacja:** `core/catchment_graph.py` (aggregate_stats), `core/watershed_service.py` (build_morph_dict_from_graph), `api/endpoints/select_stream.py`
+
+**CR2. O(n^2) lookup segmentów w `compute_downstream_links()`** (priorytet: krytyczny)
+- `stream_extraction.py:592`: `segments.index(seg) + 1` wewnątrz pętli → O(n^2) dla ~40k segmentów.
+- **Rozwiązanie:** użyć `enumerate(segments, start=1)`.
+- **Lokalizacja:** `core/stream_extraction.py`
+
+**CR3. Server-side cursor niezamykany na wyjątek w `CatchmentGraph.load()`** (priorytet: krytyczny)
+- `catchment_graph.py:108-162`: named cursor `catchment_graph_load` nie jest zamykany jeśli w pętli wystąpi wyjątek. Cursor trzyma transakcję PostgreSQL.
+- **Rozwiązanie:** `try/finally` z `cursor.close()`.
+- **Lokalizacja:** `core/catchment_graph.py`
+
+##### Ważne (should fix)
+
+**CR4. `traverse_to_confluence` BFS z `list.pop(0)` — O(n^2)** (priorytet: średni)
+- `catchment_graph.py:410-411`: `list.pop(0)` jest O(n), powinno być `collections.deque` + `popleft()`.
+- **Lokalizacja:** `core/catchment_graph.py`
+
+**CR5. `get_land_cover_stats()` zawsze zwraca pusty dict (TODO)** (priorytet: średni)
+- `cn_calculator.py:196-200`: pobiera pokrycie terenu ale nie analizuje go — zawsze fallback do domyślnych wartości (hardcoded średnia centralna Polska).
+- Cała ścieżka Kartograf CN de facto produkuje `CN = weighted_cn(default_land_cover, "B")`.
+- **Lokalizacja:** `core/cn_calculator.py`
+
+**CR6. Bezpośredni dostęp do prywatnego `cg._segment_idx` w 3 endpointach** (priorytet: średni)
+- `watershed.py:128`, `hydrograph.py:139`, `select_stream.py:114` — wszystkie robią `int(cg._segment_idx[clicked_idx])`.
+- **Rozwiązanie:** dodać publiczną metodę `CatchmentGraph.get_segment_idx(internal_idx: int) -> int`.
+- **Lokalizacja:** `core/catchment_graph.py`, `api/endpoints/watershed.py`, `api/endpoints/hydrograph.py`, `api/endpoints/select_stream.py`
+
+**CR7. Singleton `CatchmentGraph` bez thread safety** (priorytet: średni)
+- `catchment_graph.py:625-633`: brak `threading.Lock` — race condition w thread pool executor (sync endpointy FastAPI).
+- **Rozwiązanie:** double-check locking z `threading.Lock`.
+- **Lokalizacja:** `core/catchment_graph.py`
+
+**CR8. Terrain profile — wyciek ścieżki DEM + porównanie nodata z `==`** (priorytet: średni)
+- `profile.py:84-88`: pełna ścieżka serwera (`/data/dem/dem.vrt`) trafia do klienta (information disclosure).
+- `profile.py:95-96`: porównanie float z `==` jest zawodne; `0.0` jako replacement maskuje prawdziwą elewację poziomu morza.
+- **Lokalizacja:** `api/endpoints/profile.py`
+
+**CR9. Cascade threshold escalation — boundary vs stats mogą opisywać różne zlewnie** (priorytet: średni)
+- `select_stream.py:137-161`: przy eskalacji progu statystyki pochodzą z fine-threshold BFS, ale boundary z coarse-threshold merge — mogą opisywać różne ekstenty.
+- **Lokalizacja:** `api/endpoints/select_stream.py`
+
+**CR10. `traceback.print_exc()` zamiast `logger.error(..., exc_info=True)`** (priorytet: niski)
+- `cn_calculator.py:333`, `analyze_watershed.py:416,1312` — bypass logowania strukturalnego.
+- **Lokalizacja:** `core/cn_calculator.py`, `scripts/analyze_watershed.py`
+
+**CR11. CLAUDE.md — nieaktualna struktura modułów** (priorytet: niski)
+- `core/flow_graph.py` wymieniony jako DEPRECATED ale usunięty (commit `a65c25d`).
+- Brakuje: `core/soil_hsg.py`, `scripts/bootstrap.py`.
+- **Lokalizacja:** `CLAUDE.md`
+
+##### Sugestie (nice to have)
+
+**CR12. Duplikacja logiki morfometrycznej** — `select_stream.py:193-314` reimplementuje `build_morph_dict_from_graph()` z `watershed_service.py`.
+
+**CR13. `_MAX_MERGE = 500` zdefiniowane inline** w `watershed.py:152` i `select_stream.py:133` — powinno być w `core/constants.py`.
+
+**CR14. Inline import `soil_hsg` w endpoint** — `watershed.py:263-264` i `select_stream.py:274-275` importują wewnątrz try-except zamiast na górze pliku.
+
+**CR15. Integer division `n_bins` w `aggregate_hypsometric`** — `catchment_graph.py:578` używa `//` co może obciąć ostatni bin. Powinno być `math.ceil()`.
+
+**CR16. Caching POST response** — `select_stream.py:343` ustawia `Cache-Control: public, max-age=3600` na POST — niestandardowe i ignorowane przez wiele proxy.
+
 #### H. Do rozważenia (koncepcyjne)
 
 **H1. Zlewnie bezposrednie jezior przeplywowych i bezodplywowych** (priorytet: do ustalenia)
@@ -669,12 +745,28 @@
 - Zaleta: eliminuje problem mostow/nasypow bez tworzenia sztucznych zaglebie w normalnych odcinkach. Wypalanie stalą wartoscia pozostaje jako fallback tam, gdzie brak geometrii ciekow.
 - **Kontekst:** `core/hydrology.py` (burn_streams_into_dem), `scripts/process_dem.py`
 
+**H5. Symplifikacja granic zlewni** (priorytet: sredni)
+- Granice zlewni generowane z polygonizacji rastra maja ksztalt schodkowy (pikselowy) — kazda komorka rastra tworzy prostokatny fragment granicy. Przy duzym zoomie wyglada to nieatrakcyjnie i nierealistycznie.
+- Mozliwe podejscia: (1) `ST_SimplifyPreserveTopology` post-hoc na wynikowej granicy z tolerancja np. 1-2× cellsize, (2) wygladzanie Chaikin/Bezier na granicy zlewni, (3) symplifikacja juz na etapie polygonizacji zlewni czastkowych (pipeline).
+- Trzeba zachowac topologiczna spojnosc — symplifikacja nie moze tworzyc luk miedzy sasiednimi zlewniami ani nakładek. `ST_SimplifyPreserveTopology` jest bezpieczniejsza niz `ST_Simplify`.
+- **Kontekst:** `core/stream_extraction.py` (polygonize_subcatchments), `core/watershed_service.py` (merge_catchment_boundaries), `core/watershed.py` (build_boundary)
+
+**H6. Format danych HSG: wektor o uproszczonej geometrii vs raster** (priorytet: do ustalenia)
+- Obecnie dane HSG (SoilGrids) sa pobierane jako raster (resolucja 250m) przez Kartograf i uzywane do obliczen CN. Do frontendu trafiaja jako warstwa wektorowa (GeoJSON z polygonami per-grupa glebowa).
+- Pytanie: czy dane HSG powinny byc przekazywane do frontendu jako (a) wektor o uproszczonej geometrii (mniejszy rozmiar, szybsze renderowanie, ale wymaga polygonizacji + symplifikacji rastra) czy (b) raster/overlay PNG (prostsza generacja, ale brak interaktywnosci i tooltipow).
+- Wektor: zalety — tooltips, klikanie, legenda dynamiczna, mozliwosc filtrowania; wady — duzy GeoJSON przy rozdzielczosci 250m, koniecznosc symplifikacji.
+- Raster: zalety — prosty pipeline (analogicznie do DEM overlay), maly rozmiar, szybkie renderowanie; wady — brak interaktywnosci, statyczna legenda.
+- Podejscie hybrydowe: raster jako warstwa podkladowa + wektor z uproszczona geometria dla tooltipow i statystyk.
+- **Kontekst:** `core/cn_calculator.py` (dane HSG), `scripts/bootstrap.py` (pipeline), `frontend/js/layers.js` (renderowanie warstw)
+
 ### Nastepne kroki
-1. Weryfikacja wizualna w przegladarce (hard refresh Ctrl+Shift+R) — potwierdzenie ciekow MVT na wszystkich zoomach + ostry profil terenu
-2. Naprawa pozostalych bugow: E1 (dziury na granicach), E4 (outlet poza granica), E7 (HSG), E8 (BDOT warstwy), F2 (snap-to-stream sasiednia zlewnia)
-3. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
-4. Usuniecie hardcoded secrets z config.py i migrations/env.py
-5. CP5: MVP — pelna integracja, deploy
+1. **Naprawa krytycznych bledow z code review:** CR1 (channel_slope z calkowitej sieci), CR2 (O(n^2) segments.index), CR3 (cursor leak)
+2. Naprawa waznych bledow z code review: CR4-CR9 (BFS deque, land cover TODO, enkapsulacja _segment_idx, thread safety, profile info disclosure)
+3. Naprawa pozostalych bugow UX: E1 (dziury na granicach), E4 (outlet poza granica), E12 (legenda HSG), E13 (nieciaglosc HSG), F2 (snap-to-stream sasiednia zlewnia)
+4. Aktualizacja CLAUDE.md (CR11): usunac flow_graph.py, dodac soil_hsg.py i bootstrap.py
+5. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
+6. Usuniecie hardcoded secrets z config.py i migrations/env.py
+7. CP5: MVP — pelna integracja, deploy
 
 ## Backlog
 
@@ -690,6 +782,7 @@
 - [ ] CP5: MVP — pelna integracja, deploy
 - [ ] Plik konfiguracyjny YAML — niestandardowe parametry i sciezki (np. wlasne wektory ciekow zamiast BDOT10k). Priorytet: sredni.
 - [ ] Ikony trybow w toolbarze — lapka (przegladanie), kursor klikajacy (wybierz zlewnię), kafelki/siatka (wygeneruj zlewnię), profil terenu (profil). Priorytet: niski.
+- [ ] Podzial NMT na kafle (tile pyramid) — szybsze wczytywanie nakladki DEM na mapie (obecnie pojedynczy PNG, przy duzych obszarach ciezki). Priorytet: sredni.
 - [x] Naprawa bledow frontend/backend (zgloszenie 2026-02-14, 10 pozycji — A1-A5, B1-B4, C1)
 - [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
@@ -699,3 +792,6 @@
 - [x] CI/CD pipeline (GitHub Actions)
 - [x] Audyt QA wydajnosci: LATERAL JOIN, cache headers, TTL cache, partial index, PG tuning, client cache, defer, structlog
 - [x] Eliminacja FlowGraph z runtime API (ADR-022): RAM -96%, startup -97%, 548 testow
+- [ ] Code review CR1-CR3 (krytyczne): channel_slope, O(n^2) segments.index, cursor leak
+- [ ] Code review CR4-CR11 (wazne): BFS deque, land cover TODO, enkapsulacja, thread safety, profile, cascade stats, traceback, CLAUDE.md
+- [ ] Code review CR12-CR16 (sugestie): duplikacja morph, _MAX_MERGE const, inline import, n_bins ceil, POST cache

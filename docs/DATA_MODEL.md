@@ -360,6 +360,40 @@ CREATE INDEX idx_depressions_area ON depressions(area_m2);          -- migracja 
 CREATE INDEX idx_depressions_max_depth ON depressions(max_depth_m); -- migracja 008
 ```
 
+### 3.7 Tabela: `soil_hsg`
+
+**Opis:** Grupy glebowe HSG (Hydrologic Soil Group) — poligony z klasyfikacją A/B/C/D (migracja 016).
+
+**Schemat SQL:**
+```sql
+CREATE TABLE soil_hsg (
+    id SERIAL PRIMARY KEY,
+    geom GEOMETRY(MULTIPOLYGON, 2180) NOT NULL,
+    hsg_group VARCHAR(1) NOT NULL,           -- 'A', 'B', 'C', 'D'
+    area_m2 FLOAT NOT NULL,
+
+    CONSTRAINT valid_hsg_group CHECK (hsg_group IN ('A', 'B', 'C', 'D'))
+);
+
+-- Indeksy
+CREATE INDEX idx_soil_hsg_geom ON soil_hsg USING GIST(geom);
+CREATE INDEX idx_soil_hsg_group ON soil_hsg(hsg_group);
+
+-- Komentarze
+COMMENT ON TABLE soil_hsg IS 'Grupy glebowe HSG z SoilGrids/Kartograf';
+COMMENT ON COLUMN soil_hsg.hsg_group IS 'Grupa hydrologiczna gleby: A (piaszczyste), B (lessowe), C (gliniaste), D (ilaste)';
+COMMENT ON COLUMN soil_hsg.area_m2 IS 'Powierzchnia poligonu [m²]';
+```
+
+**Kolumny - szczegóły:**
+
+| Kolumna | Typ | Nullable | Default | Opis | Dozwolone wartości |
+|---------|-----|----------|---------|------|-------------------|
+| `id` | SERIAL | NO | auto | Unikalny identyfikator | 1..inf |
+| `geom` | GEOMETRY | NO | - | Poligon grupy glebowej | EPSG:2180 |
+| `hsg_group` | VARCHAR(1) | NO | - | Grupa HSG | 'A', 'B', 'C', 'D' |
+| `area_m2` | FLOAT | NO | - | Powierzchnia [m2] | > 0 |
+
 ---
 
 ## 4. Relacje i Constraints
@@ -400,6 +434,7 @@ CREATE INDEX idx_landcover_geom ON land_cover USING GIST(geom);
 CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
 CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST(geom);
 CREATE INDEX idx_depressions_geom ON depressions USING GIST(geom);
+CREATE INDEX idx_soil_hsg_geom ON soil_hsg USING GIST(geom);
 ```
 
 **Dlaczego GIST:**
@@ -441,6 +476,7 @@ VACUUM ANALYZE land_cover;
 VACUUM ANALYZE stream_network;
 VACUUM ANALYZE stream_catchments;
 VACUUM ANALYZE depressions;
+VACUUM ANALYZE soil_hsg;
 ```
 
 ---
@@ -687,7 +723,8 @@ migrations/
     ├── 012_extend_stream_catchments.py
     ├── 013_add_stream_partial_index.py
     ├── 014_add_segment_idx_to_stream_network.py
-    └── 015_drop_flow_network.py
+    ├── 015_drop_flow_network.py
+    └── 016_create_soil_hsg.py
 ```
 
 **Przykład migracji:**
@@ -735,7 +772,8 @@ def downgrade():
 | `stream_network` | ~20,000 | ~200 bytes | 4 MB | ~10 MB |
 | `stream_catchments` | ~20,000 | ~1 KB | 20 MB | ~50 MB |
 | `depressions` | ~600,000 | ~200 bytes | 120 MB | ~250 MB |
-| **TOTAL** | | | **~150 MB** | **~330 MB** |
+| `soil_hsg` | ~5,000 | ~500 bytes | 2.5 MB | ~5 MB |
+| **TOTAL** | | | **~155 MB** | **~335 MB** |
 
 > **Uwaga:** Eliminacja `flow_network` (ADR-028) zmniejszyla rozmiar bazy o ~80% (z ~2.5 GB do ~330 MB dla 8 arkuszy NMT 1m).
 
@@ -755,7 +793,7 @@ pg_restore -U hydro_user -d hydro_db -c hydro_db_backup.dump
 
 **Selective backup (tylko dane preprocessing):**
 ```bash
-pg_dump -U hydro_user -d hydro_db -t precipitation_data -t land_cover -t stream_network -t stream_catchments -t depressions -F c -f preprocessing_data.dump
+pg_dump -U hydro_user -d hydro_db -t precipitation_data -t land_cover -t stream_network -t stream_catchments -t depressions -t soil_hsg -F c -f preprocessing_data.dump
 ```
 
 ---
@@ -817,7 +855,7 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ### 12.1 Kluczowe Punkty
 
-- **5 tabel:** precipitation_data, land_cover, stream_network, stream_catchments, depressions (flow_network usunieta — ADR-028)
+- **6 tabel:** precipitation_data, land_cover, stream_network, stream_catchments, depressions, soil_hsg (flow_network usunieta — ADR-028)
 - **Układ współrzędnych:** EPSG:2180 (PL-1992)
 - **Indeksy przestrzenne (GIST)** dla wszystkich geometrii
 - **Walidacja** przez CHECK constraints i triggers

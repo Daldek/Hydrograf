@@ -433,7 +433,7 @@ Launch:                                                            🚀
 #### **Faza 0: Preprocessing (2 tygodnie)**
 **Kamienie milowe:**
 - ☑ Pobrane dane z IMGW
-- ☑ Wygenerowana tabela `flow_network`
+- ☑ Wygenerowana tabela `flow_network` (WYELIMINOWANA w ADR-028, migracja 015 — zastapiona przez stream_network + CatchmentGraph in-memory)
 - ☑ Zaimportowane pokrycie terenu i cieki
 - ☑ Walidacja danych: pokrycie 100% obszaru gminy
 
@@ -441,6 +441,13 @@ Launch:                                                            🚀
 **Kamienie milowe:**
 - ☑ Setup FastAPI + PostgreSQL
 - ☑ Endpoint: POST `/api/delineate-watershed`
+- ☑ Endpoint: POST `/api/select-stream` — selekcja segmentu cieku + upstream traversal
+- ☑ Endpoint: POST `/api/terrain-profile` — profil terenu wzdluz polilinii
+- ☑ Endpoint: GET `/api/depressions` — zaglbienia terenu z filtrami
+- ☑ Endpoint: GET `/api/tiles/streams/{z}/{x}/{y}.pbf` — kafelki MVT ciekow
+- ☑ Endpoint: GET `/api/tiles/catchments/{z}/{x}/{y}.pbf` — kafelki MVT zlewni czastkowych
+- ☑ Endpoint: GET `/api/tiles/thresholds` — dostepne progi FA
+- ☑ Endpoint: GET `/health` — health check
 - ☑ Algorytm wyznaczania zlewni z grafu
 - ☑ Obliczanie parametrów fizjograficznych
 - ☑ Testy jednostkowe: > 80% pokrycia

@@ -107,6 +107,8 @@ config.set_main_option(
 
 ## Wydajnosc bazy danych — bulk INSERT + indeksy (P1.x)
 
+**~~ZREALIZOWANE (ADR-028, migracja 015, sesja 33):~~ Tabela flow_network wyeliminowana.**
+
 **Problem:** Bulk INSERT `flow_network` (39.4M rekordow) + odbudowa indeksow to najciezszy krok pipeline'u — ~17 min z 29 min calkowitego czasu (58%). Pomiary z pipeline run 2026-02-16 (stream burning z BDOT10k):
 
 | Operacja | Czas | Rekordy |
@@ -146,18 +148,11 @@ Porownanie z innymi krokami:
 - Przechowywanie tylko komorek streamowych (`is_stream=TRUE`, ~3.2M z 39.4M = 8%) — reszta odtwarzalna z rastra
 - Partycjonowanie po `is_stream` lub `strahler_order`
 
-### P1.3 — Alternatywa: rezygnacja z flow_network
+### P1.3 — ~~Alternatywa: rezygnacja z flow_network~~ ZREALIZOWANE (ADR-028, migracja 015, sesja 33)
 
 **Kontekst:** Po wdrozeniu CatchmentGraph (ADR-021) i eliminacji FlowGraph (ADR-022) tabela `flow_network` nie jest juz uzywana w runtime API. Jedyne jej zastosowanie to preprocessing (budowa stream_network i stream_catchments).
 
-**Pytanie architektoniczne:** Czy `flow_network` jest nadal potrzebna, skoro:
-- Runtime API uzywa tylko `stream_network` + `stream_catchments` + `CatchmentGraph`
-- Raster DEM jest dostepny na dysku (profil terenu, morphometria)
-- 39.4M rekordow → ~2 GB w PostgreSQL (indeksy + WAL)
-
-**Mozliwe podejscie:** generowanie `stream_network` i `stream_catchments` bezposrednio z rastra (bez posrednictwa flow_network) i pominięcie INSERT 39.4M rekordów. Wymaga refaktoru `process_dem.py`.
-
-**Priorytet:** HIGH — eliminacja tego kroku skrocilaby pipeline o ~17 min (58%).
+**Rozwiazanie:** Tabela `flow_network` zostala wyeliminowana. Migracja Alembic 015 (DROP TABLE flow_network). Pipeline generuje `stream_network` i `stream_catchments` bezposrednio z rastra. Pipeline przyspieszony o ~58%.
 
 ---
 

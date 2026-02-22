@@ -111,6 +111,9 @@ Ten dokument precyzyjnie definiuje:
 - Obliczenie ważonego Curve Number (CN)
 - Mapowanie CN dla każdej kategorii (zgodnie z USDA NRCS)
 
+**Profil terenu:**
+- Profile podłużne cieku (POST /api/terrain-profile) — zaimplementowane w sesji 11
+
 **Prezentacja wyników:**
 - Tabela z parametrami w panelu bocznym
 - Tooltips wyjaśniające terminy techniczne
@@ -203,8 +206,9 @@ Ten dokument precyzyjnie definiuje:
 - ❌ Animacja przepływu wody
 - ❌ Heatmapy intensywności opadu
 - ❌ Mapy głębokości zalewu
-- ✅ Profile podłużne cieku (zaimplementowane: POST /api/terrain-profile)
 - ❌ Przekroje poprzeczne
+
+> **Uwaga:** Profile podłużne cieku (`POST /api/terrain-profile`) — pierwotnie w tej sekcji. Zaimplementowane w sesji 11 — przeniesione do zakresu MVP (sekcja 2.1.2).
 
 #### 2.2.4 Integracje i Dane Real-Time
 
@@ -828,8 +832,10 @@ FAZA 3: Generowanie hydrogramów
 ---
 
 **Wersja dokumentu:** 1.0  
-**Data ostatniej aktualizacji:** 2026-02-13
-**Status:** Zatwierdzony — projekt w aktywnym rozwoju (v0.4.0)  
+**Data ostatniej aktualizacji:** 2026-02-22
+**Wersja biezaca:** v0.4.0 (CP4)
+**Planowana wersja MVP:** v1.0.0 (CP5)
+**Status:** Zatwierdzony — projekt w aktywnym rozwoju
 
 ---
 
