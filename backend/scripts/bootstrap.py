@@ -547,6 +547,28 @@ def step_soil_hsg(sheets: list[str], output_dir: Path) -> str:
 
     with rasterio.open(hsg_tif) as src:
         data = src.read(1)
+
+        # Nearest-neighbor fill: replace invalid pixels (not in 1-4)
+        import numpy as np
+
+        valid_mask = np.isin(data, [1, 2, 3, 4])
+        if not valid_mask.all():
+            from scipy.ndimage import distance_transform_edt
+
+            _, nearest_idx = distance_transform_edt(
+                ~valid_mask,
+                return_indices=True,
+            )
+            data = np.where(
+                valid_mask,
+                data,
+                data[nearest_idx[0], nearest_idx[1]],
+            )
+            logger.info(
+                f"HSG: filled {(~valid_mask).sum()}/{data.size} missing pixels"
+                " with nearest-neighbor"
+            )
+
         src_transform = src.transform
         src_crs = src.crs
 

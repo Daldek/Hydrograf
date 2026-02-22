@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Minimum area (m²) for interior holes to be preserved in watershed boundary.
 # Holes smaller than this threshold (~32×32m) are removed as artifacts.
-MIN_HOLE_AREA_M2 = 1000
+MIN_HOLE_AREA_M2 = 100
 
 
 def find_nearest_stream_segment(
@@ -209,9 +209,11 @@ def merge_catchment_boundaries(
 
     query = text("""
         SELECT ST_AsBinary(
-            ST_Multi(ST_MakeValid(ST_Buffer(
-                ST_UnaryUnion(ST_Collect(ST_SnapToGrid(geom, 0.01))),
-            0)))
+            ST_Multi(ST_MakeValid(
+                ST_Buffer(ST_Buffer(
+                    ST_UnaryUnion(ST_Collect(geom)),
+                0.1), -0.1)
+            ))
         ) as geom
         FROM stream_catchments
         WHERE threshold_m2 = :threshold
@@ -566,3 +568,99 @@ def _compute_shape_indices(
         "form_factor": round(area_km2 / (length_km**2), 4),
         "mean_width_km": round(area_km2 / length_km, 4),
     }
+
+
+def ensure_outlet_within_boundary(
+    outlet_x: float,
+    outlet_y: float,
+    boundary_geom,
+) -> tuple[float, float]:
+    """Snap outlet to boundary if it falls outside.
+
+    Returns (outlet_x, outlet_y) unchanged if already inside or within 1m of boundary.
+    Otherwise snaps to nearest point on boundary.
+
+    Parameters
+    ----------
+    outlet_x, outlet_y : float
+        Outlet coordinates in EPSG:2180
+    boundary_geom : Polygon | MultiPolygon
+        Boundary geometry (Shapely object)
+
+    Returns
+    -------
+    tuple[float, float]
+        (outlet_x, outlet_y) — original or snapped
+    """
+    from shapely.geometry import Point
+
+    outlet_point = Point(outlet_x, outlet_y)
+
+    # Already inside boundary
+    if boundary_geom.contains(outlet_point):
+        return outlet_x, outlet_y
+
+    # Within 1m tolerance — treat as on boundary
+    if boundary_geom.distance(outlet_point) <= 1.0:
+        return outlet_x, outlet_y
+
+    # Snap to nearest point on boundary
+    nearest = (
+        boundary_geom.exterior
+        if hasattr(boundary_geom, "exterior")
+        else boundary_geom.boundary
+    )
+    projected = nearest.interpolate(nearest.project(outlet_point))
+    return projected.x, projected.y
+
+
+def find_nearest_stream_segment_hybrid(
+    x: float,
+    y: float,
+    threshold_m2: int,
+    db: Session,
+) -> dict | None:
+    """Find nearest stream segment with catchment-aware priority.
+
+    Flow:
+    1. ST_Contains on stream_catchments -> find catchment under cursor
+    2. If found -> get stream info for that catchment's segment_idx
+    3. Fallback -> find_nearest_stream_segment (global snap)
+
+    Parameters
+    ----------
+    x, y : float
+        Point coordinates in EPSG:2180 (PL-1992)
+    threshold_m2 : int
+        Flow accumulation threshold
+    db : Session
+        Database session
+
+    Returns
+    -------
+    dict | None
+        Segment info dict (same format as find_nearest_stream_segment)
+        or None if no segment found.
+    """
+    # Step 1: Find catchment under cursor
+    result = db.execute(
+        text("""
+            SELECT segment_idx
+            FROM stream_catchments
+            WHERE threshold_m2 = :threshold
+              AND ST_Contains(geom, ST_SetSRID(ST_MakePoint(:x, :y), 2180))
+            LIMIT 1
+        """),
+        {"x": x, "y": y, "threshold": threshold_m2},
+    ).fetchone()
+
+    if result:
+        # Step 2: Get stream info for this catchment's segment
+        segment_info = get_stream_info_by_segment_idx(
+            result.segment_idx, threshold_m2, db
+        )
+        if segment_info:
+            return segment_info
+
+    # Step 3: Fallback to global snap
+    return find_nearest_stream_segment(x, y, threshold_m2, db)
