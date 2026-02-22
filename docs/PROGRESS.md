@@ -44,9 +44,16 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-22 (sesja 40)
+**Data:** 2026-02-22 (sesja 41)
 
 ### Co zrobiono
+
+- **CR3 — Cursor leak w `CatchmentGraph.load()` (catchment_graph.py):**
+  - Named cursor `catchment_graph_load` nie byl zamykany gdy wyjatek wystapil w petli fetchmany — trzymal otwarta transakcje PostgreSQL
+  - Opakowanie w `try/finally` z `cursor.close()` w `finally`
+  - 550 testow passed, ruff clean
+
+### Poprzednia sesja (2026-02-22, sesja 40)
 
 - **CR2 — O(n²) → O(n) w `compute_downstream_links()` (stream_extraction.py):**
   - Zamiana `segments.index(seg) + 1` na `enumerate(segments, start=1)` — eliminacja ~1.6 mld porównan dla ~40k segmentów
@@ -680,24 +687,18 @@
 
 #### CR. Wyniki code review (2026-02-22)
 
-**Status: ⏳ W trakcie — 16 pozycji (1/3 krytyczne naprawione, 8 ważne, 5 sugestii)**
+**Status: ⏳ W trakcie — 16 pozycji (3/3 krytyczne naprawione ✅, 8 ważne, 5 sugestii)**
 
 ##### Krytyczne (must fix)
 
-**CR1. `channel_slope_m_per_m` obliczany z całkowitej długości sieci rzecznej zamiast głównego cieku** (priorytet: krytyczny)
-- `aggregate_stats()` w `catchment_graph.py:507` oblicza `np.nansum(stream_lengths)` — sumę WSZYSTKICH segmentów, nie długość głównego cieku.
-- `watershed_service.py:472-484` i `select_stream.py:216-227` używają tej sumy jako `channel_length_km` do obliczenia spadku.
-- Zaniżony spadek → zawyżony czas koncentracji → zaniżone wezbranie powodziowe (krytyczne dla bezpieczeństwa).
-- **Rozwiązanie:** wyznaczanie głównego cieku (tracing downstream po max Strahler order) i przechowywanie jego długości osobno.
-- **Lokalizacja:** `core/catchment_graph.py` (aggregate_stats), `core/watershed_service.py` (build_morph_dict_from_graph), `api/endpoints/select_stream.py`
+**CR1. ✅ `channel_slope_m_per_m` obliczany z całkowitej długości sieci rzecznej zamiast głównego cieku** (NAPRAWIONE)
+- Nowa metoda `CatchmentGraph.trace_main_channel()` — tracing upstream wg Strahlera. ADR-029, 6 nowych testów.
 
 **CR2. ✅ O(n^2) lookup segmentów w `compute_downstream_links()`** (NAPRAWIONE)
 - `stream_extraction.py`: `segments.index(seg) + 1` → `enumerate(segments, start=1)`. 550 testów passed.
 
-**CR3. Server-side cursor niezamykany na wyjątek w `CatchmentGraph.load()`** (priorytet: krytyczny)
-- `catchment_graph.py:108-162`: named cursor `catchment_graph_load` nie jest zamykany jeśli w pętli wystąpi wyjątek. Cursor trzyma transakcję PostgreSQL.
-- **Rozwiązanie:** `try/finally` z `cursor.close()`.
-- **Lokalizacja:** `core/catchment_graph.py`
+**CR3. ✅ Server-side cursor niezamykany na wyjątek w `CatchmentGraph.load()`** (NAPRAWIONE)
+- Opakowanie w `try/finally` z `cursor.close()` w `finally`. 550 testów passed.
 
 ##### Ważne (should fix)
 
@@ -796,7 +797,7 @@
 - **Kontekst:** `core/cn_calculator.py` (dane HSG), `scripts/bootstrap.py` (pipeline), `frontend/js/layers.js` (renderowanie warstw)
 
 ### Nastepne kroki
-1. **Naprawa krytycznych bledow z code review:** ~~CR1 (channel_slope)~~✅, ~~CR2 (O(n^2) segments.index)~~✅, CR3 (cursor leak)
+1. ~~**Naprawa krytycznych bledow z code review:** CR1, CR2, CR3~~ ✅ (wszystkie 3 naprawione)
 2. Naprawa waznych bledow z code review: CR4-CR9 (BFS deque, land cover TODO, enkapsulacja _segment_idx, thread safety, profile info disclosure)
 3. Naprawa pozostalych bugow UX: E1 (dziury na granicach), E4 (outlet poza granica), E12 (legenda HSG), E13 (nieciaglosc HSG), F2 (snap-to-stream sasiednia zlewnia)
 4. ~~Aktualizacja CLAUDE.md (CR11): usunac flow_graph.py, dodac soil_hsg.py i bootstrap.py~~ ✅ (sesja 39)
@@ -828,6 +829,6 @@
 - [x] CI/CD pipeline (GitHub Actions)
 - [x] Audyt QA wydajnosci: LATERAL JOIN, cache headers, TTL cache, partial index, PG tuning, client cache, defer, structlog
 - [x] Eliminacja FlowGraph z runtime API (ADR-022): RAM -96%, startup -97%, 548 testow
-- [ ] Code review CR1-CR3 (krytyczne): channel_slope, O(n^2) segments.index, cursor leak
+- [x] Code review CR1-CR3 (krytyczne): channel_slope, O(n^2) segments.index, cursor leak
 - [ ] Code review CR4-CR11 (wazne): BFS deque, land cover TODO, enkapsulacja, thread safety, profile, cascade stats, traceback, CLAUDE.md
 - [ ] Code review CR12-CR16 (sugestie): duplikacja morph, _MAX_MERGE const, inline import, n_bins ceil, POST cache
