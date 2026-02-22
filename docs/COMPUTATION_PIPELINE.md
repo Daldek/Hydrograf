@@ -23,7 +23,7 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 ## Faza 1: Preprocessing NMT
 
 **Skrypt:** `backend/scripts/process_dem.py` (~700 linii — cienki orkiestrator)
-**Moduły core:** `raster_io`, `hydrology`, `morphometry_raster`, `stream_extraction`, `db_bulk`, `zonal_stats`, `flow_graph` (DEPRECATED, ADR-017)
+**Moduły core:** `raster_io`, `hydrology`, `morphometry_raster`, `stream_extraction`, `db_bulk`, `zonal_stats`
 **Uruchamianie:** jednorazowo per arkusz NMT, ~3-8 min
 
 > **Uwaga:** Skrypt `process_dem.py` został zrefaktoryzowany z ~2800 linii monolitu do ~700 linii cienkiego orkiestratora, ktory deleguje logike do 7 modulow w `backend/core/` (ADR-017). Funkcje opisane ponizej naleza teraz do odpowiednich modulow core.
@@ -132,11 +132,9 @@ Wszystkie inserty używają tego samego wzorca **COPY przez tabelę tymczasową*
 3. `COPY temp_table FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '')`
 4. `INSERT INTO target_table (...) SELECT ST_SetSRID(ST_GeomFromText(wkt), 2180), ... FROM temp_table`
 
-#### Sieć przepływów (flow_network)
-**Funkcja:** `insert_records_batch()` (linie 2106-2289)
-- Wzór na ID: `cell_id = row × ncols + col + 1` (1-based)
-- Downstream ID: z macierzy D8 fdir
-- Indeksy przebudowywane po insercie: GIST (geom), B-tree (downstream_id, is_stream, flow_accumulation, strahler_order)
+#### ~~Sieć przepływów (flow_network)~~ — USUNIETA (ADR-028, migracja 015)
+
+> Krok pominięty — tabela `flow_network` została usunięta. Pipeline nie importuje danych per-piksel do bazy.
 
 #### Segmenty cieków (stream_network)
 **Funkcja:** `insert_stream_segments()` (linie 1591-1684)
@@ -436,6 +434,7 @@ END FROM nearest
 ## Faza 5: Krzywa CN
 
 **Moduły:** `backend/core/land_cover.py`, `cn_calculator.py`, `cn_tables.py`
+**Tabele:** `land_cover`, `soil_hsg` (migracja 016 — grupy glebowe HSG)
 
 ### 5.1 Hierarchia wyznaczania CN
 
@@ -618,21 +617,9 @@ Generowane kombinatorycznie:
 
 ## Schemat bazy danych
 
-### flow_network
-```sql
-CREATE TABLE flow_network (
-    id INTEGER PRIMARY KEY,          -- row × ncols + col + 1
-    geom GEOMETRY(Point, 2180),      -- lokalizacja komórki
-    elevation FLOAT,                 -- wysokość [m n.p.m.]
-    flow_accumulation INTEGER,       -- akumulacja [komórki]
-    slope FLOAT,                     -- nachylenie [%]
-    downstream_id INTEGER REFERENCES flow_network(id),
-    cell_area FLOAT,                 -- pole komórki [m²]
-    is_stream BOOLEAN,               -- czy komórka jest ciekiem
-    strahler_order SMALLINT          -- rząd Strahlera (NULL jeśli nie-ciek)
-);
--- Indeksy: GIST(geom), B-tree(downstream_id, is_stream, flow_accumulation, strahler_order)
-```
+### ~~flow_network~~ — USUNIETA (ADR-028, migracja 015)
+
+> Tabela usunięta. Przechowywała dane per-piksel DEM (~39.4M wierszy). Wszystkie endpointy API korzystają z `stream_network`, `stream_catchments` i CatchmentGraph.
 
 ### stream_network
 ```sql
@@ -644,7 +631,8 @@ CREATE TABLE stream_network (
     upstream_area_km2 FLOAT,
     mean_slope_percent FLOAT,
     source TEXT,                      -- 'DEM_DERIVED' lub 'BDOT10k'
-    threshold_m2 INTEGER             -- próg FA użyty do generacji
+    threshold_m2 INTEGER,            -- próg FA użyty do generacji
+    segment_idx INTEGER              -- 1-based per threshold (migracja 014, ADR-026)
 );
 -- Indeksy: GIST(geom), B-tree(threshold_m2, strahler_order), B-tree(upstream_area_km2)
 ```

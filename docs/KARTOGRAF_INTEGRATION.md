@@ -337,13 +337,9 @@ provider = GugikProvider()
 manager = DownloadManager(output_dir="./data/nmt/", provider=provider)
 
 for sheet in sheets:
-    # v0.4.1: download_sheet() zwraca Path | list[Path]
-    result = manager.download_sheet(sheet, skip_existing=True)
-    if isinstance(result, list):
-        for path in result:
-            print(f"Pobrano: {path}")
-    elif result:
-        print(f"Pobrano: {result}")
+    # download_sheet() zwraca Path do pobranego pliku
+    path = manager.download_sheet(sheet, skip_existing=True)
+    print(f"Pobrano: {path}")
 ```
 
 ---

@@ -70,27 +70,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`display_threshold_m2`** z `SelectStreamRequest` — jeden próg dla BFS i display
 - **`find_nearest_stream_segment()`** z flow selekcji — zastąpione przez `cg.find_catchment_at_point()`
 
-## [Unreleased]
+### Sesja 27 — diagnostyka zielonych zlewni (DO WERYFIKACJI)
 
-### Added (diagnostyka zielonych zlewni — DO WERYFIKACJI)
+#### Added (diagnostyka zielonych zlewni — DO WERYFIKACJI)
 - **`display_threshold_m2` w `SelectStreamResponse`:** nowe pole informujace frontend na jakim progu sa `upstream_segment_indices` — umozliwia walidacje zgodnosci z aktualnie wyswietlanymi kafelkami MVT
 - **Walidacja progu w highlight function:** `highlightUpstreamCatchments(indices, forThreshold)` sprawdza czy prog indeksow == prog kafelkow MVT; jesli mismatch → fallback do domyslnych kolorow zamiast blednego podswietlania losowych zlewni
 - **Tooltip diagnostyczny:** najechanie na zlewnie czastkowa pokazuje `segment_idx` oraz status `IN SET / not in set` (gdy aktywny highlight) — umozliwia ustalenie czy zielona zlewnia jest w zbiorze BFS czy to bug renderowania
 - **Mismatch warning w konsoli:** `[select-stream] THRESHOLD MISMATCH!` logowany gdy `display_threshold_m2` z API ≠ `getCatchmentsThreshold()` z MVT
 
-### Fixed (F2 — warunkowy próg selekcji, ADR-025)
+#### Fixed (F2 — warunkowy próg selekcji, ADR-025)
 - **Snap-to-stream przy wyświetlanym progu:** `select_stream.py` wykonuje snap-to-stream i BFS na progu wyswietlanym na mapie (1000, 10000, 100000), a fine-BFS (ADR-024) aktywny tylko przy progu 100 m². Eliminuje snap do niewidocznych doplywow przy grubszych progach.
 
-### Fixed (F1 — precyzyjna selekcja cieku, ADR-024)
+#### Fixed (F1 — precyzyjna selekcja cieku, ADR-024)
 - **Segmentacja konfluencyjna (preprocessing):** segmenty ciekow lamia sie teraz przy kazdej konfluencji (polaczeniu dwoch lub wiecej doplywow), nie tylko przy zmianie rzedu Strahlera. Zmiana 1 warunku w `vectorize_streams()` — `upstream_count[nr, nc] > 1`. Wynik: 78829 → 105492 segmentow na progu 100 m² (+34%).
 - **Fine-threshold BFS (query):** `select_stream.py` wykonuje BFS na progu 100 m² (najdrobniejszym) zamiast progu wyswietlania. Nowa funkcja `find_stream_catchment_at_point()` (snap-to-stream → ST_Contains) eliminuje "hillslope problem". Granica budowana z fine segments, mapowana na display threshold dla MVT via `map_boundary_to_display_segments()`.
 - **Kaskadowe progi merge:** dla duzych zlewni (>500 fine segments) kaskadowe przechodzenie do grubszych progow (1000→10000→100000) — zapobiega timeout ST_UnaryUnion (30s DB limit).
 - **Optymalizacja ST_Union:** zamiana `ST_Union` na `ST_UnaryUnion(ST_Collect(ST_SnapToGrid(geom, 0.01)))` — szybszy cascaded union + eliminacja mikro-luk (1cm w EPSG:2180).
 
-### Added
+#### Added
 - **Tryb "Przegladanie":** nowy domyslny tryb klikniecia — klikanie na mapie nic nie robi, bezpieczne przegladanie bez obciazania serwera. Kursor `grab` zamiast crosshair.
 
-### Changed
+#### Changed
 - **Panel wynikow dokowany z prawej:** `#results-panel` przeniesiony wewnatrz `#map-wrapper` z `position: absolute; right: 0` (bylo: `position: fixed; right: 16px`). Slide in/out z CSS transition (`translateX`). Przycisk toggle (chevron) przy krawedzi panelu — zachowanie identyczne jak panel "Warstwy" (lewa strona). Kontrolki zoom Leaflet przesuwaja sie automatycznie gdy panel jest otwarty (`#map-wrapper.results-visible`).
 - **Panel wynikow na pelna wysokosc:** `#results-panel` rozciaga sie od gory do dolu okna (`top: 0; bottom: 0`), zaokraglone rogi tylko po lewej stronie
 - **Liquid glass:** panele "Warstwy" i "Parametry zlewni" + toggle buttons + legendy uzywaja nowego stylu liquid glass (`--liquid-bg: rgba(255,255,255,0.22)`, blur 20px, specular highlight). Kolory czcionek zmienione na czarne dla lepszej czytelnosci.
@@ -104,7 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Usuniety draggable na panelu wynikow:** panel jest teraz dokowany, nie przesuwalny (profil terenu nadal draggable)
 - **Krzywa hipsometryczna:** sekcja "Rzezba terenu" zmieniona z histogramu slupkowego na krzywa hipsometryczna (scatter + line); os Y: wysokosc [m n.p.m.], os X: % powierzchni powyzej (0–100, co 20)
 
-### Fixed
+#### Fixed
 - **Przelaczanie trybow nie czysci warstw:** zmiana trybu klikniecia nie usowa juz wynikow z mapy (zlewnie czastkowe, granice zlewni, profil); czyszczenie nastepuje dopiero przy nowym kliknieciu
 - **Anulowanie rysowania profilu:** przy przelaczeniu z "Profil terenu" na inny tryb aktywne rysowanie jest anulowane (`cancelDrawing()`)
 

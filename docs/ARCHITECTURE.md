@@ -64,8 +64,8 @@
 │                  (PostgreSQL + PostGIS)                         │
 │                                                                 │
 │  ┌────────────────┐  ┌───────────────────┐  ┌────────────────┐  │
-│  │ flow_network   │  │stream_catchments  │  │  land_cover    │  │
-│  │ (Cells/Graph)  │  │ (Polygons)        │  │  (Polygons)    │  │
+│  │  soil_hsg      │  │stream_catchments  │  │  land_cover    │  │
+│  │ (HSG polygons) │  │ (Polygons)        │  │  (Polygons)    │  │
 │  └────────────────┘  └───────────────────┘  └────────────────┘  │
 │  ┌────────────────┐  ┌───────────────────┐  ┌────────────────┐  │
 │  │ stream_network │  │precipitation_data │  │  depressions   │  │
@@ -121,14 +121,14 @@ backend/
 │
 ├── core/
 │   ├── __init__.py
-│   ├── catchment_graph.py         # In-memory sub-catchment graph (~117k nodes, scipy CSR + BFS)
+│   ├── catchment_graph.py         # In-memory sub-catchment graph (~44k nodes, scipy CSR + BFS)
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
 │   ├── config.py                  # Settings (environment variables)
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
-│   ├── flow_graph.py              # DEPRECATED — in-memory flow graph (CLI scripts only)
+│   ├── flow_graph.py              # USUNIĘTY (ADR-028) — in-memory flow graph
 │   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
 │   ├── morphometry.py             # Morphometric parameters calculation
@@ -400,7 +400,7 @@ def build_morphometric_params(
 **Główne klasy/funkcje:**
 ```python
 class CatchmentGraph:
-    """Singleton graf ~117k wezłów, ~5 MB RAM, ~1.5s startup."""
+    """Singleton graf ~44k wezłów, ~0.5 MB RAM, ~1.5s startup."""
     def load(self, db: Session) -> None: ...
     def traverse_upstream(self, node_idx: int) -> list[int]: ...
     def traverse_to_confluence(self, node_idx: int) -> list[int]: ...
@@ -412,7 +412,7 @@ class CatchmentGraph:
 **Odpowiedzialności:**
 - Współdzielona logika delineacji (snap-to-stream, merge, outlet extraction)
 - Używana przez 3 endpointy: watershed, hydrograph, select_stream
-- Eliminuje bezpośrednie zapytania do flow_network (~19.7M rekordów)
+- Eliminuje kosztowne operacje rastrowe w runtime
 
 **Główne funkcje:**
 ```python
@@ -497,21 +497,7 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                          flow_network                            │
-├─────────────────────────────────────────────────────────────────┤
-│ id (PK)              SERIAL                                     │
-│ geom                 GEOMETRY(Point, 2180)                      │
-│ elevation            FLOAT                                      │
-│ flow_accumulation    INT                                        │
-│ slope                FLOAT                                      │
-│ downstream_id (FK)   INT → flow_network(id)                    │
-│ cell_area            FLOAT                                      │
-│ is_stream            BOOLEAN                                    │
-│ strahler_order       INT                                        │
-│                                                                 │
-│ Indexes:                                                        │
-│   - idx_flow_geom (GIST on geom)                               │
-│   - idx_downstream (on downstream_id)                          │
-│   - idx_is_stream (on is_stream)                               │
+│              -- USUNIETA (ADR-028, migracja 015)                │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -556,6 +542,7 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 │ upstream_area_km2    FLOAT                                      │
 │ mean_slope_percent   FLOAT                                      │
 │ source               VARCHAR(20)  ('DEM_DERIVED', 'MPHP')      │
+│ segment_idx          INTEGER  -- 1-based per threshold (migracja 014, ADR-026) │
 │                                                                 │
 │ Indexes:                                                        │
 │   - idx_stream_geom (GIST on geom)                             │
@@ -618,7 +605,7 @@ LIMIT 1;
 
 #### ~~Znajdź Komórki Upstream (Rekurencyjne CTE)~~ — DEPRECATED (ADR-022)
 > **Uwaga:** Runtime API używa `CatchmentGraph.traverse_upstream()` (BFS in-memory, ~5-50ms).
-> Poniższy CTE zachowany wyłącznie w skryptach CLI (`core/flow_graph.py`).
+> Poniższy CTE zachowany wyłącznie jako dokumentacja — `core/flow_graph.py` USUNIĘTY (ADR-028).
 
 ```sql
 WITH RECURSIVE upstream AS (
@@ -1292,7 +1279,7 @@ async def health_check(db = Depends(get_db)):
 - Tagged releases
 
 **Preprocessing data:**
-- Export `flow_network`, `precipitation, `land_cover` raz po preprocessingu
+- Export `stream_network`, `stream_catchments`, `precipitation_data`, `land_cover` raz po preprocessingu
 - Store na zewnętrznym dysku
 
 ---
