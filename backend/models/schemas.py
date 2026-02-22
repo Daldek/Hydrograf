@@ -175,6 +175,21 @@ class LandCoverStats(BaseModel):
     )
 
 
+class HsgCategory(BaseModel):
+    """Single HSG category."""
+
+    group: str = Field(..., description="HSG group (A/B/C/D)")
+    percentage: float = Field(..., ge=0, le=100, description="Area percentage [%]")
+    area_m2: float = Field(..., ge=0, description="Area [m²]")
+
+
+class HsgStats(BaseModel):
+    """Soil hydrological group statistics."""
+
+    categories: list[HsgCategory] = Field(..., description="Per-group statistics")
+    dominant_group: str = Field(..., description="Dominant HSG group")
+
+
 class WatershedResponse(BaseModel):
     """Watershed delineation result."""
 
@@ -197,6 +212,7 @@ class WatershedResponse(BaseModel):
     land_cover_stats: LandCoverStats | None = Field(
         None, description="Land cover statistics"
     )
+    hsg_stats: HsgStats | None = None
     main_stream_geojson: dict[str, Any] | None = Field(
         None, description="Main stream as GeoJSON LineString (WGS84)"
     )

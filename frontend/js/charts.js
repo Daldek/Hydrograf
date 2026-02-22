@@ -35,6 +35,21 @@
         'inny': 'Inne',
     };
 
+    // HSG color palette
+    var HSG_COLORS = {
+        'A': '#4CAF50',
+        'B': '#8BC34A',
+        'C': '#FF9800',
+        'D': '#F44336',
+    };
+
+    var HSG_LABELS = {
+        'A': 'A \u2014 piaszczyste',
+        'B': 'B \u2014 umiarkowane',
+        'C': 'C \u2014 wolne',
+        'D': 'D \u2014 gliniaste',
+    };
+
     /**
      * Destroy an existing chart on a canvas.
      */
@@ -94,6 +109,63 @@
                             label: function (ctx) {
                                 var cat = categories[ctx.dataIndex];
                                 return ctx.label + ': ' + cat.percentage.toFixed(1) + '% (CN=' + cat.cn_value + ')';
+                            },
+                        },
+                    },
+                },
+                cutout: '55%',
+            },
+        });
+    }
+
+    /**
+     * Render a donut chart of HSG soil groups.
+     *
+     * @param {string} canvasId - Canvas element ID
+     * @param {Array} categories - Array of { group, percentage, area_m2 }
+     */
+    function renderHsgChart(canvasId, categories) {
+        destroyChart(canvasId);
+
+        var canvas = document.getElementById(canvasId);
+        if (!canvas || typeof Chart === 'undefined') return;
+
+        var labels = categories.map(function (c) {
+            return HSG_LABELS[c.group] || c.group;
+        });
+        var data = categories.map(function (c) { return c.percentage; });
+        var colors = categories.map(function (c) {
+            return HSG_COLORS[c.group] || '#A9A9A9';
+        });
+
+        charts[canvasId] = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors,
+                    borderWidth: 1,
+                    borderColor: '#fff',
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            font: { size: 10 },
+                            boxWidth: 12,
+                            padding: 6,
+                            color: '#000',
+                        },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (ctx) {
+                                return ctx.label + ': ' + categories[ctx.dataIndex].percentage.toFixed(1) + '%';
                             },
                         },
                     },
@@ -421,6 +493,7 @@
 
     window.Hydrograf.charts = {
         renderLandCoverChart: renderLandCoverChart,
+        renderHsgChart: renderHsgChart,
         renderHypsometricChart: renderHypsometricChart,
         renderElevationHistogram: renderElevationHistogram,
         renderProfileChart: renderProfileChart,

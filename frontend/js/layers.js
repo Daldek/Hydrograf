@@ -373,6 +373,17 @@
             0
         );
 
+        // HSG soil groups
+        addBdotOverlayEntry(
+            overlayGroup,
+            'Grupy glebowe (HSG)',
+            function () { return Hydrograf.map.getHsgLayer(); },
+            function () { return Hydrograf.map.loadHsgLayer(); },
+            Hydrograf.map.fitHsgBounds,
+            Hydrograf.map.setHsgOpacity,
+            0
+        );
+
         // Placeholder for stream/catchment entries (async populated)
         var streamsPlaceholder = document.createElement('div');
         list.appendChild(streamsPlaceholder);
