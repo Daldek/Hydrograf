@@ -19,7 +19,8 @@ from core.morphometry import calculate_shape_indices
 from core.watershed_service import (
     boundary_to_polygon,
     compute_watershed_length,
-    find_nearest_stream_segment,
+    ensure_outlet_within_boundary,
+    find_nearest_stream_segment_hybrid,
     get_main_stream_geojson,
     get_segment_outlet,
     get_stream_info_by_segment_idx,
@@ -90,8 +91,13 @@ def select_stream(
                 f"(no catchments below {DEFAULT_THRESHOLD_M2})"
             )
 
-        # 1. Snap to nearest stream (spatial proximity, not point-in-polygon)
-        nearest = find_nearest_stream_segment(point_2180.x, point_2180.y, threshold, db)
+        # 1. Snap to nearest stream (hybrid: catchment-aware + spatial fallback)
+        nearest = find_nearest_stream_segment_hybrid(
+            point_2180.x,
+            point_2180.y,
+            threshold,
+            db,
+        )
 
         clicked_idx = None
         if nearest is not None:
@@ -185,6 +191,11 @@ def select_stream(
                 outlet_x, outlet_y = point_2180.x, point_2180.y
         else:
             outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
+
+        # E4: Snap outlet to boundary if it fell outside (cascade threshold mismatch)
+        outlet_x, outlet_y = ensure_outlet_within_boundary(
+            outlet_x, outlet_y, boundary_2180
+        )
 
         outlet_elevation = stats.get("elevation_min_m")
         outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)

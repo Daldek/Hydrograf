@@ -1,5 +1,8 @@
 """Tests for HSG soil group queries."""
 
+import numpy as np
+from scipy.ndimage import distance_transform_edt
+
 from models.schemas import HsgCategory, HsgStats
 
 
@@ -36,3 +39,34 @@ class TestHsgStats:
             main_stream_geojson=None,
         )
         assert resp.hsg_stats is None
+
+
+class TestHsgNearestNeighborFill:
+    def test_hsg_nearest_neighbor_fill(self):
+        """Nearest-neighbor fill replaces zeros with closest valid HSG values."""
+        data = np.array(
+            [
+                [1, 1, 0, 2, 2],
+                [1, 0, 0, 0, 2],
+                [0, 0, 0, 0, 0],
+                [3, 0, 0, 0, 4],
+                [3, 3, 0, 4, 4],
+            ],
+            dtype=np.uint8,
+        )
+
+        valid_mask = np.isin(data, [1, 2, 3, 4])
+        assert not valid_mask.all()  # has zeros
+
+        _, nearest_indices = distance_transform_edt(~valid_mask, return_indices=True)
+        filled = np.where(
+            valid_mask, data, data[nearest_indices[0], nearest_indices[1]]
+        )
+
+        # No zeros remain
+        assert np.all(np.isin(filled, [1, 2, 3, 4]))
+        # Original values unchanged
+        assert filled[0, 0] == 1
+        assert filled[0, 3] == 2
+        assert filled[3, 0] == 3
+        assert filled[4, 4] == 4

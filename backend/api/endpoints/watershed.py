@@ -24,6 +24,7 @@ from core.land_cover import get_land_cover_for_boundary
 from core.watershed_service import (
     boundary_to_polygon,
     build_morph_dict_from_graph,
+    ensure_outlet_within_boundary,
     get_main_stream_geojson,
     get_segment_outlet,
     get_stream_info_by_segment_idx,
@@ -204,6 +205,11 @@ def delineate_watershed(
                 outlet_x, outlet_y = point_2180.x, point_2180.y
         else:
             outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
+
+        # E4: Snap outlet to boundary if it fell outside (cascade threshold mismatch)
+        outlet_x, outlet_y = ensure_outlet_within_boundary(
+            outlet_x, outlet_y, boundary_2180
+        )
 
         # 12. Outlet elevation from CatchmentGraph stats (elevation_min_m of outlet)
         outlet_elevation = stats.get("elevation_min_m") or 0.0
