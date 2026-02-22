@@ -48,7 +48,7 @@
 
 ### Co zrobiono
 
-- **CR1 — Naprawa krytycznego bugu: channel_slope z dlugosci glownego cieku (ADR-028):**
+- **CR1 — Naprawa krytycznego bugu: channel_slope z dlugosci glownego cieku (ADR-029):**
   - **Problem:** `channel_slope_m_per_m` obliczany z calkowitej dlugosci sieci rzecznej (suma WSZYSTKICH segmentow upstream) zamiast z dlugosci glownego cieku. Spadek zanizony 2-10x → czas koncentracji zawyZony → szczyt wezbrania zanizony.
   - **Rozwiazanie:** Nowa metoda `CatchmentGraph.trace_main_channel()` — traweruje upstream od outletu wg rzedu Strahlera (tie-break: max stream_length, max area). O(path_length), <1ms.
   - **Naprawione 3 miejsca:** `catchment_graph.py`, `watershed_service.py`, `select_stream.py`
