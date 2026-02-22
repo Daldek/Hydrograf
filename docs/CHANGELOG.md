@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — 2026-02-22
 
 ### Fixed (CR1 — krytyczny blad spadku cieku)
-- **`channel_slope_m_per_m` obliczany z dlugosci glownego cieku zamiast calej sieci:** Nowa metoda `CatchmentGraph.trace_main_channel()` traweruje upstream od outletu wg rzedu Strahlera (tie-break: max stream_length, max area). Naprawione 3 miejsca: `catchment_graph.py`, `watershed_service.py`, `select_stream.py`. Spadek byl zanizony 2-10x → czas koncentracji zawyZony → szczyt wezbrania zanizony. ADR-028.
+- **`channel_slope_m_per_m` obliczany z dlugosci glownego cieku zamiast calej sieci:** Nowa metoda `CatchmentGraph.trace_main_channel()` traweruje upstream od outletu wg rzedu Strahlera (tie-break: max stream_length, max area). Naprawione 3 miejsca: `catchment_graph.py`, `watershed_service.py`, `select_stream.py`. Spadek byl zanizony 2-10x → czas koncentracji zawyZony → szczyt wezbrania zanizony. ADR-029.
 
 ### Fixed (3 bugi po teście E2E — sesja 37)
 - **Profil terenu wygładzony:** `tension: 0.2` → `tension: 0` w charts.js — wyłączenie interpolacji Béziera, ostre krawędzie między punktami próbkowania.

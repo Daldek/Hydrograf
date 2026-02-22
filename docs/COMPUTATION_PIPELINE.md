@@ -154,7 +154,7 @@ Wszystkie inserty używają tego samego wzorca **COPY przez tabelę tymczasową*
 
 ### Kontekst
 
-Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~87k wierszy) — zawierają gotowe poligony zlewni cząstkowych z pre-computed statystykami. Zamiast wykonywać kosztowne operacje rastrowe na 19.7M komórkach w runtime, graf zlewni cząstkowych ładuje te dane do pamięci przy starcie API i umożliwia szybkie przejście BFS po ~87k węzłach.
+Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~44k wierszy) — zawierają gotowe poligony zlewni cząstkowych z pre-computed statystykami. Zamiast wykonywać kosztowne operacje rastrowe na 19.7M komórkach w runtime, graf zlewni cząstkowych ładuje te dane do pamięci przy starcie API i umożliwia szybkie przejście BFS po ~44k węzłach.
 
 ### 1b.1 Struktura grafu
 
@@ -162,7 +162,7 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~87k wierszy) —
 
 | Element | Typ | Opis |
 |---------|-----|------|
-| **Węzły** | ~87k | Jeden węzeł = jedna zlewnia cząstkowa (per segment cieku per próg FA) |
+| **Węzły** | ~44k | Jeden węzeł = jedna zlewnia cząstkowa (per segment cieku per próg FA) |
 | **Krawędzie** | upstream adjacency | `adj[i, j] = 1` oznacza, że węzeł j spływa do węzła i |
 | **Macierz sąsiedztwa** | `scipy.sparse.csr_matrix` | Rzadka macierz CSR — wydajny BFS |
 | **Atrybuty węzłów** | `numpy arrays` (float32/int32) | `area_km2`, `elev_min/max/mean`, `slope_mean`, `perimeter_km`, `stream_length_km`, `strahler` |
@@ -174,12 +174,12 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~87k wierszy) —
 **Metoda:** `CatchmentGraph.load(db: Session)`
 
 1. Odczyt wszystkich wierszy z `stream_catchments` (w partiach po 50k)
-2. Alokacja numpy arrays dla atrybutów (pre-allocated, ~8 MB łącznie)
+2. Alokacja numpy arrays dla atrybutów (pre-allocated, ~0.5 MB łącznie)
 3. Budowa macierzy sąsiedztwa CSR z kolumny `downstream_segment_idx`
 4. Zapis lookup dict `(threshold_m2, segment_idx) → internal_idx`
 
 **Czas ładowania:** ~1-2s przy starcie API
-**Zużycie pamięci:** ~8 MB (vs ~1 GB dla rastrowego `flow_graph`)
+**Zużycie pamięci:** ~0.5 MB (vs ~1 GB dla rastrowego `flow_graph`)
 
 ### 1b.3 Przejście BFS (runtime)
 
@@ -197,7 +197,7 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~87k wierszy) —
 | Aspekt | Przed (raster-based) | Po (CatchmentGraph) |
 |--------|----------------------|---------------------|
 | **Czas traversal** | 200ms - 5s | 5 - 50ms |
-| **Pamięć runtime** | ~1 GB (flow_graph) | ~8 MB |
+| **Pamięć runtime** | ~1 GB (flow_graph) | ~0.5 MB |
 | **Operacje rastrowe** | BFS po 19.7M komórkach | Zero — pre-computed stats |
 | **Złożoność kodu** | Budowanie granicy z pikseli | `ST_Union` gotowych poligonów |
 
@@ -208,11 +208,11 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~87k wierszy) —
 **Moduł:** `backend/core/watershed_service.py` (ADR-022)
 **Endpoint:** `POST /api/delineate-watershed`
 
-> **Uwaga (ADR-022):** Od 2026-02-14 endpointy API (`watershed.py`, `hydrograph.py`, `select_stream.py`) korzystają z CatchmentGraph (~87k węzłów, ~8 MB) zamiast FlowGraph (~19.7M komórek, ~1 GB). Poniższe opisy SQL dotyczą legacy CLI scripts — API runtime używa `watershed_service.py` z BFS po grafie zlewni cząstkowych.
+> **Uwaga (ADR-022):** Od 2026-02-14 endpointy API (`watershed.py`, `hydrograph.py`, `select_stream.py`) korzystają z CatchmentGraph (~44k węzłów, ~0.5 MB) zamiast FlowGraph (~19.7M komórek, ~1 GB). Poniższe opisy SQL dotyczą legacy CLI scripts — API runtime używa `watershed_service.py` z BFS po grafie zlewni cząstkowych.
 
 ### 2.1 Znalezienie najbliższego cieku
 
-**Funkcja (API):** `watershed_service.find_nearest_stream_segment()` — query do `stream_network` (~87k)
+**Funkcja (API):** `watershed_service.find_nearest_stream_segment()` — query do `stream_network` (~44k)
 **Funkcja (legacy CLI):** `watershed.find_nearest_stream()` — query do `flow_network` (19.7M)
 
 ```sql
@@ -298,16 +298,21 @@ area_km2 = total_area_m2 / 1 000 000
 | **Min/Max/Średnia wys.** | `mean = np.average(elevations, weights=areas)` | `calculate_elevation_stats()` (76-112) |
 | **Średnie nachylenie** | `mean_slope = np.average(slopes, weights=areas)` | `calculate_mean_slope()` (115-149) |
 
-### 3.2 Ciek główny (reverse trace)
+### 3.2 Ciek główny (trace wg Strahlera)
 
-**Funkcja:** `find_main_stream()` (linie 152-262) — 257× szybciej niż oryginał
+**Metoda:** `CatchmentGraph.trace_main_channel()` (ADR-029)
 
 **Algorytm:**
-1. Budowanie grafu napływu: `upstream_graph[downstream_id].append(cell_id)`
-2. Śledzenie od ujścia w górę: na każdym kroku wybór sąsiada z najwyższą `flow_accumulation`
-3. Obliczenia:
-   - `channel_length_km = Σ(dist(pt[i], pt[i+1])) / 1000`
-   - `channel_slope = (elev_highest - elev_outlet) / length_m`
+1. Start od outlet node (wewnętrzny indeks)
+2. Na każdej konfluencji wybór gałęzi: max Strahler → max stream_length → max area
+3. Sumowanie `stream_length_km` wzdłuż ścieżki
+4. Obliczenia:
+   - `channel_length_km = Σ(stream_length_km[node])` wzdłuż głównego cieku
+   - `channel_slope = (elev_max[head] - elev_min[outlet]) / (length_km * 1000)`
+
+**Uwaga:** `aggregate_stats()["stream_length_km"]` zwraca sumę CAŁEJ sieci (do drainage density). Długość głównego cieku pochodzi wyłącznie z `trace_main_channel()`.
+
+**Legacy:** `morphometry.py:find_main_stream()` (linie 152-262) — używana tylko w CLI, nie w API runtime.
 
 ### 3.3 Wskaźniki kształtu
 
@@ -699,7 +704,7 @@ CREATE TABLE land_cover (
 | Find nearest stream | <1ms (GIST + ST_DWithin) |
 | Pre-flight size check | <1ms (PK lookup) |
 | Traverse upstream (CTE) | 1-5s (10k-100k komórek) |
-| Traverse upstream (CatchmentGraph BFS) | 5-50ms (~87k węzłów, ADR-021) |
+| Traverse upstream (CatchmentGraph BFS) | 5-50ms (~44k węzłów, ADR-021) |
 | Build boundary (polygonize) | 0.5-2s |
 | Morfometria | <0.5s |
 | Opad IDW | <5ms (KNN-GIST) |
@@ -710,13 +715,13 @@ CREATE TABLE land_cover (
 ### Startup API
 | Operacja | Czas | Pamięć |
 |----------|------|--------|
-| Ładowanie CatchmentGraph (~87k węzłów) | ~1-2s | ~8 MB |
+| Ładowanie CatchmentGraph (~44k węzłów) | ~1-2s | ~0.5 MB |
 
 ### Pamięć
 | Kontekst | Zużycie |
 |----------|---------|
 | Preprocessing (1000×1000 float32) | ~64 MB peak |
-| CatchmentGraph (startup API) | ~8 MB |
+| CatchmentGraph (startup API) | ~0.5 MB |
 | Runtime — typowa zlewnia (50k komórek) | ~5 MB |
 | Runtime — duża zlewnia (1M komórek) | ~100 MB |
 
@@ -740,7 +745,7 @@ CREATE TABLE land_cover (
 | 12 | Bulk load do bazy | PostgreSQL COPY przez temp tables |
 | 13 | Odpływ SCS-CN | Metoda SCS z konwolucją |
 | 14 | Czas koncentracji | Kirpich / SCS Lag / Giandotti |
-| 15 | Graf zlewni cząstkowych | BFS po sparse CSR (~87k węzłów, ADR-021) |
+| 15 | Graf zlewni cząstkowych | BFS po sparse CSR (~44k węzłów, ADR-021) |
 
 ---
 
