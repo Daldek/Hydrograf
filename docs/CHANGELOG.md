@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-02-22
 
+### Fixed (5 bugów UX — E1, E4, E12, E13, F2)
+- **E1 — dziury na granicach zlewni:** `merge_catchment_boundaries()` w `watershed_service.py` — usunięto `ST_SnapToGrid(geom, 0.01)` (przesuwało wierzchołki tworząc mikro-luki między sąsiednimi poligonami), zastąpione buffer-debuffer (0.1m/-0.1m) który zamyka luki ≤0.1m zachowując oryginalny rozmiar. `MIN_HOLE_AREA_M2`: 1000→100 m² (agresywniejsze usuwanie artefaktów merge, 10×10m zamiast ~32×32m).
+- **E4 — outlet poza granicą zlewni:** nowa funkcja `ensure_outlet_within_boundary()` w `watershed_service.py` — snap outleta do najbliższego punktu na granicy gdy wypada poza (tolerancja 1m, obsługa Polygon i MultiPolygon). Zastosowanie w `select_stream.py` i `watershed.py` po obliczeniu outlet przed dalszymi obliczeniami.
+- **E12 — legenda HSG:** `createHsgLegend()`/`removeHsgLegend()` w `map.js` — 4 pozycje (A=#4CAF50, B=#8BC34A, C=#FF9800, D=#F44336) z auto show/hide. Rozszerzenie `addBdotOverlayEntry()` w `layers.js` o callbacki `onShow`/`onHide`.
+- **E13 — nieciągłość HSG na terenach zurbanizowanych:** `distance_transform_edt` nearest-neighbor fill w `step_soil_hsg()` w `bootstrap.py` — wypełnia brakujące piksele (wartości spoza 1-4) wartością najbliższego sąsiada przed polygonizacją. Wymaga re-run pipeline.
+- **F2 — snap-to-stream sąsiednia zlewnia:** nowa funkcja `find_nearest_stream_segment_hybrid()` w `watershed_service.py` — priorytet: `ST_Contains` na `stream_catchments` (identyfikacja zlewni pod kursorem → ciek z niej), fallback: globalny `ST_Distance` snap (obecne zachowanie). Zastosowanie w `select_stream.py`.
+
 ### Fixed (CR1 — krytyczny blad spadku cieku)
 - **`channel_slope_m_per_m` obliczany z dlugosci glownego cieku zamiast calej sieci:** Nowa metoda `CatchmentGraph.trace_main_channel()` traweruje upstream od outletu wg rzedu Strahlera (tie-break: max stream_length, max area). Naprawione 3 miejsca: `catchment_graph.py`, `watershed_service.py`, `select_stream.py`. Spadek byl zanizony 2-10x → czas koncentracji zawyZony → szczyt wezbrania zanizony. ADR-029.
 
