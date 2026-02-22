@@ -212,19 +212,10 @@ def select_stream(
             relief_km = (elev_max - elev_min) / 1000
             ruggedness = round(dd * relief_km, 4)
 
-        # Channel length and slope from main stream
-        channel_length_km = stats.get("stream_length_km")
-        channel_slope = None
-        if (
-            channel_length_km
-            and channel_length_km > 0
-            and elev_min is not None
-            and elev_max is not None
-        ):
-            channel_slope = round(
-                (elev_max - elev_min) / (channel_length_km * 1000),
-                6,
-            )
+        # Channel length and slope from main channel trace (not total network)
+        main_ch = cg.trace_main_channel(clicked_idx, upstream_indices)
+        channel_length_km = main_ch.get("main_channel_length_km")
+        channel_slope = main_ch.get("main_channel_slope_m_per_m")
 
         # 9. Hypsometric curve
         hypso_data = cg.aggregate_hypsometric(upstream_indices)
