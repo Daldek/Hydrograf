@@ -128,13 +128,13 @@ backend/
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
-│   ├── flow_graph.py              # USUNIĘTY (ADR-028) — in-memory flow graph
 │   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
 │   ├── morphometry.py             # Morphometric parameters calculation
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
+│   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── watershed.py               # Watershed boundary building + legacy CLI functions
 │   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022)
