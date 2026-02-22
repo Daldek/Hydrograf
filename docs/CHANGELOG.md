@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed (CR1 — krytyczny blad spadku cieku)
 - **`channel_slope_m_per_m` obliczany z dlugosci glownego cieku zamiast calej sieci:** Nowa metoda `CatchmentGraph.trace_main_channel()` traweruje upstream od outletu wg rzedu Strahlera (tie-break: max stream_length, max area). Naprawione 3 miejsca: `catchment_graph.py`, `watershed_service.py`, `select_stream.py`. Spadek byl zanizony 2-10x → czas koncentracji zawyZony → szczyt wezbrania zanizony. ADR-029.
 
+### Fixed (CR2 — O(n²) lookup segmentów)
+- **`compute_downstream_links()` O(n²) → O(n):** zamiana `segments.index(seg) + 1` na `enumerate(segments, start=1)` w `stream_extraction.py`. Dla ~40k segmentów eliminuje ~1.6 mld operacji porównania.
+
 ### Fixed (3 bugi po teście E2E — sesja 37)
 - **Profil terenu wygładzony:** `tension: 0.2` → `tension: 0` w charts.js — wyłączenie interpolacji Béziera, ostre krawędzie między punktami próbkowania.
 - **Cieki MVT znikają przy oddaleniu:** tippecanoe `--drop-densest-as-needed` → `--coalesce-densest-as-needed` + `--simplification=10` (łączenie features zamiast usuwania). Nowa funkcja `extract_mbtiles_to_pbf()` ekstrahuje .mbtiles do statycznych `{z}/{x}/{y}.pbf` z dekompresją gzip. Frontend `getTileUrl()` obsługuje format `"pbf"` → Nginx serwuje statyczne pliki (~1ms).
