@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 544 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 550 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -14,8 +14,8 @@
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | CP4 — tryb wyboru obiektow, flow acc coloring, histogram, debounce, zoom fix |
-| Testy scripts/ | ⏳ W trakcie | 538 testow lacznie (po usunieciu 43 testow martwego kodu flow_network/flow_graph) |
-| Dokumentacja | ✅ Gotowy | Standaryzacja wg shared/standards (2026-02-07) |
+| Testy scripts/ | ⏳ W trakcie | 550 testow lacznie (po usunieciu 43 testow martwego kodu flow_network/flow_graph) |
+| Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
 
@@ -44,9 +44,43 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-17 (sesja 37)
+**Data:** 2026-02-22 (sesja 40)
 
 ### Co zrobiono
+
+- **CR1 — Naprawa krytycznego bugu: channel_slope z dlugosci glownego cieku (ADR-028):**
+  - **Problem:** `channel_slope_m_per_m` obliczany z calkowitej dlugosci sieci rzecznej (suma WSZYSTKICH segmentow upstream) zamiast z dlugosci glownego cieku. Spadek zanizony 2-10x → czas koncentracji zawyZony → szczyt wezbrania zanizony.
+  - **Rozwiazanie:** Nowa metoda `CatchmentGraph.trace_main_channel()` — traweruje upstream od outletu wg rzedu Strahlera (tie-break: max stream_length, max area). O(path_length), <1ms.
+  - **Naprawione 3 miejsca:** `catchment_graph.py`, `watershed_service.py`, `select_stream.py`
+  - **Testy:** 6 nowych testow (5 w test_catchment_graph.py, 1 w test_watershed_service.py), 550 passed total
+  - `aggregate_stats()["stream_length_km"]` nadal zwraca sume calej sieci (drainage density)
+
+### Poprzednia sesja (2026-02-22, sesja 39)
+
+- **Audyt dokumentacji (16 plikow, ~35 problemow naprawionych):**
+  - 5 rownoleglych subagentow: architektura+data model, PRD+SCOPE+CHANGELOG, DECISIONS+TECH_DEBT+QA, integracje+README, spojnosc krzyzowa+CLAUDE.md
+  - **Krytyczne naprawy (8):**
+    - `flow_graph.py`: DEPRECATED → USUNIETY (ADR-028) w CLAUDE.md, ARCHITECTURE.md, QA_REPORT.md, COMPUTATION_PIPELINE.md
+    - `flow_network`: oznaczona jako USUNIETA w schematach DB (ARCHITECTURE.md, COMPUTATION_PIPELINE.md)
+    - Dodano `soil_hsg.py` i `bootstrap.py` do struktur modulow (CLAUDE.md, scripts/README.md)
+    - CatchmentGraph stats: ~117k/5MB → ~44k/0.5MB (CLAUDE.md, ARCHITECTURE.md)
+    - ADR-024/025 oznaczone jako Superseded przez ADR-026 (DECISIONS.md)
+    - Dodano `segment_idx` do schematu stream_network (ARCHITECTURE.md)
+    - Dodano 7 brakujacych endpointow API do PRD.md
+  - **Wazne naprawy (10):**
+    - Liczba testow: 538/559 → 544 (QA_REPORT.md, PROGRESS.md)
+    - Profil terenu przeniesiony z OUT do IN scope (SCOPE.md)
+    - P1.x flow_network oznaczone jako ZREALIZOWANE (TECHNICAL_DEBT.md)
+    - Dodano ADR-026/027/028 do tabeli QA_REPORT.md
+    - Migracje 13 → 16, endpointy 7 → 10 (QA_REPORT.md)
+    - Nowa sekcja soil_hsg w DATA_MODEL.md (migracja 016)
+    - Dodano bootstrap.py do scripts/README.md
+  - **Srednie naprawy (12):** CHANGELOG duplikat [Unreleased], daty SCOPE/HYDROLOG, Hydrolog v0.5.1→v0.5.2 w CROSS_PROJECT, uproszczenie isinstance w KARTOGRAF, CP4 emoji w README
+
+- **Testy:** 544 passed, 0 failures (zweryfikowane pytest --collect-only)
+- **1 commit** w sesji
+
+### Poprzednia sesja (2026-02-17, sesja 37)
 
 - **Naprawa 3 bugów po teście E2E (10 arkuszy):**
   - **Bug A — BDOT10k spacing:** `spacing_m` w `discover_teryts_for_bbox()` zmniejszony z 5000 na 2000m (gęstsza siatka punktów → lepsza detekcja małych TERYT-ów). Logi point→TERYT podniesione z DEBUG na INFO.
@@ -763,7 +797,7 @@
 1. **Naprawa krytycznych bledow z code review:** CR1 (channel_slope z calkowitej sieci), CR2 (O(n^2) segments.index), CR3 (cursor leak)
 2. Naprawa waznych bledow z code review: CR4-CR9 (BFS deque, land cover TODO, enkapsulacja _segment_idx, thread safety, profile info disclosure)
 3. Naprawa pozostalych bugow UX: E1 (dziury na granicach), E4 (outlet poza granica), E12 (legenda HSG), E13 (nieciaglosc HSG), F2 (snap-to-stream sasiednia zlewnia)
-4. Aktualizacja CLAUDE.md (CR11): usunac flow_graph.py, dodac soil_hsg.py i bootstrap.py
+4. ~~Aktualizacja CLAUDE.md (CR11): usunac flow_graph.py, dodac soil_hsg.py i bootstrap.py~~ ✅ (sesja 39)
 5. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
 6. Usuniecie hardcoded secrets z config.py i migrations/env.py
 7. CP5: MVP — pelna integracja, deploy
