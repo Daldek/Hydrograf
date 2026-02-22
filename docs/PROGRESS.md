@@ -48,6 +48,10 @@
 
 ### Co zrobiono
 
+- **CR2 — O(n²) → O(n) w `compute_downstream_links()` (stream_extraction.py):**
+  - Zamiana `segments.index(seg) + 1` na `enumerate(segments, start=1)` — eliminacja ~1.6 mld porównan dla ~40k segmentów
+  - 550 testów passed, ruff clean
+
 - **CR1 — Naprawa krytycznego bugu: channel_slope z dlugosci glownego cieku (ADR-029):**
   - **Problem:** `channel_slope_m_per_m` obliczany z calkowitej dlugosci sieci rzecznej (suma WSZYSTKICH segmentow upstream) zamiast z dlugosci glownego cieku. Spadek zanizony 2-10x → czas koncentracji zawyZony → szczyt wezbrania zanizony.
   - **Rozwiazanie:** Nowa metoda `CatchmentGraph.trace_main_channel()` — traweruje upstream od outletu wg rzedu Strahlera (tie-break: max stream_length, max area). O(path_length), <1ms.
@@ -676,7 +680,7 @@
 
 #### CR. Wyniki code review (2026-02-22)
 
-**Status: ⏳ Nowe — 16 pozycji (3 krytyczne, 8 ważne, 5 sugestii)**
+**Status: ⏳ W trakcie — 16 pozycji (1/3 krytyczne naprawione, 8 ważne, 5 sugestii)**
 
 ##### Krytyczne (must fix)
 
@@ -687,10 +691,8 @@
 - **Rozwiązanie:** wyznaczanie głównego cieku (tracing downstream po max Strahler order) i przechowywanie jego długości osobno.
 - **Lokalizacja:** `core/catchment_graph.py` (aggregate_stats), `core/watershed_service.py` (build_morph_dict_from_graph), `api/endpoints/select_stream.py`
 
-**CR2. O(n^2) lookup segmentów w `compute_downstream_links()`** (priorytet: krytyczny)
-- `stream_extraction.py:592`: `segments.index(seg) + 1` wewnątrz pętli → O(n^2) dla ~40k segmentów.
-- **Rozwiązanie:** użyć `enumerate(segments, start=1)`.
-- **Lokalizacja:** `core/stream_extraction.py`
+**CR2. ✅ O(n^2) lookup segmentów w `compute_downstream_links()`** (NAPRAWIONE)
+- `stream_extraction.py`: `segments.index(seg) + 1` → `enumerate(segments, start=1)`. 550 testów passed.
 
 **CR3. Server-side cursor niezamykany na wyjątek w `CatchmentGraph.load()`** (priorytet: krytyczny)
 - `catchment_graph.py:108-162`: named cursor `catchment_graph_load` nie jest zamykany jeśli w pętli wystąpi wyjątek. Cursor trzyma transakcję PostgreSQL.
@@ -794,7 +796,7 @@
 - **Kontekst:** `core/cn_calculator.py` (dane HSG), `scripts/bootstrap.py` (pipeline), `frontend/js/layers.js` (renderowanie warstw)
 
 ### Nastepne kroki
-1. **Naprawa krytycznych bledow z code review:** CR1 (channel_slope z calkowitej sieci), CR2 (O(n^2) segments.index), CR3 (cursor leak)
+1. **Naprawa krytycznych bledow z code review:** ~~CR1 (channel_slope)~~✅, ~~CR2 (O(n^2) segments.index)~~✅, CR3 (cursor leak)
 2. Naprawa waznych bledow z code review: CR4-CR9 (BFS deque, land cover TODO, enkapsulacja _segment_idx, thread safety, profile info disclosure)
 3. Naprawa pozostalych bugow UX: E1 (dziury na granicach), E4 (outlet poza granica), E12 (legenda HSG), E13 (nieciaglosc HSG), F2 (snap-to-stream sasiednia zlewnia)
 4. ~~Aktualizacja CLAUDE.md (CR11): usunac flow_graph.py, dodac soil_hsg.py i bootstrap.py~~ ✅ (sesja 39)
