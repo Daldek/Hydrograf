@@ -1,12 +1,6 @@
 # Instrukcje dla Claude Code
 
-## Opis projektu
-
-Hydrograf — hub hydrologiczny integrujacy FastAPI + PostGIS z bibliotekami Hydrolog, Kartograf i IMGWTools. System wyznacza granice zlewni z NMT (klikniecie na mape → granica w <10s), oblicza parametry fizjograficzne (powierzchnia, CN, spadki, pokrycie terenu) i generuje hydrogramy odplywu metoda SCS-CN (42 scenariusze: 7 czasow trwania × 6 prawdopodobienstw).
-
-Architektura: preprocessing NMT → graf w PostGIS → szybkie zapytania SQL runtime.
-Frontend: Leaflet.js (mapa) + Chart.js (wykresy) + Bootstrap (UI).
-Development: .venv + PostGIS w Docker. Deployment: Docker Compose (db + api + nginx).
+Hydrograf — hub hydrologiczny (FastAPI + PostGIS + Hydrolog + Kartograf + IMGWTools). Szczegoly: `docs/PRD.md`, architektura: `docs/ARCHITECTURE.md`.
 
 ## Srodowisko Python
 
@@ -14,29 +8,6 @@ Uzywaj srodowiska wirtualnego z `backend/.venv`:
 - Python: `backend/.venv/bin/python`
 - Pip: `backend/.venv/bin/pip`
 - Wymagany Python: 3.12+
-
-Setup .venv:
-```bash
-cd backend
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/pip install -e ".[dev]"
-```
-
-Baza danych (jedyny wymagany serwis Docker do developmentu):
-```bash
-docker compose up -d db
-```
-
-Serwer dev:
-```bash
-cd backend && .venv/bin/python -m uvicorn api.main:app --reload
-```
-
-Zmienne srodowiskowe (plik `.env` w korzeniu):
-- `POSTGRES_*` — polaczenie z PostgreSQL+PostGIS (uzywane przez .venv i docker compose)
-- `CORS_ORIGINS` — dozwolone originy (domyslnie `http://localhost`)
-- `LOG_LEVEL` — poziom logowania (domyslnie `INFO`)
 
 ## Dokumentacja
 
@@ -56,114 +27,29 @@ Dodatkowa dokumentacja:
 
 ## Struktura modulow
 
-```
-backend/
-├── api/                     # Warstwa API (FastAPI)
-│   ├── main.py              # FastAPI app instance, CORS, middleware
-│   └── endpoints/           # Endpointy REST API
-│       ├── watershed.py     # POST /api/delineate-watershed
-│       ├── hydrograph.py    # POST /api/generate-hydrograph, GET /api/scenarios
-│       ├── profile.py       # POST /api/terrain-profile
-│       ├── depressions.py   # GET /api/depressions
-│       ├── tiles.py         # GET /api/tiles/{streams|catchments}/{z}/{x}/{y}.pbf, GET /api/tiles/thresholds
-│       ├── select_stream.py # POST /api/select-stream
-│       └── health.py        # GET /health
-│
-├── core/                    # Logika biznesowa
-│   ├── catchment_graph.py   # Graf zlewni czastkowych in-memory (BFS)
-│   ├── config.py            # Settings (Pydantic, zmienne srodowiskowe)
-│   ├── constants.py         # Stale projektowe (CRS, jednostki, limity)
-│   ├── database.py          # Connection pool (SQLAlchemy + PostGIS)
-│   ├── watershed.py         # Granice zlewni (build_boundary) + legacy CLI functions
-│   ├── watershed_service.py # Wspolna logika delineacji (CatchmentGraph-based, ADR-022)
-│   ├── morphometry.py       # Parametry fizjograficzne (area, slope, length)
-│   ├── precipitation.py     # Zapytania opadowe (IDW interpolation)
-│   ├── land_cover.py        # Analiza pokrycia terenu, determine_cn()
-│   ├── cn_tables.py         # Tablice CN dla HSG × pokrycie terenu
-│   ├── cn_calculator.py     # Integracja z Kartografem dla HSG-based CN
-│   ├── raster_io.py         # Odczyt/zapis rastrow (ASC, VRT, GeoTIFF)
-│   ├── hydrology.py         # Hydrologia: fill, fdir, acc, stream burning
-│   ├── morphometry_raster.py # Nachylenie, aspekt, TWI, Strahler
-│   ├── stream_extraction.py # Wektoryzacja ciekow, zlewnie czastkowe
-│   ├── db_bulk.py           # Bulk INSERT via COPY, timeout management
-│   ├── zonal_stats.py       # Statystyki strefowe (bincount, max)
-│   └── soil_hsg.py          # Pobieranie i przetwarzanie danych HSG (grupy glebowe)
-│
-├── models/
-│   └── schemas.py           # Modele Pydantic (request/response)
-│
-├── utils/
-│   ├── geometry.py          # Operacje geometryczne (CRS, transformacje)
-│   ├── raster_utils.py      # Narzedzia rastrowe (resample, polygonize)
-│   ├── dem_color.py         # Wspolny modul kolorow DEM (colormap, hillshade)
-│   └── sheet_finder.py      # Wyszukiwanie arkuszy NMT
-│
-├── scripts/                 # Skrypty CLI (preprocessing)
-│   ├── bootstrap.py         # Jednokomendowy setup srodowiska (9 krokow pipeline)
-│   ├── process_dem.py       # Import NMT do bazy (orchestrator → core/)
-│   ├── generate_depressions.py # Generowanie zaglebie (blue spots)
-│   ├── generate_tiles.py    # Pre-generacja kafelkow MVT (tippecanoe)
-│   ├── generate_dem_tiles.py # Piramida kafelkow DEM (XYZ)
-│   ├── generate_dem_overlay.py # Kolorowa nakladka PNG z DEM dla Leaflet
-│   ├── generate_streams_overlay.py # Nakladka PNG z rzedami ciekow (Strahler)
-│   ├── export_pipeline_gpkg.py # Export GeoPackage + raport
-│   ├── export_task9_gpkg.py # Export wynikow E2E Task 9 do GeoPackage
-│   ├── e2e_task9.py         # Test E2E wyznaczania zlewni (OOM safeguards)
-│   ├── analyze_watershed.py # Pelna analiza zlewni (CLI)
-│   ├── prepare_area.py      # Pobieranie + przetwarzanie obszaru
-│   ├── preprocess_precipitation.py # Pobieranie danych opadowych IMGW do bazy
-│   ├── download_dem.py      # Pobieranie NMT przez Kartograf
-│   ├── download_landcover.py # Pobieranie pokrycia terenu
-│   └── import_landcover.py  # Import pokrycia do bazy
-│
-├── migrations/              # Migracje Alembic (PostgreSQL + PostGIS)
-├── tests/                   # Testy (pytest)
-│   ├── unit/
-│   └── integration/
-└── pyproject.toml           # Konfiguracja projektu (ruff, pytest, mypy)
+Pelna mapa modulow: `docs/ARCHITECTURE.md` §2.1 (backend) i §4.1 (frontend).
 
-frontend/
-├── css/                     # Style (Bootstrap + custom)
-└── js/                      # Logika (Leaflet.js, Chart.js, API client)
-```
+- `backend/api/endpoints/` — endpointy REST API (FastAPI)
+- `backend/core/` — logika biznesowa (~15 modulow)
+- `backend/scripts/` — skrypty CLI preprocessingu (bootstrap.py orchestrator)
+- `backend/models/schemas.py` — modele Pydantic
+- `frontend/js/` — 9 modulow JS (IIFE na `window.Hydrograf`)
 
-## Komendy
+## Podejscie wieloagentowe
 
-```bash
-# Serwer dev
-cd backend && .venv/bin/python -m uvicorn api.main:app --reload
+Glowny agent pelni role **nadzorcy zespolu** — oszczedza wlasny kontekst i deleguje prace do sub-agentow (Task tool). Kazde zadanie dziel na male, logiczne kawalki wykonywane w cyklu:
 
-# Testy
-cd backend && .venv/bin/python -m pytest tests/ -v
-cd backend && .venv/bin/python -m pytest tests/ --cov=. --cov-report=html
+1. **Researcher** (subagent_type=Explore) — analiza kodu, szukanie plikow, zrozumienie kontekstu
+2. **Developer** (subagent_type=general-purpose) — implementacja zmian (Edit/Write)
+3. **Tester** (subagent_type=general-purpose) — uruchomienie testow, lint, weryfikacja
 
-# Linter i formatowanie (ruff)
-cd backend && .venv/bin/python -m ruff check .
-cd backend && .venv/bin/python -m ruff check . --fix
-cd backend && .venv/bin/python -m ruff format .
-cd backend && .venv/bin/python -m ruff format --check .
+Przejscie dalej dopiero po potwierdzeniu od Testera. Jesli testy nie przechodza — Developer poprawia, Tester weryfikuje ponownie.
 
-# Type checking
-cd backend && .venv/bin/python -m mypy .
-
-# Migracje
-cd backend && alembic upgrade head
-cd backend && alembic revision --autogenerate -m "opis"
-
-# Skrypty CLI
-cd backend && .venv/bin/python -m scripts.process_dem --input ../data/nmt/plik.asc
-cd backend && .venv/bin/python -m scripts.analyze_watershed --lat 52.23 --lon 21.01
-cd backend && .venv/bin/python -m scripts.prepare_area --lat 52.23 --lon 21.01 --buffer 5
-
-# Docker — baza danych (development)
-docker compose up -d db                       # Uruchomienie PostGIS
-docker compose down                           # Zatrzymanie
-
-# Docker — pelny stack (testowanie / produkcja)
-docker compose up -d                          # Uruchomienie calego stacku
-docker compose logs -f api                    # Logi API
-docker compose exec api bash                  # Shell w kontenerze
-```
+**Zasady delegowania:**
+- Kazdy sub-agent dostaje pelny kontekst zadania (cel, pliki, ograniczenia)
+- Jawnie informuj sub-agenta o dostepnych narzedziach i sciezkach (`.venv`, Docker)
+- Niezalezne zadania uruchamiaj rownolegle (wiele Task w jednej wiadomosci)
+- Glowny agent NIE czyta plikow ani nie pisze kodu sam — deleguje i weryfikuje wyniki
 
 ## Workflow sesji
 
@@ -187,7 +73,12 @@ docker compose exec api bash                  # Shell w kontenerze
 
 **Galecie:**
 - **main** — stabilna wersja (tylko merge z develop po checkpoincie)
-- **develop** — aktywny rozwoj (ZAWSZE pracuj na tej galezi)
+- **develop** — domyslna galaz robocza (zadania trywialne, brak ryzyka konfliktow)
+- **feature/*** — gdy wiele zespolow agentow pracuje rownolegle lub istnieje ryzyko konfliktu
+
+**Strategia branchowania:**
+- Jedno zadanie, jeden zespol → commituj na `develop`
+- Wiele zespolow rownolegle → kazdy zespol na osobnej `feature/*`, po zakonczeniu pracy dedykowany agent rozwiazuje konflikty i merguje do `develop`
 
 **Commity:** Conventional Commits z scope:
 - `feat(api): ...` — nowa funkcjonalnosc
@@ -198,26 +89,26 @@ docker compose exec api bash                  # Shell w kontenerze
 
 Scope: `api`, `core`, `db`, `frontend`, `tests`, `docs`, `docker`
 
+## Priorytety kodu
+
+1. **Bezpieczenstwo danych** — walidacja inputow, parametryzowane SQL, brak wyciekow danych
+2. **Przejrzystosc i prostosc** — kod czytelny bez komentarzy, proste struktury, brak przedwczesnych abstrakcji
+3. **Efektywnosc** — optymalizuj dopiero gdy jest udowodniony problem wydajnosciowy
+
+Jesli prostsze rozwiazanie jest wolniejsze, wybierz prostsze. Jesli bezpieczniejsze rozwiazanie jest mniej czytelne, wybierz bezpieczniejsze.
+
 ## Specyfika projektu
 
-### Zaleznosci zewnetrzne (biblioteki wlasne)
-- **Hydrolog** v0.5.2 — obliczenia hydrologiczne (SCS-CN, hydrogramy, morfometria)
-- **Kartograf** v0.4.1 — pobieranie danych GIS (NMT z GUGiK, Land Cover, SoilGrids, BDOT10k hydro)
-- **IMGWTools** v2.1.0 — dane obserwacyjne IMGW (opady projektowe)
+### Biblioteki wlasne
+- **Hydrolog** v0.5.2, **Kartograf** v0.4.1, **IMGWTools** v2.1.0
+- Dostepne z GitHub (branch develop), nie z PyPI
+- Szczegoly integracji: `docs/CROSS_PROJECT_ANALYSIS.md`
 
-Wszystkie trzy dostepne z GitHub (branch develop), nie z PyPI.
-
-### Integracje
-- Hydrograf jest **hubem** — integruje Hydrolog, Kartograf, IMGWTools
-- Hydrolog wykonuje obliczenia (splot, UH, opad efektywny)
-- Kartograf pobiera dane przestrzenne (NMT, pokrycie terenu, gleby i inne)
-- IMGWTools dostarcza dane opadowe (kwantyle, stacje)
-
-### Ograniczenia
+### Kluczowe ograniczenia
 - PostGIS jest **wymagany** — cala logika oparta na SQL spatial queries
 - Metoda SCS-CN ograniczona do zlewni <= 250 km²
-- Preprocessing NMT: jednorazowy, ~3.8 min per arkusz (po optymalizacji COPY)
 - Frontend: statyczny HTML/JS, brak frameworka (Vanilla JS)
+- API memory limit: 512M (CatchmentGraph ~0.5 MB)
 
 ### Konwencje nazewnictwa z jednostkami
 ```python
