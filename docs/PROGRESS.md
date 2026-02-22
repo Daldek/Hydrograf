@@ -14,7 +14,7 @@
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | CP4 — tryb wyboru obiektow, flow acc coloring, histogram, debounce, zoom fix |
-| Testy scripts/ | ⏳ W trakcie | 550 testow lacznie (po usunieciu 43 testow martwego kodu flow_network/flow_graph) |
+| Testy scripts/ | ⏳ W trakcie | 558 testow lacznie (po usunieciu 43 testow martwego kodu flow_network/flow_graph) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -44,9 +44,20 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-22 (sesja 41)
+**Data:** 2026-02-22 (sesja 42)
 
 ### Co zrobiono
+
+- **Naprawa 5 bugow UX (E1, E4, E12, E13, F2) — 3 rownolegle zespoly + 1 sekwencyjny:**
+  - **E1 — Dziury na granicach zlewni:** `merge_catchment_boundaries()` w `watershed_service.py` — usunieto `ST_SnapToGrid(geom, 0.01)` (przesuwalo wierzcholki tworzac mikro-luki), zastapione buffer-debuffer (0.1m/-0.1m) ktory zamyka luki zachowujac rozmiar. `MIN_HOLE_AREA_M2`: 1000→100 m² (agresywniejsze usuwanie artefaktow merge).
+  - **E4 — Outlet poza granica zlewni:** nowa funkcja `ensure_outlet_within_boundary()` w `watershed_service.py` — snap outleta do najblizszego punktu na granicy gdy wypada poza (tolerancja 1m). Zastosowanie w `select_stream.py` i `watershed.py`.
+  - **E12 — Legenda HSG:** `createHsgLegend()`/`removeHsgLegend()` w `map.js` — 4 pozycje (A/B/C/D) z kolorami HSG_FILL, auto show/hide. Callbacki `onShow`/`onHide` w `addBdotOverlayEntry()` w `layers.js`.
+  - **E13 — Fill brakujacych pikseli HSG:** `distance_transform_edt` nearest-neighbor fill w `step_soil_hsg()` w `bootstrap.py` — wypelnia luki w rasterze HSG na terenach zurbanizowanych przed polygonizacja.
+  - **F2 — Snap-to-stream hybrydowy:** nowa funkcja `find_nearest_stream_segment_hybrid()` w `watershed_service.py` — priorytet: `ST_Contains` na `stream_catchments` (zlewnia pod kursorem), fallback: globalny `ST_Distance` snap. Zastosowanie w `select_stream.py`.
+  - **Testy:** 8 nowych testow (4 outlet boundary, 2 hybrid snap, 1 HSG fill, 1 SQL inspect), 558 passed total, ruff clean
+  - **4 commity** na feature branch, merge do develop
+
+### Poprzednia sesja (2026-02-22, sesja 41)
 
 - **CR3 — Cursor leak w `CatchmentGraph.load()` (catchment_graph.py):**
   - Named cursor `catchment_graph_load` nie byl zamykany gdy wyjatek wystapil w petli fetchmany — trzymal otwarta transakcje PostgreSQL
@@ -550,7 +561,7 @@
 
 ### Bledy do naprawy (zgloszenie 2026-02-14, sesja 19)
 
-**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E2 naprawione (sesja 18 jako A1), E3 naprawione (sesja 22), F1 naprawione (sesja 24, ADR-024), E5+E6+E9+E10+E11 naprawione (sesja 35), F3 naprawione (sesja 35), E7+E8 naprawione (sesja 38). Pozostaje: E1, E4, E12, E13, F2, H**
+**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E2 naprawione (sesja 18 jako A1), E3 naprawione (sesja 22), F1 naprawione (sesja 24, ADR-024), E5+E6+E9+E10+E11 naprawione (sesja 35), F3 naprawione (sesja 35), E7+E8 naprawione (sesja 38), E1+E4+E12+E13+F2 naprawione (sesja 42). Pozostaje: H**
 
 #### D. Frontend — profil terenu — ✅ NAPRAWIONE (sesja 20)
 
@@ -561,21 +572,13 @@
 
 #### E. Frontend — zlewnia i mapa
 
-**E1. "Dziury" na granicach zlewni** (priorytet: wysoki)
-- Po wyborze zlewni na granicach pojawiaja sie widoczne "dziury"
-- Prawdopodobnie zaglbienia terenowe lub bledy laczenia obiektow wektorowych (ST_Union artifacts)
-- **Lokalizacja:** `watershed_service.py` (merge_catchment_boundaries), `watershed.py` (build_boundary)
+**E1. ✅ "Dziury" na granicach zlewni** → buffer-debuffer (0.1m/-0.1m) zamiast ST_SnapToGrid w merge_catchment_boundaries(), MIN_HOLE_AREA_M2: 1000→100 — sesja 42
 
 **E2. ✅ Brak mozliwosci odznaczenia zlewni** → naprawione w sesji 18 jako A1 (closeResults czysci wszystkie warstwy)
 
 **E3. ✅ Panel "Parametry zlewni" zaslania przyciski zoom** → panel dokowany z prawej (slide in/out), zoom przesuwa sie automatycznie (sesja 22)
 
-**E4. Punkt ujsciowy poza granica zlewni** (priorytet: sredni)
-- Dotyczy obu trybow: "Wybierz zlewnię" i "Wygeneruj zlewnię"
-- Punkt ujsciowy (outlet) bywa przesuniety o kilkaset metrow poza granice wyznaczonej zlewni
-- Pojawia sie przy ujsciu doplywu do cieku wyzszego rzedu — outlet "przeskakuje" do nastepnego wezla w dol cieku
-- Prawdopodobna przyczyna: `traverse_upstream` zwraca segment_idx doplywu, ale outlet pobierany jest z downstream node cieku glownego
-- **Lokalizacja:** `watershed_service.py` (logika wyznaczania outlet), `catchment_graph.py` (traverse_upstream)
+**E4. ✅ Punkt ujsciowy poza granica zlewni** → ensure_outlet_within_boundary() snap do granicy (tolerancja 1m), zastosowanie w select_stream.py i watershed.py — sesja 42
 
 **E5. ✅ Profil terenu nie generuje wykresu** → Chart.js resize w ukrytych kontenerach (d-none PRZED renderowaniem, resizeChart() z 50ms timeout, canvas w .chart-container) — sesja 35
 
@@ -591,16 +594,9 @@
 
 **E9. ✅ Usunac wpis "Zlewnia" z panelu Warstwy** → ~101 linii usunięte z layers.js + 3 wywołania z app.js — sesja 35
 
-**E12. Brak legendy dla warstwy HSG** (priorytet: sredni)
-- Po wlaczeniu warstwy HSG na mapie brak legendy objasniajacej kolory grup glebowych (A/B/C/D).
-- Legenda powinna byc analogiczna do istniejacych legend ciekow i zlewni — auto show/hide przy wlaczeniu/wylaczeniu warstwy.
-- **Lokalizacja:** `frontend/js/layers.js` (legenda warstw), `frontend/js/map.js` (rendering HSG)
+**E12. ✅ Brak legendy dla warstwy HSG** → createHsgLegend()/removeHsgLegend() w map.js, callbacki onShow/onHide w addBdotOverlayEntry() — sesja 42
 
-**E13. Nieciaglosc danych HSG na terenach zurbanizowanych** (priorytet: sredni)
-- Dane HSG (SoilGrids) wykazuja nieciaglosci (brak danych / artefakty) na terenach zurbanizowanych — zabudowa i uszczelnione powierzchnie nie maja przypisanej grupy glebowej.
-- Powoduje luki w wizualizacji warstwy HSG i potencjalne niedokladnosci w obliczeniach CN dla zlewni z duza powierzchnia zurbanizowana.
-- Mozliwe rozwiazanie: interpolacja brakujacych wartosci z sasiednich komorek lub przypisanie domyslnej grupy (np. D — najslabsza infiltracja) dla terenow zabudowanych na podstawie pokrycia terenu (BDOT10k).
-- **Lokalizacja:** `core/cn_calculator.py` (pobieranie HSG), `core/land_cover.py` (pokrycie terenu), `scripts/bootstrap.py` (import danych glebowych)
+**E13. ✅ Nieciaglosc danych HSG na terenach zurbanizowanych** → nearest-neighbor fill (distance_transform_edt) w step_soil_hsg() przed polygonizacja — sesja 42
 
 #### F. Logika zlewni czastkowych
 
@@ -608,12 +604,7 @@
 
 **F3. ✅ Automatyczny fallback na prog 1000 m² przy selekcji cieku z progu 100 m²** → eskalacja progu w select_stream.py gdy threshold < DEFAULT_THRESHOLD_M2, nowe pole `info_message` w SelectStreamResponse, banner w app.js — sesja 35
 
-**F2. Snap-to-stream moze wybrac zlewnię sasiednia zamiast kliknietej** (priorytet: sredni)
-- Po naprawie ADR-027 selekcja opiera sie na snap-to-stream (`ST_Distance` na `stream_network`) — system znajduje najblizszy segment cieku i buduje zlewnię w gore od niego.
-- Problem: gdy uzytkownik kliknie wewnatrz jednej zlewni, ale najblizszy ciek nalezy do sasiedniej zlewni (np. blisko dzialu wodnego, przy konfluencji lub w szerokich zlewniach bez ciekow), system zaznaczy niewlasciwa zlewnię.
-- Wczesniejszy system oparty na `ST_Contains` (identyfikacja zlewni czastkowej pod kursorem) dzialal poprawnie w tym scenariuszu, ale mial inne bledy (klikniecie blisko granicy zlewni moglo trafic w sasiada — dlatego wycofany na rzecz snap-to-stream w ADR-027).
-- Mozliwe rozwiazanie: podejscie hybrydowe — najpierw `ST_Contains` na `stream_catchments` (ktora zlewnia pod kursorem?), a nastepnie snap-to-stream ograniczony do ciekow w obrebie tej zlewni. Fallback na obecny snap-to-stream gdy `ST_Contains` nie znajdzie wyniku.
-- **Lokalizacja:** `api/endpoints/select_stream.py`, `core/watershed_service.py` (`find_nearest_stream_segment`)
+**F2. ✅ Snap-to-stream moze wybrac zlewnię sasiednia zamiast kliknietej** → find_nearest_stream_segment_hybrid(): ST_Contains na stream_catchments (priorytet) + fallback do globalnego ST_Distance snap — sesja 42
 
 #### G. Frontend — panel warstw i dane — ✅ NAPRAWIONE (sesja 21)
 
@@ -799,7 +790,7 @@
 ### Nastepne kroki
 1. ~~**Naprawa krytycznych bledow z code review:** CR1, CR2, CR3~~ ✅ (wszystkie 3 naprawione)
 2. Naprawa waznych bledow z code review: CR4-CR9 (BFS deque, land cover TODO, enkapsulacja _segment_idx, thread safety, profile info disclosure)
-3. Naprawa pozostalych bugow UX: E1 (dziury na granicach), E4 (outlet poza granica), E12 (legenda HSG), E13 (nieciaglosc HSG), F2 (snap-to-stream sasiednia zlewnia)
+3. ~~Naprawa pozostalych bugow UX: E1, E4, E12, E13, F2~~ ✅ (wszystkie 5 naprawione, sesja 42)
 4. ~~Aktualizacja CLAUDE.md (CR11): usunac flow_graph.py, dodac soil_hsg.py i bootstrap.py~~ ✅ (sesja 39)
 5. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
 6. Usuniecie hardcoded secrets z config.py i migrations/env.py
