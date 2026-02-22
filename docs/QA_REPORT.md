@@ -15,10 +15,10 @@
 | Issues HIGH | 2 |
 | Issues MEDIUM | 5 |
 | Issues LOW | 6 |
-| **Testy** | 544 passing (25 plikow testowych) |
+| **Testy** | 550 passing (25 plikow testowych) |
 | **Lint (ruff)** | 0 bledow |
 | **Format (ruff)** | 1 plik do sformatowania |
-| **ADR** | 28 decyzji architektonicznych |
+| **ADR** | 29 decyzji architektonicznych |
 | **Migracje** | 16 |
 
 ### Glowne problemy do rozwiazania:
@@ -33,7 +33,7 @@
 - pre-commit: ❌ → ✅ (ruff check + format)
 - pyproject.toml: ❌ → ✅
 - constants.py: ❌ → ✅
-- Testy: 175 → 544 (+220%)
+- Testy: 175 → 550 (+214%)
 - Architektura: FlowGraph (1.1 GB RAM) → CatchmentGraph (5 MB RAM)
 
 ---
@@ -43,7 +43,7 @@
 ### 1.1 Testy (pytest)
 
 ```
-544 passed in 11.80s
+550 passed in 12.38s
 ```
 
 | Plik testowy | Liczba testow | Typ |
@@ -73,7 +73,7 @@
 | test_stream_extraction.py | 8 | unit |
 | test_health.py | 5 | integration |
 | test_raster_io.py | 4 | unit |
-| **Razem** | **544** | **18 unit + 7 integ.** |
+| **Razem** | **550** | **18 unit + 7 integ.** |
 
 ### 1.2 Linting (ruff)
 
@@ -108,7 +108,7 @@ Brak bledow. Projekt uzywa ruff (zamiast flake8/black) skonfigurowanego w `pypro
 | core/stream_extraction.py | 8 unit | ✅ |
 | core/zonal_stats.py | 16 unit | ✅ |
 | core/raster_io.py | 4 unit | ⚠️ Niskie |
-| core/flow_graph.py | 18 unit | ❌ USUNIETY (ADR-028, sesja 33) |
+| core/flow_graph.py | 18 unit | ❌ USUNIETY (ADR-022, sesja 33) |
 | core/morphometry_raster.py | — | ❌ Brak dedykowanych |
 | core/database.py | — | ❌ Brak dedykowanych |
 | api/endpoints/ (wszystkie) | 110 integ. | ✅ |
@@ -146,7 +146,7 @@ Brak bledow. Projekt uzywa ruff (zamiast flake8/black) skonfigurowanego w `pypro
 | catchment_graph.py | 551 | Graf in-memory, BFS, agregacja | ✅ Aktywny |
 | watershed.py | 447 | build_boundary + legacy CLI | ✅ Aktywny |
 | morphometry_raster.py | 386 | Nachylenie, aspekt, TWI, Strahler | ✅ Aktywny |
-| flow_graph.py | 361 | Graf przeplywu | ❌ USUNIETY (ADR-028, sesja 33) |
+| flow_graph.py | 361 | Graf przeplywu | ❌ USUNIETY (ADR-022, sesja 33) |
 | land_cover.py | 346 | Pokrycie terenu, CN | ✅ Aktywny |
 | cn_calculator.py | 334 | HSG-based CN | ✅ Aktywny |
 | precipitation.py | 320 | IDW interpolation | ✅ Aktywny |
@@ -172,7 +172,7 @@ Brak bledow. Projekt uzywa ruff (zamiast flake8/black) skonfigurowanego w `pypro
 
 ### 2.4 Decyzje architektoniczne (ADR)
 
-28 decyzji w `docs/DECISIONS.md`. Kluczowe:
+29 decyzji w `docs/DECISIONS.md`. Kluczowe:
 
 | ADR | Tytul | Status |
 |-----|-------|--------|
@@ -187,12 +187,13 @@ Brak bledow. Projekt uzywa ruff (zamiast flake8/black) skonfigurowanego w `pypro
 | ADR-025 | Warunkowy prog selekcji | ⛔ Superseded (przez ADR-026) |
 | ADR-026 | Selekcja oparta o poligon zlewni + segment_idx | ⛔ Superseded (przez ADR-027) |
 | ADR-027 | Snap-to-stream w selekcji cieku | ✅ Przyjeta (zastepuje ADR-026) |
-| ADR-028 | Eliminacja tabeli flow_network | ✅ Przyjeta |
+| ADR-022 | Eliminacja FlowGraph z runtime API | ✅ Przyjeta |
+| ADR-029 | Wyznaczanie glownego cieku (trace_main_channel) | ✅ Przyjeta |
 
 ### 2.5 Migracje bazy danych
 
 16 migracji Alembic (`001`–`016`). Kluczowe tabele:
-- ~~`flow_network`~~ (usunieta, migracja 015, ADR-028)
+- ~~`flow_network`~~ (usunieta, migracja 015, ADR-022)
 - `stream_network` (~117k segmentow, 4 progi, kolumna `segment_idx` z migracji 014)
 - `stream_catchments` (117k zlewni, 6 dodatkowych kolumn z migracji 012)
 - `land_cover` (38.5k rekordow, 12 warstw BDOT10k)
@@ -334,7 +335,7 @@ Dockerfile jest funkcjonalny — poprawki to optymalizacja rozmiaru obrazu.
 
 | ID | Opis | Priorytet | Status |
 |----|------|-----------|--------|
-| TD-1 | ~~`flow_graph.py` DEPRECATED~~ USUNIETY (ADR-028, sesja 33) | LOW | ✅ Zrealizowane |
+| TD-1 | ~~`flow_graph.py` DEPRECATED~~ USUNIETY (ADR-022, sesja 33) | LOW | ✅ Zrealizowane |
 | TD-2 | Hardcoded secrets w defaults | MEDIUM | Do poprawy |
 | TD-3 | Brak .dockerignore | LOW | Do dodania |
 | TD-4 | Niska pokrywalnosc scripts/ (poza process_dem) | MEDIUM | Backlog |
@@ -388,7 +389,7 @@ Czas odpowiedzi 10-25s dla duzych zlewni. Bottlenecki: ST_UnaryUnion na wielu po
 ### LOW (backlog)
 
 8. **[4.3] Dockerfile** — multi-stage build, .dockerignore
-9. ~~**[5.2/TD-1] Deprecation flow_graph.py**~~ — ZREALIZOWANE (ADR-028, sesja 33)
+9. ~~**[5.2/TD-1] Deprecation flow_graph.py**~~ — ZREALIZOWANE (ADR-022, sesja 33)
 10. **[4.4] pyproject.toml version** — 0.3.0 → 0.4.0 (post CP4)
 11. Formatowanie `models/schemas.py` (po commicie zmian z sesji 27)
 12. Aktualizacja outdated packages
@@ -407,7 +408,7 @@ Czas odpowiedzi 10-25s dla duzych zlewni. Bottlenecki: ST_UnaryUnion na wielu po
 | **Faza 4** | **Testy i Deploy** | ⏳ **W trakcie** |
 | Faza 5 | MVP Release (CP5) | ⏳ Planowana |
 
-**Gotowe do CP5:** 10 endpointow, 544 testow, CI/CD, structured logging, security headers, rate limiting, CatchmentGraph in-memory.
+**Gotowe do CP5:** 10 endpointow, 550 testow, CI/CD, structured logging, security headers, rate limiting, CatchmentGraph in-memory.
 
 **Blokery CP5:** zielone zlewnie (bug), wydajnosc select-stream, hardcoded secrets.
 
@@ -415,7 +416,7 @@ Czas odpowiedzi 10-25s dla duzych zlewni. Bottlenecki: ST_UnaryUnion na wielu po
 
 ## Podsumowanie
 
-Projekt Hydrograf przeszedl znaczaca ewolucje od ostatniego raportu QA (2026-01-21). Wszystkie problemy CRITICAL zostaly naprawione (CORS, rate limiting, CI/CD). Liczba testow wzrosla z 175 do 544. Architektura zostala zrefaktoryzowana — eliminacja FlowGraph z runtime API zmniejszyla zuzycie RAM o 96%.
+Projekt Hydrograf przeszedl znaczaca ewolucje od ostatniego raportu QA (2026-01-21). Wszystkie problemy CRITICAL zostaly naprawione (CORS, rate limiting, CI/CD). Liczba testow wzrosla z 175 do 550. Architektura zostala zrefaktoryzowana — eliminacja FlowGraph z runtime API zmniejszyla zuzycie RAM o 96%.
 
 Glowne obszary wymagajace uwagi:
 1. **Bug zielonych zlewni** — wymaga diagnostyki (narzedzia juz wdrozone)

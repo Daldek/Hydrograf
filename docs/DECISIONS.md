@@ -615,7 +615,7 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
-## ADR-028: Wyznaczanie glownego cieku w CatchmentGraph (trace_main_channel)
+## ADR-029: Wyznaczanie glownego cieku w CatchmentGraph (trace_main_channel)
 
 **Data:** 2026-02-22
 **Status:** Przyjeta
