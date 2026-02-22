@@ -106,60 +106,61 @@ class CatchmentGraph:
         # Stream via server-side cursor
         raw_conn = db.connection().connection
         cursor = raw_conn.cursor(name="catchment_graph_load")
-        cursor.itersize = _FETCH_SIZE
-        cursor.execute(
-            "SELECT segment_idx, threshold_m2, area_km2, "
-            "mean_elevation_m, mean_slope_percent, strahler_order, "
-            "downstream_segment_idx, elevation_min_m, elevation_max_m, "
-            "perimeter_km, stream_length_km, elev_histogram "
-            "FROM stream_catchments ORDER BY threshold_m2, segment_idx"
-        )
+        try:
+            cursor.itersize = _FETCH_SIZE
+            cursor.execute(
+                "SELECT segment_idx, threshold_m2, area_km2, "
+                "mean_elevation_m, mean_slope_percent, strahler_order, "
+                "downstream_segment_idx, elevation_min_m, elevation_max_m, "
+                "perimeter_km, stream_length_km, elev_histogram "
+                "FROM stream_catchments ORDER BY threshold_m2, segment_idx"
+            )
 
-        i = 0
-        while True:
-            rows = cursor.fetchmany(_FETCH_SIZE)
-            if not rows:
-                break
-            for r in rows:
-                seg_idx = r[0]
-                threshold = r[1]
+            i = 0
+            while True:
+                rows = cursor.fetchmany(_FETCH_SIZE)
+                if not rows:
+                    break
+                for r in rows:
+                    seg_idx = r[0]
+                    threshold = r[1]
 
-                self._segment_idx[i] = seg_idx
-                self._threshold_m2[i] = threshold
-                self._area_km2[i] = r[2] if r[2] is not None else 0.0
+                    self._segment_idx[i] = seg_idx
+                    self._threshold_m2[i] = threshold
+                    self._area_km2[i] = r[2] if r[2] is not None else 0.0
 
-                if r[3] is not None:
-                    self._elev_mean[i] = r[3]
-                if r[4] is not None:
-                    self._slope_mean[i] = r[4]
-                if r[5] is not None:
-                    self._strahler[i] = r[5]
-                if r[7] is not None:
-                    self._elev_min[i] = r[7]
-                if r[8] is not None:
-                    self._elev_max[i] = r[8]
-                if r[9] is not None:
-                    self._perimeter_km[i] = r[9]
-                if r[10] is not None:
-                    self._stream_length_km[i] = r[10]
+                    if r[3] is not None:
+                        self._elev_mean[i] = r[3]
+                    if r[4] is not None:
+                        self._slope_mean[i] = r[4]
+                    if r[5] is not None:
+                        self._strahler[i] = r[5]
+                    if r[7] is not None:
+                        self._elev_min[i] = r[7]
+                    if r[8] is not None:
+                        self._elev_max[i] = r[8]
+                    if r[9] is not None:
+                        self._perimeter_km[i] = r[9]
+                    if r[10] is not None:
+                        self._stream_length_km[i] = r[10]
 
-                # Histogram (JSONB → dict)
-                self._histograms[i] = r[11]
+                    # Histogram (JSONB → dict)
+                    self._histograms[i] = r[11]
 
-                # Register in lookup
-                self._lookup[(threshold, seg_idx)] = i
+                    # Register in lookup
+                    self._lookup[(threshold, seg_idx)] = i
 
-                # Downstream link → edge
-                ds_seg_idx = r[6]
-                if ds_seg_idx is not None:
-                    ds_key = (threshold, ds_seg_idx)
-                    # Defer edge — downstream node may not be seen yet
-                    edge_from.append(i)
-                    edge_to.append(ds_key)
+                    # Downstream link → edge
+                    ds_seg_idx = r[6]
+                    if ds_seg_idx is not None:
+                        ds_key = (threshold, ds_seg_idx)
+                        # Defer edge — downstream node may not be seen yet
+                        edge_from.append(i)
+                        edge_to.append(ds_key)
 
-                i += 1
-
-        cursor.close()
+                    i += 1
+        finally:
+            cursor.close()
 
         # Resolve deferred edges
         resolved_from = []
