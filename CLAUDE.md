@@ -70,7 +70,7 @@ backend/
 │       └── health.py        # GET /health
 │
 ├── core/                    # Logika biznesowa
-│   ├── catchment_graph.py   # Graf zlewni czastkowych in-memory (BFS, ~117k nodes, ~5 MB)
+│   ├── catchment_graph.py   # Graf zlewni czastkowych in-memory (BFS)
 │   ├── config.py            # Settings (Pydantic, zmienne srodowiskowe)
 │   ├── constants.py         # Stale projektowe (CRS, jednostki, limity)
 │   ├── database.py          # Connection pool (SQLAlchemy + PostGIS)
@@ -87,7 +87,7 @@ backend/
 │   ├── stream_extraction.py # Wektoryzacja ciekow, zlewnie czastkowe
 │   ├── db_bulk.py           # Bulk INSERT via COPY, timeout management
 │   ├── zonal_stats.py       # Statystyki strefowe (bincount, max)
-│   └── flow_graph.py        # DEPRECATED — graf przeplywu (tylko CLI scripts)
+│   └── soil_hsg.py          # Pobieranie i przetwarzanie danych HSG (grupy glebowe)
 │
 ├── models/
 │   └── schemas.py           # Modele Pydantic (request/response)
@@ -99,6 +99,7 @@ backend/
 │   └── sheet_finder.py      # Wyszukiwanie arkuszy NMT
 │
 ├── scripts/                 # Skrypty CLI (preprocessing)
+│   ├── bootstrap.py         # Jednokomendowy setup srodowiska (9 krokow pipeline)
 │   ├── process_dem.py       # Import NMT do bazy (orchestrator → core/)
 │   ├── generate_depressions.py # Generowanie zaglebie (blue spots)
 │   ├── generate_tiles.py    # Pre-generacja kafelkow MVT (tippecanoe)

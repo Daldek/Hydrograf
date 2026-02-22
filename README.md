@@ -4,7 +4,7 @@ System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fiz
 
 ## Status
 
-🚧 **W budowie** - CP4 osiągnięty (Frontend z mapą interaktywną)
+✅ **CP4 osiągnięty** - Frontend z mapą interaktywną
 
 ### Dostępne endpointy
 

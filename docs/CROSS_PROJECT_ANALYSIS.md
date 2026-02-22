@@ -62,7 +62,7 @@
 | # | Projekt | Problem | Commit | Status |
 |---|---------|---------|--------|--------|
 | 1 | **Hydrolog** | Błąd stałej SCS - Qmax zawyżony ~10x | `cc3e2a7` | ✅ NAPRAWIONE |
-| 2 | **Hydrolog** | Niespójność wersji | v0.5.1 | ✅ NAPRAWIONE |
+| 2 | **Hydrolog** | Niespójność wersji | v0.5.2 | ✅ NAPRAWIONE |
 | 3 | **Kartograf** | Brak eksportów `SoilGridsProvider`, `HSGCalculator` | `23887db` | ✅ NAPRAWIONE |
 | 4 | **Kartograf** | SCOPE.md/PRD.md nieaktualne | `b99c08e` | ✅ NAPRAWIONE |
 
@@ -77,7 +77,7 @@ qp = 0.208 * self.area_km2 / tp_hours
 ```
 
 **Wersje po naprawie:**
-- Hydrolog: v0.5.1
+- Hydrolog: v0.5.2
 - Kartograf: v0.3.1 (SCOPE.md/PRD.md zaktualizowane do v2.0)
 - IMGWTools: v2.1.0 (Hydrograf zaktualizowany 2026-01-21)
 
@@ -139,7 +139,7 @@ qp = 0.208 * self.area_km2 / tp_hours
   - Zmiana: 2.08 → 0.208
   - Zaktualizowano docstring z poprawną matematyką
 
-✅ Hydrolog: Zsynchronizować wersję (v0.5.1)
+✅ Hydrolog: Zsynchronizować wersję (v0.5.2)
   - Plik: hydrolog/__init__.py
   - Zmiana: __version__ = "0.4.0" → "0.5.1"
 ```
@@ -249,8 +249,8 @@ fail_under = 80
 
 ### ✅ Naprawione (2026-01-21)
 
-- ✅ ~~KRYTYCZNY błąd w Hydrolog (stała SCS)~~ → naprawione w v0.5.1
-- ✅ ~~Niespójność wersji w Hydrolog~~ → zsynchronizowane do v0.5.1
+- ✅ ~~KRYTYCZNY błąd w Hydrolog (stała SCS)~~ → naprawione w v0.5.2
+- ✅ ~~Niespójność wersji w Hydrolog~~ → zsynchronizowane do v0.5.2
 - ✅ ~~Brakujące eksporty w Kartograf~~ → dodane SoilGridsProvider, HSGCalculator
 - ✅ ~~SCOPE.md/PRD.md nieaktualne w Kartograf~~ → zaktualizowane do v2.0
 - ✅ ~~IMGWTools: Python 3.11~~ → podniesione do >=3.12 w v2.1.0

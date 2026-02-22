@@ -486,7 +486,7 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 ## ADR-024: Precyzyjna selekcja cieku — segmentacja konfluencyjna + fine-threshold BFS
 
 **Data:** 2026-02-15
-**Status:** Przyjeta
+**Status:** Superseded (przez ADR-026)
 
 **Kontekst:** Klikniecie na ciek zaznaczalo cala zlewnię tego cieku, niezaleznie od miejsca klikniecia. Dwa powody: (1) grube progi (100000 m²) — caly ciek to 1 segment, (2) segmentacja Strahlerem — segmenty lamia sie TYLKO przy zmianie rzedu, wiec ciek rzedu 2 z 5 doplywami rzedu 1 to wciaz 1 segment. Poprzednia proba (branch `feature/f1-fix-hierarchical`) — hierarchiczne scalanie z catchment_merge.py — niepowodzenie z powodu ryzyk kaskadowych bledow danych i kruchej topologii.
 
@@ -514,7 +514,7 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 ## ADR-025: Warunkowy próg selekcji cieku — fine BFS tylko dla display_threshold==100
 
 **Data:** 2026-02-16
-**Status:** Przyjeta
+**Status:** Superseded (przez ADR-026)
 
 **Kontekst:** Po ADR-024 endpoint `select_stream` zawsze wykonywal snap-to-stream i BFS na progu 100 m² (najdrobniejszym), niezaleznie od progu wyswietlanego na mapie. Powodowalo to snap do drobnych doplywow niewidocznych przy grubszych progach (1000, 10000, 100000), koniecznosc ekstremalnego przyblizenia do cieku oraz zwracanie zlewni niezgodnej z widokiem uzytkownika.
 
@@ -610,6 +610,8 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 - Rozmiar DB: -2 GB (-80%)
 - Legacy CLI (watershed.py traverse_upstream_sql) usuniete
 - Nadpisa: ADR-006 (COPY vs INSERT) — COPY nie jest juz potrzebne dla flow_network
+
+**Implementacja:** migracja Alembic 015 (DROP TABLE flow_network), process_dem.py bez INSERT flow_network
 
 ---
 

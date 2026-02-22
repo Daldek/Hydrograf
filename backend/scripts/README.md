@@ -15,6 +15,63 @@ Skrypty do jednorazowego przetwarzania danych wejściowych przed uruchomieniem s
 
 ## Dostępne skrypty
 
+### `bootstrap.py` - Jednokomendowy setup środowiska
+
+Orkiestrator wykonujący 9 kroków pipeline od zera do działającego systemu: infrastruktura (.venv, Docker, Alembic), pobieranie NMT, przetwarzanie DEM, pokrycie terenu, dane glebowe HSG, opady IMGW, depresje, kafelki MVT, overlay PNG i uruchomienie serwera.
+
+**Użycie:**
+
+```bash
+cd backend
+
+# Przez bounding box (WGS84)
+.venv/bin/python -m scripts.bootstrap \
+    --bbox "20.8,52.1,21.2,52.4"
+
+# Przez godła arkuszy
+.venv/bin/python -m scripts.bootstrap \
+    --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2
+
+# Dry run — tylko pokaż plan bez wykonywania
+.venv/bin/python -m scripts.bootstrap \
+    --bbox "20.8,52.1,21.2,52.4" --dry-run
+
+# Z pominięciem opcjonalnych kroków
+.venv/bin/python -m scripts.bootstrap \
+    --bbox "20.8,52.1,21.2,52.4" \
+    --skip-precipitation --skip-tiles
+```
+
+**Parametry:**
+
+| Parametr | Opis | Domyślnie |
+|----------|------|-----------|
+| `--bbox` | Bounding box WGS84: `"min_lon,min_lat,max_lon,max_lat"` | (wymagane*) |
+| `--sheets` | Lista godeł arkuszy do pobrania | (wymagane*) |
+| `--scale` | Skala arkuszy (1:10000, 1:25000, 1:50000, 1:100000) | 1:10000 |
+| `--output` | Katalog wyjściowy | `../data/` |
+| `--port` | Port HTTP serwera | 8080 |
+| `--dry-run` | Tylko pokaż co zostanie zrobione | false |
+
+*Wymagany jeden z: `--bbox` lub `--sheets` (wzajemnie wykluczające).
+
+**Flagi pomijania kroków:**
+
+| Flaga | Opis |
+|-------|------|
+| `--skip-infra` | Pomiń .venv / Docker / Alembic |
+| `--skip-landcover` | Pomiń pokrycie terenu |
+| `--skip-hsg` | Pomiń dane glebowe HSG |
+| `--skip-precipitation` | Pomiń opady IMGW |
+| `--skip-depressions` | Pomiń depresje |
+| `--skip-tiles` | Pomiń kafelki MVT |
+| `--skip-overlays` | Pomiń overlay PNG |
+| `--skip-serve` | Pomiń uruchomienie serwera |
+
+**Uwaga:** Kroki 1-3 (infrastruktura, pobieranie NMT, przetwarzanie DEM) są krytyczne. Kroki 4-9 są opcjonalne z graceful degradation — jeśli któryś zawiedzie, pipeline kontynuuje.
+
+---
+
 ### `prepare_area.py` - Pełny pipeline (ZALECANY)
 
 Pipeline łączący automatyczne pobieranie NMT z GUGiK i przetwarzanie do bazy danych.

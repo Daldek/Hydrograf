@@ -1,6 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
+**Ostatnia aktualizacja:** 2026-02-22
 **Status:** ✅ Zaimplementowane (CP3)
 
 ---
@@ -159,7 +160,7 @@ Endpoint `/api/delineate-watershed` zwraca teraz `morphometry` w odpowiedzi.
 
 | Plik | Zmiana | Status |
 |------|--------|--------|
-| `backend/requirements.txt` | + hydrolog (git develop) | ✅ |
+| `backend/requirements.txt` | + hydrolog (v0.5.2) | ✅ |
 | `backend/core/morphometry.py` | NOWY - 6 funkcji obliczeniowych | ✅ |
 | `backend/models/schemas.py` | + 7 nowych klas Pydantic | ✅ |
 | `backend/api/endpoints/watershed.py` | + morphometry w response | ✅ |
@@ -273,4 +274,4 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 ---
 
-**Ostatnia aktualizacja:** 2026-01-20
+**Ostatnia aktualizacja:** 2026-02-22
