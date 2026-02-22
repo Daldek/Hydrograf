@@ -339,3 +339,62 @@ class TestLookupBySegmentIdx:
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.lookup_by_segment_idx(10000, 1)
+
+
+class TestTraceMainChannel:
+    """Tests for trace_main_channel."""
+
+    def test_main_channel_from_outlet(self, small_graph):
+        """Main channel from outlet (node 3) follows highest Strahler upstream.
+
+        Graph: 0(s=1,len=2.0) -> 2(s=2,len=3.0) -> 3(s=3,len=4.0, outlet)
+               1(s=1,len=1.5) -> 2
+
+        Path should be [3, 2, 0]: at node 2 choose node 0 (strahler=1, len=2.0)
+        over node 1 (strahler=1, len=1.5) by stream_length tie-breaker.
+        """
+        upstream = small_graph.traverse_upstream(3)
+        result = small_graph.trace_main_channel(3, upstream)
+
+        assert result["main_channel_nodes"] == [3, 2, 0]
+        assert result["main_channel_length_km"] == pytest.approx(9.0, abs=0.01)
+        # Slope = (elev_max[0] - elev_min[3]) / (9.0 * 1000) = (200-120)/9000
+        expected_slope = (200.0 - 120.0) / (9.0 * 1000)
+        assert result["main_channel_slope_m_per_m"] == pytest.approx(
+            expected_slope, abs=1e-5
+        )
+
+    def test_main_channel_shorter_than_total(self, small_graph):
+        """Main channel length should be less than total network length."""
+        upstream = small_graph.traverse_upstream(3)
+        result = small_graph.trace_main_channel(3, upstream)
+        stats = small_graph.aggregate_stats(upstream)
+
+        assert result["main_channel_length_km"] < stats["stream_length_km"]
+
+    def test_main_channel_single_node(self, small_graph):
+        """Headwater node (no upstream): path is just [node], length = own stream."""
+        upstream = np.array([0])
+        result = small_graph.trace_main_channel(0, upstream)
+
+        assert result["main_channel_nodes"] == [0]
+        assert result["main_channel_length_km"] == pytest.approx(2.0, abs=0.01)
+
+    def test_main_channel_partial(self, small_graph):
+        """Trace from node 2 with upstream [0, 1, 2]: path [2, 0], length=5.0."""
+        upstream = small_graph.traverse_upstream(2)
+        result = small_graph.trace_main_channel(2, upstream)
+
+        assert result["main_channel_nodes"] == [2, 0]
+        assert result["main_channel_length_km"] == pytest.approx(5.0, abs=0.01)
+        # Slope = (elev_max[0] - elev_min[2]) / (5.0 * 1000) = (200-140)/5000
+        expected_slope = (200.0 - 140.0) / (5.0 * 1000)
+        assert result["main_channel_slope_m_per_m"] == pytest.approx(
+            expected_slope, abs=1e-5
+        )
+
+    def test_main_channel_not_loaded_raises(self):
+        """RuntimeError if graph not loaded."""
+        cg = CatchmentGraph()
+        with pytest.raises(RuntimeError, match="not loaded"):
+            cg.trace_main_channel(0, np.array([0]))

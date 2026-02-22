@@ -88,6 +88,12 @@ def mock_catchment_graph():
         "max_strahler_order": 4,
         "stream_frequency_per_km2": 1.92,
     }
+    cg.lookup_by_segment_idx.return_value = 0
+    cg.trace_main_channel.return_value = {
+        "main_channel_length_km": 8.5,
+        "main_channel_slope_m_per_m": round((350.0 - 120.0) / (8.5 * 1000), 6),
+        "main_channel_nodes": [0, 1, 2],
+    }
     return cg
 
 
@@ -489,6 +495,30 @@ class TestBuildMorphDictFromGraph:
 
         assert result["perimeter_km"] > 0
         assert result["length_km"] > 0
+
+    def test_channel_length_uses_main_channel(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        """channel_length_km should come from trace_main_channel, not total network."""
+        upstream = np.array([0, 1, 2])
+
+        result = build_morph_dict_from_graph(
+            cg=mock_catchment_graph,
+            upstream_indices=upstream,
+            boundary_2180=simple_polygon,
+            outlet_x=500095.0,
+            outlet_y=600095.0,
+            segment_idx=42,
+            threshold_m2=100,
+            cn=75,
+        )
+
+        # Main channel = 8.5 km, NOT total network = 18.5 km
+        assert result["channel_length_km"] == 8.5
+        assert result["channel_length_km"] != 18.5
+        # Slope from trace_main_channel
+        expected_slope = round((350.0 - 120.0) / (8.5 * 1000), 6)
+        assert result["channel_slope_m_per_m"] == expected_slope
 
 
 # ---------------------------------------------------------------------------

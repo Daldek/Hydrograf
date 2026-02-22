@@ -469,19 +469,15 @@ def build_morph_dict_from_graph(
     elev_min = stats.get("elevation_min_m")
     elev_max = stats.get("elevation_max_m")
 
-    # Channel length and slope from aggregated stream stats
-    channel_length_km = stats.get("stream_length_km")
-    channel_slope = None
-    if (
-        channel_length_km
-        and channel_length_km > 0
-        and elev_min is not None
-        and elev_max is not None
-    ):
-        channel_slope = round(
-            (elev_max - elev_min) / (channel_length_km * 1000),
-            6,
-        )
+    # Channel length and slope from main channel trace (not total network)
+    outlet_internal_idx = cg.lookup_by_segment_idx(threshold_m2, segment_idx)
+    if outlet_internal_idx is not None:
+        main_ch = cg.trace_main_channel(outlet_internal_idx, upstream_indices)
+        channel_length_km = main_ch.get("main_channel_length_km")
+        channel_slope = main_ch.get("main_channel_slope_m_per_m")
+    else:
+        channel_length_km = None
+        channel_slope = None
 
     # Shape indices
     shape_indices = _compute_shape_indices(area_km2, perimeter_km, length_km)

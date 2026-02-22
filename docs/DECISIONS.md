@@ -615,6 +615,28 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-028: Wyznaczanie glownego cieku w CatchmentGraph (trace_main_channel)
+
+**Data:** 2026-02-22
+**Status:** Przyjeta
+
+**Kontekst:** `channel_slope_m_per_m` byl obliczany z calkowitej dlugosci sieci rzecznej (suma WSZYSTKICH segmentow upstream) zamiast z dlugosci glownego cieku. Dla rozgalezionej zlewni calkowita siec jest 2-10x dluzsza od glownego cieku, co powodowalo zanizenie spadku i zawyZenie czasu koncentracji (Kirpich: `tc ~ S^(-0.385)`). Skutek: szczyt wezbrania zanizony → ocena zagrozenia powodziowego niebezpiecznie optymistyczna.
+
+**Opcje:**
+- A) Zapytanie SQL do `stream_network` (wyszukiwanie najdluzszej sciezki w DB)
+- B) In-memory trace po `_upstream_adj` wg rzedu Strahlera (nowa metoda CatchmentGraph)
+- C) Pre-compute glownego cieku w pipeline (dodatkowa kolumna DB)
+
+**Decyzja:** Opcja B — `CatchmentGraph.trace_main_channel()`. Traweruje upstream od outletu, na kazdej konfluencji wybiera galaz o najwyzszym rzedzie Strahlera (tie-break: max stream_length, max area). Zwraca dlugosc i spadek glownego cieku. O(path_length), typowo 10-50 wezlow, <1ms.
+
+**Konsekwencje:**
+- Poprawny `channel_slope_m_per_m` → poprawny czas koncentracji → poprawny szczyt wezbrania
+- `aggregate_stats()["stream_length_km"]` nadal zwraca sume calej sieci (uzywane do drainage density)
+- Brak zmian w DB/migracjach — logika w 100% in-memory
+- Naprawione 3 miejsca: `catchment_graph.py`, `watershed_service.py`, `select_stream.py`
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

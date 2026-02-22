@@ -538,6 +538,89 @@ class CatchmentGraph:
             ),
         }
 
+    def trace_main_channel(
+        self,
+        outlet_idx: int,
+        upstream_indices: np.ndarray,
+    ) -> dict:
+        """
+        Trace the main channel upstream from outlet following highest Strahler order.
+
+        At each confluence, selects the upstream branch with:
+        1. Highest Strahler order
+        2. Longest stream segment (tie-breaker)
+        3. Largest catchment area (second tie-breaker)
+
+        Parameters
+        ----------
+        outlet_idx : int
+            Internal index of the outlet node
+        upstream_indices : np.ndarray
+            Internal indices from traverse_upstream() (defines watershed boundary)
+
+        Returns
+        -------
+        dict
+            - main_channel_length_km: float — sum of stream lengths
+            - main_channel_slope_m_per_m: float | None — relief/length
+            - main_channel_nodes: list[int] — path indices
+        """
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+
+        upstream_set = set(upstream_indices.tolist())
+        path = [outlet_idx]
+        current = outlet_idx
+
+        while True:
+            neighbors = self._upstream_adj[current].indices
+            # Filter to nodes within this watershed
+            candidates = [n for n in neighbors if n in upstream_set]
+            if not candidates:
+                break
+
+            # Select best upstream: max Strahler, then max stream_length, then max area
+            best = max(
+                candidates,
+                key=lambda n: (
+                    self._strahler[n],
+                    self._stream_length_km[n]
+                    if not np.isnan(self._stream_length_km[n])
+                    else 0.0,
+                    self._area_km2[n],
+                ),
+            )
+            path.append(best)
+            current = best
+
+        # Sum stream lengths along path
+        path_arr = np.array(path, dtype=np.int32)
+        lengths = self._stream_length_km[path_arr]
+        main_length_km = float(np.nansum(lengths))
+
+        # Slope: head elev_max - outlet elev_min
+        head_idx = path[-1]  # furthest upstream node
+        head_elev_max = self._elev_max[head_idx]
+        outlet_elev_min = self._elev_min[outlet_idx]
+
+        main_slope = None
+        if (
+            main_length_km > 0
+            and not np.isnan(head_elev_max)
+            and not np.isnan(outlet_elev_min)
+        ):
+            main_slope = round(
+                (float(head_elev_max) - float(outlet_elev_min))
+                / (main_length_km * 1000),
+                6,
+            )
+
+        return {
+            "main_channel_length_km": round(main_length_km, 4),
+            "main_channel_slope_m_per_m": main_slope,
+            "main_channel_nodes": path,
+        }
+
     def aggregate_hypsometric(
         self,
         indices: np.ndarray,
