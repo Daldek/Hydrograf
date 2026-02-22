@@ -33,6 +33,7 @@
     var bdotLakesLayer = null;
     var bdotStreamsLayer = null;
     var bdotBounds = null;
+    var hsgLayer = null;
 
     /**
      * Initialize the Leaflet map.
@@ -591,6 +592,61 @@
         }
     }
 
+    // ===== HSG soil layer =====
+
+    var HSG_FILL = { 'A': '#4CAF50', 'B': '#8BC34A', 'C': '#FF9800', 'D': '#F44336' };
+
+    function loadHsgLayer() {
+        return fetch('/data/soil_hsg.geojson')
+            .then(function (res) {
+                if (!res.ok) throw new Error('No HSG data');
+                return res.json();
+            })
+            .then(function (geojson) {
+                hsgLayer = L.geoJSON(geojson, {
+                    style: function (feature) {
+                        var g = feature.properties.hsg_group || 'B';
+                        return {
+                            color: HSG_FILL[g],
+                            weight: 0.5,
+                            fillColor: HSG_FILL[g],
+                            fillOpacity: 0.35,
+                        };
+                    },
+                });
+                return hsgLayer;
+            })
+            .catch(function (err) { console.warn('HSG layer not available:', err.message); return null; });
+    }
+
+    function getHsgLayer() { return hsgLayer; }
+
+    function setHsgOpacity(opacity) {
+        if (hsgLayer) {
+            if (opacity === 0) {
+                hsgLayer.setStyle({ weight: 0, fillOpacity: 0, opacity: 0 });
+            } else {
+                hsgLayer.setStyle(function (feature) {
+                    var g = feature.properties.hsg_group || 'B';
+                    return {
+                        color: HSG_FILL[g],
+                        weight: 0.5,
+                        fillColor: HSG_FILL[g],
+                        fillOpacity: opacity * 0.35,
+                        opacity: opacity,
+                    };
+                });
+            }
+        }
+    }
+
+    function fitHsgBounds() {
+        if (hsgLayer) {
+            var bounds = hsgLayer.getBounds();
+            if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+        }
+    }
+
     // ===== Utilities =====
 
     function disableClick() { clickEnabled = false; }
@@ -650,6 +706,11 @@
         getBdotStreamsLayer: getBdotStreamsLayer,
         setBdotStreamsOpacity: setBdotStreamsOpacity,
         fitBdotBounds: fitBdotBounds,
+        // HSG soil
+        loadHsgLayer: loadHsgLayer,
+        getHsgLayer: getHsgLayer,
+        setHsgOpacity: setHsgOpacity,
+        fitHsgBounds: fitHsgBounds,
         // Panel/zoom interaction
         shiftZoomControls: shiftZoomControls,
         // Legends
