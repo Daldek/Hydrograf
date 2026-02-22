@@ -323,6 +323,31 @@
         }
     }
 
+    var hsgLegend = null;
+
+    function createHsgLegend() {
+        if (hsgLegend) return;
+        hsgLegend = L.control({ position: 'bottomleft' });
+        hsgLegend.onAdd = function () {
+            var div = L.DomUtil.create('div', 'layer-legend');
+            div.innerHTML =
+                '<div class="layer-legend-title">Grupy glebowe HSG</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#4CAF50;"></span> A</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#8BC34A;"></span> B</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#FF9800;"></span> C</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#F44336;"></span> D</div>';
+            return div;
+        };
+        hsgLegend.addTo(map);
+    }
+
+    function removeHsgLegend() {
+        if (hsgLegend) {
+            map.removeControl(hsgLegend);
+            hsgLegend = null;
+        }
+    }
+
     // ===== Watershed display =====
 
     function showWatershed(geojsonFeature) {
@@ -716,5 +741,7 @@
         // Legends
         createStreamsLegend: createStreamsLegend,
         removeStreamsLegend: removeStreamsLegend,
+        createHsgLegend: createHsgLegend,
+        removeHsgLegend: removeHsgLegend,
     };
 })();
