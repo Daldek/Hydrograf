@@ -392,12 +392,17 @@ def step_process_dem(
         merge_hydro_gpkgs,
     )
     from scripts.process_dem import process_dem
-    from utils.raster_utils import create_vrt_mosaic
+    from utils.raster_utils import create_vrt_mosaic, normalize_crs
 
     nmt_dir = output_dir / "nmt"
+
+    # Reproject PUWG 2000 files to EPSG:2180 before mosaicking
+    normalized_files = normalize_crs(downloaded_files, nmt_dir / "reprojected")
+
     mosaic_path = create_vrt_mosaic(
-        input_files=downloaded_files,
+        input_files=normalized_files,
         output_vrt=nmt_dir / "dem_mosaic.vrt",
+        target_crs="EPSG:2180",
     )
 
     # Download & merge hydro BDOT10k for stream burning
