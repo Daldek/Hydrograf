@@ -12,6 +12,7 @@ VRT (Virtual Raster) is preferred over physical merge because:
 """
 
 import logging
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -20,12 +21,200 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# PUWG 2000 zones: easting prefix -> EPSG code
+_PUWG2000_ZONES = {
+    5: 2176,
+    6: 2177,
+    7: 2178,
+    8: 2179,
+}
+TARGET_CRS = "EPSG:2180"  # PUWG 1992
+TARGET_RES_M = 1.0
+
+
+def _read_asc_header(path: Path) -> dict:
+    """Read ASC grid header (first 6 lines) to get origin and cellsize."""
+    header = {}
+    with open(path) as f:
+        for _ in range(6):
+            line = f.readline().strip()
+            if not line:
+                break
+            parts = re.split(r"\s+", line, maxsplit=1)
+            if len(parts) == 2:
+                header[parts[0].lower()] = float(parts[1])
+    return header
+
+
+def _detect_crs_from_coords(xll: float, yll: float) -> str | None:
+    """Detect CRS from ASC corner coordinates.
+
+    Returns EPSG code string or None if coordinates look like EPSG:2180.
+    """
+    if xll > 1_000_000:
+        zone = int(xll // 1_000_000)
+        epsg = _PUWG2000_ZONES.get(zone)
+        if epsg:
+            return f"EPSG:{epsg}"
+        logger.warning(f"Unknown PUWG 2000 zone for easting={xll}")
+    return None  # EPSG:2180 or unknown
+
+
+_epsg2180_wkt_cache: str | None = None
+
+
+def _get_epsg2180_wkt() -> str:
+    """Get WKT for EPSG:2180 from the local GDAL installation.
+
+    Caches the result to avoid repeated subprocess calls.
+    """
+    global _epsg2180_wkt_cache  # noqa: PLW0603
+    if _epsg2180_wkt_cache is not None:
+        return _epsg2180_wkt_cache
+
+    try:
+        result = subprocess.run(
+            ["gdalsrsinfo", "EPSG:2180", "-o", "wkt_simple", "--single-line"],
+            capture_output=True, text=True, check=True,
+        )
+        _epsg2180_wkt_cache = result.stdout.strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        # Fallback — matches GDAL 3.9+ EPSG database
+        _epsg2180_wkt_cache = (
+            'PROJCS["ETRF2000-PL / CS92",'
+            'GEOGCS["ETRF2000-PL",'
+            'DATUM["ETRF2000_Poland",'
+            'SPHEROID["GRS 1980",6378137,298.257222101]],'
+            'PRIMEM["Greenwich",0],'
+            'UNIT["degree",0.0174532925199433]],'
+            'PROJECTION["Transverse_Mercator"],'
+            'PARAMETER["latitude_of_origin",0],'
+            'PARAMETER["central_meridian",19],'
+            'PARAMETER["scale_factor",0.9993],'
+            'PARAMETER["false_easting",500000],'
+            'PARAMETER["false_northing",-5300000],'
+            'UNIT["metre",1]]'
+        )
+    return _epsg2180_wkt_cache
+
+
+def _ensure_prj_sidecar(asc_path: Path) -> None:
+    """Create .prj sidecar file for ASC grid if it doesn't exist."""
+    prj_path = asc_path.with_suffix(".prj")
+    if not prj_path.exists():
+        prj_path.write_text(_get_epsg2180_wkt())
+
+
+def normalize_crs(
+    input_files: list[Path],
+    output_dir: Path | None = None,
+) -> list[Path]:
+    """Detect and reproject ASC files not in EPSG:2180 (PUWG 1992).
+
+    GUGiK serves NMT 1m data in PUWG 1992 (EPSG:2180) or PUWG 2000
+    (EPSG:2176-2179) depending on the region.  Files in PUWG 2000 are
+    reprojected to EPSG:2180 at 1 m resolution using gdalwarp so that
+    all tiles can be mosaicked into a single VRT.
+
+    Parameters
+    ----------
+    input_files : list[Path]
+        ASC files to check.
+    output_dir : Path, optional
+        Directory for reprojected GeoTIFFs.  Defaults to a ``reprojected/``
+        subdirectory next to the first input file.
+
+    Returns
+    -------
+    list[Path]
+        Paths ready for mosaicking — original files for EPSG:2180,
+        reprojected GeoTIFFs for others.
+    """
+    if not input_files:
+        return []
+
+    if output_dir is None:
+        output_dir = input_files[0].parent / "reprojected"
+
+    result: list[Path] = []
+    n_reprojected = 0
+
+    for f in input_files:
+        if not f.exists():
+            continue
+
+        hdr = _read_asc_header(f)
+        xll = hdr.get("xllcorner", hdr.get("xllcenter", 0.0))
+        yll = hdr.get("yllcorner", hdr.get("yllcenter", 0.0))
+
+        source_crs = _detect_crs_from_coords(xll, yll)
+
+        if source_crs is None:
+            # Already in EPSG:2180 — ensure .prj sidecar exists for GDAL
+            _ensure_prj_sidecar(f)
+            result.append(f)
+            continue
+
+        # Needs reprojection
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(
+            f"Reprojecting {f.name}: {source_crs} → {TARGET_CRS} "
+            f"(resample to {TARGET_RES_M}m)"
+        )
+
+        # Reproject to ASC format (matching original tiles) so that
+        # gdalbuildvrt sees uniform band color interpretation ("Undefined").
+        # GeoTIFF has "Gray" which causes gdalbuildvrt to skip them.
+        out_asc = output_dir / f"{f.stem}.asc"
+
+        if out_asc.exists():
+            logger.debug(f"Reprojected file exists, reusing: {out_asc.name}")
+            _ensure_prj_sidecar(out_asc)
+            result.append(out_asc)
+            n_reprojected += 1
+            continue
+
+        cmd = [
+            "gdalwarp",
+            "-s_srs", source_crs,
+            "-t_srs", TARGET_CRS,
+            "-tr", str(TARGET_RES_M), str(TARGET_RES_M),
+            "-r", "bilinear",
+            "-of", "AAIGrid",
+            "-overwrite",
+            str(f),
+            str(out_asc),
+        ]
+
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+            _ensure_prj_sidecar(out_asc)
+            result.append(out_asc)
+            n_reprojected += 1
+        except subprocess.CalledProcessError as e:
+            logger.error(f"gdalwarp failed for {f.name}: {e.stderr}")
+            raise RuntimeError(
+                f"Reprojection failed for {f.name}: {e.stderr}"
+            ) from e
+
+    if n_reprojected:
+        logger.info(
+            f"CRS normalization: {n_reprojected}/{len(input_files)} files "
+            f"reprojected from PUWG 2000 to {TARGET_CRS}"
+        )
+    else:
+        logger.info("CRS normalization: all files already in EPSG:2180")
+
+    return result
+
 
 def create_vrt_mosaic(
     input_files: list[Path],
     output_vrt: Path | None = None,
     resolution: str = "highest",
     nodata: float = -9999.0,
+    target_crs: str | None = None,
 ) -> Path:
     """
     Create a mosaic from multiple DEM tiles.
@@ -85,7 +274,9 @@ def create_vrt_mosaic(
 
     # Try GDAL's gdalbuildvrt first (preferred - true VRT, no data duplication)
     try:
-        return _create_vrt_gdal(existing_files, output_vrt, resolution, nodata)
+        return _create_vrt_gdal(
+            existing_files, output_vrt, resolution, nodata, target_crs
+        )
     except RuntimeError as e:
         if "not found" in str(e).lower():
             logger.warning("GDAL not available, falling back to rasterio.merge")
@@ -100,6 +291,7 @@ def _create_vrt_gdal(
     output_vrt: Path,
     resolution: str,
     nodata: float,
+    target_crs: str | None = None,
 ) -> Path:
     """Create VRT using GDAL's gdalbuildvrt command."""
     cmd = [
@@ -111,8 +303,10 @@ def _create_vrt_gdal(
         "-vrtnodata",
         str(nodata),
         "-overwrite",
-        str(output_vrt),
     ]
+    if target_crs:
+        cmd.extend(["-a_srs", target_crs])
+    cmd.append(str(output_vrt))
     cmd.extend(str(f) for f in input_files)
 
     logger.debug(f"Running: {' '.join(cmd)}")

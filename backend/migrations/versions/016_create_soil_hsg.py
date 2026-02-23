@@ -28,7 +28,7 @@ def upgrade() -> None:
         ),
         sa.Column("area_m2", sa.Float, nullable=False),
     )
-    op.create_index("idx_soil_hsg_geom", "soil_hsg", ["geom"], postgresql_using="gist")
+    # GeoAlchemy2 auto-creates gist index on geom column
     op.create_index("idx_soil_hsg_group", "soil_hsg", ["hsg_group"])
 
 
