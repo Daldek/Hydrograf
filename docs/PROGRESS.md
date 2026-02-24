@@ -44,9 +44,20 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-22 (sesja 42)
+**Data:** 2026-02-24 (sesja 44)
 
 ### Co zrobiono
+
+- **Fix statement_timeout dla bulk INSERT (2.5M segmentow stream):**
+  - Dodano `override_statement_timeout(600s)` wrapper w `insert_stream_segments()` i `insert_catchments()` w `core/db_bulk.py` — domyslny timeout 30s byl za krotki przy 2.5M+ rekordow
+- **Pelny bootstrap pipeline (10 arkuszy, 5m NMT):**
+  - 18.9M komorek (4610×6059 przy 5m), mozaika VRT ze 100 plikow ASC
+  - pyflwdir ukonczony w ~8 min (vs OOM przy rozdzielczosci 1m z 698M komorek)
+  - DB: stream_network 2,780,056 segmentow (4 progi), stream_catchments 264,548, depressions 385,567, land_cover 101,237, precipitation 7,560, soil_hsg 121
+  - Kafelki MVT wygenerowane (tippecanoe), overlay PNG (DEM + streams)
+  - Calkowity czas pipeline: 2969s (~49 min)
+
+### Poprzednia sesja (2026-02-22, sesja 42)
 
 - **Naprawa 5 bugow UX (E1, E4, E12, E13, F2) — 3 rownolegle zespoly + 1 sekwencyjny:**
   - **E1 — Dziury na granicach zlewni:** `merge_catchment_boundaries()` w `watershed_service.py` — usunieto `ST_SnapToGrid(geom, 0.01)` (przesuwalo wierzcholki tworzac mikro-luki), zastapione buffer-debuffer (0.1m/-0.1m) ktory zamyka luki zachowujac rozmiar. `MIN_HOLE_AREA_M2`: 1000→100 m² (agresywniejsze usuwanie artefaktow merge).
@@ -538,15 +549,16 @@
 
 - **Laczny wynik:** 484 testy, wszystkie przechodza
 
-### Stan bazy danych
+### Stan bazy danych (sesja 44 — 10 arkuszy, 5m NMT)
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
 | flow_network | **USUNIETA** | Wyeliminowana w ADR-028, migracja 015 (DROP TABLE) |
-| stream_network | 220,859 | 100: 198258, 1000: 20302, 10000: 2087, 100000: 212 (z segment_idx, migracja 014) |
-| stream_catchments | 22,613 | 1000: 20313, 10000: 2088, 100000: 212 (bez progu 100, ADR-026) |
-| land_cover | 50,406 | 2 powiaty (3021, 3064), 7 kategorii |
-| depressions | 1,125,699 | pelny zestaw po bootstrap sesji 34 |
-| precipitation_data | 630 | 15 punktow × 42 scenariusze |
+| stream_network | 2,780,056 | 4 progi (z segment_idx, migracja 014) |
+| stream_catchments | 264,548 | 3 progi (bez progu 100, ADR-026) |
+| land_cover | 101,237 | 2 powiaty (3021, 3064), 7 kategorii |
+| depressions | 385,567 | pelny zestaw po bootstrap sesji 44 |
+| precipitation_data | 7,560 | 180 punktow × 42 scenariusze |
+| soil_hsg | 121 | grupy glebowe HSG |
 
 ### Znane problemy (infrastruktura)
 - `generate_tiles.py` wymaga tippecanoe (`pip install tippecanoe` w .venv)
