@@ -111,7 +111,7 @@ cd backend
 |----------|------|-----------|
 | `--lat`, `--lon` | Współrzędne centrum obszaru (WGS84) | (wymagane) |
 | `--buffer` | Promień bufora w km | 5 |
-| `--stream-threshold` | Próg akumulacji dla strumieni | 100 |
+| `--stream-threshold` | Próg akumulacji dla strumieni | 1000 |
 | `--scale` | Skala arkuszy (1:10000, 1:25000, 1:50000, 1:100000) | 1:10000 |
 | `--with-landcover` | Pobierz też dane o pokryciu terenu (BDOT10k) | false |
 | `--with-hydro` | Pobierz też dane hydrograficzne BDOT10k (SWRS, SWKN, SWRM, PTWP) | false |
@@ -208,7 +208,7 @@ cd backend
 | Parametr | Skrót | Opis | Domyślnie |
 |----------|-------|------|-----------|
 | `--input` | `-i` | Ścieżka do pliku .asc (wymagane) | - |
-| `--stream-threshold` | - | Próg flow accumulation dla strumieni | 100 |
+| `--stream-threshold` | - | Próg flow accumulation dla strumieni | 1000 |
 | `--batch-size` | - | Rozmiar batch przy imporcie do bazy | 10000 |
 | `--dry-run` | - | Tylko obliczenia i statystyki, bez importu | false |
 | `--save-intermediates` | `-s` | Zapis rastrów pośrednich jako GeoTIFF | false |
@@ -255,7 +255,7 @@ Opcja `--save-intermediates` generuje pliki do weryfikacji obliczeń w oprogramo
 DEM Processing Script
 ============================================================
 Input: ../data/nmt/N-33-131-D-a-3-2.asc
-Stream threshold: 100
+Stream threshold: 1000
 ============================================================
 Read DEM: 473x435 cells
 Origin: (383202.5, 509297.5)
@@ -268,7 +268,7 @@ Computing slope...
 Slope computed (range: 0.0% - 73.8%)
 Creating flow_network records...
 Created 196822 records
-Stream cells (acc >= 100): 5734
+Stream cells (acc >= 1000): 5734
 ============================================================
 Processing complete!
   Grid size: 435 x 473

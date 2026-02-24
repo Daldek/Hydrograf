@@ -410,7 +410,7 @@ class TestBuildMorphDictFromGraph:
             outlet_x=500095.0,
             outlet_y=600095.0,
             segment_idx=42,
-            threshold_m2=100,
+            threshold_m2=1000,
             cn=75,
         )
 
@@ -456,7 +456,7 @@ class TestBuildMorphDictFromGraph:
             outlet_x=500095.0,
             outlet_y=600095.0,
             segment_idx=42,
-            threshold_m2=100,
+            threshold_m2=1000,
             cn=75,
         )
 
@@ -481,7 +481,7 @@ class TestBuildMorphDictFromGraph:
             outlet_x=500095.0,
             outlet_y=600095.0,
             segment_idx=42,
-            threshold_m2=100,
+            threshold_m2=1000,
             cn=None,
         )
 
@@ -500,7 +500,7 @@ class TestBuildMorphDictFromGraph:
             outlet_x=500095.0,
             outlet_y=600095.0,
             segment_idx=42,
-            threshold_m2=100,
+            threshold_m2=1000,
         )
 
         assert result["perimeter_km"] > 0
@@ -519,7 +519,7 @@ class TestBuildMorphDictFromGraph:
             outlet_x=500095.0,
             outlet_y=600095.0,
             segment_idx=42,
-            threshold_m2=100,
+            threshold_m2=1000,
             cn=75,
         )
 

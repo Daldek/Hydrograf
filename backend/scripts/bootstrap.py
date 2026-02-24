@@ -448,11 +448,11 @@ def step_process_dem(
 
     stats = process_dem(
         input_path=mosaic_path,
-        stream_threshold=100,
+        stream_threshold=1000,
         clear_existing=True,
         save_intermediates=True,
         output_dir=nmt_dir,
-        thresholds=[100, 1000, 10000, 100000],
+        thresholds=[1000, 10000, 100000],
         burn_streams_path=burn_path,
         # hydro_resolution_m not needed when NMT downloaded at 5m resolution
     )

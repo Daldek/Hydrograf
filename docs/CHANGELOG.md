@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-02-24
 
+### Removed
+- **stream_network threshold 100 m²** — usunieto ~2.5M segmentow (90% tabeli), domyslny prog FA: 100→1000, migracja 017 (ADR-030)
+
 ### Fixed (sesja 44 — bulk INSERT timeout)
 - **`override_statement_timeout` w bulk INSERT:** dodanie wrappera `override_statement_timeout(600s)` do `insert_stream_segments()` i `insert_catchments()` w `core/db_bulk.py` — domyslny `statement_timeout=30s` powodowal timeout przy insercie 2.5M segmentow stream_network. Fix umozliwia pelny bootstrap 10 arkuszy 5m NMT.
 

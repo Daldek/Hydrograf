@@ -637,6 +637,27 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-030: Usuniecie progu FA 100 m² z systemu
+
+**Data:** 2026-02-24
+**Status:** Przyjeta
+
+**Kontekst:** Prog 100 m² generowal ~2.5M segmentow ciekow (90% tabeli stream_network), nie maja odpowiednich zlewni czastkowych (usuniete w ADR-026), wydluzaja pipeline o ~50%, zajmuja ~2 GB przestrzeni. Nie sa uzywane w API ani frontendzie.
+
+**Opcje:**
+- A) Zostawic prog 100 m² — dane istnieja, ale sa nieuzywane i kosztowne
+- B) Usunac prog 100 m² z DEFAULT_THRESHOLDS_M2 i bazy danych
+
+**Decyzja:** Opcja B. Usuniecie progu 100 z DEFAULT_THRESHOLDS_M2 → [1000, 10000, 100000]. Migracja 017 usuwa dane z bazy. Domyslny stream_threshold zmieniony na 1000.
+
+**Konsekwencje:**
+- Pipeline szybszy (~50% krocej)
+- Baza lzejsza (~2 GB mniej)
+- 3 progi zamiast 4
+- Brak mozliwosci rollbacku danych (wymaga ponownego uruchomienia pipeline)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
