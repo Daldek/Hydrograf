@@ -544,3 +544,164 @@ class TestPipelineIntegration:
         for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             nr, nc = 5 + dr, 5 + dc
             assert fdir[nr, nc] != 0, f"Neighbor ({nr},{nc}) has invalid fdir=0"
+
+
+# ---- Tests for waterbody mode ----
+
+
+class TestWaterbodyMode:
+    """Tests for waterbody_mode and min_area_m2 parameters."""
+
+    def test_min_area_filters_small_lakes(self):
+        """Lakes smaller than min_area_m2 are ignored."""
+        dem = _make_dem()
+        # Small lake (~100 m²) — should be filtered with min_area=200
+        small_lake = Polygon(
+            [
+                (500040, 600060),
+                (500050, 600060),
+                (500050, 600050),
+                (500040, 600050),
+            ]
+        )
+        # Large lake (~400 m²) — should survive filter
+        large_lake = Polygon(
+            [
+                (500070, 600030),
+                (500090, 600030),
+                (500090, 600010),
+                (500070, 600010),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([small_lake, large_lake], [], tmp)
+            drain_pts, diag = classify_endorheic_lakes(
+                dem, TRANSFORM, gpkg, NODATA,
+                min_area_m2=200.0,
+            )
+
+        assert diag["filtered_by_area"] == 1
+        assert diag["total_lakes"] == 1
+        assert diag["endorheic"] == 1
+        assert len(drain_pts) == 1
+
+    def test_min_area_none_keeps_all(self):
+        """Default min_area_m2=None keeps all lakes (backward compat)."""
+        dem = _make_dem()
+        small_lake = Polygon(
+            [
+                (500040, 600060),
+                (500050, 600060),
+                (500050, 600050),
+                (500040, 600050),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([small_lake], [], tmp)
+            drain_pts, diag = classify_endorheic_lakes(
+                dem, TRANSFORM, gpkg, NODATA,
+                min_area_m2=None,
+            )
+
+        assert diag["filtered_by_area"] == 0
+        assert diag["total_lakes"] == 1
+        assert len(drain_pts) == 1
+
+    def test_custom_waterbody_all_endorheic(self):
+        """Custom waterbody file → all bodies treated as endorheic."""
+        dem = _make_dem()
+        lake1 = Polygon(
+            [
+                (500010, 600090),
+                (500020, 600090),
+                (500020, 600080),
+                (500010, 600080),
+            ]
+        )
+        lake2 = Polygon(
+            [
+                (500060, 600040),
+                (500070, 600040),
+                (500070, 600030),
+                (500060, 600030),
+            ]
+        )
+        # Outflow stream — should be IGNORED in custom mode
+        outflow = LineString([(500070, 600030), (500090, 600010)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            # Create custom waterbody file
+            wb_path = Path(tmp) / "custom_wb.gpkg"
+            wb_gdf = gpd.GeoDataFrame(
+                {"geometry": [lake1, lake2]}, crs="EPSG:2180"
+            )
+            wb_gdf.to_file(wb_path, driver="GPKG")
+
+            # Create BDOT10k gpkg with streams (should not be used)
+            gpkg = _create_test_gpkg([], [outflow], tmp)
+
+            drain_pts, diag = classify_endorheic_lakes(
+                dem, TRANSFORM, gpkg, NODATA,
+                waterbody_path=wb_path,
+            )
+
+        # Both lakes endorheic regardless of streams
+        assert diag["endorheic"] == 2
+        assert diag["exorheic"] == 0
+        assert len(drain_pts) == 2
+
+    def test_custom_waterbody_with_min_area(self):
+        """Custom waterbody + min_area filter combined."""
+        dem = _make_dem()
+        # Small (~100 m²)
+        small_lake = Polygon(
+            [
+                (500040, 600060),
+                (500050, 600060),
+                (500050, 600050),
+                (500040, 600050),
+            ]
+        )
+        # Large (~400 m²)
+        large_lake = Polygon(
+            [
+                (500070, 600030),
+                (500090, 600030),
+                (500090, 600010),
+                (500070, 600010),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wb_path = Path(tmp) / "custom_wb.gpkg"
+            wb_gdf = gpd.GeoDataFrame(
+                {"geometry": [small_lake, large_lake]}, crs="EPSG:2180"
+            )
+            wb_gdf.to_file(wb_path, driver="GPKG")
+
+            gpkg = _create_test_gpkg([], [], tmp)
+
+            drain_pts, diag = classify_endorheic_lakes(
+                dem, TRANSFORM, gpkg, NODATA,
+                min_area_m2=200.0,
+                waterbody_path=wb_path,
+            )
+
+        assert diag["filtered_by_area"] == 1
+        assert diag["total_lakes"] == 1
+        assert diag["endorheic"] == 1
+        assert len(drain_pts) == 1
+
+    def test_waterbody_path_missing_file(self):
+        """process_dem raises FileNotFoundError for missing waterbody file."""
+        import pytest
+
+        from scripts.process_dem import process_dem
+
+        with pytest.raises(FileNotFoundError, match="Custom waterbody file not found"):
+            process_dem(
+                input_path=Path("/nonexistent/dem.asc"),
+                waterbody_mode="/nonexistent/waterbodies.gpkg",
+            )

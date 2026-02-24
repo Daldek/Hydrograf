@@ -658,6 +658,28 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-031: Flaga --waterbody-mode do sterowania obsługa zbiornikow wodnych
+
+**Data:** 2026-02-24
+**Status:** Przyjeta
+
+**Kontekst:** Funkcja `classify_endorheic_lakes()` zawsze klasyfikuje zbiorniki z BDOT10k gdy dostepny jest plik hydro. Potrzebna elastyczna kontrola: wylaczenie klasyfikacji, filtrowanie malych zbiornikow, uzywanie wlasnej warstwy.
+
+**Opcje:**
+- A) Jedna flaga `--waterbody-mode` z wartosciami enum (auto/none/custom) + osobna flaga sciezki
+- B) Dwie flagi: `--waterbody-mode` (auto/none lub sciezka) + `--waterbody-min-area` (float)
+- C) Trzy osobne flagi (--no-waterbodies, --waterbody-path, --waterbody-min-area)
+
+**Decyzja:** Opcja B. `--waterbody-mode` przyjmuje "auto", "none" lub sciezke do pliku. `--waterbody-min-area` filtruje zbiorniki po powierzchni. Custom waterbody file → wszystkie traktowane jako endoreiczne (bez klasyfikacji ciekow).
+
+**Konsekwencje:**
+- Pelna kontrola bez zmian w istniejacym pipeline (domyslne "auto" = identyczne zachowanie)
+- Custom layer nie wymaga ciekow z BDOT10k — uproszczona sciezka dla uzytkownikow z wlasna warstwa
+- `min_area` dziala zarowno z auto jak i custom path
+- Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

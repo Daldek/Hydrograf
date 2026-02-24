@@ -87,6 +87,8 @@ def prepare_area(
     landcover_provider: str = "bdot10k",
     with_hydro: bool = False,
     burn_depth_m: float = 5.0,
+    waterbody_mode: str = "auto",
+    waterbody_min_area_m2: float | None = None,
 ) -> dict:
     """
     Download and process NMT data for an area around a point.
@@ -119,6 +121,10 @@ def prepare_area(
         If True, download BDOT10k hydrographic data and burn streams into DEM
     burn_depth_m : float
         Burn depth in meters for stream burning (default: 5.0)
+    waterbody_mode : str
+        Waterbody handling mode: "auto", "none", or path to custom file
+    waterbody_min_area_m2 : float, optional
+        Minimum waterbody area in m²
 
     Returns
     -------
@@ -302,6 +308,8 @@ def prepare_area(
             clear_existing=True,  # Clear before processing
             burn_streams_path=burn_streams_path,
             burn_depth_m=burn_depth_m,
+            waterbody_mode=waterbody_mode,
+            waterbody_min_area_m2=waterbody_min_area_m2,
         )
 
         stats["sheets_processed"] = len(downloaded_files)
@@ -484,6 +492,23 @@ def main():
         help="Land cover provider (default: bdot10k)",
     )
 
+    # Waterbody options
+    wb_group = parser.add_argument_group("Zbiorniki wodne")
+    wb_group.add_argument(
+        "--waterbody-mode",
+        type=str,
+        default="auto",
+        help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
+             '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
+             "(wszystkie traktowane jako endoreiczne). Default: auto",
+    )
+    wb_group.add_argument(
+        "--waterbody-min-area",
+        type=float,
+        default=None,
+        help="Min. powierzchnia zbiornika (m²). Zbiorniki mniejsze sa ignorowane.",
+    )
+
     # Output options
     output_group = parser.add_argument_group("Output options")
     output_group.add_argument(
@@ -577,6 +602,8 @@ def main():
             landcover_provider=args.landcover_provider,
             with_hydro=args.with_hydro,
             burn_depth_m=args.burn_depth,
+            waterbody_mode=args.waterbody_mode,
+            waterbody_min_area_m2=args.waterbody_min_area,
         )
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
