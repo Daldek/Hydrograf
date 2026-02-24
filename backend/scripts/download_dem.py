@@ -55,6 +55,7 @@ def download_sheets(
     sheets: list[str],
     output_dir: Path,
     skip_existing: bool = True,
+    resolution: str = "5m",
 ) -> list[Path]:
     """
     Download NMT data for specified sheet codes using Kartograf.
@@ -70,6 +71,9 @@ def download_sheets(
         Output directory for downloaded files
     skip_existing : bool
         Skip download if file already exists (default: True)
+    resolution : str
+        NMT resolution: "1m" or "5m" (default: "5m").
+        5m available only for EVRF2007 vertical CRS.
 
     Returns
     -------
@@ -94,7 +98,7 @@ def download_sheets(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize Kartograf components (Kartograf 0.4.1 API)
-    provider = GugikProvider()
+    provider = GugikProvider(resolution=resolution)
     manager = DownloadManager(output_dir=str(output_dir), provider=provider)
 
     downloaded_files = []

@@ -29,7 +29,7 @@ _PUWG2000_ZONES = {
     8: 2179,
 }
 TARGET_CRS = "EPSG:2180"  # PUWG 1992
-TARGET_RES_M = 1.0
+TARGET_RES_M = 5.0  # Default hydro resolution (matches Kartograf download)
 
 
 def _read_asc_header(path: Path) -> dict:
@@ -158,9 +158,13 @@ def normalize_crs(
         # Needs reprojection
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Use source cellsize (preserve native resolution)
+        src_cellsize = hdr.get("cellsize", TARGET_RES_M)
+        target_res = max(src_cellsize, TARGET_RES_M)
+
         logger.info(
             f"Reprojecting {f.name}: {source_crs} → {TARGET_CRS} "
-            f"(resample to {TARGET_RES_M}m)"
+            f"(resample to {target_res}m)"
         )
 
         # Reproject to ASC format (matching original tiles) so that
@@ -179,7 +183,7 @@ def normalize_crs(
             "gdalwarp",
             "-s_srs", source_crs,
             "-t_srs", TARGET_CRS,
-            "-tr", str(TARGET_RES_M), str(TARGET_RES_M),
+            "-tr", str(target_res), str(target_res),
             "-r", "bilinear",
             "-of", "AAIGrid",
             "-overwrite",

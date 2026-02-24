@@ -145,6 +145,34 @@ def read_raster(filepath: Path) -> tuple[np.ndarray, dict]:
     return data, metadata
 
 
+def downsample_raster(input_path: Path, output_path: Path, target_res_m: float) -> Path:
+    """
+    Downsample raster to target resolution using GDAL (bilinear).
+
+    Used to reduce memory for pyflwdir on large rasters.
+    Returns output_path.
+    """
+    import subprocess
+
+    logger.info(f"Downsampling {input_path.name}: target {target_res_m}m resolution")
+
+    cmd = [
+        "gdalwarp",
+        "-tr", str(target_res_m), str(target_res_m),
+        "-r", "bilinear",
+        "-of", "GTiff",
+        "-co", "COMPRESS=DEFLATE",
+        "-overwrite",
+        str(input_path),
+        str(output_path),
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+    logger.info(f"Downsampled to: {output_path}")
+    return output_path
+
+
 def read_ascii_grid(filepath: Path) -> tuple[np.ndarray, dict]:
     """
     Read ARC/INFO ASCII GRID file.
