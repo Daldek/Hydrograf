@@ -362,6 +362,7 @@ def step_infra() -> str:
 def step_download_nmt(
     sheets: list[str],
     output_dir: Path,
+    resolution: str = "5m",
 ) -> tuple[list[Path], str]:
     """Step 2: Download NMT sheets via Kartograf."""
     sys.path.insert(0, str(BACKEND_DIR))
@@ -370,7 +371,7 @@ def step_download_nmt(
     nmt_dir = output_dir / "nmt"
     nmt_dir.mkdir(parents=True, exist_ok=True)
 
-    downloaded = download_sheets(sheets, nmt_dir, skip_existing=True)
+    downloaded = download_sheets(sheets, nmt_dir, skip_existing=True, resolution=resolution)
 
     # Count how many were already cached
     n_total = len(downloaded)
@@ -453,6 +454,7 @@ def step_process_dem(
         output_dir=nmt_dir,
         thresholds=[100, 1000, 10000, 100000],
         burn_streams_path=burn_path,
+        # hydro_resolution_m not needed when NMT downloaded at 5m resolution
     )
 
     cells = stats.get("valid_cells", 0)

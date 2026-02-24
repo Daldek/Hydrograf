@@ -70,7 +70,7 @@ from core.morphometry_raster import (
     compute_strahler_order,
     compute_twi,
 )
-from core.raster_io import read_ascii_grid, read_raster, save_raster_geotiff
+from core.raster_io import downsample_raster, read_ascii_grid, read_raster, save_raster_geotiff
 from core.stream_extraction import (
     compute_downstream_links,
     delineate_subcatchments,
@@ -127,6 +127,7 @@ def process_dem(
     skip_streams_vectorize: bool = False,
     thresholds: list[int] | None = None,
     skip_catchments: bool = False,
+    hydro_resolution_m: float | None = None,
 ) -> dict:
     """
     Process DEM file (ASC, VRT, or GeoTIFF) and extract stream network.
@@ -157,6 +158,9 @@ def process_dem(
         If True, skip stream vectorization (default: False)
     skip_catchments : bool
         If True, skip sub-catchment delineation (default: False)
+    hydro_resolution_m : float, optional
+        If set, downsample DEM to this resolution (meters) before processing.
+        Reduces memory usage for large rasters. Original resolution kept for overlays.
     thresholds : list[int], optional
         List of FA thresholds in m² for multi-density stream networks.
         If provided, generates separate stream networks per threshold.
@@ -196,7 +200,7 @@ def process_dem(
     valid_cells = np.sum(dem != nodata)
     stats["valid_cells"] = int(valid_cells)
 
-    # Save original DEM as GeoTIFF
+    # Save original DEM as GeoTIFF (full resolution, before downsampling)
     if save_intermediates:
         save_raster_geotiff(
             dem,
@@ -205,6 +209,28 @@ def process_dem(
             nodata=nodata,
             dtype="float32",
         )
+
+    # Downsample if requested (OOM prevention for large rasters)
+    if hydro_resolution_m is not None and hydro_resolution_m > metadata["cellsize"]:
+        downsampled_path = output_dir / f"{base_name}_downsampled_{hydro_resolution_m}m.tif"
+        downsample_raster(input_path, downsampled_path, hydro_resolution_m)
+        dem, metadata = read_raster(downsampled_path)
+
+        logger.info(
+            f"Using downsampled DEM: {metadata['nrows']}x{metadata['ncols']} cells "
+            f"({metadata['cellsize']}m resolution)"
+        )
+
+        # Update stats and variables
+        stats["ncols"] = metadata["ncols"]
+        stats["nrows"] = metadata["nrows"]
+        stats["cellsize"] = metadata["cellsize"]
+        stats["total_cells"] = metadata["ncols"] * metadata["nrows"]
+        stats["hydro_resolution_m"] = hydro_resolution_m
+
+        nodata = metadata["nodata_value"]
+        valid_cells = np.sum(dem != nodata)
+        stats["valid_cells"] = int(valid_cells)
 
     # 2. Burn streams (optional) — before depression filling
     if burn_streams_path is not None:
@@ -612,6 +638,13 @@ def main():
             "Overrides --stream-threshold for vectorization."
         ),
     )
+    parser.add_argument(
+        "--hydro-resolution",
+        type=float,
+        default=None,
+        help="Downsample DEM to this resolution (meters) before hydro processing. "
+             "Reduces memory for large rasters. E.g. --hydro-resolution 2",
+    )
 
     args = parser.parse_args()
 
@@ -655,6 +688,7 @@ def main():
             skip_streams_vectorize=args.skip_streams_vectorize,
             thresholds=threshold_list,
             skip_catchments=args.skip_catchments,
+            hydro_resolution_m=args.hydro_resolution,
         )
     except FileNotFoundError as e:
         logger.error(str(e))
