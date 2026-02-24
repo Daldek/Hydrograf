@@ -94,7 +94,7 @@ def vectorize_streams(
     slope: np.ndarray,
     strahler: np.ndarray,
     metadata: dict,
-    stream_threshold: int = 100,
+    stream_threshold: int = 1000,
     label_raster_out: np.ndarray | None = None,
 ) -> list[dict]:
     """

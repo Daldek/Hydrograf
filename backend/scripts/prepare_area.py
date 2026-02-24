@@ -78,7 +78,7 @@ def prepare_area(
     lon: float,
     buffer_km: float = 5.0,
     scale: str = "1:10000",
-    stream_threshold: int = 100,
+    stream_threshold: int = 1000,
     batch_size: int = 10000,
     keep_downloads: bool = True,
     save_intermediates: bool = False,
@@ -434,8 +434,8 @@ def main():
     process_group.add_argument(
         "--stream-threshold",
         type=int,
-        default=100,
-        help="Flow accumulation threshold for streams (default: 100)",
+        default=1000,
+        help="Flow accumulation threshold for streams (default: 1000)",
     )
     process_group.add_argument(
         "--batch-size",

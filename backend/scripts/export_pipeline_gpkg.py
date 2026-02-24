@@ -10,7 +10,7 @@ Usage:
     cd backend
     .venv/bin/python -m scripts.export_pipeline_gpkg \
         --output ../data/e2e_test/pipeline_results.gpkg \
-        --thresholds "100,1000,10000,100000" \
+        --thresholds "1000,10000,100000" \
         --report ../data/e2e_test/PIPELINE_REPORT.md \
         --intermediates-dir ../data/e2e_test/intermediates
 """
@@ -274,8 +274,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--thresholds",
-        default="100,1000,10000,100000",
-        help="Comma-separated FA thresholds (default: 100,1000,10000,100000)",
+        default="1000,10000,100000",
+        help="Comma-separated FA thresholds (default: 1000,10000,100000)",
     )
     parser.add_argument(
         "--report",

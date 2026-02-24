@@ -214,7 +214,7 @@ cd backend
 | Parametr | Opis | Domyślnie |
 |----------|------|-----------|
 | `--input`, `-i` | Ścieżka do pliku .asc | (wymagane) |
-| `--stream-threshold` | Próg akumulacji dla strumieni | 100 |
+| `--stream-threshold` | Próg akumulacji dla strumieni | 1000 |
 | `--batch-size` | Rozmiar batch przy imporcie | 10000 |
 | `--dry-run` | Tylko statystyki, bez importu | false |
 | `--save-intermediates`, `-s` | Zapis plików GeoTIFF | false |

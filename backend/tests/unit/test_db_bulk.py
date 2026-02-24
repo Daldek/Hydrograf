@@ -40,9 +40,9 @@ class TestInsertStreamSegments:
         """
         segment = self._make_segment()
 
-        # Threshold 100: all inserted
+        # Threshold 500: all inserted
         db1, cursor1, _ = self._make_mock_db(rowcount=1)
-        result1 = insert_stream_segments(db1, [segment], threshold_m2=100)
+        result1 = insert_stream_segments(db1, [segment], threshold_m2=500)
         assert result1 == 1
 
         # Threshold 1000: same segment, also all inserted
@@ -75,7 +75,7 @@ class TestInsertStreamSegments:
         import logging
 
         with caplog.at_level(logging.WARNING, logger="core.db_bulk"):
-            result = insert_stream_segments(db, segments, threshold_m2=100)
+            result = insert_stream_segments(db, segments, threshold_m2=1000)
 
         assert result == 2
         assert "dropped by unique constraint" not in caplog.text
@@ -83,7 +83,7 @@ class TestInsertStreamSegments:
     def test_insert_stream_segments_empty(self):
         """Empty segment list returns 0 without DB calls."""
         db = MagicMock()
-        result = insert_stream_segments(db, [], threshold_m2=100)
+        result = insert_stream_segments(db, [], threshold_m2=1000)
         assert result == 0
         db.connection.assert_not_called()
 

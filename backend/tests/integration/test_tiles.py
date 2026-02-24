@@ -53,7 +53,7 @@ def mock_db_with_thresholds():
     mock_session = MagicMock()
 
     streams_rows = [MagicMock(), MagicMock(), MagicMock()]
-    for r, v in zip(streams_rows, [100, 1000, 10000], strict=False):
+    for r, v in zip(streams_rows, [1000, 10000, 100000], strict=False):
         r.__getitem__ = lambda self, idx, val=v: val if idx == 0 else None
 
     catchments_rows = [MagicMock(), MagicMock()]
@@ -257,7 +257,7 @@ class TestThresholdsEndpoint:
         response = client.get("/api/tiles/thresholds")
         data = response.json()
 
-        assert data["streams"] == [100, 1000, 10000]
+        assert data["streams"] == [1000, 10000, 100000]
         assert data["catchments"] == [1000, 10000]
         app.dependency_overrides.clear()
 
