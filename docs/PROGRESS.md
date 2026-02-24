@@ -14,7 +14,7 @@
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | CP4 — tryb wyboru obiektow, flow acc coloring, histogram, debounce, zoom fix |
-| Testy scripts/ | ⏳ W trakcie | 558 testow lacznie (po usunieciu 43 testow martwego kodu flow_network/flow_graph) |
+| Testy scripts/ | ⏳ W trakcie | 563 testow lacznie (po dodaniu testow waterbody-mode) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -44,9 +44,20 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-24 (sesja 45)
+**Data:** 2026-02-24 (sesja 46)
 
 ### Co zrobiono
+
+- **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):**
+  - Nowe parametry `waterbody_mode` i `waterbody_min_area_m2` w `classify_endorheic_lakes()` (core/hydrology.py)
+  - 3 tryby: `auto` (istniejace zachowanie BDOT10k), `none` (pomin klasyfikacje), sciezka do custom `.gpkg`/`.shp` (wszystkie endoreiczne)
+  - `min_area_m2` filtruje male zbiorniki po powierzchni (dziala z auto i custom)
+  - Parametry propagowane przez: `process_dem.py`, `bootstrap.py`, `prepare_area.py` (CLI + sygnatury funkcji)
+  - Wczesna walidacja custom path (przed odczytem DEM)
+  - 5 nowych testow w `test_lake_drain.py::TestWaterbodyMode`, 563 testow passed
+  - Dokumentacja: ADR-031, scripts/README.md, PROGRESS, CHANGELOG
+
+### Poprzednia sesja (2026-02-24, sesja 45)
 
 - **Usuniecie progu FA 100 m² z systemu (ADR-030):**
   - Prog 100 m² generowal ~2.5M segmentow ciekow (90% tabeli stream_network), bez odpowiednich zlewni czastkowych (usuniete w ADR-026), wydluzal pipeline o ~50%, zajmowal ~2 GB w bazie
