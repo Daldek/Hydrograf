@@ -180,7 +180,7 @@ def compute_aspect(
 def compute_strahler_order(
     dem: np.ndarray,
     metadata: dict,
-    stream_threshold: int = 100,
+    stream_threshold: int = 1000,
 ) -> np.ndarray:
     """
     Compute Strahler stream order using pyflwdir.

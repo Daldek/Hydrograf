@@ -82,7 +82,7 @@ class AnalysisConfig:
     tc_method: str = "kirpich"  # kirpich, scs, giandotti
 
     # Parametry przetwarzania
-    stream_threshold: int = 100  # Próg akumulacji dla cieków
+    stream_threshold: int = 1000  # Próg akumulacji dla cieków
     max_cells: int = 10_000_000  # Maksymalna liczba komórek zlewni
     timestep_min: float = 5.0  # Krok czasowy hydrogramu [min]
     max_stream_distance_m: float = 500.0  # Maks. odległość szukania cieku [m]
@@ -1235,8 +1235,8 @@ def main():
     proc.add_argument(
         "--stream-threshold",
         type=int,
-        default=100,
-        help="Próg akumulacji dla cieków (default: 100)",
+        default=1000,
+        help="Próg akumulacji dla cieków (default: 1000)",
     )
     proc.add_argument(
         "--resolution",

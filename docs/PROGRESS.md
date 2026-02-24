@@ -553,7 +553,7 @@
 | Tabela | Rekordy | Uwagi |
 |--------|---------|-------|
 | flow_network | **USUNIETA** | Wyeliminowana w ADR-028, migracja 015 (DROP TABLE) |
-| stream_network | 2,780,056 | 4 progi (z segment_idx, migracja 014) |
+| stream_network | ~263,791 | 3 progi: 1000, 10000, 100000 (prog 100 usuniety — ADR-030, migracja 017) |
 | stream_catchments | 264,548 | 3 progi (bez progu 100, ADR-026) |
 | land_cover | 101,237 | 2 powiaty (3021, 3064), 7 kategorii |
 | depressions | 385,567 | pelny zestaw po bootstrap sesji 44 |

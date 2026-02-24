@@ -52,7 +52,7 @@ def override_statement_timeout(db_session, timeout_s: int = 0):
 def insert_stream_segments(
     db_session,
     segments: list[dict],
-    threshold_m2: int = 100,
+    threshold_m2: int = 1000,
 ) -> int:
     """
     Insert vectorized stream segments into stream_network table.

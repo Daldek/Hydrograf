@@ -23,12 +23,12 @@ Examples
     # Process single DEM tile
     python -m scripts.process_dem \\
         --input ../data/nmt/N-33-131-D-a-3-2.asc \\
-        --stream-threshold 100
+        --stream-threshold 1000
 
     # Process VRT mosaic (multiple tiles)
     python -m scripts.process_dem \\
         --input ../data/nmt/mosaic.vrt \\
-        --stream-threshold 100
+        --stream-threshold 1000
 
     # Dry run (only show statistics)
     python -m scripts.process_dem \\
@@ -117,7 +117,7 @@ logger = logging.getLogger(__name__)
 
 def process_dem(
     input_path: Path,
-    stream_threshold: int = 100,
+    stream_threshold: int = 1000,
     dry_run: bool = False,
     save_intermediates: bool = False,
     output_dir: Path | None = None,
@@ -358,7 +358,7 @@ def process_dem(
 
     # Determine thresholds for multi-density stream networks
     cell_area = metadata["cellsize"] * metadata["cellsize"]
-    DEFAULT_THRESHOLDS_M2 = [100, 1000, 10000, 100000]
+    DEFAULT_THRESHOLDS_M2 = [1000, 10000, 100000]
 
     # Catchments only for thresholds >= 1000 m² (ADR-026)
     MIN_CATCHMENT_THRESHOLD_M2 = 1000
@@ -577,9 +577,9 @@ def main():
     parser.add_argument(
         "--stream-threshold",
         type=int,
-        default=100,
+        default=1000,
         help=(
-            "Flow accumulation threshold in cells (default: 100). "
+            "Flow accumulation threshold in cells (default: 1000). "
             "Ignored when --thresholds is specified."
         ),
     )
@@ -634,7 +634,7 @@ def main():
         default=None,
         help=(
             "Comma-separated FA thresholds in m² for multi-density "
-            "stream networks (e.g. 100,1000,10000,100000). "
+            "stream networks (e.g. 1000,10000,100000). "
             "Overrides --stream-threshold for vectorization."
         ),
     )
