@@ -44,9 +44,19 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-24 (sesja 44)
+**Data:** 2026-02-24 (sesja 45)
 
 ### Co zrobiono
+
+- **Usuniecie progu FA 100 m² z systemu (ADR-030):**
+  - Prog 100 m² generowal ~2.5M segmentow ciekow (90% tabeli stream_network), bez odpowiednich zlewni czastkowych (usuniete w ADR-026), wydluzal pipeline o ~50%, zajmowal ~2 GB w bazie
+  - Zmiana: `DEFAULT_THRESHOLDS_M2 = [100, 1000, 10000, 100000]` → `[1000, 10000, 100000]` (3 progi)
+  - Domyslny `stream_threshold` zmieniony z 100 na 1000 we wszystkich skryptach i modulach core (10 plikow produkcyjnych)
+  - Migracja Alembic 017: `DELETE FROM stream_network WHERE threshold_m2 = 100` + `DROP INDEX idx_stream_geom_t100/idx_catchment_geom_t100`
+  - Testy zaktualizowane (4 pliki testowe), 558 testow passed
+  - Dokumentacja: ADR-030, CHANGELOG, PROGRESS, README, scripts/README
+
+### Poprzednia sesja (2026-02-24, sesja 44)
 
 - **Fix statement_timeout dla bulk INSERT (2.5M segmentow stream):**
   - Dodano `override_statement_timeout(600s)` wrapper w `insert_stream_segments()` i `insert_catchments()` w `core/db_bulk.py` — domyslny timeout 30s byl za krotki przy 2.5M+ rekordow
@@ -563,7 +573,7 @@
 ### Znane problemy (infrastruktura)
 - `generate_tiles.py` wymaga tippecanoe (`pip install tippecanoe` w .venv)
 - FlowGraph (core/flow_graph.py) — USUNIETY w ADR-028 (sesja 33)
-- 15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision — marginalny problem
+- ~~15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision~~ — nieaktualne po usunieciu progu 100 (ADR-030)
 - Endpoint `profile.py` wymaga pliku DEM (VRT/GeoTIFF) pod sciezka `DEM_PATH` — zwraca 503 gdy brak
 - `bootstrap.py` nie importuje pokrycia terenu (land cover) — po pelnym bootstrap tabela `land_cover` jest pusta (0 rekordow), brak danych w UI. Wymaga dodania kroku importu land cover (skrypt `import_landcover.py`) do pipeline bootstrap. Priorytet: niski.
 
