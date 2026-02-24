@@ -5,7 +5,13 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-02-22
+## [Unreleased] — 2026-02-24
+
+### Fixed (sesja 44 — bulk INSERT timeout)
+- **`override_statement_timeout` w bulk INSERT:** dodanie wrappera `override_statement_timeout(600s)` do `insert_stream_segments()` i `insert_catchments()` w `core/db_bulk.py` — domyslny `statement_timeout=30s` powodowal timeout przy insercie 2.5M segmentow stream_network. Fix umozliwia pelny bootstrap 10 arkuszy 5m NMT.
+
+### Added (sesja 44 — pelny bootstrap 5m NMT)
+- **Pelny bootstrap 10 arkuszy 5m NMT:** 18.9M komorek (4610×6059), mozaika VRT ze 100 plikow ASC, pyflwdir ~8 min. Wyniki: stream_network 2,780,056 segmentow (4 progi), stream_catchments 264,548, depressions 385,567, land_cover 101,237, precipitation 7,560, soil_hsg 121. Kafelki MVT (tippecanoe) + overlay PNG (DEM, streams). Calkowity czas pipeline: 2969s (~49 min).
 
 ### Fixed (5 bugów UX — E1, E4, E12, E13, F2)
 - **E1 — dziury na granicach zlewni:** `merge_catchment_boundaries()` w `watershed_service.py` — usunięto `ST_SnapToGrid(geom, 0.01)` (przesuwało wierzchołki tworząc mikro-luki między sąsiednimi poligonami), zastąpione buffer-debuffer (0.1m/-0.1m) który zamyka luki ≤0.1m zachowując oryginalny rozmiar. `MIN_HOLE_AREA_M2`: 1000→100 m² (agresywniejsze usuwanie artefaktów merge, 10×10m zamiast ~32×32m).
