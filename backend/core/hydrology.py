@@ -303,6 +303,8 @@ def classify_endorheic_lakes(
     transform,
     gpkg_path: str | Path,
     nodata: float,
+    min_area_m2: float | None = None,
+    waterbody_path: str | Path | None = None,
 ) -> tuple[list[tuple[int, int]], dict]:
     """
     Classify water bodies and return drain points for endorheic lakes.
@@ -322,6 +324,11 @@ def classify_endorheic_lakes(
         Path to BDOT10k GeoPackage with water body and stream layers
     nodata : float
         NoData value in DEM
+    min_area_m2 : float, optional
+        Minimum water body area in m². Bodies smaller than this are ignored.
+    waterbody_path : str or Path, optional
+        Custom path to water body file (.gpkg/.shp). All bodies from this
+        file are treated as endorheic (no stream-based classification).
 
     Returns
     -------
@@ -341,6 +348,7 @@ def classify_endorheic_lakes(
         "clusters": 0,
         "streams_analyzed": 0,
         "undetermined": 0,
+        "filtered_by_area": 0,
     }
     drain_points: list[tuple[int, int]] = []
 
@@ -352,28 +360,49 @@ def classify_endorheic_lakes(
     ymin = ymax + nrows * transform.e  # transform.e is negative
     dem_box = box(xmin, ymin, xmax, ymax)
 
-    # 1. Load water body polygons (OT_PTWP_A)
-    try:
-        import fiona
+    # 1. Load water body polygons
+    if waterbody_path is not None:
+        # Custom waterbody file — load and treat all as endorheic
+        waterbody_path = Path(waterbody_path)
+        try:
+            import fiona
 
-        layers = fiona.listlayers(str(gpkg_path))
-    except Exception:
-        logger.warning(
-            f"Cannot read layers from {gpkg_path}, skipping lake classification"
-        )
-        return drain_points, diagnostics
+            wb_layers = fiona.listlayers(str(waterbody_path))
+            # Auto-detect: prefer PTWP layer, fallback to first
+            wb_layer = None
+            for layer in wb_layers:
+                if "PTWP" in layer.upper():
+                    wb_layer = layer
+                    break
+            if wb_layer is None:
+                wb_layer = wb_layers[0]
+            lakes = gpd.read_file(waterbody_path, layer=wb_layer)
+        except Exception:
+            lakes = gpd.read_file(waterbody_path)
+    else:
+        # Default: load OT_PTWP_A from BDOT10k gpkg_path
+        try:
+            import fiona
 
-    water_layer = None
-    for layer in layers:
-        if "PTWP" in layer.upper():
-            water_layer = layer
-            break
+            layers = fiona.listlayers(str(gpkg_path))
+        except Exception:
+            logger.warning(
+                f"Cannot read layers from {gpkg_path}, skipping lake classification"
+            )
+            return drain_points, diagnostics
 
-    if water_layer is None:
-        logger.info("No OT_PTWP_A layer in GeoPackage, skipping")
-        return drain_points, diagnostics
+        water_layer = None
+        for layer in layers:
+            if "PTWP" in layer.upper():
+                water_layer = layer
+                break
 
-    lakes = gpd.read_file(gpkg_path, layer=water_layer)
+        if water_layer is None:
+            logger.info("No OT_PTWP_A layer in GeoPackage, skipping")
+            return drain_points, diagnostics
+
+        lakes = gpd.read_file(gpkg_path, layer=water_layer)
+
     if lakes.crs is not None and lakes.crs.to_epsg() != 2180:
         lakes = lakes.to_crs(epsg=2180)
     lakes = lakes[lakes.intersects(dem_box)]
@@ -383,7 +412,34 @@ def classify_endorheic_lakes(
         logger.info("No water bodies within DEM extent")
         return drain_points, diagnostics
 
+    # Filter by minimum area
+    if min_area_m2 is not None and min_area_m2 > 0:
+        before_count = len(lakes)
+        lakes = lakes[lakes.geometry.area >= min_area_m2]
+        diagnostics["filtered_by_area"] = before_count - len(lakes)
+        if diagnostics["filtered_by_area"] > 0:
+            logger.info(
+                f"  Filtered {diagnostics['filtered_by_area']} water bodies "
+                f"< {min_area_m2} m² ({len(lakes)} remaining)"
+            )
+        if lakes.empty:
+            logger.info("No water bodies remaining after area filter")
+            return drain_points, diagnostics
+
     diagnostics["total_lakes"] = len(lakes)
+
+    # Custom waterbody path → all endorheic, skip stream classification
+    if waterbody_path is not None:
+        lake_geoms = [g for g in lakes.geometry if g is not None and not g.is_empty]
+        diagnostics["endorheic"] = len(lake_geoms)
+        diagnostics["clusters"] = len(lake_geoms)
+        for lake_geom in lake_geoms:
+            _add_drain_point(dem, transform, lake_geom, nodata, drain_points)
+        logger.info(
+            f"Custom waterbody: {len(lake_geoms)} bodies, "
+            f"all treated as endorheic, {len(drain_points)} drain points"
+        )
+        return drain_points, diagnostics
 
     # 2. Load stream lines (OT_SWRS_L, OT_SWKN_L, OT_SWRM_L)
     stream_layer_prefixes = ["SWRS", "SWKN", "SWRM"]

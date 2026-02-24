@@ -384,6 +384,8 @@ def step_process_dem(
     downloaded_files: list[Path],
     output_dir: Path,
     sheets: list[str],
+    waterbody_mode: str = "auto",
+    waterbody_min_area_m2: float | None = None,
 ) -> tuple[dict, str]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis."""
     sys.path.insert(0, str(BACKEND_DIR))
@@ -455,6 +457,8 @@ def step_process_dem(
         thresholds=[1000, 10000, 100000],
         burn_streams_path=burn_path,
         # hydro_resolution_m not needed when NMT downloaded at 5m resolution
+        waterbody_mode=waterbody_mode,
+        waterbody_min_area_m2=waterbody_min_area_m2,
     )
 
     cells = stats.get("valid_cells", 0)
@@ -855,6 +859,8 @@ def run_pipeline(
     output_dir: Path,
     port: int,
     skips: set[int],
+    waterbody_mode: str = "auto",
+    waterbody_min_area_m2: float | None = None,
 ):
     """Run the full 10-step bootstrap pipeline."""
     tracker = StepTracker(TOTAL_STEPS, skips)
@@ -895,7 +901,11 @@ def run_pipeline(
     if not tracker.is_skipped(3):
         t0 = tracker.start(3)
         try:
-            _, detail = step_process_dem(downloaded_files, output_dir, sheets)
+            _, detail = step_process_dem(
+                downloaded_files, output_dir, sheets,
+                waterbody_mode=waterbody_mode,
+                waterbody_min_area_m2=waterbody_min_area_m2,
+            )
             tracker.done(3, t0, detail)
         except Exception as e:
             tracker.fail(3, t0, str(e))
@@ -1096,6 +1106,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pomin uruchomienie serwera",
     )
 
+    # Waterbody options
+    wb_group = parser.add_argument_group("Zbiorniki wodne")
+    wb_group.add_argument(
+        "--waterbody-mode",
+        type=str,
+        default="auto",
+        help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
+             '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
+             "(wszystkie traktowane jako endoreiczne). Default: auto",
+    )
+    wb_group.add_argument(
+        "--waterbody-min-area",
+        type=float,
+        default=None,
+        help="Min. powierzchnia zbiornika (m²). Zbiorniki mniejsze sa ignorowane.",
+    )
+
     # Dry run
     parser.add_argument(
         "--dry-run",
@@ -1151,7 +1178,11 @@ def main():
 
     # Run pipeline
     total_start = time.time()
-    tracker = run_pipeline(sheets, bbox, output_dir, args.port, skips)
+    tracker = run_pipeline(
+        sheets, bbox, output_dir, args.port, skips,
+        waterbody_mode=args.waterbody_mode,
+        waterbody_min_area_m2=args.waterbody_min_area,
+    )
     total_elapsed = time.time() - total_start
 
     # Final summary

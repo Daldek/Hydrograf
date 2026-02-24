@@ -128,6 +128,8 @@ def process_dem(
     thresholds: list[int] | None = None,
     skip_catchments: bool = False,
     hydro_resolution_m: float | None = None,
+    waterbody_mode: str = "auto",
+    waterbody_min_area_m2: float | None = None,
 ) -> dict:
     """
     Process DEM file (ASC, VRT, or GeoTIFF) and extract stream network.
@@ -161,6 +163,11 @@ def process_dem(
     hydro_resolution_m : float, optional
         If set, downsample DEM to this resolution (meters) before processing.
         Reduces memory usage for large rasters. Original resolution kept for overlays.
+    waterbody_mode : str
+        Waterbody handling mode: "auto" (BDOT10k classification), "none" (skip),
+        or path to custom waterbody file (.gpkg/.shp, all treated as endorheic).
+    waterbody_min_area_m2 : float, optional
+        Minimum waterbody area in m². Bodies smaller than this are ignored.
     thresholds : list[int], optional
         List of FA thresholds in m² for multi-density stream networks.
         If provided, generates separate stream networks per threshold.
@@ -176,6 +183,14 @@ def process_dem(
         - burn_cells (if burn_streams_path provided)
     """
     stats = {}
+
+    # Early validation: custom waterbody file must exist
+    if waterbody_mode not in ("auto", "none"):
+        wb_path = Path(waterbody_mode)
+        if not wb_path.exists():
+            raise FileNotFoundError(
+                f"Custom waterbody file not found: {wb_path}"
+            )
 
     # Setup output directory for intermediates
     if output_dir is None:
@@ -259,7 +274,13 @@ def process_dem(
 
     # 2b. Classify endorheic lakes and compute drain points (optional)
     drain_points = None
-    if burn_streams_path is not None:
+    stats["waterbody_mode"] = waterbody_mode
+    if waterbody_min_area_m2 is not None:
+        stats["waterbody_min_area_m2"] = waterbody_min_area_m2
+
+    if waterbody_mode == "none":
+        logger.info("Waterbody mode: none — skipping lake classification")
+    elif waterbody_mode == "auto" and burn_streams_path is not None:
         transform_for_lakes = metadata.get("transform")
         if transform_for_lakes is None:
             from rasterio.transform import from_bounds as _from_bounds
@@ -271,7 +292,31 @@ def process_dem(
                 _xll, _yll, _xll + _nc * _cs, _yll + _nr * _cs, _nc, _nr
             )
         drain_points, drain_diag = classify_endorheic_lakes(
-            dem, transform_for_lakes, burn_streams_path, nodata
+            dem, transform_for_lakes, burn_streams_path, nodata,
+            min_area_m2=waterbody_min_area_m2,
+        )
+        stats["endorheic_lakes"] = drain_diag["endorheic"]
+        stats["drain_points"] = len(drain_points)
+    elif waterbody_mode not in ("auto", "none"):
+        # Custom waterbody file path (already validated above)
+        wb_path = Path(waterbody_mode)
+        transform_for_lakes = metadata.get("transform")
+        if transform_for_lakes is None:
+            from rasterio.transform import from_bounds as _from_bounds2
+
+            _xll, _yll = metadata["xllcorner"], metadata["yllcorner"]
+            _nr, _nc = dem.shape
+            _cs = metadata["cellsize"]
+            transform_for_lakes = _from_bounds2(
+                _xll, _yll, _xll + _nc * _cs, _yll + _nr * _cs, _nc, _nr
+            )
+        # gpkg_path is required but not used for loading waterbodies
+        # when waterbody_path is set; pass burn_streams_path or a dummy
+        gpkg_for_classify = burn_streams_path or wb_path
+        drain_points, drain_diag = classify_endorheic_lakes(
+            dem, transform_for_lakes, gpkg_for_classify, nodata,
+            min_area_m2=waterbody_min_area_m2,
+            waterbody_path=wb_path,
         )
         stats["endorheic_lakes"] = drain_diag["endorheic"]
         stats["drain_points"] = len(drain_points)
@@ -646,6 +691,23 @@ def main():
              "Reduces memory for large rasters. E.g. --hydro-resolution 2",
     )
 
+    # Waterbody options
+    wb_group = parser.add_argument_group("Zbiorniki wodne")
+    wb_group.add_argument(
+        "--waterbody-mode",
+        type=str,
+        default="auto",
+        help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
+             '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
+             "(wszystkie traktowane jako endoreiczne). Default: auto",
+    )
+    wb_group.add_argument(
+        "--waterbody-min-area",
+        type=float,
+        default=None,
+        help="Min. powierzchnia zbiornika (m²). Zbiorniki mniejsze sa ignorowane.",
+    )
+
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -689,6 +751,8 @@ def main():
             thresholds=threshold_list,
             skip_catchments=args.skip_catchments,
             hydro_resolution_m=args.hydro_resolution,
+            waterbody_mode=args.waterbody_mode,
+            waterbody_min_area_m2=args.waterbody_min_area,
         )
     except FileNotFoundError as e:
         logger.error(str(e))
