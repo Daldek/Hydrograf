@@ -44,7 +44,7 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-24 (sesja 46)
+**Data:** 2026-02-25 (sesja 46)
 
 ### Co zrobiono
 
@@ -56,6 +56,12 @@
   - Wczesna walidacja custom path (przed odczytem DEM)
   - 5 nowych testow w `test_lake_drain.py::TestWaterbodyMode`, 563 testow passed
   - Dokumentacja: ADR-031, scripts/README.md, PROGRESS, CHANGELOG
+- **Backlog: punkt o podwojnej analizie NMT (z/bez obszarow bezodplywowych)** — generowanie 2 wariantow DEM, cieki i obliczenia na wariancie bez bezodplywowych, UI z rozroznieniem kolorow
+
+### Nastepne kroki
+1. CP5: MVP — pelna integracja, deploy
+2. Code review CR4-CR11 (wazne)
+3. Rozwazyc podwojna analize NMT (z/bez bezodplywowych) — nowy punkt backlog
 
 ### Poprzednia sesja (2026-02-24, sesja 45)
 
@@ -856,3 +862,4 @@
 - [x] Code review CR1-CR3 (krytyczne): channel_slope, O(n^2) segments.index, cursor leak
 - [ ] Code review CR4-CR11 (wazne): BFS deque, land cover TODO, enkapsulacja, thread safety, profile, cascade stats, traceback, CLAUDE.md
 - [ ] Code review CR12-CR16 (sugestie): duplikacja morph, _MAX_MERGE const, inline import, n_bins ceil, POST cache
+- [ ] Podwojna analiza NMT (z/bez obszarow bezodplywowych): pipeline generuje 2 warianty — pelny DEM (z endoreicznymi) i DEM hydrologicznie poprawny (bez). Cieki i obliczenia hydrologiczne (SCS-CN, hydrogram) oparte na wariancie bez bezodplywowych. W UI zlewnie bezodplywowe oznaczane innym kolorem (np. szarym/przezroczystym) ale widoczne na mapie. Wymaga: 2x process_hydrology_pyflwdir, osobne stream_network/catchments, warstwa UI z rozroznieniem. Priorytet: sredni.
