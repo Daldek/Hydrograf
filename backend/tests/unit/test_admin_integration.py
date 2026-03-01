@@ -20,6 +20,7 @@ def _mock_settings(api_key=""):
     """Create a mock settings object."""
     s = MagicMock()
     s.admin_api_key = api_key
+    s.admin_api_key_file = ""
     s.database_url = "postgresql://test:test@localhost/test"
     s.log_level = "INFO"
     s.cors_origins = "http://localhost"
@@ -31,19 +32,20 @@ def _mock_settings(api_key=""):
 class TestAdminAuthIntegration:
     """Test auth middleware across different endpoints."""
 
-    def test_no_key_configured_allows_all(self):
-        """Empty ADMIN_API_KEY allows access to all endpoints."""
+    def test_no_key_configured_still_requires_auth(self):
+        """Empty ADMIN_API_KEY generates random key — auth still enforced."""
+        import api.dependencies.admin_auth as auth_module
+        auth_module._generated_key = None  # reset generated key
+
         app = _create_app()
         client = TestClient(app)
-        with (
-            patch("api.dependencies.admin_auth.get_settings", return_value=_mock_settings(api_key="")),
-            patch("api.endpoints.admin.get_db") as mock_get_db,
+        with patch(
+            "api.dependencies.admin_auth.get_settings",
+            return_value=_mock_settings(api_key=""),
         ):
-            mock_db = MagicMock()
-            mock_db.execute.return_value.scalar.return_value = 0
-            mock_get_db.return_value = iter([mock_db])
             response = client.get("/api/admin/dashboard")
-        assert response.status_code == 200
+        assert response.status_code == 401
+        auth_module._generated_key = None  # cleanup
 
     def test_wrong_key_blocked_on_dashboard(self):
         app = _create_app()
