@@ -45,6 +45,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:-hydro_password}@db:5432/${POSTGRES_DB:-hydro_db}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEM_PATH: ${DEM_PATH:-/data/nmt/dem_mosaic.vrt}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:

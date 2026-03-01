@@ -135,6 +135,20 @@
                 });
                 input.focus();
             }
+
+            var fileInput = document.getElementById('auth-key-file');
+            if (fileInput) {
+                fileInput.addEventListener('change', function () {
+                    var file = fileInput.files[0];
+                    if (!file) return;
+                    var reader = new FileReader();
+                    reader.onload = function () {
+                        var key = reader.result.trim();
+                        if (input) input.value = key;
+                    };
+                    reader.readAsText(file);
+                });
+            }
         });
     }
 
@@ -388,7 +402,7 @@
     // ----------------------------------------------------------------
 
     document.addEventListener('DOMContentLoaded', function () {
-        var savedKey = sessionStorage.getItem('admin_api_key');
+        var savedKey = localStorage.getItem('admin_api_key');
 
         if (savedKey) {
             // Try the saved key
