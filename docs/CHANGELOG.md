@@ -5,9 +5,10 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-02-24
+## [Unreleased] — 2026-03-01
 
 ### Added
+- **Konfiguracja YAML pipeline (`config.yaml`):** nowe funkcje `load_config()`, `_deep_merge()`, `get_database_url_from_config()` w `core/config.py`. Szablon `backend/config.yaml.example` z sekcjami: database, dem (resolution, thresholds, burn_depth), paths, steps (on/off per krok), custom data sources. Flaga `--config` w `bootstrap.py`. Plik `config.yaml` w `.gitignore`. 14 testow jednostkowych.
 - **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):** 3 tryby — `auto` (BDOT10k klasyfikacja, domyslnie), `none` (pomin), custom `.gpkg`/`.shp` (wszystkie endoreiczne). Nowa flaga `--waterbody-min-area` do filtrowania malych zbiornikow po powierzchni. Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py.
 
 ### Removed
