@@ -9,10 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Wygładzanie granic zlewni (ADR-032):** `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3 iteracje)` w `merge_catchment_boundaries()` — eliminacja schodkowych krawędzi z rastra, gładkie krzywe zamiast ortogonalnych kroków 5m. Tolerancja simplify w preprocessingu: `cellsize` → `2*cellsize`.
-
-## [Previous Unreleased] — 2026-02-24
-
-### Added
+- **Warstwa tematyczna: pokrycie terenu (BDOT10k):** nowy endpoint MVT `/api/tiles/landcover/{z}/{x}/{y}.pbf` serwujacy dane `land_cover` (101k rekordow) jako Mapbox Vector Tiles. Warstwa dodana do panelu warstw z lazy-loadem, kolorowana wg kategorii (las, laka, grunt orny, zabudowa, droga, woda), z legenda i suwakiem przezroczystosci. Nowy pane `landcoverPane` (z-index 260) miedzy NMT a ciekami.
 - **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):** 3 tryby — `auto` (BDOT10k klasyfikacja, domyslnie), `none` (pomin), custom `.gpkg`/`.shp` (wszystkie endoreiczne). Nowa flaga `--waterbody-min-area` do filtrowania malych zbiornikow po powierzchni. Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py.
 
 ### Removed

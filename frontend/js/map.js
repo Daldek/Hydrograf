@@ -34,6 +34,7 @@
     var bdotStreamsLayer = null;
     var bdotBounds = null;
     var hsgLayer = null;
+    var landCoverLayer = null;
 
     /**
      * Initialize the Leaflet map.
@@ -51,6 +52,8 @@
         // Base (tilePane z-200) → NMT → Cieki → overlay (z-400)
         map.createPane('demPane');
         map.getPane('demPane').style.zIndex = 250;
+        map.createPane('landcoverPane');
+        map.getPane('landcoverPane').style.zIndex = 260;
         map.createPane('streamsPane');
         map.getPane('streamsPane').style.zIndex = 350;
 
@@ -672,6 +675,93 @@
         }
     }
 
+    // ===== Land Cover (MVT) =====
+
+    var LANDCOVER_COLORS = {
+        'las': '#2E7D32',
+        'łąka': '#7CB342',
+        'grunt_orny': '#D4A574',
+        'zabudowa_mieszkaniowa': '#E53935',
+        'zabudowa_przemysłowa': '#757575',
+        'droga': '#424242',
+        'woda': '#1565C0',
+        'inny': '#BDBDBD'
+    };
+
+    function loadLandCoverVector() {
+        if (!L.vectorGrid) { console.warn('VectorGrid plugin not loaded'); return null; }
+        if (landCoverLayer && map.hasLayer(landCoverLayer)) {
+            map.removeLayer(landCoverLayer);
+        }
+
+        landCoverLayer = L.vectorGrid.protobuf(
+            '/api/tiles/landcover/{z}/{x}/{y}.pbf',
+            {
+                pane: 'landcoverPane',
+                vectorTileLayerStyles: {
+                    landcover: function (properties) {
+                        var cat = properties.category || 'inny';
+                        var color = LANDCOVER_COLORS[cat] || LANDCOVER_COLORS['inny'];
+                        return {
+                            fill: true,
+                            fillColor: color,
+                            fillOpacity: 0.6,
+                            stroke: false,
+                            weight: 0,
+                        };
+                    }
+                },
+                interactive: false,
+                minZoom: 8,
+                maxZoom: 18,
+                maxNativeZoom: 18,
+                attribution: 'Pokrycie terenu (BDOT10k)',
+            }
+        );
+
+        return landCoverLayer;
+    }
+
+    function getLandCoverLayer() { return landCoverLayer; }
+
+    function setLandCoverOpacity(opacity) {
+        if (landCoverLayer) {
+            var container = landCoverLayer.getContainer();
+            if (container) {
+                container.style.opacity = opacity;
+            }
+        }
+    }
+
+    var landCoverLegend = null;
+
+    function createLandCoverLegend() {
+        if (landCoverLegend) return;
+        landCoverLegend = L.control({ position: 'bottomleft' });
+        landCoverLegend.onAdd = function () {
+            var div = L.DomUtil.create('div', 'layer-legend');
+            div.innerHTML =
+                '<div class="layer-legend-title">Pokrycie terenu</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#2E7D32;"></span> Las</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#7CB342;"></span> Łąka</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#D4A574;"></span> Grunt orny</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#E53935;"></span> Zabudowa mieszk.</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#757575;"></span> Zabudowa przem.</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#424242;"></span> Droga</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#1565C0;"></span> Woda</div>' +
+                '<div class="legend-item"><span class="legend-swatch" style="background:#BDBDBD;"></span> Inny</div>';
+            return div;
+        };
+        landCoverLegend.addTo(map);
+    }
+
+    function removeLandCoverLegend() {
+        if (landCoverLegend) {
+            map.removeControl(landCoverLegend);
+            landCoverLegend = null;
+        }
+    }
+
     // ===== Utilities =====
 
     function disableClick() { clickEnabled = false; }
@@ -736,6 +826,10 @@
         getHsgLayer: getHsgLayer,
         setHsgOpacity: setHsgOpacity,
         fitHsgBounds: fitHsgBounds,
+        // Land Cover (MVT)
+        loadLandCoverVector: loadLandCoverVector,
+        getLandCoverLayer: getLandCoverLayer,
+        setLandCoverOpacity: setLandCoverOpacity,
         // Panel/zoom interaction
         shiftZoomControls: shiftZoomControls,
         // Legends
@@ -743,5 +837,7 @@
         removeStreamsLegend: removeStreamsLegend,
         createHsgLegend: createHsgLegend,
         removeHsgLegend: removeHsgLegend,
+        createLandCoverLegend: createLandCoverLegend,
+        removeLandCoverLegend: removeLandCoverLegend,
     };
 })();
