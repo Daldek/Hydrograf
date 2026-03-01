@@ -721,6 +721,29 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+### ADR-034: Panel administracyjno-diagnostyczny
+
+**Data:** 2026-03-01
+**Status:** Zaakceptowana
+
+**Kontekst:** Brak narzedzia do zarzadzania pipeline'em — bootstrap uruchamiany recznie z CLI, brak widocznosci na zasoby i dane.
+
+**Decyzja:**
+- Osobna strona `/admin` (admin.html) z 4 sekcjami: Dashboard, Bootstrap, Zasoby, Czyszczenie
+- Backend: router `/api/admin/*` z auth API key (header X-Admin-Key, env ADMIN_API_KEY)
+- Bootstrap jako subprocess + SSE (Server-Sent Events) do streamowania logow
+- psutil do monitorowania zasobow procesu
+- Frontend: Vanilla JS (IIFE), glassmorphism CSS, fetch+ReadableStream dla SSE
+
+**Konsekwencje:**
+- (+) Zarzadzanie pipeline'em z przegladarki
+- (+) Real-time logi bootstrap (SSE)
+- (+) Diagnostyka systemu bez dostepu do CLI
+- (-) Dodatkowa zaleznosc: psutil
+- (-) Auth tylko API key (JWT w przyszlosci z uzytkownikami)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
