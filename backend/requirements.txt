@@ -35,6 +35,9 @@ imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
 # Logging
 structlog>=24.1.0
 
+# Process monitoring
+psutil>=5.9
+
 # Utilities
 python-dotenv>=1.0.0
 
