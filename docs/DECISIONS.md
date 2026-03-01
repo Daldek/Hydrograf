@@ -683,7 +683,7 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 ### ADR-032: Wygładzanie granic zlewni (Chaikin smoothing)
 
 **Data:** 2026-03-01
-**Status:** Accepted
+**Status:** Przyjęta
 
 **Kontekst:** Granice zlewni generowane z rastra (rasterio.features.shapes) mają kształt schodkowy (pixel staircase). Douglas-Peucker z tolerancją 5m redukuje wierzchołki, ale nie wygładza narożników. Schodkowe granice zawyżają obwód, wpływając na wskaźniki morfometryczne (Kc, Rc, Re).
 
