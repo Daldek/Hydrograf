@@ -395,12 +395,18 @@ def step_process_dem(
         merge_hydro_gpkgs,
     )
     from scripts.process_dem import process_dem
-    from utils.raster_utils import create_vrt_mosaic, normalize_crs
+    from utils.raster_utils import create_vrt_mosaic, discover_asc_files, normalize_crs
 
     nmt_dir = output_dir / "nmt"
 
+    # Compute bbox once — reused for ASC discovery and hydro/landcover
+    bbox_2180 = sheets_to_bbox_2180(sheets)
+
+    # Discover ALL ASC files in nmt_dir (new downloads + cached from previous runs)
+    all_asc = discover_asc_files(nmt_dir, bbox_2180)
+
     # Reproject PUWG 2000 files to EPSG:2180 before mosaicking
-    normalized_files = normalize_crs(downloaded_files, nmt_dir / "reprojected")
+    normalized_files = normalize_crs(all_asc, nmt_dir / "reprojected")
 
     mosaic_path = create_vrt_mosaic(
         input_files=normalized_files,
@@ -411,7 +417,6 @@ def step_process_dem(
     # Download & merge hydro BDOT10k for stream burning
     burn_path = None
     try:
-        bbox_2180 = sheets_to_bbox_2180(sheets)
         teryts = discover_teryts_for_bbox(bbox_2180)
 
         if teryts:
