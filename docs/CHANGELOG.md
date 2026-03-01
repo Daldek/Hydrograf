@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Wygładzanie granic zlewni (ADR-032):** `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3 iteracje)` w `merge_catchment_boundaries()` — eliminacja schodkowych krawędzi z rastra, gładkie krzywe zamiast ortogonalnych kroków 5m. Tolerancja simplify w preprocessingu: `cellsize` → `2*cellsize`.
 - **Warstwa tematyczna: pokrycie terenu (BDOT10k):** nowy endpoint MVT `/api/tiles/landcover/{z}/{x}/{y}.pbf` serwujacy dane `land_cover` (101k rekordow) jako Mapbox Vector Tiles. Warstwa dodana do panelu warstw z lazy-loadem, kolorowana wg kategorii (las, laka, grunt orny, zabudowa, droga, woda), z legenda i suwakiem przezroczystosci. Nowy pane `landcoverPane` (z-index 260) miedzy NMT a ciekami.
 - **Konfiguracja YAML pipeline (`config.yaml`):** nowe funkcje `load_config()`, `_deep_merge()`, `get_database_url_from_config()` w `core/config.py`. Szablon `backend/config.yaml.example` z sekcjami: database, dem (resolution, thresholds, burn_depth), paths, steps (on/off per krok), custom data sources. Flaga `--config` w `bootstrap.py`. Plik `config.yaml` w `.gitignore`. 14 testow jednostkowych.
+- **Piramida kafelkow DEM w bootstrap (Step 9):** `generate_dem_tiles` wlaczony do `step_overlays()` w `bootstrap.py`. Generuje kafelki XYZ (zoom 8-16) z hillshade do `frontend/data/dem_tiles/`. Frontend automatycznie uzywa kafelkow (fallback na `dem.png`). Cache: pomija generowanie jesli kafelki juz istnieja.
+- **Multi-directional hillshade:** `compute_hillshade()` w `utils/dem_color.py` uzywa 4 kierunkow oswietlenia (NW 40%, NE 20%, SE 20%, SW 20%) zamiast pojedynczego zrodla. Bardziej naturalna wizualizacja terenu, konwencja kartograficzna (NW dominujacy).
+
+### Changed
+- **Domyslny max zoom dla DEM tiles:** zmiana z 18 na 16 w `generate_dem_tiles.py`. Przy 5m NMT zoom 16 daje ~2.4m/piksel (wystarczajacy), zoom 18 daje ~0.6m/piksel bez dodatkowego detalu, 16x wiecej dysku.
 - **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):** 3 tryby — `auto` (BDOT10k klasyfikacja, domyslnie), `none` (pomin), custom `.gpkg`/`.shp` (wszystkie endoreiczne). Nowa flaga `--waterbody-min-area` do filtrowania malych zbiornikow po powierzchni. Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py.
 
 ### Removed
