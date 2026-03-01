@@ -24,10 +24,10 @@
             <p class="text-secondary small mb-3">Podaj klucz API, aby kontynuować.</p>
             <div class="mb-3">
                 <input type="password" id="auth-key-input" class="form-control"
-                       placeholder="Klucz API" autocomplete="off">
+                       placeholder="Klucz API" autocomplete="off" aria-label="Klucz API">
             </div>
             <button id="auth-submit-btn" class="btn btn-primary w-100">Zaloguj</button>
-            <div id="auth-error" class="text-danger small mt-2 d-none">
+            <div id="auth-error" class="text-danger small mt-2 d-none" role="alert">
                 Nieprawidłowy klucz API. Spróbuj ponownie.
             </div>
         </div>
@@ -113,7 +113,7 @@
                             </form>
 
                             <!-- Log output -->
-                            <pre id="bootstrap-log" class="admin-log"></pre>
+                            <pre id="bootstrap-log" class="admin-log" role="log"></pre>
                         </div>
                     </div>
                 </div>
