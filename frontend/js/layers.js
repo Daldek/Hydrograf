@@ -388,6 +388,19 @@
             Hydrograf.map.removeHsgLegend
         );
 
+        // Land cover (BDOT10k) — MVT tiles
+        addBdotOverlayEntry(
+            overlayGroup,
+            'Pokrycie terenu (BDOT10k)',
+            function () { return Hydrograf.map.getLandCoverLayer(); },
+            function () { return Promise.resolve(Hydrograf.map.loadLandCoverVector()); },
+            Hydrograf.map.fitDemBounds,
+            Hydrograf.map.setLandCoverOpacity,
+            30,
+            Hydrograf.map.createLandCoverLegend,
+            Hydrograf.map.removeLandCoverLegend
+        );
+
         // Placeholder for stream/catchment entries (async populated)
         var streamsPlaceholder = document.createElement('div');
         list.appendChild(streamsPlaceholder);
