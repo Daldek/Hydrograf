@@ -1,8 +1,8 @@
 # SCOPE.md - Zakres Projektu
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.0  
-**Data:** 2026-01-14  
+**Wersja:** 1.1
+**Data:** 2026-03-01
 **Status:** Zatwierdzony
 
 ---
@@ -32,19 +32,22 @@ Ten dokument precyzyjnie definiuje:
 #### 2.1.1 FAZA 1: Wyznaczanie Granic Zlewni
 
 **✅ W zakresie:**
-- Interaktywna mapa webowa z podkładem OSM
-- Wybór punktu przez kliknięcie na mapie
-- Automatyczne wykrywanie najbliższego cieku
-- Wyznaczanie granicy zlewni metodą traversal grafu
+- Interaktywna mapa webowa z podkładami: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (ortofoto + topo)
+- Wybór punktu przez kliknięcie na mapie (tryb rysowania poligonu + tryb wyboru obiektow)
+- Automatyczne wykrywanie najbliższego cieku (snap-to-stream ST_Distance + fallback ST_Contains)
+- Wyznaczanie granicy zlewni metodą BFS na grafie in-memory (CatchmentGraph)
+- Wygladzanie granic zlewni: `ST_SimplifyPreserveTopology` + `ST_ChaikinSmoothing` (ADR-032)
 - Wizualizacja granicy na mapie (GeoJSON polygon)
 - Eksport granicy jako GeoJSON
 - Eksport granicy jako Shapefile
 - Czas wykonania: < 10 sekund
+- Selekcja segmentu cieku z upstream traversal (POST `/api/select-stream`)
 
 **Wymagania techniczne:**
-- Dane wejściowe: NMT z GUGIK
-- Preprocessing: konwersja NMT → graf w PostGIS
-- Algorytm: D8 flow direction + upstream traversal
+- Dane wejściowe: NMT z GUGIK (rozdzielczość 5m, pobieranie przez Kartograf)
+- Preprocessing: pyflwdir (D8 flow direction) → wektoryzacja → PostGIS + CatchmentGraph in-memory
+- Podniesienie budynkow w NMT (+5m pod obrysami BUBD z BDOT10k, ADR-033)
+- Algorytm: D8 flow direction + BFS upstream traversal na CatchmentGraph
 - Output: GeoJSON FeatureCollection
 
 **Komunikaty błędów:**
@@ -106,15 +109,30 @@ Ten dokument precyzyjnie definiuje:
 - Współczynnik rozwinięcia biegu rzeki
 
 **Analiza pokrycia terenu:**
-- Integracja z danymi BDOT10k z GUGIK
-- Rozkład kategorii pokrycia [%] wg Corine Land Cover.
-- Obliczenie ważonego Curve Number (CN)
+- Integracja z danymi BDOT10k z GUGIK (import do PostGIS, 8 kategorii)
+- Rozkład kategorii pokrycia [%] wg Corine Land Cover
+- Obliczenie ważonego Curve Number (CN) z uwzglednieniem HSG (Hydrologic Soil Group)
 - Mapowanie CN dla każdej kategorii (zgodnie z USDA NRCS)
+- Warstwa tematyczna MVT: `/api/tiles/landcover/{z}/{x}/{y}.pbf` z kolorowaniem wg kategorii
 
 **Profil terenu:**
-- Profile podłużne cieku (POST /api/terrain-profile) — zaimplementowane w sesji 11
+- Profile podłużne cieku (POST /api/terrain-profile)
+
+**Zaglebienia terenu:**
+- Endpoint GET `/api/depressions` z filtrami (area, depth)
+- Wizualizacja depresji jako overlay na mapie
+
+**Kafelki wektorowe (MVT):**
+- Cieki: GET `/api/tiles/streams/{z}/{x}/{y}.pbf` (filtr wg progu FA, styl wg rzedu Strahlera)
+- Zlewnie czastkowe: GET `/api/tiles/catchments/{z}/{x}/{y}.pbf`
+- Pokrycie terenu: GET `/api/tiles/landcover/{z}/{x}/{y}.pbf`
+- Dostepne progi: GET `/api/tiles/thresholds`
+
+**Kafelki rastrowe DEM:**
+- Piramida XYZ (zoom 8-16) z multi-directional hillshade (4 kierunki oswietlenia)
 
 **Prezentacja wyników:**
+- Glassmorphism panel boczny (draggable, floating)
 - Tabela z parametrami w panelu bocznym
 - Tooltips wyjaśniające terminy techniczne
 - Możliwość kopiowania wartości
@@ -145,10 +163,11 @@ Ten dokument precyzyjnie definiuje:
 **Hydrogram jednostkowy:**
 - Metoda: SCS Dimensionless Unit Hydrograph
 - Parametry:
-  - Czas koncentracji (tc): wzór Kirpicha lub SCS lag
+  - Czas koncentracji (tc): wzór Kirpicha, SCS lag lub Giandottiego
   - Czas do szczytu: tp = 0.6 × tc
   - Przepływ szczytowy: qp = 0.208 × A / tp
   - Czas bazowy: tb = 2.67 × tp
+- Typy hietogramu: Beta, Block, Euler II
 
 **Transformacja opad → odpływ:**
 - Splot dyskretny: Q(t) = Pe(t) ⊗ UH(t)
@@ -170,6 +189,27 @@ Ten dokument precyzyjnie definiuje:
 - Warunki wilgotnościowe: AMC-II (przeciętne)
 - Brak routingu w kanale (natychmiastowa agregacja)
 - Model SCS-CN dla zlewni niekontrolowanych o powierzchni do 250 km² (ograniczenie metody)
+
+---
+
+#### 2.1.4 Panel Administracyjny (ADR-034)
+
+**✅ W zakresie:**
+- Strona `/admin` z uwierzytelnianiem API key (header X-Admin-Key)
+- Dashboard: status systemu, liczby rekordow w 6 tabelach, zuzycie dysku
+- Monitorowanie zasobow: CPU/RAM (psutil), pool DB, CatchmentGraph cache, rozmiar bazy
+- Uruchamianie bootstrap pipeline z panelu + real-time logi (SSE)
+- Czyszczenie danych: tiles, overlays, dem_mosaic, TRUNCATE tabel
+- 8 endpointow API `/api/admin/*`
+
+---
+
+#### 2.1.5 Konfiguracja Pipeline (YAML)
+
+**✅ W zakresie:**
+- Plik `config.yaml` do konfiguracji pipeline (database, DEM, paths, steps, custom sources)
+- Flaga `--config` w `bootstrap.py`
+- Flaga `--waterbody-mode` (3 tryby: auto, none, custom) do sterowania obsluga zbiornikow wodnych (ADR-031)
 
 ---
 
@@ -227,7 +267,7 @@ Ten dokument precyzyjnie definiuje:
 - ❌ Zapisywanie analiz do profilu użytkownika
 - ❌ Historia analiz
 - ❌ Współpraca wieloużytkownikowa (sharing, comments)
-- ❌ Role i uprawnienia (admin, user, viewer)
+- ❌ Role i uprawnienia (admin, user, viewer) — uwaga: prosty admin API key auth jest zaimplementowany (ADR-034), ale nie jest to pelny system rol
 - ❌ Powiadomienia email/SMS o zakończeniu analizy
 
 #### 2.2.6 Raporty i Eksporty
@@ -250,10 +290,11 @@ Ten dokument precyzyjnie definiuje:
 
 - 📊 Eksport raportów PDF (z mapą, wykresami, parametrami)
 - 📈 Analiza wieloscenariuszowa (porównanie Q1%, Q10%, Q50%)
-- 🎨 Konfigurowalne mapy (wybór podkładu)
-- 🔗 API publiczne (REST, dokumentacja OpenAPI)
+- ~~🎨 Konfigurowalne mapy (wybór podkładu)~~ — **ZREALIZOWANE** (CP4: OSM, ESRI, OpenTopoMap, GUGiK WMTS)
+- ~~🔗 API publiczne (REST, dokumentacja OpenAPI)~~ — **CZESCIOWO ZREALIZOWANE** (dokumentacja OpenAPI/Swagger dostepna pod `/docs`)
 - 🧪 Moduł kalibracji (porównanie z pomiarami)
 - 🎯 Optymalizacja parametrów
+- 🔄 Podwojna analiza NMT (z/bez obszarow bezodplywowych) — backlog
 
 ---
 
@@ -263,31 +304,35 @@ Ten dokument precyzyjnie definiuje:
 
 #### 3.1.1 Numeryczny Model Terenu (NMT)
 
-**Źródło:** GUGIK - Geoportal  
-**Format:** ARC/INFO ASCII GRID 
-**Rozdzielczość:** >=1m
-**Układ współrzędnych:** EPSG:2180 (PL-1992)  
-**Zakres przestrzenny:** Obszar gminy powiększony o granice zlewni wybranego rzędu (z MPHP) i bufor
+**Źródło:** GUGIK via Kartograf v0.4.1 (automatyczne pobieranie arkuszy NMT)
+**Format:** ARC/INFO ASCII GRID → mozaika VRT
+**Rozdzielczość:** 5m (konfigurowane w Kartograf `GugikProvider(resolution="5m")`)
+**Układ współrzędnych:** EPSG:2180 (PL-1992)
+**Zakres przestrzenny:** Bbox definiowany przy setupie (np. `16.9279,52.3729,17.3825,52.5870`)
 **Aktualizacja:** Raz, przy setupie systemu (lub na zadanie po aktualizacji NMT)
 
-**Preprocessing:**
+**Preprocessing (pyflwdir):**
+- Podniesienie budynkow w NMT (+5m pod BUBD z BDOT10k, ADR-033)
+- Klasyfikacja zbiornikow wodnych (waterbody-mode: auto/none/custom, ADR-031)
 - Wypełnienie depresji (sink filling)
 - Obliczenie kierunków spływu (D8)
 - Obliczenie akumulacji przepływu
-- Obliczenie długiści spływu
 - Obliczenie nachylenia
-- Wektoryzacja → graf w PostGIS
-- Identyfikacja cieków (próg akumulacji od 2 komórek)
+- Wektoryzacja ciekow (progi FA: 1000, 10000, 100000 m²) → PostGIS `stream_network`
+- Wektoryzacja zlewni czastkowych → PostGIS `stream_catchments`
+- Budowa grafu in-memory (CatchmentGraph, ~44k nodow, ~0.5 MB)
+- Generowanie overlayow: DEM hillshade (PNG + piramida XYZ), streams overlay
+- Generowanie kafelkow MVT (tippecanoe)
 
 #### 3.1.2 Pokrycie Terenu
 
-**Źródła:** GIOŚ - Corine Land Cover, GUGIK - BDOT10k
-**Format:** Shapefile / GeoPackage
-**Układ współrzędnych:** EPSG:2180  
-**Zakres:** Obszar gminy  
+**Źródła:** GUGIK - BDOT10k (via Kartograf v0.4.1, automatyczne pobieranie wg powiatow)
+**Format:** GeoPackage
+**Układ współrzędnych:** EPSG:2180
+**Zakres:** Powiaty pokrywajace bbox
 **Aktualizacja:** Raz na kwartał (lub na zadanie)
 
-**Kategorie (minimum):**
+**Kategorie (8):**
 - Wody powierzchniowe
 - Trawniki, parki
 - Drogi i parkingi
@@ -295,44 +340,59 @@ Ten dokument precyzyjnie definiuje:
 - Zabudowa mieszkaniowa
 - Grunty orne
 - Łąki i pastwiska
-- Lasy 
+- Lasy
 
 **Preprocessing:**
-- Import do PostGIS (tabela `land_cover`)
-- Przypisanie wartości CN dla każdej kategorii
-- Generalizacja (opcjonalnie dla wydajności)
+- Import do PostGIS (tabela `land_cover`, ~112k obiektow)
+- Mapowanie klas BDOT10k na kategorie CN (`cn_tables.py`)
+- Przypisanie wartości CN dla każdej kategorii z uwzglednieniem HSG
+- Serwowanie jako MVT (`/api/tiles/landcover/`)
 
-#### 3.1.3 Osie Cieków
+#### 3.1.3 Siec Ciekow
 
-**Źródło:** MPHP (Mapa Podziału Hydrograficznego Polski) 
-**Format:** Shapefile, Geopackage lub Geobaza 
+**Źródło:** Generowana automatycznie z NMT (progi flow accumulation: 1000, 10000, 100000 m²)
+**Format:** PostGIS (tabela `stream_network`)
 **Atrybuty:**
-- Nazwa cieku
-- Rząd Strahlera (opcjonalnie)
+- Rząd Strahlera
 - Długość [m]
+- Upstream area [km²]
+- Segment index (1-based per threshold)
+- Threshold [m²]
 
 **Preprocessing:**
-- Import do PostGIS (tabela `stream_network`)
-- Walidacja topologii
-- Obliczenie długości
+- Wektoryzacja ciekow z rastra flow accumulation (pyflwdir)
+- Rozbicie na segmenty w konfluencjach i zmianach rzedu Strahlera
+- Uproszczenie geometrii (`simplify_tol = 2*cellsize`)
+- Import do PostGIS z indeksami przestrzennymi
+- Serwowanie jako MVT (`/api/tiles/streams/`)
 
 #### 3.1.4 Dane Opadowe
 
-**Źródło:** IMGW - Atlas Pmax_PT lub dane historyczne dla stacji meteorologicznych
-**Dostęp:** IMGWTools
-**Format:** Do ustalenia (prawdopodobnie punkty lub siatka)  
-**Zakres przestrzenny:** Polska  
+**Źródło:** IMGW - Atlas Pmax_PT via IMGWTools v2.1.0
+**Format:** Punkty stacji meteorologicznych
+**Zakres przestrzenny:** Stacje w obrebie bbox (~192 stacji)
 **Parametry:**
 - Czas trwania: 15min, 30min, 1h, 2h, 6h, 12h, 24h
 - Prawdopodobieństwo: 1%, 2%, 5%, 10%, 20%, 50%
 - Wartość: opad [mm]
 
 **Preprocessing:**
-- Pobranie wszystkich kombinacji (42 zestawy danych)
+- Pobranie wszystkich kombinacji (42 zestawy danych × ~192 stacji = ~8064 rekordow)
 - Import do PostGIS (tabela `pmax_pt_data`)
 - Indeksowanie przestrzenne (GIST)
+- Interpolacja dla centroidu zlewni w runtime
 
 **Aktualizacja:** Raz na rok (lub gdy IMGW publikuje nowe dane)
+
+#### 3.1.5 Dane Glebowe (HSG)
+
+**Źródło:** PIG (Panstwowy Instytut Geologiczny) via Kartograf v0.4.1
+**Format:** GeoPackage → raster → PostGIS (tabela `soil_hsg`)
+**Atrybuty:** Hydrologic Soil Group (A/B/C/D)
+**Preprocessing:**
+- Rasteryzacja na siatke NMT
+- Nearest-neighbor fill brakujacych pikseli (distance_transform_edt)
+- Poligonizacja → import do PostGIS (~197 poligonow)
 
 ---
 
@@ -343,7 +403,7 @@ Ten dokument precyzyjnie definiuje:
 - ❌ Prognozy pogodowe
 - ❌ Dane o zbiornikach retencyjnych
 - ❌ Dane o przepustowości mostów/przepustów
-- ❌ Dane geologiczne (przepuszczalność gruntów)
+- ~~❌ Dane geologiczne (przepuszczalność gruntów)~~ — **ZREALIZOWANE** (HSG z PIG, sekcja 3.1.5)
 - ❌ Dane o użytkowaniu historycznym (zmiany w czasie)
 - ❌ Dane satelitarne (Sentinel, Landsat)
 - ❌ LiDAR (chmury punktów)
@@ -403,30 +463,40 @@ Ten dokument precyzyjnie definiuje:
 ### 5.1 ✅ Technologie i Narzędzia
 
 #### Backend
-**Język:** Python 3.12+  
-**Framework:** FastAPI  
-**Baza danych:** PostgreSQL 15+ z PostGIS 3.3+  
+**Język:** Python 3.12+
+**Framework:** FastAPI
+**Baza danych:** PostgreSQL 16+ z PostGIS 3.4+
 **Biblioteki:**
 - GeoPandas, Shapely (operacje przestrzenne)
 - Rasterio, GDAL (preprocessing rastrów)
 - NumPy, SciPy (obliczenia numeryczne)
-- WhiteboxTools (analiza hydrologiczna)
+- pyflwdir (analiza hydrologiczna — D8, flow accumulation)
 - Pydantic (walidacja danych)
 - SQLAlchemy (ORM)
+- structlog (structured logging)
+- psutil (monitorowanie zasobow — admin panel)
+- Alembic (migracje bazy danych)
+**Biblioteki wlasne:**
+- Hydrolog v0.5.2 (obliczenia hydrologiczne)
+- Kartograf v0.4.1 (pobieranie NMT, Land Cover, HSG, BDOT10k)
+- IMGWTools v2.1.0 (opady projektowe z IMGW)
 
 #### Frontend
-**Języki:** HTML5, CSS3, JavaScript (ES6+)  
-**Mapa:** Leaflet.js 1.9+  
-**Wykresy:** Chart.js 4.0+  
-**UI Framework:** Bootstrap 5  
+**Języki:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, brak frameworka
+**Mapa:** Leaflet.js 1.9.4
+**Wykresy:** Chart.js 4.4.7
+**UI Framework:** Bootstrap 5.3.3 (CDN)
+**Styl:** Glassmorphism (zmienne CSS w `glass.css`), floating draggable panel
+**Moduly:** 10 modulow JS (IIFE na `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app + 3 moduly admin
 **Podkład mapy:** OpenStreetMap, ESRI Satellite, OpenTopoMap, GUGiK WMTS (ortofoto + topo)
+**Strony:** `index.html` (glowna), `admin.html` (panel administracyjny)
 
 #### Infrastruktura
-**Konteneryzacja:** Docker + Docker Compose  
-**Reverse Proxy:** Nginx  
+**Konteneryzacja:** Docker + Docker Compose (3 kontenery: db, api, nginx)
+**Reverse Proxy:** Nginx (alpine)
 **Serwer:** Własny (domowy) - Debian 13
-**CI/CD:** GitHub Actions (lub GitLab CI)  
-**Monitoring:** Prometheus + Grafana (opcjonalnie)
+**CI/CD:** GitHub Actions (lub GitLab CI)
+**Monitoring:** Panel administracyjny `/admin` (CPU/RAM, pool DB, uptime) + health check `/health`
 
 ---
 
@@ -442,7 +512,7 @@ Ten dokument precyzyjnie definiuje:
 - ❌ Elasticsearch (wyszukiwanie)
 - ❌ Microservices architecture
 - ❌ GraphQL
-- ❌ WebSockets (real-time updates)
+- ❌ WebSockets (real-time updates) — uwaga: SSE (Server-Sent Events) uzyty w panelu admin do streamowania logow bootstrap
 - ❌ Server-Side Rendering (SSR)
 - ❌ Progressive Web App (PWA)
 
@@ -488,8 +558,9 @@ Ten dokument precyzyjnie definiuje:
 ### 7.1 Ograniczenia Techniczne
 
 **Preprocessing:**
-- ⚠️ **Jednorazowy preprocessing NMT:** 1-2 dni pracy
+- ⚠️ **Jednorazowy preprocessing NMT:** ~45 minut (pipeline bootstrap, mierzone na bbox ~400 km²)
 - ⚠️ **Wymaga serwera:** minimum 8 GB RAM, 100 GB dysku
+- ⚠️ **Mozliwosc uruchomienia z panelu admin** (`/admin` → Bootstrap) lub CLI (`bootstrap.py`)
 
 **Model hydrologiczny:**
 - ⚠️ **Model SCS CN:** Dla zlewni < 250 km²
@@ -828,12 +899,17 @@ FAZA 3: Generowanie hydrogramów
 | **CN** | Curve Number - parametr spływu powierzchniowego |
 | **SCS** | Soil Conservation Service - metoda hydrologiczna |
 | **Pmax_PT** | Maksymalne opady o określonym prawdopodobieństwie i czasie trwania |
+| **HSG** | Hydrologic Soil Group - grupa hydrologiczna gleby (A/B/C/D) |
+| **MVT** | Mapbox Vector Tiles - format kafelkow wektorowych |
+| **BFS** | Breadth-First Search - przeszukiwanie grafu wszerz |
+| **SSE** | Server-Sent Events - protokol streamowania danych z serwera |
+| **ADR** | Architecture Decision Record - rejestr decyzji architektonicznych |
 
 ---
 
-**Wersja dokumentu:** 1.0  
-**Data ostatniej aktualizacji:** 2026-02-22
-**Wersja biezaca:** v0.4.0 (CP4)
+**Wersja dokumentu:** 1.1
+**Data ostatniej aktualizacji:** 2026-03-01
+**Wersja biezaca:** v0.4.0 (CP4 zakonczone, 720 testow, 19 endpointow, 34 ADR)
 **Planowana wersja MVP:** v1.0.0 (CP5)
 **Status:** Zatwierdzony — projekt w aktywnym rozwoju
 

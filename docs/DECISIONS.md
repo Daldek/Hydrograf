@@ -483,10 +483,32 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 
 ---
 
+## ADR-023: Hierarchiczne zlewnie — merge zamiast redundancyjnej ekstrakcji
+
+**Data:** 2026-02-15
+**Status:** Zastapiona przez ADR-024
+
+**Kontekst:** Klikniecie na ciek rzedu 5 zawsze zaznaczalo cala zlewnio — niezaleznie od punktu klikniecia. `find_catchment_at_point()` szukalo w progu aktywnym (np. 100000 m², 88 poligonow), wiec klikniecie gdziekolwiek na tym samym cieku trafialo w te sama duza zlewnio. Brak rozdzielczosci miedzy doplywami. Dodatkowy problem: bezposredni `ST_Contains` na punkt klikniecia trafial w hillslope (headwater bez cieku) zamiast w zlewnio cieku.
+
+**Opcje:**
+- A) Re-extract streams/catchments z rastra per prog — redundancyjne, wolne, brak hierarchii
+- B) Merge fine catchments (prog 100) do wyzszych progow (1000, 10000, 100000) — buduje hierarchie parent->child, traversal na progu 100 daje rozdzielczosc miedzy doplywami
+
+**Decyzja:** Opcja B — hierarchical merge. Nowy modul `core/catchment_merge.py` z algorytmem survivor/absorption/chaining + `simplify()` po `unary_union`. Pipeline buduje prog 100 z rastra, wyzsze progi przez scalanie. Nowa kolumna `parent_segment_idx` w `stream_catchments`. Runtime flow: `find_stream_catchment_at_point()` (snap do cieku, nie hillslope) -> BFS na fine -> `map_to_threshold()` (parent chain) -> `merge_catchment_boundaries()` (single-threshold, pre-computed).
+
+**Konsekwencje:**
+- Rozdzielczosc miedzy doplywami — rozne klikniecia na tym samym cieku daja rozne zlewnie
+- Szybszy pipeline — 3 mniej iteracji rastrowych (1000, 10000, 100000)
+- Single-threshold ST_Union — pre-computed, uproszczone poligony (simplify)
+- Dodatkowy koszt: ~8 KB RAM na hierarchie w CatchmentGraph
+- Migracja 015: nowa kolumna + indeks (wymaga re-run pipeline)
+
+---
+
 ## ADR-024: Precyzyjna selekcja cieku — segmentacja konfluencyjna + fine-threshold BFS
 
 **Data:** 2026-02-15
-**Status:** Superseded (przez ADR-026)
+**Status:** Zastapiona przez ADR-026
 
 **Kontekst:** Klikniecie na ciek zaznaczalo cala zlewnię tego cieku, niezaleznie od miejsca klikniecia. Dwa powody: (1) grube progi (100000 m²) — caly ciek to 1 segment, (2) segmentacja Strahlerem — segmenty lamia sie TYLKO przy zmianie rzedu, wiec ciek rzedu 2 z 5 doplywami rzedu 1 to wciaz 1 segment. Poprzednia proba (branch `feature/f1-fix-hierarchical`) — hierarchiczne scalanie z catchment_merge.py — niepowodzenie z powodu ryzyk kaskadowych bledow danych i kruchej topologii.
 
@@ -511,10 +533,10 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 
 ---
 
-## ADR-025: Warunkowy próg selekcji cieku — fine BFS tylko dla display_threshold==100
+## ADR-025: Warunkowy prog selekcji cieku — fine BFS tylko dla display_threshold==100
 
 **Data:** 2026-02-16
-**Status:** Superseded (przez ADR-026)
+**Status:** Zastapiona przez ADR-026
 
 **Kontekst:** Po ADR-024 endpoint `select_stream` zawsze wykonywal snap-to-stream i BFS na progu 100 m² (najdrobniejszym), niezaleznie od progu wyswietlanego na mapie. Powodowalo to snap do drobnych doplywow niewidocznych przy grubszych progach (1000, 10000, 100000), koniecznosc ekstremalnego przyblizenia do cieku oraz zwracanie zlewni niezgodnej z widokiem uzytkownika.
 
@@ -535,9 +557,9 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 
 ---
 
-### ADR-026: Selekcja oparta o poligon zlewni (2026-02-16)
+## ADR-026: Selekcja oparta o poligon zlewni (2026-02-16)
 
-**Status:** Zatwierdzony
+**Status:** Przyjeta
 
 **Kontekst:** Snap-to-stream (`ST_ClosestPoint`) powodował błędne przypisanie kliknięcia do sąsiedniej zlewni, gdy jej ciek płynął blisko granicy. Próg 100 m² generował 105k zlewni cząstkowych bez praktycznego zastosowania. Geometria poligonów była pikselowa (schodkowe krawędzie z rastra).
 
@@ -560,7 +582,7 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 
 ## ADR-027: Snap-to-stream zamiast ST_Contains w selekcji cieku (2026-02-17)
 
-**Status:** Zatwierdzony (zastepuje mechanizm z ADR-026)
+**Status:** Przyjeta (zastepuje mechanizm selekcji z ADR-026)
 
 **Kontekst:** ADR-026 wprowadzil selekcje oparta wylacznie o `ST_Contains(geom, ST_Point(click))` na tabeli `stream_catchments`. Trzy problemy:
 
@@ -599,9 +621,9 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
-### ADR-028: Eliminacja tabeli flow_network (2026-02-17)
+## ADR-028: Eliminacja tabeli flow_network (2026-02-17)
 
-**Status:** Zatwierdzony
+**Status:** Przyjeta
 **Kontekst:** Tabela `flow_network` przechowywala dane kazdego piksela DEM (~39.4M wierszy dla 8 arkuszy). Ladowanie trwalo ~17 min (58% pipeline). Zadne API endpoint nie czyta z niej w runtime — wszystkie endpointy korzystaja z `stream_network`, `stream_catchments` i CatchmentGraph.
 **Decyzja:** Eliminacja tabeli flow_network z pipeline i bazy. Migracja 015 (DROP TABLE). Usuniecie ~1000 linii martwego kodu (db_bulk flow_network functions, flow_graph.py, watershed.py legacy CLI).
 **Konsekwencje:**
@@ -680,10 +702,10 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
-### ADR-032: Wygładzanie granic zlewni (Chaikin smoothing)
+## ADR-032: Wygladzanie granic zlewni (Chaikin smoothing)
 
 **Data:** 2026-03-01
-**Status:** Przyjęta
+**Status:** Przyjeta
 
 **Kontekst:** Granice zlewni generowane z rastra (rasterio.features.shapes) mają kształt schodkowy (pixel staircase). Douglas-Peucker z tolerancją 5m redukuje wierzchołki, ale nie wygładza narożników. Schodkowe granice zawyżają obwód, wpływając na wskaźniki morfometryczne (Kc, Rc, Re).
 
@@ -700,7 +722,7 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
-### ADR-033: Podniesienie budynkow w NMT (building raising)
+## ADR-033: Podniesienie budynkow w NMT (building raising)
 
 **Data:** 2026-03-01
 **Status:** Przyjeta
@@ -721,10 +743,10 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
-### ADR-034: Panel administracyjno-diagnostyczny
+## ADR-034: Panel administracyjno-diagnostyczny
 
 **Data:** 2026-03-01
-**Status:** Zaakceptowana
+**Status:** Przyjeta
 
 **Kontekst:** Brak narzedzia do zarzadzania pipeline'em — bootstrap uruchamiany recznie z CLI, brak widocznosci na zasoby i dane.
 

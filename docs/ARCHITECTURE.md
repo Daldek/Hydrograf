@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - Architektura Systemu
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.6
-**Data:** 2026-02-16
+**Wersja:** 1.7
+**Data:** 2026-03-01
 **Status:** Approved
 
 ---
@@ -95,8 +95,13 @@ Podsumowanie kluczowych ADR:
 | ADR-017 | Podział process_dem na moduły core/ | Thin orchestrator + testowalne moduły |
 | ADR-021 | CatchmentGraph zamiast rastrowych operacji | BFS po grafie zlewni cząstkowych zamiast CTE po 20M+ rekordach |
 | ADR-022 | Eliminacja FlowGraph z runtime | RAM z ~1 GB → ~40 MB, startup z ~90s → ~3s |
-| ADR-024 | Segmentacja konfluencyjna | Podział segmentów na konfluencjach dla precyzji selekcji |
-| ADR-025 | Warunkowy próg BFS | Fine BFS tylko gdy display_threshold == finest |
+| ADR-024 | ~~Segmentacja konfluencyjna~~ | ~~SUPERSEDED by ADR-026~~ |
+| ADR-025 | ~~Warunkowy próg BFS~~ | ~~SUPERSEDED by ADR-026~~ |
+| ADR-026 | Lookup by segment_idx | O(1) lookup po `(threshold_m2, segment_idx)` zamiast auto-increment `id` |
+| ADR-029 | trace_main_channel() | Wyznaczanie głównego cieku wg Strahlera (do channel_slope) |
+| ADR-032 | Boundary smoothing | `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` |
+| ADR-033 | Building raising | `raise_buildings_in_dem()` +5m pod footprints BUBD |
+| ADR-034 | Panel administracyjny | `/admin` + 8 endpointów `/api/admin/*`, API key auth, bootstrap SSE |
 
 ---
 
@@ -108,41 +113,67 @@ Podsumowanie kluczowych ADR:
 backend/
 ├── api/
 │   ├── __init__.py
-│   ├── main.py                    # FastAPI app instance
+│   ├── main.py                    # FastAPI app instance, lifespan, middleware
+│   ├── dependencies/
+│   │   ├── __init__.py
+│   │   └── admin_auth.py          # Admin API key verification (X-Admin-Key header)
 │   └── endpoints/
 │       ├── __init__.py
-│       ├── watershed.py           # POST /delineate-watershed
+│       ├── admin.py               # 8 endpointów /api/admin/* (dashboard, resources, cleanup, bootstrap)
+│       ├── depressions.py         # GET /depressions
+│       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
-│       ├── depressions.py         # GET /depressions
-│       ├── tiles.py               # GET /tiles/streams|catchments/{z}/{x}/{y}.pbf
 │       ├── select_stream.py       # POST /select-stream
-│       └── health.py              # GET /health
+│       ├── tiles.py               # GET /tiles/streams|catchments|landcover/{z}/{x}/{y}.pbf
+│       └── watershed.py           # POST /delineate-watershed
 │
 ├── core/
 │   ├── __init__.py
 │   ├── catchment_graph.py         # In-memory sub-catchment graph (~44k nodes, scipy CSR + BFS)
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
-│   ├── config.py                  # Settings (environment variables)
+│   ├── config.py                  # YAML config loading (load_config(), get_settings())
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
-│   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning
+│   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning, building raising (ADR-033)
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
 │   ├── morphometry.py             # Morphometric parameters calculation
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── precipitation.py           # Precipitation queries
-│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
+│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF), discover_asc_files()
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── watershed.py               # Watershed boundary building + legacy CLI functions
-│   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022)
+│   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022, Chaikin smoothing ADR-032)
 │   └── zonal_stats.py             # Zonal statistics (bincount, max)
 │
 ├── models/
 │   ├── __init__.py
 │   └── schemas.py                 # Pydantic models
+│
+├── scripts/
+│   ├── __init__.py
+│   ├── bootstrap.py               # Orchestrator — uruchamia pełny pipeline preprocessingu
+│   ├── process_dem.py             # Thin orchestrator (~700 lines) — NMT processing
+│   ├── prepare_area.py            # Konfiguracja bbox i parametrów obszaru
+│   ├── download_dem.py            # Pobieranie NMT z GUGiK (Kartograf)
+│   ├── download_landcover.py      # Pobieranie pokrycia terenu (BDOT10k)
+│   ├── import_landcover.py        # Import land cover do PostGIS
+│   ├── preprocess_precipitation.py # Import opadów z IMGW
+│   ├── generate_tiles.py          # Generowanie MVT tiles (streams, catchments, landcover)
+│   ├── generate_dem_overlay.py    # Overlay DEM (PNG)
+│   ├── generate_dem_tiles.py      # Piramida XYZ tiles DEM (hillshade)
+│   ├── generate_streams_overlay.py # Overlay cieków (PNG)
+│   ├── generate_depressions.py    # Generowanie depresji (blue spots)
+│   ├── analyze_watershed.py       # Analiza zlewni (CLI)
+│   ├── export_pipeline_gpkg.py    # Eksport danych pipeline do GeoPackage
+│   ├── export_task9_gpkg.py       # Eksport danych task9 do GeoPackage
+│   └── e2e_task9.py               # E2E test pipeline
+│
+├── migrations/
+│   └── versions/                  # 17 migracji Alembic (001..017)
 │
 ├── utils/
 │   ├── __init__.py
@@ -152,8 +183,8 @@ backend/
 │   └── sheet_finder.py            # NMT sheet code lookup
 │
 ├── tests/
-│   ├── unit/
-│   ├── integration/
+│   ├── unit/                      # 35 plików testów jednostkowych
+│   ├── integration/               # 7 plików testów integracyjnych
 │   └── conftest.py
 │
 ├── requirements.txt
@@ -296,9 +327,25 @@ Errors:
 ```
 GET /api/tiles/streams/{z}/{x}/{y}.pbf?threshold_m2=10000
 GET /api/tiles/catchments/{z}/{x}/{y}.pbf?threshold_m2=10000
+GET /api/tiles/landcover/{z}/{x}/{y}.pbf
 GET /api/tiles/thresholds
 
 Response: Mapbox Vector Tiles (PBF) / JSON
+```
+
+#### 2.2.9 Admin Panel (ADR-034)
+```
+Wszystkie endpointy wymagają nagłówka X-Admin-Key (lub ADMIN_API_KEY nie ustawiony).
+Prefix: /api/admin
+
+GET  /api/admin/dashboard          — statystyki tabel, uptime, wersja
+GET  /api/admin/resources          — CPU, RAM, dysk (psutil)
+GET  /api/admin/cleanup/estimate   — szacunek zwolnionego miejsca
+POST /api/admin/cleanup            — usuwanie cache/tiles
+GET  /api/admin/bootstrap/status   — status procesu bootstrap
+POST /api/admin/bootstrap/start    — uruchomienie bootstrap subprocess
+POST /api/admin/bootstrap/cancel   — anulowanie bootstrap
+GET  /api/admin/bootstrap/stream   — SSE stream logów bootstrap (timeout 3600s)
 ```
 
 ---
@@ -314,7 +361,7 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
                              stream      upstream
 ```
 
-**Szczegółowy przepływ (ADR-022, ADR-024, ADR-025):**
+**Szczegółowy przepływ (ADR-022, ADR-026):**
 1. **Frontend:** Użytkownik klika punkt (lat, lon) → POST /api/select-stream (lub /delineate-watershed)
 2. **API (FastAPI):** Walidacja Pydantic (czy lat/lon w zakresie)
 3. **Core Logic** (`watershed_service.py` + `catchment_graph.py`):
@@ -587,6 +634,19 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 │ Indexes:                                                        │
 │   - idx_depression_geom (GIST on geom)                         │
 └─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                          soil_hsg                               │
+├─────────────────────────────────────────────────────────────────┤
+│ id (PK)              SERIAL                                     │
+│ geom                 GEOMETRY(MultiPolygon, 2180)               │
+│ hsg_group            VARCHAR(1)  ('A', 'B', 'C', 'D')          │
+│ area_m2              FLOAT                                      │
+│                                                                 │
+│ Indexes:                                                        │
+│   - gist on geom (auto)                                        │
+│   - idx_soil_hsg_group (on hsg_group)                          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -718,9 +778,11 @@ engine = create_engine(
 ```
 frontend/
 ├── index.html               # SPA — Leaflet + Bootstrap + Chart.js (CDN)
+├── admin.html               # Panel administracyjny (ADR-034)
 ├── css/
 │   ├── glass.css             # Glassmorphism CSS variables
-│   └── style.css             # Custom styles
+│   ├── style.css             # Custom styles
+│   └── admin.css             # Style panelu administracyjnego
 └── js/
     ├── api.js                # API calls (fetch wrappers)
     ├── map.js                # Leaflet map, layers, drawing, MVT
@@ -730,7 +792,11 @@ frontend/
     ├── profile.js            # Terrain profile (draw line / auto)
     ├── hydrograph.js         # Hydrograph scenario form + chart
     ├── depressions.js        # Depressions (blue spots) overlay
-    └── app.js                # Orchestrator: init, click routing, panel
+    ├── app.js                # Orchestrator: init, click routing, panel
+    └── admin/
+        ├── admin-api.js      # Admin API client (fetch + X-Admin-Key header)
+        ├── admin-bootstrap.js # Bootstrap SSE stream, start/cancel
+        └── admin-app.js      # Admin panel orchestrator
 ```
 
 ---
@@ -928,7 +994,9 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:-hydro_password}@db:5432/${POSTGRES_DB:-hydro_db}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DEM_PATH: ${DEM_PATH:-/data/dem/dem_mosaic.vrt}
+      DEM_PATH: ${DEM_PATH:-/data/nmt/dem_mosaic.vrt}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -938,18 +1006,20 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 4G
           cpus: "2.0"
     volumes:
       - ./backend:/app
-      - ./data/e2e_test:/data/dem:ro
+      - ./data:/data
+      - ./frontend/data:/frontend/data
+      - ./frontend/tiles:/frontend/tiles
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
   nginx:
     image: nginx:alpine
     container_name: hydro_nginx
     ports:
-      - "8080:80"
+      - "${HYDROGRAF_PORT:-8080}:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -1004,6 +1074,20 @@ http {
             limit_req zone=tile_limit burst=200 nodelay;
             proxy_pass http://api_backend/api/tiles/;
             proxy_read_timeout 15s;
+            proxy_cache_valid 200 1d;
+        }
+
+        # Cache for static files
+        location ~* \.(css|js|png|ico|svg|pbf|geojson)$ {
+            root /usr/share/nginx/html;
+            expires 1h;
+            add_header Cache-Control "public, must-revalidate";
+        }
+
+        # Admin panel
+        location = /admin {
+            root /usr/share/nginx/html;
+            try_files /admin.html =404;
         }
 
         # Frontend - static files
@@ -1011,6 +1095,16 @@ http {
             root /usr/share/nginx/html;
             index index.html;
             try_files $uri $uri/ /index.html;
+        }
+
+        # Admin SSE stream (longer timeout for bootstrap)
+        location = /api/admin/bootstrap/stream {
+            proxy_pass http://api_backend/api/admin/bootstrap/stream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Admin-Key $http_x_admin_key;
+            proxy_read_timeout 3600s;
+            proxy_buffering off;
         }
 
         # API proxy
@@ -1021,6 +1115,12 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_read_timeout 120s;
+        }
+
+        # Health check endpoint
+        location /health {
+            proxy_pass http://api_backend/health;
+            proxy_set_header Host $host;
         }
     }
 }
@@ -1084,8 +1184,9 @@ http {
 - ✅ GZip middleware (FastAPI)
 - ✅ Request ID tracing (`X-Request-ID` header, structlog context)
 - ✅ Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
-- ✅ Resource limits Docker (memory: 2G db, 512M api)
-- ✅ No authentication needed (internal network only in MVP)
+- ✅ Resource limits Docker (memory: 2G db, 4G api)
+- ✅ Admin API key auth (X-Admin-Key header, file-based lub env var, ADR-034)
+- ✅ No user authentication needed (internal network only in MVP)
 
 ---
 
@@ -1544,11 +1645,12 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 1.6
-**Data ostatniej aktualizacji:** 2026-02-16
+**Wersja dokumentu:** 1.7
+**Data ostatniej aktualizacji:** 2026-03-01
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 1.7 (2026-03-01): Aktualizacja vs rzeczywisty stan kodu — dodano: panel admin (ADR-034, 8 endpointów, admin.html, 3 moduły JS admin/), landcover MVT tiles, api/dependencies/, sekcja scripts/ (16 skryptów), 17 migracji, ADR-026..034; zaktualizowano: Docker (API memory 4G, ADMIN_API_KEY, volumes), Nginx (admin, SSE, health, static cache), config.py opis YAML, security (admin auth)
 - 1.6 (2026-02-16): Pełna aktualizacja — nowe tabele (stream_catchments, depressions), ADR-008..025, segmentacja konfluencyjna, Docker/Nginx zgodne z faktycznym stanem, structlog, security headers, usunięcie benchmarków liczbowych
 - 1.5 (2026-02-14): Eliminacja FlowGraph z runtime (ADR-022) — diagram, moduły, przepływ danych zaktualizowane; +watershed_service.py, flow_graph.py DEPRECATED
 - 1.4 (2026-02-13): Dodano catchment_graph.py i constants.py do core, zaktualizowano sygnatury morphometry.py, alfabetyczne uporządkowanie modulow core

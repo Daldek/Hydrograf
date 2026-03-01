@@ -1,7 +1,7 @@
 # Integracja z Kartografem
 
-**Wersja:** 3.0
-**Data:** 2026-02-08
+**Wersja:** 4.0
+**Data:** 2026-03-01
 **Status:** Aktywna
 
 ---
@@ -10,12 +10,14 @@
 
 Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.4.1) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
 
-- **NMT** - Numeryczny Model Terenu z GUGiK
+- **NMT** - Numeryczny Model Terenu z GUGiK (rozdzielczość 5m)
 - **NMPT** - Numeryczny Model Pokrycia Terenu z GUGiK (nowy w v0.4.0)
 - **Ortofotomapa** - Ortofotomapy z GUGiK (nowy w v0.4.0)
 - **BDOT10k** - Dane o pokryciu terenu z GUGiK (12 warstw)
 - **BDOT10k hydro** - Dane hydrograficzne z GUGiK (nowy w v0.4.1)
+- **BDOT10k BUBD** - Budynki z GUGiK (do building raising w NMT, ADR-033)
 - **CORINE** - Europejska klasyfikacja pokrycia terenu z Copernicus (44 klasy)
+- **SoilGrids HSG** - Grupy hydrologiczne gleby (przez HSGCalculator)
 
 ### 1.1 Co to jest Kartograf?
 
@@ -25,6 +27,7 @@ Kartograf to narzędzie Python do:
 - **Pobierania ortofotomap** z GUGiK (nowy w v0.4.0)
 - **Pobierania danych o pokryciu terenu** z BDOT10k i CORINE
 - **Pobierania danych hydrograficznych** z BDOT10k (nowy w v0.4.1)
+- **Obliczania HSG** z SoilGrids (HSGCalculator)
 - **Zarządzania hierarchią arkuszy** (od 1:1M do 1:10k)
 - **Auto-ekspansji godeł** — automatyczne rozwijanie godeł grubszych skal do arkuszy 1:10000 (nowy w v0.4.0)
 - **Filtrowania po geometrii** — ograniczanie danych do zadanego zasięgu (nowy w v0.4.1)
@@ -39,6 +42,8 @@ Kartograf to narzędzie Python do:
 | Wiele arkuszy dla dużych zlewni | Automatyczne pobieranie sąsiednich arkuszy |
 | Brak spójności formatów | Jednolity format AAIGrid (.asc) / GeoPackage (.gpkg) |
 | Brak danych CN dla hydrogramów | Automatyczne pobieranie BDOT10k z wartościami CN |
+| Brak danych HSG | HSGCalculator z SoilGrids |
+| Budynki zaburzają kierunki spływu | Building raising +5m z BUBD (ADR-033) |
 
 ---
 
@@ -49,43 +54,54 @@ Kartograf to narzędzie Python do:
 │                         PRZEPŁYW DANYCH                             │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                     │
-│  Użytkownik                                                         │
+│  Użytkownik / Panel Admin                                           │
 │      │                                                              │
-│      │ (lat, lon, buffer_km)                                        │
+│      │ (bbox WGS84 / sheets / --dry-run)                            │
 │      ▼                                                              │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                   prepare_area.py                            │   │
-│  │  (Pipeline: download + process)                              │   │
+│  │                    bootstrap.py                              │   │
+│  │  (Orchestrator: 9 kroków, subprocess, SSE streaming)        │   │
 │  └─────────────────┬───────────────────────────────────────────┘   │
 │                    │                                                │
-│      ┌─────────────┴─────────────┐                                 │
-│      │                           │                                 │
-│      ▼                           ▼                                 │
-│  ┌───────────────┐       ┌──────────────────┐                      │
-│  │sheet_finder.py│       │  download_dem.py │                      │
-│  │               │       │                  │                      │
-│  │ lat,lon →     │       │  Kartograf       │                      │
-│  │ godła arkuszy │       │  GugikProvider   │                      │
-│  └───────┬───────┘       └────────┬─────────┘                      │
-│          │                        │                                 │
-│          │ Lista godeł            │ Pliki .asc                     │
-│          └───────────┬────────────┘                                 │
-│                      │                                              │
-│                      ▼                                              │
-│              ┌──────────────────┐                                   │
-│              │  process_dem.py  │                                   │
-│              │                  │                                   │
-│              │  pyflwdir →      │                                   │
-│              │  flow_network    │                                   │
-│              └────────┬─────────┘                                   │
-│                       │                                             │
-│                       ▼                                             │
-│              ┌──────────────────┐                                   │
-│              │   PostgreSQL     │                                   │
-│              │   + PostGIS      │                                   │
-│              │                  │                                   │
-│              │  flow_network    │                                   │
-│              └──────────────────┘                                   │
+│      ┌─────────────┼─────────────┬─────────────┐                   │
+│      │             │             │             │                   │
+│      ▼             ▼             ▼             ▼                   │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐          │
+│  │download  │ │download  │ │ HSG      │ │ BDOT10k      │          │
+│  │_dem.py   │ │_landcover│ │ (Soil-   │ │ BUBD         │          │
+│  │          │ │.py       │ │ Grids)   │ │ (budynki)    │          │
+│  │Kartograf │ │Kartograf │ │Kartograf │ │Kartograf     │          │
+│  │GugikProv.│ │LandCover │ │HSGCalc.  │ │Bdot10kProv.  │          │
+│  │Download  │ │Manager   │ │          │ │              │          │
+│  │Manager   │ │          │ │          │ │              │          │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └──────┬───────┘          │
+│       │             │            │              │                   │
+│       │ .asc files  │ .gpkg      │ .tif (HSG)   │ .gpkg (BUBD)    │
+│       └──────┬──────┴────────────┴──────────────┘                  │
+│              │                                                      │
+│              ▼                                                      │
+│      ┌──────────────────┐                                           │
+│      │  process_dem.py  │                                           │
+│      │                  │                                           │
+│      │  VRT mosaic →    │                                           │
+│      │  building raise  │                                           │
+│      │  stream burn →   │                                           │
+│      │  pyflwdir →      │                                           │
+│      │  stream_network  │                                           │
+│      │  + catchments    │                                           │
+│      └────────┬─────────┘                                           │
+│               │                                                     │
+│               ▼                                                     │
+│      ┌──────────────────┐                                           │
+│      │   PostgreSQL     │                                           │
+│      │   + PostGIS      │                                           │
+│      │                  │                                           │
+│      │  stream_network  │                                           │
+│      │  stream_catchments│                                          │
+│      │  land_cover      │                                           │
+│      │  soil_hsg        │                                           │
+│      │  depressions     │                                           │
+│      └──────────────────┘                                           │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -139,6 +155,11 @@ python -m scripts.download_dem \
 python -m scripts.download_dem \
     --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \
     --output ../data/nmt/
+
+# Pobieranie arkuszy pokrywających plik geometrii
+python -m scripts.download_dem \
+    --geometry ../data/boundary.gpkg \
+    --output ../data/nmt/
 ```
 
 **Parametry:**
@@ -148,11 +169,74 @@ python -m scripts.download_dem \
 | `--lat`, `--lon` | Współrzędne centrum (WGS84) | - |
 | `--buffer` | Promień bufora [km] | 5 |
 | `--sheets` | Lista godeł do pobrania | - |
+| `--geometry` | Plik geometrii (SHP/GPKG) do selekcji arkuszy | - |
 | `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
 | `--format` | Format (AAIGrid, GTiff) | AAIGrid |
 | `--scale` | Skala arkuszy | 1:10000 |
 
-### 3.3 `scripts/prepare_area.py`
+**Klasy Kartografa:**
+```python
+from kartograf import DownloadManager, GugikProvider
+from kartograf import find_sheets_for_geometry  # selekcja po geometrii
+```
+
+### 3.3 `scripts/download_landcover.py`
+
+Skrypt do pobierania danych pokrycia terenu.
+
+**Użycie:**
+
+```bash
+# BDOT10k dla punktu z buforem
+python -m scripts.download_landcover \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5
+
+# BDOT10k po kodzie TERYT (powiat)
+python -m scripts.download_landcover \
+    --teryt 1465
+
+# BDOT10k hydro (dane hydrograficzne)
+python -m scripts.download_landcover \
+    --lat 52.23 --lon 21.01 \
+    --category hydro
+
+# CORINE Land Cover
+python -m scripts.download_landcover \
+    --lat 52.23 --lon 21.01 \
+    --provider corine \
+    --year 2018
+```
+
+**Klasy Kartografa:**
+```python
+from kartograf.landcover import LandCoverManager
+from kartograf.providers.bdot10k import Bdot10kProvider
+from kartograf import BBox
+```
+
+**Funkcja `discover_teryts_for_bbox()`** — automatyczne wykrywanie kodów TERYT powiatów w zadanym bounding boxie za pomocą `Bdot10kProvider._get_teryt_for_point()`.
+
+### 3.4 `scripts/bootstrap.py`
+
+One-command orchestrator do pełnego preprocessingu.
+
+**Użycie Kartografa:**
+
+```python
+from kartograf import SheetParser       # parsowanie godeł → BBox
+from kartograf import HSGCalculator     # obliczanie HSG z SoilGrids
+from kartograf import BBox              # obiekt bounding box
+```
+
+**Kroki z Kartografem:**
+1. `SheetParser(godlo).get_bbox()` — obliczenie bbox z godeł
+2. `download_dem.py` — pobieranie NMT (GugikProvider + DownloadManager)
+3. `download_landcover.py` — pobieranie BDOT10k (LandCoverManager)
+4. `HSGCalculator().calculate_hsg_by_bbox()` — pobieranie HSG z SoilGrids
+5. `discover_asc_files()` — skanowanie pobranych plików .asc (bbox overlap check)
+
+### 3.5 `scripts/prepare_area.py`
 
 Pipeline łączący pobieranie i przetwarzanie.
 
@@ -164,29 +248,65 @@ python -m scripts.prepare_area \
     --lat 52.23 --lon 21.01 \
     --buffer 5
 
-# Z dodatkowymi opcjami
+# Z land cover
 python -m scripts.prepare_area \
     --lat 52.23 --lon 21.01 \
-    --buffer 10 \
-    --stream-threshold 50 \
-    --save-intermediates
+    --buffer 5 \
+    --with-landcover
+
+# Z danymi hydro
+python -m scripts.prepare_area \
+    --lat 52.23 --lon 21.01 \
+    --buffer 5 \
+    --with-hydro
 ```
 
-**Parametry:**
+**Klasa Kartografa:**
+```python
+from kartograf import SheetParser
+```
 
-| Parametr | Opis | Domyślnie |
-|----------|------|-----------|
-| `--lat`, `--lon` | Współrzędne centrum (WGS84) | (wymagane) |
-| `--buffer` | Promień bufora [km] | 5 |
-| `--stream-threshold` | Próg akumulacji dla strumieni | 100 |
-| `--save-intermediates` | Zapis plików GeoTIFF | false |
-| `--keep-downloads` | Zachowaj pobrane pliki .asc | true |
+### 3.6 `core/cn_calculator.py`
+
+Kalkulator CN z wykorzystaniem danych z Kartografa.
+
+**Klasy Kartografa:**
+```python
+from kartograf import BBox, LandCoverManager
+from kartograf.hydrology import HSGCalculator
+```
+
+**Funkcje:**
+- `check_kartograf_available()` — weryfikacja dostępności Kartografa
+- `convert_boundary_to_bbox()` — konwersja granicy WGS84 → BBox EPSG:2180
+- `get_hsg_from_soilgrids(bbox)` — HSG z SoilGrids przez HSGCalculator
+- `get_land_cover_stats(bbox, data_dir)` — pokrycie terenu z LandCoverManager
+- `calculate_cn_from_kartograf(boundary, data_dir)` — pełne obliczenie CN
+
+### 3.7 `utils/raster_utils.py`
+
+Narzędzia rastrowe.
+
+**Funkcja:** `discover_asc_files(nmt_dir, bbox_2180)` — skanuje katalog NMT i filtruje pliki .asc po nakładaniu się z bbox (rozwiązuje problem VRT mosaic gaps).
 
 ---
 
-## 4. System Godeł Arkuszy Map
+## 4. Moduły Hydrografa korzystające z Kartografa
 
-### 4.1 Hierarchia
+| Moduł | Importy z Kartografa | Zastosowanie |
+|-------|---------------------|--------------|
+| `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `find_sheets_for_geometry` | Pobieranie NMT z GUGiK |
+| `scripts/download_landcover.py` | `LandCoverManager`, `BBox`, `Bdot10kProvider` | Pobieranie BDOT10k/CORINE |
+| `scripts/bootstrap.py` | `SheetParser`, `HSGCalculator`, `BBox` | Orchestrator preprocessingu |
+| `scripts/prepare_area.py` | `SheetParser` | Pipeline przygotowania obszaru |
+| `core/cn_calculator.py` | `BBox`, `HSGCalculator`, `LandCoverManager` | Obliczanie CN |
+| `utils/raster_utils.py` | (pośrednio, operuje na plikach .asc) | Skanowanie plików NMT |
+
+---
+
+## 5. System Godeł Arkuszy Map
+
+### 5.1 Hierarchia
 
 ```
 1:1 000 000  │  N-34                    │  4° × 6°
@@ -198,9 +318,11 @@ python -m scripts.prepare_area \
 1:10 000     │  N-34-131-C-c-2-1        │  2'30" × 3'45"
 ```
 
-### 4.2 Podział arkuszy
+**Uwaga:** Godła 1:25k automatycznie rozwijają się do 4x arkuszy 1:10k (auto-ekspansja).
 
-**1:100 000** - 144 arkuszy na 1:1M (12 × 12)
+### 5.2 Podział arkuszy
+
+**1:100 000** - 144 arkuszy na 1:1M (12 x 12)
 ```
 ┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐
 │001│002│003│004│005│006│007│008│009│010│011│012│
@@ -242,15 +364,15 @@ python -m scripts.prepare_area \
 
 ---
 
-## 5. GUGiK WCS API
+## 6. GUGiK WCS API
 
-### 5.1 Endpoint
+### 6.1 Endpoint
 
 ```
 https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/WCS/DigitalTerrainModelFormatTIFF
 ```
 
-### 5.2 Parametry żądania
+### 6.2 Parametry żądania
 
 | Parametr | Wartość |
 |----------|---------|
@@ -260,7 +382,7 @@ https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/WCS/DigitalTerrainModelForma
 | COVERAGEID | `<godło>` (np. N-34-131-C-c-2-1) |
 | FORMAT | image/tiff, application/x-ogc-aaigrid, text/plain |
 
-### 5.3 Formaty
+### 6.3 Formaty
 
 | Format | MIME Type | Rozszerzenie |
 |--------|-----------|--------------|
@@ -270,9 +392,9 @@ https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/WCS/DigitalTerrainModelForma
 
 ---
 
-## 6. Obsługa Błędów
+## 7. Obsługa Błędów
 
-### 6.1 Błędy pobierania
+### 7.1 Błędy pobierania
 
 | Kod | Przyczyna | Rozwiązanie |
 |-----|-----------|-------------|
@@ -280,7 +402,7 @@ https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/WCS/DigitalTerrainModelForma
 | 503 | Serwer GUGiK niedostępny | Retry z backoff |
 | Timeout | Wolne połączenie | Zwiększ timeout |
 
-### 6.2 Retry Logic
+### 7.2 Retry Logic
 
 Kartograf implementuje automatyczne ponawianie:
 - Max 3 próby
@@ -289,9 +411,9 @@ Kartograf implementuje automatyczne ponawianie:
 
 ---
 
-## 7. Przykłady Użycia
+## 8. Przykłady Użycia
 
-### 7.1 Przygotowanie danych dla nowego obszaru
+### 8.1 Przygotowanie danych dla nowego obszaru
 
 ```bash
 # 1. Sprawdź jakie arkusze są potrzebne
@@ -310,7 +432,24 @@ for s in sheets:
     --buffer 5
 ```
 
-### 7.2 Pobieranie konkretnego regionu
+### 8.2 Pełny bootstrap z panelu admin
+
+```bash
+# One-command bootstrap (wszystkie kroki)
+.venv/bin/python -m scripts.bootstrap \
+    --bbox "20.8,52.1,21.2,52.4"
+
+# Dry run (pokaż plan bez wykonywania)
+.venv/bin/python -m scripts.bootstrap \
+    --bbox "20.8,52.1,21.2,52.4" --dry-run
+
+# Bootstrap z pominięciem kroków
+.venv/bin/python -m scripts.bootstrap \
+    --bbox "20.8,52.1,21.2,52.4" \
+    --skip-precipitation --skip-tiles
+```
+
+### 8.3 Pobieranie konkretnego regionu
 
 ```bash
 # Pobierz wszystkie arkusze 1:10k dla arkusza 1:100k
@@ -320,7 +459,7 @@ for s in sheets:
     --output ../data/nmt/
 ```
 
-### 7.3 Użycie w kodzie Python
+### 8.4 Użycie w kodzie Python
 
 ```python
 from utils.sheet_finder import (
@@ -333,7 +472,7 @@ from kartograf import GugikProvider, DownloadManager
 sheets = get_sheets_for_point_with_buffer(52.23, 21.01, buffer_km=5)
 
 # Pobierz dane
-provider = GugikProvider()
+provider = GugikProvider(resolution="5m")
 manager = DownloadManager(output_dir="./data/nmt/", provider=provider)
 
 for sheet in sheets:
@@ -344,44 +483,41 @@ for sheet in sheets:
 
 ---
 
-## 8. Testy
+## 9. Testy
 
-### 8.1 Testy jednostkowe
+### 9.1 Testy jednostkowe
 
 ```bash
+# Testy sheet_finder
 pytest tests/unit/test_sheet_finder.py -v
+
+# Testy download_landcover (mocked Bdot10kProvider)
+pytest tests/unit/test_download_landcover.py -v
+
+# Testy cn_calculator
+pytest tests/unit/test_cn_calculator.py -v
+
+# Testy land_cover (spatial intersection CN)
+pytest tests/unit/test_land_cover.py -v
+
+# Testy cn_tables (tablice CN dla BDOT10k + BUBD)
+pytest tests/unit/test_cn_tables.py -v
+
+# Testy building raising
+pytest tests/unit/test_building_raising.py -v
+
+# Testy discover_asc_files
+pytest tests/unit/test_discover_asc.py -v
+
+# Testy tiles landcover (MVT)
+pytest tests/unit/test_tiles_landcover.py -v
 ```
 
-### 8.2 Testy integracyjne (wymagają połączenia z GUGiK)
+### 9.2 Testy integracyjne (wymagają połączenia z GUGiK)
 
 ```bash
 pytest tests/integration/test_download_dem.py -v --run-network
 ```
-
----
-
-## 9. Rozwiązywanie Problemów
-
-### Problem: "Coordinates outside Poland bounds"
-
-**Przyczyna:** Współrzędne poza granicami Polski (49°-55°N, 14°-24.5°E)
-
-**Rozwiązanie:** Sprawdź poprawność współrzędnych
-
-### Problem: "Connection timeout to GUGiK"
-
-**Przyczyna:** Serwer GUGiK niedostępny lub wolne połączenie
-
-**Rozwiązanie:**
-1. Sprawdź połączenie internetowe
-2. Poczekaj i spróbuj ponownie
-3. Użyj `--retry 5` dla więcej prób
-
-### Problem: "Sheet not found in GUGiK database"
-
-**Przyczyna:** Nie wszystkie arkusze są dostępne (np. tereny przygraniczne)
-
-**Rozwiązanie:** Pomiń brakujące arkusze lub użyj danych z innego źródła
 
 ---
 
@@ -410,36 +546,20 @@ pytest tests/integration/test_download_dem.py -v --run-network
 | PTGN | Grunty nieużytkowe | `inny` | 75 |
 | PTNZ | Tereny niezabudowane | `inny` | 75 |
 | PTSO | Składowiska | `inny` | 75 |
+| **BUBD** | **Budynki** | (building raising) | 85-92 (wg HSG) |
 
-### 10.3 Skrypty land cover
+### 10.3 Land Cover MVT (Vector Tiles)
 
-**Pobieranie danych:**
+Endpoint `/api/tiles/landcover/{z}/{x}/{y}.pbf` serwuje dane land cover jako Mapbox Vector Tiles. Generowane dynamicznie z tabeli `land_cover` (PostGIS `ST_AsMVTGeom`). Atrybuty w tile: `category`, `cn_value`, `bdot_class`.
 
-```bash
-# BDOT10k dla punktu z buforem
-.venv/bin/python -m scripts.download_landcover \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5
-
-# BDOT10k po kodzie TERYT (powiat)
-.venv/bin/python -m scripts.download_landcover \
-    --teryt 1465
-
-# CORINE Land Cover
-.venv/bin/python -m scripts.download_landcover \
-    --lat 52.23 --lon 21.01 \
-    --provider corine \
-    --year 2018
-```
-
-**Import do bazy danych:**
+### 10.4 Import do bazy danych
 
 ```bash
 .venv/bin/python -m scripts.import_landcover \
     --input ../data/landcover/bdot10k_teryt_1465.gpkg
 ```
 
-**Pełny pipeline z land cover:**
+### 10.5 Pełny pipeline z land cover
 
 ```bash
 .venv/bin/python -m scripts.prepare_area \
@@ -448,7 +568,7 @@ pytest tests/integration/test_download_dem.py -v --run-network
     --with-landcover
 ```
 
-### 10.4 API Python
+### 10.6 API Python
 
 ```python
 from kartograf.landcover import LandCoverManager
@@ -511,46 +631,106 @@ Kartograf 0.4.1 dodaje obsługę kategorii hydrograficznych z BDOT10k, umożliwi
     --with-hydro
 ```
 
-### 11.3 Filtrowanie po geometrii
-
-Kartograf 0.4.1 umożliwia ograniczenie pobieranych danych do zadanego zasięgu przestrzennego:
-
-```bash
-# Pobieranie NMT ograniczone do geometrii zlewni
-.venv/bin/python -m scripts.download_dem \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5 \
-    --geometry ../data/watershed_boundary.geojson
-
-# Pobieranie land cover z geometrią
-.venv/bin/python -m scripts.download_landcover \
-    --lat 52.23 --lon 21.01 \
-    --geometry ../data/watershed_boundary.gpkg
-```
-
-### 11.4 Zastosowanie w Hydrograf
+### 11.3 Zastosowanie w Hydrograf
 
 Dane hydrograficzne z BDOT10k służą do:
-- **Stream burning** — wypalanie cieków w NMT dla lepszego odwzorowania kierunków przepływu
+- **Stream burning** — wypalanie cieków w NMT dla lepszego odwzorowania kierunków przepływu (`core/hydrology.py: burn_streams_into_dem()`)
 - **Walidacja sieci rzecznej** — porównanie wygenerowanej sieci z danymi referencyjnymi BDOT10k
 - **Uzupełnienie informacji** — nazwy cieków, klasyfikacja (rzeka/kanał/rów)
 
 ---
 
-## 12. Przyszłe Rozszerzenia
+## 12. Building Raising (ADR-033)
+
+### 12.1 Problem
+
+Budynki w NMT nie są wystarczająco "podwyższone" — woda w modelu przepływa przez budynki, co daje nierealistyczne kierunki spływu.
+
+### 12.2 Rozwiązanie
+
+Funkcja `raise_buildings_in_dem()` w `core/hydrology.py`:
+- Pobiera footprinty budynków z BUBD (BDOT10k, GeoPackage)
+- Rasteryzuje geometrie na siatkę DEM
+- Podnosi wartości DEM pod budynkami o +5m
+
+```python
+from core.hydrology import raise_buildings_in_dem
+
+dem = raise_buildings_in_dem(
+    dem=dem_array,
+    transform=rasterio_transform,
+    crs_epsg=2180,
+    building_gpkg="data/landcover/bubd.gpkg",
+    building_raise_m=5.0,
+)
+```
+
+### 12.3 Pipeline
+
+Building raising jest zintegrowany w `process_dem.py` — wykonuje się automatycznie po załadowaniu NMT, przed obliczaniem kierunków przepływu.
+
+---
+
+## 13. HSG — Grupy Hydrologiczne Gleby
+
+### 13.1 Przegląd
+
+HSGCalculator z Kartografa pobiera dane z SoilGrids (globalny dataset gleb) i klasyfikuje je do grup hydrologicznych (A, B, C, D).
+
+### 13.2 Użycie w Hydrograf
+
+Dwa punkty integracji:
+1. **`bootstrap.py` krok 5** — masowe pobieranie HSG dla całego bbox, polygonizacja i import do tabeli `soil_hsg`
+2. **`cn_calculator.py`** — obliczanie CN na żądanie (online) dla konkretnej zlewni
+
+### 13.3 Tabela `soil_hsg`
+
+| Kolumna | Typ | Opis |
+|---------|-----|------|
+| id | SERIAL | PK |
+| hsg_group | VARCHAR(2) | Grupa HSG (A, B, C, D) |
+| geom | GEOMETRY(MultiPolygon, 2180) | Geometria |
+
+Dane z tabeli `soil_hsg` używane w `core/soil_hsg.py: get_hsg_for_boundary()` — spatial intersection z granicą zlewni do obliczenia dominującej grupy HSG.
+
+---
+
+## 14. Filtrowanie po geometrii
+
+Kartograf 0.4.1 umożliwia ograniczenie pobieranych danych do zadanego zasięgu przestrzennego:
+
+```python
+from kartograf import find_sheets_for_geometry
+
+# Selekcja arkuszy pokrywających plik geometrii
+sheets = find_sheets_for_geometry("boundary.gpkg", target_scale="1:10000")
+```
+
+```bash
+# Pobieranie NMT dla pliku geometrii
+python -m scripts.download_dem \
+    --geometry ../data/watershed_boundary.geojson \
+    --output ../data/nmt/
+```
+
+---
+
+## 15. Przyszłe Rozszerzenia
 
 - [x] **Land Cover** - pobieranie BDOT10k i CORINE (Kartograf 0.3.0)
 - [x] **Auto-ekspansja godeł** - automatyczne rozwijanie godeł grubszych skal (Kartograf 0.4.0)
 - [x] **Progress callback** - `on_progress` w `download_sheet()` (Kartograf 0.4.0)
 - [x] **BDOT10k hydro** - kategorie hydrograficzne SWRS, SWKN, SWRM, PTWP (Kartograf 0.4.1)
 - [x] **Geometry file selection** - filtrowanie danych po pliku geometrii (Kartograf 0.4.1)
+- [x] **HSG Calculator** - grupy hydrologiczne gleby z SoilGrids (Kartograf 0.4.1)
+- [x] **Building raising** - BUBD footprints z BDOT10k → +5m w DEM (ADR-033)
+- [x] **Land cover MVT** - endpoint `/api/tiles/landcover/{z}/{x}/{y}.pbf` (CP4)
+- [x] **CN calculation** - cn_calculator + cn_tables z danymi Kartografa
 - [ ] **NMPT integration** - wykorzystanie NMPT w analizach (dostępny od Kartograf 0.4.0)
 - [ ] **Cache lokalny** - unikanie ponownego pobierania
 - [ ] **Parallel download** - równoległe pobieranie wielu arkuszy
-- [ ] **API endpoint** - `/api/prepare-area` dla pobierania on-demand
-- [ ] **Automatyczne łączenie** - merge wielu arkuszy w jeden raster
 
 ---
 
-**Wersja dokumentu:** 3.0
-**Ostatnia aktualizacja:** 2026-02-08
+**Wersja dokumentu:** 4.0
+**Ostatnia aktualizacja:** 2026-03-01

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-03-01
 
-### Dodane
+### Added
 - **Panel administracyjny `/admin` (ADR-034):** 4 sekcje: Dashboard, Bootstrap, Zasoby, Czyszczenie
 - 8 nowych endpointow API `/api/admin/*` (dashboard, resources, cleanup, bootstrap)
 - Uwierzytelnianie API key (header X-Admin-Key, env ADMIN_API_KEY)
@@ -15,8 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Monitorowanie zasobow: CPU/RAM (psutil), pool DB, CatchmentGraph cache
 - Czyszczenie danych: tiles, overlays, dem_mosaic, TRUNCATE tabel
 - ~50 nowych testow jednostkowych
-
-### Added
+- **Plikowy klucz API + localStorage:** obsluga `ADMIN_API_KEY_FILE` (wzorzec Docker secrets), file picker w UI logowania admina, persystencja klucza w `localStorage` miedzy sesjami
+- **`discover_asc_files()` w `raster_io.py`:** skanowanie katalogu NMT w poszukiwaniu wszystkich plikow ASC pasujacych do bbox (transformacja PUWG 2000 → EPSG:2180) — naprawa luk w mozaice VRT spowodowanych pomijaniem plikow z cache'u z poprzednich uruchomien
+- **83 nowe testy jednostkowe** dla nieobjętych modulow `scripts/` i `utils/` (`test(scripts)`)
+- **Grupy glebowe HSG w panelu i na mapie (E7):** warstwa HSG z legenda kolorowa (A/B/C/D) na mapie, dane z `soil_hsg`, automatyczne show/hide
+- **Eksport BDOT10k GeoJSON dla frontendu (E8):** skrypt eksportujacy dane BDOT10k do plikow GeoJSON uzywalnych przez frontend
+- **Automatyczna normalizacja CRS plikow NMT:** transformacja PUWG 2000 (strefowa) → EPSG:2180 dla plikow ASC z roznymi strefami odwzorowawczymi
+- **Domyslna rozdzielczosc NMT 5m + downsampling DEM:** `GugikProvider(resolution="5m")`, downsampling duzych rastrow zapobiegajacy OOM
 - **Wygładzanie granic zlewni (ADR-032):** `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3 iteracje)` w `merge_catchment_boundaries()` — eliminacja schodkowych krawędzi z rastra, gładkie krzywe zamiast ortogonalnych kroków 5m. Tolerancja simplify w preprocessingu: `cellsize` → `2*cellsize`.
 - **Warstwa tematyczna: pokrycie terenu (BDOT10k):** nowy endpoint MVT `/api/tiles/landcover/{z}/{x}/{y}.pbf` serwujacy dane `land_cover` (101k rekordow) jako Mapbox Vector Tiles. Warstwa dodana do panelu warstw z lazy-loadem, kolorowana wg kategorii (las, laka, grunt orny, zabudowa, droga, woda), z legenda i suwakiem przezroczystosci. Nowy pane `landcoverPane` (z-index 260) miedzy NMT a ciekami.
 - **Konfiguracja YAML pipeline (`config.yaml`):** nowe funkcje `load_config()`, `_deep_merge()`, `get_database_url_from_config()` w `core/config.py`. Szablon `backend/config.yaml.example` z sekcjami: database, dem (resolution, thresholds, burn_depth), paths, steps (on/off per krok), custom data sources. Flaga `--config` w `bootstrap.py`. Plik `config.yaml` w `.gitignore`. 14 testow jednostkowych.
@@ -27,9 +32,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Domyslny max zoom dla DEM tiles:** zmiana z 18 na 16 w `generate_dem_tiles.py`. Przy 5m NMT zoom 16 daje ~2.4m/piksel (wystarczajacy), zoom 18 daje ~0.6m/piksel bez dodatkowego detalu, 16x wiecej dysku.
 - **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):** 3 tryby — `auto` (BDOT10k klasyfikacja, domyslnie), `none` (pomin), custom `.gpkg`/`.shp` (wszystkie endoreiczne). Nowa flaga `--waterbody-min-area` do filtrowania malych zbiornikow po powierzchni. Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py.
+- **Nginx: routing `/admin` + SSE proxy:** nowa lokalizacja nginx dla panelu admina, proxy SSE z `proxy_buffering off` i `X-Accel-Buffering no` dla streamu logow bootstrap
+- **CORS: `X-Admin-Key` w dozwolonych naglowkach:** dodanie naglowka uwierzytelniania admina do `allow_headers`
 
 ### Removed
 - **stream_network threshold 100 m²** — usunieto ~2.5M segmentow (90% tabeli), domyslny prog FA: 100→1000, migracja 017 (ADR-030)
+
+### Fixed (sesja 48 — admin panel + bootstrap)
+- **Bootstrap subprocess: `sys.executable` zamiast hardcoded path:** `bootstrap_manager.py` uzywal `.venv/bin/python` co nie dzialalo w kontenerze Docker — zamiana na `sys.executable` (dziala w venv i Docker). Obsluga `FileNotFoundError`/`OSError` z `Popen` — reset stanu do `"failed"` zamiast zawieszenia na `"running"`.
+- **Admin panel: bypass auth gdy brak API key:** gdy `ADMIN_API_KEY` nie jest skonfigurowany, panel automatycznie uwierzytelnia z pustym kluczem zamiast blokowac formularzem logowania.
+- **Docker: API memory 512M → 4G + volume mounts:** bootstrap subprocess (pyflwdir na 54.5M komorek) wymaga ~2-3 GB RAM — zwiekszono limit z 512M do 4G. Naprawiono montowanie woluminow: `./data → /data` (rw), `frontend/{data,tiles}` jako zapisywalne. `DEM_PATH` zaktualizowany z `/data/dem/` na `/data/nmt/`.
+- **Code review — API:** lancuchowanie wyjatkow (`raise ... from e`), komentarze SQL, limit historii logow bootstrap, poprawa lintu
+- **Code review — frontend:** obrona przed XSS (`textContent` zamiast `innerHTML`), obsluga bledow SSE, poprawki a11y, wspolne utility
+
+### Fixed (CR3 — cursor leak)
+- **Cursor leak w `CatchmentGraph.load()`:** brak zamkniecia kursora DB przy bledzie — dodano `try/finally` z `cursor.close()`. Zapobiega wyciekowi polaczen DB.
 
 ### Fixed (sesja 44 — bulk INSERT timeout)
 - **`override_statement_timeout` w bulk INSERT:** dodanie wrappera `override_statement_timeout(600s)` do `insert_stream_segments()` i `insert_catchments()` w `core/db_bulk.py` — domyslny `statement_timeout=30s` powodowal timeout przy insercie 2.5M segmentow stream_network. Fix umozliwia pelny bootstrap 10 arkuszy 5m NMT.
