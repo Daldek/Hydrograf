@@ -145,3 +145,38 @@ class TestDeepMerge:
         result = _deep_merge(base, override)
         assert result["a"]["b"]["c"] == 99
         assert result["a"]["b"]["d"] == 2
+
+
+class TestSettingsSecurityWarnings:
+    """Tests for security warnings on default credentials (S5.3)."""
+
+    def test_warns_on_default_password(self, caplog, monkeypatch):
+        """Startup logs WARNING when using default postgres_password."""
+        import logging
+        from core.config import Settings, get_settings
+
+        get_settings.cache_clear()
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+
+        with caplog.at_level(logging.WARNING):
+            settings = Settings()
+            settings.warn_if_default_credentials()
+
+        assert "hydro_password" in caplog.text or "default" in caplog.text.lower()
+        get_settings.cache_clear()
+
+    def test_no_warning_with_custom_password(self, caplog, monkeypatch):
+        """No warning when password is explicitly set."""
+        import logging
+        from core.config import Settings, get_settings
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("POSTGRES_PASSWORD", "my-secure-password")
+
+        with caplog.at_level(logging.WARNING):
+            settings = Settings()
+            settings.warn_if_default_credentials()
+
+        assert "hydro_password" not in caplog.text
+        get_settings.cache_clear()

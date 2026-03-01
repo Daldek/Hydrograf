@@ -5,12 +5,15 @@ Loads settings from environment variables with sensible defaults.
 Supports YAML configuration file for pipeline customization.
 """
 
+import logging
 import os
 from copy import deepcopy
 from functools import lru_cache
 
 import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -73,6 +76,14 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
+    def warn_if_default_credentials(self) -> None:
+        """Log warning if using default database credentials."""
+        if self.postgres_password == "hydro_password":
+            logger.warning(
+                "Using default postgres_password='hydro_password'. "
+                "Set POSTGRES_PASSWORD env var for production."
+            )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -90,7 +101,9 @@ def get_settings() -> Settings:
     Settings
         Application settings
     """
-    return Settings()
+    settings = Settings()
+    settings.warn_if_default_credentials()
+    return settings
 
 
 # ---------------------------------------------------------------------------
