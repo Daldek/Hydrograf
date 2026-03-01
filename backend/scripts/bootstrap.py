@@ -777,6 +777,28 @@ def step_overlays(output_dir: Path) -> str:
         )
         generated.append("DEM")
 
+    # DEM tile pyramid (for high-zoom display)
+    dem_tiles_dir = data_dir / "dem_tiles"
+    dem_tiles_meta = data_dir / "dem_tiles.json"
+    tiles_missing = not dem_tiles_dir.exists() or not dem_tiles_meta.exists()
+    if vrt_path.exists() and tiles_missing:
+        logger.info("Generating DEM tile pyramid...")
+        from scripts.generate_dem_tiles import generate_tiles as gen_dem_tiles
+
+        gen_dem_tiles(
+            input_path=str(vrt_path),
+            output_dir=str(dem_tiles_dir),
+            output_meta=str(dem_tiles_meta),
+            source_crs="EPSG:2180",
+            min_zoom=8,
+            max_zoom=16,
+            processes=4,
+        )
+        generated.append("DEM tiles")
+    elif dem_tiles_dir.exists() and dem_tiles_meta.exists():
+        logger.info("DEM tiles already exist, skipping")
+        generated.append("DEM tiles (cached)")
+
     # Streams overlay
     stream_order_path = nmt_dir / "dem_mosaic_07_stream_order.tif"
     if stream_order_path.exists():

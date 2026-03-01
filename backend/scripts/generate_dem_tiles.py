@@ -245,7 +245,7 @@ def main() -> None:
     )
     parser.add_argument("--min-zoom", type=int, default=8, help="Min zoom (default: 8)")
     parser.add_argument(
-        "--max-zoom", type=int, default=18, help="Max zoom (default: 18)"
+        "--max-zoom", type=int, default=16, help="Max zoom (default: 16)"
     )
     parser.add_argument(
         "--resampling",
