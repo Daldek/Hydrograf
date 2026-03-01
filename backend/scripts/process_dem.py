@@ -58,6 +58,7 @@ from core.hydrology import (
     fill_internal_nodata_holes,
     fix_internal_sinks,
     process_hydrology_pyflwdir,
+    raise_buildings_in_dem,
     recompute_flow_accumulation,
 )
 from core.morphometry_raster import (
@@ -99,6 +100,7 @@ __all__ = [
     "polygonize_subcatchments",
     "process_dem",
     "process_hydrology_pyflwdir",
+    "raise_buildings_in_dem",
     "read_ascii_grid",
     "read_raster",
     "recompute_flow_accumulation",
@@ -130,6 +132,7 @@ def process_dem(
     hydro_resolution_m: float | None = None,
     waterbody_mode: str = "auto",
     waterbody_min_area_m2: float | None = None,
+    building_gpkg: str | None = None,
 ) -> dict:
     """
     Process DEM file (ASC, VRT, or GeoTIFF) and extract stream network.
@@ -168,6 +171,9 @@ def process_dem(
         or path to custom waterbody file (.gpkg/.shp, all treated as endorheic).
     waterbody_min_area_m2 : float, optional
         Minimum waterbody area in m². Bodies smaller than this are ignored.
+    building_gpkg : str, optional
+        Path to GeoPackage with building footprints (BUBD from BDOT10k).
+        DEM is raised by +5m under building footprints before stream burning.
     thresholds : list[int], optional
         List of FA thresholds in m² for multi-density stream networks.
         If provided, generates separate stream networks per threshold.
@@ -246,6 +252,20 @@ def process_dem(
         nodata = metadata["nodata_value"]
         valid_cells = np.sum(dem != nodata)
         stats["valid_cells"] = int(valid_cells)
+
+    # 1b. Raise buildings (optional) — before stream burning and depression filling
+    if building_gpkg is not None:
+        transform_for_buildings = metadata.get("transform")
+        if transform_for_buildings is None:
+            from rasterio.transform import from_bounds as _from_bounds_b
+
+            _xll, _yll = metadata["xllcorner"], metadata["yllcorner"]
+            _nr, _nc = dem.shape
+            _cs = metadata["cellsize"]
+            transform_for_buildings = _from_bounds_b(
+                _xll, _yll, _xll + _nc * _cs, _yll + _nr * _cs, _nc, _nr
+            )
+        dem = raise_buildings_in_dem(dem, transform_for_buildings, 2180, building_gpkg)
 
     # 2. Burn streams (optional) — before depression filling
     if burn_streams_path is not None:
