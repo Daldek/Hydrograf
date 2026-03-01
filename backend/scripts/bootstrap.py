@@ -1123,6 +1123,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Min. powierzchnia zbiornika (m²). Zbiorniki mniejsze sa ignorowane.",
     )
 
+    # Configuration file
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Sciezka do pliku konfiguracyjnego YAML (default: config.yaml)",
+    )
+
     # Dry run
     parser.add_argument(
         "--dry-run",
@@ -1137,6 +1144,13 @@ def main():
     """Main entry point."""
     parser = build_parser()
     args = parser.parse_args()
+
+    # Load YAML pipeline configuration (merged with defaults)
+    sys.path.insert(0, str(BACKEND_DIR))
+    from core.config import load_config
+
+    config = load_config(args.config)  # noqa: F841 — used in future refactoring
+    logger.info(f"Konfiguracja zaladowana z: {args.config}")
 
     # Resolve output directory
     output_dir = Path(args.output) if args.output else DEFAULT_DATA_DIR
