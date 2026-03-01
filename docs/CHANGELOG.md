@@ -5,7 +5,12 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-02-24
+## [Unreleased] — 2026-03-01
+
+### Added
+- **Wygładzanie granic zlewni (ADR-032):** `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3 iteracje)` w `merge_catchment_boundaries()` — eliminacja schodkowych krawędzi z rastra, gładkie krzywe zamiast ortogonalnych kroków 5m. Tolerancja simplify w preprocessingu: `cellsize` → `2*cellsize`.
+
+## [Previous Unreleased] — 2026-02-24
 
 ### Added
 - **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):** 3 tryby — `auto` (BDOT10k klasyfikacja, domyslnie), `none` (pomin), custom `.gpkg`/`.shp` (wszystkie endoreiczne). Nowa flaga `--waterbody-min-area` do filtrowania malych zbiornikow po powierzchni. Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py.
