@@ -210,9 +210,13 @@ def merge_catchment_boundaries(
     query = text("""
         SELECT ST_AsBinary(
             ST_Multi(ST_MakeValid(
-                ST_Buffer(ST_Buffer(
-                    ST_UnaryUnion(ST_Collect(geom)),
-                0.1), -0.1)
+                ST_ChaikinSmoothing(
+                    ST_SimplifyPreserveTopology(
+                        ST_Buffer(ST_Buffer(
+                            ST_UnaryUnion(ST_Collect(geom)),
+                        0.1), -0.1),
+                    5.0),
+                3)
             ))
         ) as geom
         FROM stream_catchments

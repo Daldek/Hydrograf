@@ -680,6 +680,26 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+### ADR-032: Wygładzanie granic zlewni (Chaikin smoothing)
+
+**Data:** 2026-03-01
+**Status:** Przyjęta
+
+**Kontekst:** Granice zlewni generowane z rastra (rasterio.features.shapes) mają kształt schodkowy (pixel staircase). Douglas-Peucker z tolerancją 5m redukuje wierzchołki, ale nie wygładza narożników. Schodkowe granice zawyżają obwód, wpływając na wskaźniki morfometryczne (Kc, Rc, Re).
+
+**Decyzja:**
+1. `ST_SimplifyPreserveTopology(geom, 5.0)` przed wygładzaniem
+2. `ST_ChaikinSmoothing(geom, 3)` — 3 iteracje corner-cutting
+3. Tolerancja simplify w preprocessingu: `cellsize` → `2*cellsize`
+
+**Konsekwencje:**
+- Gładkie granice zlewni bez schodków
+- Dokładniejsze wskaźniki morfometryczne
+- Minimalny narzut wydajnościowy (~10-20ms per merge)
+- Geometria w DB bez zmian (wygładzanie tylko runtime)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
