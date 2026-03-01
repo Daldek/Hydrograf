@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
+from pyproj import Transformer
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +212,84 @@ def normalize_crs(
         logger.info("CRS normalization: all files already in EPSG:2180")
 
     return result
+
+
+def discover_asc_files(
+    nmt_dir: Path,
+    bbox_2180: tuple[float, float, float, float],
+) -> list[Path]:
+    """Discover all ASC files in nmt_dir whose extent overlaps bbox.
+
+    Scans recursively for ``*.asc`` files (excluding the ``reprojected/``
+    subdirectory), reads each header to determine its extent, and keeps
+    only files that intersect the given bounding box in EPSG:2180.
+
+    Parameters
+    ----------
+    nmt_dir : Path
+        Root directory containing ASC tiles (possibly nested).
+    bbox_2180 : tuple
+        Bounding box ``(min_x, min_y, max_x, max_y)`` in EPSG:2180.
+
+    Returns
+    -------
+    list[Path]
+        ASC file paths whose extent overlaps *bbox_2180*.
+    """
+    reprojected_dir = (nmt_dir / "reprojected").resolve()
+
+    all_asc = [
+        p for p in nmt_dir.rglob("*.asc")
+        if not p.resolve().is_relative_to(reprojected_dir)
+    ]
+
+    if not all_asc:
+        logger.info("discover_asc_files: no ASC files found in %s", nmt_dir)
+        return []
+
+    logger.info("discover_asc_files: found %d ASC files in %s", len(all_asc), nmt_dir)
+
+    bx_min, by_min, bx_max, by_max = bbox_2180
+    matched: list[Path] = []
+
+    for path in all_asc:
+        hdr = _read_asc_header(path)
+        ncols = int(hdr.get("ncols", 0))
+        nrows = int(hdr.get("nrows", 0))
+        cellsize = hdr.get("cellsize", 0.0)
+        xll = hdr.get("xllcorner", hdr.get("xllcenter", 0.0))
+        yll = hdr.get("yllcorner", hdr.get("yllcenter", 0.0))
+
+        if ncols == 0 or nrows == 0 or cellsize == 0.0:
+            continue
+
+        # File extent in its native CRS
+        f_min_x = xll
+        f_min_y = yll
+        f_max_x = xll + ncols * cellsize
+        f_max_y = yll + nrows * cellsize
+
+        # Transform PUWG 2000 bounds to EPSG:2180 for comparison
+        source_crs = _detect_crs_from_coords(xll, yll)
+        if source_crs is not None:
+            transformer = Transformer.from_crs(
+                source_crs, TARGET_CRS, always_xy=True,
+            )
+            f_min_x, f_min_y = transformer.transform(f_min_x, f_min_y)
+            f_max_x, f_max_y = transformer.transform(f_max_x, f_max_y)
+
+        # Check bbox overlap (two rectangles overlap iff no gap on either axis)
+        if f_max_x < bx_min or f_min_x > bx_max:
+            continue
+        if f_max_y < by_min or f_min_y > by_max:
+            continue
+
+        matched.append(path)
+
+    logger.info(
+        "discover_asc_files: %d/%d files overlap bbox", len(matched), len(all_asc),
+    )
+    return matched
 
 
 def create_vrt_mosaic(
