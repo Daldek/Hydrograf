@@ -165,6 +165,63 @@ def get_catchments_mvt(
     )
 
 
+@router.get("/tiles/landcover/{z}/{x}/{y}.pbf")
+def get_landcover_tile(
+    z: int,
+    x: int,
+    y: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    """
+    Serve land cover data as Mapbox Vector Tiles (MVT/protobuf).
+
+    Land cover polygons from BDOT10k classification are styled by
+    category on the client side.
+    """
+    xmin, ymin, xmax, ymax = _tile_to_bbox_3857(z, x, y)
+
+    row = db.execute(
+        text("""
+        WITH mvt_data AS (
+            SELECT
+                ST_AsMVTGeom(
+                    ST_Transform(lc.geom, 3857),
+                    ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
+                    4096, 64, true
+                ) AS geom,
+                lc.category,
+                lc.cn_value,
+                lc.bdot_class
+            FROM land_cover lc
+            WHERE lc.geom IS NOT NULL
+              AND ST_Intersects(
+                  lc.geom,
+                  ST_Transform(
+                      ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
+                      2180
+                  )
+              )
+        )
+        SELECT ST_AsMVT(mvt_data, 'landcover', 4096, 'geom') AS tile
+        FROM mvt_data
+        """),
+        {
+            "xmin": xmin,
+            "ymin": ymin,
+            "xmax": xmax,
+            "ymax": ymax,
+        },
+    ).fetchone()
+
+    tile_data = row[0] if row and row[0] else _EMPTY_MVT
+
+    return Response(
+        content=bytes(tile_data),
+        media_type="application/x-protobuf",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @router.get("/tiles/thresholds")
 def get_available_thresholds(db: Session = Depends(get_db)) -> dict:
     """

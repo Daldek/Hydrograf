@@ -5,9 +5,15 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-02-24
+## [Unreleased] — 2026-03-01
 
 ### Added
+- **Warstwa tematyczna: pokrycie terenu (BDOT10k):** nowy endpoint MVT `/api/tiles/landcover/{z}/{x}/{y}.pbf` serwujacy dane `land_cover` (101k rekordow) jako Mapbox Vector Tiles. Warstwa dodana do panelu warstw z lazy-loadem, kolorowana wg kategorii (las, laka, grunt orny, zabudowa, droga, woda), z legenda i suwakiem przezroczystosci. Nowy pane `landcoverPane` (z-index 260) miedzy NMT a ciekami.
+
+## [Previous Unreleased] — 2026-02-24
+
+### Added
+- **Wygładzanie granic zlewni — Chaikin smoothing (ADR-032):** `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3 iteracje)` w `merge_catchment_boundaries()`. Tolerancja simplify w preprocessingu zwiekszona z `cellsize` do `2*cellsize`. Gladkie granice zamiast pikselowych schodkow, dokladniejsze wskazniki morfometryczne (Kc, Rc, Re).
 - **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):** 3 tryby — `auto` (BDOT10k klasyfikacja, domyslnie), `none` (pomin), custom `.gpkg`/`.shp` (wszystkie endoreiczne). Nowa flaga `--waterbody-min-area` do filtrowania malych zbiornikow po powierzchni. Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py.
 
 ### Removed
