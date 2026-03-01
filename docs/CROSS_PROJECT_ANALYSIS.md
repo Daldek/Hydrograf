@@ -1,6 +1,7 @@
 # Cross-Project Analysis
 
 **Data:** 2026-01-21
+**Ostatnia aktualizacja:** 2026-03-01
 **Autor:** Claude Code (sesja analizy)
 **Projekty:** Hydrograf, Hydrolog, Kartograf, IMGWTools
 
@@ -13,10 +14,12 @@
 │                           HYDROGRAF                                      │
 │         (Główna aplikacja - System Analizy Hydrologicznej)              │
 │         FastAPI + PostgreSQL/PostGIS + Leaflet.js                       │
+│         19 endpointów (11 core + 8 admin), 720 testów                   │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐             │
 │  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │             │
+│  │  v2.1.0       │   │   v0.4.1      │   │   v0.5.2      │             │
 │  │  (dane IMGW)  │   │ (dane GIS)    │   │ (obliczenia)  │             │
 │  └───────────────┘   └───────────────┘   └───────┬───────┘             │
 │                                                  │                      │
@@ -31,14 +34,22 @@
 
 ### Szczegóły zależności
 
-| Projekt | Zależy od | Typ zależności |
-|---------|-----------|----------------|
-| **Hydrograf** | IMGWTools | bezpośrednia (requirements.txt) |
-| **Hydrograf** | Kartograf | bezpośrednia (requirements.txt) |
-| **Hydrograf** | Hydrolog | bezpośrednia (requirements.txt) |
-| **Hydrolog** | Kartograf | opcjonalna (`[spatial]`) |
+| Projekt | Zależy od | Typ zależności | Wersja |
+|---------|-----------|----------------|--------|
+| **Hydrograf** | IMGWTools | bezpośrednia (requirements.txt) | v2.1.0 |
+| **Hydrograf** | Kartograf | bezpośrednia (requirements.txt) | v0.4.1 |
+| **Hydrograf** | Hydrolog | bezpośrednia (requirements.txt) | v0.5.2 |
+| **Hydrolog** | Kartograf | opcjonalna (`[spatial]`) | - |
 
 **Uwaga:** Hydrolog nie ma już zależności od IMGWTools (usunięta w v0.5.2).
+
+### Instalacja zależności (requirements.txt)
+
+```
+imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
+kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.4.1
+hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.5.2
+```
 
 ---
 
@@ -55,9 +66,39 @@
 
 ---
 
-## 3. Wykryte problemy
+## 3. Punkty integracji w kodzie
 
-### 3.1 ✅ NAPRAWIONE (2026-01-21)
+### 3.1 Hydrolog — importy w Hydrografie
+
+| Moduł Hydrografa | Importy z Hydrologa | Zastosowanie |
+|-------------------|---------------------|--------------|
+| `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator` | Endpoint API generowania hydrogramu |
+| `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | Skrypt CLI pełnej analizy |
+| `core/morphometry.py` | `WatershedParameters` (w docstring) | Dokumentacja formatu wymiany |
+| `tests/unit/test_morphometry.py` | `WatershedParameters` | Test kompatybilności formatu |
+
+### 3.2 Kartograf — importy w Hydrografie
+
+| Moduł Hydrografa | Importy z Kartografa | Zastosowanie |
+|-------------------|---------------------|--------------|
+| `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `find_sheets_for_geometry` | Pobieranie NMT z GUGiK |
+| `scripts/download_landcover.py` | `LandCoverManager`, `BBox`, `Bdot10kProvider` | Pobieranie BDOT10k/CORINE, wykrywanie TERYT |
+| `scripts/bootstrap.py` | `SheetParser`, `HSGCalculator`, `BBox` | Orchestrator preprocessingu |
+| `scripts/prepare_area.py` | `SheetParser` | Pipeline przygotowania obszaru |
+| `core/cn_calculator.py` | `BBox`, `HSGCalculator`, `LandCoverManager` | Obliczanie CN (HSG + land cover) |
+
+### 3.3 IMGWTools — importy w Hydrografie
+
+| Moduł Hydrografa | Importy z IMGWTools | Zastosowanie |
+|-------------------|---------------------|--------------|
+| `scripts/preprocess_precipitation.py` | `fetch_pmaxtp` | Pobieranie PMAXTP z IMGW (42 scenariusze) |
+| `scripts/analyze_watershed.py` | `fetch_pmaxtp` | Pobieranie opadu dla skryptu CLI |
+
+---
+
+## 4. Wykryte problemy
+
+### 4.1 ✅ NAPRAWIONE (2026-01-21)
 
 | # | Projekt | Problem | Commit | Status |
 |---|---------|---------|--------|--------|
@@ -81,30 +122,36 @@ qp = 0.208 * self.area_km2 / tp_hours
 - Kartograf: v0.3.1 (SCOPE.md/PRD.md zaktualizowane do v2.0)
 - IMGWTools: v2.1.0 (Hydrograf zaktualizowany 2026-01-21)
 
-### 3.2 ✅ NAPRAWIONE (IMGWTools - 2026-01-21)
+### 4.2 ✅ NAPRAWIONE (IMGWTools - 2026-01-21)
 
 | # | Projekt | Problem | Commit | Status |
 |---|---------|---------|--------|--------|
 | 5 | **IMGWTools** | Python `>=3.11` (inne `>=3.12`) | `4bacf36` | ✅ NAPRAWIONE |
 | 6 | **IMGWTools** | Brak DEVELOPMENT_STANDARDS.md | `4bacf36` | ✅ NAPRAWIONE |
 
-### 3.3 🟡 INFORMACYJNE (bez akcji)
+### 4.3 ✅ NAPRAWIONE (Hydrograf - sesja 2+)
+
+| # | Projekt | Problem | Status |
+|---|---------|---------|--------|
+| 7 | **Hydrograf** | line-length 100 → 88 | ✅ NAPRAWIONE |
+| 8 | **Hydrograf** | Migracja z black/flake8 → ruff | ✅ ZROBIONE |
+
+### 4.4 ℹ️ INFORMACYJNE (bez akcji)
 
 | # | Projekt | Obserwacja | Status |
 |---|---------|------------|--------|
-| 7 | IMGWTools | Używa `ruff` (inne `black+flake8`) | OK (nowoczesne) |
-| 8 | IMGWTools | Używa `hatchling` (inne `setuptools`) | OK |
+| 9 | IMGWTools | Używa `hatchling` (inne `setuptools`) | OK |
 
 ---
 
-## 4. Porównanie standardów kodu
+## 5. Porównanie standardów kodu
 
 | Aspekt | Hydrograf | Hydrolog | Kartograf | IMGWTools |
 |--------|-----------|----------|-----------|-----------|
 | **Python** | >=3.12 | >=3.12 | >=3.12 | >=3.12 |
 | **Line length** | 88 ✅ | 88 | 88 | 88 |
-| **Formatter** | black | black | black | ruff |
-| **Linter** | flake8 | flake8 | flake8 | ruff |
+| **Formatter** | ruff | black | black | ruff |
+| **Linter** | ruff | flake8 | flake8 | ruff |
 | **Type checker** | mypy | mypy | - | mypy |
 | **Docstrings** | NumPy (PL) | NumPy (EN) | NumPy (PL/EN) | NumPy (EN) |
 | **Build** | setuptools | setuptools | setuptools | hatchling |
@@ -112,11 +159,11 @@ qp = 0.208 * self.area_km2 / tp_hours
 | **Coverage** | ≥80% | ≥80% | ≥80% | 80% (cel) |
 | **Git workflow** | main/develop | main/develop | main/develop | master/slave |
 
-**✅ Wszystkie projekty używają teraz spójnej długości linii 88 znaków.**
+**Uwaga:** Hydrograf przeszedł z black/flake8 na ruff (formatter + linter) — nowoczesna konfiguracja w `[tool.ruff]` w pyproject.toml.
 
 ---
 
-## 5. Porównanie wersji zależności
+## 6. Porównanie wersji zależności
 
 | Zależność | Hydrograf | Hydrolog | Kartograf | IMGWTools |
 |-----------|-----------|----------|-----------|-----------|
@@ -126,10 +173,37 @@ qp = 0.208 * self.area_km2 / tp_hours
 | **httpx** | >=0.26.0 | - | - | >=0.25 |
 | **pydantic** | >=2.5.3 | - | - | >=2.0 |
 | **rasterio** | >=1.3.9 | - | >=1.3.0 | - |
+| **psutil** | >=5.9 | - | - | - |
+| **geopandas** | >=0.14.2 | - | - | - |
+| **fiona** | >=1.9.5 | - | - | - |
 
 ---
 
-## 6. Plan naprawy
+## 7. Metryki projektów
+
+### Hydrograf (stan na 2026-03-01)
+
+| Metryka | Wartość |
+|---------|---------|
+| Wersja | v0.4.0 (CP4 Faza 4) |
+| Endpointy API | 19 (11 core + 8 admin) |
+| Testy | 720 (35 plików testów) |
+| Moduły core | 15 (w `backend/core/`) |
+| Skrypty | 14 (w `backend/scripts/`) |
+| Frontend JS | 10 modułów (IIFE) |
+| ADR | 34 decyzje architektoniczne |
+
+### Punkty integracji per biblioteka
+
+| Biblioteka | Pliki źródłowe | Pliki testowe | Łączne importy |
+|------------|----------------|---------------|-----------------|
+| Hydrolog | 4 | 2 | 6 |
+| Kartograf | 6 | 4 | 10 |
+| IMGWTools | 2 | 0 | 2 |
+
+---
+
+## 8. Plan naprawy — HISTORIA
 
 ### ✅ Priorytet 1: KRYTYCZNE - UKOŃCZONE
 
@@ -175,36 +249,41 @@ qp = 0.208 * self.area_km2 / tp_hours
   - Plik: backend/pyproject.toml (zmieniono tool.black i tool.flake8)
   - 18 plików przeformatowanych z black
   - Wszystkie 200 testów przechodzą
+
+✅ Hydrograf: Migracja z black/flake8 → ruff (sesje późniejsze)
+  - [tool.ruff] w pyproject.toml
+  - ruff>=0.8 w dev dependencies
 ```
 
 ### Priorytet 5: BACKLOG (opcjonalne)
 
 ```markdown
-□ Wszystkie: Rozważyć migrację do ruff
 □ Wszystkie: Ujednolicić docstrings do EN
+□ Kartograf: Rozważyć migrację do ruff
 ```
 
 ---
 
-## 7. Dokumentacja w projektach
+## 9. Dokumentacja w projektach
 
 | Projekt | PROGRESS.md | DEVELOPMENT_STANDARDS.md | Status |
 |---------|-------------|--------------------------|--------|
-| Hydrograf | ✅ Szczegółowy | ✅ | Zaktualizowany (sesja 12) |
+| Hydrograf | ✅ Szczegółowy | ✅ | Zaktualizowany (sesja 48) |
 | Hydrolog | ✅ Szczegółowy | ✅ | Zaktualizowany (sesja 18) |
 | Kartograf | ✅ Szczegółowy | ✅ | Zaktualizowany (cross-project) |
 | IMGWTools | ✅ Szczegółowy | ✅ | Zaktualizowany (2026-01-21) |
 
-### Odnośniki do dokumentacji
+### Dokumentacja integracji Hydrografa
 
-- **Hydrograf:** `PROGRESS.md` - 12 sesji, checkpointy, optymalizacje
-- **Hydrolog:** `docs/PROGRESS.md` - sesja 18 z planem naprawy
-- **Kartograf:** `docs/PROGRESS.md` - sekcja Cross-Project Analysis
-- **IMGWTools:** `docs/PROGRESS.md` + `docs/DEVELOPMENT_STANDARDS.md`
+| Plik | Opis | Status |
+|------|------|--------|
+| `docs/HYDROLOG_INTEGRATION.md` | Format wymiany, endpointy, moduły | ✅ Aktualny |
+| `docs/KARTOGRAF_INTEGRATION.md` | NMT, BDOT10k, HSG, building raising, MVT | ✅ Aktualny |
+| `docs/CROSS_PROJECT_ANALYSIS.md` | Zależności, standardy, metryki | ✅ Aktualny |
 
 ---
 
-## 8. Rekomendowany wspólny standard
+## 10. Rekomendowany wspólny standard
 
 ```toml
 # Wspólna konfiguracja dla wszystkich projektów
@@ -236,18 +315,23 @@ fail_under = 80
 
 ---
 
-## 9. Podsumowanie
+## 11. Podsumowanie
 
 ### Co działa dobrze
 
-- ✅ Jasna architektura zależności
+- ✅ Jasna architektura zależności (3 biblioteki, czyste kontrakty)
 - ✅ Każdy projekt może działać niezależnie
-- ✅ Spójna konwencja 88 znaków linii (naprawiono w sesji 2)
+- ✅ Spójna konwencja 88 znaków linii
 - ✅ Dobra dokumentacja CLAUDE.md
 - ✅ Testy z pokryciem >80% (Hydrolog, Kartograf)
 - ✅ Integracja WatershedParameters (Hydrograf ↔ Hydrolog)
+- ✅ Pełny pipeline preprocessingu (bootstrap.py + 9 kroków)
+- ✅ CN calculation z HSG + land cover (Kartograf)
+- ✅ Building raising z BUBD (ADR-033)
+- ✅ Land cover MVT tiles
+- ✅ Panel administracyjny z bootstrap SSE (ADR-034)
 
-### ✅ Naprawione (2026-01-21)
+### ✅ Naprawione (2026-01-21 – 2026-03-01)
 
 - ✅ ~~KRYTYCZNY błąd w Hydrolog (stała SCS)~~ → naprawione w v0.5.2
 - ✅ ~~Niespójność wersji w Hydrolog~~ → zsynchronizowane do v0.5.2
@@ -256,13 +340,14 @@ fail_under = 80
 - ✅ ~~IMGWTools: Python 3.11~~ → podniesione do >=3.12 w v2.1.0
 - ✅ ~~IMGWTools: brak DEVELOPMENT_STANDARDS.md~~ → utworzone
 - ✅ ~~Hydrograf: brak PROGRESS.md~~ → utworzone (sesja 12)
-- ✅ ~~Hydrograf: line-length = 100~~ → zmieniono na 88, 18 plików przeformatowanych
+- ✅ ~~Hydrograf: line-length = 100~~ → zmieniono na 88
+- ✅ ~~Hydrograf: black/flake8~~ → zmigrowano na ruff
 
 ### Pozostałe (backlog opcjonalny)
 
-- 📋 Migracja do ruff (opcjonalne)
-- 📋 Ujednolicenie docstrings do EN (opcjonalne)
+- Ujednolicenie docstrings do EN (opcjonalne)
+- Kartograf: rozważyć migrację do ruff (opcjonalne)
 
 ---
 
-**Ostatnia aktualizacja:** 2026-01-21 (sesja 2: naprawiono line-length 100→88 w Hydrograf)
+**Ostatnia aktualizacja:** 2026-03-01 (sesja 49: audyt integracji vs kod)

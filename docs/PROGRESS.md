@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 19 endpointow (11 core + 8 admin). 720 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 19 endpointow (11 core + 8 admin). 729 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -13,9 +13,9 @@
 | Integracja Kartograf | ✅ Gotowy | v0.4.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Frontend | 🔶 Faza 4 gotowa | CP4 — tryb wyboru obiektow, flow acc coloring, histogram, debounce, zoom fix |
+| Frontend | 🔶 Faza 4 gotowa | 12 modulow JS (9 core + 3 admin). CP4 — select-stream, MVT, DEM tiles, admin panel |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 720 testow lacznie (48 nowych admin w sesji 48) |
+| Testy | ✅ Gotowy | 729 testow lacznie (42 pliki testowe) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -37,7 +37,7 @@
 
 ### CP4 — Frontend z mapa ✅
 - **Wersja:** v0.4.0
-- **Zakres:** Leaflet.js, Chart.js, interaktywna mapa, panel parametrow, glassmorphism, MVT, select-stream, GUGiK WMTS
+- **Zakres:** Leaflet.js, Chart.js, interaktywna mapa, panel parametrow, glassmorphism, MVT tiles (streams/catchments/landcover), DEM tiles (piramida XYZ z hillshade), select-stream, GUGiK WMTS, wygladzanie granic zlewni (ADR-032), podniesienie budynkow w NMT (ADR-033), panel administracyjny (ADR-034), konfiguracja YAML pipeline
 
 ### CP5 — MVP ⏳
 - **Wersja:** v1.0.0 (planowana)
@@ -49,7 +49,7 @@
 
 ### Co zrobiono
 
-Panel administracyjno-diagnostyczny (ADR-034): 8 nowych endpointow `/api/admin/*`, frontend `/admin`, 48 nowych testow, 720 lacznie. 12 commitow na develop.
+Panel administracyjno-diagnostyczny (ADR-034): 8 nowych endpointow `/api/admin/*`, frontend `/admin`, 48 nowych testow, 729 lacznie. 12 commitow na develop.
 
 - **Backend (5 taskow):**
   - Auth middleware: API key (header X-Admin-Key, env ADMIN_API_KEY), dependency na routerze

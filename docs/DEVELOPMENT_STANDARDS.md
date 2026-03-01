@@ -1,7 +1,7 @@
 # Standardy deweloperskie — Hydrograf
 
-**Wersja:** 2.0
-**Data:** 2026-02-07
+**Wersja:** 2.1
+**Data:** 2026-03-01
 **Status:** Obowiazujacy
 **Zrodlo:** Zunifikowane standardy workspace (`shared/standards/DEVELOPMENT_STANDARDS.md` v1.0)
 
@@ -25,7 +25,8 @@
 14. [Python — logging](#14-python--logging)
 15. [Python — wydajnosc](#15-python--wydajnosc)
 16. [Bezpieczenstwo](#16-bezpieczenstwo)
-17. [Pre-merge checklist](#17-pre-merge-checklist)
+17. [Wzorce architektoniczne](#17-wzorce-architektoniczne)
+18. [Pre-merge checklist](#18-pre-merge-checklist)
 
 ---
 
@@ -124,12 +125,13 @@ function handleWatershedLoaded(data) { ... }
 
 ```sql
 -- Tables: snake_case, descriptive
-CREATE TABLE flow_network ( ... );
+CREATE TABLE stream_network ( ... );
+CREATE TABLE stream_catchments ( ... );
 CREATE TABLE precipitation_data ( ... );
 
 -- Indexes: idx_<table>_<column(s)>
-CREATE INDEX idx_flow_geom ON flow_network USING GIST(geom);
-CREATE INDEX idx_flow_downstream ON flow_network(downstream_id);
+CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
+CREATE INDEX idx_catchment_geom ON stream_catchments USING GIST(geom);
 
 -- Constraints: descriptive names
 CONSTRAINT valid_elevation CHECK (elevation >= -50 AND elevation <= 3000);
@@ -196,12 +198,12 @@ def delineate_watershed(
 ```sql
 -- Keywords: UPPERCASE, Identifiers: lowercase
 SELECT
-    fn.id,
-    fn.elevation,
-    ST_AsGeoJSON(fn.geom) AS geojson
-FROM flow_network fn
-WHERE fn.is_stream = TRUE
-ORDER BY fn.elevation DESC
+    sn.segment_idx,
+    sn.strahler_order,
+    ST_AsGeoJSON(sn.geom) AS geojson
+FROM stream_network sn
+WHERE sn.threshold_m2 = 1000
+ORDER BY sn.strahler_order DESC
 LIMIT 100;
 ```
 
@@ -426,7 +428,7 @@ backend/tests/
 │   └── test_database.py
 └── fixtures/
     ├── sample_watershed.json
-    └── sample_flow_network.sql
+    └── sample_stream_network.sql
 ```
 
 ### 7.3 Nazewnictwo testow
@@ -520,9 +522,12 @@ async def test_generate_hydrograph_with_mocked_hydrolog():
 
 | Warstwa | Wymagane pokrycie | Moduly |
 |---------|-------------------|--------|
-| Core logic | **>= 80%** | `core/watershed.py`, `core/morphometry.py`, `core/cn_calculator.py` |
+| Core logic | **>= 80%** | `core/watershed.py`, `core/morphometry.py`, `core/cn_calculator.py`, `core/catchment_graph.py`, `core/watershed_service.py` |
+| API endpoints | **>= 60%** | `api/endpoints/*.py`, `api/dependencies/*.py` |
 | Utility | **>= 60%** | `utils/`, `models/schemas.py` |
-| Scripts | **0%** (TODO) | `scripts/process_dem.py`, `scripts/prepare_area.py` |
+| Scripts | **best effort** | `scripts/process_dem.py` (47 testow), `scripts/bootstrap.py` (20 testow) |
+
+**Stan:** 568 funkcji testowych w 35 plikach (2026-03-01).
 
 ```bash
 pytest tests/ --cov=. --cov-report=html --cov-fail-under=60
@@ -554,16 +559,30 @@ Frontend jest statyczny (Vanilla JS) — brak frameworka SPA.
 
 ```
 frontend/
-├── index.html
+├── index.html               # Glowna strona (mapa + panel)
+├── admin.html               # Panel administracyjny
 ├── css/
-│   └── style.css
-└── js/
-    ├── app.js               # Entry point
-    ├── mapController.js     # Leaflet map logic
-    ├── chartManager.js      # Chart.js rendering
-    ├── apiClient.js         # HTTP client for backend
-    └── utils.js             # Shared utilities
+│   ├── style.css            # Style glowne
+│   ├── glass.css            # Glassmorphism (zmienne CSS)
+│   └── admin.css            # Style panelu admin
+├── js/
+│   ├── app.js               # Entry point + orkiestracja
+│   ├── api.js               # HTTP client dla backendu
+│   ├── map.js               # Leaflet — rysowanie, klikanie
+│   ├── layers.js            # Warstwy bazowe (OSM/ESRI/Topo)
+│   ├── charts.js            # Chart.js — renderowanie
+│   ├── draggable.js         # Przesuwalny panel glassmorphism
+│   ├── profile.js           # Profil terenu
+│   ├── hydrograph.js        # Hydrogram
+│   ├── depressions.js       # Zaglebiania bezodplywowe
+│   └── admin/
+│       ├── admin-app.js     # Entry point panelu admin
+│       ├── admin-api.js     # HTTP client admin (z X-Admin-Key)
+│       └── admin-bootstrap.js # SSE streaming logów bootstrap
+└── data/                    # Dane statyczne (overlays, tiles, GeoJSON)
 ```
+
+**Uwaga:** Wszystkie moduly JS uzywaja IIFE na `window.Hydrograf` (12 modulow laczenie z admin).
 
 ### 9.3 API client pattern
 
@@ -581,7 +600,45 @@ const apiClient = {
 };
 ```
 
-### 9.4 Error handling
+### 9.4 Admin API client pattern (z uwierzytelnieniem)
+
+```javascript
+// Admin API wymaga naglowka X-Admin-Key
+const adminApi = {
+  async fetchDashboard() {
+    const response = await fetch(`${API_URL}/admin/dashboard`, {
+      headers: { 'X-Admin-Key': localStorage.getItem('adminApiKey') || '' },
+    });
+    if (response.status === 401 || response.status === 403) {
+      showAuthOverlay();
+      throw new Error('Unauthorized');
+    }
+    if (!response.ok) throw new Error(`API error: ${response.status}`);
+    return response.json();
+  },
+};
+```
+
+### 9.5 SSE (Server-Sent Events) pattern
+
+```javascript
+// Streaming logow bootstrap przez EventSource
+function streamBootstrapLogs(onMessage, onError) {
+  const apiKey = localStorage.getItem('adminApiKey') || '';
+  const url = `${API_URL}/admin/bootstrap/stream?key=${encodeURIComponent(apiKey)}`;
+  const source = new EventSource(url);
+
+  source.onmessage = (event) => onMessage(event.data);
+  source.onerror = () => {
+    source.close();
+    if (onError) onError();
+  };
+
+  return source;  // caller can close()
+}
+```
+
+### 9.6 Error handling
 
 ```javascript
 try {
@@ -601,66 +658,78 @@ try {
 
 ## 10. SQL/PostGIS — konwencje
 
-### 10.1 Recursive CTE — kluczowy pattern
+### 10.1 CatchmentGraph BFS — kluczowy pattern (zamiast Recursive CTE)
 
-```sql
-WITH RECURSIVE upstream AS (
-    SELECT id, downstream_id, geom, elevation
-    FROM flow_network
-    WHERE id = :start_cell_id
+Od ADR-021/ADR-028 wyznaczanie zlewni odbywa sie przez in-memory CatchmentGraph
+(BFS po grafie ~44k wezlow, ~0.5 MB). Recursive CTE na `flow_network` zostaly
+wyeliminowane wraz z tabela `flow_network` (ADR-028, migracja 015).
 
-    UNION ALL
-
-    SELECT fn.id, fn.downstream_id, fn.geom, fn.elevation
-    FROM flow_network fn
-    INNER JOIN upstream u ON fn.downstream_id = u.id
-)
-SELECT
-    ST_Union(geom) AS watershed_boundary,
-    COUNT(*) AS cell_count,
-    SUM(ST_Area(geom::geography)) / 1e6 AS area_km2
-FROM upstream;
+```python
+# Wzorzec: BFS po CatchmentGraph
+cg = get_catchment_graph()
+clicked_idx = cg.find_catchment_at_point(x, y, threshold, db)
+upstream = cg.traverse_upstream(clicked_idx)
+stats = cg.aggregate_stats(upstream)
 ```
 
-### 10.2 PostGIS — nearest stream cell
+### 10.2 PostGIS — snap-to-stream (ST_Distance)
 
 ```sql
-SELECT id,
-    ST_Distance(geom::geography,
-        ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography) AS distance_m
-FROM flow_network
-WHERE is_stream = TRUE
-ORDER BY geom <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
+-- Snap-to-stream: znajdz najblizszy segment cieku (ADR-026, ADR-027)
+SELECT segment_idx, threshold_m2,
+    ST_Distance(geom, ST_SetSRID(ST_MakePoint(:x, :y), 2180)) AS distance_m
+FROM stream_network
+WHERE threshold_m2 = :threshold
+ORDER BY geom <-> ST_SetSRID(ST_MakePoint(:x, :y), 2180)
 LIMIT 1;
 ```
 
-### 10.3 Indeksowanie
+### 10.3 PostGIS — MVT tiles
+
+```sql
+-- Wzorzec generowania Mapbox Vector Tiles z PostGIS (ST_AsMVT)
+WITH mvt_data AS (
+    SELECT
+        ST_AsMVTGeom(geom, ST_TileEnvelope(:z, :x, :y), 4096, 256, true) AS geom,
+        strahler_order
+    FROM stream_network
+    WHERE threshold_m2 = :threshold
+      AND geom && ST_TileEnvelope(:z, :x, :y)
+)
+SELECT ST_AsMVT(mvt_data, 'streams', 4096, 'geom') AS tile FROM mvt_data;
+```
+
+### 10.4 Indeksowanie
 
 ```sql
 -- GIST indexes for spatial queries (REQUIRED)
-CREATE INDEX idx_flow_geom ON flow_network USING GIST(geom);
+CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
+CREATE INDEX idx_catchment_geom ON stream_catchments USING GIST(geom);
 CREATE INDEX idx_landcover_geom ON land_cover USING GIST(geom);
 
--- B-tree indexes for graph traversal (REQUIRED)
-CREATE INDEX idx_flow_downstream ON flow_network(downstream_id);
-CREATE INDEX idx_flow_stream ON flow_network(is_stream) WHERE is_stream = TRUE;
+-- B-tree indexes for threshold lookups (REQUIRED)
+CREATE INDEX idx_stream_threshold ON stream_network(threshold_m2);
+CREATE INDEX idx_catchment_threshold ON stream_catchments(threshold_m2);
 
--- Composite indexes for scenario lookups
+-- Composite indexes for segment lookup (ADR-026)
+CREATE INDEX idx_stream_threshold_segment ON stream_network(threshold_m2, segment_idx);
+
+-- Scenario lookups
 CREATE INDEX idx_precip_scenario ON precipitation_data(duration, probability);
 ```
 
-### 10.4 Parametrized queries — ZAWSZE
+### 10.5 Parametrized queries — ZAWSZE
 
 ```python
 # GOOD — parametrized query
-query = text("SELECT id FROM flow_network WHERE downstream_id = :cell_id")
-result = await session.execute(query, {"cell_id": cell_id})
+query = text("SELECT segment_idx FROM stream_network WHERE threshold_m2 = :threshold")
+result = await session.execute(query, {"threshold": threshold})
 
 # BAD — SQL injection risk!
-query = f"SELECT * FROM flow_network WHERE id = {cell_id}"  # NEVER!
+query = f"SELECT * FROM stream_network WHERE segment_idx = {idx}"  # NEVER!
 ```
 
-### 10.5 Migracje (Alembic)
+### 10.6 Migracje (Alembic)
 
 ```bash
 alembic revision --autogenerate -m "add land_cover table"   # Create
@@ -959,22 +1028,26 @@ engine = create_async_engine(
 ### 15.4 GIST indexes
 
 ```sql
-CREATE INDEX idx_flow_geom ON flow_network USING GIST(geom);
-CREATE INDEX idx_flow_stream ON flow_network(is_stream) WHERE is_stream = TRUE;
+CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
+CREATE INDEX idx_catchment_geom ON stream_catchments USING GIST(geom);
 ```
 
 ### 15.5 Avoid N+1
 
 ```python
 # GOOD — batch query
-query = text("SELECT id, elevation FROM flow_network WHERE id = ANY(:ids)")
-result = await session.execute(query, {"ids": cell_ids})
+query = text("""
+    SELECT segment_idx, strahler_order
+    FROM stream_network
+    WHERE threshold_m2 = :threshold AND segment_idx = ANY(:idxs)
+""")
+result = await session.execute(query, {"threshold": t, "idxs": segment_idxs})
 
 # BAD — N+1 queries
-for cell in cells:
-    downstream = await session.execute(
-        text("SELECT * FROM flow_network WHERE id = :id"),
-        {"id": cell.downstream_id},
+for idx in segment_idxs:
+    segment = await session.execute(
+        text("SELECT * FROM stream_network WHERE segment_idx = :idx"),
+        {"idx": idx},
     )
 ```
 
@@ -995,7 +1068,7 @@ for cell in cells:
 
 ```python
 DATABASE_URL = "postgresql://user:password@localhost/db"  # NEVER hardcode!
-query = f"SELECT * FROM flow_network WHERE id = {cell_id}"  # NEVER concat SQL!
+query = f"SELECT * FROM stream_network WHERE segment_idx = {idx}"  # NEVER concat SQL!
 eval(user_input)                                             # NEVER eval!
 # NEVER commit .env — .gitignore must contain: .env, *.pem, *.key
 ```
@@ -1011,8 +1084,8 @@ class DelineateRequest(BaseModel):
     latitude: float = Field(..., ge=49.0, le=55.0)
 
 # Parametrized SQL
-query = text("SELECT * FROM flow_network WHERE id = :id")
-result = await session.execute(query, {"id": cell_id})
+query = text("SELECT * FROM stream_network WHERE segment_idx = :idx")
+result = await session.execute(query, {"idx": segment_idx})
 
 # Timeouts for all HTTP requests
 response = await httpx.get(url, timeout=30.0)
@@ -1040,9 +1113,93 @@ async def delineate(request: Request):
     pass
 ```
 
+### 16.5 Admin API key authentication (ADR-034)
+
+Panel administracyjny chroniony jest kluczem API przesylanym w naglowku `X-Admin-Key`.
+Jesli klucz nie jest skonfigurowany (`ADMIN_API_KEY=""`) — uwierzytelnianie jest wylaczone.
+
+```python
+# Dependency injection w FastAPI
+from api.dependencies.admin_auth import verify_admin_key
+
+router = APIRouter(dependencies=[Depends(verify_admin_key)])
+
+@router.get("/admin/dashboard")
+def dashboard(db: Session = Depends(get_db)):
+    ...
+```
+
+**Zrodla klucza (priorytet):**
+1. Zmienna srodowiskowa `ADMIN_API_KEY`
+2. Plik wskazany przez `ADMIN_API_KEY_FILE` (np. Docker secret)
+3. Brak klucza → auth wylaczony
+
+**Frontend:** Klucz przechowywany w `localStorage` — przy starcie strony `admin.html`
+sprawdza dostepnosc API i wyswietla overlay logowania jesli potrzeba.
+
 ---
 
-## 17. Pre-merge checklist
+## 17. Wzorce architektoniczne
+
+### 17.1 MVT tiles — endpointy wektorowe (PostGIS → protobuf)
+
+Trzy endpointy serwujace Mapbox Vector Tiles bezposrednio z PostGIS:
+- `/api/tiles/streams/{z}/{x}/{y}.pbf`
+- `/api/tiles/catchments/{z}/{x}/{y}.pbf`
+- `/api/tiles/landcover/{z}/{x}/{y}.pbf`
+
+Wzorzec: `ST_AsMVTGeom()` + `ST_AsMVT()` w jednym zapytaniu SQL, bez posrednich
+warstw. Pusty tile (`b""`) gdy brak danych w zasiegu.
+
+### 17.2 SSE — Server-Sent Events (streaming logow)
+
+Endpoint `/api/admin/bootstrap/stream` serwuje logi pipeline'u w czasie
+rzeczywistym jako `text/event-stream`.
+
+```python
+from fastapi.responses import StreamingResponse
+
+async def log_generator():
+    while process_running:
+        line = await get_next_log_line()
+        yield f"data: {line}\n\n"
+
+@router.get("/admin/bootstrap/stream")
+def stream_logs():
+    return StreamingResponse(log_generator(), media_type="text/event-stream")
+```
+
+### 17.3 FastAPI dependencies — wzorzec auth dependency
+
+Kazdy endpoint wymagajacy uwierzytelniania uzywa `Depends()` na poziomie routera,
+nie dekoratora. Pozwala to na latwe testowanie (monkeypatch `get_settings()`).
+
+```python
+# Caly router chroniony jednym dependency
+router = APIRouter(dependencies=[Depends(verify_admin_key)])
+
+# Testowanie: monkeypatch settings
+monkeypatch.setattr(settings, "admin_api_key", "test-key")
+```
+
+### 17.4 Endpoint per file — struktura API
+
+Kazdy endpoint tematyczny w osobnym pliku w `api/endpoints/`:
+
+| Plik | Endpointy |
+|------|-----------|
+| `watershed.py` | `/delineate-watershed` |
+| `select_stream.py` | `/select-stream` |
+| `hydrograph.py` | `/generate-hydrograph` |
+| `profile.py` | `/terrain-profile` |
+| `tiles.py` | `/tiles/streams/*`, `/tiles/catchments/*`, `/tiles/landcover/*` |
+| `depressions.py` | `/depressions` |
+| `health.py` | `/health` |
+| `admin.py` | `/admin/*` (8 endpointow) |
+
+---
+
+## 18. Pre-merge checklist
 
 ```markdown
 ### Kod
@@ -1083,8 +1240,8 @@ async def delineate(request: Request):
 
 ---
 
-**Wersja dokumentu:** 2.0
-**Data ostatniej aktualizacji:** 2026-02-07
+**Wersja dokumentu:** 2.1
+**Data ostatniej aktualizacji:** 2026-03-01
 **Zrodlo:** `shared/standards/DEVELOPMENT_STANDARDS.md` v1.0
 
 *Odstepstwa od tych standardow wymagaja uzasadnienia w `CLAUDE.md` projektu.*

@@ -1,8 +1,8 @@
 # DATA_MODEL.md - Model Danych
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.3
-**Data:** 2026-02-17
+**Wersja:** 1.4
+**Data:** 2026-03-01
 **Status:** Approved
 
 ---
@@ -32,59 +32,56 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 
 ```
 ┌─────────────────────┐
-│   flow_network      │  ← USUNIETA (ADR-028, migracja 015)
+│   flow_network      │  <-- USUNIETA (ADR-028, migracja 015)
 ├─────────────────────┤
 │ (DROP TABLE)        │
 └─────────────────────┘
 
-┌─────────────────────┐
-│ precipitation_data  │
-├─────────────────────┤
-│ id (PK)             │
-│ geom                │
-│ duration            │
-│ probability         │
-│ precipitation_mm    │
-│ source              │
-│ updated_at          │
+┌─────────────────────┐       ┌─────────────────────────┐
+│ precipitation_data  │       │      land_cover          │
+├─────────────────────┤       ├─────────────────────────┤
+│ id (PK)             │       │ id (PK)                  │
+│ geom                │       │ geom                     │
+│ duration            │       │ category                 │
+│ probability         │       │ cn_value                 │
+│ precipitation_mm    │       │ imperviousness           │
+│ source              │       │ bdot_class               │
+│ updated_at          │       └─────────────────────────┘
 └─────────────────────┘
-
-┌─────────────────────┐
-│    land_cover       │
-├─────────────────────┤
-│ id (PK)             │
-│ geom                │
-│ category            │
-│ cn_value            │
-│ imperviousness      │
-└─────────────────────┘
-
-┌─────────────────────┐
-│  stream_network     │
-├─────────────────────┤
-│ id (PK)             │
-│ geom                │
-│ name                │
-│ length_m            │
+                                ┌─────────────────────────┐
+┌─────────────────────┐         │     soil_hsg             │
+│  stream_network     │         ├─────────────────────────┤
+├─────────────────────┤         │ id (PK)                  │
+│ id (PK)             │         │ geom                     │
+│ geom                │         │ hsg_group                │
+│ name                │         │ area_m2                  │
+│ length_m            │         └─────────────────────────┘
 │ strahler_order      │
-│ threshold_m2        │
+│ source              │
 │ upstream_area_km2   │
 │ mean_slope_percent  │
-│ segment_idx         │
-└─────────────────────┘
-
-┌─────────────────────┐
-│ stream_catchments   │
-├─────────────────────┤
-│ id (PK)             │
-│ geom                │
-│ segment_idx         │
 │ threshold_m2        │
-│ area_km2            │
-│ mean_elevation_m    │
-│ mean_slope_percent  │
-│ strahler_order      │
-└─────────────────────┘
+│ segment_idx         │ ──┐
+└─────────────────────┘   │  (threshold_m2, segment_idx)
+                          │
+┌──────────────────────────┐
+│    stream_catchments     │
+├──────────────────────────┤
+│ id (PK)                  │
+│ geom                     │
+│ segment_idx              │ <── lookup z stream_network
+│ threshold_m2             │
+│ area_km2                 │
+│ mean_elevation_m         │
+│ mean_slope_percent       │
+│ strahler_order           │
+│ downstream_segment_idx   │ --> segment_idx (graf splywu)
+│ elevation_min_m          │
+│ elevation_max_m          │
+│ perimeter_km             │
+│ stream_length_km         │
+│ elev_histogram (JSONB)   │
+└──────────────────────────┘
 
 ┌─────────────────────┐
 │    depressions      │
@@ -119,13 +116,14 @@ CREATE TABLE precipitation_data (
     geom GEOMETRY(Point, 2180) NOT NULL,
     duration VARCHAR(10) NOT NULL,
     probability INT NOT NULL,
-    precipitation_mm FLOAT NOT NULL CHECK (precipitation_mm >= 0),
-    source VARCHAR(50) NOT NULL,  -- IMGW_PMAXTP (atlas) lub IMGW_HISTORICAL (własna analiza)
+    precipitation_mm FLOAT NOT NULL,
+    source VARCHAR(50) NOT NULL,  -- IMGW_PMAXTP (atlas) lub IMGW_HISTORICAL (wlasna analiza)
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
+
     CONSTRAINT valid_duration CHECK (duration IN ('15min', '30min', '1h', '2h', '6h', '12h', '24h')),
     CONSTRAINT valid_probability CHECK (probability IN (1, 2, 5, 10, 20, 50)),
-    CONSTRAINT unique_scenario UNIQUE (geom, duration, probability)
+    CONSTRAINT positive_precipitation CHECK (precipitation_mm >= 0),
+    CONSTRAINT unique_precipitation_scenario UNIQUE (geom, duration, probability)
 );
 
 -- Indeksy
@@ -177,12 +175,14 @@ CREATE TABLE land_cover (
     id SERIAL PRIMARY KEY,
     geom GEOMETRY(MultiPolygon, 2180) NOT NULL,
     category VARCHAR(50) NOT NULL,
-    cn_value INT NOT NULL CHECK (cn_value BETWEEN 0 AND 100),
-    imperviousness FLOAT CHECK (imperviousness BETWEEN 0 AND 1),
+    cn_value INT NOT NULL,
+    imperviousness FLOAT,
     bdot_class VARCHAR(20),
-    
+
+    CONSTRAINT valid_cn CHECK (cn_value >= 0 AND cn_value <= 100),
+    CONSTRAINT valid_imperviousness CHECK (imperviousness IS NULL OR (imperviousness >= 0 AND imperviousness <= 1)),
     CONSTRAINT valid_category CHECK (category IN (
-        'las', 'łąka', 'grunt_orny', 'zabudowa_mieszkaniowa', 
+        'las', 'łąka', 'grunt_orny', 'zabudowa_mieszkaniowa',
         'zabudowa_przemysłowa', 'droga', 'woda', 'inny'
     ))
 );
@@ -234,14 +234,15 @@ CREATE TABLE stream_network (
     id SERIAL PRIMARY KEY,
     geom GEOMETRY(LineString, 2180) NOT NULL,
     name VARCHAR(100),
-    length_m FLOAT CHECK (length_m > 0),
-    strahler_order INT CHECK (strahler_order > 0),
+    length_m FLOAT,
+    strahler_order INT,
     source VARCHAR(50) DEFAULT 'MPHP',
     upstream_area_km2 FLOAT,                        -- migracja 003
     mean_slope_percent FLOAT,                       -- migracja 003
-    threshold_m2 INT NOT NULL DEFAULT 1000,          -- migracja 005, ADR-026: 100 → 1000
-    segment_idx INTEGER,                              -- migracja 014 (ADR-026)
+    threshold_m2 INT NOT NULL DEFAULT 100,          -- migracja 005 (server_default=100, ADR-030: prog 100 usuniety)
+    segment_idx INTEGER,                            -- migracja 014 (ADR-026)
 
+    CONSTRAINT positive_length CHECK (length_m IS NULL OR length_m > 0),
     CONSTRAINT valid_strahler CHECK (strahler_order IS NULL OR strahler_order > 0)
 );
 
@@ -250,14 +251,23 @@ CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
 CREATE INDEX idx_stream_name ON stream_network(name);
 CREATE INDEX idx_strahler_order ON stream_network(strahler_order);
 CREATE UNIQUE INDEX idx_stream_unique ON stream_network
-    (COALESCE(name, ''), ST_GeoHash(ST_Transform(geom, 4326), 12), threshold_m2);
+    (COALESCE(name, ''), threshold_m2, ST_GeoHash(ST_Transform(geom, 4326), 12));
                                                     -- migracja 010: dodano threshold_m2
 CREATE INDEX idx_stream_threshold ON stream_network
     (threshold_m2, strahler_order);                 -- migracja 005
 CREATE INDEX idx_stream_upstream_area ON stream_network
     (upstream_area_km2);                            -- migracja 006
-CREATE INDEX idx_stream_dem_derived_geom ON stream_network
+CREATE INDEX idx_stream_threshold_segidx ON stream_network
+    (threshold_m2, segment_idx);                    -- migracja 014 (ADR-026)
+CREATE INDEX idx_stream_geom_dem_derived ON stream_network
     USING GIST(geom) WHERE source = 'DEM_DERIVED'; -- migracja 009
+-- Partial indexes per threshold (migracja 011, prog 100 usuniety w migracji 017):
+CREATE INDEX idx_stream_geom_t1000 ON stream_network USING GIST(geom)
+    WHERE threshold_m2 = 1000;
+CREATE INDEX idx_stream_geom_t10000 ON stream_network USING GIST(geom)
+    WHERE threshold_m2 = 10000;
+CREATE INDEX idx_stream_geom_t100000 ON stream_network USING GIST(geom)
+    WHERE threshold_m2 = 100000;
 
 -- Komentarze
 COMMENT ON TABLE stream_network IS 'Sieć rzeczna - osie cieków';
@@ -271,14 +281,15 @@ COMMENT ON COLUMN stream_network.strahler_order IS 'Rząd Strahlera (hierarchia 
 | Kolumna | Typ | Nullable | Default | Opis |
 |---------|-----|----------|---------|------|
 | `id` | SERIAL | NO | auto | Unikalny identyfikator |
-| `geom` | GEOMETRY | NO | - | Linia reprezentująca odcinek cieku |
+| `geom` | GEOMETRY(LineString, 2180) | NO | - | Linia reprezentujaca odcinek cieku |
 | `name` | VARCHAR(100) | YES | NULL | Nazwa cieku |
-| `length_m` | FLOAT | YES | NULL | Długość [m] (obliczana: ST_Length(geom)) |
-| `strahler_order` | INT | YES | NULL | Rząd Strahlera (1=źródłowy, wyższe=większe) |
-| `source` | VARCHAR(50) | YES | 'MPHP' | Źródło danych ('MPHP' lub 'DEM_DERIVED') |
-| `upstream_area_km2` | FLOAT | YES | NULL | Powierzchnia zlewni na końcu segmentu [km²] |
-| `mean_slope_percent` | FLOAT | YES | NULL | Średni spadek wzdłuż segmentu [%] |
-| `segment_idx` | INTEGER | YES | NULL | Indeks segmentu spójny z `stream_catchments.segment_idx` (migracja 014, ADR-026) |
+| `length_m` | FLOAT | YES | NULL | Dlugosc [m] (obliczana: ST_Length(geom)) |
+| `strahler_order` | INT | YES | NULL | Rzad Strahlera (1=zrodlowy, wyzsze=wieksze) |
+| `source` | VARCHAR(50) | YES | 'MPHP' | Zrodlo danych ('MPHP' lub 'DEM_DERIVED') |
+| `upstream_area_km2` | FLOAT | YES | NULL | Powierzchnia zlewni na koncu segmentu [km2] (migracja 003) |
+| `mean_slope_percent` | FLOAT | YES | NULL | Sredni spadek wzdluz segmentu [%] (migracja 003) |
+| `threshold_m2` | INT | NO | 100 | Prog akumulacji przeplywu [m2] (migracja 005). Aktywne progi: 1000, 10000, 100000 (ADR-030) |
+| `segment_idx` | INTEGER | YES | NULL | Indeks segmentu spojny z `stream_catchments.segment_idx` (migracja 014, ADR-026) |
 
 **Przykładowe rekordy:**
 ```sql
@@ -321,6 +332,13 @@ CREATE INDEX idx_catchments_threshold ON stream_catchments(threshold_m2, strahle
 CREATE INDEX idx_catchments_area ON stream_catchments(area_km2);
 CREATE INDEX idx_catchments_downstream                   -- migracja 012
     ON stream_catchments(threshold_m2, downstream_segment_idx);
+-- Partial indexes per threshold (migracja 011, prog 100 usuniety w migracji 017):
+CREATE INDEX idx_catchment_geom_t1000 ON stream_catchments USING GIST(geom)
+    WHERE threshold_m2 = 1000;
+CREATE INDEX idx_catchment_geom_t10000 ON stream_catchments USING GIST(geom)
+    WHERE threshold_m2 = 10000;
+CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom)
+    WHERE threshold_m2 = 100000;
 ```
 
 **Nowe kolumny (migracja 012) — szczegóły:**
@@ -404,21 +422,34 @@ COMMENT ON COLUMN soil_hsg.area_m2 IS 'Powierzchnia poligonu [m²]';
 
 ### 4.2 Unique Constraints
 
-**precipitation_data: unique (geom, duration, probability)**
+**precipitation_data: unique_precipitation_scenario (geom, duration, probability)**
 - Zapobiega duplikatom dla tej samej lokalizacji i scenariusza
 
-**stream_network: unique (name, geom)**
-- Zapobiega duplikatom tego samego odcinka cieku
+**stream_network: unique (COALESCE(name, ''), threshold_m2, ST_GeoHash(geom, 12))**
+- Zapobiega duplikatom tego samego odcinka cieku w ramach danego progu
+- Migracja 010 (ADR-019): dodano `threshold_m2` do indeksu unikalnego
 
 ### 4.3 Check Constraints
 
-**Walidacja wartości fizycznych:**
+**Wszystkie CHECK constraints w bazie:**
 ```sql
--- CN między 0 a 100
-CHECK (cn_value BETWEEN 0 AND 100)
+-- precipitation_data (migracja 001)
+CONSTRAINT valid_duration CHECK (duration IN ('15min', '30min', '1h', '2h', '6h', '12h', '24h'))
+CONSTRAINT valid_probability CHECK (probability IN (1, 2, 5, 10, 20, 50))
+CONSTRAINT positive_precipitation CHECK (precipitation_mm >= 0)
 
--- Opad nieujemny
-CHECK (precipitation_mm >= 0)
+-- land_cover (migracja 002)
+CONSTRAINT valid_cn CHECK (cn_value >= 0 AND cn_value <= 100)
+CONSTRAINT valid_imperviousness CHECK (imperviousness IS NULL OR (imperviousness >= 0 AND imperviousness <= 1))
+CONSTRAINT valid_category CHECK (category IN ('las', 'łąka', 'grunt_orny', 'zabudowa_mieszkaniowa',
+    'zabudowa_przemysłowa', 'droga', 'woda', 'inny'))
+
+-- stream_network (migracja 002)
+CONSTRAINT positive_length CHECK (length_m IS NULL OR length_m > 0)
+CONSTRAINT valid_strahler CHECK (strahler_order IS NULL OR strahler_order > 0)
+
+-- soil_hsg (migracja 016)
+CONSTRAINT valid_hsg_group CHECK (hsg_group IN ('A', 'B', 'C', 'D'))
 ```
 
 ---
@@ -437,27 +468,60 @@ CREATE INDEX idx_depressions_geom ON depressions USING GIST(geom);
 CREATE INDEX idx_soil_hsg_geom ON soil_hsg USING GIST(geom);
 ```
 
+**Partial GIST indexes (migracja 009, 011, 017):**
+```sql
+-- DEM-derived streams (migracja 009)
+CREATE INDEX idx_stream_geom_dem_derived ON stream_network USING GIST(geom)
+    WHERE source = 'DEM_DERIVED';
+
+-- Per-threshold indexes (migracja 011, prog 100 usuniety w migracji 017)
+CREATE INDEX idx_stream_geom_t1000 ON stream_network USING GIST(geom) WHERE threshold_m2 = 1000;
+CREATE INDEX idx_stream_geom_t10000 ON stream_network USING GIST(geom) WHERE threshold_m2 = 10000;
+CREATE INDEX idx_stream_geom_t100000 ON stream_network USING GIST(geom) WHERE threshold_m2 = 100000;
+CREATE INDEX idx_catchment_geom_t1000 ON stream_catchments USING GIST(geom) WHERE threshold_m2 = 1000;
+CREATE INDEX idx_catchment_geom_t10000 ON stream_catchments USING GIST(geom) WHERE threshold_m2 = 10000;
+CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom) WHERE threshold_m2 = 100000;
+```
+
 **Dlaczego GIST:**
-- Umożliwia szybkie spatial queries (ST_Intersects, ST_Distance, ST_Contains)
-- Kluczowe dla wydajności systemu (< 10s dla delineacji)
+- Umozliwia szybkie spatial queries (ST_Intersects, ST_Distance, ST_Contains)
+- Kluczowe dla wydajnosci systemu (< 10s dla delineacji)
+- Partial indexes per threshold przyspieszaja MVT tile serving
 
 ---
 
 ### 5.2 Indeksy B-tree
 
-**Dla często filtrowanych kolumn:**
+**Dla czesto filtrowanych kolumn:**
 ```sql
--- precipitation
+-- precipitation (migracja 001)
 CREATE INDEX idx_precipitation_scenario ON precipitation_data(duration, probability); -- composite
 CREATE INDEX idx_precipitation_duration ON precipitation_data(duration);
 CREATE INDEX idx_precipitation_probability ON precipitation_data(probability);
 
--- land_cover
+-- land_cover (migracja 002)
 CREATE INDEX idx_category ON land_cover(category);
+CREATE INDEX idx_cn_value ON land_cover(cn_value);
 
--- stream_network
+-- stream_network (migracje 002, 005, 006, 014)
 CREATE INDEX idx_stream_name ON stream_network(name);
 CREATE INDEX idx_strahler_order ON stream_network(strahler_order);
+CREATE INDEX idx_stream_threshold ON stream_network(threshold_m2, strahler_order);      -- migracja 005
+CREATE INDEX idx_stream_upstream_area ON stream_network(upstream_area_km2);              -- migracja 006
+CREATE INDEX idx_stream_threshold_segidx ON stream_network(threshold_m2, segment_idx);  -- migracja 014
+
+-- stream_catchments (migracje 007, 012)
+CREATE INDEX idx_catchments_threshold ON stream_catchments(threshold_m2, strahler_order);
+CREATE INDEX idx_catchments_area ON stream_catchments(area_km2);
+CREATE INDEX idx_catchments_downstream ON stream_catchments(threshold_m2, downstream_segment_idx); -- migracja 012
+
+-- depressions (migracja 008)
+CREATE INDEX idx_depressions_volume ON depressions(volume_m3);
+CREATE INDEX idx_depressions_area ON depressions(area_m2);
+CREATE INDEX idx_depressions_max_depth ON depressions(max_depth_m);
+
+-- soil_hsg (migracja 016)
+CREATE INDEX idx_soil_hsg_group ON soil_hsg(hsg_group);
 ```
 
 ---
@@ -466,7 +530,7 @@ CREATE INDEX idx_strahler_order ON stream_network(strahler_order);
 
 **Composite Index dla scenariuszy:**
 - `(duration, probability)` razem jako jeden indeks
-- Szybsze queries WHERE duration = X AND probability = Y
+- Szybsze queries `WHERE duration = X AND probability = Y`
 
 **Vacuum i Analyze:**
 ```sql
@@ -724,7 +788,8 @@ migrations/
     ├── 013_add_stream_partial_index.py
     ├── 014_add_segment_idx_to_stream_network.py
     ├── 015_drop_flow_network.py
-    └── 016_create_soil_hsg.py
+    ├── 016_create_soil_hsg.py
+    └── 017_remove_threshold_100.py
 ```
 
 **Przykład migracji:**
@@ -855,23 +920,24 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ### 12.1 Kluczowe Punkty
 
-- **6 tabel:** precipitation_data, land_cover, stream_network, stream_catchments, depressions, soil_hsg (flow_network usunieta — ADR-028)
-- **Układ współrzędnych:** EPSG:2180 (PL-1992)
-- **Indeksy przestrzenne (GIST)** dla wszystkich geometrii
-- **Walidacja** przez CHECK constraints i triggers
-- **Rozmiar:** ~1-20 GB w zależności od rozdzielczości NMT
+- **6 tabel:** precipitation_data, land_cover, stream_network, stream_catchments, depressions, soil_hsg (flow_network usunieta -- ADR-028)
+- **17 migracji Alembic** (001-017)
+- **Uklad wspolrzednych:** EPSG:2180 (PL-1992)
+- **Indeksy przestrzenne (GIST)** dla wszystkich geometrii + partial indexes per threshold
+- **Walidacja** przez CHECK constraints
+- **Aktywne progi stream_network:** 1000, 10000, 100000 (prog 100 usuniety -- ADR-030, migracja 017)
 
 ### 12.2 Najważniejsze Constraints
 
 ✅ **Walidacja wartości:** CN [0..100], precipitation_mm >= 0
 ✅ **Unique scenarios:** (geom, duration, probability) w precipitation_data
-✅ **Unique streams:** (name, geohash, threshold_m2) w stream_network
+✅ **Unique streams:** (COALESCE(name, ''), threshold_m2, geohash) w stream_network
 ✅ **Spójność grafu:** downstream_segment_idx w stream_catchments → segment_idx
 
 ---
 
-**Wersja dokumentu:** 1.3
-**Data ostatniej aktualizacji:** 2026-02-17
+**Wersja dokumentu:** 1.4
+**Data ostatniej aktualizacji:** 2026-03-01
 **Status:** Approved
 
 ---
