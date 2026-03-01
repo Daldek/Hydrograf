@@ -93,44 +93,49 @@
      * Show the auth overlay and bind handlers.
      */
     function showAuth() {
-        var overlay = document.getElementById('auth-overlay');
-        var input = document.getElementById('auth-key-input');
-        var btn = document.getElementById('auth-submit-btn');
-        var errorDiv = document.getElementById('auth-error');
+        // First check if auth is even required (empty key = auth disabled)
+        tryAuth('').then(function (success) {
+            if (success) return; // Auth disabled — already logged in
 
-        if (overlay) overlay.classList.remove('d-none');
+            var overlay = document.getElementById('auth-overlay');
+            var input = document.getElementById('auth-key-input');
+            var btn = document.getElementById('auth-submit-btn');
+            var errorDiv = document.getElementById('auth-error');
 
-        function doLogin() {
-            var key = input ? input.value.trim() : '';
-            if (!key) return;
+            if (overlay) overlay.classList.remove('d-none');
 
-            btn.disabled = true;
-            errorDiv.classList.add('d-none');
+            function doLogin() {
+                var key = input ? input.value.trim() : '';
+                if (!key) return;
 
-            tryAuth(key).then(function (success) {
-                if (!success) {
-                    errorDiv.classList.remove('d-none');
-                    btn.disabled = false;
-                    if (input) {
-                        input.value = '';
-                        input.focus();
+                btn.disabled = true;
+                errorDiv.classList.add('d-none');
+
+                tryAuth(key).then(function (ok) {
+                    if (!ok) {
+                        errorDiv.classList.remove('d-none');
+                        btn.disabled = false;
+                        if (input) {
+                            input.value = '';
+                            input.focus();
+                        }
                     }
-                }
-            });
-        }
+                });
+            }
 
-        if (btn) {
-            btn.addEventListener('click', doLogin);
-        }
-        if (input) {
-            input.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    doLogin();
-                }
-            });
-            input.focus();
-        }
+            if (btn) {
+                btn.addEventListener('click', doLogin);
+            }
+            if (input) {
+                input.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        doLogin();
+                    }
+                });
+                input.focus();
+            }
+        });
     }
 
     /**
