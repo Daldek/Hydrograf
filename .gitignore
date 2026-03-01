@@ -90,6 +90,7 @@ alembic/versions/*.pyc
 # Secrets
 *.pem
 *.key
+!*.key.example
 credentials.json
 
 # Pipeline config (user-specific; template in backend/config.yaml.example)

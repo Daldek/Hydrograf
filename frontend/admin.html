@@ -26,6 +26,13 @@
                 <input type="password" id="auth-key-input" class="form-control"
                        placeholder="Klucz API" autocomplete="off" aria-label="Klucz API">
             </div>
+            <div class="mb-3">
+                <label for="auth-key-file" class="form-label small text-secondary">
+                    lub wczytaj z pliku:
+                </label>
+                <input type="file" id="auth-key-file" class="form-control form-control-sm"
+                       accept=".key,.txt,.token">
+            </div>
             <button id="auth-submit-btn" class="btn btn-primary w-100">Zaloguj</button>
             <div id="auth-error" class="text-danger small mt-2 d-none" role="alert">
                 Nieprawidłowy klucz API. Spróbuj ponownie.

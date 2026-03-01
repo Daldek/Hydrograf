@@ -53,6 +53,7 @@ class Settings(BaseSettings):
 
     # Admin panel API key (empty = auth disabled)
     admin_api_key: str = ""
+    admin_api_key_file: str = ""  # Path to file containing admin API key
 
     # IMGW preprocessing
     imgw_grid_spacing_km: float = 2.0

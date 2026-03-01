@@ -5,6 +5,8 @@ Verifies the X-Admin-Key header against the configured admin_api_key.
 If no key is configured (empty string), authentication is disabled.
 """
 
+from pathlib import Path
+
 from fastapi import Header, HTTPException
 
 from core.config import get_settings
@@ -32,6 +34,12 @@ def verify_admin_key(
     """
     if expected_key is None:
         expected_key = get_settings().admin_api_key
+
+        if not expected_key and get_settings().admin_api_key_file:
+            try:
+                expected_key = Path(get_settings().admin_api_key_file).read_text().strip()
+            except (OSError, IOError):
+                pass
 
     # If no key is configured, auth is disabled
     if not expected_key:
