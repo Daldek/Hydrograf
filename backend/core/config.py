@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # DEM raster path (for terrain profile sampling)
     dem_path: str = "/data/dem/dem.vrt"
 
+    # Admin panel API key (empty = auth disabled)
+    admin_api_key: str = ""
+
     # IMGW preprocessing
     imgw_grid_spacing_km: float = 2.0
     imgw_rate_limit_delay_s: float = 0.5
