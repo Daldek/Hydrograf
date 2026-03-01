@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — 2026-02-24
 
 ### Added
+- **Podniesienie budynkow w NMT (ADR-033):** Nowa funkcja `raise_buildings_in_dem()` w `core/hydrology.py` podnosi DEM o +5m pod obrysami budynkow z BDOT10k (warstwa BUBD) lub custom GPKG. Zapobiega nierealistycznym sciezkom przeplywu przez budynki. Nowy parametr `building_gpkg` w `process_dem()`. 4 nowe testy jednostkowe.
 - **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):** 3 tryby — `auto` (BDOT10k klasyfikacja, domyslnie), `none` (pomin), custom `.gpkg`/`.shp` (wszystkie endoreiczne). Nowa flaga `--waterbody-min-area` do filtrowania malych zbiornikow po powierzchni. Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py.
 
 ### Removed
