@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 11 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds, tiles/landcover. 672 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 19 endpointow (11 core + 8 admin). 720 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -14,7 +14,8 @@
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | CP4 — tryb wyboru obiektow, flow acc coloring, histogram, debounce, zoom fix |
-| Testy scripts/ | ✅ Gotowy | 672 testow lacznie (109 nowych w sesji 47) |
+| Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
+| Testy | ✅ Gotowy | 720 testow lacznie (48 nowych admin w sesji 48) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -44,9 +45,38 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-01 (sesja 47)
+**Data:** 2026-03-01 (sesja 48)
 
 ### Co zrobiono
+
+Panel administracyjno-diagnostyczny (ADR-034): 8 nowych endpointow `/api/admin/*`, frontend `/admin`, 48 nowych testow, 720 lacznie. 12 commitow na develop.
+
+- **Backend (5 taskow):**
+  - Auth middleware: API key (header X-Admin-Key, env ADMIN_API_KEY), dependency na routerze
+  - Dashboard: status systemu, row counts 6 tabel, zuzycie dysku (frontend/data, tiles, NMT)
+  - Resources: CPU/RAM (psutil), pool DB, CatchmentGraph cache, rozmiar bazy
+  - Cleanup: estymacja + wykonanie — tiles, overlays, dem_tiles, dem_mosaic, TRUNCATE tabel
+  - Bootstrap: subprocess + SSE stream logow, start/cancel/status, walidacja bbox, historia
+
+- **Frontend (4 taski):**
+  - `admin.html`: glassmorphism, 4 sekcje, auth overlay, Bootstrap 5.3.3 CDN
+  - `admin.css`: gradient bg, stat-grid, badges, log terminal, cleanup targets
+  - `admin-api.js`: IIFE na `window.Hydrograf.adminApi`, fetch+ReadableStream dla SSE
+  - `admin-bootstrap.js` + `admin-app.js`: orchestrator, auto-refresh 30s, escapeHtml
+
+- **Infrastruktura:**
+  - nginx.conf: `location = /admin` + SSE proxy (timeout 3600s, buffering off)
+  - psutil w requirements.txt
+  - 48 testow admin (auth 5, dashboard 7, resources 5, cleanup 8, bootstrap 16, integration 7)
+
+- **Dokumentacja:** ADR-034, CHANGELOG, PROGRESS
+
+### Nastepne kroki
+1. CP5: MVP — pelna integracja, deploy
+2. Code review CR4-CR11 (wazne)
+3. Rozwazyc podwojna analize NMT (z/bez bezodplywowych) — nowy punkt backlog
+
+### Poprzednia sesja (2026-03-01, sesja 47)
 
 Realizacja 6 zadan sredniego priorytetu w trybie subagent-driven development (6 galezi feature, merge do develop). 109 nowych testow, 672 lacznie.
 
