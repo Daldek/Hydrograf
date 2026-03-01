@@ -114,51 +114,55 @@
         var reader = null;
 
         var promise = (async function () {
-            var response = await fetch('/api/admin/bootstrap/stream', {
-                headers: headers(),
-            });
+            try {
+                var response = await fetch('/api/admin/bootstrap/stream', {
+                    headers: headers(),
+                });
 
-            if (!response.ok) {
-                if (onDone) onDone('error');
-                return;
-            }
+                if (!response.ok) {
+                    if (onDone) onDone('error');
+                    return;
+                }
 
-            reader = response.body.getReader();
-            var decoder = new TextDecoder();
-            var buffer = '';
+                reader = response.body.getReader();
+                var decoder = new TextDecoder();
+                var buffer = '';
 
-            while (true) {
-                if (aborted) break;
+                while (true) {
+                    if (aborted) break;
 
-                var result = await reader.read();
-                if (result.done) break;
+                    var result = await reader.read();
+                    if (result.done) break;
 
-                buffer += decoder.decode(result.value, { stream: true });
-                var chunks = buffer.split('\n\n');
-                buffer = chunks.pop();
+                    buffer += decoder.decode(result.value, { stream: true });
+                    var chunks = buffer.split('\n\n');
+                    buffer = chunks.pop();
 
-                for (var i = 0; i < chunks.length; i++) {
-                    var chunk = chunks[i].trim();
-                    if (!chunk) continue;
+                    for (var i = 0; i < chunks.length; i++) {
+                        var chunk = chunks[i].trim();
+                        if (!chunk) continue;
 
-                    // Check for done event
-                    if (chunk.indexOf('event: done') !== -1) {
-                        var lines = chunk.split('\n');
-                        var lastLine = lines[lines.length - 1];
-                        var status = lastLine.replace('data: ', '');
-                        if (onDone) onDone(status);
-                        if (reader) reader.cancel();
-                        return;
-                    }
+                        // Check for done event
+                        if (chunk.indexOf('event: done') !== -1) {
+                            var lines = chunk.split('\n');
+                            var lastLine = lines[lines.length - 1];
+                            var status = lastLine.replace('data: ', '');
+                            if (onDone) onDone(status);
+                            if (reader) reader.cancel();
+                            return;
+                        }
 
-                    // Regular data line
-                    if (chunk.indexOf('data: ') === 0) {
-                        onMessage(chunk.substring(6));
+                        // Regular data line
+                        if (chunk.indexOf('data: ') === 0) {
+                            onMessage(chunk.substring(6));
+                        }
                     }
                 }
-            }
 
-            if (!aborted && onDone) onDone('disconnected');
+                if (!aborted && onDone) onDone('disconnected');
+            } catch (e) {
+                if (onDone) onDone('error');
+            }
         })();
 
         return {
