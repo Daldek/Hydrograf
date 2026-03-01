@@ -75,7 +75,7 @@
                 var elapsed = Math.round(Date.now() / 1000 - data.started_at);
                 var elapsedEl = document.getElementById('bootstrap-elapsed');
                 if (elapsedEl && elapsed > 0) {
-                    elapsedEl.textContent = formatElapsed(elapsed);
+                    elapsedEl.textContent = window.Hydrograf.adminUtils.formatElapsed(elapsed);
                 }
             }
         }
@@ -197,7 +197,7 @@
 
         function tick() {
             var seconds = Math.round(Date.now() / 1000 - startedAt);
-            elapsedEl.textContent = formatElapsed(seconds);
+            elapsedEl.textContent = window.Hydrograf.adminUtils.formatElapsed(seconds);
         }
 
         tick();
@@ -239,22 +239,6 @@
         if (logEl) {
             logEl.textContent = '';
         }
-    }
-
-    /**
-     * Format seconds to human-readable elapsed time.
-     *
-     * @param {number} seconds - Elapsed seconds
-     * @returns {string} e.g. "3min 45s"
-     */
-    function formatElapsed(seconds) {
-        if (seconds < 0) seconds = 0;
-        var min = Math.floor(seconds / 60);
-        var sec = seconds % 60;
-        if (min > 0) {
-            return min + 'min ' + sec + 's';
-        }
-        return sec + 's';
     }
 
     window.Hydrograf.adminBootstrap = {

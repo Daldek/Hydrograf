@@ -58,6 +58,33 @@
         return div.innerHTML;
     }
 
+    /**
+     * Format seconds to human-readable elapsed time.
+     *
+     * @param {number} seconds - Elapsed seconds
+     * @returns {string} e.g. "3min 45s"
+     */
+    function formatElapsed(seconds) {
+        if (seconds < 0) seconds = 0;
+        var min = Math.floor(seconds / 60);
+        var sec = seconds % 60;
+        if (min > 0) {
+            return min + 'min ' + sec + 's';
+        }
+        return sec + 's';
+    }
+
+    // ----------------------------------------------------------------
+    // Shared utilities (used by other admin modules)
+    // ----------------------------------------------------------------
+
+    window.Hydrograf = window.Hydrograf || {};
+    window.Hydrograf.adminUtils = {
+        escapeHtml: escapeHtml,
+        formatNumber: formatNumber,
+        formatElapsed: formatElapsed,
+    };
+
     // ----------------------------------------------------------------
     // Auth flow
     // ----------------------------------------------------------------
@@ -252,10 +279,10 @@
         html += '<table class="admin-table">';
         html += '<thead><tr><th>Parametr</th><th>Wartość</th></tr></thead>';
         html += '<tbody>';
-        html += '<tr><td>Pool size</td><td>' + data.db_pool.pool_size + '</td></tr>';
-        html += '<tr><td>Checked out</td><td>' + data.db_pool.checked_out + '</td></tr>';
-        html += '<tr><td>Overflow</td><td>' + data.db_pool.overflow + '</td></tr>';
-        html += '<tr><td>Checked in</td><td>' + data.db_pool.checked_in + '</td></tr>';
+        html += '<tr><td>Pool size</td><td>' + escapeHtml(String(data.db_pool.pool_size)) + '</td></tr>';
+        html += '<tr><td>Checked out</td><td>' + escapeHtml(String(data.db_pool.checked_out)) + '</td></tr>';
+        html += '<tr><td>Overflow</td><td>' + escapeHtml(String(data.db_pool.overflow)) + '</td></tr>';
+        html += '<tr><td>Checked in</td><td>' + escapeHtml(String(data.db_pool.checked_in)) + '</td></tr>';
         html += '</tbody></table>';
 
         // Catchment graph info
@@ -263,10 +290,10 @@
         html += '<table class="admin-table">';
         html += '<thead><tr><th>Parametr</th><th>Wartość</th></tr></thead>';
         html += '<tbody>';
-        html += '<tr><td>Załadowany</td><td>' + (data.catchment_graph.loaded ? 'Tak' : 'Nie') + '</td></tr>';
-        html += '<tr><td>Węzły</td><td>' + formatNumber(data.catchment_graph.nodes) + '</td></tr>';
+        html += '<tr><td>Załadowany</td><td>' + escapeHtml(String(data.catchment_graph.loaded ? 'Tak' : 'Nie')) + '</td></tr>';
+        html += '<tr><td>Węzły</td><td>' + escapeHtml(String(formatNumber(data.catchment_graph.nodes))) + '</td></tr>';
         if (data.catchment_graph.threshold_m2 && data.catchment_graph.threshold_m2.length > 0) {
-            html += '<tr><td>Thresholds</td><td>' + data.catchment_graph.threshold_m2.join(', ') + '</td></tr>';
+            html += '<tr><td>Thresholds</td><td>' + escapeHtml(String(data.catchment_graph.threshold_m2.join(', '))) + '</td></tr>';
         }
         html += '</tbody></table>';
 
