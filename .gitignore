@@ -92,6 +92,9 @@ alembic/versions/*.pyc
 *.key
 credentials.json
 
+# Pipeline config (user-specific; template in backend/config.yaml.example)
+config.yaml
+
 # Other
 *.png
 
