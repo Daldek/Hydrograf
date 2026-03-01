@@ -5,9 +5,16 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-02-24
+## [Unreleased] — 2026-03-01
 
 ### Added
+- **Piramida kafelkow DEM w bootstrap (Step 9):** `generate_dem_tiles` wlaczony do `step_overlays()` w `bootstrap.py`. Generuje kafelki XYZ (zoom 8-16) z hillshade do `frontend/data/dem_tiles/`. Frontend automatycznie uzywa kafelkow (fallback na `dem.png`). Cache: pomija generowanie jesli kafelki juz istnieja.
+- **Multi-directional hillshade:** `compute_hillshade()` w `utils/dem_color.py` uzywa 4 kierunkow oswietlenia (NW 40%, NE 20%, SE 20%, SW 20%) zamiast pojedynczego zrodla. Bardziej naturalna wizualizacja terenu, konwencja kartograficzna (NW dominujacy).
+
+### Changed
+- **Domyslny max zoom dla DEM tiles:** zmiana z 18 na 16 w `generate_dem_tiles.py`. Przy 5m NMT zoom 16 daje ~2.4m/piksel (wystarczajacy), zoom 18 daje ~0.6m/piksel bez dodatkowego detalu, 16x wiecej dysku.
+
+### Added (sesja 46)
 - **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):** 3 tryby — `auto` (BDOT10k klasyfikacja, domyslnie), `none` (pomin), custom `.gpkg`/`.shp` (wszystkie endoreiczne). Nowa flaga `--waterbody-min-area` do filtrowania malych zbiornikow po powierzchni. Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py.
 
 ### Removed

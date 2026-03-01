@@ -44,7 +44,12 @@ def compute_hillshade(
     altitude: float = 45.0,
 ) -> np.ndarray:
     """
-    Compute hillshade from DEM using Lambertian reflectance.
+    Multi-directional hillshade for natural terrain visualization.
+
+    Uses 4 light directions (NW, NE, SE, SW) averaged with weights.
+    NW (315 deg) is dominant (conventional cartographic lighting).
+    The ``azimuth`` parameter is kept for backward compatibility but
+    is not used — the 4-direction blend replaces single-source lighting.
 
     Parameters
     ----------
@@ -53,7 +58,7 @@ def compute_hillshade(
     cellsize : float
         Cell size in meters
     azimuth : float
-        Light source azimuth in degrees (default: 315 = NW)
+        Kept for backward compatibility (ignored in multi-directional mode)
     altitude : float
         Light source altitude in degrees (default: 45)
 
@@ -62,15 +67,25 @@ def compute_hillshade(
     np.ndarray
         Hillshade array, values 0–1 (float64)
     """
-    dx = np.gradient(dem, cellsize, axis=1)  # dz/dx
-    dy = np.gradient(dem, cellsize, axis=0)  # dz/dy
-    slope_rad = np.arctan(np.sqrt(dx**2 + dy**2))
-    aspect_rad = np.arctan2(-dy, dx)
+    azimuths = [315, 45, 135, 225]
+    weights = [0.4, 0.2, 0.2, 0.2]
 
-    az_rad = np.radians(azimuth)
+    dzdx = np.gradient(dem, cellsize, axis=1)
+    dzdy = np.gradient(dem, cellsize, axis=0)
+    slope = np.sqrt(dzdx**2 + dzdy**2)
+    slope_rad = np.arctan(slope)
+    aspect_rad = np.arctan2(-dzdy, dzdx)
+
     alt_rad = np.radians(altitude)
 
-    hillshade = np.sin(alt_rad) * np.cos(slope_rad) + np.cos(alt_rad) * np.sin(
-        slope_rad
-    ) * np.cos(az_rad - aspect_rad)
-    return np.clip(hillshade, 0, 1)
+    result = np.zeros_like(dem, dtype=np.float64)
+    for az, w in zip(azimuths, weights, strict=True):
+        az_rad = np.radians(360 - az + 90)
+        hs = (
+            np.cos(alt_rad) * np.sin(slope_rad) * np.cos(az_rad - aspect_rad)
+            + np.sin(alt_rad) * np.cos(slope_rad)
+        )
+        hs = np.clip(hs, 0, 1)
+        result += w * hs
+
+    return np.clip(result, 0, 1)
