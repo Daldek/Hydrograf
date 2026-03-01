@@ -9,14 +9,14 @@
 
     window.Hydrograf = window.Hydrograf || {};
 
-    var _apiKey = sessionStorage.getItem('admin_api_key') || '';
+    var _apiKey = localStorage.getItem('admin_api_key') || '';
 
     /**
-     * Store the admin API key in memory and sessionStorage.
+     * Store the admin API key in memory and localStorage.
      */
     function setApiKey(key) {
         _apiKey = key;
-        sessionStorage.setItem('admin_api_key', key);
+        localStorage.setItem('admin_api_key', key);
     }
 
     /**
@@ -52,7 +52,7 @@
         var response = await fetch(path, opts);
 
         if (response.status === 401 || response.status === 403) {
-            sessionStorage.removeItem('admin_api_key');
+            localStorage.removeItem('admin_api_key');
             window.location.reload();
             throw new Error('Brak autoryzacji');
         }

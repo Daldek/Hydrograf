@@ -37,3 +37,26 @@ class TestVerifyAdminKey:
         verify_admin_key(x_admin_key=None, expected_key="")
         verify_admin_key(x_admin_key="anything", expected_key="")
         verify_admin_key(x_admin_key="", expected_key="")
+
+    def test_file_based_key(self, tmp_path, monkeypatch):
+        """Key loaded from file when admin_api_key is empty."""
+        key_file = tmp_path / "admin.key"
+        key_file.write_text("file-secret-key\n")
+
+        from core.config import get_settings
+        settings = get_settings()
+        monkeypatch.setattr(settings, "admin_api_key", "")
+        monkeypatch.setattr(settings, "admin_api_key_file", str(key_file))
+
+        # Valid key from file should pass
+        verify_admin_key(x_admin_key="file-secret-key", expected_key=None)
+
+    def test_file_based_key_missing_file(self, monkeypatch):
+        """Missing key file should disable auth (graceful fallback)."""
+        from core.config import get_settings
+        settings = get_settings()
+        monkeypatch.setattr(settings, "admin_api_key", "")
+        monkeypatch.setattr(settings, "admin_api_key_file", "/nonexistent/admin.key")
+
+        # Should not raise — auth disabled when file is missing
+        verify_admin_key(x_admin_key=None, expected_key=None)
