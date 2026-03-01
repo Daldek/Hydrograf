@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
-from api.endpoints.admin import router, _dir_size_mb
+from api.endpoints.admin import _dir_size_mb, router
 from core.database import get_db
 
 

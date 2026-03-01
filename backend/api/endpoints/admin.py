@@ -91,7 +91,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
     tables: dict[str, int] = {}
     for table in _TABLE_NAMES:
         try:
-            result = db.execute(text(f"SELECT COUNT(*) FROM {table}"))  # noqa: S608
+            result = db.execute(text(f"SELECT COUNT(*) FROM {table}"))  # noqa: S608 — table names from hardcoded _TABLE_NAMES, not user input
             tables[table] = result.scalar() or 0
         except Exception:
             tables[table] = 0
@@ -328,7 +328,7 @@ def _execute_cleanup_target(
 
         elif ttype == "db":
             table_list = ", ".join(_TABLE_NAMES)
-            db.execute(text(f"TRUNCATE TABLE {table_list} CASCADE"))  # noqa: S608
+            db.execute(text(f"TRUNCATE TABLE {table_list} CASCADE"))  # noqa: S608 — table names from hardcoded _TABLE_NAMES, not user input
             db.commit()
             return {"key": target_key, "status": "ok"}
 
@@ -366,6 +366,8 @@ def cleanup_execute(
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 VENV_PYTHON = BACKEND_DIR / ".venv" / "bin" / "python"
 
+_HISTORY_MAX = 10
+
 _bootstrap_state: dict = {
     "process": None,
     "status": "idle",
@@ -384,8 +386,8 @@ def _validate_bbox(bbox_str: str) -> tuple[float, float, float, float]:
 
     try:
         min_lon, min_lat, max_lon, max_lat = (float(p.strip()) for p in parts)
-    except ValueError:
-        raise ValueError("bbox values must be valid numbers")
+    except ValueError as exc:
+        raise ValueError("bbox values must be valid numbers") from exc
 
     if min_lon >= max_lon:
         raise ValueError("min_lon must be less than max_lon")
@@ -420,6 +422,8 @@ def _read_process_output(process: subprocess.Popen, state: dict) -> None:
                 "lines": len(state["log_lines"]),
             }
         )
+        if len(state["history"]) > _HISTORY_MAX:
+            state["history"] = state["history"][:_HISTORY_MAX]
 
 
 class BootstrapStatusResponse(BaseModel):
@@ -487,7 +491,7 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
         try:
             _validate_bbox(request.bbox)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         cmd.extend(["--bbox", request.bbox])
     elif request.sheets:
         cmd.extend(["--sheets"] + request.sheets)
