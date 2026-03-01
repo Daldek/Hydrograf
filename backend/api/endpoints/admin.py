@@ -10,6 +10,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -364,7 +365,7 @@ def cleanup_execute(
 # Bootstrap subprocess manager
 # ---------------------------------------------------------------------------
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-VENV_PYTHON = BACKEND_DIR / ".venv" / "bin" / "python"
+VENV_PYTHON = sys.executable  # works in both venv and Docker container
 
 _HISTORY_MAX = 10
 
@@ -514,14 +515,20 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
     _bootstrap_state["status"] = "running"
 
     # Start subprocess
-    process = subprocess.Popen(
-        cmd,
-        cwd=str(BACKEND_DIR),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
+    try:
+        process = subprocess.Popen(
+            cmd,
+            cwd=str(BACKEND_DIR),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except (FileNotFoundError, OSError) as e:
+        _bootstrap_state["status"] = "failed"
+        _bootstrap_state["log_lines"].append(f"[ERROR] Failed to start: {e}")
+        raise HTTPException(status_code=500, detail=f"Cannot start bootstrap: {e}") from e
+
     _bootstrap_state["process"] = process
 
     # Background thread to read output
