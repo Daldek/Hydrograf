@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 10 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds. 550 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 11 endpointow: delineate, hydrograph, scenarios, profile, depressions, select-stream, health, tiles/streams, tiles/catchments, tiles/thresholds, tiles/landcover. 672 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -14,7 +14,7 @@
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | CP4 — tryb wyboru obiektow, flow acc coloring, histogram, debounce, zoom fix |
-| Testy scripts/ | ⏳ W trakcie | 563 testow lacznie (po dodaniu testow waterbody-mode) |
+| Testy scripts/ | ✅ Gotowy | 672 testow lacznie (109 nowych w sesji 47) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -44,24 +44,64 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-02-25 (sesja 46)
+**Data:** 2026-03-01 (sesja 47)
 
 ### Co zrobiono
+
+Realizacja 6 zadan sredniego priorytetu w trybie subagent-driven development (6 galezi feature, merge do develop). 109 nowych testow, 672 lacznie.
+
+- **Team 1 — Testy scripts/ (83 nowe testy jednostkowe):**
+  - `test_dem_color.py` (15 testow): `build_colormap()`, `compute_hillshade()` — weryfikacja numpy outputs, wymiary, zakresy wartosci
+  - `test_sheet_finder.py` (32 testy): `get_sheet_1to10k_id()`, `get_sheet_1to25k_id()`, koordynaty ark. map polskich (graniczne, srodki, zakresy)
+  - `test_import_landcover.py` (16 testow): `map_bdot_class()`, `extract_landcover_polygons()` — mapowanie klas BDOT10k na kategorie CN
+  - `test_bootstrap.py` (20 testow): `parse_bbox()`, `StepTracker` — walidacja bbox, next/skip/retry, sekwencje krokow
+
+- **Team 2 — Wygladzanie granic zlewni (ADR-032):**
+  - `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3 iteracje)` w `merge_catchment_boundaries()` (watershed_service.py)
+  - Eliminacja schodkowych krawedzi rastrowych, gladkie krzywe zamiast ortogonalnych krokow 5m
+  - Tolerancja simplify w `stream_extraction.py`: `cellsize` → `2*cellsize`
+  - 4 testy w `test_boundary_smoothing.py`, ADR-032
+
+- **Team 5 — Warstwa tematyczna: pokrycie terenu (BDOT10k):**
+  - Nowy endpoint MVT `/api/tiles/landcover/{z}/{x}/{y}.pbf` (tiles.py)
+  - Frontend: `loadLandCoverVector()` w map.js, `addBdotOverlayEntry()` w layers.js
+  - 8 kategorii kolorow, legenda, suwak przezroczystosci, lazy-load, pane z-index 260
+  - 4 testy w `test_tiles_landcover.py`
+
+- **Team 6 — Konfiguracja YAML pipeline:**
+  - `load_config()`, `_deep_merge()`, `get_database_url_from_config()` w `core/config.py`
+  - Szablon `config.yaml.example` (database, DEM, paths, steps, custom sources)
+  - Flaga `--config` w `bootstrap.py`, `config.yaml` w `.gitignore`
+  - 14 testow w `test_yaml_config.py`
+
+- **Team 3 — Piramida kafelkow DEM + multi-directional hillshade:**
+  - `compute_hillshade()` w `utils/dem_color.py`: 4 kierunki oswietlenia (NW 40%, NE 20%, SE 20%, SW 20%)
+  - `generate_dem_tiles` wlaczony do `step_overlays()` w `bootstrap.py` (step 9)
+  - Domyslny max zoom: 18→16, cache (pomija jesli kafelki istnieja)
+
+- **Team 4 — Podniesienie budynkow w NMT (ADR-033):**
+  - `raise_buildings_in_dem()` w `core/hydrology.py` (+5m pod obrysami budynkow z BDOT10k BUBD)
+  - Nowy parametr `building_gpkg` w `process_dem()`
+  - 4 testy w `test_building_raising.py`, ADR-033
+
+- **Dokumentacja:** ADR-032, ADR-033, CHANGELOG, PROGRESS
+- **Git:** 6 feature branches merged do develop, 3 konflikty CHANGELOG + 1 DECISIONS rozwiazane
+
+### Nastepne kroki
+1. CP5: MVP — pelna integracja, deploy
+2. Code review CR4-CR11 (wazne)
+3. Rozwazyc podwojna analize NMT (z/bez bezodplywowych) — nowy punkt backlog
+
+### Poprzednia sesja (2026-02-25, sesja 46)
 
 - **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):**
   - Nowe parametry `waterbody_mode` i `waterbody_min_area_m2` w `classify_endorheic_lakes()` (core/hydrology.py)
   - 3 tryby: `auto` (istniejace zachowanie BDOT10k), `none` (pomin klasyfikacje), sciezka do custom `.gpkg`/`.shp` (wszystkie endoreiczne)
   - `min_area_m2` filtruje male zbiorniki po powierzchni (dziala z auto i custom)
   - Parametry propagowane przez: `process_dem.py`, `bootstrap.py`, `prepare_area.py` (CLI + sygnatury funkcji)
-  - Wczesna walidacja custom path (przed odczytem DEM)
   - 5 nowych testow w `test_lake_drain.py::TestWaterbodyMode`, 563 testow passed
   - Dokumentacja: ADR-031, scripts/README.md, PROGRESS, CHANGELOG
-- **Backlog: punkt o podwojnej analizie NMT (z/bez obszarow bezodplywowych)** — generowanie 2 wariantow DEM, cieki i obliczenia na wariancie bez bezodplywowych, UI z rozroznieniem kolorow
-
-### Nastepne kroki
-1. CP5: MVP — pelna integracja, deploy
-2. Code review CR4-CR11 (wazne)
-3. Rozwazyc podwojna analize NMT (z/bez bezodplywowych) — nowy punkt backlog
+- **Backlog: punkt o podwojnej analizie NMT (z/bez obszarow bezodplywowych)**
 
 ### Poprzednia sesja (2026-02-24, sesja 45)
 
