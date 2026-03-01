@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-03-01
 
+### Dodane
+- **Panel administracyjny `/admin` (ADR-034):** 4 sekcje: Dashboard, Bootstrap, Zasoby, Czyszczenie
+- 8 nowych endpointow API `/api/admin/*` (dashboard, resources, cleanup, bootstrap)
+- Uwierzytelnianie API key (header X-Admin-Key, env ADMIN_API_KEY)
+- Uruchamianie bootstrap.py z panelu + real-time logi SSE
+- Monitorowanie zasobow: CPU/RAM (psutil), pool DB, CatchmentGraph cache
+- Czyszczenie danych: tiles, overlays, dem_mosaic, TRUNCATE tabel
+- ~50 nowych testow jednostkowych
+
 ### Added
 - **Wygładzanie granic zlewni (ADR-032):** `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3 iteracje)` w `merge_catchment_boundaries()` — eliminacja schodkowych krawędzi z rastra, gładkie krzywe zamiast ortogonalnych kroków 5m. Tolerancja simplify w preprocessingu: `cellsize` → `2*cellsize`.
 - **Warstwa tematyczna: pokrycie terenu (BDOT10k):** nowy endpoint MVT `/api/tiles/landcover/{z}/{x}/{y}.pbf` serwujacy dane `land_cover` (101k rekordow) jako Mapbox Vector Tiles. Warstwa dodana do panelu warstw z lazy-loadem, kolorowana wg kategorii (las, laka, grunt orny, zabudowa, droga, woda), z legenda i suwakiem przezroczystosci. Nowy pane `landcoverPane` (z-index 260) miedzy NMT a ciekami.
