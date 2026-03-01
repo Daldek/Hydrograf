@@ -112,6 +112,51 @@ def fill_internal_nodata_holes(
     return patched, total_filled
 
 
+def raise_buildings_in_dem(
+    dem: np.ndarray,
+    transform,
+    crs_epsg: int,
+    building_gpkg: str | None,
+    building_raise_m: float = 5.0,
+) -> np.ndarray:
+    """Raise DEM elevation under building footprints.
+
+    Prevents unrealistic flow paths through buildings.
+    """
+    if building_gpkg is None:
+        return dem
+
+    import fiona
+    from rasterio.features import rasterize
+    from shapely.geometry import shape
+
+    geometries = []
+    with fiona.open(building_gpkg) as src:
+        for feat in src:
+            geom = shape(feat["geometry"])
+            if geom.is_valid and not geom.is_empty:
+                geometries.append(geom)
+
+    if not geometries:
+        return dem
+
+    mask = rasterize(
+        [(g, 1) for g in geometries],
+        out_shape=dem.shape,
+        transform=transform,
+        fill=0,
+        dtype=np.uint8,
+    )
+
+    dem[mask == 1] += building_raise_m
+    cells_raised = int(np.sum(mask == 1))
+    logger.info(
+        f"Building raising: {cells_raised} cells raised "
+        f"by {building_raise_m}m ({len(geometries)} buildings)"
+    )
+    return dem
+
+
 def burn_streams_into_dem(
     dem: np.ndarray,
     transform,

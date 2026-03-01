@@ -700,6 +700,27 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+### ADR-033: Podniesienie budynkow w NMT (building raising)
+
+**Data:** 2026-03-01
+**Status:** Przyjeta
+
+**Kontekst:** DEM nie uwzglednia budynkow — woda w modelu moze "przeplywac" przez budynki. Powoduje to nierealistyczne sciezki przeplywu w obszarach zabudowanych.
+
+**Decyzja:**
+1. Nowa funkcja `raise_buildings_in_dem()` w `core/hydrology.py`
+2. Obrys budynkow z BDOT10k (warstwa BUBD) lub custom GPKG
+3. Podniesienie DEM o +5m pod obrysami budynkow
+4. Kolejnosc: building raising -> stream burning -> fill sinks -> flow direction
+
+**Konsekwencje:**
+- Realistyczne sciezki przeplywu omijajace budynki
+- Parametr `building_raise_m` konfigurowalny (domyslnie 5m)
+- Wymaga ponownego przetworzenia DEM po zmianie warstwy budynkow
+- Nowy parametr `building_gpkg` w `process_dem()` (opcjonalny)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
