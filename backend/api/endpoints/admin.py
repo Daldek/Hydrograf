@@ -5,16 +5,19 @@ Provides dashboard, resources, cleanup, and bootstrap management
 for the Hydrograf administration panel.
 """
 
+import os
 import time
 from pathlib import Path
 
+import psutil
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
-from core.database import get_db
+from core.catchment_graph import get_catchment_graph
+from core.database import get_db, get_db_engine
 
 # ---------------------------------------------------------------------------
 # Path constants
@@ -108,4 +111,78 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
                 frontend_data_mb + frontend_tiles_mb + nmt_data_mb, 2
             ),
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+class ResourcesResponse(BaseModel):
+    """System resource usage response."""
+
+    process: dict = Field(description="Process CPU/memory info")
+    db_pool: dict = Field(description="Database connection pool stats")
+    catchment_graph: dict = Field(description="Catchment graph status")
+    db_size_mb: float = Field(description="Database size in MB")
+
+
+@router.get("/resources", response_model=ResourcesResponse)
+def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
+    """System resource usage."""
+    # Process info
+    proc = psutil.Process(os.getpid())
+    mem_info = proc.memory_info()
+    process_info = {
+        "cpu_percent": proc.cpu_percent(interval=0.1),
+        "memory_mb": round(mem_info.rss / (1024 * 1024), 2),
+        "memory_percent": round(proc.memory_percent(), 2),
+        "pid": proc.pid,
+        "threads": proc.num_threads(),
+    }
+
+    # DB pool info
+    try:
+        engine = get_db_engine()
+        pool = engine.pool
+        db_pool_info = {
+            "pool_size": pool.size(),
+            "checked_out": pool.checkedout(),
+            "overflow": pool.overflow(),
+            "checked_in": pool.checkedin(),
+        }
+    except Exception:
+        db_pool_info = {
+            "pool_size": 0,
+            "checked_out": 0,
+            "overflow": 0,
+            "checked_in": 0,
+        }
+
+    # Catchment graph info
+    cg = get_catchment_graph()
+    cg_info: dict = {"loaded": cg.loaded, "nodes": 0, "threshold_m2": []}
+    if cg.loaded:
+        cg_info["nodes"] = cg._n
+        if cg._threshold_m2 is not None:
+            import numpy as np
+
+            cg_info["threshold_m2"] = sorted(
+                int(t) for t in np.unique(cg._threshold_m2)
+            )
+
+    # Database size
+    try:
+        result = db.execute(
+            text("SELECT pg_database_size(current_database())")
+        )
+        db_size_bytes = result.scalar() or 0
+        db_size_mb = round(db_size_bytes / (1024 * 1024), 2)
+    except Exception:
+        db_size_mb = 0.0
+
+    return ResourcesResponse(
+        process=process_info,
+        db_pool=db_pool_info,
+        catchment_graph=cg_info,
+        db_size_mb=db_size_mb,
     )
