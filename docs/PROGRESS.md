@@ -87,6 +87,22 @@ Realizacja 6 zadan sredniego priorytetu w trybie subagent-driven development (6 
 - **Dokumentacja:** ADR-032, ADR-033, CHANGELOG, PROGRESS
 - **Git:** 6 feature branches merged do develop, 3 konflikty CHANGELOG + 1 DECISIONS rozwiazane
 
+### Regeneracja danych (kontynuacja sesji 47)
+
+Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic, hydro_merged) + TRUNCATE 6 tabel DB. Bootstrap z bbox `16.9279,52.3729,17.3825,52.5870`:
+
+| Krok | Czas | Wynik |
+|------|------|-------|
+| Pobieranie NMT | 125s | 91 arkuszy (43 nowe, 48 z cache) |
+| Przetwarzanie NMT | 1949s | 54.5M komorek (6626×8218 @5m), 246,357 segmentow |
+| Pokrycie terenu | 154s | 112,313 obiektow, 6 powiatow |
+| Dane glebowe HSG | 2s | 197 poligonow |
+| Opady IMGW | 141s | 192 stacje, 8,064 rekordow |
+| Depresje | 45s | 338,690 depresji |
+| Kafelki MVT | 214s | 3 progi (1k, 10k, 100k) |
+| Overlay PNG | 93s | DEM + DEM tiles + streams |
+| **Razem** | **2724s** (~45 min) | |
+
 ### Nastepne kroki
 1. CP5: MVP — pelna integracja, deploy
 2. Code review CR4-CR11 (wazne)
