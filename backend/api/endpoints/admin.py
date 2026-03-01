@@ -6,11 +6,12 @@ for the Hydrograf administration panel.
 """
 
 import os
+import shutil
 import time
 from pathlib import Path
 
 import psutil
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -186,3 +187,169 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
         catchment_graph=cg_info,
         db_size_mb=db_size_mb,
     )
+
+
+# ---------------------------------------------------------------------------
+# Cleanup
+# ---------------------------------------------------------------------------
+def _file_size_mb(path: Path) -> float:
+    """Return single file size in MB, or 0 if not found."""
+    if path.is_file():
+        return round(path.stat().st_size / (1024 * 1024), 2)
+    return 0.0
+
+
+CLEANUP_TARGETS: dict[str, dict] = {
+    "tiles": {
+        "label": "MVT tiles",
+        "path": FRONTEND_TILES,
+        "type": "dir",
+    },
+    "overlays": {
+        "label": "Overlay PNG + JSON",
+        "path": FRONTEND_DATA,
+        "type": "glob",
+        "patterns": ["*.png", "*.json"],
+    },
+    "dem_tiles": {
+        "label": "DEM raster tiles",
+        "path": FRONTEND_DATA / "dem_tiles",
+        "type": "dir",
+    },
+    "dem_mosaic": {
+        "label": "DEM mosaic VRT",
+        "path": DATA_NMT / "dem_mosaic.vrt",
+        "type": "file",
+    },
+    "db_tables": {
+        "label": "Database tables (TRUNCATE)",
+        "type": "db",
+    },
+}
+
+
+def _estimate_target(target_key: str, db: Session | None = None) -> float:
+    """Estimate size in MB for a cleanup target."""
+    target = CLEANUP_TARGETS[target_key]
+    ttype = target["type"]
+
+    if ttype == "dir":
+        return _dir_size_mb(target["path"])
+    elif ttype == "file":
+        return _file_size_mb(target["path"])
+    elif ttype == "glob":
+        base = target["path"]
+        if not base.exists():
+            return 0.0
+        total = 0
+        for pattern in target["patterns"]:
+            for f in base.glob(pattern):
+                total += f.stat().st_size
+        return round(total / (1024 * 1024), 2)
+    elif ttype == "db" and db is not None:
+        try:
+            result = db.execute(
+                text("SELECT pg_database_size(current_database())")
+            )
+            return round((result.scalar() or 0) / (1024 * 1024), 2)
+        except Exception:
+            return 0.0
+    return 0.0
+
+
+class CleanupEstimateResponse(BaseModel):
+    """Cleanup estimate response."""
+
+    targets: list[dict] = Field(description="List of targets with size_mb")
+
+
+class CleanupRequest(BaseModel):
+    """Cleanup execution request."""
+
+    targets: list[str] = Field(description="List of target keys to clean")
+
+
+class CleanupResponse(BaseModel):
+    """Cleanup execution response."""
+
+    results: list[dict] = Field(description="Results per target")
+
+
+@router.get("/cleanup/estimate", response_model=CleanupEstimateResponse)
+def cleanup_estimate(
+    db: Session = Depends(get_db),
+) -> CleanupEstimateResponse:
+    """Estimate cleanup sizes for all targets."""
+    targets = []
+    for key, info in CLEANUP_TARGETS.items():
+        targets.append(
+            {
+                "key": key,
+                "label": info["label"],
+                "size_mb": _estimate_target(key, db),
+            }
+        )
+    return CleanupEstimateResponse(targets=targets)
+
+
+def _execute_cleanup_target(
+    target_key: str, db: Session
+) -> dict:
+    """Execute cleanup for a single target, return result dict."""
+    target = CLEANUP_TARGETS[target_key]
+    ttype = target["type"]
+
+    try:
+        if ttype == "dir":
+            path = target["path"]
+            if path.exists():
+                shutil.rmtree(path)
+                path.mkdir(parents=True, exist_ok=True)
+            return {"key": target_key, "status": "ok"}
+
+        elif ttype == "file":
+            path = target["path"]
+            if path.is_file():
+                path.unlink()
+            return {"key": target_key, "status": "ok"}
+
+        elif ttype == "glob":
+            base = target["path"]
+            if base.exists():
+                for pattern in target["patterns"]:
+                    for f in base.glob(pattern):
+                        f.unlink()
+            return {"key": target_key, "status": "ok"}
+
+        elif ttype == "db":
+            table_list = ", ".join(_TABLE_NAMES)
+            db.execute(text(f"TRUNCATE TABLE {table_list} CASCADE"))  # noqa: S608
+            db.commit()
+            return {"key": target_key, "status": "ok"}
+
+        return {"key": target_key, "status": "error", "detail": "unknown type"}
+
+    except Exception as e:
+        return {"key": target_key, "status": "error", "detail": str(e)}
+
+
+@router.post("/cleanup", response_model=CleanupResponse)
+def cleanup_execute(
+    request: CleanupRequest,
+    db: Session = Depends(get_db),
+) -> CleanupResponse:
+    """Execute cleanup for selected targets."""
+    # Validate targets
+    for target_key in request.targets:
+        if target_key not in CLEANUP_TARGETS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown cleanup target: {target_key}",
+            )
+
+    results = []
+    for target_key in request.targets:
+        result = _execute_cleanup_target(target_key, db)
+        results.append(result)
+
+    return CleanupResponse(results=results)
