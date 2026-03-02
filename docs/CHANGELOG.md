@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **S5.3 — Hardcoded credentials:** `warn_if_default_credentials()` w `Settings` — WARNING gdy `postgres_password == "hydro_password"`. `migrations/env.py` — WARNING gdy `DATABASE_URL` nie ustawiony.
 - **Auth — Admin panel bez klucza = brak auth:** auto-generowanie klucza admin API (`uuid4`) gdy `ADMIN_API_KEY` nie skonfigurowany. Klucz logowany jako WARNING, stabilny w obrebie procesu. Panel admin zawsze wymaga uwierzytelnienia.
 
+### Changed
+- **Bbox input w panelu admin — 4 pola kompasowe + map picker:** Zamiana jednego pola tekstowego na 4 pola numeryczne (N/S/W/E) w ukladzie kompasu. Nowy modul `admin-bbox-picker.js` — interaktywny modal z mapa Leaflet do rysowania prostokata bbox (click+drag). Walidacja frontend (NaN, kolejnosc wspolrzednych, `is-invalid` highlighting). Leaflet 1.9.4 CDN dodany do `admin.html`.
+
 ### Added
 - **Panel administracyjny `/admin` (ADR-034):** 4 sekcje: Dashboard, Bootstrap, Zasoby, Czyszczenie
 - 8 nowych endpointow API `/api/admin/*` (dashboard, resources, cleanup, bootstrap)
