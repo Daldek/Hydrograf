@@ -1,20 +1,19 @@
 # Integracja z Kartografem
 
-**Wersja:** 4.0
-**Data:** 2026-03-01
+**Wersja:** 5.0
+**Data:** 2026-03-02
 **Status:** Aktywna
 
 ---
 
 ## 1. Przegląd
 
-Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.4.1) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
+Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.5.0) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
 
 - **NMT** - Numeryczny Model Terenu z GUGiK (rozdzielczość 5m)
 - **NMPT** - Numeryczny Model Pokrycia Terenu z GUGiK (nowy w v0.4.0)
 - **Ortofotomapa** - Ortofotomapy z GUGiK (nowy w v0.4.0)
-- **BDOT10k** - Dane o pokryciu terenu z GUGiK (12 warstw)
-- **BDOT10k hydro** - Dane hydrograficzne z GUGiK (nowy w v0.4.1)
+- **BDOT10k** - Dane o pokryciu terenu z GUGiK (15 warstw — 12 PT + 3 SW w jednym GPKG od v0.5.0)
 - **BDOT10k BUBD** - Budynki z GUGiK (do building raising w NMT, ADR-033)
 - **CORINE** - Europejska klasyfikacja pokrycia terenu z Copernicus (44 klasy)
 - **SoilGrids HSG** - Grupy hydrologiczne gleby (przez HSGCalculator)
@@ -26,11 +25,11 @@ Kartograf to narzędzie Python do:
 - **Pobierania danych NMT/NMPT** z GUGiK przez OpenData/WCS API
 - **Pobierania ortofotomap** z GUGiK (nowy w v0.4.0)
 - **Pobierania danych o pokryciu terenu** z BDOT10k i CORINE
-- **Pobierania danych hydrograficznych** z BDOT10k (nowy w v0.4.1)
 - **Obliczania HSG** z SoilGrids (HSGCalculator)
 - **Zarządzania hierarchią arkuszy** (od 1:1M do 1:10k)
 - **Auto-ekspansji godeł** — automatyczne rozwijanie godeł grubszych skal do arkuszy 1:10000 (nowy w v0.4.0)
 - **Filtrowania po geometrii** — ograniczanie danych do zadanego zasięgu (nowy w v0.4.1)
+- **Pobierania wszystkich 15 warstw BDOT10k** (12 PT + 3 SW) w jednym GPKG (nowy w v0.5.0)
 - **Batch download** z retry logic i progress tracking
 
 ### 1.2 Dlaczego integracja?
@@ -187,7 +186,7 @@ Skrypt do pobierania danych pokrycia terenu.
 **Użycie:**
 
 ```bash
-# BDOT10k dla punktu z buforem
+# BDOT10k dla punktu z buforem (v0.5.0: pobiera wszystkie 15 warstw)
 python -m scripts.download_landcover \
     --lat 52.23 --lon 21.01 \
     --buffer 5
@@ -195,11 +194,6 @@ python -m scripts.download_landcover \
 # BDOT10k po kodzie TERYT (powiat)
 python -m scripts.download_landcover \
     --teryt 1465
-
-# BDOT10k hydro (dane hydrograficzne)
-python -m scripts.download_landcover \
-    --lat 52.23 --lon 21.01 \
-    --category hydro
 
 # CORINE Land Cover
 python -m scripts.download_landcover \
@@ -521,7 +515,7 @@ pytest tests/integration/test_download_dem.py -v --run-network
 
 ---
 
-## 10. Land Cover (Kartograf 0.4.1)
+## 10. Land Cover (Kartograf 0.5.0)
 
 ### 10.1 Dostępne źródła danych
 
@@ -531,6 +525,8 @@ pytest tests/integration/test_download_dem.py -v --run-network
 | **CORINE** | European Land Cover (Copernicus) | 100m raster |
 
 ### 10.2 Warstwy BDOT10k
+
+Od Kartograf v0.5.0 wszystkie 15 warstw (12 PT + 3 SW) pobierane są w jednym GPKG. Filtrowanie warstw hydro (SWRS, SWKN, SWRM) odbywa się w Hydrograf na etapie merge za pomocą stałej `HYDRO_LAYER_PREFIXES`.
 
 | Kod | Opis | → Hydrograf category | CN |
 |-----|------|---------------------|-----|
@@ -547,6 +543,9 @@ pytest tests/integration/test_download_dem.py -v --run-network
 | PTNZ | Tereny niezabudowane | `inny` | 75 |
 | PTSO | Składowiska | `inny` | 75 |
 | **BUBD** | **Budynki** | (building raising) | 85-92 (wg HSG) |
+| SWRS | Rzeki i strumienie | (hydro — stream burning) | — |
+| SWKN | Kanały | (hydro — stream burning) | — |
+| SWRM | Rowy melioracyjne | (hydro — stream burning) | — |
 
 ### 10.3 Land Cover MVT (Vector Tiles)
 
@@ -594,11 +593,11 @@ gpkg_path = manager.download_by_godlo("N-34-130-D", year=2018)
 
 ---
 
-## 11. BDOT10k Hydro (Kartograf 0.4.1)
+## 11. BDOT10k Hydro (Kartograf 0.5.0)
 
-### 11.1 Kategorie hydrograficzne
+### 11.1 Warstwy hydrograficzne
 
-Kartograf 0.4.1 dodaje obsługę kategorii hydrograficznych z BDOT10k, umożliwiając pobieranie danych o sieci wodnej.
+Od Kartograf v0.5.0 wszystkie 15 warstw BDOT10k (12 PT + 3 SW) pobierane są w jednym GPKG. Filtrowanie warstw hydrograficznych odbywa się w Hydrograf na etapie merge za pomocą stałej `HYDRO_LAYER_PREFIXES`.
 
 | Kod BDOT10k | Opis | Typ geometrii |
 |-------------|------|---------------|
@@ -607,28 +606,12 @@ Kartograf 0.4.1 dodaje obsługę kategorii hydrograficznych z BDOT10k, umożliwi
 | **SWRM** | Rowy melioracyjne | LineString |
 | **PTWP** | Wody powierzchniowe (jeziora, stawy) | Polygon |
 
-### 11.2 Użycie w skryptach
+### 11.2 Filtrowanie warstw hydro
 
-**Pobieranie danych hydrograficznych:**
+W Kartograf v0.5.0 nie ma parametru `category` — wszystkie warstwy pobierane są razem. Filtrowanie warstw hydro (SWRS, SWKN, SWRM, PTWP) odbywa się w `merge_hydro_gpkgs()` za pomocą stałej `HYDRO_LAYER_PREFIXES`:
 
-```bash
-# Pobieranie kategorii hydro osobno
-.venv/bin/python -m scripts.download_landcover \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5 \
-    --category SWRS
-
-# Pobieranie wszystkich kategorii hydro
-.venv/bin/python -m scripts.download_landcover \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5 \
-    --with-hydro
-
-# Pipeline z danymi hydro (do stream burning)
-.venv/bin/python -m scripts.prepare_area \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5 \
-    --with-hydro
+```python
+HYDRO_LAYER_PREFIXES = ("SWRS", "SWKN", "SWRM", "PTWP")
 ```
 
 ### 11.3 Zastosowanie w Hydrograf
@@ -697,7 +680,7 @@ Dane z tabeli `soil_hsg` używane w `core/soil_hsg.py: get_hsg_for_boundary()` �
 
 ## 14. Filtrowanie po geometrii
 
-Kartograf 0.4.1 umożliwia ograniczenie pobieranych danych do zadanego zasięgu przestrzennego:
+Kartograf umożliwia ograniczenie pobieranych danych do zadanego zasięgu przestrzennego:
 
 ```python
 from kartograf import find_sheets_for_geometry
@@ -727,10 +710,10 @@ python -m scripts.download_dem \
 - [x] **Land cover MVT** - endpoint `/api/tiles/landcover/{z}/{x}/{y}.pbf` (CP4)
 - [x] **CN calculation** - cn_calculator + cn_tables z danymi Kartografa
 - [ ] **NMPT integration** - wykorzystanie NMPT w analizach (dostępny od Kartograf 0.4.0)
-- [ ] **Cache lokalny** - unikanie ponownego pobierania
+- [x] **Cache lokalny** - separacja cache/data, unikanie ponownego pobierania (ADR-037, Kartograf 0.5.0)
 - [ ] **Parallel download** - równoległe pobieranie wielu arkuszy
 
 ---
 
-**Wersja dokumentu:** 4.0
-**Ostatnia aktualizacja:** 2026-03-01
+**Wersja dokumentu:** 5.0
+**Ostatnia aktualizacja:** 2026-03-02
