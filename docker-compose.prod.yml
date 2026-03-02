@@ -1,0 +1,21 @@
+# Production overrides — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  api:
+    # No code bind mount (use built image)
+    volumes:
+      - ./data:/data
+      - ./frontend/data:/frontend/data
+      - ./frontend/tiles:/frontend/tiles
+    environment:
+      LOG_LEVEL: WARNING
+    # No --reload, 2 workers for production
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 2
+
+  nginx:
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
