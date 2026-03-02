@@ -42,6 +42,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 BACKEND_DIR = PROJECT_ROOT / "backend"
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
+DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
 
 # Status symbols
 SYM_DONE = "\u2713"  # checkmark
@@ -361,14 +362,14 @@ def step_infra() -> str:
 
 def step_download_nmt(
     sheets: list[str],
-    output_dir: Path,
+    cache_dir: Path,
     resolution: str = "5m",
 ) -> tuple[list[Path], str]:
     """Step 2: Download NMT sheets via Kartograf."""
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.download_dem import download_sheets
 
-    nmt_dir = output_dir / "nmt"
+    nmt_dir = cache_dir / "nmt"
     nmt_dir.mkdir(parents=True, exist_ok=True)
 
     downloaded = download_sheets(sheets, nmt_dir, skip_existing=True, resolution=resolution)
@@ -383,10 +384,11 @@ def step_download_nmt(
 def step_process_dem(
     downloaded_files: list[Path],
     output_dir: Path,
+    cache_dir: Path,
     sheets: list[str],
     waterbody_mode: str = "auto",
     waterbody_min_area_m2: float | None = None,
-) -> tuple[dict, str]:
+) -> tuple[dict, str, list[str], dict[str, Path]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis."""
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.download_landcover import (
@@ -397,13 +399,15 @@ def step_process_dem(
     from scripts.process_dem import process_dem
     from utils.raster_utils import create_vrt_mosaic, discover_asc_files, normalize_crs
 
+    cache_nmt_dir = cache_dir / "nmt"
     nmt_dir = output_dir / "nmt"
+    nmt_dir.mkdir(parents=True, exist_ok=True)
 
     # Compute bbox once — reused for ASC discovery and hydro/landcover
     bbox_2180 = sheets_to_bbox_2180(sheets)
 
-    # Discover ALL ASC files in nmt_dir (new downloads + cached from previous runs)
-    all_asc = discover_asc_files(nmt_dir, bbox_2180)
+    # Discover ALL ASC files in cache nmt dir (new downloads + cached from previous runs)
+    all_asc = discover_asc_files(cache_nmt_dir, bbox_2180)
 
     # Reproject PUWG 2000 files to EPSG:2180 before mosaicking
     normalized_files = normalize_crs(all_asc, nmt_dir / "reprojected")
@@ -416,27 +420,32 @@ def step_process_dem(
 
     # Download & merge hydro BDOT10k for stream burning
     burn_path = None
+    teryts: list[str] = []
+    bdot_paths: dict[str, Path] = {}
     try:
         teryts = discover_teryts_for_bbox(bbox_2180)
 
         if teryts:
-            hydro_dir = output_dir / "hydro"
-            hydro_dir.mkdir(parents=True, exist_ok=True)
+            bdot_cache_dir = cache_dir / "bdot10k"
+            bdot_cache_dir.mkdir(parents=True, exist_ok=True)
+            hydro_out_dir = output_dir / "hydro"
+            hydro_out_dir.mkdir(parents=True, exist_ok=True)
 
             hydro_paths: list[Path] = []
             for teryt in teryts:
                 gpkg = download_landcover(
-                    output_dir=hydro_dir,
+                    output_dir=bdot_cache_dir,
                     provider="bdot10k",
                     teryt=teryt,
                     skip_existing=True,
                 )
                 if gpkg:
+                    bdot_paths[teryt] = gpkg
                     hydro_paths.append(gpkg)
 
             if hydro_paths:
                 burn_path = merge_hydro_gpkgs(
-                    hydro_paths, hydro_dir / "hydro_merged.gpkg"
+                    hydro_paths, hydro_out_dir / "hydro_merged.gpkg"
                 )
     except Exception as e:
         logger.warning(f"Hydro download/merge failed, proceeding without burning: {e}")
@@ -470,20 +479,30 @@ def step_process_dem(
     burn_info = f", burn={burn_path.name}" if burn_path else ""
     detail = f"{cells:,} cells, {streams} segments{burn_info}"
 
-    return stats, detail
+    return stats, detail, teryts, bdot_paths
 
 
-def step_landcover(sheets: list[str], output_dir: Path) -> str:
+def step_landcover(
+    sheets: list[str],
+    output_dir: Path,
+    cache_dir: Path,
+    teryts: list[str] | None = None,
+    bdot_paths: dict[str, Path] | None = None,
+) -> str:
     """Step 4: Download and import land cover data (per-TERYT)."""
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.download_landcover import discover_teryts_for_bbox, download_landcover
     from scripts.import_landcover import import_landcover
 
-    lc_dir = output_dir / "landcover"
-    lc_dir.mkdir(parents=True, exist_ok=True)
+    bdot_cache_dir = cache_dir / "bdot10k"
+    bdot_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    bbox_2180 = sheets_to_bbox_2180(sheets)
-    teryts = discover_teryts_for_bbox(bbox_2180)
+    if teryts is None:
+        bbox_2180 = sheets_to_bbox_2180(sheets)
+        teryts = discover_teryts_for_bbox(bbox_2180)
+
+    if bdot_paths is None:
+        bdot_paths = {}
 
     if not teryts:
         logger.warning("Nie znaleziono TERYT-ów dla podanego obszaru")
@@ -492,12 +511,15 @@ def step_landcover(sheets: list[str], output_dir: Path) -> str:
     total_features = 0
     for teryt in teryts:
         try:
-            gpkg = download_landcover(
-                output_dir=lc_dir,
-                provider="bdot10k",
-                teryt=teryt,
-                skip_existing=True,
-            )
+            # Reuse cached GPKG if available, otherwise download to cache
+            gpkg = bdot_paths.get(teryt)
+            if gpkg is None or not gpkg.exists():
+                gpkg = download_landcover(
+                    output_dir=bdot_cache_dir,
+                    provider="bdot10k",
+                    teryt=teryt,
+                    skip_existing=True,
+                )
             if gpkg and gpkg.exists():
                 lc_stats = import_landcover(
                     input_path=gpkg,
@@ -510,7 +532,7 @@ def step_landcover(sheets: list[str], output_dir: Path) -> str:
     return f"{total_features} obiektów, {len(teryts)} powiatów"
 
 
-def step_soil_hsg(sheets: list[str], output_dir: Path) -> str:
+def step_soil_hsg(sheets: list[str], output_dir: Path, cache_dir: Path) -> str:
     """Step 5: Download HSG data from SoilGrids and import to DB."""
     try:
         from kartograf import HSGCalculator
@@ -524,7 +546,7 @@ def step_soil_hsg(sheets: list[str], output_dir: Path) -> str:
     sys.path.insert(0, str(BACKEND_DIR))
     from core.database import get_engine
 
-    hsg_dir = output_dir / "soil_hsg"
+    hsg_dir = cache_dir / "soil_hsg"
     hsg_dir.mkdir(parents=True, exist_ok=True)
 
     from kartograf import BBox
@@ -883,6 +905,7 @@ def run_pipeline(
     sheets: list[str],
     bbox: tuple[float, float, float, float],
     output_dir: Path,
+    cache_dir: Path,
     port: int,
     skips: set[int],
     waterbody_mode: str = "auto",
@@ -891,6 +914,10 @@ def run_pipeline(
     """Run the full 10-step bootstrap pipeline."""
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
+    teryts: list[str] = []
+    bdot_paths: dict[str, Path] = {}
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Step 1: Infrastructure (CRITICAL)
     if not tracker.is_skipped(1):
@@ -907,7 +934,7 @@ def run_pipeline(
     if not tracker.is_skipped(2):
         t0 = tracker.start(2)
         try:
-            downloaded_files, detail = step_download_nmt(sheets, output_dir)
+            downloaded_files, detail = step_download_nmt(sheets, cache_dir)
             tracker.done(2, t0, detail)
         except Exception as e:
             tracker.fail(2, t0, str(e))
@@ -915,7 +942,7 @@ def run_pipeline(
             return tracker
     else:
         # Try to find existing files for later steps
-        nmt_dir = output_dir / "nmt"
+        nmt_dir = cache_dir / "nmt"
         if nmt_dir.exists():
             downloaded_files = sorted(nmt_dir.glob("*.asc"))
 
@@ -927,8 +954,8 @@ def run_pipeline(
     if not tracker.is_skipped(3):
         t0 = tracker.start(3)
         try:
-            _, detail = step_process_dem(
-                downloaded_files, output_dir, sheets,
+            _, detail, teryts, bdot_paths = step_process_dem(
+                downloaded_files, output_dir, cache_dir, sheets,
                 waterbody_mode=waterbody_mode,
                 waterbody_min_area_m2=waterbody_min_area_m2,
             )
@@ -942,7 +969,10 @@ def run_pipeline(
     if not tracker.is_skipped(4):
         t0 = tracker.start(4)
         try:
-            detail = step_landcover(sheets, output_dir)
+            detail = step_landcover(
+                sheets, output_dir, cache_dir,
+                teryts=teryts, bdot_paths=bdot_paths,
+            )
             tracker.done(4, t0, detail)
         except Exception as e:
             tracker.fail(4, t0, str(e))
@@ -952,7 +982,7 @@ def run_pipeline(
     if not tracker.is_skipped(5):
         t0 = tracker.start(5)
         try:
-            detail = step_soil_hsg(sheets, output_dir)
+            detail = step_soil_hsg(sheets, output_dir, cache_dir)
             tracker.done(5, t0, detail)
         except Exception as e:
             tracker.fail(5, t0, str(e))
@@ -1015,17 +1045,20 @@ def dry_run(
     sheets: list[str],
     bbox: tuple[float, float, float, float],
     output_dir: Path,
+    cache_dir: Path,
     port: int,
     skips: set[int],
 ):
     """Show what would be done without executing."""
     min_lon, min_lat, max_lon, max_lat = bbox
     print("\nDRY RUN — plan wykonania:\n")
+    print(f"  Output dir: {output_dir}")
+    print(f"  Cache dir:  {cache_dir}\n")
 
     tippecanoe_status = "(dostepne)" if shutil.which("tippecanoe") else "(NIEDOSTEPNE)"
     steps = [
         "Infrastruktura: .venv, docker compose up -d db, alembic upgrade head",
-        f"Pobieranie NMT: {len(sheets)} arkuszy do {output_dir / 'nmt'}",
+        f"Pobieranie NMT: {len(sheets)} arkuszy do {cache_dir / 'nmt'}",
         "Przetwarzanie NMT: mozaika VRT, "
         "stream_network, stream_catchments (ZAWSZE od zera)",
         f"Pokrycie terenu: BDOT10k per-TERYT (auto-discovery z {len(sheets)} arkuszy)",
@@ -1081,6 +1114,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help=f"Katalog wyjsciowy (default: {DEFAULT_DATA_DIR})",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=None,
+        help=f"Directory for cached raw downloads (default: {DEFAULT_CACHE_DIR})",
     )
     parser.add_argument(
         "--port",
@@ -1175,12 +1214,19 @@ def main():
     sys.path.insert(0, str(BACKEND_DIR))
     from core.config import load_config
 
-    config = load_config(args.config)  # noqa: F841 — used in future refactoring
+    config = load_config(args.config)
     logger.info(f"Konfiguracja zaladowana z: {args.config}")
 
     # Resolve output directory
     output_dir = Path(args.output) if args.output else DEFAULT_DATA_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Resolve cache directory
+    cache_dir = args.cache_dir or Path(
+        config.get("paths", {}).get("cache_dir", str(DEFAULT_CACHE_DIR))
+    )
+    cache_dir = cache_dir.resolve()
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Parse bbox or resolve sheets
     bbox_parsed = parse_bbox(args.bbox) if args.bbox else None
@@ -1213,13 +1259,13 @@ def main():
     print_header(bbox, sheets, args.port)
 
     if args.dry_run:
-        dry_run(sheets, bbox, output_dir, args.port, skips)
+        dry_run(sheets, bbox, output_dir, cache_dir, args.port, skips)
         return
 
     # Run pipeline
     total_start = time.time()
     tracker = run_pipeline(
-        sheets, bbox, output_dir, args.port, skips,
+        sheets, bbox, output_dir, cache_dir, args.port, skips,
         waterbody_mode=args.waterbody_mode,
         waterbody_min_area_m2=args.waterbody_min_area,
     )
