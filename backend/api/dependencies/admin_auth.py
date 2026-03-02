@@ -27,9 +27,8 @@ def _get_or_generate_admin_key(configured_key: str) -> str:
     if _generated_key is None:
         _generated_key = str(uuid.uuid4())
         logger.warning(
-            "ADMIN_API_KEY not configured — generated random key: %s "
-            "(set ADMIN_API_KEY env var for persistent key)",
-            _generated_key,
+            "ADMIN_API_KEY not configured — generated random key "
+            "(set ADMIN_API_KEY or ADMIN_API_KEY_FILE env var for persistent key)"
         )
     return _generated_key
 
