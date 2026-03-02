@@ -55,6 +55,10 @@
 - Konfiguracja: `cache_dir` w config.py, config.yaml.example, .env.example
 - Panel admin: `cache_mb` w dashboard, cleanup target "cache"
 - ADR-037: Separacja cache/data + Kartograf v0.5.0
+- Fix: ekstrakcja kodu warstwy BDOT10k z prefixu `OT_` przed filtrem hydro (bug: stream burning pomijany)
+- Fix: rozwiązywanie względnej ścieżki `cache_dir` względem PROJECT_ROOT zamiast CWD
+- Test e2e: pełny pipeline dla 1 arkusza 1:25k (N-33-131-C-c-2), 10912 segmentów, stream burning OK
+- Instalacja tippecanoe + generacja kafelków MVT (3 progi × 2 warstwy = 16321 tiles)
 
 ### W trakcie
 - Brak
@@ -62,6 +66,7 @@
 ### Następne kroki
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
 - Code review CR4-CR11
+- Podwójna analiza NMT (z/bez obszarów bezodpływowych)
 
 ### Poprzednia sesja (2026-03-02, sesja 52 — hardening kontenerow Docker)
 
