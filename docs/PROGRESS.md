@@ -64,6 +64,17 @@ Hardening konteneryzacji Docker (ADR-036). Wszystkie zmiany czysto infrastruktur
 - **warn_if_default_credentials()** — sprawdza pusty password zamiast hardcoded "hydro_password"
 - **ADR-036**, aktualizacja CHANGELOG.md
 
+**Code review (3 rownolegle subagenty reviewer):**
+- C1: tmpfs `/var/log/nginx` dla read-only rootfs
+- C2: `POSTGRES_PASSWORD_FILE` w db service (Docker secrets)
+- C3: `NGINX_ENVSUBST_FILTER=SERVER_NAME` w TLS template
+- I1: `read_only: false` w override.yml (dev __pycache__)
+- I2+I3: porty DB/API przeniesione do override.yml (dev-only)
+- I4: `getMessage()` w tescie leak (robust %s detection)
+- I5: resztkowe `hydro_password` w migrations/env.py, import_landcover.py, config.yaml.example
+- I6: usuniecie nieuzywanych importow w tescie
+- S1-S6: http2, security headers w static location, komentarze, cleanup
+
 ### Nastepne kroki
 1. CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 2. System uzytkownikow (auth/JWT) — kolejny etap po hardeningu
