@@ -117,7 +117,7 @@ def get_database_url() -> str:
         pass
 
     # Default for local development
-    return "postgresql://hydro_user:hydro_password@localhost:5432/hydro_db"
+    return "postgresql://hydro_user:@localhost:5432/hydro_db"
 
 
 def read_gpkg_layers(gpkg_path: Path) -> dict[str, "geopandas.GeoDataFrame"]:
