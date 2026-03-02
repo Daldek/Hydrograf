@@ -398,3 +398,67 @@ class TestTraceMainChannel:
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.trace_main_channel(0, np.array([0]))
+
+
+class TestGetCatchmentGraphThreadSafety:
+    """Tests for get_catchment_graph() singleton thread safety (CR7)."""
+
+    def test_returns_same_instance(self):
+        """Concurrent calls return the same CatchmentGraph instance."""
+        import threading
+        import core.catchment_graph as cg_module
+
+        cg_module._catchment_graph = None
+        instances = []
+
+        def get_instance():
+            instances.append(cg_module.get_catchment_graph())
+
+        threads = [threading.Thread(target=get_instance) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(instances) == 10
+        assert all(inst is instances[0] for inst in instances)
+        cg_module._catchment_graph = None
+
+    def test_lock_exists(self):
+        """Module-level lock exists for singleton protection."""
+        import threading
+        from core.catchment_graph import _catchment_graph_lock
+        assert isinstance(_catchment_graph_lock, threading.Lock)
+
+
+class TestTraverseToConfluenceDeque:
+    """Verify traverse_to_confluence uses collections.deque (CR4)."""
+
+    def test_uses_deque_not_list(self):
+        """Implementation must use deque for O(1) popleft."""
+        import inspect
+        from core.catchment_graph import CatchmentGraph
+        source = inspect.getsource(CatchmentGraph.traverse_to_confluence)
+        assert "deque" in source, "traverse_to_confluence should use collections.deque"
+        assert ".pop(0)" not in source, "traverse_to_confluence should not use list.pop(0)"
+
+
+class TestGetSegmentIdx:
+    """Tests for public get_segment_idx() accessor (CR6)."""
+
+    def test_returns_correct_segment_idx(self, small_graph):
+        assert small_graph.get_segment_idx(0) == 1
+        assert small_graph.get_segment_idx(1) == 2
+        assert small_graph.get_segment_idx(2) == 3
+        assert small_graph.get_segment_idx(3) == 4
+
+    def test_returns_int(self, small_graph):
+        result = small_graph.get_segment_idx(0)
+        assert isinstance(result, int)
+
+    def test_raises_when_not_loaded(self):
+        from core.catchment_graph import CatchmentGraph
+        import pytest
+        cg = CatchmentGraph()
+        with pytest.raises(RuntimeError, match="not loaded"):
+            cg.get_segment_idx(0)

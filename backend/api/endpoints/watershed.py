@@ -126,7 +126,7 @@ def delineate_watershed(
             ) from e
 
         # 4. Get segment info for outlet
-        segment_idx = int(cg._segment_idx[clicked_idx])
+        segment_idx = cg.get_segment_idx(clicked_idx)
         segment = get_stream_info_by_segment_idx(segment_idx, DEFAULT_THRESHOLD_M2, db)
 
         # 5. Traverse upstream via catchment graph BFS
