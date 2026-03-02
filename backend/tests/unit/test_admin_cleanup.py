@@ -140,6 +140,44 @@ class TestCleanupExecute:
         mock_db.execute.assert_called()
         mock_db.commit.assert_called()
 
+    def test_cleanup_overlays_removes_geojson(self, app, tmp_path):
+        """Cleaning overlays removes *.geojson files too."""
+        mock_db = _make_mock_db()
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        overlay_dir = tmp_path / "data"
+        overlay_dir.mkdir()
+        (overlay_dir / "dem.png").write_bytes(b"png")
+        (overlay_dir / "dem.json").write_bytes(b"json")
+        (overlay_dir / "soil_hsg.geojson").write_bytes(b"geojson")
+        (overlay_dir / "bdot_lakes.geojson").write_bytes(b"geojson")
+        (overlay_dir / "keep_me.txt").write_bytes(b"txt")
+
+        with patch("api.endpoints.admin.CLEANUP_TARGETS") as mock_targets:
+            mock_targets.__contains__ = lambda s, k: k == "overlays"
+            mock_targets.__getitem__ = lambda s, k: {
+                "label": "Overlay PNG + JSON + GeoJSON",
+                "path": overlay_dir,
+                "type": "glob",
+                "patterns": ["*.png", "*.json", "*.geojson"],
+            }
+
+            client = TestClient(app)
+            response = client.post(
+                "/api/admin/cleanup",
+                json={"targets": ["overlays"]},
+            )
+            assert response.status_code == 200
+            assert response.json()["results"][0]["status"] == "ok"
+
+        # GeoJSON + PNG + JSON removed, .txt preserved
+        remaining = [f.name for f in overlay_dir.iterdir()]
+        assert "keep_me.txt" in remaining
+        assert "soil_hsg.geojson" not in remaining
+        assert "bdot_lakes.geojson" not in remaining
+        assert "dem.png" not in remaining
+        assert "dem.json" not in remaining
+
     def test_cleanup_multiple_targets(self, app):
         """Multiple targets can be cleaned at once."""
         mock_db = _make_mock_db()
