@@ -103,6 +103,8 @@
         var w = document.getElementById('bbox-west');
         var errEl = document.getElementById('bbox-validation-error');
 
+        if (!n || !s || !e || !w) return null;
+
         var north = parseFloat(n.value);
         var south = parseFloat(s.value);
         var east = parseFloat(e.value);
