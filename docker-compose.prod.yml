@@ -5,6 +5,10 @@ services:
   api:
     environment:
       LOG_LEVEL: WARNING
+      ADMIN_API_KEY_FILE: /run/secrets/admin_api_key
+    secrets:
+      - db_password
+      - admin_api_key
     # 2 workers for production (no --reload)
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 2
 
@@ -14,3 +18,21 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # To enable TLS, uncomment and provide certificates:
+  # nginx:
+  #   ports:
+  #     - "443:443"
+  #     - "80:80"
+  #   volumes:
+  #     - ./frontend:/usr/share/nginx/html:ro
+  #     - ./docker/nginx-ssl.conf.template:/etc/nginx/templates/default.conf.template:ro
+  #     - ./docker/certs:/etc/nginx/certs:ro
+  #   environment:
+  #     - SERVER_NAME=${SERVER_NAME:-localhost}
+
+secrets:
+  db_password:
+    file: ${SECRETS_DIR:-./secrets}/db_password.txt
+  admin_api_key:
+    file: ${SECRETS_DIR:-./secrets}/admin_api_key.txt
