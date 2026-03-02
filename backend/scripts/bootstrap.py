@@ -428,7 +428,6 @@ def step_process_dem(
                 gpkg = download_landcover(
                     output_dir=hydro_dir,
                     provider="bdot10k",
-                    category="hydro",
                     teryt=teryt,
                     skip_existing=True,
                 )
