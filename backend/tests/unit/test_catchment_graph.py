@@ -398,3 +398,34 @@ class TestTraceMainChannel:
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.trace_main_channel(0, np.array([0]))
+
+
+class TestGetCatchmentGraphThreadSafety:
+    """Tests for get_catchment_graph() singleton thread safety (CR7)."""
+
+    def test_returns_same_instance(self):
+        """Concurrent calls return the same CatchmentGraph instance."""
+        import threading
+        import core.catchment_graph as cg_module
+
+        cg_module._catchment_graph = None
+        instances = []
+
+        def get_instance():
+            instances.append(cg_module.get_catchment_graph())
+
+        threads = [threading.Thread(target=get_instance) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(instances) == 10
+        assert all(inst is instances[0] for inst in instances)
+        cg_module._catchment_graph = None
+
+    def test_lock_exists(self):
+        """Module-level lock exists for singleton protection."""
+        import threading
+        from core.catchment_graph import _catchment_graph_lock
+        assert isinstance(_catchment_graph_lock, threading.Lock)

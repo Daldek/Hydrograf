@@ -9,6 +9,7 @@ Memory usage: ~0.5 MB RAM.
 """
 
 import logging
+import threading
 import time
 
 import numpy as np
@@ -707,11 +708,14 @@ class CatchmentGraph:
 
 # Global singleton
 _catchment_graph: CatchmentGraph | None = None
+_catchment_graph_lock = threading.Lock()
 
 
 def get_catchment_graph() -> CatchmentGraph:
-    """Get or create the global CatchmentGraph instance."""
+    """Get or create the global CatchmentGraph instance (thread-safe)."""
     global _catchment_graph
     if _catchment_graph is None:
-        _catchment_graph = CatchmentGraph()
+        with _catchment_graph_lock:
+            if _catchment_graph is None:
+                _catchment_graph = CatchmentGraph()
     return _catchment_graph
