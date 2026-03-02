@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eo pipefail
 
-# ---- Ensure data directories exist ----
+# ---- Ensure writable temp directory (for transient data processing) ----
 mkdir -p /tmp/hydrograf
 
 # ---- Wait for database ----
