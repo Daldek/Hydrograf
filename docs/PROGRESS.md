@@ -10,7 +10,7 @@
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k |
 | Integracja Hydrolog | ✅ Gotowy | v0.5.2 |
-| Integracja Kartograf | ✅ Gotowy | v0.4.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
+| Integracja Kartograf | ✅ Gotowy | v0.5.0 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 12 modulow JS (9 core + 3 admin). CP4 — select-stream, MVT, DEM tiles, admin panel |
@@ -45,41 +45,27 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-02 (sesja 52 — hardening kontenerow Docker)
+**Data:** 2026-03-02 (sesja 53 — separacja cache/data + Kartograf v0.5.0)
 
 ### Co zrobiono
+- Upgrade Kartograf z v0.4.1 na v0.5.0 (usunięcie parametru `category`, filtrowanie warstw hydro w merge)
+- Separacja cache/data w bootstrap.py (surowe dane → `/cache/`, przetworzone → `/data/`)
+- Deduplikacja pobierania BDOT10k (1x zamiast 2x)
+- Docker: volume mount `/cache` (ro prod, rw dev)
+- Konfiguracja: `cache_dir` w config.py, config.yaml.example, .env.example
+- Panel admin: `cache_mb` w dashboard, cleanup target "cache"
+- ADR-037: Separacja cache/data + Kartograf v0.5.0
+
+### W trakcie
+- Brak
+
+### Następne kroki
+- CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
+- Code review CR4-CR11
+
+### Poprzednia sesja (2026-03-02, sesja 52 — hardening kontenerow Docker)
 
 Hardening konteneryzacji Docker (ADR-036). Wszystkie zmiany czysto infrastrukturalne — bez zmian logiki biznesowej. 633 testow przechodzi.
-
-- **Non-root user w Dockerfile** — kontener API jako `hydro` (UID systemowy), `chown -R hydro:hydro /app`
-- **Security context** — `no-new-privileges:true`, `cap_drop: ALL`, `read_only: true` + tmpfs na db/api/nginx
-- **Nginx na localhost** — `127.0.0.1:${HYDROGRAF_PORT:-8080}:80`
-- **Usuniecie hardcoded credentials** — `${POSTGRES_PASSWORD:?error}` w Compose, pusty default w config.py
-- **Docker secrets** — `docker-compose.prod.yml` z sekcja secrets (db_password, admin_api_key)
-- **Admin key redaction** — klucz nie logowany w pelnej formie (TDD, 3 nowe testy)
-- **Rate limiting admin** — `admin_limit` (5r/s) na `/api/admin/` w nginx.conf
-- **`.env.example` rozbudowany** — pelna dokumentacja wszystkich zmiennych srodowiskowych
-- **Opcjonalny TLS** — `docker/nginx-ssl.conf.template` (HTTP→HTTPS redirect, TLS 1.2+, komentowany blok w prod compose)
-- **Entrypoint** — `pipefail`, mkdir /tmp/hydrograf
-- **warn_if_default_credentials()** — sprawdza pusty password zamiast hardcoded "hydro_password"
-- **ADR-036**, aktualizacja CHANGELOG.md
-
-**Code review (3 rownolegle subagenty reviewer):**
-- C1: tmpfs `/var/log/nginx` dla read-only rootfs
-- C2: `POSTGRES_PASSWORD_FILE` w db service (Docker secrets)
-- C3: `NGINX_ENVSUBST_FILTER=SERVER_NAME` w TLS template
-- I1: `read_only: false` w override.yml (dev __pycache__)
-- I2+I3: porty DB/API przeniesione do override.yml (dev-only)
-- I4: `getMessage()` w tescie leak (robust %s detection)
-- I5: resztkowe `hydro_password` w migrations/env.py, import_landcover.py, config.yaml.example
-- I6: usuniecie nieuzywanych importow w tescie
-- S1-S6: http2, security headers w static location, komentarze, cleanup
-
-### Nastepne kroki
-1. CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
-2. System uzytkownikow (auth/JWT) — kolejny etap po hardeningu
-3. Code review CR4-CR11
-4. Podwojna analiza NMT (z/bez obszarow bezodplywowych)
 
 ### Poprzednia sesja (2026-03-02, sesja 51 — uzupelnienie konteneryzacji)
 

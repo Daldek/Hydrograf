@@ -801,6 +801,25 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-037: Separacja cache/data + Kartograf v0.5.0
+
+**Data:** 2026-03-02
+**Status:** Accepted
+**Kontekst:** Katalog `/data/` mieszał surowe pobrania (NMT tiles, BDOT10k GPKG, HSG raster) z przetworzonymi danymi. Surowe dane GUGiK (45 min pobierania) ginęły przy czyszczeniu pipeline'u. Kartograf v0.5.0 usunął filtrowanie kategorii BDOT10k — teraz pobiera wszystkie 15 warstw w jednym GPKG.
+**Decyzja:**
+- Wydzielenie `/cache/` (surowe dane, kosztowne do pobrania) od `/data/` (przetworzone, tanie do regeneracji)
+- Upgrade Kartograf z v0.4.1 na v0.5.0
+- Deduplikacja pobierania BDOT10k: jeden download w step_process_dem, reuse w step_landcover
+- Filtrowanie warstw hydro (SWRS, SWKN, SWRM, PTWP) w merge_hydro_gpkgs() zamiast parametru category
+- Cache mount read-only w Docker produkcyjnym, writable w dev
+- Cleanup target "cache" wymaga explicit opt-in (nie jest w "clean all")
+**Konsekwencje:**
+- Pipeline nie kasuje cache przy restarcie — oszczędność ~45 min pobierania NMT
+- Możliwość współdzielenia cache między instancjami (Docker volume)
+- Istniejące dane w data/nmt/*.asc wymagają ręcznej migracji do cache/nmt/
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
