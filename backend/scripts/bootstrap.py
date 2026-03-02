@@ -1225,6 +1225,8 @@ def main():
     cache_dir = args.cache_dir or Path(
         config.get("paths", {}).get("cache_dir", str(DEFAULT_CACHE_DIR))
     )
+    if not cache_dir.is_absolute():
+        cache_dir = PROJECT_ROOT / cache_dir
     cache_dir = cache_dir.resolve()
     cache_dir.mkdir(parents=True, exist_ok=True)
 
