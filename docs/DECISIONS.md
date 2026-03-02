@@ -820,6 +820,30 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+### ADR-038: HSG Poland-wide cache + cleanup extension (2026-03-02)
+
+**Status:** Accepted
+
+**Context:**
+1. Admin cleanup nie usuwał plików `.geojson` z `frontend/data/` (brak wzorca)
+2. Przetworzone pliki `.tif` w `data/nmt/` i `data/hydro/` nie miały targetu cleanup
+3. `cache/soil_hsg/hsg.tif` nadpisywany przy każdym uruchomieniu — brak reuse
+
+**Decision:**
+1. Dodano `*.geojson` do wzorców targetu `overlays`
+2. Nowy target `processed_data` (typ `multi_dir`) dla `data/nmt/` i `data/hydro/`
+3. HSG: jednorazowe pobranie dla całej Polski (`hsg_poland.tif`, ~2-5 MB)
+   - Cache w oryginalnym CRS (EPSG:4326) — brak strat z reproj
+   - Processing: clip+warp do EPSG:2180 dopiero przy użyciu (jeden resampling)
+   - DB import: `DELETE WHERE ST_Intersects(bbox)` zamiast `DELETE ALL`
+
+**Consequences:**
+- HSG download jednorazowy (~30 MB transfer z SoilGrids), potem zawsze z cache
+- Dane HSG z różnych uruchomień koegzystują w DB (bbox-scoped delete)
+- Cleanup kompletny: GeoJSON, TIF, hydro GPKG objęte czyszczeniem
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
