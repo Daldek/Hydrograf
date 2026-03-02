@@ -36,6 +36,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user for running the application
+RUN groupadd -r hydro && useradd -r -g hydro -d /app -s /sbin/nologin hydro
+
 # Copy pre-built virtualenv from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -43,8 +46,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy application code
 COPY . .
 
-# Ensure entrypoint is executable
-RUN chmod +x /app/entrypoint.sh
+# Ensure entrypoint is executable and set ownership
+RUN chmod +x /app/entrypoint.sh && chown -R hydro:hydro /app
+
+USER hydro
 
 EXPOSE 8000
 
