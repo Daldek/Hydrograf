@@ -213,3 +213,54 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ----------------------------------------------------------------
+   Bbox compass layout
+   ---------------------------------------------------------------- */
+.bbox-compass {
+    max-width: 320px;
+}
+
+.bbox-compass-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.bbox-compass-center {
+    justify-content: center;
+}
+
+.bbox-compass-middle {
+    justify-content: space-between;
+}
+
+.bbox-field {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.bbox-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    min-width: 1rem;
+    text-align: center;
+}
+
+.bbox-field .form-control {
+    width: 120px;
+}
+
+/* ----------------------------------------------------------------
+   Bbox map picker modal
+   ---------------------------------------------------------------- */
+#bbox-picker-map {
+    width: 100%;
+    cursor: crosshair;
+}
+
+#bbox-picker-map .leaflet-interactive {
+    cursor: crosshair;
+}
