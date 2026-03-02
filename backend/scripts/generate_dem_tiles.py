@@ -21,6 +21,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
@@ -216,6 +217,7 @@ def generate_tiles(
         "elevation_max_m": round(elev_max, 1),
         "tile_count": tile_count,
         "total_size_mb": round(total_size / 1024 / 1024, 1),
+        "generated_at": int(time.time()),
     }
 
     Path(output_meta).parent.mkdir(parents=True, exist_ok=True)
