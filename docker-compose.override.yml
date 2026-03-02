@@ -6,6 +6,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"  # Direct DB access for local .venv development
   api:
+    read_only: false  # Dev needs write access for __pycache__, .pyc files
     ports:
       - "127.0.0.1:8000:8000"  # Direct API access for development
     volumes:
