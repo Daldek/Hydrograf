@@ -77,6 +77,8 @@ Thumbs.db
 *.cpg
 *.geojson
 data/
+cache/
+!cache/.gitkeep
 frontend/data/
 frontend/tiles/
 !data/.gitkeep
