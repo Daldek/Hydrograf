@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Virtual environment
+.venv/
+
+# Environment files (secrets)
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# Tests (not needed in production image)
+tests/
+
+# Dev tools cache
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Documentation (not needed in image)
+*.md
+
+# Dev config (runtime deps are in requirements.txt)
+pyproject.toml
