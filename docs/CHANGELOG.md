@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Cache/data directory separation (`/cache/` for raw downloads, `/data/` for processed) (ADR-037)
+- `feat(core):` HSG Poland-wide cache (`hsg_poland.tif`) — jednorazowe pobranie, skip-existing, bbox-scoped DB import (ADR-038)
+- `feat(api):` nowy target cleanup `processed_data` (data/nmt/, data/hydro/) (ADR-038)
 - `--cache-dir` CLI argument in bootstrap pipeline
 - `cache_mb` metric in admin dashboard
 - Cache cleanup target in admin panel (explicit opt-in, not in "clean all")
@@ -32,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Opcjonalny TLS/HTTPS:** `docker/nginx-ssl.conf.template` z HTTP→HTTPS redirect, TLS 1.2+
 - **`.env.example` rozbudowany:** pelna dokumentacja zmiennych srodowiskowych
 - **Entrypoint ulepszony:** `pipefail`, tworzenie katalogów tymczasowych
+
+### Fixed
+- `fix(api):` dodano `*.geojson` do czyszczenia overlays (ADR-038)
 
 ### Fixed (sesja 49 — 6 krytycznych bugow)
 - **CR7 — Race condition w singletonie CatchmentGraph:** `get_catchment_graph()` bez thread safety — dodano `threading.Lock` z double-check locking. Zapobiega tworzeniu duplikatow grafu przy jednoczesnych zadaniach startowych FastAPI.
