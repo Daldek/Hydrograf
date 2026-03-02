@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-03-02
 
+### Added
+- Cache/data directory separation (`/cache/` for raw downloads, `/data/` for processed) (ADR-037)
+- `--cache-dir` CLI argument in bootstrap pipeline
+- `cache_mb` metric in admin dashboard
+- Cache cleanup target in admin panel (explicit opt-in, not in "clean all")
+- `HYDRO_LAYER_PREFIXES` constant for filtering hydro layers at merge time
+
+### Changed
+- Upgraded Kartograf from v0.4.1 to v0.5.0
+- Removed `category` parameter from `download_landcover()` (v0.5.0 downloads all layers)
+- BDOT10k downloaded once in step_process_dem and reused in step_landcover (deduplication)
+- HSG raster downloaded to `/cache/soil_hsg/` instead of `/data/soil_hsg/`
+- Docker: added `/cache` volume mount (read-only in prod, writable in dev)
+
 ### Security (sesja 52 — hardening kontenerow, ADR-036)
 - **Non-root user w Dockerfile:** kontener API dziala jako `hydro` (UID systemowy), nie root
 - **Security context:** `no-new-privileges`, `cap_drop: ALL`, `read_only` rootfs na wszystkich serwisach
