@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-03-02
 
+### Security (sesja 52 — hardening kontenerow, ADR-036)
+- **Non-root user w Dockerfile:** kontener API dziala jako `hydro` (UID systemowy), nie root
+- **Security context:** `no-new-privileges`, `cap_drop: ALL`, `read_only` rootfs na wszystkich serwisach
+- **Usuniecie hardcoded credentials:** `${POSTGRES_PASSWORD:?error}` zamiast domyslnego hasla; config.py z pustym default
+- **Docker secrets:** `docker-compose.prod.yml` z obsluga plikowych sekretow (`/run/secrets/`)
+- **Nginx na localhost:** bind `127.0.0.1:8080` zamiast `0.0.0.0`
+- **Rate limiting admin:** osobna strefa `admin_limit` (5r/s) na `/api/admin/` endpoints
+- **Admin key redaction:** wygenerowany klucz API nie logowany w pelnej formie
+- **Opcjonalny TLS/HTTPS:** `docker/nginx-ssl.conf.template` z HTTP→HTTPS redirect, TLS 1.2+
+- **`.env.example` rozbudowany:** pelna dokumentacja zmiennych srodowiskowych
+- **Entrypoint ulepszony:** `pipefail`, tworzenie katalogów tymczasowych
+
 ### Fixed (sesja 49 — 6 krytycznych bugow)
 - **CR7 — Race condition w singletonie CatchmentGraph:** `get_catchment_graph()` bez thread safety — dodano `threading.Lock` z double-check locking. Zapobiega tworzeniu duplikatow grafu przy jednoczesnych zadaniach startowych FastAPI.
 - **CR4 — O(n²) BFS w `traverse_to_confluence()`:** `list.pop(0)` zamieniony na `collections.deque.popleft()` — O(1) zamiast O(n) per dequeue. Przy ~44k wezlow eliminuje worst-case kwadratowe spowolnienie.

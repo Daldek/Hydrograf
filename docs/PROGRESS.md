@@ -45,28 +45,34 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-02 (sesja 51 — uzupelnienie konteneryzacji)
+**Data:** 2026-03-02 (sesja 52 — hardening kontenerow Docker)
 
 ### Co zrobiono
 
-Analiza i uzupelnienie brakujacych elementow konteneryzacji. Pelny stack (dev + prod) uruchomiony i zweryfikowany.
+Hardening konteneryzacji Docker (ADR-036). Wszystkie zmiany czysto infrastrukturalne — bez zmian logiki biznesowej. 633 testow przechodzi.
 
-- **`.dockerignore`** — wykluczenie .venv, tests, __pycache__, .env z kontekstu budowania
-- **Multi-stage Dockerfile** (builder + runtime) — obraz bez gcc/git w produkcji
-- **`entrypoint.sh`** z wait-for-db (pg_isready loop) i automatycznymi migracjami Alembic
-- **Healthcheck API** w docker-compose.yml (urllib do /health, 30s interval, 30s start_period)
-- **`docker-compose.override.yml`** z bind mount kodu i --reload (dev, auto-ladowany)
-- **`docker-compose.prod.yml`** — override produkcyjny (2 workery uvicorn, LOG_LEVEL=WARNING)
-- **Poprawka bind mount:** Docker Compose v2 merguje volumes zamiast zastepowac — przeniesienie ./backend:/app do override.yml
-- **Poprawka pakietow runtime:** libgeos3.11.1 → libgeos-c1t64 + dodanie libexpat1 (rasterio)
-- **Usunieto przestarzaly atrybut `version`** z docker-compose.yml
-- **Testy integracyjne:** pelny stack (dev + prod) uruchomiony i zweryfikowany
-- **ADR-035**, aktualizacja ARCHITECTURE.md i CHANGELOG.md
+- **Non-root user w Dockerfile** — kontener API jako `hydro` (UID systemowy), `chown -R hydro:hydro /app`
+- **Security context** — `no-new-privileges:true`, `cap_drop: ALL`, `read_only: true` + tmpfs na db/api/nginx
+- **Nginx na localhost** — `127.0.0.1:${HYDROGRAF_PORT:-8080}:80`
+- **Usuniecie hardcoded credentials** — `${POSTGRES_PASSWORD:?error}` w Compose, pusty default w config.py
+- **Docker secrets** — `docker-compose.prod.yml` z sekcja secrets (db_password, admin_api_key)
+- **Admin key redaction** — klucz nie logowany w pelnej formie (TDD, 3 nowe testy)
+- **Rate limiting admin** — `admin_limit` (5r/s) na `/api/admin/` w nginx.conf
+- **`.env.example` rozbudowany** — pelna dokumentacja wszystkich zmiennych srodowiskowych
+- **Opcjonalny TLS** — `docker/nginx-ssl.conf.template` (HTTP→HTTPS redirect, TLS 1.2+, komentowany blok w prod compose)
+- **Entrypoint** — `pipefail`, mkdir /tmp/hydrograf
+- **warn_if_default_credentials()** — sprawdza pusty password zamiast hardcoded "hydro_password"
+- **ADR-036**, aktualizacja CHANGELOG.md
 
 ### Nastepne kroki
 1. CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
-2. Code review CR4-CR11
-3. Podwojna analiza NMT (z/bez obszarow bezodplywowych)
+2. System uzytkownikow (auth/JWT) — kolejny etap po hardeningu
+3. Code review CR4-CR11
+4. Podwojna analiza NMT (z/bez obszarow bezodplywowych)
+
+### Poprzednia sesja (2026-03-02, sesja 51 — uzupelnienie konteneryzacji)
+
+Analiza i uzupelnienie brakujacych elementow konteneryzacji. Multi-stage Dockerfile, entrypoint.sh, healthcheck, dev/prod overrides, ADR-035.
 
 ### Poprzednia sesja (2026-03-02, sesja 50)
 

@@ -783,6 +783,24 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-036: Hardening kontenerow Docker
+
+**Data:** 2026-03-02
+**Status:** Przyjeta
+
+**Kontekst:** Kontener API dzialal jako root, hasla hardcoded w docker-compose.yml i config.py, brak HTTPS/TLS, Nginx dostepny z sieci (0.0.0.0), brak rate limiting na admin endpoints, brak security context. Docelowy model: VPS + Docker Compose, 5-50 uzytkownikow w organizacji.
+
+**Opcje:**
+- A) Hardening kontenerow (non-root, secrets, TLS, security context) — czysto infrastrukturalne
+- B) Hardening + fundament auth (JWT, model User) — wiekszy zakres
+- C) Wymiana Nginx na Traefik z auto-TLS — duza zmiana architektury
+
+**Decyzja:** Opcja A. Non-root user `hydro` w Dockerfile. Security context (`no-new-privileges`, `cap_drop: ALL`, `read_only` rootfs) na wszystkich serwisach. Usuniecie hardcoded credentials (`${VAR:?error}` syntax). Docker secrets w docker-compose.prod.yml. Opcjonalny TLS (nginx-ssl.conf.template). Nginx na 127.0.0.1. Rate limiting 5r/s na admin endpoints. `.env.example` z pelna dokumentacja zmiennych.
+
+**Konsekwencje:** Kontenery nie dzialaja jako root. Compose failuje glosno przy brakujacych zmiennych. Dev workflow bez zmian (override.yml). TLS opcjonalny — operator zarzadza certyfikatami. System uzytkownikow (auth/JWT) jako osobny, kolejny etap.
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
