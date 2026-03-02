@@ -33,6 +33,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 FRONTEND_DATA = PROJECT_ROOT / "frontend" / "data"
 FRONTEND_TILES = PROJECT_ROOT / "frontend" / "tiles"
 DATA_NMT = PROJECT_ROOT / "data" / "nmt"
+CACHE_DIR = PROJECT_ROOT / "cache"
 
 # Module load time — for uptime calculation
 _start_time = time.time()
@@ -101,6 +102,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
     frontend_data_mb = _dir_size_mb(FRONTEND_DATA)
     frontend_tiles_mb = _dir_size_mb(FRONTEND_TILES)
     nmt_data_mb = _dir_size_mb(DATA_NMT)
+    cache_mb = _dir_size_mb(CACHE_DIR)
 
     status = "healthy" if db_status == "connected" else "unhealthy"
 
@@ -114,8 +116,10 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
             "frontend_data_mb": frontend_data_mb,
             "frontend_tiles_mb": frontend_tiles_mb,
             "nmt_data_mb": nmt_data_mb,
+            "cache_mb": cache_mb,
             "total_mb": round(
-                frontend_data_mb + frontend_tiles_mb + nmt_data_mb, 2
+                frontend_data_mb + frontend_tiles_mb + nmt_data_mb + cache_mb,
+                2,
             ),
         },
     )
@@ -231,7 +235,19 @@ CLEANUP_TARGETS: dict[str, dict] = {
         "label": "Database tables (TRUNCATE)",
         "type": "db",
     },
+    "cache": {
+        "label": "Download cache (NMT, BDOT10k, HSG)",
+        "path": CACHE_DIR,
+        "type": "cache",
+        "exclude_from_all": True,
+    },
 }
+
+# Targets included when the frontend sends "all" — cache requires explicit opt-in
+# because re-downloading is expensive.
+ALL_CLEANUP_TARGETS = [
+    k for k, v in CLEANUP_TARGETS.items() if not v.get("exclude_from_all")
+]
 
 
 def _estimate_target(target_key: str, db: Session | None = None) -> float:
@@ -239,7 +255,7 @@ def _estimate_target(target_key: str, db: Session | None = None) -> float:
     target = CLEANUP_TARGETS[target_key]
     ttype = target["type"]
 
-    if ttype == "dir":
+    if ttype in ("dir", "cache"):
         return _dir_size_mb(target["path"])
     elif ttype == "file":
         return _file_size_mb(target["path"])
@@ -328,6 +344,20 @@ def _execute_cleanup_target(
                 for pattern in target["patterns"]:
                     for f in base.glob(pattern):
                         f.unlink()
+            return {"key": target_key, "status": "ok"}
+
+        elif ttype == "cache":
+            path = target["path"]
+            if path.exists():
+                for subdir in path.iterdir():
+                    if subdir.is_dir():
+                        for child in subdir.iterdir():
+                            if child.is_dir():
+                                shutil.rmtree(child)
+                            else:
+                                child.unlink()
+                    elif subdir.is_file():
+                        subdir.unlink()
             return {"key": target_key, "status": "ok"}
 
         elif ttype == "db":
