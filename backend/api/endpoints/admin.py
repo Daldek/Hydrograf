@@ -216,10 +216,10 @@ CLEANUP_TARGETS: dict[str, dict] = {
         "type": "dir",
     },
     "overlays": {
-        "label": "Overlay PNG + JSON",
+        "label": "Overlay PNG + JSON + GeoJSON",
         "path": FRONTEND_DATA,
         "type": "glob",
-        "patterns": ["*.png", "*.json"],
+        "patterns": ["*.png", "*.json", "*.geojson"],
     },
     "dem_tiles": {
         "label": "DEM raster tiles",
