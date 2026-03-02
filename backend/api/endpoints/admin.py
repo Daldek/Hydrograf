@@ -33,6 +33,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 FRONTEND_DATA = PROJECT_ROOT / "frontend" / "data"
 FRONTEND_TILES = PROJECT_ROOT / "frontend" / "tiles"
 DATA_NMT = PROJECT_ROOT / "data" / "nmt"
+DATA_HYDRO = PROJECT_ROOT / "data" / "hydro"
 CACHE_DIR = PROJECT_ROOT / "cache"
 
 # Module load time — for uptime calculation
@@ -231,6 +232,11 @@ CLEANUP_TARGETS: dict[str, dict] = {
         "path": DATA_NMT / "dem_mosaic.vrt",
         "type": "file",
     },
+    "processed_data": {
+        "label": "Processed rasters + hydro",
+        "path": [DATA_NMT, DATA_HYDRO],
+        "type": "multi_dir",
+    },
     "db_tables": {
         "label": "Database tables (TRUNCATE)",
         "type": "db",
@@ -257,6 +263,8 @@ def _estimate_target(target_key: str, db: Session | None = None) -> float:
 
     if ttype in ("dir", "cache"):
         return _dir_size_mb(target["path"])
+    elif ttype == "multi_dir":
+        return round(sum(_dir_size_mb(p) for p in target["path"]), 2)
     elif ttype == "file":
         return _file_size_mb(target["path"])
     elif ttype == "glob":
@@ -330,6 +338,16 @@ def _execute_cleanup_target(
                         shutil.rmtree(child)
                     else:
                         child.unlink()
+            return {"key": target_key, "status": "ok"}
+
+        elif ttype == "multi_dir":
+            for path in target["path"]:
+                if path.exists():
+                    for child in path.iterdir():
+                        if child.is_dir():
+                            shutil.rmtree(child)
+                        else:
+                            child.unlink()
             return {"key": target_key, "status": "ok"}
 
         elif ttype == "file":
