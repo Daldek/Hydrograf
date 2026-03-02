@@ -1,8 +1,5 @@
 """Tests for hardened admin auth — key must be explicitly configured."""
 
-import pytest
-from unittest.mock import patch, MagicMock
-
 from api.dependencies.admin_auth import _get_or_generate_admin_key
 
 
@@ -28,5 +25,5 @@ def test_generated_key_not_logged_in_full(caplog):
         key = _get_or_generate_admin_key("")
     # Key should NOT appear in full in any log message
     for record in caplog.records:
-        assert key not in record.message, "Full admin key leaked in logs!"
+        assert key not in record.getMessage(), "Full admin key leaked in logs!"
     mod._generated_key = None
