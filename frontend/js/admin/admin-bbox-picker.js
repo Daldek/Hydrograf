@@ -64,6 +64,9 @@
     function onModalHidden() {
         _drawing = false;
         _startLatLng = null;
+        if (_map) {
+            _map.dragging.enable();
+        }
     }
 
     /**
@@ -83,6 +86,14 @@
         _map.on('mousedown', onMouseDown);
         _map.on('mousemove', onMouseMove);
         _map.on('mouseup', onMouseUp);
+
+        _map.getContainer().addEventListener('mouseleave', function () {
+            if (_drawing) {
+                _drawing = false;
+                _startLatLng = null;
+                _map.dragging.enable();
+            }
+        });
     }
 
     /**
@@ -170,8 +181,11 @@
 
         var bounds = L.latLngBounds(_startLatLng, e.latlng);
 
-        // Ignore tiny accidental clicks (less than ~100m)
-        if (bounds.getNorthEast().equals(bounds.getSouthWest())) {
+        // Ignore tiny accidental clicks (less than 5px)
+        var nePoint = _map.latLngToContainerPoint(bounds.getNorthEast());
+        var swPoint = _map.latLngToContainerPoint(bounds.getSouthWest());
+        if (Math.abs(nePoint.x - swPoint.x) < 5 && Math.abs(nePoint.y - swPoint.y) < 5) {
+            _startLatLng = null;
             return;
         }
 
