@@ -12,6 +12,7 @@ Usage:
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -150,6 +151,7 @@ def generate_overlay(
         "width": img.width,
         "height": img.height,
         "crs_source": str(src_crs),
+        "generated_at": int(time.time()),
     }
 
     with open(output_meta, "w") as f:

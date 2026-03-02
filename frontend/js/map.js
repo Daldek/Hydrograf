@@ -97,14 +97,16 @@
 
     function loadDemOverlay() {
         // Try tiled DEM first, fall back to single PNG overlay
-        fetch('/data/dem_tiles.json', { cache: 'force-cache' })
+        fetch('/data/dem_tiles.json', { cache: 'no-cache' })
             .then(function (res) {
                 if (!res.ok) throw new Error('tiles not found');
                 return res.json();
             })
             .then(function (meta) {
                 demBounds = L.latLngBounds(meta.bounds);
-                demLayer = L.tileLayer('/data/dem_tiles/{z}/{x}/{y}.png', {
+                var tileUrl = '/data/dem_tiles/{z}/{x}/{y}.png';
+                if (meta.generated_at) tileUrl += '?v=' + meta.generated_at;
+                demLayer = L.tileLayer(tileUrl, {
                     minZoom: meta.min_zoom || 8,
                     maxZoom: 22,
                     maxNativeZoom: meta.max_zoom || 18,
@@ -118,14 +120,16 @@
             })
             .catch(function () {
                 // Fallback: single PNG overlay
-                fetch('/data/dem.json', { cache: 'force-cache' })
+                fetch('/data/dem.json', { cache: 'no-cache' })
                     .then(function (res) {
                         if (!res.ok) throw new Error('DEM metadata not found');
                         return res.json();
                     })
                     .then(function (meta) {
                         demBounds = L.latLngBounds(meta.bounds);
-                        demLayer = L.imageOverlay('/data/dem.png', demBounds, {
+                        var demUrl = '/data/dem.png';
+                        if (meta.generated_at) demUrl += '?v=' + meta.generated_at;
+                        demLayer = L.imageOverlay(demUrl, demBounds, {
                             opacity: 0.7,
                             pane: 'demPane',
                             attribution: 'NMT &copy; GUGiK',
