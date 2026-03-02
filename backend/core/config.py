@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # DEM raster path (for terrain profile sampling)
     dem_path: str = "/data/dem/dem.vrt"
 
-    # Admin panel API key (empty = auth disabled)
+    # Admin panel API key (empty = auto-generated UUID at startup)
     admin_api_key: str = ""
     admin_api_key_file: str = ""  # Path to file containing admin API key
 
