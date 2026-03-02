@@ -533,14 +533,21 @@ def step_landcover(
 
 
 def step_soil_hsg(sheets: list[str], output_dir: Path, cache_dir: Path) -> str:
-    """Step 5: Download HSG data from SoilGrids and import to DB."""
+    """Step 5: Download HSG data from SoilGrids and import to DB.
+
+    Uses a Poland-wide HSG raster cached as hsg_poland.tif.
+    If the file exists, download is skipped (one-time download).
+    Processing: clip to project bbox -> warp to EPSG:2180 -> polygonize -> import.
+    """
     try:
         from kartograf import HSGCalculator
     except ImportError:
         return "pominięto (brak kartograf HSGCalculator)"
 
+    import numpy as np
     import rasterio
     from rasterio.features import shapes
+    from rasterio.warp import Resampling, reproject
     from shapely.geometry import MultiPolygon, shape
 
     sys.path.insert(0, str(BACKEND_DIR))
@@ -549,103 +556,118 @@ def step_soil_hsg(sheets: list[str], output_dir: Path, cache_dir: Path) -> str:
     hsg_dir = cache_dir / "soil_hsg"
     hsg_dir.mkdir(parents=True, exist_ok=True)
 
-    from kartograf import BBox
+    # --- 1. Download Poland-wide HSG raster (one-time) ---
+    hsg_poland = hsg_dir / "hsg_poland.tif"
+    if hsg_poland.exists():
+        logger.info("HSG: using cached hsg_poland.tif")
+    else:
+        logger.info("HSG: downloading Poland-wide raster from SoilGrids...")
+        from kartograf import BBox
 
-    bbox_tuple = sheets_to_bbox_2180(sheets)
-    bbox_2180 = BBox(
-        min_x=bbox_tuple[0],
-        min_y=bbox_tuple[1],
-        max_x=bbox_tuple[2],
-        max_y=bbox_tuple[3],
-        crs="EPSG:2180",
-    )
-
-    # Download HSG raster
-    hsg_tif = hsg_dir / "hsg.tif"
-    try:
-        hsg_calc = HSGCalculator()
-        hsg_calc.calculate_hsg_by_bbox(
-            bbox=bbox_2180,
-            output_path=hsg_tif,
-            timeout=300,
+        # Poland bbox in EPSG:4326
+        bbox_poland = BBox(
+            min_x=14.07, min_y=49.00,
+            max_x=24.15, max_y=54.84,
+            crs="EPSG:4326",
         )
-    except Exception as e:
-        return f"pominięto (SoilGrids: {e})"
+        try:
+            hsg_calc = HSGCalculator()
+            hsg_calc.calculate_hsg_by_bbox(
+                bbox=bbox_poland,
+                output_path=hsg_poland,
+                timeout=600,
+            )
+        except Exception as e:
+            return f"pominięto (SoilGrids: {e})"
 
-    if not hsg_tif.exists():
+    if not hsg_poland.exists():
         return "pominięto (brak rastra HSG)"
 
-    # Polygonize HSG raster and reproject to EPSG:2180
-    import pyproj
-    from shapely.ops import transform as shp_transform
+    # --- 2. Clip + warp to project bbox in EPSG:2180 ---
+    bbox_2180 = sheets_to_bbox_2180(sheets)
+    min_x, min_y, max_x, max_y = bbox_2180
 
+    from rasterio.transform import from_bounds
+
+    # Target: 250m pixels in EPSG:2180
+    res_m = 250.0
+    width = int((max_x - min_x) / res_m)
+    height = int((max_y - min_y) / res_m)
+    if width < 1 or height < 1:
+        return "pominięto (bbox zbyt mały dla HSG)"
+
+    dst_transform = from_bounds(min_x, min_y, max_x, max_y, width, height)
+    dst_crs = rasterio.crs.CRS.from_epsg(2180)
+
+    with rasterio.open(hsg_poland) as src:
+        dst_data = np.zeros((height, width), dtype=np.uint8)
+        reproject(
+            source=rasterio.band(src, 1),
+            destination=dst_data,
+            src_transform=src.transform,
+            src_crs=src.crs,
+            dst_transform=dst_transform,
+            dst_crs=dst_crs,
+            resampling=Resampling.nearest,
+        )
+
+    # --- 3. Nearest-neighbor fill for nodata pixels ---
     hsg_map = {1: "A", 2: "B", 3: "C", 4: "D"}
+    valid_mask = np.isin(dst_data, [1, 2, 3, 4])
+    if not valid_mask.any():
+        return "brak danych HSG w obszarze"
+    if not valid_mask.all():
+        from scipy.ndimage import distance_transform_edt
+
+        _, nearest_idx = distance_transform_edt(
+            ~valid_mask, return_indices=True,
+        )
+        dst_data = np.where(
+            valid_mask, dst_data,
+            dst_data[nearest_idx[0], nearest_idx[1]],
+        )
+        logger.info(
+            f"HSG: filled {(~valid_mask).sum()}/{dst_data.size} missing pixels"
+            " with nearest-neighbor"
+        )
+
+    # --- 4. Polygonize ---
     records = []
 
-    with rasterio.open(hsg_tif) as src:
-        data = src.read(1)
-
-        # Nearest-neighbor fill: replace invalid pixels (not in 1-4)
-        import numpy as np
-
-        valid_mask = np.isin(data, [1, 2, 3, 4])
-        if not valid_mask.all():
-            from scipy.ndimage import distance_transform_edt
-
-            _, nearest_idx = distance_transform_edt(
-                ~valid_mask,
-                return_indices=True,
-            )
-            data = np.where(
-                valid_mask,
-                data,
-                data[nearest_idx[0], nearest_idx[1]],
-            )
-            logger.info(
-                f"HSG: filled {(~valid_mask).sum()}/{data.size} missing pixels"
-                " with nearest-neighbor"
-            )
-
-        src_transform = src.transform
-        src_crs = src.crs
-
-        # Prepare reprojection if needed (SoilGrids delivers EPSG:4326)
-        project = None
-        if src_crs and src_crs.to_epsg() != 2180:
-            project = pyproj.Transformer.from_crs(
-                src_crs, "EPSG:2180", always_xy=True
-            ).transform
-
-        for geom_dict, value in shapes(data, transform=src_transform):
-            value = int(value)
-            if value not in hsg_map:
-                continue
-            geom = shape(geom_dict)
-            if geom.is_empty:
-                continue
-            if project:
-                geom = shp_transform(project, geom)
-            if geom.area < 50:  # Skip micro-fragments (<50 m²)
-                continue
-            if geom.geom_type == "Polygon":
-                geom = MultiPolygon([geom])
-            records.append(
-                {
-                    "geom": geom.wkt,
-                    "hsg_group": hsg_map[value],
-                    "area_m2": geom.area,
-                }
-            )
+    for geom_dict, value in shapes(dst_data, transform=dst_transform):
+        value = int(value)
+        if value not in hsg_map:
+            continue
+        geom = shape(geom_dict)
+        if geom.is_empty:
+            continue
+        if geom.area < 50:  # Skip micro-fragments (<50 m²)
+            continue
+        if geom.geom_type == "Polygon":
+            geom = MultiPolygon([geom])
+        records.append(
+            {
+                "geom": geom.wkt,
+                "hsg_group": hsg_map[value],
+                "area_m2": geom.area,
+            }
+        )
 
     if not records:
         return "brak danych HSG"
 
-    # Bulk INSERT
+    # --- 5. Bbox-scoped DB import ---
     engine = get_engine()
     from sqlalchemy import text
 
     with engine.connect() as conn:
-        conn.execute(text("DELETE FROM soil_hsg"))
+        conn.execute(
+            text(
+                "DELETE FROM soil_hsg WHERE ST_Intersects(geom, "
+                "ST_MakeEnvelope(:minx, :miny, :maxx, :maxy, 2180))"
+            ),
+            {"minx": min_x, "miny": min_y, "maxx": max_x, "maxy": max_y},
+        )
         conn.execute(
             text("""
                 INSERT INTO soil_hsg (geom, hsg_group, area_m2)
@@ -655,7 +677,7 @@ def step_soil_hsg(sheets: list[str], output_dir: Path, cache_dir: Path) -> str:
         )
         conn.commit()
 
-    # Export GeoJSON for frontend map layer
+    # --- 6. Export GeoJSON for frontend ---
     try:
         import json
 

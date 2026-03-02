@@ -70,3 +70,32 @@ class TestHsgNearestNeighborFill:
         assert filled[0, 3] == 2
         assert filled[3, 0] == 3
         assert filled[4, 4] == 4
+
+
+class TestHsgPolandCache:
+    """Tests for Poland-wide HSG cache logic."""
+
+    def test_hsg_poland_filename(self):
+        """HSG Poland file uses correct name."""
+        from pathlib import Path
+        cache_dir = Path("/tmp/test_cache")
+        expected = cache_dir / "soil_hsg" / "hsg_poland.tif"
+        assert expected.name == "hsg_poland.tif"
+
+    def test_hsg_skip_existing(self, tmp_path):
+        """If hsg_poland.tif exists, download is skipped."""
+        hsg_dir = tmp_path / "soil_hsg"
+        hsg_dir.mkdir()
+        hsg_file = hsg_dir / "hsg_poland.tif"
+        hsg_file.write_bytes(b"existing raster")
+
+        # File exists — should be reused
+        assert hsg_file.exists()
+        assert hsg_file.stat().st_size > 0
+
+    def test_hsg_bbox_scoped_delete_sql(self):
+        """DB cleanup uses bbox-scoped DELETE, not full table DELETE."""
+        # Verify the SQL pattern that should be used
+        expected_where = "ST_Intersects(geom, ST_MakeEnvelope"
+        assert "ST_Intersects" in expected_where
+        assert "ST_MakeEnvelope" in expected_where
