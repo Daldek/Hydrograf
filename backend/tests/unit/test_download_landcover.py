@@ -3,6 +3,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import fiona
 import geopandas as gpd
 import pytest
 from shapely.geometry import LineString, Point
@@ -234,3 +235,37 @@ class TestMergeHydroGpkgs:
         out = tmp_path / "merged.gpkg"
         result = merge_hydro_gpkgs([p1, p2], out)
         assert result is None
+
+    def test_merge_filters_only_hydro_layers(self, tmp_path):
+        """Verify that merge_hydro_gpkgs filters out non-hydro (PT) layers."""
+        from shapely.geometry import LineString
+
+        gpkg_path = tmp_path / "mixed.gpkg"
+        # Create a GPKG with both hydro (SWRS) and non-hydro (PTLZ) layers
+        hydro_gdf = gpd.GeoDataFrame(
+            {"geometry": [LineString([(0, 0), (1, 1)])]},
+            crs="EPSG:2180",
+        )
+        non_hydro_gdf = gpd.GeoDataFrame(
+            {"geometry": [LineString([(2, 2), (3, 3)])]},
+            crs="EPSG:2180",
+        )
+        hydro_gdf.to_file(gpkg_path, layer="SWRS_L", driver="GPKG")
+        non_hydro_gdf.to_file(gpkg_path, layer="PTLZ_A", driver="GPKG")
+
+        # Second GPKG to force merge path (single-file returns early)
+        gpkg_path2 = tmp_path / "mixed2.gpkg"
+        hydro_gdf2 = gpd.GeoDataFrame(
+            {"geometry": [LineString([(4, 4), (5, 5)])]},
+            crs="EPSG:2180",
+        )
+        hydro_gdf2.to_file(gpkg_path2, layer="SWRS_L", driver="GPKG")
+
+        output = tmp_path / "merged.gpkg"
+        result = merge_hydro_gpkgs([gpkg_path, gpkg_path2], output)
+
+        assert result is not None
+        layers = fiona.listlayers(result)
+        # Only hydro layers should remain
+        assert "SWRS_L" in layers
+        assert "PTLZ_A" not in layers
