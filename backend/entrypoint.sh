@@ -1,5 +1,8 @@
 #!/bin/bash
-set -e
+set -eo pipefail
+
+# ---- Ensure data directories exist ----
+mkdir -p /tmp/hydrograf
 
 # ---- Wait for database ----
 DB_HOST="${POSTGRES_HOST:-db}"
