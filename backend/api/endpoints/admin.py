@@ -309,8 +309,11 @@ def _execute_cleanup_target(
         if ttype == "dir":
             path = target["path"]
             if path.exists():
-                shutil.rmtree(path)
-                path.mkdir(parents=True, exist_ok=True)
+                for child in path.iterdir():
+                    if child.is_dir():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
             return {"key": target_key, "status": "ok"}
 
         elif ttype == "file":
