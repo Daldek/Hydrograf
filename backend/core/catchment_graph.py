@@ -304,6 +304,12 @@ class CatchmentGraph:
             raise RuntimeError("Catchment graph not loaded")
         return self._lookup.get((threshold_m2, segment_idx))
 
+    def get_segment_idx(self, internal_idx: int) -> int:
+        """Get segment_idx for a node by its internal graph index."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        return int(self._segment_idx[internal_idx])
+
     def verify_graph(self, db: Session | None = None) -> dict:
         """Verify graph integrity. Returns diagnostic dict."""
         if not self._loaded:

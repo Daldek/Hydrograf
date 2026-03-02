@@ -117,7 +117,7 @@ def select_stream(
                 )
             except ValueError as e:
                 raise HTTPException(status_code=404, detail=str(e)) from e
-            segment_idx = int(cg._segment_idx[clicked_idx])
+            segment_idx = cg.get_segment_idx(clicked_idx)
 
         # 3. Get stream info for response
         segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)
