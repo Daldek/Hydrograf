@@ -166,7 +166,7 @@ class TestMergeHydroGpkgs:
             geometry=[LineString([(0, 0), (1, 1)])],
             crs="EPSG:2180",
         )
-        gpkg = _make_hydro_gpkg("single.gpkg", {"SWRS": gdf})
+        gpkg = _make_hydro_gpkg("single.gpkg", {"OT_SWRS_L": gdf})
 
         result = merge_hydro_gpkgs([gpkg], tmp_path / "out.gpkg")
         assert result == gpkg
@@ -182,8 +182,8 @@ class TestMergeHydroGpkgs:
             geometry=[LineString([(2, 2), (3, 3)])],
             crs="EPSG:2180",
         )
-        gpkg1 = _make_hydro_gpkg("a.gpkg", {"SWRS": gdf1})
-        gpkg2 = _make_hydro_gpkg("b.gpkg", {"SWRS": gdf2})
+        gpkg1 = _make_hydro_gpkg("a.gpkg", {"OT_SWRS_L": gdf1})
+        gpkg2 = _make_hydro_gpkg("b.gpkg", {"OT_SWRS_L": gdf2})
 
         out = tmp_path / "merged.gpkg"
         result = merge_hydro_gpkgs([gpkg1, gpkg2], out)
@@ -194,9 +194,9 @@ class TestMergeHydroGpkgs:
         import fiona
 
         layers = fiona.listlayers(str(out))
-        assert "SWRS" in layers
+        assert "OT_SWRS_L" in layers
 
-        merged = gpd.read_file(out, layer="SWRS")
+        merged = gpd.read_file(out, layer="OT_SWRS_L")
         assert len(merged) == 2
 
     def test_different_layers_preserved(self, tmp_path, _make_hydro_gpkg):
@@ -210,8 +210,8 @@ class TestMergeHydroGpkgs:
             geometry=[Point(5, 5).buffer(1)],
             crs="EPSG:2180",
         )
-        gpkg1 = _make_hydro_gpkg("a.gpkg", {"SWRS": gdf_swrs})
-        gpkg2 = _make_hydro_gpkg("b.gpkg", {"PTWP": gdf_ptwp})
+        gpkg1 = _make_hydro_gpkg("a.gpkg", {"OT_SWRS_L": gdf_swrs})
+        gpkg2 = _make_hydro_gpkg("b.gpkg", {"OT_PTWP_A": gdf_ptwp})
 
         out = tmp_path / "merged.gpkg"
         result = merge_hydro_gpkgs([gpkg1, gpkg2], out)
@@ -221,8 +221,8 @@ class TestMergeHydroGpkgs:
         import fiona
 
         layers = fiona.listlayers(str(out))
-        assert "SWRS" in layers
-        assert "PTWP" in layers
+        assert "OT_SWRS_L" in layers
+        assert "OT_PTWP_A" in layers
 
     def test_all_empty_files_returns_none(self, tmp_path):
         """GeoPackages with no readable layers → None."""
@@ -250,8 +250,8 @@ class TestMergeHydroGpkgs:
             {"geometry": [LineString([(2, 2), (3, 3)])]},
             crs="EPSG:2180",
         )
-        hydro_gdf.to_file(gpkg_path, layer="SWRS_L", driver="GPKG")
-        non_hydro_gdf.to_file(gpkg_path, layer="PTLZ_A", driver="GPKG")
+        hydro_gdf.to_file(gpkg_path, layer="OT_SWRS_L", driver="GPKG")
+        non_hydro_gdf.to_file(gpkg_path, layer="OT_PTLZ_A", driver="GPKG")
 
         # Second GPKG to force merge path (single-file returns early)
         gpkg_path2 = tmp_path / "mixed2.gpkg"
@@ -259,7 +259,7 @@ class TestMergeHydroGpkgs:
             {"geometry": [LineString([(4, 4), (5, 5)])]},
             crs="EPSG:2180",
         )
-        hydro_gdf2.to_file(gpkg_path2, layer="SWRS_L", driver="GPKG")
+        hydro_gdf2.to_file(gpkg_path2, layer="OT_SWRS_L", driver="GPKG")
 
         output = tmp_path / "merged.gpkg"
         result = merge_hydro_gpkgs([gpkg_path, gpkg_path2], output)
@@ -267,5 +267,5 @@ class TestMergeHydroGpkgs:
         assert result is not None
         layers = fiona.listlayers(result)
         # Only hydro layers should remain
-        assert "SWRS_L" in layers
-        assert "PTLZ_A" not in layers
+        assert "OT_SWRS_L" in layers
+        assert "OT_PTLZ_A" not in layers
