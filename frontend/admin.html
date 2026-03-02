@@ -13,6 +13,10 @@
 
     <!-- Glassmorphism tokens -->
     <link rel="stylesheet" href="css/glass.css">
+    <!-- Leaflet 1.9.4 (for bbox map picker) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin="anonymous">
     <!-- Admin styles -->
     <link rel="stylesheet" href="css/admin.css">
 </head>
@@ -88,11 +92,41 @@
 
                             <!-- Form -->
                             <form id="bootstrap-form" class="mb-3">
-                                <div class="mb-2">
-                                    <label for="bootstrap-bbox" class="form-label small">Bounding box (min_lon, min_lat, max_lon, max_lat)</label>
-                                    <input type="text" id="bootstrap-bbox" class="form-control form-control-sm"
-                                           value="16.9279,52.3729,17.3825,52.5870">
-                                </div>
+                                <fieldset class="mb-2">
+                                    <legend class="form-label small mb-1">Bounding box</legend>
+                                    <div class="bbox-compass">
+                                        <div class="bbox-compass-row bbox-compass-center">
+                                            <div class="bbox-field">
+                                                <label for="bbox-north" class="bbox-label">N</label>
+                                                <input type="number" id="bbox-north" class="form-control form-control-sm"
+                                                       step="0.0001" min="-90" max="90" value="52.5870">
+                                            </div>
+                                        </div>
+                                        <div class="bbox-compass-row bbox-compass-middle">
+                                            <div class="bbox-field">
+                                                <label for="bbox-west" class="bbox-label">W</label>
+                                                <input type="number" id="bbox-west" class="form-control form-control-sm"
+                                                       step="0.0001" min="-180" max="180" value="16.9279">
+                                            </div>
+                                            <div class="bbox-field">
+                                                <label for="bbox-east" class="bbox-label">E</label>
+                                                <input type="number" id="bbox-east" class="form-control form-control-sm"
+                                                       step="0.0001" min="-180" max="180" value="17.3825">
+                                            </div>
+                                        </div>
+                                        <div class="bbox-compass-row bbox-compass-center">
+                                            <div class="bbox-field">
+                                                <label for="bbox-south" class="bbox-label">S</label>
+                                                <input type="number" id="bbox-south" class="form-control form-control-sm"
+                                                       step="0.0001" min="-90" max="90" value="52.3729">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" id="bbox-map-btn" class="btn btn-outline-secondary btn-sm mt-1">
+                                        Wybierz na mapie
+                                    </button>
+                                    <div id="bbox-validation-error" class="text-danger small mt-1 d-none"></div>
+                                </fieldset>
                                 <div class="row g-2 mb-2">
                                     <div class="col-auto">
                                         <div class="form-check form-check-inline">
@@ -138,14 +172,41 @@
         </div>
     </div>
 
+    <!-- Bbox map picker modal -->
+    <div class="modal fade" id="bbox-map-modal" tabindex="-1" aria-labelledby="bbox-map-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="bbox-map-modal-label">Wybierz obszar na mapie</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div id="bbox-picker-map" style="height: 500px;"></div>
+                    <p class="text-secondary small px-3 py-2 mb-0">
+                        Kliknij i przeciągnij, aby narysować prostokąt. Kliknij ponownie, aby narysować nowy.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="button" id="bbox-map-confirm-btn" class="btn btn-primary btn-sm" disabled>Zatwierdź</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap 5.3.3 JS -->
     <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
             integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+            crossorigin="anonymous"></script>
+    <!-- Leaflet 1.9.4 JS (for bbox map picker) -->
+    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
             crossorigin="anonymous"></script>
 
     <!-- Admin modules -->
     <script defer src="js/admin/admin-api.js"></script>
     <script defer src="js/admin/admin-bootstrap.js"></script>
+    <script defer src="js/admin/admin-bbox-picker.js"></script>
     <script defer src="js/admin/admin-app.js"></script>
 </body>
 </html>
