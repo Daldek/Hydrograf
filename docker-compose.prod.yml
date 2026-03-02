@@ -30,6 +30,7 @@ services:
   #     - ./docker/certs:/etc/nginx/certs:ro
   #   environment:
   #     - SERVER_NAME=${SERVER_NAME:-localhost}
+  #     - NGINX_ENVSUBST_FILTER=SERVER_NAME
 
 secrets:
   db_password:

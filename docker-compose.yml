@@ -107,6 +107,7 @@ services:
       - /tmp:size=10M
       - /var/cache/nginx:size=50M
       - /var/run:size=1M
+      - /var/log/nginx:size=10M
 
 volumes:
   postgres_data:
