@@ -5,7 +5,15 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-03-01
+## [Unreleased] — 2026-03-02
+
+### Fixed (sesja 49 — 6 krytycznych bugow)
+- **CR7 — Race condition w singletonie CatchmentGraph:** `get_catchment_graph()` bez thread safety — dodano `threading.Lock` z double-check locking. Zapobiega tworzeniu duplikatow grafu przy jednoczesnych zadaniach startowych FastAPI.
+- **CR4 — O(n²) BFS w `traverse_to_confluence()`:** `list.pop(0)` zamieniony na `collections.deque.popleft()` — O(1) zamiast O(n) per dequeue. Przy ~44k wezlow eliminuje worst-case kwadratowe spowolnienie.
+- **CR6 — Bezposredni dostep do prywatnego `_segment_idx` w 3 endpointach:** nowa publiczna metoda `CatchmentGraph.get_segment_idx(internal_idx)`. Update `watershed.py`, `hydrograph.py`, `select_stream.py`.
+- **CR8 — Information disclosure w profilu terenu:** sciezka serwera (`/data/dem/dem.vrt`) usuwana z komunikatu bledu 503 — logowana tylko do logow serwera. Porownanie nodata: `math.isclose()` zamiast `==` (zawodne dla float). `nodata_count` odroznia realna elewacje 0.0 m n.p.m. od nodata.
+- **S5.3 — Hardcoded credentials:** `warn_if_default_credentials()` w `Settings` — WARNING gdy `postgres_password == "hydro_password"`. `migrations/env.py` — WARNING gdy `DATABASE_URL` nie ustawiony.
+- **Auth — Admin panel bez klucza = brak auth:** auto-generowanie klucza admin API (`uuid4`) gdy `ADMIN_API_KEY` nie skonfigurowany. Klucz logowany jako WARNING, stabilny w obrebie procesu. Panel admin zawsze wymaga uwierzytelnienia.
 
 ### Added
 - **Panel administracyjny `/admin` (ADR-034):** 4 sekcje: Dashboard, Bootstrap, Zasoby, Czyszczenie
