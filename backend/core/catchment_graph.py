@@ -11,6 +11,7 @@ Memory usage: ~0.5 MB RAM.
 import logging
 import threading
 import time
+from collections import deque
 
 import numpy as np
 from scipy import sparse
@@ -405,12 +406,12 @@ class CatchmentGraph:
             raise RuntimeError("Catchment graph not loaded")
 
         visited: set[int] = set()
-        queue = [start_idx]
+        queue = deque([start_idx])
         visited.add(start_idx)
         result = [start_idx]
 
         while queue:
-            current = queue.pop(0)
+            current = queue.popleft()
             upstream = self._upstream_adj[current].indices
             for up_idx in upstream:
                 if up_idx not in visited:

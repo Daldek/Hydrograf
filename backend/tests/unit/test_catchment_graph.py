@@ -429,3 +429,15 @@ class TestGetCatchmentGraphThreadSafety:
         import threading
         from core.catchment_graph import _catchment_graph_lock
         assert isinstance(_catchment_graph_lock, threading.Lock)
+
+
+class TestTraverseToConfluenceDeque:
+    """Verify traverse_to_confluence uses collections.deque (CR4)."""
+
+    def test_uses_deque_not_list(self):
+        """Implementation must use deque for O(1) popleft."""
+        import inspect
+        from core.catchment_graph import CatchmentGraph
+        source = inspect.getsource(CatchmentGraph.traverse_to_confluence)
+        assert "deque" in source, "traverse_to_confluence should use collections.deque"
+        assert ".pop(0)" not in source, "traverse_to_confluence should not use list.pop(0)"
