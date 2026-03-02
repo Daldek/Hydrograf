@@ -93,63 +93,58 @@
      * Show the auth overlay and bind handlers.
      */
     function showAuth() {
-        // First check if auth is even required (empty key = auth disabled)
-        tryAuth('').then(function (success) {
-            if (success) return; // Auth disabled — already logged in
+        var overlay = document.getElementById('auth-overlay');
+        var input = document.getElementById('auth-key-input');
+        var btn = document.getElementById('auth-submit-btn');
+        var errorDiv = document.getElementById('auth-error');
 
-            var overlay = document.getElementById('auth-overlay');
-            var input = document.getElementById('auth-key-input');
-            var btn = document.getElementById('auth-submit-btn');
-            var errorDiv = document.getElementById('auth-error');
+        if (overlay) overlay.classList.remove('d-none');
 
-            if (overlay) overlay.classList.remove('d-none');
+        function doLogin() {
+            var key = input ? input.value.trim() : '';
+            if (!key) return;
 
-            function doLogin() {
-                var key = input ? input.value.trim() : '';
-                if (!key) return;
+            btn.disabled = true;
+            errorDiv.classList.add('d-none');
 
-                btn.disabled = true;
-                errorDiv.classList.add('d-none');
-
-                tryAuth(key).then(function (ok) {
-                    if (!ok) {
-                        errorDiv.classList.remove('d-none');
-                        btn.disabled = false;
-                        if (input) {
-                            input.value = '';
-                            input.focus();
-                        }
+            tryAuth(key).then(function (ok) {
+                if (!ok) {
+                    errorDiv.classList.remove('d-none');
+                    btn.disabled = false;
+                    if (input) {
+                        input.value = '';
+                        input.focus();
                     }
-                });
-            }
+                }
+            });
+        }
 
-            if (btn) {
-                btn.addEventListener('click', doLogin);
-            }
-            if (input) {
-                input.addEventListener('keydown', function (e) {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        doLogin();
-                    }
-                });
-                input.focus();
-            }
+        if (btn) {
+            btn.addEventListener('click', doLogin);
+        }
+        if (input) {
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    doLogin();
+                }
+            });
+            input.focus();
+        }
 
-            var fileInput = document.getElementById('auth-key-file');
-            if (fileInput) {
-                fileInput.addEventListener('change', function () {
-                    var file = fileInput.files[0];
-                    if (!file) return;
-                    var reader = new FileReader();
-                    reader.onload = function () {
-                        var key = reader.result.trim();
-                        if (input) input.value = key;
-                    };
-                    reader.readAsText(file);
-                });
-            }
-        });
+        var fileInput = document.getElementById('auth-key-file');
+        if (fileInput) {
+            fileInput.addEventListener('change', function () {
+                var file = fileInput.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function () {
+                    var key = reader.result.trim();
+                    if (input) input.value = key;
+                };
+                reader.readAsText(file);
+            });
+        }
     }
 
     /**
