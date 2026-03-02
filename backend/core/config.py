@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     database_url_override: str | None = None
     postgres_db: str = "hydro_db"
     postgres_user: str = "hydro_user"
-    postgres_password: str = "hydro_password"
+    postgres_password: str = ""
     postgres_host: str = "localhost"
     postgres_port: int = 5432
 
@@ -116,7 +116,7 @@ _DEFAULT_CONFIG = {
         "port": 5432,
         "name": "hydro_db",
         "user": "hydro_user",
-        "password": "hydro_password",
+        "password": "",
     },
     "dem": {
         "resolution": "5m",

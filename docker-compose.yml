@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-hydro_db}
       POSTGRES_USER: ${POSTGRES_USER:-hydro_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hydro_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env file}
       POSTGIS_GDAL_ENABLED_DRIVERS: ENABLE_ALL
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -40,7 +40,7 @@ services:
       dockerfile: Dockerfile
     container_name: hydro_api
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:-hydro_password}@db:5432/${POSTGRES_DB:-hydro_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hydro_db}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEM_PATH: ${DEM_PATH:-/data/nmt/dem_mosaic.vrt}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
