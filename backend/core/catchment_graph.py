@@ -9,7 +9,9 @@ Memory usage: ~0.5 MB RAM.
 """
 
 import logging
+import threading
 import time
+from collections import deque
 
 import numpy as np
 from scipy import sparse
@@ -302,6 +304,12 @@ class CatchmentGraph:
             raise RuntimeError("Catchment graph not loaded")
         return self._lookup.get((threshold_m2, segment_idx))
 
+    def get_segment_idx(self, internal_idx: int) -> int:
+        """Get segment_idx for a node by its internal graph index."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        return int(self._segment_idx[internal_idx])
+
     def verify_graph(self, db: Session | None = None) -> dict:
         """Verify graph integrity. Returns diagnostic dict."""
         if not self._loaded:
@@ -404,12 +412,12 @@ class CatchmentGraph:
             raise RuntimeError("Catchment graph not loaded")
 
         visited: set[int] = set()
-        queue = [start_idx]
+        queue = deque([start_idx])
         visited.add(start_idx)
         result = [start_idx]
 
         while queue:
-            current = queue.pop(0)
+            current = queue.popleft()
             upstream = self._upstream_adj[current].indices
             for up_idx in upstream:
                 if up_idx not in visited:
@@ -707,11 +715,14 @@ class CatchmentGraph:
 
 # Global singleton
 _catchment_graph: CatchmentGraph | None = None
+_catchment_graph_lock = threading.Lock()
 
 
 def get_catchment_graph() -> CatchmentGraph:
-    """Get or create the global CatchmentGraph instance."""
+    """Get or create the global CatchmentGraph instance (thread-safe)."""
     global _catchment_graph
     if _catchment_graph is None:
-        _catchment_graph = CatchmentGraph()
+        with _catchment_graph_lock:
+            if _catchment_graph is None:
+                _catchment_graph = CatchmentGraph()
     return _catchment_graph
