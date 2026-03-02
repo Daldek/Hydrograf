@@ -94,16 +94,68 @@
     }
 
     /**
+     * Read bbox from 4 compass fields, validate, return as comma string or null.
+     */
+    function readAndValidateBbox() {
+        var n = document.getElementById('bbox-north');
+        var s = document.getElementById('bbox-south');
+        var e = document.getElementById('bbox-east');
+        var w = document.getElementById('bbox-west');
+        var errEl = document.getElementById('bbox-validation-error');
+
+        var north = parseFloat(n.value);
+        var south = parseFloat(s.value);
+        var east = parseFloat(e.value);
+        var west = parseFloat(w.value);
+
+        // Clear previous error
+        if (errEl) {
+            errEl.classList.add('d-none');
+            errEl.textContent = '';
+        }
+        [n, s, e, w].forEach(function (el) {
+            el.classList.remove('is-invalid');
+        });
+
+        // Check empty / NaN
+        if (isNaN(west) || isNaN(south) || isNaN(east) || isNaN(north)) {
+            showBboxError('Wypełnij wszystkie pola bounding box.', [n, s, e, w]);
+            return null;
+        }
+
+        // Check ordering
+        if (west >= east) {
+            showBboxError('W (min lon) musi być mniejsze niż E (max lon).', [w, e]);
+            return null;
+        }
+        if (south >= north) {
+            showBboxError('S (min lat) musi być mniejsze niż N (max lat).', [s, n]);
+            return null;
+        }
+
+        return west + ',' + south + ',' + east + ',' + north;
+    }
+
+    /**
+     * Show validation error under bbox fields.
+     */
+    function showBboxError(message, fields) {
+        var errEl = document.getElementById('bbox-validation-error');
+        if (errEl) {
+            errEl.textContent = message;
+            errEl.classList.remove('d-none');
+        }
+        fields.forEach(function (el) {
+            if (el) el.classList.add('is-invalid');
+        });
+    }
+
+    /**
      * Handle Start button click.
      */
     async function handleStart() {
-        var bboxInput = document.getElementById('bootstrap-bbox');
-        var bbox = bboxInput ? bboxInput.value.trim() : '';
-
-        if (!bbox) {
-            alert('Podaj bounding box.');
-            return;
-        }
+        var bbox = readAndValidateBbox();
+        if (!bbox) return;
 
         var params = {
             bbox: bbox,
