@@ -30,7 +30,7 @@ if not database_url:
         "DATABASE_URL not set — using default local connection. "
         "Set DATABASE_URL env var for production."
     )
-    database_url = "postgresql://hydro_user:hydro_password@localhost:5432/hydro_db"
+    database_url = "postgresql://hydro_user:@localhost:5432/hydro_db"
 config.set_main_option("sqlalchemy.url", database_url)
 
 

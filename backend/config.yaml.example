@@ -7,7 +7,7 @@ database:
   port: 5432
   name: hydro_db
   user: hydro_user
-  password: hydro_password  # CHANGE IN PRODUCTION
+  password: ""  # REQUIRED: set your database password
 
 # DEM Processing
 dem:
