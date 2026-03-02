@@ -45,22 +45,32 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-02 (sesja 50)
+**Data:** 2026-03-02 (sesja 51 — uzupelnienie konteneryzacji)
 
 ### Co zrobiono
 
-Redesign bbox input w panelu administracyjnym — 4 pola kompasowe (N/S/W/E) + interaktywny map picker (Leaflet w modalu Bootstrap). 8 commitow na develop.
+Analiza i uzupelnienie brakujacych elementow konteneryzacji. Pelny stack (dev + prod) uruchomiony i zweryfikowany.
 
-- **Bbox compass layout:** Zamiana pojedynczego pola tekstowego `bootstrap-bbox` na 4 pola `type="number"` w ukladzie kompasu (N gora, W-E srodek, S dol). Walidacja frontend: puste pola, kolejnosc wspolrzednych (W < E, S < N), wizualne podswietlenie blednych pol (`is-invalid`).
-- **Map picker modal:** Bootstrap `modal-lg` z mapa Leaflet 1.9.4 (OSM tiles). Rysowanie prostokata bbox przez click+drag (mousedown → pomaranczowy prostokat → mouseup). Istniejace wartosci bbox wyswietlane na mapie przy otwarciu. "Zatwierdz" wpisuje wspolrzedne do 4 pol.
-- **Edge cases:** Pixel-based accidental-click guard (< 5px), mouseleave handler (reset stanu przy opuszczeniu mapy), dragging re-enable w onModalHidden.
-- **Nowy modul JS:** `admin-bbox-picker.js` (IIFE na `window.Hydrograf.adminBboxPicker`)
-- **Backend:** bez zmian — 4 pola skladane w string `"min_lon,min_lat,max_lon,max_lat"` przed wyslaniem
+- **`.dockerignore`** — wykluczenie .venv, tests, __pycache__, .env z kontekstu budowania
+- **Multi-stage Dockerfile** (builder + runtime) — obraz bez gcc/git w produkcji
+- **`entrypoint.sh`** z wait-for-db (pg_isready loop) i automatycznymi migracjami Alembic
+- **Healthcheck API** w docker-compose.yml (urllib do /health, 30s interval, 30s start_period)
+- **`docker-compose.override.yml`** z bind mount kodu i --reload (dev, auto-ladowany)
+- **`docker-compose.prod.yml`** — override produkcyjny (2 workery uvicorn, LOG_LEVEL=WARNING)
+- **Poprawka bind mount:** Docker Compose v2 merguje volumes zamiast zastepowac — przeniesienie ./backend:/app do override.yml
+- **Poprawka pakietow runtime:** libgeos3.11.1 → libgeos-c1t64 + dodanie libexpat1 (rasterio)
+- **Usunieto przestarzaly atrybut `version`** z docker-compose.yml
+- **Testy integracyjne:** pelny stack (dev + prod) uruchomiony i zweryfikowany
+- **ADR-035**, aktualizacja ARCHITECTURE.md i CHANGELOG.md
 
 ### Nastepne kroki
-1. CP5: MVP — pelna integracja, deploy
-2. Code review CR5, CR9-CR16 (sredni priorytet)
-3. Rozwazyc podwojna analize NMT (z/bez bezodplywowych)
+1. CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
+2. Code review CR4-CR11
+3. Podwojna analiza NMT (z/bez obszarow bezodplywowych)
+
+### Poprzednia sesja (2026-03-02, sesja 50)
+
+Redesign bbox input w panelu administracyjnym — 4 pola kompasowe (N/S/W/E) + interaktywny map picker (Leaflet w modalu Bootstrap). 8 commitow na develop.
 
 ### Poprzednia sesja (2026-03-02, sesja 49)
 
