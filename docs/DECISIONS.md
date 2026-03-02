@@ -766,6 +766,23 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-035: Uzupelnienie konteneryzacji (multi-stage, entrypoint, prod override)
+
+**Data:** 2026-03-02
+**Status:** Przyjeta
+
+**Kontekst:** Brakujace elementy konteneryzacji: .dockerignore, multi-stage Dockerfile, entrypoint.sh z auto-migracjami, healthcheck API, docker-compose.prod.yml. Obraz Docker ~800MB z kompilatorami w produkcji.
+
+**Opcje:**
+- A) Samodzielny docker-compose.prod.yml — prosty, ale wymaga synchronizacji z bazowym plikiem
+- B) Override docker-compose.prod.yml + docker-compose.override.yml dla dev — DRY, bazowy plik wspoldzielony
+
+**Decyzja:** Opcja B. Multi-stage Dockerfile (builder + runtime). entrypoint.sh z wait-for-db i auto-migracjami Alembic. docker-compose.override.yml z bind mount kodu i --reload (auto-ladowany w dev). docker-compose.prod.yml z 2 workerami i LOG_LEVEL=WARNING.
+
+**Konsekwencje:** Obraz bez gcc/git w produkcji. Automatyczne migracje na starcie kontenera. Jasny podzial dev/prod. Dev: `docker compose up`. Prod: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`.
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

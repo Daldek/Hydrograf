@@ -1033,6 +1033,32 @@ volumes:
 
 ---
 
+### 5.1.1 Konteneryzacja — Multi-stage i override (ADR-035)
+
+**Multi-stage Dockerfile** (`backend/Dockerfile`):
+- **Stage 1 (builder):** instalacja zaleznosci z `requirements.txt` (gcc, git dla pip install z GitHub)
+- **Stage 2 (runtime):** kopiowanie zainstalowanych pakietow z buildera — obraz bez gcc/git w produkcji
+
+**`entrypoint.sh`:**
+- Wait-for-db — petla `pg_isready` z retry (max 30 prob, 1s interwal)
+- Automatyczne migracje Alembic (`alembic upgrade head`) na starcie kontenera
+- Exec do procesu glownego (uvicorn)
+
+**Override pattern (dev/prod):**
+- `docker-compose.yml` — bazowy plik (db + api + nginx), bez `--reload`, bez bind mount kodu
+- `docker-compose.override.yml` — automatycznie ladowany w dev: bind mount `./backend:/app`, `--reload`, `LOG_LEVEL=DEBUG`
+- `docker-compose.prod.yml` — override produkcyjny: 2 workery uvicorn, `LOG_LEVEL=WARNING`, bez `--reload`
+
+**Healthcheck API:**
+- Kontener `api`: healthcheck `python -c "urllib.request.urlopen('http://localhost:8000/health')"` (30s interval)
+- Kontener `nginx`: `depends_on: api: condition: service_healthy`
+
+**Uruchomienie:**
+- Dev: `docker compose up` (automatycznie laduje override.yml)
+- Prod: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+
+---
+
 ### 5.2 Nginx Configuration
 
 ```nginx
@@ -1141,7 +1167,7 @@ http {
 
 ┌─────────────────────────────────────────────────────────┐
 │                       STAGING                           │
-│  - docker compose -f docker-compose.prod.yml up         │
+│  - docker compose -f ... -f docker-compose.prod.yml up   │
 │  - Production-like data                                │
 │  - INFO logs                                           │
 │  - Manual deployment                                   │
@@ -1149,9 +1175,9 @@ http {
 
 ┌─────────────────────────────────────────────────────────┐
 │                      PRODUCTION                         │
-│  - docker compose -f docker-compose.prod.yml up -d      │
+│  - docker compose -f ... -f docker-compose.prod.yml up -d│
 │  - Full preprocessing data                             │
-│  - WARNING+ logs only                                  │
+│  - WARNING+ logs, 2 workery uvicorn                    │
 │  - HTTPS enabled                                       │
 │  - Backups configured                                  │
 │  - Monitoring (Prometheus + Grafana)                   │
