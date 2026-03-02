@@ -3,14 +3,9 @@
 
 services:
   api:
-    # No code bind mount (use built image)
-    volumes:
-      - ./data:/data
-      - ./frontend/data:/frontend/data
-      - ./frontend/tiles:/frontend/tiles
     environment:
       LOG_LEVEL: WARNING
-    # No --reload, 2 workers for production
+    # 2 workers for production (no --reload)
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 2
 
   nginx:

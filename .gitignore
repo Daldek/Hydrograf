@@ -61,7 +61,7 @@ htmlcov/
 logs/
 
 # Docker
-docker-compose.override.yml
+# docker-compose.override.yml is tracked (shared dev config)
 
 # OS
 .DS_Store

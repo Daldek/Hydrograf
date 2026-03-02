@@ -59,11 +59,9 @@ services:
           memory: 4G
           cpus: "2.0"
     volumes:
-      - ./backend:/app
       - ./data:/data
       - ./frontend/data:/frontend/data
       - ./frontend/tiles:/frontend/tiles
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
