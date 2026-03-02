@@ -30,8 +30,9 @@ WORKDIR /app
 # Runtime-only system libraries (no compilers, no git)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
-    libgeos3.11.1 \
+    libgeos-c1t64 \
     libproj25 \
+    libexpat1 \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
