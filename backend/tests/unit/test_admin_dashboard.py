@@ -108,6 +108,9 @@ class TestDashboard:
         assert "frontend_data_mb" in data["disk"]
         assert "frontend_tiles_mb" in data["disk"]
         assert "nmt_data_mb" in data["disk"]
+        assert "cache_mb" in data["disk"]
+        assert isinstance(data["disk"]["cache_mb"], (int, float))
+        assert data["disk"]["cache_mb"] >= 0
         assert "total_mb" in data["disk"]
 
 
