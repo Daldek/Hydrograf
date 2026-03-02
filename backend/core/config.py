@@ -77,10 +77,10 @@ class Settings(BaseSettings):
         )
 
     def warn_if_default_credentials(self) -> None:
-        """Log warning if using default database credentials."""
-        if self.postgres_password == "hydro_password":
+        """Log warning if database credentials are not configured."""
+        if not self.postgres_password:
             logger.warning(
-                "Using default postgres_password='hydro_password'. "
+                "POSTGRES_PASSWORD is empty. "
                 "Set POSTGRES_PASSWORD env var for production."
             )
 

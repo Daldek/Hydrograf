@@ -150,8 +150,8 @@ class TestDeepMerge:
 class TestSettingsSecurityWarnings:
     """Tests for security warnings on default credentials (S5.3)."""
 
-    def test_warns_on_default_password(self, caplog, monkeypatch):
-        """Startup logs WARNING when using default postgres_password."""
+    def test_warns_on_empty_password(self, caplog, monkeypatch):
+        """Startup logs WARNING when postgres_password is empty."""
         import logging
         from core.config import Settings, get_settings
 
@@ -163,7 +163,7 @@ class TestSettingsSecurityWarnings:
             settings = Settings()
             settings.warn_if_default_credentials()
 
-        assert "hydro_password" in caplog.text or "default" in caplog.text.lower()
+        assert "POSTGRES_PASSWORD" in caplog.text and "empty" in caplog.text.lower()
         get_settings.cache_clear()
 
     def test_no_warning_with_custom_password(self, caplog, monkeypatch):
