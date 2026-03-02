@@ -45,41 +45,26 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-02 (sesja 49)
+**Data:** 2026-03-02 (sesja 50)
 
 ### Co zrobiono
 
-Naprawa 6 krytycznych bugow (CR4, CR6, CR7, CR8, S5.3, Auth) w trybie rownoleglych zespolow subagentow (3 feature branches + merger). 13 nowych testow, 742 lacznie. 12 commitow na develop.
+Redesign bbox input w panelu administracyjnym — 4 pola kompasowe (N/S/W/E) + interaktywny map picker (Leaflet w modalu Bootstrap). 8 commitow na develop.
 
-- **Team 1 — `feature/fix-catchment-graph` (CR4 + CR6 + CR7):**
-  - CR7: Thread-safe singleton `get_catchment_graph()` — `threading.Lock` z double-check locking
-  - CR4: `collections.deque.popleft()` zamiast `list.pop(0)` w `traverse_to_confluence()` — O(1) zamiast O(n)
-  - CR6: Publiczna metoda `get_segment_idx(internal_idx)` w `CatchmentGraph` — update 3 endpointow (`watershed.py`, `hydrograph.py`, `select_stream.py`)
-  - 6 nowych testow
-
-- **Team 2 — `feature/fix-profile-security` (CR8):**
-  - Usuniecie sciezki serwera (`/data/dem/dem.vrt`) z komunikatu bledu 503 — information disclosure
-  - `math.isclose()` zamiast `==` dla porownania nodata float
-  - `nodata_count` do odroznienia realnej elewacji 0.0 m n.p.m. od nodata
-  - 2 nowe testy
-
-- **Team 3 — `feature/fix-secrets-auth` (S5.3 + Auth):**
-  - Auto-generowanie klucza admin API (`uuid4`) gdy `ADMIN_API_KEY` nie ustawiony — klucz logowany jako WARNING
-  - `warn_if_default_credentials()` w `Settings` — WARNING gdy `postgres_password == "hydro_password"`
-  - `migrations/env.py` — WARNING gdy `DATABASE_URL` nie ustawiony
-  - 5 nowych testow
-
-- **Team 4 — Merger:**
-  - Merge 2 czystych branchy (Team 1, Team 3) + reczne re-apply Team 2 (branch na zlej bazie v0.3.0)
-  - Naprawa nieaktualnego komentarza w `config.py` (`empty = auth disabled` → `empty = auto-generated UUID`)
-  - 0 konfliktow, 742 testow PASS
-
-- **Proces:** Design doc → Plan implementacji (TDD) → 3 zespoly rownoleglo (worktree isolation) → Spec compliance review → Code quality review → Merge
+- **Bbox compass layout:** Zamiana pojedynczego pola tekstowego `bootstrap-bbox` na 4 pola `type="number"` w ukladzie kompasu (N gora, W-E srodek, S dol). Walidacja frontend: puste pola, kolejnosc wspolrzednych (W < E, S < N), wizualne podswietlenie blednych pol (`is-invalid`).
+- **Map picker modal:** Bootstrap `modal-lg` z mapa Leaflet 1.9.4 (OSM tiles). Rysowanie prostokata bbox przez click+drag (mousedown → pomaranczowy prostokat → mouseup). Istniejace wartosci bbox wyswietlane na mapie przy otwarciu. "Zatwierdz" wpisuje wspolrzedne do 4 pol.
+- **Edge cases:** Pixel-based accidental-click guard (< 5px), mouseleave handler (reset stanu przy opuszczeniu mapy), dragging re-enable w onModalHidden.
+- **Nowy modul JS:** `admin-bbox-picker.js` (IIFE na `window.Hydrograf.adminBboxPicker`)
+- **Backend:** bez zmian — 4 pola skladane w string `"min_lon,min_lat,max_lon,max_lat"` przed wyslaniem
 
 ### Nastepne kroki
 1. CP5: MVP — pelna integracja, deploy
-2. Code review CR5, CR9-CR16 (sredni priorytet — poprawnosc CN, cascade stats mismatch, duplikacja logiki)
-3. Rozwazyc podwojna analize NMT (z/bez bezodplywowych) — nowy punkt backlog
+2. Code review CR5, CR9-CR16 (sredni priorytet)
+3. Rozwazyc podwojna analize NMT (z/bez bezodplywowych)
+
+### Poprzednia sesja (2026-03-02, sesja 49)
+
+Naprawa 6 krytycznych bugow (CR4, CR6, CR7, CR8, S5.3, Auth) w trybie rownoleglych zespolow subagentow (3 feature branches + merger). 13 nowych testow, 742 lacznie. 12 commitow na develop.
 
 ### Poprzednia sesja (2026-03-01, sesja 48)
 
