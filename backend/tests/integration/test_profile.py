@@ -420,3 +420,30 @@ class TestTerrainProfileEndpoint:
         distances = data["distances_m"]
         for i in range(1, len(distances)):
             assert distances[i] > distances[i - 1]
+
+    def test_503_does_not_leak_server_path(self, client):
+        """503 error must not contain server filesystem paths (CR8)."""
+        with patch("api.endpoints.profile.os.path.exists", return_value=False):
+            response = client.post(
+                "/api/terrain-profile",
+                json={
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": [[21.0, 52.0], [21.01, 52.01]],
+                    },
+                    "n_samples": 5,
+                },
+            )
+
+        assert response.status_code == 503
+        detail = response.json()["detail"]
+        assert "/data/" not in detail
+        assert ".vrt" not in detail
+
+    def test_nodata_uses_approximate_comparison(self, client):
+        """Nodata detection must use approximate float comparison, not == (CR8)."""
+        import inspect
+        from api.endpoints.profile import terrain_profile
+        source = inspect.getsource(terrain_profile)
+        assert "isclose" in source, "Must use math.isclose for nodata comparison"
+        assert "elev == dataset.nodata" not in source, "Must not use == for float nodata"
