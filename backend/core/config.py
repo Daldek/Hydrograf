@@ -126,6 +126,7 @@ _DEFAULT_CONFIG = {
     },
     "paths": {
         "output_dir": "output",
+        "cache_dir": "cache",
         "frontend_data": "frontend/data",
         "dem_tiles_dir": "frontend/data/dem_tiles",
     },

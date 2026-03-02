@@ -19,6 +19,7 @@ dem:
 # Paths (relative to project root)
 paths:
   output_dir: "output"
+  cache_dir: "cache"          # raw downloaded data (NMT, BDOT10k, HSG)
   frontend_data: "frontend/data"
   dem_tiles_dir: "frontend/data/dem_tiles"
 

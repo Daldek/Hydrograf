@@ -11,5 +11,6 @@ services:
     ports:
       - "127.0.0.1:8000:8000"  # Direct API access for development
     volumes:
+      - ./cache:/cache
       - ./backend:/app
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload

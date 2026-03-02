@@ -63,6 +63,7 @@ services:
           memory: 4G
           cpus: "2.0"
     volumes:
+      - ./cache:/cache:ro
       - ./data:/data
       - ./frontend/data:/frontend/data
       - ./frontend/tiles:/frontend/tiles
