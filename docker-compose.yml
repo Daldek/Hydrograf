@@ -84,7 +84,7 @@ services:
     image: nginx:alpine
     container_name: hydro_nginx
     ports:
-      - "127.0.0.1:${HYDROGRAF_PORT:-8080}:80"
+      - "${HYDROGRAF_PORT:-8080}:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
