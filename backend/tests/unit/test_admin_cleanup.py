@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
-from api.endpoints.admin import _file_size_mb, router
+from api.endpoints.admin import ALL_CLEANUP_TARGETS, _file_size_mb, router
 from core.database import get_db
 
 
@@ -153,6 +153,90 @@ class TestCleanupExecute:
         assert response.status_code == 200
         data = response.json()
         assert len(data["results"]) == 1
+
+
+class TestCleanupCache:
+    """Tests for cache cleanup target."""
+
+    def test_cleanup_cache_removes_contents(self, app, tmp_path):
+        """Cleaning cache removes file contents but keeps subdirectories."""
+        mock_db = _make_mock_db()
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        # Create a fake cache directory structure
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        nmt_dir = cache_dir / "nmt"
+        nmt_dir.mkdir()
+        (nmt_dir / "sheet1.tif").write_bytes(b"raster data")
+        (nmt_dir / "sheet2.tif").write_bytes(b"raster data")
+        bdot_dir = cache_dir / "bdot10k"
+        bdot_dir.mkdir()
+        (bdot_dir / "powiat1.gpkg").write_bytes(b"vector data")
+        hsg_dir = cache_dir / "soil_hsg"
+        hsg_dir.mkdir()
+        (hsg_dir / "hsg.shp").write_bytes(b"soil data")
+
+        with patch("api.endpoints.admin.CLEANUP_TARGETS") as mock_targets:
+            mock_targets.__contains__ = lambda s, k: k == "cache"
+            mock_targets.__getitem__ = lambda s, k: {
+                "label": "Download cache (NMT, BDOT10k, HSG)",
+                "path": cache_dir,
+                "type": "cache",
+                "exclude_from_all": True,
+            }
+
+            client = TestClient(app)
+            response = client.post(
+                "/api/admin/cleanup",
+                json={"targets": ["cache"]},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["results"][0]["key"] == "cache"
+            assert data["results"][0]["status"] == "ok"
+
+        # Subdirectories should still exist but be empty
+        assert nmt_dir.exists()
+        assert bdot_dir.exists()
+        assert hsg_dir.exists()
+        assert list(nmt_dir.iterdir()) == []
+        assert list(bdot_dir.iterdir()) == []
+        assert list(hsg_dir.iterdir()) == []
+
+    def test_cache_excluded_from_all_targets(self):
+        """Cache target is NOT included in ALL_CLEANUP_TARGETS."""
+        assert "cache" not in ALL_CLEANUP_TARGETS
+
+    def test_all_targets_include_standard_keys(self):
+        """ALL_CLEANUP_TARGETS includes standard cleanup keys."""
+        for key in ("tiles", "overlays", "dem_tiles", "dem_mosaic", "db_tables"):
+            assert key in ALL_CLEANUP_TARGETS
+
+    def test_cleanup_cache_nonexistent_dir(self, app, tmp_path):
+        """Cleaning cache when directory does not exist still returns ok."""
+        mock_db = _make_mock_db()
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        nonexistent = tmp_path / "cache_missing"
+
+        with patch("api.endpoints.admin.CLEANUP_TARGETS") as mock_targets:
+            mock_targets.__contains__ = lambda s, k: k == "cache"
+            mock_targets.__getitem__ = lambda s, k: {
+                "label": "Download cache (NMT, BDOT10k, HSG)",
+                "path": nonexistent,
+                "type": "cache",
+                "exclude_from_all": True,
+            }
+
+            client = TestClient(app)
+            response = client.post(
+                "/api/admin/cleanup",
+                json={"targets": ["cache"]},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["results"][0]["status"] == "ok"
 
 
 class TestFileSizeMb:
