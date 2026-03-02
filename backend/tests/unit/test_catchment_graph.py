@@ -441,3 +441,24 @@ class TestTraverseToConfluenceDeque:
         source = inspect.getsource(CatchmentGraph.traverse_to_confluence)
         assert "deque" in source, "traverse_to_confluence should use collections.deque"
         assert ".pop(0)" not in source, "traverse_to_confluence should not use list.pop(0)"
+
+
+class TestGetSegmentIdx:
+    """Tests for public get_segment_idx() accessor (CR6)."""
+
+    def test_returns_correct_segment_idx(self, small_graph):
+        assert small_graph.get_segment_idx(0) == 1
+        assert small_graph.get_segment_idx(1) == 2
+        assert small_graph.get_segment_idx(2) == 3
+        assert small_graph.get_segment_idx(3) == 4
+
+    def test_returns_int(self, small_graph):
+        result = small_graph.get_segment_idx(0)
+        assert isinstance(result, int)
+
+    def test_raises_when_not_loaded(self):
+        from core.catchment_graph import CatchmentGraph
+        import pytest
+        cg = CatchmentGraph()
+        with pytest.raises(RuntimeError, match="not loaded"):
+            cg.get_segment_idx(0)

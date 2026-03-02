@@ -136,7 +136,7 @@ def generate_hydrograph(
             ) from e
 
         # ===== STEP 5: Get segment info and traverse upstream =====
-        segment_idx = int(cg._segment_idx[clicked_idx])
+        segment_idx = cg.get_segment_idx(clicked_idx)
         segment = get_stream_info_by_segment_idx(segment_idx, DEFAULT_THRESHOLD_M2, db)
 
         upstream_indices = cg.traverse_upstream(clicked_idx)
