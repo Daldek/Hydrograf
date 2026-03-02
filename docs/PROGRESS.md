@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 19 endpointow (11 core + 8 admin). 729 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 19 endpointow (11 core + 8 admin). 742 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 12 modulow JS (9 core + 3 admin). CP4 — select-stream, MVT, DEM tiles, admin panel |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 729 testow lacznie (42 pliki testowe) |
+| Testy | ✅ Gotowy | 742 testow lacznie (42 pliki testowe) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -45,36 +45,45 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-01 (sesja 48)
+**Data:** 2026-03-02 (sesja 49)
 
 ### Co zrobiono
 
-Panel administracyjno-diagnostyczny (ADR-034): 8 nowych endpointow `/api/admin/*`, frontend `/admin`, 48 nowych testow, 729 lacznie. 12 commitow na develop.
+Naprawa 6 krytycznych bugow (CR4, CR6, CR7, CR8, S5.3, Auth) w trybie rownoleglych zespolow subagentow (3 feature branches + merger). 13 nowych testow, 742 lacznie. 12 commitow na develop.
 
-- **Backend (5 taskow):**
-  - Auth middleware: API key (header X-Admin-Key, env ADMIN_API_KEY), dependency na routerze
-  - Dashboard: status systemu, row counts 6 tabel, zuzycie dysku (frontend/data, tiles, NMT)
-  - Resources: CPU/RAM (psutil), pool DB, CatchmentGraph cache, rozmiar bazy
-  - Cleanup: estymacja + wykonanie — tiles, overlays, dem_tiles, dem_mosaic, TRUNCATE tabel
-  - Bootstrap: subprocess + SSE stream logow, start/cancel/status, walidacja bbox, historia
+- **Team 1 — `feature/fix-catchment-graph` (CR4 + CR6 + CR7):**
+  - CR7: Thread-safe singleton `get_catchment_graph()` — `threading.Lock` z double-check locking
+  - CR4: `collections.deque.popleft()` zamiast `list.pop(0)` w `traverse_to_confluence()` — O(1) zamiast O(n)
+  - CR6: Publiczna metoda `get_segment_idx(internal_idx)` w `CatchmentGraph` — update 3 endpointow (`watershed.py`, `hydrograph.py`, `select_stream.py`)
+  - 6 nowych testow
 
-- **Frontend (4 taski):**
-  - `admin.html`: glassmorphism, 4 sekcje, auth overlay, Bootstrap 5.3.3 CDN
-  - `admin.css`: gradient bg, stat-grid, badges, log terminal, cleanup targets
-  - `admin-api.js`: IIFE na `window.Hydrograf.adminApi`, fetch+ReadableStream dla SSE
-  - `admin-bootstrap.js` + `admin-app.js`: orchestrator, auto-refresh 30s, escapeHtml
+- **Team 2 — `feature/fix-profile-security` (CR8):**
+  - Usuniecie sciezki serwera (`/data/dem/dem.vrt`) z komunikatu bledu 503 — information disclosure
+  - `math.isclose()` zamiast `==` dla porownania nodata float
+  - `nodata_count` do odroznienia realnej elewacji 0.0 m n.p.m. od nodata
+  - 2 nowe testy
 
-- **Infrastruktura:**
-  - nginx.conf: `location = /admin` + SSE proxy (timeout 3600s, buffering off)
-  - psutil w requirements.txt
-  - 48 testow admin (auth 5, dashboard 7, resources 5, cleanup 8, bootstrap 16, integration 7)
+- **Team 3 — `feature/fix-secrets-auth` (S5.3 + Auth):**
+  - Auto-generowanie klucza admin API (`uuid4`) gdy `ADMIN_API_KEY` nie ustawiony — klucz logowany jako WARNING
+  - `warn_if_default_credentials()` w `Settings` — WARNING gdy `postgres_password == "hydro_password"`
+  - `migrations/env.py` — WARNING gdy `DATABASE_URL` nie ustawiony
+  - 5 nowych testow
 
-- **Dokumentacja:** ADR-034, CHANGELOG, PROGRESS
+- **Team 4 — Merger:**
+  - Merge 2 czystych branchy (Team 1, Team 3) + reczne re-apply Team 2 (branch na zlej bazie v0.3.0)
+  - Naprawa nieaktualnego komentarza w `config.py` (`empty = auth disabled` → `empty = auto-generated UUID`)
+  - 0 konfliktow, 742 testow PASS
+
+- **Proces:** Design doc → Plan implementacji (TDD) → 3 zespoly rownoleglo (worktree isolation) → Spec compliance review → Code quality review → Merge
 
 ### Nastepne kroki
 1. CP5: MVP — pelna integracja, deploy
-2. Code review CR4-CR11 (wazne)
+2. Code review CR5, CR9-CR16 (sredni priorytet — poprawnosc CN, cascade stats mismatch, duplikacja logiki)
 3. Rozwazyc podwojna analize NMT (z/bez bezodplywowych) — nowy punkt backlog
+
+### Poprzednia sesja (2026-03-01, sesja 48)
+
+Panel administracyjno-diagnostyczny (ADR-034): 8 nowych endpointow `/api/admin/*`, frontend `/admin`, 48 nowych testow, 729 lacznie. 12 commitow na develop.
 
 ### Poprzednia sesja (2026-03-01, sesja 47)
 
