@@ -40,6 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-directional hillshade:** `compute_hillshade()` w `utils/dem_color.py` uzywa 4 kierunkow oswietlenia (NW 40%, NE 20%, SE 20%, SW 20%) zamiast pojedynczego zrodla. Bardziej naturalna wizualizacja terenu, konwencja kartograficzna (NW dominujacy).
 - **Podniesienie budynkow w NMT (ADR-033):** Nowa funkcja `raise_buildings_in_dem()` w `core/hydrology.py` podnosi DEM o +5m pod obrysami budynkow z BDOT10k (warstwa BUBD) lub custom GPKG. Zapobiega nierealistycznym sciezkom przeplywu przez budynki. Nowy parametr `building_gpkg` w `process_dem()`. 4 nowe testy jednostkowe.
 
+### Docker
+- Dodano `.dockerignore` — mniejszy kontekst budowania
+- Multi-stage Dockerfile (builder + runtime) — obraz bez gcc/git w produkcji
+- `entrypoint.sh` z wait-for-db i automatycznymi migracjami Alembic
+- Healthcheck API w docker-compose.yml (+ nginx depends_on service_healthy)
+- `docker-compose.override.yml` z bind mount kodu i --reload (dev)
+- `docker-compose.prod.yml` — override produkcyjny (2 workery, LOG_LEVEL=WARNING)
+- Usunieto przestarzaly atrybut `version` z docker-compose.yml
+
 ### Changed
 - **Domyslny max zoom dla DEM tiles:** zmiana z 18 na 16 w `generate_dem_tiles.py`. Przy 5m NMT zoom 16 daje ~2.4m/piksel (wystarczajacy), zoom 18 daje ~0.6m/piksel bez dodatkowego detalu, 16x wiecej dysku.
 - **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):** 3 tryby — `auto` (BDOT10k klasyfikacja, domyslnie), `none` (pomin), custom `.gpkg`/`.shp` (wszystkie endoreiczne). Nowa flaga `--waterbody-min-area` do filtrowania malych zbiornikow po powierzchni. Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py.
