@@ -1,7 +1,7 @@
 """
 Script to download land cover data from GUGiK (BDOT10k) or Copernicus (CORINE).
 
-Downloads land cover data for a specified area using Kartograf 0.4.1+ library.
+Downloads land cover data for a specified area using Kartograf 0.5.0+ library.
 Supports downloading by:
 - Point + buffer (finds TERYT code for the area)
 - Sheet code (godlo)
@@ -9,9 +9,7 @@ Supports downloading by:
 - Bounding box (EPSG:2180)
 
 Available data sources:
-- BDOT10k: Polish topographic database
-  - category 'pt': 12 land cover layers (1:10000 scale)
-  - category 'hydro': hydrographic layers (SWRS, SWKN, SWRM, PTWP)
+- BDOT10k: Polish topographic database (all layers downloaded, hydro filtered on merge)
 - CORINE: European land cover classification (44 classes)
 
 Usage
@@ -27,12 +25,6 @@ Examples
         --lat 52.23 --lon 21.01 \\
         --buffer 5 \\
         --output ../data/landcover/
-
-    # Download BDOT10k hydrographic data for a sheet
-    python -m scripts.download_landcover \\
-        --godlo N-33-131-C-b-2 \\
-        --category hydro \\
-        --output ../data/hydro/
 
     # Download BDOT10k for specific TERYT code (powiat)
     python -m scripts.download_landcover \\
@@ -64,7 +56,6 @@ logger = logging.getLogger(__name__)
 def download_landcover(
     output_dir: Path,
     provider: str = "bdot10k",
-    category: str = "pt",
     teryt: str | None = None,
     godlo: str | None = None,
     lat: float | None = None,
@@ -82,9 +73,6 @@ def download_landcover(
         Output directory for downloaded files
     provider : str
         Data provider: 'bdot10k' or 'corine' (default: 'bdot10k')
-    category : str
-        BDOT10k category: 'pt' (land cover) or 'hydro' (hydrography).
-        Only applies to bdot10k provider. Default: 'pt'
     teryt : str, optional
         4-digit TERYT code (county/powiat)
     godlo : str, optional
@@ -116,8 +104,8 @@ def download_landcover(
         from kartograf.landcover import LandCoverManager
     except ImportError as e:
         logger.error(
-            "Kartograf 0.4.1+ not installed. Install with: "
-            "pip install git+https://github.com/Daldek/Kartograf.git@v0.4.1"
+            "Kartograf 0.5.0+ not installed. Install with: "
+            "pip install git+https://github.com/Daldek/Kartograf.git@v0.5.0"
         )
         raise ImportError("Kartograf library not found or version too old") from e
 
@@ -128,22 +116,12 @@ def download_landcover(
     manager = LandCoverManager(output_dir=str(output_dir), provider=provider)
 
     logger.info(f"Provider: {provider.upper()}")
-    if provider == "bdot10k":
-        logger.info(f"Category: {category}")
     logger.info(f"Output directory: {output_dir}")
-
-    # Build category suffix for filename
-    cat_suffix = f"_{category}" if category != "pt" else ""
-
-    # Build kwargs for category (only for bdot10k)
-    cat_kwargs: dict = {}
-    if provider == "bdot10k" and category != "pt":
-        cat_kwargs["category"] = category
 
     # Determine download method
     if teryt:
         logger.info(f"Downloading by TERYT: {teryt}")
-        output_path = output_dir / f"{provider}{cat_suffix}_teryt_{teryt}.gpkg"
+        output_path = output_dir / f"{provider}_teryt_{teryt}.gpkg"
 
         if skip_existing and output_path.exists():
             logger.info(f"File already exists, skipping: {output_path}")
@@ -151,7 +129,7 @@ def download_landcover(
 
         try:
             result = manager.download_by_teryt(
-                teryt, output_path=output_path, **cat_kwargs
+                teryt, output_path=output_path
             )
             return Path(result)
         except Exception as e:
@@ -161,7 +139,7 @@ def download_landcover(
     elif godlo:
         logger.info(f"Downloading by sheet code: {godlo}")
         output_path = (
-            output_dir / f"{provider}{cat_suffix}_godlo_{godlo.replace('-', '_')}.gpkg"
+            output_dir / f"{provider}_godlo_{godlo.replace('-', '_')}.gpkg"
         )
 
         if skip_existing and output_path.exists():
@@ -170,7 +148,6 @@ def download_landcover(
 
         try:
             kwargs = {"year": year} if provider == "corine" else {}
-            kwargs.update(cat_kwargs)
             result = manager.download_by_godlo(godlo, output_path=output_path, **kwargs)
             return Path(result)
         except Exception as e:
@@ -197,7 +174,7 @@ def download_landcover(
             )
 
             output_path = (
-                output_dir / f"{provider}{cat_suffix}_bbox_{int(x)}_{int(y)}.gpkg"
+                output_dir / f"{provider}_bbox_{int(x)}_{int(y)}.gpkg"
             )
 
             if skip_existing and output_path.exists():
@@ -206,7 +183,6 @@ def download_landcover(
 
             logger.info(f"Downloading by bbox: {bbox}")
             kwargs = {"year": year} if provider == "corine" else {}
-            kwargs.update(cat_kwargs)
             result = manager.download_by_bbox(bbox, output_path=output_path, **kwargs)
             return Path(result)
 
@@ -218,6 +194,9 @@ def download_landcover(
         raise ValueError(
             "Either --teryt, --godlo, or both --lat and --lon are required"
         )
+
+
+HYDRO_LAYER_PREFIXES = ("SWRS", "SWKN", "SWRM", "PTWP")
 
 
 def merge_hydro_gpkgs(gpkg_paths: list[Path], output_path: Path) -> Path | None:
@@ -265,6 +244,10 @@ def merge_hydro_gpkgs(gpkg_paths: list[Path], output_path: Path) -> Path | None:
             continue
 
         for layer_name in layer_names:
+            # Filter: keep only hydro-relevant layers
+            if not layer_name.startswith(HYDRO_LAYER_PREFIXES):
+                logger.debug(f"Skipping non-hydro layer: {layer_name}")
+                continue
             try:
                 gdf = gpd.read_file(gpkg, layer=layer_name)
                 if gdf.empty:
@@ -415,13 +398,6 @@ def main():
         help="Data provider (default: bdot10k)",
     )
     provider_group.add_argument(
-        "--category",
-        type=str,
-        default="pt",
-        choices=["pt", "hydro"],
-        help="BDOT10k category: 'pt' (land cover) or 'hydro' (default: pt)",
-    )
-    provider_group.add_argument(
         "--year",
         type=int,
         default=2018,
@@ -467,11 +443,9 @@ def main():
 
     # Log configuration
     logger.info("=" * 60)
-    logger.info("Land Cover Download Script (Kartograf 0.4.1)")
+    logger.info("Land Cover Download Script (Kartograf 0.5.0)")
     logger.info("=" * 60)
     logger.info(f"Provider: {args.provider.upper()}")
-    if args.provider == "bdot10k":
-        logger.info(f"Category: {args.category}")
 
     if args.teryt:
         logger.info(f"TERYT: {args.teryt}")
@@ -499,7 +473,6 @@ def main():
         result = download_landcover(
             output_dir=output_dir,
             provider=args.provider,
-            category=args.category,
             teryt=args.teryt,
             godlo=args.godlo,
             lat=args.lat,
