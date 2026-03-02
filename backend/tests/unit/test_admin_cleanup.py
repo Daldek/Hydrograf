@@ -56,6 +56,7 @@ class TestCleanupEstimate:
         assert "dem_tiles" in keys
         assert "dem_mosaic" in keys
         assert "db_tables" in keys
+        assert "processed_data" in keys
 
     @patch("api.endpoints.admin._dir_size_mb", return_value=5.5)
     @patch("api.endpoints.admin._file_size_mb", return_value=0.0)
@@ -248,7 +249,7 @@ class TestCleanupCache:
 
     def test_all_targets_include_standard_keys(self):
         """ALL_CLEANUP_TARGETS includes standard cleanup keys."""
-        for key in ("tiles", "overlays", "dem_tiles", "dem_mosaic", "db_tables"):
+        for key in ("tiles", "overlays", "dem_tiles", "dem_mosaic", "processed_data", "db_tables"):
             assert key in ALL_CLEANUP_TARGETS
 
     def test_cleanup_cache_nonexistent_dir(self, app, tmp_path):
@@ -275,6 +276,51 @@ class TestCleanupCache:
             assert response.status_code == 200
             data = response.json()
             assert data["results"][0]["status"] == "ok"
+
+
+class TestCleanupProcessedData:
+    """Tests for processed_data cleanup target."""
+
+    def test_processed_data_in_all_targets(self):
+        """processed_data is included in ALL_CLEANUP_TARGETS."""
+        assert "processed_data" in ALL_CLEANUP_TARGETS
+
+    def test_cleanup_processed_data_removes_tif(self, app, tmp_path):
+        """Cleaning processed_data removes TIF files from data/nmt/ and hydro/."""
+        mock_db = _make_mock_db()
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        nmt_dir = tmp_path / "nmt"
+        nmt_dir.mkdir()
+        (nmt_dir / "dem_mosaic.vrt").write_bytes(b"vrt")
+        (nmt_dir / "dem_mosaic_01_dem.tif").write_bytes(b"tif")
+        (nmt_dir / "dem_mosaic_02_filled.tif").write_bytes(b"tif")
+
+        hydro_dir = tmp_path / "hydro"
+        hydro_dir.mkdir()
+        (hydro_dir / "hydro_merged.gpkg").write_bytes(b"gpkg")
+
+        with patch("api.endpoints.admin.CLEANUP_TARGETS") as mock_targets:
+            mock_targets.__contains__ = lambda s, k: k == "processed_data"
+            mock_targets.__getitem__ = lambda s, k: {
+                "label": "Processed rasters + hydro",
+                "path": [nmt_dir, hydro_dir],
+                "type": "multi_dir",
+            }
+
+            client = TestClient(app)
+            response = client.post(
+                "/api/admin/cleanup",
+                json={"targets": ["processed_data"]},
+            )
+            assert response.status_code == 200
+            assert response.json()["results"][0]["status"] == "ok"
+
+        # Directories exist but are empty
+        assert nmt_dir.exists()
+        assert list(nmt_dir.iterdir()) == []
+        assert hydro_dir.exists()
+        assert list(hydro_dir.iterdir()) == []
 
 
 class TestFileSizeMb:
