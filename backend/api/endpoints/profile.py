@@ -6,6 +6,7 @@ by sampling the DEM raster file via rasterio.
 """
 
 import logging
+import math
 import os
 
 import rasterio
@@ -82,22 +83,26 @@ def terrain_profile(
         dem_path = settings.dem_path
 
         if not os.path.exists(dem_path):
+            logger.error("DEM file not found at configured path: %s", dem_path)
             raise HTTPException(
                 status_code=503,
-                detail=f"Plik DEM nie jest dostepny: {dem_path}. Skonfiguruj DEM_PATH.",
+                detail="Plik DEM nie jest dostepny. Skontaktuj sie z administratorem.",
             )
 
         elevations: list[float] = []
+        nodata_count = 0
         with rasterio.open(dem_path) as dataset:
             for val in dataset.sample(sample_points):
                 elev = float(val[0])
-                # Handle nodata
-                if dataset.nodata is not None and elev == dataset.nodata:
+                if dataset.nodata is not None and math.isclose(
+                    elev, float(dataset.nodata), rel_tol=1e-6
+                ):
                     elevations.append(0.0)
+                    nodata_count += 1
                 else:
                     elevations.append(elev)
 
-        if not elevations or all(e == 0.0 for e in elevations):
+        if not elevations or nodata_count == len(elevations):
             raise HTTPException(
                 status_code=404,
                 detail="Brak danych wysokosciowych dla podanej linii",
