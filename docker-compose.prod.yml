@@ -12,6 +12,15 @@ services:
     # 2 workers for production (no --reload)
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 2
 
+  db:
+    environment:
+      # In production the db reads the password from the Docker secret file.
+      # The base compose still requires POSTGRES_PASSWORD in .env because
+      # the api service interpolates it into DATABASE_URL.
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+
   nginx:
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
