@@ -88,6 +88,13 @@
             var minArea = parseFloat(areaMinEl.value || '100');
             var maxArea = parseFloat(areaMaxEl.value || '999999');
 
+            // Disable filter inputs and show loading cursor during fetch
+            var filterInputs = [volMinEl, volMaxEl, areaMinEl, areaMaxEl];
+            filterInputs.forEach(function (el) { el.disabled = true; });
+            if (Hydrograf.map && Hydrograf.map.setLoadingCursor) {
+                Hydrograf.map.setLoadingCursor(true);
+            }
+
             fetchFiltered(minVol, maxVol, minArea, maxArea).then(function (geojson) {
                 // Clear old layer
                 if (geojsonLayer) {
@@ -129,6 +136,11 @@
                 }
             }).catch(function (err) {
                 console.debug('Depression filter error:', err.message);
+            }).finally(function () {
+                filterInputs.forEach(function (el) { el.disabled = false; });
+                if (Hydrograf.map && Hydrograf.map.setLoadingCursor) {
+                    Hydrograf.map.setLoadingCursor(false);
+                }
             });
         }, 300);
     }
