@@ -36,10 +36,17 @@
 
 /* Navbar glass */
 .navbar-glass {
-    background: rgba(29, 29, 31, 0.78);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-bottom: 1px solid var(--glass-border);
+}
+
+/* Override Bootstrap navbar-dark text for light glass background */
+.navbar-glass.navbar-dark .navbar-brand,
+.navbar-glass.navbar-dark .navbar-text,
+.navbar-glass.navbar-dark .nav-link {
+    color: var(--color-text) !important;
 }
 
 /* Leaflet controls glass override */
