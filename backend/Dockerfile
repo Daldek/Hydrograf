@@ -1,24 +1,57 @@
-FROM python:3.12-slim
+# ============================================================
+# Stage 1: builder — install build tools and compile deps
+# ============================================================
+FROM python:3.12-slim AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Install system dependencies for PostGIS
-RUN apt-get update && apt-get install -y \
+# Build-time system dependencies (gcc, git for git+https:// pip deps)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libgeos-dev \
     libproj-dev \
     gcc \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+RUN python -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+# ============================================================
+# Stage 2: runtime — lean production image
+# ============================================================
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Runtime-only system libraries (no compilers, no git)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libgeos-c1t64 \
+    libproj25 \
+    libexpat1 \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for running the application
+RUN groupadd -r hydro && useradd -r -g hydro -d /app -s /sbin/nologin hydro
+
+# Copy pre-built virtualenv from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 COPY . .
 
-# Expose port
+# Ensure entrypoint is executable and set ownership
+RUN chmod +x /app/entrypoint.sh && chown -R hydro:hydro /app
+
+USER hydro
+
 EXPOSE 8000
 
-# Run the application
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

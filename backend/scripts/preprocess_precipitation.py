@@ -33,7 +33,6 @@ import logging
 import sys
 import time
 from datetime import datetime
-from typing import List, Tuple
 
 from pyproj import Transformer
 from sqlalchemy import text
@@ -55,7 +54,7 @@ PROBABILITIES = [1, 2, 5, 10, 20, 50]
 WGS84_TO_PL1992 = Transformer.from_crs("EPSG:4326", "EPSG:2180", always_xy=True)
 
 
-def parse_bbox(bbox_str: str) -> Tuple[float, float, float, float]:
+def parse_bbox(bbox_str: str) -> tuple[float, float, float, float]:
     """
     Parse bounding box string.
 
@@ -90,13 +89,13 @@ def parse_bbox(bbox_str: str) -> Tuple[float, float, float, float]:
 
         return min_lon, min_lat, max_lon, max_lat
     except Exception as e:
-        raise ValueError(f"Invalid bbox format: {e}")
+        raise ValueError(f"Invalid bbox format: {e}") from e
 
 
 def generate_grid_points(
-    bbox: Tuple[float, float, float, float],
+    bbox: tuple[float, float, float, float],
     spacing_km: float,
-) -> List[Tuple[float, float]]:
+) -> list[tuple[float, float]]:
     """
     Generate a grid of points within bounding box.
 
@@ -164,7 +163,9 @@ async def fetch_pmaxtp_for_point(
         result = fetch_pmaxtp(latitude=lat, longitude=lon)
 
         scenarios = {}
-        for duration_str, duration_min in zip(DURATIONS, DURATION_MINUTES):
+        for duration_str, duration_min in zip(
+            DURATIONS, DURATION_MINUTES, strict=False
+        ):
             for prob in PROBABILITIES:
                 precip = result.data.get_precipitation(duration_min, prob)
                 scenarios[(duration_str, prob)] = precip
@@ -216,7 +217,8 @@ def insert_precipitation_data(
             db_session.execute(
                 text("""
                     INSERT INTO precipitation_data
-                        (geom, duration, probability, precipitation_mm, source, updated_at)
+                        (geom, duration, probability,
+                         precipitation_mm, source, updated_at)
                     VALUES
                         (ST_SetSRID(ST_Point(:x, :y), 2180), :duration, :probability,
                          :precipitation_mm, 'IMGW_PMAXTP', :updated_at)
@@ -244,10 +246,10 @@ def insert_precipitation_data(
 
 
 async def process_grid(
-    bbox: Tuple[float, float, float, float],
+    bbox: tuple[float, float, float, float],
     spacing_km: float,
     delay_s: float,
-) -> Tuple[int, int, int]:
+) -> tuple[int, int, int]:
     """
     Process entire grid of points.
 

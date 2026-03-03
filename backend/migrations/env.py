@@ -1,6 +1,7 @@
 """
 Alembic environment configuration for Hydrograf.
 """
+
 import os
 from logging.config import fileConfig
 
@@ -22,10 +23,14 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Get database URL from environment
-database_url = os.getenv(
-    "DATABASE_URL",
-    "postgresql://hydro_user:hydro_password@localhost:5432/hydro_db"
-)
+database_url = os.getenv("DATABASE_URL")
+if not database_url:
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "DATABASE_URL not set — using default local connection. "
+        "Set DATABASE_URL env var for production."
+    )
+    database_url = "postgresql://hydro_user:@localhost:5432/hydro_db"
 config.set_main_option("sqlalchemy.url", database_url)
 
 

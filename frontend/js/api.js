@@ -1,0 +1,207 @@
+/**
+ * Hydrograf API client module.
+ *
+ * Handles communication with the backend API.
+ * Uses relative URLs (same-origin via nginx proxy).
+ */
+(function () {
+    'use strict';
+
+    window.Hydrograf = window.Hydrograf || {};
+
+    const ERROR_MESSAGES = {
+        400: 'Nieprawidłowe żądanie. Sprawdź współrzędne i spróbuj ponownie.',
+        404: 'Nie znaleziono cieku w tym miejscu. Kliknij bliżej linii cieku.',
+        429: 'Zbyt wiele żądań. Poczekaj chwilę i spróbuj ponownie.',
+        500: 'Błąd serwera. Spróbuj ponownie za chwilę.',
+    };
+
+    // Simple TTL cache for API results
+    var _cache = new Map();
+    var _CACHE_MAX = 50;
+    var _CACHE_TTL = 300000; // 5 minutes
+
+    function _cacheKey(prefix, args) {
+        return prefix + ':' + Array.prototype.slice.call(arguments, 1).map(function(a) {
+            return typeof a === 'number' ? a.toFixed(5) : String(a);
+        }).join(',');
+    }
+
+    function _cacheGet(key) {
+        var entry = _cache.get(key);
+        if (!entry) return undefined;
+        if (Date.now() - entry.ts > _CACHE_TTL) {
+            _cache.delete(key);
+            return undefined;
+        }
+        return entry.value;
+    }
+
+    function _cacheSet(key, value) {
+        if (_cache.size >= _CACHE_MAX) {
+            // Evict oldest entry
+            var oldest = _cache.keys().next().value;
+            _cache.delete(oldest);
+        }
+        _cache.set(key, { value: value, ts: Date.now() });
+    }
+
+    /**
+     * Generic error handler for API responses.
+     */
+    async function handleError(response) {
+        let message = ERROR_MESSAGES[response.status];
+        if (!message) {
+            message = 'Nieoczekiwany błąd (' + response.status + '). Spróbuj ponownie.';
+        }
+
+        if (response.status === 404 || response.status === 400) {
+            try {
+                const data = await response.json();
+                if (data.detail) message = data.detail;
+            } catch { /* use default */ }
+        }
+
+        throw new Error(message);
+    }
+
+    /**
+     * Delineate watershed for given coordinates.
+     */
+    async function delineateWatershed(lat, lng) {
+        var key = _cacheKey('ws', lat, lng);
+        var cached = _cacheGet(key);
+        if (cached) return cached;
+
+        const response = await fetch('/api/delineate-watershed?include_hypsometric_curve=true', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ latitude: lat, longitude: lng }),
+        });
+
+        if (!response.ok) await handleError(response);
+        var data = await response.json();
+        _cacheSet(key, data);
+        return data;
+    }
+
+    /**
+     * Check system health.
+     */
+    async function checkHealth() {
+        const response = await fetch('/health');
+        if (!response.ok) throw new Error('System niedostępny');
+        return response.json();
+    }
+
+    /**
+     * Get terrain profile along a line.
+     *
+     * @param {Object} lineGeojson - GeoJSON LineString geometry
+     * @param {number} nSamples - Number of sample points
+     * @returns {Promise<Object>} { distances_m, elevations_m, total_length_m }
+     */
+    async function getTerrainProfile(lineGeojson, nSamples) {
+        var key = _cacheKey('tp', JSON.stringify(lineGeojson), nSamples);
+        var cached = _cacheGet(key);
+        if (cached) return cached;
+
+        const response = await fetch('/api/terrain-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ geometry: lineGeojson, n_samples: nSamples || 100 }),
+        });
+
+        if (!response.ok) await handleError(response);
+        var data = await response.json();
+        _cacheSet(key, data);
+        return data;
+    }
+
+    /**
+     * Generate hydrograph for given parameters.
+     */
+    async function generateHydrograph(lat, lng, duration, probability) {
+        const response = await fetch('/api/generate-hydrograph', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                latitude: lat,
+                longitude: lng,
+                duration: duration,
+                probability: probability,
+            }),
+        });
+
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
+    /**
+     * Get available hydrograph scenarios.
+     */
+    async function getScenarios() {
+        const response = await fetch('/api/scenarios');
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
+    /**
+     * Get filtered depressions as GeoJSON.
+     *
+     * @param {Object} filters - { min_volume, max_volume, min_area, max_area }
+     * @returns {Promise<Object>} GeoJSON FeatureCollection
+     */
+    async function getDepressions(filters) {
+        const params = new URLSearchParams();
+        if (filters.min_volume !== undefined) params.set('min_volume', filters.min_volume);
+        if (filters.max_volume !== undefined) params.set('max_volume', filters.max_volume);
+        if (filters.min_area !== undefined) params.set('min_area', filters.min_area);
+        if (filters.max_area !== undefined) params.set('max_area', filters.max_area);
+
+        const response = await fetch('/api/depressions?' + params.toString());
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
+    /**
+     * Select a stream and get upstream catchment info.
+     *
+     * @param {number} lat - Latitude (WGS84)
+     * @param {number} lng - Longitude (WGS84)
+     * @param {number} threshold - Flow accumulation threshold [m2]
+     * @returns {Promise<Object>} { stream, upstream_segment_indices, boundary_geojson }
+     */
+    async function selectStream(lat, lng, threshold) {
+        var key = _cacheKey('ss', lat, lng, threshold);
+        var cached = _cacheGet(key);
+        if (cached) return cached;
+
+        var body = {
+            latitude: lat,
+            longitude: lng,
+            threshold_m2: threshold,
+        };
+
+        const response = await fetch('/api/select-stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) await handleError(response);
+        var data = await response.json();
+        _cacheSet(key, data);
+        return data;
+    }
+
+    window.Hydrograf.api = {
+        delineateWatershed: delineateWatershed,
+        checkHealth: checkHealth,
+        getTerrainProfile: getTerrainProfile,
+        generateHydrograph: generateHydrograph,
+        getScenarios: getScenarios,
+        getDepressions: getDepressions,
+        selectStream: selectStream,
+    };
+})();

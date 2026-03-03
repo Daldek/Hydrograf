@@ -1,15 +1,15 @@
 """
 Script to download land cover data from GUGiK (BDOT10k) or Copernicus (CORINE).
 
-Downloads land cover data for a specified area using Kartograf 0.3.0+ library.
+Downloads land cover data for a specified area using Kartograf 0.5.0+ library.
 Supports downloading by:
 - Point + buffer (finds TERYT code for the area)
-- Sheet code (godło)
+- Sheet code (godlo)
 - TERYT code (4-digit county code)
 - Bounding box (EPSG:2180)
 
 Available data sources:
-- BDOT10k: Polish topographic database (12 land cover layers, 1:10000 scale)
+- BDOT10k: Polish topographic database (all layers downloaded, hydro filtered on merge)
 - CORINE: European land cover classification (44 classes)
 
 Usage
@@ -20,7 +20,7 @@ Usage
 
 Examples
 --------
-    # Download BDOT10k for area around point
+    # Download BDOT10k land cover for area around point
     python -m scripts.download_landcover \\
         --lat 52.23 --lon 21.01 \\
         --buffer 5 \\
@@ -43,7 +43,6 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 # Configure logging
 logging.basicConfig(
@@ -57,14 +56,14 @@ logger = logging.getLogger(__name__)
 def download_landcover(
     output_dir: Path,
     provider: str = "bdot10k",
-    teryt: Optional[str] = None,
-    godlo: Optional[str] = None,
-    lat: Optional[float] = None,
-    lon: Optional[float] = None,
+    teryt: str | None = None,
+    godlo: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
     buffer_km: float = 5.0,
     year: int = 2018,
     skip_existing: bool = True,
-) -> Optional[Path]:
+) -> Path | None:
     """
     Download land cover data using Kartograf.
 
@@ -105,8 +104,8 @@ def download_landcover(
         from kartograf.landcover import LandCoverManager
     except ImportError as e:
         logger.error(
-            "Kartograf 0.3.0+ not installed. Install with: "
-            "pip install git+https://github.com/Daldek/Kartograf.git@main"
+            "Kartograf 0.5.0+ not installed. Install with: "
+            "pip install git+https://github.com/Daldek/Kartograf.git@v0.5.0"
         )
         raise ImportError("Kartograf library not found or version too old") from e
 
@@ -129,7 +128,9 @@ def download_landcover(
             return output_path
 
         try:
-            result = manager.download_by_teryt(teryt, output_path=output_path)
+            result = manager.download_by_teryt(
+                teryt, output_path=output_path
+            )
             return Path(result)
         except Exception as e:
             logger.error(f"Download failed: {e}")
@@ -137,7 +138,9 @@ def download_landcover(
 
     elif godlo:
         logger.info(f"Downloading by sheet code: {godlo}")
-        output_path = output_dir / f"{provider}_godlo_{godlo.replace('-', '_')}.gpkg"
+        output_path = (
+            output_dir / f"{provider}_godlo_{godlo.replace('-', '_')}.gpkg"
+        )
 
         if skip_existing and output_path.exists():
             logger.info(f"File already exists, skipping: {output_path}")
@@ -170,7 +173,9 @@ def download_landcover(
                 x - buffer_m, y - buffer_m, x + buffer_m, y + buffer_m, "EPSG:2180"
             )
 
-            output_path = output_dir / f"{provider}_bbox_{int(x)}_{int(y)}.gpkg"
+            output_path = (
+                output_dir / f"{provider}_bbox_{int(x)}_{int(y)}.gpkg"
+            )
 
             if skip_existing and output_path.exists():
                 logger.info(f"File already exists, skipping: {output_path}")
@@ -191,10 +196,168 @@ def download_landcover(
         )
 
 
+HYDRO_LAYER_PREFIXES = ("SWRS", "SWKN", "SWRM", "PTWP")
+
+
+def merge_hydro_gpkgs(gpkg_paths: list[Path], output_path: Path) -> Path | None:
+    """
+    Merge multiple per-TERYT hydro GeoPackages into one multi-layer GeoPackage.
+
+    Preserves layer structure (SWRS, SWKN, SWRM, PTWP) as required by
+    ``burn_streams_into_dem()`` in ``core/hydrology.py``.
+
+    Parameters
+    ----------
+    gpkg_paths : list[Path]
+        Paths to per-TERYT hydro GeoPackage files
+    output_path : Path
+        Path for the merged output GeoPackage
+
+    Returns
+    -------
+    Path or None
+        Path to merged file, or None if no data available
+    """
+    if not gpkg_paths:
+        return None
+
+    if len(gpkg_paths) == 1:
+        return gpkg_paths[0]
+
+    try:
+        import fiona
+        import geopandas as gpd
+        import pandas as pd
+    except ImportError as e:
+        logger.error(f"Missing dependency for merge: {e}")
+        return None
+
+    # Collect GeoDataFrames per layer name across all files
+    layers_data: dict[str, list[gpd.GeoDataFrame]] = {}
+    layers_crs: dict[str, object] = {}
+
+    for gpkg in gpkg_paths:
+        try:
+            layer_names = fiona.listlayers(str(gpkg))
+        except Exception as e:
+            logger.warning(f"Cannot read layers from {gpkg}: {e}")
+            continue
+
+        for layer_name in layer_names:
+            # Filter: keep only hydro-relevant layers
+            # Extract BDOT10k code: "OT_SWRS_L" → "SWRS"
+            parts = layer_name.split("_")
+            is_ot = len(parts) >= 3 and parts[0] == "OT"
+            layer_code = parts[1] if is_ot else layer_name
+            if not layer_code.startswith(HYDRO_LAYER_PREFIXES):
+                logger.debug(f"Skipping non-hydro layer: {layer_name}")
+                continue
+            try:
+                gdf = gpd.read_file(gpkg, layer=layer_name)
+                if gdf.empty:
+                    continue
+                layers_data.setdefault(layer_name, []).append(gdf)
+                if layer_name not in layers_crs and gdf.crs is not None:
+                    layers_crs[layer_name] = gdf.crs
+            except Exception as e:
+                logger.debug(f"Cannot read layer {layer_name} from {gpkg}: {e}")
+
+    if not layers_data:
+        logger.warning("No hydro data found in any input files")
+        return None
+
+    # Write merged layers to output
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.exists():
+        output_path.unlink()
+
+    for layer_name, gdfs in layers_data.items():
+        merged = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True))
+        crs = layers_crs.get(layer_name)
+        if crs is not None:
+            merged = merged.set_crs(crs)
+        merged.to_file(output_path, layer=layer_name, driver="GPKG")
+
+    total_features = sum(len(gdf) for gdfs in layers_data.values() for gdf in gdfs)
+    logger.info(
+        f"Merged {len(gpkg_paths)} hydro files → {output_path.name}: "
+        f"{len(layers_data)} layers, {total_features} features"
+    )
+    return output_path
+
+
+def _generate_sample_coords(start: float, end: float, spacing: float) -> list[float]:
+    """
+    Generate sample coordinates between start and end (inclusive).
+
+    For ranges smaller than spacing, returns [start, midpoint, end].
+    For start == end, returns [start].
+    """
+    if start == end:
+        return [start]
+
+    lo, hi = min(start, end), max(start, end)
+    extent = hi - lo
+
+    if extent < spacing:
+        return [lo, lo + extent / 2.0, hi]
+
+    n_steps = max(1, int(extent / spacing))
+    step = extent / n_steps
+    coords = [lo + i * step for i in range(n_steps)]
+    coords.append(hi)
+    return coords
+
+
+def discover_teryts_for_bbox(
+    bbox_2180: tuple[float, float, float, float],
+    spacing_m: float = 2000.0,
+) -> list[str]:
+    """
+    Discover all TERYT codes (powiaty) that cover a bounding box.
+
+    Samples a grid of points within the bbox and queries WMS to find
+    the TERYT code at each point. Returns a sorted list of unique codes.
+
+    Parameters
+    ----------
+    bbox_2180 : tuple
+        Bounding box in EPSG:2180: (min_x, min_y, max_x, max_y)
+    spacing_m : float
+        Grid spacing in meters (default: 5000)
+
+    Returns
+    -------
+    list[str]
+        Sorted list of unique 4-digit TERYT codes
+    """
+    from kartograf.providers.bdot10k import Bdot10kProvider
+
+    min_x, min_y, max_x, max_y = bbox_2180
+    xs = _generate_sample_coords(min_x, max_x, spacing_m)
+    ys = _generate_sample_coords(min_y, max_y, spacing_m)
+
+    provider = Bdot10kProvider()
+    teryts: set[str] = set()
+
+    for x in xs:
+        for y in ys:
+            try:
+                teryt = provider._get_teryt_for_point(x, y)
+                teryts.add(teryt)
+                logger.info(f"Point ({x:.0f}, {y:.0f}) → TERYT {teryt}")
+            except Exception as e:
+                logger.debug(f"Point ({x:.0f}, {y:.0f}) — no TERYT: {e}")
+
+    result = sorted(teryts)
+    logger.info(f"Discovered {len(result)} TERYT(s) for bbox: {result}")
+    return result
+
+
 def main():
     """Main entry point for land cover download script."""
     parser = argparse.ArgumentParser(
-        description="Download land cover data from GUGiK (BDOT10k) or Copernicus (CORINE)",
+        description="Download land cover data from GUGiK/Copernicus",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -284,7 +447,7 @@ def main():
 
     # Log configuration
     logger.info("=" * 60)
-    logger.info("Land Cover Download Script (Kartograf 0.3.0)")
+    logger.info("Land Cover Download Script (Kartograf 0.5.0)")
     logger.info("=" * 60)
     logger.info(f"Provider: {args.provider.upper()}")
 
