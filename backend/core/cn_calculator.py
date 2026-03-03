@@ -9,6 +9,7 @@ Oblicza CN na podstawie kombinacji HSG i pokrycia terenu.
 """
 
 import logging
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -158,6 +159,51 @@ def get_hsg_from_soilgrids(bbox: "BBox") -> tuple[str, dict[str, float]]:
         return (dominant_hsg, hsg_stats)
 
 
+# Mapowanie kodow BDOT10k na kategorie pokrycia terenu.
+# Zgodne z BDOT10K_MAPPING w scripts/import_landcover.py,
+# ale z kluczami uzywanymi w CN_LOOKUP_TABLE (nazwy angielskie).
+BDOT10K_CATEGORY_MAP: dict[str, str] = {
+    "PTLZ": "forest",
+    "PTTR": "arable",
+    "PTUT": "arable",
+    "PTWP": "water",
+    "PTWZ": "meadow",
+    "PTRK": "meadow",
+    "PTZB": "urban_residential",
+    "PTKM": "road",
+    "PTPL": "road",
+    "PTGN": "other",
+    "PTNZ": "other",
+    "PTSO": "other",
+}
+
+
+def _extract_bdot_code(layer_name: str) -> str | None:
+    """
+    Wyciagnij kod BDOT10k (PT*) z nazwy warstwy GeoPackage.
+
+    Obsługuje formaty:
+    - "OT_PTLZ_A" -> "PTLZ"
+    - "PTLZ" -> "PTLZ"
+    - "OT_PTTR_L" -> "PTTR"
+    - "some_other_layer" -> None
+
+    Parameters
+    ----------
+    layer_name : str
+        Nazwa warstwy z GeoPackage
+
+    Returns
+    -------
+    str | None
+        Kod BDOT10k (np. "PTLZ") lub None jesli nie znaleziono
+    """
+    match = re.search(r"(?:^|_)(PT[A-Z]{2})(?:_|$)", layer_name.upper())
+    if match:
+        return match.group(1)
+    return None
+
+
 def get_land_cover_stats(
     bbox: "BBox",
     data_dir: Path,
@@ -195,14 +241,104 @@ def get_land_cover_stats(
 
         if lc_path:
             logger.info(f"Pobrano pokrycie terenu: {lc_path}")
-            # TODO: Analiza pliku GeoPackage
-            # Na razie zwracamy puste - fallback do domyslnych wartosci
-            return {}
+            return _analyze_land_cover_gpkg(lc_path, bbox)
 
     except Exception as e:
         logger.warning(f"Blad pobierania pokrycia terenu: {e}")
 
     return {}
+
+
+def _analyze_land_cover_gpkg(
+    gpkg_path: Path,
+    bbox: "BBox",
+) -> dict[str, float]:
+    """
+    Analizuj plik GeoPackage z pokryciem terenu BDOT10k.
+
+    Czyta warstwy PT* z pliku, intersektuje z bbox i oblicza
+    procentowy udzial kazdej kategorii pokrycia terenu.
+
+    Parameters
+    ----------
+    gpkg_path : Path
+        Sciezka do pliku GeoPackage
+    bbox : BBox
+        Bounding box w EPSG:2180
+
+    Returns
+    -------
+    Dict[str, float]
+        Statystyki pokrycia {kategoria: procent}
+    """
+    try:
+        import fiona
+        import geopandas as gpd
+        from shapely.geometry import box
+
+        available_layers = fiona.listlayers(str(gpkg_path))
+        logger.info(f"Warstwy w GeoPackage: {available_layers}")
+
+        bbox_geom = box(bbox.min_x, bbox.min_y, bbox.max_x, bbox.max_y)
+
+        # Zbierz powierzchnie per kategoria
+        category_areas: dict[str, float] = {}
+
+        for layer_name in available_layers:
+            bdot_code = _extract_bdot_code(layer_name)
+            if bdot_code is None:
+                continue
+
+            category = BDOT10K_CATEGORY_MAP.get(bdot_code)
+            if category is None:
+                logger.debug(f"Pominieto nieznany kod BDOT10k: {bdot_code}")
+                continue
+
+            try:
+                gdf = gpd.read_file(str(gpkg_path), layer=layer_name)
+            except Exception as e:
+                logger.warning(f"Blad odczytu warstwy {layer_name}: {e}")
+                continue
+
+            if gdf.empty:
+                continue
+
+            # Transformuj do EPSG:2180 jesli trzeba
+            if gdf.crs is None:
+                gdf = gdf.set_crs("EPSG:2180")
+            elif gdf.crs.to_epsg() != 2180:
+                gdf = gdf.to_crs("EPSG:2180")
+
+            # Clip do bbox
+            clipped = gpd.clip(gdf, bbox_geom)
+            if clipped.empty:
+                continue
+
+            # Sumuj powierzchnie
+            layer_area = clipped.geometry.area.sum()
+            if layer_area > 0:
+                category_areas[category] = (
+                    category_areas.get(category, 0.0) + layer_area
+                )
+
+        if not category_areas:
+            logger.warning("Brak danych pokrycia terenu w bbox")
+            return {}
+
+        # Przelicz na procenty
+        total_area = sum(category_areas.values())
+        stats: dict[str, float] = {}
+        for category, area in category_areas.items():
+            pct = round((area / total_area) * 100, 1)
+            if pct > 0:
+                stats[category] = pct
+
+        logger.info(f"Statystyki pokrycia terenu: {stats}")
+        return stats
+
+    except Exception as e:
+        logger.warning(f"Blad analizy GeoPackage: {e}")
+        return {}
 
 
 def get_default_land_cover_stats() -> dict[str, float]:
