@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] — 2026-03-03
 
+### Fixed (sesja 56 — release CP4)
+- **HSG bbox CRS bug:** Poland bbox in `bootstrap.py` changed from EPSG:4326 to EPSG:2180 (PL-1992) for Kartograf v0.5.0 compatibility
+- **Security hardening:** SQL timeout validation in `db_bulk.py`, subprocess sheet code validation in `admin.py`, XSS fix (innerHTML→textContent) in `profile.js`
+- **Frontend UX:** hydrograph section conditional visibility, Escape key safe-guard, `initScenarioForm()` call, auth spinner, depressions loading feedback
+- **Frontend UI:** navbar glassmorphism tokens, draw-banner responsive wrap, results panel max-height, tablet breakpoint, aria-hidden on chevrons
+- **Docs consistency:** Kartograf v0.4.1→v0.5.0 in CLAUDE.md/README, JS modules count 9→13, test count 666→778
+
 ### Style
 - 35 ruff lint errors fixed across 15 files (E501, I001, F841, F401, SIM105, UP024)
 
