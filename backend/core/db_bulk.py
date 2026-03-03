@@ -27,6 +27,11 @@ def override_statement_timeout(db_session, timeout_s: int = 0):
     timeout_s : int
         Timeout in seconds (0 = no limit)
     """
+    # SECURITY: SET doesn't support parameterized queries in PostgreSQL,
+    # so we validate timeout_s is a non-negative integer before interpolation.
+    if not isinstance(timeout_s, int) or timeout_s < 0:
+        raise ValueError(f"timeout_s must be a non-negative integer, got {timeout_s}")
+
     raw_conn = db_session.connection().connection
     cursor = raw_conn.cursor()
 

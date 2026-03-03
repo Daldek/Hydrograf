@@ -29,11 +29,18 @@
         var alertDiv = document.createElement('div');
         alertDiv.className = 'alert alert-warning alert-dismissible small py-1 px-2 mb-1 profile-error-alert';
         alertDiv.setAttribute('role', 'alert');
-        alertDiv.innerHTML = text +
-            '<button type="button" class="btn-close btn-close-sm" style="padding:0.15rem 0.25rem;font-size:0.65rem;" aria-label="Zamknij"></button>';
-        alertDiv.querySelector('.btn-close').addEventListener('click', function () {
+        var textSpan = document.createElement('span');
+        textSpan.textContent = text;
+        alertDiv.appendChild(textSpan);
+        var btnClose = document.createElement('button');
+        btnClose.type = 'button';
+        btnClose.className = 'btn-close btn-close-sm';
+        btnClose.style.cssText = 'padding:0.15rem 0.25rem;font-size:0.65rem;';
+        btnClose.setAttribute('aria-label', 'Zamknij');
+        btnClose.addEventListener('click', function () {
             alertDiv.remove();
         });
+        alertDiv.appendChild(btnClose);
         container.insertBefore(alertDiv, canvas);
     }
 

@@ -58,6 +58,8 @@ def get_depressions(
         GeoJSON FeatureCollection with depression polygons
     """
     try:
+        # SECURITY: All conditions use parameterized values (:param_name).
+        # Never add user-controlled column/table names to this list.
         conditions = [
             "d.volume_m3 >= :min_volume",
             "d.volume_m3 <= :max_volume",
