@@ -1,6 +1,6 @@
 [project]
 name = "hydrograf"
-version = "0.3.0"
+version = "0.4.0"
 description = "Hydrological analysis system - watershed delineation and hydrograph generation"
 readme = {text = "Hydrological analysis system", content-type = "text/plain"}
 requires-python = ">=3.12"
