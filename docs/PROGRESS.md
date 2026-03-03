@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 12 modulow JS (9 core + 3 admin). CP4 — select-stream, MVT, DEM tiles, admin panel |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 742 testow lacznie (42 pliki testowe) |
+| Testy | ✅ Gotowy | 644 testow jednostkowych (42 pliki testowe) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -45,20 +45,17 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-02 (sesja 53 — separacja cache/data + Kartograf v0.5.0)
+**Data:** 2026-03-02 (sesja 54 — cleanup extension + HSG Poland-wide cache)
 
 ### Co zrobiono
-- Upgrade Kartograf z v0.4.1 na v0.5.0 (usunięcie parametru `category`, filtrowanie warstw hydro w merge)
-- Separacja cache/data w bootstrap.py (surowe dane → `/cache/`, przetworzone → `/data/`)
-- Deduplikacja pobierania BDOT10k (1x zamiast 2x)
-- Docker: volume mount `/cache` (ro prod, rw dev)
-- Konfiguracja: `cache_dir` w config.py, config.yaml.example, .env.example
-- Panel admin: `cache_mb` w dashboard, cleanup target "cache"
-- ADR-037: Separacja cache/data + Kartograf v0.5.0
-- Fix: ekstrakcja kodu warstwy BDOT10k z prefixu `OT_` przed filtrem hydro (bug: stream burning pomijany)
-- Fix: rozwiązywanie względnej ścieżki `cache_dir` względem PROJECT_ROOT zamiast CWD
-- Test e2e: pełny pipeline dla 1 arkusza 1:25k (N-33-131-C-c-2), 10912 segmentów, stream burning OK
-- Instalacja tippecanoe + generacja kafelków MVT (3 progi × 2 warstwy = 16321 tiles)
+- Fix: dodano `*.geojson` do wzorców czyszczenia overlays (panel admin)
+- Feat: nowy target cleanup `processed_data` (typ `multi_dir`) dla `data/nmt/` i `data/hydro/`
+- Feat: HSG Poland-wide cache — jednorazowe pobranie `hsg_poland.tif` dla całej Polski (~2-5 MB)
+  - Cache w oryginalnym CRS (EPSG:4326) — brak strat z reproj
+  - Processing: clip+warp do EPSG:2180 dopiero przy użyciu (jeden resampling, nearest neighbor)
+  - DB import: `DELETE WHERE ST_Intersects(bbox)` zamiast `DELETE ALL` — dane z różnych obszarów koegzystują
+- ADR-038: HSG Poland-wide cache + cleanup extension
+- 644 testów jednostkowych, 0 regresji
 
 ### W trakcie
 - Brak
@@ -67,6 +64,15 @@
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
 - Code review CR4-CR11
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+
+### Poprzednia sesja (2026-03-02, sesja 53 — separacja cache/data + Kartograf v0.5.0)
+
+- Upgrade Kartograf z v0.4.1 na v0.5.0 (usunięcie parametru `category`, filtrowanie warstw hydro w merge)
+- Separacja cache/data w bootstrap.py (surowe dane → `/cache/`, przetworzone → `/data/`)
+- Deduplikacja pobierania BDOT10k (1x zamiast 2x)
+- Docker: volume mount `/cache` (ro prod, rw dev)
+- ADR-037, fix OT_ prefix, fix cache_dir resolution
+- Test e2e: pełny pipeline dla 1 arkusza 1:25k, 10912 segmentów
 
 ### Poprzednia sesja (2026-03-02, sesja 52 — hardening kontenerow Docker)
 
