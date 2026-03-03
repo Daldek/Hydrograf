@@ -4,7 +4,7 @@ System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fiz
 
 ## Status
 
-🚧 **W budowie** - CP3 osiągnięty (Hydrograph generation)
+✅ **CP4 osiągnięty** - Frontend z mapą interaktywną
 
 ### Dostępne endpointy
 
@@ -13,6 +13,13 @@ System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fiz
 | `GET /health` | Status systemu i bazy danych | ✅ |
 | `POST /api/delineate-watershed` | Wyznaczanie zlewni (GeoJSON) | ✅ |
 | `POST /api/generate-hydrograph` | Generowanie hydrogramu | ✅ |
+| `GET /api/scenarios` | Lista dostępnych scenariuszy | ✅ |
+| `POST /api/terrain-profile` | Profil terenu wzdłuż cieku | ✅ |
+| `GET /api/depressions` | Zagłębienia terenu (blue spots) | ✅ |
+| `POST /api/select-stream` | Wybór cieku i zlewnia cząstkowa | ✅ |
+| `GET /api/tiles/streams/{z}/{x}/{y}.pbf` | Kafelki MVT — cieki | ✅ |
+| `GET /api/tiles/catchments/{z}/{x}/{y}.pbf` | Kafelki MVT — zlewnie cząstkowe | ✅ |
+| `GET /api/tiles/thresholds` | Dostępne progi akumulacji | ✅ |
 
 ### Przykład użycia API
 
@@ -32,9 +39,9 @@ curl -X POST http://localhost:8000/api/delineate-watershed \
   "watershed": {
     "boundary_geojson": {"type": "Feature", "geometry": {...}, "properties": {...}},
     "outlet": {"latitude": 52.23, "longitude": 21.01, "elevation_m": 150.0},
-    "cell_count": 1234,
     "area_km2": 45.67,
-    "hydrograph_available": true
+    "hydrograph_available": true,
+    "morphometry": {"area_km2": 45.67, "perimeter_km": 32.1, "...": "..."}
   }
 }
 ```
@@ -57,10 +64,18 @@ curl -X POST http://localhost:8000/api/delineate-watershed \
 
 ## Wymagania
 
+### Development
+- Python 3.12+
+- Git
+- Docker (tylko dla PostGIS)
+
+### Deployment
 - Docker i Docker Compose
 - Git
 
 ## Szybki start
+
+### Development (.venv + PostGIS w Docker)
 
 ```bash
 # Klonowanie repozytorium
@@ -69,13 +84,32 @@ cd Hydrograf
 
 # Konfiguracja środowiska
 cp .env.example .env
-# Edytuj .env jeśli potrzebne
 
-# Uruchomienie
-docker-compose up -d
+# Uruchomienie bazy danych
+docker compose up -d db
 
-# Sprawdzenie statusu
-docker-compose ps
+# Setup .venv
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -e ".[dev]"
+
+# Migracje
+alembic upgrade head
+
+# Serwer dev
+.venv/bin/python -m uvicorn api.main:app --reload
+# API dostępne pod http://localhost:8000
+```
+
+### Pełny stack (Docker Compose)
+
+```bash
+git clone https://github.com/Daldek/Hydrograf.git
+cd Hydrograf
+cp .env.example .env
+
+docker compose up -d
 
 # Aplikacja dostępna pod:
 # http://localhost (frontend)
@@ -97,7 +131,10 @@ Hydrograf/
 │   └── js/
 ├── docker/            # Konfiguracja Docker
 ├── docs/              # Dokumentacja projektowa
-├── PROGRESS.md        # Status implementacji
+│   ├── PROGRESS.md    # Status implementacji
+│   ├── CHANGELOG.md   # Historia zmian
+│   ├── DECISIONS.md   # Decyzje architektoniczne (ADR)
+│   └── ...            # PRD, SCOPE, ARCHITECTURE, integracje
 └── docker-compose.yml
 ```
 
@@ -108,9 +145,11 @@ Hydrograf/
 - [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) - Model danych
 - [`docs/PRD.md`](docs/PRD.md) - Wymagania produktowe
 - [`docs/KARTOGRAF_INTEGRATION.md`](docs/KARTOGRAF_INTEGRATION.md) - Integracja z Kartografem (pobieranie NMT)
-- [`DEVELOPMENT_STANDARDS.md`](DEVELOPMENT_STANDARDS.md) - Standardy kodowania
-- [`IMPLEMENTATION_PROMPT.md`](IMPLEMENTATION_PROMPT.md) - Prompt dla AI
-- [`PROGRESS.md`](PROGRESS.md) - Aktualny postęp implementacji
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) - Decyzje architektoniczne (ADR)
+- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) - Historia zmian
+- [`docs/DEVELOPMENT_STANDARDS.md`](docs/DEVELOPMENT_STANDARDS.md) - Standardy kodowania
+- [`docs/IMPLEMENTATION_PROMPT.md`](docs/IMPLEMENTATION_PROMPT.md) - Prompt dla AI
+- [`docs/PROGRESS.md`](docs/PROGRESS.md) - Aktualny postęp implementacji
 
 ## Preprocessing danych NMT
 
@@ -166,7 +205,7 @@ cd backend
 
 ### Wymagania
 
-- Uruchomiona baza PostgreSQL/PostGIS (`docker-compose up -d db`)
+- Uruchomiona baza PostgreSQL/PostGIS (`docker compose up -d db`)
 - Wykonane migracje (`cd backend && alembic upgrade head`)
 - Połączenie z internetem (dla automatycznego pobierania)
 
@@ -175,7 +214,7 @@ cd backend
 | Parametr | Opis | Domyślnie |
 |----------|------|-----------|
 | `--input`, `-i` | Ścieżka do pliku .asc | (wymagane) |
-| `--stream-threshold` | Próg akumulacji dla strumieni | 100 |
+| `--stream-threshold` | Próg akumulacji dla strumieni | 1000 |
 | `--batch-size` | Rozmiar batch przy imporcie | 10000 |
 | `--dry-run` | Tylko statystyki, bez importu | false |
 | `--save-intermediates`, `-s` | Zapis plików GeoTIFF | false |
@@ -203,7 +242,8 @@ Opcja `--save-intermediates` zapisuje pliki GeoTIFF do weryfikacji w QGIS:
 ### Uruchomienie środowiska deweloperskiego
 
 ```bash
-docker-compose up -d
+docker compose up -d db
+cd backend && .venv/bin/python -m uvicorn api.main:app --reload
 ```
 
 ### Migracje bazy danych
@@ -240,7 +280,7 @@ Wersjonowanie semantyczne (`vMAJOR.MINOR.PATCH`):
 | `v0.2.0` | CP2 | Wyznaczanie zlewni ✅ |
 | `v0.2.1` | - | Fix: poprawne wypełnianie zagłębień ✅ |
 | `v0.3.0` | CP3 | Generowanie hydrogramu ✅ |
-| `v0.4.0` | CP4 | Frontend z mapą |
+| `v0.4.0` | CP4 | Frontend z mapą interaktywną ✅ |
 | `v1.0.0` | CP5 | MVP |
 
 ### Workflow dla kontrybutorów

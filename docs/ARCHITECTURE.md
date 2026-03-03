@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - Architektura Systemu
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.0  
-**Data:** 2026-01-14  
+**Wersja:** 1.7
+**Data:** 2026-03-01
 **Status:** Approved
 
 ---
@@ -52,8 +52,8 @@
 │  └──────────────┘  └──────────────┘  └─────────────────┘   │
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐   │
-│  │ Flow Graph   │  │Precipitation │  │   Land Cover    │   │
-│  │  Traversal   │  │   Queries    │  │   Analyzer      │   │
+│  │  Catchment   │  │Precipitation │  │   Land Cover    │   │
+│  │    Graph     │  │   Queries    │  │   Analyzer      │   │
 │  └──────────────┘  └──────────────┘  └─────────────────┘   │
 └───────────┬───────────────────────────────────────────────────┘
             │
@@ -64,14 +64,13 @@
 │                  (PostgreSQL + PostGIS)                         │
 │                                                                 │
 │  ┌────────────────┐  ┌───────────────────┐  ┌────────────────┐  │
-│  │ flow_network   │  │precipitation_data │  │  land_cover    │  │
-│  │ (Graph)        │  │                   │  │  (Polygons)    │  │
+│  │  soil_hsg      │  │stream_catchments  │  │  land_cover    │  │
+│  │ (HSG polygons) │  │ (Polygons)        │  │  (Polygons)    │  │
 │  └────────────────┘  └───────────────────┘  └────────────────┘  │
-│                                                                 │
-│  ┌────────────────┐                                             │
-│  │ stream_network │                                             │
-│  │ (Lines)        │                                             │
-│  └────────────────┘                                             │
+│  ┌────────────────┐  ┌───────────────────┐  ┌────────────────┐  │
+│  │ stream_network │  │precipitation_data │  │  depressions   │  │
+│  │ (Lines)        │  │ (IDW scenarios)   │  │ (Blue spots)   │  │
+│  └────────────────┘  └───────────────────┘  └────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -79,53 +78,30 @@
 
 ### 1.2 Kluczowe Decyzje Architektoniczne (ADR)
 
-#### ADR-001: Graf w Bazie Zamiast Rastrów w Runtime
-**Status:** Zaakceptowane  
-**Kontekst:** Operacje rastrowe są zbyt wolne (> 30s) i wymagają przesyłania dużych plików.  
-**Decyzja:** Preprocessing NMT raz → graf punktów w PostGIS. Runtime: tylko SQL queries.  
-**Konsekwencje:**
-- ✅ Szybkie obliczenia (< 10s)
-- ✅ Małe przesyły sieciowe (GeoJSON ~ 100KB)
-- ❌ Jednorazowy preprocessing (2 tygodnie)
-- ❌ Wymaga PostgreSQL z PostGIS
+Pełny rejestr decyzji architektonicznych: [docs/DECISIONS.md](DECISIONS.md)
 
-#### ADR-002: Monolityczna Aplikacja (Nie Microservices)
-**Status:** Zaakceptowane  
-**Kontekst:** MVP dla 10 użytkowników, deployment na pojedynczym serwerze.  
-**Decyzja:** Jedna aplikacja FastAPI + jedna baza danych.  
-**Konsekwencje:**
-- ✅ Prostsze deployment i debugging
-- ✅ Niższa latencja (brak network calls)
-- ❌ Trudniejsze skalowanie w przyszłości (ale wystarczające dla MVP)
+Podsumowanie kluczowych ADR:
 
-#### ADR-003: Leaflet.js Zamiast Google Maps
-**Status:** Zaakceptowane  
-**Kontekst:** Potrzeba interaktywnej mapy z możliwością wyboru punktu.  
-**Decyzja:** Leaflet.js z podkładem OpenStreetMap.  
-**Konsekwencje:**
-- ✅ Open-source, darmowy
-- ✅ Lekki (40KB gzipped)
-- ✅ Bogata ekosystem pluginów
-- ❌ Wymaga samodzielnego hostingu tiles (lub użycie OSM tiles)
-
-#### ADR-004: Hietogram Beta Zamiast Blokowego
-**Status:** Zaakceptowane  
-**Kontekst:** Hietogram blokowy jest zbyt uproszczony.  
-**Decyzja:** Rozkład Beta (α=2, β=5) dla realistycznego rozkładu opadu.  
-**Konsekwencje:**
-- ✅ Bardziej realistyczny hydrogram
-- ✅ Sprawdzony w literaturze
-- ❌ Wymaga SciPy (dodatkowa zależność)
-
-#### ADR-005: Docker dla Deployment
-**Status:** Zaakceptowane  
-**Kontekst:** Potrzeba powtarzalnego i izolowanego środowiska.  
-**Decyzja:** Konteneryzacja z Docker Compose.  
-**Konsekwencje:**
-- ✅ Environment parity (dev = production)
-- ✅ Łatwe deployment na nowym serwerze
-- ✅ Izolacja zależności
-- ❌ Wymaga Docker na serwerze
+| ADR | Decyzja | Uzasadnienie |
+|-----|---------|--------------|
+| ADR-001 | Graf w bazie zamiast rastrów runtime | Szybkość runtime (< 10s) kosztem jednorazowego preprocessingu |
+| ADR-002 | Monolityczna aplikacja FastAPI | Prostota deployment dla MVP (10 użytkowników) |
+| ADR-003 | Leaflet.js zamiast Google Maps | Open-source, darmowy, lekki (40KB) |
+| ADR-004 | Hietogram Beta zamiast blokowego | Realistyczny rozkład opadu (α=2, β=5) |
+| ADR-005 | Docker Compose dla deployment | Environment parity, izolacja zależności |
+| ADR-006 | COPY zamiast INSERT | Import DEM 27x szybciej (3.8 min vs 102 min) |
+| ADR-007 | Reverse trace | find_main_stream 330x szybciej (0.74s vs 246s) |
+| ADR-012 | pyflwdir zamiast pysheds | Deltares — stabilny, wydajny, 3 deps |
+| ADR-017 | Podział process_dem na moduły core/ | Thin orchestrator + testowalne moduły |
+| ADR-021 | CatchmentGraph zamiast rastrowych operacji | BFS po grafie zlewni cząstkowych zamiast CTE po 20M+ rekordach |
+| ADR-022 | Eliminacja FlowGraph z runtime | RAM z ~1 GB → ~40 MB, startup z ~90s → ~3s |
+| ADR-024 | ~~Segmentacja konfluencyjna~~ | ~~SUPERSEDED by ADR-026~~ |
+| ADR-025 | ~~Warunkowy próg BFS~~ | ~~SUPERSEDED by ADR-026~~ |
+| ADR-026 | Lookup by segment_idx | O(1) lookup po `(threshold_m2, segment_idx)` zamiast auto-increment `id` |
+| ADR-029 | trace_main_channel() | Wyznaczanie głównego cieku wg Strahlera (do channel_slope) |
+| ADR-032 | Boundary smoothing | `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` |
+| ADR-033 | Building raising | `raise_buildings_in_dem()` +5m pod footprints BUBD |
+| ADR-034 | Panel administracyjny | `/admin` + 8 endpointów `/api/admin/*`, API key auth, bootstrap SSE |
 
 ---
 
@@ -137,37 +113,78 @@
 backend/
 ├── api/
 │   ├── __init__.py
-│   ├── main.py                    # FastAPI app instance
-│   ├── dependencies.py            # Dependency injection
+│   ├── main.py                    # FastAPI app instance, lifespan, middleware
+│   ├── dependencies/
+│   │   ├── __init__.py
+│   │   └── admin_auth.py          # Admin API key verification (X-Admin-Key header)
 │   └── endpoints/
 │       ├── __init__.py
-│       ├── watershed.py           # POST /delineate-watershed
+│       ├── admin.py               # 8 endpointów /api/admin/* (dashboard, resources, cleanup, bootstrap)
+│       ├── depressions.py         # GET /depressions
+│       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
-│       └── health.py              # GET /health
+│       ├── profile.py             # POST /terrain-profile
+│       ├── select_stream.py       # POST /select-stream
+│       ├── tiles.py               # GET /tiles/streams|catchments|landcover/{z}/{x}/{y}.pbf
+│       └── watershed.py           # POST /delineate-watershed
 │
 ├── core/
 │   ├── __init__.py
-│   ├── config.py                  # Settings (environment variables)
+│   ├── catchment_graph.py         # In-memory sub-catchment graph (~44k nodes, scipy CSR + BFS)
+│   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
+│   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
+│   ├── config.py                  # YAML config loading (load_config(), get_settings())
+│   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── database.py                # Database connection pool
-│   ├── watershed.py               # Watershed delineation logic
-│   ├── parameters.py              # Physical parameters calculation
-│   ├── hydrograph.py              # Hydrograph generation
+│   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
+│   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning, building raising (ADR-033)
+│   ├── land_cover.py              # Land cover analysis, determine_cn()
+│   ├── morphometry.py             # Morphometric parameters calculation
+│   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── precipitation.py           # Precipitation queries
-│   └── land_cover.py              # Land cover analysis
+│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF), discover_asc_files()
+│   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
+│   ├── stream_extraction.py       # Stream vectorization, subcatchments
+│   ├── watershed.py               # Watershed boundary building + legacy CLI functions
+│   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022, Chaikin smoothing ADR-032)
+│   └── zonal_stats.py             # Zonal statistics (bincount, max)
 │
 ├── models/
 │   ├── __init__.py
 │   └── schemas.py                 # Pydantic models
 │
+├── scripts/
+│   ├── __init__.py
+│   ├── bootstrap.py               # Orchestrator — uruchamia pełny pipeline preprocessingu
+│   ├── process_dem.py             # Thin orchestrator (~700 lines) — NMT processing
+│   ├── prepare_area.py            # Konfiguracja bbox i parametrów obszaru
+│   ├── download_dem.py            # Pobieranie NMT z GUGiK (Kartograf)
+│   ├── download_landcover.py      # Pobieranie pokrycia terenu (BDOT10k)
+│   ├── import_landcover.py        # Import land cover do PostGIS
+│   ├── preprocess_precipitation.py # Import opadów z IMGW
+│   ├── generate_tiles.py          # Generowanie MVT tiles (streams, catchments, landcover)
+│   ├── generate_dem_overlay.py    # Overlay DEM (PNG)
+│   ├── generate_dem_tiles.py      # Piramida XYZ tiles DEM (hillshade)
+│   ├── generate_streams_overlay.py # Overlay cieków (PNG)
+│   ├── generate_depressions.py    # Generowanie depresji (blue spots)
+│   ├── analyze_watershed.py       # Analiza zlewni (CLI)
+│   ├── export_pipeline_gpkg.py    # Eksport danych pipeline do GeoPackage
+│   ├── export_task9_gpkg.py       # Eksport danych task9 do GeoPackage
+│   └── e2e_task9.py               # E2E test pipeline
+│
+├── migrations/
+│   └── versions/                  # 17 migracji Alembic (001..017)
+│
 ├── utils/
 │   ├── __init__.py
-│   ├── geometry.py                # Geometric operations
-│   ├── hydrology.py               # Hydrological formulas
-│   └── export.py                  # Export functions (GeoJSON, CSV)
+│   ├── dem_color.py               # DEM color palette, hillshade blending
+│   ├── geometry.py                # Geometric operations, CRS transforms
+│   ├── raster_utils.py            # Raster tools (resample, polygonize)
+│   └── sheet_finder.py            # NMT sheet code lookup
 │
 ├── tests/
-│   ├── unit/
-│   ├── integration/
+│   ├── unit/                      # 35 plików testów jednostkowych
+│   ├── integration/               # 7 plików testów integracyjnych
 │   └── conftest.py
 │
 ├── requirements.txt
@@ -252,6 +269,85 @@ Response: 200 OK
 }
 ```
 
+#### 2.2.5 Terrain Profile
+```
+POST /api/terrain-profile
+Content-Type: application/json
+
+Request:
+{
+  "geometry": { "type": "LineString", "coordinates": [[lon, lat], ...] },
+  "n_samples": 100
+}
+
+Response: 200 OK
+{
+  "distances_m": [0.0, 10.5, ...],
+  "elevations_m": [150.0, 151.2, ...],
+  "total_length_m": 1050.0
+}
+```
+
+#### 2.2.6 Depressions (Blue Spots)
+```
+GET /api/depressions?bbox=xmin,ymin,xmax,ymax&min_volume=0&max_volume=1000
+
+Response: 200 OK (GeoJSON FeatureCollection)
+```
+
+#### 2.2.7 Select Stream
+```
+POST /api/select-stream
+Content-Type: application/json
+
+Request:
+{
+  "latitude": 52.123456,
+  "longitude": 21.123456,
+  "threshold_m2": 10000,
+  "to_confluence": false,
+  "display_threshold_m2": 10000
+}
+
+Response: 200 OK
+{
+  "stream": { "segment_idx": 42, "strahler_order": 3, ... },
+  "upstream_segment_indices": [42, 43, 44, ...],
+  "boundary_geojson": { "type": "Feature", ... },
+  "display_threshold_m2": 10000,
+  "watershed": { "outlet": {...}, "morphometry": {...}, ... }
+}
+
+Errors:
+- 404: "Nie znaleziono cieku/segmentu"
+- 422: Walidacja (niepoprawne wspolrzedne, brak threshold_m2)
+```
+
+#### 2.2.8 MVT Tiles
+```
+GET /api/tiles/streams/{z}/{x}/{y}.pbf?threshold_m2=10000
+GET /api/tiles/catchments/{z}/{x}/{y}.pbf?threshold_m2=10000
+GET /api/tiles/landcover/{z}/{x}/{y}.pbf
+GET /api/tiles/thresholds
+
+Response: Mapbox Vector Tiles (PBF) / JSON
+```
+
+#### 2.2.9 Admin Panel (ADR-034)
+```
+Wszystkie endpointy wymagają nagłówka X-Admin-Key (lub ADMIN_API_KEY nie ustawiony).
+Prefix: /api/admin
+
+GET  /api/admin/dashboard          — statystyki tabel, uptime, wersja
+GET  /api/admin/resources          — CPU, RAM, dysk (psutil)
+GET  /api/admin/cleanup/estimate   — szacunek zwolnionego miejsca
+POST /api/admin/cleanup            — usuwanie cache/tiles
+GET  /api/admin/bootstrap/status   — status procesu bootstrap
+POST /api/admin/bootstrap/start    — uruchomienie bootstrap subprocess
+POST /api/admin/bootstrap/cancel   — anulowanie bootstrap
+GET  /api/admin/bootstrap/stream   — SSE stream logów bootstrap (timeout 3600s)
+```
+
 ---
 
 ### 2.3 Logika Biznesowa - Przepływ Danych
@@ -265,19 +361,22 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
                              stream      upstream
 ```
 
-**Szczegółowy przepływ:**
-1. **Frontend:** Użytkownik klika punkt (lat, lon) → POST /api/delineate-watershed
+**Szczegółowy przepływ (ADR-022, ADR-026):**
+1. **Frontend:** Użytkownik klika punkt (lat, lon) → POST /api/select-stream (lub /delineate-watershed)
 2. **API (FastAPI):** Walidacja Pydantic (czy lat/lon w zakresie)
-3. **Core Logic:**
-   - `watershed.find_nearest_stream(lat, lon)` → SQL query do `flow_network`
-   - `watershed.traverse_upstream(outlet_id)` → rekurencyjne przejście grafu
-   - `watershed.build_boundary(cells)` → ST_ConvexHull lub ST_ConcaveHull
-4. **Database:** Zapytania PostGIS (z indeksami GIST)
-5. **Core Logic:** Konwersja do GeoJSON
+3. **Core Logic** (`watershed_service.py` + `catchment_graph.py`):
+   - `find_stream_catchment_at_point(x, y, threshold)` → snap-to-stream via `ST_ClosestPoint` na `stream_network`
+   - `CatchmentGraph.traverse_upstream()` → BFS po grafie zlewni cząstkowych
+   - Cascaded merge threshold: jeśli >500 segmentów, kaskada do grubszego progu (1000→10000→100000)
+   - `merge_catchment_boundaries()` → ST_UnaryUnion gotowych poligonów w PostGIS
+   - `map_boundary_to_display_segments()` → mapowanie na próg wyświetlany dla MVT tiles
+   - Agregacja pre-computed stats z numpy arrays (zero operacji rastrowych)
+4. **Database:** Zapytania PostGIS do `stream_network` + `stream_catchments`
+5. **Core Logic:** Konwersja do GeoJSON (EPSG:2180 → WGS84)
 6. **API:** Return JSON response
-7. **Frontend:** Leaflet.js renderuje polygon na mapie
+7. **Frontend:** Leaflet.js renderuje polygon na mapie, MVT tiles podświetlają zlewnie cząstkowe
 
-**Czas wykonania:** < 10s (95th percentile)
+**Czas wykonania:** < 1s (typowy), < 5s (duże zlewnie)
 
 ---
 
@@ -308,83 +407,103 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
 
 **Główne funkcje:**
 ```python
-def find_nearest_stream(lat: float, lon: float) -> Optional[int]:
-    """Zwraca ID najbliższej komórki cieku."""
-    pass
+# Legacy CLI functions (replaced by watershed_service.py for runtime API):
+def find_nearest_stream(lat, lon) -> int | None: ...
+def traverse_upstream(outlet_id: int) -> list[Cell]: ...
 
-def traverse_upstream(outlet_id: int) -> List[Cell]:
-    """Rekurencyjnie znajduje wszystkie komórki upstream."""
-    pass
-
-def build_boundary(cells: List[Cell]) -> GeoJSON:
-    """Tworzy boundary jako ConvexHull lub ConcaveHull."""
-    pass
+# Still used:
+def build_boundary(cells: list[Cell]) -> GeoJSON: ...
 ```
 
-#### 2.4.2 `core/parameters.py`
+#### 2.4.2 `core/morphometry.py`
 **Odpowiedzialności:**
 - Obliczanie parametrów geometrycznych (area, perimeter, length)
 - Obliczanie parametrów morfometrycznych (slope, elevation)
-- Współczynniki kształtu
+- Współczynniki kształtu, indeksy rzeźby, krzywa hipsometryczna
 
 **Główne funkcje:**
 ```python
-def calculate_physical_parameters(
-    watershed: Dict,
-    cells: List[Cell]
-) -> Dict:
-    """Zwraca słownik parametrów fizjograficznych."""
-    pass
-
-def find_main_stream(outlet: Cell, cells: List[Cell]) -> Stream:
-    """Znajduje główny ciek (DFS/BFS)."""
+def build_morphometric_params(
+    cells: list[FlowCell],
+    boundary: Polygon,
+    outlet: FlowCell,
+    cn: int | None = None,
+    include_stream_coords: bool = False,
+    db=None,
+    include_hypsometric_curve: bool = False,
+) -> dict:
+    """Buduje kompletny słownik parametrów morfometrycznych (kompatybilny z Hydrolog).
+    Uwaga: W runtime API, parametry obliczane z CatchmentGraph.aggregate_stats()."""
     pass
 ```
 
-#### 2.4.3 `core/hydrograph.py`
+#### 2.4.3 `core/catchment_graph.py`
 **Odpowiedzialności:**
-- Generowanie hietogramu Beta
+- In-memory graf zlewni cząstkowych (scipy CSR matrix)
+- BFS traversal upstream/downstream
+- Agregacja pre-computed stats (area, elevation, slope, stream metrics)
+- Wyznaczanie głównego cieku (trace wg Strahlera, ADR-029)
+- Krzywa hipsometryczna z mergowania histogramów
+
+**Główne klasy/funkcje:**
+```python
+class CatchmentGraph:
+    """Singleton graf ~44k wezłów, ~0.5 MB RAM, ~1.5s startup."""
+    def load(self, db: Session) -> None: ...
+    def traverse_upstream(self, node_idx: int) -> list[int]: ...
+    def traverse_to_confluence(self, node_idx: int) -> list[int]: ...
+    def aggregate_stats(self, indices: list[int]) -> dict: ...
+    def trace_main_channel(self, outlet_idx, upstream_indices) -> dict: ...
+    def aggregate_hypsometric(self, indices: list[int]) -> list[dict]: ...
+```
+
+#### 2.4.4 `core/watershed_service.py`
+**Odpowiedzialności:**
+- Współdzielona logika delineacji (snap-to-stream, merge, outlet extraction)
+- Używana przez 3 endpointy: watershed, hydrograph, select_stream
+- Eliminuje kosztowne operacje rastrowe w runtime
+
+**Główne funkcje:**
+```python
+def find_nearest_stream_segment(x, y, threshold_m2, db) -> dict | None: ...
+def find_stream_catchment_at_point(x, y, threshold_m2, db) -> int | None: ...
+def merge_catchment_boundaries(segment_idxs, threshold_m2, db) -> Polygon: ...
+def map_boundary_to_display_segments(boundary, threshold_m2, db) -> list[int]: ...
+def get_main_stream_geojson(segment_idx, threshold_m2, db) -> dict | None: ...
+```
+
+#### 2.4.5 `core/db_bulk.py`
+**Odpowiedzialności:**
+- Bulk INSERT via PostgreSQL COPY (55k rec/s vs 2.6k rec/s z INSERT)
+- Zarządzanie statement_timeout (override + restore)
+
+#### 2.4.6 `core/stream_extraction.py`
+**Odpowiedzialności:**
+- Wektoryzacja cieków z rastra akumulacji
+- Segmentacja na konfluencjach (ADR-024) i zmianach rzędu Strahlera
+- Generowanie label raster dla `pyflwdir.basins()`
+
+#### 2.4.7 `core/zonal_stats.py`
+**Odpowiedzialności:**
+- Statystyki strefowe via `np.bincount` (O(M) zamiast O(n*M) per-label masking)
+- Obliczanie min/max/mean per label dla elevation, slope
+
+#### 2.4.8 Biblioteka Hydrolog (zewnetrzna)
+**Odpowiedzialnosci:** (delegowane do `hydrolog` v0.5.2)
+- Generowanie hietogramu (Beta, Block, Euler II)
 - Model SCS CN (opad efektywny)
 - Hydrogram jednostkowy SCS
 - Splot numeryczny
+- Czas koncentracji (Kirpich, SCS Lag, Giandotti)
 
-**Główne funkcje:**
+Hydrograf wywoluje Hydrolog przez endpoint `api/endpoints/hydrograph.py`:
 ```python
-def hietogram_beta(
-    opad_mm: float,
-    czas_min: int,
-    dt_min: int = 5,
-    alpha: float = 2.0,
-    beta_param: float = 5.0
-) -> Dict[str, List[float]]:
-    """Generuje hietogram z rozkładu Beta."""
-    pass
-
-def oblicz_opad_efektywny_scs(
-    intensywnosci: List[float],
-    cn: float,
-    dt_min: int = 5
-) -> List[float]:
-    """Oblicza opad efektywny metodą SCS."""
-    pass
-
-def hydrogram_jednostkowy_scs(
-    area_km2: float,
-    tc_min: float,
-    dt_min: int = 5
-) -> List[float]:
-    """Generuje hydrogram jednostkowy SCS."""
-    pass
-
-def splot_dyskretny(
-    opad_efektywny: List[float],
-    hydrogram_jednostkowy: List[float]
-) -> List[float]:
-    """Splot numeryczny Pe * UH."""
-    pass
+from hydrolog.precipitation import BetaHietogram
+from hydrolog.runoff import HydrographGenerator
+from hydrolog.morphometry import WatershedParameters
 ```
 
-#### 2.4.4 `core/precipitation.py`
+#### 2.4.9 `core/precipitation.py`
 **Odpowiedzialności:**
 - Zapytania do tabeli `precipitation_data`
 - Interpolacja IDW (Inverse Distance Weighting)
@@ -400,7 +519,7 @@ def get_precipitation(
     pass
 ```
 
-#### 2.4.5 `core/land_cover.py`
+#### 2.4.10 `core/land_cover.py`
 **Odpowiedzialności:**
 - Intersection granicy z pokryciem terenu
 - Obliczanie ważonego CN
@@ -427,20 +546,7 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                          flow_network                            │
-├─────────────────────────────────────────────────────────────────┤
-│ id (PK)              SERIAL                                     │
-│ geom                 GEOMETRY(Point, 2180)                      │
-│ elevation            FLOAT                                      │
-│ flow_accumulation    INT                                        │
-│ slope                FLOAT                                      │
-│ downstream_id (FK)   INT → flow_network(id)                    │
-│ cell_area            FLOAT                                      │
-│ is_stream            BOOLEAN                                    │
-│                                                                 │
-│ Indexes:                                                        │
-│   - idx_flow_geom (GIST on geom)                               │
-│   - idx_downstream (on downstream_id)                          │
-│   - idx_is_stream (on is_stream)                               │
+│              -- USUNIETA (ADR-028, migracja 015)                │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -481,9 +587,65 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 │ name                 VARCHAR(100)                               │
 │ length_m             FLOAT                                      │
 │ strahler_order       INT                                        │
+│ threshold_m2         INT                                        │
+│ upstream_area_km2    FLOAT                                      │
+│ mean_slope_percent   FLOAT                                      │
+│ source               VARCHAR(20)  ('DEM_DERIVED', 'MPHP')      │
+│ segment_idx          INTEGER  -- 1-based per threshold (migracja 014, ADR-026) │
 │                                                                 │
 │ Indexes:                                                        │
 │   - idx_stream_geom (GIST on geom)                             │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                      stream_catchments                          │
+├─────────────────────────────────────────────────────────────────┤
+│ id (PK)              SERIAL                                     │
+│ geom                 GEOMETRY(MultiPolygon, 2180)               │
+│ segment_idx          INT                                        │
+│ threshold_m2         INT                                        │
+│ area_km2             FLOAT                                      │
+│ mean_elevation_m     FLOAT                                      │
+│ mean_slope_percent   FLOAT                                      │
+│ strahler_order       INT                                        │
+│ downstream_segment_idx INT                                      │
+│ elevation_min_m      FLOAT                                      │
+│ elevation_max_m      FLOAT                                      │
+│ perimeter_km         FLOAT                                      │
+│ stream_length_km     FLOAT                                      │
+│ elev_histogram       JSONB                                      │
+│                                                                 │
+│ Indexes:                                                        │
+│   - idx_catchment_geom (GIST on geom)                          │
+│   - idx_catchment_threshold (on threshold_m2)                  │
+│   - idx_catchment_segment (on segment_idx, threshold_m2)       │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                         depressions                             │
+├─────────────────────────────────────────────────────────────────┤
+│ id (PK)              SERIAL                                     │
+│ geom                 GEOMETRY(Polygon, 2180)                    │
+│ volume_m3            FLOAT                                      │
+│ area_m2              FLOAT                                      │
+│ max_depth_m          FLOAT                                      │
+│ mean_depth_m         FLOAT                                      │
+│                                                                 │
+│ Indexes:                                                        │
+│   - idx_depression_geom (GIST on geom)                         │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                          soil_hsg                               │
+├─────────────────────────────────────────────────────────────────┤
+│ id (PK)              SERIAL                                     │
+│ geom                 GEOMETRY(MultiPolygon, 2180)               │
+│ hsg_group            VARCHAR(1)  ('A', 'B', 'C', 'D')          │
+│ area_m2              FLOAT                                      │
+│                                                                 │
+│ Indexes:                                                        │
+│   - gist on geom (auto)                                        │
+│   - idx_soil_hsg_group (on hsg_group)                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -491,20 +653,22 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 
 ### 3.2 Przykładowe Zapytania SQL
 
-#### Znajdź Najbliższy Ciek
+#### Znajdź Najbliższy Ciek (stream_network)
 ```sql
-SELECT 
-    id, 
-    geom, 
-    flow_accumulation,
+SELECT
+    id, geom, strahler_order, length_m, threshold_m2,
     ST_Distance(geom, ST_SetSRID(ST_Point($1, $2), 2180)) as distance
-FROM flow_network
-WHERE is_stream = TRUE
+FROM stream_network
+WHERE threshold_m2 = $3
+  AND ST_DWithin(geom, ST_SetSRID(ST_Point($1, $2), 2180), 500)
 ORDER BY distance
 LIMIT 1;
 ```
 
-#### Znajdź Komórki Upstream (Rekurencyjne CTE)
+#### ~~Znajdź Komórki Upstream (Rekurencyjne CTE)~~ — DEPRECATED (ADR-022)
+> **Uwaga:** Runtime API używa `CatchmentGraph.traverse_upstream()` (BFS in-memory, ~5-50ms).
+> Poniższy CTE zachowany wyłącznie jako dokumentacja — `core/flow_graph.py` USUNIĘTY (ADR-028).
+
 ```sql
 WITH RECURSIVE upstream AS (
     -- Base case: outlet
@@ -551,6 +715,31 @@ FROM land_cover lc
 WHERE ST_Intersects(lc.geom, ST_GeomFromGeoJSON($1));
 ```
 
+#### Merge Upstream Catchments (ST_Union)
+```sql
+SELECT ST_UnaryUnion(ST_Collect(ST_SnapToGrid(geom, 0.01))) AS boundary
+FROM stream_catchments
+WHERE threshold_m2 = $1
+  AND segment_idx = ANY($2)
+  AND ST_Area(geom) > 50;
+```
+
+#### MVT Tile Query (ST_AsMVT)
+```sql
+SELECT ST_AsMVT(tile, 'catchments') AS mvt
+FROM (
+    SELECT
+        segment_idx,
+        strahler_order,
+        area_km2,
+        ST_AsMVTGeom(geom, ST_TileEnvelope($1, $2, $3), 4096, 64, true) AS geom
+    FROM stream_catchments
+    WHERE threshold_m2 = $4
+      AND ST_Intersects(geom, ST_Transform(ST_TileEnvelope($1, $2, $3), 2180))
+      AND ST_Area(geom) > 50
+) AS tile;
+```
+
 ---
 
 ### 3.3 Optymalizacja Bazy Danych
@@ -588,23 +777,26 @@ engine = create_engine(
 
 ```
 frontend/
-├── index.html
+├── index.html               # SPA — Leaflet + Bootstrap + Chart.js (CDN)
+├── admin.html               # Panel administracyjny (ADR-034)
 ├── css/
-│   ├── main.css
-│   └── map.css
-├── js/
-│   ├── app.js                # Main application logic
-│   ├── map.js                # Leaflet map initialization
-│   ├── api.js                # API calls
-│   ├── chart.js              # Chart.js hydrograph
-│   └── export.js             # Export functions
-├── assets/
-│   ├── images/
-│   └── icons/
-└── lib/
-    ├── leaflet/
-    ├── chart.js/
-    └── bootstrap/
+│   ├── glass.css             # Glassmorphism CSS variables
+│   ├── style.css             # Custom styles
+│   └── admin.css             # Style panelu administracyjnego
+└── js/
+    ├── api.js                # API calls (fetch wrappers)
+    ├── map.js                # Leaflet map, layers, drawing, MVT
+    ├── draggable.js          # Pointer-event drag for floating panel
+    ├── charts.js             # Chart.js: donut, histogram, profile, hydrograph
+    ├── layers.js             # Layers panel: base layers, overlays, opacity
+    ├── profile.js            # Terrain profile (draw line / auto)
+    ├── hydrograph.js         # Hydrograph scenario form + chart
+    ├── depressions.js        # Depressions (blue spots) overlay
+    ├── app.js                # Orchestrator: init, click routing, panel
+    └── admin/
+        ├── admin-api.js      # Admin API client (fetch + X-Admin-Key header)
+        ├── admin-bootstrap.js # Bootstrap SSE stream, start/cancel
+        └── admin-app.js      # Admin panel orchestrator
 ```
 
 ---
@@ -760,50 +952,77 @@ version: '3.8'
 
 services:
   db:
-    image: postgis/postgis:15-3.3
+    image: postgis/postgis:16-3.4
     container_name: hydro_db
     environment:
-      POSTGRES_DB: hydro_db
-      POSTGRES_USER: hydro_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-hydro_db}
+      POSTGRES_USER: ${POSTGRES_USER:-hydro_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hydro_password}
+      POSTGIS_GDAL_ENABLED_DRIVERS: ENABLE_ALL
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init_scripts:/docker-entrypoint-initdb.d
+      - ./docker/init_scripts:/docker-entrypoint-initdb.d:ro
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+    shm_size: 256m
+    command: >
+      postgres
+        -c shared_buffers=512MB
+        -c work_mem=16MB
+        -c maintenance_work_mem=256MB
+        -c effective_cache_size=1536MB
+        -c random_page_cost=1.1
+        -c jit=off
+        -c statement_timeout=120000
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hydro_user -d hydro_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hydro_user} -d ${POSTGRES_DB:-hydro_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   api:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: hydro_api
     environment:
-      DATABASE_URL: postgresql://hydro_user:${DB_PASSWORD}@db:5432/hydro_db
-      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:-hydro_password}@db:5432/${POSTGRES_DB:-hydro_db}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEM_PATH: ${DEM_PATH:-/data/nmt/dem_mosaic.vrt}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2.0"
     volumes:
-      - ./backend:/app/backend
-    command: uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --reload
+      - ./backend:/app
+      - ./data:/data
+      - ./frontend/data:/frontend/data
+      - ./frontend/tiles:/frontend/tiles
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
   nginx:
     image: nginx:alpine
     container_name: hydro_nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HYDROGRAF_PORT:-8080}:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - api
     restart: unless-stopped
@@ -814,56 +1033,123 @@ volumes:
 
 ---
 
+### 5.1.1 Konteneryzacja — Multi-stage i override (ADR-035)
+
+**Multi-stage Dockerfile** (`backend/Dockerfile`):
+- **Stage 1 (builder):** instalacja zaleznosci z `requirements.txt` (gcc, git dla pip install z GitHub)
+- **Stage 2 (runtime):** kopiowanie zainstalowanych pakietow z buildera — obraz bez gcc/git w produkcji
+
+**`entrypoint.sh`:**
+- Wait-for-db — petla `pg_isready` z retry (max 30 prob, 1s interwal)
+- Automatyczne migracje Alembic (`alembic upgrade head`) na starcie kontenera
+- Exec do procesu glownego (uvicorn)
+
+**Override pattern (dev/prod):**
+- `docker-compose.yml` — bazowy plik (db + api + nginx), bez `--reload`, bez bind mount kodu
+- `docker-compose.override.yml` — automatycznie ladowany w dev: bind mount `./backend:/app`, `--reload`, `LOG_LEVEL=DEBUG`
+- `docker-compose.prod.yml` — override produkcyjny: 2 workery uvicorn, `LOG_LEVEL=WARNING`, bez `--reload`
+
+**Healthcheck API:**
+- Kontener `api`: healthcheck `python -c "urllib.request.urlopen('http://localhost:8000/health')"` (30s interval)
+- Kontener `nginx`: `depends_on: api: condition: service_healthy`
+
+**Uruchomienie:**
+- Dev: `docker compose up` (automatycznie laduje override.yml)
+- Prod: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+
+---
+
 ### 5.2 Nginx Configuration
 
 ```nginx
-# nginx/nginx.conf
-upstream api_backend {
-    server api:8000;
+# docker/nginx.conf
+events {
+    worker_connections 1024;
 }
 
-server {
-    listen 80;
-    server_name localhost;
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
 
-    # Frontend
-    location / {
-        root /usr/share/nginx/html;
-        index index.html;
-        try_files $uri $uri/ /index.html;
-    }
+    gzip on;
+    gzip_types text/plain text/css application/json application/geo+json
+               application/javascript text/xml application/xml application/x-protobuf;
 
-    # API
-    location /api/ {
-        proxy_pass http://api_backend/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # Timeouts
-        proxy_connect_timeout 30s;
-        proxy_send_timeout 30s;
-        proxy_read_timeout 30s;
-    }
-
-    # Rate limiting
+    # Rate limiting zones
     limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
-    location /api/ {
-        limit_req zone=api_limit burst=20 nodelay;
+    limit_req_zone $binary_remote_addr zone=tile_limit:10m rate=30r/s;
+    limit_req_zone $binary_remote_addr zone=general_limit:10m rate=30r/s;
+
+    upstream api_backend {
+        server api:8000;
+    }
+
+    server {
+        listen 80;
+        server_name localhost;
+
+        # Security headers
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; ..." always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+        # Tile proxy (^~ prevents regex .png match)
+        location ^~ /api/tiles/ {
+            limit_req zone=tile_limit burst=200 nodelay;
+            proxy_pass http://api_backend/api/tiles/;
+            proxy_read_timeout 15s;
+            proxy_cache_valid 200 1d;
+        }
+
+        # Cache for static files
+        location ~* \.(css|js|png|ico|svg|pbf|geojson)$ {
+            root /usr/share/nginx/html;
+            expires 1h;
+            add_header Cache-Control "public, must-revalidate";
+        }
+
+        # Admin panel
+        location = /admin {
+            root /usr/share/nginx/html;
+            try_files /admin.html =404;
+        }
+
+        # Frontend - static files
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+
+        # Admin SSE stream (longer timeout for bootstrap)
+        location = /api/admin/bootstrap/stream {
+            proxy_pass http://api_backend/api/admin/bootstrap/stream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Admin-Key $http_x_admin_key;
+            proxy_read_timeout 3600s;
+            proxy_buffering off;
+        }
+
+        # API proxy
+        location /api/ {
+            limit_req zone=api_limit burst=20 nodelay;
+            proxy_pass http://api_backend/api/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_read_timeout 120s;
+        }
+
+        # Health check endpoint
+        location /health {
+            proxy_pass http://api_backend/health;
+            proxy_set_header Host $host;
+        }
     }
 }
-
-# HTTPS (optional for MVP, required for production)
-# server {
-#     listen 443 ssl;
-#     server_name yourdomain.com;
-#     
-#     ssl_certificate /etc/nginx/ssl/cert.pem;
-#     ssl_certificate_key /etc/nginx/ssl/key.pem;
-#     
-#     # ... rest of config
-# }
 ```
 
 ---
@@ -873,15 +1159,15 @@ server {
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      DEVELOPMENT                        │
-│  - docker-compose up                                    │
-│  - Hot reload (FastAPI --reload, Vite/etc for frontend)│
+│  - .venv + docker compose up -d db (tylko PostGIS)     │
+│  - uvicorn api.main:app --reload                       │
 │  - Debug logs (DEBUG level)                            │
 │  - Sample data in database                             │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
 │                       STAGING                           │
-│  - docker-compose -f docker-compose.prod.yml up        │
+│  - docker compose -f ... -f docker-compose.prod.yml up   │
 │  - Production-like data                                │
 │  - INFO logs                                           │
 │  - Manual deployment                                   │
@@ -889,9 +1175,9 @@ server {
 
 ┌─────────────────────────────────────────────────────────┐
 │                      PRODUCTION                         │
-│  - docker-compose -f docker-compose.prod.yml up -d     │
+│  - docker compose -f ... -f docker-compose.prod.yml up -d│
 │  - Full preprocessing data                             │
-│  - WARNING+ logs only                                  │
+│  - WARNING+ logs, 2 workery uvicorn                    │
 │  - HTTPS enabled                                       │
 │  - Backups configured                                  │
 │  - Monitoring (Prometheus + Grafana)                   │
@@ -919,9 +1205,14 @@ server {
 **Mitigations:**
 - ✅ Parametryzowane SQL queries (SQLAlchemy ORM)
 - ✅ Input validation (Pydantic)
-- ✅ Rate limiting (Nginx)
-- ✅ HTTPS (Certbot)
-- ✅ No authentication needed (internal network only in MVP)
+- ✅ Rate limiting (Nginx — 3 strefy: api_limit, tile_limit, general_limit)
+- ✅ CORS z restrykcyjnymi origins (env var `CORS_ORIGINS`), `allow_credentials=False`
+- ✅ GZip middleware (FastAPI)
+- ✅ Request ID tracing (`X-Request-ID` header, structlog context)
+- ✅ Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
+- ✅ Resource limits Docker (memory: 2G db, 4G api)
+- ✅ Admin API key auth (X-Admin-Key header, file-based lub env var, ADR-034)
+- ✅ No user authentication needed (internal network only in MVP)
 
 ---
 
@@ -937,8 +1228,10 @@ server {
 ┌──────────────────────────▼──────────────────────────────┐
 │                 APPLICATION LAYER                       │
 │  - Input validation (Pydantic)                         │
-│  - Rate limiting (10 req/s per IP)                     │
-│  - CORS headers (if needed)                            │
+│  - Rate limiting (3 zones: api, tile, general)         │
+│  - CORS (restrictive origins, no credentials)          │
+│  - GZip compression, X-Request-ID tracing              │
+│  - Security headers (CSP, HSTS, X-Frame-Options)       │
 └─────────────────────────────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────┐
@@ -955,38 +1248,40 @@ server {
 
 ### 7.1 Logging
 
-**Log Levels:**
+**Structured Logging (structlog):**
 ```python
-# core/config.py
-import logging
+# api/main.py
+import structlog
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('/var/log/hydro/app.log'),
-        logging.StreamHandler()
-    ]
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        structlog.processors.JSONRenderer()       # INFO+ → JSON
+        if settings.log_level != "DEBUG"
+        else structlog.dev.ConsoleRenderer(),     # DEBUG → human-readable
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    logger_factory=structlog.stdlib.LoggerFactory(),
 )
 
-logger = logging.getLogger('hydro')
+# Request ID middleware
+@app.middleware("http")
+async def add_request_id(request, call_next):
+    request_id = str(uuid.uuid4())[:8]
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
 ```
 
-**Log Structure:**
-```json
-{
-  "timestamp": "2026-01-14T10:30:45Z",
-  "level": "INFO",
-  "module": "watershed",
-  "function": "delineate",
-  "message": "Watershed delineated successfully",
-  "data": {
-    "area_km2": 45.3,
-    "duration_ms": 8532,
-    "outlet_id": 123456
-  }
-}
-```
+**Log Levels:**
 
 ---
 
@@ -1113,7 +1408,7 @@ async def health_check(db = Depends(get_db)):
 - Tagged releases
 
 **Preprocessing data:**
-- Export `flow_network`, `precipitation, `land_cover` raz po preprocessingu
+- Export `stream_network`, `stream_catchments`, `precipitation_data`, `land_cover` raz po preprocessingu
 - Store na zewnętrznym dysku
 
 ---
@@ -1121,9 +1416,9 @@ async def health_check(db = Depends(get_db)):
 ### 9.2 Recovery Procedures
 
 **Scenariusz 1: Database corruption**
-1. Stop aplikację: `docker-compose down`
+1. Stop aplikację: `docker compose down`
 2. Restore z backupu: `gunzip -c backup.sql.gz | docker exec -i hydro_db psql -U hydro_user hydro_db`
-3. Restart: `docker-compose up -d`
+3. Restart: `docker compose up -d`
 4. Verify: Check `/health` endpoint
 
 **Scenariusz 2: Server failure**
@@ -1131,7 +1426,7 @@ async def health_check(db = Depends(get_db)):
 2. Install Docker
 3. Clone repo: `git clone ...`
 4. Restore database z backupu
-5. Deploy: `docker-compose up -d`
+5. Deploy: `docker compose up -d`
 6. Update DNS (jeśli dotyczy)
 
 **RTO (Recovery Time Objective):** < 4 godziny  
@@ -1141,67 +1436,19 @@ async def health_check(db = Depends(get_db)):
 
 ## 10. Performance Optimization
 
-### 10.0 Benchmark Results (Test Sesja 9, 2026-01-20)
+### 10.0 Podejście do Wydajności
 
-**Dane testowe:** Arkusz NMT N-33-131-D-a-1-4 (2177 × 2367 komórek, 1m rozdzielczość)
+**Preprocessing (jednorazowy):**
+- Bulk INSERT via PostgreSQL COPY (ADR-006) zamiast individual INSERT
+- Numba `@njit` dla operacji na rastrach (ADR-017)
+- `pyflwdir.basins()` zamiast Python loops (ADR-016)
 
-#### Preprocessing NMT
+**Runtime API:**
+- CatchmentGraph BFS in-memory (milisekundy) zamiast recursive CTE na flow_network (sekundy) — ADR-021, ADR-022
+- Pre-computed stats w `stream_catchments` (zero operacji rastrowych w runtime)
+- Cascaded merge threshold dla dużych zlewni (>500 segmentów) — ADR-024
 
-| Etap | Czas | Uwagi |
-|------|------|-------|
-| Pobieranie z GUGiK (Kartograf) | ~30s | ✅ Akceptowalne |
-| Fill pits (pysheds) | <1s | ✅ Świetnie |
-| Fill depressions (pysheds) | ~1s | ✅ Świetnie |
-| Resolve flats (pysheds) | ~1s | ✅ Świetnie |
-| Flow direction (pysheds) | <1s | ✅ Świetnie |
-| Flow accumulation (pysheds) | <1s | ✅ Świetnie |
-| Slope calculation | <1s | ✅ Świetnie |
-| **Razem analiza rastrowa** | **~5s** | ✅ Świetnie |
-| INSERT do flow_network (5M rekordów) | ~55 min | ⚠️ WĄSKIE GARDŁO |
-| UPDATE downstream_id (5M rekordów) | ~47 min | ⚠️ WĄSKIE GARDŁO |
-| **Razem import do DB** | **~102 min** | ⚠️ Do optymalizacji |
-
-#### Runtime (API)
-
-| Operacja | Czas | Cel |
-|----------|------|-----|
-| find_nearest_stream (SQL) | <100ms | < 500ms ✅ |
-| traverse_upstream (CTE, 2.24 km²) | ~30s | < 10s ⚠️ |
-| build_boundary (convex hull) | ~8s | < 5s ⚠️ |
-| build_morphometric_params | ~4 min | < 30s ⚠️ |
-| Generowanie hydrogramu (Hydrolog) | <1s | < 5s ✅ |
-
-#### Wnioski
-
-1. **Analiza rastrowa (pysheds) jest bardzo szybka** - 5 sekund dla 5M komórek
-2. **Wąskie gardło to operacje bazodanowe** - INSERT/UPDATE zajmują 99% czasu preprocessingu
-3. **Runtime API jest akceptowalny** dla małych zlewni, ale dla dużych (>2 km²) może przekraczać limity
-
-#### Przetestowane optymalizacje (Sesja 10)
-
-| ID | Opis | Testowany zysk | Status |
-|----|------|----------------|--------|
-| OPT-1 | COPY zamiast INSERT | **21x szybciej** (1.5 min vs 31 min) | ✅ Potwierdzone |
-| OPT-2 | PostGIS Raster | - | Niski priorytet |
-| OPT-3 | Lazy loading | - | Niski priorytet |
-| OPT-4 | find_main_stream (reverse trace) | **257x szybciej** (1s vs 4 min) | ✅ Potwierdzone |
-
-#### Szczegółowe wyniki benchmarków
-
-**OPT-1: COPY vs INSERT** (100,000 rekordów)
-
-| Metoda | Czas | Rate | Przyspieszenie |
-|--------|------|------|----------------|
-| Individual INSERT | 37.82s | 2,644/s | 1.0x |
-| executemany | 31.29s | 3,196/s | 1.2x |
-| COPY FROM | 1.82s | 55,063/s | **20.8x** |
-
-**OPT-4: find_main_stream** (2.24 km², 835k head cells)
-
-| Metoda | Czas | Przyspieszenie |
-|--------|------|----------------|
-| Original (iterate all heads) | 246.4s | 1.0x |
-| Reverse trace (follow max acc) | 0.96s | **257x** |
+**Aktualne wyniki benchmarków:** patrz `docs/PROGRESS.md`
 
 ---
 
@@ -1286,10 +1533,11 @@ def oblicz_opad_efektywny_slow(intensywnosci, cn):
 /--------------------\ - Mocked dependencies
 ```
 
-**Test counts (target):**
-- Unit: ~100 tests
-- Integration: ~30 tests
-- E2E: ~5 tests
+**Strategia testowania:**
+- **Unit tests** — moduły core z mockowanymi zależnościami (pytest + fixtures)
+- **Integration tests** — endpointy API z prawdziwą bazą PostGIS (test service w CI)
+- **E2E scripts** — `process_dem.py`, `e2e_task9.py` (pełny pipeline end-to-end)
+- **CI:** pytest z coverage (aktualna liczba testów w wynikach CI)
 
 ---
 
@@ -1299,43 +1547,81 @@ def oblicz_opad_efektywny_slow(intensywnosci, cn):
 # .github/workflows/ci.yml
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
-      - uses: actions/checkout@v2
-      - name: Black
-        run: black --check backend/
-      - name: Flake8
-        run: flake8 backend/
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install ruff mypy
+      - name: Ruff check
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
 
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     services:
       postgres:
-        image: postgis/postgis:15-3.3
+        image: postgis/postgis:16-3.4
         env:
-          POSTGRES_DB: test_db
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_pass
+          POSTGRES_DB: hydro_test
+          POSTGRES_USER: hydro_user
+          POSTGRES_PASSWORD: hydro_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hydro_user -d hydro_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://hydro_user:hydro_password@localhost:5432/hydro_test
     steps:
-      - uses: actions/checkout@v2
-      - name: Install deps
-        run: pip install -r requirements.txt
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -e ".[dev]"
       - name: Run tests
-        run: pytest tests/ --cov=backend/
-      - name: Upload coverage
-        uses: codecov/codecov-action@v2
+        run: python -m pytest tests/ -v --tb=short
 
-  build:
+  security:
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    defaults:
+      run:
+        working-directory: backend
     steps:
-      - uses: actions/checkout@v2
-      - name: Build Docker image
-        run: docker build -t hydro:latest .
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install pip-audit
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Security audit
+        run: pip-audit
+        continue-on-error: true
 ```
 
 ---
@@ -1385,14 +1671,19 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 1.2
-**Data ostatniej aktualizacji:** 2026-01-20
+**Wersja dokumentu:** 1.7
+**Data ostatniej aktualizacji:** 2026-03-01
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 1.7 (2026-03-01): Aktualizacja vs rzeczywisty stan kodu — dodano: panel admin (ADR-034, 8 endpointów, admin.html, 3 moduły JS admin/), landcover MVT tiles, api/dependencies/, sekcja scripts/ (16 skryptów), 17 migracji, ADR-026..034; zaktualizowano: Docker (API memory 4G, ADMIN_API_KEY, volumes), Nginx (admin, SSE, health, static cache), config.py opis YAML, security (admin auth)
+- 1.6 (2026-02-16): Pełna aktualizacja — nowe tabele (stream_catchments, depressions), ADR-008..025, segmentacja konfluencyjna, Docker/Nginx zgodne z faktycznym stanem, structlog, security headers, usunięcie benchmarków liczbowych
+- 1.5 (2026-02-14): Eliminacja FlowGraph z runtime (ADR-022) — diagram, moduły, przepływ danych zaktualizowane; +watershed_service.py, flow_graph.py DEPRECATED
+- 1.4 (2026-02-13): Dodano catchment_graph.py i constants.py do core, zaktualizowano sygnatury morphometry.py, alfabetyczne uporządkowanie modulow core
+- 1.3 (2026-02-07): Aktualizacja struktury modulow (morphometry, cn_tables, cn_calculator, raster_utils, sheet_finder), usuniecie core/hydrograph.py (przeniesiony do Hydrolog)
 - 1.2 (2026-01-20): Dodano wyniki testów optymalizacji (COPY 21x, reverse trace 257x)
 - 1.1 (2026-01-20): Dodano sekcję 10.0 z wynikami benchmarków z testu end-to-end
-- 1.0 (2026-01-14): Wersja początkowa  
+- 1.0 (2026-01-14): Wersja początkowa
 
 ---
 

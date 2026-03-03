@@ -1,0 +1,39 @@
+# Hydrograf Pipeline Configuration
+# Copy to config.yaml and adjust values.
+
+# Database
+database:
+  host: localhost
+  port: 5432
+  name: hydro_db
+  user: hydro_user
+  password: ""  # REQUIRED: set your database password
+
+# DEM Processing
+dem:
+  resolution: "5m"           # GUGiK NMT resolution: "1m" or "5m"
+  thresholds_m2: [1000, 10000, 100000]
+  burn_depth_m: 10.0
+  building_raise_m: 5.0      # DEM raise under buildings (0 = disabled)
+
+# Paths (relative to project root)
+paths:
+  output_dir: "output"
+  cache_dir: "cache"          # raw downloaded data (NMT, BDOT10k, HSG)
+  frontend_data: "frontend/data"
+  dem_tiles_dir: "frontend/data/dem_tiles"
+
+# Pipeline steps (true = run, false = skip)
+steps:
+  download_nmt: true
+  process_dem: true
+  landcover: true
+  soil_hsg: true
+  precipitation: true
+  depressions: true
+  tiles: true
+  overlays: true
+
+# Custom data sources (override BDOT10k defaults)
+# custom_streams: "path/to/streams.gpkg"
+# custom_buildings: "path/to/buildings.gpkg"
