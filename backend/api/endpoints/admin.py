@@ -7,6 +7,7 @@ for the Hydrograf administration panel.
 
 import asyncio
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -418,6 +419,10 @@ def cleanup_execute(
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 VENV_PYTHON = sys.executable  # works in both venv and Docker container
 
+# SECURITY: Sheet codes should match patterns like "N-34-12-D-a-1".
+# Validate before passing to subprocess to prevent command injection.
+SHEET_CODE_PATTERN = re.compile(r'^[A-Za-z0-9\-]{3,30}$')
+
 _HISTORY_MAX = 10
 
 _bootstrap_state: dict = {
@@ -535,6 +540,15 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
             status_code=400,
             detail="Either bbox or sheets must be provided",
         )
+
+    # Validate sheet codes before passing to subprocess
+    if request.sheets:
+        for sheet in request.sheets:
+            if not SHEET_CODE_PATTERN.match(sheet):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid sheet code: {sheet}",
+                )
 
     # Build command
     cmd = [str(VENV_PYTHON), "-m", "scripts.bootstrap"]
