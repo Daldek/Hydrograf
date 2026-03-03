@@ -249,7 +249,11 @@ class TestCleanupCache:
 
     def test_all_targets_include_standard_keys(self):
         """ALL_CLEANUP_TARGETS includes standard cleanup keys."""
-        for key in ("tiles", "overlays", "dem_tiles", "dem_mosaic", "processed_data", "db_tables"):
+        expected = (
+            "tiles", "overlays", "dem_tiles",
+            "dem_mosaic", "processed_data", "db_tables",
+        )
+        for key in expected:
             assert key in ALL_CLEANUP_TARGETS
 
     def test_cleanup_cache_nonexistent_dir(self, app, tmp_path):

@@ -406,6 +406,7 @@ class TestGetCatchmentGraphThreadSafety:
     def test_returns_same_instance(self):
         """Concurrent calls return the same CatchmentGraph instance."""
         import threading
+
         import core.catchment_graph as cg_module
 
         cg_module._catchment_graph = None
@@ -427,6 +428,7 @@ class TestGetCatchmentGraphThreadSafety:
     def test_lock_exists(self):
         """Module-level lock exists for singleton protection."""
         import threading
+
         from core.catchment_graph import _catchment_graph_lock
         assert isinstance(_catchment_graph_lock, threading.Lock)
 
@@ -437,10 +439,17 @@ class TestTraverseToConfluenceDeque:
     def test_uses_deque_not_list(self):
         """Implementation must use deque for O(1) popleft."""
         import inspect
+
         from core.catchment_graph import CatchmentGraph
-        source = inspect.getsource(CatchmentGraph.traverse_to_confluence)
-        assert "deque" in source, "traverse_to_confluence should use collections.deque"
-        assert ".pop(0)" not in source, "traverse_to_confluence should not use list.pop(0)"
+        source = inspect.getsource(
+            CatchmentGraph.traverse_to_confluence,
+        )
+        assert "deque" in source, (
+            "traverse_to_confluence should use collections.deque"
+        )
+        assert ".pop(0)" not in source, (
+            "traverse_to_confluence should not use list.pop(0)"
+        )
 
 
 class TestGetSegmentIdx:
@@ -457,8 +466,9 @@ class TestGetSegmentIdx:
         assert isinstance(result, int)
 
     def test_raises_when_not_loaded(self):
-        from core.catchment_graph import CatchmentGraph
         import pytest
+
+        from core.catchment_graph import CatchmentGraph
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.get_segment_idx(0)
