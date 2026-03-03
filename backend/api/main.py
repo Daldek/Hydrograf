@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Hydrograf API",
     description="System analizy hydrologicznej - wyznaczanie zlewni i hydrogramów",
-    version="1.0.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 

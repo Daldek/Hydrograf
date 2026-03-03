@@ -14,7 +14,9 @@ Pracujesz nad **Hydrograf** — hubem hydrologicznym integrujacym FastAPI + Post
 - **Wyznaczanie zlewni** — klikniecie na mape → granica zlewni w <10s (traverse_upstream w PostGIS)
 - **Parametry fizjograficzne** — powierzchnia, CN, spadki, pokrycie terenu, morfometria
 - **Hydrogramy odplywu** — metoda SCS-CN, 42 scenariusze (7 czasow trwania x 6 prawdopodobienstw)
-- **Preprocessing NMT** — Kartograf → pyflwdir → COPY → graf flow_network w PostGIS
+- **Preprocessing NMT** — Kartograf → pyflwdir → COPY → stream_network + CatchmentGraph w PostGIS
+
+> **Uwaga:** tabela `flow_network` zostala usunieta w v0.4.0 (ADR-028) — zastapiona przez `stream_network` + `CatchmentGraph` in-memory. Ponizsze referencje do `flow_network` sa historyczne.
 
 **Stack technologiczny:**
 - Python 3.12+, FastAPI, SQLAlchemy 2.0, GeoAlchemy2
@@ -25,7 +27,7 @@ Pracujesz nad **Hydrograf** — hubem hydrologicznym integrujacym FastAPI + Post
 
 **Zaleznosci wlasne (GitHub, branch develop):**
 - Hydrolog v0.5.2 — obliczenia hydrologiczne (SCS-CN, UH, splot)
-- Kartograf v0.4.1 — dane GIS (NMT/NMPT z GUGiK, BDOT10k, BDOT10k hydro, SoilGrids, HSG, Ortofotomapa)
+- Kartograf v0.5.0 — dane GIS (NMT/NMPT z GUGiK, BDOT10k, BDOT10k hydro, SoilGrids, HSG, Ortofotomapa)
 - IMGWTools v2.1.0 — dane opadowe IMGW (kwantyle, stacje)
 
 ---
