@@ -23,7 +23,10 @@ def upgrade() -> None:
         sa.Column(
             "hsg_group",
             sa.String(1),
-            sa.CheckConstraint("hsg_group IN ('A', 'B', 'C', 'D')", name="valid_hsg_group"),
+            sa.CheckConstraint(
+                "hsg_group IN ('A', 'B', 'C', 'D')",
+                name="valid_hsg_group",
+            ),
             nullable=False,
         ),
         sa.Column("area_m2", sa.Float, nullable=False),

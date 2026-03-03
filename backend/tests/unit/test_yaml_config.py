@@ -153,6 +153,7 @@ class TestSettingsSecurityWarnings:
     def test_warns_on_empty_password(self, caplog, monkeypatch):
         """Startup logs WARNING when postgres_password is empty."""
         import logging
+
         from core.config import Settings, get_settings
 
         get_settings.cache_clear()
@@ -169,6 +170,7 @@ class TestSettingsSecurityWarnings:
     def test_no_warning_with_custom_password(self, caplog, monkeypatch):
         """No warning when password is explicitly set."""
         import logging
+
         from core.config import Settings, get_settings
 
         get_settings.cache_clear()

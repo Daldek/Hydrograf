@@ -186,7 +186,10 @@ def extract_mbtiles_to_pbf(mbtiles_path: Path, output_dir: Path, prefix: str) ->
         shutil.rmtree(tile_dir)
 
     conn = sqlite3.connect(str(mbtiles_path))
-    cursor = conn.execute("SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles")
+    cursor = conn.execute(
+        "SELECT zoom_level, tile_column, tile_row, "
+        "tile_data FROM tiles"
+    )
 
     count = 0
     for zoom, col, row, data in cursor:
