@@ -134,10 +134,10 @@ cd backend
 
 ### `download_dem.py` - Pobieranie NMT z GUGiK
 
-Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.4.1).
+Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.5.0).
 **Użyj gdy chcesz tylko pobrać dane bez przetwarzania.**
 
-> **Uwaga:** Kartograf 0.4.1 pobiera dane przez OpenData API w formacie ASC z auto-ekspansją godeł.
+> **Uwaga:** Kartograf 0.5.0 pobiera dane przez OpenData API w formacie ASC z auto-ekspansją godeł.
 > Format nie jest konfigurowalny przy pobieraniu przez godła arkuszy.
 
 **Użycie:**

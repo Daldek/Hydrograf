@@ -582,7 +582,7 @@ frontend/
 └── data/                    # Dane statyczne (overlays, tiles, GeoJSON)
 ```
 
-**Uwaga:** Wszystkie moduly JS uzywaja IIFE na `window.Hydrograf` (12 modulow laczenie z admin).
+**Uwaga:** Wszystkie moduly JS uzywaja IIFE na `window.Hydrograf` (13 modulow: 9 core + 4 admin).
 
 ### 9.3 API client pattern
 

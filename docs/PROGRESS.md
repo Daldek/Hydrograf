@@ -67,7 +67,7 @@
 - CR10: zamiana `traceback.print_exc()` na `logger.error(exc_info=True)`
 - CR9: fix cascade threshold mismatch — re-agregacja statystyk po eskalacji progu
 - CR5: implementacja analizy GeoPackage land cover w `get_land_cover_stats()`
-- 666 testów (było 644), 22 nowe testy
+- 778 testów (było 644), 134 nowe testy
 
 ### Poprzednia sesja (2026-03-02, sesja 54 — cleanup extension + HSG Poland-wide cache)
 
