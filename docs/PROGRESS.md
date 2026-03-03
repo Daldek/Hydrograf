@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 12 modulow JS (9 core + 3 admin). CP4 — select-stream, MVT, DEM tiles, admin panel |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 644 testow jednostkowych (42 pliki testowe) |
+| Testy | ✅ Gotowy | 666 testow jednostkowych (45 plikow testowych) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -45,25 +45,28 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-02 (sesja 54 — cleanup extension + HSG Poland-wide cache)
+**Data:** 2026-03-03 (sesja 55 — code review CR5/CR9/CR10)
 
 ### Co zrobiono
-- Fix: dodano `*.geojson` do wzorców czyszczenia overlays (panel admin)
-- Feat: nowy target cleanup `processed_data` (typ `multi_dir`) dla `data/nmt/` i `data/hydro/`
-- Feat: HSG Poland-wide cache — jednorazowe pobranie `hsg_poland.tif` dla całej Polski (~2-5 MB)
-  - Cache w oryginalnym CRS (EPSG:4326) — brak strat z reproj
-  - Processing: clip+warp do EPSG:2180 dopiero przy użyciu (jeden resampling, nearest neighbor)
-  - DB import: `DELETE WHERE ST_Intersects(bbox)` zamiast `DELETE ALL` — dane z różnych obszarów koegzystują
-- ADR-038: HSG Poland-wide cache + cleanup extension
-- 644 testów jednostkowych, 0 regresji
+- **CR10:** Zamiana `traceback.print_exc()` na `logger.error(exc_info=True)` w `cn_calculator.py` i `analyze_watershed.py` (3 zamiany w 2 plikach)
+- **CR9:** Fix cascade threshold mismatch w `select_stream.py` i `watershed.py` — po eskalacji progu, statystyki są teraz re-agregowane z tego samego progu co boundary. 4 nowe testy w `test_cascade_stats.py`
+- **CR5:** Implementacja analizy GeoPackage land cover w `get_land_cover_stats()` — zastąpienie TODO stuba rzeczywistą analizą BDOT10k. Dodano `BDOT10K_CATEGORY_MAP`, `_extract_bdot_code()`, `_analyze_land_cover_gpkg()`. 18 nowych testów w `test_land_cover_stats.py`
+- 666 testów jednostkowych (było 644), 22 nowe testy, 0 regresji
 
 ### W trakcie
 - Brak
 
 ### Następne kroki
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
-- Code review CR4-CR11
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+
+### Poprzednia sesja (2026-03-02, sesja 54 — cleanup extension + HSG Poland-wide cache)
+
+- Fix: dodano `*.geojson` do wzorców czyszczenia overlays (panel admin)
+- Feat: nowy target cleanup `processed_data` (typ `multi_dir`) dla `data/nmt/` i `data/hydro/`
+- Feat: HSG Poland-wide cache — jednorazowe pobranie `hsg_poland.tif` dla całej Polski (~2-5 MB)
+- ADR-038: HSG Poland-wide cache + cleanup extension
+- 644 testów jednostkowych, 0 regresji
 
 ### Poprzednia sesja (2026-03-02, sesja 53 — separacja cache/data + Kartograf v0.5.0)
 

@@ -5,7 +5,14 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-03-02
+## [Unreleased] — 2026-03-03
+
+### Added (sesja 55 — code review CR5/CR9/CR10)
+- **CR5 — Analiza land cover z GeoPackage BDOT10k:** `get_land_cover_stats()` zastępuje TODO stub rzeczywistą analizą. Nowe: `BDOT10K_CATEGORY_MAP`, `_extract_bdot_code()`, `_analyze_land_cover_gpkg()`. 18 nowych testów w `test_land_cover_stats.py`.
+
+### Fixed (sesja 55 — code review CR5/CR9/CR10)
+- **CR10 — Logging zamiast print_exc:** zamiana `traceback.print_exc()` na `logger.error(exc_info=True)` w `cn_calculator.py` i `analyze_watershed.py` (3 zamiany w 2 plikach)
+- **CR9 — Cascade threshold mismatch:** po eskalacji progu w `select_stream.py` i `watershed.py`, statystyki są teraz re-agregowane z tego samego progu co boundary. 4 nowe testy w `test_cascade_stats.py`
 
 ### Added
 - Cache/data directory separation (`/cache/` for raw downloads, `/data/` for processed) (ADR-037)
