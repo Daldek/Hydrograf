@@ -327,8 +327,5 @@ def calculate_cn_from_kartograf(
         logger.warning(f"Kartograf niedostepny: {e}")
         return None
     except Exception as e:
-        logger.warning(f"Blad obliczania CN z Kartografa: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("Blad obliczania CN z Kartografa: %s", e, exc_info=True)
         return None
