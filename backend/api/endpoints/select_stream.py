@@ -130,7 +130,10 @@ def select_stream(
         bfs_segment_idxs = cg.get_segment_indices(upstream_indices, threshold)
 
         # 5. Aggregate pre-computed stats (zero raster ops)
-        stats = cg.aggregate_stats(upstream_indices)
+        # upstream_indices_for_stats tracks which indices to use for stats;
+        # updated together with merge_idxs during cascade escalation (CR9).
+        upstream_indices_for_stats = upstream_indices
+        stats = cg.aggregate_stats(upstream_indices_for_stats)
         area_km2 = stats["area_km2"]
 
         # 6. Build boundary from ST_Union of catchment polygons.
@@ -158,6 +161,19 @@ def select_stream(
                 if len(t_segs) <= _MAX_MERGE or t == 100000:
                     merge_idxs = t_segs
                     merge_threshold = t
+                    # CR9: re-aggregate stats from escalated threshold
+                    # so stats match the boundary polygon
+                    upstream_indices_for_stats = t_up
+                    stats = cg.aggregate_stats(upstream_indices_for_stats)
+                    area_km2 = stats["area_km2"]
+                    logger.info(
+                        "Cascade: threshold escalated from %d to %d "
+                        "(%d -> %d segments)",
+                        threshold,
+                        merge_threshold,
+                        len(bfs_segment_idxs),
+                        len(merge_idxs),
+                    )
                     break
 
         boundary_2180 = merge_catchment_boundaries(
@@ -224,12 +240,12 @@ def select_stream(
             ruggedness = round(dd * relief_km, 4)
 
         # Channel length and slope from main channel trace (not total network)
-        main_ch = cg.trace_main_channel(clicked_idx, upstream_indices)
+        main_ch = cg.trace_main_channel(clicked_idx, upstream_indices_for_stats)
         channel_length_km = main_ch.get("main_channel_length_km")
         channel_slope = main_ch.get("main_channel_slope_m_per_m")
 
         # 9. Hypsometric curve
-        hypso_data = cg.aggregate_hypsometric(upstream_indices)
+        hypso_data = cg.aggregate_hypsometric(upstream_indices_for_stats)
         hypso_curve = None
         hypsometric_integral = None
         if hypso_data:
