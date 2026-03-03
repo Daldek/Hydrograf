@@ -33,7 +33,7 @@ Pelna mapa modulow: `docs/ARCHITECTURE.md` §2.1 (backend) i §4.1 (frontend).
 - `backend/core/` — logika biznesowa (~15 modulow)
 - `backend/scripts/` — skrypty CLI preprocessingu (bootstrap.py orchestrator)
 - `backend/models/schemas.py` — modele Pydantic
-- `frontend/js/` — 9 modulow JS (IIFE na `window.Hydrograf`)
+- `frontend/js/` — 13 modulow JS (9 core + 4 admin, IIFE na `window.Hydrograf`)
 
 ## Podejscie wieloagentowe
 
@@ -100,7 +100,7 @@ Jesli prostsze rozwiazanie jest wolniejsze, wybierz prostsze. Jesli bezpieczniej
 ## Specyfika projektu
 
 ### Biblioteki wlasne
-- **Hydrolog** v0.5.2, **Kartograf** v0.4.1, **IMGWTools** v2.1.0
+- **Hydrolog** v0.5.2, **Kartograf** v0.5.0, **IMGWTools** v2.1.0
 - Dostepne z GitHub (branch develop), nie z PyPI
 - Szczegoly integracji: `docs/CROSS_PROJECT_ANALYSIS.md`
 

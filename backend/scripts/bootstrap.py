@@ -567,11 +567,11 @@ def step_soil_hsg(sheets: list[str], output_dir: Path, cache_dir: Path) -> str:
         logger.info("HSG: downloading Poland-wide raster from SoilGrids...")
         from kartograf import BBox
 
-        # Poland bbox in EPSG:4326
+        # Poland bbox in EPSG:2180 (PL-1992)
         bbox_poland = BBox(
-            min_x=14.07, min_y=49.00,
-            max_x=24.15, max_y=54.84,
-            crs="EPSG:4326",
+            min_x=167000, min_y=29000,
+            max_x=860000, max_y=814000,
+            crs="EPSG:2180",
         )
         try:
             hsg_calc = HSGCalculator()
