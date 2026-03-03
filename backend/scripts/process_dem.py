@@ -45,7 +45,6 @@ from pathlib import Path
 import numpy as np
 from sqlalchemy import text
 
-# ---- Core module imports ----
 from core.db_bulk import (
     insert_catchments,
     insert_stream_segments,
@@ -71,7 +70,12 @@ from core.morphometry_raster import (
     compute_strahler_order,
     compute_twi,
 )
-from core.raster_io import downsample_raster, read_ascii_grid, read_raster, save_raster_geotiff
+from core.raster_io import (
+    downsample_raster,
+    read_ascii_grid,
+    read_raster,
+    save_raster_geotiff,
+)
 from core.stream_extraction import (
     compute_downstream_links,
     delineate_subcatchments,
@@ -233,7 +237,8 @@ def process_dem(
 
     # Downsample if requested (OOM prevention for large rasters)
     if hydro_resolution_m is not None and hydro_resolution_m > metadata["cellsize"]:
-        downsampled_path = output_dir / f"{base_name}_downsampled_{hydro_resolution_m}m.tif"
+        fname = f"{base_name}_downsampled_{hydro_resolution_m}m.tif"
+        downsampled_path = output_dir / fname
         downsample_raster(input_path, downsampled_path, hydro_resolution_m)
         dem, metadata = read_raster(downsampled_path)
 

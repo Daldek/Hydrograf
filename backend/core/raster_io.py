@@ -167,7 +167,7 @@ def downsample_raster(input_path: Path, output_path: Path, target_res_m: float) 
         str(output_path),
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    subprocess.run(cmd, capture_output=True, text=True, check=True)
 
     logger.info(f"Downsampled to: {output_path}")
     return output_path

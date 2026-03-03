@@ -35,6 +35,7 @@ class TestVerifyAdminKey:
     def test_no_configured_key_generates_random(self, caplog):
         """When no key configured, a random key is generated and logged."""
         import logging
+
         import api.dependencies.admin_auth as auth_module
         auth_module._generated_key = None  # reset
 

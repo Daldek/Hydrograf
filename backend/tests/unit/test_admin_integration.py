@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -50,47 +49,81 @@ class TestAdminAuthIntegration:
     def test_wrong_key_blocked_on_dashboard(self):
         app = _create_app()
         client = TestClient(app)
-        with patch("api.dependencies.admin_auth.get_settings", return_value=_mock_settings(api_key="correct")):
-            response = client.get("/api/admin/dashboard", headers={"X-Admin-Key": "wrong"})
+        mock_settings = _mock_settings(api_key="correct")
+        with patch(
+            "api.dependencies.admin_auth.get_settings",
+            return_value=mock_settings,
+        ):
+            response = client.get(
+                "/api/admin/dashboard",
+                headers={"X-Admin-Key": "wrong"},
+            )
         assert response.status_code == 403
 
     def test_missing_key_blocked(self):
         app = _create_app()
         client = TestClient(app)
-        with patch("api.dependencies.admin_auth.get_settings", return_value=_mock_settings(api_key="correct")):
+        mock_settings = _mock_settings(api_key="correct")
+        with patch(
+            "api.dependencies.admin_auth.get_settings",
+            return_value=mock_settings,
+        ):
             response = client.get("/api/admin/dashboard")
         assert response.status_code == 401
 
     def test_correct_key_passes(self):
         app = _create_app()
         client = TestClient(app)
+        mock_settings = _mock_settings(api_key="my-secret")
         with (
-            patch("api.dependencies.admin_auth.get_settings", return_value=_mock_settings(api_key="my-secret")),
+            patch(
+                "api.dependencies.admin_auth.get_settings",
+                return_value=mock_settings,
+            ),
             patch("api.endpoints.admin.get_db") as mock_get_db,
         ):
             mock_db = MagicMock()
             mock_db.execute.return_value.scalar.return_value = 0
             mock_get_db.return_value = iter([mock_db])
-            response = client.get("/api/admin/dashboard", headers={"X-Admin-Key": "my-secret"})
+            response = client.get(
+                "/api/admin/dashboard",
+                headers={"X-Admin-Key": "my-secret"},
+            )
         assert response.status_code == 200
 
     def test_auth_applies_to_resources(self):
         app = _create_app()
         client = TestClient(app)
-        with patch("api.dependencies.admin_auth.get_settings", return_value=_mock_settings(api_key="secret")):
+        mock_settings = _mock_settings(api_key="secret")
+        with patch(
+            "api.dependencies.admin_auth.get_settings",
+            return_value=mock_settings,
+        ):
             response = client.get("/api/admin/resources")
         assert response.status_code == 401
 
     def test_auth_applies_to_cleanup(self):
         app = _create_app()
         client = TestClient(app)
-        with patch("api.dependencies.admin_auth.get_settings", return_value=_mock_settings(api_key="secret")):
-            response = client.get("/api/admin/cleanup/estimate")
+        mock_settings = _mock_settings(api_key="secret")
+        with patch(
+            "api.dependencies.admin_auth.get_settings",
+            return_value=mock_settings,
+        ):
+            response = client.get(
+                "/api/admin/cleanup/estimate",
+            )
         assert response.status_code == 401
 
     def test_auth_applies_to_bootstrap(self):
         app = _create_app()
         client = TestClient(app)
-        with patch("api.dependencies.admin_auth.get_settings", return_value=_mock_settings(api_key="secret")):
-            response = client.get("/api/admin/bootstrap/status")
+        mock_settings = _mock_settings(api_key="secret")
+        with patch(
+            "api.dependencies.admin_auth.get_settings",
+            return_value=mock_settings,
+        ):
+            response = client.get(
+                "/api/admin/bootstrap/status",
+            )
         assert response.status_code == 401

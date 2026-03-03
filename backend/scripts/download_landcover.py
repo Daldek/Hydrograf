@@ -247,7 +247,8 @@ def merge_hydro_gpkgs(gpkg_paths: list[Path], output_path: Path) -> Path | None:
             # Filter: keep only hydro-relevant layers
             # Extract BDOT10k code: "OT_SWRS_L" → "SWRS"
             parts = layer_name.split("_")
-            layer_code = parts[1] if len(parts) >= 3 and parts[0] == "OT" else layer_name
+            is_ot = len(parts) >= 3 and parts[0] == "OT"
+            layer_code = parts[1] if is_ot else layer_name
             if not layer_code.startswith(HYDRO_LAYER_PREFIXES):
                 logger.debug(f"Skipping non-hydro layer: {layer_name}")
                 continue

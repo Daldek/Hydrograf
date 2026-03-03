@@ -372,7 +372,9 @@ def step_download_nmt(
     nmt_dir = cache_dir / "nmt"
     nmt_dir.mkdir(parents=True, exist_ok=True)
 
-    downloaded = download_sheets(sheets, nmt_dir, skip_existing=True, resolution=resolution)
+    downloaded = download_sheets(
+        sheets, nmt_dir, skip_existing=True, resolution=resolution
+    )
 
     # Count how many were already cached
     n_total = len(downloaded)
@@ -406,7 +408,8 @@ def step_process_dem(
     # Compute bbox once — reused for ASC discovery and hydro/landcover
     bbox_2180 = sheets_to_bbox_2180(sheets)
 
-    # Discover ALL ASC files in cache nmt dir (new downloads + cached from previous runs)
+    # Discover ALL ASC files in cache nmt dir
+    # (new downloads + cached from previous runs)
     all_asc = discover_asc_files(cache_nmt_dir, bbox_2180)
 
     # Reproject PUWG 2000 files to EPSG:2180 before mosaicking
@@ -685,8 +688,9 @@ def step_soil_hsg(sheets: list[str], output_dir: Path, cache_dir: Path) -> str:
         with engine.connect() as conn2:
             result = conn2.execute(
                 text(
-                    "SELECT hsg_group, ST_AsGeoJSON(ST_Transform(geom, 4326)) AS geojson, "
-                    "area_m2 FROM soil_hsg"
+                    "SELECT hsg_group, "
+                    "ST_AsGeoJSON(ST_Transform(geom, 4326)) "
+                    "AS geojson, area_m2 FROM soil_hsg"
                 )
             ).fetchall()
             for row in result:

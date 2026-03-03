@@ -3,12 +3,13 @@
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from utils.raster_utils import discover_asc_files
 
 
-def _write_asc(path: Path, xll: float, yll: float, ncols: int, nrows: int, cellsize: float) -> None:
+def _write_asc(
+    path: Path, xll: float, yll: float,
+    ncols: int, nrows: int, cellsize: float,
+) -> None:
     """Write a minimal ASC header (no data rows needed for discovery)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

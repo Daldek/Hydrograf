@@ -5,6 +5,7 @@ Verifies the X-Admin-Key header against the configured admin_api_key.
 If no key is configured, a random UUID is generated and logged as WARNING.
 """
 
+import contextlib
 import logging
 import uuid
 from pathlib import Path
@@ -58,10 +59,8 @@ def verify_admin_key(
         expected_key = settings.admin_api_key
 
         if not expected_key and settings.admin_api_key_file:
-            try:
+            with contextlib.suppress(OSError):
                 expected_key = Path(settings.admin_api_key_file).read_text().strip()
-            except (OSError, IOError):
-                pass
 
         expected_key = _get_or_generate_admin_key(expected_key or "")
 

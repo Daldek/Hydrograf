@@ -578,7 +578,9 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
     except (FileNotFoundError, OSError) as e:
         _bootstrap_state["status"] = "failed"
         _bootstrap_state["log_lines"].append(f"[ERROR] Failed to start: {e}")
-        raise HTTPException(status_code=500, detail=f"Cannot start bootstrap: {e}") from e
+        raise HTTPException(
+            status_code=500, detail=f"Cannot start bootstrap: {e}"
+        ) from e
 
     _bootstrap_state["process"] = process
 
