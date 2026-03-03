@@ -303,6 +303,7 @@
     overflow-y: auto;
     flex: 1;
     padding: 8px 0;
+    max-height: calc(100vh - 80px);
 }
 
 /* Results toggle button (right edge) */
@@ -402,7 +403,9 @@
     z-index: 1000;
     padding: 6px 16px;
     font-size: 0.8rem;
-    white-space: nowrap;
+    white-space: normal;
+    text-align: center;
+    max-width: calc(100% - 32px);
 }
 
 /* ============ PROFILE ACTIONS ============ */
@@ -530,6 +533,17 @@
 
     .layers-toggle.layers-open {
         left: 210px;
+    }
+}
+
+/* ============ RESPONSIVE: TABLET ============ */
+@media (min-width: 769px) and (max-width: 1024px) {
+    #layers-panel {
+        width: 220px;
+    }
+
+    .layers-toggle.layers-open {
+        left: 230px;
     }
 }
 

@@ -26,6 +26,7 @@ body {
 .auth-card {
     width: 100%;
     max-width: 380px;
+    min-width: 280px;
     padding: 2rem;
     text-align: center;
 }
@@ -263,4 +264,24 @@ body {
 
 #bbox-picker-map .leaflet-interactive {
     cursor: crosshair;
+}
+
+/* ----------------------------------------------------------------
+   Modal backdrop override (match admin gradient)
+   ---------------------------------------------------------------- */
+.modal-backdrop.show {
+    background: linear-gradient(135deg, #1a0533, #0a2540);
+    opacity: 0.7;
+}
+
+/* ----------------------------------------------------------------
+   Responsive: bbox compass on small screens
+   ---------------------------------------------------------------- */
+@media (max-width: 576px) {
+    .bbox-compass {
+        transform: scale(0.85);
+    }
+    .bbox-field .form-control {
+        width: 100px;
+    }
 }
