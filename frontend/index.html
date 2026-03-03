@@ -41,7 +41,7 @@
             <h6 class="layers-header">Warstwy</h6>
             <div id="layers-list"></div>
         </div>
-        <button id="layers-toggle" class="layers-toggle layers-open glass-panel" title="Warstwy" aria-label="Warstwy" aria-expanded="true">&#8249;</button>
+        <button id="layers-toggle" class="layers-toggle layers-open glass-panel" title="Warstwy" aria-label="Warstwy" aria-expanded="true"><span aria-hidden="true">&#8249;</span></button>
 
         <!-- Drawing instructions banner -->
         <div id="draw-instructions" class="draw-banner d-none glass-panel">Klik = wierzchołek, Podwójny klik = zakończ, Backspace = cofnij, Esc = anuluj</div>
@@ -102,7 +102,7 @@
                     <div class="glass-accordion" id="acc-basic">
                         <div class="glass-accordion-header">
                             <span>Parametry podstawowe</span>
-                            <span class="glass-accordion-chevron">&#9660;</span>
+                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
                         </div>
                         <div class="glass-accordion-body">
                             <table class="table table-sm param-table"><tbody id="params-basic"></tbody></table>
@@ -113,7 +113,7 @@
                     <div class="glass-accordion collapsed" id="acc-shape">
                         <div class="glass-accordion-header">
                             <span>Wskaźniki kształtu</span>
-                            <span class="glass-accordion-chevron">&#9660;</span>
+                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
                         </div>
                         <div class="glass-accordion-body">
                             <table class="table table-sm param-table"><tbody id="params-shape"></tbody></table>
@@ -124,7 +124,7 @@
                     <div class="glass-accordion collapsed" id="acc-relief">
                         <div class="glass-accordion-header">
                             <span>Rzeźba terenu</span>
-                            <span class="glass-accordion-chevron">&#9660;</span>
+                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
                         </div>
                         <div class="glass-accordion-body">
                             <table class="table table-sm param-table"><tbody id="params-relief"></tbody></table>
@@ -136,7 +136,7 @@
                     <div class="glass-accordion collapsed" id="acc-drainage">
                         <div class="glass-accordion-header">
                             <span>Sieć rzeczna</span>
-                            <span class="glass-accordion-chevron">&#9660;</span>
+                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
                         </div>
                         <div class="glass-accordion-body">
                             <table class="table table-sm param-table"><tbody id="params-drainage"></tbody></table>
@@ -147,7 +147,7 @@
                     <div class="glass-accordion collapsed" id="acc-landcover">
                         <div class="glass-accordion-header">
                             <span>Pokrycie terenu</span>
-                            <span class="glass-accordion-chevron">&#9660;</span>
+                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
                         </div>
                         <div class="glass-accordion-body">
                             <div class="chart-container"><canvas id="chart-landcover" role="img" aria-label="Wykres pokrycia terenu"></canvas></div>
@@ -158,7 +158,7 @@
                     <div class="glass-accordion collapsed d-none" id="acc-hsg">
                         <div class="glass-accordion-header">
                             <span>Grupy glebowe (HSG)</span>
-                            <span class="glass-accordion-chevron">&#9660;</span>
+                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
                         </div>
                         <div class="glass-accordion-body">
                             <div class="chart-container"><canvas id="chart-hsg" role="img" aria-label="Wykres grup glebowych HSG"></canvas></div>
@@ -169,7 +169,7 @@
                     <div class="glass-accordion collapsed d-none" id="acc-hydrograph">
                         <div class="glass-accordion-header">
                             <span>Hydrogram (w przygotowaniu)</span>
-                            <span class="glass-accordion-chevron">&#9660;</span>
+                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
                         </div>
                         <div class="glass-accordion-body">
                             <div id="hydrograph-form" class="mb-2">
@@ -200,7 +200,7 @@
 
         <!-- External toggle button for collapsed results panel -->
         <button id="results-toggle-btn" class="results-toggle glass-panel d-none"
-                title="Parametry zlewni" aria-label="Parametry zlewni">&#8249;</button>
+                title="Parametry zlewni" aria-label="Parametry zlewni"><span aria-hidden="true">&#8249;</span></button>
     </div>
 
     <!-- Floating profile panel (independent from watershed results) -->
