@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 12 modulow JS (9 core + 3 admin). CP4 — select-stream, MVT, DEM tiles, admin panel |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 666 testow jednostkowych (45 plikow testowych) |
+| Testy | ✅ Gotowy | 778 testow jednostkowych |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -36,8 +36,9 @@
 - **Zakres:** POST /generate-hydrograph, SCS-CN, 42 scenariusze, COPY 27x, reverse trace 330x, Land Cover, IMGWTools
 
 ### CP4 — Frontend z mapa ✅
+- **Data:** 2026-03-03
 - **Wersja:** v0.4.0
-- **Zakres:** Leaflet.js, Chart.js, interaktywna mapa, panel parametrow, glassmorphism, MVT tiles (streams/catchments/landcover), DEM tiles (piramida XYZ z hillshade), select-stream, GUGiK WMTS, wygladzanie granic zlewni (ADR-032), podniesienie budynkow w NMT (ADR-033), panel administracyjny (ADR-034), konfiguracja YAML pipeline
+- **Zakres:** Leaflet.js, Chart.js, interaktywna mapa, panel parametrow, glassmorphism, MVT tiles (streams/catchments/landcover), DEM tiles (piramida XYZ z hillshade), select-stream, GUGiK WMTS, wygladzanie granic zlewni (ADR-032), podniesienie budynkow w NMT (ADR-033), panel administracyjny (ADR-034), konfiguracja YAML pipeline, Docker hardening (ADR-036), cache/data separacja (ADR-037), HSG Poland-wide cache (ADR-038)
 
 ### CP5 — MVP ⏳
 - **Wersja:** v1.0.0 (planowana)
@@ -45,13 +46,14 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-03 (sesja 55 — code review CR5/CR9/CR10)
+**Data:** 2026-03-03 (sesja 56 — release CP4 v0.4.0)
 
 ### Co zrobiono
-- **CR10:** Zamiana `traceback.print_exc()` na `logger.error(exc_info=True)` w `cn_calculator.py` i `analyze_watershed.py` (3 zamiany w 2 plikach)
-- **CR9:** Fix cascade threshold mismatch w `select_stream.py` i `watershed.py` — po eskalacji progu, statystyki są teraz re-agregowane z tego samego progu co boundary. 4 nowe testy w `test_cascade_stats.py`
-- **CR5:** Implementacja analizy GeoPackage land cover w `get_land_cover_stats()` — zastąpienie TODO stuba rzeczywistą analizą BDOT10k. Dodano `BDOT10K_CATEGORY_MAP`, `_extract_bdot_code()`, `_analyze_land_cover_gpkg()`. 18 nowych testów w `test_land_cover_stats.py`
-- 666 testów jednostkowych (było 644), 22 nowe testy, 0 regresji
+- Fix 35 błędów ruff lint w 15 plikach (E501, I001, F841, F401, SIM105, UP024)
+- Aktualizacja wersji na v0.4.0 w `pyproject.toml`
+- Aktualizacja CHANGELOG.md — zamknięcie sekcji [Unreleased] jako [0.4.0]
+- Merge `develop` → `main`, tag `v0.4.0`
+- 778 testów jednostkowych, 0 regresji, 0 błędów ruff
 
 ### W trakcie
 - Brak
@@ -59,6 +61,13 @@
 ### Następne kroki
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+
+### Poprzednia sesja (2026-03-03, sesja 55 — code review CR5/CR9/CR10)
+
+- CR10: zamiana `traceback.print_exc()` na `logger.error(exc_info=True)`
+- CR9: fix cascade threshold mismatch — re-agregacja statystyk po eskalacji progu
+- CR5: implementacja analizy GeoPackage land cover w `get_land_cover_stats()`
+- 666 testów (było 644), 22 nowe testy
 
 ### Poprzednia sesja (2026-03-02, sesja 54 — cleanup extension + HSG Poland-wide cache)
 

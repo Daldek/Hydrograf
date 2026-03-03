@@ -5,7 +5,10 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-03-03
+## [0.4.0] — 2026-03-03
+
+### Style
+- 35 ruff lint errors fixed across 15 files (E501, I001, F841, F401, SIM105, UP024)
 
 ### Added (sesja 55 — code review CR5/CR9/CR10)
 - **CR5 — Analiza land cover z GeoPackage BDOT10k:** `get_land_cover_stats()` zastępuje TODO stub rzeczywistą analizą. Nowe: `BDOT10K_CATEGORY_MAP`, `_extract_bdot_code()`, `_analyze_land_cover_gpkg()`. 18 nowych testów w `test_land_cover_stats.py`.
@@ -761,7 +764,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DATA_MODEL.md - Database schema
 - PRD.md - Product requirements
 
-[Unreleased]: https://github.com/Daldek/Hydrograf/compare/v0.3.0...HEAD
+[0.4.0]: https://github.com/Daldek/Hydrograf/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Daldek/Hydrograf/compare/v0.2.2...v0.3.0
 [0.2.0]: https://github.com/Daldek/Hydrograf/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Daldek/Hydrograf/releases/tag/v0.1.0
