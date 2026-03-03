@@ -137,7 +137,10 @@ def delineate_watershed(
         )
 
         # 6. Aggregate pre-computed stats (zero raster ops)
-        stats = cg.aggregate_stats(upstream_indices)
+        # upstream_indices_for_stats tracks which indices to use for stats;
+        # updated together with merge_idxs during cascade escalation (CR9).
+        upstream_indices_for_stats = upstream_indices
+        stats = cg.aggregate_stats(upstream_indices_for_stats)
         area_km2 = stats["area_km2"]
         logger.debug(f"Watershed area: {area_km2:.2f} km2")
 
@@ -169,6 +172,19 @@ def delineate_watershed(
                 if len(t_segs) <= _MAX_MERGE or t == 100000:
                     merge_idxs = t_segs
                     merge_threshold = t
+                    # CR9: re-aggregate stats from escalated threshold
+                    # so stats match the boundary polygon
+                    upstream_indices_for_stats = t_up
+                    stats = cg.aggregate_stats(upstream_indices_for_stats)
+                    area_km2 = stats["area_km2"]
+                    logger.info(
+                        "Cascade: threshold escalated from %d to %d "
+                        "(%d -> %d segments)",
+                        DEFAULT_THRESHOLD_M2,
+                        merge_threshold,
+                        len(segment_idxs),
+                        len(merge_idxs),
+                    )
                     break
 
         boundary_2180 = merge_catchment_boundaries(
@@ -220,7 +236,7 @@ def delineate_watershed(
         # 14. Build morphometric parameters from graph
         morph_dict = build_morph_dict_from_graph(
             cg,
-            upstream_indices,
+            upstream_indices_for_stats,
             boundary_2180,
             outlet_x,
             outlet_y,
@@ -231,7 +247,7 @@ def delineate_watershed(
         # 15. Hypsometric curve
         hypso_curve = None
         if include_hypsometric_curve:
-            hypso_data = cg.aggregate_hypsometric(upstream_indices)
+            hypso_data = cg.aggregate_hypsometric(upstream_indices_for_stats)
             if hypso_data:
                 hypso_curve = [HypsometricPoint(**p) for p in hypso_data]
 
