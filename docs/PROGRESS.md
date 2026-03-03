@@ -50,9 +50,15 @@
 
 ### Co zrobiono
 - Fix 35 błędów ruff lint w 15 plikach (E501, I001, F841, F401, SIM105, UP024)
-- Aktualizacja wersji na v0.4.0 w `pyproject.toml`
-- Aktualizacja CHANGELOG.md — zamknięcie sekcji [Unreleased] jako [0.4.0]
-- Merge `develop` → `main`, tag `v0.4.0`
+- Aktualizacja wersji na v0.4.0 w `pyproject.toml`, CHANGELOG, PROGRESS
+- Audyt bezpieczeństwa: walidacja SQL timeout, XSS fix (innerHTML→textContent), subprocess validation
+- Audyt dokumentacji (2 rundy): wersje Kartograf, liczby testów/modułów JS, deprecated references
+- Frontend UX: hydrograph visibility, Escape key fix, initScenarioForm, spinners
+- Frontend UI: glassmorphism navbar, responsive fixes, aria-hidden (a11y)
+- Fix HSG bug: bbox Polski EPSG:4326 → EPSG:2180 w `bootstrap.py`
+- Weryfikacja HSG: pobranie rastra (693 KB, 90.9% pokrycia lądem, klasy A/B/C/D)
+- E2E test: 9/10 kroków OK (1 arkusz NMT, 250s)
+- Merge `develop` → `main`, tag `v0.4.0`, push na GitHub
 - 778 testów jednostkowych, 0 regresji, 0 błędów ruff
 
 ### W trakcie
