@@ -410,10 +410,7 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> dict:
         logger.warning("IMGWTools nie zainstalowane, użyto wartości domyślnych")
         return None
     except Exception as e:
-        logger.warning(f"Błąd pobierania z IMGW: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("Błąd pobierania z IMGW: %s", e, exc_info=True)
         return None
 
 
@@ -1306,10 +1303,7 @@ def main():
     try:
         analyze_watershed(config)
     except Exception as e:
-        logger.error(f"Błąd analizy: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("Błąd analizy: %s", e, exc_info=True)
         sys.exit(1)
 
 
