@@ -129,9 +129,8 @@
             Hydrograf.charts.destroyChart('chart-hypsometric');
         }
 
-        // Hydrograph section — hidden (w przygotowaniu)
+        // Hydrograph section — show conditionally based on API response
         els.hydrographInfo.innerHTML = '';
-        document.getElementById('acc-hydrograph').classList.add('d-none');
 
     }
 
@@ -289,6 +288,17 @@
             Hydrograf.map.showOutlet(outlet.latitude, outlet.longitude, outlet.elevation_m);
 
             displayParameters(data);
+
+            // Show/hide hydrograph section based on API response
+            var hydroSection = document.getElementById('acc-hydrograph');
+            if (hydroSection) {
+                if (data.hydrograph_available) {
+                    hydroSection.classList.remove('d-none');
+                } else {
+                    hydroSection.classList.add('d-none');
+                }
+            }
+
             els.results.classList.remove('d-none');
         } catch (err) {
             Hydrograf.map.clearWatershed();
@@ -317,8 +327,6 @@
         // Determine active threshold from streams layer
         var threshold = Hydrograf.map.getStreamsThreshold() || 100000;
 
-        console.log('[select-stream] threshold:', threshold);
-
         try {
             var data = await Hydrograf.api.selectStream(lat, lng, threshold);
 
@@ -344,6 +352,17 @@
             } else {
                 displayStreamInfo(data.stream);
             }
+
+            // Show/hide hydrograph section based on API response
+            var hydroSection = document.getElementById('acc-hydrograph');
+            if (hydroSection) {
+                if (data.hydrograph_available) {
+                    hydroSection.classList.remove('d-none');
+                } else {
+                    hydroSection.classList.add('d-none');
+                }
+            }
+
             els.results.classList.remove('d-none');
         } catch (err) {
             Hydrograf.map.clearSelectionBoundary();
@@ -380,6 +399,23 @@
         if (els.paramsRelief) els.paramsRelief.innerHTML = '';
     }
 
+    function removeRetryButton() {
+        var existing = document.getElementById('health-retry-btn');
+        if (existing) existing.remove();
+    }
+
+    function showRetryButton() {
+        removeRetryButton();
+        var statusEl = document.getElementById('system-status');
+        if (!statusEl || !statusEl.parentNode) return;
+        var retryBtn = document.createElement('button');
+        retryBtn.id = 'health-retry-btn';
+        retryBtn.className = 'btn btn-sm btn-outline-warning ms-2';
+        retryBtn.textContent = 'Ponów';
+        retryBtn.addEventListener('click', function () { checkSystemHealth(); });
+        statusEl.parentNode.insertBefore(retryBtn, statusEl.nextSibling);
+    }
+
     async function checkSystemHealth() {
         try {
             var health = await Hydrograf.api.checkHealth();
@@ -387,14 +423,17 @@
             if (health.status === 'healthy') {
                 statusEl.textContent = 'System: OK';
                 statusEl.className = 'navbar-text d-none d-md-inline text-light';
+                removeRetryButton();
             } else {
                 statusEl.textContent = 'System: problem z bazą danych';
                 statusEl.className = 'navbar-text d-none d-md-inline text-warning';
+                showRetryButton();
             }
         } catch {
             var statusEl2 = document.getElementById('system-status');
             statusEl2.textContent = 'System: niedostępny';
             statusEl2.className = 'navbar-text d-none d-md-inline text-warning';
+            showRetryButton();
         }
     }
 
@@ -464,6 +503,10 @@
             hydrographInfo: document.getElementById('hydrograph-info'),
         };
 
+        // Hide hydrograph section initially (shown conditionally when data is available)
+        var hydroSection = document.getElementById('acc-hydrograph');
+        if (hydroSection) hydroSection.classList.add('d-none');
+
         // Layers toggle
         document.getElementById('layers-toggle').addEventListener('click', toggleLayers);
 
@@ -514,10 +557,17 @@
         document.getElementById('results-close').addEventListener('click', closeResults);
         document.getElementById('results-toggle-btn').addEventListener('click', togglePanel);
 
-        // Escape: single = collapse, double = close (like ×)
+        // Escape: cancel drawing first, then single = collapse, double = close (like ×)
         var _escTimer = null;
         document.addEventListener('keydown', function (e) {
-            if (e.key !== 'Escape' || Hydrograf.map.isDrawing()) return;
+            if (e.key !== 'Escape') return;
+
+            // Drawing check FIRST — cancel active drawing and stop
+            if (Hydrograf.map && Hydrograf.map.isDrawing && Hydrograf.map.isDrawing()) {
+                Hydrograf.map.cancelDrawing();
+                return;
+            }
+
             if (els.panel.classList.contains('d-none')) return;
 
             if (_escTimer) {
