@@ -105,12 +105,14 @@
             if (!key) return;
 
             btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Sprawdzanie...';
             errorDiv.classList.add('d-none');
 
             tryAuth(key).then(function (ok) {
                 if (!ok) {
                     errorDiv.classList.remove('d-none');
                     btn.disabled = false;
+                    btn.textContent = 'Zaloguj';
                     if (input) {
                         input.value = '';
                         input.focus();

@@ -233,6 +233,7 @@
     }
 
     function init() {
+        initScenarioForm();
         var btn = document.getElementById('btn-generate-hydro');
         if (btn) {
             btn.addEventListener('click', generateHydrograph);
