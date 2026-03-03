@@ -1,5 +1,5 @@
 """
-Script to process DEM (Digital Elevation Model) and populate flow_network table.
+Script to process DEM (Digital Elevation Model) and populate stream tables.
 
 Reads ASCII GRID DEM file or VRT mosaic, computes hydrological parameters
 (flow direction, flow accumulation, slope), and loads data into PostgreSQL/PostGIS.
@@ -23,22 +23,17 @@ Examples
     # Process single DEM tile
     python -m scripts.process_dem \\
         --input ../data/nmt/N-33-131-D-a-3-2.asc \\
-        --stream-threshold 100
+        --stream-threshold 1000
 
     # Process VRT mosaic (multiple tiles)
     python -m scripts.process_dem \\
         --input ../data/nmt/mosaic.vrt \\
-        --stream-threshold 100
+        --stream-threshold 1000
 
     # Dry run (only show statistics)
     python -m scripts.process_dem \\
         --input ../data/nmt/N-33-131-D-a-3-2.asc \\
         --dry-run
-
-    # Process with custom batch size
-    python -m scripts.process_dem \\
-        --input ../data/nmt/N-33-131-D-a-3-2.asc \\
-        --batch-size 50000
 """
 
 import argparse
@@ -46,10 +41,76 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Tuple, Optional
 
 import numpy as np
 from sqlalchemy import text
+
+from core.db_bulk import (
+    insert_catchments,
+    insert_stream_segments,
+)
+from core.hydrology import (
+    D8_DIRECTIONS,
+    VALID_D8_SET,
+    burn_streams_into_dem,
+    classify_endorheic_lakes,
+    fill_internal_nodata_holes,
+    fix_internal_sinks,
+    process_hydrology_pyflwdir,
+    raise_buildings_in_dem,
+    recompute_flow_accumulation,
+)
+from core.morphometry_raster import (
+    _compute_gradients,
+    compute_aspect,
+    compute_aspect_from_gradients,
+    compute_slope,
+    compute_slope_from_gradients,
+    compute_strahler_from_fdir,
+    compute_strahler_order,
+    compute_twi,
+)
+from core.raster_io import (
+    downsample_raster,
+    read_ascii_grid,
+    read_raster,
+    save_raster_geotiff,
+)
+from core.stream_extraction import (
+    compute_downstream_links,
+    delineate_subcatchments,
+    polygonize_subcatchments,
+    vectorize_streams,
+)
+
+# Re-export all public names for backward compatibility
+__all__ = [
+    "D8_DIRECTIONS",
+    "VALID_D8_SET",
+    "burn_streams_into_dem",
+    "classify_endorheic_lakes",
+    "compute_aspect",
+    "compute_downstream_links",
+    "compute_slope",
+    "compute_strahler_from_fdir",
+    "compute_strahler_order",
+    "compute_twi",
+    "delineate_subcatchments",
+    "fill_internal_nodata_holes",
+    "fix_internal_sinks",
+    "insert_catchments",
+    "insert_stream_segments",
+    "main",
+    "polygonize_subcatchments",
+    "process_dem",
+    "process_hydrology_pyflwdir",
+    "raise_buildings_in_dem",
+    "read_ascii_grid",
+    "read_raster",
+    "recompute_flow_accumulation",
+    "save_raster_geotiff",
+    "vectorize_streams",
+]
 
 # Configure logging
 logging.basicConfig(
@@ -59,792 +120,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# D8 flow direction encoding (pysheds default)
-# Direction values and their (row_offset, col_offset) for downstream cell
-D8_DIRECTIONS = {
-    1: (0, 1),  # E
-    2: (1, 1),  # SE
-    4: (1, 0),  # S
-    8: (1, -1),  # SW
-    16: (0, -1),  # W
-    32: (-1, -1),  # NW
-    64: (-1, 0),  # N
-    128: (-1, 1),  # NE
-}
-
-
-def save_raster_geotiff(
-    data: np.ndarray,
-    metadata: dict,
-    output_path: Path,
-    nodata: float = -9999.0,
-    dtype: str = "float32",
-) -> None:
-    """
-    Save numpy array as GeoTIFF with PL-1992 (EPSG:2180) CRS.
-
-    Parameters
-    ----------
-    data : np.ndarray
-        Raster data array
-    metadata : dict
-        Grid metadata with xllcorner, yllcorner, cellsize
-    output_path : Path
-        Output GeoTIFF path
-    nodata : float
-        NoData value
-    dtype : str
-        Output data type ('float32', 'int32', 'int16')
-    """
-    import rasterio
-    from rasterio.transform import from_bounds
-
-    nrows, ncols = data.shape
-    cellsize = metadata["cellsize"]
-    xll = metadata["xllcorner"]
-    yll = metadata["yllcorner"]
-
-    # Calculate bounds
-    xmin = xll
-    ymin = yll
-    xmax = xll + ncols * cellsize
-    ymax = yll + nrows * cellsize
-
-    transform = from_bounds(xmin, ymin, xmax, ymax, ncols, nrows)
-
-    # Map dtype string to numpy/rasterio dtype
-    dtype_map = {
-        "float32": (np.float32, rasterio.float32),
-        "float64": (np.float64, rasterio.float64),
-        "int32": (np.int32, rasterio.int32),
-        "int16": (np.int16, rasterio.int16),
-        "uint8": (np.uint8, rasterio.uint8),
-    }
-
-    np_dtype, rio_dtype = dtype_map.get(dtype, (np.float32, rasterio.float32))
-
-    # Prepare data (flip vertically because ASCII GRID is top-down)
-    out_data = data.astype(np_dtype)
-
-    with rasterio.open(
-        output_path,
-        "w",
-        driver="GTiff",
-        height=nrows,
-        width=ncols,
-        count=1,
-        dtype=rio_dtype,
-        crs="EPSG:2180",
-        transform=transform,
-        nodata=nodata,
-        compress="lzw",
-    ) as dst:
-        dst.write(out_data, 1)
-
-    logger.info(f"Saved: {output_path} ({output_path.stat().st_size / 1024:.1f} KB)")
-
-
-def read_raster(filepath: Path) -> Tuple[np.ndarray, dict]:
-    """
-    Read raster file (ASC, VRT, or GeoTIFF) using rasterio.
-
-    This is the preferred method as it handles all formats uniformly
-    and works with VRT mosaics for multi-tile processing.
-
-    Parameters
-    ----------
-    filepath : Path
-        Path to raster file (.asc, .vrt, .tif)
-
-    Returns
-    -------
-    tuple
-        (data array, metadata dict with ncols, nrows, xllcorner, yllcorner, cellsize, nodata)
-
-    Raises
-    ------
-    FileNotFoundError
-        If file does not exist
-    """
-    import rasterio
-
-    if not filepath.exists():
-        raise FileNotFoundError(f"Raster file not found: {filepath}")
-
-    logger.info(f"Reading raster: {filepath}")
-
-    with rasterio.open(filepath) as src:
-        data = src.read(1)
-
-        # Build metadata compatible with ASCII grid format
-        metadata = {
-            "ncols": src.width,
-            "nrows": src.height,
-            "xllcorner": src.bounds.left,
-            "yllcorner": src.bounds.bottom,
-            "cellsize": abs(src.transform.a),  # Pixel width
-            "nodata_value": src.nodata if src.nodata is not None else -9999.0,
-            # Additional info
-            "crs": str(src.crs),
-            "bounds": src.bounds,
-            "transform": src.transform,
-        }
-
-    logger.info(f"Read raster: {metadata['nrows']}x{metadata['ncols']} cells")
-    logger.info(f"Origin: ({metadata['xllcorner']:.1f}, {metadata['yllcorner']:.1f})")
-    logger.info(f"Cell size: {metadata['cellsize']} m")
-    logger.info(f"Total cells: {metadata['nrows'] * metadata['ncols']:,}")
-
-    return data, metadata
-
-
-def read_ascii_grid(filepath: Path) -> Tuple[np.ndarray, dict]:
-    """
-    Read ARC/INFO ASCII GRID file.
-
-    Supports both corner (xllcorner/yllcorner) and center (xllcenter/yllcenter)
-    coordinate formats. Center coordinates are converted to corner.
-
-    Note: For VRT mosaics or GeoTIFF files, use read_raster() instead.
-
-    Parameters
-    ----------
-    filepath : Path
-        Path to .asc file
-
-    Returns
-    -------
-    tuple
-        (data array, metadata dict with ncols, nrows, xllcorner, yllcorner, cellsize, nodata)
-
-    Raises
-    ------
-    FileNotFoundError
-        If file does not exist
-    ValueError
-        If file format is invalid
-    """
-    if not filepath.exists():
-        raise FileNotFoundError(f"DEM file not found: {filepath}")
-
-    metadata = {}
-    header_lines = 6
-
-    with open(filepath, "r") as f:
-        # Read header
-        for i in range(header_lines):
-            line = f.readline().strip()
-            if not line:
-                continue
-            parts = line.split()
-            if len(parts) >= 2:
-                key = parts[0].lower()
-                value = parts[1]
-                if key in ("ncols", "nrows"):
-                    metadata[key] = int(value)
-                elif key in (
-                    "xllcorner",
-                    "yllcorner",
-                    "xllcenter",
-                    "yllcenter",
-                    "cellsize",
-                    "nodata_value",
-                ):
-                    metadata[key] = float(value)
-
-    # Handle center vs corner coordinates
-    # If center is provided, convert to corner
-    if "xllcenter" in metadata and "xllcorner" not in metadata:
-        metadata["xllcorner"] = metadata["xllcenter"] - metadata.get("cellsize", 0) / 2
-        logger.info("Converted xllcenter to xllcorner")
-    if "yllcenter" in metadata and "yllcorner" not in metadata:
-        metadata["yllcorner"] = metadata["yllcenter"] - metadata.get("cellsize", 0) / 2
-        logger.info("Converted yllcenter to yllcorner")
-
-    # Validate required fields
-    required = ["ncols", "nrows", "xllcorner", "yllcorner", "cellsize"]
-    for field in required:
-        if field not in metadata:
-            raise ValueError(f"Missing required header field: {field}")
-
-    # Set default nodata if not present
-    if "nodata_value" not in metadata:
-        metadata["nodata_value"] = -9999.0
-
-    # Read data
-    data = np.loadtxt(filepath, skiprows=header_lines)
-
-    if data.shape != (metadata["nrows"], metadata["ncols"]):
-        raise ValueError(
-            f"Data shape {data.shape} doesn't match header "
-            f"({metadata['nrows']}, {metadata['ncols']})"
-        )
-
-    logger.info(f"Read DEM: {metadata['nrows']}x{metadata['ncols']} cells")
-    logger.info(f"Origin: ({metadata['xllcorner']:.1f}, {metadata['yllcorner']:.1f})")
-    logger.info(f"Cell size: {metadata['cellsize']} m")
-
-    return data, metadata
-
-
-def process_hydrology_pysheds(
-    dem: np.ndarray,
-    metadata: dict,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Process DEM using pysheds library for hydrological analysis.
-
-    Uses pysheds for proper depression filling, flat resolution, and flow routing.
-    This replaces the previous naive implementations that had issues with
-    internal sinks and flat areas.
-
-    Parameters
-    ----------
-    dem : np.ndarray
-        Input DEM array
-    metadata : dict
-        Grid metadata with xllcorner, yllcorner, cellsize, nodata_value
-
-    Returns
-    -------
-    tuple
-        (filled_dem, flow_direction, flow_accumulation) arrays
-    """
-    from pysheds.grid import Grid
-    import tempfile
-    import rasterio
-    from rasterio.transform import from_bounds
-
-    logger.info("Processing hydrology with pysheds...")
-
-    nodata = metadata["nodata_value"]
-    nrows, ncols = dem.shape
-    cellsize = metadata["cellsize"]
-    xll = metadata["xllcorner"]
-    yll = metadata["yllcorner"]
-
-    # Calculate bounds
-    xmin = xll
-    ymin = yll
-    xmax = xll + ncols * cellsize
-    ymax = yll + nrows * cellsize
-
-    # Create temporary GeoTIFF for pysheds (it needs a file)
-    with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
-        tmp_path = tmp.name
-
-    transform = from_bounds(xmin, ymin, xmax, ymax, ncols, nrows)
-
-    with rasterio.open(
-        tmp_path,
-        "w",
-        driver="GTiff",
-        height=nrows,
-        width=ncols,
-        count=1,
-        dtype=rasterio.float32,
-        crs="EPSG:2180",
-        transform=transform,
-        nodata=nodata,
-    ) as dst:
-        dst.write(dem.astype(np.float32), 1)
-
-    # Load into pysheds
-    grid = Grid.from_raster(tmp_path)
-    dem_grid = grid.read_raster(tmp_path)
-
-    # Step 1: Fill pits (single-cell depressions)
-    logger.info("  Step 1/4: Filling pits...")
-    pit_filled = grid.fill_pits(dem_grid)
-
-    # Step 2: Fill depressions (multi-cell depressions)
-    logger.info("  Step 2/4: Filling depressions...")
-    flooded = grid.fill_depressions(pit_filled)
-
-    # Step 3: Resolve flats (assign flow direction to flat areas)
-    logger.info("  Step 3/4: Resolving flats...")
-    inflated = grid.resolve_flats(flooded)
-
-    # Step 4: Compute flow direction
-    logger.info("  Step 4/4: Computing flow direction...")
-    fdir = grid.flowdir(inflated)
-
-    # Step 5: Compute flow accumulation
-    logger.info("  Computing flow accumulation...")
-    acc = grid.accumulation(fdir)
-
-    # Convert pysheds arrays back to numpy
-    # Handle NaN values from pysheds
-    # IMPORTANT: Use 'flooded' for elevation (actual filled DEM)
-    # Do NOT use 'inflated' - it has artificially modified elevations for flat routing
-    filled_dem = np.array(flooded)
-    filled_dem[np.isnan(filled_dem)] = nodata
-
-    fdir_arr = np.array(fdir, dtype=np.int16)
-    fdir_arr[np.isnan(fdir_arr)] = 0
-
-    acc_arr = np.array(acc, dtype=np.int32)
-    acc_arr[np.isnan(acc_arr)] = 0
-
-    # Cleanup temp file
-    import os
-
-    os.unlink(tmp_path)
-
-    # Verify no internal sinks
-    valid = filled_dem != nodata
-    edge_mask = np.zeros_like(valid)
-    edge_mask[0, :] = True
-    edge_mask[-1, :] = True
-    edge_mask[:, 0] = True
-    edge_mask[:, -1] = True
-
-    no_flow = (fdir_arr == 0) & valid
-    internal_no_flow = no_flow & ~edge_mask
-
-    if np.sum(internal_no_flow) > 0:
-        logger.warning(
-            f"  {np.sum(internal_no_flow)} internal cells without flow direction"
-        )
-    else:
-        logger.info("  All internal cells have valid flow direction")
-
-    logger.info("Hydrology processing complete")
-    return filled_dem, fdir_arr, acc_arr
-
-
-def fill_depressions(dem: np.ndarray, nodata: float) -> np.ndarray:
-    """
-    Fill depressions (sinks) in DEM.
-
-    Note: This is a legacy wrapper. The main processing now uses
-    process_hydrology_pysheds() which handles fill, resolve flats,
-    and flow direction together for correct results.
-
-    Parameters
-    ----------
-    dem : np.ndarray
-        Input DEM array
-    nodata : float
-        NoData value
-
-    Returns
-    -------
-    np.ndarray
-        Filled DEM
-    """
-    logger.warning(
-        "Using legacy fill_depressions - consider using process_hydrology_pysheds()"
-    )
-    # Return unchanged - actual filling happens in process_hydrology_pysheds
-    return dem.copy()
-
-
-def compute_flow_direction(dem: np.ndarray, nodata: float) -> np.ndarray:
-    """
-    Compute D8 flow direction.
-
-    Note: This is a legacy wrapper. The main processing now uses
-    process_hydrology_pysheds() which handles fill, resolve flats,
-    and flow direction together for correct results.
-
-    Parameters
-    ----------
-    dem : np.ndarray
-        Filled DEM array
-    nodata : float
-        NoData value
-
-    Returns
-    -------
-    np.ndarray
-        Flow direction array (D8 encoding)
-    """
-    logger.warning(
-        "Using legacy compute_flow_direction - consider using process_hydrology_pysheds()"
-    )
-
-    nrows, ncols = dem.shape
-    fdir = np.zeros((nrows, ncols), dtype=np.int16)
-
-    directions = [1, 2, 4, 8, 16, 32, 64, 128]
-    offsets = [(0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1)]
-    distances = [1, 1.414, 1, 1.414, 1, 1.414, 1, 1.414]
-
-    for i in range(nrows):
-        for j in range(ncols):
-            if dem[i, j] == nodata:
-                fdir[i, j] = 0
-                continue
-
-            max_slope = 0
-            flow_dir = 0
-
-            for d, (di, dj), dist in zip(directions, offsets, distances):
-                ni, nj = i + di, j + dj
-                if 0 <= ni < nrows and 0 <= nj < ncols:
-                    if dem[ni, nj] != nodata:
-                        slope = (dem[i, j] - dem[ni, nj]) / dist
-                        if slope > max_slope:
-                            max_slope = slope
-                            flow_dir = d
-
-            fdir[i, j] = flow_dir
-
-    return fdir
-
-
-def compute_flow_accumulation(fdir: np.ndarray) -> np.ndarray:
-    """
-    Compute flow accumulation from flow direction.
-
-    Note: This is a legacy wrapper. The main processing now uses
-    process_hydrology_pysheds() which computes accumulation correctly.
-
-    Parameters
-    ----------
-    fdir : np.ndarray
-        Flow direction array (D8 encoding)
-
-    Returns
-    -------
-    np.ndarray
-        Flow accumulation array (number of upstream cells)
-    """
-    logger.warning(
-        "Using legacy compute_flow_accumulation - consider using process_hydrology_pysheds()"
-    )
-
-    from collections import deque
-
-    nrows, ncols = fdir.shape
-    acc = np.ones((nrows, ncols), dtype=np.int32)
-    inflow_count = np.zeros((nrows, ncols), dtype=np.int32)
-
-    for i in range(nrows):
-        for j in range(ncols):
-            d = fdir[i, j]
-            if d in D8_DIRECTIONS:
-                di, dj = D8_DIRECTIONS[d]
-                ni, nj = i + di, j + dj
-                if 0 <= ni < nrows and 0 <= nj < ncols:
-                    inflow_count[ni, nj] += 1
-
-    queue = deque()
-    for i in range(nrows):
-        for j in range(ncols):
-            if inflow_count[i, j] == 0 and fdir[i, j] != 0:
-                queue.append((i, j))
-
-    while queue:
-        i, j = queue.popleft()
-        d = fdir[i, j]
-        if d in D8_DIRECTIONS:
-            di, dj = D8_DIRECTIONS[d]
-            ni, nj = i + di, j + dj
-            if 0 <= ni < nrows and 0 <= nj < ncols:
-                acc[ni, nj] += acc[i, j]
-                inflow_count[ni, nj] -= 1
-                if inflow_count[ni, nj] == 0:
-                    queue.append((ni, nj))
-
-    return acc
-
-
-def compute_slope(dem: np.ndarray, cellsize: float, nodata: float) -> np.ndarray:
-    """
-    Compute slope in percent.
-
-    Parameters
-    ----------
-    dem : np.ndarray
-        DEM array
-    cellsize : float
-        Cell size in meters
-    nodata : float
-        NoData value
-
-    Returns
-    -------
-    np.ndarray
-        Slope array in percent
-    """
-    logger.info("Computing slope...")
-
-    # Use Sobel operator for gradient
-    from scipy import ndimage
-
-    # Replace nodata with nan for calculations
-    dem_calc = dem.astype(np.float64)
-    dem_calc[dem == nodata] = np.nan
-
-    # Compute gradients
-    dy = ndimage.sobel(dem_calc, axis=0, mode="constant", cval=np.nan) / (8 * cellsize)
-    dx = ndimage.sobel(dem_calc, axis=1, mode="constant", cval=np.nan) / (8 * cellsize)
-
-    # Slope in percent
-    slope = np.sqrt(dx**2 + dy**2) * 100
-
-    # Replace nan with 0
-    slope = np.nan_to_num(slope, nan=0.0)
-
-    logger.info(f"Slope computed (range: {slope.min():.1f}% - {slope.max():.1f}%)")
-    return slope
-
-
-def create_flow_network_records(
-    dem: np.ndarray,
-    fdir: np.ndarray,
-    acc: np.ndarray,
-    slope: np.ndarray,
-    metadata: dict,
-    stream_threshold: int = 100,
-) -> list:
-    """
-    Create flow_network records from raster data.
-
-    Cell IDs are computed as: row * ncols + col + 1 (1-based).
-    This ensures unique IDs across the entire raster, including VRT mosaics.
-
-    Note: For very large areas (>40,000 x 40,000 cells), IDs may exceed
-    PostgreSQL INTEGER range (2^31). Consider using BIGINT for such cases.
-
-    Parameters
-    ----------
-    dem : np.ndarray
-        DEM array
-    fdir : np.ndarray
-        Flow direction array
-    acc : np.ndarray
-        Flow accumulation array
-    slope : np.ndarray
-        Slope array (percent)
-    metadata : dict
-        Grid metadata (xllcorner, yllcorner, cellsize, nodata_value)
-    stream_threshold : int
-        Flow accumulation threshold for stream identification
-
-    Returns
-    -------
-    list
-        List of dicts with flow_network fields
-    """
-    logger.info("Creating flow_network records...")
-
-    nrows, ncols = dem.shape
-    cellsize = metadata["cellsize"]
-    xll = metadata["xllcorner"]
-    yll = metadata["yllcorner"]
-    nodata = metadata["nodata_value"]
-    cell_area = cellsize * cellsize
-
-    # Check for potential ID overflow (INT max = 2^31 - 1 = 2,147,483,647)
-    max_id = nrows * ncols
-    if max_id > 2_000_000_000:
-        logger.warning(
-            f"Large raster ({nrows}x{ncols} = {max_id:,} cells) may cause "
-            f"ID overflow. Consider using BIGINT for flow_network.id"
-        )
-
-    records = []
-
-    # Create index map for downstream_id lookup
-    # Index = row * ncols + col + 1 (1-based for DB)
-    # This ensures unique IDs across the entire VRT mosaic
-    def get_cell_index(row, col):
-        return row * ncols + col + 1
-
-    for i in range(nrows):
-        for j in range(ncols):
-            if dem[i, j] == nodata:
-                continue
-
-            # Cell center coordinates (PL-1992)
-            # Note: ASCII GRID has origin at lower-left, row 0 is top
-            x = xll + (j + 0.5) * cellsize
-            y = yll + (nrows - i - 0.5) * cellsize
-
-            cell_id = get_cell_index(i, j)
-
-            # Find downstream cell
-            downstream_id = None
-            d = fdir[i, j]
-            if d in D8_DIRECTIONS:
-                di, dj = D8_DIRECTIONS[d]
-                ni, nj = i + di, j + dj
-                if 0 <= ni < nrows and 0 <= nj < ncols:
-                    if dem[ni, nj] != nodata:
-                        downstream_id = get_cell_index(ni, nj)
-
-            records.append(
-                {
-                    "id": cell_id,
-                    "x": x,
-                    "y": y,
-                    "elevation": float(dem[i, j]),
-                    "flow_accumulation": int(acc[i, j]),
-                    "slope": float(slope[i, j]),
-                    "downstream_id": downstream_id,
-                    "cell_area": cell_area,
-                    "is_stream": bool(acc[i, j] >= stream_threshold),
-                }
-            )
-
-    logger.info(f"Created {len(records)} records")
-    stream_count = sum(1 for r in records if r["is_stream"])
-    logger.info(f"Stream cells (acc >= {stream_threshold}): {stream_count}")
-
-    return records
-
-
-def insert_records_batch(db_session, records: list, batch_size: int = 10000) -> int:
-    """
-    Insert records into flow_network table using PostgreSQL COPY.
-
-    Uses COPY FROM for bulk loading (20x faster than individual INSERTs).
-    Temporarily disables indexes for faster insert, then rebuilds them.
-
-    Parameters
-    ----------
-    db_session : Session
-        SQLAlchemy database session
-    records : list
-        List of record dicts
-    batch_size : int
-        Number of records per batch (unused, kept for API compatibility)
-
-    Returns
-    -------
-    int
-        Total records inserted
-    """
-    import io
-
-    logger.info(f"Inserting {len(records):,} records using COPY (optimized)...")
-
-    # Get raw connection for COPY operation
-    raw_conn = db_session.connection().connection
-    cursor = raw_conn.cursor()
-
-    # Phase 1: Disable indexes and FK for faster bulk insert
-    logger.info("Phase 1: Preparing for bulk insert...")
-
-    cursor.execute("DROP INDEX IF EXISTS idx_flow_geom")
-    cursor.execute("DROP INDEX IF EXISTS idx_downstream")
-    cursor.execute("DROP INDEX IF EXISTS idx_is_stream")
-    cursor.execute("DROP INDEX IF EXISTS idx_flow_accumulation")
-    cursor.execute(
-        "ALTER TABLE flow_network DROP CONSTRAINT IF EXISTS flow_network_downstream_id_fkey"
-    )
-    raw_conn.commit()
-    logger.info("  Indexes and FK constraint dropped")
-
-    # Phase 2: Bulk insert using COPY
-    logger.info("Phase 2: Bulk inserting records with COPY...")
-
-    # Create temporary table for COPY
-    cursor.execute("""
-        CREATE TEMP TABLE temp_flow_import (
-            id INT,
-            x FLOAT,
-            y FLOAT,
-            elevation FLOAT,
-            flow_accumulation INT,
-            slope FLOAT,
-            downstream_id INT,
-            cell_area FLOAT,
-            is_stream BOOLEAN
-        )
-    """)
-
-    # Create TSV buffer
-    tsv_buffer = io.StringIO()
-    for r in records:
-        downstream = "" if r["downstream_id"] is None else str(r["downstream_id"])
-        is_stream = "t" if r["is_stream"] else "f"
-        tsv_buffer.write(
-            f"{r['id']}\t{r['x']}\t{r['y']}\t{r['elevation']}\t"
-            f"{r['flow_accumulation']}\t{r['slope']}\t{downstream}\t"
-            f"{r['cell_area']}\t{is_stream}\n"
-        )
-
-    tsv_buffer.seek(0)
-
-    # COPY to temp table
-    cursor.copy_expert(
-        "COPY temp_flow_import FROM STDIN WITH (FORMAT text, DELIMITER E'\\t', NULL '')",
-        tsv_buffer,
-    )
-    logger.info(f"  COPY to temp table: {len(records):,} records")
-
-    # Insert from temp table with geometry construction AND downstream_id
-    cursor.execute("""
-        INSERT INTO flow_network (
-            id, geom, elevation, flow_accumulation, slope,
-            downstream_id, cell_area, is_stream
-        )
-        SELECT
-            id, ST_SetSRID(ST_Point(x, y), 2180), elevation,
-            flow_accumulation, slope, downstream_id, cell_area, is_stream
-        FROM temp_flow_import
-        ON CONFLICT (id) DO UPDATE SET
-            geom = EXCLUDED.geom,
-            elevation = EXCLUDED.elevation,
-            flow_accumulation = EXCLUDED.flow_accumulation,
-            slope = EXCLUDED.slope,
-            downstream_id = EXCLUDED.downstream_id,
-            cell_area = EXCLUDED.cell_area,
-            is_stream = EXCLUDED.is_stream
-    """)
-
-    total_inserted = cursor.rowcount
-    raw_conn.commit()
-    logger.info(f"  Inserted {total_inserted:,} records into flow_network")
-
-    # Phase 3: Restore FK constraint and indexes
-    logger.info("Phase 3: Restoring indexes and constraints...")
-
-    cursor.execute("""
-        ALTER TABLE flow_network
-        ADD CONSTRAINT flow_network_downstream_id_fkey
-        FOREIGN KEY (downstream_id) REFERENCES flow_network(id) ON DELETE SET NULL
-    """)
-    logger.info("  FK constraint restored")
-
-    cursor.execute("CREATE INDEX idx_flow_geom ON flow_network USING GIST (geom)")
-    logger.info("  Index idx_flow_geom created")
-
-    cursor.execute("CREATE INDEX idx_downstream ON flow_network (downstream_id)")
-    logger.info("  Index idx_downstream created")
-
-    cursor.execute(
-        "CREATE INDEX idx_is_stream ON flow_network (is_stream) WHERE is_stream = TRUE"
-    )
-    logger.info("  Index idx_is_stream created")
-
-    cursor.execute(
-        "CREATE INDEX idx_flow_accumulation ON flow_network (flow_accumulation)"
-    )
-    logger.info("  Index idx_flow_accumulation created")
-
-    cursor.execute("ANALYZE flow_network")
-    raw_conn.commit()
-    logger.info("  ANALYZE completed")
-
-    return total_inserted
-
 
 def process_dem(
     input_path: Path,
-    stream_threshold: int = 100,
-    batch_size: int = 10000,
+    stream_threshold: int = 1000,
     dry_run: bool = False,
     save_intermediates: bool = False,
-    output_dir: Optional[Path] = None,
+    output_dir: Path | None = None,
     clear_existing: bool = False,
+    burn_streams_path: Path | None = None,
+    burn_depth_m: float = 5.0,
+    skip_streams_vectorize: bool = False,
+    thresholds: list[int] | None = None,
+    skip_catchments: bool = False,
+    hydro_resolution_m: float | None = None,
+    waterbody_mode: str = "auto",
+    waterbody_min_area_m2: float | None = None,
+    building_gpkg: str | None = None,
 ) -> dict:
     """
-    Process DEM file (ASC, VRT, or GeoTIFF) and load into flow_network table.
+    Process DEM file (ASC, VRT, or GeoTIFF) and extract stream network.
 
     Supports VRT mosaics for multi-tile processing with hydrological continuity
     across tile boundaries.
@@ -854,9 +149,7 @@ def process_dem(
     input_path : Path
         Path to input raster file (.asc, .vrt, or .tif)
     stream_threshold : int
-        Flow accumulation threshold for stream identification
-    batch_size : int
-        Database insert batch size (unused with COPY, kept for API compatibility)
+        Flow accumulation threshold for stream identification (single-threshold mode)
     dry_run : bool
         If True, only compute statistics without inserting
     save_intermediates : bool
@@ -864,8 +157,31 @@ def process_dem(
     output_dir : Path, optional
         Output directory for intermediate files (default: same as input)
     clear_existing : bool
-        If True, clear existing data before insert (TRUNCATE).
+        If True, clear existing data before insert (DELETE).
         Default False to support incremental processing.
+    burn_streams_path : Path, optional
+        Path to GeoPackage/Shapefile with stream lines for DEM burning
+    burn_depth_m : float
+        Burn depth in meters (default: 5.0)
+    skip_streams_vectorize : bool
+        If True, skip stream vectorization (default: False)
+    skip_catchments : bool
+        If True, skip sub-catchment delineation (default: False)
+    hydro_resolution_m : float, optional
+        If set, downsample DEM to this resolution (meters) before processing.
+        Reduces memory usage for large rasters. Original resolution kept for overlays.
+    waterbody_mode : str
+        Waterbody handling mode: "auto" (BDOT10k classification), "none" (skip),
+        or path to custom waterbody file (.gpkg/.shp, all treated as endorheic).
+    waterbody_min_area_m2 : float, optional
+        Minimum waterbody area in m². Bodies smaller than this are ignored.
+    building_gpkg : str, optional
+        Path to GeoPackage with building footprints (BUBD from BDOT10k).
+        DEM is raised by +5m under building footprints before stream burning.
+    thresholds : list[int], optional
+        List of FA thresholds in m² for multi-density stream networks.
+        If provided, generates separate stream networks per threshold.
+        The lowest threshold is used for stream_mask and strahler_order.
 
     Returns
     -------
@@ -873,9 +189,18 @@ def process_dem(
         Processing statistics including:
         - ncols, nrows, cellsize, total_cells
         - valid_cells, max_accumulation, mean_slope
-        - stream_cells, records, inserted
+        - stream_cells
+        - burn_cells (if burn_streams_path provided)
     """
     stats = {}
+
+    # Early validation: custom waterbody file must exist
+    if waterbody_mode not in ("auto", "none"):
+        wb_path = Path(waterbody_mode)
+        if not wb_path.exists():
+            raise FileNotFoundError(
+                f"Custom waterbody file not found: {wb_path}"
+            )
 
     # Setup output directory for intermediates
     if output_dir is None:
@@ -900,7 +225,7 @@ def process_dem(
     valid_cells = np.sum(dem != nodata)
     stats["valid_cells"] = int(valid_cells)
 
-    # Save original DEM as GeoTIFF
+    # Save original DEM as GeoTIFF (full resolution, before downsampling)
     if save_intermediates:
         save_raster_geotiff(
             dem,
@@ -910,9 +235,138 @@ def process_dem(
             dtype="float32",
         )
 
-    # 2-4. Process hydrology using pysheds (fill, resolve flats, flow dir, accumulation)
-    filled_dem, fdir, acc = process_hydrology_pysheds(dem, metadata)
+    # Downsample if requested (OOM prevention for large rasters)
+    if hydro_resolution_m is not None and hydro_resolution_m > metadata["cellsize"]:
+        fname = f"{base_name}_downsampled_{hydro_resolution_m}m.tif"
+        downsampled_path = output_dir / fname
+        downsample_raster(input_path, downsampled_path, hydro_resolution_m)
+        dem, metadata = read_raster(downsampled_path)
+
+        logger.info(
+            f"Using downsampled DEM: {metadata['nrows']}x{metadata['ncols']} cells "
+            f"({metadata['cellsize']}m resolution)"
+        )
+
+        # Update stats and variables
+        stats["ncols"] = metadata["ncols"]
+        stats["nrows"] = metadata["nrows"]
+        stats["cellsize"] = metadata["cellsize"]
+        stats["total_cells"] = metadata["ncols"] * metadata["nrows"]
+        stats["hydro_resolution_m"] = hydro_resolution_m
+
+        nodata = metadata["nodata_value"]
+        valid_cells = np.sum(dem != nodata)
+        stats["valid_cells"] = int(valid_cells)
+
+    # 1b. Raise buildings (optional) — before stream burning and depression filling
+    if building_gpkg is not None:
+        transform_for_buildings = metadata.get("transform")
+        if transform_for_buildings is None:
+            from rasterio.transform import from_bounds as _from_bounds_b
+
+            _xll, _yll = metadata["xllcorner"], metadata["yllcorner"]
+            _nr, _nc = dem.shape
+            _cs = metadata["cellsize"]
+            transform_for_buildings = _from_bounds_b(
+                _xll, _yll, _xll + _nc * _cs, _yll + _nr * _cs, _nc, _nr
+            )
+        dem = raise_buildings_in_dem(dem, transform_for_buildings, 2180, building_gpkg)
+
+    # 2. Burn streams (optional) — before depression filling
+    if burn_streams_path is not None:
+        transform = metadata.get("transform")
+        if transform is None:
+            from rasterio.transform import from_bounds
+
+            xll, yll = metadata["xllcorner"], metadata["yllcorner"]
+            nrows, ncols = dem.shape
+            cs = metadata["cellsize"]
+            transform = from_bounds(
+                xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
+            )
+        dem, burn_diag = burn_streams_into_dem(
+            dem, transform, burn_streams_path, burn_depth_m, nodata
+        )
+        stats["burn_cells"] = burn_diag["cells_burned"]
+        if save_intermediates:
+            save_raster_geotiff(
+                dem,
+                metadata,
+                output_dir / f"{base_name}_02a_burned.tif",
+                nodata=nodata,
+                dtype="float32",
+            )
+
+    # 2b. Classify endorheic lakes and compute drain points (optional)
+    drain_points = None
+    stats["waterbody_mode"] = waterbody_mode
+    if waterbody_min_area_m2 is not None:
+        stats["waterbody_min_area_m2"] = waterbody_min_area_m2
+
+    if waterbody_mode == "none":
+        logger.info("Waterbody mode: none — skipping lake classification")
+    elif waterbody_mode == "auto" and burn_streams_path is not None:
+        transform_for_lakes = metadata.get("transform")
+        if transform_for_lakes is None:
+            from rasterio.transform import from_bounds as _from_bounds
+
+            _xll, _yll = metadata["xllcorner"], metadata["yllcorner"]
+            _nr, _nc = dem.shape
+            _cs = metadata["cellsize"]
+            transform_for_lakes = _from_bounds(
+                _xll, _yll, _xll + _nc * _cs, _yll + _nr * _cs, _nc, _nr
+            )
+        drain_points, drain_diag = classify_endorheic_lakes(
+            dem, transform_for_lakes, burn_streams_path, nodata,
+            min_area_m2=waterbody_min_area_m2,
+        )
+        stats["endorheic_lakes"] = drain_diag["endorheic"]
+        stats["drain_points"] = len(drain_points)
+    elif waterbody_mode not in ("auto", "none"):
+        # Custom waterbody file path (already validated above)
+        wb_path = Path(waterbody_mode)
+        transform_for_lakes = metadata.get("transform")
+        if transform_for_lakes is None:
+            from rasterio.transform import from_bounds as _from_bounds2
+
+            _xll, _yll = metadata["xllcorner"], metadata["yllcorner"]
+            _nr, _nc = dem.shape
+            _cs = metadata["cellsize"]
+            transform_for_lakes = _from_bounds2(
+                _xll, _yll, _xll + _nc * _cs, _yll + _nr * _cs, _nc, _nr
+            )
+        # gpkg_path is required but not used for loading waterbodies
+        # when waterbody_path is set; pass burn_streams_path or a dummy
+        gpkg_for_classify = burn_streams_path or wb_path
+        drain_points, drain_diag = classify_endorheic_lakes(
+            dem, transform_for_lakes, gpkg_for_classify, nodata,
+            min_area_m2=waterbody_min_area_m2,
+            waterbody_path=wb_path,
+        )
+        stats["endorheic_lakes"] = drain_diag["endorheic"]
+        stats["drain_points"] = len(drain_points)
+
+    # 3-5. Process hydrology using pyflwdir (fill depressions, flow dir, accumulation)
+    # Note: Migrated from pysheds to pyflwdir (Deltares) — fewer deps, no temp files
+    filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
+        dem, metadata, drain_points=drain_points
+    )
     stats["max_accumulation"] = int(acc.max())
+
+    # Build FlwdirRaster once for reuse (subcatchments, potentially strahler)
+    import pyflwdir
+
+    transform = metadata.get("transform")
+    if transform is None:
+        from rasterio.transform import from_bounds
+
+        xll, yll = metadata["xllcorner"], metadata["yllcorner"]
+        nrows, ncols = dem.shape
+        cs = metadata["cellsize"]
+        transform = from_bounds(
+            xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
+        )
+    flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
 
     if save_intermediates:
         save_raster_geotiff(
@@ -937,8 +391,11 @@ def process_dem(
             dtype="int32",
         )
 
-    # 5. Compute slope
-    slope = compute_slope(filled_dem, metadata["cellsize"], nodata)
+    # 5. Compute slope and aspect (shared Sobel gradients)
+    logger.info("Computing slope and aspect (shared gradients)...")
+    dx, dy = _compute_gradients(filled_dem, metadata["cellsize"], nodata)
+    slope = compute_slope_from_gradients(dx, dy)
+    logger.info(f"Slope computed (range: {slope.min():.1f}% - {slope.max():.1f}%)")
     stats["mean_slope"] = float(np.mean(slope[dem != nodata]))
 
     if save_intermediates:
@@ -950,8 +407,73 @@ def process_dem(
             dtype="float32",
         )
 
-    # 6. Create stream mask
-    stream_mask = (acc >= stream_threshold).astype(np.uint8)
+    aspect = compute_aspect_from_gradients(dx, dy)
+    valid_aspect = aspect[aspect >= 0]
+    if len(valid_aspect) > 0:
+        logger.info(
+            f"Aspect computed "
+            f"(range: {valid_aspect.min():.1f}° - "
+            f"{valid_aspect.max():.1f}°)"
+        )
+    del dx, dy  # Free gradient memory
+
+    if save_intermediates:
+        save_raster_geotiff(
+            aspect,
+            metadata,
+            output_dir / f"{base_name}_09_aspect.tif",
+            nodata=-1,
+            dtype="float32",
+        )
+
+    # Determine thresholds for multi-density stream networks
+    cell_area = metadata["cellsize"] * metadata["cellsize"]
+    DEFAULT_THRESHOLDS_M2 = [1000, 10000, 100000]
+
+    # Catchments only for thresholds >= 1000 m² (ADR-026)
+    MIN_CATCHMENT_THRESHOLD_M2 = 1000
+
+    if thresholds:
+        threshold_list_m2 = sorted(thresholds)
+    else:
+        threshold_list_m2 = sorted(DEFAULT_THRESHOLDS_M2)
+
+    logger.info(f"Cell size: {metadata['cellsize']}m, cell area: {cell_area} m²")
+    for t_m2 in threshold_list_m2:
+        t_cells = max(1, int(t_m2 / cell_area))
+        logger.info(f"  Threshold {t_m2} m² = {t_cells} cells")
+
+    # Use lowest threshold for stream mask (most detailed network)
+    lowest_threshold_cells = max(1, int(threshold_list_m2[0] / cell_area))
+
+    # 5c. Compute Strahler stream order via pyflwdir (lowest threshold)
+    strahler = compute_strahler_from_fdir(
+        d8_fdir, acc, metadata, lowest_threshold_cells
+    )
+
+    if save_intermediates:
+        save_raster_geotiff(
+            strahler,
+            metadata,
+            output_dir / f"{base_name}_07_stream_order.tif",
+            nodata=0,
+            dtype="uint8",
+        )
+
+    # 5d. Compute TWI
+    twi = compute_twi(acc, slope, metadata["cellsize"], nodata_acc=0)
+
+    if save_intermediates:
+        save_raster_geotiff(
+            twi,
+            metadata,
+            output_dir / f"{base_name}_08_twi.tif",
+            nodata=-9999,
+            dtype="float32",
+        )
+
+    # 6. Create stream mask (lowest threshold)
+    stream_mask = (acc >= lowest_threshold_cells).astype(np.uint8)
     if save_intermediates:
         save_raster_geotiff(
             stream_mask,
@@ -961,12 +483,98 @@ def process_dem(
             dtype="uint8",
         )
 
-    # 7. Create records
-    records = create_flow_network_records(
-        filled_dem, fdir, acc, slope, metadata, stream_threshold
-    )
-    stats["records"] = len(records)
-    stats["stream_cells"] = sum(1 for r in records if r["is_stream"])
+    # 7. Stream cell count (from stream mask)
+    stats["stream_cells"] = int(np.count_nonzero(stream_mask))
+
+    # 7b. Vectorize streams per threshold
+    all_stream_segments = {}  # threshold_m2 → segments
+    all_catchment_data = {}  # threshold_m2 → catchments
+    if not skip_streams_vectorize:
+        for threshold_m2 in threshold_list_m2:
+            threshold_cells = max(1, int(threshold_m2 / cell_area))
+            logger.info(
+                f"--- Vectorizing streams for threshold "
+                f"{threshold_m2} m² ({threshold_cells} cells) ---"
+            )
+
+            # Compute Strahler for this threshold
+            if threshold_cells == lowest_threshold_cells:
+                strahler_t = strahler
+            else:
+                strahler_t = compute_strahler_from_fdir(
+                    d8_fdir, acc, metadata, threshold_cells
+                )
+
+            if save_intermediates and threshold_cells != lowest_threshold_cells:
+                save_raster_geotiff(
+                    strahler_t,
+                    metadata,
+                    output_dir / f"{base_name}_07_stream_order_{threshold_m2}.tif",
+                    nodata=0,
+                    dtype="uint8",
+                )
+
+            # Allocate label raster for sub-catchment delineation
+            label_raster = None
+            if not skip_catchments:
+                label_raster = np.zeros_like(filled_dem, dtype=np.int32)
+
+            segments = vectorize_streams(
+                filled_dem,
+                fdir,
+                acc,
+                slope,
+                strahler_t,
+                metadata,
+                threshold_cells,
+                label_raster_out=label_raster,
+            )
+            all_stream_segments[threshold_m2] = segments
+
+            # Delineate and polygonize sub-catchments
+            generate_catchments = (
+                not skip_catchments
+                and label_raster is not None
+                and threshold_m2 >= MIN_CATCHMENT_THRESHOLD_M2
+            )
+            if generate_catchments:
+                delineate_subcatchments(flw, label_raster, filled_dem, nodata)
+
+                # Compute downstream links for catchment graph
+                compute_downstream_links(
+                    segments,
+                    label_raster,
+                    fdir,
+                    metadata,
+                )
+
+                if save_intermediates:
+                    save_raster_geotiff(
+                        label_raster,
+                        metadata,
+                        output_dir / f"{base_name}_10_subcatchments_{threshold_m2}.tif",
+                        nodata=0,
+                        dtype="int32",
+                    )
+
+                catchments = polygonize_subcatchments(
+                    label_raster,
+                    filled_dem,
+                    slope,
+                    metadata,
+                    segments,
+                )
+                all_catchment_data[threshold_m2] = catchments
+
+            logger.info(f"  Threshold {threshold_m2} m²: {len(segments)} segments")
+
+        total_segments = sum(len(s) for s in all_stream_segments.values())
+        stats["stream_segments"] = total_segments
+        stats["stream_thresholds"] = {t: len(s) for t, s in all_stream_segments.items()}
+        if all_catchment_data:
+            stats["catchment_thresholds"] = {
+                t: len(c) for t, c in all_catchment_data.items()
+            }
 
     # 8. Insert into database
     if not dry_run:
@@ -974,15 +582,50 @@ def process_dem(
 
         with get_db_session() as db:
             if clear_existing:
-                logger.info("Clearing existing flow_network data...")
-                db.execute(text("TRUNCATE TABLE flow_network CASCADE"))
+                logger.info("Clearing existing data...")
+                db.execute(
+                    text("DELETE FROM stream_network WHERE source = 'DEM_DERIVED'")
+                )
+                db.execute(text("DELETE FROM stream_catchments"))
                 db.commit()
 
-            inserted = insert_records_batch(db, records, batch_size)
-            stats["inserted"] = inserted
+            # Insert stream segments per threshold
+            total_seg_inserted = 0
+            for threshold_m2, segments in all_stream_segments.items():
+                if segments:
+                    seg_inserted = insert_stream_segments(
+                        db,
+                        segments,
+                        threshold_m2=threshold_m2,
+                    )
+                    total_seg_inserted += seg_inserted
+            if total_seg_inserted > 0:
+                stats["stream_segments_inserted"] = total_seg_inserted
+
+            # Insert sub-catchments per threshold
+            total_catch_inserted = 0
+            for threshold_m2, catchments in all_catchment_data.items():
+                if catchments:
+                    catch_inserted = insert_catchments(
+                        db,
+                        catchments,
+                        threshold_m2=threshold_m2,
+                    )
+                    total_catch_inserted += catch_inserted
+            if total_catch_inserted > 0:
+                stats["catchments_inserted"] = total_catch_inserted
+
+            # Validate stream vs catchment counts per threshold
+            for threshold_m2 in all_stream_segments:
+                stream_count = len(all_stream_segments.get(threshold_m2, []))
+                catchment_count = len(all_catchment_data.get(threshold_m2, []))
+                if stream_count != catchment_count:
+                    logger.warning(
+                        f"Stream/catchment mismatch for threshold={threshold_m2} m²: "
+                        f"{stream_count} streams vs {catchment_count} catchments"
+                    )
     else:
         logger.info("Dry run - skipping database insert")
-        stats["inserted"] = 0
 
     return stats
 
@@ -990,7 +633,7 @@ def process_dem(
 def main():
     """Main entry point for DEM processing script."""
     parser = argparse.ArgumentParser(
-        description="Process DEM and populate flow_network table",
+        description="Process DEM and extract stream network",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -1004,14 +647,11 @@ def main():
     parser.add_argument(
         "--stream-threshold",
         type=int,
-        default=100,
-        help="Flow accumulation threshold for stream (default: 100)",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=10000,
-        help="Database insert batch size (default: 10000)",
+        default=1000,
+        help=(
+            "Flow accumulation threshold in cells (default: 1000). "
+            "Ignored when --thresholds is specified."
+        ),
     )
     parser.add_argument(
         "--dry-run",
@@ -1034,23 +674,88 @@ def main():
     parser.add_argument(
         "--clear-existing",
         action="store_true",
-        help="Clear existing flow_network data before insert (TRUNCATE)",
+        help="Clear existing stream data before insert (DELETE)",
+    )
+    parser.add_argument(
+        "--burn-streams",
+        type=str,
+        default=None,
+        help="Path to GeoPackage/Shapefile with stream lines for DEM burning",
+    )
+    parser.add_argument(
+        "--burn-depth",
+        type=float,
+        default=5.0,
+        help="Burn depth in meters (default: 5.0)",
+    )
+    parser.add_argument(
+        "--skip-streams-vectorize",
+        action="store_true",
+        help="Skip stream vectorization (useful without DB)",
+    )
+    parser.add_argument(
+        "--skip-catchments",
+        action="store_true",
+        help="Skip sub-catchment delineation (default: generate catchments)",
+    )
+    parser.add_argument(
+        "--thresholds",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated FA thresholds in m² for multi-density "
+            "stream networks (e.g. 1000,10000,100000). "
+            "Overrides --stream-threshold for vectorization."
+        ),
+    )
+    parser.add_argument(
+        "--hydro-resolution",
+        type=float,
+        default=None,
+        help="Downsample DEM to this resolution (meters) before hydro processing. "
+             "Reduces memory for large rasters. E.g. --hydro-resolution 2",
+    )
+
+    # Waterbody options
+    wb_group = parser.add_argument_group("Zbiorniki wodne")
+    wb_group.add_argument(
+        "--waterbody-mode",
+        type=str,
+        default="auto",
+        help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
+             '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
+             "(wszystkie traktowane jako endoreiczne). Default: auto",
+    )
+    wb_group.add_argument(
+        "--waterbody-min-area",
+        type=float,
+        default=None,
+        help="Min. powierzchnia zbiornika (m²). Zbiorniki mniejsze sa ignorowane.",
     )
 
     args = parser.parse_args()
 
     input_path = Path(args.input)
     output_dir = Path(args.output_dir) if args.output_dir else None
+    burn_streams_path = Path(args.burn_streams) if args.burn_streams else None
+
+    # Parse thresholds
+    threshold_list = None
+    if args.thresholds:
+        threshold_list = [int(t.strip()) for t in args.thresholds.split(",")]
 
     logger.info("=" * 60)
     logger.info("DEM Processing Script")
     logger.info("=" * 60)
     logger.info(f"Input: {input_path}")
     logger.info(f"Stream threshold: {args.stream_threshold}")
-    logger.info(f"Batch size: {args.batch_size}")
+    if threshold_list:
+        logger.info(f"Multi-threshold FA: {threshold_list} m²")
     logger.info(f"Dry run: {args.dry_run}")
     logger.info(f"Save intermediates: {args.save_intermediates}")
     logger.info(f"Clear existing: {args.clear_existing}")
+    if burn_streams_path:
+        logger.info(f"Burn streams: {burn_streams_path} (depth={args.burn_depth}m)")
     if output_dir:
         logger.info(f"Output dir: {output_dir}")
     logger.info("=" * 60)
@@ -1061,11 +766,18 @@ def main():
         stats = process_dem(
             input_path,
             stream_threshold=args.stream_threshold,
-            batch_size=args.batch_size,
             dry_run=args.dry_run,
             save_intermediates=args.save_intermediates,
             output_dir=output_dir,
             clear_existing=args.clear_existing,
+            burn_streams_path=burn_streams_path,
+            burn_depth_m=args.burn_depth,
+            skip_streams_vectorize=args.skip_streams_vectorize,
+            thresholds=threshold_list,
+            skip_catchments=args.skip_catchments,
+            hydro_resolution_m=args.hydro_resolution,
+            waterbody_mode=args.waterbody_mode,
+            waterbody_min_area_m2=args.waterbody_min_area,
         )
     except FileNotFoundError as e:
         logger.error(str(e))
@@ -1084,9 +796,28 @@ def main():
     logger.info(f"  Valid cells: {stats['valid_cells']:,}")
     logger.info(f"  Max accumulation: {stats['max_accumulation']:,}")
     logger.info(f"  Mean slope: {stats['mean_slope']:.1f}%")
+    if "burn_cells" in stats:
+        logger.info(f"  Burned cells: {stats['burn_cells']:,}")
+    if "endorheic_lakes" in stats:
+        logger.info(
+            f"  Endorheic lakes: {stats['endorheic_lakes']}, "
+            f"drain points: {stats.get('drain_points', 0)}"
+        )
     logger.info(f"  Stream cells: {stats['stream_cells']:,}")
-    logger.info(f"  Records created: {stats['records']:,}")
-    logger.info(f"  Records inserted: {stats['inserted']:,}")
+    if "stream_segments" in stats:
+        logger.info(f"  Stream segments: {stats['stream_segments']:,}")
+    if "stream_thresholds" in stats:
+        for t, count in stats["stream_thresholds"].items():
+            logger.info(f"    Threshold {t} m²: {count} segments")
+    if "stream_segments_inserted" in stats:
+        logger.info(
+            f"  Stream segments inserted: {stats['stream_segments_inserted']:,}"
+        )
+    if "catchment_thresholds" in stats:
+        for t, count in stats["catchment_thresholds"].items():
+            logger.info(f"    Sub-catchments {t} m²: {count}")
+    if "catchments_inserted" in stats:
+        logger.info(f"  Sub-catchments inserted: {stats['catchments_inserted']:,}")
     logger.info(f"  Time elapsed: {elapsed:.1f}s")
     logger.info("=" * 60)
 

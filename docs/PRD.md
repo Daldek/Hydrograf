@@ -1,9 +1,9 @@
 # Product Requirements Document (PRD)
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.0  
-**Data:** 2026-01-14  
-**Status:** Approved  
+**Wersja:** 1.1
+**Data:** 2026-03-01
+**Status:** Approved
 **Autor:** Zespół projektowy
 
 ---
@@ -433,7 +433,7 @@ Launch:                                                            🚀
 #### **Faza 0: Preprocessing (2 tygodnie)**
 **Kamienie milowe:**
 - ☑ Pobrane dane z IMGW
-- ☑ Wygenerowana tabela `flow_network`
+- ☑ Wygenerowana tabela `flow_network` (WYELIMINOWANA w ADR-028, migracja 015 — zastapiona przez stream_network + CatchmentGraph in-memory)
 - ☑ Zaimportowane pokrycie terenu i cieki
 - ☑ Walidacja danych: pokrycie 100% obszaru gminy
 
@@ -441,9 +441,18 @@ Launch:                                                            🚀
 **Kamienie milowe:**
 - ☑ Setup FastAPI + PostgreSQL
 - ☑ Endpoint: POST `/api/delineate-watershed`
-- ☑ Algorytm wyznaczania zlewni z grafu
+- ☑ Endpoint: POST `/api/select-stream` — selekcja segmentu cieku + upstream traversal
+- ☑ Endpoint: POST `/api/terrain-profile` — profil terenu wzdluz polilinii
+- ☑ Endpoint: GET `/api/depressions` — zaglbienia terenu z filtrami
+- ☑ Endpoint: GET `/api/tiles/streams/{z}/{x}/{y}.pbf` — kafelki MVT ciekow
+- ☑ Endpoint: GET `/api/tiles/catchments/{z}/{x}/{y}.pbf` — kafelki MVT zlewni czastkowych
+- ☑ Endpoint: GET `/api/tiles/landcover/{z}/{x}/{y}.pbf` — kafelki MVT pokrycia terenu BDOT10k
+- ☑ Endpoint: GET `/api/tiles/thresholds` — dostepne progi FA
+- ☑ Endpoint: GET `/api/scenarios` — lista dostepnych scenariuszy opadowych
+- ☑ Endpoint: GET `/health` — health check
+- ☑ Algorytm wyznaczania zlewni z grafu (CatchmentGraph in-memory + BFS)
 - ☑ Obliczanie parametrów fizjograficznych
-- ☑ Testy jednostkowe: > 80% pokrycia
+- ☑ Testy jednostkowe: > 80% pokrycia (720 testow, 43 pliki testowe)
 
 #### **Faza 2: Model Hydrologiczny (2 tygodnie)**
 **Kamienie milowe:**
@@ -456,19 +465,34 @@ Launch:                                                            🚀
 
 #### **Faza 3: Frontend (2 tygodnie)**
 **Kamienie milowe:**
-- ☑ Mapa Leaflet z wyborem punktu
+- ☑ Mapa Leaflet z wyborem punktu (tryb rysowania poligonu, tryb wyboru obiektow)
 - ☑ Formularz scenariusza opadowego
 - ☑ Wywołania API z obsługą błędów
-- ☑ Wykres Chart.js
+- ☑ Wykres Chart.js (hydrogram, histogram)
 - ☑ Eksport CSV/GeoJSON
+- ☑ Glassmorphism UI z draggable panelem bocznym
+- ☑ Warstwy podkladowe: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (ortofoto + topo)
+- ☑ Warstwy tematyczne: cieki MVT, zlewnie MVT, pokrycie terenu MVT, DEM hillshade, depresje
+- ☑ Profil terenu — wizualizacja podluzna cieku
+- ☑ 10 modulow JS (IIFE na `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app
+
+#### **Faza 3b: Panel administracyjny (ADR-034)**
+**Kamienie milowe:**
+- ☑ Frontend `/admin` — glassmorphism, 4 sekcje (Dashboard, Bootstrap, Zasoby, Czyszczenie)
+- ☑ 8 endpointow API `/api/admin/*` (dashboard, resources, cleanup estimate/execute, bootstrap start/cancel/status/stream)
+- ☑ Uwierzytelnianie API key (header X-Admin-Key, env ADMIN_API_KEY)
+- ☑ Uruchamianie bootstrap.py z panelu + real-time logi SSE
+- ☑ Monitorowanie zasobow: CPU/RAM (psutil), pool DB, CatchmentGraph cache
+- ☑ Czyszczenie danych: tiles, overlays, dem_mosaic, TRUNCATE tabel
+- ☑ 3 moduly JS admin: admin-api.js, admin-app.js, admin-bootstrap.js
 
 #### **Faza 4: Testy i Deploy (1 tydzień)**
 **Kamienie milowe:**
-- ☑ Testy akceptacyjne z użytkownikami
-- ☑ Optymalizacja wydajności
-- ☑ Docker Compose setup
-- ☑ Deploy na serwer
-- ☑ Dokumentacja użytkownika
+- ☑ Optymalizacja wydajności (CatchmentGraph in-memory, O(n) downstream links, boundary smoothing)
+- ☑ Docker Compose setup (db + api + nginx, 3 kontenery)
+- ☑ Dokumentacja techniczna (34 ADR, architektura, integracje)
+- ⏳ Testy akceptacyjne z użytkownikami (UAT) — planowane na CP5
+- ⏳ Deploy produkcyjny — planowany na CP5
 
 ---
 
@@ -519,9 +543,9 @@ Launch:                                                            🚀
 
 ---
 
-**Wersja dokumentu:** 1.0  
-**Data ostatniej aktualizacji:** 2026-01-14  
-**Status:** Approved dla implementacji MVP  
+**Wersja dokumentu:** 1.1
+**Data ostatniej aktualizacji:** 2026-03-01
+**Status:** Approved — projekt w aktywnym rozwoju (CP4 zakonczone, CP5 MVP w przygotowaniu)  
 
 ---
 

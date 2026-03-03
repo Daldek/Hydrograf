@@ -4,8 +4,8 @@ Database connection and session management.
 Provides SQLAlchemy engine and session factory with connection pooling.
 """
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -32,6 +32,9 @@ def get_engine():
         pool_timeout=30,
         pool_recycle=3600,
         echo=settings.log_level == "DEBUG",
+        connect_args={
+            "options": f"-c statement_timeout={settings.db_statement_timeout_ms}",
+        },
     )
 
 
@@ -51,6 +54,7 @@ def get_db_engine():
     global _engine
     if _engine is None:
         _engine = get_engine()
+        SessionLocal.configure(bind=_engine)
     return _engine
 
 
@@ -73,8 +77,7 @@ def get_db() -> Generator[Session, None, None]:
     ... def get_items(db: Session = Depends(get_db)):
     ...     return db.query(Item).all()
     """
-    engine = get_db_engine()
-    SessionLocal.configure(bind=engine)
+    get_db_engine()  # ensure engine + SessionLocal configured
     db = SessionLocal()
     try:
         yield db
@@ -99,8 +102,7 @@ def get_db_session() -> Generator[Session, None, None]:
     >>> with get_db_session() as db:
     ...     db.execute(text("SELECT 1"))
     """
-    engine = get_db_engine()
-    SessionLocal.configure(bind=engine)
+    get_db_engine()  # ensure engine + SessionLocal configured
     db = SessionLocal()
     try:
         yield db

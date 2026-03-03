@@ -3,16 +3,25 @@ Hydrograph generation endpoint.
 
 Provides API endpoint for generating SCS-CN based direct runoff hydrographs
 using the Hydrolog library.
+
+Uses CatchmentGraph (~11k nodes, ~0.5 MB) for watershed delineation
+via BFS on pre-computed sub-catchments.
 """
 
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+
+# Hydrolog imports
+from hydrolog.morphometry import WatershedParameters
+from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogram
+from hydrolog.runoff import HydrographGenerator
 from sqlalchemy.orm import Session
 
+from core.catchment_graph import get_catchment_graph
+from core.constants import DEFAULT_CN, DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
-from core.land_cover import calculate_weighted_cn, DEFAULT_CN
-from core.morphometry import build_morphometric_params
+from core.land_cover import get_land_cover_for_boundary
 from core.precipitation import (
     DURATION_STR_TO_MIN,
     VALID_DURATIONS_STR,
@@ -21,11 +30,12 @@ from core.precipitation import (
     validate_duration,
     validate_probability,
 )
-from core.watershed import (
-    build_boundary,
-    calculate_watershed_area_km2,
-    find_nearest_stream,
-    traverse_upstream,
+from core.watershed_service import (
+    boundary_to_polygon,
+    build_morph_dict_from_graph,
+    get_segment_outlet,
+    get_stream_info_by_segment_idx,
+    merge_catchment_boundaries,
 )
 from models.schemas import (
     HydrographInfo,
@@ -45,16 +55,8 @@ from utils.geometry import (
     transform_wgs84_to_pl1992,
 )
 
-# Hydrolog imports
-from hydrolog.morphometry import WatershedParameters
-from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogram
-from hydrolog.runoff import HydrographGenerator
-
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# SCS-CN method limit [km2]
-HYDROGRAPH_AREA_LIMIT_KM2 = 250.0
 
 # Hietogram factory
 HIETOGRAM_CLASSES = {
@@ -73,7 +75,8 @@ def generate_hydrograph(
     Generate direct runoff hydrograph for a given point.
 
     Uses SCS-CN method with configurable hietogram distribution and
-    time of concentration calculation.
+    time of concentration calculation. Watershed delineation via
+    CatchmentGraph (~87k nodes, ~5-50ms BFS).
 
     Parameters
     ----------
@@ -93,12 +96,15 @@ def generate_hydrograph(
         When no stream found near the point
     HTTPException 400
         When watershed is too large (> 250 km2) or invalid parameters
+    HTTPException 503
+        When catchment graph is not loaded
     HTTPException 500
         On internal server error
     """
     try:
         logger.info(
-            f"Generating hydrograph for ({request.latitude:.6f}, {request.longitude:.6f}), "
+            "Generating hydrograph for "
+            f"({request.latitude:.6f}, {request.longitude:.6f}), "
             f"duration={request.duration}, p={request.probability}%"
         )
 
@@ -107,20 +113,39 @@ def generate_hydrograph(
         probability = validate_probability(request.probability)
         duration_min = DURATION_STR_TO_MIN[duration_str]
 
-        # ===== STEP 2: Delineate watershed =====
+        # ===== STEP 2: Transform coordinates =====
         point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
 
-        outlet_cell = find_nearest_stream(point_2180, db)
-        if outlet_cell is None:
+        # ===== STEP 3: Get CatchmentGraph =====
+        cg = get_catchment_graph()
+        if not cg.loaded:
             raise HTTPException(
-                status_code=404,
-                detail="Nie znaleziono cieku w tym miejscu",
+                status_code=503,
+                detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
             )
 
-        cells = traverse_upstream(outlet_cell.id, db)
-        area_km2 = calculate_watershed_area_km2(cells)
+        # ===== STEP 4: Find catchment at click point (direct ST_Contains) =====
+        try:
+            clicked_idx = cg.find_catchment_at_point(
+                point_2180.x, point_2180.y, DEFAULT_THRESHOLD_M2, db
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=404,
+                detail="Nie znaleziono zlewni cząstkowej. Kliknij w obszarze zlewni.",
+            ) from e
 
-        # ===== STEP 3: Check area limit =====
+        # ===== STEP 5: Get segment info and traverse upstream =====
+        segment_idx = cg.get_segment_idx(clicked_idx)
+        segment = get_stream_info_by_segment_idx(segment_idx, DEFAULT_THRESHOLD_M2, db)
+
+        upstream_indices = cg.traverse_upstream(clicked_idx)
+        segment_idxs = cg.get_segment_indices(upstream_indices, DEFAULT_THRESHOLD_M2)
+
+        # ===== STEP 6: Aggregate stats and check area limit =====
+        stats = cg.aggregate_stats(upstream_indices)
+        area_km2 = stats["area_km2"]
+
         if area_km2 > HYDROGRAPH_AREA_LIMIT_KM2:
             raise HTTPException(
                 status_code=400,
@@ -128,26 +153,58 @@ def generate_hydrograph(
                 f"({HYDROGRAPH_AREA_LIMIT_KM2} km2)",
             )
 
-        # ===== STEP 4: Build boundary and morphometry =====
-        boundary_2180 = build_boundary(cells, method="convex")
+        # ===== STEP 7: Build boundary =====
+        boundary_2180 = merge_catchment_boundaries(
+            segment_idxs, DEFAULT_THRESHOLD_M2, db
+        )
+        if boundary_2180 is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Nie udało się zbudować granicy zlewni.",
+            )
 
-        # Calculate CN from land cover data (with fallback to default)
+        boundary_poly = boundary_to_polygon(boundary_2180)
+
+        # ===== STEP 8: Calculate CN from land cover =====
         try:
-            cn, land_cover_stats = calculate_weighted_cn(boundary_2180, db)
-            if land_cover_stats:
-                logger.info(f"CN={cn} calculated from land cover: {land_cover_stats}")
+            lc_data = get_land_cover_for_boundary(boundary_2180, db)
+            if lc_data:
+                cn = lc_data["weighted_cn"]
+                logger.info(f"CN={cn} calculated from land cover")
             else:
+                cn = DEFAULT_CN
                 logger.info(f"CN={cn} (default, no land cover data)")
         except Exception as e:
             logger.warning(
                 f"Failed to calculate CN from land cover: {e}, using default"
             )
             cn = DEFAULT_CN
-            land_cover_stats = {}
 
-        morph_dict = build_morphometric_params(cells, boundary_2180, outlet_cell, cn)
+        # ===== STEP 9: Build morphometric dict =====
+        # Get outlet coordinates
+        outlet_info = get_segment_outlet(segment_idx, DEFAULT_THRESHOLD_M2, db)
+        if outlet_info is not None:
+            outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
+        elif segment:
+            outlet_x, outlet_y = segment["downstream_x"], segment["downstream_y"]
+        else:
+            outlet_x, outlet_y = point_2180.x, point_2180.y
 
-        # ===== STEP 5: Get precipitation =====
+        morph_dict = build_morph_dict_from_graph(
+            cg,
+            upstream_indices,
+            boundary_2180,
+            outlet_x,
+            outlet_y,
+            segment_idx,
+            DEFAULT_THRESHOLD_M2,
+            cn=cn,
+        )
+
+        # Outlet elevation from aggregated stats
+        outlet_elevation = stats.get("elevation_min_m") or 0.0
+
+        # ===== STEP 10: Get precipitation =====
         centroid_2180 = boundary_2180.centroid
         precip_mm = get_precipitation(centroid_2180, duration_str, probability, db)
 
@@ -162,7 +219,7 @@ def generate_hydrograph(
             f"Precipitation: {precip_mm:.1f} mm for {duration_str}, p={probability}%"
         )
 
-        # ===== STEP 6: Create Hydrolog objects =====
+        # ===== STEP 11: Create Hydrolog objects =====
         watershed_params = WatershedParameters.from_dict(morph_dict)
         tc_min = watershed_params.calculate_tc(method=request.tc_method)
 
@@ -183,7 +240,7 @@ def generate_hydrograph(
             timestep_min=request.timestep_min,
         )
 
-        # ===== STEP 7: Generate hydrograph =====
+        # ===== STEP 12: Generate hydrograph =====
         generator = HydrographGenerator(
             area_km2=morph_dict["area_km2"],
             cn=cn,
@@ -196,14 +253,14 @@ def generate_hydrograph(
             timestep_min=request.timestep_min,
         )
 
-        # ===== STEP 8: Build response =====
-        boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_2180)
+        # ===== STEP 13: Build response =====
+        boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_poly)
         boundary_geojson = polygon_to_geojson_feature(
             boundary_wgs84,
             properties={"area_km2": round(area_km2, 2)},
         )
 
-        outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_cell.x, outlet_cell.y)
+        outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)
 
         response = HydrographResponse(
             watershed=WatershedResponse(
@@ -211,9 +268,8 @@ def generate_hydrograph(
                 outlet=OutletInfo(
                     latitude=outlet_lat,
                     longitude=outlet_lon,
-                    elevation_m=outlet_cell.elevation,
+                    elevation_m=outlet_elevation,
                 ),
-                cell_count=len(cells),
                 area_km2=round(area_km2, 2),
                 hydrograph_available=True,
                 morphometry=MorphometricParameters(**morph_dict),
@@ -265,13 +321,13 @@ def generate_hydrograph(
         raise
     except ValueError as e:
         logger.error(f"Validation error in hydrograph generation: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Error generating hydrograph: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Internal server error during hydrograph generation",
-        )
+        ) from e
 
 
 @router.get("/scenarios")

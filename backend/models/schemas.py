@@ -1,10 +1,11 @@
 """
 Pydantic models for API request/response schemas.
 
-Defines data structures for watershed delineation and hydrograph generation API endpoints.
+Defines data structures for watershed delineation and hydrograph
+generation API endpoints.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -96,54 +97,124 @@ class MorphometricParameters(BaseModel):
     length_km: float = Field(..., ge=0, description="Watershed length [km]")
     elevation_min_m: float = Field(..., description="Minimum elevation [m a.s.l.]")
     elevation_max_m: float = Field(..., description="Maximum elevation [m a.s.l.]")
-    elevation_mean_m: Optional[float] = Field(
+    elevation_mean_m: float | None = Field(
         None, description="Area-weighted mean elevation [m a.s.l.]"
     )
-    mean_slope_m_per_m: Optional[float] = Field(
+    mean_slope_m_per_m: float | None = Field(
         None, ge=0, description="Area-weighted mean slope [m/m]"
     )
-    channel_length_km: Optional[float] = Field(
+    channel_length_km: float | None = Field(
         None, ge=0, description="Main channel length [km]"
     )
-    channel_slope_m_per_m: Optional[float] = Field(
+    channel_slope_m_per_m: float | None = Field(
         None, ge=0, description="Main channel slope [m/m]"
     )
-    cn: Optional[int] = Field(None, ge=0, le=100, description="SCS Curve Number")
-    source: Optional[str] = Field("Hydrograf", description="Data source")
-    crs: Optional[str] = Field("EPSG:2180", description="Coordinate reference system")
+    cn: int | None = Field(None, ge=0, le=100, description="SCS Curve Number")
+    source: str | None = Field("Hydrograf", description="Data source")
+    crs: str | None = Field("EPSG:2180", description="Coordinate reference system")
+
+    # Shape indices
+    compactness_coefficient: float | None = Field(
+        None, description="Gravelius compactness coefficient Kc"
+    )
+    circularity_ratio: float | None = Field(
+        None, description="Miller circularity ratio Rc"
+    )
+    elongation_ratio: float | None = Field(
+        None, description="Schumm elongation ratio Re"
+    )
+    form_factor: float | None = Field(None, description="Horton form factor Ff")
+    mean_width_km: float | None = Field(None, ge=0, description="Mean width A/L [km]")
+
+    # Relief indices
+    relief_ratio: float | None = Field(None, description="Relief ratio Rh")
+    hypsometric_integral: float | None = Field(
+        None, ge=0, le=1, description="Hypsometric integral HI"
+    )
+
+    # Drainage network indices
+    drainage_density_km_per_km2: float | None = Field(
+        None, ge=0, description="Drainage density Dd [km/km2]"
+    )
+    stream_frequency_per_km2: float | None = Field(
+        None, ge=0, description="Stream frequency Fs [1/km2]"
+    )
+    ruggedness_number: float | None = Field(
+        None, ge=0, description="Ruggedness number Rn"
+    )
+    max_strahler_order: int | None = Field(
+        None, ge=1, description="Maximum Strahler stream order"
+    )
+
+
+class HypsometricPoint(BaseModel):
+    """Single point on hypsometric curve."""
+
+    relative_height: float = Field(..., ge=0, le=1, description="Relative height h/H")
+    relative_area: float = Field(..., ge=0, le=1, description="Relative area a/A")
+
+
+class LandCoverCategory(BaseModel):
+    """Single land cover category with statistics."""
+
+    category: str = Field(..., description="Land cover category name")
+    percentage: float = Field(..., ge=0, le=100, description="Area percentage [%]")
+    area_m2: float = Field(..., ge=0, description="Area [m2]")
+    cn_value: int = Field(..., ge=0, le=100, description="CN value for category")
+
+
+class LandCoverStats(BaseModel):
+    """Land cover statistics for a watershed."""
+
+    categories: list[LandCoverCategory] = Field(
+        ..., description="Per-category statistics"
+    )
+    weighted_cn: int = Field(..., ge=0, le=100, description="Area-weighted CN")
+    weighted_imperviousness: float = Field(
+        ..., ge=0, le=1, description="Area-weighted imperviousness fraction"
+    )
+
+
+class HsgCategory(BaseModel):
+    """Single HSG category."""
+
+    group: str = Field(..., description="HSG group (A/B/C/D)")
+    percentage: float = Field(..., ge=0, le=100, description="Area percentage [%]")
+    area_m2: float = Field(..., ge=0, description="Area [m²]")
+
+
+class HsgStats(BaseModel):
+    """Soil hydrological group statistics."""
+
+    categories: list[HsgCategory] = Field(..., description="Per-group statistics")
+    dominant_group: str = Field(..., description="Dominant HSG group")
 
 
 class WatershedResponse(BaseModel):
-    """
-    Watershed delineation result.
-
-    Attributes
-    ----------
-    boundary_geojson : dict
-        Watershed boundary as GeoJSON Feature (Polygon)
-    outlet : OutletInfo
-        Information about outlet point
-    cell_count : int
-        Number of cells in the watershed
-    area_km2 : float
-        Watershed area in square kilometers
-    hydrograph_available : bool
-        Whether SCS-CN hydrograph can be generated (area <= 250 km2)
-    morphometry : MorphometricParameters, optional
-        Full morphometric parameters for hydrological calculations
-    """
+    """Watershed delineation result."""
 
     boundary_geojson: dict[str, Any] = Field(
         ..., description="Watershed boundary as GeoJSON Feature"
     )
     outlet: OutletInfo = Field(..., description="Outlet point information")
-    cell_count: int = Field(..., ge=0, description="Number of cells in watershed")
     area_km2: float = Field(..., ge=0, description="Watershed area [km2]")
     hydrograph_available: bool = Field(
-        ..., description="Whether hydrograph generation is available (area <= 250 km2)"
+        ...,
+        description="Whether hydrograph generation is available (area <= 250 km2)",
     )
-    morphometry: Optional[MorphometricParameters] = Field(
-        None, description="Full morphometric parameters for hydrological calculations"
+    morphometry: MorphometricParameters | None = Field(
+        None,
+        description="Full morphometric parameters for hydrological calculations",
+    )
+    hypsometric_curve: list[HypsometricPoint] | None = Field(
+        None, description="Hypsometric curve (if requested)"
+    )
+    land_cover_stats: LandCoverStats | None = Field(
+        None, description="Land cover statistics"
+    )
+    hsg_stats: HsgStats | None = None
+    main_stream_geojson: dict[str, Any] | None = Field(
+        None, description="Main stream as GeoJSON LineString (WGS84)"
     )
 
 
@@ -155,10 +226,31 @@ class DelineateResponse(BaseModel):
     ----------
     watershed : WatershedResponse
         Watershed delineation results
+    auto_selected : bool
+        True when area exceeded limit and pre-generated selection was used
+    upstream_segment_indices : list[int] | None
+        Segment indices for MVT highlighting (when auto_selected)
+    display_threshold_m2 : int | None
+        Threshold for MVT matching (when auto_selected)
+    info_message : str | None
+        User-facing info about auto-switch
     """
 
     watershed: WatershedResponse = Field(
         ..., description="Watershed delineation results"
+    )
+    auto_selected: bool = Field(
+        False,
+        description="True when area exceeded limit and selection was used",
+    )
+    upstream_segment_indices: list[int] | None = Field(
+        None, description="Segment indices for MVT highlighting (when auto_selected)"
+    )
+    display_threshold_m2: int | None = Field(
+        None, description="Threshold for MVT matching (when auto_selected)"
+    )
+    info_message: str | None = Field(
+        None, description="User-facing info about auto-switch"
     )
 
 
@@ -297,3 +389,87 @@ class HydrographResponse(BaseModel):
     hydrograph: HydrographInfo = Field(..., description="Generated hydrograph")
     water_balance: WaterBalance = Field(..., description="Water balance")
     metadata: HydrographMetadata = Field(..., description="Calculation metadata")
+
+
+# ===================== STREAM SELECTION MODELS =====================
+
+
+class SelectStreamRequest(BaseModel):
+    """Request model for selecting a stream and its upstream catchment."""
+
+    latitude: float = Field(
+        ...,
+        ge=-90,
+        le=90,
+        description="Latitude in WGS84 (decimal degrees)",
+        examples=[52.23],
+    )
+    longitude: float = Field(
+        ...,
+        ge=-180,
+        le=180,
+        description="Longitude in WGS84 (decimal degrees)",
+        examples=[21.01],
+    )
+    threshold_m2: int = Field(
+        ...,
+        gt=0,
+        description="Flow accumulation threshold [m2] for stream network",
+        examples=[10000],
+    )
+    to_confluence: bool = Field(
+        False,
+        description="Traverse only to first confluence upstream",
+    )
+
+
+class StreamInfo(BaseModel):
+    """Information about the selected stream segment."""
+
+    segment_idx: int = Field(..., description="Stream segment index")
+    strahler_order: int | None = Field(None, description="Strahler stream order")
+    length_m: float | None = Field(None, ge=0, description="Segment length [m]")
+    upstream_area_km2: float | None = Field(
+        None, ge=0, description="Upstream catchment area [km2]"
+    )
+
+
+class SelectStreamResponse(BaseModel):
+    """Response for stream selection endpoint."""
+
+    stream: StreamInfo = Field(..., description="Selected stream info")
+    upstream_segment_indices: list[int] = Field(
+        ..., description="Segment indices of upstream catchments"
+    )
+    boundary_geojson: dict[str, Any] = Field(
+        ..., description="Upstream catchment boundary as GeoJSON Feature"
+    )
+    display_threshold_m2: int = Field(
+        ...,
+        description="Threshold used for upstream_segment_indices (for MVT matching)",
+    )
+    watershed: WatershedResponse | None = Field(
+        None, description="Full watershed statistics (morphometry, land cover, etc.)"
+    )
+    info_message: str | None = Field(
+        None,
+        description="Informacja o automatycznej zmianie parametrów",
+    )
+
+
+# ===================== TERRAIN PROFILE MODELS =====================
+
+
+class TerrainProfileRequest(BaseModel):
+    """Request model for terrain profile extraction."""
+
+    geometry: dict[str, Any] = Field(..., description="GeoJSON LineString geometry")
+    n_samples: int = Field(100, ge=2, le=1000, description="Number of sample points")
+
+
+class TerrainProfileResponse(BaseModel):
+    """Response model for terrain profile."""
+
+    distances_m: list[float] = Field(..., description="Cumulative distances [m]")
+    elevations_m: list[float] = Field(..., description="Elevations [m a.s.l.]")
+    total_length_m: float = Field(..., ge=0, description="Total line length [m]")

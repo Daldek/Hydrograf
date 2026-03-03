@@ -7,12 +7,77 @@ Skrypty do jednorazowego przetwarzania danych wejściowych przed uruchomieniem s
 - Python 3.12+ ze środowiskiem wirtualnym (`backend/.venv`)
 - Uruchomiona baza PostgreSQL/PostGIS
 - Wykonane migracje Alembic
-- [Kartograf 0.3.0+](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
+- [Kartograf 0.4.1](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
   - NMT/NMPT: Dane wysokościowe z GUGiK
   - BDOT10k: Dane o pokryciu terenu z GUGiK (12 warstw)
+  - BDOT10k hydro: Dane hydrograficzne z GUGiK (SWRS rzeki, SWKN kanały, SWRM rowy, PTWP wody)
   - CORINE: Europejska klasyfikacja pokrycia terenu z Copernicus
 
 ## Dostępne skrypty
+
+### `bootstrap.py` - Jednokomendowy setup środowiska
+
+Orkiestrator wykonujący 9 kroków pipeline od zera do działającego systemu: infrastruktura (.venv, Docker, Alembic), pobieranie NMT, przetwarzanie DEM, pokrycie terenu, dane glebowe HSG, opady IMGW, depresje, kafelki MVT, overlay PNG i uruchomienie serwera.
+
+**Użycie:**
+
+```bash
+cd backend
+
+# Przez bounding box (WGS84)
+.venv/bin/python -m scripts.bootstrap \
+    --bbox "20.8,52.1,21.2,52.4"
+
+# Przez godła arkuszy
+.venv/bin/python -m scripts.bootstrap \
+    --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2
+
+# Dry run — tylko pokaż plan bez wykonywania
+.venv/bin/python -m scripts.bootstrap \
+    --bbox "20.8,52.1,21.2,52.4" --dry-run
+
+# Z pominięciem opcjonalnych kroków
+.venv/bin/python -m scripts.bootstrap \
+    --bbox "20.8,52.1,21.2,52.4" \
+    --skip-precipitation --skip-tiles
+```
+
+**Parametry:**
+
+| Parametr | Opis | Domyślnie |
+|----------|------|-----------|
+| `--bbox` | Bounding box WGS84: `"min_lon,min_lat,max_lon,max_lat"` | (wymagane*) |
+| `--sheets` | Lista godeł arkuszy do pobrania | (wymagane*) |
+| `--scale` | Skala arkuszy (1:10000, 1:25000, 1:50000, 1:100000) | 1:10000 |
+| `--output` | Katalog wyjściowy | `../data/` |
+| `--port` | Port HTTP serwera | 8080 |
+| `--dry-run` | Tylko pokaż co zostanie zrobione | false |
+
+*Wymagany jeden z: `--bbox` lub `--sheets` (wzajemnie wykluczające).
+
+**Flagi pomijania kroków:**
+
+| Flaga | Opis |
+|-------|------|
+| `--skip-infra` | Pomiń .venv / Docker / Alembic |
+| `--skip-landcover` | Pomiń pokrycie terenu |
+| `--skip-hsg` | Pomiń dane glebowe HSG |
+| `--skip-precipitation` | Pomiń opady IMGW |
+| `--skip-depressions` | Pomiń depresje |
+| `--skip-tiles` | Pomiń kafelki MVT |
+| `--skip-overlays` | Pomiń overlay PNG |
+| `--skip-serve` | Pomiń uruchomienie serwera |
+
+**Zbiorniki wodne:**
+
+| Parametr | Opis | Domyślnie |
+|----------|------|-----------|
+| `--waterbody-mode` | Tryb obsługi zbiorników: `auto` (BDOT10k klasyfikacja), `none` (pomiń), lub ścieżka do pliku `.gpkg`/`.shp` (wszystkie endoreiczne) | `auto` |
+| `--waterbody-min-area` | Min. powierzchnia zbiornika (m²). Mniejsze zbiorniki ignorowane. | - |
+
+**Uwaga:** Kroki 1-3 (infrastruktura, pobieranie NMT, przetwarzanie DEM) są krytyczne. Kroki 4-9 są opcjonalne z graceful degradation — jeśli któryś zawiedzie, pipeline kontynuuje.
+
+---
 
 ### `prepare_area.py` - Pełny pipeline (ZALECANY)
 
@@ -53,10 +118,13 @@ cd backend
 |----------|------|-----------|
 | `--lat`, `--lon` | Współrzędne centrum obszaru (WGS84) | (wymagane) |
 | `--buffer` | Promień bufora w km | 5 |
-| `--stream-threshold` | Próg akumulacji dla strumieni | 100 |
+| `--stream-threshold` | Próg akumulacji dla strumieni | 1000 |
 | `--scale` | Skala arkuszy (1:10000, 1:25000, 1:50000, 1:100000) | 1:10000 |
 | `--with-landcover` | Pobierz też dane o pokryciu terenu (BDOT10k) | false |
+| `--with-hydro` | Pobierz też dane hydrograficzne BDOT10k (SWRS, SWKN, SWRM, PTWP) | false |
 | `--landcover-provider` | Źródło danych: bdot10k lub corine | bdot10k |
+| `--waterbody-mode` | Tryb obsługi zbiorników: `auto`, `none`, lub ścieżka do pliku | `auto` |
+| `--waterbody-min-area` | Min. powierzchnia zbiornika (m²) | - |
 | `--keep-downloads` | Zachowaj pobrane pliki .asc | true |
 | `--save-intermediates` | Zapis plików GeoTIFF | false |
 | `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
@@ -66,10 +134,10 @@ cd backend
 
 ### `download_dem.py` - Pobieranie NMT z GUGiK
 
-Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.2.0+).
+Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.5.0).
 **Użyj gdy chcesz tylko pobrać dane bez przetwarzania.**
 
-> **Uwaga:** Kartograf 0.2.0 pobiera dane przez OpenData API w formacie ASC.
+> **Uwaga:** Kartograf 0.5.0 pobiera dane przez OpenData API w formacie ASC z auto-ekspansją godeł.
 > Format nie jest konfigurowalny przy pobieraniu przez godła arkuszy.
 
 **Użycie:**
@@ -112,16 +180,19 @@ cd backend
 
 Przetwarza plik NMT (Numeryczny Model Terenu) z formatu ASCII GRID i ładuje dane do tabeli `flow_network`.
 
-**Etapy przetwarzania (używa biblioteki `pysheds`):**
-1. Odczyt pliku ASCII GRID (.asc)
-2. Wypełnienie pojedynczych zagłębień (`fill_pits`)
-3. Wypełnienie większych depresji (`fill_depressions`)
-4. Rozwiązanie płaskich obszarów (`resolve_flats`)
-5. Obliczenie kierunku przepływu D8 (`flowdir`)
-6. Obliczenie akumulacji przepływu (`accumulation`)
-7. Obliczenie spadku terenu (Sobel)
-8. Identyfikacja strumieni (próg akumulacji)
-9. Import do bazy PostgreSQL/PostGIS
+**Etapy przetwarzania (używa biblioteki `pyflwdir` — Deltares):**
+1. Odczyt pliku rastrowego (.asc, .vrt, .tif)
+2. Wypalanie cieków w DEM (opcjonalne, `--burn-streams`)
+3. Wypełnienie wewnętrznych dziur nodata
+4. Wypełnienie depresji + obliczenie kierunku przepływu D8 (`fill_depressions`)
+5. Obliczenie akumulacji przepływu (`upstream_area`)
+6. Obliczenie spadku terenu (Sobel)
+7. Obliczenie aspektu (ekspozycja stoku, 0-360°)
+8. Obliczenie rzędu Strahlera (`flw.stream_order`)
+9. Obliczenie TWI (Topographic Wetness Index)
+10. Identyfikacja strumieni (próg akumulacji)
+11. Wektoryzacja cieków jako LineString (`vectorize_streams`)
+12. Import do bazy PostgreSQL/PostGIS (COPY)
 
 **Użycie:**
 
@@ -146,11 +217,17 @@ cd backend
 | Parametr | Skrót | Opis | Domyślnie |
 |----------|-------|------|-----------|
 | `--input` | `-i` | Ścieżka do pliku .asc (wymagane) | - |
-| `--stream-threshold` | - | Próg flow accumulation dla strumieni | 100 |
+| `--stream-threshold` | - | Próg flow accumulation dla strumieni | 1000 |
 | `--batch-size` | - | Rozmiar batch przy imporcie do bazy | 10000 |
 | `--dry-run` | - | Tylko obliczenia i statystyki, bez importu | false |
 | `--save-intermediates` | `-s` | Zapis rastrów pośrednich jako GeoTIFF | false |
 | `--output-dir` | `-o` | Katalog dla plików GeoTIFF | (katalog wejściowy) |
+| `--clear-existing` | - | Wyczyść istniejące dane (TRUNCATE flow_network) | false |
+| `--burn-streams` | - | Ścieżka do GeoPackage/Shapefile z ciekami | - |
+| `--burn-depth` | - | Głębokość wypalania [m] | 5.0 |
+| `--waterbody-mode` | - | Tryb obsługi zbiorników: `auto`, `none`, lub ścieżka do pliku | `auto` |
+| `--waterbody-min-area` | - | Min. powierzchnia zbiornika (m²) | - |
+| `--skip-streams-vectorize` | - | Pomiń wektoryzację cieków | false |
 
 **Pliki pośrednie (GeoTIFF):**
 
@@ -159,11 +236,15 @@ Opcja `--save-intermediates` generuje pliki do weryfikacji obliczeń w oprogramo
 | Plik | Opis | Typ danych |
 |------|------|------------|
 | `*_01_dem.tif` | Oryginalny NMT | float32 |
+| `*_02a_burned.tif` | NMT po wypaleniu cieków (jeśli `--burn-streams`) | float32 |
 | `*_02_filled.tif` | NMT po wypełnieniu zagłębień | float32 |
 | `*_03_flowdir.tif` | Kierunek przepływu (D8 encoding) | int16 |
 | `*_04_flowacc.tif` | Akumulacja przepływu (liczba komórek upstream) | int32 |
 | `*_05_slope.tif` | Spadek terenu [%] | float32 |
 | `*_06_streams.tif` | Maska strumieni (0/1) | uint8 |
+| `*_07_stream_order.tif` | Rząd Strahlera (1-8+, 0=nie-ciek) | uint8 |
+| `*_08_twi.tif` | TWI — Topographic Wetness Index | float32 |
+| `*_09_aspect.tif` | Aspekt — ekspozycja stoku (0-360°, N=0) | float32 |
 
 **Kodowanie D8 (flowdir):**
 
@@ -185,7 +266,7 @@ Opcja `--save-intermediates` generuje pliki do weryfikacji obliczeń w oprogramo
 DEM Processing Script
 ============================================================
 Input: ../data/nmt/N-33-131-D-a-3-2.asc
-Stream threshold: 100
+Stream threshold: 1000
 ============================================================
 Read DEM: 473x435 cells
 Origin: (383202.5, 509297.5)
@@ -198,7 +279,7 @@ Computing slope...
 Slope computed (range: 0.0% - 73.8%)
 Creating flow_network records...
 Created 196822 records
-Stream cells (acc >= 100): 5734
+Stream cells (acc >= 1000): 5734
 ============================================================
 Processing complete!
   Grid size: 435 x 473
@@ -218,7 +299,7 @@ Processing complete!
 
 ### `download_landcover.py` - Pobieranie danych o pokryciu terenu
 
-Pobiera dane o pokryciu terenu z BDOT10k (GUGiK) lub CORINE (Copernicus) używając Kartograf 0.3.0+.
+Pobiera dane o pokryciu terenu z BDOT10k (GUGiK) lub CORINE (Copernicus) używając Kartograf 0.4.1.
 
 **Użycie:**
 
@@ -251,6 +332,9 @@ cd backend
 | `--godlo` | Godło arkusza mapy | - |
 | `--provider`, `-p` | Źródło: bdot10k lub corine | bdot10k |
 | `--year` | Rok dla CORINE (1990-2018) | 2018 |
+| `--category`, `-c` | Kategoria BDOT10k do pobrania (np. PTLZ, SWRS) | (wszystkie) |
+| `--geometry` | Plik geometrii do filtrowania (GeoJSON/GPKG) | - |
+| `--with-hydro` | Pobierz też dane hydrograficzne (SWRS, SWKN, SWRM, PTWP) | false |
 | `--output`, `-o` | Katalog wyjściowy | `../data/landcover/` |
 
 **Format wyjściowy:** GeoPackage (.gpkg)

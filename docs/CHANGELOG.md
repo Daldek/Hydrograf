@@ -1,0 +1,770 @@
+# Changelog
+
+All notable changes to Hydrograf will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.4.0] — 2026-03-03
+
+### Style
+- 35 ruff lint errors fixed across 15 files (E501, I001, F841, F401, SIM105, UP024)
+
+### Added (sesja 55 — code review CR5/CR9/CR10)
+- **CR5 — Analiza land cover z GeoPackage BDOT10k:** `get_land_cover_stats()` zastępuje TODO stub rzeczywistą analizą. Nowe: `BDOT10K_CATEGORY_MAP`, `_extract_bdot_code()`, `_analyze_land_cover_gpkg()`. 18 nowych testów w `test_land_cover_stats.py`.
+
+### Fixed (sesja 55 — code review CR5/CR9/CR10)
+- **CR10 — Logging zamiast print_exc:** zamiana `traceback.print_exc()` na `logger.error(exc_info=True)` w `cn_calculator.py` i `analyze_watershed.py` (3 zamiany w 2 plikach)
+- **CR9 — Cascade threshold mismatch:** po eskalacji progu w `select_stream.py` i `watershed.py`, statystyki są teraz re-agregowane z tego samego progu co boundary. 4 nowe testy w `test_cascade_stats.py`
+
+### Added
+- Cache/data directory separation (`/cache/` for raw downloads, `/data/` for processed) (ADR-037)
+- `feat(core):` HSG Poland-wide cache (`hsg_poland.tif`) — jednorazowe pobranie, skip-existing, bbox-scoped DB import (ADR-038)
+- `feat(api):` nowy target cleanup `processed_data` (data/nmt/, data/hydro/) (ADR-038)
+- `--cache-dir` CLI argument in bootstrap pipeline
+- `cache_mb` metric in admin dashboard
+- Cache cleanup target in admin panel (explicit opt-in, not in "clean all")
+- `HYDRO_LAYER_PREFIXES` constant for filtering hydro layers at merge time
+
+### Changed
+- Upgraded Kartograf from v0.4.1 to v0.5.0
+- Removed `category` parameter from `download_landcover()` (v0.5.0 downloads all layers)
+- BDOT10k downloaded once in step_process_dem and reused in step_landcover (deduplication)
+- HSG raster downloaded to `/cache/soil_hsg/` instead of `/data/soil_hsg/`
+- Docker: added `/cache` volume mount (read-only in prod, writable in dev)
+
+### Security (sesja 52 — hardening kontenerow, ADR-036)
+- **Non-root user w Dockerfile:** kontener API dziala jako `hydro` (UID systemowy), nie root
+- **Security context:** `no-new-privileges`, `cap_drop: ALL`, `read_only` rootfs na wszystkich serwisach
+- **Usuniecie hardcoded credentials:** `${POSTGRES_PASSWORD:?error}` zamiast domyslnego hasla; config.py z pustym default
+- **Docker secrets:** `docker-compose.prod.yml` z obsluga plikowych sekretow (`/run/secrets/`)
+- **Nginx na localhost:** bind `127.0.0.1:8080` zamiast `0.0.0.0`
+- **Rate limiting admin:** osobna strefa `admin_limit` (5r/s) na `/api/admin/` endpoints
+- **Admin key redaction:** wygenerowany klucz API nie logowany w pelnej formie
+- **Opcjonalny TLS/HTTPS:** `docker/nginx-ssl.conf.template` z HTTP→HTTPS redirect, TLS 1.2+
+- **`.env.example` rozbudowany:** pelna dokumentacja zmiennych srodowiskowych
+- **Entrypoint ulepszony:** `pipefail`, tworzenie katalogów tymczasowych
+
+### Fixed
+- `fix(api):` dodano `*.geojson` do czyszczenia overlays (ADR-038)
+
+### Fixed (sesja 49 — 6 krytycznych bugow)
+- **CR7 — Race condition w singletonie CatchmentGraph:** `get_catchment_graph()` bez thread safety — dodano `threading.Lock` z double-check locking. Zapobiega tworzeniu duplikatow grafu przy jednoczesnych zadaniach startowych FastAPI.
+- **CR4 — O(n²) BFS w `traverse_to_confluence()`:** `list.pop(0)` zamieniony na `collections.deque.popleft()` — O(1) zamiast O(n) per dequeue. Przy ~44k wezlow eliminuje worst-case kwadratowe spowolnienie.
+- **CR6 — Bezposredni dostep do prywatnego `_segment_idx` w 3 endpointach:** nowa publiczna metoda `CatchmentGraph.get_segment_idx(internal_idx)`. Update `watershed.py`, `hydrograph.py`, `select_stream.py`.
+- **CR8 — Information disclosure w profilu terenu:** sciezka serwera (`/data/dem/dem.vrt`) usuwana z komunikatu bledu 503 — logowana tylko do logow serwera. Porownanie nodata: `math.isclose()` zamiast `==` (zawodne dla float). `nodata_count` odroznia realna elewacje 0.0 m n.p.m. od nodata.
+- **S5.3 — Hardcoded credentials:** `warn_if_default_credentials()` w `Settings` — WARNING gdy `postgres_password == "hydro_password"`. `migrations/env.py` — WARNING gdy `DATABASE_URL` nie ustawiony.
+- **Auth — Admin panel bez klucza = brak auth:** auto-generowanie klucza admin API (`uuid4`) gdy `ADMIN_API_KEY` nie skonfigurowany. Klucz logowany jako WARNING, stabilny w obrebie procesu. Panel admin zawsze wymaga uwierzytelnienia.
+
+### Changed
+- **Bbox input w panelu admin — 4 pola kompasowe + map picker:** Zamiana jednego pola tekstowego na 4 pola numeryczne (N/S/W/E) w ukladzie kompasu. Nowy modul `admin-bbox-picker.js` — interaktywny modal z mapa Leaflet do rysowania prostokata bbox (click+drag). Walidacja frontend (NaN, kolejnosc wspolrzednych, `is-invalid` highlighting). Leaflet 1.9.4 CDN dodany do `admin.html`.
+
+### Added
+- **Panel administracyjny `/admin` (ADR-034):** 4 sekcje: Dashboard, Bootstrap, Zasoby, Czyszczenie
+- 8 nowych endpointow API `/api/admin/*` (dashboard, resources, cleanup, bootstrap)
+- Uwierzytelnianie API key (header X-Admin-Key, env ADMIN_API_KEY)
+- Uruchamianie bootstrap.py z panelu + real-time logi SSE
+- Monitorowanie zasobow: CPU/RAM (psutil), pool DB, CatchmentGraph cache
+- Czyszczenie danych: tiles, overlays, dem_mosaic, TRUNCATE tabel
+- ~50 nowych testow jednostkowych
+- **Plikowy klucz API + localStorage:** obsluga `ADMIN_API_KEY_FILE` (wzorzec Docker secrets), file picker w UI logowania admina, persystencja klucza w `localStorage` miedzy sesjami
+- **`discover_asc_files()` w `raster_io.py`:** skanowanie katalogu NMT w poszukiwaniu wszystkich plikow ASC pasujacych do bbox (transformacja PUWG 2000 → EPSG:2180) — naprawa luk w mozaice VRT spowodowanych pomijaniem plikow z cache'u z poprzednich uruchomien
+- **83 nowe testy jednostkowe** dla nieobjętych modulow `scripts/` i `utils/` (`test(scripts)`)
+- **Grupy glebowe HSG w panelu i na mapie (E7):** warstwa HSG z legenda kolorowa (A/B/C/D) na mapie, dane z `soil_hsg`, automatyczne show/hide
+- **Eksport BDOT10k GeoJSON dla frontendu (E8):** skrypt eksportujacy dane BDOT10k do plikow GeoJSON uzywalnych przez frontend
+- **Automatyczna normalizacja CRS plikow NMT:** transformacja PUWG 2000 (strefowa) → EPSG:2180 dla plikow ASC z roznymi strefami odwzorowawczymi
+- **Domyslna rozdzielczosc NMT 5m + downsampling DEM:** `GugikProvider(resolution="5m")`, downsampling duzych rastrow zapobiegajacy OOM
+- **Wygładzanie granic zlewni (ADR-032):** `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3 iteracje)` w `merge_catchment_boundaries()` — eliminacja schodkowych krawędzi z rastra, gładkie krzywe zamiast ortogonalnych kroków 5m. Tolerancja simplify w preprocessingu: `cellsize` → `2*cellsize`.
+- **Warstwa tematyczna: pokrycie terenu (BDOT10k):** nowy endpoint MVT `/api/tiles/landcover/{z}/{x}/{y}.pbf` serwujacy dane `land_cover` (101k rekordow) jako Mapbox Vector Tiles. Warstwa dodana do panelu warstw z lazy-loadem, kolorowana wg kategorii (las, laka, grunt orny, zabudowa, droga, woda), z legenda i suwakiem przezroczystosci. Nowy pane `landcoverPane` (z-index 260) miedzy NMT a ciekami.
+- **Konfiguracja YAML pipeline (`config.yaml`):** nowe funkcje `load_config()`, `_deep_merge()`, `get_database_url_from_config()` w `core/config.py`. Szablon `backend/config.yaml.example` z sekcjami: database, dem (resolution, thresholds, burn_depth), paths, steps (on/off per krok), custom data sources. Flaga `--config` w `bootstrap.py`. Plik `config.yaml` w `.gitignore`. 14 testow jednostkowych.
+- **Piramida kafelkow DEM w bootstrap (Step 9):** `generate_dem_tiles` wlaczony do `step_overlays()` w `bootstrap.py`. Generuje kafelki XYZ (zoom 8-16) z hillshade do `frontend/data/dem_tiles/`. Frontend automatycznie uzywa kafelkow (fallback na `dem.png`). Cache: pomija generowanie jesli kafelki juz istnieja.
+- **Multi-directional hillshade:** `compute_hillshade()` w `utils/dem_color.py` uzywa 4 kierunkow oswietlenia (NW 40%, NE 20%, SE 20%, SW 20%) zamiast pojedynczego zrodla. Bardziej naturalna wizualizacja terenu, konwencja kartograficzna (NW dominujacy).
+- **Podniesienie budynkow w NMT (ADR-033):** Nowa funkcja `raise_buildings_in_dem()` w `core/hydrology.py` podnosi DEM o +5m pod obrysami budynkow z BDOT10k (warstwa BUBD) lub custom GPKG. Zapobiega nierealistycznym sciezkom przeplywu przez budynki. Nowy parametr `building_gpkg` w `process_dem()`. 4 nowe testy jednostkowe.
+
+### Docker
+- Dodano `.dockerignore` — mniejszy kontekst budowania
+- Multi-stage Dockerfile (builder + runtime) — obraz bez gcc/git w produkcji
+- `entrypoint.sh` z wait-for-db i automatycznymi migracjami Alembic
+- Healthcheck API w docker-compose.yml (+ nginx depends_on service_healthy)
+- `docker-compose.override.yml` z bind mount kodu i --reload (dev)
+- `docker-compose.prod.yml` — override produkcyjny (2 workery, LOG_LEVEL=WARNING)
+- Usunieto przestarzaly atrybut `version` z docker-compose.yml
+
+### Changed
+- **Domyslny max zoom dla DEM tiles:** zmiana z 18 na 16 w `generate_dem_tiles.py`. Przy 5m NMT zoom 16 daje ~2.4m/piksel (wystarczajacy), zoom 18 daje ~0.6m/piksel bez dodatkowego detalu, 16x wiecej dysku.
+- **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):** 3 tryby — `auto` (BDOT10k klasyfikacja, domyslnie), `none` (pomin), custom `.gpkg`/`.shp` (wszystkie endoreiczne). Nowa flaga `--waterbody-min-area` do filtrowania malych zbiornikow po powierzchni. Parametry propagowane przez bootstrap.py, prepare_area.py, process_dem.py do core/hydrology.py.
+- **Nginx: routing `/admin` + SSE proxy:** nowa lokalizacja nginx dla panelu admina, proxy SSE z `proxy_buffering off` i `X-Accel-Buffering no` dla streamu logow bootstrap
+- **CORS: `X-Admin-Key` w dozwolonych naglowkach:** dodanie naglowka uwierzytelniania admina do `allow_headers`
+
+### Removed
+- **stream_network threshold 100 m²** — usunieto ~2.5M segmentow (90% tabeli), domyslny prog FA: 100→1000, migracja 017 (ADR-030)
+
+### Fixed (sesja 48 — admin panel + bootstrap)
+- **Bootstrap subprocess: `sys.executable` zamiast hardcoded path:** `bootstrap_manager.py` uzywal `.venv/bin/python` co nie dzialalo w kontenerze Docker — zamiana na `sys.executable` (dziala w venv i Docker). Obsluga `FileNotFoundError`/`OSError` z `Popen` — reset stanu do `"failed"` zamiast zawieszenia na `"running"`.
+- **Admin panel: bypass auth gdy brak API key:** gdy `ADMIN_API_KEY` nie jest skonfigurowany, panel automatycznie uwierzytelnia z pustym kluczem zamiast blokowac formularzem logowania.
+- **Docker: API memory 512M → 4G + volume mounts:** bootstrap subprocess (pyflwdir na 54.5M komorek) wymaga ~2-3 GB RAM — zwiekszono limit z 512M do 4G. Naprawiono montowanie woluminow: `./data → /data` (rw), `frontend/{data,tiles}` jako zapisywalne. `DEM_PATH` zaktualizowany z `/data/dem/` na `/data/nmt/`.
+- **Code review — API:** lancuchowanie wyjatkow (`raise ... from e`), komentarze SQL, limit historii logow bootstrap, poprawa lintu
+- **Code review — frontend:** obrona przed XSS (`textContent` zamiast `innerHTML`), obsluga bledow SSE, poprawki a11y, wspolne utility
+
+### Fixed (CR3 — cursor leak)
+- **Cursor leak w `CatchmentGraph.load()`:** brak zamkniecia kursora DB przy bledzie — dodano `try/finally` z `cursor.close()`. Zapobiega wyciekowi polaczen DB.
+
+### Fixed (sesja 44 — bulk INSERT timeout)
+- **`override_statement_timeout` w bulk INSERT:** dodanie wrappera `override_statement_timeout(600s)` do `insert_stream_segments()` i `insert_catchments()` w `core/db_bulk.py` — domyslny `statement_timeout=30s` powodowal timeout przy insercie 2.5M segmentow stream_network. Fix umozliwia pelny bootstrap 10 arkuszy 5m NMT.
+
+### Added (sesja 44 — pelny bootstrap 5m NMT)
+- **Pelny bootstrap 10 arkuszy 5m NMT:** 18.9M komorek (4610×6059), mozaika VRT ze 100 plikow ASC, pyflwdir ~8 min. Wyniki: stream_network 2,780,056 segmentow (4 progi), stream_catchments 264,548, depressions 385,567, land_cover 101,237, precipitation 7,560, soil_hsg 121. Kafelki MVT (tippecanoe) + overlay PNG (DEM, streams). Calkowity czas pipeline: 2969s (~49 min).
+
+### Fixed (5 bugów UX — E1, E4, E12, E13, F2)
+- **E1 — dziury na granicach zlewni:** `merge_catchment_boundaries()` w `watershed_service.py` — usunięto `ST_SnapToGrid(geom, 0.01)` (przesuwało wierzchołki tworząc mikro-luki między sąsiednimi poligonami), zastąpione buffer-debuffer (0.1m/-0.1m) który zamyka luki ≤0.1m zachowując oryginalny rozmiar. `MIN_HOLE_AREA_M2`: 1000→100 m² (agresywniejsze usuwanie artefaktów merge, 10×10m zamiast ~32×32m).
+- **E4 — outlet poza granicą zlewni:** nowa funkcja `ensure_outlet_within_boundary()` w `watershed_service.py` — snap outleta do najbliższego punktu na granicy gdy wypada poza (tolerancja 1m, obsługa Polygon i MultiPolygon). Zastosowanie w `select_stream.py` i `watershed.py` po obliczeniu outlet przed dalszymi obliczeniami.
+- **E12 — legenda HSG:** `createHsgLegend()`/`removeHsgLegend()` w `map.js` — 4 pozycje (A=#4CAF50, B=#8BC34A, C=#FF9800, D=#F44336) z auto show/hide. Rozszerzenie `addBdotOverlayEntry()` w `layers.js` o callbacki `onShow`/`onHide`.
+- **E13 — nieciągłość HSG na terenach zurbanizowanych:** `distance_transform_edt` nearest-neighbor fill w `step_soil_hsg()` w `bootstrap.py` — wypełnia brakujące piksele (wartości spoza 1-4) wartością najbliższego sąsiada przed polygonizacją. Wymaga re-run pipeline.
+- **F2 — snap-to-stream sąsiednia zlewnia:** nowa funkcja `find_nearest_stream_segment_hybrid()` w `watershed_service.py` — priorytet: `ST_Contains` na `stream_catchments` (identyfikacja zlewni pod kursorem → ciek z niej), fallback: globalny `ST_Distance` snap (obecne zachowanie). Zastosowanie w `select_stream.py`.
+
+### Fixed (CR1 — krytyczny blad spadku cieku)
+- **`channel_slope_m_per_m` obliczany z dlugosci glownego cieku zamiast calej sieci:** Nowa metoda `CatchmentGraph.trace_main_channel()` traweruje upstream od outletu wg rzedu Strahlera (tie-break: max stream_length, max area). Naprawione 3 miejsca: `catchment_graph.py`, `watershed_service.py`, `select_stream.py`. Spadek byl zanizony 2-10x → czas koncentracji zawyZony → szczyt wezbrania zanizony. ADR-029.
+
+### Fixed (CR2 — O(n²) lookup segmentów)
+- **`compute_downstream_links()` O(n²) → O(n):** zamiana `segments.index(seg) + 1` na `enumerate(segments, start=1)` w `stream_extraction.py`. Dla ~40k segmentów eliminuje ~1.6 mld operacji porównania.
+
+### Fixed (3 bugi po teście E2E — sesja 37)
+- **Profil terenu wygładzony:** `tension: 0.2` → `tension: 0` w charts.js — wyłączenie interpolacji Béziera, ostre krawędzie między punktami próbkowania.
+- **Cieki MVT znikają przy oddaleniu:** tippecanoe `--drop-densest-as-needed` → `--coalesce-densest-as-needed` + `--simplification=10` (łączenie features zamiast usuwania). Nowa funkcja `extract_mbtiles_to_pbf()` ekstrahuje .mbtiles do statycznych `{z}/{x}/{y}.pbf` z dekompresją gzip. Frontend `getTileUrl()` obsługuje format `"pbf"` → Nginx serwuje statyczne pliki (~1ms).
+- **BDOT10k niepełne pokrycie:** `spacing_m` w `discover_teryts_for_bbox()` zmniejszony z 5000 na 2000m — gęstsza siatka sampling → lepsza detekcja małych/miejskich TERYT-ów. Logi podniesione z DEBUG na INFO.
+
+### Fixed (6 bugów UX — E5, E6, E9, E10, E11, F3)
+- **E5+E10 — Chart.js resize w ukrytych kontenerach:** wykresy renderowane w collapsed accordion lub d-none panelu miały wysokość 0px. Nowa funkcja `resizeChart()` w charts.js, accordion handler z 50ms setTimeout po rozwinięciu, profil terenu: usunięcie d-none PRZED renderowaniem, canvas profilu owinięty w `.chart-container`.
+- **E6 — liquid glass na panelu profilu:** `#profile-panel` używał opaque background zamiast liquid glass. Dodane tokeny CSS (`--liquid-bg`, `--liquid-blur`, `--liquid-border`, `--liquid-shadow`, `--liquid-highlight`) — spójność z panelami warstw i parametrów.
+- **E9 — usunięcie wpisu "Zlewnia" z panelu warstw:** ~101 linii usunięte z layers.js (zmienne `_notifyWatershedChanged`, `_watershedFirstDetection`, blok budowy wpisu, eksport), 3 wywołania `notifyWatershedChanged()` usunięte z app.js.
+- **E11 — dyskretna skala kolorów zagłębień:** zastąpienie jednolitego koloru (#4169E1) paletą YlOrRd (żółty→pomarańczowy→czerwony) z 5 progami wg `volume_m3` (<1, <10, <100, <1000, ≥1000 m³) w depressions.js.
+- **F3 — fallback progu 100→1000 w select-stream:** automatyczna eskalacja progu gdy `threshold < DEFAULT_THRESHOLD_M2` (ADR-026: brak catchments dla progu 100). Nowe pole `info_message` w `SelectStreamResponse`. Banner informacyjny `#panel-auto-select-info` w app.js.
+- **Chart.js CDN integrity hash:** nieprawidłowy hash SHA-384 blokował ładowanie Chart.js 4.4.7 — żadne wykresy nie działały (profil terenu, pokrycie terenu, hipsometria). Naprawiony hash w index.html.
+
+### Added
+- **`scripts/verify_cdn_hashes.sh`:** skrypt weryfikacji hashów SRI zasobów CDN w index.html. Parsuje HTML (perl), pobiera zasoby (curl), oblicza hash (openssl), porównuje z deklarowanym. Tryb `--fix` automatycznie naprawia. Exit code 1 przy niezgodności (CI-ready).
+- **Weryfikacja CDN w bootstrap.py (krok 1d):** automatyczna weryfikacja hashów SRI przy starcie pipeline — warning-only, nie blokuje.
+
+### Fixed
+- **`generate_tiles.py` — crash na pustych eksportach:** tippecanoe konczyl sie bledem "Did not read any valid geometries" gdy eksport GeoJSON mial 0 features (np. catchments dla progu 100 m²). Dodano guard `if n_features > 0` przed wywolaniem tippecanoe.
+- **`generate_tiles.py` + `bootstrap.py` — tippecanoe w `.venv/bin/`:** `shutil.which("tippecanoe")` nie znajduje binarki zainstalowanej przez pip w `.venv/bin/`. Oba skrypty szukaja teraz w `.venv/bin/` oprócz systemowego PATH.
+
+### Removed
+- Tabela `flow_network` — eliminacja 39.4M rekordow z bazy (ADR-028)
+- `core/flow_graph.py` — DEPRECATED modul (~360 linii)
+- Legacy CLI w `watershed.py` — 5 funkcji uzywajacych flow_network
+- 4 funkcje flow_network w `db_bulk.py` (~580 linii)
+- ~43 testow powiazanych z flow_network/flow_graph
+
+### Changed
+- Pipeline DEM pomija krok INSERT flow_network — oszczednosc ~17 min (58%)
+- Migracja 015: DROP TABLE flow_network
+- Testy: 581 → 538 (usuniete testy martwego kodu)
+- 4 skrypty CLI (`analyze_watershed`, `e2e_task9`, `export_pipeline_gpkg`, `export_task9_gpkg`) przepisane na stream_network
+
+### Added
+- **`lookup_by_segment_idx()` w CatchmentGraph:** O(1) lookup wezla grafu po (threshold_m2, segment_idx) — eliminuje potrzebe zapytania do bazy
+- **`verify_graph()` w CatchmentGraph:** diagnostyka spojnosci grafu przy starcie — per-threshold: liczba wezlow, outlety, unikalne segment_idx, opcjonalnie walidacja z baza
+- **`scripts/bootstrap.py` — jednokomendowy setup srodowiska:** nowy skrypt orkiestratora (~460 linii) wykonujacy 9 krokow pipeline'u od zera do dzialajacego systemu. Dwa tryby wejscia (`--bbox` / `--sheets`), 7 flag `--skip-*`, `--dry-run`, konfigurowalny `--port`. Kroki 1-3 krytyczne, 4-9 opcjonalne z graceful degradation. Reuzywane istniejace funkcje (download_dem, process_dem, generate_depressions, itp.).
+- **Stream burning w bootstrap.py:** krok 3 (przetwarzanie DEM) automatycznie pobiera hydro BDOT10k per-TERYT, scala pliki (`merge_hydro_gpkgs()`) i przekazuje `burn_streams_path` do `process_dem()`. Graceful degradation — jesli download/merge fail, pipeline kontynuuje bez burning.
+- **`merge_hydro_gpkgs()` w `download_landcover.py`:** scala wiele per-TERYT hydro GeoPackage w jeden multi-layer GeoPackage z zachowaniem struktury warstw (SWRS, SWKN, SWRM, PTWP).
+- **Auto-selekcja dużych zlewni w trybie "Wygeneruj":** gdy powierzchnia zlewni przekracza 10 000 m² (0.01 km²), endpoint automatycznie przełącza wyświetlanie na styl selekcji (pomarańczowa granica + podświetlone zlewnie cząstkowe MVT) z banerem informacyjnym. Nowa stała `DELINEATION_MAX_AREA_M2` w `constants.py`, 4 nowe pola w `DelineateResponse` (`auto_selected`, `upstream_segment_indices`, `display_threshold_m2`, `info_message`), kaskadowe progi merge (>500 segmentów), banner `#panel-auto-select-info` w HTML, obsługa w `app.js`. 3 nowe testy integracyjne (560 łącznie).
+
+### Zmieniono
+- **Port nginx w `docker-compose.yml`:** `"8080:80"` → `"${HYDROGRAF_PORT:-8080}:80"` — konfigurowalny port HTTP przez zmienna srodowiskowa
+
+### Zmieniono
+- **Selekcja zlewni (ADR-026):** bezpośredni lookup poligonu (`ST_Contains`) zamiast snap-to-stream — eliminuje błędne przypisanie kliknięcia do sąsiedniej zlewni
+- **`DEFAULT_THRESHOLD_M2`:** 100 → 1000 m² — najdrobniejszy próg zlewni cząstkowych
+- **Geometria poligonów:** tolerancja simplify z `cellsize/2` do `cellsize` (1m) — gładsze granice
+- **`stream_network`:** nowa kolumna `segment_idx` (migracja 014) — spójny lookup z `stream_catchments`
+- **Kafelki MVT:** usunięcie jawnej simplifikacji (`ST_SimplifyPreserveTopology`) — `ST_AsMVTGeom` kwantyzuje geometrię do siatki 4096×4096 kafla, co eliminuje niespójne przebiegi cieków między zoomami i przyspiesza generowanie kafli 2.5× (355→139ms)
+
+### Naprawiono
+- **Bledna selekcja zlewni (ADR-027):** tryb "Wybierz zlewnię" wybieralbledna zlewnię przy kliknieciu blisko konfluencji lub granicy zlewni czastkowej. Dwie przyczyny: (1) `ST_Contains` na poligonach `stream_catchments` moze trafic w sasiednia zlewnie zamiast tej zawierajacej widoczny ciek, (2) `find_nearest_stream_segment()` uzywala `id` (auto-increment PK) zamiast `segment_idx` (1-based per threshold). Naprawa: snap-to-stream (`ST_Distance` na `stream_network`) → O(1) lookup w grafie → BFS upstream, z ST_Contains jako fallback.
+- **Różne przebiegi cieków między zoomami:** `ST_SimplifyPreserveTopology` z tolerancjami per-zoom (1-10m) tworzył dyskretne skoki w kształcie geometrii — 78% segmentów stawało się prostymi liniami przy tolerancji 10m. Usunięcie jawnej simplifikacji na rzecz wbudowanej kwantyzacji `ST_AsMVTGeom` eliminuje problem i przyspiesza rendering
+
+### Usunięto
+- **`find_stream_catchment_at_point()` z `watershed_service.py`** — martwy kod, nigdzie nie uzywany
+- **Próg 100 m² ze zlewni cząstkowych** — pipeline pomija generowanie catchmentów dla tego progu (cieki zostają)
+- **ADR-024 (fine-threshold BFS)** i **ADR-025 (warunkowy próg)** — zastąpione przez ADR-026
+- **`display_threshold_m2`** z `SelectStreamRequest` — jeden próg dla BFS i display
+- **`find_nearest_stream_segment()`** z flow selekcji — zastąpione przez `cg.find_catchment_at_point()`
+
+### Sesja 27 — diagnostyka zielonych zlewni (DO WERYFIKACJI)
+
+#### Added (diagnostyka zielonych zlewni — DO WERYFIKACJI)
+- **`display_threshold_m2` w `SelectStreamResponse`:** nowe pole informujace frontend na jakim progu sa `upstream_segment_indices` — umozliwia walidacje zgodnosci z aktualnie wyswietlanymi kafelkami MVT
+- **Walidacja progu w highlight function:** `highlightUpstreamCatchments(indices, forThreshold)` sprawdza czy prog indeksow == prog kafelkow MVT; jesli mismatch → fallback do domyslnych kolorow zamiast blednego podswietlania losowych zlewni
+- **Tooltip diagnostyczny:** najechanie na zlewnie czastkowa pokazuje `segment_idx` oraz status `IN SET / not in set` (gdy aktywny highlight) — umozliwia ustalenie czy zielona zlewnia jest w zbiorze BFS czy to bug renderowania
+- **Mismatch warning w konsoli:** `[select-stream] THRESHOLD MISMATCH!` logowany gdy `display_threshold_m2` z API ≠ `getCatchmentsThreshold()` z MVT
+
+#### Fixed (F2 — warunkowy próg selekcji, ADR-025)
+- **Snap-to-stream przy wyświetlanym progu:** `select_stream.py` wykonuje snap-to-stream i BFS na progu wyswietlanym na mapie (1000, 10000, 100000), a fine-BFS (ADR-024) aktywny tylko przy progu 100 m². Eliminuje snap do niewidocznych doplywow przy grubszych progach.
+
+#### Fixed (F1 — precyzyjna selekcja cieku, ADR-024)
+- **Segmentacja konfluencyjna (preprocessing):** segmenty ciekow lamia sie teraz przy kazdej konfluencji (polaczeniu dwoch lub wiecej doplywow), nie tylko przy zmianie rzedu Strahlera. Zmiana 1 warunku w `vectorize_streams()` — `upstream_count[nr, nc] > 1`. Wynik: 78829 → 105492 segmentow na progu 100 m² (+34%).
+- **Fine-threshold BFS (query):** `select_stream.py` wykonuje BFS na progu 100 m² (najdrobniejszym) zamiast progu wyswietlania. Nowa funkcja `find_stream_catchment_at_point()` (snap-to-stream → ST_Contains) eliminuje "hillslope problem". Granica budowana z fine segments, mapowana na display threshold dla MVT via `map_boundary_to_display_segments()`.
+- **Kaskadowe progi merge:** dla duzych zlewni (>500 fine segments) kaskadowe przechodzenie do grubszych progow (1000→10000→100000) — zapobiega timeout ST_UnaryUnion (30s DB limit).
+- **Optymalizacja ST_Union:** zamiana `ST_Union` na `ST_UnaryUnion(ST_Collect(ST_SnapToGrid(geom, 0.01)))` — szybszy cascaded union + eliminacja mikro-luk (1cm w EPSG:2180).
+
+#### Added
+- **Tryb "Przegladanie":** nowy domyslny tryb klikniecia — klikanie na mapie nic nie robi, bezpieczne przegladanie bez obciazania serwera. Kursor `grab` zamiast crosshair.
+
+#### Changed
+- **Panel wynikow dokowany z prawej:** `#results-panel` przeniesiony wewnatrz `#map-wrapper` z `position: absolute; right: 0` (bylo: `position: fixed; right: 16px`). Slide in/out z CSS transition (`translateX`). Przycisk toggle (chevron) przy krawedzi panelu — zachowanie identyczne jak panel "Warstwy" (lewa strona). Kontrolki zoom Leaflet przesuwaja sie automatycznie gdy panel jest otwarty (`#map-wrapper.results-visible`).
+- **Panel wynikow na pelna wysokosc:** `#results-panel` rozciaga sie od gory do dolu okna (`top: 0; bottom: 0`), zaokraglone rogi tylko po lewej stronie
+- **Liquid glass:** panele "Warstwy" i "Parametry zlewni" + toggle buttons + legendy uzywaja nowego stylu liquid glass (`--liquid-bg: rgba(255,255,255,0.22)`, blur 20px, specular highlight). Kolory czcionek zmienione na czarne dla lepszej czytelnosci.
+- **Akordeony domyslnie zwiniete:** wszystkie sekcje w panelu wynikow poza "Parametry podstawowe" sa domyslnie zwiniete
+- **Punkt ujsciowy w parametrach podstawowych:** dane z "Punkt ujsciowy" (φ, λ, H) przeniesione do tabeli "Parametry podstawowe", usuniety osobny akordeon
+- **Tryby klikniecia:** zmieniono nazwy ("Wygeneruj zlewnię", "Wybierz zlewnię", "Profil terenu") i kolejnosc (Przegladanie → Wybierz → Wygeneruj → Profil)
+- **Warstwy domyslnie wysunięte:** panel "Warstwy" jest widoczny od startu
+- **Czarne czcionki wykresow:** osie i etykiety Chart.js (krzywa hipsometryczna, histogram, donut) uzywaja `color: '#000'` i `grid: rgba(0,0,0,0.1)`
+- **Ikony chevron zamiast hamburger/minus:** layers toggle `☰` → `›`/`‹`, usuniety przycisk minimize `−` z naglowka panelu wynikow, usuniety `#results-restore` button
+- **Escape: pojedynczy = zwin, podwojny = zamknij:** single Escape zwija panel (slide out, overlay na mapie zostaje); double Escape (w ciagu 400ms) zamyka calkowicie jak `×` (czysc overlay + marker)
+- **Usuniety draggable na panelu wynikow:** panel jest teraz dokowany, nie przesuwalny (profil terenu nadal draggable)
+- **Krzywa hipsometryczna:** sekcja "Rzezba terenu" zmieniona z histogramu slupkowego na krzywa hipsometryczna (scatter + line); os Y: wysokosc [m n.p.m.], os X: % powierzchni powyzej (0–100, co 20)
+
+#### Fixed
+- **Przelaczanie trybow nie czysci warstw:** zmiana trybu klikniecia nie usowa juz wynikow z mapy (zlewnie czastkowe, granice zlewni, profil); czyszczenie nastepuje dopiero przy nowym kliknieciu
+- **Anulowanie rysowania profilu:** przy przelaczeniu z "Profil terenu" na inny tryb aktywne rysowanie jest anulowane (`cancelDrawing()`)
+
+### Fixed (4 bugfixes — G1-G4, panel warstw i dane)
+- **G1 — histogram za maly:** wysokosc `.chart-container` zwiekszona z 160px do 240px
+- **G2 — brak pokrycia terenu:** naprawiono parsowanie nazw warstw GeoPackage (OT_PTLZ_A → PTLZ); zaimportowano 38560 rekordow BDOT10k (12 warstw, 7 kategorii) do tabeli `land_cover`
+- **G3 — kolejnosc panelu warstw:** "Podklady kartograficzne" przeniesione na dol panelu (nowa kolejnosc: Warstwy podkladowe → Wyniki analiz → Podklady kartograficzne)
+- **G4a — zaglbienia:** przeniesione do grupy "Warstwy podkladowe" (nowy kontener `#overlay-group-entries`)
+- **G4b — checkbox zlewni:** auto-check tylko przy pierwszym wykryciu; odznaczenie recznie jest respektowane przy kolejnych wyznaczeniach; reset po usunieciu warstwy
+
+### Fixed (4 bugfixes — D1-D4, profil terenu)
+- **D1 — profil nie wyswietla wynikow:** `showProfileError()` przyjmuje `canvasId` zamiast hardkodowanego `#chart-profile`; w `activateDrawProfile().catch()` panel `#profile-panel` jest pokazywany przed renderowaniem bledu
+- **D2 — duplikaty wierzcholkow dblclick:** guard w `addDrawVertex()` ignoruje duplikaty z sekwencji click+click+dblclick; `finishDrawing()` zmienia styl linii z dashed blue na solid
+- **D3 — linia pozostaje po Escape:** `cancelDrawing()` czysci `profileLine`; `onMapClick()` w trybie profile re-aktywuje rysowanie gdy nie trwa (user moze kliknac mape po Escape)
+- **D4 — akordeon acc-profile usuniety:** akordeon `#acc-profile` usuniety z `#results-panel`; przycisk "Ciek glowny" usuniety (tymczasowo — auto-profil do wdrozenia pozniej)
+
+### Added (profil terenu — interaktywnosc)
+- **Hover na profilu terenu:** przesuwanie myszy nad wykresem pokazuje czerwony marker na narysowanej linii (interpolacja wzdluz wierzcholkow) + pionowa linia crosshair na wykresie
+- **DEM volume mount:** `docker-compose.yml` montuje `data/e2e_test` jako `/data/dem` — profil terenu dziala w kontenerze
+
+### Changed (profil terenu — osobny panel)
+- **`#profile-panel` (nowy floating panel):** niezalezny od "Parametrow zlewni", pozycja left-bottom, draggable, close button
+- **`profile.js` refaktor:** `activateDrawProfile()` renderuje w `#chart-profile-standalone` zamiast przejmowac `#results-panel`; nowa funkcja `hideProfilePanel()`
+- **`map.js` — cofanie wierzcholkow:** `undoLastVertex()` + Backspace handler w trybie rysowania
+- **Chart.js fix:** canvasy wykresow owiniete w `.chart-container` (height: 160px) — zapobiega rozciaganiu przez `maintainAspectRatio: false`
+- **`app.js`:** init close/draggable na `#profile-panel`, czyszczenie profilu przy zmianie trybu
+
+### Fixed (10 bugfixes — A1-A5, B1-B4, C1)
+- **A1 — odznaczanie zlewni:** przycisk "×" w panelu wyników teraz czyści warstwę zlewni z mapy (`clearWatershed`, `clearSelectionBoundary`, `clearCatchmentHighlights`, `clearProfileLine`)
+- **A2 — min_area zagłębień:** domyślny filtr min_area zmieniony z 0 na 100 m² (API + frontend)
+- **A3 — próg FA:** domyślny próg flow accumulation zmieniony z 10000 na 100000 m² (tiles.py + app.js + layers.js)
+- **A4 — histogram height:** wysokość canvas histogramu wysokości zmieniona z 20px na 140px
+- **A5 — BDOT opacity:** zbiorniki wodne BDOT10k ukrywane całkowicie przy opacity=0 (weight + fillOpacity + opacity)
+- **B1 — profil DEM error:** zamiana alert() na inline Bootstrap alert-warning gdy DEM niedostępny (503) lub inny błąd
+- **B3 — hydrogram ukryty:** sekcja hydrogramu ukryta z badge "w przygotowaniu" (d-none + tekst nagłówka)
+- **C1 — usunięcie cell_count:** pole `cell_count` usunięte z WatershedResponse, 3 endpointów, frontendu i dokumentacji
+
+### Added (nowe funkcje — B2, B4)
+- **B2 — tryb "Profil":** nowy przycisk w toolbar pozwalający rysować profil terenu niezależnie od zlewni
+- **B4 — traverse_to_confluence:** nowa metoda w CatchmentGraph — BFS upstream z zatrzymaniem na konfluencji, parametr `to_confluence` w select-stream
+
+### Removed
+- Pole `cell_count` z `WatershedResponse` i powiązane wyświetlanie w UI (wartość zawsze wynosiła 0 po migracji z FlowGraph)
+
+### Changed (eliminacja FlowGraph z runtime — ADR-022)
+- **`core/watershed_service.py` (nowy modul):** ~400 linii reużywalnych funkcji wyekstrahowanych z `select_stream.py` — `find_nearest_stream_segment()`, `merge_catchment_boundaries()`, `get_segment_outlet()`, `compute_watershed_length()`, `get_main_stream_geojson()`, `get_main_stream_coords_2180()`, `build_morph_dict_from_graph()`
+- **`watershed.py` endpoint rewrite:** FlowGraph BFS (19.7M) → CatchmentGraph BFS (87k) + `watershed_service` — boundary z ST_Union, main_stream_geojson naprawiony (było broken/None)
+- **`hydrograph.py` endpoint rewrite:** j.w., morph_dict z `build_morph_dict_from_graph(cn=cn)` → `WatershedParameters.from_dict()`
+- **`select_stream.py` refactor:** 6 lokalnych funkcji (~155 LOC) zastąpionych importami z `watershed_service`, `_get_outlet_elevation()` → `stats["elevation_min_m"]` z CatchmentGraph
+- **`profile.py` rewrite:** SQL LATERAL JOIN na 19.67M wierszach `flow_network` → bezpośredni odczyt z pliku DEM przez rasterio + pyproj transformer
+- **`api/main.py`:** usunięte ładowanie FlowGraph z lifespan (~1 GB RAM, ~90s startup)
+- **`core/flow_graph.py`:** oznaczony jako DEPRECATED — zachowany dla skryptów CLI
+- **`core/watershed.py`:** legacy functions (find_nearest_stream, traverse_upstream) zachowane dla CLI
+- **`docker-compose.yml`:** API memory limit 3G → 512M, nowa zmienna `DEM_PATH`
+- **`core/config.py`:** nowe pole `dem_path` w Settings
+- **`core/constants.py`:** nowa stała `DEFAULT_THRESHOLD_M2 = 100`
+- **29 nowych testów:** 25 unit (test_watershed_service.py) + 4 integracyjne; łącznie 548 testów
+
+### Documentation (audyt dokumentacji)
+- **9 plikow .md zaktualizowanych:** ARCHITECTURE, CLAUDE, DATA_MODEL, SCOPE, QA_REPORT, TECHNICAL_DEBT, COMPUTATION_PIPELINE, README, PROGRESS
+- **ARCHITECTURE.md v1.4:** `parameters.py`→`morphometry.py`, sygnatury, +catchment_graph.py/constants.py, +2 endpointy
+- **COMPUTATION_PIPELINE.md:** +faza CatchmentGraph (ADR-021), fix LOC (~2800→~700 orchestrator)
+- **QA_REPORT.md:** nota deprecation (175→519 testow, CORS fixed, CI/CD)
+- **README.md:** CP3→CP4, tabela endpointow rozszerzona z 4 do 10
+
+### Deployment
+- Migracja 013 zastosowana na bazie produkcyjnej
+- Obraz API przebudowany z commitami: LATERAL JOIN, cache, logging, constants
+
+### Performance (audyt QA — wydajnosc)
+- **Profile LATERAL JOIN:** zamiana N+1 correlated subquery na `CROSS JOIN LATERAL` w `profile.py` — lepszy plan KNN na 19.7M wierszy (~50-100ms oszczednosci/req)
+- **Cache-Control headers:** `public, max-age=3600` na endpointach watershed, profile, select-stream, depressions — 0ms na powtorne zapytania
+- **TTL cache traverse_upstream:** `cachetools.TTLCache(128, 3600s)` w FlowGraph — workflow delineate→hydrograph reuzytkowuje BFS (~100-400ms oszczednosci)
+- **Partial GiST index (migracja 013):** `idx_flow_network_stream_geom WHERE is_stream=TRUE` — KNN na ~87k stream cells zamiast 19.7M
+- **PostgreSQL tuning:** `effective_cache_size=1536MB`, `random_page_cost=1.1` (SSD), `jit=off` (szybsze proste zapytania KNN)
+- **Land cover merge:** `hydrograph.py` uzywa `get_land_cover_for_boundary()` zamiast osobnego `calculate_weighted_cn()` — eliminacja duplikatu spatial intersection
+- **Client-side cache:** `api.js` — Map cache (50 wpisow, TTL 5min) dla delineateWatershed, selectStream, getTerrainProfile — instant response na powtorne klikniecie
+- **JS defer + preconnect:** `defer` na 13 script tagow, `preconnect` do CDN — szybsze First Contentful Paint
+- **DEM fetch cache:** `force-cache` na metadata fetch w `map.js`
+
+### Added (devops + code quality)
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): lint (ruff), test (pytest z PostGIS service container), security audit (pip-audit)
+- **Pre-commit hooks** (`.pre-commit-config.yaml`): ruff check+format, trailing whitespace, YAML lint, large file guard
+- **Structured logging** (`structlog`): JSON w produkcji, console w DEBUG; middleware `request_id` (X-Request-ID) per-request traceability
+- **`core/constants.py`:** scentralizowane stale — `CRS_PL1992`, `CRS_WGS84`, `M_PER_KM`, `M2_PER_KM2`, `DEFAULT_CN`, `HYDROGRAPH_AREA_LIMIT_KM2`, `MAX_WATERSHED_CELLS`
+
+### Changed (refactor)
+- **Dedup shape indices:** usunieto `_compute_shape_indices()` z `select_stream.py`, import kanoniczny `calculate_shape_indices()` z `core/morphometry.py` (-30 LOC)
+- **SessionLocal.configure():** przeniesiony z per-request `get_db()`/`get_db_session()` do jednorazowego `get_db_engine()`
+- **Migracja 013:** partial GiST index na `flow_network WHERE is_stream = TRUE`
+
+### Fixed
+- **19 ruff warnings:** E501 (line too long), B905 (zip strict=), SIM108 (ternary operator)
+- **ruff format:** 19 plikow przeformatowanych
+
+### Dependencies
+- `cachetools>=5.3.0` — TTL cache dla FlowGraph
+- `structlog>=24.1.0` — structured logging
+
+### Added (graf zlewni czastkowych — ADR-021)
+- **`core/catchment_graph.py`** (nowy modul): in-memory graf zlewni czastkowych (~87k wezlow, ~8 MB) z numpy arrays + scipy sparse CSR matrix. Metody: `load()`, `find_catchment_at_point()`, `traverse_upstream()`, `aggregate_stats()`, `aggregate_hypsometric()`. Zaladowany przy starcie API obok FlowGraph.
+- **Migracja 012:** 6 nowych kolumn w `stream_catchments`: `downstream_segment_idx`, `elevation_min_m`, `elevation_max_m`, `perimeter_km`, `stream_length_km`, `elev_histogram` (JSONB). Indeks `idx_catchments_downstream`.
+- **`compute_downstream_links()`** w `stream_extraction.py`: wyznaczanie grafu connectivity — follow fdir 1 komorke z outlet kazdego segmentu → downstream segment label
+- **`zonal_min()`** i **`zonal_elevation_histogram()`** w `zonal_stats.py`: nowe funkcje statystyk strefowych — min elewacji per label, histogram wysokosci z fixed interval 1m
+- **Pre-computed stats** w pipeline: elevation min/max, perimeter_km, stream_length_km, elev_histogram obliczane w `polygonize_subcatchments()` i zapisywane przez `insert_catchments()`
+- **19 testow jednostkowych** `test_catchment_graph.py`: BFS traversal, aggregate stats, hypsometric curve, find_catchment_at_point
+- **7 testow** `test_zonal_stats.py`: zonal_min (3) + zonal_elevation_histogram (4)
+
+### Changed (graf zlewni czastkowych)
+- **`select_stream.py` — calkowity rewrite:** graf zlewni zamiast rastra. Flow: ST_Contains → BFS graph → aggregate numpy → ST_Union boundary → derived indices. Usunieto zaleznosc od FlowGraph i operacji rastrowych.
+- **`api/main.py`:** ladowanie CatchmentGraph w lifespan obok FlowGraph
+- **`db_bulk.py insert_catchments()`:** rozszerzony o 6 nowych kolumn + JSONB histogram
+- **`stream_extraction.py vectorize_streams()`:** dodany `_outlet_rc` (outlet cell per segment)
+- **`stream_extraction.py polygonize_subcatchments()`:** rozszerzony o elevation min/max, perimeter, stream_length, histogram, downstream_segment_idx
+- **`test_select_stream.py`:** przepisany z CatchmentGraph mocks (8 testow)
+
+### Fixed (audyt frontend — 5 bugow)
+- **Memory leak wykresow hydrogramu:** `hydrograph.js` tworzyl `new Chart()` bez zapisywania instancji — dodano lokalny rejestr `_charts` z `destroy()` przed ponownym tworzeniem
+- **Memory leak tooltipow:** `map.js` — tooltip ciekow/zlewni czastkowych tworzony ponownie bez usuwania starego; dodano `removeLayer()` przed kazdym `mouseover`
+- **Broken depressions filters:** `depressions.js` — `document.getElementById('dep-vol-min')` zwracalo null (brak elementow w HTML); dodano null-guard z early return
+- **Dead code:** `profile.js` — usunieto 3 nieuzywane zmienne (`drawingVertices`, `drawingMarkers`, `drawingPolyline`) i ich martwe przypisania
+- **Polling CPU waste:** `layers.js` — `setInterval(fn, 500)` sprawdzajacy warste zlewni; zamieniono na event-driven `notifyWatershedChanged()` wywolywany z `app.js`
+
+### Added (audyt frontend — UX + security + a11y)
+- **Loading cursor:** kursor `wait` na mapie podczas wywolan API (nowa funkcja `setLoadingCursor` w `map.js`)
+- **Banner instrukcji rysowania:** „Klik = wierzcholek, Podwojny klik = zakoncz, Esc = anuluj" wyswietlany na dole mapy w trybie rysowania profilu
+- **Feedback bledow profilu:** `alert()` zamiast cichego `console.warn` przy bledach profilu terenu
+- **Guard hydrogramu:** sprawdzenie `hydrograph_available` przed wywolaniem API generowania hydrogramu
+- **CDN integrity hashes:** dodano `integrity="sha384-..."` do Chart.js 4.4.7 i Leaflet.VectorGrid 1.3.0
+- **VectorGrid plugin guard:** `if (!L.vectorGrid)` w `loadStreamsVector()` i `loadCatchmentsVector()`
+- **CSP wzmocniony:** `base-uri 'self'; form-action 'self'` + naglowek `Strict-Transport-Security` (HSTS)
+- **ARIA attributes:** `aria-live` na status, `aria-expanded` na layers toggle, `role="radiogroup"` + `aria-checked` na mode buttons, `role="img"` + `aria-label` na 5 canvasach chartow
+- **Keyboard a11y:** `tabindex="0"` + Enter/Space na akordeonach, `focus-visible` na mode buttons i layer items
+
+### Changed (audyt frontend)
+- **Accordion max-height:** 800px → 2000px w `glass.css` (zapobiega obcinaniu duzych sekcji)
+- **Usunieto dead CSS:** sekcja `.dual-slider` (~55 linii) z `style.css` — nieuzywana przez zaden element HTML
+
+### Fixed (4 krytyczne bledy post-e2e)
+- **Stream burning — zla warstwa BDOT10k (KRYTYCZNY):** `burn_streams_into_dem()` czytal domyslna warstwe GeoPackage (OT_PTWP_A — jeziora poligonowe) zamiast warstw liniowych ciekow. Naprawiono: wykrywanie multi-layer GPKG via `fiona.listlayers()`, ladowanie warstw SWRS/SWKN/SWRM (liniowe) + PTWP (poligonowe), `pd.concat`. Wynik: 4 warstwy, 10726 features, 1.07M cells burned, max_acc +156% (8.85M vs 3.45M).
+- **select-stream 500:** zapytanie SQL odwolywal sie do nieistniejącej kolumny `segment_idx` w tabeli `stream_network` — naprawiono na `id`
+- **Wydajnosc MVT:** GZip middleware (FastAPI `GZipMiddleware`), czesciowe indeksy GIST per threshold (migracja 011), cache TTL 1 dzien, `minZoom: 12` dla catchments, nginx gzip dla protobuf. Kompresja: streams 41%, catchments 64%.
+- **UI diagnostyka:** `console.warn` zamiast cichego `catch(() => null)` w BDOT loaderach, CSP `img-src` += `mapy.geoportal.gov.pl` (GUGiK WMTS)
+
+### Added (e2e pipeline re-run)
+- **Migracja 011:** czesciowe indeksy GIST na `stream_network` i `stream_catchments` per threshold (100, 1000, 10000, 100000 m²)
+- **Nowy test** `test_multilayer_gpkg_loads_all_layers` — weryfikacja multi-layer GeoPackage w stream burning
+- **Re-run pipeline:** 602,092 zaglebie (vs 581,553), GeoPackage 9 warstw / 777,455 features, DEM tiles 267 / 15.5 MB, BDOT GeoJSON (3529 jezior, 7197 ciekow)
+
+### Added (select-stream stats + UI fixes)
+- **Pelne statystyki zlewni w trybie "Wybor"**: endpoint `select-stream` zwraca `WatershedResponse` z morfometria, pokryciem terenu, krzywa hipsometryczna, ciekiem glownym
+- **Podklady GUGiK WMTS**: ortofotomapa (HighResolution) i mapa topograficzna w panelu warstw
+- **8 testow integracyjnych** `test_select_stream.py`: sukces, watershed w odpowiedzi, morfometria, 404, 422
+
+### Changed (select-stream + UI)
+- **Siec rzeczna BDOT10k**: `get_stream_stats_in_watershed()` uzywa `source != 'DEM_DERIVED'` z `ST_Intersection` dla dokladnych dlugosci w granicach zlewni
+- **Histogram**: 10-25 klas (5m/klase), krotsza etykiety osi X (`Math.round(hLow)`), wysokosc 100px, rotacja 45-90 stopni
+- **Akordeony**: inline `onclick` zastapione event listenerami w `app.js init()`
+
+### Fixed (UI)
+- **Przyciski zamkniecia/minimalizacji panelu**: `draggable.js` nie przechwytuje klikniec w `.results-btn` (early return w `onPointerDown`)
+- **Suwaki przezroczystosci**: `overflow-x: hidden`, `padding-left: 0.8rem`, `flex-wrap: wrap`, `box-sizing: border-box` w panelu warstw
+- **Frontend select mode**: pelne statystyki zlewni (zamiast tylko StreamInfo) wyswietlane po kliknieciu cieku
+
+### Added (DEM tile pyramid + kolejnosc warstw)
+- **`scripts/generate_dem_tiles.py`**: generacja piramidy kafelkow XYZ z rastra DEM — koloryzacja hipsometryczna + hillshade → RGBA GeoTIFF → `gdal2tiles.py --xyz` (zoom 8–18, nearest-neighbor, `--processes=4`)
+- **`utils/dem_color.py`**: wspolny modul kolorow DEM — `COLOR_STOPS`, `build_colormap()`, `compute_hillshade()` wyekstrahowane z `generate_dem_overlay.py`
+- **Custom panes** w `map.js`: kolejnosc warstw z-index — demPane (250) → catchmentsPane (300) → streamsPane (350); NMT zawsze pod zlewniami i ciekami
+- **`L.tileLayer` z fallback**: DEM ladowany jako kafelki XYZ (`/data/dem_tiles/{z}/{x}/{y}.png`) z progresywnym ładowaniem; fallback na `L.imageOverlay` gdy `dem_tiles.json` brak
+
+### Changed (DEM tile pyramid)
+- **`generate_dem_overlay.py`**: refaktor — import `COLOR_STOPS`, `build_colormap`, `compute_hillshade` z `utils.dem_color` zamiast lokalnych definicji
+- **`map.js` MVT layers**: `pane: 'streamsPane'` dla ciekow, `pane: 'catchmentsPane'` dla zlewni czastkowych — gwarancja poprawnej kolejnosci renderowania
+
+### Added (frontend redesign — 7 poprawek UX)
+- **Tryb wyboru obiektow**: toolbar "Zlewnia/Wybor" na gorze mapy, przelaczanie miedzy wyznaczaniem zlewni a selekcja ciekow
+- **Endpoint `POST /api/select-stream`**: selekcja segmentu cieku + traversal upstream + granica zlewni + upstream segment indices
+- **Podswietlanie zlewni czastkowych**: po kliknieciu cieku w trybie "Wybor" — upstream catchments podswietlone na zielono, reszta wygaszona
+- **Histogram wysokosci**: `renderElevationHistogram()` w charts.js — wykres slupkowy pasm wysokosciowych zamiast krzywej hipsometrycznej
+- **Kolorowanie ciekow po flow accumulation**: gradient log10 od jasnego (male zlewnie) do ciemnego (duze) zamiast dyskretnych kolorow Strahlera
+- **Debounce klikniec**: 300ms debounce na onMapClick — zapobiega podwojnym wywolaniom API
+
+### Added (frontend — legendy + UX)
+- **Legendy warstw**: cieki (gradient flow acc) i zlewnie czastkowe (paleta Strahler) — automatyczne wyswietlanie/ukrywanie przy przelaczaniu warstw
+- **Zoom do danych na starcie**: mapa automatycznie przybliża się do zasiegu NMT po zaladowaniu metadanych
+- **Warstwa "Zlewnia" reaktywna**: wpis w panelu warstw automatycznie aktywuje sie po wyznaczeniu zlewni (checkbox + suwak przezroczystosci + zoom)
+
+### Fixed (frontend + backend)
+- **Zoom controls**: przeniesione z topleft (kolidowal z layers panel) do topright
+- **Przezroczystosc zlewni czastkowych**: naprawiony fillOpacity (1.0 initial zamiast 0.3, bez mnoznika ×0.5 w setCatchmentsOpacity)
+- **Rate limiting 429**: oddzielna strefa nginx `tile_limit` (30r/s) dla `/api/tiles/` — nie interferuje z `api_limit` (10r/s) dla reszty API
+- **Flicker przezroczystosci**: suwak opacity dla ciekow i zlewni uzywa CSS container opacity zamiast redraw() — brak migotania
+- **Blad serwera select-stream**: dodano obsluge ValueError (zlewnia za duza/za mala) + uzycie snapped outlet coords zamiast oryginalnego klikniecia
+
+### Added (endorheic lake drain points — ADR-020)
+- **`classify_endorheic_lakes()`** w `core/hydrology.py`: klasyfikacja zbiornikow wodnych z BDOT10k (OT_PTWP_A) jako bezodplywowe/przeplywowe na podstawie topologii ciekow i elewacji DEM
+- **Klastrowanie zbiornikow:** bufor 20m + `unary_union` — stykajace sie jeziora i mokradla tworza klaster; odpływ w dowolnym elemencie klastra → caly klaster przepływowy
+- **`_sample_dem_at_point()`**: probkowanie DEM z fallback na najblizszego sasiada gdy komorka jest NoData
+- **Wstrzykniecie drain points** w `process_hydrology_pyflwdir()`: nowy parametr `drain_points`, NoData po fill_holes / przed pyflwdir
+- **Krok 2b w `process_dem.py`**: automatyczna klasyfikacja jezior gdy `--burn-streams` wskazuje GPKG z OT_PTWP_A
+- **20 testow** w `test_lake_drain.py`: klasyfikacja, probkowanie DEM, klastrowanie, drain point injection, integracja pipeline
+
+### Changed
+- **`burn_streams_into_dem()`**: domyslna glebokosc wypalania ciekow zwiekszona z 5m do 10m
+
+### Added (frontend — warstwy BDOT10k + wyłączanie podkładu)
+- **Zbiorniki wodne BDOT10k** w `map.js` + `layers.js`: warstwa GeoJSON z poligonami z OT_PTWP_A, checkbox + suwak przezroczystosci
+- **Cieki BDOT10k** w `map.js` + `layers.js`: warstwa GeoJSON z liniami z OT_SWRS_L/SWKN_L/SWRM_L, kolorowanie wg typu
+- **Opcja "Brak"** w podkladach kartograficznych: mozliwosc calkowitego wylaczenia warstwy podkladowej
+- **GeoJSON export**: pliki `bdot_lakes.geojson` + `bdot_streams.geojson` w `frontend/data/`
+- **nginx**: obsluga plikow `.geojson`, kompresja `application/geo+json`
+
+### Added (e2e integration tests)
+- **test_profile.py** (13 testow): `POST /api/terrain-profile` — struktura odpowiedzi, walidacja geometry (LineString/Point), n_samples limits, pusty wynik 404, multi-point LineString
+- **test_depressions.py** (17 testow): `GET /api/depressions` — GeoJSON FeatureCollection, properties, filtry (volume/area/bbox), walidacja ujemnych wartosci 422, zaokraglenia, sortowanie
+- **test_tiles.py** (21 testow): `GET /api/tiles/streams|catchments/{z}/{x}/{y}.pbf` + `GET /api/tiles/thresholds` — content-type protobuf, cache headers, puste tile, threshold walidacja, rozne zoom levels, graceful fallback brak tabeli
+
+### Fixed (stream_network deduplication — ADR-019)
+- **Migracja 010:** `idx_stream_unique` nie zawieral `threshold_m2` — cieki z roznych progow FA w tym samym miejscu byly traktowane jako duplikaty i cicho pomijane (`ON CONFLICT DO NOTHING`). Utrata: 2257 segmentow (26-42% przy wyzszych progach). Naprawiono: dodano `threshold_m2` do unique index.
+- **Diagnostyka:** warning w `insert_stream_segments()` gdy segmenty pominiete przez constraint
+- **Walidacja:** sprawdzenie stream_count vs catchment_count per threshold w `process_dem.py`
+- **5 nowych testow:** multi-threshold insert, warning on dropped, empty segments, TSV threshold
+- **Pipeline re-run:** migracje 008-010 zastosowane, pipeline z `--clear-existing` — siec ciekow naprawiona: progi 1000/10000/100000 m² idealnie sparowane ze zlewniami, prog 100 m² ma 9 geohash collisions (0.012%)
+
+### Added (PostGIS optimization — ADR-018)
+- **In-memory flow graph** (`core/flow_graph.py`): ladowanie grafu 19.7M komorek do numpy arrays + scipy sparse CSR matrix przy starcie API, BFS traversal via `breadth_first_order` (~50-200ms vs 2-5s SQL CTE)
+- **Pre-generacja MVT tiles** (`scripts/generate_tiles.py`): eksport PostGIS → GeoJSON → tippecanoe .mbtiles → PMTiles; auto-detekcja w frontend z API fallback
+- **Migracja 009:** partial GIST index na `stream_network WHERE source = 'DEM_DERIVED'`
+- **18 nowych testow:** test_flow_graph.py (traversal, resolve, cells, loaded state)
+
+### Removed
+- DEM raster tile endpoint (`GET /tiles/dem/`, `GET /tiles/dem/metadata`) — martwy kod, frontend uzywa statycznego PNG
+- `scripts/import_dem_raster.py` — niepotrzebny po usunieciu DEM tile endpoint
+- Helpers: `_build_colormap()`, `_get_elev_range()`, `_tile_to_bbox_2180()`, `_empty_tile_png()` z tiles.py
+
+### Changed
+- `watershed.py traverse_upstream()`: in-memory BFS (domyslnie) + SQL CTE fallback
+- `api/main.py lifespan`: ladowanie FlowGraph przy starcie API
+- `docker-compose.yml`: API memory limit 1G → 3G (numpy arrays + sparse matrix)
+- `tiles.py`: z 427 do 204 linii (usuniety DEM raster endpoint + helpers)
+
+### Added (refactor + perf)
+- **Refaktoryzacja process_dem.py (ADR-017):** podzial monolitu 2843 linii na 6 modulow `core/`:
+  - `core/raster_io.py` — odczyt/zapis rastrow (ASC, VRT, GeoTIFF)
+  - `core/hydrology.py` — hydrologia: fill, fdir, acc, stream burning
+  - `core/morphometry_raster.py` — nachylenie, aspekt, TWI, Strahler
+  - `core/stream_extraction.py` — wektoryzacja ciekow, zlewnie czastkowe
+  - `core/db_bulk.py` — bulk INSERT via COPY, timeout management
+  - `core/zonal_stats.py` — statystyki strefowe (bincount, max)
+- **Numba @njit:** `_count_upstream_and_find_headwaters()` w `stream_extraction.py` (~300s → ~10s)
+- **NumPy wektoryzacja:** `create_flow_network_tsv()` + `insert_records_batch_tsv()` (~120s → ~5s, 490MB → 200MB RAM)
+- **Wspolne gradienty Sobel:** `_compute_gradients()` reuzywane przez slope i aspect (~12s → ~7s)
+- **Migracja 008:** indeksy filtrujace na `depressions` (volume_m3, area_m2, max_depth_m)
+- **Context manager:** `override_statement_timeout()` w `db_bulk.py` — centralizacja timeout
+- **85 nowych testow:** test_zonal_stats, test_raster_io, test_hydrology, test_stream_extraction, test_db_bulk
+
+### Added
+- `GET /api/tiles/thresholds` — endpoint zwracajacy dostepne progi FA z bazy (`SELECT DISTINCT threshold_m2`)
+- `docs/COMPUTATION_PIPELINE.md` — kompletna dokumentacja procedury obliczeniowej backendu
+- Wektoryzacja ciekow MVT, multi-prog FA, hillshade, zaglbienia preprocessing (CP4 Faza 3):
+  - **Migracja 005:** kolumna `threshold_m2 INTEGER NOT NULL DEFAULT 100` w `stream_network`, indeks kompozytowy `idx_stream_threshold(threshold_m2, strahler_order)`
+  - **Multi-prog FA:** `--thresholds` CLI w `process_dem.py` (np. `100,1000,10000,100000` m²), osobna siec ciekow (Strahler + wektoryzacja) per prog FA, `insert_stream_segments()` z `threshold_m2`
+  - **MVT endpoint:** `GET /api/tiles/streams/{z}/{x}/{y}.pbf?threshold=N` — Mapbox Vector Tiles z PostGIS (`ST_AsMVT`), `ST_Simplify` wg zoom, cache 1h, filtr progu FA
+  - **Frontend MVT:** Leaflet.VectorGrid 1.3.0 CDN, `loadStreamsVector()` z kolorami Strahler (8-stopniowa paleta niebieska), selector progu FA (dropdown: 100/1000/10000/100000 m²), tooltip na klik (rzad, dlugosc, zlewnia)
+  - **Hillshade:** `compute_hillshade()` w `generate_dem_overlay.py` — cieniowanie Lambertian (azimuth=315°, altitude=45°), multiply blend z rampa hipsometryczna (`rgb * (0.3 + 0.7 * hillshade)`), gradient w CRS zrodlowym (metry), `--no-hillshade` CLI
+  - **Preprocessing zaglebie:** nowy skrypt `generate_depressions.py` — depth map (filled-original DEM), connected components (`scipy.ndimage.label`), wektoryzacja (`rasterio.features.shapes`), metryki (volume_m3, area_m2, max/mean_depth_m), COPY bulk insert do tabeli `depressions`
+  - **Overlay zaglebie:** generacja `depressions.png` + `depressions.json` w `generate_depressions.py` — depth colormap (gradient niebieski), reprojekcja 2180→4326, `--output-png`/`--output-meta` CLI
+
+### Changed
+- `layers.js` — dynamiczne progi FA z backendu zamiast hardcoded listy: `fetch('/api/tiles/thresholds')` → `populateThresholdSelect()`; domyslny prog = pierwszy dostepny w bazie (nie zawsze 10000)
+- `map.js` — `currentThreshold` i `currentCatchmentThreshold` domyslnie `null` (ustawiane dynamicznie z frontendu)
+
+### Fixed
+- Dropdown progu FA pokazywal 4 opcje (100/1000/10000/100000 m²) mimo ze baza miala dane tylko dla jednego progu — teraz dropdown dynamicznie pobiera dostepne progi z `GET /api/tiles/thresholds`
+- Duplikat `var layer` w checkbox handlerach `addStreamsEntry()` i `addCatchmentsEntry()` — deklaracja przeniesiona przed `if`/`else`
+
+### Changed (previous)
+- `map.js` — zamiana rasterowego overlay ciekow (`L.imageOverlay` + `streams.png`) na wektorowy MVT (`L.vectorGrid.protobuf`)
+- `layers.js` — nowa kontrolka `addStreamsEntry()` z dropdown progu FA zamiast prostego checkboxa
+- `tiles.py` — nowa funkcja `_tile_to_bbox_3857()` i endpoint MVT streams obok istniejacego DEM tiles
+- `process_dem.py` — parametr `thresholds: list[int]` w `process_dem()`, petla po progach z reuzyciem `compute_strahler_order()` i `vectorize_streams()`
+
+### Added (previous)
+- Frontend CP4 Faza 2 — redesign glassmorphism + nowe funkcjonalnosci:
+  - **Redesign wizualny (WP1):** glassmorphism (glass.css), mapa 100% szerokosc, plywajacy przesuwalny panel wynikow (draggable.js), sekcje akordeonowe, minimalizacja do ikony, bottom sheet na mobile
+  - **Panel warstw (WP2):** akordeon z grupami (Podklady / Warstwy podkladowe / Wyniki analiz), przelaczanie podkladow (OSM / ESRI Satellite / OpenTopoMap), per-layer opacity + zoom-to-extent
+  - **Pokrycie terenu (WP3):** `LandCoverStats` model, integracja `get_land_cover_for_boundary()` w watershed response, wykres donut Chart.js z paleta PL (las/laka/grunt_orny/zabudowa/woda)
+  - **Krzywa hipsometryczna (WP3):** Chart.js liniowy z wypelnieniem, dane z `include_hypsometric_curve=true`
+  - **Profil terenu (WP4):** endpoint `POST /api/terrain-profile` (sampling po flow_network), tryb auto (ciek glowny) + rysowanie polilinii na mapie (click/dblclick/Escape)
+  - **Zaglebie terrain (WP5):** migracja Alembic 004 (tabela `depressions`), endpoint `GET /api/depressions` z filtrami (volume/area/bbox), overlay loader, suwaki SCALGO-style
+  - **Hydrogram (WP6):** formularz scenariusza (duration + probability z `/api/scenarios`), wykres hydrogramu + hietogram, tabela bilansu wodnego
+  - `main_stream_geojson` (LineString WGS84) w watershed response — transformacja coords 2180→4326
+- Nowe pliki frontend: `glass.css`, `draggable.js`, `charts.js`, `layers.js`, `profile.js`, `hydrograph.js`, `depressions.js`
+- Nowe pliki backend: `api/endpoints/profile.py`, `api/endpoints/depressions.py`
+- Chart.js 4.4.7 CDN w `index.html`
+- Nginx CSP: dodano `server.arcgisonline.com` i `*.tile.opentopomap.org` do `img-src`
+
+### Changed
+- `index.html` — przebudowa z 2-kolumnowego layoutu na full-screen mapa + plywajacy panel
+- `style.css` — glassmorphism, CSS variables, responsive bottom sheet (mobile)
+- `app.js` — floating panel (show/hide/minimize/restore), delegacja warstw do layers.js
+- `map.js` — base layer management, drawing mode (polyline), profile line display, `getWatershedLayer()`
+- `api.js` — 6 nowych metod API, `include_hypsometric_curve=true` domyslnie
+- `schemas.py` — `LandCoverCategory`, `LandCoverStats`, `TerrainProfileRequest/Response`, `main_stream_geojson` i `land_cover_stats` w `WatershedResponse`
+- `watershed.py` — integracja land cover stats + main stream coords transform
+
+- Frontend CP4 Faza 1 — mapa + wyznaczanie zlewni + parametry:
+  - `frontend/index.html` — layout Bootstrap 5 (navbar + mapa + panel boczny)
+  - `frontend/css/style.css` — style (crosshair, responsywnosc, tabele parametrow)
+  - `frontend/js/api.js` — klient API (delineateWatershed, checkHealth, polskie bledy)
+  - `frontend/js/map.js` — modul Leaflet.js (OSM, polygon zlewni, marker ujscia)
+  - `frontend/js/app.js` — logika aplikacji (walidacja, wyswietlanie ~20 parametrow)
+- CDN: Leaflet 1.9.4, Bootstrap 5.3.3 (z integrity hashes)
+- Vanilla JS (ES6+, IIFE modules), bez bundlera
+- Panel warstw (lewy, chowany) z przyciskiem toggle (hamburger)
+- Panel parametrow domyslnie ukryty — auto-otwiera sie po wyznaczeniu zlewni, zamykany X
+- Warstwa NMT (WIP): PostGIS raster + endpoint XYZ tiles + kolorystyka hipsometryczna
+  - `scripts/import_dem_raster.py` — import DEM GeoTIFF do PostGIS jako kafelki 256x256
+  - `api/endpoints/tiles.py` — `GET /api/tiles/dem/{z}/{x}/{y}.png` z PostGIS raster
+  - Rampa kolorow: zielony (doliny) → zolty → brazowy → bialy (szczyty), semi-transparent
+  - **Status:** backend dziala (tile PNG z bazy), frontend nie wyswietla (do debugowania)
+- `scripts/generate_dem_overlay.py` — skrypt generujacy statyczny PNG z NMT (narzedzie pomocnicze)
+- `--max-size` w `generate_dem_overlay.py` — downsampling LANCZOS (domyslnie 1024 px)
+- `frontend/data/dem.png` + `dem.json` — pre-generowany overlay NMT z metadanymi WGS84 bounds
+- `Pillow>=10.0.0` w requirements.txt (rendering tile PNG)
+- Kontrolki warstwy NMT w panelu warstw:
+  - Przycisk zoom-to-extent (⌖) — `fitDemBounds()` przybliza mape do zasiegu warstwy
+  - Suwak przezroczystosci 0–100% — `setDemOpacity()`, pojawia sie po wlaczeniu warstwy
+- Warstwa ciekow (Strahler order) jako `L.imageOverlay`:
+  - `scripts/generate_streams_overlay.py` — skrypt generujacy PNG z rzedami Strahlera (dyskretna paleta niebieska 1-8, przezroczyste tlo)
+  - `frontend/data/streams.png` + `streams.json` — pre-generowany overlay ciekow (48 KB, max order=5)
+  - Dylatacja morfologiczna (`maximum_filter`) — grubosc linii proporcjonalna do rzedu (1→3px, 5→11px)
+  - `map.js`: `loadStreamsOverlay()`, `getStreamsLayer()`, `fitStreamsBounds()`, `setStreamsOpacity()`
+  - `app.js`: refaktor `initLayersPanel()` — wyodrebniony `addLayerEntry()`, dwa wpisy: NMT (30%) i Cieki (0%)
+
+### Fixed
+- Overlay NMT i ciekow przesuniety ~26 m wzgledem OSM — reprojekcja rastra do EPSG:4326:
+  - Przyczyna: skrypty transformowaly tylko 2 narozniki (SW/NE), a obraz pozostawal w siatce EPSG:2180 obróconej ~0.63° wzgledem WGS84 (zbieznosc poludnikow PL-2000 strefa 6)
+  - `generate_dem_overlay.py`: `rasterio.warp.reproject()` z `Resampling.bilinear` zamiast `pyproj` corner-only transform
+  - `generate_streams_overlay.py`: dylatacja w EPSG:2180, nastepnie `reproject()` z `Resampling.nearest` (dane kategoryczne)
+  - Bounds obliczane z transformu reprojekcji (nie z naroznikow)
+  - Dodano `--source-crs` fallback gdy raster nie ma metadanych CRS
+- Warstwa NMT "jezdzila" po mapie i miala artefakty — zamiana `L.tileLayer` na `L.imageOverlay`:
+  - Przyczyna: `ST_Clip/ST_Resize` nieodpowiednia dla malego rastra (~2km x 2km); przy niskim zoomie DEM bylo rozciagniete na caly kafelek web
+  - `map.js`: async `loadDemOverlay()` — fetch `/data/dem.json` → `L.imageOverlay` z georeferencjonowanymi granicami
+  - `app.js`: null-guard w `initLayersPanel()` (layer moze byc null przed zaladowaniem)
+- Suwak przezroczystosci odwrocony (0% = pelne krycie, 100% = niewidoczne) — dopasowanie do etykiety "Przezr."
+- DEM overlay PNG: alpha 200→255 — przezroczystosc sterowana wylacznie przez Leaflet, nie wbudowana w obraz
+
+### Security
+- Naglowki bezpieczenstwa nginx: CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy
+- Cache statycznych plikow (7d, immutable)
+- Ograniczenie portow API (127.0.0.1:8000) i DB (127.0.0.1:5432) — jedyny punkt wejscia z sieci: nginx:8080
+- Frontend: wylacznie `textContent` dla danych dynamicznych (brak innerHTML z danymi)
+
+### Fixed
+- Dockerfile: dodano `git` do system dependencies (wymagany przez `git+https://` w requirements.txt)
+- docker-compose.yml: `effective_cache_size=1G` → `1GB` (poprawna jednostka PostgreSQL)
+- Bootstrap 5.3.3 CSS integrity hash (zly hash blokowal zaladowanie stylow → mapa niewidoczna)
+- Nginx: `^~` prefix na `/api/tiles/` (regex `.png` przechwytywal tile requesty jako statyczne pliki)
+
+### Fixed
+- Ochrona przed resource exhaustion (OOM) w `traverse_upstream()` (ADR-015):
+  - Pre-flight check (`check_watershed_size()`) — odrzuca zlewnie >2M komorek przed CTE (<1ms)
+  - LIMIT w rekurencyjnym CTE — ogranicza wyniki SQL jako safety net
+  - `statement_timeout=30s` w polaczeniach z baza (30s API, 600s skrypty CLI)
+  - Docker resource limits: db=2G, api=1G, PostgreSQL tuning (shared_buffers=512MB)
+- `MAX_CELLS_DEFAULT` zmniejszony z 10M do 2M (bezpieczne dla 15 GB RAM)
+
+### Tested
+- E2E Task 9 (retry): N-33-131-C-b-2 — 4 testy pass:
+  - A: 493k cells (0.49 km², 6.5s, Strahler=4, Dd=15.3 km/km²)
+  - B: 1.5M cells (1.50 km², 21s, Strahler=4, Dd=14.7 km/km²)
+  - C: Pre-flight reject (limit 100k) — natychmiastowe odrzucenie
+  - D: Max outlet (1.76M, CTE=2M+1) — LIMIT safety net poprawnie zlapal nadmiar
+
+### Changed
+- Aktualizacja Kartograf v0.4.0 → v0.4.1 (BDOT10k hydro, geometry selection, rtree fix)
+- Aktualizacja Kartograf v0.3.1 → v0.4.0 (nowe produkty: NMPT, Ortofotomapa, auto-ekspansja godel)
+- `download_dem.py`: obsluga `Path | list[Path]` z `download_sheet()` (auto-ekspansja godel grubszych skal)
+
+### Added (Kartograf v0.4.1)
+- `download_landcover.py --category hydro` — pobieranie warstw BDOT10k hydrograficznych (SWRS, SWKN, SWRM, PTWP)
+- `download_dem.py --geometry` — precyzyjny wybor arkuszy NMT z pliku SHP/GPKG
+- `prepare_area.py --with-hydro` — automatyczne pobieranie danych hydro i stream burning
+
+### Added
+- Wypalanie ciekow BDOT10k w DEM (`--burn-streams`) — obnizenie DEM wzdluz znanych ciekow przed analiza hydrologiczna (ADR-013)
+- 6 nowych testow jednostkowych dla `burn_streams_into_dem()`
+- Nowe warstwy rastrowe w preprocessingu DEM (ADR-014):
+  - Aspect (`09_aspect.tif`) — ekspozycja stoku 0-360° (N=0, zgodnie z zegarem)
+  - TWI (`08_twi.tif`) — Topographic Wetness Index = ln(SCA / tan(slope))
+  - Strahler stream order (`07_stream_order.tif`) — rzad cieku wg Strahlera
+- Wektoryzacja ciekow z DEM jako LineString w `stream_network` (source='DEM_DERIVED')
+- Migracja 003: `strahler_order` w `flow_network`, `upstream_area_km2` i `mean_slope_percent` w `stream_network`
+- Wskazniki ksztaltu zlewni: wspolczynnik zwartosci Kc, kolowosci Rc, wydluzenia Re, ksztaltu Ff, szerokosc srednia
+- Wskazniki rzezbowe: wspolczynnik rzezbowy Rh, calka hipsometryczna HI
+- Krzywa hipsometryczna (opcjonalna, `include_hypsometric_curve=true`)
+- Wskazniki sieci rzecznej: gestosc sieci Dd, czest. ciekow Fs, liczba chropowatosci Rn, max rzad Strahlera
+- 11 nowych pol w `MorphometricParameters` (Optional, backward compatible)
+- `HypsometricPoint` model i `hypsometric_curve` w `WatershedResponse`
+- 38 nowych testow jednostkowych (18 DEM + 21 morfometria)
+- Flaga `--skip-streams-vectorize` w CLI process_dem
+
+### Removed
+- Warstwa `02b_inflated` — zbedna po migracji na pyflwdir (Wang & Liu 2006 obsluguje plaskowyzyzny wewnetrznie)
+
+### Fixed
+- `idx_stream_unique` uzywal `ST_GeoHash(geom, 12)` na geometrii EPSG:2180 — naprawiono na `ST_GeoHash(ST_Transform(geom, 4326), 12)`
+- `strahler_order=0` dla komorek z acc>=threshold ale pyflwdir order=0 — clamp do min 1
+- Duplikaty geohash przy insercie stream segments — `ON CONFLICT DO NOTHING`
+- Cieki konczace sie w srodku rastra — wypelnianie wewnetrznych dziur nodata + naprawa zlewow po pysheds
+- Przerwane lancuchy downstream_id w flow_network spowodowane NaN fdir i nodata holes
+
+### Changed
+- Migracja z pysheds na pyflwdir (Deltares) — mniej zaleznosci, brak temp file, Wang & Liu 2006
+- Migracja na .venv-first development workflow (ADR-011)
+- Rozdzielenie deps runtime/dev (requirements.txt + pyproject.toml [dev])
+- Usuniecie black/flake8 z requirements.txt, dodanie ruff do [dev]
+- Aktualizacja docker-compose → docker compose w dokumentacji
+- Restrukturyzacja dokumentacji wg shared/standards/DOCUMENTATION_STANDARDS.md
+- CLAUDE.md rozbudowany z 14 do ~185 linii (7 sekcji)
+- PROGRESS.md skondensowany z 975 do ~71 linii (4 sekcje)
+- DEVELOPMENT_STANDARDS.md przepisany z Ruff (zamiast black+flake8)
+- IMPLEMENTATION_PROMPT.md przepisany do stanu v0.3.0
+- Migracja z black+flake8 na ruff (E, F, I, UP, B, SIM)
+- Przeniesienie 6 plików MD z root do docs/
+
+### Tested
+- E2E Kartograf v0.4.1: N-33-131-C-b-2 — NMT download (4 sub-sheets), BDOT10k hydro (8.1 MB GPKG), stream burning, 20 rasterow posrednich (~444 MB); Task 9 FAILED (traverse_upstream resource exhaustion, outlet acc=1.76M, mozliwe ograniczenia zasobow Docker)
+- E2E pipeline: N-33-131-C-b-2-3 z warstwami 01-09 — 198s, 4.9M komorek, max_strahler=8, 19,005 segmentow (641.6 km), wyniki w `data/results/`
+- E2E pipeline: N-33-131-C-b-2-3 z stream burning — 2,856 cells burned, 55s, wyniki w `data/nmt/`
+- E2E pipeline: N-33-131-C-b-2-3 z pyflwdir — broken streams: 233→1, max acc +71%, pipeline 17% szybciej
+- E2E pipeline: N-33-131-C-b-2-3 (1:10000, 1 arkusz, 4.9M komorek) — flowacc fix verified
+- E2E pipeline: N-33-131-C-b (5 m) — Kartograf download, pysheds processing, IMGW precipitation
+
+### Added
+- docs/DECISIONS.md — 10 Architecture Decision Records
+- .editorconfig (UTF-8, LF, 4 spacje Python, 2 spacje YAML/MD)
+
+### Fixed
+- pyproject.toml: readme path outside package root, flat-layout discovery error (editable install)
+- Cross-referencje w README.md (ścieżki do docs/)
+- Usunięcie rozwiązanego TD-2 z TECHNICAL_DEBT.md (land_cover.py istnieje)
+- Naprawa URL repozytorium w pyproject.toml
+- 208 błędów ruff naprawionych (202 auto-fix + 6 ręcznie B904)
+
+---
+
+### Added
+- `--use-cached` CLI option for `analyze_watershed.py` - skip delineation/morphometry (200x faster re-runs)
+- `--tiles` option for specifying exact NMT sheet codes
+- `--teryt` option for BDOT10k county code
+- `--save-qgis` option for exporting intermediate layers
+- `--max-stream-distance` option for outlet search radius
+- `load_cached_results()` function for fast hydrograph recalculation
+- `core/cn_tables.py` - centralized CN lookup tables for HSG × land cover combinations
+- `core/cn_calculator.py` - Kartograf integration for HSG-based CN calculation
+- `determine_cn()` function in `core/land_cover.py` - unified CN hierarchy
+- 71 new unit tests for CN modules
+- Raster utilities: `resample_raster()`, `polygonize_raster()`
+
+### Changed
+- **BREAKING**: Precipitation now uses KS (quantile) instead of SG (upper confidence bound)
+- Hydrograph generation uses Beta hyetograph convolution for long-duration events
+- Beta distribution parameters changed to (2, 5) for asymmetric rainfall
+- Increased `max_cells` limit from 5M to 10M
+- Refactored `scripts/analyze_watershed.py` - removed ~260 lines of CN logic
+- CN calculation now uses modular approach: config → database → Kartograf → default
+
+### Fixed
+- Unrealistic Q results caused by using SG instead of KS for design precipitation
+- Instantaneous rainfall assumption for long-duration events (now uses convolution)
+
+## [0.3.0] - 2026-01-21
+
+### Added
+- Multi-tile DEM mosaic support for large watersheds
+- Reverse trace optimization for `find_main_stream` (330x faster)
+- COPY-based bulk insert for DEM import (27x faster)
+- Land cover integration with weighted CN calculation
+- Direct IMGWTools v2.1.0 dependency
+- CI/CD pipeline with GitHub Actions (lint, test, coverage)
+- Rate limiting in Nginx (10 req/s for API, 30 req/s general)
+- `GET /api/scenarios` endpoint for listing valid hydrograph options
+- `TECHNICAL_DEBT.md` documenting known issues
+- `.pre-commit-config.yaml` for automated code quality checks
+- CHECK constraint for `land_cover.category` column
+- UNIQUE index for `stream_network` (name + geohash)
+
+### Changed
+- CORS configuration now uses environment variable `CORS_ORIGINS`
+- Limited CORS methods to GET, POST, OPTIONS
+- Disabled CORS credentials for security
+- Migrated Pydantic settings from `class Config` to `model_config = SettingsConfigDict`
+- Updated `black` to 26.1.0
+- Unified line-length to 88 (was 100) for cross-project consistency
+
+### Fixed
+- 16 flake8 errors (unused imports, line length, spacing)
+- 35 files reformatted with black (17 initial + 18 for line-length)
+
+### Security
+- Fixed critical CORS vulnerability (`allow_origins=["*"]` with `allow_credentials=True`)
+
+### Performance
+- DEM import: ~3.8 min (was ~102 min)
+- `find_main_stream`: ~0.74s (was ~246s)
+
+## [0.2.0] - 2026-01-18
+
+### Added
+- Hydrograph generation endpoint (`POST /api/generate-hydrograph`)
+- Integration with Hydrolog library for SCS-CN calculations
+- Morphometric parameters calculation (area, perimeter, length, slopes)
+- Water balance output in hydrograph response
+- Land cover support via Kartograf integration
+
+### Changed
+- Renamed project from HydroLOG to Hydrograf
+
+## [0.1.0] - 2026-01-15
+
+### Added
+- Initial project setup
+- Watershed delineation endpoint (`POST /api/delineate-watershed`)
+- Health check endpoint (`GET /health`)
+- PostgreSQL + PostGIS database schema
+- DEM preprocessing script with pysheds
+- IMGW precipitation data integration
+- Docker Compose deployment configuration
+
+### Documentation
+- SCOPE.md - Project scope and requirements
+- ARCHITECTURE.md - System architecture
+- DATA_MODEL.md - Database schema
+- PRD.md - Product requirements
+
+[0.4.0]: https://github.com/Daldek/Hydrograf/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/Daldek/Hydrograf/compare/v0.2.2...v0.3.0
+[0.2.0]: https://github.com/Daldek/Hydrograf/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/Daldek/Hydrograf/releases/tag/v0.1.0

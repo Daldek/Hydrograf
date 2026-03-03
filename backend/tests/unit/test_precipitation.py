@@ -4,20 +4,21 @@ Unit tests for precipitation module.
 Tests validation functions and data retrieval logic.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from shapely.geometry import Point
 
 from core.precipitation import (
-    validate_duration,
-    validate_probability,
-    get_precipitation,
-    get_precipitation_wgs84,
-    get_all_scenarios,
+    DURATION_MIN_TO_STR,
     VALID_DURATIONS_MIN,
     VALID_DURATIONS_STR,
     VALID_PROBABILITIES,
-    DURATION_MIN_TO_STR,
+    get_all_scenarios,
+    get_precipitation,
+    get_precipitation_wgs84,
+    validate_duration,
+    validate_probability,
 )
 
 

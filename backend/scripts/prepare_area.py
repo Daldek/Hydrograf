@@ -4,17 +4,18 @@ Pipeline script to download and process spatial data for a specified area.
 This script combines:
 1. Downloading NMT data from GUGiK using Kartograf (multiple tiles)
 2. Creating VRT mosaic from downloaded tiles (ensures hydrological continuity)
-3. Processing mosaic with pysheds (fill, flow direction, accumulation)
-4. Loading data into PostgreSQL/PostGIS flow_network table
-5. (Optional) Downloading land cover data from BDOT10k/CORINE
-6. (Optional) Loading land cover into land_cover table
+3. (Optional) Downloading BDOT10k hydrographic data for stream burning
+4. Processing mosaic with pyflwdir (fill depressions, flow direction, accumulation)
+5. Loading data into PostgreSQL/PostGIS (stream_network, stream_catchments)
+6. (Optional) Downloading land cover data from BDOT10k/CORINE
+7. (Optional) Loading land cover into land_cover table
 
 IMPORTANT: Multiple tiles are merged into a VRT (Virtual Raster) before
 hydrological analysis. This ensures correct flow routing across tile
 boundaries - water can flow from one tile to another without artifacts.
 
 Requires:
-- Kartograf 0.3.0+ for data download
+- Kartograf 0.5.0+ for data download
 - GDAL for VRT creation (gdalbuildvrt)
 
 Usage
@@ -29,6 +30,12 @@ Examples
     python -m scripts.prepare_area \\
         --lat 52.23 --lon 21.01 \\
         --buffer 5
+
+    # With BDOT10k stream burning
+    python -m scripts.prepare_area \\
+        --lat 52.23 --lon 21.01 \\
+        --buffer 5 \\
+        --with-hydro
 
     # With land cover data (BDOT10k)
     python -m scripts.prepare_area \\
@@ -71,13 +78,17 @@ def prepare_area(
     lon: float,
     buffer_km: float = 5.0,
     scale: str = "1:10000",
-    stream_threshold: int = 100,
+    stream_threshold: int = 1000,
     batch_size: int = 10000,
     keep_downloads: bool = True,
     save_intermediates: bool = False,
     output_dir: Path | None = None,
     with_landcover: bool = False,
     landcover_provider: str = "bdot10k",
+    with_hydro: bool = False,
+    burn_depth_m: float = 5.0,
+    waterbody_mode: str = "auto",
+    waterbody_min_area_m2: float | None = None,
 ) -> dict:
     """
     Download and process NMT data for an area around a point.
@@ -106,6 +117,14 @@ def prepare_area(
         If True, also download and import land cover data
     landcover_provider : str
         Land cover provider: 'bdot10k' or 'corine'
+    with_hydro : bool
+        If True, download BDOT10k hydrographic data and burn streams into DEM
+    burn_depth_m : float
+        Burn depth in meters for stream burning (default: 5.0)
+    waterbody_mode : str
+        Waterbody handling mode: "auto", "none", or path to custom file
+    waterbody_min_area_m2 : float, optional
+        Minimum waterbody area in m²
 
     Returns
     -------
@@ -116,6 +135,7 @@ def prepare_area(
         - sheets_processed: number of sheets processed
         - total_cells: total cells imported
         - stream_cells: number of stream cells
+        - burn_cells: number of burned cells (if with_hydro)
         - landcover_features: number of land cover features (if with_landcover)
     """
     # Add parent to path for imports
@@ -223,6 +243,54 @@ def prepare_area(
         stats["errors"].append(f"Mosaic creation: {e}")
         return stats
 
+    # Step 3.5: Download BDOT10k hydrographic data for stream burning (optional)
+    burn_streams_path = None
+    if with_hydro:
+        logger.info("=" * 60)
+        logger.info("Step 3.5: Downloading BDOT10k hydrographic data")
+        logger.info("=" * 60)
+
+        try:
+            from kartograf import SheetParser
+
+            from scripts.download_landcover import (
+                discover_teryts_for_bbox,
+                download_landcover,
+            )
+
+            hydro_dir = output_dir.parent / "hydro"
+            hydro_dir.mkdir(parents=True, exist_ok=True)
+
+            # Compute EPSG:2180 bbox from sheets and discover TERYTs
+            all_bboxes = [SheetParser(s).get_bbox(crs="EPSG:2180") for s in sheets]
+            bbox_2180 = (
+                min(b.min_x for b in all_bboxes),
+                min(b.min_y for b in all_bboxes),
+                max(b.max_x for b in all_bboxes),
+                max(b.max_y for b in all_bboxes),
+            )
+            teryts = discover_teryts_for_bbox(bbox_2180)
+
+            for teryt in teryts:
+                gpkg = download_landcover(
+                    output_dir=hydro_dir,
+                    provider="bdot10k",
+                    teryt=teryt,
+                )
+                if gpkg and gpkg.exists():
+                    burn_streams_path = gpkg
+                    logger.info(f"Hydro data downloaded: {gpkg}")
+
+            stats["hydro_downloaded"] = burn_streams_path is not None
+            if burn_streams_path:
+                logger.info(f"Stream burning source: {burn_streams_path}")
+            else:
+                logger.warning("No hydro data downloaded, skipping stream burning")
+
+        except Exception as e:
+            logger.warning(f"Hydro download failed: {e}")
+            stats["errors"].append(f"Hydro download: {e}")
+
     # Step 4: Process the mosaic as single continuous DEM
     logger.info("=" * 60)
     logger.info("Step 4: Processing DEM mosaic (hydrological analysis)")
@@ -237,15 +305,23 @@ def prepare_area(
             save_intermediates=save_intermediates,
             output_dir=output_dir if save_intermediates else None,
             clear_existing=True,  # Clear before processing
+            burn_streams_path=burn_streams_path,
+            burn_depth_m=burn_depth_m,
+            waterbody_mode=waterbody_mode,
+            waterbody_min_area_m2=waterbody_min_area_m2,
         )
 
         stats["sheets_processed"] = len(downloaded_files)
         stats["total_cells"] = dem_stats.get("valid_cells", 0)
         stats["stream_cells"] = dem_stats.get("stream_cells", 0)
+        if "burn_cells" in dem_stats:
+            stats["burn_cells"] = dem_stats["burn_cells"]
 
         logger.info(f"Processed: {dem_stats.get('valid_cells', 0):,} cells")
         logger.info(f"Stream cells: {dem_stats.get('stream_cells', 0):,}")
         logger.info(f"Max accumulation: {dem_stats.get('max_accumulation', 0):,}")
+        if "burn_cells" in dem_stats:
+            logger.info(f"Burned cells: {dem_stats['burn_cells']:,}")
 
     except Exception as e:
         logger.error(f"DEM processing failed: {e}")
@@ -261,8 +337,12 @@ def prepare_area(
         logger.info("=" * 60)
 
         try:
-            from scripts.download_landcover import download_landcover
+            from scripts.download_landcover import (
+                discover_teryts_for_bbox,
+                download_landcover,
+            )
             from scripts.import_landcover import import_landcover
+            from utils.geometry import transform_wgs84_to_pl1992
 
             # Create landcover output directory
             landcover_dir = (
@@ -272,37 +352,45 @@ def prepare_area(
             )
             landcover_dir.mkdir(parents=True, exist_ok=True)
 
-            # Download land cover
-            gpkg_file = download_landcover(
-                output_dir=landcover_dir,
-                provider=landcover_provider,
-                lat=lat,
-                lon=lon,
-                buffer_km=buffer_km,
+            # Compute EPSG:2180 bbox from lat/lon + buffer
+            x, y = transform_wgs84_to_pl1992(lat, lon)
+            buffer_m = buffer_km * 1000
+            bbox_2180 = (
+                x - buffer_m,
+                y - buffer_m,
+                x + buffer_m,
+                y + buffer_m,
+            )
+            teryts = discover_teryts_for_bbox(bbox_2180)
+
+            total_features = 0
+            for teryt in teryts:
+                gpkg_file = download_landcover(
+                    output_dir=landcover_dir,
+                    provider=landcover_provider,
+                    teryt=teryt,
+                    skip_existing=True,
+                )
+                if gpkg_file and gpkg_file.exists():
+                    logger.info(f"Downloaded: {gpkg_file}")
+
+                    lc_stats = import_landcover(
+                        input_path=gpkg_file,
+                        batch_size=batch_size,
+                        dry_run=False,
+                        clear_existing=False,
+                    )
+                    total_features += lc_stats.get("records_inserted", 0)
+
+            stats["landcover_features"] = total_features
+            logger.info(
+                f"Imported {total_features} land cover features "
+                f"from {len(teryts)} TERYT(s)"
             )
 
-            if gpkg_file and gpkg_file.exists():
-                logger.info(f"Downloaded: {gpkg_file}")
-
-                # Import to database
-                logger.info("=" * 60)
-                logger.info("Step 6: Importing land cover to database")
-                logger.info("=" * 60)
-
-                lc_stats = import_landcover(
-                    input_path=gpkg_file,
-                    batch_size=batch_size,
-                    dry_run=False,
-                    clear_existing=False,
-                )
-
-                stats["landcover_features"] = lc_stats.get("records_inserted", 0)
-                logger.info(
-                    f"Imported {stats['landcover_features']} land cover features"
-                )
-            else:
-                logger.warning("Land cover download failed!")
-                stats["errors"].append("Land cover download failed")
+            if not teryts:
+                logger.warning("No TERYTs discovered for landcover area")
+                stats["errors"].append("No TERYTs discovered for landcover")
 
         except ImportError as e:
             logger.warning(f"Land cover support not available: {e}")
@@ -353,8 +441,8 @@ def main():
     process_group.add_argument(
         "--stream-threshold",
         type=int,
-        default=100,
-        help="Flow accumulation threshold for streams (default: 100)",
+        default=1000,
+        help="Flow accumulation threshold for streams (default: 1000)",
     )
     process_group.add_argument(
         "--batch-size",
@@ -370,9 +458,25 @@ def main():
         help="Map scale (default: 1:10000)",
     )
 
+    # Hydrographic data options
+    hydro_group = parser.add_argument_group(
+        "Hydrographic data (requires Kartograf 0.5.0+)"
+    )
+    hydro_group.add_argument(
+        "--with-hydro",
+        action="store_true",
+        help="Download BDOT10k hydrographic data and burn streams into DEM",
+    )
+    hydro_group.add_argument(
+        "--burn-depth",
+        type=float,
+        default=5.0,
+        help="Stream burn depth in meters (default: 5.0)",
+    )
+
     # Land cover options
     landcover_group = parser.add_argument_group(
-        "Land cover options (requires Kartograf 0.3.0+)"
+        "Land cover options (requires Kartograf 0.5.0+)"
     )
     landcover_group.add_argument(
         "--with-landcover",
@@ -385,6 +489,23 @@ def main():
         default="bdot10k",
         choices=["bdot10k", "corine"],
         help="Land cover provider (default: bdot10k)",
+    )
+
+    # Waterbody options
+    wb_group = parser.add_argument_group("Zbiorniki wodne")
+    wb_group.add_argument(
+        "--waterbody-mode",
+        type=str,
+        default="auto",
+        help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
+             '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
+             "(wszystkie traktowane jako endoreiczne). Default: auto",
+    )
+    wb_group.add_argument(
+        "--waterbody-min-area",
+        type=float,
+        default=None,
+        help="Min. powierzchnia zbiornika (m²). Zbiorniki mniejsze sa ignorowane.",
     )
 
     # Output options
@@ -434,6 +555,9 @@ def main():
     logger.info(f"Stream threshold: {args.stream_threshold}")
     logger.info(f"Keep downloads: {args.keep_downloads}")
     logger.info(f"Save intermediates: {args.save_intermediates}")
+    logger.info(f"With hydro (stream burning): {args.with_hydro}")
+    if args.with_hydro:
+        logger.info(f"Burn depth: {args.burn_depth} m")
     logger.info(f"With land cover: {args.with_landcover}")
     if args.with_landcover:
         logger.info(f"Land cover provider: {args.landcover_provider}")
@@ -453,6 +577,8 @@ def main():
         for sheet in sheets:
             logger.info(f"  {sheet}")
         logger.info(f"Total: {len(sheets)} sheets")
+        if args.with_hydro:
+            logger.info("Would also download BDOT10k hydro data for stream burning")
         if args.with_landcover:
             logger.info(f"Would also download land cover ({args.landcover_provider})")
         return
@@ -473,6 +599,10 @@ def main():
             output_dir=Path(args.output) if args.output else None,
             with_landcover=args.with_landcover,
             landcover_provider=args.landcover_provider,
+            with_hydro=args.with_hydro,
+            burn_depth_m=args.burn_depth,
+            waterbody_mode=args.waterbody_mode,
+            waterbody_min_area_m2=args.waterbody_min_area,
         )
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
@@ -489,6 +619,8 @@ def main():
     logger.info(f"  Sheets processed: {stats['sheets_processed']}")
     logger.info(f"  Total cells: {stats['total_cells']:,}")
     logger.info(f"  Stream cells: {stats['stream_cells']:,}")
+    if "burn_cells" in stats:
+        logger.info(f"  Burned cells: {stats['burn_cells']:,}")
     if "landcover_features" in stats:
         logger.info(f"  Land cover features: {stats['landcover_features']:,}")
     logger.info(f"  Time elapsed: {elapsed:.1f}s")

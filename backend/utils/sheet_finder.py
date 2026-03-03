@@ -27,7 +27,6 @@ N-34-131-C-c-2-1
 
 import math
 from dataclasses import dataclass
-from typing import List, Tuple
 
 # Note: transform_wgs84_to_pl1992 is available via utils.geometry if needed
 
@@ -46,7 +45,7 @@ class SheetBounds:
         return self.min_lat <= lat < self.max_lat and self.min_lon <= lon < self.max_lon
 
     @property
-    def center(self) -> Tuple[float, float]:
+    def center(self) -> tuple[float, float]:
         """Return center point (lat, lon)."""
         return (
             (self.min_lat + self.max_lat) / 2,
@@ -118,10 +117,8 @@ def _lat_to_zone_letter(lat: float) -> str:
     else:
         # Southern hemisphere (not used for Poland)
         zone_idx = int((-lat - 0.001) / SCALE_1M_LAT_SIZE)
-        if zone_idx <= 7:
-            letter_idx = 7 - zone_idx  # H, G, F, ...
-        else:
-            letter_idx = 8 - zone_idx
+        # H, G, F, ...
+        letter_idx = 7 - zone_idx if zone_idx <= 7 else 8 - zone_idx
         return IMW_ZONE_LETTERS[max(0, letter_idx)]
 
 
@@ -227,7 +224,7 @@ def _subdivide_bounds(
 
 def _find_subdivision(
     bounds: SheetBounds, lat: float, lon: float, rows: int, cols: int
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """
     Find which subdivision contains the point.
 
@@ -415,8 +412,16 @@ def get_sheet_bounds(sheet_code: str) -> SheetBounds:
         return bounds
 
     # Parse 1:10k
-    row_10k = int(parts[5]) - 1
-    col_10k = int(parts[6]) - 1
+    # Two formats supported:
+    #   7-part row-col: N-33-131-C-a-2-1 (row 1-2, col 1-4)
+    #   6-part sequential: N-33-131-C-a-3 (number 1-8)
+    if len(parts) == 7:
+        row_10k = int(parts[5]) - 1
+        col_10k = int(parts[6]) - 1
+    else:
+        num = int(parts[5])
+        row_10k = (num - 1) // 4
+        col_10k = (num - 1) % 4
     bounds = _subdivide_bounds(bounds, 2, 4, row_10k, col_10k)
 
     return bounds
@@ -428,7 +433,7 @@ def get_sheets_for_bbox(
     max_lat: float,
     max_lon: float,
     scale: str = "1:10000",
-) -> List[str]:
+) -> list[str]:
     """
     Get all map sheet codes that cover a bounding box.
 
@@ -496,7 +501,7 @@ def get_sheets_for_bbox(
 
 def get_neighboring_sheets(
     sheet_code: str, include_diagonals: bool = True
-) -> List[str]:
+) -> list[str]:
     """
     Get neighboring sheet codes.
 
@@ -561,7 +566,7 @@ def get_neighboring_sheets(
 
 def get_sheets_for_point_with_buffer(
     lat: float, lon: float, buffer_km: float = 5.0, scale: str = "1:10000"
-) -> List[str]:
+) -> list[str]:
     """
     Get all sheet codes covering area around a point.
 

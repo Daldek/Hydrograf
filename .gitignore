@@ -61,13 +61,13 @@ htmlcov/
 logs/
 
 # Docker
-docker-compose.override.yml
+# docker-compose.override.yml is tracked (shared dev config)
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Data files (large)
+# Data files
 *.tif
 *.tiff
 *.shp
@@ -77,6 +77,10 @@ Thumbs.db
 *.cpg
 *.geojson
 data/
+cache/
+!cache/.gitkeep
+frontend/data/
+frontend/tiles/
 !data/.gitkeep
 
 # Alembic
@@ -88,4 +92,18 @@ alembic/versions/*.pyc
 # Secrets
 *.pem
 *.key
+!*.key.example
 credentials.json
+
+# Pipeline config (user-specific; template in backend/config.yaml.example)
+config.yaml
+
+# Other
+*.png
+
+# Worktrees
+.worktrees/
+
+# Docker secrets
+secrets/
+docker/certs/
