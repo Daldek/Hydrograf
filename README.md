@@ -19,7 +19,16 @@ System analizy hydrologicznej dla wyznaczania zlewni, obliczania parametrów fiz
 | `POST /api/select-stream` | Wybór cieku i zlewnia cząstkowa | ✅ |
 | `GET /api/tiles/streams/{z}/{x}/{y}.pbf` | Kafelki MVT — cieki | ✅ |
 | `GET /api/tiles/catchments/{z}/{x}/{y}.pbf` | Kafelki MVT — zlewnie cząstkowe | ✅ |
+| `GET /api/tiles/landcover/{z}/{x}/{y}.pbf` | Kafelki MVT — pokrycie terenu | ✅ |
 | `GET /api/tiles/thresholds` | Dostępne progi akumulacji | ✅ |
+| `GET /api/admin/dashboard` | Panel admina — status systemu | ✅ |
+| `POST /api/admin/bootstrap/start` | Uruchomienie pipeline preprocessingu | ✅ |
+| `GET /api/admin/bootstrap/status` | Status pipeline | ✅ |
+| `GET /api/admin/bootstrap/stream` | SSE stream logów pipeline | ✅ |
+| `POST /api/admin/bootstrap/cancel` | Anulowanie pipeline | ✅ |
+| `GET /api/admin/resources` | Lista zasobów (pliki, tabele) | ✅ |
+| `GET /api/admin/cleanup/estimate` | Estymacja czyszczenia | ✅ |
+| `POST /api/admin/cleanup` | Czyszczenie zasobów | ✅ |
 
 ### Przykład użycia API
 
@@ -46,11 +55,13 @@ curl -X POST http://localhost:8000/api/delineate-watershed \
 }
 ```
 
-## Funkcjonalności (planowane)
+## Funkcjonalności
 
 - **Wyznaczanie zlewni** - kliknięcie na mapę generuje granicę zlewni w <10s
 - **Parametry fizjograficzne** - powierzchnia, CN, spadki, pokrycie terenu
 - **Hydrogram odpływu** - 42 scenariusze (7 czasów × 6 prawdopodobieństw), model SCS CN
+- **Mapa interaktywna** - Leaflet.js, kafelki MVT (cieki, zlewnie, land cover), DEM z hillshade
+- **Panel administracyjny** - bootstrap pipeline, monitoring zasobów, czyszczenie danych
 - **Eksport danych** - GeoJSON, CSV
 
 ## Stack technologiczny
@@ -69,8 +80,14 @@ curl -X POST http://localhost:8000/api/delineate-watershed \
 - Git
 - Docker (tylko dla PostGIS)
 
-### Deployment
+### Deployment (Docker)
 - Docker i Docker Compose
+- Git
+
+### Deployment (bare-metal / VPS)
+- Python 3.12+
+- PostgreSQL 16 + PostGIS 3.4
+- Nginx
 - Git
 
 ## Szybki start
@@ -116,6 +133,242 @@ docker compose up -d
 # http://localhost/api (API)
 ```
 
+### Deployment na VPS bez Dockera (np. Mikrus)
+
+Scenariusz: **preprocessing na maszynie lokalnej**, serwowanie na tanim VPS.
+Pipeline preprocessingu (NMT, land cover, HSG) wymaga ~4 GB RAM i dużo CPU — nie nadaje się na mały VPS. Zamiast tego przetwarzamy dane lokalnie, a na serwer przenosimy gotową bazę i pliki statyczne.
+
+#### Architektura
+
+```
+┌──────────────────────┐         pg_dump + rsync        ┌──────────────────┐
+│   Maszyna lokalna    │  ──────────────────────────►   │   VPS (Mikrus)   │
+│                      │                                │                  │
+│  bootstrap.py        │                                │  PostgreSQL      │
+│  (NMT, land cover,   │                                │  + PostGIS       │
+│   HSG, IMGW, tiles)  │                                │                  │
+│                      │                                │  uvicorn (API)   │
+│  PostgreSQL + PostGIS│                                │  nginx (proxy    │
+│  (przetwarzanie)     │                                │   + frontend)    │
+└──────────────────────┘                                └──────────────────┘
+```
+
+#### Krok 1 — Preprocessing na maszynie lokalnej
+
+Uruchom pipeline na maszynie z wystarczającą ilością RAM (4 GB+):
+
+```bash
+# Na maszynie lokalnej — pełny pipeline
+cd backend
+.venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
+```
+
+Po zakończeniu masz dane w PostgreSQL oraz pliki w `data/` i `frontend/`.
+
+#### Krok 2 — Eksport danych
+
+```bash
+# Dump bazy danych
+pg_dump -U hydro_user -d hydro_db -Fc -f hydro_db.dump
+
+# Spakuj pliki danych (DEM raster + frontend assets)
+tar czf hydrograf-data.tar.gz \
+    data/nmt/dem_mosaic.vrt \
+    data/nmt/dem_mosaic_01_dem.tif \
+    frontend/data/ \
+    frontend/tiles/
+```
+
+#### Krok 3 — Setup VPS
+
+```bash
+# PostgreSQL 16 + PostGIS
+sudo apt update
+sudo apt install -y postgresql-16 postgresql-16-postgis-3 \
+    libpq-dev libgeos-dev libproj-dev gcc git python3.12 python3.12-venv nginx
+
+# Utworzenie bazy
+sudo -u postgres psql <<SQL
+CREATE USER hydro_user WITH PASSWORD 'TWOJE_SILNE_HASLO';
+CREATE DATABASE hydro_db OWNER hydro_user;
+\c hydro_db
+CREATE EXTENSION IF NOT EXISTS postgis;
+ALTER DATABASE hydro_db SET postgis.gdal_enabled_drivers = 'ENABLE_ALL';
+SQL
+```
+
+Tuning PostgreSQL dla małego VPS (1–2 GB RAM):
+
+```bash
+sudo -u postgres psql -c "
+ALTER SYSTEM SET shared_buffers = '256MB';
+ALTER SYSTEM SET work_mem = '8MB';
+ALTER SYSTEM SET maintenance_work_mem = '128MB';
+ALTER SYSTEM SET effective_cache_size = '512MB';
+ALTER SYSTEM SET random_page_cost = 1.1;
+ALTER SYSTEM SET jit = off;
+ALTER SYSTEM SET statement_timeout = '120s';
+"
+sudo systemctl restart postgresql
+```
+
+#### Krok 4 — Transfer danych na VPS
+
+```bash
+# Z maszyny lokalnej
+scp hydro_db.dump hydrograf-data.tar.gz user@vps:/home/user/
+
+# Na VPS — import bazy
+pg_restore -U hydro_user -d hydro_db -Fc hydro_db.dump
+
+# Na VPS — rozpakuj pliki
+cd /home/user/Hydrograf
+tar xzf /home/user/hydrograf-data.tar.gz
+```
+
+#### Krok 5 — Backend (FastAPI)
+
+```bash
+cd /home/user/Hydrograf/backend
+
+python3.12 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -r requirements.txt
+
+# Migracje (wyrównanie schematu po pg_restore)
+.venv/bin/alembic upgrade head
+```
+
+Plik `.env` w katalogu `backend/`:
+
+```env
+DATABASE_URL=postgresql://hydro_user:TWOJE_SILNE_HASLO@localhost:5432/hydro_db
+LOG_LEVEL=INFO
+DEM_PATH=/home/user/Hydrograf/data/nmt/dem_mosaic.vrt
+ADMIN_API_KEY=twoj_klucz_admina
+```
+
+Serwis systemd:
+
+```ini
+# /etc/systemd/system/hydrograf.service
+[Unit]
+Description=Hydrograf API
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=exec
+User=user
+WorkingDirectory=/home/user/Hydrograf/backend
+EnvironmentFile=/home/user/Hydrograf/backend/.env
+ExecStart=/home/user/Hydrograf/backend/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now hydrograf
+```
+
+#### Krok 6 — Nginx (reverse proxy + frontend)
+
+```nginx
+# /etc/nginx/sites-available/hydrograf
+server {
+    listen 80;
+    server_name twoja-domena.pl;
+
+    root /home/user/Hydrograf/frontend;
+    index index.html;
+
+    # Pliki statyczne z cache
+    location ~* \.(css|js|png|ico|svg|pbf|geojson)$ {
+        expires 1h;
+        add_header Cache-Control "public, must-revalidate";
+    }
+
+    # Admin panel
+    location = /admin {
+        try_files /admin.html =404;
+    }
+
+    # SSE stream (bootstrap) — dłuższy timeout
+    location = /api/admin/bootstrap/stream {
+        proxy_pass http://127.0.0.1:8000/api/admin/bootstrap/stream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 3600s;
+        proxy_buffering off;
+    }
+
+    # API proxy
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;
+    }
+
+    # Health check
+    location /health {
+        proxy_pass http://127.0.0.1:8000/health;
+    }
+
+    # Frontend SPA fallback
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/hydrograf /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+#### Krok 7 — HTTPS (opcjonalne, zalecane)
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d twoja-domena.pl
+```
+
+#### Aktualizacja danych
+
+Gdy przetworzone zostaną nowe obszary na maszynie lokalnej:
+
+```bash
+# Lokalnie — inkrementalny dump
+pg_dump -U hydro_user -d hydro_db -Fc -f hydro_db_new.dump
+
+# Lokalnie — zaktualizowane pliki
+rsync -avz data/nmt/ user@vps:/home/user/Hydrograf/data/nmt/
+rsync -avz frontend/data/ user@vps:/home/user/Hydrograf/frontend/data/
+rsync -avz frontend/tiles/ user@vps:/home/user/Hydrograf/frontend/tiles/
+
+# Na VPS — podmiana bazy
+sudo systemctl stop hydrograf
+pg_restore -U hydro_user -d hydro_db --clean -Fc hydro_db_new.dump
+sudo systemctl start hydrograf
+```
+
+#### Minimalne wymagania VPS
+
+| Zasób | Minimum | Zalecane |
+|-------|---------|----------|
+| RAM   | 1 GB (+1 GB swap) | 2 GB |
+| CPU   | 1 vCPU  | 2 vCPU |
+| Dysk  | 5 GB + dane | 10 GB + dane |
+
+> **Uwaga:** Rozmiar danych zależy od przetworzonego obszaru. Przykład: okolice Poznania (~55M komórek NMT) to ~150 MB w bazie + ~110 MB plików statycznych.
+
 ## Struktura projektu
 
 ```
@@ -147,6 +400,7 @@ Hydrograf/
 - [`docs/KARTOGRAF_INTEGRATION.md`](docs/KARTOGRAF_INTEGRATION.md) - Integracja z Kartografem (pobieranie NMT)
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) - Decyzje architektoniczne (ADR)
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) - Historia zmian
+- [`docs/BENCHMARK_QUERIES.md`](docs/BENCHMARK_QUERIES.md) - Benchmark zapytań PostGIS
 - [`docs/DEVELOPMENT_STANDARDS.md`](docs/DEVELOPMENT_STANDARDS.md) - Standardy kodowania
 - [`docs/IMPLEMENTATION_PROMPT.md`](docs/IMPLEMENTATION_PROMPT.md) - Prompt dla AI
 - [`docs/PROGRESS.md`](docs/PROGRESS.md) - Aktualny postęp implementacji
@@ -257,7 +511,18 @@ alembic upgrade head
 
 ```bash
 cd backend
-pytest --cov=. --cov-report=html
+
+# Testy jednostkowe (domyślne — 774 testy)
+.venv/bin/python -m pytest tests/ -q
+
+# Testy integracyjne z PostGIS (wymagają działającej bazy)
+.venv/bin/python -m pytest tests/integration/test_select_stream_correctness.py -m db -v
+
+# Benchmarki wydajności zapytań PostGIS
+.venv/bin/python -m pytest tests/performance/ -m benchmark -v -s
+
+# Pokrycie kodu
+.venv/bin/python -m pytest --cov=. --cov-report=html
 ```
 
 ## Git Strategy
