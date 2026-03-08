@@ -46,20 +46,18 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-03 (sesja 56 — release CP4 v0.4.0)
+**Data:** 2026-03-08 (sesja 58 — testy poprawności i wydajności ADR-039)
 
 ### Co zrobiono
-- Fix 35 błędów ruff lint w 15 plikach (E501, I001, F841, F401, SIM105, UP024)
-- Aktualizacja wersji na v0.4.0 w `pyproject.toml`, CHANGELOG, PROGRESS
-- Audyt bezpieczeństwa: walidacja SQL timeout, XSS fix (innerHTML→textContent), subprocess validation
-- Audyt dokumentacji (2 rundy): wersje Kartograf, liczby testów/modułów JS, deprecated references
-- Frontend UX: hydrograph visibility, Escape key fix, initScenarioForm, spinners
-- Frontend UI: glassmorphism navbar, responsive fixes, aria-hidden (a11y)
-- Fix HSG bug: bbox Polski EPSG:4326 → EPSG:2180 w `bootstrap.py`
-- Weryfikacja HSG: pobranie rastra (693 KB, 90.9% pokrycia lądem, klasy A/B/C/D)
-- E2E test: 9/10 kroków OK (1 arkusz NMT, 250s)
-- Merge `develop` → `main`, tag `v0.4.0`, push na GitHub
-- 778 testów jednostkowych, 0 regresji, 0 błędów ruff
+- 9 testów integracyjnych poprawności ST_Contains (marker `db`, wymagają PostGIS)
+- 8 benchmarków wydajności zapytań PostGIS (marker `benchmark`)
+- Syntetyczny dataset: 100 catchmentów + 100 stream segments (Voronoi, 3 progi, segment_idx 9001-9100)
+- Infrastruktura DB testów: `conftest_db.py` z fixtures `db_engine`, `setup_test_data`, `db_session`
+- Dokument `BENCHMARK_QUERIES.md` z EXPLAIN ANALYZE i baseline pomiarami
+- Wyniki benchmarków: ST_Contains p95=0.7ms, full pipeline p95=6.2ms, merge 50 segs p95=248ms
+- pytest-benchmark dodany do dev deps, markery `db`/`benchmark` w pyproject.toml
+- Domyślne wykluczenie testów DB i benchmark z `pytest tests/` (addopts `-m 'not db and not benchmark'`)
+- 774 testów jednostkowych przechodzi, 0 regresji, 0 błędów ruff
 
 ### W trakcie
 - Brak
@@ -67,6 +65,14 @@
 ### Następne kroki
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+
+### Poprzednia sesja (2026-03-03, sesja 56 — release CP4 v0.4.0)
+- Fix 35 błędów ruff lint w 15 plikach (E501, I001, F841, F401, SIM105, UP024)
+- Aktualizacja wersji na v0.4.0 w `pyproject.toml`, CHANGELOG, PROGRESS
+- Audyt bezpieczeństwa: walidacja SQL timeout, XSS fix (innerHTML→textContent), subprocess validation
+- Frontend UX/UI fixes, HSG bbox bug, E2E test
+- Merge `develop` → `main`, tag `v0.4.0`, push na GitHub
+- 778 testów jednostkowych, 0 regresji, 0 błędów ruff
 
 ### Poprzednia sesja (2026-03-03, sesja 55 — code review CR5/CR9/CR10)
 

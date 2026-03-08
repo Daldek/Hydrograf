@@ -26,6 +26,7 @@ dev = [
     "httpx>=0.26.0",
     "ruff>=0.8",
     "mypy>=1.13",
+    "pytest-benchmark>=4.0",
 ]
 
 [project.urls]
@@ -47,6 +48,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 "api/endpoints/*.py" = ["B008"]
+"tests/integration/test_select_stream_correctness.py" = ["E402"]
+"tests/performance/test_query_performance.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -63,7 +66,11 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -m 'not db and not benchmark'"
+markers = [
+    "db: tests requiring PostGIS database",
+    "benchmark: performance benchmark tests",
+]
 
 [tool.coverage.run]
 source = ["."]
