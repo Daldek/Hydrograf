@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (sesja 58)
+- **Testy poprawności ST_Contains (ADR-039):** 9 testów integracyjnych weryfikujących selekcję zlewni z realnym PostGIS — poprawność punkt-w-poligonie, multi-threshold, granice, index GiST, brak overlaps, round-trip na danych produkcyjnych
+- **Benchmarki wydajności zapytań:** 8 benchmarków (Q1-Q8) mierzących latency kluczowych zapytań DB — ST_Contains, segment lookup, boundary merge, outlet, GeoJSON, porównanie z ST_DWithin
+- **Syntetyczny dataset testowy:** 100 catchmentów + 100 stream segments (Voronoi tessellacja, 3 progi, EPSG:2180) z generatorem `generate_test_data.py`
+- **Dokument `BENCHMARK_QUERIES.md`:** pełna dokumentacja wydajności z EXPLAIN ANALYZE, baseline pomiarami i analizą indeksów
+
 ### Refactored (sesja 57)
 - **ADR-039 — pure ST_Contains:** uproszczenie selekcji zlewni w `select_stream.py` — eliminacja 3-warstwowego fallbacku (hybrid snap-to-stream) na rzecz jednego `cg.find_catchment_at_point()`. Usunięto `find_nearest_stream_segment()` i `find_nearest_stream_segment_hybrid()` z `watershed_service.py` (~100 linii martwego kodu)
 
