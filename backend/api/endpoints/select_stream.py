@@ -20,7 +20,6 @@ from core.watershed_service import (
     boundary_to_polygon,
     compute_watershed_length,
     ensure_outlet_within_boundary,
-    find_nearest_stream_segment_hybrid,
     get_main_stream_geojson,
     get_segment_outlet,
     get_stream_info_by_segment_idx,
@@ -91,35 +90,16 @@ def select_stream(
                 f"(no catchments below {DEFAULT_THRESHOLD_M2})"
             )
 
-        # 1. Snap to nearest stream (hybrid: catchment-aware + spatial fallback)
-        nearest = find_nearest_stream_segment_hybrid(
-            point_2180.x,
-            point_2180.y,
-            threshold,
-            db,
-        )
+        # 1. Find catchment at click point (ADR-039: pure ST_Contains)
+        try:
+            clicked_idx = cg.find_catchment_at_point(
+                point_2180.x, point_2180.y, threshold, db
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        segment_idx = cg.get_segment_idx(clicked_idx)
 
-        clicked_idx = None
-        if nearest is not None:
-            segment_idx = nearest["segment_idx"]
-            clicked_idx = cg.lookup_by_segment_idx(threshold, segment_idx)
-            if clicked_idx is None:
-                logger.warning(
-                    f"segment_idx={segment_idx} (threshold={threshold}) "
-                    f"not in graph, falling back to ST_Contains"
-                )
-
-        # Fallback: ST_Contains (for clicks far from any stream)
-        if clicked_idx is None:
-            try:
-                clicked_idx = cg.find_catchment_at_point(
-                    point_2180.x, point_2180.y, threshold, db
-                )
-            except ValueError as e:
-                raise HTTPException(status_code=404, detail=str(e)) from e
-            segment_idx = cg.get_segment_idx(clicked_idx)
-
-        # 3. Get stream info for response
+        # 2. Get stream info for response
         segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)
 
         # 4. Traverse upstream via catchment graph BFS
