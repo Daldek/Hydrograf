@@ -192,9 +192,6 @@ class TestSelectStreamCascadeStats:
             "api.endpoints.select_stream.get_catchment_graph",
             return_value=cg,
         ), patch(
-            "api.endpoints.select_stream.find_nearest_stream_segment_hybrid",
-            return_value={"segment_idx": 1},
-        ), patch(
             "api.endpoints.select_stream.merge_catchment_boundaries",
             return_value=_make_boundary_wkb(),
         ), patch(
@@ -287,9 +284,6 @@ class TestSelectStreamCascadeStats:
             "api.endpoints.select_stream.get_catchment_graph",
             return_value=cg,
         ), patch(
-            "api.endpoints.select_stream.find_nearest_stream_segment_hybrid",
-            return_value={"segment_idx": 1},
-        ), patch(
             "api.endpoints.select_stream.merge_catchment_boundaries",
             return_value=_make_boundary_wkb(),
         ), patch(
@@ -344,9 +338,6 @@ class TestSelectStreamCascadeStats:
         with patch(
             "api.endpoints.select_stream.get_catchment_graph",
             return_value=cg,
-        ), patch(
-            "api.endpoints.select_stream.find_nearest_stream_segment_hybrid",
-            return_value={"segment_idx": 1},
         ), patch(
             "api.endpoints.select_stream.merge_catchment_boundaries",
             return_value=_make_boundary_wkb(),

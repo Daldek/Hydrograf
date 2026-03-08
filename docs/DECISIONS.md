@@ -844,6 +844,38 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-039: Uproszczenie selekcji zlewni — pure ST_Contains
+
+**Data:** 2026-03-08
+**Status:** Przyjeta
+**Zastepuje:** ADR-027 (hybrid snap-to-stream)
+
+**Kontekst:** Logika selekcji zlewni w `select_stream.py` uzywala 3-warstwowego lancucha fallbackow:
+1. `find_nearest_stream_segment_hybrid()` — ST_Contains na `stream_catchments`, fallback ST_Distance na `stream_network`
+2. `cg.lookup_by_segment_idx()` — O(1) dict lookup
+3. `cg.find_catchment_at_point()` — ponowne ST_Contains
+
+Fallback ST_Distance (snap-to-stream) byl wolniejszy i mogl wybrac ciek z sasiedniej zlewni przy kliknieciu blisko granicy. Subcatchments tesselluja caly przetworzony obszar, wiec ST_Contains zawsze znajdzie wynik wewnatrz bbox.
+
+**Opcje:**
+- A) Zachowac hybrid (3 warstwy) — komplikowalnosc, potencjalne bledy przy granicach
+- B) Pure ST_Contains (1 warstwa) — prostsze, szybsze, poprawne semantycznie
+
+**Decyzja:** Opcja B. Uproszczenie do jednego kroku: `cg.find_catchment_at_point()` (ST_Contains), identycznie jak `watershed.py`.
+
+**Zmiany:**
+- `select_stream.py`: usunieto import i wywolanie `find_nearest_stream_segment_hybrid`, zastapiono przez `cg.find_catchment_at_point()`
+- `watershed_service.py`: usunieto `find_nearest_stream_segment()` (~50 linii) i `find_nearest_stream_segment_hybrid()` (~50 linii)
+- Zachowano `get_stream_info_by_segment_idx()` — uzywane w 3 endpointach
+
+**Konsekwencje:**
+- ~100 linii martwego kodu mniej
+- `select_stream.py` i `watershed.py` uzywaja tego samego wzorca (find_catchment_at_point)
+- Brak ryzyka selekcji cieku z sasiedniej zlewni (eliminacja snap-to-stream)
+- Szybsze zapytanie (ST_Contains vs ST_DWithin+ORDER BY)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
