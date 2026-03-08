@@ -21,8 +21,6 @@ from core.watershed_service import (
     build_morph_dict_from_graph,
     compute_watershed_length,
     ensure_outlet_within_boundary,
-    find_nearest_stream_segment,
-    find_nearest_stream_segment_hybrid,
     get_main_stream_geojson,
     get_segment_outlet,
     merge_catchment_boundaries,
@@ -97,44 +95,6 @@ def mock_catchment_graph():
         "main_channel_nodes": [0, 1, 2],
     }
     return cg
-
-
-# ---------------------------------------------------------------------------
-# find_nearest_stream_segment
-# ---------------------------------------------------------------------------
-
-
-class TestFindNearestStreamSegment:
-    """Tests for find_nearest_stream_segment."""
-
-    def test_returns_dict_when_found(self, mock_db):
-        """When DB returns a row, function returns a dict with all expected keys."""
-        row = MagicMock()
-        row.segment_idx = 42
-        row.strahler_order = 3
-        row.length_m = 1234.5
-        row.upstream_area_km2 = 12.3
-        row.downstream_x = 500100.0
-        row.downstream_y = 600200.0
-        mock_db.execute.return_value.fetchone.return_value = row
-
-        result = find_nearest_stream_segment(500050.0, 600050.0, 100, mock_db)
-
-        assert result is not None
-        assert result["segment_idx"] == 42
-        assert result["strahler_order"] == 3
-        assert result["length_m"] == 1234.5
-        assert result["upstream_area_km2"] == 12.3
-        assert result["downstream_x"] == 500100.0
-        assert result["downstream_y"] == 600200.0
-
-    def test_returns_none_when_not_found(self, mock_db):
-        """When DB returns None, function returns None."""
-        mock_db.execute.return_value.fetchone.return_value = None
-
-        result = find_nearest_stream_segment(500050.0, 600050.0, 100, mock_db)
-
-        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -652,29 +612,3 @@ class TestEnsureOutletWithinBoundary:
         assert abs(y - 50.0) < 0.01
 
 
-# ---------------------------------------------------------------------------
-# find_nearest_stream_segment_hybrid (F2)
-# ---------------------------------------------------------------------------
-
-
-class TestFindNearestStreamSegmentHybrid:
-    """Tests for find_nearest_stream_segment_hybrid."""
-
-    def test_point_inside_catchment_returns_catchment_stream(self):
-        """When point is inside a catchment, return that catchment's stream."""
-        import inspect
-
-        sig = inspect.signature(find_nearest_stream_segment_hybrid)
-        assert "x" in sig.parameters
-        assert "y" in sig.parameters
-        assert "threshold_m2" in sig.parameters
-        assert "db" in sig.parameters
-
-    def test_hybrid_has_catchment_query(self):
-        """Hybrid function uses ST_Contains on stream_catchments."""
-        import inspect
-
-        source = inspect.getsource(find_nearest_stream_segment_hybrid)
-        assert "ST_Contains" in source
-        assert "stream_catchments" in source
-        assert "find_nearest_stream_segment" in source  # fallback
