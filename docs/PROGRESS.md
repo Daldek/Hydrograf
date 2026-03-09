@@ -13,9 +13,9 @@
 | Integracja Kartograf | ✅ Gotowy | v0.5.0 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel |
+| Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 791 testow (774 unit + 9 integracyjnych + 8 benchmarkow) |
+| Testy | ✅ Gotowy | 778 testow jednostkowych |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -46,32 +46,32 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-08 (sesja 58 — testy poprawności i wydajności ADR-039)
+**Data:** 2026-03-09 (sesja 59 — vector boundary file support ADR-040)
 
 ### Co zrobiono
-- 9 testów integracyjnych poprawności ST_Contains (marker `db`, wymagają PostGIS)
-- 8 benchmarków wydajności zapytań PostGIS (marker `benchmark`)
-- Syntetyczny dataset: 100 catchmentów + 100 stream segments (Voronoi, 3 progi, segment_idx 9001-9100)
-- Infrastruktura DB testów: `conftest_db.py` z fixtures `db_engine`, `setup_test_data`, `db_session`
-- Dokument `BENCHMARK_QUERIES.md` z EXPLAIN ANALYZE i baseline pomiarami
-- Wyniki benchmarków: ST_Contains p95=0.7ms, full pipeline p95=6.2ms, merge 50 segs p95=248ms
-- pytest-benchmark dodany do dev deps, markery `db`/`benchmark` w pyproject.toml
-- Domyślne wykluczenie testów DB i benchmark z `pytest tests/` (addopts `-m 'not db and not benchmark'`)
-- 774 testów jednostkowych przechodzi, 0 regresji, 0 błędów ruff
+- ADR-040: obsługa plików wektorowych jako obszar analizy
+- Nowy moduł `core/boundary.py`: ładowanie SHP/GPKG/GeoJSON, walidacja, union, reprojekcja WGS84
+- CLI: `--boundary-file` / `--boundary-layer` w bootstrap.py (mutually exclusive z --bbox/--sheets)
+- API: `POST /api/admin/bootstrap/upload-boundary` (upload + walidacja + metadata)
+- `BootstrapStartRequest` rozszerzony o boundary_file/boundary_layer
+- Frontend admin: toggle bbox/boundary, upload z podglądem (CRS, area, bbox)
+- nginx: `client_max_body_size 50m` dla tras admin
+- Testy: test_boundary.py (13 testów), test_admin_upload.py (5 testów)
 
 ### W trakcie
 - Brak
 
 ### Następne kroki
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
+- Clipping do dokładnej granicy poligonu (follow-up ADR)
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
 
 ### Poprzednia sesja (2026-03-03, sesja 56 — release CP4 v0.4.0)
+
 - Fix 35 błędów ruff lint w 15 plikach (E501, I001, F841, F401, SIM105, UP024)
-- Aktualizacja wersji na v0.4.0 w `pyproject.toml`, CHANGELOG, PROGRESS
-- Audyt bezpieczeństwa: walidacja SQL timeout, XSS fix (innerHTML→textContent), subprocess validation
-- Frontend UX/UI fixes, HSG bbox bug, E2E test
-- Merge `develop` → `main`, tag `v0.4.0`, push na GitHub
+- Aktualizacja wersji na v0.4.0 w `pyproject.toml`
+- Aktualizacja CHANGELOG.md — zamknięcie sekcji [Unreleased] jako [0.4.0]
+- Merge `develop` → `main`, tag `v0.4.0`
 - 778 testów jednostkowych, 0 regresji, 0 błędów ruff
 
 ### Poprzednia sesja (2026-03-03, sesja 55 — code review CR5/CR9/CR10)
