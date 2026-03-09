@@ -14,10 +14,11 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 
 import psutil
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -414,6 +415,75 @@ def cleanup_execute(
 
 
 # ---------------------------------------------------------------------------
+# Boundary file upload
+# ---------------------------------------------------------------------------
+BOUNDARY_DIR = Path("data/boundary")
+ALLOWED_BOUNDARY_EXTENSIONS = {".gpkg", ".geojson", ".json", ".zip"}
+MAX_UPLOAD_SIZE_MB = 50
+
+
+@router.post("/bootstrap/upload-boundary")
+async def upload_boundary(
+    file: UploadFile = File(...),
+    _admin: None = Depends(verify_admin_key),
+) -> dict:
+    """Upload and validate a boundary file. Returns metadata + filename."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    # Validate extension
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in ALLOWED_BOUNDARY_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid file type: {suffix}. "
+                f"Allowed: {', '.join(sorted(ALLOWED_BOUNDARY_EXTENSIONS))}"
+            ),
+        )
+
+    # Read file with size limit
+    content = await file.read()
+    size_mb = len(content) / (1024 * 1024)
+    if size_mb > MAX_UPLOAD_SIZE_MB:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large: {size_mb:.1f} MB (max {MAX_UPLOAD_SIZE_MB} MB)",
+        )
+
+    # Sanitize filename
+    safe_name = f"{uuid.uuid4()}_{Path(file.filename).name}"
+    BOUNDARY_DIR.mkdir(parents=True, exist_ok=True)
+    save_path = BOUNDARY_DIR / safe_name
+
+    # Verify path is within boundary dir (prevent traversal)
+    if not save_path.resolve().is_relative_to(BOUNDARY_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Save file
+    save_path.write_bytes(content)
+
+    try:
+        from core.boundary import validate_boundary_file
+
+        metadata = validate_boundary_file(save_path)
+    except (ValueError, Exception) as e:
+        # Clean up on validation failure
+        save_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400, detail=f"Invalid boundary file: {e}"
+        ) from e
+
+    return {
+        "filename": safe_name,
+        "bbox_wgs84": metadata["bbox_wgs84"],
+        "area_km2": metadata["area_km2"],
+        "n_features": metadata["n_features"],
+        "crs": metadata["crs"],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Bootstrap subprocess manager
 # ---------------------------------------------------------------------------
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -498,6 +568,12 @@ class BootstrapStartRequest(BaseModel):
 
     bbox: str | None = Field(default=None, description="Bounding box")
     sheets: list[str] | None = Field(default=None, description="Sheet codes")
+    boundary_file: str | None = Field(
+        default=None, description="Filename from upload-boundary endpoint"
+    )
+    boundary_layer: str | None = Field(
+        default=None, description="Layer name for GPKG files"
+    )
     skip_precipitation: bool = Field(default=False)
     skip_tiles: bool = Field(default=False)
     skip_overlays: bool = Field(default=False)
@@ -534,11 +610,16 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
             status_code=409, detail="Bootstrap is already running"
         )
 
-    # Validate input
-    if not request.bbox and not request.sheets:
+    # Validate input: exactly one of bbox, sheets, boundary_file
+    sources = sum([
+        request.bbox is not None,
+        request.sheets is not None,
+        request.boundary_file is not None,
+    ])
+    if sources != 1:
         raise HTTPException(
             status_code=400,
-            detail="Either bbox or sheets must be provided",
+            detail="Exactly one of bbox, sheets, or boundary_file must be provided",
         )
 
     # Validate sheet codes before passing to subprocess
@@ -561,6 +642,18 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
         cmd.extend(["--bbox", request.bbox])
     elif request.sheets:
         cmd.extend(["--sheets"] + request.sheets)
+    elif request.boundary_file:
+        boundary_path = BOUNDARY_DIR / request.boundary_file
+        if not boundary_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail="Boundary file not found. Upload first.",
+            )
+        if not boundary_path.resolve().is_relative_to(BOUNDARY_DIR.resolve()):
+            raise HTTPException(status_code=400, detail="Invalid boundary filename")
+        cmd.extend(["--boundary-file", str(boundary_path)])
+        if request.boundary_layer:
+            cmd.extend(["--boundary-layer", request.boundary_layer])
 
     cmd.extend(["--skip-infra", "--skip-serve"])
 
