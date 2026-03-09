@@ -195,10 +195,29 @@ def resolve_sheets(
     return resolved_sheets, bbox
 
 
+def resolve_boundary_file(
+    boundary_file: Path,
+    scale: str,
+    layer: str | None = None,
+) -> tuple[list[str], tuple[float, float, float, float]]:
+    """Load boundary file, resolve NMT sheets and bbox."""
+    from kartograf import find_sheets_for_geometry
+
+    from core.boundary import boundary_to_bbox_wgs84, load_boundary
+
+    geom = load_boundary(boundary_file, layer=layer)
+    bbox = boundary_to_bbox_wgs84(geom)
+    sheets = find_sheets_for_geometry(
+        str(boundary_file), target_scale=scale, layer=layer
+    )
+    return sheets, bbox
+
+
 def print_header(
     bbox: tuple[float, float, float, float],
     sheets: list[str],
     port: int,
+    boundary_file: Path | None = None,
 ):
     """Print bootstrap header with configuration summary."""
     min_lon, min_lat, max_lon, max_lat = bbox
@@ -207,9 +226,13 @@ def print_header(
         f"{min_lon:.3f}\u00b0E\u2013{max_lon:.3f}\u00b0E, "
         f"{min_lat:.3f}\u00b0N\u2013{max_lat:.3f}\u00b0N"
     )
+    boundary_line = ""
+    if boundary_file is not None:
+        boundary_line = f"  Plik granicy: {boundary_file}\n"
     header = (
         f"{sep}\n"
         f"  Hydrograf Bootstrap\n"
+        f"{boundary_line}"
         f"  Obszar: {area}\n"
         f"  Arkusze: {len(sheets)}\n"
         f"  Port: {port}\n"
@@ -1126,6 +1149,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SHEET",
         help="Godla arkuszy: N-34-131-C-c-2-1 N-34-131-C-c-2-2",
     )
+    area_group.add_argument(
+        "--boundary-file",
+        type=Path,
+        help="Vector boundary file (SHP/ZIP, GPKG, GeoJSON)",
+    )
 
     # Optional
     parser.add_argument(
@@ -1134,6 +1162,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="1:10000",
         choices=["1:10000", "1:25000", "1:50000", "1:100000"],
         help="Skala mapy (default: 1:10000)",
+    )
+    parser.add_argument(
+        "--boundary-layer",
+        type=str,
+        default=None,
+        help="Layer name for GPKG files (default: first layer)",
     )
     parser.add_argument(
         "--output",
@@ -1256,9 +1290,14 @@ def main():
     cache_dir = cache_dir.resolve()
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # Parse bbox or resolve sheets
-    bbox_parsed = parse_bbox(args.bbox) if args.bbox else None
-    sheets, bbox = resolve_sheets(bbox_parsed, args.sheets, args.scale)
+    # Parse bbox, resolve sheets, or load boundary file
+    if args.boundary_file:
+        sheets, bbox = resolve_boundary_file(
+            args.boundary_file, args.scale, args.boundary_layer
+        )
+    else:
+        bbox_parsed = parse_bbox(args.bbox) if args.bbox else None
+        sheets, bbox = resolve_sheets(bbox_parsed, args.sheets, args.scale)
 
     if not sheets:
         logger.error("Nie znaleziono arkuszy dla podanego obszaru")
@@ -1284,7 +1323,12 @@ def main():
         skips.add(10)
 
     # Print header
-    print_header(bbox, sheets, args.port)
+    print_header(
+        bbox,
+        sheets,
+        args.port,
+        boundary_file=getattr(args, "boundary_file", None),
+    )
 
     if args.dry_run:
         dry_run(sheets, bbox, output_dir, cache_dir, args.port, skips)
