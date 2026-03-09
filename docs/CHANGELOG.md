@@ -5,25 +5,17 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] — 2026-03-09
 
-### Added (sesja 58)
-- **Testy poprawności ST_Contains (ADR-039):** 9 testów integracyjnych weryfikujących selekcję zlewni z realnym PostGIS — poprawność punkt-w-poligonie, multi-threshold, granice, index GiST, brak overlaps, round-trip na danych produkcyjnych
-- **Benchmarki wydajności zapytań:** 8 benchmarków (Q1-Q8) mierzących latency kluczowych zapytań DB — ST_Contains, segment lookup, boundary merge, outlet, GeoJSON, porównanie z ST_DWithin
-- **Syntetyczny dataset testowy:** 100 catchmentów + 100 stream segments (Voronoi tessellacja, 3 progi, EPSG:2180) z generatorem `generate_test_data.py`
-- **Dokument `BENCHMARK_QUERIES.md`:** pełna dokumentacja wydajności z EXPLAIN ANALYZE, baseline pomiarami i analizą indeksów
-
-### Refactored (sesja 57)
-- **ADR-039 — pure ST_Contains:** uproszczenie selekcji zlewni w `select_stream.py` — eliminacja 3-warstwowego fallbacku (hybrid snap-to-stream) na rzecz jednego `cg.find_catchment_at_point()`. Usunięto `find_nearest_stream_segment()` i `find_nearest_stream_segment_hybrid()` z `watershed_service.py` (~100 linii martwego kodu)
+### Added
+- Vector boundary file support (ADR-040): SHP/ZIP, GPKG, GeoJSON as analysis area
+- New module `core/boundary.py`: load_boundary, validate_boundary_file, bbox conversion
+- CLI: `--boundary-file` / `--boundary-layer` arguments in bootstrap.py
+- API: `POST /api/admin/bootstrap/upload-boundary` endpoint
+- Frontend: area mode toggle (bbox / vector file) in admin panel
+- 18+ unit tests for boundary module and upload endpoint
 
 ## [0.4.0] — 2026-03-03
-
-### Fixed (sesja 56 — release CP4)
-- **HSG bbox CRS bug:** Poland bbox in `bootstrap.py` changed from EPSG:4326 to EPSG:2180 (PL-1992) for Kartograf v0.5.0 compatibility
-- **Security hardening:** SQL timeout validation in `db_bulk.py`, subprocess sheet code validation in `admin.py`, XSS fix (innerHTML→textContent) in `profile.js`
-- **Frontend UX:** hydrograph section conditional visibility, Escape key safe-guard, `initScenarioForm()` call, auth spinner, depressions loading feedback
-- **Frontend UI:** navbar glassmorphism tokens, draw-banner responsive wrap, results panel max-height, tablet breakpoint, aria-hidden on chevrons
-- **Docs consistency:** Kartograf v0.4.1→v0.5.0 in CLAUDE.md/README, JS modules count 9→13, test count 666→778
 
 ### Style
 - 35 ruff lint errors fixed across 15 files (E501, I001, F841, F401, SIM105, UP024)
