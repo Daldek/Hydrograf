@@ -54,32 +54,42 @@ def load_boundary(file_path: Path, layer: str | None = None) -> BaseGeometry:
     return _load_and_process(file_path, layer)
 
 
+def _validate_zip_entries(zf: zipfile.ZipFile) -> None:
+    """Validate ZIP entries for security.
+
+    Checks file count, total size, path traversal, symlinks.
+
+    Raises:
+        ValueError: If any security check fails.
+    """
+    entries = zf.infolist()
+    if len(entries) > MAX_ZIP_FILES:
+        raise ValueError(
+            f"ZIP has too many files: {len(entries)} (max {MAX_ZIP_FILES})"
+        )
+
+    total_size = sum(e.file_size for e in entries)
+    if total_size / (1024 * 1024) > MAX_ZIP_EXTRACTED_MB:
+        raise ValueError(
+            f"ZIP extracted size too large: {total_size / (1024 * 1024):.1f} MB "
+            f"(max {MAX_ZIP_EXTRACTED_MB} MB)"
+        )
+
+    for entry in entries:
+        if entry.is_dir():
+            continue
+        # Check for path traversal
+        if ".." in entry.filename or entry.filename.startswith("/"):
+            raise ValueError(f"Suspicious path in ZIP: {entry.filename}")
+        # Check for symlinks (external_attr upper 16 bits)
+        if (entry.external_attr >> 16) & 0o120000 == 0o120000:
+            raise ValueError(f"Symlink in ZIP not allowed: {entry.filename}")
+
+
 def _load_from_zip(zip_path: Path, layer: str | None = None) -> BaseGeometry:
     """Extract ZIP containing SHP and load it."""
     with zipfile.ZipFile(zip_path, "r") as zf:
-        # Security checks
-        entries = zf.infolist()
-        if len(entries) > MAX_ZIP_FILES:
-            raise ValueError(
-                f"ZIP has too many files: {len(entries)} (max {MAX_ZIP_FILES})"
-            )
-
-        total_size = sum(e.file_size for e in entries)
-        if total_size / (1024 * 1024) > MAX_ZIP_EXTRACTED_MB:
-            raise ValueError(
-                f"ZIP extracted size too large: {total_size / (1024 * 1024):.1f} MB "
-                f"(max {MAX_ZIP_EXTRACTED_MB} MB)"
-            )
-
-        for entry in entries:
-            if entry.is_dir():
-                continue
-            # Check for path traversal
-            if ".." in entry.filename or entry.filename.startswith("/"):
-                raise ValueError(f"Suspicious path in ZIP: {entry.filename}")
-            # Check for symlinks (external_attr upper 16 bits)
-            if (entry.external_attr >> 16) & 0o120000 == 0o120000:
-                raise ValueError(f"Symlink in ZIP not allowed: {entry.filename}")
+        _validate_zip_entries(zf)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             zf.extractall(tmpdir)
@@ -207,6 +217,7 @@ def validate_boundary_file(file_path: Path) -> dict:
         if file_path.suffix.lower() == ".zip":
             temp_dir = tempfile.mkdtemp()
             with zipfile.ZipFile(file_path, "r") as zf:
+                _validate_zip_entries(zf)
                 zf.extractall(temp_dir)
             shp_files = list(Path(temp_dir).rglob("*.shp"))
             if not shp_files:
