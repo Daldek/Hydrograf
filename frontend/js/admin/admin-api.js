@@ -101,6 +101,44 @@
     }
 
     /**
+     * Upload a vector boundary file (SHP/ZIP, GPKG, GeoJSON).
+     *
+     * Uses fetch directly (not request()) because FormData must not
+     * have Content-Type set manually — the browser sets the boundary.
+     *
+     * @param {File} file - boundary file to upload
+     * @returns {Promise<Object>} metadata: {filename, crs, n_features, area_km2, bbox_wgs84}
+     */
+    async function uploadBoundary(file) {
+        var formData = new FormData();
+        formData.append('file', file);
+
+        var response = await fetch('/api/admin/bootstrap/upload-boundary', {
+            method: 'POST',
+            headers: { 'X-Admin-Key': _apiKey },
+            body: formData,
+        });
+
+        if (response.status === 401 || response.status === 403) {
+            localStorage.removeItem('admin_api_key');
+            window.location.reload();
+            throw new Error('Brak autoryzacji');
+        }
+
+        if (!response.ok) {
+            var errorData;
+            try {
+                errorData = await response.json();
+            } catch (e) {
+                throw new Error('Błąd serwera (' + response.status + ')');
+            }
+            throw new Error(errorData.detail || 'Błąd serwera (' + response.status + ')');
+        }
+
+        return response.json();
+    }
+
+    /**
      * Stream bootstrap log lines via fetch + ReadableStream.
      *
      * Uses fetch (not EventSource) so we can send the X-Admin-Key header.
@@ -208,6 +246,7 @@
         getBootstrapStatus: getBootstrapStatus,
         startBootstrap: startBootstrap,
         cancelBootstrap: cancelBootstrap,
+        uploadBoundary: uploadBoundary,
         streamBootstrapLogs: streamBootstrapLogs,
         verifyKey: verifyKey,
     };
