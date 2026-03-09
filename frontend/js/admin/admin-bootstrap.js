@@ -10,6 +10,7 @@
 
     var _stream = null;
     var _elapsedTimer = null;
+    var _boundaryFilename = null;
 
     /**
      * Initialize bootstrap panel — bind event handlers, load initial status.
@@ -23,6 +24,27 @@
         }
         if (cancelBtn) {
             cancelBtn.addEventListener('click', handleCancel);
+        }
+
+        // Area mode toggle (bbox vs boundary file)
+        document.querySelectorAll('input[name="area-mode"]').forEach(function (radio) {
+            radio.addEventListener('change', function () {
+                var bboxSection = document.getElementById('area-bbox-section');
+                var boundarySection = document.getElementById('area-boundary-section');
+                if (this.value === 'bbox') {
+                    bboxSection.classList.remove('d-none');
+                    boundarySection.classList.add('d-none');
+                } else {
+                    bboxSection.classList.add('d-none');
+                    boundarySection.classList.remove('d-none');
+                }
+            });
+        });
+
+        // Boundary file upload handler
+        var boundaryInput = document.getElementById('boundary-file');
+        if (boundaryInput) {
+            boundaryInput.addEventListener('change', handleBoundaryUpload);
         }
 
         refreshStatus();
@@ -153,18 +175,60 @@
     }
 
     /**
+     * Handle boundary file selection — upload and display metadata.
+     */
+    async function handleBoundaryUpload() {
+        var file = this.files[0];
+        if (!file) return;
+
+        var infoDiv = document.getElementById('boundary-info');
+        var errorDiv = document.getElementById('boundary-error');
+        infoDiv.classList.add('d-none');
+        errorDiv.classList.add('d-none');
+        _boundaryFilename = null;
+
+        try {
+            var data = await window.Hydrograf.adminApi.uploadBoundary(file);
+            _boundaryFilename = data.filename;
+            document.getElementById('boundary-crs').textContent = data.crs;
+            document.getElementById('boundary-features').textContent = data.n_features;
+            document.getElementById('boundary-area').textContent = data.area_km2.toFixed(2);
+            document.getElementById('boundary-bbox-display').textContent =
+                data.bbox_wgs84.map(function (v) { return v.toFixed(4); }).join(', ');
+            infoDiv.classList.remove('d-none');
+        } catch (err) {
+            errorDiv.textContent = err.message || 'Upload failed';
+            errorDiv.classList.remove('d-none');
+        }
+    }
+
+    /**
      * Handle Start button click.
      */
     async function handleStart() {
-        var bbox = readAndValidateBbox();
-        if (!bbox) return;
+        var mode = document.querySelector('input[name="area-mode"]:checked').value;
 
         var params = {
-            bbox: bbox,
             skip_precipitation: document.getElementById('skip-precipitation').checked,
             skip_tiles: document.getElementById('skip-tiles').checked,
             skip_overlays: document.getElementById('skip-overlays').checked,
         };
+
+        if (mode === 'boundary') {
+            if (!_boundaryFilename) {
+                var errorDiv = document.getElementById('boundary-error');
+                if (errorDiv) {
+                    errorDiv.textContent = 'Najpierw wgraj plik z granicą obszaru.';
+                    errorDiv.classList.remove('d-none');
+                }
+                return;
+            }
+            params.boundary_file = _boundaryFilename;
+        } else {
+            var bbox = readAndValidateBbox();
+            if (!bbox) return;
+            params.bbox = bbox;
+        }
 
         try {
             clearLog();
