@@ -13,7 +13,7 @@
 | Integracja Kartograf | ✅ Gotowy | v0.5.0 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel |
+| Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
 | Testy | ✅ Gotowy | 778 testow jednostkowych |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
@@ -46,21 +46,33 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-03 (sesja 56 — release CP4 v0.4.0)
+**Data:** 2026-03-09 (sesja 59 — vector boundary file support ADR-040)
 
 ### Co zrobiono
-- Fix 35 błędów ruff lint w 15 plikach (E501, I001, F841, F401, SIM105, UP024)
-- Aktualizacja wersji na v0.4.0 w `pyproject.toml`
-- Aktualizacja CHANGELOG.md — zamknięcie sekcji [Unreleased] jako [0.4.0]
-- Merge `develop` → `main`, tag `v0.4.0`
-- 778 testów jednostkowych, 0 regresji, 0 błędów ruff
+- ADR-040: obsługa plików wektorowych jako obszar analizy
+- Nowy moduł `core/boundary.py`: ładowanie SHP/GPKG/GeoJSON, walidacja, union, reprojekcja WGS84
+- CLI: `--boundary-file` / `--boundary-layer` w bootstrap.py (mutually exclusive z --bbox/--sheets)
+- API: `POST /api/admin/bootstrap/upload-boundary` (upload + walidacja + metadata)
+- `BootstrapStartRequest` rozszerzony o boundary_file/boundary_layer
+- Frontend admin: toggle bbox/boundary, upload z podglądem (CRS, area, bbox)
+- nginx: `client_max_body_size 50m` dla tras admin
+- Testy: test_boundary.py (13 testów), test_admin_upload.py (5 testów)
 
 ### W trakcie
 - Brak
 
 ### Następne kroki
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
+- Clipping do dokładnej granicy poligonu (follow-up ADR)
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+
+### Poprzednia sesja (2026-03-03, sesja 56 — release CP4 v0.4.0)
+
+- Fix 35 błędów ruff lint w 15 plikach (E501, I001, F841, F401, SIM105, UP024)
+- Aktualizacja wersji na v0.4.0 w `pyproject.toml`
+- Aktualizacja CHANGELOG.md — zamknięcie sekcji [Unreleased] jako [0.4.0]
+- Merge `develop` → `main`, tag `v0.4.0`
+- 778 testów jednostkowych, 0 regresji, 0 błędów ruff
 
 ### Poprzednia sesja (2026-03-03, sesja 55 — code review CR5/CR9/CR10)
 

@@ -844,6 +844,31 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-040: Vector boundary file support
+
+**Data:** 2026-03-09
+**Status:** Accepted
+
+**Kontekst:** Pipeline Hydrograf definiuje obszar analizy wyłącznie przez bbox (WGS84) lub kody arkuszy NMT. Użytkownicy potrzebują możliwości wskazania pliku wektorowego (SHP, GPKG, GeoJSON) definiującego granicę analizy. Istniejąca infrastruktura (`download_for_geometry()`, `find_sheets_for_geometry()`, `convert_boundary_to_bbox()`) już obsługuje geometrie — brakuje warstwy CLI/API.
+
+**Decyzja:**
+- Nowy moduł `core/boundary.py`: ładowanie, walidacja (Polygon/MultiPolygon only), union features, reprojekcja do WGS84
+- CLI: `--boundary-file` + `--boundary-layer` w bootstrap.py (mutually exclusive z --bbox/--sheets)
+- API: `POST /api/admin/bootstrap/upload-boundary` (upload + walidacja), rozszerzenie `BootstrapStartRequest`
+- Frontend: toggle bbox/boundary w panelu admin, upload z podglądem metadanych
+- Plik wektorowy służy do wyznaczenia bbox — pipeline działa identycznie jak dotychczas
+- SHP akceptowany jako archiwum ZIP (.shp+.shx+.dbf+.prj)
+- Limity bezpieczeństwa: 50 MB upload, max 20 plików w ZIP, max 100 MB po rozpakowaniu, brak symlinków
+
+**Konsekwencje:**
+- (+) Elastyczne definiowanie obszaru analizy — gminy, zlewnie, obszary chronione
+- (+) Ponowne użycie istniejącej infrastruktury Kartograf (find_sheets_for_geometry)
+- (+) Brak zmian w pipeline — boundary→bbox→sheets to transparentna konwersja
+- (-) Dodatkowa zależność na geopandas/fiona w ścieżce CLI/API (już w requirements)
+- (-) Clipping do dokładnej granicy poligonu wymaga osobnego ADR w przyszłości
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
