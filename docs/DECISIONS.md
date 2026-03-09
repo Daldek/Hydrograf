@@ -844,35 +844,28 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
-## ADR-039: Uproszczenie selekcji zlewni — pure ST_Contains
+## ADR-040: Vector boundary file support
 
-**Data:** 2026-03-08
-**Status:** Przyjeta
-**Zastepuje:** ADR-027 (hybrid snap-to-stream)
+**Data:** 2026-03-09
+**Status:** Accepted
 
-**Kontekst:** Logika selekcji zlewni w `select_stream.py` uzywala 3-warstwowego lancucha fallbackow:
-1. `find_nearest_stream_segment_hybrid()` — ST_Contains na `stream_catchments`, fallback ST_Distance na `stream_network`
-2. `cg.lookup_by_segment_idx()` — O(1) dict lookup
-3. `cg.find_catchment_at_point()` — ponowne ST_Contains
+**Kontekst:** Pipeline Hydrograf definiuje obszar analizy wyłącznie przez bbox (WGS84) lub kody arkuszy NMT. Użytkownicy potrzebują możliwości wskazania pliku wektorowego (SHP, GPKG, GeoJSON) definiującego granicę analizy. Istniejąca infrastruktura (`download_for_geometry()`, `find_sheets_for_geometry()`, `convert_boundary_to_bbox()`) już obsługuje geometrie — brakuje warstwy CLI/API.
 
-Fallback ST_Distance (snap-to-stream) byl wolniejszy i mogl wybrac ciek z sasiedniej zlewni przy kliknieciu blisko granicy. Subcatchments tesselluja caly przetworzony obszar, wiec ST_Contains zawsze znajdzie wynik wewnatrz bbox.
-
-**Opcje:**
-- A) Zachowac hybrid (3 warstwy) — komplikowalnosc, potencjalne bledy przy granicach
-- B) Pure ST_Contains (1 warstwa) — prostsze, szybsze, poprawne semantycznie
-
-**Decyzja:** Opcja B. Uproszczenie do jednego kroku: `cg.find_catchment_at_point()` (ST_Contains), identycznie jak `watershed.py`.
-
-**Zmiany:**
-- `select_stream.py`: usunieto import i wywolanie `find_nearest_stream_segment_hybrid`, zastapiono przez `cg.find_catchment_at_point()`
-- `watershed_service.py`: usunieto `find_nearest_stream_segment()` (~50 linii) i `find_nearest_stream_segment_hybrid()` (~50 linii)
-- Zachowano `get_stream_info_by_segment_idx()` — uzywane w 3 endpointach
+**Decyzja:**
+- Nowy moduł `core/boundary.py`: ładowanie, walidacja (Polygon/MultiPolygon only), union features, reprojekcja do WGS84
+- CLI: `--boundary-file` + `--boundary-layer` w bootstrap.py (mutually exclusive z --bbox/--sheets)
+- API: `POST /api/admin/bootstrap/upload-boundary` (upload + walidacja), rozszerzenie `BootstrapStartRequest`
+- Frontend: toggle bbox/boundary w panelu admin, upload z podglądem metadanych
+- Plik wektorowy służy do wyznaczenia bbox — pipeline działa identycznie jak dotychczas
+- SHP akceptowany jako archiwum ZIP (.shp+.shx+.dbf+.prj)
+- Limity bezpieczeństwa: 50 MB upload, max 20 plików w ZIP, max 100 MB po rozpakowaniu, brak symlinków
 
 **Konsekwencje:**
-- ~100 linii martwego kodu mniej
-- `select_stream.py` i `watershed.py` uzywaja tego samego wzorca (find_catchment_at_point)
-- Brak ryzyka selekcji cieku z sasiedniej zlewni (eliminacja snap-to-stream)
-- Szybsze zapytanie (ST_Contains vs ST_DWithin+ORDER BY)
+- (+) Elastyczne definiowanie obszaru analizy — gminy, zlewnie, obszary chronione
+- (+) Ponowne użycie istniejącej infrastruktury Kartograf (find_sheets_for_geometry)
+- (+) Brak zmian w pipeline — boundary→bbox→sheets to transparentna konwersja
+- (-) Dodatkowa zależność na geopandas/fiona w ścieżce CLI/API (już w requirements)
+- (-) Clipping do dokładnej granicy poligonu wymaga osobnego ADR w przyszłości
 
 ---
 
