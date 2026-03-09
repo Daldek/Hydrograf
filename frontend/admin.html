@@ -93,39 +93,61 @@
                             <!-- Form -->
                             <form id="bootstrap-form" class="mb-3">
                                 <fieldset class="mb-2">
-                                    <legend class="form-label small mb-1">Bounding box</legend>
-                                    <div class="bbox-compass">
-                                        <div class="bbox-compass-row bbox-compass-center">
-                                            <div class="bbox-field">
-                                                <label for="bbox-north" class="bbox-label">N</label>
-                                                <input type="number" id="bbox-north" class="form-control form-control-sm"
-                                                       step="0.0001" min="-90" max="90" value="52.5870">
-                                            </div>
-                                        </div>
-                                        <div class="bbox-compass-row bbox-compass-middle">
-                                            <div class="bbox-field">
-                                                <label for="bbox-west" class="bbox-label">W</label>
-                                                <input type="number" id="bbox-west" class="form-control form-control-sm"
-                                                       step="0.0001" min="-180" max="180" value="16.9279">
-                                            </div>
-                                            <div class="bbox-field">
-                                                <label for="bbox-east" class="bbox-label">E</label>
-                                                <input type="number" id="bbox-east" class="form-control form-control-sm"
-                                                       step="0.0001" min="-180" max="180" value="17.3825">
-                                            </div>
-                                        </div>
-                                        <div class="bbox-compass-row bbox-compass-center">
-                                            <div class="bbox-field">
-                                                <label for="bbox-south" class="bbox-label">S</label>
-                                                <input type="number" id="bbox-south" class="form-control form-control-sm"
-                                                       step="0.0001" min="-90" max="90" value="52.3729">
-                                            </div>
-                                        </div>
+                                    <legend class="form-label small mb-1">Obszar analizy</legend>
+                                    <div class="btn-group btn-group-sm mb-2 w-100" role="group" aria-label="Area selection mode">
+                                        <input type="radio" class="btn-check" name="area-mode" id="mode-bbox" value="bbox" checked>
+                                        <label class="btn btn-outline-secondary" for="mode-bbox">Bounding box</label>
+                                        <input type="radio" class="btn-check" name="area-mode" id="mode-boundary" value="boundary">
+                                        <label class="btn btn-outline-secondary" for="mode-boundary">Plik wektorowy</label>
                                     </div>
-                                    <button type="button" id="bbox-map-btn" class="btn btn-outline-secondary btn-sm mt-1">
-                                        Wybierz na mapie
-                                    </button>
-                                    <div id="bbox-validation-error" class="text-danger small mt-1 d-none"></div>
+                                    <div id="area-bbox-section">
+                                        <div class="bbox-compass">
+                                            <div class="bbox-compass-row bbox-compass-center">
+                                                <div class="bbox-field">
+                                                    <label for="bbox-north" class="bbox-label">N</label>
+                                                    <input type="number" id="bbox-north" class="form-control form-control-sm"
+                                                           step="0.0001" min="-90" max="90" value="52.5870">
+                                                </div>
+                                            </div>
+                                            <div class="bbox-compass-row bbox-compass-middle">
+                                                <div class="bbox-field">
+                                                    <label for="bbox-west" class="bbox-label">W</label>
+                                                    <input type="number" id="bbox-west" class="form-control form-control-sm"
+                                                           step="0.0001" min="-180" max="180" value="16.9279">
+                                                </div>
+                                                <div class="bbox-field">
+                                                    <label for="bbox-east" class="bbox-label">E</label>
+                                                    <input type="number" id="bbox-east" class="form-control form-control-sm"
+                                                           step="0.0001" min="-180" max="180" value="17.3825">
+                                                </div>
+                                            </div>
+                                            <div class="bbox-compass-row bbox-compass-center">
+                                                <div class="bbox-field">
+                                                    <label for="bbox-south" class="bbox-label">S</label>
+                                                    <input type="number" id="bbox-south" class="form-control form-control-sm"
+                                                           step="0.0001" min="-90" max="90" value="52.3729">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button type="button" id="bbox-map-btn" class="btn btn-outline-secondary btn-sm mt-1">
+                                            Wybierz na mapie
+                                        </button>
+                                        <div id="bbox-validation-error" class="text-danger small mt-1 d-none"></div>
+                                    </div>
+                                    <div id="area-boundary-section" class="d-none">
+                                        <div class="mb-2">
+                                            <label for="boundary-file" class="form-label small">Plik granicy (SHP/ZIP, GPKG, GeoJSON)</label>
+                                            <input type="file" class="form-control form-control-sm" id="boundary-file"
+                                                   accept=".shp,.gpkg,.geojson,.json,.zip">
+                                        </div>
+                                        <div id="boundary-info" class="d-none small text-muted mb-2">
+                                            <div>CRS: <span id="boundary-crs"></span></div>
+                                            <div>Features: <span id="boundary-features"></span></div>
+                                            <div>Area: <span id="boundary-area"></span> km²</div>
+                                            <div>Bbox: <span id="boundary-bbox-display"></span></div>
+                                        </div>
+                                        <div id="boundary-error" class="text-danger small d-none"></div>
+                                    </div>
                                 </fieldset>
                                 <div class="row g-2 mb-2">
                                     <div class="col-auto">
