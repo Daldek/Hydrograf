@@ -417,7 +417,7 @@ def cleanup_execute(
 # ---------------------------------------------------------------------------
 # Boundary file upload
 # ---------------------------------------------------------------------------
-BOUNDARY_DIR = Path("data/boundary")
+BOUNDARY_DIR = PROJECT_ROOT / "data" / "boundary"
 ALLOWED_BOUNDARY_EXTENSIONS = {".gpkg", ".geojson", ".json", ".zip"}
 MAX_UPLOAD_SIZE_MB = 50
 

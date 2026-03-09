@@ -170,6 +170,56 @@ class TestLoadBoundary:
         result = load_boundary(zip_path)
         assert result.geom_type in ("Polygon", "MultiPolygon")
 
+    def test_zip_path_traversal_rejected(self, tmp_path, sample_polygon):
+        """ZIP with path traversal should be rejected."""
+        # Create shapefile
+        shp_dir = tmp_path / "shp"
+        shp_dir.mkdir()
+        gdf = gpd.GeoDataFrame(geometry=[sample_polygon], crs="EPSG:4326")
+        gdf.to_file(shp_dir / "test.shp")
+
+        # ZIP with path traversal
+        zip_path = tmp_path / "traversal.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            for f in shp_dir.iterdir():
+                zf.write(f, f"../{f.name}")
+
+        with pytest.raises(ValueError, match="Suspicious path"):
+            load_boundary(zip_path)
+
+    def test_zip_too_many_files_rejected(self, tmp_path, sample_polygon):
+        """ZIP with too many files should be rejected."""
+        zip_path = tmp_path / "many_files.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            for i in range(25):  # Over MAX_ZIP_FILES (20)
+                zf.writestr(f"file_{i}.txt", f"content {i}")
+
+        with pytest.raises(ValueError, match="too many files"):
+            load_boundary(zip_path)
+
+    def test_zip_oversized_extracted_rejected(self, tmp_path, sample_polygon):
+        """ZIP exceeding extracted size limit should be rejected."""
+        import core.boundary as boundary_module
+
+        shp_dir = tmp_path / "shp"
+        shp_dir.mkdir()
+        gdf = gpd.GeoDataFrame(geometry=[sample_polygon], crs="EPSG:4326")
+        gdf.to_file(shp_dir / "test.shp")
+
+        zip_path = tmp_path / "big.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            for f in shp_dir.iterdir():
+                zf.write(f, f.name)
+
+        # Temporarily lower the limit
+        original = boundary_module.MAX_ZIP_EXTRACTED_MB
+        try:
+            boundary_module.MAX_ZIP_EXTRACTED_MB = 0.0001  # ~100 bytes
+            with pytest.raises(ValueError, match="too large"):
+                load_boundary(zip_path)
+        finally:
+            boundary_module.MAX_ZIP_EXTRACTED_MB = original
+
 
 class TestBoundaryToBbox:
     def test_bbox_wgs84(self, sample_polygon):
