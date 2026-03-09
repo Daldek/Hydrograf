@@ -5,6 +5,16 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — 2026-03-09
+
+### Added
+- Vector boundary file support (ADR-040): SHP/ZIP, GPKG, GeoJSON as analysis area
+- New module `core/boundary.py`: load_boundary, validate_boundary_file, bbox conversion
+- CLI: `--boundary-file` / `--boundary-layer` arguments in bootstrap.py
+- API: `POST /api/admin/bootstrap/upload-boundary` endpoint
+- Frontend: area mode toggle (bbox / vector file) in admin panel
+- 18+ unit tests for boundary module and upload endpoint
+
 ## [0.4.0] — 2026-03-03
 
 ### Style
