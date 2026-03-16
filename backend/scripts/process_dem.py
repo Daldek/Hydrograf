@@ -134,7 +134,7 @@ def process_dem(
     thresholds: list[int] | None = None,
     skip_catchments: bool = False,
     hydro_resolution_m: float | None = None,
-    waterbody_mode: str = "auto",
+    waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
     building_gpkg: str | None = None,
 ) -> dict:
@@ -721,10 +721,10 @@ def main():
     wb_group.add_argument(
         "--waterbody-mode",
         type=str,
-        default="auto",
+        default="none",
         help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
              '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
-             "(wszystkie traktowane jako endoreiczne). Default: auto",
+             "(wszystkie traktowane jako endoreiczne). Default: none",
     )
     wb_group.add_argument(
         "--waterbody-min-area",

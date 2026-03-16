@@ -68,12 +68,15 @@ class TestLoadConfig:
         assert "paths" in config
         assert "steps" in config
 
-    def test_steps_all_true_by_default(self):
+    def test_steps_defaults(self):
         from core.config import load_config
 
         config = load_config("/nonexistent/path.yaml")
         for key, value in config["steps"].items():
-            assert value is True, f"steps.{key} should default to True"
+            if key == "depressions":
+                assert value is False, "steps.depressions should default to False"
+            else:
+                assert value is True, f"steps.{key} should default to True"
 
     def test_override_single_step(self, tmp_path):
         from core.config import load_config

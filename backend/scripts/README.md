@@ -72,7 +72,7 @@ cd backend
 
 | Parametr | Opis | Domyślnie |
 |----------|------|-----------|
-| `--waterbody-mode` | Tryb obsługi zbiorników: `auto` (BDOT10k klasyfikacja), `none` (pomiń), lub ścieżka do pliku `.gpkg`/`.shp` (wszystkie endoreiczne) | `auto` |
+| `--waterbody-mode` | Tryb obsługi zbiorników: `auto` (BDOT10k klasyfikacja), `none` (pomiń), lub ścieżka do pliku `.gpkg`/`.shp` (wszystkie endoreiczne) | `none` |
 | `--waterbody-min-area` | Min. powierzchnia zbiornika (m²). Mniejsze zbiorniki ignorowane. | - |
 
 **Uwaga:** Kroki 1-3 (infrastruktura, pobieranie NMT, przetwarzanie DEM) są krytyczne. Kroki 4-9 są opcjonalne z graceful degradation — jeśli któryś zawiedzie, pipeline kontynuuje.
@@ -123,7 +123,7 @@ cd backend
 | `--with-landcover` | Pobierz też dane o pokryciu terenu (BDOT10k) | false |
 | `--with-hydro` | Pobierz też dane hydrograficzne BDOT10k (SWRS, SWKN, SWRM, PTWP) | false |
 | `--landcover-provider` | Źródło danych: bdot10k lub corine | bdot10k |
-| `--waterbody-mode` | Tryb obsługi zbiorników: `auto`, `none`, lub ścieżka do pliku | `auto` |
+| `--waterbody-mode` | Tryb obsługi zbiorników: `auto`, `none`, lub ścieżka do pliku | `none` |
 | `--waterbody-min-area` | Min. powierzchnia zbiornika (m²) | - |
 | `--keep-downloads` | Zachowaj pobrane pliki .asc | true |
 | `--save-intermediates` | Zapis plików GeoTIFF | false |
@@ -225,7 +225,7 @@ cd backend
 | `--clear-existing` | - | Wyczyść istniejące dane (TRUNCATE flow_network) | false |
 | `--burn-streams` | - | Ścieżka do GeoPackage/Shapefile z ciekami | - |
 | `--burn-depth` | - | Głębokość wypalania [m] | 5.0 |
-| `--waterbody-mode` | - | Tryb obsługi zbiorników: `auto`, `none`, lub ścieżka do pliku | `auto` |
+| `--waterbody-mode` | - | Tryb obsługi zbiorników: `auto`, `none`, lub ścieżka do pliku | `none` |
 | `--waterbody-min-area` | - | Min. powierzchnia zbiornika (m²) | - |
 | `--skip-streams-vectorize` | - | Pomiń wektoryzację cieków | false |
 
