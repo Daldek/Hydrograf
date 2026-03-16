@@ -201,15 +201,32 @@ def resolve_boundary_file(
     layer: str | None = None,
 ) -> tuple[list[str], tuple[float, float, float, float]]:
     """Load boundary file, resolve NMT sheets and bbox."""
-    from kartograf import find_sheets_for_geometry
+    from kartograf import find_sheets_for_bbox, find_sheets_for_geometry
+    from kartograf.core.geometry import BBox
 
-    from core.boundary import boundary_to_bbox_wgs84, load_boundary
+    from core.boundary import boundary_to_bbox_2180, boundary_to_bbox_wgs84, load_boundary
 
     geom = load_boundary(boundary_file, layer=layer)
     bbox = boundary_to_bbox_wgs84(geom)
-    sheets = find_sheets_for_geometry(
-        str(boundary_file), target_scale=scale, layer=layer
-    )
+
+    # Kartograf's find_sheets_for_geometry only supports .shp/.gpkg.
+    # For other formats (GeoJSON, etc.) fall back to bbox-based lookup.
+    ext = boundary_file.suffix.lower()
+    if ext in (".shp", ".gpkg"):
+        sheets = find_sheets_for_geometry(
+            boundary_file, target_scale=scale, layer=layer
+        )
+    else:
+        bbox_2180 = boundary_to_bbox_2180(geom)
+        kartograf_bbox = BBox(
+            min_x=bbox_2180[0],
+            min_y=bbox_2180[1],
+            max_x=bbox_2180[2],
+            max_y=bbox_2180[3],
+            crs="EPSG:2180",
+        )
+        sheets = find_sheets_for_bbox(kartograf_bbox, scale)
+
     return sheets, bbox
 
 
@@ -411,7 +428,7 @@ def step_process_dem(
     output_dir: Path,
     cache_dir: Path,
     sheets: list[str],
-    waterbody_mode: str = "auto",
+    waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
 ) -> tuple[dict, str, list[str], dict[str, Path]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis."""
@@ -957,7 +974,7 @@ def run_pipeline(
     cache_dir: Path,
     port: int,
     skips: set[int],
-    waterbody_mode: str = "auto",
+    waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
 ):
     """Run the full 10-step bootstrap pipeline."""
@@ -1236,10 +1253,10 @@ def build_parser() -> argparse.ArgumentParser:
     wb_group.add_argument(
         "--waterbody-mode",
         type=str,
-        default="auto",
+        default="none",
         help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
              '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
-             "(wszystkie traktowane jako endoreiczne). Default: auto",
+             "(wszystkie traktowane jako endoreiczne). Default: none",
     )
     wb_group.add_argument(
         "--waterbody-min-area",
