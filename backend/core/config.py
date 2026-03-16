@@ -136,7 +136,7 @@ _DEFAULT_CONFIG = {
         "landcover": True,
         "soil_hsg": True,
         "precipitation": True,
-        "depressions": True,
+        "depressions": False,
         "tiles": True,
         "overlays": True,
     },
