@@ -354,6 +354,115 @@ def _rasterize_line_ordered(
     return cells
 
 
+def _build_stream_network_graph(
+    geometries: list,
+    dem: np.ndarray,
+    transform,
+    snap_tolerance_px: int = 1,
+) -> tuple[dict[int, list[tuple[int, int]]], dict[int, tuple[int, int]], list[int]]:
+    """Build a topology graph from stream LineString geometries.
+
+    Endpoints are snapped to raster pixels. Nodes within snap_tolerance_px
+    of each other are merged.
+
+    Returns:
+        graph: {node_id: [(neighbor_node_id, segment_index), ...]}
+        seg_nodes: {segment_index: (start_node, end_node)} — start corresponds
+            to geometry coords[0], end to coords[-1]
+        outlets: list of outlet node IDs (one per connected component)
+    """
+    from collections import defaultdict, deque
+
+    nrows, ncols = dem.shape
+
+    endpoints = []
+    for idx, geom in enumerate(geometries):
+        coords = list(geom.coords)
+        if len(coords) < 2:
+            continue
+        for pt, is_start in [(coords[0], True), (coords[-1], False)]:
+            x, y = pt[:2]
+            col, row = ~transform * (x, y)
+            r, c = int(round(row)), int(round(col))
+            endpoints.append((r, c, idx, is_start))
+
+    node_for_point: dict[tuple[int, int], int] = {}
+    next_node_id = 0
+
+    def get_or_create_node(r: int, c: int) -> int:
+        nonlocal next_node_id
+        for (nr, nc), nid in node_for_point.items():
+            if abs(nr - r) <= snap_tolerance_px and abs(nc - c) <= snap_tolerance_px:
+                return nid
+        node_for_point[(r, c)] = next_node_id
+        next_node_id += 1
+        return next_node_id - 1
+
+    seg_nodes: dict[int, tuple[int | None, int | None]] = {}
+    for r, c, idx, is_start in endpoints:
+        nid = get_or_create_node(r, c)
+        if idx not in seg_nodes:
+            seg_nodes[idx] = (None, None)
+        if is_start:
+            seg_nodes[idx] = (nid, seg_nodes[idx][1])
+        else:
+            seg_nodes[idx] = (seg_nodes[idx][0], nid)
+
+    graph: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for idx, (n_start, n_end) in seg_nodes.items():
+        if n_start is None or n_end is None or n_start == n_end:
+            continue
+        graph[n_start].append((n_end, idx))
+        graph[n_end].append((n_start, idx))
+
+    for nid in range(next_node_id):
+        if nid not in graph:
+            graph[nid] = []
+
+    node_coords = {nid: (r, c) for (r, c), nid in node_for_point.items()}
+    outlets = []
+    visited: set[int] = set()
+
+    def _clamp_elev(n: int) -> float:
+        if n not in node_coords:
+            return float("inf")
+        r, c = node_coords[n]
+        r = max(0, min(r, nrows - 1))
+        c = max(0, min(c, ncols - 1))
+        return float(dem[r, c])
+
+    for start_nid in range(next_node_id):
+        if start_nid in visited:
+            continue
+        component: list[int] = []
+        queue = deque([start_nid])
+        visited.add(start_nid)
+        while queue:
+            nid = queue.popleft()
+            component.append(nid)
+            for neighbor, _ in graph[nid]:
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(neighbor)
+
+        degree_one = [n for n in component if len(graph[n]) == 1]
+        if not degree_one:
+            degree_one = component
+
+        edge_nodes = [
+            n for n in degree_one
+            if n in node_coords and (
+                node_coords[n][0] <= 0 or node_coords[n][0] >= nrows - 1
+                or node_coords[n][1] <= 0 or node_coords[n][1] >= ncols - 1
+            )
+        ]
+
+        candidates = edge_nodes if edge_nodes else degree_one
+        outlets.append(min(candidates, key=_clamp_elev))
+
+    return dict(graph), dict(seg_nodes), outlets
+
+
 def _sample_dem_at_point(
     dem: np.ndarray,
     transform,
