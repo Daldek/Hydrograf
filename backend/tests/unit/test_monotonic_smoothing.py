@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from rasterio.transform import from_bounds
 from shapely.geometry import LineString
-from core.hydrology import _bresenham, _rasterize_line_ordered
+from core.hydrology import _bresenham, _rasterize_line_ordered, _build_stream_network_graph
 
 
 class TestBresenham:
@@ -74,3 +74,58 @@ class TestRasterizeLineOrdered:
         cells = _rasterize_line_ordered(line, simple_transform, shape=(10, 10))
         for r, c in cells:
             assert 0 <= r < 10 and 0 <= c < 10
+
+
+class TestBuildStreamNetworkGraph:
+    """Test topology graph construction from stream geometries."""
+
+    def _make_dem_and_transform(self, nrows=20, ncols=20):
+        """Create a sloped DEM (high top-left, low bottom-right) + transform."""
+        dem = np.zeros((nrows, ncols), dtype=np.float32)
+        for r in range(nrows):
+            for c in range(ncols):
+                dem[r, c] = 200.0 - r * 5.0 - c * 2.0
+        transform = from_bounds(0, 0, ncols, nrows, ncols, nrows)
+        return dem, transform
+
+    def test_single_segment(self):
+        dem, transform = self._make_dem_and_transform()
+        geoms = [LineString([(1, 19), (1, 1)])]
+        graph, seg_nodes, outlets = _build_stream_network_graph(geoms, dem, transform)
+        assert len(outlets) == 1
+        assert len(graph) == 2
+        assert 0 in seg_nodes
+
+    def test_y_junction(self):
+        """Two tributaries merging into one main stem."""
+        dem, transform = self._make_dem_and_transform()
+        trib_a = LineString([(2, 18), (5, 15)])
+        trib_b = LineString([(8, 18), (5, 15)])
+        main = LineString([(5, 15), (5, 2)])
+        geoms = [trib_a, trib_b, main]
+        graph, seg_nodes, outlets = _build_stream_network_graph(geoms, dem, transform)
+        assert len(outlets) == 1
+        assert len(seg_nodes) == 3
+
+    def test_seg_nodes_maps_start_end(self):
+        """seg_nodes correctly maps segment -> (start_node, end_node)."""
+        dem, transform = self._make_dem_and_transform()
+        geoms = [LineString([(2, 18), (10, 10)])]
+        graph, seg_nodes, outlets = _build_stream_network_graph(geoms, dem, transform)
+        start_node, end_node = seg_nodes[0]
+        assert start_node != end_node
+
+    def test_disconnected_components(self):
+        dem, transform = self._make_dem_and_transform()
+        stream_a = LineString([(1, 19), (1, 15)])
+        stream_b = LineString([(15, 19), (15, 15)])
+        geoms = [stream_a, stream_b]
+        graph, seg_nodes, outlets = _build_stream_network_graph(geoms, dem, transform)
+        assert len(outlets) == 2
+
+    def test_edge_outlet_preferred(self):
+        """Node on raster edge is preferred as outlet over interior node."""
+        dem, transform = self._make_dem_and_transform()
+        geoms = [LineString([(5, 10), (5, 0)])]
+        graph, seg_nodes, outlets = _build_stream_network_graph(geoms, dem, transform)
+        assert len(outlets) == 1
