@@ -292,6 +292,32 @@ def burn_streams_into_dem(
     return burned, diagnostics
 
 
+def _bresenham(r0: int, c0: int, r1: int, c1: int) -> list[tuple[int, int]]:
+    """Bresenham line rasterization between two pixel coordinates.
+
+    Returns ordered list of (row, col) cells from (r0, c0) to (r1, c1).
+    """
+    dr = abs(r1 - r0)
+    dc = abs(c1 - c0)
+    sr = 1 if r1 > r0 else -1
+    sc = 1 if c1 > c0 else -1
+    err = dr - dc
+    cells = []
+    r, c = r0, c0
+    while True:
+        cells.append((r, c))
+        if r == r1 and c == c1:
+            break
+        e2 = 2 * err
+        if e2 > -dc:
+            err -= dc
+            r += sr
+        if e2 < dr:
+            err += dr
+            c += sc
+    return cells
+
+
 def _sample_dem_at_point(
     dem: np.ndarray,
     transform,
