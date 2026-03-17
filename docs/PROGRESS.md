@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 778 testow jednostkowych |
+| Testy | ✅ Gotowy | 686 testow jednostkowych |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -46,25 +46,33 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-09 (sesja 59 — vector boundary file support ADR-040)
+**Data:** 2026-03-17 (sesja 61 — optymalizacja select-stream + pipeline fixes)
 
 ### Co zrobiono
-- ADR-040: obsługa plików wektorowych jako obszar analizy
-- Nowy moduł `core/boundary.py`: ładowanie SHP/GPKG/GeoJSON, walidacja, union, reprojekcja WGS84
-- CLI: `--boundary-file` / `--boundary-layer` w bootstrap.py (mutually exclusive z --bbox/--sheets)
-- API: `POST /api/admin/bootstrap/upload-boundary` (upload + walidacja + metadata)
-- `BootstrapStartRequest` rozszerzony o boundary_file/boundary_layer
-- Frontend admin: toggle bbox/boundary, upload z podglądem (CRS, area, bbox)
-- nginx: `client_max_body_size 50m` dla tras admin
-- Testy: test_boundary.py (13 testów), test_admin_upload.py (5 testów)
+- **ADR-042: Optymalizacja select-stream dla duzych zlewni** — batched union z pre-simplifikacja, uproszczona granica dla LC/HSG, indeks kompozytowy. 95 km²: 24s → 7s, 674 km²: timeout → 7s
+- **CatchmentGraph auto-reload** po zakonczeniu bootstrap z panelu admin
+- **Fix brakujacych arkuszy NMT** — `bootstrap.py` uzywa `kartograf.find_sheets_for_bbox()` (91 → 192 arkuszy)
+- **Tippecanoe zoom limit** — threshold 1000 catchments: Z14-18 zamiast Z8-18 (7.5h → 6.5 min)
+- **H4 design spec** — monotoniczne wygladzanie ciekow (ADR-041, backlog, zatwierdzony)
+- Migracja 018: indeks `(threshold_m2, segment_idx)` na `stream_catchments`
+- 686 testow jednostkowych, 0 regresji
 
 ### W trakcie
 - Brak
 
 ### Następne kroki
+- H4: implementacja monotonic stream smoothing (spec gotowy, plan do napisania)
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
 - Clipping do dokładnej granicy poligonu (follow-up ADR)
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+
+### Poprzednia sesja (2026-03-09, sesja 59 — vector boundary file support ADR-040)
+
+- ADR-040: obsługa plików wektorowych jako obszar analizy
+- Nowy moduł `core/boundary.py`: ładowanie SHP/GPKG/GeoJSON, walidacja, union, reprojekcja WGS84
+- CLI: `--boundary-file` / `--boundary-layer` w bootstrap.py
+- API: `POST /api/admin/bootstrap/upload-boundary`
+- Frontend admin: toggle bbox/boundary, upload z podglądem
 
 ### Poprzednia sesja (2026-03-03, sesja 56 — release CP4 v0.4.0)
 

@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 MIN_ZOOM = 8
 MAX_ZOOM = 18
 
+# Per-threshold zoom overrides: fine-grained thresholds only at high zooms
+THRESHOLD_MIN_ZOOM = {
+    1000: 14,
+}
+
 
 def check_prerequisites() -> dict[str, str | None]:
     """Check that required CLI tools are available."""
@@ -269,12 +274,14 @@ def generate_tiles(output_dir: Path) -> None:
                 logger.info(f"Exported {n_catch} catchment features")
 
                 # Generate .mbtiles
+                th_min_zoom = THRESHOLD_MIN_ZOOM.get(threshold, MIN_ZOOM)
                 streams_mbt = output_dir / f"streams_{threshold}.mbtiles"
                 if n_streams > 0:
                     run_tippecanoe(
                         streams_json,
                         streams_mbt,
                         "streams",
+                        min_zoom=th_min_zoom,
                         executable=tippecanoe_path,
                     )
                 else:
@@ -286,6 +293,7 @@ def generate_tiles(output_dir: Path) -> None:
                         catchments_json,
                         catchments_mbt,
                         "catchments",
+                        min_zoom=th_min_zoom,
                         executable=tippecanoe_path,
                     )
                 else:
@@ -319,6 +327,7 @@ def generate_tiles(output_dir: Path) -> None:
         "thresholds": thresholds,
         "min_zoom": MIN_ZOOM,
         "max_zoom": MAX_ZOOM,
+        "threshold_min_zoom": {str(k): v for k, v in THRESHOLD_MIN_ZOOM.items()},
         "format": "pbf",
     }
     meta_path = output_dir / "tiles_metadata.json"
