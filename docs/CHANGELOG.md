@@ -5,7 +5,7 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-03-09
+## [Unreleased] — 2026-03-17
 
 ### Added
 - Vector boundary file support (ADR-040): SHP/ZIP, GPKG, GeoJSON as analysis area
@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API: `POST /api/admin/bootstrap/upload-boundary` endpoint
 - Frontend: area mode toggle (bbox / vector file) in admin panel
 - 18+ unit tests for boundary module and upload endpoint
+- H4 design spec: monotonic stream smoothing (ADR-041, backlog)
+- Migration 018: composite index `(threshold_m2, segment_idx)` on `stream_catchments`
+
+### Fixed
+- **Timeout 504 przy duzych zlewniach (ADR-042):** batched union z pre-simplifikacja dla >100 segmentow, uproszczona granica dla zapytan land cover/HSG (18.5s → 1.6s), `_MAX_MERGE` 500→300. Czas odpowiedzi: 95 km² = 7s (bylo 24s), 674 km² = 7s (bylo timeout)
+- **CatchmentGraph auto-reload po bootstrap:** API automatycznie przeladowuje graf zlewni po zakonczeniu bootstrap z panelu admin (wczesniej wymagal restartu kontenera)
+- **Brak arkuszy NMT (38.6% NoData):** `bootstrap.py` uzywa `kartograf.find_sheets_for_bbox()` zamiast wlasnego `utils.sheet_finder` (91 → 192 arkuszy dla tego samego bbox)
+- **Tippecanoe bottleneck na progu 1000:** zoom Z14-18 zamiast Z8-18 dla catchments threshold 1000 (7.5h → 6.5 min)
 
 ## [0.4.0] — 2026-03-03
 

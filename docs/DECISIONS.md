@@ -869,6 +869,32 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-042: Optymalizacja wydajnosci select-stream dla duzych zlewni
+
+**Data:** 2026-03-17
+**Status:** Accepted
+
+**Kontekst:** Zaznaczenie cieku w dolnej czesci zlewni (wiele segmentow upstream) powodowalo timeout 504 lub czas odpowiedzi > 30s. Dwa bottlenecki: (1) `ST_UnaryUnion` na 500+ poligonach w `merge_catchment_boundaries()` — O(n²), (2) `ST_Intersection` land cover/HSG na zlozonej granicy zlewni (tysiace wierzcholkow) — 18s dla 95 km².
+
+**Opcje:**
+- A) Zwiekszenie timeout — maskuje problem, nie rozwiazuje
+- B) Agresywniejsza kaskada do grubszych progow — zmiana wynikow (inna granica)
+- C) Batched union + pre-simplifikacja + uproszczona granica dla statystyk
+
+**Decyzja:** Opcja C — trzy optymalizacje:
+1. **Batched union** (`_merge_batched`): dla >100 segmentow — pre-simplifikacja 10m, grupowanie po 50, union w batchach, finalny union wynikow. O(n²) → O(n²/k)
+2. **Uproszczona granica dla LC/HSG**: `boundary.simplify(20m)` — dokladny ksztalt nie jest potrzebny do statystyk wagowych. Land cover: 18.5s → 1.6s
+3. **Indeks kompozytowy** `(threshold_m2, segment_idx)` na `stream_catchments` — przyspieszenie filtrowania `ANY(:idxs)`
+4. `_MAX_MERGE` obnizony z 500 na 300 (agresywniejsza kaskada)
+
+**Konsekwencje:**
+- (+) Czas odpowiedzi: 16 km² = 0.6s, 95 km² = 7s (bylo 24s), 674 km² = 7s (bylo 504 timeout)
+- (+) Fallback na agresywna simplifikacje (50m) gdy batched union zawiedzie
+- (+) Timeout override 300s dla batchowanego union (zamiast domyslnych 120s)
+- (-) Niewielka strata precyzji granicy przy statystykach land cover (20m simplifikacja)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

@@ -135,6 +135,9 @@ def merge_catchment_boundaries(
     """
     Merge sub-catchment polygons via ST_Union in PostGIS.
 
+    For large segment sets (>100), uses batched union with pre-simplification
+    to avoid ST_UnaryUnion O(n²) timeout on 500+ polygons.
+
     Parameters
     ----------
     segment_idxs : list[int]
@@ -152,6 +155,51 @@ def merge_catchment_boundaries(
     if not segment_idxs:
         return None
 
+    n = len(segment_idxs)
+
+    if n <= 100:
+        return _merge_direct(segment_idxs, threshold_m2, db)
+
+    # Large merges: batched union with pre-simplification
+    logger.info(f"Large merge: {n} segments, using batched union")
+    try:
+        result = _merge_batched(segment_idxs, threshold_m2, db)
+        if result is not None:
+            return result
+    except Exception as e:
+        logger.warning(f"Batched merge failed ({e}), trying simplified fallback")
+
+    # Fallback: aggressive simplification then direct union
+    return _merge_simplified_fallback(segment_idxs, threshold_m2, db)
+
+
+# Smoothing pipeline applied to final merged geometry.
+_SMOOTH_SQL = """
+    ST_Multi(ST_MakeValid(
+        ST_ChaikinSmoothing(
+            ST_SimplifyPreserveTopology(
+                ST_Buffer(ST_Buffer(geom, 0.1), -0.1),
+            5.0),
+        3)
+    ))
+"""
+
+# Batch size for grid-batched union: each batch unions ~50 polygons
+# (fast), then the final union merges ~n/50 pre-merged results.
+_BATCH_SIZE = 50
+
+# Pre-simplification tolerance (meters, EPSG:2180). Reduces vertex
+# count before union; final ST_SimplifyPreserveTopology(5.0) already
+# loses this precision, so 10m pre-simplify is safe.
+_PRE_SIMPLIFY_M = 10.0
+
+
+def _merge_direct(
+    segment_idxs: list[int],
+    threshold_m2: int,
+    db: Session,
+) -> MultiPolygon | None:
+    """Direct ST_UnaryUnion for small segment sets (≤100)."""
     query = text("""
         SELECT ST_AsBinary(
             ST_Multi(ST_MakeValid(
@@ -167,6 +215,92 @@ def merge_catchment_boundaries(
         FROM stream_catchments
         WHERE threshold_m2 = :threshold
           AND segment_idx = ANY(:idxs)
+    """)
+    result = db.execute(
+        query,
+        {"threshold": threshold_m2, "idxs": segment_idxs},
+    ).fetchone()
+
+    if result is None or result.geom is None:
+        return None
+
+    return wkb.loads(bytes(result.geom))
+
+
+def _merge_batched(
+    segment_idxs: list[int],
+    threshold_m2: int,
+    db: Session,
+) -> MultiPolygon | None:
+    """
+    Batched union with pre-simplification for large segment sets.
+
+    Groups polygons into spatial batches (~50 each), pre-simplifies,
+    unions within each batch, then unions the batch results.
+    Turns O(n²) into O(k × (n/k)²) ≈ O(n²/k).
+    """
+    from core.db_bulk import override_statement_timeout
+
+    query = text("""
+        WITH numbered AS (
+            SELECT
+                ST_SimplifyPreserveTopology(geom, :simplify_tol) AS geom,
+                ROW_NUMBER() OVER (ORDER BY segment_idx) AS rn
+            FROM stream_catchments
+            WHERE threshold_m2 = :threshold AND segment_idx = ANY(:idxs)
+        ),
+        batched AS (
+            SELECT ST_UnaryUnion(ST_Collect(geom)) AS geom
+            FROM numbered
+            GROUP BY (rn - 1) / :batch_size
+        )
+        SELECT ST_AsBinary(
+            ST_Multi(ST_MakeValid(
+                ST_ChaikinSmoothing(
+                    ST_SimplifyPreserveTopology(
+                        ST_Buffer(ST_Buffer(
+                            ST_UnaryUnion(ST_Collect(geom)),
+                        0.1), -0.1),
+                    5.0),
+                3)
+            ))
+        ) AS geom
+        FROM batched
+    """)
+
+    with override_statement_timeout(db, timeout_s=300):
+        result = db.execute(
+            query,
+            {
+                "threshold": threshold_m2,
+                "idxs": segment_idxs,
+                "simplify_tol": _PRE_SIMPLIFY_M,
+                "batch_size": _BATCH_SIZE,
+            },
+        ).fetchone()
+
+    if result is None or result.geom is None:
+        return None
+
+    return wkb.loads(bytes(result.geom))
+
+
+def _merge_simplified_fallback(
+    segment_idxs: list[int],
+    threshold_m2: int,
+    db: Session,
+) -> MultiPolygon | None:
+    """Fallback: aggressive simplification (50m) then direct union."""
+    query = text("""
+        SELECT ST_AsBinary(
+            ST_Multi(ST_MakeValid(
+                ST_UnaryUnion(ST_Collect(
+                    ST_SimplifyPreserveTopology(geom, 50.0)
+                ))
+            ))
+        ) AS geom
+        FROM stream_catchments
+        WHERE threshold_m2 = :threshold AND segment_idx = ANY(:idxs)
     """)
     result = db.execute(
         query,
