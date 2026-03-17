@@ -318,6 +318,42 @@ def _bresenham(r0: int, c0: int, r1: int, c1: int) -> list[tuple[int, int]]:
     return cells
 
 
+def _rasterize_line_ordered(
+    line,
+    transform,
+    shape: tuple[int, int] | None = None,
+) -> list[tuple[int, int]]:
+    """Rasterize a LineString to an ordered sequence of (row, col) cells.
+
+    Uses Bresenham between consecutive vertices. Deduplicates cells
+    at segment junctions. Optionally clips to raster shape.
+
+    Extension vs spec: added optional ``shape`` for bounds clipping.
+    """
+    coords = list(line.coords)
+    if len(coords) < 2:
+        return []
+
+    cells: list[tuple[int, int]] = []
+    for i in range(len(coords) - 1):
+        x0, y0 = coords[i][:2]
+        x1, y1 = coords[i + 1][:2]
+        col0, row0 = ~transform * (x0, y0)
+        col1, row1 = ~transform * (x1, y1)
+        r0, c0 = int(round(row0)), int(round(col0))
+        r1, c1 = int(round(row1)), int(round(col1))
+        segment = _bresenham(r0, c0, r1, c1)
+        if cells and segment and segment[0] == cells[-1]:
+            segment = segment[1:]
+        cells.extend(segment)
+
+    if shape is not None:
+        nrows, ncols = shape
+        cells = [(r, c) for r, c in cells if 0 <= r < nrows and 0 <= c < ncols]
+
+    return cells
+
+
 def _sample_dem_at_point(
     dem: np.ndarray,
     transform,
