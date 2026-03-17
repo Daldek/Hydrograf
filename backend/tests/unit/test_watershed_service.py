@@ -147,10 +147,12 @@ class TestMergeCatchmentBoundaries:
         mock_db.execute.assert_not_called()
 
     def test_merge_sql_no_snap_to_grid(self):
-        """merge_catchment_boundaries SQL should not use ST_SnapToGrid."""
+        """merge SQL helpers should not use ST_SnapToGrid."""
         import inspect
 
-        source = inspect.getsource(merge_catchment_boundaries)
+        from core.watershed_service import _merge_direct
+
+        source = inspect.getsource(_merge_direct)
         assert "ST_SnapToGrid" not in source
         assert "ST_Buffer" in source  # buffer-debuffer pattern
 

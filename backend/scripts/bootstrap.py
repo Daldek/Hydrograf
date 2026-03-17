@@ -182,8 +182,8 @@ def resolve_sheets(
     scale: str,
 ) -> tuple[list[str], tuple[float, float, float, float]]:
     """Resolve sheets and bbox from CLI arguments."""
-    sys.path.insert(0, str(BACKEND_DIR))
-    from utils.sheet_finder import get_sheets_for_bbox
+    from kartograf import find_sheets_for_bbox
+    from kartograf.core.geometry import BBox
 
     if sheets:
         resolved_bbox = sheets_to_bbox(sheets)
@@ -191,7 +191,12 @@ def resolve_sheets(
 
     assert bbox is not None
     min_lon, min_lat, max_lon, max_lat = bbox
-    resolved_sheets = get_sheets_for_bbox(min_lat, min_lon, max_lat, max_lon, scale)
+    kartograf_bbox = BBox(
+        min_x=min_lon, min_y=min_lat,
+        max_x=max_lon, max_y=max_lat,
+        crs="EPSG:4326",
+    )
+    resolved_sheets = find_sheets_for_bbox(kartograf_bbox, scale)
     return resolved_sheets, bbox
 
 

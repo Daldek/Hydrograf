@@ -119,7 +119,7 @@ def select_stream(
         # 6. Build boundary from ST_Union of catchment polygons.
         # For large catchments (500+ segments), cascade to coarser
         # thresholds to avoid ST_UnaryUnion timeout (30s DB limit).
-        _MAX_MERGE = 500
+        _MAX_MERGE = 300
         merge_idxs = bfs_segment_idxs
         merge_threshold = threshold
 
@@ -246,9 +246,17 @@ def select_stream(
         # 11. Land cover statistics
         hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
 
+        # Simplify boundary for land cover/HSG queries — exact shape
+        # is not needed for area-weighted statistics, and complex
+        # boundaries with thousands of vertices make ST_Intersection
+        # very slow (~20s for 95 km² watershed).
+        lc_boundary = boundary_poly
+        if area_km2 > 5:
+            lc_boundary = boundary_poly.simplify(20.0)  # 20m tolerance
+
         lc_stats = None
         try:
-            lc_data = get_land_cover_for_boundary(boundary_2180, db)
+            lc_data = get_land_cover_for_boundary(lc_boundary, db)
             if lc_data:
                 lc_stats = LandCoverStats(
                     categories=[
@@ -272,7 +280,7 @@ def select_stream(
             from core.soil_hsg import get_hsg_for_boundary
             from models.schemas import HsgCategory, HsgStats
 
-            hsg_data = get_hsg_for_boundary(boundary_2180.wkb_hex, db)
+            hsg_data = get_hsg_for_boundary(lc_boundary.wkb_hex, db)
             if hsg_data:
                 hsg_stats_data = HsgStats(
                     categories=[

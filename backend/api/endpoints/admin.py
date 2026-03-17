@@ -537,6 +537,20 @@ def _read_process_output(process: subprocess.Popen, state: dict) -> None:
         state["process"] = None
         if process.returncode == 0:
             state["status"] = "completed"
+            # Reload CatchmentGraph so API uses fresh data
+            try:
+                cg = get_catchment_graph()
+                from core.database import get_db_session
+
+                with get_db_session() as db:
+                    cg.load(db)
+                state["log_lines"].append(
+                    "[INFO] CatchmentGraph reloaded"
+                )
+            except Exception as e:
+                state["log_lines"].append(
+                    f"[WARN] CatchmentGraph reload failed: {e}"
+                )
         else:
             state["status"] = "failed"
         # Save to history
