@@ -240,7 +240,7 @@ def burn_streams_into_dem(
     dem: np.ndarray,
     transform,
     streams_path,
-    burn_depth_m: float = 10.0,
+    burn_depth_m: float = 2.0,
     nodata: float = -9999.0,
 ) -> tuple[np.ndarray, dict]:
     """
@@ -258,7 +258,7 @@ def burn_streams_into_dem(
     streams_path : Path
         Path to GeoPackage/Shapefile with stream line geometries
     burn_depth_m : float
-        Depth to burn streams (meters), default 5.0
+        Depth to burn streams (meters), default 2.0
     nodata : float
         NoData value in DEM
 

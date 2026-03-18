@@ -86,7 +86,7 @@ def prepare_area(
     with_landcover: bool = False,
     landcover_provider: str = "bdot10k",
     with_hydro: bool = False,
-    burn_depth_m: float = 5.0,
+    burn_depth_m: float = 2.0,
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
 ) -> dict:
@@ -120,7 +120,7 @@ def prepare_area(
     with_hydro : bool
         If True, download BDOT10k hydrographic data and burn streams into DEM
     burn_depth_m : float
-        Burn depth in meters for stream burning (default: 5.0)
+        Burn depth in meters for stream burning (default: 2.0)
     waterbody_mode : str
         Waterbody handling mode: "auto", "none", or path to custom file
     waterbody_min_area_m2 : float, optional
@@ -470,8 +470,8 @@ def main():
     hydro_group.add_argument(
         "--burn-depth",
         type=float,
-        default=5.0,
-        help="Stream burn depth in meters (default: 5.0)",
+        default=2.0,
+        help="Stream burn depth in meters (default: 2.0)",
     )
 
     # Land cover options
