@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 686 testow jednostkowych |
+| Testy | ✅ Gotowy | 714 testow jednostkowych |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -46,25 +46,33 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-17 (sesja 61 — optymalizacja select-stream + pipeline fixes)
+**Data:** 2026-03-18 (sesja 62 — H4 monotonic stream smoothing)
 
 ### Co zrobiono
-- **ADR-042: Optymalizacja select-stream dla duzych zlewni** — batched union z pre-simplifikacja, uproszczona granica dla LC/HSG, indeks kompozytowy. 95 km²: 24s → 7s, 674 km²: timeout → 7s
-- **CatchmentGraph auto-reload** po zakonczeniu bootstrap z panelu admin
-- **Fix brakujacych arkuszy NMT** — `bootstrap.py` uzywa `kartograf.find_sheets_for_bbox()` (91 → 192 arkuszy)
-- **Tippecanoe zoom limit** — threshold 1000 catchments: Z14-18 zamiast Z8-18 (7.5h → 6.5 min)
-- **H4 design spec** — monotoniczne wygladzanie ciekow (ADR-041, backlog, zatwierdzony)
-- Migracja 018: indeks `(threshold_m2, segment_idx)` na `stream_catchments`
-- 686 testow jednostkowych, 0 regresji
+- **ADR-041: Monotoniczne wygładzanie cieków** — dwuetapowe przetwarzanie DEM: stałe wypalanie (2m) + running minimum downstream
+- Nowe funkcje w `core/hydrology.py`: `smooth_streams_monotonic()`, `_load_stream_geometries()`, `_build_stream_network_graph()`, `_rasterize_line_ordered()`, `_bresenham()`
+- Refaktoryzacja `burn_streams_into_dem()` — wydzielenie `_load_stream_geometries()` jako współdzielonego helpera
+- Integracja w `process_dem.py`: krok 3b po wypalaniu, `--no-smooth-streams` flag, `02b_smoothed.tif`
+- Zmiana domyślnego `burn_depth_m` z 10/5m na 2.0m (wszystkie lokalizacje)
+- 28 testów dla monotonic smoothing (16 helpers + 12 main function)
 
 ### W trakcie
 - Brak
 
 ### Następne kroki
-- H4: implementacja monotonic stream smoothing (spec gotowy, plan do napisania)
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
 - Clipping do dokładnej granicy poligonu (follow-up ADR)
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+
+### Poprzednia sesja (2026-03-17, sesja 61 — optymalizacja select-stream + pipeline fixes)
+
+- ADR-042: Optymalizacja select-stream dla duzych zlewni — batched union z pre-simplifikacja, uproszczona granica dla LC/HSG, indeks kompozytowy. 95 km²: 24s → 7s, 674 km²: timeout → 7s
+- CatchmentGraph auto-reload po zakonczeniu bootstrap z panelu admin
+- Fix brakujacych arkuszy NMT — `bootstrap.py` uzywa `kartograf.find_sheets_for_bbox()` (91 → 192 arkuszy)
+- Tippecanoe zoom limit — threshold 1000 catchments: Z14-18 zamiast Z8-18 (7.5h → 6.5 min)
+- H4 design spec — monotoniczne wygladzanie ciekow (ADR-041, backlog, zatwierdzony)
+- Migracja 018: indeks `(threshold_m2, segment_idx)` na `stream_catchments`
+- 686 testow jednostkowych, 0 regresji
 
 ### Poprzednia sesja (2026-03-09, sesja 59 — vector boundary file support ADR-040)
 

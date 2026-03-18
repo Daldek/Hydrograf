@@ -869,6 +869,34 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-041: Monotoniczne wygładzanie cieków
+
+**Data:** 2026-03-18
+**Status:** Aktywna
+
+**Kontekst:** Wypalanie cieków w DEM (burn_depth_m=10/5m) powodowało nadmierne obniżanie dna doliny, zaburzając prawidłowe obliczenia akumulacji przepływu. Mosty i nasypy tworzą lokalne wzniesienia blokujące przepływ — standardowe wypalanie stałą głębokością nie koryguje tych anomalii, a jedynie agresywnie obniża cały ciek.
+
+**Opcje:**
+- A) Zwiększenie głębokości wypalania — prosta, ale zaburza morfometrię zlewni
+- B) Warunkowe wypalanie tylko przy mostach/nasypach — wymaga zewnętrznych danych, trudna parametryzacja
+- C) Dwuetapowe: małe stałe wypalanie (2m) + running minimum downstream (monotoniczne wygładzanie)
+
+**Decyzja:** Opcja C — dwuetapowe przetwarzanie:
+1. **Stałe wypalanie 2m** — lekkie obniżenie całego cieku, zapewnienie ciągłości w normalnych odcinkach
+2. **Running minimum downstream** — BFS od ujścia, każda komórka cieku nie może być wyżej niż poprzednia. Koryguje mosty/nasypy bez nadmiernego wypalania normalnych odcinków
+3. **Bresenham rasteryzacja** (`_rasterize_line_ordered()`) — zachowanie kolejności pikseli wzdłuż cieku dla poprawnego BFS
+4. **`burn_depth_m` 10→2m** — we wszystkich miejscach konfiguracji
+
+**Konsekwencje:**
+- (+) Mosty i nasypy korygowane automatycznie bez zewnętrznych danych
+- (+) Normalne odcinki cieków zachowują naturalną morfologię (tylko -2m)
+- (+) Diagnostyka: plik `02b_smoothed.tif` przy `save_intermediates`
+- (+) `--no-smooth-streams` flag do debugowania
+- (-) Czas przetwarzania: +kilka sekund dla dużych obszarów (BFS po sieci cieków)
+- (-) Wymaga topologicznie poprawnej sieci cieków (bez cykli) — spełnione przez pyflwdir D8
+
+---
+
 ## ADR-042: Optymalizacja wydajnosci select-stream dla duzych zlewni
 
 **Data:** 2026-03-17
