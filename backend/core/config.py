@@ -121,7 +121,7 @@ _DEFAULT_CONFIG = {
     "dem": {
         "resolution": "5m",
         "thresholds_m2": [1000, 10000, 100000],
-        "burn_depth_m": 10.0,
+        "burn_depth_m": 2.0,
         "building_raise_m": 5.0,
     },
     "paths": {
