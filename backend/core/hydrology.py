@@ -158,6 +158,84 @@ def raise_buildings_in_dem(
     return dem
 
 
+def _load_stream_geometries(streams_path, transform, dem_shape):
+    """Load stream geometries from BDOT10k GeoPackage/Shapefile.
+
+    Reads SWRS/SWKN/SWRM/PTWP layers, reprojects to EPSG:2180,
+    clips to DEM extent, decomposes MultiLineString to LineString.
+
+    Parameters
+    ----------
+    streams_path : str or Path
+        Path to GeoPackage/Shapefile with stream line geometries
+    transform : Affine
+        Rasterio Affine transform for the DEM grid
+    dem_shape : tuple[int, int]
+        (nrows, ncols) of the DEM array
+
+    Returns
+    -------
+    list[LineString]
+        List of LineString geometries within DEM extent
+    """
+    import fiona
+    import geopandas as gpd
+    from shapely.geometry import LineString, MultiLineString, MultiPolygon, Polygon, box
+
+    streams_path = str(streams_path)
+    nrows, ncols = dem_shape
+    left, top = transform * (0, 0)
+    right, bottom = transform * (ncols, nrows)
+    dem_bounds = box(
+        min(left, right), min(top, bottom),
+        max(left, right), max(top, bottom),
+    )
+
+    try:
+        layers = fiona.listlayers(streams_path)
+    except Exception:
+        layers = [None]
+
+    stream_prefixes = ("SWRS", "SWKN", "SWRM", "PTWP")
+    target_layers = [
+        lyr for lyr in layers
+        if lyr and any(p in lyr.upper() for p in stream_prefixes)
+    ]
+    if not target_layers:
+        target_layers = layers[:1] if layers else []
+
+    all_geoms = []
+    for layer in target_layers:
+        try:
+            kwargs = {"layer": layer} if layer else {}
+            gdf = gpd.read_file(streams_path, **kwargs)
+        except Exception:
+            continue
+        if gdf.empty:
+            continue
+        if gdf.crs and gdf.crs.to_epsg() != 2180:
+            gdf = gdf.to_crs(epsg=2180)
+        gdf = gdf[gdf.geometry.intersects(dem_bounds)]
+        for geom in gdf.geometry:
+            if geom is None or geom.is_empty:
+                continue
+            if isinstance(geom, MultiLineString):
+                for part in geom.geoms:
+                    if not part.is_empty and len(list(part.coords)) >= 2:
+                        all_geoms.append(part)
+            elif isinstance(geom, (Polygon, MultiPolygon)):
+                # Include polygon geometries as-is (for burn rasterization)
+                all_geoms.append(geom)
+            elif isinstance(geom, LineString):
+                if len(list(geom.coords)) >= 2:
+                    all_geoms.append(geom)
+            else:
+                # Other geometry types — include if valid
+                all_geoms.append(geom)
+
+    return all_geoms
+
+
 def burn_streams_into_dem(
     dem: np.ndarray,
     transform,
@@ -192,87 +270,23 @@ def burn_streams_into_dem(
         - streams_loaded: number of stream features loaded
         - streams_in_extent: number of stream features intersecting DEM extent
     """
-    import geopandas as gpd
     from rasterio.features import rasterize
-    from shapely.geometry import box
 
     diagnostics = {"cells_burned": 0, "streams_loaded": 0, "streams_in_extent": 0}
     burned = dem.copy()
 
-    # 1. Load streams (multi-layer GeoPackage support)
-    streams_path = Path(streams_path)
-    try:
-        import fiona
+    # 1. Load streams via shared helper
+    geoms = _load_stream_geometries(streams_path, transform, dem.shape)
+    diagnostics["streams_loaded"] = len(geoms)
+    diagnostics["streams_in_extent"] = len(geoms)
 
-        layers = fiona.listlayers(str(streams_path))
-        if len(layers) > 1:
-            # Multi-layer GeoPackage: load stream lines + lake polygons
-            import pandas as pd
-
-            target_prefixes = ["SWRS", "SWKN", "SWRM", "PTWP"]
-            loaded_gdfs = []
-            loaded_layer_names = []
-            for layer in layers:
-                for prefix in target_prefixes:
-                    if prefix in layer.upper():
-                        try:
-                            gdf = gpd.read_file(streams_path, layer=layer)
-                            if not gdf.empty:
-                                loaded_gdfs.append(gdf)
-                                loaded_layer_names.append(layer)
-                        except Exception:
-                            logger.debug(f"Could not read layer {layer}")
-                        break
-
-            if loaded_gdfs:
-                streams = gpd.GeoDataFrame(pd.concat(loaded_gdfs, ignore_index=True))
-                if hasattr(loaded_gdfs[0], "crs") and loaded_gdfs[0].crs is not None:
-                    streams = streams.set_crs(loaded_gdfs[0].crs)
-                logger.info(
-                    f"Multi-layer GeoPackage: loaded {len(loaded_gdfs)} layers "
-                    f"({', '.join(loaded_layer_names)}), "
-                    f"{len(streams)} features total"
-                )
-            else:
-                streams = gpd.GeoDataFrame(geometry=[], crs="EPSG:2180")
-        else:
-            # Single-layer file
-            streams = gpd.read_file(streams_path)
-    except Exception:
-        # Fallback: fiona not available or file not readable as multi-layer
-        streams = gpd.read_file(streams_path)
-
-    diagnostics["streams_loaded"] = len(streams)
-
-    if streams.empty:
-        logger.info("Stream burning: empty GeoDataFrame, skipping")
+    if not geoms:
+        logger.info("Stream burning: no stream geometries loaded, skipping")
         return burned, diagnostics
 
-    # 2. Validate/reproject CRS to EPSG:2180
-    if streams.crs is not None and streams.crs.to_epsg() != 2180:
-        logger.info(f"  Reprojecting streams from {streams.crs} to EPSG:2180")
-        streams = streams.to_crs(epsg=2180)
-
-    # 3. Clip to DEM extent
-    nrows, ncols = dem.shape
-    xmin = transform.c
-    ymax = transform.f
-    xmax = xmin + ncols * transform.a
-    ymin = ymax + nrows * transform.e  # transform.e is negative
-
-    dem_box = box(xmin, ymin, xmax, ymax)
-    streams = streams[streams.intersects(dem_box)]
-    streams = streams.clip(dem_box)
-    diagnostics["streams_in_extent"] = len(streams)
-
-    if streams.empty:
-        logger.info("Stream burning: no streams within DEM extent, skipping")
-        return burned, diagnostics
-
-    # 4. Rasterize streams onto DEM grid
-    geometries = [(geom, 1) for geom in streams.geometry if geom is not None]
+    # 2. Rasterize streams onto DEM grid
     stream_mask = rasterize(
-        geometries,
+        [(geom, 1) for geom in geoms],
         out_shape=dem.shape,
         transform=transform,
         fill=0,
@@ -280,7 +294,7 @@ def burn_streams_into_dem(
         all_touched=True,
     )
 
-    # 5. Burn: lower DEM at stream cells (skip nodata)
+    # 3. Burn: lower DEM at stream cells (skip nodata)
     burn_cells = (stream_mask == 1) & (dem != nodata)
     burned[burn_cells] -= burn_depth_m
     diagnostics["cells_burned"] = int(np.sum(burn_cells))
@@ -466,6 +480,194 @@ def _build_stream_network_graph(
     }
 
     return dict(graph), seg_nodes_clean, outlets
+
+
+def smooth_streams_monotonic(
+    dem: np.ndarray,
+    transform,
+    streams_path,
+    nodata: float = -9999.0,
+) -> tuple[np.ndarray, dict]:
+    """Enforce monotonically decreasing elevation along stream channels.
+
+    Loads stream geometries, builds a topology graph, and applies a
+    running-minimum downstream pass from sources to outlets. At
+    confluences the minimum of all tributary last-elevations is used
+    as the running value for the downstream segment.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        Input DEM array (modified copy is returned)
+    transform : Affine
+        Rasterio Affine transform for the DEM grid
+    streams_path : str or Path
+        Path to GeoPackage/Shapefile with stream line geometries
+    nodata : float
+        NoData value in DEM
+
+    Returns
+    -------
+    tuple
+        (smoothed_dem, diagnostics) where diagnostics contains:
+        - segments_processed: int
+        - segments_skipped: int
+        - cells_smoothed: int
+        - cells_unchanged: int
+        - max_correction_m: float
+        - mean_correction_m: float
+        - disconnected_components: int
+    """
+    smoothed = dem.copy()
+    diag = {
+        "segments_processed": 0,
+        "segments_skipped": 0,
+        "cells_smoothed": 0,
+        "cells_unchanged": 0,
+        "max_correction_m": 0.0,
+        "mean_correction_m": 0.0,
+        "disconnected_components": 0,
+    }
+
+    # 1. Load geometries (filter to LineStrings only for smoothing)
+    from shapely.geometry import LineString as _LS
+
+    all_geoms = _load_stream_geometries(streams_path, transform, dem.shape)
+    geoms = [g for g in all_geoms if isinstance(g, _LS)]
+    if not geoms:
+        return smoothed, diag
+
+    # 2. Rasterize each segment
+    seg_cells: dict[int, list[tuple[int, int]]] = {}
+    valid_geoms = []
+    for idx, geom in enumerate(geoms):
+        cells = _rasterize_line_ordered(geom, transform, shape=dem.shape)
+        if len(cells) < 2:
+            diag["segments_skipped"] += 1
+            continue
+        seg_cells[idx] = cells
+        valid_geoms.append((idx, geom))
+
+    if not valid_geoms:
+        diag["segments_skipped"] = len(geoms)
+        return smoothed, diag
+
+    # Build geometry list preserving original indices for graph building
+    geom_list_for_graph = [None] * len(geoms)
+    for idx, geom in valid_geoms:
+        geom_list_for_graph[idx] = geom
+
+    # 3. Build topology graph
+    graph, seg_nodes, outlets = _build_stream_network_graph(
+        geoms, smoothed, transform
+    )
+    diag["disconnected_components"] = len(outlets)
+
+    # 4. Process each connected component
+    corrections: list[float] = []
+    processed_segs: set[int] = set()
+
+    for outlet in outlets:
+        # BFS from outlet to build traversal order + position lookup
+        bfs_order: list[int] = []
+        bfs_pos: dict[int, int] = {}
+        bfs_queue = deque([outlet])
+        bfs_pos[outlet] = 0
+        pos_counter = 0
+        while bfs_queue:
+            nid = bfs_queue.popleft()
+            bfs_order.append(nid)
+            for neighbor, _seg_idx in graph.get(nid, []):
+                if neighbor not in bfs_pos:
+                    pos_counter += 1
+                    bfs_pos[neighbor] = pos_counter
+                    bfs_queue.append(neighbor)
+
+        # node_last_elev: track last elevation written at each node
+        # (minimum across all incoming tributaries)
+        node_last_elev: dict[int, float] = {}
+
+        # Process in reverse BFS order (sources first → outlet last)
+        for nid in reversed(bfs_order):
+            nid_pos = bfs_pos[nid]
+            for neighbor, seg_idx in graph.get(nid, []):
+                if seg_idx not in seg_cells:
+                    continue
+                if seg_idx in processed_segs:
+                    continue
+                neighbor_pos = bfs_pos.get(neighbor)
+                if neighbor_pos is None:
+                    continue
+                # Only process when nid is upstream (farther from outlet)
+                if neighbor_pos >= nid_pos:
+                    continue
+
+                processed_segs.add(seg_idx)
+                diag["segments_processed"] += 1
+
+                cells = list(seg_cells[seg_idx])
+
+                # Direction: seg_nodes[seg_idx][0] corresponds to
+                # geometry coords[0]. If that node is not nid, reverse.
+                if seg_idx in seg_nodes:
+                    geom_start_node, _geom_end_node = seg_nodes[seg_idx]
+                    if geom_start_node != nid:
+                        cells = list(reversed(cells))
+
+                # Initialize running minimum
+                running_val = float("inf")
+                # At confluence: use min of tributary last-elevations
+                if nid in node_last_elev:
+                    running_val = min(running_val, node_last_elev[nid])
+
+                # Running-minimum downstream pass
+                for r, c in cells:
+                    val = float(smoothed[r, c])
+                    if nodata != -9999.0 and val == nodata:
+                        # Skip nodata cells
+                        continue
+                    if val == nodata:
+                        continue
+                    new_val = min(val, running_val)
+                    if new_val < val:
+                        correction = val - new_val
+                        corrections.append(correction)
+                        smoothed[r, c] = new_val
+                        diag["cells_smoothed"] += 1
+                    else:
+                        diag["cells_unchanged"] += 1
+                    running_val = new_val
+
+                # Store last elevation at downstream node
+                last_cell = cells[-1] if cells else None
+                if last_cell is not None:
+                    last_r, last_c = last_cell
+                    last_val = float(smoothed[last_r, last_c])
+                    if last_val != nodata:
+                        if neighbor in node_last_elev:
+                            node_last_elev[neighbor] = min(
+                                node_last_elev[neighbor], last_val
+                            )
+                        else:
+                            node_last_elev[neighbor] = last_val
+
+    # Count segments that were in seg_cells but not processed
+    unprocessed = set(seg_cells.keys()) - processed_segs
+    diag["segments_skipped"] += len(unprocessed)
+
+    # Compute correction statistics
+    if corrections:
+        diag["max_correction_m"] = max(corrections)
+        diag["mean_correction_m"] = sum(corrections) / len(corrections)
+
+    logger.info(
+        f"Monotonic smoothing: {diag['segments_processed']} segments, "
+        f"{diag['cells_smoothed']} cells corrected, "
+        f"max={diag['max_correction_m']:.2f}m, "
+        f"mean={diag['mean_correction_m']:.2f}m"
+    )
+
+    return smoothed, diag
 
 
 def _sample_dem_at_point(
