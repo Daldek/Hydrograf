@@ -5,7 +5,17 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-03-17
+## [Unreleased] — 2026-03-18
+
+### Dodane
+- **H4: Monotoniczne wygładzanie cieków (ADR-041)** — dwuetapowe przetwarzanie: stałe wypalanie (2m) + running minimum downstream. Koryguje mosty/nasypy bez nadmiernego wypalania normalnych odcinków
+- `smooth_streams_monotonic()` w `core/hydrology.py` — graf topologii sieci, BFS od ujścia, Bresenham rasteryzacja
+- `--no-smooth-streams` flag w `process_dem.py` — wyłączenie wygładzania do debugowania
+- Plik diagnostyczny `02b_smoothed.tif` przy `save_intermediates`
+
+### Zmienione
+- Domyślny `burn_depth_m` zmniejszony z 10/5m do 2.0m (wszystkie lokalizacje)
+- Refaktoryzacja `burn_streams_into_dem()` — wydzielenie `_load_stream_geometries()` jako współdzielonego helpera
 
 ### Added
 - Vector boundary file support (ADR-040): SHP/ZIP, GPKG, GeoJSON as analysis area

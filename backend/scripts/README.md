@@ -182,17 +182,18 @@ Przetwarza plik NMT (Numeryczny Model Terenu) z formatu ASCII GRID i ładuje dan
 
 **Etapy przetwarzania (używa biblioteki `pyflwdir` — Deltares):**
 1. Odczyt pliku rastrowego (.asc, .vrt, .tif)
-2. Wypalanie cieków w DEM (opcjonalne, `--burn-streams`)
-3. Wypełnienie wewnętrznych dziur nodata
-4. Wypełnienie depresji + obliczenie kierunku przepływu D8 (`fill_depressions`)
-5. Obliczenie akumulacji przepływu (`upstream_area`)
-6. Obliczenie spadku terenu (Sobel)
-7. Obliczenie aspektu (ekspozycja stoku, 0-360°)
-8. Obliczenie rzędu Strahlera (`flw.stream_order`)
-9. Obliczenie TWI (Topographic Wetness Index)
-10. Identyfikacja strumieni (próg akumulacji)
-11. Wektoryzacja cieków jako LineString (`vectorize_streams`)
-12. Import do bazy PostgreSQL/PostGIS (COPY)
+2. Wypalanie cieków w DEM — krok 3a: stałe wypalanie (opcjonalne, `--burn-streams`)
+3. Monotoniczne wygładzanie cieków — krok 3b: running minimum downstream (BFS od ujścia), koryguje mosty/nasypy (opcjonalne, `--no-smooth-streams` wyłącza)
+4. Wypełnienie wewnętrznych dziur nodata
+5. Wypełnienie depresji + obliczenie kierunku przepływu D8 (`fill_depressions`)
+6. Obliczenie akumulacji przepływu (`upstream_area`)
+7. Obliczenie spadku terenu (Sobel)
+8. Obliczenie aspektu (ekspozycja stoku, 0-360°)
+9. Obliczenie rzędu Strahlera (`flw.stream_order`)
+10. Obliczenie TWI (Topographic Wetness Index)
+11. Identyfikacja strumieni (próg akumulacji)
+12. Wektoryzacja cieków jako LineString (`vectorize_streams`)
+13. Import do bazy PostgreSQL/PostGIS (COPY)
 
 **Użycie:**
 
@@ -224,7 +225,8 @@ cd backend
 | `--output-dir` | `-o` | Katalog dla plików GeoTIFF | (katalog wejściowy) |
 | `--clear-existing` | - | Wyczyść istniejące dane (TRUNCATE flow_network) | false |
 | `--burn-streams` | - | Ścieżka do GeoPackage/Shapefile z ciekami | - |
-| `--burn-depth` | - | Głębokość wypalania [m] | 5.0 |
+| `--burn-depth` | - | Głębokość wypalania [m] | 2.0 |
+| `--no-smooth-streams` | - | Wyłącz monotoniczne wygładzanie cieków (do debugowania) | false |
 | `--waterbody-mode` | - | Tryb obsługi zbiorników: `auto`, `none`, lub ścieżka do pliku | `none` |
 | `--waterbody-min-area` | - | Min. powierzchnia zbiornika (m²) | - |
 | `--skip-streams-vectorize` | - | Pomiń wektoryzację cieków | false |
@@ -237,6 +239,7 @@ Opcja `--save-intermediates` generuje pliki do weryfikacji obliczeń w oprogramo
 |------|------|------------|
 | `*_01_dem.tif` | Oryginalny NMT | float32 |
 | `*_02a_burned.tif` | NMT po wypaleniu cieków (jeśli `--burn-streams`) | float32 |
+| `*_02b_smoothed.tif` | NMT po monotonycznym wygładzaniu cieków (jeśli `--burn-streams` bez `--no-smooth-streams`) | float32 |
 | `*_02_filled.tif` | NMT po wypełnieniu zagłębień | float32 |
 | `*_03_flowdir.tif` | Kierunek przepływu (D8 encoding) | int16 |
 | `*_04_flowacc.tif` | Akumulacja przepływu (liczba komórek upstream) | int32 |
