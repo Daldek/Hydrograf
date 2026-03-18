@@ -7,6 +7,7 @@ sink fixing, and flow accumulation recomputation.
 """
 
 import logging
+from collections import defaultdict, deque
 from pathlib import Path
 
 import numpy as np
@@ -371,8 +372,6 @@ def _build_stream_network_graph(
             to geometry coords[0], end to coords[-1]
         outlets: list of outlet node IDs (one per connected component)
     """
-    from collections import defaultdict, deque
-
     nrows, ncols = dem.shape
 
     endpoints = []
@@ -460,7 +459,13 @@ def _build_stream_network_graph(
         candidates = edge_nodes if edge_nodes else degree_one
         outlets.append(min(candidates, key=_clamp_elev))
 
-    return dict(graph), dict(seg_nodes), outlets
+    # Filter out incomplete segment mappings
+    seg_nodes_clean: dict[int, tuple[int, int]] = {
+        idx: (s, e) for idx, (s, e) in seg_nodes.items()
+        if s is not None and e is not None
+    }
+
+    return dict(graph), seg_nodes_clean, outlets
 
 
 def _sample_dem_at_point(

@@ -4,7 +4,12 @@ import numpy as np
 import pytest
 from rasterio.transform import from_bounds
 from shapely.geometry import LineString
-from core.hydrology import _bresenham, _rasterize_line_ordered, _build_stream_network_graph
+
+from core.hydrology import (
+    _bresenham,
+    _build_stream_network_graph,
+    _rasterize_line_ordered,
+)
 
 
 class TestBresenham:
