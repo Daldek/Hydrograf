@@ -129,7 +129,8 @@ def process_dem(
     output_dir: Path | None = None,
     clear_existing: bool = False,
     burn_streams_path: Path | None = None,
-    burn_depth_m: float = 5.0,
+    burn_depth_m: float = 2.0,
+    smooth_streams: bool = True,
     skip_streams_vectorize: bool = False,
     thresholds: list[int] | None = None,
     skip_catchments: bool = False,
@@ -162,7 +163,9 @@ def process_dem(
     burn_streams_path : Path, optional
         Path to GeoPackage/Shapefile with stream lines for DEM burning
     burn_depth_m : float
-        Burn depth in meters (default: 5.0)
+        Burn depth in meters (default: 2.0)
+    smooth_streams : bool
+        If True, apply monotonic stream smoothing after burning (default: True)
     skip_streams_vectorize : bool
         If True, skip stream vectorization (default: False)
     skip_catchments : bool
@@ -296,6 +299,29 @@ def process_dem(
                 nodata=nodata,
                 dtype="float32",
             )
+
+        # Step 3b: Monotonic stream smoothing
+        if smooth_streams:
+            from core.hydrology import smooth_streams_monotonic
+
+            dem, smooth_diag = smooth_streams_monotonic(
+                dem, transform, burn_streams_path, nodata
+            )
+            stats["smooth_cells"] = smooth_diag["cells_smoothed"]
+            stats["smooth_max_correction_m"] = smooth_diag["max_correction_m"]
+            logger.info(
+                "Monotonic smoothing: %d cells corrected (max %.1fm)",
+                smooth_diag["cells_smoothed"],
+                smooth_diag["max_correction_m"],
+            )
+            if save_intermediates:
+                save_raster_geotiff(
+                    dem,
+                    metadata,
+                    output_dir / f"{base_name}_02b_smoothed.tif",
+                    nodata=nodata,
+                    dtype="float32",
+                )
 
     # 2b. Classify endorheic lakes and compute drain points (optional)
     drain_points = None
@@ -685,8 +711,14 @@ def main():
     parser.add_argument(
         "--burn-depth",
         type=float,
-        default=5.0,
-        help="Burn depth in meters (default: 5.0)",
+        default=2.0,
+        help="Burn depth in meters (default: 2.0)",
+    )
+    parser.add_argument(
+        "--no-smooth-streams",
+        action="store_true",
+        default=False,
+        help="Disable monotonic stream smoothing after burning",
     )
     parser.add_argument(
         "--skip-streams-vectorize",
@@ -772,6 +804,7 @@ def main():
             clear_existing=args.clear_existing,
             burn_streams_path=burn_streams_path,
             burn_depth_m=args.burn_depth,
+            smooth_streams=not args.no_smooth_streams,
             skip_streams_vectorize=args.skip_streams_vectorize,
             thresholds=threshold_list,
             skip_catchments=args.skip_catchments,
