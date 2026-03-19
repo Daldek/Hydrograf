@@ -53,7 +53,10 @@
   1. `ST_SimplifyPreserveTopology` na indywidualnych poligonach PRZED union nisczył współdzielone krawędzie → zamiana na `ST_SnapToGrid` (zachowuje wspólne krawędzie)
   2. Buffer gap-closing 0.1m za mały (luki 1-5m z preprocessingu) → zwiększony do 2.0m (`_GAP_CLOSE_M`)
   3. `ST_MakeValid` po `ST_ChaikinSmoothing` rozbijał samoprzecięcia na osobne poligony → zamiana na `ST_Buffer(geom, 0)` zachowujący ciągłość
-- Zmienione pliki: `core/watershed_service.py` (3 funkcje merge), testy (7 nowych)
+- **Fix brakujących kafli MVT po regeneracji z panelu admin** — dwa root causes:
+  1. `Cache-Control: public, max-age=86400` na PUSTYCH odpowiedziach tile API → przeglądarka cachowała puste kafle na 24h. Fix: puste kafle → `no-store`, pełne → `max-age=86400`
+  2. DEM tiles skip guard (`not dem_tiles_dir.exists()`) uniemożliwiał regenerację. Fix: zawsze regeneruj, usuwając stare kafle
+- Zmienione pliki: `core/watershed_service.py`, `api/endpoints/tiles.py`, `scripts/bootstrap.py`, testy (7 nowych)
 - 721 testów, 0 regresji
 
 ### W trakcie
