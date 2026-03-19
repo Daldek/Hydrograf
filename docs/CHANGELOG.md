@@ -5,7 +5,7 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-03-18
+## [Unreleased] — 2026-03-19
 
 ### Dodane
 - **H4: Monotoniczne wygładzanie cieków (ADR-041)** — dwuetapowe przetwarzanie: stałe wypalanie (2m) + running minimum downstream. Koryguje mosty/nasypy bez nadmiernego wypalania normalnych odcinków
@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migration 018: composite index `(threshold_m2, segment_idx)` on `stream_catchments`
 
 ### Fixed
+- **Nieciągłości topologii przy łączeniu zlewni cząstkowych:** trzy root causes — (1) ST_SimplifyPreserveTopology przed union niszczył współdzielone krawędzie → zamiana na ST_SnapToGrid; (2) buffer gap-closing 0.1m za mały dla luk 1-5m → zwiększony do 2.0m; (3) ST_MakeValid po Chaikin rozbijał samoprzecięcia na osobne poligony → zamiana na ST_Buffer(0) zachowujący ciągłość
 - **Timeout 504 przy duzych zlewniach (ADR-042):** batched union z pre-simplifikacja dla >100 segmentow, uproszczona granica dla zapytan land cover/HSG (18.5s → 1.6s), `_MAX_MERGE` 500→300. Czas odpowiedzi: 95 km² = 7s (bylo 24s), 674 km² = 7s (bylo timeout)
 - **CatchmentGraph auto-reload po bootstrap:** API automatycznie przeladowuje graf zlewni po zakonczeniu bootstrap z panelu admin (wczesniej wymagal restartu kontenera)
 - **Brak arkuszy NMT (38.6% NoData):** `bootstrap.py` uzywa `kartograf.find_sheets_for_bbox()` zamiast wlasnego `utils.sheet_finder` (91 → 192 arkuszy dla tego samego bbox)
