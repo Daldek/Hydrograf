@@ -209,7 +209,11 @@ def resolve_boundary_file(
     from kartograf import find_sheets_for_bbox, find_sheets_for_geometry
     from kartograf.core.geometry import BBox
 
-    from core.boundary import boundary_to_bbox_2180, boundary_to_bbox_wgs84, load_boundary
+    from core.boundary import (
+        boundary_to_bbox_2180,
+        boundary_to_bbox_wgs84,
+        load_boundary,
+    )
 
     geom = load_boundary(boundary_file, layer=layer)
     bbox = boundary_to_bbox_wgs84(geom)
