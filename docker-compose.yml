@@ -63,7 +63,7 @@ services:
           memory: 4G
           cpus: "2.0"
     volumes:
-      - ./cache:/cache:ro
+      - ./cache:/cache
       - ./data:/data
       - ./frontend/data:/frontend/data
       - ./frontend/tiles:/frontend/tiles
@@ -79,7 +79,7 @@ services:
       - ALL
     read_only: true
     tmpfs:
-      - /tmp:size=100M
+      - /tmp:size=2G  # BDOT10k downloads need ~1-2G temp space during bootstrap
 
   nginx:
     image: nginx:alpine
