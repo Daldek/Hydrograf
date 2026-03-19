@@ -11,8 +11,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgeos-dev \
     libproj-dev \
     gcc \
+    g++ \
+    make \
     git \
+    libsqlite3-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Build tippecanoe (MVT tile generator) — pinned version for reproducible builds
+RUN git clone --depth 1 --branch 2.80.0 https://github.com/felt/tippecanoe.git /tmp/tippecanoe && \
+    cd /tmp/tippecanoe && make -j$(nproc) && make install && \
+    rm -rf /tmp/tippecanoe
 
 COPY requirements.txt .
 
@@ -33,8 +42,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgeos-c1t64 \
     libproj25 \
     libexpat1 \
+    libsqlite3-0 \
+    zlib1g \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy tippecanoe binary from builder
+COPY --from=builder /usr/local/bin/tippecanoe /usr/local/bin/tippecanoe
 
 # Create non-root user for running the application
 RUN groupadd -r hydro && useradd -r -g hydro -d /app -s /sbin/nologin hydro
