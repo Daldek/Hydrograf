@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Nieciągłości topologii przy łączeniu zlewni cząstkowych:** trzy root causes — (1) ST_SimplifyPreserveTopology przed union niszczył współdzielone krawędzie → zamiana na ST_SnapToGrid; (2) buffer gap-closing 0.1m za mały dla luk 1-5m → zwiększony do 2.0m; (3) ST_MakeValid po Chaikin rozbijał samoprzecięcia na osobne poligony → zamiana na ST_Buffer(0) zachowujący ciągłość
+- **Brak kafli MVT po regeneracji z panelu admin:** puste odpowiedzi tile API były cachowane przez przeglądarkę na 24h (`Cache-Control: max-age=86400`); teraz puste kafle mają `no-store`. Dodatkowo kafle DEM były pomijane przy re-bootstrapie (skip guard `tiles_missing`); teraz zawsze regenerowane
 - **Timeout 504 przy duzych zlewniach (ADR-042):** batched union z pre-simplifikacja dla >100 segmentow, uproszczona granica dla zapytan land cover/HSG (18.5s → 1.6s), `_MAX_MERGE` 500→300. Czas odpowiedzi: 95 km² = 7s (bylo 24s), 674 km² = 7s (bylo timeout)
 - **CatchmentGraph auto-reload po bootstrap:** API automatycznie przeladowuje graf zlewni po zakonczeniu bootstrap z panelu admin (wczesniej wymagal restartu kontenera)
 - **Brak arkuszy NMT (38.6% NoData):** `bootstrap.py` uzywa `kartograf.find_sheets_for_bbox()` zamiast wlasnego `utils.sheet_finder` (91 → 192 arkuszy dla tego samego bbox)
