@@ -173,25 +173,35 @@ def merge_catchment_boundaries(
     return _merge_simplified_fallback(segment_idxs, threshold_m2, db)
 
 
-# Smoothing pipeline applied to final merged geometry.
-_SMOOTH_SQL = """
-    ST_Multi(ST_MakeValid(
-        ST_ChaikinSmoothing(
-            ST_SimplifyPreserveTopology(
-                ST_Buffer(ST_Buffer(geom, 0.1), -0.1),
-            5.0),
-        3)
-    ))
-"""
+# Gap-closing buffer distance (meters, EPSG:2180). Buffer-debuffer cycle
+# ST_Buffer(d) + ST_Buffer(-d) closes gaps up to 2*d between
+# independently simplified adjacent catchment polygons.
+# Preprocessing simplifies each polygon with 2*cellsize (~10m) tolerance,
+# which can create gaps of 1-5m between neighbours.
+_GAP_CLOSE_M = 2.0
+
+# Smoothing pipeline applied to final merged geometry:
+#   1. ST_Buffer(d) + ST_Buffer(-d)    — close gaps from preprocessing
+#   2. ST_SimplifyPreserveTopology(5.0) — reduce staircase vertices
+#   3. ST_ChaikinSmoothing(3)           — smooth corners (3 iterations)
+#   4. ST_Buffer(0)                     — fix self-intersections,
+#                                         preserve connectivity
+#      (ST_MakeValid would SPLIT self-intersecting polygons into
+#       separate parts, causing discontinuities)
+#   5. ST_Multi()                       — wrap as MultiPolygon
 
 # Batch size for grid-batched union: each batch unions ~50 polygons
 # (fast), then the final union merges ~n/50 pre-merged results.
 _BATCH_SIZE = 50
 
-# Pre-simplification tolerance (meters, EPSG:2180). Reduces vertex
-# count before union; final ST_SimplifyPreserveTopology(5.0) already
-# loses this precision, so 10m pre-simplify is safe.
-_PRE_SIMPLIFY_M = 10.0
+# Snap-to-grid size for pre-union vertex reduction (meters, EPSG:2180).
+# Unlike ST_SimplifyPreserveTopology, ST_SnapToGrid preserves shared
+# edges between adjacent polygons (both sides snap to the same grid
+# points), preventing gaps after union.
+_SNAP_SIZE_M = 10.0
+
+# Aggressive snap size for simplified fallback (meters, EPSG:2180).
+_SNAP_SIZE_FALLBACK_M = 50.0
 
 
 def _merge_direct(
@@ -202,15 +212,15 @@ def _merge_direct(
     """Direct ST_UnaryUnion for small segment sets (≤100)."""
     query = text("""
         SELECT ST_AsBinary(
-            ST_Multi(ST_MakeValid(
+            ST_Multi(ST_Buffer(
                 ST_ChaikinSmoothing(
                     ST_SimplifyPreserveTopology(
                         ST_Buffer(ST_Buffer(
                             ST_UnaryUnion(ST_Collect(geom)),
-                        0.1), -0.1),
+                        :gap_close), -:gap_close),
                     5.0),
-                3)
-            ))
+                3),
+            0))
         ) as geom
         FROM stream_catchments
         WHERE threshold_m2 = :threshold
@@ -218,7 +228,11 @@ def _merge_direct(
     """)
     result = db.execute(
         query,
-        {"threshold": threshold_m2, "idxs": segment_idxs},
+        {
+            "threshold": threshold_m2,
+            "idxs": segment_idxs,
+            "gap_close": _GAP_CLOSE_M,
+        },
     ).fetchone()
 
     if result is None or result.geom is None:
@@ -233,10 +247,11 @@ def _merge_batched(
     db: Session,
 ) -> MultiPolygon | None:
     """
-    Batched union with pre-simplification for large segment sets.
+    Batched union with snap-to-grid for large segment sets.
 
-    Groups polygons into spatial batches (~50 each), pre-simplifies,
-    unions within each batch, then unions the batch results.
+    Groups polygons into batches (~50 each), snaps to grid (preserves
+    shared edges unlike ST_SimplifyPreserveTopology), unions within
+    each batch, then unions the batch results.
     Turns O(n²) into O(k × (n/k)²) ≈ O(n²/k).
     """
     from core.db_bulk import override_statement_timeout
@@ -244,7 +259,7 @@ def _merge_batched(
     query = text("""
         WITH numbered AS (
             SELECT
-                ST_SimplifyPreserveTopology(geom, :simplify_tol) AS geom,
+                ST_MakeValid(ST_SnapToGrid(geom, :snap_size)) AS geom,
                 ROW_NUMBER() OVER (ORDER BY segment_idx) AS rn
             FROM stream_catchments
             WHERE threshold_m2 = :threshold AND segment_idx = ANY(:idxs)
@@ -255,15 +270,15 @@ def _merge_batched(
             GROUP BY (rn - 1) / :batch_size
         )
         SELECT ST_AsBinary(
-            ST_Multi(ST_MakeValid(
+            ST_Multi(ST_Buffer(
                 ST_ChaikinSmoothing(
                     ST_SimplifyPreserveTopology(
                         ST_Buffer(ST_Buffer(
                             ST_UnaryUnion(ST_Collect(geom)),
-                        0.1), -0.1),
+                        :gap_close), -:gap_close),
                     5.0),
-                3)
-            ))
+                3),
+            0))
         ) AS geom
         FROM batched
     """)
@@ -274,8 +289,9 @@ def _merge_batched(
             {
                 "threshold": threshold_m2,
                 "idxs": segment_idxs,
-                "simplify_tol": _PRE_SIMPLIFY_M,
+                "snap_size": _SNAP_SIZE_M,
                 "batch_size": _BATCH_SIZE,
+                "gap_close": _GAP_CLOSE_M,
             },
         ).fetchone()
 
@@ -290,21 +306,25 @@ def _merge_simplified_fallback(
     threshold_m2: int,
     db: Session,
 ) -> MultiPolygon | None:
-    """Fallback: aggressive simplification (50m) then direct union."""
+    """Fallback: aggressive snap-to-grid (50m) then direct union."""
     query = text("""
         SELECT ST_AsBinary(
-            ST_Multi(ST_MakeValid(
+            ST_Multi(ST_Buffer(
                 ST_UnaryUnion(ST_Collect(
-                    ST_SimplifyPreserveTopology(geom, 50.0)
-                ))
-            ))
+                    ST_MakeValid(ST_SnapToGrid(geom, :snap_size))
+                )),
+            0))
         ) AS geom
         FROM stream_catchments
         WHERE threshold_m2 = :threshold AND segment_idx = ANY(:idxs)
     """)
     result = db.execute(
         query,
-        {"threshold": threshold_m2, "idxs": segment_idxs},
+        {
+            "threshold": threshold_m2,
+            "idxs": segment_idxs,
+            "snap_size": _SNAP_SIZE_FALLBACK_M,
+        },
     ).fetchone()
 
     if result is None or result.geom is None:
