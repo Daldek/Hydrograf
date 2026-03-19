@@ -79,6 +79,57 @@ cd backend
 
 ---
 
+### `clean.py` - Czyszczenie wygenerowanych danych
+
+Usuwa przetworzone dane (rastry, kafelki, overlays, GeoJSON, tabele DB) przygotowując czyste środowisko do ponownego uruchomienia `bootstrap.py`.
+
+**Użycie:**
+
+```bash
+cd backend
+
+# Standardowe czyszczenie (dane przetworzone, zachowuje cache pobierań)
+.venv/bin/python -m scripts.clean
+
+# Z usunięciem cache pobierań (NMT + BDOT10k)
+.venv/bin/python -m scripts.clean --include-cache
+
+# Pełne czyszczenie (dane + cache + tabele DB)
+.venv/bin/python -m scripts.clean --all
+
+# Tylko wybrane komponenty
+.venv/bin/python -m scripts.clean --only rasters tiles
+
+# Dry run — pokaż co zostanie usunięte
+.venv/bin/python -m scripts.clean --dry-run
+
+# Bez potwierdzenia (np. w skryptach CI)
+.venv/bin/python -m scripts.clean --yes
+```
+
+**Komponenty:**
+
+| Komponent | Co usuwa |
+|-----------|----------|
+| `rasters` | Rastry NMT (TIF/VRT w `data/nmt/`) |
+| `hydro` | Dane hydro BDOT10k (`data/hydro/`) |
+| `boundary` | Pliki granicy obszaru (`data/boundary/`) |
+| `overlays` | PNG/JSON + piramida DEM tiles (`frontend/data/`) |
+| `geojson` | Eksporty GeoJSON (`frontend/data/*.geojson`) |
+| `tiles` | Kafelki MVT + mbtiles (`frontend/tiles/`) |
+| `db` | Tabele: stream_network, stream_catchments, depressions, land_cover, precipitation_data, soil_hsg |
+| `cache` | Cache NMT i BDOT10k (soil_hsg zachowany — mały, ogólnopolski) |
+
+**Typowy workflow regeneracji:**
+
+```bash
+cd backend
+.venv/bin/python -m scripts.clean --include-db -y
+.venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
+```
+
+---
+
 ### `prepare_area.py` - Pełny pipeline (ZALECANY)
 
 Pipeline łączący automatyczne pobieranie NMT z GUGiK i przetwarzanie do bazy danych.

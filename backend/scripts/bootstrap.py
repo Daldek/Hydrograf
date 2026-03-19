@@ -863,11 +863,20 @@ def step_overlays(output_dir: Path) -> str:
 
     generated = []
 
-    # DEM overlay
-    vrt_path = nmt_dir / "dem_mosaic.vrt"
-    if vrt_path.exists():
+    # DEM overlay (prefer VRT, fallback to TIF or original DEM)
+    dem_input = None
+    for candidate in [
+        nmt_dir / "dem_mosaic.vrt",
+        nmt_dir / "dem_mosaic.tif",
+        nmt_dir / "dem_mosaic_01_dem.tif",
+    ]:
+        if candidate.exists():
+            dem_input = candidate
+            break
+
+    if dem_input is not None:
         dem_overlay(
-            input_path=str(vrt_path),
+            input_path=str(dem_input),
             output_png=str(data_dir / "dem.png"),
             output_meta=str(data_dir / "dem.json"),
             source_crs="EPSG:2180",
@@ -878,12 +887,12 @@ def step_overlays(output_dir: Path) -> str:
     dem_tiles_dir = data_dir / "dem_tiles"
     dem_tiles_meta = data_dir / "dem_tiles.json"
     tiles_missing = not dem_tiles_dir.exists() or not dem_tiles_meta.exists()
-    if vrt_path.exists() and tiles_missing:
+    if dem_input is not None and tiles_missing:
         logger.info("Generating DEM tile pyramid...")
         from scripts.generate_dem_tiles import generate_tiles as gen_dem_tiles
 
         gen_dem_tiles(
-            input_path=str(vrt_path),
+            input_path=str(dem_input),
             output_dir=str(dem_tiles_dir),
             output_meta=str(dem_tiles_meta),
             source_crs="EPSG:2180",
