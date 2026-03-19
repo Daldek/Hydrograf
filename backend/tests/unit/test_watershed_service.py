@@ -146,8 +146,9 @@ class TestMergeCatchmentBoundaries:
         assert result is None
         mock_db.execute.assert_not_called()
 
-    def test_merge_sql_no_snap_to_grid(self):
-        """merge SQL helpers should not use ST_SnapToGrid."""
+    def test_merge_direct_no_snap_to_grid(self):
+        """_merge_direct should not use ST_SnapToGrid (small sets
+        don't need pre-union vertex reduction)."""
         import inspect
 
         from core.watershed_service import _merge_direct
@@ -155,6 +156,16 @@ class TestMergeCatchmentBoundaries:
         source = inspect.getsource(_merge_direct)
         assert "ST_SnapToGrid" not in source
         assert "ST_Buffer" in source  # buffer-debuffer pattern
+
+    def test_merge_batched_uses_snap_to_grid(self):
+        """_merge_batched should use ST_SnapToGrid for pre-union vertex
+        reduction (preserves shared edges, unlike simplify)."""
+        import inspect
+
+        from core.watershed_service import _merge_batched
+
+        source = inspect.getsource(_merge_batched)
+        assert "ST_SnapToGrid" in source
 
 
 # ---------------------------------------------------------------------------
