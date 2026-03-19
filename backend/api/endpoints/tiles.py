@@ -24,6 +24,12 @@ router = APIRouter()
 
 _EMPTY_MVT = b""
 
+# Cache headers: non-empty tiles are cached for 24h; empty tiles must
+# never be cached — during bootstrap, tables are temporarily empty
+# and caching empty responses blocks tiles for up to 24 hours.
+_CACHE_HIT = {"Cache-Control": "public, max-age=86400"}
+_CACHE_MISS = {"Cache-Control": "no-store"}
+
 
 def _tile_to_bbox_3857(z: int, x: int, y: int):
     """Convert XYZ tile coordinates to EPSG:3857 bounding box."""
@@ -90,11 +96,12 @@ def get_streams_mvt(
     ).fetchone()
 
     tile_data = row[0] if row and row[0] else _EMPTY_MVT
+    has_data = tile_data != _EMPTY_MVT
 
     return Response(
         content=bytes(tile_data),
         media_type="application/x-protobuf",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers=_CACHE_HIT if has_data else _CACHE_MISS,
     )
 
 
@@ -157,11 +164,12 @@ def get_catchments_mvt(
     ).fetchone()
 
     tile_data = row[0] if row and row[0] else _EMPTY_MVT
+    has_data = tile_data != _EMPTY_MVT
 
     return Response(
         content=bytes(tile_data),
         media_type="application/x-protobuf",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers=_CACHE_HIT if has_data else _CACHE_MISS,
     )
 
 
@@ -214,11 +222,12 @@ def get_landcover_tile(
     ).fetchone()
 
     tile_data = row[0] if row and row[0] else _EMPTY_MVT
+    has_data = tile_data != _EMPTY_MVT
 
     return Response(
         content=bytes(tile_data),
         media_type="application/x-protobuf",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers=_CACHE_HIT if has_data else _CACHE_MISS,
     )
 
 
