@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 714 testow jednostkowych |
+| Testy | ✅ Gotowy | 721 testow jednostkowych |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -46,23 +46,32 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-18 (sesja 62 — H4 monotonic stream smoothing)
+**Data:** 2026-03-19 (sesja 63 — fix topologii merge zlewni)
 
 ### Co zrobiono
-- **ADR-041: Monotoniczne wygładzanie cieków** — dwuetapowe przetwarzanie DEM: stałe wypalanie (2m) + running minimum downstream
-- Nowe funkcje w `core/hydrology.py`: `smooth_streams_monotonic()`, `_load_stream_geometries()`, `_build_stream_network_graph()`, `_rasterize_line_ordered()`, `_bresenham()`
-- Refaktoryzacja `burn_streams_into_dem()` — wydzielenie `_load_stream_geometries()` jako współdzielonego helpera
-- Integracja w `process_dem.py`: krok 3b po wypalaniu, `--no-smooth-streams` flag, `02b_smoothed.tif`
-- Zmiana domyślnego `burn_depth_m` z 10/5m na 2.0m (wszystkie lokalizacje)
-- 28 testów dla monotonic smoothing (16 helpers + 12 main function)
+- **Fix nieciągłości topologii przy łączeniu zlewni cząstkowych** — trzy root causes:
+  1. `ST_SimplifyPreserveTopology` na indywidualnych poligonach PRZED union nisczył współdzielone krawędzie → zamiana na `ST_SnapToGrid` (zachowuje wspólne krawędzie)
+  2. Buffer gap-closing 0.1m za mały (luki 1-5m z preprocessingu) → zwiększony do 2.0m (`_GAP_CLOSE_M`)
+  3. `ST_MakeValid` po `ST_ChaikinSmoothing` rozbijał samoprzecięcia na osobne poligony → zamiana na `ST_Buffer(geom, 0)` zachowujący ciągłość
+- Zmienione pliki: `core/watershed_service.py` (3 funkcje merge), testy (7 nowych)
+- 721 testów, 0 regresji
 
 ### W trakcie
 - Brak
 
 ### Następne kroki
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
+- Follow-up: preprocessing `stream_extraction.py` — zamiana `simplify()` na `set_precision()` (wymaga re-runu pipeline)
 - Clipping do dokładnej granicy poligonu (follow-up ADR)
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+
+### Poprzednia sesja (2026-03-18, sesja 62 — H4 monotonic stream smoothing)
+
+- ADR-041: monotoniczne wygładzanie cieków — `smooth_streams_monotonic()`, running-minimum downstream
+- Refaktoryzacja `burn_streams_into_dem()` — wydzielenie `_load_stream_geometries()`
+- Integracja w `process_dem.py`: krok 3b, `--no-smooth-streams` flag
+- Zmiana `burn_depth_m` z 10/5m na 2.0m
+- 28 testów (16 helpers + 12 main)
 
 ### Poprzednia sesja (2026-03-17, sesja 61 — optymalizacja select-stream + pipeline fixes)
 
