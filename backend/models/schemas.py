@@ -274,13 +274,13 @@ class HydrographRequest(BaseModel):
     longitude : float
         Longitude in WGS84 (decimal degrees)
     duration : str
-        Rainfall duration ('15min', '30min', '1h', '2h', '6h', '12h', '24h')
+        Rainfall duration ('15min', '30min', '45min', '1h', '1.5h', '2h', '3h')
     probability : int
         Exceedance probability [%] (1, 2, 5, 10, 20, 50)
     timestep_min : float, optional
         Time step for calculations [min], default 5.0
     tc_method : str, optional
-        Time of concentration method ('kirpich', 'scs_lag', 'giandotti')
+        Time of concentration method ('kirpich', 'nrcs', 'giandotti')
     hietogram_type : str, optional
         Hietogram type ('beta', 'block', 'euler_ii'), default 'beta'
     uh_model : str, optional
@@ -311,7 +311,7 @@ class HydrographRequest(BaseModel):
     )
     duration: str = Field(
         ...,
-        pattern=r"^(15min|30min|1h|2h|6h|12h|24h)$",
+        pattern=r"^(15min|30min|45min|1h|1\.5h|2h|3h)$",
         description="Rainfall duration",
         examples=["1h"],
     )
@@ -324,8 +324,8 @@ class HydrographRequest(BaseModel):
         5.0, ge=1, le=60, description="Time step for calculations [min]"
     )
     tc_method: str = Field(
-        "scs_lag",
-        pattern=r"^(kirpich|scs_lag|giandotti)$",
+        "nrcs",
+        pattern=r"^(kirpich|nrcs|giandotti)$",
         description="Time of concentration method",
     )
     hietogram_type: str = Field(

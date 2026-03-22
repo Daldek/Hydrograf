@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# Valid duration values
-VALID_DURATIONS_MIN = {15, 30, 60, 120, 360, 720, 1440}
-VALID_DURATIONS_STR = {"15min", "30min", "1h", "2h", "6h", "12h", "24h"}
+# Valid duration values (full PMAXTP range)
+VALID_DURATIONS_MIN = {15, 30, 45, 60, 90, 120, 180}
+VALID_DURATIONS_STR = {"15min", "30min", "45min", "1h", "1.5h", "2h", "3h"}
 
 # Valid probability values
 VALID_PROBABILITIES = {1, 2, 5, 10, 20, 50}
@@ -24,11 +24,11 @@ VALID_PROBABILITIES = {1, 2, 5, 10, 20, 50}
 DURATION_MIN_TO_STR = {
     15: "15min",
     30: "30min",
+    45: "45min",
     60: "1h",
+    90: "1.5h",
     120: "2h",
-    360: "6h",
-    720: "12h",
-    1440: "24h",
+    180: "3h",
 }
 
 # Duration mapping: string -> minutes
@@ -42,8 +42,8 @@ def validate_duration(duration: int | str) -> str:
     Parameters
     ----------
     duration : int | str
-        Duration in minutes (15, 30, 60, 120, 360, 720, 1440)
-        or as string ('15min', '30min', '1h', '2h', '6h', '12h', '24h')
+        Duration in minutes (15, 30, 45, 60, 90, 120, 180)
+        or as string ('15min', '30min', '45min', '1h', '1.5h', '2h', '3h')
 
     Returns
     -------

@@ -530,7 +530,7 @@ def list_scenarios() -> dict:
     return {
         "durations": sorted(VALID_DURATIONS_STR, key=lambda d: DURATION_STR_TO_MIN[d]),
         "probabilities": sorted(VALID_PROBABILITIES),
-        "tc_methods": ["kirpich", "scs_lag", "giandotti"],
+        "tc_methods": ["kirpich", "nrcs", "giandotti"],
         "hietogram_types": ["beta", "block", "euler_ii"],
         "uh_models": ["scs", "nash", "snyder"],
         "snyder_defaults": {"ct": 1.5, "cp": 0.6},

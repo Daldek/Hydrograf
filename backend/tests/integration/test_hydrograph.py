@@ -321,7 +321,7 @@ class TestGenerateHydrographEndpoint:
             assert "uh_model" in meta
 
             assert meta["tc_min"] > 0
-            assert meta["tc_method"] == "scs_lag"
+            assert meta["tc_method"] == "nrcs"
             assert meta["hietogram_type"] == "beta"
             assert meta["uh_model"] == "scs"
         finally:
@@ -421,7 +421,7 @@ class TestGenerateHydrographEndpoint:
             {
                 "latitude": 52.23,
                 "longitude": 21.01,
-                "duration": "45min",  # Invalid
+                "duration": "6h",  # Invalid
                 "probability": 10,
             },
         )
@@ -458,7 +458,7 @@ class TestGenerateHydrographEndpoint:
         mock_db = _make_precip_db_mock()
         app.dependency_overrides[get_db] = lambda: mock_db
 
-        valid_durations = ["15min", "30min", "1h", "2h", "6h", "12h", "24h"]
+        valid_durations = ["15min", "30min", "45min", "1h", "1.5h", "2h", "3h"]
 
         try:
             with _HappyPathContext():
@@ -510,7 +510,7 @@ class TestGenerateHydrographEndpoint:
         mock_db = _make_precip_db_mock()
         app.dependency_overrides[get_db] = lambda: mock_db
 
-        methods = ["kirpich", "scs_lag", "giandotti"]
+        methods = ["kirpich", "nrcs", "giandotti"]
 
         try:
             with _HappyPathContext():
@@ -638,7 +638,7 @@ class TestScenariosEndpoint:
         response = client.get("/api/scenarios")
         data = response.json()
 
-        expected = ["15min", "30min", "1h", "2h", "6h", "12h", "24h"]
+        expected = ["15min", "30min", "45min", "1h", "1.5h", "2h", "3h"]
         assert data["durations"] == expected
 
     def test_scenarios_valid_probabilities(self, client):
