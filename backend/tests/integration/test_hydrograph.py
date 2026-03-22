@@ -321,7 +321,7 @@ class TestGenerateHydrographEndpoint:
             assert "uh_model" in meta
 
             assert meta["tc_min"] > 0
-            assert meta["tc_method"] == "kirpich"
+            assert meta["tc_method"] == "scs_lag"
             assert meta["hietogram_type"] == "beta"
             assert meta["uh_model"] == "scs"
         finally:
@@ -638,7 +638,7 @@ class TestScenariosEndpoint:
         response = client.get("/api/scenarios")
         data = response.json()
 
-        expected = ["12h", "15min", "1h", "24h", "2h", "30min", "6h"]
+        expected = ["15min", "30min", "1h", "2h", "6h", "12h", "24h"]
         assert data["durations"] == expected
 
     def test_scenarios_valid_probabilities(self, client):

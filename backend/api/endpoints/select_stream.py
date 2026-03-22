@@ -297,6 +297,16 @@ def select_stream(
             logger.debug(f"HSG stats not available: {e}")
 
         # 12. Build morphometric parameters
+        cn_value = lc_stats.weighted_cn if lc_stats is not None else None
+        imperviousness = round(lc_stats.weighted_imperviousness, 3) if lc_stats is not None else None
+
+        # Distance from outlet to boundary centroid
+        from shapely.geometry import Point as ShapelyPoint
+
+        outlet_point = ShapelyPoint(outlet_x, outlet_y)
+        centroid = boundary_poly.centroid
+        length_to_centroid_km = round(centroid.distance(outlet_point) / 1000, 4)
+
         morphometry = MorphometricParameters(
             area_km2=round(area_km2, 2),
             perimeter_km=perimeter_km,
@@ -307,6 +317,7 @@ def select_stream(
             mean_slope_m_per_m=stats.get("mean_slope_m_per_m"),
             channel_length_km=channel_length_km,
             channel_slope_m_per_m=channel_slope,
+            length_to_centroid_km=length_to_centroid_km,
             compactness_coefficient=shape_indices.get("compactness_coefficient"),
             circularity_ratio=shape_indices.get("circularity_ratio"),
             elongation_ratio=shape_indices.get("elongation_ratio"),
@@ -318,6 +329,8 @@ def select_stream(
             stream_frequency_per_km2=stats.get("stream_frequency_per_km2"),
             ruggedness_number=ruggedness,
             max_strahler_order=stats.get("max_strahler_order"),
+            cn=cn_value,
+            imperviousness=imperviousness,
         )
 
         # 13. Build response

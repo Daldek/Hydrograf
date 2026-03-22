@@ -279,6 +279,13 @@ def delineate_watershed(
         except Exception as e:
             logger.debug(f"Land cover stats not available: {e}")
 
+        # 17b. Inject weighted CN and imperviousness into morphometry for hydrograph fast path
+        if lc_stats is not None:
+            morph_dict["cn"] = lc_stats.weighted_cn
+            morph_dict["imperviousness"] = round(
+                lc_stats.weighted_imperviousness, 3
+            )
+
         # 17a. HSG soil statistics
         hsg_stats_data = None
         try:

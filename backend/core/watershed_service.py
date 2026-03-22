@@ -16,7 +16,7 @@ import math
 
 import numpy as np
 from shapely import wkb
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon, Point, Polygon
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -584,6 +584,11 @@ def build_morph_dict_from_graph(
         channel_length_km = None
         channel_slope = None
 
+    # Distance from outlet to boundary centroid (Lc for Snyder method)
+    centroid = boundary_2180.centroid
+    outlet_point = Point(outlet_x, outlet_y)
+    length_to_centroid_km = round(centroid.distance(outlet_point) / 1000, 4)
+
     # Shape indices
     shape_indices = _compute_shape_indices(area_km2, perimeter_km, length_km)
 
@@ -620,6 +625,7 @@ def build_morph_dict_from_graph(
         "mean_slope_m_per_m": stats.get("mean_slope_m_per_m"),
         "channel_length_km": channel_length_km if channel_length_km else None,
         "channel_slope_m_per_m": channel_slope,
+        "length_to_centroid_km": length_to_centroid_km,
         "cn": cn,
         "source": "Hydrograf",
         "crs": "EPSG:2180",
