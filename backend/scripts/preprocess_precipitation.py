@@ -281,7 +281,8 @@ async def process_grid(
 
     logger.info(f"Generated {total_points} grid points with {spacing_km} km spacing")
     logger.info(f"Bounding box: {bbox}")
-    logger.info(f"Expected records: {total_points * 42} (42 scenarios per point)")
+    scenarios_per_point = len(DURATIONS) * len(PROBABILITIES)
+    logger.info(f"Expected records: {total_points * scenarios_per_point} ({scenarios_per_point} scenarios per point)")
 
     successful_points = 0
     total_records = 0
@@ -349,7 +350,7 @@ def main():
     if args.dry_run:
         points = generate_grid_points(bbox, args.spacing)
         logger.info(f"Dry run: would process {len(points)} points")
-        logger.info(f"Expected records: {len(points) * 42}")
+        logger.info(f"Expected records: {len(points) * len(DURATIONS) * len(PROBABILITIES)}")
         for i, (lat, lon) in enumerate(points[:10], 1):
             logger.info(f"  Point {i}: ({lat:.4f}, {lon:.4f})")
         if len(points) > 10:
