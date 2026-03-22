@@ -379,6 +379,10 @@ class PrecipitationInfo(BaseModel):
     timestep_min: float = Field(..., ge=0, description="Time step [min]")
     times_min: list[float] = Field(..., description="Time values [min]")
     intensities_mm: list[float] = Field(..., description="Precipitation depths [mm]")
+    effective_mm: list[float] = Field(
+        default_factory=list,
+        description="Effective precipitation depths per timestep [mm]",
+    )
 
 
 class HydrographInfo(BaseModel):

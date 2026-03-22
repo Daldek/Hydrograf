@@ -294,10 +294,11 @@
             displayParameters(data);
 
             // Show/hide hietogram + hydrograph sections based on API response
+            var hydroAvail = data.watershed && data.watershed.hydrograph_available;
             ['acc-hietogram', 'acc-hydrograph'].forEach(function (id) {
                 var section = document.getElementById(id);
                 if (section) {
-                    if (data.watershed && data.watershed.hydrograph_available) {
+                    if (hydroAvail) {
                         section.classList.remove('d-none');
                     } else {
                         section.classList.add('d-none');
@@ -306,6 +307,11 @@
             });
 
             els.results.classList.remove('d-none');
+
+            // Auto-generate hydrograph on first load
+            if (hydroAvail && Hydrograf.hydrograph) {
+                Hydrograf.hydrograph.generateHydrograph();
+            }
         } catch (err) {
             Hydrograf.map.clearWatershed();
             state.currentWatershed = null;
@@ -362,10 +368,11 @@
             }
 
             // Show/hide hietogram + hydrograph sections based on API response
+            var hydroAvail2 = data.watershed && data.watershed.hydrograph_available;
             ['acc-hietogram', 'acc-hydrograph'].forEach(function (id) {
                 var section = document.getElementById(id);
                 if (section) {
-                    if (data.watershed && data.watershed.hydrograph_available) {
+                    if (hydroAvail2) {
                         section.classList.remove('d-none');
                     } else {
                         section.classList.add('d-none');
@@ -374,6 +381,11 @@
             });
 
             els.results.classList.remove('d-none');
+
+            // Auto-generate hydrograph on first load
+            if (hydroAvail2 && Hydrograf.hydrograph) {
+                Hydrograf.hydrograph.generateHydrograph();
+            }
         } catch (err) {
             Hydrograf.map.clearSelectionBoundary();
             state.currentWatershed = null;
