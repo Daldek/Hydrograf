@@ -82,6 +82,10 @@
                     opts.nash_n = parseFloat(document.getElementById('hydro-nash-n').value) || 3.0;
                 }
             }
+            if (uhModel === 'snyder') {
+                opts.snyder_ct = parseFloat(document.getElementById('hydro-snyder-ct').value) || 1.5;
+                opts.snyder_cp = parseFloat(document.getElementById('hydro-snyder-cp').value) || 0.6;
+            }
             var result = await Hydrograf.api.generateHydrograph(
                 click.lat, click.lng, duration, probability, opts
             );
@@ -366,6 +370,7 @@
         var model = document.getElementById('hydro-uh-model').value;
         var nashParams = document.getElementById('nash-params');
         var nashNRow = document.getElementById('nash-n-row');
+        var snyderParams = document.getElementById('snyder-params');
         var estimation = document.getElementById('hydro-nash-estimation').value;
 
         if (model === 'nash') {
@@ -375,6 +380,7 @@
             nashParams.classList.add('d-none');
             nashNRow.classList.add('d-none');
         }
+        snyderParams.classList.toggle('d-none', model !== 'snyder');
     }
 
     function init() {
