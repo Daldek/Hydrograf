@@ -2,7 +2,7 @@
  * Hydrograf Hydrograph module.
  *
  * Hietogram form (precipitation), hydrograph form (UH model),
- * charts, water balance table.
+ * charts, water balance table. Auto-regenerates on parameter change.
  */
 (function () {
     'use strict';
@@ -11,10 +11,121 @@
 
     var scenariosLoaded = false;
     var _charts = {};
+    var _debounceTimer = null;
+    var _DEBOUNCE_MS = 300;
+    var _requestId = 0;
 
-    /**
-     * Fetch available scenarios and populate dropdowns.
-     */
+    // ── Chart helpers ──────────────────────────────────────────────────
+
+    function _ensureLineChart(canvasId, yLabel, tooltipFn) {
+        if (_charts[canvasId]) return _charts[canvasId];
+        var canvas = document.getElementById(canvasId);
+        if (!canvas || typeof Chart === 'undefined') return null;
+        var chart = new Chart(canvas, {
+            type: 'line',
+            data: { datasets: [{
+                label: yLabel,
+                data: [],
+                borderColor: '#0A84FF',
+                backgroundColor: 'rgba(10, 132, 255, 0.1)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                borderWidth: 2,
+            }] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 400, easing: 'easeInOutQuart' },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        intersect: false,
+                        mode: 'index',
+                        callbacks: {
+                            title: function (items) { return 't = ' + items[0].parsed.x + ' min'; },
+                            label: tooltipFn,
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        min: 0,
+                        max: 60,
+                        title: { display: true, text: 'Czas [min]', font: { size: 10 } },
+                        ticks: { font: { size: 9 }, maxTicksLimit: 8 },
+                    },
+                    y: {
+                        title: { display: true, text: yLabel, font: { size: 10 } },
+                        ticks: { font: { size: 9 } },
+                        beginAtZero: true,
+                    },
+                },
+            },
+        });
+        _charts[canvasId] = chart;
+        return chart;
+    }
+
+    function _ensureHietogramChart(canvasId) {
+        if (_charts[canvasId]) return _charts[canvasId];
+        var canvas = document.getElementById(canvasId);
+        if (!canvas || typeof Chart === 'undefined') return null;
+        var chart = new Chart(canvas, {
+            type: 'bar',
+            data: { labels: [], datasets: [
+                {
+                    label: 'Opad ca\u0142kowity [mm]',
+                    data: [],
+                    backgroundColor: 'rgba(10, 132, 255, 0.35)',
+                    borderColor: '#0A84FF',
+                    borderWidth: 1,
+                    borderRadius: 1,
+                    order: 2,
+                },
+                {
+                    label: 'Opad efektywny [mm]',
+                    data: [],
+                    backgroundColor: 'rgba(10, 132, 255, 0.8)',
+                    borderColor: '#0A84FF',
+                    borderWidth: 1,
+                    borderRadius: 1,
+                    order: 1,
+                },
+            ] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 400, easing: 'easeInOutQuart' },
+                plugins: {
+                    legend: { display: true, labels: { boxWidth: 12, font: { size: 9 } } },
+                    tooltip: {
+                        callbacks: {
+                            title: function (items) { return items[0].label + ' min'; },
+                            label: function (ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2) + ' mm'; },
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Czas [min]', font: { size: 10 } },
+                        ticks: { font: { size: 9 }, maxTicksLimit: 12 },
+                    },
+                    y: {
+                        title: { display: true, text: 'P [mm]', font: { size: 10 } },
+                        ticks: { font: { size: 9 } },
+                        beginAtZero: true,
+                    },
+                },
+            },
+        });
+        _charts[canvasId] = chart;
+        return chart;
+    }
+
+    // ── Scenarios ──────────────────────────────────────────────────────
+
     async function initScenarioForm() {
         if (scenariosLoaded) return;
 
@@ -31,7 +142,6 @@
                 opt.textContent = d;
                 durSelect.appendChild(opt);
             });
-            // Default to 1h
             durSelect.value = '1h';
 
             probSelect.innerHTML = '';
@@ -41,7 +151,6 @@
                 opt.textContent = p + '%';
                 probSelect.appendChild(opt);
             });
-            // Default to 10%
             probSelect.value = '10';
 
             scenariosLoaded = true;
@@ -50,15 +159,18 @@
         }
     }
 
-    /**
-     * Generate hydrograph and render charts.
-     */
+    // ── Auto-regeneration ──────────────────────────────────────────────
+
+    function scheduleRegenerate() {
+        if (_debounceTimer) clearTimeout(_debounceTimer);
+        _debounceTimer = setTimeout(generateHydrograph, _DEBOUNCE_MS);
+    }
+
     async function generateHydrograph() {
         var data = Hydrograf.app.getCurrentWatershed();
         if (!data) return;
         if (!data.watershed.hydrograph_available) return;
 
-        // Use original click coordinates (inside catchment), not outlet (on boundary)
         var click = Hydrograf.app.getClickCoords();
         var duration = document.getElementById('hydro-duration').value;
         var probability = parseFloat(document.getElementById('hydro-probability').value);
@@ -67,9 +179,7 @@
         var beta = parseFloat(document.getElementById('hydro-beta').value) || 5.0;
         var uhModel = document.getElementById('hydro-uh-model').value;
 
-        var btn = document.getElementById('btn-generate-hydro');
-        btn.disabled = true;
-        btn.textContent = 'Generowanie...';
+        var myId = ++_requestId;
 
         try {
             var opts = {
@@ -89,185 +199,62 @@
                 opts.snyder_ct = parseFloat(document.getElementById('hydro-snyder-ct').value) || 1.5;
                 opts.snyder_cp = parseFloat(document.getElementById('hydro-snyder-cp').value) || 0.6;
             }
+
             var result = await Hydrograf.api.generateHydrograph(
                 click.lat, click.lng, duration, probability, opts
             );
 
-            // Show results containers BEFORE rendering charts
-            // (Chart.js responsive mode needs non-zero container dimensions)
+            if (myId !== _requestId) return;
+
             document.getElementById('hietogram-results').classList.remove('d-none');
             document.getElementById('hydrograph-results').classList.remove('d-none');
 
-            // Common time axis for both charts
+            // Hietogram — bar chart with total + effective, own time range
+            var precip = result.precipitation;
+            var hietoChart = _ensureHietogramChart('chart-hietogram');
+            if (hietoChart) {
+                hietoChart.data.labels = precip.times_min.map(function (t) { return String(t); });
+                hietoChart.data.datasets[0].data = precip.intensities_mm.slice();
+                hietoChart.data.datasets[1].data = (precip.effective_mm || []).slice();
+                hietoChart.update('default');
+            }
+
+            // Hydrograph — line chart
             var hydroTimes = result.hydrograph.times_min;
             var maxTimeMin = hydroTimes[hydroTimes.length - 1];
+            var hydroChart = _ensureLineChart(
+                'chart-hydrograph', 'Q [m\u00b3/s]',
+                function (ctx) { return 'Q = ' + ctx.parsed.y.toFixed(3) + ' m\u00b3/s'; }
+            );
+            if (hydroChart) {
+                var hydroData = hydroTimes.map(function (t, i) {
+                    return { x: t, y: result.hydrograph.discharge_m3s[i] };
+                });
+                hydroChart.data.datasets[0].data = hydroData;
+                hydroChart.options.scales.x.max = maxTimeMin;
+                hydroChart.update('default');
+            }
 
-            // Render hietogram in its own accordion
-            renderHietogramChart(result.precipitation, maxTimeMin);
-
-            // Render hydrograph chart
-            renderHydrographChart(result.hydrograph, maxTimeMin);
-
-            // Display summary
+            // Summary
             var summary = document.getElementById('hydro-summary');
             summary.textContent =
                 'Qmax: ' + result.hydrograph.peak_discharge_m3s.toFixed(2) + ' m\u00b3/s | ' +
                 'tp: ' + result.hydrograph.time_to_peak_min.toFixed(0) + ' min | ' +
                 'V: ' + result.hydrograph.total_volume_m3.toFixed(0) + ' m\u00b3';
 
-            // Display water balance table
             displayWaterBalance(result.water_balance);
-
-            // Display model metadata
             displayMetadata(result.metadata, result.water_balance);
         } catch (err) {
+            if (myId !== _requestId) return;
             console.warn('Hydrograph error:', err.message);
             var summary2 = document.getElementById('hydro-summary');
             summary2.textContent = 'B\u0142\u0105d: ' + err.message;
             document.getElementById('hydrograph-results').classList.remove('d-none');
-        } finally {
-            btn.disabled = false;
-            btn.textContent = 'Generuj';
         }
     }
 
-    /**
-     * Render hydrograph (discharge vs time) chart.
-     */
-    function renderHydrographChart(hydro, maxTimeMin) {
-        if (_charts['chart-hydrograph']) {
-            _charts['chart-hydrograph'].destroy();
-            delete _charts['chart-hydrograph'];
-        }
+    // ── Water balance & metadata tables ────────────────────────────────
 
-        var canvas = document.getElementById('chart-hydrograph');
-        if (!canvas || typeof Chart === 'undefined') return;
-
-        var xyData = hydro.times_min.map(function (t, i) {
-            return { x: t, y: hydro.discharge_m3s[i] };
-        });
-
-        _charts['chart-hydrograph'] = new Chart(canvas, {
-            type: 'line',
-            data: {
-                datasets: [{
-                    label: 'Q [m\u00b3/s]',
-                    data: xyData,
-                    borderColor: '#0A84FF',
-                    backgroundColor: 'rgba(10, 132, 255, 0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 0,
-                    borderWidth: 2,
-                }],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        intersect: false,
-                        mode: 'index',
-                        callbacks: {
-                            title: function (items) { return 't = ' + items[0].parsed.x + ' min'; },
-                            label: function (ctx) { return 'Q = ' + ctx.parsed.y.toFixed(3) + ' m\u00b3/s'; },
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        type: 'linear',
-                        min: 0,
-                        max: maxTimeMin,
-                        title: { display: true, text: 'Czas [min]', font: { size: 10 } },
-                        ticks: { font: { size: 9 }, maxTicksLimit: 8 },
-                    },
-                    y: {
-                        title: { display: true, text: 'Q [m\u00b3/s]', font: { size: 10 } },
-                        ticks: { font: { size: 9 } },
-                        beginAtZero: true,
-                    },
-                },
-            },
-        });
-    }
-
-    /**
-     * Render hietogram (precipitation intensities) chart.
-     */
-    function renderHietogramChart(precip, maxTimeMin) {
-        if (_charts['chart-hietogram']) {
-            _charts['chart-hietogram'].destroy();
-            delete _charts['chart-hietogram'];
-        }
-
-        var canvas = document.getElementById('chart-hietogram');
-        if (!canvas || typeof Chart === 'undefined') return;
-
-        var xyData = [];
-        // Start from 0
-        if (precip.times_min.length === 0 || precip.times_min[0] !== 0) {
-            xyData.push({ x: 0, y: 0 });
-        }
-        precip.times_min.forEach(function (t, i) {
-            xyData.push({ x: t, y: precip.intensities_mm[i] });
-        });
-        // Extend to end of axis
-        var lastTime = precip.times_min[precip.times_min.length - 1];
-        if (lastTime < maxTimeMin) {
-            xyData.push({ x: lastTime + (precip.timestep_min || 5), y: 0 });
-        }
-
-        _charts['chart-hietogram'] = new Chart(canvas, {
-            type: 'line',
-            data: {
-                datasets: [{
-                    label: 'P [mm]',
-                    data: xyData,
-                    borderColor: '#0A84FF',
-                    backgroundColor: 'rgba(10, 132, 255, 0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 0,
-                    borderWidth: 2,
-                }],
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        intersect: false,
-                        mode: 'index',
-                        callbacks: {
-                            title: function (items) { return 't = ' + items[0].parsed.x + ' min'; },
-                            label: function (ctx) { return 'P = ' + ctx.parsed.y.toFixed(2) + ' mm'; },
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        type: 'linear',
-                        min: 0,
-                        max: maxTimeMin,
-                        title: { display: true, text: 'Czas [min]', font: { size: 10 } },
-                        ticks: { font: { size: 9 }, maxTicksLimit: 8 },
-                    },
-                    y: {
-                        title: { display: true, text: 'P [mm]', font: { size: 10 } },
-                        ticks: { font: { size: 9 } },
-                        beginAtZero: true,
-                    },
-                },
-            },
-        });
-    }
-
-    /**
-     * Display water balance table.
-     */
     function displayWaterBalance(wb) {
         var container = document.getElementById('hydro-balance');
         container.innerHTML = '';
@@ -370,6 +357,8 @@
         container.appendChild(table);
     }
 
+    // ── Visibility toggles ─────────────────────────────────────────────
+
     function updateHietogramVisibility() {
         var htype = document.getElementById('hydro-hietogram-type').value;
         var betaParams = document.getElementById('beta-params');
@@ -393,16 +382,23 @@
         snyderParams.classList.toggle('d-none', model !== 'snyder');
     }
 
+    // ── Init ───────────────────────────────────────────────────────────
+
+    var _INPUT_IDS = [
+        'hydro-duration', 'hydro-probability', 'hydro-hietogram-type',
+        'hydro-alpha', 'hydro-beta',
+        'hydro-uh-model', 'hydro-nash-estimation', 'hydro-nash-n',
+        'hydro-snyder-ct', 'hydro-snyder-cp',
+    ];
+
     function init() {
         initScenarioForm();
-        var btn = document.getElementById('btn-generate-hydro');
-        if (btn) {
-            btn.addEventListener('click', generateHydrograph);
-        }
+
         var hietogramType = document.getElementById('hydro-hietogram-type');
         if (hietogramType) {
             hietogramType.addEventListener('change', updateHietogramVisibility);
         }
+
         var uhSelect = document.getElementById('hydro-uh-model');
         if (uhSelect) {
             uhSelect.addEventListener('change', updateNashVisibility);
@@ -411,6 +407,14 @@
         if (nashEst) {
             nashEst.addEventListener('change', updateNashVisibility);
         }
+
+        // Auto-regenerate on any parameter change
+        _INPUT_IDS.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            var evt = (el.tagName === 'SELECT') ? 'change' : 'input';
+            el.addEventListener(evt, scheduleRegenerate);
+        });
     }
 
     window.Hydrograf.hydrograph = {
