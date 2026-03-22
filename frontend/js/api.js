@@ -130,6 +130,7 @@
         };
         if (opts) {
             if (opts.morphometry) payload.morphometry = opts.morphometry;
+            if (opts.hietogram_type) payload.hietogram_type = opts.hietogram_type;
             if (opts.hietogram_alpha != null) payload.hietogram_alpha = opts.hietogram_alpha;
             if (opts.hietogram_beta != null) payload.hietogram_beta = opts.hietogram_beta;
             if (opts.uh_model) payload.uh_model = opts.uh_model;
