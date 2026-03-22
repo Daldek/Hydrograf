@@ -148,20 +148,22 @@ def zonal_elevation_histogram(
     valid = (dem != nodata) & (labels > 0)
     flat_labels = labels.ravel()
     flat_dem = dem.ravel()
-    flat_valid = valid.ravel()
 
-    valid_idx = np.where(flat_valid)[0]
+    valid_idx = np.where(valid.ravel())[0]
+    del valid
     if len(valid_idx) == 0:
         return {}
 
     v_labels = flat_labels[valid_idx]
-    v_elev = flat_dem[valid_idx]
-    v_bins = np.floor(v_elev / interval_m).astype(np.int64)
+    # Compute bins directly — avoids keeping a separate v_elev copy
+    v_bins = np.floor(flat_dem[valid_idx] / interval_m).astype(np.int64)
+    del valid_idx
 
     # Sort by label for grouped processing
     order = np.argsort(v_labels, kind="stable")
     v_labels = v_labels[order]
     v_bins = v_bins[order]
+    del order
 
     # Find boundaries between labels
     label_changes = np.where(np.diff(v_labels) != 0)[0] + 1

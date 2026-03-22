@@ -462,10 +462,12 @@ def polygonize_subcatchments(
     # Build catchment records
     catchments = []
     simplify_tol = cellsize * 2
+    sorted_keys = sorted(geom_groups.keys())
 
-    for seg_idx in sorted(geom_groups.keys()):
-        geom_list = geom_groups[seg_idx]
+    for seg_idx in sorted_keys:
+        geom_list = geom_groups.pop(seg_idx)  # pop to free memory progressively
         merged = unary_union(geom_list)
+        del geom_list
 
         # Ensure MULTIPOLYGON
         if merged.geom_type == "Polygon":
