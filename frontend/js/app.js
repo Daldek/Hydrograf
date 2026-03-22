@@ -11,6 +11,8 @@
     var state = {
         isLoading: false,
         currentWatershed: null,
+        clickLat: null,
+        clickLng: null,
         clickMode: 'browse',
     };
 
@@ -269,6 +271,8 @@
         try {
             var data = await Hydrograf.api.delineateWatershed(lat, lng);
             state.currentWatershed = data;
+            state.clickLat = lat;
+            state.clickLng = lng;
 
             // Check auto-selection
             if (data.auto_selected) {
@@ -292,7 +296,7 @@
             // Show/hide hydrograph section based on API response
             var hydroSection = document.getElementById('acc-hydrograph');
             if (hydroSection) {
-                if (data.hydrograph_available) {
+                if (data.watershed && data.watershed.hydrograph_available) {
                     hydroSection.classList.remove('d-none');
                 } else {
                     hydroSection.classList.add('d-none');
@@ -343,6 +347,8 @@
             // Display full watershed stats if available, otherwise fallback to stream info
             if (data.watershed) {
                 state.currentWatershed = data;
+                state.clickLat = lat;
+                state.clickLng = lng;
 
                 // Show outlet marker (but NOT watershed polygon — selection boundary is enough)
                 var outlet = data.watershed.outlet;
@@ -356,7 +362,7 @@
             // Show/hide hydrograph section based on API response
             var hydroSection = document.getElementById('acc-hydrograph');
             if (hydroSection) {
-                if (data.hydrograph_available) {
+                if (data.watershed && data.watershed.hydrograph_available) {
                     hydroSection.classList.remove('d-none');
                 } else {
                     hydroSection.classList.add('d-none');
@@ -637,6 +643,7 @@
     window.Hydrograf.app = {
         init: init,
         getCurrentWatershed: getCurrentWatershed,
+        getClickCoords: function () { return { lat: state.clickLat, lng: state.clickLng }; },
         showPanel: showPanel,
     };
 })();

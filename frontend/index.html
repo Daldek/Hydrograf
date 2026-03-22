@@ -168,7 +168,7 @@
                     <!-- Hydrograph -->
                     <div class="glass-accordion collapsed d-none" id="acc-hydrograph">
                         <div class="glass-accordion-header">
-                            <span>Hydrogram (w przygotowaniu)</span>
+                            <span>Hydrogram</span>
                             <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
                         </div>
                         <div class="glass-accordion-body">
@@ -183,12 +183,46 @@
                                         <select id="hydro-probability" class="form-select form-select-sm"></select>
                                     </div>
                                 </div>
+                                <div class="row g-1 mb-1">
+                                    <div class="col-6">
+                                        <label class="form-label small mb-0">&alpha; hietogramu</label>
+                                        <input id="hydro-alpha" type="number" class="form-control form-control-sm" value="2.0" min="0.1" max="20" step="0.1">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small mb-0">&beta; hietogramu</label>
+                                        <input id="hydro-beta" type="number" class="form-control form-control-sm" value="5.0" min="0.1" max="20" step="0.1">
+                                    </div>
+                                </div>
+                                <div class="row g-1 mb-1">
+                                    <div class="col-6">
+                                        <label class="form-label small mb-0">Model UH</label>
+                                        <select id="hydro-uh-model" class="form-select form-select-sm">
+                                            <option value="scs">SCS</option>
+                                            <option value="nash">Nash</option>
+                                            <option value="snyder">Snyder</option>
+                                        </select>
+                                    </div>
+                                    <div id="nash-params" class="col-6 d-none">
+                                        <label class="form-label small mb-0">Estymacja Nash</label>
+                                        <select id="hydro-nash-estimation" class="form-select form-select-sm">
+                                            <option value="from_tc">z Tc (SCS)</option>
+                                            <option value="from_lutz">Lutz</option>
+                                            <option value="from_urban_regression">Regresja urban.</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="nash-n-row" class="row g-1 mb-1 d-none">
+                                    <div class="col-6">
+                                        <label class="form-label small mb-0">N (zbiorniki)</label>
+                                        <input id="hydro-nash-n" type="number" class="form-control form-control-sm" value="3.0" min="0.5" max="20" step="0.5">
+                                    </div>
+                                </div>
                                 <button id="btn-generate-hydro" class="btn btn-sm btn-primary w-100">Generuj</button>
                             </div>
                             <div id="hydrograph-results" class="d-none">
                                 <div id="hydro-summary" class="small text-secondary mb-1"></div>
-                                <canvas id="chart-hydrograph" height="160" role="img" aria-label="Hydrogram odpływu"></canvas>
-                                <canvas id="chart-hietogram" height="100" class="mt-2" role="img" aria-label="Hietogram opadu"></canvas>
+                                <div class="chart-container" style="height:160px"><canvas id="chart-hydrograph" role="img" aria-label="Hydrogram odpływu"></canvas></div>
+                                <div class="chart-container mt-2" style="height:100px"><canvas id="chart-hietogram" role="img" aria-label="Hietogram opadu"></canvas></div>
                                 <div id="hydro-balance" class="mt-2"></div>
                             </div>
                             <div id="hydrograph-info" class="mt-1"></div>

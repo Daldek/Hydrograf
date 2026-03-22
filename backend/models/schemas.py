@@ -5,7 +5,7 @@ Defines data structures for watershed delineation and hydrograph
 generation API endpoints.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -110,6 +110,9 @@ class MorphometricParameters(BaseModel):
         None, ge=0, description="Main channel slope [m/m]"
     )
     cn: int | None = Field(None, ge=0, le=100, description="SCS Curve Number")
+    imperviousness: float | None = Field(
+        None, ge=0, le=1, description="Weighted imperviousness fraction [0-1]"
+    )
     source: str | None = Field("Hydrograf", description="Data source")
     crs: str | None = Field("EPSG:2180", description="Coordinate reference system")
 
@@ -144,6 +147,9 @@ class MorphometricParameters(BaseModel):
     )
     max_strahler_order: int | None = Field(
         None, ge=1, description="Maximum Strahler stream order"
+    )
+    length_to_centroid_km: float | None = Field(
+        None, ge=0, description="Distance from outlet to boundary centroid [km]"
     )
 
 
@@ -277,6 +283,16 @@ class HydrographRequest(BaseModel):
         Time of concentration method ('kirpich', 'scs_lag', 'giandotti')
     hietogram_type : str, optional
         Hietogram type ('beta', 'block', 'euler_ii'), default 'beta'
+    uh_model : str, optional
+        Unit hydrograph model ('scs', 'snyder', 'nash'), default 'scs'
+    snyder_ct : float, optional
+        Snyder time coefficient Ct (used when uh_model='snyder')
+    snyder_cp : float, optional
+        Snyder peak coefficient Cp (used when uh_model='snyder')
+    nash_estimation : str, optional
+        Nash parameter estimation method ('from_tc', 'from_lutz')
+    nash_n : float, optional
+        Nash N parameter — number of reservoirs (used with from_tc)
     """
 
     latitude: float = Field(
@@ -308,7 +324,7 @@ class HydrographRequest(BaseModel):
         5.0, ge=1, le=60, description="Time step for calculations [min]"
     )
     tc_method: str = Field(
-        "kirpich",
+        "scs_lag",
         pattern=r"^(kirpich|scs_lag|giandotti)$",
         description="Time of concentration method",
     )
@@ -316,6 +332,41 @@ class HydrographRequest(BaseModel):
         "beta",
         pattern=r"^(beta|block|euler_ii)$",
         description="Hietogram distribution type",
+    )
+    hietogram_alpha: float = Field(
+        2.0, gt=0, le=20, description="Beta hietogram alpha parameter"
+    )
+    hietogram_beta: float = Field(
+        5.0, gt=0, le=20, description="Beta hietogram beta parameter"
+    )
+    uh_model: Literal["scs", "snyder", "nash"] = Field(
+        "scs",
+        description="Unit hydrograph model ('scs', 'snyder', or 'nash')",
+    )
+    snyder_ct: float | None = Field(
+        None,
+        gt=0,
+        description="Snyder time coefficient Ct (default 1.5 if not provided)",
+    )
+    snyder_cp: float | None = Field(
+        None,
+        gt=0,
+        le=1,
+        description="Snyder peak coefficient Cp (default 0.6 if not provided)",
+    )
+    nash_estimation: Literal["from_tc", "from_lutz", "from_urban_regression"] = Field(
+        "from_tc",
+        description="Nash parameter estimation method",
+    )
+    nash_n: float = Field(
+        3.0,
+        gt=0,
+        le=20,
+        description="Nash N parameter (number of reservoirs, used with from_tc)",
+    )
+    morphometry: MorphometricParameters | None = Field(
+        None,
+        description="Pre-computed morphometry (skips watershed delineation)",
     )
 
 
@@ -360,10 +411,22 @@ class WaterBalance(BaseModel):
 class HydrographMetadata(BaseModel):
     """Metadata for hydrograph generation."""
 
-    tc_min: float = Field(..., ge=0, description="Time of concentration [min]")
-    tc_method: str = Field(..., description="TC calculation method used")
+    tc_min: float | None = Field(None, ge=0, description="Time of concentration [min]")
+    tc_method: str | None = Field(None, description="TC calculation method used")
     hietogram_type: str = Field(..., description="Hietogram type used")
     uh_model: str = Field("scs", description="Unit hydrograph model")
+    nash_estimation: str | None = Field(None, description="Nash estimation method")
+    nash_n: float | None = Field(None, description="Nash N parameter")
+    nash_k_min: float | None = Field(None, description="Nash K parameter [min]")
+    nash_urban_fraction: float | None = Field(
+        None, description="Urbanization index used [0-1]"
+    )
+    nash_effective_precip_mm: float | None = Field(
+        None, description="Effective precip used for Nash urban regression [mm]"
+    )
+    nash_duration_h: float | None = Field(
+        None, description="Duration used for Nash urban regression [h]"
+    )
 
 
 class HydrographResponse(BaseModel):
@@ -384,7 +447,9 @@ class HydrographResponse(BaseModel):
         Calculation metadata
     """
 
-    watershed: WatershedResponse = Field(..., description="Watershed information")
+    watershed: WatershedResponse | None = Field(
+        None, description="Watershed information (omitted in fast mode)"
+    )
     precipitation: PrecipitationInfo = Field(..., description="Precipitation event")
     hydrograph: HydrographInfo = Field(..., description="Generated hydrograph")
     water_balance: WaterBalance = Field(..., description="Water balance")
