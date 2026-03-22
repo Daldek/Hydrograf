@@ -121,16 +121,26 @@
     /**
      * Generate hydrograph for given parameters.
      */
-    async function generateHydrograph(lat, lng, duration, probability) {
+    async function generateHydrograph(lat, lng, duration, probability, opts) {
+        var payload = {
+            latitude: lat,
+            longitude: lng,
+            duration: duration,
+            probability: probability,
+        };
+        if (opts) {
+            if (opts.morphometry) payload.morphometry = opts.morphometry;
+            if (opts.hietogram_alpha != null) payload.hietogram_alpha = opts.hietogram_alpha;
+            if (opts.hietogram_beta != null) payload.hietogram_beta = opts.hietogram_beta;
+            if (opts.uh_model) payload.uh_model = opts.uh_model;
+            if (opts.nash_estimation) payload.nash_estimation = opts.nash_estimation;
+            if (opts.nash_n != null) payload.nash_n = opts.nash_n;
+        }
+
         const response = await fetch('/api/generate-hydrograph', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                latitude: lat,
-                longitude: lng,
-                duration: duration,
-                probability: probability,
-            }),
+            body: JSON.stringify(payload),
         });
 
         if (!response.ok) await handleError(response);

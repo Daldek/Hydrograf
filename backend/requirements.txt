@@ -56,5 +56,5 @@ geopandas>=0.14.2
 fiona>=1.9.5
 
 # Hydrolog - hydrological calculations (SCS-CN, unit hydrographs, tc)
-# v0.5.2: Removed unused imgwtools dependency (now direct in Hydrograf)
-hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.5.2
+# v0.6.2: Updated Nash model
+hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.1
