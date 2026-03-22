@@ -45,9 +45,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Rainfall scenarios according to SCOPE.md
-DURATIONS = ["15min", "30min", "1h", "2h", "6h", "12h", "24h"]
-DURATION_MINUTES = [15, 30, 60, 120, 360, 720, 1440]
+# Rainfall scenarios — full PMAXTP range
+DURATIONS = ["15min", "30min", "45min", "1h", "1.5h", "2h", "3h"]
+DURATION_MINUTES = [15, 30, 45, 60, 90, 120, 180]
 PROBABILITIES = [1, 2, 5, 10, 20, 50]
 
 # Coordinate transformer: WGS84 -> PL-1992
