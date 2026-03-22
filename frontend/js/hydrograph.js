@@ -242,8 +242,8 @@
                 'tp: ' + result.hydrograph.time_to_peak_min.toFixed(0) + ' min | ' +
                 'V: ' + result.hydrograph.total_volume_m3.toFixed(0) + ' m\u00b3';
 
-            displayWaterBalance(result.water_balance);
-            displayMetadata(result.metadata, result.water_balance);
+            displayPrecipBalance(result.water_balance);
+            displayMetadata(result.metadata);
         } catch (err) {
             if (myId !== _requestId) return;
             console.warn('Hydrograph error:', err.message);
@@ -255,8 +255,8 @@
 
     // ── Water balance & metadata tables ────────────────────────────────
 
-    function displayWaterBalance(wb) {
-        var container = document.getElementById('hydro-balance');
+    function displayPrecipBalance(wb) {
+        var container = document.getElementById('hietogram-balance');
         container.innerHTML = '';
 
         var table = document.createElement('table');
@@ -306,7 +306,7 @@
         'euler_ii': 'DVWK (Euler II)',
     };
 
-    function displayMetadata(meta, wb) {
+    function displayMetadata(meta) {
         var container = document.getElementById('hydrograph-info');
         container.innerHTML = '';
 
@@ -326,7 +326,6 @@
             rows.push(['Tc', meta.tc_min.toFixed(1) + ' min']);
         }
         rows.push(['Hydrogram jedn.', uhLabel]);
-        rows.push(['Hietogram', HIETOGRAM_LABELS[meta.hietogram_type] || meta.hietogram_type]);
 
         if (meta.nash_n != null) {
             rows.push(['Nash N', meta.nash_n.toFixed(2)]);
