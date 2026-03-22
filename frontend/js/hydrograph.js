@@ -332,7 +332,6 @@
         }
         rows.push(['Hydrogram jedn.', uhLabel]);
         rows.push(['Hietogram', HIETOGRAM_LABELS[meta.hietogram_type] || meta.hietogram_type]);
-        rows.push(['CN', String(wb.cn_used)]);
 
         if (meta.nash_n != null) {
             rows.push(['Nash N', meta.nash_n.toFixed(2)]);
