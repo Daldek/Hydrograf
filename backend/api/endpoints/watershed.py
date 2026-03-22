@@ -242,6 +242,7 @@ def delineate_watershed(
             outlet_y,
             segment_idx,
             DEFAULT_THRESHOLD_M2,
+            db=db,
         )
 
         # 15. Hypsometric curve

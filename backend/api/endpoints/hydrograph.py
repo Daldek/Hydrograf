@@ -141,6 +141,7 @@ def _compute_watershed(
         segment_idx,
         DEFAULT_THRESHOLD_M2,
         cn=cn,
+        db=db,
     )
 
     # Build WatershedResponse for full-path callers

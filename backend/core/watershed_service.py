@@ -524,6 +524,68 @@ def boundary_to_polygon(boundary_2180: MultiPolygon | Polygon) -> Polygon:
     return poly
 
 
+def _compute_lc_along_channel(
+    db,
+    cg: CatchmentGraph,
+    main_ch: dict,
+    threshold_m2: int,
+    centroid: Point,
+    outlet_x: float,
+    outlet_y: float,
+) -> float | None:
+    """Compute Lc along the main channel (Snyder method).
+
+    Queries stream geometries from DB, merges into a LineString, and
+    projects the watershed centroid onto it to get along-channel distance.
+
+    Returns Lc in km, or None on failure.
+    """
+    from shapely.geometry import LineString
+    from shapely.ops import linemerge
+
+    nodes = main_ch.get("main_channel_nodes", [])
+    if not nodes:
+        return None
+
+    # Get segment_idx for each main channel node
+    seg_idxs = [cg.get_segment_idx(n) for n in nodes]
+
+    try:
+        # Query stream geometries for main channel segments
+        rows = db.execute(
+            text(
+                "SELECT segment_idx, ST_AsBinary(geom) AS geom "
+                "FROM stream_network "
+                "WHERE threshold_m2 = :threshold "
+                "  AND segment_idx = ANY(:idxs)"
+            ),
+            {"threshold": threshold_m2, "idxs": seg_idxs},
+        ).fetchall()
+
+        if not rows:
+            return None
+
+        # Parse geometries and merge into continuous line
+        lines = [wkb.loads(bytes(r.geom)) for r in rows]
+        merged = linemerge(lines)
+
+        # Ensure single LineString
+        if merged.geom_type == "MultiLineString":
+            # Pick the longest component
+            merged = max(merged.geoms, key=lambda g: g.length)
+
+        if merged.geom_type != "LineString" or merged.is_empty:
+            return None
+
+        # Project centroid onto the merged channel
+        lc_m = merged.project(centroid)
+        return round(lc_m / 1000, 4)
+
+    except Exception as e:
+        logger.warning(f"Failed to compute Lc along channel: {e}")
+        return None
+
+
 def build_morph_dict_from_graph(
     cg: CatchmentGraph,
     upstream_indices: np.ndarray,
@@ -533,6 +595,7 @@ def build_morph_dict_from_graph(
     segment_idx: int,
     threshold_m2: int,
     cn: int | None = None,
+    db: "Session | None" = None,
 ) -> dict:
     """
     Build morphometric parameter dict compatible with Hydrolog's
@@ -584,10 +647,15 @@ def build_morph_dict_from_graph(
         channel_length_km = None
         channel_slope = None
 
-    # Distance from outlet to boundary centroid (Lc for Snyder method)
+    # Lc: distance along main channel from outlet to nearest point to centroid
     centroid = boundary_2180.centroid
-    outlet_point = Point(outlet_x, outlet_y)
-    length_to_centroid_km = round(centroid.distance(outlet_point) / 1000, 4)
+    length_to_centroid_km = _compute_lc_along_channel(
+        db, cg, main_ch, threshold_m2, centroid, outlet_x, outlet_y,
+    ) if db is not None and main_ch is not None else None
+    # Fallback: straight-line distance
+    if length_to_centroid_km is None:
+        outlet_point = Point(outlet_x, outlet_y)
+        length_to_centroid_km = round(centroid.distance(outlet_point) / 1000, 4)
 
     # Shape indices
     shape_indices = _compute_shape_indices(area_km2, perimeter_km, length_km)
