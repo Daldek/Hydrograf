@@ -292,7 +292,7 @@
 
     var TC_METHOD_LABELS = {
         'kirpich': 'Kirpich',
-        'scs_lag': 'SCS Lag',
+        'nrcs': 'NRCS',
         'giandotti': 'Giandotti',
     };
     var UH_MODEL_LABELS = {

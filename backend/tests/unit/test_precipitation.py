@@ -30,11 +30,11 @@ class TestValidateDuration:
         [
             (15, "15min"),
             (30, "30min"),
+            (45, "45min"),
             (60, "1h"),
+            (90, "1.5h"),
             (120, "2h"),
-            (360, "6h"),
-            (720, "12h"),
-            (1440, "24h"),
+            (180, "3h"),
         ],
     )
     def test_valid_duration_minutes(self, duration_min, expected):
@@ -44,7 +44,7 @@ class TestValidateDuration:
 
     @pytest.mark.parametrize(
         "duration_str",
-        ["15min", "30min", "1h", "2h", "6h", "12h", "24h"],
+        ["15min", "30min", "45min", "1h", "1.5h", "2h", "3h"],
     )
     def test_valid_duration_string(self, duration_str):
         """Test validation of duration as string."""
@@ -53,7 +53,7 @@ class TestValidateDuration:
 
     @pytest.mark.parametrize(
         "invalid_duration",
-        [0, 10, 45, 100, 180, 500, 1000, 2000],
+        [0, 10, 100, 360, 500, 720, 1000, 1440, 2000],
     )
     def test_invalid_duration_minutes_raises(self, invalid_duration):
         """Test that invalid duration in minutes raises ValueError."""
@@ -62,7 +62,7 @@ class TestValidateDuration:
 
     @pytest.mark.parametrize(
         "invalid_duration",
-        ["1min", "5min", "45min", "3h", "4h", "8h", "48h", "invalid"],
+        ["1min", "5min", "6h", "12h", "24h", "4h", "8h", "48h", "invalid"],
     )
     def test_invalid_duration_string_raises(self, invalid_duration):
         """Test that invalid duration string raises ValueError."""
@@ -132,7 +132,7 @@ class TestGetPrecipitation:
         centroid = Point(500000, 600000)
 
         with pytest.raises(ValueError, match="Invalid duration"):
-            get_precipitation(centroid, 45, 10, mock_db)
+            get_precipitation(centroid, 360, 10, mock_db)
 
     def test_get_precipitation_validates_probability(self):
         """Test that invalid probability raises ValueError."""
