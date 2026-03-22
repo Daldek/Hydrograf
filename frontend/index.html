@@ -165,14 +165,14 @@
                         </div>
                     </div>
 
-                    <!-- Hydrograph -->
-                    <div class="glass-accordion collapsed d-none" id="acc-hydrograph">
+                    <!-- Hietogram (precipitation) -->
+                    <div class="glass-accordion collapsed d-none" id="acc-hietogram">
                         <div class="glass-accordion-header">
-                            <span>Hydrogram</span>
+                            <span>Hietogram</span>
                             <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
                         </div>
                         <div class="glass-accordion-body">
-                            <div id="hydrograph-form" class="mb-2">
+                            <div id="hietogram-form" class="mb-2">
                                 <div class="row g-1 mb-1">
                                     <div class="col-6">
                                         <label class="form-label small mb-0">Czas trwania</label>
@@ -185,14 +185,39 @@
                                 </div>
                                 <div class="row g-1 mb-1">
                                     <div class="col-6">
-                                        <label class="form-label small mb-0">&alpha; hietogramu</label>
+                                        <label class="form-label small mb-0">Rozkład opadu</label>
+                                        <select id="hydro-hietogram-type" class="form-select form-select-sm">
+                                            <option value="beta">Beta</option>
+                                            <option value="euler_ii">DVWK (Euler II)</option>
+                                            <option value="block">Blokowy</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="beta-params" class="row g-1 mb-1">
+                                    <div class="col-6">
+                                        <label class="form-label small mb-0">&alpha;</label>
                                         <input id="hydro-alpha" type="number" class="form-control form-control-sm" value="2.0" min="0.1" max="20" step="0.1">
                                     </div>
                                     <div class="col-6">
-                                        <label class="form-label small mb-0">&beta; hietogramu</label>
+                                        <label class="form-label small mb-0">&beta;</label>
                                         <input id="hydro-beta" type="number" class="form-control form-control-sm" value="5.0" min="0.1" max="20" step="0.1">
                                     </div>
                                 </div>
+                            </div>
+                            <div id="hietogram-results" class="d-none">
+                                <div class="chart-container" style="height:120px"><canvas id="chart-hietogram" role="img" aria-label="Hietogram opadu"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hydrograph (discharge) -->
+                    <div class="glass-accordion collapsed d-none" id="acc-hydrograph">
+                        <div class="glass-accordion-header">
+                            <span>Hydrogram</span>
+                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
+                        </div>
+                        <div class="glass-accordion-body">
+                            <div id="hydrograph-form" class="mb-2">
                                 <div class="row g-1 mb-1">
                                     <div class="col-6">
                                         <label class="form-label small mb-0">Model UH</label>
@@ -232,7 +257,6 @@
                             <div id="hydrograph-results" class="d-none">
                                 <div id="hydro-summary" class="small text-secondary mb-1"></div>
                                 <div class="chart-container" style="height:160px"><canvas id="chart-hydrograph" role="img" aria-label="Hydrogram odpływu"></canvas></div>
-                                <div class="chart-container mt-2" style="height:100px"><canvas id="chart-hietogram" role="img" aria-label="Hietogram opadu"></canvas></div>
                                 <div id="hydro-balance" class="mt-2"></div>
                             </div>
                             <div id="hydrograph-info" class="mt-1"></div>
