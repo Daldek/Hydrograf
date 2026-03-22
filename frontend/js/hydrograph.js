@@ -1,7 +1,8 @@
 /**
  * Hydrograf Hydrograph module.
  *
- * Scenario form, hydrograph chart, hietogram chart, water balance table.
+ * Hietogram form (precipitation), hydrograph form (UH model),
+ * charts, water balance table.
  */
 (function () {
     'use strict';
@@ -61,6 +62,7 @@
         var click = Hydrograf.app.getClickCoords();
         var duration = document.getElementById('hydro-duration').value;
         var probability = parseFloat(document.getElementById('hydro-probability').value);
+        var hietogramType = document.getElementById('hydro-hietogram-type').value;
         var alpha = parseFloat(document.getElementById('hydro-alpha').value) || 2.0;
         var beta = parseFloat(document.getElementById('hydro-beta').value) || 5.0;
         var uhModel = document.getElementById('hydro-uh-model').value;
@@ -72,6 +74,7 @@
         try {
             var opts = {
                 morphometry: data.watershed.morphometry || null,
+                hietogram_type: hietogramType,
                 hietogram_alpha: alpha,
                 hietogram_beta: beta,
                 uh_model: uhModel,
@@ -90,26 +93,27 @@
                 click.lat, click.lng, duration, probability, opts
             );
 
-            // Show results container BEFORE rendering charts
+            // Show results containers BEFORE rendering charts
             // (Chart.js responsive mode needs non-zero container dimensions)
+            document.getElementById('hietogram-results').classList.remove('d-none');
             document.getElementById('hydrograph-results').classList.remove('d-none');
 
             // Common time axis for both charts
             var hydroTimes = result.hydrograph.times_min;
             var maxTimeMin = hydroTimes[hydroTimes.length - 1];
 
+            // Render hietogram in its own accordion
+            renderHietogramChart(result.precipitation, maxTimeMin);
+
             // Render hydrograph chart
             renderHydrographChart(result.hydrograph, maxTimeMin);
-
-            // Render hietogram
-            renderHietogramChart(result.precipitation, maxTimeMin);
 
             // Display summary
             var summary = document.getElementById('hydro-summary');
             summary.textContent =
-                'Qmax: ' + result.hydrograph.peak_discharge_m3s.toFixed(2) + ' m³/s | ' +
+                'Qmax: ' + result.hydrograph.peak_discharge_m3s.toFixed(2) + ' m\u00b3/s | ' +
                 'tp: ' + result.hydrograph.time_to_peak_min.toFixed(0) + ' min | ' +
-                'V: ' + result.hydrograph.total_volume_m3.toFixed(0) + ' m³';
+                'V: ' + result.hydrograph.total_volume_m3.toFixed(0) + ' m\u00b3';
 
             // Display water balance table
             displayWaterBalance(result.water_balance);
@@ -119,7 +123,7 @@
         } catch (err) {
             console.warn('Hydrograph error:', err.message);
             var summary2 = document.getElementById('hydro-summary');
-            summary2.textContent = 'Błąd: ' + err.message;
+            summary2.textContent = 'B\u0142\u0105d: ' + err.message;
             document.getElementById('hydrograph-results').classList.remove('d-none');
         } finally {
             btn.disabled = false;
@@ -147,7 +151,7 @@
             type: 'line',
             data: {
                 datasets: [{
-                    label: 'Q [m³/s]',
+                    label: 'Q [m\u00b3/s]',
                     data: xyData,
                     borderColor: '#0A84FF',
                     backgroundColor: 'rgba(10, 132, 255, 0.1)',
@@ -167,7 +171,7 @@
                         mode: 'index',
                         callbacks: {
                             title: function (items) { return 't = ' + items[0].parsed.x + ' min'; },
-                            label: function (ctx) { return 'Q = ' + ctx.parsed.y.toFixed(3) + ' m³/s'; },
+                            label: function (ctx) { return 'Q = ' + ctx.parsed.y.toFixed(3) + ' m\u00b3/s'; },
                         },
                     },
                 },
@@ -180,7 +184,7 @@
                         ticks: { font: { size: 9 }, maxTicksLimit: 8 },
                     },
                     y: {
-                        title: { display: true, text: 'Q [m³/s]', font: { size: 10 } },
+                        title: { display: true, text: 'Q [m\u00b3/s]', font: { size: 10 } },
                         ticks: { font: { size: 9 } },
                         beginAtZero: true,
                     },
@@ -272,12 +276,12 @@
         table.className = 'balance-table';
 
         var rows = [
-            ['Opad całkowity', wb.total_precip_mm.toFixed(1) + ' mm'],
+            ['Opad ca\u0142kowity', wb.total_precip_mm.toFixed(1) + ' mm'],
             ['Opad efektywny', wb.total_effective_mm.toFixed(1) + ' mm'],
-            ['Wsp. odpływu', wb.runoff_coefficient.toFixed(3)],
-            ['CN użyty', String(wb.cn_used)],
+            ['Wsp. odp\u0142ywu', wb.runoff_coefficient.toFixed(3)],
+            ['CN u\u017cyty', String(wb.cn_used)],
             ['Retencja S', wb.retention_mm.toFixed(1) + ' mm'],
-            ['Straty początkowe Ia', wb.initial_abstraction_mm.toFixed(1) + ' mm'],
+            ['Straty pocz\u0105tkowe Ia', wb.initial_abstraction_mm.toFixed(1) + ' mm'],
         ];
 
         rows.forEach(function (row) {
@@ -312,7 +316,7 @@
     var HIETOGRAM_LABELS = {
         'beta': 'Beta',
         'block': 'Blokowy',
-        'euler_ii': 'Euler II',
+        'euler_ii': 'DVWK (Euler II)',
     };
 
     function displayMetadata(meta, wb) {
@@ -366,6 +370,12 @@
         container.appendChild(table);
     }
 
+    function updateHietogramVisibility() {
+        var htype = document.getElementById('hydro-hietogram-type').value;
+        var betaParams = document.getElementById('beta-params');
+        betaParams.classList.toggle('d-none', htype !== 'beta');
+    }
+
     function updateNashVisibility() {
         var model = document.getElementById('hydro-uh-model').value;
         var nashParams = document.getElementById('nash-params');
@@ -388,6 +398,10 @@
         var btn = document.getElementById('btn-generate-hydro');
         if (btn) {
             btn.addEventListener('click', generateHydrograph);
+        }
+        var hietogramType = document.getElementById('hydro-hietogram-type');
+        if (hietogramType) {
+            hietogramType.addEventListener('change', updateHietogramVisibility);
         }
         var uhSelect = document.getElementById('hydro-uh-model');
         if (uhSelect) {

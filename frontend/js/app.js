@@ -293,15 +293,17 @@
 
             displayParameters(data);
 
-            // Show/hide hydrograph section based on API response
-            var hydroSection = document.getElementById('acc-hydrograph');
-            if (hydroSection) {
-                if (data.watershed && data.watershed.hydrograph_available) {
-                    hydroSection.classList.remove('d-none');
-                } else {
-                    hydroSection.classList.add('d-none');
+            // Show/hide hietogram + hydrograph sections based on API response
+            ['acc-hietogram', 'acc-hydrograph'].forEach(function (id) {
+                var section = document.getElementById(id);
+                if (section) {
+                    if (data.watershed && data.watershed.hydrograph_available) {
+                        section.classList.remove('d-none');
+                    } else {
+                        section.classList.add('d-none');
+                    }
                 }
-            }
+            });
 
             els.results.classList.remove('d-none');
         } catch (err) {
@@ -359,15 +361,17 @@
                 displayStreamInfo(data.stream);
             }
 
-            // Show/hide hydrograph section based on API response
-            var hydroSection = document.getElementById('acc-hydrograph');
-            if (hydroSection) {
-                if (data.watershed && data.watershed.hydrograph_available) {
-                    hydroSection.classList.remove('d-none');
-                } else {
-                    hydroSection.classList.add('d-none');
+            // Show/hide hietogram + hydrograph sections based on API response
+            ['acc-hietogram', 'acc-hydrograph'].forEach(function (id) {
+                var section = document.getElementById(id);
+                if (section) {
+                    if (data.watershed && data.watershed.hydrograph_available) {
+                        section.classList.remove('d-none');
+                    } else {
+                        section.classList.add('d-none');
+                    }
                 }
-            }
+            });
 
             els.results.classList.remove('d-none');
         } catch (err) {
@@ -392,7 +396,7 @@
 
         // Hide other accordions
         ['acc-shape', 'acc-relief', 'acc-drainage', 'acc-landcover',
-         'acc-hydrograph'].forEach(function (id) {
+         'acc-hietogram', 'acc-hydrograph'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.classList.add('collapsed');
         });
@@ -509,9 +513,11 @@
             hydrographInfo: document.getElementById('hydrograph-info'),
         };
 
-        // Hide hydrograph section initially (shown conditionally when data is available)
-        var hydroSection = document.getElementById('acc-hydrograph');
-        if (hydroSection) hydroSection.classList.add('d-none');
+        // Hide hietogram + hydrograph sections initially (shown conditionally when data is available)
+        ['acc-hietogram', 'acc-hydrograph'].forEach(function (id) {
+            var section = document.getElementById(id);
+            if (section) section.classList.add('d-none');
+        });
 
         // Layers toggle
         document.getElementById('layers-toggle').addEventListener('click', toggleLayers);
