@@ -274,7 +274,7 @@ class HydrographRequest(BaseModel):
     longitude : float
         Longitude in WGS84 (decimal degrees)
     duration : str
-        Rainfall duration ('15min', '30min', '45min', '1h', '1.5h', '2h', '3h')
+        Rainfall duration (full PMAXTP range: '5min'...'72h')
     probability : int
         Exceedance probability [%] (1, 2, 5, 10, 20, 50)
     timestep_min : float, optional
@@ -311,11 +311,11 @@ class HydrographRequest(BaseModel):
     )
     duration: str = Field(
         ...,
-        pattern=r"^(15min|30min|45min|1h|1\.5h|2h|3h)$",
+        pattern=r"^(5min|10min|15min|30min|45min|1h|1\.5h|2h|3h|6h|12h|18h|24h|36h|48h|72h)$",
         description="Rainfall duration",
         examples=["1h"],
     )
-    probability: int = Field(
+    probability: float = Field(
         ...,
         description="Exceedance probability [%]",
         examples=[10],
@@ -375,7 +375,7 @@ class PrecipitationInfo(BaseModel):
 
     total_mm: float = Field(..., ge=0, description="Total precipitation [mm]")
     duration_min: float = Field(..., ge=0, description="Duration [min]")
-    probability_percent: int = Field(..., description="Exceedance probability [%]")
+    probability_percent: float = Field(..., description="Exceedance probability [%]")
     timestep_min: float = Field(..., ge=0, description="Time step [min]")
     times_min: list[float] = Field(..., description="Time values [min]")
     intensities_mm: list[float] = Field(..., description="Precipitation depths [mm]")

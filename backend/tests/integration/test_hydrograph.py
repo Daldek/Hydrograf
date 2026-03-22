@@ -421,7 +421,7 @@ class TestGenerateHydrographEndpoint:
             {
                 "latitude": 52.23,
                 "longitude": 21.01,
-                "duration": "6h",  # Invalid
+                "duration": "96h",  # Invalid
                 "probability": 10,
             },
         )
@@ -458,7 +458,10 @@ class TestGenerateHydrographEndpoint:
         mock_db = _make_precip_db_mock()
         app.dependency_overrides[get_db] = lambda: mock_db
 
-        valid_durations = ["15min", "30min", "45min", "1h", "1.5h", "2h", "3h"]
+        valid_durations = [
+            "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
+            "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+        ]
 
         try:
             with _HappyPathContext():
@@ -638,7 +641,10 @@ class TestScenariosEndpoint:
         response = client.get("/api/scenarios")
         data = response.json()
 
-        expected = ["15min", "30min", "45min", "1h", "1.5h", "2h", "3h"]
+        expected = [
+            "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
+            "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+        ]
         assert data["durations"] == expected
 
     def test_scenarios_valid_probabilities(self, client):
@@ -646,8 +652,9 @@ class TestScenariosEndpoint:
         response = client.get("/api/scenarios")
         data = response.json()
 
-        expected = [1, 2, 5, 10, 20, 50]
-        assert data["probabilities"] == expected
+        assert len(data["probabilities"]) == 27
+        assert data["probabilities"][0] == 0.01
+        assert data["probabilities"][-1] == 99.9
 
     def test_scenarios_area_limit(self, client):
         """Test scenarios returns area limit."""

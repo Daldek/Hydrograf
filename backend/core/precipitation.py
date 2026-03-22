@@ -13,15 +13,23 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# Valid duration values (full PMAXTP range)
-VALID_DURATIONS_MIN = {15, 30, 45, 60, 90, 120, 180}
-VALID_DURATIONS_STR = {"15min", "30min", "45min", "1h", "1.5h", "2h", "3h"}
+# Valid duration values (full PMAXTP range: 5 min – 72 h)
+VALID_DURATIONS_MIN = {5, 10, 15, 30, 45, 60, 90, 120, 180, 360, 720, 1080, 1440, 2160, 2880, 4320}
+VALID_DURATIONS_STR = {
+    "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
+    "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+}
 
-# Valid probability values
-VALID_PROBABILITIES = {1, 2, 5, 10, 20, 50}
+# Valid probability values (full PMAXTP range)
+VALID_PROBABILITIES = {
+    0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5,
+    1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 98.5, 99, 99.5, 99.9,
+}
 
 # Duration mapping: minutes -> database string
 DURATION_MIN_TO_STR = {
+    5: "5min",
+    10: "10min",
     15: "15min",
     30: "30min",
     45: "45min",
@@ -29,6 +37,13 @@ DURATION_MIN_TO_STR = {
     90: "1.5h",
     120: "2h",
     180: "3h",
+    360: "6h",
+    720: "12h",
+    1080: "18h",
+    1440: "24h",
+    2160: "36h",
+    2880: "48h",
+    4320: "72h",
 }
 
 # Duration mapping: string -> minutes
@@ -42,8 +57,8 @@ def validate_duration(duration: int | str) -> str:
     Parameters
     ----------
     duration : int | str
-        Duration in minutes (15, 30, 45, 60, 90, 120, 180)
-        or as string ('15min', '30min', '45min', '1h', '1.5h', '2h', '3h')
+        Duration in minutes (5–4320, full PMAXTP range)
+        or as string ('5min'...'72h')
 
     Returns
     -------
@@ -74,18 +89,18 @@ def validate_duration(duration: int | str) -> str:
     raise ValueError(f"Duration must be int or str, got {type(duration)}")
 
 
-def validate_probability(probability: int) -> int:
+def validate_probability(probability: int | float) -> float:
     """
     Validate probability parameter.
 
     Parameters
     ----------
-    probability : int
-        Exceedance probability [%]: 1, 2, 5, 10, 20, 50
+    probability : int | float
+        Exceedance probability [%] (full PMAXTP range)
 
     Returns
     -------
-    int
+    float
         Validated probability
 
     Raises
@@ -93,18 +108,19 @@ def validate_probability(probability: int) -> int:
     ValueError
         If probability is invalid
     """
-    if probability not in VALID_PROBABILITIES:
+    prob_float = float(probability)
+    if prob_float not in VALID_PROBABILITIES:
         raise ValueError(
             f"Invalid probability: {probability}. "
             f"Must be one of {sorted(VALID_PROBABILITIES)}"
         )
-    return probability
+    return prob_float
 
 
 def get_precipitation(
     centroid: Point,
     duration: int | str,
-    probability: int,
+    probability: int | float,
     db: Session,
 ) -> float | None:
     """
@@ -196,7 +212,7 @@ def get_precipitation_wgs84(
     latitude: float,
     longitude: float,
     duration: int | str,
-    probability: int,
+    probability: int | float,
     db: Session,
 ) -> float | None:
     """
@@ -315,6 +331,9 @@ def check_data_coverage(
         "point_count": result.point_count or 0,
         "total_records": result.total_records or 0,
         "scenarios_per_point": result.scenarios_per_point or 0,
-        "expected_scenarios": 42,
-        "coverage_complete": (result.scenarios_per_point or 0) == 42,
+        "expected_scenarios": len(VALID_DURATIONS_MIN) * len(VALID_PROBABILITIES),
+        "coverage_complete": (
+            (result.scenarios_per_point or 0)
+            == len(VALID_DURATIONS_MIN) * len(VALID_PROBABILITIES)
+        ),
     }
