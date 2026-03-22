@@ -442,6 +442,7 @@ def process_dem(
             f"{valid_aspect.max():.1f}°)"
         )
     del dx, dy  # Free gradient memory
+    del dem  # No longer needed — filled_dem used from here on
 
     if save_intermediates:
         save_raster_geotiff(
@@ -451,6 +452,7 @@ def process_dem(
             nodata=-1,
             dtype="float32",
         )
+    del aspect  # Free — not needed for stream/catchment processing
 
     # Determine thresholds for multi-density stream networks
     cell_area = metadata["cellsize"] * metadata["cellsize"]
@@ -497,6 +499,7 @@ def process_dem(
             nodata=-9999,
             dtype="float32",
         )
+    del twi  # Free — not needed for stream/catchment processing
 
     # 6. Create stream mask (lowest threshold)
     stream_mask = (acc >= lowest_threshold_cells).astype(np.uint8)
@@ -511,6 +514,7 @@ def process_dem(
 
     # 7. Stream cell count (from stream mask)
     stats["stream_cells"] = int(np.count_nonzero(stream_mask))
+    del stream_mask  # Free — only needed for count above
 
     # 7b. Vectorize streams per threshold
     all_stream_segments = {}  # threshold_m2 → segments
