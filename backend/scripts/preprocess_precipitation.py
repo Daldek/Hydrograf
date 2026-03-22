@@ -45,10 +45,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Rainfall scenarios — full PMAXTP range
-DURATIONS = ["15min", "30min", "45min", "1h", "1.5h", "2h", "3h"]
-DURATION_MINUTES = [15, 30, 45, 60, 90, 120, 180]
-PROBABILITIES = [1, 2, 5, 10, 20, 50]
+# Rainfall scenarios — full PMAXTP range (16 durations × 27 probabilities = 432)
+DURATIONS = [
+    "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
+    "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+]
+DURATION_MINUTES = [5, 10, 15, 30, 45, 60, 90, 120, 180, 360, 720, 1080, 1440, 2160, 2880, 4320]
+PROBABILITIES = [
+    0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5,
+    1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 98.5, 99, 99.5, 99.9,
+]
 
 # Coordinate transformer: WGS84 -> PL-1992
 WGS84_TO_PL1992 = Transformer.from_crs("EPSG:4326", "EPSG:2180", always_xy=True)
@@ -137,7 +143,7 @@ async def fetch_pmaxtp_for_point(
     delay_s: float = 0.5,
 ) -> dict:
     """
-    Fetch all 42 precipitation scenarios for a single point.
+    Fetch all 432 precipitation scenarios for a single point.
 
     Parameters
     ----------

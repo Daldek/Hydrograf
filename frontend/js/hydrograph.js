@@ -60,7 +60,7 @@
         // Use original click coordinates (inside catchment), not outlet (on boundary)
         var click = Hydrograf.app.getClickCoords();
         var duration = document.getElementById('hydro-duration').value;
-        var probability = parseInt(document.getElementById('hydro-probability').value);
+        var probability = parseFloat(document.getElementById('hydro-probability').value);
         var alpha = parseFloat(document.getElementById('hydro-alpha').value) || 2.0;
         var beta = parseFloat(document.getElementById('hydro-beta').value) || 5.0;
         var uhModel = document.getElementById('hydro-uh-model').value;

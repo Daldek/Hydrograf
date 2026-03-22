@@ -28,6 +28,8 @@ class TestValidateDuration:
     @pytest.mark.parametrize(
         "duration_min,expected",
         [
+            (5, "5min"),
+            (10, "10min"),
             (15, "15min"),
             (30, "30min"),
             (45, "45min"),
@@ -35,6 +37,13 @@ class TestValidateDuration:
             (90, "1.5h"),
             (120, "2h"),
             (180, "3h"),
+            (360, "6h"),
+            (720, "12h"),
+            (1080, "18h"),
+            (1440, "24h"),
+            (2160, "36h"),
+            (2880, "48h"),
+            (4320, "72h"),
         ],
     )
     def test_valid_duration_minutes(self, duration_min, expected):
@@ -44,7 +53,10 @@ class TestValidateDuration:
 
     @pytest.mark.parametrize(
         "duration_str",
-        ["15min", "30min", "45min", "1h", "1.5h", "2h", "3h"],
+        [
+            "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
+            "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+        ],
     )
     def test_valid_duration_string(self, duration_str):
         """Test validation of duration as string."""
@@ -53,7 +65,7 @@ class TestValidateDuration:
 
     @pytest.mark.parametrize(
         "invalid_duration",
-        [0, 10, 100, 360, 500, 720, 1000, 1440, 2000],
+        [0, 7, 20, 25, 50, 100, 200, 500, 1000, 2000, 5000],
     )
     def test_invalid_duration_minutes_raises(self, invalid_duration):
         """Test that invalid duration in minutes raises ValueError."""
@@ -62,7 +74,7 @@ class TestValidateDuration:
 
     @pytest.mark.parametrize(
         "invalid_duration",
-        ["1min", "5min", "6h", "12h", "24h", "4h", "8h", "48h", "invalid"],
+        ["1min", "7min", "4h", "8h", "96h", "invalid"],
     )
     def test_invalid_duration_string_raises(self, invalid_duration):
         """Test that invalid duration string raises ValueError."""
@@ -81,15 +93,19 @@ class TestValidateDuration:
 class TestValidateProbability:
     """Tests for validate_probability function."""
 
-    @pytest.mark.parametrize("probability", [1, 2, 5, 10, 20, 50])
+    @pytest.mark.parametrize(
+        "probability",
+        [0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5,
+         1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 98.5, 99, 99.5, 99.9],
+    )
     def test_valid_probability(self, probability):
         """Test validation of valid probabilities."""
         result = validate_probability(probability)
-        assert result == probability
+        assert result == float(probability)
 
     @pytest.mark.parametrize(
         "invalid_probability",
-        [0, 3, 4, 6, 7, 8, 9, 11, 15, 25, 30, 40, 100],
+        [0, 0.04, 4, 6, 7, 8, 9, 11, 15, 25, 35, 45, 55, 100],
     )
     def test_invalid_probability_raises(self, invalid_probability):
         """Test that invalid probability raises ValueError."""
@@ -102,7 +118,6 @@ class TestGetPrecipitation:
 
     def test_get_precipitation_returns_value(self):
         """Test that get_precipitation returns interpolated value."""
-        # Mock database session
         mock_db = MagicMock()
         mock_result = MagicMock()
         mock_result.precipitation_interpolated = 38.5
@@ -132,7 +147,7 @@ class TestGetPrecipitation:
         centroid = Point(500000, 600000)
 
         with pytest.raises(ValueError, match="Invalid duration"):
-            get_precipitation(centroid, 360, 10, mock_db)
+            get_precipitation(centroid, 100, 10, mock_db)
 
     def test_get_precipitation_validates_probability(self):
         """Test that invalid probability raises ValueError."""
@@ -153,6 +168,18 @@ class TestGetPrecipitation:
         result = get_precipitation(centroid, "1h", 10, mock_db)
 
         assert result == 42.0
+
+    def test_get_precipitation_accepts_fractional_probability(self):
+        """Test that fractional probability is accepted."""
+        mock_db = MagicMock()
+        mock_result = MagicMock()
+        mock_result.precipitation_interpolated = 77.3
+        mock_db.execute.return_value.fetchone.return_value = mock_result
+
+        centroid = Point(500000, 600000)
+        result = get_precipitation(centroid, 60, 0.01, mock_db)
+
+        assert result == 77.3
 
 
 class TestGetPrecipitationWgs84:
@@ -180,8 +207,8 @@ class TestGetAllScenarios:
     """Tests for get_all_scenarios function."""
 
     @patch("core.precipitation.get_precipitation")
-    def test_returns_all_42_scenarios(self, mock_get_precip):
-        """Test that all 42 scenarios are returned."""
+    def test_returns_all_scenarios(self, mock_get_precip):
+        """Test that all 432 scenarios are returned."""
         mock_get_precip.return_value = 30.0
         mock_db = MagicMock()
         centroid = Point(500000, 600000)
@@ -189,15 +216,15 @@ class TestGetAllScenarios:
         result = get_all_scenarios(centroid, mock_db)
 
         # Check structure
-        assert len(result) == 7  # 7 durations
+        assert len(result) == 16  # 16 durations
         for duration in VALID_DURATIONS_STR:
             assert duration in result
-            assert len(result[duration]) == 6  # 6 probabilities
+            assert len(result[duration]) == 27  # 27 probabilities
             for prob in VALID_PROBABILITIES:
                 assert prob in result[duration]
 
-        # Check total calls (7 * 6 = 42)
-        assert mock_get_precip.call_count == 42
+        # Check total calls (16 * 27 = 432)
+        assert mock_get_precip.call_count == 432
 
 
 class TestDurationMapping:
@@ -205,7 +232,7 @@ class TestDurationMapping:
 
     def test_duration_mapping_completeness(self):
         """Test that all durations are mapped."""
-        assert len(DURATION_MIN_TO_STR) == 7
+        assert len(DURATION_MIN_TO_STR) == 16
         assert set(DURATION_MIN_TO_STR.keys()) == VALID_DURATIONS_MIN
         assert set(DURATION_MIN_TO_STR.values()) == VALID_DURATIONS_STR
 
@@ -223,8 +250,9 @@ class TestValidProbabilities:
     def test_probabilities_are_sorted_ascending(self):
         """Test that probabilities can be sorted for display."""
         sorted_probs = sorted(VALID_PROBABILITIES)
-        assert sorted_probs == [1, 2, 5, 10, 20, 50]
+        assert sorted_probs[0] == 0.01
+        assert sorted_probs[-1] == 99.9
 
     def test_probabilities_count(self):
-        """Test that there are exactly 6 probabilities."""
-        assert len(VALID_PROBABILITIES) == 6
+        """Test that there are exactly 27 probabilities."""
+        assert len(VALID_PROBABILITIES) == 27
