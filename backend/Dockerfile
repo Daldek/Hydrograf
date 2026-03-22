@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libgeos-dev \
     libproj-dev \
+    libgdal-dev \
     gcc \
     g++ \
     make \
@@ -19,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Build tippecanoe (MVT tile generator) — pinned version for reproducible builds
-RUN git clone --depth 1 --branch 2.80.0 https://github.com/felt/tippecanoe.git /tmp/tippecanoe && \
+RUN git clone --depth 1 --branch 2.79.0 https://github.com/felt/tippecanoe.git /tmp/tippecanoe && \
     cd /tmp/tippecanoe && make -j$(nproc) && make install && \
     rm -rf /tmp/tippecanoe
 
@@ -27,6 +28,7 @@ COPY requirements.txt .
 
 RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir GDAL==$(gdal-config --version) && \
     /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # ============================================================
@@ -41,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     libgeos-c1t64 \
     libproj25 \
+    libgdal36 \
     libexpat1 \
     libsqlite3-0 \
     zlib1g \
