@@ -462,6 +462,9 @@ def generate_hydrograph(
                 intensities_mm=[
                     round(x, 3) for x in precip_result.intensities_mm.tolist()
                 ],
+                effective_mm=[
+                    round(x, 3) for x in hydro_result.effective_precip_mm.tolist()
+                ],
             ),
             hydrograph=HydrographInfo(
                 times_min=hydro_result.hydrograph.times_min.tolist(),
