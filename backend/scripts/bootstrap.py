@@ -37,9 +37,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Directories
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-BACKEND_DIR = PROJECT_ROOT / "backend"
+# Directories — derive BACKEND_DIR from __file__ so it works both
+# in dev (Hydrograf/backend/scripts/bootstrap.py) and Docker (/app/scripts/bootstrap.py)
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = BACKEND_DIR.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
@@ -836,13 +837,12 @@ def step_tiles() -> str:
         )
         return "brak tippecanoe"
 
-    venv_python = BACKEND_DIR / ".venv" / "bin" / "python"
     tiles_dir = FRONTEND_DIR / "tiles"
     tiles_dir.mkdir(parents=True, exist_ok=True)
 
     subprocess.run(
         [
-            str(venv_python),
+            sys.executable,
             "-m",
             "scripts.generate_tiles",
             "--output-dir",
