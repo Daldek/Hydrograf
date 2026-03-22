@@ -5,9 +5,30 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-03-19
+## [Unreleased] — 2026-03-22
 
 ### Dodane
+- **Model Nasha w generowaniu hydrogramu** — 3 metody estymacji parametrów: z Tc (SCS), Lutz (fizjograficzna), regresja zurbanizowana (Rao et al. 1972)
+- Auto-obliczanie wskaźnika urbanizacji z pokrycia terenu (`weighted_imperviousness`)
+- Obliczanie efektywnego czasu trwania opadu z uwzględnieniem abstrakcji początkowej SCS-CN
+- Metadane modelu w UI: metoda Tc, wartość Tc, model UH, parametry Nasha (N, K, U, Pe, D)
+- `length_to_centroid_km` w parametrach morfometrycznych (potrzebne dla Snydera/Lutza)
+
+### Zmienione
+- Upgrade Hydrolog z v0.5.2 do v0.6.1 (wsparcie Nash IUH)
+- Domyślna metoda Tc zmieniona z Kirpich na SCS Lag; Kirpich tylko dla Nash from_tc
+- Tc opcjonalny w metadanych (null dla Nash from_lutz/from_urban_regression)
+- Hietogram jako ciągła krzywa liniowa (zamiast słupków), synchronizacja osi X z hydrogramem
+- CN pobierany z danych pokrycia terenu (wcześniej zawsze DEFAULT_CN=75)
+
+### Fixed (infrastruktura)
+- Dockerfile: dodano GDAL, pinned tippecanoe 2.79.0
+- Bootstrap: poprawna ścieżka katalogu w Dockerze, `sys.executable` zamiast hardcoded .venv
+
+### Optymalizacja
+- Zwolnienie pamięci po przetworzeniu pośrednich macierzy (process_dem, stream_extraction, zonal_stats)
+
+### Dodane (poprzednio)
 - **H4: Monotoniczne wygładzanie cieków (ADR-041)** — dwuetapowe przetwarzanie: stałe wypalanie (2m) + running minimum downstream. Koryguje mosty/nasypy bez nadmiernego wypalania normalnych odcinków
 - `smooth_streams_monotonic()` w `core/hydrology.py` — graf topologii sieci, BFS od ujścia, Bresenham rasteryzacja
 - `--no-smooth-streams` flag w `process_dem.py` — wyłączenie wygładzania do debugowania
