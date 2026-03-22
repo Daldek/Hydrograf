@@ -7,15 +7,15 @@
 | API (FastAPI + PostGIS) | ✅ Gotowy | 19 endpointow (11 core + 8 admin). 778 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
-| Generowanie hydrogramu | ✅ Gotowy | SCS-CN, 42 scenariusze |
+| Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 42 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k |
-| Integracja Hydrolog | ✅ Gotowy | v0.5.2 |
+| Integracja Hydrolog | ✅ Gotowy | v0.6.1 (Nash IUH) |
 | Integracja Kartograf | ✅ Gotowy | v0.5.0 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 721 testow jednostkowych |
+| Testy | ✅ Gotowy | 755 testow jednostkowych |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -46,27 +46,42 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-19 (sesja 63 — fix topologii merge zlewni)
+**Data:** 2026-03-22 (sesja 64 — model Nasha + ulepszenia hydrogramu)
 
 ### Co zrobiono
-- **Fix nieciągłości topologii przy łączeniu zlewni cząstkowych** — trzy root causes:
-  1. `ST_SimplifyPreserveTopology` na indywidualnych poligonach PRZED union nisczył współdzielone krawędzie → zamiana na `ST_SnapToGrid` (zachowuje wspólne krawędzie)
-  2. Buffer gap-closing 0.1m za mały (luki 1-5m z preprocessingu) → zwiększony do 2.0m (`_GAP_CLOSE_M`)
-  3. `ST_MakeValid` po `ST_ChaikinSmoothing` rozbijał samoprzecięcia na osobne poligony → zamiana na `ST_Buffer(geom, 0)` zachowujący ciągłość
-- **Fix brakujących kafli MVT po regeneracji z panelu admin** — dwa root causes:
-  1. `Cache-Control: public, max-age=86400` na PUSTYCH odpowiedziach tile API → przeglądarka cachowała puste kafle na 24h. Fix: puste kafle → `no-store`, pełne → `max-age=86400`
-  2. DEM tiles skip guard (`not dem_tiles_dir.exists()`) uniemożliwiał regenerację. Fix: zawsze regeneruj, usuwając stare kafle
-- Zmienione pliki: `core/watershed_service.py`, `api/endpoints/tiles.py`, `scripts/bootstrap.py`, testy (7 nowych)
-- 721 testów, 0 regresji
+- **Model Nasha w generowaniu hydrogramu** — 3 metody estymacji:
+  - `from_tc`: K = t_lag / N (wymaga Tc, SCS-based)
+  - `from_lutz`: fizjograficzna (L, Lc, slope, Manning)
+  - `from_urban_regression`: Rao et al. 1972 (area, Pe, D_eff, U)
+- **Fix CN zawsze = 75 (DEFAULT_CN)** — CN i imperviousness z land cover wstrzykiwane do morphometry w watershed.py i select_stream.py
+- **Upgrade Hydrolog v0.5.2 → v0.6.1** z NashIUH
+- **Synchronizacja osi X** hietogramu i hydrogramu (wspólny zakres liniowy)
+- **Domyślna metoda Tc: SCS Lag** (Kirpich tylko dla Nash from_tc)
+- **Tc opcjonalny** w metadanych (null dla Nash from_lutz/from_urban_regression)
+- **Auto-urbanizacja** — wskaźnik U z weighted_imperviousness pokrycia terenu
+- **Efektywny czas trwania opadu** — obliczanie D z uwzględnieniem abstrakcji początkowej Ia
+- **Metadane modelu w UI** — Tc, UH model, Nash N/K/U/Pe/D
+- **Hietogram jako krzywa liniowa** zaczynająca się od 0
+- `length_to_centroid_km` w morph_dict (Snyder/Lutz)
+- Optymalizacja pamięci: del pośrednich macierzy (process_dem, stream_extraction, zonal_stats)
+- Dockerfile: GDAL native, tippecanoe 2.79.0, memory limit 8G
+- Bootstrap: poprawna ścieżka w Dockerze, sys.executable
+- 755 testów, 0 regresji
 
 ### W trakcie
-- Brak
+- Brak (kontener wymaga przebudowy: `docker compose build api`)
 
 ### Następne kroki
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
 - Follow-up: preprocessing `stream_extraction.py` — zamiana `simplify()` na `set_precision()` (wymaga re-runu pipeline)
 - Clipping do dokładnej granicy poligonu (follow-up ADR)
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+
+### Poprzednia sesja (2026-03-19, sesja 63 — fix topologii merge zlewni)
+
+- Fix nieciągłości topologii — ST_SnapToGrid, buffer 2.0m, ST_Buffer(0) zamiast ST_MakeValid
+- Fix brakujących kafli MVT — no-store dla pustych kafli, zawsze regeneruj DEM tiles
+- 721 testów
 
 ### Poprzednia sesja (2026-03-18, sesja 62 — H4 monotonic stream smoothing)
 
