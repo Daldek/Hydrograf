@@ -5,7 +5,7 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-03-22
+## [Unreleased] — 2026-03-23
 
 ### Dodane
 - **Model Nasha w generowaniu hydrogramu** — 3 metody estymacji parametrów: z Tc (SCS), Lutz (fizjograficzna), regresja zurbanizowana (Rao et al. 1972)
@@ -13,13 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Obliczanie efektywnego czasu trwania opadu z uwzględnieniem abstrakcji początkowej SCS-CN
 - Metadane modelu w UI: metoda Tc, wartość Tc, model UH, parametry Nasha (N, K, U, Pe, D)
 - `length_to_centroid_km` w parametrach morfometrycznych (potrzebne dla Snydera/Lutza)
+- **Hietogram jako osobna zakładka** — wydzielony z hydrogramu, selektor rozkładu opadu (beta/DVWK/blokowy), parametry alfa/beta
+- **Auto-regeneracja wykresów** — bez przycisku "Generuj", debounce 300ms, płynne animacje Chart.js
+- **Opad efektywny na hietogramie** — wykres słupkowy z nakładką opadu efektywnego
+- **Bilans wodny w zakładce hietogramu** — tabela opadowa przeniesiona z hydrogramu
 
 ### Zmienione
 - Upgrade Hydrolog z v0.5.2 do v0.6.1 (wsparcie Nash IUH)
 - Domyślna metoda Tc zmieniona z Kirpich na SCS Lag; Kirpich tylko dla Nash from_tc
 - Tc opcjonalny w metadanych (null dla Nash from_lutz/from_urban_regression)
-- Hietogram jako ciągła krzywa liniowa (zamiast słupków), synchronizacja osi X z hydrogramem
+- Hietogram jako wykres słupkowy z 2 seriami (total + effective)
 - CN pobierany z danych pokrycia terenu (wcześniej zawsze DEFAULT_CN=75)
+
+### Naprawione
+- **nash_urban_fraction zawsze NULL** — imperviousness nie było przekazywane z land cover do build_morph_dict_from_graph()
+- **NRCS tc zawyżone (~608 min)** — formuła używała channel_slope zamiast mean_slope. Per TR-55, Y = average watershed slope. tc: 608→200 min
 
 ### Fixed (infrastruktura)
 - Dockerfile: dodano GDAL, pinned tippecanoe 2.79.0
