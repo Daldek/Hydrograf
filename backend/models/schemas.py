@@ -325,7 +325,7 @@ class HydrographRequest(BaseModel):
     )
     tc_method: str = Field(
         "nrcs",
-        pattern=r"^(kirpich|nrcs|giandotti)$",
+        pattern=r"^(kirpich|nrcs|giandotti|faa|kerby|kerby_kirpich)$",
         description="Time of concentration method",
     )
     hietogram_type: str = Field(
@@ -363,6 +363,20 @@ class HydrographRequest(BaseModel):
         gt=0,
         le=20,
         description="Nash N parameter (number of reservoirs, used with from_tc)",
+    )
+    tc_runoff_coeff: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="Runoff coefficient C for FAA method [0-1]. "
+        "If not provided, estimated from CN.",
+    )
+    tc_retardance: float | None = Field(
+        None,
+        ge=0.02,
+        le=0.8,
+        description="Kerby retardance coefficient N (0.02=smooth, 0.8=dense forest). "
+        "Default 0.4 (grass/crops).",
     )
     morphometry: MorphometricParameters | None = Field(
         None,
