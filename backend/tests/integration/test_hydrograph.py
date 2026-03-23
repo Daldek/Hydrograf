@@ -60,6 +60,7 @@ def _make_morph_dict(cn: int = 75) -> dict:
         "mean_slope_m_per_m": 0.04,
         "channel_length_km": 6.5,
         "channel_slope_m_per_m": 0.0108,
+        "length_to_centroid_km": 3.5,
         "cn": cn,
         "source": "Hydrograf",
         "crs": "EPSG:2180",
