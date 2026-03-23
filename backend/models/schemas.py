@@ -109,6 +109,10 @@ class MorphometricParameters(BaseModel):
     channel_slope_m_per_m: float | None = Field(
         None, ge=0, description="Main channel slope [m/m]"
     )
+    real_channel_length_km: float | None = Field(
+        None, ge=0,
+        description="Main channel length covered by BDOT10k real streams [km]",
+    )
     cn: int | None = Field(None, ge=0, le=100, description="SCS Curve Number")
     imperviousness: float | None = Field(
         None, ge=0, le=1, description="Weighted imperviousness fraction [0-1]"

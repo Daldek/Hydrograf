@@ -49,6 +49,10 @@ class CatchmentGraph:
         self._stream_length_km: np.ndarray | None = None
         self._strahler: np.ndarray | None = None
 
+        # Per-segment data from stream_network (loaded separately)
+        self._is_real_stream: np.ndarray | None = None
+        self._segment_length_km: np.ndarray | None = None
+
         # Adjacency: adj[i, j] = 1 means node j drains into node i
         self._upstream_adj: sparse.csr_matrix | None = None
 
@@ -164,6 +168,41 @@ class CatchmentGraph:
         finally:
             cursor.close()
 
+        # Load is_real_stream and per-segment length from stream_network
+        self._is_real_stream = np.zeros(n, dtype=np.bool_)
+        self._segment_length_km = np.zeros(n, dtype=np.float64)
+
+        sn_cursor = raw_conn.cursor(name="catchment_graph_stream_network")
+        try:
+            sn_cursor.itersize = _FETCH_SIZE
+            sn_cursor.execute(
+                "SELECT segment_idx, threshold_m2, "
+                "COALESCE(is_real_stream, false) AS is_real, "
+                "COALESCE(length_m, 0) / 1000.0 AS segment_length_km "
+                "FROM stream_network "
+                "ORDER BY threshold_m2, segment_idx"
+            )
+
+            while True:
+                sn_rows = sn_cursor.fetchmany(_FETCH_SIZE)
+                if not sn_rows:
+                    break
+                for sr in sn_rows:
+                    sn_key = (sr[1], sr[0])  # (threshold_m2, segment_idx)
+                    sn_idx = self._lookup.get(sn_key)
+                    if sn_idx is not None:
+                        self._is_real_stream[sn_idx] = sr[2]
+                        self._segment_length_km[sn_idx] = sr[3]
+        except Exception as e:
+            logger.warning(
+                f"Failed to load is_real_stream from stream_network: {e}. "
+                "Defaulting to all false / 0.0."
+            )
+            self._is_real_stream = np.zeros(n, dtype=np.bool_)
+            self._segment_length_km = np.zeros(n, dtype=np.float64)
+        finally:
+            sn_cursor.close()
+
         # Resolve deferred edges
         resolved_from = []
         resolved_to = []
@@ -204,6 +243,8 @@ class CatchmentGraph:
                 self._perimeter_km,
                 self._stream_length_km,
                 self._strahler,
+                self._is_real_stream,
+                self._segment_length_km,
             ]
         )
         mem_sparse = (
@@ -624,10 +665,20 @@ class CatchmentGraph:
                 6,
             )
 
+        # Real channel length (BDOT-matched segments only)
+        real_length_km = None
+        if self._is_real_stream is not None and self._segment_length_km is not None:
+            seg_lengths = self._segment_length_km[path_arr]
+            real_flags = self._is_real_stream[path_arr]
+            real_length_km = float(np.nansum(seg_lengths[real_flags]))
+
         return {
             "main_channel_length_km": round(main_length_km, 4),
             "main_channel_slope_m_per_m": main_slope,
             "main_channel_nodes": path,
+            "real_channel_length_km": (
+                round(real_length_km, 4) if real_length_km is not None else None
+            ),
         }
 
     def aggregate_hypsometric(
