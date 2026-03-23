@@ -550,7 +550,7 @@ def list_scenarios() -> dict:
         "hietogram_types": ["beta", "block", "euler_ii"],
         "uh_models": ["scs", "nash", "snyder"],
         "snyder_defaults": {"ct": 1.5, "cp": 0.6},
-        "nash_estimation_methods": ["from_tc", "from_lutz", "from_urban_regression"],
+        "nash_estimation_methods": ["from_lutz", "from_urban_regression", "from_tc"],
         "nash_defaults": {"n": 3.0},
         "area_limit_km2": HYDROGRAPH_AREA_LIMIT_KM2,
     }

@@ -355,8 +355,8 @@ class HydrographRequest(BaseModel):
         description="Snyder peak coefficient Cp (default 0.6 if not provided)",
     )
     nash_estimation: Literal["from_tc", "from_lutz", "from_urban_regression"] = Field(
-        "from_tc",
-        description="Nash parameter estimation method",
+        "from_lutz",
+        description="Nash parameter estimation method (from_tc deprecated since Hydrolog v0.6.2)",
     )
     nash_n: float = Field(
         3.0,

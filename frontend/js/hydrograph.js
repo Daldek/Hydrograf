@@ -299,7 +299,7 @@
         'snyder': 'Snyder',
     };
     var NASH_EST_LABELS = {
-        'from_tc': 'z Tc',
+        'from_tc': 'z Tc (deprecated)',
         'from_lutz': 'Lutz',
         'from_urban_regression': 'Regresja urban.',
     };
