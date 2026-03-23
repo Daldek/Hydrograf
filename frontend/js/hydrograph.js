@@ -191,6 +191,16 @@
             };
             if (uhModel !== 'nash' || document.getElementById('hydro-nash-estimation').value === 'from_tc') {
                 opts.tc_method = document.getElementById('hydro-tc-method').value;
+                // TC extra params
+                if (opts.tc_method === 'faa') {
+                    var cVal = document.getElementById('hydro-tc-runoff-coeff').value;
+                    if (cVal) opts.tc_runoff_coeff = parseFloat(cVal);
+                }
+                if (opts.tc_method === 'kerby' || opts.tc_method === 'kerby_kirpich') {
+                    opts.tc_retardance = parseFloat(
+                        document.getElementById('hydro-tc-retardance').value
+                    ) || 0.4;
+                }
             }
             if (uhModel === 'nash') {
                 opts.nash_estimation = document.getElementById('hydro-nash-estimation').value;
@@ -292,6 +302,9 @@
         'kirpich': 'Kirpich',
         'nrcs': 'NRCS',
         'giandotti': 'Giandotti',
+        'faa': 'FAA',
+        'kerby': 'Kerby',
+        'kerby_kirpich': 'Kerby-Kirpich',
     };
     var UH_MODEL_LABELS = {
         'scs': 'SCS',
@@ -386,6 +399,26 @@
         // Tc method visible for SCS, Snyder, and Nash from_tc
         var needsTc = model !== 'nash' || estimation === 'from_tc';
         tcMethodParams.classList.toggle('d-none', !needsTc);
+        updateTcExtraParams();
+    }
+
+    function updateTcExtraParams() {
+        var method = document.getElementById('hydro-tc-method').value;
+        var extraRow = document.getElementById('tc-extra-params');
+        var runoffCol = document.getElementById('tc-runoff-coeff-col');
+        var retardanceCol = document.getElementById('tc-retardance-col');
+
+        // Ukryj extra params gdy tc-method jest ukryty (np. Nash + from_lutz)
+        var tcMethodParams = document.getElementById('tc-method-params');
+        var tcVisible = !tcMethodParams.classList.contains('d-none');
+
+        var needsRunoff = tcVisible && (method === 'faa');
+        var needsRetardance = tcVisible && (method === 'kerby' || method === 'kerby_kirpich');
+        var needsExtra = needsRunoff || needsRetardance;
+
+        extraRow.classList.toggle('d-none', !needsExtra);
+        runoffCol.classList.toggle('d-none', !needsRunoff);
+        retardanceCol.classList.toggle('d-none', !needsRetardance);
     }
 
     // ── Init ───────────────────────────────────────────────────────────
@@ -396,6 +429,7 @@
         'hydro-uh-model', 'hydro-tc-method',
         'hydro-nash-estimation', 'hydro-nash-n',
         'hydro-snyder-ct', 'hydro-snyder-cp',
+        'hydro-tc-runoff-coeff', 'hydro-tc-retardance',
     ];
 
     function init() {
@@ -414,6 +448,12 @@
         if (nashEst) {
             nashEst.addEventListener('change', updateNashVisibility);
         }
+
+        var tcMethodSelect = document.getElementById('hydro-tc-method');
+        if (tcMethodSelect) {
+            tcMethodSelect.addEventListener('change', updateTcExtraParams);
+        }
+        updateTcExtraParams();
 
         // Auto-regenerate on any parameter change
         _INPUT_IDS.forEach(function (id) {

@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from hydrolog.morphometry import WatershedParameters
 from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogram
 from hydrolog.runoff import HydrographGenerator, NashIUH
+from hydrolog.time.concentration import ConcentrationTime
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import get_catchment_graph
@@ -199,6 +200,65 @@ def _effective_duration_min(
     return max(n_steps * timestep_min, timestep_min)
 
 
+def _calculate_tc(
+    method: str,
+    wp: WatershedParameters,
+    morph_dict: dict,
+    request,
+) -> float:
+    """Calculate time of concentration using the specified method.
+
+    For kirpich/nrcs/giandotti delegates to WatershedParameters.calculate_tc().
+    For faa/kerby/kerby_kirpich uses ConcentrationTime static methods directly.
+    """
+    if method == "nrcs" and wp.channel_slope_m_per_m is not None:
+        saved = wp.channel_slope_m_per_m
+        wp.channel_slope_m_per_m = None
+        tc = wp.calculate_tc(method=method)
+        wp.channel_slope_m_per_m = saved
+        return tc
+
+    if method in ("kirpich", "giandotti"):
+        return wp.calculate_tc(method=method)
+
+    if method == "faa":
+        runoff_coeff = request.tc_runoff_coeff
+        if runoff_coeff is None:
+            cn = morph_dict.get("cn") or 75
+            s_mm = (25400.0 / cn - 254.0) if cn < 100 else 0.0
+            runoff_coeff = 1.0 - s_mm / (s_mm + 25.4) if s_mm > 0 else 0.95
+        slope = morph_dict.get("mean_slope_m_per_m") or 0.01
+        length = morph_dict.get("length_km") or morph_dict.get("channel_length_km") or 1.0
+        return ConcentrationTime.faa(
+            length_km=length, slope_m_per_m=slope, runoff_coeff=runoff_coeff,
+        )
+
+    if method == "kerby":
+        retardance = request.tc_retardance or 0.4
+        slope = morph_dict.get("mean_slope_m_per_m") or 0.01
+        length = morph_dict.get("length_km") or 1.0
+        return ConcentrationTime.kerby(
+            length_km=length, slope_m_per_m=slope, retardance=retardance,
+        )
+
+    if method == "kerby_kirpich":
+        retardance = request.tc_retardance or 0.4
+        channel_length = morph_dict.get("channel_length_km") or 1.0
+        channel_slope = morph_dict.get("channel_slope_m_per_m") or 0.01
+        total_length = morph_dict.get("length_km") or channel_length
+        overland_length = max(total_length - channel_length, 0.1)
+        overland_slope = morph_dict.get("mean_slope_m_per_m") or 0.01
+        return ConcentrationTime.kerby_kirpich(
+            overland_length_km=overland_length,
+            overland_slope_m_per_m=overland_slope,
+            retardance=retardance,
+            channel_length_km=channel_length,
+            channel_slope_m_per_m=channel_slope,
+        )
+
+    raise ValueError(f"Unknown tc method: {method}")
+
+
 def _estimate_nash_params(
     request,
     morph_dict: dict,
@@ -379,15 +439,7 @@ def generate_hydrograph(
         )
         if request.uh_model != "nash" or nash_needs_tc:
             tc_method = request.tc_method
-            # NRCS formula uses average watershed slope (Y), not channel slope.
-            # Temporarily clear channel_slope so Hydrolog falls back to mean_slope.
-            if tc_method == "nrcs" and watershed_params.channel_slope_m_per_m is not None:
-                saved_slope = watershed_params.channel_slope_m_per_m
-                watershed_params.channel_slope_m_per_m = None
-                tc_min = watershed_params.calculate_tc(method=tc_method)
-                watershed_params.channel_slope_m_per_m = saved_slope
-            else:
-                tc_min = watershed_params.calculate_tc(method=tc_method)
+            tc_min = _calculate_tc(tc_method, watershed_params, morph_dict, request)
             logger.debug(f"Time of concentration: {tc_min:.1f} min ({tc_method})")
         else:
             tc_method = None
@@ -546,7 +598,7 @@ def list_scenarios() -> dict:
     return {
         "durations": sorted(VALID_DURATIONS_STR, key=lambda d: DURATION_STR_TO_MIN[d]),
         "probabilities": sorted(VALID_PROBABILITIES),
-        "tc_methods": ["kirpich", "nrcs", "giandotti"],
+        "tc_methods": ["nrcs", "kirpich", "giandotti", "faa", "kerby", "kerby_kirpich"],
         "hietogram_types": ["beta", "block", "euler_ii"],
         "uh_models": ["scs", "nash", "snyder"],
         "snyder_defaults": {"ct": 1.5, "cp": 0.6},
