@@ -56,4 +56,4 @@ geopandas>=0.14.2
 fiona>=1.9.5
 
 # Hydrolog - hydrological calculations (SCS-CN, unit hydrographs, tc)
-hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.2
+hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.3
