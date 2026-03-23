@@ -378,7 +378,7 @@ def generate_hydrograph(
             request.uh_model == "nash" and request.nash_estimation == "from_tc"
         )
         if request.uh_model != "nash" or nash_needs_tc:
-            tc_method = "kirpich" if nash_needs_tc else request.tc_method
+            tc_method = request.tc_method
             # NRCS formula uses average watershed slope (Y), not channel slope.
             # Temporarily clear channel_slope so Hydrolog falls back to mean_slope.
             if tc_method == "nrcs" and watershed_params.channel_slope_m_per_m is not None:
