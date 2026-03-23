@@ -236,7 +236,7 @@ class TestHydrographRequestUhModel:
         """uh_model='nash' is accepted."""
         req = HydrographRequest(**{**self._BASE, "uh_model": "nash"})
         assert req.uh_model == "nash"
-        assert req.nash_estimation == "from_tc"
+        assert req.nash_estimation == "from_lutz"
         assert req.nash_n == 3.0
 
     def test_snyder_ct_optional(self):
@@ -552,3 +552,29 @@ class TestHydrographMetadataUhModel:
         )
         data = meta.model_dump()
         assert data["uh_model"] == "snyder"
+
+
+# ---------------------------------------------------------------------------
+# 6. NashIUH.from_tc() deprecation warning
+# ---------------------------------------------------------------------------
+
+
+class TestNashFromTcDeprecation:
+    """Test that NashIUH.from_tc() emits DeprecationWarning in Hydrolog >=0.6.2."""
+
+    def test_nash_from_tc_emits_deprecation_warning(self):
+        """Verify NashIUH.from_tc() emits DeprecationWarning in Hydrolog >=0.6.2."""
+        import warnings
+
+        from hydrolog.runoff import NashIUH
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            nash = NashIUH.from_tc(tc_min=60.0, n=3.0)
+            deprecation_warnings = [
+                x for x in w if issubclass(x.category, DeprecationWarning)
+            ]
+            assert len(deprecation_warnings) >= 1, (
+                "Expected DeprecationWarning from NashIUH.from_tc()"
+            )
+            assert nash.n == 3.0
