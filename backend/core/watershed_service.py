@@ -646,9 +646,11 @@ def build_morph_dict_from_graph(
         main_ch = cg.trace_main_channel(outlet_internal_idx, upstream_indices)
         channel_length_km = main_ch.get("main_channel_length_km")
         channel_slope = main_ch.get("main_channel_slope_m_per_m")
+        real_channel_length_km = main_ch.get("real_channel_length_km")
     else:
         channel_length_km = None
         channel_slope = None
+        real_channel_length_km = None
 
     # Lc: distance along main channel from outlet to nearest point to centroid
     centroid = boundary_2180.centroid
@@ -696,6 +698,7 @@ def build_morph_dict_from_graph(
         "mean_slope_m_per_m": stats.get("mean_slope_m_per_m"),
         "channel_length_km": channel_length_km if channel_length_km else None,
         "channel_slope_m_per_m": channel_slope,
+        "real_channel_length_km": real_channel_length_km,
         "length_to_centroid_km": length_to_centroid_km,
         "cn": cn,
         "imperviousness": imperviousness,

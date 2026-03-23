@@ -243,7 +243,9 @@ def _calculate_tc(
 
     if method == "kerby_kirpich":
         retardance = request.tc_retardance or 0.4
-        channel_length = morph_dict.get("channel_length_km") or 1.0
+        # Prefer BDOT-based real channel length if available
+        real_channel = morph_dict.get("real_channel_length_km")
+        channel_length = real_channel or morph_dict.get("channel_length_km") or 1.0
         channel_slope = morph_dict.get("channel_slope_m_per_m") or 0.01
         total_length = morph_dict.get("length_km") or channel_length
         overland_length = max(total_length - channel_length, 0.1)
