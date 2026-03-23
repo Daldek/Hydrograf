@@ -46,30 +46,21 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-22 (sesja 64 — model Nasha + ulepszenia hydrogramu)
+**Data:** 2026-03-23 (sesja 65 — hietogram split + weryfikacja + naprawa anomalii)
 
 ### Co zrobiono
-- **Model Nasha w generowaniu hydrogramu** — 3 metody estymacji:
-  - `from_tc`: K = t_lag / N (wymaga Tc, SCS-based)
-  - `from_lutz`: fizjograficzna (L, Lc, slope, Manning)
-  - `from_urban_regression`: Rao et al. 1972 (area, Pe, D_eff, U)
-- **Fix CN zawsze = 75 (DEFAULT_CN)** — CN i imperviousness z land cover wstrzykiwane do morphometry w watershed.py i select_stream.py
-- **Upgrade Hydrolog v0.5.2 → v0.6.1** z NashIUH
-- **Synchronizacja osi X** hietogramu i hydrogramu (wspólny zakres liniowy)
-- **Domyślna metoda Tc: SCS Lag** (Kirpich tylko dla Nash from_tc)
-- **Tc opcjonalny** w metadanych (null dla Nash from_lutz/from_urban_regression)
-- **Auto-urbanizacja** — wskaźnik U z weighted_imperviousness pokrycia terenu
-- **Efektywny czas trwania opadu** — obliczanie D z uwzględnieniem abstrakcji początkowej Ia
-- **Metadane modelu w UI** — Tc, UH model, Nash N/K/U/Pe/D
-- **Hietogram jako krzywa liniowa** zaczynająca się od 0
-- `length_to_centroid_km` w morph_dict (Snyder/Lutz)
-- Optymalizacja pamięci: del pośrednich macierzy (process_dem, stream_extraction, zonal_stats)
-- Dockerfile: GDAL native, tippecanoe 2.79.0, memory limit 8G
-- Bootstrap: poprawna ścieżka w Dockerze, sys.executable
-- 755 testów, 0 regresji
+- **Wydzielenie hietogramu do osobnej zakładki** — nowy akordeon `acc-hietogram` z selektorem rozkładu (beta/DVWK/blokowy), parametrami alfa/beta, wykresem i tabelą bilansu wodnego
+- **Auto-regeneracja** — usunięto przycisk "Generuj", wykresy odświeżają się automatycznie przy każdej zmianie parametrów (debounce 300ms)
+- **Hietogram jako wykres słupkowy** — 2 serie: opad całkowity + opad efektywny (nakładka)
+- **Opad efektywny** w API (`effective_mm` w PrecipitationInfo) i na wykresie hietogramu
+- **Bilans wodny przeniesiony do hietogramu** — tabela opadowa w zakładce hietogram, metadata w zakładce hydrogram
+- **Weryfikacja 72 testów** — 3 punkty × 3 hietogramy × (SCS + 3 Nash + Snyder) + czułość na czas/prawdopodobieństwo. Raport: `docs/reports/2026-03-22-hydrograph-verification.md`
+- **Fix A2: imperviousness w Nash** — `nash_urban_fraction` było NULL bo `imperviousness` nie było przekazywane z land cover do `build_morph_dict_from_graph()`
+- **Fix A3: tc NRCS zawyżone** — formuła NRCS używała `channel_slope` (0.3%) zamiast `mean_slope` (2.9%). Per TR-55, parametr Y = average watershed slope. tc spadło z 608→200 min
+- 797 testów, 0 regresji
 
 ### W trakcie
-- Brak (kontener wymaga przebudowy: `docker compose build api`)
+- Brak
 
 ### Następne kroki
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
