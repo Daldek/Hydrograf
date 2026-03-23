@@ -189,6 +189,9 @@
                 hietogram_beta: beta,
                 uh_model: uhModel,
             };
+            if (uhModel !== 'nash' || document.getElementById('hydro-nash-estimation').value === 'from_tc') {
+                opts.tc_method = document.getElementById('hydro-tc-method').value;
+            }
             if (uhModel === 'nash') {
                 opts.nash_estimation = document.getElementById('hydro-nash-estimation').value;
                 if (opts.nash_estimation === 'from_tc') {
@@ -369,6 +372,7 @@
         var nashParams = document.getElementById('nash-params');
         var nashNRow = document.getElementById('nash-n-row');
         var snyderParams = document.getElementById('snyder-params');
+        var tcMethodParams = document.getElementById('tc-method-params');
         var estimation = document.getElementById('hydro-nash-estimation').value;
 
         if (model === 'nash') {
@@ -379,6 +383,9 @@
             nashNRow.classList.add('d-none');
         }
         snyderParams.classList.toggle('d-none', model !== 'snyder');
+        // Tc method visible for SCS, Snyder, and Nash from_tc
+        var needsTc = model !== 'nash' || estimation === 'from_tc';
+        tcMethodParams.classList.toggle('d-none', !needsTc);
     }
 
     // ── Init ───────────────────────────────────────────────────────────
@@ -386,7 +393,8 @@
     var _INPUT_IDS = [
         'hydro-duration', 'hydro-probability', 'hydro-hietogram-type',
         'hydro-alpha', 'hydro-beta',
-        'hydro-uh-model', 'hydro-nash-estimation', 'hydro-nash-n',
+        'hydro-uh-model', 'hydro-tc-method',
+        'hydro-nash-estimation', 'hydro-nash-n',
         'hydro-snyder-ct', 'hydro-snyder-cp',
     ];
 
