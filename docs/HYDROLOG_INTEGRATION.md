@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-03-01
+**Ostatnia aktualizacja:** 2026-03-23
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -40,7 +40,8 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
 │                         HYDROLOG                                │
 │  Odpowiedzialność: OBLICZENIA HYDROLOGICZNE                     │
 │                                                                 │
-│  - Czas koncentracji (Kirpich, SCS Lag, Giandotti)              │
+│  - Czas koncentracji (Kirpich, SCS Lag, Giandotti,              │
+│      FAA, Kerby, Kerby-Kirpich)                                 │
 │  - Hydrogramy jednostkowe (SCS, Nash, Clark, Snyder)            │
 │  - Transformacja opad→odpływ (splot)                            │
 │  - Wskaźniki kształtu zlewni                                    │
@@ -193,7 +194,7 @@ from hydrolog.runoff import HydrographGenerator
 - `duration` - czas trwania opadu: 15min, 30min, 1h, 2h, 6h, 12h, 24h
 - `probability` - prawdopodobieństwo: 1%, 2%, 5%, 10%, 20%, 50%
 - `timestep_min` - krok czasowy (default: 5 min)
-- `tc_method` - metoda tc: kirpich, scs_lag, giandotti
+- `tc_method` - metoda tc: kirpich, scs_lag, giandotti, faa, kerby, kerby_kirpich
 - `hietogram_type` - typ hietogramu: beta, block, euler_ii
 
 **Ograniczenia:**
@@ -241,7 +242,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Plik | Zmiana | Status |
 |------|--------|--------|
-| `backend/requirements.txt` | + hydrolog (v0.5.2) | ✅ |
+| `backend/requirements.txt` | + hydrolog (v0.6.3) | ✅ |
 | `backend/core/morphometry.py` | 6 funkcji obliczeniowych | ✅ |
 | `backend/core/morphometry_raster.py` | Obliczenia rastrowe (slope, aspect, TWI, Strahler) | ✅ |
 | `backend/core/catchment_graph.py` | In-memory graf, BFS, trace_main_channel | ✅ |
@@ -279,11 +280,38 @@ Różnica może wynosić 2-10x. Channel slope MUSI być obliczany z głównego c
 
 ---
 
+## Metody czasu koncentracji (Tc)
+
+Import: `from hydrolog.time.concentration import ConcentrationTime`
+
+| Metoda | Klucz API | Parametry dodatkowe | Zastosowanie |
+|--------|-----------|---------------------|--------------|
+| Kirpich | `kirpich` | — | Małe zlewnie rolnicze |
+| SCS Lag | `scs_lag` | — | Metoda NRCS (TR-55) |
+| Giandotti | `giandotti` | — | Zlewnie górskie |
+| FAA | `faa` | `tc_runoff_coeff` (C) — estymowany z CN | Spływ powierzchniowy (Federal Aviation Agency) |
+| Kerby | `kerby` | `tc_retardance` (N) — współczynnik opóźnienia | Spływ powierzchniowy z retardance coefficient |
+| Kerby-Kirpich | `kerby_kirpich` | `tc_retardance` (N) | Metoda złożona: overland (Kerby) + channel (Kirpich) |
+
+---
+
+## Estymacja parametrów Nash IUH
+
+| Metoda | Klucz API | Parametry wymagane | Uwagi |
+|--------|-----------|---------------------|-------|
+| Lutz (domyślna) | `from_lutz` | dane fizjograficzne | Estymacja fizjograficzna wg Lutz (1984) |
+| Z Tc | `from_tc` | tc_method | **DEPRECATED od v0.6.2** — zastąpiona przez `from_lutz` |
+| Regresja zurbanizowana | `from_urban_regression` | `nash_urban_fraction` | Rao et al. (1972), wymaga wskaźnika urbanizacji |
+
+**Uwaga:** `NashIUH.from_tc()` jest oznaczona jako deprecated od Hydrolog v0.6.2. W Hydrografie domyślna estymacja Nash zmieniona na `from_lutz`. W UI metoda `from_tc` ma etykietę `[deprecated]`.
+
+---
+
 ## TODO / Przyszłe rozszerzenia
 
 1. ~~Obliczanie CN z pokrycia terenu~~ ✅ Zaimplementowane (cn_tables + cn_calculator + land_cover)
 
-2. **Dodatkowe metody tc** - rozszerzenie o inne metody czasu koncentracji
+2. ~~Dodatkowe metody tc~~ ✅ Zaimplementowane (FAA, Kerby, Kerby-Kirpich — Hydrolog v0.6.3)
 
 3. **Eksport wyników** - eksport hydrogramu do CSV/Excel
 
@@ -370,10 +398,10 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 - **GitHub:** https://github.com/Daldek/Hydrolog.git
 - **Branch:** develop
-- **Wersja:** v0.5.2
+- **Wersja:** v0.6.3
 - **Dokumentacja:** `docs/INTEGRATION.md`
-- **Instalacja:** `pip install git+https://github.com/Daldek/Hydrolog.git@v0.5.2`
+- **Instalacja:** `pip install git+https://github.com/Daldek/Hydrolog.git@v0.6.3`
 
 ---
 
-**Ostatnia aktualizacja:** 2026-03-01
+**Ostatnia aktualizacja:** 2026-03-23

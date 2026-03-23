@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐             │
 │  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │             │
-│  │  v2.1.0       │   │   v0.4.1      │   │   v0.5.2      │             │
+│  │  v2.1.0       │   │   v0.4.1      │   │   v0.6.3      │             │
 │  │  (dane IMGW)  │   │ (dane GIS)    │   │ (obliczenia)  │             │
 │  └───────────────┘   └───────────────┘   └───────┬───────┘             │
 │                                                  │                      │
@@ -38,7 +38,7 @@
 |---------|-----------|----------------|--------|
 | **Hydrograf** | IMGWTools | bezpośrednia (requirements.txt) | v2.1.0 |
 | **Hydrograf** | Kartograf | bezpośrednia (requirements.txt) | v0.4.1 |
-| **Hydrograf** | Hydrolog | bezpośrednia (requirements.txt) | v0.5.2 |
+| **Hydrograf** | Hydrolog | bezpośrednia (requirements.txt) | v0.6.3 |
 | **Hydrolog** | Kartograf | opcjonalna (`[spatial]`) | - |
 
 **Uwaga:** Hydrolog nie ma już zależności od IMGWTools (usunięta w v0.5.2).
@@ -48,7 +48,7 @@
 ```
 imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
 kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.4.1
-hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.5.2
+hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.3
 ```
 
 ---
@@ -350,4 +350,4 @@ fail_under = 80
 
 ---
 
-**Ostatnia aktualizacja:** 2026-03-01 (sesja 49: audyt integracji vs kod)
+**Ostatnia aktualizacja:** 2026-03-23 (sesja 66: upgrade Hydrolog v0.6.3)

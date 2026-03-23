@@ -17,9 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Auto-regeneracja wykresów** — bez przycisku "Generuj", debounce 300ms, płynne animacje Chart.js
 - **Opad efektywny na hietogramie** — wykres słupkowy z nakładką opadu efektywnego
 - **Bilans wodny w zakładce hietogramu** — tabela opadowa przeniesiona z hydrogramu
+- **3 nowe metody czasu koncentracji** — FAA (Federal Aviation Agency), Kerby (1959), Kerby-Kirpich (composite overland+channel). Parametry: `tc_runoff_coeff` i `tc_retardance` w HydrographRequest
+- **Selektor Tc rozszerzony** — 6 metod z parametrami kontekstowymi (C dla FAA, N dla Kerby/Kerby-Kirpich)
 
 ### Zmienione
-- Upgrade Hydrolog z v0.5.2 do v0.6.1 (wsparcie Nash IUH)
+- Upgrade Hydrolog z v0.5.2 do v0.6.3 (Nash IUH, 3 nowe metody tc, mypy fixes)
+- Domyślna estymacja Nash zmieniona z `from_tc` (deprecated) na `from_lutz` (Lutz physiographic)
 - Domyślna metoda Tc zmieniona z Kirpich na SCS Lag; Kirpich tylko dla Nash from_tc
 - Tc opcjonalny w metadanych (null dla Nash from_lutz/from_urban_regression)
 - Hietogram jako wykres słupkowy z 2 seriami (total + effective)

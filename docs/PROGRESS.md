@@ -9,7 +9,7 @@
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 42 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k |
-| Integracja Hydrolog | ✅ Gotowy | v0.6.1 (Nash IUH) |
+| Integracja Hydrolog | ✅ Gotowy | v0.6.3 (Nash IUH, 3 nowe metody tc) |
 | Integracja Kartograf | ✅ Gotowy | v0.5.0 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
@@ -46,27 +46,32 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-23 (sesja 65 — hietogram split + weryfikacja + naprawa anomalii)
+**Data:** 2026-03-23 (sesja 66 — upgrade Hydrolog v0.6.3)
 
 ### Co zrobiono
-- **Wydzielenie hietogramu do osobnej zakładki** — nowy akordeon `acc-hietogram` z selektorem rozkładu (beta/DVWK/blokowy), parametrami alfa/beta, wykresem i tabelą bilansu wodnego
-- **Auto-regeneracja** — usunięto przycisk "Generuj", wykresy odświeżają się automatycznie przy każdej zmianie parametrów (debounce 300ms)
-- **Hietogram jako wykres słupkowy** — 2 serie: opad całkowity + opad efektywny (nakładka)
-- **Opad efektywny** w API (`effective_mm` w PrecipitationInfo) i na wykresie hietogramu
-- **Bilans wodny przeniesiony do hietogramu** — tabela opadowa w zakładce hietogram, metadata w zakładce hydrogram
-- **Weryfikacja 72 testów** — 3 punkty × 3 hietogramy × (SCS + 3 Nash + Snyder) + czułość na czas/prawdopodobieństwo. Raport: `docs/reports/2026-03-22-hydrograph-verification.md`
-- **Fix A2: imperviousness w Nash** — `nash_urban_fraction` było NULL bo `imperviousness` nie było przekazywane z land cover do `build_morph_dict_from_graph()`
-- **Fix A3: tc NRCS zawyżone** — formuła NRCS używała `channel_slope` (0.3%) zamiast `mean_slope` (2.9%). Per TR-55, parametr Y = average watershed slope. tc spadło z 608→200 min
-- 797 testów, 0 regresji
+- **Upgrade Hydrolog v0.6.2 → v0.6.3** — nowe metody tc (FAA, Kerby, Kerby-Kirpich), 88 mypy fixes, 28 nowych testów
+- **Migracja domyślnej Nash** — `from_tc` (deprecated) → `from_lutz` (Lutz physiographic), label [deprecated] w UI
+- **3 nowe metody Tc** — FAA (spływ pow., C z CN), Kerby (retardance), Kerby-Kirpich (composite). Backend: `_calculate_tc()`, `ConcentrationTime` static methods. Frontend: selektor, pola C/N, logika widoczności
+- **UI/UX review** — spójność etykiet, logika widoczności 30 kombinacji, auto-regeneracja
+- **Mock morph_dict** — dodano `length_to_centroid_km` wymagane przez from_lutz
+- 923 testy, 0 regresji
 
 ### W trakcie
 - Brak
 
 ### Następne kroki
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
-- Follow-up: preprocessing `stream_extraction.py` — zamiana `simplify()` na `set_precision()` (wymaga re-runu pipeline)
-- Clipping do dokładnej granicy poligonu (follow-up ADR)
+- Follow-up: preprocessing `stream_extraction.py` — zamiana `simplify()` na `set_precision()`
+- Clipping do dokładnej granicy poligonu
 - Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+
+### Poprzednia sesja (2026-03-23, sesja 65 — hietogram split + weryfikacja + naprawa anomalii)
+
+- Wydzielenie hietogramu do osobnej zakładki — akordeon, selektor rozkładu, parametry alfa/beta
+- Auto-regeneracja wykresów (debounce 300ms), hietogram słupkowy z opadem efektywnym
+- Bilans wodny przeniesiony do hietogramu, weryfikacja 72 testów
+- Fix A2: imperviousness w Nash, Fix A3: tc NRCS zawyżone (channel_slope → mean_slope)
+- 797 testów, 0 regresji
 
 ### Poprzednia sesja (2026-03-19, sesja 63 — fix topologii merge zlewni)
 
