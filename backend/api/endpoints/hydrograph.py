@@ -110,10 +110,12 @@ def _compute_watershed(
             detail="Nie udało się zbudować granicy zlewni.",
         )
 
+    imperviousness = None
     try:
         lc_data = get_land_cover_for_boundary(boundary_2180, db)
         if lc_data:
             cn = lc_data["weighted_cn"]
+            imperviousness = lc_data.get("weighted_imperviousness")
             logger.info(f"CN={cn} calculated from land cover")
         else:
             cn = DEFAULT_CN
@@ -123,6 +125,7 @@ def _compute_watershed(
             f"Failed to calculate CN from land cover: {e}, using default"
         )
         cn = DEFAULT_CN
+        imperviousness = None
 
     outlet_info = get_segment_outlet(segment_idx, DEFAULT_THRESHOLD_M2, db)
     if outlet_info is not None:
@@ -141,6 +144,7 @@ def _compute_watershed(
         segment_idx,
         DEFAULT_THRESHOLD_M2,
         cn=cn,
+        imperviousness=imperviousness,
         db=db,
     )
 
@@ -375,7 +379,15 @@ def generate_hydrograph(
         )
         if request.uh_model != "nash" or nash_needs_tc:
             tc_method = "kirpich" if nash_needs_tc else request.tc_method
-            tc_min = watershed_params.calculate_tc(method=tc_method)
+            # NRCS formula uses average watershed slope (Y), not channel slope.
+            # Temporarily clear channel_slope so Hydrolog falls back to mean_slope.
+            if tc_method == "nrcs" and watershed_params.channel_slope_m_per_m is not None:
+                saved_slope = watershed_params.channel_slope_m_per_m
+                watershed_params.channel_slope_m_per_m = None
+                tc_min = watershed_params.calculate_tc(method=tc_method)
+                watershed_params.channel_slope_m_per_m = saved_slope
+            else:
+                tc_min = watershed_params.calculate_tc(method=tc_method)
             logger.debug(f"Time of concentration: {tc_min:.1f} min ({tc_method})")
         else:
             tc_method = None

@@ -595,6 +595,7 @@ def build_morph_dict_from_graph(
     segment_idx: int,
     threshold_m2: int,
     cn: int | None = None,
+    imperviousness: float | None = None,
     db: "Session | None" = None,
 ) -> dict:
     """
@@ -619,6 +620,8 @@ def build_morph_dict_from_graph(
         Flow accumulation threshold
     cn : int | None
         SCS Curve Number (optional)
+    imperviousness : float | None
+        Weighted imperviousness fraction (optional)
 
     Returns
     -------
@@ -695,6 +698,7 @@ def build_morph_dict_from_graph(
         "channel_slope_m_per_m": channel_slope,
         "length_to_centroid_km": length_to_centroid_km,
         "cn": cn,
+        "imperviousness": imperviousness,
         "source": "Hydrograf",
         "crs": "EPSG:2180",
         # Shape indices
