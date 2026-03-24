@@ -56,6 +56,8 @@
 - **Main channel trace: upstream_area_km2 (ADR-046)** — wybor galezi na podstawie skumulowanej powierzchni zlewni zamiast Strahler/local area. Nowa tablica `_upstream_area_km2` w CatchmentGraph. Priorytet: upstream_area_km2 → is_real_stream → Strahler → local area_km2
 - **Hydraulic length wzgledem ujscia zlewni** — `aggregate_stats(indices, outlet_idx)` odejmuje dystans ujscia: `hydraulic_length = max(all) - outlet_dist`. Wczesniej raportowano surowa wartosc z globalnego ujscia basenu
 - Aktualizacja dokumentacji — CHANGELOG, PROGRESS, DECISIONS (ADR-046)
+- **Main channel trace: upstream_area_km2 z stream_network** — poprawka: użycie kumulatywnej `upstream_area_km2` (z tabeli `stream_network`) zamiast lokalnej `area_km2` (z `stream_catchments`). Dodana tablica `_upstream_area_km2` do CatchmentGraph
+- **Kaskadowa eskalacja progu w select_stream** — po cascade (np. 1000→100000) `trace_main_channel` i `get_main_channel_feature_collection` używają teraz eskalowanego progu i `outlet_idx_for_stats` (nowa zmienna zamiast `clicked_idx`)
 
 ### W trakcie
 - Brak
