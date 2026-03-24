@@ -100,7 +100,7 @@ Jesli prostsze rozwiazanie jest wolniejsze, wybierz prostsze. Jesli bezpieczniej
 ## Specyfika projektu
 
 ### Biblioteki wlasne
-- **Hydrolog** v0.5.2, **Kartograf** v0.5.0, **IMGWTools** v2.1.0
+- **Hydrolog** v0.5.2, **Kartograf** v0.6.1, **IMGWTools** v2.1.0
 - Dostepne z GitHub (branch develop), nie z PyPI
 - Szczegoly integracji: `docs/CROSS_PROJECT_ANALYSIS.md`
 

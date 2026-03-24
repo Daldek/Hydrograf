@@ -304,7 +304,7 @@ Ten dokument precyzyjnie definiuje:
 
 #### 3.1.1 Numeryczny Model Terenu (NMT)
 
-**Źródło:** GUGIK via Kartograf v0.5.0 (automatyczne pobieranie arkuszy NMT)
+**Źródło:** GUGIK via Kartograf v0.6.1 (automatyczne pobieranie arkuszy NMT)
 **Format:** ARC/INFO ASCII GRID → mozaika VRT
 **Rozdzielczość:** 5m (konfigurowane w Kartograf `GugikProvider(resolution="5m")`)
 **Układ współrzędnych:** EPSG:2180 (PL-1992)
@@ -326,7 +326,7 @@ Ten dokument precyzyjnie definiuje:
 
 #### 3.1.2 Pokrycie Terenu
 
-**Źródła:** GUGIK - BDOT10k (via Kartograf v0.5.0, automatyczne pobieranie wg powiatow)
+**Źródła:** GUGIK - BDOT10k (via Kartograf v0.6.1, automatyczne pobieranie wg powiatow)
 **Format:** GeoPackage
 **Układ współrzędnych:** EPSG:2180
 **Zakres:** Powiaty pokrywajace bbox
@@ -386,7 +386,7 @@ Ten dokument precyzyjnie definiuje:
 
 #### 3.1.5 Dane Glebowe (HSG)
 
-**Źródło:** PIG (Panstwowy Instytut Geologiczny) via Kartograf v0.5.0
+**Źródło:** PIG (Panstwowy Instytut Geologiczny) via Kartograf v0.6.1
 **Format:** GeoPackage → raster → PostGIS (tabela `soil_hsg`)
 **Atrybuty:** Hydrologic Soil Group (A/B/C/D)
 **Preprocessing:**
@@ -478,7 +478,7 @@ Ten dokument precyzyjnie definiuje:
 - Alembic (migracje bazy danych)
 **Biblioteki wlasne:**
 - Hydrolog v0.5.2 (obliczenia hydrologiczne)
-- Kartograf v0.5.0 (pobieranie NMT, Land Cover, HSG, BDOT10k)
+- Kartograf v0.6.1 (pobieranie NMT, Land Cover, HSG, BDOT10k)
 - IMGWTools v2.1.0 (opady projektowe z IMGW)
 
 #### Frontend
