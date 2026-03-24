@@ -223,6 +223,7 @@ def select_stream(
         main_ch = cg.trace_main_channel(clicked_idx, upstream_indices_for_stats)
         channel_length_km = main_ch.get("main_channel_length_km")
         channel_slope = main_ch.get("main_channel_slope_m_per_m")
+        real_channel_length_km = main_ch.get("real_channel_length_km")
 
         # 9. Hypsometric curve
         hypso_data = cg.aggregate_hypsometric(upstream_indices_for_stats)
@@ -317,6 +318,7 @@ def select_stream(
             mean_slope_m_per_m=stats.get("mean_slope_m_per_m"),
             channel_length_km=channel_length_km,
             channel_slope_m_per_m=channel_slope,
+            real_channel_length_km=real_channel_length_km,
             length_to_centroid_km=length_to_centroid_km,
             compactness_coefficient=shape_indices.get("compactness_coefficient"),
             circularity_ratio=shape_indices.get("circularity_ratio"),
