@@ -516,7 +516,6 @@ def step_process_dem(
 
     stats = process_dem(
         input_path=mosaic_path,
-        stream_threshold=1000,
         clear_existing=True,
         save_intermediates=True,
         output_dir=nmt_dir,
