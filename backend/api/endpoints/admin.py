@@ -298,6 +298,11 @@ def cleanup_execute(
         except Exception as e:
             results.append({"key": target_key, "status": "error", "detail": str(e)})
 
+    # Invalidate CatchmentGraph after any cleanup that touches DB tables,
+    # so the next API call reloads fresh data instead of using stale mappings.
+    if any("db" in _CLEANUP_COMPONENTS[t]["components"] for t in request.targets if t in _CLEANUP_COMPONENTS):
+        get_catchment_graph().invalidate()
+
     return CleanupResponse(results=results)
 
 
@@ -427,6 +432,7 @@ def _read_process_output(process: subprocess.Popen, state: dict) -> None:
             # Reload CatchmentGraph so API uses fresh data
             try:
                 cg = get_catchment_graph()
+                cg.invalidate()
                 from core.database import get_db_session
 
                 with get_db_session() as db:
