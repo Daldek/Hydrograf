@@ -110,7 +110,9 @@
             ['Liczba chropowatoś. Rn', m.ruggedness_number != null
                 ? formatRatio(m.ruggedness_number, 3)
                 : 'brak cieków BDOT'],
-            ['Max rząd Strahlera', m.max_strahler_order !== null && m.max_strahler_order !== undefined ? String(m.max_strahler_order) : '—'],
+            ['Max rząd Strahlera', m.max_strahler_order != null
+                ? String(m.max_strahler_order)
+                : 'brak cieków BDOT'],
             ['Pokrycie BDOT', m.real_channel_length_km != null && m.channel_length_km
                 ? (100 * m.real_channel_length_km / m.channel_length_km).toFixed(0) + '%'
                 : '—'],
