@@ -14,7 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GUI: Droga spływu i droga z działu** w tabeli parametrów, przerywana pomarańczowa ścieżka na mapie
 - **GUI: Main channel overlay na mapie** — wizualizacja glownego cieku z wyroznieniem ciekow BDOT (ciemny niebieski = ciek rzeczywisty, jasny niebieski = splywy algorytmiczne)
 - **GUI: informacje BDOT w panelu parametrow** — "w tym ciek BDOT" w tabeli parametrow podstawowych, "Pokrycie BDOT" w sekcji sieci rzecznej
+- **GUI: komunikat "brak ciekow BDOT"** — informacja w panelu gdy zlewnia nie zawiera ciekow BDOT10k (is_real_stream=true)
 - **Point sampling stream_distance.tif** — odległość spływu z boundary (dział wodny) i centroidu
+- **Selektor rozdzielczosci NMT w panelu admin** — wybor 1m/5m w interfejsie bootstrap
 - **Model Nasha w generowaniu hydrogramu** — 3 metody estymacji parametrów: z Tc (SCS), Lutz (fizjograficzna), regresja zurbanizowana (Rao et al. 1972)
 - Auto-obliczanie wskaźnika urbanizacji z pokrycia terenu (`weighted_imperviousness`)
 - Obliczanie efektywnego czasu trwania opadu z uwzględnieniem abstrakcji początkowej SCS-CN
@@ -29,11 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Zmienione
 - Upgrade Hydrolog z v0.5.2 do v0.6.3 (Nash IUH, 3 nowe metody tc, mypy fixes)
+- **Upgrade Kartograf z v0.5.0 do v0.6.1** — fix NMT WMS layers, parallel downloads, poprawiony DownloadManager
 - Domyślna estymacja Nash zmieniona z `from_tc` (deprecated) na `from_lutz` (Lutz physiographic)
 - Domyślna metoda Tc zmieniona z Kirpich na SCS Lag; Kirpich tylko dla Nash from_tc
 - Tc opcjonalny w metadanych (null dla Nash from_lutz/from_urban_regression)
 - Hietogram jako wykres słupkowy z 2 seriami (total + effective)
 - CN pobierany z danych pokrycia terenu (wcześniej zawsze DEFAULT_CN=75)
+- **Drainage stats z BDOT** — gestosc sieci, czestotliwosc ciekow, chropowatosc i max Strahler bazuja wylacznie na segmentach `is_real_stream=true` (zamiast calej sieci algorytmicznej)
 
 ### Naprawione
 - **nash_urban_fraction zawsze NULL** — imperviousness nie było przekazywane z land cover do build_morph_dict_from_graph()
@@ -43,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Kerby-Kirpich — poprawiony podzial overland/channel** — overland z `hydraulic_length_km` (fallback), channel z `real_channel_length_km` (BDOT matching)
 - **Fragmentacja `real_channel_length_km`** — fix ciaglosci cieków BDOT: algorytm wybiera najdluzszy ciagly odcinek `is_real_stream=true` od ujscia (zamiast sumowania rozproszonych fragmentow)
 - **Overlay glownego cieku** — `get_main_channel_feature_collection()` z logika ciaglosci BDOT, poprawne wyroznienie segmentow rzeczywistych/algorytmicznych
+- **BDOT main channel tracing (R1a/R2/R3)** — tie-breaker `is_real_stream` w `trace_main_channel()`, gap tolerance `MAX_GAP=2` (tolerancja 2 segmentow bez BDOT), bufor matchingu zwiekszony do 25m
+- **DownloadManager resolution** — parametr `resolution` przekazywany przez `run_pipeline()` zamiast globalnych args, poprawna sciezka NMT
 
 ### Optymalizacja
 - **BDOT stream matching: per-feature buffers** — zamiana `ST_Collect` + globalny bufor na per-feature `ST_Buffer` + `ST_Intersects` (24s vs >90 min dla 253k segmentow)
