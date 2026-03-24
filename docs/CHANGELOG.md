@@ -39,13 +39,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FAA/Kerby — bledny uzycie length_km** — nowe pole `tc_overland_length_km` wymagane od uzytkownika zamiast automatycznego length_km (dlugosc zlewni ≠ dlugosc splywu powierzchniowego)
 - **NRCS/Kirpich — uzycie hydraulic_length zamiast channel_length** — `hydraulic_length_km` (maksymalna droga splywu z flow direction) jest poprawna geometrycznie, `channel_length_km` opisuje jedynie dlugosci ciekow
 - **Kerby-Kirpich — poprawiony podzial overland/channel** — overland z `hydraulic_length_km` (fallback), channel z `real_channel_length_km` (BDOT matching)
+- **Fragmentacja `real_channel_length_km`** — fix ciaglosci cieków BDOT: algorytm wybiera najdluzszy ciagly odcinek `is_real_stream=true` od ujscia (zamiast sumowania rozproszonych fragmentow)
+- **Overlay glownego cieku** — `get_main_channel_feature_collection()` z logika ciaglosci BDOT, poprawne wyroznienie segmentow rzeczywistych/algorytmicznych
+
+### Optymalizacja
+- **BDOT stream matching: per-feature buffers** — zamiana `ST_Collect` + globalny bufor na per-feature `ST_Buffer` + `ST_Intersects` (24s vs >90 min dla 253k segmentow)
+- Zwolnienie pamięci po przetworzeniu pośrednich macierzy (process_dem, stream_extraction, zonal_stats)
 
 ### Fixed (infrastruktura)
 - Dockerfile: dodano GDAL, pinned tippecanoe 2.79.0
 - Bootstrap: poprawna ścieżka katalogu w Dockerze, `sys.executable` zamiast hardcoded .venv
-
-### Optymalizacja
-- Zwolnienie pamięci po przetworzeniu pośrednich macierzy (process_dem, stream_extraction, zonal_stats)
 
 ### Dodane (poprzednio)
 - **H4: Monotoniczne wygładzanie cieków (ADR-041)** — dwuetapowe przetwarzanie: stałe wypalanie (2m) + running minimum downstream. Koryguje mosty/nasypy bez nadmiernego wypalania normalnych odcinków

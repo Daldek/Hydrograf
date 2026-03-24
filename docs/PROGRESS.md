@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 948 testow jednostkowych |
+| Testy | ✅ Gotowy | 955 testow jednostkowych |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -58,7 +58,10 @@
 - **Hydraulic length preprocessing (migracja 022)** — `hydraulic_length_km` z `pyflwdir.stream_distance()` obliczany w pipeline i zapisywany w `stream_catchments`. Propagowany przez CatchmentGraph do morph_dict
 - **Naprawy parametrów tc** — FAA/Kerby: wymuszenie `tc_overland_length_km` od użytkownika (zamiast błędnego length_km). NRCS/Kirpich: `hydraulic_length_km` zamiast `channel_length_km`. Kerby-Kirpich: overland z hydraulic_length (fallback), channel z real_channel_length_km (BDOT)
 - **GUI: droga spływu + overlay cieku** — "Droga spływu" w tabeli parametrów, main channel overlay na mapie z wyróżnieniem cieków BDOT (ciemny/jasny niebieski), "w tym ciek BDOT" i "Pokrycie BDOT" w panelu parametrów
-- 948 testów, 0 regresji
+- **Fix fragmentacji real_channel_length_km** — algorytm ciągłego odcinka od ujścia zamiast sumowania rozproszonych fragmentów is_real_stream=true
+- **Fix overlay głównego cieku** — `get_main_channel_feature_collection()` z logiką ciągłości BDOT
+- **Optymalizacja BDOT matching** — per-feature buffers zamiast ST_Collect (24s vs >90 min)
+- 955 testów, 0 regresji
 
 ### W trakcie
 - Brak
