@@ -8,8 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — 2026-03-24
 
 ### Dodane
+- **BDOT10k stream matching (ADR-044)** -- spatial join ciekow BDOT z flow accumulation streams. Nowa tabela `bdot_streams`, kolumna `is_real_stream`, `real_channel_length_km` w parametrach morfometrycznych. Kerby-Kirpich z fizycznie uzasadnionym podzialem overland/channel.
+- **`hydraulic_length_km` z flow direction grid** — maksymalna droga splywu (pyflwdir `stream_distance()`) obliczana w preprocessingu, nowa kolumna w `stream_catchments` (migracja 022). Uzywana przez NRCS i Kirpich zamiast `channel_length_km`
 - **Ścieżki spływu w preprocessingu** — `pyflwdir.stream_distance()` + batch `flw.path()` per subcatchment. 3 nowe parametry: `longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km`. Migracja 023
 - **GUI: Droga spływu i droga z działu** w tabeli parametrów, przerywana pomarańczowa ścieżka na mapie
+- **GUI: Main channel overlay na mapie** — wizualizacja glownego cieku z wyroznieniem ciekow BDOT (ciemny niebieski = ciek rzeczywisty, jasny niebieski = splywy algorytmiczne)
+- **GUI: informacje BDOT w panelu parametrow** — "w tym ciek BDOT" w tabeli parametrow podstawowych, "Pokrycie BDOT" w sekcji sieci rzecznej
 - **Point sampling stream_distance.tif** — odległość spływu z boundary (dział wodny) i centroidu
 - **Model Nasha w generowaniu hydrogramu** — 3 metody estymacji parametrów: z Tc (SCS), Lutz (fizjograficzna), regresja zurbanizowana (Rao et al. 1972)
 - Auto-obliczanie wskaźnika urbanizacji z pokrycia terenu (`weighted_imperviousness`)
@@ -34,13 +38,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Naprawione
 - **nash_urban_fraction zawsze NULL** — imperviousness nie było przekazywane z land cover do build_morph_dict_from_graph()
 - **NRCS tc zawyżone (~608 min)** — formuła używała channel_slope zamiast mean_slope. Per TR-55, Y = average watershed slope. tc: 608→200 min
+- **FAA/Kerby — bledny uzycie length_km** — nowe pole `tc_overland_length_km` wymagane od uzytkownika zamiast automatycznego length_km (dlugosc zlewni ≠ dlugosc splywu powierzchniowego)
+- **NRCS/Kirpich — uzycie hydraulic_length zamiast channel_length** — `hydraulic_length_km` (maksymalna droga splywu z flow direction) jest poprawna geometrycznie, `channel_length_km` opisuje jedynie dlugosci ciekow
+- **Kerby-Kirpich — poprawiony podzial overland/channel** — overland z `hydraulic_length_km` (fallback), channel z `real_channel_length_km` (BDOT matching)
+- **Fragmentacja `real_channel_length_km`** — fix ciaglosci cieków BDOT: algorytm wybiera najdluzszy ciagly odcinek `is_real_stream=true` od ujscia (zamiast sumowania rozproszonych fragmentow)
+- **Overlay glownego cieku** — `get_main_channel_feature_collection()` z logika ciaglosci BDOT, poprawne wyroznienie segmentow rzeczywistych/algorytmicznych
+
+### Optymalizacja
+- **BDOT stream matching: per-feature buffers** — zamiana `ST_Collect` + globalny bufor na per-feature `ST_Buffer` + `ST_Intersects` (24s vs >90 min dla 253k segmentow)
+- Zwolnienie pamięci po przetworzeniu pośrednich macierzy (process_dem, stream_extraction, zonal_stats)
 
 ### Fixed (infrastruktura)
 - Dockerfile: dodano GDAL, pinned tippecanoe 2.79.0
 - Bootstrap: poprawna ścieżka katalogu w Dockerze, `sys.executable` zamiast hardcoded .venv
-
-### Optymalizacja
-- Zwolnienie pamięci po przetworzeniu pośrednich macierzy (process_dem, stream_extraction, zonal_stats)
 
 ### Dodane (poprzednio)
 - **H4: Monotoniczne wygładzanie cieków (ADR-041)** — dwuetapowe przetwarzanie: stałe wypalanie (2m) + running minimum downstream. Koryguje mosty/nasypy bez nadmiernego wypalania normalnych odcinków

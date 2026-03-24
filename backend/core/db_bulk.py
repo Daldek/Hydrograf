@@ -208,6 +208,7 @@ def insert_catchments(
                 elevation_max_m FLOAT,
                 perimeter_km FLOAT,
                 stream_length_km FLOAT,
+                hydraulic_length_km FLOAT,
                 elev_histogram JSONB,
                 max_flow_dist_m FLOAT,
                 longest_flow_path_wkt TEXT
@@ -233,6 +234,7 @@ def insert_catchments(
                 f"{_tsv_val(cat.get('elevation_max_m'))}\t"
                 f"{_tsv_val(cat.get('perimeter_km'))}\t"
                 f"{_tsv_val(cat.get('stream_length_km'))}\t"
+                f"{_tsv_val(cat.get('hydraulic_length_km'))}\t"
                 f"{hist_str}\t"
                 f"{_tsv_val(cat.get('max_flow_dist_m'))}\t"
                 f"{_tsv_val(cat.get('longest_flow_path_wkt'))}\n"
@@ -253,7 +255,8 @@ def insert_catchments(
                 area_km2, mean_elevation_m, mean_slope_percent,
                 strahler_order, downstream_segment_idx,
                 elevation_min_m, elevation_max_m,
-                perimeter_km, stream_length_km, elev_histogram,
+                perimeter_km, stream_length_km,
+                hydraulic_length_km, elev_histogram,
                 max_flow_dist_m, longest_flow_path_geom
             )
             SELECT
@@ -262,7 +265,8 @@ def insert_catchments(
                 area_km2, mean_elevation_m, mean_slope_percent,
                 strahler_order, downstream_segment_idx,
                 elevation_min_m, elevation_max_m,
-                perimeter_km, stream_length_km, elev_histogram,
+                perimeter_km, stream_length_km,
+                hydraulic_length_km, elev_histogram,
                 max_flow_dist_m,
                 CASE WHEN longest_flow_path_wkt IS NOT NULL AND longest_flow_path_wkt != ''
                     THEN ST_SetSRID(ST_GeomFromText(longest_flow_path_wkt), 2180)
@@ -300,3 +304,215 @@ def insert_catchments(
             logger.info(f"  Cleaned {cleaned} multi-part geometries")
 
     return total
+
+
+# ---------------------------------------------------------------------------
+# BDOT10k stream import & matching
+# ---------------------------------------------------------------------------
+
+VALID_BDOT_LINE_TYPES = {"SWRS", "SWKN", "SWRM"}
+
+
+def load_bdot_streams_from_gpkg(gpkg_path):
+    """Load BDOT10k linear hydro features from merged GeoPackage.
+
+    Reads OT_SWRS_L, OT_SWKN_L, OT_SWRM_L layers.
+    Reprojects to EPSG:2180 if needed. Decomposes MultiLineString.
+
+    Returns list of dicts ready for insert_bdot_streams().
+    """
+    from pathlib import Path
+    import fiona
+    import geopandas as gpd
+    from shapely.geometry import LineString, MultiLineString
+
+    gpkg_path = Path(gpkg_path)
+    if not gpkg_path.exists():
+        logger.warning(f"BDOT GPKG not found: {gpkg_path}")
+        return []
+
+    LAYER_MAP = {
+        "OT_SWRS_L": "SWRS",
+        "OT_SWKN_L": "SWKN",
+        "OT_SWRM_L": "SWRM",
+    }
+    available = set(fiona.listlayers(str(gpkg_path)))
+    results = []
+
+    for layer_name, layer_type in LAYER_MAP.items():
+        if layer_name not in available:
+            continue
+        gdf = gpd.read_file(str(gpkg_path), layer=layer_name)
+        if gdf.crs and gdf.crs.to_epsg() != 2180:
+            gdf = gdf.to_crs(epsg=2180)
+
+        for _, row in gdf.iterrows():
+            geom = row.geometry
+            if geom is None or geom.is_empty:
+                continue
+            name = None
+            for col in ("NAZWA", "nazwa", "Name", "name"):
+                if col in row.index and row[col]:
+                    name = str(row[col])
+                    break
+
+            lines = []
+            if isinstance(geom, MultiLineString):
+                lines = list(geom.geoms)
+            elif isinstance(geom, LineString):
+                lines = [geom]
+
+            for line in lines:
+                if line.length < 1.0:
+                    continue
+                results.append({
+                    "geom_wkt": line.wkt,
+                    "layer_type": layer_type,
+                    "name": name,
+                    "length_m": round(line.length, 1),
+                })
+
+    logger.info(f"Loaded {len(results)} BDOT stream features from {gpkg_path.name}")
+    return results
+
+
+def insert_bdot_streams(db_session, streams):
+    """Insert BDOT10k linear hydro features into bdot_streams table.
+
+    Full replace on each run (DELETE + INSERT).
+
+    Returns number of inserted rows.
+    """
+    valid = [s for s in streams if s.get("layer_type") in VALID_BDOT_LINE_TYPES]
+    if not valid:
+        return 0
+
+    raw_conn = db_session.connection().connection
+    cursor = raw_conn.cursor()
+
+    try:
+        cursor.execute("DELETE FROM bdot_streams")
+        cursor.execute("DROP TABLE IF EXISTS temp_bdot_import")
+        cursor.execute("""
+            CREATE TEMP TABLE temp_bdot_import (
+                wkt TEXT,
+                layer_type VARCHAR(10),
+                name VARCHAR(200),
+                length_m DOUBLE PRECISION
+            )
+        """)
+
+        buf = io.StringIO()
+        for s in valid:
+            name = (s.get("name") or "").replace("\t", " ").replace("\n", " ")
+            buf.write(f"{s['geom_wkt']}\t{s['layer_type']}\t{name}\t{s.get('length_m', 0)}\n")
+        buf.seek(0)
+        cursor.copy_expert(
+            "COPY temp_bdot_import (wkt, layer_type, name, length_m) FROM STDIN WITH (FORMAT text)",
+            buf,
+        )
+
+        cursor.execute("""
+            INSERT INTO bdot_streams (geom, layer_type, name, length_m)
+            SELECT
+                ST_SetSRID(ST_GeomFromText(wkt), 2180),
+                layer_type,
+                NULLIF(name, ''),
+                length_m
+            FROM temp_bdot_import
+        """)
+        count = cursor.rowcount
+        raw_conn.commit()
+        logger.info(f"Inserted {count} BDOT streams into database")
+        return count
+    except Exception:
+        raw_conn.rollback()
+        raise
+
+
+BDOT_BUFFER_M = 15.0
+OVERLAP_THRESHOLD = 0.5
+
+
+def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, overlap_threshold=OVERLAP_THRESHOLD):
+    """Mark stream_network segments as real/overland based on BDOT overlap.
+
+    Uses per-feature BDOT buffers with spatial join for efficient GIST-indexed
+    matching.  Where multiple BDOT buffers overlap a single segment, ST_Union
+    prevents double-counting before computing the overlap ratio.
+
+    is_real_stream = true if overlap_ratio >= threshold, false otherwise.
+
+    Returns dict with total/real/overland counts.
+    """
+    with override_statement_timeout(db_session, timeout_s=600):
+        raw_conn = db_session.connection().connection
+        cursor = raw_conn.cursor()
+
+        try:
+            # Step 1: Check if bdot_streams has data
+            cursor.execute("SELECT COUNT(*) FROM bdot_streams")
+            bdot_count = cursor.fetchone()[0]
+            if bdot_count == 0:
+                logger.warning("No BDOT streams in database — marking all as overland")
+                cursor.execute(
+                    "UPDATE stream_network SET is_real_stream = false WHERE threshold_m2 = %s",
+                    (threshold_m2,),
+                )
+                raw_conn.commit()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM stream_network WHERE threshold_m2 = %s",
+                    (threshold_m2,),
+                )
+                total = cursor.fetchone()[0]
+                return {"total": total, "real": 0, "overland": total}
+
+            # Step 2: Materialize per-feature BDOT buffers (GIST-indexable)
+            cursor.execute("DROP TABLE IF EXISTS temp_bdot_buffer")
+            cursor.execute(
+                "CREATE TEMP TABLE temp_bdot_buffer AS "
+                "SELECT id, ST_Buffer(geom, %s) AS geom FROM bdot_streams",
+                (buffer_m,),
+            )
+            cursor.execute("CREATE INDEX ON temp_bdot_buffer USING GIST (geom)")
+
+            # Step 3: Spatial join + ST_Union to avoid double-counting
+            # where multiple BDOT buffers overlap the same segment
+            cursor.execute("""
+                UPDATE stream_network sn
+                SET is_real_stream = sub.is_real
+                FROM (
+                    SELECT
+                        sn2.segment_idx,
+                        (COALESCE(
+                            ST_Length(ST_Intersection(sn2.geom, ST_Union(bb.geom)))
+                            / NULLIF(ST_Length(sn2.geom), 0),
+                            0
+                        ) >= %s) AS is_real
+                    FROM stream_network sn2
+                    LEFT JOIN temp_bdot_buffer bb
+                        ON ST_Intersects(sn2.geom, bb.geom)
+                    WHERE sn2.threshold_m2 = %s
+                    GROUP BY sn2.segment_idx, sn2.geom
+                ) sub
+                WHERE sn.threshold_m2 = %s
+                  AND sn.segment_idx = sub.segment_idx
+            """, (overlap_threshold, threshold_m2, threshold_m2))
+
+            raw_conn.commit()
+
+            # Count results
+            cursor.execute("""
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE is_real_stream = true) AS real,
+                    COUNT(*) FILTER (WHERE is_real_stream = false) AS overland
+                FROM stream_network
+                WHERE threshold_m2 = %s
+            """, (threshold_m2,))
+            row = cursor.fetchone()
+            return {"total": row[0], "real": row[1], "overland": row[2]}
+
+        except Exception:
+            raw_conn.rollback()
+            raise

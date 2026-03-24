@@ -109,6 +109,10 @@ class MorphometricParameters(BaseModel):
     channel_slope_m_per_m: float | None = Field(
         None, ge=0, description="Main channel slope [m/m]"
     )
+    real_channel_length_km: float | None = Field(
+        None, ge=0,
+        description="Main channel length covered by BDOT10k real streams [km]",
+    )
     cn: int | None = Field(None, ge=0, le=100, description="SCS Curve Number")
     imperviousness: float | None = Field(
         None, ge=0, le=1, description="Weighted imperviousness fraction [0-1]"
@@ -150,6 +154,10 @@ class MorphometricParameters(BaseModel):
     )
     length_to_centroid_km: float | None = Field(
         None, ge=0, description="Distance from outlet to boundary centroid [km]"
+    )
+    hydraulic_length_km: float | None = Field(
+        None, ge=0,
+        description="Longest flow path from most remote point to outlet [km]",
     )
 
     # Flow path parameters
@@ -394,6 +402,13 @@ class HydrographRequest(BaseModel):
         le=0.8,
         description="Kerby retardance coefficient N (0.02=smooth, 0.8=dense forest). "
         "Default 0.4 (grass/crops).",
+    )
+    tc_overland_length_km: float | None = Field(
+        None,
+        gt=0,
+        le=5.0,
+        description="Overland flow length for FAA/Kerby methods [km]. "
+        "Required for FAA (typ. 0.015-3 km) and Kerby (max 0.366 km).",
     )
     morphometry: MorphometricParameters | None = Field(
         None,

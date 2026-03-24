@@ -21,6 +21,7 @@ from core.watershed_service import (
     compute_watershed_length,
     ensure_outlet_within_boundary,
     get_longest_flow_path_geojson,
+    get_main_channel_feature_collection,
     get_main_stream_geojson,
     get_segment_outlet,
     get_stream_info_by_segment_idx,
@@ -224,6 +225,7 @@ def select_stream(
         main_ch = cg.trace_main_channel(clicked_idx, upstream_indices_for_stats)
         channel_length_km = main_ch.get("main_channel_length_km")
         channel_slope = main_ch.get("main_channel_slope_m_per_m")
+        real_channel_length_km = main_ch.get("real_channel_length_km")
 
         # 9. Hypsometric curve
         hypso_data = cg.aggregate_hypsometric(upstream_indices_for_stats)
@@ -241,8 +243,13 @@ def select_stream(
                 )
                 hypsometric_integral = round(max(0, min(1, hi)), 4)
 
-        # 10. Main stream GeoJSON
-        main_stream_geojson = get_main_stream_geojson(segment_idx, threshold, db)
+        # 10. Main stream GeoJSON (FeatureCollection with is_real_stream per segment)
+        main_channel_nodes = main_ch.get("main_channel_nodes", [])
+        main_stream_geojson = get_main_channel_feature_collection(
+            cg, main_channel_nodes, threshold, db,
+        )
+        if main_stream_geojson is None:
+            main_stream_geojson = get_main_stream_geojson(segment_idx, threshold, db)
 
         # 11. Land cover statistics
         hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
@@ -356,6 +363,7 @@ def select_stream(
             mean_slope_m_per_m=stats.get("mean_slope_m_per_m"),
             channel_length_km=channel_length_km,
             channel_slope_m_per_m=channel_slope,
+            real_channel_length_km=real_channel_length_km,
             length_to_centroid_km=length_to_centroid_km,
             compactness_coefficient=shape_indices.get("compactness_coefficient"),
             circularity_ratio=shape_indices.get("circularity_ratio"),

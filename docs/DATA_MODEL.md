@@ -1,8 +1,8 @@
 # DATA_MODEL.md - Model Danych
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.4
-**Data:** 2026-03-01
+**Wersja:** 1.5
+**Data:** 2026-03-24
 **Status:** Approved
 
 ---
@@ -57,13 +57,17 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 │ name                │         │ area_m2                  │
 │ length_m            │         └─────────────────────────┘
 │ strahler_order      │
-│ source              │
-│ upstream_area_km2   │
-│ mean_slope_percent  │
-│ threshold_m2        │
-│ segment_idx         │ ──┐
-└─────────────────────┘   │  (threshold_m2, segment_idx)
+│ source              │         ┌─────────────────────────┐
+│ upstream_area_km2   │         │     bdot_streams         │
+│ mean_slope_percent  │         ├─────────────────────────┤
+│ threshold_m2        │         │ id (PK)                  │
+│ segment_idx         │ ──┐     │ geom                     │
+│ is_real_stream      │   │     │ layer_type               │
+└─────────────────────┘   │     │ name                     │
+    ↑ spatial matching    │     │ length_m                 │
+    (bufor 15m, ADR-044)  │     └─────────────────────────┘
                           │
+                          │  (threshold_m2, segment_idx)
 ┌──────────────────────────┐
 │    stream_catchments     │
 ├──────────────────────────┤
@@ -81,6 +85,7 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 │ perimeter_km             │
 │ stream_length_km         │
 │ elev_histogram (JSONB)   │
+│ hydraulic_length_km      │
 └──────────────────────────┘
 
 ┌─────────────────────┐
@@ -241,6 +246,7 @@ CREATE TABLE stream_network (
     mean_slope_percent FLOAT,                       -- migracja 003
     threshold_m2 INT NOT NULL DEFAULT 100,          -- migracja 005 (server_default=100, ADR-030: prog 100 usuniety)
     segment_idx INTEGER,                            -- migracja 014 (ADR-026)
+    is_real_stream BOOLEAN,                         -- migracja 021 (ADR-044)
 
     CONSTRAINT positive_length CHECK (length_m IS NULL OR length_m > 0),
     CONSTRAINT valid_strahler CHECK (strahler_order IS NULL OR strahler_order > 0)
@@ -290,6 +296,7 @@ COMMENT ON COLUMN stream_network.strahler_order IS 'Rząd Strahlera (hierarchia 
 | `mean_slope_percent` | FLOAT | YES | NULL | Sredni spadek wzdluz segmentu [%] (migracja 003) |
 | `threshold_m2` | INT | NO | 100 | Prog akumulacji przeplywu [m2] (migracja 005). Aktywne progi: 1000, 10000, 100000 (ADR-030) |
 | `segment_idx` | INTEGER | YES | NULL | Indeks segmentu spojny z `stream_catchments.segment_idx` (migracja 014, ADR-026) |
+| `is_real_stream` | BOOLEAN | YES | NULL | Czy segment pokrywa sie z ciekiem BDOT10k (spatial matching, bufor 15m, overlap >= 50%). NULL = nie matchowano, false = splywy algorytmiczne, true = ciek rzeczywisty (migracja 021, ADR-044) |
 
 **Przykładowe rekordy:**
 ```sql
@@ -324,6 +331,8 @@ CREATE TABLE stream_catchments (
     perimeter_km DOUBLE PRECISION,               -- obwód poligonu [km]
     stream_length_km DOUBLE PRECISION,           -- długość cieku w zlewni [km]
     elev_histogram JSONB,                        -- histogram wysokości (stały interwał 1m)
+    -- Nowa kolumna (migracja 022):
+    hydraulic_length_km FLOAT,                   -- max droga spływu z flow direction (pyflwdir stream_distance)
     -- Nowe kolumny (migracja 023):
     max_flow_dist_m DOUBLE PRECISION,            -- odległość najdalszej komórki do globalnego ujścia [m]
     longest_flow_path_geom GEOMETRY(LINESTRING, 2180) -- geometria najdłuższej ścieżki spływu
@@ -354,6 +363,7 @@ CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom)
 | `perimeter_km` | DOUBLE PRECISION | YES | Obwód poligonu zlewni [km] |
 | `stream_length_km` | DOUBLE PRECISION | YES | Długość cieku w zlewni [km] |
 | `elev_histogram` | JSONB | YES | Histogram wysokości: `{"base_m": 120, "interval_m": 1, "counts": [45, 82, ...]}` |
+| `hydraulic_length_km` | FLOAT | YES | Maksymalna droga spływu z flow direction grid [km] (`pyflwdir.stream_distance()`). Używana przez NRCS/Kirpich tc (migracja 022) |
 
 **Nowe kolumny (migracja 023) — ścieżki spływu:**
 
@@ -424,6 +434,45 @@ COMMENT ON COLUMN soil_hsg.area_m2 IS 'Powierzchnia poligonu [m²]';
 
 ---
 
+### 3.8 Tabela: `bdot_streams`
+
+**Opis:** Cieki z BDOT10k — geometrie rzek (SWRS), kanalow (SWKN) i rowow (SWRM) zaimportowane z danych referencyjnych. Uzywane do spatial matching z `stream_network` w celu oznaczenia ciekow rzeczywistych (migracja 021, ADR-044).
+
+**Schemat SQL:**
+```sql
+CREATE TABLE bdot_streams (
+    id SERIAL PRIMARY KEY,
+    geom GEOMETRY(LineString, 2180) NOT NULL,
+    layer_type VARCHAR(10) NOT NULL,    -- SWRS=rzeka, SWKN=kanal, SWRM=row
+    name VARCHAR(200),
+    length_m FLOAT
+);
+
+-- Indeksy
+CREATE INDEX idx_bdot_streams_geom ON bdot_streams USING GIST(geom);
+CREATE INDEX idx_bdot_streams_type ON bdot_streams(layer_type);
+
+-- Komentarze
+COMMENT ON TABLE bdot_streams IS 'Cieki z BDOT10k (rzeki, kanaly, rowy) do spatial matching';
+COMMENT ON COLUMN bdot_streams.layer_type IS 'Typ warstwy BDOT10k: SWRS=rzeka, SWKN=kanal, SWRM=row';
+COMMENT ON COLUMN bdot_streams.name IS 'Nazwa cieku z BDOT10k';
+COMMENT ON COLUMN bdot_streams.length_m IS 'Dlugosc geometrii [m]';
+```
+
+**Kolumny - szczegoly:**
+
+| Kolumna | Typ | Nullable | Default | Opis | Dozwolone wartosci |
+|---------|-----|----------|---------|------|-------------------|
+| `id` | SERIAL | NO | auto | Unikalny identyfikator | 1..inf |
+| `geom` | GEOMETRY(LineString, 2180) | NO | - | Linia cieku | EPSG:2180 |
+| `layer_type` | VARCHAR(10) | NO | - | Typ warstwy BDOT10k | 'SWRS', 'SWKN', 'SWRM' |
+| `name` | VARCHAR(200) | YES | NULL | Nazwa cieku | tekst |
+| `length_m` | FLOAT | YES | NULL | Dlugosc [m] | > 0 |
+
+**Liczba rekordow:** ~3-10k per obszar analizy (np. 4737 dla regionu Warszawy).
+
+---
+
 ## 4. Relacje i Constraints
 
 ### 4.1 Klucze Obce (Foreign Keys)
@@ -476,6 +525,7 @@ CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
 CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST(geom);
 CREATE INDEX idx_depressions_geom ON depressions USING GIST(geom);
 CREATE INDEX idx_soil_hsg_geom ON soil_hsg USING GIST(geom);
+CREATE INDEX idx_bdot_streams_geom ON bdot_streams USING GIST(geom);
 ```
 
 **Partial GIST indexes (migracja 009, 011, 017):**
@@ -532,6 +582,9 @@ CREATE INDEX idx_depressions_max_depth ON depressions(max_depth_m);
 
 -- soil_hsg (migracja 016)
 CREATE INDEX idx_soil_hsg_group ON soil_hsg(hsg_group);
+
+-- bdot_streams (migracja 021)
+CREATE INDEX idx_bdot_streams_type ON bdot_streams(layer_type);
 ```
 
 ---
@@ -551,6 +604,7 @@ VACUUM ANALYZE stream_network;
 VACUUM ANALYZE stream_catchments;
 VACUUM ANALYZE depressions;
 VACUUM ANALYZE soil_hsg;
+VACUUM ANALYZE bdot_streams;
 ```
 
 ---

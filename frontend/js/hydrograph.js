@@ -201,6 +201,10 @@
                         document.getElementById('hydro-tc-retardance').value
                     ) || 0.4;
                 }
+                if (opts.tc_method === 'faa' || opts.tc_method === 'kerby' || opts.tc_method === 'kerby_kirpich') {
+                    var ovVal = document.getElementById('hydro-tc-overland-length').value;
+                    if (ovVal) opts.tc_overland_length_km = parseFloat(ovVal);
+                }
             }
             if (uhModel === 'nash') {
                 opts.nash_estimation = document.getElementById('hydro-nash-estimation').value;
@@ -407,6 +411,7 @@
         var extraRow = document.getElementById('tc-extra-params');
         var runoffCol = document.getElementById('tc-runoff-coeff-col');
         var retardanceCol = document.getElementById('tc-retardance-col');
+        var overlandCol = document.getElementById('tc-overland-col');
 
         // Ukryj extra params gdy tc-method jest ukryty (np. Nash + from_lutz)
         var tcMethodParams = document.getElementById('tc-method-params');
@@ -414,11 +419,13 @@
 
         var needsRunoff = tcVisible && (method === 'faa');
         var needsRetardance = tcVisible && (method === 'kerby' || method === 'kerby_kirpich');
-        var needsExtra = needsRunoff || needsRetardance;
+        var needsOverland = tcVisible && (method === 'faa' || method === 'kerby' || method === 'kerby_kirpich');
+        var needsExtra = needsRunoff || needsRetardance || needsOverland;
 
         extraRow.classList.toggle('d-none', !needsExtra);
         runoffCol.classList.toggle('d-none', !needsRunoff);
         retardanceCol.classList.toggle('d-none', !needsRetardance);
+        overlandCol.classList.toggle('d-none', !needsOverland);
     }
 
     // ── Init ───────────────────────────────────────────────────────────
@@ -430,6 +437,7 @@
         'hydro-nash-estimation', 'hydro-nash-n',
         'hydro-snyder-ct', 'hydro-snyder-cp',
         'hydro-tc-runoff-coeff', 'hydro-tc-retardance',
+        'hydro-tc-overland-length',
     ];
 
     function init() {
