@@ -97,7 +97,7 @@ def _make_mock_cg_with_cascade():
     ]
 
     # aggregate_stats: different results for fine vs coarse
-    def _aggregate_stats(indices):
+    def _aggregate_stats(indices, outlet_idx=None):
         if len(indices) == 600:
             return fine_stats.copy()
         elif len(indices) == 50:
@@ -420,7 +420,7 @@ class TestWatershedCascadeStats:
             coarse_segment_idxs,
         ]
 
-        def _aggregate_stats(indices):
+        def _aggregate_stats(indices, outlet_idx=None):
             if len(indices) == 600:
                 return fine_stats.copy()
             elif len(indices) == 50:

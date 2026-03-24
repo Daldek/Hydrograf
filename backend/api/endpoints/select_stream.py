@@ -115,7 +115,7 @@ def select_stream(
         # upstream_indices_for_stats tracks which indices to use for stats;
         # updated together with merge_idxs during cascade escalation (CR9).
         upstream_indices_for_stats = upstream_indices
-        stats = cg.aggregate_stats(upstream_indices_for_stats)
+        stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=clicked_idx)
         area_km2 = stats["area_km2"]
 
         # 6. Build boundary from ST_Union of catchment polygons.
@@ -146,7 +146,7 @@ def select_stream(
                     # CR9: re-aggregate stats from escalated threshold
                     # so stats match the boundary polygon
                     upstream_indices_for_stats = t_up
-                    stats = cg.aggregate_stats(upstream_indices_for_stats)
+                    stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=t_node)
                     area_km2 = stats["area_km2"]
                     logger.info(
                         "Cascade: threshold escalated from %d to %d "

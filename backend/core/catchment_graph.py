@@ -514,7 +514,7 @@ class CatchmentGraph:
         mask = self._threshold_m2[indices] == threshold_m2
         return self._segment_idx[indices[mask]].tolist()
 
-    def aggregate_stats(self, indices: np.ndarray) -> dict:
+    def aggregate_stats(self, indices: np.ndarray, outlet_idx: int | None = None) -> dict:
         """
         Aggregate pre-computed stats across multiple catchment nodes.
 
@@ -607,14 +607,22 @@ class CatchmentGraph:
             bdot_drainage_density = None
             bdot_stream_frequency = None
 
-        # Hydraulic length: prefer max_flow_dist_m (migration 023, per-cell flow
-        # distance from pyflwdir) when available; fall back to hydraulic_length_km
-        # (migration 022, stream_distance) stored per sub-catchment.
+        # Hydraulic length: max_flow_dist_m stores the cumulative distance
+        # from each subcatchment's farthest cell to the GLOBAL basin outlet
+        # (from pyflwdir.stream_distance).  To get the flow path length
+        # within the SELECTED watershed, subtract the outlet's distance:
+        #   hydraulic_length = max(all_subcatchments) - outlet_flow_dist
         hydraulic_length_km = None
         if self._max_flow_dist_m is not None:
             flow_dists = self._max_flow_dist_m[indices]
             max_flow_dist = float(np.max(flow_dists)) if len(flow_dists) > 0 else 0.0
-            if max_flow_dist > 0:
+            if outlet_idx is not None and max_flow_dist > 0:
+                outlet_flow_dist = float(self._max_flow_dist_m[outlet_idx])
+                relative_dist = max_flow_dist - outlet_flow_dist
+                if relative_dist > 0:
+                    hydraulic_length_km = relative_dist / 1000.0
+            elif max_flow_dist > 0:
+                # No outlet_idx — fall back to raw value (legacy callers)
                 hydraulic_length_km = max_flow_dist / 1000.0
         if hydraulic_length_km is None:
             hydraulic_lengths = self._hydraulic_length_km[indices]
