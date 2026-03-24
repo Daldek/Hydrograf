@@ -85,48 +85,6 @@ def get_stream_info_by_segment_idx(
     }
 
 
-def map_boundary_to_display_segments(
-    boundary_2180: MultiPolygon | Polygon,
-    display_threshold_m2: int,
-    db: Session,
-) -> list[int]:
-    """
-    Map a computed boundary to segment_idxs at the display threshold.
-
-    Used when the boundary was computed at a fine threshold but the
-    frontend needs segment indices at the display threshold for MVT
-    highlighting.
-
-    Parameters
-    ----------
-    boundary_2180 : MultiPolygon | Polygon
-        Boundary geometry in EPSG:2180
-    display_threshold_m2 : int
-        Display threshold for MVT tiles
-    db : Session
-        Database session
-
-    Returns
-    -------
-    list[int]
-        segment_idx values at the display threshold that intersect the boundary
-    """
-    query = text("""
-        SELECT segment_idx FROM stream_catchments
-        WHERE threshold_m2 = :threshold
-          AND ST_Intersects(geom, ST_GeomFromWKB(:boundary, 2180))
-    """)
-    results = db.execute(
-        query,
-        {
-            "threshold": display_threshold_m2,
-            "boundary": boundary_2180.wkb,
-        },
-    ).fetchall()
-
-    return [r.segment_idx for r in results]
-
-
 def merge_catchment_boundaries(
     segment_idxs: list[int],
     threshold_m2: int,
@@ -562,48 +520,6 @@ def get_main_channel_feature_collection(
         "type": "FeatureCollection",
         "features": features,
     }
-
-
-def get_main_stream_coords_2180(
-    segment_idx: int,
-    threshold_m2: int,
-    db: Session,
-) -> list[tuple[float, float]] | None:
-    """
-    Get main stream coordinates in PL-1992 (EPSG:2180).
-
-    Parameters
-    ----------
-    segment_idx : int
-        Stream segment ID
-    threshold_m2 : int
-        Flow accumulation threshold
-    db : Session
-        Database session
-
-    Returns
-    -------
-    list[tuple[float, float]] | None
-        List of (x, y) tuples in EPSG:2180, or None
-    """
-    query = text("""
-        SELECT ST_AsText(geom) as wkt
-        FROM stream_network
-        WHERE segment_idx = :seg_idx
-          AND threshold_m2 = :threshold
-        LIMIT 1
-    """)
-    result = db.execute(
-        query,
-        {"seg_idx": segment_idx, "threshold": threshold_m2},
-    ).fetchone()
-    if result is None or result.wkt is None:
-        return None
-
-    from shapely import wkt as shapely_wkt
-
-    line = shapely_wkt.loads(result.wkt)
-    return list(line.coords)
 
 
 def boundary_to_polygon(boundary_2180: MultiPolygon | Polygon) -> Polygon:
