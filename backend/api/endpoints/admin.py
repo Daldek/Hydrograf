@@ -594,6 +594,11 @@ class BootstrapStartRequest(BaseModel):
     waterbody_mode: str | None = Field(
         default=None, description="drain or keep"
     )
+    resolution: str = Field(
+        default="5m",
+        pattern=r"^(1m|5m)$",
+        description="NMT resolution: 1m (high detail, slow) or 5m (default, fast)",
+    )
 
 
 class BootstrapStartResponse(BaseModel):
@@ -679,6 +684,8 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
         cmd.append("--skip-overlays")
     if request.waterbody_mode:
         cmd.extend(["--waterbody-mode", request.waterbody_mode])
+    if request.resolution and request.resolution != "5m":
+        cmd.extend(["--resolution", request.resolution])
 
     # Reset state
     _bootstrap_state["log_lines"] = []

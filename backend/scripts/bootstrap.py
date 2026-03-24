@@ -1020,7 +1020,7 @@ def run_pipeline(
     if not tracker.is_skipped(2):
         t0 = tracker.start(2)
         try:
-            downloaded_files, detail = step_download_nmt(sheets, cache_dir)
+            downloaded_files, detail = step_download_nmt(sheets, cache_dir, resolution=args.resolution)
             tracker.done(2, t0, detail)
         except Exception as e:
             tracker.fail(2, t0, str(e))
@@ -1266,6 +1266,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-serve",
         action="store_true",
         help="Pomin uruchomienie serwera",
+    )
+
+    parser.add_argument(
+        "--resolution",
+        type=str,
+        default="5m",
+        choices=["1m", "5m"],
+        help="Rozdzielczość NMT: 1m (wysoka, wolna) lub 5m (domyślna, szybka)",
     )
 
     # Waterbody options
