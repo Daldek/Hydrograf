@@ -247,6 +247,9 @@ class WatershedResponse(BaseModel):
     longest_flow_path_geojson: dict[str, Any] | None = Field(
         None, description="Longest flow path as GeoJSON Feature (WGS84)"
     )
+    divide_flow_path_geojson: dict[str, Any] | None = Field(
+        None, description="Divide flow path (from boundary) as GeoJSON Feature (WGS84)"
+    )
 
 
 class DelineateResponse(BaseModel):
