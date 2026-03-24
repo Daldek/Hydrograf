@@ -78,6 +78,7 @@
             ['Spadek średni', formatSlope(m.mean_slope_m_per_m)],
             ['Długość cieku gł.', formatValue(m.channel_length_km, 'km', 2)],
             ['  w tym ciek BDOT', formatValue(m.real_channel_length_km, 'km', 2)],
+            ['Droga spływu', formatValue(m.hydraulic_length_km, 'km', 2)],
             ['Spadek cieku gł.', formatSlope(m.channel_slope_m_per_m)],
             ['CN', m.cn !== null && m.cn !== undefined ? String(m.cn) : '—'],
             ['Ujście φ', formatValue(o.latitude, '°N', 6)],
