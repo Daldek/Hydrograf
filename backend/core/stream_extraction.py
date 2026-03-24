@@ -475,7 +475,6 @@ def polygonize_subcatchments(
 
     # Build catchment records
     catchments = []
-    simplify_tol = cellsize * 2
     sorted_keys = sorted(geom_groups.keys())
 
     for seg_idx in sorted_keys:
@@ -484,14 +483,6 @@ def polygonize_subcatchments(
         del geom_list
 
         # Ensure MULTIPOLYGON
-        if merged.geom_type == "Polygon":
-            merged = MultiPolygon([merged])
-
-        # Simplify to reduce staircase vertices
-        merged = merged.simplify(
-            simplify_tol,
-            preserve_topology=True,
-        )
         if merged.geom_type == "Polygon":
             merged = MultiPolygon([merged])
 

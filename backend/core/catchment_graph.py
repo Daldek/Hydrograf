@@ -69,12 +69,24 @@ class CatchmentGraph:
     def loaded(self) -> bool:
         return self._loaded
 
+    def invalidate(self) -> None:
+        """Mark graph as unloaded so next load() re-reads from DB.
+
+        Call after data changes (cleanup, pipeline re-run) to ensure
+        the in-memory graph matches the current database state.
+        """
+        self._loaded = False
+        self._n = 0
+        self._lookup.clear()
+        logger.info("CatchmentGraph invalidated — will reload on next access")
+
     def load(self, db: Session) -> None:
         """
         Load sub-catchment graph from database into memory.
 
         Reads all rows from stream_catchments, builds numpy arrays
-        and sparse upstream adjacency matrix.
+        and sparse upstream adjacency matrix.  Can be called again
+        after invalidate() to reload fresh data.
         """
         if self._loaded:
             return
