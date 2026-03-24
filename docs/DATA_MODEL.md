@@ -323,7 +323,10 @@ CREATE TABLE stream_catchments (
     elevation_max_m DOUBLE PRECISION,            -- max wys. w zlewni
     perimeter_km DOUBLE PRECISION,               -- obwód poligonu [km]
     stream_length_km DOUBLE PRECISION,           -- długość cieku w zlewni [km]
-    elev_histogram JSONB                         -- histogram wysokości (stały interwał 1m)
+    elev_histogram JSONB,                        -- histogram wysokości (stały interwał 1m)
+    -- Nowe kolumny (migracja 023):
+    max_flow_dist_m DOUBLE PRECISION,            -- odległość najdalszej komórki do globalnego ujścia [m]
+    longest_flow_path_geom GEOMETRY(LINESTRING, 2180) -- geometria najdłuższej ścieżki spływu
 );
 
 -- Indeksy
@@ -351,6 +354,13 @@ CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom)
 | `perimeter_km` | DOUBLE PRECISION | YES | Obwód poligonu zlewni [km] |
 | `stream_length_km` | DOUBLE PRECISION | YES | Długość cieku w zlewni [km] |
 | `elev_histogram` | JSONB | YES | Histogram wysokości: `{"base_m": 120, "interval_m": 1, "counts": [45, 82, ...]}` |
+
+**Nowe kolumny (migracja 023) — ścieżki spływu:**
+
+| Kolumna | Typ | Nullable | Opis |
+|---------|-----|----------|------|
+| `max_flow_dist_m` | DOUBLE PRECISION | YES | Odległość najdalszej komórki do globalnego ujścia [m] (z `pyflwdir.stream_distance`) |
+| `longest_flow_path_geom` | GEOMETRY(LINESTRING, 2180) | YES | Geometria najdłuższej ścieżki spływu w zlewni cząstkowej (z batch `flw.path()`) |
 
 **Format `elev_histogram`:** stały interwał 1m, klucze: `base_m` (dolna granica najniższego binu), `interval_m` (zawsze 1), `counts` (tablica liczności per bin). Mergowalny — histogramy na wspólnej osi bezwzględnej, agregacja = suma z offset.
 
@@ -789,7 +799,9 @@ migrations/
     ├── 014_add_segment_idx_to_stream_network.py
     ├── 015_drop_flow_network.py
     ├── 016_create_soil_hsg.py
-    └── 017_remove_threshold_100.py
+    ├── 017_remove_threshold_100.py
+    ├── 018_composite_index_threshold_segment.py
+    └── 023_add_flow_path_columns.py
 ```
 
 **Przykład migracji:**
@@ -921,7 +933,7 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 ### 12.1 Kluczowe Punkty
 
 - **6 tabel:** precipitation_data, land_cover, stream_network, stream_catchments, depressions, soil_hsg (flow_network usunieta -- ADR-028)
-- **17 migracji Alembic** (001-017)
+- **19 migracji Alembic** (001-023, z lukami)
 - **Uklad wspolrzednych:** EPSG:2180 (PL-1992)
 - **Indeksy przestrzenne (GIST)** dla wszystkich geometrii + partial indexes per threshold
 - **Walidacja** przez CHECK constraints
@@ -936,8 +948,8 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ---
 
-**Wersja dokumentu:** 1.4
-**Data ostatniej aktualizacji:** 2026-03-01
+**Wersja dokumentu:** 1.5
+**Data ostatniej aktualizacji:** 2026-03-24
 **Status:** Approved
 
 ---

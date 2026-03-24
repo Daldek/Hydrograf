@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-03-23
+**Ostatnia aktualizacja:** 2026-03-24
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -76,6 +76,9 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
     "mean_slope_m_per_m": {"type": "number", "minimum": 0, "description": "Średni spadek [m/m]"},
     "channel_length_km": {"type": "number", "minimum": 0, "description": "Długość cieku [km]"},
     "channel_slope_m_per_m": {"type": "number", "minimum": 0, "description": "Spadek cieku [m/m]"},
+    "longest_flow_path_km": {"type": "number", "minimum": 0, "description": "Najdłuższa ścieżka spływu [km]"},
+    "divide_flow_path_km": {"type": "number", "minimum": 0, "description": "Droga spływu z działu wodnego [km]"},
+    "centroid_flow_path_km": {"type": "number", "minimum": 0, "description": "Droga spływu z centroidu [km] (dla modeli izochron)"},
     "cn": {"type": "integer", "minimum": 0, "maximum": 100, "description": "Curve Number"},
     "source": {"type": "string", "description": "Źródło danych"},
     "crs": {"type": "string", "description": "Układ współrzędnych"}
@@ -97,6 +100,9 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
   "mean_slope_m_per_m": 0.025,
   "channel_length_km": 8.2,
   "channel_slope_m_per_m": 0.045,
+  "longest_flow_path_km": 14.2,
+  "divide_flow_path_km": 13.8,
+  "centroid_flow_path_km": 9.1,
   "cn": 72,
   "source": "Hydrograf",
   "crs": "EPSG:2180"
@@ -269,7 +275,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 ---
 
-## Uwaga: channel_slope vs stream_length
+## Uwaga: channel_slope vs stream_length vs flow_path
 
 Od ADR-029 rozróżniamy dwa pomiary długości cieków:
 
@@ -277,6 +283,14 @@ Od ADR-029 rozróżniamy dwa pomiary długości cieków:
 - **`trace_main_channel()`** = długość GŁÓWNEGO cieku (do channel_slope i tc)
 
 Różnica może wynosić 2-10x. Channel slope MUSI być obliczany z głównego cieku.
+
+### Ścieżki spływu (flow path tracing)
+
+Od migracji 023 dostępne są dodatkowe parametry długościowe oparte na ścieżkach spływu:
+
+- **`longest_flow_path_km`** — najdłuższa ścieżka spływu w zlewni (hydraulic length). Agregacja `max_flow_dist_m` z subcatchments przez CatchmentGraph. Geometria dostępna jako `longest_flow_path_geojson`
+- **`divide_flow_path_km`** — odległość spływu z punktu na dziale wodnym (boundary) do ujścia. Point sampling `stream_distance.tif` na granicy zlewni
+- **`centroid_flow_path_km`** — odległość spływu z centroidu zlewni do ujścia. Point sampling `stream_distance.tif` na centroidzie. Dostępny dla modeli izochron (wewnętrzny, ukryty w GUI)
 
 ---
 
@@ -355,10 +369,14 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
       "mean_slope_m_per_m": 0.025,
       "channel_length_km": 8.2,
       "channel_slope_m_per_m": 0.045,
+      "longest_flow_path_km": 14.2,
+      "divide_flow_path_km": 13.8,
+      "centroid_flow_path_km": 9.1,
       "cn": 72,
       "source": "Hydrograf",
       "crs": "EPSG:2180"
-    }
+    },
+    "longest_flow_path_geojson": {"type": "Feature", "geometry": {"type": "LineString", "coordinates": ["..."]}}
   },
   "precipitation": {
     "total_mm": 45.0,
@@ -404,4 +422,4 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 ---
 
-**Ostatnia aktualizacja:** 2026-03-23
+**Ostatnia aktualizacja:** 2026-03-24
