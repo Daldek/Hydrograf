@@ -99,7 +99,7 @@ def download_sheets(
 
     # Initialize Kartograf components (Kartograf 0.4.1 API)
     provider = GugikProvider(resolution=resolution)
-    manager = DownloadManager(output_dir=str(output_dir), provider=provider)
+    manager = DownloadManager(output_dir=str(output_dir), provider=provider, resolution=resolution)
 
     downloaded_files = []
     failed_sheets = []
