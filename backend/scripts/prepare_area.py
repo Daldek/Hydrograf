@@ -299,7 +299,6 @@ def prepare_area(
     try:
         dem_stats = process_dem(
             input_path=mosaic_path,
-            stream_threshold=stream_threshold,
             batch_size=batch_size,
             dry_run=False,
             save_intermediates=save_intermediates,

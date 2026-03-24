@@ -53,7 +53,6 @@ from core.db_bulk import (
     update_stream_real_flags,
 )
 from core.hydrology import (
-    D8_DIRECTIONS,
     VALID_D8_SET,
     burn_streams_into_dem,
     classify_endorheic_lakes,
@@ -67,7 +66,6 @@ from core.morphometry_raster import (
     _compute_gradients,
     compute_aspect,
     compute_aspect_from_gradients,
-    compute_slope,
     compute_slope_from_gradients,
     compute_strahler_from_fdir,
     compute_strahler_order,
@@ -88,13 +86,11 @@ from core.stream_extraction import (
 
 # Re-export all public names for backward compatibility
 __all__ = [
-    "D8_DIRECTIONS",
     "VALID_D8_SET",
     "burn_streams_into_dem",
     "classify_endorheic_lakes",
     "compute_aspect",
     "compute_downstream_links",
-    "compute_slope",
     "compute_strahler_from_fdir",
     "compute_strahler_order",
     "compute_twi",
@@ -388,7 +384,6 @@ def _enrich_catchments_with_flow_paths(
 
 def process_dem(
     input_path: Path,
-    stream_threshold: int = 1000,
     dry_run: bool = False,
     save_intermediates: bool = False,
     output_dir: Path | None = None,
@@ -414,8 +409,6 @@ def process_dem(
     ----------
     input_path : Path
         Path to input raster file (.asc, .vrt, or .tif)
-    stream_threshold : int
-        Flow accumulation threshold for stream identification (single-threshold mode)
     dry_run : bool
         If True, only compute statistics without inserting
     save_intermediates : bool
@@ -1110,7 +1103,6 @@ def main():
     try:
         stats = process_dem(
             input_path,
-            stream_threshold=args.stream_threshold,
             dry_run=args.dry_run,
             save_intermediates=args.save_intermediates,
             output_dir=output_dir,
