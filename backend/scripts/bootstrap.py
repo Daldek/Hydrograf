@@ -996,6 +996,7 @@ def run_pipeline(
     skips: set[int],
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
+    resolution: str = "5m",
 ):
     """Run the full 10-step bootstrap pipeline."""
     tracker = StepTracker(TOTAL_STEPS, skips)
@@ -1020,7 +1021,7 @@ def run_pipeline(
     if not tracker.is_skipped(2):
         t0 = tracker.start(2)
         try:
-            downloaded_files, detail = step_download_nmt(sheets, cache_dir, resolution=args.resolution)
+            downloaded_files, detail = step_download_nmt(sheets, cache_dir, resolution=resolution)
             tracker.done(2, t0, detail)
         except Exception as e:
             tracker.fail(2, t0, str(e))
@@ -1385,6 +1386,7 @@ def main():
         sheets, bbox, output_dir, cache_dir, args.port, skips,
         waterbody_mode=args.waterbody_mode,
         waterbody_min_area_m2=args.waterbody_min_area,
+        resolution=args.resolution,
     )
     total_elapsed = time.time() - total_start
 
