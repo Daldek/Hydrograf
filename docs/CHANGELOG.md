@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — 2026-03-24
 
 ### Dodane
+- **WFS TERYT discovery** — zastąpiono sampling po siatce WMS (~625 zapytań) pojedynczym zapytaniem WFS do PRG GUGiK; fallback na starą metodę przy awarii WFS
 - **BDOT10k stream matching (ADR-044)** -- spatial join ciekow BDOT z flow accumulation streams. Nowa tabela `bdot_streams`, kolumna `is_real_stream`, `real_channel_length_km` w parametrach morfometrycznych. Kerby-Kirpich z fizycznie uzasadnionym podzialem overland/channel.
 - **`hydraulic_length_km` z flow direction grid** — maksymalna droga splywu (pyflwdir `stream_distance()`) obliczana w preprocessingu, nowa kolumna w `stream_catchments` (migracja 022). Uzywana przez NRCS i Kirpich zamiast `channel_length_km`
 - **Ścieżki spływu w preprocessingu** — `pyflwdir.stream_distance()` + batch `flw.path()` per subcatchment. 3 nowe parametry: `longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km`. Migracja 023
