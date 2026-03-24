@@ -158,6 +158,9 @@ def _compute_watershed(
         boundary_wgs84,
         properties={"area_km2": round(area_km2, 2)},
     )
+    # Remove private key before passing to Pydantic schema
+    morph_dict.pop("_main_channel_nodes", None)
+
     watershed_resp = WatershedResponse(
         boundary_geojson=boundary_geojson,
         outlet=OutletInfo(
