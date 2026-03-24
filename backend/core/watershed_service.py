@@ -485,12 +485,22 @@ def get_main_channel_feature_collection(
     if not seg_idxs:
         return None
 
-    # Build is_real_stream lookup from graph arrays
+    # Build is_real_stream lookup using "contiguous from outlet" logic:
+    # Walk path from outlet upstream; segments are real only while the
+    # chain of is_real_stream flags is unbroken.  After the first False,
+    # all remaining segments are marked False (even if the raw flag is
+    # True) — this matches trace_main_channel() semantics and avoids
+    # visual fragmentation on the map.
     real_flags = {}
     if cg._is_real_stream is not None:
+        still_real = True
         for node in main_channel_nodes:
             si = cg.get_segment_idx(node)
-            real_flags[si] = bool(cg._is_real_stream[node])
+            if still_real and cg._is_real_stream[node]:
+                real_flags[si] = True
+            else:
+                still_real = False
+                real_flags[si] = False
 
     query = text("""
         SELECT
