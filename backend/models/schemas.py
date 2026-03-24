@@ -382,6 +382,13 @@ class HydrographRequest(BaseModel):
         description="Kerby retardance coefficient N (0.02=smooth, 0.8=dense forest). "
         "Default 0.4 (grass/crops).",
     )
+    tc_overland_length_km: float | None = Field(
+        None,
+        gt=0,
+        le=5.0,
+        description="Overland flow length for FAA/Kerby methods [km]. "
+        "Required for FAA (typ. 0.015-3 km) and Kerby (max 0.366 km).",
+    )
     morphometry: MorphometricParameters | None = Field(
         None,
         description="Pre-computed morphometry (skips watershed delineation)",
