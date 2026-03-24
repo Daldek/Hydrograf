@@ -231,7 +231,13 @@ def _calculate_tc(
             s_mm = (25400.0 / cn - 254.0) if cn < 100 else 0.0
             runoff_coeff = 1.0 - s_mm / (s_mm + 25.4) if s_mm > 0 else 0.95
         slope = morph_dict.get("mean_slope_m_per_m") or 0.01
-        length = morph_dict.get("length_km") or morph_dict.get("channel_length_km") or 1.0
+        # FAA requires overland flow length (0.015-3 km), NOT watershed length
+        length = request.tc_overland_length_km
+        if length is None:
+            raise ValueError(
+                "Metoda FAA wymaga podania długości spływu powierzchniowego "
+                "(tc_overland_length_km). Typowy zakres: 0.015-3 km."
+            )
         return ConcentrationTime.faa(
             length_km=length, slope_m_per_m=slope, runoff_coeff=runoff_coeff,
         )
@@ -239,7 +245,13 @@ def _calculate_tc(
     if method == "kerby":
         retardance = request.tc_retardance or 0.4
         slope = morph_dict.get("mean_slope_m_per_m") or 0.01
-        length = morph_dict.get("length_km") or 1.0
+        # Kerby requires overland flow length (max ~0.366 km), NOT watershed length
+        length = request.tc_overland_length_km
+        if length is None:
+            raise ValueError(
+                "Metoda Kerby wymaga podania długości spływu powierzchniowego "
+                "(tc_overland_length_km). Typowy zakres: 0.01-0.366 km."
+            )
         return ConcentrationTime.kerby(
             length_km=length, slope_m_per_m=slope, retardance=retardance,
         )
@@ -250,8 +262,12 @@ def _calculate_tc(
         real_channel = morph_dict.get("real_channel_length_km")
         channel_length = real_channel or morph_dict.get("channel_length_km") or 1.0
         channel_slope = morph_dict.get("channel_slope_m_per_m") or 0.01
-        total_length = morph_dict.get("length_km") or channel_length
-        overland_length = max(total_length - channel_length, 0.1)
+        # Prefer user-provided overland length, fallback to total - channel
+        if request.tc_overland_length_km is not None:
+            overland_length = request.tc_overland_length_km
+        else:
+            total_length = morph_dict.get("length_km") or channel_length
+            overland_length = max(total_length - channel_length, 0.1)
         overland_slope = morph_dict.get("mean_slope_m_per_m") or 0.01
         return ConcentrationTime.kerby_kirpich(
             overland_length_km=overland_length,
