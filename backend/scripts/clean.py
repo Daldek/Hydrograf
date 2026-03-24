@@ -64,6 +64,7 @@ COMPONENTS = [
 DB_TABLES = [
     "stream_catchments",
     "stream_network",
+    "bdot_streams",
     "depressions",
     "land_cover",
     "precipitation_data",
@@ -99,14 +100,21 @@ def count_files(path: Path) -> int:
 
 
 def remove_dir(path: Path, dry_run: bool = False) -> tuple[int, int]:
-    """Remove directory contents, return (files_removed, bytes_freed)."""
+    """Remove directory contents (not the directory itself), return (files_removed, bytes_freed).
+
+    Keeps the top-level directory intact — important when it is a Docker
+    volume mount point that cannot be removed and re-created.
+    """
     if not path.exists():
         return 0, 0
     n_files = count_files(path)
     size = dir_size(path)
     if not dry_run:
-        shutil.rmtree(path)
-        path.mkdir(parents=True, exist_ok=True)
+        for child in path.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
     return n_files, size
 
 
