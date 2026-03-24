@@ -46,19 +46,16 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-24 (sesja 68 — finalizacja feat/bdot-stream-matching przed merge do develop)
+**Data:** 2026-03-24 (sesja 69 — poprawki BDOT matching, main channel trace, hydraulic length, admin cleanup)
 
 ### Co zrobiono
-- **WFS TERYT discovery (ADR-045)** — `discover_teryts_for_bbox()` przepisana na pojedyncze zapytanie WFS do PRG GUGiK (warstwa `A02_Granice_powiatow`) zamiast grid-sampling WMS (~625 zapytań). Fallback na starą metodę. Nowe funkcje: `_parse_teryts_from_gml()`, `_discover_teryts_grid()`
-- **Upgrade Kartograf v0.5.0 → v0.6.1** — fix NMT WMS layers, parallel downloads, poprawiony DownloadManager
-- **Selektor rozdzielczosci NMT w admin panel** — wybor 1m/5m, parametr `resolution` przekazywany przez `run_pipeline()`
-- **Fix DownloadManager resolution** — poprawne przekazywanie parametru rozdzielczosci do NMT path
-- **Drainage stats z BDOT (R1a/R2/R3)** — gestosc sieci, czestotliwosc ciekow, chropowatosc i max Strahler bazuja wylacznie na `is_real_stream=true`
-- **BDOT main channel tracing** — tie-breaker `is_real_stream` w `trace_main_channel()`, gap tolerance `MAX_GAP=2`, bufor matchingu zwiekszony do 25m
-- **GUI: "brak ciekow BDOT"** — komunikat informacyjny gdy zlewnia nie zawiera ciekow BDOT10k
-- **Fix overlay glownego cieku** — `get_main_channel_feature_collection()` z logika ciaglosci od ujscia
-- **Aktualizacja dokumentacji** — CHANGELOG, PROGRESS, DECISIONS (ADR-044), CROSS_PROJECT_ANALYSIS
-- 987 testow, 0 failures
+- **BDOT ST_Within fix** — `ST_Intersection` zwracalo EMPTY dla krotkich segmentow DEM (<30m) calkowicie wewnatrz bufora BDOT. Dodano `ST_Within` check w `update_stream_real_flags()` — overlap=1.0 gdy segment w calosci w buforze. Udzial ciekow rzeczywistych: 25.9% → 31.5% (threshold 1000)
+- **Admin cleanup: single source of truth** — panel admin deleguje czyszczenie do `execute_clean()` z `scripts/clean.py` zamiast wlasnej listy tabel. Dodano `bdot_streams` do `DB_TABLES`. `remove_dir()` zachowuje mount points Docker. 2 cele czyszczenia zamiast 7
+- **DEM color mapping: percentile clipping** — nowa funkcja `normalize_elevation(valid_data, low_pct=5, high_pct=95)` w `utils/dem_color.py`. Przycina elewacje do 5-95 percentyla zamiast min-max, lepsza dyferencjacja kolorow
+- **WFS TERYT discovery (ADR-045)** — pojedyncze zapytanie WFS do PRG GUGiK zamiast ~625 zapytan WMS. Juz udokumentowane w poprzedniej sesji
+- **Main channel trace: upstream_area_km2 (ADR-046)** — wybor galezi na podstawie skumulowanej powierzchni zlewni zamiast Strahler/local area. Nowa tablica `_upstream_area_km2` w CatchmentGraph. Priorytet: upstream_area_km2 → is_real_stream → Strahler → local area_km2
+- **Hydraulic length wzgledem ujscia zlewni** — `aggregate_stats(indices, outlet_idx)` odejmuje dystans ujscia: `hydraulic_length = max(all) - outlet_dist`. Wczesniej raportowano surowa wartosc z globalnego ujscia basenu
+- Aktualizacja dokumentacji — CHANGELOG, PROGRESS, DECISIONS (ADR-046)
 
 ### W trakcie
 - Brak
@@ -70,6 +67,13 @@
 - Follow-up: preprocessing `stream_extraction.py` — zamiana `simplify()` na `set_precision()`
 - Clipping do dokladnej granicy poligonu
 - Podwojna analiza NMT (z/bez obszarow bezodplywowych)
+
+### Poprzednia sesja (2026-03-24, sesja 68 — finalizacja feat/bdot-stream-matching)
+
+- WFS TERYT discovery (ADR-045), upgrade Kartograf v0.6.1, selektor rozdzielczosci NMT
+- Drainage stats z BDOT, BDOT main channel tracing, GUI "brak ciekow BDOT"
+- Fix overlay glownego cieku, fix DownloadManager resolution
+- 987 testow, 0 failures
 
 ### Poprzednia sesja (2026-03-24, sesja 67 — BDOT matching + flow path tracing + naprawy tc)
 
