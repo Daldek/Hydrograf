@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgrade Hydrolog z v0.5.2 do v0.6.3 (Nash IUH, 3 nowe metody tc, mypy fixes)
 - **Upgrade Kartograf z v0.5.0 do v0.6.1** — fix NMT WMS layers, parallel downloads, poprawiony DownloadManager
 - Domyślna estymacja Nash zmieniona z `from_tc` (deprecated) na `from_lutz` (Lutz physiographic)
+- **Main channel trace: upstream_area_km2 (ADR-046)** — wybor galezi w `trace_main_channel()` na podstawie skumulowanej powierzchni zlewni (upstream_area_km2) zamiast Strahler/local area. Priorytet: upstream_area_km2 → is_real_stream → Strahler → local area_km2
+- **Admin cleanup: single source of truth** — panel admin deleguje czyszczenie do `execute_clean()` z `scripts/clean.py` (zamiast wlasnej listy tabel). Dodano `bdot_streams` do `DB_TABLES`. 2 cele czyszczenia zamiast 7
+- **DEM color mapping: percentile clipping** — normalizacja elewacji z przycieciem do 5-95 percentyla zamiast min-max. Nowa funkcja `normalize_elevation()` w `utils/dem_color.py`
 - Domyślna metoda Tc zmieniona z Kirpich na SCS Lag; Kirpich tylko dla Nash from_tc
 - Tc opcjonalny w metadanych (null dla Nash from_lutz/from_urban_regression)
 - Hietogram jako wykres słupkowy z 2 seriami (total + effective)
@@ -41,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Drainage stats z BDOT** — gestosc sieci, czestotliwosc ciekow, chropowatosc i max Strahler bazuja wylacznie na segmentach `is_real_stream=true` (zamiast calej sieci algorytmicznej)
 
 ### Naprawione
+- **BDOT ST_Within fix** — `ST_Intersection` zwracalo EMPTY dla krotkich segmentow DEM (<30m) calkowicie wewnatrz bufora BDOT. Dodano `ST_Within` check przed `ST_Intersection` w `update_stream_real_flags()` — overlap=1.0 gdy segment w calosci w buforze. Wzrost udzialu ciekow rzeczywistych z 25.9% do 31.5% (threshold 1000)
+- **Hydraulic length wzgledem ujscia zlewni** — `aggregate_stats()` raportowalo surowa wartosc `max_flow_dist_m` (odleglosc od globalnego ujscia basenu). Teraz odejmuje dystans ujscia wybranej zlewni: `hydraulic_length = max(all) - outlet_dist`
 - **nash_urban_fraction zawsze NULL** — imperviousness nie było przekazywane z land cover do build_morph_dict_from_graph()
 - **NRCS tc zawyżone (~608 min)** — formuła używała channel_slope zamiast mean_slope. Per TR-55, Y = average watershed slope. tc: 608→200 min
 - **FAA/Kerby — bledny uzycie length_km** — nowe pole `tc_overland_length_km` wymagane od uzytkownika zamiast automatycznego length_km (dlugosc zlewni ≠ dlugosc splywu powierzchniowego)
@@ -50,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Overlay glownego cieku** — `get_main_channel_feature_collection()` z logika ciaglosci BDOT, poprawne wyroznienie segmentow rzeczywistych/algorytmicznych
 - **BDOT main channel tracing (R1a/R2/R3)** — tie-breaker `is_real_stream` w `trace_main_channel()`, gap tolerance `MAX_GAP=2` (tolerancja 2 segmentow bez BDOT), bufor matchingu zwiekszony do 25m
 - **DownloadManager resolution** — parametr `resolution` przekazywany przez `run_pipeline()` zamiast globalnych args, poprawna sciezka NMT
+- **Main channel trace: upstream_area_km2 z stream_network** — użycie kumulatywnej powierzchni zlewni (`upstream_area_km2`) zamiast lokalnej `area_km2` zlewni cząstkowej. Lokalna area_km2 była błędna — mały subcatchment doplywu mógł mieć większą powierzchnię lokalną niż subcatchment cieku głównego
+- **Kaskadowa eskalacja progu w select_stream** — `trace_main_channel` i `get_main_channel_feature_collection` używają teraz eskalowanego progu i `outlet_idx_for_stats` (zamiast oryginalnego `clicked_idx` i `threshold`)
 
 ### Optymalizacja
 - **BDOT stream matching: per-feature buffers** — zamiana `ST_Collect` + globalny bufor na per-feature `ST_Buffer` + `ST_Intersects` (24s vs >90 min dla 253k segmentow)

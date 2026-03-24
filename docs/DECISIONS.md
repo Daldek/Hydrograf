@@ -969,6 +969,30 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-046: upstream_area_km2 jako kryterium wyboru galezi w trace_main_channel
+
+**Data:** 2026-03-24
+**Status:** Przyjeta
+
+**Kontekst:** `trace_main_channel()` w `catchment_graph.py` wybieral galezie na podstawie rzedu Strahlera (a potem lokalnej powierzchni subcatchmentu). Strahler nie odzwierciedla rzeczywistej akumulacji przeplywu — dwa cieki o tym samym rzedzie moga drenowac zupelnie rozne powierzchnie. Lokalna `area_km2` (powierzchnia bezposredniego subcatchmentu) rowniez nie oddaje skumulowanej powierzchni zlewni powyzej punktu. W efekcie trace przerywalo sie na pierwszym doplywle, bo lokalny subcatchment doplywu mogl byc wiekszy niz lokalny subcatchment cieku glownego.
+
+**Opcje:**
+- A) Strahler + lokalna area_km2 — dotychczasowe kryterium, niestabilne przy niejednorodnych subcatchmentach
+- B) upstream_area_km2 (skumulowana powierzchnia zlewni z flow accumulation) — dostepna w `stream_network.upstream_area_km2`, ladowana do tablicy `_upstream_area_km2` w CatchmentGraph. Fizycznie poprawna metryka: wieksza akumulacja = ciek glowny
+
+**Decyzja:** Opcja B. Nowa tablica `_upstream_area_km2` ladowana z `stream_network.upstream_area_km2` (kumulatywna powierzchnia zlewni z flow accumulation) przy inicjalizacji CatchmentGraph — NIE z `stream_catchments.area_km2` (lokalna powierzchnia subcatchmentu). Priorytet wyboru galezi: (1) upstream_area_km2 — skumulowana powierzchnia, (2) is_real_stream — ciek BDOT, (3) Strahler, (4) lokalna area_km2. Zapewnia spojnosc miedzy progami (threshold) — ta sama galezie wybierana niezaleznie od rozdzielczosci sieci.
+
+**Dodatkowa poprawka (cascade threshold mismatch):** Po kaskadowej eskalacji progu w `select_stream.py` (np. 1000→100000), `trace_main_channel()` i `get_main_channel_feature_collection()` musza uzywac eskalowanego progu i `outlet_idx_for_stats` — nie oryginalnego `clicked_idx`/`threshold`. Wprowadzono zmienna `outlet_idx_for_stats` aktualizowana razem z `upstream_indices_for_stats` podczas cascade.
+
+**Konsekwencje:**
+- Poprawny trace main channel — sled podaza za najwieksza akumulacja przeplywu do dzialu wodnego
+- Spojnosc miedzy progami — wynik niezalezny od threshold_m2
+- Poprawne wyniki po cascade — main channel i GeoJSON zgodne z eskalowanym progiem
+- Dodatkowy koszt pamieci: ~44k * 8B = 352 KB (tablica float64)
+- Wymaga kolumny `upstream_area_km2` w `stream_network` (migracja 023)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
