@@ -796,6 +796,7 @@ def build_morph_dict_from_graph(
         "stream_frequency_per_km2": stats.get("stream_frequency_per_km2"),
         "ruggedness_number": ruggedness,
         "max_strahler_order": stats.get("max_strahler_order"),
+        "hydraulic_length_km": stats.get("hydraulic_length_km"),
     }
 
     # Private key: internal node indices for main channel (not part of Pydantic schema)

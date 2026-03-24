@@ -340,6 +340,7 @@ def polygonize_subcatchments(
     slope: np.ndarray,
     metadata: dict,
     segments: list[dict],
+    flow_dist_m: np.ndarray | None = None,
 ) -> list[dict]:
     """
     Convert label raster to sub-catchment polygons.
@@ -359,13 +360,16 @@ def polygonize_subcatchments(
         Grid metadata (cellsize, nodata_value, transform)
     segments : list[dict]
         Stream segments from vectorize_streams()
+    flow_dist_m : np.ndarray, optional
+        Flow path distance to outlet (meters) from pyflwdir.stream_distance().
+        When provided, per-catchment max is stored as hydraulic_length_km.
 
     Returns
     -------
     list[dict]
         List of catchment dicts with keys: wkt, segment_idx,
         area_km2, mean_elevation_m, mean_slope_percent,
-        strahler_order
+        strahler_order, hydraulic_length_km (if flow_dist_m provided)
     """
     from rasterio.features import shapes
     from shapely.geometry import MultiPolygon, shape
@@ -448,6 +452,16 @@ def polygonize_subcatchments(
     elev_min = zonal_min(label_raster, dem_for_min, max_label)
     elev_max = zonal_max(label_raster, dem_for_max, max_label)
 
+    # Hydraulic length: max flow path distance per sub-catchment
+    hydraulic_max = None
+    if flow_dist_m is not None:
+        # Use -inf for cells without flow distance so they don't affect max
+        dist_for_max = np.where(
+            label_raster > 0, flow_dist_m, -np.inf
+        ).astype(np.float64)
+        hydraulic_max = zonal_max(label_raster, dist_for_max, max_label)
+        del dist_for_max
+
     # Elevation histograms (for hypsometric curve aggregation)
     elev_histograms = zonal_elevation_histogram(
         label_raster,
@@ -512,6 +526,13 @@ def polygonize_subcatchments(
         # Perimeter from polygon geometry (in km)
         perimeter_km = round(merged.length / 1000, 4)
 
+        # Hydraulic length (max flow path distance to outlet, in km)
+        h_length_km = None
+        if hydraulic_max is not None:
+            h_val = float(hydraulic_max[seg_idx - 1])
+            if np.isfinite(h_val) and h_val > 0:
+                h_length_km = round(h_val / 1000, 4)
+
         # Elevation histogram
         histogram = elev_histograms.get(seg_idx)
 
@@ -532,6 +553,7 @@ def polygonize_subcatchments(
                 "elevation_max_m": (round(e_max, 2) if e_max is not None else None),
                 "perimeter_km": perimeter_km,
                 "stream_length_km": stream_length_km,
+                "hydraulic_length_km": h_length_km,
                 "elev_histogram": histogram,
             }
         )
