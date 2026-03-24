@@ -993,6 +993,48 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-047: Wygładzanie Chaikin cieków w preprocessingu
+
+**Data:** 2026-03-24
+**Status:** Przyjeta
+
+**Kontekst:** Cieki z wektoryzacji rastra mają pikselowe schodki — poszarpane kształty wynikające z kwadratowej siatki NMT. Wizualnie nieprzyjemne na mapie, zawyżone długości segmentów.
+
+**Opcje:**
+- A) Wygładzanie runtime (przy serwowaniu MVT/GeoJSON) — wielokrotny koszt obliczeniowy, niespójność długości w DB vs. na mapie
+- B) Wygładzanie podczas INSERT do `stream_network` — jednorazowy koszt, spójne dane w DB
+
+**Decyzja:** Opcja B. `ST_ChaikinSmoothing(geom, 3)` z `preserve_end_points=true` (domyślne) podczas INSERT do `stream_network` w `db_bulk.py`. Kolumna `length_m` przeliczana z wygładzonej geometrii.
+
+**Konsekwencje:**
+- Gładkie cieki na mapie bez pikselowych schodków
+- Poprawione długości ścieżek spływu (bazujące na `length_m`)
+- Zachowana topologia sieci — punkty końcowe segmentów nie przesunięte
+- Jednorazowy koszt w preprocessingu (zaniedbywalny vs. reszta pipeline)
+
+---
+
+## ADR-048: Droga spływu z działu wód jako osobna geometria
+
+**Data:** 2026-03-24
+**Status:** Przyjeta
+
+**Kontekst:** Najdłuższa ścieżka spływu (`longest_flow_path_geom`) nie musi zaczynać się na granicy zlewni — może zaczynać się wewnątrz zlewni (np. na krętym cieku, gdzie komórka o max flow_dist leży daleko od granicy). Parametr `divide_flow_path_km` powinien opisywać drogę wody od działu wodnego (granicy) do ujścia.
+
+**Opcje:**
+- A) Nadpisać longest_flow_path tak, by zawsze startowała z granicy — zmienia semantykę istniejącego pola
+- B) Osobna kolumna `divide_flow_path_geom` — ścieżka z komórki o max flow_dist na GRANICY zlewni cząstkowej
+
+**Decyzja:** Opcja B. Nowa kolumna `divide_flow_path_geom` w `stream_catchments` (migracja 024). Tracing z komórki na boundary o największym `flow_dist` do ujścia. Nowe pole API: `divide_flow_path_geojson` w WatershedResponse. Frontend: longest flow path = czerwona przerywana kreska, divide flow path = czerwona kropka.
+
+**Konsekwencje:**
+- Poprawna wartość `divide_flow_path_km` — fizycznie odzwierciedla drogę wody od działu wodnego
+- Zachowana semantyka `longest_flow_path` (najdłuższa ścieżka gdziekolwiek w zlewni)
+- Dwie osobne wizualizacje na mapie — użytkownik widzi oba warianty
+- Dodatkowy koszt storage: ~1 geometria per subcatchment (zaniedbywalny)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
