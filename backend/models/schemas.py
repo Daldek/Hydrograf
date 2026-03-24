@@ -155,6 +155,10 @@ class MorphometricParameters(BaseModel):
     length_to_centroid_km: float | None = Field(
         None, ge=0, description="Distance from outlet to boundary centroid [km]"
     )
+    hydraulic_length_km: float | None = Field(
+        None, ge=0,
+        description="Longest flow path from most remote point to outlet [km]",
+    )
 
 
 class HypsometricPoint(BaseModel):
