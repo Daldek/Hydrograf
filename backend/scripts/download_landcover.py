@@ -42,7 +42,10 @@ import argparse
 import logging
 import sys
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
+
+import requests
 
 # Configure logging
 logging.basicConfig(
@@ -309,12 +312,17 @@ def _generate_sample_coords(start: float, end: float, spacing: float) -> list[fl
     return coords
 
 
-def discover_teryts_for_bbox(
+_WFS_PRG_URL = (
+    "https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries"
+)
+
+
+def _discover_teryts_grid(
     bbox_2180: tuple[float, float, float, float],
     spacing_m: float = 2000.0,
 ) -> list[str]:
     """
-    Discover all TERYT codes (powiaty) that cover a bounding box.
+    Discover TERYT codes by grid-sampling WMS points (legacy fallback).
 
     Samples a grid of points within the bbox and queries WMS to find
     the TERYT code at each point. Returns a sorted list of unique codes.
@@ -324,7 +332,7 @@ def discover_teryts_for_bbox(
     bbox_2180 : tuple
         Bounding box in EPSG:2180: (min_x, min_y, max_x, max_y)
     spacing_m : float
-        Grid spacing in meters (default: 5000)
+        Grid spacing in meters (default: 2000)
 
     Returns
     -------
@@ -350,7 +358,101 @@ def discover_teryts_for_bbox(
                 logger.debug(f"Point ({x:.0f}, {y:.0f}) — no TERYT: {e}")
 
     result = sorted(teryts)
-    logger.info(f"Discovered {len(result)} TERYT(s) for bbox: {result}")
+    logger.info(f"Discovered {len(result)} TERYT(s) for bbox (grid): {result}")
+    return result
+
+
+def _parse_teryts_from_gml(gml_text: str) -> set[str]:
+    """
+    Extract TERYT codes (JPT_KOD_JE) from a WFS GML response.
+
+    Uses a namespace-agnostic search to handle varying GML schemas.
+
+    Parameters
+    ----------
+    gml_text : str
+        Raw GML/XML text from WFS GetFeature response
+
+    Returns
+    -------
+    set[str]
+        Unique TERYT codes found in the response
+    """
+    teryts: set[str] = set()
+    try:
+        root = ET.fromstring(gml_text)
+    except ET.ParseError as exc:
+        logger.warning(f"Nie udało się sparsować odpowiedzi GML: {exc}")
+        return teryts
+
+    # Namespace-agnostic: find any element whose local name is JPT_KOD_JE
+    for elem in root.iter():
+        local_name = elem.tag.rsplit("}", 1)[-1] if "}" in elem.tag else elem.tag
+        if local_name == "JPT_KOD_JE" and elem.text:
+            code = elem.text.strip()
+            if code:
+                teryts.add(code)
+
+    return teryts
+
+
+def discover_teryts_for_bbox(
+    bbox_2180: tuple[float, float, float, float],
+    spacing_m: float = 2000.0,
+) -> list[str]:
+    """
+    Discover all TERYT codes (powiaty) that cover a bounding box.
+
+    Primary method: single WFS GetFeature request with BBOX filter
+    to PRG (Państwowy Rejestr Granic) service. Falls back to legacy
+    grid-sampling if WFS is unavailable.
+
+    Parameters
+    ----------
+    bbox_2180 : tuple
+        Bounding box in EPSG:2180: (min_x, min_y, max_x, max_y)
+    spacing_m : float
+        Grid spacing in meters for fallback method (default: 2000)
+
+    Returns
+    -------
+    list[str]
+        Sorted list of unique 4-digit TERYT codes
+    """
+    min_x, min_y, max_x, max_y = bbox_2180
+
+    params = {
+        "service": "WFS",
+        "version": "2.0.0",
+        "request": "GetFeature",
+        "typeName": "ms:A02_Granice_powiatow",
+        "srsName": "EPSG:2180",
+        "BBOX": f"{min_x},{min_y},{max_x},{max_y},EPSG:2180",
+        "propertyName": "JPT_KOD_JE,JPT_NAZWA_",
+    }
+
+    logger.debug(f"WFS request: {_WFS_PRG_URL} params={params}")
+
+    try:
+        response = requests.get(_WFS_PRG_URL, params=params, timeout=30)
+        response.raise_for_status()
+    except Exception as exc:
+        logger.warning(
+            f"WFS PRG niedostępny ({exc}), "
+            f"przełączam na grid sampling (wolniejszy)"
+        )
+        return _discover_teryts_grid(bbox_2180, spacing_m=spacing_m)
+
+    teryts = _parse_teryts_from_gml(response.text)
+
+    if not teryts:
+        logger.warning(
+            "WFS zwrócił 0 TERYT-ów, przełączam na grid sampling"
+        )
+        return _discover_teryts_grid(bbox_2180, spacing_m=spacing_m)
+
+    result = sorted(teryts)
+    logger.info(f"Discovered {len(result)} TERYT(s) for bbox (WFS): {result}")
     return result
 
 
