@@ -152,6 +152,20 @@ class MorphometricParameters(BaseModel):
         None, ge=0, description="Distance from outlet to boundary centroid [km]"
     )
 
+    # Flow path parameters
+    longest_flow_path_km: float | None = Field(
+        None, ge=0,
+        description="Longest flow path from most remote cell to outlet [km]",
+    )
+    divide_flow_path_km: float | None = Field(
+        None, ge=0,
+        description="Longest flow path from watershed divide (boundary) to outlet [km]",
+    )
+    centroid_flow_path_km: float | None = Field(
+        None, ge=0,
+        description="Flow path from watershed centroid to outlet [km]",
+    )
+
 
 class HypsometricPoint(BaseModel):
     """Single point on hypsometric curve."""
@@ -221,6 +235,9 @@ class WatershedResponse(BaseModel):
     hsg_stats: HsgStats | None = None
     main_stream_geojson: dict[str, Any] | None = Field(
         None, description="Main stream as GeoJSON LineString (WGS84)"
+    )
+    longest_flow_path_geojson: dict[str, Any] | None = Field(
+        None, description="Longest flow path as GeoJSON Feature (WGS84)"
     )
 
 
