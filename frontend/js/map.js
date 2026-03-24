@@ -390,6 +390,51 @@
     function clearWatershed() {
         if (watershedLayer) { map.removeLayer(watershedLayer); watershedLayer = null; }
         if (outletMarker) { map.removeLayer(outletMarker); outletMarker = null; }
+        clearMainChannel();
+    }
+
+    // ===== Main channel display =====
+
+    var mainChannelLayer = null;
+
+    /**
+     * Show main channel on map with BDOT stream highlighting.
+     *
+     * Accepts either a FeatureCollection (per-segment features with
+     * is_real_stream property) or a plain LineString geometry.
+     *
+     * - Full main channel: light blue (#64B5F6), weight 2, opacity 0.5
+     * - BDOT-matched segments: dark blue (#1565C0), weight 3, opacity 0.9
+     */
+    function showMainChannel(geojson) {
+        clearMainChannel();
+        if (!geojson) return;
+
+        // FeatureCollection with is_real_stream per feature
+        if (geojson.type === 'FeatureCollection' && geojson.features) {
+            mainChannelLayer = L.geoJSON(geojson, {
+                style: function (feature) {
+                    var isReal = feature.properties && feature.properties.is_real_stream;
+                    return isReal
+                        ? { color: '#1565C0', weight: 3, opacity: 0.9 }
+                        : { color: '#64B5F6', weight: 2, opacity: 0.5 };
+                },
+                interactive: false,
+            }).addTo(map);
+        } else {
+            // Fallback: single LineString geometry — draw as full channel
+            mainChannelLayer = L.geoJSON(geojson, {
+                style: { color: '#64B5F6', weight: 2, opacity: 0.5 },
+                interactive: false,
+            }).addTo(map);
+        }
+    }
+
+    function clearMainChannel() {
+        if (mainChannelLayer) {
+            map.removeLayer(mainChannelLayer);
+            mainChannelLayer = null;
+        }
     }
 
     // ===== Drawing mode (polyline for terrain profile) =====
@@ -803,6 +848,8 @@
         getWatershedLayer: getWatershedLayer,
         showOutlet: showOutlet,
         clearWatershed: clearWatershed,
+        showMainChannel: showMainChannel,
+        clearMainChannel: clearMainChannel,
         disableClick: disableClick,
         enableClick: enableClick,
         setLoadingCursor: setLoadingCursor,

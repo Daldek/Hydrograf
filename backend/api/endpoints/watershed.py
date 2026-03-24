@@ -25,6 +25,7 @@ from core.watershed_service import (
     boundary_to_polygon,
     build_morph_dict_from_graph,
     ensure_outlet_within_boundary,
+    get_main_channel_feature_collection,
     get_main_stream_geojson,
     get_segment_outlet,
     get_stream_info_by_segment_idx,
@@ -252,12 +253,16 @@ def delineate_watershed(
             if hypso_data:
                 hypso_curve = [HypsometricPoint(**p) for p in hypso_data]
 
-        # 16. Main stream GeoJSON
-        main_stream_geojson = get_main_stream_geojson(
-            segment_idx,
-            DEFAULT_THRESHOLD_M2,
-            db,
+        # 16. Main stream GeoJSON (FeatureCollection with is_real_stream per segment)
+        main_channel_nodes = morph_dict.pop("_main_channel_nodes", [])
+        main_stream_geojson = get_main_channel_feature_collection(
+            cg, main_channel_nodes, DEFAULT_THRESHOLD_M2, db,
         )
+        if main_stream_geojson is None:
+            # Fallback: single segment
+            main_stream_geojson = get_main_stream_geojson(
+                segment_idx, DEFAULT_THRESHOLD_M2, db,
+            )
 
         # 17. Land cover statistics
         lc_stats = None
