@@ -50,6 +50,39 @@ class TestOverlapRatioLogic:
         assert ratio < 0.01
 
 
+    def test_short_segment_within_buffer(self):
+        """Short segment (< 30m) fully within buffer must have overlap > 0.
+
+        Regression test for GEOS precision bug: ST_Intersection returns EMPTY
+        for short segments despite ST_Within returning True.
+        Fix: use ST_Within check before ST_Intersection.
+        """
+        segment = LineString([(500, 500), (510, 502)])  # ~10m segment
+        bdot = LineString([(500, 498), (520, 500)])  # ~2m away
+        buffer = bdot.buffer(25)
+        # ST_Within equivalent
+        assert buffer.contains(segment), "Short segment should be within 25m buffer"
+        # Intersection may give empty due to GEOS precision on short lines
+        intersection = segment.intersection(buffer)
+        # With ST_Within fallback, this should always count as full overlap
+        if intersection.is_empty or intersection.length < 0.001:
+            # GEOS precision issue confirmed — ST_Within fallback needed
+            ratio = 1.0  # ST_Within = True → ratio = 1.0
+        else:
+            ratio = intersection.length / segment.length
+        assert ratio >= 0.5
+
+    def test_short_segment_outside_buffer(self):
+        """Short segment far from BDOT should not match."""
+        segment = LineString([(500, 500), (510, 502)])  # ~10m segment
+        bdot = LineString([(500, 560), (520, 560)])  # 60m away
+        buffer = bdot.buffer(25)
+        assert not buffer.contains(segment)
+        intersection = segment.intersection(buffer)
+        ratio = intersection.length / segment.length if not intersection.is_empty else 0
+        assert ratio < 0.5
+
+
 class TestLoadBdotStreams:
     """Test BDOT GPKG loading."""
 

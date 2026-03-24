@@ -477,18 +477,23 @@ def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, o
             cursor.execute("CREATE INDEX ON temp_bdot_buffer USING GIST (geom)")
 
             # Step 3: Spatial join + ST_Union to avoid double-counting
-            # where multiple BDOT buffers overlap the same segment
+            # where multiple BDOT buffers overlap the same segment.
+            # ST_Within check handles short segments (< ~30m) where GEOS
+            # ST_Intersection incorrectly returns EMPTY despite full containment.
             cursor.execute("""
                 UPDATE stream_network sn
                 SET is_real_stream = sub.is_real
                 FROM (
                     SELECT
                         sn2.segment_idx,
-                        (COALESCE(
-                            ST_Length(ST_Intersection(sn2.geom, ST_Union(bb.geom)))
-                            / NULLIF(ST_Length(sn2.geom), 0),
-                            0
-                        ) >= %s) AS is_real
+                        (CASE
+                            WHEN bool_or(ST_Within(sn2.geom, bb.geom)) THEN 1.0
+                            ELSE COALESCE(
+                                ST_Length(ST_Intersection(sn2.geom, ST_Union(bb.geom)))
+                                / NULLIF(ST_Length(sn2.geom), 0),
+                                0
+                            )
+                        END >= %s) AS is_real
                     FROM stream_network sn2
                     LEFT JOIN temp_bdot_buffer bb
                         ON ST_Intersects(sn2.geom, bb.geom)
