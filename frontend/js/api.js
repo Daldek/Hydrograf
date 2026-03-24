@@ -141,6 +141,7 @@
             if (opts.snyder_cp != null) payload.snyder_cp = opts.snyder_cp;
             if (opts.tc_runoff_coeff != null) payload.tc_runoff_coeff = opts.tc_runoff_coeff;
             if (opts.tc_retardance != null) payload.tc_retardance = opts.tc_retardance;
+            if (opts.tc_overland_length_km != null) payload.tc_overland_length_km = opts.tc_overland_length_km;
         }
 
         const response = await fetch('/api/generate-hydrograph', {

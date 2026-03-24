@@ -158,6 +158,9 @@ def _compute_watershed(
         boundary_wgs84,
         properties={"area_km2": round(area_km2, 2)},
     )
+    # Remove private key before passing to Pydantic schema
+    morph_dict.pop("_main_channel_nodes", None)
+
     watershed_resp = WatershedResponse(
         boundary_geojson=boundary_geojson,
         outlet=OutletInfo(
@@ -212,13 +215,38 @@ def _calculate_tc(
     For faa/kerby/kerby_kirpich uses ConcentrationTime static methods directly.
     """
     if method == "nrcs" and wp.channel_slope_m_per_m is not None:
-        saved = wp.channel_slope_m_per_m
-        wp.channel_slope_m_per_m = None
-        tc = wp.calculate_tc(method=method)
-        wp.channel_slope_m_per_m = saved
+        saved_slope = wp.channel_slope_m_per_m
+        saved_length = wp.channel_length_km
+        wp.channel_slope_m_per_m = None  # force mean_slope
+        # Use hydraulic length (longest flow path) per TR-55
+        hydraulic = morph_dict.get("hydraulic_length_km")
+        if hydraulic:
+            wp.channel_length_km = None  # force Hydrolog to use length_km
+            # But length_km is Euclidean — override with hydraulic
+            saved_wlength = wp.length_km
+            wp.length_km = hydraulic
+            tc = wp.calculate_tc(method=method)
+            wp.length_km = saved_wlength
+        else:
+            tc = wp.calculate_tc(method=method)
+        wp.channel_slope_m_per_m = saved_slope
+        wp.channel_length_km = saved_length
         return tc
 
-    if method in ("kirpich", "giandotti"):
+    if method == "kirpich":
+        hydraulic = morph_dict.get("hydraulic_length_km")
+        if hydraulic:
+            saved = wp.channel_length_km
+            saved_wl = wp.length_km
+            wp.channel_length_km = None
+            wp.length_km = hydraulic
+            tc = wp.calculate_tc(method=method)
+            wp.length_km = saved_wl
+            wp.channel_length_km = saved
+            return tc
+        return wp.calculate_tc(method=method)
+
+    if method == "giandotti":
         return wp.calculate_tc(method=method)
 
     if method == "faa":
@@ -228,7 +256,13 @@ def _calculate_tc(
             s_mm = (25400.0 / cn - 254.0) if cn < 100 else 0.0
             runoff_coeff = 1.0 - s_mm / (s_mm + 25.4) if s_mm > 0 else 0.95
         slope = morph_dict.get("mean_slope_m_per_m") or 0.01
-        length = morph_dict.get("length_km") or morph_dict.get("channel_length_km") or 1.0
+        # FAA requires overland flow length (0.015-3 km), NOT watershed length
+        length = request.tc_overland_length_km
+        if length is None:
+            raise ValueError(
+                "Metoda FAA wymaga podania długości spływu powierzchniowego "
+                "(tc_overland_length_km). Typowy zakres: 0.015-3 km."
+            )
         return ConcentrationTime.faa(
             length_km=length, slope_m_per_m=slope, runoff_coeff=runoff_coeff,
         )
@@ -236,17 +270,29 @@ def _calculate_tc(
     if method == "kerby":
         retardance = request.tc_retardance or 0.4
         slope = morph_dict.get("mean_slope_m_per_m") or 0.01
-        length = morph_dict.get("length_km") or 1.0
+        # Kerby requires overland flow length (max ~0.366 km), NOT watershed length
+        length = request.tc_overland_length_km
+        if length is None:
+            raise ValueError(
+                "Metoda Kerby wymaga podania długości spływu powierzchniowego "
+                "(tc_overland_length_km). Typowy zakres: 0.01-0.366 km."
+            )
         return ConcentrationTime.kerby(
             length_km=length, slope_m_per_m=slope, retardance=retardance,
         )
 
     if method == "kerby_kirpich":
         retardance = request.tc_retardance or 0.4
-        channel_length = morph_dict.get("channel_length_km") or 1.0
+        # Prefer BDOT-based real channel length if available
+        real_channel = morph_dict.get("real_channel_length_km")
+        channel_length = real_channel or morph_dict.get("channel_length_km") or 1.0
         channel_slope = morph_dict.get("channel_slope_m_per_m") or 0.01
-        total_length = morph_dict.get("length_km") or channel_length
-        overland_length = max(total_length - channel_length, 0.1)
+        # Prefer user-provided overland length, fallback to total - channel
+        if request.tc_overland_length_km is not None:
+            overland_length = request.tc_overland_length_km
+        else:
+            total_length = morph_dict.get("hydraulic_length_km") or morph_dict.get("length_km") or channel_length
+            overland_length = max(total_length - channel_length, 0.1)
         overland_slope = morph_dict.get("mean_slope_m_per_m") or 0.01
         return ConcentrationTime.kerby_kirpich(
             overland_length_km=overland_length,

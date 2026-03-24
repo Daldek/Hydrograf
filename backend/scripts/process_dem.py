@@ -46,8 +46,11 @@ import numpy as np
 from sqlalchemy import text
 
 from core.db_bulk import (
+    insert_bdot_streams,
     insert_catchments,
     insert_stream_segments,
+    load_bdot_streams_from_gpkg,
+    update_stream_real_flags,
 )
 from core.hydrology import (
     D8_DIRECTIONS,
@@ -542,6 +545,17 @@ def process_dem(
         )
     flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
 
+    # Compute flow path distance to outlet for hydraulic length
+    # stream_distance(unit='m') returns distance from each cell to the
+    # pit/outlet along the flow direction grid, in meters.
+    logger.info("Computing flow path distances (hydraulic length)...")
+    t_dist = time.time()
+    flow_dist_m = flw.stream_distance(unit="m").reshape(d8_fdir.shape)
+    logger.info(
+        f"Flow path distances computed in {time.time() - t_dist:.1f}s "
+        f"(max: {float(flow_dist_m.max()):.0f} m)"
+    )
+
     if save_intermediates:
         save_raster_geotiff(
             filled_dem,
@@ -758,6 +772,7 @@ def process_dem(
                     slope,
                     metadata,
                     segments,
+                    flow_dist_m=flow_dist_m,
                 )
 
                 # Compute longest flow path per sub-catchment (batch)
@@ -824,6 +839,26 @@ def process_dem(
                     logger.warning(
                         f"Stream/catchment mismatch for threshold={threshold_m2} m²: "
                         f"{stream_count} streams vs {catchment_count} catchments"
+                    )
+
+            # === BDOT stream matching ===
+            if burn_streams_path:
+                logger.info("Loading BDOT streams into database...")
+                bdot_data = load_bdot_streams_from_gpkg(burn_streams_path)
+                if bdot_data:
+                    bdot_count = insert_bdot_streams(db, bdot_data)
+                    logger.info(f"Inserted {bdot_count} BDOT stream features")
+
+                    for threshold_m2 in threshold_list_m2:
+                        stats_match = update_stream_real_flags(db, threshold_m2)
+                        logger.info(
+                            f"Stream matching (threshold={threshold_m2}): "
+                            f"{stats_match['real']}/{stats_match['total']} real, "
+                            f"{stats_match['overland']} overland"
+                        )
+                else:
+                    logger.warning(
+                        "No BDOT hydro data found — skipping stream matching"
                     )
     else:
         logger.info("Dry run - skipping database insert")

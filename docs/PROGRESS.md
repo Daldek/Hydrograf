@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 948 testow (23 nowych flow path) |
+| Testy | ✅ Gotowy | 955+ testow jednostkowych (w tym 23 nowych flow path) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -46,23 +46,34 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-24 (sesja 67 — flow path tracing)
+**Data:** 2026-03-24 (sesja 67 — BDOT matching + flow path tracing + naprawy tc)
 
 ### Co zrobiono
+- **Upgrade Hydrolog v0.6.2 → v0.6.3** — nowe metody tc (FAA, Kerby, Kerby-Kirpich), 88 mypy fixes, 28 nowych testów
+- **Migracja domyślnej Nash** — `from_tc` (deprecated) → `from_lutz` (Lutz physiographic), label [deprecated] w UI
+- **3 nowe metody Tc** — FAA (spływ pow., C z CN), Kerby (retardance), Kerby-Kirpich (composite). Backend: `_calculate_tc()`, `ConcentrationTime` static methods. Frontend: selektor, pola C/N, logika widoczności
+- **UI/UX review** — spójność etykiet, logika widoczności 30 kombinacji, auto-regeneracja
+- **Mock morph_dict** — dodano `length_to_centroid_km` wymagane przez from_lutz
+- **BDOT10k stream matching (ADR-044)** — import cieków BDOT do PostGIS, spatial matching (bufor 15m, overlap >= 50%), `real_channel_length_km` w CatchmentGraph i API. Walidacja: 4737 features, 5.4% real (threshold 1000), 27.7% real (threshold 100000), korelacja ze Strahlerem
+- **Hydraulic length preprocessing (migracja 022)** — `hydraulic_length_km` z `pyflwdir.stream_distance()` obliczany w pipeline i zapisywany w `stream_catchments`. Propagowany przez CatchmentGraph do morph_dict
 - **Ścieżki spływu (feat/flow-path-tracing)** — `pyflwdir.stream_distance(unit='m')` + batch `flw.path()` per subcatchment
 - **Migracja 023:** nowe kolumny `max_flow_dist_m` + `longest_flow_path_geom` na `stream_catchments`
 - **3 nowe parametry morfometryczne:** `longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km` (point sampling `stream_distance.tif`)
 - **CatchmentGraph:** ładowanie `max_flow_dist_m`, agregacja jako `hydraulic_length_km`
 - **API:** `get_longest_flow_path_geojson()` — kompozycja pełnej ścieżki z subcatchment geometrii + downstream segments; nowe pole `WatershedResponse.longest_flow_path_geojson`
-- **GUI:** "Droga spływu" i "Droga z działu" w tabeli parametrów podstawowych; przerywana pomarańczowa linia (#E65100) najdłuższej ścieżki na mapie
-- 948 testów (23 nowych), 0 regresji
+- **Naprawy parametrów tc** — FAA/Kerby: wymuszenie `tc_overland_length_km` od użytkownika (zamiast błędnego length_km). NRCS/Kirpich: `hydraulic_length_km` zamiast `channel_length_km`. Kerby-Kirpich: overland z hydraulic_length (fallback), channel z real_channel_length_km (BDOT)
+- **GUI: droga spływu + overlay cieku** — "Droga spływu" i "Droga z działu" w tabeli parametrów, przerywana pomarańczowa ścieżka na mapie, main channel overlay z wyróżnieniem cieków BDOT (ciemny/jasny niebieski), "w tym ciek BDOT" i "Pokrycie BDOT" w panelu parametrów
+- **Fix fragmentacji real_channel_length_km** — algorytm ciągłego odcinka od ujścia zamiast sumowania rozproszonych fragmentów is_real_stream=true
+- **Fix overlay głównego cieku** — `get_main_channel_feature_collection()` z logiką ciągłości BDOT
+- **Optymalizacja BDOT matching** — per-feature buffers zamiast ST_Collect (24s vs >90 min)
+- 955+ testów (w tym 23 nowych flow path), 0 regresji
 - Szacowany dodatkowy czas pipeline: +60-120s na istniejące ~45 min
 
 ### W trakcie
 - Brak
 
 ### Następne kroki
-- Merge feat/flow-path-tracing → develop, re-run pipeline
+- Re-run pipeline po merge obu feature branchy
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
 - Follow-up: preprocessing `stream_extraction.py` — zamiana `simplify()` na `set_precision()`
 - Clipping do dokładnej granicy poligonu
