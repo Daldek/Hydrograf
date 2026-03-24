@@ -580,9 +580,14 @@ class CatchmentGraph:
         # Drainage density
         drainage_density = total_stream_km / total_area if total_area > 0 else None
 
-        # Max Strahler
-        strahlers = self._strahler[indices]
-        max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
+        # Max Strahler from BDOT real streams only
+        if self._is_real_stream is not None:
+            real_mask = self._is_real_stream[indices]
+            real_strahlers = self._strahler[indices][real_mask]
+            max_strahler = int(np.max(real_strahlers)) if len(real_strahlers) > 0 else None
+        else:
+            strahlers = self._strahler[indices]
+            max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
 
         # Stream frequency (all segments — kept for backward compatibility)
         n_segments = len(indices)

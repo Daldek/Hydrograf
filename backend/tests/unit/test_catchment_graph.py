@@ -153,10 +153,19 @@ class TestCatchmentGraphAggregateStats:
         assert stats["elevation_mean_m"] == pytest.approx(expected, abs=0.5)
 
     def test_max_strahler(self, small_graph):
-        """Max Strahler should be the maximum value."""
+        """Max Strahler should be max from BDOT real streams only."""
         indices = np.array([0, 1, 2, 3])
         stats = small_graph.aggregate_stats(indices)
-        assert stats["max_strahler_order"] == 3
+        # Real streams: node 0 (strahler=1) and node 2 (strahler=2)
+        # Node 3 (strahler=3) is NOT real → excluded
+        assert stats["max_strahler_order"] == 2
+
+    def test_max_strahler_no_bdot(self, small_graph):
+        """Max Strahler is None when no BDOT real streams in subset."""
+        # Nodes 1 and 3 have is_real_stream=False
+        indices = np.array([1, 3])
+        stats = small_graph.aggregate_stats(indices)
+        assert stats["max_strahler_order"] is None
 
     def test_stream_length_sum(self, small_graph):
         """Stream length should be sum."""
@@ -226,6 +235,7 @@ class TestCatchmentGraphAggregateStats:
         assert stats["stream_frequency_per_km2"] == pytest.approx(0.0)
         assert stats["bdot_stream_length_km"] == pytest.approx(0.0)
         assert stats["bdot_stream_count"] == 0
+        assert stats["max_strahler_order"] is None
 
     def test_partial_traversal_stats(self, small_graph):
         """Stats for partial traversal (only headwaters)."""
