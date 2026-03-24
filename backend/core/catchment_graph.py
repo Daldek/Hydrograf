@@ -584,9 +584,23 @@ class CatchmentGraph:
         strahlers = self._strahler[indices]
         max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
 
-        # Stream frequency
+        # Stream frequency (all segments — kept for backward compatibility)
         n_segments = len(indices)
-        stream_frequency = n_segments / total_area if total_area > 0 else None
+        stream_frequency_all = n_segments / total_area if total_area > 0 else None
+
+        # BDOT-based drainage metrics (real streams only)
+        if self._is_real_stream is not None and self._segment_length_km is not None:
+            real_mask = self._is_real_stream[indices]
+            real_lengths = self._segment_length_km[indices]
+            bdot_stream_km = float(np.nansum(real_lengths[real_mask]))
+            bdot_n_segments = int(np.sum(real_mask))
+            bdot_drainage_density = bdot_stream_km / total_area if total_area > 0 else None
+            bdot_stream_frequency = bdot_n_segments / total_area if total_area > 0 else None
+        else:
+            bdot_stream_km = 0.0
+            bdot_n_segments = 0
+            bdot_drainage_density = None
+            bdot_stream_frequency = None
 
         # Hydraulic length: prefer max_flow_dist_m (migration 023, per-cell flow
         # distance from pyflwdir) when available; fall back to hydraulic_length_km
@@ -615,12 +629,14 @@ class CatchmentGraph:
             ),
             "stream_length_km": round(total_stream_km, 4),
             "drainage_density_km_per_km2": (
-                round(drainage_density, 4) if drainage_density is not None else None
+                round(bdot_drainage_density, 4) if bdot_drainage_density is not None else None
             ),
             "max_strahler_order": max_strahler,
             "stream_frequency_per_km2": (
-                round(stream_frequency, 4) if stream_frequency is not None else None
+                round(bdot_stream_frequency, 4) if bdot_stream_frequency is not None else None
             ),
+            "bdot_stream_length_km": round(bdot_stream_km, 4),
+            "bdot_stream_count": bdot_n_segments,
             "hydraulic_length_km": (
                 round(hydraulic_length_km, 4) if hydraulic_length_km is not None else None
             ),

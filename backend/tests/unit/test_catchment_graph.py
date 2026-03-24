@@ -49,6 +49,10 @@ def small_graph():
     cg._strahler = np.array([1, 1, 2, 3], dtype=np.int8)
     cg._max_flow_dist_m = np.array([12500.0, 10000.0, 8000.0, 5000.0], dtype=np.float64)
 
+    # BDOT stream matching: nodes 0 and 2 are real streams
+    cg._is_real_stream = np.array([True, False, True, False], dtype=np.bool_)
+    cg._segment_length_km = np.array([1.8, 1.2, 2.5, 3.5], dtype=np.float64)
+
     # Histograms
     cg._histograms = [
         {"base_m": 150, "interval_m": 1, "counts": [10, 20, 30, 20, 10, 5, 3, 2]},
@@ -160,15 +164,68 @@ class TestCatchmentGraphAggregateStats:
         stats = small_graph.aggregate_stats(indices)
         assert stats["stream_length_km"] == pytest.approx(10.5, abs=0.01)
 
-    def test_drainage_density(self, small_graph):
-        """Drainage density = total_stream_length / total_area."""
+    def test_drainage_density_bdot(self, small_graph):
+        """Drainage density is based on BDOT real streams only."""
         indices = np.array([0, 1, 2, 3])
         stats = small_graph.aggregate_stats(indices)
-        expected_dd = 10.5 / 26.0
+        # Real streams: nodes 0 (1.8 km) and 2 (2.5 km) = 4.3 km
+        # Area: 26.0 km2
+        expected_dd = 4.3 / 26.0
         assert stats["drainage_density_km_per_km2"] == pytest.approx(
             expected_dd,
             abs=0.01,
         )
+
+    def test_stream_frequency_bdot(self, small_graph):
+        """Stream frequency is based on BDOT real stream count."""
+        indices = np.array([0, 1, 2, 3])
+        stats = small_graph.aggregate_stats(indices)
+        # Real streams: 2 segments, area: 26.0 km2
+        expected_fs = 2 / 26.0
+        assert stats["stream_frequency_per_km2"] == pytest.approx(
+            expected_fs,
+            abs=0.01,
+        )
+
+    def test_bdot_stream_fields(self, small_graph):
+        """aggregate_stats returns bdot_stream_length_km and bdot_stream_count."""
+        indices = np.array([0, 1, 2, 3])
+        stats = small_graph.aggregate_stats(indices)
+        assert stats["bdot_stream_length_km"] == pytest.approx(4.3, abs=0.01)
+        assert stats["bdot_stream_count"] == 2
+
+    def test_no_bdot_streams_returns_none(self):
+        """When no segments are real streams, drainage_density and frequency are None."""
+        cg = CatchmentGraph()
+        n = 2
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2], dtype=np.int32)
+        cg._threshold_m2 = np.array([10000, 10000], dtype=np.int32)
+        cg._area_km2 = np.array([5.0, 3.0], dtype=np.float32)
+        cg._elev_min = np.array([150.0, 160.0], dtype=np.float32)
+        cg._elev_max = np.array([200.0, 210.0], dtype=np.float32)
+        cg._elev_mean = np.array([175.0, 185.0], dtype=np.float32)
+        cg._slope_mean = np.array([5.0, 6.0], dtype=np.float32)
+        cg._perimeter_km = np.array([10.0, 8.0], dtype=np.float32)
+        cg._stream_length_km = np.array([2.0, 1.5], dtype=np.float32)
+        cg._hydraulic_length_km = np.array([12.5, 10.0], dtype=np.float32)
+        cg._strahler = np.array([1, 1], dtype=np.int8)
+        cg._max_flow_dist_m = np.array([12500.0, 10000.0], dtype=np.float64)
+        cg._histograms = [None, None]
+        cg._lookup = {(10000, 1): 0, (10000, 2): 1}
+        cg._upstream_adj = sparse.csr_matrix((n, n), dtype=np.int8)
+        # No real streams
+        cg._is_real_stream = np.array([False, False], dtype=np.bool_)
+        cg._segment_length_km = np.array([1.5, 1.0], dtype=np.float64)
+
+        indices = np.array([0, 1])
+        stats = cg.aggregate_stats(indices)
+        # bdot_stream_km = 0, so density = 0/8 = 0 (not None — area > 0)
+        assert stats["drainage_density_km_per_km2"] == pytest.approx(0.0)
+        assert stats["stream_frequency_per_km2"] == pytest.approx(0.0)
+        assert stats["bdot_stream_length_km"] == pytest.approx(0.0)
+        assert stats["bdot_stream_count"] == 0
 
     def test_partial_traversal_stats(self, small_graph):
         """Stats for partial traversal (only headwaters)."""
