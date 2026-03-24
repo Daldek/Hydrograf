@@ -923,6 +923,26 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-044: BDOT10k stream matching w preprocessingu
+
+**Status:** Aktywna
+**Data:** 2026-03-23
+
+**Kontekst:** Metoda Kerby-Kirpich wymaga rozroznienia dlugosci splywu powierzchniowego (overland) od przeplywu korytowego (channel). Dotychczas cala `channel_length_km` pochodzi z wektoryzacji flow accumulation -- algorytmicznej sciezki, nie faktycznego cieku.
+
+**Decyzja:** Podczas preprocessingu importujemy geometrie ciekow z BDOT10k (SWRS/SWKN/SWRM) do tabeli `bdot_streams` i wykonujemy spatial join z `stream_network` (bufor 15m, overlap ratio >= 50%). Wynik w kolumnie `is_real_stream`. CatchmentGraph propaguje `real_channel_length_km` do morph_dict.
+
+**Parametry:** buffer=15m (3x cellsize 5m), overlap_threshold=0.5. Bimodalny rozklad -- prog tnie czysto.
+
+**Konsekwencje:**
+- `real_channel_length_km` dostepny w morph_dict -- fizycznie uzasadniony podzial overland/channel
+- Nowa tabela `bdot_streams` (~3-10k rekordow per obszar)
+- Matching per threshold w pipeline (~24s dla 253k segmentow)
+- Wymaga BDOT10k hydro (Kartograf LandCoverManager)
+- Graceful degradation: brak BDOT -> all false -> fallback na channel_length_km
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

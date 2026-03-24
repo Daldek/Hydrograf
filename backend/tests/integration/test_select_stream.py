@@ -39,6 +39,7 @@ def _make_mock_catchment_graph():
     cg._slope_mean = np.array([4.0, 5.0, 3.0], dtype=np.float32)
     cg._perimeter_km = np.array([8.0, 10.0, 15.0], dtype=np.float32)
     cg._stream_length_km = np.array([1.5, 2.0, 3.0], dtype=np.float32)
+    cg._hydraulic_length_km = np.array([8.5, 7.0, 4.0], dtype=np.float32)
     cg._strahler = np.array([1, 1, 2], dtype=np.int8)
     cg._max_flow_dist_m = np.array([3000.0, 2500.0, 5000.0], dtype=np.float64)
     cg._histograms = [

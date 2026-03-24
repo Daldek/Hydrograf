@@ -450,6 +450,92 @@ def get_main_stream_geojson(
     return json.loads(result.geojson)
 
 
+def get_main_channel_feature_collection(
+    cg: CatchmentGraph,
+    main_channel_nodes: list[int],
+    threshold_m2: int,
+    db: Session,
+) -> dict | None:
+    """
+    Build GeoJSON FeatureCollection for the full main channel.
+
+    Each segment is a separate Feature with ``is_real_stream`` property
+    indicating whether the segment matches a BDOT10k real stream.
+
+    Parameters
+    ----------
+    cg : CatchmentGraph
+        Loaded catchment graph (for segment_idx and is_real_stream lookup)
+    main_channel_nodes : list[int]
+        Internal graph indices from trace_main_channel()
+    threshold_m2 : int
+        Flow accumulation threshold
+    db : Session
+        Database session
+
+    Returns
+    -------
+    dict | None
+        GeoJSON FeatureCollection or None if no segments found
+    """
+    if not main_channel_nodes:
+        return None
+
+    seg_idxs = [cg.get_segment_idx(n) for n in main_channel_nodes]
+    if not seg_idxs:
+        return None
+
+    # Build is_real_stream lookup using "contiguous from outlet" logic:
+    # Walk path from outlet upstream; segments are real only while the
+    # chain of is_real_stream flags is unbroken.  After the first False,
+    # all remaining segments are marked False (even if the raw flag is
+    # True) — this matches trace_main_channel() semantics and avoids
+    # visual fragmentation on the map.
+    real_flags = {}
+    if cg._is_real_stream is not None:
+        still_real = True
+        for node in main_channel_nodes:
+            si = cg.get_segment_idx(node)
+            if still_real and cg._is_real_stream[node]:
+                real_flags[si] = True
+            else:
+                still_real = False
+                real_flags[si] = False
+
+    query = text("""
+        SELECT
+            segment_idx,
+            ST_AsGeoJSON(ST_Transform(geom, 4326)) as geojson
+        FROM stream_network
+        WHERE threshold_m2 = :threshold
+          AND segment_idx = ANY(:idxs)
+    """)
+    results = db.execute(
+        query,
+        {"threshold": threshold_m2, "idxs": seg_idxs},
+    ).fetchall()
+
+    if not results:
+        return None
+
+    features = []
+    for row in results:
+        geom = json.loads(row.geojson)
+        features.append({
+            "type": "Feature",
+            "geometry": geom,
+            "properties": {
+                "segment_idx": row.segment_idx,
+                "is_real_stream": real_flags.get(row.segment_idx, False),
+            },
+        })
+
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+    }
+
+
 def get_main_stream_coords_2180(
     segment_idx: int,
     threshold_m2: int,
@@ -818,14 +904,18 @@ def build_morph_dict_from_graph(
     elev_max = stats.get("elevation_max_m")
 
     # Channel length and slope from main channel trace (not total network)
+    main_channel_nodes = []
     outlet_internal_idx = cg.lookup_by_segment_idx(threshold_m2, segment_idx)
     if outlet_internal_idx is not None:
         main_ch = cg.trace_main_channel(outlet_internal_idx, upstream_indices)
         channel_length_km = main_ch.get("main_channel_length_km")
         channel_slope = main_ch.get("main_channel_slope_m_per_m")
+        real_channel_length_km = main_ch.get("real_channel_length_km")
+        main_channel_nodes = main_ch.get("main_channel_nodes", [])
     else:
         channel_length_km = None
         channel_slope = None
+        real_channel_length_km = None
 
     # Lc: distance along main channel from outlet to nearest point to centroid
     centroid = boundary_2180.centroid
@@ -923,6 +1013,7 @@ def build_morph_dict_from_graph(
         "mean_slope_m_per_m": stats.get("mean_slope_m_per_m"),
         "channel_length_km": channel_length_km if channel_length_km else None,
         "channel_slope_m_per_m": channel_slope,
+        "real_channel_length_km": real_channel_length_km,
         "length_to_centroid_km": length_to_centroid_km,
         "cn": cn,
         "imperviousness": imperviousness,
@@ -942,11 +1033,15 @@ def build_morph_dict_from_graph(
         "stream_frequency_per_km2": stats.get("stream_frequency_per_km2"),
         "ruggedness_number": ruggedness,
         "max_strahler_order": stats.get("max_strahler_order"),
+        "hydraulic_length_km": stats.get("hydraulic_length_km"),
         # Flow path parameters
         "longest_flow_path_km": longest_flow_path_km,
         "divide_flow_path_km": divide_flow_path_km,
         "centroid_flow_path_km": centroid_flow_path_km,
     }
+
+    # Private key: internal node indices for main channel (not part of Pydantic schema)
+    params["_main_channel_nodes"] = main_channel_nodes
 
     logger.info(
         f"Built morph dict from graph: area={area_km2:.2f} km2, "

@@ -47,8 +47,13 @@ class CatchmentGraph:
         self._slope_mean: np.ndarray | None = None
         self._perimeter_km: np.ndarray | None = None
         self._stream_length_km: np.ndarray | None = None
+        self._hydraulic_length_km: np.ndarray | None = None
         self._strahler: np.ndarray | None = None
         self._max_flow_dist_m: np.ndarray | None = None
+
+        # Per-segment data from stream_network (loaded separately)
+        self._is_real_stream: np.ndarray | None = None
+        self._segment_length_km: np.ndarray | None = None
 
         # Adjacency: adj[i, j] = 1 means node j drains into node i
         self._upstream_adj: sparse.csr_matrix | None = None
@@ -99,6 +104,7 @@ class CatchmentGraph:
         self._slope_mean = np.full(n, np.nan, dtype=np.float32)
         self._perimeter_km = np.full(n, np.nan, dtype=np.float32)
         self._stream_length_km = np.full(n, np.nan, dtype=np.float32)
+        self._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
         self._strahler = np.zeros(n, dtype=np.int8)
         self._max_flow_dist_m = np.full(n, 0.0, dtype=np.float64)
         self._histograms = [None] * n
@@ -117,6 +123,7 @@ class CatchmentGraph:
                 "mean_elevation_m, mean_slope_percent, strahler_order, "
                 "downstream_segment_idx, elevation_min_m, elevation_max_m, "
                 "perimeter_km, stream_length_km, elev_histogram, "
+                "hydraulic_length_km, "
                 "COALESCE(max_flow_dist_m, 0) "
                 "FROM stream_catchments ORDER BY threshold_m2, segment_idx"
             )
@@ -152,8 +159,12 @@ class CatchmentGraph:
                     # Histogram (JSONB → dict)
                     self._histograms[i] = r[11]
 
+                    # Hydraulic length (flow path distance to outlet)
+                    if r[12] is not None:
+                        self._hydraulic_length_km[i] = r[12]
+
                     # max_flow_dist_m (COALESCE ensures 0 for NULL)
-                    self._max_flow_dist_m[i] = r[12]
+                    self._max_flow_dist_m[i] = r[13]
 
                     # Register in lookup
                     self._lookup[(threshold, seg_idx)] = i
@@ -169,6 +180,41 @@ class CatchmentGraph:
                     i += 1
         finally:
             cursor.close()
+
+        # Load is_real_stream and per-segment length from stream_network
+        self._is_real_stream = np.zeros(n, dtype=np.bool_)
+        self._segment_length_km = np.zeros(n, dtype=np.float64)
+
+        sn_cursor = raw_conn.cursor(name="catchment_graph_stream_network")
+        try:
+            sn_cursor.itersize = _FETCH_SIZE
+            sn_cursor.execute(
+                "SELECT segment_idx, threshold_m2, "
+                "COALESCE(is_real_stream, false) AS is_real, "
+                "COALESCE(length_m, 0) / 1000.0 AS segment_length_km "
+                "FROM stream_network "
+                "ORDER BY threshold_m2, segment_idx"
+            )
+
+            while True:
+                sn_rows = sn_cursor.fetchmany(_FETCH_SIZE)
+                if not sn_rows:
+                    break
+                for sr in sn_rows:
+                    sn_key = (sr[1], sr[0])  # (threshold_m2, segment_idx)
+                    sn_idx = self._lookup.get(sn_key)
+                    if sn_idx is not None:
+                        self._is_real_stream[sn_idx] = sr[2]
+                        self._segment_length_km[sn_idx] = sr[3]
+        except Exception as e:
+            logger.warning(
+                f"Failed to load is_real_stream from stream_network: {e}. "
+                "Defaulting to all false / 0.0."
+            )
+            self._is_real_stream = np.zeros(n, dtype=np.bool_)
+            self._segment_length_km = np.zeros(n, dtype=np.float64)
+        finally:
+            sn_cursor.close()
 
         # Resolve deferred edges
         resolved_from = []
@@ -209,8 +255,11 @@ class CatchmentGraph:
                 self._slope_mean,
                 self._perimeter_km,
                 self._stream_length_km,
+                self._hydraulic_length_km,
                 self._strahler,
                 self._max_flow_dist_m,
+                self._is_real_stream,
+                self._segment_length_km,
             ]
         )
         mem_sparse = (
@@ -539,10 +588,19 @@ class CatchmentGraph:
         n_segments = len(indices)
         stream_frequency = n_segments / total_area if total_area > 0 else None
 
-        # Hydraulic length: max flow distance among upstream subcatchments
-        flow_dists = self._max_flow_dist_m[indices]
-        max_flow_dist = float(np.max(flow_dists)) if len(flow_dists) > 0 else 0.0
-        hydraulic_length_km = max_flow_dist / 1000.0 if max_flow_dist > 0 else None
+        # Hydraulic length: prefer max_flow_dist_m (migration 023, per-cell flow
+        # distance from pyflwdir) when available; fall back to hydraulic_length_km
+        # (migration 022, stream_distance) stored per sub-catchment.
+        hydraulic_length_km = None
+        if self._max_flow_dist_m is not None:
+            flow_dists = self._max_flow_dist_m[indices]
+            max_flow_dist = float(np.max(flow_dists)) if len(flow_dists) > 0 else 0.0
+            if max_flow_dist > 0:
+                hydraulic_length_km = max_flow_dist / 1000.0
+        if hydraulic_length_km is None:
+            hydraulic_lengths = self._hydraulic_length_km[indices]
+            valid_hl = hydraulic_lengths[~np.isnan(hydraulic_lengths)]
+            hydraulic_length_km = float(np.max(valid_hl)) if len(valid_hl) > 0 else None
 
         return {
             "area_km2": round(total_area, 6),
@@ -645,10 +703,29 @@ class CatchmentGraph:
                 6,
             )
 
+        # Real channel length: contiguous BDOT-matched segments from outlet upstream.
+        # Walk from outlet (path_arr[0]) upstream, sum segment lengths while
+        # is_real_stream is True.  Stop at the FIRST non-real segment — everything
+        # above is overland flow, even if later segments are flagged real (can
+        # happen when the DEM flow-path runs between two parallel BDOT channels
+        # whose buffers alternate coverage).
+        real_length_km = None
+        if self._is_real_stream is not None and self._segment_length_km is not None:
+            contiguous_real_km = 0.0
+            for node in path_arr:
+                if self._is_real_stream[node]:
+                    contiguous_real_km += self._segment_length_km[node]
+                else:
+                    break
+            real_length_km = contiguous_real_km
+
         return {
             "main_channel_length_km": round(main_length_km, 4),
             "main_channel_slope_m_per_m": main_slope,
             "main_channel_nodes": path,
+            "real_channel_length_km": (
+                round(real_length_km, 4) if real_length_km is not None else None
+            ),
         }
 
     def aggregate_hypsometric(
