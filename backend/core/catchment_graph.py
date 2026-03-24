@@ -48,6 +48,7 @@ class CatchmentGraph:
         self._perimeter_km: np.ndarray | None = None
         self._stream_length_km: np.ndarray | None = None
         self._strahler: np.ndarray | None = None
+        self._max_flow_dist_m: np.ndarray | None = None
 
         # Adjacency: adj[i, j] = 1 means node j drains into node i
         self._upstream_adj: sparse.csr_matrix | None = None
@@ -99,6 +100,7 @@ class CatchmentGraph:
         self._perimeter_km = np.full(n, np.nan, dtype=np.float32)
         self._stream_length_km = np.full(n, np.nan, dtype=np.float32)
         self._strahler = np.zeros(n, dtype=np.int8)
+        self._max_flow_dist_m = np.full(n, 0.0, dtype=np.float64)
         self._histograms = [None] * n
 
         # Edge lists for sparse matrix
@@ -114,7 +116,8 @@ class CatchmentGraph:
                 "SELECT segment_idx, threshold_m2, area_km2, "
                 "mean_elevation_m, mean_slope_percent, strahler_order, "
                 "downstream_segment_idx, elevation_min_m, elevation_max_m, "
-                "perimeter_km, stream_length_km, elev_histogram "
+                "perimeter_km, stream_length_km, elev_histogram, "
+                "COALESCE(max_flow_dist_m, 0) "
                 "FROM stream_catchments ORDER BY threshold_m2, segment_idx"
             )
 
@@ -148,6 +151,9 @@ class CatchmentGraph:
 
                     # Histogram (JSONB → dict)
                     self._histograms[i] = r[11]
+
+                    # max_flow_dist_m (COALESCE ensures 0 for NULL)
+                    self._max_flow_dist_m[i] = r[12]
 
                     # Register in lookup
                     self._lookup[(threshold, seg_idx)] = i
@@ -204,6 +210,7 @@ class CatchmentGraph:
                 self._perimeter_km,
                 self._stream_length_km,
                 self._strahler,
+                self._max_flow_dist_m,
             ]
         )
         mem_sparse = (
@@ -309,6 +316,12 @@ class CatchmentGraph:
         if not self._loaded:
             raise RuntimeError("Catchment graph not loaded")
         return int(self._segment_idx[internal_idx])
+
+    def get_max_flow_dist_m(self, internal_idx: int) -> float:
+        """Get max_flow_dist_m for a node by its internal graph index."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        return float(self._max_flow_dist_m[internal_idx])
 
     def verify_graph(self, db: Session | None = None) -> dict:
         """Verify graph integrity. Returns diagnostic dict."""
@@ -526,6 +539,11 @@ class CatchmentGraph:
         n_segments = len(indices)
         stream_frequency = n_segments / total_area if total_area > 0 else None
 
+        # Hydraulic length: max flow distance among upstream subcatchments
+        flow_dists = self._max_flow_dist_m[indices]
+        max_flow_dist = float(np.max(flow_dists)) if len(flow_dists) > 0 else 0.0
+        hydraulic_length_km = max_flow_dist / 1000.0 if max_flow_dist > 0 else None
+
         return {
             "area_km2": round(total_area, 6),
             "elevation_min_m": round(elev_min, 2) if elev_min is not None else None,
@@ -544,6 +562,9 @@ class CatchmentGraph:
             "max_strahler_order": max_strahler,
             "stream_frequency_per_km2": (
                 round(stream_frequency, 4) if stream_frequency is not None else None
+            ),
+            "hydraulic_length_km": (
+                round(hydraulic_length_km, 4) if hydraulic_length_km is not None else None
             ),
         }
 
