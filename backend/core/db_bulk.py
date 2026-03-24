@@ -126,7 +126,10 @@ def insert_stream_segments(
             tsv_buffer,
         )
 
-        # Insert with geometry construction (skip geohash duplicates)
+        # Insert with geometry construction + Chaikin smoothing.
+        # ST_ChaikinSmoothing(geom, 3) with preserve_end_points=true (default)
+        # smooths pixel staircase while keeping junction endpoints fixed
+        # → network topology preserved.  length_m recomputed from smoothed geom.
         cursor.execute("""
             INSERT INTO stream_network (
                 geom, strahler_order, length_m,
@@ -134,11 +137,15 @@ def insert_stream_segments(
                 threshold_m2, segment_idx
             )
             SELECT
-                ST_SetSRID(ST_GeomFromText(wkt), 2180),
-                strahler_order, length_m,
+                smoothed, strahler_order,
+                ST_Length(smoothed),
                 upstream_area_km2, mean_slope_percent, source,
                 threshold_m2, segment_idx
-            FROM temp_stream_import
+            FROM (
+                SELECT *,
+                    ST_ChaikinSmoothing(ST_SetSRID(ST_GeomFromText(wkt), 2180), 3) AS smoothed
+                FROM temp_stream_import
+            ) sub
             ON CONFLICT DO NOTHING
         """)
 
