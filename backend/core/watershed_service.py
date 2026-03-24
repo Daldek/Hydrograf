@@ -1079,6 +1079,7 @@ def build_morph_dict_from_graph(
         real_channel_length_km = main_ch.get("real_channel_length_km")
         main_channel_nodes = main_ch.get("main_channel_nodes", [])
     else:
+        main_ch = None
         channel_length_km = None
         channel_slope = None
         real_channel_length_km = None
