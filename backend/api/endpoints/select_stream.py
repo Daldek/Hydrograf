@@ -20,6 +20,7 @@ from core.watershed_service import (
     boundary_to_polygon,
     compute_watershed_length,
     ensure_outlet_within_boundary,
+    get_main_channel_feature_collection,
     get_main_stream_geojson,
     get_segment_outlet,
     get_stream_info_by_segment_idx,
@@ -241,8 +242,13 @@ def select_stream(
                 )
                 hypsometric_integral = round(max(0, min(1, hi)), 4)
 
-        # 10. Main stream GeoJSON
-        main_stream_geojson = get_main_stream_geojson(segment_idx, threshold, db)
+        # 10. Main stream GeoJSON (FeatureCollection with is_real_stream per segment)
+        main_channel_nodes = main_ch.get("main_channel_nodes", [])
+        main_stream_geojson = get_main_channel_feature_collection(
+            cg, main_channel_nodes, threshold, db,
+        )
+        if main_stream_geojson is None:
+            main_stream_geojson = get_main_stream_geojson(segment_idx, threshold, db)
 
         # 11. Land cover statistics
         hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2

@@ -77,6 +77,7 @@
             ['Wys. średnia', formatValue(m.elevation_mean_m, 'm n.p.m.', 1)],
             ['Spadek średni', formatSlope(m.mean_slope_m_per_m)],
             ['Długość cieku gł.', formatValue(m.channel_length_km, 'km', 2)],
+            ['  w tym ciek BDOT', formatValue(m.real_channel_length_km, 'km', 2)],
             ['Spadek cieku gł.', formatSlope(m.channel_slope_m_per_m)],
             ['CN', m.cn !== null && m.cn !== undefined ? String(m.cn) : '—'],
             ['Ujście φ', formatValue(o.latitude, '°N', 6)],
@@ -101,6 +102,9 @@
             ['Częstość cieków Fs', formatValue(m.stream_frequency_per_km2, '1/km²', 2)],
             ['Liczba chropowatoś. Rn', formatRatio(m.ruggedness_number, 3)],
             ['Max rząd Strahlera', m.max_strahler_order !== null && m.max_strahler_order !== undefined ? String(m.max_strahler_order) : '—'],
+            ['Pokrycie BDOT', m.real_channel_length_km != null && m.channel_length_km
+                ? (100 * m.real_channel_length_km / m.channel_length_km).toFixed(0) + '%'
+                : '—'],
         ]);
 
         // Charts: land cover donut
@@ -291,6 +295,11 @@
             var outlet = data.watershed.outlet;
             Hydrograf.map.showOutlet(outlet.latitude, outlet.longitude, outlet.elevation_m);
 
+            // Show main channel with BDOT highlighting
+            if (data.watershed.main_stream_geojson) {
+                Hydrograf.map.showMainChannel(data.watershed.main_stream_geojson);
+            }
+
             displayParameters(data);
 
             // Show/hide hietogram + hydrograph sections based on API response
@@ -361,6 +370,11 @@
                 // Show outlet marker (but NOT watershed polygon — selection boundary is enough)
                 var outlet = data.watershed.outlet;
                 Hydrograf.map.showOutlet(outlet.latitude, outlet.longitude, outlet.elevation_m);
+
+                // Show main channel with BDOT highlighting
+                if (data.watershed.main_stream_geojson) {
+                    Hydrograf.map.showMainChannel(data.watershed.main_stream_geojson);
+                }
 
                 displayParameters(data);
             } else {
