@@ -8,7 +8,6 @@ for the Hydrograf administration panel.
 import asyncio
 import os
 import re
-import shutil
 import signal
 import subprocess
 import sys
@@ -27,6 +26,7 @@ from sqlalchemy.orm import Session
 from api.dependencies.admin_auth import verify_admin_key
 from core.catchment_graph import get_catchment_graph
 from core.database import get_db, get_db_engine
+from scripts.clean import DB_TABLES, execute_clean
 
 # ---------------------------------------------------------------------------
 # Path constants
@@ -61,15 +61,7 @@ def _dir_size_mb(path: Path) -> float:
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
-_TABLE_NAMES = [
-    "stream_network",
-    "stream_catchments",
-    "bdot_streams",
-    "depressions",
-    "land_cover",
-    "soil_hsg",
-    "precipitation_data",
-]
+# DB_TABLES imported from scripts.clean — single source of truth
 
 
 class DashboardResponse(BaseModel):
@@ -95,9 +87,9 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
 
     # Table row counts
     tables: dict[str, int] = {}
-    for table in _TABLE_NAMES:
+    for table in DB_TABLES:
         try:
-            result = db.execute(text(f"SELECT COUNT(*) FROM {table}"))  # noqa: S608 — table names from hardcoded _TABLE_NAMES, not user input
+            result = db.execute(text(f"SELECT COUNT(*) FROM {table}"))  # noqa: S608 — table names from hardcoded DB_TABLES, not user input
             tables[table] = result.scalar() or 0
         except Exception:
             tables[table] = 0
@@ -206,88 +198,28 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
 # ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
-def _file_size_mb(path: Path) -> float:
-    """Return single file size in MB, or 0 if not found."""
-    if path.is_file():
-        return round(path.stat().st_size / (1024 * 1024), 2)
-    return 0.0
-
-
-CLEANUP_TARGETS: dict[str, dict] = {
-    "tiles": {
-        "label": "MVT tiles",
-        "path": FRONTEND_TILES,
-        "type": "dir",
-    },
-    "overlays": {
-        "label": "Overlay PNG + JSON + GeoJSON",
-        "path": FRONTEND_DATA,
-        "type": "glob",
-        "patterns": ["*.png", "*.json", "*.geojson"],
-    },
-    "dem_tiles": {
-        "label": "DEM raster tiles",
-        "path": FRONTEND_DATA / "dem_tiles",
-        "type": "dir",
-    },
-    "dem_mosaic": {
-        "label": "DEM mosaic VRT",
-        "path": DATA_NMT / "dem_mosaic.vrt",
-        "type": "file",
-    },
-    "processed_data": {
-        "label": "Processed rasters + hydro",
-        "path": [DATA_NMT, DATA_HYDRO],
-        "type": "multi_dir",
-    },
-    "db_tables": {
-        "label": "Database tables (TRUNCATE)",
-        "type": "db",
+# Cleanup components — maps admin UI keys to scripts.clean component names.
+# "all" runs every component except cache; "cache" is opt-in.
+_CLEANUP_COMPONENTS = {
+    "all": {
+        "label": "Wszystko (bez cache)",
+        "components": ["rasters", "hydro", "boundary", "overlays", "geojson", "tiles", "db"],
     },
     "cache": {
-        "label": "Download cache (NMT, BDOT10k, HSG)",
-        "path": CACHE_DIR,
-        "type": "cache",
+        "label": "Download cache (NMT, BDOT10k)",
+        "components": ["cache"],
         "exclude_from_all": True,
     },
 }
 
-# Targets included when the frontend sends "all" — cache requires explicit opt-in
-# because re-downloading is expensive.
-ALL_CLEANUP_TARGETS = [
-    k for k, v in CLEANUP_TARGETS.items() if not v.get("exclude_from_all")
-]
-
-
-def _estimate_target(target_key: str, db: Session | None = None) -> float:
-    """Estimate size in MB for a cleanup target."""
-    target = CLEANUP_TARGETS[target_key]
-    ttype = target["type"]
-
-    if ttype in ("dir", "cache"):
-        return _dir_size_mb(target["path"])
-    elif ttype == "multi_dir":
-        return round(sum(_dir_size_mb(p) for p in target["path"]), 2)
-    elif ttype == "file":
-        return _file_size_mb(target["path"])
-    elif ttype == "glob":
-        base = target["path"]
-        if not base.exists():
-            return 0.0
-        total = 0
-        for pattern in target["patterns"]:
-            for f in base.glob(pattern):
-                total += f.stat().st_size
-        return round(total / (1024 * 1024), 2)
-    elif ttype == "db" and db is not None:
-        try:
-            result = db.execute(
-                text("SELECT pg_database_size(current_database())")
-            )
-            return round((result.scalar() or 0) / (1024 * 1024), 2)
-        except Exception:
-            return 0.0
-    return 0.0
+# Estimate helpers — reuse path constants
+_ESTIMATE_DIRS = {
+    "rasters": DATA_NMT,
+    "hydro": DATA_HYDRO,
+    "overlays": FRONTEND_DATA,
+    "tiles": FRONTEND_TILES,
+    "cache": CACHE_DIR,
+}
 
 
 class CleanupEstimateResponse(BaseModel):
@@ -313,84 +245,23 @@ def cleanup_estimate(
     db: Session = Depends(get_db),
 ) -> CleanupEstimateResponse:
     """Estimate cleanup sizes for all targets."""
+    # Aggregate disk sizes per cleanup target
     targets = []
-    for key, info in CLEANUP_TARGETS.items():
-        targets.append(
-            {
-                "key": key,
-                "label": info["label"],
-                "size_mb": _estimate_target(key, db),
-            }
-        )
+    for key, info in _CLEANUP_COMPONENTS.items():
+        size_mb = 0.0
+        for comp in info["components"]:
+            if comp in _ESTIMATE_DIRS:
+                size_mb += _dir_size_mb(_ESTIMATE_DIRS[comp])
+            elif comp == "db":
+                try:
+                    result = db.execute(
+                        text("SELECT pg_database_size(current_database())")
+                    )
+                    size_mb += round((result.scalar() or 0) / (1024 * 1024), 2)
+                except Exception:
+                    pass
+        targets.append({"key": key, "label": info["label"], "size_mb": round(size_mb, 2)})
     return CleanupEstimateResponse(targets=targets)
-
-
-def _execute_cleanup_target(
-    target_key: str, db: Session
-) -> dict:
-    """Execute cleanup for a single target, return result dict."""
-    target = CLEANUP_TARGETS[target_key]
-    ttype = target["type"]
-
-    try:
-        if ttype == "dir":
-            path = target["path"]
-            if path.exists():
-                for child in path.iterdir():
-                    if child.is_dir():
-                        shutil.rmtree(child)
-                    else:
-                        child.unlink()
-            return {"key": target_key, "status": "ok"}
-
-        elif ttype == "multi_dir":
-            for path in target["path"]:
-                if path.exists():
-                    for child in path.iterdir():
-                        if child.is_dir():
-                            shutil.rmtree(child)
-                        else:
-                            child.unlink()
-            return {"key": target_key, "status": "ok"}
-
-        elif ttype == "file":
-            path = target["path"]
-            if path.is_file():
-                path.unlink()
-            return {"key": target_key, "status": "ok"}
-
-        elif ttype == "glob":
-            base = target["path"]
-            if base.exists():
-                for pattern in target["patterns"]:
-                    for f in base.glob(pattern):
-                        f.unlink()
-            return {"key": target_key, "status": "ok"}
-
-        elif ttype == "cache":
-            path = target["path"]
-            if path.exists():
-                for subdir in path.iterdir():
-                    if subdir.is_dir():
-                        for child in subdir.iterdir():
-                            if child.is_dir():
-                                shutil.rmtree(child)
-                            else:
-                                child.unlink()
-                    elif subdir.is_file():
-                        subdir.unlink()
-            return {"key": target_key, "status": "ok"}
-
-        elif ttype == "db":
-            table_list = ", ".join(_TABLE_NAMES)
-            db.execute(text(f"TRUNCATE TABLE {table_list} CASCADE"))  # noqa: S608 — table names from hardcoded _TABLE_NAMES, not user input
-            db.commit()
-            return {"key": target_key, "status": "ok"}
-
-        return {"key": target_key, "status": "error", "detail": "unknown type"}
-
-    except Exception as e:
-        return {"key": target_key, "status": "error", "detail": str(e)}
 
 
 @router.post("/cleanup", response_model=CleanupResponse)
@@ -398,19 +269,34 @@ def cleanup_execute(
     request: CleanupRequest,
     db: Session = Depends(get_db),
 ) -> CleanupResponse:
-    """Execute cleanup for selected targets."""
-    # Validate targets
+    """Execute cleanup by delegating to scripts.clean.execute_clean().
+
+    Uses the same logic as ``python -m scripts.clean`` CLI — single source
+    of truth for table lists, directory paths, and cleanup order.
+    """
+    results = []
     for target_key in request.targets:
-        if target_key not in CLEANUP_TARGETS:
+        if target_key not in _CLEANUP_COMPONENTS:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unknown cleanup target: {target_key}",
             )
-
-    results = []
-    for target_key in request.targets:
-        result = _execute_cleanup_target(target_key, db)
-        results.append(result)
+        components = _CLEANUP_COMPONENTS[target_key]["components"]
+        try:
+            summary = execute_clean(
+                components=components,
+                data_dir=PROJECT_ROOT / "data",
+                cache_dir=CACHE_DIR,
+                dry_run=False,
+            )
+            results.append({
+                "key": target_key,
+                "status": "ok",
+                "total_files": summary["total_files"],
+                "total_size": summary["total_size"],
+            })
+        except Exception as e:
+            results.append({"key": target_key, "status": "error", "detail": str(e)})
 
     return CleanupResponse(results=results)
 
