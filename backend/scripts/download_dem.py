@@ -3,9 +3,9 @@ Script to download DEM (Digital Elevation Model) data from GUGiK using Kartograf
 
 Downloads NMT data for a specified area (point + buffer), list of sheet codes,
 or geometry file (SHP/GPKG).
-Uses Kartograf 0.4.1+ library for OpenData/WCS API communication with GUGiK servers.
+Uses Kartograf 0.6.1+ library for OpenData/WCS API communication with GUGiK servers.
 
-Note: Kartograf 0.4.1 API:
+Note: Kartograf 0.6.1 API:
 - download_sheet(godlo) -> returns Path | list[Path] (auto-expansion for coarse scales)
 - download_bbox(bbox, filename, format) -> returns GeoTIFF/PNG/JPEG via WCS
 - find_sheets_for_geometry(filepath, target_scale) -> tile selection
@@ -60,7 +60,7 @@ def download_sheets(
     """
     Download NMT data for specified sheet codes using Kartograf.
 
-    In Kartograf 0.4.1+, download_sheet() returns ASC format via OpenData.
+    In Kartograf 0.6.1+, download_sheet() returns ASC format via OpenData.
     Returns Path for 1:10000 sheets, or list[Path] for coarser scales (auto-expansion).
 
     Parameters
@@ -90,14 +90,14 @@ def download_sheets(
     except ImportError as e:
         logger.error(
             "Kartograf not installed. Install with: "
-            "pip install git+https://github.com/Daldek/Kartograf.git@v0.4.1"
+            "pip install git+https://github.com/Daldek/Kartograf.git@v0.6.1"
         )
         raise ImportError("Kartograf library not found") from e
 
     # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize Kartograf components (Kartograf 0.4.1 API)
+    # Initialize Kartograf components (Kartograf 0.6.1 API)
     provider = GugikProvider(resolution=resolution)
     manager = DownloadManager(output_dir=str(output_dir), provider=provider, resolution=resolution)
 
@@ -248,7 +248,7 @@ def download_for_geometry(
 def main():
     """Main entry point for DEM download script."""
     parser = argparse.ArgumentParser(
-        description="Download NMT data from GUGiK using Kartograf 0.4.1+",
+        description="Download NMT data from GUGiK using Kartograf 0.6.1+",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -348,7 +348,7 @@ def main():
 
     # Log configuration
     logger.info("=" * 60)
-    logger.info("NMT Download Script (using Kartograf 0.4.1)")
+    logger.info("NMT Download Script (using Kartograf 0.6.1)")
     logger.info("=" * 60)
 
     if args.geometry:

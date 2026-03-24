@@ -15,7 +15,7 @@ hydrological analysis. This ensures correct flow routing across tile
 boundaries - water can flow from one tile to another without artifacts.
 
 Requires:
-- Kartograf 0.5.0+ for data download
+- Kartograf 0.6.1+ for data download
 - GDAL for VRT creation (gdalbuildvrt)
 
 Usage
@@ -460,7 +460,7 @@ def main():
 
     # Hydrographic data options
     hydro_group = parser.add_argument_group(
-        "Hydrographic data (requires Kartograf 0.5.0+)"
+        "Hydrographic data (requires Kartograf 0.6.1+)"
     )
     hydro_group.add_argument(
         "--with-hydro",
@@ -476,7 +476,7 @@ def main():
 
     # Land cover options
     landcover_group = parser.add_argument_group(
-        "Land cover options (requires Kartograf 0.5.0+)"
+        "Land cover options (requires Kartograf 0.6.1+)"
     )
     landcover_group.add_argument(
         "--with-landcover",
