@@ -92,7 +92,7 @@ def _compute_watershed(
     upstream_indices = cg.traverse_upstream(clicked_idx)
     segment_idxs = cg.get_segment_indices(upstream_indices, DEFAULT_THRESHOLD_M2)
 
-    stats = cg.aggregate_stats(upstream_indices)
+    stats = cg.aggregate_stats(upstream_indices, outlet_idx=clicked_idx)
     area_km2 = stats["area_km2"]
 
     if area_km2 > HYDROGRAPH_AREA_LIMIT_KM2:
@@ -147,6 +147,7 @@ def _compute_watershed(
         cn=cn,
         imperviousness=imperviousness,
         db=db,
+        outlet_idx=clicked_idx,
     )
 
     # Build WatershedResponse for full-path callers

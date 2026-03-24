@@ -142,7 +142,7 @@ def delineate_watershed(
         # upstream_indices_for_stats tracks which indices to use for stats;
         # updated together with merge_idxs during cascade escalation (CR9).
         upstream_indices_for_stats = upstream_indices
-        stats = cg.aggregate_stats(upstream_indices_for_stats)
+        stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=clicked_idx)
         area_km2 = stats["area_km2"]
         logger.debug(f"Watershed area: {area_km2:.2f} km2")
 
@@ -177,7 +177,7 @@ def delineate_watershed(
                     # CR9: re-aggregate stats from escalated threshold
                     # so stats match the boundary polygon
                     upstream_indices_for_stats = t_up
-                    stats = cg.aggregate_stats(upstream_indices_for_stats)
+                    stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=t_node)
                     area_km2 = stats["area_km2"]
                     logger.info(
                         "Cascade: threshold escalated from %d to %d "
@@ -245,6 +245,7 @@ def delineate_watershed(
             segment_idx,
             DEFAULT_THRESHOLD_M2,
             db=db,
+            outlet_idx=clicked_idx,
         )
 
         # 15. Hypsometric curve

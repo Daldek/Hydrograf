@@ -54,6 +54,7 @@ class CatchmentGraph:
         # Per-segment data from stream_network (loaded separately)
         self._is_real_stream: np.ndarray | None = None
         self._segment_length_km: np.ndarray | None = None
+        self._upstream_area_km2: np.ndarray | None = None
 
         # Adjacency: adj[i, j] = 1 means node j drains into node i
         self._upstream_adj: sparse.csr_matrix | None = None
@@ -181,9 +182,10 @@ class CatchmentGraph:
         finally:
             cursor.close()
 
-        # Load is_real_stream and per-segment length from stream_network
+        # Load is_real_stream, per-segment length and upstream_area from stream_network
         self._is_real_stream = np.zeros(n, dtype=np.bool_)
         self._segment_length_km = np.zeros(n, dtype=np.float64)
+        self._upstream_area_km2 = np.zeros(n, dtype=np.float64)
 
         sn_cursor = raw_conn.cursor(name="catchment_graph_stream_network")
         try:
@@ -191,7 +193,8 @@ class CatchmentGraph:
             sn_cursor.execute(
                 "SELECT segment_idx, threshold_m2, "
                 "COALESCE(is_real_stream, false) AS is_real, "
-                "COALESCE(length_m, 0) / 1000.0 AS segment_length_km "
+                "COALESCE(length_m, 0) / 1000.0 AS segment_length_km, "
+                "COALESCE(upstream_area_km2, 0) AS upstream_area_km2 "
                 "FROM stream_network "
                 "ORDER BY threshold_m2, segment_idx"
             )
@@ -206,6 +209,7 @@ class CatchmentGraph:
                     if sn_idx is not None:
                         self._is_real_stream[sn_idx] = sr[2]
                         self._segment_length_km[sn_idx] = sr[3]
+                        self._upstream_area_km2[sn_idx] = sr[4]
         except Exception as e:
             logger.warning(
                 f"Failed to load is_real_stream from stream_network: {e}. "
@@ -213,6 +217,7 @@ class CatchmentGraph:
             )
             self._is_real_stream = np.zeros(n, dtype=np.bool_)
             self._segment_length_km = np.zeros(n, dtype=np.float64)
+            self._upstream_area_km2 = np.zeros(n, dtype=np.float64)
         finally:
             sn_cursor.close()
 
@@ -260,6 +265,7 @@ class CatchmentGraph:
                 self._max_flow_dist_m,
                 self._is_real_stream,
                 self._segment_length_km,
+                self._upstream_area_km2,
             ]
         )
         mem_sparse = (
@@ -514,7 +520,7 @@ class CatchmentGraph:
         mask = self._threshold_m2[indices] == threshold_m2
         return self._segment_idx[indices[mask]].tolist()
 
-    def aggregate_stats(self, indices: np.ndarray) -> dict:
+    def aggregate_stats(self, indices: np.ndarray, outlet_idx: int | None = None) -> dict:
         """
         Aggregate pre-computed stats across multiple catchment nodes.
 
@@ -607,14 +613,22 @@ class CatchmentGraph:
             bdot_drainage_density = None
             bdot_stream_frequency = None
 
-        # Hydraulic length: prefer max_flow_dist_m (migration 023, per-cell flow
-        # distance from pyflwdir) when available; fall back to hydraulic_length_km
-        # (migration 022, stream_distance) stored per sub-catchment.
+        # Hydraulic length: max_flow_dist_m stores the cumulative distance
+        # from each subcatchment's farthest cell to the GLOBAL basin outlet
+        # (from pyflwdir.stream_distance).  To get the flow path length
+        # within the SELECTED watershed, subtract the outlet's distance:
+        #   hydraulic_length = max(all_subcatchments) - outlet_flow_dist
         hydraulic_length_km = None
         if self._max_flow_dist_m is not None:
             flow_dists = self._max_flow_dist_m[indices]
             max_flow_dist = float(np.max(flow_dists)) if len(flow_dists) > 0 else 0.0
-            if max_flow_dist > 0:
+            if outlet_idx is not None and max_flow_dist > 0:
+                outlet_flow_dist = float(self._max_flow_dist_m[outlet_idx])
+                relative_dist = max_flow_dist - outlet_flow_dist
+                if relative_dist > 0:
+                    hydraulic_length_km = relative_dist / 1000.0
+            elif max_flow_dist > 0:
+                # No outlet_idx — fall back to raw value (legacy callers)
                 hydraulic_length_km = max_flow_dist / 1000.0
         if hydraulic_length_km is None:
             hydraulic_lengths = self._hydraulic_length_km[indices]
@@ -688,16 +702,18 @@ class CatchmentGraph:
             if not candidates:
                 break
 
-            # Select best upstream: max Strahler, then prefer BDOT real stream,
-            # then max stream_length, then max area
+            # Select best upstream: max upstream_area_km2 (cumulative drainage
+            # area from stream_network — true flow accumulation), then prefer
+            # BDOT real stream, then Strahler, then local subcatchment area.
+            # upstream_area_km2 is threshold-independent → consistent path.
+            # Falls back to local area_km2 if upstream_area not loaded.
+            _ua = self._upstream_area_km2
             best = max(
                 candidates,
                 key=lambda n: (
+                    _ua[n] if _ua is not None else self._area_km2[n],
+                    int(self._is_real_stream[n]) if self._is_real_stream is not None else 0,
                     self._strahler[n],
-                    int(self._is_real_stream[n]) if hasattr(self, '_is_real_stream') and self._is_real_stream is not None else 0,
-                    self._stream_length_km[n]
-                    if not np.isnan(self._stream_length_km[n])
-                    else 0.0,
                     self._area_km2[n],
                 ),
             )

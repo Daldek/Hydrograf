@@ -888,6 +888,7 @@ def build_morph_dict_from_graph(
     cn: int | None = None,
     imperviousness: float | None = None,
     db: "Session | None" = None,
+    outlet_idx: int | None = None,
 ) -> dict:
     """
     Build morphometric parameter dict compatible with Hydrolog's
@@ -919,7 +920,7 @@ def build_morph_dict_from_graph(
     dict
         Dictionary with all morphometric parameters
     """
-    stats = cg.aggregate_stats(upstream_indices)
+    stats = cg.aggregate_stats(upstream_indices, outlet_idx=outlet_idx)
     area_km2 = stats["area_km2"]
 
     perimeter_km = round(boundary_2180.length / 1000, 4)
