@@ -667,11 +667,13 @@ class CatchmentGraph:
             if not candidates:
                 break
 
-            # Select best upstream: max Strahler, then max stream_length, then max area
+            # Select best upstream: max Strahler, then prefer BDOT real stream,
+            # then max stream_length, then max area
             best = max(
                 candidates,
                 key=lambda n: (
                     self._strahler[n],
+                    int(self._is_real_stream[n]) if hasattr(self, '_is_real_stream') and self._is_real_stream is not None else 0,
                     self._stream_length_km[n]
                     if not np.isnan(self._stream_length_km[n])
                     else 0.0,
@@ -712,11 +714,23 @@ class CatchmentGraph:
         real_length_km = None
         if self._is_real_stream is not None and self._segment_length_km is not None:
             contiguous_real_km = 0.0
+            gap_count = 0
+            MAX_GAP = 2  # allow up to 2 consecutive non-real segments
+            pending_gap_km = 0.0
+            started = False  # gap tolerance only after first real segment
             for node in path_arr:
                 if self._is_real_stream[node]:
-                    contiguous_real_km += self._segment_length_km[node]
+                    started = True
+                    contiguous_real_km += pending_gap_km + self._segment_length_km[node]
+                    pending_gap_km = 0.0
+                    gap_count = 0
                 else:
-                    break
+                    if not started:
+                        break  # not-real before any real → no real channel
+                    gap_count += 1
+                    if gap_count > MAX_GAP:
+                        break
+                    pending_gap_km += self._segment_length_km[node]
             real_length_km = contiguous_real_km
 
         return {
