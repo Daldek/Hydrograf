@@ -64,6 +64,7 @@ def _dir_size_mb(path: Path) -> float:
 _TABLE_NAMES = [
     "stream_network",
     "stream_catchments",
+    "bdot_streams",
     "depressions",
     "land_cover",
     "soil_hsg",
