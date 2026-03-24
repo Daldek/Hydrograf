@@ -54,12 +54,14 @@
 - **3 nowe metody Tc** — FAA (spływ pow., C z CN), Kerby (retardance), Kerby-Kirpich (composite). Backend: `_calculate_tc()`, `ConcentrationTime` static methods. Frontend: selektor, pola C/N, logika widoczności
 - **UI/UX review** — spójność etykiet, logika widoczności 30 kombinacji, auto-regeneracja
 - **Mock morph_dict** — dodano `length_to_centroid_km` wymagane przez from_lutz
+- **BDOT10k stream matching (ADR-044)** — import cieków BDOT do PostGIS, spatial matching (bufor 15m, overlap >= 50%), `real_channel_length_km` w CatchmentGraph i API. Walidacja: 4737 features, 5.4% real (threshold 1000), 27.7% real (threshold 100000), korelacja ze Strahlerem
 - 923 testy, 0 regresji
 
 ### W trakcie
 - Brak
 
 ### Następne kroki
+- Merge feat/bdot-stream-matching -> develop
 - CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
 - Follow-up: preprocessing `stream_extraction.py` — zamiana `simplify()` na `set_precision()`
 - Clipping do dokładnej granicy poligonu

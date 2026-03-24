@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — 2026-03-23
 
 ### Dodane
+- **BDOT10k stream matching (ADR-044)** -- spatial join ciekow BDOT z flow accumulation streams. Nowa tabela `bdot_streams`, kolumna `is_real_stream`, `real_channel_length_km` w parametrach morfometrycznych. Kerby-Kirpich z fizycznie uzasadnionym podzialem overland/channel.
 - **Model Nasha w generowaniu hydrogramu** — 3 metody estymacji parametrów: z Tc (SCS), Lutz (fizjograficzna), regresja zurbanizowana (Rao et al. 1972)
 - Auto-obliczanie wskaźnika urbanizacji z pokrycia terenu (`weighted_imperviousness`)
 - Obliczanie efektywnego czasu trwania opadu z uwzględnieniem abstrakcji początkowej SCS-CN
