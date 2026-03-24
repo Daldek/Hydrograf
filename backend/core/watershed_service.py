@@ -485,22 +485,50 @@ def get_main_channel_feature_collection(
     if not seg_idxs:
         return None
 
-    # Build is_real_stream lookup using "contiguous from outlet" logic:
-    # Walk path from outlet upstream; segments are real only while the
-    # chain of is_real_stream flags is unbroken.  After the first False,
-    # all remaining segments are marked False (even if the raw flag is
-    # True) — this matches trace_main_channel() semantics and avoids
-    # visual fragmentation on the map.
+    # Build is_real_stream lookup using "contiguous from outlet" logic
+    # with tolerance for up to MAX_GAP consecutive non-real segments
+    # (the DEM flow-path can briefly deviate from the BDOT channel at
+    # bends/meanders, producing short false-negative gaps).
     real_flags = {}
     if cg._is_real_stream is not None:
-        still_real = True
+        MAX_GAP = 2  # allow up to 2 consecutive non-real segments
+        gap_count = 0
+        started = False  # gap tolerance only after first real segment
+        pending_gap_nodes = []
         for node in main_channel_nodes:
             si = cg.get_segment_idx(node)
-            if still_real and cg._is_real_stream[node]:
+            if cg._is_real_stream[node]:
+                started = True
+                # Flush pending gap nodes as real (they were within tolerance)
+                for gap_si in pending_gap_nodes:
+                    real_flags[gap_si] = True
+                pending_gap_nodes = []
+                gap_count = 0
                 real_flags[si] = True
             else:
-                still_real = False
-                real_flags[si] = False
+                if not started:
+                    # Not-real before any real → mark all remaining as not-real
+                    real_flags[si] = False
+                    remaining_start = main_channel_nodes.index(node) + 1
+                    for rem_node in main_channel_nodes[remaining_start:]:
+                        real_flags[cg.get_segment_idx(rem_node)] = False
+                    break
+                gap_count += 1
+                if gap_count > MAX_GAP:
+                    # Mark pending gap nodes as not-real and stop
+                    for gap_si in pending_gap_nodes:
+                        real_flags[gap_si] = False
+                    real_flags[si] = False
+                    # Mark all remaining nodes as not-real
+                    remaining_start = main_channel_nodes.index(node) + 1
+                    for rem_node in main_channel_nodes[remaining_start:]:
+                        real_flags[cg.get_segment_idx(rem_node)] = False
+                    break
+                pending_gap_nodes.append(si)
+        else:
+            # Loop completed without breaking — mark any trailing gap as not-real
+            for gap_si in pending_gap_nodes:
+                real_flags[gap_si] = False
 
     query = text("""
         SELECT
