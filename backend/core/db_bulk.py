@@ -423,7 +423,10 @@ OVERLAP_THRESHOLD = 0.5
 def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, overlap_threshold=OVERLAP_THRESHOLD):
     """Mark stream_network segments as real/overland based on BDOT overlap.
 
-    Materializes unified BDOT buffer, then computes overlap ratio per segment.
+    Uses per-feature BDOT buffers with spatial join for efficient GIST-indexed
+    matching.  Where multiple BDOT buffers overlap a single segment, ST_Union
+    prevents double-counting before computing the overlap ratio.
+
     is_real_stream = true if overlap_ratio >= threshold, false otherwise.
 
     Returns dict with total/real/overland counts.
@@ -450,28 +453,37 @@ def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, o
                 total = cursor.fetchone()[0]
                 return {"total": total, "real": 0, "overland": total}
 
-            # Step 2: Materialize unified BDOT buffer as temp table
+            # Step 2: Materialize per-feature BDOT buffers (GIST-indexable)
             cursor.execute("DROP TABLE IF EXISTS temp_bdot_buffer")
             cursor.execute(
                 "CREATE TEMP TABLE temp_bdot_buffer AS "
-                "SELECT ST_Buffer(ST_Collect(geom), %s) AS geom FROM bdot_streams",
+                "SELECT id, ST_Buffer(geom, %s) AS geom FROM bdot_streams",
                 (buffer_m,),
             )
             cursor.execute("CREATE INDEX ON temp_bdot_buffer USING GIST (geom)")
 
-            # Step 3: Update is_real_stream based on overlap ratio
+            # Step 3: Spatial join + ST_Union to avoid double-counting
+            # where multiple BDOT buffers overlap the same segment
             cursor.execute("""
                 UPDATE stream_network sn
-                SET is_real_stream = (
-                    COALESCE(
-                        ST_Length(ST_Intersection(sn.geom, bb.geom))
-                        / NULLIF(ST_Length(sn.geom), 0),
-                        0
-                    ) >= %s
-                )
-                FROM temp_bdot_buffer bb
+                SET is_real_stream = sub.is_real
+                FROM (
+                    SELECT
+                        sn2.segment_idx,
+                        (COALESCE(
+                            ST_Length(ST_Intersection(sn2.geom, ST_Union(bb.geom)))
+                            / NULLIF(ST_Length(sn2.geom), 0),
+                            0
+                        ) >= %s) AS is_real
+                    FROM stream_network sn2
+                    LEFT JOIN temp_bdot_buffer bb
+                        ON ST_Intersects(sn2.geom, bb.geom)
+                    WHERE sn2.threshold_m2 = %s
+                    GROUP BY sn2.segment_idx, sn2.geom
+                ) sub
                 WHERE sn.threshold_m2 = %s
-            """, (overlap_threshold, threshold_m2))
+                  AND sn.segment_idx = sub.segment_idx
+            """, (overlap_threshold, threshold_m2, threshold_m2))
 
             raw_conn.commit()
 
