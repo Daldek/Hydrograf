@@ -683,12 +683,21 @@ class CatchmentGraph:
                 6,
             )
 
-        # Real channel length (BDOT-matched segments only)
+        # Real channel length: contiguous BDOT-matched segments from outlet upstream.
+        # Walk from outlet (path_arr[0]) upstream, sum segment lengths while
+        # is_real_stream is True.  Stop at the FIRST non-real segment — everything
+        # above is overland flow, even if later segments are flagged real (can
+        # happen when the DEM flow-path runs between two parallel BDOT channels
+        # whose buffers alternate coverage).
         real_length_km = None
         if self._is_real_stream is not None and self._segment_length_km is not None:
-            seg_lengths = self._segment_length_km[path_arr]
-            real_flags = self._is_real_stream[path_arr]
-            real_length_km = float(np.nansum(seg_lengths[real_flags]))
+            contiguous_real_km = 0.0
+            for node in path_arr:
+                if self._is_real_stream[node]:
+                    contiguous_real_km += self._segment_length_km[node]
+                else:
+                    break
+            real_length_km = contiguous_real_km
 
         return {
             "main_channel_length_km": round(main_length_km, 4),
