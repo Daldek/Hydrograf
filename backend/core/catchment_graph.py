@@ -54,6 +54,7 @@ class CatchmentGraph:
         # Per-segment data from stream_network (loaded separately)
         self._is_real_stream: np.ndarray | None = None
         self._segment_length_km: np.ndarray | None = None
+        self._upstream_area_km2: np.ndarray | None = None
 
         # Adjacency: adj[i, j] = 1 means node j drains into node i
         self._upstream_adj: sparse.csr_matrix | None = None
@@ -181,9 +182,10 @@ class CatchmentGraph:
         finally:
             cursor.close()
 
-        # Load is_real_stream and per-segment length from stream_network
+        # Load is_real_stream, per-segment length and upstream_area from stream_network
         self._is_real_stream = np.zeros(n, dtype=np.bool_)
         self._segment_length_km = np.zeros(n, dtype=np.float64)
+        self._upstream_area_km2 = np.zeros(n, dtype=np.float64)
 
         sn_cursor = raw_conn.cursor(name="catchment_graph_stream_network")
         try:
@@ -191,7 +193,8 @@ class CatchmentGraph:
             sn_cursor.execute(
                 "SELECT segment_idx, threshold_m2, "
                 "COALESCE(is_real_stream, false) AS is_real, "
-                "COALESCE(length_m, 0) / 1000.0 AS segment_length_km "
+                "COALESCE(length_m, 0) / 1000.0 AS segment_length_km, "
+                "COALESCE(upstream_area_km2, 0) AS upstream_area_km2 "
                 "FROM stream_network "
                 "ORDER BY threshold_m2, segment_idx"
             )
@@ -206,6 +209,7 @@ class CatchmentGraph:
                     if sn_idx is not None:
                         self._is_real_stream[sn_idx] = sr[2]
                         self._segment_length_km[sn_idx] = sr[3]
+                        self._upstream_area_km2[sn_idx] = sr[4]
         except Exception as e:
             logger.warning(
                 f"Failed to load is_real_stream from stream_network: {e}. "
@@ -213,6 +217,7 @@ class CatchmentGraph:
             )
             self._is_real_stream = np.zeros(n, dtype=np.bool_)
             self._segment_length_km = np.zeros(n, dtype=np.float64)
+            self._upstream_area_km2 = np.zeros(n, dtype=np.float64)
         finally:
             sn_cursor.close()
 
@@ -260,6 +265,7 @@ class CatchmentGraph:
                 self._max_flow_dist_m,
                 self._is_real_stream,
                 self._segment_length_km,
+                self._upstream_area_km2,
             ]
         )
         mem_sparse = (
@@ -696,20 +702,19 @@ class CatchmentGraph:
             if not candidates:
                 break
 
-            # Select best upstream: max upstream area (= flow accumulation),
-            # then prefer BDOT real stream, then Strahler, then stream length.
-            # Upstream area is the primary criterion because it is a physical
-            # property independent of the threshold — this harmonizes the main
-            # channel path across threshold levels (1k, 10k, 100k m²).
+            # Select best upstream: max upstream_area_km2 (cumulative drainage
+            # area from stream_network — true flow accumulation), then prefer
+            # BDOT real stream, then Strahler, then local subcatchment area.
+            # upstream_area_km2 is threshold-independent → consistent path.
+            # Falls back to local area_km2 if upstream_area not loaded.
+            _ua = self._upstream_area_km2
             best = max(
                 candidates,
                 key=lambda n: (
-                    self._area_km2[n],
-                    int(self._is_real_stream[n]) if hasattr(self, '_is_real_stream') and self._is_real_stream is not None else 0,
+                    _ua[n] if _ua is not None else self._area_km2[n],
+                    int(self._is_real_stream[n]) if self._is_real_stream is not None else 0,
                     self._strahler[n],
-                    self._stream_length_km[n]
-                    if not np.isnan(self._stream_length_km[n])
-                    else 0.0,
+                    self._area_km2[n],
                 ),
             )
             path.append(best)
