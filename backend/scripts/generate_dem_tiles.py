@@ -28,7 +28,7 @@ import numpy as np
 import rasterio
 from rasterio.warp import Resampling, calculate_default_transform, reproject
 
-from utils.dem_color import build_colormap, compute_hillshade
+from utils.dem_color import build_colormap, compute_hillshade, normalize_elevation
 
 
 def generate_tiles(
@@ -104,16 +104,18 @@ def generate_tiles(
     valid = dem != nodata if nodata is not None else np.isfinite(dem)
 
     valid_data = dem[valid]
-    elev_min = float(np.min(valid_data))
-    elev_max = float(np.max(valid_data))
+    abs_min = float(np.min(valid_data))
+    abs_max = float(np.max(valid_data))
+    elev_min, elev_max = normalize_elevation(valid_data)
     elev_range = elev_max - elev_min
 
     print(
         f"DEM reprojected to {dst_crs}: {width}x{height}, "
-        f"elevation {elev_min:.1f}–{elev_max:.1f} m"
+        f"elevation {abs_min:.1f}–{abs_max:.1f} m "
+        f"(color range p5–p95: {elev_min:.1f}–{elev_max:.1f} m)"
     )
 
-    # Normalize to 0–255 and apply colormap
+    # Normalize to 0–255 (values outside percentile window are clamped)
     normalized = np.zeros_like(dem, dtype=np.float64)
     if elev_range > 0:
         normalized[valid] = (dem[valid] - elev_min) / elev_range
@@ -213,8 +215,10 @@ def generate_tiles(
         ],
         "min_zoom": min_zoom,
         "max_zoom": max_zoom,
-        "elevation_min_m": round(elev_min, 1),
-        "elevation_max_m": round(elev_max, 1),
+        "elevation_min_m": round(abs_min, 1),
+        "elevation_max_m": round(abs_max, 1),
+        "color_min_m": round(elev_min, 1),
+        "color_max_m": round(elev_max, 1),
         "tile_count": tile_count,
         "total_size_mb": round(total_size / 1024 / 1024, 1),
         "generated_at": int(time.time()),

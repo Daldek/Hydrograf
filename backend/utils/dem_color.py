@@ -37,6 +37,43 @@ def build_colormap(n_steps: int = 256) -> np.ndarray:
     return cmap
 
 
+def normalize_elevation(
+    valid_data: np.ndarray,
+    low_pct: float = 5.0,
+    high_pct: float = 95.0,
+) -> tuple[float, float]:
+    """Compute elevation range for color mapping using percentile clipping.
+
+    Clips extreme outliers (e.g. landfills, quarries, antennas) that would
+    compress the useful color range.  Values outside the percentile window
+    are clamped to the boundary — they still get colored, just at the
+    darkest/brightest end of the ramp.
+
+    Parameters
+    ----------
+    valid_data : np.ndarray
+        1-D array of valid (non-nodata) elevation values.
+    low_pct : float
+        Lower percentile boundary (default 5).
+    high_pct : float
+        Upper percentile boundary (default 95).
+
+    Returns
+    -------
+    tuple[float, float]
+        (elev_min, elev_max) to use for 0–1 normalization.
+    """
+    if valid_data.size == 0:
+        return 0.0, 0.0
+    lo = float(np.percentile(valid_data, low_pct))
+    hi = float(np.percentile(valid_data, high_pct))
+    if hi <= lo:
+        # Flat terrain — fall back to full range
+        lo = float(np.min(valid_data))
+        hi = float(np.max(valid_data))
+    return lo, hi
+
+
 def compute_hillshade(
     dem: np.ndarray,
     cellsize: float,
