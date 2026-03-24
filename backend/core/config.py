@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     db_statement_timeout_ms: int = 120000  # 120s
 
     # DEM raster path (for terrain profile sampling)
-    dem_path: str = "/data/dem/dem.vrt"
+    dem_path: str = "/data/nmt/dem_mosaic_01_dem.tif"
 
     # Stream distance raster path (for flow path point sampling)
     stream_distance_path: str = "/data/nmt/dem_mosaic_04b_stream_distance.tif"
