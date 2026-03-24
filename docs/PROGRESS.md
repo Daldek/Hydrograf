@@ -46,29 +46,33 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-24 (sesja 69 — poprawki BDOT matching, main channel trace, hydraulic length, admin cleanup)
+**Data:** 2026-03-24 (sesja 70 — geometry simplification fix, CatchmentGraph invalidation, divide flow path)
 
 ### Co zrobiono
-- **BDOT ST_Within fix** — `ST_Intersection` zwracalo EMPTY dla krotkich segmentow DEM (<30m) calkowicie wewnatrz bufora BDOT. Dodano `ST_Within` check w `update_stream_real_flags()` — overlap=1.0 gdy segment w calosci w buforze. Udzial ciekow rzeczywistych: 25.9% → 31.5% (threshold 1000)
-- **Admin cleanup: single source of truth** — panel admin deleguje czyszczenie do `execute_clean()` z `scripts/clean.py` zamiast wlasnej listy tabel. Dodano `bdot_streams` do `DB_TABLES`. `remove_dir()` zachowuje mount points Docker. 2 cele czyszczenia zamiast 7
-- **DEM color mapping: percentile clipping** — nowa funkcja `normalize_elevation(valid_data, low_pct=5, high_pct=95)` w `utils/dem_color.py`. Przycina elewacje do 5-95 percentyla zamiast min-max, lepsza dyferencjacja kolorow
-- **WFS TERYT discovery (ADR-045)** — pojedyncze zapytanie WFS do PRG GUGiK zamiast ~625 zapytan WMS. Juz udokumentowane w poprzedniej sesji
-- **Main channel trace: upstream_area_km2 (ADR-046)** — wybor galezi na podstawie skumulowanej powierzchni zlewni zamiast Strahler/local area. Nowa tablica `_upstream_area_km2` w CatchmentGraph. Priorytet: upstream_area_km2 → is_real_stream → Strahler → local area_km2
-- **Hydraulic length wzgledem ujscia zlewni** — `aggregate_stats(indices, outlet_idx)` odejmuje dystans ujscia: `hydraulic_length = max(all) - outlet_dist`. Wczesniej raportowano surowa wartosc z globalnego ujscia basenu
-- Aktualizacja dokumentacji — CHANGELOG, PROGRESS, DECISIONS (ADR-046)
-- **Main channel trace: upstream_area_km2 z stream_network** — poprawka: użycie kumulatywnej `upstream_area_km2` (z tabeli `stream_network`) zamiast lokalnej `area_km2` (z `stream_catchments`). Dodana tablica `_upstream_area_km2` do CatchmentGraph
-- **Kaskadowa eskalacja progu w select_stream** — po cascade (np. 1000→100000) `trace_main_channel` i `get_main_channel_feature_collection` używają teraz eskalowanego progu i `outlet_idx_for_stats` (nowa zmienna zamiast `clicked_idx`)
+- **Per-polygon simplify usunięty ze stream_extraction** — `shapely.simplify(2*cellsize)` stosowane niezależnie per subcatchment powodowało luki między sąsiednimi zlewniami (wspólne krawędzie upraszczane różnie). Surowe geometrie zapisywane do DB; wygładzanie w runtime merge pipeline
+- **Invalidacja CatchmentGraph po cleanup (+ reload)** — `load()` miało early return `if self._loaded: return` uniemożliwiające reload po regeneracji danych. Nowa metoda `invalidate()` (czyści flagę i lookup), wywoływana po TRUNCATE i przed reload
+- **Browser cache wyłączony dla danych pipeline** — Nginx cachował .pbf/.png/.geojson przez 1h → stale data po re-run. Teraz `Cache-Control: no-store` dla tiles/, data/, .pbf, .geojson
+- **Divide flow path geometry (migracja 024)** — nowa kolumna `divide_flow_path_geom` w `stream_catchments`. Ścieżka z komórki o max flow_dist na GRANICY zlewni cząstkowej do ujścia. Nowe pole API: `divide_flow_path_geojson`. Frontend: longest flow path = czerwona kreska, divide flow path = czerwona kropka
+- **Wygładzanie Chaikin cieków w preprocessingu (ADR-047)** — `ST_ChaikinSmoothing(geom, 3)` z `preserve_end_points=true` podczas INSERT do `stream_network`. Gładkie cieki, zachowana topologia, przeliczone `length_m`
+- **ADR-048: Droga spływu z działu wód** — osobna geometria divide_flow_path_geom (max flow_dist na granicy, nie w środku zlewni)
+- Aktualizacja dokumentacji — CHANGELOG, PROGRESS, DECISIONS (ADR-047, ADR-048)
 
 ### W trakcie
 - Brak
 
 ### Nastepne kroki
-- Merge `feat/bdot-stream-matching` do `develop`
+- Merge `feat/geometry-simplification-fix` do `develop`
 - Re-run pipeline po merge
 - CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
-- Follow-up: preprocessing `stream_extraction.py` — zamiana `simplify()` na `set_precision()`
 - Clipping do dokladnej granicy poligonu
 - Podwojna analiza NMT (z/bez obszarow bezodplywowych)
+
+### Poprzednia sesja (2026-03-24, sesja 69 — poprawki BDOT matching, main channel trace, hydraulic length, admin cleanup)
+
+- BDOT ST_Within fix, Admin cleanup: single source of truth, DEM color mapping: percentile clipping
+- Main channel trace: upstream_area_km2 (ADR-046), Hydraulic length wzgledem ujscia zlewni
+- Kaskadowa eskalacja progu w select_stream
+- Aktualizacja dokumentacji (ADR-046)
 
 ### Poprzednia sesja (2026-03-24, sesja 68 — finalizacja feat/bdot-stream-matching)
 

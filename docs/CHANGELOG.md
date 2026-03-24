@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — 2026-03-24
 
 ### Dodane
+- **Geometria drogi spływu z działu wód (divide_flow_path_geom)** — osobna kolumna w `stream_catchments` (migracja 024). Ścieżka z komórki o max flow_dist na GRANICY zlewni cząstkowej do ujścia. Frontend: longest flow path = czerwona kreska, divide flow path = czerwona kropka
+- **Wygładzanie Chaikin cieków w preprocessingu (ADR-047)** — `ST_ChaikinSmoothing(geom, 3)` z `preserve_end_points=true` podczas INSERT do `stream_network`. Gładkie cieki bez pikselowych schodków, zachowana topologia sieci
 - **WFS TERYT discovery** — zastąpiono sampling po siatce WMS (~625 zapytań) pojedynczym zapytaniem WFS do PRG GUGiK; fallback na starą metodę przy awarii WFS
 - **BDOT10k stream matching (ADR-044)** -- spatial join ciekow BDOT z flow accumulation streams. Nowa tabela `bdot_streams`, kolumna `is_real_stream`, `real_channel_length_km` w parametrach morfometrycznych. Kerby-Kirpich z fizycznie uzasadnionym podzialem overland/channel.
 - **`hydraulic_length_km` z flow direction grid** — maksymalna droga splywu (pyflwdir `stream_distance()`) obliczana w preprocessingu, nowa kolumna w `stream_catchments` (migracja 022). Uzywana przez NRCS i Kirpich zamiast `channel_length_km`
@@ -44,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Drainage stats z BDOT** — gestosc sieci, czestotliwosc ciekow, chropowatosc i max Strahler bazuja wylacznie na segmentach `is_real_stream=true` (zamiast calej sieci algorytmicznej)
 
 ### Naprawione
+- **Per-polygon simplify usunięty ze stream_extraction** — `shapely.simplify(2*cellsize)` stosowane niezależnie per subcatchment powodowało luki między sąsiednimi zlewniami (wspólne krawędzie upraszczane różnie). Surowe geometrie zapisywane do DB; wygładzanie w runtime merge pipeline
+- **Invalidacja CatchmentGraph po cleanup** — `load()` miało early return `if self._loaded: return` uniemożliwiające reload po regeneracji danych. Nowa metoda `invalidate()` czyszcząca flagę i lookup, wywoływana po TRUNCATE i przed reload
+- **Browser cache dla danych pipeline wyłączony** — Nginx cachował .pbf/.png/.geojson przez 1h → stale data po re-run pipeline. Teraz `Cache-Control: no-store` dla tiles/, data/, .pbf, .geojson; cache tylko dla css/js/ico
 - **BDOT ST_Within fix** — `ST_Intersection` zwracalo EMPTY dla krotkich segmentow DEM (<30m) calkowicie wewnatrz bufora BDOT. Dodano `ST_Within` check przed `ST_Intersection` w `update_stream_real_flags()` — overlap=1.0 gdy segment w calosci w buforze. Wzrost udzialu ciekow rzeczywistych z 25.9% do 31.5% (threshold 1000)
 - **Hydraulic length wzgledem ujscia zlewni** — `aggregate_stats()` raportowalo surowa wartosc `max_flow_dist_m` (odleglosc od globalnego ujscia basenu). Teraz odejmuje dystans ujscia wybranej zlewni: `hydraulic_length = max(all) - outlet_dist`
 - **nash_urban_fraction zawsze NULL** — imperviousness nie było przekazywane z land cover do build_morph_dict_from_graph()
