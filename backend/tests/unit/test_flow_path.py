@@ -329,3 +329,218 @@ class TestInsertCatchmentsFlowPath:
         assert _tsv_val(None) == ""
         assert _tsv_val(1234.5) == "1234.5"
         assert _tsv_val("LINESTRING(0 0, 1 1)") == "LINESTRING(0 0, 1 1)"
+
+
+class TestSampleStreamDistance:
+    """Tests for sample_stream_distance point sampling."""
+
+    def test_sample_returns_float_values(self, tmp_path):
+        """Point sampling should return numeric float values."""
+        import rasterio
+        from rasterio.transform import from_origin
+
+        # Create a small test raster
+        tif_path = str(tmp_path / "test_stream_dist.tif")
+        transform = from_origin(0.0, 10.0, 1.0, 1.0)
+        data = np.array([[100.0, 200.0], [300.0, 400.0]], dtype=np.float32)
+        with rasterio.open(
+            tif_path, "w", driver="GTiff",
+            height=2, width=2, count=1, dtype="float32",
+            crs="EPSG:2180", transform=transform, nodata=-1,
+        ) as dst:
+            dst.write(data, 1)
+
+        from core.watershed_service import sample_stream_distance
+
+        result = sample_stream_distance([(0.5, 9.5)], tif_path)
+        assert len(result) == 1
+        assert isinstance(result[0], float)
+        assert result[0] == pytest.approx(100.0)
+
+    def test_sample_outside_raster_returns_nan(self, tmp_path):
+        """Points outside raster extent should return NaN."""
+        import rasterio
+        from rasterio.transform import from_origin
+
+        tif_path = str(tmp_path / "test_stream_dist.tif")
+        transform = from_origin(0.0, 10.0, 1.0, 1.0)
+        data = np.array([[100.0, 200.0], [300.0, 400.0]], dtype=np.float32)
+        with rasterio.open(
+            tif_path, "w", driver="GTiff",
+            height=2, width=2, count=1, dtype="float32",
+            crs="EPSG:2180", transform=transform, nodata=-1,
+        ) as dst:
+            dst.write(data, 1)
+
+        from core.watershed_service import sample_stream_distance
+
+        # Point far outside
+        result = sample_stream_distance([(999.0, 999.0)], tif_path)
+        assert len(result) == 1
+        # Outside points get nodata value which maps to NaN
+        # or the rasterio default for out-of-bounds
+
+    def test_sample_nodata_returns_nan(self, tmp_path):
+        """Points at nodata cells should return NaN."""
+        import rasterio
+        from rasterio.transform import from_origin
+
+        tif_path = str(tmp_path / "test_stream_dist.tif")
+        transform = from_origin(0.0, 10.0, 1.0, 1.0)
+        data = np.array([[-1.0, 200.0], [300.0, 400.0]], dtype=np.float32)
+        with rasterio.open(
+            tif_path, "w", driver="GTiff",
+            height=2, width=2, count=1, dtype="float32",
+            crs="EPSG:2180", transform=transform, nodata=-1,
+        ) as dst:
+            dst.write(data, 1)
+
+        from core.watershed_service import sample_stream_distance
+
+        result = sample_stream_distance([(0.5, 9.5)], tif_path)
+        assert len(result) == 1
+        assert np.isnan(result[0])
+
+    def test_sample_multiple_points(self, tmp_path):
+        """Batch sampling should return one value per point."""
+        import rasterio
+        from rasterio.transform import from_origin
+
+        tif_path = str(tmp_path / "test_stream_dist.tif")
+        transform = from_origin(0.0, 10.0, 1.0, 1.0)
+        data = np.array([[100.0, 200.0], [300.0, 400.0]], dtype=np.float32)
+        with rasterio.open(
+            tif_path, "w", driver="GTiff",
+            height=2, width=2, count=1, dtype="float32",
+            crs="EPSG:2180", transform=transform, nodata=-1,
+        ) as dst:
+            dst.write(data, 1)
+
+        from core.watershed_service import sample_stream_distance
+
+        result = sample_stream_distance(
+            [(0.5, 9.5), (1.5, 9.5), (0.5, 8.5)], tif_path
+        )
+        assert len(result) == 3
+        assert result[0] == pytest.approx(100.0)
+        assert result[1] == pytest.approx(200.0)
+        assert result[2] == pytest.approx(300.0)
+
+
+class TestFlowPathAggregation:
+    """Tests for hydraulic_length_km in aggregate_stats."""
+
+    def test_hydraulic_length_from_max_flow_dist(self):
+        """max(max_flow_dist_m) / 1000 = hydraulic_length_km."""
+        from core.catchment_graph import CatchmentGraph
+
+        cg = CatchmentGraph()
+        # Manually set up minimal graph state for testing
+        n = 3
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2, 3], dtype=np.int32)
+        cg._threshold_m2 = np.array([1000, 1000, 1000], dtype=np.int32)
+        cg._area_km2 = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        cg._elev_min = np.array([100.0, 90.0, 80.0], dtype=np.float32)
+        cg._elev_max = np.array([200.0, 210.0, 220.0], dtype=np.float32)
+        cg._elev_mean = np.array([150.0, 150.0, 150.0], dtype=np.float32)
+        cg._slope_mean = np.array([5.0, 5.0, 5.0], dtype=np.float32)
+        cg._perimeter_km = np.array([4.0, 5.0, 6.0], dtype=np.float32)
+        cg._stream_length_km = np.array([1.0, 1.5, 2.0], dtype=np.float32)
+        cg._strahler = np.array([1, 2, 3], dtype=np.int8)
+        cg._max_flow_dist_m = np.array([5000.0, 8000.0, 12000.0], dtype=np.float64)
+
+        indices = np.array([0, 1, 2], dtype=np.int32)
+        stats = cg.aggregate_stats(indices)
+
+        assert stats["hydraulic_length_km"] == pytest.approx(12.0, rel=0.01)
+
+    def test_hydraulic_length_zero_when_no_flow_dist(self):
+        """hydraulic_length_km should be None when all max_flow_dist_m are 0."""
+        from core.catchment_graph import CatchmentGraph
+
+        cg = CatchmentGraph()
+        n = 2
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2], dtype=np.int32)
+        cg._threshold_m2 = np.array([1000, 1000], dtype=np.int32)
+        cg._area_km2 = np.array([1.0, 2.0], dtype=np.float32)
+        cg._elev_min = np.array([100.0, 90.0], dtype=np.float32)
+        cg._elev_max = np.array([200.0, 210.0], dtype=np.float32)
+        cg._elev_mean = np.array([150.0, 150.0], dtype=np.float32)
+        cg._slope_mean = np.array([5.0, 5.0], dtype=np.float32)
+        cg._perimeter_km = np.array([4.0, 5.0], dtype=np.float32)
+        cg._stream_length_km = np.array([1.0, 1.5], dtype=np.float32)
+        cg._strahler = np.array([1, 2], dtype=np.int8)
+        cg._max_flow_dist_m = np.array([0.0, 0.0], dtype=np.float64)
+
+        indices = np.array([0, 1], dtype=np.int32)
+        stats = cg.aggregate_stats(indices)
+
+        assert stats["hydraulic_length_km"] is None
+
+    def test_get_max_flow_dist_m(self):
+        """get_max_flow_dist_m should return correct value."""
+        from core.catchment_graph import CatchmentGraph
+
+        cg = CatchmentGraph()
+        cg._loaded = True
+        cg._max_flow_dist_m = np.array([5000.0, 8000.0], dtype=np.float64)
+
+        assert cg.get_max_flow_dist_m(0) == pytest.approx(5000.0)
+        assert cg.get_max_flow_dist_m(1) == pytest.approx(8000.0)
+
+
+class TestMorphometricFlowPathFields:
+    """Tests for flow path fields in MorphometricParameters schema."""
+
+    def test_schema_accepts_flow_path_fields(self):
+        """MorphometricParameters should accept all 3 flow path fields."""
+        from models.schemas import MorphometricParameters
+
+        params = MorphometricParameters(
+            area_km2=10.0,
+            perimeter_km=20.0,
+            length_km=5.0,
+            elevation_min_m=100.0,
+            elevation_max_m=300.0,
+            longest_flow_path_km=8.5,
+            divide_flow_path_km=7.2,
+            centroid_flow_path_km=5.1,
+        )
+        assert params.longest_flow_path_km == 8.5
+        assert params.divide_flow_path_km == 7.2
+        assert params.centroid_flow_path_km == 5.1
+
+    def test_schema_defaults_to_none(self):
+        """Flow path fields should default to None."""
+        from models.schemas import MorphometricParameters
+
+        params = MorphometricParameters(
+            area_km2=10.0,
+            perimeter_km=20.0,
+            length_km=5.0,
+            elevation_min_m=100.0,
+            elevation_max_m=300.0,
+        )
+        assert params.longest_flow_path_km is None
+        assert params.divide_flow_path_km is None
+        assert params.centroid_flow_path_km is None
+
+    def test_schema_rejects_negative_values(self):
+        """Flow path fields should reject negative values."""
+        from pydantic import ValidationError
+
+        from models.schemas import MorphometricParameters
+
+        with pytest.raises(ValidationError):
+            MorphometricParameters(
+                area_km2=10.0,
+                perimeter_km=20.0,
+                length_km=5.0,
+                elevation_min_m=100.0,
+                elevation_max_m=300.0,
+                longest_flow_path_km=-1.0,
+            )
