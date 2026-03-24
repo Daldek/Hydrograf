@@ -78,6 +78,8 @@
             ['Spadek średni', formatSlope(m.mean_slope_m_per_m)],
             ['Długość cieku gł.', formatValue(m.channel_length_km, 'km', 2)],
             ['Spadek cieku gł.', formatSlope(m.channel_slope_m_per_m)],
+            ['Droga spływu', formatValue(m.longest_flow_path_km, 'km', 2)],
+            ['Droga z działu', formatValue(m.divide_flow_path_km, 'km', 2)],
             ['CN', m.cn !== null && m.cn !== undefined ? String(m.cn) : '—'],
             ['Ujście φ', formatValue(o.latitude, '°N', 6)],
             ['Ujście λ', formatValue(o.longitude, '°E', 6)],
@@ -293,6 +295,9 @@
 
             displayParameters(data);
 
+            // Show longest flow path overlay on map
+            Hydrograf.map.showLongestFlowPath(data.watershed.longest_flow_path_geojson);
+
             // Show/hide hietogram + hydrograph sections based on API response
             var hydroAvail = data.watershed && data.watershed.hydrograph_available;
             ['acc-hietogram', 'acc-hydrograph'].forEach(function (id) {
@@ -363,6 +368,9 @@
                 Hydrograf.map.showOutlet(outlet.latitude, outlet.longitude, outlet.elevation_m);
 
                 displayParameters(data);
+
+                // Show longest flow path overlay on map
+                Hydrograf.map.showLongestFlowPath(data.watershed.longest_flow_path_geojson);
             } else {
                 displayStreamInfo(data.stream);
             }
