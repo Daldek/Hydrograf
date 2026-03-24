@@ -20,6 +20,7 @@ from core.watershed_service import (
     boundary_to_polygon,
     compute_watershed_length,
     ensure_outlet_within_boundary,
+    get_longest_flow_path_geojson,
     get_main_stream_geojson,
     get_segment_outlet,
     get_stream_info_by_segment_idx,
@@ -307,6 +308,44 @@ def select_stream(
         centroid = boundary_poly.centroid
         length_to_centroid_km = round(centroid.distance(outlet_point) / 1000, 4)
 
+        # Flow path parameters
+        longest_flow_path_km = stats.get("hydraulic_length_km")
+        divide_flow_path_km = None
+        centroid_flow_path_km = None
+        try:
+            import os
+
+            from core.config import get_settings
+            from core.watershed_service import sample_stream_distance
+
+            settings = get_settings()
+            sd_path = settings.stream_distance_path
+            if os.path.exists(sd_path):
+                import numpy as _np
+
+                outlet_dist_vals = sample_stream_distance(
+                    [(outlet_x, outlet_y)], sd_path
+                )
+                outlet_dist = outlet_dist_vals[0]
+                if not _np.isnan(outlet_dist):
+                    boundary_coords = list(boundary_poly.exterior.coords)
+                    boundary_dists = sample_stream_distance(boundary_coords, sd_path)
+                    valid_boundary = [d for d in boundary_dists if not _np.isnan(d)]
+                    if valid_boundary:
+                        dfp = (max(valid_boundary) - outlet_dist) / 1000.0
+                        if dfp > 0:
+                            divide_flow_path_km = round(dfp, 4)
+                    centroid_dist_vals = sample_stream_distance(
+                        [(centroid.x, centroid.y)], sd_path
+                    )
+                    centroid_dist = centroid_dist_vals[0]
+                    if not _np.isnan(centroid_dist):
+                        cfp = (centroid_dist - outlet_dist) / 1000.0
+                        if cfp > 0:
+                            centroid_flow_path_km = round(cfp, 4)
+        except Exception as e:
+            logger.debug(f"Flow path point sampling not available: {e}")
+
         morphometry = MorphometricParameters(
             area_km2=round(area_km2, 2),
             perimeter_km=perimeter_km,
@@ -331,7 +370,20 @@ def select_stream(
             max_strahler_order=stats.get("max_strahler_order"),
             cn=cn_value,
             imperviousness=imperviousness,
+            longest_flow_path_km=longest_flow_path_km,
+            divide_flow_path_km=divide_flow_path_km,
+            centroid_flow_path_km=centroid_flow_path_km,
         )
+
+        # 12b. Longest flow path GeoJSON
+        flow_path_geojson = None
+        try:
+            flow_path_geojson = get_longest_flow_path_geojson(
+                cg, upstream_indices_for_stats, clicked_idx,
+                threshold, db,
+            )
+        except Exception as e:
+            logger.debug(f"Longest flow path not available: {e}")
 
         # 13. Build response
         watershed_response = WatershedResponse(
@@ -348,6 +400,7 @@ def select_stream(
             land_cover_stats=lc_stats,
             hsg_stats=hsg_stats_data,
             main_stream_geojson=main_stream_geojson,
+            longest_flow_path_geojson=flow_path_geojson,
         )
 
         info_message = (

@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # DEM raster path (for terrain profile sampling)
     dem_path: str = "/data/dem/dem.vrt"
 
+    # Stream distance raster path (for flow path point sampling)
+    stream_distance_path: str = "/data/nmt/dem_mosaic_04b_stream_distance.tif"
+
     # Admin panel API key (empty = auto-generated UUID at startup)
     admin_api_key: str = ""
     admin_api_key_file: str = ""  # Path to file containing admin API key

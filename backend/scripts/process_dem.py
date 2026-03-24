@@ -121,6 +121,154 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _enrich_catchments_with_flow_paths(
+    catchments: list[dict],
+    label_raster: np.ndarray,
+    flow_dist_m: np.ndarray,
+    flw,
+    metadata: dict,
+) -> None:
+    """
+    Add max_flow_dist_m and longest_flow_path_wkt to each catchment dict.
+
+    Uses batch flw.path() for performance: collects the farthest cell
+    (max flow distance) per sub-catchment, traces all paths in one call,
+    then assigns results back.
+
+    Parameters
+    ----------
+    catchments : list[dict]
+        Catchment dicts from polygonize_subcatchments() — modified in place.
+    label_raster : np.ndarray
+        int32 label raster (1-based segment indices, 0=unassigned).
+    flow_dist_m : np.ndarray
+        Flow distance from each cell to outlet [m].
+    flw : pyflwdir.FlwdirRaster
+        Flow direction raster object.
+    metadata : dict
+        Grid metadata (cellsize, transform, etc.).
+    """
+    from shapely.geometry import LineString
+
+    t0 = time.time()
+    cellsize = metadata["cellsize"]
+    simplify_tol = 2 * cellsize
+    flat_dist = flow_dist_m.ravel()
+    flat_labels = label_raster.ravel()
+
+    # Phase 1: find cell with max flow distance per sub-catchment
+    # Vectorized sort + reduceat: O(n log n) but fully numpy (no Python loops)
+    max_label = int(label_raster.max())
+
+    # Filter to labeled cells only
+    valid_mask = flat_labels > 0
+    valid_indices = np.where(valid_mask)[0]
+    valid_labels = flat_labels[valid_indices]
+    valid_dists = flat_dist[valid_indices]
+
+    # Sort by label (stable sort preserves order within groups)
+    order = np.argsort(valid_labels, kind="mergesort")
+    sorted_labels = valid_labels[order]
+    sorted_dists = valid_dists[order]
+    sorted_orig_idx = valid_indices[order]
+
+    # Find group boundaries and compute per-group max
+    unique_labels, group_starts, group_counts = np.unique(
+        sorted_labels, return_index=True, return_counts=True
+    )
+    group_maxes = np.maximum.reduceat(sorted_dists, group_starts)
+
+    # Find flat index of max-distance cell per label
+    # For each cell: is it the max of its group?
+    group_ids = np.repeat(np.arange(len(unique_labels)), group_counts)
+    is_max = sorted_dists == group_maxes[group_ids]
+    max_positions = np.where(is_max)[0]
+    # Take first match per group (in case of ties)
+    _, first_max = np.unique(group_ids[max_positions], return_index=True)
+    argmax_in_sorted = max_positions[first_max]
+
+    # Build lookup arrays indexed by segment_idx
+    best_dist = np.full(max_label + 1, -1.0, dtype=np.float64)
+    best_idx = np.full(max_label + 1, -1, dtype=np.intp)
+    best_dist[unique_labels] = group_maxes
+    best_idx[unique_labels] = sorted_orig_idx[argmax_in_sorted]
+
+    # Free temporaries
+    del valid_mask, valid_indices, valid_labels, valid_dists
+    del order, sorted_labels, sorted_dists, sorted_orig_idx
+    del unique_labels, group_starts, group_counts, group_ids
+    del is_max, max_positions, first_max, argmax_in_sorted
+
+    # Build batch arrays: one starting index per catchment
+    catch_order = []  # index into catchments list
+    start_idxs = []   # flat index of farthest cell
+    for ci, catch in enumerate(catchments):
+        seg_idx = catch["segment_idx"]
+        if seg_idx <= max_label and best_idx[seg_idx] >= 0:
+            catch_order.append(ci)
+            start_idxs.append(best_idx[seg_idx])
+            catch["max_flow_dist_m"] = float(best_dist[seg_idx])
+        else:
+            catch["max_flow_dist_m"] = None
+            catch["longest_flow_path_wkt"] = None
+
+    if not start_idxs:
+        logger.info("  No flow paths to trace (no valid catchments)")
+        return
+
+    # Phase 2: batch trace all paths downstream
+    start_arr = np.array(start_idxs, dtype=np.intp)
+    paths, _dists = flw.path(idxs=start_arr, unit="m")
+
+    # Phase 3: clip each path to its sub-catchment and build geometry
+    traced = 0
+    for i, ci in enumerate(catch_order):
+        seg_idx = catchments[ci]["segment_idx"]
+        path_idxs = paths[i]
+
+        if len(path_idxs) < 2:
+            catchments[ci]["longest_flow_path_wkt"] = None
+            continue
+
+        # Clip path: keep only cells within this sub-catchment
+        path_labels = flat_labels[path_idxs]
+        in_catchment = path_labels == seg_idx
+        # Find last cell still in catchment
+        # (path goes downstream, may leave subcatchment)
+        if not in_catchment[0]:
+            catchments[ci]["longest_flow_path_wkt"] = None
+            continue
+
+        # Find the index of the first cell that leaves the catchment
+        out_indices = np.where(~in_catchment)[0]
+        if len(out_indices) > 0:
+            # Include one cell past boundary for continuity to outlet
+            end = out_indices[0] + 1
+            path_idxs = path_idxs[:end]
+        # else: entire path is within catchment
+
+        if len(path_idxs) < 2:
+            catchments[ci]["longest_flow_path_wkt"] = None
+            continue
+
+        # Convert to coordinates
+        xs, ys = flw.xy(path_idxs)
+        line = LineString(zip(xs, ys))
+
+        # Simplify to reduce vertices (2 * cellsize tolerance)
+        if len(path_idxs) > 3:
+            line = line.simplify(simplify_tol, preserve_topology=True)
+
+        catchments[ci]["longest_flow_path_wkt"] = line.wkt
+        traced += 1
+
+    elapsed = time.time() - t0
+    logger.info(
+        f"  Flow path tracing: {traced}/{len(catchments)} catchments "
+        f"in {elapsed:.1f}s"
+    )
+
+
 def process_dem(
     input_path: Path,
     stream_threshold: int = 1000,
@@ -417,6 +565,23 @@ def process_dem(
             dtype="int32",
         )
 
+    # 4b. Compute stream distance (flow distance from each cell to outlet)
+    logger.info("Computing stream distance to outlet...")
+    t_sd = time.time()
+    flow_dist_m = flw.stream_distance(unit="m")
+    logger.info(
+        f"Stream distance computed in {time.time() - t_sd:.1f}s "
+        f"(max={np.nanmax(flow_dist_m):.0f}m)"
+    )
+    if save_intermediates:
+        save_raster_geotiff(
+            flow_dist_m,
+            metadata,
+            output_dir / f"{base_name}_04b_stream_distance.tif",
+            nodata=-1,
+            dtype="float32",
+        )
+
     # 5. Compute slope and aspect (shared Sobel gradients)
     logger.info("Computing slope and aspect (shared gradients)...")
     dx, dy = _compute_gradients(filled_dem, metadata["cellsize"], nodata)
@@ -594,6 +759,12 @@ def process_dem(
                     metadata,
                     segments,
                 )
+
+                # Compute longest flow path per sub-catchment (batch)
+                _enrich_catchments_with_flow_paths(
+                    catchments, label_raster, flow_dist_m, flw, metadata
+                )
+
                 all_catchment_data[threshold_m2] = catchments
 
             logger.info(f"  Threshold {threshold_m2} m²: {len(segments)} segments")
