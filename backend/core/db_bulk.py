@@ -208,7 +208,9 @@ def insert_catchments(
                 elevation_max_m FLOAT,
                 perimeter_km FLOAT,
                 stream_length_km FLOAT,
-                elev_histogram JSONB
+                elev_histogram JSONB,
+                max_flow_dist_m FLOAT,
+                longest_flow_path_wkt TEXT
             )
         """)
 
@@ -231,7 +233,9 @@ def insert_catchments(
                 f"{_tsv_val(cat.get('elevation_max_m'))}\t"
                 f"{_tsv_val(cat.get('perimeter_km'))}\t"
                 f"{_tsv_val(cat.get('stream_length_km'))}\t"
-                f"{hist_str}\n"
+                f"{hist_str}\t"
+                f"{_tsv_val(cat.get('max_flow_dist_m'))}\t"
+                f"{_tsv_val(cat.get('longest_flow_path_wkt'))}\n"
             )
 
         tsv_buffer.seek(0)
@@ -249,7 +253,8 @@ def insert_catchments(
                 area_km2, mean_elevation_m, mean_slope_percent,
                 strahler_order, downstream_segment_idx,
                 elevation_min_m, elevation_max_m,
-                perimeter_km, stream_length_km, elev_histogram
+                perimeter_km, stream_length_km, elev_histogram,
+                max_flow_dist_m, longest_flow_path_geom
             )
             SELECT
                 ST_SetSRID(ST_GeomFromText(wkt), 2180),
@@ -257,7 +262,12 @@ def insert_catchments(
                 area_km2, mean_elevation_m, mean_slope_percent,
                 strahler_order, downstream_segment_idx,
                 elevation_min_m, elevation_max_m,
-                perimeter_km, stream_length_km, elev_histogram
+                perimeter_km, stream_length_km, elev_histogram,
+                max_flow_dist_m,
+                CASE WHEN longest_flow_path_wkt IS NOT NULL AND longest_flow_path_wkt != ''
+                    THEN ST_SetSRID(ST_GeomFromText(longest_flow_path_wkt), 2180)
+                    ELSE NULL
+                END
             FROM temp_catchments_import
         """)
 
