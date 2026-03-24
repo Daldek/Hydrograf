@@ -212,6 +212,7 @@
             skip_precipitation: document.getElementById('skip-precipitation').checked,
             skip_tiles: document.getElementById('skip-tiles').checked,
             skip_overlays: document.getElementById('skip-overlays').checked,
+            resolution: document.getElementById('bootstrap-resolution').value,
         };
 
         if (mode === 'boundary') {
