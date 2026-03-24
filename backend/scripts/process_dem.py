@@ -22,13 +22,11 @@ Examples
 --------
     # Process single DEM tile
     python -m scripts.process_dem \\
-        --input ../data/nmt/N-33-131-D-a-3-2.asc \\
-        --stream-threshold 1000
+        --input ../data/nmt/N-33-131-D-a-3-2.asc
 
     # Process VRT mosaic (multiple tiles)
     python -m scripts.process_dem \\
-        --input ../data/nmt/mosaic.vrt \\
-        --stream-threshold 1000
+        --input ../data/nmt/mosaic.vrt
 
     # Dry run (only show statistics)
     python -m scripts.process_dem \\
@@ -977,15 +975,6 @@ def main():
         help="Path to input ASCII GRID (.asc) file",
     )
     parser.add_argument(
-        "--stream-threshold",
-        type=int,
-        default=1000,
-        help=(
-            "Flow accumulation threshold in cells (default: 1000). "
-            "Ignored when --thresholds is specified."
-        ),
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Only compute statistics without database insert",
@@ -1042,8 +1031,7 @@ def main():
         default=None,
         help=(
             "Comma-separated FA thresholds in m² for multi-density "
-            "stream networks (e.g. 1000,10000,100000). "
-            "Overrides --stream-threshold for vectorization."
+            "stream networks (e.g. 1000,10000,100000)."
         ),
     )
     parser.add_argument(
@@ -1086,7 +1074,6 @@ def main():
     logger.info("DEM Processing Script")
     logger.info("=" * 60)
     logger.info(f"Input: {input_path}")
-    logger.info(f"Stream threshold: {args.stream_threshold}")
     if threshold_list:
         logger.info(f"Multi-threshold FA: {threshold_list} m²")
     logger.info(f"Dry run: {args.dry_run}")
