@@ -101,9 +101,15 @@
         ]);
 
         fillTable(els.paramsDrainage, [
-            ['Gęstość sieci Dd', formatValue(m.drainage_density_km_per_km2, 'km/km²', 2)],
-            ['Częstość cieków Fs', formatValue(m.stream_frequency_per_km2, '1/km²', 2)],
-            ['Liczba chropowatoś. Rn', formatRatio(m.ruggedness_number, 3)],
+            ['Gęstość sieci Dd', m.drainage_density_km_per_km2 != null
+                ? formatValue(m.drainage_density_km_per_km2, 'km/km²', 2)
+                : 'brak cieków BDOT'],
+            ['Częstość cieków Fs', m.stream_frequency_per_km2 != null
+                ? formatValue(m.stream_frequency_per_km2, '1/km²', 2)
+                : 'brak cieków BDOT'],
+            ['Liczba chropowatoś. Rn', m.ruggedness_number != null
+                ? formatRatio(m.ruggedness_number, 3)
+                : 'brak cieków BDOT'],
             ['Max rząd Strahlera', m.max_strahler_order !== null && m.max_strahler_order !== undefined ? String(m.max_strahler_order) : '—'],
             ['Pokrycie BDOT', m.real_channel_length_km != null && m.channel_length_km
                 ? (100 * m.real_channel_length_km / m.channel_length_km).toFixed(0) + '%'
