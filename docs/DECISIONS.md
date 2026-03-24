@@ -948,6 +948,27 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-045: WFS PRG zamiast grid-sampling WMS dla TERYT discovery
+
+**Data:** 2026-03-24
+**Status:** Przyjeta
+
+**Kontekst:** Funkcja `discover_teryts_for_bbox()` w `download_landcover.py` wysylala ~625 zapytan WMS (siatka 25x25 punktow) do `Bdot10kProvider._get_teryt_for_point()`, aby wykryc kody TERYT powiatow w zadanym bbox. Bylo to wolne i moglo pomijac waskie powiaty wypadajace miedzy punktami siatki.
+
+**Opcje:**
+- A) Grid-sampling WMS — dotychczasowa metoda, ~625 zapytan, niedeterministyczna (zalezy od gestosci siatki)
+- B) Pojedyncze zapytanie WFS GetFeature do PRG GUGiK z filtrem BBOX — 1 zapytanie, deterministyczne wyniki
+
+**Decyzja:** Opcja B. Zapytanie WFS do `https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries` (warstwa `ms:A02_Granice_powiatow`, pole `JPT_KOD_JE`). Zadanie wylacznie atrybutow (bez geometrii) dla szybkosci. Fallback na stara metode (opcja A, wydzielona jako `_discover_teryts_grid()`) przy awarii WFS. Parsowanie odpowiedzi GML w `_parse_teryts_from_gml()`.
+
+**Konsekwencje:**
+- ~99% redukcja liczby zapytan (625 → 1)
+- Deterministyczne wyniki — kazdy powiat przecinajacy bbox zostaje wykryty
+- Brak nowych zaleznosci pip (parsowanie GML przez xml.etree.ElementTree)
+- Graceful degradation — fallback na grid-sampling przy awarii WFS
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

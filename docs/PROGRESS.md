@@ -49,6 +49,7 @@
 **Data:** 2026-03-24 (sesja 68 — finalizacja feat/bdot-stream-matching przed merge do develop)
 
 ### Co zrobiono
+- **WFS TERYT discovery (ADR-045)** — `discover_teryts_for_bbox()` przepisana na pojedyncze zapytanie WFS do PRG GUGiK (warstwa `A02_Granice_powiatow`) zamiast grid-sampling WMS (~625 zapytań). Fallback na starą metodę. Nowe funkcje: `_parse_teryts_from_gml()`, `_discover_teryts_grid()`
 - **Upgrade Kartograf v0.5.0 → v0.6.1** — fix NMT WMS layers, parallel downloads, poprawiony DownloadManager
 - **Selektor rozdzielczosci NMT w admin panel** — wybor 1m/5m, parametr `resolution` przekazywany przez `run_pipeline()`
 - **Fix DownloadManager resolution** — poprawne przekazywanie parametru rozdzielczosci do NMT path
