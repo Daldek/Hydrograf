@@ -688,17 +688,20 @@ class CatchmentGraph:
             if not candidates:
                 break
 
-            # Select best upstream: max Strahler, then prefer BDOT real stream,
-            # then max stream_length, then max area
+            # Select best upstream: max upstream area (= flow accumulation),
+            # then prefer BDOT real stream, then Strahler, then stream length.
+            # Upstream area is the primary criterion because it is a physical
+            # property independent of the threshold — this harmonizes the main
+            # channel path across threshold levels (1k, 10k, 100k m²).
             best = max(
                 candidates,
                 key=lambda n: (
-                    self._strahler[n],
+                    self._area_km2[n],
                     int(self._is_real_stream[n]) if hasattr(self, '_is_real_stream') and self._is_real_stream is not None else 0,
+                    self._strahler[n],
                     self._stream_length_km[n]
                     if not np.isnan(self._stream_length_km[n])
                     else 0.0,
-                    self._area_km2[n],
                 ),
             )
             path.append(best)
