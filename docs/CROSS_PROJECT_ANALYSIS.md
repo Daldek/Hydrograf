@@ -37,7 +37,7 @@
 | Projekt | Zależy od | Typ zależności | Wersja |
 |---------|-----------|----------------|--------|
 | **Hydrograf** | IMGWTools | bezpośrednia (requirements.txt) | v2.1.0 |
-| **Hydrograf** | Kartograf | bezpośrednia (requirements.txt) | v0.4.1 |
+| **Hydrograf** | Kartograf | bezpośrednia (requirements.txt) | v0.6.1 |
 | **Hydrograf** | Hydrolog | bezpośrednia (requirements.txt) | v0.6.3 |
 | **Hydrolog** | Kartograf | opcjonalna (`[spatial]`) | - |
 
@@ -47,7 +47,7 @@
 
 ```
 imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
-kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.4.1
+kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.6.1
 hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.3
 ```
 

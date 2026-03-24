@@ -8,7 +8,7 @@
 
 ## 1. Przegląd
 
-Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.5.0) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
+Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.6.1) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
 
 - **NMT** - Numeryczny Model Terenu z GUGiK (rozdzielczość 5m)
 - **NMPT** - Numeryczny Model Pokrycia Terenu z GUGiK (nowy w v0.4.0)
@@ -515,7 +515,7 @@ pytest tests/integration/test_download_dem.py -v --run-network
 
 ---
 
-## 10. Land Cover (Kartograf 0.5.0)
+## 10. Land Cover (Kartograf 0.6.1)
 
 ### 10.1 Dostępne źródła danych
 
@@ -526,7 +526,7 @@ pytest tests/integration/test_download_dem.py -v --run-network
 
 ### 10.2 Warstwy BDOT10k
 
-Od Kartograf v0.5.0 wszystkie 15 warstw (12 PT + 3 SW) pobierane są w jednym GPKG. Filtrowanie warstw hydro (SWRS, SWKN, SWRM) odbywa się w Hydrograf na etapie merge za pomocą stałej `HYDRO_LAYER_PREFIXES`.
+Od Kartograf v0.5.0+ wszystkie 15 warstw (12 PT + 3 SW) pobierane są w jednym GPKG. Filtrowanie warstw hydro (SWRS, SWKN, SWRM) odbywa się w Hydrograf na etapie merge za pomocą stałej `HYDRO_LAYER_PREFIXES`.
 
 | Kod | Opis | → Hydrograf category | CN |
 |-----|------|---------------------|-----|
@@ -593,11 +593,11 @@ gpkg_path = manager.download_by_godlo("N-34-130-D", year=2018)
 
 ---
 
-## 11. BDOT10k Hydro (Kartograf 0.5.0)
+## 11. BDOT10k Hydro (Kartograf 0.6.1)
 
 ### 11.1 Warstwy hydrograficzne
 
-Od Kartograf v0.5.0 wszystkie 15 warstw BDOT10k (12 PT + 3 SW) pobierane są w jednym GPKG. Filtrowanie warstw hydrograficznych odbywa się w Hydrograf na etapie merge za pomocą stałej `HYDRO_LAYER_PREFIXES`.
+Od Kartograf v0.5.0+ wszystkie 15 warstw BDOT10k (12 PT + 3 SW) pobierane są w jednym GPKG. Filtrowanie warstw hydrograficznych odbywa się w Hydrograf na etapie merge za pomocą stałej `HYDRO_LAYER_PREFIXES`.
 
 | Kod BDOT10k | Opis | Typ geometrii |
 |-------------|------|---------------|
@@ -608,7 +608,7 @@ Od Kartograf v0.5.0 wszystkie 15 warstw BDOT10k (12 PT + 3 SW) pobierane są w j
 
 ### 11.2 Filtrowanie warstw hydro
 
-W Kartograf v0.5.0 nie ma parametru `category` — wszystkie warstwy pobierane są razem. Filtrowanie warstw hydro (SWRS, SWKN, SWRM, PTWP) odbywa się w `merge_hydro_gpkgs()` za pomocą stałej `HYDRO_LAYER_PREFIXES`:
+W Kartograf v0.5.0+ nie ma parametru `category` — wszystkie warstwy pobierane są razem. Filtrowanie warstw hydro (SWRS, SWKN, SWRM, PTWP) odbywa się w `merge_hydro_gpkgs()` za pomocą stałej `HYDRO_LAYER_PREFIXES`:
 
 ```python
 HYDRO_LAYER_PREFIXES = ("SWRS", "SWKN", "SWRM", "PTWP")
