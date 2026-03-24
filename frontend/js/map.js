@@ -391,6 +391,7 @@
         if (watershedLayer) { map.removeLayer(watershedLayer); watershedLayer = null; }
         if (outletMarker) { map.removeLayer(outletMarker); outletMarker = null; }
         clearLongestFlowPath();
+        clearDivideFlowPath();
         clearMainChannel();
     }
 
@@ -435,6 +436,31 @@
         if (mainChannelLayer) {
             map.removeLayer(mainChannelLayer);
             mainChannelLayer = null;
+        }
+    }
+
+    // ===== Divide flow path (longest flow path from watershed boundary) =====
+
+    var divideFlowPathLayer = null;
+
+    function showDivideFlowPath(geojson) {
+        clearDivideFlowPath();
+        if (!geojson) return;
+        divideFlowPathLayer = L.geoJSON(geojson, {
+            style: {
+                color: '#D32F2F',
+                weight: 2.5,
+                opacity: 0.8,
+                dashArray: '2,6',
+            },
+            interactive: false,
+        }).addTo(map);
+    }
+
+    function clearDivideFlowPath() {
+        if (divideFlowPathLayer) {
+            map.removeLayer(divideFlowPathLayer);
+            divideFlowPathLayer = null;
         }
     }
 
@@ -553,7 +579,7 @@
         if (!geojson) return;
         longestFlowPathLayer = L.geoJSON(geojson, {
             style: {
-                color: '#E65100',
+                color: '#D32F2F',
                 weight: 2,
                 opacity: 0.8,
                 dashArray: '8,4',
@@ -907,9 +933,12 @@
         loadLandCoverVector: loadLandCoverVector,
         getLandCoverLayer: getLandCoverLayer,
         setLandCoverOpacity: setLandCoverOpacity,
-        // Longest flow path
+        // Longest flow path (from divide)
         showLongestFlowPath: showLongestFlowPath,
         clearLongestFlowPath: clearLongestFlowPath,
+        // Divide flow path (from watershed boundary)
+        showDivideFlowPath: showDivideFlowPath,
+        clearDivideFlowPath: clearDivideFlowPath,
         // Panel/zoom interaction
         shiftZoomControls: shiftZoomControls,
         // Legends

@@ -25,6 +25,7 @@ from core.watershed_service import (
     boundary_to_polygon,
     build_morph_dict_from_graph,
     ensure_outlet_within_boundary,
+    get_divide_flow_path_geojson,
     get_longest_flow_path_geojson,
     get_main_channel_feature_collection,
     get_main_stream_geojson,
@@ -326,6 +327,16 @@ def delineate_watershed(
         except Exception as e:
             logger.debug(f"Longest flow path not available: {e}")
 
+        # 17d. Divide flow path GeoJSON
+        divide_path_geojson = None
+        try:
+            divide_path_geojson = get_divide_flow_path_geojson(
+                cg, upstream_indices_for_stats, clicked_idx,
+                DEFAULT_THRESHOLD_M2, db,
+            )
+        except Exception as e:
+            logger.debug(f"Divide flow path not available: {e}")
+
         # 18. Build response
         result = DelineateResponse(
             watershed=WatershedResponse(
@@ -343,6 +354,7 @@ def delineate_watershed(
                 hsg_stats=hsg_stats_data,
                 main_stream_geojson=main_stream_geojson,
                 longest_flow_path_geojson=flow_path_geojson,
+                divide_flow_path_geojson=divide_path_geojson,
             ),
             auto_selected=auto_selected,
             upstream_segment_indices=segment_idxs if auto_selected else None,

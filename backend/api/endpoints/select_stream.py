@@ -20,6 +20,7 @@ from core.watershed_service import (
     boundary_to_polygon,
     compute_watershed_length,
     ensure_outlet_within_boundary,
+    get_divide_flow_path_geojson,
     get_longest_flow_path_geojson,
     get_main_channel_feature_collection,
     get_main_stream_geojson,
@@ -395,6 +396,16 @@ def select_stream(
         except Exception as e:
             logger.debug(f"Longest flow path not available: {e}")
 
+        # 12c. Divide flow path GeoJSON
+        divide_path_geojson = None
+        try:
+            divide_path_geojson = get_divide_flow_path_geojson(
+                cg, upstream_indices_for_stats, clicked_idx,
+                threshold, db,
+            )
+        except Exception as e:
+            logger.debug(f"Divide flow path not available: {e}")
+
         # 13. Build response
         watershed_response = WatershedResponse(
             boundary_geojson=boundary_geojson,
@@ -411,6 +422,7 @@ def select_stream(
             hsg_stats=hsg_stats_data,
             main_stream_geojson=main_stream_geojson,
             longest_flow_path_geojson=flow_path_geojson,
+            divide_flow_path_geojson=divide_path_geojson,
         )
 
         info_message = (
