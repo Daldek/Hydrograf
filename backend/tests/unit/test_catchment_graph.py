@@ -406,6 +406,137 @@ class TestTraceMainChannel:
             cg.trace_main_channel(0, np.array([0]))
 
 
+class TestContiguousRealChannel:
+    """Test that real_channel_length_km only counts contiguous real from outlet.
+
+    The DEM flow-path can run between two parallel BDOT channels (e.g. drainage
+    ditches) whose 15m buffers alternate coverage, producing a fragmented pattern:
+    real -> not-real -> real -> not-real -> real.
+
+    The correct model: from the outlet upstream, the first contiguous stretch of
+    is_real_stream=True segments is the actual channel.  The first False segment
+    marks the transition to overland flow — everything above is overland, even if
+    later segments happen to be flagged True.
+    """
+
+    @staticmethod
+    def _build_linear_graph(n, is_real, seg_lengths_km):
+        """Build a linear chain graph: 0 <- 1 <- 2 <- ... <- n-1.
+
+        Node 0 is the outlet.  Returns (cg, upstream_indices).
+        """
+        cg = CatchmentGraph()
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.arange(1, n + 1, dtype=np.int32)
+        cg._threshold_m2 = np.full(n, 10000, dtype=np.int32)
+        cg._area_km2 = np.full(n, 1.0, dtype=np.float32)
+        cg._elev_min = np.arange(100, 100 + n * 10, 10, dtype=np.float32)[::-1]
+        cg._elev_max = cg._elev_min + 10.0
+        cg._elev_mean = cg._elev_min + 5.0
+        cg._slope_mean = np.full(n, 3.0, dtype=np.float32)
+        cg._perimeter_km = np.full(n, 5.0, dtype=np.float32)
+        cg._stream_length_km = np.array(seg_lengths_km, dtype=np.float32)
+        cg._hydraulic_length_km = np.full(n, 10.0, dtype=np.float32)
+        cg._strahler = np.ones(n, dtype=np.int8)
+        cg._histograms = [None] * n
+
+        cg._is_real_stream = np.array(is_real, dtype=np.bool_)
+        cg._segment_length_km = np.array(seg_lengths_km, dtype=np.float64)
+
+        cg._lookup = {(10000, i + 1): i for i in range(n)}
+
+        # Linear chain: node i+1 drains into node i
+        if n > 1:
+            rows = np.arange(0, n - 1, dtype=np.int32)
+            cols = np.arange(1, n, dtype=np.int32)
+            data = np.ones(n - 1, dtype=np.int8)
+            cg._upstream_adj = sparse.csr_matrix(
+                (data, (rows, cols)), shape=(n, n), dtype=np.int8
+            )
+        else:
+            cg._upstream_adj = sparse.csr_matrix((n, n), dtype=np.int8)
+
+        upstream = cg.traverse_upstream(0)
+        return cg, upstream
+
+    def test_fragmented_flags_only_count_contiguous_from_outlet(self):
+        """Pattern real-real-FALSE-real: only first 2 segments counted."""
+        #                  outlet                     head
+        # Node:              0      1      2      3
+        # is_real:          True   True   False  True
+        # seg_length_km:    0.5    0.3    0.4    0.6
+        cg, upstream = self._build_linear_graph(
+            n=4,
+            is_real=[True, True, False, True],
+            seg_lengths_km=[0.5, 0.3, 0.4, 0.6],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        # Contiguous from outlet: 0.5 + 0.3 = 0.8 (stop at node 2, False)
+        assert result["real_channel_length_km"] == pytest.approx(0.8, abs=0.001)
+
+    def test_all_real_gives_full_length(self):
+        """All segments real -> real_channel = full channel length."""
+        cg, upstream = self._build_linear_graph(
+            n=3,
+            is_real=[True, True, True],
+            seg_lengths_km=[1.0, 0.5, 0.7],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        assert result["real_channel_length_km"] == pytest.approx(2.2, abs=0.001)
+
+    def test_first_segment_not_real_gives_zero(self):
+        """If outlet segment is not real -> real_channel = 0."""
+        cg, upstream = self._build_linear_graph(
+            n=3,
+            is_real=[False, True, True],
+            seg_lengths_km=[1.0, 0.5, 0.7],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        assert result["real_channel_length_km"] == pytest.approx(0.0, abs=0.001)
+
+    def test_alternating_pattern_stops_at_first_gap(self):
+        """Pattern real-FALSE-real-FALSE-real: only 1st segment counted."""
+        cg, upstream = self._build_linear_graph(
+            n=5,
+            is_real=[True, False, True, False, True],
+            seg_lengths_km=[0.3, 0.2, 0.4, 0.1, 0.5],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        # Only node 0 (0.3 km) before first gap
+        assert result["real_channel_length_km"] == pytest.approx(0.3, abs=0.001)
+
+    def test_all_not_real_gives_zero(self):
+        """All segments not real -> real_channel = 0."""
+        cg, upstream = self._build_linear_graph(
+            n=3,
+            is_real=[False, False, False],
+            seg_lengths_km=[1.0, 0.5, 0.7],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        assert result["real_channel_length_km"] == pytest.approx(0.0, abs=0.001)
+
+    def test_single_node_real(self):
+        """Single real node -> real_channel = its length."""
+        cg, upstream = self._build_linear_graph(
+            n=1,
+            is_real=[True],
+            seg_lengths_km=[1.5],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        assert result["real_channel_length_km"] == pytest.approx(1.5, abs=0.001)
+
+    def test_single_node_not_real(self):
+        """Single non-real node -> real_channel = 0."""
+        cg, upstream = self._build_linear_graph(
+            n=1,
+            is_real=[False],
+            seg_lengths_km=[1.5],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        assert result["real_channel_length_km"] == pytest.approx(0.0, abs=0.001)
+
+
 class TestGetCatchmentGraphThreadSafety:
     """Tests for get_catchment_graph() singleton thread safety (CR7)."""
 
