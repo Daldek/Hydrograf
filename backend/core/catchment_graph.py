@@ -47,6 +47,7 @@ class CatchmentGraph:
         self._slope_mean: np.ndarray | None = None
         self._perimeter_km: np.ndarray | None = None
         self._stream_length_km: np.ndarray | None = None
+        self._hydraulic_length_km: np.ndarray | None = None
         self._strahler: np.ndarray | None = None
 
         # Per-segment data from stream_network (loaded separately)
@@ -102,6 +103,7 @@ class CatchmentGraph:
         self._slope_mean = np.full(n, np.nan, dtype=np.float32)
         self._perimeter_km = np.full(n, np.nan, dtype=np.float32)
         self._stream_length_km = np.full(n, np.nan, dtype=np.float32)
+        self._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
         self._strahler = np.zeros(n, dtype=np.int8)
         self._histograms = [None] * n
 
@@ -118,7 +120,8 @@ class CatchmentGraph:
                 "SELECT segment_idx, threshold_m2, area_km2, "
                 "mean_elevation_m, mean_slope_percent, strahler_order, "
                 "downstream_segment_idx, elevation_min_m, elevation_max_m, "
-                "perimeter_km, stream_length_km, elev_histogram "
+                "perimeter_km, stream_length_km, elev_histogram, "
+                "hydraulic_length_km "
                 "FROM stream_catchments ORDER BY threshold_m2, segment_idx"
             )
 
@@ -152,6 +155,10 @@ class CatchmentGraph:
 
                     # Histogram (JSONB → dict)
                     self._histograms[i] = r[11]
+
+                    # Hydraulic length (flow path distance to outlet)
+                    if r[12] is not None:
+                        self._hydraulic_length_km[i] = r[12]
 
                     # Register in lookup
                     self._lookup[(threshold, seg_idx)] = i
@@ -242,6 +249,7 @@ class CatchmentGraph:
                 self._slope_mean,
                 self._perimeter_km,
                 self._stream_length_km,
+                self._hydraulic_length_km,
                 self._strahler,
                 self._is_real_stream,
                 self._segment_length_km,
@@ -563,6 +571,13 @@ class CatchmentGraph:
         strahlers = self._strahler[indices]
         max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
 
+        # Hydraulic length: max across all upstream sub-catchments
+        # Each sub-catchment stores the max flow-path distance to the global outlet,
+        # so the overall max gives the full watershed hydraulic length.
+        hydraulic_lengths = self._hydraulic_length_km[indices]
+        valid_hl = hydraulic_lengths[~np.isnan(hydraulic_lengths)]
+        hydraulic_length_km = float(np.max(valid_hl)) if len(valid_hl) > 0 else None
+
         # Stream frequency
         n_segments = len(indices)
         stream_frequency = n_segments / total_area if total_area > 0 else None
@@ -585,6 +600,9 @@ class CatchmentGraph:
             "max_strahler_order": max_strahler,
             "stream_frequency_per_km2": (
                 round(stream_frequency, 4) if stream_frequency is not None else None
+            ),
+            "hydraulic_length_km": (
+                round(hydraulic_length_km, 4) if hydraulic_length_km is not None else None
             ),
         }
 

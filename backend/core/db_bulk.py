@@ -208,6 +208,7 @@ def insert_catchments(
                 elevation_max_m FLOAT,
                 perimeter_km FLOAT,
                 stream_length_km FLOAT,
+                hydraulic_length_km FLOAT,
                 elev_histogram JSONB
             )
         """)
@@ -231,6 +232,7 @@ def insert_catchments(
                 f"{_tsv_val(cat.get('elevation_max_m'))}\t"
                 f"{_tsv_val(cat.get('perimeter_km'))}\t"
                 f"{_tsv_val(cat.get('stream_length_km'))}\t"
+                f"{_tsv_val(cat.get('hydraulic_length_km'))}\t"
                 f"{hist_str}\n"
             )
 
@@ -249,7 +251,8 @@ def insert_catchments(
                 area_km2, mean_elevation_m, mean_slope_percent,
                 strahler_order, downstream_segment_idx,
                 elevation_min_m, elevation_max_m,
-                perimeter_km, stream_length_km, elev_histogram
+                perimeter_km, stream_length_km,
+                hydraulic_length_km, elev_histogram
             )
             SELECT
                 ST_SetSRID(ST_GeomFromText(wkt), 2180),
@@ -257,7 +260,8 @@ def insert_catchments(
                 area_km2, mean_elevation_m, mean_slope_percent,
                 strahler_order, downstream_segment_idx,
                 elevation_min_m, elevation_max_m,
-                perimeter_km, stream_length_km, elev_histogram
+                perimeter_km, stream_length_km,
+                hydraulic_length_km, elev_histogram
             FROM temp_catchments_import
         """)
 

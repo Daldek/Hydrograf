@@ -40,6 +40,12 @@ def small_graph():
     cg._slope_mean = np.array([5.0, 6.0, 4.0, 3.0], dtype=np.float32)
     cg._perimeter_km = np.array([10.0, 8.0, 15.0, 20.0], dtype=np.float32)
     cg._stream_length_km = np.array([2.0, 1.5, 3.0, 4.0], dtype=np.float32)
+    # Hydraulic length: max flow path distance to outlet per sub-catchment [km]
+    # Node 0 (headwater, far upstream): 12.5 km from most remote cell to global outlet
+    # Node 1 (headwater, tributary): 10.0 km
+    # Node 2 (mid-basin): 8.0 km
+    # Node 3 (outlet sub-catchment): 5.0 km
+    cg._hydraulic_length_km = np.array([12.5, 10.0, 8.0, 5.0], dtype=np.float32)
     cg._strahler = np.array([1, 1, 2, 3], dtype=np.int8)
 
     # Histograms
@@ -472,3 +478,63 @@ class TestGetSegmentIdx:
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.get_segment_idx(0)
+
+
+class TestHydraulicLength:
+    """Tests for hydraulic_length_km in aggregate_stats."""
+
+    def test_full_watershed_max(self, small_graph):
+        """Hydraulic length of full watershed = max across all sub-catchments."""
+        indices = np.array([0, 1, 2, 3])
+        stats = small_graph.aggregate_stats(indices)
+        # Node 0 has highest hydraulic_length_km = 12.5
+        assert stats["hydraulic_length_km"] == pytest.approx(12.5, abs=0.01)
+
+    def test_partial_watershed(self, small_graph):
+        """Hydraulic length of partial watershed (only headwaters)."""
+        indices = np.array([0, 1])
+        stats = small_graph.aggregate_stats(indices)
+        # max(12.5, 10.0) = 12.5
+        assert stats["hydraulic_length_km"] == pytest.approx(12.5, abs=0.01)
+
+    def test_single_subcatchment(self, small_graph):
+        """Hydraulic length of single sub-catchment is its own value."""
+        indices = np.array([3])
+        stats = small_graph.aggregate_stats(indices)
+        assert stats["hydraulic_length_km"] == pytest.approx(5.0, abs=0.01)
+
+    def test_hydraulic_length_positive(self, small_graph):
+        """Hydraulic length must be positive."""
+        for node_idx in range(4):
+            indices = np.array([node_idx])
+            stats = small_graph.aggregate_stats(indices)
+            assert stats["hydraulic_length_km"] > 0
+
+    def test_hydraulic_length_ge_channel_length(self, small_graph):
+        """Hydraulic length >= main channel length (includes overland flow)."""
+        upstream = small_graph.traverse_upstream(3)
+        stats = small_graph.aggregate_stats(upstream)
+        main_ch = small_graph.trace_main_channel(3, upstream)
+        assert stats["hydraulic_length_km"] >= main_ch["main_channel_length_km"]
+
+    def test_nan_handling(self):
+        """If all sub-catchments have NaN hydraulic length, return None."""
+        cg = CatchmentGraph()
+        n = 2
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2], dtype=np.int32)
+        cg._threshold_m2 = np.array([10000, 10000], dtype=np.int32)
+        cg._area_km2 = np.array([5.0, 3.0], dtype=np.float32)
+        cg._elev_min = np.full(n, np.nan, dtype=np.float32)
+        cg._elev_max = np.full(n, np.nan, dtype=np.float32)
+        cg._elev_mean = np.full(n, np.nan, dtype=np.float32)
+        cg._slope_mean = np.full(n, np.nan, dtype=np.float32)
+        cg._perimeter_km = np.full(n, np.nan, dtype=np.float32)
+        cg._stream_length_km = np.full(n, np.nan, dtype=np.float32)
+        cg._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
+        cg._strahler = np.zeros(n, dtype=np.int8)
+        cg._upstream_adj = sparse.csr_matrix((n, n), dtype=np.int8)
+
+        stats = cg.aggregate_stats(np.array([0, 1]))
+        assert stats["hydraulic_length_km"] is None

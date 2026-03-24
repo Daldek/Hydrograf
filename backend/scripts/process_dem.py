@@ -397,6 +397,17 @@ def process_dem(
         )
     flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
 
+    # Compute flow path distance to outlet for hydraulic length
+    # stream_distance(unit='m') returns distance from each cell to the
+    # pit/outlet along the flow direction grid, in meters.
+    logger.info("Computing flow path distances (hydraulic length)...")
+    t_dist = time.time()
+    flow_dist_m = flw.stream_distance(unit="m").reshape(d8_fdir.shape)
+    logger.info(
+        f"Flow path distances computed in {time.time() - t_dist:.1f}s "
+        f"(max: {float(flow_dist_m.max()):.0f} m)"
+    )
+
     if save_intermediates:
         save_raster_geotiff(
             filled_dem,
@@ -596,6 +607,7 @@ def process_dem(
                     slope,
                     metadata,
                     segments,
+                    flow_dist_m=flow_dist_m,
                 )
                 all_catchment_data[threshold_m2] = catchments
 
