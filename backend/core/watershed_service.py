@@ -1056,11 +1056,13 @@ def build_morph_dict_from_graph(
         # Relief indices
         "relief_ratio": relief_ratio,
         "hypsometric_integral": hypsometric_integral,
-        # Drainage indices
+        # Drainage indices (BDOT-based: real streams only)
         "drainage_density_km_per_km2": dd,
         "stream_frequency_per_km2": stats.get("stream_frequency_per_km2"),
         "ruggedness_number": ruggedness,
         "max_strahler_order": stats.get("max_strahler_order"),
+        "bdot_stream_length_km": stats.get("bdot_stream_length_km"),
+        "bdot_stream_count": stats.get("bdot_stream_count"),
         "hydraulic_length_km": stats.get("hydraulic_length_km"),
         # Flow path parameters
         "longest_flow_path_km": longest_flow_path_km,
