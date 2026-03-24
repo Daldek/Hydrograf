@@ -112,10 +112,11 @@ def select_stream(
         bfs_segment_idxs = cg.get_segment_indices(upstream_indices, threshold)
 
         # 5. Aggregate pre-computed stats (zero raster ops)
-        # upstream_indices_for_stats tracks which indices to use for stats;
-        # updated together with merge_idxs during cascade escalation (CR9).
+        # upstream_indices_for_stats and outlet_idx_for_stats track which
+        # indices/outlet to use; updated during cascade escalation (CR9).
         upstream_indices_for_stats = upstream_indices
-        stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=clicked_idx)
+        outlet_idx_for_stats = clicked_idx
+        stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=outlet_idx_for_stats)
         area_km2 = stats["area_km2"]
 
         # 6. Build boundary from ST_Union of catchment polygons.
@@ -146,7 +147,8 @@ def select_stream(
                     # CR9: re-aggregate stats from escalated threshold
                     # so stats match the boundary polygon
                     upstream_indices_for_stats = t_up
-                    stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=t_node)
+                    outlet_idx_for_stats = t_node
+                    stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=outlet_idx_for_stats)
                     area_km2 = stats["area_km2"]
                     logger.info(
                         "Cascade: threshold escalated from %d to %d "
@@ -222,7 +224,7 @@ def select_stream(
             ruggedness = round(dd * relief_km, 4)
 
         # Channel length and slope from main channel trace (not total network)
-        main_ch = cg.trace_main_channel(clicked_idx, upstream_indices_for_stats)
+        main_ch = cg.trace_main_channel(outlet_idx_for_stats, upstream_indices_for_stats)
         channel_length_km = main_ch.get("main_channel_length_km")
         channel_slope = main_ch.get("main_channel_slope_m_per_m")
         real_channel_length_km = main_ch.get("real_channel_length_km")
@@ -246,10 +248,10 @@ def select_stream(
         # 10. Main stream GeoJSON (FeatureCollection with is_real_stream per segment)
         main_channel_nodes = main_ch.get("main_channel_nodes", [])
         main_stream_geojson = get_main_channel_feature_collection(
-            cg, main_channel_nodes, threshold, db,
+            cg, main_channel_nodes, merge_threshold, db,
         )
         if main_stream_geojson is None:
-            main_stream_geojson = get_main_stream_geojson(segment_idx, threshold, db)
+            main_stream_geojson = get_main_stream_geojson(segment_idx, merge_threshold, db)
 
         # 11. Land cover statistics
         hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
