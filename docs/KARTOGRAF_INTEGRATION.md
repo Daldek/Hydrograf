@@ -209,7 +209,7 @@ from kartograf.providers.bdot10k import Bdot10kProvider
 from kartograf import BBox
 ```
 
-**Funkcja `discover_teryts_for_bbox()`** — automatyczne wykrywanie kodów TERYT powiatów w zadanym bounding boxie za pomocą `Bdot10kProvider._get_teryt_for_point()`.
+**Funkcja `discover_teryts_for_bbox()`** — automatyczne wykrywanie kodów TERYT powiatów w zadanym bounding boxie. Domyślnie wysyła pojedyncze zapytanie WFS GetFeature do PRG GUGiK (`A02_Granice_powiatow`, pole `JPT_KOD_JE`), żądając wyłącznie atrybutów (bez geometrii) dla szybkości. Jeśli WFS jest niedostępny, fallback na starą metodę grid-sampling (`_discover_teryts_grid()` — siatka punktów 25×25 przez `Bdot10kProvider._get_teryt_for_point()`). Parsowanie odpowiedzi GML w `_parse_teryts_from_gml()`. Szczegóły decyzji: ADR-045.
 
 ### 3.4 `scripts/bootstrap.py`
 
