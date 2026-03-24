@@ -193,6 +193,106 @@ class TestKerbyRequiresOverlandLength:
         assert tc > 0
 
 
+class TestNrcsUsesHydraulicLength:
+    """Verify NRCS uses hydraulic_length_km when available."""
+
+    def test_nrcs_with_hydraulic_length(self):
+        """NRCS tc should be longer with hydraulic_length than without."""
+        from hydrolog.morphometry import WatershedParameters
+        # Simulate what _calculate_tc does: clear channel_slope, set length_km = hydraulic
+        base = {
+            "area_km2": 10, "perimeter_km": 15, "length_km": 7.0,
+            "elevation_min_m": 100, "elevation_max_m": 200,
+            "mean_slope_m_per_m": 0.03, "cn": 75,
+        }
+        # tc with default length (7km) — as if no hydraulic available
+        wp1 = WatershedParameters.from_dict(base)
+        tc_short = wp1.calculate_tc(method="nrcs")
+
+        # tc with hydraulic length (9km)
+        wp2 = WatershedParameters.from_dict({**base, "length_km": 9.0})
+        tc_long = wp2.calculate_tc(method="nrcs")
+
+        # Longer flow path → longer tc
+        assert tc_long > tc_short
+
+    def test_nrcs_calculate_tc_uses_hydraulic_from_morph_dict(self):
+        """_calculate_tc for NRCS should use hydraulic_length_km from morph_dict."""
+        from unittest.mock import MagicMock
+        from api.endpoints.hydrograph import _calculate_tc
+        from hydrolog.morphometry import WatershedParameters
+
+        morph_dict = {
+            "area_km2": 10.0, "perimeter_km": 15.0, "length_km": 7.0,
+            "elevation_min_m": 100.0, "elevation_max_m": 200.0,
+            "mean_slope_m_per_m": 0.03,
+            "channel_length_km": 5.0, "channel_slope_m_per_m": 0.005,
+            "cn": 75,
+        }
+        wp = WatershedParameters.from_dict(morph_dict)
+        request = MagicMock()
+
+        # Without hydraulic_length
+        tc_no_hydraulic = _calculate_tc("nrcs", wp, morph_dict, request)
+
+        # With hydraulic_length (longer path)
+        morph_with_hydraulic = {**morph_dict, "hydraulic_length_km": 9.0}
+        wp2 = WatershedParameters.from_dict(morph_dict)
+        tc_with_hydraulic = _calculate_tc("nrcs", wp2, morph_with_hydraulic, request)
+
+        assert tc_with_hydraulic > tc_no_hydraulic
+
+    def test_kirpich_uses_hydraulic_from_morph_dict(self):
+        """_calculate_tc for Kirpich should use hydraulic_length_km from morph_dict."""
+        from unittest.mock import MagicMock
+        from api.endpoints.hydrograph import _calculate_tc
+        from hydrolog.morphometry import WatershedParameters
+
+        morph_dict = {
+            "area_km2": 10.0, "perimeter_km": 15.0, "length_km": 7.0,
+            "elevation_min_m": 100.0, "elevation_max_m": 200.0,
+            "mean_slope_m_per_m": 0.03,
+            "channel_length_km": 5.0, "channel_slope_m_per_m": 0.005,
+        }
+        wp = WatershedParameters.from_dict(morph_dict)
+        request = MagicMock()
+
+        tc_no_hydraulic = _calculate_tc("kirpich", wp, morph_dict, request)
+
+        morph_with_hydraulic = {**morph_dict, "hydraulic_length_km": 9.0}
+        wp2 = WatershedParameters.from_dict(morph_dict)
+        tc_with_hydraulic = _calculate_tc("kirpich", wp2, morph_with_hydraulic, request)
+
+        assert tc_with_hydraulic > tc_no_hydraulic
+
+    def test_kerby_kirpich_uses_hydraulic_for_overland(self):
+        """Kerby-Kirpich overland fallback should prefer hydraulic_length_km."""
+        from unittest.mock import MagicMock
+        from api.endpoints.hydrograph import _calculate_tc
+        from hydrolog.morphometry import WatershedParameters
+
+        morph_dict = {
+            "area_km2": 10.0, "perimeter_km": 15.0, "length_km": 5.0,
+            "elevation_min_m": 100.0, "elevation_max_m": 200.0,
+            "mean_slope_m_per_m": 0.02,
+            "channel_length_km": 3.0, "channel_slope_m_per_m": 0.01,
+        }
+        wp = WatershedParameters.from_dict(morph_dict)
+        request = MagicMock()
+        request.tc_retardance = 0.4
+        request.tc_overland_length_km = None
+
+        # Without hydraulic: overland = max(5.0 - 3.0, 0.1) = 2.0
+        tc_no_hydraulic = _calculate_tc("kerby_kirpich", wp, morph_dict, request)
+
+        # With hydraulic_length (8km): overland = max(8.0 - 3.0, 0.1) = 5.0
+        morph_with_hydraulic = {**morph_dict, "hydraulic_length_km": 8.0}
+        wp2 = WatershedParameters.from_dict(morph_dict)
+        tc_with_hydraulic = _calculate_tc("kerby_kirpich", wp2, morph_with_hydraulic, request)
+
+        assert tc_with_hydraulic > tc_no_hydraulic
+
+
 class TestKerbyKirpichOverlandFallback:
     """Tests that Kerby-Kirpich uses overland from request or fallback."""
 
