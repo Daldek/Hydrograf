@@ -580,13 +580,32 @@ class CatchmentGraph:
         # Drainage density
         drainage_density = total_stream_km / total_area if total_area > 0 else None
 
-        # Max Strahler
-        strahlers = self._strahler[indices]
-        max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
+        # Max Strahler from BDOT real streams only
+        if self._is_real_stream is not None:
+            real_mask = self._is_real_stream[indices]
+            real_strahlers = self._strahler[indices][real_mask]
+            max_strahler = int(np.max(real_strahlers)) if len(real_strahlers) > 0 else None
+        else:
+            strahlers = self._strahler[indices]
+            max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
 
-        # Stream frequency
+        # Stream frequency (all segments — kept for backward compatibility)
         n_segments = len(indices)
-        stream_frequency = n_segments / total_area if total_area > 0 else None
+        stream_frequency_all = n_segments / total_area if total_area > 0 else None
+
+        # BDOT-based drainage metrics (real streams only)
+        if self._is_real_stream is not None and self._segment_length_km is not None:
+            real_mask = self._is_real_stream[indices]
+            real_lengths = self._segment_length_km[indices]
+            bdot_stream_km = float(np.nansum(real_lengths[real_mask]))
+            bdot_n_segments = int(np.sum(real_mask))
+            bdot_drainage_density = bdot_stream_km / total_area if total_area > 0 else None
+            bdot_stream_frequency = bdot_n_segments / total_area if total_area > 0 else None
+        else:
+            bdot_stream_km = 0.0
+            bdot_n_segments = 0
+            bdot_drainage_density = None
+            bdot_stream_frequency = None
 
         # Hydraulic length: prefer max_flow_dist_m (migration 023, per-cell flow
         # distance from pyflwdir) when available; fall back to hydraulic_length_km
@@ -615,12 +634,14 @@ class CatchmentGraph:
             ),
             "stream_length_km": round(total_stream_km, 4),
             "drainage_density_km_per_km2": (
-                round(drainage_density, 4) if drainage_density is not None else None
+                round(bdot_drainage_density, 4) if bdot_drainage_density is not None else None
             ),
             "max_strahler_order": max_strahler,
             "stream_frequency_per_km2": (
-                round(stream_frequency, 4) if stream_frequency is not None else None
+                round(bdot_stream_frequency, 4) if bdot_stream_frequency is not None else None
             ),
+            "bdot_stream_length_km": round(bdot_stream_km, 4),
+            "bdot_stream_count": bdot_n_segments,
             "hydraulic_length_km": (
                 round(hydraulic_length_km, 4) if hydraulic_length_km is not None else None
             ),
@@ -667,11 +688,13 @@ class CatchmentGraph:
             if not candidates:
                 break
 
-            # Select best upstream: max Strahler, then max stream_length, then max area
+            # Select best upstream: max Strahler, then prefer BDOT real stream,
+            # then max stream_length, then max area
             best = max(
                 candidates,
                 key=lambda n: (
                     self._strahler[n],
+                    int(self._is_real_stream[n]) if hasattr(self, '_is_real_stream') and self._is_real_stream is not None else 0,
                     self._stream_length_km[n]
                     if not np.isnan(self._stream_length_km[n])
                     else 0.0,
@@ -712,11 +735,23 @@ class CatchmentGraph:
         real_length_km = None
         if self._is_real_stream is not None and self._segment_length_km is not None:
             contiguous_real_km = 0.0
+            gap_count = 0
+            MAX_GAP = 2  # allow up to 2 consecutive non-real segments
+            pending_gap_km = 0.0
+            started = False  # gap tolerance only after first real segment
             for node in path_arr:
                 if self._is_real_stream[node]:
-                    contiguous_real_km += self._segment_length_km[node]
+                    started = True
+                    contiguous_real_km += pending_gap_km + self._segment_length_km[node]
+                    pending_gap_km = 0.0
+                    gap_count = 0
                 else:
-                    break
+                    if not started:
+                        break  # not-real before any real → no real channel
+                    gap_count += 1
+                    if gap_count > MAX_GAP:
+                        break
+                    pending_gap_km += self._segment_length_km[node]
             real_length_km = contiguous_real_km
 
         return {

@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 955+ testow jednostkowych (w tym 23 nowych flow path) |
+| Testy | ✅ Gotowy | 987 testow jednostkowych, 0 failures |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -46,38 +46,41 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-24 (sesja 67 — BDOT matching + flow path tracing + naprawy tc)
+**Data:** 2026-03-24 (sesja 68 — finalizacja feat/bdot-stream-matching przed merge do develop)
 
 ### Co zrobiono
-- **Upgrade Hydrolog v0.6.2 → v0.6.3** — nowe metody tc (FAA, Kerby, Kerby-Kirpich), 88 mypy fixes, 28 nowych testów
-- **Migracja domyślnej Nash** — `from_tc` (deprecated) → `from_lutz` (Lutz physiographic), label [deprecated] w UI
-- **3 nowe metody Tc** — FAA (spływ pow., C z CN), Kerby (retardance), Kerby-Kirpich (composite). Backend: `_calculate_tc()`, `ConcentrationTime` static methods. Frontend: selektor, pola C/N, logika widoczności
-- **UI/UX review** — spójność etykiet, logika widoczności 30 kombinacji, auto-regeneracja
-- **Mock morph_dict** — dodano `length_to_centroid_km` wymagane przez from_lutz
-- **BDOT10k stream matching (ADR-044)** — import cieków BDOT do PostGIS, spatial matching (bufor 15m, overlap >= 50%), `real_channel_length_km` w CatchmentGraph i API. Walidacja: 4737 features, 5.4% real (threshold 1000), 27.7% real (threshold 100000), korelacja ze Strahlerem
-- **Hydraulic length preprocessing (migracja 022)** — `hydraulic_length_km` z `pyflwdir.stream_distance()` obliczany w pipeline i zapisywany w `stream_catchments`. Propagowany przez CatchmentGraph do morph_dict
-- **Ścieżki spływu (feat/flow-path-tracing)** — `pyflwdir.stream_distance(unit='m')` + batch `flw.path()` per subcatchment
-- **Migracja 023:** nowe kolumny `max_flow_dist_m` + `longest_flow_path_geom` na `stream_catchments`
-- **3 nowe parametry morfometryczne:** `longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km` (point sampling `stream_distance.tif`)
-- **CatchmentGraph:** ładowanie `max_flow_dist_m`, agregacja jako `hydraulic_length_km`
-- **API:** `get_longest_flow_path_geojson()` — kompozycja pełnej ścieżki z subcatchment geometrii + downstream segments; nowe pole `WatershedResponse.longest_flow_path_geojson`
-- **Naprawy parametrów tc** — FAA/Kerby: wymuszenie `tc_overland_length_km` od użytkownika (zamiast błędnego length_km). NRCS/Kirpich: `hydraulic_length_km` zamiast `channel_length_km`. Kerby-Kirpich: overland z hydraulic_length (fallback), channel z real_channel_length_km (BDOT)
-- **GUI: droga spływu + overlay cieku** — "Droga spływu" i "Droga z działu" w tabeli parametrów, przerywana pomarańczowa ścieżka na mapie, main channel overlay z wyróżnieniem cieków BDOT (ciemny/jasny niebieski), "w tym ciek BDOT" i "Pokrycie BDOT" w panelu parametrów
-- **Fix fragmentacji real_channel_length_km** — algorytm ciągłego odcinka od ujścia zamiast sumowania rozproszonych fragmentów is_real_stream=true
-- **Fix overlay głównego cieku** — `get_main_channel_feature_collection()` z logiką ciągłości BDOT
-- **Optymalizacja BDOT matching** — per-feature buffers zamiast ST_Collect (24s vs >90 min)
-- 955+ testów (w tym 23 nowych flow path), 0 regresji
-- Szacowany dodatkowy czas pipeline: +60-120s na istniejące ~45 min
+- **Upgrade Kartograf v0.5.0 → v0.6.1** — fix NMT WMS layers, parallel downloads, poprawiony DownloadManager
+- **Selektor rozdzielczosci NMT w admin panel** — wybor 1m/5m, parametr `resolution` przekazywany przez `run_pipeline()`
+- **Fix DownloadManager resolution** — poprawne przekazywanie parametru rozdzielczosci do NMT path
+- **Drainage stats z BDOT (R1a/R2/R3)** — gestosc sieci, czestotliwosc ciekow, chropowatosc i max Strahler bazuja wylacznie na `is_real_stream=true`
+- **BDOT main channel tracing** — tie-breaker `is_real_stream` w `trace_main_channel()`, gap tolerance `MAX_GAP=2`, bufor matchingu zwiekszony do 25m
+- **GUI: "brak ciekow BDOT"** — komunikat informacyjny gdy zlewnia nie zawiera ciekow BDOT10k
+- **Fix overlay glownego cieku** — `get_main_channel_feature_collection()` z logika ciaglosci od ujscia
+- **Aktualizacja dokumentacji** — CHANGELOG, PROGRESS, DECISIONS (ADR-044), CROSS_PROJECT_ANALYSIS
+- 987 testow, 0 failures
 
 ### W trakcie
 - Brak
 
-### Następne kroki
-- Re-run pipeline po merge obu feature branchy
-- CP5: MVP — pełna integracja frontend+backend, deploy produkcyjny
+### Nastepne kroki
+- Merge `feat/bdot-stream-matching` do `develop`
+- Re-run pipeline po merge
+- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 - Follow-up: preprocessing `stream_extraction.py` — zamiana `simplify()` na `set_precision()`
-- Clipping do dokładnej granicy poligonu
-- Podwójna analiza NMT (z/bez obszarów bezodpływowych)
+- Clipping do dokladnej granicy poligonu
+- Podwojna analiza NMT (z/bez obszarow bezodplywowych)
+
+### Poprzednia sesja (2026-03-24, sesja 67 — BDOT matching + flow path tracing + naprawy tc)
+
+- Upgrade Hydrolog v0.6.2 → v0.6.3 — nowe metody tc (FAA, Kerby, Kerby-Kirpich), 88 mypy fixes
+- Migracja domyslnej Nash — `from_tc` (deprecated) → `from_lutz` (Lutz physiographic)
+- 3 nowe metody Tc — FAA, Kerby, Kerby-Kirpich
+- BDOT10k stream matching (ADR-044) — bufor 15m, overlap >= 50%, `real_channel_length_km`
+- Hydraulic length preprocessing (migracja 022), sciezki splywu (migracja 023)
+- 3 nowe parametry flow path: `longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km`
+- GUI: droga splywu, overlay cieku, informacje BDOT
+- Optymalizacja BDOT matching — per-feature buffers (24s vs >90 min)
+- 955+ testow, 0 regresji
 
 ### Poprzednia sesja (2026-03-23, sesja 66 — upgrade Hydrolog v0.6.3)
 

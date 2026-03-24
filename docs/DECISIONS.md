@@ -926,16 +926,21 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 ## ADR-044: BDOT10k stream matching w preprocessingu
 
 **Status:** Aktywna
-**Data:** 2026-03-23
+**Data:** 2026-03-23 (aktualizacja 2026-03-24: R1a/R2/R3)
 
 **Kontekst:** Metoda Kerby-Kirpich wymaga rozroznienia dlugosci splywu powierzchniowego (overland) od przeplywu korytowego (channel). Dotychczas cala `channel_length_km` pochodzi z wektoryzacji flow accumulation -- algorytmicznej sciezki, nie faktycznego cieku.
 
-**Decyzja:** Podczas preprocessingu importujemy geometrie ciekow z BDOT10k (SWRS/SWKN/SWRM) do tabeli `bdot_streams` i wykonujemy spatial join z `stream_network` (bufor 15m, overlap ratio >= 50%). Wynik w kolumnie `is_real_stream`. CatchmentGraph propaguje `real_channel_length_km` do morph_dict.
+**Decyzja:** Podczas preprocessingu importujemy geometrie ciekow z BDOT10k (SWRS/SWKN/SWRM) do tabeli `bdot_streams` i wykonujemy spatial join z `stream_network` (bufor 25m, overlap ratio >= 50%). Wynik w kolumnie `is_real_stream`. CatchmentGraph propaguje `real_channel_length_km` do morph_dict.
 
-**Parametry:** buffer=15m (3x cellsize 5m), overlap_threshold=0.5. Bimodalny rozklad -- prog tnie czysto.
+**Parametry:**
+- `buffer=25m` (5x cellsize 5m; podniesiony z 15m po analizie R2 — lepsze dopasowanie przy sinuozyjnosci ciekow)
+- `overlap_threshold=0.5` — bimodalny rozklad, prog tnie czysto
+- `MAX_GAP=2` (R3) — tolerancja 2 segmentow bez BDOT w trace_main_channel (mosty, przepusty)
+- **Tie-breaker** (R1a): `trace_main_channel()` preferuje segmenty `is_real_stream=true` przy rownej dlugosci kandydatow
 
 **Konsekwencje:**
 - `real_channel_length_km` dostepny w morph_dict -- fizycznie uzasadniony podzial overland/channel
+- Drainage stats (gestosc sieci, czestotliwosc, chropowatosc, max Strahler) bazuja na `is_real_stream=true`
 - Nowa tabela `bdot_streams` (~3-10k rekordow per obszar)
 - Matching per threshold w pipeline (~24s dla 253k segmentow)
 - Wymaga BDOT10k hydro (Kartograf LandCoverManager)
