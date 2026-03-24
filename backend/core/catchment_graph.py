@@ -45,7 +45,6 @@ class CatchmentGraph:
         self._elev_max: np.ndarray | None = None
         self._elev_mean: np.ndarray | None = None
         self._slope_mean: np.ndarray | None = None
-        self._perimeter_km: np.ndarray | None = None
         self._stream_length_km: np.ndarray | None = None
         self._hydraulic_length_km: np.ndarray | None = None
         self._strahler: np.ndarray | None = None
@@ -115,7 +114,6 @@ class CatchmentGraph:
         self._elev_max = np.full(n, np.nan, dtype=np.float32)
         self._elev_mean = np.full(n, np.nan, dtype=np.float32)
         self._slope_mean = np.full(n, np.nan, dtype=np.float32)
-        self._perimeter_km = np.full(n, np.nan, dtype=np.float32)
         self._stream_length_km = np.full(n, np.nan, dtype=np.float32)
         self._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
         self._strahler = np.zeros(n, dtype=np.int8)
@@ -164,8 +162,6 @@ class CatchmentGraph:
                         self._elev_min[i] = r[7]
                     if r[8] is not None:
                         self._elev_max[i] = r[8]
-                    if r[9] is not None:
-                        self._perimeter_km[i] = r[9]
                     if r[10] is not None:
                         self._stream_length_km[i] = r[10]
 
@@ -270,7 +266,6 @@ class CatchmentGraph:
                 self._elev_max,
                 self._elev_mean,
                 self._slope_mean,
-                self._perimeter_km,
                 self._stream_length_km,
                 self._hydraulic_length_km,
                 self._strahler,
@@ -595,25 +590,23 @@ class CatchmentGraph:
         stream_lengths = self._stream_length_km[indices]
         total_stream_km = float(np.nansum(stream_lengths))
 
-        # Drainage density
-        drainage_density = total_stream_km / total_area if total_area > 0 else None
+        # Pre-compute real stream mask (used for Strahler + BDOT metrics)
+        real_mask = (
+            self._is_real_stream[indices]
+            if self._is_real_stream is not None
+            else None
+        )
 
         # Max Strahler from BDOT real streams only
-        if self._is_real_stream is not None:
-            real_mask = self._is_real_stream[indices]
+        if real_mask is not None:
             real_strahlers = self._strahler[indices][real_mask]
             max_strahler = int(np.max(real_strahlers)) if len(real_strahlers) > 0 else None
         else:
             strahlers = self._strahler[indices]
             max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
 
-        # Stream frequency (all segments — kept for backward compatibility)
-        n_segments = len(indices)
-        stream_frequency_all = n_segments / total_area if total_area > 0 else None
-
         # BDOT-based drainage metrics (real streams only)
-        if self._is_real_stream is not None and self._segment_length_km is not None:
-            real_mask = self._is_real_stream[indices]
+        if real_mask is not None and self._segment_length_km is not None:
             real_lengths = self._segment_length_km[indices]
             bdot_stream_km = float(np.nansum(real_lengths[real_mask]))
             bdot_n_segments = int(np.sum(real_mask))
