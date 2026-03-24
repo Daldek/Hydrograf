@@ -586,6 +586,183 @@ def _compute_lc_along_channel(
         return None
 
 
+def sample_stream_distance(
+    points_2180: list[tuple[float, float]],
+    tif_path: str,
+) -> list[float]:
+    """Sample stream_distance raster at given points (EPSG:2180).
+
+    Returns list of distances [m] from each point to the global outlet.
+    Points outside raster extent get NaN.
+
+    Parameters
+    ----------
+    points_2180 : list[tuple[float, float]]
+        List of (x, y) tuples in EPSG:2180
+    tif_path : str
+        Path to stream_distance GeoTIFF
+
+    Returns
+    -------
+    list[float]
+        Distance values in meters
+    """
+    import rasterio
+
+    with rasterio.open(tif_path) as src:
+        values = list(src.sample(points_2180))
+        return [
+            float(v[0]) if v[0] != src.nodata else float("nan")
+            for v in values
+        ]
+
+
+def get_longest_flow_path_geojson(
+    cg: CatchmentGraph,
+    upstream_indices: np.ndarray,
+    outlet_idx: int,
+    threshold_m2: int,
+    db: "Session",
+) -> dict | None:
+    """Build GeoJSON LineString of the longest flow path for the watershed.
+
+    Finds subcatchment with max max_flow_dist_m, fetches its
+    longest_flow_path_geom, then appends downstream main channel
+    segments to outlet.
+
+    Parameters
+    ----------
+    cg : CatchmentGraph
+        Loaded catchment graph
+    upstream_indices : np.ndarray
+        Internal indices from cg.traverse_upstream()
+    outlet_idx : int
+        Internal index of the outlet node
+    threshold_m2 : int
+        Flow accumulation threshold
+    db : Session
+        Database session
+
+    Returns
+    -------
+    dict | None
+        GeoJSON Feature with LineString geometry, or None on failure
+    """
+    from shapely.geometry import LineString
+    from shapely.ops import linemerge
+
+    # 1. Find node with max max_flow_dist_m
+    max_dist = 0.0
+    max_idx = None
+    for idx in upstream_indices:
+        dist = cg.get_max_flow_dist_m(int(idx))
+        if dist > max_dist:
+            max_dist = dist
+            max_idx = int(idx)
+
+    if max_idx is None:
+        return None
+
+    max_seg_idx = cg.get_segment_idx(max_idx)
+
+    # 2. Fetch longest_flow_path_geom for that subcatchment
+    result = db.execute(
+        text(
+            "SELECT ST_AsGeoJSON(ST_Transform(longest_flow_path_geom, 4326)) as geojson "
+            "FROM stream_catchments "
+            "WHERE threshold_m2 = :threshold AND segment_idx = :seg_idx "
+            "AND longest_flow_path_geom IS NOT NULL "
+            "LIMIT 1"
+        ),
+        {"threshold": threshold_m2, "seg_idx": max_seg_idx},
+    ).fetchone()
+
+    if result is None or result.geojson is None:
+        logger.debug(
+            "No longest_flow_path_geom for segment_idx=%d threshold=%d",
+            max_seg_idx, threshold_m2,
+        )
+        return None
+
+    head_geom = json.loads(result.geojson)
+
+    # 3. Trace main channel from max_idx downstream to outlet
+    # Collect downstream segment_idxs from max_idx to outlet_idx
+    main_ch = cg.trace_main_channel(outlet_idx, upstream_indices)
+    main_nodes = main_ch.get("main_channel_nodes", [])
+
+    # Find which nodes are on the path from outlet to max_idx
+    # We need segments from max_idx's subcatchment downstream to outlet
+    # The main channel trace goes from outlet upstream; we need the
+    # subset from max_idx's downstream neighbor to outlet.
+    downstream_seg_idxs = []
+    collecting = False
+    for node in reversed(main_nodes):
+        if node == max_idx:
+            collecting = True
+            continue
+        if collecting:
+            downstream_seg_idxs.append(cg.get_segment_idx(node))
+
+    if not downstream_seg_idxs:
+        # max_idx IS the outlet or direct neighbor — just return head geom
+        return {
+            "type": "Feature",
+            "geometry": head_geom,
+            "properties": {
+                "type": "longest_flow_path",
+                "length_km": round(max_dist / 1000, 4),
+            },
+        }
+
+    # 4. Fetch downstream stream geometries
+    rows = db.execute(
+        text(
+            "SELECT ST_AsGeoJSON(ST_Transform(geom, 4326)) as geojson "
+            "FROM stream_network "
+            "WHERE threshold_m2 = :threshold AND segment_idx = ANY(:idxs)"
+        ),
+        {"threshold": threshold_m2, "idxs": downstream_seg_idxs},
+    ).fetchall()
+
+    if not rows:
+        return {
+            "type": "Feature",
+            "geometry": head_geom,
+            "properties": {
+                "type": "longest_flow_path",
+                "length_km": round(max_dist / 1000, 4),
+            },
+        }
+
+    # 5. Combine geometries
+    all_lines = [LineString(head_geom["coordinates"])]
+    for r in rows:
+        geom = json.loads(r.geojson)
+        all_lines.append(LineString(geom["coordinates"]))
+
+    try:
+        merged = linemerge(all_lines)
+        if merged.geom_type == "MultiLineString":
+            # Pick the longest component
+            merged = max(merged.geoms, key=lambda g: g.length)
+        merged_geojson = json.loads(
+            json.dumps({"type": "LineString", "coordinates": list(merged.coords)})
+        )
+    except Exception as e:
+        logger.warning("Failed to merge flow path geometries: %s", e)
+        merged_geojson = head_geom
+
+    return {
+        "type": "Feature",
+        "geometry": merged_geojson,
+        "properties": {
+            "type": "longest_flow_path",
+            "length_km": round(max_dist / 1000, 4),
+        },
+    }
+
+
 def build_morph_dict_from_graph(
     cg: CatchmentGraph,
     upstream_indices: np.ndarray,
@@ -686,6 +863,56 @@ def build_morph_dict_from_graph(
         relief_km = (elev_max - elev_min) / 1000
         ruggedness = round(dd * relief_km, 4)
 
+    # Flow path parameters
+    longest_flow_path_km = stats.get("hydraulic_length_km")
+
+    # Point sampling stream_distance.tif for divide and centroid flow paths
+    divide_flow_path_km = None
+    centroid_flow_path_km = None
+    try:
+        import os
+
+        from core.config import get_settings
+
+        settings = get_settings()
+        sd_path = settings.stream_distance_path
+        if os.path.exists(sd_path):
+            # Sample outlet distance
+            outlet_dist_vals = sample_stream_distance(
+                [(outlet_x, outlet_y)], sd_path
+            )
+            outlet_dist = outlet_dist_vals[0]
+
+            if not np.isnan(outlet_dist):
+                # divide_flow_path_km: max distance from boundary vertices
+                boundary_poly = boundary_to_polygon(boundary_2180)
+                boundary_coords = list(boundary_poly.exterior.coords)
+                boundary_dists = sample_stream_distance(boundary_coords, sd_path)
+                valid_boundary = [d for d in boundary_dists if not np.isnan(d)]
+                if valid_boundary:
+                    max_boundary_dist = max(valid_boundary)
+                    dfp = (max_boundary_dist - outlet_dist) / 1000.0
+                    if dfp > 0:
+                        divide_flow_path_km = round(dfp, 4)
+
+                # centroid_flow_path_km: distance from centroid
+                centroid_dist_vals = sample_stream_distance(
+                    [(centroid.x, centroid.y)], sd_path
+                )
+                centroid_dist = centroid_dist_vals[0]
+                if not np.isnan(centroid_dist):
+                    cfp = (centroid_dist - outlet_dist) / 1000.0
+                    if cfp > 0:
+                        centroid_flow_path_km = round(cfp, 4)
+        else:
+            logger.debug(
+                "stream_distance.tif not found at %s, "
+                "skipping divide/centroid flow paths",
+                sd_path,
+            )
+    except Exception as e:
+        logger.debug("Failed to compute flow path distances: %s", e)
+
     params = {
         "area_km2": round(area_km2, 2),
         "perimeter_km": perimeter_km,
@@ -715,6 +942,10 @@ def build_morph_dict_from_graph(
         "stream_frequency_per_km2": stats.get("stream_frequency_per_km2"),
         "ruggedness_number": ruggedness,
         "max_strahler_order": stats.get("max_strahler_order"),
+        # Flow path parameters
+        "longest_flow_path_km": longest_flow_path_km,
+        "divide_flow_path_km": divide_flow_path_km,
+        "centroid_flow_path_km": centroid_flow_path_km,
     }
 
     logger.info(

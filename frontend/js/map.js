@@ -390,6 +390,7 @@
     function clearWatershed() {
         if (watershedLayer) { map.removeLayer(watershedLayer); watershedLayer = null; }
         if (outletMarker) { map.removeLayer(outletMarker); outletMarker = null; }
+        clearLongestFlowPath();
     }
 
     // ===== Drawing mode (polyline for terrain profile) =====
@@ -497,6 +498,31 @@
     }
 
     function isDrawing() { return drawMode; }
+
+    // ===== Longest flow path display =====
+
+    var longestFlowPathLayer = null;
+
+    function showLongestFlowPath(geojson) {
+        clearLongestFlowPath();
+        if (!geojson) return;
+        longestFlowPathLayer = L.geoJSON(geojson, {
+            style: {
+                color: '#E65100',
+                weight: 2,
+                opacity: 0.8,
+                dashArray: '8,4',
+            },
+            interactive: false,
+        }).addTo(map);
+    }
+
+    function clearLongestFlowPath() {
+        if (longestFlowPathLayer) {
+            map.removeLayer(longestFlowPathLayer);
+            longestFlowPathLayer = null;
+        }
+    }
 
     // ===== Profile line display =====
 
@@ -834,6 +860,9 @@
         loadLandCoverVector: loadLandCoverVector,
         getLandCoverLayer: getLandCoverLayer,
         setLandCoverOpacity: setLandCoverOpacity,
+        // Longest flow path
+        showLongestFlowPath: showLongestFlowPath,
+        clearLongestFlowPath: clearLongestFlowPath,
         // Panel/zoom interaction
         shiftZoomControls: shiftZoomControls,
         // Legends
