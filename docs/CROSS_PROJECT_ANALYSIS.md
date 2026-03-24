@@ -14,12 +14,12 @@
 │                           HYDROGRAF                                      │
 │         (Główna aplikacja - System Analizy Hydrologicznej)              │
 │         FastAPI + PostgreSQL/PostGIS + Leaflet.js                       │
-│         19 endpointów (11 core + 8 admin), 955 testów                   │
+│         19 endpointów (11 core + 8 admin), 987 testów                   │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐             │
 │  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │             │
-│  │  v2.1.0       │   │   v0.4.1      │   │   v0.6.3      │             │
+│  │  v2.1.0       │   │   v0.6.1      │   │   v0.6.3      │             │
 │  │  (dane IMGW)  │   │ (dane GIS)    │   │ (obliczenia)  │             │
 │  └───────────────┘   └───────────────┘   └───────┬───────┘             │
 │                                                  │                      │
@@ -187,11 +187,11 @@ qp = 0.208 * self.area_km2 / tp_hours
 |---------|---------|
 | Wersja | v0.4.0 (CP4 Faza 4) |
 | Endpointy API | 19 (11 core + 8 admin) |
-| Testy | 955 |
+| Testy | 987 |
 | Moduły core | 15 (w `backend/core/`) |
 | Skrypty | 14 (w `backend/scripts/`) |
 | Frontend JS | 13 modułów (9 core + 4 admin) |
-| ADR | 41 decyzji architektonicznych |
+| ADR | 42 decyzji architektonicznych |
 
 ### Punkty integracji per biblioteka
 
@@ -350,4 +350,4 @@ fail_under = 80
 
 ---
 
-**Ostatnia aktualizacja:** 2026-03-24 (sesja 67: BDOT stream matching, hydraulic length, 955 testow)
+**Ostatnia aktualizacja:** 2026-03-24 (sesja 68: finalizacja BDOT stream matching, Kartograf v0.6.1, 987 testow)

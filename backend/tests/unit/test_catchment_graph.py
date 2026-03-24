@@ -49,6 +49,10 @@ def small_graph():
     cg._strahler = np.array([1, 1, 2, 3], dtype=np.int8)
     cg._max_flow_dist_m = np.array([12500.0, 10000.0, 8000.0, 5000.0], dtype=np.float64)
 
+    # BDOT stream matching: nodes 0 and 2 are real streams
+    cg._is_real_stream = np.array([True, False, True, False], dtype=np.bool_)
+    cg._segment_length_km = np.array([1.8, 1.2, 2.5, 3.5], dtype=np.float64)
+
     # Histograms
     cg._histograms = [
         {"base_m": 150, "interval_m": 1, "counts": [10, 20, 30, 20, 10, 5, 3, 2]},
@@ -149,10 +153,19 @@ class TestCatchmentGraphAggregateStats:
         assert stats["elevation_mean_m"] == pytest.approx(expected, abs=0.5)
 
     def test_max_strahler(self, small_graph):
-        """Max Strahler should be the maximum value."""
+        """Max Strahler should be max from BDOT real streams only."""
         indices = np.array([0, 1, 2, 3])
         stats = small_graph.aggregate_stats(indices)
-        assert stats["max_strahler_order"] == 3
+        # Real streams: node 0 (strahler=1) and node 2 (strahler=2)
+        # Node 3 (strahler=3) is NOT real → excluded
+        assert stats["max_strahler_order"] == 2
+
+    def test_max_strahler_no_bdot(self, small_graph):
+        """Max Strahler is None when no BDOT real streams in subset."""
+        # Nodes 1 and 3 have is_real_stream=False
+        indices = np.array([1, 3])
+        stats = small_graph.aggregate_stats(indices)
+        assert stats["max_strahler_order"] is None
 
     def test_stream_length_sum(self, small_graph):
         """Stream length should be sum."""
@@ -160,15 +173,69 @@ class TestCatchmentGraphAggregateStats:
         stats = small_graph.aggregate_stats(indices)
         assert stats["stream_length_km"] == pytest.approx(10.5, abs=0.01)
 
-    def test_drainage_density(self, small_graph):
-        """Drainage density = total_stream_length / total_area."""
+    def test_drainage_density_bdot(self, small_graph):
+        """Drainage density is based on BDOT real streams only."""
         indices = np.array([0, 1, 2, 3])
         stats = small_graph.aggregate_stats(indices)
-        expected_dd = 10.5 / 26.0
+        # Real streams: nodes 0 (1.8 km) and 2 (2.5 km) = 4.3 km
+        # Area: 26.0 km2
+        expected_dd = 4.3 / 26.0
         assert stats["drainage_density_km_per_km2"] == pytest.approx(
             expected_dd,
             abs=0.01,
         )
+
+    def test_stream_frequency_bdot(self, small_graph):
+        """Stream frequency is based on BDOT real stream count."""
+        indices = np.array([0, 1, 2, 3])
+        stats = small_graph.aggregate_stats(indices)
+        # Real streams: 2 segments, area: 26.0 km2
+        expected_fs = 2 / 26.0
+        assert stats["stream_frequency_per_km2"] == pytest.approx(
+            expected_fs,
+            abs=0.01,
+        )
+
+    def test_bdot_stream_fields(self, small_graph):
+        """aggregate_stats returns bdot_stream_length_km and bdot_stream_count."""
+        indices = np.array([0, 1, 2, 3])
+        stats = small_graph.aggregate_stats(indices)
+        assert stats["bdot_stream_length_km"] == pytest.approx(4.3, abs=0.01)
+        assert stats["bdot_stream_count"] == 2
+
+    def test_no_bdot_streams_returns_none(self):
+        """When no segments are real streams, drainage_density and frequency are None."""
+        cg = CatchmentGraph()
+        n = 2
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2], dtype=np.int32)
+        cg._threshold_m2 = np.array([10000, 10000], dtype=np.int32)
+        cg._area_km2 = np.array([5.0, 3.0], dtype=np.float32)
+        cg._elev_min = np.array([150.0, 160.0], dtype=np.float32)
+        cg._elev_max = np.array([200.0, 210.0], dtype=np.float32)
+        cg._elev_mean = np.array([175.0, 185.0], dtype=np.float32)
+        cg._slope_mean = np.array([5.0, 6.0], dtype=np.float32)
+        cg._perimeter_km = np.array([10.0, 8.0], dtype=np.float32)
+        cg._stream_length_km = np.array([2.0, 1.5], dtype=np.float32)
+        cg._hydraulic_length_km = np.array([12.5, 10.0], dtype=np.float32)
+        cg._strahler = np.array([1, 1], dtype=np.int8)
+        cg._max_flow_dist_m = np.array([12500.0, 10000.0], dtype=np.float64)
+        cg._histograms = [None, None]
+        cg._lookup = {(10000, 1): 0, (10000, 2): 1}
+        cg._upstream_adj = sparse.csr_matrix((n, n), dtype=np.int8)
+        # No real streams
+        cg._is_real_stream = np.array([False, False], dtype=np.bool_)
+        cg._segment_length_km = np.array([1.5, 1.0], dtype=np.float64)
+
+        indices = np.array([0, 1])
+        stats = cg.aggregate_stats(indices)
+        # bdot_stream_km = 0, so density = 0/8 = 0 (not None — area > 0)
+        assert stats["drainage_density_km_per_km2"] == pytest.approx(0.0)
+        assert stats["stream_frequency_per_km2"] == pytest.approx(0.0)
+        assert stats["bdot_stream_length_km"] == pytest.approx(0.0)
+        assert stats["bdot_stream_count"] == 0
+        assert stats["max_strahler_order"] is None
 
     def test_partial_traversal_stats(self, small_graph):
         """Stats for partial traversal (only headwaters)."""
@@ -406,18 +473,57 @@ class TestTraceMainChannel:
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.trace_main_channel(0, np.array([0]))
 
+    def test_prefers_real_stream_branch_at_same_strahler(self):
+        """At equal Strahler, should prefer is_real_stream=True branch."""
+        # Graph: node 0 (real) and node 1 (not real) both upstream of node 2 (outlet)
+        # Both have same Strahler=1 and same stream_length.
+        # Branch selection should prefer node 0 (real).
+        cg = CatchmentGraph()
+        n = 3
+        cg._n = n
+        cg._loaded = True
+        cg._segment_idx = np.array([1, 2, 3], dtype=np.int32)
+        cg._threshold_m2 = np.array([10000, 10000, 10000], dtype=np.int32)
+        cg._area_km2 = np.array([2.0, 2.0, 5.0], dtype=np.float32)
+        cg._elev_min = np.array([200.0, 200.0, 100.0], dtype=np.float32)
+        cg._elev_max = np.array([250.0, 250.0, 150.0], dtype=np.float32)
+        cg._elev_mean = np.array([225.0, 225.0, 125.0], dtype=np.float32)
+        cg._slope_mean = np.array([5.0, 5.0, 3.0], dtype=np.float32)
+        cg._perimeter_km = np.array([6.0, 6.0, 10.0], dtype=np.float32)
+        cg._stream_length_km = np.array([2.0, 2.0, 3.0], dtype=np.float32)
+        cg._hydraulic_length_km = np.array([10.0, 10.0, 5.0], dtype=np.float32)
+        cg._strahler = np.array([1, 1, 2], dtype=np.int8)
+        cg._max_flow_dist_m = np.array([10000.0, 10000.0, 5000.0], dtype=np.float64)
+        cg._histograms = [None] * n
+        cg._is_real_stream = np.array([True, False, True], dtype=np.bool_)
+        cg._segment_length_km = np.array([2.0, 2.0, 3.0], dtype=np.float64)
+        cg._lookup = {(10000, 1): 0, (10000, 2): 1, (10000, 3): 2}
+
+        # Upstream adjacency: 0->2, 1->2
+        row = np.array([2, 2], dtype=np.int32)
+        col = np.array([0, 1], dtype=np.int32)
+        data = np.ones(2, dtype=np.int8)
+        cg._upstream_adj = sparse.csr_matrix(
+            (data, (row, col)), shape=(n, n), dtype=np.int8
+        )
+
+        upstream = cg.traverse_upstream(2)
+        result = cg.trace_main_channel(2, upstream)
+
+        # Should choose node 0 (real) over node 1 (not real) at same Strahler
+        assert result["main_channel_nodes"] == [2, 0]
+
 
 class TestContiguousRealChannel:
-    """Test that real_channel_length_km only counts contiguous real from outlet.
+    """Test that real_channel_length_km counts contiguous real from outlet with gap tolerance.
 
     The DEM flow-path can run between two parallel BDOT channels (e.g. drainage
-    ditches) whose 15m buffers alternate coverage, producing a fragmented pattern:
+    ditches) whose buffers alternate coverage, producing a fragmented pattern:
     real -> not-real -> real -> not-real -> real.
 
-    The correct model: from the outlet upstream, the first contiguous stretch of
-    is_real_stream=True segments is the actual channel.  The first False segment
-    marks the transition to overland flow — everything above is overland, even if
-    later segments happen to be flagged True.
+    The model allows up to MAX_GAP=2 consecutive non-real segments before breaking
+    the contiguous chain.  This accounts for bends/meanders where the DEM flow-path
+    briefly deviates from the BDOT channel.
     """
 
     @staticmethod
@@ -461,8 +567,8 @@ class TestContiguousRealChannel:
         upstream = cg.traverse_upstream(0)
         return cg, upstream
 
-    def test_fragmented_flags_only_count_contiguous_from_outlet(self):
-        """Pattern real-real-FALSE-real: only first 2 segments counted."""
+    def test_single_gap_tolerated(self):
+        """Pattern real-real-FALSE-real: all 4 counted (1 gap <= MAX_GAP=2)."""
         #                  outlet                     head
         # Node:              0      1      2      3
         # is_real:          True   True   False  True
@@ -473,8 +579,38 @@ class TestContiguousRealChannel:
             seg_lengths_km=[0.5, 0.3, 0.4, 0.6],
         )
         result = cg.trace_main_channel(0, upstream)
-        # Contiguous from outlet: 0.5 + 0.3 = 0.8 (stop at node 2, False)
+        # 1 gap tolerated: 0.5 + 0.3 + 0.4 + 0.6 = 1.8
+        assert result["real_channel_length_km"] == pytest.approx(1.8, abs=0.001)
+
+    def test_three_consecutive_gaps_stops(self):
+        """Pattern real-real-FALSE-FALSE-FALSE-real: stops at 3rd gap (> MAX_GAP=2)."""
+        #                  outlet                                 head
+        # Node:              0      1      2      3      4      5
+        # is_real:          True   True   False  False  False  True
+        # seg_length_km:    0.5    0.3    0.4    0.2    0.3    0.6
+        cg, upstream = self._build_linear_graph(
+            n=6,
+            is_real=[True, True, False, False, False, True],
+            seg_lengths_km=[0.5, 0.3, 0.4, 0.2, 0.3, 0.6],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        # 3 gaps > MAX_GAP=2: stop after node 1. Only 0.5 + 0.3 = 0.8
         assert result["real_channel_length_km"] == pytest.approx(0.8, abs=0.001)
+
+    def test_two_consecutive_gaps_tolerated(self):
+        """Pattern real-FALSE-FALSE-real-real: all 5 counted (2 gaps = MAX_GAP)."""
+        #                  outlet                          head
+        # Node:              0      1      2      3      4
+        # is_real:          True   False  False  True   True
+        # seg_length_km:    0.5    0.2    0.3    0.4    0.6
+        cg, upstream = self._build_linear_graph(
+            n=5,
+            is_real=[True, False, False, True, True],
+            seg_lengths_km=[0.5, 0.2, 0.3, 0.4, 0.6],
+        )
+        result = cg.trace_main_channel(0, upstream)
+        # 2 gaps = MAX_GAP, tolerated: 0.5 + 0.2 + 0.3 + 0.4 + 0.6 = 2.0
+        assert result["real_channel_length_km"] == pytest.approx(2.0, abs=0.001)
 
     def test_all_real_gives_full_length(self):
         """All segments real -> real_channel = full channel length."""
@@ -496,16 +632,16 @@ class TestContiguousRealChannel:
         result = cg.trace_main_channel(0, upstream)
         assert result["real_channel_length_km"] == pytest.approx(0.0, abs=0.001)
 
-    def test_alternating_pattern_stops_at_first_gap(self):
-        """Pattern real-FALSE-real-FALSE-real: only 1st segment counted."""
+    def test_alternating_pattern_bridges_single_gaps(self):
+        """Pattern real-FALSE-real-FALSE-real: all counted (each gap is 1 <= MAX_GAP=2)."""
         cg, upstream = self._build_linear_graph(
             n=5,
             is_real=[True, False, True, False, True],
             seg_lengths_km=[0.3, 0.2, 0.4, 0.1, 0.5],
         )
         result = cg.trace_main_channel(0, upstream)
-        # Only node 0 (0.3 km) before first gap
-        assert result["real_channel_length_km"] == pytest.approx(0.3, abs=0.001)
+        # Each gap is only 1 segment, reset by next real: 0.3+0.2+0.4+0.1+0.5 = 1.5
+        assert result["real_channel_length_km"] == pytest.approx(1.5, abs=0.001)
 
     def test_all_not_real_gives_zero(self):
         """All segments not real -> real_channel = 0."""

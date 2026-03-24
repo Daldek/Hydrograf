@@ -42,6 +42,8 @@ def _make_mock_catchment_graph():
     cg._hydraulic_length_km = np.array([8.5, 7.0, 4.0], dtype=np.float32)
     cg._strahler = np.array([1, 1, 2], dtype=np.int8)
     cg._max_flow_dist_m = np.array([3000.0, 2500.0, 5000.0], dtype=np.float64)
+    cg._is_real_stream = np.array([True, True, True], dtype=np.bool_)
+    cg._segment_length_km = np.array([1.5, 2.0, 3.0], dtype=np.float64)
     cg._histograms = [
         {"base_m": 140, "interval_m": 1, "counts": [10, 20, 30, 20, 10]},
         {"base_m": 150, "interval_m": 1, "counts": [15, 25, 15]},

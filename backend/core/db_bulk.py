@@ -430,7 +430,7 @@ def insert_bdot_streams(db_session, streams):
         raise
 
 
-BDOT_BUFFER_M = 15.0
+BDOT_BUFFER_M = 25.0  # 5 * cellsize (5m DEM), accounts for bends/meanders
 OVERLAP_THRESHOLD = 0.5
 
 
