@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 755 testow jednostkowych |
+| Testy | ✅ Gotowy | 948 testow jednostkowych |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -46,7 +46,7 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-23 (sesja 66 — upgrade Hydrolog v0.6.3)
+**Data:** 2026-03-24 (sesja 67 — hydraulic length + naprawy tc + GUI overlay)
 
 ### Co zrobiono
 - **Upgrade Hydrolog v0.6.2 → v0.6.3** — nowe metody tc (FAA, Kerby, Kerby-Kirpich), 88 mypy fixes, 28 nowych testów
@@ -55,7 +55,10 @@
 - **UI/UX review** — spójność etykiet, logika widoczności 30 kombinacji, auto-regeneracja
 - **Mock morph_dict** — dodano `length_to_centroid_km` wymagane przez from_lutz
 - **BDOT10k stream matching (ADR-044)** — import cieków BDOT do PostGIS, spatial matching (bufor 15m, overlap >= 50%), `real_channel_length_km` w CatchmentGraph i API. Walidacja: 4737 features, 5.4% real (threshold 1000), 27.7% real (threshold 100000), korelacja ze Strahlerem
-- 923 testy, 0 regresji
+- **Hydraulic length preprocessing (migracja 022)** — `hydraulic_length_km` z `pyflwdir.stream_distance()` obliczany w pipeline i zapisywany w `stream_catchments`. Propagowany przez CatchmentGraph do morph_dict
+- **Naprawy parametrów tc** — FAA/Kerby: wymuszenie `tc_overland_length_km` od użytkownika (zamiast błędnego length_km). NRCS/Kirpich: `hydraulic_length_km` zamiast `channel_length_km`. Kerby-Kirpich: overland z hydraulic_length (fallback), channel z real_channel_length_km (BDOT)
+- **GUI: droga spływu + overlay cieku** — "Droga spływu" w tabeli parametrów, main channel overlay na mapie z wyróżnieniem cieków BDOT (ciemny/jasny niebieski), "w tym ciek BDOT" i "Pokrycie BDOT" w panelu parametrów
+- 948 testów, 0 regresji
 
 ### W trakcie
 - Brak

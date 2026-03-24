@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-03-23
+**Ostatnia aktualizacja:** 2026-03-24
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -284,14 +284,21 @@ Różnica może wynosić 2-10x. Channel slope MUSI być obliczany z głównego c
 
 Import: `from hydrolog.time.concentration import ConcentrationTime`
 
-| Metoda | Klucz API | Parametry dodatkowe | Zastosowanie |
-|--------|-----------|---------------------|--------------|
-| Kirpich | `kirpich` | — | Małe zlewnie rolnicze |
-| SCS Lag | `scs_lag` | — | Metoda NRCS (TR-55) |
-| Giandotti | `giandotti` | — | Zlewnie górskie |
-| FAA | `faa` | `tc_runoff_coeff` (C) — estymowany z CN | Spływ powierzchniowy (Federal Aviation Agency) |
-| Kerby | `kerby` | `tc_retardance` (N) — współczynnik opóźnienia | Spływ powierzchniowy z retardance coefficient |
-| Kerby-Kirpich | `kerby_kirpich` | `tc_retardance` (N) | Metoda złożona: overland (Kerby) + channel (Kirpich) |
+| Metoda | Klucz API | Parametry dodatkowe | Długość | Zastosowanie |
+|--------|-----------|---------------------|---------|--------------|
+| Kirpich | `kirpich` | — | `hydraulic_length_km` (preprocessing) | Małe zlewnie rolnicze |
+| SCS Lag | `scs_lag` | — | `hydraulic_length_km` (preprocessing) | Metoda NRCS (TR-55) |
+| Giandotti | `giandotti` | — | `channel_length_km` | Zlewnie górskie |
+| FAA | `faa` | `tc_runoff_coeff` (C), `tc_overland_length_km` | `tc_overland_length_km` (od użytkownika) | Spływ powierzchniowy (Federal Aviation Agency) |
+| Kerby | `kerby` | `tc_retardance` (N), `tc_overland_length_km` | `tc_overland_length_km` (od użytkownika) | Spływ powierzchniowy z retardance coefficient |
+| Kerby-Kirpich | `kerby_kirpich` | `tc_retardance` (N) | overland: `hydraulic_length_km`, channel: `real_channel_length_km` | Metoda złożona: overland (Kerby) + channel (Kirpich) |
+
+**Źródła długości dla metod tc:**
+
+- **`hydraulic_length_km`** — maksymalna droga spływu z flow direction grid (`pyflwdir.stream_distance()`), obliczana w preprocessingu (migracja 022). Używana przez NRCS i Kirpich.
+- **`real_channel_length_km`** — długość segmentów sieci oznaczonych jako rzeczywiste cieki (BDOT10k matching, ADR-044). Używana przez Kerby-Kirpich jako długość kanału.
+- **`tc_overland_length_km`** — długość spływu powierzchniowego podawana przez użytkownika. Wymagana przez FAA i Kerby (nie może być estymowana automatycznie).
+- **`channel_length_km`** — długość głównego cieku z `trace_main_channel()`. Używana przez Giandotti.
 
 ---
 
@@ -404,4 +411,4 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 ---
 
-**Ostatnia aktualizacja:** 2026-03-23
+**Ostatnia aktualizacja:** 2026-03-24
