@@ -5,9 +5,12 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-03-23
+## [Unreleased] — 2026-03-24
 
 ### Dodane
+- **Ścieżki spływu w preprocessingu** — `pyflwdir.stream_distance()` + batch `flw.path()` per subcatchment. 3 nowe parametry: `longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km`. Migracja 023
+- **GUI: Droga spływu i droga z działu** w tabeli parametrów, przerywana pomarańczowa ścieżka na mapie
+- **Point sampling stream_distance.tif** — odległość spływu z boundary (dział wodny) i centroidu
 - **Model Nasha w generowaniu hydrogramu** — 3 metody estymacji parametrów: z Tc (SCS), Lutz (fizjograficzna), regresja zurbanizowana (Rao et al. 1972)
 - Auto-obliczanie wskaźnika urbanizacji z pokrycia terenu (`weighted_imperviousness`)
 - Obliczanie efektywnego czasu trwania opadu z uwzględnieniem abstrakcji początkowej SCS-CN
