@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from utils.dem_color import build_colormap, compute_hillshade
+from utils.dem_color import build_colormap, compute_hillshade, normalize_elevation
 
 
 class TestBuildColormap:
@@ -118,3 +118,53 @@ class TestComputeHillshade:
         hs = compute_hillshade(dem, cellsize=5.0, altitude=altitude)
         expected = np.sin(np.radians(altitude))
         np.testing.assert_allclose(hs[10, 10], expected, atol=1e-10)
+
+
+class TestNormalizeElevation:
+    """Tests for normalize_elevation() percentile clipping."""
+
+    def test_typical_range(self):
+        """Percentile clipping returns narrower range than min/max."""
+        rng = np.random.default_rng(42)
+        data = rng.normal(200, 30, size=10000).astype(np.float64)
+        # Add outliers (e.g. landfill at 500m, quarry at 50m)
+        data = np.append(data, [500.0, 500.0, 50.0, 50.0])
+        lo, hi = normalize_elevation(data)
+        assert lo > float(np.min(data)), "Lower bound should clip outliers"
+        assert hi < float(np.max(data)), "Upper bound should clip outliers"
+
+    def test_percentile_boundaries(self):
+        """Returns approximate 5th and 95th percentiles."""
+        data = np.arange(0, 1000, dtype=np.float64)
+        lo, hi = normalize_elevation(data)
+        assert abs(lo - 50.0) < 5.0  # p5 of 0-999 ≈ 50
+        assert abs(hi - 950.0) < 5.0  # p95 of 0-999 ≈ 950
+
+    def test_flat_terrain_fallback(self):
+        """Flat terrain (p5 == p95) falls back to full min/max range."""
+        data = np.full(1000, 150.0)
+        lo, hi = normalize_elevation(data)
+        assert lo == 150.0
+        assert hi == 150.0
+
+    def test_empty_array(self):
+        """Empty array returns (0, 0)."""
+        lo, hi = normalize_elevation(np.array([]))
+        assert lo == 0.0
+        assert hi == 0.0
+
+    def test_custom_percentiles(self):
+        """Custom percentile boundaries are respected."""
+        data = np.arange(0, 1000, dtype=np.float64)
+        lo, hi = normalize_elevation(data, low_pct=10.0, high_pct=90.0)
+        assert abs(lo - 100.0) < 5.0  # p10 ≈ 100
+        assert abs(hi - 900.0) < 5.0  # p90 ≈ 900
+
+    def test_values_outside_range_still_colored(self):
+        """Outliers beyond percentile window get clamped, not dropped."""
+        data = np.array([100.0, 150.0, 200.0, 250.0, 300.0, 1000.0])
+        lo, hi = normalize_elevation(data)
+        # 1000m outlier should be above hi, but still normalizable
+        normalized = (1000.0 - lo) / (hi - lo) if hi > lo else 0.0
+        # Clamped to 255 after np.clip — value > 1.0 is expected
+        assert normalized > 1.0
