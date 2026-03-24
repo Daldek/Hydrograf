@@ -132,11 +132,16 @@ def _enrich_catchments_with_flow_paths(
     metadata: dict,
 ) -> None:
     """
-    Add max_flow_dist_m and longest_flow_path_wkt to each catchment dict.
+    Add max_flow_dist_m, longest_flow_path_wkt, and divide_flow_path_wkt
+    to each catchment dict.
 
     Uses batch flw.path() for performance: collects the farthest cell
     (max flow distance) per sub-catchment, traces all paths in one call,
     then assigns results back.
+
+    Two flow paths are computed per subcatchment:
+    - longest_flow_path: from the cell with max flow_dist_m (anywhere)
+    - divide_flow_path: from the cell with max flow_dist_m on the boundary
 
     Parameters
     ----------
@@ -202,9 +207,63 @@ def _enrich_catchments_with_flow_paths(
     del unique_labels, group_starts, group_counts, group_ids
     del is_max, max_positions, first_max, argmax_in_sorted
 
-    # Build batch arrays: one starting index per catchment
+    # Phase 1b: find cell with max flow distance on subcatchment BOUNDARY
+    # A cell is on the boundary if any 4-connected neighbor has a different label
+    nrows, ncols = label_raster.shape
+    is_boundary = np.zeros_like(label_raster, dtype=np.bool_)
+    is_boundary[1:, :] |= label_raster[1:, :] != label_raster[:-1, :]
+    is_boundary[:-1, :] |= label_raster[:-1, :] != label_raster[1:, :]
+    is_boundary[:, 1:] |= label_raster[:, 1:] != label_raster[:, :-1]
+    is_boundary[:, :-1] |= label_raster[:, :-1] != label_raster[:, 1:]
+    # Edge cells of raster are always boundary
+    is_boundary[0, :] = True
+    is_boundary[-1, :] = True
+    is_boundary[:, 0] = True
+    is_boundary[:, -1] = True
+    # Only labeled cells
+    is_boundary &= (label_raster > 0)
+
+    flat_boundary = is_boundary.ravel()
+    del is_boundary  # free 2D array
+
+    boundary_indices = np.where(flat_boundary)[0]
+    del flat_boundary
+    boundary_labels = flat_labels[boundary_indices]
+    boundary_dists = flat_dist[boundary_indices]
+
+    # Same reduceat approach as for overall max
+    order_b = np.argsort(boundary_labels, kind="mergesort")
+    sorted_b_labels = boundary_labels[order_b]
+    sorted_b_dists = boundary_dists[order_b]
+    sorted_b_orig = boundary_indices[order_b]
+
+    unique_b, starts_b, counts_b = np.unique(
+        sorted_b_labels, return_index=True, return_counts=True
+    )
+    maxes_b = np.maximum.reduceat(sorted_b_dists, starts_b)
+
+    group_b_ids = np.repeat(np.arange(len(unique_b)), counts_b)
+    is_max_b = sorted_b_dists == maxes_b[group_b_ids]
+    max_pos_b = np.where(is_max_b)[0]
+    _, first_max_b = np.unique(group_b_ids[max_pos_b], return_index=True)
+    argmax_b = max_pos_b[first_max_b]
+
+    divide_best_dist = np.full(max_label + 1, -1.0, dtype=np.float64)
+    divide_best_idx = np.full(max_label + 1, -1, dtype=np.intp)
+    divide_best_dist[unique_b] = maxes_b
+    divide_best_idx[unique_b] = sorted_b_orig[argmax_b]
+
+    # Free boundary temporaries
+    del boundary_indices, boundary_labels, boundary_dists
+    del order_b, sorted_b_labels, sorted_b_dists, sorted_b_orig
+    del unique_b, starts_b, counts_b, group_b_ids
+    del is_max_b, max_pos_b, first_max_b, argmax_b
+
+    # Build batch arrays: one starting index per catchment (longest + divide)
     catch_order = []  # index into catchments list
-    start_idxs = []   # flat index of farthest cell
+    start_idxs = []   # flat index of farthest cell (overall)
+    divide_catch_order = []  # index into catchments list (divide paths)
+    divide_start_idxs = []   # flat index of farthest boundary cell
     for ci, catch in enumerate(catchments):
         seg_idx = catch["segment_idx"]
         if seg_idx <= max_label and best_idx[seg_idx] >= 0:
@@ -214,14 +273,33 @@ def _enrich_catchments_with_flow_paths(
         else:
             catch["max_flow_dist_m"] = None
             catch["longest_flow_path_wkt"] = None
+            catch["divide_flow_path_wkt"] = None
+            continue
+
+        # Divide path: only if boundary cell differs from overall max cell
+        if (seg_idx <= max_label and divide_best_idx[seg_idx] >= 0
+                and divide_best_idx[seg_idx] != best_idx[seg_idx]):
+            divide_catch_order.append(ci)
+            divide_start_idxs.append(divide_best_idx[seg_idx])
+        else:
+            catch["divide_flow_path_wkt"] = None
+
+    del best_idx, best_dist, divide_best_idx, divide_best_dist
 
     if not start_idxs:
         logger.info("  No flow paths to trace (no valid catchments)")
         return
 
-    # Phase 2: batch trace all paths downstream
+    # Phase 2: batch trace all paths downstream (longest flow paths)
     start_arr = np.array(start_idxs, dtype=np.intp)
     paths, _dists = flw.path(idxs=start_arr, unit="m")
+
+    # Phase 2b: batch trace divide flow paths
+    divide_paths = None
+    if divide_start_idxs:
+        divide_arr = np.array(divide_start_idxs, dtype=np.intp)
+        divide_paths, _divide_dists = flw.path(idxs=divide_arr, unit="m")
+        del divide_arr, _divide_dists
 
     # Phase 3: clip each path to its sub-catchment and build geometry
     traced = 0
@@ -265,10 +343,46 @@ def _enrich_catchments_with_flow_paths(
         catchments[ci]["longest_flow_path_wkt"] = line.wkt
         traced += 1
 
+    # Phase 3b: clip divide paths and build geometry
+    divide_traced = 0
+    if divide_paths is not None:
+        for i, ci in enumerate(divide_catch_order):
+            seg_idx = catchments[ci]["segment_idx"]
+            path_idxs = divide_paths[i]
+
+            if len(path_idxs) < 2:
+                catchments[ci]["divide_flow_path_wkt"] = None
+                continue
+
+            # Clip path: keep only cells within this sub-catchment
+            path_labels = flat_labels[path_idxs]
+            in_catchment = path_labels == seg_idx
+            if not in_catchment[0]:
+                catchments[ci]["divide_flow_path_wkt"] = None
+                continue
+
+            out_indices = np.where(~in_catchment)[0]
+            if len(out_indices) > 0:
+                end = out_indices[0] + 1
+                path_idxs = path_idxs[:end]
+
+            if len(path_idxs) < 2:
+                catchments[ci]["divide_flow_path_wkt"] = None
+                continue
+
+            xs, ys = flw.xy(path_idxs)
+            line = LineString(zip(xs, ys))
+
+            if len(path_idxs) > 3:
+                line = line.simplify(simplify_tol, preserve_topology=True)
+
+            catchments[ci]["divide_flow_path_wkt"] = line.wkt
+            divide_traced += 1
+
     elapsed = time.time() - t0
     logger.info(
-        f"  Flow path tracing: {traced}/{len(catchments)} catchments "
-        f"in {elapsed:.1f}s"
+        f"  Flow path tracing: {traced} longest + {divide_traced} divide "
+        f"/ {len(catchments)} catchments in {elapsed:.1f}s"
     )
 
 

@@ -877,6 +877,143 @@ def get_longest_flow_path_geojson(
     }
 
 
+def get_divide_flow_path_geojson(
+    cg: CatchmentGraph,
+    upstream_indices: np.ndarray,
+    outlet_idx: int,
+    threshold_m2: int,
+    db: "Session",
+) -> dict | None:
+    """Build GeoJSON LineString of the divide flow path for the watershed.
+
+    Similar to get_longest_flow_path_geojson(), but uses the
+    divide_flow_path_geom column — the path from the farthest boundary
+    cell to the subcatchment outlet.
+
+    Parameters
+    ----------
+    cg : CatchmentGraph
+        Loaded catchment graph
+    upstream_indices : np.ndarray
+        Internal indices from cg.traverse_upstream()
+    outlet_idx : int
+        Internal index of the outlet node
+    threshold_m2 : int
+        Flow accumulation threshold
+    db : Session
+        Database session
+
+    Returns
+    -------
+    dict | None
+        GeoJSON Feature with LineString geometry, or None on failure
+    """
+    from shapely.geometry import LineString
+    from shapely.ops import linemerge
+
+    # 1. Find node with max max_flow_dist_m (same logic as longest path —
+    #    the divide path starts at the boundary cell of that subcatchment)
+    max_dist = 0.0
+    max_idx = None
+    for idx in upstream_indices:
+        dist = cg.get_max_flow_dist_m(int(idx))
+        if dist > max_dist:
+            max_dist = dist
+            max_idx = int(idx)
+
+    if max_idx is None:
+        return None
+
+    max_seg_idx = cg.get_segment_idx(max_idx)
+
+    # 2. Fetch divide_flow_path_geom for that subcatchment
+    result = db.execute(
+        text(
+            "SELECT ST_AsGeoJSON(ST_Transform(divide_flow_path_geom, 4326)) as geojson "
+            "FROM stream_catchments "
+            "WHERE threshold_m2 = :threshold AND segment_idx = :seg_idx "
+            "AND divide_flow_path_geom IS NOT NULL "
+            "LIMIT 1"
+        ),
+        {"threshold": threshold_m2, "seg_idx": max_seg_idx},
+    ).fetchone()
+
+    if result is None or result.geojson is None:
+        logger.debug(
+            "No divide_flow_path_geom for segment_idx=%d threshold=%d",
+            max_seg_idx, threshold_m2,
+        )
+        return None
+
+    head_geom = json.loads(result.geojson)
+
+    # 3. Trace main channel from max_idx downstream to outlet
+    main_ch = cg.trace_main_channel(outlet_idx, upstream_indices)
+    main_nodes = main_ch.get("main_channel_nodes", [])
+
+    downstream_seg_idxs = []
+    collecting = False
+    for node in reversed(main_nodes):
+        if node == max_idx:
+            collecting = True
+            continue
+        if collecting:
+            downstream_seg_idxs.append(cg.get_segment_idx(node))
+
+    if not downstream_seg_idxs:
+        return {
+            "type": "Feature",
+            "geometry": head_geom,
+            "properties": {
+                "type": "divide_flow_path",
+            },
+        }
+
+    # 4. Fetch downstream stream geometries
+    rows = db.execute(
+        text(
+            "SELECT ST_AsGeoJSON(ST_Transform(geom, 4326)) as geojson "
+            "FROM stream_network "
+            "WHERE threshold_m2 = :threshold AND segment_idx = ANY(:idxs)"
+        ),
+        {"threshold": threshold_m2, "idxs": downstream_seg_idxs},
+    ).fetchall()
+
+    if not rows:
+        return {
+            "type": "Feature",
+            "geometry": head_geom,
+            "properties": {
+                "type": "divide_flow_path",
+            },
+        }
+
+    # 5. Combine geometries
+    all_lines = [LineString(head_geom["coordinates"])]
+    for r in rows:
+        geom = json.loads(r.geojson)
+        all_lines.append(LineString(geom["coordinates"]))
+
+    try:
+        merged = linemerge(all_lines)
+        if merged.geom_type == "MultiLineString":
+            merged = max(merged.geoms, key=lambda g: g.length)
+        merged_geojson = json.loads(
+            json.dumps({"type": "LineString", "coordinates": list(merged.coords)})
+        )
+    except Exception as e:
+        logger.warning("Failed to merge divide flow path geometries: %s", e)
+        merged_geojson = head_geom
+
+    return {
+        "type": "Feature",
+        "geometry": merged_geojson,
+        "properties": {
+            "type": "divide_flow_path",
+        },
+    }
+
+
 def build_morph_dict_from_graph(
     cg: CatchmentGraph,
     upstream_indices: np.ndarray,
