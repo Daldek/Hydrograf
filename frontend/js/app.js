@@ -313,8 +313,9 @@
 
             displayParameters(data);
 
-            // Show longest flow path overlay on map
+            // Show flow path overlays on map
             Hydrograf.map.showLongestFlowPath(data.watershed.longest_flow_path_geojson);
+            Hydrograf.map.showDivideFlowPath(data.watershed.divide_flow_path_geojson);
 
             // Show/hide hietogram + hydrograph sections based on API response
             var hydroAvail = data.watershed && data.watershed.hydrograph_available;
@@ -392,8 +393,9 @@
 
                 displayParameters(data);
 
-                // Show longest flow path overlay on map
+                // Show flow path overlays on map
                 Hydrograf.map.showLongestFlowPath(data.watershed.longest_flow_path_geojson);
+                Hydrograf.map.showDivideFlowPath(data.watershed.divide_flow_path_geojson);
             } else {
                 displayStreamInfo(data.stream);
             }
