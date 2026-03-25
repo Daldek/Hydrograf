@@ -77,12 +77,7 @@ class RasterCache:
             self._crs = src.crs
             self._shape = fdir_int16.shape
 
-        # Convert on-disk int16 D8 (nodata=0) → pyflwdir uint8 (nodata=247)
-        fdir_u8 = fdir_int16.astype(np.uint8)
-        fdir_u8[fdir_int16 == 0] = 247
-        self._fdir = fdir_u8
-
-        # --- DEM (required) ---
+        # --- DEM (required, loaded first for nodata mask) ---
         dem_path = cfg.resolve_dem_path()
         if not dem_path:
             raise FileNotFoundError("DEM raster not found")
@@ -90,6 +85,16 @@ class RasterCache:
         with rasterio.open(dem_path) as src:
             self._dem = src.read(1)
             self._dem_nodata = src.nodata
+
+        # Convert on-disk int16 D8 → pyflwdir uint8 D8.
+        # The saved raster uses 0 for BOTH nodata and pits (outlets).
+        # We must only set nodata=247 for cells outside the domain
+        # (where DEM is also nodata), keeping 0 as pit for valid cells.
+        fdir_u8 = fdir_int16.astype(np.uint8)
+        if self._dem_nodata is not None:
+            dem_nodata_mask = self._dem == self._dem_nodata
+            fdir_u8[dem_nodata_mask] = 247
+        self._fdir = fdir_u8
 
         # --- Slope (optional) ---
         slope_path = cfg.resolve_slope_path()
@@ -168,8 +173,14 @@ class RasterCache:
             )
 
         # --- Delineate basin via pyflwdir ---
+        # pyflwdir.basins() only works from pit cells (fdir=0).
+        # For arbitrary points, temporarily set the target cell to pit.
+        fdir_copy = self._fdir.copy()
+        original_fdir = fdir_copy[row, col]
+        fdir_copy[row, col] = 0  # make it a pit/outlet
+
         flw = pyflwdir.from_array(
-            self._fdir,
+            fdir_copy,
             ftype="d8",
             transform=self._transform,
             latlon=False,
@@ -177,6 +188,13 @@ class RasterCache:
         flat_idx = np.ravel_multi_index((row, col), self._shape)
         basins = flw.basins(idxs=[flat_idx])
         mask = basins > 0
+
+        cell_area_km2 = abs(self._transform.a * self._transform.e) / 1_000_000
+        logger.info(
+            "Delineated from row=%d col=%d (fdir=%d→0): %d cells, %.2f km2",
+            row, col, original_fdir, int(np.sum(mask)),
+            float(np.sum(mask)) * cell_area_km2,
+        )
 
         if not np.any(mask):
             raise ValueError(
