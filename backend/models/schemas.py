@@ -11,15 +11,10 @@ from pydantic import BaseModel, Field
 
 
 class DelineateRequest(BaseModel):
-    """
-    Request model for watershed delineation.
+    """Request for watershed delineation.
 
-    Attributes
-    ----------
-    latitude : float
-        Latitude in WGS84 (decimal degrees), range -90 to 90
-    longitude : float
-        Longitude in WGS84 (decimal degrees), range -180 to 180
+    When threshold_m2 is provided, uses pre-computed catchments (fast).
+    When omitted, performs precise on-the-fly delineation.
     """
 
     latitude: float = Field(
@@ -35,6 +30,12 @@ class DelineateRequest(BaseModel):
         le=180,
         description="Longitude in WGS84 (decimal degrees)",
         examples=[21.01],
+    )
+    threshold_m2: int | None = Field(
+        None,
+        gt=0,
+        description="Flow accumulation threshold [m2]. If provided, uses pre-computed catchments (fast). If omitted, performs precise on-the-fly delineation.",
+        examples=[10000],
     )
 
 
@@ -252,39 +253,38 @@ class WatershedResponse(BaseModel):
     )
 
 
-class DelineateResponse(BaseModel):
-    """
-    Full response for watershed delineation endpoint.
+class StreamInfo(BaseModel):
+    """Information about the selected stream segment."""
 
-    Attributes
-    ----------
-    watershed : WatershedResponse
-        Watershed delineation results
-    auto_selected : bool
-        True when area exceeded limit and pre-generated selection was used
-    upstream_segment_indices : list[int] | None
-        Segment indices for MVT highlighting (when auto_selected)
-    display_threshold_m2 : int | None
-        Threshold for MVT matching (when auto_selected)
-    info_message : str | None
-        User-facing info about auto-switch
-    """
-
-    watershed: WatershedResponse = Field(
-        ..., description="Watershed delineation results"
+    segment_idx: int = Field(..., description="Stream segment index")
+    strahler_order: int | None = Field(None, description="Strahler stream order")
+    length_m: float | None = Field(None, ge=0, description="Segment length [m]")
+    upstream_area_km2: float | None = Field(
+        None, ge=0, description="Upstream catchment area [km2]"
     )
-    auto_selected: bool = Field(
-        False,
-        description="True when area exceeded limit and selection was used",
+
+
+class DelineateResponse(BaseModel):
+    """Full response for watershed delineation endpoint."""
+
+    mode: str = Field(
+        ...,
+        description="Delineation mode: 'precomputed' (with threshold) or 'precise' (without)",
+    )
+    watershed: WatershedResponse = Field(
+        ..., description="Watershed delineation results",
+    )
+    stream: StreamInfo | None = Field(
+        None, description="Selected stream segment info (precomputed mode only)",
     )
     upstream_segment_indices: list[int] | None = Field(
-        None, description="Segment indices for MVT highlighting (when auto_selected)"
+        None, description="Segment indices for MVT stream highlighting",
     )
     display_threshold_m2: int | None = Field(
-        None, description="Threshold for MVT matching (when auto_selected)"
+        None, description="Threshold used for upstream_segment_indices (for MVT matching)",
     )
     info_message: str | None = Field(
-        None, description="User-facing info about auto-switch"
+        None, description="User-facing info about parameter changes",
     )
 
 
@@ -507,68 +507,6 @@ class HydrographResponse(BaseModel):
     hydrograph: HydrographInfo = Field(..., description="Generated hydrograph")
     water_balance: WaterBalance = Field(..., description="Water balance")
     metadata: HydrographMetadata = Field(..., description="Calculation metadata")
-
-
-# ===================== STREAM SELECTION MODELS =====================
-
-
-class SelectStreamRequest(BaseModel):
-    """Request model for selecting a stream and its upstream catchment."""
-
-    latitude: float = Field(
-        ...,
-        ge=-90,
-        le=90,
-        description="Latitude in WGS84 (decimal degrees)",
-        examples=[52.23],
-    )
-    longitude: float = Field(
-        ...,
-        ge=-180,
-        le=180,
-        description="Longitude in WGS84 (decimal degrees)",
-        examples=[21.01],
-    )
-    threshold_m2: int = Field(
-        ...,
-        gt=0,
-        description="Flow accumulation threshold [m2] for stream network",
-        examples=[10000],
-    )
-
-
-class StreamInfo(BaseModel):
-    """Information about the selected stream segment."""
-
-    segment_idx: int = Field(..., description="Stream segment index")
-    strahler_order: int | None = Field(None, description="Strahler stream order")
-    length_m: float | None = Field(None, ge=0, description="Segment length [m]")
-    upstream_area_km2: float | None = Field(
-        None, ge=0, description="Upstream catchment area [km2]"
-    )
-
-
-class SelectStreamResponse(BaseModel):
-    """Response for stream selection endpoint."""
-
-    stream: StreamInfo = Field(..., description="Selected stream info")
-    upstream_segment_indices: list[int] = Field(
-        ..., description="Segment indices of upstream catchments"
-    )
-    boundary_geojson: dict[str, Any] = Field(
-        ..., description="Upstream catchment boundary as GeoJSON Feature"
-    )
-    display_threshold_m2: int = Field(
-        ...,
-        description="Threshold used for upstream_segment_indices (for MVT matching)",
-    )
-    watershed: WatershedResponse | None = Field(
-        None, description="Full watershed statistics (morphometry, land cover, etc.)"
-    )
-    info_message: str | None = Field(
-        None,
-        description="Informacja o automatycznej zmianie parametrów",
-    )
 
 
 # ===================== TERRAIN PROFILE MODELS =====================
