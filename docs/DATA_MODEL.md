@@ -1,8 +1,8 @@
 # DATA_MODEL.md - Model Danych
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.5
-**Data:** 2026-03-24
+**Wersja:** 1.6
+**Data:** 2026-03-25
 **Status:** Approved
 
 ---
@@ -86,6 +86,9 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 │ stream_length_km         │
 │ elev_histogram (JSONB)   │
 │ hydraulic_length_km      │
+│ max_flow_dist_m          │
+│ longest_flow_path_geom   │
+│ divide_flow_path_geom    │
 └──────────────────────────┘
 
 ┌─────────────────────┐
@@ -120,13 +123,18 @@ CREATE TABLE precipitation_data (
     id SERIAL PRIMARY KEY,
     geom GEOMETRY(Point, 2180) NOT NULL,
     duration VARCHAR(10) NOT NULL,
-    probability INT NOT NULL,
+    probability DOUBLE PRECISION NOT NULL,  -- migracja 020: zmiana z INT na DOUBLE PRECISION
     precipitation_mm FLOAT NOT NULL,
     source VARCHAR(50) NOT NULL,  -- IMGW_PMAXTP (atlas) lub IMGW_HISTORICAL (wlasna analiza)
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT valid_duration CHECK (duration IN ('15min', '30min', '1h', '2h', '6h', '12h', '24h')),
-    CONSTRAINT valid_probability CHECK (probability IN (1, 2, 5, 10, 20, 50)),
+    CONSTRAINT valid_duration CHECK (duration IN (
+        '5min','10min','15min','30min','45min','1h','1.5h','2h',
+        '3h','6h','12h','18h','24h','36h','48h','72h'
+    )),  -- migracja 019/020: rozszerzono z 7 do 16 wartości
+    CONSTRAINT valid_probability CHECK (probability IN (
+        0.01,0.02,0.03,0.05,0.1,0.2,0.3,0.5,1,2,3,5,10,20,30,40,50,60,70,80,90,95,98,98.5,99,99.5,99.9
+    )),  -- migracja 020: zmiana z 6 INT na 27 FLOAT
     CONSTRAINT positive_precipitation CHECK (precipitation_mm >= 0),
     CONSTRAINT unique_precipitation_scenario UNIQUE (geom, duration, probability)
 );
@@ -139,8 +147,8 @@ CREATE INDEX idx_precipitation_probability ON precipitation_data(probability);
 
 -- Komentarze
 COMMENT ON TABLE precipitation_data IS 'Maksymalne opady projektowe';
-COMMENT ON COLUMN precipitation_data.duration IS 'Czas trwania opadu: 15min, 30min, 1h, 2h, 6h, 12h, 24h';
-COMMENT ON COLUMN precipitation_data.probability IS 'Prawdopodobieństwo przewyższenia [%]: 1, 2, 5, 10, 20, 50';
+COMMENT ON COLUMN precipitation_data.duration IS 'Czas trwania opadu: 5min..72h (16 wartości)';
+COMMENT ON COLUMN precipitation_data.probability IS 'Prawdopodobieństwo przewyższenia [%]: 0.01..99.9 (27 wartości FLOAT)';
 COMMENT ON COLUMN precipitation_data.precipitation_mm IS 'Wysokość opadu [mm]';
 ```
 
@@ -150,8 +158,8 @@ COMMENT ON COLUMN precipitation_data.precipitation_mm IS 'Wysokość opadu [mm]'
 |---------|-----|----------|---------|------|-------------------|
 | `id` | SERIAL | NO | auto | Unikalny identyfikator | 1..∞ |
 | `geom` | GEOMETRY | NO | - | Punkt siatki precipitation | EPSG:2180 |
-| `duration` | VARCHAR(10) | NO | - | Czas trwania | '15min', '30min', '1h', '2h', '6h', '12h', '24h' |
-| `probability` | INT | NO | - | Prawdopodobieństwo [%] | 1, 2, 5, 10, 20, 50 |
+| `duration` | VARCHAR(10) | NO | - | Czas trwania | '5min','10min','15min','30min','45min','1h','1.5h','2h','3h','6h','12h','18h','24h','36h','48h','72h' |
+| `probability` | DOUBLE PRECISION | NO | - | Prawdopodobieństwo [%] | 0.01,0.02,0.03,0.05,0.1,0.2,0.3,0.5,1,2,3,5,10,20,30,40,50,60,70,80,90,95,98,98.5,99,99.5,99.9 |
 | `precipitation_mm` | FLOAT | NO | - | Opad [mm] | ≥ 0 |
 | `source` | VARCHAR(50) | NO | - | Źródło danych | IMGW_PMAXTP (atlas), IMGW_HISTORICAL (własna analiza) |
 | `updated_at` | TIMESTAMP | YES | NOW() | Data aktualizacji | timestamp |
@@ -165,8 +173,8 @@ INSERT INTO precipitation_data (geom, duration, probability, precipitation_mm, s
 ```
 
 **Liczba rekordów:**
-- Scenariusze: 7 czasów × 6 prawdopodobieństw = 42 na punkt
-- Total: ~42,000 - 210,000 rekordów
+- Scenariusze: 16 czasów × 27 prawdopodobieństw = 432 na punkt
+- Total: ~432,000 - 2,160,000 rekordów
 
 ---
 
@@ -244,7 +252,7 @@ CREATE TABLE stream_network (
     source VARCHAR(50) DEFAULT 'MPHP',
     upstream_area_km2 FLOAT,                        -- migracja 003
     mean_slope_percent FLOAT,                       -- migracja 003
-    threshold_m2 INT NOT NULL DEFAULT 100,          -- migracja 005 (server_default=100, ADR-030: prog 100 usuniety)
+    threshold_m2 INT NOT NULL DEFAULT 1000,          -- migracja 005/017 (aktywne progi: 1000, 10000, 100000; próg 100 usunięty, migracja 017)
     segment_idx INTEGER,                            -- migracja 014 (ADR-026)
     is_real_stream BOOLEAN,                         -- migracja 021 (ADR-044)
 
@@ -294,7 +302,7 @@ COMMENT ON COLUMN stream_network.strahler_order IS 'Rząd Strahlera (hierarchia 
 | `source` | VARCHAR(50) | YES | 'MPHP' | Zrodlo danych ('MPHP' lub 'DEM_DERIVED') |
 | `upstream_area_km2` | FLOAT | YES | NULL | Powierzchnia zlewni na koncu segmentu [km2] (migracja 003) |
 | `mean_slope_percent` | FLOAT | YES | NULL | Sredni spadek wzdluz segmentu [%] (migracja 003) |
-| `threshold_m2` | INT | NO | 100 | Prog akumulacji przeplywu [m2] (migracja 005). Aktywne progi: 1000, 10000, 100000 (ADR-030) |
+| `threshold_m2` | INT | NO | 1000 | Prog akumulacji przeplywu [m2] (migracja 005/017). Aktywne progi: 1000, 10000, 100000 (próg 100 usunięty, migracja 017) |
 | `segment_idx` | INTEGER | YES | NULL | Indeks segmentu spojny z `stream_catchments.segment_idx` (migracja 014, ADR-026) |
 | `is_real_stream` | BOOLEAN | YES | NULL | Czy segment pokrywa sie z ciekiem BDOT10k (spatial matching, bufor 15m, overlap >= 50%). NULL = nie matchowano, false = splywy algorytmiczne, true = ciek rzeczywisty (migracja 021, ADR-044) |
 
@@ -335,7 +343,9 @@ CREATE TABLE stream_catchments (
     hydraulic_length_km FLOAT,                   -- max droga spływu z flow direction (pyflwdir stream_distance)
     -- Nowe kolumny (migracja 023):
     max_flow_dist_m DOUBLE PRECISION,            -- odległość najdalszej komórki do globalnego ujścia [m]
-    longest_flow_path_geom GEOMETRY(LINESTRING, 2180) -- geometria najdłuższej ścieżki spływu
+    longest_flow_path_geom GEOMETRY(LINESTRING, 2180), -- geometria najdłuższej ścieżki spływu
+    -- Nowa kolumna (migracja 024):
+    divide_flow_path_geom GEOMETRY(LINESTRING, 2180)   -- geometria ścieżki spływu z działu wód (granica zlewni → ujście)
 );
 
 -- Indeksy
@@ -371,6 +381,12 @@ CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom)
 |---------|-----|----------|------|
 | `max_flow_dist_m` | DOUBLE PRECISION | YES | Odległość najdalszej komórki do globalnego ujścia [m] (z `pyflwdir.stream_distance`) |
 | `longest_flow_path_geom` | GEOMETRY(LINESTRING, 2180) | YES | Geometria najdłuższej ścieżki spływu w zlewni cząstkowej (z batch `flw.path()`) |
+
+**Nowa kolumna (migracja 024) — ścieżka spływu z działu wód:**
+
+| Kolumna | Typ | Nullable | Opis |
+|---------|-----|----------|------|
+| `divide_flow_path_geom` | GEOMETRY(LINESTRING, 2180) | YES | Geometria ścieżki spływu z działu wód (granica zlewni → ujście) |
 
 **Format `elev_histogram`:** stały interwał 1m, klucze: `base_m` (dolna granica najniższego binu), `interval_m` (zawsze 1), `counts` (tablica liczności per bin). Mergowalny — histogramy na wspólnej osi bezwzględnej, agregacja = suma z offset.
 
@@ -492,9 +508,14 @@ COMMENT ON COLUMN bdot_streams.length_m IS 'Dlugosc geometrii [m]';
 
 **Wszystkie CHECK constraints w bazie:**
 ```sql
--- precipitation_data (migracja 001)
-CONSTRAINT valid_duration CHECK (duration IN ('15min', '30min', '1h', '2h', '6h', '12h', '24h'))
-CONSTRAINT valid_probability CHECK (probability IN (1, 2, 5, 10, 20, 50))
+-- precipitation_data (migracja 001, aktualizacja: migracja 019/020)
+CONSTRAINT valid_duration CHECK (duration IN (
+    '5min','10min','15min','30min','45min','1h','1.5h','2h',
+    '3h','6h','12h','18h','24h','36h','48h','72h'
+))
+CONSTRAINT valid_probability CHECK (probability IN (
+    0.01,0.02,0.03,0.05,0.1,0.2,0.3,0.5,1,2,3,5,10,20,30,40,50,60,70,80,90,95,98,98.5,99,99.5,99.9
+))
 CONSTRAINT positive_precipitation CHECK (precipitation_mm >= 0)
 
 -- land_cover (migracja 002)
@@ -526,6 +547,10 @@ CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST(geom);
 CREATE INDEX idx_depressions_geom ON depressions USING GIST(geom);
 CREATE INDEX idx_soil_hsg_geom ON soil_hsg USING GIST(geom);
 CREATE INDEX idx_bdot_streams_geom ON bdot_streams USING GIST(geom);
+
+-- stream_catchments: geometrie ścieżek spływu (migracje 023, 024)
+CREATE INDEX idx_catchments_flow_path_geom ON stream_catchments USING GIST(longest_flow_path_geom);
+CREATE INDEX idx_catchments_divide_flow_path_geom ON stream_catchments USING GIST(divide_flow_path_geom);
 ```
 
 **Partial GIST indexes (migracja 009, 011, 017):**
@@ -570,10 +595,11 @@ CREATE INDEX idx_stream_threshold ON stream_network(threshold_m2, strahler_order
 CREATE INDEX idx_stream_upstream_area ON stream_network(upstream_area_km2);              -- migracja 006
 CREATE INDEX idx_stream_threshold_segidx ON stream_network(threshold_m2, segment_idx);  -- migracja 014
 
--- stream_catchments (migracje 007, 012)
+-- stream_catchments (migracje 007, 012, 018)
 CREATE INDEX idx_catchments_threshold ON stream_catchments(threshold_m2, strahler_order);
 CREATE INDEX idx_catchments_area ON stream_catchments(area_km2);
 CREATE INDEX idx_catchments_downstream ON stream_catchments(threshold_m2, downstream_segment_idx); -- migracja 012
+CREATE INDEX idx_catchments_threshold_segment ON stream_catchments(threshold_m2, segment_idx);     -- migracja 018
 
 -- depressions (migracja 008)
 CREATE INDEX idx_depressions_volume ON depressions(volume_m3);
@@ -855,37 +881,40 @@ migrations/
     ├── 016_create_soil_hsg.py
     ├── 017_remove_threshold_100.py
     ├── 018_composite_index_threshold_segment.py
-    └── 023_add_flow_path_columns.py
+    ├── 019_update_duration_check_pmaxtp.py
+    ├── 020_full_pmaxtp_range.py                    # probability INT→FLOAT, rozszerzone zakresy duration/probability
+    ├── 021_add_bdot_streams.py                     # tabela bdot_streams + is_real_stream kolumna w stream_network
+    ├── 022_add_hydraulic_length.py                 # hydraulic_length_km w stream_catchments
+    ├── 023_add_flow_path_columns.py                # max_flow_dist_m, longest_flow_path_geom
+    ├── 024_add_divide_flow_path.py                 # divide_flow_path_geom w stream_catchments
+    └── d7af925de530_merge_migration.py             # merge: bdot + flow path
 ```
 
-**Przykład migracji:**
+**Przykład migracji (021 — bdot_streams + is_real_stream):**
 ```python
-# migrations/versions/001_initial_schema.py
+# migrations/versions/021_add_bdot_streams.py
 from alembic import op
 import sqlalchemy as sa
 import geoalchemy2
 
 def upgrade():
     op.create_table(
-        'flow_network',
+        'bdot_streams',
         sa.Column('id', sa.Integer, primary_key=True),
-        sa.Column('geom', geoalchemy2.Geometry('POINT', srid=2180), nullable=False),
-        sa.Column('elevation', sa.Float, nullable=False),
-        sa.Column('flow_accumulation', sa.Integer, nullable=False, default=0),
-        sa.Column('slope', sa.Float),
-        sa.Column('downstream_id', sa.Integer, sa.ForeignKey('flow_network.id')),
-        sa.Column('cell_area', sa.Float, nullable=False),
-        sa.Column('is_stream', sa.Boolean, nullable=False, default=False),
-        sa.CheckConstraint('elevation >= -50 AND elevation <= 3000', name='valid_elevation'),
-        sa.CheckConstraint('flow_accumulation >= 0', name='valid_accumulation'),
-        sa.CheckConstraint('cell_area > 0', name='positive_area')
+        sa.Column('geom', geoalchemy2.Geometry('LINESTRING', srid=2180), nullable=False),
+        sa.Column('layer_type', sa.String(50), nullable=False),
+        sa.Column('name', sa.String(200)),
+        sa.Column('length_m', sa.Float),
     )
-    
-    op.create_index('idx_flow_geom', 'flow_network', ['geom'], postgresql_using='gist')
-    op.create_index('idx_downstream', 'flow_network', ['downstream_id'])
+    op.create_index('idx_bdot_streams_geom', 'bdot_streams', ['geom'], postgresql_using='gist')
+    op.create_index('idx_bdot_streams_type', 'bdot_streams', ['layer_type'])
+
+    # Dodaj kolumnę is_real_stream do stream_network (ADR-044)
+    op.add_column('stream_network', sa.Column('is_real_stream', sa.Boolean, nullable=True))
 
 def downgrade():
-    op.drop_table('flow_network')
+    op.drop_column('stream_network', 'is_real_stream')
+    op.drop_table('bdot_streams')
 ```
 
 ---

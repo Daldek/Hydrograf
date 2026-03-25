@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Data:** 2026-01-21
-**Ostatnia aktualizacja:** 2026-03-01
+**Ostatnia aktualizacja:** 2026-03-25
 **Autor:** Claude Code (sesja analizy)
 **Projekty:** Hydrograf, Hydrolog, Kartograf, IMGWTools
 
@@ -14,7 +14,7 @@
 │                           HYDROGRAF                                      │
 │         (Główna aplikacja - System Analizy Hydrologicznej)              │
 │         FastAPI + PostgreSQL/PostGIS + Leaflet.js                       │
-│         19 endpointów (11 core + 8 admin), 987 testów                   │
+│         20 endpointów (12 core + 8 admin), 899 testów                   │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐             │
@@ -73,9 +73,13 @@ hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.3
 | Moduł Hydrografa | Importy z Hydrologa | Zastosowanie |
 |-------------------|---------------------|--------------|
 | `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator` | Endpoint API generowania hydrogramu |
+| `api/endpoints/hydrograph.py` | `ConcentrationTime` | Czas koncentracji — 6 metod: kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti |
+| `api/endpoints/hydrograph.py` | `NashIUH` | Model Nasha — 3 estymacje parametrow: from_lutz, from_urban_regression, from_tc |
+| `api/endpoints/hydrograph.py` | `uh_model` selector | Wybor modelu hydrogramu jednostkowego: scs / nash / snyder |
 | `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | Skrypt CLI pełnej analizy |
 | `core/morphometry.py` | `WatershedParameters` (w docstring) | Dokumentacja formatu wymiany |
 | `tests/unit/test_morphometry.py` | `WatershedParameters` | Test kompatybilności formatu |
+| `tests/unit/test_tc_methods.py` | `ConcentrationTime` | Testy metod tc (faa, kerby, kerby_kirpich) |
 
 ### 3.2 Kartograf — importy w Hydrografie
 
@@ -83,9 +87,11 @@ hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.3
 |-------------------|---------------------|--------------|
 | `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `find_sheets_for_geometry` | Pobieranie NMT z GUGiK |
 | `scripts/download_landcover.py` | `LandCoverManager`, `BBox`, `Bdot10kProvider` | Pobieranie BDOT10k/CORINE, wykrywanie TERYT |
+| `scripts/download_landcover.py` | WFS PRG TERYT discovery (ADR-045) | Wykrywanie TERYT powiatow przez WFS PRG zamiast grid-sampling WMS |
 | `scripts/bootstrap.py` | `SheetParser`, `HSGCalculator`, `BBox` | Orchestrator preprocessingu |
 | `scripts/prepare_area.py` | `SheetParser` | Pipeline przygotowania obszaru |
 | `core/cn_calculator.py` | `BBox`, `HSGCalculator`, `LandCoverManager` | Obliczanie CN (HSG + land cover) |
+| `core/db_bulk.py` | BDOT stream matching (ADR-044) | `is_real_stream` flag, tabela `bdot_streams`, overlap-based matching |
 
 ### 3.3 IMGWTools — importy w Hydrografie
 
@@ -136,6 +142,16 @@ qp = 0.208 * self.area_km2 / tp_hours
 | 7 | **Hydrograf** | line-length 100 → 88 | ✅ NAPRAWIONE |
 | 8 | **Hydrograf** | Migracja z black/flake8 → ruff | ✅ ZROBIONE |
 
+### 4.5 ✅ NAPRAWIONE (sesje 69-71, 2026-03-25)
+
+| # | Projekt | Problem | ADR/Commit | Status |
+|---|---------|---------|------------|--------|
+| 10 | **Kartograf** | WFS BBOX axis order fix (EPSG:2180 Y,X zamiast X,Y) | sesja 69 | ✅ NAPRAWIONE |
+| 11 | **Hydrograf** | Mosaic bbox alignment (TERYT/BDOT/HSG) — rozbieznosc zasiegow | sesja 69 | ✅ NAPRAWIONE |
+| 12 | **Hydrograf** | DEM auto-discovery z lancuchem fallback | ADR-049 | ✅ NAPRAWIONE |
+| 13 | **Hydrograf** | Chaikin smoothing ciekow w preprocessingu | ADR-047 | ✅ NAPRAWIONE |
+| 14 | **Hydrograf** | Droga splywu z dzialu wod jako osobna geometria | ADR-048 | ✅ NAPRAWIONE |
+
 ### 4.4 ℹ️ INFORMACYJNE (bez akcji)
 
 | # | Projekt | Obserwacja | Status |
@@ -181,24 +197,24 @@ qp = 0.208 * self.area_km2 / tp_hours
 
 ## 7. Metryki projektów
 
-### Hydrograf (stan na 2026-03-24)
+### Hydrograf (stan na 2026-03-25)
 
 | Metryka | Wartość |
 |---------|---------|
 | Wersja | v0.4.0 (CP4 Faza 4) |
-| Endpointy API | 19 (11 core + 8 admin) |
-| Testy | 987 |
+| Endpointy API | 20 (12 core + 8 admin) |
+| Testy | 899 |
 | Moduły core | 15 (w `backend/core/`) |
 | Skrypty | 14 (w `backend/scripts/`) |
 | Frontend JS | 13 modułów (9 core + 4 admin) |
-| ADR | 42 decyzji architektonicznych |
+| ADR | 49 decyzji architektonicznych |
 
 ### Punkty integracji per biblioteka
 
 | Biblioteka | Pliki źródłowe | Pliki testowe | Łączne importy |
 |------------|----------------|---------------|-----------------|
-| Hydrolog | 4 | 2 | 6 |
-| Kartograf | 6 | 4 | 10 |
+| Hydrolog | 4 | 3 | 7 |
+| Kartograf | 7 | 4 | 11 |
 | IMGWTools | 2 | 0 | 2 |
 
 ---
@@ -330,8 +346,14 @@ fail_under = 80
 - ✅ Building raising z BUBD (ADR-033)
 - ✅ Land cover MVT tiles
 - ✅ Panel administracyjny z bootstrap SSE (ADR-034)
+- ✅ ConcentrationTime — 6 metod tc (kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti)
+- ✅ NashIUH — 3 estymacje parametrow (from_lutz, from_urban_regression, from_tc)
+- ✅ Selektor modelu UH (scs/nash/snyder)
+- ✅ WFS PRG TERYT discovery (ADR-045)
+- ✅ BDOT stream matching z is_real_stream (ADR-044)
+- ✅ DEM auto-discovery z lancuchem fallback (ADR-049)
 
-### ✅ Naprawione (2026-01-21 – 2026-03-01)
+### ✅ Naprawione (2026-01-21 – 2026-03-25)
 
 - ✅ ~~KRYTYCZNY błąd w Hydrolog (stała SCS)~~ → naprawione w v0.5.2
 - ✅ ~~Niespójność wersji w Hydrolog~~ → zsynchronizowane do v0.5.2
@@ -342,6 +364,11 @@ fail_under = 80
 - ✅ ~~Hydrograf: brak PROGRESS.md~~ → utworzone (sesja 12)
 - ✅ ~~Hydrograf: line-length = 100~~ → zmieniono na 88
 - ✅ ~~Hydrograf: black/flake8~~ → zmigrowano na ruff
+- ✅ ~~WFS BBOX axis order (EPSG:2180 Y,X)~~ → naprawione (sesja 69)
+- ✅ ~~Mosaic bbox alignment (TERYT/BDOT/HSG)~~ → naprawione (sesja 69)
+- ✅ ~~DEM auto-discovery~~ → ADR-049
+- ✅ ~~Chaikin smoothing ciekow~~ → ADR-047
+- ✅ ~~Droga splywu z dzialu wod~~ → ADR-048
 
 ### Pozostałe (backlog opcjonalny)
 
@@ -350,4 +377,4 @@ fail_under = 80
 
 ---
 
-**Ostatnia aktualizacja:** 2026-03-24 (sesja 68: finalizacja BDOT stream matching, Kartograf v0.6.1, 987 testow)
+**Ostatnia aktualizacja:** 2026-03-25 (sesja 71: ConcentrationTime/NashIUH/uh_model, WFS PRG TERYT, BDOT stream matching, ADR-044..049, 899 testow)

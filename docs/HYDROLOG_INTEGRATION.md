@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-03-24
+**Ostatnia aktualizacja:** 2026-03-25
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -40,7 +40,7 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
 │                         HYDROLOG                                │
 │  Odpowiedzialność: OBLICZENIA HYDROLOGICZNE                     │
 │                                                                 │
-│  - Czas koncentracji (Kirpich, SCS Lag, Giandotti,              │
+│  - Czas koncentracji (Kirpich, NRCS, Giandotti,                 │
 │      FAA, Kerby, Kerby-Kirpich)                                 │
 │  - Hydrogramy jednostkowe (SCS, Nash, Clark, Snyder)            │
 │  - Transformacja opad→odpływ (splot)                            │
@@ -177,7 +177,8 @@ Dodane klasy:
 ```python
 from hydrolog.morphometry import WatershedParameters
 from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogram
-from hydrolog.runoff import HydrographGenerator
+from hydrolog.runoff import HydrographGenerator, NashIUH
+from hydrolog.time.concentration import ConcentrationTime
 ```
 
 **Przepływ danych:**
@@ -197,11 +198,18 @@ from hydrolog.runoff import HydrographGenerator
 
 **Parametry wejściowe:**
 - `latitude`, `longitude` - współrzędne WGS84
-- `duration` - czas trwania opadu: 15min, 30min, 1h, 2h, 6h, 12h, 24h
+- `duration` - czas trwania opadu: 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
 - `probability` - prawdopodobieństwo: 1%, 2%, 5%, 10%, 20%, 50%
 - `timestep_min` - krok czasowy (default: 5 min)
-- `tc_method` - metoda tc: kirpich, scs_lag, giandotti, faa, kerby, kerby_kirpich
+- `tc_method` - metoda tc: kirpich, nrcs, giandotti, faa, kerby, kerby_kirpich
 - `hietogram_type` - typ hietogramu: beta, block, euler_ii
+- `uh_model` - model hydrogramu jednostkowego: scs, snyder, nash
+- `nash_estimation` - metoda estymacji Nash IUH: from_lutz, from_tc, from_urban_regression
+- `snyder_ct` - współczynnik opóźnienia Snydera (default: 1.5)
+- `snyder_cp` - współczynnik szczytu Snydera (default: 0.6)
+- `tc_runoff_coeff` - współczynnik spływu C (dla metody FAA)
+- `tc_retardance` - współczynnik retardacji N (dla metod Kerby i Kerby-Kirpich)
+- `tc_overland_length_km` - długość spływu powierzchniowego [km] (dla metod FAA i Kerby)
 
 **Ograniczenia:**
 - Maksymalna powierzchnia zlewni: 250 km² (limit metody SCS-CN)
@@ -235,7 +243,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Moduł | Importy z Hydrologa | Zastosowanie |
 |-------|---------------------|--------------|
-| `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator` | Endpoint API generowania hydrogramu |
+| `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator`, `NashIUH`, `ConcentrationTime` | Endpoint API generowania hydrogramu |
 | `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | Skrypt CLI pełnej analizy |
 | `core/morphometry.py` | `WatershedParameters` (w docstring/example) | Dokumentacja formatu wymiany |
 | `tests/unit/test_morphometry.py` | `WatershedParameters` | Test kompatybilności formatu |
@@ -301,7 +309,7 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 | Metoda | Klucz API | Parametry dodatkowe | Długość | Zastosowanie |
 |--------|-----------|---------------------|---------|--------------|
 | Kirpich | `kirpich` | — | `hydraulic_length_km` (preprocessing) | Małe zlewnie rolnicze |
-| SCS Lag | `scs_lag` | — | `hydraulic_length_km` (preprocessing) | Metoda NRCS (TR-55) |
+| NRCS | `nrcs` | — | `hydraulic_length_km` (preprocessing) | Metoda NRCS (TR-55) |
 | Giandotti | `giandotti` | — | `channel_length_km` | Zlewnie górskie |
 | FAA | `faa` | `tc_runoff_coeff` (C), `tc_overland_length_km` | `tc_overland_length_km` (od użytkownika) | Spływ powierzchniowy (Federal Aviation Agency) |
 | Kerby | `kerby` | `tc_retardance` (N), `tc_overland_length_km` | `tc_overland_length_km` (od użytkownika) | Spływ powierzchniowy z retardance coefficient |
@@ -316,6 +324,16 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 
 ---
 
+## Typy hietogramów
+
+| Typ | Klucz API | Parametry | Opis |
+|-----|-----------|-----------|------|
+| Beta | `beta` | `alpha` (default: 2.0), `beta` (default: 5.0) | Rozkład beta — elastyczny kształt, peak zależny od alpha/beta |
+| Block | `block` | brak | Opad jednostajny (stała intensywność) |
+| Euler II | `euler_ii` | `peak_position=0.33` (hardcoded) | Rozkład Euler typu II — peak w 1/3 czasu trwania |
+
+---
+
 ## Estymacja parametrów Nash IUH
 
 | Metoda | Klucz API | Parametry wymagane | Uwagi |
@@ -325,6 +343,27 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 | Regresja zurbanizowana | `from_urban_regression` | `nash_urban_fraction` | Rao et al. (1972), wymaga wskaźnika urbanizacji |
 
 **Uwaga:** `NashIUH.from_tc()` jest oznaczona jako deprecated od Hydrolog v0.6.2. W Hydrografie domyślna estymacja Nash zmieniona na `from_lutz`. W UI metoda `from_tc` ma etykietę `[deprecated]`.
+
+---
+
+## Snyder Unit Hydrograph
+
+**Model:** `uh_model: 'snyder'`
+
+**Parametry:**
+- `snyder_ct` — współczynnik opóźnienia (default: 1.5). Zależy od charakterystyki retencji zlewni
+- `snyder_cp` — współczynnik szczytu (default: 0.6). Wpływa na wysokość szczytu hydrogramu
+
+**Wymagane dane morfometryczne (z `morph_dict`):**
+- `channel_length_km` — długość głównego cieku
+- `length_to_centroid_km` — odległość od ujścia do centroidu zlewni wzdłuż cieku
+
+**Implementacja:** `backend/api/endpoints/hydrograph.py`
+
+**Dostępne modele hydrogramu jednostkowego:**
+- `scs` — SCS Unit Hydrograph (domyślny)
+- `snyder` — Snyder Unit Hydrograph
+- `nash` — Nash IUH (Instantaneous Unit Hydrograph)
 
 ---
 
@@ -429,4 +468,4 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 ---
 
-**Ostatnia aktualizacja:** 2026-03-24
+**Ostatnia aktualizacja:** 2026-03-25

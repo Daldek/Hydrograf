@@ -1,8 +1,8 @@
 # SCOPE.md - Zakres Projektu
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.1
-**Data:** 2026-03-01
+**Wersja:** 1.2
+**Data:** 2026-03-25
 **Status:** Zatwierdzony
 
 ---
@@ -37,6 +37,7 @@ Ten dokument precyzyjnie definiuje:
 - Automatyczne wykrywanie najbliższego cieku (snap-to-stream ST_Distance + fallback ST_Contains)
 - Wyznaczanie granicy zlewni metodą BFS na grafie in-memory (CatchmentGraph)
 - Wygladzanie granic zlewni: `ST_SimplifyPreserveTopology` + `ST_ChaikinSmoothing` (ADR-032)
+- Podniesienie budynkow w NMT (+5m pod obrysami BUBD z BDOT10k, ADR-033)
 - Wizualizacja granicy na mapie (GeoJSON polygon)
 - Eksport granicy jako GeoJSON
 - Eksport granicy jako Shapefile
@@ -46,7 +47,6 @@ Ten dokument precyzyjnie definiuje:
 **Wymagania techniczne:**
 - Dane wejściowe: NMT z GUGIK (rozdzielczość 5m, pobieranie przez Kartograf)
 - Preprocessing: pyflwdir (D8 flow direction) → wektoryzacja → PostGIS + CatchmentGraph in-memory
-- Podniesienie budynkow w NMT (+5m pod obrysami BUBD z BDOT10k, ADR-033)
 - Algorytm: D8 flow direction + BFS upstream traversal na CatchmentGraph
 - Output: GeoJSON FeatureCollection
 
@@ -66,6 +66,10 @@ Ten dokument precyzyjnie definiuje:
 - Długość zlewni [km]
 - Szerokość zlewni [km]
 - Długość głównego cieku [km]
+- Długość hydrauliczna zlewni (hydraulic_length_km) [km]
+- Rzeczywista długość cieku głównego (real_channel_length_km) [km]
+- Sciezki splywu (flow paths): najdluzsza, od dzialu wodnego, od centroidu [km]
+- Wazona nieprzepuszczalnosc (weighted_imperviousness) [-]
 
 **Charakterystyki geometryczne:**
 - Wskaźnik formy C<sub>f</sub>
@@ -152,6 +156,14 @@ Ten dokument precyzyjnie definiuje:
 - Wybór scenariusza przez użytkownika (radio buttons)
 - Wyświetlenie wartości opadu dla centroidu zlewni
 
+**Czas koncentracji (tc):**
+- Wzór Kirpicha
+- Wzór NRCS (SCS lag)
+- Wzór Giandottiego
+- Wzór FAA (Federal Aviation Administration)
+- Wzór Kerby'ego
+- Wzór Kerby-Kirpicha (zlozony)
+
 **Model opad-odpływ:**
 - Hietogram: rozkład Beta (α=2, β=5)
 - Krok czasowy: 5 minut
@@ -161,12 +173,15 @@ Ten dokument precyzyjnie definiuje:
   - Opad efektywny: Pe = (P - Ia)² / (P + 0.8S) gdy P > Ia
 
 **Hydrogram jednostkowy:**
-- Metoda: SCS Dimensionless Unit Hydrograph
-- Parametry:
-  - Czas koncentracji (tc): wzór Kirpicha, SCS lag lub Giandottiego
+- Metoda SCS Dimensionless Unit Hydrograph:
   - Czas do szczytu: tp = 0.6 × tc
   - Przepływ szczytowy: qp = 0.208 × A / tp
   - Czas bazowy: tb = 2.67 × tp
+- Metoda Nash IUH (Instantaneous Unit Hydrograph):
+  - Estymacja parametrow: from_lutz, from_urban_regression
+  - Estymacja from_tc (deprecated)
+- Metoda Snyder UH:
+  - Parametry: ct (wspolczynnik opoznienia), cp (wspolczynnik szczytowy)
 - Typy hietogramu: Beta, Block, Euler II
 
 **Transformacja opad → odpływ:**
@@ -210,6 +225,8 @@ Ten dokument precyzyjnie definiuje:
 - Plik `config.yaml` do konfiguracji pipeline (database, DEM, paths, steps, custom sources)
 - Flaga `--config` w `bootstrap.py`
 - Flaga `--waterbody-mode` (3 tryby: auto, none, custom) do sterowania obsluga zbiornikow wodnych (ADR-031)
+- Selektor rozdzielczosci NMT w panelu admin (5m / 1m)
+- Flaga `--waterbody-mode` rowniez dostepna z poziomu panelu admin
 
 ---
 
@@ -292,6 +309,12 @@ Ten dokument precyzyjnie definiuje:
 - 📈 Analiza wieloscenariuszowa (porównanie Q1%, Q10%, Q50%)
 - ~~🎨 Konfigurowalne mapy (wybór podkładu)~~ — **ZREALIZOWANE** (CP4: OSM, ESRI, OpenTopoMap, GUGiK WMTS)
 - ~~🔗 API publiczne (REST, dokumentacja OpenAPI)~~ — **CZESCIOWO ZREALIZOWANE** (dokumentacja OpenAPI/Swagger dostepna pod `/docs`)
+- ~~🔬 Nash IUH / Snyder UH~~ — **ZREALIZOWANE** (CP5: 3 modele UH z selektorem)
+- ~~🗺️ BDOT stream matching~~ — **ZREALIZOWANE** (ADR-044: dopasowanie ciekow NMT do BDOT10k)
+- ~~📐 Flow paths (longest/divide/centroid)~~ — **ZREALIZOWANE** (CP5: sciezki splywu w parametrach)
+- ~~✨ Chaikin smoothing granic~~ — **ZREALIZOWANE** (ADR-032: ST_ChaikinSmoothing)
+- ~~🏛️ WFS TERYT~~ — **ZREALIZOWANE** (CP5: integracja z rejestrem TERYT)
+- ~~🔍 DEM auto-discovery~~ — **ZREALIZOWANE** (CP5: automatyczne wykrywanie arkuszy NMT)
 - 🧪 Moduł kalibracji (porównanie z pomiarami)
 - 🎯 Optymalizacja parametrów
 - 🔄 Podwojna analiza NMT (z/bez obszarow bezodplywowych) — backlog
@@ -358,6 +381,11 @@ Ten dokument precyzyjnie definiuje:
 - Upstream area [km²]
 - Segment index (1-based per threshold)
 - Threshold [m²]
+
+**Dopasowanie do BDOT10k (ADR-044):**
+- Matching ciekow NMT z ciekami referencyjnymi BDOT10k
+- Tabela `bdot_streams` — cieki referencyjne z BDOT10k
+- Nadawanie nazw cieków na podstawie dopasowania geometrycznego
 
 **Preprocessing:**
 - Wektoryzacja ciekow z rastra flow accumulation (pyflwdir)
@@ -477,7 +505,7 @@ Ten dokument precyzyjnie definiuje:
 - psutil (monitorowanie zasobow — admin panel)
 - Alembic (migracje bazy danych)
 **Biblioteki wlasne:**
-- Hydrolog v0.5.2 (obliczenia hydrologiczne)
+- Hydrolog v0.6.3 (obliczenia hydrologiczne)
 - Kartograf v0.6.1 (pobieranie NMT, Land Cover, HSG, BDOT10k)
 - IMGWTools v2.1.0 (opady projektowe z IMGW)
 
@@ -907,9 +935,9 @@ FAZA 3: Generowanie hydrogramów
 
 ---
 
-**Wersja dokumentu:** 1.1
-**Data ostatniej aktualizacji:** 2026-03-01
-**Wersja biezaca:** v0.4.0 (CP4 zakonczone, 720 testow, 19 endpointow, 34 ADR)
+**Wersja dokumentu:** 1.2
+**Data ostatniej aktualizacji:** 2026-03-25
+**Wersja biezaca:** v0.4.0 (CP4 zakonczone, 899 testow, 19 endpointow, 49 ADR)
 **Planowana wersja MVP:** v1.0.0 (CP5)
 **Status:** Zatwierdzony — projekt w aktywnym rozwoju
 
