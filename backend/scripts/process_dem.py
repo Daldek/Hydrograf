@@ -816,6 +816,9 @@ def process_dem(
                 t: len(c) for t, c in all_catchment_data.items()
             }
 
+    # Free large raster arrays no longer needed (~1.7 GB at 54.5M cells)
+    del filled_dem, slope, d8_fdir, acc, strahler, flow_dist_m, flw, fdir
+
     # 8. Insert into database
     if not dry_run:
         from core.database import get_db_session
