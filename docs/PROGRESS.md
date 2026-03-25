@@ -46,7 +46,7 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-25 (sesja 71 — refactor/code-review-cleanup)
+**Data:** 2026-03-25 (sesja 72 — aktualizacja dokumentacji)
 
 ### Co zrobiono
 - **Refaktoryzacja code review (Wave 1-5)** — 14 commitow na branchu `refactor/code-review-cleanup`:
@@ -59,14 +59,14 @@
 - **Fix WFS BBOX axis order** — EPSG:2180 wymaga Y,X; bug maskowany dla obszarow gdzie X~Y
 - **Fix mosaic bbox** — TERYT discovery, BDOT GeoJSON, HSG i land cover uzywaja mosaic bbox zamiast user bbox
 - **DEM auto-discovery (ADR-049)** — `resolve_dem_path()` z lancuchem fallback zamiast hardcoded DEM_PATH
-- Aktualizacja dokumentacji — CHANGELOG, PROGRESS, DECISIONS (ADR-049)
+- **Aktualizacja dokumentacji** — ARCHITECTURE, DATA_MODEL, HYDROLOG_INTEGRATION, KARTOGRAF_INTEGRATION, IMGWTOOLS_INTEGRATION (nowy plik), CROSS_PROJECT_ANALYSIS, SCOPE, DECISIONS, CHANGELOG
+- Aktualizacja PROGRESS, DECISIONS (ADR-049)
 
 ### W trakcie
-- Merge `refactor/code-review-cleanup` do `develop`
+- Aktualizacja dokumentacji (ARCHITECTURE, DATA_MODEL, HYDROLOG, KARTOGRAF, IMGWTOOLS, CROSS_PROJECT, SCOPE, DECISIONS, CHANGELOG)
 
 ### Nastepne kroki
-- Merge `refactor/code-review-cleanup` do `develop`
-- Re-run pipeline po merge
+- Re-run pipeline na nowym obszarze (Gdansk)
 - CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 - Clipping do dokladnej granicy poligonu
 - Podwojna analiza NMT (z/bez obszarow bezodplywowych)

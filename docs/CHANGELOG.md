@@ -8,9 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] — 2026-03-25
 
 ### Dodane
-- **Geometria drogi spływu z działu wód (divide_flow_path_geom)** — osobna kolumna w `stream_catchments` (migracja 024). Ścieżka z komórki o max flow_dist na GRANICY zlewni cząstkowej do ujścia. Frontend: longest flow path = czerwona kreska, divide flow path = czerwona kropka
+- **Geometria drogi spływu z działu wód (ADR-048, divide_flow_path_geom)** — osobna kolumna w `stream_catchments` (migracja 024). Ścieżka z komórki o max flow_dist na GRANICY zlewni cząstkowej do ujścia. Frontend: longest flow path = czerwona kreska, divide flow path = czerwona kropka
 - **Wygładzanie Chaikin cieków w preprocessingu (ADR-047)** — `ST_ChaikinSmoothing(geom, 3)` z `preserve_end_points=true` podczas INSERT do `stream_network`. Gładkie cieki bez pikselowych schodków, zachowana topologia sieci
-- **WFS TERYT discovery** — zastąpiono sampling po siatce WMS (~625 zapytań) pojedynczym zapytaniem WFS do PRG GUGiK; fallback na starą metodę przy awarii WFS
+- **WFS TERYT discovery (ADR-045)** — zastąpiono sampling po siatce WMS (~625 zapytań) pojedynczym zapytaniem WFS do PRG GUGiK; fallback na starą metodę przy awarii WFS
 - **BDOT10k stream matching (ADR-044)** -- spatial join ciekow BDOT z flow accumulation streams. Nowa tabela `bdot_streams`, kolumna `is_real_stream`, `real_channel_length_km` w parametrach morfometrycznych. Kerby-Kirpich z fizycznie uzasadnionym podzialem overland/channel.
 - **`hydraulic_length_km` z flow direction grid** — maksymalna droga splywu (pyflwdir `stream_distance()`) obliczana w preprocessingu, nowa kolumna w `stream_catchments` (migracja 022). Uzywana przez NRCS i Kirpich zamiast `channel_length_km`
 - **Ścieżki spływu w preprocessingu** — `pyflwdir.stream_distance()` + batch `flw.path()` per subcatchment. 3 nowe parametry: `longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km`. Migracja 023
@@ -806,7 +806,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-01-21
 
-### Added
+### Dodane
 - Multi-tile DEM mosaic support for large watersheds
 - Reverse trace optimization for `find_main_stream` (330x faster)
 - COPY-based bulk insert for DEM import (27x faster)
@@ -820,7 +820,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CHECK constraint for `land_cover.category` column
 - UNIQUE index for `stream_network` (name + geohash)
 
-### Changed
+### Zmienione
 - CORS configuration now uses environment variable `CORS_ORIGINS`
 - Limited CORS methods to GET, POST, OPTIONS
 - Disabled CORS credentials for security
@@ -828,27 +828,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `black` to 26.1.0
 - Unified line-length to 88 (was 100) for cross-project consistency
 
-### Fixed
+### Naprawione
 - 16 flake8 errors (unused imports, line length, spacing)
 - 35 files reformatted with black (17 initial + 18 for line-length)
 
-### Security
+### Bezpieczenstwo
 - Fixed critical CORS vulnerability (`allow_origins=["*"]` with `allow_credentials=True`)
 
-### Performance
+### Wydajnosc
 - DEM import: ~3.8 min (was ~102 min)
 - `find_main_stream`: ~0.74s (was ~246s)
 
+## [0.2.2] - 2026-01-18
+
+### Dodane
+- Land cover support via Kartograf 0.3.0 integration
+- Automated NMT download via Kartograf 0.2.0 integration
+
+## [0.2.1] - 2026-01-17
+
+### Naprawione
+- Correct depression filling using pysheds (fix incorrect DEM preprocessing)
+
 ## [0.2.0] - 2026-01-18
 
-### Added
+### Dodane
 - Hydrograph generation endpoint (`POST /api/generate-hydrograph`)
 - Integration with Hydrolog library for SCS-CN calculations
 - Morphometric parameters calculation (area, perimeter, length, slopes)
 - Water balance output in hydrograph response
 - Land cover support via Kartograf integration
 
-### Changed
+### Zmienione
 - Renamed project from HydroLOG to Hydrograf
 
 ## [0.1.0] - 2026-01-15
@@ -868,7 +879,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DATA_MODEL.md - Database schema
 - PRD.md - Product requirements
 
+[Unreleased]: https://github.com/Daldek/Hydrograf/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/Daldek/Hydrograf/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Daldek/Hydrograf/compare/v0.2.2...v0.3.0
+[0.2.2]: https://github.com/Daldek/Hydrograf/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/Daldek/Hydrograf/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Daldek/Hydrograf/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Daldek/Hydrograf/releases/tag/v0.1.0
