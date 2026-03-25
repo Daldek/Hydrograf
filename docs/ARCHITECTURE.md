@@ -108,13 +108,14 @@ Podsumowanie kluczowych ADR:
 | ADR-038 | HSG Poland-wide cache | Ogólnopolski cache HSG — brak potrzeby pobierania per-obszar |
 | ADR-040 | Vector boundary file support | Obsługa GPKG/GeoJSON/SHP jako granic obszaru (zamiast tylko bbox) |
 | ADR-041 | Monotoniczne wygładzanie cieków | Zapewnienie monotoniczności elevacji po smoothingu linii cieków |
-| ADR-042 | Optymalizacja wydajności select-stream | Cascaded merge threshold, batch ST_Union, cache grafowy |
+| ADR-042 | Optymalizacja wydajności delineate-watershed | Cascaded merge threshold, batch ST_Union, cache grafowy |
 | ADR-044 | BDOT10k stream matching | Dopasowanie cieków DEM do referencyjnych BDOT10k (is_real_stream) |
 | ADR-045 | WFS PRG zamiast grid-sampling WMS | TERYT discovery z WFS PRG — szybciej i dokładniej niż WMS grid |
 | ADR-046 | upstream_area_km2 w trace_main_channel | Branch selection wg upstream_area_km2 zamiast Strahlera |
 | ADR-047 | Chaikin smoothing cieków w preprocessingu | Wygładzanie geometrii cieków na etapie preprocessingu |
 | ADR-048 | Droga spływu z działu wód | Longest flow path + divide flow path jako parametry morfometryczne |
 | ADR-049 | DEM auto-discovery z fallback chain | Automatyczne znajdowanie pliku DEM (VRT → mosaic → single TIFF) |
+| ADR-050 | Unified delineate-watershed endpoint | Jeden endpoint z trybami precomputed (BFS) i precise (pyflwdir on-the-fly) |
 
 ---
 
@@ -137,9 +138,8 @@ backend/
 │       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
-│       ├── select_stream.py       # POST /select-stream
 │       ├── tiles.py               # GET /tiles/streams|catchments|landcover/{z}/{x}/{y}.pbf
-│       └── watershed.py           # POST /delineate-watershed
+│       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes)
 │
 ├── core/
 │   ├── __init__.py
@@ -222,11 +222,21 @@ Response: 200 OK
 }
 ```
 
-#### 2.2.2 Delineate Watershed
+#### 2.2.2 Delineate Watershed (ADR-050)
 ```
 POST /api/delineate-watershed
 Content-Type: application/json
 
+Tryb precomputed (z threshold_m2 — snap-to-stream + BFS po grafie):
+Request:
+{
+  "latitude": 52.123456,
+  "longitude": 21.123456,
+  "threshold_m2": 10000,
+  "display_threshold_m2": 10000
+}
+
+Tryb precise (bez threshold_m2 — delimitacja rastrowa pyflwdir on-the-fly):
 Request:
 {
   "latitude": 52.123456,
@@ -235,26 +245,17 @@ Request:
 
 Response: 200 OK
 {
-  "watershed": {
-    "boundary_geojson": {
-      "type": "Feature",
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [[[lon, lat], ...]]
-      },
-      "properties": {
-        "area_km2": 45.3
-      }
-    },
-    "outlet": {
-      "latitude": 52.123456,
-      "longitude": 21.123456
-    }
-  }
+  "mode": "precomputed",  // lub "precise"
+  "stream": { "segment_idx": 42, "strahler_order": 3, ... },
+  "upstream_segment_indices": [42, 43, 44, ...],
+  "boundary_geojson": { "type": "Feature", ... },
+  "display_threshold_m2": 10000,
+  "watershed": { "outlet": {...}, "morphometry": {...}, ... }
 }
 
 Errors:
 - 404: "Nie znaleziono cieku w tym miejscu"
+- 422: Walidacja (niepoprawne wspolrzedne)
 - 500: "Błąd serwera"
 ```
 
@@ -311,35 +312,7 @@ GET /api/depressions?bbox=xmin,ymin,xmax,ymax&min_volume=0&max_volume=1000
 Response: 200 OK (GeoJSON FeatureCollection)
 ```
 
-#### 2.2.7 Select Stream
-```
-POST /api/select-stream
-Content-Type: application/json
-
-Request:
-{
-  "latitude": 52.123456,
-  "longitude": 21.123456,
-  "threshold_m2": 10000,
-  "to_confluence": false,
-  "display_threshold_m2": 10000
-}
-
-Response: 200 OK
-{
-  "stream": { "segment_idx": 42, "strahler_order": 3, ... },
-  "upstream_segment_indices": [42, 43, 44, ...],
-  "boundary_geojson": { "type": "Feature", ... },
-  "display_threshold_m2": 10000,
-  "watershed": { "outlet": {...}, "morphometry": {...}, ... }
-}
-
-Errors:
-- 404: "Nie znaleziono cieku/segmentu"
-- 422: Walidacja (niepoprawne wspolrzedne, brak threshold_m2)
-```
-
-#### 2.2.8 MVT Tiles
+#### 2.2.7 MVT Tiles
 ```
 GET /api/tiles/streams/{z}/{x}/{y}.pbf?threshold_m2=10000
 GET /api/tiles/catchments/{z}/{x}/{y}.pbf?threshold_m2=10000
@@ -349,7 +322,7 @@ GET /api/tiles/thresholds
 Response: Mapbox Vector Tiles (PBF) / JSON
 ```
 
-#### 2.2.9 Admin Panel (ADR-034)
+#### 2.2.8 Admin Panel (ADR-034)
 ```
 Wszystkie endpointy wymagają nagłówka X-Admin-Key (lub ADMIN_API_KEY nie ustawiony).
 Prefix: /api/admin
@@ -378,7 +351,7 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
 ```
 
 **Szczegółowy przepływ (ADR-022, ADR-026):**
-1. **Frontend:** Użytkownik klika punkt (lat, lon) → POST /api/select-stream (lub /delineate-watershed)
+1. **Frontend:** Użytkownik klika punkt (lat, lon) → POST /api/delineate-watershed (tryb precomputed lub precise)
 2. **API (FastAPI):** Walidacja Pydantic (czy lat/lon w zakresie)
 3. **Core Logic** (`watershed_service.py` + `catchment_graph.py`):
    - `find_stream_catchment_at_point(x, y, threshold)` → snap-to-stream via `ST_ClosestPoint` na `stream_network`
