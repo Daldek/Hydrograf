@@ -162,25 +162,31 @@
     }
 
     /**
-     * Select a stream and get upstream catchment info.
+     * Delineate watershed at a given point.
+     *
+     * With threshold → precomputed mode (snap to stream network).
+     * Without threshold → precise mode (on-the-fly delineation).
      *
      * @param {number} lat - Latitude (WGS84)
      * @param {number} lng - Longitude (WGS84)
-     * @param {number} threshold - Flow accumulation threshold [m2]
-     * @returns {Promise<Object>} { stream, upstream_segment_indices, boundary_geojson }
+     * @param {number} [threshold] - Flow accumulation threshold [m2] (optional)
+     * @returns {Promise<Object>} { mode, stream, watershed, upstream_segment_indices, display_threshold_m2 }
      */
-    async function selectStream(lat, lng, threshold) {
-        var key = _cacheKey('ss', lat, lng, threshold);
+    async function delineateWatershed(lat, lng, threshold) {
+        var key = _cacheKey('dw', lat, lng, threshold || 0);
         var cached = _cacheGet(key);
         if (cached) return cached;
 
         var body = {
             latitude: lat,
             longitude: lng,
-            threshold_m2: threshold,
         };
+        if (threshold) {
+            body.threshold_m2 = threshold;
+        }
 
-        const response = await fetch('/api/select-stream', {
+        var url = '/api/delineate-watershed?include_hypsometric_curve=true';
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
@@ -198,6 +204,6 @@
         generateHydrograph: generateHydrograph,
         getScenarios: getScenarios,
         getDepressions: getDepressions,
-        selectStream: selectStream,
+        delineateWatershed: delineateWatershed,
     };
 })();

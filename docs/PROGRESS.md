@@ -4,8 +4,8 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 20 endpointow (11 core + 9 admin). 899 testow. |
-| Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 19 endpointow (10 core + 9 admin). Unified delineate-watershed (ADR-050). |
+| Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull, tryb precomputed + precise (ADR-050) |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 42 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k |
@@ -46,30 +46,34 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-25 (sesja 72 — aktualizacja dokumentacji)
+**Data:** 2026-03-25 (sesja 73 — unified delineate-watershed endpoint)
 
 ### Co zrobiono
-- **Refaktoryzacja code review (Wave 1-5)** — 14 commitow na branchu `refactor/code-review-cleanup`:
-  - Wave 1: fix duplikatu `flow_dist_m` w process_dem, fix `main_ch` UnboundLocalError
-  - Wave 2: usuniecie martwego kodu (~200 LOC) — `_perimeter_km`, `drainage_density`/`stream_frequency_all`, nieuzywane funkcje i parametry
-  - Wave 3: ekstrakcja helperow w process_dem (`_get_transform`, `_per_label_argmax`, `_clip_and_build_path`)
-  - Wave 4a: deduplikacja watershed_service — `_build_flow_path_geojson`, `_SMOOTH_SQL`, `calculate_shape_indices`
-  - Wave 4b: unifikacja endpointow — `cascade_escalate()`, `build_morph_dict_from_graph` (fix 2 bugow), `build_land_cover_stats`, `build_hsg_stats`
-  - Wave 5: nazwane stale w CatchmentGraph, `invalidate()` zwalnia numpy, zwalnianie macierzy po petli progow
-- **Fix WFS BBOX axis order** — EPSG:2180 wymaga Y,X; bug maskowany dla obszarow gdzie X~Y
-- **Fix mosaic bbox** — TERYT discovery, BDOT GeoJSON, HSG i land cover uzywaja mosaic bbox zamiast user bbox
-- **DEM auto-discovery (ADR-049)** — `resolve_dem_path()` z lancuchem fallback zamiast hardcoded DEM_PATH
-- **Aktualizacja dokumentacji** — ARCHITECTURE, DATA_MODEL, HYDROLOG_INTEGRATION, KARTOGRAF_INTEGRATION, IMGWTOOLS_INTEGRATION (nowy plik), CROSS_PROJECT_ANALYSIS, SCOPE, DECISIONS, CHANGELOG
-- Aktualizacja PROGRESS, DECISIONS (ADR-049)
+- **Unified delineate-watershed endpoint (ADR-050)** — polaczenie `POST /api/select-stream` i `POST /api/delineate-watershed` w jeden endpoint z dwoma trybami:
+  - **Precomputed** (z `threshold_m2`): snap-to-stream + BFS po grafie zlewni czastkowych (dotychczasowy select-stream)
+  - **Precise** (bez `threshold_m2`): delimitacja rastrowa pyflwdir on-the-fly z RasterCache
+- **RasterCache** — nowy modul `core/raster_cache.py` z lazy-loading rastrow fdir/DEM/slope, thread-safe cache
+- **Frontend: jeden tryb "Wybierz zlewnię"** — usuniecie osobnego "Wygeneruj zlewnię", tryb precomputed/precise wybierany automatycznie
+- **Usuniecie `to_confluence`** — parametr i metoda `traverse_to_confluence()` z CatchmentGraph
+- **Pole `mode` zamiast `auto_selected`** — response zwraca `"mode": "precomputed"|"precise"`
+- **Ujednolicone schematy Pydantic** — `DelineateRequest`/`DelineateResponse` obsluguja oba tryby
+- **Aktualizacja testow** — testy dostosowane do nowego unified endpoint
 
 ### W trakcie
-- Aktualizacja dokumentacji (ARCHITECTURE, DATA_MODEL, HYDROLOG, KARTOGRAF, IMGWTOOLS, CROSS_PROJECT, SCOPE, DECISIONS, CHANGELOG)
+- Aktualizacja dokumentacji (CHANGELOG, PROGRESS, ARCHITECTURE, DECISIONS)
 
 ### Nastepne kroki
+- Merge `feat/unified-delineate` do `develop`
 - Re-run pipeline na nowym obszarze (Gdansk)
 - CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 - Clipping do dokladnej granicy poligonu
 - Podwojna analiza NMT (z/bez obszarow bezodplywowych)
+
+### Poprzednia sesja (2026-03-25, sesja 72 — aktualizacja dokumentacji)
+
+- Refaktoryzacja code review (Wave 1-5): 14 commitow, fix duplikatu `flow_dist_m`, usuniecie martwego kodu, ekstrakcja helperow, deduplikacja watershed_service, unifikacja endpointow
+- Fix WFS BBOX axis order, mosaic bbox, DEM auto-discovery (ADR-049)
+- Aktualizacja dokumentacji (ARCHITECTURE, DATA_MODEL, HYDROLOG, KARTOGRAF, IMGWTOOLS, CROSS_PROJECT, SCOPE, DECISIONS, CHANGELOG)
 
 ### Poprzednia sesja (2026-03-24, sesja 70 — geometry simplification fix, CatchmentGraph invalidation, divide flow path)
 
