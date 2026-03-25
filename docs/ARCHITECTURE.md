@@ -521,9 +521,9 @@ from hydrolog.morphometry import WatershedParameters
 def get_precipitation(
     centroid: Point,
     duration: str,
-    probability: int
+    probability: float
 ) -> float:
-    """Pobiera wartość opadu (wieloboki równego zadeszczenia)."""
+    """Pobiera wartość opadu (interpolacja IDW z siatki punktów IMGW)."""
     pass
 ```
 
@@ -584,8 +584,8 @@ Zapewnienie monotoniczności profilu podłużnego cieków po wygładzeniu geomet
 ├─────────────────────────────────────────────────────────────────┤
 │ id (PK)              SERIAL                                     │
 │ geom                 GEOMETRY(Point, 2180)                      │
-│ duration             VARCHAR(10)  ('15min', '1h', etc)         │
-│ probability          INT          (1, 2, 5, 10, 20, 50)        │
+│ duration             VARCHAR(10)  ('5min'...'72h', 16 wartości) │
+│ probability          FLOAT        (0.01...99.9, 27 wartości)    │
 │ precipitation_mm     FLOAT                                      │
 │ source               VARCHAR(50)  ('IMGW_API')                 │
 │ updated_at           TIMESTAMP                                  │
