@@ -23,6 +23,24 @@ logger = logging.getLogger(__name__)
 
 _FETCH_SIZE = 50_000
 
+# Column indices for stream_catchments SELECT in load()
+(
+    _COL_SEG_IDX,
+    _COL_THRESHOLD,
+    _COL_AREA,
+    _COL_ELEV_MEAN,
+    _COL_SLOPE,
+    _COL_STRAHLER,
+    _COL_DS_SEG_IDX,
+    _COL_ELEV_MIN,
+    _COL_ELEV_MAX,
+    _COL_PERIMETER,
+    _COL_STREAM_LEN,
+    _COL_HISTOGRAM,
+    _COL_HYDRAULIC_LEN,
+    _COL_FLOW_DIST,
+) = range(14)
+
 
 class CatchmentGraph:
     """
@@ -45,8 +63,8 @@ class CatchmentGraph:
         self._elev_max: np.ndarray | None = None
         self._elev_mean: np.ndarray | None = None
         self._slope_mean: np.ndarray | None = None
-        self._perimeter_km: np.ndarray | None = None
         self._stream_length_km: np.ndarray | None = None
+        # Vestigial: fallback only when max_flow_dist_m = 0 for all nodes
         self._hydraulic_length_km: np.ndarray | None = None
         self._strahler: np.ndarray | None = None
         self._max_flow_dist_m: np.ndarray | None = None
@@ -74,10 +92,30 @@ class CatchmentGraph:
 
         Call after data changes (cleanup, pipeline re-run) to ensure
         the in-memory graph matches the current database state.
+        Releases numpy arrays to free memory immediately.
         """
         self._loaded = False
         self._n = 0
         self._lookup.clear()
+
+        # Release numpy arrays to free memory
+        self._segment_idx = None
+        self._threshold_m2 = None
+        self._area_km2 = None
+        self._elev_min = None
+        self._elev_max = None
+        self._elev_mean = None
+        self._slope_mean = None
+        self._strahler = None
+        self._stream_length_km = None
+        self._hydraulic_length_km = None
+        self._max_flow_dist_m = None
+        self._is_real_stream = None
+        self._segment_length_km = None
+        self._upstream_area_km2 = None
+        self._histograms = []
+        self._upstream_adj = None
+
         logger.info("CatchmentGraph invalidated — will reload on next access")
 
     def load(self, db: Session) -> None:
@@ -115,7 +153,6 @@ class CatchmentGraph:
         self._elev_max = np.full(n, np.nan, dtype=np.float32)
         self._elev_mean = np.full(n, np.nan, dtype=np.float32)
         self._slope_mean = np.full(n, np.nan, dtype=np.float32)
-        self._perimeter_km = np.full(n, np.nan, dtype=np.float32)
         self._stream_length_km = np.full(n, np.nan, dtype=np.float32)
         self._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
         self._strahler = np.zeros(n, dtype=np.int8)
@@ -147,43 +184,41 @@ class CatchmentGraph:
                 if not rows:
                     break
                 for r in rows:
-                    seg_idx = r[0]
-                    threshold = r[1]
+                    seg_idx = r[_COL_SEG_IDX]
+                    threshold = r[_COL_THRESHOLD]
 
                     self._segment_idx[i] = seg_idx
                     self._threshold_m2[i] = threshold
-                    self._area_km2[i] = r[2] if r[2] is not None else 0.0
+                    self._area_km2[i] = r[_COL_AREA] if r[_COL_AREA] is not None else 0.0
 
-                    if r[3] is not None:
-                        self._elev_mean[i] = r[3]
-                    if r[4] is not None:
-                        self._slope_mean[i] = r[4]
-                    if r[5] is not None:
-                        self._strahler[i] = r[5]
-                    if r[7] is not None:
-                        self._elev_min[i] = r[7]
-                    if r[8] is not None:
-                        self._elev_max[i] = r[8]
-                    if r[9] is not None:
-                        self._perimeter_km[i] = r[9]
-                    if r[10] is not None:
-                        self._stream_length_km[i] = r[10]
+                    if r[_COL_ELEV_MEAN] is not None:
+                        self._elev_mean[i] = r[_COL_ELEV_MEAN]
+                    if r[_COL_SLOPE] is not None:
+                        self._slope_mean[i] = r[_COL_SLOPE]
+                    if r[_COL_STRAHLER] is not None:
+                        self._strahler[i] = r[_COL_STRAHLER]
+                    if r[_COL_ELEV_MIN] is not None:
+                        self._elev_min[i] = r[_COL_ELEV_MIN]
+                    if r[_COL_ELEV_MAX] is not None:
+                        self._elev_max[i] = r[_COL_ELEV_MAX]
+                    if r[_COL_STREAM_LEN] is not None:
+                        self._stream_length_km[i] = r[_COL_STREAM_LEN]
 
                     # Histogram (JSONB → dict)
-                    self._histograms[i] = r[11]
+                    self._histograms[i] = r[_COL_HISTOGRAM]
 
                     # Hydraulic length (flow path distance to outlet)
-                    if r[12] is not None:
-                        self._hydraulic_length_km[i] = r[12]
+                    if r[_COL_HYDRAULIC_LEN] is not None:
+                        self._hydraulic_length_km[i] = r[_COL_HYDRAULIC_LEN]
 
                     # max_flow_dist_m (COALESCE ensures 0 for NULL)
-                    self._max_flow_dist_m[i] = r[13]
+                    self._max_flow_dist_m[i] = r[_COL_FLOW_DIST]
 
                     # Register in lookup
                     self._lookup[(threshold, seg_idx)] = i
 
                     # Downstream link → edge
-                    ds_seg_idx = r[6]
+                    ds_seg_idx = r[_COL_DS_SEG_IDX]
                     if ds_seg_idx is not None:
                         ds_key = (threshold, ds_seg_idx)
                         # Defer edge — downstream node may not be seen yet
@@ -270,7 +305,6 @@ class CatchmentGraph:
                 self._elev_max,
                 self._elev_mean,
                 self._slope_mean,
-                self._perimeter_km,
                 self._stream_length_km,
                 self._hydraulic_length_km,
                 self._strahler,
@@ -595,25 +629,23 @@ class CatchmentGraph:
         stream_lengths = self._stream_length_km[indices]
         total_stream_km = float(np.nansum(stream_lengths))
 
-        # Drainage density
-        drainage_density = total_stream_km / total_area if total_area > 0 else None
+        # Pre-compute real stream mask (used for Strahler + BDOT metrics)
+        real_mask = (
+            self._is_real_stream[indices]
+            if self._is_real_stream is not None
+            else None
+        )
 
         # Max Strahler from BDOT real streams only
-        if self._is_real_stream is not None:
-            real_mask = self._is_real_stream[indices]
+        if real_mask is not None:
             real_strahlers = self._strahler[indices][real_mask]
             max_strahler = int(np.max(real_strahlers)) if len(real_strahlers) > 0 else None
         else:
             strahlers = self._strahler[indices]
             max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
 
-        # Stream frequency (all segments — kept for backward compatibility)
-        n_segments = len(indices)
-        stream_frequency_all = n_segments / total_area if total_area > 0 else None
-
         # BDOT-based drainage metrics (real streams only)
-        if self._is_real_stream is not None and self._segment_length_km is not None:
-            real_mask = self._is_real_stream[indices]
+        if real_mask is not None and self._segment_length_km is not None:
             real_lengths = self._segment_length_km[indices]
             bdot_stream_km = float(np.nansum(real_lengths[real_mask]))
             bdot_n_segments = int(np.sum(real_mask))

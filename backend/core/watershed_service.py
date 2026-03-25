@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import CatchmentGraph
+from core.morphometry import calculate_shape_indices
 
 logger = logging.getLogger(__name__)
 
@@ -85,48 +86,6 @@ def get_stream_info_by_segment_idx(
     }
 
 
-def map_boundary_to_display_segments(
-    boundary_2180: MultiPolygon | Polygon,
-    display_threshold_m2: int,
-    db: Session,
-) -> list[int]:
-    """
-    Map a computed boundary to segment_idxs at the display threshold.
-
-    Used when the boundary was computed at a fine threshold but the
-    frontend needs segment indices at the display threshold for MVT
-    highlighting.
-
-    Parameters
-    ----------
-    boundary_2180 : MultiPolygon | Polygon
-        Boundary geometry in EPSG:2180
-    display_threshold_m2 : int
-        Display threshold for MVT tiles
-    db : Session
-        Database session
-
-    Returns
-    -------
-    list[int]
-        segment_idx values at the display threshold that intersect the boundary
-    """
-    query = text("""
-        SELECT segment_idx FROM stream_catchments
-        WHERE threshold_m2 = :threshold
-          AND ST_Intersects(geom, ST_GeomFromWKB(:boundary, 2180))
-    """)
-    results = db.execute(
-        query,
-        {
-            "threshold": display_threshold_m2,
-            "boundary": boundary_2180.wkb,
-        },
-    ).fetchall()
-
-    return [r.segment_idx for r in results]
-
-
 def merge_catchment_boundaries(
     segment_idxs: list[int],
     threshold_m2: int,
@@ -189,6 +148,17 @@ _GAP_CLOSE_M = 2.0
 #      (ST_MakeValid would SPLIT self-intersecting polygons into
 #       separate parts, causing discontinuities)
 #   5. ST_Multi()                       — wrap as MultiPolygon
+#
+# Template: {union_expr} is replaced with the ST_UnaryUnion(ST_Collect(..)) call.
+_SMOOTH_SQL = """ST_Multi(ST_Buffer(
+    ST_ChaikinSmoothing(
+        ST_SimplifyPreserveTopology(
+            ST_Buffer(ST_Buffer(
+                {union_expr},
+            :gap_close), -:gap_close),
+        5.0),
+    3),
+0))"""
 
 # Batch size for grid-batched union: each batch unions ~50 polygons
 # (fast), then the final union merges ~n/50 pre-merged results.
@@ -210,17 +180,10 @@ def _merge_direct(
     db: Session,
 ) -> MultiPolygon | None:
     """Direct ST_UnaryUnion for small segment sets (≤100)."""
-    query = text("""
+    smooth = _SMOOTH_SQL.format(union_expr="ST_UnaryUnion(ST_Collect(geom))")
+    query = text(f"""
         SELECT ST_AsBinary(
-            ST_Multi(ST_Buffer(
-                ST_ChaikinSmoothing(
-                    ST_SimplifyPreserveTopology(
-                        ST_Buffer(ST_Buffer(
-                            ST_UnaryUnion(ST_Collect(geom)),
-                        :gap_close), -:gap_close),
-                    5.0),
-                3),
-            0))
+            {smooth}
         ) as geom
         FROM stream_catchments
         WHERE threshold_m2 = :threshold
@@ -256,7 +219,8 @@ def _merge_batched(
     """
     from core.db_bulk import override_statement_timeout
 
-    query = text("""
+    smooth = _SMOOTH_SQL.format(union_expr="ST_UnaryUnion(ST_Collect(geom))")
+    query = text(f"""
         WITH numbered AS (
             SELECT
                 ST_MakeValid(ST_SnapToGrid(geom, :snap_size)) AS geom,
@@ -270,15 +234,7 @@ def _merge_batched(
             GROUP BY (rn - 1) / :batch_size
         )
         SELECT ST_AsBinary(
-            ST_Multi(ST_Buffer(
-                ST_ChaikinSmoothing(
-                    ST_SimplifyPreserveTopology(
-                        ST_Buffer(ST_Buffer(
-                            ST_UnaryUnion(ST_Collect(geom)),
-                        :gap_close), -:gap_close),
-                    5.0),
-                3),
-            0))
+            {smooth}
         ) AS geom
         FROM batched
     """)
@@ -495,7 +451,7 @@ def get_main_channel_feature_collection(
         gap_count = 0
         started = False  # gap tolerance only after first real segment
         pending_gap_nodes = []
-        for node in main_channel_nodes:
+        for node_idx, node in enumerate(main_channel_nodes):
             si = cg.get_segment_idx(node)
             if cg._is_real_stream[node]:
                 started = True
@@ -509,8 +465,7 @@ def get_main_channel_feature_collection(
                 if not started:
                     # Not-real before any real → mark all remaining as not-real
                     real_flags[si] = False
-                    remaining_start = main_channel_nodes.index(node) + 1
-                    for rem_node in main_channel_nodes[remaining_start:]:
+                    for rem_node in main_channel_nodes[node_idx + 1:]:
                         real_flags[cg.get_segment_idx(rem_node)] = False
                     break
                 gap_count += 1
@@ -520,8 +475,7 @@ def get_main_channel_feature_collection(
                         real_flags[gap_si] = False
                     real_flags[si] = False
                     # Mark all remaining nodes as not-real
-                    remaining_start = main_channel_nodes.index(node) + 1
-                    for rem_node in main_channel_nodes[remaining_start:]:
+                    for rem_node in main_channel_nodes[node_idx + 1:]:
                         real_flags[cg.get_segment_idx(rem_node)] = False
                     break
                 pending_gap_nodes.append(si)
@@ -562,48 +516,6 @@ def get_main_channel_feature_collection(
         "type": "FeatureCollection",
         "features": features,
     }
-
-
-def get_main_stream_coords_2180(
-    segment_idx: int,
-    threshold_m2: int,
-    db: Session,
-) -> list[tuple[float, float]] | None:
-    """
-    Get main stream coordinates in PL-1992 (EPSG:2180).
-
-    Parameters
-    ----------
-    segment_idx : int
-        Stream segment ID
-    threshold_m2 : int
-        Flow accumulation threshold
-    db : Session
-        Database session
-
-    Returns
-    -------
-    list[tuple[float, float]] | None
-        List of (x, y) tuples in EPSG:2180, or None
-    """
-    query = text("""
-        SELECT ST_AsText(geom) as wkt
-        FROM stream_network
-        WHERE segment_idx = :seg_idx
-          AND threshold_m2 = :threshold
-        LIMIT 1
-    """)
-    result = db.execute(
-        query,
-        {"seg_idx": segment_idx, "threshold": threshold_m2},
-    ).fetchone()
-    if result is None or result.wkt is None:
-        return None
-
-    from shapely import wkt as shapely_wkt
-
-    line = shapely_wkt.loads(result.wkt)
-    return list(line.coords)
 
 
 def boundary_to_polygon(boundary_2180: MultiPolygon | Polygon) -> Polygon:
@@ -731,18 +643,21 @@ def sample_stream_distance(
         ]
 
 
-def get_longest_flow_path_geojson(
+def _build_flow_path_geojson(
     cg: CatchmentGraph,
     upstream_indices: np.ndarray,
     outlet_idx: int,
     threshold_m2: int,
     db: "Session",
+    geom_column: str,
+    path_type: str,
+    include_length: bool = True,
 ) -> dict | None:
-    """Build GeoJSON LineString of the longest flow path for the watershed.
+    """Build GeoJSON Feature for a flow path (longest or divide).
 
     Finds subcatchment with max max_flow_dist_m, fetches its
-    longest_flow_path_geom, then appends downstream main channel
-    segments to outlet.
+    head geometry from *geom_column*, then appends downstream main
+    channel segments to the outlet.
 
     Parameters
     ----------
@@ -756,6 +671,13 @@ def get_longest_flow_path_geojson(
         Flow accumulation threshold
     db : Session
         Database session
+    geom_column : str
+        Column name in stream_catchments (e.g. ``longest_flow_path_geom``
+        or ``divide_flow_path_geom``)
+    path_type : str
+        Value for the ``type`` property in the returned Feature
+    include_length : bool
+        If True, add ``length_km`` property (from max_flow_dist_m)
 
     Returns
     -------
@@ -779,13 +701,13 @@ def get_longest_flow_path_geojson(
 
     max_seg_idx = cg.get_segment_idx(max_idx)
 
-    # 2. Fetch longest_flow_path_geom for that subcatchment
+    # 2. Fetch head geometry for that subcatchment
     result = db.execute(
         text(
-            "SELECT ST_AsGeoJSON(ST_Transform(longest_flow_path_geom, 4326)) as geojson "
+            f"SELECT ST_AsGeoJSON(ST_Transform({geom_column}, 4326)) as geojson "
             "FROM stream_catchments "
             "WHERE threshold_m2 = :threshold AND segment_idx = :seg_idx "
-            "AND longest_flow_path_geom IS NOT NULL "
+            f"AND {geom_column} IS NOT NULL "
             "LIMIT 1"
         ),
         {"threshold": threshold_m2, "seg_idx": max_seg_idx},
@@ -793,22 +715,23 @@ def get_longest_flow_path_geojson(
 
     if result is None or result.geojson is None:
         logger.debug(
-            "No longest_flow_path_geom for segment_idx=%d threshold=%d",
-            max_seg_idx, threshold_m2,
+            "No %s for segment_idx=%d threshold=%d",
+            geom_column, max_seg_idx, threshold_m2,
         )
         return None
 
     head_geom = json.loads(result.geojson)
 
+    def _make_properties() -> dict:
+        props: dict = {"type": path_type}
+        if include_length:
+            props["length_km"] = round(max_dist / 1000, 4)
+        return props
+
     # 3. Trace main channel from max_idx downstream to outlet
-    # Collect downstream segment_idxs from max_idx to outlet_idx
     main_ch = cg.trace_main_channel(outlet_idx, upstream_indices)
     main_nodes = main_ch.get("main_channel_nodes", [])
 
-    # Find which nodes are on the path from outlet to max_idx
-    # We need segments from max_idx's subcatchment downstream to outlet
-    # The main channel trace goes from outlet upstream; we need the
-    # subset from max_idx's downstream neighbor to outlet.
     downstream_seg_idxs = []
     collecting = False
     for node in reversed(main_nodes):
@@ -819,14 +742,10 @@ def get_longest_flow_path_geojson(
             downstream_seg_idxs.append(cg.get_segment_idx(node))
 
     if not downstream_seg_idxs:
-        # max_idx IS the outlet or direct neighbor — just return head geom
         return {
             "type": "Feature",
             "geometry": head_geom,
-            "properties": {
-                "type": "longest_flow_path",
-                "length_km": round(max_dist / 1000, 4),
-            },
+            "properties": _make_properties(),
         }
 
     # 4. Fetch downstream stream geometries
@@ -843,10 +762,7 @@ def get_longest_flow_path_geojson(
         return {
             "type": "Feature",
             "geometry": head_geom,
-            "properties": {
-                "type": "longest_flow_path",
-                "length_km": round(max_dist / 1000, 4),
-            },
+            "properties": _make_properties(),
         }
 
     # 5. Combine geometries
@@ -858,23 +774,31 @@ def get_longest_flow_path_geojson(
     try:
         merged = linemerge(all_lines)
         if merged.geom_type == "MultiLineString":
-            # Pick the longest component
             merged = max(merged.geoms, key=lambda g: g.length)
-        merged_geojson = json.loads(
-            json.dumps({"type": "LineString", "coordinates": list(merged.coords)})
-        )
+        merged_geojson = {"type": "LineString", "coordinates": [list(c) for c in merged.coords]}
     except Exception as e:
-        logger.warning("Failed to merge flow path geometries: %s", e)
+        logger.warning("Failed to merge %s geometries: %s", path_type, e)
         merged_geojson = head_geom
 
     return {
         "type": "Feature",
         "geometry": merged_geojson,
-        "properties": {
-            "type": "longest_flow_path",
-            "length_km": round(max_dist / 1000, 4),
-        },
+        "properties": _make_properties(),
     }
+
+
+def get_longest_flow_path_geojson(
+    cg: CatchmentGraph,
+    upstream_indices: np.ndarray,
+    outlet_idx: int,
+    threshold_m2: int,
+    db: "Session",
+) -> dict | None:
+    """Build GeoJSON LineString of the longest flow path for the watershed."""
+    return _build_flow_path_geojson(
+        cg, upstream_indices, outlet_idx, threshold_m2, db,
+        "longest_flow_path_geom", "longest_flow_path", include_length=True,
+    )
 
 
 def get_divide_flow_path_geojson(
@@ -884,134 +808,11 @@ def get_divide_flow_path_geojson(
     threshold_m2: int,
     db: "Session",
 ) -> dict | None:
-    """Build GeoJSON LineString of the divide flow path for the watershed.
-
-    Similar to get_longest_flow_path_geojson(), but uses the
-    divide_flow_path_geom column — the path from the farthest boundary
-    cell to the subcatchment outlet.
-
-    Parameters
-    ----------
-    cg : CatchmentGraph
-        Loaded catchment graph
-    upstream_indices : np.ndarray
-        Internal indices from cg.traverse_upstream()
-    outlet_idx : int
-        Internal index of the outlet node
-    threshold_m2 : int
-        Flow accumulation threshold
-    db : Session
-        Database session
-
-    Returns
-    -------
-    dict | None
-        GeoJSON Feature with LineString geometry, or None on failure
-    """
-    from shapely.geometry import LineString
-    from shapely.ops import linemerge
-
-    # 1. Find node with max max_flow_dist_m (same logic as longest path —
-    #    the divide path starts at the boundary cell of that subcatchment)
-    max_dist = 0.0
-    max_idx = None
-    for idx in upstream_indices:
-        dist = cg.get_max_flow_dist_m(int(idx))
-        if dist > max_dist:
-            max_dist = dist
-            max_idx = int(idx)
-
-    if max_idx is None:
-        return None
-
-    max_seg_idx = cg.get_segment_idx(max_idx)
-
-    # 2. Fetch divide_flow_path_geom for that subcatchment
-    result = db.execute(
-        text(
-            "SELECT ST_AsGeoJSON(ST_Transform(divide_flow_path_geom, 4326)) as geojson "
-            "FROM stream_catchments "
-            "WHERE threshold_m2 = :threshold AND segment_idx = :seg_idx "
-            "AND divide_flow_path_geom IS NOT NULL "
-            "LIMIT 1"
-        ),
-        {"threshold": threshold_m2, "seg_idx": max_seg_idx},
-    ).fetchone()
-
-    if result is None or result.geojson is None:
-        logger.debug(
-            "No divide_flow_path_geom for segment_idx=%d threshold=%d",
-            max_seg_idx, threshold_m2,
-        )
-        return None
-
-    head_geom = json.loads(result.geojson)
-
-    # 3. Trace main channel from max_idx downstream to outlet
-    main_ch = cg.trace_main_channel(outlet_idx, upstream_indices)
-    main_nodes = main_ch.get("main_channel_nodes", [])
-
-    downstream_seg_idxs = []
-    collecting = False
-    for node in reversed(main_nodes):
-        if node == max_idx:
-            collecting = True
-            continue
-        if collecting:
-            downstream_seg_idxs.append(cg.get_segment_idx(node))
-
-    if not downstream_seg_idxs:
-        return {
-            "type": "Feature",
-            "geometry": head_geom,
-            "properties": {
-                "type": "divide_flow_path",
-            },
-        }
-
-    # 4. Fetch downstream stream geometries
-    rows = db.execute(
-        text(
-            "SELECT ST_AsGeoJSON(ST_Transform(geom, 4326)) as geojson "
-            "FROM stream_network "
-            "WHERE threshold_m2 = :threshold AND segment_idx = ANY(:idxs)"
-        ),
-        {"threshold": threshold_m2, "idxs": downstream_seg_idxs},
-    ).fetchall()
-
-    if not rows:
-        return {
-            "type": "Feature",
-            "geometry": head_geom,
-            "properties": {
-                "type": "divide_flow_path",
-            },
-        }
-
-    # 5. Combine geometries
-    all_lines = [LineString(head_geom["coordinates"])]
-    for r in rows:
-        geom = json.loads(r.geojson)
-        all_lines.append(LineString(geom["coordinates"]))
-
-    try:
-        merged = linemerge(all_lines)
-        if merged.geom_type == "MultiLineString":
-            merged = max(merged.geoms, key=lambda g: g.length)
-        merged_geojson = json.loads(
-            json.dumps({"type": "LineString", "coordinates": list(merged.coords)})
-        )
-    except Exception as e:
-        logger.warning("Failed to merge divide flow path geometries: %s", e)
-        merged_geojson = head_geom
-
-    return {
-        "type": "Feature",
-        "geometry": merged_geojson,
-        "properties": {
-            "type": "divide_flow_path",
-        },
-    }
+    """Build GeoJSON LineString of the divide flow path for the watershed."""
+    return _build_flow_path_geojson(
+        cg, upstream_indices, outlet_idx, threshold_m2, db,
+        "divide_flow_path_geom", "divide_flow_path", include_length=False,
+    )
 
 
 def build_morph_dict_from_graph(
@@ -1079,6 +880,7 @@ def build_morph_dict_from_graph(
         real_channel_length_km = main_ch.get("real_channel_length_km")
         main_channel_nodes = main_ch.get("main_channel_nodes", [])
     else:
+        main_ch = None
         channel_length_km = None
         channel_slope = None
         real_channel_length_km = None
@@ -1094,7 +896,7 @@ def build_morph_dict_from_graph(
         length_to_centroid_km = round(centroid.distance(outlet_point) / 1000, 4)
 
     # Shape indices
-    shape_indices = _compute_shape_indices(area_km2, perimeter_km, length_km)
+    shape_indices = calculate_shape_indices(area_km2, perimeter_km, length_km)
 
     # Relief indices
     relief_ratio = None
@@ -1131,8 +933,8 @@ def build_morph_dict_from_graph(
         from core.config import get_settings
 
         settings = get_settings()
-        sd_path = settings.stream_distance_path
-        if os.path.exists(sd_path):
+        sd_path = settings.resolve_stream_distance_path()
+        if sd_path is not None:
             # Sample outlet distance
             outlet_dist_vals = sample_stream_distance(
                 [(outlet_x, outlet_y)], sd_path
@@ -1219,32 +1021,6 @@ def build_morph_dict_from_graph(
     return params
 
 
-def _compute_shape_indices(
-    area_km2: float,
-    perimeter_km: float,
-    length_km: float,
-) -> dict:
-    """Compute watershed shape indices (Kc, Rc, Re, Ff, W)."""
-    if area_km2 <= 0 or perimeter_km <= 0 or length_km <= 0:
-        return {
-            "compactness_coefficient": None,
-            "circularity_ratio": None,
-            "elongation_ratio": None,
-            "form_factor": None,
-            "mean_width_km": None,
-        }
-
-    return {
-        "compactness_coefficient": round(
-            perimeter_km / (2 * math.sqrt(math.pi * area_km2)), 4
-        ),
-        "circularity_ratio": round(4 * math.pi * area_km2 / (perimeter_km**2), 4),
-        "elongation_ratio": round((2 / length_km) * math.sqrt(area_km2 / math.pi), 4),
-        "form_factor": round(area_km2 / (length_km**2), 4),
-        "mean_width_km": round(area_km2 / length_km, 4),
-    }
-
-
 def ensure_outlet_within_boundary(
     outlet_x: float,
     outlet_y: float,
@@ -1287,5 +1063,156 @@ def ensure_outlet_within_boundary(
     )
     projected = nearest.interpolate(nearest.project(outlet_point))
     return projected.x, projected.y
+
+
+def cascade_escalate(
+    cg: CatchmentGraph,
+    point_x: float,
+    point_y: float,
+    base_threshold: int,
+    base_segment_idxs: list[int],
+    max_merge: int,
+    db: Session,
+    to_confluence: bool = False,
+) -> tuple[list[int], int, np.ndarray, int, dict, float] | None:
+    """Escalate to coarser threshold if segment count exceeds max_merge.
+
+    Iterates through thresholds [1000, 10000, 100000] and re-runs BFS
+    at the first threshold where the segment count is acceptable.
+
+    Parameters
+    ----------
+    cg : CatchmentGraph
+        Loaded catchment graph
+    point_x, point_y : float
+        Click point in EPSG:2180
+    base_threshold : int
+        Original threshold that produced too many segments
+    base_segment_idxs : list[int]
+        Segment indices from BFS at base_threshold
+    max_merge : int
+        Maximum allowed segment count before escalation
+    db : Session
+        Database session
+    to_confluence : bool
+        If True, use traverse_to_confluence instead of traverse_upstream
+
+    Returns
+    -------
+    tuple | None
+        (merge_idxs, merge_threshold, upstream_indices, outlet_idx, stats, area_km2)
+        or None if no escalation needed (segment count <= max_merge).
+    """
+    if len(base_segment_idxs) <= max_merge:
+        return None
+
+    for t in [1000, 10000, 100000]:
+        if t <= base_threshold:
+            continue
+        try:
+            t_node = cg.find_catchment_at_point(point_x, point_y, t, db)
+        except ValueError:
+            continue
+        if to_confluence:
+            t_up = cg.traverse_to_confluence(t_node)
+        else:
+            t_up = cg.traverse_upstream(t_node)
+        t_segs = cg.get_segment_indices(t_up, t)
+        if len(t_segs) <= max_merge or t == 100000:
+            stats = cg.aggregate_stats(t_up, outlet_idx=t_node)
+            return (t_segs, t, t_up, t_node, stats, stats["area_km2"])
+
+    return None
+
+
+def build_land_cover_stats(
+    boundary,
+    db: Session,
+    simplify_tolerance: float | None = None,
+):
+    """Build LandCoverStats from boundary polygon.
+
+    Parameters
+    ----------
+    boundary : Polygon | MultiPolygon
+        Watershed boundary in EPSG:2180
+    db : Session
+        Database session
+    simplify_tolerance : float | None
+        If set, simplify boundary before query (meters)
+
+    Returns
+    -------
+    LandCoverStats | None
+        Land cover statistics or None if no data
+    """
+    from core.land_cover import get_land_cover_for_boundary
+    from models.schemas import LandCoverCategory, LandCoverStats
+
+    query_boundary = boundary
+    if simplify_tolerance is not None:
+        query_boundary = boundary.simplify(simplify_tolerance)
+
+    try:
+        lc_data = get_land_cover_for_boundary(query_boundary, db)
+        if not lc_data:
+            return None
+        return LandCoverStats(
+            categories=[
+                LandCoverCategory(
+                    category=cat["category"],
+                    percentage=cat["percentage"],
+                    area_m2=cat["area_m2"],
+                    cn_value=cat["cn_value"],
+                )
+                for cat in lc_data["categories"]
+            ],
+            weighted_cn=lc_data["weighted_cn"],
+            weighted_imperviousness=lc_data["weighted_imperviousness"],
+        )
+    except Exception as e:
+        logger.debug(f"Land cover stats not available: {e}")
+        return None
+
+
+def build_hsg_stats(
+    boundary,
+    db: Session,
+):
+    """Build HsgStats from boundary polygon.
+
+    Parameters
+    ----------
+    boundary : Polygon | MultiPolygon
+        Watershed boundary in EPSG:2180. Uses wkb_hex for DB query.
+    db : Session
+        Database session
+
+    Returns
+    -------
+    HsgStats | None
+        HSG statistics or None if no data
+    """
+    from core.soil_hsg import get_hsg_for_boundary
+    from models.schemas import HsgCategory, HsgStats
+
+    try:
+        hsg_data = get_hsg_for_boundary(boundary.wkb_hex, db)
+        if not hsg_data:
+            return None
+        return HsgStats(
+            categories=[
+                HsgCategory(
+                    group=cat["group"],
+                    percentage=cat["percentage"],
+                    area_m2=cat["area_m2"],
+                )
+                for cat in hsg_data["categories"]
+            ],
+            dominant_group=hsg_data["dominant_group"],
+        )
+    except Exception as e:
+        logger.debug(f"HSG stats not available: {e}")
+        return None
 
 

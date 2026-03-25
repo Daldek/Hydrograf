@@ -80,10 +80,10 @@ def terrain_profile(
 
         # Read elevations from DEM file
         settings = get_settings()
-        dem_path = settings.dem_path
+        dem_path = settings.resolve_dem_path()
 
-        if not os.path.exists(dem_path):
-            logger.error("DEM file not found at configured path: %s", dem_path)
+        if dem_path is None:
+            logger.error("No DEM raster found in %s", settings.dem_dir)
             raise HTTPException(
                 status_code=503,
                 detail="Plik DEM nie jest dostepny. Skontaktuj sie z administratorem.",

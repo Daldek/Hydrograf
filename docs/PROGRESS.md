@@ -46,26 +46,36 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-24 (sesja 70 — geometry simplification fix, CatchmentGraph invalidation, divide flow path)
+**Data:** 2026-03-25 (sesja 71 — refactor/code-review-cleanup)
 
 ### Co zrobiono
-- **Per-polygon simplify usunięty ze stream_extraction** — `shapely.simplify(2*cellsize)` stosowane niezależnie per subcatchment powodowało luki między sąsiednimi zlewniami (wspólne krawędzie upraszczane różnie). Surowe geometrie zapisywane do DB; wygładzanie w runtime merge pipeline
-- **Invalidacja CatchmentGraph po cleanup (+ reload)** — `load()` miało early return `if self._loaded: return` uniemożliwiające reload po regeneracji danych. Nowa metoda `invalidate()` (czyści flagę i lookup), wywoływana po TRUNCATE i przed reload
-- **Browser cache wyłączony dla danych pipeline** — Nginx cachował .pbf/.png/.geojson przez 1h → stale data po re-run. Teraz `Cache-Control: no-store` dla tiles/, data/, .pbf, .geojson
-- **Divide flow path geometry (migracja 024)** — nowa kolumna `divide_flow_path_geom` w `stream_catchments`. Ścieżka z komórki o max flow_dist na GRANICY zlewni cząstkowej do ujścia. Nowe pole API: `divide_flow_path_geojson`. Frontend: longest flow path = czerwona kreska, divide flow path = czerwona kropka
-- **Wygładzanie Chaikin cieków w preprocessingu (ADR-047)** — `ST_ChaikinSmoothing(geom, 3)` z `preserve_end_points=true` podczas INSERT do `stream_network`. Gładkie cieki, zachowana topologia, przeliczone `length_m`
-- **ADR-048: Droga spływu z działu wód** — osobna geometria divide_flow_path_geom (max flow_dist na granicy, nie w środku zlewni)
-- Aktualizacja dokumentacji — CHANGELOG, PROGRESS, DECISIONS (ADR-047, ADR-048)
+- **Refaktoryzacja code review (Wave 1-5)** — 14 commitow na branchu `refactor/code-review-cleanup`:
+  - Wave 1: fix duplikatu `flow_dist_m` w process_dem, fix `main_ch` UnboundLocalError
+  - Wave 2: usuniecie martwego kodu (~200 LOC) — `_perimeter_km`, `drainage_density`/`stream_frequency_all`, nieuzywane funkcje i parametry
+  - Wave 3: ekstrakcja helperow w process_dem (`_get_transform`, `_per_label_argmax`, `_clip_and_build_path`)
+  - Wave 4a: deduplikacja watershed_service — `_build_flow_path_geojson`, `_SMOOTH_SQL`, `calculate_shape_indices`
+  - Wave 4b: unifikacja endpointow — `cascade_escalate()`, `build_morph_dict_from_graph` (fix 2 bugow), `build_land_cover_stats`, `build_hsg_stats`
+  - Wave 5: nazwane stale w CatchmentGraph, `invalidate()` zwalnia numpy, zwalnianie macierzy po petli progow
+- **Fix WFS BBOX axis order** — EPSG:2180 wymaga Y,X; bug maskowany dla obszarow gdzie X~Y
+- **Fix mosaic bbox** — TERYT discovery, BDOT GeoJSON, HSG i land cover uzywaja mosaic bbox zamiast user bbox
+- **DEM auto-discovery (ADR-049)** — `resolve_dem_path()` z lancuchem fallback zamiast hardcoded DEM_PATH
+- Aktualizacja dokumentacji — CHANGELOG, PROGRESS, DECISIONS (ADR-049)
 
 ### W trakcie
-- Brak
+- Merge `refactor/code-review-cleanup` do `develop`
 
 ### Nastepne kroki
-- Merge `feat/geometry-simplification-fix` do `develop`
+- Merge `refactor/code-review-cleanup` do `develop`
 - Re-run pipeline po merge
 - CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 - Clipping do dokladnej granicy poligonu
 - Podwojna analiza NMT (z/bez obszarow bezodplywowych)
+
+### Poprzednia sesja (2026-03-24, sesja 70 — geometry simplification fix, CatchmentGraph invalidation, divide flow path)
+
+- Per-polygon simplify usunięty ze stream_extraction, Invalidacja CatchmentGraph po cleanup
+- Browser cache wyłączony dla danych pipeline, Divide flow path geometry (migracja 024)
+- Wygładzanie Chaikin cieków w preprocessingu (ADR-047), ADR-048: Droga spływu z działu wód
 
 ### Poprzednia sesja (2026-03-24, sesja 69 — poprawki BDOT matching, main channel trace, hydraulic length, admin cleanup)
 
