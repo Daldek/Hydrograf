@@ -1,7 +1,7 @@
 # Integracja z Kartografem
 
 **Wersja:** 5.0
-**Data:** 2026-03-02
+**Data:** 2026-03-25
 **Status:** Aktywna
 
 ---
@@ -671,7 +671,7 @@ Dwa punkty integracji:
 | Kolumna | Typ | Opis |
 |---------|-----|------|
 | id | SERIAL | PK |
-| hsg_group | VARCHAR(2) | Grupa HSG (A, B, C, D) |
+| hsg_group | VARCHAR(1) | Grupa HSG (A, B, C, D) |
 | geom | GEOMETRY(MultiPolygon, 2180) | Geometria |
 
 Dane z tabeli `soil_hsg` używane w `core/soil_hsg.py: get_hsg_for_boundary()` — spatial intersection z granicą zlewni do obliczenia dominującej grupy HSG.
@@ -716,4 +716,4 @@ python -m scripts.download_dem \
 ---
 
 **Wersja dokumentu:** 5.0
-**Ostatnia aktualizacja:** 2026-03-02
+**Ostatnia aktualizacja:** 2026-03-25

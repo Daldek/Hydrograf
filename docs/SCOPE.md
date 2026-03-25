@@ -406,7 +406,7 @@ Ten dokument precyzyjnie definiuje:
 
 **Preprocessing:**
 - Pobranie wszystkich kombinacji (42 zestawy danych × ~192 stacji = ~8064 rekordow)
-- Import do PostGIS (tabela `pmax_pt_data`)
+- Import do PostGIS (tabela `precipitation_data`)
 - Indeksowanie przestrzenne (GIST)
 - Interpolacja dla centroidu zlewni w runtime
 
