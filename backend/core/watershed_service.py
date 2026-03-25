@@ -3,7 +3,7 @@ Shared watershed delineation service using CatchmentGraph.
 
 Provides reusable functions for stream lookup, boundary merging,
 outlet extraction, and morphometric dict construction. Used by
-watershed, hydrograph, and select_stream endpoints.
+watershed and hydrograph endpoints.
 
 All spatial queries target stream_network / stream_catchments tables
 (~87k rows each), using pre-computed catchment polygons for fast
