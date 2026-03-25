@@ -66,26 +66,6 @@
     }
 
     /**
-     * Delineate watershed for given coordinates.
-     */
-    async function delineateWatershed(lat, lng) {
-        var key = _cacheKey('ws', lat, lng);
-        var cached = _cacheGet(key);
-        if (cached) return cached;
-
-        const response = await fetch('/api/delineate-watershed?include_hypsometric_curve=true', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ latitude: lat, longitude: lng }),
-        });
-
-        if (!response.ok) await handleError(response);
-        var data = await response.json();
-        _cacheSet(key, data);
-        return data;
-    }
-
-    /**
      * Check system health.
      */
     async function checkHealth() {
@@ -213,7 +193,6 @@
     }
 
     window.Hydrograf.api = {
-        delineateWatershed: delineateWatershed,
         checkHealth: checkHealth,
         getTerrainProfile: getTerrainProfile,
         generateHydrograph: generateHydrograph,
