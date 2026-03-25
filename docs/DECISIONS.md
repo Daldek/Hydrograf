@@ -486,7 +486,7 @@ Pipeline: `compute_downstream_links()` wyznacza graf connectivity (follow fdir 1
 ## ADR-023: Hierarchiczne zlewnie — merge zamiast redundancyjnej ekstrakcji
 
 **Data:** 2026-02-15
-**Status:** Zastapiona przez ADR-024
+**Status:** Zastapiona przez ADR-026
 
 **Kontekst:** Klikniecie na ciek rzedu 5 zawsze zaznaczalo cala zlewnio — niezaleznie od punktu klikniecia. `find_catchment_at_point()` szukalo w progu aktywnym (np. 100000 m², 88 poligonow), wiec klikniecie gdziekolwiek na tym samym cieku trafialo w te sama duza zlewnio. Brak rozdzielczosci miedzy doplywami. Dodatkowy problem: bezposredni `ST_Contains` na punkt klikniecia trafial w hillslope (headwater bez cieku) zamiast w zlewnio cieku.
 
@@ -804,7 +804,7 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 ## ADR-037: Separacja cache/data + Kartograf v0.5.0
 
 **Data:** 2026-03-02
-**Status:** Accepted
+**Status:** Przyjeta
 **Kontekst:** Katalog `/data/` mieszał surowe pobrania (NMT tiles, BDOT10k GPKG, HSG raster) z przetworzonymi danymi. Surowe dane GUGiK (45 min pobierania) ginęły przy czyszczeniu pipeline'u. Kartograf v0.5.0 usunął filtrowanie kategorii BDOT10k — teraz pobiera wszystkie 15 warstw w jednym GPKG.
 **Decyzja:**
 - Wydzielenie `/cache/` (surowe dane, kosztowne do pobrania) od `/data/` (przetworzone, tanie do regeneracji)
@@ -820,16 +820,17 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
-### ADR-038: HSG Poland-wide cache + cleanup extension (2026-03-02)
+## ADR-038: HSG Poland-wide cache + cleanup extension
 
-**Status:** Accepted
+**Data:** 2026-03-02
+**Status:** Przyjeta
 
-**Context:**
+**Kontekst:**
 1. Admin cleanup nie usuwał plików `.geojson` z `frontend/data/` (brak wzorca)
 2. Przetworzone pliki `.tif` w `data/nmt/` i `data/hydro/` nie miały targetu cleanup
 3. `cache/soil_hsg/hsg.tif` nadpisywany przy każdym uruchomieniu — brak reuse
 
-**Decision:**
+**Decyzja:**
 1. Dodano `*.geojson` do wzorców targetu `overlays`
 2. Nowy target `processed_data` (typ `multi_dir`) dla `data/nmt/` i `data/hydro/`
 3. HSG: jednorazowe pobranie dla całej Polski (`hsg_poland.tif`, ~2-5 MB)
@@ -837,17 +838,38 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
    - Processing: clip+warp do EPSG:2180 dopiero przy użyciu (jeden resampling)
    - DB import: `DELETE WHERE ST_Intersects(bbox)` zamiast `DELETE ALL`
 
-**Consequences:**
+**Konsekwencje:**
 - HSG download jednorazowy (~30 MB transfer z SoilGrids), potem zawsze z cache
 - Dane HSG z różnych uruchomień koegzystują w DB (bbox-scoped delete)
 - Cleanup kompletny: GeoJSON, TIF, hydro GPKG objęte czyszczeniem
 
 ---
 
+## ADR-039: Uproszczenie selekcji zlewni do czystego ST_Contains
+
+**Data:** 2026-03-05
+**Status:** Przyjeta
+
+**Kontekst:** Selekcja cieku w `select_stream.py` uzywala 3-warstwowego lancucha fallback (hybrid snap-to-stream z ADR-027): snap do cieku → ST_Contains → fallback. Lancuch byl skomplikowany, trudny do debugowania i utrzymania. Analiza wydajnosciowa (BENCHMARK_QUERIES.md) wykazala, ze `ST_Contains` na poligonach `stream_catchments` jest ~25% szybsze od `ST_DWithin` na liniach `stream_network` i daje jednoznaczne wyniki.
+
+**Opcje:**
+- A) Utrzymanie 3-warstwowego fallback chain (ADR-027) — sprawdzony, ale zlozony
+- B) Uproszczenie do pojedynczego `find_catchment_at_point()` (ST_Contains) — prostsze, szybsze, deterministyczne
+
+**Decyzja:** Opcja B. Usuniecie 3-warstwowego fallback chain, zastapienie pojedynczym wywolaniem `cg.find_catchment_at_point()`. Usuniecie nieuzywanych funkcji `find_nearest_stream_segment()` i `find_nearest_stream_segment_hybrid()` z `watershed_service.py` (~100 linii kodu). Zastepuje ADR-027.
+
+**Konsekwencje:**
+- Uproszczenie kodu selekcji (~100 linii mniej)
+- Deterministyczne wyniki — kazdy punkt nalezy do dokladnie jednego poligonu
+- Szybsza selekcja (~25% vs snap-to-stream)
+- Testy wydajnosciowe potwierdzaja poprawnosc (Q1 vs Q7 w BENCHMARK_QUERIES.md)
+
+---
+
 ## ADR-040: Vector boundary file support
 
 **Data:** 2026-03-09
-**Status:** Accepted
+**Status:** Przyjeta
 
 **Kontekst:** Pipeline Hydrograf definiuje obszar analizy wyłącznie przez bbox (WGS84) lub kody arkuszy NMT. Użytkownicy potrzebują możliwości wskazania pliku wektorowego (SHP, GPKG, GeoJSON) definiującego granicę analizy. Istniejąca infrastruktura (`download_for_geometry()`, `find_sheets_for_geometry()`, `convert_boundary_to_bbox()`) już obsługuje geometrie — brakuje warstwy CLI/API.
 
@@ -872,7 +894,7 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 ## ADR-041: Monotoniczne wygładzanie cieków
 
 **Data:** 2026-03-18
-**Status:** Aktywna
+**Status:** Przyjeta
 
 **Kontekst:** Wypalanie cieków w DEM (burn_depth_m=10/5m) powodowało nadmierne obniżanie dna doliny, zaburzając prawidłowe obliczenia akumulacji przepływu. Mosty i nasypy tworzą lokalne wzniesienia blokujące przepływ — standardowe wypalanie stałą głębokością nie koryguje tych anomalii, a jedynie agresywnie obniża cały ciek.
 
@@ -900,7 +922,7 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 ## ADR-042: Optymalizacja wydajnosci select-stream dla duzych zlewni
 
 **Data:** 2026-03-17
-**Status:** Accepted
+**Status:** Przyjeta
 
 **Kontekst:** Zaznaczenie cieku w dolnej czesci zlewni (wiele segmentow upstream) powodowalo timeout 504 lub czas odpowiedzi > 30s. Dwa bottlenecki: (1) `ST_UnaryUnion` na 500+ poligonach w `merge_catchment_boundaries()` — O(n²), (2) `ST_Intersection` land cover/HSG na zlozonej granicy zlewni (tysiace wierzcholkow) — 18s dla 95 km².
 
@@ -923,9 +945,15 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-043
+
+(Numer pominiety)
+
+---
+
 ## ADR-044: BDOT10k stream matching w preprocessingu
 
-**Status:** Aktywna
+**Status:** Przyjeta
 **Data:** 2026-03-23 (aktualizacja 2026-03-24: R1a/R2/R3)
 
 **Kontekst:** Metoda Kerby-Kirpich wymaga rozroznienia dlugosci splywu powierzchniowego (overland) od przeplywu korytowego (channel). Dotychczas cala `channel_length_km` pochodzi z wektoryzacji flow accumulation -- algorytmicznej sciezki, nie faktycznego cieku.

@@ -10,11 +10,10 @@
 
 Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.6.1) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
 
-- **NMT** - Numeryczny Model Terenu z GUGiK (rozdzielczość 5m)
-- **NMPT** - Numeryczny Model Pokrycia Terenu z GUGiK (nowy w v0.4.0)
-- **Ortofotomapa** - Ortofotomapy z GUGiK (nowy w v0.4.0)
-- **BDOT10k** - Dane o pokryciu terenu z GUGiK (15 warstw — 12 PT + 3 SW w jednym GPKG od v0.5.0)
-- **BDOT10k BUBD** - Budynki z GUGiK (do building raising w NMT, ADR-033)
+- **NMT** - Numeryczny Model Terenu z GUGiK
+- **NMPT** - Numeryczny Model Pokrycia Terenu z GUGiK
+- **Ortofotomapa** - Ortofotomapy z GUGiK
+- **BDOT10k** - Dane z GUGiK
 - **CORINE** - Europejska klasyfikacja pokrycia terenu z Copernicus (44 klasy)
 - **SoilGrids HSG** - Grupy hydrologiczne gleby (przez HSGCalculator)
 
@@ -291,6 +290,7 @@ Narzędzia rastrowe.
 |-------|---------------------|--------------|
 | `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `find_sheets_for_geometry` | Pobieranie NMT z GUGiK |
 | `scripts/download_landcover.py` | `LandCoverManager`, `BBox`, `Bdot10kProvider` | Pobieranie BDOT10k/CORINE |
+| `scripts/download_landcover.py` | `Bdot10kProvider` (`kartograf.providers.bdot10k`) | Fallback TERYT discovery (`_discover_teryts_grid`) — WMS point query dla kodów TERYT |
 | `scripts/bootstrap.py` | `SheetParser`, `HSGCalculator`, `BBox` | Orchestrator preprocessingu |
 | `scripts/prepare_area.py` | `SheetParser` | Pipeline przygotowania obszaru |
 | `core/cn_calculator.py` | `BBox`, `HSGCalculator`, `LandCoverManager` | Obliczanie CN |

@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - Architektura Systemu
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.7
-**Data:** 2026-03-01
+**Wersja:** 1.8
+**Data:** 2026-03-25
 **Status:** Approved
 
 ---
@@ -102,6 +102,19 @@ Podsumowanie kluczowych ADR:
 | ADR-032 | Boundary smoothing | `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` |
 | ADR-033 | Building raising | `raise_buildings_in_dem()` +5m pod footprints BUBD |
 | ADR-034 | Panel administracyjny | `/admin` + 8 endpointów `/api/admin/*`, API key auth, bootstrap SSE |
+| ADR-035 | Konteneryzacja multi-stage | Multi-stage Dockerfile, entrypoint z wait-for-db, override dev/prod |
+| ADR-036 | Hardening kontenerów Docker | Security headers, resource limits, non-root user |
+| ADR-037 | Separacja cache/data + Kartograf v0.5.0 | Rozdzielenie katalogów cache i danych generowanych |
+| ADR-038 | HSG Poland-wide cache | Ogólnopolski cache HSG — brak potrzeby pobierania per-obszar |
+| ADR-040 | Vector boundary file support | Obsługa GPKG/GeoJSON/SHP jako granic obszaru (zamiast tylko bbox) |
+| ADR-041 | Monotoniczne wygładzanie cieków | Zapewnienie monotoniczności elevacji po smoothingu linii cieków |
+| ADR-042 | Optymalizacja wydajności select-stream | Cascaded merge threshold, batch ST_Union, cache grafowy |
+| ADR-044 | BDOT10k stream matching | Dopasowanie cieków DEM do referencyjnych BDOT10k (is_real_stream) |
+| ADR-045 | WFS PRG zamiast grid-sampling WMS | TERYT discovery z WFS PRG — szybciej i dokładniej niż WMS grid |
+| ADR-046 | upstream_area_km2 w trace_main_channel | Branch selection wg upstream_area_km2 zamiast Strahlera |
+| ADR-047 | Chaikin smoothing cieków w preprocessingu | Wygładzanie geometrii cieków na etapie preprocessingu |
+| ADR-048 | Droga spływu z działu wód | Longest flow path + divide flow path jako parametry morfometryczne |
+| ADR-049 | DEM auto-discovery z fallback chain | Automatyczne znajdowanie pliku DEM (VRT → mosaic → single TIFF) |
 
 ---
 
@@ -130,10 +143,10 @@ backend/
 │
 ├── core/
 │   ├── __init__.py
-│   ├── catchment_graph.py         # In-memory sub-catchment graph (~44k nodes, scipy CSR + BFS)
+│   ├── catchment_graph.py         # In-memory sub-catchment graph (~87-285k nodes, scipy CSR + BFS, invalidate())
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
-│   ├── config.py                  # YAML config loading (load_config(), get_settings())
+│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049)
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
@@ -147,7 +160,8 @@ backend/
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── watershed.py               # Watershed boundary building + legacy CLI functions
 │   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022, Chaikin smoothing ADR-032)
-│   └── zonal_stats.py             # Zonal statistics (bincount, max)
+│   ├── zonal_stats.py             # Zonal statistics (bincount, max)
+│   └── boundary.py               # Obsługa plików wektorowych granic (GPKG/GeoJSON/SHP), walidacja, konwersja bbox (ADR-040)
 │
 ├── models/
 │   ├── __init__.py
@@ -170,10 +184,11 @@ backend/
 │   ├── analyze_watershed.py       # Analiza zlewni (CLI)
 │   ├── export_pipeline_gpkg.py    # Eksport danych pipeline do GeoPackage
 │   ├── export_task9_gpkg.py       # Eksport danych task9 do GeoPackage
-│   └── e2e_task9.py               # E2E test pipeline
+│   ├── e2e_task9.py               # E2E test pipeline
+│   └── clean.py                  # Czyszczenie danych generowanych (rasters, tiles, DB, cache)
 │
 ├── migrations/
-│   └── versions/                  # 17 migracji Alembic (001..017)
+│   └── versions/                  # 24+ migracji Alembic (001-024 + merge)
 │
 ├── utils/
 │   ├── __init__.py
@@ -183,8 +198,9 @@ backend/
 │   └── sheet_finder.py            # NMT sheet code lookup
 │
 ├── tests/
-│   ├── unit/                      # 35 plików testów jednostkowych
-│   ├── integration/               # 7 plików testów integracyjnych
+│   ├── unit/                      # 45+ plików testów jednostkowych
+│   ├── integration/               # 8+ plików testów integracyjnych
+│   ├── performance/               # Testy wydajnościowe (benchmarki)
 │   └── conftest.py
 │
 ├── requirements.txt
@@ -438,39 +454,31 @@ def build_morphometric_params(
 ```
 
 #### 2.4.3 `core/catchment_graph.py`
-**Odpowiedzialności:**
-- In-memory graf zlewni cząstkowych (scipy CSR matrix)
-- BFS traversal upstream/downstream
-- Agregacja pre-computed stats (area, elevation, slope, stream metrics)
-- Wyznaczanie głównego cieku (trace wg Strahlera, ADR-029)
-- Krzywa hipsometryczna z mergowania histogramów
 
-**Główne klasy/funkcje:**
-```python
-class CatchmentGraph:
-    """Singleton graf ~44k wezłów, ~0.5 MB RAM, ~1.5s startup."""
-    def load(self, db: Session) -> None: ...
-    def traverse_upstream(self, node_idx: int) -> list[int]: ...
-    def traverse_to_confluence(self, node_idx: int) -> list[int]: ...
-    def aggregate_stats(self, indices: list[int]) -> dict: ...
-    def trace_main_channel(self, outlet_idx, upstream_indices) -> dict: ...
-    def aggregate_hypsometric(self, indices: list[int]) -> list[dict]: ...
-```
+Singleton in-memory graf zlewni cząstkowych oparty na numpy arrays i scipy sparse CSR matrix (~87-285k węzłów w zależności od obszaru, ~0.5 MB RAM). Ładowany lazy z bazy danych przy pierwszym użyciu, invalidowany po cleanup/pipeline przez `invalidate()`.
+
+**Kluczowe koncepty:**
+- **BFS traversal** — `traverse_upstream` i `traverse_to_confluence` do wyznaczania zlewni
+- **trace_main_channel** — wyznaczanie głównego cieku z branch selection wg `upstream_area_km2` (ADR-046), zwraca FeatureCollection z geometriami segmentów
+- **aggregate_stats** — agregacja pre-computed zonal stats (area, elevation, slope, stream metrics) + hydraulic length relative to outlet
+- **is_real_stream** — oznaczenie segmentów dopasowanych do referencyjnych cieków BDOT10k (ADR-044)
+- **aggregate_hypsometric** — krzywa hipsometryczna z mergowania histogramów elevation per segment
+
+Szczegóły: `core/catchment_graph.py`
 
 #### 2.4.4 `core/watershed_service.py`
-**Odpowiedzialności:**
-- Współdzielona logika delineacji (snap-to-stream, merge, outlet extraction)
-- Używana przez 3 endpointy: watershed, hydrograph, select_stream
-- Eliminuje kosztowne operacje rastrowe w runtime
 
-**Główne funkcje:**
-```python
-def find_nearest_stream_segment(x, y, threshold_m2, db) -> dict | None: ...
-def find_stream_catchment_at_point(x, y, threshold_m2, db) -> int | None: ...
-def merge_catchment_boundaries(segment_idxs, threshold_m2, db) -> Polygon: ...
-def map_boundary_to_display_segments(boundary, threshold_m2, db) -> list[int]: ...
-def get_main_stream_geojson(segment_idx, threshold_m2, db) -> dict | None: ...
-```
+Współdzielona logika delineacji używana przez 3 endpointy (watershed, hydrograph, select_stream). Eliminuje kosztowne operacje rastrowe w runtime — cała praca oparta na CatchmentGraph i pre-computed stats.
+
+**Kluczowe odpowiedzialności:**
+- **Merge catchment boundaries** — 3 strategie: direct (małe zlewnie), batched ST_UnaryUnion, fallback na grubszy próg. Cascade threshold escalation dla dużych zlewni (>500 segmentów: 1000 → 10000 → 100000)
+- **Smoothing granic** — `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` (ADR-032)
+- **Main channel FeatureCollection** — geometria głównego cieku z flagą `is_real_stream` per segment (ADR-044)
+- **Flow path GeoJSON** — longest flow path + divide flow path (ADR-048) jako geometrie do wyświetlenia
+- **Parametry morfometryczne** — `build_morph_dict_from_graph()` buduje słownik kompatybilny z Hydrolog
+- **Land cover / HSG stats** — helpery do obliczania CN i pokrycia terenu w granicach zlewni
+
+Szczegóły: `core/watershed_service.py`
 
 #### 2.4.5 `core/db_bulk.py`
 **Odpowiedzialności:**
@@ -539,6 +547,28 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 
 ---
 
+### 2.5 Nowe koncepty (CP4+)
+
+#### WFS TERYT discovery (ADR-045)
+Automatyczne wykrywanie powiatów (TERYT) na podstawie bbox za pomocą usługi WFS PRG (Państwowy Rejestr Granic). Zastępuje wcześniejszą metodę grid-sampling WMS, dając dokładniejsze wyniki przy mniejszej liczbie zapytań sieciowych. Używane przy pobieraniu danych BDOT10k i land cover.
+
+#### DEM auto-discovery (ADR-049)
+Mechanizm automatycznego znajdowania pliku DEM z fallback chain: VRT mosaic → single GeoTIFF → katalog z plikami ASC. Konfigurowany przez `resolve_dem_path()` w `core/config.py`, eliminuje konieczność ręcznego podawania ścieżki DEM w zmiennych środowiskowych. Obsługuje też `resolve_stream_distance_path()` dla rastrów odległości od cieków.
+
+#### Chaikin smoothing cieków (ADR-047)
+Wygładzanie geometrii cieków algorytmem Chaikina na etapie preprocessingu (w `process_dem.py`). Redukuje szum z rasterowej wektoryzacji, zachowując topologię sieci. Stosowane razem z monotonic smoothing (ADR-041).
+
+#### BDOT10k stream matching (ADR-044)
+Dopasowanie cieków wyznaczonych z DEM do referencyjnych cieków z BDOT10k (baza danych obiektów topograficznych). Segmenty dopasowane oznaczane jako `is_real_stream=True` w `stream_network`. Informacja ta propagowana do CatchmentGraph i zwracana w main channel FeatureCollection.
+
+#### Divide flow path (ADR-048)
+Wyznaczanie drogi spływu z działu wód (najdłuższa ścieżka od granicy zlewni do ujścia). Uzupełnia longest flow path jako dodatkowy parametr morfometryczny. Geometrie obu ścieżek przechowywane w `stream_catchments` (kolumny `longest_flow_path_geom`, `divide_flow_path_geom`).
+
+#### Monotoniczne wygładzanie cieków (ADR-041)
+Zapewnienie monotoniczności profilu podłużnego cieków po wygładzeniu geometrii. Eliminuje artefakty, w których wygładzona linia cieku miała lokalne „podskoki" elevacji niezgodne z kierunkiem przepływu.
+
+---
+
 ## 3. Architektura Bazy Danych
 
 ### 3.1 Schema Diagram
@@ -592,6 +622,7 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 │ mean_slope_percent   FLOAT                                      │
 │ source               VARCHAR(20)  ('DEM_DERIVED', 'MPHP')      │
 │ segment_idx          INTEGER  -- 1-based per threshold (migracja 014, ADR-026) │
+│ is_real_stream       BOOLEAN  -- dopasowanie do BDOT10k (ADR-044)│
 │                                                                 │
 │ Indexes:                                                        │
 │   - idx_stream_geom (GIST on geom)                             │
@@ -614,6 +645,10 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 │ perimeter_km         FLOAT                                      │
 │ stream_length_km     FLOAT                                      │
 │ elev_histogram       JSONB                                      │
+│ hydraulic_length_km  FLOAT                                      │
+│ max_flow_dist_m      FLOAT                                      │
+│ longest_flow_path_geom GEOMETRY(LineString, 2180)               │
+│ divide_flow_path_geom  GEOMETRY(LineString, 2180)               │
 │                                                                 │
 │ Indexes:                                                        │
 │   - idx_catchment_geom (GIST on geom)                          │
@@ -646,6 +681,19 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 │ Indexes:                                                        │
 │   - gist on geom (auto)                                        │
 │   - idx_soil_hsg_group (on hsg_group)                          │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                        bdot_streams                              │
+├─────────────────────────────────────────────────────────────────┤
+│ id (PK)              SERIAL                                     │
+│ geom                 GEOMETRY(LineString, 2180)                 │
+│ layer_type           VARCHAR(50)                                │
+│ name                 VARCHAR(200)                               │
+│ length_m             FLOAT                                      │
+│                                                                 │
+│ Indexes:                                                        │
+│   - idx_bdot_streams_geom (GIST on geom)                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -796,6 +844,7 @@ frontend/
     └── admin/
         ├── admin-api.js      # Admin API client (fetch + X-Admin-Key header)
         ├── admin-bootstrap.js # Bootstrap SSE stream, start/cancel
+        ├── admin-bbox-picker.js # Mapa do wyboru bbox obszaru
         └── admin-app.js      # Admin panel orchestrator
 ```
 
@@ -1446,7 +1495,7 @@ async def health_check(db = Depends(get_db)):
 **Runtime API:**
 - CatchmentGraph BFS in-memory (milisekundy) zamiast recursive CTE na flow_network (sekundy) — ADR-021, ADR-022
 - Pre-computed stats w `stream_catchments` (zero operacji rastrowych w runtime)
-- Cascaded merge threshold dla dużych zlewni (>500 segmentów) — ADR-024
+- Cascaded merge threshold dla dużych zlewni (>500 segmentów) — ADR-042
 
 **Aktualne wyniki benchmarków:** patrz `docs/PROGRESS.md`
 
@@ -1666,16 +1715,17 @@ jobs:
 | **Frontend** | Vanilla JS + Leaflet | Prostota, brak build step dla MVP |
 | **Deployment** | Docker Compose | Powtarzalność, izolacja |
 | **Preprocessing** | Jednorazowy (graf) | Szybkość runtime > czas preprocessing |
-| **Model hydrologiczny** | SCS CN + UH | Sprawdzony, odpowiedni dla małych zlewni |
-| **Hietogram** | Rozkład Beta | Realistyczny, lepszy niż blokowy |
+| **Model hydrologiczny** | SCS CN + UH / Nash IUH / Snyder UH | Sprawdzony, odpowiedni dla małych zlewni |
+| **Hietogram** | Block / Euler II / Beta | 3 metody do wyboru w zależności od zastosowania |
 
 ---
 
-**Wersja dokumentu:** 1.7
-**Data ostatniej aktualizacji:** 2026-03-01
+**Wersja dokumentu:** 1.8
+**Data ostatniej aktualizacji:** 2026-03-25
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 1.8 (2026-03-25): Aktualizacja po CP4+ — ADR 035-049 w tabeli, boundary.py i clean.py, koncepcyjne opisy CatchmentGraph/watershed_service (bez sygnatur), bdot_streams + nowe kolumny w schema, sekcja 2.5 (nowe koncepty), aktualizacja liczników (24+ migracji, 45+ unit tests, 8+ integration), modele hydrologiczne (Nash IUH, Snyder UH) i hietogramy (Block/Euler II/Beta)
 - 1.7 (2026-03-01): Aktualizacja vs rzeczywisty stan kodu — dodano: panel admin (ADR-034, 8 endpointów, admin.html, 3 moduły JS admin/), landcover MVT tiles, api/dependencies/, sekcja scripts/ (16 skryptów), 17 migracji, ADR-026..034; zaktualizowano: Docker (API memory 4G, ADMIN_API_KEY, volumes), Nginx (admin, SSE, health, static cache), config.py opis YAML, security (admin auth)
 - 1.6 (2026-02-16): Pełna aktualizacja — nowe tabele (stream_catchments, depressions), ADR-008..025, segmentacja konfluencyjna, Docker/Nginx zgodne z faktycznym stanem, structlog, security headers, usunięcie benchmarków liczbowych
 - 1.5 (2026-02-14): Eliminacja FlowGraph z runtime (ADR-022) — diagram, moduły, przepływ danych zaktualizowane; +watershed_service.py, flow_graph.py DEPRECATED
