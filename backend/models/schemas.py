@@ -132,10 +132,15 @@ class MorphometricParameters(BaseModel):
         None, description="Schumm elongation ratio Re"
     )
     form_factor: float | None = Field(None, description="Horton form factor Ff")
+    lemniscate_ratio: float | None = Field(None, description="Chorley lemniscate ratio Cl = 0.5*L/A")
     mean_width_km: float | None = Field(None, ge=0, description="Mean width A/L [km]")
 
     # Relief indices
-    relief_ratio: float | None = Field(None, description="Relief ratio Rh")
+    relief_ratio: float | None = Field(None, description="Relief ratio R = ΔH/√A [‰]")
+    divide_slope: float | None = Field(None, description="Divide slope Rp = ΔH/P [‰]")
+    asymmetry_coefficient: float | None = Field(
+        None, description="Asymmetry coefficient α = 2*(AL-AP)/A"
+    )
     hypsometric_integral: float | None = Field(
         None, ge=0, le=1, description="Hypsometric integral HI"
     )

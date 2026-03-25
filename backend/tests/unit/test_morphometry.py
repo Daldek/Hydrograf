@@ -456,6 +456,7 @@ class TestCalculateShapeIndices:
             "circularity_ratio",
             "elongation_ratio",
             "form_factor",
+            "lemniscate_ratio",
             "mean_width_km",
         }
         assert set(result.keys()) == expected_keys
