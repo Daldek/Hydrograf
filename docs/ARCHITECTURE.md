@@ -132,7 +132,7 @@ backend/
 │   │   └── admin_auth.py          # Admin API key verification (X-Admin-Key header)
 │   └── endpoints/
 │       ├── __init__.py
-│       ├── admin.py               # 8 endpointów /api/admin/* (dashboard, resources, cleanup, bootstrap)
+│       ├── admin.py               # 9 endpointów /api/admin/* (dashboard, resources, cleanup, bootstrap)
 │       ├── depressions.py         # GET /depressions
 │       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
@@ -497,12 +497,12 @@ Szczegóły: `core/watershed_service.py`
 - Obliczanie min/max/mean per label dla elevation, slope
 
 #### 2.4.8 Biblioteka Hydrolog (zewnetrzna)
-**Odpowiedzialnosci:** (delegowane do `hydrolog` v0.5.2)
+**Odpowiedzialnosci:** (delegowane do `hydrolog` v0.6.3)
 - Generowanie hietogramu (Beta, Block, Euler II)
 - Model SCS CN (opad efektywny)
-- Hydrogram jednostkowy SCS
+- Hydrogram jednostkowy: SCS, Nash IUH, Snyder
 - Splot numeryczny
-- Czas koncentracji (Kirpich, SCS Lag, Giandotti)
+- Czas koncentracji (Kirpich, NRCS, Giandotti, FAA, Kerby, Kerby-Kirpich)
 
 Hydrograf wywoluje Hydrolog przez endpoint `api/endpoints/hydrograph.py`:
 ```python

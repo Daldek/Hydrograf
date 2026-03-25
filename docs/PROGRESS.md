@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 19 endpointow (11 core + 8 admin). 778 testow. |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 20 endpointow (11 core + 9 admin). 899 testow. |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 42 scenariusze |
@@ -15,7 +15,7 @@
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 987 testow jednostkowych, 0 failures |
+| Testy | ✅ Gotowy | 899 testow jednostkowych, 0 failures |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -89,7 +89,7 @@
 - WFS TERYT discovery (ADR-045), upgrade Kartograf v0.6.1, selektor rozdzielczosci NMT
 - Drainage stats z BDOT, BDOT main channel tracing, GUI "brak ciekow BDOT"
 - Fix overlay glownego cieku, fix DownloadManager resolution
-- 987 testow, 0 failures
+- 899 testow, 0 failures
 
 ### Poprzednia sesja (2026-03-24, sesja 67 — BDOT matching + flow path tracing + naprawy tc)
 
