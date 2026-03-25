@@ -7,7 +7,7 @@
     'use strict';
 
     var _refreshTimer = null;
-    var REFRESH_INTERVAL_MS = 30000; // 30 seconds
+    var REFRESH_INTERVAL_MS = 5000; // 5 seconds
 
     // ----------------------------------------------------------------
     // Helpers
