@@ -729,12 +729,12 @@ class DelineateResponse(BaseModel):
 class HydrographRequest(BaseModel):
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
-    duration: str = Field(..., regex='^(15min|30min|1h|2h|6h|12h|24h)$')
-    probability: int = Field(..., ge=1, le=100)
-    
+    duration: str = Field(..., pattern='^(5min|10min|15min|30min|45min|1h|1\\.5h|2h|3h|6h|12h|18h|24h|36h|48h|72h)$')
+    probability: float = Field(..., ge=0.01, le=99.9)
+
     @validator('probability')
     def validate_probability(cls, v):
-        if v not in [1, 2, 5, 10, 20, 50]:
+        if v not in [0.01,0.02,0.03,0.05,0.1,0.2,0.3,0.5,1,2,3,5,10,20,30,40,50,60,70,80,90,95,98,98.5,99,99.5,99.9]:
             raise ValueError('Probability must be 1, 2, 5, 10, 20, or 50')
         return v
 ```

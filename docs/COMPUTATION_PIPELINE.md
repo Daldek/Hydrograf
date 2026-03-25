@@ -662,8 +662,8 @@ CREATE TABLE stream_catchments (
 CREATE TABLE precipitation_data (
     id SERIAL PRIMARY KEY,
     geom GEOMETRY(Point, 2180),       -- lokalizacja stacji
-    duration TEXT,                     -- '15min', '1h', itd.
-    probability INTEGER,              -- 1, 2, 5, 10, 20, 50
+    duration TEXT,                     -- '5min'...'72h' (16 wartości)
+    probability DOUBLE PRECISION,     -- 0.01...99.9 (27 wartości)
     precipitation_mm FLOAT
 );
 -- Indeksy: GIST(geom), B-tree(duration, probability)
