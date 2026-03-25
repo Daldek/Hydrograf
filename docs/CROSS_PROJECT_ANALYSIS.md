@@ -202,9 +202,9 @@ qp = 0.208 * self.area_km2 / tp_hours
 | Metryka | Wartość |
 |---------|---------|
 | Wersja | v0.4.0 (CP4 Faza 4) |
-| Endpointy API | 20 (12 core + 8 admin) |
+| Endpointy API | 20 (11 core + 9 admin) |
 | Testy | 899 |
-| Moduły core | 15 (w `backend/core/`) |
+| Moduły core | 19 (w `backend/core/`) |
 | Skrypty | 14 (w `backend/scripts/`) |
 | Frontend JS | 13 modułów (9 core + 4 admin) |
 | ADR | 49 decyzji architektonicznych |
