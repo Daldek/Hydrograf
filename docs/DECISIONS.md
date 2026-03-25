@@ -1035,6 +1035,27 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-049: DEM auto-discovery z lancuchem fallback
+
+**Data:** 2026-03-25
+**Status:** Przyjeta
+
+**Kontekst:** Endpoint profilu terenu (`/api/terrain-profile`) i inne operacje wymagajace rastra DEM uzywaly hardcoded sciezki `DEM_PATH`. W roznych srodowiskach (dev, Docker, po pipeline) plik DEM moze miec rozna nazwe — VRT, surowy TIF, wypelniony TIF. Brak pliku powodowal bląd 500 bez jasnej diagnostyki.
+
+**Opcje:**
+- A) Zmienna srodowiskowa `DEM_PATH` z wymagana reczna konfiguracja
+- B) Automatyczne wykrywanie z lancuchem fallback — sprawdzanie kolejnych kandydatow w katalogu `dem_dir`
+
+**Decyzja:** Opcja B. Nowa metoda `resolve_dem_path()` w `AppSettings` (config.py). Lancuch priorytetow: `DEM_PATH` env override → `dem_mosaic.vrt` → `dem_mosaic_01_dem.tif` → `dem_mosaic.tif` → `dem_mosaic_02_filled.tif`. Analogiczny `resolve_stream_distance_path()` dla rastra stream_distance. Zwraca `None` jesli zaden kandydat nie istnieje.
+
+**Konsekwencje:**
+- Zero-config dla typowego pipeline — DEM wykrywany automatycznie
+- Nadal mozliwe reczne nadpisanie przez `DEM_PATH` env
+- Graceful degradation — `None` zamiast crash gdy brak rastra
+- Analogiczny wzorzec mozna rozszerzyc na inne rastry pipeline
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
