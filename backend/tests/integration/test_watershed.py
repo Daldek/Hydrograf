@@ -43,6 +43,7 @@ def _make_mock_cg(area_km2: float = 10.0) -> MagicMock:
     cg.loaded = True
     cg._segment_idx = np.array([10, 11, 12], dtype=np.int32)
     cg.find_catchment_at_point.return_value = 0  # internal idx
+    cg.get_segment_idx.return_value = 12  # segment_idx for internal idx 0
     cg.traverse_upstream.return_value = np.array([0, 1, 2])
     cg.get_segment_indices.return_value = [10, 11, 12]
     cg.aggregate_stats.return_value = {
@@ -166,7 +167,12 @@ class TestDelineateWatershedEndpoint:
             ),
             patch(f"{_WS}.build_morph_dict_from_graph", return_value=morph),
             patch(f"{_WS}.get_main_stream_geojson", return_value=None),
-            patch(f"{_WS}.get_land_cover_for_boundary", return_value=None),
+            patch(f"{_WS}.get_main_channel_feature_collection", return_value=None),
+            patch(f"{_WS}.build_land_cover_stats", return_value=None),
+            patch(f"{_WS}.build_hsg_stats", return_value=None),
+            patch(f"{_WS}.get_longest_flow_path_geojson", return_value=None),
+            patch(f"{_WS}.get_divide_flow_path_geojson", return_value=None),
+            patch(f"{_WS}.cascade_escalate", return_value=None),
         ]
 
     def test_success_returns_200(self, client):
@@ -177,7 +183,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         assert response.status_code == 200
@@ -190,7 +196,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -208,7 +214,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -226,7 +232,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -246,7 +252,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -271,7 +277,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.0, "longitude": 21.0},
+                json={"latitude": 52.0, "longitude": 21.0, "threshold_m2": 10000},
             )
 
         assert response.status_code == 404
@@ -348,7 +354,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -366,7 +372,7 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
@@ -385,58 +391,36 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={"latitude": 52.23, "longitude": 21.01, "threshold_m2": 10000},
             )
 
         data = response.json()
         assert data["watershed"]["area_km2"] == 45.67
 
-    def test_small_area_not_auto_selected(self, client):
-        """Test area ≤ 10000 m² (0.005 km²) is not auto-selected."""
-        area_km2 = 0.005  # 5000 m² — below limit
-        cg = _make_mock_cg(area_km2=area_km2)
-        morph = _make_morph_dict(area_km2=area_km2)
-
+    def test_precomputed_mode_has_segments(self, client):
+        """Test precomputed mode (threshold_m2 provided) returns upstream segments."""
         with contextlib.ExitStack() as stack:
-            for p in self._patch_all(cg=cg, morph=morph):
+            for p in self._patch_all():
                 stack.enter_context(p)
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={
+                    "latitude": 52.23,
+                    "longitude": 21.01,
+                    "threshold_m2": 10000,
+                },
             )
 
         data = response.json()
-        assert data["auto_selected"] is False
-        assert data["upstream_segment_indices"] is None
-        assert data["display_threshold_m2"] is None
-        assert data["info_message"] is None
-
-    def test_large_area_auto_selected(self, client):
-        """Test area > 10000 m² (0.05 km²) triggers auto-selection."""
-        area_km2 = 0.05  # 50000 m² — above limit
-        cg = _make_mock_cg(area_km2=area_km2)
-        morph = _make_morph_dict(area_km2=area_km2)
-
-        with contextlib.ExitStack() as stack:
-            for p in self._patch_all(cg=cg, morph=morph):
-                stack.enter_context(p)
-
-            response = client.post(
-                "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
-            )
-
-        data = response.json()
-        assert data["auto_selected"] is True
+        assert data["mode"] == "precomputed"
         assert data["upstream_segment_indices"] is not None
         assert len(data["upstream_segment_indices"]) > 0
         assert data["display_threshold_m2"] is not None
-        assert data["info_message"] is not None
 
-    def test_threshold_boundary_not_auto_selected(self, client):
-        """Test area exactly at 10000 m² (0.01 km²) is NOT auto-selected (≤ not <)."""
-        area_km2 = 0.01  # exactly 10000 m²
+    def test_precomputed_mode_small_area(self, client):
+        """Test precomputed mode with small area still returns mode='precomputed'."""
+        area_km2 = 0.005  # 5000 m²
         cg = _make_mock_cg(area_km2=area_km2)
         morph = _make_morph_dict(area_km2=area_km2)
 
@@ -446,9 +430,13 @@ class TestDelineateWatershedEndpoint:
 
             response = client.post(
                 "/api/delineate-watershed",
-                json={"latitude": 52.23, "longitude": 21.01},
+                json={
+                    "latitude": 52.23,
+                    "longitude": 21.01,
+                    "threshold_m2": 10000,
+                },
             )
 
         data = response.json()
-        assert data["auto_selected"] is False
-        assert data["upstream_segment_indices"] is None
+        assert data["mode"] == "precomputed"
+        assert data["upstream_segment_indices"] is not None
