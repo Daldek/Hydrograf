@@ -421,13 +421,16 @@ def discover_teryts_for_bbox(
     """
     min_x, min_y, max_x, max_y = bbox_2180
 
+    # WFS 2.0.0 respects the official CRS axis order.
+    # EPSG:2180 (PL-CS92) has northing (Y) first, easting (X) second,
+    # so BBOX must be: min_y, min_x, max_y, max_x (not min_x, min_y, max_x, max_y).
     params = {
         "service": "WFS",
         "version": "2.0.0",
         "request": "GetFeature",
         "typeName": "ms:A02_Granice_powiatow",
         "srsName": "EPSG:2180",
-        "BBOX": f"{min_x},{min_y},{max_x},{max_y},EPSG:2180",
+        "BBOX": f"{min_y},{min_x},{max_y},{max_x},EPSG:2180",
         "propertyName": "JPT_KOD_JE,JPT_NAZWA_",
     }
 
