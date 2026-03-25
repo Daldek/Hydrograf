@@ -285,10 +285,12 @@
         var threshold = Hydrograf.map.getStreamsThreshold() || 100000;
 
         try {
-            var data = await Hydrograf.api.selectStream(lat, lng, threshold);
+            var data = await Hydrograf.api.delineateWatershed(lat, lng, threshold);
 
             // Show selection boundary
-            Hydrograf.map.showSelectionBoundary(data.boundary_geojson);
+            if (data.watershed && data.watershed.boundary_geojson) {
+                Hydrograf.map.showSelectionBoundary(data.watershed.boundary_geojson);
+            }
 
             // Show info banner if threshold was escalated
             if (data.info_message) {
@@ -317,7 +319,7 @@
                 // Show flow path overlays on map
                 Hydrograf.map.showLongestFlowPath(data.watershed.longest_flow_path_geojson);
                 Hydrograf.map.showDivideFlowPath(data.watershed.divide_flow_path_geojson);
-            } else {
+            } else if (data.stream) {
                 displayStreamInfo(data.stream);
             }
 

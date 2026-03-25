@@ -1084,6 +1084,37 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 
 ---
 
+## ADR-050: Unified delineate-watershed endpoint
+
+**Data:** 2026-03-25
+**Status:** Przyjeta
+
+**Kontekst:** Istnialy dwa odrebne endpointy do wyznaczania zlewni: `POST /api/select-stream` (snap-to-stream + BFS po prekomputowanym grafie zlewni czastkowych, wymagal `threshold_m2`) i `POST /api/delineate-watershed` (delimitacja rastrowa). Frontend musial decydowac, ktory endpoint wywolac, a logika byla powielona (walidacja, budowanie response, parametry morfometryczne). Dodatkowo `to_confluence` byl rzadko uzywany i komplikowal API.
+
+**Opcje:**
+- A) Utrzymanie dwoch endpointow — status quo, powielona logika, dwa zestawy testow
+- B) Jeden endpoint `POST /api/delineate-watershed` z automatycznym wyborem trybu na podstawie obecnosci `threshold_m2`
+
+**Decyzja:** Opcja B. Jeden endpoint z dwoma trybami:
+1. **Precomputed** (gdy `threshold_m2` jest podany): snap-to-stream via `ST_ClosestPoint`, BFS po `CatchmentGraph`, cascaded merge, pelne parametry morfometryczne z grafu — dotychczasowa logika `select-stream`
+2. **Precise** (gdy brak `threshold_m2`): delimitacja rastrowa pyflwdir on-the-fly z `RasterCache` (lazy-loading fdir/DEM/slope z thread-safe cache)
+
+Dodatkowe zmiany:
+- Pole `auto_selected` zastapione polem `mode` (`"precomputed"` | `"precise"`)
+- Parametr `to_confluence` usuniety, metoda `traverse_to_confluence()` usunieta z `CatchmentGraph`
+- Nowy modul `core/raster_cache.py` z `RasterCache` — singleton cache dla rastrow pipeline
+- Ujednolicone schematy Pydantic: `DelineateRequest` i `DelineateResponse`
+
+**Konsekwencje:**
+- (+) Jeden endpoint zamiast dwoch — prostsze API, mniej powielonego kodu
+- (+) Frontend nie musi decydowac o trybie — wystarczy obecnosc/brak `threshold_m2`
+- (+) Lazy-loading rastrow — pamiec alokowana tylko gdy uzytkownik uzyje trybu precise
+- (+) Thread-safe RasterCache — bezpieczne wspolbiezne zapytania
+- (-) Tryb precise wolniejszy niz precomputed (~2-5s vs ~0.5-7s) — akceptowalne dla on-demand
+- (-) Wymaga dostepnosci rastrow pipeline (fdir, DEM) na serwerze — graceful error jesli brak
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
