@@ -262,87 +262,8 @@
         if (_clickDebounceTimer) clearTimeout(_clickDebounceTimer);
         _clickDebounceTimer = setTimeout(function () {
             _clickDebounceTimer = null;
-            if (state.clickMode === 'select') {
-                onSelectClick(lat, lng);
-            } else {
-                onWatershedClick(lat, lng);
-            }
+            onSelectClick(lat, lng);
         }, 300);
-    }
-
-    /**
-     * Handle watershed delineation click (default mode).
-     */
-    async function onWatershedClick(lat, lng) {
-        hideError();
-        setLoading(true);
-        state.currentWatershed = null;
-
-        // Clear any selection boundary and auto-select banner
-        Hydrograf.map.clearSelectionBoundary();
-        var autoInfo = document.getElementById('panel-auto-select-info');
-        if (autoInfo) autoInfo.classList.add('d-none');
-
-        try {
-            var data = await Hydrograf.api.delineateWatershed(lat, lng);
-            state.currentWatershed = data;
-            state.clickLat = lat;
-            state.clickLng = lng;
-
-            // Check auto-selection
-            if (data.auto_selected) {
-                // Show info banner
-                var autoMsg = document.getElementById('auto-select-message');
-                if (autoMsg) autoMsg.textContent = data.info_message;
-                if (autoInfo) autoInfo.classList.remove('d-none');
-
-                // Use selection display (orange boundary)
-                Hydrograf.map.showSelectionBoundary(data.watershed.boundary_geojson);
-            } else {
-                if (autoInfo) autoInfo.classList.add('d-none');
-                Hydrograf.map.showWatershed(data.watershed.boundary_geojson);
-            }
-
-            var outlet = data.watershed.outlet;
-            Hydrograf.map.showOutlet(outlet.latitude, outlet.longitude, outlet.elevation_m);
-
-            // Show main channel with BDOT highlighting
-            if (data.watershed.main_stream_geojson) {
-                Hydrograf.map.showMainChannel(data.watershed.main_stream_geojson);
-            }
-
-            displayParameters(data);
-
-            // Show flow path overlays on map
-            Hydrograf.map.showLongestFlowPath(data.watershed.longest_flow_path_geojson);
-            Hydrograf.map.showDivideFlowPath(data.watershed.divide_flow_path_geojson);
-
-            // Show/hide hietogram + hydrograph sections based on API response
-            var hydroAvail = data.watershed && data.watershed.hydrograph_available;
-            ['acc-hietogram', 'acc-hydrograph'].forEach(function (id) {
-                var section = document.getElementById(id);
-                if (section) {
-                    if (hydroAvail) {
-                        section.classList.remove('d-none');
-                    } else {
-                        section.classList.add('d-none');
-                    }
-                }
-            });
-
-            els.results.classList.remove('d-none');
-
-            // Auto-generate hydrograph on first load
-            if (hydroAvail && Hydrograf.hydrograph) {
-                Hydrograf.hydrograph.generateHydrograph();
-            }
-        } catch (err) {
-            Hydrograf.map.clearWatershed();
-            state.currentWatershed = null;
-            showError(err.message);
-        } finally {
-            setLoading(false);
-        }
     }
 
     /**
@@ -506,17 +427,16 @@
     }
 
     /**
-     * Switch click mode between 'watershed', 'select', and 'profile'.
+     * Switch click mode between 'browse', 'select', and 'profile'.
      */
     function setClickMode(mode) {
         state.clickMode = mode;
 
         // Update button classes
         var btnBrowse = document.getElementById('mode-browse');
-        var btnWatershed = document.getElementById('mode-watershed');
         var btnSelect = document.getElementById('mode-select');
         var btnProfile = document.getElementById('mode-profile');
-        [btnBrowse, btnWatershed, btnSelect, btnProfile].forEach(function (btn) {
+        [btnBrowse, btnSelect, btnProfile].forEach(function (btn) {
             if (!btn) return;
             var m = btn.id.replace('mode-', '');
             btn.classList.toggle('mode-btn-active', m === mode);
@@ -570,9 +490,6 @@
         // Mode toolbar
         document.getElementById('mode-browse').addEventListener('click', function () {
             setClickMode('browse');
-        });
-        document.getElementById('mode-watershed').addEventListener('click', function () {
-            setClickMode('watershed');
         });
         document.getElementById('mode-select').addEventListener('click', function () {
             setClickMode('select');
