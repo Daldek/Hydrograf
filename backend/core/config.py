@@ -86,6 +86,16 @@ class Settings(BaseSettings):
         candidate = os.path.join(self.dem_dir, "dem_mosaic_04b_stream_distance.tif")
         return candidate if os.path.exists(candidate) else None
 
+    def resolve_flowdir_path(self) -> str | None:
+        """Find flow direction raster (pyflwdir uint8 D8)."""
+        candidate = os.path.join(self.dem_dir, "dem_mosaic_03_flowdir.tif")
+        return candidate if os.path.exists(candidate) else None
+
+    def resolve_slope_path(self) -> str | None:
+        """Find slope raster."""
+        candidate = os.path.join(self.dem_dir, "dem_mosaic_05_slope.tif")
+        return candidate if os.path.exists(candidate) else None
+
     # Admin panel API key (empty = auto-generated UUID at startup)
     admin_api_key: str = ""
     admin_api_key_file: str = ""  # Path to file containing admin API key
