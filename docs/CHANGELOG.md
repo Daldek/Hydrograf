@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — 2026-03-25
 
+### API
+- **Unified delineate-watershed endpoint (ADR-050)** — polaczenie `POST /api/select-stream` i `POST /api/delineate-watershed` w jeden endpoint `POST /api/delineate-watershed` z dwoma trybami: `precomputed` (z `threshold_m2`, BFS po grafie) i `precise` (bez progu, delimitacja rastrowa pyflwdir on-the-fly)
+- **Pole `mode` zamiast `auto_selected`** — response zawiera `"mode": "precomputed"|"precise"` zamiast boolean `auto_selected`
+- **Usuniecie parametru `to_confluence`** — uproszczenie API, `traverse_to_confluence()` usuniety z CatchmentGraph
+
+### Backend
+- **RasterCache** — nowy modul `core/raster_cache.py` do lazy-loading rastrow fdir/DEM/slope z thread-safe cache. Uzywany przez tryb `precise` do on-the-fly delimitacji zlewni
+- **Ujednolicone schematy Pydantic** — `DelineateRequest` i `DelineateResponse` obsluguja oba tryby (precomputed/precise)
+
+### Frontend
+- **Jeden przycisk "Wybierz zlewnię"** — usuniecie osobnego "Wygeneruj zlewnię", tryb wybierany automatycznie na podstawie obecnosci warstwy ciekow (threshold_m2)
+- **Aktualizacja wywolan API** — frontend uzywa wylacznie `POST /api/delineate-watershed`
+
 ### Dodane
 - **Geometria drogi spływu z działu wód (ADR-048, divide_flow_path_geom)** — osobna kolumna w `stream_catchments` (migracja 024). Ścieżka z komórki o max flow_dist na GRANICY zlewni cząstkowej do ujścia. Frontend: longest flow path = czerwona kreska, divide flow path = czerwona kropka
 - **Wygładzanie Chaikin cieków w preprocessingu (ADR-047)** — `ST_ChaikinSmoothing(geom, 3)` z `preserve_end_points=true` podczas INSERT do `stream_network`. Gładkie cieki bez pikselowych schodków, zachowana topologia sieci
