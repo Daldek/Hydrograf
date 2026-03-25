@@ -154,10 +154,35 @@ class TestRasterCacheLoad:
     def test_fdir_converted_to_uint8(self, loaded_cache):
         assert loaded_cache._fdir.dtype == np.uint8
 
-    def test_fdir_nodata_converted_to_247(self, loaded_cache):
-        """On-disk int16 value 0 (nodata/pit) → pyflwdir uint8 value 247."""
-        # Bottom row was 0 in int16 → should be 247 in uint8
-        assert np.all(loaded_cache._fdir[4, :] == 247)
+    def test_fdir_pits_preserved_as_zero(self, loaded_cache):
+        """On-disk int16 pit (0) with valid DEM stays 0 in uint8 (pyflwdir pit)."""
+        # Bottom row was 0 in int16 and DEM has valid values → stays 0 (pit)
+        assert np.all(loaded_cache._fdir[4, :] == 0)
+
+    def test_fdir_nodata_where_dem_nodata(self):
+        """Cells with DEM nodata get fdir=247 (pyflwdir nodata), regardless of fdir value."""
+        # DEM with nodata in top-left corner
+        dem_with_nodata = DEM.copy()
+        dem_with_nodata[0, 0] = -9999.0
+
+        mock_settings = MagicMock()
+        mock_settings.resolve_flowdir_path.return_value = "/fake/flowdir.tif"
+        mock_settings.resolve_dem_path.return_value = "/fake/dem.tif"
+        mock_settings.resolve_slope_path.return_value = None
+
+        cache = RasterCache()
+        mock_open = _make_mock_rasterio_open(dem=dem_with_nodata, dem_nodata=-9999.0)
+        with (
+            patch("core.raster_service.get_settings", return_value=mock_settings),
+            patch("core.raster_service.rasterio") as mock_rio,
+        ):
+            mock_rio.open = MagicMock(side_effect=mock_open)
+            cache.load()
+
+        # Cell (0,0) with DEM nodata → fdir should be 247
+        assert cache._fdir[0, 0] == 247
+        # Cell (0,1) with valid DEM → fdir stays 4
+        assert cache._fdir[0, 1] == 4
 
     def test_fdir_valid_values_preserved(self, loaded_cache):
         """D8 direction values (4=South) preserved after conversion."""
@@ -229,21 +254,18 @@ class TestRasterCacheLoad:
 
 class TestDelineateFromPoint:
     def test_delineates_single_column(self, loaded_cache):
-        """Point at bottom valid row of center column → rows 0-3 of col 2.
+        """Point at pit row of center column → all rows 0-4 of col 2.
 
-        After fdir conversion, bottom row (int16=0) becomes nodata (uint8=247).
-        Row 3 (fdir=4, south) points into nodata and becomes an effective pit.
-        Delineating from row 3 gives rows 0-3 of column 2.
+        Bottom row has fdir=0 (pit) with valid DEM → pyflwdir treats as pit.
+        Delineating from the pit (row 4) gives all upstream cells in column 2.
         """
-        # Col 2, Row 3 center: x = 500012.5, y = 600025 - 3.5*5 = 600007.5
-        x, y = 500012.5, 600007.5
+        # Col 2, Row 4 center (pit): x = 500012.5, y = 600025 - 4.5*5 = 600002.5
+        x, y = 500012.5, 600002.5
         result = loaded_cache.delineate_from_point(x, y)
 
         mask = result["mask"]
-        # Rows 0-3 in column 2 should be True
-        assert np.all(mask[:4, 2])
-        # Row 4 (nodata) should be False
-        assert not mask[4, 2]
+        # All rows in column 2 should be True (entire column drains to pit)
+        assert np.all(mask[:, 2])
         # Other columns should be False (each column drains independently)
         assert not np.any(mask[:, 0])
         assert not np.any(mask[:, 1])
@@ -252,7 +274,7 @@ class TestDelineateFromPoint:
 
     def test_returns_polygon(self, loaded_cache):
         """Result contains a valid Shapely polygon."""
-        x, y = 500012.5, 600007.5
+        x, y = 500012.5, 600002.5
         result = loaded_cache.delineate_from_point(x, y)
         polygon = result["polygon"]
         assert polygon is not None
@@ -260,7 +282,7 @@ class TestDelineateFromPoint:
         assert polygon.area > 0
 
     def test_returns_correct_keys(self, loaded_cache):
-        x, y = 500012.5, 600007.5
+        x, y = 500012.5, 600002.5
         result = loaded_cache.delineate_from_point(x, y)
         assert "polygon" in result
         assert "mask" in result
@@ -307,27 +329,27 @@ class TestStatsComputation:
     def test_area_correct(self, loaded_cache):
         """Area = number of mask cells * cell area (5m * 5m = 25 m2).
 
-        Outlet at row 3 col 2 → 4 cells (rows 0-3), each 25 m2.
+        Outlet at pit (row 4, col 2) → 5 cells (rows 0-4), each 25 m2.
         """
-        x, y = 500012.5, 600007.5
+        x, y = 500012.5, 600002.5
         result = loaded_cache.delineate_from_point(x, y)
         stats = result["stats"]
-        # 4 cells in column (rows 0-3), each 25 m2
-        assert stats["area_m2"] == pytest.approx(4 * 25.0)
+        # 5 cells in column (rows 0-4), each 25 m2
+        assert stats["area_m2"] == pytest.approx(5 * 25.0)
 
     def test_elevation_stats(self, loaded_cache):
         """Elevation min/max/mean from the DEM within the mask."""
-        x, y = 500012.5, 600007.5
+        x, y = 500012.5, 600002.5
         result = loaded_cache.delineate_from_point(x, y)
         stats = result["stats"]
-        # Column 2 rows 0-3 have DEM values: 150, 140, 130, 120
-        assert stats["elevation_min_m"] == pytest.approx(120.0)
+        # Column 2 rows 0-4 have DEM values: 150, 140, 130, 120, 110
+        assert stats["elevation_min_m"] == pytest.approx(110.0)
         assert stats["elevation_max_m"] == pytest.approx(150.0)
-        assert stats["elevation_mean_m"] == pytest.approx(135.0)
+        assert stats["elevation_mean_m"] == pytest.approx(130.0)
 
     def test_slope_mean(self, loaded_cache):
         """Slope mean from the slope raster (uniform 5%)."""
-        x, y = 500012.5, 600007.5
+        x, y = 500012.5, 600002.5
         result = loaded_cache.delineate_from_point(x, y)
         stats = result["stats"]
         assert "slope_mean_percent" in stats
@@ -344,7 +366,7 @@ class TestStatsComputation:
             mock_rio.open = MagicMock(side_effect=_make_mock_rasterio_open())
             cache.load()
         cache._slope = None  # ensure slope is missing
-        result = cache.delineate_from_point(500012.5, 600007.5)
+        result = cache.delineate_from_point(500012.5, 600002.5)
         assert "slope_mean_percent" not in result["stats"]
 
     def test_partial_stats_correct(self, loaded_cache):
@@ -367,16 +389,16 @@ class TestStatsComputation:
 
 class TestVectorization:
     def test_polygon_area_matches_mask(self, loaded_cache):
-        """Polygon area should match the mask area (4 cells * 25 m2)."""
-        x, y = 500012.5, 600007.5
+        """Polygon area should match the mask area (5 cells * 25 m2)."""
+        x, y = 500012.5, 600002.5
         result = loaded_cache.delineate_from_point(x, y)
         polygon = result["polygon"]
-        # 4 cells of 5m x 5m = 100 m2
-        assert polygon.area == pytest.approx(100.0, rel=0.01)
+        # 5 cells of 5m x 5m = 125 m2
+        assert polygon.area == pytest.approx(125.0, rel=0.01)
 
     def test_polygon_bounds_within_raster(self, loaded_cache):
         """Polygon should be within raster bounds."""
-        x, y = 500012.5, 600007.5
+        x, y = 500012.5, 600002.5
         result = loaded_cache.delineate_from_point(x, y)
         polygon = result["polygon"]
         minx, miny, maxx, maxy = polygon.bounds
