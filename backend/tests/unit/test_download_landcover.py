@@ -245,7 +245,8 @@ class TestDiscoverTerytsForBboxWfs:
         discover_teryts_for_bbox(self.BBOX)
         call_kwargs = mock_get.call_args
         params = call_kwargs.kwargs.get("params", {})
-        assert params["BBOX"] == "300000.0,450000.0,350000.0,500000.0,EPSG:2180"
+        # WFS 2.0.0 + EPSG:2180: axis order is northing,easting (Y,X)
+        assert params["BBOX"] == "450000.0,300000.0,500000.0,350000.0,EPSG:2180"
 
     @patch("scripts.download_landcover._discover_teryts_grid")
     @patch("scripts.download_landcover.requests.get")

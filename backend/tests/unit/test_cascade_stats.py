@@ -210,8 +210,36 @@ class TestSelectStreamCascadeStats:
             "api.endpoints.select_stream.get_main_stream_geojson",
             return_value=None,
         ), patch(
-            "api.endpoints.select_stream.get_land_cover_for_boundary",
+            "api.endpoints.select_stream.build_land_cover_stats",
             return_value=None,
+        ), patch(
+            "api.endpoints.select_stream.build_hsg_stats",
+            return_value=None,
+        ), patch(
+            "api.endpoints.select_stream.build_morph_dict_from_graph",
+            return_value={
+                "area_km2": 105.0,
+                "perimeter_km": 50.0,
+                "length_km": 20.0,
+                "elevation_min_m": 95.0,
+                "elevation_max_m": 310.0,
+                "elevation_mean_m": 202.0,
+                "mean_slope_m_per_m": 0.048,
+                "channel_length_km": 15.0,
+                "channel_slope_m_per_m": 0.003,
+                "compactness_coefficient": 1.4,
+                "circularity_ratio": 0.5,
+                "elongation_ratio": 0.6,
+                "form_factor": 0.3,
+                "mean_width_km": 5.0,
+                "relief_ratio": 0.01,
+                "hypsometric_integral": 0.45,
+                "drainage_density_km_per_km2": 1.8,
+                "stream_frequency_per_km2": 1.3,
+                "ruggedness_number": 0.4,
+                "max_strahler_order": 4,
+                "_main_channel_nodes": [],
+            },
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -233,8 +261,8 @@ class TestSelectStreamCascadeStats:
             assert data["watershed"]["morphometry"]["area_km2"] == 105.0
 
             # aggregate_stats should have been called twice:
-            # 1. First with fine upstream indices (len=600)
-            # 2. Then with coarse upstream indices (len=50)
+            # 1. First with fine upstream indices (len=600) — in select_stream
+            # 2. Then with coarse upstream indices (len=50) — in cascade_escalate
             assert cg.aggregate_stats.call_count == 2
             first_call_indices = cg.aggregate_stats.call_args_list[0][0][0]
             second_call_indices = cg.aggregate_stats.call_args_list[1][0][0]
@@ -302,8 +330,25 @@ class TestSelectStreamCascadeStats:
             "api.endpoints.select_stream.get_main_stream_geojson",
             return_value=None,
         ), patch(
-            "api.endpoints.select_stream.get_land_cover_for_boundary",
+            "api.endpoints.select_stream.build_land_cover_stats",
             return_value=None,
+        ), patch(
+            "api.endpoints.select_stream.build_hsg_stats",
+            return_value=None,
+        ), patch(
+            "api.endpoints.select_stream.build_morph_dict_from_graph",
+            return_value={
+                "area_km2": 25.0,
+                "perimeter_km": 30.0,
+                "length_km": 10.0,
+                "elevation_min_m": 120.0,
+                "elevation_max_m": 250.0,
+                "elevation_mean_m": 185.0,
+                "mean_slope_m_per_m": 0.04,
+                "channel_length_km": 5.0,
+                "channel_slope_m_per_m": 0.005,
+                "_main_channel_nodes": [],
+            },
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -357,8 +402,21 @@ class TestSelectStreamCascadeStats:
             "api.endpoints.select_stream.get_main_stream_geojson",
             return_value=None,
         ), patch(
-            "api.endpoints.select_stream.get_land_cover_for_boundary",
+            "api.endpoints.select_stream.build_land_cover_stats",
             return_value=None,
+        ), patch(
+            "api.endpoints.select_stream.build_hsg_stats",
+            return_value=None,
+        ), patch(
+            "api.endpoints.select_stream.build_morph_dict_from_graph",
+            return_value={
+                "area_km2": 105.0,
+                "perimeter_km": 50.0,
+                "length_km": 20.0,
+                "elevation_min_m": 95.0,
+                "elevation_max_m": 310.0,
+                "_main_channel_nodes": [],
+            },
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -377,11 +435,6 @@ class TestSelectStreamCascadeStats:
             assert cg.aggregate_hypsometric.call_count == 1
             hypso_indices = cg.aggregate_hypsometric.call_args[0][0]
             assert len(hypso_indices) == 50
-
-            # trace_main_channel should also use coarse indices
-            assert cg.trace_main_channel.call_count == 1
-            trace_indices = cg.trace_main_channel.call_args[0][1]
-            assert len(trace_indices) == 50
 
             app.dependency_overrides.clear()
 
@@ -451,7 +504,10 @@ class TestWatershedCascadeStats:
             "api.endpoints.watershed.get_main_stream_geojson",
             return_value=None,
         ), patch(
-            "api.endpoints.watershed.get_land_cover_for_boundary",
+            "api.endpoints.watershed.build_land_cover_stats",
+            return_value=None,
+        ), patch(
+            "api.endpoints.watershed.build_hsg_stats",
             return_value=None,
         ), patch(
             "api.endpoints.watershed.build_morph_dict_from_graph",

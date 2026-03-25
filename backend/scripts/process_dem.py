@@ -22,13 +22,11 @@ Examples
 --------
     # Process single DEM tile
     python -m scripts.process_dem \\
-        --input ../data/nmt/N-33-131-D-a-3-2.asc \\
-        --stream-threshold 1000
+        --input ../data/nmt/N-33-131-D-a-3-2.asc
 
     # Process VRT mosaic (multiple tiles)
     python -m scripts.process_dem \\
-        --input ../data/nmt/mosaic.vrt \\
-        --stream-threshold 1000
+        --input ../data/nmt/mosaic.vrt
 
     # Dry run (only show statistics)
     python -m scripts.process_dem \\
@@ -53,7 +51,6 @@ from core.db_bulk import (
     update_stream_real_flags,
 )
 from core.hydrology import (
-    D8_DIRECTIONS,
     VALID_D8_SET,
     burn_streams_into_dem,
     classify_endorheic_lakes,
@@ -67,7 +64,6 @@ from core.morphometry_raster import (
     _compute_gradients,
     compute_aspect,
     compute_aspect_from_gradients,
-    compute_slope,
     compute_slope_from_gradients,
     compute_strahler_from_fdir,
     compute_strahler_order,
@@ -88,13 +84,11 @@ from core.stream_extraction import (
 
 # Re-export all public names for backward compatibility
 __all__ = [
-    "D8_DIRECTIONS",
     "VALID_D8_SET",
     "burn_streams_into_dem",
     "classify_endorheic_lakes",
     "compute_aspect",
     "compute_downstream_links",
-    "compute_slope",
     "compute_strahler_from_fdir",
     "compute_strahler_order",
     "compute_twi",
@@ -122,6 +116,91 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+
+def _get_transform(metadata: dict, dem_shape: tuple[int, int]):
+    """Retrieve or construct rasterio Affine transform from metadata."""
+    transform = metadata.get("transform")
+    if transform is not None:
+        return transform
+    from rasterio.transform import from_bounds
+
+    xll, yll = metadata["xllcorner"], metadata["yllcorner"]
+    nrows, ncols = dem_shape
+    cs = metadata["cellsize"]
+    return from_bounds(xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows)
+
+
+def _per_label_argmax(
+    labels: np.ndarray,
+    values: np.ndarray,
+    flat_indices: np.ndarray,
+    max_label: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Find max value and its flat index per label using vectorized reduceat.
+
+    Parameters
+    ----------
+    labels : 1-D array of int labels (>0 expected).
+    values : 1-D array of floats to maximize over.
+    flat_indices : 1-D array of original flat raster indices corresponding
+        to *labels* / *values* entries.
+    max_label : maximum label value (result arrays sized max_label+1).
+
+    Returns
+    -------
+    best_value : array[max_label+1] — max value per label (-1 if absent).
+    best_idx : array[max_label+1] — original flat index of the argmax cell.
+    """
+    order = np.argsort(labels, kind="mergesort")
+    sorted_labels = labels[order]
+    sorted_values = values[order]
+    sorted_orig_idx = flat_indices[order]
+
+    unique_labels, group_starts, group_counts = np.unique(
+        sorted_labels, return_index=True, return_counts=True
+    )
+    group_maxes = np.maximum.reduceat(sorted_values, group_starts)
+
+    group_ids = np.repeat(np.arange(len(unique_labels)), group_counts)
+    is_max = sorted_values == group_maxes[group_ids]
+    max_positions = np.where(is_max)[0]
+    _, first_max = np.unique(group_ids[max_positions], return_index=True)
+    argmax_in_sorted = max_positions[first_max]
+
+    best_value = np.full(max_label + 1, -1.0, dtype=np.float64)
+    best_idx = np.full(max_label + 1, -1, dtype=np.intp)
+    best_value[unique_labels] = group_maxes
+    best_idx[unique_labels] = sorted_orig_idx[argmax_in_sorted]
+    return best_value, best_idx
+
+
+def _clip_and_build_path(
+    path_idxs: np.ndarray,
+    seg_idx: int,
+    flat_labels: np.ndarray,
+    flw,
+    simplify_tol: float,
+) -> str | None:
+    """Clip flow path to subcatchment and return simplified WKT."""
+    from shapely.geometry import LineString
+
+    if len(path_idxs) < 2:
+        return None
+    path_labels = flat_labels[path_idxs]
+    in_catchment = path_labels == seg_idx
+    if not in_catchment[0]:
+        return None
+    out_indices = np.where(~in_catchment)[0]
+    if len(out_indices) > 0:
+        path_idxs = path_idxs[: out_indices[0] + 1]
+    if len(path_idxs) < 2:
+        return None
+    xs, ys = flw.xy(path_idxs)
+    line = LineString(zip(xs, ys))
+    if len(path_idxs) > 3:
+        line = line.simplify(simplify_tol, preserve_topology=True)
+    return line.wkt
 
 
 def _enrich_catchments_with_flow_paths(
@@ -156,8 +235,6 @@ def _enrich_catchments_with_flow_paths(
     metadata : dict
         Grid metadata (cellsize, transform, etc.).
     """
-    from shapely.geometry import LineString
-
     t0 = time.time()
     cellsize = metadata["cellsize"]
     simplify_tol = 2 * cellsize
@@ -165,47 +242,18 @@ def _enrich_catchments_with_flow_paths(
     flat_labels = label_raster.ravel()
 
     # Phase 1: find cell with max flow distance per sub-catchment
-    # Vectorized sort + reduceat: O(n log n) but fully numpy (no Python loops)
     max_label = int(label_raster.max())
 
-    # Filter to labeled cells only
     valid_mask = flat_labels > 0
     valid_indices = np.where(valid_mask)[0]
     valid_labels = flat_labels[valid_indices]
     valid_dists = flat_dist[valid_indices]
 
-    # Sort by label (stable sort preserves order within groups)
-    order = np.argsort(valid_labels, kind="mergesort")
-    sorted_labels = valid_labels[order]
-    sorted_dists = valid_dists[order]
-    sorted_orig_idx = valid_indices[order]
-
-    # Find group boundaries and compute per-group max
-    unique_labels, group_starts, group_counts = np.unique(
-        sorted_labels, return_index=True, return_counts=True
+    best_dist, best_idx = _per_label_argmax(
+        valid_labels, valid_dists, valid_indices, max_label
     )
-    group_maxes = np.maximum.reduceat(sorted_dists, group_starts)
 
-    # Find flat index of max-distance cell per label
-    # For each cell: is it the max of its group?
-    group_ids = np.repeat(np.arange(len(unique_labels)), group_counts)
-    is_max = sorted_dists == group_maxes[group_ids]
-    max_positions = np.where(is_max)[0]
-    # Take first match per group (in case of ties)
-    _, first_max = np.unique(group_ids[max_positions], return_index=True)
-    argmax_in_sorted = max_positions[first_max]
-
-    # Build lookup arrays indexed by segment_idx
-    best_dist = np.full(max_label + 1, -1.0, dtype=np.float64)
-    best_idx = np.full(max_label + 1, -1, dtype=np.intp)
-    best_dist[unique_labels] = group_maxes
-    best_idx[unique_labels] = sorted_orig_idx[argmax_in_sorted]
-
-    # Free temporaries
     del valid_mask, valid_indices, valid_labels, valid_dists
-    del order, sorted_labels, sorted_dists, sorted_orig_idx
-    del unique_labels, group_starts, group_counts, group_ids
-    del is_max, max_positions, first_max, argmax_in_sorted
 
     # Phase 1b: find cell with max flow distance on subcatchment BOUNDARY
     # A cell is on the boundary if any 4-connected neighbor has a different label
@@ -231,33 +279,11 @@ def _enrich_catchments_with_flow_paths(
     boundary_labels = flat_labels[boundary_indices]
     boundary_dists = flat_dist[boundary_indices]
 
-    # Same reduceat approach as for overall max
-    order_b = np.argsort(boundary_labels, kind="mergesort")
-    sorted_b_labels = boundary_labels[order_b]
-    sorted_b_dists = boundary_dists[order_b]
-    sorted_b_orig = boundary_indices[order_b]
-
-    unique_b, starts_b, counts_b = np.unique(
-        sorted_b_labels, return_index=True, return_counts=True
+    divide_best_dist, divide_best_idx = _per_label_argmax(
+        boundary_labels, boundary_dists, boundary_indices, max_label
     )
-    maxes_b = np.maximum.reduceat(sorted_b_dists, starts_b)
 
-    group_b_ids = np.repeat(np.arange(len(unique_b)), counts_b)
-    is_max_b = sorted_b_dists == maxes_b[group_b_ids]
-    max_pos_b = np.where(is_max_b)[0]
-    _, first_max_b = np.unique(group_b_ids[max_pos_b], return_index=True)
-    argmax_b = max_pos_b[first_max_b]
-
-    divide_best_dist = np.full(max_label + 1, -1.0, dtype=np.float64)
-    divide_best_idx = np.full(max_label + 1, -1, dtype=np.intp)
-    divide_best_dist[unique_b] = maxes_b
-    divide_best_idx[unique_b] = sorted_b_orig[argmax_b]
-
-    # Free boundary temporaries
     del boundary_indices, boundary_labels, boundary_dists
-    del order_b, sorted_b_labels, sorted_b_dists, sorted_b_orig
-    del unique_b, starts_b, counts_b, group_b_ids
-    del is_max_b, max_pos_b, first_max_b, argmax_b
 
     # Build batch arrays: one starting index per catchment (longest + divide)
     catch_order = []  # index into catchments list
@@ -305,79 +331,22 @@ def _enrich_catchments_with_flow_paths(
     traced = 0
     for i, ci in enumerate(catch_order):
         seg_idx = catchments[ci]["segment_idx"]
-        path_idxs = paths[i]
-
-        if len(path_idxs) < 2:
-            catchments[ci]["longest_flow_path_wkt"] = None
-            continue
-
-        # Clip path: keep only cells within this sub-catchment
-        path_labels = flat_labels[path_idxs]
-        in_catchment = path_labels == seg_idx
-        # Find last cell still in catchment
-        # (path goes downstream, may leave subcatchment)
-        if not in_catchment[0]:
-            catchments[ci]["longest_flow_path_wkt"] = None
-            continue
-
-        # Find the index of the first cell that leaves the catchment
-        out_indices = np.where(~in_catchment)[0]
-        if len(out_indices) > 0:
-            # Include one cell past boundary for continuity to outlet
-            end = out_indices[0] + 1
-            path_idxs = path_idxs[:end]
-        # else: entire path is within catchment
-
-        if len(path_idxs) < 2:
-            catchments[ci]["longest_flow_path_wkt"] = None
-            continue
-
-        # Convert to coordinates
-        xs, ys = flw.xy(path_idxs)
-        line = LineString(zip(xs, ys))
-
-        # Simplify to reduce vertices (2 * cellsize tolerance)
-        if len(path_idxs) > 3:
-            line = line.simplify(simplify_tol, preserve_topology=True)
-
-        catchments[ci]["longest_flow_path_wkt"] = line.wkt
-        traced += 1
+        wkt = _clip_and_build_path(paths[i], seg_idx, flat_labels, flw, simplify_tol)
+        catchments[ci]["longest_flow_path_wkt"] = wkt
+        if wkt is not None:
+            traced += 1
 
     # Phase 3b: clip divide paths and build geometry
     divide_traced = 0
     if divide_paths is not None:
         for i, ci in enumerate(divide_catch_order):
             seg_idx = catchments[ci]["segment_idx"]
-            path_idxs = divide_paths[i]
-
-            if len(path_idxs) < 2:
-                catchments[ci]["divide_flow_path_wkt"] = None
-                continue
-
-            # Clip path: keep only cells within this sub-catchment
-            path_labels = flat_labels[path_idxs]
-            in_catchment = path_labels == seg_idx
-            if not in_catchment[0]:
-                catchments[ci]["divide_flow_path_wkt"] = None
-                continue
-
-            out_indices = np.where(~in_catchment)[0]
-            if len(out_indices) > 0:
-                end = out_indices[0] + 1
-                path_idxs = path_idxs[:end]
-
-            if len(path_idxs) < 2:
-                catchments[ci]["divide_flow_path_wkt"] = None
-                continue
-
-            xs, ys = flw.xy(path_idxs)
-            line = LineString(zip(xs, ys))
-
-            if len(path_idxs) > 3:
-                line = line.simplify(simplify_tol, preserve_topology=True)
-
-            catchments[ci]["divide_flow_path_wkt"] = line.wkt
-            divide_traced += 1
+            wkt = _clip_and_build_path(
+                divide_paths[i], seg_idx, flat_labels, flw, simplify_tol
+            )
+            catchments[ci]["divide_flow_path_wkt"] = wkt
+            if wkt is not None:
+                divide_traced += 1
 
     elapsed = time.time() - t0
     logger.info(
@@ -388,7 +357,6 @@ def _enrich_catchments_with_flow_paths(
 
 def process_dem(
     input_path: Path,
-    stream_threshold: int = 1000,
     dry_run: bool = False,
     save_intermediates: bool = False,
     output_dir: Path | None = None,
@@ -414,8 +382,6 @@ def process_dem(
     ----------
     input_path : Path
         Path to input raster file (.asc, .vrt, or .tif)
-    stream_threshold : int
-        Flow accumulation threshold for stream identification (single-threshold mode)
     dry_run : bool
         If True, only compute statistics without inserting
     save_intermediates : bool
@@ -528,30 +494,12 @@ def process_dem(
 
     # 1b. Raise buildings (optional) — before stream burning and depression filling
     if building_gpkg is not None:
-        transform_for_buildings = metadata.get("transform")
-        if transform_for_buildings is None:
-            from rasterio.transform import from_bounds as _from_bounds_b
-
-            _xll, _yll = metadata["xllcorner"], metadata["yllcorner"]
-            _nr, _nc = dem.shape
-            _cs = metadata["cellsize"]
-            transform_for_buildings = _from_bounds_b(
-                _xll, _yll, _xll + _nc * _cs, _yll + _nr * _cs, _nc, _nr
-            )
+        transform_for_buildings = _get_transform(metadata, dem.shape)
         dem = raise_buildings_in_dem(dem, transform_for_buildings, 2180, building_gpkg)
 
     # 2. Burn streams (optional) — before depression filling
     if burn_streams_path is not None:
-        transform = metadata.get("transform")
-        if transform is None:
-            from rasterio.transform import from_bounds
-
-            xll, yll = metadata["xllcorner"], metadata["yllcorner"]
-            nrows, ncols = dem.shape
-            cs = metadata["cellsize"]
-            transform = from_bounds(
-                xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
-            )
+        transform = _get_transform(metadata, dem.shape)
         dem, burn_diag = burn_streams_into_dem(
             dem, transform, burn_streams_path, burn_depth_m, nodata
         )
@@ -597,16 +545,7 @@ def process_dem(
     if waterbody_mode == "none":
         logger.info("Waterbody mode: none — skipping lake classification")
     elif waterbody_mode == "auto" and burn_streams_path is not None:
-        transform_for_lakes = metadata.get("transform")
-        if transform_for_lakes is None:
-            from rasterio.transform import from_bounds as _from_bounds
-
-            _xll, _yll = metadata["xllcorner"], metadata["yllcorner"]
-            _nr, _nc = dem.shape
-            _cs = metadata["cellsize"]
-            transform_for_lakes = _from_bounds(
-                _xll, _yll, _xll + _nc * _cs, _yll + _nr * _cs, _nc, _nr
-            )
+        transform_for_lakes = _get_transform(metadata, dem.shape)
         drain_points, drain_diag = classify_endorheic_lakes(
             dem, transform_for_lakes, burn_streams_path, nodata,
             min_area_m2=waterbody_min_area_m2,
@@ -616,16 +555,7 @@ def process_dem(
     elif waterbody_mode not in ("auto", "none"):
         # Custom waterbody file path (already validated above)
         wb_path = Path(waterbody_mode)
-        transform_for_lakes = metadata.get("transform")
-        if transform_for_lakes is None:
-            from rasterio.transform import from_bounds as _from_bounds2
-
-            _xll, _yll = metadata["xllcorner"], metadata["yllcorner"]
-            _nr, _nc = dem.shape
-            _cs = metadata["cellsize"]
-            transform_for_lakes = _from_bounds2(
-                _xll, _yll, _xll + _nc * _cs, _yll + _nr * _cs, _nc, _nr
-            )
+        transform_for_lakes = _get_transform(metadata, dem.shape)
         # gpkg_path is required but not used for loading waterbodies
         # when waterbody_path is set; pass burn_streams_path or a dummy
         gpkg_for_classify = burn_streams_path or wb_path
@@ -647,28 +577,8 @@ def process_dem(
     # Build FlwdirRaster once for reuse (subcatchments, potentially strahler)
     import pyflwdir
 
-    transform = metadata.get("transform")
-    if transform is None:
-        from rasterio.transform import from_bounds
-
-        xll, yll = metadata["xllcorner"], metadata["yllcorner"]
-        nrows, ncols = dem.shape
-        cs = metadata["cellsize"]
-        transform = from_bounds(
-            xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
-        )
+    transform = _get_transform(metadata, dem.shape)
     flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
-
-    # Compute flow path distance to outlet for hydraulic length
-    # stream_distance(unit='m') returns distance from each cell to the
-    # pit/outlet along the flow direction grid, in meters.
-    logger.info("Computing flow path distances (hydraulic length)...")
-    t_dist = time.time()
-    flow_dist_m = flw.stream_distance(unit="m").reshape(d8_fdir.shape)
-    logger.info(
-        f"Flow path distances computed in {time.time() - t_dist:.1f}s "
-        f"(max: {float(flow_dist_m.max()):.0f} m)"
-    )
 
     if save_intermediates:
         save_raster_geotiff(
@@ -696,7 +606,7 @@ def process_dem(
     # 4b. Compute stream distance (flow distance from each cell to outlet)
     logger.info("Computing stream distance to outlet...")
     t_sd = time.time()
-    flow_dist_m = flw.stream_distance(unit="m")
+    flow_dist_m = flw.stream_distance(unit="m").reshape(d8_fdir.shape)
     logger.info(
         f"Stream distance computed in {time.time() - t_sd:.1f}s "
         f"(max={np.nanmax(flow_dist_m):.0f}m)"
@@ -906,6 +816,9 @@ def process_dem(
                 t: len(c) for t, c in all_catchment_data.items()
             }
 
+    # Free large raster arrays no longer needed (~1.7 GB at 54.5M cells)
+    del filled_dem, slope, d8_fdir, acc, strahler, flow_dist_m, flw, fdir
+
     # 8. Insert into database
     if not dry_run:
         from core.database import get_db_session
@@ -995,15 +908,6 @@ def main():
         help="Path to input ASCII GRID (.asc) file",
     )
     parser.add_argument(
-        "--stream-threshold",
-        type=int,
-        default=1000,
-        help=(
-            "Flow accumulation threshold in cells (default: 1000). "
-            "Ignored when --thresholds is specified."
-        ),
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Only compute statistics without database insert",
@@ -1060,8 +964,7 @@ def main():
         default=None,
         help=(
             "Comma-separated FA thresholds in m² for multi-density "
-            "stream networks (e.g. 1000,10000,100000). "
-            "Overrides --stream-threshold for vectorization."
+            "stream networks (e.g. 1000,10000,100000)."
         ),
     )
     parser.add_argument(
@@ -1104,7 +1007,6 @@ def main():
     logger.info("DEM Processing Script")
     logger.info("=" * 60)
     logger.info(f"Input: {input_path}")
-    logger.info(f"Stream threshold: {args.stream_threshold}")
     if threshold_list:
         logger.info(f"Multi-threshold FA: {threshold_list} m²")
     logger.info(f"Dry run: {args.dry_run}")
@@ -1121,7 +1023,6 @@ def main():
     try:
         stats = process_dem(
             input_path,
-            stream_threshold=args.stream_threshold,
             dry_run=args.dry_run,
             save_intermediates=args.save_intermediates,
             output_dir=output_dir,

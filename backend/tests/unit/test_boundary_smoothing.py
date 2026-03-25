@@ -14,6 +14,7 @@ Also verifies topology-preserving changes:
 import inspect
 
 from core.watershed_service import (
+    _SMOOTH_SQL,
     _merge_batched,
     _merge_direct,
     _merge_simplified_fallback,
@@ -21,32 +22,38 @@ from core.watershed_service import (
 
 
 class TestMergeCatchmentBoundariesSmoothing:
-    """Tests for Chaikin smoothing in merge helpers."""
+    """Tests for Chaikin smoothing in merge helpers.
 
-    def test_merge_direct_uses_chaikin(self):
-        """_merge_direct SQL should use ST_ChaikinSmoothing."""
+    The smoothing pipeline is defined in _SMOOTH_SQL and used by both
+    _merge_direct and _merge_batched via f-string interpolation.
+    """
+
+    def test_smooth_sql_uses_chaikin(self):
+        """Shared smoothing pipeline should use ST_ChaikinSmoothing."""
+        assert "ST_ChaikinSmoothing" in _SMOOTH_SQL
+
+    def test_smooth_sql_uses_simplify(self):
+        """Shared smoothing pipeline should use ST_SimplifyPreserveTopology."""
+        assert "ST_SimplifyPreserveTopology" in _SMOOTH_SQL
+
+    def test_smooth_sql_uses_buffer(self):
+        """Shared smoothing pipeline should use buffer-debuffer pattern."""
+        assert "ST_Buffer" in _SMOOTH_SQL
+
+    def test_merge_direct_uses_smooth_sql(self):
+        """_merge_direct should reference the shared smoothing pipeline."""
         source = inspect.getsource(_merge_direct)
-        assert "ST_ChaikinSmoothing" in source
+        assert "_SMOOTH_SQL" in source
 
-    def test_merge_batched_uses_chaikin(self):
-        """_merge_batched SQL should use ST_ChaikinSmoothing."""
+    def test_merge_batched_uses_smooth_sql(self):
+        """_merge_batched should reference the shared smoothing pipeline."""
         source = inspect.getsource(_merge_batched)
-        assert "ST_ChaikinSmoothing" in source
-
-    def test_merge_direct_uses_simplify(self):
-        """_merge_direct SQL should use ST_SimplifyPreserveTopology."""
-        source = inspect.getsource(_merge_direct)
-        assert "ST_SimplifyPreserveTopology" in source
+        assert "_SMOOTH_SQL" in source
 
     def test_merge_direct_no_snap_to_grid(self):
         """_merge_direct does not pre-simplify, so no ST_SnapToGrid."""
         source = inspect.getsource(_merge_direct)
         assert "ST_SnapToGrid" not in source
-
-    def test_merge_direct_retains_buffer_debuffer(self):
-        """_merge_direct SQL should still use buffer-debuffer pattern."""
-        source = inspect.getsource(_merge_direct)
-        assert "ST_Buffer" in source
 
 
 class TestMergeTopologyPreservation:
@@ -70,22 +77,20 @@ class TestMergeTopologyPreservation:
         )
         assert not pre_union_simplify
 
-    def test_merge_direct_uses_buffer_zero(self):
-        """_merge_direct should use ST_Buffer(0) instead of ST_MakeValid
+    def test_smooth_sql_uses_buffer_zero(self):
+        """Smoothing pipeline should use ST_Buffer(0) instead of ST_MakeValid
         to preserve polygon connectivity after Chaikin smoothing."""
-        source = inspect.getsource(_merge_direct)
-        assert "ST_MakeValid" not in source
-        assert "0))" in source  # ST_Buffer(..., 0))
+        assert "ST_MakeValid" not in _SMOOTH_SQL
+        assert "0))" in _SMOOTH_SQL  # ST_Buffer(..., 0))
 
-    def test_merge_batched_uses_buffer_zero(self):
-        """_merge_batched should use ST_Buffer(0) instead of ST_MakeValid
-        in the final smoothing pipeline."""
+    def test_smooth_sql_uses_multi(self):
+        """Smoothing pipeline should wrap result as MultiPolygon."""
+        assert "ST_Multi(ST_Buffer(" in _SMOOTH_SQL
+
+    def test_merge_batched_pre_union_uses_make_valid(self):
+        """_merge_batched pre-union step should use ST_MakeValid(ST_SnapToGrid(...))."""
         source = inspect.getsource(_merge_batched)
-        # ST_MakeValid is OK in the pre-union SnapToGrid step,
-        # but not as the final topology fixer
         assert "ST_MakeValid(ST_SnapToGrid" in source
-        # Final wrapping should be ST_Buffer(..., 0), not ST_MakeValid
-        assert "ST_Multi(ST_Buffer(" in source
 
     def test_merge_fallback_uses_snap_to_grid(self):
         """_merge_simplified_fallback should use ST_SnapToGrid (not
