@@ -371,7 +371,7 @@ def delineate_watershed(
         if request.threshold_m2 is not None:
             mode = "precomputed"
             # Precomputed mode always includes hypsometric curve
-            # (needed for GUI — matches legacy select_stream behavior)
+            # (needed for GUI — precomputed mode always includes hypsometric curve)
             result = _delineate_precomputed(
                 request, point_2180, cg, db, True,
             )
