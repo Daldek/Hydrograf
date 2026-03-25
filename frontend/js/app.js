@@ -43,7 +43,7 @@
         var tr = document.createElement('tr');
         var tdLabel = document.createElement('td');
         var tdValue = document.createElement('td');
-        tdLabel.textContent = label;
+        tdLabel.innerHTML = label;
         tdValue.textContent = value;
         tr.appendChild(tdLabel);
         tr.appendChild(tdValue);
@@ -88,14 +88,17 @@
         ]);
 
         fillTable(els.paramsShape, [
-            ['Wsp. zwartości Kc', formatRatio(m.compactness_coefficient, 3)],
-            ['Wsp. kołowości Rc', formatRatio(m.circularity_ratio, 3)],
-            ['Wsp. wydłużenia Re', formatRatio(m.elongation_ratio, 3)],
-            ['Wsp. kształtu Ff', formatRatio(m.form_factor, 3)],
+            ['Wsk. zwartości C<sub>z</sub>', formatRatio(m.compactness_coefficient, 3)],
+            ['Wsk. kolistości C<sub>k</sub>', formatRatio(m.circularity_ratio, 3)],
+            ['Wsk. wydłużenia C<sub>w</sub>', formatRatio(m.elongation_ratio, 3)],
+            ['Wsk. formy C<sub>f</sub>', formatRatio(m.form_factor, 3)],
+            ['Wsk. lemniskaty C<sub>l</sub>', formatRatio(m.lemniscate_ratio, 3)],
         ]);
 
         fillTable(els.paramsRelief, [
-            ['Wsp. rzeźbowy Rh', formatRatio(m.relief_ratio, 4)],
+            ['Wsk. rzeźby R', formatValue(m.relief_ratio, '‰', 2)],
+            ['Spadek działu wodnego R<sub>p</sub>', formatValue(m.divide_slope, '‰', 2)],
+            ['Wsp. asymetrii α', formatRatio(m.asymmetry_coefficient, 3)],
             ['Całka hipsometryczna HI', formatRatio(m.hypsometric_integral, 3)],
         ]);
 
