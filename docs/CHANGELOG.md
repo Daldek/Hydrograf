@@ -13,12 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Usuniecie parametru `to_confluence`** — uproszczenie API, `traverse_to_confluence()` usuniety z CatchmentGraph
 
 ### Backend
-- **RasterCache** — nowy modul `core/raster_cache.py` do lazy-loading rastrow fdir/DEM/slope z thread-safe cache. Uzywany przez tryb `precise` do on-the-fly delimitacji zlewni
+- **RasterCache** — nowy modul `core/raster_service.py` do lazy-loading rastrow fdir/DEM/slope z thread-safe cache. Uzywany przez tryb `precise` do on-the-fly delimitacji zlewni
 - **Ujednolicone schematy Pydantic** — `DelineateRequest` i `DelineateResponse` obsluguja oba tryby (precomputed/precise)
 
 ### Frontend
 - **Jeden przycisk "Wybierz zlewnię"** — usuniecie osobnego "Wygeneruj zlewnię", tryb wybierany automatycznie na podstawie obecnosci warstwy ciekow (threshold_m2)
 - **Aktualizacja wywolan API** — frontend uzywa wylacznie `POST /api/delineate-watershed`
+- **Poprawione etykiety parametrow** — opisowe nazwy (np. "Powierzchnia zlewni", "Najdl. droga splywu"), polskie oznaczenia wskaznikow ksztaltu (C<sub>z</sub>, C<sub>k</sub>, C<sub>w</sub>, C<sub>f</sub>, C<sub>l</sub>) z indeksem dolnym
+- **Usuniecie duplikatu** — "Droga splywu" wyswietlana byla dwukrotnie (hydraulic_length_km = longest_flow_path_km)
+
+### Parametry morfometryczne
+- **Poprawka dlugosci zlewni** — `length_km` teraz z `hydraulic_length_km` (najdluzsza droga splywu wzdluz cieku) zamiast odleglosci euklidesowej od ujscia. Zmienia wartosci wskaznikow ksztaltu (Cz, Ck, Cw, Cf, Cl, srednia szerokosc)
+- **Wskaznik lemniskaty C<sub>l</sub>** — nowy parametr: C<sub>l</sub> = π·L²/(4·A)
+- **Poprawka wskaznika rzezby R** — nowy wzor: R = ΔH/√A [‰] (bylo ΔH/(L·1000))
+- **Spadek dzialu wodnego R<sub>p</sub>** — nowy parametr: R<sub>p</sub> = ΔH/P [‰]
+- **Wspolczynnik asymetrii α** — nowy placeholder: α = 2·(A<sub>L</sub>−A<sub>P</sub>)/A (wymaga podzialu zlewni wzdluz cieku glownego)
 
 ### Dodane
 - **Geometria drogi spływu z działu wód (ADR-048, divide_flow_path_geom)** — osobna kolumna w `stream_catchments` (migracja 024). Ścieżka z komórki o max flow_dist na GRANICY zlewni cząstkowej do ujścia. Frontend: longest flow path = czerwona kreska, divide flow path = czerwona kropka

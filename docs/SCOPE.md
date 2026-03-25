@@ -42,7 +42,7 @@ Ten dokument precyzyjnie definiuje:
 - Eksport granicy jako GeoJSON
 - Eksport granicy jako Shapefile
 - Czas wykonania: < 10 sekund
-- Selekcja segmentu cieku z upstream traversal (POST `/api/select-stream`)
+- Selekcja segmentu cieku z upstream traversal (POST `/api/delineate-watershed` z parametrem `threshold_m2`, ADR-050)
 
 **Wymagania techniczne:**
 - Dane wejściowe: NMT z GUGIK (rozdzielczość 5m, pobieranie przez Kartograf)

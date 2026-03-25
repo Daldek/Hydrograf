@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 19 endpointow (10 core + 9 admin). Unified delineate-watershed (ADR-050). |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 18 endpointow (10 core + 8 admin). Unified delineate-watershed (ADR-050). |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull, tryb precomputed + precise (ADR-050) |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 42 scenariusze |
@@ -13,7 +13,7 @@
 | Integracja Kartograf | ✅ Gotowy | v0.6.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — select-stream, MVT, DEM tiles, admin panel, boundary file upload |
+| Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — delineate-watershed, MVT, DEM tiles, admin panel, boundary file upload |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
 | Testy | ✅ Gotowy | 899 testow jednostkowych, 0 failures |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
@@ -52,18 +52,18 @@
 - **Unified delineate-watershed endpoint (ADR-050)** — polaczenie `POST /api/select-stream` i `POST /api/delineate-watershed` w jeden endpoint z dwoma trybami:
   - **Precomputed** (z `threshold_m2`): snap-to-stream + BFS po grafie zlewni czastkowych (dotychczasowy select-stream)
   - **Precise** (bez `threshold_m2`): delimitacja rastrowa pyflwdir on-the-fly z RasterCache
-- **RasterCache** — nowy modul `core/raster_cache.py` z lazy-loading rastrow fdir/DEM/slope, thread-safe cache
+- **RasterCache** — nowy modul `core/raster_service.py` z lazy-loading rastrow fdir/DEM/slope, thread-safe cache
+- **Fix konwersji fdir** — poprawka enkodowania pit/nodata (DEM nodata mask) + wymuszenie pit dla pyflwdir.basins()
 - **Frontend: jeden tryb "Wybierz zlewnię"** — usuniecie osobnego "Wygeneruj zlewnię", tryb precomputed/precise wybierany automatycznie
 - **Usuniecie `to_confluence`** — parametr i metoda `traverse_to_confluence()` z CatchmentGraph
 - **Pole `mode` zamiast `auto_selected`** — response zwraca `"mode": "precomputed"|"precise"`
 - **Ujednolicone schematy Pydantic** — `DelineateRequest`/`DelineateResponse` obsluguja oba tryby
-- **Aktualizacja testow** — testy dostosowane do nowego unified endpoint
-
-### W trakcie
-- Aktualizacja dokumentacji (CHANGELOG, PROGRESS, ARCHITECTURE, DECISIONS)
+- **Poprawione etykiety parametrow** — opisowe nazwy, polskie oznaczenia wskaznikow (Cz, Ck, Cw, Cf, Cl)
+- **Poprawka dlugosci zlewni** — `length_km` z hydraulic_length_km (droga splywu) zamiast odleglosci euklidesowej
+- **Nowe parametry:** wskaznik lemniskaty Cl = π·L²/(4·A), spadek dzialu wodnego Rp = ΔH/P [‰], wspolczynnik asymetrii α (placeholder)
+- **Poprawka wskaznika rzezby** — R = ΔH/√A [‰]
 
 ### Nastepne kroki
-- Merge `feat/unified-delineate` do `develop`
 - Re-run pipeline na nowym obszarze (Gdansk)
 - CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 - Clipping do dokladnej granicy poligonu
