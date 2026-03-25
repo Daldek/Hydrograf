@@ -525,7 +525,7 @@ def step_process_dem(
         try:
             frontend_data = FRONTEND_DIR / "data"
             frontend_data.mkdir(parents=True, exist_ok=True)
-            bdot_result = export_bdot_geojson(burn_path, frontend_data)
+            bdot_result = export_bdot_geojson(burn_path, frontend_data, clip_bbox_2180=mosaic_bbox_2180)
             logger.info(f"BDOT10k GeoJSON exported: {bdot_result}")
         except Exception as e:
             logger.warning(f"BDOT10k GeoJSON export failed: {e}")
@@ -946,19 +946,31 @@ def step_overlays(output_dir: Path) -> str:
     return ", ".join(generated) if generated else "brak danych"
 
 
-def export_bdot_geojson(hydro_gpkg: Path, output_dir: Path) -> str:
-    """Export BDOT10k hydro layers from GPKG to GeoJSON for frontend map."""
+def export_bdot_geojson(
+    hydro_gpkg: Path,
+    output_dir: Path,
+    clip_bbox_2180: tuple[float, float, float, float] | None = None,
+) -> str:
+    """Export BDOT10k hydro layers from GPKG to GeoJSON for frontend map.
+
+    If clip_bbox_2180 is provided, clips features to the bbox (EPSG:2180)
+    before export — keeps only features intersecting the analysis area.
+    """
     import fiona
     import geopandas as gpd
     import pandas as pd
+    from shapely.geometry import box
 
     layers = fiona.listlayers(str(hydro_gpkg))
+    clip_geom = box(*clip_bbox_2180) if clip_bbox_2180 else None
 
     # Lakes (polygons) — OT_PTWP_A
     lakes_count = 0
     if "OT_PTWP_A" in layers:
         gdf = gpd.read_file(hydro_gpkg, layer="OT_PTWP_A")
         if not gdf.empty:
+            if clip_geom is not None:
+                gdf = gdf[gdf.intersects(clip_geom)]
             gdf["source_layer"] = "OT_PTWP_A"
             gdf = gdf.to_crs("EPSG:4326")
             gdf.to_file(output_dir / "bdot_lakes.geojson", driver="GeoJSON")
@@ -971,6 +983,8 @@ def export_bdot_geojson(hydro_gpkg: Path, output_dir: Path) -> str:
         if layer_name in layers:
             gdf = gpd.read_file(hydro_gpkg, layer=layer_name)
             if not gdf.empty:
+                if clip_geom is not None:
+                    gdf = gdf[gdf.intersects(clip_geom)]
                 gdf["source_layer"] = layer_name
                 stream_gdfs.append(gdf)
 
