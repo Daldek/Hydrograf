@@ -641,6 +641,17 @@ VACUUM ANALYZE bdot_streams;
 
 **Endpoint:** `POST /api/delineate-watershed`
 
+Tryb precomputed (z `threshold_m2` — snap-to-stream + BFS po grafie):
+```json
+{
+  "latitude": 52.123456,
+  "longitude": 21.123456,
+  "threshold_m2": 10000,
+  "display_threshold_m2": 10000
+}
+```
+
+Tryb precise (bez `threshold_m2` — delimitacja rastrowa pyflwdir on-the-fly):
 ```json
 {
   "latitude": 52.123456,
@@ -655,6 +666,8 @@ from pydantic import BaseModel, Field
 class DelineateRequest(BaseModel):
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
+    threshold_m2: int | None = Field(None, description="Flow accumulation threshold [m2]. When provided, uses precomputed mode (BFS)")
+    display_threshold_m2: int | None = Field(None, description="Threshold for MVT stream highlighting")
 ```
 
 ---
@@ -663,6 +676,7 @@ class DelineateRequest(BaseModel):
 
 ```json
 {
+  "mode": "precomputed",
   "watershed": {
     "boundary_geojson": {
       "type": "Feature",
@@ -687,14 +701,22 @@ class DelineateRequest(BaseModel):
       "longitude": 21.123456,
       "elevation_m": 145.5
     }
-  }
+  },
+  "stream": {
+    "segment_idx": 42,
+    "strahler_order": 3,
+    "length_m": 523.4,
+    "upstream_area_km2": 12.8
+  },
+  "upstream_segment_indices": [42, 43, 44],
+  "display_threshold_m2": 10000
 }
 ```
 
 **Pydantic Schema:**
 ```python
-from pydantic import BaseModel
-from typing import Dict, List
+from pydantic import BaseModel, Field
+from typing import Dict, List, Optional
 
 class OutletInfo(BaseModel):
     latitude: float
@@ -705,8 +727,19 @@ class WatershedResponse(BaseModel):
     boundary_geojson: Dict  # GeoJSON Feature
     outlet: OutletInfo
 
+class StreamInfo(BaseModel):
+    segment_idx: int
+    strahler_order: int | None = None
+    length_m: float | None = None
+    upstream_area_km2: float | None = None
+
 class DelineateResponse(BaseModel):
+    mode: str  # "precomputed" | "precise"
     watershed: WatershedResponse
+    stream: StreamInfo | None = None  # precomputed mode only
+    upstream_segment_indices: list[int] | None = None
+    display_threshold_m2: int | None = None
+    info_message: str | None = None
 ```
 
 ---
@@ -753,12 +786,17 @@ class HydrographRequest(BaseModel):
   },
   "parameters": {
     "perimeter_km": 38.5,
+    "length_km": 14.2,
     "main_stream_length_km": 8.2,
     "mean_elevation_m": 125.5,
     "elevation_diff_m": 42.0,
     "mean_slope_percent": 2.3,
     "shape_coefficient": 0.67,
-    "compactness_coefficient": 1.28
+    "compactness_coefficient": 1.28,
+    "lemniscate_ratio": 3.51,
+    "divide_slope": 1.10,
+    "asymmetry_coefficient": null,
+    "relief_ratio": 6.24
   },
   "land_cover": {
     "cn": 72.4,
@@ -818,12 +856,17 @@ class PhysicalParameters:
     """Parametry fizjograficzne zlewni."""
     area_km2: float
     perimeter_km: float
+    length_km: float                    # z hydraulic_length_km (droga spływu), nie odległość euklidesowa
     main_stream_length_km: float
     mean_elevation_m: float
     elevation_diff_m: float
     mean_slope_percent: float
     shape_coefficient: float
     compactness_coefficient: float
+    lemniscate_ratio: float | None      # Cl = π·L²/(4·A) — wskaźnik lemniskaty Chorleya
+    divide_slope: float | None          # Rp = ΔH/P [‰] — spadek działu wodnego
+    asymmetry_coefficient: float | None # α = 2·(AL-AP)/A — współczynnik asymetrii (placeholder)
+    relief_ratio: float | None          # R = ΔH/√A [‰] — wskaźnik rzeźby
 
 @dataclass
 class LandCoverAnalysis:
