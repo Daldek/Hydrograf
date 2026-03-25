@@ -1102,7 +1102,7 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 Dodatkowe zmiany:
 - Pole `auto_selected` zastapione polem `mode` (`"precomputed"` | `"precise"`)
 - Parametr `to_confluence` usuniety, metoda `traverse_to_confluence()` usunieta z `CatchmentGraph`
-- Nowy modul `core/raster_cache.py` z `RasterCache` — singleton cache dla rastrow pipeline
+- Nowy modul `core/raster_service.py` z `RasterCache` — singleton cache dla rastrow pipeline
 - Ujednolicone schematy Pydantic: `DelineateRequest` i `DelineateResponse`
 
 **Konsekwencje:**

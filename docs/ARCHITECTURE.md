@@ -156,6 +156,7 @@ backend/
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF), discover_asc_files()
+│   ├── raster_service.py          # RasterCache — lazy-loaded raster data (DEM, flow direction, accumulation)
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── watershed.py               # Watershed boundary building + legacy CLI functions
@@ -431,7 +432,7 @@ def build_morphometric_params(
 Singleton in-memory graf zlewni cząstkowych oparty na numpy arrays i scipy sparse CSR matrix (~87-285k węzłów w zależności od obszaru, ~0.5 MB RAM). Ładowany lazy z bazy danych przy pierwszym użyciu, invalidowany po cleanup/pipeline przez `invalidate()`.
 
 **Kluczowe koncepty:**
-- **BFS traversal** — `traverse_upstream` i `traverse_to_confluence` do wyznaczania zlewni
+- **BFS traversal** — `traverse_upstream` do wyznaczania zlewni
 - **trace_main_channel** — wyznaczanie głównego cieku z branch selection wg `upstream_area_km2` (ADR-046), zwraca FeatureCollection z geometriami segmentów
 - **aggregate_stats** — agregacja pre-computed zonal stats (area, elevation, slope, stream metrics) + hydraulic length relative to outlet
 - **is_real_stream** — oznaczenie segmentów dopasowanych do referencyjnych cieków BDOT10k (ADR-044)
@@ -441,7 +442,7 @@ Szczegóły: `core/catchment_graph.py`
 
 #### 2.4.4 `core/watershed_service.py`
 
-Współdzielona logika delineacji używana przez 3 endpointy (watershed, hydrograph, select_stream). Eliminuje kosztowne operacje rastrowe w runtime — cała praca oparta na CatchmentGraph i pre-computed stats.
+Współdzielona logika delineacji używana przez 2 endpointy (watershed, hydrograph). Eliminuje kosztowne operacje rastrowe w runtime — cała praca oparta na CatchmentGraph i pre-computed stats.
 
 **Kluczowe odpowiedzialności:**
 - **Merge catchment boundaries** — 3 strategie: direct (małe zlewnie), batched ST_UnaryUnion, fallback na grubszy próg. Cascade threshold escalation dla dużych zlewni (>500 segmentów: 1000 → 10000 → 100000)

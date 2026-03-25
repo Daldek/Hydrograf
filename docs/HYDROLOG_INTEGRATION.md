@@ -265,9 +265,8 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | `backend/core/cn_tables.py` | Tablice CN dla BDOT10k + BUBD | ✅ |
 | `backend/core/land_cover.py` | CN z tabeli land_cover (spatial intersection) | ✅ |
 | `backend/models/schemas.py` | 7 klas Pydantic (MorphometricParameters, etc.) | ✅ |
-| `backend/api/endpoints/watershed.py` | + morphometry w response | ✅ |
+| `backend/api/endpoints/watershed.py` | Unified endpoint — tryb precomputed (snap-to-stream + BFS) i precise (pyflwdir on-the-fly), morphometry w response (ADR-050) | ✅ |
 | `backend/api/endpoints/hydrograph.py` | Endpoint hydrogramu (CatchmentGraph BFS) | ✅ |
-| `backend/api/endpoints/select_stream.py` | Wybór cieku (snap-to-stream + BFS) | ✅ |
 | `backend/api/main.py` | + router hydrograph | ✅ |
 | `backend/scripts/analyze_watershed.py` | Skrypt CLI pełnej analizy z Hydrologiem | ✅ |
 | `backend/tests/unit/test_morphometry.py` | 24+ testy jednostkowe | ✅ |
