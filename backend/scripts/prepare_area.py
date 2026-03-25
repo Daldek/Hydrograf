@@ -43,12 +43,6 @@ Examples
         --buffer 5 \\
         --with-landcover
 
-    # With custom stream threshold
-    python -m scripts.prepare_area \\
-        --lat 52.23 --lon 21.01 \\
-        --buffer 10 \\
-        --stream-threshold 50
-
     # Keep downloaded files and save intermediates
     python -m scripts.prepare_area \\
         --lat 52.23 --lon 21.01 \\
@@ -78,7 +72,6 @@ def prepare_area(
     lon: float,
     buffer_km: float = 5.0,
     scale: str = "1:10000",
-    stream_threshold: int = 1000,
     batch_size: int = 10000,
     keep_downloads: bool = True,
     save_intermediates: bool = False,
@@ -103,8 +96,6 @@ def prepare_area(
         Buffer radius in kilometers
     scale : str
         Map scale for sheet selection
-    stream_threshold : int
-        Flow accumulation threshold for stream identification
     batch_size : int
         Database insert batch size
     keep_downloads : bool
@@ -299,7 +290,6 @@ def prepare_area(
     try:
         dem_stats = process_dem(
             input_path=mosaic_path,
-            stream_threshold=stream_threshold,
             batch_size=batch_size,
             dry_run=False,
             save_intermediates=save_intermediates,
@@ -439,12 +429,6 @@ def main():
     # Processing options
     process_group = parser.add_argument_group("Processing options")
     process_group.add_argument(
-        "--stream-threshold",
-        type=int,
-        default=1000,
-        help="Flow accumulation threshold for streams (default: 1000)",
-    )
-    process_group.add_argument(
         "--batch-size",
         type=int,
         default=10000,
@@ -552,7 +536,6 @@ def main():
     logger.info(f"Point: ({args.lat}, {args.lon})")
     logger.info(f"Buffer: {args.buffer} km")
     logger.info(f"Scale: {args.scale}")
-    logger.info(f"Stream threshold: {args.stream_threshold}")
     logger.info(f"Keep downloads: {args.keep_downloads}")
     logger.info(f"Save intermediates: {args.save_intermediates}")
     logger.info(f"With hydro (stream burning): {args.with_hydro}")
@@ -592,7 +575,6 @@ def main():
             lon=args.lon,
             buffer_km=args.buffer,
             scale=args.scale,
-            stream_threshold=args.stream_threshold,
             batch_size=args.batch_size,
             keep_downloads=args.keep_downloads,
             save_intermediates=args.save_intermediates,

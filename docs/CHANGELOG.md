@@ -5,7 +5,7 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2026-03-24
+## [Unreleased] — 2026-03-25
 
 ### Dodane
 - **Geometria drogi spływu z działu wód (divide_flow_path_geom)** — osobna kolumna w `stream_catchments` (migracja 024). Ścieżka z komórki o max flow_dist na GRANICY zlewni cząstkowej do ujścia. Frontend: longest flow path = czerwona kreska, divide flow path = czerwona kropka
@@ -44,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hietogram jako wykres słupkowy z 2 seriami (total + effective)
 - CN pobierany z danych pokrycia terenu (wcześniej zawsze DEFAULT_CN=75)
 - **Drainage stats z BDOT** — gestosc sieci, czestotliwosc ciekow, chropowatosc i max Strahler bazuja wylacznie na segmentach `is_real_stream=true` (zamiast calej sieci algorytmicznej)
+- **DEM auto-discovery (ADR-049)** — `resolve_dem_path()` z lancuchem fallback (DEM_PATH env → VRT → raw TIF → filled TIF) zamiast hardcoded sciezki. Analogiczny `resolve_stream_distance_path()`
+- **Refaktoryzacja code review (Wave 1-5)** — usuniecie martwego kodu (~200 LOC), ekstrakcja helperow (`_get_transform`, `_per_label_argmax`, `_clip_and_build_path`), deduplikacja watershed_service (wspolne `_build_flow_path_geojson`, `_SMOOTH_SQL`, `calculate_shape_indices`), unifikacja endpointow (`cascade_escalate`, `build_morph_dict_from_graph`, `build_land_cover_stats`, `build_hsg_stats`), nazwane stale w CatchmentGraph, zwalnianie pamieci numpy w `invalidate()`
 
 ### Naprawione
 - **Per-polygon simplify usunięty ze stream_extraction** — `shapely.simplify(2*cellsize)` stosowane niezależnie per subcatchment powodowało luki między sąsiednimi zlewniami (wspólne krawędzie upraszczane różnie). Surowe geometrie zapisywane do DB; wygładzanie w runtime merge pipeline
@@ -62,6 +64,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **DownloadManager resolution** — parametr `resolution` przekazywany przez `run_pipeline()` zamiast globalnych args, poprawna sciezka NMT
 - **Main channel trace: upstream_area_km2 z stream_network** — użycie kumulatywnej powierzchni zlewni (`upstream_area_km2`) zamiast lokalnej `area_km2` zlewni cząstkowej. Lokalna area_km2 była błędna — mały subcatchment doplywu mógł mieć większą powierzchnię lokalną niż subcatchment cieku głównego
 - **Kaskadowa eskalacja progu w select_stream** — `trace_main_channel` i `get_main_channel_feature_collection` używają teraz eskalowanego progu i `outlet_idx_for_stats` (zamiast oryginalnego `clicked_idx` i `threshold`)
+- **WFS BBOX axis order (EPSG:2180)** — WFS wymagal Y,X (northing,easting), nie X,Y. Bug maskowany dla obszarow gdzie X~Y
+- **TERYT discovery: mosaic bbox zamiast user bbox** — arkusze NMT rozciagaja sie poza bbox uzytkownika; TERYT lookup musial uzywac pelnego zasiegu mozaiki
+- **BDOT GeoJSON export przycinany do mosaic bbox** — eksport BDOT ograniczony do faktycznego zasiegu danych
+- **HSG i land cover: mosaic bbox** — kroki preprocessingu uzywaja spatialnie poprawnego zasiegu
+- **Duplikat obliczenia `flow_dist_m` w process_dem** — ta sama macierz obliczana dwukrotnie; usunieto powtorzenie
+- **`main_ch` UnboundLocalError w watershed_service** — zmienna niezainicjalizowana w galezi else; dodano inicjalizacje
+- **`length_to_centroid_km` liniaprosta zamiast wzdluz cieku** — select_stream uzywal odleglosci euklidesowej; teraz pobiera wartosc z grafu (along-channel)
+- **`hypsometric_integral` metoda trapezow zamiast ratio** — select_stream uzywal integracji trapezowej; teraz pobiera wartosc z grafu (H_mean - H_min) / (H_max - H_min)
 
 ### Optymalizacja
 - **BDOT stream matching: per-feature buffers** — zamiana `ST_Collect` + globalny bufor na per-feature `ST_Buffer` + `ST_Intersects` (24s vs >90 min dla 253k segmentow)

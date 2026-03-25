@@ -15,8 +15,8 @@ import pytest
 from shapely import wkb
 from shapely.geometry import MultiPolygon, Polygon
 
+from core.morphometry import calculate_shape_indices
 from core.watershed_service import (
-    _compute_shape_indices,
     boundary_to_polygon,
     build_morph_dict_from_graph,
     compute_watershed_length,
@@ -151,11 +151,13 @@ class TestMergeCatchmentBoundaries:
         don't need pre-union vertex reduction)."""
         import inspect
 
-        from core.watershed_service import _merge_direct
+        from core.watershed_service import _SMOOTH_SQL, _merge_direct
 
         source = inspect.getsource(_merge_direct)
         assert "ST_SnapToGrid" not in source
-        assert "ST_Buffer" in source  # buffer-debuffer pattern
+        # buffer-debuffer pattern is in shared _SMOOTH_SQL constant
+        assert "_SMOOTH_SQL" in source
+        assert "ST_Buffer" in _SMOOTH_SQL
 
     def test_merge_batched_uses_snap_to_grid(self):
         """_merge_batched should use ST_SnapToGrid for pre-union vertex
@@ -505,12 +507,12 @@ class TestBuildMorphDictFromGraph:
 
 
 # ---------------------------------------------------------------------------
-# _compute_shape_indices
+# calculate_shape_indices
 # ---------------------------------------------------------------------------
 
 
 class TestComputeShapeIndices:
-    """Tests for _compute_shape_indices."""
+    """Tests for calculate_shape_indices."""
 
     def test_valid_inputs(self):
         """Shape indices are computed correctly for valid inputs."""
@@ -518,7 +520,7 @@ class TestComputeShapeIndices:
         perimeter = 30.0
         length = 12.0
 
-        result = _compute_shape_indices(area, perimeter, length)
+        result = calculate_shape_indices(area, perimeter, length)
 
         # Compactness coefficient: P / (2 * sqrt(pi * A))
         expected_kc = perimeter / (2 * math.sqrt(math.pi * area))
@@ -548,7 +550,7 @@ class TestComputeShapeIndices:
 
     def test_zero_area_returns_nones(self):
         """When area is zero, all indices should be None."""
-        result = _compute_shape_indices(0.0, 10.0, 5.0)
+        result = calculate_shape_indices(0.0, 10.0, 5.0)
 
         assert result["compactness_coefficient"] is None
         assert result["circularity_ratio"] is None
@@ -558,7 +560,7 @@ class TestComputeShapeIndices:
 
     def test_zero_perimeter_returns_nones(self):
         """When perimeter is zero, all indices should be None."""
-        result = _compute_shape_indices(10.0, 0.0, 5.0)
+        result = calculate_shape_indices(10.0, 0.0, 5.0)
 
         assert result["compactness_coefficient"] is None
         assert result["circularity_ratio"] is None
@@ -568,7 +570,7 @@ class TestComputeShapeIndices:
 
     def test_zero_length_returns_nones(self):
         """When length is zero, all indices should be None."""
-        result = _compute_shape_indices(10.0, 20.0, 0.0)
+        result = calculate_shape_indices(10.0, 20.0, 0.0)
 
         assert result["compactness_coefficient"] is None
         assert result["circularity_ratio"] is None

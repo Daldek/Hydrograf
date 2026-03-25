@@ -14,11 +14,12 @@ from sqlalchemy.orm import Session
 from core.catchment_graph import get_catchment_graph
 from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
-from core.land_cover import get_land_cover_for_boundary
-from core.morphometry import calculate_shape_indices
 from core.watershed_service import (
     boundary_to_polygon,
-    compute_watershed_length,
+    build_hsg_stats,
+    build_land_cover_stats,
+    build_morph_dict_from_graph,
+    cascade_escalate,
     ensure_outlet_within_boundary,
     get_divide_flow_path_geojson,
     get_longest_flow_path_geojson,
@@ -30,8 +31,6 @@ from core.watershed_service import (
 )
 from models.schemas import (
     HypsometricPoint,
-    LandCoverCategory,
-    LandCoverStats,
     MorphometricParameters,
     OutletInfo,
     SelectStreamRequest,
@@ -121,45 +120,27 @@ def select_stream(
         area_km2 = stats["area_km2"]
 
         # 6. Build boundary from ST_Union of catchment polygons.
-        # For large catchments (500+ segments), cascade to coarser
+        # For large catchments (300+ segments), cascade to coarser
         # thresholds to avoid ST_UnaryUnion timeout (30s DB limit).
         _MAX_MERGE = 300
         merge_idxs = bfs_segment_idxs
         merge_threshold = threshold
 
-        if len(bfs_segment_idxs) > _MAX_MERGE:
-            for t in [1000, 10000, 100000]:
-                if t <= threshold:
-                    continue
-                try:
-                    t_node = cg.find_catchment_at_point(
-                        point_2180.x, point_2180.y, t, db
-                    )
-                except ValueError:
-                    continue
-                if request.to_confluence:
-                    t_up = cg.traverse_to_confluence(t_node)
-                else:
-                    t_up = cg.traverse_upstream(t_node)
-                t_segs = cg.get_segment_indices(t_up, t)
-                if len(t_segs) <= _MAX_MERGE or t == 100000:
-                    merge_idxs = t_segs
-                    merge_threshold = t
-                    # CR9: re-aggregate stats from escalated threshold
-                    # so stats match the boundary polygon
-                    upstream_indices_for_stats = t_up
-                    outlet_idx_for_stats = t_node
-                    stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=outlet_idx_for_stats)
-                    area_km2 = stats["area_km2"]
-                    logger.info(
-                        "Cascade: threshold escalated from %d to %d "
-                        "(%d -> %d segments)",
-                        threshold,
-                        merge_threshold,
-                        len(bfs_segment_idxs),
-                        len(merge_idxs),
-                    )
-                    break
+        escalation = cascade_escalate(
+            cg, point_2180.x, point_2180.y, threshold,
+            bfs_segment_idxs, _MAX_MERGE, db,
+            to_confluence=request.to_confluence,
+        )
+        if escalation:
+            merge_idxs, merge_threshold, upstream_indices_for_stats, outlet_idx_for_stats, stats, area_km2 = escalation
+            logger.info(
+                "Cascade: threshold escalated from %d to %d "
+                "(%d -> %d segments)",
+                threshold,
+                merge_threshold,
+                len(bfs_segment_idxs),
+                len(merge_idxs),
+            )
 
         boundary_2180 = merge_catchment_boundaries(
             merge_idxs,
@@ -201,53 +182,27 @@ def select_stream(
         outlet_elevation = stats.get("elevation_min_m")
         outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)
 
-        # 8. Derived metrics requiring boundary geometry
-        perimeter_km = round(boundary_2180.length / 1000, 4)
-        length_km = round(
-            compute_watershed_length(boundary_2180, outlet_x, outlet_y),
-            4,
+        # 8. Build morphometric parameters from graph (unified with watershed.py)
+        morph_dict = build_morph_dict_from_graph(
+            cg,
+            upstream_indices_for_stats,
+            boundary_2180,
+            outlet_x,
+            outlet_y,
+            segment_idx,
+            merge_threshold,
+            db=db,
+            outlet_idx=outlet_idx_for_stats,
         )
-        shape_indices = calculate_shape_indices(area_km2, perimeter_km, length_km)
 
-        # Relief indices
-        relief_ratio = None
-        elev_min = stats.get("elevation_min_m")
-        elev_max = stats.get("elevation_max_m")
-        if elev_min is not None and elev_max is not None and length_km > 0:
-            relief_m = elev_max - elev_min
-            relief_ratio = round(relief_m / (length_km * 1000), 6)
-
-        # Ruggedness number
-        ruggedness = None
-        dd = stats.get("drainage_density_km_per_km2")
-        if elev_min is not None and elev_max is not None and dd is not None:
-            relief_km = (elev_max - elev_min) / 1000
-            ruggedness = round(dd * relief_km, 4)
-
-        # Channel length and slope from main channel trace (not total network)
-        main_ch = cg.trace_main_channel(outlet_idx_for_stats, upstream_indices_for_stats)
-        channel_length_km = main_ch.get("main_channel_length_km")
-        channel_slope = main_ch.get("main_channel_slope_m_per_m")
-        real_channel_length_km = main_ch.get("real_channel_length_km")
-
-        # 9. Hypsometric curve
+        # 9. Hypsometric curve (needed for GUI — not part of morph dict)
         hypso_data = cg.aggregate_hypsometric(upstream_indices_for_stats)
         hypso_curve = None
-        hypsometric_integral = None
         if hypso_data:
             hypso_curve = [HypsometricPoint(**p) for p in hypso_data]
-            # HI ~ trapezoidal integration of relative_area over relative_height
-            areas = [p["relative_area"] for p in hypso_data]
-            heights = [p["relative_height"] for p in hypso_data]
-            if len(areas) >= 2:
-                hi = sum(
-                    (areas[i] + areas[i + 1]) / 2 * (heights[i + 1] - heights[i])
-                    for i in range(len(areas) - 1)
-                )
-                hypsometric_integral = round(max(0, min(1, hi)), 4)
 
         # 10. Main stream GeoJSON (FeatureCollection with is_real_stream per segment)
-        main_channel_nodes = main_ch.get("main_channel_nodes", [])
+        main_channel_nodes = morph_dict.pop("_main_channel_nodes", [])
         main_stream_geojson = get_main_channel_feature_collection(
             cg, main_channel_nodes, merge_threshold, db,
         )
@@ -261,130 +216,21 @@ def select_stream(
         # is not needed for area-weighted statistics, and complex
         # boundaries with thousands of vertices make ST_Intersection
         # very slow (~20s for 95 km² watershed).
-        lc_boundary = boundary_poly
-        if area_km2 > 5:
-            lc_boundary = boundary_poly.simplify(20.0)  # 20m tolerance
-
-        lc_stats = None
-        try:
-            lc_data = get_land_cover_for_boundary(lc_boundary, db)
-            if lc_data:
-                lc_stats = LandCoverStats(
-                    categories=[
-                        LandCoverCategory(
-                            category=cat["category"],
-                            percentage=cat["percentage"],
-                            area_m2=cat["area_m2"],
-                            cn_value=cat["cn_value"],
-                        )
-                        for cat in lc_data["categories"]
-                    ],
-                    weighted_cn=lc_data["weighted_cn"],
-                    weighted_imperviousness=lc_data["weighted_imperviousness"],
-                )
-        except Exception as e:
-            logger.debug(f"Land cover stats not available: {e}")
+        lc_simplify = 20.0 if area_km2 > 5 else None
+        lc_stats = build_land_cover_stats(boundary_poly, db, simplify_tolerance=lc_simplify)
 
         # 11a. HSG soil statistics
-        hsg_stats_data = None
-        try:
-            from core.soil_hsg import get_hsg_for_boundary
-            from models.schemas import HsgCategory, HsgStats
+        lc_boundary = boundary_poly.simplify(20.0) if area_km2 > 5 else boundary_poly
+        hsg_stats_data = build_hsg_stats(lc_boundary, db)
 
-            hsg_data = get_hsg_for_boundary(lc_boundary.wkb_hex, db)
-            if hsg_data:
-                hsg_stats_data = HsgStats(
-                    categories=[
-                        HsgCategory(
-                            group=cat["group"],
-                            percentage=cat["percentage"],
-                            area_m2=cat["area_m2"],
-                        )
-                        for cat in hsg_data["categories"]
-                    ],
-                    dominant_group=hsg_data["dominant_group"],
-                )
-        except Exception as e:
-            logger.debug(f"HSG stats not available: {e}")
+        # 12. Inject CN and imperviousness into morph dict
+        if lc_stats is not None:
+            morph_dict["cn"] = lc_stats.weighted_cn
+            morph_dict["imperviousness"] = round(
+                lc_stats.weighted_imperviousness, 3
+            )
 
-        # 12. Build morphometric parameters
-        cn_value = lc_stats.weighted_cn if lc_stats is not None else None
-        imperviousness = round(lc_stats.weighted_imperviousness, 3) if lc_stats is not None else None
-
-        # Distance from outlet to boundary centroid
-        from shapely.geometry import Point as ShapelyPoint
-
-        outlet_point = ShapelyPoint(outlet_x, outlet_y)
-        centroid = boundary_poly.centroid
-        length_to_centroid_km = round(centroid.distance(outlet_point) / 1000, 4)
-
-        # Flow path parameters
-        longest_flow_path_km = stats.get("hydraulic_length_km")
-        divide_flow_path_km = None
-        centroid_flow_path_km = None
-        try:
-            import os
-
-            from core.config import get_settings
-            from core.watershed_service import sample_stream_distance
-
-            settings = get_settings()
-            sd_path = settings.stream_distance_path
-            if os.path.exists(sd_path):
-                import numpy as _np
-
-                outlet_dist_vals = sample_stream_distance(
-                    [(outlet_x, outlet_y)], sd_path
-                )
-                outlet_dist = outlet_dist_vals[0]
-                if not _np.isnan(outlet_dist):
-                    boundary_coords = list(boundary_poly.exterior.coords)
-                    boundary_dists = sample_stream_distance(boundary_coords, sd_path)
-                    valid_boundary = [d for d in boundary_dists if not _np.isnan(d)]
-                    if valid_boundary:
-                        dfp = (max(valid_boundary) - outlet_dist) / 1000.0
-                        if dfp > 0:
-                            divide_flow_path_km = round(dfp, 4)
-                    centroid_dist_vals = sample_stream_distance(
-                        [(centroid.x, centroid.y)], sd_path
-                    )
-                    centroid_dist = centroid_dist_vals[0]
-                    if not _np.isnan(centroid_dist):
-                        cfp = (centroid_dist - outlet_dist) / 1000.0
-                        if cfp > 0:
-                            centroid_flow_path_km = round(cfp, 4)
-        except Exception as e:
-            logger.debug(f"Flow path point sampling not available: {e}")
-
-        morphometry = MorphometricParameters(
-            area_km2=round(area_km2, 2),
-            perimeter_km=perimeter_km,
-            length_km=length_km,
-            elevation_min_m=elev_min if elev_min is not None else 0.0,
-            elevation_max_m=elev_max if elev_max is not None else 0.0,
-            elevation_mean_m=stats.get("elevation_mean_m"),
-            mean_slope_m_per_m=stats.get("mean_slope_m_per_m"),
-            channel_length_km=channel_length_km,
-            channel_slope_m_per_m=channel_slope,
-            real_channel_length_km=real_channel_length_km,
-            length_to_centroid_km=length_to_centroid_km,
-            compactness_coefficient=shape_indices.get("compactness_coefficient"),
-            circularity_ratio=shape_indices.get("circularity_ratio"),
-            elongation_ratio=shape_indices.get("elongation_ratio"),
-            form_factor=shape_indices.get("form_factor"),
-            mean_width_km=shape_indices.get("mean_width_km"),
-            relief_ratio=relief_ratio,
-            hypsometric_integral=hypsometric_integral,
-            drainage_density_km_per_km2=dd,
-            stream_frequency_per_km2=stats.get("stream_frequency_per_km2"),
-            ruggedness_number=ruggedness,
-            max_strahler_order=stats.get("max_strahler_order"),
-            cn=cn_value,
-            imperviousness=imperviousness,
-            longest_flow_path_km=longest_flow_path_km,
-            divide_flow_path_km=divide_flow_path_km,
-            centroid_flow_path_km=centroid_flow_path_km,
-        )
+        morphometry = MorphometricParameters(**morph_dict)
 
         # 12b. Longest flow path GeoJSON
         flow_path_geojson = None

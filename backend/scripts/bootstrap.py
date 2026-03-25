@@ -440,7 +440,7 @@ def step_process_dem(
     sheets: list[str],
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
-) -> tuple[dict, str, list[str], dict[str, Path]]:
+) -> tuple[dict, str, list[str], dict[str, Path], tuple[float, float, float, float]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis."""
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.download_landcover import (
@@ -471,12 +471,28 @@ def step_process_dem(
         target_crs="EPSG:2180",
     )
 
-    # Download & merge hydro BDOT10k for stream burning
+    # Download & merge hydro BDOT10k for stream burning.
+    # Use the ACTUAL mosaic extent (not the user bbox) for TERYT discovery,
+    # because NMT sheets extend beyond the bbox and the DEM analysis covers
+    # the full mosaic area — BDOT must match.
     burn_path = None
     teryts: list[str] = []
     bdot_paths: dict[str, Path] = {}
     try:
-        teryts = discover_teryts_for_bbox(bbox_2180)
+        import rasterio
+
+        with rasterio.open(mosaic_path) as src:
+            mosaic_bounds = src.bounds  # (left, bottom, right, top) in EPSG:2180
+        mosaic_bbox_2180 = (
+            mosaic_bounds.left, mosaic_bounds.bottom,
+            mosaic_bounds.right, mosaic_bounds.top,
+        )
+        logger.info(
+            f"Mosaic extent for TERYT discovery: "
+            f"({mosaic_bbox_2180[0]:.0f}, {mosaic_bbox_2180[1]:.0f}, "
+            f"{mosaic_bbox_2180[2]:.0f}, {mosaic_bbox_2180[3]:.0f})"
+        )
+        teryts = discover_teryts_for_bbox(mosaic_bbox_2180)
 
         if teryts:
             bdot_cache_dir = cache_dir / "bdot10k"
@@ -509,14 +525,13 @@ def step_process_dem(
         try:
             frontend_data = FRONTEND_DIR / "data"
             frontend_data.mkdir(parents=True, exist_ok=True)
-            bdot_result = export_bdot_geojson(burn_path, frontend_data)
+            bdot_result = export_bdot_geojson(burn_path, frontend_data, clip_bbox_2180=mosaic_bbox_2180)
             logger.info(f"BDOT10k GeoJSON exported: {bdot_result}")
         except Exception as e:
             logger.warning(f"BDOT10k GeoJSON export failed: {e}")
 
     stats = process_dem(
         input_path=mosaic_path,
-        stream_threshold=1000,
         clear_existing=True,
         save_intermediates=True,
         output_dir=nmt_dir,
@@ -532,7 +547,7 @@ def step_process_dem(
     burn_info = f", burn={burn_path.name}" if burn_path else ""
     detail = f"{cells:,} cells, {streams} segments{burn_info}"
 
-    return stats, detail, teryts, bdot_paths
+    return stats, detail, teryts, bdot_paths, mosaic_bbox_2180
 
 
 def step_landcover(
@@ -541,6 +556,7 @@ def step_landcover(
     cache_dir: Path,
     teryts: list[str] | None = None,
     bdot_paths: dict[str, Path] | None = None,
+    mosaic_bbox_2180: tuple[float, float, float, float] | None = None,
 ) -> str:
     """Step 4: Download and import land cover data (per-TERYT)."""
     sys.path.insert(0, str(BACKEND_DIR))
@@ -551,7 +567,7 @@ def step_landcover(
     bdot_cache_dir.mkdir(parents=True, exist_ok=True)
 
     if teryts is None:
-        bbox_2180 = sheets_to_bbox_2180(sheets)
+        bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
         teryts = discover_teryts_for_bbox(bbox_2180)
 
     if bdot_paths is None:
@@ -585,7 +601,12 @@ def step_landcover(
     return f"{total_features} obiektów, {len(teryts)} powiatów"
 
 
-def step_soil_hsg(sheets: list[str], output_dir: Path, cache_dir: Path) -> str:
+def step_soil_hsg(
+    sheets: list[str],
+    output_dir: Path,
+    cache_dir: Path,
+    mosaic_bbox_2180: tuple[float, float, float, float] | None = None,
+) -> str:
     """Step 5: Download HSG data from SoilGrids and import to DB.
 
     Uses a Poland-wide HSG raster cached as hsg_poland.tif.
@@ -637,7 +658,7 @@ def step_soil_hsg(sheets: list[str], output_dir: Path, cache_dir: Path) -> str:
         return "pominięto (brak rastra HSG)"
 
     # --- 2. Clip + warp to project bbox in EPSG:2180 ---
-    bbox_2180 = sheets_to_bbox_2180(sheets)
+    bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
     min_x, min_y, max_x, max_y = bbox_2180
 
     from rasterio.transform import from_bounds
@@ -925,19 +946,31 @@ def step_overlays(output_dir: Path) -> str:
     return ", ".join(generated) if generated else "brak danych"
 
 
-def export_bdot_geojson(hydro_gpkg: Path, output_dir: Path) -> str:
-    """Export BDOT10k hydro layers from GPKG to GeoJSON for frontend map."""
+def export_bdot_geojson(
+    hydro_gpkg: Path,
+    output_dir: Path,
+    clip_bbox_2180: tuple[float, float, float, float] | None = None,
+) -> str:
+    """Export BDOT10k hydro layers from GPKG to GeoJSON for frontend map.
+
+    If clip_bbox_2180 is provided, clips features to the bbox (EPSG:2180)
+    before export — keeps only features intersecting the analysis area.
+    """
     import fiona
     import geopandas as gpd
     import pandas as pd
+    from shapely.geometry import box
 
     layers = fiona.listlayers(str(hydro_gpkg))
+    clip_geom = box(*clip_bbox_2180) if clip_bbox_2180 else None
 
     # Lakes (polygons) — OT_PTWP_A
     lakes_count = 0
     if "OT_PTWP_A" in layers:
         gdf = gpd.read_file(hydro_gpkg, layer="OT_PTWP_A")
         if not gdf.empty:
+            if clip_geom is not None:
+                gdf = gdf[gdf.intersects(clip_geom)]
             gdf["source_layer"] = "OT_PTWP_A"
             gdf = gdf.to_crs("EPSG:4326")
             gdf.to_file(output_dir / "bdot_lakes.geojson", driver="GeoJSON")
@@ -950,6 +983,8 @@ def export_bdot_geojson(hydro_gpkg: Path, output_dir: Path) -> str:
         if layer_name in layers:
             gdf = gpd.read_file(hydro_gpkg, layer=layer_name)
             if not gdf.empty:
+                if clip_geom is not None:
+                    gdf = gdf[gdf.intersects(clip_geom)]
                 gdf["source_layer"] = layer_name
                 stream_gdfs.append(gdf)
 
@@ -1037,11 +1072,16 @@ def run_pipeline(
         logger.error("Brak plikow NMT — nie mozna kontynuowac")
         return tracker
 
+    # Variables populated by step 3 and forwarded to steps 4-5
+    mosaic_bbox = None
+    teryts: list[str] = []
+    bdot_paths: dict[str, Path] = {}
+
     # Step 3: Process DEM (CRITICAL)
     if not tracker.is_skipped(3):
         t0 = tracker.start(3)
         try:
-            _, detail, teryts, bdot_paths = step_process_dem(
+            _, detail, teryts, bdot_paths, mosaic_bbox = step_process_dem(
                 downloaded_files, output_dir, cache_dir, sheets,
                 waterbody_mode=waterbody_mode,
                 waterbody_min_area_m2=waterbody_min_area_m2,
@@ -1059,6 +1099,7 @@ def run_pipeline(
             detail = step_landcover(
                 sheets, output_dir, cache_dir,
                 teryts=teryts, bdot_paths=bdot_paths,
+                mosaic_bbox_2180=mosaic_bbox,
             )
             tracker.done(4, t0, detail)
         except Exception as e:
@@ -1069,7 +1110,7 @@ def run_pipeline(
     if not tracker.is_skipped(5):
         t0 = tracker.start(5)
         try:
-            detail = step_soil_hsg(sheets, output_dir, cache_dir)
+            detail = step_soil_hsg(sheets, output_dir, cache_dir, mosaic_bbox_2180=mosaic_bbox)
             tracker.done(5, t0, detail)
         except Exception as e:
             tracker.fail(5, t0, str(e))
