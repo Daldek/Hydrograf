@@ -51,11 +51,40 @@ class Settings(BaseSettings):
     # Database safety
     db_statement_timeout_ms: int = 120000  # 120s
 
-    # DEM raster path (for terrain profile sampling)
-    dem_path: str = "/data/nmt/dem_mosaic_01_dem.tif"
+    # DEM raster directory (contains pipeline outputs)
+    dem_dir: str = "/data/nmt"
+
+    # DEM raster path (for terrain profile sampling) — overridable via DEM_PATH env
+    dem_path: str = ""
 
     # Stream distance raster path (for flow path point sampling)
-    stream_distance_path: str = "/data/nmt/dem_mosaic_04b_stream_distance.tif"
+    stream_distance_path: str = ""
+
+    def resolve_dem_path(self) -> str | None:
+        """Find the best available DEM raster, checking candidates in order.
+
+        Priority: DEM_PATH env override → VRT mosaic → raw DEM TIF → filled DEM.
+        Returns None if no DEM found.
+        """
+        if self.dem_path and os.path.exists(self.dem_path):
+            return self.dem_path
+        candidates = [
+            os.path.join(self.dem_dir, "dem_mosaic.vrt"),
+            os.path.join(self.dem_dir, "dem_mosaic_01_dem.tif"),
+            os.path.join(self.dem_dir, "dem_mosaic.tif"),
+            os.path.join(self.dem_dir, "dem_mosaic_02_filled.tif"),
+        ]
+        for path in candidates:
+            if os.path.exists(path):
+                return path
+        return None
+
+    def resolve_stream_distance_path(self) -> str | None:
+        """Find stream distance raster."""
+        if self.stream_distance_path and os.path.exists(self.stream_distance_path):
+            return self.stream_distance_path
+        candidate = os.path.join(self.dem_dir, "dem_mosaic_04b_stream_distance.tif")
+        return candidate if os.path.exists(candidate) else None
 
     # Admin panel API key (empty = auto-generated UUID at startup)
     admin_api_key: str = ""

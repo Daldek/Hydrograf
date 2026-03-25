@@ -933,8 +933,8 @@ def build_morph_dict_from_graph(
         from core.config import get_settings
 
         settings = get_settings()
-        sd_path = settings.stream_distance_path
-        if os.path.exists(sd_path):
+        sd_path = settings.resolve_stream_distance_path()
+        if sd_path is not None:
             # Sample outlet distance
             outlet_dist_vals = sample_stream_distance(
                 [(outlet_x, outlet_y)], sd_path
