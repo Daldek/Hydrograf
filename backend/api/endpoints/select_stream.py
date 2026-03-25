@@ -105,10 +105,7 @@ def select_stream(
         segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)
 
         # 4. Traverse upstream via catchment graph BFS
-        if request.to_confluence:
-            upstream_indices = cg.traverse_to_confluence(clicked_idx)
-        else:
-            upstream_indices = cg.traverse_upstream(clicked_idx)
+        upstream_indices = cg.traverse_upstream(clicked_idx)
         bfs_segment_idxs = cg.get_segment_indices(upstream_indices, threshold)
 
         # 5. Aggregate pre-computed stats (zero raster ops)
@@ -129,7 +126,6 @@ def select_stream(
         escalation = cascade_escalate(
             cg, point_2180.x, point_2180.y, threshold,
             bfs_segment_idxs, _MAX_MERGE, db,
-            to_confluence=request.to_confluence,
         )
         if escalation:
             merge_idxs, merge_threshold, upstream_indices_for_stats, outlet_idx_for_stats, stats, area_km2 = escalation

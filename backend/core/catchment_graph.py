@@ -11,7 +11,6 @@ Memory usage: ~0.5 MB RAM.
 import logging
 import threading
 import time
-from collections import deque
 
 import numpy as np
 from scipy import sparse
@@ -503,45 +502,6 @@ class CatchmentGraph:
             directed=True,
             return_predecessors=False,
         )
-
-    def traverse_to_confluence(self, start_idx: int) -> np.ndarray:
-        """
-        BFS upstream, stop at confluence nodes (>1 upstream neighbor).
-
-        Includes confluence nodes in the result but does not continue
-        BFS past them. A confluence is any node with more than one
-        upstream neighbor in the adjacency matrix.
-
-        Parameters
-        ----------
-        start_idx : int
-            Internal index of the starting node
-
-        Returns
-        -------
-        np.ndarray
-            Array of internal indices (including start_idx)
-        """
-        if not self._loaded:
-            raise RuntimeError("Catchment graph not loaded")
-
-        visited: set[int] = set()
-        queue = deque([start_idx])
-        visited.add(start_idx)
-        result = [start_idx]
-
-        while queue:
-            current = queue.popleft()
-            upstream = self._upstream_adj[current].indices
-            for up_idx in upstream:
-                if up_idx not in visited:
-                    visited.add(up_idx)
-                    result.append(up_idx)
-                    # Only continue BFS through non-confluence nodes
-                    if self._upstream_adj[up_idx].nnz <= 1:
-                        queue.append(up_idx)
-
-        return np.array(result, dtype=np.int32)
 
     def get_segment_indices(
         self,

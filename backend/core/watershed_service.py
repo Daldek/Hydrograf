@@ -1073,7 +1073,6 @@ def cascade_escalate(
     base_segment_idxs: list[int],
     max_merge: int,
     db: Session,
-    to_confluence: bool = False,
 ) -> tuple[list[int], int, np.ndarray, int, dict, float] | None:
     """Escalate to coarser threshold if segment count exceeds max_merge.
 
@@ -1094,9 +1093,6 @@ def cascade_escalate(
         Maximum allowed segment count before escalation
     db : Session
         Database session
-    to_confluence : bool
-        If True, use traverse_to_confluence instead of traverse_upstream
-
     Returns
     -------
     tuple | None
@@ -1113,10 +1109,7 @@ def cascade_escalate(
             t_node = cg.find_catchment_at_point(point_x, point_y, t, db)
         except ValueError:
             continue
-        if to_confluence:
-            t_up = cg.traverse_to_confluence(t_node)
-        else:
-            t_up = cg.traverse_upstream(t_node)
+        t_up = cg.traverse_upstream(t_node)
         t_segs = cg.get_segment_indices(t_up, t)
         if len(t_segs) <= max_merge or t == 100000:
             stats = cg.aggregate_stats(t_up, outlet_idx=t_node)
