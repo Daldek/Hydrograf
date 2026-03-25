@@ -20,10 +20,12 @@ from core.constants import (
     M2_PER_KM2,
 )
 from core.database import get_db
-from core.land_cover import get_land_cover_for_boundary
 from core.watershed_service import (
     boundary_to_polygon,
+    build_hsg_stats,
+    build_land_cover_stats,
     build_morph_dict_from_graph,
+    cascade_escalate,
     ensure_outlet_within_boundary,
     get_divide_flow_path_geojson,
     get_longest_flow_path_geojson,
@@ -37,8 +39,6 @@ from models.schemas import (
     DelineateRequest,
     DelineateResponse,
     HypsometricPoint,
-    LandCoverCategory,
-    LandCoverStats,
     MorphometricParameters,
     OutletInfo,
     WatershedResponse,
@@ -160,35 +160,20 @@ def delineate_watershed(
         merge_idxs = segment_idxs
         merge_threshold = DEFAULT_THRESHOLD_M2
 
-        if len(segment_idxs) > _MAX_MERGE:
-            for t in [1000, 10000, 100000]:
-                if t <= DEFAULT_THRESHOLD_M2:
-                    continue
-                try:
-                    t_node = cg.find_catchment_at_point(
-                        point_2180.x, point_2180.y, t, db
-                    )
-                except ValueError:
-                    continue
-                t_up = cg.traverse_upstream(t_node)
-                t_segs = cg.get_segment_indices(t_up, t)
-                if len(t_segs) <= _MAX_MERGE or t == 100000:
-                    merge_idxs = t_segs
-                    merge_threshold = t
-                    # CR9: re-aggregate stats from escalated threshold
-                    # so stats match the boundary polygon
-                    upstream_indices_for_stats = t_up
-                    stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=t_node)
-                    area_km2 = stats["area_km2"]
-                    logger.info(
-                        "Cascade: threshold escalated from %d to %d "
-                        "(%d -> %d segments)",
-                        DEFAULT_THRESHOLD_M2,
-                        merge_threshold,
-                        len(segment_idxs),
-                        len(merge_idxs),
-                    )
-                    break
+        escalation = cascade_escalate(
+            cg, point_2180.x, point_2180.y, DEFAULT_THRESHOLD_M2,
+            segment_idxs, _MAX_MERGE, db,
+        )
+        if escalation:
+            merge_idxs, merge_threshold, upstream_indices_for_stats, _esc_outlet, stats, area_km2 = escalation
+            logger.info(
+                "Cascade: threshold escalated from %d to %d "
+                "(%d -> %d segments)",
+                DEFAULT_THRESHOLD_M2,
+                merge_threshold,
+                len(segment_idxs),
+                len(merge_idxs),
+            )
 
         boundary_2180 = merge_catchment_boundaries(
             merge_idxs,
@@ -268,25 +253,7 @@ def delineate_watershed(
             )
 
         # 17. Land cover statistics
-        lc_stats = None
-        try:
-            lc_data = get_land_cover_for_boundary(boundary_2180, db)
-            if lc_data:
-                lc_stats = LandCoverStats(
-                    categories=[
-                        LandCoverCategory(
-                            category=cat["category"],
-                            percentage=cat["percentage"],
-                            area_m2=cat["area_m2"],
-                            cn_value=cat["cn_value"],
-                        )
-                        for cat in lc_data["categories"]
-                    ],
-                    weighted_cn=lc_data["weighted_cn"],
-                    weighted_imperviousness=lc_data["weighted_imperviousness"],
-                )
-        except Exception as e:
-            logger.debug(f"Land cover stats not available: {e}")
+        lc_stats = build_land_cover_stats(boundary_2180, db)
 
         # 17b. Inject weighted CN and imperviousness into morphometry for hydrograph fast path
         if lc_stats is not None:
@@ -296,26 +263,7 @@ def delineate_watershed(
             )
 
         # 17a. HSG soil statistics
-        hsg_stats_data = None
-        try:
-            from core.soil_hsg import get_hsg_for_boundary
-            from models.schemas import HsgCategory, HsgStats
-
-            hsg_data = get_hsg_for_boundary(boundary_2180.wkb_hex, db)
-            if hsg_data:
-                hsg_stats_data = HsgStats(
-                    categories=[
-                        HsgCategory(
-                            group=cat["group"],
-                            percentage=cat["percentage"],
-                            area_m2=cat["area_m2"],
-                        )
-                        for cat in hsg_data["categories"]
-                    ],
-                    dominant_group=hsg_data["dominant_group"],
-                )
-        except Exception as e:
-            logger.debug(f"HSG stats not available: {e}")
+        hsg_stats_data = build_hsg_stats(boundary_2180, db)
 
         # 17c. Longest flow path GeoJSON
         flow_path_geojson = None
