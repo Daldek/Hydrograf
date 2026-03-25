@@ -1065,3 +1065,154 @@ def ensure_outlet_within_boundary(
     return projected.x, projected.y
 
 
+def cascade_escalate(
+    cg: CatchmentGraph,
+    point_x: float,
+    point_y: float,
+    base_threshold: int,
+    base_segment_idxs: list[int],
+    max_merge: int,
+    db: Session,
+    to_confluence: bool = False,
+) -> tuple[list[int], int, np.ndarray, int, dict, float] | None:
+    """Escalate to coarser threshold if segment count exceeds max_merge.
+
+    Iterates through thresholds [1000, 10000, 100000] and re-runs BFS
+    at the first threshold where the segment count is acceptable.
+
+    Parameters
+    ----------
+    cg : CatchmentGraph
+        Loaded catchment graph
+    point_x, point_y : float
+        Click point in EPSG:2180
+    base_threshold : int
+        Original threshold that produced too many segments
+    base_segment_idxs : list[int]
+        Segment indices from BFS at base_threshold
+    max_merge : int
+        Maximum allowed segment count before escalation
+    db : Session
+        Database session
+    to_confluence : bool
+        If True, use traverse_to_confluence instead of traverse_upstream
+
+    Returns
+    -------
+    tuple | None
+        (merge_idxs, merge_threshold, upstream_indices, outlet_idx, stats, area_km2)
+        or None if no escalation needed (segment count <= max_merge).
+    """
+    if len(base_segment_idxs) <= max_merge:
+        return None
+
+    for t in [1000, 10000, 100000]:
+        if t <= base_threshold:
+            continue
+        try:
+            t_node = cg.find_catchment_at_point(point_x, point_y, t, db)
+        except ValueError:
+            continue
+        if to_confluence:
+            t_up = cg.traverse_to_confluence(t_node)
+        else:
+            t_up = cg.traverse_upstream(t_node)
+        t_segs = cg.get_segment_indices(t_up, t)
+        if len(t_segs) <= max_merge or t == 100000:
+            stats = cg.aggregate_stats(t_up, outlet_idx=t_node)
+            return (t_segs, t, t_up, t_node, stats, stats["area_km2"])
+
+    return None
+
+
+def build_land_cover_stats(
+    boundary,
+    db: Session,
+    simplify_tolerance: float | None = None,
+):
+    """Build LandCoverStats from boundary polygon.
+
+    Parameters
+    ----------
+    boundary : Polygon | MultiPolygon
+        Watershed boundary in EPSG:2180
+    db : Session
+        Database session
+    simplify_tolerance : float | None
+        If set, simplify boundary before query (meters)
+
+    Returns
+    -------
+    LandCoverStats | None
+        Land cover statistics or None if no data
+    """
+    from core.land_cover import get_land_cover_for_boundary
+    from models.schemas import LandCoverCategory, LandCoverStats
+
+    query_boundary = boundary
+    if simplify_tolerance is not None:
+        query_boundary = boundary.simplify(simplify_tolerance)
+
+    try:
+        lc_data = get_land_cover_for_boundary(query_boundary, db)
+        if not lc_data:
+            return None
+        return LandCoverStats(
+            categories=[
+                LandCoverCategory(
+                    category=cat["category"],
+                    percentage=cat["percentage"],
+                    area_m2=cat["area_m2"],
+                    cn_value=cat["cn_value"],
+                )
+                for cat in lc_data["categories"]
+            ],
+            weighted_cn=lc_data["weighted_cn"],
+            weighted_imperviousness=lc_data["weighted_imperviousness"],
+        )
+    except Exception as e:
+        logger.debug(f"Land cover stats not available: {e}")
+        return None
+
+
+def build_hsg_stats(
+    boundary,
+    db: Session,
+):
+    """Build HsgStats from boundary polygon.
+
+    Parameters
+    ----------
+    boundary : Polygon | MultiPolygon
+        Watershed boundary in EPSG:2180. Uses wkb_hex for DB query.
+    db : Session
+        Database session
+
+    Returns
+    -------
+    HsgStats | None
+        HSG statistics or None if no data
+    """
+    from core.soil_hsg import get_hsg_for_boundary
+    from models.schemas import HsgCategory, HsgStats
+
+    try:
+        hsg_data = get_hsg_for_boundary(boundary.wkb_hex, db)
+        if not hsg_data:
+            return None
+        return HsgStats(
+            categories=[
+                HsgCategory(
+                    group=cat["group"],
+                    percentage=cat["percentage"],
+                    area_m2=cat["area_m2"],
+                )
+                for cat in hsg_data["categories"]
+            ],
+            dominant_group=hsg_data["dominant_group"],
+        )
+    except Exception as e:
+        logger.debug(f"HSG stats not available: {e}")
+        return None
+
+
