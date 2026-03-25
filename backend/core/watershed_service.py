@@ -862,10 +862,17 @@ def build_morph_dict_from_graph(
     area_km2 = stats["area_km2"]
 
     perimeter_km = round(boundary_2180.length / 1000, 4)
-    length_km = round(
-        compute_watershed_length(boundary_2180, outlet_x, outlet_y),
-        4,
-    )
+
+    # Watershed length = longest flow path (main channel valley from outlet
+    # to divide).  Fallback to straight-line max distance from outlet.
+    hydraulic_len = stats.get("hydraulic_length_km")
+    if hydraulic_len is not None:
+        length_km = round(hydraulic_len, 4)
+    else:
+        length_km = round(
+            compute_watershed_length(boundary_2180, outlet_x, outlet_y),
+            4,
+        )
 
     elev_min = stats.get("elevation_min_m")
     elev_max = stats.get("elevation_max_m")
@@ -899,10 +906,22 @@ def build_morph_dict_from_graph(
     shape_indices = calculate_shape_indices(area_km2, perimeter_km, length_km)
 
     # Relief indices
+    # R = ΔH / sqrt(A) [‰], where ΔH in m, A in km²
     relief_ratio = None
-    if elev_min is not None and elev_max is not None and length_km > 0:
+    if elev_min is not None and elev_max is not None and area_km2 > 0:
         relief_m = elev_max - elev_min
-        relief_ratio = round(relief_m / (length_km * 1000), 6)
+        relief_ratio = round(relief_m / math.sqrt(area_km2), 4)
+
+    # Rp = ΔH / P [‰], where ΔH in m, P in km (watershed boundary length)
+    divide_slope = None
+    if elev_min is not None and elev_max is not None and perimeter_km > 0:
+        relief_m = elev_max - elev_min
+        divide_slope = round(relief_m / perimeter_km, 4)
+
+    # α — asymmetry coefficient: 2*(AL - AP) / A
+    # where AL = left bank area, AP = right bank area (split along main channel)
+    # TODO: compute AL and AP from main channel geometry
+    asymmetry_coefficient = None
 
     hypsometric_integral = None
     elev_mean = stats.get("elevation_mean_m")
@@ -992,9 +1011,12 @@ def build_morph_dict_from_graph(
         "circularity_ratio": shape_indices.get("circularity_ratio"),
         "elongation_ratio": shape_indices.get("elongation_ratio"),
         "form_factor": shape_indices.get("form_factor"),
+        "lemniscate_ratio": shape_indices.get("lemniscate_ratio"),
         "mean_width_km": shape_indices.get("mean_width_km"),
         # Relief indices
         "relief_ratio": relief_ratio,
+        "divide_slope": divide_slope,
+        "asymmetry_coefficient": asymmetry_coefficient,
         "hypsometric_integral": hypsometric_integral,
         # Drainage indices (BDOT-based: real streams only)
         "drainage_density_km_per_km2": dd,

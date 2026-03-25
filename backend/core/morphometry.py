@@ -287,6 +287,7 @@ def calculate_shape_indices(
         - circularity_ratio: Miller circularity Rc = 4*pi*A / P^2
         - elongation_ratio: Schumm elongation Re = (2/L)*sqrt(A/pi)
         - form_factor: Horton form factor Ff = A / L^2
+        - lemniscate_ratio: Chorley lemniscate Cl = 0.5 * L / A
         - mean_width_km: mean width W = A / L [km]
     """
     result = {}
@@ -297,6 +298,7 @@ def calculate_shape_indices(
             "circularity_ratio": None,
             "elongation_ratio": None,
             "form_factor": None,
+            "lemniscate_ratio": None,
             "mean_width_km": None,
         }
 
@@ -317,6 +319,10 @@ def calculate_shape_indices(
     # Ff — Horton form factor
     # Ff = A / L^2
     result["form_factor"] = round(area_km2 / (length_km**2), 4)
+
+    # Cl — Chorley lemniscate ratio
+    # Cl = π * L² / (4 * A)
+    result["lemniscate_ratio"] = round(np.pi * length_km**2 / (4 * area_km2), 4)
 
     # W — mean width
     # W = A / L [km]
