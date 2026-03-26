@@ -100,6 +100,7 @@ config.yaml
 
 # Other
 *.png
+current_task.md
 
 # Worktrees
 .worktrees/
