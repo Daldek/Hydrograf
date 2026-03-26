@@ -6,6 +6,8 @@ services:
     environment:
       LOG_LEVEL: WARNING
       ADMIN_API_KEY_FILE: /run/secrets/admin_api_key
+      # TODO: DATABASE_URL still interpolates POSTGRES_PASSWORD from .env
+      # Migrate to secret-file reading in app code to remove password from env
     secrets:
       - db_password
       - admin_api_key

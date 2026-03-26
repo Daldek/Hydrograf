@@ -9,6 +9,32 @@ Uzywaj srodowiska wirtualnego z `backend/.venv`:
 - Pip: `backend/.venv/bin/pip`
 - Wymagany Python: 3.12+
 
+## Uruchamianie uslugi
+
+Uzytkownik `claude-agent` nie jest w grupie `docker` — korzysta z **rootless Docker**:
+
+```bash
+# 1. Uruchom rootless daemon (jesli nie dziala)
+dockerd-rootless.sh &>/tmp/dockerd-rootless.log &
+sleep 3
+
+# 2. Ustaw socket
+export DOCKER_HOST=unix:///home/claude-agent/.docker/run/docker.sock
+
+# 3. Pelny stack (frontend + API + DB) na porcie 8080
+docker compose up -d
+```
+
+**Dostep z sieci lokalnej** wymaga reguly UFW (rootless Docker nie modyfikuje iptables):
+```bash
+sudo ufw allow from 192.168.88.0/24 to any port 8080 proto tcp
+```
+
+**Dostep zewnetrzny** przez Cloudflare Tunnel (bez otwierania portow):
+```bash
+cloudflared tunnel --url http://localhost:8080
+```
+
 ## Dokumentacja
 
 **Przeczytaj w kolejnosci:**
