@@ -14,7 +14,7 @@
 │                           HYDROGRAF                                      │
 │         (Główna aplikacja - System Analizy Hydrologicznej)              │
 │         FastAPI + PostgreSQL/PostGIS + Leaflet.js                       │
-│         20 endpointów (12 core + 8 admin), 899 testów                   │
+│         23 endpointy (11 core + 12 admin), 991 testów                   │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐             │
@@ -197,17 +197,17 @@ qp = 0.208 * self.area_km2 / tp_hours
 
 ## 7. Metryki projektów
 
-### Hydrograf (stan na 2026-03-25)
+### Hydrograf (stan na 2026-03-27)
 
 | Metryka | Wartość |
 |---------|---------|
-| Wersja | v0.4.0 (CP4 Faza 4) |
-| Endpointy API | 20 (11 core + 9 admin) |
-| Testy | 899 |
-| Moduły core | 19 (w `backend/core/`) |
-| Skrypty | 14 (w `backend/scripts/`) |
-| Frontend JS | 13 modułów (9 core + 4 admin) |
-| ADR | 49 decyzji architektonicznych |
+| Wersja | v0.4.0+ (CP4 + sewer integration) |
+| Endpointy API | 23 (11 core + 12 admin) |
+| Testy | 991 |
+| Moduły core | 11 aktywnych (w `backend/core/`) |
+| Skrypty | 14+ (w `backend/scripts/`) |
+| Frontend JS | 15 modułów (10 core + 5 admin) |
+| ADR | 51 decyzji architektonicznych |
 
 ### Punkty integracji per biblioteka
 
