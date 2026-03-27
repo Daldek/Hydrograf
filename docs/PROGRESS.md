@@ -46,9 +46,27 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-25 (sesja 73 — unified delineate-watershed endpoint)
+**Data:** 2026-03-27 (sesja 74 — integracja kanalizacji deszczowej)
 
 ### Co zrobiono
+- **Specyfikacja integracji kanalizacji deszczowej** — design doc z brainstormingiem, 15 pytan, review (23 znalezione problemy, 3 krytyczne naprawione)
+- **Plan implementacji** — 12 zadan, subagent-driven development
+- **Migracja DB (025)** — tabele sewer_nodes (18 kolumn), sewer_network (16 kolumn), kolumna is_sewer_augmented
+- **Config** — sekcja sewer w _DEFAULT_CONFIG (enabled, burn_depth, snap_tolerance, source, attribute_mapping)
+- **download_sewer.py** — modul pozyskiwania danych (file/WFS/DB/URL) z walidacja CRS
+- **sewer_service.py** — SewerGraph + build_sewer_graph (snap, kaskada kierunku, scipy sparse) + burn_inlets + reconstruct_inlet_fa + route_fa_through_sewer + propagate_fa_downstream + insert_sewer_data
+- **Testy** — 39+ unit testow dla sewer_service, 10 dla download_sewer, 7 dla config
+
+### Nastepne kroki
+- Integracja z process_dem.py (kroki 3b, 4a-4c)
+- Admin API endpoints (upload/status/delete)
+- MVT tiles sieci kanalizacyjnej
+- Frontend (overlay + admin tab)
+- Integration test z syntetycznym DEM
+- Aktualizacja SCOPE, ARCHITECTURE, DATA_MODEL
+
+### Poprzednia sesja (2026-03-25, sesja 73 — unified delineate-watershed endpoint)
+
 - **Unified delineate-watershed endpoint (ADR-050)** — polaczenie `POST /api/select-stream` i `POST /api/delineate-watershed` w jeden endpoint z dwoma trybami:
   - **Precomputed** (z `threshold_m2`): snap-to-stream + BFS po grafie zlewni czastkowych (dotychczasowy select-stream)
   - **Precise** (bez `threshold_m2`): delimitacja rastrowa pyflwdir on-the-fly z RasterCache
@@ -57,17 +75,8 @@
 - **Frontend: jeden tryb "Wybierz zlewnię"** — usuniecie osobnego "Wygeneruj zlewnię", tryb precomputed/precise wybierany automatycznie
 - **Usuniecie `to_confluence`** — parametr i metoda `traverse_to_confluence()` z CatchmentGraph
 - **Pole `mode` zamiast `auto_selected`** — response zwraca `"mode": "precomputed"|"precise"`
-- **Ujednolicone schematy Pydantic** — `DelineateRequest`/`DelineateResponse` obsluguja oba tryby
-- **Poprawione etykiety parametrow** — opisowe nazwy, polskie oznaczenia wskaznikow (Cz, Ck, Cw, Cf, Cl)
-- **Poprawka dlugosci zlewni** — `length_km` z hydraulic_length_km (droga splywu) zamiast odleglosci euklidesowej
 - **Nowe parametry:** wskaznik lemniskaty Cl = π·L²/(4·A), spadek dzialu wodnego Rp = ΔH/P [‰], wspolczynnik asymetrii α (placeholder)
 - **Poprawka wskaznika rzezby** — R = ΔH/√A [‰]
-
-### Nastepne kroki
-- Re-run pipeline na nowym obszarze (Gdansk)
-- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
-- Clipping do dokladnej granicy poligonu
-- Podwojna analiza NMT (z/bez obszarow bezodplywowych)
 
 ### Poprzednia sesja (2026-03-25, sesja 72 — aktualizacja dokumentacji)
 

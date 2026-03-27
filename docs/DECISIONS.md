@@ -1115,6 +1115,35 @@ Dodatkowe zmiany:
 
 ---
 
+### ADR-051: Integracja kanalizacji deszczowej (2026-03-27)
+
+**Status:** Accepted
+
+**Kontekst:** Standardowe algorytmy flow direction i flow accumulation ignoruja kanalizacje deszczowa w srodowisku miejskim. Woda przechwycona przez wpust moze wyplynac w innej zlewni niz wskazuje DEM.
+
+**Decyzja:** Modified inlet burning + routing grafowy + FA propagation downstream:
+1. Obnizenie DEM w punktach wpustow (inlet burning) + drain_points injection
+2. Odtworzenie FA z sasiadow (komorki nodata po drain_points)
+3. Routing FA przez graf sieci kanalizacyjnej (BFS, scipy sparse)
+4. Propagacja surplusu downstream od wylotow wzdluz fdir
+
+**Kluczowe decyzje:**
+- Dane od uzytkownika (upload file/WFS/DB/URL), nie publiczne API
+- Graf: scipy sparse, spojne z CatchmentGraph (nie NetworkX)
+- Biblioteka stormcatchments odrzucona (GPL-3.0, pysheds, brak FA propagation)
+- Schemat DB z kolumnami HEC-RAS/SWMM (nullable, future-proof)
+- Zero nowych zaleznosci
+- Jedno zrodlo danych per run, brak wariantowosci
+
+**Konsekwencje:**
+- Nowe moduly: core/sewer_service.py, scripts/download_sewer.py
+- Nowe tabele: sewer_nodes, sewer_network
+- Nowa kolumna: stream_network.is_sewer_augmented
+- Ograniczenie: tryb precise (ADR-050) nie uwzglednia kanalizacji
+- Pipeline z kanalizacja wymaga re-runu po zmianie danych
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul
