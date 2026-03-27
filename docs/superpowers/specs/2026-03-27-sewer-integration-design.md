@@ -12,7 +12,9 @@ Standardowe algorytmy flow direction i flow accumulation opieraja sie wylacznie 
 
 ## 2. Podejscie
 
-Inlet burning + routing przez graf sieci + propagacja FA downstream. Trzy etapy wbudowane w istniejacy offline pipeline `process_dem.py`.
+Modified inlet burning + routing przez graf sieci + propagacja FA downstream. Trzy etapy wbudowane w istniejacy offline pipeline `process_dem.py`.
+
+Inspirowane podejsciem inlet burning z Si et al. (2024) i USGS StreamStats, ale z autorskim grafowym transferem FA zamiast wypalania trasy kolektora w DEM. Kluczowa roznica: brak sztucznych kanalow morfologicznych na powierzchni DEM — FA jest transferowane bezposrednio przez graf sieci kanalizacyjnej od wpustow do wylotow.
 
 Podejscia odrzucone:
 - **Conditioned DEM** (wypalenie sieci kanalizacyjnej jako sztuczna dolina) — bledne koncepcyjnie, tworzy nieistniejace kanaly morfologiczne
@@ -32,7 +34,7 @@ backend/
 ├── api/endpoints/
 │   └── (rozszerzenie admin.py)   # Upload + podglad w admin panelu
 └── migrations/versions/
-    └── 025_create_sewer_tables.py
+    └── XXX_create_sewer_tables.py  # numer wg aktualnego Alembic head
 ```
 
 ### 3.2 Modul `core/sewer_service.py`
@@ -42,9 +44,10 @@ Odpowiedzialnosci:
 1. **Parsowanie danych** — `parse_sewer_input(path, attr_mapping)` — linie / punkty / oba → ujednolicona struktura wewnetrzna
 2. **Budowa grafu** — `build_sewer_graph(lines, points, snap_m)` — snap endpoints, identyfikacja wpustow/wylotow, ustalenie kierunku (kaskada), scipy sparse matrix
 3. **Inlet burning** — `burn_inlets(dem, inlets, depth_m, cfg)` — walidacja rzednych vs DEM, obnizenie DEM + wstrzykniecie drain_points
-4. **Sewer routing** — `route_fa_through_sewer(graph, fa_raster)` — BFS od lisci do korzenia, suma FA z wpustow per wylot
-5. **FA propagation** — `propagate_fa_downstream(fa, fdir, outlets)` — wstrzykniecie FA do komorek wylotow, BFS downstream po fdir, kolejnosc rosnacego FA
-6. **DB insert** — `insert_sewer_data(network, nodes, db)` — zapis do PostGIS
+4. **Odtworzenie FA wpustow** — `reconstruct_inlet_fa(fa, fdir, inlets)` — obliczenie FA dla komorek nodata (drain_points) z sasiadow
+5. **Sewer routing** — `route_fa_through_sewer(graph, fa_raster)` — BFS od lisci do korzenia, suma FA z wpustow per wylot
+6. **FA propagation** — `propagate_fa_downstream(fa, fdir, outlets)` — wstrzykniecie FA do komorek wylotow + globalny recompute downstream
+7. **DB insert** — `insert_sewer_data(network, nodes, db)` — zapis do PostGIS
 
 ### 3.3 Modul `scripts/download_sewer.py`
 
@@ -56,13 +59,15 @@ Zrodla danych (jedno per run):
 - `load_from_url(url)` → GeoDataFrame
 - `load_sewer_data(config)` → dispatch wg config.sewer.source.type → reprojekcja EPSG:2180 → walidacja geometrii
 
+Walidacja CRS: jesli dane nie maja CRS → ERROR z komunikatem. Opcjonalnie: `sewer.source.assumed_crs` w YAML pozwala na reczne wskazanie CRS.
+
 ### 3.4 Integracja z `process_dem.py`
 
 ```python
-# ~30 linii w process_dem.py
+# ~40 linii w process_dem.py
 
 if cfg.sewer.enabled:
-    sewer_data = load_sewer_data(cfg)
+    sewer_data = load_sewer_data(cfg)  # ERROR jesli brak danych
     graph, nodes = build_sewer_graph(
         sewer_data, snap_tolerance_m=cfg.sewer.snap_tolerance_m
     )
@@ -72,8 +77,9 @@ if cfg.sewer.enabled:
 # ... existing: fill sinks (z drain_points) → fdir → FA ...
 
 if cfg.sewer.enabled:
+    reconstruct_inlet_fa(fa, fdir, nodes)  # P1 fix: odtworzenie FA z sasiadow
     fa = route_fa_through_sewer(graph, fa, nodes)
-    fa = propagate_fa_downstream(fa, fdir, nodes)
+    fa = propagate_fa_downstream(fa, fdir, nodes)  # globalny recompute
 
 # ... existing: stream extraction → subcatchments → DB ...
 
@@ -91,15 +97,16 @@ if cfg.sewer.enabled:
 3.  Stream burning (BDOT10k rivers)
 3b. ★ Inlet burning + drain_points injection
 4.  Fill sinks → fdir → FA (drain_points przekazane do pyflwdir)
+4a. ★ Odtworzenie FA wpustow (z sasiadow w fdir)
 4b. ★ Sewer routing (BFS po grafie → suma FA na wylotach)
-4c. ★ FA propagation downstream od wylotow
+4c. ★ FA propagation downstream od wylotow (globalny recompute)
 5.  Stream extraction (z "wzbogaconym" FA)
 6.  Subcatchment delineation
 7.  Polygonization + stats
 8.  DB insert (+ sewer_network, sewer_nodes)
 ```
 
-Kroki 4b i 4c musza byc wstawione PO `process_hydrology_pyflwdir()` a PRZED `compute_strahler_from_fdir()` — miedzy liniami 572 a 681 w obecnym `process_dem.py`.
+Kroki 4a-4c musza byc wstawione PO `process_hydrology_pyflwdir()` a PRZED `compute_strahler_from_fdir()` — miedzy liniami 572 a 681 w obecnym `process_dem.py`.
 
 ### 4.2 Krok 3b — Inlet burning + drain_points injection
 
@@ -109,69 +116,102 @@ OUTPUT: dem (zmodyfikowany), drain_points (lista (row, col))
 
 1. Dla kazdego wezla typu 'inlet':
    a. (x, y) → (row, col) via inverse rasterio transform (int() truncation)
-   b. dem_elev = dem[row, col]
-   c. Ustal burn_depth:
+   b. WALIDACJA: jesli row/col poza zakresem rastra → WARNING, skip, diagnostics++
+   c. dem_elev = dem[row, col]
+   d. Ustal burn_depth:
       - Jesli user podal invert_elev_m → depth = dem_elev - invert_elev_m
       - Jesli user podal depth_m → depth = depth_m
       - Fallback → depth = config.sewer.inlet_burn_depth_m (YAML)
-   d. WALIDACJA: jesli depth <= 0 → WARNING (wpust "wystaje" nad teren), skip
-   e. dem[row, col] -= depth
-   f. drain_points.append((row, col))
-   g. Zapisz: node.dem_elev_m = dem_elev, node.burn_elev_m = dem_elev - depth
+   e. WALIDACJA: jesli depth <= 0 → WARNING (wpust "wystaje" nad teren), skip
+   f. DEDUPLICATION: jesli (row, col) juz w drain_points (inny wpust w tej samej komorce):
+      → uzyj max(depth) z obu wpustow
+      → FA bedzie wspoldzielone (jeden odczyt per komorka, nie podwojony)
+   g. dem[row, col] -= depth
+   h. drain_points.append((row, col))
+   i. Zapisz: node.dem_elev_m = dem_elev, node.burn_elev_m = dem_elev - depth
 ```
 
-KRYTYCZNE: Wpusty musza byc dodane do `drain_points` przekazywanych do `process_hydrology_pyflwdir()`. Mechanizm `drain_points` juz istnieje dla jezior bezodplywowych — pyflwdir traktuje je jako outlety/pity i NIE zasypuje ich podczas fill sinks (Wang & Liu).
+KRYTYCZNE: Wpusty musza byc dodane do `drain_points` przekazywanych do `process_hydrology_pyflwdir()`. Mechanizm `drain_points` juz istnieje dla jezior bezodplywowych — pyflwdir traktuje je jako outlety/pity i NIE zasypuje ich podczas fill sinks (Wang & Liu). Komorki drain_points sa ustawiane na nodata w DEM (hydrology.py:1277-1281), wiec po pipeline FA w tych komorkach = 0.
 
-### 4.3 Krok 4b — Sewer routing
+### 4.3 Krok 4a — Odtworzenie FA wpustow (FIX dla drain_points/nodata)
 
 ```
-INPUT:  sewer_graph (scipy sparse), fa_raster, sewer_nodes
-OUTPUT: nodes z total_upstream_fa
+INPUT:  fa_raster, fdir_raster, sewer_nodes (wpusty z (row, col))
+OUTPUT: nodes z odtworzonym fa_value
+
+Mechanizm drain_points ustawia komorke DEM na nodata. pyflwdir WYKLUCZA
+ja z FA — komorka wpustu ma FA = 0. Ale woda z sasiadow poprawnie splywu
+KU wpustowi (fdir sasiadow wskazuje na komorke wpustu). Odtwarzamy FA
+wpustu jako sume FA z sasiadow, ktorych fdir wskazuje na te komorke.
 
 1. Dla kazdego wezla typu 'inlet':
-   a. (x, y) → (row, col)
-   b. node.fa_value = fa_raster[row, col]
+   a. (row, col) — juz obliczone w kroku 3b
+   b. reconstructed_fa = 0
+   c. Dla kazdego z 8 sasiadow (dr, dc) w D8:
+      - neighbor = (row + dr, col + dc)
+      - jesli fdir[neighbor] wskazuje na (row, col):
+        - reconstructed_fa += fa[neighbor]
+   d. node.fa_value = reconstructed_fa
+   e. UWAGA: jesli dwa wpusty w tej samej komorce — FA dzielone
+      proporcjonalnie (50/50) lub przypisane do jednego (merge)
+```
 
-2. Dla kazdego wezla typu 'outlet':
+### 4.4 Krok 4b — Sewer routing
+
+```
+INPUT:  sewer_graph (scipy sparse), sewer_nodes (z fa_value z kroku 4a)
+OUTPUT: nodes z total_upstream_fa
+
+1. Dla kazdego wezla typu 'outlet':
    a. BFS upstream po grafie → zbierz wszystkie inlet nodes
    b. total_fa = sum(inlet.fa_value for inlet in upstream_inlets)
    c. node.total_upstream_fa = total_fa
 ```
 
-### 4.4 Krok 4c — FA propagation downstream
+### 4.5 Krok 4c — FA propagation downstream (globalny recompute)
 
 ```
-INPUT:  fa_raster, fdir_raster, outlets (posortowane rosnaco wg total_fa)
+INPUT:  fa_raster, fdir_raster, outlets
 OUTPUT: fa_raster (zmodyfikowany)
 
-1. Posortuj wyloty rosnaco wg total_upstream_fa
+Zamiast iteracyjnego BFS per wylot (ryzyko podwojenia surplus na
+wspolnych sciezkach), stosujemy dwuetapowe podejscie:
 
-2. Dla kazdego wylotu w kolejnosci:
-   a. (x, y) → (row, col)
-   b. surplus = outlet.total_upstream_fa
-   c. fa_raster[row, col] += surplus
-   d. BFS downstream po fdir:
-      - visited = set()
-      - current = (row, col)
-      - while current not in visited
-            AND current nie jest na krawedzi rastra
-            AND fdir[current] != nodata:
-        - visited.add(current)
-        - next = follow fdir[current] → sasiednia komorka
-        - fa_raster[next] += surplus
-        - current = next
+1. Wstrzykniecie surplusow do komorek wylotow:
+   a. Dla kazdego wylotu:
+      - (x, y) → (row, col)
+      - WALIDACJA: jesli fa[row, col] == nodata → ERROR (wylot w nodata DEM)
+        → snap do najblizszej komorki non-nodata w promieniu cellsize
+      - fa_raster[row, col] += outlet.total_upstream_fa
+
+2. Globalny recompute FA downstream od wylotow:
+   - Zbierz wszystkie komorki wylotow jako seed points
+   - BFS downstream po fdir od kazdego seeda:
+     - visited = set()
+     - queue = deque(seed_cells)
+     - while queue:
+       - current = queue.popleft()
+       - if current in visited: continue
+       - visited.add(current)
+       - next = follow fdir[current]
+       - if next is valid (in bounds, not nodata, not in visited):
+         - Przelicz fa[next] = suma FA z WSZYSTKICH sasiadow
+           ktorych fdir wskazuje na next (nie tylko surplus)
+         - queue.append(next)
+
+   Alternatywnie: uzyj pyflwdir upstream_area() na zmodyfikowanym
+   rastrze (prostsze, ale przelicza CALY raster — wolniejsze).
+   Rekomendacja: lokalny BFS od wylotow dla wydajnosci.
 ```
 
-Zabezpieczenie anti-cyklowe: `visited` set + sprawdzenie krawedzi rastra.
-
-### 4.5 Kaskada kierunku przeplywu
+### 4.6 Kaskada kierunku przeplywu
 
 ```
 INPUT:  sewer_lines, sewer_points (opcjonalne), config
 OUTPUT: directed graph (scipy sparse)
 
 1. Zbuduj nieskierowany graf z topologii linii
-   - Snap endpoints w promieniu snap_tolerance_m
+   - Snap endpoints w promieniu effective_snap = max(snap_tolerance_m, cellsize)
    - Kazdy unikalny endpoint → wezel
    - Kazda linia → krawedz
 
@@ -193,6 +233,7 @@ OUTPUT: directed graph (scipy sparse)
 5. Walidacja:
    - Czy graf jest spojny? Jesli nie → WARNING per komponent
    - Czy kazdy komponent ma dokladnie jeden outlet? Jesli nie → WARNING
+   - Komponent bez wylotu → POMIJANY (brak inlet burning, brak FA routing) + WARNING
    - Cykle? → WARNING (ale nie blokuj — ignorujemy, transferujemy FA do wylotu niezaleznie od sciezki)
 ```
 
@@ -205,21 +246,24 @@ OUTPUT: directed graph (scipy sparse)
 | `id` | SERIAL PK | NO | |
 | `geom` | Point 2180 | NO | Lokalizacja |
 | `node_type` | VARCHAR(20) | NO | 'inlet' / 'outlet' / 'junction' |
+| `component_id` | INTEGER | YES | Numer spojnej skladowej grafu |
 | `depth_m` | FLOAT | YES | Glebokosc wpustu |
 | `invert_elev_m` | FLOAT | YES | Rzedna dna |
 | `dem_elev_m` | FLOAT | YES | Rzedna DEM (wypelniana przez pipeline) |
 | `burn_elev_m` | FLOAT | YES | Rzedna po wypaleniu (DEM - depth) |
-| `fa_value` | INT | YES | FA w komorce po inlet burning |
+| `fa_value` | INT | YES | FA w komorce (odtworzone z sasiadow dla wpustow) |
 | `total_upstream_fa` | INT | YES | Suma FA z upstream wpustow (tylko wyloty) |
-| `outlet_id` | INT FK → self | YES | Do ktorego wylotu trafia (NULL dla wylotow) |
+| `root_outlet_id` | INT FK → self | YES | Do ktorego wylotu trafia (NULL dla wylotow) |
 | `nearest_stream_segment_idx` | INT | YES | Snap do stream_network (tylko wyloty) |
 | `source_type` | VARCHAR(20) | NO | 'user_defined' / 'topology_generated' |
 | `rim_elev_m` | FLOAT | YES | Rzedna wlazu/terenu (HEC-RAS/SWMM) |
 | `max_depth_m` | FLOAT | YES | Max glebokosc studzienki (HEC-RAS/SWMM) |
 | `ponded_area_m2` | FLOAT | YES | Powierzchnia zalewania (HEC-RAS/SWMM) |
 | `outfall_type` | VARCHAR(20) | YES | 'free'/'normal'/'fixed'/'tidal' (HEC-RAS/SWMM) |
+| `updated_at` | TIMESTAMP | YES | DEFAULT CURRENT_TIMESTAMP |
 
-Indeksy: GIST(geom), B-tree(node_type), B-tree(outlet_id).
+Indeksy: GIST(geom), B-tree(node_type), composite(root_outlet_id, node_type).
+Constraint: CHECK(root_outlet_id != id).
 
 ### 5.2 Tabela `sewer_network`
 
@@ -239,9 +283,15 @@ Indeksy: GIST(geom), B-tree(node_type), B-tree(outlet_id).
 | `manning_n` | FLOAT | YES | Wspolczynnik szorstkosci (HEC-RAS/SWMM) |
 | `length_m` | FLOAT | NO | Dlugosc (obliczona z geom) |
 | `slope_percent` | FLOAT | YES | Spadek (z rzednych lub DEM) |
-| `source_file` | VARCHAR(200) | NO | Pochodzenie danych |
+| `source` | VARCHAR(50) | NO | Pochodzenie danych |
+| `updated_at` | TIMESTAMP | YES | DEFAULT CURRENT_TIMESTAMP |
 
 Indeksy: GIST(geom), B-tree(node_from_id), B-tree(node_to_id).
+
+### 5.3 Rozszerzenie `stream_network`
+
+Nowa kolumna (nullable):
+- `is_sewer_augmented` BOOLEAN DEFAULT FALSE — flaga dla segmentow downstream od wylotow kanalizacji, ktorych `upstream_area_km2` uwzglednia FA z kanalizacji
 
 ## 6. Dane wejsciowe
 
@@ -272,11 +322,15 @@ Wszystkie kolumny poza geometria sa opcjonalne. Domyslne wartosci:
 
 ### 6.4 Walidacja i snap
 
-- Snap endpoints w promieniu `snap_tolerance_m` (YAML, default: 2.0m)
+- Snap endpoints w promieniu `effective_snap = max(snap_tolerance_m, cellsize)` — zapobiega sytuacji gdy snap < cellsize rastra
 - WARNING jesli snap > tolerancji
-- WARNING jesli graf niespojny
-- WARNING jesli komponent bez wylotu
-- WARNING jesli rzedna wpustu >= DEM (wpust "wystaje")
+- WARNING jesli graf niespojny (wiele komponentow)
+- Komponent bez wylotu → POMIJANY + WARNING
+- WARNING jesli rzedna wpustu >= DEM (wpust "wystaje" nad teren)
+- ERROR jesli dane nie maja CRS (opcja: `assumed_crs` w YAML)
+- WARNING jesli wpust poza zakresem rastra DEM → skip + diagnostics
+- ERROR jesli wylot w komorce nodata DEM → snap do najblizszej valid cell
+- WARNING jesli dwa wpusty w tej samej komorce rastra → merge (max depth, shared FA)
 
 ## 7. Konfiguracja YAML
 
@@ -295,6 +349,7 @@ sewer:
     # table: sewer_network              # dla type: database
     lines_layer: null                   # nazwa warstwy linii w GPKG (null = auto-detect)
     points_layer: null                  # nazwa warstwy punktow w GPKG (null = brak)
+    assumed_crs: null                   # reczne CRS jesli brak w danych (np. "EPSG:4326")
 
   attribute_mapping:
     diameter: null
@@ -314,6 +369,13 @@ sewer:
     outfall_type: null
 ```
 
+Sekcja `sewer` musi byc dodana do `_DEFAULT_CONFIG` w `config.py` z domyslnymi wartosciami jak powyzej.
+
+### 7.1 Zachowanie error handling
+
+- `sewer.enabled=true` + brak danych (plik nie istnieje, WFS timeout, pusta tabela) → **ERROR**, pipeline przerwany. Uzytkownik swiadomie wlaczyl kanalizacje — brak danych to blad konfiguracji, nie graceful degradation.
+- `sewer.enabled=false` → kroki 3b, 4a-4c sa calkowicie pomijane. Pipeline dziala jak dotad.
+
 ## 8. API i admin panel
 
 ### 8.1 Nowe endpointy
@@ -329,8 +391,9 @@ sewer:
 
 Nowa zakladka "Sewer" w `/admin`:
 - Status danych (zaladowano / brak)
-- Statystyki (wezly, krawedzie, typy)
+- Statystyki (wezly, krawedzie, typy, komponenty)
 - Upload / podglad na mapie / usuwanie
+- WARNING jesli pipeline jest "dirty" (dane zmienione od ostatniego runu)
 
 ### 8.3 Frontend
 
@@ -339,32 +402,59 @@ Nowa warstwa overlay w `layers.js`:
 - Punkty wpustow (niebieskie) / wylotow (czerwone) / junction (szare)
 - Tooltip z atrybutami
 
-## 9. Dokumentacja
+### 8.4 Re-run workflow
 
-### 9.1 Pliki do aktualizacji
+Po zmianie danych kanalizacji (upload / delete) → pelny re-run pipeline jest WYMAGANY:
+1. `DELETE /api/admin/sewer/delete` → TRUNCATE sewer_*, oznacz pipeline jako "dirty"
+2. `POST /api/admin/sewer/upload` → zapis pliku, oznacz pipeline jako "dirty"
+3. Admin panel wyswietla warning: "Dane kanalizacji zmienione — wymagany re-run pipeline"
+4. Re-run pipeline: `process_dem.py` przetwarza od nowa z nowymi danymi kanalizacji (FA raster, stream_network, stream_catchments sa przeliczane)
+
+## 9. Znane ograniczenia
+
+### 9.1 Precise delineation (ADR-050) nie uwzglednia kanalizacji
+
+RasterCache (tryb precise, bez threshold) uzywa fdir z dysku. Komorki wpustow w fdir sa pitami (fdir=0/nodata) — woda doplywajaca do wpustu ZATRZYMUJE SIE tam. Precise delineation nie wie o routingu kanalizacyjnym. To jest ograniczenie trybu precise — wyniki precomputed (z threshold) uwzgledniaja kanalizacje (zmodyfikowany FA → stream_network → CatchmentGraph).
+
+### 9.2 drain_point/nodata przerywa sciezki splywu przez komorke wpustu
+
+Ustawienie komorki wpustu na nodata blokuje WSZYSTKIE sciezki splywu przechodzace przez te komorke — nie tylko wode przechwycona przez kanalizacje. Przy rastrze 5m (komorka 25m²) efekt jest akceptowalny (micro-zlewnia wpustu i tak odpowiada fizycznej zlewni wpustu ulicznego). Dla rastrow 1m efekt jest minimalny.
+
+### 9.3 upstream_area_km2 downstream od wylotow
+
+Segmenty stream_network downstream od wylotow kanalizacji maja zawyzone `upstream_area_km2` (uwzglednia FA z kanalizacji). `CatchmentGraph.aggregate_stats["area_km2"]` (suma poligonow) jest poprawne topograficznie. Flaga `is_sewer_augmented` w stream_network umozliwia rozroznienie.
+
+### 9.4 stream_distance z drain_points
+
+`flw.stream_distance()` traktuje wpusty jako outlety — komorki upstream od wpustu maja stream_distance do WPUSTU (nie do globalnego outletu). To zmienia `max_flow_dist_m` i `hydraulic_length_km` w stream_catchments zawierajacych wpusty.
+
+## 10. Dokumentacja
+
+### 10.1 Pliki do aktualizacji
 
 | Plik | Zmiana |
 |------|--------|
 | `docs/SCOPE.md` | Przeniesienie kanalizacji z "out of scope" do "in scope" |
 | `docs/ARCHITECTURE.md` | Nowe moduly, tabele, endpointy, diagram pipeline |
-| `docs/DATA_MODEL.md` | Tabele `sewer_network`, `sewer_nodes` |
+| `docs/DATA_MODEL.md` | Tabele `sewer_network`, `sewer_nodes`, kolumna `is_sewer_augmented` |
 | `docs/DECISIONS.md` | ADR-051: Integracja kanalizacji deszczowej |
 | `docs/CHANGELOG.md` | Wpis o nowej funkcjonalnosci |
 | `docs/PROGRESS.md` | Aktualizacja statusu |
 | `docs/CROSS_PROJECT_ANALYSIS.md` | Wplyw na zaleznosci |
 
-### 9.2 ADR-051 — kluczowe decyzje
+### 10.2 ADR-051 — kluczowe decyzje
 
-1. Podejscie: inlet burning + routing grafowy + FA propagation
+1. Podejscie: modified inlet burning + routing grafowy + FA propagation (autorski hybrid)
 2. Dane: upload uzytkownika (file/WFS/DB/URL), nie publiczne API
 3. Graf: scipy sparse, spojne z CatchmentGraph
 4. stormcatchments odrzucony (GPL-3.0, pysheds, brak FA propagation)
-5. Drain points injection — rozwiazanie fill sinks vs inlet burning
-6. Jedno zrodlo danych per run, brak wariantowosci
-7. Schemat DB z kolumnami HEC-RAS/SWMM (nullable, future-proof)
-8. Zero nowych zaleznosci
+5. Drain points injection — rozwiazanie fill sinks vs inlet burning + odtworzenie FA z sasiadow
+6. Globalny recompute FA downstream zamiast iteracyjnego BFS per wylot
+7. Jedno zrodlo danych per run, brak wariantowosci
+8. Schemat DB z kolumnami HEC-RAS/SWMM (nullable, future-proof)
+9. Zero nowych zaleznosci
 
-## 10. Zaleznosci
+## 11. Zaleznosci
 
 Zero nowych zaleznosci. Wszystkie potrzebne biblioteki juz w `requirements.txt`:
 - `geopandas`, `fiona` — czytanie SHP/GPKG/GeoJSON, WFS
@@ -375,9 +465,65 @@ Zero nowych zaleznosci. Wszystkie potrzebne biblioteki juz w `requirements.txt`:
 - `pyproj` — reprojekcja CRS
 - `sqlalchemy` — polaczenie z zewnetrzna DB
 
-## 11. Literatura
+## 12. Testowanie
 
-- Si et al. (2024), *Discover Water*, Springer — porownanie trzech metod GIS integracji sieci kanalizacyjnej z delineacja zlewni miejskich. DSC = 0.80.
-- USGS StreamStats (zlwenia Mystic River, Massachusetts) — operacyjne wdrozenie inlet burning + siec rurociagów.
-- Biblioteka `stormcatchments` (Python/GitHub) — referencyjna implementacja (odrzucona z powodu GPL-3.0).
-- Water NZ — ostrzezenie: metoda rastrowa dziala dobrze dla sieci burzowej, gorzej dla sanitarnej.
+### 12.1 Unit testy (`tests/unit/test_sewer_service.py`)
+
+Minimum 20 testow dla kazdej funkcji w `sewer_service.py`:
+
+**Parsowanie:**
+- parse_sewer_input z plikiem liniowym (SHP, GPKG, GeoJSON)
+- parse_sewer_input z plikiem punktowym
+- parse_sewer_input z obydwoma warstwami
+- attribute_mapping — reczne i auto-detect
+- brak CRS → ERROR
+- pusta geometria → ERROR
+
+**Budowa grafu:**
+- build_sewer_graph z prostego drzewa (3 wpusty, 1 wylot)
+- snap_tolerance — merge bliskich endpointow
+- kaskada kierunku: atrybut, rzedne, topologia
+- auto-detect wylotow z topologii
+- graf rozlaczny → wiele komponentow + WARNING
+- komponent bez wylotu → POMIJANY + WARNING
+- cykle w grafie → WARNING, routing dziala
+
+**Inlet burning:**
+- burn_inlets — obnizenie DEM, generacja drain_points
+- walidacja: depth <= 0 → WARNING, skip
+- walidacja: wpust poza DEM → WARNING, skip
+- deduplication: dwa wpusty w jednej komorce → merge
+
+**Odtworzenie FA:**
+- reconstruct_inlet_fa — poprawna suma z 8 sasiadow
+- komorka na krawedzi rastra (mniej niz 8 sasiadow)
+- dwa wpusty w jednej komorce — dzielone FA
+
+**Routing:**
+- route_fa_through_sewer — prosta siec (2 wpusty → 1 wylot)
+- siec z junction (rozgalezienie)
+- wiele komponentow (niezalezne wyloty)
+
+**Propagacja FA:**
+- propagate_fa_downstream — wstrzykniecie + recompute
+- wylot w komorce nodata → ERROR / snap
+- wylot na cieku (stream cell) — FA dodane poprawnie
+
+### 12.2 Integration testy
+
+1. **Regression** — pipeline z `sewer.enabled=false` → identyczne wyniki jak dotychczas
+2. **Prosta siec** — syntetyczny DEM 50x50, 3 wpusty, 1 wylot → weryfikacja FA downstream
+3. **Kompleksowa siec** — 2 rozlaczne komponenty, jeden bez wylotu → WARNING, poprawne FA
+
+### 12.3 Test fixtures
+
+- Syntetyczny DEM 50x50 z plaskim terenem i lekkim spadkiem
+- Prosta siec kanalizacyjna (3 linie, 4 wezly) jako GeoJSON
+- Zlozony fixture z wieloma komponentami i brakujacymi atrybutami
+
+## 13. Literatura
+
+- Si et al. (2024), *Discover Water*, Springer — porownanie trzech metod GIS integracji sieci kanalizacyjnej z delineacja zlewni miejskich. DSC = 0.80. Nasze podejscie jest inspirowane metoda inlet burning, ale zamiast wypalania trasy kolektora w DEM stosuje autorski grafowy transfer FA — eliminujac sztuczne koryta na powierzchni.
+- USGS StreamStats (zlewnia Mystic River, Massachusetts) — operacyjne wdrozenie inlet burning + siec rurociagów w DEM. Roznica: USGS wypala cala trase podziemna, my transferujemy FA grafem.
+- Biblioteka `stormcatchments` (Python/GitHub) — referencyjna implementacja koncepcji (graf NetworkX + pysheds). Odrzucona z powodu GPL-3.0, redundantnych zaleznosci, braku FA propagation.
+- Water NZ — ostrzezenie: metoda rastrowa dziala dobrze dla sieci burzowej, gorzej dla sanitarnej (prowadzonej celowo z dala od najnizszych partii terenu).
