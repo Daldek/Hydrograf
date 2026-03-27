@@ -311,7 +311,7 @@ def get_sewer_mvt(
     return Response(
         content=bytes(tile_data),
         media_type="application/x-protobuf",
-        headers=_CACHE_MISS if not has_data else _CACHE_MISS,
+        headers=_CACHE_HIT if has_data else _CACHE_MISS,
     )
 
 

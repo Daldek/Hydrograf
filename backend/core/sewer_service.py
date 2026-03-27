@@ -312,6 +312,22 @@ def build_sewer_graph(
         graph.edges.append(edge)
         undirected_edges.append((line_idx, start_node, end_node))
 
+    # Extract mapped attributes onto edges
+    for i, edge in enumerate(graph.edges):
+        row = gdf.iloc[i]
+        if attr_mapping.get("diameter") and attr_mapping["diameter"] in gdf.columns:
+            edge["diameter_mm"] = row.get(attr_mapping["diameter"])
+        if attr_mapping.get("material") and attr_mapping["material"] in gdf.columns:
+            edge["material"] = row.get(attr_mapping["material"])
+        if attr_mapping.get("manning") and attr_mapping["manning"] in gdf.columns:
+            edge["manning_n"] = row.get(attr_mapping["manning"])
+        if attr_mapping.get("cross_section") and attr_mapping["cross_section"] in gdf.columns:
+            edge["cross_section_shape"] = row.get(attr_mapping["cross_section"])
+        if attr_mapping.get("width") and attr_mapping["width"] in gdf.columns:
+            edge["width_mm"] = row.get(attr_mapping["width"])
+        if attr_mapping.get("height") and attr_mapping["height"] in gdf.columns:
+            edge["height_mm"] = row.get(attr_mapping["height"])
+
     # --- Step 4: Connected components ---
     if n_nodes > 0:
         row_indices = []
@@ -582,6 +598,12 @@ def burn_inlets(
         dem[row, col] -= depth
         drain_points.append((row, col))
 
+    # Fix burn_elev_m for deduplicated cells (max depth may differ from per-inlet depth)
+    for inlet in inlets:
+        key = (inlet.get("row", -1), inlet.get("col", -1))
+        if key in cell_depths:
+            inlet["burn_elev_m"] = inlet.get("dem_elev_m", 0) - cell_depths[key]
+
     logger.info(f"Inlet burning: {len(cell_depths)} cells, {len(inlets)} inlets")
     return dem, drain_points
 
@@ -791,13 +813,33 @@ def insert_sewer_data(
     # Insert edges
     for edge in graph.edges:
         wkt = edge["geom"].wkt
+
+        # Compute slope from endpoint elevations if available
+        from_node = graph.nodes[edge["from_node"]]
+        to_node = graph.nodes[edge["to_node"]]
+        invert_start = from_node.get("invert_elev_m")
+        invert_end = to_node.get("invert_elev_m")
+        slope_pct = None
+        if (
+            invert_start is not None
+            and invert_end is not None
+            and edge["length_m"] > 0
+        ):
+            slope_pct = abs(invert_start - invert_end) / edge["length_m"] * 100
+
         db_session.execute(
             text("""
                 INSERT INTO sewer_network (
-                    geom, node_from_id, node_to_id, length_m, source
+                    geom, node_from_id, node_to_id, length_m, source,
+                    diameter_mm, material, manning_n,
+                    cross_section_shape, width_mm, height_mm,
+                    invert_elev_start_m, invert_elev_end_m, slope_percent
                 ) VALUES (
                     ST_SetSRID(ST_GeomFromText(:wkt), 2180),
-                    :from_node, :to_node, :length_m, :source
+                    :from_node, :to_node, :length_m, :source,
+                    :diameter_mm, :material, :manning_n,
+                    :cross_section_shape, :width_mm, :height_mm,
+                    :invert_elev_start_m, :invert_elev_end_m, :slope_percent
                 )
             """),
             {
@@ -806,7 +848,37 @@ def insert_sewer_data(
                 "to_node": edge["to_node"],
                 "length_m": edge["length_m"],
                 "source": source_file,
+                "diameter_mm": edge.get("diameter_mm"),
+                "material": edge.get("material"),
+                "manning_n": edge.get("manning_n"),
+                "cross_section_shape": edge.get("cross_section_shape"),
+                "width_mm": edge.get("width_mm"),
+                "height_mm": edge.get("height_mm"),
+                "invert_elev_start_m": invert_start,
+                "invert_elev_end_m": invert_end,
+                "slope_percent": slope_pct,
             },
+        )
+
+    # Reset sequence to avoid desync after explicit id inserts
+    db_session.execute(text(
+        "SELECT setval('sewer_nodes_id_seq', COALESCE((SELECT MAX(id) FROM sewer_nodes), 0))"
+    ))
+
+    # Mark stream segments near sewer outlets as augmented
+    outlets = [n for n in graph.nodes if n["node_type"] == "outlet"]
+    for outlet in outlets:
+        db_session.execute(
+            text("""
+                UPDATE stream_network
+                SET is_sewer_augmented = TRUE
+                WHERE ST_DWithin(
+                    geom,
+                    ST_SetSRID(ST_MakePoint(:x, :y), 2180),
+                    50.0
+                )
+            """),
+            {"x": outlet["x"], "y": outlet["y"]},
         )
 
     db_session.commit()
