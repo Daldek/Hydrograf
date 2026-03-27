@@ -737,3 +737,79 @@ def _detect_outlets(
         outlets.append(best)
 
     return outlets
+
+
+def insert_sewer_data(
+    graph,
+    db_session,
+    source_file: str = "unknown",
+) -> int:
+    """Insert sewer graph into PostGIS (sewer_nodes + sewer_network).
+
+    Truncates existing data first, then inserts all nodes and edges.
+    Returns total number of records inserted.
+    """
+    from sqlalchemy import text
+
+    # Truncate existing data (order matters — FK constraints)
+    db_session.execute(text("TRUNCATE TABLE sewer_network CASCADE"))
+    db_session.execute(text("TRUNCATE TABLE sewer_nodes CASCADE"))
+    db_session.commit()
+
+    # Insert nodes
+    for node in graph.nodes:
+        db_session.execute(
+            text("""
+                INSERT INTO sewer_nodes (
+                    id, geom, node_type, component_id, depth_m, invert_elev_m,
+                    dem_elev_m, burn_elev_m, fa_value, total_upstream_fa,
+                    root_outlet_id, source_type
+                ) VALUES (
+                    :id, ST_SetSRID(ST_MakePoint(:x, :y), 2180),
+                    :node_type, :component_id, :depth_m, :invert_elev_m,
+                    :dem_elev_m, :burn_elev_m, :fa_value, :total_upstream_fa,
+                    :root_outlet_id, :source_type
+                )
+            """),
+            {
+                "id": node["id"],
+                "x": node["x"],
+                "y": node["y"],
+                "node_type": node["node_type"],
+                "component_id": node.get("component_id"),
+                "depth_m": node.get("depth_m"),
+                "invert_elev_m": node.get("invert_elev_m"),
+                "dem_elev_m": node.get("dem_elev_m"),
+                "burn_elev_m": node.get("burn_elev_m"),
+                "fa_value": node.get("fa_value"),
+                "total_upstream_fa": node.get("total_upstream_fa"),
+                "root_outlet_id": node.get("root_outlet_id"),
+                "source_type": node.get("source_type", "topology_generated"),
+            },
+        )
+
+    # Insert edges
+    for edge in graph.edges:
+        wkt = edge["geom"].wkt
+        db_session.execute(
+            text("""
+                INSERT INTO sewer_network (
+                    geom, node_from_id, node_to_id, length_m, source
+                ) VALUES (
+                    ST_SetSRID(ST_GeomFromText(:wkt), 2180),
+                    :from_node, :to_node, :length_m, :source
+                )
+            """),
+            {
+                "wkt": wkt,
+                "from_node": edge["from_node"],
+                "to_node": edge["to_node"],
+                "length_m": edge["length_m"],
+                "source": source_file,
+            },
+        )
+
+    db_session.commit()
+    total = len(graph.nodes) + len(graph.edges)
+    logger.info(f"Inserted sewer data: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
+    return total
