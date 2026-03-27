@@ -74,9 +74,12 @@
 
             if (resultEl) {
                 if (resp.ok) {
+                    var safeTypes = data.geometry_types.map(function (t) {
+                        return window.Hydrograf.adminUtils.escapeHtml(String(t));
+                    }).join(', ');
                     resultEl.innerHTML =
                         '<p style="color:#22c55e">' + window.Hydrograf.adminUtils.escapeHtml(data.message) + '</p>' +
-                        '<p>Obiektów: ' + data.features + ', typy: ' + data.geometry_types.join(', ') + '</p>';
+                        '<p>Obiektów: ' + data.features + ', typy: ' + safeTypes + '</p>';
                     loadSewerStatus();
                 } else {
                     resultEl.innerHTML =

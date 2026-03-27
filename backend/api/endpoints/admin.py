@@ -39,6 +39,9 @@ DATA_HYDRO = PROJECT_ROOT / "data" / "hydro"
 DATA_SEWER = PROJECT_ROOT / "data" / "sewer"
 CACHE_DIR = PROJECT_ROOT / "cache"
 
+ALLOWED_SEWER_EXTENSIONS = {".shp", ".gpkg", ".geojson", ".json", ".zip"}
+MAX_SEWER_UPLOAD_MB = 100
+
 # Module load time — for uptime calculation
 _start_time = time.time()
 
@@ -700,12 +703,40 @@ async def sewer_upload(
     db: Session = Depends(get_db),
 ):
     """Upload sewer network file (SHP/GPKG/GeoJSON)."""
-    import shutil
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
 
+    # Validate extension
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in ALLOWED_SEWER_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid file type: {suffix}. "
+                f"Allowed: {', '.join(sorted(ALLOWED_SEWER_EXTENSIONS))}"
+            ),
+        )
+
+    # Read file with size limit
+    content = await file.read()
+    size_mb = len(content) / (1024 * 1024)
+    if size_mb > MAX_SEWER_UPLOAD_MB:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large: {size_mb:.1f} MB (max {MAX_SEWER_UPLOAD_MB} MB)",
+        )
+
+    # Sanitize filename
+    safe_name = f"{uuid.uuid4()}_{Path(file.filename).name}"
     DATA_SEWER.mkdir(parents=True, exist_ok=True)
-    dest = DATA_SEWER / file.filename
-    with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    dest = DATA_SEWER / safe_name
+
+    # Verify path is within sewer dir (prevent traversal)
+    if not dest.resolve().is_relative_to(DATA_SEWER.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Save file
+    dest.write_bytes(content)
 
     # Validate file can be read as geodata
     try:
@@ -718,7 +749,7 @@ async def sewer_upload(
         raise HTTPException(status_code=400, detail=f"Invalid geodata file: {e}")
 
     return {
-        "filename": file.filename,
+        "filename": safe_name,
         "path": str(dest),
         "features": n_features,
         "geometry_types": geom_types,

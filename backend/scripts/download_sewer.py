@@ -5,6 +5,7 @@ One source per run. Reprojects to EPSG:2180.
 """
 
 import logging
+import re
 from pathlib import Path
 
 import fiona
@@ -89,6 +90,9 @@ def load_from_wfs(url: str, layer: str) -> gpd.GeoDataFrame:
 
 def load_from_database(connection: str, table: str) -> gpd.GeoDataFrame:
     """Load sewer data from external PostGIS database."""
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_.]*$', table):
+        raise ValueError(f"Invalid table name: {table}")
+
     from sqlalchemy import create_engine
 
     logger.info(f"Loading sewer data from database: {table}")

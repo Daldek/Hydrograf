@@ -407,8 +407,8 @@
                 overlayGroup,
                 'Kanalizacja deszczowa',
                 function () { return window.Hydrograf.sewer.getLayer(); },
-                null,
-                null,
+                function () { /* no-op: sewer has no bounds */ },
+                function () { /* no-op */ },
                 50
             );
         }
