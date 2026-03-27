@@ -7,6 +7,11 @@ from rasterio.transform import Affine
 from shapely.geometry import LineString
 from sqlalchemy import text  # noqa: F401 — used in Task 3 (DB tests)
 
+# Register DB fixtures from conftest_db
+pytest_plugins = ["tests.conftest_db"]
+
+from tests.conftest_db import requires_db
+
 from core.sewer_service import (
     build_sewer_graph,
     burn_inlets,
@@ -230,3 +235,126 @@ class TestSewerPipelineInMemory:
             "Downstream cell out of bounds"
         )
         assert acc_after[nr, nc] > acc_before[nr, nc]
+
+
+@requires_db
+@pytest.mark.db
+class TestSewerDatabase:
+    """DB tests for sewer pipeline: insert + augmented flag."""
+
+    @pytest.fixture(autouse=True)
+    def _db_cleanup(self, db_session):
+        """Cleanup sewer data and synthetic stream after each test."""
+        yield
+        # Rollback any failed transaction before cleanup
+        db_session.rollback()
+        db_session.execute(
+            text("TRUNCATE TABLE sewer_network RESTART IDENTITY CASCADE")
+        )
+        db_session.execute(
+            text("TRUNCATE TABLE sewer_nodes RESTART IDENTITY CASCADE")
+        )
+        db_session.execute(
+            text("DELETE FROM stream_network WHERE segment_idx = 9999")
+        )
+        db_session.execute(
+            text(
+                "UPDATE stream_network SET is_sewer_augmented = FALSE "
+                "WHERE is_sewer_augmented = TRUE"
+            )
+        )
+        db_session.commit()
+
+    def test_insert_sewer_data(self, db_session, pipeline_state):
+        """Sewer graph persisted to PostGIS correctly."""
+        graph = pipeline_state["graph"]
+
+        count = insert_sewer_data(graph, db_session, source_file="synthetic_test")
+        assert count == 4 + 3  # 4 nodes + 3 edges
+
+        # Verify node counts
+        result = db_session.execute(
+            text("SELECT COUNT(*) FROM sewer_nodes")
+        )
+        assert result.scalar() == 4
+
+        result = db_session.execute(
+            text("SELECT COUNT(*) FROM sewer_network")
+        )
+        assert result.scalar() == 3
+
+        # Verify outlet has total_upstream_fa > 0
+        result = db_session.execute(
+            text(
+                "SELECT total_upstream_fa FROM sewer_nodes "
+                "WHERE node_type = 'outlet'"
+            )
+        )
+        row = result.fetchone()
+        assert row is not None
+        assert row[0] > 0
+
+        # Verify inlets have fa_value > 0
+        result = db_session.execute(
+            text(
+                "SELECT fa_value FROM sewer_nodes "
+                "WHERE node_type = 'inlet'"
+            )
+        )
+        rows = result.fetchall()
+        assert len(rows) == 2
+        for row in rows:
+            assert row[0] > 0
+
+        # Verify edges have positive length and correct source
+        result = db_session.execute(
+            text(
+                "SELECT length_m, source FROM sewer_network"
+            )
+        )
+        for length_m, source in result.fetchall():
+            assert length_m > 0
+            assert source == "synthetic_test"
+
+        # Verify geometries are SRID 2180
+        result = db_session.execute(
+            text("SELECT ST_SRID(geom) FROM sewer_nodes LIMIT 1")
+        )
+        assert result.scalar() == 2180
+
+    def test_sewer_augmented_flag(self, db_session, pipeline_state):
+        """Stream segments near outlet marked is_sewer_augmented=TRUE."""
+        graph = pipeline_state["graph"]
+        outlet = pipeline_state["outlets"][0]
+
+        # Insert synthetic stream segment within 50m of outlet
+        db_session.execute(
+            text(
+                "INSERT INTO stream_network "
+                "(geom, threshold_m2, segment_idx, is_sewer_augmented) "
+                "VALUES ("
+                "  ST_SetSRID("
+                "    ST_MakeLine(ST_MakePoint(:x1, :y), ST_MakePoint(:x2, :y)),"
+                "    2180"
+                "  ), 1000, 9999, FALSE"
+                ")"
+            ),
+            {
+                "x1": outlet["x"] - 20.0,
+                "x2": outlet["x"] + 20.0,
+                "y": outlet["y"],
+            },
+        )
+        db_session.commit()
+
+        # Run insert_sewer_data (which updates is_sewer_augmented)
+        insert_sewer_data(graph, db_session, source_file="synthetic_test")
+
+        # Verify flag was set
+        result = db_session.execute(
+            text(
+                "SELECT is_sewer_augmented FROM stream_network "
+                "WHERE segment_idx = 9999"
+            )
+        )
+        assert result.scalar() is True
