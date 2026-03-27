@@ -1,8 +1,8 @@
 # DATA_MODEL.md - Model Danych
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.6
-**Data:** 2026-03-25
+**Wersja:** 1.7
+**Data:** 2026-03-27
 **Status:** Approved
 
 ---
@@ -63,9 +63,10 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 │ threshold_m2        │         │ id (PK)                  │
 │ segment_idx         │ ──┐     │ geom                     │
 │ is_real_stream      │   │     │ layer_type               │
-└─────────────────────┘   │     │ name                     │
-    ↑ spatial matching    │     │ length_m                 │
-    (bufor 15m, ADR-044)  │     └─────────────────────────┘
+│ is_sewer_augmented  │   │     │ name                     │
+└─────────────────────┘   │     │ length_m                 │
+    ↑ spatial matching    │     └─────────────────────────┘
+    (bufor 15m, ADR-044)  │
                           │
                           │  (threshold_m2, segment_idx)
 ┌──────────────────────────┐
@@ -101,6 +102,29 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 │ max_depth_m         │
 │ mean_depth_m        │
 └─────────────────────┘
+
+┌─────────────────────────┐       ┌─────────────────────────┐
+│      sewer_nodes         │       │     sewer_network        │
+├─────────────────────────┤       ├─────────────────────────┤
+│ id (PK)                  │ ◄──── │ node_from_id (FK)       │
+│ geom                     │ ◄──── │ node_to_id (FK)         │
+│ node_type                │       │ id (PK)                  │
+│ component_id             │       │ geom                     │
+│ depth_m                  │       │ diameter_mm              │
+│ invert_elev_m            │       │ width_mm                 │
+│ dem_elev_m               │       │ height_mm                │
+│ burn_elev_m              │       │ cross_section_shape      │
+│ fa_value                 │       │ invert_elev_start_m      │
+│ total_upstream_fa        │       │ invert_elev_end_m        │
+│ root_outlet_id (FK self) │       │ material                 │
+│ nearest_stream_segment_idx│      │ manning_n                │
+│ source_type              │       │ length_m                 │
+│ rim_elev_m               │       │ slope_percent            │
+│ max_depth_m              │       │ source                   │
+│ ponded_area_m2           │       │ updated_at               │
+│ outfall_type             │       └─────────────────────────┘
+│ updated_at               │
+└─────────────────────────┘
 ```
 
 ---
@@ -255,6 +279,7 @@ CREATE TABLE stream_network (
     threshold_m2 INT NOT NULL DEFAULT 1000,          -- migracja 005/017 (aktywne progi: 1000, 10000, 100000; próg 100 usunięty, migracja 017)
     segment_idx INTEGER,                            -- migracja 014 (ADR-026)
     is_real_stream BOOLEAN,                         -- migracja 021 (ADR-044)
+    is_sewer_augmented BOOLEAN DEFAULT FALSE,       -- migracja 025 (ADR-051)
 
     CONSTRAINT positive_length CHECK (length_m IS NULL OR length_m > 0),
     CONSTRAINT valid_strahler CHECK (strahler_order IS NULL OR strahler_order > 0)
@@ -305,6 +330,7 @@ COMMENT ON COLUMN stream_network.strahler_order IS 'Rząd Strahlera (hierarchia 
 | `threshold_m2` | INT | NO | 1000 | Prog akumulacji przeplywu [m2] (migracja 005/017). Aktywne progi: 1000, 10000, 100000 (próg 100 usunięty, migracja 017) |
 | `segment_idx` | INTEGER | YES | NULL | Indeks segmentu spojny z `stream_catchments.segment_idx` (migracja 014, ADR-026) |
 | `is_real_stream` | BOOLEAN | YES | NULL | Czy segment pokrywa sie z ciekiem BDOT10k (spatial matching, bufor 15m, overlap >= 50%). NULL = nie matchowano, false = splywy algorytmiczne, true = ciek rzeczywisty (migracja 021, ADR-044) |
+| `is_sewer_augmented` | BOOLEAN | YES | FALSE | Czy flow accumulation segmentu zostala zmodyfikowana przez siec kanalizacyjna (migracja 025, ADR-051) |
 
 **Przykładowe rekordy:**
 ```sql
@@ -489,11 +515,171 @@ COMMENT ON COLUMN bdot_streams.length_m IS 'Dlugosc geometrii [m]';
 
 ---
 
+### 3.9 Tabela: `sewer_nodes`
+
+**Opis:** Węzły sieci kanalizacji deszczowej — wloty (inlet), wyloty (outlet), połączenia (junction) i węzły izolowane. Przechowują dane topologiczne, elevacyjne i wyniki obliczeń FA (flow accumulation). Migracja 025, ADR-051.
+
+**Schemat SQL:**
+```sql
+CREATE TABLE sewer_nodes (
+    id SERIAL PRIMARY KEY,
+    geom GEOMETRY(Point, 2180) NOT NULL,
+    node_type VARCHAR(20) NOT NULL,
+    component_id INTEGER,
+    depth_m DOUBLE PRECISION,
+    invert_elev_m DOUBLE PRECISION,
+    dem_elev_m DOUBLE PRECISION,
+    burn_elev_m DOUBLE PRECISION,
+    fa_value INTEGER,
+    total_upstream_fa INTEGER,
+    root_outlet_id INTEGER REFERENCES sewer_nodes(id),
+    nearest_stream_segment_idx INTEGER,
+    source_type VARCHAR(20) NOT NULL DEFAULT 'topology_generated',
+    rim_elev_m DOUBLE PRECISION,
+    max_depth_m DOUBLE PRECISION,
+    ponded_area_m2 DOUBLE PRECISION,
+    outfall_type VARCHAR(20),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_outlet_not_self CHECK (root_outlet_id != id),
+    CONSTRAINT chk_node_type CHECK (node_type IN ('inlet', 'outlet', 'junction', 'isolated'))
+);
+
+-- Indeksy
+CREATE INDEX idx_sewer_nodes_geom ON sewer_nodes USING GIST (geom);
+CREATE INDEX idx_sewer_nodes_node_type ON sewer_nodes (node_type);
+CREATE INDEX idx_sewer_nodes_root_outlet_node_type ON sewer_nodes (root_outlet_id, node_type);
+
+-- Komentarze
+COMMENT ON TABLE sewer_nodes IS 'Węzły sieci kanalizacji deszczowej (wloty, wyloty, połączenia)';
+COMMENT ON COLUMN sewer_nodes.node_type IS 'Typ węzła: inlet (wlot), outlet (wylot), junction (połączenie), isolated (izolowany)';
+COMMENT ON COLUMN sewer_nodes.component_id IS 'ID składowej spójnej w grafie kanalizacyjnym';
+COMMENT ON COLUMN sewer_nodes.invert_elev_m IS 'Rzędna dna studzienki [m n.p.m.]';
+COMMENT ON COLUMN sewer_nodes.dem_elev_m IS 'Elevacja z NMT w lokalizacji węzła [m n.p.m.]';
+COMMENT ON COLUMN sewer_nodes.burn_elev_m IS 'Elevacja po wypaleniu (inlet burning) [m n.p.m.]';
+COMMENT ON COLUMN sewer_nodes.fa_value IS 'Flow accumulation w komórce węzła';
+COMMENT ON COLUMN sewer_nodes.total_upstream_fa IS 'Sumaryczny FA ze wszystkich wlotów w składowej';
+COMMENT ON COLUMN sewer_nodes.root_outlet_id IS 'ID węzła wylotowego składowej (FK → sewer_nodes)';
+COMMENT ON COLUMN sewer_nodes.nearest_stream_segment_idx IS 'Indeks najbliższego segmentu cieku w stream_network';
+COMMENT ON COLUMN sewer_nodes.source_type IS 'Źródło danych węzła';
+COMMENT ON COLUMN sewer_nodes.rim_elev_m IS 'Rzędna pokrywy studzienki [m n.p.m.]';
+COMMENT ON COLUMN sewer_nodes.ponded_area_m2 IS 'Powierzchnia zalewowa [m²]';
+COMMENT ON COLUMN sewer_nodes.outfall_type IS 'Typ wylotu (np. river, ditch)';
+```
+
+**Kolumny - szczegóły:**
+
+| Kolumna | Typ | Nullable | Default | Opis |
+|---------|-----|----------|---------|------|
+| `id` | SERIAL | NO | auto | Unikalny identyfikator |
+| `geom` | GEOMETRY(Point, 2180) | NO | - | Punkt lokalizacji węzła |
+| `node_type` | VARCHAR(20) | NO | - | Typ węzła: 'inlet', 'outlet', 'junction', 'isolated' |
+| `component_id` | INTEGER | YES | NULL | ID składowej spójnej w grafie |
+| `depth_m` | DOUBLE PRECISION | YES | NULL | Głębokość studzienki [m] |
+| `invert_elev_m` | DOUBLE PRECISION | YES | NULL | Rzędna dna studzienki [m n.p.m.] |
+| `dem_elev_m` | DOUBLE PRECISION | YES | NULL | Elevacja z NMT [m n.p.m.] |
+| `burn_elev_m` | DOUBLE PRECISION | YES | NULL | Elevacja po inlet burning [m n.p.m.] |
+| `fa_value` | INTEGER | YES | NULL | Flow accumulation w komórce |
+| `total_upstream_fa` | INTEGER | YES | NULL | Sumaryczny FA ze wszystkich wlotów składowej |
+| `root_outlet_id` | INTEGER | YES | NULL | FK → sewer_nodes(id), węzeł wylotowy składowej |
+| `nearest_stream_segment_idx` | INTEGER | YES | NULL | Indeks najbliższego segmentu cieku |
+| `source_type` | VARCHAR(20) | NO | 'topology_generated' | Źródło danych węzła |
+| `rim_elev_m` | DOUBLE PRECISION | YES | NULL | Rzędna pokrywy studzienki [m n.p.m.] |
+| `max_depth_m` | DOUBLE PRECISION | YES | NULL | Maksymalna głębokość studzienki [m] |
+| `ponded_area_m2` | DOUBLE PRECISION | YES | NULL | Powierzchnia zalewowa [m²] |
+| `outfall_type` | VARCHAR(20) | YES | NULL | Typ wylotu (np. river, ditch) |
+| `updated_at` | TIMESTAMP | YES | NOW() | Data aktualizacji |
+
+---
+
+### 3.10 Tabela: `sewer_network`
+
+**Opis:** Odcinki sieci kanalizacji deszczowej — rury łączące węzły `sewer_nodes`. Przechowują parametry hydrauliczne (średnica, materiał, Manning). Migracja 025, ADR-051.
+
+**Schemat SQL:**
+```sql
+CREATE TABLE sewer_network (
+    id SERIAL PRIMARY KEY,
+    geom GEOMETRY(LineString, 2180) NOT NULL,
+    node_from_id INTEGER NOT NULL REFERENCES sewer_nodes(id),
+    node_to_id INTEGER NOT NULL REFERENCES sewer_nodes(id),
+    diameter_mm INTEGER,
+    width_mm INTEGER,
+    height_mm INTEGER,
+    cross_section_shape VARCHAR(20),
+    invert_elev_start_m DOUBLE PRECISION,
+    invert_elev_end_m DOUBLE PRECISION,
+    material VARCHAR(50),
+    manning_n DOUBLE PRECISION,
+    length_m DOUBLE PRECISION NOT NULL,
+    slope_percent DOUBLE PRECISION,
+    source VARCHAR(50) NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_diameter_positive CHECK (diameter_mm IS NULL OR diameter_mm > 0),
+    CONSTRAINT chk_length_positive CHECK (length_m > 0),
+    CONSTRAINT chk_manning_range CHECK (manning_n IS NULL OR (manning_n > 0 AND manning_n < 1))
+);
+
+-- Indeksy
+CREATE INDEX idx_sewer_network_geom ON sewer_network USING GIST (geom);
+CREATE INDEX idx_sewer_network_node_from_id ON sewer_network (node_from_id);
+CREATE INDEX idx_sewer_network_node_to_id ON sewer_network (node_to_id);
+
+-- Komentarze
+COMMENT ON TABLE sewer_network IS 'Odcinki sieci kanalizacji deszczowej (rury)';
+COMMENT ON COLUMN sewer_network.node_from_id IS 'FK → sewer_nodes(id), węzeł początkowy odcinka';
+COMMENT ON COLUMN sewer_network.node_to_id IS 'FK → sewer_nodes(id), węzeł końcowy odcinka';
+COMMENT ON COLUMN sewer_network.diameter_mm IS 'Średnica rury [mm] (dla przekroju kołowego)';
+COMMENT ON COLUMN sewer_network.width_mm IS 'Szerokość rury [mm] (dla przekroju prostokątnego/owalnego)';
+COMMENT ON COLUMN sewer_network.height_mm IS 'Wysokość rury [mm] (dla przekroju prostokątnego/owalnego)';
+COMMENT ON COLUMN sewer_network.cross_section_shape IS 'Kształt przekroju: circular, rectangular, oval, etc.';
+COMMENT ON COLUMN sewer_network.invert_elev_start_m IS 'Rzędna dna na początku odcinka [m n.p.m.]';
+COMMENT ON COLUMN sewer_network.invert_elev_end_m IS 'Rzędna dna na końcu odcinka [m n.p.m.]';
+COMMENT ON COLUMN sewer_network.material IS 'Materiał rury (PVC, beton, żeliwo, etc.)';
+COMMENT ON COLUMN sewer_network.manning_n IS 'Współczynnik szorstkości Manninga (0 < n < 1)';
+COMMENT ON COLUMN sewer_network.length_m IS 'Długość odcinka [m]';
+COMMENT ON COLUMN sewer_network.slope_percent IS 'Spadek odcinka [%]';
+COMMENT ON COLUMN sewer_network.source IS 'Źródło danych (np. plik, WFS, DB)';
+```
+
+**Kolumny - szczegóły:**
+
+| Kolumna | Typ | Nullable | Default | Opis |
+|---------|-----|----------|---------|------|
+| `id` | SERIAL | NO | auto | Unikalny identyfikator |
+| `geom` | GEOMETRY(LineString, 2180) | NO | - | Linia odcinka rury |
+| `node_from_id` | INTEGER | NO | - | FK → sewer_nodes(id), węzeł początkowy |
+| `node_to_id` | INTEGER | NO | - | FK → sewer_nodes(id), węzeł końcowy |
+| `diameter_mm` | INTEGER | YES | NULL | Średnica rury [mm] |
+| `width_mm` | INTEGER | YES | NULL | Szerokość rury [mm] |
+| `height_mm` | INTEGER | YES | NULL | Wysokość rury [mm] |
+| `cross_section_shape` | VARCHAR(20) | YES | NULL | Kształt przekroju |
+| `invert_elev_start_m` | DOUBLE PRECISION | YES | NULL | Rzędna dna na początku [m n.p.m.] |
+| `invert_elev_end_m` | DOUBLE PRECISION | YES | NULL | Rzędna dna na końcu [m n.p.m.] |
+| `material` | VARCHAR(50) | YES | NULL | Materiał rury |
+| `manning_n` | DOUBLE PRECISION | YES | NULL | Współczynnik Manninga (0 < n < 1) |
+| `length_m` | DOUBLE PRECISION | NO | - | Długość odcinka [m] |
+| `slope_percent` | DOUBLE PRECISION | YES | NULL | Spadek odcinka [%] |
+| `source` | VARCHAR(50) | NO | - | Źródło danych |
+| `updated_at` | TIMESTAMP | YES | NOW() | Data aktualizacji |
+
+---
+
 ## 4. Relacje i Constraints
 
 ### 4.1 Klucze Obce (Foreign Keys)
 
 > ~~**flow_network.downstream_id → flow_network.id**~~ — USUNIETA (ADR-028). Tabela `flow_network` zostala wyeliminowana w migracji 015.
+
+**sewer_nodes.root_outlet_id → sewer_nodes.id**
+- Self-referencing FK — wskazuje węzeł wylotowy składowej spójnej (migracja 025)
+
+**sewer_network.node_from_id → sewer_nodes.id**
+- Węzeł początkowy odcinka rury (migracja 025)
+
+**sewer_network.node_to_id → sewer_nodes.id**
+- Węzeł końcowy odcinka rury (migracja 025)
 
 ### 4.2 Unique Constraints
 
@@ -530,6 +716,15 @@ CONSTRAINT valid_strahler CHECK (strahler_order IS NULL OR strahler_order > 0)
 
 -- soil_hsg (migracja 016)
 CONSTRAINT valid_hsg_group CHECK (hsg_group IN ('A', 'B', 'C', 'D'))
+
+-- sewer_nodes (migracja 025)
+CONSTRAINT chk_outlet_not_self CHECK (root_outlet_id != id)
+CONSTRAINT chk_node_type CHECK (node_type IN ('inlet', 'outlet', 'junction', 'isolated'))
+
+-- sewer_network (migracja 025)
+CONSTRAINT chk_diameter_positive CHECK (diameter_mm IS NULL OR diameter_mm > 0)
+CONSTRAINT chk_length_positive CHECK (length_m > 0)
+CONSTRAINT chk_manning_range CHECK (manning_n IS NULL OR (manning_n > 0 AND manning_n < 1))
 ```
 
 ---
@@ -547,6 +742,8 @@ CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST(geom);
 CREATE INDEX idx_depressions_geom ON depressions USING GIST(geom);
 CREATE INDEX idx_soil_hsg_geom ON soil_hsg USING GIST(geom);
 CREATE INDEX idx_bdot_streams_geom ON bdot_streams USING GIST(geom);
+CREATE INDEX idx_sewer_nodes_geom ON sewer_nodes USING GIST(geom);
+CREATE INDEX idx_sewer_network_geom ON sewer_network USING GIST(geom);
 
 -- stream_catchments: geometrie ścieżek spływu (migracje 023, 024)
 CREATE INDEX idx_catchments_flow_path_geom ON stream_catchments USING GIST(longest_flow_path_geom);
@@ -611,6 +808,14 @@ CREATE INDEX idx_soil_hsg_group ON soil_hsg(hsg_group);
 
 -- bdot_streams (migracja 021)
 CREATE INDEX idx_bdot_streams_type ON bdot_streams(layer_type);
+
+-- sewer_nodes (migracja 025)
+CREATE INDEX idx_sewer_nodes_node_type ON sewer_nodes(node_type);
+CREATE INDEX idx_sewer_nodes_root_outlet_node_type ON sewer_nodes(root_outlet_id, node_type); -- composite
+
+-- sewer_network (migracja 025)
+CREATE INDEX idx_sewer_network_node_from_id ON sewer_network(node_from_id);
+CREATE INDEX idx_sewer_network_node_to_id ON sewer_network(node_to_id);
 ```
 
 ---
@@ -631,6 +836,8 @@ VACUUM ANALYZE stream_catchments;
 VACUUM ANALYZE depressions;
 VACUUM ANALYZE soil_hsg;
 VACUUM ANALYZE bdot_streams;
+VACUUM ANALYZE sewer_nodes;
+VACUUM ANALYZE sewer_network;
 ```
 
 ---
@@ -930,6 +1137,7 @@ migrations/
     ├── 022_add_hydraulic_length.py                 # hydraulic_length_km w stream_catchments
     ├── 023_add_flow_path_columns.py                # max_flow_dist_m, longest_flow_path_geom
     ├── 024_add_divide_flow_path.py                 # divide_flow_path_geom w stream_catchments
+    ├── 025_create_sewer_tables.py                  # sewer_nodes, sewer_network, is_sewer_augmented (ADR-051)
     └── d7af925de530_merge_migration.py             # merge: bdot + flow path
 ```
 
@@ -976,7 +1184,9 @@ def downgrade():
 | `stream_catchments` | ~20,000 | ~1 KB | 20 MB | ~50 MB |
 | `depressions` | ~600,000 | ~200 bytes | 120 MB | ~250 MB |
 | `soil_hsg` | ~5,000 | ~500 bytes | 2.5 MB | ~5 MB |
-| **TOTAL** | | | **~155 MB** | **~335 MB** |
+| `sewer_nodes` | ~500 | ~300 bytes | 0.15 MB | ~0.5 MB |
+| `sewer_network` | ~500 | ~300 bytes | 0.15 MB | ~0.5 MB |
+| **TOTAL** | | | **~155 MB** | **~336 MB** |
 
 > **Uwaga:** Eliminacja `flow_network` (ADR-028) zmniejszyla rozmiar bazy o ~80% (z ~2.5 GB do ~330 MB dla 8 arkuszy NMT 1m).
 
@@ -996,7 +1206,7 @@ pg_restore -U hydro_user -d hydro_db -c hydro_db_backup.dump
 
 **Selective backup (tylko dane preprocessing):**
 ```bash
-pg_dump -U hydro_user -d hydro_db -t precipitation_data -t land_cover -t stream_network -t stream_catchments -t depressions -t soil_hsg -F c -f preprocessing_data.dump
+pg_dump -U hydro_user -d hydro_db -t precipitation_data -t land_cover -t stream_network -t stream_catchments -t depressions -t soil_hsg -t sewer_nodes -t sewer_network -F c -f preprocessing_data.dump
 ```
 
 ---
@@ -1058,8 +1268,8 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ### 12.1 Kluczowe Punkty
 
-- **6 tabel:** precipitation_data, land_cover, stream_network, stream_catchments, depressions, soil_hsg (flow_network usunieta -- ADR-028)
-- **19 migracji Alembic** (001-023, z lukami)
+- **8 tabel:** precipitation_data, land_cover, stream_network, stream_catchments, depressions, soil_hsg, sewer_nodes, sewer_network (flow_network usunieta -- ADR-028)
+- **20 migracji Alembic** (001-025, z lukami)
 - **Uklad wspolrzednych:** EPSG:2180 (PL-1992)
 - **Indeksy przestrzenne (GIST)** dla wszystkich geometrii + partial indexes per threshold
 - **Walidacja** przez CHECK constraints
@@ -1074,8 +1284,8 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ---
 
-**Wersja dokumentu:** 1.5
-**Data ostatniej aktualizacji:** 2026-03-24
+**Wersja dokumentu:** 1.7
+**Data ostatniej aktualizacji:** 2026-03-27
 **Status:** Approved
 
 ---
