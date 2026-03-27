@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 18 endpointow (10 core + 8 admin). Unified delineate-watershed (ADR-050). |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 23 endpointy (11 core + 12 admin). Unified delineate-watershed (ADR-050). Sewer admin API (ADR-051). |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull, tryb precomputed + precise (ADR-050) |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 42 scenariusze |
@@ -13,9 +13,10 @@
 | Integracja Kartograf | ✅ Gotowy | v0.6.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Frontend | 🔶 Faza 4 gotowa | 13 modulow JS (9 core + 4 admin). CP4 — delineate-watershed, MVT, DEM tiles, admin panel, boundary file upload |
-| Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie (ADR-034) |
-| Testy | ✅ Gotowy | 899 testow jednostkowych, 0 failures |
+| Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). MVT tiles, overlay frontend, admin panel sewer. |
+| Frontend | 🔶 Faza 4+ gotowa | 15 modulow JS (10 core + 5 admin). Sewer overlay + admin-sewer. |
+| Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie, Kanalizacja (ADR-034, ADR-051) |
+| Testy | ✅ Gotowy | 991 testow jednostkowych, 0 failures |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -46,7 +47,7 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-27 (sesja 74 — integracja kanalizacji deszczowej)
+**Data:** 2026-03-27 (sesja 74 — integracja kanalizacji deszczowej + review + pentest + audit DB)
 
 ### Co zrobiono
 - **Specyfikacja integracji kanalizacji deszczowej** — design doc z brainstormingiem, 15 pytan, review (23 znalezione problemy, 3 krytyczne naprawione)
@@ -55,15 +56,19 @@
 - **Config** — sekcja sewer w _DEFAULT_CONFIG (enabled, burn_depth, snap_tolerance, source, attribute_mapping)
 - **download_sewer.py** — modul pozyskiwania danych (file/WFS/DB/URL) z walidacja CRS
 - **sewer_service.py** — SewerGraph + build_sewer_graph (snap, kaskada kierunku, scipy sparse) + burn_inlets + reconstruct_inlet_fa + route_fa_through_sewer + propagate_fa_downstream + insert_sewer_data
-- **Testy** — 39+ unit testow dla sewer_service, 10 dla download_sewer, 7 dla config
+- **Integracja z process_dem.py** — kroki 3b i 4a-4c, sewer burning w preprocessing
+- **Admin API endpoints** — `/api/admin/sewer/status`, `/upload`, `/delete`
+- **MVT tiles sieci kanalizacyjnej** — `/api/tiles/sewer/{z}/{x}/{y}.pbf`
+- **Frontend overlay + admin tab** — `sewer.js`, `admin-sewer.js`, warstwa na mapie
+- **Code review** — 3 reviewery: spec compliance, backend quality, frontend+docs. 4 krytyczne + 9 waznych naprawionych
+- **Pentest bezpieczenstwa** — 20 findings: 2 CRITICAL, 5 HIGH. SSRF protection dodana w load_from_url/wfs/database, path traversal fix w upload endpoint
+- **Audyt bazy danych** — 26 findings: 2 CRITICAL, 5 HIGH. CHECK constraint bug (root_outlet_id != id), single-transaction insert, batch UPDATE is_sewer_augmented (N+1 → single spatial join), MVT query optimization
+- **Testy** — 991 testow jednostkowych, 0 failures
 
 ### Nastepne kroki
-- Integracja z process_dem.py (kroki 3b, 4a-4c)
-- Admin API endpoints (upload/status/delete)
-- MVT tiles sieci kanalizacyjnej
-- Frontend (overlay + admin tab)
-- Integration test z syntetycznym DEM
-- Aktualizacja SCOPE, ARCHITECTURE, DATA_MODEL
+- Integration test z syntetycznym DEM (pelny pipeline z kanaliza)
+- Aktualizacja ARCHITECTURE.md i DATA_MODEL.md dla kanalizacji
+- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 
 ### Poprzednia sesja (2026-03-25, sesja 73 — unified delineate-watershed endpoint)
 
