@@ -5,6 +5,18 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Sewer Integration
+
+### Dodane
+- Integracja kanalizacji deszczowej z analiza splywu powierzchniowego (ADR-051)
+- Nowy modul `core/sewer_service.py`: budowa grafu sieci, inlet burning, rekonstrukcja FA, routing, propagacja
+- Nowy skrypt `scripts/download_sewer.py`: pozyskiwanie danych (plik/WFS/DB/URL)
+- Migracja DB: tabele `sewer_nodes`, `sewer_network`, kolumna `stream_network.is_sewer_augmented`
+- Sekcja `sewer` w konfiguracji YAML pipeline
+- Nowe endpointy admin: upload/status/delete kanalizacji
+- MVT tiles sieci kanalizacyjnej
+- Warstwa overlay kanalizacji na mapie frontend
+
 ## [Unreleased] — 2026-03-25
 
 ### API

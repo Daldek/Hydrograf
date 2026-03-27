@@ -6,6 +6,7 @@ for the Hydrograf administration panel.
 """
 
 import asyncio
+import logging
 import os
 import re
 import signal
@@ -28,6 +29,8 @@ from core.catchment_graph import get_catchment_graph
 from core.database import get_db, get_db_engine
 from scripts.clean import DB_TABLES, execute_clean
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Path constants
 # ---------------------------------------------------------------------------
@@ -36,7 +39,11 @@ FRONTEND_DATA = PROJECT_ROOT / "frontend" / "data"
 FRONTEND_TILES = PROJECT_ROOT / "frontend" / "tiles"
 DATA_NMT = PROJECT_ROOT / "data" / "nmt"
 DATA_HYDRO = PROJECT_ROOT / "data" / "hydro"
+DATA_SEWER = PROJECT_ROOT / "data" / "sewer"
 CACHE_DIR = PROJECT_ROOT / "cache"
+
+ALLOWED_SEWER_EXTENSIONS = {".shp", ".gpkg", ".geojson", ".json", ".zip"}
+MAX_SEWER_UPLOAD_MB = 100
 
 # Module load time — for uptime calculation
 _start_time = time.time()
@@ -660,3 +667,111 @@ async def bootstrap_stream() -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Sewer management
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sewer/status")
+def sewer_status(db: Session = Depends(get_db)):
+    """Get status of sewer data in the database."""
+    try:
+        result = db.execute(text("SELECT COUNT(*) FROM sewer_nodes"))
+        node_count = result.scalar() or 0
+        result = db.execute(text("SELECT COUNT(*) FROM sewer_network"))
+        edge_count = result.scalar() or 0
+
+        type_counts = {}
+        if node_count > 0:
+            rows = db.execute(text(
+                "SELECT node_type, COUNT(*) FROM sewer_nodes GROUP BY node_type"
+            ))
+            type_counts = {r[0]: r[1] for r in rows}
+
+        return {
+            "loaded": node_count > 0,
+            "nodes": node_count,
+            "edges": edge_count,
+            "node_types": type_counts,
+        }
+    except Exception:
+        return {"loaded": False, "nodes": 0, "edges": 0, "node_types": {}}
+
+
+@router.post("/sewer/upload")
+async def sewer_upload(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Upload sewer network file (SHP/GPKG/GeoJSON)."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    # Validate extension
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in ALLOWED_SEWER_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid file type: {suffix}. "
+                f"Allowed: {', '.join(sorted(ALLOWED_SEWER_EXTENSIONS))}"
+            ),
+        )
+
+    # Read file with size limit
+    content = await file.read()
+    size_mb = len(content) / (1024 * 1024)
+    if size_mb > MAX_SEWER_UPLOAD_MB:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large: {size_mb:.1f} MB (max {MAX_SEWER_UPLOAD_MB} MB)",
+        )
+
+    # Sanitize filename
+    safe_name = f"{uuid.uuid4()}_{Path(file.filename).name}"
+    DATA_SEWER.mkdir(parents=True, exist_ok=True)
+    dest = DATA_SEWER / safe_name
+
+    # Verify path is within sewer dir (prevent traversal)
+    if not dest.resolve().is_relative_to(DATA_SEWER.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Save file
+    dest.write_bytes(content)
+
+    # Validate file can be read as geodata
+    try:
+        import geopandas as gpd
+        gdf = gpd.read_file(str(dest))
+        n_features = len(gdf)
+        geom_types = gdf.geometry.geom_type.unique().tolist()
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        logger.error(f"Sewer upload geodata validation failed: {e}")
+        raise HTTPException(
+            status_code=400, detail="Uploaded file is not valid geodata"
+        )
+
+    return {
+        "filename": safe_name,
+        "features": n_features,
+        "geometry_types": geom_types,
+        "message": "Upload successful. Run pipeline to process sewer data.",
+    }
+
+
+@router.delete("/sewer/delete")
+def sewer_delete(db: Session = Depends(get_db)):
+    """Delete all sewer data from database and disk."""
+    db.execute(text("TRUNCATE TABLE sewer_network CASCADE"))
+    db.execute(text("TRUNCATE TABLE sewer_nodes CASCADE"))
+    db.execute(text("UPDATE stream_network SET is_sewer_augmented = FALSE WHERE is_sewer_augmented = TRUE"))
+    db.commit()
+
+    import shutil
+    if DATA_SEWER.exists():
+        shutil.rmtree(DATA_SEWER)
+
+    return {"message": "Sewer data deleted", "pipeline_dirty": True}
