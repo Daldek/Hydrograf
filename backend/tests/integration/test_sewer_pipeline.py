@@ -117,3 +117,116 @@ def pipeline_state():
         "outlets": outlets,
         "drain_points": drain_points,
     }
+
+
+class TestSewerPipelineInMemory:
+    """Validate each sewer pipeline stage on synthetic 100x100 DEM."""
+
+    def test_build_sewer_graph(self, pipeline_state):
+        """Graph has correct Y-junction topology."""
+        g = pipeline_state["graph"]
+
+        assert g.n_nodes == 4
+        assert g.n_edges == 3
+        assert g.n_components == 1
+        assert g.adj.shape == (4, 4)
+        assert len(g.warnings) == 0
+
+        assert len(g.get_nodes_by_type("inlet")) == 2
+        assert len(g.get_nodes_by_type("junction")) == 1
+        assert len(g.get_nodes_by_type("outlet")) == 1
+
+    def test_burn_inlets(self, pipeline_state):
+        """DEM lowered at inlet cells, drain_points returned."""
+        dem_before = pipeline_state["dem_before_burn"]
+        dem_after = pipeline_state["dem_burned"]
+        inlets = pipeline_state["inlets"]
+        drain_points = pipeline_state["drain_points"]
+
+        assert len(drain_points) == 2
+
+        for inlet in inlets:
+            r, c = inlet["row"], inlet["col"]
+            assert dem_after[r, c] < dem_before[r, c], (
+                f"Inlet at ({r},{c}) not burned"
+            )
+            assert inlet["dem_elev_m"] is not None
+            assert inlet["burn_elev_m"] is not None
+            assert inlet["burn_elev_m"] < inlet["dem_elev_m"]
+
+    def test_hydrology_processing(self, pipeline_state):
+        """pyflwdir produces valid fdir and acc rasters."""
+        fdir = pipeline_state["fdir"]
+        acc = pipeline_state["acc_before_sewer"]
+
+        assert fdir.shape == (NROWS, NCOLS)
+        assert acc.shape == (NROWS, NCOLS)
+
+        # Most cells have valid flow direction
+        valid_fdir = np.isin(fdir, [1, 2, 4, 8, 16, 32, 64, 128])
+        assert valid_fdir.sum() > NROWS * NCOLS * 0.95
+
+        # FA > 0 almost everywhere (except nodata corner)
+        assert (acc > 0).sum() > NROWS * NCOLS * 0.95
+
+        # FA max should be in the valley (col ~50) in southern rows
+        max_pos = np.unravel_index(acc.argmax(), acc.shape)
+        assert max_pos[0] > 50, "Max FA should be in southern half"
+
+    def test_reconstruct_inlet_fa(self, pipeline_state):
+        """Inlets have reconstructed FA > 0."""
+        inlets = pipeline_state["inlets"]
+
+        for inlet in inlets:
+            assert inlet.get("fa_value") is not None, (
+                f"Inlet {inlet['id']} has no fa_value"
+            )
+            assert inlet["fa_value"] > 0, (
+                f"Inlet {inlet['id']} fa_value={inlet['fa_value']}, expected > 0"
+            )
+
+    def test_route_fa_through_sewer(self, pipeline_state):
+        """Outlet total_upstream_fa == sum of inlet fa_values."""
+        inlets = pipeline_state["inlets"]
+        outlets = pipeline_state["outlets"]
+        graph = pipeline_state["graph"]
+
+        assert len(outlets) == 1
+        outlet = outlets[0]
+
+        inlet_fa_sum = sum(n["fa_value"] for n in inlets)
+        assert outlet["total_upstream_fa"] == inlet_fa_sum
+        assert outlet["total_upstream_fa"] > 0
+
+        # Junction and inlets should not have total_upstream_fa
+        for n in graph.nodes:
+            if n["node_type"] != "outlet":
+                assert n.get("total_upstream_fa") is None
+
+    def test_propagate_fa_downstream(self, pipeline_state):
+        """FA downstream of outlet increased by surplus."""
+        acc_before = pipeline_state["acc_before_propagation"]
+        acc_after = pipeline_state["acc"]
+        outlets = pipeline_state["outlets"]
+
+        outlet = outlets[0]
+        r, c = outlet["row"], outlet["col"]
+        surplus = outlet["total_upstream_fa"]
+
+        # FA at outlet cell increased
+        assert acc_after[r, c] > acc_before[r, c]
+        assert acc_after[r, c] - acc_before[r, c] == surplus
+
+        # FA downstream also increased (follow fdir one step)
+        fdir = pipeline_state["fdir"]
+        d8_dr = {1: 0, 2: 1, 4: 1, 8: 1, 16: 0, 32: -1, 64: -1, 128: -1}
+        d8_dc = {1: 1, 2: 1, 4: 0, 8: -1, 16: -1, 32: -1, 64: 0, 128: 1}
+
+        d8 = int(fdir[r, c])
+        assert d8 in d8_dr, f"Outlet fdir={d8} is not a valid D8 direction"
+        nr = r + d8_dr[d8]
+        nc = c + d8_dc[d8]
+        assert 0 <= nr < NROWS and 0 <= nc < NCOLS, (
+            "Downstream cell out of bounds"
+        )
+        assert acc_after[nr, nc] > acc_before[nr, nc]
