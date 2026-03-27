@@ -36,6 +36,7 @@ FRONTEND_DATA = PROJECT_ROOT / "frontend" / "data"
 FRONTEND_TILES = PROJECT_ROOT / "frontend" / "tiles"
 DATA_NMT = PROJECT_ROOT / "data" / "nmt"
 DATA_HYDRO = PROJECT_ROOT / "data" / "hydro"
+DATA_SEWER = PROJECT_ROOT / "data" / "sewer"
 CACHE_DIR = PROJECT_ROOT / "cache"
 
 # Module load time — for uptime calculation
@@ -660,3 +661,80 @@ async def bootstrap_stream() -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Sewer management
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sewer/status")
+def sewer_status(db: Session = Depends(get_db)):
+    """Get status of sewer data in the database."""
+    try:
+        result = db.execute(text("SELECT COUNT(*) FROM sewer_nodes"))
+        node_count = result.scalar() or 0
+        result = db.execute(text("SELECT COUNT(*) FROM sewer_network"))
+        edge_count = result.scalar() or 0
+
+        type_counts = {}
+        if node_count > 0:
+            rows = db.execute(text(
+                "SELECT node_type, COUNT(*) FROM sewer_nodes GROUP BY node_type"
+            ))
+            type_counts = {r[0]: r[1] for r in rows}
+
+        return {
+            "loaded": node_count > 0,
+            "nodes": node_count,
+            "edges": edge_count,
+            "node_types": type_counts,
+        }
+    except Exception:
+        return {"loaded": False, "nodes": 0, "edges": 0, "node_types": {}}
+
+
+@router.post("/sewer/upload")
+async def sewer_upload(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Upload sewer network file (SHP/GPKG/GeoJSON)."""
+    import shutil
+
+    DATA_SEWER.mkdir(parents=True, exist_ok=True)
+    dest = DATA_SEWER / file.filename
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    # Validate file can be read as geodata
+    try:
+        import geopandas as gpd
+        gdf = gpd.read_file(str(dest))
+        n_features = len(gdf)
+        geom_types = gdf.geometry.geom_type.unique().tolist()
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=f"Invalid geodata file: {e}")
+
+    return {
+        "filename": file.filename,
+        "path": str(dest),
+        "features": n_features,
+        "geometry_types": geom_types,
+        "message": "Upload successful. Run pipeline to process sewer data.",
+    }
+
+
+@router.delete("/sewer/delete")
+def sewer_delete(db: Session = Depends(get_db)):
+    """Delete all sewer data from database and disk."""
+    db.execute(text("TRUNCATE TABLE sewer_network CASCADE"))
+    db.execute(text("TRUNCATE TABLE sewer_nodes CASCADE"))
+    db.commit()
+
+    import shutil
+    if DATA_SEWER.exists():
+        shutil.rmtree(DATA_SEWER)
+
+    return {"message": "Sewer data deleted", "pipeline_dirty": True}
