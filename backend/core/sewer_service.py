@@ -784,7 +784,8 @@ def insert_sewer_data(
     db_session.execute(text("TRUNCATE TABLE sewer_network RESTART IDENTITY CASCADE"))
     db_session.execute(text("TRUNCATE TABLE sewer_nodes RESTART IDENTITY CASCADE"))
 
-    # Insert nodes
+    # Insert nodes (two-pass: first without root_outlet_id to avoid FK order issues,
+    # then UPDATE to set self-referencing root_outlet_id)
     for node in graph.nodes:
         db_session.execute(
             text("""
@@ -796,7 +797,7 @@ def insert_sewer_data(
                     :id, ST_SetSRID(ST_MakePoint(:x, :y), 2180),
                     :node_type, :component_id, :depth_m, :invert_elev_m,
                     :dem_elev_m, :burn_elev_m, :fa_value, :total_upstream_fa,
-                    :root_outlet_id, :source_type
+                    NULL, :source_type
                 )
             """),
             {
@@ -811,10 +812,21 @@ def insert_sewer_data(
                 "burn_elev_m": node.get("burn_elev_m"),
                 "fa_value": node.get("fa_value"),
                 "total_upstream_fa": node.get("total_upstream_fa"),
-                "root_outlet_id": node.get("root_outlet_id"),
-                "source_type": node.get("source_type", "topology_generated"),
+                "source_type": node.get("source_type") or "topology_generated",
             },
         )
+
+    # Second pass: set root_outlet_id now that all nodes exist
+    for node in graph.nodes:
+        root_outlet_id = node.get("root_outlet_id")
+        if root_outlet_id is not None:
+            db_session.execute(
+                text(
+                    "UPDATE sewer_nodes SET root_outlet_id = :root_outlet_id "
+                    "WHERE id = :id"
+                ),
+                {"id": node["id"], "root_outlet_id": root_outlet_id},
+            )
 
     # Insert edges
     for edge in graph.edges:
