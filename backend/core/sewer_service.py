@@ -525,6 +525,164 @@ def build_sewer_graph(
     return graph
 
 
+# --- Raster operations ---
+
+# D8 direction offsets
+_D8_DR = {1: 0, 2: 1, 4: 1, 8: 1, 16: 0, 32: -1, 64: -1, 128: -1}
+_D8_DC = {1: 1, 2: 1, 4: 0, 8: -1, 16: -1, 32: -1, 64: 0, 128: 1}
+
+
+def burn_inlets(
+    dem: np.ndarray,
+    inlets: list[dict],
+    default_depth_m: float = 0.5,
+) -> tuple[np.ndarray, list[tuple[int, int]]]:
+    """Lower DEM at inlet locations. Returns modified DEM and drain_points list.
+
+    Each inlet dict must have: id, row, col. Optional: depth_m, invert_elev_m.
+    Deduplicates: if multiple inlets map to same cell, uses max depth.
+    Validates: skips inlets where computed depth <= 0.
+    """
+    drain_points: list[tuple[int, int]] = []
+    cell_depths: dict[tuple[int, int], float] = {}
+    nrows, ncols = dem.shape
+
+    for inlet in inlets:
+        row, col = inlet["row"], inlet["col"]
+        if row < 0 or row >= nrows or col < 0 or col >= ncols:
+            logger.warning(f"Inlet {inlet['id']} at ({row},{col}) outside DEM — skipping")
+            continue
+
+        dem_elev = float(dem[row, col])
+        inlet["dem_elev_m"] = dem_elev
+
+        # Determine depth (cascade: invert_elev → depth_m → default)
+        if inlet.get("invert_elev_m") is not None:
+            depth = dem_elev - inlet["invert_elev_m"]
+        elif inlet.get("depth_m") is not None:
+            depth = inlet["depth_m"]
+        else:
+            depth = default_depth_m
+
+        if depth <= 0:
+            logger.warning(
+                f"Inlet {inlet['id']}: depth={depth:.2f}m <= 0 — skipping"
+            )
+            continue
+
+        key = (row, col)
+        if key in cell_depths:
+            cell_depths[key] = max(cell_depths[key], depth)
+        else:
+            cell_depths[key] = depth
+
+        inlet["burn_elev_m"] = dem_elev - depth
+
+    for (row, col), depth in cell_depths.items():
+        dem[row, col] -= depth
+        drain_points.append((row, col))
+
+    logger.info(f"Inlet burning: {len(cell_depths)} cells, {len(inlets)} inlets")
+    return dem, drain_points
+
+
+def reconstruct_inlet_fa(
+    fa: np.ndarray,
+    fdir: np.ndarray,
+    inlets: list[dict],
+) -> None:
+    """Reconstruct FA for inlet cells (set to nodata by drain_points).
+
+    For each inlet, sum FA from 8 neighbors whose D8 fdir points to inlet cell.
+    Sets inlet["fa_value"] in-place.
+    """
+    nrows, ncols = fa.shape
+
+    for inlet in inlets:
+        row, col = inlet["row"], inlet["col"]
+        reconstructed = 0
+
+        for d8_code in _D8_DR:
+            # Neighbor that flows TO (row, col) is at (row - dr, col - dc)
+            # where (dr, dc) is the offset for d8_code
+            nr = row - _D8_DR[d8_code]
+            nc = col - _D8_DC[d8_code]
+            if 0 <= nr < nrows and 0 <= nc < ncols:
+                if int(fdir[nr, nc]) == d8_code:
+                    reconstructed += int(fa[nr, nc])
+
+        inlet["fa_value"] = reconstructed
+
+
+def route_fa_through_sewer(graph) -> None:
+    """Route FA through sewer graph: sum inlet FA per outlet.
+
+    For each outlet, BFS upstream to find all inlets, sum their fa_value.
+    Sets outlet["total_upstream_fa"] in-place.
+    """
+    for outlet in graph.get_nodes_by_type("outlet"):
+        inlet_ids = graph.get_upstream_inlets(outlet["id"])
+        total = 0
+        for iid in inlet_ids:
+            idx = graph._node_lookup[iid]
+            node = graph.nodes[idx]
+            fa_val = node.get("fa_value", 0) or 0
+            total += fa_val
+        outlet["total_upstream_fa"] = total
+        logger.info(
+            f"Outlet {outlet['id']}: {len(inlet_ids)} inlets, total_fa={total}"
+        )
+
+
+def propagate_fa_downstream(
+    fa: np.ndarray,
+    fdir: np.ndarray,
+    outlets: list[dict],
+) -> None:
+    """Propagate FA surplus from sewer outlets downstream along fdir.
+
+    Sorts outlets by total_upstream_fa ascending (smallest first).
+    For each outlet: injects surplus at cell, walks downstream adding surplus.
+    Anti-cycle protection via visited set.
+    """
+    nrows, ncols = fa.shape
+    sorted_outlets = sorted(outlets, key=lambda o: o.get("total_upstream_fa", 0))
+
+    for outlet in sorted_outlets:
+        surplus = outlet.get("total_upstream_fa", 0)
+        if surplus <= 0:
+            continue
+
+        row, col = outlet["row"], outlet["col"]
+        fa[row, col] += surplus
+
+        # Walk downstream
+        visited = set()
+        current_r, current_c = row, col
+        while True:
+            if (current_r, current_c) in visited:
+                break
+            visited.add((current_r, current_c))
+
+            d8 = int(fdir[current_r, current_c])
+            if d8 <= 0 or d8 not in _D8_DR:
+                break
+
+            nr = current_r + _D8_DR[d8]
+            nc = current_c + _D8_DC[d8]
+
+            if nr < 0 or nr >= nrows or nc < 0 or nc >= ncols:
+                break
+
+            fa[nr, nc] += surplus
+            current_r, current_c = nr, nc
+
+    logger.info(
+        f"FA propagation: {len(sorted_outlets)} outlets, "
+        f"max surplus={max((o.get('total_upstream_fa', 0) for o in sorted_outlets), default=0)}"
+    )
+
+
 def _detect_outlets(
     nodes: list[dict],
     node_degrees: np.ndarray,
