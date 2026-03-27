@@ -6,6 +6,7 @@ for the Hydrograf administration panel.
 """
 
 import asyncio
+import logging
 import os
 import re
 import signal
@@ -27,6 +28,8 @@ from api.dependencies.admin_auth import verify_admin_key
 from core.catchment_graph import get_catchment_graph
 from core.database import get_db, get_db_engine
 from scripts.clean import DB_TABLES, execute_clean
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Path constants
@@ -746,11 +749,13 @@ async def sewer_upload(
         geom_types = gdf.geometry.geom_type.unique().tolist()
     except Exception as e:
         dest.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=f"Invalid geodata file: {e}")
+        logger.error(f"Sewer upload geodata validation failed: {e}")
+        raise HTTPException(
+            status_code=400, detail="Uploaded file is not valid geodata"
+        )
 
     return {
         "filename": safe_name,
-        "path": str(dest),
         "features": n_features,
         "geometry_types": geom_types,
         "message": "Upload successful. Run pipeline to process sewer data.",
@@ -762,6 +767,7 @@ def sewer_delete(db: Session = Depends(get_db)):
     """Delete all sewer data from database and disk."""
     db.execute(text("TRUNCATE TABLE sewer_network CASCADE"))
     db.execute(text("TRUNCATE TABLE sewer_nodes CASCADE"))
+    db.execute(text("UPDATE stream_network SET is_sewer_augmented = FALSE WHERE is_sewer_augmented = TRUE"))
     db.commit()
 
     import shutil

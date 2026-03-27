@@ -120,9 +120,14 @@ class TestBuildSewerGraph:
         g = build_sewer_graph(simple_tree_lines)
         outlets = g.get_nodes_by_type("outlet")
         outlet_id = outlets[0]["id"]
-        # All nodes should have root_outlet_id == outlet's id
+        # Non-outlet nodes should have root_outlet_id == outlet's id.
+        # Outlet node itself has root_outlet_id = None (it IS the root;
+        # self-reference is blocked by CHECK constraint chk_outlet_not_self).
         for node in g.nodes:
-            assert node["root_outlet_id"] == outlet_id
+            if node["node_type"] == "outlet":
+                assert node["root_outlet_id"] is None
+            else:
+                assert node["root_outlet_id"] == outlet_id
 
     def test_adjacency_shape(self, simple_tree_lines):
         g = build_sewer_graph(simple_tree_lines)

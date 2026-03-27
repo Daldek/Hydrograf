@@ -496,6 +496,8 @@ def build_sewer_graph(
             graph.nodes[node_idx]["node_type"] = "isolated"
 
     # --- Step 8: Assign root_outlet_id ---
+    # Outlet nodes get root_outlet_id = None (they ARE the root; self-reference
+    # is blocked by CHECK constraint chk_outlet_not_self).
     outlets = graph.get_nodes_by_type("outlet")
     for outlet in outlets:
         outlet_idx = graph._node_lookup[outlet["id"]]
@@ -506,7 +508,10 @@ def build_sewer_graph(
 
         while queue:
             current = queue.popleft()
-            graph.nodes[current]["root_outlet_id"] = outlet["id"]
+            if current == outlet_idx:
+                graph.nodes[current]["root_outlet_id"] = None
+            else:
+                graph.nodes[current]["root_outlet_id"] = outlet["id"]
             upstream_indices = graph.adj[current].indices
             for u_idx in upstream_indices:
                 if u_idx not in visited:
@@ -774,9 +779,10 @@ def insert_sewer_data(
     from sqlalchemy import text
 
     # Truncate existing data (order matters — FK constraints)
-    db_session.execute(text("TRUNCATE TABLE sewer_network CASCADE"))
-    db_session.execute(text("TRUNCATE TABLE sewer_nodes CASCADE"))
-    db_session.commit()
+    # RESTART IDENTITY resets sequences so no manual setval needed.
+    # No commit here — everything in a single transaction.
+    db_session.execute(text("TRUNCATE TABLE sewer_network RESTART IDENTITY CASCADE"))
+    db_session.execute(text("TRUNCATE TABLE sewer_nodes RESTART IDENTITY CASCADE"))
 
     # Insert nodes
     for node in graph.nodes:
@@ -860,26 +866,14 @@ def insert_sewer_data(
             },
         )
 
-    # Reset sequence to avoid desync after explicit id inserts
-    db_session.execute(text(
-        "SELECT setval('sewer_nodes_id_seq', COALESCE((SELECT MAX(id) FROM sewer_nodes), 0))"
-    ))
-
-    # Mark stream segments near sewer outlets as augmented
-    outlets = [n for n in graph.nodes if n["node_type"] == "outlet"]
-    for outlet in outlets:
-        db_session.execute(
-            text("""
-                UPDATE stream_network
-                SET is_sewer_augmented = TRUE
-                WHERE ST_DWithin(
-                    geom,
-                    ST_SetSRID(ST_MakePoint(:x, :y), 2180),
-                    50.0
-                )
-            """),
-            {"x": outlet["x"], "y": outlet["y"]},
-        )
+    # Mark stream segments near sewer outlets as augmented (single batch query)
+    db_session.execute(text("""
+        UPDATE stream_network sn
+        SET is_sewer_augmented = TRUE
+        FROM sewer_nodes so
+        WHERE so.node_type = 'outlet'
+          AND ST_DWithin(sn.geom, so.geom, 50.0)
+    """))
 
     db_session.commit()
     total = len(graph.nodes) + len(graph.edges)

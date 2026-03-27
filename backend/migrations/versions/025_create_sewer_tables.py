@@ -45,7 +45,8 @@ def upgrade() -> None:
             ponded_area_m2 DOUBLE PRECISION,
             outfall_type VARCHAR(20),
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT chk_outlet_not_self CHECK (root_outlet_id != id)
+            CONSTRAINT chk_outlet_not_self CHECK (root_outlet_id != id),
+            CONSTRAINT chk_node_type CHECK (node_type IN ('inlet', 'outlet', 'junction', 'isolated'))
         )
         """
     )
@@ -81,7 +82,10 @@ def upgrade() -> None:
             length_m DOUBLE PRECISION NOT NULL,
             slope_percent DOUBLE PRECISION,
             source VARCHAR(50) NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT chk_diameter_positive CHECK (diameter_mm IS NULL OR diameter_mm > 0),
+            CONSTRAINT chk_length_positive CHECK (length_m > 0),
+            CONSTRAINT chk_manning_range CHECK (manning_n IS NULL OR (manning_n > 0 AND manning_n < 1))
         )
         """
     )
