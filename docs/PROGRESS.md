@@ -47,9 +47,25 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-27 (sesja 74 — integracja kanalizacji deszczowej + review + pentest + audit DB)
+**Data:** 2026-03-27 (sesja 75 — integration test sewer pipeline)
 
 ### Co zrobiono
+- **Integration test sewer pipeline** — 8 testow (6 in-memory + 2 DB) w `tests/integration/test_sewer_pipeline.py`:
+  - Syntetyczny DEM 100x100 (5m, EPSG:2180, gradient SE + dolinka)
+  - Syntetyczna siec kanalizacyjna Y-junction (2 inlety → junction → outlet)
+  - Pelny pipeline: build_sewer_graph → burn_inlets → pyflwdir (fill/fdir/acc) → reconstruct_inlet_fa → route_fa_through_sewer → propagate_fa_downstream → insert_sewer_data
+  - Testy DB: insert do PostGIS (4 nodes + 3 edges), weryfikacja is_sewer_augmented flag
+- **Bug fix: insert_sewer_data** — 2 bugi znalezione przez test integracyjny:
+  - `source_type` None fallback (NOT NULL violation gdy klucz istnieje z wartoscia None)
+  - `root_outlet_id` FK ordering (two-pass insert: NULL first, then UPDATE)
+- **Testy** — 1108 testow, 0 failures
+
+### Nastepne kroki
+- Aktualizacja ARCHITECTURE.md i DATA_MODEL.md dla kanalizacji
+- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
+
+### Poprzednia sesja (2026-03-27, sesja 74 — integracja kanalizacji deszczowej + review + pentest + audit DB)
+
 - **Specyfikacja integracji kanalizacji deszczowej** — design doc z brainstormingiem, 15 pytan, review (23 znalezione problemy, 3 krytyczne naprawione)
 - **Plan implementacji** — 12 zadan, subagent-driven development
 - **Migracja DB (025)** — tabele sewer_nodes (18 kolumn), sewer_network (16 kolumn), kolumna is_sewer_augmented
@@ -64,11 +80,6 @@
 - **Pentest bezpieczenstwa** — 20 findings: 2 CRITICAL, 5 HIGH. SSRF protection dodana w load_from_url/wfs/database, path traversal fix w upload endpoint
 - **Audyt bazy danych** — 26 findings: 2 CRITICAL, 5 HIGH. CHECK constraint bug (root_outlet_id != id), single-transaction insert, batch UPDATE is_sewer_augmented (N+1 → single spatial join), MVT query optimization
 - **Testy** — 991 testow jednostkowych, 0 failures
-
-### Nastepne kroki
-- Integration test z syntetycznym DEM (pelny pipeline z kanaliza)
-- Aktualizacja ARCHITECTURE.md i DATA_MODEL.md dla kanalizacji
-- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 
 ### Poprzednia sesja (2026-03-25, sesja 73 — unified delineate-watershed endpoint)
 
