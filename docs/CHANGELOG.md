@@ -5,17 +5,28 @@ All notable changes to Hydrograf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — Sewer Integration
+## [Unreleased]
 
 ### Dodane
 - Integracja kanalizacji deszczowej z analiza splywu powierzchniowego (ADR-051)
 - Nowy modul `core/sewer_service.py`: budowa grafu sieci, inlet burning, rekonstrukcja FA, routing, propagacja
 - Nowy skrypt `scripts/download_sewer.py`: pozyskiwanie danych (plik/WFS/DB/URL)
-- Migracja DB: tabele `sewer_nodes`, `sewer_network`, kolumna `stream_network.is_sewer_augmented`
+- Migracja DB (025): tabele `sewer_nodes` (18 kol.), `sewer_network` (16 kol.), kolumna `stream_network.is_sewer_augmented`
 - Sekcja `sewer` w konfiguracji YAML pipeline
-- Nowe endpointy admin: upload/status/delete kanalizacji
-- MVT tiles sieci kanalizacyjnej
-- Warstwa overlay kanalizacji na mapie frontend
+- Nowe endpointy admin: `/api/admin/sewer/upload`, `/status`, `/delete`
+- MVT tiles sieci kanalizacyjnej: `/api/tiles/sewer/{z}/{x}/{y}.pbf`
+- Warstwa overlay kanalizacji na mapie frontend (`sewer.js`, `admin-sewer.js`)
+- Integracja sewer burning w `process_dem.py` (kroki 3b i 4a-4c)
+
+### Naprawione
+- Path traversal w upload endpoint kanalizacji (walidacja nazwy pliku)
+- SQL injection w load_from_database (walidacja table name przez allowlist)
+- CHECK constraint bug (root_outlet_id != id dla wylotow sieci)
+- Cache header copy-paste bug w sewer MVT tiles
+- SSRF protection w load_from_url/wfs/database (allowlist domen/portow)
+- Single-transaction insert (eliminacja okna niespojnosci miedzy sewer_nodes a sewer_network)
+- Batch UPDATE is_sewer_augmented (N+1 → single spatial join)
+- MVT tile query optimization (deduplicated bbox transform)
 
 ## [Unreleased] — 2026-03-25
 

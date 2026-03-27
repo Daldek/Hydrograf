@@ -230,12 +230,26 @@ Ten dokument precyzyjnie definiuje:
 
 ---
 
+#### 2.1.6 Integracja Kanalizacji Deszczowej (ADR-051)
+
+**✅ W zakresie:**
+- Import sieci kanalizacji deszczowej z pliku (SHP/GPKG/GeoJSON), WFS, bazy danych lub URL
+- Wyrywanie wlotow do NMT (inlet burning) + rekonstrukcja akumulacji przeplywu
+- Routing FA przez siec kanalizacyjna (SewerGraph + scipy sparse)
+- Tabele bazy danych: `sewer_nodes` (18 kol.), `sewer_network` (16 kol.), flaga `is_sewer_augmented`
+- Kafelki wektorowe MVT sieci kanalizacyjnej: `/api/tiles/sewer/{z}/{x}/{y}.pbf`
+- Overlay kanalizacji na mapie frontend
+- Admin: zarzadzanie danymi kanalizacji (upload/status/delete) — 3 endpointy `/api/admin/sewer/*`
+- Sekcja `sewer` w konfiguracji YAML pipeline
+
+---
+
 ### 2.2 ❌ OUT OF SCOPE - Poza Zakresem MVP
 
 #### 2.2.1 Funkcjonalności Zaawansowane
 
 **NIE w MVP:**
-- ❌ Routing przepływu w sieci rzecznej
+- ❌ Routing przepływu w sieci rzecznej (modelowanie hydrauliczne — patrz: integracja kanalizacji deszczowej jest w zakresie, ADR-051)
 - ❌ Modelowanie retencji zbiorników/stawów
 - ❌ Symulacja powodziowa (mapy zalewowe)
 - ❌ Modelowanie transportu rumowiska

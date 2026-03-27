@@ -1,8 +1,8 @@
 # ARCHITECTURE.md - Architektura Systemu
 ## System Analizy Hydrologicznej
 
-**Wersja:** 1.8
-**Data:** 2026-03-25
+**Wersja:** 1.9
+**Data:** 2026-03-27
 **Status:** Approved
 
 ---
@@ -101,7 +101,7 @@ Podsumowanie kluczowych ADR:
 | ADR-029 | trace_main_channel() | Wyznaczanie głównego cieku wg Strahlera (do channel_slope) |
 | ADR-032 | Boundary smoothing | `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` |
 | ADR-033 | Building raising | `raise_buildings_in_dem()` +5m pod footprints BUBD |
-| ADR-034 | Panel administracyjny | `/admin` + 8 endpointów `/api/admin/*`, API key auth, bootstrap SSE |
+| ADR-034 | Panel administracyjny | `/admin` + 12 endpointów `/api/admin/*`, API key auth, bootstrap SSE |
 | ADR-035 | Konteneryzacja multi-stage | Multi-stage Dockerfile, entrypoint z wait-for-db, override dev/prod |
 | ADR-036 | Hardening kontenerów Docker | Security headers, resource limits, non-root user |
 | ADR-037 | Separacja cache/data + Kartograf v0.5.0 | Rozdzielenie katalogów cache i danych generowanych |
@@ -116,6 +116,7 @@ Podsumowanie kluczowych ADR:
 | ADR-048 | Droga spływu z działu wód | Longest flow path + divide flow path jako parametry morfometryczne |
 | ADR-049 | DEM auto-discovery z fallback chain | Automatyczne znajdowanie pliku DEM (VRT → mosaic → single TIFF) |
 | ADR-050 | Unified delineate-watershed endpoint | Jeden endpoint z trybami precomputed (BFS) i precise (pyflwdir on-the-fly) |
+| ADR-051 | Integracja sieci kanalizacyjnej | Inlet burning + FA routing przez sieć kanalizacyjną w preprocessingu |
 
 ---
 
@@ -133,12 +134,12 @@ backend/
 │   │   └── admin_auth.py          # Admin API key verification (X-Admin-Key header)
 │   └── endpoints/
 │       ├── __init__.py
-│       ├── admin.py               # 9 endpointów /api/admin/* (dashboard, resources, cleanup, bootstrap)
+│       ├── admin.py               # 12 endpointów /api/admin/* (dashboard, resources, cleanup, bootstrap, sewer)
 │       ├── depressions.py         # GET /depressions
 │       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
-│       ├── tiles.py               # GET /tiles/streams|catchments|landcover/{z}/{x}/{y}.pbf
+│       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf
 │       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes)
 │
 ├── core/
@@ -160,6 +161,7 @@ backend/
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── watershed.py               # Watershed boundary building + legacy CLI functions
+│   ├── sewer_service.py            # Integracja sieci kanalizacyjnej (SewerGraph, burn inlets, FA routing, ADR-051)
 │   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022, Chaikin smoothing ADR-032)
 │   ├── zonal_stats.py             # Zonal statistics (bincount, max)
 │   └── boundary.py               # Obsługa plików wektorowych granic (GPKG/GeoJSON/SHP), walidacja, konwersja bbox (ADR-040)
@@ -183,13 +185,14 @@ backend/
 │   ├── generate_streams_overlay.py # Overlay cieków (PNG)
 │   ├── generate_depressions.py    # Generowanie depresji (blue spots)
 │   ├── analyze_watershed.py       # Analiza zlewni (CLI)
+│   ├── download_sewer.py          # Pobieranie sieci kanalizacyjnej (plik/WFS/DB/URL, walidacja CRS, SSRF protection)
 │   ├── export_pipeline_gpkg.py    # Eksport danych pipeline do GeoPackage
 │   ├── export_task9_gpkg.py       # Eksport danych task9 do GeoPackage
 │   ├── e2e_task9.py               # E2E test pipeline
 │   └── clean.py                  # Czyszczenie danych generowanych (rasters, tiles, DB, cache)
 │
 ├── migrations/
-│   └── versions/                  # 24+ migracji Alembic (001-024 + merge)
+│   └── versions/                  # 25+ migracji Alembic (001-025 + merge)
 │
 ├── utils/
 │   ├── __init__.py
@@ -318,6 +321,7 @@ Response: 200 OK (GeoJSON FeatureCollection)
 GET /api/tiles/streams/{z}/{x}/{y}.pbf?threshold_m2=10000
 GET /api/tiles/catchments/{z}/{x}/{y}.pbf?threshold_m2=10000
 GET /api/tiles/landcover/{z}/{x}/{y}.pbf
+GET /api/tiles/sewer/{z}/{x}/{y}.pbf
 GET /api/tiles/thresholds
 
 Response: Mapbox Vector Tiles (PBF) / JSON
@@ -336,6 +340,10 @@ GET  /api/admin/bootstrap/status   — status procesu bootstrap
 POST /api/admin/bootstrap/start    — uruchomienie bootstrap subprocess
 POST /api/admin/bootstrap/cancel   — anulowanie bootstrap
 GET  /api/admin/bootstrap/stream   — SSE stream logów bootstrap (timeout 3600s)
+
+POST   /api/admin/sewer/upload     — upload pliku z siecią kanalizacyjną (ADR-051)
+GET    /api/admin/sewer/status     — status danych kanalizacji
+DELETE /api/admin/sewer/delete     — usunięcie danych kanalizacji
 ```
 
 ---
@@ -541,6 +549,15 @@ Wyznaczanie drogi spływu z działu wód (najdłuższa ścieżka od granicy zlew
 #### Monotoniczne wygładzanie cieków (ADR-041)
 Zapewnienie monotoniczności profilu podłużnego cieków po wygładzeniu geometrii. Eliminuje artefakty, w których wygładzona linia cieku miała lokalne „podskoki" elevacji niezgodne z kierunkiem przepływu.
 
+#### Integracja sieci kanalizacyjnej (ADR-051)
+Uwzględnienie sieci kanalizacji deszczowej w modelu hydrologicznym. Pipeline preprocessingu rozszerzony o 4 dodatkowe kroki:
+- **Step 3b — Inlet burning:** wypalenie wlotów kanalizacyjnych w DEM (`burn_inlets()`) — obniżenie elevacji w komórkach wlotowych
+- **Step 4a — FA reconstruction:** rekonstrukcja flow accumulation w komórkach wlotowych (`reconstruct_inlet_fa()`)
+- **Step 4b — Sewer routing:** trasowanie flow accumulation przez sieć kanalizacyjną (`route_fa_through_sewer()`)
+- **Step 4c — FA propagation:** propagacja zmodyfikowanego FA w dół sieci cieków (`propagate_fa_downstream()`)
+
+Dane kanalizacyjne przechowywane w tabelach `sewer_nodes` (węzły: wloty, wyloty, połączenia) i `sewer_network` (odcinki rur). Import przez panel admin (`/api/admin/sewer/upload`) z walidacją CRS i ochroną SSRF. Moduły: `core/sewer_service.py` (logika), `scripts/download_sewer.py` (pobieranie danych).
+
 ---
 
 ## 3. Architektura Bazy Danych
@@ -597,6 +614,7 @@ Zapewnienie monotoniczności profilu podłużnego cieków po wygładzeniu geomet
 │ source               VARCHAR(20)  ('DEM_DERIVED', 'MPHP')      │
 │ segment_idx          INTEGER  -- 1-based per threshold (migracja 014, ADR-026) │
 │ is_real_stream       BOOLEAN  -- dopasowanie do BDOT10k (ADR-044)│
+│ is_sewer_augmented   BOOLEAN  -- flaga modyfikacji przez sieć kanalizacyjną (ADR-051) │
 │                                                                 │
 │ Indexes:                                                        │
 │   - idx_stream_geom (GIST on geom)                             │
@@ -668,6 +686,60 @@ Zapewnienie monotoniczności profilu podłużnego cieków po wygładzeniu geomet
 │                                                                 │
 │ Indexes:                                                        │
 │   - idx_bdot_streams_geom (GIST on geom)                       │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                        sewer_nodes                              │
+├─────────────────────────────────────────────────────────────────┤
+│ id (PK)              SERIAL                                     │
+│ geom                 GEOMETRY(Point, 2180)                      │
+│ node_type            VARCHAR(20)  ('inlet','outlet','junction','isolated') │
+│ component_id         INTEGER                                    │
+│ depth_m              FLOAT                                      │
+│ invert_elev_m        FLOAT                                      │
+│ dem_elev_m           FLOAT                                      │
+│ burn_elev_m          FLOAT                                      │
+│ fa_value             INTEGER                                    │
+│ total_upstream_fa    INTEGER                                    │
+│ root_outlet_id       INTEGER  → sewer_nodes(id)                │
+│ nearest_stream_segment_idx INTEGER                              │
+│ source_type          VARCHAR(20)                                │
+│ rim_elev_m           FLOAT                                      │
+│ max_depth_m          FLOAT                                      │
+│ ponded_area_m2       FLOAT                                      │
+│ outfall_type         VARCHAR(20)                                │
+│ updated_at           TIMESTAMP                                  │
+│                                                                 │
+│ Indexes:                                                        │
+│   - idx_sewer_nodes_geom (GIST on geom)                        │
+│   - idx_sewer_nodes_node_type (on node_type)                   │
+│   - idx_sewer_nodes_root_outlet_node_type (root_outlet_id, node_type) │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                       sewer_network                             │
+├─────────────────────────────────────────────────────────────────┤
+│ id (PK)              SERIAL                                     │
+│ geom                 GEOMETRY(LineString, 2180)                 │
+│ node_from_id         INTEGER  → sewer_nodes(id)                │
+│ node_to_id           INTEGER  → sewer_nodes(id)                │
+│ diameter_mm          INTEGER                                    │
+│ width_mm             INTEGER                                    │
+│ height_mm            INTEGER                                    │
+│ cross_section_shape  VARCHAR(20)                                │
+│ invert_elev_start_m  FLOAT                                      │
+│ invert_elev_end_m    FLOAT                                      │
+│ material             VARCHAR(50)                                │
+│ manning_n            FLOAT                                      │
+│ length_m             FLOAT                                      │
+│ slope_percent        FLOAT                                      │
+│ source               VARCHAR(50)                                │
+│ updated_at           TIMESTAMP                                  │
+│                                                                 │
+│ Indexes:                                                        │
+│   - idx_sewer_network_geom (GIST on geom)                      │
+│   - idx_sewer_network_node_from_id (on node_from_id)           │
+│   - idx_sewer_network_node_to_id (on node_to_id)              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -814,11 +886,13 @@ frontend/
     ├── profile.js            # Terrain profile (draw line / auto)
     ├── hydrograph.js         # Hydrograph scenario form + chart
     ├── depressions.js        # Depressions (blue spots) overlay
+    ├── sewer.js              # Warstwa kanalizacji deszczowej (MVT overlay)
     ├── app.js                # Orchestrator: init, click routing, panel
     └── admin/
         ├── admin-api.js      # Admin API client (fetch + X-Admin-Key header)
         ├── admin-bootstrap.js # Bootstrap SSE stream, start/cancel
         ├── admin-bbox-picker.js # Mapa do wyboru bbox obszaru
+        ├── admin-sewer.js    # Karta zarządzania siecią kanalizacyjną
         └── admin-app.js      # Admin panel orchestrator
 ```
 
@@ -1694,11 +1768,12 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 1.8
-**Data ostatniej aktualizacji:** 2026-03-25
+**Wersja dokumentu:** 1.9
+**Data ostatniej aktualizacji:** 2026-03-27
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 1.9 (2026-03-27): Integracja sieci kanalizacyjnej (ADR-051) — sewer_service.py, download_sewer.py, tabele sewer_nodes/sewer_network, 3 endpointy admin sewer, MVT sewer tiles, pipeline steps 3b/4a-4c, is_sewer_augmented w stream_network
 - 1.8 (2026-03-25): Aktualizacja po CP4+ — ADR 035-049 w tabeli, boundary.py i clean.py, koncepcyjne opisy CatchmentGraph/watershed_service (bez sygnatur), bdot_streams + nowe kolumny w schema, sekcja 2.5 (nowe koncepty), aktualizacja liczników (24+ migracji, 45+ unit tests, 8+ integration), modele hydrologiczne (Nash IUH, Snyder UH) i hietogramy (Block/Euler II/Beta)
 - 1.7 (2026-03-01): Aktualizacja vs rzeczywisty stan kodu — dodano: panel admin (ADR-034, 8 endpointów, admin.html, 3 moduły JS admin/), landcover MVT tiles, api/dependencies/, sekcja scripts/ (16 skryptów), 17 migracji, ADR-026..034; zaktualizowano: Docker (API memory 4G, ADMIN_API_KEY, volumes), Nginx (admin, SSE, health, static cache), config.py opis YAML, security (admin auth)
 - 1.6 (2026-02-16): Pełna aktualizacja — nowe tabele (stream_catchments, depressions), ADR-008..025, segmentacja konfluencyjna, Docker/Nginx zgodne z faktycznym stanem, structlog, security headers, usunięcie benchmarków liczbowych
