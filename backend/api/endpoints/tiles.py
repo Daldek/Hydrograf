@@ -231,6 +231,90 @@ def get_landcover_tile(
     )
 
 
+@router.get("/tiles/sewer/{z}/{x}/{y}.pbf")
+def get_sewer_mvt(
+    z: int,
+    x: int,
+    y: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Sewer network MVT tiles (lines + nodes in separate layers)."""
+    xmin, ymin, xmax, ymax = _tile_to_bbox_3857(z, x, y)
+
+    row = db.execute(
+        text("""
+        WITH
+        sewer_lines AS (
+            SELECT
+                ST_AsMVTGeom(
+                    ST_Transform(n.geom, 3857),
+                    ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
+                    4096, 64, true
+                ) AS geom,
+                n.diameter_mm,
+                n.length_m,
+                n.slope_percent
+            FROM sewer_network n
+            WHERE n.geom IS NOT NULL
+              AND ST_Intersects(
+                  n.geom,
+                  ST_Transform(
+                      ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
+                      2180
+                  )
+              )
+        ),
+        sewer_pts AS (
+            SELECT
+                ST_AsMVTGeom(
+                    ST_Transform(p.geom, 3857),
+                    ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
+                    4096, 64, true
+                ) AS geom,
+                p.node_type,
+                p.fa_value,
+                p.total_upstream_fa
+            FROM sewer_nodes p
+            WHERE p.geom IS NOT NULL
+              AND ST_Intersects(
+                  p.geom,
+                  ST_Transform(
+                      ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
+                      2180
+                  )
+              )
+        )
+        SELECT
+            COALESCE(
+                (SELECT ST_AsMVT(d, 'sewer_lines', 4096, 'geom')
+                 FROM sewer_lines d WHERE d.geom IS NOT NULL),
+                ''::bytea
+            )
+            ||
+            COALESCE(
+                (SELECT ST_AsMVT(d, 'sewer_nodes', 4096, 'geom')
+                 FROM sewer_pts d WHERE d.geom IS NOT NULL),
+                ''::bytea
+            ) AS tile
+        """),
+        {
+            "xmin": xmin,
+            "ymin": ymin,
+            "xmax": xmax,
+            "ymax": ymax,
+        },
+    ).fetchone()
+
+    tile_data = row[0] if row and row[0] else _EMPTY_MVT
+    has_data = tile_data != _EMPTY_MVT
+
+    return Response(
+        content=bytes(tile_data),
+        media_type="application/x-protobuf",
+        headers=_CACHE_MISS if not has_data else _CACHE_MISS,
+    )
+
+
 @router.get("/tiles/thresholds")
 def get_available_thresholds(db: Session = Depends(get_db)) -> dict:
     """
