@@ -197,6 +197,26 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Sewer network (col-md-4) -->
+                <div class="col-md-4">
+                    <div class="admin-card glass-panel">
+                        <h5 class="admin-card-header">Kanalizacja deszczowa</h5>
+                        <div id="sewer-status">
+                            <p class="text-secondary small">Ładowanie statusu...</p>
+                        </div>
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <label class="btn btn-primary btn-sm" style="cursor: pointer;">
+                                Upload GPKG/SHP
+                                <input type="file" id="sewer-upload-input"
+                                       accept=".gpkg,.shp,.geojson,.json,.zip"
+                                       style="display:none">
+                            </label>
+                            <button id="sewer-delete-btn" class="btn btn-danger btn-sm">Usuń dane</button>
+                        </div>
+                        <div id="sewer-upload-result" style="margin-top: 1rem;"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -236,6 +256,7 @@
     <script defer src="js/admin/admin-api.js"></script>
     <script defer src="js/admin/admin-bootstrap.js"></script>
     <script defer src="js/admin/admin-bbox-picker.js"></script>
+    <script defer src="js/admin/admin-sewer.js"></script>
     <script defer src="js/admin/admin-app.js"></script>
 </body>
 </html>

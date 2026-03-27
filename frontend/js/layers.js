@@ -401,6 +401,18 @@
             Hydrograf.map.removeLandCoverLegend
         );
 
+        // Sewer network overlay
+        if (window.Hydrograf.sewer) {
+            addOverlayEntry(
+                overlayGroup,
+                'Kanalizacja deszczowa',
+                function () { return window.Hydrograf.sewer.getLayer(); },
+                null,
+                null,
+                50
+            );
+        }
+
         // Placeholder for stream/catchment entries (async populated)
         var streamsPlaceholder = document.createElement('div');
         list.appendChild(streamsPlaceholder);
