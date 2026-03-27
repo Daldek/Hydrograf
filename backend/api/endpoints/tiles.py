@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from api.dependencies.admin_auth import verify_admin_key
 from core.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -212,6 +213,82 @@ def get_landcover_tile(
         )
         SELECT ST_AsMVT(mvt_data, 'landcover', 4096, 'geom') AS tile
         FROM mvt_data
+        """),
+        {
+            "xmin": xmin,
+            "ymin": ymin,
+            "xmax": xmax,
+            "ymax": ymax,
+        },
+    ).fetchone()
+
+    tile_data = row[0] if row and row[0] else _EMPTY_MVT
+    has_data = tile_data != _EMPTY_MVT
+
+    return Response(
+        content=bytes(tile_data),
+        media_type="application/x-protobuf",
+        headers=_CACHE_HIT if has_data else _CACHE_MISS,
+    )
+
+
+@router.get(
+    "/tiles/sewer/{z}/{x}/{y}.pbf",
+    dependencies=[Depends(verify_admin_key)],
+)
+def get_sewer_mvt(
+    z: int,
+    x: int,
+    y: int,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Sewer network MVT tiles (lines + nodes in separate layers).
+
+    Requires admin API key — sewer data is sensitive infrastructure.
+    Only geometry and node_type are served (no diameter, slope, FA values).
+    """
+    # SEC-013: Server-side zoom level restriction
+    if z < 10 or z > 20:
+        return Response(content=b"", media_type="application/x-protobuf")
+
+    xmin, ymin, xmax, ymax = _tile_to_bbox_3857(z, x, y)
+
+    # SEC-008: Prevent slow queries from blocking the connection pool
+    db.execute(text("SET LOCAL statement_timeout = '5s'"))
+
+    row = db.execute(
+        text("""
+        WITH
+        bbox AS (
+            SELECT
+                ST_Transform(ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857), 2180) AS geom_2180,
+                ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857) AS geom_3857
+        ),
+        sewer_lines AS (
+            SELECT
+                ST_AsMVTGeom(ST_Transform(n.geom, 3857), b.geom_3857, 4096, 64, true) AS geom
+            FROM sewer_network n, bbox b
+            WHERE n.geom IS NOT NULL AND ST_Intersects(n.geom, b.geom_2180)
+        ),
+        sewer_pts AS (
+            SELECT
+                ST_AsMVTGeom(ST_Transform(p.geom, 3857), b.geom_3857, 4096, 64, true) AS geom,
+                p.node_type
+            FROM sewer_nodes p, bbox b
+            WHERE p.geom IS NOT NULL AND ST_Intersects(p.geom, b.geom_2180)
+        )
+        SELECT
+            COALESCE(
+                (SELECT ST_AsMVT(d, 'sewer_lines', 4096, 'geom')
+                 FROM sewer_lines d WHERE d.geom IS NOT NULL),
+                ''::bytea
+            )
+            ||
+            COALESCE(
+                (SELECT ST_AsMVT(d, 'sewer_nodes', 4096, 'geom')
+                 FROM sewer_pts d WHERE d.geom IS NOT NULL),
+                ''::bytea
+            ) AS tile
         """),
         {
             "xmin": xmin,

@@ -184,6 +184,7 @@
         loadCleanup();
         window.Hydrograf.adminBootstrap.init();
         window.Hydrograf.adminBboxPicker.init();
+        window.Hydrograf.adminSewer.init();
 
         // Auto-refresh every 30s
         if (_refreshTimer) clearInterval(_refreshTimer);

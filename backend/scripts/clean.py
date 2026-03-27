@@ -62,6 +62,8 @@ COMPONENTS = [
 # Tables truncated during DB cleanup. soil_hsg included because bootstrap
 # re-imports from cache/soil_hsg (which is intentionally preserved).
 DB_TABLES = [
+    "sewer_network",
+    "sewer_nodes",
     "stream_catchments",
     "stream_network",
     "bdot_streams",
