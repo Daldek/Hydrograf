@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from api.dependencies.admin_auth import verify_admin_key
 from core.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -231,58 +232,50 @@ def get_landcover_tile(
     )
 
 
-@router.get("/tiles/sewer/{z}/{x}/{y}.pbf")
+@router.get(
+    "/tiles/sewer/{z}/{x}/{y}.pbf",
+    dependencies=[Depends(verify_admin_key)],
+)
 def get_sewer_mvt(
     z: int,
     x: int,
     y: int,
     db: Session = Depends(get_db),
 ) -> Response:
-    """Sewer network MVT tiles (lines + nodes in separate layers)."""
+    """Sewer network MVT tiles (lines + nodes in separate layers).
+
+    Requires admin API key — sewer data is sensitive infrastructure.
+    Only geometry and node_type are served (no diameter, slope, FA values).
+    """
+    # SEC-013: Server-side zoom level restriction
+    if z < 10 or z > 20:
+        return Response(content=b"", media_type="application/x-protobuf")
+
     xmin, ymin, xmax, ymax = _tile_to_bbox_3857(z, x, y)
+
+    # SEC-008: Prevent slow queries from blocking the connection pool
+    db.execute(text("SET LOCAL statement_timeout = '5s'"))
 
     row = db.execute(
         text("""
         WITH
+        bbox AS (
+            SELECT
+                ST_Transform(ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857), 2180) AS geom_2180,
+                ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857) AS geom_3857
+        ),
         sewer_lines AS (
             SELECT
-                ST_AsMVTGeom(
-                    ST_Transform(n.geom, 3857),
-                    ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
-                    4096, 64, true
-                ) AS geom,
-                n.diameter_mm,
-                n.length_m,
-                n.slope_percent
-            FROM sewer_network n
-            WHERE n.geom IS NOT NULL
-              AND ST_Intersects(
-                  n.geom,
-                  ST_Transform(
-                      ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
-                      2180
-                  )
-              )
+                ST_AsMVTGeom(ST_Transform(n.geom, 3857), b.geom_3857, 4096, 64, true) AS geom
+            FROM sewer_network n, bbox b
+            WHERE n.geom IS NOT NULL AND ST_Intersects(n.geom, b.geom_2180)
         ),
         sewer_pts AS (
             SELECT
-                ST_AsMVTGeom(
-                    ST_Transform(p.geom, 3857),
-                    ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
-                    4096, 64, true
-                ) AS geom,
-                p.node_type,
-                p.fa_value,
-                p.total_upstream_fa
-            FROM sewer_nodes p
-            WHERE p.geom IS NOT NULL
-              AND ST_Intersects(
-                  p.geom,
-                  ST_Transform(
-                      ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857),
-                      2180
-                  )
-              )
+                ST_AsMVTGeom(ST_Transform(p.geom, 3857), b.geom_3857, 4096, 64, true) AS geom,
+                p.node_type
+            FROM sewer_nodes p, bbox b
+            WHERE p.geom IS NOT NULL AND ST_Intersects(p.geom, b.geom_2180)
         )
         SELECT
             COALESCE(
