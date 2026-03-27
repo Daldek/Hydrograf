@@ -1117,7 +1117,8 @@ Dodatkowe zmiany:
 
 ### ADR-051: Integracja kanalizacji deszczowej (2026-03-27)
 
-**Status:** Accepted
+**Data:** 2026-03-27
+**Status:** Przyjeta
 
 **Kontekst:** Standardowe algorytmy flow direction i flow accumulation ignoruja kanalizacje deszczowa w srodowisku miejskim. Woda przechwycona przez wpust moze wyplynac w innej zlewni niz wskazuje DEM.
 

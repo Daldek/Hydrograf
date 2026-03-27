@@ -598,6 +598,19 @@ def process_dem(
         for w in sewer_graph.warnings:
             logger.warning(f"Sewer: {w}")
 
+        # Skip components without outlets
+        outlet_components = {
+            n["component_id"] for n in sewer_graph.nodes
+            if n["node_type"] == "outlet"
+        }
+        skipped = 0
+        for node in sewer_graph.nodes:
+            if node["component_id"] not in outlet_components:
+                node["_skip"] = True
+                skipped += 1
+        if skipped:
+            logger.warning(f"Sewer: skipping {skipped} nodes in outlet-less components")
+
         logger.info(
             f"Sewer graph: {sewer_graph.n_nodes} nodes, "
             f"{sewer_graph.n_edges} edges, {sewer_graph.n_components} components"
@@ -622,10 +635,11 @@ def process_dem(
                     f"outside DEM bounds — will be skipped"
                 )
 
-        # Burn inlets into DEM
+        # Burn inlets into DEM (skip nodes from outlet-less components)
         inlets = [
             n for n in sewer_graph.nodes
             if n["node_type"] == "inlet" and n.get("row", -1) >= 0
+            and not n.get("_skip")
         ]
         dem, drain_points_sewer = burn_inlets(
             dem, inlets,
