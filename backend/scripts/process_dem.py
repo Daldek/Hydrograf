@@ -75,12 +75,21 @@ from core.raster_io import (
     read_raster,
     save_raster_geotiff,
 )
+from core.sewer_service import (
+    build_sewer_graph,
+    burn_inlets,
+    insert_sewer_data,
+    propagate_fa_downstream,
+    reconstruct_inlet_fa,
+    route_fa_through_sewer,
+)
 from core.stream_extraction import (
     compute_downstream_links,
     delineate_subcatchments,
     polygonize_subcatchments,
     vectorize_streams,
 )
+from scripts.download_sewer import load_sewer_data
 
 # Re-export all public names for backward compatibility
 __all__ = [
@@ -371,6 +380,7 @@ def process_dem(
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
     building_gpkg: str | None = None,
+    sewer_config: dict | None = None,
 ) -> dict:
     """
     Process DEM file (ASC, VRT, or GeoTIFF) and extract stream network.
@@ -567,6 +577,66 @@ def process_dem(
         stats["endorheic_lakes"] = drain_diag["endorheic"]
         stats["drain_points"] = len(drain_points)
 
+    # 3b. Sewer inlet burning (optional)
+    sewer_graph = None
+    if sewer_config and sewer_config.get("sewer", {}).get("enabled"):
+        logger.info("=== Sewer integration: loading data ===")
+        sewer_data = load_sewer_data(sewer_config)
+        sewer_cfg = sewer_config["sewer"]
+
+        cellsize = metadata["cellsize"]
+        transform_sewer = _get_transform(metadata, dem.shape)
+
+        sewer_graph = build_sewer_graph(
+            sewer_data,
+            snap_tolerance_m=max(
+                sewer_cfg.get("snap_tolerance_m", 2.0),
+                cellsize,
+            ),
+            attr_mapping=sewer_cfg.get("attribute_mapping", {}),
+        )
+        for w in sewer_graph.warnings:
+            logger.warning(f"Sewer: {w}")
+
+        logger.info(
+            f"Sewer graph: {sewer_graph.n_nodes} nodes, "
+            f"{sewer_graph.n_edges} edges, {sewer_graph.n_components} components"
+        )
+
+        # Convert node (x,y) to raster (row,col) for all nodes
+        from rasterio.transform import rowcol as _rowcol
+
+        nrows, ncols = dem.shape
+        for node in sewer_graph.nodes:
+            r, c = _rowcol(transform_sewer, node["x"], node["y"])
+            r, c = int(r), int(c)
+            # Clamp to raster bounds
+            if 0 <= r < nrows and 0 <= c < ncols:
+                node["row"] = r
+                node["col"] = c
+            else:
+                node["row"] = -1
+                node["col"] = -1
+                logger.warning(
+                    f"Sewer node {node['id']} at ({node['x']:.0f}, {node['y']:.0f}) "
+                    f"outside DEM bounds — will be skipped"
+                )
+
+        # Burn inlets into DEM
+        inlets = [
+            n for n in sewer_graph.nodes
+            if n["node_type"] == "inlet" and n.get("row", -1) >= 0
+        ]
+        dem, drain_points_sewer = burn_inlets(
+            dem, inlets,
+            default_depth_m=sewer_cfg.get("inlet_burn_depth_m", 0.5),
+        )
+        if drain_points is None:
+            drain_points = []
+        drain_points.extend(drain_points_sewer)
+        stats["sewer_inlets_burned"] = len(drain_points_sewer)
+        logger.info(f"Sewer: burned {len(drain_points_sewer)} inlet cells")
+
     # 3-5. Process hydrology using pyflwdir (fill depressions, flow dir, accumulation)
     # Note: Migrated from pysheds to pyflwdir (Deltares) — fewer deps, no temp files
     filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
@@ -602,6 +672,39 @@ def process_dem(
             nodata=0,
             dtype="int32",
         )
+
+    # 4a-4c. Sewer FA routing and propagation
+    if sewer_graph is not None:
+        logger.info("=== Sewer integration: FA routing ===")
+
+        # 4a. Reconstruct FA at inlet cells (nodata from drain_points)
+        inlets = [
+            n for n in sewer_graph.nodes
+            if n["node_type"] == "inlet" and n.get("row", -1) >= 0
+        ]
+        reconstruct_inlet_fa(acc, fdir, inlets)
+
+        # 4b. Route FA through sewer graph
+        route_fa_through_sewer(sewer_graph)
+
+        # 4c. Propagate FA downstream from outlets
+        outlets = [
+            n for n in sewer_graph.nodes
+            if n["node_type"] == "outlet" and n.get("row", -1) >= 0
+        ]
+        propagate_fa_downstream(acc, fdir, outlets)
+
+        stats["sewer_outlets"] = len(outlets)
+        stats["sewer_max_surplus"] = max(
+            (o.get("total_upstream_fa", 0) for o in outlets), default=0
+        )
+        logger.info(
+            f"Sewer: {len(outlets)} outlets, "
+            f"max surplus FA = {stats['sewer_max_surplus']}"
+        )
+
+        # Update max_accumulation after sewer injection
+        stats["max_accumulation"] = int(acc.max())
 
     # 4b. Compute stream distance (flow distance from each cell to outlet)
     logger.info("Computing stream distance to outlet...")
@@ -887,6 +990,19 @@ def process_dem(
                     logger.warning(
                         "No BDOT hydro data found — skipping stream matching"
                     )
+
+            # 8b. Insert sewer data
+            if sewer_graph is not None:
+                logger.info("Inserting sewer data into database...")
+                sewer_count = insert_sewer_data(
+                    sewer_graph, db,
+                    source_file=str(
+                        sewer_config.get("sewer", {}).get("source", {}).get(
+                            "path", "unknown"
+                        )
+                    ),
+                )
+                stats["sewer_records_inserted"] = sewer_count
     else:
         logger.info("Dry run - skipping database insert")
 
