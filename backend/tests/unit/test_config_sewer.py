@@ -40,3 +40,74 @@ class TestSewerConfigMerge:
         assert cfg["sewer"]["inlet_burn_depth_m"] == 0.8
         # Non-overridden defaults preserved
         assert cfg["sewer"]["snap_tolerance_m"] == 2.0
+
+
+class TestSewerFieldMappingDefaults:
+    def test_field_mapping_exists(self):
+        from core.config import _DEFAULT_CONFIG
+        assert "field_mapping" in _DEFAULT_CONFIG["sewer"]
+
+    def test_field_mapping_has_node_id(self):
+        from core.config import _DEFAULT_CONFIG
+        fm = _DEFAULT_CONFIG["sewer"]["field_mapping"]
+        assert fm["node_id"] == "id"
+
+    def test_field_mapping_has_node_role(self):
+        from core.config import _DEFAULT_CONFIG
+        fm = _DEFAULT_CONFIG["sewer"]["field_mapping"]
+        assert fm["node_role"] == "role"
+
+    def test_field_mapping_has_downstream_id(self):
+        from core.config import _DEFAULT_CONFIG
+        fm = _DEFAULT_CONFIG["sewer"]["field_mapping"]
+        assert fm["downstream_id"] == "downstream_id"
+
+    def test_field_mapping_has_edge_from_to(self):
+        from core.config import _DEFAULT_CONFIG
+        fm = _DEFAULT_CONFIG["sewer"]["field_mapping"]
+        assert fm["edge_from"] == "from_node"
+        assert fm["edge_to"] == "to_node"
+
+    def test_field_mapping_core_attrs_null(self):
+        from core.config import _DEFAULT_CONFIG
+        fm = _DEFAULT_CONFIG["sewer"]["field_mapping"]
+        assert fm["invert_elev"] is None
+        assert fm["depth"] is None
+        assert fm["diameter"] is None
+
+    def test_field_mapping_extended_attrs_null(self):
+        from core.config import _DEFAULT_CONFIG
+        fm = _DEFAULT_CONFIG["sewer"]["field_mapping"]
+        for key in ("rim_elevation", "max_depth", "ponded_area",
+                     "outfall_type", "manning", "material",
+                     "cross_section", "width", "height"):
+            assert fm[key] is None, f"{key} should be None"
+
+
+class TestSewerRoleMappingDefaults:
+    def test_role_mapping_exists(self):
+        from core.config import _DEFAULT_CONFIG
+        assert "role_mapping" in _DEFAULT_CONFIG["sewer"]
+
+    def test_role_mapping_four_roles(self):
+        from core.config import _DEFAULT_CONFIG
+        rm = _DEFAULT_CONFIG["sewer"]["role_mapping"]
+        assert rm == {
+            "inlet": "inlet",
+            "outlet": "outlet",
+            "junction": "junction",
+            "storage": "storage",
+        }
+
+
+class TestSewerSourceFormat:
+    def test_source_format_default_auto(self):
+        from core.config import _DEFAULT_CONFIG
+        assert _DEFAULT_CONFIG["sewer"]["source"]["format"] == "auto"
+
+
+class TestSewerBackwardCompat:
+    def test_attribute_mapping_still_present(self):
+        """attribute_mapping kept for backward compat with old config.yaml files."""
+        from core.config import _DEFAULT_CONFIG
+        assert "attribute_mapping" in _DEFAULT_CONFIG["sewer"]
