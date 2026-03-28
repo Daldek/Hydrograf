@@ -205,15 +205,12 @@ def load_sewer_data(
             points_layer=source.get("points_layer"),
             source_format=source_format,
         )
-    elif source_type == "wfs":
-        lines_gdf = load_from_wfs(source["url"], source["layer"])
-        points_gdf = None
-    elif source_type == "database":
-        lines_gdf = load_from_database(source["connection"], source["table"])
-        points_gdf = None
-    elif source_type == "url":
-        lines_gdf = load_from_url(source["url"])
-        points_gdf = None
+    elif source_type in ("wfs", "database", "url"):
+        raise ValueError(
+            f"Source type '{source_type}' is not yet supported with the new topology "
+            "model. Please use type='file' with a GPKG/SHP containing point data with "
+            "id, role, and downstream_id columns."
+        )
     else:
         raise ValueError(f"Unknown sewer source type: {source_type}")
 

@@ -272,36 +272,38 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
     if has_broken_refs:
         return errors  # can't check topology with broken references
 
-    # 6. Cycle detection (DFS)
-    visited: set[str] = set()
-    in_stack: set[str] = set()
-
-    def _dfs_cycle(nid: str) -> str | None:
-        visited.add(nid)
-        in_stack.add(nid)
-        ds = downstream_map.get(nid)
-        if ds:
-            if ds in in_stack:
-                cycle = [nid, ds]
-                cur = ds
-                while downstream_map.get(cur) and downstream_map[cur] != ds:
-                    cur = downstream_map[cur]
-                    cycle.append(cur)
+    # 6. Cycle detection (iterative — avoids recursion limit on large networks)
+    def _find_cycle(start: str) -> str | None:
+        """Walk downstream from start; return cycle description or None."""
+        visited_local: set[str] = set()
+        current: str | None = start
+        while current is not None:
+            if current in visited_local:
+                # Reconstruct cycle path
+                cycle = [current]
+                nxt = downstream_map.get(current)
+                while nxt is not None and nxt != current:
+                    cycle.append(nxt)
+                    nxt = downstream_map.get(nxt)
                 return " → ".join(cycle)
-            if ds not in visited:
-                result = _dfs_cycle(ds)
-                if result:
-                    return result
-        in_stack.discard(nid)
+            visited_local.add(current)
+            current = downstream_map.get(current)
         return None
 
+    globally_visited: set[str] = set()
     for node in nodes:
-        if node["id"] not in visited:
-            cycle_str = _dfs_cycle(node["id"])
+        nid = node["id"]
+        if nid not in globally_visited:
+            cycle_str = _find_cycle(nid)
+            # Mark all nodes reachable from nid as visited
+            cur: str | None = nid
+            while cur is not None and cur not in globally_visited:
+                globally_visited.add(cur)
+                cur = downstream_map.get(cur)
             if cycle_str:
                 errors.append({
                     "type": "cycle_detected",
-                    "node_id": node["id"],
+                    "node_id": nid,
                     "message": f"Cycle: {cycle_str}",
                 })
                 break
@@ -420,11 +422,11 @@ def validate_against_fdir(
     errors: list[dict] = []
     nrows, ncols = fdir.shape
 
-    # Map nodes to raster cells
+    # Map nodes to raster cells (local dict — do not mutate topology nodes)
+    node_cells: dict[str, tuple[int, int]] = {}
     for node in topology.nodes:
         col_f, row_f = ~transform * (node["x"], node["y"])
-        node["_row"] = int(round(row_f))
-        node["_col"] = int(round(col_f))
+        node_cells[node["id"]] = (int(round(row_f)), int(round(col_f)))
 
     # Build component map from edges
     adj: dict[str, set[str]] = defaultdict(set)
@@ -452,7 +454,7 @@ def validate_against_fdir(
     comp_inlet_zones: dict[int, dict[str, set[tuple[int, int]]]] = defaultdict(dict)
     for node in topology.nodes:
         if node["role"] == "inlet":
-            r, c = node["_row"], node["_col"]
+            r, c = node_cells[node["id"]]
             if 0 <= r < nrows and 0 <= c < ncols:
                 cid = component_map[node["id"]]
                 comp_inlet_zones[cid][node["id"]] = _get_capture_zone(r, c, fdir)
@@ -461,7 +463,7 @@ def validate_against_fdir(
     for node in topology.nodes:
         if node["role"] != "outlet":
             continue
-        r, c = node["_row"], node["_col"]
+        r, c = node_cells[node["id"]]
         if not (0 <= r < nrows and 0 <= c < ncols):
             continue
 

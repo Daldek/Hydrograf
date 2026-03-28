@@ -29,7 +29,7 @@ class SewerGraph:
         self.adj: sparse.csr_matrix = sparse.csr_matrix((0, 0), dtype=np.int8)
         self.warnings: list[str] = []
         self.n_components: int = 0
-        self._node_lookup: dict[int, int] = {}  # node_id -> index
+        self._node_lookup: dict[str, int] = {}  # node_id -> index
 
     @property
     def n_nodes(self) -> int:
@@ -43,7 +43,7 @@ class SewerGraph:
         """Return all nodes with the given node_type."""
         return [n for n in self.nodes if n["node_type"] == node_type]
 
-    def get_upstream_inlets(self, outlet_id: int) -> list[int]:
+    def get_upstream_inlets(self, outlet_id: str) -> list[str]:
         """BFS upstream from outlet, return IDs of inlet nodes found."""
         idx = self._node_lookup.get(outlet_id)
         if idx is None:
@@ -52,7 +52,7 @@ class SewerGraph:
         visited: set[int] = set()
         queue: deque[int] = deque([idx])
         visited.add(idx)
-        inlet_ids: list[int] = []
+        inlet_ids: list[str] = []
 
         while queue:
             current = queue.popleft()
@@ -355,6 +355,12 @@ def insert_sewer_data(
     db_session.execute(text("TRUNCATE TABLE sewer_network RESTART IDENTITY CASCADE"))
     db_session.execute(text("TRUNCATE TABLE sewer_nodes RESTART IDENTITY CASCADE"))
 
+    # Build mapping from user string ID -> sequential integer DB id
+    # (sewer_nodes.id is SERIAL PRIMARY KEY — must be integer)
+    db_id_map: dict[str, int] = {
+        node["id"]: i for i, node in enumerate(graph.nodes, start=1)
+    }
+
     # Insert nodes (two-pass: first without root_outlet_id to avoid FK order issues,
     # then UPDATE to set self-referencing root_outlet_id)
     for node in graph.nodes:
@@ -372,7 +378,7 @@ def insert_sewer_data(
                 )
             """),
             {
-                "id": node["id"],
+                "id": db_id_map[node["id"]],
                 "x": node["x"],
                 "y": node["y"],
                 "node_type": node["node_type"],
@@ -389,14 +395,17 @@ def insert_sewer_data(
 
     # Second pass: set root_outlet_id now that all nodes exist
     for node in graph.nodes:
-        root_outlet_id = node.get("root_outlet_id")
-        if root_outlet_id is not None:
+        root_outlet_str = node.get("root_outlet_id")
+        if root_outlet_str is not None:
             db_session.execute(
                 text(
                     "UPDATE sewer_nodes SET root_outlet_id = :root_outlet_id "
                     "WHERE id = :id"
                 ),
-                {"id": node["id"], "root_outlet_id": root_outlet_id},
+                {
+                    "id": db_id_map[node["id"]],
+                    "root_outlet_id": db_id_map[root_outlet_str],
+                },
             )
 
     # Insert edges
@@ -434,8 +443,8 @@ def insert_sewer_data(
             """),
             {
                 "wkt": wkt,
-                "from_node": edge["from_id"],
-                "to_node": edge["to_id"],
+                "from_node": db_id_map[edge["from_id"]],
+                "to_node": db_id_map[edge["to_id"]],
                 "length_m": edge["length_m"],
                 "source": source_file,
                 "diameter_mm": edge.get("diameter"),
