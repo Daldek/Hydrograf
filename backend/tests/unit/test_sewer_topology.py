@@ -3,6 +3,7 @@
 import geopandas as gpd
 import numpy as np
 import pytest
+from shapely.geometry import LineString as ShapelyLineString
 from shapely.geometry import Point
 
 from core.sewer_topology import (
@@ -131,3 +132,82 @@ class TestParseFormatAWithRoleMapping:
         topo = parse_sewer_topology(gdf, None, default_field_mapping, role_mapping)
         roles = {n["id"]: n["role"] for n in topo.nodes}
         assert roles == {"a": "inlet", "b": "outlet"}
+
+
+@pytest.fixture
+def points_and_lines_format_b():
+    """Format B: separate point + line layers."""
+    points = gpd.GeoDataFrame(
+        {
+            "id": ["n1", "n2", "n3"],
+            "role": ["inlet", "junction", "outlet"],
+            "geometry": [
+                Point(500_000, 200_000),
+                Point(500_100, 200_100),
+                Point(500_200, 200_200),
+            ],
+        },
+        crs="EPSG:2180",
+    )
+    lines = gpd.GeoDataFrame(
+        {
+            "from_node": ["n1", "n2"],
+            "to_node": ["n2", "n3"],
+            "diameter_mm": [300, 400],
+            "geometry": [
+                ShapelyLineString([(500_000, 200_000), (500_050, 200_050),
+                                   (500_100, 200_100)]),
+                ShapelyLineString([(500_100, 200_100), (500_150, 200_150),
+                                   (500_200, 200_200)]),
+            ],
+        },
+        crs="EPSG:2180",
+    )
+    return points, lines
+
+
+class TestParseFormatB:
+    def test_basic_parse(self, points_and_lines_format_b, default_field_mapping,
+                         default_role_mapping):
+        points, lines = points_and_lines_format_b
+        topo = parse_sewer_topology(
+            points, lines, default_field_mapping, default_role_mapping,
+        )
+        assert isinstance(topo, ParsedTopology)
+        assert topo.source_format == "points_and_lines"
+
+    def test_node_count(self, points_and_lines_format_b, default_field_mapping,
+                        default_role_mapping):
+        points, lines = points_and_lines_format_b
+        topo = parse_sewer_topology(
+            points, lines, default_field_mapping, default_role_mapping,
+        )
+        assert len(topo.nodes) == 3
+
+    def test_edge_count(self, points_and_lines_format_b, default_field_mapping,
+                        default_role_mapping):
+        points, lines = points_and_lines_format_b
+        topo = parse_sewer_topology(
+            points, lines, default_field_mapping, default_role_mapping,
+        )
+        assert len(topo.edges) == 2
+
+    def test_edges_preserve_geometry(self, points_and_lines_format_b,
+                                      default_field_mapping, default_role_mapping):
+        """Format B edges keep original line geometry (not straight line)."""
+        points, lines = points_and_lines_format_b
+        topo = parse_sewer_topology(
+            points, lines, default_field_mapping, default_role_mapping,
+        )
+        for edge in topo.edges:
+            assert len(edge["geometry"].coords) == 3
+
+    def test_edges_have_attributes(self, points_and_lines_format_b,
+                                    default_field_mapping, default_role_mapping):
+        default_field_mapping["diameter"] = "diameter_mm"
+        points, lines = points_and_lines_format_b
+        topo = parse_sewer_topology(
+            points, lines, default_field_mapping, default_role_mapping,
+        )
+        diameters = [e.get("diameter") for e in topo.edges]
+        assert diameters == [300, 400]
