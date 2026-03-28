@@ -129,8 +129,30 @@ def _parse_edges_from_lines(
     lines_gdf: gpd.GeoDataFrame,
     field_mapping: dict,
 ) -> list[dict]:
-    """Format B: parse edges from lines GeoDataFrame. (Stub — Task 4.)"""
-    raise NotImplementedError("Format B parsing — see Task 4")
+    """Format B: parse edges from lines GeoDataFrame with from_node/to_node."""
+    from_col = field_mapping["edge_from"]
+    to_col = field_mapping["edge_to"]
+
+    edges = []
+    for _, row in lines_gdf.iterrows():
+        edge = {
+            "from_id": str(row[from_col]),
+            "to_id": str(row[to_col]),
+            "geometry": row.geometry,
+            "source": "user_data",
+        }
+
+        # Pipe attributes from line layer
+        for attr in ("diameter", "width", "height", "cross_section",
+                      "manning", "material", "invert_elev"):
+            col = field_mapping.get(attr)
+            if col and col in lines_gdf.columns:
+                val = row[col]
+                edge[attr] = None if (val is None or val != val) else val
+
+        edges.append(edge)
+
+    return edges
 
 
 def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
