@@ -165,7 +165,8 @@ backend/
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── watershed.py               # Watershed boundary building + legacy CLI functions
-│   ├── sewer_service.py            # Integracja sieci kanalizacyjnej (SewerGraph, burn inlets, FA routing, ADR-051)
+│   ├── sewer_service.py            # Integracja sieci kanalizacyjnej (SewerGraph, burn inlets, FA routing, ADR-051/052)
+│   ├── sewer_topology.py           # Parser + walidator topologii kanalizacji (ParsedTopology, parse_sewer_topology, validate_against_fdir, ADR-052)
 │   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022, Chaikin smoothing ADR-032)
 │   ├── zonal_stats.py             # Zonal statistics (bincount, max)
 │   └── boundary.py               # Obsługa plików wektorowych granic (GPKG/GeoJSON/SHP), walidacja, konwersja bbox (ADR-040)
@@ -189,14 +190,14 @@ backend/
 │   ├── generate_streams_overlay.py # Overlay cieków (PNG)
 │   ├── generate_depressions.py    # Generowanie depresji (blue spots)
 │   ├── analyze_watershed.py       # Analiza zlewni (CLI)
-│   ├── download_sewer.py          # Pobieranie sieci kanalizacyjnej (plik/WFS/DB/URL, walidacja CRS, SSRF protection)
+│   ├── download_sewer.py          # Pobieranie sieci kanalizacyjnej (plik/WFS/DB/URL, walidacja CRS, SSRF protection). Zwraca tuple (points_gdf, lines_gdf | None)
 │   ├── export_pipeline_gpkg.py    # Eksport danych pipeline do GeoPackage
 │   ├── export_task9_gpkg.py       # Eksport danych task9 do GeoPackage
 │   ├── e2e_task9.py               # E2E test pipeline
 │   └── clean.py                  # Czyszczenie danych generowanych (rasters, tiles, DB, cache)
 │
 ├── migrations/
-│   └── versions/                  # 25+ migracji Alembic (001-025 + merge)
+│   └── versions/                  # 27+ migracji Alembic (001-027 + merge)
 │
 ├── utils/
 │   ├── __init__.py
@@ -345,9 +346,10 @@ POST /api/admin/bootstrap/start    — uruchomienie bootstrap subprocess
 POST /api/admin/bootstrap/cancel   — anulowanie bootstrap
 GET  /api/admin/bootstrap/stream   — SSE stream logów bootstrap (timeout 3600s)
 
-POST   /api/admin/sewer/upload     — upload pliku z siecią kanalizacyjną (ADR-051)
+POST   /api/admin/sewer/upload     — upload pliku z siecią kanalizacyjną (ADR-051/052), auto-detect format, zwraca detected_format i layers
 GET    /api/admin/sewer/status     — status danych kanalizacji
 DELETE /api/admin/sewer/delete     — usunięcie danych kanalizacji
+POST   /api/admin/sewer/config    — konfiguracja field_mapping, role_mapping (ADR-052)
 ```
 
 ---
@@ -553,14 +555,18 @@ Wyznaczanie drogi spływu z działu wód (najdłuższa ścieżka od granicy zlew
 #### Monotoniczne wygładzanie cieków (ADR-041)
 Zapewnienie monotoniczności profilu podłużnego cieków po wygładzeniu geometrii. Eliminuje artefakty, w których wygładzona linia cieku miała lokalne „podskoki" elevacji niezgodne z kierunkiem przepływu.
 
-#### Integracja sieci kanalizacyjnej (ADR-051)
-Uwzględnienie sieci kanalizacji deszczowej w modelu hydrologicznym. Pipeline preprocessingu rozszerzony o 4 dodatkowe kroki:
-- **Step 3b — Inlet burning:** wypalenie wlotów kanalizacyjnych w DEM (`burn_inlets()`) — obniżenie elevacji w komórkach wlotowych
-- **Step 4a — FA reconstruction:** rekonstrukcja flow accumulation w komórkach wlotowych (`reconstruct_inlet_fa()`)
-- **Step 4b — Sewer routing:** trasowanie flow accumulation przez sieć kanalizacyjną (`route_fa_through_sewer()`)
-- **Step 4c — FA propagation:** propagacja zmodyfikowanego FA w dół sieci cieków (`propagate_fa_downstream()`)
+#### Integracja sieci kanalizacyjnej (ADR-051, ADR-052)
+Uwzględnienie sieci kanalizacji deszczowej w modelu hydrologicznym. Topologia sieci definiowana jawnie przez uzytkownika (nie wykrywana heurystycznie). Dwa formaty wejsciowe: Format A (punkty z `downstream_id`) i Format B (punkty + linie z `from_node`/`to_node`). 4 role wezlow: inlet, outlet, junction, storage (kompatybilnosc SWMM/HEC-RAS).
 
-Dane kanalizacyjne przechowywane w tabelach `sewer_nodes` (węzły: wloty, wyloty, połączenia) i `sewer_network` (odcinki rur). Import przez panel admin (`/api/admin/sewer/upload`) z walidacją CRS i ochroną SSRF. Moduły: `core/sewer_service.py` (logika), `scripts/download_sewer.py` (pobieranie danych).
+**Pipeline dwufazowy:**
+- **Faza 1 — Czysty fdir:** preprocessing DEM bez sieci kanalizacyjnej (fill → fdir → acc), walidacja petli fdir (`validate_against_fdir()`)
+- **Faza 2 — Sewer burning + hydrologia:**
+  - **Step 3b — Inlet burning:** wypalenie wlotów kanalizacyjnych w DEM (`burn_inlets()`) — obniżenie elevacji w komórkach wlotowych
+  - **Step 4a — FA reconstruction:** rekonstrukcja flow accumulation w komórkach wlotowych (`reconstruct_inlet_fa()`)
+  - **Step 4b — Sewer routing:** trasowanie flow accumulation przez sieć kanalizacyjną (`route_fa_through_sewer()`)
+  - **Step 4c — FA propagation:** propagacja zmodyfikowanego FA w dół sieci cieków (`propagate_fa_downstream()`)
+
+Dane kanalizacyjne przechowywane w tabelach `sewer_nodes` (węzły: wloty, wyloty, połączenia, zbiorniki) i `sewer_network` (odcinki rur). Import przez panel admin (`/api/admin/sewer/upload`) z walidacją CRS, auto-detekcja formatu i ochrona SSRF. Moduły: `core/sewer_topology.py` (parser + walidator topologii, 11 reguł walidacji), `core/sewer_service.py` (logika budowy grafu i routing FA), `scripts/download_sewer.py` (pobieranie danych, zwraca tuple `(points_gdf, lines_gdf | None)`).
 
 ---
 
@@ -697,7 +703,7 @@ Dane kanalizacyjne przechowywane w tabelach `sewer_nodes` (węzły: wloty, wylot
 ├─────────────────────────────────────────────────────────────────┤
 │ id (PK)              SERIAL                                     │
 │ geom                 GEOMETRY(Point, 2180)                      │
-│ node_type            VARCHAR(20)  ('inlet','outlet','junction','isolated') │
+│ node_type            VARCHAR(20)  ('inlet','outlet','junction','storage')  │
 │ component_id         INTEGER                                    │
 │ depth_m              FLOAT                                      │
 │ invert_elev_m        FLOAT                                      │
@@ -1772,11 +1778,12 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 1.9
-**Data ostatniej aktualizacji:** 2026-03-27
+**Wersja dokumentu:** 2.0
+**Data ostatniej aktualizacji:** 2026-03-28
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 2.0 (2026-03-28): Przebudowa topologii kanalizacji (ADR-052) — nowy modul sewer_topology.py (parser + walidator), jawna topologia zamiast heurystyk, 4 role wezlow (inlet/outlet/junction/storage), 2 formaty wejsciowe (A/B), pipeline dwufazowy, download_sewer.py zwraca tuple, migracja 027 (isolated->storage), admin sewer/config endpoint
 - 1.9 (2026-03-27): Integracja sieci kanalizacyjnej (ADR-051) — sewer_service.py, download_sewer.py, tabele sewer_nodes/sewer_network, 3 endpointy admin sewer, MVT sewer tiles, pipeline steps 3b/4a-4c, is_sewer_augmented w stream_network
 - 1.8 (2026-03-25): Aktualizacja po CP4+ — ADR 035-049 w tabeli, boundary.py i clean.py, koncepcyjne opisy CatchmentGraph/watershed_service (bez sygnatur), bdot_streams + nowe kolumny w schema, sekcja 2.5 (nowe koncepty), aktualizacja liczników (24+ migracji, 45+ unit tests, 8+ integration), modele hydrologiczne (Nash IUH, Snyder UH) i hietogramy (Block/Euler II/Beta)
 - 1.7 (2026-03-01): Aktualizacja vs rzeczywisty stan kodu — dodano: panel admin (ADR-034, 8 endpointów, admin.html, 3 moduły JS admin/), landcover MVT tiles, api/dependencies/, sekcja scripts/ (16 skryptów), 17 migracji, ADR-026..034; zaktualizowano: Docker (API memory 4G, ADMIN_API_KEY, volumes), Nginx (admin, SSE, health, static cache), config.py opis YAML, security (admin auth)

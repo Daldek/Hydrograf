@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Warstwa overlay kanalizacji na mapie frontend (`sewer.js`, `admin-sewer.js`)
 - Integracja sewer burning w `process_dem.py` (kroki 3b i 4a-4c)
 
+### Refaktoryzacja
+- **Przebudowa topologii kanalizacji (ADR-052)** — jawna topologia definiowana przez uzytkownika zamiast automatycznej detekcji (snapping, kaskada kierunkow, heurystyczna detekcja outletow). Usunieto ~530 linii heurystycznego kodu z sewer_service.py
+- **Nowy modul `core/sewer_topology.py`** — parser + walidator topologii (ParsedTopology, parse_sewer_topology, validate_against_fdir). 11 regul walidacji + detekcja petli fdir
+- **Pipeline dwufazowy** — Faza 1 = czysty fdir (bez sewer) z walidacja petli fdir, Faza 2 = burn inlets + pelna hydrologia
+- **Nowy interfejs upload (ADR-052)** — auto-detect formatu (Format A: punkty z downstream_id, Format B: punkty + linie z from_node/to_node). Upload zwraca `detected_format` i `layers`. Config akceptuje `field_mapping`, `role_mapping`
+- **Migracja 027** — CHECK constraint `node_type` zmieniony z `isolated` na `storage` (kompatybilnosc SWMM/HEC-RAS)
+- **download_sewer.py** — zwraca tuple `(points_gdf, lines_gdf | None)` zamiast jednego GeoDataFrame
+
 ### Naprawione
 - Path traversal w upload endpoint kanalizacji (walidacja nazwy pliku)
 - SQL injection w load_from_database (walidacja table name przez allowlist)

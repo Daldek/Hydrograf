@@ -95,22 +95,60 @@ def load_from_file(
     path: str,
     lines_layer: str | None = None,
     points_layer: str | None = None,
-) -> gpd.GeoDataFrame:
-    """Load sewer data from local file (SHP/GPKG/GeoJSON)."""
+    source_format: str = "auto",
+) -> tuple[gpd.GeoDataFrame | None, gpd.GeoDataFrame | None]:
+    """Load sewer data from local file (SHP/GPKG/GeoJSON).
+
+    Returns (points_gdf, lines_gdf). Either may be None if not present.
+    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Sewer data file not found: {path}")
 
-    layer = lines_layer or _auto_detect_layer(path)
-    logger.info(f"Loading sewer data from {path} (layer={layer})")
-    gdf = gpd.read_file(path, layer=layer)
+    points_gdf: gpd.GeoDataFrame | None = None
+    lines_gdf: gpd.GeoDataFrame | None = None
 
+    # Determine available layers for GPKG; other formats have a single layer
+    suffix = p.suffix.lower()
+    try:
+        available_layers = fiona.listlayers(path)
+    except Exception:
+        available_layers = [None]
+
+    # --- Load lines ---
+    if source_format != "points_only":
+        layer = lines_layer or _auto_detect_layer(path)
+        if layer is not None:
+            logger.info(f"Loading sewer lines from {path} (layer={layer})")
+            lines_gdf = gpd.read_file(path, layer=layer)
+            # If auto-detected layer turned out to be points, move it
+            if not lines_gdf.empty and _detect_geometry_type(lines_gdf) == "points":
+                if points_gdf is None:
+                    points_gdf = lines_gdf
+                lines_gdf = None
+
+    # --- Load points ---
     if points_layer:
-        pts = gpd.read_file(path, layer=points_layer)
-        logger.info(f"Loaded {len(pts)} sewer points from layer={points_layer}")
-        gdf.attrs["sewer_points"] = pts
+        logger.info(f"Loading sewer points from {path} (layer={points_layer})")
+        points_gdf = gpd.read_file(path, layer=points_layer)
+    elif source_format == "points_only":
+        # Auto-detect a point layer
+        for layer_name in available_layers:
+            gdf = gpd.read_file(path, layer=layer_name) if layer_name else gpd.read_file(path)
+            if not gdf.empty and _detect_geometry_type(gdf) == "points":
+                points_gdf = gdf
+                break
+        if points_gdf is None:
+            # Fallback: read first layer regardless of geometry
+            first = available_layers[0]
+            points_gdf = gpd.read_file(path, layer=first) if first else gpd.read_file(path)
 
-    return gdf
+    if lines_gdf is not None:
+        logger.info(f"Loaded {len(lines_gdf)} sewer lines")
+    if points_gdf is not None:
+        logger.info(f"Loaded {len(points_gdf)} sewer points")
+
+    return points_gdf, lines_gdf
 
 
 def load_from_wfs(url: str, layer: str) -> gpd.GeoDataFrame:
@@ -146,37 +184,47 @@ def load_from_url(url: str) -> gpd.GeoDataFrame:
     return gpd.read_file(url)
 
 
-def load_sewer_data(config: dict) -> gpd.GeoDataFrame:
+def load_sewer_data(
+    config: dict,
+) -> tuple[gpd.GeoDataFrame | None, gpd.GeoDataFrame | None]:
     """Load sewer data based on config source type.
 
     Dispatches to appropriate loader, validates CRS, reprojects to EPSG:2180.
+    Returns (points_gdf, lines_gdf). Either may be None if not present.
     """
-    sewer_cfg = config["sewer"]
-    source = sewer_cfg["source"]
-    source_type = source["type"]
+    sewer_cfg = config.get("sewer", config)
+    source = sewer_cfg.get("source", sewer_cfg)
+    source_type = source.get("type", "file")
+    source_format = source.get("format", "auto")
+    assumed_crs = source.get("assumed_crs")
 
     if source_type == "file":
-        gdf = load_from_file(
+        points_gdf, lines_gdf = load_from_file(
             source["path"],
             lines_layer=source.get("lines_layer"),
             points_layer=source.get("points_layer"),
+            source_format=source_format,
         )
-    elif source_type == "wfs":
-        gdf = load_from_wfs(source["url"], source["layer"])
-    elif source_type == "database":
-        gdf = load_from_database(source["connection"], source["table"])
-    elif source_type == "url":
-        gdf = load_from_url(source["url"])
+    elif source_type in ("wfs", "database", "url"):
+        raise ValueError(
+            f"Source type '{source_type}' is not yet supported with the new topology "
+            "model. Please use type='file' with a GPKG/SHP containing point data with "
+            "id, role, and downstream_id columns."
+        )
     else:
         raise ValueError(f"Unknown sewer source type: {source_type}")
 
-    gdf = _validate_crs(gdf, source.get("assumed_crs"))
+    if points_gdf is not None:
+        points_gdf = _validate_crs(points_gdf, assumed_crs)
+    if lines_gdf is not None:
+        lines_gdf = _validate_crs(lines_gdf, assumed_crs)
 
-    if gdf.empty:
+    if points_gdf is None and lines_gdf is None:
         raise ValueError("Sewer data is empty — no features loaded")
 
-    logger.info(
-        f"Loaded {len(gdf)} sewer features "
-        f"(type={_detect_geometry_type(gdf)}, crs={gdf.crs})"
-    )
-    return gdf
+    if points_gdf is not None:
+        logger.info(f"Loaded {len(points_gdf)} sewer point features (crs={points_gdf.crs})")
+    if lines_gdf is not None:
+        logger.info(f"Loaded {len(lines_gdf)} sewer line features (crs={lines_gdf.crs})")
+
+    return points_gdf, lines_gdf

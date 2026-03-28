@@ -499,6 +499,15 @@ class BootstrapStartRequest(BaseModel):
         pattern=r"^(1m|5m)$",
         description="NMT resolution: 1m (high detail, slow) or 5m (default, fast)",
     )
+    sewer_enabled: bool = Field(
+        default=False, description="Enable sewer integration"
+    )
+    sewer_source: str | None = Field(
+        default=None, description="Path to sewer data file"
+    )
+    sewer_layer: str | None = Field(
+        default=None, description="Layer name for multi-layer files"
+    )
 
 
 class BootstrapStartResponse(BaseModel):
@@ -586,6 +595,14 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
         cmd.extend(["--waterbody-mode", request.waterbody_mode])
     if request.resolution and request.resolution != "5m":
         cmd.extend(["--resolution", request.resolution])
+    if request.sewer_enabled:
+        cmd.append("--sewer-enabled")
+        if request.sewer_source:
+            # Resolve to absolute path (relative paths are relative to PROJECT_ROOT)
+            sewer_abs = (PROJECT_ROOT / request.sewer_source).resolve()
+            cmd.extend(["--sewer-source", str(sewer_abs)])
+        if request.sewer_layer:
+            cmd.extend(["--sewer-layer", request.sewer_layer])
 
     # Reset state
     _bootstrap_state["log_lines"] = []
@@ -676,7 +693,7 @@ async def bootstrap_stream() -> StreamingResponse:
 
 @router.get("/sewer/status")
 def sewer_status(db: Session = Depends(get_db)):
-    """Get status of sewer data in the database."""
+    """Get status of sewer data in the database and config."""
     try:
         result = db.execute(text("SELECT COUNT(*) FROM sewer_nodes"))
         node_count = result.scalar() or 0
@@ -690,14 +707,123 @@ def sewer_status(db: Session = Depends(get_db)):
             ))
             type_counts = {r[0]: r[1] for r in rows}
 
+        # Read current config
+        config = _load_sewer_config()
+
         return {
             "loaded": node_count > 0,
             "nodes": node_count,
             "edges": edge_count,
             "node_types": type_counts,
+            "config": {
+                "enabled": config.get("enabled", False),
+                "source_path": config.get("source", {}).get("path"),
+                "source_type": config.get("source", {}).get("type", "file"),
+            },
         }
     except Exception:
-        return {"loaded": False, "nodes": 0, "edges": 0, "node_types": {}}
+        return {
+            "loaded": False,
+            "nodes": 0,
+            "edges": 0,
+            "node_types": {},
+            "config": {"enabled": False, "source_path": None, "source_type": "file"},
+        }
+
+
+class SewerConfigUpdate(BaseModel):
+    """Request body for sewer config update."""
+
+    enabled: bool = Field(..., description="Enable/disable sewer processing")
+    source_path: str | None = Field(
+        default=None, description="Path to sewer data file"
+    )
+    lines_layer: str | None = Field(
+        default=None, description="Layer name for lines"
+    )
+    points_layer: str | None = Field(
+        default=None, description="Layer name for points"
+    )
+    field_mapping: dict | None = Field(
+        default=None, description="Column name mapping"
+    )
+    role_mapping: dict | None = Field(
+        default=None, description="Value mapping for roles"
+    )
+
+
+CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+
+
+def _load_sewer_config() -> dict:
+    """Read sewer section from config.yaml merged with defaults."""
+    from core.config import load_config
+
+    return load_config(str(CONFIG_PATH)).get("sewer", {})
+
+
+def _save_sewer_config(sewer: dict) -> None:
+    """Deep-merge sewer settings into config.yaml (create if needed)."""
+    import yaml
+
+    from core.config import _deep_merge
+
+    data: dict = {}
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH) as f:
+            data = yaml.safe_load(f) or {}
+
+    data["sewer"] = _deep_merge(data.get("sewer", {}), sewer)
+    with open(CONFIG_PATH, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+
+
+@router.post("/sewer/config")
+def sewer_config_update(body: SewerConfigUpdate):
+    """Toggle sewer processing and set source file path.
+
+    Updates config.yaml so the next pipeline run picks up the settings.
+    """
+    updates: dict = {"enabled": body.enabled}
+
+    if body.source_path is not None:
+        source_file = Path(body.source_path)
+        abs_path = (PROJECT_ROOT / source_file).resolve()
+        if not abs_path.is_relative_to(PROJECT_ROOT.resolve()):
+            raise HTTPException(
+                status_code=400, detail="Path must be within project directory"
+            )
+        if not abs_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"File not found: {body.source_path}",
+            )
+        updates["source"] = {
+            "type": "file",
+            "path": body.source_path,
+        }
+        if body.lines_layer:
+            updates["source"]["lines_layer"] = body.lines_layer
+        if body.points_layer:
+            updates["source"]["points_layer"] = body.points_layer
+
+    if body.field_mapping:
+        updates.setdefault("field_mapping", {}).update(body.field_mapping)
+    if body.role_mapping:
+        updates.setdefault("role_mapping", {}).update(body.role_mapping)
+
+    _save_sewer_config(updates)
+    logger.info("Sewer config updated: enabled=%s", body.enabled)
+
+    return {
+        "message": f"Sewer {'enabled' if body.enabled else 'disabled'}",
+        "config": updates,
+        "next_step": (
+            "Run pipeline (bootstrap) to process sewer data"
+            if body.enabled
+            else None
+        ),
+    }
 
 
 @router.post("/sewer/upload")
@@ -754,11 +880,40 @@ async def sewer_upload(
             status_code=400, detail="Uploaded file is not valid geodata"
         )
 
+    # Auto-detect format from layers and geometry types
+    import fiona
+
+    detected_format = "unknown"
+    layers_detected: list[str] = []
+    try:
+        layers = fiona.listlayers(str(dest))
+        layers_detected = layers
+        geom_types_per_layer: dict[str, str] = {}
+        for layer_name in layers:
+            import geopandas as gpd
+            layer_gdf = gpd.read_file(dest, layer=layer_name, rows=1)
+            if not layer_gdf.empty:
+                geom_types_per_layer[layer_name] = layer_gdf.geometry.iloc[0].geom_type
+
+        has_points = any("Point" in gt for gt in geom_types_per_layer.values())
+        has_lines = any("Line" in gt for gt in geom_types_per_layer.values())
+
+        if has_points and has_lines:
+            detected_format = "points_and_lines"
+        elif has_points:
+            detected_format = "points_only"
+        elif has_lines:
+            detected_format = "lines_only"
+    except Exception:
+        pass
+
     return {
         "filename": safe_name,
         "features": n_features,
         "geometry_types": geom_types,
-        "message": "Upload successful. Run pipeline to process sewer data.",
+        "detected_format": detected_format,
+        "layers": layers_detected,
+        "message": "Plik wgrany. Uruchom analizę, aby przetworzyć dane kanalizacyjne.",
     }
 
 
