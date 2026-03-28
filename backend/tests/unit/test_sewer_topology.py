@@ -10,7 +10,9 @@ from core.sewer_topology import (
     ParsedTopology,
     TopologyValidationError,
     parse_sewer_topology,
+    validate_against_fdir,
 )
+from rasterio.transform import from_bounds
 
 
 @pytest.fixture
@@ -476,3 +478,66 @@ class TestValidationValidData:
         assert len(topo.nodes) == 3
         roles = {n["id"]: n["role"] for n in topo.nodes}
         assert roles["s1"] == "storage"
+
+
+class TestValidateAgainstFdir:
+    @pytest.fixture
+    def small_fdir_se(self):
+        """10x10 fdir grid, all flowing SE (D8 value=2). Pit at SE corner."""
+        fdir = np.full((10, 10), 2, dtype=np.uint8)
+        fdir[9, 9] = 0  # pit at SE corner
+        # Transform: cols map to x (0-50), rows map to y (50-0) — top-left origin
+        transform = from_bounds(0, 0, 50, 50, 10, 10)
+        return fdir, transform
+
+    def test_no_loop_outlet_upstream_of_inlet(self, small_fdir_se,
+                                               default_field_mapping,
+                                               default_role_mapping):
+        """Outlet at NW (upstream in fdir), inlet at SE (downstream).
+        Sewer pipes water from SE inlet back to NW outlet.
+        Outlet's fdir path goes SE toward inlet → LOOP expected."""
+        fdir, transform = small_fdir_se
+        # Outlet at NW corner (row=1, col=1), fdir goes SE → path hits SE
+        # Inlet at SE area (row=7, col=7)
+        # Sewer: inlet(SE) → outlet(NW) — physically pipes water uphill
+        # Outlet's fdir downstream path: (1,1)→(2,2)→...→(7,7) = inlet cell → LOOP
+        gdf = gpd.GeoDataFrame(
+            {
+                "id": ["inlet1", "outlet1"],
+                "role": ["inlet", "outlet"],
+                "downstream_id": ["outlet1", None],
+                "geometry": [
+                    Point(37.5, 12.5),  # col=7, row=7 in 10x10 grid (SE area)
+                    Point(7.5, 42.5),   # col=1, row=1 in 10x10 grid (NW area)
+                ],
+            },
+            crs="EPSG:2180",
+        )
+        topo = parse_sewer_topology(gdf, None, default_field_mapping,
+                                     default_role_mapping)
+        errors = validate_against_fdir(topo, fdir, transform)
+        assert len(errors) > 0
+        assert errors[0]["type"] == "feedback_loop"
+
+    def test_no_loop_safe_config(self, small_fdir_se, default_field_mapping,
+                                  default_role_mapping):
+        """Outlet at SE (downstream in fdir), inlet at NW (upstream).
+        Sewer pipes water from NW inlet to SE outlet — same as natural flow.
+        Outlet's fdir path goes further SE, never back to NW inlet → no loop."""
+        fdir, transform = small_fdir_se
+        gdf = gpd.GeoDataFrame(
+            {
+                "id": ["inlet1", "outlet1"],
+                "role": ["inlet", "outlet"],
+                "downstream_id": ["outlet1", None],
+                "geometry": [
+                    Point(7.5, 42.5),   # col=1, row=1 (NW = upstream in fdir)
+                    Point(37.5, 12.5),  # col=7, row=7 (SE = downstream in fdir)
+                ],
+            },
+            crs="EPSG:2180",
+        )
+        topo = parse_sewer_topology(gdf, None, default_field_mapping,
+                                     default_role_mapping)
+        errors = validate_against_fdir(topo, fdir, transform)
+        assert errors == []

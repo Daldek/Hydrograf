@@ -356,6 +356,142 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
     return errors
 
 
+# D8 direction offsets: value → (drow, dcol)
+_D8_OFFSETS = {
+    1: (0, 1),     # E
+    2: (1, 1),     # SE
+    4: (1, 0),     # S
+    8: (1, -1),    # SW
+    16: (0, -1),   # W
+    32: (-1, -1),  # NW
+    64: (-1, 0),   # N
+    128: (-1, 1),  # NE
+}
+
+
+def _get_capture_zone(
+    row: int, col: int, fdir: np.ndarray,
+) -> set[tuple[int, int]]:
+    """Get inlet capture zone: the cell + 8-neighbors whose fdir points to it."""
+    nrows, ncols = fdir.shape
+    zone = {(row, col)}
+    for dr in (-1, 0, 1):
+        for dc in (-1, 0, 1):
+            if dr == 0 and dc == 0:
+                continue
+            nr, nc = row + dr, col + dc
+            if 0 <= nr < nrows and 0 <= nc < ncols:
+                neighbor_fdir = int(fdir[nr, nc])
+                offset = _D8_OFFSETS.get(neighbor_fdir)
+                if offset and (nr + offset[0], nc + offset[1]) == (row, col):
+                    zone.add((nr, nc))
+    return zone
+
+
+def _trace_fdir_downstream(
+    row: int, col: int, fdir: np.ndarray, max_steps: int = 10_000,
+) -> set[tuple[int, int]]:
+    """Trace fdir downstream from a cell. Returns set of visited cells."""
+    nrows, ncols = fdir.shape
+    path: set[tuple[int, int]] = set()
+    r, c = row, col
+    for _ in range(max_steps):
+        if (r, c) in path:
+            break
+        path.add((r, c))
+        direction = int(fdir[r, c])
+        offset = _D8_OFFSETS.get(direction)
+        if offset is None:
+            break
+        nr, nc = r + offset[0], c + offset[1]
+        if not (0 <= nr < nrows and 0 <= nc < ncols):
+            break
+        r, c = nr, nc
+    return path
+
+
+def validate_against_fdir(
+    topology: ParsedTopology,
+    fdir: np.ndarray,
+    transform,
+) -> list[dict]:
+    """Check for feedback loops: outlet's downstream fdir path must not
+    reach any inlet's capture zone in the same component."""
+    errors: list[dict] = []
+    nrows, ncols = fdir.shape
+
+    # Map nodes to raster cells
+    for node in topology.nodes:
+        col_f, row_f = ~transform * (node["x"], node["y"])
+        node["_row"] = int(round(row_f))
+        node["_col"] = int(round(col_f))
+
+    # Build component map from edges
+    adj: dict[str, set[str]] = defaultdict(set)
+    for edge in topology.edges:
+        adj[edge["from_id"]].add(edge["to_id"])
+        adj[edge["to_id"]].add(edge["from_id"])
+
+    component_map: dict[str, int] = {}
+    comp_id = 0
+    for node in topology.nodes:
+        nid = node["id"]
+        if nid in component_map:
+            continue
+        queue = deque([nid])
+        component_map[nid] = comp_id
+        while queue:
+            cur = queue.popleft()
+            for neighbor in adj.get(cur, []):
+                if neighbor not in component_map:
+                    component_map[neighbor] = comp_id
+                    queue.append(neighbor)
+        comp_id += 1
+
+    # Build capture zones for inlets per component
+    comp_inlet_zones: dict[int, dict[str, set[tuple[int, int]]]] = defaultdict(dict)
+    for node in topology.nodes:
+        if node["role"] == "inlet":
+            r, c = node["_row"], node["_col"]
+            if 0 <= r < nrows and 0 <= c < ncols:
+                cid = component_map[node["id"]]
+                comp_inlet_zones[cid][node["id"]] = _get_capture_zone(r, c, fdir)
+
+    # For each outlet, trace fdir downstream and check for inlet capture zones
+    for node in topology.nodes:
+        if node["role"] != "outlet":
+            continue
+        r, c = node["_row"], node["_col"]
+        if not (0 <= r < nrows and 0 <= c < ncols):
+            continue
+
+        cid = component_map[node["id"]]
+        inlet_zones = comp_inlet_zones.get(cid, {})
+        if not inlet_zones:
+            continue
+
+        all_zone_cells: dict[tuple[int, int], str] = {}
+        for inlet_id, zone in inlet_zones.items():
+            for cell in zone:
+                all_zone_cells[cell] = inlet_id
+
+        path = _trace_fdir_downstream(r, c, fdir)
+        for cell in path:
+            if cell in all_zone_cells:
+                inlet_id = all_zone_cells[cell]
+                errors.append({
+                    "type": "feedback_loop",
+                    "node_id": node["id"],
+                    "message": (
+                        f"Outlet id={node['id']} drains to inlet "
+                        f"id={inlet_id} capture zone"
+                    ),
+                })
+                break
+
+    return errors
+
+
 def parse_sewer_topology(
     points_gdf: gpd.GeoDataFrame,
     lines_gdf: gpd.GeoDataFrame | None,
