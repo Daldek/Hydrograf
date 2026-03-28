@@ -448,14 +448,21 @@ BDOT_BUFFER_M = 25.0  # 5 * cellsize (5m DEM), accounts for bends/meanders
 OVERLAP_THRESHOLD = 0.5
 
 
-def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, overlap_threshold=OVERLAP_THRESHOLD):
+def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, overlap_threshold=OVERLAP_THRESHOLD,
+                             *, _bdot_buffer_ready: bool = False):
     """Mark stream_network segments as real/overland based on BDOT overlap.
 
     Uses per-feature BDOT buffers with spatial join for efficient GIST-indexed
-    matching.  Where multiple BDOT buffers overlap a single segment, ST_Union
-    prevents double-counting before computing the overlap ratio.
+    matching.  Per-buffer ST_Intersection avoids expensive polygon ST_Union
+    (distributive law: A∩(B∪C) = (A∩B)∪(A∩C)).
 
     is_real_stream = true if overlap_ratio >= threshold, false otherwise.
+
+    Parameters
+    ----------
+    _bdot_buffer_ready : bool
+        If True, assumes temp_bdot_buffer already exists (skip creation).
+        Used by update_stream_real_flags_all to avoid recreating per threshold.
 
     Returns dict with total/real/overland counts.
     """
@@ -465,33 +472,36 @@ def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, o
 
         try:
             # Step 1: Check if bdot_streams has data
-            cursor.execute("SELECT COUNT(*) FROM bdot_streams")
-            bdot_count = cursor.fetchone()[0]
-            if bdot_count == 0:
-                logger.warning("No BDOT streams in database — marking all as overland")
-                cursor.execute(
-                    "UPDATE stream_network SET is_real_stream = false WHERE threshold_m2 = %s",
-                    (threshold_m2,),
-                )
-                raw_conn.commit()
-                cursor.execute(
-                    "SELECT COUNT(*) FROM stream_network WHERE threshold_m2 = %s",
-                    (threshold_m2,),
-                )
-                total = cursor.fetchone()[0]
-                return {"total": total, "real": 0, "overland": total}
+            if not _bdot_buffer_ready:
+                cursor.execute("SELECT COUNT(*) FROM bdot_streams")
+                bdot_count = cursor.fetchone()[0]
+                if bdot_count == 0:
+                    logger.warning("No BDOT streams in database — marking all as overland")
+                    cursor.execute(
+                        "UPDATE stream_network SET is_real_stream = false WHERE threshold_m2 = %s",
+                        (threshold_m2,),
+                    )
+                    raw_conn.commit()
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM stream_network WHERE threshold_m2 = %s",
+                        (threshold_m2,),
+                    )
+                    total = cursor.fetchone()[0]
+                    return {"total": total, "real": 0, "overland": total}
 
-            # Step 2: Materialize per-feature BDOT buffers (GIST-indexable)
-            cursor.execute("DROP TABLE IF EXISTS temp_bdot_buffer")
-            cursor.execute(
-                "CREATE TEMP TABLE temp_bdot_buffer AS "
-                "SELECT id, ST_Buffer(geom, %s) AS geom FROM bdot_streams",
-                (buffer_m,),
-            )
-            cursor.execute("CREATE INDEX ON temp_bdot_buffer USING GIST (geom)")
+                # Step 2: Materialize per-feature BDOT buffers (GIST-indexable)
+                cursor.execute("DROP TABLE IF EXISTS temp_bdot_buffer")
+                cursor.execute(
+                    "CREATE TEMP TABLE temp_bdot_buffer AS "
+                    "SELECT id, ST_Buffer(geom, %s) AS geom FROM bdot_streams",
+                    (buffer_m,),
+                )
+                cursor.execute("CREATE INDEX ON temp_bdot_buffer USING GIST (geom)")
 
-            # Step 3: Spatial join + ST_Union to avoid double-counting
-            # where multiple BDOT buffers overlap the same segment.
+            # Step 3: Spatial join with per-buffer intersection to avoid
+            # expensive ST_Union of overlapping polygons.
+            # Distributive law: A ∩ (B∪C) = (A∩B) ∪ (A∩C) — same result,
+            # but ST_Union of line fragments is O(n) vs ST_Union of polygons O(n²).
             # ST_Within check handles short segments (< ~30m) where GEOS
             # ST_Intersection incorrectly returns EMPTY despite full containment.
             cursor.execute("""
@@ -503,7 +513,7 @@ def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, o
                         (CASE
                             WHEN bool_or(ST_Within(sn2.geom, bb.geom)) THEN 1.0
                             ELSE COALESCE(
-                                ST_Length(ST_Intersection(sn2.geom, ST_Union(bb.geom)))
+                                ST_Length(ST_Union(ST_Intersection(sn2.geom, bb.geom)))
                                 / NULLIF(ST_Length(sn2.geom), 0),
                                 0
                             )
@@ -535,3 +545,50 @@ def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, o
         except Exception:
             raw_conn.rollback()
             raise
+
+
+def update_stream_real_flags_all(db_session, threshold_list, buffer_m=BDOT_BUFFER_M, overlap_threshold=OVERLAP_THRESHOLD):
+    """Run BDOT stream matching for multiple thresholds, creating temp buffer table once.
+
+    Returns dict mapping threshold_m2 → {total, real, overland}.
+    """
+    with override_statement_timeout(db_session, timeout_s=600):
+        raw_conn = db_session.connection().connection
+        cursor = raw_conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM bdot_streams")
+        bdot_count = cursor.fetchone()[0]
+        if bdot_count == 0:
+            logger.warning("No BDOT streams in database — marking all as overland")
+            results = {}
+            for threshold_m2 in threshold_list:
+                cursor.execute(
+                    "UPDATE stream_network SET is_real_stream = false WHERE threshold_m2 = %s",
+                    (threshold_m2,),
+                )
+                raw_conn.commit()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM stream_network WHERE threshold_m2 = %s",
+                    (threshold_m2,),
+                )
+                total = cursor.fetchone()[0]
+                results[threshold_m2] = {"total": total, "real": 0, "overland": total}
+            return results
+
+        # Create temp buffer table once for all thresholds
+        cursor.execute("DROP TABLE IF EXISTS temp_bdot_buffer")
+        cursor.execute(
+            "CREATE TEMP TABLE temp_bdot_buffer AS "
+            "SELECT id, ST_Buffer(geom, %s) AS geom FROM bdot_streams",
+            (buffer_m,),
+        )
+        cursor.execute("CREATE INDEX ON temp_bdot_buffer USING GIST (geom)")
+
+    results = {}
+    for threshold_m2 in threshold_list:
+        results[threshold_m2] = update_stream_real_flags(
+            db_session, threshold_m2,
+            buffer_m=buffer_m, overlap_threshold=overlap_threshold,
+            _bdot_buffer_ready=True,
+        )
+    return results
