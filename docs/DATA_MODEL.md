@@ -517,7 +517,7 @@ COMMENT ON COLUMN bdot_streams.length_m IS 'Dlugosc geometrii [m]';
 
 ### 3.9 Tabela: `sewer_nodes`
 
-**Opis:** Węzły sieci kanalizacji deszczowej — wloty (inlet), wyloty (outlet), połączenia (junction) i węzły izolowane. Przechowują dane topologiczne, elevacyjne i wyniki obliczeń FA (flow accumulation). Migracja 025, ADR-051.
+**Opis:** Węzły sieci kanalizacji deszczowej — wloty (inlet), wyloty (outlet), połączenia (junction) i zbiorniki retencyjne (storage). Przechowują dane topologiczne, elevacyjne i wyniki obliczeń FA (flow accumulation). Migracja 025 (ADR-051), migracja 027 (ADR-052: zmiana roli `isolated` na `storage` — kompatybilność SWMM/HEC-RAS).
 
 **Schemat SQL:**
 ```sql
@@ -542,7 +542,7 @@ CREATE TABLE sewer_nodes (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT chk_outlet_not_self CHECK (root_outlet_id != id),
-    CONSTRAINT chk_node_type CHECK (node_type IN ('inlet', 'outlet', 'junction', 'isolated'))
+    CONSTRAINT chk_node_type CHECK (node_type IN ('inlet', 'outlet', 'junction', 'storage'))
 );
 
 -- Indeksy
@@ -552,7 +552,7 @@ CREATE INDEX idx_sewer_nodes_root_outlet_node_type ON sewer_nodes (root_outlet_i
 
 -- Komentarze
 COMMENT ON TABLE sewer_nodes IS 'Węzły sieci kanalizacji deszczowej (wloty, wyloty, połączenia)';
-COMMENT ON COLUMN sewer_nodes.node_type IS 'Typ węzła: inlet (wlot), outlet (wylot), junction (połączenie), isolated (izolowany)';
+COMMENT ON COLUMN sewer_nodes.node_type IS 'Typ węzła: inlet (wlot), outlet (wylot), junction (połączenie), storage (zbiornik retencyjny)';
 COMMENT ON COLUMN sewer_nodes.component_id IS 'ID składowej spójnej w grafie kanalizacyjnym';
 COMMENT ON COLUMN sewer_nodes.invert_elev_m IS 'Rzędna dna studzienki [m n.p.m.]';
 COMMENT ON COLUMN sewer_nodes.dem_elev_m IS 'Elevacja z NMT w lokalizacji węzła [m n.p.m.]';
@@ -573,7 +573,7 @@ COMMENT ON COLUMN sewer_nodes.outfall_type IS 'Typ wylotu (np. river, ditch)';
 |---------|-----|----------|---------|------|
 | `id` | SERIAL | NO | auto | Unikalny identyfikator |
 | `geom` | GEOMETRY(Point, 2180) | NO | - | Punkt lokalizacji węzła |
-| `node_type` | VARCHAR(20) | NO | - | Typ węzła: 'inlet', 'outlet', 'junction', 'isolated' |
+| `node_type` | VARCHAR(20) | NO | - | Typ węzła: 'inlet', 'outlet', 'junction', 'storage' (migracja 027: `isolated` -> `storage`, kompatybilność SWMM/HEC-RAS) |
 | `component_id` | INTEGER | YES | NULL | ID składowej spójnej w grafie |
 | `depth_m` | DOUBLE PRECISION | YES | NULL | Głębokość studzienki [m] |
 | `invert_elev_m` | DOUBLE PRECISION | YES | NULL | Rzędna dna studzienki [m n.p.m.] |
@@ -1138,6 +1138,8 @@ migrations/
     ├── 023_add_flow_path_columns.py                # max_flow_dist_m, longest_flow_path_geom
     ├── 024_add_divide_flow_path.py                 # divide_flow_path_geom w stream_catchments
     ├── 025_create_sewer_tables.py                  # sewer_nodes, sewer_network, is_sewer_augmented (ADR-051)
+    ├── 026_widen_sewer_source_column.py            # poszerzenie kolumny source w sewer_network
+    ├── 027_sewer_node_type_storage.py              # CHECK constraint node_type: isolated -> storage (ADR-052)
     └── d7af925de530_merge_migration.py             # merge: bdot + flow path
 ```
 
