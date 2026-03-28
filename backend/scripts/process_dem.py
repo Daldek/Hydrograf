@@ -49,6 +49,7 @@ from core.db_bulk import (
     insert_stream_segments,
     load_bdot_streams_from_gpkg,
     update_stream_real_flags,
+    update_stream_real_flags_all,
 )
 from core.hydrology import (
     VALID_D8_SET,
@@ -997,8 +998,8 @@ def process_dem(
                     bdot_count = insert_bdot_streams(db, bdot_data)
                     logger.info(f"Inserted {bdot_count} BDOT stream features")
 
-                    for threshold_m2 in threshold_list_m2:
-                        stats_match = update_stream_real_flags(db, threshold_m2)
+                    all_match = update_stream_real_flags_all(db, threshold_list_m2)
+                    for threshold_m2, stats_match in all_match.items():
                         logger.info(
                             f"Stream matching (threshold={threshold_m2}): "
                             f"{stats_match['real']}/{stats_match['total']} real, "
