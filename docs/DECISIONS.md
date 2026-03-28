@@ -1145,6 +1145,42 @@ Dodatkowe zmiany:
 
 ---
 
+## ADR-052: Jawna topologia sieci kanalizacyjnej (przebudowa)
+
+**Data:** 2026-03-28
+**Status:** Przyjeta (zastepuje heurystyczna czesc ADR-051)
+
+**Kontekst:** Dotychczasowa implementacja (ADR-051) automatycznie wykrywala topologie sieci kanalizacyjnej: snapping endpointow, kaskada kierunkow (atrybut → spadek → DEM), heurystyczna detekcja outletow. Podejscie to bylo kruche — wyniki zalezaly od tolerancji snappingu i kolejnosci heurystyk, a uzytkownik nie mial kontroli nad wynikowa topologia. Rozne formaty danych wejsciowych (z downstream_id vs z liniami) wymagaly roznego przetwarzania.
+
+**Opcje:**
+- A) Utrzymanie automatycznej detekcji z rozszerzeniem parametrow — wiecej knobs, ale nadal heurystyki
+- B) Jawna topologia od uzytkownika — downstream_id lub warstwa punkt+linia, strict walidacja, 2-fazowy pipeline
+
+**Decyzja:** Opcja B. Jawna topologia definiowana przez uzytkownika w dwoch formatach:
+1. **Format A** (punkty z `downstream_id`): kazdy punkt wskazuje na nastepny wezel w dol sieci. Prosty, wystarczajacy dla danych z GIS
+2. **Format B** (punkty + linie z `from_node`/`to_node`): klasyczny model SWMM/HEC-RAS. Linie definiuja polaczenia miedzy wezlami
+
+Dodatkowe zmiany:
+- 4 role wezlow: `inlet`, `outlet`, `junction`, `storage` (zamiast `isolated` — kompatybilnosc SWMM/HEC-RAS)
+- Nowy modul `core/sewer_topology.py` z `ParsedTopology` (dataclass), `parse_sewer_topology()` (parser) i `validate_against_fdir()` (walidator)
+- Walidacja strict z raportem — 11 regul (w tym: brak cykli, outlety bez downstream, inlet/junction ma downstream, spójnosc grafu)
+- Pipeline dwufazowy: Faza 1 = czysty fdir bez sewer (walidacja petli), Faza 2 = burn inlets + pelna hydrologia
+- Nowy interfejs: `build_sewer_graph(topology: ParsedTopology)` zamiast `build_sewer_graph(gdf, snap_tolerance_m, attr_mapping, user_outlets)`
+- `download_sewer.py` zwraca tuple `(points_gdf, lines_gdf | None)` zamiast jednego GeoDataFrame
+- Config: nowe sekcje `field_mapping`, `role_mapping`, `source.format`
+- Migracja 027: CHECK constraint `node_type` zmieniony z `isolated` na `storage`
+
+**Konsekwencje:**
+- (+) Uzytkownik ma pelna kontrole nad topologia — nie ma niespodzianek z heurystyk
+- (+) Usuniety ~530 linii heurystycznego kodu (snapping, kaskada kierunkow, detekcja outletow)
+- (+) Kompatybilnosc z formatami SWMM/HEC-RAS (4 role wezlow)
+- (+) Walidacja strict wykrywa bledy w danych wejsciowych przed uruchomieniem pipeline
+- (+) Pipeline dwufazowy zapobiega masked errors (petla fdir wykrywana przed sewer burning)
+- (-) Wieksze wymagania wobec danych wejsciowych — uzytkownik musi dostarczyc jawna topologie
+- (-) Nowy modul do utrzymania (sewer_topology.py)
+
+---
+
 <!-- Szablon nowej decyzji:
 
 ## ADR-XXX: Tytul

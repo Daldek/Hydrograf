@@ -13,10 +13,10 @@
 | Integracja Kartograf | ✅ Gotowy | v0.6.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). MVT tiles, overlay frontend, admin panel sewer. |
+| Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). Jawna topologia (ADR-052), walidacja strict, 2-fazowy pipeline. MVT tiles, overlay frontend, admin panel sewer. |
 | Frontend | 🔶 Faza 4+ gotowa | 15 modulow JS (10 core + 5 admin). Sewer overlay + admin-sewer. |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie, Kanalizacja (ADR-034, ADR-051) |
-| Testy | ✅ Gotowy | 991 testow jednostkowych, 0 failures |
+| Testy | ✅ Gotowy | 1025 testow (1018 unit + 7 integration), 0 failures |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -47,22 +47,34 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-27 (sesja 75 — integration test sewer pipeline)
+**Data:** 2026-03-28 (sesja 76 — przebudowa topologii kanalizacji)
 
 ### Co zrobiono
-- **Integration test sewer pipeline** — 8 testow (6 in-memory + 2 DB) w `tests/integration/test_sewer_pipeline.py`:
-  - Syntetyczny DEM 100x100 (5m, EPSG:2180, gradient SE + dolinka)
-  - Syntetyczna siec kanalizacyjna Y-junction (2 inlety → junction → outlet)
-  - Pelny pipeline: build_sewer_graph → burn_inlets → pyflwdir (fill/fdir/acc) → reconstruct_inlet_fa → route_fa_through_sewer → propagate_fa_downstream → insert_sewer_data
-  - Testy DB: insert do PostGIS (4 nodes + 3 edges), weryfikacja is_sewer_augmented flag
-- **Bug fix: insert_sewer_data** — 2 bugi znalezione przez test integracyjny:
-  - `source_type` None fallback (NOT NULL violation gdy klucz istnieje z wartoscia None)
-  - `root_outlet_id` FK ordering (two-pass insert: NULL first, then UPDATE)
-- **Testy** — 1108 testow, 0 failures
+- **Przebudowa topologii sieci kanalizacyjnej (ADR-052)** — z automatycznej detekcji (snapping, kaskada kierunkow, heurystyczna detekcja outletow) na jawna topologie definiowana przez uzytkownika:
+  - Nowy modul `core/sewer_topology.py` — parser + walidator topologii (ParsedTopology, parse_sewer_topology, validate_against_fdir)
+  - 4 role wezlow: inlet, outlet, junction, storage (kompatybilnosc SWMM/HEC-RAS)
+  - 2 formaty wejsciowe: Format A (punkty z downstream_id) i Format B (punkty + linie z from_node/to_node)
+  - Walidacja strict z raportem — 11 regul + detekcja petli fdir
+  - Pipeline dwufazowy: Faza 1 = czysty fdir (bez sewer) z walidacja petli, Faza 2 = burn inlets + pelna hydrologia
+  - Usuniety heurystyczny kod z sewer_service.py (~530 linii): snapping, kaskada kierunkow, detekcja outletow
+  - Nowy interfejs: `build_sewer_graph(topology: ParsedTopology)` zamiast starego z 4 parametrami
+  - download_sewer.py: zwraca tuple `(points_gdf, lines_gdf | None)` zamiast jednego GeoDataFrame
+  - config.py: nowe sekcje `field_mapping`, `role_mapping`, `source.format`
+  - Migracja 027: CHECK constraint `node_type` zmieniony z `isolated` na `storage`
+  - Admin API: upload zwraca `detected_format` i `layers`; config akceptuje `field_mapping`, `role_mapping`
+- **Specyfikacja, plan, implementacja 13 taskow, code review, poprawki, test E2E**
+- **Testy** — 1025 testow (1018 unit + 7 integration), 0 failures
 
 ### Nastepne kroki
-- Aktualizacja ARCHITECTURE.md i DATA_MODEL.md dla kanalizacji
+- Merge do develop
+- Testy z prawdziwymi danymi kanalizacji
 - CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
+
+### Poprzednia sesja (2026-03-27, sesja 75 — integration test sewer pipeline)
+
+- **Integration test sewer pipeline** — 8 testow (6 in-memory + 2 DB) w `tests/integration/test_sewer_pipeline.py`
+- **Bug fix: insert_sewer_data** — 2 bugi znalezione przez test integracyjny
+- **Testy** — 1108 testow, 0 failures
 
 ### Poprzednia sesja (2026-03-27, sesja 74 — integracja kanalizacji deszczowej + review + pentest + audit DB)
 
