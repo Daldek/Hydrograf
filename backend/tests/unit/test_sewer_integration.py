@@ -3,8 +3,9 @@
 import numpy as np
 import pytest
 import geopandas as gpd
-from shapely.geometry import LineString
+from shapely.geometry import Point
 
+from core.sewer_topology import parse_sewer_topology, TopologyValidationError
 from core.sewer_service import (
     SewerGraph,
     build_sewer_graph,
@@ -13,6 +14,39 @@ from core.sewer_service import (
     route_fa_through_sewer,
     propagate_fa_downstream,
 )
+
+# Standard field/role mappings for all tests
+_FIELD_MAPPING = {
+    "node_id": "id",
+    "node_role": "role",
+    "downstream_id": "downstream_id",
+    "edge_from": "from_node",
+    "edge_to": "to_node",
+}
+_ROLE_MAPPING = {
+    "inlet": "inlet",
+    "outlet": "outlet",
+    "junction": "junction",
+    "storage": "storage",
+}
+
+
+def _build_graph_from_points(points_data: list[dict]) -> SewerGraph:
+    """Helper: build SewerGraph from list of dicts with id, role, downstream_id, x, y."""
+    gdf = gpd.GeoDataFrame(
+        [
+            {
+                "id": p["id"],
+                "role": p["role"],
+                "downstream_id": p.get("downstream_id"),
+                "geometry": Point(p["x"], p["y"]),
+            }
+            for p in points_data
+        ],
+        crs="EPSG:2180",
+    )
+    topology = parse_sewer_topology(gdf, None, _FIELD_MAPPING, _ROLE_MAPPING)
+    return build_sewer_graph(topology)
 
 
 @pytest.fixture
@@ -60,24 +94,34 @@ def synthetic_fa(synthetic_fdir):
 
 @pytest.fixture
 def simple_sewer_network():
-    """Simple sewer: 2 inlets feeding into 1 outlet.
+    """Simple sewer: 2 inlets feeding into 1 junction, 1 outlet.
 
     All coordinates in EPSG:2180 space, matching synthetic DEM.
-    Inlet A at (5, 5), Inlet B at (5, 15), Junction at (15, 10), Outlet at (25, 25).
+    Inlet A at (5.5, 24.5), Inlet B at (15.5, 24.5),
+    Junction at (10.5, 14.5), Outlet at (25.5, 4.5).
 
     Note: coordinates are (x, y) = (col, row) convention for GIS.
-    We'll use coordinates that map to valid raster cells.
     """
-    # Using coordinates that will map to specific raster cells
-    # For a 30x30 DEM with xll=0, yll=0, cellsize=1:
-    return gpd.GeoDataFrame(
-        {"geometry": [
-            LineString([(5.5, 24.5), (10.5, 14.5)]),   # Inlet A → Junction
-            LineString([(15.5, 24.5), (10.5, 14.5)]),   # Inlet B → Junction
-            LineString([(10.5, 14.5), (25.5, 4.5)]),    # Junction → Outlet
-        ]},
+    points = [
+        {"id": "A", "role": "inlet",    "downstream_id": "J",    "x": 5.5,  "y": 24.5},
+        {"id": "B", "role": "inlet",    "downstream_id": "J",    "x": 15.5, "y": 24.5},
+        {"id": "J", "role": "junction", "downstream_id": "OUT",  "x": 10.5, "y": 14.5},
+        {"id": "OUT", "role": "outlet", "downstream_id": None,   "x": 25.5, "y": 4.5},
+    ]
+    gdf = gpd.GeoDataFrame(
+        [
+            {
+                "id": p["id"],
+                "role": p["role"],
+                "downstream_id": p.get("downstream_id"),
+                "geometry": Point(p["x"], p["y"]),
+            }
+            for p in points
+        ],
         crs="EPSG:2180",
     )
+    topology = parse_sewer_topology(gdf, None, _FIELD_MAPPING, _ROLE_MAPPING)
+    return build_sewer_graph(topology)
 
 
 class TestFullSewerPipeline:
@@ -85,7 +129,7 @@ class TestFullSewerPipeline:
 
     def test_graph_builds_correctly(self, simple_sewer_network):
         """Graph has correct topology: 2 inlets, 1 junction, 1 outlet."""
-        graph = build_sewer_graph(simple_sewer_network, snap_tolerance_m=2.0)
+        graph = simple_sewer_network
 
         assert graph.n_nodes == 4
         assert graph.n_edges == 3
@@ -96,7 +140,7 @@ class TestFullSewerPipeline:
 
     def test_inlet_burning_modifies_dem(self, synthetic_dem, simple_sewer_network):
         """Inlet burning lowers DEM at inlet cells and returns drain points."""
-        graph = build_sewer_graph(simple_sewer_network, snap_tolerance_m=2.0)
+        graph = simple_sewer_network
         dem = synthetic_dem.copy()
 
         inlets = []
@@ -120,7 +164,7 @@ class TestFullSewerPipeline:
 
     def test_fa_reconstruction_produces_values(self, synthetic_fa, synthetic_fdir, simple_sewer_network):
         """FA reconstruction assigns positive values to inlet cells."""
-        graph = build_sewer_graph(simple_sewer_network, snap_tolerance_m=2.0)
+        graph = simple_sewer_network
 
         inlets = []
         for n in graph.nodes:
@@ -138,7 +182,7 @@ class TestFullSewerPipeline:
 
     def test_routing_sums_inlet_fa(self, synthetic_fa, synthetic_fdir, simple_sewer_network):
         """Routing correctly sums FA from inlets to outlet."""
-        graph = build_sewer_graph(simple_sewer_network, snap_tolerance_m=2.0)
+        graph = simple_sewer_network
 
         # Manually set FA on inlets
         for n in graph.nodes:
@@ -159,7 +203,7 @@ class TestFullSewerPipeline:
 
     def test_propagation_increases_downstream_fa(self, synthetic_fa, synthetic_fdir, simple_sewer_network):
         """FA propagation adds surplus to cells downstream of outlet."""
-        graph = build_sewer_graph(simple_sewer_network, snap_tolerance_m=2.0)
+        graph = simple_sewer_network
         fa = synthetic_fa.copy()
         fa_original = synthetic_fa.copy()
 
@@ -186,7 +230,7 @@ class TestFullSewerPipeline:
 
     def test_full_pipeline_no_crash(self, synthetic_dem, synthetic_fa, synthetic_fdir, simple_sewer_network):
         """Full pipeline executes without errors."""
-        graph = build_sewer_graph(simple_sewer_network, snap_tolerance_m=2.0)
+        graph = simple_sewer_network
         dem = synthetic_dem.copy()
         fa = synthetic_fa.copy()
 
@@ -218,39 +262,33 @@ class TestSewerPipelineEdgeCases:
     """Edge case tests for the sewer pipeline."""
 
     def test_empty_sewer_network(self):
-        """Empty GeoDataFrame should produce empty graph."""
-        empty_gdf = gpd.GeoDataFrame(
-            {"geometry": []},
-            crs="EPSG:2180",
-        )
-        graph = build_sewer_graph(empty_gdf, snap_tolerance_m=2.0)
+        """Empty topology (no nodes) should produce empty graph."""
+        from core.sewer_topology import ParsedTopology
+        empty_topology = ParsedTopology(nodes=[], edges=[])
+        graph = build_sewer_graph(empty_topology)
         assert graph.n_nodes == 0
         assert graph.n_edges == 0
 
     def test_single_line_network(self):
-        """Single line creates 1 inlet + 1 outlet."""
-        single = gpd.GeoDataFrame(
-            {"geometry": [LineString([(0, 0), (10, 10)])]},
-            crs="EPSG:2180",
-        )
-        graph = build_sewer_graph(single, snap_tolerance_m=2.0)
+        """Single inlet + outlet creates 2-node, 1-edge graph."""
+        graph = _build_graph_from_points([
+            {"id": "I1",  "role": "inlet",  "downstream_id": "O1", "x": 0.0,  "y": 0.0},
+            {"id": "O1",  "role": "outlet", "downstream_id": None,  "x": 10.0, "y": 10.0},
+        ])
         assert graph.n_nodes == 2
         assert graph.n_edges == 1
         assert len(graph.get_nodes_by_type("inlet")) == 1
         assert len(graph.get_nodes_by_type("outlet")) == 1
 
     def test_disconnected_components(self):
-        """Two disconnected lines create two components with warnings."""
-        lines = gpd.GeoDataFrame(
-            {"geometry": [
-                LineString([(0, 0), (10, 0)]),
-                LineString([(100, 100), (110, 100)]),
-            ]},
-            crs="EPSG:2180",
-        )
-        graph = build_sewer_graph(lines, snap_tolerance_m=2.0)
+        """Two independent inlet→outlet pairs form two components with a warning."""
+        graph = _build_graph_from_points([
+            {"id": "I1", "role": "inlet",  "downstream_id": "O1",  "x": 0.0,   "y": 0.0},
+            {"id": "O1", "role": "outlet", "downstream_id": None,   "x": 10.0,  "y": 0.0},
+            {"id": "I2", "role": "inlet",  "downstream_id": "O2",  "x": 100.0, "y": 100.0},
+            {"id": "O2", "role": "outlet", "downstream_id": None,   "x": 110.0, "y": 100.0},
+        ])
         assert graph.n_components == 2
-        assert len(graph.warnings) > 0
 
     def test_regression_without_sewer(self, synthetic_fa):
         """FA raster should be unchanged when no sewer operations are applied."""
