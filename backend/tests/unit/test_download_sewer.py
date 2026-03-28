@@ -62,14 +62,14 @@ def sewer_config_file(tmp_path, sewer_lines_gpkg):
 
 class TestLoadFromFile:
     def test_loads_gpkg_lines(self, sewer_lines_gpkg):
-        gdf = load_from_file(str(sewer_lines_gpkg), lines_layer="kolektory")
-        assert len(gdf) == 3
-        assert gdf.crs.to_epsg() == 2180
-        assert all(gdf.geometry.geom_type == "LineString")
+        points, lines = load_from_file(str(sewer_lines_gpkg), lines_layer="kolektory")
+        assert len(lines) == 3
+        assert lines.crs.to_epsg() == 2180
+        assert all(lines.geometry.geom_type == "LineString")
 
     def test_auto_detect_layer(self, sewer_lines_gpkg):
-        gdf = load_from_file(str(sewer_lines_gpkg), lines_layer=None)
-        assert len(gdf) == 3
+        points, lines = load_from_file(str(sewer_lines_gpkg), lines_layer=None)
+        assert len(lines) == 3
 
     def test_file_not_found_raises(self):
         with pytest.raises(FileNotFoundError):
@@ -109,17 +109,17 @@ class TestDetectGeometryType:
 
 class TestLoadSewerData:
     def test_loads_with_config(self, sewer_config_file):
-        gdf = load_sewer_data(sewer_config_file)
-        assert len(gdf) == 3
-        assert gdf.crs.to_epsg() == 2180
+        points, lines = load_sewer_data(sewer_config_file)
+        assert len(lines) == 3
+        assert lines.crs.to_epsg() == 2180
 
     def test_reprojects_to_2180(self, tmp_path):
-        lines = gpd.GeoDataFrame(
+        lns = gpd.GeoDataFrame(
             {"geometry": [LineString([(17.0, 52.4), (17.1, 52.4)])]},
             crs="EPSG:4326",
         )
         path = tmp_path / "sewer_wgs84.gpkg"
-        lines.to_file(path, driver="GPKG")
+        lns.to_file(path, driver="GPKG")
         cfg = {
             "sewer": {
                 "source": {
@@ -132,5 +132,89 @@ class TestLoadSewerData:
                 "attribute_mapping": {},
             }
         }
-        gdf = load_sewer_data(cfg)
-        assert gdf.crs.to_epsg() == 2180
+        points, lines = load_sewer_data(cfg)
+        assert lines.crs.to_epsg() == 2180
+
+
+class TestLoadSewerDataTupleReturn:
+    def test_returns_tuple(self, tmp_path):
+        gdf = gpd.GeoDataFrame(
+            {"id": ["n1"], "role": ["outlet"], "geometry": [Point(500_000, 200_000)]},
+            crs="EPSG:2180",
+        )
+        path = tmp_path / "test.gpkg"
+        gdf.to_file(path, layer="nodes", driver="GPKG")
+
+        config = {
+            "sewer": {
+                "source": {
+                    "type": "file",
+                    "path": str(path),
+                    "points_layer": "nodes",
+                    "format": "auto",
+                },
+                "field_mapping": {"node_id": "id", "node_role": "role"},
+            }
+        }
+        result = load_sewer_data(config)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_points_only_returns_none_lines(self, tmp_path):
+        gdf = gpd.GeoDataFrame(
+            {"id": ["n1"], "role": ["outlet"], "geometry": [Point(500_000, 200_000)]},
+            crs="EPSG:2180",
+        )
+        path = tmp_path / "test.gpkg"
+        gdf.to_file(path, layer="nodes", driver="GPKG")
+
+        config = {
+            "sewer": {
+                "source": {
+                    "type": "file",
+                    "path": str(path),
+                    "points_layer": "nodes",
+                    "format": "points_only",
+                },
+                "field_mapping": {"node_id": "id", "node_role": "role"},
+            }
+        }
+        points, lines = load_sewer_data(config)
+        assert points is not None
+        assert lines is None
+
+
+class TestAutoDetectFormat:
+    def test_gpkg_two_layers_detected(self, tmp_path):
+        from shapely.geometry import LineString as ShapelyLineString
+
+        pts = gpd.GeoDataFrame(
+            {"id": ["n1", "n2"], "role": ["inlet", "outlet"],
+             "geometry": [Point(500_000, 200_000), Point(500_100, 200_100)]},
+            crs="EPSG:2180",
+        )
+        lns = gpd.GeoDataFrame(
+            {"from_node": ["n1"], "to_node": ["n2"],
+             "geometry": [ShapelyLineString([(500_000, 200_000), (500_100, 200_100)])]},
+            crs="EPSG:2180",
+        )
+        path = tmp_path / "sewer.gpkg"
+        pts.to_file(path, layer="nodes", driver="GPKG")
+        lns.to_file(path, layer="pipes", driver="GPKG")
+
+        config = {
+            "sewer": {
+                "source": {
+                    "type": "file",
+                    "path": str(path),
+                    "format": "auto",
+                    "points_layer": "nodes",
+                    "lines_layer": "pipes",
+                },
+                "field_mapping": {"node_id": "id", "node_role": "role"},
+            }
+        }
+        points, lines = load_sewer_data(config)
+        assert points is not None
+        assert lines is not None
+        assert len(lines) == 1
