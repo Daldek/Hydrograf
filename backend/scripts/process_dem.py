@@ -83,6 +83,7 @@ from core.sewer_service import (
     reconstruct_inlet_fa,
     route_fa_through_sewer,
 )
+from core.sewer_topology import parse_sewer_topology, validate_against_fdir
 from core.stream_extraction import (
     compute_downstream_links,
     delineate_subcatchments,
@@ -577,70 +578,63 @@ def process_dem(
         stats["endorheic_lakes"] = drain_diag["endorheic"]
         stats["drain_points"] = len(drain_points)
 
-    # 3b. Sewer inlet burning (optional)
+    # 3b. Sewer inlet burning (optional) — two-phase pipeline
     sewer_graph = None
+    topology = None
     if sewer_config and sewer_config.get("sewer", {}).get("enabled"):
-        logger.info("=== Sewer integration: loading data ===")
-        sewer_data = load_sewer_data(sewer_config)
+        logger.info("=== Sewer integration: loading and parsing topology ===")
         sewer_cfg = sewer_config["sewer"]
 
-        cellsize = metadata["cellsize"]
-        transform_sewer = _get_transform(metadata, dem.shape)
+        # Load data (returns tuple: points_gdf, lines_gdf)
+        points_gdf, lines_gdf = load_sewer_data(sewer_config)
 
-        sewer_graph = build_sewer_graph(
-            sewer_data,
-            snap_tolerance_m=max(
-                sewer_cfg.get("snap_tolerance_m", 2.0),
-                cellsize,
-            ),
-            attr_mapping=sewer_cfg.get("attribute_mapping", {}),
+        # Parse topology
+        field_mapping = sewer_cfg.get("field_mapping",
+                                       sewer_cfg.get("attribute_mapping", {}))
+        role_mapping = sewer_cfg.get("role_mapping", {
+            "inlet": "inlet", "outlet": "outlet",
+            "junction": "junction", "storage": "storage",
+        })
+        topology = parse_sewer_topology(
+            points_gdf, lines_gdf, field_mapping, role_mapping,
         )
-        for w in sewer_graph.warnings:
-            logger.warning(f"Sewer: {w}")
-
-        # Skip components without outlets
-        outlet_components = {
-            n["component_id"] for n in sewer_graph.nodes
-            if n["node_type"] == "outlet"
-        }
-        skipped = 0
-        for node in sewer_graph.nodes:
-            if node["component_id"] not in outlet_components:
-                node["_skip"] = True
-                skipped += 1
-        if skipped:
-            logger.warning(f"Sewer: skipping {skipped} nodes in outlet-less components")
-
         logger.info(
-            f"Sewer graph: {sewer_graph.n_nodes} nodes, "
-            f"{sewer_graph.n_edges} edges, {sewer_graph.n_components} components"
+            f"Sewer topology: {len(topology.nodes)} nodes, "
+            f"{len(topology.edges)} edges, format={topology.source_format}"
         )
 
-        # Convert node (x,y) to raster (row,col) for all nodes
-        from rasterio.transform import rowcol as _rowcol
-
+        # Map nodes to raster cells
+        transform_sewer = _get_transform(metadata, dem.shape)
         nrows, ncols = dem.shape
-        for node in sewer_graph.nodes:
-            r, c = _rowcol(transform_sewer, node["x"], node["y"])
-            r, c = int(r), int(c)
-            # Clamp to raster bounds
-            if 0 <= r < nrows and 0 <= c < ncols:
-                node["row"] = r
-                node["col"] = c
-            else:
-                node["row"] = -1
-                node["col"] = -1
-                logger.warning(
-                    f"Sewer node {node['id']} at ({node['x']:.0f}, {node['y']:.0f}) "
-                    f"outside DEM bounds — will be skipped"
-                )
+        for node in topology.nodes:
+            col_f, row_f = ~transform_sewer * (node["x"], node["y"])
+            node["row"] = int(round(row_f))
+            node["col"] = int(round(col_f))
 
-        # Burn inlets into DEM (skip nodes from outlet-less components)
-        inlets = [
-            n for n in sewer_graph.nodes
-            if n["node_type"] == "inlet" and n.get("row", -1) >= 0
-            and not n.get("_skip")
-        ]
+        # PHASE 1: Compute clean fdir (no sewer burns) for loop validation
+        logger.info("Phase 1: computing clean fdir for sewer loop validation")
+        import pyflwdir as _pyflwdir
+
+        flw_clean = _pyflwdir.from_dem(
+            dem.copy(),
+            nodata=metadata.get("nodata", -9999),
+            transform=transform_sewer,
+            latlon=False,
+        )
+        fdir_clean = flw_clean.to_d8()
+
+        # Validate: no outlet should drain back to its own component's inlet
+        loop_errors = validate_against_fdir(topology, fdir_clean, transform_sewer)
+        if loop_errors:
+            msg = "Sewer feedback loop detected:\n"
+            for err in loop_errors:
+                msg += f"  - {err['message']}\n"
+            raise ValueError(msg)
+        logger.info("Phase 1 complete — no feedback loops detected")
+        del fdir_clean, flw_clean  # free memory
+
+        # PHASE 2: Burn inlets into DEM
+        inlets = [n for n in topology.nodes if n["role"] == "inlet"]
         dem, drain_points_sewer = burn_inlets(
             dem, inlets,
             default_depth_m=sewer_cfg.get("inlet_burn_depth_m", 0.5),
@@ -688,24 +682,34 @@ def process_dem(
         )
 
     # 4a-4c. Sewer FA routing and propagation
-    if sewer_graph is not None:
-        logger.info("=== Sewer integration: FA routing ===")
+    if topology is not None:
+        logger.info("=== Sewer integration: building graph + FA routing ===")
+
+        # Build sewer graph from pre-validated topology
+        sewer_graph = build_sewer_graph(topology)
+        logger.info(
+            f"Sewer graph: {sewer_graph.n_nodes} nodes, "
+            f"{sewer_graph.n_edges} edges, {sewer_graph.n_components} components"
+        )
+
+        # Copy raster coordinates from topology nodes to graph nodes
+        topo_by_id = {n["id"]: n for n in topology.nodes}
+        for node in sewer_graph.nodes:
+            tn = topo_by_id.get(node["id"])
+            if tn:
+                node["row"] = tn["row"]
+                node["col"] = tn["col"]
+                node["dem_elev_m"] = tn.get("dem_elev_m")
 
         # 4a. Reconstruct FA at inlet cells (nodata from drain_points)
-        inlets = [
-            n for n in sewer_graph.nodes
-            if n["node_type"] == "inlet" and n.get("row", -1) >= 0
-        ]
+        inlets = sewer_graph.get_nodes_by_type("inlet")
         reconstruct_inlet_fa(acc, fdir, inlets)
 
         # 4b. Route FA through sewer graph
         route_fa_through_sewer(sewer_graph)
 
         # 4c. Propagate FA downstream from outlets
-        outlets = [
-            n for n in sewer_graph.nodes
-            if n["node_type"] == "outlet" and n.get("row", -1) >= 0
-        ]
+        outlets = sewer_graph.get_nodes_by_type("outlet")
         propagate_fa_downstream(acc, fdir, outlets)
 
         stats["sewer_outlets"] = len(outlets)
