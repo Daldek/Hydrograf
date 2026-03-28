@@ -4,7 +4,7 @@ import geopandas as gpd
 import numpy as np
 import pytest
 from rasterio.transform import Affine
-from shapely.geometry import LineString
+from shapely.geometry import Point
 from sqlalchemy import text  # noqa: F401 — used in Task 3 (DB tests)
 
 # Register DB fixtures from conftest_db
@@ -13,13 +13,14 @@ pytest_plugins = ["tests.conftest_db"]
 from tests.conftest_db import requires_db
 
 from core.sewer_service import (
-    build_sewer_graph,
     burn_inlets,
     insert_sewer_data,  # noqa: F401 — used in Task 3 (DB tests)
     propagate_fa_downstream,
     reconstruct_inlet_fa,
     route_fa_through_sewer,
 )
+from core.sewer_service import build_sewer_graph
+from core.sewer_topology import parse_sewer_topology, validate_against_fdir
 
 # --- Constants ---
 NROWS = NCOLS = 100
@@ -64,18 +65,38 @@ def pipeline_state():
     dem_before_burn = dem.copy()
 
     # --- 2. Sewer GeoDataFrame: Y-junction (2 inlets → junction → outlet) ---
+    # Format A: points with downstream_id
     coords = {name: _rc_to_xy(r, c) for name, (r, c) in SEWER_NODES.items()}
-    sewer_gdf = gpd.GeoDataFrame(
-        {"geometry": [
-            LineString([coords["inlet_a"], coords["junction"]]),
-            LineString([coords["inlet_b"], coords["junction"]]),
-            LineString([coords["junction"], coords["outlet"]]),
-        ]},
+
+    points_gdf = gpd.GeoDataFrame(
+        {
+            "id": ["inlet_a", "inlet_b", "junction", "outlet"],
+            "role": ["inlet", "inlet", "junction", "outlet"],
+            "downstream_id": ["junction", "junction", "outlet", None],
+            "geometry": [
+                Point(coords["inlet_a"]),
+                Point(coords["inlet_b"]),
+                Point(coords["junction"]),
+                Point(coords["outlet"]),
+            ],
+        },
         crs="EPSG:2180",
     )
 
-    # --- 3. Build sewer graph ---
-    graph = build_sewer_graph(sewer_gdf, snap_tolerance_m=2.0)
+    # --- 3. Parse topology and build sewer graph ---
+    field_mapping = {
+        "node_id": "id",
+        "node_role": "role",
+        "downstream_id": "downstream_id",
+    }
+    role_mapping = {
+        "inlet": "inlet",
+        "outlet": "outlet",
+        "junction": "junction",
+    }
+
+    topology = parse_sewer_topology(points_gdf, None, field_mapping, role_mapping)
+    graph = build_sewer_graph(topology)
 
     # --- 4. Map nodes to raster cells ---
     for n in graph.nodes:
@@ -83,11 +104,22 @@ def pipeline_state():
         n["row"] = int(row_f)
         n["col"] = int(col_f)
 
-    # --- 5. Burn inlets ---
+    # --- 5. Hydrology via pyflwdir (before burn, for fdir used in validation) ---
+    filled_pre, d8_fdir_pre = fill_depressions(
+        dem_before_burn.copy(), nodata=NODATA, max_depth=-1.0, outlets="edge"
+    )
+    fdir_pre = d8_fdir_pre.astype(np.int16)
+    fdir_pre[d8_fdir_pre == 247] = 0
+
+    # --- 6. Phase 1 validation: check for feedback loops ---
+    fdir_errors = validate_against_fdir(topology, fdir_pre, TRANSFORM)
+    # For a clean synthetic network there should be no feedback loops
+
+    # --- 7. Burn inlets ---
     inlets = [n for n in graph.nodes if n["node_type"] == "inlet"]
     dem, drain_points = burn_inlets(dem, inlets, default_depth_m=BURN_DEPTH_M)
 
-    # --- 6. Hydrology via pyflwdir ---
+    # --- 8. Hydrology via pyflwdir (on burned DEM) ---
     filled, d8_fdir = fill_depressions(
         dem, nodata=NODATA, max_depth=-1.0, outlets="edge"
     )
@@ -101,7 +133,7 @@ def pipeline_state():
 
     acc_before_sewer = acc.copy()
 
-    # --- 7. Sewer FA pipeline ---
+    # --- 9. Sewer FA pipeline ---
     reconstruct_inlet_fa(acc, fdir, inlets)
     route_fa_through_sewer(graph)
 
@@ -114,10 +146,12 @@ def pipeline_state():
         "dem_burned": dem,
         "dem_filled": filled,
         "fdir": fdir,
+        "fdir_errors": fdir_errors,
         "acc": acc,
         "acc_before_sewer": acc_before_sewer,
         "acc_before_propagation": acc_before_propagation,
         "graph": graph,
+        "topology": topology,
         "inlets": inlets,
         "outlets": outlets,
         "drain_points": drain_points,
@@ -140,6 +174,11 @@ class TestSewerPipelineInMemory:
         assert len(g.get_nodes_by_type("inlet")) == 2
         assert len(g.get_nodes_by_type("junction")) == 1
         assert len(g.get_nodes_by_type("outlet")) == 1
+
+    def test_validate_against_fdir(self, pipeline_state):
+        """No feedback loops in clean synthetic sewer network."""
+        fdir_errors = pipeline_state["fdir_errors"]
+        assert fdir_errors == [], f"Unexpected fdir errors: {fdir_errors}"
 
     def test_burn_inlets(self, pipeline_state):
         """DEM lowered at inlet cells, drain_points returned."""
