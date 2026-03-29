@@ -213,7 +213,7 @@ CREATE TABLE land_cover (
     geom GEOMETRY(MultiPolygon, 2180) NOT NULL,
     category VARCHAR(50) NOT NULL,
     cn_value INT NOT NULL,
-    imperviousness FLOAT,
+    imperviousness DOUBLE PRECISION,
     bdot_class VARCHAR(20),
 
     CONSTRAINT valid_cn CHECK (cn_value >= 0 AND cn_value <= 100),
@@ -271,12 +271,12 @@ CREATE TABLE stream_network (
     id SERIAL PRIMARY KEY,
     geom GEOMETRY(LineString, 2180) NOT NULL,
     name VARCHAR(100),
-    length_m FLOAT,
+    length_m DOUBLE PRECISION,
     strahler_order INT,
     source VARCHAR(50) DEFAULT 'MPHP',
-    upstream_area_km2 FLOAT,                        -- migracja 003
-    mean_slope_percent FLOAT,                       -- migracja 003
-    threshold_m2 INT NOT NULL DEFAULT 1000,          -- migracja 005/017 (aktywne progi: 1000, 10000, 100000; próg 100 usunięty, migracja 017)
+    upstream_area_km2 DOUBLE PRECISION,                        -- migracja 003
+    mean_slope_percent DOUBLE PRECISION,                       -- migracja 003
+    threshold_m2 INT NOT NULL,                        -- migracja 005/017 (aktywne progi: 1000, 10000, 100000; próg 100 usunięty, migracja 017)
     segment_idx INTEGER,                            -- migracja 014 (ADR-026)
     is_real_stream BOOLEAN,                         -- migracja 021 (ADR-044)
     is_sewer_augmented BOOLEAN DEFAULT FALSE,       -- migracja 025 (ADR-051)
@@ -322,12 +322,12 @@ COMMENT ON COLUMN stream_network.strahler_order IS 'Rząd Strahlera (hierarchia 
 | `id` | SERIAL | NO | auto | Unikalny identyfikator |
 | `geom` | GEOMETRY(LineString, 2180) | NO | - | Linia reprezentujaca odcinek cieku |
 | `name` | VARCHAR(100) | YES | NULL | Nazwa cieku |
-| `length_m` | FLOAT | YES | NULL | Dlugosc [m] (obliczana: ST_Length(geom)) |
+| `length_m` | DOUBLE PRECISION | YES | NULL | Dlugosc [m] (obliczana: ST_Length(geom)) |
 | `strahler_order` | INT | YES | NULL | Rzad Strahlera (1=zrodlowy, wyzsze=wieksze) |
 | `source` | VARCHAR(50) | YES | 'MPHP' | Zrodlo danych ('MPHP' lub 'DEM_DERIVED') |
-| `upstream_area_km2` | FLOAT | YES | NULL | Powierzchnia zlewni na koncu segmentu [km2] (migracja 003) |
-| `mean_slope_percent` | FLOAT | YES | NULL | Sredni spadek wzdluz segmentu [%] (migracja 003) |
-| `threshold_m2` | INT | NO | 1000 | Prog akumulacji przeplywu [m2] (migracja 005/017). Aktywne progi: 1000, 10000, 100000 (próg 100 usunięty, migracja 017) |
+| `upstream_area_km2` | DOUBLE PRECISION | YES | NULL | Powierzchnia zlewni na koncu segmentu [km2] (migracja 003) |
+| `mean_slope_percent` | DOUBLE PRECISION | YES | NULL | Sredni spadek wzdluz segmentu [%] (migracja 003) |
+| `threshold_m2` | INT | NO | - | Prog akumulacji przeplywu [m2] (migracja 005/017). Aktywne progi: 1000, 10000, 100000 (próg 100 usunięty, migracja 017) |
 | `segment_idx` | INTEGER | YES | NULL | Indeks segmentu spojny z `stream_catchments.segment_idx` (migracja 014, ADR-026) |
 | `is_real_stream` | BOOLEAN | YES | NULL | Czy segment pokrywa sie z ciekiem BDOT10k (spatial matching, bufor 15m, overlap >= 50%). NULL = nie matchowano, false = splywy algorytmiczne, true = ciek rzeczywisty (migracja 021, ADR-044) |
 | `is_sewer_augmented` | BOOLEAN | YES | FALSE | Czy flow accumulation segmentu zostala zmodyfikowana przez siec kanalizacyjna (migracja 025, ADR-051) |
@@ -429,10 +429,10 @@ CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom)
 CREATE TABLE depressions (
     id SERIAL PRIMARY KEY,
     geom GEOMETRY(POLYGON, 2180) NOT NULL,
-    volume_m3 FLOAT NOT NULL,
-    area_m2 FLOAT NOT NULL,
-    max_depth_m FLOAT NOT NULL,
-    mean_depth_m FLOAT
+    volume_m3 DOUBLE PRECISION NOT NULL,
+    area_m2 DOUBLE PRECISION NOT NULL,
+    max_depth_m DOUBLE PRECISION NOT NULL,
+    mean_depth_m DOUBLE PRECISION
 );
 
 -- Indeksy
@@ -452,7 +452,7 @@ CREATE TABLE soil_hsg (
     id SERIAL PRIMARY KEY,
     geom GEOMETRY(MULTIPOLYGON, 2180) NOT NULL,
     hsg_group VARCHAR(1) NOT NULL,           -- 'A', 'B', 'C', 'D'
-    area_m2 FLOAT NOT NULL,
+    area_m2 DOUBLE PRECISION NOT NULL,
 
     CONSTRAINT valid_hsg_group CHECK (hsg_group IN ('A', 'B', 'C', 'D'))
 );
@@ -474,7 +474,7 @@ COMMENT ON COLUMN soil_hsg.area_m2 IS 'Powierzchnia poligonu [m²]';
 | `id` | SERIAL | NO | auto | Unikalny identyfikator | 1..inf |
 | `geom` | GEOMETRY | NO | - | Poligon grupy glebowej | EPSG:2180 |
 | `hsg_group` | VARCHAR(1) | NO | - | Grupa HSG | 'A', 'B', 'C', 'D' |
-| `area_m2` | FLOAT | NO | - | Powierzchnia [m2] | > 0 |
+| `area_m2` | DOUBLE PRECISION | NO | - | Powierzchnia [m2] | > 0 |
 
 ---
 
@@ -615,7 +615,7 @@ CREATE TABLE sewer_network (
     manning_n DOUBLE PRECISION,
     length_m DOUBLE PRECISION NOT NULL,
     slope_percent DOUBLE PRECISION,
-    source VARCHAR(50) NOT NULL,
+    source VARCHAR(255) NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT chk_diameter_positive CHECK (diameter_mm IS NULL OR diameter_mm > 0),

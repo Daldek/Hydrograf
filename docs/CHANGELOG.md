@@ -100,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Refaktoryzacja code review (Wave 1-5)** — usuniecie martwego kodu (~200 LOC), ekstrakcja helperow (`_get_transform`, `_per_label_argmax`, `_clip_and_build_path`), deduplikacja watershed_service (wspolne `_build_flow_path_geojson`, `_SMOOTH_SQL`, `calculate_shape_indices`), unifikacja endpointow (`cascade_escalate`, `build_morph_dict_from_graph`, `build_land_cover_stats`, `build_hsg_stats`), nazwane stale w CatchmentGraph, zwalnianie pamieci numpy w `invalidate()`
 - **perf(core):** Optymalizacja BDOT stream matching — zamiana ST_Intersection(geom, ST_Union(buforow)) na ST_Union(ST_Intersection(geom, bufor)) (prawo rozdzielnosci, >600s→1s)
 - **refactor(db):** Squash 28 migracji Alembic do jednej initial schema (001_initial_schema.py), usunieto 3 zduplikowane indeksy
+- **refactor(docker):** Uproszczenie dev override do niezbednych ustawien
 
 ### Usuniete
 - **cleanup:** Usunieto 3 deprecated skrypty (e2e_task9, export_pipeline_gpkg, export_task9_gpkg)
@@ -117,6 +118,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Kerby-Kirpich — poprawiony podzial overland/channel** — overland z `hydraulic_length_km` (fallback), channel z `real_channel_length_km` (BDOT matching)
 - **Fragmentacja `real_channel_length_km`** — fix ciaglosci cieków BDOT: algorytm wybiera najdluzszy ciagly odcinek `is_real_stream=true` od ujscia (zamiast sumowania rozproszonych fragmentow)
 - **Overlay glownego cieku** — `get_main_channel_feature_collection()` z logika ciaglosci BDOT, poprawne wyroznienie segmentow rzeczywistych/algorytmicznych
+- **fix(admin):** Timeout dashboardu blokujacy logowanie do panelu admin — cache `_dir_size_mb` z 30s TTL, `proxy_read_timeout` w nginx
+- **fix(core):** Obsluga `PermissionError` we wszystkich wywolaniach `shutil.rmtree`
+- **fix(docker):** Przypiety UID/GID hydro na 999 dla stabilnego ownershipu bind mount
+- **fix(docker):** Usuniecie nadpisania `user:0:0` lamiacego uprawnienia plikow
 - **BDOT main channel tracing (R1a/R2/R3)** — tie-breaker `is_real_stream` w `trace_main_channel()`, gap tolerance `MAX_GAP=2` (tolerancja 2 segmentow bez BDOT), bufor matchingu zwiekszony do 25m
 - **DownloadManager resolution** — parametr `resolution` przekazywany przez `run_pipeline()` zamiast globalnych args, poprawna sciezka NMT
 - **Main channel trace: upstream_area_km2 z stream_network** — użycie kumulatywnej powierzchni zlewni (`upstream_area_km2`) zamiast lokalnej `area_km2` zlewni cząstkowej. Lokalna area_km2 była błędna — mały subcatchment doplywu mógł mieć większą powierzchnię lokalną niż subcatchment cieku głównego

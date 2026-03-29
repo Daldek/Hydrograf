@@ -150,9 +150,9 @@ Ten dokument precyzyjnie definiuje:
 
 **Scenariusze opadowe:**
 - Źródło: Atlas Pmax_PT z IMGW (via API) lub dane pomiarowe
-- Czasy trwania: 15min, 30min, 1h, 2h, 6h, 12h, 24h
-- Prawdopodobieństwa: 1%, 2%, 5%, 10%, 20%, 50%
-- Łącznie: 42 kombinacje (7 × 6)
+- Czasy trwania: 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
+- Prawdopodobieństwa: 0.01%, 0.02%, 0.03%, 0.05%, 0.1%, 0.2%, 0.3%, 0.5%, 1%, 2%, 3%, 5%, 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%, 90%, 95%, 98%, 98.5%, 99%, 99.5%, 99.9%
+- Łącznie: 432 kombinacje (16 × 27)
 - Wybór scenariusza przez użytkownika (radio buttons)
 - Wyświetlenie wartości opadu dla centroidu zlewni
 
@@ -659,7 +659,7 @@ Ten dokument precyzyjnie definiuje:
 **Funkcjonalnie:**
 - ✅ Wszystkie user stories (MUST HAVE) z PRD.md zaimplementowane
 - ✅ System wyznacza zlewnie dla 95%+ kliknięć na cieki
-- ✅ Generuje hydrogram dla wszystkich 42 scenariuszy
+- ✅ Generuje hydrogram dla wszystkich 432 scenariuszy
 
 **Jakościowo:**
 - ✅ Testy jednostkowe: > 80% pokrycia
@@ -790,7 +790,7 @@ FAZA 3: Generowanie hydrogramów
 
 - ✅ **F1:** Użytkownik może kliknąć punkt na mapie i zobaczyć granicę zlewni w < 10s
 - ✅ **F2:** System wyświetla parametry fizjograficznych zlewni
-- ✅ **F3:** Użytkownik może wybrać jeden z 42 scenariuszy opadowych
+- ✅ **F3:** Użytkownik może wybrać jeden z 432 scenariuszy opadowych
 - ✅ **F4:** System generuje hydrogram w < 5s i wyświetla wykres
 - ✅ **F5:** Użytkownik może eksportować granicę jako GeoJSON/Shapefile
 - ✅ **F6:** Użytkownik może eksportować hydrogram jako CSV

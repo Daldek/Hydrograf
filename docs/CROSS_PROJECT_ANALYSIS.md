@@ -97,7 +97,7 @@ hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.3
 
 | Moduł Hydrografa | Importy z IMGWTools | Zastosowanie |
 |-------------------|---------------------|--------------|
-| `scripts/preprocess_precipitation.py` | `fetch_pmaxtp` | Pobieranie PMAXTP z IMGW (42 scenariusze) |
+| `scripts/preprocess_precipitation.py` | `fetch_pmaxtp` | Pobieranie PMAXTP z IMGW (432 scenariusze) |
 | `scripts/analyze_watershed.py` | `fetch_pmaxtp` | Pobieranie opadu dla skryptu CLI |
 
 ---

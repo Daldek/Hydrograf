@@ -597,12 +597,12 @@ q(t) = qp × exp(-α × (t - tp))
 Q(t) = Σ[Pe(i) × UH(t - i×Δt) × A]    dla i = 0..len(Pe)-1
 ```
 
-### 6.7 42 scenariusze
+### 6.7 432 scenariusze
 
 Generowane kombinatorycznie:
-- **7 czasów trwania:** 15min, 30min, 1h, 2h, 6h, 12h, 24h
-- **6 prawdopodobieństw:** 1%, 2%, 5%, 10%, 20%, 50%
-- **Razem:** 7 × 6 = **42 scenariusze**
+- **16 duracji:** 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
+- **27 prawdopodobieństw:** 0.01%, 0.02%, 0.03%, 0.05%, 0.1%, 0.2%, 0.3%, 0.5%, 1%, 2%, 3%, 5%, 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%, 90%, 95%, 98%, 98.5%, 99%, 99.5%, 99.9%
+- **Razem:** 16 × 27 = **432 scenariusze**
 
 ### 6.8 Bilans wodny (wynik)
 
