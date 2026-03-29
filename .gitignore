@@ -99,6 +99,7 @@ credentials.json
 config.yaml
 
 # Other
+notes/
 *.png
 current_task.md
 
