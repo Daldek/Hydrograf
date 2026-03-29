@@ -13,7 +13,7 @@ Pracujesz nad **Hydrograf** — hubem hydrologicznym integrujacym FastAPI + Post
 **Funkcjonalnosci:**
 - **Wyznaczanie zlewni** — klikniecie na mape → granica zlewni w <10s (traverse_upstream w PostGIS)
 - **Parametry fizjograficzne** — powierzchnia, CN, spadki, pokrycie terenu, morfometria
-- **Hydrogramy odplywu** — metoda SCS-CN, 42 scenariusze (7 czasow trwania x 6 prawdopodobienstw)
+- **Hydrogramy odplywu** — metoda SCS-CN, 432 scenariusze (16 duracji x 27 prawdopodobienstw)
 - **Preprocessing NMT** — Kartograf → pyflwdir → COPY → stream_network + CatchmentGraph w PostGIS
 
 > **Uwaga:** tabela `flow_network` zostala usunieta w v0.4.0 (ADR-028) — zastapiona przez `stream_network` + `CatchmentGraph` in-memory. Ponizsze referencje do `flow_network` sa historyczne.

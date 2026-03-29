@@ -203,9 +203,9 @@ python -m scripts.download_landcover \
 
 **Klasy Kartografa:**
 ```python
-from kartograf.landcover import LandCoverManager
+from kartograf.landcover import LandCoverManager  # (lub from kartograf import LandCoverManager — re-export)
 from kartograf.providers.bdot10k import Bdot10kProvider
-from kartograf import BBox
+from kartograf import BBox  # (lub from kartograf.core.geometry import BBox)
 ```
 
 **Funkcja `discover_teryts_for_bbox()`** — automatyczne wykrywanie kodów TERYT powiatów w zadanym bounding boxie. Domyślnie wysyła pojedyncze zapytanie WFS GetFeature do PRG GUGiK (`A02_Granice_powiatow`, pole `JPT_KOD_JE`), żądając wyłącznie atrybutów (bez geometrii) dla szybkości. Jeśli WFS jest niedostępny, fallback na starą metodę grid-sampling (`_discover_teryts_grid()` — siatka punktów 25×25 przez `Bdot10kProvider._get_teryt_for_point()`). Parsowanie odpowiedzi GML w `_parse_teryts_from_gml()`. Szczegóły decyzji: ADR-045.
@@ -219,7 +219,7 @@ One-command orchestrator do pełnego preprocessingu.
 ```python
 from kartograf import SheetParser       # parsowanie godeł → BBox
 from kartograf import HSGCalculator     # obliczanie HSG z SoilGrids
-from kartograf import BBox              # obiekt bounding box
+from kartograf import BBox              # obiekt bounding box (lub from kartograf.core.geometry import BBox)
 ```
 
 **Kroki z Kartografem:**
@@ -265,7 +265,7 @@ Kalkulator CN z wykorzystaniem danych z Kartografa.
 
 **Klasy Kartografa:**
 ```python
-from kartograf import BBox, LandCoverManager
+from kartograf import BBox, LandCoverManager  # (lub kartograf.core.geometry.BBox / kartograf.landcover.LandCoverManager)
 from kartograf.hydrology import HSGCalculator
 ```
 
@@ -570,8 +570,8 @@ Endpoint `/api/tiles/landcover/{z}/{x}/{y}.pbf` serwuje dane land cover jako Map
 ### 10.6 API Python
 
 ```python
-from kartograf.landcover import LandCoverManager
-from kartograf import BBox
+from kartograf.landcover import LandCoverManager  # (lub from kartograf import LandCoverManager)
+from kartograf import BBox  # (lub from kartograf.core.geometry import BBox)
 
 # Inicjalizacja (domyślnie BDOT10k)
 manager = LandCoverManager(output_dir="./data/landcover")

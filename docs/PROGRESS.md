@@ -7,7 +7,7 @@
 | API (FastAPI + PostGIS) | ✅ Gotowy | 24 endpointy (11 core + 13 admin). Unified delineate-watershed (ADR-050). Sewer admin API (ADR-051). |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull, tryb precomputed + precise (ADR-050) |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
-| Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 42 scenariusze |
+| Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 432 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k |
 | Integracja Hydrolog | ✅ Gotowy | v0.6.3 (Nash IUH, 3 nowe metody tc) |
 | Integracja Kartograf | ✅ Gotowy | v0.6.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
@@ -34,7 +34,7 @@
 ### CP3 — Generowanie hydrogramu ✅
 - **Data:** 2026-01-21
 - **Wersja:** v0.3.0
-- **Zakres:** POST /generate-hydrograph, SCS-CN, 42 scenariusze, COPY 27x, reverse trace 330x, Land Cover, IMGWTools
+- **Zakres:** POST /generate-hydrograph, SCS-CN, 432 scenariusze, COPY 27x, reverse trace 330x, Land Cover, IMGWTools
 
 ### CP4 — Frontend z mapa ✅
 - **Data:** 2026-03-03
@@ -47,19 +47,28 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-29 (sesja 77 — optymalizacja i porzadki)
+**Data:** 2026-03-29 (sesja 78 — naprawa admin panel + Docker permissions)
 
 ### Co zrobiono
+- **Fix timeout logowania do panelu admin** — dashboard `_dir_size_mb` skanowal 353k plikow przy kazdym uzyciu, dodano cache 30s (`@lru_cache` + `time.monotonic()`).
+- **Fix shutil.rmtree PermissionDenied w rootless Docker** — dodano `onerror` handlery do wszystkich wywolan `shutil.rmtree` obslugujace pliki bez uprawnien zapisu.
+- **Root cause: docker-compose.override.yml** — `user: "0:0"` nadpisywal `USER hydro` z Dockerfile. Root bez capabilities nie mogl modyfikowac plikow nalezacych do hydro (uid 999).
+- **Pin hydro UID/GID** — ustawiono stale `UID=999`, `GID=999` w Dockerfile dla przewidywalnego ownership bind mountow.
+- **Uproszczenie docker-compose.override.yml** — usunieto nieuzywane mapowania portow i nadpisanie `user: "0:0"`.
+- **Audyt dokumentacji** — dalsze poprawki (kontynuacja z sesji 77).
+
+### Nastepne kroki
+- Migracja bind mountow na named volumes Docker: `./data`, `./cache`, `./frontend/data`, `./frontend/tiles`
+- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
+
+### Poprzednia sesja (2026-03-29, sesja 77 — optymalizacja i porzadki)
+
 - **BDOT stream matching timeout fix** — zamiana kolejnosci ST_Union/ST_Intersection w `update_stream_real_flags` (prawo rozdzielnosci). Dodano `update_stream_real_flags_all()` tworzaca temp buffer raz dla wszystkich progow. >600s timeout → 1s dla progu 100000.
 - **Squash migracji** — 28 migracji Alembic (001-027 + merge) zredukowanych do jednej `001_initial_schema.py`. Usunieto 3 zduplikowane indeksy i martwa migracje 013.
 - **Czyszczenie repo** — usunieto 3 deprecated skrypty (e2e_task9, export_pipeline_gpkg, export_task9_gpkg) referujace usuniety model cell_geometry (ADR-028).
 - **Docker: NUMBA_CACHE_DIR** — dodano `NUMBA_CACHE_DIR=/tmp/numba_cache` w docker-compose.yml (read_only rootfs blokuje zapis do /app).
 - **Audyt dokumentacji** — weryfikacja 12 plikow dokumentacji, naprawiono ~20 rozbieznosci.
 - **Testy** — 1063 testow, 0 failures
-
-### Nastepne kroki
-- Migracja bind mountow na named volumes Docker: `./data`, `./cache`, `./frontend/data`, `./frontend/tiles`
-- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 
 ### Poprzednia sesja (2026-03-28, sesja 76 — przebudowa topologii kanalizacji)
 
@@ -845,7 +854,7 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 | stream_catchments | 264,548 | 3 progi (bez progu 100, ADR-026) |
 | land_cover | 101,237 | 2 powiaty (3021, 3064), 7 kategorii |
 | depressions | 385,567 | pelny zestaw po bootstrap sesji 44 |
-| precipitation_data | 7,560 | 180 punktow × 42 scenariusze |
+| precipitation_data | 77,760 | 180 punktow × 432 scenariusze |
 | soil_hsg | 121 | grupy glebowe HSG |
 
 ### Znane problemy (infrastruktura)

@@ -343,6 +343,8 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 
 **Uwaga:** `NashIUH.from_tc()` jest oznaczona jako deprecated od Hydrolog v0.6.2. W Hydrografie domyślna estymacja Nash zmieniona na `from_lutz`. W UI metoda `from_tc` ma etykietę `[deprecated]`.
 
+**Znane ograniczenie:** Endpoint `GET /api/scenarios` (`list_scenarios()`) nadal zwraca `from_tc` w liście `nash_estimation_methods` bez oznaczenia deprecation — klient API nie dostaje informacji o statusie deprecated tej metody.
+
 ---
 
 ## Snyder Unit Hydrograph

@@ -25,6 +25,10 @@ export DOCKER_HOST=unix://$HOME/.docker/run/docker.sock
 docker compose up -d
 ```
 
+**Uwaga:** `docker-compose.override.yml` jest automatycznie ladowany w dev (dodaje `--reload`, montuje `./backend:/app`, wylacza `read_only`).
+Na produkcji uzyj `docker compose -f docker-compose.yml up -d` aby pominac override.
+**Nigdy** nie dodawaj `user:` do override — koliduje z `cap_drop: ALL` i psuje operacje plikowe.
+
 **Dostep z sieci lokalnej** wymaga reguly UFW (rootless Docker nie modyfikuje iptables):
 ```bash
 sudo ufw allow from <LAN_SUBNET> to any port 8080 proto tcp
@@ -135,7 +139,7 @@ Jesli prostsze rozwiazanie jest wolniejsze, wybierz prostsze. Jesli bezpieczniej
 - PostGIS jest **wymagany** — cala logika oparta na SQL spatial queries
 - Metoda SCS-CN ograniczona do zlewni <= 250 km²
 - Frontend: statyczny HTML/JS, brak frameworka (Vanilla JS)
-- API memory limit: 512M (CatchmentGraph ~0.5 MB)
+- API memory limit: 8G (CatchmentGraph <1 MB, RasterCache ~46 MB lazy-loaded)
 
 ### Konwencje nazewnictwa z jednostkami
 ```python

@@ -694,7 +694,7 @@ Dane kanalizacyjne przechowywane w tabelach `sewer_nodes` (węzły: wloty, wylot
 ├─────────────────────────────────────────────────────────────────┤
 │ id (PK)              SERIAL                                     │
 │ geom                 GEOMETRY(LineString, 2180)                 │
-│ layer_type           VARCHAR(50)                                │
+│ layer_type           VARCHAR(10)                                │
 │ name                 VARCHAR(200)                               │
 │ length_m             FLOAT                                      │
 │                                                                 │
@@ -1073,8 +1073,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init_scripts:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "127.0.0.1:5432:5432"
     restart: unless-stopped
     deploy:
       resources:
@@ -1108,8 +1106,6 @@ services:
       DEM_DIR: ${DEM_DIR:-/data/nmt}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
-    ports:
-      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -1321,7 +1317,7 @@ http {
 - ✅ GZip middleware (FastAPI)
 - ✅ Request ID tracing (`X-Request-ID` header, structlog context)
 - ✅ Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
-- ✅ Resource limits Docker (memory: 2G db, 4G api)
+- ✅ Resource limits Docker (memory: 2G db, 8G api)
 - ✅ Admin API key auth (X-Admin-Key header, file-based lub env var, ADR-034)
 - ✅ No user authentication needed (internal network only in MVP)
 
