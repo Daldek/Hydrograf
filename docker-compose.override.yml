@@ -2,16 +2,8 @@
 # Skipped when explicit -f flags are used (e.g., production)
 
 services:
-  db:
-    ports:
-      - "127.0.0.1:5432:5432"  # Direct DB access for local .venv development
   api:
-    read_only: false  # Dev needs write access for __pycache__, .pyc files
-    ports:
-      - "127.0.0.1:8000:8000"  # Direct API access for development
+    read_only: false  # Dev needs write for __pycache__, .pyc (hot-reload)
     volumes:
-      - ./backend:/app
+      - ./backend:/app  # Hot-reload: code changes without rebuild
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-  nginx:
-    ports:
-      - "${HYDROGRAF_PORT:-8080}:80"  # Override to match base variable; set HYDROGRAF_PORT for custom port
