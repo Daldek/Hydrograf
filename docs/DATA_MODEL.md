@@ -148,7 +148,7 @@ CREATE TABLE precipitation_data (
     geom GEOMETRY(Point, 2180) NOT NULL,
     duration VARCHAR(10) NOT NULL,
     probability DOUBLE PRECISION NOT NULL,  -- migracja 020: zmiana z INT na DOUBLE PRECISION
-    precipitation_mm FLOAT NOT NULL,
+    precipitation_mm DOUBLE PRECISION NOT NULL,
     source VARCHAR(50) NOT NULL,  -- IMGW_PMAXTP (atlas) lub IMGW_HISTORICAL (wlasna analiza)
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -184,7 +184,7 @@ COMMENT ON COLUMN precipitation_data.precipitation_mm IS 'Wysokość opadu [mm]'
 | `geom` | GEOMETRY | NO | - | Punkt siatki precipitation | EPSG:2180 |
 | `duration` | VARCHAR(10) | NO | - | Czas trwania | '5min','10min','15min','30min','45min','1h','1.5h','2h','3h','6h','12h','18h','24h','36h','48h','72h' |
 | `probability` | DOUBLE PRECISION | NO | - | Prawdopodobieństwo [%] | 0.01,0.02,0.03,0.05,0.1,0.2,0.3,0.5,1,2,3,5,10,20,30,40,50,60,70,80,90,95,98,98.5,99,99.5,99.9 |
-| `precipitation_mm` | FLOAT | NO | - | Opad [mm] | ≥ 0 |
+| `precipitation_mm` | DOUBLE PRECISION | NO | - | Opad [mm] | ≥ 0 |
 | `source` | VARCHAR(50) | NO | - | Źródło danych | IMGW_PMAXTP (atlas), IMGW_HISTORICAL (własna analiza) |
 | `updated_at` | TIMESTAMP | YES | NOW() | Data aktualizacji | timestamp |
 
@@ -225,7 +225,7 @@ CREATE TABLE land_cover (
 );
 
 -- Indeksy
-CREATE INDEX idx_landcover_geom ON land_cover USING GIST(geom);
+CREATE INDEX idx_land_cover_geom ON land_cover USING GIST(geom);
 CREATE INDEX idx_category ON land_cover(category);
 CREATE INDEX idx_cn_value ON land_cover(cn_value);
 
@@ -286,7 +286,7 @@ CREATE TABLE stream_network (
 );
 
 -- Indeksy
-CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
+CREATE INDEX idx_stream_network_geom ON stream_network USING GIST(geom);
 CREATE INDEX idx_stream_name ON stream_network(name);
 CREATE INDEX idx_strahler_order ON stream_network(strahler_order);
 CREATE UNIQUE INDEX idx_stream_unique ON stream_network
@@ -380,6 +380,8 @@ CREATE INDEX idx_catchments_threshold ON stream_catchments(threshold_m2, strahle
 CREATE INDEX idx_catchments_area ON stream_catchments(area_km2);
 CREATE INDEX idx_catchments_downstream                   -- migracja 012
     ON stream_catchments(threshold_m2, downstream_segment_idx);
+CREATE INDEX idx_catchments_threshold_segment             -- migracja 018
+    ON stream_catchments(threshold_m2, segment_idx);
 -- Partial indexes per threshold (migracja 011, prog 100 usuniety w migracji 017):
 CREATE INDEX idx_catchment_geom_t1000 ON stream_catchments USING GIST(geom)
     WHERE threshold_m2 = 1000;
@@ -719,7 +721,7 @@ CONSTRAINT valid_hsg_group CHECK (hsg_group IN ('A', 'B', 'C', 'D'))
 
 -- sewer_nodes (migracja 025)
 CONSTRAINT chk_outlet_not_self CHECK (root_outlet_id != id)
-CONSTRAINT chk_node_type CHECK (node_type IN ('inlet', 'outlet', 'junction', 'isolated'))
+CONSTRAINT chk_node_type CHECK (node_type IN ('inlet', 'outlet', 'junction', 'storage'))
 
 -- sewer_network (migracja 025)
 CONSTRAINT chk_diameter_positive CHECK (diameter_mm IS NULL OR diameter_mm > 0)
@@ -736,8 +738,8 @@ CONSTRAINT chk_manning_range CHECK (manning_n IS NULL OR (manning_n > 0 AND mann
 **Dla wszystkich kolumn geometrycznych:**
 ```sql
 CREATE INDEX idx_precipitation_geom ON precipitation_data USING GIST(geom);
-CREATE INDEX idx_landcover_geom ON land_cover USING GIST(geom);
-CREATE INDEX idx_stream_geom ON stream_network USING GIST(geom);
+CREATE INDEX idx_land_cover_geom ON land_cover USING GIST(geom);
+CREATE INDEX idx_stream_network_geom ON stream_network USING GIST(geom);
 CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST(geom);
 CREATE INDEX idx_depressions_geom ON depressions USING GIST(geom);
 CREATE INDEX idx_soil_hsg_geom ON soil_hsg USING GIST(geom);

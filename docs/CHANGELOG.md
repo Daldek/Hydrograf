@@ -35,8 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Single-transaction insert (eliminacja okna niespojnosci miedzy sewer_nodes a sewer_network)
 - Batch UPDATE is_sewer_augmented (N+1 → single spatial join)
 - MVT tile query optimization (deduplicated bbox transform)
-
-## [Unreleased] — 2026-03-25
+- **fix(docker):** Dodano NUMBA_CACHE_DIR=/tmp/numba_cache dla read-only rootfs
 
 ### API
 - **Unified delineate-watershed endpoint (ADR-050)** — polaczenie `POST /api/select-stream` i `POST /api/delineate-watershed` w jeden endpoint `POST /api/delineate-watershed` z dwoma trybami: `precomputed` (z `threshold_m2`, BFS po grafie) i `precise` (bez progu, delimitacja rastrowa pyflwdir on-the-fly)
@@ -99,6 +98,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Drainage stats z BDOT** — gestosc sieci, czestotliwosc ciekow, chropowatosc i max Strahler bazuja wylacznie na segmentach `is_real_stream=true` (zamiast calej sieci algorytmicznej)
 - **DEM auto-discovery (ADR-049)** — `resolve_dem_path()` z lancuchem fallback (DEM_PATH env → VRT → raw TIF → filled TIF) zamiast hardcoded sciezki. Analogiczny `resolve_stream_distance_path()`
 - **Refaktoryzacja code review (Wave 1-5)** — usuniecie martwego kodu (~200 LOC), ekstrakcja helperow (`_get_transform`, `_per_label_argmax`, `_clip_and_build_path`), deduplikacja watershed_service (wspolne `_build_flow_path_geojson`, `_SMOOTH_SQL`, `calculate_shape_indices`), unifikacja endpointow (`cascade_escalate`, `build_morph_dict_from_graph`, `build_land_cover_stats`, `build_hsg_stats`), nazwane stale w CatchmentGraph, zwalnianie pamieci numpy w `invalidate()`
+- **perf(core):** Optymalizacja BDOT stream matching — zamiana ST_Intersection(geom, ST_Union(buforow)) na ST_Union(ST_Intersection(geom, bufor)) (prawo rozdzielnosci, >600s→1s)
+- **refactor(db):** Squash 28 migracji Alembic do jednej initial schema (001_initial_schema.py), usunieto 3 zduplikowane indeksy
+
+### Usuniete
+- **cleanup:** Usunieto 3 deprecated skrypty (e2e_task9, export_pipeline_gpkg, export_task9_gpkg)
 
 ### Naprawione
 - **Per-polygon simplify usunięty ze stream_extraction** — `shapely.simplify(2*cellsize)` stosowane niezależnie per subcatchment powodowało luki między sąsiednimi zlewniami (wspólne krawędzie upraszczane różnie). Surowe geometrie zapisywane do DB; wygładzanie w runtime merge pipeline
