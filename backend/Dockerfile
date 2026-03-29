@@ -53,8 +53,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy tippecanoe binary from builder
 COPY --from=builder /usr/local/bin/tippecanoe /usr/local/bin/tippecanoe
 
-# Create non-root user for running the application
-RUN groupadd -r hydro && useradd -r -g hydro -d /app -s /sbin/nologin hydro
+# Create non-root user with pinned UID/GID (stable across rebuilds for bind mount ownership)
+RUN groupadd -r -g 999 hydro && useradd -r -u 999 -g hydro -d /app -s /sbin/nologin hydro
 
 # Copy pre-built virtualenv from builder
 COPY --from=builder /opt/venv /opt/venv
