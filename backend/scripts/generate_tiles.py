@@ -19,7 +19,9 @@ Prerequisites:
 import argparse
 import json
 import logging
+import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -188,7 +190,11 @@ def extract_mbtiles_to_pbf(mbtiles_path: Path, output_dir: Path, prefix: str) ->
 
     tile_dir = output_dir / prefix
     if tile_dir.exists():
-        shutil.rmtree(tile_dir)
+        def _on_error(_func, _path, _exc_info):
+            os.chmod(_path, stat.S_IRWXU)
+            _func(_path)
+
+        shutil.rmtree(tile_dir, onerror=_on_error)
 
     conn = sqlite3.connect(str(mbtiles_path))
     cursor = conn.execute(

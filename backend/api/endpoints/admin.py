@@ -939,7 +939,12 @@ def sewer_delete(db: Session = Depends(get_db)):
     db.commit()
 
     import shutil
+    import stat as _stat
     if DATA_SEWER.exists():
-        shutil.rmtree(DATA_SEWER)
+        def _on_error(_func, _path, _exc_info):
+            os.chmod(_path, _stat.S_IRWXU)
+            _func(_path)
+
+        shutil.rmtree(DATA_SEWER, onerror=_on_error)
 
     return {"message": "Sewer data deleted", "pipeline_dirty": True}
