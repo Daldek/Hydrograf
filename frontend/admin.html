@@ -156,26 +156,25 @@
                                         <option value="1m">1m (wysoka szczegółowość)</option>
                                     </select>
                                 </div>
-                                <div class="row g-2 mb-2">
-                                    <div class="col-auto">
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input" type="checkbox" id="skip-precipitation">
-                                            <label class="form-check-label small" for="skip-precipitation">Pomiń opady</label>
-                                        </div>
+                                <!-- Sewer integration -->
+                                <div class="mb-2">
+                                    <label class="form-label small fw-bold mb-1">Kanalizacja deszczowa</label>
+                                    <div id="sewer-status" class="small mb-1">
+                                        <span class="text-secondary">Ładowanie statusu...</span>
                                     </div>
-                                    <div class="col-auto">
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input" type="checkbox" id="skip-tiles">
-                                            <label class="form-check-label small" for="skip-tiles">Pomiń kafelki</label>
-                                        </div>
+                                    <div class="form-check form-switch mb-1">
+                                        <input class="form-check-input" type="checkbox" id="sewer-enabled-toggle">
+                                        <label class="form-check-label small" for="sewer-enabled-toggle">Uwzględnij w analizie</label>
                                     </div>
-                                    <div class="col-auto">
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input" type="checkbox" id="skip-overlays">
-                                            <label class="form-check-label small" for="skip-overlays">Pomiń overlaye</label>
-                                        </div>
-                                    </div>
+                                    <label class="btn btn-outline-secondary btn-sm" style="cursor: pointer;">
+                                        Upload GPKG/SHP
+                                        <input type="file" id="sewer-upload-input"
+                                               accept=".gpkg,.shp,.geojson,.json,.zip"
+                                               style="display:none">
+                                    </label>
+                                    <div id="sewer-upload-result" class="small mt-1"></div>
                                 </div>
+
                                 <div class="d-flex gap-2">
                                     <button type="button" id="bootstrap-start-btn" class="btn btn-primary btn-sm">Start</button>
                                     <button type="button" id="bootstrap-cancel-btn" class="btn btn-danger btn-sm" disabled>Anuluj</button>
@@ -198,25 +197,6 @@
                     </div>
                 </div>
 
-                <!-- Sewer network (col-md-4) -->
-                <div class="col-md-4">
-                    <div class="admin-card glass-panel">
-                        <h5 class="admin-card-header">Kanalizacja deszczowa</h5>
-                        <div id="sewer-status">
-                            <p class="text-secondary small">Ładowanie statusu...</p>
-                        </div>
-                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                            <label class="btn btn-primary btn-sm" style="cursor: pointer;">
-                                Upload GPKG/SHP
-                                <input type="file" id="sewer-upload-input"
-                                       accept=".gpkg,.shp,.geojson,.json,.zip"
-                                       style="display:none">
-                            </label>
-                            <button id="sewer-delete-btn" class="btn btn-danger btn-sm">Usuń dane</button>
-                        </div>
-                        <div id="sewer-upload-result" style="margin-top: 1rem;"></div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>

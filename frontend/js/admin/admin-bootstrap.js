@@ -208,12 +208,29 @@
     async function handleStart() {
         var mode = document.querySelector('input[name="area-mode"]:checked').value;
 
+        var skipPrecip = document.getElementById('skip-precipitation');
+        var skipTiles = document.getElementById('skip-tiles');
+        var skipOverlays = document.getElementById('skip-overlays');
+
         var params = {
-            skip_precipitation: document.getElementById('skip-precipitation').checked,
-            skip_tiles: document.getElementById('skip-tiles').checked,
-            skip_overlays: document.getElementById('skip-overlays').checked,
+            skip_precipitation: skipPrecip ? skipPrecip.checked : false,
+            skip_tiles: skipTiles ? skipTiles.checked : false,
+            skip_overlays: skipOverlays ? skipOverlays.checked : false,
             resolution: document.getElementById('bootstrap-resolution').value,
         };
+
+        // Sewer integration
+        var sewerToggle = document.getElementById('sewer-enabled-toggle');
+        if (sewerToggle && sewerToggle.checked) {
+            params.sewer_enabled = true;
+            // Read source path from sewer status (set by admin-sewer.js)
+            if (window.Hydrograf._sewerSourcePath) {
+                params.sewer_source = window.Hydrograf._sewerSourcePath;
+            }
+            if (window.Hydrograf._sewerSourceLayer) {
+                params.sewer_layer = window.Hydrograf._sewerSourceLayer;
+            }
+        }
 
         if (mode === 'boundary') {
             if (!_boundaryFilename) {
