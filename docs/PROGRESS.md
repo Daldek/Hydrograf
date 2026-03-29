@@ -4,7 +4,7 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 23 endpointy (11 core + 12 admin). Unified delineate-watershed (ADR-050). Sewer admin API (ADR-051). |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 24 endpointy (11 core + 13 admin). Unified delineate-watershed (ADR-050). Sewer admin API (ADR-051). |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull, tryb precomputed + precise (ADR-050) |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 42 scenariusze |
@@ -16,7 +16,7 @@
 | Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). Jawna topologia (ADR-052), walidacja strict, 2-fazowy pipeline. MVT tiles, overlay frontend, admin panel sewer. |
 | Frontend | 🔶 Faza 4+ gotowa | 15 modulow JS (10 core + 5 admin). Sewer overlay + admin-sewer. |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie, Kanalizacja (ADR-034, ADR-051) |
-| Testy | ✅ Gotowy | 1025 testow (1018 unit + 7 integration), 0 failures |
+| Testy | ✅ Gotowy | 1063 testow (1056 unit + 7 integration), 0 failures |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -47,9 +47,22 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-28 (sesja 76 — przebudowa topologii kanalizacji)
+**Data:** 2026-03-29 (sesja 77 — optymalizacja i porzadki)
 
 ### Co zrobiono
+- **BDOT stream matching timeout fix** — zamiana kolejnosci ST_Union/ST_Intersection w `update_stream_real_flags` (prawo rozdzielnosci). Dodano `update_stream_real_flags_all()` tworzaca temp buffer raz dla wszystkich progow. >600s timeout → 1s dla progu 100000.
+- **Squash migracji** — 28 migracji Alembic (001-027 + merge) zredukowanych do jednej `001_initial_schema.py`. Usunieto 3 zduplikowane indeksy i martwa migracje 013.
+- **Czyszczenie repo** — usunieto 3 deprecated skrypty (e2e_task9, export_pipeline_gpkg, export_task9_gpkg) referujace usuniety model cell_geometry (ADR-028).
+- **Docker: NUMBA_CACHE_DIR** — dodano `NUMBA_CACHE_DIR=/tmp/numba_cache` w docker-compose.yml (read_only rootfs blokuje zapis do /app).
+- **Audyt dokumentacji** — weryfikacja 12 plikow dokumentacji, naprawiono ~20 rozbieznosci.
+- **Testy** — 1063 testow, 0 failures
+
+### Nastepne kroki
+- Migracja bind mountow na named volumes Docker: `./data`, `./cache`, `./frontend/data`, `./frontend/tiles`
+- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
+
+### Poprzednia sesja (2026-03-28, sesja 76 — przebudowa topologii kanalizacji)
+
 - **Przebudowa topologii sieci kanalizacyjnej (ADR-052)** — z automatycznej detekcji (snapping, kaskada kierunkow, heurystyczna detekcja outletow) na jawna topologie definiowana przez uzytkownika:
   - Nowy modul `core/sewer_topology.py` — parser + walidator topologii (ParsedTopology, parse_sewer_topology, validate_against_fdir)
   - 4 role wezlow: inlet, outlet, junction, storage (kompatybilnosc SWMM/HEC-RAS)
@@ -64,11 +77,6 @@
   - Admin API: upload zwraca `detected_format` i `layers`; config akceptuje `field_mapping`, `role_mapping`
 - **Specyfikacja, plan, implementacja 13 taskow, code review, poprawki, test E2E**
 - **Testy** — 1025 testow (1018 unit + 7 integration), 0 failures
-
-### Nastepne kroki
-- Merge do develop
-- Testy z prawdziwymi danymi kanalizacji
-- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 
 ### Poprzednia sesja (2026-03-27, sesja 75 — integration test sewer pipeline)
 

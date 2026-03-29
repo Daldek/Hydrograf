@@ -105,7 +105,7 @@ Podsumowanie kluczowych ADR:
 | ADR-029 | trace_main_channel() | Wyznaczanie głównego cieku wg Strahlera (do channel_slope) |
 | ADR-032 | Boundary smoothing | `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` |
 | ADR-033 | Building raising | `raise_buildings_in_dem()` +5m pod footprints BUBD |
-| ADR-034 | Panel administracyjny | `/admin` + 12 endpointów `/api/admin/*`, API key auth, bootstrap SSE |
+| ADR-034 | Panel administracyjny | `/admin` + 13 endpointów `/api/admin/*`, API key auth, bootstrap SSE |
 | ADR-035 | Konteneryzacja multi-stage | Multi-stage Dockerfile, entrypoint z wait-for-db, override dev/prod |
 | ADR-036 | Hardening kontenerów Docker | Security headers, resource limits, non-root user |
 | ADR-037 | Separacja cache/data + Kartograf v0.5.0 | Rozdzielenie katalogów cache i danych generowanych |
@@ -138,7 +138,7 @@ backend/
 │   │   └── admin_auth.py          # Admin API key verification (X-Admin-Key header)
 │   └── endpoints/
 │       ├── __init__.py
-│       ├── admin.py               # 12 endpointów /api/admin/* (dashboard, resources, cleanup, bootstrap, sewer)
+│       ├── admin.py               # 13 endpointów /api/admin/* (dashboard, resources, cleanup, bootstrap, sewer)
 │       ├── depressions.py         # GET /depressions
 │       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
@@ -191,13 +191,10 @@ backend/
 │   ├── generate_depressions.py    # Generowanie depresji (blue spots)
 │   ├── analyze_watershed.py       # Analiza zlewni (CLI)
 │   ├── download_sewer.py          # Pobieranie sieci kanalizacyjnej (plik/WFS/DB/URL, walidacja CRS, SSRF protection). Zwraca tuple (points_gdf, lines_gdf | None)
-│   ├── export_pipeline_gpkg.py    # Eksport danych pipeline do GeoPackage
-│   ├── export_task9_gpkg.py       # Eksport danych task9 do GeoPackage
-│   ├── e2e_task9.py               # E2E test pipeline
 │   └── clean.py                  # Czyszczenie danych generowanych (rasters, tiles, DB, cache)
 │
 ├── migrations/
-│   └── versions/                  # 27+ migracji Alembic (001-027 + merge)
+│   └── versions/                  # 1 migracja (squashed initial schema)
 │
 ├── utils/
 │   ├── __init__.py
@@ -290,8 +287,14 @@ GET /api/scenarios
 
 Response: 200 OK
 {
-  "durations": ["15min", "30min", "1h", "2h", "6h", "12h", "24h"],
-  "probabilities": [1, 2, 5, 10, 20, 50]
+  "durations": ["5min","10min","15min","30min","45min","1h","1.5h","2h","3h","6h","12h","18h","24h","36h","48h","72h"],
+  "probabilities": [0.01,0.02,0.03,0.05,0.1,0.2,0.3,0.5,1,2,3,5,10,20,30,40,50,60,70,80,90,95,98,98.5,99,99.5,99.9],
+  "tc_methods": [...],
+  "hietogram_types": [...],
+  "uh_models": [...],
+  "snyder_defaults": {...},
+  "nash_estimation_methods": [...],
+  "nash_defaults": {...}
 }
 ```
 
@@ -345,6 +348,7 @@ GET  /api/admin/bootstrap/status   — status procesu bootstrap
 POST /api/admin/bootstrap/start    — uruchomienie bootstrap subprocess
 POST /api/admin/bootstrap/cancel   — anulowanie bootstrap
 GET  /api/admin/bootstrap/stream   — SSE stream logów bootstrap (timeout 3600s)
+POST /api/admin/bootstrap/upload-boundary — upload granicy zlewni
 
 POST   /api/admin/sewer/upload     — upload pliku z siecią kanalizacyjną (ADR-051/052), auto-detect format, zwraca detected_format i layers
 GET    /api/admin/sewer/status     — status danych kanalizacji
@@ -1101,7 +1105,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:-hydro_password}@db:5432/${POSTGRES_DB:-hydro_db}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DEM_PATH: ${DEM_PATH:-/data/nmt/dem_mosaic.vrt}
+      DEM_DIR: ${DEM_DIR:-/data/nmt}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
     ports:
@@ -1113,7 +1117,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 8G
           cpus: "2.0"
     volumes:
       - ./backend:/app
@@ -1643,7 +1647,7 @@ def oblicz_opad_efektywny_slow(intensywnosci, cn):
 **Strategia testowania:**
 - **Unit tests** — moduły core z mockowanymi zależnościami (pytest + fixtures)
 - **Integration tests** — endpointy API z prawdziwą bazą PostGIS (test service w CI)
-- **E2E scripts** — `process_dem.py`, `e2e_task9.py` (pełny pipeline end-to-end)
+- **E2E scripts** — `process_dem.py` (pełny pipeline end-to-end)
 - **CI:** pytest z coverage (aktualna liczba testów w wynikach CI)
 
 ---
