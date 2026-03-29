@@ -24,6 +24,7 @@ Usage:
 import argparse
 import asyncio
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -917,8 +918,14 @@ def step_overlays(output_dir: Path) -> str:
     if dem_input is not None:
         if dem_tiles_dir.exists():
             import shutil as _shutil
+            import stat as _stat
 
-            _shutil.rmtree(dem_tiles_dir)
+            def _force_remove(_func, _path, _exc_info):
+                """Handle permission errors during rmtree (rootless Docker UID remap)."""
+                os.chmod(_path, _stat.S_IRWXU)
+                _func(_path)
+
+            _shutil.rmtree(dem_tiles_dir, onerror=_force_remove)
             logger.info("Removed old DEM tiles for regeneration")
         logger.info("Generating DEM tile pyramid...")
         from scripts.generate_dem_tiles import generate_tiles as gen_dem_tiles
