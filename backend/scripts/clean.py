@@ -29,7 +29,9 @@ Usage:
 
 import argparse
 import logging
+import os
 import shutil
+import stat
 import sys
 import time
 from pathlib import Path
@@ -101,6 +103,15 @@ def count_files(path: Path) -> int:
     return sum(1 for f in path.rglob("*") if f.is_file())
 
 
+def _force_rmtree(path: Path) -> None:
+    """shutil.rmtree with permission fix for rootless Docker UID remapping."""
+    def _on_error(_func, _path, _exc_info):
+        os.chmod(_path, stat.S_IRWXU)
+        _func(_path)
+
+    shutil.rmtree(path, onerror=_on_error)
+
+
 def remove_dir(path: Path, dry_run: bool = False) -> tuple[int, int]:
     """Remove directory contents (not the directory itself), return (files_removed, bytes_freed).
 
@@ -114,7 +125,7 @@ def remove_dir(path: Path, dry_run: bool = False) -> tuple[int, int]:
     if not dry_run:
         for child in path.iterdir():
             if child.is_dir():
-                shutil.rmtree(child)
+                _force_rmtree(child)
             else:
                 child.unlink()
     return n_files, size
@@ -134,7 +145,7 @@ def remove_files_by_glob(
             if f.is_file():
                 f.unlink()
             elif f.is_dir():
-                shutil.rmtree(f)
+                _force_rmtree(f)
     return n_files, size
 
 
