@@ -57,12 +57,25 @@ router = APIRouter(dependencies=[Depends(verify_admin_key)])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+_dir_size_cache: dict[str, tuple[float, float]] = {}  # path -> (timestamp, size_mb)
+_DIR_SIZE_TTL = 30.0  # seconds
+
+
 def _dir_size_mb(path: Path) -> float:
-    """Sum file sizes recursively, return MB."""
+    """Sum file sizes recursively, return MB. Cached for 30s."""
+    key = str(path)
+    now = time.time()
+    cached = _dir_size_cache.get(key)
+    if cached and now - cached[0] < _DIR_SIZE_TTL:
+        return cached[1]
+
     if not path.exists():
+        _dir_size_cache[key] = (now, 0.0)
         return 0.0
     total = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
-    return round(total / (1024 * 1024), 2)
+    result = round(total / (1024 * 1024), 2)
+    _dir_size_cache[key] = (now, result)
+    return result
 
 
 # ---------------------------------------------------------------------------
