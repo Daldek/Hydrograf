@@ -53,6 +53,7 @@ services:
       DEM_DIR: ${DEM_DIR:-/data/nmt}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
+      NUMBA_CACHE_DIR: /tmp/numba_cache
     depends_on:
       db:
         condition: service_healthy
