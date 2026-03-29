@@ -234,7 +234,6 @@ def get_landcover_tile(
 
 @router.get(
     "/tiles/sewer/{z}/{x}/{y}.pbf",
-    dependencies=[Depends(verify_admin_key)],
 )
 def get_sewer_mvt(
     z: int,
@@ -244,8 +243,8 @@ def get_sewer_mvt(
 ) -> Response:
     """Sewer network MVT tiles (lines + nodes in separate layers).
 
-    Requires admin API key — sewer data is sensitive infrastructure.
-    Only geometry and node_type are served (no diameter, slope, FA values).
+    Public endpoint — only geometry and node_type are served
+    (no diameter, slope, FA values).
     """
     # SEC-013: Server-side zoom level restriction
     if z < 10 or z > 20:

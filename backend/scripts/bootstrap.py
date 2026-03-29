@@ -440,6 +440,7 @@ def step_process_dem(
     sheets: list[str],
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
+    sewer_config: dict | None = None,
 ) -> tuple[dict, str, list[str], dict[str, Path], tuple[float, float, float, float]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis."""
     sys.path.insert(0, str(BACKEND_DIR))
@@ -540,6 +541,7 @@ def step_process_dem(
         # hydro_resolution_m not needed when NMT downloaded at 5m resolution
         waterbody_mode=waterbody_mode,
         waterbody_min_area_m2=waterbody_min_area_m2,
+        sewer_config=sewer_config,
     )
 
     cells = stats.get("valid_cells", 0)
@@ -1032,6 +1034,7 @@ def run_pipeline(
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
     resolution: str = "5m",
+    sewer_config: dict | None = None,
 ):
     """Run the full 10-step bootstrap pipeline."""
     tracker = StepTracker(TOTAL_STEPS, skips)
@@ -1085,6 +1088,7 @@ def run_pipeline(
                 downloaded_files, output_dir, cache_dir, sheets,
                 waterbody_mode=waterbody_mode,
                 waterbody_min_area_m2=waterbody_min_area_m2,
+                sewer_config=sewer_config,
             )
             tracker.done(3, t0, detail)
         except Exception as e:
@@ -1335,6 +1339,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Min. powierzchnia zbiornika (m²). Zbiorniki mniejsze sa ignorowane.",
     )
 
+    # Sewer integration
+    sewer_group = parser.add_argument_group("Kanalizacja deszczowa")
+    sewer_group.add_argument(
+        "--sewer-enabled",
+        action="store_true",
+        default=None,
+        help="Wlacz integracje kanalizacji deszczowej",
+    )
+    sewer_group.add_argument(
+        "--sewer-source",
+        type=str,
+        default=None,
+        help="Sciezka do pliku z siecia kanalizacyjna (GPKG/SHP/GeoJSON)",
+    )
+    sewer_group.add_argument(
+        "--sewer-layer",
+        type=str,
+        default=None,
+        help="Nazwa warstwy linii w pliku wielowarstwowym",
+    )
+
     # Configuration file
     parser.add_argument(
         "--config",
@@ -1421,6 +1446,19 @@ def main():
         dry_run(sheets, bbox, output_dir, cache_dir, args.port, skips)
         return
 
+    # Build sewer config: CLI flags override config.yaml
+    sewer_config = config.get("sewer", {})
+    if args.sewer_enabled:
+        sewer_config["enabled"] = True
+    if args.sewer_source:
+        sewer_config.setdefault("source", {})["path"] = args.sewer_source
+        sewer_config["source"]["type"] = "file"
+    if args.sewer_layer:
+        sewer_config.setdefault("source", {})["lines_layer"] = args.sewer_layer
+
+    # Wrap in top-level dict (process_dem expects sewer_config["sewer"])
+    full_sewer_config = {"sewer": sewer_config} if sewer_config.get("enabled") else None
+
     # Run pipeline
     total_start = time.time()
     tracker = run_pipeline(
@@ -1428,6 +1466,7 @@ def main():
         waterbody_mode=args.waterbody_mode,
         waterbody_min_area_m2=args.waterbody_min_area,
         resolution=args.resolution,
+        sewer_config=full_sewer_config,
     )
     total_elapsed = time.time() - total_start
 
