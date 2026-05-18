@@ -361,7 +361,7 @@ def delineate_watershed(
         point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
 
         cg = get_catchment_graph()
-        if not cg.loaded:
+        if not cg.ensure_loaded(db):
             raise HTTPException(
                 status_code=503,
                 detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",

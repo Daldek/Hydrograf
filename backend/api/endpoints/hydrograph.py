@@ -70,7 +70,7 @@ def _compute_watershed(
     Returns (morph_dict, cn, area_km2, watershed_response).
     """
     cg = get_catchment_graph()
-    if not cg.loaded:
+    if not cg.ensure_loaded(db):
         raise HTTPException(
             status_code=503,
             detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
