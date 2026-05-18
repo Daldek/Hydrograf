@@ -52,6 +52,7 @@ class CatchmentGraph:
 
     def __init__(self):
         self._loaded = False
+        self._load_lock = threading.Lock()
         self._n = 0
 
         # Per-node numpy arrays (indexed 0..n-1)
@@ -85,6 +86,26 @@ class CatchmentGraph:
     @property
     def loaded(self) -> bool:
         return self._loaded
+
+    def ensure_loaded(self, db: Session) -> bool:
+        """Idempotently load the graph if not already loaded.
+
+        Safe under concurrent calls — the load lock serializes attempts so
+        only the first caller does work; the rest wait and see the loaded
+        state. Returns True on success, False if the underlying data is
+        unavailable (e.g. stream_catchments empty) or the load raised.
+        """
+        if self._loaded:
+            return True
+        with self._load_lock:
+            if self._loaded:
+                return True
+            try:
+                self.load(db)
+            except Exception:
+                logger.exception("CatchmentGraph load failed in ensure_loaded")
+                return False
+            return self._loaded
 
     def invalidate(self) -> None:
         """Mark graph as unloaded so next load() re-reads from DB.

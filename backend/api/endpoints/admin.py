@@ -449,21 +449,43 @@ def _read_process_output(process: subprocess.Popen, state: dict) -> None:
         state["process"] = None
         if process.returncode == 0:
             state["status"] = "completed"
-            # Reload CatchmentGraph so API uses fresh data
-            try:
-                cg = get_catchment_graph()
-                cg.invalidate()
-                from core.database import get_db_session
+            # Reload CatchmentGraph so API uses fresh data.
+            # Retries handle transient pool exhaustion from concurrent
+            # admin-panel polling while bootstrap is winding down.
+            cg = get_catchment_graph()
+            cg.invalidate()
+            from core.database import get_db_session
 
-                with get_db_session() as db:
-                    cg.load(db)
-                state["log_lines"].append(
-                    "[INFO] CatchmentGraph reloaded"
-                )
-            except Exception as e:
-                state["log_lines"].append(
-                    f"[WARN] CatchmentGraph reload failed: {e}"
-                )
+            backoffs_s = (1, 5, 15)
+            for attempt, wait_s in enumerate(backoffs_s, start=1):
+                try:
+                    with get_db_session() as db:
+                        cg.load(db)
+                    state["log_lines"].append("[INFO] CatchmentGraph reloaded")
+                    logger.info("CatchmentGraph reloaded after bootstrap")
+                    break
+                except Exception as e:
+                    is_last = attempt == len(backoffs_s)
+                    if is_last:
+                        state["log_lines"].append(
+                            f"[WARN] CatchmentGraph reload failed after "
+                            f"{attempt} attempts: {e}"
+                        )
+                        logger.exception(
+                            "CatchmentGraph reload failed after %d attempts",
+                            attempt,
+                        )
+                    else:
+                        state["log_lines"].append(
+                            f"[WARN] CatchmentGraph reload attempt {attempt} "
+                            f"failed: {e}; retrying in {wait_s}s"
+                        )
+                        logger.warning(
+                            "CatchmentGraph reload attempt %d failed: %s; "
+                            "retrying in %ds",
+                            attempt, e, wait_s,
+                        )
+                        time.sleep(wait_s)
         else:
             state["status"] = "failed"
         # Save to history
