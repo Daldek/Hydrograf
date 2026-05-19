@@ -47,19 +47,28 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-03-29 (sesja 78 — naprawa admin panel + Docker permissions)
+**Data:** 2026-05-18 (sesja 79 — naprawa cichej awarii reloadu CatchmentGraph po bootstrap)
 
 ### Co zrobiono
+- **Diagnoza 503 na `POST /api/delineate-watershed` po pomyslnym bootstrap z panelu admin** — endpoint twardo zwracal 503 gdy `cg.loaded == False`. W bazie 281,111 rekordow `stream_catchments`, ale graf in-memory nie zaladowany.
+- **Root cause** — watek auto-reloadu w `admin._read_process_output` lapal wyjatki tylko do `state["log_lines"]` w pamieci procesu, nieaktywnych w `docker logs`. QueuePool timeout (15 polaczen zajetych przez polling panelu admin podczas konca bootstrap) zostawial graf w `_loaded=False` bez sladu w logach.
+- **`core.catchment_graph.ensure_loaded(db)`** — nowa metoda z `threading.Lock` (double-check pattern). Endpointy doladowuja graf na zadanie gdy reload tla padnie — pierwszy user czeka ~5s zamiast dostac 503, kolejni z lockiem widza gotowy graf.
+- **`watershed.py:363-368` + `hydrograph.py:72-77`** — przejscie z `if not cg.loaded:` na `if not cg.ensure_loaded(db):`. Self-heal po cichych awariach.
+- **`admin._read_process_output`** — retry 3x z backoffem 1s/5s/15s na reload po bootstrap. Pokrywa transient QueuePool exhaustion. Sukces/porazka logowane przez `logger.info`/`logger.exception` — wyjatek juz widoczny w `docker logs`, nie tylko w pamieci.
+- **Commit `555e801`** na `develop`: 4 pliki, +60/-17.
+
+### Nastepne kroki
+- Migracja bind mountow na named volumes Docker: `./data`, `./cache`, `./frontend/data`, `./frontend/tiles`
+- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
+
+### Poprzednia sesja (2026-03-29, sesja 78 — naprawa admin panel + Docker permissions)
+
 - **Fix timeout logowania do panelu admin** — dashboard `_dir_size_mb` skanowal 353k plikow przy kazdym uzyciu, dodano cache 30s (`@lru_cache` + `time.monotonic()`).
 - **Fix shutil.rmtree PermissionDenied w rootless Docker** — dodano `onerror` handlery do wszystkich wywolan `shutil.rmtree` obslugujace pliki bez uprawnien zapisu.
 - **Root cause: docker-compose.override.yml** — `user: "0:0"` nadpisywal `USER hydro` z Dockerfile. Root bez capabilities nie mogl modyfikowac plikow nalezacych do hydro (uid 999).
 - **Pin hydro UID/GID** — ustawiono stale `UID=999`, `GID=999` w Dockerfile dla przewidywalnego ownership bind mountow.
 - **Uproszczenie docker-compose.override.yml** — usunieto nieuzywane mapowania portow i nadpisanie `user: "0:0"`.
 - **Audyt dokumentacji** — dalsze poprawki (kontynuacja z sesji 77).
-
-### Nastepne kroki
-- Migracja bind mountow na named volumes Docker: `./data`, `./cache`, `./frontend/data`, `./frontend/tiles`
-- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 
 ### Poprzednia sesja (2026-03-29, sesja 77 — optymalizacja i porzadki)
 
