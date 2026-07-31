@@ -47,9 +47,22 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-06-22 (sesja 80 — naprawa EPERM przy czyszczeniu danych po migracji rootless→system Docker)
+**Data:** 2026-07-31 (sesja 81 — feedback testera Kamila, nomenklatura, naprawa DNS, konsolidacja backlogu)
 
 ### Co zrobiono
+- **Analiza feedbacku testera** (`notes/feedback/Kamil.md`) — triaz 12 uwag: zadania UI/UX, kwestie danych, pomysly biznesowe. Research wykonalnosci (3 agentow): nomenklatura trywialna; zaglebienia maja pelne dane glebokosci w PostGIS (`max_depth_m` z indeksem) + ~80% logiki interakcji w martwym kodzie `depressions.js:63-146`; NMT — okno kolorow p5-p95 (81.8-114.1 m) pokrywa ~35% zakresu wysokosci, hillshade wypalony w pikselach kafelkow (rekolorowanie client-side niemozliwe).
+- **feat(frontend) `c2adfd5`** — przemianowanie warstwy "Cieki" → "Linie splywu" (6 miejsc, w tym komunikat 404 w `catchment_graph.py`, ktory nadpisuje frontendowy; "Cieki BDOT10k" i etykiety morfometrii celowo bez zmian). Testy 1018/1018.
+- **Diagnoza awarii pobierania NMT** (0/30 arkuszy, NameResolutionError) — zrodlo: srodowisko, nie kod. Embedded DNS Dockera z pusta lista upstream od bootu 2026-07-05 (wyscig dockerd vs dhcpcd, brak systemd-resolved). Kartograf i Hydrograf zadzialaly poprawnie.
+- **fix(docker) `4e4fffc`** — `dns: [1.1.1.1, 9.9.9.9]` dla api w docker-compose.yml (celowo publiczne resolvery, bez adresow LAN) + recreate kontenera. Zweryfikowane: DNS dziala, HTTPS 200 do WMS geoportalu z kontenera. Mozna ponowic generowanie nowego obszaru.
+- **docs `a6c3032`** — konsolidacja backlogu: sekcja `## Backlog` w PROGRESS.md jako jedyne zrodlo prawdy (kategorie; odhaczone nieaktualne wpisy CR4-CR11 i piramida kafelkow; striaz feedbacku Kamila; commit objal tez zalegle notatki sesji 80).
+- **docs `2bd657e`** — brainstorm 14 pomyslow uzytkownika → nowa sekcja backlogu "Wlasne dane i nowe zrodla" (12 wpisow z uzasadnieniami, 3 aktualizacje istniejacych). Wizja rozstrzygnieta: tryb przegladowy nadrzedny, wlasne dane jako opcjonalne rozszerzenie projektowe. Pelna notatka: `notes/plans/2026-07-31-wlasne-dane-i-nowe-zrodla-wizja.md` (notes/ w gitignore, poza repo).
+- **Decyzje uzytkownika:** morfometria — parametry sieci z faktycznych ciekow (wgrana warstwa lub BDOT10k), nie z generowanych linii splywu (realizacja odlozona); zadania stylistyczne (skala zaglebien, skala NMT) odlozone do backlogu.
+- **Stan repo na koniec:** 4 commity na develop NIEPUSHOWANE (`c2adfd5`, `4e4fffc`, `a6c3032`, `2bd657e`); niezacommitowane README.md (zmiany sprzed sesji, 8 linii).
+
+### Nastepne kroki
+Patrz sekcja `## Backlog` — priorytet: diagnoza hietogram/hydrogram "brak danych" (jedyny twardy bug z feedbacku Kamila).
+
+### Poprzednia sesja (2026-06-22, sesja 80 — naprawa EPERM przy czyszczeniu danych po migracji rootless→system Docker)
 - **Diagnoza `[Errno 1] Operation not permitted: '/frontend/data/dem_tiles/8/140'`** w `/admin/cleanup` (komponent `overlays`).
 - **Root cause** — pliki w `frontend/data/dem_tiles/` i `frontend/tiles/` byly wlasnoscia hostowego UID **100998** (pozostalosc po rootless Docker, gdzie kontenerowe UID 999 mapowalo sie do 100998). Po przesiadce na system dockerd (sesja 73, infra_docker_networking) kontener `hydro` startuje jako natywne UID 999. `_force_rmtree` w `backend/scripts/clean.py:106-112` robi `os.chmod()` w `onerror` — chmod wymaga zgodnosci UID lub `CAP_FOWNER`, a kontener ma `cap_drop: ALL`. Stad EPERM.
 - **Fix jednorazowy** — chown w throwaway-kontenerze jako root:
@@ -59,9 +72,6 @@
   ```
 - **Sanity-check**: `find frontend/data frontend/tiles -uid 100998` — bralo 0 wynikow po fixie. Czyszczenie z panelu admin dziala.
 - **Pamiec zaktualizowana** — `lesson_docker_volume_migration.md`: poprawiono blednie oznaczone "bezpieczne" bind-mounty, dodano polecenie chown i sanity-check.
-
-### Nastepne kroki
-Patrz sekcja `## Backlog` na koncu pliku — od 2026-07-31 jedyne zrodlo prawdy dla rzeczy do zrobienia.
 
 ### Poprzednia sesja (2026-05-18, sesja 79 — naprawa cichej awarii reloadu CatchmentGraph po bootstrap)
 
