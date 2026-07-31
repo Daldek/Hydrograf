@@ -1142,16 +1142,33 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 - [ ] Zaglebienia — czytelna skala barw: warstwa MVT `/api/tiles/depressions/{z}/{x}/{y}.pbf` (wzorzec landcover, tiles.py:177-232) + stylowanie client-side wg `max_depth_m`, suwak zamknietych przedzialow glebokosci, klik → glebokosc (tooltip gotowy w martwym kodzie depressions.js:63-146 — podlaczyc albo usunac), endpoint statystyk glebokosci (percentyle) do kalibracji suwaka. Wymaga minZoom ~12-13 + filtr powierzchni (338k poligonow). Priorytet: sredni. ODLOZONE (decyzja 2026-07-31).
 - [ ] NMT — dynamiczna/definiowana skala barw. Etap A (0.5-1 dnia): legenda skali (metadane juz w dem_tiles.json, frontend ich nie czyta) + parametry `--elev-min/--elev-max/--pct` w dem_color.py/generate_dem_tiles.py/adminie — obecne okno p5-p95 (81.8-114.1 m) pokrywa ~35% zakresu wysokosci, stad "wszystko zielone". Etap B (2-5 dni): rozdzielenie hillshade od koloru (statyczna piramida hillshade + `mix-blend-mode: multiply`), kolor dynamicznie: endpoint on-the-fly `/api/tiles/dem/...?vmin=&vmax=` (RasterCache ma DEM w RAM; por. ADR-018) LUB kafelki terrain-RGB + canvas client-side (plynny suwak, gratis odczyt wysokosci pod kursorem = przycisk "i"). Priorytet: sredni. ODLOZONE (decyzja 2026-07-31).
 - [ ] Mniejszy prog linii splywu — rewizja ADR-030 (prog 100 m2 usuniety, tester go potrzebuje do drobnych linii splywu). Priorytet: do decyzji.
-- [ ] Kanalizacja deszczowa — warstwa pusta: dostepne WMS lacza siec deszczowa z sanitarna i nie da sie ich rozdzielic. Do decyzji zrodlo danych + komunikat w UI, ze warstwa wymaga wgrania wlasnych danych. Priorytet: do ustalenia.
+- [ ] Kanalizacja deszczowa — warstwa pusta: dostepne WMS lacza siec deszczowa z sanitarna i nie da sie ich rozdzielic. Do decyzji zrodlo danych. Decyzja UI (2026-07-31): gdy brak danych, warstwa znika z GUI (nie pokazujemy pustej pozycji). Priorytet: do ustalenia.
 - [ ] HSG — za mala rozdzielczosc (cala Warszawa = grupa A); rozwazyc mape glebowo-rolnicza jako zrodlo. Priorytet: do ustalenia.
-- [ ] Morfometria — weryfikacja merytoryczna: parametry bazuja na wygenerowanej sieci splywu (progi akumulacji z NMT), przez co czesc obliczanych wskaznikow nie ma sensu fizycznego (uwaga uzytkownika 2026-07-31). Wymaga decyzji, ktore parametry liczyc z sieci BDOT10k zamiast z linii splywu. Priorytet: do ustalenia.
+- [ ] Morfometria — parametry z faktycznych ciekow: obecne wartosci bazuja na wygenerowanej sieci splywu (progi akumulacji z NMT), przez co czesc wskaznikow nie ma sensu fizycznego. Decyzja (2026-07-31): parametry zlewni i sieci rzecznej liczyc z faktycznych ciekow (wgrana warstwa lub BDOT10k), NIE z generowanych linii splywu. Realizacja odlozona. Priorytet: sredni.
+
+### Wlasne dane i nowe zrodla (rozszerzenia trybu przegladowego)
+
+Wizja (brainstorm 2026-07-31, pelne uzasadnienia: `notes/plans/2026-07-31-wlasne-dane-i-nowe-zrodla-wizja.md`): rdzeniem pozostaje tryb przegladowy — automatyczna analiza z danych publicznych. Wgrywanie wlasnych danych to opcjonalne rozszerzenie dla zastosowan projektowych tam, gdzie dane publiczne nie wystarczaja (feedback Kamila: zlewnie miejskie, kanalizacja, HSG).
+
+- [ ] Zakres analizy z pliku wektorowego w panelu admina (zamiast rysowania prostokata). Dlaczego: realne projekty maja nieregularne granice; prostokat wymusza przetwarzanie nadmiaru danych.
+- [ ] Przyciecie danych wynikowych do obszaru analizy. Dlaczego: wyniki poza granica obszaru to szum i falszywy kontekst; naturalna konsekwencja wektorowego zakresu.
+- [ ] Zlewnie aPGW jako zrodlo danych + wskazanie obszaru analizy przez ID zlewni. Dlaczego: urzedowy podzial hydrograficzny jako referencja i szybkie definiowanie obszaru bez rysowania.
+- [ ] Wgranie wlasnego NMT zamiast pobierania z geoportalu. Dlaczego: projekty dysponuja dokladniejszym/aktualniejszym pomiarem (nalot, LiDAR); uniezaleznienie od dostepnosci geoportalu.
+- [ ] Wgranie wlasnej warstwy ciekow (wyniesione z wpisu o pliku YAML). Dlaczego: BDOT10k bywa niepelny; wgrana warstwa staje sie podstawa parametrow sieci rzecznej (por. wpis o morfometrii).
+- [ ] Wgranie wlasnych danych o gruntach. Dlaczego: projekty maja badania gruntowe dokladniejsze niz HSG (por. wpis o HSG).
+- [ ] Wgranie wlasnego uzytkowania terenu. Dlaczego: stan projektowy (np. planowana zabudowa) zamiast stanu obecnego z danych publicznych.
+- [ ] Wodowskazy IMGW (przez IMGWTools): warstwa lokalizacji + odczyty (stany/przeplywy); docelowo weryfikacja obliczanych przeplywow obserwacjami. Dlaczego: walidacja modelu w zlewniach zamknietych wodowskazem.
+- [ ] PMAXTP (przez IMGWTools): pobranie opadow maksymalnych o zadanym prawdopodobienstwie dla wybranego punktu. Dlaczego: opad obliczeniowy do hietogramu/hydrogramu projektowego.
+- [ ] Eksport danych dla zaznaczonego obszaru z poziomu GUI (NMT, linie splywu, zaglebienia, wyniki analiz — GeoTIFF/GeoJSON/GPKG). Dlaczego: wyniki musza trafiac do dalszych narzedzi projektowych (QGIS, modele kanalizacji). Uwaga: chodzi o eksport plikowy, NIE o uruchamianie pipeline z GUI (doprecyzowane w brainstormie).
+- [ ] Podpiecie wlasnych WMS jako podklad (obsluga client-side). Dlaczego: uzytkownicy maja branzowe WMS (kanalizacja, MPZP); client-side = zero obciazenia backendu.
+- [ ] Wskazowki i wyjasnienia do parametrow i wskaznikow w "Parametrach zlewni" (tooltips/ikona "i" przy pozycjach). Dlaczego: obnizenie progu wejscia — interpretacja wynikow bez wiedzy eksperckiej.
 
 ### Funkcjonalnosci — pozostale
 
 - [ ] CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny (v1.0.0)
 - [ ] Podwojna analiza NMT (z/bez obszarow bezodplywowych): pipeline generuje 2 warianty — pelny DEM (z endoreicznymi) i DEM hydrologicznie poprawny (bez). Cieki i obliczenia hydrologiczne (SCS-CN, hydrogram) oparte na wariancie bez bezodplywowych. W UI zlewnie bezodplywowe oznaczane innym kolorem (np. szarym/przezroczystym) ale widoczne na mapie. Wymaga: 2x process_hydrology_pyflwdir, osobne stream_network/catchments, warstwa UI z rozroznieniem. Priorytet: sredni.
 - [ ] Optymalizacja wydajnosci selekcji zlewni czastkowych powyzej punktu (precomputed transitive closure + boundary cache). Szacowany speedup ~10x dla zlewni 100 km^2, ~20-50x dla >500 km^2. Koszt RAM ~500 MB. Szczegoly: `notes/plans/2026-05-19-catchment-selection-performance-design.md`. Status: do rozwazenia, wymaga decyzji produktowej + mikrobenchmark baseline. Priorytet: sredni.
-- [ ] Plik konfiguracyjny YAML — niestandardowe parametry i sciezki (np. wlasne wektory ciekow zamiast BDOT10k). Priorytet: sredni.
+- [ ] Plik konfiguracyjny YAML — niestandardowe parametry i sciezki pipeline. Priorytet: sredni. (Wlasne wektory ciekow wyniesione do sekcji "Wlasne dane i nowe zrodla".)
 - [ ] Ikony trybow w toolbarze — lapka (przegladanie), kursor klikajacy (wybierz zlewnię), kafelki/siatka (wygeneruj zlewnię), profil terenu (profil). Priorytet: niski.
 
 ### Infrastruktura i jakosc kodu
