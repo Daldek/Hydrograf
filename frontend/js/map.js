@@ -49,7 +49,7 @@
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
         // Custom panes for layer ordering:
-        // Base (tilePane z-200) → NMT → Cieki → overlay (z-400)
+        // Base (tilePane z-200) → NMT → Linie spływu → overlay (z-400)
         map.createPane('demPane');
         map.getPane('demPane').style.zIndex = 250;
         map.createPane('landcoverPane');
@@ -222,7 +222,7 @@
                 },
                 interactive: true,
                 maxNativeZoom: 18,
-                attribution: 'Cieki (flow acc)',
+                attribution: 'Linie spływu (flow acc)',
             }
         );
 
@@ -315,7 +315,7 @@
         streamsLegend.onAdd = function () {
             var div = L.DomUtil.create('div', 'layer-legend');
             div.innerHTML =
-                '<div class="layer-legend-title">Cieki — zlewnia [km²]</div>' +
+                '<div class="layer-legend-title">Linie spływu — zlewnia [km²]</div>' +
                 '<div class="legend-gradient" style="background: linear-gradient(to right, rgb(179,229,252), rgb(90,138,180), rgb(0,47,108));"></div>' +
                 '<div class="legend-labels"><span>0.001</span><span>0.1</span><span>20</span></div>';
             return div;

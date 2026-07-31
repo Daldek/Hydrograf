@@ -410,7 +410,7 @@ class CatchmentGraph:
         if result is None:
             raise ValueError(
                 "Nie znaleziono zlewni cząstkowej w tym punkcie. "
-                "Kliknij w obszarze pokrytym siecią rzeczną."
+                "Kliknij w obszarze pokrytym liniami spływu."
             )
 
         key = (threshold_m2, result.segment_idx)
