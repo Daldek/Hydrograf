@@ -11,7 +11,7 @@
 
     const ERROR_MESSAGES = {
         400: 'Nieprawidłowe żądanie. Sprawdź współrzędne i spróbuj ponownie.',
-        404: 'Nie znaleziono cieku w tym miejscu. Kliknij bliżej linii cieku.',
+        404: 'Nie znaleziono linii spływu w tym miejscu. Kliknij bliżej linii spływu.',
         429: 'Zbyt wiele żądań. Poczekaj chwilę i spróbuj ponownie.',
         500: 'Błąd serwera. Spróbuj ponownie za chwilę.',
     };

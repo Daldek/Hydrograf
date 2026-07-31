@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ujednolicone schematy Pydantic** — `DelineateRequest` i `DelineateResponse` obsluguja oba tryby (precomputed/precise)
 
 ### Frontend
+- **Zmiana nazwy warstwy "Cieki" → "Linie spływu"** — nazwa w panelu warstw, legendzie, atrybucji mapy i instrukcji panelu; warstwa pokazuje linie spływu wyznaczone z NMT progami akumulacji, nie stale cieki (warstwa "Cieki BDOT10k" bez zmian). Spójne komunikaty 404: frontend (`api.js`) i backend (`core/catchment_graph.py`) mówią o liniach spływu
 - **Jeden przycisk "Wybierz zlewnię"** — usuniecie osobnego "Wygeneruj zlewnię", tryb wybierany automatycznie na podstawie obecnosci warstwy ciekow (threshold_m2)
 - **Aktualizacja wywolan API** — frontend uzywa wylacznie `POST /api/delineate-watershed`
 - **Poprawione etykiety parametrow** — opisowe nazwy (np. "Powierzchnia zlewni", "Najdl. droga splywu"), polskie oznaczenia wskaznikow ksztaltu (C<sub>z</sub>, C<sub>k</sub>, C<sub>w</sub>, C<sub>f</sub>, C<sub>l</sub>) z indeksem dolnym
