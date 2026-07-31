@@ -57,6 +57,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    dns:
+      - 1.1.1.1
+      - 9.9.9.9
     restart: unless-stopped
     deploy:
       resources:
