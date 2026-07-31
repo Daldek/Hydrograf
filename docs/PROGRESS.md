@@ -47,19 +47,30 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-05-18 (sesja 79 — naprawa cichej awarii reloadu CatchmentGraph po bootstrap)
+**Data:** 2026-06-22 (sesja 80 — naprawa EPERM przy czyszczeniu danych po migracji rootless→system Docker)
 
 ### Co zrobiono
+- **Diagnoza `[Errno 1] Operation not permitted: '/frontend/data/dem_tiles/8/140'`** w `/admin/cleanup` (komponent `overlays`).
+- **Root cause** — pliki w `frontend/data/dem_tiles/` i `frontend/tiles/` byly wlasnoscia hostowego UID **100998** (pozostalosc po rootless Docker, gdzie kontenerowe UID 999 mapowalo sie do 100998). Po przesiadce na system dockerd (sesja 73, infra_docker_networking) kontener `hydro` startuje jako natywne UID 999. `_force_rmtree` w `backend/scripts/clean.py:106-112` robi `os.chmod()` w `onerror` — chmod wymaga zgodnosci UID lub `CAP_FOWNER`, a kontener ma `cap_drop: ALL`. Stad EPERM.
+- **Fix jednorazowy** — chown w throwaway-kontenerze jako root:
+  ```bash
+  docker run --rm -v "$(pwd)/frontend/data:/d1" -v "$(pwd)/frontend/tiles:/d2" \
+    alpine chown -R 999:999 /d1 /d2
+  ```
+- **Sanity-check**: `find frontend/data frontend/tiles -uid 100998` — bralo 0 wynikow po fixie. Czyszczenie z panelu admin dziala.
+- **Pamiec zaktualizowana** — `lesson_docker_volume_migration.md`: poprawiono blednie oznaczone "bezpieczne" bind-mounty, dodano polecenie chown i sanity-check.
+
+### Nastepne kroki
+Patrz sekcja `## Backlog` na koncu pliku — od 2026-07-31 jedyne zrodlo prawdy dla rzeczy do zrobienia.
+
+### Poprzednia sesja (2026-05-18, sesja 79 — naprawa cichej awarii reloadu CatchmentGraph po bootstrap)
+
 - **Diagnoza 503 na `POST /api/delineate-watershed` po pomyslnym bootstrap z panelu admin** — endpoint twardo zwracal 503 gdy `cg.loaded == False`. W bazie 281,111 rekordow `stream_catchments`, ale graf in-memory nie zaladowany.
 - **Root cause** — watek auto-reloadu w `admin._read_process_output` lapal wyjatki tylko do `state["log_lines"]` w pamieci procesu, nieaktywnych w `docker logs`. QueuePool timeout (15 polaczen zajetych przez polling panelu admin podczas konca bootstrap) zostawial graf w `_loaded=False` bez sladu w logach.
 - **`core.catchment_graph.ensure_loaded(db)`** — nowa metoda z `threading.Lock` (double-check pattern). Endpointy doladowuja graf na zadanie gdy reload tla padnie — pierwszy user czeka ~5s zamiast dostac 503, kolejni z lockiem widza gotowy graf.
 - **`watershed.py:363-368` + `hydrograph.py:72-77`** — przejscie z `if not cg.loaded:` na `if not cg.ensure_loaded(db):`. Self-heal po cichych awariach.
 - **`admin._read_process_output`** — retry 3x z backoffem 1s/5s/15s na reload po bootstrap. Pokrywa transient QueuePool exhaustion. Sukces/porazka logowane przez `logger.info`/`logger.exception` — wyjatek juz widoczny w `docker logs`, nie tylko w pamieci.
 - **Commit `555e801`** na `develop`: 4 pliki, +60/-17.
-
-### Nastepne kroki
-- Migracja bind mountow na named volumes Docker: `./data`, `./cache`, `./frontend/data`, `./frontend/tiles`
-- CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny
 
 ### Poprzednia sesja (2026-03-29, sesja 78 — naprawa admin panel + Docker permissions)
 
@@ -1116,6 +1127,46 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 
 ## Backlog
 
+**Jedyne zrodlo prawdy dla rzeczy do zrobienia** (konsolidacja 2026-07-31). Sekcje "Nastepne kroki" w opisach sesji to zapis historyczny — nowe zadania dopisuj wylacznie tutaj.
+
+### Bledy i diagnozy
+
+- [ ] Hietogram i hydrogram — "brak danych" wszedzie, gdzie klikal tester (feedback Kamila 2026-07; jedyny twardy bug zgloszenia). Dane pokrywaja testowany obszar (Warszawa), wiec to nie kwestia zasiegu — wymaga diagnozy (dane opadowe? endpoint? frontend?). Priorytet: wysoki.
+- [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
+- [ ] Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
+
+### Funkcjonalnosci — feedback Kamila (2026-07, oryginal: `notes/feedback/Kamil.md`)
+
+- [ ] Eksport zlewni (pobranie geometrii) + reczna edycja wierzcholkow granicy — kluczowe dla zastosowan miejskich (zlewnie realnie modyfikuje kanalizacja deszczowa). Priorytet: wysoki.
+- [ ] Przycisk "i" — inspekcja punktu na mapie: wysokosc, pokrycie terenu itd. Synergia z terrain-RGB (etap B skali NMT daje odczyt wysokosci gratis). Priorytet: sredni.
+- [ ] Zaglebienia — czytelna skala barw: warstwa MVT `/api/tiles/depressions/{z}/{x}/{y}.pbf` (wzorzec landcover, tiles.py:177-232) + stylowanie client-side wg `max_depth_m`, suwak zamknietych przedzialow glebokosci, klik → glebokosc (tooltip gotowy w martwym kodzie depressions.js:63-146 — podlaczyc albo usunac), endpoint statystyk glebokosci (percentyle) do kalibracji suwaka. Wymaga minZoom ~12-13 + filtr powierzchni (338k poligonow). Priorytet: sredni. ODLOZONE (decyzja 2026-07-31).
+- [ ] NMT — dynamiczna/definiowana skala barw. Etap A (0.5-1 dnia): legenda skali (metadane juz w dem_tiles.json, frontend ich nie czyta) + parametry `--elev-min/--elev-max/--pct` w dem_color.py/generate_dem_tiles.py/adminie — obecne okno p5-p95 (81.8-114.1 m) pokrywa ~35% zakresu wysokosci, stad "wszystko zielone". Etap B (2-5 dni): rozdzielenie hillshade od koloru (statyczna piramida hillshade + `mix-blend-mode: multiply`), kolor dynamicznie: endpoint on-the-fly `/api/tiles/dem/...?vmin=&vmax=` (RasterCache ma DEM w RAM; por. ADR-018) LUB kafelki terrain-RGB + canvas client-side (plynny suwak, gratis odczyt wysokosci pod kursorem = przycisk "i"). Priorytet: sredni. ODLOZONE (decyzja 2026-07-31).
+- [ ] Mniejszy prog linii splywu — rewizja ADR-030 (prog 100 m2 usuniety, tester go potrzebuje do drobnych linii splywu). Priorytet: do decyzji.
+- [ ] Kanalizacja deszczowa — warstwa pusta: dostepne WMS lacza siec deszczowa z sanitarna i nie da sie ich rozdzielic. Do decyzji zrodlo danych + komunikat w UI, ze warstwa wymaga wgrania wlasnych danych. Priorytet: do ustalenia.
+- [ ] HSG — za mala rozdzielczosc (cala Warszawa = grupa A); rozwazyc mape glebowo-rolnicza jako zrodlo. Priorytet: do ustalenia.
+- [ ] Morfometria — weryfikacja merytoryczna: parametry bazuja na wygenerowanej sieci splywu (progi akumulacji z NMT), przez co czesc obliczanych wskaznikow nie ma sensu fizycznego (uwaga uzytkownika 2026-07-31). Wymaga decyzji, ktore parametry liczyc z sieci BDOT10k zamiast z linii splywu. Priorytet: do ustalenia.
+
+### Funkcjonalnosci — pozostale
+
+- [ ] CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny (v1.0.0)
+- [ ] Podwojna analiza NMT (z/bez obszarow bezodplywowych): pipeline generuje 2 warianty — pelny DEM (z endoreicznymi) i DEM hydrologicznie poprawny (bez). Cieki i obliczenia hydrologiczne (SCS-CN, hydrogram) oparte na wariancie bez bezodplywowych. W UI zlewnie bezodplywowe oznaczane innym kolorem (np. szarym/przezroczystym) ale widoczne na mapie. Wymaga: 2x process_hydrology_pyflwdir, osobne stream_network/catchments, warstwa UI z rozroznieniem. Priorytet: sredni.
+- [ ] Optymalizacja wydajnosci selekcji zlewni czastkowych powyzej punktu (precomputed transitive closure + boundary cache). Szacowany speedup ~10x dla zlewni 100 km^2, ~20-50x dla >500 km^2. Koszt RAM ~500 MB. Szczegoly: `notes/plans/2026-05-19-catchment-selection-performance-design.md`. Status: do rozwazenia, wymaga decyzji produktowej + mikrobenchmark baseline. Priorytet: sredni.
+- [ ] Plik konfiguracyjny YAML — niestandardowe parametry i sciezki (np. wlasne wektory ciekow zamiast BDOT10k). Priorytet: sredni.
+- [ ] Ikony trybow w toolbarze — lapka (przegladanie), kursor klikajacy (wybierz zlewnię), kafelki/siatka (wygeneruj zlewnię), profil terenu (profil). Priorytet: niski.
+
+### Infrastruktura i jakosc kodu
+
+- [ ] Migracja bind mountow na named volumes Docker (`./data`, `./cache`, `./frontend/data`, `./frontend/tiles`) — w obecnym ksztalcie kazda zmiana engine ryzykuje powtorke EPERM z sesji 80. Priorytet: sredni.
+- [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
+- [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
+- [ ] Code review CR12-CR16 (sugestie): duplikacja morph, _MAX_MERGE const, inline import, n_bins ceil, POST cache
+
+### Pomysly niewdrozeniowe (komercjalizacja, feedback Kamila 2026-07)
+
+Audyt wodny dla gmin w 24h (tani/darmowy skrot + platny poglebiony); "sprawdz dzialke" (skad plynie woda, czemu zalewa, rekomendacje — z LLM, monetyzacja przez kontakty do wykonawcow); "waterscore" dla deweloperow; podejrzec otwartego konkurenta SCALGO z uniwersytetu w Lund. Szczegoly: `notes/feedback/Kamil.md`.
+
+### Zrobione (archiwum)
+
 - [x] Fix traverse_upstream resource exhaustion (ADR-015: pre-flight check, CTE LIMIT, statement_timeout, Docker limits)
 - [x] CP4 Faza 1: Frontend — mapa + zlewnia + parametry (Leaflet.js, Bootstrap 5)
 - [x] CP4: Warstwa NMT — naprawiona (L.imageOverlay → tile pyramid XYZ + fallback)
@@ -1125,20 +1176,13 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 - [x] CP4 Faza 3: Wektoryzacja ciekow MVT, multi-prog FA, hillshade, zaglbienia preprocessing
 - [x] CP4 Faza 4: Select-stream pelne statystyki, GUGiK WMTS, UI fixes (492 testy)
 - [x] Graf zlewni czastkowych (ADR-021): CatchmentGraph in-memory, migracja 012, pipeline re-run, select-stream rewrite
-- [ ] CP5: MVP — pelna integracja, deploy
-- [ ] Plik konfiguracyjny YAML — niestandardowe parametry i sciezki (np. wlasne wektory ciekow zamiast BDOT10k). Priorytet: sredni.
-- [ ] Ikony trybow w toolbarze — lapka (przegladanie), kursor klikajacy (wybierz zlewnię), kafelki/siatka (wygeneruj zlewnię), profil terenu (profil). Priorytet: niski.
-- [ ] Podzial NMT na kafle (tile pyramid) — szybsze wczytywanie nakladki DEM na mapie (obecnie pojedynczy PNG, przy duzych obszarach ciezki). Priorytet: sredni.
+- [x] Podzial NMT na kafle (tile pyramid) — zrealizowane jako dem_tiles piramida XYZ zoom 8-16 (wpis byl blednie otwarty)
 - [x] Naprawa bledow frontend/backend (zgloszenie 2026-02-14, 10 pozycji — A1-A5, B1-B4, C1)
-- [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
-- [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
 - [x] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
-- [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
 - [x] Problem jezior bezodplywowych (endorheic basins) — ADR-020: klasyfikacja + drain points
 - [x] CI/CD pipeline (GitHub Actions)
 - [x] Audyt QA wydajnosci: LATERAL JOIN, cache headers, TTL cache, partial index, PG tuning, client cache, defer, structlog
 - [x] Eliminacja FlowGraph z runtime API (ADR-022): RAM -96%, startup -97%, 548 testow
 - [x] Code review CR1-CR3 (krytyczne): channel_slope, O(n^2) segments.index, cursor leak
-- [ ] Code review CR4-CR11 (wazne): BFS deque, land cover TODO, enkapsulacja, thread safety, profile, cascade stats, traceback, CLAUDE.md
-- [ ] Code review CR12-CR16 (sugestie): duplikacja morph, _MAX_MERGE const, inline import, n_bins ceil, POST cache
-- [ ] Podwojna analiza NMT (z/bez obszarow bezodplywowych): pipeline generuje 2 warianty — pelny DEM (z endoreicznymi) i DEM hydrologicznie poprawny (bez). Cieki i obliczenia hydrologiczne (SCS-CN, hydrogram) oparte na wariancie bez bezodplywowych. W UI zlewnie bezodplywowe oznaczane innym kolorem (np. szarym/przezroczystym) ale widoczne na mapie. Wymaga: 2x process_hydrology_pyflwdir, osobne stream_network/catchments, warstwa UI z rozroznieniem. Priorytet: sredni.
+- [x] Code review CR4-CR11 (wazne) — zamkniete w sesjach 39/49/55 (2026-03-03); wpis byl blednie otwarty
+- [x] Nomenklatura: warstwa "Cieki" → "Linie splywu" (feedback Kamila 2026-07) — commit c2adfd5, sesja 2026-07-31
