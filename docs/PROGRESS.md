@@ -1144,6 +1144,7 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 - [ ] Hietogram i hydrogram — "brak danych" wszedzie, gdzie klikal tester (feedback Kamila 2026-07; jedyny twardy bug zgloszenia). Dane pokrywaja testowany obszar (Warszawa), wiec to nie kwestia zasiegu — wymaga diagnozy (dane opadowe? endpoint? frontend?). Priorytet: wysoki.
 - [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
 - [ ] Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
+- [ ] Wolne kafle landcover MVT na niskich zoomach: `/api/tiles/landcover/{z}/{x}/{y}.pbf` przy zoom 11-12 do 6.7 s (72 zadania >2 s w sesji testowej 2026-08-01, monitoring sesja 82) — prawdopodobnie kosztowne zapytanie przestrzenne przy pierwszym ladowaniu warstwy (zimny cache). Do diagnozy: EXPLAIN ANALYZE zapytania MVT na niskim zoomie, ew. cache/preagregacja. Priorytet: sredni.
 
 ### Funkcjonalnosci — feedback Kamila (2026-07, oryginal: `notes/feedback/Kamil.md`)
 
