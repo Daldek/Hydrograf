@@ -219,7 +219,8 @@ def insert_catchments(
                 elev_histogram JSONB,
                 max_flow_dist_m FLOAT,
                 longest_flow_path_wkt TEXT,
-                divide_flow_path_wkt TEXT
+                divide_flow_path_wkt TEXT,
+                outlet_flow_dist_m FLOAT
             )
         """)
 
@@ -246,7 +247,8 @@ def insert_catchments(
                 f"{hist_str}\t"
                 f"{_tsv_val(cat.get('max_flow_dist_m'))}\t"
                 f"{_tsv_val(cat.get('longest_flow_path_wkt'))}\t"
-                f"{_tsv_val(cat.get('divide_flow_path_wkt'))}\n"
+                f"{_tsv_val(cat.get('divide_flow_path_wkt'))}\t"
+                f"{_tsv_val(cat.get('outlet_flow_dist_m'))}\n"
             )
 
         tsv_buffer.seek(0)
@@ -267,7 +269,7 @@ def insert_catchments(
                 perimeter_km, stream_length_km,
                 hydraulic_length_km, elev_histogram,
                 max_flow_dist_m, longest_flow_path_geom,
-                divide_flow_path_geom
+                divide_flow_path_geom, outlet_flow_dist_m
             )
             SELECT
                 ST_SetSRID(ST_GeomFromText(wkt), 2180),
@@ -285,7 +287,8 @@ def insert_catchments(
                 CASE WHEN divide_flow_path_wkt IS NOT NULL AND divide_flow_path_wkt != ''
                     THEN ST_SetSRID(ST_GeomFromText(divide_flow_path_wkt), 2180)
                     ELSE NULL
-                END
+                END,
+                outlet_flow_dist_m
             FROM temp_catchments_import
         """)
 
