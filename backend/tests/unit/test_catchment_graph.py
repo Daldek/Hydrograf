@@ -726,7 +726,11 @@ class TestHydraulicLength:
         assert stats["hydraulic_length_km"] >= main_ch["main_channel_length_km"]
 
     def test_nan_handling(self):
-        """If all sub-catchments have NaN hydraulic length, return None."""
+        """Without max_flow_dist_m loaded and without outlet_idx, return None.
+
+        The legacy per-node _hydraulic_length_km array (set to NaN here) is
+        no longer read by aggregate_stats; it is kept only for DB compatibility.
+        """
         cg = CatchmentGraph()
         n = 2
         cg._n = n
