@@ -5,9 +5,10 @@ Defines data structures for watershed delineation and hydrograph
 generation API endpoints.
 """
 
+import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class DelineateRequest(BaseModel):
@@ -530,3 +531,39 @@ class TerrainProfileResponse(BaseModel):
     distances_m: list[float] = Field(..., description="Cumulative distances [m]")
     elevations_m: list[float] = Field(..., description="Elevations [m a.s.l.]")
     total_length_m: float = Field(..., ge=0, description="Total line length [m]")
+
+
+# ===================== FEEDBACK MODELS =====================
+
+
+class FeedbackRequest(BaseModel):
+    """Request model for tester feedback submission."""
+
+    message: str = Field(
+        ..., min_length=1, max_length=5000, description="Feedback text"
+    )
+    contact: str | None = Field(
+        None, max_length=200, description="Optional name or email"
+    )
+    page_url: str | None = Field(
+        None, max_length=500, description="Page URL at submission time"
+    )
+    diagnostics: dict[str, Any] | None = Field(
+        None, description="Session diagnostics (events, workspace, env)"
+    )
+
+    @field_validator("diagnostics")
+    @classmethod
+    def diagnostics_size_limit(
+        cls, v: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if v is not None and len(json.dumps(v)) > 100_000:
+            raise ValueError("diagnostics payload exceeds 100 KB limit")
+        return v
+
+
+class FeedbackResponse(BaseModel):
+    """Response model for feedback submission."""
+
+    id: int = Field(..., description="Created feedback record id")
+    status: str = Field("ok", description="Submission status")
