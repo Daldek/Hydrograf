@@ -722,10 +722,15 @@ def _build_flow_path_geojson(
 
     head_geom = json.loads(result.geojson)
 
+    # Determine baseline: outlet_flow_dist_m, or fallback to max_flow_dist_m[outlet]
+    baseline = cg.get_outlet_flow_dist_m(outlet_idx)
+    if math.isnan(baseline):
+        baseline = cg.get_max_flow_dist_m(outlet_idx)
+
     def _make_properties() -> dict:
         props: dict = {"type": path_type}
         if include_length:
-            props["length_km"] = round(max_dist / 1000, 4)
+            props["length_km"] = round(max(0.0, max_dist - baseline) / 1000, 4)
         return props
 
     # 3. Trace main channel from max_idx downstream to outlet
