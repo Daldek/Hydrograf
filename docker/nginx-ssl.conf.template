@@ -18,6 +18,7 @@ http {
     limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
     limit_req_zone $binary_remote_addr zone=tile_limit:10m rate=30r/s;
     limit_req_zone $binary_remote_addr zone=admin_limit:1m rate=5r/s;
+    limit_req_zone $binary_remote_addr zone=feedback_limit:1m rate=1r/m;
 
     upstream api_backend {
         server api:8000;
@@ -124,6 +125,18 @@ http {
             proxy_set_header X-Admin-Key $http_x_admin_key;
             proxy_read_timeout 3600s;
             proxy_buffering off;
+        }
+
+        # Feedback — strict rate limiting (anonymous write endpoint)
+        location = /api/feedback {
+            limit_req zone=feedback_limit burst=5 nodelay;
+            limit_req_status 429;
+            proxy_pass http://api_backend/api/feedback;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_read_timeout 30s;
         }
 
         # API proxy
