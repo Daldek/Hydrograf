@@ -190,28 +190,30 @@ def _clip_and_build_path(
     path_idxs: np.ndarray,
     seg_idx: int,
     flat_labels: np.ndarray,
+    flat_dist: np.ndarray,
     flw,
     simplify_tol: float,
-) -> str | None:
-    """Clip flow path to subcatchment and return simplified WKT."""
+) -> tuple[str | None, float | None]:
+    """Clip flow path to subcatchment; return (simplified WKT, outlet flow dist [m])."""
     from shapely.geometry import LineString
 
     if len(path_idxs) < 2:
-        return None
+        return None, None
     path_labels = flat_labels[path_idxs]
     in_catchment = path_labels == seg_idx
     if not in_catchment[0]:
-        return None
+        return None, None
     out_indices = np.where(~in_catchment)[0]
     if len(out_indices) > 0:
         path_idxs = path_idxs[: out_indices[0] + 1]
     if len(path_idxs) < 2:
-        return None
+        return None, None
+    outlet_flow_dist_m = float(flat_dist[path_idxs[-1]])
     xs, ys = flw.xy(path_idxs)
     line = LineString(zip(xs, ys))
     if len(path_idxs) > 3:
         line = line.simplify(simplify_tol, preserve_topology=True)
-    return line.wkt
+    return line.wkt, outlet_flow_dist_m
 
 
 def _enrich_catchments_with_flow_paths(
@@ -311,6 +313,7 @@ def _enrich_catchments_with_flow_paths(
             catch["max_flow_dist_m"] = None
             catch["longest_flow_path_wkt"] = None
             catch["divide_flow_path_wkt"] = None
+            catch["outlet_flow_dist_m"] = None
             continue
 
         # Divide path: only if boundary cell differs from overall max cell
@@ -342,8 +345,15 @@ def _enrich_catchments_with_flow_paths(
     traced = 0
     for i, ci in enumerate(catch_order):
         seg_idx = catchments[ci]["segment_idx"]
-        wkt = _clip_and_build_path(paths[i], seg_idx, flat_labels, flw, simplify_tol)
+        wkt, outlet_dist = _clip_and_build_path(
+            paths[i], seg_idx, flat_labels, flat_dist, flw, simplify_tol
+        )
         catchments[ci]["longest_flow_path_wkt"] = wkt
+        # Jednokomorkowe/bez sciezki: ujscie = najdalsza komorka (dlugosc 0)
+        catchments[ci]["outlet_flow_dist_m"] = (
+            outlet_dist if outlet_dist is not None
+            else catchments[ci]["max_flow_dist_m"]
+        )
         if wkt is not None:
             traced += 1
 
@@ -352,8 +362,8 @@ def _enrich_catchments_with_flow_paths(
     if divide_paths is not None:
         for i, ci in enumerate(divide_catch_order):
             seg_idx = catchments[ci]["segment_idx"]
-            wkt = _clip_and_build_path(
-                divide_paths[i], seg_idx, flat_labels, flw, simplify_tol
+            wkt, _ = _clip_and_build_path(
+                divide_paths[i], seg_idx, flat_labels, flat_dist, flw, simplify_tol
             )
             catchments[ci]["divide_flow_path_wkt"] = wkt
             if wkt is not None:
