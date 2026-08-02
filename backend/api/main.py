@@ -16,6 +16,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from api.endpoints import (
     admin,
     depressions,
+    feedback,
     health,
     hydrograph,
     profile,
@@ -112,6 +113,7 @@ app.include_router(hydrograph.router, prefix="/api", tags=["Hydrograph"])
 app.include_router(tiles.router, prefix="/api", tags=["Tiles"])
 app.include_router(profile.router, prefix="/api", tags=["Profile"])
 app.include_router(depressions.router, prefix="/api", tags=["Depressions"])
+app.include_router(feedback.router, prefix="/api", tags=["Feedback"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 
