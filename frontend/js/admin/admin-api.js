@@ -100,6 +100,18 @@
         return request('POST', '/api/admin/bootstrap/cancel');
     }
 
+    function getFeedback() {
+        return request('GET', '/api/admin/feedback?limit=100&offset=0');
+    }
+
+    function markFeedbackRead(id) {
+        return request('POST', '/api/admin/feedback/' + id + '/read');
+    }
+
+    function deleteFeedback(id) {
+        return request('DELETE', '/api/admin/feedback/' + id);
+    }
+
     /**
      * Upload a vector boundary file (SHP/ZIP, GPKG, GeoJSON).
      *
@@ -246,6 +258,9 @@
         getBootstrapStatus: getBootstrapStatus,
         startBootstrap: startBootstrap,
         cancelBootstrap: cancelBootstrap,
+        getFeedback: getFeedback,
+        markFeedbackRead: markFeedbackRead,
+        deleteFeedback: deleteFeedback,
         uploadBoundary: uploadBoundary,
         streamBootstrapLogs: streamBootstrapLogs,
         verifyKey: verifyKey,
