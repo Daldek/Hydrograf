@@ -451,9 +451,10 @@ class TestFlowPathAggregation:
         cg._strahler = np.array([1, 2, 3], dtype=np.int8)
         cg._max_flow_dist_m = np.array([5000.0, 8000.0, 12000.0], dtype=np.float64)
         cg._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
+        cg._outlet_flow_dist_m = np.zeros(3, dtype=np.float64)
 
         indices = np.array([0, 1, 2], dtype=np.int32)
-        stats = cg.aggregate_stats(indices)
+        stats = cg.aggregate_stats(indices, outlet_idx=2)
 
         assert stats["hydraulic_length_km"] == pytest.approx(12.0, rel=0.01)
 
@@ -477,9 +478,10 @@ class TestFlowPathAggregation:
         cg._strahler = np.array([1, 2], dtype=np.int8)
         cg._max_flow_dist_m = np.array([0.0, 0.0], dtype=np.float64)
         cg._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
+        cg._outlet_flow_dist_m = np.zeros(2, dtype=np.float64)
 
         indices = np.array([0, 1], dtype=np.int32)
-        stats = cg.aggregate_stats(indices)
+        stats = cg.aggregate_stats(indices, outlet_idx=0)
 
         assert stats["hydraulic_length_km"] is None
 
@@ -493,6 +495,20 @@ class TestFlowPathAggregation:
 
         assert cg.get_max_flow_dist_m(0) == pytest.approx(5000.0)
         assert cg.get_max_flow_dist_m(1) == pytest.approx(8000.0)
+
+    def test_get_outlet_flow_dist_m(self):
+        """Getter zwraca wartosc lub NaN gdy tablica nie zaladowana."""
+        import math
+
+        from core.catchment_graph import CatchmentGraph
+
+        cg = CatchmentGraph()
+        cg._loaded = True
+        cg._outlet_flow_dist_m = np.array([100.0, 250.0], dtype=np.float64)
+        assert cg.get_outlet_flow_dist_m(1) == pytest.approx(250.0)
+
+        cg._outlet_flow_dist_m = None
+        assert math.isnan(cg.get_outlet_flow_dist_m(0))
 
 
 class TestMorphometricFlowPathFields:

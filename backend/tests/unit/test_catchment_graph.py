@@ -49,6 +49,13 @@ def small_graph():
     cg._strahler = np.array([1, 1, 2, 3], dtype=np.int8)
     cg._max_flow_dist_m = np.array([12500.0, 10000.0, 8000.0, 5000.0], dtype=np.float64)
 
+    # Odleglosc spływu w PUNKCIE ujscia kazdej podzlewni (baza dla
+    # hydraulic_length). Lancuch: node3 (globalne ujscie) -> 0 m;
+    # node2 wpada do node3 -> 4000 m; nodes 0/1 wpadaja do node2 -> 7500 m.
+    cg._outlet_flow_dist_m = np.array(
+        [7500.0, 7500.0, 4000.0, 0.0], dtype=np.float64
+    )
+
     # BDOT stream matching: nodes 0 and 2 are real streams
     cg._is_real_stream = np.array([True, False, True, False], dtype=np.bool_)
     cg._segment_length_km = np.array([1.8, 1.2, 2.5, 3.5], dtype=np.float64)
@@ -656,39 +663,65 @@ class TestGetSegmentIdx:
 
 
 class TestHydraulicLength:
-    """Tests for hydraulic_length_km in aggregate_stats."""
+    """Tests for hydraulic_length_km in aggregate_stats.
 
-    def test_full_watershed_max(self, small_graph):
-        """Hydraulic length of full watershed = max across all sub-catchments."""
+    Semantyka po naprawie (feedback #11): dlugosc hydrauliczna zlewni =
+    (max(max_flow_dist_m) - outlet_flow_dist_m[wezel ujsciowy]) / 1000.
+    """
+
+    def test_full_watershed(self, small_graph):
+        """Pelna zlewnia: max(12500) - outlet_dist node3 (0 m) = 12.5 km."""
         indices = np.array([0, 1, 2, 3])
-        stats = small_graph.aggregate_stats(indices)
-        # Node 0 has highest hydraulic_length_km = 12.5
+        stats = small_graph.aggregate_stats(indices, outlet_idx=3)
         assert stats["hydraulic_length_km"] == pytest.approx(12.5, abs=0.01)
 
-    def test_partial_watershed(self, small_graph):
-        """Hydraulic length of partial watershed (only headwaters)."""
-        indices = np.array([0, 1])
-        stats = small_graph.aggregate_stats(indices)
-        # max(12.5, 10.0) = 12.5
-        assert stats["hydraulic_length_km"] == pytest.approx(12.5, abs=0.01)
+    def test_partial_watershed_mid_basin(self, small_graph):
+        """Zlewnia do wezla 2: max(12500) - outlet_dist node2 (4000 m) = 8.5 km."""
+        indices = np.array([0, 1, 2])
+        stats = small_graph.aggregate_stats(indices, outlet_idx=2)
+        assert stats["hydraulic_length_km"] == pytest.approx(8.5, abs=0.01)
 
-    def test_single_subcatchment(self, small_graph):
-        """Hydraulic length of single sub-catchment is its own value."""
+    def test_single_outlet_subcatchment(self, small_graph):
+        """Podzlewnia ujsciowa: 5000 - 0 = 5.0 km."""
         indices = np.array([3])
-        stats = small_graph.aggregate_stats(indices)
+        stats = small_graph.aggregate_stats(indices, outlet_idx=3)
         assert stats["hydraulic_length_km"] == pytest.approx(5.0, abs=0.01)
 
-    def test_hydraulic_length_positive(self, small_graph):
-        """Hydraulic length must be positive."""
-        for node_idx in range(4):
-            indices = np.array([node_idx])
-            stats = small_graph.aggregate_stats(indices)
+    def test_single_headwater_uses_own_outlet(self, small_graph):
+        """REGRESJA feedback #11: zlewnia zrodliskowa (n_upstream == 1).
+
+        Stary kod zwracal absolutne 12.5 km (fallback); poprawnie:
+        (12500 - 7500) / 1000 = 5.0 km wewnatrz podzlewni.
+        """
+        indices = np.array([0])
+        stats = small_graph.aggregate_stats(indices, outlet_idx=0)
+        assert stats["hydraulic_length_km"] == pytest.approx(5.0, abs=0.01)
+
+    def test_all_single_nodes_positive(self, small_graph):
+        """Kazdy wezel osobno: dodatnia dlugosc wewnetrzna."""
+        expected = {0: 5.0, 1: 2.5, 2: 4.0, 3: 5.0}
+        for node_idx, exp in expected.items():
+            stats = small_graph.aggregate_stats(
+                np.array([node_idx]), outlet_idx=node_idx
+            )
+            assert stats["hydraulic_length_km"] == pytest.approx(exp, abs=0.01)
             assert stats["hydraulic_length_km"] > 0
+
+    def test_missing_outlet_dist_falls_back_without_inflation(self, small_graph):
+        """NaN baseline -> fallback max_flow_dist_m[outlet] (nigdy nie zawyza)."""
+        small_graph._outlet_flow_dist_m = np.full(4, np.nan, dtype=np.float64)
+        stats = small_graph.aggregate_stats(np.array([0]), outlet_idx=0)
+        assert stats["hydraulic_length_km"] == pytest.approx(0.0, abs=0.01)
+
+    def test_no_outlet_idx_returns_none(self, small_graph):
+        """Bez outlet_idx nie da sie policzyc poprawnie -> None."""
+        stats = small_graph.aggregate_stats(np.array([0, 1, 2, 3]))
+        assert stats["hydraulic_length_km"] is None
 
     def test_hydraulic_length_ge_channel_length(self, small_graph):
         """Hydraulic length >= main channel length (includes overland flow)."""
         upstream = small_graph.traverse_upstream(3)
-        stats = small_graph.aggregate_stats(upstream)
+        stats = small_graph.aggregate_stats(upstream, outlet_idx=3)
         main_ch = small_graph.trace_main_channel(3, upstream)
         assert stats["hydraulic_length_km"] >= main_ch["main_channel_length_km"]
 
