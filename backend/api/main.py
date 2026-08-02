@@ -89,7 +89,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Accept", "X-Admin-Key"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
@@ -114,6 +114,7 @@ app.include_router(tiles.router, prefix="/api", tags=["Tiles"])
 app.include_router(profile.router, prefix="/api", tags=["Profile"])
 app.include_router(depressions.router, prefix="/api", tags=["Depressions"])
 app.include_router(feedback.router, prefix="/api", tags=["Feedback"])
+app.include_router(feedback.admin_router, prefix="/api/admin", tags=["Admin"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 
