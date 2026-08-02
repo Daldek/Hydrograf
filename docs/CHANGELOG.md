@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **download_sewer.py** — zwraca tuple `(points_gdf, lines_gdf | None)` zamiast jednego GeoDataFrame
 
 ### Naprawione
+- **`hydraulic_length_km`/`length_km` zawyżone dla zlewni źródliskowych 3.8-19.5×, zaniżone dla wielowęzłowych (feedback testera #11)** — `CatchmentGraph.aggregate_stats()` liczył drogę spływu względem złej bazy: dla zlewni źródliskowych (~52% wszystkich, wszystkie progi) wpadał w fallback zwracający odległość bezwzględną do ujścia CAŁEGO basenu; dla wielowęzłowych odejmował złą wielkość (odległość najdalszej komórki podzlewni ujściowej zamiast odległości samego ujścia). Skaziło to `length_km`, wskaźniki kształtu Cw/Cf/Cl oraz `tc` (Kirpich/NRCS) → całe hydrogramy. Granica zlewni i dane w bazie były geometrycznie poprawne. Naprawa: nowa kolumna `stream_catchments.outlet_flow_dist_m` (migracja 003) jako jedyna baza odniesienia, usunięty fallback bezwzględny, etykieta `length_km` w GeoJSON drogi spływu przeliczona z tej samej bazy co morfometria, backfill 54390 istniejących rekordów bez ponownego uruchamiania pipeline'u (`scripts/backfill_outlet_flow_dist.py`). Tryb precise naprawiony automatycznie (aproksymacja: baza = ujście węzła zawierającego klik). Szczegóły diagnozy: `notes/reports/2026-08-02-length-km-diagnosis.md`, decyzja: ADR-054.
 - Path traversal w upload endpoint kanalizacji (walidacja nazwy pliku)
 - SQL injection w load_from_database (walidacja table name przez allowlist)
 - CHECK constraint bug (root_outlet_id != id dla wylotow sieci)
