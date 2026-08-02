@@ -238,6 +238,10 @@
      * Handle map click with 300ms debounce.
      */
     function onMapClick(lat, lng) {
+        if (Hydrograf.diagnostics) {
+            Hydrograf.diagnostics.log('map_click', { lat: lat, lng: lng, mode: state.clickMode });
+        }
+
         if (state.isLoading) return;
 
         // Browse mode — do nothing
@@ -435,6 +439,9 @@
      */
     function setClickMode(mode) {
         state.clickMode = mode;
+        if (Hydrograf.diagnostics) {
+            Hydrograf.diagnostics.log('mode_change', { mode: mode });
+        }
 
         // Update button classes
         var btnBrowse = document.getElementById('mode-browse');
@@ -616,6 +623,7 @@
         init: init,
         getCurrentWatershed: getCurrentWatershed,
         getClickCoords: function () { return { lat: state.clickLat, lng: state.clickLng }; },
+        getClickMode: function () { return state.clickMode; },
         showPanel: showPanel,
     };
 })();

@@ -11,6 +11,8 @@
 
     var currentBaseLayer = null;
     var baseLayers = {};
+    var currentBaseLayerName = 'osm';
+    var _overlayRegistry = [];
 
     /**
      * Create a group header element.
@@ -58,6 +60,11 @@
      * Switch base layer. Pass 'none' to disable all base layers.
      */
     function setBaseLayer(name) {
+        currentBaseLayerName = name;
+        if (window.Hydrograf.diagnostics) {
+            Hydrograf.diagnostics.log('layer_change', { baseLayer: name });
+        }
+
         var map = Hydrograf.map._getMap();
         if (!map) return;
 
@@ -121,6 +128,8 @@
         sliderRow.appendChild(sliderValue);
         item.appendChild(sliderRow);
 
+        _overlayRegistry.push({ label: label, cb: cb });
+
         cb.addEventListener('change', function () {
             var layer = getLayer();
             if (!layer) return;
@@ -130,6 +139,9 @@
             } else {
                 Hydrograf.map._getMap().removeLayer(layer);
                 sliderRow.classList.add('d-none');
+            }
+            if (window.Hydrograf.diagnostics) {
+                Hydrograf.diagnostics.log('layer_change', { layer: label, visible: cb.checked });
             }
         });
 
@@ -482,5 +494,11 @@
         init: init,
         addOverlayEntry: addOverlayEntry,
         createGroupHeader: createGroupHeader,
+        getBaseLayerName: function () { return currentBaseLayerName; },
+        getActiveOverlays: function () {
+            return _overlayRegistry
+                .filter(function (entry) { return entry.cb.checked; })
+                .map(function (entry) { return entry.label; });
+        },
     };
 })();

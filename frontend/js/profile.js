@@ -163,5 +163,6 @@
         activateDrawProfile: activateDrawProfile,
         deactivateProfile: deactivateProfile,
         hideProfilePanel: hideProfilePanel,
+        getLineLatLngs: function () { return _lineLatLngs; },
     };
 })();
