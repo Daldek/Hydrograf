@@ -65,7 +65,11 @@ class CatchmentGraph:
         self._elev_mean: np.ndarray | None = None
         self._slope_mean: np.ndarray | None = None
         self._stream_length_km: np.ndarray | None = None
-        # Vestigial: fallback only when max_flow_dist_m = 0 for all nodes
+        # Legacy per-subcatchment absolute distance (== max_flow_dist_m/1000).
+        # Loaded for DB compatibility; NOT used by aggregate_stats — hydraulic
+        # length is computed from max_flow_dist_m and outlet_flow_dist_m (see
+        # aggregate_stats). Do not reintroduce as a fallback: absolute values
+        # caused the feedback-#11 bug.
         self._hydraulic_length_km: np.ndarray | None = None
         self._strahler: np.ndarray | None = None
         self._max_flow_dist_m: np.ndarray | None = None

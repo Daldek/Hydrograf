@@ -505,6 +505,57 @@ class TestBuildMorphDictFromGraph:
         expected_slope = round((350.0 - 120.0) / (8.5 * 1000), 6)
         assert result["channel_slope_m_per_m"] == expected_slope
 
+    def test_zero_hydraulic_length_uses_geometric_fallback(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        """hydraulic_length_km == 0.0 (single-cell catchment) must not be
+        accepted as-is: it should route to the geometric fallback instead
+        of producing a degenerate length_km == 0.0 (unverified downstream
+        tc behaviour)."""
+        mock_catchment_graph.aggregate_stats.return_value = {
+            **mock_catchment_graph.aggregate_stats.return_value,
+            "hydraulic_length_km": 0.0,
+        }
+        upstream = np.array([0])
+
+        result = build_morph_dict_from_graph(
+            cg=mock_catchment_graph,
+            upstream_indices=upstream,
+            boundary_2180=simple_polygon,
+            outlet_x=500095.0,
+            outlet_y=600095.0,
+            segment_idx=42,
+            threshold_m2=1000,
+        )
+
+        expected = round(
+            compute_watershed_length(simple_polygon, 500095.0, 600095.0), 4
+        )
+        assert result["length_km"] == expected
+        assert result["length_km"] > 0
+
+    def test_positive_hydraulic_length_is_used_directly(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        """A positive hydraulic_length_km is used as-is (no fallback)."""
+        mock_catchment_graph.aggregate_stats.return_value = {
+            **mock_catchment_graph.aggregate_stats.return_value,
+            "hydraulic_length_km": 3.4567,
+        }
+        upstream = np.array([0])
+
+        result = build_morph_dict_from_graph(
+            cg=mock_catchment_graph,
+            upstream_indices=upstream,
+            boundary_2180=simple_polygon,
+            outlet_x=500095.0,
+            outlet_y=600095.0,
+            segment_idx=42,
+            threshold_m2=1000,
+        )
+
+        assert result["length_km"] == 3.4567
+
 
 # ---------------------------------------------------------------------------
 # calculate_shape_indices

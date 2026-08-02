@@ -440,7 +440,11 @@ class TestFlowPathAggregation:
     """Tests for hydraulic_length_km in aggregate_stats."""
 
     def test_hydraulic_length_from_max_flow_dist(self):
-        """max(max_flow_dist_m) / 1000 = hydraulic_length_km."""
+        """hydraulic_length_km = (max(max_flow_dist_m) - baseline) / 1000.
+
+        Baseline is outlet_flow_dist_m[outlet_idx]; this fixture uses an
+        all-zero baseline, so the result reduces to max(max_flow_dist_m) / 1000.
+        """
         from core.catchment_graph import CatchmentGraph
 
         cg = CatchmentGraph()

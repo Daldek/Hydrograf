@@ -677,7 +677,8 @@ def _build_flow_path_geojson(
     path_type : str
         Value for the ``type`` property in the returned Feature
     include_length : bool
-        If True, add ``length_km`` property (from max_flow_dist_m)
+        If True, add ``length_km`` property (max_flow_dist minus the
+        outlet baseline — same value as aggregate_stats hydraulic_length_km)
 
     Returns
     -------
@@ -871,7 +872,7 @@ def build_morph_dict_from_graph(
     # Watershed length = longest flow path (main channel valley from outlet
     # to divide).  Fallback to straight-line max distance from outlet.
     hydraulic_len = stats.get("hydraulic_length_km")
-    if hydraulic_len is not None:
+    if hydraulic_len is not None and hydraulic_len > 0:
         length_km = round(hydraulic_len, 4)
     else:
         length_km = round(
