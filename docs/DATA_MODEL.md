@@ -668,6 +668,42 @@ COMMENT ON COLUMN sewer_network.source IS 'Źródło danych (np. plik, WFS, DB)'
 
 ---
 
+### 3.11 Tabela: `feedback`
+
+**Opis:** Zgłoszenia testerów (uwagi, błędy, sugestie) z formularza na stronie głównej. Kolumna `diagnostics` przechowuje opcjonalny, opt-in pakiet diagnostyczny zebrany po stronie przeglądarki — wyłącznie po jawnej zgodzie użytkownika. Tabela świadomie BEZ adresu IP zgłaszającego (minimalizacja danych osobowych). Migracja 002.
+
+**Schemat SQL:**
+```sql
+CREATE TABLE feedback (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    message TEXT NOT NULL CHECK (length(message) BETWEEN 1 AND 5000),
+    contact TEXT CHECK (length(contact) <= 200),
+    page_url TEXT,
+    user_agent TEXT,
+    diagnostics JSONB,
+    is_read BOOLEAN NOT NULL DEFAULT false
+);
+
+-- Indeksy
+CREATE INDEX idx_feedback_created_at ON feedback USING btree (created_at DESC);
+```
+
+**Kolumny - szczegóły:**
+
+| Kolumna | Typ | Nullable | Default | Opis |
+|---------|-----|----------|---------|------|
+| `id` | SERIAL | NO | auto | Unikalny identyfikator |
+| `created_at` | TIMESTAMPTZ | NO | now() | Data i czas zgłoszenia |
+| `message` | TEXT | NO | - | Treść zgłoszenia (1-5000 znaków) |
+| `contact` | TEXT | YES | NULL | Opcjonalny kontakt zwrotny do zgłaszającego (max 200 znaków) |
+| `page_url` | TEXT | YES | NULL | Adres strony, z której wysłano zgłoszenie |
+| `user_agent` | TEXT | YES | NULL | Nagłówek User-Agent przeglądarki (z żądania HTTP) |
+| `diagnostics` | JSONB | YES | NULL | Opt-in pakiet diagnostyczny z przeglądarki: dziennik do 50 ostatnich zdarzeń (`map_click`/`mode_change`/`layer_change`/`api_call` z `X-Request-ID`/`js_error`) + snapshot konfiguracji obszaru roboczego (mapa, tryb, zlewnia, parametry hydrogramu, linia profilu); limit 100 KB; świadomie BEZ adresu IP klienta |
+| `is_read` | BOOLEAN | NO | false | Flaga przeczytania zgłoszenia w panelu admina |
+
+---
+
 ## 4. Relacje i Constraints
 
 ### 4.1 Klucze Obce (Foreign Keys)
