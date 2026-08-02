@@ -547,6 +547,9 @@
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
 
+            // Bootstrap modal open — let Bootstrap handle Escape alone
+            if (document.querySelector('.modal.show')) return;
+
             // Drawing check FIRST — cancel active drawing and stop
             if (Hydrograf.map && Hydrograf.map.isDrawing && Hydrograf.map.isDrawing()) {
                 Hydrograf.map.cancelDrawing();
@@ -612,6 +615,11 @@
         // Init depressions module
         if (Hydrograf.depressions) {
             Hydrograf.depressions.init();
+        }
+
+        // Init feedback module
+        if (Hydrograf.feedback) {
+            Hydrograf.feedback.init();
         }
 
         checkSystemHealth();
