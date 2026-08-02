@@ -53,6 +53,12 @@
         if (url.indexOf('/api/') !== 0 && url !== '/health') {
             return _origFetch.apply(window, arguments);
         }
+        if (url.indexOf('/api/tiles/') === 0) {
+            // MVT tile requests (streams/landcover/sewer via Leaflet.VectorGrid)
+            // fire dozens of times per pan/zoom — logging them would evict
+            // every meaningful event from the ring buffer.
+            return _origFetch.apply(window, arguments);
+        }
         var started = Date.now();
         var method = (init && init.method) || 'GET';
         var bodySummary = (init && typeof init.body === 'string')
