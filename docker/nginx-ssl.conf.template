@@ -44,6 +44,16 @@ http {
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout 10m;
 
+        # nginx w kontenerze nie zna zewnetrznego portu z ewentualnego
+        # mapowania (np. jesli 443 jest przekierowywane z innego portu przez
+        # host/Dockera). Przy domyslnym absolute_redirect on przekierowania
+        # (np. redirect katalogowy /data -> /data/) budowalyby
+        # bezwzgledny URL z $host i portem nasluchu, gubiac faktyczny port
+        # klienta. Wzgledny Location dziala poprawnie zawsze, bo przegladarka
+        # doklei biezacy origin sama; nie dotyczy to redirectu http->https
+        # wyzej, ktory celowo zmienia schemat i musi byc bezwzgledny.
+        absolute_redirect off;
+
         # Security headers
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
