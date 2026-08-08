@@ -47,7 +47,7 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-08-08 (sesja 85 — całkowite wycofanie dashboardu ruchu, restrukturyzacja gałęzi)
+**Data:** 2026-08-08 (sesja 85 — całkowite wycofanie dashboardu ruchu: restrukturyzacja gałęzi, merge, reset usługi)
 
 ### Co zrobiono
 - **Decyzja użytkownika:** dashboard ruchu (sesje 82 i 84: kontener GoAccess, dashboard `/traffic/`, proxy WebSocket `/ws`, Basic Auth, ograniczenie LAN-only, anonimizacja logów nginx, real IP z `CF-Connecting-IP`, rotacja logów, ADR-055/056) wycofany W CAŁOŚCI — do przebudowy od zera. Żaden z wycofanych commitów nie był wypchnięty na origin.
@@ -59,16 +59,22 @@
 - **Porządki gałęzi:** usunięta wmergowana `fix/sewer-topology-rebuild`; `feat/wspolne-uwierzytelnianie` przestawiona na nowy czubek develop (nie miała własnych commitów). Bez pusha — decyzja użytkownika (wszystko lokalnie).
 - **Weryfikacja:** `git grep -iE 'goaccess|traffic|htpasswd|ws_conn|logrotate|CF-Connecting'` pusty na drzewach feature/feedback, feature/hydraulic-length i develop sprzed niniejszego wpisu (sam ten opis wycofania siłą rzeczy wymienia usuwane elementy).
 
-### Uwagi operacyjne (do najbliższego wdrożenia)
-- Działający stack nadal zawiera artefakty trafficu: kontener `goaccess`, `./data/goaccess/`, `./data/logs/nginx/`, `docker/traffic.htpasswd`, `/etc/logrotate.d/hydrograf` (host). Przy wdrożeniu z nowego develop: `docker compose up -d --force-recreate --remove-orphans` + ręczne usunięcie plików.
+### Uwagi operacyjne
+- Artefakty trafficu na stacku i na dysku posprzątane w trzeciej części sesji (patrz "Reset usługi" niżej) — na hoście nie zostało nic.
 - **Baza ma nałożone migracje 002+003** (`alembic_version` = 003, kolumna `outlet_flow_dist_m` z backfillem, tabela `feedback` z ewentualnymi zgłoszeniami) — po wykonanych w tej sesji merge'ach kod na develop zna 001+002+003, stan zgodny (`alembic upgrade head` = no-op).
 
 ### Merge (druga część sesji, na polecenie użytkownika)
 - `feature/feedback` → develop (`--no-ff`), następnie `feature/hydraulic-length` → develop (`--no-ff`) — kolejność wymuszona łańcuchem migracji 002→003. Konflikty tylko w `docs/PROGRESS.md` (sekcje sesji i backlog); nginx (absolute_redirect + strefa feedbacku) scalony automatycznie. Gałęzie feature zachowane po merge'u.
 
+### Reset usługi (trzecia część sesji)
+- Redeploy stacka z nowego develop (tryb dev z override): `docker compose up -d --remove-orphans` — kontener `hydro_goaccess` usunięty jako orphan, nginx odtworzony ze świeżym configiem (nowy kontener = świeży inode bind-mountu); db i api bez recreate (definicje bez zmian, kod API z bind-mountu `./backend`).
+- Weryfikacja: `/health` i frontend 200; `/traffic/` wpada w standardowy fallback aplikacji (lokacja nie istnieje); `/api/admin/feedback` bez klucza → 401; `alembic current` w kontenerze = **003 (head)** — baza i kod zgodne.
+- Usunięte pliki: `data/goaccess/` i `docker/traffic.htpasswd` (agent) oraz `data/logs/nginx/` i `/etc/logrotate.d/hydrograf` (użytkownik, sudo — potwierdzone).
+
 ### Nastepne kroki
 - Smoke test przeglądarki z sesji 83 (modal "Zgłoś uwagę", panel /admin, poprawiona długość drogi spływu) — nadal zaległy.
-- Przebudowa dashboardu ruchu od zera (patrz `## Backlog` → Infrastruktura).
+- Decyzja o pushu na origin — cała restrukturyzacja istnieje wyłącznie lokalnie.
+- Przebudowa dashboardu ruchu od zera (patrz `## Backlog` → Infrastruktura; przed startem brainstorming wymagań).
 
 ### Poprzednia sesja (2026-08-02, sesja 83 — formularz feedbacku z opt-in diagnostyka sesji + naprawa hydraulic_length_km)
 
