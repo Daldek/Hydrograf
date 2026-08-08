@@ -47,7 +47,27 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-07-31 (sesja 81 — feedback testera Kamila, nomenklatura, naprawa DNS, konsolidacja backlogu)
+**Data:** 2026-08-08 (sesja 85 — całkowite wycofanie dashboardu ruchu, restrukturyzacja gałęzi)
+
+### Co zrobiono
+- **Decyzja użytkownika:** dashboard ruchu (sesje 82 i 84: kontener GoAccess, dashboard `/traffic/`, proxy WebSocket `/ws`, Basic Auth, ograniczenie LAN-only, anonimizacja logów nginx, real IP z `CF-Connecting-IP`, rotacja logów, ADR-055/056) wycofany W CAŁOŚCI — do przebudowy od zera. Żaden z wycofanych commitów nie był wypchnięty na origin.
+- **develop cofnięty** z `5a63519` do `3d4cff6` (ostatni commit sprzed trafficu, sesja 81). Stary czubek zachowany jako gałąź `backup/develop-pre-cleanup`.
+- **Uratowane z sesji 83 (praca niezależna od trafficu):**
+  - `feature/feedback` — 10 commitów formularza feedbacku (ADR-053, migracja 002) cherry-pickowanych na `3d4cff6`. Pliki kodu bit-w-bit identyczne ze starą historią (zweryfikowane diffem); różnice wyłącznie w docs (usunięte odniesienia do sesji 82) i nginx (bez stref trafficowych `ws_conn`).
+  - `feature/hydraulic-length` — 8 commitów naprawy `hydraulic_length_km` (ADR-054, migracja 003) + domknięcie sesji 83. **Bazuje na `feature/feedback`** — łańcuch migracji 002→003 wymusza kolejność merge: najpierw feedback, potem hydraulic-length. Backend bit-w-bit identyczny ze starą historią.
+- **Cherry-pick na develop (niezależne od trafficu):** `absolute_redirect off` w obu configach nginx (naprawa gubienia portu 8080 przy przekierowaniach katalogowych; przykład w komentarzu zmieniony na `/data`) + wpis backlogu o wolnych kaflach landcover MVT.
+- **Porządki gałęzi:** usunięta wmergowana `fix/sewer-topology-rebuild`; `feat/wspolne-uwierzytelnianie` przestawiona na nowy czubek develop (nie miała własnych commitów). Bez pusha — decyzja użytkownika (wszystko lokalnie).
+- **Weryfikacja:** `git grep -iE 'goaccess|traffic|htpasswd|ws_conn|logrotate|CF-Connecting'` pusty na drzewach feature/feedback, feature/hydraulic-length i develop sprzed niniejszego wpisu (sam ten opis wycofania siłą rzeczy wymienia usuwane elementy).
+
+### Uwagi operacyjne (do najbliższego wdrożenia)
+- Działający stack nadal zawiera artefakty trafficu: kontener `goaccess`, `./data/goaccess/`, `./data/logs/nginx/`, `docker/traffic.htpasswd`, `/etc/logrotate.d/hydrograf` (host). Przy wdrożeniu z nowego develop: `docker compose up -d --force-recreate --remove-orphans` + ręczne usunięcie plików.
+- **Baza ma nałożone migracje 002+003** (`alembic_version` = 003, kolumna `outlet_flow_dist_m` z backfillem, tabela `feedback` z ewentualnymi zgłoszeniami) — kod na develop zna tylko 001. Przed jakąkolwiek operacją alembic na tej bazie najpierw zmergować `feature/feedback` i `feature/hydraulic-length`.
+
+### Nastepne kroki
+- Merge `feature/feedback` → develop, potem `feature/hydraulic-length` → develop (po decyzji użytkownika; smoke test przeglądarki z sesji 83 nadal zaległy).
+- Przebudowa dashboardu ruchu od zera (patrz `## Backlog` → Infrastruktura).
+
+### Poprzednia sesja (2026-07-31, sesja 81 — feedback testera Kamila, nomenklatura, naprawa DNS, konsolidacja backlogu)
 
 ### Co zrobiono
 - **Analiza feedbacku testera** (`notes/feedback/Kamil.md`) — triaz 12 uwag: zadania UI/UX, kwestie danych, pomysly biznesowe. Research wykonalnosci (3 agentow): nomenklatura trywialna; zaglebienia maja pelne dane glebokosci w PostGIS (`max_depth_m` z indeksem) + ~80% logiki interakcji w martwym kodzie `depressions.js:63-146`; NMT — okno kolorow p5-p95 (81.8-114.1 m) pokrywa ~35% zakresu wysokosci, hillshade wypalony w pikselach kafelkow (rekolorowanie client-side niemozliwe).
@@ -1142,6 +1162,7 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 ### Bledy i diagnozy
 
 - [ ] Hietogram i hydrogram — "brak danych" wszedzie, gdzie klikal tester (feedback Kamila 2026-07; jedyny twardy bug zgloszenia). Dane pokrywaja testowany obszar (Warszawa), wiec to nie kwestia zasiegu — wymaga diagnozy (dane opadowe? endpoint? frontend?). Priorytet: wysoki.
+- [ ] Cztery lokacje nginx (regex `.css/.js`, `.pbf/.geojson`, `^~ /data/`, `^~ /tiles/`) nadpisują własnym `add_header` dziedziczone nagłówki bezpieczeństwa (CSP, X-Frame-Options, Referrer-Policy) — `add_header` w bloku location kasuje wszystkie z poziomu server. Znalezione przy review sesji 84; niezależne od wycofanego dashboardu, dotyczy obu configów. Priorytet: średni.
 - [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
 - [ ] Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
 - [ ] Wolne kafle landcover MVT na niskich zoomach: `/api/tiles/landcover/{z}/{x}/{y}.pbf` przy zoom 11-12 do 6.7 s (72 zadania >2 s w sesji testowej 2026-08-01, monitoring sesja 82) — prawdopodobnie kosztowne zapytanie przestrzenne przy pierwszym ladowaniu warstwy (zimny cache). Do diagnozy: EXPLAIN ANALYZE zapytania MVT na niskim zoomie, ew. cache/preagregacja. Priorytet: sredni.
@@ -1184,6 +1205,7 @@ Wizja (brainstorm 2026-07-31, pelne uzasadnienia: `notes/plans/2026-07-31-wlasne
 
 ### Infrastruktura i jakosc kodu
 
+- [ ] Dashboard ruchu — przebudowa od zera (poprzednia implementacja GoAccess z sesji 82/84 wycofana w całości w sesji 85; kod referencyjny w gałęzi `backup/develop-pre-cleanup`, decyzje ADR-055/056 tylko w starej historii). Przed startem: brainstorming wymagań z użytkownikiem.
 - [ ] Migracja bind mountow na named volumes Docker (`./data`, `./cache`, `./frontend/data`, `./frontend/tiles`) — w obecnym ksztalcie kazda zmiana engine ryzykuje powtorke EPERM z sesji 80. Priorytet: sredni.
 - [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
