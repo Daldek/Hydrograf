@@ -7,6 +7,7 @@ If no key is configured, a random UUID is generated and logged as WARNING.
 
 import contextlib
 import logging
+import secrets
 import uuid
 from pathlib import Path
 
@@ -34,38 +35,52 @@ def _get_or_generate_admin_key(configured_key: str) -> str:
     return _generated_key
 
 
-def verify_admin_key(
-    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
-    *,
-    expected_key: str | None = None,
-) -> None:
+def _resolve_expected_key() -> str:
+    """Load the configured admin key from settings, key file, or generate one."""
+    settings = get_settings()
+    expected_key = settings.admin_api_key
+
+    if not expected_key and settings.admin_api_key_file:
+        with contextlib.suppress(OSError):
+            expected_key = Path(settings.admin_api_key_file).read_text().strip()
+
+    return _get_or_generate_admin_key(expected_key or "")
+
+
+def _check_admin_key(x_admin_key: str | None, expected_key: str | None = None) -> None:
     """
-    Verify admin API key from request header.
+    Verify an admin API key against the expected value.
+
+    This is the internal, non-FastAPI implementation. `expected_key` is a test
+    seam kept off the request-facing dependency so it cannot be bound as a query
+    parameter (an attacker-controlled `expected_key` was a full auth bypass).
 
     Parameters
     ----------
     x_admin_key : str | None
-        API key from X-Admin-Key header
+        API key supplied by the client (X-Admin-Key header).
     expected_key : str | None
-        Override for testing; if None, loads from settings
+        Expected value; when None it is resolved from settings/key file.
 
     Raises
     ------
     HTTPException
-        401 if key is missing, 403 if key is wrong
+        401 if key is missing, 403 if key is wrong.
     """
     if expected_key is None:
-        settings = get_settings()
-        expected_key = settings.admin_api_key
-
-        if not expected_key and settings.admin_api_key_file:
-            with contextlib.suppress(OSError):
-                expected_key = Path(settings.admin_api_key_file).read_text().strip()
-
-        expected_key = _get_or_generate_admin_key(expected_key or "")
+        expected_key = _resolve_expected_key()
 
     if not x_admin_key:
         raise HTTPException(status_code=401, detail="Missing admin API key")
 
-    if x_admin_key != expected_key:
+    supplied = x_admin_key.encode("utf-8")
+    expected = expected_key.encode("utf-8")
+    if not secrets.compare_digest(supplied, expected):
         raise HTTPException(status_code=403, detail="Invalid admin API key")
+
+
+def verify_admin_key(
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> None:
+    """FastAPI dependency: verify the X-Admin-Key header against the configured key."""
+    _check_admin_key(x_admin_key)
