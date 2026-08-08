@@ -61,13 +61,16 @@
 
 ### Uwagi operacyjne (do najbliższego wdrożenia)
 - Działający stack nadal zawiera artefakty trafficu: kontener `goaccess`, `./data/goaccess/`, `./data/logs/nginx/`, `docker/traffic.htpasswd`, `/etc/logrotate.d/hydrograf` (host). Przy wdrożeniu z nowego develop: `docker compose up -d --force-recreate --remove-orphans` + ręczne usunięcie plików.
-- **Baza ma nałożone migracje 002+003** (`alembic_version` = 003, kolumna `outlet_flow_dist_m` z backfillem, tabela `feedback` z ewentualnymi zgłoszeniami) — kod na develop zna tylko 001. Przed jakąkolwiek operacją alembic na tej bazie najpierw zmergować `feature/feedback` i `feature/hydraulic-length`.
+- **Baza ma nałożone migracje 002+003** (`alembic_version` = 003, kolumna `outlet_flow_dist_m` z backfillem, tabela `feedback` z ewentualnymi zgłoszeniami) — po wykonanych w tej sesji merge'ach kod na develop zna 001+002+003, stan zgodny (`alembic upgrade head` = no-op).
+
+### Merge (druga część sesji, na polecenie użytkownika)
+- `feature/feedback` → develop (`--no-ff`), następnie `feature/hydraulic-length` → develop (`--no-ff`) — kolejność wymuszona łańcuchem migracji 002→003. Konflikty tylko w `docs/PROGRESS.md` (sekcje sesji i backlog); nginx (absolute_redirect + strefa feedbacku) scalony automatycznie. Gałęzie feature zachowane po merge'u.
 
 ### Nastepne kroki
-- Merge `feature/feedback` → develop, potem `feature/hydraulic-length` → develop (po decyzji użytkownika; smoke test przeglądarki z sesji 83 nadal zaległy).
+- Smoke test przeglądarki z sesji 83 (modal "Zgłoś uwagę", panel /admin, poprawiona długość drogi spływu) — nadal zaległy.
 - Przebudowa dashboardu ruchu od zera (patrz `## Backlog` → Infrastruktura).
 
-### Poprzednia sesja (2026-08-02, sesja 83 — formularz feedbacku z opt-in diagnostyka sesji)
+### Poprzednia sesja (2026-08-02, sesja 83 — formularz feedbacku z opt-in diagnostyka sesji + naprawa hydraulic_length_km)
 
 ### Co zrobiono
 - **Spec + plan** (`.superpowers/sdd/2026-08-02-feedback-form/`, poza repo) — 9 zadan subagent-driven, realizacja pozycji backlogu J1 w wersji rozszerzonej (diagnostyka sesji zamiast prostego formularza).
@@ -78,12 +81,27 @@
 - **feat(frontend) `a797c36`** — `frontend/js/feedback.js` + modal "Zglos uwage" w navbarze (checkbox opt-in diagnostyki, domyslnie zaznaczony, z podgladem JSON), `submitFeedback` w `api.js`, guard Escape w `app.js`.
 - **feat(frontend) `4482074`** — panel `/admin`: sekcja "Zgloszenia testerow" (`admin-feedback.js` — rendering wylacznie `textContent`, XSS-safe; badge nieprzeczytanych; rozwijane szczegoly z osia czasu zdarzen; usuwanie z potwierdzeniem).
 - **Testy:** 20 nowych (7 unit schematow, 6 integracyjnych POST, 7 unit admin).
-- **docs (ten commit)** — opis tabeli `feedback` w DATA_MODEL.md, wpis CHANGELOG.md (Unreleased/Dodane), ADR-053 w DECISIONS.md, odhaczenie pozycji J1 w tym pliku.
+- **docs `725e878`** — opis tabeli `feedback` w DATA_MODEL.md, wpis CHANGELOG.md (Unreleased/Dodane), ADR-053 w DECISIONS.md, odhaczenie pozycji J1 w tym pliku.
+
+**Kontynuacja sesji 83 — naprawa `hydraulic_length_km` (feedback #11 z formularza uruchomionego wyzej w tej sesji):**
+- **Diagnoza** (`notes/reports/2026-08-02-length-km-diagnosis.md`, zdiagnozowane i naprawione — sesja 83) — `CatchmentGraph.aggregate_stats()` liczyl `hydraulic_length_km` wzgledem zlej bazy: zlewnie zrodliskowe (~52% wszystkich podzlewni, wszystkie progi) zawyzone 3.8-19.5x (fallback bezwzgledny do ujscia calego basenu), zlewnie wielowezlowe zanizone (odejmowana zla wielkosc). Skazone: `length_km`, wskazniki ksztaltu Cw/Cf/Cl, `tc` (Kirpich) → cale hydrogramy. Granica zlewni i dane w bazie byly poprawne — blad wylacznie w interpretacji `max_flow_dist_m`.
+- **feat(db) `dcee75a`** — migracja 003: kolumna `stream_catchments.outlet_flow_dist_m` (odleglosc splywu w PUNKCIE UJSCIA podzlewni [m], baza dla `hydraulic_length_km`).
+- **fix(core) `aacb5f5`** — `aggregate_stats()`: `hydraulic_length_km = (max(max_flow_dist_m[indices]) − outlet_flow_dist_m[outlet]) / 1000`; fallback bezwzgledny usuniety; przy braku danych fallback ZANIZAJACY (`max_flow_dist_m[outlet]`) + warning w logu.
+- **fix(core) `93a633f`** — etykieta `length_km` w GeoJSON drogi splywu liczona z tej samej bazy co morfometria (wczesniej niezalezna, niezgodna z narysowana linia).
+- **feat(core) `fd184d7`** — pipeline (`_clip_and_build_path` + `db_bulk.py`) zapisuje `outlet_flow_dist_m` w przyszlych przebiegach.
+- **feat(core) `fe5ab08`** — `scripts/backfill_outlet_flow_dist.py`: probkowanie `stream_distance.tif` w `ST_EndPoint(longest_flow_path_geom)`; 54390 rekordow, 0 NULL, 0 zawyzen — bez ponownego pipeline'u. Tryb precise naprawiony automatycznie (aproksymacja: baza = ujscie wezla zawierajacego klik).
+- **E2E:** klik z feedbacku #11 — 6.7584 km przed naprawa, 1.6496 km po (zgodnosc z geometria 2.3%); drugi klik 2.9558 km (zgodnosc 5.4%); etykieta == `hydraulic_length_km` w obu.
+- **Testy:** przepisane `TestHydraulicLength` (nowa semantyka + test regresyjny zlewni zrodliskowej), nowy `test_flow_path_geojson.py`; 1161 passed.
+- **docs (ten commit)** — kolumna `outlet_flow_dist_m` w DATA_MODEL.md, wpis CHANGELOG.md (Unreleased/Naprawione), ADR-054 w DECISIONS.md, 2 nowe tickety backlogu (patrz `## Backlog`).
+- **fix(core) `5a55f8d`** — porzadki po finalnym review - komentarze, docstringi, guard zerowej dlugosci (2 nowe testy, razem 1163 passed).
 
 ### Nastepne kroki
-- **Wdrozenie produkcyjne wymaga:** `alembic upgrade head` (migracja 002) + force-recreate kontenera nginx (nowa strefa `feedback_limit` w `docker/nginx.conf`/`docker/nginx-ssl.conf.template`).
+- **Wdrozenie produkcyjne (formularz feedbacku) wymaga:** `alembic upgrade head` (migracja 002) + force-recreate kontenera nginx (nowa strefa `feedback_limit` w `docker/nginx.conf`/`docker/nginx-ssl.conf.template`).
+- **Wdrozenie produkcyjne (naprawa hydraulic_length_km) wymaga:** `alembic upgrade head` (migracja 003) + `python -m scripts.backfill_outlet_flow_dist` + restart API.
 - **Manualny test w przegladarce** (modal "Zglos uwage" + panel admina, sekcja "Zgloszenia testerow") — nie byl mozliwy w srodowisku agentow (brak pelnego stacku/GUI w tej sesji).
 - Patrz sekcja `## Backlog` — priorytet: diagnoza hietogram/hydrogram "brak danych" (jedyny twardy bug z feedbacku Kamila, bez zmian w tej sesji).
+
+**Sesja zakonczona.** Stan stabilny (formularz feedbacku + naprawa hydraulic_length). Nastepne kroki: (1) manualny smoke test w przegladarce (modal "Zglos uwage", panel /admin sekcja zgloszen, poprawiona dlugosc drogi splywu na mapie), (2) decyzja o merge i push (checkpoint), (3) odpowiedz zglaszajacemu feedback #11.
 
 ### Poprzednia sesja (2026-07-31, sesja 81 — feedback testera Kamila, nomenklatura, naprawa DNS, konsolidacja backlogu)
 
@@ -1184,6 +1202,8 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 - [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
 - [ ] Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
 - [ ] Wolne kafle landcover MVT na niskich zoomach: `/api/tiles/landcover/{z}/{x}/{y}.pbf` przy zoom 11-12 do 6.7 s (72 zadania >2 s w sesji testowej 2026-08-01, monitoring sesja 82) — prawdopodobnie kosztowne zapytanie przestrzenne przy pierwszym ladowaniu warstwy (zimny cache). Do diagnozy: EXPLAIN ANALYZE zapytania MVT na niskim zoomie, ew. cache/preagregacja. Priorytet: sredni.
+- [ ] Tryb precise (`POST /api/delineate-watershed` bez `threshold_m2`) zwraca `area_km2 = 0.0` dla niektorych punktow (`raster_service.delineate_from_point()`) — odkryte przy diagnozie feedbacku #11 (`notes/reports/2026-08-02-length-km-diagnosis.md` §10.2), poza zakresem naprawy `hydraulic_length_km` (sesja 83). Priorytet: sredni.
+- [ ] Wygladzanie granicy zlewni (`ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)`) skraca obwod o ~28% przy zachowanej powierzchni — liczenie wskaznikow ksztaltu na hybrydzie (`area_km2` z rastra, `perimeter_km` z wygladzonego wieloboku) zaniza `compactness_coefficient` (Kc) i zawyza `circularity_ratio` (Rc). Odkryte przy diagnozie feedbacku #11 (§10.1 diagnozy, sesja 83). Priorytet: sredni.
 
 ### Funkcjonalnosci — feedback Kamila (2026-07, oryginal: `notes/feedback/Kamil.md`)
 

@@ -171,6 +171,10 @@ class TestEnrichCatchmentsWithFlowPaths:
         assert catchments[1]["max_flow_dist_m"] is not None
         assert catchments[1]["max_flow_dist_m"] > 0
 
+        assert catchments[0]["outlet_flow_dist_m"] is not None
+        assert catchments[0]["outlet_flow_dist_m"] <= catchments[0]["max_flow_dist_m"]
+        assert catchments[1]["outlet_flow_dist_m"] is not None
+
     def test_enriches_catchments_with_flow_path_wkt(self):
         """Each catchment with valid path should get longest_flow_path_wkt."""
         from scripts.process_dem import _enrich_catchments_with_flow_paths
@@ -266,6 +270,9 @@ class TestEnrichCatchmentsWithFlowPaths:
         # But flow path needs >= 2 cells, so with a single cell it may be None
         # (path from pit to itself is only 1 cell)
 
+        # Jednokomorkowa: brak sciezki -> outlet = max_flow_dist (dlugosc 0)
+        assert catchments[0]["outlet_flow_dist_m"] == catchments[0]["max_flow_dist_m"]
+
 
 class TestInsertCatchmentsFlowPath:
     """Tests for flow path columns in insert_catchments TSV generation."""
@@ -293,6 +300,7 @@ class TestInsertCatchmentsFlowPath:
             "elev_histogram": None,
             "max_flow_dist_m": 1234.5,
             "longest_flow_path_wkt": "LINESTRING(0 0, 0.5 0.5, 1 1)",
+            "outlet_flow_dist_m": 987.6,
         }
 
         tsv_buffer = io.StringIO()
@@ -310,15 +318,16 @@ class TestInsertCatchmentsFlowPath:
             f"{_tsv_val(cat.get('stream_length_km'))}\t"
             f"{hist_str}\t"
             f"{_tsv_val(cat.get('max_flow_dist_m'))}\t"
-            f"{_tsv_val(cat.get('longest_flow_path_wkt'))}\n"
+            f"{_tsv_val(cat.get('longest_flow_path_wkt'))}\t"
+            f"{_tsv_val(cat.get('outlet_flow_dist_m'))}\n"
         )
 
         tsv_content = tsv_buffer.getvalue()
         fields = tsv_content.strip().split("\t")
-        # 15 fields total (13 original + 2 new)
-        assert len(fields) == 15
-        assert fields[-2] == "1234.5"
-        assert fields[-1] == "LINESTRING(0 0, 0.5 0.5, 1 1)"
+        # 16 fields total (13 original + 2 flow path + 1 outlet)
+        assert len(fields) == 16
+        assert fields[-1] == "987.6"
+        assert fields[-2] == "LINESTRING(0 0, 0.5 0.5, 1 1)"
 
     def test_tsv_handles_none_flow_path(self):
         """TSV should use empty string for None flow path values."""
@@ -431,7 +440,11 @@ class TestFlowPathAggregation:
     """Tests for hydraulic_length_km in aggregate_stats."""
 
     def test_hydraulic_length_from_max_flow_dist(self):
-        """max(max_flow_dist_m) / 1000 = hydraulic_length_km."""
+        """hydraulic_length_km = (max(max_flow_dist_m) - baseline) / 1000.
+
+        Baseline is outlet_flow_dist_m[outlet_idx]; this fixture uses an
+        all-zero baseline, so the result reduces to max(max_flow_dist_m) / 1000.
+        """
         from core.catchment_graph import CatchmentGraph
 
         cg = CatchmentGraph()
@@ -451,9 +464,10 @@ class TestFlowPathAggregation:
         cg._strahler = np.array([1, 2, 3], dtype=np.int8)
         cg._max_flow_dist_m = np.array([5000.0, 8000.0, 12000.0], dtype=np.float64)
         cg._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
+        cg._outlet_flow_dist_m = np.zeros(3, dtype=np.float64)
 
         indices = np.array([0, 1, 2], dtype=np.int32)
-        stats = cg.aggregate_stats(indices)
+        stats = cg.aggregate_stats(indices, outlet_idx=2)
 
         assert stats["hydraulic_length_km"] == pytest.approx(12.0, rel=0.01)
 
@@ -477,9 +491,10 @@ class TestFlowPathAggregation:
         cg._strahler = np.array([1, 2], dtype=np.int8)
         cg._max_flow_dist_m = np.array([0.0, 0.0], dtype=np.float64)
         cg._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
+        cg._outlet_flow_dist_m = np.zeros(2, dtype=np.float64)
 
         indices = np.array([0, 1], dtype=np.int32)
-        stats = cg.aggregate_stats(indices)
+        stats = cg.aggregate_stats(indices, outlet_idx=0)
 
         assert stats["hydraulic_length_km"] is None
 
@@ -493,6 +508,20 @@ class TestFlowPathAggregation:
 
         assert cg.get_max_flow_dist_m(0) == pytest.approx(5000.0)
         assert cg.get_max_flow_dist_m(1) == pytest.approx(8000.0)
+
+    def test_get_outlet_flow_dist_m(self):
+        """Getter zwraca wartosc lub NaN gdy tablica nie zaladowana."""
+        import math
+
+        from core.catchment_graph import CatchmentGraph
+
+        cg = CatchmentGraph()
+        cg._loaded = True
+        cg._outlet_flow_dist_m = np.array([100.0, 250.0], dtype=np.float64)
+        assert cg.get_outlet_flow_dist_m(1) == pytest.approx(250.0)
+
+        cg._outlet_flow_dist_m = None
+        assert math.isnan(cg.get_outlet_flow_dist_m(0))
 
 
 class TestMorphometricFlowPathFields:

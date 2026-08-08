@@ -38,7 +38,8 @@ _FETCH_SIZE = 50_000
     _COL_HISTOGRAM,
     _COL_HYDRAULIC_LEN,
     _COL_FLOW_DIST,
-) = range(14)
+    _COL_OUTLET_DIST,
+) = range(15)
 
 
 class CatchmentGraph:
@@ -64,10 +65,15 @@ class CatchmentGraph:
         self._elev_mean: np.ndarray | None = None
         self._slope_mean: np.ndarray | None = None
         self._stream_length_km: np.ndarray | None = None
-        # Vestigial: fallback only when max_flow_dist_m = 0 for all nodes
+        # Legacy per-subcatchment absolute distance (== max_flow_dist_m/1000).
+        # Loaded for DB compatibility; NOT used by aggregate_stats — hydraulic
+        # length is computed from max_flow_dist_m and outlet_flow_dist_m (see
+        # aggregate_stats). Do not reintroduce as a fallback: absolute values
+        # caused the feedback-#11 bug.
         self._hydraulic_length_km: np.ndarray | None = None
         self._strahler: np.ndarray | None = None
         self._max_flow_dist_m: np.ndarray | None = None
+        self._outlet_flow_dist_m: np.ndarray | None = None
 
         # Per-segment data from stream_network (loaded separately)
         self._is_real_stream: np.ndarray | None = None
@@ -130,6 +136,7 @@ class CatchmentGraph:
         self._stream_length_km = None
         self._hydraulic_length_km = None
         self._max_flow_dist_m = None
+        self._outlet_flow_dist_m = None
         self._is_real_stream = None
         self._segment_length_km = None
         self._upstream_area_km2 = None
@@ -177,6 +184,7 @@ class CatchmentGraph:
         self._hydraulic_length_km = np.full(n, np.nan, dtype=np.float32)
         self._strahler = np.zeros(n, dtype=np.int8)
         self._max_flow_dist_m = np.full(n, 0.0, dtype=np.float64)
+        self._outlet_flow_dist_m = np.full(n, np.nan, dtype=np.float64)
         self._histograms = [None] * n
 
         # Edge lists for sparse matrix
@@ -194,7 +202,8 @@ class CatchmentGraph:
                 "downstream_segment_idx, elevation_min_m, elevation_max_m, "
                 "perimeter_km, stream_length_km, elev_histogram, "
                 "hydraulic_length_km, "
-                "COALESCE(max_flow_dist_m, 0) "
+                "COALESCE(max_flow_dist_m, 0), "
+                "outlet_flow_dist_m "
                 "FROM stream_catchments ORDER BY threshold_m2, segment_idx"
             )
 
@@ -233,6 +242,9 @@ class CatchmentGraph:
 
                     # max_flow_dist_m (COALESCE ensures 0 for NULL)
                     self._max_flow_dist_m[i] = r[_COL_FLOW_DIST]
+
+                    if r[_COL_OUTLET_DIST] is not None:
+                        self._outlet_flow_dist_m[i] = r[_COL_OUTLET_DIST]
 
                     # Register in lookup
                     self._lookup[(threshold, seg_idx)] = i
@@ -329,6 +341,7 @@ class CatchmentGraph:
                 self._hydraulic_length_km,
                 self._strahler,
                 self._max_flow_dist_m,
+                self._outlet_flow_dist_m,
                 self._is_real_stream,
                 self._segment_length_km,
                 self._upstream_area_km2,
@@ -346,6 +359,15 @@ class CatchmentGraph:
             f"Catchment graph loaded: {n:,} nodes, {n_edges:,} edges "
             f"in {elapsed:.1f}s ({total_mb:.1f} MB RAM)"
         )
+
+        n_missing_outlet = int(np.isnan(self._outlet_flow_dist_m).sum())
+        if n_missing_outlet > 0:
+            logger.warning(
+                "%d/%d catchments missing outlet_flow_dist_m — "
+                "hydraulic_length_km will use understating fallback; "
+                "run scripts/backfill_outlet_flow_dist.py",
+                n_missing_outlet, self._n,
+            )
 
         # Quick integrity check (set _loaded temporarily for verify_graph)
         self._loaded = True
@@ -443,6 +465,14 @@ class CatchmentGraph:
         if not self._loaded:
             raise RuntimeError("Catchment graph not loaded")
         return float(self._max_flow_dist_m[internal_idx])
+
+    def get_outlet_flow_dist_m(self, internal_idx: int) -> float:
+        """Flow distance [m] at the node's outlet point (NaN if not loaded)."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        if self._outlet_flow_dist_m is None:
+            return float("nan")
+        return float(self._outlet_flow_dist_m[internal_idx])
 
     def verify_graph(self, db: Session | None = None) -> dict:
         """Verify graph integrity. Returns diagnostic dict."""
@@ -555,6 +585,10 @@ class CatchmentGraph:
         ----------
         indices : np.ndarray
             Internal indices from traverse_upstream()
+        outlet_idx : int | None
+            Internal index of the watershed outlet node. Required to compute
+            hydraulic_length_km — without it the length cannot be anchored
+            to the selected watershed's outlet and is returned as None.
 
         Returns
         -------
@@ -570,6 +604,8 @@ class CatchmentGraph:
             - drainage_density_km_per_km2: total_stream_length / total_area
             - max_strahler_order: max
             - stream_frequency_per_km2: n_segments / total_area
+            - hydraulic_length_km: (max(max_flow_dist_m) -
+              outlet_flow_dist_m[outlet]) / 1000; None bez outlet_idx
         """
         areas = self._area_km2[indices]
         total_area = float(np.nansum(areas))
@@ -640,25 +676,22 @@ class CatchmentGraph:
 
         # Hydraulic length: max_flow_dist_m stores the cumulative distance
         # from each subcatchment's farthest cell to the GLOBAL basin outlet
-        # (from pyflwdir.stream_distance).  To get the flow path length
-        # within the SELECTED watershed, subtract the outlet's distance:
-        #   hydraulic_length = max(all_subcatchments) - outlet_flow_dist
+        # (from pyflwdir.stream_distance). The flow path length within the
+        # SELECTED watershed is that maximum minus the flow distance at the
+        # outlet POINT (outlet_flow_dist_m). Without outlet_idx the length
+        # cannot be computed correctly, so it is None.
         hydraulic_length_km = None
-        if self._max_flow_dist_m is not None:
+        if self._max_flow_dist_m is not None and outlet_idx is not None:
             flow_dists = self._max_flow_dist_m[indices]
             max_flow_dist = float(np.max(flow_dists)) if len(flow_dists) > 0 else 0.0
-            if outlet_idx is not None and max_flow_dist > 0:
-                outlet_flow_dist = float(self._max_flow_dist_m[outlet_idx])
-                relative_dist = max_flow_dist - outlet_flow_dist
-                if relative_dist > 0:
-                    hydraulic_length_km = relative_dist / 1000.0
-            elif max_flow_dist > 0:
-                # No outlet_idx — fall back to raw value (legacy callers)
-                hydraulic_length_km = max_flow_dist / 1000.0
-        if hydraulic_length_km is None:
-            hydraulic_lengths = self._hydraulic_length_km[indices]
-            valid_hl = hydraulic_lengths[~np.isnan(hydraulic_lengths)]
-            hydraulic_length_km = float(np.max(valid_hl)) if len(valid_hl) > 0 else None
+            if max_flow_dist > 0:
+                baseline = float("nan")
+                if self._outlet_flow_dist_m is not None:
+                    baseline = float(self._outlet_flow_dist_m[outlet_idx])
+                if np.isnan(baseline):
+                    # Un-backfilled data: understate (never inflate).
+                    baseline = float(self._max_flow_dist_m[outlet_idx])
+                hydraulic_length_km = max(0.0, max_flow_dist - baseline) / 1000.0
 
         return {
             "area_km2": round(total_area, 6),
