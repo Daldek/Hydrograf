@@ -67,6 +67,24 @@
 - Merge `feature/feedback` → develop, potem `feature/hydraulic-length` → develop (po decyzji użytkownika; smoke test przeglądarki z sesji 83 nadal zaległy).
 - Przebudowa dashboardu ruchu od zera (patrz `## Backlog` → Infrastruktura).
 
+### Poprzednia sesja (2026-08-02, sesja 83 — formularz feedbacku z opt-in diagnostyka sesji)
+
+### Co zrobiono
+- **Spec + plan** (`.superpowers/sdd/2026-08-02-feedback-form/`, poza repo) — 9 zadan subagent-driven, realizacja pozycji backlogu J1 w wersji rozszerzonej (diagnostyka sesji zamiast prostego formularza).
+- **feat(api) `21e832b`, `b9799a0`** — migracja Alembic 002: tabela `feedback` (id, created_at TIMESTAMPTZ, message TEXT CHECK 1-5000 znakow, contact TEXT CHECK <=200, page_url, user_agent, diagnostics JSONB, is_read BOOLEAN; indeks `idx_feedback_created_at` DESC), swiadomie BEZ adresu IP. `POST /api/feedback` (publiczny) — Pydantic `FeedbackRequest` z limitem 100 KB na `diagnostics`, `user_agent` z naglowka, jawny commit/rollback (pierwszy publiczny endpoint zapisujacy do bazy).
+- **feat(api) `49ed5b9`** — endpointy admina: `GET /api/admin/feedback` (items+total+unread_count), `POST /api/admin/feedback/{id}/read`, `DELETE /api/admin/feedback/{id}` za `X-Admin-Key`; CORS rozszerzony o DELETE.
+- **fix(docker) `9ade8f7`** — strefa `feedback_limit` 1r/m burst=5 na `location = /api/feedback` (`docker/nginx.conf` i `docker/nginx-ssl.conf.template`).
+- **feat(frontend) `2546a75`** — `frontend/js/diagnostics.js`: bufor 50 zdarzen (`map_click`/`mode_change`/`layer_change`/`api_call` z `X-Request-ID`/`js_error`) wylacznie w pamieci karty; `snapshot()` z pelna konfiguracja obszaru roboczego (mapa/tryb/zlewnia/parametry hydrogramu/linia profilu); wrapper `window.fetch` dla `/api/`.
+- **feat(frontend) `a797c36`** — `frontend/js/feedback.js` + modal "Zglos uwage" w navbarze (checkbox opt-in diagnostyki, domyslnie zaznaczony, z podgladem JSON), `submitFeedback` w `api.js`, guard Escape w `app.js`.
+- **feat(frontend) `4482074`** — panel `/admin`: sekcja "Zgloszenia testerow" (`admin-feedback.js` — rendering wylacznie `textContent`, XSS-safe; badge nieprzeczytanych; rozwijane szczegoly z osia czasu zdarzen; usuwanie z potwierdzeniem).
+- **Testy:** 20 nowych (7 unit schematow, 6 integracyjnych POST, 7 unit admin).
+- **docs (ten commit)** — opis tabeli `feedback` w DATA_MODEL.md, wpis CHANGELOG.md (Unreleased/Dodane), ADR-053 w DECISIONS.md, odhaczenie pozycji J1 w tym pliku.
+
+### Nastepne kroki
+- **Wdrozenie produkcyjne wymaga:** `alembic upgrade head` (migracja 002) + force-recreate kontenera nginx (nowa strefa `feedback_limit` w `docker/nginx.conf`/`docker/nginx-ssl.conf.template`).
+- **Manualny test w przegladarce** (modal "Zglos uwage" + panel admina, sekcja "Zgloszenia testerow") — nie byl mozliwy w srodowisku agentow (brak pelnego stacku/GUI w tej sesji).
+- Patrz sekcja `## Backlog` — priorytet: diagnoza hietogram/hydrogram "brak danych" (jedyny twardy bug z feedbacku Kamila, bez zmian w tej sesji).
+
 ### Poprzednia sesja (2026-07-31, sesja 81 — feedback testera Kamila, nomenklatura, naprawa DNS, konsolidacja backlogu)
 
 ### Co zrobiono
@@ -1006,7 +1024,7 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 
 #### J. Funkcjonalności użytkowe
 
-**J1. Formularz feedbacku zapisywany do bazy** (priorytet: niski)
+**J1. ✅ Formularz feedbacku zapisywany do bazy** (priorytet: niski) — zrealizowane w wersji rozszerzonej (diagnostyka sesji), sesja 83, 2026-08-02
 - Prosty formularz na stronie umożliwiający użytkownikom zgłaszanie uwag / błędów / sugestii.
 - Dane zapisywane do tabeli w PostgreSQL (np. `feedback`: id, message, email (opcjonalny), created_at, user_agent, page_url).
 - Endpoint `POST /api/feedback` z walidacją (max długość, rate limiting).

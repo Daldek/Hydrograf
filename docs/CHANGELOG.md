@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MVT tiles sieci kanalizacyjnej: `/api/tiles/sewer/{z}/{x}/{y}.pbf`
 - Warstwa overlay kanalizacji na mapie frontend (`sewer.js`, `admin-sewer.js`)
 - Integracja sewer burning w `process_dem.py` (kroki 3b i 4a-4c)
+- feat(api+frontend): formularz „Zgłoś uwagę" — POST /api/feedback, tabela feedback (migracja 002), modal na stronie głównej z opt-in diagnostyką sesji (dziennik 50 zdarzeń + konfiguracja obszaru roboczego), sekcja zgłoszeń w panelu /admin, rate limit nginx 1r/m
 
 ### Refaktoryzacja
 - **Przebudowa topologii kanalizacji (ADR-052)** — jawna topologia definiowana przez uzytkownika zamiast automatycznej detekcji (snapping, kaskada kierunkow, heurystyczna detekcja outletow). Usunieto ~530 linii heurystycznego kodu z sewer_service.py

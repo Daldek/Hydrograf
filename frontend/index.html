@@ -29,7 +29,10 @@
     <!-- Navbar -->
     <nav class="navbar navbar-dark navbar-glass px-3">
         <span class="navbar-brand mb-0 h1">Hydrograf</span>
-        <span class="navbar-text d-none d-md-inline" id="system-status" aria-live="polite"></span>
+        <div class="d-flex align-items-center gap-3">
+            <span class="navbar-text d-none d-md-inline" id="system-status" aria-live="polite"></span>
+            <button type="button" id="feedback-open-btn" class="btn btn-outline-secondary btn-sm">Zgłoś uwagę</button>
+        </div>
     </nav>
 
     <!-- Full-screen map -->
@@ -317,6 +320,45 @@
         </div>
     </div>
 
+    <!-- Feedback modal -->
+    <div class="modal fade" id="feedback-modal" tabindex="-1" aria-labelledby="feedback-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="feedback-modal-label">Zgłoś uwagę</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="feedback-message" class="form-label">Opis problemu lub sugestii</label>
+                        <textarea id="feedback-message" class="form-control" rows="5" maxlength="5000"
+                                  placeholder="Opisz co się stało lub co można poprawić..."></textarea>
+                        <div class="form-text text-end"><span id="feedback-char-count">0</span>/5000</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="feedback-contact" class="form-label">Imię lub email (opcjonalnie)</label>
+                        <input type="text" id="feedback-contact" class="form-control" maxlength="200">
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="feedback-diagnostics" checked>
+                        <label class="form-check-label small" for="feedback-diagnostics">
+                            Dołącz dane diagnostyczne (ostatnie akcje w aplikacji, błędy, parametry zapytań)
+                        </label>
+                    </div>
+                    <details class="mb-2">
+                        <summary class="small text-secondary">Pokaż co zostanie wysłane</summary>
+                        <pre id="feedback-diagnostics-preview" class="small mt-2"></pre>
+                    </details>
+                    <div id="feedback-status" class="small d-none" role="status"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
+                    <button type="button" id="feedback-submit-btn" class="btn btn-primary btn-sm">Wyślij</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Leaflet 1.9.4 JS -->
     <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
@@ -338,6 +380,7 @@
             crossorigin="anonymous"></script>
 
     <!-- Application modules -->
+    <script defer src="js/diagnostics.js"></script>
     <script defer src="js/api.js"></script>
     <script defer src="js/map.js"></script>
     <script defer src="js/draggable.js"></script>
@@ -347,6 +390,7 @@
     <script defer src="js/hydrograph.js"></script>
     <script defer src="js/depressions.js"></script>
     <script defer src="js/sewer.js"></script>
+    <script defer src="js/feedback.js"></script>
     <script defer src="js/app.js"></script>
 </body>
 </html>

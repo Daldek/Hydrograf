@@ -1178,3 +1178,21 @@ Dodatkowe zmiany:
 - (+) Pipeline dwufazowy zapobiega masked errors (petla fdir wykrywana przed sewer burning)
 - (-) Wieksze wymagania wobec danych wejsciowych — uzytkownik musi dostarczyc jawna topologie
 - (-) Nowy modul do utrzymania (sewer_topology.py)
+
+---
+
+## ADR-053: Feedback testerow z opt-in diagnostyka po stronie klienta
+
+**Data:** 2026-08-02
+**Status:** Przyjeta
+
+**Kontekst:** Feedback mailowy nie zawiera danych pozwalajacych odtworzyc problem (bug „brak danych" hietogram/hydrogram — sesja 81). Potrzeba formularza w aplikacji dla nowych testerow, ktory pozwoli powiazac zgloszenie z faktycznym stanem sesji.
+
+**Decyzja:** Bufor 50 ostatnich zdarzen (`map_click`, `mode_change`, `layer_change`, `api_call`, `js_error`) wylacznie w pamieci karty przegladarki — bez trwalego zapisu lokalnego. Wysylka danych diagnostycznych TYLKO po jawnej akcji uzytkownika: checkbox opt-in (domyslnie zaznaczony) z podgladem pelnego payloadu JSON przed wyslaniem. Limit rozmiaru pakietu diagnostycznego 100 KB. Nowa tabela `feedback` (migracja 002) swiadomie BEZ adresu IP zglaszajacego — minimalizacja danych osobowych. Zdarzenia `api_call` niosa `X-Request-ID`, co pozwala powiazac zgloszenie z logami backendu bez przechowywania IP. Rendering zgloszen w panelu admina wylacznie przez `textContent` (ochrona przed stored XSS z tresci zgloszenia). Rate limit nginx 1r/m burst=5 na `POST /api/feedback`.
+
+**Konsekwencje:**
+- (+) Odtwarzalnosc sesji testera bez koniecznosci kontaktu zwrotnego
+- (+) Brak telemetrii biernej — zero danych bez jawnej zgody uzytkownika
+- (+) Powiazanie zgloszenia z logami backendu przez `X-Request-ID`, bez przechowywania IP
+- (-) Pierwszy publiczny endpoint zapisujacy do bazy — wymaga jawnego `commit`/`rollback` (dotychczasowe publiczne endpointy byly wylacznie odczytowe)
+- (-) Rendering w adminie musi pozostac zdyscyplinowany (`textContent`) przy kazdej przyszlej zmianie — tresc zgloszenia pochodzi od anonimowego uzytkownika
