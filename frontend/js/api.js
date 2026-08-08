@@ -198,6 +198,23 @@
         return data;
     }
 
+    /**
+     * Submit user feedback.
+     *
+     * @param {Object} payload - { message, contact, page_url, diagnostics }
+     * @returns {Promise<Object>} { id, status }
+     */
+    async function submitFeedback(payload) {
+        const response = await fetch('/api/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
     window.Hydrograf.api = {
         checkHealth: checkHealth,
         getTerrainProfile: getTerrainProfile,
@@ -205,5 +222,6 @@
         getScenarios: getScenarios,
         getDepressions: getDepressions,
         delineateWatershed: delineateWatershed,
+        submitFeedback: submitFeedback,
     };
 })();

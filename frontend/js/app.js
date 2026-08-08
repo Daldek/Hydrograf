@@ -238,6 +238,10 @@
      * Handle map click with 300ms debounce.
      */
     function onMapClick(lat, lng) {
+        if (Hydrograf.diagnostics) {
+            Hydrograf.diagnostics.log('map_click', { lat: lat, lng: lng, mode: state.clickMode });
+        }
+
         if (state.isLoading) return;
 
         // Browse mode — do nothing
@@ -435,6 +439,9 @@
      */
     function setClickMode(mode) {
         state.clickMode = mode;
+        if (Hydrograf.diagnostics) {
+            Hydrograf.diagnostics.log('mode_change', { mode: mode });
+        }
 
         // Update button classes
         var btnBrowse = document.getElementById('mode-browse');
@@ -540,6 +547,9 @@
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
 
+            // Bootstrap modal open — let Bootstrap handle Escape alone
+            if (document.querySelector('.modal.show')) return;
+
             // Drawing check FIRST — cancel active drawing and stop
             if (Hydrograf.map && Hydrograf.map.isDrawing && Hydrograf.map.isDrawing()) {
                 Hydrograf.map.cancelDrawing();
@@ -607,6 +617,11 @@
             Hydrograf.depressions.init();
         }
 
+        // Init feedback module
+        if (Hydrograf.feedback) {
+            Hydrograf.feedback.init();
+        }
+
         checkSystemHealth();
     }
 
@@ -616,6 +631,7 @@
         init: init,
         getCurrentWatershed: getCurrentWatershed,
         getClickCoords: function () { return { lat: state.clickLat, lng: state.clickLng }; },
+        getClickMode: function () { return state.clickMode; },
         showPanel: showPanel,
     };
 })();

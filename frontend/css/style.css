@@ -557,3 +557,22 @@
     background: rgba(0, 0, 0, 0.03);
     border-radius: 6px;
 }
+
+/* ============ FEEDBACK MODAL ============ */
+#feedback-modal {
+    z-index: 1200; /* above navbar (1100) and floating panels (1050) */
+}
+
+.modal-backdrop {
+    z-index: 1150;
+}
+
+#feedback-diagnostics-preview {
+    max-height: 200px;
+    overflow: auto;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    padding: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}

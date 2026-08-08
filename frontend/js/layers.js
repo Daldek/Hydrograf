@@ -11,6 +11,8 @@
 
     var currentBaseLayer = null;
     var baseLayers = {};
+    var currentBaseLayerName = 'osm';
+    var _overlayRegistry = [];
 
     /**
      * Create a group header element.
@@ -58,6 +60,11 @@
      * Switch base layer. Pass 'none' to disable all base layers.
      */
     function setBaseLayer(name) {
+        currentBaseLayerName = name;
+        if (window.Hydrograf.diagnostics) {
+            Hydrograf.diagnostics.log('layer_change', { baseLayer: name });
+        }
+
         var map = Hydrograf.map._getMap();
         if (!map) return;
 
@@ -121,6 +128,8 @@
         sliderRow.appendChild(sliderValue);
         item.appendChild(sliderRow);
 
+        _overlayRegistry.push({ label: label, cb: cb });
+
         cb.addEventListener('change', function () {
             var layer = getLayer();
             if (!layer) return;
@@ -130,6 +139,9 @@
             } else {
                 Hydrograf.map._getMap().removeLayer(layer);
                 sliderRow.classList.add('d-none');
+            }
+            if (window.Hydrograf.diagnostics) {
+                Hydrograf.diagnostics.log('layer_change', { layer: label, visible: cb.checked });
             }
         });
 
@@ -181,6 +193,8 @@
         sliderRow.appendChild(sliderValue);
         item.appendChild(sliderRow);
 
+        _overlayRegistry.push({ label: label, cb: cb });
+
         cb.addEventListener('change', function () {
             var mapObj = Hydrograf.map._getMap();
             if (cb.checked) {
@@ -201,6 +215,9 @@
                 }
                 sliderRow.classList.add('d-none');
                 if (onHide) onHide();
+            }
+            if (window.Hydrograf.diagnostics) {
+                Hydrograf.diagnostics.log('layer_change', { layer: label, visible: cb.checked });
             }
         });
 
@@ -233,6 +250,7 @@
      * Create a streams layer entry with checkbox, threshold selector, and opacity slider.
      */
     function addStreamsEntry(list, availableThresholds) {
+        var label = 'Linie spływu';
         var item = document.createElement('div');
         item.className = 'layer-item';
 
@@ -241,7 +259,7 @@
         headerRow.className = 'layer-header';
         var cb = document.createElement('input');
         cb.type = 'checkbox';
-        var text = document.createTextNode(' Linie spływu');
+        var text = document.createTextNode(' ' + label);
         var zoomBtn = document.createElement('button');
         zoomBtn.className = 'layer-zoom-btn';
         zoomBtn.title = 'Przybliż do zasięgu';
@@ -302,6 +320,8 @@
         controlsRow.appendChild(sliderWrap);
         item.appendChild(controlsRow);
 
+        _overlayRegistry.push({ label: label, cb: cb });
+
         cb.addEventListener('change', function () {
             var map = Hydrograf.map._getMap();
             var layer;
@@ -320,6 +340,9 @@
                 }
                 controlsRow.classList.add('d-none');
                 Hydrograf.map.removeStreamsLegend();
+            }
+            if (window.Hydrograf.diagnostics) {
+                Hydrograf.diagnostics.log('layer_change', { layer: label, visible: cb.checked });
             }
         });
 
@@ -482,5 +505,11 @@
         init: init,
         addOverlayEntry: addOverlayEntry,
         createGroupHeader: createGroupHeader,
+        getBaseLayerName: function () { return currentBaseLayerName; },
+        getActiveOverlays: function () {
+            return _overlayRegistry
+                .filter(function (entry) { return entry.cb.checked; })
+                .map(function (entry) { return entry.label; });
+        },
     };
 })();
