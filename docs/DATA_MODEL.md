@@ -371,7 +371,9 @@ CREATE TABLE stream_catchments (
     max_flow_dist_m DOUBLE PRECISION,            -- odległość najdalszej komórki do globalnego ujścia [m]
     longest_flow_path_geom GEOMETRY(LINESTRING, 2180), -- geometria najdłuższej ścieżki spływu
     -- Nowa kolumna (migracja 024):
-    divide_flow_path_geom GEOMETRY(LINESTRING, 2180)   -- geometria ścieżki spływu z działu wód (granica zlewni → ujście)
+    divide_flow_path_geom GEOMETRY(LINESTRING, 2180),  -- geometria ścieżki spływu z działu wód (granica zlewni → ujście)
+    -- Nowa kolumna (migracja 003, 2026-08-02, ADR-054):
+    outlet_flow_dist_m DOUBLE PRECISION           -- odległość spływu w punkcie ujścia podzlewni [m] (baza dla hydraulic_length_km)
 );
 
 -- Indeksy
@@ -415,6 +417,12 @@ CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom)
 | Kolumna | Typ | Nullable | Opis |
 |---------|-----|----------|------|
 | `divide_flow_path_geom` | GEOMETRY(LINESTRING, 2180) | YES | Geometria ścieżki spływu z działu wód (granica zlewni → ujście) |
+
+**Nowa kolumna (migracja 003, ADR-054) — baza dla hydraulic_length_km:**
+
+| Kolumna | Typ | Nullable | Opis |
+|---------|-----|----------|------|
+| `outlet_flow_dist_m` | DOUBLE PRECISION | YES | Odległość spływu w punkcie ujścia podzlewni [m], próbkowana z `stream_distance.tif` (`pyflwdir.stream_distance()`). Naprawia `hydraulic_length_km`: `(max(max_flow_dist_m[indices]) − outlet_flow_dist_m[outlet]) / 1000` zamiast bezwzględnej odległości do ujścia całego basenu (feedback testera #11, ADR-054). Backfill istniejących wierszy: `scripts/backfill_outlet_flow_dist.py` |
 
 **Format `elev_histogram`:** stały interwał 1m, klucze: `base_m` (dolna granica najniższego binu), `interval_m` (zawsze 1), `counts` (tablica liczności per bin). Mergowalny — histogramy na wspólnej osi bezwzględnej, agregacja = suma z offset.
 
