@@ -47,7 +47,41 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-08-08 (sesja 85 — całkowite wycofanie dashboardu ruchu: restrukturyzacja gałęzi, merge, reset usługi)
+**Data:** 2026-08-10 (sesja 88 — regeneracja danych: Kotlina Kłodzka, bez progu 1000)
+
+### Co zrobiono
+- **Diagnoza padu bootstrapu z 2026-08-10 17:19** (bbox `16.190–17.049°E, 50.070–50.467°N`, 560 arkuszy, 5m): proces zabity przez OOM killer w cgroupie kontenera `hydro_api` (limit 8G; `memory.peak` = limit, `oom_kill: 1` w `/sys/fs/cgroup/memory.events`) podczas polygonizacji 872 064 podzlewni progu 1000 m² na rastrze 113M komórek. 233/560 arkuszy bez pokrycia 5m (strona czeska, EVRF2007) — normalne dla bboxu przygranicznego.
+- **Ponowny przebieg bez progu 1000** (drabinka retry ×3 z przesuwaniem progów o rząd wielkości nie była potrzebna — próba 1 udana): progi `[10000, 100000]`, ten sam bbox. Czas 7411 s (~2h04), wszystkie kroki ✓: 328/560 arkuszy (pobieranie z cache 171 s), 59,5M komórek w obszarze, 83 320 segmentów, landcover 59 713 obiektów (3 powiaty), HSG 58 poligonów, opady 690 punktów / 146 880 rekordów, 207 029 depresji, MVT OK, overlaye + 13 777 kafli DEM (150 MB). CatchmentGraph przeładowany automatycznie.
+- **`DEFAULT_THRESHOLD_M2` 1000 → 10000** (`core/constants.py`) — hydrogram i domyślna delineacja precomputed muszą celować w najniższy istniejący próg. Hardcode progów w `bootstrap.py:540` zmieniony był tylko na czas przebiegu i wycofany (decyzja usera: edycja jednorazowa).
+- **Weryfikacja usługi (finał sesji = działająca usługa):** `/health` 200; delineacja precomputed + precise OK (punkt k. Kłodzka); hydrogram pełny (SCS-CN, kompletna morfometria, area 0.06 km², CN 78); MVT streams (oba progi) / catchments / landcover z realnymi payloadami; `/api/tiles/thresholds` → `[10000, 100000]`; `dem.png` + frontend OK. Testy: **1165 passed** + znany fail środowiskowy (`test_select_stream`, brak DB na localhost).
+
+### Nastepne kroki
+- Rozważyć flagę `--thresholds` w `bootstrap.py` + pole w API admina (dziś progi hardcodowane w wywołaniu `process_dem` — bootstrap.py:540).
+- Docstring `watershed.py` (linia 6) nadal mówi „BFS at 1000m²" dla trybu precise — kod używa `DEFAULT_THRESHOLD_M2`, docstring do poprawki przy okazji.
+- (Zaległe): smoke test przeglądarki feedbacku; decyzja o pushu na origin; wdrożenie planów bezpieczeństwa s87 (kolejność D → C → F+G → E1…).
+
+### Poprzednia sesja (2026-08-08, sesja 86 — audyt bezpieczeństwa całej publicznej powierzchni ataku + specyfikacja utwardzenia)
+
+### Co zrobiono
+- **Krytyczny bypass auth admina naprawiony** (wcześniejsza część sesji): `expected_key` jako query param → pełny bypass `/api/admin/*` z internetu. Fix `d7f6bd7` (`verify_admin_key` tylko `Header` + `_check_admin_key`/`_resolve_expected_key` + `secrets.compare_digest`), merge `fc6e2f2`, CHANGELOG `81312e7`. Zweryfikowany jako **kompletny** (12/12 testów, 0 ekspozycji w openapi). Raport: `notes/reports/2026-08-08-admin-security-audit.md`.
+- **Niezależna weryfikacja raportu + audyt CAŁEJ publicznej powierzchni** (wieloagentowy Sonnet+Opus, workflow `wf_e9deb538-b24` / task `wodolg6s7`, 16 agentów): potwierdzono znaleziska raportu z korektami (**#4 LOW→MEDIUM** drugi wektor arbitrary-file-read; **#6 teza „brak sinka XSS" BŁĘDNA** — sink w `admin-sewer.js`; **#2 realnie aktywny**), wykryto **braki raportu**: **3× HIGH nieuwierzytelniony DoS** (delineacja precise bez limitu obszaru; kafle `2**z`; brak zoom-floor+`statement_timeout` na 3 trasach kaflowych) + MEDIUM (real_ip za tunelem, `worker_processes`/`limit_conn`, hasło DB w env, supply-chain git tagi, DoS panelu feedbacku). Sweep potwierdził **BRAK SQLi, BRAK anonimowego SSRF, brak sekretów w logach**.
+- **Specyfikacja utwardzenia zapisana:** `notes/superpowers/specs/2026-08-08-public-security-hardening-spec.md` — 9 obszarów, każde znalezisko z wymaganiem naprawy (kryterium akceptacji) + wymaganiem testu, priorytetyzacją i zależnościami. To SPEC, **nie plan** — zgodnie z decyzją użytkownika niczego nie wdrażano.
+
+### Decyzje ramowe (użytkownik, sesja 86)
+- Zakres: cała publiczna powierzchnia ataku (nie tylko admin z raportu).
+- **Dwa tory:** ta spec = pilne utwardzenie niezależne od modelu auth, forward-compatible; **system kont użytkowników + RBAC = OSOBNY przyszły projekt** (zastąpi klucz admina i localStorage).
+- **Postura interim: BEZ bramki admina** — naprawa bugów + rate-limit + mocny klucz (zgodne z „public for now"). Panel admina świadomie osiągalny z internetu do czasu kont.
+
+### Wpływ na przyszły dashboard ruchu
+- **E1 (real_ip za tunelem) jest de facto prerekwizytem** przebudowy dashboardu: dziś `access_log` zapisuje IP tunelu dla całego ruchu z internetu → analiza per-IP ślepa. Po E1 logi niosą realny IP klienta (rozwiązuje pułapkę „realip" już odnotowaną pod rebuild). Do zaplanowania w projekcie dashboardu: anonimizacja/retencja IP (RODO), jawny `log_format` razem z real_ip, wzrost udziału 429/503 w logach (by design).
+
+### Nastepne kroki
+- **Kolejna sesja: napisanie planu naprawy** na podstawie specyfikacji (skill writing-plans) — decyzja użytkownika.
+- Do potwierdzenia na żywym stacku przed naprawą: **E9** (`/docs`/`openapi.json` — sprzeczność audytorów, jeden `curl`); pomiary kosztu delineacji precise i kafli niskiego zoomu.
+- Kolejność napraw wg spec: najpierw 3× HIGH DoS, potem E1 (real_ip), potem MEDIUM, na końcu LOW/INFO.
+- (Zaległe z wcześniejszych sesji): smoke test przeglądarki feedbacku; decyzja o pushu na origin.
+
+### Poprzednia sesja (2026-08-08, sesja 85 — całkowite wycofanie dashboardu ruchu: restrukturyzacja gałęzi, merge, reset usługi)
 
 ### Co zrobiono
 - **Decyzja użytkownika:** dashboard ruchu (sesje 82 i 84: kontener GoAccess, dashboard `/traffic/`, proxy WebSocket `/ws`, Basic Auth, ograniczenie LAN-only, anonimizacja logów nginx, real IP z `CF-Connecting-IP`, rotacja logów, ADR-055/056) wycofany W CAŁOŚCI — do przebudowy od zera. Żaden z wycofanych commitów nie był wypchnięty na origin.
@@ -1203,8 +1237,9 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 
 ### Bledy i diagnozy
 
+- [ ] **Utwardzenie bezpieczeństwa publicznej powierzchni ataku** — specyfikacja: `notes/superpowers/specs/2026-08-08-public-security-hardening-spec.md` (sesja 86; weryfikacja raportu `notes/reports/2026-08-08-admin-security-audit.md` + niezależny audyt całej powierzchni). 9 obszarów; następny krok = plan (writing-plans). **Priorytet KRYTYCZNY: 3× HIGH nieuwierzytelniony DoS z internetu** — delineacja precise bez limitu obszaru (OOM), kafle `2**z` bez walidacji zoomu (OOM), brak zoom-floor+`statement_timeout` na streams/catchments/landcover (wysycenie puli DB); wzorzec naprawy jest już w kodzie (endpoint sewer odporny). Dalej: **E1 real_ip za tunelem** (prerekwizyt rate-limitu i dashboardu ruchu), containment `sewer_source`/`--waterbody-mode`, precedencja `ADMIN_API_KEY_FILE`, hasło DB w env kontenera, supply-chain (git tagi→SHA), DoS panelu feedbacku, + LOW/INFO. Decyzje: dwa tory (konta osobno), BEZ bramki admina interim. Krytyczny bypass `expected_key` już naprawiony (`d7f6bd7`).
 - [ ] Hietogram i hydrogram — "brak danych" wszedzie, gdzie klikal tester (feedback Kamila 2026-07; jedyny twardy bug zgloszenia). Dane pokrywaja testowany obszar (Warszawa), wiec to nie kwestia zasiegu — wymaga diagnozy (dane opadowe? endpoint? frontend?). Priorytet: wysoki.
-- [ ] Cztery lokacje nginx (regex `.css/.js`, `.pbf/.geojson`, `^~ /data/`, `^~ /tiles/`) nadpisują własnym `add_header` dziedziczone nagłówki bezpieczeństwa (CSP, X-Frame-Options, Referrer-Policy) — `add_header` w bloku location kasuje wszystkie z poziomu server. Znalezione przy review sesji 84; niezależne od wycofanego dashboardu, dotyczy obu configów. Priorytet: średni.
+- [ ] Cztery lokacje nginx (regex `.css/.js`, `.pbf/.geojson`, `^~ /data/`, `^~ /tiles/`) nadpisują własnym `add_header` dziedziczone nagłówki bezpieczeństwa (CSP, X-Frame-Options, Referrer-Policy) — `add_header` w bloku location kasuje wszystkie z poziomu server. Znalezione przy review sesji 84; niezależne od wycofanego dashboardu, dotyczy obu configów. Priorytet: średni. → **ujęte w specyfikacji utwardzenia jako E3** (podniesione do MEDIUM; sesja 86).
 - [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
 - [ ] Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
 - [ ] Wolne kafle landcover MVT na niskich zoomach: `/api/tiles/landcover/{z}/{x}/{y}.pbf` przy zoom 11-12 do 6.7 s (72 zadania >2 s w sesji testowej 2026-08-01, monitoring sesja 82) — prawdopodobnie kosztowne zapytanie przestrzenne przy pierwszym ladowaniu warstwy (zimny cache). Do diagnozy: EXPLAIN ANALYZE zapytania MVT na niskim zoomie, ew. cache/preagregacja. Priorytet: sredni.
@@ -1249,7 +1284,7 @@ Wizja (brainstorm 2026-07-31, pelne uzasadnienia: `notes/plans/2026-07-31-wlasne
 
 ### Infrastruktura i jakosc kodu
 
-- [ ] Dashboard ruchu — przebudowa od zera (poprzednia implementacja GoAccess z sesji 82/84 wycofana w całości w sesji 85; kod referencyjny w gałęzi `backup/develop-pre-cleanup`, decyzje ADR-055/056 tylko w starej historii). Przed startem: brainstorming wymagań z użytkownikiem.
+- [ ] Dashboard ruchu — przebudowa od zera (poprzednia implementacja GoAccess z sesji 82/84 wycofana w całości w sesji 85; kod referencyjny w gałęzi `backup/develop-pre-cleanup`, decyzje ADR-055/056 tylko w starej historii). Przed startem: brainstorming wymagań z użytkownikiem. **Zależność: E1 (real_ip za tunelem) ze specyfikacji utwardzenia jest prerekwizytem** — bez niego logi zapisują IP tunelu, analiza per-IP ślepa; `log_format` definiować razem z real_ip; decyzja anonimizacja/retencja IP (RODO).
 - [ ] Migracja bind mountow na named volumes Docker (`./data`, `./cache`, `./frontend/data`, `./frontend/tiles`) — w obecnym ksztalcie kazda zmiana engine ryzykuje powtorke EPERM z sesji 80. Priorytet: sredni.
 - [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
