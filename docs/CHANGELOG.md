@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integracja sewer burning w `process_dem.py` (kroki 3b i 4a-4c)
 - feat(api+frontend): formularz „Zgłoś uwagę" — POST /api/feedback, tabela feedback (migracja 002), modal na stronie głównej z opt-in diagnostyką sesji (dziennik 50 zdarzeń + konfiguracja obszaru roboczego), sekcja zgłoszeń w panelu /admin, rate limit nginx 1r/m
 
+### Zmienione
+- `DEFAULT_THRESHOLD_M2` 1000 → 10000 (`core/constants.py`) — regeneracja danych (Kotlina Kłodzka, 2026-08-10) wykluczyła próg 1000 m² po OOM przy polygonizacji 872 tys. podzlewni na rastrze 113M komórek (limit kontenera 8G); hydrogram i domyślna delineacja celują teraz w najniższy istniejący próg
+
 ### Refaktoryzacja
 - **Przebudowa topologii kanalizacji (ADR-052)** — jawna topologia definiowana przez uzytkownika zamiast automatycznej detekcji (snapping, kaskada kierunkow, heurystyczna detekcja outletow). Usunieto ~530 linii heurystycznego kodu z sewer_service.py
 - **Nowy modul `core/sewer_topology.py`** — parser + walidator topologii (ParsedTopology, parse_sewer_topology, validate_against_fdir). 11 regul walidacji + detekcja petli fdir
