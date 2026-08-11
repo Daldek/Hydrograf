@@ -16,7 +16,7 @@
 | Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). Jawna topologia (ADR-052), walidacja strict, 2-fazowy pipeline. MVT tiles, overlay frontend, admin panel sewer. |
 | Frontend | 🔶 Faza 4+ gotowa | 15 modulow JS (10 core + 5 admin). Sewer overlay + admin-sewer. |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie, Kanalizacja (ADR-034, ADR-051) |
-| Testy | ✅ Gotowy | 1063 testow (1056 unit + 7 integration), 0 failures |
+| Testy | ✅ Gotowy | 1165 passed (sesja 88) + znany fail środowiskowy (test_select_stream, brak DB na localhost) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
 
 ## Checkpointy
@@ -1285,6 +1285,7 @@ Wizja (brainstorm 2026-07-31, pelne uzasadnienia: `notes/plans/2026-07-31-wlasne
 ### Infrastruktura i jakosc kodu
 
 - [ ] Dashboard ruchu — przebudowa od zera (poprzednia implementacja GoAccess z sesji 82/84 wycofana w całości w sesji 85; kod referencyjny w gałęzi `backup/develop-pre-cleanup`, decyzje ADR-055/056 tylko w starej historii). Przed startem: brainstorming wymagań z użytkownikiem. **Zależność: E1 (real_ip za tunelem) ze specyfikacji utwardzenia jest prerekwizytem** — bez niego logi zapisują IP tunelu, analiza per-IP ślepa; `log_format` definiować razem z real_ip; decyzja anonimizacja/retencja IP (RODO).
+- [ ] Flaga `--thresholds` w `bootstrap.py` + pole w API/panelu admina — dziś progi akumulacji są hardcodowane w wywołaniu `process_dem` (`bootstrap.py:540`), choć sam `process_dem.py` ma flagę `--thresholds`. Kontekst (sesja 88): przy bboxie Kotliny Kłodzkiej (113M komórek) próg 1000 m² powoduje OOM (polygonizacja 872k podzlewni > limit 8G) — dane wygenerowano progami [10000, 100000] przez jednorazową edycję hardcode'u; ponowny bootstrap z domyślną listą znów wpadnie w OOM. Po dodaniu flagi: `DEFAULT_THRESHOLD_M2` (`core/constants.py`) musi być zawsze równy najniższemu progowi w danych. Priorytet: sredni.
 - [ ] Migracja bind mountow na named volumes Docker (`./data`, `./cache`, `./frontend/data`, `./frontend/tiles`) — w obecnym ksztalcie kazda zmiana engine ryzykuje powtorke EPERM z sesji 80. Priorytet: sredni.
 - [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
