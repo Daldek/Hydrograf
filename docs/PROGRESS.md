@@ -47,7 +47,20 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-08-10 (sesja 88 — regeneracja danych: Kotlina Kłodzka, bez progu 1000)
+**Data:** 2026-08-19 (sesja 89 — research wykonalności pakietu Hydraulik: SFINCS/HydroMT-SFINCS)
+
+### Co zrobiono
+- **Czysta praca badawcza, zero kodu** (decyzja usera): badanie integracji modelu hydraulicznego 2D (Deltares SFINCS + HydroMT-SFINCS) jako czwartego pakietu rodziny („Hydraulik"). Cztery rundy subagentów Opus: (1) silnik SFINCS + builder HydroMT-SFINCS + mapa punktów integracji w Hydrografie, (2) siatka zmiennorozdzielcza (subgrid/quadtree) i tryb per-zlewnia z mozaiką wyników po max, (3) ograniczenia rain-on-grid, brak batymetrii NMT, założenie „zwierciadło NMT = stan odniesienia", (4) hydrogramy w zlewniach niekontrolowanych (metodyka SHP/KZGW 2020, korekta DCT, benchmarki Kłodzko 1997/2024).
+- **Wniosek: integracja wykonalna i dobrze dopasowana do danych rodziny** (NMT 5 m, land_cover, HSG, PMAXTP, hydrogramy z `/api/generate-hydrograph` jako forcing 1:1). Główne ryzyka: skuteczność w małych stromych zlewniach (CSI 0.29 <50 km²), licencja GPL-3.0 hydromt_sfincs, przejście hydromt v1→v2, brak danych Manninga w Hydrografie, architektura uruchamiania silnika (kontener API read_only, bez socketa Dockera).
+- **Decyzje kierunkowe usera:** cel główny = powodzie błyskawiczne w górach; CN bez recovery, bez przepływu bazowego; korekta batymetrii DCT (pomijalna numerycznie: SNq ~5 l/s/km² vs pik Q1% ~4 m³/s/km²); MVP = siatka jednolita + subgrid, model per zlewnia.
+- **Utworzono projekt `../Hydraulik`** — szkielet wg schematu rodziny (CLAUDE.md, README, docs/PROGRESS.md, docs/research/, hydraulik/, tests/), git init na `main` bez commitów; celowo bez LICENSE (kwestia GPL nierozstrzygnięta) i bez pyproject (brak kodu). Raport kanoniczny: `Hydraulik/docs/research/2026-08-19-hydromt-sfincs-integracja-research.md` (kopia robocza: `notes/reports/2026-08-19-hydraulik-sfincs-research.md`).
+
+### Nastepne kroki
+- **Dalsza praca nad Hydraulikiem = dedykowany agent w repo `../Hydraulik`** (decyzja usera) — tam brainstorming → specyfikacja (`docs/superpowers/specs/`).
+- Po stronie Hydrografa (dopiero gdy Hydraulik dojrzeje): tabela Manninga BDOT→n (wartości „overland"), rasteryzacja `land_cover` do 5 m, endpointy/joby scenariuszy, prezentacja map zalania (kafle XYZ / PNG overlay).
+- (Zaległe bez zmian): flaga `--thresholds` w bootstrapie; docstring `watershed.py`; smoke test feedbacku; decyzja o pushu; wdrożenie planów bezpieczeństwa s87 (kolejność D → C → F+G → E1…).
+
+### Poprzednia sesja (2026-08-10, sesja 88 — regeneracja danych: Kotlina Kłodzka, bez progu 1000)
 
 ### Co zrobiono
 - **Diagnoza padu bootstrapu z 2026-08-10 17:19** (bbox `16.190–17.049°E, 50.070–50.467°N`, 560 arkuszy, 5m): proces zabity przez OOM killer w cgroupie kontenera `hydro_api` (limit 8G; `memory.peak` = limit, `oom_kill: 1` w `/sys/fs/cgroup/memory.events`) podczas polygonizacji 872 064 podzlewni progu 1000 m² na rastrze 113M komórek. 233/560 arkuszy bez pokrycia 5m (strona czeska, EVRF2007) — normalne dla bboxu przygranicznego.
