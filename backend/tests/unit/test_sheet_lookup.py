@@ -1,23 +1,24 @@
 """Tests for utils/sheet_lookup.py: NMT sheet lookup for a point via Kartograf.
 
-utils/sheet_finder.py reimplemented the Polish map-sheet (godlo) math and was
-wrong at 1:10000: it split a 1:25000 sheet into 2 rows x 4 cols instead of
-Kartograf/GUGiK's nested 2x2 subdivision. sheets_for_point_buffer() replaces
-it by delegating to kartograf.find_sheets_for_bbox().
+The removed local godlo-math implementation reimplemented the Polish
+map-sheet (godlo) subdivision and was wrong at 1:10000: it split a 1:25000
+sheet into 2 rows x 4 cols instead of Kartograf/GUGiK's nested 2x2
+subdivision. sheets_for_point_buffer() replaces it by delegating to
+kartograf.find_sheets_for_bbox().
 
 Verified divergence: for bbox lat 52.40-52.42, lon 16.90-16.93, the old
-sheet_finder returned N-33-130-D-b-2-1..2-3 / N-33-130-D-d-1-1..1-3, while
-Kartograf's find_sheets_for_bbox() returns sheets including
+local implementation returned N-33-130-D-b-2-1..2-3 / N-33-130-D-d-1-1..1-3,
+while Kartograf's find_sheets_for_bbox() returns sheets including
 N-33-130-D-b-3-3, which the old code never produced.
 """
 
 from utils.sheet_lookup import sheets_for_point_buffer
 
 
-class TestSheetsForPointBufferDivergentFromSheetFinder:
-    """Point/buffer chosen to reproduce the sheet_finder 1:10000 bug."""
+class TestSheetsForPointBufferDivergentFromOldImplementation:
+    """Point/buffer chosen to reproduce the old local 1:10000 bug."""
 
-    def test_includes_sheet_sheet_finder_never_returns(self):
+    def test_includes_sheet_old_implementation_never_returns(self):
         """Kartograf splits 1:25000 into nested 2x2, so b-3-3 is reachable."""
         sheets = sheets_for_point_buffer(52.41, 16.915, buffer_km=2.0)
 
@@ -41,8 +42,8 @@ class TestSheetsForPointBufferDivergentFromSheetFinder:
             ]
         )
 
-    def test_old_sheet_finder_codes_are_absent(self):
-        """The wrong 2x4-derived codes from sheet_finder must not appear."""
+    def test_old_wrong_codes_are_absent(self):
+        """The wrong 2x4-derived codes from the old implementation must not appear."""
         sheets = sheets_for_point_buffer(52.41, 16.915, buffer_km=2.0)
 
         assert "N-33-130-D-b-2-1" not in sheets
