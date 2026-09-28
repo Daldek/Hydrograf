@@ -1,10 +1,11 @@
 """NMT sheet lookup for a point + buffer, delegating to Kartograf.
 
-utils/sheet_finder.py used to reimplement the Polish map-sheet (godlo) math
-directly and got the 1:10000 subdivision wrong (2 rows x 4 cols instead of
-Kartograf/GUGiK's nested 2x2). sheets_for_point_buffer() replaces that with a
-thin wrapper around kartograf.find_sheets_for_bbox(), which implements the
-subdivision correctly.
+The removed local godlo-math implementation reimplemented the Polish
+map-sheet (godlo) subdivision directly and got the 1:10000 level wrong
+(2 rows x 4 cols instead of Kartograf/GUGiK's nested 2x2).
+sheets_for_point_buffer() replaces that with a thin wrapper around
+kartograf.find_sheets_for_bbox(), which implements the subdivision
+correctly.
 """
 
 from kartograf import BBox, find_sheets_for_bbox
