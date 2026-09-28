@@ -90,7 +90,7 @@ database_url = os.getenv(
 **Stan testow (aktualizacja 2026-03-01, 568 test functions, 35 plikow):**
 - `scripts/process_dem.py` — **47 testow** (`test_process_dem.py`)
 - `scripts/import_landcover.py` — **16 testow** (`test_import_landcover.py`) — NOWE
-- `utils/sheet_finder.py` — **32 testy** (`test_sheet_finder.py`) — NOWE
+- ~~`utils/sheet_finder.py` — 32 testy (`test_sheet_finder.py`)~~ USUNIĘTE — zastąpione przez `utils/sheet_lookup.py` (cienki wrapper na `kartograf.find_sheets_for_bbox()`, 6 testów w `test_sheet_lookup.py`), pozyskiwanie danych wyłącznie przez Kartograf (ADR-057)
 - `utils/raster_utils.py` — 0% pokrycia — NADAL BRAK
 - `scripts/bootstrap.py` — **20 testow** (`test_bootstrap.py`) — NOWE
 - `scripts/download_landcover.py` — **17 testow** (`test_download_landcover.py`) — NOWE
