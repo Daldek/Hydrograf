@@ -175,6 +175,91 @@ class TestGetSheetsForBbox:
         assert len(sheets_100k) <= len(sheets_10k)
 
 
+class TestGetSheetsForBboxNoGaps:
+    """get_sheets_for_bbox() must not skip whole rows/columns of sheets.
+
+    Regression test for a bug where the fixed sampling step used to walk
+    the bbox was larger than the actual sheet size for some scales
+    (notably step_lon=0.04 for 1:10000, vs. an actual sheet width of
+    6/192=0.03125deg). A step larger than the sheet size causes the walk
+    to regularly skip whole columns/rows once the float offset drifts
+    past a sheet boundary, with no error raised.
+    """
+
+    # Actual sheet size in degrees, derived from the godlo subdivision
+    # geometry used elsewhere in this module (see _get_1m_bounds and the
+    # per-scale subdivision counts in coordinates_to_sheet_code):
+    #   1:100000 = 1:1M / (12 x 12)
+    #   1:50000  = 1:100000 / (2 x 2)
+    #   1:25000  = 1:50000 / (2 x 2)
+    #   1:10000  = 1:25000 / (2 x 4)
+    EXPECTED_SHEET_SIZE = {
+        "1:100000": (4.0 / 12, 6.0 / 12),
+        "1:50000": (4.0 / 24, 6.0 / 24),
+        "1:25000": (4.0 / 48, 6.0 / 48),
+        "1:10000": (4.0 / 96, 6.0 / 192),
+    }
+
+    @staticmethod
+    def _max_gap(values: list[float]) -> float:
+        unique_sorted = sorted(set(values))
+        if len(unique_sorted) < 2:
+            return 0.0
+        return max(b - a for a, b in zip(unique_sorted, unique_sorted[1:]))
+
+    @pytest.mark.parametrize("scale", ["1:100000", "1:50000", "1:25000", "1:10000"])
+    def test_no_column_or_row_gaps_over_multi_degree_bbox(self, scale):
+        """Sheet columns/rows over a multi-degree bbox must be contiguous."""
+        expected_lat_size, expected_lon_size = self.EXPECTED_SHEET_SIZE[scale]
+
+        sheets = get_sheets_for_bbox(50.5, 16.0, 52.5, 19.0, scale=scale)
+        assert sheets, "expected at least one sheet"
+
+        bounds_list = [get_sheet_bounds(s) for s in sheets]
+        max_lon_gap = self._max_gap([b.min_lon for b in bounds_list])
+        max_lat_gap = self._max_gap([b.min_lat for b in bounds_list])
+
+        # A correct sampling step never skips a whole sheet, so consecutive
+        # unique sheet-column/row origins should never be farther apart
+        # than ~1.5x the actual sheet size.
+        assert max_lon_gap <= expected_lon_size * 1.5, (
+            f"scale {scale}: found a column gap of {max_lon_gap:.5f} deg, "
+            f"expected sheet width is {expected_lon_size:.5f} deg "
+            f"-> whole column(s) of sheets are missing"
+        )
+        assert max_lat_gap <= expected_lat_size * 1.5, (
+            f"scale {scale}: found a row gap of {max_lat_gap:.5f} deg, "
+            f"expected sheet height is {expected_lat_size:.5f} deg "
+            f"-> whole row(s) of sheets are missing"
+        )
+
+    def test_no_column_gaps_for_opole_buffer_bug_report(self):
+        """Reproduces the originally reported bug: 55km buffer around Opole.
+
+        At 1:10000 scale, the buggy step_lon (0.04) used to skip ~22% of
+        sheet columns compared to the actual sheet width (0.03125deg).
+        """
+        expected_lat_size, expected_lon_size = self.EXPECTED_SHEET_SIZE["1:10000"]
+
+        sheets = get_sheets_for_point_with_buffer(
+            50.6751, 17.9213, buffer_km=55.0, scale="1:10000"
+        )
+        assert sheets
+
+        bounds_list = [get_sheet_bounds(s) for s in sheets]
+        max_lon_gap = self._max_gap([b.min_lon for b in bounds_list])
+        max_lat_gap = self._max_gap([b.min_lat for b in bounds_list])
+
+        assert max_lon_gap <= expected_lon_size * 1.5, (
+            f"found a column gap of {max_lon_gap:.5f} deg, expected sheet "
+            f"width is {expected_lon_size:.5f} deg"
+        )
+        assert max_lat_gap <= expected_lat_size * 1.5, (
+            f"found a row gap of {max_lat_gap:.5f} deg, expected sheet "
+            f"height is {expected_lat_size:.5f} deg"
+        )
+
+
 class TestGetNeighboringSheets:
     """Tests for get_neighboring_sheets()."""
 

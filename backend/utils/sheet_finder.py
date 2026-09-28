@@ -463,23 +463,34 @@ def get_sheets_for_bbox(
     """
     sheets = set()
 
-    # Estimate sheet size at this scale
+    # Sampling step must be strictly smaller than the actual sheet size at
+    # this scale, or the walk below can drift past a sheet boundary and
+    # skip a whole row/column without any error. Half the actual sheet
+    # size (derived from the godlo subdivision geometry, see
+    # coordinates_to_sheet_code) gives a consistent, safe margin for all
+    # scales.
     if scale == "1:10000":
-        # ~2.5 arcmin lat × ~5 arcmin lon approximately
-        step_lat = 0.02  # ~2 km
-        step_lon = 0.04  # ~3 km
+        # 1:1M / 96 rows, 1:1M / 192 cols
+        sheet_lat_size = SCALE_1M_LAT_SIZE / 96
+        sheet_lon_size = SCALE_1M_LON_SIZE / 192
     elif scale == "1:25000":
-        step_lat = 0.05
-        step_lon = 0.08
+        # 1:1M / 48 rows, 1:1M / 48 cols
+        sheet_lat_size = SCALE_1M_LAT_SIZE / 48
+        sheet_lon_size = SCALE_1M_LON_SIZE / 48
     elif scale == "1:50000":
-        step_lat = 0.1
-        step_lon = 0.16
+        # 1:1M / 24 rows, 1:1M / 24 cols
+        sheet_lat_size = SCALE_1M_LAT_SIZE / 24
+        sheet_lon_size = SCALE_1M_LON_SIZE / 24
     elif scale == "1:100000":
-        step_lat = 0.33
-        step_lon = 0.5
+        # 1:1M / 12 rows, 1:1M / 12 cols
+        sheet_lat_size = SCALE_1M_LAT_SIZE / 12
+        sheet_lon_size = SCALE_1M_LON_SIZE / 12
     else:
-        step_lat = 0.1
-        step_lon = 0.1
+        sheet_lat_size = 0.2
+        sheet_lon_size = 0.2
+
+    step_lat = sheet_lat_size / 2
+    step_lon = sheet_lon_size / 2
 
     # Sample points across the bbox
     lat = min_lat
