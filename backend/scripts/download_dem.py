@@ -169,18 +169,18 @@ def download_for_point(
     List[Path]
         List of downloaded file paths
     """
-    # Import sheet finder (local module)
+    # Import sheet lookup (local module)
     try:
-        from utils.sheet_finder import get_sheets_for_point_with_buffer
+        from utils.sheet_lookup import sheets_for_point_buffer
     except ImportError:
         # Try relative import for script execution
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from utils.sheet_finder import get_sheets_for_point_with_buffer
+        from utils.sheet_lookup import sheets_for_point_buffer
 
     logger.info(f"Finding sheets for point ({lat}, {lon}) with {buffer_km} km buffer")
 
     # Get list of sheets
-    sheets = get_sheets_for_point_with_buffer(lat, lon, buffer_km, scale)
+    sheets = sheets_for_point_buffer(lat, lon, buffer_km, scale)
 
     logger.info(f"Found {len(sheets)} sheets to download:")
     for sheet in sheets:
@@ -329,12 +329,12 @@ def main():
         # Sheets will be determined via find_sheets_for_geometry
     elif args.lat is not None and args.lon is not None:
         try:
-            from utils.sheet_finder import get_sheets_for_point_with_buffer
+            from utils.sheet_lookup import sheets_for_point_buffer
         except ImportError:
             sys.path.insert(0, str(Path(__file__).parent.parent))
-            from utils.sheet_finder import get_sheets_for_point_with_buffer
+            from utils.sheet_lookup import sheets_for_point_buffer
 
-        sheets = get_sheets_for_point_with_buffer(
+        sheets = sheets_for_point_buffer(
             args.lat, args.lon, args.buffer, args.scale
         )
     else:
