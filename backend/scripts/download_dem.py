@@ -231,7 +231,7 @@ def download_for_geometry(
         logger.info(f"Layer: {layer}")
 
     sheets = find_sheets_for_geometry(
-        str(geometry_path), target_scale=scale, layer=layer
+        geometry_path, target_scale=scale, layer=layer
     )
 
     logger.info(f"Found {len(sheets)} sheets for geometry:")
@@ -376,7 +376,7 @@ def main():
             from kartograf import find_sheets_for_geometry
 
             sheets = find_sheets_for_geometry(
-                args.geometry, target_scale=args.scale, layer=args.layer
+                Path(args.geometry), target_scale=args.scale, layer=args.layer
             )
             logger.info(f"DRY RUN - would download {len(sheets)} sheets:")
             for sheet in sheets:
