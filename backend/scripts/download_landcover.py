@@ -341,6 +341,15 @@ def _discover_teryts_grid(
     """
     from kartograf.providers.bdot10k import Bdot10kProvider
 
+    # Kartograf nie ma publicznego API "TERYT dla punktu bez pobierania danych" —
+    # korzystamy z prywatnej metody, wiec kontrakt pilnuje test_download_landcover.py.
+    if not callable(getattr(Bdot10kProvider, "_get_teryt_for_point", None)):
+        raise RuntimeError(
+            "Bdot10kProvider._get_teryt_for_point nie istnieje w zainstalowanej "
+            "wersji Kartografa — prywatne API zmienilo sie, popraw "
+            "_discover_teryts_grid w scripts/download_landcover.py"
+        )
+
     min_x, min_y, max_x, max_y = bbox_2180
     xs = _generate_sample_coords(min_x, max_x, spacing_m)
     ys = _generate_sample_coords(min_y, max_y, spacing_m)
