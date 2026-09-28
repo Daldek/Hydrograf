@@ -1,5 +1,6 @@
 """Tests for download_landcover: TERYT discovery (WFS + grid fallback) and hydro merge."""
 
+import inspect
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -383,6 +384,33 @@ class TestDiscoverTerytsGrid:
 
         assert result == sorted(set(cycle))
         assert result == ["0202", "1465", "3064"]
+
+
+# ---------------------------------------------------------------------------
+# Contract with Kartograf's private API (no public "TERYT for point" exists)
+# ---------------------------------------------------------------------------
+
+
+class TestBdot10kPrivateApiContract:
+    """_discover_teryts_grid calls Bdot10kProvider._get_teryt_for_point, which is
+    private (ADR-045: no public Kartograf method returns TERYT without downloading
+    the county package). Pins the signature so a Kartograf upgrade fails loudly
+    here instead of breaking the fallback silently at runtime."""
+
+    def test_get_teryt_for_point_exists_with_expected_signature(self):
+        from kartograf.providers.bdot10k import Bdot10kProvider
+
+        method = getattr(Bdot10kProvider, "_get_teryt_for_point", None)
+        assert callable(method)
+
+        params = list(inspect.signature(method).parameters)
+        assert params[:3] == ["self", "x", "y"]
+
+    @patch("kartograf.providers.bdot10k.Bdot10kProvider", new=MagicMock(spec=[]))
+    def test_missing_method_raises_clear_error(self):
+        bbox = (400000.0, 500000.0, 402000.0, 502000.0)
+        with pytest.raises(RuntimeError, match="_get_teryt_for_point"):
+            _discover_teryts_grid(bbox)
 
 
 # ---------------------------------------------------------------------------
