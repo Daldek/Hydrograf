@@ -1216,3 +1216,34 @@ Dodatkowe zmiany:
 - (-) Kolejna kolumna w `stream_catchments` blisko duplikujaca informacje juz obecne w `longest_flow_path_geom` (koniec geometrii) — akceptowalne, bo unika kosztownego `ST_EndPoint()` przy kazdym zapytaniu `aggregate_stats()`
 - (-) Tryb precise pozostaje z aproksymacja (baza = ujscie wezla, nie dokladny punkt klikniecia) — poza zakresem tej naprawy, blad rzedu rozmiaru pojedynczej podzlewni
 - (-) Wymaga jednorazowego backfillu przy wdrozeniu produkcyjnym (`alembic upgrade head` + `python -m scripts.backfill_outlet_flow_dist` + restart API) — dane historyczne pozostaja bledne do czasu wykonania
+
+---
+
+## ADR-057: Pozyskiwanie danych wylacznie przez Kartograf
+
+**Data:** 2026-09-28
+**Status:** Przyjeta
+
+**Kontekst:** Przygotowanie pelnego pobrania NMT 5m dla calej Polski (sesja 91) i naprawa nastepujaca po nim ujawnily, ze Hydrograf w kilku miejscach omijal Kartograf i reimplementowal wlasna logike pozyskiwania danych przestrzennych, mimo ze biblioteka ma ja juz wbudowana:
+1. `utils/sheet_finder.py::get_sheets_for_bbox()` mial blad probkowania (`step_lon=0.04°` wiekszy niz rzeczywisty arkusz 1:10000, 0.03125°), cicho gubiac ~22% kolumn arkuszy (naprawione w `e9bfc55`) — sam fakt istnienia rownoleglej implementacji obok `kartograf.find_sheets_for_bbox()` byl przyczyna.
+2. Sciezka punkt+bufor (`get_sheets_for_point_with_buffer()`, uzywana przez `download_dem.py --lat/--lon` i `prepare_area.py`) dzielila arkusz 1:25000 na 1:10000 siatka 2×4 zamiast zagniezdzonego 2×2 wedlug GUGiK — calkowicie bledne godla. Przyklad: punkt 52.41°N 16.915°E, bufor 2 km — 6 godel ze starej implementacji vs 9 poprawnych z Kartografa, zero czesci wspolnej. Sciezka `--geometry` (bootstrap, pelne pobranie Polski) juz uzywala `kartograf.find_sheets_for_geometry()` i nie byla dotknieta. Naprawa: nowy `utils/sheet_lookup.py::sheets_for_point_buffer()` — cienki wrapper delegujacy do `kartograf.find_sheets_for_bbox()` (WGS84→EPSG:2180 przez `transform_wgs84_to_pl1992`, `kartograf.BBox`). Podmieniony w `download_dem.py` i `prepare_area.py` (`75dc859`). `utils/sheet_finder.py` (~616 linii) i jego testy usuniete (`e9d940d`).
+3. Odwrotny przypadek: `download_landcover.py::_discover_teryts_grid()` (legacy fallback WFS PRG, ADR-045) korzysta z **prywatnej** metody `Bdot10kProvider._get_teryt_for_point()`, bo Kartograf 0.6.1 nie ma publicznego API "TERYT dla punktu bez pobierania danych" (`download_by_bbox`/`download_by_godlo` pobieraja cala paczke powiatu). Zamiast usuwac (brak publicznej alternatywy w 0.6.1), zabezpieczono jawnym guardem (`RuntimeError` przy braku/niewywolywalnosci metody) i testem kontraktowym pinujacym sygnature (`1524992`).
+
+**Decyzja:** Pozyskiwanie danych przestrzennych z zewnetrznych zrodel (GUGiK, BDOT10k, CORINE, SoilGrids) odbywa sie wylacznie przez Kartograf — Hydrograf nie utrzymuje rownoleglych implementacji logiki, ktora biblioteka ma juz wbudowana (konwersja wspolrzedne→godlo, bbox/geometria→arkusze, pobieranie warstw). Gdy Kartograf 0.6.1 nie ma publicznego API dla potrzebnego przypadku, dopuszczalne jest korzystanie z prywatnego API pod warunkiem jawnego guardu (czytelny blad zamiast cichej awarii przy upgradzie biblioteki) i testu kontraktowego pinujacego sygnature. Pozostajemy na Kartograf 0.6.1 (decyzja usera, ta sesja) — bez zmian w repozytorium Kartografa teraz; luki dokumentowane ponizej jako wyjatki, do rozwiazania przy przejsciu na 0.7.0.
+
+**Udokumentowane wyjatki:**
+- a) **WFS PRG TERYT discovery** (`download_landcover.py`, ADR-045) — glowna sciezka to zapytanie WFS do PRG GUGiK (poza Kartografem, publiczne API panstwowe). Fallback `_discover_teryts_grid()` na awarie WFS korzysta z prywatnego `Bdot10kProvider._get_teryt_for_point()`, zabezpieczony guardem + `TestBdot10kPrivateApiContract` (`1524992`).
+- b) **Post-processing wynikow Kartografa** — `merge_hydro_gpkgs()` (scalanie warstw hydro z wielu GPKG BDOT10k, `download_landcover.py`) i mozaikowanie/VRT rastrow NMT (`core/raster_io.py`, `scripts/process_dem.py`) pozostaja po stronie Hydrografu — Kartograf 0.6.1 nie ma funkcji mozaikowania; `mosaic_and_crop` istnieje dopiero na branchu develop Kartografa (planowane 0.7.0, niewydane).
+- c) **`scripts/download_sewer.py`** — poza domena Kartografa z zalozenia (ADR-051): dane sieci kanalizacyjnej pochodza od uzytkownika (upload pliku/WFS/DB/URL wskazany przez uzytkownika), nie z publicznych zasobow GUGiK/BDOT10k/CORINE, ktore obsluguje Kartograf.
+
+**Kandydaci do upstreamu przy przejsciu na Kartograf 0.7.0:**
+- Publiczne `discover_teryts_for_bbox()` (TERYT dla bbox bez pobierania danych) — usunieloby wyjatek (a); wzorzec implementacji WFS juz istnieje w Kartografie: `kartograf/providers/pl/gugik_laz.py` (branch develop).
+- `mosaic_and_crop` — zmniejszyloby zakres wyjatku (b) do samego `merge_hydro_gpkgs()`.
+
+**Konsekwencje:**
+- (+) Jedno zrodlo prawdy dla logiki godlo↔wspolrzedne/bbox — koniec rozjazdu miedzy wlasna implementacja a Kartografem (przyczyna dwoch realnych bugow w tej i poprzedniej sesji)
+- (+) ~616 linii kodu i towarzyszacych testow usuniete bez utraty funkcjonalnosci (`sheet_finder.py` → `sheet_lookup.py`, cienki wrapper)
+- (+) Wyjatki jawnie udokumentowane i zabezpieczone (guard + test kontraktowy) zamiast cichych zaleznosci od prywatnego API
+- (-) Fallback TERYT nadal zalezy od prywatnego API Kartografa — upgrade biblioteki moze wymagac interwencji (guard zamienia cichy blad w czytelny `RuntimeError`, nie eliminuje ryzyka)
+- (-) Mozaikowanie rastrow/GPKG pozostaje zduplikowana logika wzgledem `mosaic_and_crop` do czasu wydania 0.7.0
+- (-) Pozostanie na 0.6.1 oznacza brak dostepu do nowszych publicznych API (`discover_teryts_for_bbox`, `mosaic_and_crop`) do odwolania

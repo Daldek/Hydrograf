@@ -201,7 +201,7 @@ backend/
 │   ├── dem_color.py               # DEM color palette, hillshade blending
 │   ├── geometry.py                # Geometric operations, CRS transforms
 │   ├── raster_utils.py            # Raster tools (resample, polygonize)
-│   └── sheet_finder.py            # NMT sheet code lookup
+│   └── sheet_lookup.py            # NMT sheet lookup, thin wrapper over kartograf.find_sheets_for_bbox (ADR-057)
 │
 ├── tests/
 │   ├── unit/                      # 45+ plików testów jednostkowych
@@ -1778,11 +1778,12 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 2.0
-**Data ostatniej aktualizacji:** 2026-03-28
+**Wersja dokumentu:** 2.1
+**Data ostatniej aktualizacji:** 2026-09-28
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 2.1 (2026-09-28): `utils/sheet_finder.py` → `utils/sheet_lookup.py` — pozyskiwanie danych wylacznie przez Kartograf (ADR-057), cienki wrapper na `kartograf.find_sheets_for_bbox()` zamiast wlasnej reimplementacji matematyki godel
 - 2.0 (2026-03-28): Przebudowa topologii kanalizacji (ADR-052) — nowy modul sewer_topology.py (parser + walidator), jawna topologia zamiast heurystyk, 4 role wezlow (inlet/outlet/junction/storage), 2 formaty wejsciowe (A/B), pipeline dwufazowy, download_sewer.py zwraca tuple, migracja 027 (isolated->storage), admin sewer/config endpoint
 - 1.9 (2026-03-27): Integracja sieci kanalizacyjnej (ADR-051) — sewer_service.py, download_sewer.py, tabele sewer_nodes/sewer_network, 3 endpointy admin sewer, MVT sewer tiles, pipeline steps 3b/4a-4c, is_sewer_augmented w stream_network
 - 1.8 (2026-03-25): Aktualizacja po CP4+ — ADR 035-049 w tabeli, boundary.py i clean.py, koncepcyjne opisy CatchmentGraph/watershed_service (bez sygnatur), bdot_streams + nowe kolumny w schema, sekcja 2.5 (nowe koncepty), aktualizacja liczników (24+ migracji, 45+ unit tests, 8+ integration), modele hydrologiczne (Nash IUH, Snyder UH) i hietogramy (Block/Euler II/Beta)
