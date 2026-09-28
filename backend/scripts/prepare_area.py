@@ -134,7 +134,7 @@ def prepare_area(
 
     from scripts.download_dem import download_for_point
     from scripts.process_dem import process_dem
-    from utils.sheet_finder import get_sheets_for_point_with_buffer
+    from utils.sheet_lookup import sheets_for_point_buffer
 
     stats = {
         "sheets_found": 0,
@@ -150,7 +150,7 @@ def prepare_area(
     logger.info("Step 1: Finding sheets for area")
     logger.info("=" * 60)
 
-    sheets = get_sheets_for_point_with_buffer(lat, lon, buffer_km, scale)
+    sheets = sheets_for_point_buffer(lat, lon, buffer_km, scale)
     stats["sheets_found"] = len(sheets)
 
     logger.info(f"Point: ({lat}, {lon})")
@@ -549,9 +549,9 @@ def main():
     if args.dry_run:
         # Dry run - just show what would be downloaded
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from utils.sheet_finder import get_sheets_for_point_with_buffer
+        from utils.sheet_lookup import sheets_for_point_buffer
 
-        sheets = get_sheets_for_point_with_buffer(
+        sheets = sheets_for_point_buffer(
             args.lat, args.lon, args.buffer, args.scale
         )
 
