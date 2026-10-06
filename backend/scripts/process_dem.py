@@ -791,7 +791,9 @@ def process_dem(
 
     # Determine thresholds for multi-density stream networks
     cell_area = metadata["cellsize"] * metadata["cellsize"]
-    DEFAULT_THRESHOLDS_M2 = [1000, 10000, 100000]
+    DEFAULT_THRESHOLDS_M2 = [10000,
+                             100000,
+                             1000000]
 
     # Catchments only for thresholds >= 1000 m² (ADR-026)
     MIN_CATCHMENT_THRESHOLD_M2 = 1000

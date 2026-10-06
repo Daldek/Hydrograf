@@ -537,7 +537,7 @@ def step_process_dem(
         clear_existing=True,
         save_intermediates=True,
         output_dir=nmt_dir,
-        thresholds=[1000, 10000, 100000],
+        thresholds=[10000, 100000],
         burn_streams_path=burn_path,
         # hydro_resolution_m not needed when NMT downloaded at 5m resolution
         waterbody_mode=waterbody_mode,
