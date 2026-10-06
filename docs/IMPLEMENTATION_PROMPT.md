@@ -44,8 +44,8 @@ Pracujesz nad **Hydrograf** — hubem hydrologicznym integrujacym FastAPI + Post
 8. **docs/CHANGELOG.md** — historia zmian
 
 Dodatkowe (w razie potrzeby):
-- **docs/KARTOGRAF_INTEGRATION.md** — integracja NMT i Land Cover
-- **docs/HYDROLOG_INTEGRATION.md** — integracja obliczen hydrologicznych
+- **docs/integrations/KARTOGRAF.md** — integracja NMT i Land Cover
+- **docs/integrations/HYDROLOG.md** — integracja obliczen hydrologicznych
 - **docs/DECISIONS.md** — rejestr decyzji architektonicznych (ADR)
 
 **WAZNE:** Przed napisaniem JAKIEGOKOLWIEK kodu, przeczytaj CLAUDE.md i PROGRESS.md.

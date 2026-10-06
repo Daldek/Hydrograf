@@ -51,9 +51,9 @@ cloudflared tunnel --url http://localhost:8080
 
 Dodatkowa dokumentacja:
 - `docs/DATA_MODEL.md` — schemat bazy danych PostGIS
-- `docs/KARTOGRAF_INTEGRATION.md` — integracja z Kartografem (NMT, Land Cover)
-- `docs/HYDROLOG_INTEGRATION.md` — integracja z Hydrologiem (obliczenia)
-- `docs/IMGWTOOLS_INTEGRATION.md` — integracja z IMGWTools (opady)
+- `docs/integrations/KARTOGRAF.md` — integracja z Kartografem (NMT, Land Cover)
+- `docs/integrations/HYDROLOG.md` — integracja z Hydrologiem (obliczenia)
+- `docs/integrations/IMGWTOOLS.md` — integracja z IMGWTools (opady)
 - `docs/CROSS_PROJECT_ANALYSIS.md` — analiza zaleznosci miedzy projektami
 
 ## Struktura modulow
@@ -133,7 +133,7 @@ Jesli prostsze rozwiazanie jest wolniejsze, wybierz prostsze. Jesli bezpieczniej
 ### Biblioteki wlasne
 - **Hydrolog**, **Kartograf**, **IMGWTools** — dostepne z GitHub, nie z PyPI
 - Wersje: `backend/requirements.txt`
-- Szczegoly integracji: `docs/*_INTEGRATION.md`, `docs/CROSS_PROJECT_ANALYSIS.md`
+- Szczegoly integracji: `docs/integrations/*.md`, `docs/CROSS_PROJECT_ANALYSIS.md`
 
 ### Kluczowe ograniczenia
 - PostGIS jest **wymagany** — cala logika oparta na SQL spatial queries
