@@ -293,8 +293,8 @@ qp = 0.208 * self.area_km2 / tp_hours
 
 | Plik | Opis | Status |
 |------|------|--------|
-| `docs/HYDROLOG_INTEGRATION.md` | Format wymiany, endpointy, moduły | ✅ Aktualny |
-| `docs/KARTOGRAF_INTEGRATION.md` | NMT, BDOT10k, HSG, building raising, MVT | ✅ Aktualny |
+| `docs/integrations/HYDROLOG.md` | Format wymiany, endpointy, moduły | ✅ Aktualny |
+| `docs/integrations/KARTOGRAF.md` | NMT, BDOT10k, HSG, building raising, MVT | ✅ Aktualny |
 | `docs/CROSS_PROJECT_ANALYSIS.md` | Zależności, standardy, metryki | ✅ Aktualny |
 
 ---

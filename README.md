@@ -93,7 +93,7 @@ Hydrograf/
 - [Wymagania produktowe](docs/PRD.md)
 - [Decyzje architektoniczne](docs/DECISIONS.md)
 - [Historia zmian](docs/CHANGELOG.md)
-- Integracje: [Kartograf](docs/KARTOGRAF_INTEGRATION.md), [Hydrolog](docs/HYDROLOG_INTEGRATION.md), [IMGWTools](docs/IMGWTOOLS_INTEGRATION.md)
+- Integracje: [Kartograf](docs/integrations/KARTOGRAF.md), [Hydrolog](docs/integrations/HYDROLOG.md), [IMGWTools](docs/integrations/IMGWTOOLS.md)
 - [Analiza zależności](docs/CROSS_PROJECT_ANALYSIS.md)
 - [Deploy na VPS](docs/DEPLOYMENT_VPS.md) *(planowane)*
 
