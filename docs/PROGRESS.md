@@ -10,7 +10,7 @@
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 432 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k |
 | Integracja Hydrolog | ✅ Gotowy | v0.6.3 (Nash IUH, 3 nowe metody tc) |
-| Integracja Kartograf | ✅ Gotowy | v0.6.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
+| Integracja Kartograf | ✅ Gotowy | v0.7.0 (NMT przez `download_sheets` + `MetadataCache`, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). Jawna topologia (ADR-052), walidacja strict, 2-fazowy pipeline. MVT tiles, overlay frontend, admin panel sewer. |
@@ -92,7 +92,7 @@
 ### Nastepne kroki
 - Zweryfikować 92 arkusze Opolskiego pobrane po błędzie warstwy 2025 (odpytać skorowidz, porównać `aktualnosc`/URL) i przy okazji zbudować pierwszy manifest wersji dla Opolskiego.
 - Przyjąć ADR wersjonowania NMT (nadać numer 058) i zaimplementować manifest + archiwum.
-- Przed pobraniem całej Polski: wspólna `requests.Session` + `MetadataCache` w `download_dem.py`, rozważyć pauzę między arkuszami / uruchomienie w nocy, ponowny przebieg na braki.
+- Przed pobraniem całej Polski: wspólna `requests.Session` + `MetadataCache` w `download_dem.py`, rozważyć pauzę między arkuszami / uruchomienie w nocy, ponowny przebieg na braki. → `MetadataCache` zrealizowane w etapie K (s97); `Session` per zapytanie i pauza — po stronie Kartografa 0.7.0 / bez zmian.
 - ~~Zacommitować reorganizację docs usera~~ — zrobione w s96.
 - `<HOST_DATA_DIR>/nmt/pilot_opolskie/` (32 pliki spoza Opolskiego + log) — do usunięcia, gdy user zdecyduje.
 
@@ -125,10 +125,10 @@
 
 ### Nastepne kroki
 - Zacommitować reorganizację docs usera razem z poprawkami audytu (decyzja usera).
-- Rozważyć podłączenie `MetadataCache` Kartografa w `download_dem.py` (dziś każdy arkusz = świeże zapytanie WMS GetFeatureInfo) — przed pobraniem całej Polski.
+- Rozważyć podłączenie `MetadataCache` Kartografa w `download_dem.py` (dziś każdy arkusz = świeże zapytanie WMS GetFeatureInfo) — przed pobraniem całej Polski. → zrealizowane w etapie K (s97).
 - **Dane pilotażu Opolskiego (`<HOST_DATA_DIR>/nmt/pilot_opolskie/`) z s91 pobrano błędną ścieżką `--lat/--lon`** → pokrycie niezgodne z zamierzonym; do usunięcia/ponownego pobrania, jeśli mają być użyte.
 - Pełne pobranie Polski (komenda z s91 niżej) nadal czeka na zielone światło; nie wymaga zmian.
-- Backlog: upstream `discover_teryts_for_bbox` + `mosaic_and_crop` przy przejściu na Kartograf 0.7.0.
+- Backlog: upstream `discover_teryts_for_bbox` + `mosaic_and_crop` przy przejściu na Kartograf 0.7.0. → ocenione w etapie K: `mosaic_and_crop` nieużyty (ADR-057 b); `discover_teryts_for_bbox` nadal brak w 0.7.0.
 - Nic nie jest wypchnięte na origin.
 
 ### Poprzednia sesja (2026-09-28, sesja 91 — przygotowanie pobrania NMT 5m dla całej Polski przez Kartograf)
@@ -1368,6 +1368,8 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 - [ ] Wolne kafle landcover MVT na niskich zoomach: `/api/tiles/landcover/{z}/{x}/{y}.pbf` przy zoom 11-12 do 6.7 s (72 zadania >2 s w sesji testowej 2026-08-01, monitoring sesja 82) — prawdopodobnie kosztowne zapytanie przestrzenne przy pierwszym ladowaniu warstwy (zimny cache). Do diagnozy: EXPLAIN ANALYZE zapytania MVT na niskim zoomie, ew. cache/preagregacja. Priorytet: sredni.
 - [ ] Tryb precise (`POST /api/delineate-watershed` bez `threshold_m2`) zwraca `area_km2 = 0.0` dla niektorych punktow (`raster_service.delineate_from_point()`) — odkryte przy diagnozie feedbacku #11 (`notes/reports/2026-08-02-length-km-diagnosis.md` §10.2), poza zakresem naprawy `hydraulic_length_km` (sesja 83). Priorytet: sredni.
 - [ ] Wygladzanie granicy zlewni (`ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)`) skraca obwod o ~28% przy zachowanej powierzchni — liczenie wskaznikow ksztaltu na hybrydzie (`area_km2` z rastra, `perimeter_km` z wygladzonego wieloboku) zaniza `compactness_coefficient` (Kc) i zawyza `circularity_ratio` (Rc). Odkryte przy diagnozie feedbacku #11 (§10.1 diagnozy, sesja 83). Priorytet: sredni.
+- [ ] `scripts/download_landcover.py` (~l.180-197): dla `--provider corine` z `--lat/--lon` wymusza rozszerzenie `.gpkg`, a CORINE zapisuje raster — niezgodny format/rozszerzenie pliku wyjsciowego (wada spoza migracji na Kartograf 0.7.0). Priorytet: sredni.
+- [ ] `core/cn_calculator.py::get_land_cover_stats` (~l.254) lapie kazdy `Exception` i zwraca `{}` — cicha degradacja (brak pokrycia nieodroznialny od bledu); zawezic wyjatki i podniesc blad glosno (wada spoza migracji na Kartograf 0.7.0). Priorytet: sredni.
 
 ### Funkcjonalnosci — feedback Kamila (2026-07, oryginal: `notes/feedback/Kamil.md`)
 

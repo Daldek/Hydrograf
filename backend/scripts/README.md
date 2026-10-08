@@ -118,7 +118,7 @@ cd backend
 | `geojson` | Eksporty GeoJSON (`frontend/data/*.geojson`) |
 | `tiles` | Kafelki MVT + mbtiles (`frontend/tiles/`) |
 | `db` | Tabele: stream_network, stream_catchments, depressions, land_cover, precipitation_data, soil_hsg |
-| `cache` | Cache NMT i BDOT10k (soil_hsg zachowany — mały, ogólnopolski) |
+| `cache` | Cache NMT w układzie Kartografa `cache/nmt/pl_<układ>_<res>_evrf2007/` (+ `kampanie/`), cache BDOT10k oraz `kartograf_meta.db*` (cache metadanych Kartografa); soil_hsg zachowany — mały, ogólnopolski |
 
 **Typowy workflow regeneracji:**
 
@@ -179,6 +179,8 @@ cd backend
 | `--keep-downloads` | Zachowaj pobrane pliki .asc | true |
 | `--save-intermediates` | Zapis plików GeoTIFF | false |
 | `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
+
+`--output` to korzeń danych Kartografa: arkusze NMT trafiają do `<output>/nmt/pl_<układ>_<res>_evrf2007/`, a cache metadanych do `<output>/kartograf_meta.db` (katalog musi być na dysku lokalnym).
 | `--dry-run` | Tylko pokaż co byłoby zrobione | false |
 
 ---
