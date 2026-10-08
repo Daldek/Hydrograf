@@ -416,29 +416,40 @@ def step_download_nmt(
     cache_dir: Path,
     resolution: str = "5m",
 ) -> tuple[list[Path], str]:
-    """Step 2: Download NMT sheets via Kartograf."""
+    """Step 2: Download NMT sheets via Kartograf 0.7.0.
+
+    cache_dir is Kartograf's data root: sheets land in
+    ``cache_dir/nmt/pl_<uklad>_<res>_evrf2007/`` (campaign copies in its
+    ``kampanie/`` subtree), metadata cache in ``cache_dir/kartograf_meta.db``.
+    Raises NmtDownloadError on any transport failure (full sheet list).
+    """
     sys.path.insert(0, str(BACKEND_DIR))
-    from scripts.download_dem import download_sheets
+    from scripts.download_dem import METADATA_CACHE_NAME, download_sheets
 
-    nmt_dir = cache_dir / "nmt"
-    nmt_dir.mkdir(parents=True, exist_ok=True)
+    if not sheets:
+        raise ValueError("Pusta lista arkuszy NMT — nic do pobrania")
 
-    downloaded = download_sheets(
-        sheets, nmt_dir, skip_existing=True, resolution=resolution
+    report = download_sheets(
+        sheets,
+        cache_dir,
+        cache_dir / METADATA_CACHE_NAME,
+        skip_existing=True,
+        resolution=resolution,
     )
 
-    # Count how many were already cached
-    n_total = len(downloaded)
-    detail = f"{n_total}/{len(sheets)} arkuszy"
+    detail = f"{len(report.paths)}/{len(sheets)} arkuszy"
+    if report.no_coverage:
+        detail += f", {len(report.no_coverage)} bez pokrycia"
+    if report.unverified:
+        detail += f", {len(report.unverified)} niezweryfikowanych"
 
-    return downloaded, detail
+    return report.paths, detail
 
 
 def step_process_dem(
     downloaded_files: list[Path],
     output_dir: Path,
     cache_dir: Path,
-    sheets: list[str],
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
     sewer_config: dict | None = None,
@@ -451,21 +462,18 @@ def step_process_dem(
         merge_hydro_gpkgs,
     )
     from scripts.process_dem import process_dem
-    from utils.raster_utils import create_vrt_mosaic, discover_asc_files, normalize_crs
+    from utils.raster_utils import create_vrt_mosaic, normalize_crs
 
-    cache_nmt_dir = cache_dir / "nmt"
     nmt_dir = output_dir / "nmt"
     nmt_dir.mkdir(parents=True, exist_ok=True)
 
-    # Compute bbox once — reused for ASC discovery and hydro/landcover
-    bbox_2180 = sheets_to_bbox_2180(sheets)
-
-    # Discover ALL ASC files in cache nmt dir
-    # (new downloads + cached from previous runs)
-    all_asc = discover_asc_files(cache_nmt_dir, bbox_2180)
+    # Exactly the sheets returned by step 2 (standard paths) — never a
+    # directory scan: Kartograf keeps campaign copies under kampanie/ and
+    # other resolutions/old 0.6.1 layouts may sit in the same cache.
+    nmt_files = sorted(set(downloaded_files))
 
     # Reproject PUWG 2000 files to EPSG:2180 before mosaicking
-    normalized_files = normalize_crs(all_asc, nmt_dir / "reprojected")
+    normalized_files = normalize_crs(nmt_files, nmt_dir / "reprojected")
 
     mosaic_path = create_vrt_mosaic(
         input_files=normalized_files,
@@ -1072,15 +1080,6 @@ def run_pipeline(
             tracker.fail(2, t0, str(e))
             logger.error(f"Krok 2 (pobieranie NMT) nie powiodl sie: {e}")
             return tracker
-    else:
-        # Try to find existing files for later steps
-        nmt_dir = cache_dir / "nmt"
-        if nmt_dir.exists():
-            downloaded_files = sorted(nmt_dir.glob("*.asc"))
-
-    if not downloaded_files:
-        logger.error("Brak plikow NMT — nie mozna kontynuowac")
-        return tracker
 
     # Variables populated by step 3 and forwarded to steps 4-5
     mosaic_bbox = None
@@ -1092,7 +1091,7 @@ def run_pipeline(
         t0 = tracker.start(3)
         try:
             _, detail, teryts, bdot_paths, mosaic_bbox = step_process_dem(
-                downloaded_files, output_dir, cache_dir, sheets,
+                downloaded_files, output_dir, cache_dir,
                 waterbody_mode=waterbody_mode,
                 waterbody_min_area_m2=waterbody_min_area_m2,
                 sewer_config=sewer_config,
