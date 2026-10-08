@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`backend/utils/sheet_finder.py`** (~616 linii) i `tests/unit/test_sheet_finder.py` — zastąpione przez `utils/sheet_lookup.py`, cienki wrapper na `kartograf.find_sheets_for_bbox()` zamiast własnej reimplementacji matematyki godeł (ADR-057)
 
 ### Naprawione
+- Pin `sqlalchemy>=2.0.25,<2.1` w `requirements.txt` — SQLAlchemy 2.1 wybiera sterownik psycopg v3 dla URL-i `postgresql://`, a obraz zawiera `psycopg2-binary`; przebudowa obrazu zapetlala restart API na `alembic upgrade head`.
 - Mozaika VRT bootstrapu dublowała arkusze NMT (kopie w `kampanie/`) i mogła mieszać rozdzielczości — krok 3 używa listy z kroku 2; `discover_asc_files()` usunięta.
 - Bootstrap kończył się kodem 0, gdy nie pobrano żadnego arkusza NMT.
 - Raster HSG z samymi nodata dawał dominantę „A" w `get_hsg_from_soilgrids()`.

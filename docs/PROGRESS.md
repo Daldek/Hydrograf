@@ -133,6 +133,8 @@ cd backend && .venv/bin/python -m scripts.download_dem --geometry <HOST_DATA_DIR
 ```
 (uruchomić w tle, log do pliku na `<HOST_DATA_DIR>/nmt`). Szacunek: **~118 GB, ~32h** ciągłego, jednowątkowego pobierania; wolne miejsce na dysku danych wystarczy. Wznawialne przez `skip_existing=True` — bezpiecznie przerwać/wznowić tą samą komendą. Working tree ma też niezwiązane, wcześniejsze niezacommitowane zmiany (config.py, bootstrap.py, process_dem.py, reorganizacja docs) — świadomie nietknięte przez wszystkie subagenty tej sesji.
 
+> **Uwaga (Kartograf 0.7.0, etap K):** powyższa komenda pochodzi sprzed 0.7.0. Forma aktualna: `--output <HOST_DATA_DIR>` jest korzeniem danych Kartografa (pliki trafiają do `<HOST_DATA_DIR>/nmt/pl_1992_5m_evrf2007/...`) oraz wymagane `--metadata-cache <LOCAL_DIR>/kartograf_meta.db` na dysku LOKALNYM (nigdy udział sieciowy — SQLite WAL).
+
 ### Nastepne kroki
 - **Uzyskać potwierdzenie usera i odpalić właściwe pobranie** (komenda wyżej) — jedyny brakujący krok.
 - Po zakończeniu: zweryfikować kompletność (arkuszy pobranych vs 80 343 oczekiwanych, ile to legit braki pokrycia 5m na granicach kraju vs błędy), zdecydować o mozaikowaniu VRT / dalszym przetwarzaniu.
@@ -1388,6 +1390,8 @@ Wizja (brainstorm 2026-07-31, pelne uzasadnienia: `notes/plans/2026-07-31-wlasne
 
 ### Infrastruktura i jakosc kodu
 
+- [ ] Migracja na SQLAlchemy 2.1 i zdjecie pinu `<2.1` — albo URL-e `postgresql+psycopg2://` (docker-compose.yml, `config.py`, migrations `env.py`), albo przejscie na psycopg v3. Pin dodany, bo 2.1 wybiera psycopg v3 dla `postgresql://`, a obraz ma `psycopg2-binary`. Priorytet: niski.
+- [ ] Plik lock/constraints zaleznosci wygenerowany z dzialajacego obrazu — wiekszosc pozycji w `requirements.txt` ma niezwiazane `>=`, wiec kazda przebudowa obrazu moze zepsuc zywe API (jak przy SQLAlchemy 2.1). Priorytet: sredni.
 - [ ] Dashboard ruchu — przebudowa od zera (poprzednia implementacja GoAccess z sesji 82/84 wycofana w całości w sesji 85; kod referencyjny w gałęzi `backup/develop-pre-cleanup`, decyzje ADR-055/056 tylko w starej historii). Przed startem: brainstorming wymagań z użytkownikiem. **Zależność: E1 (real_ip za tunelem) ze specyfikacji utwardzenia jest prerekwizytem** — bez niego logi zapisują IP tunelu, analiza per-IP ślepa; `log_format` definiować razem z real_ip; decyzja anonimizacja/retencja IP (RODO).
 - [ ] Flaga `--thresholds` w `bootstrap.py` + pole w API/panelu admina — dziś progi akumulacji są hardcodowane w wywołaniu `process_dem` (`bootstrap.py:540`), choć sam `process_dem.py` ma flagę `--thresholds`. Kontekst (sesja 88): przy bboxie Kotliny Kłodzkiej (113M komórek) próg 1000 m² powoduje OOM (polygonizacja 872k podzlewni > limit 8G) — dane wygenerowano progami [10000, 100000] przez jednorazową edycję hardcode'u; ponowny bootstrap z domyślną listą znów wpadnie w OOM. Po dodaniu flagi: `DEFAULT_THRESHOLD_M2` (`core/constants.py`) musi być zawsze równy najniższemu progowi w danych. Priorytet: sredni.
 - [ ] Migracja bind mountow na named volumes Docker (`./data`, `./cache`, `./frontend/data`, `./frontend/tiles`) — w obecnym ksztalcie kazda zmiana engine ryzykuje powtorke EPERM z sesji 80. Priorytet: sredni.
