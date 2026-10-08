@@ -47,7 +47,24 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-10-06/08 (sesja 96 — przygotowanie do wdrożenia programu „jedno źródło prawdy” config/ścieżki/dane; magazyn danych)
+**Data:** 2026-10-08 (sesja 97 — etap K: wdrożenie Kartografa v0.7.0; przepisanie historii git)
+
+### Co zrobiono
+- **Analiza Kartografa v0.7.0** (wydany 2026-10-08) i sondy empiryczne na kodzie Hydrografa: 7 testów padało (przeniesiony `providers.bdot10k`), `discover_asc_files` dublowało arkusze (hardlink + `kampanie/`), błędy pobierania NMT przechodziły po cichu, bootstrap kończył się kodem 0 przy całkowitej porażce pobrania NMT.
+- **Etap K na gałęzi `feature/kartograf-0.7.0`** (plan w `notes/superpowers/plans/2026-10-08-kartograf-0.7.0-wdrozenie.md`, wykonany zespołem subagentów z recenzją per zadanie i końcową recenzją całej gałęzi): pin `@v0.7.0`; `download_sheets()` wsadowo z `MetadataCache` (`<cache_dir>/kartograf_meta.db`), `NmtDownloadReport`, jeden `NmtDownloadError` ze wszystkimi problemami naraz; bootstrap: `cache_dir` = korzeń danych Kartografa, mozaika wyłącznie z listy kroku 2, krok 2 `fail` → kod 1; walidacja `--bbox`/`--sheets` (kod 2); `hsg_poland.tif` bez zgodnego sidecara → `HsgCacheStaleError`; HSG z samych nodata nie daje „A”; `clean.py` czyści cache metadanych; KARTOGRAF.md v6.0, ADR-057 (aktualizacja), CHANGELOG.
+- **Decyzje D1–D10 planu** (domyślne z planu, zatwierdzone przez kontynuację usera): D1 częściowy brak pokrycia = WARNING; D2 `unverified` = WARNING; D3 wyłączony cache = błąd; D4 stary HSG = błąd z instrukcją (równość wersji); D5 fallback HSG „B” bez zmian (do decyzji); D6 dane 0.6.1 nietknięte; D7 bootstrap z bazą — NIE wykonany; D8 `cache/soil_hsg/hsg_poland.tif` z 0.6.1 usunięty (zgoda usera); D9 `discover_asc_files` usunięte; D10 `--metadata-cache` wymagany, `--output ../cache/`.
+- **Weryfikacja w kontenerze:** pobranie 2 arkuszy (układ ADR-026, kampanie, sidecar), drugi przebieg bez pobrań, brak pokrycia (całość → 1, część → 0 + WARNING), symulowana awaria sieci (pełna lista godeł), bootstrap: brak pokrycia → kod 1 przed bazą, zły bbox → 2. Obraz nie ma `gdalbuildvrt` — mozaika idzie fallbackiem `rasterio.merge`.
+- **Awaria API po przebudowie obrazu:** niepinowane `sqlalchemy>=2.0.25` pobrało 2.1.4 (psycopg3 dla `postgresql://`) → crash-loop `alembic upgrade head`. Naprawa: `sqlalchemy>=2.0.25,<2.1`; API zdrowe. Backlog: migracja na 2.1 i plik constraints zależności.
+- **Historia git przepisana** (`git filter-repo`, force push develop/main/tagi): usunięte szczegóły infrastruktury hosta; wszystkie hashe sprzed 2026-10-08 nieaktualne. Pozostałe ścieżki dysku danych hosta poprawione tylko w bieżących plikach (decyzja usera).
+- Testy unit: 1045 passed (było 1021).
+
+### Nastepne kroki
+- Decyzja usera: merge `feature/kartograf-0.7.0` → `develop` (+ push).
+- Decyzje otwarte z etapu K: D5 (fallback HSG „B” i krok 5 jako niekrytyczny), D6 (dane w układzie 0.6.1, ponowne pobranie Opolskiego w 0.7.0).
+- Następny bootstrap pobierze HSG Polski od nowa (stary raster usunięty).
+- Dalej: decyzje 1–16 z raportu rewizji specyfikacji (s96) → S1 → S2; S3 czeka na kolejne wydanie Kartografa (Archive, kafle SoilGrids, surowy ZIP BDOT, wersja BDOT w sidecarze, publiczne odkrywanie TERYT).
+
+### Poprzednia sesja (2026-10-06/08, sesja 96 — przygotowanie do wdrożenia programu „jedno źródło prawdy” config/ścieżki/dane; magazyn danych)
 
 ### Co zrobiono
 - **Sesje 94–95 (2026-09-28/29, bez zmian w repo):** trzy specyfikacje w `notes/superpowers/specs/`: cz. 1 konfiguracja i ścieżki (zaakceptowana, ADR-059), cz. 2 manifest przebiegów w DB (zaakceptowana, ADR-060), cz. 3 archiwum surowych danych + PMAXTP na natywnej siatce (rew. 2, niezaakceptowana, ADR-061, zamyka ADR-058).
