@@ -147,17 +147,17 @@ Skrypt do pobierania danych NMT z GUGiK.
 python -m scripts.download_dem \
     --lat 52.23 --lon 21.01 \
     --buffer 5 \
-    --output ../data/nmt/
+    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 
 # Pobieranie konkretnych arkuszy
 python -m scripts.download_dem \
     --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \
-    --output ../data/nmt/
+    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 
 # Pobieranie arkuszy pokrywających plik geometrii
 python -m scripts.download_dem \
     --geometry ../data/boundary.gpkg \
-    --output ../data/nmt/
+    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 ```
 
 **Parametry:**
@@ -169,7 +169,8 @@ python -m scripts.download_dem \
 | `--sheets` | Lista godeł do pobrania | - |
 | `--geometry` | Plik geometrii (SHP/GPKG) do selekcji arkuszy | - |
 | `--layer` | Nazwa warstwy w pliku GPKG | pierwsza warstwa |
-| `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
+| `--output`, `-o` | Korzeń danych Kartografa | `../cache/` |
+| `--metadata-cache` | Plik SQLite cache metadanych (dysk lokalny) | wymagany |
 | `--scale` | Skala arkuszy (`1:10000`, `1:25000`, `1:50000`, `1:100000` — etykiety Kartografa, patrz §5.1) | 1:10000 |
 | `--no-skip-existing` | Pobierz ponownie mimo istniejącego pliku | wyłączone |
 | `--dry-run` | Pokaż plan bez pobierania | wyłączone |
@@ -301,7 +302,7 @@ Narzędzia rastrowe.
 | `scripts/bootstrap.py` | `SheetParser`, `HSGCalculator`, `BBox` | Orchestrator preprocessingu |
 | `scripts/prepare_area.py` | `SheetParser` | Pipeline przygotowania obszaru |
 | `core/cn_calculator.py` | `BBox`, `HSGCalculator`, `LandCoverManager` | Obliczanie CN |
-| `utils/raster_utils.py` | (pośrednio, operuje na plikach .asc) | Skanowanie plików NMT |
+| `utils/raster_utils.py` | (pośrednio, operuje na plikach .asc) | `normalize_crs()` + `create_vrt_mosaic()` — VRT z listy arkuszy |
 
 ---
 
@@ -336,7 +337,7 @@ Zweryfikowano w `sheet_parser.py` (komentarz „mylące nazewnictwo w COMPONENT_
 
 W praktyce oznacza to, że wywołanie `find_sheets_for_bbox/geometry(..., target_scale="1:10000")` — którego Hydrograf używa domyślnie (`sheet_lookup.py`, `download_dem.py --scale 1:10000`) — zwraca **7-członowe godła, czyli oficjalnie arkusze 1:5000**. To jest właśnie siatka plików NMT pobieranych z GUGiK OpenData, np. `cache/nmt/nmt_1m/N-34/139/A/c/4/1/N-34-139-A-c-4-1.asc`.
 
-**Auto-ekspansja:** `DownloadManager.download_sheet(godlo)` automatycznie rozwija każde godło grubsze niż etykieta Kartografa `"1:10000"` (czyli oficjalnie grubsze niż 1:5000) do listy wszystkich potomnych arkuszy 1:5000, wywołując `get_all_descendants("1:10000")`. Np. godło oznaczone przez Kartograf jako `"1:25000"` (oficjalnie 1:10 000, 6-członowe) rozwija się do 4 arkuszy 1:5000; godło `"1:50000"` (oficjalnie 1:25 000, 5-członowe) — do 16. Schemat podziału: patrz §5.2.
+**Auto-ekspansja:** `DownloadManager.download_sheets(godla)` automatycznie rozwija każde godło grubsze niż etykieta Kartografa `"1:10000"` (czyli oficjalnie grubsze niż 1:5000) do listy wszystkich potomnych arkuszy 1:5000, wywołując `get_all_descendants("1:10000")`. Np. godło oznaczone przez Kartograf jako `"1:25000"` (oficjalnie 1:10 000, 6-członowe) rozwija się do 4 arkuszy 1:5000; godło `"1:50000"` (oficjalnie 1:25 000, 5-członowe) — do 16. Schemat podziału: patrz §5.2.
 
 ### 5.2 Podział arkuszy
 
@@ -537,26 +538,33 @@ for s in sheets:
 .venv/bin/python -m scripts.download_dem \
     --sheets N-34-131-A-a-1-1 N-34-131-A-a-1-2 N-34-131-A-a-1-3 N-34-131-A-a-1-4 \
             N-34-131-A-a-2-1 N-34-131-A-a-2-2 N-34-131-A-a-2-3 N-34-131-A-a-2-4 \
-    --output ../data/nmt/
+    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 ```
 
 ### 8.4 Użycie w kodzie Python
 
 ```python
 from utils.sheet_lookup import sheets_for_point_buffer
-from kartograf import GugikProvider, DownloadManager
+from pathlib import Path
+
+from kartograf import DownloadManager, GugikProvider, MetadataCache
 
 # Znajdź arkusze
 sheets = sheets_for_point_buffer(52.23, 21.01, buffer_km=5)
 
-# Pobierz dane
-provider = GugikProvider(resolution="5m")
-manager = DownloadManager(output_dir="./data/nmt/", provider=provider)
+# Pobierz dane (korzeń danych Kartografa = <cache_dir>)
+cache_dir = Path("../cache")
+cache = MetadataCache(cache_dir / "kartograf_meta.db")
+provider = GugikProvider(resolution="5m", cache=cache)
+manager = DownloadManager(
+    output_dir=str(cache_dir), provider=provider, resolution="5m", campaigns="newest"
+)
 
-for sheet in sheets:
-    # download_sheet() zwraca Path do pobranego pliku
-    path = manager.download_sheet(sheet, skip_existing=True)
-    print(f"Pobrano: {path}")
+# download_sheets() zwraca listę Path (ścieżki standardowe, np.
+# ../cache/nmt/pl_1992_5m_evrf2007/N-34/131/C/c/1/1/N-34-131-C-c-1-1.asc);
+# braki i błędy w manager.last_result (patrz §6.1)
+paths = manager.download_sheets(sheets, skip_existing=True)
+print(f"Pobrano: {len(paths)}, brak pokrycia: {manager.last_result.no_coverage}")
 ```
 
 ---
@@ -788,7 +796,7 @@ sheets = find_sheets_for_geometry(Path("boundary.gpkg"), target_scale="1:10000")
 # Pobieranie NMT dla pliku geometrii
 python -m scripts.download_dem \
     --geometry ../data/watershed_boundary.geojson \
-    --output ../data/nmt/
+    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 ```
 
 ---
@@ -797,7 +805,7 @@ python -m scripts.download_dem \
 
 - [x] **Land Cover** - pobieranie BDOT10k i CORINE (Kartograf 0.3.0)
 - [x] **Auto-ekspansja godeł** - automatyczne rozwijanie godeł grubszych skal (Kartograf 0.4.0)
-- [x] **Progress callback** - `on_progress` w `download_sheet()` (Kartograf 0.4.0)
+- [x] **Progress callback** - `on_progress` w `download_sheet()` (Kartograf 0.4.0; Hydrograf używa `download_sheets()` od etapu K)
 - [x] **BDOT10k hydro** - kategorie hydrograficzne SWRS, SWKN, SWRM, PTWP (Kartograf 0.4.1)
 - [x] **Geometry file selection** - filtrowanie danych po pliku geometrii (Kartograf 0.4.1)
 - [x] **HSG Calculator** - grupy hydrologiczne gleby z SoilGrids (Kartograf 0.4.1)
