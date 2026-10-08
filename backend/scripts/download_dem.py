@@ -3,11 +3,12 @@ Script to download DEM (Digital Elevation Model) data from GUGiK using Kartograf
 
 Downloads NMT data for a specified area (point + buffer), list of sheet codes,
 or geometry file (SHP/GPKG).
-Uses Kartograf 0.6.1+ library for OpenData/WCS API communication with GUGiK servers.
+Uses Kartograf 0.7.0 (OpenData ASC, GUGiK campaigns "newest", MetadataCache).
 
-Note: Kartograf 0.6.1 API:
-- download_sheet(godlo) -> returns Path | list[Path] (auto-expansion for coarse scales)
-- download_bbox(bbox, filename, format) -> returns GeoTIFF/PNG/JPEG via WCS
+Kartograf 0.7.0 API used here:
+- DownloadManager.download_sheets(godla) -> list[Path] (standard paths;
+  coarse PL-1992 codes expanded to 1:10000); per-sheet result in
+  DownloadManager.last_result (failed / no_coverage / hard_failures / unverified)
 - find_sheets_for_geometry(filepath, target_scale) -> tile selection
   from SHP/GPKG
 
@@ -23,23 +24,24 @@ Examples
     python -m scripts.download_dem \\
         --lat 52.23 --lon 21.01 \\
         --buffer 5 \\
-        --output ../data/nmt/
+        --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 
     # Download specific sheets
     python -m scripts.download_dem \\
         --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \\
-        --output ../data/nmt/
+        --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 
     # Download tiles covering a geometry file
     python -m scripts.download_dem \\
         --geometry ../data/boundary.gpkg \\
-        --output ../data/nmt/
+        --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 """
 
 import argparse
 import logging
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Configure logging
@@ -51,91 +53,123 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Kartograf MetadataCache (SQLite) file name inside the cache/data root.
+METADATA_CACHE_NAME = "kartograf_meta.db"
+
+
+class NmtDownloadError(RuntimeError):
+    """Pobranie NMT niekompletne albo niewiarygodne — bootstrap nie moze kontynuowac."""
+
+
+@dataclass(frozen=True)
+class NmtDownloadReport:
+    """Wynik pobrania arkuszy NMT przez Kartograf 0.7.0.
+
+    paths — sciezki standardowe (dowiazania do najnowszej kampanii), pobrane
+    teraz albo juz lokalne; no_coverage — godla bez danych w GUGiK (np. poza
+    Polska, morze); unverified — godlo -> blad skorowidza, przy ktorym uzyto
+    lokalnej kampanii bez sprawdzenia nowszej.
+    """
+
+    paths: list[Path]
+    no_coverage: list[str] = field(default_factory=list)
+    unverified: dict[str, str] = field(default_factory=dict)
+
+
 def download_sheets(
     sheets: list[str],
     output_dir: Path,
+    metadata_cache_path: Path,
     skip_existing: bool = True,
     resolution: str = "5m",
-) -> list[Path]:
+) -> NmtDownloadReport:
     """
-    Download NMT data for specified sheet codes using Kartograf.
-
-    In Kartograf 0.6.1+, download_sheet() returns ASC format via OpenData.
-    Returns Path for 1:10000 sheets, or list[Path] for coarser scales (auto-expansion).
+    Download NMT sheets via Kartograf 0.7.0 (campaigns="newest").
 
     Parameters
     ----------
-    sheets : List[str]
-        List of sheet codes (godla) to download
+    sheets : list[str]
+        Sheet codes; PL-1992 codes coarser than 1:10000 are expanded by Kartograf.
     output_dir : Path
-        Output directory for downloaded files
+        Kartograf data root — files land in
+        ``<output_dir>/nmt/pl_<uklad>_<res>_evrf2007/...``.
+    metadata_cache_path : Path
+        SQLite file of Kartograf's MetadataCache. Keep it on a local disk
+        (SQLite WAL is unreliable on network shares); its directory must exist.
     skip_existing : bool
-        Skip download if file already exists (default: True)
+        Reuse local campaign files (default: True).
     resolution : str
-        NMT resolution: "1m" or "5m" (default: "5m").
-        5m available only for EVRF2007 vertical CRS.
+        "1m" or "5m" (default: "5m").
 
     Returns
     -------
-    List[Path]
-        List of paths to downloaded files
+    NmtDownloadReport
 
     Raises
     ------
-    ImportError
-        If Kartograf is not installed
+    NmtDownloadError
+        Transport/service failures (full list of sheets), no coverage for
+        every sheet, missing cache directory or a cache disabled by SQLite.
+    kartograf.ParseError
+        Invalid sheet code (raised before any download).
     """
-    try:
-        from kartograf import DownloadManager, GugikProvider
-    except ImportError as e:
-        logger.error(
-            "Kartograf not installed. Install with: "
-            "pip install git+https://github.com/Daldek/Kartograf.git@v0.6.1"
+    from kartograf import DownloadManager, GugikProvider, MetadataCache
+
+    if not metadata_cache_path.parent.is_dir():
+        raise NmtDownloadError(
+            f"Katalog cache metadanych Kartografa nie istnieje: "
+            f"{metadata_cache_path.parent}"
         )
-        raise ImportError("Kartograf library not found") from e
 
-    # Ensure output directory exists
-    output_dir.mkdir(parents=True, exist_ok=True)
+    cache_errors: list[str] = []
+    cache = MetadataCache(metadata_cache_path, on_disabled=cache_errors.append)
+    provider = GugikProvider(resolution=resolution, cache=cache)
+    manager = DownloadManager(
+        output_dir=str(output_dir),
+        provider=provider,
+        resolution=resolution,
+        campaigns="newest",
+    )
 
-    # Initialize Kartograf components (Kartograf 0.6.1 API)
-    provider = GugikProvider(resolution=resolution)
-    manager = DownloadManager(output_dir=str(output_dir), provider=provider, resolution=resolution)
+    logger.info(f"Downloading {len(sheets)} sheets to {output_dir} (ASC, OpenData)")
+    paths = manager.download_sheets(sheets, skip_existing=skip_existing)
+    result = manager.last_result
 
-    downloaded_files = []
-    failed_sheets = []
+    if cache_errors:
+        raise NmtDownloadError("; ".join(cache_errors))
 
-    logger.info(f"Downloading {len(sheets)} sheets to {output_dir}")
-    logger.info("Format: ASC (OpenData)")
+    hard_failures = result.hard_failures
+    if hard_failures:
+        requested = len(paths) + len(result.failed)
+        raise NmtDownloadError(
+            f"{len(hard_failures)} z {requested} arkuszy NMT nie pobrano "
+            f"(blad pobrania, nie brak danych) — ponow pobranie: "
+            f"{', '.join(hard_failures)}"
+        )
 
-    for i, sheet in enumerate(sheets, 1):
-        logger.info(f"[{i}/{len(sheets)}] Downloading {sheet}...")
+    if not paths:
+        raise NmtDownloadError(
+            f"brak pokrycia GUGiK dla wszystkich arkuszy: "
+            f"{', '.join(result.no_coverage)}"
+        )
 
-        try:
-            # Download using Kartograf (returns Path | list[Path])
-            result = manager.download_sheet(sheet, skip_existing=skip_existing)
-            if result:
-                if isinstance(result, list):
-                    downloaded_files.extend(Path(p) for p in result)
-                    logger.info(f"  OK: {sheet} → {len(result)} files (auto-expanded)")
-                else:
-                    downloaded_files.append(Path(result))
-                    logger.info(f"  OK: {result}")
-            else:
-                logger.warning(f"  FAILED: {sheet} - no file returned")
-                failed_sheets.append(sheet)
+    if result.no_coverage:
+        logger.warning(
+            f"Brak pokrycia GUGiK dla {len(result.no_coverage)} arkuszy "
+            f"(pominiete): {', '.join(result.no_coverage)}"
+        )
+    for godlo, error in result.unverified.items():
+        logger.warning(
+            f"{godlo}: uzyto lokalnej kampanii bez sprawdzenia nowszej "
+            f"(skorowidz niedostepny: {error})"
+        )
 
-        except Exception as e:
-            logger.warning(f"  FAILED: {sheet} - {e}")
-            failed_sheets.append(sheet)
-
-    # Summary
-    logger.info("-" * 50)
-    logger.info(f"Downloaded: {len(downloaded_files)}/{len(sheets)} sheets")
-
-    if failed_sheets:
-        logger.warning(f"Failed sheets: {', '.join(failed_sheets)}")
-
-    return downloaded_files
+    logger.info(f"NMT: {len(paths)} arkuszy gotowych")
+    return NmtDownloadReport(
+        paths=list(paths),
+        no_coverage=list(result.no_coverage),
+        unverified=dict(result.unverified),
+    )
 
 
 def download_for_point(
@@ -143,9 +177,10 @@ def download_for_point(
     lon: float,
     buffer_km: float,
     output_dir: Path,
+    metadata_cache_path: Path,
     scale: str = "1:10000",
     skip_existing: bool = True,
-) -> list[Path]:
+) -> NmtDownloadReport:
     """
     Download NMT data for area around a point.
 
@@ -166,8 +201,8 @@ def download_for_point(
 
     Returns
     -------
-    List[Path]
-        List of downloaded file paths
+    NmtDownloadReport
+        See download_sheets()
     """
     # Import sheet lookup (local module)
     try:
@@ -187,19 +222,21 @@ def download_for_point(
         logger.info(f"  {sheet}")
 
     if not sheets:
-        logger.warning("No sheets found for the specified area")
-        return []
+        raise NmtDownloadError(f"Brak arkuszy dla punktu ({lat}, {lon})")
 
-    return download_sheets(sheets, output_dir, skip_existing=skip_existing)
+    return download_sheets(
+        sheets, output_dir, metadata_cache_path, skip_existing=skip_existing
+    )
 
 
 def download_for_geometry(
     geometry_path: Path,
     output_dir: Path,
+    metadata_cache_path: Path,
     scale: str = "1:10000",
     layer: str | None = None,
     skip_existing: bool = True,
-) -> list[Path]:
+) -> NmtDownloadReport:
     """
     Download NMT data for area covered by a geometry file (SHP/GPKG).
 
@@ -221,8 +258,8 @@ def download_for_geometry(
 
     Returns
     -------
-    List[Path]
-        List of downloaded file paths
+    NmtDownloadReport
+        See download_sheets()
     """
     from kartograf import find_sheets_for_geometry
 
@@ -239,16 +276,17 @@ def download_for_geometry(
         logger.info(f"  {sheet}")
 
     if not sheets:
-        logger.warning("No sheets found for geometry")
-        return []
+        raise NmtDownloadError(f"Brak arkuszy dla geometrii: {geometry_path}")
 
-    return download_sheets(sheets, output_dir, skip_existing=skip_existing)
+    return download_sheets(
+        sheets, output_dir, metadata_cache_path, skip_existing=skip_existing
+    )
 
 
 def main():
     """Main entry point for DEM download script."""
     parser = argparse.ArgumentParser(
-        description="Download NMT data from GUGiK using Kartograf 0.6.1+",
+        description="Download NMT data from GUGiK using Kartograf 0.7.0",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -294,8 +332,17 @@ def main():
         "--output",
         "-o",
         type=str,
-        default="../data/nmt/",
-        help="Output directory (default: ../data/nmt/)",
+        default="../cache/",
+        help=(
+            "Katalog danych Kartografa (default: ../cache/); "
+            "pliki w <output>/nmt/pl_<uklad>_<res>_evrf2007/"
+        ),
+    )
+    output_group.add_argument(
+        "--metadata-cache",
+        type=Path,
+        default=None,
+        help="Plik SQLite cache metadanych Kartografa (wymagany; dysk lokalny)",
     )
 
     # Additional options
@@ -348,7 +395,7 @@ def main():
 
     # Log configuration
     logger.info("=" * 60)
-    logger.info("NMT Download Script (using Kartograf 0.6.1)")
+    logger.info("NMT Download Script (using Kartograf 0.7.0)")
     logger.info("=" * 60)
 
     if args.geometry:
@@ -385,6 +432,9 @@ def main():
             logger.info("DRY RUN - no files will be downloaded")
         return
 
+    if args.metadata_cache is None:
+        parser.error("--metadata-cache jest wymagany do pobierania")
+
     # Download
     start_time = time.time()
 
@@ -393,15 +443,14 @@ def main():
             downloaded = download_for_geometry(
                 geometry_path=Path(args.geometry),
                 output_dir=output_dir,
+                metadata_cache_path=args.metadata_cache,
                 scale=args.scale,
                 layer=args.layer,
                 skip_existing=skip_existing,
             )
         else:
             downloaded = download_sheets(
-                sheets,
-                output_dir,
-                skip_existing=skip_existing,
+                sheets, output_dir, args.metadata_cache, skip_existing=skip_existing
             )
     except ImportError as e:
         logger.error(str(e))
@@ -415,16 +464,15 @@ def main():
     # Summary
     logger.info("=" * 60)
     logger.info("Download complete!")
-    logger.info(f"  Files downloaded: {len(downloaded)}")
+    logger.info(f"  Sheets ready: {len(downloaded.paths)}")
+    logger.info(f"  No coverage: {len(downloaded.no_coverage)}")
+    logger.info(f"  Unverified (local campaign reused): {len(downloaded.unverified)}")
     logger.info(f"  Output directory: {output_dir}")
     logger.info(f"  Time elapsed: {elapsed:.1f}s")
     logger.info("=" * 60)
 
-    # Print downloaded files
-    if downloaded:
-        logger.info("Downloaded files:")
-        for f in downloaded:
-            logger.info(f"  {f}")
+    for f in downloaded.paths:
+        logger.info(f"  {f}")
 
 
 if __name__ == "__main__":
