@@ -44,3 +44,12 @@ class TestCheckHsgCache:
     def test_message_tells_how_to_fix(self, raster):
         with pytest.raises(HsgCacheStaleError, match="Usun"):
             check_hsg_cache(raster, "0.7.0")
+
+    @pytest.mark.parametrize(
+        "content",
+        ["{not json", "[1, 2]", '{"kartograf_version": "0.7.0", "extra": null}'],
+    )
+    def test_malformed_sidecar_is_stale(self, raster, content):
+        raster.with_name(raster.name + ".meta.json").write_text(content)
+        with pytest.raises(HsgCacheStaleError, match="Usun"):
+            check_hsg_cache(raster, "0.7.0")
