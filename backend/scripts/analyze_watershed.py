@@ -114,35 +114,60 @@ class AnalysisConfig:
 # =============================================================================
 
 
+def find_existing_nmt_files(data_dir: Path, resolution: str = "5m") -> list[Path]:
+    """Znajdź pobrane arkusze NMT w segmencie Kartografa dla rozdzielczości.
+
+    Szuka wyłącznie w ``<data_dir>/nmt/pl_*_<resolution>_evrf2007/`` (bez
+    ``kampanie/``), więc nie wciąga innych rozdzielczości ani produktów
+    pośrednich (``reprojected/``, mozaiki).
+    """
+    nmt_dir = data_dir / "nmt"
+    files = sorted(
+        p
+        for segment in nmt_dir.glob(f"pl_*_{resolution}_evrf2007")
+        for p in segment.rglob("*.asc")
+        if "kampanie" not in p.relative_to(segment).parts
+    )
+    if not files:
+        raise FileNotFoundError(
+            f"Brak plików NMT {resolution} w {nmt_dir}/pl_*_{resolution}_evrf2007/ "
+            "— uruchom z --download"
+        )
+    return files
+
+
 def download_nmt_data(config: AnalysisConfig) -> list[Path]:
     """Pobierz dane NMT z GUGiK."""
     logger.info("=" * 60)
     logger.info("KROK 1: Pobieranie NMT z GUGiK")
     logger.info("=" * 60)
 
-    nmt_dir = config.data_dir / "nmt"
-    nmt_dir.mkdir(parents=True, exist_ok=True)
+    config.data_dir.mkdir(parents=True, exist_ok=True)
+    from scripts.download_dem import METADATA_CACHE_NAME
+
+    metadata_cache_path = config.data_dir / METADATA_CACHE_NAME
 
     # Jeśli podano konkretne kafle, użyj ich
     if config.tiles:
         from scripts.download_dem import download_sheets
 
         logger.info(f"Pobieranie {len(config.tiles)} kafli: {config.tiles}")
-        downloaded = download_sheets(config.tiles, nmt_dir)
+        report = download_sheets(config.tiles, config.data_dir, metadata_cache_path)
     else:
         # Użyj bufora wokół punktu
         from scripts.download_dem import download_for_point
 
-        downloaded = download_for_point(
+        report = download_for_point(
             lat=config.latitude,
             lon=config.longitude,
             buffer_km=config.buffer_km,
-            output_dir=nmt_dir,
+            output_dir=config.data_dir,
+            metadata_cache_path=metadata_cache_path,
             scale=config.scale,
         )
 
-    logger.info(f"Pobrano {len(downloaded)} arkuszy NMT")
-    return downloaded
+    logger.info(f"Pobrano {len(report.paths)} arkuszy NMT")
+    return report.paths
 
 
 def process_nmt_data(config: AnalysisConfig, input_files: list[Path]) -> dict:
@@ -1064,10 +1089,7 @@ def analyze_watershed(config: AnalysisConfig) -> dict:
     if config.process_dem:
         # Znajdź pliki NMT jeśli nie pobrano nowych
         if not downloaded_files:
-            nmt_dir = config.data_dir / "nmt"
-            downloaded_files = list(nmt_dir.glob("**/*.asc"))
-            if not downloaded_files:
-                downloaded_files = list(nmt_dir.glob("**/*.tif"))
+            downloaded_files = find_existing_nmt_files(config.data_dir)
             logger.info(f"Znaleziono {len(downloaded_files)} istniejących plików NMT")
 
         if downloaded_files:

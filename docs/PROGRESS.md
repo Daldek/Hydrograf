@@ -10,7 +10,7 @@
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 432 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k |
 | Integracja Hydrolog | ✅ Gotowy | v0.6.3 (Nash IUH, 3 nowe metody tc) |
-| Integracja Kartograf | ✅ Gotowy | v0.6.1 (NMT, NMPT, Orto, Land Cover, HSG, BDOT10k hydro) |
+| Integracja Kartograf | ✅ Gotowy | v0.7.0 (NMT przez `download_sheets` + `MetadataCache`, Land Cover, HSG, BDOT10k hydro) |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). Jawna topologia (ADR-052), walidacja strict, 2-fazowy pipeline. MVT tiles, overlay frontend, admin panel sewer. |
@@ -47,7 +47,24 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-10-06/08 (sesja 96 — przygotowanie do wdrożenia programu „jedno źródło prawdy” config/ścieżki/dane; magazyn danych)
+**Data:** 2026-10-08 (sesja 97 — etap K: wdrożenie Kartografa v0.7.0; przepisanie historii git)
+
+### Co zrobiono
+- **Analiza Kartografa v0.7.0** (wydany 2026-10-08) i sondy empiryczne na kodzie Hydrografa: 7 testów padało (przeniesiony `providers.bdot10k`), `discover_asc_files` dublowało arkusze (hardlink + `kampanie/`), błędy pobierania NMT przechodziły po cichu, bootstrap kończył się kodem 0 przy całkowitej porażce pobrania NMT.
+- **Etap K na gałęzi `feature/kartograf-0.7.0`** (plan w `notes/superpowers/plans/2026-10-08-kartograf-0.7.0-wdrozenie.md`, wykonany zespołem subagentów z recenzją per zadanie i końcową recenzją całej gałęzi): pin `@v0.7.0`; `download_sheets()` wsadowo z `MetadataCache` (`<cache_dir>/kartograf_meta.db`), `NmtDownloadReport`, jeden `NmtDownloadError` ze wszystkimi problemami naraz; bootstrap: `cache_dir` = korzeń danych Kartografa, mozaika wyłącznie z listy kroku 2, krok 2 `fail` → kod 1; walidacja `--bbox`/`--sheets` (kod 2); `hsg_poland.tif` bez zgodnego sidecara → `HsgCacheStaleError`; HSG z samych nodata nie daje „A”; `clean.py` czyści cache metadanych; KARTOGRAF.md v6.0, ADR-057 (aktualizacja), CHANGELOG.
+- **Decyzje D1–D10 planu** (domyślne z planu, zatwierdzone przez kontynuację usera): D1 częściowy brak pokrycia = WARNING; D2 `unverified` = WARNING; D3 wyłączony cache = błąd; D4 stary HSG = błąd z instrukcją (równość wersji); D5 fallback HSG „B” bez zmian (do decyzji); D6 dane 0.6.1 nietknięte; D7 bootstrap z bazą — NIE wykonany; D8 `cache/soil_hsg/hsg_poland.tif` z 0.6.1 usunięty (zgoda usera); D9 `discover_asc_files` usunięte; D10 `--metadata-cache` wymagany, `--output ../cache/`.
+- **Weryfikacja w kontenerze:** pobranie 2 arkuszy (układ ADR-026, kampanie, sidecar), drugi przebieg bez pobrań, brak pokrycia (całość → 1, część → 0 + WARNING), symulowana awaria sieci (pełna lista godeł), bootstrap: brak pokrycia → kod 1 przed bazą, zły bbox → 2. Obraz nie ma `gdalbuildvrt` — mozaika idzie fallbackiem `rasterio.merge`.
+- **Awaria API po przebudowie obrazu:** niepinowane `sqlalchemy>=2.0.25` pobrało 2.1.4 (psycopg3 dla `postgresql://`) → crash-loop `alembic upgrade head`. Naprawa: `sqlalchemy>=2.0.25,<2.1`; API zdrowe. Backlog: migracja na 2.1 i plik constraints zależności.
+- **Historia git przepisana** (`git filter-repo`, force push develop/main/tagi): usunięte szczegóły infrastruktury hosta; wszystkie hashe sprzed 2026-10-08 nieaktualne. Pozostałe ścieżki dysku danych hosta poprawione tylko w bieżących plikach (decyzja usera).
+- Testy unit: 1045 passed (było 1021).
+
+### Nastepne kroki
+- Decyzja usera: merge `feature/kartograf-0.7.0` → `develop` (+ push).
+- Decyzje otwarte z etapu K: D5 (fallback HSG „B” i krok 5 jako niekrytyczny), D6 (dane w układzie 0.6.1, ponowne pobranie Opolskiego w 0.7.0).
+- Następny bootstrap pobierze HSG Polski od nowa (stary raster usunięty).
+- Dalej: decyzje 1–16 z raportu rewizji specyfikacji (s96) → S1 → S2; S3 czeka na kolejne wydanie Kartografa (Archive, kafle SoilGrids, surowy ZIP BDOT, wersja BDOT w sidecarze, publiczne odkrywanie TERYT).
+
+### Poprzednia sesja (2026-10-06/08, sesja 96 — przygotowanie do wdrożenia programu „jedno źródło prawdy” config/ścieżki/dane; magazyn danych)
 
 ### Co zrobiono
 - **Sesje 94–95 (2026-09-28/29, bez zmian w repo):** trzy specyfikacje w `notes/superpowers/specs/`: cz. 1 konfiguracja i ścieżki (zaakceptowana, ADR-059), cz. 2 manifest przebiegów w DB (zaakceptowana, ADR-060), cz. 3 archiwum surowych danych + PMAXTP na natywnej siatce (rew. 2, niezaakceptowana, ADR-061, zamyka ADR-058).
@@ -64,20 +81,20 @@
 ### Poprzednia sesja (2026-09-28, sesja 93 — pobranie NMT 5m dla województwa opolskiego z reużyciem pilotażu; wersjonowanie NMT)
 
 ### Co zrobiono
-- **Reużycie pilotażu z s91:** wszystkie 964 pliki `/data/nmt/pilot_opolskie/` mają nagłówek ASC zgodny z bboxem swojego godła — stary `sheet_finder` zawinił tylko doborem obszaru, nie treścią (korekta wniosku z s92). 932 z nich należą do Opolskiego (target: 3720 arkuszy z `/data/nmt/boundaries/wojewodztwa/opolskie.gpkg`).
+- **Reużycie pilotażu z s91:** wszystkie 964 pliki `<HOST_DATA_DIR>/nmt/pilot_opolskie/` mają nagłówek ASC zgodny z bboxem swojego godła — stary `sheet_finder` zawinił tylko doborem obszaru, nie treścią (korekta wniosku z s92). 932 z nich należą do Opolskiego (target: 3720 arkuszy z `<HOST_DATA_DIR>/nmt/boundaries/wojewodztwa/opolskie.gpkg`).
 - Pułapka: pilotaż ma godła z zerami (`M-33-036-…`), Kartograf zwraca bez zer (`M-33-36-…`); `SheetParser` nie normalizuje paddingu, a `FileStorage.get_path()` buduje ścieżkę ze stringu → `skip_existing` nie widziałby plików. Pliki przeniesione (hardlink + usunięcie starej nazwy) pod ścieżki bez zer. W `pilot_opolskie/` zostało 32 pliki spoza Opolskiego (45 MB). Decyzja: zostajemy przy formie bez zer (kanoniczna w Kartografie); sortowanie naturalne (`ls -v`, `sort -V`).
-- **Pobranie Opolskiego zakończone:** `<HOST_DATA_DIR>/nmt/nmt_5m/` — 3233 arkusze, 4,5 GB (932 z pilotażu + 2301 pobrane). 487 braków to arkusze całkowicie poza Polską (Czechy — Kartograf dobiera arkusze po bboxie województwa) — legit. 3 braki w Polsce były fałszywe (błędy sieci WMS) — pobrane ponownie przez `--sheets`. Log: `/data/nmt/opolskie.log`.
+- **Pobranie Opolskiego zakończone:** `<HOST_DATA_DIR>/nmt/nmt_5m/` — 3233 arkusze, 4,5 GB (932 z pilotażu + 2301 pobrane). 487 braków to arkusze całkowicie poza Polską (Czechy — Kartograf dobiera arkusze po bboxie województwa) — legit. 3 braki w Polsce były fałszywe (błędy sieci WMS) — pobrane ponownie przez `--sheets`. Log: `<HOST_DATA_DIR>/nmt/opolskie.log`.
 - **Problemy z GUGiK:** `mapy.geoportal.gov.pl` (WMS skorowidzów) zrywał połączenia (173× `WMS query failed`, szczyt 12:30–12:40, potem spadek); pobieranie plików z OpenData bez błędów. Bardziej przeciążenie niż blokada (brak 429/403, tylko jedna usługa), niepewne.
-- **Bug w Kartografie 0.6.1:** `_get_opendata_url()` przy błędzie sieci przechodzi do starszej warstwy skorowidza → możliwe ciche pobranie starszej edycji (92 arkusze pobrane po błędzie warstwy 2025, lista: `/data/nmt/opolskie_suspect_older_2025_layer_failed.txt` — NIE zweryfikowane) albo fałszywe "No NMT 5m data" (potwierdzone: 3 przypadki).
+- **Bug w Kartografie 0.6.1:** `_get_opendata_url()` przy błędzie sieci przechodzi do starszej warstwy skorowidza → możliwe ciche pobranie starszej edycji (92 arkusze pobrane po błędzie warstwy 2025, lista: `<HOST_DATA_DIR>/nmt/opolskie_suspect_older_2025_layer_failed.txt` — NIE zweryfikowane) albo fałszywe "No NMT 5m data" (potwierdzone: 3 przypadki).
 - Backlog: 3 punkty Kartograf 0.7.0 (błąd sieci ≠ brak arkusza; sesja HTTP per zapytanie; zwracanie pełnego rekordu metadanych) + **ADR do decyzji: wersjonowanie arkuszy NMT** (manifest z pełnym rekordem skorowidza + czas pobrania; archiwum `<HOST_DATA_DIR>/nmt/archive/<produkt>/<hierarchia godła>/<aktualnoscRok>_<godło>.asc`, bez przyrostka kolizji — decyzje usera).
 - Rekord skorowidza (WMS GetFeatureInfo) zawiera: `url`, `aktualnosc`, `aktualnoscRok`, `numerZgloszeniaPracy`, `zrDanych`, `bladSredniWysokosci`, `dt_pzgik` i in.; `MetadataCache` Kartografa przechowuje tylko URL.
 
 ### Nastepne kroki
 - Zweryfikować 92 arkusze Opolskiego pobrane po błędzie warstwy 2025 (odpytać skorowidz, porównać `aktualnosc`/URL) i przy okazji zbudować pierwszy manifest wersji dla Opolskiego.
 - Przyjąć ADR wersjonowania NMT (nadać numer 058) i zaimplementować manifest + archiwum.
-- Przed pobraniem całej Polski: wspólna `requests.Session` + `MetadataCache` w `download_dem.py`, rozważyć pauzę między arkuszami / uruchomienie w nocy, ponowny przebieg na braki.
+- Przed pobraniem całej Polski: wspólna `requests.Session` + `MetadataCache` w `download_dem.py`, rozważyć pauzę między arkuszami / uruchomienie w nocy, ponowny przebieg na braki. → `MetadataCache` zrealizowane w etapie K (s97); wspólna sesja HTTP zapewniona wewnętrznie przez Kartograf 0.7.0 (SessionPerThread); pauza między arkuszami — niezrealizowana.
 - ~~Zacommitować reorganizację docs usera~~ — zrobione w s96.
-- `/data/nmt/pilot_opolskie/` (32 pliki spoza Opolskiego + log) — do usunięcia, gdy user zdecyduje.
+- `<HOST_DATA_DIR>/nmt/pilot_opolskie/` (32 pliki spoza Opolskiego + log) — do usunięcia, gdy user zdecyduje.
 
 ### Poprzednia sesja (2026-09-28, sesja 92 — deduplikacja logiki pobierania: wszystko przez Kartograf v0.6.1)
 
@@ -108,10 +125,10 @@
 
 ### Nastepne kroki
 - Zacommitować reorganizację docs usera razem z poprawkami audytu (decyzja usera).
-- Rozważyć podłączenie `MetadataCache` Kartografa w `download_dem.py` (dziś każdy arkusz = świeże zapytanie WMS GetFeatureInfo) — przed pobraniem całej Polski.
-- **Dane pilotażu Opolskiego (`/data/nmt/pilot_opolskie/`) z s91 pobrano błędną ścieżką `--lat/--lon`** → pokrycie niezgodne z zamierzonym; do usunięcia/ponownego pobrania, jeśli mają być użyte.
+- Rozważyć podłączenie `MetadataCache` Kartografa w `download_dem.py` (dziś każdy arkusz = świeże zapytanie WMS GetFeatureInfo) — przed pobraniem całej Polski. → zrealizowane w etapie K (s97).
+- **Dane pilotażu Opolskiego (`<HOST_DATA_DIR>/nmt/pilot_opolskie/`) z s91 pobrano błędną ścieżką `--lat/--lon`** → pokrycie niezgodne z zamierzonym; do usunięcia/ponownego pobrania, jeśli mają być użyte.
 - Pełne pobranie Polski (komenda z s91 niżej) nadal czeka na zielone światło; nie wymaga zmian.
-- Backlog: upstream `discover_teryts_for_bbox` + `mosaic_and_crop` przy przejściu na Kartograf 0.7.0.
+- Backlog: upstream `discover_teryts_for_bbox` + `mosaic_and_crop` przy przejściu na Kartograf 0.7.0. → ocenione w etapie K: `mosaic_and_crop` nieużyty (ADR-057 b); `discover_teryts_for_bbox` nadal brak w 0.7.0.
 - Nic nie jest wypchnięte na origin.
 
 ### Poprzednia sesja (2026-09-28, sesja 91 — przygotowanie pobrania NMT 5m dla całej Polski przez Kartograf)
@@ -119,19 +136,21 @@
 ### Co zrobiono
 - Oszacowanie rozmiaru pobrania NMT 5m dla całej Polski, zweryfikowane empirycznie na realnych danych (nie tylko teoretycznie): ~7,08 B/komórkę × 12,51 mld komórek ≈ 88 GB z geometrii kraju; ~118 GB z rzeczywistej liczby arkuszy (80 343 arkusze × ~1,47 MB) — druga wartość miarodajna dla planowania.
 - Audyt miejsca na dysku: dysk systemowy za mały na to zadanie; dane NMT umieszczone na osobnym dysku danych hosta (`<HOST_DATA_DIR>/nmt`).
-- **Pilotaż na Opolskiem** (tryb `--lat/--lon --buffer 55`): 964/1000 arkuszy pobrane w 24 min (1445s, ~1,45 s/arkusz), 36 legit braków pokrycia 5m przy granicy czeskiej (`vertical_crs=EVRF2007` w logu — brak danych GUGiK, nie throttling). Zero sygnałów blokowania ze strony GUGiK. Dane w `/data/nmt/pilot_opolskie/` (~1,4 GB, niekompletne z powodu buga niżej — tańsze ponowne pobranie niż scalanie z pełnym przebiegiem).
+- **Pilotaż na Opolskiem** (tryb `--lat/--lon --buffer 55`): 964/1000 arkuszy pobrane w 24 min (1445s, ~1,45 s/arkusz), 36 legit braków pokrycia 5m przy granicy czeskiej (`vertical_crs=EVRF2007` w logu — brak danych GUGiK, nie throttling). Zero sygnałów blokowania ze strony GUGiK. Dane w `<HOST_DATA_DIR>/nmt/pilot_opolskie/` (~1,4 GB, niekompletne z powodu buga niżej — tańsze ponowne pobranie niż scalanie z pełnym przebiegiem).
 - **Znalezione i naprawione 2 realne bugi** w ścieżce pobierania NMT (oba na `develop`, **niepushowane**):
   1. `backend/utils/sheet_finder.py::get_sheets_for_bbox()` — krok próbkowania w długości geograficznej (0,04°) większy od rzeczywistego arkusza 1:10000 (0,03125°), cicho gubił ~22% kolumn arkuszy bez żadnego błędu w logu. Fix: krok = połowa rozmiaru arkusza dla każdej z 4 skal. Commit `e9bfc55`.
   2. `backend/scripts/download_dem.py` (2 miejsca: `main()` gałąź `--dry-run` i `download_for_geometry()`) — `find_sheets_for_geometry()` z Kartografa wymaga `Path`, dostawał `str` → crash na starcie prawdziwego pobierania przez `--geometry` (dry-run przechodził, bo szedł inną gałęzią kodu — pierwszy fix subagenta naprawił tylko dry-run, drugie wystąpienie złapane przy własnej weryfikacji przed odpaleniem pełnego przebiegu). Fix zweryfikowany prawdziwym pobraniem end-to-end (9/9 arkuszy, nie tylko dry-run). Commit `382c5f3`.
-- **Pobrano oficjalne granice województw (PRG, GUGiK):** `/data/nmt/boundaries/wojewodztwa_polska.gpkg` (16 cech, EPSG:4258, atrybut nazwy `JPT_NAZWA_`, suma powierzchni 313 731 km² — zgodne z ~312 700 km² Polski, różnica z generalizacji granic). Ustalono: `kartograf.find_sheets_for_geometry()` obsługuje wiele cech w jednym pliku → **jeden przebieg na całą Polskę lepszy niż 16 osobnych** (80 343 arkuszy vs 132 169 przy 16 przebiegach osobno — arkusze graniczne liczone wielokrotnie).
+- **Pobrano oficjalne granice województw (PRG, GUGiK):** `<HOST_DATA_DIR>/nmt/boundaries/wojewodztwa_polska.gpkg` (16 cech, EPSG:4258, atrybut nazwy `JPT_NAZWA_`, suma powierzchni 313 731 km² — zgodne z ~312 700 km² Polski, różnica z generalizacji granic). Ustalono: `kartograf.find_sheets_for_geometry()` obsługuje wiele cech w jednym pliku → **jeden przebieg na całą Polskę lepszy niż 16 osobnych** (80 343 arkuszy vs 132 169 przy 16 przebiegach osobno — arkusze graniczne liczone wielokrotnie).
 - Zidentyfikowany dług techniczny dodany do Backlogu (priorytet niski): `sheet_finder.py` reimplementuje logikę bbox→arkusze, którą Kartograf ma wbudowaną i solidniejszą (`find_sheets_for_bbox()`, hierarchiczne przycinanie zamiast próbkowania punktowego) od v0.4.0/0.4.1 — właśnie tam siedział bug #1 wyżej. (→ ZREALIZOWANE w sesji naprawczej tego samego dnia: `sheet_finder.py` usunięty, zastąpiony `sheet_lookup.py` delegującym do Kartografa; zob. Backlog „Zrobione (archiwum)" i ADR-057.)
 
 ### Stan na koniec sesji — przygotowanie kompletne, pobranie NIE uruchomione
 User przerwał sesję przed wydaniem zielonego światła na właściwy przebieg. Komenda gotowa do odpalenia w kolejnej sesji:
 ```
-cd backend && .venv/bin/python -m scripts.download_dem --geometry /data/nmt/boundaries/wojewodztwa_polska.gpkg --output /data/nmt
+cd backend && .venv/bin/python -m scripts.download_dem --geometry <HOST_DATA_DIR>/nmt/boundaries/wojewodztwa_polska.gpkg --output <HOST_DATA_DIR>/nmt
 ```
 (uruchomić w tle, log do pliku na `<HOST_DATA_DIR>/nmt`). Szacunek: **~118 GB, ~32h** ciągłego, jednowątkowego pobierania; wolne miejsce na dysku danych wystarczy. Wznawialne przez `skip_existing=True` — bezpiecznie przerwać/wznowić tą samą komendą. Working tree ma też niezwiązane, wcześniejsze niezacommitowane zmiany (config.py, bootstrap.py, process_dem.py, reorganizacja docs) — świadomie nietknięte przez wszystkie subagenty tej sesji.
+
+> **Uwaga (Kartograf 0.7.0, etap K):** powyższa komenda pochodzi sprzed 0.7.0. Forma aktualna: `--output <HOST_DATA_DIR>` jest korzeniem danych Kartografa (pliki trafiają do `<HOST_DATA_DIR>/nmt/pl_1992_5m_evrf2007/...`) oraz wymagane `--metadata-cache <LOCAL_DIR>/kartograf_meta.db` na dysku LOKALNYM (nigdy udział sieciowy — SQLite WAL).
 
 ### Nastepne kroki
 - **Uzyskać potwierdzenie usera i odpalić właściwe pobranie** (komenda wyżej) — jedyny brakujący krok.
@@ -1349,6 +1368,8 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 - [ ] Wolne kafle landcover MVT na niskich zoomach: `/api/tiles/landcover/{z}/{x}/{y}.pbf` przy zoom 11-12 do 6.7 s (72 zadania >2 s w sesji testowej 2026-08-01, monitoring sesja 82) — prawdopodobnie kosztowne zapytanie przestrzenne przy pierwszym ladowaniu warstwy (zimny cache). Do diagnozy: EXPLAIN ANALYZE zapytania MVT na niskim zoomie, ew. cache/preagregacja. Priorytet: sredni.
 - [ ] Tryb precise (`POST /api/delineate-watershed` bez `threshold_m2`) zwraca `area_km2 = 0.0` dla niektorych punktow (`raster_service.delineate_from_point()`) — odkryte przy diagnozie feedbacku #11 (`notes/reports/2026-08-02-length-km-diagnosis.md` §10.2), poza zakresem naprawy `hydraulic_length_km` (sesja 83). Priorytet: sredni.
 - [ ] Wygladzanie granicy zlewni (`ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)`) skraca obwod o ~28% przy zachowanej powierzchni — liczenie wskaznikow ksztaltu na hybrydzie (`area_km2` z rastra, `perimeter_km` z wygladzonego wieloboku) zaniza `compactness_coefficient` (Kc) i zawyza `circularity_ratio` (Rc). Odkryte przy diagnozie feedbacku #11 (§10.1 diagnozy, sesja 83). Priorytet: sredni.
+- [ ] `scripts/download_landcover.py` (~l.180-197): dla `--provider corine` z `--lat/--lon` wymusza rozszerzenie `.gpkg`, a CORINE zapisuje raster — niezgodny format/rozszerzenie pliku wyjsciowego (wada spoza migracji na Kartograf 0.7.0). Priorytet: sredni.
+- [ ] `core/cn_calculator.py::get_land_cover_stats` (~l.254) lapie kazdy `Exception` i zwraca `{}` — cicha degradacja (brak pokrycia nieodroznialny od bledu); zawezic wyjatki i podniesc blad glosno (wada spoza migracji na Kartograf 0.7.0). Priorytet: sredni.
 
 ### Funkcjonalnosci — feedback Kamila (2026-07, oryginal: `notes/feedback/Kamil.md`)
 
@@ -1388,16 +1409,20 @@ Wizja (brainstorm 2026-07-31, pelne uzasadnienia: `notes/plans/2026-07-31-wlasne
 
 ### Infrastruktura i jakosc kodu
 
+- [ ] Migracja na SQLAlchemy 2.1 i zdjecie pinu `<2.1` — albo URL-e `postgresql+psycopg2://` (docker-compose.yml, `config.py`, migrations `env.py`), albo przejscie na psycopg v3. Pin dodany, bo 2.1 wybiera psycopg v3 dla `postgresql://`, a obraz ma `psycopg2-binary`. Priorytet: niski.
+- [ ] Plik lock/constraints zaleznosci wygenerowany z dzialajacego obrazu — wiekszosc pozycji w `requirements.txt` ma niezwiazane `>=`, wiec kazda przebudowa obrazu moze zepsuc zywe API (jak przy SQLAlchemy 2.1). Priorytet: sredni.
 - [ ] Dashboard ruchu — przebudowa od zera (poprzednia implementacja GoAccess z sesji 82/84 wycofana w całości w sesji 85; kod referencyjny w gałęzi `backup/develop-pre-cleanup`, decyzje ADR-055/056 tylko w starej historii). Przed startem: brainstorming wymagań z użytkownikiem. **Zależność: E1 (real_ip za tunelem) ze specyfikacji utwardzenia jest prerekwizytem** — bez niego logi zapisują IP tunelu, analiza per-IP ślepa; `log_format` definiować razem z real_ip; decyzja anonimizacja/retencja IP (RODO).
 - [ ] Flaga `--thresholds` w `bootstrap.py` + pole w API/panelu admina — dziś progi akumulacji są hardcodowane w wywołaniu `process_dem` (`bootstrap.py:540`), choć sam `process_dem.py` ma flagę `--thresholds`. Kontekst (sesja 88): przy bboxie Kotliny Kłodzkiej (113M komórek) próg 1000 m² powoduje OOM (polygonizacja 872k podzlewni > limit 8G) — dane wygenerowano progami [10000, 100000] przez jednorazową edycję hardcode'u; ponowny bootstrap z domyślną listą znów wpadnie w OOM. Po dodaniu flagi: `DEFAULT_THRESHOLD_M2` (`core/constants.py`) musi być zawsze równy najniższemu progowi w danych. Priorytet: sredni.
 - [ ] Migracja bind mountow na named volumes Docker (`./data`, `./cache`, `./frontend/data`, `./frontend/tiles`) — w obecnym ksztalcie kazda zmiana engine ryzykuje powtorke EPERM z sesji 80. Priorytet: sredni.
 - [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
 - [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
 - [ ] Code review CR12-CR16 (sugestie): duplikacja morph, _MAX_MERGE const, inline import, n_bins ceil, POST cache
-- [ ] Upstream do Kartografa (przy 0.7.0): publiczne `discover_teryts_for_bbox()` (TERYT dla bbox bez pobierania danych) i `mosaic_and_crop` (istnieja/planowane na branchu develop Kartografa, niewydane w 0.6.1). Po wydaniu 0.7.0: usunac fallback na prywatnym `Bdot10kProvider._get_teryt_for_point()` w `download_landcover.py::_discover_teryts_grid()` (dzis zabezpieczony guardem + testem kontraktowym, ADR-057) i rozwazyc zastapienie wlasnego `merge_hydro_gpkgs()`/mozaikowania rastra funkcja biblioteczna. Priorytet: niski.
-- [ ] Kartograf 0.7.0 — `GugikProvider._get_opendata_url()` traktuje blad sieci jak brak arkusza w warstwie skorowidza (sesja 93, pobranie Opolskiego). Petla po warstwach `SkorowidzeNMT2025` → `2024` → `2023` → `2022iStarsze` przy wyjatku `requests` (connection reset, timeout) przechodzi do starszej warstwy zamiast ponowic zapytanie. Skutki: (1) cichy download starszej edycji arkusza, gdy zapytanie o nowsza warstwe sie nie powiodlo — w Opolskiem 92 arkusze pobrane po bledzie warstwy 2025 (lista: `/data/nmt/opolskie_suspect_older_2025_layer_failed.txt`); (2) falszywe `No NMT 5m data available`, gdy zawioda wszystkie warstwy. Oczekiwane: retry z backoffem dla bledow sieci, przejscie do starszej warstwy tylko przy poprawnej odpowiedzi bez URL-a, `DownloadError` (nie "brak pokrycia") gdy siec zawiodla. Priorytet: wysoki przed pobraniem calej Polski.
-- [ ] Kartograf 0.7.0 — `GugikProvider` bez przekazanej sesji tworzy nowe `requests.Session()` przy kazdym zapytaniu WMS (nowe polaczenie TLS per arkusz), co dodatkowo obciaza `mapy.geoportal.gov.pl` (w sesji 93 serwer zrywal polaczenia). Oczekiwane: domyslna wspoldzielona sesja w providerze. Obejscie po stronie Hydrografu niezalezne od 0.7.0: `download_dem.py` przekazuje wlasna `requests.Session` i `MetadataCache` do `GugikProvider` (konstruktor 0.6.1 przyjmuje oba). Priorytet: sredni.
-- [ ] Kartograf 0.7.0 — `download_sheet()` zwraca tylko `Path`, a `_get_opendata_url()` wyciaga z odpowiedzi skorowidza regexem sam `url`. Odpowiedz GetFeatureInfo zawiera pelny rekord metadanych (sprawdzone s93): `aktualnosc` (data), `aktualnoscRok`, `numerZgloszeniaPracy`, `zrDanych` (np. "Zdj. lotnicze" vs lidar), `bladSredniWysokosci`, `bladSredniPolozenia`, `dt_pzgik`, `ukladWspolrzednychPionowych`, `calyArkuszWypelnionyTrescia`, `modulArchiwizacji`. Oczekiwane: parsowanie calego rekordu i zwracanie go razem ze sciezka (albo publiczny odczyt z `MetadataCache`), zeby Hydrograf mogl prowadzic rejestr wersji arkuszy NMT (patrz ADR do decyzji ponizej). Priorytet: sredni.
+- [ ] Upstream do Kartografa: publiczne `discover_teryts_for_bbox()` (TERYT dla bbox bez pobierania danych) nadal brak w 0.7.0 - po wydaniu usunac fallback na prywatnym `Bdot10kProvider._get_teryt_for_point()` w `download_landcover.py::_discover_teryts_grid()` (dzis zabezpieczony guardem + testem kontraktowym, ADR-057). `mosaic_and_crop`/`download_pl_cutout` ocenione w etapie K - nie zastepuja VRT Hydrografu (ADR-057, aktualizacja 2026-10-08); `merge_hydro_gpkgs()` bez odpowiednika. Priorytet: niski.
+- [x] Kartograf 0.7.0 — `_get_opendata_url()` traktowal blad sieci jak brak arkusza (sesja 93, pobranie Opolskiego): rozwiazane w 0.7.0 (DownloadError zamiast przejscia do starszej warstwy; warstwy z GetCapabilities) — etap K.
+- [ ] Opolskie: ponowne pobranie w 0.7.0 (decyzja D6), zastepuje weryfikacje 92 arkuszy z listy podejrzanych. Dane z ukladu 0.6.1 nie sa reuzywane (docs/integrations/KARTOGRAF.md §6.5).
+- [x] Kartograf 0.7.0 — `requests.Session()` per zapytanie: 0.7.0 - jeden transport HTTP — etap K.
+- [x] (czesciowo) Kartograf 0.7.0 — pelny rekord metadanych arkusza: sidecar `.meta.json` (`extra.source`: url, layer, acquisition_date/year, pzgik_date, survey_work_id, data_source, full_sheet) — etap K; BRAK w sidecarze: bladSredniWysokosci, bladSredniPolozenia, modulArchiwizacji, sha256 — do ADR-058/backlogu Kartografa.
+- [ ] Bootstrap krok 5 (HSG): blad (w tym nieaktualny `hsg_poland.tif`) jest zapisywany jako krok nieudany, ale bootstrap konczy sie kodem 0 przy udanych krokach 1-3; fallback HSG "B" przy braku danych SoilGrids bez zmian - do decyzji D5 (zgodnie z zasada "brak danych = blad, nie wartosc domyslna").
 - [ ] **ADR do decyzji — wersjonowanie arkuszy NMT** (sesja 93). Problem: GUGiK publikuje NMT w warstwach wg roku aktualnosci (`SkorowidzeNMT2025`/`2024`/`2023`/`2022iStarsze`), a po stronie Hydrografu plik = sama sciezka z godla — rok przepada, `skip_existing` blokuje aktualizacje, mozaika miesza naloty z roznych lat bez sladu (mozliwe progi wysokosci na stykach, niewyjasnialne zmiany zlewni miedzy bootstrapami). Proponowane rozwiazanie:
   1. Uklad plikow bez zmian (jedna, najnowsza znana wersja per godlo, sciezki Kartografa) + manifest w `<HOST_DATA_DIR>/nmt/` (SQLite/GPKG) z pelnym rekordem skorowidza: godlo, `aktualnosc`, `numerZgloszeniaPracy`, `zrDanych`, `bladSredniWysokosci`, `dt_pzgik`, URL OpenData, czas pobrania (timestamp, wymagany), sha256. Klucz wersji: `numerZgloszeniaPracy` + `aktualnosc`. `zrDanych` istotne hydrologicznie (fotogrametria vs lidar — rozna jakosc przy tym samym bledzie sredniym). Odrzucone: katalogi per rok (`nmt_5m/2025/...`) — psuja `skip_existing`, duplikuja dane, mozaika i tak wymaga wyboru "najnowszej per arkusz".
   2. Aktualizacja = diff skorowidza z manifestem: odpytanie WMS bez pobierania plikow, ponowne pobranie tylko arkuszy ze zmienionym URL-em; poprzednia wersja przenoszona do `archive/`.

@@ -486,6 +486,8 @@ CN = clamp(CN, 0, 100)
 4. Lookup CN z tabeli `CN_LOOKUP_TABLE` per kategoria + HSG
 5. Średnia ważona: `CN = Σ(cn[i] × percentage[i] / 100)`
 
+> **Uwaga (Kartograf 0.7.0):** zmieniono progi tekstury USDA i `nodata=0` w rastrze HSG. Rastry HSG wyprodukowane starszą wersją są odrzucane przez `check_hsg_cache` (`HsgCacheStaleError`) i należy je pobrać ponownie.
+
 ### 5.4 Tabele CN
 
 **Plik:** `cn_tables.py` (linie 32-84)

@@ -439,3 +439,39 @@ class TestIntegrationScenarios:
         # Forested watershed with HSG A should have low CN
         assert result.cn < 50
         assert result.dominant_hsg == "A"
+
+
+class TestGetHsgFromSoilgridsNoData:
+    """Raster HSG z samymi nodata: Kartograf zwraca slownik zer, nie pusty."""
+
+    @staticmethod
+    def _zero_stats():
+        return {
+            group: {"count": 0, "area_m2": 0.0, "area_ha": 0.0, "percent": 0.0}
+            for group in ("A", "B", "C", "D")
+        }
+
+    @patch("kartograf.hydrology.HSGCalculator")
+    def test_all_nodata_uses_no_data_branch_not_group_a(self, mock_cls):
+        from core.cn_calculator import get_hsg_from_soilgrids
+
+        mock_cls.return_value.get_hsg_statistics.return_value = self._zero_stats()
+
+        dominant, stats = get_hsg_from_soilgrids(MagicMock())
+
+        assert dominant != "A"
+        assert (dominant, stats) == ("B", {"B": 100.0})
+
+    @patch("kartograf.hydrology.HSGCalculator")
+    def test_valid_stats_pick_dominant(self, mock_cls):
+        from core.cn_calculator import get_hsg_from_soilgrids
+
+        stats = self._zero_stats()
+        stats["C"].update(count=30, percent=75.0)
+        stats["A"].update(count=10, percent=25.0)
+        mock_cls.return_value.get_hsg_statistics.return_value = stats
+
+        dominant, normalized = get_hsg_from_soilgrids(MagicMock())
+
+        assert dominant == "C"
+        assert normalized == {"A": 25.0, "B": 0.0, "C": 75.0, "D": 0.0}

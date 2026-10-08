@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -142,6 +143,11 @@ def parse_bbox(bbox_str: str) -> tuple[float, float, float, float]:
             f"(min_lon,min_lat,max_lon,max_lat), "
             f"otrzymano {len(parts)}"
         )
+    min_lon, min_lat, max_lon, max_lat = parts
+    if not min_lon < max_lon:
+        raise ValueError(f"bbox: min_lon ({min_lon}) musi byc < max_lon ({max_lon})")
+    if not min_lat < max_lat:
+        raise ValueError(f"bbox: min_lat ({min_lat}) musi byc < max_lat ({max_lat})")
     return tuple(parts)  # type: ignore[return-value]
 
 
@@ -176,6 +182,45 @@ def sheets_to_bbox_2180(
         max(b.max_x for b in all_bboxes),
         max(b.max_y for b in all_bboxes),
     )
+
+
+class HsgCacheStaleError(RuntimeError):
+    """Cached hsg_poland.tif was not produced by the installed Kartograf."""
+
+
+def check_hsg_cache(hsg_path: Path, kartograf_version: str) -> None:
+    """Raise HsgCacheStaleError unless hsg_path is an HSG raster of this Kartograf.
+
+    Kartograf 0.7.0 changed the USDA texture thresholds, so a raster from
+    another version holds different HSG classes. Its ``.meta.json`` sidecar
+    (written since 0.7.0) records the producing version.
+    """
+    sidecar = hsg_path.with_name(hsg_path.name + ".meta.json")
+    fix = f"Usun {hsg_path} (i sidecar) — krok 5 pobierze raster ponownie."
+    if not sidecar.exists():
+        raise HsgCacheStaleError(
+            f"{hsg_path}: brak sidecara {sidecar.name} (raster sprzed "
+            f"Kartografa 0.7.0, stare progi HSG). {fix}"
+        )
+    try:
+        meta = json.loads(sidecar.read_text())
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        raise HsgCacheStaleError(
+            f"{hsg_path}: nieczytelny sidecar {sidecar.name} ({exc}). {fix}"
+        ) from exc
+    extra = meta.get("extra") if isinstance(meta, dict) else None
+    if not isinstance(extra, dict):
+        raise HsgCacheStaleError(
+            f"{hsg_path}: sidecar {sidecar.name} ma nieoczekiwana strukture. {fix}"
+        )
+    if extra.get("derived") != "hsg":
+        raise HsgCacheStaleError(f"{hsg_path}: sidecar nie opisuje rastra HSG. {fix}")
+    produced_by = meta.get("kartograf_version")
+    if produced_by != kartograf_version:
+        raise HsgCacheStaleError(
+            f"{hsg_path}: raster z Kartografa {produced_by}, zainstalowany "
+            f"{kartograf_version}. {fix}"
+        )
 
 
 def resolve_sheets(
@@ -416,29 +461,40 @@ def step_download_nmt(
     cache_dir: Path,
     resolution: str = "5m",
 ) -> tuple[list[Path], str]:
-    """Step 2: Download NMT sheets via Kartograf."""
+    """Step 2: Download NMT sheets via Kartograf 0.7.0.
+
+    cache_dir is Kartograf's data root: sheets land in
+    ``cache_dir/nmt/pl_<uklad>_<res>_evrf2007/`` (campaign copies in its
+    ``kampanie/`` subtree), metadata cache in ``cache_dir/kartograf_meta.db``.
+    Raises NmtDownloadError on any transport failure (full sheet list).
+    """
     sys.path.insert(0, str(BACKEND_DIR))
-    from scripts.download_dem import download_sheets
+    from scripts.download_dem import METADATA_CACHE_NAME, download_sheets
 
-    nmt_dir = cache_dir / "nmt"
-    nmt_dir.mkdir(parents=True, exist_ok=True)
+    if not sheets:
+        raise ValueError("Pusta lista arkuszy NMT — nic do pobrania")
 
-    downloaded = download_sheets(
-        sheets, nmt_dir, skip_existing=True, resolution=resolution
+    report = download_sheets(
+        sheets,
+        cache_dir,
+        cache_dir / METADATA_CACHE_NAME,
+        skip_existing=True,
+        resolution=resolution,
     )
 
-    # Count how many were already cached
-    n_total = len(downloaded)
-    detail = f"{n_total}/{len(sheets)} arkuszy"
+    detail = f"{len(report.paths)}/{len(sheets)} arkuszy"
+    if report.no_coverage:
+        detail += f", {len(report.no_coverage)} bez pokrycia"
+    if report.unverified:
+        detail += f", {len(report.unverified)} niezweryfikowanych"
 
-    return downloaded, detail
+    return report.paths, detail
 
 
 def step_process_dem(
     downloaded_files: list[Path],
     output_dir: Path,
     cache_dir: Path,
-    sheets: list[str],
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
     sewer_config: dict | None = None,
@@ -451,21 +507,18 @@ def step_process_dem(
         merge_hydro_gpkgs,
     )
     from scripts.process_dem import process_dem
-    from utils.raster_utils import create_vrt_mosaic, discover_asc_files, normalize_crs
+    from utils.raster_utils import create_vrt_mosaic, normalize_crs
 
-    cache_nmt_dir = cache_dir / "nmt"
     nmt_dir = output_dir / "nmt"
     nmt_dir.mkdir(parents=True, exist_ok=True)
 
-    # Compute bbox once — reused for ASC discovery and hydro/landcover
-    bbox_2180 = sheets_to_bbox_2180(sheets)
-
-    # Discover ALL ASC files in cache nmt dir
-    # (new downloads + cached from previous runs)
-    all_asc = discover_asc_files(cache_nmt_dir, bbox_2180)
+    # Exactly the sheets returned by step 2 (standard paths) — never a
+    # directory scan: Kartograf keeps campaign copies under kampanie/ and
+    # other resolutions/old 0.6.1 layouts may sit in the same cache.
+    nmt_files = sorted(set(downloaded_files))
 
     # Reproject PUWG 2000 files to EPSG:2180 before mosaicking
-    normalized_files = normalize_crs(all_asc, nmt_dir / "reprojected")
+    normalized_files = normalize_crs(nmt_files, nmt_dir / "reprojected")
 
     mosaic_path = create_vrt_mosaic(
         input_files=normalized_files,
@@ -636,6 +689,9 @@ def step_soil_hsg(
     # --- 1. Download Poland-wide HSG raster (one-time) ---
     hsg_poland = hsg_dir / "hsg_poland.tif"
     if hsg_poland.exists():
+        import kartograf
+
+        check_hsg_cache(hsg_poland, kartograf.__version__)
         logger.info("HSG: using cached hsg_poland.tif")
     else:
         logger.info("HSG: downloading Poland-wide raster from SoilGrids...")
@@ -1072,15 +1128,6 @@ def run_pipeline(
             tracker.fail(2, t0, str(e))
             logger.error(f"Krok 2 (pobieranie NMT) nie powiodl sie: {e}")
             return tracker
-    else:
-        # Try to find existing files for later steps
-        nmt_dir = cache_dir / "nmt"
-        if nmt_dir.exists():
-            downloaded_files = sorted(nmt_dir.glob("*.asc"))
-
-    if not downloaded_files:
-        logger.error("Brak plikow NMT — nie mozna kontynuowac")
-        return tracker
 
     # Variables populated by step 3 and forwarded to steps 4-5
     mosaic_bbox = None
@@ -1092,7 +1139,7 @@ def run_pipeline(
         t0 = tracker.start(3)
         try:
             _, detail, teryts, bdot_paths, mosaic_bbox = step_process_dem(
-                downloaded_files, output_dir, cache_dir, sheets,
+                downloaded_files, output_dir, cache_dir,
                 waterbody_mode=waterbody_mode,
                 waterbody_min_area_m2=waterbody_min_area_m2,
                 sewer_config=sewer_config,
@@ -1410,13 +1457,19 @@ def main():
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Parse bbox, resolve sheets, or load boundary file
-    if args.boundary_file:
-        sheets, bbox = resolve_boundary_file(
-            args.boundary_file, args.scale, args.boundary_layer
-        )
-    else:
-        bbox_parsed = parse_bbox(args.bbox) if args.bbox else None
-        sheets, bbox = resolve_sheets(bbox_parsed, args.sheets, args.scale)
+    from kartograf import ParseError as KartografParseError
+    from kartograf import ValidationError as KartografValidationError
+
+    try:
+        if args.boundary_file:
+            sheets, bbox = resolve_boundary_file(
+                args.boundary_file, args.scale, args.boundary_layer
+            )
+        else:
+            bbox_parsed = parse_bbox(args.bbox) if args.bbox else None
+            sheets, bbox = resolve_sheets(bbox_parsed, args.sheets, args.scale)
+    except (ValueError, KartografValidationError, KartografParseError) as e:
+        parser.error(str(e))
 
     if not sheets:
         logger.error("Nie znaleziono arkuszy dla podanego obszaru")

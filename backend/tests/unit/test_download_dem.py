@@ -12,7 +12,14 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.download_dem import download_for_geometry, main
+import pytest
+
+from scripts.download_dem import (
+    NmtDownloadError,
+    NmtDownloadReport,
+    download_for_geometry,
+    main,
+)
 
 
 class TestDownloadForGeometryPassesPath:
@@ -24,12 +31,18 @@ class TestDownloadForGeometryPassesPath:
         self, mock_find, mock_download_sheets, tmp_path
     ):
         mock_find.return_value = ["M-33-48-D-d-3-1"]
-        mock_download_sheets.return_value = [tmp_path / "M-33-48-D-d-3-1.asc"]
+        mock_download_sheets.return_value = NmtDownloadReport(
+            paths=[tmp_path / "M-33-48-D-d-3-1.asc"]
+        )
 
         geometry_path = tmp_path / "test.gpkg"
         geometry_path.touch()
 
-        download_for_geometry(geometry_path, output_dir=tmp_path / "out")
+        download_for_geometry(
+            geometry_path,
+            output_dir=tmp_path / "out",
+            metadata_cache_path=tmp_path / "m.db",
+        )
 
         mock_find.assert_called_once()
         passed_path = mock_find.call_args[0][0]
@@ -46,7 +59,12 @@ class TestDownloadForGeometryPassesPath:
         geometry_path = tmp_path / "test.gpkg"
         geometry_path.touch()
 
-        download_for_geometry(geometry_path, output_dir=tmp_path / "out")
+        with pytest.raises(NmtDownloadError, match="Brak arkuszy"):
+            download_for_geometry(
+                geometry_path,
+                output_dir=tmp_path / "out",
+                metadata_cache_path=tmp_path / "m.db",
+            )
 
         passed_path = mock_find.call_args[0][0]
         assert not isinstance(passed_path, str)
