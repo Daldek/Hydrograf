@@ -47,7 +47,21 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-09-28 (sesja 93 — pobranie NMT 5m dla województwa opolskiego z reużyciem pilotażu; wersjonowanie NMT)
+**Data:** 2026-10-06/08 (sesja 96 — przygotowanie do wdrożenia programu „jedno źródło prawdy” config/ścieżki/dane; magazyn danych)
+
+### Co zrobiono
+- **Sesje 94–95 (2026-09-28/29, bez zmian w repo):** trzy specyfikacje w `notes/superpowers/specs/`: cz. 1 konfiguracja i ścieżki (zaakceptowana, ADR-059), cz. 2 manifest przebiegów w DB (zaakceptowana, ADR-060), cz. 3 archiwum surowych danych + PMAXTP na natywnej siatce (rew. 2, niezaakceptowana, ADR-061, zamyka ADR-058).
+- **Zewnętrzny magazyn danych (decyzja usera):** `<STAGING_DIR>` (zapis) = staging na wszystkie dane nieserwowane bezpośrednio przez Hydrografa (pobrania Kartografa itd.); `<ARCHIVE_DIR>` = docelowe archiwum, dane trafiają tam po ręcznej weryfikacji usera, dla agenta/aplikacji tylko odczyt. Zmienia założenie cz. 3 (archiwum zapisywane przez bootstrap).
+- **Commity (bez pusha):** `118c9b1` reorganizacja docs → `docs/integrations/` + audyt KARTOGRAF v5.2 (z poprawionymi linkami `*_INTEGRATION.md`), `a029e28` usunięcie progu 1000 m² z domyślnych progów, `a0aa34e` PROGRESS s91–93.
+- **Rewizja spójności 3 speców:** raport `notes/superpowers/reports/2026-10-06-rewizja-spojnosci-specow.md` — 22 rozbieżności (m.in. numeracja migracji 004 indeksy / 005 manifest / 006 archiwum, `hydrography.json` vs `/api/dataset`, semantyka `run_source_units`, wersja NMT `<rok>.<n>` vs s93), wpływ stagingu (100 GB < NMT Polski ~118 GB, uid 999 kontenera bez dostępu do udziałów, ryzyko automount), stan Kartografa 0.7.0-dev i IMGWTools względem wymagań cz. 3, szkic dokumentu nadrzędnego, 16 decyzji usera (§6).
+
+### Nastepne kroki
+- Przejść z userem 16 decyzji z §6 raportu, nanieść na specy (cz. 3 → rew. 3 z modelem staging/archiwum), napisać dokument nadrzędny.
+- Implementacja cz. 1 → cz. 2 → cz. 3 na nowej gałęzi — dopiero po zakończeniu zmian usera w Kartografie.
+- Montowanie udziałów pod kontener (grupa, opcje, znaczniki) — user z sudo, wg decyzji.
+- Progi nadal niespójne: `bootstrap.py` `[10000, 100000]` vs `config.py`/`process_dem.py` `[10000, 100000, 1000000]`; 1000 zostało w `config.yaml.example`, `layers.js` (FALLBACK), `watershed_service.py` (eskalacja) — porządkuje cz. 1.
+
+### Poprzednia sesja (2026-09-28, sesja 93 — pobranie NMT 5m dla województwa opolskiego z reużyciem pilotażu; wersjonowanie NMT)
 
 ### Co zrobiono
 - **Reużycie pilotażu z s91:** wszystkie 964 pliki `/data/nmt/pilot_opolskie/` mają nagłówek ASC zgodny z bboxem swojego godła — stary `sheet_finder` zawinił tylko doborem obszaru, nie treścią (korekta wniosku z s92). 932 z nich należą do Opolskiego (target: 3720 arkuszy z `/data/nmt/boundaries/wojewodztwa/opolskie.gpkg`).
@@ -62,7 +76,7 @@
 - Zweryfikować 92 arkusze Opolskiego pobrane po błędzie warstwy 2025 (odpytać skorowidz, porównać `aktualnosc`/URL) i przy okazji zbudować pierwszy manifest wersji dla Opolskiego.
 - Przyjąć ADR wersjonowania NMT (nadać numer 058) i zaimplementować manifest + archiwum.
 - Przed pobraniem całej Polski: wspólna `requests.Session` + `MetadataCache` w `download_dem.py`, rozważyć pauzę między arkuszami / uruchomienie w nocy, ponowny przebieg na braki.
-- Zacommitować reorganizację docs usera razem z poprawkami audytu i wpisami backlogu z s92/s93 (decyzja usera).
+- ~~Zacommitować reorganizację docs usera~~ — zrobione w s96.
 - `/data/nmt/pilot_opolskie/` (32 pliki spoza Opolskiego + log) — do usunięcia, gdy user zdecyduje.
 
 ### Poprzednia sesja (2026-09-28, sesja 92 — deduplikacja logiki pobierania: wszystko przez Kartograf v0.6.1)
