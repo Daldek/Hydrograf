@@ -55,7 +55,7 @@ class TestSheetsForPointBufferInsideCacheSheet:
     """A point centered in a real cache sheet must resolve to just that sheet."""
 
     def test_point_inside_cache_sheet_returns_that_sheet(self):
-        """N-34-139-A-c-4-1 mirrors real cache dir cache/nmt/nmt_1m/N-34/139/A/c/4/1."""
+        """N-34-139-A-c-4-1 mirrors cache/nmt/pl_1992_1m_evrf2007/N-34/139/A/c/4/1."""
         from kartograf import SheetParser
 
         godlo = "N-34-139-A-c-4-1"

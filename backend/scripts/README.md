@@ -7,7 +7,7 @@ Skrypty do jednorazowego przetwarzania danych wejściowych przed uruchomieniem s
 - Python 3.12+ ze środowiskiem wirtualnym (`backend/.venv`)
 - Uruchomiona baza PostgreSQL/PostGIS
 - Wykonane migracje Alembic
-- [Kartograf 0.6.1](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
+- [Kartograf 0.7.0](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
   - NMT/NMPT: Dane wysokościowe z GUGiK
   - BDOT10k: Dane o pokryciu terenu z GUGiK (12 warstw)
   - BDOT10k hydro: Dane hydrograficzne z GUGiK (SWRS rzeki, SWKN kanały, SWRM rowy, PTWP wody)
@@ -185,10 +185,10 @@ cd backend
 
 ### `download_dem.py` - Pobieranie NMT z GUGiK
 
-Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.6.1).
+Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.7.0).
 **Użyj gdy chcesz tylko pobrać dane bez przetwarzania.**
 
-> **Uwaga:** Kartograf 0.6.1 pobiera dane przez OpenData API w formacie ASC z auto-ekspansją godeł.
+> **Uwaga:** Kartograf 0.7.0 pobiera arkusze przez OpenData (ASC) z rozwijaniem godeł, najnowszą kampanią GUGiK i cache metadanych; brak pokrycia części arkuszy to ostrzeżenie, błąd pobrania — kod wyjścia 1.
 > Format nie jest konfigurowalny przy pobieraniu przez godła arkuszy.
 
 **Użycie:**
@@ -200,12 +200,12 @@ cd backend
 .venv/bin/python -m scripts.download_dem \
     --lat 52.23 --lon 21.01 \
     --buffer 5 \
-    --output ../data/nmt/
+    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 
 # Pobieranie konkretnych arkuszy
 .venv/bin/python -m scripts.download_dem \
     --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \
-    --output ../data/nmt/
+    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 
 # Dry run - tylko pokaż jakie arkusze byłyby pobrane
 .venv/bin/python -m scripts.download_dem \
@@ -220,7 +220,8 @@ cd backend
 | `--lat`, `--lon` | Współrzędne centrum (WGS84) | - |
 | `--buffer` | Promień bufora w km | 5 |
 | `--sheets` | Lista godeł arkuszy do pobrania | - |
-| `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
+| `--output`, `-o` | Korzeń danych Kartografa | `../cache/` |
+| `--metadata-cache` | Plik SQLite cache metadanych (dysk lokalny) | wymagany |
 | `--scale` | Skala arkuszy | 1:10000 |
 | `--no-skip-existing` | Pobierz ponownie istniejące pliki | false |
 | `--dry-run` | Tylko pokaż co byłoby pobrane | false |
@@ -353,7 +354,7 @@ Processing complete!
 
 ### `download_landcover.py` - Pobieranie danych o pokryciu terenu
 
-Pobiera dane o pokryciu terenu z BDOT10k (GUGiK) lub CORINE (Copernicus) używając Kartograf 0.6.1.
+Pobiera dane o pokryciu terenu z BDOT10k (GUGiK) lub CORINE (Copernicus) używając Kartograf 0.7.0.
 
 **Użycie:**
 
