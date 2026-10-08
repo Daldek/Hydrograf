@@ -307,7 +307,7 @@ class TestDiscoverTerytsForBboxWfs:
 class TestDiscoverTerytsGrid:
     """Tests for _discover_teryts_grid (legacy WMS grid-sampling fallback)."""
 
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider")
+    @patch("kartograf.Bdot10kProvider")
     def test_single_teryt(self, mock_cls):
         """All sample points return the same TERYT."""
         provider = MagicMock()
@@ -320,7 +320,7 @@ class TestDiscoverTerytsGrid:
         assert result == ["1465"]
         assert provider._get_teryt_for_point.call_count > 0
 
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider")
+    @patch("kartograf.Bdot10kProvider")
     def test_two_teryts_on_boundary(self, mock_cls):
         """Bbox spanning two counties returns both TERYTs."""
         provider = MagicMock()
@@ -338,7 +338,7 @@ class TestDiscoverTerytsGrid:
 
         assert result == ["1465", "3064"]
 
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider")
+    @patch("kartograf.Bdot10kProvider")
     def test_water_point_skipped(self, mock_cls):
         """Points on water (exception) are skipped, rest OK."""
         provider = MagicMock()
@@ -359,7 +359,7 @@ class TestDiscoverTerytsGrid:
 
         assert result == ["1465"]
 
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider")
+    @patch("kartograf.Bdot10kProvider")
     def test_all_points_fail(self, mock_cls):
         """If all points fail, return empty list."""
         provider = MagicMock()
@@ -371,7 +371,7 @@ class TestDiscoverTerytsGrid:
 
         assert result == []
 
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider")
+    @patch("kartograf.Bdot10kProvider")
     def test_results_sorted_and_unique(self, mock_cls):
         """Duplicate TERYTs are deduplicated and sorted."""
         provider = MagicMock()
@@ -398,7 +398,7 @@ class TestBdot10kPrivateApiContract:
     here instead of breaking the fallback silently at runtime."""
 
     def test_get_teryt_for_point_exists_with_expected_signature(self):
-        from kartograf.providers.bdot10k import Bdot10kProvider
+        from kartograf import Bdot10kProvider
 
         method = getattr(Bdot10kProvider, "_get_teryt_for_point", None)
         assert callable(method)
@@ -406,7 +406,7 @@ class TestBdot10kPrivateApiContract:
         params = list(inspect.signature(method).parameters)
         assert params[:3] == ["self", "x", "y"]
 
-    @patch("kartograf.providers.bdot10k.Bdot10kProvider", new=MagicMock(spec=[]))
+    @patch("kartograf.Bdot10kProvider", new=MagicMock(spec=[]))
     def test_missing_method_raises_clear_error(self):
         bbox = (400000.0, 500000.0, 402000.0, 502000.0)
         with pytest.raises(RuntimeError, match="_get_teryt_for_point"):
