@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -181,6 +182,35 @@ def sheets_to_bbox_2180(
         max(b.max_x for b in all_bboxes),
         max(b.max_y for b in all_bboxes),
     )
+
+
+class HsgCacheStaleError(RuntimeError):
+    """Cached hsg_poland.tif was not produced by the installed Kartograf."""
+
+
+def check_hsg_cache(hsg_path: Path, kartograf_version: str) -> None:
+    """Raise HsgCacheStaleError unless hsg_path is an HSG raster of this Kartograf.
+
+    Kartograf 0.7.0 changed the USDA texture thresholds, so a raster from
+    another version holds different HSG classes. Its ``.meta.json`` sidecar
+    (written since 0.7.0) records the producing version.
+    """
+    sidecar = hsg_path.with_name(hsg_path.name + ".meta.json")
+    fix = f"Usun {hsg_path} (i sidecar) — krok 5 pobierze raster ponownie."
+    if not sidecar.exists():
+        raise HsgCacheStaleError(
+            f"{hsg_path}: brak sidecara {sidecar.name} (raster sprzed "
+            f"Kartografa 0.7.0, stare progi HSG). {fix}"
+        )
+    meta = json.loads(sidecar.read_text())
+    if meta.get("extra", {}).get("derived") != "hsg":
+        raise HsgCacheStaleError(f"{hsg_path}: sidecar nie opisuje rastra HSG. {fix}")
+    produced_by = meta.get("kartograf_version")
+    if produced_by != kartograf_version:
+        raise HsgCacheStaleError(
+            f"{hsg_path}: raster z Kartografa {produced_by}, zainstalowany "
+            f"{kartograf_version}. {fix}"
+        )
 
 
 def resolve_sheets(
@@ -649,6 +679,9 @@ def step_soil_hsg(
     # --- 1. Download Poland-wide HSG raster (one-time) ---
     hsg_poland = hsg_dir / "hsg_poland.tif"
     if hsg_poland.exists():
+        import kartograf
+
+        check_hsg_cache(hsg_poland, kartograf.__version__)
         logger.info("HSG: using cached hsg_poland.tif")
     else:
         logger.info("HSG: downloading Poland-wide raster from SoilGrids...")
