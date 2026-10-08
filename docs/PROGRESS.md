@@ -64,11 +64,11 @@
 ### Poprzednia sesja (2026-09-28, sesja 93 — pobranie NMT 5m dla województwa opolskiego z reużyciem pilotażu; wersjonowanie NMT)
 
 ### Co zrobiono
-- **Reużycie pilotażu z s91:** wszystkie 964 pliki `/data/nmt/pilot_opolskie/` mają nagłówek ASC zgodny z bboxem swojego godła — stary `sheet_finder` zawinił tylko doborem obszaru, nie treścią (korekta wniosku z s92). 932 z nich należą do Opolskiego (target: 3720 arkuszy z `/data/nmt/boundaries/wojewodztwa/opolskie.gpkg`).
+- **Reużycie pilotażu z s91:** wszystkie 964 pliki `<HOST_DATA_DIR>/nmt/pilot_opolskie/` mają nagłówek ASC zgodny z bboxem swojego godła — stary `sheet_finder` zawinił tylko doborem obszaru, nie treścią (korekta wniosku z s92). 932 z nich należą do Opolskiego (target: 3720 arkuszy z `<HOST_DATA_DIR>/nmt/boundaries/wojewodztwa/opolskie.gpkg`).
 - Pułapka: pilotaż ma godła z zerami (`M-33-036-…`), Kartograf zwraca bez zer (`M-33-36-…`); `SheetParser` nie normalizuje paddingu, a `FileStorage.get_path()` buduje ścieżkę ze stringu → `skip_existing` nie widziałby plików. Pliki przeniesione (hardlink + usunięcie starej nazwy) pod ścieżki bez zer. W `pilot_opolskie/` zostało 32 pliki spoza Opolskiego (45 MB). Decyzja: zostajemy przy formie bez zer (kanoniczna w Kartografie); sortowanie naturalne (`ls -v`, `sort -V`).
-- **Pobranie Opolskiego zakończone:** `<HOST_DATA_DIR>/nmt/nmt_5m/` — 3233 arkusze, 4,5 GB (932 z pilotażu + 2301 pobrane). 487 braków to arkusze całkowicie poza Polską (Czechy — Kartograf dobiera arkusze po bboxie województwa) — legit. 3 braki w Polsce były fałszywe (błędy sieci WMS) — pobrane ponownie przez `--sheets`. Log: `/data/nmt/opolskie.log`.
+- **Pobranie Opolskiego zakończone:** `<HOST_DATA_DIR>/nmt/nmt_5m/` — 3233 arkusze, 4,5 GB (932 z pilotażu + 2301 pobrane). 487 braków to arkusze całkowicie poza Polską (Czechy — Kartograf dobiera arkusze po bboxie województwa) — legit. 3 braki w Polsce były fałszywe (błędy sieci WMS) — pobrane ponownie przez `--sheets`. Log: `<HOST_DATA_DIR>/nmt/opolskie.log`.
 - **Problemy z GUGiK:** `mapy.geoportal.gov.pl` (WMS skorowidzów) zrywał połączenia (173× `WMS query failed`, szczyt 12:30–12:40, potem spadek); pobieranie plików z OpenData bez błędów. Bardziej przeciążenie niż blokada (brak 429/403, tylko jedna usługa), niepewne.
-- **Bug w Kartografie 0.6.1:** `_get_opendata_url()` przy błędzie sieci przechodzi do starszej warstwy skorowidza → możliwe ciche pobranie starszej edycji (92 arkusze pobrane po błędzie warstwy 2025, lista: `/data/nmt/opolskie_suspect_older_2025_layer_failed.txt` — NIE zweryfikowane) albo fałszywe "No NMT 5m data" (potwierdzone: 3 przypadki).
+- **Bug w Kartografie 0.6.1:** `_get_opendata_url()` przy błędzie sieci przechodzi do starszej warstwy skorowidza → możliwe ciche pobranie starszej edycji (92 arkusze pobrane po błędzie warstwy 2025, lista: `<HOST_DATA_DIR>/nmt/opolskie_suspect_older_2025_layer_failed.txt` — NIE zweryfikowane) albo fałszywe "No NMT 5m data" (potwierdzone: 3 przypadki).
 - Backlog: 3 punkty Kartograf 0.7.0 (błąd sieci ≠ brak arkusza; sesja HTTP per zapytanie; zwracanie pełnego rekordu metadanych) + **ADR do decyzji: wersjonowanie arkuszy NMT** (manifest z pełnym rekordem skorowidza + czas pobrania; archiwum `<HOST_DATA_DIR>/nmt/archive/<produkt>/<hierarchia godła>/<aktualnoscRok>_<godło>.asc`, bez przyrostka kolizji — decyzje usera).
 - Rekord skorowidza (WMS GetFeatureInfo) zawiera: `url`, `aktualnosc`, `aktualnoscRok`, `numerZgloszeniaPracy`, `zrDanych`, `bladSredniWysokosci`, `dt_pzgik` i in.; `MetadataCache` Kartografa przechowuje tylko URL.
 
@@ -77,7 +77,7 @@
 - Przyjąć ADR wersjonowania NMT (nadać numer 058) i zaimplementować manifest + archiwum.
 - Przed pobraniem całej Polski: wspólna `requests.Session` + `MetadataCache` w `download_dem.py`, rozważyć pauzę między arkuszami / uruchomienie w nocy, ponowny przebieg na braki.
 - ~~Zacommitować reorganizację docs usera~~ — zrobione w s96.
-- `/data/nmt/pilot_opolskie/` (32 pliki spoza Opolskiego + log) — do usunięcia, gdy user zdecyduje.
+- `<HOST_DATA_DIR>/nmt/pilot_opolskie/` (32 pliki spoza Opolskiego + log) — do usunięcia, gdy user zdecyduje.
 
 ### Poprzednia sesja (2026-09-28, sesja 92 — deduplikacja logiki pobierania: wszystko przez Kartograf v0.6.1)
 
@@ -109,7 +109,7 @@
 ### Nastepne kroki
 - Zacommitować reorganizację docs usera razem z poprawkami audytu (decyzja usera).
 - Rozważyć podłączenie `MetadataCache` Kartografa w `download_dem.py` (dziś każdy arkusz = świeże zapytanie WMS GetFeatureInfo) — przed pobraniem całej Polski.
-- **Dane pilotażu Opolskiego (`/data/nmt/pilot_opolskie/`) z s91 pobrano błędną ścieżką `--lat/--lon`** → pokrycie niezgodne z zamierzonym; do usunięcia/ponownego pobrania, jeśli mają być użyte.
+- **Dane pilotażu Opolskiego (`<HOST_DATA_DIR>/nmt/pilot_opolskie/`) z s91 pobrano błędną ścieżką `--lat/--lon`** → pokrycie niezgodne z zamierzonym; do usunięcia/ponownego pobrania, jeśli mają być użyte.
 - Pełne pobranie Polski (komenda z s91 niżej) nadal czeka na zielone światło; nie wymaga zmian.
 - Backlog: upstream `discover_teryts_for_bbox` + `mosaic_and_crop` przy przejściu na Kartograf 0.7.0.
 - Nic nie jest wypchnięte na origin.
@@ -119,17 +119,17 @@
 ### Co zrobiono
 - Oszacowanie rozmiaru pobrania NMT 5m dla całej Polski, zweryfikowane empirycznie na realnych danych (nie tylko teoretycznie): ~7,08 B/komórkę × 12,51 mld komórek ≈ 88 GB z geometrii kraju; ~118 GB z rzeczywistej liczby arkuszy (80 343 arkusze × ~1,47 MB) — druga wartość miarodajna dla planowania.
 - Audyt miejsca na dysku: dysk systemowy za mały na to zadanie; dane NMT umieszczone na osobnym dysku danych hosta (`<HOST_DATA_DIR>/nmt`).
-- **Pilotaż na Opolskiem** (tryb `--lat/--lon --buffer 55`): 964/1000 arkuszy pobrane w 24 min (1445s, ~1,45 s/arkusz), 36 legit braków pokrycia 5m przy granicy czeskiej (`vertical_crs=EVRF2007` w logu — brak danych GUGiK, nie throttling). Zero sygnałów blokowania ze strony GUGiK. Dane w `/data/nmt/pilot_opolskie/` (~1,4 GB, niekompletne z powodu buga niżej — tańsze ponowne pobranie niż scalanie z pełnym przebiegiem).
+- **Pilotaż na Opolskiem** (tryb `--lat/--lon --buffer 55`): 964/1000 arkuszy pobrane w 24 min (1445s, ~1,45 s/arkusz), 36 legit braków pokrycia 5m przy granicy czeskiej (`vertical_crs=EVRF2007` w logu — brak danych GUGiK, nie throttling). Zero sygnałów blokowania ze strony GUGiK. Dane w `<HOST_DATA_DIR>/nmt/pilot_opolskie/` (~1,4 GB, niekompletne z powodu buga niżej — tańsze ponowne pobranie niż scalanie z pełnym przebiegiem).
 - **Znalezione i naprawione 2 realne bugi** w ścieżce pobierania NMT (oba na `develop`, **niepushowane**):
   1. `backend/utils/sheet_finder.py::get_sheets_for_bbox()` — krok próbkowania w długości geograficznej (0,04°) większy od rzeczywistego arkusza 1:10000 (0,03125°), cicho gubił ~22% kolumn arkuszy bez żadnego błędu w logu. Fix: krok = połowa rozmiaru arkusza dla każdej z 4 skal. Commit `e9bfc55`.
   2. `backend/scripts/download_dem.py` (2 miejsca: `main()` gałąź `--dry-run` i `download_for_geometry()`) — `find_sheets_for_geometry()` z Kartografa wymaga `Path`, dostawał `str` → crash na starcie prawdziwego pobierania przez `--geometry` (dry-run przechodził, bo szedł inną gałęzią kodu — pierwszy fix subagenta naprawił tylko dry-run, drugie wystąpienie złapane przy własnej weryfikacji przed odpaleniem pełnego przebiegu). Fix zweryfikowany prawdziwym pobraniem end-to-end (9/9 arkuszy, nie tylko dry-run). Commit `382c5f3`.
-- **Pobrano oficjalne granice województw (PRG, GUGiK):** `/data/nmt/boundaries/wojewodztwa_polska.gpkg` (16 cech, EPSG:4258, atrybut nazwy `JPT_NAZWA_`, suma powierzchni 313 731 km² — zgodne z ~312 700 km² Polski, różnica z generalizacji granic). Ustalono: `kartograf.find_sheets_for_geometry()` obsługuje wiele cech w jednym pliku → **jeden przebieg na całą Polskę lepszy niż 16 osobnych** (80 343 arkuszy vs 132 169 przy 16 przebiegach osobno — arkusze graniczne liczone wielokrotnie).
+- **Pobrano oficjalne granice województw (PRG, GUGiK):** `<HOST_DATA_DIR>/nmt/boundaries/wojewodztwa_polska.gpkg` (16 cech, EPSG:4258, atrybut nazwy `JPT_NAZWA_`, suma powierzchni 313 731 km² — zgodne z ~312 700 km² Polski, różnica z generalizacji granic). Ustalono: `kartograf.find_sheets_for_geometry()` obsługuje wiele cech w jednym pliku → **jeden przebieg na całą Polskę lepszy niż 16 osobnych** (80 343 arkuszy vs 132 169 przy 16 przebiegach osobno — arkusze graniczne liczone wielokrotnie).
 - Zidentyfikowany dług techniczny dodany do Backlogu (priorytet niski): `sheet_finder.py` reimplementuje logikę bbox→arkusze, którą Kartograf ma wbudowaną i solidniejszą (`find_sheets_for_bbox()`, hierarchiczne przycinanie zamiast próbkowania punktowego) od v0.4.0/0.4.1 — właśnie tam siedział bug #1 wyżej. (→ ZREALIZOWANE w sesji naprawczej tego samego dnia: `sheet_finder.py` usunięty, zastąpiony `sheet_lookup.py` delegującym do Kartografa; zob. Backlog „Zrobione (archiwum)" i ADR-057.)
 
 ### Stan na koniec sesji — przygotowanie kompletne, pobranie NIE uruchomione
 User przerwał sesję przed wydaniem zielonego światła na właściwy przebieg. Komenda gotowa do odpalenia w kolejnej sesji:
 ```
-cd backend && .venv/bin/python -m scripts.download_dem --geometry /data/nmt/boundaries/wojewodztwa_polska.gpkg --output /data/nmt
+cd backend && .venv/bin/python -m scripts.download_dem --geometry <HOST_DATA_DIR>/nmt/boundaries/wojewodztwa_polska.gpkg --output <HOST_DATA_DIR>/nmt
 ```
 (uruchomić w tle, log do pliku na `<HOST_DATA_DIR>/nmt`). Szacunek: **~118 GB, ~32h** ciągłego, jednowątkowego pobierania; wolne miejsce na dysku danych wystarczy. Wznawialne przez `skip_existing=True` — bezpiecznie przerwać/wznowić tą samą komendą. Working tree ma też niezwiązane, wcześniejsze niezacommitowane zmiany (config.py, bootstrap.py, process_dem.py, reorganizacja docs) — świadomie nietknięte przez wszystkie subagenty tej sesji.
 
