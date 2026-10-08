@@ -554,7 +554,8 @@ sheets = sheets_for_point_buffer(52.23, 21.01, buffer_km=5)
 
 # Pobierz dane (korzeń danych Kartografa = <cache_dir>)
 cache_dir = Path("../cache")
-cache = MetadataCache(cache_dir / "kartograf_meta.db")
+cache_errors: list[str] = []
+cache = MetadataCache(cache_dir / "kartograf_meta.db", on_disabled=cache_errors.append)
 provider = GugikProvider(resolution="5m", cache=cache)
 manager = DownloadManager(
     output_dir=str(cache_dir), provider=provider, resolution="5m", campaigns="newest"
@@ -564,6 +565,8 @@ manager = DownloadManager(
 # ../cache/nmt/pl_1992_5m_evrf2007/N-34/131/C/c/1/1/N-34-131-C-c-1-1.asc);
 # braki i błędy w manager.last_result (patrz §6.1)
 paths = manager.download_sheets(sheets, skip_existing=True)
+if cache_errors:  # cache wylaczony przez SQLite — nie degradujemy po cichu
+    raise RuntimeError("; ".join(cache_errors))
 print(f"Pobrano: {len(paths)}, brak pokrycia: {manager.last_result.no_coverage}")
 ```
 
