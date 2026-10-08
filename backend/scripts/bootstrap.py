@@ -142,6 +142,11 @@ def parse_bbox(bbox_str: str) -> tuple[float, float, float, float]:
             f"(min_lon,min_lat,max_lon,max_lat), "
             f"otrzymano {len(parts)}"
         )
+    min_lon, min_lat, max_lon, max_lat = parts
+    if not min_lon < max_lon:
+        raise ValueError(f"bbox: min_lon ({min_lon}) musi byc < max_lon ({max_lon})")
+    if not min_lat < max_lat:
+        raise ValueError(f"bbox: min_lat ({min_lat}) musi byc < max_lat ({max_lat})")
     return tuple(parts)  # type: ignore[return-value]
 
 
@@ -1409,13 +1414,19 @@ def main():
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Parse bbox, resolve sheets, or load boundary file
-    if args.boundary_file:
-        sheets, bbox = resolve_boundary_file(
-            args.boundary_file, args.scale, args.boundary_layer
-        )
-    else:
-        bbox_parsed = parse_bbox(args.bbox) if args.bbox else None
-        sheets, bbox = resolve_sheets(bbox_parsed, args.sheets, args.scale)
+    from kartograf import ParseError as KartografParseError
+    from kartograf import ValidationError as KartografValidationError
+
+    try:
+        if args.boundary_file:
+            sheets, bbox = resolve_boundary_file(
+                args.boundary_file, args.scale, args.boundary_layer
+            )
+        else:
+            bbox_parsed = parse_bbox(args.bbox) if args.bbox else None
+            sheets, bbox = resolve_sheets(bbox_parsed, args.sheets, args.scale)
+    except (ValueError, KartografValidationError, KartografParseError) as e:
+        parser.error(str(e))
 
     if not sheets:
         logger.error("Nie znaleziono arkuszy dla podanego obszaru")
