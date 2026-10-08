@@ -58,8 +58,17 @@
 - **Historia git przepisana** (`git filter-repo`, force push develop/main/tagi): usunięte szczegóły infrastruktury hosta; wszystkie hashe sprzed 2026-10-08 nieaktualne. Pozostałe ścieżki dysku danych hosta poprawione tylko w bieżących plikach (decyzja usera).
 - Testy unit: 1045 passed (było 1021).
 
+### Plany pełnego wykorzystania Kartografa (2026-10-08/09, poza gitem)
+- Audyt wykorzystania 0.7.0 i spec `notes/superpowers/specs/2026-10-08-wykorzystanie-kartografa-0.7.0-design.md` (#1–#11, decyzje U1–U17 — rekomendacje przyjęte domyślnie; U9 i U11 = bramki z wynikami badań).
+- Plany etapów A–E w `notes/superpowers/plans/2026-10-08-kartograf-wykorzystanie-etap-{A..E}.md`; wątpliwości autorów rozstrzygał arbiter (Fable) — `notes/superpowers/plans/_rozstrzygniecia-fable.md`. Kolejność: A teraz → B (z S1) → C (z S2) → E (po tagu Kartografa v0.7.1) → D (z S3 + Kartograf 0.8.0; część II planu D to szkic do przepisania po wydaniu 0.8.0).
+- Rozstrzygnięcia TYMCZASOWE do potwierdzenia przez usera przy przeglądzie decyzji 1–16: `dem.vertical_crs` w configu, brak `cache_nmt_dir()`, ČÚZK przed oknem do `<CACHE_DIR>/cz_dmr4g`, plan D Q3–Q9 (kolejność ensure, `archive.allow_unverified`, układ staging↔archiwum, uprawnienia, pobieranie województwami, wersja NMT `<aktualnosc>_<id>_<sha8>`, migracja 006 bez części Kartografa).
+- Wymagania dla Kartografa: wysłane A1–A13/B1–B4 (+uzupełnienie); do przekazania za zgodą: N1–N20 (zebrane w planach A–E, sekcje „Wymagania wobec Kartografa”).
+- Develop: merge etapu K `704dcf7` lokalnie, NIE wypchnięty. Gałąź robocza: `feature/kartograf-wykorzystanie` (bez commitów kodu).
+
 ### Nastepne kroki
-- Decyzja usera: merge `feature/kartograf-0.7.0` → `develop` (+ push).
+- Push `develop` (704dcf7) — na polecenie usera.
+- Wykonanie planu A (subagent-driven); bramka U9 po zad. 10 i bramka U11 (ČÚZK) — decyzje usera z wynikami badań.
+- Przegląd decyzji 1–16 z raportu rewizji (+ potwierdzenie rozstrzygnięć tymczasowych z planów B–D) przed S1.
 - Decyzje otwarte z etapu K: D5 (fallback HSG „B” i krok 5 jako niekrytyczny), D6 (dane w układzie 0.6.1, ponowne pobranie Opolskiego w 0.7.0).
 - Następny bootstrap pobierze HSG Polski od nowa (stary raster usunięty).
 - Dalej: decyzje 1–16 z raportu rewizji specyfikacji (s96) → S1 → S2; S3 czeka na kolejne wydanie Kartografa (Archive, kafle SoilGrids, surowy ZIP BDOT, wersja BDOT w sidecarze, publiczne odkrywanie TERYT).
