@@ -114,6 +114,28 @@ class AnalysisConfig:
 # =============================================================================
 
 
+def find_existing_nmt_files(data_dir: Path, resolution: str = "5m") -> list[Path]:
+    """Znajdź pobrane arkusze NMT w segmencie Kartografa dla rozdzielczości.
+
+    Szuka wyłącznie w ``<data_dir>/nmt/pl_*_<resolution>_evrf2007/`` (bez
+    ``kampanie/``), więc nie wciąga innych rozdzielczości ani produktów
+    pośrednich (``reprojected/``, mozaiki).
+    """
+    nmt_dir = data_dir / "nmt"
+    files = sorted(
+        p
+        for segment in nmt_dir.glob(f"pl_*_{resolution}_evrf2007")
+        for p in segment.rglob("*.asc")
+        if "kampanie" not in p.relative_to(segment).parts
+    )
+    if not files:
+        raise FileNotFoundError(
+            f"Brak plików NMT {resolution} w {nmt_dir}/pl_*_{resolution}_evrf2007/ "
+            "— uruchom z --download"
+        )
+    return files
+
+
 def download_nmt_data(config: AnalysisConfig) -> list[Path]:
     """Pobierz dane NMT z GUGiK."""
     logger.info("=" * 60)
@@ -1067,12 +1089,7 @@ def analyze_watershed(config: AnalysisConfig) -> dict:
     if config.process_dem:
         # Znajdź pliki NMT jeśli nie pobrano nowych
         if not downloaded_files:
-            nmt_dir = config.data_dir / "nmt"
-            downloaded_files = [
-                p for p in nmt_dir.glob("**/*.asc") if "kampanie" not in p.parts
-            ]
-            if not downloaded_files:
-                downloaded_files = list(nmt_dir.glob("**/*.tif"))
+            downloaded_files = find_existing_nmt_files(config.data_dir)
             logger.info(f"Znaleziono {len(downloaded_files)} istniejących plików NMT")
 
         if downloaded_files:
