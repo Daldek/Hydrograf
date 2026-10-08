@@ -92,7 +92,7 @@
 ### Nastepne kroki
 - Zweryfikować 92 arkusze Opolskiego pobrane po błędzie warstwy 2025 (odpytać skorowidz, porównać `aktualnosc`/URL) i przy okazji zbudować pierwszy manifest wersji dla Opolskiego.
 - Przyjąć ADR wersjonowania NMT (nadać numer 058) i zaimplementować manifest + archiwum.
-- Przed pobraniem całej Polski: wspólna `requests.Session` + `MetadataCache` w `download_dem.py`, rozważyć pauzę między arkuszami / uruchomienie w nocy, ponowny przebieg na braki. → `MetadataCache` zrealizowane w etapie K (s97); `Session` per zapytanie i pauza — po stronie Kartografa 0.7.0 / bez zmian.
+- Przed pobraniem całej Polski: wspólna `requests.Session` + `MetadataCache` w `download_dem.py`, rozważyć pauzę między arkuszami / uruchomienie w nocy, ponowny przebieg na braki. → `MetadataCache` zrealizowane w etapie K (s97); wspólna sesja HTTP zapewniona wewnętrznie przez Kartograf 0.7.0 (SessionPerThread); pauza między arkuszami — niezrealizowana.
 - ~~Zacommitować reorganizację docs usera~~ — zrobione w s96.
 - `<HOST_DATA_DIR>/nmt/pilot_opolskie/` (32 pliki spoza Opolskiego + log) — do usunięcia, gdy user zdecyduje.
 

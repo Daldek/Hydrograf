@@ -179,9 +179,9 @@ cd backend
 | `--keep-downloads` | Zachowaj pobrane pliki .asc | true |
 | `--save-intermediates` | Zapis plików GeoTIFF | false |
 | `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
+| `--dry-run` | Tylko pokaż co byłoby zrobione | false |
 
 `--output` to korzeń danych Kartografa: arkusze NMT trafiają do `<output>/nmt/pl_<układ>_<res>_evrf2007/`, a cache metadanych do `<output>/kartograf_meta.db` (katalog musi być na dysku lokalnym).
-| `--dry-run` | Tylko pokaż co byłoby zrobione | false |
 
 ---
 
