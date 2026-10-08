@@ -36,6 +36,8 @@ import sys
 import time
 from pathlib import Path
 
+from scripts.download_dem import METADATA_CACHE_NAME
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -48,6 +50,7 @@ BACKEND_DIR = PROJECT_ROOT / "backend"
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
+KARTOGRAF_META_GLOB = f"{METADATA_CACHE_NAME}*"
 
 # Components and what they remove
 COMPONENTS = [
@@ -239,6 +242,11 @@ def clean_cache(cache_dir: Path, dry_run: bool) -> tuple[int, int]:
         total_files += n
         total_size += s
 
+    # Kartograf MetadataCache (SQLite + WAL/SHM) — opisuje usuniete wyzej pliki
+    n, s = remove_files_by_glob(cache_dir, KARTOGRAF_META_GLOB, dry_run)
+    total_files += n
+    total_size += s
+
     # soil_hsg intentionally NOT removed (~700KB, Poland-wide, reusable)
     hsg_cache = cache_dir / "soil_hsg"
     if hsg_cache.exists():
@@ -378,8 +386,13 @@ def build_plan(
     if "cache" in components:
         nmt_cache = cache_dir / "nmt"
         bdot_cache = cache_dir / "bdot10k"
-        size = dir_size(nmt_cache) + dir_size(bdot_cache)
-        n = count_files(nmt_cache) + count_files(bdot_cache)
+        meta_files = list(cache_dir.glob(KARTOGRAF_META_GLOB))
+        size = (
+            dir_size(nmt_cache)
+            + dir_size(bdot_cache)
+            + sum(f.stat().st_size for f in meta_files)
+        )
+        n = count_files(nmt_cache) + count_files(bdot_cache) + len(meta_files)
         plan.append({
             "name": "Cache pobran (NMT + BDOT10k)",
             "component": "cache",
