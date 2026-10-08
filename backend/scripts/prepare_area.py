@@ -15,7 +15,7 @@ hydrological analysis. This ensures correct flow routing across tile
 boundaries - water can flow from one tile to another without artifacts.
 
 Requires:
-- Kartograf 0.6.1+ for data download
+- Kartograf 0.7.0 for data download
 - GDAL for VRT creation (gdalbuildvrt)
 
 Usage
@@ -132,7 +132,7 @@ def prepare_area(
     # Add parent to path for imports
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    from scripts.download_dem import download_for_point
+    from scripts.download_dem import METADATA_CACHE_NAME, download_for_point
     from scripts.process_dem import process_dem
     from utils.sheet_lookup import sheets_for_point_buffer
 
@@ -182,22 +182,19 @@ def prepare_area(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    downloaded_files = download_for_point(
+    report = download_for_point(
         lat=lat,
         lon=lon,
         buffer_km=buffer_km,
         output_dir=output_dir,
+        metadata_cache_path=output_dir / METADATA_CACHE_NAME,
         scale=scale,
     )
+    downloaded_files = report.paths
 
     stats["sheets_downloaded"] = len(downloaded_files)
+    stats["sheets_no_coverage"] = report.no_coverage
     logger.info(f"Downloaded {len(downloaded_files)} files")
-
-    if not downloaded_files:
-        logger.error(
-            "No files downloaded! Check network connection and GUGiK availability."
-        )
-        return stats
 
     # Step 3: Create mosaic from all tiles (VRT or GeoTIFF)
     logger.info("=" * 60)
@@ -444,7 +441,7 @@ def main():
 
     # Hydrographic data options
     hydro_group = parser.add_argument_group(
-        "Hydrographic data (requires Kartograf 0.6.1+)"
+        "Hydrographic data (requires Kartograf 0.7.0)"
     )
     hydro_group.add_argument(
         "--with-hydro",
@@ -460,7 +457,7 @@ def main():
 
     # Land cover options
     landcover_group = parser.add_argument_group(
-        "Land cover options (requires Kartograf 0.6.1+)"
+        "Land cover options (requires Kartograf 0.7.0)"
     )
     landcover_group.add_argument(
         "--with-landcover",

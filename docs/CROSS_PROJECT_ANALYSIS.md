@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Data:** 2026-01-21
-**Ostatnia aktualizacja:** 2026-03-25
+**Ostatnia aktualizacja:** 2026-10-08
 **Autor:** Claude Code (sesja analizy)
 **Projekty:** Hydrograf, Hydrolog, Kartograf, IMGWTools
 
@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐             │
 │  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │             │
-│  │  v2.1.0       │   │   v0.6.1      │   │   v0.6.3      │             │
+│  │  v2.1.0       │   │   v0.7.0      │   │   v0.6.3      │             │
 │  │  (dane IMGW)  │   │ (dane GIS)    │   │ (obliczenia)  │             │
 │  └───────────────┘   └───────────────┘   └───────┬───────┘             │
 │                                                  │                      │
@@ -37,7 +37,7 @@
 | Projekt | Zależy od | Typ zależności | Wersja |
 |---------|-----------|----------------|--------|
 | **Hydrograf** | IMGWTools | bezpośrednia (requirements.txt) | v2.1.0 |
-| **Hydrograf** | Kartograf | bezpośrednia (requirements.txt) | v0.6.1 |
+| **Hydrograf** | Kartograf | bezpośrednia (requirements.txt) | v0.7.0 |
 | **Hydrograf** | Hydrolog | bezpośrednia (requirements.txt) | v0.6.3 |
 | **Hydrolog** | Kartograf | opcjonalna (`[spatial]`) | - |
 
@@ -47,7 +47,7 @@
 
 ```
 imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
-kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.6.1
+kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.7.0
 hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.3
 ```
 

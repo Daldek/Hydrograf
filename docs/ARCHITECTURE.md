@@ -160,7 +160,7 @@ backend/
 │   ├── morphometry.py             # Morphometric parameters calculation
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── precipitation.py           # Precipitation queries
-│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF), discover_asc_files()
+│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
 │   ├── raster_service.py          # RasterCache — lazy-loaded raster data (DEM, flow direction, accumulation)
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
@@ -180,7 +180,10 @@ backend/
 │   ├── bootstrap.py               # Orchestrator — uruchamia pełny pipeline preprocessingu
 │   ├── process_dem.py             # Thin orchestrator (~700 lines) — NMT processing
 │   ├── prepare_area.py            # Konfiguracja bbox i parametrów obszaru
-│   ├── download_dem.py            # Pobieranie NMT z GUGiK (Kartograf)
+│   ├── download_dem.py            # Pobieranie NMT z GUGiK (Kartograf 0.7.0): download_sheets() -> NmtDownloadReport / NmtDownloadError
+│   │                              #   MetadataCache: <cache_dir>/kartograf_meta.db (dysk lokalny, nigdy udział sieciowy)
+│   │                              #   układ: cache/nmt/pl_<uklad>_<res>_evrf2007/ (+ kampanie/); mozaika z listy kroku 2
+│   │                              #   szczegóły: docs/integrations/KARTOGRAF.md §6
 │   ├── download_landcover.py      # Pobieranie pokrycia terenu (BDOT10k)
 │   ├── import_landcover.py        # Import land cover do PostGIS
 │   ├── preprocess_precipitation.py # Import opadów z IMGW
@@ -1778,11 +1781,12 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 2.1
-**Data ostatniej aktualizacji:** 2026-09-28
+**Wersja dokumentu:** 2.2
+**Data ostatniej aktualizacji:** 2026-10-08
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 2.2 (2026-10-08): Kartograf 0.7.0 (etap K) — `download_dem.py`: `download_sheets()` zwraca `NmtDownloadReport` lub rzuca `NmtDownloadError`; `MetadataCache` w `<cache_dir>/kartograf_meta.db` (dysk lokalny, nigdy udział sieciowy); układ `cache/nmt/pl_<uklad>_<res>_evrf2007/` + `kampanie/`; mozaika z listy plików kroku 2 (szczegóły: `docs/integrations/KARTOGRAF.md` §6)
 - 2.1 (2026-09-28): `utils/sheet_finder.py` → `utils/sheet_lookup.py` — pozyskiwanie danych wylacznie przez Kartograf (ADR-057), cienki wrapper na `kartograf.find_sheets_for_bbox()` zamiast wlasnej reimplementacji matematyki godel
 - 2.0 (2026-03-28): Przebudowa topologii kanalizacji (ADR-052) — nowy modul sewer_topology.py (parser + walidator), jawna topologia zamiast heurystyk, 4 role wezlow (inlet/outlet/junction/storage), 2 formaty wejsciowe (A/B), pipeline dwufazowy, download_sewer.py zwraca tuple, migracja 027 (isolated->storage), admin sewer/config endpoint
 - 1.9 (2026-03-27): Integracja sieci kanalizacyjnej (ADR-051) — sewer_service.py, download_sewer.py, tabele sewer_nodes/sewer_network, 3 endpointy admin sewer, MVT sewer tiles, pipeline steps 3b/4a-4c, is_sewer_augmented w stream_network
