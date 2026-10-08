@@ -160,7 +160,7 @@ backend/
 │   ├── morphometry.py             # Morphometric parameters calculation
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── precipitation.py           # Precipitation queries
-│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF), discover_asc_files()
+│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
 │   ├── raster_service.py          # RasterCache — lazy-loaded raster data (DEM, flow direction, accumulation)
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments

@@ -1247,3 +1247,9 @@ Dodatkowe zmiany:
 - (-) Fallback TERYT nadal zalezy od prywatnego API Kartografa — upgrade biblioteki moze wymagac interwencji (guard zamienia cichy blad w czytelny `RuntimeError`, nie eliminuje ryzyka)
 - (-) Mozaikowanie rastrow/GPKG pozostaje zduplikowana logika wzgledem `mosaic_and_crop` do czasu wydania 0.7.0
 - (-) Pozostanie na 0.6.1 oznacza brak dostepu do nowszych publicznych API (`discover_teryts_for_bbox`, `mosaic_and_crop`) do odwolania
+
+**Aktualizacja 2026-10-08 (etap K, Kartograf 0.7.0):** Hydrograf przeszedl na Kartograf 0.7.0. Decyzja bez zmian. Wyjatki:
+- a) zostaje - 0.7.0 nadal nie ma publicznego "TERYT dla bboxa/punktu bez pobierania danych"; `Bdot10kProvider._get_teryt_for_point(self, x, y, timeout=30)` bez zmian sygnatury, import z publicznego `kartograf` (modul przeniesiony do `kartograf.providers.pl.bdot10k`); guard i test kontraktowy zostaja.
+- b) zostaje - `kartograf.download_pl_cutout` (publiczne) i `kartograf.transport.mosaic.mosaic_and_crop` (nieeksportowane, krok wewnetrzny) daja identyczny pikselowo wynik i glosne braki, ale NIE zastepuja VRT Hydrografu: tworza fizyczny GeoTIFF (koszt dysku/czasu przy duzych obszarach), odrzucaja arkusze PL-2000, a przy roznej fazie siatki rzucaja `GridMismatchError`. `merge_hydro_gpkgs()` bez odpowiednika.
+- c) bez zmian.
+Kandydat do upstreamu "publiczne discover_teryts_for_bbox()" pozostaje otwarty.
