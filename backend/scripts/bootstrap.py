@@ -202,8 +202,18 @@ def check_hsg_cache(hsg_path: Path, kartograf_version: str) -> None:
             f"{hsg_path}: brak sidecara {sidecar.name} (raster sprzed "
             f"Kartografa 0.7.0, stare progi HSG). {fix}"
         )
-    meta = json.loads(sidecar.read_text())
-    if meta.get("extra", {}).get("derived") != "hsg":
+    try:
+        meta = json.loads(sidecar.read_text())
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        raise HsgCacheStaleError(
+            f"{hsg_path}: nieczytelny sidecar {sidecar.name} ({exc}). {fix}"
+        ) from exc
+    extra = meta.get("extra") if isinstance(meta, dict) else None
+    if not isinstance(extra, dict):
+        raise HsgCacheStaleError(
+            f"{hsg_path}: sidecar {sidecar.name} ma nieoczekiwana strukture. {fix}"
+        )
+    if extra.get("derived") != "hsg":
         raise HsgCacheStaleError(f"{hsg_path}: sidecar nie opisuje rastra HSG. {fix}")
     produced_by = meta.get("kartograf_version")
     if produced_by != kartograf_version:
