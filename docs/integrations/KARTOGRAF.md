@@ -424,7 +424,7 @@ scripts/bootstrap.py / scripts/download_dem.py
 - Nieprawidłowe godło → `kartograf.ParseError` przed pobraniem; w bootstrapie błąd CLI (kod 2).
 - Pusta lista arkuszy w bootstrapie → `ValueError("Pusta lista arkuszy NMT — nic do pobrania")` (krok 2 nieudany).
 
-**Cache metadanych:** `<cache_dir>/kartograf_meta.db` (SQLite WAL, TTL rekordów 7 dni; drugi przebieg w oknie TTL nie odpytuje skorowidza). Musi leżeć na dysku lokalnym. Czyszczony razem z cache pobrań (`python -m scripts.clean --include-cache`).
+**Cache metadanych:** `<cache_dir>/kartograf_meta.db` (SQLite WAL, TTL rekordów 7 dni; drugi przebieg w oknie TTL nie odpytuje skorowidza). Musi leżeć na dysku lokalnym. Brak katalogu nadrzędnego pliku podanego w `--metadata-cache` daje `NmtDownloadError` przed pobraniem (katalog nie jest tworzony automatycznie). Czyszczony razem z cache pobrań (`python -m scripts.clean --include-cache`).
 
 ### 6.2 Parametry używane przez Hydrograf
 
@@ -452,7 +452,7 @@ Kartograf 0.7.0 organizuje pliki wg układu, rozdzielczości i układu wysokośc
 
 (`nmt/pl_<układ>_<resolution>_evrf2007/<pas-słup>/<100k>/<50k>/<25k>/<10k_kartografa>/<godło>.asc` — ostatni katalog odpowiada oficjalnej skali 1:5000, patrz §5.1).
 
-Sidecar standardowy: `extra.source` (url, index_url, layer, acquisition_date, acquisition_year, pzgik_date, survey_work_id, data_source, declared_crs, full_sheet), `extra.campaign` (id, date, ...), `extra.link` (`hardlink`/`copy`), `kartograf_version`, `downloaded_at`. Kopiowanie drzewa tylko z zachowaniem hardlinków (`rsync -aH`, `cp -a`).
+Sidecar standardowy: `extra.source` (url, index_url, layer, acquisition_date, acquisition_year, pzgik_date, survey_work_id, data_source, declared_crs, full_sheet), `extra.campaign` (id, date, ...), `extra.link` (`hardlink`/`copy`), `kartograf_version`, `downloaded_at`. **Kopiowanie drzewa danych tylko z zachowaniem hardlinków** (`rsync -aH`, `cp -a`). Kopia bez `-H` rozbija ścieżkę standardową i plik kampanii na dwie niezależne kopie: podwójne zajęcie miejsca i rozjazd sidecarów.
 
 ### 6.4 Ścieżka WCS (nieużywana przez Hydrograf)
 
