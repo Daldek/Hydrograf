@@ -173,3 +173,28 @@ class TestDownloadSheetsLoudErrors:
                 ["N-33-130-D-d-1-1"], tmp_path, tmp_path / "brak" / "m.db"
             )
         assert fake_kartograf.calls == []
+
+    def test_cache_problem_and_hard_failure_reported_together(
+        self, fake_kartograf, tmp_path
+    ):
+        p = _asc(tmp_path, "N-33-130-D-d-1-1")
+        fake_kartograf.paths = [p]
+        fake_kartograf.result = DownloadResult(
+            succeeded=[p], failed=["N-33-130-D-d-1-2"]
+        )
+        fake_kartograf.disable_cache_with = "cache metadanych nieczytelny (m.db)"
+
+        with pytest.raises(NmtDownloadError) as exc:
+            download_sheets(
+                ["N-33-130-D-d-1-1", "N-33-130-D-d-1-2"], tmp_path, tmp_path / "m.db"
+            )
+
+        msg = str(exc.value)
+        assert "cache metadanych nieczytelny" in msg
+        assert "N-33-130-D-d-1-2" in msg
+
+    def test_empty_sheet_list_raises_before_any_work(self, fake_kartograf, tmp_path):
+        with pytest.raises(NmtDownloadError, match="Pusta lista arkuszy NMT"):
+            download_sheets([], tmp_path, tmp_path / "m.db")
+        assert fake_kartograf.init_kwargs == {}
+        assert fake_kartograf.calls == []

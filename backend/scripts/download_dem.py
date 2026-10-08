@@ -115,6 +115,9 @@ def download_sheets(
     """
     from kartograf import DownloadManager, GugikProvider, MetadataCache
 
+    if not sheets:
+        raise NmtDownloadError("Pusta lista arkuszy NMT — nic do pobrania")
+
     if not metadata_cache_path.parent.is_dir():
         raise NmtDownloadError(
             f"Katalog cache metadanych Kartografa nie istnieje: "
@@ -135,23 +138,25 @@ def download_sheets(
     paths = manager.download_sheets(sheets, skip_existing=skip_existing)
     result = manager.last_result
 
-    if cache_errors:
-        raise NmtDownloadError("; ".join(cache_errors))
+    errors = list(cache_errors)
 
     hard_failures = result.hard_failures
     if hard_failures:
         requested = len(paths) + len(result.failed)
-        raise NmtDownloadError(
+        errors.append(
             f"{len(hard_failures)} z {requested} arkuszy NMT nie pobrano "
             f"(blad pobrania, nie brak danych) — ponow pobranie: "
             f"{', '.join(hard_failures)}"
         )
 
     if not paths:
-        raise NmtDownloadError(
+        errors.append(
             f"brak pokrycia GUGiK dla wszystkich arkuszy: "
             f"{', '.join(result.no_coverage)}"
         )
+
+    if errors:
+        raise NmtDownloadError("; ".join(errors))
 
     if result.no_coverage:
         logger.warning(
