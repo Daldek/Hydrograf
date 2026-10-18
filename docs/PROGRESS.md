@@ -59,9 +59,8 @@
   - **Dopływy pominięte świadomie** (decyzja usera): brak warunków brzegowych dopływu, zaznaczenia z wlotami dozwolone. Planować tak, by później dało się użyć pełnych możliwości SFINCS: wloty wykrywane z `CatchmentGraph._upstream_adj` i zapisywane przy domenie, a wynik oznaczony „dopływy pominięte”; cechy `JobSpec` generyczne (rejestr cech Hydraulika, D-6), bez założenia „tylko opad”.
 
 ### Nastepne kroki
-- User: decyzje z propozycji (topologia MVP, semantyka bufora/przycięcia, zlewnie rozłączne, pierwszy profil, odłożenie komercjalizacji).
-- Hydraulik: zacommitować worktree PoC; etap 0 z dokumentu integracji (kontrakty `hydraulik.spec`, `simulate job.json`, produkty webowe), SCS-CN jako opcja strat.
-- Hydrograf: ADR + zmiana SCOPE/PRD przed etapem H1.
+- **Temat integracji wstrzymany** (decyzja usera): wracamy, gdy Hydraulik osiągnie odpowiedni poziom działania. Wtedy: decyzje otwarte (topologia MVP, semantyka bufora/przycięcia, pierwszy profil, odłożenie komercjalizacji) → ADR + zmiana SCOPE/PRD → etap H1.
+- Hydraulik (po jego stronie): zacommitować worktree PoC; etap 0 z dokumentu integracji (kontrakty `hydraulik.spec`, `simulate job.json`, produkty webowe), SCS-CN jako opcja strat.
 
 ### Poprzednia sesja (2026-10-18, sesja 98 — diagnoza padu kroku 3 bootstrapu: pyflwdir + affine 3.x)
 
