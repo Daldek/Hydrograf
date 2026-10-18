@@ -47,7 +47,19 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-10-08 (sesja 97 — etap K: wdrożenie Kartografa v0.7.0; przepisanie historii git)
+**Data:** 2026-10-18 (sesja 98 — diagnoza padu kroku 3 bootstrapu: pyflwdir + affine 3.x)
+
+### Co zrobiono
+- **Diagnoza błędu bootstrapu z 2026-10-18 09:49** (krok 3, `Cannot determine Numba type of <class 'affine.Affine'>`): `affine` 3.0.0 (2026-08-08) zmienił `Affine` z `namedtuple` na klasę `attrs`; `pyflwdir` 0.5.12 (najnowszy na PyPI) przekazuje `self.transform` do funkcji `@njit` (`gis_utils.distance` ← `stream_distance()`, wywołanie w `scripts/process_dem.py:741`). `requirements.txt` nie pinował `affine`, więc przebudowa obrazu wciągnęła 3.x. Lokalne `backend/.venv` ma 2.4.0 — tam błąd nie występuje. Reprodukcja w tymczasowym venv: `affine==3.0.1` → identyczny błąd, `2.4.0` → OK.
+- **Naprawa `f3f23dd`** (na `feature/kartograf-wykorzystanie`): `affine>=2.4,<3` w `backend/requirements.txt` + wpis w CHANGELOG. Brak konfliktów (rasterio 1.5.2 i pyflwdir 0.5.12 wymagają `affine` bez zakresu).
+- **Upstream:** błąd już zgłoszony — Deltares/pyflwdir#108, naprawiony w PR #109 (merge 2026-08-17) i #117; NIE wydany (PyPI = 0.5.12 z 2026-07-01). Zweryfikowane: `pyflwdir@main` (0.5.13.dev0) + `affine==3.0.1` → `stream_distance()` działa. Nowe zgłoszenie zbędne; ew. prośba o wydanie 0.5.13 (brak otwartego issue o release).
+- **Obraz NIE przebudowany:** rootless dockerd nie startuje w sesji agenta (`pasta`: `Couldn't open network namespace ... Permission denied`; brak `slirp4netns`). Fix niezweryfikowany w kontenerze.
+
+### Nastepne kroki
+- User: `docker compose build api && docker compose up -d`, sprawdzić `pip show affine` w kontenerze (oczekiwane 2.4.0), ponowić bootstrap.
+- Commit `f3f23dd` jest na `feature/kartograf-wykorzystanie` — przenieść na `develop` razem z resztą gałęzi lub cherry-pick, jeśli potrzebny wcześniej.
+
+### Poprzednia sesja (2026-10-08, sesja 97 — etap K: wdrożenie Kartografa v0.7.0; przepisanie historii git)
 
 ### Co zrobiono
 - **Analiza Kartografa v0.7.0** (wydany 2026-10-08) i sondy empiryczne na kodzie Hydrografa: 7 testów padało (przeniesiony `providers.bdot10k`), `discover_asc_files` dublowało arkusze (hardlink + `kampanie/`), błędy pobierania NMT przechodziły po cichu, bootstrap kończył się kodem 0 przy całkowitej porażce pobrania NMT.
@@ -1420,6 +1432,8 @@ Wizja (brainstorm 2026-07-31, pelne uzasadnienia: `notes/plans/2026-07-31-wlasne
 
 - [ ] Migracja na SQLAlchemy 2.1 i zdjecie pinu `<2.1` — albo URL-e `postgresql+psycopg2://` (docker-compose.yml, `config.py`, migrations `env.py`), albo przejscie na psycopg v3. Pin dodany, bo 2.1 wybiera psycopg v3 dla `postgresql://`, a obraz ma `psycopg2-binary`. Priorytet: niski.
 - [ ] Plik lock/constraints zaleznosci wygenerowany z dzialajacego obrazu — wiekszosc pozycji w `requirements.txt` ma niezwiazane `>=`, wiec kazda przebudowa obrazu moze zepsuc zywe API (jak przy SQLAlchemy 2.1). Priorytet: sredni.
+- [ ] Zdjęcie pinu `affine<3` po wydaniu `pyflwdir` z poprawką Deltares/pyflwdir#108 (PR #109, na `main` od 2026-08-17, niewydane w 0.5.12) — zamienić na `pyflwdir>=0.5.13` (sesja 98). Priorytet: niski.
+- [ ] Rootless dockerd nie startuje z sesji agenta (`pasta` bez uprawnień do netns, brak `slirp4netns`) — agent nie może przebudować obrazu ani uruchomić stacku (sesja 98). Do decyzji: instalacja `slirp4netns` lub inna konfiguracja sieci rootlesskit. Priorytet: średni.
 - [ ] Dashboard ruchu — przebudowa od zera (poprzednia implementacja GoAccess z sesji 82/84 wycofana w całości w sesji 85; kod referencyjny w gałęzi `backup/develop-pre-cleanup`, decyzje ADR-055/056 tylko w starej historii). Przed startem: brainstorming wymagań z użytkownikiem. **Zależność: E1 (real_ip za tunelem) ze specyfikacji utwardzenia jest prerekwizytem** — bez niego logi zapisują IP tunelu, analiza per-IP ślepa; `log_format` definiować razem z real_ip; decyzja anonimizacja/retencja IP (RODO).
 - [ ] Flaga `--thresholds` w `bootstrap.py` + pole w API/panelu admina — dziś progi akumulacji są hardcodowane w wywołaniu `process_dem` (`bootstrap.py:540`), choć sam `process_dem.py` ma flagę `--thresholds`. Kontekst (sesja 88): przy bboxie Kotliny Kłodzkiej (113M komórek) próg 1000 m² powoduje OOM (polygonizacja 872k podzlewni > limit 8G) — dane wygenerowano progami [10000, 100000] przez jednorazową edycję hardcode'u; ponowny bootstrap z domyślną listą znów wpadnie w OOM. Po dodaniu flagi: `DEFAULT_THRESHOLD_M2` (`core/constants.py`) musi być zawsze równy najniższemu progowi w danych. Priorytet: sredni.
 - [ ] Migracja bind mountow na named volumes Docker (`./data`, `./cache`, `./frontend/data`, `./frontend/tiles`) — w obecnym ksztalcie kazda zmiana engine ryzykuje powtorke EPERM z sesji 80. Priorytet: sredni.
