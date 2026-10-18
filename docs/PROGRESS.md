@@ -47,7 +47,19 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-10-18 (sesja 98 — diagnoza padu kroku 3 bootstrapu: pyflwdir + affine 3.x)
+**Data:** 2026-10-18 (sesja 99 — rozpoznanie Hydraulika i propozycja integracji z Hydrografem; bez zmian w kodzie)
+
+### Co zrobiono
+- **Rozpoznanie Hydraulika** (`../Hydraulik`): kod PoC (~9 tys. linii, SFINCS 2.4.1 przez hydromt_sfincs 2.0.0rc3, CLI `hydraulik run|stage|run-one`) leży **niezacommitowany** w worktree `.claude/worktrees/poc-poznan-screening` (gałąź na „Initial commit”). Wydania: Rataje (bbox, 70 przebiegów), Pobiedziska (poligon 27,6 km², 776 tys. komórek, ~14 min/przebieg). Straty: stała `qinf` z tabeli klas BDOT — SCS-CN jeszcze nie zaimplementowane. Istniejący projekt integracji: `docs/architektura/2026-10-17-integracja-z-hydrografem.md` (D-1…D-21, H1–H14, schematy JSON).
+- **Rozpoznanie Hydrografa pod integrację:** delineacja jednokrotna i bezstanowa (`app.js:onSelectClick` czyści poprzednią zlewnię), brak trwałego ID zlewni i wielokrotnego wyboru; panele Leaflet `demPane`/`landcoverPane`/`streamsPane` (`map.js:53-57`); CSP `img-src 'self'` (produkty muszą być serwowane z tego samego originu); SCOPE/PRD wykluczają mapy zalewowe.
+- **Propozycja wdrożenia** przedstawiona userowi w czacie: etap H1 (koszyk zlewni + budowa domeny po stronie serwera z buforem + grupa warstw „Hydraulika” na manifeście z wydania Pobiedzisk), H2 (zlecenia, `HydraulicsClient`, węzeł local-queue na tej samej maszynie, polling statusu), H3 (porównanie Q_SFINCS/Q_Hydrolog, animacja, drogi); VPS/Tailscale/kredyty odłożone.
+
+### Nastepne kroki
+- User: decyzje z propozycji (topologia MVP, semantyka bufora/przycięcia, zlewnie rozłączne, pierwszy profil, odłożenie komercjalizacji).
+- Hydraulik: zacommitować worktree PoC; etap 0 z dokumentu integracji (kontrakty `hydraulik.spec`, `simulate job.json`, produkty webowe), SCS-CN jako opcja strat.
+- Hydrograf: ADR + zmiana SCOPE/PRD przed etapem H1.
+
+### Poprzednia sesja (2026-10-18, sesja 98 — diagnoza padu kroku 3 bootstrapu: pyflwdir + affine 3.x)
 
 ### Co zrobiono
 - **Diagnoza błędu bootstrapu z 2026-10-18 09:49** (krok 3, `Cannot determine Numba type of <class 'affine.Affine'>`): `affine` 3.0.0 (2026-08-08) zmienił `Affine` z `namedtuple` na klasę `attrs`; `pyflwdir` 0.5.12 (najnowszy na PyPI) przekazuje `self.transform` do funkcji `@njit` (`gis_utils.distance` ← `stream_distance()`, wywołanie w `scripts/process_dem.py:741`). `requirements.txt` nie pinował `affine`, więc przebudowa obrazu wciągnęła 3.x. Lokalne `backend/.venv` ma 2.4.0 — tam błąd nie występuje. Reprodukcja w tymczasowym venv: `affine==3.0.1` → identyczny błąd, `2.4.0` → OK.
