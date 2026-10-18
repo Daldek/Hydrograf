@@ -26,6 +26,8 @@ scipy>=1.12.0
 
 # DEM processing
 pyflwdir>=0.5.8
+# affine 3.x is an attrs class (not namedtuple); pyflwdir passes Affine into numba njit
+affine>=2.4,<3
 rasterio>=1.3.9
 Pillow>=10.0.0
 

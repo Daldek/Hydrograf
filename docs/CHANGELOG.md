@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Naprawione
 - Pin `sqlalchemy>=2.0.25,<2.1` w `requirements.txt` — SQLAlchemy 2.1 wybiera sterownik psycopg v3 dla URL-i `postgresql://`, a obraz zawiera `psycopg2-binary`; przebudowa obrazu zapetlala restart API na `alembic upgrade head`.
+- Pin `affine>=2.4,<3` w `requirements.txt` — affine 3.0 zmienil `Affine` z `namedtuple` na klase `attrs`; `pyflwdir` przekazuje transform do funkcji numba (`gis_utils.distance` w `stream_distance()`), co po przebudowie obrazu przerywalo krok 3 bootstrapu bledem `Cannot determine Numba type of <class 'affine.Affine'>`.
 - Mozaika VRT bootstrapu dublowała arkusze NMT (kopie w `kampanie/`) i mogła mieszać rozdzielczości — krok 3 używa listy z kroku 2; `discover_asc_files()` usunięta.
 - Bootstrap kończył się kodem 0, gdy nie pobrano żadnego arkusza NMT.
 - Raster HSG z samymi nodata dawał dominantę „A" w `get_hsg_from_soilgrids()`.
