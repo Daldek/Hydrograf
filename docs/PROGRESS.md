@@ -63,6 +63,7 @@
 - Decyzje otwarte z etapu K: D5 (fallback HSG „B” i krok 5 jako niekrytyczny), D6 (dane w układzie 0.6.1, ponowne pobranie Opolskiego w 0.7.0).
 - Następny bootstrap pobierze HSG Polski od nowa (stary raster usunięty).
 - Dalej: decyzje 1–16 z raportu rewizji specyfikacji (s96) → S1 → S2; S3 czeka na kolejne wydanie Kartografa (Archive, kafle SoilGrids, surowy ZIP BDOT, wersja BDOT w sidecarze, publiczne odkrywanie TERYT).
+- Benchmark magazynu danych (gałąź `feature/storage-benchmark`, przeniesiony z Nogata 2026-10-20): uruchomić `backend/scripts/benchmark_storage.py` na bazie z danymi (instrukcja `docs/STORAGE_BENCHMARK.md`, potrzebne `pyogrio`, `pyarrow`, `psutil`), wynik dopisać do planu wspólnego GUI w Nogacie.
 
 ### Poprzednia sesja (2026-10-06/08, sesja 96 — przygotowanie do wdrożenia programu „jedno źródło prawdy” config/ścieżki/dane; magazyn danych)
 

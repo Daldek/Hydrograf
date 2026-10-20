@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Dodane
+- Skrypt `backend/scripts/benchmark_storage.py` i opis `docs/STORAGE_BENCHMARK.md`: pomiar zapytań Q1–Q9 w PostGIS i na plikach GeoPackage/GeoParquet wczytanych do pamięci (poprawność, czas wczytania, przepustowość); tylko odczyt bazy. Dane wejściowe do decyzji o magazynie danych wspólnego GUI ekosystemu (plan w Nogacie `docs/plans/2026-10-20-unified-gui.md`).
 - Integracja kanalizacji deszczowej z analiza splywu powierzchniowego (ADR-051)
 - Nowy modul `core/sewer_service.py`: budowa grafu sieci, inlet burning, rekonstrukcja FA, routing, propagacja
 - Nowy skrypt `scripts/download_sewer.py`: pozyskiwanie danych (plik/WFS/DB/URL)
