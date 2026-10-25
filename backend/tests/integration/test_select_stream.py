@@ -277,6 +277,7 @@ class TestPrecomputedDelineation:
         """Test that unloaded graph returns 503."""
         cg = MagicMock(spec=CatchmentGraph)
         cg.loaded = False
+        cg.ensure_loaded.return_value = False
 
         with patch(f"{_WS}.get_catchment_graph", return_value=cg):
             response = client.post(

@@ -637,7 +637,8 @@ class TestGetCatchmentGraphThreadSafety:
         import threading
 
         from core.catchment_graph import _catchment_graph_lock
-        assert isinstance(_catchment_graph_lock, threading.Lock)
+        # threading.Lock is a function before Python 3.13, so compare with its type.
+        assert isinstance(_catchment_graph_lock, type(threading.Lock()))
 
 
 class TestGetSegmentIdx:
