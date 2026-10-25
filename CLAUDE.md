@@ -29,8 +29,11 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
   ADR-021, ADR-022); rasters are processed only by the preprocessing pipeline in
   `backend/scripts/`. PostGIS is required.
 - Hydrolog, Kartograf and IMGWTools are dependencies used through their public API, pinned
-  by release tag in `backend/pyproject.toml` until the first release set (REL-5.1). A
-  missing function is a GitHub issue labelled `request` in the producer's repository
+  in `backend/pyproject.toml` until the first release set: Kartograf by release tag
+  (REL-5.1), Hydrolog and IMGWTools by the commit of their head while their tags do not
+  exist (REL-5.3, ADR-060). Those two commits are not pushed, so `uv sync --locked`
+  resolves them only on a machine whose uv git cache holds them (`docs/PROGRESS.md`, Next
+  2). A missing function is a GitHub issue labelled `request` in the producer's repository
   (DEV-17.5), not a workaround here.
 - The SCS-CN method is valid for catchments up to 250 km²; the API memory limit is 8 GB.
 - Python only from `backend/.venv`, through `uv run` in `backend/` (DEV-6.2).
@@ -130,8 +133,8 @@ Registry entry:
 [ecosystem.yaml](https://github.com/Daldek/Nogat/blob/main/ecosystem.yaml) (Hydrograf).
 Kartograf (NMT download, land cover, HSG), Hydrolog (hydrographs, concentration time) and
 IMGWTools (PMAXTP precipitation) are runtime dependencies used as libraries; Hydraulik is a
-planned compute node. Their migration to the standard 2.1 heads is `docs/PROGRESS.md`
-Next 2.
+planned compute node. Hydrolog and IMGWTools are pinned to their heads, which follow the
+standard 2.1 (ADR-060); the migration of Kartograf is `docs/PROGRESS.md` Next 2.
 
 ## Deviations
 
@@ -148,9 +151,10 @@ Next 2.
   `001_initial_schema.py`).
 - DEV-7.3: `migrations/` is excluded from mypy. Packages without type information
   (`affine`, `fiona`, `geopandas`, `pandas`, `psutil`, `pyflwdir`, `rasterio`, `scipy`,
-  `shapely`, `yaml`) and the producers pinned by tag (`hydrolog`, `imgwtools`, `kartograf`:
-  no `py.typed` before their standard 2.1 releases, DEV-7.4) are per-module
-  `ignore_missing_imports` overrides. `tests.*` allows untyped definitions and calls and
+  `shapely`, `yaml`) and the producers that ship no `py.typed` (`imgwtools`, whose pinned
+  commit declares `Typing :: Typed` without the marker, and `kartograf` at `v0.7.0`,
+  DEV-7.4) are per-module `ignore_missing_imports` overrides; Hydrolog ships `py.typed`, so
+  its calls are checked. `tests.*` allows untyped definitions and calls and
   does not check the bodies of untyped functions (about 1,260 tests); `scripts.*` allows
   untyped definitions and calls (46 findings) and its annotated code is checked. To lift an
   override, annotate the module and delete its line in `pyproject.toml`.
