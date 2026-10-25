@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-03-25
+**Ostatnia aktualizacja:** 2026-10-25 (the head of Hydrolog, ADR-060)
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -256,7 +256,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Plik | Zmiana | Status |
 |------|--------|--------|
-| `backend/pyproject.toml` | + hydrolog (v0.6.3) | ✅ |
+| `backend/pyproject.toml` | + hydrolog (commit `6c9ba5a`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
 | `backend/core/morphometry.py` | 6 funkcji obliczeniowych | ✅ |
 | `backend/core/morphometry_raster.py` | Obliczenia rastrowe (slope, aspect, TWI, Strahler) | ✅ |
 | `backend/core/catchment_graph.py` | In-memory graf, BFS, trace_main_channel | ✅ |
@@ -321,6 +321,8 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 - **`tc_overland_length_km`** — długość spływu powierzchniowego podawana przez użytkownika. Wymagana przez FAA i Kerby (nie może być estymowana automatycznie).
 - **`channel_length_km`** — długość głównego cieku z `trace_main_channel()`. Używana przez Giandotti.
 
+**Hydrolog 1.0.0.dev0 and these methods (checked on the endpoint against v0.6.3, ADR-060):** `WatershedParameters.calculate_tc("nrcs")` now reads the mean slope before the channel slope, and `calculate_tc("faa")` and `calculate_tc("kerby")` need `overland_length_km` and `overland_slope_m_per_m` of the watershed (`InvalidParameterError`, also a `ValueError`). The endpoint is not affected: `_calculate_tc` forces the mean slope for NRCS and calls `ConcentrationTime.faa`, `kerby` and `kerby_kirpich` with its own arguments, so every `tc_min` of the API is the number it was. `scripts/analyze_watershed.py` accepts `kirpich`, `nrcs` and `giandotti` (`scs` was never a Hydrolog name).
+
 ---
 
 ## Typy hietogramów
@@ -343,6 +345,8 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 
 **Uwaga:** `NashIUH.from_tc()` jest oznaczona jako deprecated od Hydrolog v0.6.2. W Hydrografie domyślna estymacja Nash zmieniona na `from_lutz`. W UI metoda `from_tc` ma etykietę `[deprecated]`.
 
+**Hydrolog 1.0.0.dev0:** the changelog of Hydrolog announces the removal of `NashIUH.from_tc()` in 1.0.0; the head still has it and warns with `DeprecationWarning`. Hydrograf still offers the REST option `nash_estimation: "from_tc"`; it stops working when Hydrolog removes the method, and whether the option goes first is the author's decision (`docs/PROGRESS.md`, Open questions).
+
 **Znane ograniczenie:** Endpoint `GET /api/scenarios` (`list_scenarios()`) nadal zwraca `from_tc` w liście `nash_estimation_methods` bez oznaczenia deprecation — klient API nie dostaje informacji o statusie deprecated tej metody.
 
 ---
@@ -360,6 +364,8 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 - `length_to_centroid_km` — odległość od ujścia do centroidu zlewni wzdłuż cieku
 
 **Implementacja:** `backend/api/endpoints/hydrograph.py`
+
+**Hydrolog 1.0.0.dev0 (ADR-060):** `HydrographGenerator` builds the Snyder unit hydrograph for a duration equal to the time step (the duration correction of Snyder: `tLR = tL + 0.25 (D - tD)`, `tpR = tLR + D/2`, `qpR = qp tL / tLR`), not for the standard duration `tD = tL/5.5` as 0.6.3 did. Measured on the endpoint at a time step of 5 minutes (three catchments, six concentration-time methods, three hyetograph types): the peak is 11 to 12% higher, comes 25 to 70 minutes earlier, and the volume is the same. The SCS and Nash unit hydrographs give the numbers they gave before.
 
 **Dostępne modele hydrogramu jednostkowego:**
 - `scs` — SCS Unit Hydrograph (domyślny)
@@ -462,11 +468,11 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 ## Repozytorium Hydrologa
 
 - **GitHub:** https://github.com/Daldek/Hydrolog.git
-- **Branch:** develop
-- **Wersja:** v0.6.3
+- **Branch:** `feature/routing-network` (the head of the stack `chore/nogat-2.1` and `feature/routing-*`; not pushed)
+- **Wersja:** 1.0.0.dev0, commit `6c9ba5afae65c601c447f48f5c1412e93f3a1d60`
 - **Dokumentacja:** `docs/INTEGRATION.md`
-- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.3`), instalowana przez `uv sync --locked`
+- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`hydrolog @ git+https://github.com/Daldek/Hydrolog.git@6c9ba5afae65c601c447f48f5c1412e93f3a1d60`), instalowana przez `uv sync --locked`; the commit is not on GitHub, so the machine needs it in the uv git cache (`docs/PROGRESS.md`, Next 2); the release replaces it with a tag (REL-5.3)
 
 ---
 
-**Ostatnia aktualizacja:** 2026-03-25
+**Ostatnia aktualizacja:** 2026-10-25

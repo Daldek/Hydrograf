@@ -1,7 +1,7 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.3
+**Version:** 2.4
 **Date:** 2026-10-25
 **Status:** Approved
 
@@ -493,7 +493,7 @@ Details: `core/watershed_service.py`
 - Computing min/max/mean per label for elevation and slope
 
 #### 2.4.8 Hydrolog library (external)
-**Responsibilities:** (delegated to `hydrolog` v0.6.3)
+**Responsibilities:** (delegated to `hydrolog`, pinned by commit in `backend/pyproject.toml`, ADR-060)
 - Hyetograph generation (Beta, Block, Euler II)
 - SCS CN model (effective precipitation)
 - Unit hydrograph: SCS, Nash IUH, Snyder
@@ -1782,11 +1782,12 @@ jobs:
 
 ---
 
-**Document version:** 2.3
+**Document version:** 2.4
 **Date of the last update:** 2026-10-25
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.4 (2026-10-25): Hydrolog and IMGWTools are pinned by commit (ADR-060): section 2.4.8 names no version
 - 2.3 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
 - 2.2 (2026-10-08): Kartograf 0.7.0 (stage K) — `download_dem.py`: `download_sheets()` returns `NmtDownloadReport` or raises `NmtDownloadError`; `MetadataCache` in `<cache_dir>/kartograf_meta.db` (local disk, never a network share); layout `cache/nmt/pl_<system>_<res>_evrf2007/` + `kampanie/`; mosaic from the file list of step 2 (details: `docs/integrations/KARTOGRAF.md` §6)
 - 2.1 (2026-09-28): `utils/sheet_finder.py` → `utils/sheet_lookup.py` — data acquisition only through Kartograf (ADR-057), a thin wrapper around `kartograf.find_sheets_for_bbox()` instead of our own reimplementation of the sheet-code arithmetic
