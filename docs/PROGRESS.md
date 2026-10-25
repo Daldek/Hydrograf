@@ -12,7 +12,7 @@ sessions 98 and 99 are only on the unmerged branch `feature/kartograf-wykorzysta
 | Component | State | Note |
 |---|---|---|
 | Application (REST API, pipeline, frontend, admin panel) | done | released as 0.4.0; `develop` carries the storm-sewer integration (ADR-051, ADR-052), the feedback form (ADR-053) and the Kartograf 0.7.0 migration (ADR-057) |
-| Producer pins | all three on their heads | Branch `feature/producer-heads` (ADR-060, ADR-061, REL-5.3, REL-5.6): Kartograf `b73aad3` (`feature/data-output`, 0.8.0.dev0, range `>=0.8.0.dev0,<0.9`), IMGWTools `7e2114e` (`feature/data-output`, 3.0.0, `>=3.0.0.dev0,<4`) and Hydrolog `31bf796` (`feature/routing-objects`, 1.0.0.dev0, `>=1.0.0.dev0,<2`) are pinned by commit in `[tool.uv.sources]`; all three commits are on GitHub, so `uv sync --locked` resolves them anywhere; the release replaces the commits with tags and narrows the ranges |
+| Producer pins | all three on their heads | Branch `feature/producer-heads` (ADR-060, ADR-061, REL-5.3, REL-5.6): Kartograf `b73aad3` (`feature/data-output`, 0.8.0.dev0, range `>=0.8.0.dev0,<0.9`), IMGWTools `3f7de36` (`feature/data-output`, 3.0.0, `>=3.0.0.dev0,<4`) and Hydrolog `31bf796` (`feature/routing-objects`, 1.0.0.dev0, `>=1.0.0.dev0,<2`) are pinned by commit in `[tool.uv.sources]`; all three commits are on GitHub, so `uv sync --locked` resolves them anywhere; the release replaces the commits with tags and narrows the ranges |
 | Branch `chore/nogat-2.1` | note | based on `develop`, not on `feature/kartograf-wykorzystanie`, which has 7 commits that `develop` lacks: `f3f23dd` (`affine>=2.4,<3`, carried here in `pyproject.toml`), a CHANGELOG line, and PROGRESS of sessions 98 and 99. Merging both needs a manual resolution of this file and of the deleted `requirements.txt` |
 | Branch `feature/producer-heads` | note | from `chore/nogat-2.1` (`788c105`) and meant to merge after it; the gate is green on each of its commits and the branch is pushed. The running stack keeps the image built on the old pins (Kartograf 0.7.0) and was not touched: its admin-panel bootstrap runs the scripts of this branch through the dev mount and needs a rebuilt image |
 | Nogat standard 2.1, environment | done | `backend/uv.lock` replaces `requirements.txt`: seeded with the versions of the image built on 2026-10-18 (no third-party change), caps `sqlalchemy<2.1` and `affine<3` with their reasons in `pyproject.toml`; `dev` group, extra `viz`; `[tool.uv] package = false`; `develop` carries `0.5.0.dev0`, read through `core/version.py`; the Dockerfile builds with `uv sync --locked --no-dev` (GDAL's Python binding stays outside the lock); editor, git and `.env.example` files |
@@ -35,7 +35,6 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 | `CROSS_PROJECT_ANALYSIS.md` into the Nogat registry and `request` issues in the producers' repositories (DEV-17.5) | needs Nogat and GitHub issues |
 | Registry entry of Hydrograf in Nogat `ecosystem.yaml` | Nogat owns it: `python_manifests` lists `backend/requirements.txt`, which the uv step deletes; `uses` of Kartograf names `LandCoverManager` and `HSGCalculator`, which the migration removed (they are `download_landcover`, `calculate_hsg` and `DownloadManager` now) |
 | Tags, releases, replacing producer pins by tags (REL-5.3, phases 5 and 6) | need the producers' tags and the author's approval |
-| `request` issue in IMGWTools: `PMaXTPData.get_precipitation(duration_minutes: int, probability_percent: int)` is annotated `int`, but the keys are `str(percent)` and Hydrograf asks for 0.01 to 98.5 (`scripts/preprocess_precipitation.py` carries a `type: ignore[arg-type]`) | needs GitHub (DEV-17.5) |
 | Push of `chore/nogat-2.1`, pull request, merge into `develop` | approvals (DEV-3.3) |
 
 ## Next
@@ -100,7 +99,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    commit while its tag is missing (REL-5.3), migrate, run the suite, then pin the tags: when a
    tag exists replace the `rev` in `[tool.uv.sources]` by it, narrow the range of `dependencies`
    (REL-5.6), run `uv lock` and the gate, and repeat the comparisons described below.
-   - **IMGWTools: done on `feature/producer-heads`** (ADR-060, pinned `7e2114e`, 3.0.0).
+   - **IMGWTools: done on `feature/producer-heads`** (ADR-060, pinned `3f7de36`, 3.0.0).
      `fetch_pmaxtp(latitude, longitude, *, method='POT', timeout=30.0, validate_coords=True)` keeps
      its model (`result.data.get_precipitation(...)`, `ks`, `sg`, `rb`); `method` became
      keyword-only, and Hydrograf passes only `latitude=` and `longitude=`. Both call sites
@@ -115,8 +114,11 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `IMGW_REFERENCE_DIR`, store and export options are `root`, `output_dir`, `output`.
      Hydrograf's own settings `IMGW_GRID_SPACING_KM` and `IMGW_RATE_LIMIT_DELAY_S`
      (`core/config.py`, `.env.example`) share the `IMGW_` prefix of IMGWTools, which ignores the
-     names it does not know. IMGWTools ships `py.typed` at `7e2114e`, so mypy checks the call
-     (the one finding is the `int` annotation of the probability, Skipped adoption items).
+     names it does not know. IMGWTools ships `py.typed`, so mypy checks the call. Its probability
+     parameter was annotated `int` while the keys are `str(percent)` and Hydrograf asks for 0.01 to
+     98.5 (a `type: ignore` in `scripts/preprocess_precipitation.py`): IMGWTools took the request
+     (`9291eb3`: a `float`, one of the 27 published percentages, else `IMGWValidationError` with
+     the allowed list) and the pin moved to its head, so the `type: ignore` is gone.
    - **Hydrolog: done on `feature/producer-heads`** (ADR-060, pinned `6c9ba5a`, 1.0.0.dev0, the
      head of the stack `chore/nogat-2.1` and `feature/routing-*`). The imports resolve and the
      offline suite passes unchanged (1,362 tests): no test pinned a number that changed. mypy

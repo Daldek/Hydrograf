@@ -2,7 +2,7 @@ r"""
 Script to download IMGW PMAXTP precipitation data and store in PostgreSQL.
 
 Downloads maximum precipitation data for a grid of points within specified
-bounding box and stores all 42 scenarios (7 durations x 6 probabilities)
+bounding box and stores all 432 scenarios (16 durations x 27 probabilities)
 in the precipitation_data table.
 
 Usage
@@ -235,10 +235,7 @@ async def fetch_pmaxtp_for_point(
             DURATIONS, DURATION_MINUTES, strict=False
         ):
             for prob in PROBABILITIES:
-                precip = result.data.get_precipitation(
-                    duration_min,
-                    prob,  # type: ignore[arg-type]  # annotated int, keys are str(percent)
-                )
+                precip = result.data.get_precipitation(duration_min, prob)
                 scenarios[(duration_str, prob)] = precip
 
         # Rate limiting delay
