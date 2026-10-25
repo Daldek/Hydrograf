@@ -100,7 +100,7 @@ The full module map is in `docs/ARCHITECTURE.md` (backend §2.1, frontend §4.1)
 | Current state, next steps | [docs/PROGRESS.md](docs/PROGRESS.md) |
 | Scope (in and out), product requirements | [docs/SCOPE.md](docs/SCOPE.md), [docs/PRD.md](docs/PRD.md) |
 | Architecture, database schema | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DATA_MODEL.md](docs/DATA_MODEL.md) |
-| Decisions | [docs/DECISIONS.md](docs/DECISIONS.md) (ADR index at the top) |
+| Decisions | [docs/DECISIONS.md](docs/DECISIONS.md) (index; ADR-001 to 057), [docs/decisions/](docs/decisions/) (ADR-058 and later) |
 | The producers | [docs/integrations/](docs/integrations/) (KARTOGRAF, HYDROLOG, IMGWTOOLS), [docs/CROSS_PROJECT_ANALYSIS.md](docs/CROSS_PROJECT_ANALYSIS.md) |
 | Calculations | [docs/COMPUTATION_PIPELINE.md](docs/COMPUTATION_PIPELINE.md) |
 | Open items | [docs/BACKLOG.md](docs/BACKLOG.md), [docs/TECHNICAL_DEBT.md](docs/TECHNICAL_DEBT.md) |
