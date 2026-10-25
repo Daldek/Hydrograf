@@ -33,25 +33,29 @@ def _make_geojson_file(
 @pytest.fixture
 def sample_polygon():
     """A small polygon around Poznan in WGS84."""
-    return Polygon([
-        (16.9, 52.4),
-        (17.1, 52.4),
-        (17.1, 52.5),
-        (16.9, 52.5),
-        (16.9, 52.4),
-    ])
+    return Polygon(
+        [
+            (16.9, 52.4),
+            (17.1, 52.4),
+            (17.1, 52.5),
+            (16.9, 52.5),
+            (16.9, 52.4),
+        ]
+    )
 
 
 @pytest.fixture
 def sample_polygon_2180():
     """A polygon in EPSG:2180 (Poland)."""
-    return Polygon([
-        (350000, 500000),
-        (360000, 500000),
-        (360000, 510000),
-        (350000, 510000),
-        (350000, 500000),
-    ])
+    return Polygon(
+        [
+            (350000, 500000),
+            (360000, 500000),
+            (360000, 510000),
+            (350000, 510000),
+            (350000, 500000),
+        ]
+    )
 
 
 class TestLoadBoundary:
@@ -63,13 +67,15 @@ class TestLoadBoundary:
 
     def test_load_geojson_multipolygon(self, tmp_path, sample_polygon):
         # Two separate polygons
-        poly2 = Polygon([
-            (17.2, 52.4),
-            (17.3, 52.4),
-            (17.3, 52.5),
-            (17.2, 52.5),
-            (17.2, 52.4),
-        ])
+        poly2 = Polygon(
+            [
+                (17.2, 52.4),
+                (17.3, 52.4),
+                (17.3, 52.5),
+                (17.2, 52.5),
+                (17.2, 52.4),
+            ]
+        )
         multi = MultiPolygon([sample_polygon, poly2])
         path = _make_geojson_file(tmp_path, multi)
         result = load_boundary(path)
@@ -120,20 +126,24 @@ class TestLoadBoundary:
 
     def test_multi_feature_union(self, tmp_path):
         """Multiple features should be unioned into one geometry."""
-        poly1 = Polygon([
-            (16.9, 52.4),
-            (17.0, 52.4),
-            (17.0, 52.5),
-            (16.9, 52.5),
-            (16.9, 52.4),
-        ])
-        poly2 = Polygon([
-            (17.0, 52.4),
-            (17.1, 52.4),
-            (17.1, 52.5),
-            (17.0, 52.5),
-            (17.0, 52.4),
-        ])
+        poly1 = Polygon(
+            [
+                (16.9, 52.4),
+                (17.0, 52.4),
+                (17.0, 52.5),
+                (16.9, 52.5),
+                (16.9, 52.4),
+            ]
+        )
+        poly2 = Polygon(
+            [
+                (17.0, 52.4),
+                (17.1, 52.4),
+                (17.1, 52.5),
+                (17.0, 52.5),
+                (17.0, 52.4),
+            ]
+        )
         gdf = gpd.GeoDataFrame(geometry=[poly1, poly2], crs="EPSG:4326")
         path = tmp_path / "multi.geojson"
         gdf.to_file(path, driver="GeoJSON")

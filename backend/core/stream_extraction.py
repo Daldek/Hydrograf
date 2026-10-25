@@ -456,9 +456,9 @@ def polygonize_subcatchments(
     hydraulic_max = None
     if flow_dist_m is not None:
         # Use -inf for cells without flow distance so they don't affect max
-        dist_for_max = np.where(
-            label_raster > 0, flow_dist_m, -np.inf
-        ).astype(np.float64)
+        dist_for_max = np.where(label_raster > 0, flow_dist_m, -np.inf).astype(
+            np.float64
+        )
         hydraulic_max = zonal_max(label_raster, dist_for_max, max_label)
         del dist_for_max
 

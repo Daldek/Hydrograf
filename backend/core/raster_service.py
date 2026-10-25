@@ -168,8 +168,7 @@ class RasterCache:
 
         if row < 0 or row >= self._shape[0] or col < 0 or col >= self._shape[1]:
             raise ValueError(
-                f"Point ({x}, {y}) is outside the raster extent "
-                f"(shape={self._shape})"
+                f"Point ({x}, {y}) is outside the raster extent (shape={self._shape})"
             )
 
         # --- Delineate basin via pyflwdir ---
@@ -192,7 +191,10 @@ class RasterCache:
         cell_area_km2 = abs(self._transform.a * self._transform.e) / 1_000_000
         logger.info(
             "Delineated from row=%d col=%d (fdir=%d→0): %d cells, %.2f km2",
-            row, col, original_fdir, int(np.sum(mask)),
+            row,
+            col,
+            original_fdir,
+            int(np.sum(mask)),
             float(np.sum(mask)) * cell_area_km2,
         )
 

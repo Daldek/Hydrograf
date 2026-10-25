@@ -475,7 +475,9 @@ def main():
         )
     except ImportError as e:
         logger.error(f"Missing dependency: {e}")
-        logger.error("Run `uv sync --locked` in backend/ to install geopandas and fiona.")
+        logger.error(
+            "Run `uv sync --locked` in backend/ to install geopandas and fiona."
+        )
         sys.exit(1)
     except Exception as e:
         logger.error(f"Import failed: {e}")

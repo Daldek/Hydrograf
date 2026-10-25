@@ -89,9 +89,15 @@ def build_sewer_graph(topology) -> SewerGraph:
             "y": node_data["y"],
         }
         # Copy optional attributes
-        for attr in ("invert_elev", "depth", "diameter",
-                      "rim_elevation", "max_depth", "ponded_area",
-                      "outfall_type"):
+        for attr in (
+            "invert_elev",
+            "depth",
+            "diameter",
+            "rim_elevation",
+            "max_depth",
+            "ponded_area",
+            "outfall_type",
+        ):
             if attr in node_data:
                 node[attr] = node_data[attr]
 
@@ -121,8 +127,15 @@ def build_sewer_graph(topology) -> SewerGraph:
             ),
         }
         # Copy pipe attributes
-        for attr in ("diameter", "width", "height", "cross_section",
-                      "manning", "material", "invert_elev"):
+        for attr in (
+            "diameter",
+            "width",
+            "height",
+            "cross_section",
+            "manning",
+            "material",
+            "invert_elev",
+        ):
             if attr in edge_data:
                 edge[attr] = edge_data[attr]
 
@@ -136,7 +149,8 @@ def build_sewer_graph(topology) -> SewerGraph:
     if n > 0:
         data = np.ones(len(rows), dtype=np.int8)
         graph.adj = sparse.csr_matrix(
-            (data, (rows, cols)), shape=(n, n),
+            (data, (rows, cols)),
+            shape=(n, n),
         )
     else:
         graph.adj = sparse.csr_matrix((0, 0), dtype=np.int8)
@@ -167,7 +181,9 @@ def build_sewer_graph(topology) -> SewerGraph:
 
     logger.info(
         "Built sewer graph: %d nodes, %d edges, %d components",
-        graph.n_nodes, graph.n_edges, graph.n_components,
+        graph.n_nodes,
+        graph.n_edges,
+        graph.n_components,
     )
 
     return graph
@@ -198,7 +214,9 @@ def burn_inlets(
     for inlet in inlets:
         row, col = inlet["row"], inlet["col"]
         if row < 0 or row >= nrows or col < 0 or col >= ncols:
-            logger.warning(f"Inlet {inlet['id']} at ({row},{col}) outside DEM — skipping")
+            logger.warning(
+                f"Inlet {inlet['id']} at ({row},{col}) outside DEM — skipping"
+            )
             continue
 
         dem_elev = float(dem[row, col])
@@ -213,9 +231,7 @@ def burn_inlets(
             depth = default_depth_m
 
         if depth <= 0:
-            logger.warning(
-                f"Inlet {inlet['id']}: depth={depth:.2f}m <= 0 — skipping"
-            )
+            logger.warning(f"Inlet {inlet['id']}: depth={depth:.2f}m <= 0 — skipping")
             continue
 
         key = (row, col)
@@ -283,9 +299,7 @@ def route_fa_through_sewer(graph) -> None:
             fa_val = node.get("fa_value", 0) or 0
             total += fa_val
         outlet["total_upstream_fa"] = total
-        logger.info(
-            f"Outlet {outlet['id']}: {len(inlet_ids)} inlets, total_fa={total}"
-        )
+        logger.info(f"Outlet {outlet['id']}: {len(inlet_ids)} inlets, total_fa={total}")
 
 
 def propagate_fa_downstream(
@@ -419,11 +433,7 @@ def insert_sewer_data(
         invert_start = from_node.get("invert_elev")
         invert_end = to_node.get("invert_elev")
         slope_pct = None
-        if (
-            invert_start is not None
-            and invert_end is not None
-            and edge["length_m"] > 0
-        ):
+        if invert_start is not None and invert_end is not None and edge["length_m"] > 0:
             slope_pct = abs(invert_start - invert_end) / edge["length_m"] * 100
 
         db_session.execute(
@@ -460,15 +470,19 @@ def insert_sewer_data(
         )
 
     # Mark stream segments near sewer outlets as augmented (single batch query)
-    db_session.execute(text("""
+    db_session.execute(
+        text("""
         UPDATE stream_network sn
         SET is_sewer_augmented = TRUE
         FROM sewer_nodes so
         WHERE so.node_type = 'outlet'
           AND ST_DWithin(sn.geom, so.geom, 50.0)
-    """))
+    """)
+    )
 
     db_session.commit()
     total = len(graph.nodes) + len(graph.edges)
-    logger.info(f"Inserted sewer data: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
+    logger.info(
+        f"Inserted sewer data: {len(graph.nodes)} nodes, {len(graph.edges)} edges"
+    )
     return total

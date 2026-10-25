@@ -169,9 +169,7 @@ class TestDownloadSheetsLoudErrors:
         self, fake_kartograf, tmp_path
     ):
         with pytest.raises(NmtDownloadError, match="nie istnieje"):
-            download_sheets(
-                ["N-33-130-D-d-1-1"], tmp_path, tmp_path / "brak" / "m.db"
-            )
+            download_sheets(["N-33-130-D-d-1-1"], tmp_path, tmp_path / "brak" / "m.db")
         assert fake_kartograf.calls == []
 
     def test_cache_problem_and_hard_failure_reported_together(

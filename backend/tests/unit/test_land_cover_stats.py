@@ -124,9 +124,7 @@ class TestAnalyzeLandCoverGpkg:
         from shapely.geometry import box
 
         # Create mock bbox
-        bbox = MagicMock(
-            min_x=500000.0, min_y=600000.0, max_x=501000.0, max_y=601000.0
-        )
+        bbox = MagicMock(min_x=500000.0, min_y=600000.0, max_x=501000.0, max_y=601000.0)
 
         # Create test geometries in bbox
         forest_poly = box(500000, 600000, 500600, 601000)  # 60% area
@@ -164,9 +162,7 @@ class TestAnalyzeLandCoverGpkg:
 
     def test_empty_gpkg_returns_empty_dict(self):
         """Test returns {} for GeoPackage with no PT layers."""
-        bbox = MagicMock(
-            min_x=500000.0, min_y=600000.0, max_x=501000.0, max_y=601000.0
-        )
+        bbox = MagicMock(min_x=500000.0, min_y=600000.0, max_x=501000.0, max_y=601000.0)
         gpkg_path = Path("/tmp/empty.gpkg")
 
         with patch("fiona.listlayers", return_value=["gpkg_contents", "OT_BUBD_A"]):
@@ -176,9 +172,7 @@ class TestAnalyzeLandCoverGpkg:
 
     def test_returns_empty_on_fiona_error(self):
         """Test returns {} when fiona raises an error."""
-        bbox = MagicMock(
-            min_x=500000.0, min_y=600000.0, max_x=501000.0, max_y=601000.0
-        )
+        bbox = MagicMock(min_x=500000.0, min_y=600000.0, max_x=501000.0, max_y=601000.0)
         gpkg_path = Path("/tmp/bad.gpkg")
 
         with patch("fiona.listlayers", side_effect=Exception("Cannot open file")):
@@ -191,9 +185,7 @@ class TestAnalyzeLandCoverGpkg:
         import geopandas as gpd
         from shapely.geometry import box
 
-        bbox = MagicMock(
-            min_x=500000.0, min_y=600000.0, max_x=501000.0, max_y=601000.0
-        )
+        bbox = MagicMock(min_x=500000.0, min_y=600000.0, max_x=501000.0, max_y=601000.0)
 
         poly1 = box(500000, 600000, 500500, 601000)
         poly2 = box(500500, 600000, 501000, 601000)
@@ -207,9 +199,7 @@ class TestAnalyzeLandCoverGpkg:
             patch("fiona.listlayers", return_value=["OT_PTTR_A", "OT_PTUT_A"]),
             patch(
                 "geopandas.read_file",
-                side_effect=lambda path, layer=None: (
-                    gdf1 if "PTTR" in layer else gdf2
-                ),
+                side_effect=lambda path, layer=None: gdf1 if "PTTR" in layer else gdf2,
             ),
             patch("geopandas.clip", side_effect=lambda gdf, mask: gdf),
         ):
@@ -223,9 +213,7 @@ class TestAnalyzeLandCoverGpkg:
         """Test that empty GeoDataFrames are skipped."""
         import geopandas as gpd
 
-        bbox = MagicMock(
-            min_x=500000.0, min_y=600000.0, max_x=501000.0, max_y=601000.0
-        )
+        bbox = MagicMock(min_x=500000.0, min_y=600000.0, max_x=501000.0, max_y=601000.0)
 
         empty_gdf = gpd.GeoDataFrame({"geometry": []}, crs="EPSG:2180")
 
@@ -255,8 +243,17 @@ class TestBdot10kCategoryMap:
     def test_map_has_all_expected_pt_codes(self):
         """Test map contains all known PT codes from BDOT10k."""
         expected_codes = {
-            "PTLZ", "PTTR", "PTUT", "PTWP", "PTWZ",
-            "PTRK", "PTZB", "PTKM", "PTPL", "PTGN",
-            "PTNZ", "PTSO",
+            "PTLZ",
+            "PTTR",
+            "PTUT",
+            "PTWP",
+            "PTWZ",
+            "PTRK",
+            "PTZB",
+            "PTKM",
+            "PTPL",
+            "PTGN",
+            "PTNZ",
+            "PTSO",
         }
         assert set(BDOT10K_CATEGORY_MAP.keys()) == expected_codes

@@ -103,10 +103,10 @@ def simple_sewer_network():
     Note: coordinates are (x, y) = (col, row) convention for GIS.
     """
     points = [
-        {"id": "A", "role": "inlet",    "downstream_id": "J",    "x": 5.5,  "y": 24.5},
-        {"id": "B", "role": "inlet",    "downstream_id": "J",    "x": 15.5, "y": 24.5},
-        {"id": "J", "role": "junction", "downstream_id": "OUT",  "x": 10.5, "y": 14.5},
-        {"id": "OUT", "role": "outlet", "downstream_id": None,   "x": 25.5, "y": 4.5},
+        {"id": "A", "role": "inlet", "downstream_id": "J", "x": 5.5, "y": 24.5},
+        {"id": "B", "role": "inlet", "downstream_id": "J", "x": 15.5, "y": 24.5},
+        {"id": "J", "role": "junction", "downstream_id": "OUT", "x": 10.5, "y": 14.5},
+        {"id": "OUT", "role": "outlet", "downstream_id": None, "x": 25.5, "y": 4.5},
     ]
     gdf = gpd.GeoDataFrame(
         [
@@ -152,7 +152,9 @@ class TestFullSewerPipeline:
                 if 0 <= n["row"] < 30 and 0 <= n["col"] < 30:
                     inlets.append(n)
 
-        original_values = {(n["row"], n["col"]): dem[n["row"], n["col"]] for n in inlets}
+        original_values = {
+            (n["row"], n["col"]): dem[n["row"], n["col"]] for n in inlets
+        }
 
         dem_mod, drain_pts = burn_inlets(dem, inlets, default_depth_m=1.0)
 
@@ -162,7 +164,9 @@ class TestFullSewerPipeline:
             if (r, c) in original_values:
                 assert dem_mod[r, c] < original_values[(r, c)]
 
-    def test_fa_reconstruction_produces_values(self, synthetic_fa, synthetic_fdir, simple_sewer_network):
+    def test_fa_reconstruction_produces_values(
+        self, synthetic_fa, synthetic_fdir, simple_sewer_network
+    ):
         """FA reconstruction assigns positive values to inlet cells."""
         graph = simple_sewer_network
 
@@ -180,7 +184,9 @@ class TestFullSewerPipeline:
         fa_values = [n.get("fa_value", 0) for n in inlets]
         assert any(v >= 0 for v in fa_values)
 
-    def test_routing_sums_inlet_fa(self, synthetic_fa, synthetic_fdir, simple_sewer_network):
+    def test_routing_sums_inlet_fa(
+        self, synthetic_fa, synthetic_fdir, simple_sewer_network
+    ):
         """Routing correctly sums FA from inlets to outlet."""
         graph = simple_sewer_network
 
@@ -190,7 +196,11 @@ class TestFullSewerPipeline:
                 n["row"] = 30 - 1 - int(n["y"])
                 n["col"] = int(n["x"])
 
-        inlets = [n for n in graph.nodes if n["node_type"] == "inlet" and n.get("row", -1) >= 0]
+        inlets = [
+            n
+            for n in graph.nodes
+            if n["node_type"] == "inlet" and n.get("row", -1) >= 0
+        ]
         reconstruct_inlet_fa(synthetic_fa, synthetic_fdir, inlets)
 
         route_fa_through_sewer(graph)
@@ -201,7 +211,9 @@ class TestFullSewerPipeline:
         inlet_fa_sum = sum(n.get("fa_value", 0) for n in inlets)
         assert outlets[0]["total_upstream_fa"] == inlet_fa_sum
 
-    def test_propagation_increases_downstream_fa(self, synthetic_fa, synthetic_fdir, simple_sewer_network):
+    def test_propagation_increases_downstream_fa(
+        self, synthetic_fa, synthetic_fdir, simple_sewer_network
+    ):
         """FA propagation adds surplus to cells downstream of outlet."""
         graph = simple_sewer_network
         fa = synthetic_fa.copy()
@@ -213,11 +225,19 @@ class TestFullSewerPipeline:
                 n["row"] = 30 - 1 - int(n["y"])
                 n["col"] = int(n["x"])
 
-        inlets = [n for n in graph.nodes if n["node_type"] == "inlet" and n.get("row", -1) >= 0]
+        inlets = [
+            n
+            for n in graph.nodes
+            if n["node_type"] == "inlet" and n.get("row", -1) >= 0
+        ]
         reconstruct_inlet_fa(fa, synthetic_fdir, inlets)
         route_fa_through_sewer(graph)
 
-        outlets = [n for n in graph.nodes if n["node_type"] == "outlet" and n.get("row", -1) >= 0]
+        outlets = [
+            n
+            for n in graph.nodes
+            if n["node_type"] == "outlet" and n.get("row", -1) >= 0
+        ]
 
         if outlets and outlets[0].get("total_upstream_fa", 0) > 0:
             propagate_fa_downstream(fa, synthetic_fdir, outlets)
@@ -228,7 +248,9 @@ class TestFullSewerPipeline:
             if 0 <= r < 30 and 0 <= c < 30:
                 assert fa[r, c] >= fa_original[r, c]
 
-    def test_full_pipeline_no_crash(self, synthetic_dem, synthetic_fa, synthetic_fdir, simple_sewer_network):
+    def test_full_pipeline_no_crash(
+        self, synthetic_dem, synthetic_fa, synthetic_fdir, simple_sewer_network
+    ):
         """Full pipeline executes without errors."""
         graph = simple_sewer_network
         dem = synthetic_dem.copy()
@@ -240,7 +262,11 @@ class TestFullSewerPipeline:
             n["col"] = int(n["x"])
 
         # Step 3b: burn inlets
-        inlets = [n for n in graph.nodes if n["node_type"] == "inlet" and 0 <= n["row"] < 30 and 0 <= n["col"] < 30]
+        inlets = [
+            n
+            for n in graph.nodes
+            if n["node_type"] == "inlet" and 0 <= n["row"] < 30 and 0 <= n["col"] < 30
+        ]
         dem_mod, drain_pts = burn_inlets(dem, inlets, default_depth_m=0.5)
 
         # Step 4a: reconstruct FA
@@ -250,7 +276,11 @@ class TestFullSewerPipeline:
         route_fa_through_sewer(graph)
 
         # Step 4c: propagate
-        outlets = [n for n in graph.nodes if n["node_type"] == "outlet" and 0 <= n["row"] < 30 and 0 <= n["col"] < 30]
+        outlets = [
+            n
+            for n in graph.nodes
+            if n["node_type"] == "outlet" and 0 <= n["row"] < 30 and 0 <= n["col"] < 30
+        ]
         propagate_fa_downstream(fa, synthetic_fdir, outlets)
 
         # Verify no NaN or negative FA
@@ -264,6 +294,7 @@ class TestSewerPipelineEdgeCases:
     def test_empty_sewer_network(self):
         """Empty topology (no nodes) should produce empty graph."""
         from core.sewer_topology import ParsedTopology
+
         empty_topology = ParsedTopology(nodes=[], edges=[])
         graph = build_sewer_graph(empty_topology)
         assert graph.n_nodes == 0
@@ -271,10 +302,24 @@ class TestSewerPipelineEdgeCases:
 
     def test_single_line_network(self):
         """Single inlet + outlet creates 2-node, 1-edge graph."""
-        graph = _build_graph_from_points([
-            {"id": "I1",  "role": "inlet",  "downstream_id": "O1", "x": 0.0,  "y": 0.0},
-            {"id": "O1",  "role": "outlet", "downstream_id": None,  "x": 10.0, "y": 10.0},
-        ])
+        graph = _build_graph_from_points(
+            [
+                {
+                    "id": "I1",
+                    "role": "inlet",
+                    "downstream_id": "O1",
+                    "x": 0.0,
+                    "y": 0.0,
+                },
+                {
+                    "id": "O1",
+                    "role": "outlet",
+                    "downstream_id": None,
+                    "x": 10.0,
+                    "y": 10.0,
+                },
+            ]
+        )
         assert graph.n_nodes == 2
         assert graph.n_edges == 1
         assert len(graph.get_nodes_by_type("inlet")) == 1
@@ -282,12 +327,38 @@ class TestSewerPipelineEdgeCases:
 
     def test_disconnected_components(self):
         """Two independent inlet→outlet pairs form two components with a warning."""
-        graph = _build_graph_from_points([
-            {"id": "I1", "role": "inlet",  "downstream_id": "O1",  "x": 0.0,   "y": 0.0},
-            {"id": "O1", "role": "outlet", "downstream_id": None,   "x": 10.0,  "y": 0.0},
-            {"id": "I2", "role": "inlet",  "downstream_id": "O2",  "x": 100.0, "y": 100.0},
-            {"id": "O2", "role": "outlet", "downstream_id": None,   "x": 110.0, "y": 100.0},
-        ])
+        graph = _build_graph_from_points(
+            [
+                {
+                    "id": "I1",
+                    "role": "inlet",
+                    "downstream_id": "O1",
+                    "x": 0.0,
+                    "y": 0.0,
+                },
+                {
+                    "id": "O1",
+                    "role": "outlet",
+                    "downstream_id": None,
+                    "x": 10.0,
+                    "y": 0.0,
+                },
+                {
+                    "id": "I2",
+                    "role": "inlet",
+                    "downstream_id": "O2",
+                    "x": 100.0,
+                    "y": 100.0,
+                },
+                {
+                    "id": "O2",
+                    "role": "outlet",
+                    "downstream_id": None,
+                    "x": 110.0,
+                    "y": 100.0,
+                },
+            ]
+        )
         assert graph.n_components == 2
 
     def test_regression_without_sewer(self, synthetic_fa):

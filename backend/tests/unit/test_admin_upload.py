@@ -14,9 +14,9 @@ from api.endpoints.admin import ALLOWED_BOUNDARY_EXTENSIONS
 
 def _create_test_geojson_bytes() -> bytes:
     """Create a valid GeoJSON file content."""
-    polygon = Polygon([
-        (16.9, 52.4), (17.1, 52.4), (17.1, 52.5), (16.9, 52.5), (16.9, 52.4)
-    ])
+    polygon = Polygon(
+        [(16.9, 52.4), (17.1, 52.4), (17.1, 52.5), (16.9, 52.5), (16.9, 52.4)]
+    )
     gdf = gpd.GeoDataFrame(geometry=[polygon], crs="EPSG:4326")
     with tempfile.NamedTemporaryFile(suffix=".geojson", delete=False) as f:
         gdf.to_file(f.name, driver="GeoJSON")

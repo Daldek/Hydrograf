@@ -47,13 +47,69 @@ logger = logging.getLogger(__name__)
 
 # Rainfall scenarios — full PMAXTP range (16 durations × 27 probabilities = 432)
 DURATIONS = [
-    "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
-    "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+    "5min",
+    "10min",
+    "15min",
+    "30min",
+    "45min",
+    "1h",
+    "1.5h",
+    "2h",
+    "3h",
+    "6h",
+    "12h",
+    "18h",
+    "24h",
+    "36h",
+    "48h",
+    "72h",
 ]
-DURATION_MINUTES = [5, 10, 15, 30, 45, 60, 90, 120, 180, 360, 720, 1080, 1440, 2160, 2880, 4320]
+DURATION_MINUTES = [
+    5,
+    10,
+    15,
+    30,
+    45,
+    60,
+    90,
+    120,
+    180,
+    360,
+    720,
+    1080,
+    1440,
+    2160,
+    2880,
+    4320,
+]
 PROBABILITIES = [
-    0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5,
-    1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 98.5, 99, 99.5, 99.9,
+    0.01,
+    0.02,
+    0.03,
+    0.05,
+    0.1,
+    0.2,
+    0.3,
+    0.5,
+    1,
+    2,
+    3,
+    5,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    98,
+    98.5,
+    99,
+    99.5,
+    99.9,
 ]
 
 # Coordinate transformer: WGS84 -> PL-1992
@@ -282,7 +338,9 @@ async def process_grid(
     logger.info(f"Generated {total_points} grid points with {spacing_km} km spacing")
     logger.info(f"Bounding box: {bbox}")
     scenarios_per_point = len(DURATIONS) * len(PROBABILITIES)
-    logger.info(f"Expected records: {total_points * scenarios_per_point} ({scenarios_per_point} scenarios per point)")
+    logger.info(
+        f"Expected records: {total_points * scenarios_per_point} ({scenarios_per_point} scenarios per point)"
+    )
 
     successful_points = 0
     total_records = 0
@@ -350,7 +408,9 @@ def main():
     if args.dry_run:
         points = generate_grid_points(bbox, args.spacing)
         logger.info(f"Dry run: would process {len(points)} points")
-        logger.info(f"Expected records: {len(points) * len(DURATIONS) * len(PROBABILITIES)}")
+        logger.info(
+            f"Expected records: {len(points) * len(DURATIONS) * len(PROBABILITIES)}"
+        )
         for i, (lat, lon) in enumerate(points[:10], 1):
             logger.info(f"  Point {i}: ({lat:.4f}, {lon:.4f})")
         if len(points) > 10:

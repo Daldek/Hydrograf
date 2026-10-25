@@ -12,9 +12,7 @@ class TestStreamDistance:
         """stream_distance should return non-negative values."""
         # Simple 3x3 grid: all flow to center-bottom
         # D8: 1=E, 2=SE, 4=S, 8=SW, 16=W, 32=NW, 64=N, 128=NE
-        fdir = np.array(
-            [[2, 4, 8], [2, 4, 8], [0, 0, 0]], dtype=np.uint8
-        )
+        fdir = np.array([[2, 4, 8], [2, 4, 8], [0, 0, 0]], dtype=np.uint8)
         flw = pyflwdir.from_array(
             fdir, ftype="d8", transform=(1, 0, 0, 0, -1, 3), latlon=False
         )
@@ -23,9 +21,7 @@ class TestStreamDistance:
 
     def test_outlet_has_zero_distance(self):
         """Pit cells should have 0 distance."""
-        fdir = np.array(
-            [[2, 4, 8], [2, 4, 8], [0, 0, 0]], dtype=np.uint8
-        )
+        fdir = np.array([[2, 4, 8], [2, 4, 8], [0, 0, 0]], dtype=np.uint8)
         flw = pyflwdir.from_array(
             fdir, ftype="d8", transform=(1, 0, 0, 0, -1, 3), latlon=False
         )
@@ -37,9 +33,7 @@ class TestStreamDistance:
 
     def test_upstream_cells_have_positive_distance(self):
         """Non-pit cells draining to a pit should have positive distance."""
-        fdir = np.array(
-            [[2, 4, 8], [2, 4, 8], [0, 0, 0]], dtype=np.uint8
-        )
+        fdir = np.array([[2, 4, 8], [2, 4, 8], [0, 0, 0]], dtype=np.uint8)
         flw = pyflwdir.from_array(
             fdir, ftype="d8", transform=(1, 0, 0, 0, -1, 3), latlon=False
         )
@@ -50,9 +44,7 @@ class TestStreamDistance:
 
     def test_stream_distance_unit_m_scales_with_cellsize(self):
         """Distance in meters should scale with cell size."""
-        fdir = np.array(
-            [[4], [4], [0]], dtype=np.uint8
-        )
+        fdir = np.array([[4], [4], [0]], dtype=np.uint8)
         # Cell size = 5m
         flw5 = pyflwdir.from_array(
             fdir, ftype="d8", transform=(5, 0, 0, 0, -5, 15), latlon=False
@@ -72,9 +64,7 @@ class TestFlowPathTracing:
 
     def _make_flw(self):
         """Create a simple 3x3 FlwdirRaster for testing."""
-        fdir = np.array(
-            [[2, 4, 8], [2, 4, 8], [0, 0, 0]], dtype=np.uint8
-        )
+        fdir = np.array([[2, 4, 8], [2, 4, 8], [0, 0, 0]], dtype=np.uint8)
         return pyflwdir.from_array(
             fdir, ftype="d8", transform=(1, 0, 0, 0, -1, 3), latlon=False
         )
@@ -353,9 +343,16 @@ class TestSampleStreamDistance:
         transform = from_origin(0.0, 10.0, 1.0, 1.0)
         data = np.array([[100.0, 200.0], [300.0, 400.0]], dtype=np.float32)
         with rasterio.open(
-            tif_path, "w", driver="GTiff",
-            height=2, width=2, count=1, dtype="float32",
-            crs="EPSG:2180", transform=transform, nodata=-1,
+            tif_path,
+            "w",
+            driver="GTiff",
+            height=2,
+            width=2,
+            count=1,
+            dtype="float32",
+            crs="EPSG:2180",
+            transform=transform,
+            nodata=-1,
         ) as dst:
             dst.write(data, 1)
 
@@ -375,9 +372,16 @@ class TestSampleStreamDistance:
         transform = from_origin(0.0, 10.0, 1.0, 1.0)
         data = np.array([[100.0, 200.0], [300.0, 400.0]], dtype=np.float32)
         with rasterio.open(
-            tif_path, "w", driver="GTiff",
-            height=2, width=2, count=1, dtype="float32",
-            crs="EPSG:2180", transform=transform, nodata=-1,
+            tif_path,
+            "w",
+            driver="GTiff",
+            height=2,
+            width=2,
+            count=1,
+            dtype="float32",
+            crs="EPSG:2180",
+            transform=transform,
+            nodata=-1,
         ) as dst:
             dst.write(data, 1)
 
@@ -398,9 +402,16 @@ class TestSampleStreamDistance:
         transform = from_origin(0.0, 10.0, 1.0, 1.0)
         data = np.array([[-1.0, 200.0], [300.0, 400.0]], dtype=np.float32)
         with rasterio.open(
-            tif_path, "w", driver="GTiff",
-            height=2, width=2, count=1, dtype="float32",
-            crs="EPSG:2180", transform=transform, nodata=-1,
+            tif_path,
+            "w",
+            driver="GTiff",
+            height=2,
+            width=2,
+            count=1,
+            dtype="float32",
+            crs="EPSG:2180",
+            transform=transform,
+            nodata=-1,
         ) as dst:
             dst.write(data, 1)
 
@@ -419,17 +430,22 @@ class TestSampleStreamDistance:
         transform = from_origin(0.0, 10.0, 1.0, 1.0)
         data = np.array([[100.0, 200.0], [300.0, 400.0]], dtype=np.float32)
         with rasterio.open(
-            tif_path, "w", driver="GTiff",
-            height=2, width=2, count=1, dtype="float32",
-            crs="EPSG:2180", transform=transform, nodata=-1,
+            tif_path,
+            "w",
+            driver="GTiff",
+            height=2,
+            width=2,
+            count=1,
+            dtype="float32",
+            crs="EPSG:2180",
+            transform=transform,
+            nodata=-1,
         ) as dst:
             dst.write(data, 1)
 
         from core.watershed_service import sample_stream_distance
 
-        result = sample_stream_distance(
-            [(0.5, 9.5), (1.5, 9.5), (0.5, 8.5)], tif_path
-        )
+        result = sample_stream_distance([(0.5, 9.5), (1.5, 9.5), (0.5, 8.5)], tif_path)
         assert len(result) == 3
         assert result[0] == pytest.approx(100.0)
         assert result[1] == pytest.approx(200.0)

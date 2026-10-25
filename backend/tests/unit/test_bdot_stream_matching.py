@@ -1,4 +1,5 @@
 """Tests for BDOT10k stream matching pipeline."""
+
 import pytest
 from shapely.geometry import LineString
 
@@ -49,7 +50,6 @@ class TestOverlapRatioLogic:
         # Beyond buffer reach, no overlap
         assert ratio < 0.01
 
-
     def test_short_segment_within_buffer(self):
         """Short segment (< 30m) fully within buffer must have overlap > 0.
 
@@ -88,11 +88,13 @@ class TestLoadBdotStreams:
 
     def test_nonexistent_file_returns_empty(self):
         from core.db_bulk import load_bdot_streams_from_gpkg
+
         result = load_bdot_streams_from_gpkg("/nonexistent/path.gpkg")
         assert result == []
 
     def test_valid_bdot_types(self):
         from core.db_bulk import VALID_BDOT_LINE_TYPES
+
         assert VALID_BDOT_LINE_TYPES == {"SWRS", "SWKN", "SWRM"}
 
 
@@ -102,6 +104,7 @@ class TestInsertBdotStreamsSchema:
     def test_filters_invalid_layer_types(self):
         """PTWP (polygon) should be filtered out."""
         from core.db_bulk import VALID_BDOT_LINE_TYPES
+
         streams = [
             {"layer_type": "SWRS", "geom_wkt": "LINESTRING(0 0, 1 1)"},
             {"layer_type": "PTWP", "geom_wkt": "LINESTRING(0 0, 1 1)"},

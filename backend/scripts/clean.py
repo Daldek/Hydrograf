@@ -108,6 +108,7 @@ def count_files(path: Path) -> int:
 
 def _force_rmtree(path: Path) -> None:
     """shutil.rmtree with permission fix for rootless Docker UID remapping."""
+
     def _on_error(_func, _path, _exc_info):
         os.chmod(_path, stat.S_IRWXU)
         _func(_path)
@@ -135,7 +136,9 @@ def remove_dir(path: Path, dry_run: bool = False) -> tuple[int, int]:
 
 
 def remove_files_by_glob(
-    directory: Path, pattern: str, dry_run: bool = False,
+    directory: Path,
+    pattern: str,
+    dry_run: bool = False,
 ) -> tuple[int, int]:
     """Remove files matching glob pattern, return (files_removed, bytes_freed)."""
     if not directory.exists():
@@ -283,7 +286,9 @@ def clean_db(dry_run: bool) -> int:
 
                     if not dry_run:
                         conn.execute(text(f"TRUNCATE TABLE {table} CASCADE"))  # noqa: S608 — table names from hardcoded DB_TABLES, not user input
-                    logger.info(f"  {table}: {count} rekordow {'usunietych' if not dry_run else '(dry run)'}")
+                    logger.info(
+                        f"  {table}: {count} rekordow {'usunietych' if not dry_run else '(dry run)'}"
+                    )
                     cleaned += 1
                 except Exception as e:
                     logger.warning(f"  {table}: {e}")
@@ -307,33 +312,39 @@ def build_plan(
 
     if "rasters" in components:
         nmt_dir = data_dir / "nmt"
-        plan.append({
-            "name": "Rastry NMT",
-            "component": "rasters",
-            "path": str(nmt_dir),
-            "files": count_files(nmt_dir) if nmt_dir.exists() else 0,
-            "size": dir_size(nmt_dir),
-        })
+        plan.append(
+            {
+                "name": "Rastry NMT",
+                "component": "rasters",
+                "path": str(nmt_dir),
+                "files": count_files(nmt_dir) if nmt_dir.exists() else 0,
+                "size": dir_size(nmt_dir),
+            }
+        )
 
     if "hydro" in components:
         hydro_dir = data_dir / "hydro"
-        plan.append({
-            "name": "Dane hydro BDOT10k",
-            "component": "hydro",
-            "path": str(hydro_dir),
-            "files": count_files(hydro_dir) if hydro_dir.exists() else 0,
-            "size": dir_size(hydro_dir),
-        })
+        plan.append(
+            {
+                "name": "Dane hydro BDOT10k",
+                "component": "hydro",
+                "path": str(hydro_dir),
+                "files": count_files(hydro_dir) if hydro_dir.exists() else 0,
+                "size": dir_size(hydro_dir),
+            }
+        )
 
     if "boundary" in components:
         boundary_dir = data_dir / "boundary"
-        plan.append({
-            "name": "Pliki boundary",
-            "component": "boundary",
-            "path": str(boundary_dir),
-            "files": count_files(boundary_dir) if boundary_dir.exists() else 0,
-            "size": dir_size(boundary_dir),
-        })
+        plan.append(
+            {
+                "name": "Pliki boundary",
+                "component": "boundary",
+                "path": str(boundary_dir),
+                "files": count_files(boundary_dir) if boundary_dir.exists() else 0,
+                "size": dir_size(boundary_dir),
+            }
+        )
 
     if "overlays" in components:
         overlay_dir = FRONTEND_DIR / "data"
@@ -345,43 +356,53 @@ def build_plan(
         if dem_tiles and dem_tiles.exists():
             size += dir_size(dem_tiles)
             n += count_files(dem_tiles)
-        plan.append({
-            "name": "Overlay PNG/JSON + DEM tiles",
-            "component": "overlays",
-            "path": str(overlay_dir),
-            "files": n,
-            "size": size,
-        })
+        plan.append(
+            {
+                "name": "Overlay PNG/JSON + DEM tiles",
+                "component": "overlays",
+                "path": str(overlay_dir),
+                "files": n,
+                "size": size,
+            }
+        )
 
     if "geojson" in components:
         data_dir_fe = FRONTEND_DIR / "data"
-        geojson_files = list(data_dir_fe.glob("*.geojson")) if data_dir_fe.exists() else []
-        plan.append({
-            "name": "Eksporty GeoJSON",
-            "component": "geojson",
-            "path": str(data_dir_fe),
-            "files": len(geojson_files),
-            "size": sum(f.stat().st_size for f in geojson_files),
-        })
+        geojson_files = (
+            list(data_dir_fe.glob("*.geojson")) if data_dir_fe.exists() else []
+        )
+        plan.append(
+            {
+                "name": "Eksporty GeoJSON",
+                "component": "geojson",
+                "path": str(data_dir_fe),
+                "files": len(geojson_files),
+                "size": sum(f.stat().st_size for f in geojson_files),
+            }
+        )
 
     if "tiles" in components:
         tiles_dir = FRONTEND_DIR / "tiles"
-        plan.append({
-            "name": "Kafelki MVT",
-            "component": "tiles",
-            "path": str(tiles_dir),
-            "files": count_files(tiles_dir) if tiles_dir.exists() else 0,
-            "size": dir_size(tiles_dir),
-        })
+        plan.append(
+            {
+                "name": "Kafelki MVT",
+                "component": "tiles",
+                "path": str(tiles_dir),
+                "files": count_files(tiles_dir) if tiles_dir.exists() else 0,
+                "size": dir_size(tiles_dir),
+            }
+        )
 
     if "db" in components:
-        plan.append({
-            "name": "Tabele bazy danych",
-            "component": "db",
-            "path": "PostgreSQL",
-            "files": len(DB_TABLES),
-            "size": 0,  # unknown without query
-        })
+        plan.append(
+            {
+                "name": "Tabele bazy danych",
+                "component": "db",
+                "path": "PostgreSQL",
+                "files": len(DB_TABLES),
+                "size": 0,  # unknown without query
+            }
+        )
 
     if "cache" in components:
         nmt_cache = cache_dir / "nmt"
@@ -393,13 +414,15 @@ def build_plan(
             + sum(f.stat().st_size for f in meta_files)
         )
         n = count_files(nmt_cache) + count_files(bdot_cache) + len(meta_files)
-        plan.append({
-            "name": "Cache pobran (NMT + BDOT10k)",
-            "component": "cache",
-            "path": str(cache_dir),
-            "files": n,
-            "size": size,
-        })
+        plan.append(
+            {
+                "name": "Cache pobran (NMT + BDOT10k)",
+                "component": "cache",
+                "path": str(cache_dir),
+                "files": n,
+                "size": size,
+            }
+        )
 
     return plan
 
@@ -527,7 +550,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Tylko pokaz co zostanie usuniete",
     )
     parser.add_argument(
-        "--yes", "-y",
+        "--yes",
+        "-y",
         action="store_true",
         help="Pomin potwierdzenie",
     )
@@ -573,14 +597,18 @@ def main():
         if item["files"] > 0 or item["component"] == "db":
             marker = "*" if item["size"] > 100 * 1024 * 1024 else " "  # >100MB
             size_str = fmt_size(item["size"]) if item["size"] > 0 else "—"
-            print(f"  {marker} {item['name']:<30} {item['files']:>6} plikow  {size_str:>10}")
+            print(
+                f"  {marker} {item['name']:<30} {item['files']:>6} plikow  {size_str:>10}"
+            )
 
     print(f"\n  RAZEM: {total_files} plikow, {fmt_size(total_size)}")
 
     if "cache" not in components:
         cache_size = dir_size(cache_dir)
         if cache_size > 0:
-            print(f"  (cache zachowany: {fmt_size(cache_size)} — uzyj --include-cache aby usunac)")
+            print(
+                f"  (cache zachowany: {fmt_size(cache_size)} — uzyj --include-cache aby usunac)"
+            )
 
     print()
 
@@ -598,13 +626,15 @@ def main():
 
     verb = "zostaloby usuniete" if args.dry_run else "usunieto"
     print(f"\n{'=' * 58}")
-    print(f"  {verb.upper()}: {summary['total_files']} plikow, {fmt_size(summary['total_size'])}")
+    print(
+        f"  {verb.upper()}: {summary['total_files']} plikow, {fmt_size(summary['total_size'])}"
+    )
     print(f"  Czas: {elapsed:.1f}s")
 
     if not args.dry_run:
         print(f"\n  Gotowe do regeneracji:")
         print(f"    cd backend")
-        print(f"    python -m scripts.bootstrap --bbox \"...\"")
+        print(f'    python -m scripts.bootstrap --bbox "..."')
 
     print(f"{'=' * 58}\n")
 

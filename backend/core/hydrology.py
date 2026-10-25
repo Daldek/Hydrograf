@@ -187,8 +187,10 @@ def _load_stream_geometries(streams_path, transform, dem_shape):
     left, top = transform * (0, 0)
     right, bottom = transform * (ncols, nrows)
     dem_bounds = box(
-        min(left, right), min(top, bottom),
-        max(left, right), max(top, bottom),
+        min(left, right),
+        min(top, bottom),
+        max(left, right),
+        max(top, bottom),
     )
 
     try:
@@ -198,8 +200,7 @@ def _load_stream_geometries(streams_path, transform, dem_shape):
 
     stream_prefixes = ("SWRS", "SWKN", "SWRM", "PTWP")
     target_layers = [
-        lyr for lyr in layers
-        if lyr and any(p in lyr.upper() for p in stream_prefixes)
+        lyr for lyr in layers if lyr and any(p in lyr.upper() for p in stream_prefixes)
     ]
     if not target_layers:
         target_layers = layers[:1] if layers else []
@@ -463,10 +464,14 @@ def _build_stream_network_graph(
             degree_one = component
 
         edge_nodes = [
-            n for n in degree_one
-            if n in node_coords and (
-                node_coords[n][0] <= 0 or node_coords[n][0] >= nrows - 1
-                or node_coords[n][1] <= 0 or node_coords[n][1] >= ncols - 1
+            n
+            for n in degree_one
+            if n in node_coords
+            and (
+                node_coords[n][0] <= 0
+                or node_coords[n][0] >= nrows - 1
+                or node_coords[n][1] <= 0
+                or node_coords[n][1] >= ncols - 1
             )
         ]
 
@@ -475,7 +480,8 @@ def _build_stream_network_graph(
 
     # Filter out incomplete segment mappings
     seg_nodes_clean: dict[int, tuple[int, int]] = {
-        idx: (s, e) for idx, (s, e) in seg_nodes.items()
+        idx: (s, e)
+        for idx, (s, e) in seg_nodes.items()
         if s is not None and e is not None
     }
 
@@ -558,9 +564,7 @@ def smooth_streams_monotonic(
         geom_list_for_graph[idx] = geom
 
     # 3. Build topology graph
-    graph, seg_nodes, outlets = _build_stream_network_graph(
-        geoms, smoothed, transform
-    )
+    graph, seg_nodes, outlets = _build_stream_network_graph(geoms, smoothed, transform)
     diag["disconnected_components"] = len(outlets)
 
     # 4. Process each connected component

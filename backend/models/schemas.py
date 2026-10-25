@@ -112,7 +112,8 @@ class MorphometricParameters(BaseModel):
         None, ge=0, description="Main channel slope [m/m]"
     )
     real_channel_length_km: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Main channel length covered by BDOT10k real streams [km]",
     )
     cn: int | None = Field(None, ge=0, le=100, description="SCS Curve Number")
@@ -133,7 +134,9 @@ class MorphometricParameters(BaseModel):
         None, description="Schumm elongation ratio Re"
     )
     form_factor: float | None = Field(None, description="Horton form factor Ff")
-    lemniscate_ratio: float | None = Field(None, description="Chorley lemniscate ratio Cl = 0.5*L/A")
+    lemniscate_ratio: float | None = Field(
+        None, description="Chorley lemniscate ratio Cl = 0.5*L/A"
+    )
     mean_width_km: float | None = Field(None, ge=0, description="Mean width A/L [km]")
 
     # Relief indices
@@ -163,21 +166,25 @@ class MorphometricParameters(BaseModel):
         None, ge=0, description="Distance from outlet to boundary centroid [km]"
     )
     hydraulic_length_km: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Longest flow path from most remote point to outlet [km]",
     )
 
     # Flow path parameters
     longest_flow_path_km: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Longest flow path from most remote cell to outlet [km]",
     )
     divide_flow_path_km: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Longest flow path from watershed divide (boundary) to outlet [km]",
     )
     centroid_flow_path_km: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Flow path from watershed centroid to outlet [km]",
     )
 
@@ -278,19 +285,24 @@ class DelineateResponse(BaseModel):
         description="Delineation mode: 'precomputed' (with threshold) or 'precise' (without)",
     )
     watershed: WatershedResponse = Field(
-        ..., description="Watershed delineation results",
+        ...,
+        description="Watershed delineation results",
     )
     stream: StreamInfo | None = Field(
-        None, description="Selected stream segment info (precomputed mode only)",
+        None,
+        description="Selected stream segment info (precomputed mode only)",
     )
     upstream_segment_indices: list[int] | None = Field(
-        None, description="Segment indices for MVT stream highlighting",
+        None,
+        description="Segment indices for MVT stream highlighting",
     )
     display_threshold_m2: int | None = Field(
-        None, description="Threshold used for upstream_segment_indices (for MVT matching)",
+        None,
+        description="Threshold used for upstream_segment_indices (for MVT matching)",
     )
     info_message: str | None = Field(
-        None, description="User-facing info about parameter changes",
+        None,
+        description="User-facing info about parameter changes",
     )
 
 
@@ -554,9 +566,7 @@ class FeedbackRequest(BaseModel):
 
     @field_validator("diagnostics")
     @classmethod
-    def diagnostics_size_limit(
-        cls, v: dict[str, Any] | None
-    ) -> dict[str, Any] | None:
+    def diagnostics_size_limit(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
         if v is not None and len(json.dumps(v)) > 100_000:
             raise ValueError("diagnostics payload exceeds 100 KB limit")
         return v

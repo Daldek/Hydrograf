@@ -272,9 +272,7 @@ def download_for_geometry(
     if layer:
         logger.info(f"Layer: {layer}")
 
-    sheets = find_sheets_for_geometry(
-        geometry_path, target_scale=scale, layer=layer
-    )
+    sheets = find_sheets_for_geometry(geometry_path, target_scale=scale, layer=layer)
 
     logger.info(f"Found {len(sheets)} sheets for geometry:")
     for sheet in sheets:
@@ -386,9 +384,7 @@ def main():
             sys.path.insert(0, str(Path(__file__).parent.parent))
             from utils.sheet_lookup import sheets_for_point_buffer
 
-        sheets = sheets_for_point_buffer(
-            args.lat, args.lon, args.buffer, args.scale
-        )
+        sheets = sheets_for_point_buffer(args.lat, args.lon, args.buffer, args.scale)
     else:
         parser.error(
             "Either --sheets, --geometry, or both --lat and --lon are required"

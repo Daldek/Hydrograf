@@ -145,9 +145,7 @@ def mark_feedback_read(
 
 
 @admin_router.delete("/feedback/{feedback_id}")
-def delete_feedback(
-    feedback_id: int, db: Session = Depends(get_db)
-) -> dict[str, str]:
+def delete_feedback(feedback_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
     """Delete a feedback submission. Returns JSON (admin-api.js expects it)."""
     try:
         result = db.execute(

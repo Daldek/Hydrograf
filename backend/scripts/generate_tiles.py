@@ -190,6 +190,7 @@ def extract_mbtiles_to_pbf(mbtiles_path: Path, output_dir: Path, prefix: str) ->
 
     tile_dir = output_dir / prefix
     if tile_dir.exists():
+
         def _on_error(_func, _path, _exc_info):
             os.chmod(_path, stat.S_IRWXU)
             _func(_path)
@@ -198,8 +199,7 @@ def extract_mbtiles_to_pbf(mbtiles_path: Path, output_dir: Path, prefix: str) ->
 
     conn = sqlite3.connect(str(mbtiles_path))
     cursor = conn.execute(
-        "SELECT zoom_level, tile_column, tile_row, "
-        "tile_data FROM tiles"
+        "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles"
     )
 
     count = 0
@@ -227,9 +227,7 @@ def generate_tiles(output_dir: Path) -> None:
     tools = check_prerequisites()
     tippecanoe_path = tools.get("tippecanoe")
     if not tippecanoe_path:
-        logger.error(
-            "tippecanoe is required. Install: pip install tippecanoe"
-        )
+        logger.error("tippecanoe is required. Install: pip install tippecanoe")
         sys.exit(1)
 
     has_pmtiles = tools.get("pmtiles") is not None

@@ -28,9 +28,7 @@ def _detect_geometry_type(gdf: gpd.GeoDataFrame) -> str:
     raise ValueError(f"Unsupported geometry types: {types}")
 
 
-def _validate_crs(
-    gdf: gpd.GeoDataFrame, assumed_crs: str | None
-) -> gpd.GeoDataFrame:
+def _validate_crs(gdf: gpd.GeoDataFrame, assumed_crs: str | None) -> gpd.GeoDataFrame:
     """Validate and set CRS. Raises ValueError if no CRS and no assumed_crs."""
     if gdf.crs is None:
         if assumed_crs:
@@ -72,7 +70,10 @@ def _validate_url(url: str) -> None:
 
     # Block internal/private addresses
     blocked_hosts = {
-        "localhost", "127.0.0.1", "0.0.0.0", "::1",
+        "localhost",
+        "127.0.0.1",
+        "0.0.0.0",
+        "::1",
         "metadata.google.internal",
     }
     if hostname in blocked_hosts:
@@ -134,14 +135,20 @@ def load_from_file(
     elif source_format == "points_only":
         # Auto-detect a point layer
         for layer_name in available_layers:
-            gdf = gpd.read_file(path, layer=layer_name) if layer_name else gpd.read_file(path)
+            gdf = (
+                gpd.read_file(path, layer=layer_name)
+                if layer_name
+                else gpd.read_file(path)
+            )
             if not gdf.empty and _detect_geometry_type(gdf) == "points":
                 points_gdf = gdf
                 break
         if points_gdf is None:
             # Fallback: read first layer regardless of geometry
             first = available_layers[0]
-            points_gdf = gpd.read_file(path, layer=first) if first else gpd.read_file(path)
+            points_gdf = (
+                gpd.read_file(path, layer=first) if first else gpd.read_file(path)
+            )
 
     if lines_gdf is not None:
         logger.info(f"Loaded {len(lines_gdf)} sewer lines")
@@ -154,7 +161,7 @@ def load_from_file(
 def load_from_wfs(url: str, layer: str) -> gpd.GeoDataFrame:
     """Load sewer data from WFS service."""
     _validate_url(url)
-    encoded_layer = urllib.parse.quote(layer, safe='')
+    encoded_layer = urllib.parse.quote(layer, safe="")
     wfs_url = f"{url}?service=WFS&request=GetFeature&typeName={encoded_layer}&outputFormat=json"
     logger.info(f"Loading sewer data from WFS: {url} (layer={layer})")
     return gpd.read_file(wfs_url)
@@ -162,7 +169,7 @@ def load_from_wfs(url: str, layer: str) -> gpd.GeoDataFrame:
 
 def load_from_database(connection: str, table: str) -> gpd.GeoDataFrame:
     """Load sewer data from external PostGIS database."""
-    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_.]*$', table):
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_.]*$", table):
         raise ValueError(f"Invalid table name: {table}")
 
     # Validate connection string — block SSRF via database hostname
@@ -223,8 +230,12 @@ def load_sewer_data(
         raise ValueError("Sewer data is empty — no features loaded")
 
     if points_gdf is not None:
-        logger.info(f"Loaded {len(points_gdf)} sewer point features (crs={points_gdf.crs})")
+        logger.info(
+            f"Loaded {len(points_gdf)} sewer point features (crs={points_gdf.crs})"
+        )
     if lines_gdf is not None:
-        logger.info(f"Loaded {len(lines_gdf)} sewer line features (crs={lines_gdf.crs})")
+        logger.info(
+            f"Loaded {len(lines_gdf)} sewer line features (crs={lines_gdf.crs})"
+        )
 
     return points_gdf, lines_gdf

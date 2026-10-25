@@ -78,6 +78,7 @@ class TestHsgPolandCache:
     def test_hsg_poland_filename(self):
         """HSG Poland file uses correct name."""
         from pathlib import Path
+
         cache_dir = Path("/tmp/test_cache")
         expected = cache_dir / "soil_hsg" / "hsg_poland.tif"
         assert expected.name == "hsg_poland.tif"

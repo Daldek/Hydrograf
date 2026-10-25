@@ -382,12 +382,14 @@ def load_bdot_streams_from_gpkg(gpkg_path):
             for line in lines:
                 if line.length < 1.0:
                     continue
-                results.append({
-                    "geom_wkt": line.wkt,
-                    "layer_type": layer_type,
-                    "name": name,
-                    "length_m": round(line.length, 1),
-                })
+                results.append(
+                    {
+                        "geom_wkt": line.wkt,
+                        "layer_type": layer_type,
+                        "name": name,
+                        "length_m": round(line.length, 1),
+                    }
+                )
 
     logger.info(f"Loaded {len(results)} BDOT stream features from {gpkg_path.name}")
     return results
@@ -422,7 +424,9 @@ def insert_bdot_streams(db_session, streams):
         buf = io.StringIO()
         for s in valid:
             name = (s.get("name") or "").replace("\t", " ").replace("\n", " ")
-            buf.write(f"{s['geom_wkt']}\t{s['layer_type']}\t{name}\t{s.get('length_m', 0)}\n")
+            buf.write(
+                f"{s['geom_wkt']}\t{s['layer_type']}\t{name}\t{s.get('length_m', 0)}\n"
+            )
         buf.seek(0)
         cursor.copy_expert(
             "COPY temp_bdot_import (wkt, layer_type, name, length_m) FROM STDIN WITH (FORMAT text)",
@@ -451,8 +455,14 @@ BDOT_BUFFER_M = 25.0  # 5 * cellsize (5m DEM), accounts for bends/meanders
 OVERLAP_THRESHOLD = 0.5
 
 
-def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, overlap_threshold=OVERLAP_THRESHOLD,
-                             *, _bdot_buffer_ready: bool = False):
+def update_stream_real_flags(
+    db_session,
+    threshold_m2,
+    buffer_m=BDOT_BUFFER_M,
+    overlap_threshold=OVERLAP_THRESHOLD,
+    *,
+    _bdot_buffer_ready: bool = False,
+):
     """Mark stream_network segments as real/overland based on BDOT overlap.
 
     Uses per-feature BDOT buffers with spatial join for efficient GIST-indexed
@@ -479,7 +489,9 @@ def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, o
                 cursor.execute("SELECT COUNT(*) FROM bdot_streams")
                 bdot_count = cursor.fetchone()[0]
                 if bdot_count == 0:
-                    logger.warning("No BDOT streams in database — marking all as overland")
+                    logger.warning(
+                        "No BDOT streams in database — marking all as overland"
+                    )
                     cursor.execute(
                         "UPDATE stream_network SET is_real_stream = false WHERE threshold_m2 = %s",
                         (threshold_m2,),
@@ -507,7 +519,8 @@ def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, o
             # but ST_Union of line fragments is O(n) vs ST_Union of polygons O(n²).
             # ST_Within check handles short segments (< ~30m) where GEOS
             # ST_Intersection incorrectly returns EMPTY despite full containment.
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE stream_network sn
                 SET is_real_stream = sub.is_real
                 FROM (
@@ -529,19 +542,24 @@ def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, o
                 ) sub
                 WHERE sn.threshold_m2 = %s
                   AND sn.segment_idx = sub.segment_idx
-            """, (overlap_threshold, threshold_m2, threshold_m2))
+            """,
+                (overlap_threshold, threshold_m2, threshold_m2),
+            )
 
             raw_conn.commit()
 
             # Count results
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT
                     COUNT(*) AS total,
                     COUNT(*) FILTER (WHERE is_real_stream = true) AS real,
                     COUNT(*) FILTER (WHERE is_real_stream = false) AS overland
                 FROM stream_network
                 WHERE threshold_m2 = %s
-            """, (threshold_m2,))
+            """,
+                (threshold_m2,),
+            )
             row = cursor.fetchone()
             return {"total": row[0], "real": row[1], "overland": row[2]}
 
@@ -550,7 +568,12 @@ def update_stream_real_flags(db_session, threshold_m2, buffer_m=BDOT_BUFFER_M, o
             raise
 
 
-def update_stream_real_flags_all(db_session, threshold_list, buffer_m=BDOT_BUFFER_M, overlap_threshold=OVERLAP_THRESHOLD):
+def update_stream_real_flags_all(
+    db_session,
+    threshold_list,
+    buffer_m=BDOT_BUFFER_M,
+    overlap_threshold=OVERLAP_THRESHOLD,
+):
     """Run BDOT stream matching for multiple thresholds, creating temp buffer table once.
 
     Returns dict mapping threshold_m2 → {total, real, overland}.
@@ -590,8 +613,10 @@ def update_stream_real_flags_all(db_session, threshold_list, buffer_m=BDOT_BUFFE
     results = {}
     for threshold_m2 in threshold_list:
         results[threshold_m2] = update_stream_real_flags(
-            db_session, threshold_m2,
-            buffer_m=buffer_m, overlap_threshold=overlap_threshold,
+            db_session,
+            threshold_m2,
+            buffer_m=buffer_m,
+            overlap_threshold=overlap_threshold,
             _bdot_buffer_ready=True,
         )
     return results

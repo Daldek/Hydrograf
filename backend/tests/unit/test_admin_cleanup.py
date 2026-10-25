@@ -50,7 +50,15 @@ class TestCleanupComponents:
 
     def test_all_target_covers_all_data(self):
         """'all' target includes rasters, hydro, boundary, overlays, geojson, tiles, db."""
-        expected = {"rasters", "hydro", "boundary", "overlays", "geojson", "tiles", "db"}
+        expected = {
+            "rasters",
+            "hydro",
+            "boundary",
+            "overlays",
+            "geojson",
+            "tiles",
+            "db",
+        }
         actual = set(_CLEANUP_COMPONENTS["all"]["components"])
         assert actual == expected
 
@@ -168,12 +176,14 @@ class TestDbTablesImport:
 
     def test_db_tables_includes_bdot_streams(self):
         from scripts.clean import DB_TABLES
+
         assert "bdot_streams" in DB_TABLES
 
     def test_admin_uses_same_db_tables(self):
         """Admin module imports DB_TABLES from scripts.clean."""
         from api.endpoints import admin
         from scripts.clean import DB_TABLES
+
         # The admin module should use the same list
         # (it imports DB_TABLES at module level)
         assert admin.DB_TABLES is DB_TABLES

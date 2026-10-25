@@ -130,9 +130,7 @@ def download_landcover(
             return output_path
 
         try:
-            result = manager.download_by_teryt(
-                teryt, output_path=output_path
-            )
+            result = manager.download_by_teryt(teryt, output_path=output_path)
             return Path(result)
         except Exception as e:
             logger.error(f"Download failed: {e}")
@@ -140,9 +138,7 @@ def download_landcover(
 
     elif godlo:
         logger.info(f"Downloading by sheet code: {godlo}")
-        output_path = (
-            output_dir / f"{provider}_godlo_{godlo.replace('-', '_')}.gpkg"
-        )
+        output_path = output_dir / f"{provider}_godlo_{godlo.replace('-', '_')}.gpkg"
 
         if skip_existing and output_path.exists():
             logger.info(f"File already exists, skipping: {output_path}")
@@ -175,9 +171,7 @@ def download_landcover(
                 x - buffer_m, y - buffer_m, x + buffer_m, y + buffer_m, "EPSG:2180"
             )
 
-            output_path = (
-                output_dir / f"{provider}_bbox_{int(x)}_{int(y)}.gpkg"
-            )
+            output_path = output_dir / f"{provider}_bbox_{int(x)}_{int(y)}.gpkg"
 
             if skip_existing and output_path.exists():
                 logger.info(f"File already exists, skipping: {output_path}")
@@ -449,17 +443,14 @@ def discover_teryts_for_bbox(
         response.raise_for_status()
     except Exception as exc:
         logger.warning(
-            f"WFS PRG niedostępny ({exc}), "
-            f"przełączam na grid sampling (wolniejszy)"
+            f"WFS PRG niedostępny ({exc}), przełączam na grid sampling (wolniejszy)"
         )
         return _discover_teryts_grid(bbox_2180, spacing_m=spacing_m)
 
     teryts = _parse_teryts_from_gml(response.text)
 
     if not teryts:
-        logger.warning(
-            "WFS zwrócił 0 TERYT-ów, przełączam na grid sampling"
-        )
+        logger.warning("WFS zwrócił 0 TERYT-ów, przełączam na grid sampling")
         return _discover_teryts_grid(bbox_2180, spacing_m=spacing_m)
 
     result = sorted(teryts)

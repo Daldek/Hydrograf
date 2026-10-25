@@ -58,56 +58,73 @@ def default_role_mapping():
 
 
 class TestParseFormatA:
-    def test_basic_parse(self, simple_points_format_a, default_field_mapping,
-                         default_role_mapping):
+    def test_basic_parse(
+        self, simple_points_format_a, default_field_mapping, default_role_mapping
+    ):
         topo = parse_sewer_topology(
-            simple_points_format_a, None,
-            default_field_mapping, default_role_mapping,
+            simple_points_format_a,
+            None,
+            default_field_mapping,
+            default_role_mapping,
         )
         assert isinstance(topo, ParsedTopology)
         assert topo.source_format == "points_only"
 
-    def test_node_count(self, simple_points_format_a, default_field_mapping,
-                        default_role_mapping):
+    def test_node_count(
+        self, simple_points_format_a, default_field_mapping, default_role_mapping
+    ):
         topo = parse_sewer_topology(
-            simple_points_format_a, None,
-            default_field_mapping, default_role_mapping,
+            simple_points_format_a,
+            None,
+            default_field_mapping,
+            default_role_mapping,
         )
         assert len(topo.nodes) == 3
 
-    def test_edge_count_auto_generated(self, simple_points_format_a,
-                                        default_field_mapping,
-                                        default_role_mapping):
+    def test_edge_count_auto_generated(
+        self, simple_points_format_a, default_field_mapping, default_role_mapping
+    ):
         topo = parse_sewer_topology(
-            simple_points_format_a, None,
-            default_field_mapping, default_role_mapping,
+            simple_points_format_a,
+            None,
+            default_field_mapping,
+            default_role_mapping,
         )
         assert len(topo.edges) == 2
 
-    def test_node_roles(self, simple_points_format_a, default_field_mapping,
-                        default_role_mapping):
+    def test_node_roles(
+        self, simple_points_format_a, default_field_mapping, default_role_mapping
+    ):
         topo = parse_sewer_topology(
-            simple_points_format_a, None,
-            default_field_mapping, default_role_mapping,
+            simple_points_format_a,
+            None,
+            default_field_mapping,
+            default_role_mapping,
         )
         roles = {n["id"]: n["role"] for n in topo.nodes}
         assert roles == {"n1": "inlet", "n2": "junction", "n3": "outlet"}
 
-    def test_edges_have_geometry(self, simple_points_format_a,
-                                  default_field_mapping, default_role_mapping):
+    def test_edges_have_geometry(
+        self, simple_points_format_a, default_field_mapping, default_role_mapping
+    ):
         topo = parse_sewer_topology(
-            simple_points_format_a, None,
-            default_field_mapping, default_role_mapping,
+            simple_points_format_a,
+            None,
+            default_field_mapping,
+            default_role_mapping,
         )
         for edge in topo.edges:
             assert edge["geometry"] is not None
             assert edge["geometry"].geom_type == "LineString"
 
-    def test_edge_direction(self, simple_points_format_a,
-                            default_field_mapping, default_role_mapping):
+    def test_edge_direction(
+        self, simple_points_format_a, default_field_mapping, default_role_mapping
+    ):
         topo = parse_sewer_topology(
-            simple_points_format_a, None,
-            default_field_mapping, default_role_mapping,
+            simple_points_format_a,
+            None,
+            default_field_mapping,
+            default_role_mapping,
         )
         from_to = [(e["from_id"], e["to_id"]) for e in topo.edges]
         assert ("n1", "n2") in from_to
@@ -157,10 +174,12 @@ def points_and_lines_format_b():
             "to_node": ["n2", "n3"],
             "diameter_mm": [300, 400],
             "geometry": [
-                ShapelyLineString([(500_000, 200_000), (500_050, 200_050),
-                                   (500_100, 200_100)]),
-                ShapelyLineString([(500_100, 200_100), (500_150, 200_150),
-                                   (500_200, 200_200)]),
+                ShapelyLineString(
+                    [(500_000, 200_000), (500_050, 200_050), (500_100, 200_100)]
+                ),
+                ShapelyLineString(
+                    [(500_100, 200_100), (500_150, 200_150), (500_200, 200_200)]
+                ),
             ],
         },
         crs="EPSG:2180",
@@ -169,47 +188,67 @@ def points_and_lines_format_b():
 
 
 class TestParseFormatB:
-    def test_basic_parse(self, points_and_lines_format_b, default_field_mapping,
-                         default_role_mapping):
+    def test_basic_parse(
+        self, points_and_lines_format_b, default_field_mapping, default_role_mapping
+    ):
         points, lines = points_and_lines_format_b
         topo = parse_sewer_topology(
-            points, lines, default_field_mapping, default_role_mapping,
+            points,
+            lines,
+            default_field_mapping,
+            default_role_mapping,
         )
         assert isinstance(topo, ParsedTopology)
         assert topo.source_format == "points_and_lines"
 
-    def test_node_count(self, points_and_lines_format_b, default_field_mapping,
-                        default_role_mapping):
+    def test_node_count(
+        self, points_and_lines_format_b, default_field_mapping, default_role_mapping
+    ):
         points, lines = points_and_lines_format_b
         topo = parse_sewer_topology(
-            points, lines, default_field_mapping, default_role_mapping,
+            points,
+            lines,
+            default_field_mapping,
+            default_role_mapping,
         )
         assert len(topo.nodes) == 3
 
-    def test_edge_count(self, points_and_lines_format_b, default_field_mapping,
-                        default_role_mapping):
+    def test_edge_count(
+        self, points_and_lines_format_b, default_field_mapping, default_role_mapping
+    ):
         points, lines = points_and_lines_format_b
         topo = parse_sewer_topology(
-            points, lines, default_field_mapping, default_role_mapping,
+            points,
+            lines,
+            default_field_mapping,
+            default_role_mapping,
         )
         assert len(topo.edges) == 2
 
-    def test_edges_preserve_geometry(self, points_and_lines_format_b,
-                                      default_field_mapping, default_role_mapping):
+    def test_edges_preserve_geometry(
+        self, points_and_lines_format_b, default_field_mapping, default_role_mapping
+    ):
         """Format B edges keep original line geometry (not straight line)."""
         points, lines = points_and_lines_format_b
         topo = parse_sewer_topology(
-            points, lines, default_field_mapping, default_role_mapping,
+            points,
+            lines,
+            default_field_mapping,
+            default_role_mapping,
         )
         for edge in topo.edges:
             assert len(edge["geometry"].coords) == 3
 
-    def test_edges_have_attributes(self, points_and_lines_format_b,
-                                    default_field_mapping, default_role_mapping):
+    def test_edges_have_attributes(
+        self, points_and_lines_format_b, default_field_mapping, default_role_mapping
+    ):
         default_field_mapping["diameter"] = "diameter_mm"
         points, lines = points_and_lines_format_b
         topo = parse_sewer_topology(
-            points, lines, default_field_mapping, default_role_mapping,
+            points,
+            lines,
+            default_field_mapping,
+            default_role_mapping,
         )
         diameters = [e.get("diameter") for e in topo.edges]
         assert diameters == [300, 400]
@@ -227,8 +266,7 @@ class TestValidationDuplicateId:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(gdf, None, default_field_mapping,
-                                 default_role_mapping)
+            parse_sewer_topology(gdf, None, default_field_mapping, default_role_mapping)
         assert any(e["type"] == "duplicate_id" for e in exc_info.value.errors)
 
 
@@ -244,14 +282,12 @@ class TestValidationInvalidRole:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(gdf, None, default_field_mapping,
-                                 default_role_mapping)
+            parse_sewer_topology(gdf, None, default_field_mapping, default_role_mapping)
         assert any(e["type"] == "invalid_role" for e in exc_info.value.errors)
 
 
 class TestValidationMissingTarget:
-    def test_downstream_id_not_found(self, default_field_mapping,
-                                      default_role_mapping):
+    def test_downstream_id_not_found(self, default_field_mapping, default_role_mapping):
         gdf = gpd.GeoDataFrame(
             {
                 "id": ["n1", "n2"],
@@ -262,14 +298,12 @@ class TestValidationMissingTarget:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(gdf, None, default_field_mapping,
-                                 default_role_mapping)
+            parse_sewer_topology(gdf, None, default_field_mapping, default_role_mapping)
         assert any(e["type"] == "missing_target" for e in exc_info.value.errors)
 
 
 class TestValidationOutletHasDownstream:
-    def test_outlet_with_downstream(self, default_field_mapping,
-                                     default_role_mapping):
+    def test_outlet_with_downstream(self, default_field_mapping, default_role_mapping):
         gdf = gpd.GeoDataFrame(
             {
                 "id": ["n1", "n2", "n3"],
@@ -280,15 +314,14 @@ class TestValidationOutletHasDownstream:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(gdf, None, default_field_mapping,
-                                 default_role_mapping)
-        assert any(e["type"] == "outlet_has_downstream"
-                   for e in exc_info.value.errors)
+            parse_sewer_topology(gdf, None, default_field_mapping, default_role_mapping)
+        assert any(e["type"] == "outlet_has_downstream" for e in exc_info.value.errors)
 
 
 class TestValidationMissingDownstream:
-    def test_inlet_without_downstream(self, default_field_mapping,
-                                       default_role_mapping):
+    def test_inlet_without_downstream(
+        self, default_field_mapping, default_role_mapping
+    ):
         gdf = gpd.GeoDataFrame(
             {
                 "id": ["n1", "n2"],
@@ -299,10 +332,8 @@ class TestValidationMissingDownstream:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(gdf, None, default_field_mapping,
-                                 default_role_mapping)
-        assert any(e["type"] == "missing_downstream"
-                   for e in exc_info.value.errors)
+            parse_sewer_topology(gdf, None, default_field_mapping, default_role_mapping)
+        assert any(e["type"] == "missing_downstream" for e in exc_info.value.errors)
 
 
 class TestValidationCycleDetected:
@@ -317,14 +348,14 @@ class TestValidationCycleDetected:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(gdf, None, default_field_mapping,
-                                 default_role_mapping)
+            parse_sewer_topology(gdf, None, default_field_mapping, default_role_mapping)
         assert any(e["type"] == "cycle_detected" for e in exc_info.value.errors)
 
 
 class TestValidationNoOutlet:
-    def test_component_without_outlet(self, default_field_mapping,
-                                       default_role_mapping):
+    def test_component_without_outlet(
+        self, default_field_mapping, default_role_mapping
+    ):
         gdf = gpd.GeoDataFrame(
             {
                 "id": ["n1", "n2"],
@@ -335,16 +366,14 @@ class TestValidationNoOutlet:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(gdf, None, default_field_mapping,
-                                 default_role_mapping)
+            parse_sewer_topology(gdf, None, default_field_mapping, default_role_mapping)
         errors = exc_info.value.errors
         error_types = [e["type"] for e in errors]
         assert "missing_downstream" in error_types or "no_outlet" in error_types
 
 
 class TestValidationNoInlet:
-    def test_component_without_inlet(self, default_field_mapping,
-                                      default_role_mapping):
+    def test_component_without_inlet(self, default_field_mapping, default_role_mapping):
         gdf = gpd.GeoDataFrame(
             {
                 "id": ["n1", "n2"],
@@ -355,8 +384,7 @@ class TestValidationNoInlet:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(gdf, None, default_field_mapping,
-                                 default_role_mapping)
+            parse_sewer_topology(gdf, None, default_field_mapping, default_role_mapping)
         assert any(e["type"] == "no_inlet" for e in exc_info.value.errors)
 
 
@@ -383,8 +411,9 @@ class TestValidationDirectionMismatch:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(points, lines, default_field_mapping,
-                                 default_role_mapping)
+            parse_sewer_topology(
+                points, lines, default_field_mapping, default_role_mapping
+            )
         assert any(e["type"] == "direction_mismatch" for e in exc_info.value.errors)
 
     def test_edge_from_outlet(self, default_field_mapping, default_role_mapping):
@@ -409,14 +438,16 @@ class TestValidationDirectionMismatch:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(points, lines, default_field_mapping,
-                                 default_role_mapping)
+            parse_sewer_topology(
+                points, lines, default_field_mapping, default_role_mapping
+            )
         assert any(e["type"] == "direction_mismatch" for e in exc_info.value.errors)
 
 
 class TestValidationOrphanEdge:
-    def test_edge_references_missing_node(self, default_field_mapping,
-                                           default_role_mapping):
+    def test_edge_references_missing_node(
+        self, default_field_mapping, default_role_mapping
+    ):
         points = gpd.GeoDataFrame(
             {
                 "id": ["n1", "n2"],
@@ -437,8 +468,9 @@ class TestValidationOrphanEdge:
             crs="EPSG:2180",
         )
         with pytest.raises(TopologyValidationError) as exc_info:
-            parse_sewer_topology(points, lines, default_field_mapping,
-                                 default_role_mapping)
+            parse_sewer_topology(
+                points, lines, default_field_mapping, default_role_mapping
+            )
         assert any(e["type"] == "orphan_edge" for e in exc_info.value.errors)
 
 
@@ -451,19 +483,21 @@ class TestValidationValidData:
                 "role": ["inlet", "inlet", "junction", "outlet"],
                 "downstream_id": ["j1", "j1", "o1", None],
                 "geometry": [
-                    Point(0, 0), Point(0, 2),
-                    Point(1, 1), Point(2, 1),
+                    Point(0, 0),
+                    Point(0, 2),
+                    Point(1, 1),
+                    Point(2, 1),
                 ],
             },
             crs="EPSG:2180",
         )
-        topo = parse_sewer_topology(gdf, None, default_field_mapping,
-                                     default_role_mapping)
+        topo = parse_sewer_topology(
+            gdf, None, default_field_mapping, default_role_mapping
+        )
         assert len(topo.nodes) == 4
         assert len(topo.edges) == 3
 
-    def test_storage_node_passes(self, default_field_mapping,
-                                  default_role_mapping):
+    def test_storage_node_passes(self, default_field_mapping, default_role_mapping):
         gdf = gpd.GeoDataFrame(
             {
                 "id": ["i1", "s1", "o1"],
@@ -473,8 +507,9 @@ class TestValidationValidData:
             },
             crs="EPSG:2180",
         )
-        topo = parse_sewer_topology(gdf, None, default_field_mapping,
-                                     default_role_mapping)
+        topo = parse_sewer_topology(
+            gdf, None, default_field_mapping, default_role_mapping
+        )
         assert len(topo.nodes) == 3
         roles = {n["id"]: n["role"] for n in topo.nodes}
         assert roles["s1"] == "storage"
@@ -490,9 +525,9 @@ class TestValidateAgainstFdir:
         transform = from_bounds(0, 0, 50, 50, 10, 10)
         return fdir, transform
 
-    def test_no_loop_outlet_upstream_of_inlet(self, small_fdir_se,
-                                               default_field_mapping,
-                                               default_role_mapping):
+    def test_no_loop_outlet_upstream_of_inlet(
+        self, small_fdir_se, default_field_mapping, default_role_mapping
+    ):
         """Outlet at NW (upstream in fdir), inlet at SE (downstream).
         Sewer pipes water from SE inlet back to NW outlet.
         Outlet's fdir path goes SE toward inlet → LOOP expected."""
@@ -508,19 +543,21 @@ class TestValidateAgainstFdir:
                 "downstream_id": ["outlet1", None],
                 "geometry": [
                     Point(37.5, 12.5),  # col=7, row=7 in 10x10 grid (SE area)
-                    Point(7.5, 42.5),   # col=1, row=1 in 10x10 grid (NW area)
+                    Point(7.5, 42.5),  # col=1, row=1 in 10x10 grid (NW area)
                 ],
             },
             crs="EPSG:2180",
         )
-        topo = parse_sewer_topology(gdf, None, default_field_mapping,
-                                     default_role_mapping)
+        topo = parse_sewer_topology(
+            gdf, None, default_field_mapping, default_role_mapping
+        )
         errors = validate_against_fdir(topo, fdir, transform)
         assert len(errors) > 0
         assert errors[0]["type"] == "feedback_loop"
 
-    def test_no_loop_safe_config(self, small_fdir_se, default_field_mapping,
-                                  default_role_mapping):
+    def test_no_loop_safe_config(
+        self, small_fdir_se, default_field_mapping, default_role_mapping
+    ):
         """Outlet at SE (downstream in fdir), inlet at NW (upstream).
         Sewer pipes water from NW inlet to SE outlet — same as natural flow.
         Outlet's fdir path goes further SE, never back to NW inlet → no loop."""
@@ -531,13 +568,14 @@ class TestValidateAgainstFdir:
                 "role": ["inlet", "outlet"],
                 "downstream_id": ["outlet1", None],
                 "geometry": [
-                    Point(7.5, 42.5),   # col=1, row=1 (NW = upstream in fdir)
+                    Point(7.5, 42.5),  # col=1, row=1 (NW = upstream in fdir)
                     Point(37.5, 12.5),  # col=7, row=7 (SE = downstream in fdir)
                 ],
             },
             crs="EPSG:2180",
         )
-        topo = parse_sewer_topology(gdf, None, default_field_mapping,
-                                     default_role_mapping)
+        topo = parse_sewer_topology(
+            gdf, None, default_field_mapping, default_role_mapping
+        )
         errors = validate_against_fdir(topo, fdir, transform)
         assert errors == []

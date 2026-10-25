@@ -460,8 +460,22 @@ class TestGenerateHydrographEndpoint:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         valid_durations = [
-            "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
-            "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+            "5min",
+            "10min",
+            "15min",
+            "30min",
+            "45min",
+            "1h",
+            "1.5h",
+            "2h",
+            "3h",
+            "6h",
+            "12h",
+            "18h",
+            "24h",
+            "36h",
+            "48h",
+            "72h",
         ]
 
         try:
@@ -643,8 +657,22 @@ class TestScenariosEndpoint:
         data = response.json()
 
         expected = [
-            "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
-            "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+            "5min",
+            "10min",
+            "15min",
+            "30min",
+            "45min",
+            "1h",
+            "1.5h",
+            "2h",
+            "3h",
+            "6h",
+            "12h",
+            "18h",
+            "24h",
+            "36h",
+            "48h",
+            "72h",
         ]
         assert data["durations"] == expected
 
