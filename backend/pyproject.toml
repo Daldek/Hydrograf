@@ -51,8 +51,9 @@ dependencies = [
     "Pillow>=10.0.0",
     # affine 3.x is an attrs class, not a namedtuple, and pyflwdir passes the transform
     # to a numba function (`Cannot determine Numba type of affine.Affine`, 2026-10-18;
-    # Deltares/pyflwdir#108, fixed on its main branch, not released). Lift the cap with
-    # the release of pyflwdir.
+    # Deltares/pyflwdir#108). pyflwdir 0.5.12, its latest release, still fails
+    # (re-checked 2026-10-25, ADR-062); the fix (#109) waits for 0.5.13. Lift the cap
+    # with that release.
     "affine>=2.4,<3",
     # Ecosystem producers, pinned by commit until the first release set (REL-5.3, DEV-3.4,
     # ADR-060, ADR-061): precipitation PMAXTP of IMGWTools, spatial data download of

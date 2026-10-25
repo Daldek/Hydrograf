@@ -69,6 +69,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-059](decisions/0059-rest-errors-as-problem-json.md) | REST errors as problem+json with registry codes | accepted | 2026-10-25 |
 | [ADR-060](decisions/0060-pin-producer-heads-by-commit.md) | Pin the Hydrolog and IMGWTools heads by commit | accepted | 2026-10-25 |
 | [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | accepted | 2026-10-25 |
+| [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were
