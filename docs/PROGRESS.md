@@ -92,9 +92,15 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      step 3 calls the route function of `POST /api/delineate-watershed` (precomputed mode), step 4
      takes the morphometry from it, and `tests/unit/test_analyze_watershed_delineate.py` runs the
      steps on a synthetic graph offline. `FlowCell`, `build_boundary`,
-     `calculate_watershed_area_km2` (`core/watershed.py`) and the cell functions of
-     `core/morphometry.py` (`build_morphometric_params`, `find_main_stream` and the like) have no
-     caller outside their tests now; deleting them with their tests is the author's call. The
+     `build_boundary_polygonize`, `calculate_watershed_area_km2` (all of `core/watershed.py`,
+     deleted with the module) and the cell functions of `core/morphometry.py`
+     (`build_morphometric_params`, `find_main_stream` and the like) had no caller outside
+     their tests and are deleted with those tests, together with the constants
+     `MAX_WATERSHED_CELLS` and `MAX_STREAM_DISTANCE_M`; `core/morphometry.py` keeps
+     `calculate_shape_indices`. The main stream of the API path (the catchment-graph route) is
+     determined by `CatchmentGraph.trace_main_channel()` in `core/catchment_graph.py`, called from
+     `build_morph_dict_from_graph()` in `core/watershed_service.py` (the route
+     `POST /api/delineate-watershed` and `scripts/analyze_watershed.py` step 3 both use it). The
      calls of `process_dem` in `prepare_area.py` and `analyze_watershed.py` that passed parameters
      it had lost (`batch_size`, `stream_threshold`) are fixed and tested
      (`tests/unit/test_process_dem_callers.py`).
