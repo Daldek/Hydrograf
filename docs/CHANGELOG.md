@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Storm-sewer integration with the surface runoff analysis (ADR-051).
+- A new module `core/sewer_service.py`: building the network graph, inlet burning, FA reconstruction, routing, propagation.
+- A new script `scripts/download_sewer.py`: data acquisition (file/WFS/DB/URL).
+- A DB migration (025): the tables `sewer_nodes` (18 columns), `sewer_network` (16 columns) and the column `stream_network.is_sewer_augmented`.
+- A `sewer` section in the pipeline YAML configuration.
+- New admin endpoints: `/api/admin/sewer/upload`, `/status`, `/delete`.
+- MVT tiles of the sewer network: `/api/tiles/sewer/{z}/{x}/{y}.pbf`.
+- A sewer overlay layer on the front-end map (`sewer.js`, `admin-sewer.js`).
+- Sewer burning in `process_dem.py` (steps 3b and 4a-4c).
+- feat(api+frontend): the feedback form "Zgłoś uwagę" (report a comment) — POST /api/feedback, the table feedback (migration 002), a modal on the main page with opt-in session diagnostics (a log of 50 events + the configuration of the work area), a section of reports in the /admin panel, an nginx rate limit of 1 request a minute.
+- **RasterCache** — a new module `core/raster_service.py` for lazy loading of the fdir/DEM/slope rasters with a thread-safe cache. It is used by the `precise` mode for on-the-fly watershed delineation.
+- **Unified Pydantic schemas** — `DelineateRequest` and `DelineateResponse` serve both modes (precomputed/precise).
+- **Lemniscate ratio C<sub>l</sub>** — a new parameter: C<sub>l</sub> = π·L²/(4·A).
+- **Watershed divide slope R<sub>p</sub>** — a new parameter: R<sub>p</sub> = ΔH/P [‰].
+- **Asymmetry coefficient α** — a new placeholder: α = 2·(A<sub>L</sub>−A<sub>P</sub>)/A (needs a split of the watershed along the main stream).
+- **Flow path from the watershed divide (ADR-048, divide_flow_path_geom)** — a separate column in `stream_catchments` (migration 024). The path from the cell with the maximum flow_dist on the BOUNDARY of the sub-catchment to the outlet. Front end: longest flow path = a red dash, divide flow path = a red dot.
+- **Chaikin smoothing of streams in preprocessing (ADR-047)** — `ST_ChaikinSmoothing(geom, 3)` with `preserve_end_points=true` during the INSERT into `stream_network`. Smooth streams without pixel stairs, the topology of the network is kept.
+- **WFS TERYT discovery (ADR-045)** — the sampling over a WMS grid (~625 queries) was replaced by a single WFS query to the PRG of GUGiK; a fallback to the old method when the WFS fails.
+- **BDOT10k stream matching (ADR-044)** — a spatial join of the BDOT streams with the flow accumulation streams. A new table `bdot_streams`, the column `is_real_stream` and `real_channel_length_km` in the morphometric parameters. Kerby-Kirpich with a physically justified overland/channel split.
+- **`hydraulic_length_km` from the flow direction grid** — the maximum flow path (pyflwdir `stream_distance()`) is computed in preprocessing, a new column in `stream_catchments` (migration 022). It is used by NRCS and Kirpich instead of `channel_length_km`.
+- **Flow paths in preprocessing** — `pyflwdir.stream_distance()` + a batch `flw.path()` per sub-catchment. 3 new parameters: `longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km`. Migration 023.
+- **GUI: the flow path and the divide flow path** in the table of parameters, a dashed orange path on the map.
+- **GUI: the main channel overlay on the map** — the main stream is visualized with BDOT streams highlighted (dark blue = a real stream, light blue = algorithmic flow lines).
+- **GUI: BDOT information in the parameters panel** — "including the BDOT stream" in the table of the basic parameters, "BDOT coverage" in the river network section.
+- **GUI: the message "no BDOT streams"** — shown in the panel when the watershed contains no BDOT10k streams (is_real_stream=true).
+- **Point sampling of stream_distance.tif** — the flow distance from the boundary (the watershed divide) and from the centroid.
+- **A DEM resolution selector in the admin panel** — a choice of 1 m/5 m in the bootstrap interface.
+- **The Nash model in hydrograph generation** — 3 methods of parameter estimation: from Tc (SCS), Lutz (physiographic), urban regression (Rao et al. 1972).
+- Auto-computation of the urbanization index from the land cover (`weighted_imperviousness`).
+- Computation of the effective duration of the rainfall with the SCS-CN initial abstraction taken into account.
+- Model metadata in the UI: the Tc method, the Tc value, the UH model, the Nash parameters (N, K, U, Pe, D).
+- `length_to_centroid_km` in the morphometric parameters (needed for Snyder/Lutz).
+- **The hyetograph as a separate tab** — separated from the hydrograph, a selector of the rainfall distribution (beta/DVWK/block), alpha/beta parameters.
+- **Auto-regeneration of the charts** — no "Generate" button, a 300 ms debounce, smooth Chart.js animations.
+- **Effective precipitation on the hyetograph** — a bar chart with an overlay of the effective precipitation.
+- **A water balance in the hyetograph tab** — the precipitation table moved from the hydrograph.
+- **3 new time of concentration methods** — FAA (Federal Aviation Agency), Kerby (1959), Kerby-Kirpich (composite overland+channel). Parameters: `tc_runoff_coeff` and `tc_retardance` in HydrographRequest.
+- **An extended Tc selector** — 6 methods with contextual parameters (C for FAA, N for Kerby/Kerby-Kirpich).
+- **H4: Monotonic stream smoothing (ADR-041)** — a two-step process: a constant burn (2 m) + a running minimum downstream. It corrects bridges/embankments without over-burning normal sections.
+- `smooth_streams_monotonic()` in `core/hydrology.py` — a graph of the network topology, BFS from the outlet, Bresenham rasterization.
+- The flag `--no-smooth-streams` in `process_dem.py` — switches the smoothing off for debugging.
+- The diagnostic file `02b_smoothed.tif` when `save_intermediates` is set.
+- Vector boundary file support (ADR-040): SHP/ZIP, GPKG, GeoJSON as the analysis area.
+- A new module `core/boundary.py`: load_boundary, validate_boundary_file, bbox conversion.
+- CLI: the arguments `--boundary-file` / `--boundary-layer` in bootstrap.py.
+- API: the endpoint `POST /api/admin/bootstrap/upload-boundary`.
+- Front end: an area mode toggle (bbox / vector file) in the admin panel.
+- 18+ unit tests for the boundary module and the upload endpoint.
+- The H4 design spec: monotonic stream smoothing (ADR-041, backlog).
+- Migration 018: a composite index `(threshold_m2, segment_idx)` on `stream_catchments`.
+
 ### Changed
 - Editor and git settings follow the Nogat standard 2.1 (DEV-13.1, DEV-14.1): `.editorconfig` is in English, `.gitattributes` sets `* text=auto eol=lf`, and `.env.example` lists every variable that the code and Docker Compose read (the `CACHE_DIR` entry is gone: nothing reads it).
 - **Breaking for contributors:** uv and `backend/uv.lock` replace pip and `backend/requirements.txt` (DEV-6.2, DEV-6.3). Set up with `cd backend && uv sync --locked` and run everything through `uv run` (`uv run pytest`, `uv run alembic upgrade head`, `uv run python -m scripts.bootstrap`). The development tools are the `dev` dependency group, not an extra; `matplotlib` for the figures of `scripts/analyze_watershed.py` is the extra `viz`; the application is no longer installed as a package (`[tool.uv] package = false`), so `pip install -e ".[dev]"` is gone. The lock is seeded with the package versions of the image built on 2026-10-18, so no third-party package changes; it keeps the caps `sqlalchemy<2.1` and adds `affine<3` (affine 3.x breaks pyflwdir under numba) with their reasons in `pyproject.toml`. Producer pins are unchanged (Kartograf `v0.7.0`, Hydrolog `v0.6.3`, IMGWTools `v2.1.0`).
@@ -22,196 +74,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CLAUDE.md` is in English and follows DOC-3.1: profile `app`, critical rules, environment and commands, code map, documentation map, session workflow, cross-project context and a Deviations section that records every departure from the standard in one place (DEV-1.2). `docs/DEVELOPMENT_STANDARDS.md`, the copy of the v1 standard, is deleted; the standard is cited by ID and linked by URL (DEV-1.3).
 - `README.md` is in English in the order of DOC-2.1 for an `app` (summary, when to use and not to use, Run and Deploy, capabilities, related tools, errors, data and licensing, documentation); the `description` in `pyproject.toml` is its master text (DOC-2.3). `tests/contract/test_readme_examples.py` runs the examples (DOC-2.6): each `curl` example names a route of the API and sends a body that its request model accepts, the routes of the table exist, and the options and targets of the shell commands exist.
 - `docs/DECISIONS.md` starts with the ADR index (ID, title, status, date, link; DOC-8.2), and new ADRs are files in `docs/decisions/`. ADR-058 records the adoption of the Nogat standard 2.1 and amends ADR-009 and ADR-011.
+- `docs/ARCHITECTURE.md`, `docs/PRD.md`, `docs/SCOPE.md` and this section of the changelog are in English (DEV-2.1, ECO-005), and the changelog sections follow DOC-7.1 (Added, Changed, Removed, Fixed, Security). The bodies of ADR-001 to ADR-057 in `docs/DECISIONS.md`, the released versions below and the other documents listed in `docs/PROGRESS.md` are still Polish.
 - The Nogat error registry is vendored in `schemas/nogat/` (`error_registry.json` and the schemas of `schemas/agent/`, verbatim from Nogat `cc656e7`, ERR-3), and `backend/core/_errors.py` is generated from it with `uv run python -m scripts.generate_errors`; `tests/contract/test_error_registry.py` fails when the module is stale.
 - **Breaking for clients of the API:** every error is `application/problem+json` (RFC 9457) with a code of the shared Nogat registry (ERR-4, AGI-6.3; ADR-059). The members are `type` (the registry entry), `title`, `status`, `detail` (still the text the interface shows), `instance`, `code`, `hint`, `details` (`reason` names the cause) and, for invalid values, `errors[]` with JSON Pointers. The texts are English, and Polish with `Accept-Language: pl`, which the interface now sends (`Content-Language` names the language). The statuses follow the registry: invalid values 422 to 400; a wrong admin key 403 to 401 (`unauthorized`); a catchment above 250 km² 400 to 422 (`unsupported`); no precipitation for the point 400 to 404 (`no_data`); a missing boundary file 400 to 404; a path outside the project 400 to 403 (`forbidden`); a failed catchment boundary 500 to 422 (`calculation_error`); unknown routes and wrong methods are `not_found` and `method_not_allowed` problems. Code raises `HydrografError` subclasses (`core/errors.py`) with messages from `core/messages.py`; no `HTTPException` is raised any more. OpenAPI names operations after their route functions, documents the problems of each route and `400` instead of FastAPI's `422`.
+- **Kartograf 0.6.1 → 0.7.0 (stage K)** — the DEM is downloaded through `DownloadManager.download_sheets()` with `campaigns="newest"` and `MetadataCache` (`<cache_dir>/kartograf_meta.db`); a new cache layout `cache/nmt/pl_<system>_<res>_evrf2007/` (+ `kampanie/`, `.meta.json` sidecars); data of the 0.6.1 layout is not reused (the first bootstrap downloads again — `docs/integrations/KARTOGRAF.md` §6.5). `download_dem` CLI: `--metadata-cache` is required, the default `--output` is `../cache/`. `kartograf_meta.db` (SQLite WAL) must be on a local disk, not on a network share; `clean --include-cache` removes it.
+- **Loud DEM download errors** — transport errors end step 2 of the bootstrap with an error that lists all the sheet codes (exit code 1); a missing coverage of some sheets is reported as a list, of the whole area as an error; a disabled metadata cache is an error; an empty list of sheets is an error.
+- `bootstrap --bbox` rejects an inverted or degenerate bbox and invalid sheet codes with a CLI error (exit code 2); a WGS84 bbox equal to a sheet now returns only that sheet (the edge semantics of Kartograf 0.7.0).
+- `hsg_poland.tif` is reused only with the sidecar of the current Kartograf version (the USDA thresholds changed in 0.7.0); an outdated or damaged sidecar gives `HsgCacheStaleError` with the instruction to delete the file. Step 5 (HSG) is recorded as failed, but the bootstrap continues and ends with exit code 0 when steps 1–3 succeeded (decision D5 is pending; the HSG fallback "B" is unchanged).
+- `DEFAULT_THRESHOLD_M2` 1000 → 10000 (`core/constants.py`) — a data regeneration (Kotlina Kłodzka, 2026-08-10) ruled out the 1000 m² threshold after an OOM while polygonizing 872 thousand sub-catchments on a raster of 113M cells (the container limit is 8G); the hydrograph and the default delineation now aim at the lowest existing threshold.
+- **`download_landcover.py::_discover_teryts_grid()` (the TERYT discovery fallback)** — an explicit guard at import (`RuntimeError` when `Bdot10kProvider._get_teryt_for_point` is missing or not callable) + a contract test that pins the signature (`inspect.signature`); it documents the dependency of the fallback on the private API of Kartograf instead of a silent `AttributeError` when the library is upgraded (ADR-057).
+- **Rebuilt sewer topology (ADR-052)** — an explicit topology defined by the user instead of automatic detection (snapping, cascade of directions, heuristic detection of outlets). About 530 lines of heuristic code were removed from sewer_service.py.
+- **New module `core/sewer_topology.py`** — a topology parser and validator (ParsedTopology, parse_sewer_topology, validate_against_fdir). 11 validation rules + detection of fdir loops.
+- **Two-phase pipeline** — Phase 1 = clean fdir (without the sewer) with validation of fdir loops, Phase 2 = burn inlets + the full hydrology.
+- **New upload interface (ADR-052)** — auto-detection of the format (Format A: points with downstream_id, Format B: points + lines with from_node/to_node). The upload returns `detected_format` and `layers`. The config accepts `field_mapping` and `role_mapping`.
+- **Migration 027** — the CHECK constraint on `node_type` changed from `isolated` to `storage` (SWMM/HEC-RAS compatibility).
+- **download_sewer.py** — returns the tuple `(points_gdf, lines_gdf | None)` instead of one GeoDataFrame.
+- **Batch UPDATE of is_sewer_augmented** (N+1 → a single spatial join) and **MVT tile query optimization** (the bbox transform is deduplicated).
+- **Unified delineate-watershed endpoint (ADR-050)** — `POST /api/select-stream` and `POST /api/delineate-watershed` are merged into one endpoint `POST /api/delineate-watershed` with two modes: `precomputed` (with `threshold_m2`, BFS over the graph) and `precise` (without a threshold, raster delineation with pyflwdir on the fly).
+- **The field `mode` replaces `auto_selected`** — the response contains `"mode": "precomputed"|"precise"` instead of the boolean `auto_selected`.
+- **Front end: the layer "Cieki" → "Linie spływu"** (streams → flow lines) — the name in the layers panel, the legend, the map attribution and the panel instructions; the layer shows flow lines derived from the DEM with accumulation thresholds, not actual streams (the layer "Cieki BDOT10k" is unchanged). The 404 messages are consistent: the front end (`api.js`) and the backend (`core/catchment_graph.py`) both speak of flow lines.
+- **One button "Wybierz zlewnię"** (choose a watershed) — the separate "Wygeneruj zlewnię" is gone; the mode is selected automatically from the presence of the streams layer (threshold_m2).
+- **API calls updated** — the front end uses only `POST /api/delineate-watershed`.
+- **Improved parameter labels** — descriptive names (e.g. "Powierzchnia zlewni", "Najdl. droga splywu"), Polish symbols of the shape indices (C<sub>z</sub>, C<sub>k</sub>, C<sub>w</sub>, C<sub>f</sub>, C<sub>l</sub>) with a subscript.
+- **Watershed length fix** — `length_km` now comes from `hydraulic_length_km` (the longest flow path along the stream) instead of the Euclidean distance from the outlet. This changes the values of the shape indices (Cz, Ck, Cw, Cf, Cl, mean width).
+- **Relief ratio R fix** — a new formula: R = ΔH/√A [‰] (it was ΔH/(L·1000)).
+- Upgrade of Hydrolog from v0.5.2 to v0.6.3 (Nash IUH, 3 new tc methods, mypy fixes).
+- **Upgrade of Kartograf from v0.5.0 to v0.6.1** — fix of the NMT WMS layers, parallel downloads, an improved DownloadManager.
+- The default Nash estimation changed from `from_tc` (deprecated) to `from_lutz` (Lutz physiographic).
+- **Main channel trace: upstream_area_km2 (ADR-046)** — the branch choice in `trace_main_channel()` uses the cumulative watershed area (upstream_area_km2) instead of Strahler/local area. Priority: upstream_area_km2 → is_real_stream → Strahler → local area_km2.
+- **Admin cleanup: a single source of truth** — the admin panel delegates the cleanup to `execute_clean()` of `scripts/clean.py` (instead of its own list of tables). `bdot_streams` was added to `DB_TABLES`. 2 cleanup targets instead of 7.
+- **DEM color mapping: percentile clipping** — the elevation is normalized with clipping to the 5-95 percentile instead of min-max. A new function `normalize_elevation()` in `utils/dem_color.py`.
+- The default Tc method changed from Kirpich to SCS Lag; Kirpich only for Nash from_tc.
+- Tc is optional in the metadata (null for Nash from_lutz/from_urban_regression).
+- The hyetograph is a bar chart with 2 series (total + effective).
+- The CN is taken from the land cover data (it was always DEFAULT_CN=75).
+- **Drainage stats from BDOT** — the network density, the stream frequency, the roughness and the max Strahler are based only on the segments with `is_real_stream=true` (instead of the whole algorithmic network).
+- **DEM auto-discovery (ADR-049)** — `resolve_dem_path()` with a fallback chain (DEM_PATH env → VRT → raw TIF → filled TIF) instead of a hardcoded path. The analogous `resolve_stream_distance_path()`.
+- **Code review refactoring (Wave 1-5)** — removal of dead code (~200 LOC), extraction of helpers (`_get_transform`, `_per_label_argmax`, `_clip_and_build_path`), deduplication of watershed_service (the shared `_build_flow_path_geojson`, `_SMOOTH_SQL`, `calculate_shape_indices`), unification of the endpoints (`cascade_escalate`, `build_morph_dict_from_graph`, `build_land_cover_stats`, `build_hsg_stats`), named constants in CatchmentGraph, releasing numpy memory in `invalidate()`.
+- **perf(core):** Optimization of the BDOT stream matching — ST_Intersection(geom, ST_Union(buffers)) replaced by ST_Union(ST_Intersection(geom, buffer)) (the distributive law, >600s → 1s).
+- **BDOT stream matching: per-feature buffers** — `ST_Collect` + a global buffer replaced by a per-feature `ST_Buffer` + `ST_Intersects` (24s vs >90 min for 253k segments).
+- Releasing memory after the intermediate matrices are processed (process_dem, stream_extraction, zonal_stats).
+- **refactor(db):** The 28 Alembic migrations were squashed into one initial schema (001_initial_schema.py), 3 duplicated indexes were removed.
+- **refactor(docker):** The dev override was simplified to the necessary settings.
+- The default `burn_depth_m` was reduced from 10/5 m to 2.0 m (all locations).
+- Refactoring of `burn_streams_into_dem()` — `_load_stream_geometries()` was extracted as a shared helper.
 
-### Dodane
-- Integracja kanalizacji deszczowej z analiza splywu powierzchniowego (ADR-051)
-- Nowy modul `core/sewer_service.py`: budowa grafu sieci, inlet burning, rekonstrukcja FA, routing, propagacja
-- Nowy skrypt `scripts/download_sewer.py`: pozyskiwanie danych (plik/WFS/DB/URL)
-- Migracja DB (025): tabele `sewer_nodes` (18 kol.), `sewer_network` (16 kol.), kolumna `stream_network.is_sewer_augmented`
-- Sekcja `sewer` w konfiguracji YAML pipeline
-- Nowe endpointy admin: `/api/admin/sewer/upload`, `/status`, `/delete`
-- MVT tiles sieci kanalizacyjnej: `/api/tiles/sewer/{z}/{x}/{y}.pbf`
-- Warstwa overlay kanalizacji na mapie frontend (`sewer.js`, `admin-sewer.js`)
-- Integracja sewer burning w `process_dem.py` (kroki 3b i 4a-4c)
-- feat(api+frontend): formularz „Zgłoś uwagę" — POST /api/feedback, tabela feedback (migracja 002), modal na stronie głównej z opt-in diagnostyką sesji (dziennik 50 zdarzeń + konfiguracja obszaru roboczego), sekcja zgłoszeń w panelu /admin, rate limit nginx 1r/m
-
-### Zmienione
-- **Kartograf 0.6.1 → 0.7.0 (etap K)** — pobieranie NMT przez `DownloadManager.download_sheets()` z `campaigns="newest"` i `MetadataCache` (`<cache_dir>/kartograf_meta.db`); nowy układ cache `cache/nmt/pl_<uklad>_<res>_evrf2007/` (+ `kampanie/`, sidecary `.meta.json`); dane z układu 0.6.1 nie są reużywane (pierwszy bootstrap pobiera ponownie — `docs/integrations/KARTOGRAF.md` §6.5). `download_dem` CLI: wymagany `--metadata-cache`, domyślne `--output ../cache/`. `kartograf_meta.db` (SQLite WAL) musi leżeć na dysku lokalnym, nie na udziale sieciowym; `clean --include-cache` ją usuwa.
-- **Głośne błędy pobierania NMT** — błędy transportu kończą krok 2 bootstrapu błędem z pełną listą godeł (kod 1); brak pokrycia części arkuszy raportowany listą, całego obszaru — błąd; wyłączony cache metadanych — błąd; pusta lista arkuszy — błąd.
-- `bootstrap --bbox` odrzuca odwrócony/zdegenerowany bbox i nieprawidłowe godła błędem CLI (kod 2); bbox WGS84 równy arkuszowi zwraca teraz tylko ten arkusz (semantyka krawędzi Kartografa 0.7.0).
-- `hsg_poland.tif` reużywany tylko z sidecarem bieżącej wersji Kartografa (progi USDA zmienione w 0.7.0); nieaktualny lub uszkodzony sidecar daje `HsgCacheStaleError` z instrukcją usunięcia pliku. Krok 5 (HSG) jest zapisywany jako nieudany, ale bootstrap kontynuuje i kończy się kodem 0, gdy kroki 1–3 się powiodły (oczekująca decyzja D5; fallback HSG „B" bez zmian).
-- `DEFAULT_THRESHOLD_M2` 1000 → 10000 (`core/constants.py`) — regeneracja danych (Kotlina Kłodzka, 2026-08-10) wykluczyła próg 1000 m² po OOM przy polygonizacji 872 tys. podzlewni na rastrze 113M komórek (limit kontenera 8G); hydrogram i domyślna delineacja celują teraz w najniższy istniejący próg
-- **`download_landcover.py::_discover_teryts_grid()` (fallback TERYT discovery)** — jawny guard przy imporcie (`RuntimeError` przy braku/niewywolywalnosci `Bdot10kProvider._get_teryt_for_point`) + test kontraktowy pinujący sygnaturę (`inspect.signature`), dokumentujący zależność fallbacku od prywatnego API Kartografa zamiast cichego `AttributeError` przy upgradzie biblioteki (ADR-057)
-
-### Refaktoryzacja
-- **Przebudowa topologii kanalizacji (ADR-052)** — jawna topologia definiowana przez uzytkownika zamiast automatycznej detekcji (snapping, kaskada kierunkow, heurystyczna detekcja outletow). Usunieto ~530 linii heurystycznego kodu z sewer_service.py
-- **Nowy modul `core/sewer_topology.py`** — parser + walidator topologii (ParsedTopology, parse_sewer_topology, validate_against_fdir). 11 regul walidacji + detekcja petli fdir
-- **Pipeline dwufazowy** — Faza 1 = czysty fdir (bez sewer) z walidacja petli fdir, Faza 2 = burn inlets + pelna hydrologia
-- **Nowy interfejs upload (ADR-052)** — auto-detect formatu (Format A: punkty z downstream_id, Format B: punkty + linie z from_node/to_node). Upload zwraca `detected_format` i `layers`. Config akceptuje `field_mapping`, `role_mapping`
-- **Migracja 027** — CHECK constraint `node_type` zmieniony z `isolated` na `storage` (kompatybilnosc SWMM/HEC-RAS)
-- **download_sewer.py** — zwraca tuple `(points_gdf, lines_gdf | None)` zamiast jednego GeoDataFrame
-
-### Usuniete
-- **`backend/utils/sheet_finder.py`** (~616 linii) i `tests/unit/test_sheet_finder.py` — zastąpione przez `utils/sheet_lookup.py`, cienki wrapper na `kartograf.find_sheets_for_bbox()` zamiast własnej reimplementacji matematyki godeł (ADR-057)
-
-### Naprawione
-- Pin `sqlalchemy>=2.0.25,<2.1` w `requirements.txt` — SQLAlchemy 2.1 wybiera sterownik psycopg v3 dla URL-i `postgresql://`, a obraz zawiera `psycopg2-binary`; przebudowa obrazu zapetlala restart API na `alembic upgrade head`.
-- Mozaika VRT bootstrapu dublowała arkusze NMT (kopie w `kampanie/`) i mogła mieszać rozdzielczości — krok 3 używa listy z kroku 2; `discover_asc_files()` usunięta.
-- Bootstrap kończył się kodem 0, gdy nie pobrano żadnego arkusza NMT.
-- Raster HSG z samymi nodata dawał dominantę „A" w `get_hsg_from_soilgrids()`.
-- `clean --include-cache` pomijał cache metadanych Kartografa.
-- **`--geometry` w `scripts/download_dem.py` przekazywał `str` zamiast `Path` do `find_sheets_for_geometry()` — crash przy realnym pobieraniu** — Kartograf (`find_sheets_for_geometry()` w `kartograf/core/geometry.py`, przez `read_feature_bboxes()`→`_read_shp_bboxes`/`_read_gpkg_bboxes`) wymaga `pathlib.Path` i wywołuje `filepath.suffix` na argumencie; przekazanie stringa kończy się `AttributeError`. Błąd występował w dwóch miejscach: (1) gałąź `--dry-run` w `main()` (`args.geometry` bez konwersji) oraz (2) prawdziwa ścieżka pobierania `download_for_geometry()` (`str(geometry_path)`) — ta druga crashowałaby dopiero przy faktycznym pobieraniu (nie w dry-run), bo `main()` idzie inną gałęzią kodu dla dry-run niż dla realnego pobrania. Naprawa: obie gałęzie przekazują `Path`. Znalezione przed planowanym pełnym pobraniem NMT 5m dla całej Polski (16 województw, `<HOST_DATA_DIR>/nmt/boundaries/wojewodztwa_polska.gpkg`, 80 343 arkusze wg dry-run). Zweryfikowane realnym pobraniem end-to-end (mały testowy gpkg ~9 km² przy Opolu, 9/9 arkuszy pobranych i zapisanych na dysk). Regresja: `tests/unit/test_download_dem.py` (mockuje `kartograf.find_sheets_for_geometry`, sprawdza `isinstance(..., Path)` dla obu gałęzi).
-- **`get_sheets_for_bbox()` pomijał ~22% kolumn arkuszy NMT 1:10000 (`utils/sheet_finder.py`)** — krok próbkowania `step_lon=0.04` byl WIĘKSZY niż rzeczywista szerokość arkusza 1:10000 (6/192=0.03125°), przez co pętla `while lon <= max_lon + step_lon: lon += step_lon` regularnie przeskakiwała całe kolumny arkuszy bez żadnego błędu/ostrzeżenia. Zmierzone na pilotażowym pobraniu NMT dla Opolskiego (bbox 110×110 km wokół Opola, 55 km bufora): 1000 arkuszy zamiast ~1275 (21.6% brakujących kolumn). Naprawa: krok próbkowania liczony spójnie dla wszystkich skal jako połowa rzeczywistego rozmiaru arkusza (wyprowadzonego z geometrii godła: 1:1M → 12×12 → 1:100k → 2×2 → 1:50k → 2×2 → 1:25k → 2×4 → 1:10k), zamiast ręcznie dobieranych, niespójnych wartości. Regresja: `TestGetSheetsForBboxNoGaps` w `tests/unit/test_sheet_finder.py` (weryfikacja braku przerw >1.5× rozmiaru arkusza między sąsiednimi kolumnami/wierszami). Znalezione przed planowanym pełnym pobraniem NMT 5m dla całej Polski — bez naprawy mozaika miałaby systematyczne pionowe luki.
-- **Godła arkuszy NMT całkowicie błędne dla ścieżki punkt+bufor (`get_sheets_for_point_with_buffer()` w `utils/sheet_finder.py`, używanej przez `download_dem.py --lat/--lon` i `prepare_area.py`)** — dzielenie arkusza 1:25000 na 1:10000 używało siatki 2×4 zamiast zagnieżdżonego 2×2 wg GUGiK, dając godła bez pokrycia wspólnego z poprawnym wynikiem. Przykład: 52.41°N 16.915°E, bufor 2 km — 6 starych godeł (`N-33-130-D-b-2-1`, ...) vs 9 poprawnych z Kartografa (`N-33-130-D-b-3-3`, ...), zero części wspólnej. Ścieżka `--geometry` (bootstrap, pełne pobranie Polski) używała `kartograf.find_sheets_for_geometry()` i nie była dotknięta. Naprawa: nowy `utils/sheet_lookup.py::sheets_for_point_buffer()` deleguje do `kartograf.find_sheets_for_bbox()` (WGS84→EPSG:2180) zamiast własnej matematyki godeł; podmieniony w `download_dem.py` i `prepare_area.py`. Regresja: `tests/unit/test_sheet_lookup.py`. Decyzja: ADR-057.
-- **KRYTYCZNE: pełny bypass autoryzacji panelu admina przez query param `expected_key`** — `verify_admin_key` miał keyword-only param `expected_key` bez markera FastAPI, przez co FastAPI expose'owało go jako opcjonalny query parameter na każdej trasie `/api/admin`. Klient mógł podać obie strony porównania (`?expected_key=x` + header `X-Admin-Key: x`) i uzyskać HTTP 200 bez znajomości prawdziwego klucza — niezautoryzowany zdalny dostęp admina (cleanup, bootstrap/start, feedback, metryki systemowe), wykorzystywalny z internetu przez działający Cloudflare Tunnel. Naprawa: zależność `verify_admin_key` przyjmuje wyłącznie header `X-Admin-Key`; logika przeniesiona do wewnętrznego `_check_admin_key`/`_resolve_expected_key` (test seam poza sygnaturą widoczną dla FastAPI); porównanie klucza stało-czasowe `secrets.compare_digest` zamiast `!=` (usuwa timing side-channel). Regresja `TestExpectedKeyNotClientSettable` pilnuje braku `expected_key` w `app.openapi()` i zwracania 403 dla próby bypassu. Znaleziono w audycie bezpieczeństwa panelu admina.
-- **`hydraulic_length_km`/`length_km` zawyżone dla zlewni źródliskowych 3.8-19.5×, zaniżone dla wielowęzłowych (feedback testera #11)** — `CatchmentGraph.aggregate_stats()` liczył drogę spływu względem złej bazy: dla zlewni źródliskowych (~52% wszystkich, wszystkie progi) wpadał w fallback zwracający odległość bezwzględną do ujścia CAŁEGO basenu; dla wielowęzłowych odejmował złą wielkość (odległość najdalszej komórki podzlewni ujściowej zamiast odległości samego ujścia). Skaziło to `length_km`, wskaźniki kształtu Cw/Cf/Cl oraz `tc` (Kirpich/NRCS) → całe hydrogramy. Granica zlewni i dane w bazie były geometrycznie poprawne. Naprawa: nowa kolumna `stream_catchments.outlet_flow_dist_m` (migracja 003) jako jedyna baza odniesienia, usunięty fallback bezwzględny, etykieta `length_km` w GeoJSON drogi spływu przeliczona z tej samej bazy co morfometria, backfill 54390 istniejących rekordów bez ponownego uruchamiania pipeline'u (`scripts/backfill_outlet_flow_dist.py`). Tryb precise naprawiony automatycznie (aproksymacja: baza = ujście węzła zawierającego klik). Szczegóły diagnozy: `notes/reports/2026-08-02-length-km-diagnosis.md`, decyzja: ADR-054.
-- Guard zerowej dlugosci hydraulicznej: zlewnie jednokomorkowe uzywaja geometrycznego fallbacku length_km zamiast 0.0 (ochrona obliczen tc)
-- Path traversal w upload endpoint kanalizacji (walidacja nazwy pliku)
-- SQL injection w load_from_database (walidacja table name przez allowlist)
-- CHECK constraint bug (root_outlet_id != id dla wylotow sieci)
-- Cache header copy-paste bug w sewer MVT tiles
-- SSRF protection w load_from_url/wfs/database (allowlist domen/portow)
-- Single-transaction insert (eliminacja okna niespojnosci miedzy sewer_nodes a sewer_network)
-- Batch UPDATE is_sewer_augmented (N+1 → single spatial join)
-- MVT tile query optimization (deduplicated bbox transform)
-- **fix(docker):** Dodano NUMBA_CACHE_DIR=/tmp/numba_cache dla read-only rootfs
-
-### API
-- **Unified delineate-watershed endpoint (ADR-050)** — polaczenie `POST /api/select-stream` i `POST /api/delineate-watershed` w jeden endpoint `POST /api/delineate-watershed` z dwoma trybami: `precomputed` (z `threshold_m2`, BFS po grafie) i `precise` (bez progu, delimitacja rastrowa pyflwdir on-the-fly)
-- **Pole `mode` zamiast `auto_selected`** — response zawiera `"mode": "precomputed"|"precise"` zamiast boolean `auto_selected`
-- **Usuniecie parametru `to_confluence`** — uproszczenie API, `traverse_to_confluence()` usuniety z CatchmentGraph
-
-### Backend
-- **RasterCache** — nowy modul `core/raster_service.py` do lazy-loading rastrow fdir/DEM/slope z thread-safe cache. Uzywany przez tryb `precise` do on-the-fly delimitacji zlewni
-- **Ujednolicone schematy Pydantic** — `DelineateRequest` i `DelineateResponse` obsluguja oba tryby (precomputed/precise)
-
-### Frontend
-- **Zmiana nazwy warstwy "Cieki" → "Linie spływu"** — nazwa w panelu warstw, legendzie, atrybucji mapy i instrukcji panelu; warstwa pokazuje linie spływu wyznaczone z NMT progami akumulacji, nie stale cieki (warstwa "Cieki BDOT10k" bez zmian). Spójne komunikaty 404: frontend (`api.js`) i backend (`core/catchment_graph.py`) mówią o liniach spływu
-- **Jeden przycisk "Wybierz zlewnię"** — usuniecie osobnego "Wygeneruj zlewnię", tryb wybierany automatycznie na podstawie obecnosci warstwy ciekow (threshold_m2)
-- **Aktualizacja wywolan API** — frontend uzywa wylacznie `POST /api/delineate-watershed`
-- **Poprawione etykiety parametrow** — opisowe nazwy (np. "Powierzchnia zlewni", "Najdl. droga splywu"), polskie oznaczenia wskaznikow ksztaltu (C<sub>z</sub>, C<sub>k</sub>, C<sub>w</sub>, C<sub>f</sub>, C<sub>l</sub>) z indeksem dolnym
-- **Usuniecie duplikatu** — "Droga splywu" wyswietlana byla dwukrotnie (hydraulic_length_km = longest_flow_path_km)
-
-### Parametry morfometryczne
-- **Poprawka dlugosci zlewni** — `length_km` teraz z `hydraulic_length_km` (najdluzsza droga splywu wzdluz cieku) zamiast odleglosci euklidesowej od ujscia. Zmienia wartosci wskaznikow ksztaltu (Cz, Ck, Cw, Cf, Cl, srednia szerokosc)
-- **Wskaznik lemniskaty C<sub>l</sub>** — nowy parametr: C<sub>l</sub> = π·L²/(4·A)
-- **Poprawka wskaznika rzezby R** — nowy wzor: R = ΔH/√A [‰] (bylo ΔH/(L·1000))
-- **Spadek dzialu wodnego R<sub>p</sub>** — nowy parametr: R<sub>p</sub> = ΔH/P [‰]
-- **Wspolczynnik asymetrii α** — nowy placeholder: α = 2·(A<sub>L</sub>−A<sub>P</sub>)/A (wymaga podzialu zlewni wzdluz cieku glownego)
-
-### Dodane
-- **Geometria drogi spływu z działu wód (ADR-048, divide_flow_path_geom)** — osobna kolumna w `stream_catchments` (migracja 024). Ścieżka z komórki o max flow_dist na GRANICY zlewni cząstkowej do ujścia. Frontend: longest flow path = czerwona kreska, divide flow path = czerwona kropka
-- **Wygładzanie Chaikin cieków w preprocessingu (ADR-047)** — `ST_ChaikinSmoothing(geom, 3)` z `preserve_end_points=true` podczas INSERT do `stream_network`. Gładkie cieki bez pikselowych schodków, zachowana topologia sieci
-- **WFS TERYT discovery (ADR-045)** — zastąpiono sampling po siatce WMS (~625 zapytań) pojedynczym zapytaniem WFS do PRG GUGiK; fallback na starą metodę przy awarii WFS
-- **BDOT10k stream matching (ADR-044)** -- spatial join ciekow BDOT z flow accumulation streams. Nowa tabela `bdot_streams`, kolumna `is_real_stream`, `real_channel_length_km` w parametrach morfometrycznych. Kerby-Kirpich z fizycznie uzasadnionym podzialem overland/channel.
-- **`hydraulic_length_km` z flow direction grid** — maksymalna droga splywu (pyflwdir `stream_distance()`) obliczana w preprocessingu, nowa kolumna w `stream_catchments` (migracja 022). Uzywana przez NRCS i Kirpich zamiast `channel_length_km`
-- **Ścieżki spływu w preprocessingu** — `pyflwdir.stream_distance()` + batch `flw.path()` per subcatchment. 3 nowe parametry: `longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km`. Migracja 023
-- **GUI: Droga spływu i droga z działu** w tabeli parametrów, przerywana pomarańczowa ścieżka na mapie
-- **GUI: Main channel overlay na mapie** — wizualizacja glownego cieku z wyroznieniem ciekow BDOT (ciemny niebieski = ciek rzeczywisty, jasny niebieski = splywy algorytmiczne)
-- **GUI: informacje BDOT w panelu parametrow** — "w tym ciek BDOT" w tabeli parametrow podstawowych, "Pokrycie BDOT" w sekcji sieci rzecznej
-- **GUI: komunikat "brak ciekow BDOT"** — informacja w panelu gdy zlewnia nie zawiera ciekow BDOT10k (is_real_stream=true)
-- **Point sampling stream_distance.tif** — odległość spływu z boundary (dział wodny) i centroidu
-- **Selektor rozdzielczosci NMT w panelu admin** — wybor 1m/5m w interfejsie bootstrap
-- **Model Nasha w generowaniu hydrogramu** — 3 metody estymacji parametrów: z Tc (SCS), Lutz (fizjograficzna), regresja zurbanizowana (Rao et al. 1972)
-- Auto-obliczanie wskaźnika urbanizacji z pokrycia terenu (`weighted_imperviousness`)
-- Obliczanie efektywnego czasu trwania opadu z uwzględnieniem abstrakcji początkowej SCS-CN
-- Metadane modelu w UI: metoda Tc, wartość Tc, model UH, parametry Nasha (N, K, U, Pe, D)
-- `length_to_centroid_km` w parametrach morfometrycznych (potrzebne dla Snydera/Lutza)
-- **Hietogram jako osobna zakładka** — wydzielony z hydrogramu, selektor rozkładu opadu (beta/DVWK/blokowy), parametry alfa/beta
-- **Auto-regeneracja wykresów** — bez przycisku "Generuj", debounce 300ms, płynne animacje Chart.js
-- **Opad efektywny na hietogramie** — wykres słupkowy z nakładką opadu efektywnego
-- **Bilans wodny w zakładce hietogramu** — tabela opadowa przeniesiona z hydrogramu
-- **3 nowe metody czasu koncentracji** — FAA (Federal Aviation Agency), Kerby (1959), Kerby-Kirpich (composite overland+channel). Parametry: `tc_runoff_coeff` i `tc_retardance` w HydrographRequest
-- **Selektor Tc rozszerzony** — 6 metod z parametrami kontekstowymi (C dla FAA, N dla Kerby/Kerby-Kirpich)
-
-### Zmienione
-- Upgrade Hydrolog z v0.5.2 do v0.6.3 (Nash IUH, 3 nowe metody tc, mypy fixes)
-- **Upgrade Kartograf z v0.5.0 do v0.6.1** — fix NMT WMS layers, parallel downloads, poprawiony DownloadManager
-- Domyślna estymacja Nash zmieniona z `from_tc` (deprecated) na `from_lutz` (Lutz physiographic)
-- **Main channel trace: upstream_area_km2 (ADR-046)** — wybor galezi w `trace_main_channel()` na podstawie skumulowanej powierzchni zlewni (upstream_area_km2) zamiast Strahler/local area. Priorytet: upstream_area_km2 → is_real_stream → Strahler → local area_km2
-- **Admin cleanup: single source of truth** — panel admin deleguje czyszczenie do `execute_clean()` z `scripts/clean.py` (zamiast wlasnej listy tabel). Dodano `bdot_streams` do `DB_TABLES`. 2 cele czyszczenia zamiast 7
-- **DEM color mapping: percentile clipping** — normalizacja elewacji z przycieciem do 5-95 percentyla zamiast min-max. Nowa funkcja `normalize_elevation()` w `utils/dem_color.py`
-- Domyślna metoda Tc zmieniona z Kirpich na SCS Lag; Kirpich tylko dla Nash from_tc
-- Tc opcjonalny w metadanych (null dla Nash from_lutz/from_urban_regression)
-- Hietogram jako wykres słupkowy z 2 seriami (total + effective)
-- CN pobierany z danych pokrycia terenu (wcześniej zawsze DEFAULT_CN=75)
-- **Drainage stats z BDOT** — gestosc sieci, czestotliwosc ciekow, chropowatosc i max Strahler bazuja wylacznie na segmentach `is_real_stream=true` (zamiast calej sieci algorytmicznej)
-- **DEM auto-discovery (ADR-049)** — `resolve_dem_path()` z lancuchem fallback (DEM_PATH env → VRT → raw TIF → filled TIF) zamiast hardcoded sciezki. Analogiczny `resolve_stream_distance_path()`
-- **Refaktoryzacja code review (Wave 1-5)** — usuniecie martwego kodu (~200 LOC), ekstrakcja helperow (`_get_transform`, `_per_label_argmax`, `_clip_and_build_path`), deduplikacja watershed_service (wspolne `_build_flow_path_geojson`, `_SMOOTH_SQL`, `calculate_shape_indices`), unifikacja endpointow (`cascade_escalate`, `build_morph_dict_from_graph`, `build_land_cover_stats`, `build_hsg_stats`), nazwane stale w CatchmentGraph, zwalnianie pamieci numpy w `invalidate()`
-- **perf(core):** Optymalizacja BDOT stream matching — zamiana ST_Intersection(geom, ST_Union(buforow)) na ST_Union(ST_Intersection(geom, bufor)) (prawo rozdzielnosci, >600s→1s)
-- **refactor(db):** Squash 28 migracji Alembic do jednej initial schema (001_initial_schema.py), usunieto 3 zduplikowane indeksy
-- **refactor(docker):** Uproszczenie dev override do niezbednych ustawien
-
-### Usuniete
-- **cleanup:** Usunieto 3 deprecated skrypty (e2e_task9, export_pipeline_gpkg, export_task9_gpkg)
-
-### Naprawione
-- **Per-polygon simplify usunięty ze stream_extraction** — `shapely.simplify(2*cellsize)` stosowane niezależnie per subcatchment powodowało luki między sąsiednimi zlewniami (wspólne krawędzie upraszczane różnie). Surowe geometrie zapisywane do DB; wygładzanie w runtime merge pipeline
-- **Invalidacja CatchmentGraph po cleanup** — `load()` miało early return `if self._loaded: return` uniemożliwiające reload po regeneracji danych. Nowa metoda `invalidate()` czyszcząca flagę i lookup, wywoływana po TRUNCATE i przed reload
-- **Browser cache dla danych pipeline wyłączony** — Nginx cachował .pbf/.png/.geojson przez 1h → stale data po re-run pipeline. Teraz `Cache-Control: no-store` dla tiles/, data/, .pbf, .geojson; cache tylko dla css/js/ico
-- **BDOT ST_Within fix** — `ST_Intersection` zwracalo EMPTY dla krotkich segmentow DEM (<30m) calkowicie wewnatrz bufora BDOT. Dodano `ST_Within` check przed `ST_Intersection` w `update_stream_real_flags()` — overlap=1.0 gdy segment w calosci w buforze. Wzrost udzialu ciekow rzeczywistych z 25.9% do 31.5% (threshold 1000)
-- **Hydraulic length wzgledem ujscia zlewni** — `aggregate_stats()` raportowalo surowa wartosc `max_flow_dist_m` (odleglosc od globalnego ujscia basenu). Teraz odejmuje dystans ujscia wybranej zlewni: `hydraulic_length = max(all) - outlet_dist`
-- **nash_urban_fraction zawsze NULL** — imperviousness nie było przekazywane z land cover do build_morph_dict_from_graph()
-- **NRCS tc zawyżone (~608 min)** — formuła używała channel_slope zamiast mean_slope. Per TR-55, Y = average watershed slope. tc: 608→200 min
-- **FAA/Kerby — bledny uzycie length_km** — nowe pole `tc_overland_length_km` wymagane od uzytkownika zamiast automatycznego length_km (dlugosc zlewni ≠ dlugosc splywu powierzchniowego)
-- **NRCS/Kirpich — uzycie hydraulic_length zamiast channel_length** — `hydraulic_length_km` (maksymalna droga splywu z flow direction) jest poprawna geometrycznie, `channel_length_km` opisuje jedynie dlugosci ciekow
-- **Kerby-Kirpich — poprawiony podzial overland/channel** — overland z `hydraulic_length_km` (fallback), channel z `real_channel_length_km` (BDOT matching)
-- **Fragmentacja `real_channel_length_km`** — fix ciaglosci cieków BDOT: algorytm wybiera najdluzszy ciagly odcinek `is_real_stream=true` od ujscia (zamiast sumowania rozproszonych fragmentow)
-- **Overlay glownego cieku** — `get_main_channel_feature_collection()` z logika ciaglosci BDOT, poprawne wyroznienie segmentow rzeczywistych/algorytmicznych
-- **fix(admin):** Timeout dashboardu blokujacy logowanie do panelu admin — cache `_dir_size_mb` z 30s TTL, `proxy_read_timeout` w nginx
-- **fix(core):** Obsluga `PermissionError` we wszystkich wywolaniach `shutil.rmtree`
-- **fix(docker):** Przypiety UID/GID hydro na 999 dla stabilnego ownershipu bind mount
-- **fix(docker):** Usuniecie nadpisania `user:0:0` lamiacego uprawnienia plikow
-- **BDOT main channel tracing (R1a/R2/R3)** — tie-breaker `is_real_stream` w `trace_main_channel()`, gap tolerance `MAX_GAP=2` (tolerancja 2 segmentow bez BDOT), bufor matchingu zwiekszony do 25m
-- **DownloadManager resolution** — parametr `resolution` przekazywany przez `run_pipeline()` zamiast globalnych args, poprawna sciezka NMT
-- **Main channel trace: upstream_area_km2 z stream_network** — użycie kumulatywnej powierzchni zlewni (`upstream_area_km2`) zamiast lokalnej `area_km2` zlewni cząstkowej. Lokalna area_km2 była błędna — mały subcatchment doplywu mógł mieć większą powierzchnię lokalną niż subcatchment cieku głównego
-- **Kaskadowa eskalacja progu w select_stream** — `trace_main_channel` i `get_main_channel_feature_collection` używają teraz eskalowanego progu i `outlet_idx_for_stats` (zamiast oryginalnego `clicked_idx` i `threshold`)
-- **WFS BBOX axis order (EPSG:2180)** — WFS wymagal Y,X (northing,easting), nie X,Y. Bug maskowany dla obszarow gdzie X~Y
-- **TERYT discovery: mosaic bbox zamiast user bbox** — arkusze NMT rozciagaja sie poza bbox uzytkownika; TERYT lookup musial uzywac pelnego zasiegu mozaiki
-- **BDOT GeoJSON export przycinany do mosaic bbox** — eksport BDOT ograniczony do faktycznego zasiegu danych
-- **HSG i land cover: mosaic bbox** — kroki preprocessingu uzywaja spatialnie poprawnego zasiegu
-- **Duplikat obliczenia `flow_dist_m` w process_dem** — ta sama macierz obliczana dwukrotnie; usunieto powtorzenie
-- **`main_ch` UnboundLocalError w watershed_service** — zmienna niezainicjalizowana w galezi else; dodano inicjalizacje
-- **`length_to_centroid_km` liniaprosta zamiast wzdluz cieku** — select_stream uzywal odleglosci euklidesowej; teraz pobiera wartosc z grafu (along-channel)
-- **`hypsometric_integral` metoda trapezow zamiast ratio** — select_stream uzywal integracji trapezowej; teraz pobiera wartosc z grafu (H_mean - H_min) / (H_max - H_min)
-
-### Optymalizacja
-- **BDOT stream matching: per-feature buffers** — zamiana `ST_Collect` + globalny bufor na per-feature `ST_Buffer` + `ST_Intersects` (24s vs >90 min dla 253k segmentow)
-- Zwolnienie pamięci po przetworzeniu pośrednich macierzy (process_dem, stream_extraction, zonal_stats)
-
-### Fixed (infrastruktura)
-- Dockerfile: dodano GDAL, pinned tippecanoe 2.79.0
-- Bootstrap: poprawna ścieżka katalogu w Dockerze, `sys.executable` zamiast hardcoded .venv
-
-### Dodane (poprzednio)
-- **H4: Monotoniczne wygładzanie cieków (ADR-041)** — dwuetapowe przetwarzanie: stałe wypalanie (2m) + running minimum downstream. Koryguje mosty/nasypy bez nadmiernego wypalania normalnych odcinków
-- `smooth_streams_monotonic()` w `core/hydrology.py` — graf topologii sieci, BFS od ujścia, Bresenham rasteryzacja
-- `--no-smooth-streams` flag w `process_dem.py` — wyłączenie wygładzania do debugowania
-- Plik diagnostyczny `02b_smoothed.tif` przy `save_intermediates`
-
-### Zmienione
-- Domyślny `burn_depth_m` zmniejszony z 10/5m do 2.0m (wszystkie lokalizacje)
-- Refaktoryzacja `burn_streams_into_dem()` — wydzielenie `_load_stream_geometries()` jako współdzielonego helpera
-
-### Added
-- Vector boundary file support (ADR-040): SHP/ZIP, GPKG, GeoJSON as analysis area
-- New module `core/boundary.py`: load_boundary, validate_boundary_file, bbox conversion
-- CLI: `--boundary-file` / `--boundary-layer` arguments in bootstrap.py
-- API: `POST /api/admin/bootstrap/upload-boundary` endpoint
-- Frontend: area mode toggle (bbox / vector file) in admin panel
-- 18+ unit tests for boundary module and upload endpoint
-- H4 design spec: monotonic stream smoothing (ADR-041, backlog)
-- Migration 018: composite index `(threshold_m2, segment_idx)` on `stream_catchments`
+### Removed
+- **`backend/utils/sheet_finder.py`** (~616 lines) and `tests/unit/test_sheet_finder.py` — replaced by `utils/sheet_lookup.py`, a thin wrapper around `kartograf.find_sheets_for_bbox()` instead of our own reimplementation of the sheet-code arithmetic (ADR-057).
+- **Breaking:** the parameter `to_confluence` of the API — a simplification; `traverse_to_confluence()` was removed from CatchmentGraph.
+- **cleanup:** 3 deprecated scripts (e2e_task9, export_pipeline_gpkg, export_task9_gpkg).
 
 ### Fixed
-- **Nieciągłości topologii przy łączeniu zlewni cząstkowych:** trzy root causes — (1) ST_SimplifyPreserveTopology przed union niszczył współdzielone krawędzie → zamiana na ST_SnapToGrid; (2) buffer gap-closing 0.1m za mały dla luk 1-5m → zwiększony do 2.0m; (3) ST_MakeValid po Chaikin rozbijał samoprzecięcia na osobne poligony → zamiana na ST_Buffer(0) zachowujący ciągłość
-- **Brak kafli MVT po regeneracji z panelu admin:** puste odpowiedzi tile API były cachowane przez przeglądarkę na 24h (`Cache-Control: max-age=86400`); teraz puste kafle mają `no-store`. Dodatkowo kafle DEM były pomijane przy re-bootstrapie (skip guard `tiles_missing`); teraz zawsze regenerowane
-- **Timeout 504 przy duzych zlewniach (ADR-042):** batched union z pre-simplifikacja dla >100 segmentow, uproszczona granica dla zapytan land cover/HSG (18.5s → 1.6s), `_MAX_MERGE` 500→300. Czas odpowiedzi: 95 km² = 7s (bylo 24s), 674 km² = 7s (bylo timeout)
-- **CatchmentGraph auto-reload po bootstrap:** API automatycznie przeladowuje graf zlewni po zakonczeniu bootstrap z panelu admin (wczesniej wymagal restartu kontenera)
-- **Brak arkuszy NMT (38.6% NoData):** `bootstrap.py` uzywa `kartograf.find_sheets_for_bbox()` zamiast wlasnego `utils.sheet_finder` (91 → 192 arkuszy dla tego samego bbox)
-- **Tippecanoe bottleneck na progu 1000:** zoom Z14-18 zamiast Z8-18 dla catchments threshold 1000 (7.5h → 6.5 min)
+- Pin `sqlalchemy>=2.0.25,<2.1` in `requirements.txt` — SQLAlchemy 2.1 selects the psycopg v3 driver for `postgresql://` URLs, while the image contains `psycopg2-binary`; rebuilding the image put the API into a restart loop on `alembic upgrade head`.
+- The VRT mosaic of the bootstrap duplicated the DEM sheets (copies in `kampanie/`) and could mix resolutions — step 3 uses the list from step 2; `discover_asc_files()` was removed.
+- The bootstrap ended with exit code 0 when no DEM sheet was downloaded.
+- An HSG raster of only nodata gave the dominant group "A" in `get_hsg_from_soilgrids()`.
+- `clean --include-cache` skipped the metadata cache of Kartograf.
+- **`--geometry` in `scripts/download_dem.py` passed a `str` instead of a `Path` to `find_sheets_for_geometry()`: a crash in a real download** — Kartograf (`find_sheets_for_geometry()` in `kartograf/core/geometry.py`, through `read_feature_bboxes()`→`_read_shp_bboxes`/`_read_gpkg_bboxes`) needs a `pathlib.Path` and calls `filepath.suffix` on the argument; passing a string ends with an `AttributeError`. The bug was in two places: (1) the `--dry-run` branch in `main()` (`args.geometry` without conversion) and (2) the real download path `download_for_geometry()` (`str(geometry_path)`); the second would crash only in an actual download (not in a dry run), because `main()` takes a different code branch for a dry run than for a real download. Fix: both branches pass a `Path`. Found before the planned full download of the 5 m DEM for the whole of Poland (16 voivodeships, `<HOST_DATA_DIR>/nmt/boundaries/wojewodztwa_polska.gpkg`, 80,343 sheets by the dry run). Verified by a real end-to-end download (a small test gpkg of ~9 km² near Opole, 9/9 sheets downloaded and written to disk). Regression: `tests/unit/test_download_dem.py` (mocks `kartograf.find_sheets_for_geometry` and checks `isinstance(..., Path)` for both branches).
+- **`get_sheets_for_bbox()` skipped ~22% of the columns of the 1:10000 DEM sheets (`utils/sheet_finder.py`)** — the sampling step `step_lon=0.04` was LARGER than the actual width of a 1:10000 sheet (6/192=0.03125°), so the loop `while lon <= max_lon + step_lon: lon += step_lon` regularly jumped over whole columns of sheets without any error or warning. Measured on a pilot DEM download for Opolskie (a bbox of 110×110 km around Opole, a 55 km buffer): 1000 sheets instead of ~1275 (21.6% of the columns missing). Fix: the sampling step is computed consistently for all scales as half of the actual sheet size (derived from the geometry of the sheet code: 1:1M → 12×12 → 1:100k → 2×2 → 1:50k → 2×2 → 1:25k → 2×4 → 1:10k), instead of hand-picked, inconsistent values. Regression: `TestGetSheetsForBboxNoGaps` in `tests/unit/test_sheet_finder.py` (checks that there are no gaps larger than 1.5× the sheet size between neighbouring columns/rows). Found before the planned full download of the 5 m DEM for the whole of Poland; without the fix the mosaic would have had systematic vertical gaps.
+- **The DEM sheet codes were completely wrong on the point+buffer path (`get_sheets_for_point_with_buffer()` in `utils/sheet_finder.py`, used by `download_dem.py --lat/--lon` and `prepare_area.py`)** — the split of a 1:25000 sheet into 1:10000 used a 2×4 grid instead of the nested 2×2 of GUGiK, which gave codes with nothing in common with the correct result. Example: 52.41°N 16.915°E, buffer 2 km — 6 old codes (`N-33-130-D-b-2-1`, ...) vs 9 correct codes from Kartograf (`N-33-130-D-b-3-3`, ...), zero in common. The `--geometry` path (bootstrap, full download of Poland) used `kartograf.find_sheets_for_geometry()` and was not affected. Fix: the new `utils/sheet_lookup.py::sheets_for_point_buffer()` delegates to `kartograf.find_sheets_for_bbox()` (WGS84→EPSG:2180) instead of our own sheet-code arithmetic; it replaced the old function in `download_dem.py` and `prepare_area.py`. Regression: `tests/unit/test_sheet_lookup.py`. Decision: ADR-057.
+- **`hydraulic_length_km`/`length_km` overstated 3.8-19.5× for headwater watersheds and understated for multi-node ones (tester feedback #11)** — `CatchmentGraph.aggregate_stats()` computed the flow path against the wrong base: for headwater watersheds (~52% of all, every threshold) it fell into a fallback that returned the absolute distance to the outlet of the WHOLE basin; for multi-node ones it subtracted the wrong quantity (the distance of the farthest cell of the outlet sub-catchment instead of the distance of the outlet itself). This spoiled `length_km`, the shape indices Cw/Cf/Cl and `tc` (Kirpich/NRCS), so whole hydrographs. The watershed boundary and the data in the database were geometrically correct. Fix: a new column `stream_catchments.outlet_flow_dist_m` (migration 003) as the only reference base, the absolute fallback removed, the `length_km` label in the GeoJSON of the flow path recomputed from the same base as the morphometry, a backfill of 54,390 existing records without re-running the pipeline (`scripts/backfill_outlet_flow_dist.py`). The precise mode is fixed automatically (an approximation: the base is the outlet of the node that contains the click). Details of the diagnosis: `notes/reports/2026-08-02-length-km-diagnosis.md`, decision: ADR-054.
+- A guard against a zero hydraulic length: single-cell watersheds use the geometric fallback of `length_km` instead of 0.0 (protects the tc calculation).
+- A CHECK constraint bug (root_outlet_id != id for the outlets of the network).
+- A copy-paste bug of the cache header in the sewer MVT tiles.
+- Single-transaction insert (removes the window of inconsistency between sewer_nodes and sewer_network).
+- **fix(docker):** NUMBA_CACHE_DIR=/tmp/numba_cache was added for the read-only rootfs.
+- The "Flow path" was shown twice in the front end (hydraulic_length_km = longest_flow_path_km); the duplicate is removed.
+- **Per-polygon simplify removed from stream_extraction** — `shapely.simplify(2*cellsize)` applied independently per sub-catchment left gaps between neighbouring watersheds (the shared edges were simplified differently). Raw geometries are stored in the database; the smoothing happens in the runtime merge pipeline.
+- **CatchmentGraph invalidation after cleanup** — `load()` had an early return `if self._loaded: return` that made a reload impossible after the data was regenerated. A new method `invalidate()` clears the flag and the lookup; it is called after TRUNCATE and before the reload.
+- **The browser cache for the pipeline data is off** — Nginx cached .pbf/.png/.geojson for 1h, so the data was stale after a pipeline re-run. Now `Cache-Control: no-store` for tiles/, data/, .pbf, .geojson; the cache only for css/js/ico.
+- **BDOT ST_Within fix** — `ST_Intersection` returned EMPTY for short DEM segments (<30 m) entirely inside the BDOT buffer. A `ST_Within` check before `ST_Intersection` was added in `update_stream_real_flags()`: overlap=1.0 when the segment is entirely in the buffer. The share of real streams rose from 25.9% to 31.5% (threshold 1000).
+- **Hydraulic length relative to the watershed outlet** — `aggregate_stats()` reported the raw `max_flow_dist_m` (the distance from the global outlet of the basin). It now subtracts the distance of the outlet of the selected watershed: `hydraulic_length = max(all) - outlet_dist`.
+- **nash_urban_fraction was always NULL** — the imperviousness was not passed from the land cover to build_morph_dict_from_graph().
+- **NRCS tc overstated (~608 min)** — the formula used channel_slope instead of mean_slope. Per TR-55, Y = the average watershed slope. tc: 608 → 200 min.
+- **FAA/Kerby — wrong use of length_km** — a new field `tc_overland_length_km` is required from the user instead of the automatic length_km (the watershed length ≠ the length of the overland flow).
+- **NRCS/Kirpich — hydraulic_length instead of channel_length** — `hydraulic_length_km` (the maximum flow path from the flow direction) is geometrically correct; `channel_length_km` only describes the lengths of the streams.
+- **Kerby-Kirpich — a corrected overland/channel split** — overland from `hydraulic_length_km` (fallback), channel from `real_channel_length_km` (BDOT matching).
+- **Fragmentation of `real_channel_length_km`** — a fix of the continuity of BDOT streams: the algorithm selects the longest continuous section of `is_real_stream=true` from the outlet (instead of summing scattered fragments).
+- **Main channel overlay** — `get_main_channel_feature_collection()` with the BDOT continuity logic, a correct distinction of the real and the algorithmic segments.
+- **fix(admin):** The dashboard timeout that blocked the login to the admin panel — a `_dir_size_mb` cache with a 30s TTL, `proxy_read_timeout` in nginx.
+- **fix(core):** Handling of `PermissionError` in all calls of `shutil.rmtree`.
+- **fix(docker):** The hydro UID/GID pinned to 999 for stable ownership of the bind mount.
+- **fix(docker):** The `user:0:0` override that broke file permissions was removed.
+- **BDOT main channel tracing (R1a/R2/R3)** — the `is_real_stream` tie-breaker in `trace_main_channel()`, gap tolerance `MAX_GAP=2` (a tolerance of 2 segments without BDOT), the matching buffer increased to 25 m.
+- **DownloadManager resolution** — the `resolution` parameter is passed by `run_pipeline()` instead of the global args, a correct DEM path.
+- **Main channel trace: upstream_area_km2 from stream_network** — the cumulative watershed area (`upstream_area_km2`) instead of the local `area_km2` of the sub-catchment. The local area_km2 was wrong: a small sub-catchment of a tributary could have a larger local area than the sub-catchment of the main stream.
+- **Cascade threshold escalation in select_stream** — `trace_main_channel` and `get_main_channel_feature_collection` now use the escalated threshold and `outlet_idx_for_stats` (instead of the original `clicked_idx` and `threshold`).
+- **WFS BBOX axis order (EPSG:2180)** — the WFS needed Y,X (northing, easting), not X,Y. The bug was masked for areas where X~Y.
+- **TERYT discovery: the mosaic bbox instead of the user bbox** — the DEM sheets extend beyond the user bbox; the TERYT lookup had to use the full extent of the mosaic.
+- **BDOT GeoJSON export clipped to the mosaic bbox** — the BDOT export is limited to the actual extent of the data.
+- **HSG and land cover: the mosaic bbox** — the preprocessing steps use the spatially correct extent.
+- **A duplicate computation of `flow_dist_m` in process_dem** — the same matrix was computed twice; the repetition was removed.
+- **`main_ch` UnboundLocalError in watershed_service** — a variable was uninitialized in the else branch; an initialization was added.
+- **`length_to_centroid_km` was a straight line instead of along the stream** — select_stream used the Euclidean distance; it now takes the value from the graph (along the channel).
+- **`hypsometric_integral` used the trapezoid method instead of the ratio** — select_stream used trapezoidal integration; it now takes the value from the graph: (H_mean - H_min) / (H_max - H_min).
+- Dockerfile: GDAL added, tippecanoe pinned to 2.79.0.
+- Bootstrap: a correct directory path in Docker, `sys.executable` instead of a hardcoded .venv.
+- **Topology discontinuities when merging sub-catchments:** three root causes — (1) ST_SimplifyPreserveTopology before the union destroyed the shared edges → replaced by ST_SnapToGrid; (2) the gap-closing buffer of 0.1 m was too small for gaps of 1-5 m → increased to 2.0 m; (3) ST_MakeValid after Chaikin split self-intersections into separate polygons → replaced by ST_Buffer(0), which keeps continuity.
+- **Missing MVT tiles after a regeneration from the admin panel:** empty answers of the tile API were cached by the browser for 24 h (`Cache-Control: max-age=86400`); empty tiles now have `no-store`. In addition the DEM tiles were skipped on a re-bootstrap (the skip guard `tiles_missing`); they are now always regenerated.
+- **504 timeout for large watersheds (ADR-042):** batched union with a pre-simplification for >100 segments, a simplified boundary for the land cover/HSG queries (18.5s → 1.6s), `_MAX_MERGE` 500→300. Response time: 95 km² = 7s (was 24s), 674 km² = 7s (was a timeout).
+- **CatchmentGraph auto-reload after a bootstrap:** the API reloads the watershed graph automatically when a bootstrap from the admin panel finishes (it needed a container restart before).
+- **Missing DEM sheets (38.6% NoData):** `bootstrap.py` uses `kartograf.find_sheets_for_bbox()` instead of its own `utils.sheet_finder` (91 → 192 sheets for the same bbox).
+- **Tippecanoe bottleneck at the threshold 1000:** zoom Z14-18 instead of Z8-18 for the catchments of threshold 1000 (7.5 h → 6.5 min).
+
+### Security
+- **CRITICAL: a full bypass of the admin panel authorization through the query param `expected_key`** — `verify_admin_key` had a keyword-only param `expected_key` without a FastAPI marker, so FastAPI exposed it as an optional query parameter on every `/api/admin` route. A client could supply both sides of the comparison (`?expected_key=x` + header `X-Admin-Key: x`) and get HTTP 200 without knowing the real key: unauthorized remote admin access (cleanup, bootstrap/start, feedback, system metrics), exploitable from the internet through the running Cloudflare Tunnel. Fix: the dependency `verify_admin_key` takes only the header `X-Admin-Key`; the logic moved to the internal `_check_admin_key`/`_resolve_expected_key` (a test seam outside the signature that FastAPI sees); the key comparison is the constant-time `secrets.compare_digest` instead of `!=` (removes a timing side channel). The regression `TestExpectedKeyNotClientSettable` checks that `expected_key` is absent from `app.openapi()` and that the bypass attempt is refused (403 then, 401 since ADR-059). Found in the security audit of the admin panel.
+- Path traversal in the upload endpoint of the sewer data (validation of the file name).
+- SQL injection in load_from_database (the table name is validated against an allowlist).
+- SSRF protection in load_from_url/wfs/database (an allowlist of domains/ports).
 
 ## [0.4.0] — 2026-03-03
 
