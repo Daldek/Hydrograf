@@ -1,16 +1,19 @@
 r"""
 Script to download land cover data from GUGiK (BDOT10k) or Copernicus (CORINE).
 
-Downloads land cover data for a specified area using Kartograf 0.7.0 library.
-Supports downloading by:
-- Point + buffer (finds TERYT code for the area)
+Downloads land cover data for a specified area into the Kartograf store of the pipeline
+(ADR-061) with ``kartograf.download_landcover``. Supports downloading by:
+- Point + buffer (every county the area intersects)
 - Sheet code (godlo)
 - TERYT code (4-digit county code)
-- Bounding box (EPSG:2180)
 
 Available data sources:
 - BDOT10k: Polish topographic database (all layers downloaded, hydro filtered on merge)
-- CORINE: European land cover classification (44 classes)
+- CORINE: European land cover classification (44 classes), a raster
+
+A file is a version of the store: the GeoPackage of a county is
+``<root>/landcover/pl_bdot10k_gpkg/teryt/<teryt>.gpkg``. A version that is already local
+is used again without a request (``--no-skip-existing`` fetches it again).
 
 Usage
 -----
@@ -24,12 +27,12 @@ Examples
     python -m scripts.download_landcover \
         --lat 52.23 --lon 21.01 \
         --buffer 5 \
-        --output ../data/landcover/
+        --root ../cache/kartograf/
 
     # Download BDOT10k for specific TERYT code (powiat)
     python -m scripts.download_landcover \
         --teryt 1465 \
-        --output ../data/landcover/
+        --root ../cache/kartograf/
 
     # Download CORINE land cover
     python -m scripts.download_landcover \
@@ -42,10 +45,13 @@ import argparse
 import logging
 import sys
 import time
-import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
-import requests
+from utils.kartograf_store import describe_error, store_dir
+
+if TYPE_CHECKING:
+    from kartograf import LandCoverReport
 
 # Configure logging
 logging.basicConfig(
@@ -54,143 +60,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
-
-
-def download_landcover(
-    output_dir: Path,
-    provider: str = "bdot10k",
-    teryt: str | None = None,
-    godlo: str | None = None,
-    lat: float | None = None,
-    lon: float | None = None,
-    buffer_km: float = 5.0,
-    year: int = 2018,
-    skip_existing: bool = True,
-) -> Path | None:
-    """
-    Download land cover data using Kartograf.
-
-    Parameters
-    ----------
-    output_dir : Path
-        Output directory for downloaded files
-    provider : str
-        Data provider: 'bdot10k' or 'corine' (default: 'bdot10k')
-    teryt : str, optional
-        4-digit TERYT code (county/powiat)
-    godlo : str, optional
-        Sheet code (e.g., 'N-34-131-C-c-2-1')
-    lat : float, optional
-        Latitude (WGS84) - requires lon
-    lon : float, optional
-        Longitude (WGS84) - requires lat
-    buffer_km : float
-        Buffer radius in kilometers when using lat/lon
-    year : int
-        Reference year for CORINE data (default: 2018)
-    skip_existing : bool
-        Skip download if file already exists
-
-    Returns
-    -------
-    Path or None
-        Path to downloaded file, or None if download failed
-
-    Raises
-    ------
-    ImportError
-        If Kartograf is not installed
-    ValueError
-        If invalid parameters provided
-    """
-    try:
-        from kartograf.landcover import LandCoverManager
-    except ImportError as e:
-        logger.error(
-            "Kartograf 0.7.0 not installed. Run `uv sync --locked` in backend/."
-        )
-        raise ImportError("Kartograf library not found or version too old") from e
-
-    # Ensure output directory exists
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Initialize LandCoverManager
-    manager = LandCoverManager(output_dir=str(output_dir), provider=provider)
-
-    logger.info(f"Provider: {provider.upper()}")
-    logger.info(f"Output directory: {output_dir}")
-
-    # Determine download method
-    if teryt:
-        logger.info(f"Downloading by TERYT: {teryt}")
-        output_path = output_dir / f"{provider}_teryt_{teryt}.gpkg"
-
-        if skip_existing and output_path.exists():
-            logger.info(f"File already exists, skipping: {output_path}")
-            return output_path
-
-        try:
-            result = manager.download_by_teryt(teryt, output_path=output_path)
-            return Path(result)
-        except Exception as e:
-            logger.error(f"Download failed: {e}")
-            return None
-
-    elif godlo:
-        logger.info(f"Downloading by sheet code: {godlo}")
-        output_path = output_dir / f"{provider}_godlo_{godlo.replace('-', '_')}.gpkg"
-
-        if skip_existing and output_path.exists():
-            logger.info(f"File already exists, skipping: {output_path}")
-            return output_path
-
-        try:
-            kwargs = {"year": year} if provider == "corine" else {}
-            result = manager.download_by_godlo(godlo, output_path=output_path, **kwargs)
-            return Path(result)
-        except Exception as e:
-            logger.error(f"Download failed: {e}")
-            return None
-
-    elif lat is not None and lon is not None:
-        # Convert point to TERYT or bbox
-        logger.info(f"Finding area for point ({lat}, {lon}) with {buffer_km} km buffer")
-
-        try:
-            # Transform to PL-1992 for bbox
-            sys.path.insert(0, str(Path(__file__).parent.parent))
-            from utils.geometry import transform_wgs84_to_pl1992
-
-            x, y = transform_wgs84_to_pl1992(lat, lon)
-
-            # Create bbox with buffer
-            buffer_m = buffer_km * 1000
-            from kartograf import BBox
-
-            bbox = BBox(
-                x - buffer_m, y - buffer_m, x + buffer_m, y + buffer_m, "EPSG:2180"
-            )
-
-            output_path = output_dir / f"{provider}_bbox_{int(x)}_{int(y)}.gpkg"
-
-            if skip_existing and output_path.exists():
-                logger.info(f"File already exists, skipping: {output_path}")
-                return output_path
-
-            logger.info(f"Downloading by bbox: {bbox}")
-            kwargs = {"year": year} if provider == "corine" else {}
-            result = manager.download_by_bbox(bbox, output_path=output_path, **kwargs)
-            return Path(result)
-
-        except Exception as e:
-            logger.error(f"Download failed: {e}")
-            return None
-
-    else:
-        raise ValueError(
-            "Either --teryt, --godlo, or both --lat and --lon are required"
-        )
-
 
 HYDRO_LAYER_PREFIXES = ("SWRS", "SWKN", "SWRM", "PTWP")
 
@@ -282,180 +151,86 @@ def merge_hydro_gpkgs(gpkg_paths: list[Path], output_path: Path) -> Path | None:
     return output_path
 
 
-def _generate_sample_coords(start: float, end: float, spacing: float) -> list[float]:
+def fetch_landcover(
+    root: Path,
+    provider: str = "bdot10k",
+    teryt: str | None = None,
+    godlo: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None,
+    buffer_km: float = 5.0,
+    year: int = 2018,
+    skip_existing: bool = True,
+    metadata_cache_path: Path | None = None,
+) -> "LandCoverReport":
     """
-    Generate sample coordinates between start and end (inclusive).
-
-    For ranges smaller than spacing, returns [start, midpoint, end].
-    For start == end, returns [start].
-    """
-    if start == end:
-        return [start]
-
-    lo, hi = min(start, end), max(start, end)
-    extent = hi - lo
-
-    if extent < spacing:
-        return [lo, lo + extent / 2.0, hi]
-
-    n_steps = max(1, int(extent / spacing))
-    step = extent / n_steps
-    coords = [lo + i * step for i in range(n_steps)]
-    coords.append(hi)
-    return coords
-
-
-_WFS_PRG_URL = (
-    "https://mapy.geoportal.gov.pl/wss/service/PZGIK/PRG/WFS/AdministrativeBoundaries"
-)
-
-
-def _discover_teryts_grid(
-    bbox_2180: tuple[float, float, float, float],
-    spacing_m: float = 2000.0,
-) -> list[str]:
-    """
-    Discover TERYT codes by grid-sampling WMS points (legacy fallback).
-
-    Samples a grid of points within the bbox and queries WMS to find
-    the TERYT code at each point. Returns a sorted list of unique codes.
+    Download land cover data into the Kartograf store ``root``.
 
     Parameters
     ----------
-    bbox_2180 : tuple
-        Bounding box in EPSG:2180: (min_x, min_y, max_x, max_y)
-    spacing_m : float
-        Grid spacing in meters (default: 2000)
+    root : Path
+        Kartograf store (``<cache>/kartograf``); a new or empty directory becomes one.
+    provider : str
+        Data provider: 'bdot10k' or 'corine' (default: 'bdot10k')
+    teryt : str, optional
+        4-digit TERYT code (county/powiat); BDOT10k only
+    godlo : str, optional
+        Sheet code (e.g., 'N-34-131-C-c-2-1')
+    lat : float, optional
+        Latitude (WGS84) - requires lon
+    lon : float, optional
+        Longitude (WGS84) - requires lat
+    buffer_km : float
+        Buffer radius in kilometers when using lat/lon; the area is the square around
+        the point and BDOT10k covers every county it intersects
+    year : int
+        Reference year for CORINE data (default: 2018); not used for BDOT10k, whose
+        ``year`` of Kartograf is the yearly archive
+    skip_existing : bool
+        Use a local version without a request (default: True); False fetches the
+        files again (a new version, or the same one)
+    metadata_cache_path : Path, optional
+        SQLite file of the Kartograf metadata cache; none by default
 
     Returns
     -------
-    list[str]
-        Sorted list of unique 4-digit TERYT codes
-    """
-    from kartograf import Bdot10kProvider
+    kartograf.LandCoverReport
+        ``files`` (one per county, sheet or area), ``failed`` and ``ok``
 
-    # Kartograf nie ma publicznego API "TERYT dla punktu bez pobierania danych" —
-    # korzystamy z prywatnej metody, wiec kontrakt pilnuje test_download_landcover.py.
-    if not callable(getattr(Bdot10kProvider, "_get_teryt_for_point", None)):
-        raise RuntimeError(
-            "Bdot10kProvider._get_teryt_for_point nie istnieje w zainstalowanej "
-            "wersji Kartografa — prywatne API zmienilo sie, popraw "
-            "_discover_teryts_grid w scripts/download_landcover.py"
+    Raises
+    ------
+    ValueError
+        No area given.
+    kartograf.KartografError
+        A request that Kartograf refuses or a store that refuses the write; see
+        ``utils.kartograf_store.describe_error``.
+    """
+    from kartograf import MetadataCache, download_landcover
+
+    from utils.sheet_lookup import point_buffer_bbox
+
+    request: dict[str, Any]
+    if teryt:
+        request = {"teryt": teryt}
+    elif godlo:
+        request = {"sheet": godlo}
+    elif lat is not None and lon is not None:
+        logger.info(f"Finding area for point ({lat}, {lon}) with {buffer_km} km buffer")
+        request = {"bbox": point_buffer_bbox(lat, lon, buffer_km)}
+    else:
+        raise ValueError(
+            "Either --teryt, --godlo, or both --lat and --lon are required"
         )
+    if provider == "corine":
+        request["year"] = year
 
-    min_x, min_y, max_x, max_y = bbox_2180
-    xs = _generate_sample_coords(min_x, max_x, spacing_m)
-    ys = _generate_sample_coords(min_y, max_y, spacing_m)
-
-    provider = Bdot10kProvider()
-    teryts: set[str] = set()
-
-    for x in xs:
-        for y in ys:
-            try:
-                teryt = provider._get_teryt_for_point(x, y)
-                teryts.add(teryt)
-                logger.info(f"Point ({x:.0f}, {y:.0f}) → TERYT {teryt}")
-            except Exception as e:
-                logger.debug(f"Point ({x:.0f}, {y:.0f}) — no TERYT: {e}")
-
-    result = sorted(teryts)
-    logger.info(f"Discovered {len(result)} TERYT(s) for bbox (grid): {result}")
-    return result
-
-
-def _parse_teryts_from_gml(gml_text: str) -> set[str]:
-    """
-    Extract TERYT codes (JPT_KOD_JE) from a WFS GML response.
-
-    Uses a namespace-agnostic search to handle varying GML schemas.
-
-    Parameters
-    ----------
-    gml_text : str
-        Raw GML/XML text from WFS GetFeature response
-
-    Returns
-    -------
-    set[str]
-        Unique TERYT codes found in the response
-    """
-    teryts: set[str] = set()
-    try:
-        root = ET.fromstring(gml_text)
-    except ET.ParseError as exc:
-        logger.warning(f"Nie udało się sparsować odpowiedzi GML: {exc}")
-        return teryts
-
-    # Namespace-agnostic: find any element whose local name is JPT_KOD_JE
-    for elem in root.iter():
-        local_name = elem.tag.rsplit("}", 1)[-1] if "}" in elem.tag else elem.tag
-        if local_name == "JPT_KOD_JE" and elem.text:
-            code = elem.text.strip()
-            if code:
-                teryts.add(code)
-
-    return teryts
-
-
-def discover_teryts_for_bbox(
-    bbox_2180: tuple[float, float, float, float],
-    spacing_m: float = 2000.0,
-) -> list[str]:
-    """
-    Discover all TERYT codes (powiaty) that cover a bounding box.
-
-    Primary method: single WFS GetFeature request with BBOX filter
-    to PRG (Państwowy Rejestr Granic) service. Falls back to legacy
-    grid-sampling if WFS is unavailable.
-
-    Parameters
-    ----------
-    bbox_2180 : tuple
-        Bounding box in EPSG:2180: (min_x, min_y, max_x, max_y)
-    spacing_m : float
-        Grid spacing in meters for fallback method (default: 2000)
-
-    Returns
-    -------
-    list[str]
-        Sorted list of unique 4-digit TERYT codes
-    """
-    min_x, min_y, max_x, max_y = bbox_2180
-
-    # WFS 2.0.0 respects the official CRS axis order.
-    # EPSG:2180 (PL-CS92) has northing (Y) first, easting (X) second,
-    # so BBOX must be: min_y, min_x, max_y, max_x (not min_x, min_y, max_x, max_y).
-    params = {
-        "service": "WFS",
-        "version": "2.0.0",
-        "request": "GetFeature",
-        "typeName": "ms:A02_Granice_powiatow",
-        "srsName": "EPSG:2180",
-        "BBOX": f"{min_y},{min_x},{max_y},{max_x},EPSG:2180",
-        "propertyName": "JPT_KOD_JE,JPT_NAZWA_",
-    }
-
-    logger.debug(f"WFS request: {_WFS_PRG_URL} params={params}")
-
-    try:
-        response = requests.get(_WFS_PRG_URL, params=params, timeout=30)
-        response.raise_for_status()
-    except Exception as exc:
-        logger.warning(
-            f"WFS PRG niedostępny ({exc}), przełączam na grid sampling (wolniejszy)"
-        )
-        return _discover_teryts_grid(bbox_2180, spacing_m=spacing_m)
-
-    teryts = _parse_teryts_from_gml(response.text)
-
-    if not teryts:
-        logger.warning("WFS zwrócił 0 TERYT-ów, przełączam na grid sampling")
-        return _discover_teryts_grid(bbox_2180, spacing_m=spacing_m)
-
-    result = sorted(teryts)
-    logger.info(f"Discovered {len(result)} TERYT(s) for bbox (WFS): {result}")
-    return result
+    return download_landcover(
+        product=provider,
+        root=root,
+        update=None if skip_existing else "force",
+        cache=MetadataCache(metadata_cache_path) if metadata_cache_path else False,
+        **request,
+    )
 
 
 def main():
@@ -516,16 +291,27 @@ def main():
     # Output options
     output_group = parser.add_argument_group("Output")
     output_group.add_argument(
-        "--output",
-        "-o",
+        "--root",
         type=str,
-        default="../data/landcover/",
-        help="Output directory (default: ../data/landcover/)",
+        default=str(store_dir(Path("../cache"))),
+        help=(
+            "Kartograf store (default: ../cache/kartograf); a new or empty "
+            "directory becomes a store, one that holds other files is refused"
+        ),
+    )
+    output_group.add_argument(
+        "--metadata-cache",
+        type=Path,
+        default=None,
+        help=(
+            "SQLite file of the Kartograf metadata cache (default: none; "
+            "local disk, outside --root)"
+        ),
     )
     output_group.add_argument(
         "--no-skip-existing",
         action="store_true",
-        help="Re-download files even if they exist",
+        help="Fetch the files again even if a version is local",
     )
 
     # Dry run
@@ -546,12 +332,12 @@ def main():
     if args.lon is not None and args.lat is None:
         parser.error("--lon requires --lat")
 
-    output_dir = Path(args.output)
+    root = Path(args.root)
     skip_existing = not args.no_skip_existing
 
     # Log configuration
     logger.info("=" * 60)
-    logger.info("Land Cover Download Script (Kartograf 0.7.0)")
+    logger.info("Land Cover Download Script (Kartograf)")
     logger.info("=" * 60)
     logger.info(f"Provider: {args.provider.upper()}")
 
@@ -566,7 +352,7 @@ def main():
     if args.provider == "corine":
         logger.info(f"Year: {args.year}")
 
-    logger.info(f"Output: {output_dir}")
+    logger.info(f"Store: {root}")
     logger.info(f"Skip existing: {skip_existing}")
     logger.info("=" * 60)
 
@@ -578,8 +364,8 @@ def main():
     start_time = time.time()
 
     try:
-        result = download_landcover(
-            output_dir=output_dir,
+        report = fetch_landcover(
+            root=root,
             provider=args.provider,
             teryt=args.teryt,
             godlo=args.godlo,
@@ -588,26 +374,29 @@ def main():
             buffer_km=args.buffer,
             year=args.year,
             skip_existing=skip_existing,
+            metadata_cache_path=args.metadata_cache,
         )
-    except ImportError as e:
-        logger.error(str(e))
-        sys.exit(1)
     except Exception as e:
-        logger.error(f"Download failed: {e}")
+        logger.error(f"Download failed: {describe_error(e)}")
         sys.exit(1)
 
     elapsed = time.time() - start_time
 
     # Summary
     logger.info("=" * 60)
-    if result:
+    if report.ok:
         logger.info("Download complete!")
-        logger.info(f"  File: {result}")
-        logger.info(f"  Size: {result.stat().st_size / 1024 / 1024:.1f} MB")
     else:
-        logger.warning("Download failed!")
+        logger.warning("Download incomplete!")
+    for item in report.files:
+        size_mb = item.file.size_bytes / 1024 / 1024
+        logger.info(f"  {item.unit}: {item.file.path} ({size_mb:.1f} MB)")
+    for failure in report.failed:
+        logger.warning(f"  {failure.unit}: {failure.error}")
     logger.info(f"  Time elapsed: {elapsed:.1f}s")
     logger.info("=" * 60)
+    if not report.ok:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

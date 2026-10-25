@@ -68,6 +68,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-058](decisions/0058-adopt-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | accepted | 2026-10-25 |
 | [ADR-059](decisions/0059-rest-errors-as-problem-json.md) | REST errors as problem+json with registry codes | accepted | 2026-10-25 |
 | [ADR-060](decisions/0060-pin-producer-heads-by-commit.md) | Pin the Hydrolog and IMGWTools heads by commit | accepted | 2026-10-25 |
+| [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | accepted | 2026-10-25 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were
@@ -1331,3 +1332,5 @@ Dodatkowe zmiany:
 - b) zostaje - `kartograf.download_pl_cutout` (publiczne) i `kartograf.transport.mosaic.mosaic_and_crop` (nieeksportowane, krok wewnetrzny) daja identyczny pikselowo wynik i glosne braki, ale NIE zastepuja VRT Hydrografu: tworza fizyczny GeoTIFF (koszt dysku/czasu przy duzych obszarach), odrzucaja arkusze PL-2000, a przy roznej fazie siatki rzucaja `GridMismatchError`. `merge_hydro_gpkgs()` bez odpowiednika.
 - c) bez zmian.
 Kandydat do upstreamu "publiczne discover_teryts_for_bbox()" pozostaje otwarty.
+
+**Update 2026-10-25 (ADR-061, Kartograf 0.8.0 head):** exception a) is closed: Kartograf has the public `discover_teryts_for_bbox`, and `download_landcover(bbox=)` finds the counties of an area itself, so the WFS code of Hydrograf, the fallback through the private method and its contract test are deleted. Exceptions b) and c) stand.

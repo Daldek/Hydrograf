@@ -29,6 +29,7 @@ Przykłady:
 """
 
 import argparse
+import fnmatch
 import json
 import logging
 import sys
@@ -39,6 +40,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from utils.kartograf_store import metadata_cache_path, store_dir
 
 # Configure logging
 logging.basicConfig(
@@ -91,6 +94,8 @@ class AnalysisConfig:
 
     # Ścieżki
     data_dir: Path = Path("../data")
+    # Cache of the downloads: the Kartograf store is <cache_dir>/kartograf (ADR-061)
+    cache_dir: Path = Path("../cache")
     output_dir: Path = Path("../data/results")
 
     # Flagi
@@ -107,6 +112,7 @@ class AnalysisConfig:
     def __post_init__(self):
         """Normalise the paths and create the output directory."""
         self.data_dir = Path(self.data_dir)
+        self.cache_dir = Path(self.cache_dir)
         self.output_dir = Path(self.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -116,23 +122,28 @@ class AnalysisConfig:
 # =============================================================================
 
 
-def find_existing_nmt_files(data_dir: Path, resolution: str = "5m") -> list[Path]:
-    """Znajdź pobrane arkusze NMT w segmencie Kartografa dla rozdzielczości.
+def find_existing_nmt_files(cache_dir: Path, resolution: str = "5m") -> list[Path]:
+    """Find the NMT sheets of the Kartograf store of the cache for a resolution.
 
-    Szuka wyłącznie w ``<data_dir>/nmt/pl_*_<resolution>_evrf2007/`` (bez
-    ``kampanie/``), więc nie wciąga innych rozdzielczości ani produktów
-    pośrednich (``reprojected/``, mozaiki).
+    Reads the store ``<cache_dir>/kartograf`` through its read API: the standard
+    path of each sheet of the segments ``nmt/pl_*_<resolution>_evrf2007`` (the
+    newest flight of the sheet), so it takes neither the copies of the versions
+    (``versions/``) nor the links of ``full_sheet/``, other resolutions or the
+    intermediate products.
     """
-    nmt_dir = data_dir / "nmt"
+    from kartograf import iter_store, list_segments
+
+    root = store_dir(cache_dir)
     files = sorted(
-        p
-        for segment in nmt_dir.glob(f"pl_*_{resolution}_evrf2007")
-        for p in segment.rglob("*.asc")
-        if "kampanie" not in p.relative_to(segment).parts
+        entry.path
+        for segment in (list_segments(root) if root.is_dir() else [])
+        if fnmatch.fnmatchcase(segment, f"nmt/pl_*_{resolution}_evrf2007")
+        for entry in iter_store(root, segment=segment)
+        if entry.kind == "link"
     )
     if not files:
         raise FileNotFoundError(
-            f"Brak plików NMT {resolution} w {nmt_dir}/pl_*_{resolution}_evrf2007/ "
+            f"Brak plików NMT {resolution} w {root}/nmt/pl_*_{resolution}_evrf2007/ "
             "— uruchom z --download"
         )
     return files
@@ -144,17 +155,16 @@ def download_nmt_data(config: AnalysisConfig) -> list[Path]:
     logger.info("KROK 1: Pobieranie NMT z GUGiK")
     logger.info("=" * 60)
 
-    config.data_dir.mkdir(parents=True, exist_ok=True)
-    from scripts.download_dem import METADATA_CACHE_NAME
-
-    metadata_cache_path = config.data_dir / METADATA_CACHE_NAME
+    config.cache_dir.mkdir(parents=True, exist_ok=True)
+    root = store_dir(config.cache_dir)
+    metadata_cache = metadata_cache_path(config.cache_dir)
 
     # Jeśli podano konkretne kafle, użyj ich
     if config.tiles:
         from scripts.download_dem import download_sheets
 
         logger.info(f"Pobieranie {len(config.tiles)} kafli: {config.tiles}")
-        report = download_sheets(config.tiles, config.data_dir, metadata_cache_path)
+        report = download_sheets(config.tiles, root, metadata_cache)
     else:
         # Użyj bufora wokół punktu
         from scripts.download_dem import download_for_point
@@ -163,8 +173,8 @@ def download_nmt_data(config: AnalysisConfig) -> list[Path]:
             lat=config.latitude,
             lon=config.longitude,
             buffer_km=config.buffer_km,
-            output_dir=config.data_dir,
-            metadata_cache_path=metadata_cache_path,
+            root=root,
+            metadata_cache_path=metadata_cache,
             scale=config.scale,
         )
 
@@ -293,7 +303,7 @@ def calculate_morphometry(
         default_cn=config.default_cn,
         use_kartograf=config.use_kartograf_cn,
         boundary_wgs84=watershed["boundary_wgs84"],
-        data_dir=config.data_dir,
+        cache_dir=config.cache_dir,
         teryt=config.teryt,
     )
 
@@ -1094,7 +1104,7 @@ def analyze_watershed(config: AnalysisConfig) -> dict[str, Any]:
     if config.process_dem:
         # Znajdź pliki NMT jeśli nie pobrano nowych
         if not downloaded_files:
-            downloaded_files = find_existing_nmt_files(config.data_dir)
+            downloaded_files = find_existing_nmt_files(config.cache_dir)
             logger.info(f"Znaleziono {len(downloaded_files)} istniejących plików NMT")
 
         if downloaded_files:

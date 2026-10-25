@@ -235,7 +235,10 @@ async def fetch_pmaxtp_for_point(
             DURATIONS, DURATION_MINUTES, strict=False
         ):
             for prob in PROBABILITIES:
-                precip = result.data.get_precipitation(duration_min, prob)
+                precip = result.data.get_precipitation(
+                    duration_min,
+                    prob,  # type: ignore[arg-type]  # annotated int, keys are str(percent)
+                )
                 scenarios[(duration_str, prob)] = precip
 
         # Rate limiting delay
