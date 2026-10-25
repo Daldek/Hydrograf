@@ -25,6 +25,12 @@ from api.endpoints import (
     tiles,
     watershed,
 )
+from api.errors import (
+    install_error_handlers,
+    install_openapi,
+    operation_id,
+    problem_responses,
+)
 from core.catchment_graph import get_catchment_graph
 from core.config import get_settings
 from core.database import get_db_session
@@ -81,10 +87,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="Hydrograf API",
-    description="System analizy hydrologicznej - wyznaczanie zlewni i hydrogramów",
+    description=(
+        "Hydrological analysis system: watershed delineation, catchment parameters "
+        "and design hydrographs in Poland. Errors are `application/problem+json` "
+        "with a code of the shared Nogat error registry; texts follow "
+        "`Accept-Language` (English by default, `pl` for Polish)."
+    ),
     version=get_version(),
     lifespan=lifespan,
+    generate_unique_id_function=operation_id,
 )
+install_error_handlers(app)
+install_openapi(app)
 
 # CORS middleware - origins from environment variable
 cors_origins = [origin.strip() for origin in settings.cors_origins.split(",")]
@@ -93,7 +107,7 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept", "X-Admin-Key"],
+    allow_headers=["Content-Type", "Accept", "Accept-Language", "X-Admin-Key"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
@@ -113,14 +127,34 @@ async def add_request_id(
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
-app.include_router(watershed.router, prefix="/api", tags=["Watershed"])
+app.include_router(
+    watershed.router,
+    prefix="/api",
+    tags=["Watershed"],
+    responses=problem_responses(404, 422, 503),
+)
 app.include_router(hydrograph.router, prefix="/api", tags=["Hydrograph"])
 app.include_router(tiles.router, prefix="/api", tags=["Tiles"])
-app.include_router(profile.router, prefix="/api", tags=["Profile"])
+app.include_router(
+    profile.router,
+    prefix="/api",
+    tags=["Profile"],
+    responses=problem_responses(404, 503),
+)
 app.include_router(depressions.router, prefix="/api", tags=["Depressions"])
 app.include_router(feedback.router, prefix="/api", tags=["Feedback"])
-app.include_router(feedback.admin_router, prefix="/api/admin", tags=["Admin"])
-app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(
+    feedback.admin_router,
+    prefix="/api/admin",
+    tags=["Admin"],
+    responses=problem_responses(401),
+)
+app.include_router(
+    admin.router,
+    prefix="/api/admin",
+    tags=["Admin"],
+    responses=problem_responses(401),
+)
 
 
 @app.get("/")

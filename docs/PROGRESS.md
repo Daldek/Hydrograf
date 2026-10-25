@@ -18,9 +18,9 @@ sessions 98 and 99 are only on the unmerged branch `feature/kartograf-wykorzysta
 | Nogat standard 2.1, quality tooling | done | `ruff format` (`2347433`), the rule set of DEV-7.2 (`39eb15e`), mypy `strict` over `api core models scripts utils tests` (`98178c5`, clean, 144 files), the pytest settings (`--strict-markers`, markers `live`, `db`, `slow`, `benchmark`, `tests/contract`, coverage floor 70 as a recorded deviation of DEV-7.5), the gate, CI and Dependabot |
 | Nogat standard 2.1, contribution files | done, CLA text open | `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md` and `.github/PULL_REQUEST_TEMPLATE.md` with the CLA checkbox (DEV-13.7, DEV-16.2, DEV-16.4); `docs/CLA.md` is the author's text and does not exist yet, so `CONTRIBUTING.md` and the template name it without a link |
 | Nogat standard 2.1, documentation | in progress | done: this file, [BACKLOG.md](BACKLOG.md), `CLAUDE.md` in English with the Deviations section (`docs/DEVELOPMENT_STANDARDS.md` is deleted, DEV-1.3), the README in the order of DOC-2.1 with its contract test, the ADR index and ADR-058 (the adoption); the Polish documents are still to translate (Next 1, Translations) |
-| Nogat standard 2.1, error registry and REST (ERR-1 to ERR-6, DEV-11.1, AGI-6.2 to AGI-6.4) | in progress | done: the vendored registry and schemas in `schemas/nogat/`, the generated `core/_errors.py` with its drift test; planned: `HydrografError`, `application/problem+json`, `Accept-Language`, OpenAPI `operationId`s |
+| Nogat standard 2.1, error registry and REST (ERR-1 to ERR-6, DEV-11.1, AGI-6.2 to AGI-6.4) | done, see Next | the vendored registry and schemas in `schemas/nogat/`, the generated `core/_errors.py`, `HydrografError` with the message catalogue, `application/problem+json` with `Accept-Language`, OpenAPI `operationId`s, ADR-059 and the contract tests; the loose ends are in Next 1 (Error registry and REST) |
 | Data output (DEV §19, ECO-051) | planned | profile `app` consumes Kartograf in store mode; waits for the first release set; call sites in Next 2 |
-| Gate | done | `scripts/gate.sh` and `scripts/check-commits.sh` (unchanged from Nogat). The gate runs in `backend/`: `uv sync --locked --all-extras`, `ruff format --check`, `ruff check`, `mypy`, `pytest tests -m 'not live and not db and not benchmark' --cov` (1,176 passed in 21 s, 73% covered), then the commit step from the repository root. The commit step fails on the commits of `develop` that are not on `origin/develop` (19 of them: author `agent@local`, AI trailers; the history rewrite of phase 1 is the author's), so this branch is gated with `GATE_COMMIT_RANGE=develop..HEAD scripts/gate.sh`, which checks the commits of the branch only. The `db` tests are not run here (no database) |
+| Gate | done | `scripts/gate.sh` and `scripts/check-commits.sh` (unchanged from Nogat). The gate runs in `backend/`: `uv sync --locked --all-extras`, `ruff format --check`, `ruff check`, `mypy`, `pytest tests -m 'not live and not db and not benchmark' --cov` (1,232 passed in 34 s, 74% covered), then the commit step from the repository root. The commit step fails on the commits of `develop` that are not on `origin/develop` (19 of them: author `agent@local`, AI trailers; the history rewrite of phase 1 is the author's), so this branch is gated with `GATE_COMMIT_RANGE=develop..HEAD scripts/gate.sh`, which checks the commits of the branch only. The `db` tests are not run here (no database) |
 | CI | done, not run | `.github/workflows/ci.yml` is the `app` variant of `standards/ci`: the `gate` job runs `scripts/gate.sh` on Linux (Python 3.12, and 3.15 as a reported job), the `db` job runs the `db` tests against PostGIS after `alembic upgrade head`, the `audit` job runs `pip-audit` over the locked PyPI packages (not a required check). `.github/dependabot.yml` updates the actions weekly. There is no `live.yml`: no test has the `live` marker. Nothing is pushed, so no job has run; the `db` job and the migrations in it are unverified (no database here) |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
@@ -66,14 +66,16 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      move to `docs/plans/` after translation, without `Approved:` lines (the author approves).
      The links of the ADR index in `docs/DECISIONS.md` follow the Polish headings of
      ADR-001 to ADR-057; translating a heading means regenerating its link.
-   - **Error registry and REST.** The registry, the schemas and `core/_errors.py` are done.
-     Left: `HydrografError` with `code`, `message`, `details`, `hint`
-     (DEV-11.1); `application/problem+json` for every error with `type`, `title`, `status`,
-     `detail`, `instance`, `code`, `hint`, `details` and `errors[]` with JSON Pointers; the
-     status from the registry (validation errors become 400, not 422); English texts by
-     default and Polish with `Accept-Language: pl` (the front end sends it); OpenAPI
-     `operationId` from `generate_unique_id_function`; contract tests (AGI-6.2 to AGI-6.4,
-     AGI-6.6, ERR-3, ERR-4). The 68 `HTTPException`s in `backend/api` are the starting point.
+   - **Error registry and REST: loose ends.** Done: registry, `HydrografError`, the catalogue
+     of 45 messages, problem documents, `Accept-Language`, OpenAPI ids, contract tests.
+     Left: `frontend/js/admin/admin-sewer.js` (5 `fetch` calls) does not send
+     `Accept-Language` yet; the admin operations document `401` only, so `404` and `409` of
+     `bootstrap/start`, `bootstrap/cancel` and the feedback routes are undocumented; the 429
+     of nginx (`limit_req`) and its gateway errors are plain responses, and an `error_page`
+     that returns a problem document would close AGI-6.3; the validation texts in `errors[]`
+     are pydantic's English; the texts of core exceptions that reach `details.cause`
+     (`invalid_parameters`, `invalid_bbox`, `invalid_boundary_file`) are whatever the
+     library said.
    - **Other gaps found**, not in scope of a step: logs use f-strings (DEV-12.3), 60 lines of
      JavaScript are longer than 100 columns and the modules are IIFEs, not ES modules
      (DEV-15.1), the front end has Polish text inline (DEV-15.2), `tests/performance` stands

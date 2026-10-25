@@ -72,13 +72,13 @@ class TestSubmitFeedback:
         assert params["user_agent"] == "TestBrowser/1.0"
         app.dependency_overrides.clear()
 
-    def test_empty_message_returns_422(self, client):
+    def test_empty_message_returns_400(self, client):
         response = client.post("/api/feedback", json={"message": ""})
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_message_too_long_returns_422(self, client):
+    def test_message_too_long_returns_400(self, client):
         response = client.post("/api/feedback", json={"message": "x" * 5001})
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_db_error_returns_500_and_rolls_back(self, client):
         db = MagicMock()

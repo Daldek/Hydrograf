@@ -142,10 +142,26 @@ Developing this repository? Read
 
 ## Errors and exit codes
 
-Errors are JSON answers with an HTTP status: 400 for an invalid request, 404 when there is
-no stream or catchment at the point, 429 when the rate limit of the web server is exceeded
-and 500 for a server error. The preprocessing scripts exit with 0 on success and 1 on
-failure, and with 2 when the command line is invalid.
+Every error of the API is `application/problem+json` (RFC 9457) with `type` (the entry of
+the code in the
+[shared registry](https://github.com/Daldek/Nogat/blob/main/standards/ERROR_REGISTRY.md)),
+`title`, `status`, `detail`, `instance`, `code`, `hint` when a fix is known, `details` (its
+`reason` names the cause) and, for invalid values, `errors[]` with a JSON Pointer for each
+value. The HTTP status comes from the registry: invalid requests are 400, not 422. The
+texts are English, and Polish with `Accept-Language: pl` (the interface sends it); codes
+and `details` do not change with the language. The five codes you meet most:
+
+| Code | Status | When |
+|---|---|---|
+| `validation_error` | 400 | a value of the request is wrong; see `errors[]` |
+| `not_found` | 404 | no catchment at the point, or an unknown route |
+| `no_data` | 404 | the request is valid but there is no precipitation or elevation data |
+| `unsupported` | 422 | the catchment is above 250 km² or lacks the parameters of the chosen model |
+| `unauthorized` | 401 | the `X-Admin-Key` of the admin panel is missing or wrong |
+
+Errors of the web server itself (429 when the rate limit is exceeded, gateway errors) are
+not problem documents. The preprocessing scripts exit with 0 on success and 1 on failure,
+and with 2 when the command line is invalid.
 
 ## Data and licensing
 

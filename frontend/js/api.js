@@ -9,6 +9,18 @@
 
     window.Hydrograf = window.Hydrograf || {};
 
+    /**
+     * fetch() that asks for Polish error texts: the API answers in English
+     * without Accept-Language (AGI-6.4).
+     */
+    function apiFetch(url, options) {
+        var opts = Object.assign({}, options);
+        var headers = new Headers(opts.headers || {});
+        if (!headers.has('Accept-Language')) headers.set('Accept-Language', 'pl');
+        opts.headers = headers;
+        return fetch(url, opts);
+    }
+
     const ERROR_MESSAGES = {
         400: 'Nieprawidłowe żądanie. Sprawdź współrzędne i spróbuj ponownie.',
         404: 'Nie znaleziono linii spływu w tym miejscu. Kliknij bliżej linii spływu.',
@@ -86,7 +98,7 @@
         var cached = _cacheGet(key);
         if (cached) return cached;
 
-        const response = await fetch('/api/terrain-profile', {
+        const response = await apiFetch('/api/terrain-profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ geometry: lineGeojson, n_samples: nSamples || 100 }),
@@ -124,7 +136,7 @@
             if (opts.tc_overland_length_km != null) payload.tc_overland_length_km = opts.tc_overland_length_km;
         }
 
-        const response = await fetch('/api/generate-hydrograph', {
+        const response = await apiFetch('/api/generate-hydrograph', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -138,7 +150,7 @@
      * Get available hydrograph scenarios.
      */
     async function getScenarios() {
-        const response = await fetch('/api/scenarios');
+        const response = await apiFetch('/api/scenarios');
         if (!response.ok) await handleError(response);
         return response.json();
     }
@@ -156,7 +168,7 @@
         if (filters.min_area !== undefined) params.set('min_area', filters.min_area);
         if (filters.max_area !== undefined) params.set('max_area', filters.max_area);
 
-        const response = await fetch('/api/depressions?' + params.toString());
+        const response = await apiFetch('/api/depressions?' + params.toString());
         if (!response.ok) await handleError(response);
         return response.json();
     }
@@ -186,7 +198,7 @@
         }
 
         var url = '/api/delineate-watershed?include_hypsometric_curve=true';
-        const response = await fetch(url, {
+        const response = await apiFetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
@@ -205,7 +217,7 @@
      * @returns {Promise<Object>} { id, status }
      */
     async function submitFeedback(payload) {
-        const response = await fetch('/api/feedback', {
+        const response = await apiFetch('/api/feedback', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),

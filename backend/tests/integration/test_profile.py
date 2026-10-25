@@ -194,7 +194,7 @@ class TestTerrainProfileEndpoint:
         )
 
         assert response.status_code == 400
-        assert "LineString" in response.json()["detail"]
+        assert response.json()["details"]["reason"] == "invalid_geometry_type"
 
     def test_too_few_coordinates_returns_400(self, client):
         """Test that LineString with < 2 coordinates returns 400."""
@@ -210,7 +210,7 @@ class TestTerrainProfileEndpoint:
         )
 
         assert response.status_code == 400
-        assert "2 coordinates" in response.json()["detail"]
+        assert response.json()["details"]["reason"] == "too_few_coordinates"
 
     def test_nodata_result_returns_404(self, client, mock_rasterio_nodata):
         """Test that all-nodata profile result returns 404."""
@@ -249,10 +249,11 @@ class TestTerrainProfileEndpoint:
             )
 
         assert response.status_code == 503
-        assert "DEM" in response.json()["detail"]
+        assert response.json()["code"] == "store_unavailable"
+        assert response.json()["details"]["reason"] == "dem_unavailable"
 
-    def test_n_samples_too_low_returns_422(self, client):
-        """Test that n_samples < 2 returns 422."""
+    def test_n_samples_too_low_returns_400(self, client):
+        """Test that n_samples < 2 returns 400."""
         response = client.post(
             "/api/terrain-profile",
             json={
@@ -264,10 +265,10 @@ class TestTerrainProfileEndpoint:
             },
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_n_samples_too_high_returns_422(self, client):
-        """Test that n_samples > 1000 returns 422."""
+    def test_n_samples_too_high_returns_400(self, client):
+        """Test that n_samples > 1000 returns 400."""
         response = client.post(
             "/api/terrain-profile",
             json={
@@ -279,16 +280,16 @@ class TestTerrainProfileEndpoint:
             },
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_missing_geometry_returns_422(self, client):
-        """Test that missing geometry returns 422."""
+    def test_missing_geometry_returns_400(self, client):
+        """Test that missing geometry returns 400."""
         response = client.post(
             "/api/terrain-profile",
             json={"n_samples": 5},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_default_n_samples(self, client, mock_rasterio_dataset):
         """Test that default n_samples is used when not specified."""
@@ -436,9 +437,9 @@ class TestTerrainProfileEndpoint:
             )
 
         assert response.status_code == 503
-        detail = response.json()["detail"]
-        assert "/data/" not in detail
-        assert ".vrt" not in detail
+        body = response.text
+        assert "/data/" not in body
+        assert ".vrt" not in body
 
     def test_nodata_uses_approximate_comparison(self, client):
         """Nodata detection must use approximate float comparison, not == (CR8)."""

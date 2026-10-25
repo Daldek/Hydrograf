@@ -12,7 +12,7 @@ import logging
 from typing import Any
 
 import numpy.typing as npt
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 # Hydrolog imports
 from hydrolog.morphometry import WatershedParameters
@@ -22,9 +22,20 @@ from hydrolog.time.concentration import ConcentrationTime
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
+from api.errors import problem_responses
 from core.catchment_graph import get_catchment_graph
 from core.constants import DEFAULT_CN, DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
+from core.errors import (
+    CalculationError,
+    HydrografError,
+    InternalError,
+    InvalidRequestError,
+    NoDataError,
+    NotFoundError,
+    StoreUnavailableError,
+    UnsupportedError,
+)
 from core.land_cover import get_land_cover_for_boundary
 from core.precipitation import (
     DURATION_STR_TO_MIN,
@@ -74,9 +85,8 @@ def _compute_watershed(
     """
     cg = get_catchment_graph()
     if not cg.ensure_loaded(db):
-        raise HTTPException(
-            status_code=503,
-            detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
+        raise StoreUnavailableError(
+            "catchment_graph_unavailable", reason="catchment_graph_unavailable"
         )
 
     try:
@@ -84,9 +94,10 @@ def _compute_watershed(
             point_2180.x, point_2180.y, DEFAULT_THRESHOLD_M2, db
         )
     except ValueError as e:
-        raise HTTPException(
-            status_code=404,
-            detail="Nie znaleziono zlewni cząstkowej. Kliknij w obszarze zlewni.",
+        raise NotFoundError(
+            "no_catchment_at_point",
+            reason="no_catchment_at_point",
+            threshold_m2=DEFAULT_THRESHOLD_M2,
         ) from e
 
     segment_idx = cg.get_segment_idx(clicked_idx)
@@ -99,18 +110,16 @@ def _compute_watershed(
     area_km2 = stats["area_km2"]
 
     if area_km2 > HYDROGRAPH_AREA_LIMIT_KM2:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Zlewnia ({area_km2:.1f} km2) przekracza limit SCS-CN "
-            f"({HYDROGRAPH_AREA_LIMIT_KM2} km2)",
+        raise UnsupportedError(
+            "catchment_too_large",
+            reason="area_exceeds_limit",
+            area_km2=float(area_km2),
+            limit_km2=HYDROGRAPH_AREA_LIMIT_KM2,
         )
 
     boundary_2180 = merge_catchment_boundaries(segment_idxs, DEFAULT_THRESHOLD_M2, db)
     if boundary_2180 is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Nie udało się zbudować granicy zlewni.",
-        )
+        raise CalculationError("boundary_build_failed", reason="boundary_build_failed")
 
     imperviousness = None
     try:
@@ -340,10 +349,10 @@ def _estimate_nash_params(
         length_to_centroid = morph_dict.get("length_to_centroid_km")
         channel_slope = morph_dict.get("channel_slope_m_per_m")
         if not channel_length or not length_to_centroid or not channel_slope:
-            raise HTTPException(
-                status_code=400,
-                detail="Metoda Lutza wymaga channel_length_km, "
-                "length_to_centroid_km i channel_slope_m_per_m.",
+            raise UnsupportedError(
+                "lutz_parameters_missing",
+                reason="missing_morphometry",
+                method="from_lutz",
             )
         nash = NashIUH.from_lutz(
             L_km=channel_length,
@@ -407,7 +416,11 @@ HIETOGRAM_CLASSES = {
 }
 
 
-@router.post("/generate-hydrograph", response_model=HydrographResponse)
+@router.post(
+    "/generate-hydrograph",
+    response_model=HydrographResponse,
+    responses=problem_responses(404, 422, 503),
+)
 def generate_hydrograph(
     request: HydrographRequest,
     db: Session = Depends(get_db),
@@ -433,14 +446,19 @@ def generate_hydrograph(
 
     Raises
     ------
-    HTTPException 404
-        When no stream found near the point
-    HTTPException 400
-        When watershed is too large (> 250 km2) or invalid parameters
-    HTTPException 503
-        When catchment graph is not loaded
-    HTTPException 500
-        On internal server error
+    NotFoundError
+        ``not_found`` (404) when no catchment lies at the point
+    NoDataError
+        ``no_data`` (404) when there is no precipitation for the point
+    InvalidRequestError
+        ``validation_error`` (400) for invalid parameters
+    UnsupportedError
+        ``unsupported`` (422) when the catchment is larger than 250 km2 or lacks the
+        parameters of the chosen model
+    StoreUnavailableError
+        ``store_unavailable`` (503) when the catchment graph is not loaded
+    InternalError
+        ``internal_error`` (500) on an unexpected failure
     """
     try:
         logger.info(
@@ -477,10 +495,11 @@ def generate_hydrograph(
         precip_mm = get_precipitation(point_2180, duration_str, probability, db)
 
         if precip_mm is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Brak danych opadowych dla ({request.latitude:.4f}, "
-                f"{request.longitude:.4f})",
+            raise NoDataError(
+                "no_precipitation_data",
+                reason="no_precipitation_data",
+                latitude=request.latitude,
+                longitude=request.longitude,
             )
 
         logger.debug(
@@ -510,9 +529,11 @@ def generate_hydrograph(
         else:
             hietogram_factory = HIETOGRAM_CLASSES.get(request.hietogram_type)
             if hietogram_factory is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Nieznany typ hietogramu: {request.hietogram_type}",
+                raise InvalidRequestError(
+                    "unknown_hietogram_type",
+                    reason="unknown_hietogram_type",
+                    value=request.hietogram_type,
+                    allowed=["beta", *sorted(HIETOGRAM_CLASSES)],
                 )
             hietogram = hietogram_factory()
         precip_result = hietogram.generate(
@@ -527,10 +548,10 @@ def generate_hydrograph(
             channel_length = morph_dict.get("channel_length_km")
             length_to_centroid = morph_dict.get("length_to_centroid_km")
             if not channel_length or not length_to_centroid:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Model Snydera wymaga channel_length_km i "
-                    "length_to_centroid_km w parametrach zlewni.",
+                raise UnsupportedError(
+                    "snyder_parameters_missing",
+                    reason="missing_morphometry",
+                    method="snyder",
                 )
             generator = HydrographGenerator(
                 area_km2=area_km2,
@@ -629,17 +650,16 @@ def generate_hydrograph(
 
         return response
 
-    except HTTPException:
+    except HydrografError:
         raise
     except ValueError as e:
         logger.error(f"Validation error in hydrograph generation: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise InvalidRequestError(
+            "invalid_parameters", reason="invalid_parameters", cause=str(e)
+        ) from e
     except Exception as e:
         logger.error(f"Error generating hydrograph: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error during hydrograph generation",
-        ) from e
+        raise InternalError("hydrograph_failed", reason="hydrograph_failed") from e
 
 
 @router.get("/scenarios")

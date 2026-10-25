@@ -195,17 +195,17 @@ class TestDepressionsEndpoint:
         assert response.status_code == 200
         app.dependency_overrides.clear()
 
-    def test_negative_min_volume_returns_422(self, client):
-        """Test that negative min_volume returns 422."""
+    def test_negative_min_volume_returns_400(self, client):
+        """Test that negative min_volume returns 400."""
         response = client.get("/api/depressions?min_volume=-10")
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_negative_min_area_returns_422(self, client):
-        """Test that negative min_area returns 422."""
+    def test_negative_min_area_returns_400(self, client):
+        """Test that negative min_area returns 400."""
         response = client.get("/api/depressions?min_area=-5")
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_values_are_rounded(self, client, mock_db_with_depressions):
         """Test that property values are properly rounded."""

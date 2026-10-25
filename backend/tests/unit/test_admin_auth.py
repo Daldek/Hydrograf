@@ -1,16 +1,19 @@
 """Tests for admin API key authentication dependency."""
 
 import pytest
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from api.dependencies.admin_auth import _check_admin_key, verify_admin_key
+from api.errors import install_error_handlers
 from core.config import get_settings
+from core.errors import UnauthorizedError
 
 
 def _build_probe_app() -> FastAPI:
     """Minimal app with one route protected by the real admin dependency."""
     app = FastAPI()
+    install_error_handlers(app)
 
     @app.get("/api/admin/probe", dependencies=[Depends(verify_admin_key)])
     def probe():
@@ -43,7 +46,8 @@ class TestExpectedKeyNotClientSettable:
             "/api/admin/probe?expected_key=pwned",
             headers={"X-Admin-Key": "pwned"},
         )
-        assert bypass.status_code == 403
+        assert bypass.status_code == 401
+        assert bypass.json()["details"]["reason"] == "admin_key_invalid"
 
         legit = client.get("/api/admin/probe", headers={"X-Admin-Key": "real-secret"})
         assert legit.status_code == 200
@@ -56,23 +60,25 @@ class TestVerifyAdminKey:
         """Valid key matching expected_key should not raise."""
         _check_admin_key(x_admin_key="secret123", expected_key="secret123")
 
-    def test_missing_key_raises_401(self):
-        """Missing header with configured key should raise 401."""
-        with pytest.raises(HTTPException) as exc_info:
+    def test_missing_key_raises_unauthorized(self):
+        """Missing header with configured key should raise ``unauthorized``."""
+        with pytest.raises(UnauthorizedError) as exc_info:
             _check_admin_key(x_admin_key=None, expected_key="secret123")
-        assert exc_info.value.status_code == 401
+        assert exc_info.value.code == "unauthorized"
+        assert exc_info.value.details["reason"] == "admin_key_missing"
 
-    def test_wrong_key_raises_403(self):
-        """Wrong key should raise 403."""
-        with pytest.raises(HTTPException) as exc_info:
+    def test_wrong_key_raises_unauthorized(self):
+        """Wrong key should raise ``unauthorized`` (reason ``admin_key_invalid``)."""
+        with pytest.raises(UnauthorizedError) as exc_info:
             _check_admin_key(x_admin_key="wrong", expected_key="secret123")
-        assert exc_info.value.status_code == 403
+        assert exc_info.value.code == "unauthorized"
+        assert exc_info.value.details["reason"] == "admin_key_invalid"
 
-    def test_empty_key_raises_401(self):
-        """Empty string as header value with configured key should raise 401."""
-        with pytest.raises(HTTPException) as exc_info:
+    def test_empty_key_raises_unauthorized(self):
+        """Empty string as header value with configured key counts as missing."""
+        with pytest.raises(UnauthorizedError) as exc_info:
             _check_admin_key(x_admin_key="", expected_key="secret123")
-        assert exc_info.value.status_code == 401
+        assert exc_info.value.details["reason"] == "admin_key_missing"
 
     def test_no_configured_key_generates_random(self, caplog):
         """When no key configured, a random key is generated and logged."""
@@ -110,9 +116,9 @@ class TestVerifyAdminKey:
         import api.dependencies.admin_auth as auth_module
 
         auth_module._generated_key = None
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(UnauthorizedError) as exc_info:
             _check_admin_key(x_admin_key=None, expected_key="")
-        assert exc_info.value.status_code == 401
+        assert exc_info.value.details["reason"] == "admin_key_missing"
         auth_module._generated_key = None
 
     def test_file_based_key(self, tmp_path, monkeypatch):
@@ -137,7 +143,7 @@ class TestVerifyAdminKey:
         monkeypatch.setattr(settings, "admin_api_key", "")
         monkeypatch.setattr(settings, "admin_api_key_file", "/nonexistent/path")
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(UnauthorizedError) as exc_info:
             verify_admin_key(x_admin_key=None)
-        assert exc_info.value.status_code == 401
+        assert exc_info.value.details["reason"] == "admin_key_missing"
         auth_module._generated_key = None

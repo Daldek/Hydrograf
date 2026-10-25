@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, NotRequired, TypedDict, cast
 
 import psutil
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -30,6 +30,13 @@ from sqlalchemy.pool import QueuePool
 from api.dependencies.admin_auth import verify_admin_key
 from core.catchment_graph import get_catchment_graph
 from core.database import get_db, get_db_engine
+from core.errors import (
+    ConflictError,
+    FileOperationError,
+    ForbiddenError,
+    InvalidRequestError,
+    NotFoundError,
+)
 from scripts.clean import DB_TABLES, execute_clean
 
 logger = logging.getLogger(__name__)
@@ -316,9 +323,11 @@ def cleanup_execute(
     results = []
     for target_key in request.targets:
         if target_key not in _CLEANUP_COMPONENTS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown cleanup target: {target_key}",
+            raise InvalidRequestError(
+                "unknown_cleanup_target",
+                reason="unknown_cleanup_target",
+                target=target_key,
+                allowed=sorted(_CLEANUP_COMPONENTS),
             )
         components = _CLEANUP_COMPONENTS[target_key]["components"]
         try:
@@ -366,26 +375,27 @@ async def upload_boundary(
 ) -> dict[str, Any]:
     """Upload and validate a boundary file. Returns metadata + filename."""
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
+        raise InvalidRequestError("filename_missing", reason="filename_missing")
 
     # Validate extension
     suffix = Path(file.filename).suffix.lower()
     if suffix not in ALLOWED_BOUNDARY_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Invalid file type: {suffix}. "
-                f"Allowed: {', '.join(sorted(ALLOWED_BOUNDARY_EXTENSIONS))}"
-            ),
+        raise InvalidRequestError(
+            "invalid_file_type",
+            reason="invalid_file_type",
+            suffix=suffix,
+            allowed=sorted(ALLOWED_BOUNDARY_EXTENSIONS),
         )
 
     # Read file with size limit
     content = await file.read()
     size_mb = len(content) / (1024 * 1024)
     if size_mb > MAX_UPLOAD_SIZE_MB:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File too large: {size_mb:.1f} MB (max {MAX_UPLOAD_SIZE_MB} MB)",
+        raise InvalidRequestError(
+            "file_too_large",
+            reason="file_too_large",
+            size_mb=round(size_mb, 1),
+            max_mb=MAX_UPLOAD_SIZE_MB,
         )
 
     # Sanitize filename
@@ -395,7 +405,7 @@ async def upload_boundary(
 
     # Verify path is within boundary dir (prevent traversal)
     if not save_path.resolve().is_relative_to(BOUNDARY_DIR.resolve()):
-        raise HTTPException(status_code=400, detail="Invalid filename")
+        raise InvalidRequestError("invalid_filename", reason="invalid_filename")
 
     # Save file
     save_path.write_bytes(content)
@@ -407,8 +417,8 @@ async def upload_boundary(
     except (ValueError, Exception) as e:
         # Clean up on validation failure
         save_path.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=400, detail=f"Invalid boundary file: {e}"
+        raise InvalidRequestError(
+            "invalid_boundary_file", reason="invalid_boundary_file", cause=str(e)
         ) from e
 
     return {
@@ -593,7 +603,7 @@ def bootstrap_status() -> BootstrapStatusResponse:
 def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
     """Start bootstrap subprocess."""
     if _bootstrap_state["status"] == "running":
-        raise HTTPException(status_code=409, detail="Bootstrap is already running")
+        raise ConflictError("bootstrap_running", reason="bootstrap_running")
 
     # Validate input: exactly one of bbox, sheets, boundary_file
     sources = sum(
@@ -604,18 +614,18 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
         ]
     )
     if sources != 1:
-        raise HTTPException(
-            status_code=400,
-            detail="Exactly one of bbox, sheets, or boundary_file must be provided",
+        raise InvalidRequestError(
+            "bootstrap_source_required",
+            reason="bootstrap_source_required",
+            options=["bbox", "sheets", "boundary_file"],
         )
 
     # Validate sheet codes before passing to subprocess
     if request.sheets:
         for sheet in request.sheets:
             if not SHEET_CODE_PATTERN.match(sheet):
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Invalid sheet code: {sheet}",
+                raise InvalidRequestError(
+                    "invalid_sheet_code", reason="invalid_sheet_code", sheet=sheet
                 )
 
     # Build command
@@ -625,19 +635,22 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
         try:
             _validate_bbox(request.bbox)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            raise InvalidRequestError(
+                "invalid_bbox", reason="invalid_bbox", cause=str(e)
+            ) from e
         cmd.extend(["--bbox", request.bbox])
     elif request.sheets:
         cmd.extend(["--sheets"] + request.sheets)
     elif request.boundary_file:
         boundary_path = BOUNDARY_DIR / request.boundary_file
         if not boundary_path.exists():
-            raise HTTPException(
-                status_code=400,
-                detail="Boundary file not found. Upload first.",
+            raise NotFoundError(
+                "boundary_file_missing",
+                reason="boundary_file_missing",
+                filename=request.boundary_file,
             )
         if not boundary_path.resolve().is_relative_to(BOUNDARY_DIR.resolve()):
-            raise HTTPException(status_code=400, detail="Invalid boundary filename")
+            raise InvalidRequestError("invalid_filename", reason="invalid_filename")
         cmd.extend(["--boundary-file", str(boundary_path)])
         if request.boundary_layer:
             cmd.extend(["--boundary-layer", request.boundary_layer])
@@ -682,8 +695,8 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
     except (FileNotFoundError, OSError) as e:
         _bootstrap_state["status"] = "failed"
         _bootstrap_state["log_lines"].append(f"[ERROR] Failed to start: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Cannot start bootstrap: {e}"
+        raise FileOperationError(
+            "bootstrap_start_failed", reason="bootstrap_start_failed", cause=str(e)
         ) from e
 
     _bootstrap_state["process"] = process
@@ -704,7 +717,7 @@ def bootstrap_cancel() -> dict[str, Any]:
     """Cancel running bootstrap process."""
     proc = _bootstrap_state["process"]
     if proc is None or _bootstrap_state["status"] != "running":
-        raise HTTPException(status_code=409, detail="No bootstrap process running")
+        raise ConflictError("bootstrap_not_running", reason="bootstrap_not_running")
 
     proc.send_signal(signal.SIGTERM)
     _bootstrap_state["status"] = "failed"
@@ -842,13 +855,12 @@ def sewer_config_update(body: SewerConfigUpdate) -> dict[str, Any]:
         source_file = Path(body.source_path)
         abs_path = (PROJECT_ROOT / source_file).resolve()
         if not abs_path.is_relative_to(PROJECT_ROOT.resolve()):
-            raise HTTPException(
-                status_code=400, detail="Path must be within project directory"
-            )
+            raise ForbiddenError("path_outside_project", reason="path_outside_project")
         if not abs_path.exists():
-            raise HTTPException(
-                status_code=400,
-                detail=f"File not found: {body.source_path}",
+            raise NotFoundError(
+                "source_file_missing",
+                reason="source_file_missing",
+                path=body.source_path,
             )
         updates["source"] = {
             "type": "file",
@@ -883,26 +895,27 @@ async def sewer_upload(
 ) -> dict[str, Any]:
     """Upload sewer network file (SHP/GPKG/GeoJSON)."""
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
+        raise InvalidRequestError("filename_missing", reason="filename_missing")
 
     # Validate extension
     suffix = Path(file.filename).suffix.lower()
     if suffix not in ALLOWED_SEWER_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Invalid file type: {suffix}. "
-                f"Allowed: {', '.join(sorted(ALLOWED_SEWER_EXTENSIONS))}"
-            ),
+        raise InvalidRequestError(
+            "invalid_file_type",
+            reason="invalid_file_type",
+            suffix=suffix,
+            allowed=sorted(ALLOWED_SEWER_EXTENSIONS),
         )
 
     # Read file with size limit
     content = await file.read()
     size_mb = len(content) / (1024 * 1024)
     if size_mb > MAX_SEWER_UPLOAD_MB:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File too large: {size_mb:.1f} MB (max {MAX_SEWER_UPLOAD_MB} MB)",
+        raise InvalidRequestError(
+            "file_too_large",
+            reason="file_too_large",
+            size_mb=round(size_mb, 1),
+            max_mb=MAX_SEWER_UPLOAD_MB,
         )
 
     # Sanitize filename
@@ -912,7 +925,7 @@ async def sewer_upload(
 
     # Verify path is within sewer dir (prevent traversal)
     if not dest.resolve().is_relative_to(DATA_SEWER.resolve()):
-        raise HTTPException(status_code=400, detail="Invalid filename")
+        raise InvalidRequestError("invalid_filename", reason="invalid_filename")
 
     # Save file
     dest.write_bytes(content)
@@ -927,9 +940,7 @@ async def sewer_upload(
     except Exception as e:
         dest.unlink(missing_ok=True)
         logger.error(f"Sewer upload geodata validation failed: {e}")
-        raise HTTPException(
-            status_code=400, detail="Uploaded file is not valid geodata"
-        ) from e
+        raise InvalidRequestError("invalid_geodata", reason="invalid_geodata") from e
 
     # Auto-detect format from layers and geometry types
     import fiona

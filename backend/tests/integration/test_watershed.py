@@ -262,7 +262,7 @@ class TestDelineateWatershedEndpoint:
         assert "area_km2" in geojson["properties"]
 
     def test_no_stream_returns_404(self, client):
-        """Test that missing catchment returns 404 with Polish error message."""
+        """Test that a missing catchment returns 404 ``not_found``."""
         cg = _make_mock_cg()
         cg.find_catchment_at_point.side_effect = ValueError(
             "Nie znaleziono zlewni cząstkowej"
@@ -282,70 +282,71 @@ class TestDelineateWatershedEndpoint:
             )
 
         assert response.status_code == 404
-        assert "Nie znaleziono zlewni" in response.json()["detail"]
+        assert response.json()["code"] == "not_found"
+        assert response.json()["details"]["reason"] == "no_catchment_at_point"
 
-    def test_invalid_latitude_too_high_returns_422(self, client):
-        """Test that latitude > 90 returns 422."""
+    def test_invalid_latitude_too_high_returns_400(self, client):
+        """Test that latitude > 90 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 100.0, "longitude": 21.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_invalid_latitude_too_low_returns_422(self, client):
-        """Test that latitude < -90 returns 422."""
+    def test_invalid_latitude_too_low_returns_400(self, client):
+        """Test that latitude < -90 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": -100.0, "longitude": 21.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_invalid_longitude_too_high_returns_422(self, client):
-        """Test that longitude > 180 returns 422."""
+    def test_invalid_longitude_too_high_returns_400(self, client):
+        """Test that longitude > 180 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 52.0, "longitude": 200.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_invalid_longitude_too_low_returns_422(self, client):
-        """Test that longitude < -180 returns 422."""
+    def test_invalid_longitude_too_low_returns_400(self, client):
+        """Test that longitude < -180 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 52.0, "longitude": -200.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_missing_latitude_returns_422(self, client):
-        """Test that missing latitude returns 422."""
+    def test_missing_latitude_returns_400(self, client):
+        """Test that missing latitude returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"longitude": 21.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_missing_longitude_returns_422(self, client):
-        """Test that missing longitude returns 422."""
+    def test_missing_longitude_returns_400(self, client):
+        """Test that missing longitude returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 52.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_empty_body_returns_422(self, client):
-        """Test that empty request body returns 422."""
+    def test_empty_body_returns_400(self, client):
+        """Test that empty request body returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_small_watershed_hydrograph_available(self, client):
         """Test small watershed has hydrograph_available=True."""
