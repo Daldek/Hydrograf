@@ -9,6 +9,7 @@ via BFS on pre-computed sub-catchments.
 """
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import numpy.typing as npt
@@ -16,7 +17,12 @@ from fastapi import APIRouter, Depends
 
 # Hydrolog imports
 from hydrolog.morphometry import WatershedParameters
-from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogram
+from hydrolog.precipitation import (
+    BetaHietogram,
+    BlockHietogram,
+    EulerIIHietogram,
+    Hietogram,
+)
 from hydrolog.runoff import HydrographGenerator, NashIUH
 from hydrolog.time.concentration import ConcentrationTime
 from shapely.geometry import Point
@@ -398,7 +404,9 @@ def _estimate_nash_params(
             f"U={urban_fraction:.2f}"
         )
     else:
-        # from_tc (default)
+        # from_tc: deprecated in Hydrolog; generate_hydrograph computes tc_min for it
+        if tc_min is None:
+            raise ValueError("Nash from_tc needs the time of concentration")
         nash = NashIUH.from_tc(tc_min=tc_min, n=request.nash_n)
         logger.info(f"Nash (from_tc): N={nash.n:.2f}, K={nash.k_min:.1f} min")
 
@@ -409,7 +417,7 @@ def _estimate_nash_params(
 
 
 # Hietogram factory
-HIETOGRAM_CLASSES = {
+HIETOGRAM_CLASSES: dict[str, Callable[[], Hietogram]] = {
     "beta": lambda: BetaHietogram(alpha=2.0, beta=5.0),
     "block": lambda: BlockHietogram(),
     "euler_ii": lambda: EulerIIHietogram(peak_position=0.33),
@@ -521,6 +529,7 @@ def generate_hydrograph(
             tc_min = None
 
         # Create hietogram
+        hietogram: Hietogram
         if request.hietogram_type == "beta":
             hietogram = BetaHietogram(
                 alpha=request.hietogram_alpha,
