@@ -57,15 +57,17 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `core/catchment_graph.py` 60%, `core/raster_io.py` 67%, `api/endpoints/hydrograph.py`
      and `watershed.py` 70%; most of what is missing is PostGIS SQL that only the `db` job
      runs.
-   - **Translations** to English (DEV-2.1, ECO-005), most useful first: CHANGELOG (sections
-     as DOC-7.1), ARCHITECTURE, DECISIONS, DATA_MODEL, `docs/integrations/*`, SCOPE, PRD,
-     COMPUTATION_PIPELINE, QA_REPORT, TECHNICAL_DEBT, BENCHMARK_QUERIES,
-     CROSS_PROJECT_ANALYSIS, BACKLOG, `backend/scripts/README.md`; then docstrings, comments
-     and log messages of the 23,700 lines of Python, and user-facing texts into translation
-     resources (DEV-2.3, DEV-15.2). The 40 plans of the ignored `notes/superpowers/plans/`
-     move to `docs/plans/` after translation, without `Approved:` lines (the author approves).
-     The links of the ADR index in `docs/DECISIONS.md` follow the Polish headings of
-     ADR-001 to ADR-057; translating a heading means regenerating its link.
+   - **Translations** to English (DEV-2.1, ECO-005). Done: ARCHITECTURE. Still Polish, most
+     useful first: CHANGELOG (sections as DOC-7.1), DECISIONS (the bodies of ADR-001 to
+     ADR-057; the index and ADR-058 on are English), PRD, SCOPE, DATA_MODEL,
+     `docs/integrations/*`, COMPUTATION_PIPELINE, TECHNICAL_DEBT, BENCHMARK_QUERIES,
+     CROSS_PROJECT_ANALYSIS, BACKLOG, `backend/scripts/README.md`; QA_REPORT is English.
+     After the documents: docstrings, comments and log messages of the 23,700 lines of
+     Python, and user-facing texts into translation resources (DEV-2.3, DEV-15.2). The 40
+     plans of the ignored `notes/superpowers/plans/` move to `docs/plans/` after
+     translation, without `Approved:` lines (the author approves). The links of the ADR
+     index in `docs/DECISIONS.md` follow the headings of ADR-001 to ADR-057; translating a
+     heading means regenerating its link.
    - **Error registry and REST: loose ends.** Done: registry, `HydrografError`, the catalogue
      of 45 messages, problem documents, `Accept-Language`, OpenAPI ids, contract tests.
      Left: `frontend/js/admin/admin-sewer.js` (5 `fetch` calls) does not send
