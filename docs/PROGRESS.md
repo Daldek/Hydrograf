@@ -1,1459 +1,231 @@
-# PROGRESS — Hydrograf
-
-## Status projektu
-
-| Element | Status | Uwagi |
-|---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 24 endpointy (11 core + 13 admin). Unified delineate-watershed (ADR-050). Sewer admin API (ADR-051). |
-| Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull, tryb precomputed + precise (ADR-050) |
-| Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
-| Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 432 scenariusze |
-| Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k |
-| Integracja Hydrolog | ✅ Gotowy | v0.6.3 (Nash IUH, 3 nowe metody tc) |
-| Integracja Kartograf | ✅ Gotowy | v0.7.0 (NMT przez `download_sheets` + `MetadataCache`, Land Cover, HSG, BDOT10k hydro) |
-| Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
-| CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
-| Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). Jawna topologia (ADR-052), walidacja strict, 2-fazowy pipeline. MVT tiles, overlay frontend, admin panel sewer. |
-| Frontend | 🔶 Faza 4+ gotowa | 15 modulow JS (10 core + 5 admin). Sewer overlay + admin-sewer. |
-| Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie, Kanalizacja (ADR-034, ADR-051) |
-| Testy | ✅ Gotowy | 1165 passed (sesja 88) + znany fail środowiskowy (test_select_stream, brak DB na localhost) |
-| Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
-
-## Checkpointy
-
-### CP1 — Health endpoint ✅
-- **Data:** 2026-01-15
-- **Wersja:** v0.1.0
-- **Zakres:** Setup, Docker Compose, GET /health, migracje Alembic
-
-### CP2 — Wyznaczanie zlewni ✅
-- **Data:** 2026-01-18
-- **Wersja:** v0.2.0
-- **Zakres:** POST /delineate-watershed, traverse_upstream, build_boundary, integracja Hydrolog
-
-### CP3 — Generowanie hydrogramu ✅
-- **Data:** 2026-01-21
-- **Wersja:** v0.3.0
-- **Zakres:** POST /generate-hydrograph, SCS-CN, 432 scenariusze, COPY 27x, reverse trace 330x, Land Cover, IMGWTools
-
-### CP4 — Frontend z mapa ✅
-- **Data:** 2026-03-03
-- **Wersja:** v0.4.0
-- **Zakres:** Leaflet.js, Chart.js, interaktywna mapa, panel parametrow, glassmorphism, MVT tiles (streams/catchments/landcover), DEM tiles (piramida XYZ z hillshade), select-stream, GUGiK WMTS, wygladzanie granic zlewni (ADR-032), podniesienie budynkow w NMT (ADR-033), panel administracyjny (ADR-034), konfiguracja YAML pipeline, Docker hardening (ADR-036), cache/data separacja (ADR-037), HSG Poland-wide cache (ADR-038)
-
-### CP5 — MVP ⏳
-- **Wersja:** v1.0.0 (planowana)
-- **Zakres:** Pelna integracja frontend+backend, deploy produkcyjny
-
-## Ostatnia sesja
-
-**Data:** 2026-10-08 (sesja 97 — etap K: wdrożenie Kartografa v0.7.0; przepisanie historii git)
-
-### Co zrobiono
-- **Analiza Kartografa v0.7.0** (wydany 2026-10-08) i sondy empiryczne na kodzie Hydrografa: 7 testów padało (przeniesiony `providers.bdot10k`), `discover_asc_files` dublowało arkusze (hardlink + `kampanie/`), błędy pobierania NMT przechodziły po cichu, bootstrap kończył się kodem 0 przy całkowitej porażce pobrania NMT.
-- **Etap K na gałęzi `feature/kartograf-0.7.0`** (plan w `notes/superpowers/plans/2026-10-08-kartograf-0.7.0-wdrozenie.md`, wykonany zespołem subagentów z recenzją per zadanie i końcową recenzją całej gałęzi): pin `@v0.7.0`; `download_sheets()` wsadowo z `MetadataCache` (`<cache_dir>/kartograf_meta.db`), `NmtDownloadReport`, jeden `NmtDownloadError` ze wszystkimi problemami naraz; bootstrap: `cache_dir` = korzeń danych Kartografa, mozaika wyłącznie z listy kroku 2, krok 2 `fail` → kod 1; walidacja `--bbox`/`--sheets` (kod 2); `hsg_poland.tif` bez zgodnego sidecara → `HsgCacheStaleError`; HSG z samych nodata nie daje „A”; `clean.py` czyści cache metadanych; KARTOGRAF.md v6.0, ADR-057 (aktualizacja), CHANGELOG.
-- **Decyzje D1–D10 planu** (domyślne z planu, zatwierdzone przez kontynuację usera): D1 częściowy brak pokrycia = WARNING; D2 `unverified` = WARNING; D3 wyłączony cache = błąd; D4 stary HSG = błąd z instrukcją (równość wersji); D5 fallback HSG „B” bez zmian (do decyzji); D6 dane 0.6.1 nietknięte; D7 bootstrap z bazą — NIE wykonany; D8 `cache/soil_hsg/hsg_poland.tif` z 0.6.1 usunięty (zgoda usera); D9 `discover_asc_files` usunięte; D10 `--metadata-cache` wymagany, `--output ../cache/`.
-- **Weryfikacja w kontenerze:** pobranie 2 arkuszy (układ ADR-026, kampanie, sidecar), drugi przebieg bez pobrań, brak pokrycia (całość → 1, część → 0 + WARNING), symulowana awaria sieci (pełna lista godeł), bootstrap: brak pokrycia → kod 1 przed bazą, zły bbox → 2. Obraz nie ma `gdalbuildvrt` — mozaika idzie fallbackiem `rasterio.merge`.
-- **Awaria API po przebudowie obrazu:** niepinowane `sqlalchemy>=2.0.25` pobrało 2.1.4 (psycopg3 dla `postgresql://`) → crash-loop `alembic upgrade head`. Naprawa: `sqlalchemy>=2.0.25,<2.1`; API zdrowe. Backlog: migracja na 2.1 i plik constraints zależności.
-- **Historia git przepisana** (`git filter-repo`, force push develop/main/tagi): usunięte szczegóły infrastruktury hosta; wszystkie hashe sprzed 2026-10-08 nieaktualne. Pozostałe ścieżki dysku danych hosta poprawione tylko w bieżących plikach (decyzja usera).
-- Testy unit: 1045 passed (było 1021).
-
-### Nastepne kroki
-- Decyzja usera: merge `feature/kartograf-0.7.0` → `develop` (+ push).
-- Decyzje otwarte z etapu K: D5 (fallback HSG „B” i krok 5 jako niekrytyczny), D6 (dane w układzie 0.6.1, ponowne pobranie Opolskiego w 0.7.0).
-- Następny bootstrap pobierze HSG Polski od nowa (stary raster usunięty).
-- Dalej: decyzje 1–16 z raportu rewizji specyfikacji (s96) → S1 → S2; S3 czeka na kolejne wydanie Kartografa (Archive, kafle SoilGrids, surowy ZIP BDOT, wersja BDOT w sidecarze, publiczne odkrywanie TERYT).
-
-### Poprzednia sesja (2026-10-06/08, sesja 96 — przygotowanie do wdrożenia programu „jedno źródło prawdy” config/ścieżki/dane; magazyn danych)
-
-### Co zrobiono
-- **Sesje 94–95 (2026-09-28/29, bez zmian w repo):** trzy specyfikacje w `notes/superpowers/specs/`: cz. 1 konfiguracja i ścieżki (zaakceptowana, ADR-059), cz. 2 manifest przebiegów w DB (zaakceptowana, ADR-060), cz. 3 archiwum surowych danych + PMAXTP na natywnej siatce (rew. 2, niezaakceptowana, ADR-061, zamyka ADR-058).
-- **Zewnętrzny magazyn danych (decyzja usera):** `<STAGING_DIR>` (zapis) = staging na wszystkie dane nieserwowane bezpośrednio przez Hydrografa (pobrania Kartografa itd.); `<ARCHIVE_DIR>` = docelowe archiwum, dane trafiają tam po ręcznej weryfikacji usera, dla agenta/aplikacji tylko odczyt. Zmienia założenie cz. 3 (archiwum zapisywane przez bootstrap).
-- **Commity (bez pusha):** `118c9b1` reorganizacja docs → `docs/integrations/` + audyt KARTOGRAF v5.2 (z poprawionymi linkami `*_INTEGRATION.md`), `a029e28` usunięcie progu 1000 m² z domyślnych progów, `a0aa34e` PROGRESS s91–93.
-- **Rewizja spójności 3 speców:** raport `notes/superpowers/reports/2026-10-06-rewizja-spojnosci-specow.md` — 22 rozbieżności (m.in. numeracja migracji 004 indeksy / 005 manifest / 006 archiwum, `hydrography.json` vs `/api/dataset`, semantyka `run_source_units`, wersja NMT `<rok>.<n>` vs s93), wpływ stagingu (100 GB < NMT Polski ~118 GB, uid 999 kontenera bez dostępu do udziałów, ryzyko automount), stan Kartografa 0.7.0-dev i IMGWTools względem wymagań cz. 3, szkic dokumentu nadrzędnego, 16 decyzji usera (§6).
-
-### Nastepne kroki
-- Przejść z userem 16 decyzji z §6 raportu, nanieść na specy (cz. 3 → rew. 3 z modelem staging/archiwum), napisać dokument nadrzędny.
-- Implementacja cz. 1 → cz. 2 → cz. 3 na nowej gałęzi — dopiero po zakończeniu zmian usera w Kartografie.
-- Montowanie udziałów pod kontener (grupa, opcje, znaczniki) — user z sudo, wg decyzji.
-- Progi nadal niespójne: `bootstrap.py` `[10000, 100000]` vs `config.py`/`process_dem.py` `[10000, 100000, 1000000]`; 1000 zostało w `config.yaml.example`, `layers.js` (FALLBACK), `watershed_service.py` (eskalacja) — porządkuje cz. 1.
-
-### Poprzednia sesja (2026-09-28, sesja 93 — pobranie NMT 5m dla województwa opolskiego z reużyciem pilotażu; wersjonowanie NMT)
-
-### Co zrobiono
-- **Reużycie pilotażu z s91:** wszystkie 964 pliki `<HOST_DATA_DIR>/nmt/pilot_opolskie/` mają nagłówek ASC zgodny z bboxem swojego godła — stary `sheet_finder` zawinił tylko doborem obszaru, nie treścią (korekta wniosku z s92). 932 z nich należą do Opolskiego (target: 3720 arkuszy z `<HOST_DATA_DIR>/nmt/boundaries/wojewodztwa/opolskie.gpkg`).
-- Pułapka: pilotaż ma godła z zerami (`M-33-036-…`), Kartograf zwraca bez zer (`M-33-36-…`); `SheetParser` nie normalizuje paddingu, a `FileStorage.get_path()` buduje ścieżkę ze stringu → `skip_existing` nie widziałby plików. Pliki przeniesione (hardlink + usunięcie starej nazwy) pod ścieżki bez zer. W `pilot_opolskie/` zostało 32 pliki spoza Opolskiego (45 MB). Decyzja: zostajemy przy formie bez zer (kanoniczna w Kartografie); sortowanie naturalne (`ls -v`, `sort -V`).
-- **Pobranie Opolskiego zakończone:** `<HOST_DATA_DIR>/nmt/nmt_5m/` — 3233 arkusze, 4,5 GB (932 z pilotażu + 2301 pobrane). 487 braków to arkusze całkowicie poza Polską (Czechy — Kartograf dobiera arkusze po bboxie województwa) — legit. 3 braki w Polsce były fałszywe (błędy sieci WMS) — pobrane ponownie przez `--sheets`. Log: `<HOST_DATA_DIR>/nmt/opolskie.log`.
-- **Problemy z GUGiK:** `mapy.geoportal.gov.pl` (WMS skorowidzów) zrywał połączenia (173× `WMS query failed`, szczyt 12:30–12:40, potem spadek); pobieranie plików z OpenData bez błędów. Bardziej przeciążenie niż blokada (brak 429/403, tylko jedna usługa), niepewne.
-- **Bug w Kartografie 0.6.1:** `_get_opendata_url()` przy błędzie sieci przechodzi do starszej warstwy skorowidza → możliwe ciche pobranie starszej edycji (92 arkusze pobrane po błędzie warstwy 2025, lista: `<HOST_DATA_DIR>/nmt/opolskie_suspect_older_2025_layer_failed.txt` — NIE zweryfikowane) albo fałszywe "No NMT 5m data" (potwierdzone: 3 przypadki).
-- Backlog: 3 punkty Kartograf 0.7.0 (błąd sieci ≠ brak arkusza; sesja HTTP per zapytanie; zwracanie pełnego rekordu metadanych) + **ADR do decyzji: wersjonowanie arkuszy NMT** (manifest z pełnym rekordem skorowidza + czas pobrania; archiwum `<HOST_DATA_DIR>/nmt/archive/<produkt>/<hierarchia godła>/<aktualnoscRok>_<godło>.asc`, bez przyrostka kolizji — decyzje usera).
-- Rekord skorowidza (WMS GetFeatureInfo) zawiera: `url`, `aktualnosc`, `aktualnoscRok`, `numerZgloszeniaPracy`, `zrDanych`, `bladSredniWysokosci`, `dt_pzgik` i in.; `MetadataCache` Kartografa przechowuje tylko URL.
-
-### Nastepne kroki
-- Zweryfikować 92 arkusze Opolskiego pobrane po błędzie warstwy 2025 (odpytać skorowidz, porównać `aktualnosc`/URL) i przy okazji zbudować pierwszy manifest wersji dla Opolskiego.
-- Przyjąć ADR wersjonowania NMT (nadać numer 058) i zaimplementować manifest + archiwum.
-- Przed pobraniem całej Polski: wspólna `requests.Session` + `MetadataCache` w `download_dem.py`, rozważyć pauzę między arkuszami / uruchomienie w nocy, ponowny przebieg na braki. → `MetadataCache` zrealizowane w etapie K (s97); wspólna sesja HTTP zapewniona wewnętrznie przez Kartograf 0.7.0 (SessionPerThread); pauza między arkuszami — niezrealizowana.
-- ~~Zacommitować reorganizację docs usera~~ — zrobione w s96.
-- `<HOST_DATA_DIR>/nmt/pilot_opolskie/` (32 pliki spoza Opolskiego + log) — do usunięcia, gdy user zdecyduje.
-
-### Poprzednia sesja (2026-09-28, sesja 92 — deduplikacja logiki pobierania: wszystko przez Kartograf v0.6.1)
-
-### Co zrobiono
-- Audyt (subagenty Sonnet/Haiku): jedyne miejsca omijające Kartografa to `utils/sheet_finder.py` (własna matematyka godeł) i WFS PRG dla TERYT w `download_landcover.py`. Reszta (NMT, BDOT10k, CORINE, HSG, `cn_calculator`, bootstrap) już delegowała do Kartografa. `download_sewer.py` jest poza domeną Kartografa.
-- **Krytyczny bug znaleziony przy okazji:** `sheet_finder` w skali 1:10000 dzielił arkusz 1:25000 na siatkę 2×4 zamiast zagnieżdżonego 2×2 (GUGiK/Kartograf). Ścieżki `download_dem --lat/--lon` i `prepare_area` pobierały **złe arkusze** (52.41N 16.915E, bufor 2 km: 6 starych godeł vs 9 poprawnych, zero części wspólnej). Ścieżka `--geometry` (bootstrap, pełne pobranie Polski) nie była dotknięta.
-- `75dc859`: nowy `utils/sheet_lookup.py::sheets_for_point_buffer()` (WGS84→EPSG:2180 → `kartograf.find_sheets_for_bbox`), podmieniony w `download_dem.py` i `prepare_area.py`, 6 testów.
-- `e9d940d`: usunięty `utils/sheet_finder.py` (~616 linii) + testy.
-- `1524992`: fallback TERYT (`_discover_teryts_grid`) zależy od prywatnego `Bdot10kProvider._get_teryt_for_point`; w 0.6.1 nie ma publicznej alternatywy (publiczne metody pobierają cały GPKG powiatu). Dodano guard `RuntimeError` + test kontraktowy sygnatury.
-- `6006085`: ADR-057 „Pozyskiwanie danych wyłącznie przez Kartograf” z 3 udokumentowanymi wyjątkami (WFS TERYT, post-processing merge/mozaika, sewer). Numer 057, bo 055/056 zajęte w historii przez wycofany dashboard. CHANGELOG, ARCHITECTURE, TECHNICAL_DEBT zaktualizowane. `docs/integrations/KARTOGRAF.md` zaktualizowany, ale **niezacommitowany** (część reorganizacji docs usera).
-- Weryfikacja (Tester):
-  - pytest 1144 passed, 1 pre-existing fail (integracyjny test bez DB na localhost);
-  - dry-run `--geometry` Polska = 80 343 arkuszy (bez zmian);
-  - realne pobranie 1 arkusza przez `--lat/--lon` OK.
-
-- **Audyt `docs/integrations/KARTOGRAF.md`** (v5.1→5.2, **niezacommitowane** — część reorganizacji docs usera). Poprawione:
-  - liczba kroków bootstrapu (10);
-  - usunięty nieistniejący `--format`;
-  - opis fallbacku TERYT;
-  - §5 nomenklatura godeł (etykiety Kartografa przesunięte o poziom: `target_scale="1:10000"` = oficjalnie arkusze 1:5000; podział 2×2 zamiast błędnego 2×4; skala 1:200 000 usunięta na życzenie usera);
-  - §6 przepisana na rzeczywistą ścieżkę OpenData (WMS skorowidze → ASC), WCS oznaczony jako nieużywany;
-  - §9.2 test;
-  - CN BUBD 77–92;
-  - `soil_hsg.area_m2`;
-  - przykład z `Path`.
-
-  Stare linki do `docs/*_INTEGRATION.md` poprawione w `CLAUDE.md`, `README.md`, `CROSS_PROJECT_ANALYSIS.md`, `IMPLEMENTATION_PROMPT.md` (też niezacommitowane).
-
-### Nastepne kroki
-- Zacommitować reorganizację docs usera razem z poprawkami audytu (decyzja usera).
-- Rozważyć podłączenie `MetadataCache` Kartografa w `download_dem.py` (dziś każdy arkusz = świeże zapytanie WMS GetFeatureInfo) — przed pobraniem całej Polski. → zrealizowane w etapie K (s97).
-- **Dane pilotażu Opolskiego (`<HOST_DATA_DIR>/nmt/pilot_opolskie/`) z s91 pobrano błędną ścieżką `--lat/--lon`** → pokrycie niezgodne z zamierzonym; do usunięcia/ponownego pobrania, jeśli mają być użyte.
-- Pełne pobranie Polski (komenda z s91 niżej) nadal czeka na zielone światło; nie wymaga zmian.
-- Backlog: upstream `discover_teryts_for_bbox` + `mosaic_and_crop` przy przejściu na Kartograf 0.7.0. → ocenione w etapie K: `mosaic_and_crop` nieużyty (ADR-057 b); `discover_teryts_for_bbox` nadal brak w 0.7.0.
-- Nic nie jest wypchnięte na origin.
-
-### Poprzednia sesja (2026-09-28, sesja 91 — przygotowanie pobrania NMT 5m dla całej Polski przez Kartograf)
-
-### Co zrobiono
-- Oszacowanie rozmiaru pobrania NMT 5m dla całej Polski, zweryfikowane empirycznie na realnych danych (nie tylko teoretycznie): ~7,08 B/komórkę × 12,51 mld komórek ≈ 88 GB z geometrii kraju; ~118 GB z rzeczywistej liczby arkuszy (80 343 arkusze × ~1,47 MB) — druga wartość miarodajna dla planowania.
-- Audyt miejsca na dysku: dysk systemowy za mały na to zadanie; dane NMT umieszczone na osobnym dysku danych hosta (`<HOST_DATA_DIR>/nmt`).
-- **Pilotaż na Opolskiem** (tryb `--lat/--lon --buffer 55`): 964/1000 arkuszy pobrane w 24 min (1445s, ~1,45 s/arkusz), 36 legit braków pokrycia 5m przy granicy czeskiej (`vertical_crs=EVRF2007` w logu — brak danych GUGiK, nie throttling). Zero sygnałów blokowania ze strony GUGiK. Dane w `<HOST_DATA_DIR>/nmt/pilot_opolskie/` (~1,4 GB, niekompletne z powodu buga niżej — tańsze ponowne pobranie niż scalanie z pełnym przebiegiem).
-- **Znalezione i naprawione 2 realne bugi** w ścieżce pobierania NMT (oba na `develop`, **niepushowane**):
-  1. `backend/utils/sheet_finder.py::get_sheets_for_bbox()` — krok próbkowania w długości geograficznej (0,04°) większy od rzeczywistego arkusza 1:10000 (0,03125°), cicho gubił ~22% kolumn arkuszy bez żadnego błędu w logu. Fix: krok = połowa rozmiaru arkusza dla każdej z 4 skal. Commit `e9bfc55`.
-  2. `backend/scripts/download_dem.py` (2 miejsca: `main()` gałąź `--dry-run` i `download_for_geometry()`) — `find_sheets_for_geometry()` z Kartografa wymaga `Path`, dostawał `str` → crash na starcie prawdziwego pobierania przez `--geometry` (dry-run przechodził, bo szedł inną gałęzią kodu — pierwszy fix subagenta naprawił tylko dry-run, drugie wystąpienie złapane przy własnej weryfikacji przed odpaleniem pełnego przebiegu). Fix zweryfikowany prawdziwym pobraniem end-to-end (9/9 arkuszy, nie tylko dry-run). Commit `382c5f3`.
-- **Pobrano oficjalne granice województw (PRG, GUGiK):** `<HOST_DATA_DIR>/nmt/boundaries/wojewodztwa_polska.gpkg` (16 cech, EPSG:4258, atrybut nazwy `JPT_NAZWA_`, suma powierzchni 313 731 km² — zgodne z ~312 700 km² Polski, różnica z generalizacji granic). Ustalono: `kartograf.find_sheets_for_geometry()` obsługuje wiele cech w jednym pliku → **jeden przebieg na całą Polskę lepszy niż 16 osobnych** (80 343 arkuszy vs 132 169 przy 16 przebiegach osobno — arkusze graniczne liczone wielokrotnie).
-- Zidentyfikowany dług techniczny dodany do Backlogu (priorytet niski): `sheet_finder.py` reimplementuje logikę bbox→arkusze, którą Kartograf ma wbudowaną i solidniejszą (`find_sheets_for_bbox()`, hierarchiczne przycinanie zamiast próbkowania punktowego) od v0.4.0/0.4.1 — właśnie tam siedział bug #1 wyżej. (→ ZREALIZOWANE w sesji naprawczej tego samego dnia: `sheet_finder.py` usunięty, zastąpiony `sheet_lookup.py` delegującym do Kartografa; zob. Backlog „Zrobione (archiwum)" i ADR-057.)
-
-### Stan na koniec sesji — przygotowanie kompletne, pobranie NIE uruchomione
-User przerwał sesję przed wydaniem zielonego światła na właściwy przebieg. Komenda gotowa do odpalenia w kolejnej sesji:
-```
-cd backend && .venv/bin/python -m scripts.download_dem --geometry <HOST_DATA_DIR>/nmt/boundaries/wojewodztwa_polska.gpkg --output <HOST_DATA_DIR>/nmt
-```
-(uruchomić w tle, log do pliku na `<HOST_DATA_DIR>/nmt`). Szacunek: **~118 GB, ~32h** ciągłego, jednowątkowego pobierania; wolne miejsce na dysku danych wystarczy. Wznawialne przez `skip_existing=True` — bezpiecznie przerwać/wznowić tą samą komendą. Working tree ma też niezwiązane, wcześniejsze niezacommitowane zmiany (config.py, bootstrap.py, process_dem.py, reorganizacja docs) — świadomie nietknięte przez wszystkie subagenty tej sesji.
-
-> **Uwaga (Kartograf 0.7.0, etap K):** powyższa komenda pochodzi sprzed 0.7.0. Forma aktualna: `--output <HOST_DATA_DIR>` jest korzeniem danych Kartografa (pliki trafiają do `<HOST_DATA_DIR>/nmt/pl_1992_5m_evrf2007/...`) oraz wymagane `--metadata-cache <LOCAL_DIR>/kartograf_meta.db` na dysku LOKALNYM (nigdy udział sieciowy — SQLite WAL).
-
-### Nastepne kroki
-- **Uzyskać potwierdzenie usera i odpalić właściwe pobranie** (komenda wyżej) — jedyny brakujący krok.
-- Po zakończeniu: zweryfikować kompletność (arkuszy pobranych vs 80 343 oczekiwanych, ile to legit braki pokrycia 5m na granicach kraju vs błędy), zdecydować o mozaikowaniu VRT / dalszym przetwarzaniu.
-- (Zaległe bez zmian z poprzednich sesji): flaga `--thresholds` w bootstrapie; smoke test feedbacku; decyzja o pushu na origin; dalsza praca nad Hydraulikiem w `../Hydraulik`.
-
-### Poprzednia sesja (2026-08-19, sesja 89 — research wykonalności pakietu Hydraulik: SFINCS/HydroMT-SFINCS)
-
-### Co zrobiono
-- **Czysta praca badawcza, zero kodu** (decyzja usera): badanie integracji modelu hydraulicznego 2D (Deltares SFINCS + HydroMT-SFINCS) jako czwartego pakietu rodziny („Hydraulik"). Cztery rundy subagentów Opus: (1) silnik SFINCS + builder HydroMT-SFINCS + mapa punktów integracji w Hydrografie, (2) siatka zmiennorozdzielcza (subgrid/quadtree) i tryb per-zlewnia z mozaiką wyników po max, (3) ograniczenia rain-on-grid, brak batymetrii NMT, założenie „zwierciadło NMT = stan odniesienia", (4) hydrogramy w zlewniach niekontrolowanych (metodyka SHP/KZGW 2020, korekta DCT, benchmarki Kłodzko 1997/2024).
-- **Wniosek: integracja wykonalna i dobrze dopasowana do danych rodziny** (NMT 5 m, land_cover, HSG, PMAXTP, hydrogramy z `/api/generate-hydrograph` jako forcing 1:1). Główne ryzyka: skuteczność w małych stromych zlewniach (CSI 0.29 <50 km²), licencja GPL-3.0 hydromt_sfincs, przejście hydromt v1→v2, brak danych Manninga w Hydrografie, architektura uruchamiania silnika (kontener API read_only, bez socketa Dockera).
-- **Decyzje kierunkowe usera:** cel główny = powodzie błyskawiczne w górach; CN bez recovery, bez przepływu bazowego; korekta batymetrii DCT (pomijalna numerycznie: SNq ~5 l/s/km² vs pik Q1% ~4 m³/s/km²); MVP = siatka jednolita + subgrid, model per zlewnia.
-- **Utworzono projekt `../Hydraulik`** — szkielet wg schematu rodziny (CLAUDE.md, README, docs/PROGRESS.md, docs/research/, hydraulik/, tests/), git init na `main` bez commitów; celowo bez LICENSE (kwestia GPL nierozstrzygnięta) i bez pyproject (brak kodu). Raport kanoniczny: `Hydraulik/docs/research/2026-08-19-hydromt-sfincs-integracja-research.md` (kopia robocza: `notes/reports/2026-08-19-hydraulik-sfincs-research.md`).
-
-### Nastepne kroki
-- **Dalsza praca nad Hydraulikiem = dedykowany agent w repo `../Hydraulik`** (decyzja usera) — tam brainstorming → specyfikacja (`docs/superpowers/specs/`).
-- Po stronie Hydrografa (dopiero gdy Hydraulik dojrzeje): tabela Manninga BDOT→n (wartości „overland"), rasteryzacja `land_cover` do 5 m, endpointy/joby scenariuszy, prezentacja map zalania (kafle XYZ / PNG overlay).
-- (Zaległe bez zmian): flaga `--thresholds` w bootstrapie; docstring `watershed.py`; smoke test feedbacku; decyzja o pushu; wdrożenie planów bezpieczeństwa s87 (kolejność D → C → F+G → E1…).
-
-### Poprzednia sesja (2026-08-10, sesja 88 — regeneracja danych: Kotlina Kłodzka, bez progu 1000)
-
-### Co zrobiono
-- **Diagnoza padu bootstrapu z 2026-08-10 17:19** (bbox `16.190–17.049°E, 50.070–50.467°N`, 560 arkuszy, 5m): proces zabity przez OOM killer w cgroupie kontenera `hydro_api` (limit 8G; `memory.peak` = limit, `oom_kill: 1` w `/sys/fs/cgroup/memory.events`) podczas polygonizacji 872 064 podzlewni progu 1000 m² na rastrze 113M komórek. 233/560 arkuszy bez pokrycia 5m (strona czeska, EVRF2007) — normalne dla bboxu przygranicznego.
-- **Ponowny przebieg bez progu 1000** (drabinka retry ×3 z przesuwaniem progów o rząd wielkości nie była potrzebna — próba 1 udana): progi `[10000, 100000]`, ten sam bbox. Czas 7411 s (~2h04), wszystkie kroki ✓: 328/560 arkuszy (pobieranie z cache 171 s), 59,5M komórek w obszarze, 83 320 segmentów, landcover 59 713 obiektów (3 powiaty), HSG 58 poligonów, opady 690 punktów / 146 880 rekordów, 207 029 depresji, MVT OK, overlaye + 13 777 kafli DEM (150 MB). CatchmentGraph przeładowany automatycznie.
-- **`DEFAULT_THRESHOLD_M2` 1000 → 10000** (`core/constants.py`) — hydrogram i domyślna delineacja precomputed muszą celować w najniższy istniejący próg. Hardcode progów w `bootstrap.py:540` zmieniony był tylko na czas przebiegu i wycofany (decyzja usera: edycja jednorazowa).
-- **Weryfikacja usługi (finał sesji = działająca usługa):** `/health` 200; delineacja precomputed + precise OK (punkt k. Kłodzka); hydrogram pełny (SCS-CN, kompletna morfometria, area 0.06 km², CN 78); MVT streams (oba progi) / catchments / landcover z realnymi payloadami; `/api/tiles/thresholds` → `[10000, 100000]`; `dem.png` + frontend OK. Testy: **1165 passed** + znany fail środowiskowy (`test_select_stream`, brak DB na localhost).
-
-### Nastepne kroki
-- Rozważyć flagę `--thresholds` w `bootstrap.py` + pole w API admina (dziś progi hardcodowane w wywołaniu `process_dem` — bootstrap.py:540).
-- Docstring `watershed.py` (linia 6) nadal mówi „BFS at 1000m²" dla trybu precise — kod używa `DEFAULT_THRESHOLD_M2`, docstring do poprawki przy okazji.
-- (Zaległe): smoke test przeglądarki feedbacku; decyzja o pushu na origin; wdrożenie planów bezpieczeństwa s87 (kolejność D → C → F+G → E1…).
-
-### Poprzednia sesja (2026-08-08, sesja 86 — audyt bezpieczeństwa całej publicznej powierzchni ataku + specyfikacja utwardzenia)
-
-### Co zrobiono
-- **Krytyczny bypass auth admina naprawiony** (wcześniejsza część sesji): `expected_key` jako query param → pełny bypass `/api/admin/*` z internetu. Fix `d7f6bd7` (`verify_admin_key` tylko `Header` + `_check_admin_key`/`_resolve_expected_key` + `secrets.compare_digest`), merge `fc6e2f2`, CHANGELOG `81312e7`. Zweryfikowany jako **kompletny** (12/12 testów, 0 ekspozycji w openapi). Raport: `notes/reports/2026-08-08-admin-security-audit.md`.
-- **Niezależna weryfikacja raportu + audyt CAŁEJ publicznej powierzchni** (wieloagentowy Sonnet+Opus, workflow `wf_e9deb538-b24` / task `wodolg6s7`, 16 agentów): potwierdzono znaleziska raportu z korektami (**#4 LOW→MEDIUM** drugi wektor arbitrary-file-read; **#6 teza „brak sinka XSS" BŁĘDNA** — sink w `admin-sewer.js`; **#2 realnie aktywny**), wykryto **braki raportu**: **3× HIGH nieuwierzytelniony DoS** (delineacja precise bez limitu obszaru; kafle `2**z`; brak zoom-floor+`statement_timeout` na 3 trasach kaflowych) + MEDIUM (real_ip za tunelem, `worker_processes`/`limit_conn`, hasło DB w env, supply-chain git tagi, DoS panelu feedbacku). Sweep potwierdził **BRAK SQLi, BRAK anonimowego SSRF, brak sekretów w logach**.
-- **Specyfikacja utwardzenia zapisana:** `notes/superpowers/specs/2026-08-08-public-security-hardening-spec.md` — 9 obszarów, każde znalezisko z wymaganiem naprawy (kryterium akceptacji) + wymaganiem testu, priorytetyzacją i zależnościami. To SPEC, **nie plan** — zgodnie z decyzją użytkownika niczego nie wdrażano.
-
-### Decyzje ramowe (użytkownik, sesja 86)
-- Zakres: cała publiczna powierzchnia ataku (nie tylko admin z raportu).
-- **Dwa tory:** ta spec = pilne utwardzenie niezależne od modelu auth, forward-compatible; **system kont użytkowników + RBAC = OSOBNY przyszły projekt** (zastąpi klucz admina i localStorage).
-- **Postura interim: BEZ bramki admina** — naprawa bugów + rate-limit + mocny klucz (zgodne z „public for now"). Panel admina świadomie osiągalny z internetu do czasu kont.
-
-### Wpływ na przyszły dashboard ruchu
-- **E1 (real_ip za tunelem) jest de facto prerekwizytem** przebudowy dashboardu: dziś `access_log` zapisuje IP tunelu dla całego ruchu z internetu → analiza per-IP ślepa. Po E1 logi niosą realny IP klienta (rozwiązuje pułapkę „realip" już odnotowaną pod rebuild). Do zaplanowania w projekcie dashboardu: anonimizacja/retencja IP (RODO), jawny `log_format` razem z real_ip, wzrost udziału 429/503 w logach (by design).
-
-### Nastepne kroki
-- **Kolejna sesja: napisanie planu naprawy** na podstawie specyfikacji (skill writing-plans) — decyzja użytkownika.
-- Do potwierdzenia na żywym stacku przed naprawą: **E9** (`/docs`/`openapi.json` — sprzeczność audytorów, jeden `curl`); pomiary kosztu delineacji precise i kafli niskiego zoomu.
-- Kolejność napraw wg spec: najpierw 3× HIGH DoS, potem E1 (real_ip), potem MEDIUM, na końcu LOW/INFO.
-- (Zaległe z wcześniejszych sesji): smoke test przeglądarki feedbacku; decyzja o pushu na origin.
-
-### Poprzednia sesja (2026-08-08, sesja 85 — całkowite wycofanie dashboardu ruchu: restrukturyzacja gałęzi, merge, reset usługi)
-
-### Co zrobiono
-- **Decyzja użytkownika:** dashboard ruchu (sesje 82 i 84: kontener GoAccess, dashboard `/traffic/`, proxy WebSocket `/ws`, Basic Auth, ograniczenie LAN-only, anonimizacja logów nginx, real IP z `CF-Connecting-IP`, rotacja logów, ADR-055/056) wycofany W CAŁOŚCI — do przebudowy od zera. Żaden z wycofanych commitów nie był wypchnięty na origin.
-- **develop cofnięty** z `5a63519` do `3d4cff6` (ostatni commit sprzed trafficu, sesja 81). Stary czubek zachowany jako gałąź `backup/develop-pre-cleanup`.
-- **Uratowane z sesji 83 (praca niezależna od trafficu):**
-  - `feature/feedback` — 10 commitów formularza feedbacku (ADR-053, migracja 002) cherry-pickowanych na `3d4cff6`. Pliki kodu bit-w-bit identyczne ze starą historią (zweryfikowane diffem); różnice wyłącznie w docs (usunięte odniesienia do sesji 82) i nginx (bez stref trafficowych `ws_conn`).
-  - `feature/hydraulic-length` — 8 commitów naprawy `hydraulic_length_km` (ADR-054, migracja 003) + domknięcie sesji 83. **Bazuje na `feature/feedback`** — łańcuch migracji 002→003 wymusza kolejność merge: najpierw feedback, potem hydraulic-length. Backend bit-w-bit identyczny ze starą historią.
-- **Cherry-pick na develop (niezależne od trafficu):** `absolute_redirect off` w obu configach nginx (naprawa gubienia portu 8080 przy przekierowaniach katalogowych; przykład w komentarzu zmieniony na `/data`) + wpis backlogu o wolnych kaflach landcover MVT.
-- **Porządki gałęzi:** usunięta wmergowana `fix/sewer-topology-rebuild`; `feat/wspolne-uwierzytelnianie` przestawiona na nowy czubek develop (nie miała własnych commitów). Bez pusha — decyzja użytkownika (wszystko lokalnie).
-- **Weryfikacja:** `git grep -iE 'goaccess|traffic|htpasswd|ws_conn|logrotate|CF-Connecting'` pusty na drzewach feature/feedback, feature/hydraulic-length i develop sprzed niniejszego wpisu (sam ten opis wycofania siłą rzeczy wymienia usuwane elementy).
-
-### Uwagi operacyjne
-- Artefakty trafficu na stacku i na dysku posprzątane w trzeciej części sesji (patrz "Reset usługi" niżej) — na hoście nie zostało nic.
-- **Baza ma nałożone migracje 002+003** (`alembic_version` = 003, kolumna `outlet_flow_dist_m` z backfillem, tabela `feedback` z ewentualnymi zgłoszeniami) — po wykonanych w tej sesji merge'ach kod na develop zna 001+002+003, stan zgodny (`alembic upgrade head` = no-op).
-
-### Merge (druga część sesji, na polecenie użytkownika)
-- `feature/feedback` → develop (`--no-ff`), następnie `feature/hydraulic-length` → develop (`--no-ff`) — kolejność wymuszona łańcuchem migracji 002→003. Konflikty tylko w `docs/PROGRESS.md` (sekcje sesji i backlog); nginx (absolute_redirect + strefa feedbacku) scalony automatycznie. Gałęzie feature zachowane po merge'u.
-
-### Reset usługi (trzecia część sesji)
-- Redeploy stacka z nowego develop (tryb dev z override): `docker compose up -d --remove-orphans` — kontener `hydro_goaccess` usunięty jako orphan, nginx odtworzony ze świeżym configiem (nowy kontener = świeży inode bind-mountu); db i api bez recreate (definicje bez zmian, kod API z bind-mountu `./backend`).
-- Weryfikacja: `/health` i frontend 200; `/traffic/` wpada w standardowy fallback aplikacji (lokacja nie istnieje); `/api/admin/feedback` bez klucza → 401; `alembic current` w kontenerze = **003 (head)** — baza i kod zgodne.
-- Usunięte pliki: `data/goaccess/` i `docker/traffic.htpasswd` (agent) oraz `data/logs/nginx/` i `/etc/logrotate.d/hydrograf` (użytkownik, sudo — potwierdzone).
-
-### Nastepne kroki
-- Smoke test przeglądarki z sesji 83 (modal "Zgłoś uwagę", panel /admin, poprawiona długość drogi spływu) — nadal zaległy.
-- Decyzja o pushu na origin — cała restrukturyzacja istnieje wyłącznie lokalnie.
-- Przebudowa dashboardu ruchu od zera (patrz `## Backlog` → Infrastruktura; przed startem brainstorming wymagań).
-
-### Poprzednia sesja (2026-08-02, sesja 83 — formularz feedbacku z opt-in diagnostyka sesji + naprawa hydraulic_length_km)
-
-### Co zrobiono
-- **Spec + plan** (`.superpowers/sdd/2026-08-02-feedback-form/`, poza repo) — 9 zadan subagent-driven, realizacja pozycji backlogu J1 w wersji rozszerzonej (diagnostyka sesji zamiast prostego formularza).
-- **feat(api) `21e832b`, `b9799a0`** — migracja Alembic 002: tabela `feedback` (id, created_at TIMESTAMPTZ, message TEXT CHECK 1-5000 znakow, contact TEXT CHECK <=200, page_url, user_agent, diagnostics JSONB, is_read BOOLEAN; indeks `idx_feedback_created_at` DESC), swiadomie BEZ adresu IP. `POST /api/feedback` (publiczny) — Pydantic `FeedbackRequest` z limitem 100 KB na `diagnostics`, `user_agent` z naglowka, jawny commit/rollback (pierwszy publiczny endpoint zapisujacy do bazy).
-- **feat(api) `49ed5b9`** — endpointy admina: `GET /api/admin/feedback` (items+total+unread_count), `POST /api/admin/feedback/{id}/read`, `DELETE /api/admin/feedback/{id}` za `X-Admin-Key`; CORS rozszerzony o DELETE.
-- **fix(docker) `9ade8f7`** — strefa `feedback_limit` 1r/m burst=5 na `location = /api/feedback` (`docker/nginx.conf` i `docker/nginx-ssl.conf.template`).
-- **feat(frontend) `2546a75`** — `frontend/js/diagnostics.js`: bufor 50 zdarzen (`map_click`/`mode_change`/`layer_change`/`api_call` z `X-Request-ID`/`js_error`) wylacznie w pamieci karty; `snapshot()` z pelna konfiguracja obszaru roboczego (mapa/tryb/zlewnia/parametry hydrogramu/linia profilu); wrapper `window.fetch` dla `/api/`.
-- **feat(frontend) `a797c36`** — `frontend/js/feedback.js` + modal "Zglos uwage" w navbarze (checkbox opt-in diagnostyki, domyslnie zaznaczony, z podgladem JSON), `submitFeedback` w `api.js`, guard Escape w `app.js`.
-- **feat(frontend) `4482074`** — panel `/admin`: sekcja "Zgloszenia testerow" (`admin-feedback.js` — rendering wylacznie `textContent`, XSS-safe; badge nieprzeczytanych; rozwijane szczegoly z osia czasu zdarzen; usuwanie z potwierdzeniem).
-- **Testy:** 20 nowych (7 unit schematow, 6 integracyjnych POST, 7 unit admin).
-- **docs `725e878`** — opis tabeli `feedback` w DATA_MODEL.md, wpis CHANGELOG.md (Unreleased/Dodane), ADR-053 w DECISIONS.md, odhaczenie pozycji J1 w tym pliku.
-
-**Kontynuacja sesji 83 — naprawa `hydraulic_length_km` (feedback #11 z formularza uruchomionego wyzej w tej sesji):**
-- **Diagnoza** (`notes/reports/2026-08-02-length-km-diagnosis.md`, zdiagnozowane i naprawione — sesja 83) — `CatchmentGraph.aggregate_stats()` liczyl `hydraulic_length_km` wzgledem zlej bazy: zlewnie zrodliskowe (~52% wszystkich podzlewni, wszystkie progi) zawyzone 3.8-19.5x (fallback bezwzgledny do ujscia calego basenu), zlewnie wielowezlowe zanizone (odejmowana zla wielkosc). Skazone: `length_km`, wskazniki ksztaltu Cw/Cf/Cl, `tc` (Kirpich) → cale hydrogramy. Granica zlewni i dane w bazie byly poprawne — blad wylacznie w interpretacji `max_flow_dist_m`.
-- **feat(db) `dcee75a`** — migracja 003: kolumna `stream_catchments.outlet_flow_dist_m` (odleglosc splywu w PUNKCIE UJSCIA podzlewni [m], baza dla `hydraulic_length_km`).
-- **fix(core) `aacb5f5`** — `aggregate_stats()`: `hydraulic_length_km = (max(max_flow_dist_m[indices]) − outlet_flow_dist_m[outlet]) / 1000`; fallback bezwzgledny usuniety; przy braku danych fallback ZANIZAJACY (`max_flow_dist_m[outlet]`) + warning w logu.
-- **fix(core) `93a633f`** — etykieta `length_km` w GeoJSON drogi splywu liczona z tej samej bazy co morfometria (wczesniej niezalezna, niezgodna z narysowana linia).
-- **feat(core) `fd184d7`** — pipeline (`_clip_and_build_path` + `db_bulk.py`) zapisuje `outlet_flow_dist_m` w przyszlych przebiegach.
-- **feat(core) `fe5ab08`** — `scripts/backfill_outlet_flow_dist.py`: probkowanie `stream_distance.tif` w `ST_EndPoint(longest_flow_path_geom)`; 54390 rekordow, 0 NULL, 0 zawyzen — bez ponownego pipeline'u. Tryb precise naprawiony automatycznie (aproksymacja: baza = ujscie wezla zawierajacego klik).
-- **E2E:** klik z feedbacku #11 — 6.7584 km przed naprawa, 1.6496 km po (zgodnosc z geometria 2.3%); drugi klik 2.9558 km (zgodnosc 5.4%); etykieta == `hydraulic_length_km` w obu.
-- **Testy:** przepisane `TestHydraulicLength` (nowa semantyka + test regresyjny zlewni zrodliskowej), nowy `test_flow_path_geojson.py`; 1161 passed.
-- **docs (ten commit)** — kolumna `outlet_flow_dist_m` w DATA_MODEL.md, wpis CHANGELOG.md (Unreleased/Naprawione), ADR-054 w DECISIONS.md, 2 nowe tickety backlogu (patrz `## Backlog`).
-- **fix(core) `5a55f8d`** — porzadki po finalnym review - komentarze, docstringi, guard zerowej dlugosci (2 nowe testy, razem 1163 passed).
-
-### Nastepne kroki
-- **Wdrozenie produkcyjne (formularz feedbacku) wymaga:** `alembic upgrade head` (migracja 002) + force-recreate kontenera nginx (nowa strefa `feedback_limit` w `docker/nginx.conf`/`docker/nginx-ssl.conf.template`).
-- **Wdrozenie produkcyjne (naprawa hydraulic_length_km) wymaga:** `alembic upgrade head` (migracja 003) + `python -m scripts.backfill_outlet_flow_dist` + restart API.
-- **Manualny test w przegladarce** (modal "Zglos uwage" + panel admina, sekcja "Zgloszenia testerow") — nie byl mozliwy w srodowisku agentow (brak pelnego stacku/GUI w tej sesji).
-- Patrz sekcja `## Backlog` — priorytet: diagnoza hietogram/hydrogram "brak danych" (jedyny twardy bug z feedbacku Kamila, bez zmian w tej sesji).
-
-**Sesja zakonczona.** Stan stabilny (formularz feedbacku + naprawa hydraulic_length). Nastepne kroki: (1) manualny smoke test w przegladarce (modal "Zglos uwage", panel /admin sekcja zgloszen, poprawiona dlugosc drogi splywu na mapie), (2) decyzja o merge i push (checkpoint), (3) odpowiedz zglaszajacemu feedback #11.
-
-### Poprzednia sesja (2026-07-31, sesja 81 — feedback testera Kamila, nomenklatura, naprawa DNS, konsolidacja backlogu)
-
-### Co zrobiono
-- **Analiza feedbacku testera** (`notes/feedback/Kamil.md`) — triaz 12 uwag: zadania UI/UX, kwestie danych, pomysly biznesowe. Research wykonalnosci (3 agentow): nomenklatura trywialna; zaglebienia maja pelne dane glebokosci w PostGIS (`max_depth_m` z indeksem) + ~80% logiki interakcji w martwym kodzie `depressions.js:63-146`; NMT — okno kolorow p5-p95 (81.8-114.1 m) pokrywa ~35% zakresu wysokosci, hillshade wypalony w pikselach kafelkow (rekolorowanie client-side niemozliwe).
-- **feat(frontend) `c2adfd5`** — przemianowanie warstwy "Cieki" → "Linie splywu" (6 miejsc, w tym komunikat 404 w `catchment_graph.py`, ktory nadpisuje frontendowy; "Cieki BDOT10k" i etykiety morfometrii celowo bez zmian). Testy 1018/1018.
-- **Diagnoza awarii pobierania NMT** (0/30 arkuszy, NameResolutionError) — zrodlo: srodowisko, nie kod. Embedded DNS Dockera z pusta lista upstream od bootu 2026-07-05 (wyscig dockerd vs dhcpcd, brak systemd-resolved). Kartograf i Hydrograf zadzialaly poprawnie.
-- **fix(docker) `4e4fffc`** — `dns: [1.1.1.1, 9.9.9.9]` dla api w docker-compose.yml (celowo publiczne resolvery, bez adresow LAN) + recreate kontenera. Zweryfikowane: DNS dziala, HTTPS 200 do WMS geoportalu z kontenera. Mozna ponowic generowanie nowego obszaru.
-- **docs `a6c3032`** — konsolidacja backlogu: sekcja `## Backlog` w PROGRESS.md jako jedyne zrodlo prawdy (kategorie; odhaczone nieaktualne wpisy CR4-CR11 i piramida kafelkow; striaz feedbacku Kamila; commit objal tez zalegle notatki sesji 80).
-- **docs `2bd657e`** — brainstorm 14 pomyslow uzytkownika → nowa sekcja backlogu "Wlasne dane i nowe zrodla" (12 wpisow z uzasadnieniami, 3 aktualizacje istniejacych). Wizja rozstrzygnieta: tryb przegladowy nadrzedny, wlasne dane jako opcjonalne rozszerzenie projektowe. Pelna notatka: `notes/plans/2026-07-31-wlasne-dane-i-nowe-zrodla-wizja.md` (notes/ w gitignore, poza repo).
-- **Decyzje uzytkownika:** morfometria — parametry sieci z faktycznych ciekow (wgrana warstwa lub BDOT10k), nie z generowanych linii splywu (realizacja odlozona); zadania stylistyczne (skala zaglebien, skala NMT) odlozone do backlogu.
-- **Stan repo na koniec:** 4 commity na develop NIEPUSHOWANE (`c2adfd5`, `4e4fffc`, `a6c3032`, `2bd657e`); niezacommitowane README.md (zmiany sprzed sesji, 8 linii).
-
-### Nastepne kroki
-Patrz sekcja `## Backlog` — priorytet: diagnoza hietogram/hydrogram "brak danych" (jedyny twardy bug z feedbacku Kamila).
-
-### Poprzednia sesja (2026-06-22, sesja 80 — naprawa EPERM przy czyszczeniu danych po migracji rootless→system Docker)
-- **Diagnoza `[Errno 1] Operation not permitted: '/frontend/data/dem_tiles/8/140'`** w `/admin/cleanup` (komponent `overlays`).
-- **Root cause** — pliki w `frontend/data/dem_tiles/` i `frontend/tiles/` byly wlasnoscia hostowego UID **100998** (pozostalosc po rootless Docker, gdzie kontenerowe UID 999 mapowalo sie do 100998). Po przesiadce na system dockerd (sesja 73, infra_docker_networking) kontener `hydro` startuje jako natywne UID 999. `_force_rmtree` w `backend/scripts/clean.py:106-112` robi `os.chmod()` w `onerror` — chmod wymaga zgodnosci UID lub `CAP_FOWNER`, a kontener ma `cap_drop: ALL`. Stad EPERM.
-- **Fix jednorazowy** — chown w throwaway-kontenerze jako root:
-  ```bash
-  docker run --rm -v "$(pwd)/frontend/data:/d1" -v "$(pwd)/frontend/tiles:/d2" \
-    alpine chown -R 999:999 /d1 /d2
-  ```
-- **Sanity-check**: `find frontend/data frontend/tiles -uid 100998` — bralo 0 wynikow po fixie. Czyszczenie z panelu admin dziala.
-- **Pamiec zaktualizowana** — `lesson_docker_volume_migration.md`: poprawiono blednie oznaczone "bezpieczne" bind-mounty, dodano polecenie chown i sanity-check.
-
-### Poprzednia sesja (2026-05-18, sesja 79 — naprawa cichej awarii reloadu CatchmentGraph po bootstrap)
-
-- **Diagnoza 503 na `POST /api/delineate-watershed` po pomyslnym bootstrap z panelu admin** — endpoint twardo zwracal 503 gdy `cg.loaded == False`. W bazie 281,111 rekordow `stream_catchments`, ale graf in-memory nie zaladowany.
-- **Root cause** — watek auto-reloadu w `admin._read_process_output` lapal wyjatki tylko do `state["log_lines"]` w pamieci procesu, nieaktywnych w `docker logs`. QueuePool timeout (15 polaczen zajetych przez polling panelu admin podczas konca bootstrap) zostawial graf w `_loaded=False` bez sladu w logach.
-- **`core.catchment_graph.ensure_loaded(db)`** — nowa metoda z `threading.Lock` (double-check pattern). Endpointy doladowuja graf na zadanie gdy reload tla padnie — pierwszy user czeka ~5s zamiast dostac 503, kolejni z lockiem widza gotowy graf.
-- **`watershed.py:363-368` + `hydrograph.py:72-77`** — przejscie z `if not cg.loaded:` na `if not cg.ensure_loaded(db):`. Self-heal po cichych awariach.
-- **`admin._read_process_output`** — retry 3x z backoffem 1s/5s/15s na reload po bootstrap. Pokrywa transient QueuePool exhaustion. Sukces/porazka logowane przez `logger.info`/`logger.exception` — wyjatek juz widoczny w `docker logs`, nie tylko w pamieci.
-- **Commit `555e801`** na `develop`: 4 pliki, +60/-17.
-
-### Poprzednia sesja (2026-03-29, sesja 78 — naprawa admin panel + Docker permissions)
-
-- **Fix timeout logowania do panelu admin** — dashboard `_dir_size_mb` skanowal 353k plikow przy kazdym uzyciu, dodano cache 30s (`@lru_cache` + `time.monotonic()`).
-- **Fix shutil.rmtree PermissionDenied w rootless Docker** — dodano `onerror` handlery do wszystkich wywolan `shutil.rmtree` obslugujace pliki bez uprawnien zapisu.
-- **Root cause: docker-compose.override.yml** — `user: "0:0"` nadpisywal `USER hydro` z Dockerfile. Root bez capabilities nie mogl modyfikowac plikow nalezacych do hydro (uid 999).
-- **Pin hydro UID/GID** — ustawiono stale `UID=999`, `GID=999` w Dockerfile dla przewidywalnego ownership bind mountow.
-- **Uproszczenie docker-compose.override.yml** — usunieto nieuzywane mapowania portow i nadpisanie `user: "0:0"`.
-- **Audyt dokumentacji** — dalsze poprawki (kontynuacja z sesji 77).
-
-### Poprzednia sesja (2026-03-29, sesja 77 — optymalizacja i porzadki)
-
-- **BDOT stream matching timeout fix** — zamiana kolejnosci ST_Union/ST_Intersection w `update_stream_real_flags` (prawo rozdzielnosci). Dodano `update_stream_real_flags_all()` tworzaca temp buffer raz dla wszystkich progow. >600s timeout → 1s dla progu 100000.
-- **Squash migracji** — 28 migracji Alembic (001-027 + merge) zredukowanych do jednej `001_initial_schema.py`. Usunieto 3 zduplikowane indeksy i martwa migracje 013.
-- **Czyszczenie repo** — usunieto 3 deprecated skrypty (e2e_task9, export_pipeline_gpkg, export_task9_gpkg) referujace usuniety model cell_geometry (ADR-028).
-- **Docker: NUMBA_CACHE_DIR** — dodano `NUMBA_CACHE_DIR=/tmp/numba_cache` w docker-compose.yml (read_only rootfs blokuje zapis do /app).
-- **Audyt dokumentacji** — weryfikacja 12 plikow dokumentacji, naprawiono ~20 rozbieznosci.
-- **Testy** — 1063 testow, 0 failures
-
-### Poprzednia sesja (2026-03-28, sesja 76 — przebudowa topologii kanalizacji)
-
-- **Przebudowa topologii sieci kanalizacyjnej (ADR-052)** — z automatycznej detekcji (snapping, kaskada kierunkow, heurystyczna detekcja outletow) na jawna topologie definiowana przez uzytkownika:
-  - Nowy modul `core/sewer_topology.py` — parser + walidator topologii (ParsedTopology, parse_sewer_topology, validate_against_fdir)
-  - 4 role wezlow: inlet, outlet, junction, storage (kompatybilnosc SWMM/HEC-RAS)
-  - 2 formaty wejsciowe: Format A (punkty z downstream_id) i Format B (punkty + linie z from_node/to_node)
-  - Walidacja strict z raportem — 11 regul + detekcja petli fdir
-  - Pipeline dwufazowy: Faza 1 = czysty fdir (bez sewer) z walidacja petli, Faza 2 = burn inlets + pelna hydrologia
-  - Usuniety heurystyczny kod z sewer_service.py (~530 linii): snapping, kaskada kierunkow, detekcja outletow
-  - Nowy interfejs: `build_sewer_graph(topology: ParsedTopology)` zamiast starego z 4 parametrami
-  - download_sewer.py: zwraca tuple `(points_gdf, lines_gdf | None)` zamiast jednego GeoDataFrame
-  - config.py: nowe sekcje `field_mapping`, `role_mapping`, `source.format`
-  - Migracja 027: CHECK constraint `node_type` zmieniony z `isolated` na `storage`
-  - Admin API: upload zwraca `detected_format` i `layers`; config akceptuje `field_mapping`, `role_mapping`
-- **Specyfikacja, plan, implementacja 13 taskow, code review, poprawki, test E2E**
-- **Testy** — 1025 testow (1018 unit + 7 integration), 0 failures
-
-### Poprzednia sesja (2026-03-27, sesja 75 — integration test sewer pipeline)
-
-- **Integration test sewer pipeline** — 8 testow (6 in-memory + 2 DB) w `tests/integration/test_sewer_pipeline.py`
-- **Bug fix: insert_sewer_data** — 2 bugi znalezione przez test integracyjny
-- **Testy** — 1108 testow, 0 failures
-
-### Poprzednia sesja (2026-03-27, sesja 74 — integracja kanalizacji deszczowej + review + pentest + audit DB)
-
-- **Specyfikacja integracji kanalizacji deszczowej** — design doc z brainstormingiem, 15 pytan, review (23 znalezione problemy, 3 krytyczne naprawione)
-- **Plan implementacji** — 12 zadan, subagent-driven development
-- **Migracja DB (025)** — tabele sewer_nodes (18 kolumn), sewer_network (16 kolumn), kolumna is_sewer_augmented
-- **Config** — sekcja sewer w _DEFAULT_CONFIG (enabled, burn_depth, snap_tolerance, source, attribute_mapping)
-- **download_sewer.py** — modul pozyskiwania danych (file/WFS/DB/URL) z walidacja CRS
-- **sewer_service.py** — SewerGraph + build_sewer_graph (snap, kaskada kierunku, scipy sparse) + burn_inlets + reconstruct_inlet_fa + route_fa_through_sewer + propagate_fa_downstream + insert_sewer_data
-- **Integracja z process_dem.py** — kroki 3b i 4a-4c, sewer burning w preprocessing
-- **Admin API endpoints** — `/api/admin/sewer/status`, `/upload`, `/delete`
-- **MVT tiles sieci kanalizacyjnej** — `/api/tiles/sewer/{z}/{x}/{y}.pbf`
-- **Frontend overlay + admin tab** — `sewer.js`, `admin-sewer.js`, warstwa na mapie
-- **Code review** — 3 reviewery: spec compliance, backend quality, frontend+docs. 4 krytyczne + 9 waznych naprawionych
-- **Pentest bezpieczenstwa** — 20 findings: 2 CRITICAL, 5 HIGH. SSRF protection dodana w load_from_url/wfs/database, path traversal fix w upload endpoint
-- **Audyt bazy danych** — 26 findings: 2 CRITICAL, 5 HIGH. CHECK constraint bug (root_outlet_id != id), single-transaction insert, batch UPDATE is_sewer_augmented (N+1 → single spatial join), MVT query optimization
-- **Testy** — 991 testow jednostkowych, 0 failures
-
-### Poprzednia sesja (2026-03-25, sesja 73 — unified delineate-watershed endpoint)
-
-- **Unified delineate-watershed endpoint (ADR-050)** — polaczenie `POST /api/select-stream` i `POST /api/delineate-watershed` w jeden endpoint z dwoma trybami:
-  - **Precomputed** (z `threshold_m2`): snap-to-stream + BFS po grafie zlewni czastkowych (dotychczasowy select-stream)
-  - **Precise** (bez `threshold_m2`): delimitacja rastrowa pyflwdir on-the-fly z RasterCache
-- **RasterCache** — nowy modul `core/raster_service.py` z lazy-loading rastrow fdir/DEM/slope, thread-safe cache
-- **Fix konwersji fdir** — poprawka enkodowania pit/nodata (DEM nodata mask) + wymuszenie pit dla pyflwdir.basins()
-- **Frontend: jeden tryb "Wybierz zlewnię"** — usuniecie osobnego "Wygeneruj zlewnię", tryb precomputed/precise wybierany automatycznie
-- **Usuniecie `to_confluence`** — parametr i metoda `traverse_to_confluence()` z CatchmentGraph
-- **Pole `mode` zamiast `auto_selected`** — response zwraca `"mode": "precomputed"|"precise"`
-- **Nowe parametry:** wskaznik lemniskaty Cl = π·L²/(4·A), spadek dzialu wodnego Rp = ΔH/P [‰], wspolczynnik asymetrii α (placeholder)
-- **Poprawka wskaznika rzezby** — R = ΔH/√A [‰]
-
-### Poprzednia sesja (2026-03-25, sesja 72 — aktualizacja dokumentacji)
-
-- Refaktoryzacja code review (Wave 1-5): 14 commitow, fix duplikatu `flow_dist_m`, usuniecie martwego kodu, ekstrakcja helperow, deduplikacja watershed_service, unifikacja endpointow
-- Fix WFS BBOX axis order, mosaic bbox, DEM auto-discovery (ADR-049)
-- Aktualizacja dokumentacji (ARCHITECTURE, DATA_MODEL, HYDROLOG, KARTOGRAF, IMGWTOOLS, CROSS_PROJECT, SCOPE, DECISIONS, CHANGELOG)
-
-### Poprzednia sesja (2026-03-24, sesja 70 — geometry simplification fix, CatchmentGraph invalidation, divide flow path)
-
-- Per-polygon simplify usunięty ze stream_extraction, Invalidacja CatchmentGraph po cleanup
-- Browser cache wyłączony dla danych pipeline, Divide flow path geometry (migracja 024)
-- Wygładzanie Chaikin cieków w preprocessingu (ADR-047), ADR-048: Droga spływu z działu wód
-
-### Poprzednia sesja (2026-03-24, sesja 69 — poprawki BDOT matching, main channel trace, hydraulic length, admin cleanup)
-
-- BDOT ST_Within fix, Admin cleanup: single source of truth, DEM color mapping: percentile clipping
-- Main channel trace: upstream_area_km2 (ADR-046), Hydraulic length wzgledem ujscia zlewni
-- Kaskadowa eskalacja progu w select_stream
-- Aktualizacja dokumentacji (ADR-046)
-
-### Poprzednia sesja (2026-03-24, sesja 68 — finalizacja feat/bdot-stream-matching)
-
-- WFS TERYT discovery (ADR-045), upgrade Kartograf v0.6.1, selektor rozdzielczosci NMT
-- Drainage stats z BDOT, BDOT main channel tracing, GUI "brak ciekow BDOT"
-- Fix overlay glownego cieku, fix DownloadManager resolution
-- 899 testow, 0 failures
-
-### Poprzednia sesja (2026-03-24, sesja 67 — BDOT matching + flow path tracing + naprawy tc)
-
-- Upgrade Hydrolog v0.6.2 → v0.6.3 — nowe metody tc (FAA, Kerby, Kerby-Kirpich), 88 mypy fixes
-- Migracja domyslnej Nash — `from_tc` (deprecated) → `from_lutz` (Lutz physiographic)
-- 3 nowe metody Tc — FAA, Kerby, Kerby-Kirpich
-- BDOT10k stream matching (ADR-044) — bufor 15m, overlap >= 50%, `real_channel_length_km`
-- Hydraulic length preprocessing (migracja 022), sciezki splywu (migracja 023)
-- 3 nowe parametry flow path: `longest_flow_path_km`, `divide_flow_path_km`, `centroid_flow_path_km`
-- GUI: droga splywu, overlay cieku, informacje BDOT
-- Optymalizacja BDOT matching — per-feature buffers (24s vs >90 min)
-- 955+ testow, 0 regresji
-
-### Poprzednia sesja (2026-03-23, sesja 66 — upgrade Hydrolog v0.6.3)
-
-- Upgrade Hydrolog v0.6.2 → v0.6.3 — nowe metody tc (FAA, Kerby, Kerby-Kirpich), 88 mypy fixes, 28 nowych testów
-- Migracja domyślnej Nash — `from_tc` (deprecated) → `from_lutz` (Lutz physiographic), label [deprecated] w UI
-- 3 nowe metody Tc — FAA (spływ pow., C z CN), Kerby (retardance), Kerby-Kirpich (composite)
-- 923 testy, 0 regresji
-
-### Poprzednia sesja (2026-03-23, sesja 65 — hietogram split + weryfikacja + naprawa anomalii)
-
-- Wydzielenie hietogramu do osobnej zakładki — akordeon, selektor rozkładu, parametry alfa/beta
-- Auto-regeneracja wykresów (debounce 300ms), hietogram słupkowy z opadem efektywnym
-- Bilans wodny przeniesiony do hietogramu, weryfikacja 72 testów
-- Fix A2: imperviousness w Nash, Fix A3: tc NRCS zawyżone (channel_slope → mean_slope)
-- 797 testów, 0 regresji
-
-### Poprzednia sesja (2026-03-19, sesja 63 — fix topologii merge zlewni)
-
-- Fix nieciągłości topologii — ST_SnapToGrid, buffer 2.0m, ST_Buffer(0) zamiast ST_MakeValid
-- Fix brakujących kafli MVT — no-store dla pustych kafli, zawsze regeneruj DEM tiles
-- 721 testów
-
-### Poprzednia sesja (2026-03-18, sesja 62 — H4 monotonic stream smoothing)
-
-- ADR-041: monotoniczne wygładzanie cieków — `smooth_streams_monotonic()`, running-minimum downstream
-- Refaktoryzacja `burn_streams_into_dem()` — wydzielenie `_load_stream_geometries()`
-- Integracja w `process_dem.py`: krok 3b, `--no-smooth-streams` flag
-- Zmiana `burn_depth_m` z 10/5m na 2.0m
-- 28 testów (16 helpers + 12 main)
-
-### Poprzednia sesja (2026-03-17, sesja 61 — optymalizacja select-stream + pipeline fixes)
-
-- ADR-042: Optymalizacja select-stream dla duzych zlewni — batched union z pre-simplifikacja, uproszczona granica dla LC/HSG, indeks kompozytowy. 95 km²: 24s → 7s, 674 km²: timeout → 7s
-- CatchmentGraph auto-reload po zakonczeniu bootstrap z panelu admin
-- Fix brakujacych arkuszy NMT — `bootstrap.py` uzywa `kartograf.find_sheets_for_bbox()` (91 → 192 arkuszy)
-- Tippecanoe zoom limit — threshold 1000 catchments: Z14-18 zamiast Z8-18 (7.5h → 6.5 min)
-- H4 design spec — monotoniczne wygladzanie ciekow (ADR-041, backlog, zatwierdzony)
-- Migracja 018: indeks `(threshold_m2, segment_idx)` na `stream_catchments`
-- 686 testow jednostkowych, 0 regresji
-
-### Poprzednia sesja (2026-03-09, sesja 59 — vector boundary file support ADR-040)
-
-- ADR-040: obsługa plików wektorowych jako obszar analizy
-- Nowy moduł `core/boundary.py`: ładowanie SHP/GPKG/GeoJSON, walidacja, union, reprojekcja WGS84
-- CLI: `--boundary-file` / `--boundary-layer` w bootstrap.py
-- API: `POST /api/admin/bootstrap/upload-boundary`
-- Frontend admin: toggle bbox/boundary, upload z podglądem
-
-### Poprzednia sesja (2026-03-03, sesja 56 — release CP4 v0.4.0)
-
-- Fix 35 błędów ruff lint w 15 plikach (E501, I001, F841, F401, SIM105, UP024)
-- Aktualizacja wersji na v0.4.0 w `pyproject.toml`
-- Aktualizacja CHANGELOG.md — zamknięcie sekcji [Unreleased] jako [0.4.0]
-- Merge `develop` → `main`, tag `v0.4.0`
-- 778 testów jednostkowych, 0 regresji, 0 błędów ruff
-
-### Poprzednia sesja (2026-03-03, sesja 55 — code review CR5/CR9/CR10)
-
-- CR10: zamiana `traceback.print_exc()` na `logger.error(exc_info=True)`
-- CR9: fix cascade threshold mismatch — re-agregacja statystyk po eskalacji progu
-- CR5: implementacja analizy GeoPackage land cover w `get_land_cover_stats()`
-- 778 testów (było 644), 134 nowe testy
-
-### Poprzednia sesja (2026-03-02, sesja 54 — cleanup extension + HSG Poland-wide cache)
-
-- Fix: dodano `*.geojson` do wzorców czyszczenia overlays (panel admin)
-- Feat: nowy target cleanup `processed_data` (typ `multi_dir`) dla `data/nmt/` i `data/hydro/`
-- Feat: HSG Poland-wide cache — jednorazowe pobranie `hsg_poland.tif` dla całej Polski (~2-5 MB)
-- ADR-038: HSG Poland-wide cache + cleanup extension
-- 644 testów jednostkowych, 0 regresji
-
-### Poprzednia sesja (2026-03-02, sesja 53 — separacja cache/data + Kartograf v0.5.0)
-
-- Upgrade Kartograf z v0.4.1 na v0.5.0 (usunięcie parametru `category`, filtrowanie warstw hydro w merge)
-- Separacja cache/data w bootstrap.py (surowe dane → `/cache/`, przetworzone → `/data/`)
-- Deduplikacja pobierania BDOT10k (1x zamiast 2x)
-- Docker: volume mount `/cache` (ro prod, rw dev)
-- ADR-037, fix OT_ prefix, fix cache_dir resolution
-- Test e2e: pełny pipeline dla 1 arkusza 1:25k, 10912 segmentów
-
-### Poprzednia sesja (2026-03-02, sesja 52 — hardening kontenerow Docker)
-
-Hardening konteneryzacji Docker (ADR-036). Wszystkie zmiany czysto infrastrukturalne — bez zmian logiki biznesowej. 633 testow przechodzi.
-
-### Poprzednia sesja (2026-03-02, sesja 51 — uzupelnienie konteneryzacji)
-
-Analiza i uzupelnienie brakujacych elementow konteneryzacji. Multi-stage Dockerfile, entrypoint.sh, healthcheck, dev/prod overrides, ADR-035.
-
-### Poprzednia sesja (2026-03-02, sesja 50)
-
-Redesign bbox input w panelu administracyjnym — 4 pola kompasowe (N/S/W/E) + interaktywny map picker (Leaflet w modalu Bootstrap). 8 commitow na develop.
-
-### Poprzednia sesja (2026-03-02, sesja 49)
-
-Naprawa 6 krytycznych bugow (CR4, CR6, CR7, CR8, S5.3, Auth) w trybie rownoleglych zespolow subagentow (3 feature branches + merger). 13 nowych testow, 742 lacznie. 12 commitow na develop.
-
-### Poprzednia sesja (2026-03-01, sesja 48)
-
-Panel administracyjno-diagnostyczny (ADR-034): 8 nowych endpointow `/api/admin/*`, frontend `/admin`, 48 nowych testow, 729 lacznie. 12 commitow na develop.
-
-### Poprzednia sesja (2026-03-01, sesja 47)
-
-Realizacja 6 zadan sredniego priorytetu w trybie subagent-driven development (6 galezi feature, merge do develop). 109 nowych testow, 672 lacznie.
-
-- **Team 1 — Testy scripts/ (83 nowe testy jednostkowe):**
-  - `test_dem_color.py` (15 testow): `build_colormap()`, `compute_hillshade()` — weryfikacja numpy outputs, wymiary, zakresy wartosci
-  - `test_sheet_finder.py` (32 testy): `get_sheet_1to10k_id()`, `get_sheet_1to25k_id()`, koordynaty ark. map polskich (graniczne, srodki, zakresy)
-  - `test_import_landcover.py` (16 testow): `map_bdot_class()`, `extract_landcover_polygons()` — mapowanie klas BDOT10k na kategorie CN
-  - `test_bootstrap.py` (20 testow): `parse_bbox()`, `StepTracker` — walidacja bbox, next/skip/retry, sekwencje krokow
-
-- **Team 2 — Wygladzanie granic zlewni (ADR-032):**
-  - `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3 iteracje)` w `merge_catchment_boundaries()` (watershed_service.py)
-  - Eliminacja schodkowych krawedzi rastrowych, gladkie krzywe zamiast ortogonalnych krokow 5m
-  - Tolerancja simplify w `stream_extraction.py`: `cellsize` → `2*cellsize`
-  - 4 testy w `test_boundary_smoothing.py`, ADR-032
-
-- **Team 5 — Warstwa tematyczna: pokrycie terenu (BDOT10k):**
-  - Nowy endpoint MVT `/api/tiles/landcover/{z}/{x}/{y}.pbf` (tiles.py)
-  - Frontend: `loadLandCoverVector()` w map.js, `addBdotOverlayEntry()` w layers.js
-  - 8 kategorii kolorow, legenda, suwak przezroczystosci, lazy-load, pane z-index 260
-  - 4 testy w `test_tiles_landcover.py`
-
-- **Team 6 — Konfiguracja YAML pipeline:**
-  - `load_config()`, `_deep_merge()`, `get_database_url_from_config()` w `core/config.py`
-  - Szablon `config.yaml.example` (database, DEM, paths, steps, custom sources)
-  - Flaga `--config` w `bootstrap.py`, `config.yaml` w `.gitignore`
-  - 14 testow w `test_yaml_config.py`
-
-- **Team 3 — Piramida kafelkow DEM + multi-directional hillshade:**
-  - `compute_hillshade()` w `utils/dem_color.py`: 4 kierunki oswietlenia (NW 40%, NE 20%, SE 20%, SW 20%)
-  - `generate_dem_tiles` wlaczony do `step_overlays()` w `bootstrap.py` (step 9)
-  - Domyslny max zoom: 18→16, cache (pomija jesli kafelki istnieja)
-
-- **Team 4 — Podniesienie budynkow w NMT (ADR-033):**
-  - `raise_buildings_in_dem()` w `core/hydrology.py` (+5m pod obrysami budynkow z BDOT10k BUBD)
-  - Nowy parametr `building_gpkg` w `process_dem()`
-  - 4 testy w `test_building_raising.py`, ADR-033
-
-- **Dokumentacja:** ADR-032, ADR-033, CHANGELOG, PROGRESS
-- **Git:** 6 feature branches merged do develop, 3 konflikty CHANGELOG + 1 DECISIONS rozwiazane
-
-### Regeneracja danych (kontynuacja sesji 47)
-
-Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic, hydro_merged) + TRUNCATE 6 tabel DB. Bootstrap z bbox `16.9279,52.3729,17.3825,52.5870`:
-
-| Krok | Czas | Wynik |
-|------|------|-------|
-| Pobieranie NMT | 125s | 91 arkuszy (43 nowe, 48 z cache) |
-| Przetwarzanie NMT | 1949s | 54.5M komorek (6626×8218 @5m), 246,357 segmentow |
-| Pokrycie terenu | 154s | 112,313 obiektow, 6 powiatow |
-| Dane glebowe HSG | 2s | 197 poligonow |
-| Opady IMGW | 141s | 192 stacje, 8,064 rekordow |
-| Depresje | 45s | 338,690 depresji |
-| Kafelki MVT | 214s | 3 progi (1k, 10k, 100k) |
-| Overlay PNG | 93s | DEM + DEM tiles + streams |
-| **Razem** | **2724s** (~45 min) | |
-
-### Nastepne kroki
-1. CP5: MVP — pelna integracja, deploy
-2. Code review CR4-CR11 (wazne)
-3. Rozwazyc podwojna analize NMT (z/bez bezodplywowych) — nowy punkt backlog
-
-### Poprzednia sesja (2026-02-25, sesja 46)
-
-- **Flaga `--waterbody-mode` do sterowania obsluga zbiornikow wodnych (ADR-031):**
-  - Nowe parametry `waterbody_mode` i `waterbody_min_area_m2` w `classify_endorheic_lakes()` (core/hydrology.py)
-  - 3 tryby: `auto` (istniejace zachowanie BDOT10k), `none` (pomin klasyfikacje), sciezka do custom `.gpkg`/`.shp` (wszystkie endoreiczne)
-  - `min_area_m2` filtruje male zbiorniki po powierzchni (dziala z auto i custom)
-  - Parametry propagowane przez: `process_dem.py`, `bootstrap.py`, `prepare_area.py` (CLI + sygnatury funkcji)
-  - 5 nowych testow w `test_lake_drain.py::TestWaterbodyMode`, 563 testow passed
-  - Dokumentacja: ADR-031, scripts/README.md, PROGRESS, CHANGELOG
-- **Backlog: punkt o podwojnej analizie NMT (z/bez obszarow bezodplywowych)**
-
-### Poprzednia sesja (2026-02-24, sesja 45)
-
-- **Usuniecie progu FA 100 m² z systemu (ADR-030):**
-  - Prog 100 m² generowal ~2.5M segmentow ciekow (90% tabeli stream_network), bez odpowiednich zlewni czastkowych (usuniete w ADR-026), wydluzal pipeline o ~50%, zajmowal ~2 GB w bazie
-  - Zmiana: `DEFAULT_THRESHOLDS_M2 = [100, 1000, 10000, 100000]` → `[1000, 10000, 100000]` (3 progi)
-  - Domyslny `stream_threshold` zmieniony z 100 na 1000 we wszystkich skryptach i modulach core (10 plikow produkcyjnych)
-  - Migracja Alembic 017: `DELETE FROM stream_network WHERE threshold_m2 = 100` + `DROP INDEX idx_stream_geom_t100/idx_catchment_geom_t100`
-  - Testy zaktualizowane (4 pliki testowe), 558 testow passed
-  - Dokumentacja: ADR-030, CHANGELOG, PROGRESS, README, scripts/README
-
-### Poprzednia sesja (2026-02-24, sesja 44)
-
-- **Fix statement_timeout dla bulk INSERT (2.5M segmentow stream):**
-  - Dodano `override_statement_timeout(600s)` wrapper w `insert_stream_segments()` i `insert_catchments()` w `core/db_bulk.py` — domyslny timeout 30s byl za krotki przy 2.5M+ rekordow
-- **Pelny bootstrap pipeline (10 arkuszy, 5m NMT):**
-  - 18.9M komorek (4610×6059 przy 5m), mozaika VRT ze 100 plikow ASC
-  - pyflwdir ukonczony w ~8 min (vs OOM przy rozdzielczosci 1m z 698M komorek)
-  - DB: stream_network 2,780,056 segmentow (4 progi), stream_catchments 264,548, depressions 385,567, land_cover 101,237, precipitation 7,560, soil_hsg 121
-  - Kafelki MVT wygenerowane (tippecanoe), overlay PNG (DEM + streams)
-  - Calkowity czas pipeline: 2969s (~49 min)
-
-### Poprzednia sesja (2026-02-22, sesja 42)
-
-- **Naprawa 5 bugow UX (E1, E4, E12, E13, F2) — 3 rownolegle zespoly + 1 sekwencyjny:**
-  - **E1 — Dziury na granicach zlewni:** `merge_catchment_boundaries()` w `watershed_service.py` — usunieto `ST_SnapToGrid(geom, 0.01)` (przesuwalo wierzcholki tworzac mikro-luki), zastapione buffer-debuffer (0.1m/-0.1m) ktory zamyka luki zachowujac rozmiar. `MIN_HOLE_AREA_M2`: 1000→100 m² (agresywniejsze usuwanie artefaktow merge).
-  - **E4 — Outlet poza granica zlewni:** nowa funkcja `ensure_outlet_within_boundary()` w `watershed_service.py` — snap outleta do najblizszego punktu na granicy gdy wypada poza (tolerancja 1m). Zastosowanie w `select_stream.py` i `watershed.py`.
-  - **E12 — Legenda HSG:** `createHsgLegend()`/`removeHsgLegend()` w `map.js` — 4 pozycje (A/B/C/D) z kolorami HSG_FILL, auto show/hide. Callbacki `onShow`/`onHide` w `addBdotOverlayEntry()` w `layers.js`.
-  - **E13 — Fill brakujacych pikseli HSG:** `distance_transform_edt` nearest-neighbor fill w `step_soil_hsg()` w `bootstrap.py` — wypelnia luki w rasterze HSG na terenach zurbanizowanych przed polygonizacja.
-  - **F2 — Snap-to-stream hybrydowy:** nowa funkcja `find_nearest_stream_segment_hybrid()` w `watershed_service.py` — priorytet: `ST_Contains` na `stream_catchments` (zlewnia pod kursorem), fallback: globalny `ST_Distance` snap. Zastosowanie w `select_stream.py`.
-  - **Testy:** 8 nowych testow (4 outlet boundary, 2 hybrid snap, 1 HSG fill, 1 SQL inspect), 558 passed total, ruff clean
-  - **4 commity** na feature branch, merge do develop
-
-### Poprzednia sesja (2026-02-22, sesja 41)
-
-- **CR3 — Cursor leak w `CatchmentGraph.load()` (catchment_graph.py):**
-  - Named cursor `catchment_graph_load` nie byl zamykany gdy wyjatek wystapil w petli fetchmany — trzymal otwarta transakcje PostgreSQL
-  - Opakowanie w `try/finally` z `cursor.close()` w `finally`
-  - 550 testow passed, ruff clean
-
-### Poprzednia sesja (2026-02-22, sesja 40)
-
-- **CR2 — O(n²) → O(n) w `compute_downstream_links()` (stream_extraction.py):**
-  - Zamiana `segments.index(seg) + 1` na `enumerate(segments, start=1)` — eliminacja ~1.6 mld porównan dla ~40k segmentów
-  - 550 testów passed, ruff clean
-
-- **CR1 — Naprawa krytycznego bugu: channel_slope z dlugosci glownego cieku (ADR-029):**
-  - **Problem:** `channel_slope_m_per_m` obliczany z calkowitej dlugosci sieci rzecznej (suma WSZYSTKICH segmentow upstream) zamiast z dlugosci glownego cieku. Spadek zanizony 2-10x → czas koncentracji zawyZony → szczyt wezbrania zanizony.
-  - **Rozwiazanie:** Nowa metoda `CatchmentGraph.trace_main_channel()` — traweruje upstream od outletu wg rzedu Strahlera (tie-break: max stream_length, max area). O(path_length), <1ms.
-  - **Naprawione 3 miejsca:** `catchment_graph.py`, `watershed_service.py`, `select_stream.py`
-  - **Testy:** 6 nowych testow (5 w test_catchment_graph.py, 1 w test_watershed_service.py), 550 passed total
-  - `aggregate_stats()["stream_length_km"]` nadal zwraca sume calej sieci (drainage density)
-
-### Poprzednia sesja (2026-02-22, sesja 39)
-
-- **Audyt dokumentacji (16 plikow, ~35 problemow naprawionych):**
-  - 5 rownoleglych subagentow: architektura+data model, PRD+SCOPE+CHANGELOG, DECISIONS+TECH_DEBT+QA, integracje+README, spojnosc krzyzowa+CLAUDE.md
-  - **Krytyczne naprawy (8):**
-    - `flow_graph.py`: DEPRECATED → USUNIETY (ADR-028) w CLAUDE.md, ARCHITECTURE.md, QA_REPORT.md, COMPUTATION_PIPELINE.md
-    - `flow_network`: oznaczona jako USUNIETA w schematach DB (ARCHITECTURE.md, COMPUTATION_PIPELINE.md)
-    - Dodano `soil_hsg.py` i `bootstrap.py` do struktur modulow (CLAUDE.md, scripts/README.md)
-    - CatchmentGraph stats: ~117k/5MB → ~44k/0.5MB (CLAUDE.md, ARCHITECTURE.md)
-    - ADR-024/025 oznaczone jako Superseded przez ADR-026 (DECISIONS.md)
-    - Dodano `segment_idx` do schematu stream_network (ARCHITECTURE.md)
-    - Dodano 7 brakujacych endpointow API do PRD.md
-  - **Wazne naprawy (10):**
-    - Liczba testow: 538/559 → 544 (QA_REPORT.md, PROGRESS.md)
-    - Profil terenu przeniesiony z OUT do IN scope (SCOPE.md)
-    - P1.x flow_network oznaczone jako ZREALIZOWANE (TECHNICAL_DEBT.md)
-    - Dodano ADR-026/027/028 do tabeli QA_REPORT.md
-    - Migracje 13 → 16, endpointy 7 → 10 (QA_REPORT.md)
-    - Nowa sekcja soil_hsg w DATA_MODEL.md (migracja 016)
-    - Dodano bootstrap.py do scripts/README.md
-  - **Srednie naprawy (12):** CHANGELOG duplikat [Unreleased], daty SCOPE/HYDROLOG, Hydrolog v0.5.1→v0.5.2 w CROSS_PROJECT, uproszczenie isinstance w KARTOGRAF, CP4 emoji w README
-
-- **Testy:** 544 passed, 0 failures (zweryfikowane pytest --collect-only)
-- **1 commit** w sesji
-
-### Poprzednia sesja (2026-02-17, sesja 37)
-
-- **Naprawa 3 bugów po teście E2E (10 arkuszy):**
-  - **Bug A — BDOT10k spacing:** `spacing_m` w `discover_teryts_for_bbox()` zmniejszony z 5000 na 2000m (gęstsza siatka punktów → lepsza detekcja małych TERYT-ów). Logi point→TERYT podniesione z DEBUG na INFO.
-  - **Bug B — cieki MVT znikają przy oddaleniu:** 4-częściowa naprawa:
-    - tippecanoe: `--drop-densest-as-needed` → `--coalesce-densest-as-needed` + `--simplification=10` (łączenie features zamiast usuwania)
-    - Nowa funkcja `extract_mbtiles_to_pbf()` — ekstrakcja .mbtiles do statycznych `{z}/{x}/{y}.pbf` z dekompresją gzip
-    - `tiles_metadata.json`: format `"mbtiles"` → `"pbf"`
-    - `map.js`: `getTileUrl()` obsługa formatu `"pbf"` → `/tiles/{layer}_{threshold}/{z}/{x}/{y}.pbf`
-  - **Bug C — wygładzony profil terenu:** `tension: 0.2` → `tension: 0` w charts.js (wyłączenie interpolacji Béziera)
-
-- **Re-run BDOT10k hydro + regeneracja kafelków:**
-  - Hydro: TERYT 3021 (8.0 MB) + 3064 (1.4 MB) → merged 12,321 features (bez zmian — dane 3064 faktycznie uboższe w obszarze miejskim)
-  - Kafelki: 64,533 PBF tiles (4 progi × streams + catchments), 18 min (dominuje threshold 100: 390k features → 16 min tippecanoe)
-  - Fix krytyczny: pliki PBF z mbtiles są gzip-compressed — dodano dekompresję w `extract_mbtiles_to_pbf()`
-
-- **Testy:** 538 passed, 0 failures
-
-### Poprzednia sesja (2026-02-17, sesja 36)
-
-- **Test E2E bootstrap.py z rozszerzonym obszarem NMT (10 arkuszy):**
-  - Reset bazy danych (`docker compose down -v`) + pełny bootstrap od zera
-  - 10 arkuszy wejściowych → 16 arkuszy 1:10k (2 nowe arkusze 1:25k rozwinięte na 4+4)
-  - Raster: 9500×8754 = 83.2M komórek (vs 43.5M poprzednio, +91%)
-  - Czas całkowity: **1741.4s (~29 min)** vs 657.6s (~11 min) dla 8 arkuszy
-  - NMT processing: 975.3s (sublinearny: +91% danych → +48% czasu)
-  - Baza: 434,877 stream segments, 44,593 catchments, 2,239,703 depresji, 50,406 land cover, 1,050 precipitation
-  - Health check OK, serwer pod http://localhost:8080
-  - Raport: `data/e2e_report_sesja36.md`
-
-### Poprzednia sesja (2026-02-17, sesja 35)
-
-- **Naprawa 6 bugów UX (E5, E6, E9, E10, E11, F3) — 5 równoległych subagentów:**
-  - **E5+E10 — Chart.js resize w ukrytych kontenerach:** `resizeChart()` w charts.js, accordion handler z 50ms setTimeout, profil terenu: d-none usunięte PRZED renderowaniem, canvas owinięty w `.chart-container`
-  - **E6 — Liquid glass na panelu profilu:** dodane tokeny CSS (`--liquid-bg`, `--liquid-blur`, `--liquid-border`, `--liquid-shadow`, `--liquid-highlight`) do `#profile-panel` w style.css
-  - **E9 — Usunięcie wpisu "Zlewnia" z panelu warstw:** ~101 linii usunięte z layers.js (zmienne, blok budowy, eksport), 3 wywołania `notifyWatershedChanged()` usunięte z app.js
-  - **E11 — Dyskretna skala kolorów zagłębień:** YlOrRd paleta (żółty→pomarańczowy→czerwony) z 5 progami wg `volume_m3` (<1, <10, <100, <1000, ≥1000 m³) w depressions.js
-  - **F3 — Fallback progu 100→1000 w select-stream:** automatyczna eskalacja progu gdy `threshold < DEFAULT_THRESHOLD_M2`, nowe pole `info_message` w `SelectStreamResponse`, banner informacyjny w app.js
-  - Wszystkie 538 testów przechodzą, ruff clean
-
-- **Naprawa krytycznego bugu CDN:**
-  - Hash integralności Chart.js 4.4.7 był nieprawidłowy — blokował ładowanie WSZYSTKICH wykresów (profil terenu, pokrycie terenu, hipsometria)
-  - Naprawiony hash w index.html, pozostałe 4 CDN hashe (Leaflet, Bootstrap CSS/JS, VectorGrid) zweryfikowane OK
-
-- **Skrypt weryfikacji hashów SRI (`scripts/verify_cdn_hashes.sh`):**
-  - Parsuje index.html (perl), pobiera zasoby CDN, oblicza hash (openssl), porównuje z deklarowanym
-  - Tryb `--fix` automatycznie naprawia nieprawidłowe hashe
-  - Exit code 1 przy niezgodności — gotowy do CI
-
-- **Integracja CDN w bootstrap.py (krok 1d):**
-  - Weryfikacja hashów SRI jako część kroku infrastruktury
-  - Warning-only (nie blokuje pipeline), loguje "CDN HASH MISMATCH" przy niezgodności
-
-- **9 commitów** w sesji, branch `develop`
-
-### Poprzednia sesja (2026-02-17, sesja 34)
-
-- **Reset bazy danych + pelny bootstrap (8 arkuszy NMT):**
-  - `docker compose down -v` → pelny bootstrap z `scripts/bootstrap.py --sheets ...`
-  - Czas calkowity: 657.6s (~11 min)
-  - Wyniki: 39.4M cells, 220944 stream segments, 50406 land cover, 630 precipitation, 1125699 depressions
-  - Serwer uruchomiony: http://localhost:8080, health OK
-
-- **Instalacja tippecanoe via pip + poprawki skryptow:**
-  - `pip install tippecanoe` (v2.72.0) — zainstalowany w `.venv/bin/`
-  - `bootstrap.py`: szuka tippecanoe w `.venv/bin/` oprócz systemowego PATH
-  - `generate_tiles.py`: szuka tippecanoe w `.venv/bin/`, przekazuje pelna sciezke do `run_tippecanoe()`, pomija puste eksporty (0 features — np. catchments dla progu 100 m² zgodnie z ADR-026)
-
-- **Generacja kafelkow MVT (tippecanoe):**
-  - 4 progi: 100, 1000, 10000, 100000 m²
-  - 7 plikow `.mbtiles` (streams × 4, catchments × 3 — brak catchments dla progu 100)
-  - Czas: 95.2s
-
-### Poprzednia sesja (2026-02-17, sesja 33)
-
-- **Eliminacja tabeli flow_network (ADR-028, migracja 015):**
-  - Tabela `flow_network` przechowywala ~39.4M rekordow (dane kazdego piksela DEM) — zadne API endpoint nie czytalo z niej w runtime
-  - Migracja 015: `DROP TABLE flow_network`
-  - Pipeline DEM pomija krok INSERT flow_network — oszczednosc ~17 min (58% czasu pipeline)
-  - Pipeline 8 arkuszy: ~29 min → ~12 min
-
-- **Usuniecie ~1000 linii martwego kodu:**
-  - `core/flow_graph.py` — caly modul (~360 linii, DEPRECATED od ADR-022)
-  - `core/db_bulk.py` — 4 funkcje flow_network: `create_flow_network_tsv()`, `create_flow_network_records()`, `insert_records_batch()`, `insert_records_batch_tsv()` (~580 linii)
-  - `core/watershed.py` — 5 legacy CLI functions: `find_nearest_stream()`, `check_watershed_size()`, `traverse_upstream()`, `_traverse_upstream_inmemory()`, `_traverse_upstream_sql()`
-  - ~43 testow powiazanych z flow_network/flow_graph
-
-- **Aktualizacja 4 skryptow CLI** z zapytaniami SQL na flow_network:
-  - `analyze_watershed.py`, `e2e_task9.py`, `export_pipeline_gpkg.py`, `export_task9_gpkg.py` — przepisane na stream_network
-
-- **Testy:** 538 testow (bylo 581), 0 failures, ruff clean
-- **8 commitow** w sesji
-
-### Poprzednia sesja (2026-02-17, sesja 32)
-
-- **Naprawa blednej selekcji zlewni (ADR-027, 6 plikow, 581 testow):**
-  - **Przyczyna glowna (2 bugi):**
-    1. `find_nearest_stream_segment()` uzywala `id` (auto-increment PK) zamiast `segment_idx` — lookup w grafie zawisze zwracal None
-    2. `ST_Contains` na `stream_catchments` moze trafic w sasiednia zlewnie przy kliknieciu blisko konfluencji
-  - **Naprawa:** snap-to-stream (`ST_Distance` na `stream_network`) → `lookup_by_segment_idx()` O(1) → BFS, z ST_Contains jako fallback
-  - **Nowe metody CatchmentGraph:** `lookup_by_segment_idx()`, `verify_graph()` (diagnostyka przy starcie)
-  - **Usuniety martwy kod:** `find_stream_catchment_at_point()` w `watershed_service.py`
-  - **Testy:** 581 testow, 0 failures, ruff clean
-
-- **Reset bazy danych + pelny bootstrap:**
-  - `docker compose down -v` → `docker compose up -d db`
-  - `bootstrap.py --sheets` z istniejacymi 8 arkuszami NMT (~30 min)
-  - Dane: flow_network 39.4M, stream_network ~221k (4 progi), stream_catchments ~22.6k (3 progi)
-
-### Poprzednia sesja (2026-02-16, sesja 31)
-
-- **Stream burning w bootstrap.py (rozszerzenie kroku 3):**
-  - `step_process_dem()` pobiera teraz hydro BDOT10k (per-TERYT) i scala pliki przed przetwarzaniem DEM
-  - Nowa funkcja `merge_hydro_gpkgs()` w `download_landcover.py` — scala multi-layer GeoPackage z zachowaniem warstw (SWRS, SWKN, SWRM, PTWP)
-  - Graceful degradation: jesli download/merge fail → process_dem bez burning
-  - Pipeline re-run: 1763s (~29.4 min), 706143 komorek wypalonych, 12321 features hydro z 2 powiatow (3021, 3064)
-  - 5 nowych testow `merge_hydro_gpkgs`, lacznie 577 testow, 0 failures
-  - Udokumentowane waskie gardla w `TECHNICAL_DEBT.md` (P1.x): bulk INSERT 58% czasu, pyflwdir 16%
-
-- **`scripts/bootstrap.py` — jednokomendowy setup srodowiska (~460 linii):**
-  - Nowy skrypt orkiestratora: 9 krokow pipeline'u od zera do dzialajacego systemu
-  - Dwa tryby wejscia: `--bbox "min_lon,min_lat,max_lon,max_lat"` lub `--sheets GODLO1 GODLO2`
-  - 7 flag `--skip-*`, `--dry-run`, `--port`
-
-- **`docker-compose.yml` — konfigurowalny port nginx:**
-  - `"8080:80"` → `"${HYDROGRAF_PORT:-8080}:80"`
-
-- **Testy:** 560 testow, 0 failures, ruff clean.
-
-### Poprzednia sesja (2026-02-16, sesja 30)
-
-- **Auto-selekcja dużych zlewni w trybie "Wygeneruj":**
-  - Gdy powierzchnia zlewni > 10 000 m² (0.01 km²), endpoint automatycznie przełącza wyświetlanie na styl selekcji (pomarańczowa granica + podświetlone zlewnie cząstkowe MVT) z banerem informacyjnym.
-  - Nowa stała `DELINEATION_MAX_AREA_M2 = 10_000` w `core/constants.py`.
-  - 4 nowe pola w `DelineateResponse`: `auto_selected`, `upstream_segment_indices`, `display_threshold_m2`, `info_message`.
-  - Kaskadowe progi merge (>500 segmentów) w `watershed.py` — wzorzec z `select_stream.py`.
-  - Banner `#panel-auto-select-info` w `index.html`, obsługa `auto_selected` w `app.js` (`onWatershedClick`, `closeResults`).
-  - 3 nowe testy integracyjne: small area (5000 m²) → not auto-selected, large area (50000 m²) → auto-selected, boundary (10000 m²) → not auto-selected (≤ not <).
-  - **Testy:** 560 testów, 0 failures, ruff clean.
-
-### Poprzednia sesja (2026-02-16, sesja 29)
-
-- **Naprawa niespójnych przebiegów cieków między zoomami MVT:**
-  - **Przyczyna:** `ST_SimplifyPreserveTopology` z tolerancjami per-zoom (1-10m) tworzył dyskretne skoki w kształcie geometrii. 78% segmentów stawało się prostymi liniami (2 punkty) przy tolerancji 10m (zoomy 0-5), a przy 1m (zoomy 10+) miały 13+ punktów. Powodowało to co najmniej 3 wizualnie różne wersje sieci rzecznej.
-  - **Rozwiązanie:** usunięcie jawnej `ST_SimplifyPreserveTopology` z zapytań MVT (streams + catchments). Geometria jest pre-simplifikowana do 1m w pipeline, a `ST_AsMVTGeom` kwantyzuje współrzędne do siatki 4096×4096 kafla — płynna redukcja szczegółów bez skoków.
-  - **Efekty:** spójne przebiegi cieków na wszystkich zoomach, 2.5× szybsze generowanie kafli (355→139ms na zoom 8, 10k features), prostszy kod (usunięta tabela `_MVT_SIMPLIFY_TOLERANCE`).
-  - **Testy:** 557 testów, 0 failures, ruff clean.
-
-### Poprzednia sesja (2026-02-16, sesja 28)
-
-- **Redesign selekcji zlewni cząstkowych (ADR-026):**
-  - Selekcja oparta o poligon (`ST_Contains`), usunięcie progu 100 m², migracja 014 (`segment_idx`), uproszczenie API, pipeline re-run (801.6s).
-
-- **Naprawa wizualizacji MVT (częściowa):**
-  - `ST_Simplify` → `ST_SimplifyPreserveTopology`, tolerancje ograniczone do max 10m.
-
-### Poprzednia sesja (2026-02-16, sesja 27)
-
-- **Diagnostyka i ochrona przed "zielonymi" zlewniami (DO WERYFIKACJI):**
-  - Problem: po selekcji cieku pojawiaja sie zielone zlewnie czastkowe o duzej powierzchni, niezwiazane z zaznaczeniem. Bug na progach 10000 i 100000 m².
-  - Hipoteza: `segment_idx` naklada sie miedzy progami (threshold 100 → [1..105492], threshold 10000 → [1..1101]). Jesli indeksy trafia na MVT z innego progu — zielone zlewnie "losowe".
-  - Implementacja: `display_threshold_m2` w response, walidacja progu w highlight, tooltip diagnostyczny
-  - 559 testow, 0 failures, ruff clean
-
-### Poprzednia sesja (2026-02-16, sesja 26)
-
-- **F2 — warunkowy prog selekcji cieku (ADR-025):**
-  - Snap-to-stream i BFS na progu wyswietlanym na mapie (1000, 10000, 100000) zamiast zawsze na progu 100 m²
-  - Fine-BFS (ADR-024) aktywny tylko gdy display_threshold==100
-  - Eliminuje snap do niewidocznych doplywow przy grubszych progach
-  - Rename: `fine_threshold` → `bfs_threshold`, `fine_segment_idxs` → `bfs_segment_idxs`
-  - 2 nowe testy + 1 zaktualizowany (559 testow lacznie, 0 failures)
-  - Dokumentacja: ADR-025, CHANGELOG
-
-### Poprzednia sesja (2026-02-16, sesja 25)
-
-- **F1 — precyzyjna selekcja cieku — kontynuacja:**
-  - **Re-run pipeline:** 105492 segmentow (prog 100, bylo 78829, +34%), lacznie 117228 across 4 progi. CatchmentGraph: 117228 nodes, 5.1 MB RAM, 1.5s startup.
-  - **Fix wydajnosci duzych zlewni:** kaskadowe progi merge (100→1000→10000→100000) gdy fine segments >500 — zapobiega timeout ST_UnaryUnion na 30s.
-  - **Weryfikacja F1:** dwa klikniecia na tym samym cieku daja rozne wyniki (precyzja miedzykonfluencyjna). Response time: 0.5-1.1s.
-  - **Weryfikacja duzych zlewni:** threshold 100000 → 8.23 km², 73 segs, 18s (bylo timeout).
-
-### Poprzednia sesja (2026-02-15, sesja 24)
-
-- **F1 — precyzyjna selekcja cieku (ADR-024):**
-  - **Czesc A (preprocessing):** dodano warunek konfluencji w `vectorize_streams()` — segmenty lamia sie przy kazdym polaczeniu doplywow, nie tylko przy zmianie Strahlera.
-  - **Czesc B (query):** BFS na progu 100 m² zamiast display threshold. Nowe funkcje: `find_stream_catchment_at_point()` (snap-to-stream), `map_boundary_to_display_segments()` (mapowanie fine→display). Optymalizacja SQL: `ST_UnaryUnion + ST_SnapToGrid`. Fallback do display threshold.
-  - **Testy:** 557 testow, 0 failures (+3 nowe: confluence segmentation, multi-threshold BFS, fallback)
-  - **Dokumentacja:** ADR-024, CHANGELOG, PROGRESS
-
-### Poprzednia sesja (2026-02-15, sesja 23)
-
-- **Liquid glass:**
-  - Panele "Warstwy" i "Parametry zlewni" + toggle buttons + legendy uzywaja stylu liquid glass
-  - Nowe tokeny CSS: `--liquid-bg`, `--liquid-border`, `--liquid-blur`, `--liquid-shadow`, `--liquid-highlight`
-  - Kolory czcionek zmienione na czarne (`--color-text: #000`, `--color-text-secondary: #1d1d1f`)
-  - Czarne czcionki na osiach i etykietach wykresow Chart.js
-
-- **Panel wynikow — zmiany UX:**
-  - Panel na pelna wysokosc okna (`top: 0; bottom: 0`), zaokraglone rogi tylko po lewej
-  - Akordeony domyslnie zwiniete (poza "Parametry podstawowe")
-  - "Punkt ujsciowy" przeniesiony do "Parametry podstawowe" (ujscie φ, λ, H)
-  - Usuniety akordeon `acc-outlet`
-
-- **Tryby klikniecia:**
-  - Nowy tryb "Przegladanie" (domyslny) — klikniecie nic nie robi, kursor `grab`
-  - Zmienione nazwy: "Wygeneruj zlewnię", "Wybierz zlewnię", "Profil terenu"
-  - Kolejnosc: Przegladanie → Wybierz → Wygeneruj → Profil
-  - Przelaczanie trybow nie czysci warstw z mapy
-  - Anulowanie rysowania profilu przy zmianie trybu
-
-- **Warstwy domyslnie wysunięte** (bez klasy `layers-hidden` na starcie)
-
-- **Bug E4 udokumentowany:** punkt ujsciowy poza granica zlewni (oba tryby)
-
-### Poprzednia sesja (2026-02-15, sesja 22)
-
-- **E3 — Panel wynikow dokowany z prawej (fix zoom overlap):**
-  - `#results-panel` przeniesiony wewnatrz `#map-wrapper` z `position: absolute; right: 0`
-  - Slide in/out z CSS transition (`translateX(400px)`, `opacity`)
-  - Przycisk toggle (chevron `‹`/`›`) przy krawedzi panelu — zachowanie jak panel "Warstwy"
-  - Kontrolki zoom Leaflet przesuwaja sie automatycznie (`#map-wrapper.results-visible .leaflet-bottom.leaflet-right { right: 390px }`)
-  - Usuniety draggable na panelu wynikow, usuniety `#results-restore`, usuniety przycisk minimize
-  - Ikony: layers toggle `☰` → `›`/`‹` (chevron kierunkowy)
-  - Escape: pojedynczy = zwin panel (overlay zostaje), podwojny (400ms) = zamknij jak `×`
-  - Mobile: bottom-sheet zachowany, toggle btn ukryty
-  - Zoom control przeniesiony z `topright` na `bottomright`
-
-- **Wynik:** 449 testow unit, 0 failures
-
-### Poprzednia sesja (2026-02-15, sesja 21)
-
-- **Naprawa 4 bugow panelu warstw i danych (G1-G4):**
-  - **G1:** Wysokosc histogramu `.chart-container` zwiekszona z 160px do 240px
-  - **G2:** Import pokrycia terenu BDOT10k — naprawiono parsowanie nazw warstw GeoPackage (OT_PTLZ_A → PTLZ); 38560 rekordow z 12 warstw, 7 kategorii (las, grunt_orny, zabudowa_mieszkaniowa, woda, droga, inny, laka)
-  - **G3:** "Podklady kartograficzne" przeniesione na dol panelu warstw (nowa kolejnosc: Warstwy podkladowe → Wyniki analiz → Podklady kartograficzne)
-  - **G4a:** Zaglbienia przeniesione do grupy "Warstwy podkladowe" (nowy kontener `#overlay-group-entries`)
-  - **G4b:** Checkbox zlewni — auto-check tylko przy pierwszym wykryciu; flaga `_watershedFirstDetection` resetowana po usunieciu warstwy
-
-- **Krzywa hipsometryczna:** sekcja "Rzezba terenu" zmieniona z histogramu na krzywa hipsometryczna — os Y: wysokosc [m n.p.m.], os X: % powierzchni powyzej (0–100, co 20)
-
-- **Wynik:** 550 testow, 0 failures, 6 commitow
-
-### Poprzednia sesja (2026-02-15, sesja 20)
-
-- **Naprawa 4 bugow profilu terenu (D1-D4):**
-  - D2: Guard duplikatow dblclick, styl linii solid
-  - D1: showProfileError z canvasId, panel pokazywany w catch
-  - D3: cancelDrawing czysci profileLine, re-aktywacja rysowania
-  - D4: Usuniety acc-profile, btn-profile-auto
-- **Interaktywny profil terenu:** hover → marker na mapie + crosshair
-- **DEM w Docker:** volume mount data/e2e_test → /data/dem
-- **Wynik:** 550 testow, 0 failures, 6 commitow
-
-### Poprzednia sesja (2026-02-14, sesja 19)
-
-#### Co zrobiono
-
-- **Profil terenu jako osobny panel + UX drawing (plan z sesji 19):**
-  - Nowy floating panel `#profile-panel` (left: 16px, bottom: 16px, 420px, z-index 1050) — niezalezny od panelu "Parametry zlewni"
-  - `profile.js` refaktor: `activateDrawProfile()` renderuje w `#chart-profile-standalone`, pokazuje `#profile-panel`; dodana `hideProfilePanel()`
-  - `map.js`: nowa funkcja `undoLastVertex()` — cofanie ostatniego wierzcholka (Backspace)
-  - Banner rysowania zaktualizowany: "Klik = wierzcholek, Podwojny klik = zakoncz, Backspace = cofnij, Esc = anuluj"
-  - Chart.js fix: canvasy (#chart-hypsometric, #chart-landcover, #chart-profile) owiniete w `.chart-container` (height: 160px) — zapobiega rozciaganiu wykresow
-  - `app.js`: init close/draggable na `#profile-panel`, `hideProfilePanel()` przy zmianie trybu i zamknieciu panelu wynikow
-  - Mobile responsive: `#profile-panel` fullwidth na ekranach < 768px
-  - **Wynik:** 550 testow, 0 failures
-
-- **Zapisano 13 nowych bugów/uwag do naprawy (D1-D4, E1-E3, F1, G1-G4)**
-
-### Poprzednia sesja (2026-02-14, sesja 18)
-
-- **Naprawa 10 bugów (zgłoszenie 2026-02-14, A1-A5, B1-B4, C1):**
-  - **A1:** Przycisk "×" w panelu wyników czyści warstwę zlewni z mapy (clearWatershed + clearSelectionBoundary + clearCatchmentHighlights + clearProfileLine)
-  - **A2:** Domyślny min_area zagłębień 0 → 100 m² (API + frontend)
-  - **A3:** Domyślny próg FA 10000 → 100000 m² (tiles.py + app.js + layers.js)
-  - **A4:** Wysokość canvas histogramu 20 → 140px
-  - **A5:** Zbiorniki BDOT ukryte przy opacity=0 (weight + fillOpacity + opacity)
-  - **B1:** Inline alert-warning zamiast alert() gdy DEM niedostępny
-  - **B2:** Nowy przycisk "Profil" w toolbar — rysowanie profilu terenu niezależne od zlewni
-  - **B3:** Sekcja hydrogramu ukryta z badge "w przygotowaniu"
-  - **B4:** Nowa metoda traverse_to_confluence w CatchmentGraph + parametr to_confluence w select-stream
-  - **C1:** Usunięcie cell_count z WatershedResponse, 3 endpointów, frontendu i dokumentacji
-  - **Wynik:** 550 testów, 0 failures, ruff check+format clean, 10 commitów
-
-### Poprzednia sesja (2026-02-14, sesja 17)
-
-- **Eliminacja FlowGraph z runtime API (ADR-022, 10 faz):**
-  - **Faza 1:** Nowy modul `core/watershed_service.py` (~400 linii) — reużywalne funkcje wyekstrahowane z `select_stream.py`: find_nearest_stream_segment, merge_catchment_boundaries, get_segment_outlet, compute_watershed_length, get_main_stream_geojson, build_morph_dict_from_graph
-  - **Faza 2:** Rewrite `watershed.py` — FlowGraph BFS (19.7M) → CatchmentGraph BFS (87k) + watershed_service
-  - **Faza 3:** Rewrite `hydrograph.py` — j.w., morph_dict → WatershedParameters.from_dict()
-  - **Faza 4:** Refactor `select_stream.py` — 6 lokalnych funkcji zastąpionych importami z watershed_service
-  - **Faza 5:** Rewrite `profile.py` — SQL LATERAL JOIN → rasterio DEM sampling + pyproj
-  - **Faza 6:** Usunięcie FlowGraph z `api/main.py` lifespan
-  - **Faza 7:** Cleanup `watershed.py` (legacy functions zachowane dla CLI), deprecation notice w `flow_graph.py`
-  - **Faza 8:** 29 nowych testów (25 unit + 4 integracyjne) — łącznie 548 testów, 0 failures
-  - **Faza 9:** Docker config — API memory 3G → 512M, DEM_PATH env var
-  - **Faza 10:** Dokumentacja — ADR-022, CHANGELOG, PROGRESS
-  - **Efekty:** RAM -96% (1.1 GB → 40 MB), startup -97% (93s → 3s), flow_network runtime queries: 0, main_stream_geojson naprawiony
-
-- **Audyt dokumentacji post-ADR-022 (4 pliki):**
-  - ARCHITECTURE.md v1.5: diagram "Flow Graph" → "Catchment Graph", +watershed_service.py, przepływ danych ADR-022, testy 548
-  - COMPUTATION_PIPELINE.md v1.2: flow_graph DEPRECATED, Faza 2/6 zaktualizowane
-  - CLAUDE.md: +watershed_service.py, flow_graph.py DEPRECATED
-  - QA_REPORT.md: warning 519 → 548 testów, +ADR-022
-
-### Poprzednia sesja (2026-02-13, sesja 16)
-
-- **Audyt dokumentacji — spojnosc, aktualnosc, wzajemne odwolania (9 plikow):**
-  - ARCHITECTURE.md: `parameters.py`→`morphometry.py`, zaktualizowane sygnatury, +catchment_graph.py/constants.py, v1.4
-  - CLAUDE.md: +2 moduly core, +2 endpointy, +5 skryptow w drzewie
-  - DATA_MODEL.md: +migracja 013, fix nazwy 010
-  - SCOPE.md: status zatwierdzony, data 2026-02-13
-  - QA_REPORT.md: nota deprecation (175→519 testow, CORS fixed, CI/CD)
-  - TECHNICAL_DEBT.md: constants.py ZREALIZOWANE, +CI/CD, data
-  - COMPUTATION_PIPELINE.md: +faza CatchmentGraph (ADR-021), LOC fix (~2800→~700)
-  - README.md: CP3→CP4, +6 endpointow w tabeli
-  - PROGRESS.md: 7→10 endpointow
-  - **Wynik:** 9 plikow, 151 linii dodanych / 45 usunietych, 7/7 weryfikacji grep
-
-- **Wdrozenie aktualizacji:**
-  - Migracja 013 zastosowana (`alembic upgrade head`)
-  - Obraz API przebudowany (`docker compose build api`)
-  - Kontener zrestartowany, CatchmentGraph zaladowany (86913 nodes, 3.0s)
-  - Weryfikacja: health OK, scenarios OK, thresholds OK
-
-### Poprzednia sesja (2026-02-13, sesja 15)
-
-- **Audyt QA — Wydajnosc i Efektywnosc Workflow (4 fazy):**
-  - **Faza 1 (Quick Wins):** LATERAL JOIN w profile.py, Cache-Control headers na 4 endpointach, dedup `_compute_shape_indices()` (-30 LOC), SessionLocal.configure() jednorazowo
-  - **Faza 2 (Backend Perf):** TTLCache na traverse_upstream (128 wpisow, 1h), migracja 013 partial GiST index `WHERE is_stream=TRUE`, PG tuning (effective_cache_size=1536MB, random_page_cost=1.1, jit=off), land cover query merge w hydrograph.py
-  - **Faza 3 (Frontend Perf):** Client-side Map cache w api.js (50 wpisow, 5min TTL), defer na 13 script tagow + preconnect CDN, force-cache na DEM metadata fetch
-  - **Faza 4 (DevOps):** GitHub Actions CI (lint+test+security), pre-commit hooks (ruff+format), structured logging (structlog JSON + request_id middleware), core/constants.py, naprawiono 19 ruff warnings, ruff format 19 plikow
-  - **Wynik:** 519 testow, 0 failures, ruff check+format clean, 4 commity
-
-### Poprzednia sesja (2026-02-13, sesja 14)
-
-- **Graf zlewni czastkowych — ADR-021 (7 faz, caly plan zaimplementowany):**
-  - **Faza 1:** Migracja 012 — 6 nowych kolumn w `stream_catchments` (downstream_segment_idx, elevation_min/max, perimeter_km, stream_length_km, elev_histogram JSONB)
-  - **Faza 2:** `compute_downstream_links()` w stream_extraction.py — follow fdir z outlet cell kazdego segmentu, `_outlet_rc` w vectorize_streams()
-  - **Faza 3:** `zonal_min()` + `zonal_elevation_histogram()` w zonal_stats.py, rozszerzenie `polygonize_subcatchments()` o nowe stats
-  - **Faza 4:** Rozszerzenie `insert_catchments()` w db_bulk.py o 6 nowych kolumn + JSONB histogram
-  - **Faza 5:** Nowy modul `core/catchment_graph.py` — in-memory graf (~87k wezlow, ~8 MB), BFS via scipy sparse, agregacja stats z numpy arrays, krzywa hipsometryczna z mergowania histogramow
-  - **Faza 6:** Calkowity rewrite `select_stream.py` — graf zlewni zamiast rastra, ST_Union boundary, derived indices (Kc, Rc, Re, Ff)
-  - **Faza 7:** 19 testow catchment_graph, 7 testow zonal_stats, 8 testow integracyjnych select-stream (przepisane), dokumentacja (DATA_MODEL, DECISIONS, CHANGELOG)
-  - **Wynik:** 519 testow, 0 failures, lint clean
-
-- **Re-run pipeline + deploy CatchmentGraph:**
-  - Migracja 012 zastosowana (`alembic upgrade head`)
-  - Pipeline re-run: 1114s (~18.5 min), 86913 zlewni z pelnym zestawem danych
-  - Nowe kolumny: downstream_segment_idx 99%, elevation/perimeter/histogram 100%
-  - Obraz API przebudowany (`docker compose build api`), kontener zrestartowany
-  - CatchmentGraph zaladowany: 86913 nodes, 86178 edges, 3.0s, 3.8 MB RAM
-  - Weryfikacja `select-stream`: 16 upstream segments, area 0.26 km², pelna morfometria + krzywa hipsometryczna (21 pkt)
-
-### Poprzednia sesja (2026-02-13, sesja 13b)
-
-- **Audyt i poprawki frontend (13 taskow, 3 fazy)**
-
-### Poprzednia sesja (2026-02-13, sesja 13)
-
-- **Naprawa 4 krytycznych bledow (post-e2e):**
-  1. **Stream burning (KRYTYCZNY):** `hydrology.py` `burn_streams_into_dem()` — wykrywanie multi-layer GeoPackage via `fiona.listlayers()`, ladowanie warstw liniowych (SWRS, SWKN, SWRM) + poligonowych (PTWP), `pd.concat`. Wczesniej czytalo domyslna warstwe (jeziora poligonowe) zamiast ciekow liniowych.
-  2. **select-stream 500:** `select_stream.py` — `segment_idx` → `id` w SQL SELECT (kolumna nie istniala w `stream_network`)
-  3. **Wydajnosc MVT:** GZip middleware (`GZipMiddleware, minimum_size=500`), migracja 011 (czesciowe indeksy GIST per threshold), cache TTL 86400s, `minZoom: 12` dla catchments, nginx `gzip_types` protobuf
-  4. **UI diagnostyka:** `console.warn` w BDOT catch blocks, CSP `img-src` += `mapy.geoportal.gov.pl`
-
-- **Re-run pipeline z poprawionym stream burning:**
-  - process_dem: 927.6s, 19.67M records, 4 warstwy BDOT10k zaladowane (10726 features), 1,073,455 cells burned
-  - max_acc: 8,846,427 (vs 3.45M przed — poprawa o 156% dzieki poprawnemu stream burning)
-  - generate_depressions: 602,092 zaglebie w 59.9s
-  - export_pipeline_gpkg: 9 warstw, 777,455 features
-  - generate_dem_tiles: 267 kafelkow, 15.5 MB
-  - BDOT GeoJSON: 3529 jezior, 7197 ciekow
-
-- **Weryfikacja endpointow:**
-  - `/health` — 200, `select-stream` — 200 (brak 500), MVT streams — 44 KB → 26 KB z GZip (41%), catchments — 394 KB → 146 KB (64%)
-
-- **Laczny wynik:** 493 testy, wszystkie przechodza
-
-### Poprzednia sesja (2026-02-13, sesja 12)
-
-- **Select-stream z pelnymi statystykami zlewni, siec rzeczna BDOT10k, naprawy UI**
-- **8 testow integracyjnych select-stream**
-- 492 testy
-
-### Poprzednia sesja (2026-02-13, sesja 11)
-
-- **DEM tile pyramid (`scripts/generate_dem_tiles.py`):**
-  - Nowy skrypt: koloryzacja DEM + hillshade → RGBA GeoTIFF w EPSG:3857 → `gdal2tiles.py --xyz`
-  - Zoom 8–18, nearest-neighbor (ostre krawedzie komorek 1m przy duzym zoomie)
-  - Metadane JSON (bounds, zoom range, elevation stats)
-  - Argumenty: `--input`, `--output-dir`, `--meta`, `--source-crs`, `--min-zoom`, `--max-zoom`, `--no-hillshade`
-
-- **Wspolny modul `utils/dem_color.py`:**
-  - Wyekstrahowane z `generate_dem_overlay.py`: `COLOR_STOPS`, `build_colormap()`, `compute_hillshade()`
-  - Stary skrypt zrefaktoryzowany na importy — backwards compatible
-
-- **Frontend — custom panes + L.tileLayer:**
-  - Custom panes z-index: demPane (250) → catchmentsPane (300) → streamsPane (350)
-  - `loadDemOverlay()`: L.tileLayer z `/data/dem_tiles/{z}/{x}/{y}.png`, fallback na L.imageOverlay
-  - MVT layers: `pane: 'streamsPane'` i `pane: 'catchmentsPane'`
-
-- **Laczny wynik:** 484 testy (teraz 492), wszystkie przechodza
-
-### Poprzednia sesja (2026-02-12, sesja 10)
-
-- **Frontend — 7 poprawek UX (przeprojektowanie, sesja 9):**
-  - **Zoom controls** przeniesione do topright (nie koliduja z layers panel)
-  - **Przezroczystosc zlewni czastkowych** naprawiona (fillOpacity=1.0 initial, bez ×0.5)
-  - **Histogram wysokosci** zamiast krzywej hipsometrycznej — `renderElevationHistogram()` w charts.js
-  - **Cieki kolorowane po flow accumulation** — gradient log10 (upstream_area_km2) zamiast Strahlera
-  - **Osobna strefa nginx** `tile_limit` 30r/s dla kafelkow, `api_limit` 10r/s dla reszty API
-  - **Debounce 300ms** na klikniecie mapy — zapobiega podwojnym wywolaniom
-  - **Tryb wyboru obiektow** — toolbar "Zlewnia/Wybor", state.clickMode routing
-
-- **Backend — endpoint `POST /api/select-stream`:**
-  - Nowy plik `api/endpoints/select_stream.py`
-  - Selekcja segmentu cieku z `stream_network`, traversal upstream, budowa granicy
-  - Zwraca StreamInfo + upstream_segment_indices + boundary_geojson
-  - 3 nowe schematy w `models/schemas.py`: SelectStreamRequest, StreamInfo, SelectStreamResponse
-
-- **Frontend — podswietlanie zlewni czastkowych:**
-  - `highlightUpstreamCatchments()` / `clearCatchmentHighlights()` w map.js
-  - `showSelectionBoundary()` / `clearSelectionBoundary()` — warstwa boundary z dash
-  - `selectStream()` w api.js — POST /api/select-stream
-
-- **5 bugfixow (sesja 10):**
-  - **Blad serwera select-stream**: dodano try/except ValueError + Exception (wzorzec z watershed.py), uzycie snapped outlet coords
-  - **Flicker przezroczystosci**: setCatchmentsOpacity/setStreamsOpacity uzywaja CSS container opacity zamiast redraw()
-  - **Legendy warstw**: L.control legendy dla ciekow (gradient flow acc) i zlewni (paleta Strahler), auto show/hide
-  - **Zoom do danych na starcie**: fitBounds po zaladowaniu metadanych DEM
-  - **Warstwa "Zlewnia" reaktywna**: wpis w panelu warstw aktywuje sie automatycznie po wyznaczeniu zlewni (polling 500ms)
-
-- **Laczny wynik:** 484 testy, wszystkie przechodza
-
-### Stan bazy danych (sesja 44 — 10 arkuszy, 5m NMT)
-| Tabela | Rekordy | Uwagi |
-|--------|---------|-------|
-| flow_network | **USUNIETA** | Wyeliminowana w ADR-028, migracja 015 (DROP TABLE) |
-| stream_network | ~263,791 | 3 progi: 1000, 10000, 100000 (prog 100 usuniety — ADR-030, migracja 017) |
-| stream_catchments | 264,548 | 3 progi (bez progu 100, ADR-026) |
-| land_cover | 101,237 | 2 powiaty (3021, 3064), 7 kategorii |
-| depressions | 385,567 | pelny zestaw po bootstrap sesji 44 |
-| precipitation_data | 77,760 | 180 punktow × 432 scenariusze |
-| soil_hsg | 121 | grupy glebowe HSG |
-
-### Znane problemy (infrastruktura)
-- `generate_tiles.py` wymaga tippecanoe (`pip install tippecanoe` w .venv)
-- FlowGraph (core/flow_graph.py) — USUNIETY w ADR-028 (sesja 33)
-- ~~15 segmentow stream_network (prog 100 m²) odrzuconych przez geohash collision~~ — nieaktualne po usunieciu progu 100 (ADR-030)
-- Endpoint `profile.py` wymaga pliku DEM (VRT/GeoTIFF) pod sciezka `DEM_PATH` — zwraca 503 gdy brak
-- `bootstrap.py` nie importuje pokrycia terenu (land cover) — po pelnym bootstrap tabela `land_cover` jest pusta (0 rekordow), brak danych w UI. Wymaga dodania kroku importu land cover (skrypt `import_landcover.py`) do pipeline bootstrap. Priorytet: niski.
-
-### Bledy do naprawy (zgloszenie sesja 18 — ZAMKNIETE)
-
-**Status: ✅ Wszystkie 10 bugów naprawione (sesja 18, A1-A5, B1-B4, C1)**
-
-### Bledy do naprawy (zgloszenie 2026-02-14, sesja 19)
-
-**Status: ⏳ D1-D4 naprawione (sesja 20), G1-G4 naprawione (sesja 21), E2 naprawione (sesja 18 jako A1), E3 naprawione (sesja 22), F1 naprawione (sesja 24, ADR-024), E5+E6+E9+E10+E11 naprawione (sesja 35), F3 naprawione (sesja 35), E7+E8 naprawione (sesja 38), E1+E4+E12+E13+F2 naprawione (sesja 42). Pozostaje: H**
-
-#### D. Frontend — profil terenu — ✅ NAPRAWIONE (sesja 20)
-
-**D1. ✅ Profil terenu nadal nie dziala** → showProfileError z canvasId, panel pokazywany w catch
-**D2. ✅ Dwuklik do zakonczenia rysowania zle dziala** → guard duplikatow, styl linii solid brown
-**D3. ✅ Po Escape nie da sie usunac linii** → cancelDrawing czysci profileLine, re-aktywacja rysowania
-**D4. ✅ Kontener "Profil terenu" nadal w panelu zlewni** → acc-profile usuniety, btn-profile-auto w profile-panel
-
-#### E. Frontend — zlewnia i mapa
-
-**E1. ✅ "Dziury" na granicach zlewni** → buffer-debuffer (0.1m/-0.1m) zamiast ST_SnapToGrid w merge_catchment_boundaries(), MIN_HOLE_AREA_M2: 1000→100 — sesja 42
-
-**E2. ✅ Brak mozliwosci odznaczenia zlewni** → naprawione w sesji 18 jako A1 (closeResults czysci wszystkie warstwy)
-
-**E3. ✅ Panel "Parametry zlewni" zaslania przyciski zoom** → panel dokowany z prawej (slide in/out), zoom przesuwa sie automatycznie (sesja 22)
-
-**E4. ✅ Punkt ujsciowy poza granica zlewni** → ensure_outlet_within_boundary() snap do granicy (tolerancja 1m), zastosowanie w select_stream.py i watershed.py — sesja 42
-
-**E5. ✅ Profil terenu nie generuje wykresu** → Chart.js resize w ukrytych kontenerach (d-none PRZED renderowaniem, resizeChart() z 50ms timeout, canvas w .chart-container) — sesja 35
-
-**E6. ✅ Panel profilu terenu — styl liquid glass** → tokeny CSS liquid glass dodane do #profile-panel w style.css — sesja 35
-
-**E7. ✅ Brak informacji o gruntach (HSG) w panelu wynikow** → grupy glebowe HSG w panelu i na mapie — sesja 38
-
-**E8. ✅ Zbiorniki i cieki BDOT10k nie zaladowane do UI** → eksport BDOT10k GeoJSON dla frontendu — sesja 38
-
-**E10. ✅ Brak wykresu hipsometrii w sekcji "Rzezba terenu"** → przyczyna ta sama co E5 (Chart.js nie załadowany przez zły hash CDN + resize w collapsed accordion). Naprawione hashami CDN + resizeChart() — sesja 35
-
-**E11. ✅ Zmiana kolorystyki zaglebien na dyskretne progi** → YlOrRd paleta (5 progów wg volume_m3) w depressions.js — sesja 35
-
-**E9. ✅ Usunac wpis "Zlewnia" z panelu Warstwy** → ~101 linii usunięte z layers.js + 3 wywołania z app.js — sesja 35
-
-**E12. ✅ Brak legendy dla warstwy HSG** → createHsgLegend()/removeHsgLegend() w map.js, callbacki onShow/onHide w addBdotOverlayEntry() — sesja 42
-
-**E13. ✅ Nieciaglosc danych HSG na terenach zurbanizowanych** → nearest-neighbor fill (distance_transform_edt) w step_soil_hsg() przed polygonizacja — sesja 42
-
-#### F. Logika zlewni czastkowych
-
-**F1. ✅ Selekcja cieku zaznacza cala zlewnię zamiast czesci miedzy doplywami** → ADR-024: segmentacja konfluencyjna + fine-threshold BFS (sesja 24). Wymaga re-run pipeline.
-
-**F3. ✅ Automatyczny fallback na prog 1000 m² przy selekcji cieku z progu 100 m²** → eskalacja progu w select_stream.py gdy threshold < DEFAULT_THRESHOLD_M2, nowe pole `info_message` w SelectStreamResponse, banner w app.js — sesja 35
-
-**F2. ✅ Snap-to-stream moze wybrac zlewnię sasiednia zamiast kliknietej** → find_nearest_stream_segment_hybrid(): ST_Contains na stream_catchments (priorytet) + fallback do globalnego ST_Distance snap — sesja 42
-
-#### G. Frontend — panel warstw i dane — ✅ NAPRAWIONE (sesja 21)
-
-**G1. ✅ Histogram "Rzezba terenu" za maly** → `.chart-container` height 160px → 240px
-**G2. ✅ Brak informacji o pokryciu terenu** → naprawiono parsowanie warstw GeoPackage (OT_PTLZ_A → PTLZ); import 38560 rekordow BDOT10k
-**G3. ✅ Podklady kartograficzne na dole panelu warstw** → przeniesione na koniec init(), nowa kolejnosc: Warstwy podkladowe → Wyniki analiz → Podklady kartograficzne
-**G4. ✅ Reorganizacja wynikow analiz** → zaglbienia do #overlay-group-entries; checkbox zlewni: auto-check tylko przy 1. wykryciu, reset po usunieciu
-
-#### I. Wizualizacja
-
-**I1. Ścieżka spływu z punktu ujścia zlewni** (priorytet: niski)
-- Po wyznaczeniu zlewni (tryb "Wybierz" lub "Wygeneruj") wyświetlić na mapie ścieżkę spływu wody od punktu ujścia zaznaczonej zlewni w dół cieku — pokazuje dokąd płynie woda opuszczająca zlewnię.
-- Ścieżka wyznaczana na podstawie sieci cieków (`stream_network`) lub grafu przepływu (downstream traversal od outlet do granicy analizowanego obszaru).
-- Wizualizacja jako linia na mapie (np. niebieska strzałka / animowana linia kierunku przepływu).
-- **Lokalizacja:** `core/catchment_graph.py` (downstream traversal), `core/watershed_service.py` (outlet point), `frontend/js/map.js` (wizualizacja linii), `frontend/js/app.js` (wywołanie po wyznaczeniu zlewni)
-
-**I2. Najdłuższa ścieżka spływu w zlewni** (priorytet: niski)
-- Po wyznaczeniu zlewni wyświetlić na mapie najdłuższą ścieżkę spływu (longest flow path) — od najdalszego punktu działu wodnego do ujścia zlewni. Parametr hydrologicznie istotny: długość zlewni (watershed length) używana do obliczenia czasu koncentracji.
-- Wymaga wyznaczenia najdalszej komórki od outletu wzdłuż sieci przepływu (upstream BFS z pomiarem odległości) lub geometrycznie (najdalszy punkt granicy zlewni mierzony wzdłuż cieku głównego + stoku).
-- Wizualizacja jako linia na mapie (np. przerywana linia z zaznaczeniem punktu startowego i ujścia).
-- **Lokalizacja:** `core/catchment_graph.py` (BFS z odległością), `core/watershed_service.py` (główny ciek + longest path), `frontend/js/map.js` (wizualizacja linii)
-
-**I3. Poprawa jakości wyświetlania NMT** (priorytet: średni)
-- Obecna piramida kafelków DEM (zoom 8–16, 267 plików, 15.5 MB) ma ograniczoną jakość — widoczna pikselizacja przy dużym zoomie, ograniczony zakres zoomów.
-- Możliwe usprawnienia: rozszerzenie zakresu zoomów (do 18), lepsza rampa kolorów (np. terrain-classic), poprawa hillshade (multi-directional zamiast single azimuth 315°), antyaliasing przy downsamplingu (bilinear/lanczos zamiast nearest-neighbor na niższych zoomach), wyższa rozdzielczość kafelków (512×512 zamiast 256×256).
-- Rozważyć dynamiczne generowanie kafelków DEM z serwera (endpoint XYZ z rasterio) zamiast pre-generowanych PNG — lepsza jakość kosztem wydajności.
-- **Lokalizacja:** `scripts/generate_dem_tiles.py` (generacja piramidy), `utils/dem_color.py` (rampa kolorów, hillshade), `frontend/js/map.js` (L.tileLayer konfiguracja)
-
-**I5. Pasek współrzędnych kursora (WGS 84 + PUWG 1992)** (priorytet: niski)
-- Cienki pasek na samym dole strony (wzór: Geoportal) wyświetlający aktualną pozycję kursora na mapie w dwóch układach: WGS 84 (φ, λ) i EPSG:2180 (X, Y).
-- Aktualizacja na zdarzeniu `mousemove` mapy Leaflet. Transformacja WGS 84 → PUWG 1992 po stronie klienta (proj4js lub prosta formuła Gaussa-Krügera).
-- Styl liquid glass (tokeny CSS `--liquid-bg`, `--liquid-blur`, `--liquid-border`) — spójność z panelami warstw i wyników.
-- **Lokalizacja:** `frontend/index.html` (nowy element `#coord-bar`), `frontend/css/style.css` (styl paska), `frontend/js/map.js` (nasłuch `mousemove`, transformacja współrzędnych)
-
-**I4. Eksport profilu podłużnego do CSV** (priorytet: niski)
-- Przycisk eksportu w panelu profilu terenu (`#profile-panel`) — pobieranie pliku CSV z danymi profilu.
-- Format: `X;Y;Station;Elevation` (separator średnik), współrzędne domyślnie w EPSG:2180. Station = odległość wzdłuż profilu od pierwszego punktu [m].
-- Dane dostępne po stronie frontendu (odpowiedź z `POST /api/terrain-profile` zawiera punkty z współrzędnymi i wysokościami). Transformacja WGS 84 → PUWG 1992 po stronie klienta lub rozszerzenie endpointu o opcjonalny parametr CRS.
-- **Lokalizacja:** `frontend/js/profile.js` (przycisk eksportu, generacja CSV, download), `frontend/index.html` (przycisk w `#profile-panel`), `api/endpoints/profile.py` (opcjonalnie: współrzędne w EPSG:2180 w response)
-
-#### J. Funkcjonalności użytkowe
-
-**J1. ✅ Formularz feedbacku zapisywany do bazy** (priorytet: niski) — zrealizowane w wersji rozszerzonej (diagnostyka sesji), sesja 83, 2026-08-02
-- Prosty formularz na stronie umożliwiający użytkownikom zgłaszanie uwag / błędów / sugestii.
-- Dane zapisywane do tabeli w PostgreSQL (np. `feedback`: id, message, email (opcjonalny), created_at, user_agent, page_url).
-- Endpoint `POST /api/feedback` z walidacją (max długość, rate limiting).
-- Frontend: przycisk w navbarze lub floating button, modal z polem tekstowym + opcjonalnym emailem.
-- **Lokalizacja:** nowa tabela `feedback` (migracja Alembic), `api/endpoints/feedback.py` (nowy endpoint), `frontend/index.html` (modal), `frontend/js/app.js` (obsługa formularza)
-
-**J2. Wgrywanie własnych warstw wektorowych** (priorytet: niski)
-- Użytkownik może wgrać plik wektorowy (SHP, GPKG, GeoJSON, KML) i wyświetlić go jako warstwę na mapie.
-- Preferowane rozwiązanie: przetwarzanie po stronie frontendu (bez wysyłania na serwer). Kandydaci do zbadania: biblioteka `shpjs` (SHP→GeoJSON), `gdal3.js` / `ogr2ogr WASM` (GPKG/KML→GeoJSON), natywne parsowanie GeoJSON. Leaflet obsługuje GeoJSON natively — wystarczy konwersja do tego formatu.
-- Pliki SHP wymagają ZIP (`.shp` + `.dbf` + `.shx` + opcjonalnie `.prj`) — obsługa via `JSZip` lub drag-and-drop folderu.
-- Warstwa dodawana do panelu warstw z checkboxem, suwakiem przezroczystości i zoom-to-extent.
-- **Lokalizacja:** `frontend/js/layers.js` (dodawanie warstwy użytkownika), `frontend/js/map.js` (rendering GeoJSON), `frontend/index.html` (przycisk upload / drag-and-drop zone)
-
-**J3. Dodawanie własnych serwisów WMS/WMTS/WFS** (priorytet: niski)
-- Użytkownik podaje URL serwisu OGC i wybiera warstwę do wyświetlenia — obsługa wyłącznie po stronie frontendu.
-- WMS: `L.tileLayer.wms(url, { layers, format, transparent })` — Leaflet natywnie.
-- WMTS: `L.tileLayer(templateUrl)` z parametrami z GetCapabilities.
-- WFS: pobranie GeoJSON przez `fetch(url + '&outputFormat=application/json')` → `L.geoJSON()`.
-- Formularz: pole URL + przycisk "Pobierz warstwy" (GetCapabilities) → lista warstw do wyboru → dodanie do panelu warstw z checkboxem i przezroczystością.
-- **Lokalizacja:** `frontend/js/layers.js` (dodawanie serwisu, parsowanie GetCapabilities XML), `frontend/js/map.js` (tworzenie warstw L.tileLayer.wms / L.tileLayer / L.geoJSON), `frontend/index.html` (modal z formularzem URL)
-
-**J4. Mapy glebowe i użytkowanie terenu w warstwach podkładowych** (priorytet: średni)
-- Dodanie warstw tematycznych do panelu "Warstwy podkładowe": mapa glebowa i użytkowanie/pokrycie terenu.
-- **Gleby:** serwis WMS z Geoportalu (mapy glebowo-rolnicze) lub dane SoilGrids (już pobierane przez Kartograf dla HSG). Alternatywnie: import danych glebowych do bazy i serwowanie jako MVT/GeoJSON z kolorowaniem wg typów gleb / grup HSG.
-- **Użytkowanie terenu:** dane BDOT10k pokrycia terenu (już w tabeli `land_cover` — 50406 rekordów) lub Corine Land Cover (CLC) z serwisu WMS. Wizualizacja z paletą kolorów wg kategorii (las, łąka, grunt orny, zabudowa, woda, droga, inny).
-- Obie warstwy z checkboxem, suwakiem przezroczystości i legendą kolorów w panelu warstw.
-- **Lokalizacja:** `frontend/js/layers.js` (wpisy warstw + legenda), `frontend/js/map.js` (rendering), `api/endpoints/tiles.py` (opcjonalnie: MVT endpoint dla land_cover), `core/land_cover.py` (dane)
-
-#### CR. Wyniki code review (2026-02-22)
-
-**Status: ⏳ W trakcie — 16 pozycji (3/3 krytyczne naprawione ✅, 8 ważne, 5 sugestii)**
-
-##### Krytyczne (must fix)
-
-**CR1. ✅ `channel_slope_m_per_m` obliczany z całkowitej długości sieci rzecznej zamiast głównego cieku** (NAPRAWIONE)
-- Nowa metoda `CatchmentGraph.trace_main_channel()` — tracing upstream wg Strahlera. ADR-029, 6 nowych testów.
-
-**CR2. ✅ O(n^2) lookup segmentów w `compute_downstream_links()`** (NAPRAWIONE)
-- `stream_extraction.py`: `segments.index(seg) + 1` → `enumerate(segments, start=1)`. 550 testów passed.
-
-**CR3. ✅ Server-side cursor niezamykany na wyjątek w `CatchmentGraph.load()`** (NAPRAWIONE)
-- Opakowanie w `try/finally` z `cursor.close()` w `finally`. 550 testów passed.
-
-##### Ważne (should fix)
-
-**CR4. `traverse_to_confluence` BFS z `list.pop(0)` — O(n^2)** (priorytet: średni)
-- `catchment_graph.py:410-411`: `list.pop(0)` jest O(n), powinno być `collections.deque` + `popleft()`.
-- **Lokalizacja:** `core/catchment_graph.py`
-
-**CR5. `get_land_cover_stats()` zawsze zwraca pusty dict (TODO)** (priorytet: średni)
-- `cn_calculator.py:196-200`: pobiera pokrycie terenu ale nie analizuje go — zawsze fallback do domyślnych wartości (hardcoded średnia centralna Polska).
-- Cała ścieżka Kartograf CN de facto produkuje `CN = weighted_cn(default_land_cover, "B")`.
-- **Lokalizacja:** `core/cn_calculator.py`
-
-**CR6. Bezpośredni dostęp do prywatnego `cg._segment_idx` w 3 endpointach** (priorytet: średni)
-- `watershed.py:128`, `hydrograph.py:139`, `select_stream.py:114` — wszystkie robią `int(cg._segment_idx[clicked_idx])`.
-- **Rozwiązanie:** dodać publiczną metodę `CatchmentGraph.get_segment_idx(internal_idx: int) -> int`.
-- **Lokalizacja:** `core/catchment_graph.py`, `api/endpoints/watershed.py`, `api/endpoints/hydrograph.py`, `api/endpoints/select_stream.py`
-
-**CR7. Singleton `CatchmentGraph` bez thread safety** (priorytet: średni)
-- `catchment_graph.py:625-633`: brak `threading.Lock` — race condition w thread pool executor (sync endpointy FastAPI).
-- **Rozwiązanie:** double-check locking z `threading.Lock`.
-- **Lokalizacja:** `core/catchment_graph.py`
-
-**CR8. Terrain profile — wyciek ścieżki DEM + porównanie nodata z `==`** (priorytet: średni)
-- `profile.py:84-88`: pełna ścieżka serwera (`/data/dem/dem.vrt`) trafia do klienta (information disclosure).
-- `profile.py:95-96`: porównanie float z `==` jest zawodne; `0.0` jako replacement maskuje prawdziwą elewację poziomu morza.
-- **Lokalizacja:** `api/endpoints/profile.py`
-
-**CR9. Cascade threshold escalation — boundary vs stats mogą opisywać różne zlewnie** (priorytet: średni)
-- `select_stream.py:137-161`: przy eskalacji progu statystyki pochodzą z fine-threshold BFS, ale boundary z coarse-threshold merge — mogą opisywać różne ekstenty.
-- **Lokalizacja:** `api/endpoints/select_stream.py`
-
-**CR10. `traceback.print_exc()` zamiast `logger.error(..., exc_info=True)`** (priorytet: niski)
-- `cn_calculator.py:333`, `analyze_watershed.py:416,1312` — bypass logowania strukturalnego.
-- **Lokalizacja:** `core/cn_calculator.py`, `scripts/analyze_watershed.py`
-
-**CR11. CLAUDE.md — nieaktualna struktura modułów** (priorytet: niski)
-- `core/flow_graph.py` wymieniony jako DEPRECATED ale usunięty (commit `a65c25d`).
-- Brakuje: `core/soil_hsg.py`, `scripts/bootstrap.py`.
-- **Lokalizacja:** `CLAUDE.md`
-
-##### Sugestie (nice to have)
-
-**CR12. Duplikacja logiki morfometrycznej** — `select_stream.py:193-314` reimplementuje `build_morph_dict_from_graph()` z `watershed_service.py`.
-
-**CR13. `_MAX_MERGE = 500` zdefiniowane inline** w `watershed.py:152` i `select_stream.py:133` — powinno być w `core/constants.py`.
-
-**CR14. Inline import `soil_hsg` w endpoint** — `watershed.py:263-264` i `select_stream.py:274-275` importują wewnątrz try-except zamiast na górze pliku.
-
-**CR15. Integer division `n_bins` w `aggregate_hypsometric`** — `catchment_graph.py:578` używa `//` co może obciąć ostatni bin. Powinno być `math.ceil()`.
-
-**CR16. Caching POST response** — `select_stream.py:343` ustawia `Cache-Control: public, max-age=3600` na POST — niestandardowe i ignorowane przez wiele proxy.
-
-#### H. Do rozważenia (koncepcyjne)
-
-**H1. Zlewnie bezposrednie jezior przeplywowych i bezodplywowych** (priorytet: do ustalenia)
-- Jak wyznaczac zlewnię bezposrednia jeziora przeplywowego? Czy laczyc ze soba zlewnie czastkowe, zeby unikac ich nadmiernego rozdrobnienia?
-- Jak traktowac jeziora bezodplywowe (endorheic)? Powoduja one "dziury" w zlewniach rzecznych, a dwa blisko polozone obok siebie zborniki nie maja wyznaczonych swoich zlewni.
-- Jak wdrozyc zlewnie kanalizacyjne i przekazywac ich doplywu do wyplywu w innym miejscu analizowanego obszaru?
-- Powiazanie z istniejaca klasyfikacja jezior (ADR-020: 45 endorheic, 18 exorheic) i drain points
-- **Kontekst:** `core/hydrology.py` (classify_endorheic_lakes), `catchment_graph.py` (traverse_upstream)
-
-**H2. Narzucenie kierunku splywu na podstawie warstwy wektorowej** (priorytet: do ustalenia)
-- Mozliwosc wymuszenia kierunku splywu (flow direction) w oparciu o zewnetrzna warstwe wektorowa (np. BDOT10k cieki, OSM waterways)
-- Przypadki uzycia: korygowanie bledow DEM na terenach plaskich (delty, polesia), kanaly, rowy melioracyjne
-- Mozliwe podejscia: stream burning (juz zaimplementowane w `hydrology.py` — `burn_streams_into_dem()`), flow direction forcing (nadpisywanie fdir w komorkach pokrywajacych sie z wektorem)
-- Pytanie: czy obecny stream burning jest wystarczajacy, czy potrzebna jest pelna kontrola fdir?
-- **Kontekst:** `core/hydrology.py` (burn_streams_into_dem, process_hydrology_pyflwdir), `scripts/process_dem.py`
-
-**H3. Podniesienie budynkow BDOT10k w NMT (building raising)** (priorytet: sredni)
-- Obecnie budynki sa usuwane z NMT (lub nieuwzgledniane), wiec woda moze swobodnie przeplywac przez nie. Prowadzi to do nierealistycznych kierunkow splywu i akumulacji — cieki "przechodzace" przez zabudowe.
-- Rozwiazanie: pobranie warstwy budynkow z BDOT10k i podniesienie wartosci NMT w obrebie ich footprintow o domyslna wartosc +5 m. Operacja powinna byc wykonywana **przed** wypalaniem ciekow (stream burning), aby cieki mogly nadpisac podniesione komorki tam, gdzie to konieczne.
-- Kolejnosc preprocessingu NMT: (1) fill sinks → (2) **building raising** → (3) stream burning → (4) flow direction → (5) flow accumulation.
-- Wymaga pobrania warstwy BUBD (budynki) z BDOT10k przez Kartograf — analogicznie do istniejacego pobierania warstw hydro (SWRS, SWKN, SWRM, PTWP).
-- Parametr `building_raise_m` (domyslnie 5.0) jako stala w `core/constants.py` lub argument CLI.
-- **Kontekst:** `core/hydrology.py` (burn_streams_into_dem, process_hydrology_pyflwdir), `scripts/process_dem.py` (orchestrator), `scripts/bootstrap.py` (step_process_dem)
-
-**H4. Monotoniczne wygladzanie ciekow zamiast stalego wypalania (stream gradient enforcement)** (priorytet: niski)
-- Obecny stream burning obniza NMT o stala wartosc wzdluz cieku. Problem: gdy ciek przechodzi przez obiekt o znacznej wysokosci (most, wiadukt, nasyp), nawet duze wypalenie moze byc niewystarczajace. Jednoczesnie stale wypalenie w normalnych odcinkach tworzy nadmierne obnizenia, ktore potem wymagaja duzego fill sinks — wypelnienie zaglebia moze zalewac okoliczne komorki.
-- Rozwiazanie: zamiast obnizania o stala wartosc, wygladazac wartosci NMT wzdluz linii cieku tak, aby wysokosci monotonicznie malaly w kierunku splywu. Kazda komorka na cieku powinna miec wartosc <= poprzedniej komorki w gore cieku. Jesli napotkana wartosc jest wyzsza (most, nasyp), zostaje zastapiona wartoscia poprzedniej komorki (lub interpolacja liniowa miedzy znanymi punktami po obu stronach przeszkody).
-- Algorytm: (1) pobranie profilu wysokosci wzdluz geometrii cieku (ordered vertices), (2) przejscie od zrodla do ujscia z wymuszeniem monotonicznosci (running minimum), (3) zapis wygladzonych wartosci do rastra NMT.
-- Zaleta: eliminuje problem mostow/nasypow bez tworzenia sztucznych zaglebie w normalnych odcinkach. Wypalanie stalą wartoscia pozostaje jako fallback tam, gdzie brak geometrii ciekow.
-- **Kontekst:** `core/hydrology.py` (burn_streams_into_dem), `scripts/process_dem.py`
-
-**H5. Symplifikacja granic zlewni** (priorytet: sredni)
-- Granice zlewni generowane z polygonizacji rastra maja ksztalt schodkowy (pikselowy) — kazda komorka rastra tworzy prostokatny fragment granicy. Przy duzym zoomie wyglada to nieatrakcyjnie i nierealistycznie.
-- Mozliwe podejscia: (1) `ST_SimplifyPreserveTopology` post-hoc na wynikowej granicy z tolerancja np. 1-2× cellsize, (2) wygladzanie Chaikin/Bezier na granicy zlewni, (3) symplifikacja juz na etapie polygonizacji zlewni czastkowych (pipeline).
-- Trzeba zachowac topologiczna spojnosc — symplifikacja nie moze tworzyc luk miedzy sasiednimi zlewniami ani nakładek. `ST_SimplifyPreserveTopology` jest bezpieczniejsza niz `ST_Simplify`.
-- **Kontekst:** `core/stream_extraction.py` (polygonize_subcatchments), `core/watershed_service.py` (merge_catchment_boundaries), `core/watershed.py` (build_boundary)
-
-**H6. Format danych HSG: wektor o uproszczonej geometrii vs raster** (priorytet: do ustalenia)
-- Obecnie dane HSG (SoilGrids) sa pobierane jako raster (resolucja 250m) przez Kartograf i uzywane do obliczen CN. Do frontendu trafiaja jako warstwa wektorowa (GeoJSON z polygonami per-grupa glebowa).
-- Pytanie: czy dane HSG powinny byc przekazywane do frontendu jako (a) wektor o uproszczonej geometrii (mniejszy rozmiar, szybsze renderowanie, ale wymaga polygonizacji + symplifikacji rastra) czy (b) raster/overlay PNG (prostsza generacja, ale brak interaktywnosci i tooltipow).
-- Wektor: zalety — tooltips, klikanie, legenda dynamiczna, mozliwosc filtrowania; wady — duzy GeoJSON przy rozdzielczosci 250m, koniecznosc symplifikacji.
-- Raster: zalety — prosty pipeline (analogicznie do DEM overlay), maly rozmiar, szybkie renderowanie; wady — brak interaktywnosci, statyczna legenda.
-- Podejscie hybrydowe: raster jako warstwa podkladowa + wektor z uproszczona geometria dla tooltipow i statystyk.
-- **Kontekst:** `core/cn_calculator.py` (dane HSG), `scripts/bootstrap.py` (pipeline), `frontend/js/layers.js` (renderowanie warstw)
-
-### Nastepne kroki
-1. ~~**Naprawa krytycznych bledow z code review:** CR1, CR2, CR3~~ ✅ (wszystkie 3 naprawione)
-2. Naprawa waznych bledow z code review: CR4-CR9 (BFS deque, land cover TODO, enkapsulacja _segment_idx, thread safety, profile info disclosure)
-3. ~~Naprawa pozostalych bugow UX: E1, E4, E12, E13, F2~~ ✅ (wszystkie 5 naprawione, sesja 42)
-4. ~~Aktualizacja CLAUDE.md (CR11): usunac flow_graph.py, dodac soil_hsg.py i bootstrap.py~~ ✅ (sesja 39)
-5. Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
-6. Usuniecie hardcoded secrets z config.py i migrations/env.py
-7. CP5: MVP — pelna integracja, deploy
-
-## Backlog
-
-**Jedyne zrodlo prawdy dla rzeczy do zrobienia** (konsolidacja 2026-07-31). Sekcje "Nastepne kroki" w opisach sesji to zapis historyczny — nowe zadania dopisuj wylacznie tutaj.
-
-### Bledy i diagnozy
-
-- [ ] **Utwardzenie bezpieczeństwa publicznej powierzchni ataku** — specyfikacja: `notes/superpowers/specs/2026-08-08-public-security-hardening-spec.md` (sesja 86; weryfikacja raportu `notes/reports/2026-08-08-admin-security-audit.md` + niezależny audyt całej powierzchni). 9 obszarów; następny krok = plan (writing-plans). **Priorytet KRYTYCZNY: 3× HIGH nieuwierzytelniony DoS z internetu** — delineacja precise bez limitu obszaru (OOM), kafle `2**z` bez walidacji zoomu (OOM), brak zoom-floor+`statement_timeout` na streams/catchments/landcover (wysycenie puli DB); wzorzec naprawy jest już w kodzie (endpoint sewer odporny). Dalej: **E1 real_ip za tunelem** (prerekwizyt rate-limitu i dashboardu ruchu), containment `sewer_source`/`--waterbody-mode`, precedencja `ADMIN_API_KEY_FILE`, hasło DB w env kontenera, supply-chain (git tagi→SHA), DoS panelu feedbacku, + LOW/INFO. Decyzje: dwa tory (konta osobno), BEZ bramki admina interim. Krytyczny bypass `expected_key` już naprawiony (`d7f6bd7`).
-- [ ] Hietogram i hydrogram — "brak danych" wszedzie, gdzie klikal tester (feedback Kamila 2026-07; jedyny twardy bug zgloszenia). Dane pokrywaja testowany obszar (Warszawa), wiec to nie kwestia zasiegu — wymaga diagnozy (dane opadowe? endpoint? frontend?). Priorytet: wysoki.
-- [ ] Cztery lokacje nginx (regex `.css/.js`, `.pbf/.geojson`, `^~ /data/`, `^~ /tiles/`) nadpisują własnym `add_header` dziedziczone nagłówki bezpieczeństwa (CSP, X-Frame-Options, Referrer-Policy) — `add_header` w bloku location kasuje wszystkie z poziomu server. Znalezione przy review sesji 84; niezależne od wycofanego dashboardu, dotyczy obu configów. Priorytet: średni. → **ujęte w specyfikacji utwardzenia jako E3** (podniesione do MEDIUM; sesja 86).
-- [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
-- [ ] Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
-- [ ] Wolne kafle landcover MVT na niskich zoomach: `/api/tiles/landcover/{z}/{x}/{y}.pbf` przy zoom 11-12 do 6.7 s (72 zadania >2 s w sesji testowej 2026-08-01, monitoring sesja 82) — prawdopodobnie kosztowne zapytanie przestrzenne przy pierwszym ladowaniu warstwy (zimny cache). Do diagnozy: EXPLAIN ANALYZE zapytania MVT na niskim zoomie, ew. cache/preagregacja. Priorytet: sredni.
-- [ ] Tryb precise (`POST /api/delineate-watershed` bez `threshold_m2`) zwraca `area_km2 = 0.0` dla niektorych punktow (`raster_service.delineate_from_point()`) — odkryte przy diagnozie feedbacku #11 (`notes/reports/2026-08-02-length-km-diagnosis.md` §10.2), poza zakresem naprawy `hydraulic_length_km` (sesja 83). Priorytet: sredni.
-- [ ] Wygladzanie granicy zlewni (`ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)`) skraca obwod o ~28% przy zachowanej powierzchni — liczenie wskaznikow ksztaltu na hybrydzie (`area_km2` z rastra, `perimeter_km` z wygladzonego wieloboku) zaniza `compactness_coefficient` (Kc) i zawyza `circularity_ratio` (Rc). Odkryte przy diagnozie feedbacku #11 (§10.1 diagnozy, sesja 83). Priorytet: sredni.
-- [ ] `scripts/download_landcover.py` (~l.180-197): dla `--provider corine` z `--lat/--lon` wymusza rozszerzenie `.gpkg`, a CORINE zapisuje raster — niezgodny format/rozszerzenie pliku wyjsciowego (wada spoza migracji na Kartograf 0.7.0). Priorytet: sredni.
-- [ ] `core/cn_calculator.py::get_land_cover_stats` (~l.254) lapie kazdy `Exception` i zwraca `{}` — cicha degradacja (brak pokrycia nieodroznialny od bledu); zawezic wyjatki i podniesc blad glosno (wada spoza migracji na Kartograf 0.7.0). Priorytet: sredni.
-
-### Funkcjonalnosci — feedback Kamila (2026-07, oryginal: `notes/feedback/Kamil.md`)
-
-- [ ] Eksport zlewni (pobranie geometrii) + reczna edycja wierzcholkow granicy — kluczowe dla zastosowan miejskich (zlewnie realnie modyfikuje kanalizacja deszczowa). Priorytet: wysoki.
-- [ ] Przycisk "i" — inspekcja punktu na mapie: wysokosc, pokrycie terenu itd. Synergia z terrain-RGB (etap B skali NMT daje odczyt wysokosci gratis). Priorytet: sredni.
-- [ ] Zaglebienia — czytelna skala barw: warstwa MVT `/api/tiles/depressions/{z}/{x}/{y}.pbf` (wzorzec landcover, tiles.py:177-232) + stylowanie client-side wg `max_depth_m`, suwak zamknietych przedzialow glebokosci, klik → glebokosc (tooltip gotowy w martwym kodzie depressions.js:63-146 — podlaczyc albo usunac), endpoint statystyk glebokosci (percentyle) do kalibracji suwaka. Wymaga minZoom ~12-13 + filtr powierzchni (338k poligonow). Priorytet: sredni. ODLOZONE (decyzja 2026-07-31).
-- [ ] NMT — dynamiczna/definiowana skala barw. Etap A (0.5-1 dnia): legenda skali (metadane juz w dem_tiles.json, frontend ich nie czyta) + parametry `--elev-min/--elev-max/--pct` w dem_color.py/generate_dem_tiles.py/adminie — obecne okno p5-p95 (81.8-114.1 m) pokrywa ~35% zakresu wysokosci, stad "wszystko zielone". Etap B (2-5 dni): rozdzielenie hillshade od koloru (statyczna piramida hillshade + `mix-blend-mode: multiply`), kolor dynamicznie: endpoint on-the-fly `/api/tiles/dem/...?vmin=&vmax=` (RasterCache ma DEM w RAM; por. ADR-018) LUB kafelki terrain-RGB + canvas client-side (plynny suwak, gratis odczyt wysokosci pod kursorem = przycisk "i"). Priorytet: sredni. ODLOZONE (decyzja 2026-07-31).
-- [ ] Mniejszy prog linii splywu — rewizja ADR-030 (prog 100 m2 usuniety, tester go potrzebuje do drobnych linii splywu). Priorytet: do decyzji.
-- [ ] Kanalizacja deszczowa — warstwa pusta: dostepne WMS lacza siec deszczowa z sanitarna i nie da sie ich rozdzielic. Do decyzji zrodlo danych. Decyzja UI (2026-07-31): gdy brak danych, warstwa znika z GUI (nie pokazujemy pustej pozycji). Priorytet: do ustalenia.
-- [ ] HSG — za mala rozdzielczosc (cala Warszawa = grupa A); rozwazyc mape glebowo-rolnicza jako zrodlo. Priorytet: do ustalenia.
-- [ ] Morfometria — parametry z faktycznych ciekow: obecne wartosci bazuja na wygenerowanej sieci splywu (progi akumulacji z NMT), przez co czesc wskaznikow nie ma sensu fizycznego. Decyzja (2026-07-31): parametry zlewni i sieci rzecznej liczyc z faktycznych ciekow (wgrana warstwa lub BDOT10k), NIE z generowanych linii splywu. Realizacja odlozona. Priorytet: sredni.
-
-### Wlasne dane i nowe zrodla (rozszerzenia trybu przegladowego)
-
-Wizja (brainstorm 2026-07-31, pelne uzasadnienia: `notes/plans/2026-07-31-wlasne-dane-i-nowe-zrodla-wizja.md`): rdzeniem pozostaje tryb przegladowy — automatyczna analiza z danych publicznych. Wgrywanie wlasnych danych to opcjonalne rozszerzenie dla zastosowan projektowych tam, gdzie dane publiczne nie wystarczaja (feedback Kamila: zlewnie miejskie, kanalizacja, HSG).
-
-- [ ] Zakres analizy z pliku wektorowego w panelu admina (zamiast rysowania prostokata). Dlaczego: realne projekty maja nieregularne granice; prostokat wymusza przetwarzanie nadmiaru danych.
-- [ ] Przyciecie danych wynikowych do obszaru analizy. Dlaczego: wyniki poza granica obszaru to szum i falszywy kontekst; naturalna konsekwencja wektorowego zakresu.
-- [ ] Zlewnie aPGW jako zrodlo danych + wskazanie obszaru analizy przez ID zlewni. Dlaczego: urzedowy podzial hydrograficzny jako referencja i szybkie definiowanie obszaru bez rysowania.
-- [ ] Wgranie wlasnego NMT zamiast pobierania z geoportalu. Dlaczego: projekty dysponuja dokladniejszym/aktualniejszym pomiarem (nalot, LiDAR); uniezaleznienie od dostepnosci geoportalu.
-- [ ] Wgranie wlasnej warstwy ciekow (wyniesione z wpisu o pliku YAML). Dlaczego: BDOT10k bywa niepelny; wgrana warstwa staje sie podstawa parametrow sieci rzecznej (por. wpis o morfometrii).
-- [ ] Wgranie wlasnych danych o gruntach. Dlaczego: projekty maja badania gruntowe dokladniejsze niz HSG (por. wpis o HSG).
-- [ ] Wgranie wlasnego uzytkowania terenu. Dlaczego: stan projektowy (np. planowana zabudowa) zamiast stanu obecnego z danych publicznych.
-- [ ] Wodowskazy IMGW (przez IMGWTools): warstwa lokalizacji + odczyty (stany/przeplywy); docelowo weryfikacja obliczanych przeplywow obserwacjami. Dlaczego: walidacja modelu w zlewniach zamknietych wodowskazem.
-- [ ] PMAXTP (przez IMGWTools): pobranie opadow maksymalnych o zadanym prawdopodobienstwie dla wybranego punktu. Dlaczego: opad obliczeniowy do hietogramu/hydrogramu projektowego.
-- [ ] Eksport danych dla zaznaczonego obszaru z poziomu GUI (NMT, linie splywu, zaglebienia, wyniki analiz — GeoTIFF/GeoJSON/GPKG). Dlaczego: wyniki musza trafiac do dalszych narzedzi projektowych (QGIS, modele kanalizacji). Uwaga: chodzi o eksport plikowy, NIE o uruchamianie pipeline z GUI (doprecyzowane w brainstormie).
-- [ ] Podpiecie wlasnych WMS jako podklad (obsluga client-side). Dlaczego: uzytkownicy maja branzowe WMS (kanalizacja, MPZP); client-side = zero obciazenia backendu.
-- [ ] Wskazowki i wyjasnienia do parametrow i wskaznikow w "Parametrach zlewni" (tooltips/ikona "i" przy pozycjach). Dlaczego: obnizenie progu wejscia — interpretacja wynikow bez wiedzy eksperckiej.
-
-### Funkcjonalnosci — pozostale
-
-- [ ] CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny (v1.0.0)
-- [ ] Podwojna analiza NMT (z/bez obszarow bezodplywowych): pipeline generuje 2 warianty — pelny DEM (z endoreicznymi) i DEM hydrologicznie poprawny (bez). Cieki i obliczenia hydrologiczne (SCS-CN, hydrogram) oparte na wariancie bez bezodplywowych. W UI zlewnie bezodplywowe oznaczane innym kolorem (np. szarym/przezroczystym) ale widoczne na mapie. Wymaga: 2x process_hydrology_pyflwdir, osobne stream_network/catchments, warstwa UI z rozroznieniem. Priorytet: sredni.
-- [ ] Optymalizacja wydajnosci selekcji zlewni czastkowych powyzej punktu (precomputed transitive closure + boundary cache). Szacowany speedup ~10x dla zlewni 100 km^2, ~20-50x dla >500 km^2. Koszt RAM ~500 MB. Szczegoly: `notes/plans/2026-05-19-catchment-selection-performance-design.md`. Status: do rozwazenia, wymaga decyzji produktowej + mikrobenchmark baseline. Priorytet: sredni.
-- [ ] Plik konfiguracyjny YAML — niestandardowe parametry i sciezki pipeline. Priorytet: sredni. (Wlasne wektory ciekow wyniesione do sekcji "Wlasne dane i nowe zrodla".)
-- [ ] Ikony trybow w toolbarze — lapka (przegladanie), kursor klikajacy (wybierz zlewnię), kafelki/siatka (wygeneruj zlewnię), profil terenu (profil). Priorytet: niski.
-
-### Infrastruktura i jakosc kodu
-
-- [ ] Migracja na SQLAlchemy 2.1 i zdjecie pinu `<2.1` — albo URL-e `postgresql+psycopg2://` (docker-compose.yml, `config.py`, migrations `env.py`), albo przejscie na psycopg v3. Pin dodany, bo 2.1 wybiera psycopg v3 dla `postgresql://`, a obraz ma `psycopg2-binary`. Priorytet: niski.
-- [ ] Plik lock/constraints zaleznosci wygenerowany z dzialajacego obrazu — wiekszosc pozycji w `requirements.txt` ma niezwiazane `>=`, wiec kazda przebudowa obrazu moze zepsuc zywe API (jak przy SQLAlchemy 2.1). Priorytet: sredni.
-- [ ] Dashboard ruchu — przebudowa od zera (poprzednia implementacja GoAccess z sesji 82/84 wycofana w całości w sesji 85; kod referencyjny w gałęzi `backup/develop-pre-cleanup`, decyzje ADR-055/056 tylko w starej historii). Przed startem: brainstorming wymagań z użytkownikiem. **Zależność: E1 (real_ip za tunelem) ze specyfikacji utwardzenia jest prerekwizytem** — bez niego logi zapisują IP tunelu, analiza per-IP ślepa; `log_format` definiować razem z real_ip; decyzja anonimizacja/retencja IP (RODO).
-- [ ] Flaga `--thresholds` w `bootstrap.py` + pole w API/panelu admina — dziś progi akumulacji są hardcodowane w wywołaniu `process_dem` (`bootstrap.py:540`), choć sam `process_dem.py` ma flagę `--thresholds`. Kontekst (sesja 88): przy bboxie Kotliny Kłodzkiej (113M komórek) próg 1000 m² powoduje OOM (polygonizacja 872k podzlewni > limit 8G) — dane wygenerowano progami [10000, 100000] przez jednorazową edycję hardcode'u; ponowny bootstrap z domyślną listą znów wpadnie w OOM. Po dodaniu flagi: `DEFAULT_THRESHOLD_M2` (`core/constants.py`) musi być zawsze równy najniższemu progowi w danych. Priorytet: sredni.
-- [ ] Migracja bind mountow na named volumes Docker (`./data`, `./cache`, `./frontend/data`, `./frontend/tiles`) — w obecnym ksztalcie kazda zmiana engine ryzykuje powtorke EPERM z sesji 80. Priorytet: sredni.
-- [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
-- [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
-- [ ] Code review CR12-CR16 (sugestie): duplikacja morph, _MAX_MERGE const, inline import, n_bins ceil, POST cache
-- [ ] Upstream do Kartografa: publiczne `discover_teryts_for_bbox()` (TERYT dla bbox bez pobierania danych) nadal brak w 0.7.0 - po wydaniu usunac fallback na prywatnym `Bdot10kProvider._get_teryt_for_point()` w `download_landcover.py::_discover_teryts_grid()` (dzis zabezpieczony guardem + testem kontraktowym, ADR-057). `mosaic_and_crop`/`download_pl_cutout` ocenione w etapie K - nie zastepuja VRT Hydrografu (ADR-057, aktualizacja 2026-10-08); `merge_hydro_gpkgs()` bez odpowiednika. Priorytet: niski.
-- [x] Kartograf 0.7.0 — `_get_opendata_url()` traktowal blad sieci jak brak arkusza (sesja 93, pobranie Opolskiego): rozwiazane w 0.7.0 (DownloadError zamiast przejscia do starszej warstwy; warstwy z GetCapabilities) — etap K.
-- [ ] Opolskie: ponowne pobranie w 0.7.0 (decyzja D6), zastepuje weryfikacje 92 arkuszy z listy podejrzanych. Dane z ukladu 0.6.1 nie sa reuzywane (docs/integrations/KARTOGRAF.md §6.5).
-- [x] Kartograf 0.7.0 — `requests.Session()` per zapytanie: 0.7.0 - jeden transport HTTP — etap K.
-- [x] (czesciowo) Kartograf 0.7.0 — pelny rekord metadanych arkusza: sidecar `.meta.json` (`extra.source`: url, layer, acquisition_date/year, pzgik_date, survey_work_id, data_source, full_sheet) — etap K; BRAK w sidecarze: bladSredniWysokosci, bladSredniPolozenia, modulArchiwizacji, sha256 — do ADR-058/backlogu Kartografa.
-- [ ] Bootstrap krok 5 (HSG): blad (w tym nieaktualny `hsg_poland.tif`) jest zapisywany jako krok nieudany, ale bootstrap konczy sie kodem 0 przy udanych krokach 1-3; fallback HSG "B" przy braku danych SoilGrids bez zmian - do decyzji D5 (zgodnie z zasada "brak danych = blad, nie wartosc domyslna").
-- [ ] **ADR do decyzji — wersjonowanie arkuszy NMT** (sesja 93). Problem: GUGiK publikuje NMT w warstwach wg roku aktualnosci (`SkorowidzeNMT2025`/`2024`/`2023`/`2022iStarsze`), a po stronie Hydrografu plik = sama sciezka z godla — rok przepada, `skip_existing` blokuje aktualizacje, mozaika miesza naloty z roznych lat bez sladu (mozliwe progi wysokosci na stykach, niewyjasnialne zmiany zlewni miedzy bootstrapami). Proponowane rozwiazanie:
-  1. Uklad plikow bez zmian (jedna, najnowsza znana wersja per godlo, sciezki Kartografa) + manifest w `<HOST_DATA_DIR>/nmt/` (SQLite/GPKG) z pelnym rekordem skorowidza: godlo, `aktualnosc`, `numerZgloszeniaPracy`, `zrDanych`, `bladSredniWysokosci`, `dt_pzgik`, URL OpenData, czas pobrania (timestamp, wymagany), sha256. Klucz wersji: `numerZgloszeniaPracy` + `aktualnosc`. `zrDanych` istotne hydrologicznie (fotogrametria vs lidar — rozna jakosc przy tym samym bledzie sredniym). Odrzucone: katalogi per rok (`nmt_5m/2025/...`) — psuja `skip_existing`, duplikuja dane, mozaika i tak wymaga wyboru "najnowszej per arkusz".
-  2. Aktualizacja = diff skorowidza z manifestem: odpytanie WMS bez pobierania plikow, ponowne pobranie tylko arkuszy ze zmienionym URL-em; poprzednia wersja przenoszona do `archive/`.
-  3. Provenance w bootstrapie: lista wersji arkuszy (lub hash manifestu) zapisana w metadanych przebiegu w DB; opcjonalnie warstwa "rok nalotu per arkusz" do diagnozy stykow.
-  - **Zdecydowane (user, s93):** stare wersje sa archiwizowane, nie nadpisywane. Uklad archiwum: wspolny katalog `archive/` w `<HOST_DATA_DIR>/nmt/` z podkatalogiem per produkt (odpowiednik biezacego, np. `archive/nmt_5m`, `archive/nmt_1m`, inne w razie potrzeby), dalej hierarchia godla jak w danych biezacych, rok aktualnosci (nalotu) jako prefiks nazwy oddzielony `_`: `archive/nmt_5m/<hierarchia godla>/<aktualnoscRok>_<godlo>.asc`, np. `archive/nmt_5m/M-33/48/D/d/3/1/2019_M-33-48-D-d-3-1.asc`. Rok z pola `aktualnoscRok` rekordu skorowidza (stan terenu), nie z `dt_pzgik` (publikacja) ani z nazwy warstwy (`2022iStarsze` to grupowanie). **Bez przyrostka kolizji** — user akceptuje ryzyko, ze dwie wersje arkusza z tego samego roku (np. poprawka tego samego nalotu) zajma te sama nazwe i pozniej archiwizowana nadpisze wczesniejsza; pelna identyfikacja wersji tylko w manifescie (`numerZgloszeniaPracy`, `aktualnosc`, `dt_pzgik` + czas pobrania). Odrzucone: katalogi per rok — stan "na dzien bootstrapu" miesza lata, wiec odtwarza sie go z manifestu.
-  - Zrodlo metadanych: docelowo Kartograf 0.7.0 (punkt wyzej); na 0.6.1 — wlasne zapytanie GetFeatureInfo i parsowanie `skor_NMT_wg_akt.push({...})` (`MetadataCache` przechowuje tylko URL). Pierwszy manifest: Opolskie, przy okazji weryfikacji 92 arkuszy pobranych po bledzie warstwy 2025.
-  - Numer ADR nadac przy przyjeciu (nastepny wolny: 058). Priorytet: sredni, przed pobraniem calej Polski.
-
-### Pomysly niewdrozeniowe (komercjalizacja, feedback Kamila 2026-07)
-
-Audyt wodny dla gmin w 24h (tani/darmowy skrot + platny poglebiony); "sprawdz dzialke" (skad plynie woda, czemu zalewa, rekomendacje — z LLM, monetyzacja przez kontakty do wykonawcow); "waterscore" dla deweloperow; podejrzec otwartego konkurenta SCALGO z uniwersytetu w Lund. Szczegoly: `notes/feedback/Kamil.md`.
-
-### Zrobione (archiwum)
-
-- [x] Fix traverse_upstream resource exhaustion (ADR-015: pre-flight check, CTE LIMIT, statement_timeout, Docker limits)
-- [x] CP4 Faza 1: Frontend — mapa + zlewnia + parametry (Leaflet.js, Bootstrap 5)
-- [x] CP4: Warstwa NMT — naprawiona (L.imageOverlay → tile pyramid XYZ + fallback)
-- [x] CP4: Warstwa ciekow (Strahler) — L.imageOverlay z dylatacja morfologiczna → zamieniona na MVT
-- [x] CP4: DEM tile pyramid + kolejnosc warstw (demPane/catchmentsPane/streamsPane)
-- [x] CP4 Faza 2: Redesign glassmorphism + Chart.js + hydrogram + profil + zaglebie
-- [x] CP4 Faza 3: Wektoryzacja ciekow MVT, multi-prog FA, hillshade, zaglbienia preprocessing
-- [x] CP4 Faza 4: Select-stream pelne statystyki, GUGiK WMTS, UI fixes (492 testy)
-- [x] Graf zlewni czastkowych (ADR-021): CatchmentGraph in-memory, migracja 012, pipeline re-run, select-stream rewrite
-- [x] Podzial NMT na kafle (tile pyramid) — zrealizowane jako dem_tiles piramida XYZ zoom 8-16 (wpis byl blednie otwarty)
-- [x] Naprawa bledow frontend/backend (zgloszenie 2026-02-14, 10 pozycji — A1-A5, B1-B4, C1)
-- [x] Utworzenie backend/core/constants.py (M_PER_KM, M2_PER_KM2, CRS_*)
-- [x] Problem jezior bezodplywowych (endorheic basins) — ADR-020: klasyfikacja + drain points
-- [x] CI/CD pipeline (GitHub Actions)
-- [x] Audyt QA wydajnosci: LATERAL JOIN, cache headers, TTL cache, partial index, PG tuning, client cache, defer, structlog
-- [x] Eliminacja FlowGraph z runtime API (ADR-022): RAM -96%, startup -97%, 548 testow
-- [x] Code review CR1-CR3 (krytyczne): channel_slope, O(n^2) segments.index, cursor leak
-- [x] Code review CR4-CR11 (wazne) — zamkniete w sesjach 39/49/55 (2026-03-03); wpis byl blednie otwarty
-- [x] Nomenklatura: warstwa "Cieki" → "Linie splywu" (feedback Kamila 2026-07) — commit c2adfd5, sesja 2026-07-31
-- [x] `backend/utils/sheet_finder.py` duplikowal funkcjonalnosc Kartografa (`find_sheets_for_bbox()`) — usuniety (~616 linii + testy), zastapiony `utils/sheet_lookup.py` (cienki wrapper delegujacy do Kartografa). Przy okazji naprawiony bug w sciezce punkt+bufor (siatka 2×4 zamiast zagniezdzonego 2×2 dla 1:10000 — bledne godla, zero pokrycia wspolnego z poprawnym wynikiem). Polityka „pozyskiwanie danych wylacznie przez Kartograf" z udokumentowanymi wyjatkami: ADR-057. Commity: `75dc859`, `e9d940d`, `1524992`.
+# PROGRESS: Hydrograf
+
+Current state only (DOC-6.1). Branch, tag and remote state: ask git (`git status`,
+`git log --oneline -10`). History: the git log and [CHANGELOG](CHANGELOG.md). The Polish
+session notes 1 to 97 and the former backlog are in git (`git show 704dcf7:docs/PROGRESS.md`);
+sessions 98 and 99 are only on the unmerged branch `feature/kartograf-wykorzystanie`
+(`git show bc0b438:docs/PROGRESS.md`). The open backlog items moved to
+[BACKLOG.md](BACKLOG.md).
+
+## Status
+
+| Component | State | Note |
+|---|---|---|
+| Application (REST API, pipeline, frontend, admin panel) | done | released as 0.4.0; `develop` carries the storm-sewer integration (ADR-051, ADR-052), the feedback form (ADR-053) and the Kartograf 0.7.0 migration (ADR-057) |
+| Producer pins | behind the heads | Kartograf `v0.7.0`, Hydrolog `v0.6.3`, IMGWTools `v2.1.0`; the heads need the migration of Next 2; pins change only after the first release set (ADOPTION_PLAN 5.1) |
+| Branch `chore/nogat-2.1` | note | based on `develop`, not on `feature/kartograf-wykorzystanie`, which has 7 commits that `develop` lacks: `f3f23dd` (`affine>=2.4,<3`, carried here in `pyproject.toml`), a CHANGELOG line, and PROGRESS of sessions 98 and 99. Merging both needs a manual resolution of this file and of the deleted `requirements.txt` |
+| Nogat standard 2.1, structure and tooling | planned | uv and `uv.lock` for `backend/` (replace `requirements.txt`, keep the caps `sqlalchemy<2.1` and `affine<3`), version `0.5.0.dev0`, editor and git files, ruff rule set of DEV-7.2, mypy `strict` with per-module overrides, markers and `tests/contract`, coverage floor, `scripts/gate.sh`, CI, Dependabot |
+| Nogat standard 2.1, contribution files | planned | `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, pull request template (DEV-13.7, DEV-16.2, DEV-16.4) |
+| Nogat standard 2.1, documentation | in progress | done: this file and [BACKLOG.md](BACKLOG.md); planned: `CLAUDE.md` in English with Deviations, README in the order of DOC-2.1, ADR index and an ADR for the adoption, `docs/DEVELOPMENT_STANDARDS.md` deleted; the Polish documents are still to translate (Next 1.9) |
+| Nogat standard 2.1, error registry and REST (ERR-1 to ERR-6, DEV-11.1, AGI-6.2 to AGI-6.4) | planned | vendored registry and schemas, generated `core/_errors.py`, `HydrografError`, `application/problem+json`, `Accept-Language`, OpenAPI `operationId`s |
+| Data output (DEV §19, ECO-051) | planned | profile `app` consumes Kartograf in store mode; waits for the first release set; call sites in Next 2 |
+| Gate | not yet | `scripts/gate.sh` does not exist yet; the old checks were `ruff check`, `ruff format --check` and `pytest tests -m 'not db and not benchmark'` in `backend/` (187 ruff findings, 67 files to format, 1 failing test before this branch) |
+| CI | old | `.github/workflows/ci.yml` runs pip, ruff, pytest with PostGIS and `pip-audit`; nothing is pushed from this branch |
+
+Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
+
+| Item | Why |
+|---|---|
+| History rewrite (phase 1) | the repository was rewritten once on 2026-10-08; the standard's rewrite (mailmap to `Daldek <git@debever.pl>`, AI trailers) is the author's. Commits made on this branch have the right author |
+| Rulesets for `main`, `develop` and `v*` tags, private vulnerability reporting, Dependabot security updates (DEV-3.6, DEV-13.6, DEV-13.7) | GitHub settings. Required checks: the `gate` job and the `db` job of `ci.yml` |
+| `docs/CLA.md` and the way the CLA is signed (DEV-16.2, DEV-16.5) | the author's legal text |
+| `Approved:` lines of plans (DEV-17.4) | approval is the author's statement |
+| `CROSS_PROJECT_ANALYSIS.md` into the Nogat registry and `request` issues in the producers' repositories (DEV-17.5) | needs Nogat and GitHub issues |
+| Registry entry of Hydrograf in Nogat `ecosystem.yaml` | Nogat owns it: `python_manifests` lists `backend/requirements.txt`, which the uv step deletes; `uses` of Kartograf names `LandCoverManager` and `HSGCalculator`, which the migration of Next 2 removes |
+| Tags, releases, replacing producer pins by tags (REL-5.3, phases 5 and 6) | need the producers' tags and the author's approval |
+| Push of `chore/nogat-2.1`, pull request, merge into `develop` | approvals (DEV-3.3) |
+
+## Next
+
+1. **Finish the standard 2.1 adoption on `chore/nogat-2.1`** (one commit per step, gate
+   green before each; rules: `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`;
+   Archiwista's branch `chore/nogat-2.1` is the worked example of an `app`). Remaining
+   gaps of the inventory of 2026-10-25, in this order:
+   1. Editor and git files: `.editorconfig` in English (the JavaScript keeps 4 spaces, a
+      deviation), `.gitattributes` (`* text=auto eol=lf`), `.env.example` listing every
+      variable (DEV-13.1, DEV-14.1, DEV-18.3).
+   2. uv: `[dependency-groups] dev`, `uv.lock`, `[tool.uv] package = false`, Python 3.12 in
+      `.python-version`, one version source (`api/main.py` repeats `0.4.0`), the Dockerfile
+      builds with `uv sync --locked` (GDAL's Python binding must match the system library and
+      stays outside the lock, a deviation of DEV-6.3), `.dockerignore` stops excluding
+      `pyproject.toml`, README and CLAUDE.md commands (DEV-6.2, DEV-6.3, DEV-6.5, REL-1.1).
+   3. `ruff format` over `backend/` (67 files), then the rule set of DEV-7.2 (`W`, `C4`, `D`
+      added; 187 findings today, about 70 more with `D`; tests ignore `D`).
+   4. mypy `strict` over `backend/` (2,313 errors today, 426 of them outside `tests/`): fix
+      what is mechanical, per-module overrides for the rest, listed in CLAUDE.md (DEV-7.3).
+   5. pytest: `--strict-markers`, markers `live`, `db`, `slow` (plus `benchmark`), `tests/contract`,
+      coverage floor 80 (DEV-7.5, DEV-10.1); two tests are wrong today:
+      `test_select_stream.py::test_graph_not_loaded_returns_503` mocks `loaded` while the route
+      calls `ensure_loaded`, and `test_catchment_graph.py::test_lock_exists` uses
+      `isinstance(..., threading.Lock)`, which raises on Python 3.12.
+   6. `scripts/gate.sh` and `scripts/check-commits.sh` (they run in `backend/`; the commit step
+      in the repository root), CI from `standards/ci` in the `app` variant (gate on Linux, a
+      `db` job with PostGIS, audit), Dependabot (DEV-7.6, DEV-7.7, DEV-13.6).
+   7. `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, `.github/PULL_REQUEST_TEMPLATE.md`
+      (without the CLA text).
+   8. `CLAUDE.md` in English within 200 lines with the profile, Deviations and the code map;
+      delete `docs/DEVELOPMENT_STANDARDS.md` (DEV-1.3); README in English in the order of DOC-2.1
+      (profile `app`: Run and Deploy), at most 400 lines; ADR index at the top of
+      `docs/DECISIONS.md` and a new ADR for the adoption (DOC-8.2).
+   9. Translate to English (DEV-2.1, ECO-005), most useful first: CHANGELOG (sections as
+      DOC-7.1), ARCHITECTURE, DECISIONS, DATA_MODEL, `docs/integrations/*`, SCOPE, PRD,
+      COMPUTATION_PIPELINE, QA_REPORT, TECHNICAL_DEBT, BENCHMARK_QUERIES, CROSS_PROJECT_ANALYSIS,
+      BACKLOG, `backend/scripts/README.md`; then docstrings, comments and log messages of the
+      23,700 lines of Python, and user-facing texts into translation resources (DEV-2.3,
+      DEV-15.2). The 40 plans of the ignored `notes/superpowers/plans/` move to `docs/plans/`
+      after translation, without `Approved:` lines (the author approves).
+   10. Error registry and REST: vendored `error_registry.json` and `schemas/agent/` from the
+       Nogat commit `cc656e7` in `schemas/nogat/`, `scripts/generate_errors.py`, generated
+       `core/_errors.py`, `HydrografError` with `code`, `message`, `details`, `hint`
+       (DEV-11.1); `application/problem+json` for every error with `type`, `title`, `status`,
+       `detail`, `instance`, `code`, `hint`, `details` and `errors[]` with JSON Pointers; the
+       status from the registry (validation errors become 400, not 422); English texts by
+       default and Polish with `Accept-Language: pl` (the front end sends it); OpenAPI
+       `operationId` from `generate_unique_id_function`; contract tests (AGI-6.2 to AGI-6.4,
+       AGI-6.6, ERR-3, ERR-4). The 68 `HTTPException`s in `backend/api` are the starting point.
+   11. Other gaps found, not in scope of a step: logs use f-strings (DEV-12.3), 60 lines of
+       JavaScript are longer than 100 columns and the modules are IIFEs, not ES modules
+       (DEV-15.1), the front end has Polish text inline (DEV-15.2), `tests/performance` stands
+       beside the standard tree (DEV-5.2). Deviations are recorded in CLAUDE.md.
+2. **Migrate to the producers' heads after the first release set** (Nogat plans
+   `2026-10-24-data-output.md` step 8 and `2026-10-20-first-release-set.md` step 8; pins stay
+   until then). Probe of 2026-10-25 in a throwaway environment, committed nowhere: Kartograf
+   `feature/data-output` @ `343d659` (0.8.0.dev0, `root`, store marker, `--check`), IMGWTools
+   `feature/data-output` @ `a304521` (3.0.0), Hydrolog `chore/nogat-2.1` @ `d4f7282`
+   (1.0.0.dev0). Result of `pytest tests -m 'not db and not benchmark'`: 10 tests fail because of
+   Kartograf, and every call listed here as "untested" breaks at run time while its tests pass,
+   because they mock Kartograf. Pin the producer's commit while its tag is missing (REL-5.3),
+   migrate, run the suite, then pin the tags. Kartograf's own "Migration guide: data output"
+   is written with the last step of its ADR-054: read it again before starting.
+   - **Kartograf** (store mode, `root`; there is no plain mode on the head yet, ADR-054):
+     - `core/cn_calculator.py`: `check_kartograf_available` imports
+       `kartograf.hydrology.HSGCalculator` (gone, returns False, so the CN silently falls
+       back); `get_hsg_from_soilgrids` calls `HSGCalculator().calculate_hsg_by_bbox(bbox,
+       hsg_path)` into a temporary directory and `get_hsg_statistics(hsg_path)`: use
+       `calculate_hsg(root=..., bbox=bbox)` and `hsg_statistics(report.files[0].file.path)`
+       (`files[0].path` after the plain-mode step of ADR-054). Without a plain mode the raster
+       lands in the store, not in a temporary directory. `hsg_statistics` now also returns a
+       `nodata` key: skip it, or the dominant-group code (`max(..., key=percent)`) can pick it.
+       `get_land_cover_stats` imports `LandCoverManager`, calls `download_by_teryt(teryt)` and
+       `download_by_bbox(bbox)` inside `except Exception: return {}` (an ImportError becomes
+       "no land cover" and the default land cover is used silently): use
+       `download_landcover(product="bdot10k", root=..., teryt=...|bbox=...)`, read
+       `report.files[0].file.path`, `report.failed` and `report.ok`.
+     - `scripts/download_landcover.py`: `download_landcover` (the script's own function, same
+       name as Kartograf's) imports `kartograf.landcover.LandCoverManager`, builds
+       `LandCoverManager(output_dir=..., provider=...)` and calls `download_by_teryt`,
+       `download_by_godlo` (`godlo` is `sheet`) and `download_by_bbox` with `output_path=`: use
+       `kartograf.download_landcover(product=provider, root=..., teryt=|sheet=|bbox=,
+       year=...)` (`year` only for CORINE); files are store versions, so the
+       `<provider>_teryt_<T>.gpkg` names and `skip_existing` go; `merge_hydro_gpkgs` reads the
+       paths of the reports. `_discover_teryts_grid` calls the private
+       `Bdot10kProvider._get_teryt_for_point` (gone); Kartograf now has the public
+       `discover_teryts_for_bbox(bbox, *, session=None, cache=None, timeout=30)` and
+       `teryt_for_point(x, y, crs, ...)`: delete the script's WFS code (`discover_teryts_for_bbox`,
+       `_discover_teryts_grid`, `_parse_teryts_from_gml`, `_generate_sample_coords`), its contract
+       test `TestBdot10kPrivateApiContract` and exception (a) of ADR-057; callers:
+       `bootstrap.py` (land cover steps) and `prepare_area.py`.
+     - `scripts/bootstrap.py`: `step_soil_hsg` imports `HSGCalculator` inside `try/except
+       ImportError` and returns "pominięto (brak kartograf HSGCalculator)" (the step is skipped
+       silently), then calls `calculate_hsg_by_bbox(bbox=..., output_path=hsg_poland,
+       timeout=600)`: use `calculate_hsg(root=..., bbox=bbox_poland)` (no `output_path`, no
+       `timeout`); `check_hsg_cache` reads `extra.derived` and `kartograf_version` of the sidecar
+       and the `soil_hsg/hsg_poland.tif` path goes (Kartograf versions the raster, `update=`).
+       `resolve_sheets` and `resolve_boundary_file` call `find_sheets_for_bbox(bbox, scale)` and
+       `find_sheets_for_geometry(file, target_scale=scale, layer=layer)`: both need
+       `sheet_system="1992"` now (`'1992'` or `'2000'`; keyword-only for geometry); they import
+       `BBox` from `kartograf.core.geometry` (still importable; `kartograf.BBox` is public).
+     - `scripts/download_dem.py`: `download_sheets` calls `GugikProvider(resolution=...,
+       cache=cache)`: `vertical_crs="EVRF2007"` is required (matches the segment
+       `pl_1992_5m_evrf2007`); `DownloadManager(output_dir=str(output_dir), provider=provider,
+       resolution=..., campaigns="newest")`: `DownloadManager(provider, root=output_dir)` (no
+       `resolution`, no `campaigns`: the newest flight is the default); `manager.download_sheets(
+       sheets, skip_existing=...)` returned paths and set `manager.last_result`: it returns a
+       `DownloadResult` now (`update=None` keeps local versions, `update="force"` replaces
+       `skip_existing=False`; `succeeded` holds downloaded paths, `skipped` the sheets that were
+       already local, `files[sheet][i].path` the standard paths; `no_coverage`, `hard_failures`,
+       `unverified` and `errors` keep their names). `download_for_geometry` and the `--dry-run`
+       branch of `main` need `sheet_system="1992"` for `find_sheets_for_geometry`;
+       `utils/sheet_lookup.py::sheets_for_point_buffer` for `find_sheets_for_bbox`.
+       `MetadataCache(path, on_disabled=...)` is unchanged. The CLI option `--output` of
+       `download_dem` keeps meaning the Kartograf root: rename it `--root` (DEV-19.1).
+     - Layout: PL sheets are `<root>/nmt/pl_1992_5m_evrf2007/<hierarchy>/<sheet>.asc` (standard
+       path, a hard link) with the copies under `versions/` (0.7.0 had `kampanie/`);
+       `scripts/analyze_watershed.py::find_existing_nmt_files` excludes `kampanie` only, so it
+       would list the copies: exclude `versions` (and `full_sheet`); the fixtures of
+       `tests/unit/test_bootstrap_nmt.py` and `test_analyze_watershed_nmt_files.py` name `kampanie`.
+       A store root needs the marker `kartograf-store.json`, and a directory with foreign files
+       is refused (`conflict`, `not_empty`; a layout without marker: `store_unavailable`, hint
+       `kartograf store init --root <path>`). `cache/` also holds `bdot10k/`, `soil_hsg/`,
+       `kartograf_meta.db*`; give Kartograf its own root (for example `cache/kartograf/`), move
+       `cache/nmt` into it and run `kartograf store init --root`; pass `root=` explicitly from one
+       setting rather than relying on `KARTOGRAF_ROOT`. `scripts/clean.py` (`nmt`, `bdot10k`,
+       `soil_hsg`, `kartograf_meta.db*` of `cache/`), `docs/integrations/KARTOGRAF.md`, ADR-057 and
+       `scripts/README.md` describe the old layout.
+     - Tests that pass against the head and hide the breakage because they mock Kartograf:
+       `test_download_dem_report.py` (pins `output_dir`, `resolution`, `campaigns`,
+       `skip_existing`, `last_result`), `test_land_cover_stats.py` (`LandCoverManager`),
+       `test_cn_calculator.py` (`kartograf.hydrology.HSGCalculator`), `test_download_landcover.py`
+       (`Bdot10kProvider`). Tests that fail: `test_sheet_lookup.py` (6) and
+       `test_bootstrap_bbox.py` (1) with "missing `sheet_system`", `test_cn_calculator.py` (2),
+       `test_download_landcover.py::TestBdot10kPrivateApiContract` (1).
+     - Errors and exit codes: exceptions are `KartografError` subclasses with a registry `code`
+       (`validation_error` 2, `no_data` 14 for no coverage and years, `source_unavailable` 5,
+       `store_unavailable` 8, `conflict` 4); `kartograf.ParseError` and `ValidationError` stay
+       importable. The CLI answers with the `kartograf-result/1` envelope (`partial` exit 10,
+       `failed` 11) and an error document on the last stderr line; Hydrograf calls the library,
+       so only `except` clauses that match old messages or `RuntimeError` need a look
+       (`bootstrap.py` catches `KartografParseError` and `KartografValidationError`).
+   - **IMGWTools** (`fetch_pmaxtp`, unchanged): `scripts/preprocess_precipitation.py` and
+     `scripts/analyze_watershed.py` call `fetch_pmaxtp(latitude=..., longitude=...)` and read
+     `result.data.get_precipitation(...)`, `result.data.ks|sg|rb`; signature
+     `(latitude, longitude, *, method='POT', timeout=30.0, validate_coords=True)` and model
+     verified on the head. Change only the pin (`v2.1.0` to the 3.0.0 tag). Renames in
+     IMGWTools that Hydrograf does not use: `IMGW_STORE_ROOT` is `IMGW_ROOT`, `IMGW_DATA_DIR` is
+     `IMGW_REFERENCE_DIR`, store and export options are `root`, `output_dir`, `output`. Hydrograf's
+     own settings `IMGW_GRID_SPACING_KM` and `IMGW_RATE_LIMIT_DELAY_S` (`core/config.py`,
+     `.env.example`) share the `IMGW_` prefix of IMGWTools, whose settings ignore unknown keys.
+   - **Hydrolog** (library): the imports of `api/endpoints/hydrograph.py`,
+     `scripts/analyze_watershed.py` and `core/morphometry.py` resolve and the offline suite
+     passes on the head. Expect numerical changes (CHANGELOG of Hydrolog, "Breaking - changed
+     numerical results"): `WatershedParameters.calculate_tc("nrcs")` took 204.8 min on 0.6.3
+     and 167.2 min on the head for one test watershed (mean slope before channel slope), the
+     Snyder hydrograph has a duration correction; update expected values if tests pin them.
+     `calculate_tc("faa"|"kerby")` needs `overland_length_km` and `overland_slope_m_per_m`
+     (`InvalidParameterError`, also a `ValueError`, so `except ValueError` still works);
+     `_calculate_tc` in `api/endpoints/hydrograph.py` calls `ConcentrationTime.faa|kerby|
+     kerby_kirpich` directly and is unaffected. `scripts/analyze_watershed.py` documents
+     `tc_method` as `kirpich, scs, giandotti`, but `scs` was never accepted (the name is
+     `nrcs`). The CLI of Hydrolog changed (catalog, `hydrolog-result/1`, exit codes 13 for
+     `calculation_error` and 12 for `forbidden`); Hydrograf uses the library only. Routing
+     (`route lag|cascade|level-pool|muskingum|muskingum-cunge|network`, ADR-0007, ADR-0008) is on
+     the Hydrolog branches `feature/routing-*`, not merged into `develop` on 2026-10-25;
+     nothing to migrate, an option for the sewer and Hydraulik work.
+   - **Hydraulik** (`depends_on`, planned): integration halted by the author (session 99);
+     nothing to migrate.
+3. **Engineering items with the highest priority** from the former backlog (all of it:
+   [BACKLOG.md](BACKLOG.md)): the hardening of the public attack surface, starting with three
+   unauthenticated denial-of-service paths (precise delineation without an area limit, XYZ
+   tiles without zoom validation, tile routes without a zoom floor and `statement_timeout`;
+   spec `notes/superpowers/specs/2026-08-08-public-security-hardening-spec.md`, outside the
+   repository); the hyetograph and hydrograph "no data" bug from the tester's feedback; the
+   hardcoded accumulation thresholds in `scripts/bootstrap.py` (`--thresholds`); the
+   decision on the NMT versioning ADR (superseded in part by Kartograf's store); hardcoded
+   secrets in `core/config.py` and `migrations/env.py`.
+
+## Open questions
+
+1. Root of Kartograf's store after the migration: a dedicated `cache/kartograf/` (recommended;
+   Kartograf refuses a root with foreign files) or a different place, and whether the land
+   cover and HSG moves from Hydrograf's own files (`bdot10k/`, `soil_hsg/`) into that store.
+2. Plain mode for the temporary HSG raster of `get_hsg_from_soilgrids`: wait for ADR-054's plain
+   mode (`output_dir`) or accept a store version per request.
+3. D5 and D6 of session 97: the HSG fallback "B" and step 5 as non-critical (a failed step 5
+   still ends bootstrap with exit 0); data of the 0.6.1 layout are not reused.
+4. GDAL's Python binding stays outside `uv.lock` because it must equal the system library of
+   the image: accept as a deviation of DEV-6.3, or install `gdal-bin` and drop the pip build
+   (`generate_dem_tiles.py` runs `gdal2tiles.py`).
+5. Merge of `feature/kartograf-wykorzystanie` and `chore/nogat-2.1` into `develop`: order and
+   who resolves PROGRESS, CHANGELOG and `requirements.txt`.
+6. Text of `docs/CLA.md` and how the CLA is signed (the pull request template has the checkbox
+   that `CONTRIBUTING.md` refers to).
