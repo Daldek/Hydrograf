@@ -101,7 +101,7 @@ def prepare_area(
     scale : str
         Map scale for sheet selection
     batch_size : int
-        Database insert batch size
+        Batch size of the land cover insert (``with_landcover``)
     keep_downloads : bool
         If True, keep downloaded .asc files
     save_intermediates : bool
@@ -290,9 +290,8 @@ def prepare_area(
     logger.info("=" * 60)
 
     try:
-        dem_stats = process_dem(  # type: ignore[call-arg]  # stale call, PROGRESS
+        dem_stats = process_dem(
             input_path=mosaic_path,
-            batch_size=batch_size,
             dry_run=False,
             save_intermediates=save_intermediates,
             output_dir=output_dir if save_intermediates else None,
@@ -410,7 +409,7 @@ def main():
         "--batch-size",
         type=int,
         default=10000,
-        help="Database insert batch size (default: 10000)",
+        help="Batch size of the land cover insert (default: 10000)",
     )
     process_group.add_argument(
         "--scale",

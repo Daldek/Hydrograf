@@ -87,10 +87,11 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      JavaScript are longer than 100 columns and the modules are IIFEs, not ES modules
      (DEV-15.1), the front end has Polish text inline (DEV-15.2), `tests/performance` stands
      beside the standard tree (DEV-5.2). Deviations are recorded in CLAUDE.md. Found by mypy and
-     marked `# type: ignore[...]  # stale call, PROGRESS`: `scripts/prepare_area.py` passes
-     `batch_size` to `process_dem`, which has no such parameter; `scripts/analyze_watershed.py`
-     passes `stream_threshold` to `process_dem` and imports `find_nearest_stream` and
-     `traverse_upstream` from `core.watershed`, which has neither: those paths fail at run time.
+     marked `# type: ignore[attr-defined]  # stale, PROGRESS`: `scripts/analyze_watershed.py`
+     imports `find_nearest_stream` and `traverse_upstream` from `core.watershed`, which has neither,
+     so its delineation (step 3) fails at run time. The calls of `process_dem` in `prepare_area.py`
+     and `analyze_watershed.py` that passed parameters it had lost (`batch_size`,
+     `stream_threshold`) are fixed and tested (`tests/unit/test_process_dem_callers.py`).
      Found by the tests of `load_bdot_streams_from_gpkg` (`core/db_bulk.py`), not fixed: a
      feature with an empty name column gets the name `'nan'` (a pandas NaN is truthy), and a
      feature without geometry stops the load (`row.geometry` is NaN, so `.is_empty` fails).
@@ -155,11 +156,9 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      refuses a second run (`conflict`, `output_exists`); the store keeps both and answers `local`.
      The documents that describe the layout and the API are rewritten in English (Status, Data
      output). Not run: a real download of the NMT, BDOT10k and SoilGrids (no network test in the
-     offline suite), `bootstrap` end to end, the Docker image. Known defects that the documents
-     state: `scripts/prepare_area.py` and `scripts/analyze_watershed.py --process` call
-     `process_dem()` with parameters it no longer has (Next 1, Other gaps), so the DEM step of
-     both fails, and no script passes `building_gpkg`, so building raising (ADR-033) does not
-     run in the pipeline.
+     offline suite), `bootstrap` end to end, the Docker image. Known defect that the documents
+     state: no script passes `building_gpkg`, so building raising (ADR-033) does not run in the
+     pipeline.
    - **Hydraulik** (`depends_on`, planned): integration halted by the author (session 99);
      nothing to migrate.
 3. **Engineering items with the highest priority** from the former backlog (all of it:

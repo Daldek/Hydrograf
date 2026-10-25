@@ -176,11 +176,6 @@ cd backend
 Downloads the NMT for the area around a point, builds the VRT mosaic and processes it with
 `process_dem`; optionally with the BDOT10k hydro layers for stream burning and with land cover.
 
-> **Known defect:** its DEM step passes `batch_size` to `process_dem`, which has no such parameter
-> (marked `# type: ignore[call-arg]  # stale call, PROGRESS`). The step ends with
-> `DEM processing failed` and nothing is imported. Use `bootstrap.py` until it is fixed
-> (`docs/PROGRESS.md`, Next 1, Other gaps).
-
 ```bash
 cd backend
 
@@ -204,7 +199,7 @@ cd backend
 | `--lat`, `--lon` | the centre of the area (WGS84) | (required) |
 | `--buffer` | the buffer radius in km | 5 |
 | `--scale` | sheet scale in Kartograf's labels (`1:10000`, `1:25000`, `1:50000`, `1:100000`) | `1:10000` |
-| `--batch-size` | database insert batch size | 10000 |
+| `--batch-size` | batch size of the land cover insert | 10000 |
 | `--with-landcover` | also download and import the land cover (BDOT10k) | off |
 | `--with-hydro` | also download the BDOT10k hydro layers and burn the streams into the DEM | off |
 | `--burn-depth` | the burn depth in m | 2.0 |
@@ -561,9 +556,9 @@ ORDER BY threshold_m2;
    reduces the grid).
 2. **Coordinate system**: only EPSG:2180 (PL-1992) is processed; sheets in PUWG 2000 are reprojected
    to it before the mosaic is built.
-3. **`prepare_area.py` and `analyze_watershed.py`** call `process_dem()` with parameters it no longer
-   has (`batch_size`, `stream_threshold`), so their DEM processing fails; the delineation of
-   `analyze_watershed.py` imports two functions that `core/watershed.py` no longer has
-   (`docs/PROGRESS.md`, Next 1, Other gaps).
+3. **`analyze_watershed.py` cannot delineate**: its step 3 imports `find_nearest_stream` and
+   `traverse_upstream` from `core/watershed.py`, which no longer has them, so a run ends there with an
+   `ImportError` unless it uses `--use-cached` (`docs/PROGRESS.md`, Next 1, Other gaps). The DEM step
+   before it (`--process`) is covered by `tests/unit/test_process_dem_callers.py`.
 4. **Real downloads are not tested**: the offline test suite runs the real Kartograf against stubbed
    providers (`docs/integrations/KARTOGRAF.md` §10).
