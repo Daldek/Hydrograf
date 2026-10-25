@@ -1,4 +1,4 @@
-"""
+r"""
 Script to import land cover data from GeoPackage into PostgreSQL/PostGIS.
 
 Reads BDOT10k or CORINE land cover data from GeoPackage files and imports
@@ -28,17 +28,17 @@ Usage
 Examples
 --------
     # Import BDOT10k data
-    python -m scripts.import_landcover \\
+    python -m scripts.import_landcover \
         --input ../data/landcover/bdot10k_teryt_1465.gpkg
 
     # Dry run (show what would be imported)
-    python -m scripts.import_landcover \\
-        --input ../data/landcover/bdot10k_teryt_1465.gpkg \\
+    python -m scripts.import_landcover \
+        --input ../data/landcover/bdot10k_teryt_1465.gpkg \
         --dry-run
 
     # Clear existing data before import
-    python -m scripts.import_landcover \\
-        --input ../data/landcover/bdot10k_teryt_1465.gpkg \\
+    python -m scripts.import_landcover \
+        --input ../data/landcover/bdot10k_teryt_1465.gpkg \
         --clear-existing
 """
 
@@ -413,7 +413,7 @@ def import_landcover(
 
 
 def main():
-    """Main entry point for land cover import script."""
+    """Run the land cover import script."""
     parser = argparse.ArgumentParser(
         description="Import land cover data from GeoPackage to PostgreSQL/PostGIS",
         formatter_class=argparse.RawDescriptionHelpFormatter,

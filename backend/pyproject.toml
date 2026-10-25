@@ -96,12 +96,17 @@ target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
 "api/endpoints/*.py" = ["B008"]
-"tests/integration/test_select_stream_correctness.py" = ["E402"]
-"tests/performance/test_query_performance.py" = ["E402"]
+# DEV-7.2: tests may skip the docstring rules.
+"tests/**" = ["D"]
+# DEV-7.2 deviation: the migrations hold DDL strings that stay on one line.
+"migrations/versions/*" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"

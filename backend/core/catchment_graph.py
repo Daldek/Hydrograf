@@ -91,6 +91,7 @@ class CatchmentGraph:
 
     @property
     def loaded(self) -> bool:
+        """Whether the graph has been loaded from the database."""
         return self._loaded
 
     def ensure_loaded(self, db: Session) -> bool:

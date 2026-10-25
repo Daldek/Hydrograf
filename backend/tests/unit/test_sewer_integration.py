@@ -1,19 +1,19 @@
 """Integration test: full sewer pipeline on synthetic DEM."""
 
+import geopandas as gpd
 import numpy as np
 import pytest
-import geopandas as gpd
 from shapely.geometry import Point
 
-from core.sewer_topology import parse_sewer_topology, TopologyValidationError
 from core.sewer_service import (
     SewerGraph,
     build_sewer_graph,
     burn_inlets,
+    propagate_fa_downstream,
     reconstruct_inlet_fa,
     route_fa_through_sewer,
-    propagate_fa_downstream,
 )
+from core.sewer_topology import parse_sewer_topology
 
 # Standard field/role mappings for all tests
 _FIELD_MAPPING = {
@@ -32,7 +32,7 @@ _ROLE_MAPPING = {
 
 
 def _build_graph_from_points(points_data: list[dict]) -> SewerGraph:
-    """Helper: build SewerGraph from list of dicts with id, role, downstream_id, x, y."""
+    """Build a SewerGraph from dicts with id, role, downstream_id, x, y."""
     gdf = gpd.GeoDataFrame(
         [
             {

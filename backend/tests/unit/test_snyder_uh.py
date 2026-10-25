@@ -23,7 +23,6 @@ from models.schemas import (
     HydrographRequest,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -98,7 +97,7 @@ class TestMorphDictLengthToCentroid:
     def test_length_to_centroid_is_positive_float(
         self, mock_catchment_graph, simple_polygon
     ):
-        """length_to_centroid_km is a positive float when boundary and outlet are valid."""
+        """length_to_centroid_km is positive for a valid boundary and outlet."""
         upstream = np.array([0, 1, 2])
 
         result = build_morph_dict_from_graph(

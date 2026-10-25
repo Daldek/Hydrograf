@@ -35,7 +35,10 @@ class DelineateRequest(BaseModel):
     threshold_m2: int | None = Field(
         None,
         gt=0,
-        description="Flow accumulation threshold [m2]. If provided, uses pre-computed catchments (fast). If omitted, performs precise on-the-fly delineation.",
+        description=(
+            "Flow accumulation threshold [m2]. If provided, uses pre-computed "
+            "catchments (fast). If omitted, performs precise on-the-fly delineation."
+        ),
         examples=[10000],
     )
 
@@ -282,7 +285,9 @@ class DelineateResponse(BaseModel):
 
     mode: str = Field(
         ...,
-        description="Delineation mode: 'precomputed' (with threshold) or 'precise' (without)",
+        description=(
+            "Delineation mode: 'precomputed' (with threshold) or 'precise' (without)"
+        ),
     )
     watershed: WatershedResponse = Field(
         ...,
@@ -402,7 +407,10 @@ class HydrographRequest(BaseModel):
     )
     nash_estimation: Literal["from_tc", "from_lutz", "from_urban_regression"] = Field(
         "from_lutz",
-        description="Nash parameter estimation method (from_tc deprecated since Hydrolog v0.6.2)",
+        description=(
+            "Nash parameter estimation method "
+            "(from_tc deprecated since Hydrolog v0.6.2)"
+        ),
     )
     nash_n: float = Field(
         3.0,
@@ -567,6 +575,7 @@ class FeedbackRequest(BaseModel):
     @field_validator("diagnostics")
     @classmethod
     def diagnostics_size_limit(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Reject a diagnostics payload larger than 100 KB."""
         if v is not None and len(json.dumps(v)) > 100_000:
             raise ValueError("diagnostics payload exceeds 100 KB limit")
         return v

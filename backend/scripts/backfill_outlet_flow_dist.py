@@ -26,6 +26,7 @@ CELL_TOLERANCE_M = 2.5
 
 
 def main() -> None:
+    """Run the backfill of outlet_flow_dist_m."""
     parser = argparse.ArgumentParser(
         description="Backfill outlet_flow_dist_m in stream_catchments"
     )

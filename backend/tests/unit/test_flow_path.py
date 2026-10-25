@@ -82,7 +82,7 @@ class TestFlowPathTracing:
         paths, dists = flw.path(idxs=np.array([0]))
         # Should end at bottom row (row 2)
         last_idx = paths[0][-1]
-        nrows, ncols = 3, 3
+        ncols = 3
         last_row = last_idx // ncols
         assert last_row == 2
 

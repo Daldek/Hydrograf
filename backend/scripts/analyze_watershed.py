@@ -104,6 +104,7 @@ class AnalysisConfig:
     )
 
     def __post_init__(self):
+        """Normalise the paths and create the output directory."""
         self.data_dir = Path(self.data_dir)
         self.output_dir = Path(self.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -902,7 +903,7 @@ Tc ({hydrograph["tc_method"]}):   {hydrograph["tc_min"]:.1f} min"""
         fontsize=12,
         va="center",
         family="monospace",
-        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+        bbox={"boxstyle": "round", "facecolor": "wheat", "alpha": 0.5},
     )
 
     path3 = config.output_dir / "watershed_profile.png"

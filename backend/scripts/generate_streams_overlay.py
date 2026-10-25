@@ -147,6 +147,7 @@ def generate_overlay(
 
 
 def main() -> None:
+    """Run the stream order overlay generator."""
     parser = argparse.ArgumentParser(
         description="Generate stream order overlay PNG for Leaflet"
     )

@@ -1,4 +1,4 @@
-"""
+r"""
 Script to download IMGW PMAXTP precipitation data and store in PostgreSQL.
 
 Downloads maximum precipitation data for a grid of points within specified
@@ -9,21 +9,21 @@ Usage
 -----
     cd backend
     python -m scripts.preprocess_precipitation --help
-    python -m scripts.preprocess_precipitation \\
-        --bbox "19.5,51.5,20.5,52.5" \\
+    python -m scripts.preprocess_precipitation \
+        --bbox "19.5,51.5,20.5,52.5" \
         --spacing 2.0
 
 Examples
 --------
     # Download data for Warsaw area (small test)
-    python -m scripts.preprocess_precipitation \\
-        --bbox "20.8,52.1,21.2,52.4" \\
+    python -m scripts.preprocess_precipitation \
+        --bbox "20.8,52.1,21.2,52.4" \
         --spacing 5.0
 
     # Full municipality preprocessing
-    python -m scripts.preprocess_precipitation \\
-        --bbox "19.5,51.5,20.5,52.5" \\
-        --spacing 2.0 \\
+    python -m scripts.preprocess_precipitation \
+        --bbox "19.5,51.5,20.5,52.5" \
+        --spacing 2.0 \
         --delay 0.5
 """
 
@@ -339,7 +339,8 @@ async def process_grid(
     logger.info(f"Bounding box: {bbox}")
     scenarios_per_point = len(DURATIONS) * len(PROBABILITIES)
     logger.info(
-        f"Expected records: {total_points * scenarios_per_point} ({scenarios_per_point} scenarios per point)"
+        f"Expected records: {total_points * scenarios_per_point} "
+        f"({scenarios_per_point} scenarios per point)"
     )
 
     successful_points = 0
@@ -367,7 +368,7 @@ async def process_grid(
 
 
 def main():
-    """Main entry point for preprocessing script."""
+    """Run the preprocessing script."""
     parser = argparse.ArgumentParser(
         description="Download IMGW PMAXTP precipitation data",
         formatter_class=argparse.RawDescriptionHelpFormatter,

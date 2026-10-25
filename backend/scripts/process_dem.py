@@ -1,4 +1,4 @@
-"""
+r"""
 Script to process DEM (Digital Elevation Model) and populate stream tables.
 
 Reads ASCII GRID DEM file or VRT mosaic, computes hydrological parameters
@@ -21,16 +21,16 @@ Usage
 Examples
 --------
     # Process single DEM tile
-    python -m scripts.process_dem \\
+    python -m scripts.process_dem \
         --input ../data/nmt/N-33-131-D-a-3-2.asc
 
     # Process VRT mosaic (multiple tiles)
-    python -m scripts.process_dem \\
+    python -m scripts.process_dem \
         --input ../data/nmt/mosaic.vrt
 
     # Dry run (only show statistics)
-    python -m scripts.process_dem \\
-        --input ../data/nmt/N-33-131-D-a-3-2.asc \\
+    python -m scripts.process_dem \
+        --input ../data/nmt/N-33-131-D-a-3-2.asc \
         --dry-run
 """
 
@@ -48,7 +48,6 @@ from core.db_bulk import (
     insert_catchments,
     insert_stream_segments,
     load_bdot_streams_from_gpkg,
-    update_stream_real_flags,
     update_stream_real_flags_all,
 )
 from core.hydrology import (
@@ -210,7 +209,7 @@ def _clip_and_build_path(
         return None, None
     outlet_flow_dist_m = float(flat_dist[path_idxs[-1]])
     xs, ys = flw.xy(path_idxs)
-    line = LineString(zip(xs, ys))
+    line = LineString(zip(xs, ys, strict=True))
     if len(path_idxs) > 3:
         line = line.simplify(simplify_tol, preserve_topology=True)
     return line.wkt, outlet_flow_dist_m
@@ -223,9 +222,9 @@ def _enrich_catchments_with_flow_paths(
     flw,
     metadata: dict,
 ) -> None:
-    """
-    Add max_flow_dist_m, longest_flow_path_wkt, and divide_flow_path_wkt
-    to each catchment dict.
+    """Add the flow path fields to each catchment dict.
+
+    Sets max_flow_dist_m, longest_flow_path_wkt and divide_flow_path_wkt.
 
     Uses batch flw.path() for performance: collects the farthest cell
     (max flow distance) per sub-catchment, traces all paths in one call,
@@ -1058,7 +1057,7 @@ def process_dem(
 
 
 def main():
-    """Main entry point for DEM processing script."""
+    """Run the DEM processing script."""
     parser = argparse.ArgumentParser(
         description="Process DEM and extract stream network",
         formatter_class=argparse.RawDescriptionHelpFormatter,

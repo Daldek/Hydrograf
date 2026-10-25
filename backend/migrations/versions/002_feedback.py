@@ -13,6 +13,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Create the feedback table and its index."""
     op.execute("""
         CREATE TABLE feedback (
             id SERIAL PRIMARY KEY,
@@ -31,4 +32,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the feedback table."""
     op.execute("DROP TABLE IF EXISTS feedback CASCADE")

@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 from collections import deque
 
-import geopandas as gpd
 import numpy as np
 from scipy import sparse
 from scipy.sparse.csgraph import connected_components
@@ -33,10 +32,12 @@ class SewerGraph:
 
     @property
     def n_nodes(self) -> int:
+        """Number of nodes in the graph."""
         return len(self.nodes)
 
     @property
     def n_edges(self) -> int:
+        """Number of edges in the graph."""
         return len(self.edges)
 
     def get_nodes_by_type(self, node_type: str) -> list[dict]:
@@ -277,9 +278,8 @@ def reconstruct_inlet_fa(
             # where (dr, dc) is the offset for d8_code
             nr = row - _D8_DR[d8_code]
             nc = col - _D8_DC[d8_code]
-            if 0 <= nr < nrows and 0 <= nc < ncols:
-                if int(fdir[nr, nc]) == d8_code:
-                    reconstructed += int(fa[nr, nc])
+            if 0 <= nr < nrows and 0 <= nc < ncols and int(fdir[nr, nc]) == d8_code:
+                reconstructed += int(fa[nr, nc])
 
         inlet["fa_value"] = reconstructed
 
@@ -345,9 +345,11 @@ def propagate_fa_downstream(
             fa[nr, nc] += surplus
             current_r, current_c = nr, nc
 
+    max_surplus = max(
+        (o.get("total_upstream_fa", 0) for o in sorted_outlets), default=0
+    )
     logger.info(
-        f"FA propagation: {len(sorted_outlets)} outlets, "
-        f"max surplus={max((o.get('total_upstream_fa', 0) for o in sorted_outlets), default=0)}"
+        f"FA propagation: {len(sorted_outlets)} outlets, max surplus={max_surplus}"
     )
 
 

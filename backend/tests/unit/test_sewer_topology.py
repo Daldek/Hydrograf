@@ -3,6 +3,7 @@
 import geopandas as gpd
 import numpy as np
 import pytest
+from rasterio.transform import from_bounds
 from shapely.geometry import LineString as ShapelyLineString
 from shapely.geometry import Point
 
@@ -12,7 +13,6 @@ from core.sewer_topology import (
     parse_sewer_topology,
     validate_against_fdir,
 )
-from rasterio.transform import from_bounds
 
 
 @pytest.fixture

@@ -49,7 +49,7 @@ class TestCleanupComponents:
         assert _CLEANUP_COMPONENTS["cache"]["components"] == ["cache"]
 
     def test_all_target_covers_all_data(self):
-        """'all' target includes rasters, hydro, boundary, overlays, geojson, tiles, db."""
+        """'all' includes rasters, hydro, boundary, overlays, geojson, tiles and db."""
         expected = {
             "rasters",
             "hydro",
@@ -137,7 +137,7 @@ class TestCleanupExecute:
 
     @patch("api.endpoints.admin.execute_clean")
     def test_cleanup_cache_delegates_to_execute_clean(self, mock_exec, app):
-        """'cache' target delegates to scripts.clean.execute_clean with cache component."""
+        """'cache' target delegates to execute_clean with the cache component."""
         mock_exec.return_value = {"total_files": 10, "total_size": 512, "results": {}}
         mock_db = _make_mock_db()
         app.dependency_overrides[get_db] = lambda: mock_db

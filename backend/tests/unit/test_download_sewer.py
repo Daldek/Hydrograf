@@ -1,14 +1,14 @@
 """Tests for scripts.download_sewer module."""
 
-import pytest
 import geopandas as gpd
+import pytest
 from shapely.geometry import LineString, Point
 
 from scripts.download_sewer import (
+    _detect_geometry_type,
+    _validate_crs,
     load_from_file,
     load_sewer_data,
-    _validate_crs,
-    _detect_geometry_type,
 )
 
 

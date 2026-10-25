@@ -117,10 +117,11 @@ def _force_rmtree(path: Path) -> None:
 
 
 def remove_dir(path: Path, dry_run: bool = False) -> tuple[int, int]:
-    """Remove directory contents (not the directory itself), return (files_removed, bytes_freed).
+    """Remove directory contents (not the directory itself).
 
-    Keeps the top-level directory intact — important when it is a Docker
-    volume mount point that cannot be removed and re-created.
+    Returns (files_removed, bytes_freed). Keeps the top-level directory intact,
+    which matters when it is a Docker volume mount point that cannot be removed
+    and re-created.
     """
     if not path.exists():
         return 0, 0
@@ -287,7 +288,8 @@ def clean_db(dry_run: bool) -> int:
                     if not dry_run:
                         conn.execute(text(f"TRUNCATE TABLE {table} CASCADE"))  # noqa: S608 — table names from hardcoded DB_TABLES, not user input
                     logger.info(
-                        f"  {table}: {count} rekordow {'usunietych' if not dry_run else '(dry run)'}"
+                        f"  {table}: {count} rekordow "
+                        f"{'usunietych' if not dry_run else '(dry run)'}"
                     )
                     cleaned += 1
                 except Exception as e:
@@ -500,6 +502,7 @@ def execute_clean(
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command line parser."""
     parser = argparse.ArgumentParser(
         description="Czyszczenie wygenerowanych danych Hydrograf",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -560,6 +563,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main():
+    """Run the cleanup."""
     parser = build_parser()
     args = parser.parse_args()
 
@@ -598,7 +602,8 @@ def main():
             marker = "*" if item["size"] > 100 * 1024 * 1024 else " "  # >100MB
             size_str = fmt_size(item["size"]) if item["size"] > 0 else "—"
             print(
-                f"  {marker} {item['name']:<30} {item['files']:>6} plikow  {size_str:>10}"
+                f"  {marker} {item['name']:<30} {item['files']:>6} plikow  "
+                f"{size_str:>10}"
             )
 
     print(f"\n  RAZEM: {total_files} plikow, {fmt_size(total_size)}")
@@ -607,7 +612,8 @@ def main():
         cache_size = dir_size(cache_dir)
         if cache_size > 0:
             print(
-                f"  (cache zachowany: {fmt_size(cache_size)} — uzyj --include-cache aby usunac)"
+                f"  (cache zachowany: {fmt_size(cache_size)} — "
+                "uzyj --include-cache aby usunac)"
             )
 
     print()
@@ -627,14 +633,15 @@ def main():
     verb = "zostaloby usuniete" if args.dry_run else "usunieto"
     print(f"\n{'=' * 58}")
     print(
-        f"  {verb.upper()}: {summary['total_files']} plikow, {fmt_size(summary['total_size'])}"
+        f"  {verb.upper()}: {summary['total_files']} plikow, "
+        f"{fmt_size(summary['total_size'])}"
     )
     print(f"  Czas: {elapsed:.1f}s")
 
     if not args.dry_run:
-        print(f"\n  Gotowe do regeneracji:")
-        print(f"    cd backend")
-        print(f'    python -m scripts.bootstrap --bbox "..."')
+        print("\n  Gotowe do regeneracji:")
+        print("    cd backend")
+        print('    python -m scripts.bootstrap --bbox "..."')
 
     print(f"{'=' * 58}\n")
 

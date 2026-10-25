@@ -1,8 +1,7 @@
-"""
-Bulk database operations using PostgreSQL COPY for
-stream_network and stream_catchments tables.
+"""Bulk database operations using PostgreSQL COPY.
 
-Provides high-performance bulk INSERT via temp tables and COPY FROM.
+Covers the stream_network and stream_catchments tables. Provides
+high-performance bulk INSERT via temp tables and COPY FROM.
 """
 
 import io
@@ -143,7 +142,9 @@ def insert_stream_segments(
                 threshold_m2, segment_idx
             FROM (
                 SELECT *,
-                    ST_ChaikinSmoothing(ST_SetSRID(ST_GeomFromText(wkt), 2180), 3) AS smoothed
+                    ST_ChaikinSmoothing(
+                        ST_SetSRID(ST_GeomFromText(wkt), 2180), 3
+                    ) AS smoothed
                 FROM temp_stream_import
             ) sub
             ON CONFLICT DO NOTHING
@@ -280,11 +281,13 @@ def insert_catchments(
                 perimeter_km, stream_length_km,
                 hydraulic_length_km, elev_histogram,
                 max_flow_dist_m,
-                CASE WHEN longest_flow_path_wkt IS NOT NULL AND longest_flow_path_wkt != ''
+                CASE WHEN longest_flow_path_wkt IS NOT NULL
+                          AND longest_flow_path_wkt != ''
                     THEN ST_SetSRID(ST_GeomFromText(longest_flow_path_wkt), 2180)
                     ELSE NULL
                 END,
-                CASE WHEN divide_flow_path_wkt IS NOT NULL AND divide_flow_path_wkt != ''
+                CASE WHEN divide_flow_path_wkt IS NOT NULL
+                          AND divide_flow_path_wkt != ''
                     THEN ST_SetSRID(ST_GeomFromText(divide_flow_path_wkt), 2180)
                     ELSE NULL
                 END,
@@ -339,6 +342,7 @@ def load_bdot_streams_from_gpkg(gpkg_path):
     Returns list of dicts ready for insert_bdot_streams().
     """
     from pathlib import Path
+
     import fiona
     import geopandas as gpd
     from shapely.geometry import LineString, MultiLineString
@@ -429,7 +433,8 @@ def insert_bdot_streams(db_session, streams):
             )
         buf.seek(0)
         cursor.copy_expert(
-            "COPY temp_bdot_import (wkt, layer_type, name, length_m) FROM STDIN WITH (FORMAT text)",
+            "COPY temp_bdot_import (wkt, layer_type, name, length_m) "
+            "FROM STDIN WITH (FORMAT text)",
             buf,
         )
 
@@ -493,7 +498,8 @@ def update_stream_real_flags(
                         "No BDOT streams in database — marking all as overland"
                     )
                     cursor.execute(
-                        "UPDATE stream_network SET is_real_stream = false WHERE threshold_m2 = %s",
+                        "UPDATE stream_network SET is_real_stream = false "
+                        "WHERE threshold_m2 = %s",
                         (threshold_m2,),
                     )
                     raw_conn.commit()
@@ -574,7 +580,7 @@ def update_stream_real_flags_all(
     buffer_m=BDOT_BUFFER_M,
     overlap_threshold=OVERLAP_THRESHOLD,
 ):
-    """Run BDOT stream matching for multiple thresholds, creating temp buffer table once.
+    """Run BDOT stream matching for several thresholds with one temp buffer table.
 
     Returns dict mapping threshold_m2 → {total, real, overland}.
     """
@@ -589,7 +595,8 @@ def update_stream_real_flags_all(
             results = {}
             for threshold_m2 in threshold_list:
                 cursor.execute(
-                    "UPDATE stream_network SET is_real_stream = false WHERE threshold_m2 = %s",
+                    "UPDATE stream_network SET is_real_stream = false "
+                    "WHERE threshold_m2 = %s",
                     (threshold_m2,),
                 )
                 raw_conn.commit()

@@ -111,7 +111,7 @@ def convert_boundary_to_bbox(
 
 
 def _has_hsg_data(hsg_stats: dict) -> bool:
-    """False for {} and for a raster of nodata only (Kartograf: all counts 0)."""
+    """Return False for {} and for an all-nodata raster (Kartograf: counts all 0)."""
     amounts = [
         v.get("count", 0) if isinstance(v, dict) else v for v in hsg_stats.values()
     ]

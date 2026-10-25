@@ -63,7 +63,7 @@ class TestTerrainProfileEndpoint:
     def test_success_returns_200(self, client, mock_rasterio_dataset):
         """Test successful profile extraction returns 200."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -85,7 +85,7 @@ class TestTerrainProfileEndpoint:
     def test_response_structure(self, client, mock_rasterio_dataset):
         """Test response has correct structure."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -112,7 +112,7 @@ class TestTerrainProfileEndpoint:
     ):
         """Test that distances and elevations arrays have same length."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -136,7 +136,7 @@ class TestTerrainProfileEndpoint:
     def test_total_length_positive(self, client, mock_rasterio_dataset):
         """Test that total_length_m is positive for a real line."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -159,7 +159,7 @@ class TestTerrainProfileEndpoint:
     def test_elevations_are_floats(self, client, mock_rasterio_dataset):
         """Test that elevation values are numeric."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -215,7 +215,7 @@ class TestTerrainProfileEndpoint:
     def test_nodata_result_returns_404(self, client, mock_rasterio_nodata):
         """Test that all-nodata profile result returns 404."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_nodata),
@@ -236,7 +236,7 @@ class TestTerrainProfileEndpoint:
 
     def test_dem_not_found_returns_503(self, client):
         """Test that missing DEM file returns 503."""
-        with patch("api.endpoints.profile.os.path.exists", return_value=False):
+        with patch("os.path.exists", return_value=False):
             response = client.post(
                 "/api/terrain-profile",
                 json={
@@ -303,7 +303,7 @@ class TestTerrainProfileEndpoint:
         mock_ds.sample = sample_gen
 
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_ds),
@@ -326,7 +326,7 @@ class TestTerrainProfileEndpoint:
     def test_multi_point_linestring(self, client, mock_rasterio_dataset):
         """Test profile with multi-point LineString geometry."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -353,7 +353,7 @@ class TestTerrainProfileEndpoint:
     def test_cache_control_header(self, client, mock_rasterio_dataset):
         """Test that successful response includes Cache-Control header."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -376,7 +376,7 @@ class TestTerrainProfileEndpoint:
     def test_distances_start_at_zero(self, client, mock_rasterio_dataset):
         """Test that the first distance value is 0."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -399,7 +399,7 @@ class TestTerrainProfileEndpoint:
     def test_distances_monotonically_increasing(self, client, mock_rasterio_dataset):
         """Test that distances are monotonically increasing."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -423,7 +423,7 @@ class TestTerrainProfileEndpoint:
 
     def test_503_does_not_leak_server_path(self, client):
         """503 error must not contain server filesystem paths (CR8)."""
-        with patch("api.endpoints.profile.os.path.exists", return_value=False):
+        with patch("os.path.exists", return_value=False):
             response = client.post(
                 "/api/terrain-profile",
                 json={

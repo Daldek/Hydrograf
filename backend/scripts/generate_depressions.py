@@ -359,6 +359,7 @@ def generate_overlay(
 
 
 def main() -> None:
+    """Run the depression generator."""
     parser = argparse.ArgumentParser(
         description="Generate depressions from DEM and insert into PostGIS"
     )

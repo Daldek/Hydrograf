@@ -1,7 +1,6 @@
 """Tests for core.boundary module."""
 
 import json
-import tempfile
 import zipfile
 from pathlib import Path
 

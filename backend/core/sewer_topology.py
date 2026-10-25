@@ -200,7 +200,6 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
         return errors  # can't continue with duplicate IDs
 
     node_ids = {n["id"] for n in nodes}
-    node_by_id = {n["id"]: n for n in nodes}
 
     # 2. Invalid roles
     for node in nodes:
@@ -228,7 +227,8 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
                     "node_id": edge["to_id"],
                     "message": (
                         f"Edge {edge['from_id']}→{edge['to_id']}: "
-                        f"node {edge['to_id']} is inlet (should not be downstream target)"
+                        f"node {edge['to_id']} is inlet "
+                        "(should not be downstream target)"
                     ),
                 }
             )
@@ -239,7 +239,8 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
                     "node_id": edge["from_id"],
                     "message": (
                         f"Edge {edge['from_id']}→{edge['to_id']}: "
-                        f"node {edge['from_id']} is outlet (should not be upstream source)"
+                        f"node {edge['from_id']} is outlet "
+                        "(should not be upstream source)"
                     ),
                 }
             )
@@ -270,7 +271,9 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
                 {
                     "type": "missing_downstream",
                     "node_id": nid,
-                    "message": f"{node['role'].capitalize()} id={nid} has no downstream_id",
+                    "message": (
+                        f"{node['role'].capitalize()} id={nid} has no downstream_id"
+                    ),
                 }
             )
 
@@ -377,7 +380,7 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
         cid = component_map.get(node["id"], -1)
         components[cid].append(node)
 
-    for cid, comp_nodes in components.items():
+    for comp_nodes in components.values():
         roles_in_comp = {n["role"] for n in comp_nodes}
         ids_in_comp = {n["id"] for n in comp_nodes}
 
@@ -465,8 +468,11 @@ def validate_against_fdir(
     fdir: np.ndarray,
     transform,
 ) -> list[dict]:
-    """Check for feedback loops: outlet's downstream fdir path must not
-    reach any inlet's capture zone in the same component."""
+    """Check for feedback loops in the sewer topology.
+
+    An outlet's downstream fdir path must not reach any inlet's capture zone in
+    the same component.
+    """
     errors: list[dict] = []
     nrows, ncols = fdir.shape
 

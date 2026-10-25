@@ -1,4 +1,4 @@
-"""
+r"""
 Script to download DEM (Digital Elevation Model) data from GUGiK using Kartograf.
 
 Downloads NMT data for a specified area (point + buffer), list of sheet codes,
@@ -21,19 +21,19 @@ Usage
 Examples
 --------
     # Download for area around point (5 km buffer)
-    python -m scripts.download_dem \\
-        --lat 52.23 --lon 21.01 \\
-        --buffer 5 \\
+    python -m scripts.download_dem \
+        --lat 52.23 --lon 21.01 \
+        --buffer 5 \
         --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 
     # Download specific sheets
-    python -m scripts.download_dem \\
-        --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \\
+    python -m scripts.download_dem \
+        --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \
         --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 
     # Download tiles covering a geometry file
-    python -m scripts.download_dem \\
-        --geometry ../data/boundary.gpkg \\
+    python -m scripts.download_dem \
+        --geometry ../data/boundary.gpkg \
         --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
 """
 
@@ -287,7 +287,7 @@ def download_for_geometry(
 
 
 def main():
-    """Main entry point for DEM download script."""
+    """Run the DEM download script."""
     parser = argparse.ArgumentParser(
         description="Download NMT data from GUGiK using Kartograf 0.7.0",
         formatter_class=argparse.RawDescriptionHelpFormatter,
