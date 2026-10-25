@@ -92,13 +92,6 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `batch_size` to `process_dem`, which has no such parameter; `scripts/analyze_watershed.py`
      passes `stream_threshold` to `process_dem` and imports `find_nearest_stream` and
      `traverse_upstream` from `core.watershed`, which has neither: those paths fail at run time.
-     Step 6 of the same script (`generate_hydrograph`) also builds `WatershedParameters(**morph)`
-     from a dict that carries the shape and relief indices of `build_morphometric_params`
-     (`TypeError: unexpected keyword argument 'compactness_coefficient'` on Hydrolog 0.6.3 and on
-     the head) and filters `cn` out (so `--tc-method nrcs` would end with "CN is required for NRCS
-     method"); `WatershedParameters.from_dict(morph)`, which the endpoint uses, ignores unknown keys
-     and keeps `cn`. Found while migrating Hydrolog (ADR-060), not fixed: it is not about the
-     producers' heads.
      Found by the tests of `load_bdot_streams_from_gpkg` (`core/db_bulk.py`), not fixed: a
      feature with an empty name column gets the name `'nan'` (a pandas NaN is truthy), and a
      feature without geometry stops the load (`row.geometry` is NaN, so `.is_empty` fails).

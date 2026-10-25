@@ -461,26 +461,17 @@ def generate_hydrograph(
     from hydrolog.precipitation import BetaHietogram
     from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
-    # Parametry zlewni - filtruj niestandardowe klucze
-    excluded_keys = {
-        "cn",
-        "cn_source",
-        "cn_details",
-        "elapsed_s",
-        "source",
-        "crs",
-        "main_stream_coords",  # Tylko dla QGIS, nie dla WatershedParameters
-    }
-    ws = WatershedParameters(
-        **{k: v for k, v in morph.items() if k not in excluded_keys}
-    )
+    # morph niesie CN policzone w kroku 4 (determine_cn) oraz pola spoza
+    # WatershedParameters (wskazniki ksztaltu i rzezby, cn_source, main_stream_coords);
+    # from_dict bierze tylko pola przyjmowane przez Hydrolog.
+    cn = morph["cn"]
+    ws = WatershedParameters.from_dict(morph)
 
     # Czas koncentracji
     tc_min = ws.calculate_tc(config.tc_method)
     logger.info(f"Tc ({config.tc_method}): {tc_min:.1f} min")
 
     # Model SCS-CN
-    cn = morph["cn"]
     area_km2 = morph["area_km2"]
     timestep = config.timestep_min
 
