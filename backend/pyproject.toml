@@ -1,7 +1,7 @@
 [project]
 name = "hydrograf"
 version = "0.5.0.dev0"
-description = "Hydrological analysis system - watershed delineation and hydrograph generation"
+description = "Web application for watershed delineation, catchment parameters and design hydrographs in Poland (FastAPI, PostGIS)."
 readme = {text = "Hydrological analysis system", content-type = "text/plain"}
 requires-python = ">=3.12"
 license = {text = "MIT"}

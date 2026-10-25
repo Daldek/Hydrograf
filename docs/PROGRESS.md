@@ -17,7 +17,7 @@ sessions 98 and 99 are only on the unmerged branch `feature/kartograf-wykorzysta
 | Nogat standard 2.1, environment | done | `backend/uv.lock` replaces `requirements.txt`: seeded with the versions of the image built on 2026-10-18 (no third-party change), caps `sqlalchemy<2.1` and `affine<3` with their reasons in `pyproject.toml`; `dev` group, extra `viz`; `[tool.uv] package = false`; `develop` carries `0.5.0.dev0`, read through `core/version.py`; the Dockerfile builds with `uv sync --locked --no-dev` (GDAL's Python binding stays outside the lock); editor, git and `.env.example` files |
 | Nogat standard 2.1, quality tooling | done | `ruff format` (`2347433`), the rule set of DEV-7.2 (`39eb15e`), mypy `strict` over `api core models scripts utils tests` (`98178c5`, clean, 144 files), the pytest settings (`--strict-markers`, markers `live`, `db`, `slow`, `benchmark`, `tests/contract`, coverage floor 70 as a recorded deviation of DEV-7.5), the gate, CI and Dependabot |
 | Nogat standard 2.1, contribution files | done, CLA text open | `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md` and `.github/PULL_REQUEST_TEMPLATE.md` with the CLA checkbox (DEV-13.7, DEV-16.2, DEV-16.4); `docs/CLA.md` is the author's text and does not exist yet, so `CONTRIBUTING.md` and the template name it without a link |
-| Nogat standard 2.1, documentation | in progress | done: this file, [BACKLOG.md](BACKLOG.md) and `CLAUDE.md` in English with the Deviations section (`docs/DEVELOPMENT_STANDARDS.md` is deleted, DEV-1.3); planned: README in the order of DOC-2.1, ADR index and an ADR for the adoption; the Polish documents are still to translate (Next 1, Translations) |
+| Nogat standard 2.1, documentation | in progress | done: this file, [BACKLOG.md](BACKLOG.md), `CLAUDE.md` in English with the Deviations section (`docs/DEVELOPMENT_STANDARDS.md` is deleted, DEV-1.3) and the README in the order of DOC-2.1 with its contract test; planned: ADR index and an ADR for the adoption; the Polish documents are still to translate (Next 1, Translations) |
 | Nogat standard 2.1, error registry and REST (ERR-1 to ERR-6, DEV-11.1, AGI-6.2 to AGI-6.4) | planned | vendored registry and schemas, generated `core/_errors.py`, `HydrografError`, `application/problem+json`, `Accept-Language`, OpenAPI `operationId`s |
 | Data output (DEV §19, ECO-051) | planned | profile `app` consumes Kartograf in store mode; waits for the first release set; call sites in Next 2 |
 | Gate | done | `scripts/gate.sh` and `scripts/check-commits.sh` (unchanged from Nogat). The gate runs in `backend/`: `uv sync --locked --all-extras`, `ruff format --check`, `ruff check`, `mypy`, `pytest tests -m 'not live and not db and not benchmark' --cov` (1,176 passed in 21 s, 73% covered), then the commit step from the repository root. The commit step fails on the commits of `develop` that are not on `origin/develop` (19 of them: author `agent@local`, AI trailers; the history rewrite of phase 1 is the author's), so this branch is gated with `GATE_COMMIT_RANGE=develop..HEAD scripts/gate.sh`, which checks the commits of the branch only. The `db` tests are not run here (no database) |
@@ -57,9 +57,8 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      as tests land, starting with the least covered modules: `utils/raster_utils.py` 11%,
      `core/db_bulk.py` 32%, `core/stream_extraction.py` 40%, `core/watershed_service.py` 53%,
      `core/catchment_graph.py` 60%, `api/endpoints/admin.py` 63%; `core/soil_hsg.py` has no test.
-   - **README, ADR.** README in English in the order of DOC-2.1 (profile `app`: Run and
-     Deploy), at most 400 lines; ADR index at the top of `docs/DECISIONS.md` and a new ADR
-     for the adoption (DOC-8.2).
+   - **ADR.** The index at the top of `docs/DECISIONS.md` and a new ADR for the adoption
+     (DOC-8.2).
    - **Translations** to English (DEV-2.1, ECO-005), most useful first: CHANGELOG (sections
      as DOC-7.1), ARCHITECTURE, DECISIONS, DATA_MODEL, `docs/integrations/*`, SCOPE, PRD,
      COMPUTATION_PIPELINE, QA_REPORT, TECHNICAL_DEBT, BENCHMARK_QUERIES,
