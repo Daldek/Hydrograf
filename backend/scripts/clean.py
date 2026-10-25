@@ -11,7 +11,8 @@ Usage:
     # Standard clean (processed data only, keeps caches)
     python -m scripts.clean
 
-    # Full clean (including download caches)
+    # Full clean (including the download caches: the big products of the Kartograf
+    # store and the old cache/nmt, cache/bdot10k and cache/soil_hsg of Kartograf 0.7.0)
     python -m scripts.clean --include-cache
 
     # Nuclear clean (everything + database reset)
@@ -59,6 +60,12 @@ KARTOGRAF_META_GLOB = f"{METADATA_CACHE_NAME}*"
 # so what is left is still a valid store.
 STORE_PRODUCTS_REMOVED = ("nmt", "landcover")
 STORE_PRODUCTS_KEPT = ("hsg", "soil")
+
+# The cache of Kartograf 0.7.0, before its store (ADR-061): NMT sheets, BDOT10k packages
+# and the HSG raster of Poland, each in a directory of its own under the cache
+# directory. Nothing reads them any more and there is no data migration, so the cache
+# clean removes them too, whole, once; they are not a separate component.
+LEGACY_CACHE_DIRS = ("nmt", "bdot10k", "soil_hsg")
 
 # Components and what they remove
 COMPONENTS = [
@@ -141,6 +148,14 @@ def remove_dir(path: Path, dry_run: bool = False) -> tuple[int, int]:
                 _force_rmtree(child)
             else:
                 child.unlink()
+    return n_files, size
+
+
+def remove_tree(path: Path, dry_run: bool = False) -> tuple[int, int]:
+    """Remove a directory with its contents, return (files_removed, bytes_freed)."""
+    n_files, size = remove_dir(path, dry_run)
+    if not dry_run and path.exists():
+        path.rmdir()
     return n_files, size
 
 
@@ -238,7 +253,9 @@ def clean_tiles(dry_run: bool) -> tuple[int, int]:
 def clean_cache(cache_dir: Path, dry_run: bool) -> tuple[int, int]:
     """Remove download caches (NMT, BDOT10k) of the Kartograf store.
 
-    Keeps the HSG raster of Poland and its inputs (small, Poland-wide).
+    Keeps the HSG raster of Poland and its inputs (small, Poland-wide). Removes also
+    the directories of the cache of Kartograf 0.7.0 (``LEGACY_CACHE_DIRS``), which
+    nothing reads any more.
     """
     total_files = 0
     total_size = 0
@@ -256,6 +273,12 @@ def clean_cache(cache_dir: Path, dry_run: bool) -> tuple[int, int]:
     n, s = remove_files_by_glob(cache_dir, KARTOGRAF_META_GLOB, dry_run)
     total_files += n
     total_size += s
+
+    # Cache directories of Kartograf 0.7.0 (nmt, bdot10k, soil_hsg): dead, removed whole
+    for name in LEGACY_CACHE_DIRS:
+        n, s = remove_tree(cache_dir / name, dry_run)
+        total_files += n
+        total_size += s
 
     # HSG intentionally NOT removed (small, Poland-wide, reusable)
     if any((store / product).exists() for product in STORE_PRODUCTS_KEPT):
@@ -414,6 +437,7 @@ def build_plan(
     if "cache" in components:
         store = store_dir(cache_dir)
         removed = [store / product for product in STORE_PRODUCTS_REMOVED]
+        removed += [cache_dir / name for name in LEGACY_CACHE_DIRS]
         meta_files = list(cache_dir.glob(KARTOGRAF_META_GLOB))
         size = sum(dir_size(p) for p in removed) + sum(
             f.stat().st_size for f in meta_files
@@ -522,7 +546,8 @@ def build_parser() -> argparse.ArgumentParser:
     scope_group.add_argument(
         "--include-cache",
         action="store_true",
-        help="Usun rowniez cache pobran (NMT, BDOT10k)",
+        help="Usun rowniez cache pobran (NMT, BDOT10k; takze stare cache/nmt, "
+        "cache/bdot10k i cache/soil_hsg z Kartografa 0.7.0)",
     )
     scope_group.add_argument(
         "--include-db",
