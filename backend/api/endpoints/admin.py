@@ -199,9 +199,7 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
 
     # Database size
     try:
-        result = db.execute(
-            text("SELECT pg_database_size(current_database())")
-        )
+        result = db.execute(text("SELECT pg_database_size(current_database())"))
         db_size_bytes = result.scalar() or 0
         db_size_mb = round(db_size_bytes / (1024 * 1024), 2)
     except Exception:
@@ -223,7 +221,15 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
 _CLEANUP_COMPONENTS = {
     "all": {
         "label": "Wszystko (bez cache)",
-        "components": ["rasters", "hydro", "boundary", "overlays", "geojson", "tiles", "db"],
+        "components": [
+            "rasters",
+            "hydro",
+            "boundary",
+            "overlays",
+            "geojson",
+            "tiles",
+            "db",
+        ],
     },
     "cache": {
         "label": "Download cache (NMT, BDOT10k)",
@@ -280,7 +286,9 @@ def cleanup_estimate(
                     size_mb += round((result.scalar() or 0) / (1024 * 1024), 2)
                 except Exception:
                     pass
-        targets.append({"key": key, "label": info["label"], "size_mb": round(size_mb, 2)})
+        targets.append(
+            {"key": key, "label": info["label"], "size_mb": round(size_mb, 2)}
+        )
     return CleanupEstimateResponse(targets=targets)
 
 
@@ -309,18 +317,24 @@ def cleanup_execute(
                 cache_dir=CACHE_DIR,
                 dry_run=False,
             )
-            results.append({
-                "key": target_key,
-                "status": "ok",
-                "total_files": summary["total_files"],
-                "total_size": summary["total_size"],
-            })
+            results.append(
+                {
+                    "key": target_key,
+                    "status": "ok",
+                    "total_files": summary["total_files"],
+                    "total_size": summary["total_size"],
+                }
+            )
         except Exception as e:
             results.append({"key": target_key, "status": "error", "detail": str(e)})
 
     # Invalidate CatchmentGraph after any cleanup that touches DB tables,
     # so the next API call reloads fresh data instead of using stale mappings.
-    if any("db" in _CLEANUP_COMPONENTS[t]["components"] for t in request.targets if t in _CLEANUP_COMPONENTS):
+    if any(
+        "db" in _CLEANUP_COMPONENTS[t]["components"]
+        for t in request.targets
+        if t in _CLEANUP_COMPONENTS
+    ):
         get_catchment_graph().invalidate()
 
     return CleanupResponse(results=results)
@@ -403,7 +417,7 @@ VENV_PYTHON = sys.executable  # works in both venv and Docker container
 
 # SECURITY: Sheet codes should match patterns like "N-34-12-D-a-1".
 # Validate before passing to subprocess to prevent command injection.
-SHEET_CODE_PATTERN = re.compile(r'^[A-Za-z0-9\-]{3,30}$')
+SHEET_CODE_PATTERN = re.compile(r"^[A-Za-z0-9\-]{3,30}$")
 
 _HISTORY_MAX = 10
 
@@ -483,7 +497,9 @@ def _read_process_output(process: subprocess.Popen, state: dict) -> None:
                         logger.warning(
                             "CatchmentGraph reload attempt %d failed: %s; "
                             "retrying in %ds",
-                            attempt, e, wait_s,
+                            attempt,
+                            e,
+                            wait_s,
                         )
                         time.sleep(wait_s)
         else:
@@ -526,17 +542,13 @@ class BootstrapStartRequest(BaseModel):
     skip_precipitation: bool = Field(default=False)
     skip_tiles: bool = Field(default=False)
     skip_overlays: bool = Field(default=False)
-    waterbody_mode: str | None = Field(
-        default=None, description="drain or keep"
-    )
+    waterbody_mode: str | None = Field(default=None, description="drain or keep")
     resolution: str = Field(
         default="5m",
         pattern=r"^(1m|5m)$",
         description="NMT resolution: 1m (high detail, slow) or 5m (default, fast)",
     )
-    sewer_enabled: bool = Field(
-        default=False, description="Enable sewer integration"
-    )
+    sewer_enabled: bool = Field(default=False, description="Enable sewer integration")
     sewer_source: str | None = Field(
         default=None, description="Path to sewer data file"
     )
@@ -569,16 +581,16 @@ def bootstrap_status() -> BootstrapStatusResponse:
 def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
     """Start bootstrap subprocess."""
     if _bootstrap_state["status"] == "running":
-        raise HTTPException(
-            status_code=409, detail="Bootstrap is already running"
-        )
+        raise HTTPException(status_code=409, detail="Bootstrap is already running")
 
     # Validate input: exactly one of bbox, sheets, boundary_file
-    sources = sum([
-        request.bbox is not None,
-        request.sheets is not None,
-        request.boundary_file is not None,
-    ])
+    sources = sum(
+        [
+            request.bbox is not None,
+            request.sheets is not None,
+            request.boundary_file is not None,
+        ]
+    )
     if sources != 1:
         raise HTTPException(
             status_code=400,
@@ -680,9 +692,7 @@ def bootstrap_cancel() -> dict:
     """Cancel running bootstrap process."""
     proc = _bootstrap_state["process"]
     if proc is None or _bootstrap_state["status"] != "running":
-        raise HTTPException(
-            status_code=409, detail="No bootstrap process running"
-        )
+        raise HTTPException(status_code=409, detail="No bootstrap process running")
 
     proc.send_signal(signal.SIGTERM)
     _bootstrap_state["status"] = "failed"
@@ -737,9 +747,9 @@ def sewer_status(db: Session = Depends(get_db)):
 
         type_counts = {}
         if node_count > 0:
-            rows = db.execute(text(
-                "SELECT node_type, COUNT(*) FROM sewer_nodes GROUP BY node_type"
-            ))
+            rows = db.execute(
+                text("SELECT node_type, COUNT(*) FROM sewer_nodes GROUP BY node_type")
+            )
             type_counts = {r[0]: r[1] for r in rows}
 
         # Read current config
@@ -770,18 +780,10 @@ class SewerConfigUpdate(BaseModel):
     """Request body for sewer config update."""
 
     enabled: bool = Field(..., description="Enable/disable sewer processing")
-    source_path: str | None = Field(
-        default=None, description="Path to sewer data file"
-    )
-    lines_layer: str | None = Field(
-        default=None, description="Layer name for lines"
-    )
-    points_layer: str | None = Field(
-        default=None, description="Layer name for points"
-    )
-    field_mapping: dict | None = Field(
-        default=None, description="Column name mapping"
-    )
+    source_path: str | None = Field(default=None, description="Path to sewer data file")
+    lines_layer: str | None = Field(default=None, description="Layer name for lines")
+    points_layer: str | None = Field(default=None, description="Layer name for points")
+    field_mapping: dict | None = Field(default=None, description="Column name mapping")
     role_mapping: dict | None = Field(
         default=None, description="Value mapping for roles"
     )
@@ -854,9 +856,7 @@ def sewer_config_update(body: SewerConfigUpdate):
         "message": f"Sewer {'enabled' if body.enabled else 'disabled'}",
         "config": updates,
         "next_step": (
-            "Run pipeline (bootstrap) to process sewer data"
-            if body.enabled
-            else None
+            "Run pipeline (bootstrap) to process sewer data" if body.enabled else None
         ),
     }
 
@@ -905,6 +905,7 @@ async def sewer_upload(
     # Validate file can be read as geodata
     try:
         import geopandas as gpd
+
         gdf = gpd.read_file(str(dest))
         n_features = len(gdf)
         geom_types = gdf.geometry.geom_type.unique().tolist()
@@ -926,6 +927,7 @@ async def sewer_upload(
         geom_types_per_layer: dict[str, str] = {}
         for layer_name in layers:
             import geopandas as gpd
+
             layer_gdf = gpd.read_file(dest, layer=layer_name, rows=1)
             if not layer_gdf.empty:
                 geom_types_per_layer[layer_name] = layer_gdf.geometry.iloc[0].geom_type
@@ -957,12 +959,18 @@ def sewer_delete(db: Session = Depends(get_db)):
     """Delete all sewer data from database and disk."""
     db.execute(text("TRUNCATE TABLE sewer_network CASCADE"))
     db.execute(text("TRUNCATE TABLE sewer_nodes CASCADE"))
-    db.execute(text("UPDATE stream_network SET is_sewer_augmented = FALSE WHERE is_sewer_augmented = TRUE"))
+    db.execute(
+        text(
+            "UPDATE stream_network SET is_sewer_augmented = FALSE WHERE is_sewer_augmented = TRUE"
+        )
+    )
     db.commit()
 
     import shutil
     import stat as _stat
+
     if DATA_SEWER.exists():
+
         def _on_error(_func, _path, _exc_info):
             os.chmod(_path, _stat.S_IRWXU)
             _func(_path)

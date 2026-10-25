@@ -50,9 +50,7 @@ class TestTransformTo2180:
     def test_already_2180_no_change(self):
         """GeoDataFrame already in EPSG:2180 is returned unchanged."""
         poly = Polygon([(400000, 500000), (401000, 500000), (401000, 501000)])
-        gdf = gpd.GeoDataFrame(
-            {"id": [1]}, geometry=[poly], crs="EPSG:2180"
-        )
+        gdf = gpd.GeoDataFrame({"id": [1]}, geometry=[poly], crs="EPSG:2180")
         result = transform_to_2180(gdf)
         assert result.crs.to_epsg() == 2180
         # Coordinates should be essentially the same
@@ -66,9 +64,7 @@ class TestTransformTo2180:
         """GeoDataFrame in EPSG:4326 is transformed to EPSG:2180."""
         # A point roughly in central Poland (WGS84)
         poly = Polygon([(20.0, 52.0), (20.1, 52.0), (20.1, 52.1), (20.0, 52.1)])
-        gdf = gpd.GeoDataFrame(
-            {"id": [1]}, geometry=[poly], crs="EPSG:4326"
-        )
+        gdf = gpd.GeoDataFrame({"id": [1]}, geometry=[poly], crs="EPSG:4326")
         result = transform_to_2180(gdf)
         assert result.crs.to_epsg() == 2180
         # EPSG:2180 uses metric coordinates — values should be large
@@ -92,12 +88,14 @@ class TestPrepareRecords:
         """Helper to create a GeoDataFrame with n polygons in EPSG:2180."""
         polys = []
         for i in range(n):
-            poly = Polygon([
-                (400000 + i * 100, 500000),
-                (400100 + i * 100, 500000),
-                (400100 + i * 100, 500100),
-                (400000 + i * 100, 500100),
-            ])
+            poly = Polygon(
+                [
+                    (400000 + i * 100, 500000),
+                    (400100 + i * 100, 500000),
+                    (400100 + i * 100, 500100),
+                    (400000 + i * 100, 500100),
+                ]
+            )
             if geom_type == "MultiPolygon":
                 poly = MultiPolygon([poly])
             polys.append(poly)
@@ -147,8 +145,18 @@ class TestPrepareRecords:
     def test_bdot10k_mapping_completeness(self):
         """All standard BDOT10k codes have a mapping entry."""
         expected_codes = [
-            "PTLZ", "PTTR", "PTUT", "PTWP", "PTWZ", "PTRK",
-            "PTZB", "PTKM", "PTPL", "PTGN", "PTNZ", "PTSO",
+            "PTLZ",
+            "PTTR",
+            "PTUT",
+            "PTWP",
+            "PTWZ",
+            "PTRK",
+            "PTZB",
+            "PTKM",
+            "PTPL",
+            "PTGN",
+            "PTNZ",
+            "PTSO",
         ]
         for code in expected_codes:
             assert code in BDOT10K_MAPPING, f"Missing mapping for {code}"
@@ -172,10 +180,14 @@ class TestPrepareRecords:
     def test_empty_geometry_skipped(self):
         """Records with empty geometry are skipped."""
         empty_poly = Polygon()  # empty polygon
-        valid_poly = Polygon([
-            (400000, 500000), (401000, 500000),
-            (401000, 501000), (400000, 501000),
-        ])
+        valid_poly = Polygon(
+            [
+                (400000, 500000),
+                (401000, 500000),
+                (401000, 501000),
+                (400000, 501000),
+            ]
+        )
         gdf = gpd.GeoDataFrame(
             {"id": [1, 2]},
             geometry=[valid_poly, empty_poly],

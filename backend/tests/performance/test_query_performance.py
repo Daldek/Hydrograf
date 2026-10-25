@@ -7,6 +7,7 @@ PostGIS with production data.
 
 Run: cd backend && .venv/bin/python -m pytest tests/performance/ -m benchmark -v
 """
+
 # Register DB fixtures from conftest_db
 pytest_plugins = ["tests.conftest_db"]
 
@@ -56,11 +57,13 @@ class TestQueryPerformance:
         self.session = Session()
 
         # Find a valid test point (centroid of first catchment)
-        result = self.session.execute(text(
-            "SELECT segment_idx, threshold_m2, "
-            "ST_X(ST_Centroid(geom)) as cx, ST_Y(ST_Centroid(geom)) as cy "
-            "FROM stream_catchments WHERE threshold_m2 = 1000 LIMIT 1"
-        )).fetchone()
+        result = self.session.execute(
+            text(
+                "SELECT segment_idx, threshold_m2, "
+                "ST_X(ST_Centroid(geom)) as cx, ST_Y(ST_Centroid(geom)) as cy "
+                "FROM stream_catchments WHERE threshold_m2 = 1000 LIMIT 1"
+            )
+        ).fetchone()
 
         if result is None:
             pytest.skip("No catchment data available")
@@ -71,10 +74,12 @@ class TestQueryPerformance:
         self.test_threshold = result.threshold_m2
 
         # Find 10 and 50 consecutive segment indices for merge tests
-        segs = self.session.execute(text(
-            "SELECT segment_idx FROM stream_catchments "
-            "WHERE threshold_m2 = 1000 ORDER BY segment_idx LIMIT 50"
-        )).fetchall()
+        segs = self.session.execute(
+            text(
+                "SELECT segment_idx FROM stream_catchments "
+                "WHERE threshold_m2 = 1000 ORDER BY segment_idx LIMIT 50"
+            )
+        ).fetchall()
         self.seg_10 = [r.segment_idx for r in segs[:10]]
         self.seg_50 = [r.segment_idx for r in segs[:50]]
 
@@ -190,6 +195,7 @@ class TestQueryPerformance:
 
     def test_bench_full_pipeline(self):
         """Q8: Full pipeline: ST_Contains -> lookup -> merge -> outlet -> GeoJSON."""
+
         def _pipeline():
             start = time.perf_counter()
             # Step 1: ST_Contains

@@ -136,9 +136,10 @@ class TestMorphDictLengthToCentroid:
 
         # Compute expected distance manually
         centroid = simple_polygon.centroid
-        expected_km = math.sqrt(
-            (centroid.x - outlet_x) ** 2 + (centroid.y - outlet_y) ** 2
-        ) / 1000
+        expected_km = (
+            math.sqrt((centroid.x - outlet_x) ** 2 + (centroid.y - outlet_y) ** 2)
+            / 1000
+        )
         expected_km = round(expected_km, 4)
 
         assert result["length_to_centroid_km"] == pytest.approx(expected_km, rel=1e-4)
@@ -259,16 +260,12 @@ class TestHydrographRequestUhModel:
     def test_snyder_ct_rejects_zero(self):
         """snyder_ct rejects zero (gt=0)."""
         with pytest.raises(ValidationError):
-            HydrographRequest(
-                **{**self._BASE, "uh_model": "snyder", "snyder_ct": 0}
-            )
+            HydrographRequest(**{**self._BASE, "uh_model": "snyder", "snyder_ct": 0})
 
     def test_snyder_ct_rejects_negative(self):
         """snyder_ct rejects negative values."""
         with pytest.raises(ValidationError):
-            HydrographRequest(
-                **{**self._BASE, "uh_model": "snyder", "snyder_ct": -1.0}
-            )
+            HydrographRequest(**{**self._BASE, "uh_model": "snyder", "snyder_ct": -1.0})
 
     def test_snyder_cp_accepts_valid_range(self):
         """snyder_cp accepts values in (0, 1]."""
@@ -281,23 +278,17 @@ class TestHydrographRequestUhModel:
     def test_snyder_cp_rejects_greater_than_1(self):
         """snyder_cp rejects values > 1."""
         with pytest.raises(ValidationError):
-            HydrographRequest(
-                **{**self._BASE, "uh_model": "snyder", "snyder_cp": 1.5}
-            )
+            HydrographRequest(**{**self._BASE, "uh_model": "snyder", "snyder_cp": 1.5})
 
     def test_snyder_cp_rejects_zero(self):
         """snyder_cp rejects zero (gt=0)."""
         with pytest.raises(ValidationError):
-            HydrographRequest(
-                **{**self._BASE, "uh_model": "snyder", "snyder_cp": 0}
-            )
+            HydrographRequest(**{**self._BASE, "uh_model": "snyder", "snyder_cp": 0})
 
     def test_snyder_cp_rejects_negative(self):
         """snyder_cp rejects negative values."""
         with pytest.raises(ValidationError):
-            HydrographRequest(
-                **{**self._BASE, "uh_model": "snyder", "snyder_cp": -0.5}
-            )
+            HydrographRequest(**{**self._BASE, "uh_model": "snyder", "snyder_cp": -0.5})
 
     def test_snyder_params_with_scs_model(self):
         """snyder_ct and snyder_cp can be set even with uh_model='scs' (ignored)."""
@@ -353,9 +344,7 @@ class TestHydrographGeneratorSnyder:
 
         assert len(result.hydrograph.times_min) > 0
         assert len(result.hydrograph.discharge_m3s) > 0
-        assert len(result.hydrograph.times_min) == len(
-            result.hydrograph.discharge_m3s
-        )
+        assert len(result.hydrograph.times_min) == len(result.hydrograph.discharge_m3s)
 
     def test_snyder_generator_positive_peak(self):
         """Snyder generator produces a positive peak discharge."""
@@ -429,9 +418,7 @@ class TestHydrographGeneratorSnyder:
         hiet = BetaHietogram(alpha=2.0, beta=5.0)
         precip = hiet.generate(total_mm=45.0, duration_min=60.0, timestep_min=5.0)
 
-        gen_scs = HydrographGenerator(
-            area_km2=10.0, cn=75, tc_min=30.0, uh_model="scs"
-        )
+        gen_scs = HydrographGenerator(area_km2=10.0, cn=75, tc_min=30.0, uh_model="scs")
         result_scs = gen_scs.generate(precipitation=precip, timestep_min=5.0)
 
         gen_snyder = HydrographGenerator(

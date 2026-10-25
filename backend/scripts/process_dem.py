@@ -282,7 +282,7 @@ def _enrich_catchments_with_flow_paths(
     is_boundary[:, 0] = True
     is_boundary[:, -1] = True
     # Only labeled cells
-    is_boundary &= (label_raster > 0)
+    is_boundary &= label_raster > 0
 
     flat_boundary = is_boundary.ravel()
     del is_boundary  # free 2D array
@@ -300,9 +300,9 @@ def _enrich_catchments_with_flow_paths(
 
     # Build batch arrays: one starting index per catchment (longest + divide)
     catch_order = []  # index into catchments list
-    start_idxs = []   # flat index of farthest cell (overall)
+    start_idxs = []  # flat index of farthest cell (overall)
     divide_catch_order = []  # index into catchments list (divide paths)
-    divide_start_idxs = []   # flat index of farthest boundary cell
+    divide_start_idxs = []  # flat index of farthest boundary cell
     for ci, catch in enumerate(catchments):
         seg_idx = catch["segment_idx"]
         if seg_idx <= max_label and best_idx[seg_idx] >= 0:
@@ -317,8 +317,11 @@ def _enrich_catchments_with_flow_paths(
             continue
 
         # Divide path: only if boundary cell differs from overall max cell
-        if (seg_idx <= max_label and divide_best_idx[seg_idx] >= 0
-                and divide_best_idx[seg_idx] != best_idx[seg_idx]):
+        if (
+            seg_idx <= max_label
+            and divide_best_idx[seg_idx] >= 0
+            and divide_best_idx[seg_idx] != best_idx[seg_idx]
+        ):
             divide_catch_order.append(ci)
             divide_start_idxs.append(divide_best_idx[seg_idx])
         else:
@@ -351,7 +354,8 @@ def _enrich_catchments_with_flow_paths(
         catchments[ci]["longest_flow_path_wkt"] = wkt
         # Jednokomorkowe/bez sciezki: ujscie = najdalsza komorka (dlugosc 0)
         catchments[ci]["outlet_flow_dist_m"] = (
-            outlet_dist if outlet_dist is not None
+            outlet_dist
+            if outlet_dist is not None
             else catchments[ci]["max_flow_dist_m"]
         )
         if wkt is not None:
@@ -454,9 +458,7 @@ def process_dem(
     if waterbody_mode not in ("auto", "none"):
         wb_path = Path(waterbody_mode)
         if not wb_path.exists():
-            raise FileNotFoundError(
-                f"Custom waterbody file not found: {wb_path}"
-            )
+            raise FileNotFoundError(f"Custom waterbody file not found: {wb_path}")
 
     # Setup output directory for intermediates
     if output_dir is None:
@@ -569,7 +571,10 @@ def process_dem(
     elif waterbody_mode == "auto" and burn_streams_path is not None:
         transform_for_lakes = _get_transform(metadata, dem.shape)
         drain_points, drain_diag = classify_endorheic_lakes(
-            dem, transform_for_lakes, burn_streams_path, nodata,
+            dem,
+            transform_for_lakes,
+            burn_streams_path,
+            nodata,
             min_area_m2=waterbody_min_area_m2,
         )
         stats["endorheic_lakes"] = drain_diag["endorheic"]
@@ -582,7 +587,10 @@ def process_dem(
         # when waterbody_path is set; pass burn_streams_path or a dummy
         gpkg_for_classify = burn_streams_path or wb_path
         drain_points, drain_diag = classify_endorheic_lakes(
-            dem, transform_for_lakes, gpkg_for_classify, nodata,
+            dem,
+            transform_for_lakes,
+            gpkg_for_classify,
+            nodata,
             min_area_m2=waterbody_min_area_m2,
             waterbody_path=wb_path,
         )
@@ -600,14 +608,23 @@ def process_dem(
         points_gdf, lines_gdf = load_sewer_data(sewer_config)
 
         # Parse topology
-        field_mapping = sewer_cfg.get("field_mapping",
-                                       sewer_cfg.get("attribute_mapping", {}))
-        role_mapping = sewer_cfg.get("role_mapping", {
-            "inlet": "inlet", "outlet": "outlet",
-            "junction": "junction", "storage": "storage",
-        })
+        field_mapping = sewer_cfg.get(
+            "field_mapping", sewer_cfg.get("attribute_mapping", {})
+        )
+        role_mapping = sewer_cfg.get(
+            "role_mapping",
+            {
+                "inlet": "inlet",
+                "outlet": "outlet",
+                "junction": "junction",
+                "storage": "storage",
+            },
+        )
         topology = parse_sewer_topology(
-            points_gdf, lines_gdf, field_mapping, role_mapping,
+            points_gdf,
+            lines_gdf,
+            field_mapping,
+            role_mapping,
         )
         logger.info(
             f"Sewer topology: {len(topology.nodes)} nodes, "
@@ -647,7 +664,8 @@ def process_dem(
         # PHASE 2: Burn inlets into DEM
         inlets = [n for n in topology.nodes if n["role"] == "inlet"]
         dem, drain_points_sewer = burn_inlets(
-            dem, inlets,
+            dem,
+            inlets,
             default_depth_m=sewer_cfg.get("inlet_burn_depth_m", 0.5),
         )
         if drain_points is None:
@@ -791,9 +809,7 @@ def process_dem(
 
     # Determine thresholds for multi-density stream networks
     cell_area = metadata["cellsize"] * metadata["cellsize"]
-    DEFAULT_THRESHOLDS_M2 = [10000,
-                             100000,
-                             1000000]
+    DEFAULT_THRESHOLDS_M2 = [10000, 100000, 1000000]
 
     # Catchments only for thresholds >= 1000 m² (ADR-026)
     MIN_CATCHMENT_THRESHOLD_M2 = 1000
@@ -1026,11 +1042,12 @@ def process_dem(
             if sewer_graph is not None:
                 logger.info("Inserting sewer data into database...")
                 sewer_count = insert_sewer_data(
-                    sewer_graph, db,
+                    sewer_graph,
+                    db,
                     source_file=str(
-                        sewer_config.get("sewer", {}).get("source", {}).get(
-                            "path", "unknown"
-                        )
+                        sewer_config.get("sewer", {})
+                        .get("source", {})
+                        .get("path", "unknown")
                     ),
                 )
                 stats["sewer_records_inserted"] = sewer_count
@@ -1119,7 +1136,7 @@ def main():
         type=float,
         default=None,
         help="Downsample DEM to this resolution (meters) before hydro processing. "
-             "Reduces memory for large rasters. E.g. --hydro-resolution 2",
+        "Reduces memory for large rasters. E.g. --hydro-resolution 2",
     )
 
     # Waterbody options
@@ -1129,8 +1146,8 @@ def main():
         type=str,
         default="none",
         help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
-             '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
-             "(wszystkie traktowane jako endoreiczne). Default: none",
+        '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
+        "(wszystkie traktowane jako endoreiczne). Default: none",
     )
     wb_group.add_argument(
         "--waterbody-min-area",

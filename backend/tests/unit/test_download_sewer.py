@@ -189,13 +189,21 @@ class TestAutoDetectFormat:
         from shapely.geometry import LineString as ShapelyLineString
 
         pts = gpd.GeoDataFrame(
-            {"id": ["n1", "n2"], "role": ["inlet", "outlet"],
-             "geometry": [Point(500_000, 200_000), Point(500_100, 200_100)]},
+            {
+                "id": ["n1", "n2"],
+                "role": ["inlet", "outlet"],
+                "geometry": [Point(500_000, 200_000), Point(500_100, 200_100)],
+            },
             crs="EPSG:2180",
         )
         lns = gpd.GeoDataFrame(
-            {"from_node": ["n1"], "to_node": ["n2"],
-             "geometry": [ShapelyLineString([(500_000, 200_000), (500_100, 200_100)])]},
+            {
+                "from_node": ["n1"],
+                "to_node": ["n2"],
+                "geometry": [
+                    ShapelyLineString([(500_000, 200_000), (500_100, 200_100)])
+                ],
+            },
             crs="EPSG:2180",
         )
         path = tmp_path / "sewer.gpkg"

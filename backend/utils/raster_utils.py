@@ -75,7 +75,9 @@ def _get_epsg2180_wkt() -> str:
     try:
         result = subprocess.run(
             ["gdalsrsinfo", "EPSG:2180", "-o", "wkt_simple", "--single-line"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         _epsg2180_wkt_cache = result.stdout.strip()
     except (FileNotFoundError, subprocess.CalledProcessError):
@@ -181,11 +183,17 @@ def normalize_crs(
 
         cmd = [
             "gdalwarp",
-            "-s_srs", source_crs,
-            "-t_srs", TARGET_CRS,
-            "-tr", str(target_res), str(target_res),
-            "-r", "bilinear",
-            "-of", "AAIGrid",
+            "-s_srs",
+            source_crs,
+            "-t_srs",
+            TARGET_CRS,
+            "-tr",
+            str(target_res),
+            str(target_res),
+            "-r",
+            "bilinear",
+            "-of",
+            "AAIGrid",
             "-overwrite",
             str(f),
             str(out_asc),
@@ -198,9 +206,7 @@ def normalize_crs(
             n_reprojected += 1
         except subprocess.CalledProcessError as e:
             logger.error(f"gdalwarp failed for {f.name}: {e.stderr}")
-            raise RuntimeError(
-                f"Reprojection failed for {f.name}: {e.stderr}"
-            ) from e
+            raise RuntimeError(f"Reprojection failed for {f.name}: {e.stderr}") from e
 
     if n_reprojected:
         logger.info(

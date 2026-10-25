@@ -139,9 +139,7 @@ class TestResources:
 
     @patch("api.endpoints.admin.get_db_engine")
     @patch("api.endpoints.admin.get_catchment_graph")
-    def test_resources_catchment_graph_not_loaded(
-        self, mock_cg, mock_engine, app
-    ):
+    def test_resources_catchment_graph_not_loaded(self, mock_cg, mock_engine, app):
         """Catchment graph info when not loaded."""
         cg = MagicMock()
         cg.loaded = False

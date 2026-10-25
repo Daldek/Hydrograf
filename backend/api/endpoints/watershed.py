@@ -75,10 +75,19 @@ def _smooth_polygon_sql(polygon, db: Session):
 
 
 def _build_watershed_response(
-    cg, point_2180, boundary_2180, boundary_poly,
-    upstream_indices_for_stats, outlet_idx_for_stats,
-    segment_idx, threshold, merge_threshold,
-    area_km2, stats, include_hypsometric_curve, db,
+    cg,
+    point_2180,
+    boundary_2180,
+    boundary_poly,
+    upstream_indices_for_stats,
+    outlet_idx_for_stats,
+    segment_idx,
+    threshold,
+    merge_threshold,
+    area_km2,
+    stats,
+    include_hypsometric_curve,
+    db,
 ) -> WatershedResponse:
     """Build WatershedResponse from computed data (shared by both modes)."""
 
@@ -93,7 +102,9 @@ def _build_watershed_response(
     else:
         outlet_x, outlet_y = outlet_info["x"], outlet_info["y"]
 
-    outlet_x, outlet_y = ensure_outlet_within_boundary(outlet_x, outlet_y, boundary_2180)
+    outlet_x, outlet_y = ensure_outlet_within_boundary(
+        outlet_x, outlet_y, boundary_2180
+    )
     outlet_elevation = stats.get("elevation_min_m") or 0.0
     outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)
 
@@ -123,7 +134,10 @@ def _build_watershed_response(
     # Main channel
     main_channel_nodes = morph_dict.pop("_main_channel_nodes", [])
     main_stream_geojson = get_main_channel_feature_collection(
-        cg, main_channel_nodes, merge_threshold, db,
+        cg,
+        main_channel_nodes,
+        merge_threshold,
+        db,
     )
     if main_stream_geojson is None:
         main_stream_geojson = get_main_stream_geojson(segment_idx, merge_threshold, db)
@@ -148,8 +162,11 @@ def _build_watershed_response(
     flow_path_geojson = None
     try:
         flow_path_geojson = get_longest_flow_path_geojson(
-            cg, upstream_indices_for_stats, outlet_idx_for_stats,
-            threshold, db,
+            cg,
+            upstream_indices_for_stats,
+            outlet_idx_for_stats,
+            threshold,
+            db,
         )
     except Exception as e:
         logger.debug(f"Longest flow path not available: {e}")
@@ -157,8 +174,11 @@ def _build_watershed_response(
     divide_path_geojson = None
     try:
         divide_path_geojson = get_divide_flow_path_geojson(
-            cg, upstream_indices_for_stats, outlet_idx_for_stats,
-            threshold, db,
+            cg,
+            upstream_indices_for_stats,
+            outlet_idx_for_stats,
+            threshold,
+            db,
         )
     except Exception as e:
         logger.debug(f"Divide flow path not available: {e}")
@@ -173,7 +193,9 @@ def _build_watershed_response(
     return WatershedResponse(
         boundary_geojson=boundary_geojson,
         outlet=OutletInfo(
-            latitude=outlet_lat, longitude=outlet_lon, elevation_m=outlet_elevation,
+            latitude=outlet_lat,
+            longitude=outlet_lon,
+            elevation_m=outlet_elevation,
         ),
         area_km2=round(area_km2, 2),
         hydrograph_available=hydrograph_available,
@@ -205,7 +227,10 @@ def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curv
     # Find catchment
     try:
         clicked_idx = cg.find_catchment_at_point(
-            point_2180.x, point_2180.y, threshold, db,
+            point_2180.x,
+            point_2180.y,
+            threshold,
+            db,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -220,7 +245,9 @@ def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curv
     # Stats
     upstream_indices_for_stats = upstream_indices
     outlet_idx_for_stats = clicked_idx
-    stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=outlet_idx_for_stats)
+    stats = cg.aggregate_stats(
+        upstream_indices_for_stats, outlet_idx=outlet_idx_for_stats
+    )
     area_km2 = stats["area_km2"]
 
     # Cascade
@@ -229,29 +256,55 @@ def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curv
     merge_threshold = threshold
 
     escalation = cascade_escalate(
-        cg, point_2180.x, point_2180.y, threshold,
-        bfs_segment_idxs, _MAX_MERGE, db,
+        cg,
+        point_2180.x,
+        point_2180.y,
+        threshold,
+        bfs_segment_idxs,
+        _MAX_MERGE,
+        db,
     )
     if escalation:
-        merge_idxs, merge_threshold, upstream_indices_for_stats, outlet_idx_for_stats, stats, area_km2 = escalation
+        (
+            merge_idxs,
+            merge_threshold,
+            upstream_indices_for_stats,
+            outlet_idx_for_stats,
+            stats,
+            area_km2,
+        ) = escalation
         logger.info(
             "Cascade: %d -> %d (%d -> %d segments)",
-            threshold, merge_threshold, len(bfs_segment_idxs), len(merge_idxs),
+            threshold,
+            merge_threshold,
+            len(bfs_segment_idxs),
+            len(merge_idxs),
         )
 
     # Boundary
     boundary_2180 = merge_catchment_boundaries(merge_idxs, merge_threshold, db)
     if boundary_2180 is None:
-        raise HTTPException(status_code=500, detail="Nie udało się zbudować granicy zlewni.")
+        raise HTTPException(
+            status_code=500, detail="Nie udało się zbudować granicy zlewni."
+        )
 
     boundary_poly = boundary_to_polygon(boundary_2180)
 
     # Build shared response
     watershed_response = _build_watershed_response(
-        cg, point_2180, boundary_2180, boundary_poly,
-        upstream_indices_for_stats, outlet_idx_for_stats,
-        segment_idx, threshold, merge_threshold,
-        area_km2, stats, include_hypsometric_curve, db,
+        cg,
+        point_2180,
+        boundary_2180,
+        boundary_poly,
+        upstream_indices_for_stats,
+        outlet_idx_for_stats,
+        segment_idx,
+        threshold,
+        merge_threshold,
+        area_km2,
+        stats,
+        include_hypsometric_curve,
+        db,
     )
 
     # Stream info
@@ -272,8 +325,7 @@ def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curv
     )
 
     logger.info(
-        f"Precomputed delineation: {area_km2:.2f} km2, "
-        f"{len(bfs_segment_idxs)} segments"
+        f"Precomputed delineation: {area_km2:.2f} km2, {len(bfs_segment_idxs)} segments"
     )
 
     return {
@@ -294,7 +346,10 @@ def _delineate_precise(request, point_2180, cg, db, include_hypsometric_curve):
     # Find catchment at finest threshold
     try:
         clicked_idx = cg.find_catchment_at_point(
-            point_2180.x, point_2180.y, threshold, db,
+            point_2180.x,
+            point_2180.y,
+            threshold,
+            db,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -305,7 +360,9 @@ def _delineate_precise(request, point_2180, cg, db, include_hypsometric_curve):
     upstream_indices = cg.traverse_upstream(clicked_idx)
     upstream_indices_for_stats = upstream_indices
     outlet_idx_for_stats = clicked_idx
-    stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=outlet_idx_for_stats)
+    stats = cg.aggregate_stats(
+        upstream_indices_for_stats, outlet_idx=outlet_idx_for_stats
+    )
 
     # Raster delineation for precise boundary
     rc = get_raster_cache()
@@ -327,10 +384,19 @@ def _delineate_precise(request, point_2180, cg, db, include_hypsometric_curve):
     # Build shared response
     merge_threshold = threshold
     watershed_response = _build_watershed_response(
-        cg, point_2180, boundary_2180, boundary_poly,
-        upstream_indices_for_stats, outlet_idx_for_stats,
-        segment_idx, threshold, merge_threshold,
-        area_km2, stats, include_hypsometric_curve, db,
+        cg,
+        point_2180,
+        boundary_2180,
+        boundary_poly,
+        upstream_indices_for_stats,
+        outlet_idx_for_stats,
+        segment_idx,
+        threshold,
+        merge_threshold,
+        area_km2,
+        stats,
+        include_hypsometric_curve,
+        db,
     )
 
     logger.info(f"Precise delineation: {area_km2:.2f} km2")
@@ -373,12 +439,20 @@ def delineate_watershed(
             # Precomputed mode always includes hypsometric curve
             # (needed for GUI — precomputed mode always includes hypsometric curve)
             result = _delineate_precomputed(
-                request, point_2180, cg, db, True,
+                request,
+                point_2180,
+                cg,
+                db,
+                True,
             )
         else:
             mode = "precise"
             result = _delineate_precise(
-                request, point_2180, cg, db, include_hypsometric_curve,
+                request,
+                point_2180,
+                cg,
+                db,
+                include_hypsometric_curve,
             )
 
         response.headers["Cache-Control"] = "public, max-age=3600"

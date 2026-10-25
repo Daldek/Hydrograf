@@ -577,7 +577,10 @@ class TestWaterbodyMode:
         with tempfile.TemporaryDirectory() as tmp:
             gpkg = _create_test_gpkg([small_lake, large_lake], [], tmp)
             drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA,
+                dem,
+                TRANSFORM,
+                gpkg,
+                NODATA,
                 min_area_m2=200.0,
             )
 
@@ -601,7 +604,10 @@ class TestWaterbodyMode:
         with tempfile.TemporaryDirectory() as tmp:
             gpkg = _create_test_gpkg([small_lake], [], tmp)
             drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA,
+                dem,
+                TRANSFORM,
+                gpkg,
+                NODATA,
                 min_area_m2=None,
             )
 
@@ -634,16 +640,17 @@ class TestWaterbodyMode:
         with tempfile.TemporaryDirectory() as tmp:
             # Create custom waterbody file
             wb_path = Path(tmp) / "custom_wb.gpkg"
-            wb_gdf = gpd.GeoDataFrame(
-                {"geometry": [lake1, lake2]}, crs="EPSG:2180"
-            )
+            wb_gdf = gpd.GeoDataFrame({"geometry": [lake1, lake2]}, crs="EPSG:2180")
             wb_gdf.to_file(wb_path, driver="GPKG")
 
             # Create BDOT10k gpkg with streams (should not be used)
             gpkg = _create_test_gpkg([], [outflow], tmp)
 
             drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA,
+                dem,
+                TRANSFORM,
+                gpkg,
+                NODATA,
                 waterbody_path=wb_path,
             )
 
@@ -684,7 +691,10 @@ class TestWaterbodyMode:
             gpkg = _create_test_gpkg([], [], tmp)
 
             drain_pts, diag = classify_endorheic_lakes(
-                dem, TRANSFORM, gpkg, NODATA,
+                dem,
+                TRANSFORM,
+                gpkg,
+                NODATA,
                 min_area_m2=200.0,
                 waterbody_path=wb_path,
             )

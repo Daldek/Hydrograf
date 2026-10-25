@@ -44,19 +44,19 @@ def main() -> None:
 
     t0 = time.time()
     with get_db_session() as db, override_statement_timeout(db, timeout_s=600):
-        rows = db.execute(text("""
+        rows = db.execute(
+            text("""
             SELECT id, max_flow_dist_m,
                    ST_X(ST_EndPoint(longest_flow_path_geom)) AS x,
                    ST_Y(ST_EndPoint(longest_flow_path_geom)) AS y
             FROM stream_catchments
-        """)).fetchall()
+        """)
+        ).fetchall()
 
         with_geom = [r for r in rows if r.x is not None and r.y is not None]
         without_geom = [r for r in rows if r.x is None or r.y is None]
 
-        samples = sample_stream_distance(
-            [(r.x, r.y) for r in with_geom], raster_path
-        )
+        samples = sample_stream_distance([(r.x, r.y) for r in with_geom], raster_path)
 
         updates = []
         nan_fallbacks = 0
@@ -79,18 +79,17 @@ def main() -> None:
             return
 
         db.execute(
-            text(
-                "UPDATE stream_catchments "
-                "SET outlet_flow_dist_m = :v WHERE id = :id"
-            ),
+            text("UPDATE stream_catchments SET outlet_flow_dist_m = :v WHERE id = :id"),
             updates,
         )
         db.commit()
 
-        nulls = db.execute(text(
-            "SELECT COUNT(*) FROM stream_catchments "
-            "WHERE outlet_flow_dist_m IS NULL"
-        )).scalar()
+        nulls = db.execute(
+            text(
+                "SELECT COUNT(*) FROM stream_catchments "
+                "WHERE outlet_flow_dist_m IS NULL"
+            )
+        ).scalar()
         inflated = db.execute(
             text(
                 "SELECT COUNT(*) FROM stream_catchments "

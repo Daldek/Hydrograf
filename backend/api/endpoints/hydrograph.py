@@ -102,9 +102,7 @@ def _compute_watershed(
             f"({HYDROGRAPH_AREA_LIMIT_KM2} km2)",
         )
 
-    boundary_2180 = merge_catchment_boundaries(
-        segment_idxs, DEFAULT_THRESHOLD_M2, db
-    )
+    boundary_2180 = merge_catchment_boundaries(segment_idxs, DEFAULT_THRESHOLD_M2, db)
     if boundary_2180 is None:
         raise HTTPException(
             status_code=500,
@@ -122,9 +120,7 @@ def _compute_watershed(
             cn = DEFAULT_CN
             logger.info(f"CN={cn} (default, no land cover data)")
     except Exception as e:
-        logger.warning(
-            f"Failed to calculate CN from land cover: {e}, using default"
-        )
+        logger.warning(f"Failed to calculate CN from land cover: {e}, using default")
         cn = DEFAULT_CN
         imperviousness = None
 
@@ -265,7 +261,9 @@ def _calculate_tc(
                 "(tc_overland_length_km). Typowy zakres: 0.015-3 km."
             )
         return ConcentrationTime.faa(
-            length_km=length, slope_m_per_m=slope, runoff_coeff=runoff_coeff,
+            length_km=length,
+            slope_m_per_m=slope,
+            runoff_coeff=runoff_coeff,
         )
 
     if method == "kerby":
@@ -279,7 +277,9 @@ def _calculate_tc(
                 "(tc_overland_length_km). Typowy zakres: 0.01-0.366 km."
             )
         return ConcentrationTime.kerby(
-            length_km=length, slope_m_per_m=slope, retardance=retardance,
+            length_km=length,
+            slope_m_per_m=slope,
+            retardance=retardance,
         )
 
     if method == "kerby_kirpich":
@@ -292,7 +292,11 @@ def _calculate_tc(
         if request.tc_overland_length_km is not None:
             overland_length = request.tc_overland_length_km
         else:
-            total_length = morph_dict.get("hydraulic_length_km") or morph_dict.get("length_km") or channel_length
+            total_length = (
+                morph_dict.get("hydraulic_length_km")
+                or morph_dict.get("length_km")
+                or channel_length
+            )
             overland_length = max(total_length - channel_length, 0.1)
         overland_slope = morph_dict.get("mean_slope_m_per_m") or 0.01
         return ConcentrationTime.kerby_kirpich(
@@ -338,9 +342,7 @@ def _estimate_nash_params(
             slope=channel_slope,
             manning_n=0.035,
         )
-        logger.info(
-            f"Nash (Lutz): N={nash.n:.2f}, K={nash.k_min:.1f} min"
-        )
+        logger.info(f"Nash (Lutz): N={nash.n:.2f}, K={nash.k_min:.1f} min")
     elif request.nash_estimation == "from_urban_regression":
         area_km2 = morph_dict["area_km2"]
         # Compute SCS-CN retention and initial abstraction
@@ -380,9 +382,7 @@ def _estimate_nash_params(
     else:
         # from_tc (default)
         nash = NashIUH.from_tc(tc_min=tc_min, n=request.nash_n)
-        logger.info(
-            f"Nash (from_tc): N={nash.n:.2f}, K={nash.k_min:.1f} min"
-        )
+        logger.info(f"Nash (from_tc): N={nash.n:.2f}, K={nash.k_min:.1f} min")
 
     nash_meta["n"] = round(nash.n, 3)
     nash_meta["k_min"] = round(nash.k_min, 2)
@@ -537,8 +537,12 @@ def generate_hydrograph(
             )
         elif request.uh_model == "nash":
             nash_params, nash_meta = _estimate_nash_params(
-                request, morph_dict, tc_min,
-                precip_mm=precip_mm, cn=cn, duration_min=float(duration_min),
+                request,
+                morph_dict,
+                tc_min,
+                precip_mm=precip_mm,
+                cn=cn,
+                duration_min=float(duration_min),
                 precip_result=precip_result,
                 timestep_min=request.timestep_min,
             )

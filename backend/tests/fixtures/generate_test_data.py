@@ -26,7 +26,7 @@ from shapely.ops import unary_union
 # ---------------------------------------------------------------------------
 BBOX_MIN_X, BBOX_MIN_Y = 638800.0, 486000.0
 BBOX_MAX_X, BBOX_MAX_Y = 639400.0, 486600.0
-BBOX_WIDTH = BBOX_MAX_X - BBOX_MIN_X   # 600
+BBOX_WIDTH = BBOX_MAX_X - BBOX_MIN_X  # 600
 BBOX_HEIGHT = BBOX_MAX_Y - BBOX_MIN_Y  # 600
 
 SEGMENT_IDX_START = 9001
@@ -37,12 +37,14 @@ THRESHOLDS = {
     100000: 10,
 }
 
-CLIP_BOX = Polygon([
-    (BBOX_MIN_X, BBOX_MIN_Y),
-    (BBOX_MAX_X, BBOX_MIN_Y),
-    (BBOX_MAX_X, BBOX_MAX_Y),
-    (BBOX_MIN_X, BBOX_MAX_Y),
-])
+CLIP_BOX = Polygon(
+    [
+        (BBOX_MIN_X, BBOX_MIN_Y),
+        (BBOX_MAX_X, BBOX_MIN_Y),
+        (BBOX_MAX_X, BBOX_MAX_Y),
+        (BBOX_MIN_X, BBOX_MAX_Y),
+    ]
+)
 
 OUTPUT_DIR = Path(__file__).resolve().parent
 
@@ -50,6 +52,7 @@ OUTPUT_DIR = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _voronoi_cells(points: np.ndarray) -> list[Polygon]:
     """Return Voronoi cells clipped to CLIP_BOX, one per input point."""
@@ -142,9 +145,7 @@ def _build_downstream_tree(n: int, centroids: list[Point]) -> list[int | None]:
                 best_dist = d
                 best_target = candidate
         downstream[node] = (
-            SEGMENT_IDX_START + best_target
-            if best_target is not None
-            else None
+            SEGMENT_IDX_START + best_target if best_target is not None else None
         )
 
     # The outlet (lowest elevation) has no downstream.
@@ -156,16 +157,19 @@ def _build_downstream_tree(n: int, centroids: list[Point]) -> list[int | None]:
 # Main generation
 # ---------------------------------------------------------------------------
 
+
 def generate() -> None:
     random.seed(42)
     np.random.seed(42)
 
     # --- Step 1: Generate t=1000 Voronoi cells (finest) ---
     n_fine = THRESHOLDS[1000]  # 60
-    pts_fine = np.column_stack([
-        np.random.uniform(BBOX_MIN_X + 20, BBOX_MAX_X - 20, n_fine),
-        np.random.uniform(BBOX_MIN_Y + 20, BBOX_MAX_Y - 20, n_fine),
-    ])
+    pts_fine = np.column_stack(
+        [
+            np.random.uniform(BBOX_MIN_X + 20, BBOX_MAX_X - 20, n_fine),
+            np.random.uniform(BBOX_MIN_Y + 20, BBOX_MAX_Y - 20, n_fine),
+        ]
+    )
     cells_fine = _voronoi_cells(pts_fine)
     centroids_fine = [c.centroid for c in cells_fine]
     downstream_fine = _build_downstream_tree(n_fine, centroids_fine)
@@ -185,11 +189,13 @@ def generate() -> None:
     cells_coarse: list[Polygon | MultiPolygon] = []
     centroids_coarse: list[Point] = []
     for i in range(n_coarse):
-        merged = unary_union([
-            cells_medium[3 * i],
-            cells_medium[3 * i + 1],
-            cells_medium[3 * i + 2],
-        ])
+        merged = unary_union(
+            [
+                cells_medium[3 * i],
+                cells_medium[3 * i + 1],
+                cells_medium[3 * i + 2],
+            ]
+        )
         cells_coarse.append(merged)
         centroids_coarse.append(merged.centroid)
     downstream_coarse = _build_downstream_tree(n_coarse, centroids_coarse)
@@ -203,12 +209,10 @@ def generate() -> None:
     sql_lines.append("")
     sql_lines.append("-- Clean up any previous test data (segment_idx 9001-9100)")
     sql_lines.append(
-        "DELETE FROM stream_catchments"
-        " WHERE segment_idx BETWEEN 9001 AND 9100;"
+        "DELETE FROM stream_catchments WHERE segment_idx BETWEEN 9001 AND 9100;"
     )
     sql_lines.append(
-        "DELETE FROM stream_network"
-        " WHERE segment_idx BETWEEN 9001 AND 9100;"
+        "DELETE FROM stream_network WHERE segment_idx BETWEEN 9001 AND 9100;"
     )
     sql_lines.append("")
 
@@ -270,10 +274,12 @@ def generate() -> None:
             seg_idx = SEGMENT_IDX_START + i
             centroid = centroids[i]
             # Stream line: from centroid going ~50m south
-            line = LineString([
-                (centroid.x, centroid.y),
-                (centroid.x + random.uniform(-10, 10), centroid.y - 50),
-            ])
+            line = LineString(
+                [
+                    (centroid.x, centroid.y),
+                    (centroid.x + random.uniform(-10, 10), centroid.y - 50),
+                ]
+            )
             strahler = min(4, 1 + i % 4)
             area_km2 = round(cells[i].area / 1e6, 6)
             length_m = round(line.length, 2)
@@ -330,7 +336,8 @@ def generate() -> None:
         for j in range(i + 1, min(i + 5, n_fine)):
             shared = cells_fine[i].intersection(cells_fine[j])
             is_line = shared.geom_type in (
-                "LineString", "MultiLineString",
+                "LineString",
+                "MultiLineString",
             )
             if is_line and shared.length > 1:
                 boundary_pt = shared.interpolate(0.5, normalized=True)

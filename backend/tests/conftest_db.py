@@ -5,6 +5,7 @@ These fixtures connect to a real PostGIS database and load
 synthetic test data. Tests using these fixtures are skipped
 when PostGIS is not available.
 """
+
 import os
 import pathlib
 
@@ -33,9 +34,7 @@ def _db_available() -> bool:
         return False
 
 
-requires_db = pytest.mark.skipif(
-    not _db_available(), reason="PostGIS not available"
-)
+requires_db = pytest.mark.skipif(not _db_available(), reason="PostGIS not available")
 
 
 @pytest.fixture(scope="session")
@@ -69,12 +68,8 @@ def setup_test_data(db_engine):
 
     # Cleanup: remove test data (segment_idx >= 9000)
     with db_engine.connect() as conn:
-        conn.execute(text(
-            "DELETE FROM stream_catchments WHERE segment_idx >= 9000"
-        ))
-        conn.execute(text(
-            "DELETE FROM stream_network WHERE segment_idx >= 9000"
-        ))
+        conn.execute(text("DELETE FROM stream_catchments WHERE segment_idx >= 9000"))
+        conn.execute(text("DELETE FROM stream_network WHERE segment_idx >= 9000"))
         conn.commit()
 
 

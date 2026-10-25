@@ -126,9 +126,7 @@ def _load_and_process(file_path: Path, layer: str | None = None) -> BaseGeometry
     polygon_mask = gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"])
     if not polygon_mask.any():
         geom_types = gdf.geometry.geom_type.unique().tolist()
-        raise ValueError(
-            f"No polygon geometries found. File contains: {geom_types}"
-        )
+        raise ValueError(f"No polygon geometries found. File contains: {geom_types}")
 
     if not polygon_mask.all():
         n_dropped = (~polygon_mask).sum()

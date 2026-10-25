@@ -25,16 +25,22 @@ from core.sewer_service import (
 @pytest.fixture
 def default_field_mapping():
     return {
-        "node_id": "id", "node_role": "role",
+        "node_id": "id",
+        "node_role": "role",
         "downstream_id": "downstream_id",
-        "edge_from": "from_node", "edge_to": "to_node",
+        "edge_from": "from_node",
+        "edge_to": "to_node",
     }
 
 
 @pytest.fixture
 def default_role_mapping():
-    return {"inlet": "inlet", "outlet": "outlet",
-            "junction": "junction", "storage": "storage"}
+    return {
+        "inlet": "inlet",
+        "outlet": "outlet",
+        "junction": "junction",
+        "storage": "storage",
+    }
 
 
 @pytest.fixture
@@ -128,7 +134,9 @@ class TestBuildSewerGraphNew:
             assert "length_m" in edge
             assert edge["length_m"] >= 0.0
 
-    def test_empty_topology_returns_empty_graph(self, default_field_mapping, default_role_mapping):
+    def test_empty_topology_returns_empty_graph(
+        self, default_field_mapping, default_role_mapping
+    ):
         """Topology with no nodes returns an empty SewerGraph."""
         # Manually construct an empty ParsedTopology
         topology = ParsedTopology(nodes=[], edges=[])
@@ -168,37 +176,46 @@ class TestSewerGraphClass:
 @pytest.fixture
 def small_dem():
     """5x5 DEM with gentle slope."""
-    return np.array([
-        [110, 109, 108, 109, 110],
-        [109, 108, 107, 108, 109],
-        [108, 107, 106, 107, 108],
-        [107, 106, 105, 106, 107],
-        [106, 105, 104, 105, 106],
-    ], dtype=np.float64)
+    return np.array(
+        [
+            [110, 109, 108, 109, 110],
+            [109, 108, 107, 108, 109],
+            [108, 107, 106, 107, 108],
+            [107, 106, 105, 106, 107],
+            [106, 105, 104, 105, 106],
+        ],
+        dtype=np.float64,
+    )
 
 
 @pytest.fixture
 def small_fdir():
     """D8 fdir: all flowing toward center-bottom (4,2)."""
-    return np.array([
-        [2,   4,   4,   4,   8],
-        [2,   2,   4,   8,   8],
-        [1,   2,   4,   8,  16],
-        [1,   2,   4,   8,  16],
-        [1,   1,   0,  16,  16],
-    ], dtype=np.int16)
+    return np.array(
+        [
+            [2, 4, 4, 4, 8],
+            [2, 2, 4, 8, 8],
+            [1, 2, 4, 8, 16],
+            [1, 2, 4, 8, 16],
+            [1, 1, 0, 16, 16],
+        ],
+        dtype=np.int16,
+    )
 
 
 @pytest.fixture
 def small_fa():
     """Simple FA raster."""
-    return np.array([
-        [1, 1, 1, 1, 1],
-        [2, 2, 3, 2, 2],
-        [1, 3, 7, 3, 1],
-        [1, 4, 12, 4, 1],
-        [1, 5, 25, 5, 1],
-    ], dtype=np.int32)
+    return np.array(
+        [
+            [1, 1, 1, 1, 1],
+            [2, 2, 3, 2, 2],
+            [1, 3, 7, 3, 1],
+            [1, 4, 12, 4, 1],
+            [1, 5, 25, 5, 1],
+        ],
+        dtype=np.int32,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -215,21 +232,27 @@ class TestBurnInlets:
         assert (1, 1) in drain_pts
 
     def test_uses_invert_elevation(self, small_dem):
-        inlets = [{"id": 0, "row": 1, "col": 1, "depth_m": None, "invert_elev_m": 106.0}]
+        inlets = [
+            {"id": 0, "row": 1, "col": 1, "depth_m": None, "invert_elev_m": 106.0}
+        ]
         dem_copy = small_dem.copy()
         dem_mod, drain_pts = burn_inlets(dem_copy, inlets, default_depth_m=0.5)
         # DEM is 108 at (1,1), invert is 106, so depth = 2.0
         assert dem_mod[1, 1] == pytest.approx(108.0 - 2.0)
 
     def test_skips_negative_depth(self, small_dem):
-        inlets = [{"id": 0, "row": 1, "col": 1, "depth_m": None, "invert_elev_m": 999.0}]
+        inlets = [
+            {"id": 0, "row": 1, "col": 1, "depth_m": None, "invert_elev_m": 999.0}
+        ]
         dem_copy = small_dem.copy()
         dem_mod, drain_pts = burn_inlets(dem_copy, inlets, default_depth_m=0.5)
         assert dem_mod[1, 1] == 108.0
         assert len(drain_pts) == 0
 
     def test_skips_out_of_bounds(self, small_dem):
-        inlets = [{"id": 0, "row": 99, "col": 99, "depth_m": 0.5, "invert_elev_m": None}]
+        inlets = [
+            {"id": 0, "row": 99, "col": 99, "depth_m": 0.5, "invert_elev_m": None}
+        ]
         dem_copy = small_dem.copy()
         _, drain_pts = burn_inlets(dem_copy, inlets, default_depth_m=0.5)
         assert len(drain_pts) == 0
@@ -275,10 +298,34 @@ class TestRouteFA:
     def test_simple_routing(self):
         graph = SewerGraph()
         graph.nodes = [
-            {"id": 0, "node_type": "inlet", "fa_value": 100, "total_upstream_fa": None, "component_id": 0},
-            {"id": 1, "node_type": "inlet", "fa_value": 200, "total_upstream_fa": None, "component_id": 0},
-            {"id": 2, "node_type": "junction", "fa_value": None, "total_upstream_fa": None, "component_id": 0},
-            {"id": 3, "node_type": "outlet", "fa_value": None, "total_upstream_fa": None, "component_id": 0},
+            {
+                "id": 0,
+                "node_type": "inlet",
+                "fa_value": 100,
+                "total_upstream_fa": None,
+                "component_id": 0,
+            },
+            {
+                "id": 1,
+                "node_type": "inlet",
+                "fa_value": 200,
+                "total_upstream_fa": None,
+                "component_id": 0,
+            },
+            {
+                "id": 2,
+                "node_type": "junction",
+                "fa_value": None,
+                "total_upstream_fa": None,
+                "component_id": 0,
+            },
+            {
+                "id": 3,
+                "node_type": "outlet",
+                "fa_value": None,
+                "total_upstream_fa": None,
+                "component_id": 0,
+            },
         ]
         graph._node_lookup = {0: 0, 1: 1, 2: 2, 3: 3}
         row = np.array([2, 2, 3], dtype=np.int32)

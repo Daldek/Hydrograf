@@ -479,8 +479,8 @@ def main():
         type=str,
         default="none",
         help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
-             '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
-             "(wszystkie traktowane jako endoreiczne). Default: none",
+        '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
+        "(wszystkie traktowane jako endoreiczne). Default: none",
     )
     wb_group.add_argument(
         "--waterbody-min-area",
@@ -548,9 +548,7 @@ def main():
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from utils.sheet_lookup import sheets_for_point_buffer
 
-        sheets = sheets_for_point_buffer(
-            args.lat, args.lon, args.buffer, args.scale
-        )
+        sheets = sheets_for_point_buffer(args.lat, args.lon, args.buffer, args.scale)
 
         logger.info("DRY RUN - would download and process:")
         logger.info("NMT sheets:")

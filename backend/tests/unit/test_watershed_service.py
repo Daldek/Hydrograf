@@ -676,5 +676,3 @@ class TestEnsureOutletWithinBoundary:
         x, y = ensure_outlet_within_boundary(150.0, 50.0, multi)
         assert abs(x - 100.0) < 0.01
         assert abs(y - 50.0) < 0.01
-
-

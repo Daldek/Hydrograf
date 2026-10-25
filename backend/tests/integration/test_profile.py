@@ -445,10 +445,9 @@ class TestTerrainProfileEndpoint:
         import inspect
 
         from api.endpoints.profile import terrain_profile
+
         source = inspect.getsource(terrain_profile)
-        assert "isclose" in source, (
-            "Must use math.isclose for nodata comparison"
-        )
+        assert "isclose" in source, "Must use math.isclose for nodata comparison"
         assert "elev == dataset.nodata" not in source, (
             "Must not use == for float nodata"
         )

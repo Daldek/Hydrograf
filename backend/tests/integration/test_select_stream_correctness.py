@@ -4,6 +4,7 @@ Correctness tests for ST_Contains catchment selection (ADR-039).
 Verifies that the simplified ST_Contains approach returns correct results
 for various spatial scenarios against a real PostGIS database.
 """
+
 # Register DB fixtures from conftest_db
 pytest_plugins = ["tests.conftest_db"]
 

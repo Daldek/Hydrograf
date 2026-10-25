@@ -465,7 +465,7 @@ def get_main_channel_feature_collection(
                 if not started:
                     # Not-real before any real → mark all remaining as not-real
                     real_flags[si] = False
-                    for rem_node in main_channel_nodes[node_idx + 1:]:
+                    for rem_node in main_channel_nodes[node_idx + 1 :]:
                         real_flags[cg.get_segment_idx(rem_node)] = False
                     break
                 gap_count += 1
@@ -475,7 +475,7 @@ def get_main_channel_feature_collection(
                         real_flags[gap_si] = False
                     real_flags[si] = False
                     # Mark all remaining nodes as not-real
-                    for rem_node in main_channel_nodes[node_idx + 1:]:
+                    for rem_node in main_channel_nodes[node_idx + 1 :]:
                         real_flags[cg.get_segment_idx(rem_node)] = False
                     break
                 pending_gap_nodes.append(si)
@@ -503,14 +503,16 @@ def get_main_channel_feature_collection(
     features = []
     for row in results:
         geom = json.loads(row.geojson)
-        features.append({
-            "type": "Feature",
-            "geometry": geom,
-            "properties": {
-                "segment_idx": row.segment_idx,
-                "is_real_stream": real_flags.get(row.segment_idx, False),
-            },
-        })
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geom,
+                "properties": {
+                    "segment_idx": row.segment_idx,
+                    "is_real_stream": real_flags.get(row.segment_idx, False),
+                },
+            }
+        )
 
     return {
         "type": "FeatureCollection",
@@ -637,10 +639,7 @@ def sample_stream_distance(
 
     with rasterio.open(tif_path) as src:
         values = list(src.sample(points_2180))
-        return [
-            float(v[0]) if v[0] != src.nodata else float("nan")
-            for v in values
-        ]
+        return [float(v[0]) if v[0] != src.nodata else float("nan") for v in values]
 
 
 def _build_flow_path_geojson(
@@ -717,7 +716,9 @@ def _build_flow_path_geojson(
     if result is None or result.geojson is None:
         logger.debug(
             "No %s for segment_idx=%d threshold=%d",
-            geom_column, max_seg_idx, threshold_m2,
+            geom_column,
+            max_seg_idx,
+            threshold_m2,
         )
         return None
 
@@ -781,7 +782,10 @@ def _build_flow_path_geojson(
         merged = linemerge(all_lines)
         if merged.geom_type == "MultiLineString":
             merged = max(merged.geoms, key=lambda g: g.length)
-        merged_geojson = {"type": "LineString", "coordinates": [list(c) for c in merged.coords]}
+        merged_geojson = {
+            "type": "LineString",
+            "coordinates": [list(c) for c in merged.coords],
+        }
     except Exception as e:
         logger.warning("Failed to merge %s geometries: %s", path_type, e)
         merged_geojson = head_geom
@@ -802,8 +806,14 @@ def get_longest_flow_path_geojson(
 ) -> dict | None:
     """Build GeoJSON LineString of the longest flow path for the watershed."""
     return _build_flow_path_geojson(
-        cg, upstream_indices, outlet_idx, threshold_m2, db,
-        "longest_flow_path_geom", "longest_flow_path", include_length=True,
+        cg,
+        upstream_indices,
+        outlet_idx,
+        threshold_m2,
+        db,
+        "longest_flow_path_geom",
+        "longest_flow_path",
+        include_length=True,
     )
 
 
@@ -816,8 +826,14 @@ def get_divide_flow_path_geojson(
 ) -> dict | None:
     """Build GeoJSON LineString of the divide flow path for the watershed."""
     return _build_flow_path_geojson(
-        cg, upstream_indices, outlet_idx, threshold_m2, db,
-        "divide_flow_path_geom", "divide_flow_path", include_length=False,
+        cg,
+        upstream_indices,
+        outlet_idx,
+        threshold_m2,
+        db,
+        "divide_flow_path_geom",
+        "divide_flow_path",
+        include_length=False,
     )
 
 
@@ -900,9 +916,19 @@ def build_morph_dict_from_graph(
 
     # Lc: distance along main channel from outlet to nearest point to centroid
     centroid = boundary_2180.centroid
-    length_to_centroid_km = _compute_lc_along_channel(
-        db, cg, main_ch, threshold_m2, centroid, outlet_x, outlet_y,
-    ) if db is not None and main_ch is not None else None
+    length_to_centroid_km = (
+        _compute_lc_along_channel(
+            db,
+            cg,
+            main_ch,
+            threshold_m2,
+            centroid,
+            outlet_x,
+            outlet_y,
+        )
+        if db is not None and main_ch is not None
+        else None
+    )
     # Fallback: straight-line distance
     if length_to_centroid_km is None:
         outlet_point = Point(outlet_x, outlet_y)
@@ -961,9 +987,7 @@ def build_morph_dict_from_graph(
         sd_path = settings.resolve_stream_distance_path()
         if sd_path is not None:
             # Sample outlet distance
-            outlet_dist_vals = sample_stream_distance(
-                [(outlet_x, outlet_y)], sd_path
-            )
+            outlet_dist_vals = sample_stream_distance([(outlet_x, outlet_y)], sd_path)
             outlet_dist = outlet_dist_vals[0]
 
             if not np.isnan(outlet_dist):
@@ -1235,5 +1259,3 @@ def build_hsg_stats(
     except Exception as e:
         logger.debug(f"HSG stats not available: {e}")
         return None
-
-

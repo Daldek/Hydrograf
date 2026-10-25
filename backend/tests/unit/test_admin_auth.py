@@ -79,6 +79,7 @@ class TestVerifyAdminKey:
         import logging
 
         import api.dependencies.admin_auth as auth_module
+
         auth_module._generated_key = None  # reset
 
         with caplog.at_level(logging.WARNING):
@@ -90,6 +91,7 @@ class TestVerifyAdminKey:
     def test_generated_key_is_stable(self):
         """Generated key remains the same across calls."""
         import api.dependencies.admin_auth as auth_module
+
         auth_module._generated_key = None
         key1 = auth_module._get_or_generate_admin_key("")
         key2 = auth_module._get_or_generate_admin_key("")
@@ -99,12 +101,14 @@ class TestVerifyAdminKey:
     def test_configured_key_skips_generation(self):
         """When key is configured, no generation happens."""
         import api.dependencies.admin_auth as auth_module
+
         result = auth_module._get_or_generate_admin_key("my-secret-key")
         assert result == "my-secret-key"
 
     def test_no_configured_key_still_requires_header(self):
         """When no key configured, auth is still enforced with generated key."""
         import api.dependencies.admin_auth as auth_module
+
         auth_module._generated_key = None
         with pytest.raises(HTTPException) as exc_info:
             _check_admin_key(x_admin_key=None, expected_key="")
@@ -126,6 +130,7 @@ class TestVerifyAdminKey:
     def test_file_based_key_missing_file_generates_random(self, monkeypatch):
         """Missing key file with no configured key generates random key."""
         import api.dependencies.admin_auth as auth_module
+
         auth_module._generated_key = None
 
         settings = get_settings()

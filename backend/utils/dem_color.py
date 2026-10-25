@@ -118,10 +118,9 @@ def compute_hillshade(
     result = np.zeros_like(dem, dtype=np.float64)
     for az, w in zip(azimuths, weights, strict=True):
         az_rad = np.radians(360 - az + 90)
-        hs = (
-            np.cos(alt_rad) * np.sin(slope_rad) * np.cos(az_rad - aspect_rad)
-            + np.sin(alt_rad) * np.cos(slope_rad)
-        )
+        hs = np.cos(alt_rad) * np.sin(slope_rad) * np.cos(az_rad - aspect_rad) + np.sin(
+            alt_rad
+        ) * np.cos(slope_rad)
         hs = np.clip(hs, 0, 1)
         result += w * hs
 

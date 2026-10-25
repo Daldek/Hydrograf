@@ -34,6 +34,7 @@ class TestAdminAuthIntegration:
     def test_no_key_configured_still_requires_auth(self):
         """Empty ADMIN_API_KEY generates random key — auth still enforced."""
         import api.dependencies.admin_auth as auth_module
+
         auth_module._generated_key = None  # reset generated key
 
         app = _create_app()

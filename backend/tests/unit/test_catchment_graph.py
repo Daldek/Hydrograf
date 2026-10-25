@@ -52,9 +52,7 @@ def small_graph():
     # Odleglosc spływu w PUNKCIE ujscia kazdej podzlewni (baza dla
     # hydraulic_length). Lancuch: node3 (globalne ujscie) -> 0 m;
     # node2 wpada do node3 -> 4000 m; nodes 0/1 wpadaja do node2 -> 7500 m.
-    cg._outlet_flow_dist_m = np.array(
-        [7500.0, 7500.0, 4000.0, 0.0], dtype=np.float64
-    )
+    cg._outlet_flow_dist_m = np.array([7500.0, 7500.0, 4000.0, 0.0], dtype=np.float64)
 
     # BDOT stream matching: nodes 0 and 2 are real streams
     cg._is_real_stream = np.array([True, False, True, False], dtype=np.bool_)
@@ -637,6 +635,7 @@ class TestGetCatchmentGraphThreadSafety:
         import threading
 
         from core.catchment_graph import _catchment_graph_lock
+
         # threading.Lock is a function before Python 3.13, so compare with its type.
         assert isinstance(_catchment_graph_lock, type(threading.Lock()))
 
@@ -658,6 +657,7 @@ class TestGetSegmentIdx:
         import pytest
 
         from core.catchment_graph import CatchmentGraph
+
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.get_segment_idx(0)

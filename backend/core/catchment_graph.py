@@ -218,7 +218,9 @@ class CatchmentGraph:
 
                     self._segment_idx[i] = seg_idx
                     self._threshold_m2[i] = threshold
-                    self._area_km2[i] = r[_COL_AREA] if r[_COL_AREA] is not None else 0.0
+                    self._area_km2[i] = (
+                        r[_COL_AREA] if r[_COL_AREA] is not None else 0.0
+                    )
 
                     if r[_COL_ELEV_MEAN] is not None:
                         self._elev_mean[i] = r[_COL_ELEV_MEAN]
@@ -366,7 +368,8 @@ class CatchmentGraph:
                 "%d/%d catchments missing outlet_flow_dist_m — "
                 "hydraulic_length_km will use understating fallback; "
                 "run scripts/backfill_outlet_flow_dist.py",
-                n_missing_outlet, self._n,
+                n_missing_outlet,
+                self._n,
             )
 
         # Quick integrity check (set _loaded temporarily for verify_graph)
@@ -577,7 +580,9 @@ class CatchmentGraph:
         mask = self._threshold_m2[indices] == threshold_m2
         return self._segment_idx[indices[mask]].tolist()
 
-    def aggregate_stats(self, indices: np.ndarray, outlet_idx: int | None = None) -> dict:
+    def aggregate_stats(
+        self, indices: np.ndarray, outlet_idx: int | None = None
+    ) -> dict:
         """
         Aggregate pre-computed stats across multiple catchment nodes.
 
@@ -648,15 +653,15 @@ class CatchmentGraph:
 
         # Pre-compute real stream mask (used for Strahler + BDOT metrics)
         real_mask = (
-            self._is_real_stream[indices]
-            if self._is_real_stream is not None
-            else None
+            self._is_real_stream[indices] if self._is_real_stream is not None else None
         )
 
         # Max Strahler from BDOT real streams only
         if real_mask is not None:
             real_strahlers = self._strahler[indices][real_mask]
-            max_strahler = int(np.max(real_strahlers)) if len(real_strahlers) > 0 else None
+            max_strahler = (
+                int(np.max(real_strahlers)) if len(real_strahlers) > 0 else None
+            )
         else:
             strahlers = self._strahler[indices]
             max_strahler = int(np.max(strahlers)) if len(strahlers) > 0 else None
@@ -666,8 +671,12 @@ class CatchmentGraph:
             real_lengths = self._segment_length_km[indices]
             bdot_stream_km = float(np.nansum(real_lengths[real_mask]))
             bdot_n_segments = int(np.sum(real_mask))
-            bdot_drainage_density = bdot_stream_km / total_area if total_area > 0 else None
-            bdot_stream_frequency = bdot_n_segments / total_area if total_area > 0 else None
+            bdot_drainage_density = (
+                bdot_stream_km / total_area if total_area > 0 else None
+            )
+            bdot_stream_frequency = (
+                bdot_n_segments / total_area if total_area > 0 else None
+            )
         else:
             bdot_stream_km = 0.0
             bdot_n_segments = 0
@@ -706,16 +715,22 @@ class CatchmentGraph:
             ),
             "stream_length_km": round(total_stream_km, 4),
             "drainage_density_km_per_km2": (
-                round(bdot_drainage_density, 4) if bdot_drainage_density is not None else None
+                round(bdot_drainage_density, 4)
+                if bdot_drainage_density is not None
+                else None
             ),
             "max_strahler_order": max_strahler,
             "stream_frequency_per_km2": (
-                round(bdot_stream_frequency, 4) if bdot_stream_frequency is not None else None
+                round(bdot_stream_frequency, 4)
+                if bdot_stream_frequency is not None
+                else None
             ),
             "bdot_stream_length_km": round(bdot_stream_km, 4),
             "bdot_stream_count": bdot_n_segments,
             "hydraulic_length_km": (
-                round(hydraulic_length_km, 4) if hydraulic_length_km is not None else None
+                round(hydraulic_length_km, 4)
+                if hydraulic_length_km is not None
+                else None
             ),
         }
 
@@ -770,7 +785,9 @@ class CatchmentGraph:
                 candidates,
                 key=lambda n: (
                     _ua[n] if _ua is not None else self._area_km2[n],
-                    int(self._is_real_stream[n]) if self._is_real_stream is not None else 0,
+                    int(self._is_real_stream[n])
+                    if self._is_real_stream is not None
+                    else 0,
                     self._strahler[n],
                     self._area_km2[n],
                 ),

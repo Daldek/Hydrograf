@@ -26,6 +26,7 @@ if config.config_file_name is not None:
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
     import logging as _logging
+
     _logging.getLogger(__name__).warning(
         "DATABASE_URL not set — using default local connection. "
         "Set DATABASE_URL env var for production."

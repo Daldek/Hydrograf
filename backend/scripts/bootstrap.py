@@ -239,8 +239,10 @@ def resolve_sheets(
     assert bbox is not None
     min_lon, min_lat, max_lon, max_lat = bbox
     kartograf_bbox = BBox(
-        min_x=min_lon, min_y=min_lat,
-        max_x=max_lon, max_y=max_lat,
+        min_x=min_lon,
+        min_y=min_lat,
+        max_x=max_lon,
+        max_y=max_lat,
         crs="EPSG:4326",
     )
     resolved_sheets = find_sheets_for_bbox(kartograf_bbox, scale)
@@ -527,8 +529,10 @@ def step_process_dem(
         with rasterio.open(mosaic_path) as src:
             mosaic_bounds = src.bounds  # (left, bottom, right, top) in EPSG:2180
         mosaic_bbox_2180 = (
-            mosaic_bounds.left, mosaic_bounds.bottom,
-            mosaic_bounds.right, mosaic_bounds.top,
+            mosaic_bounds.left,
+            mosaic_bounds.bottom,
+            mosaic_bounds.right,
+            mosaic_bounds.top,
         )
         logger.info(
             f"Mosaic extent for TERYT discovery: "
@@ -568,7 +572,9 @@ def step_process_dem(
         try:
             frontend_data = FRONTEND_DIR / "data"
             frontend_data.mkdir(parents=True, exist_ok=True)
-            bdot_result = export_bdot_geojson(burn_path, frontend_data, clip_bbox_2180=mosaic_bbox_2180)
+            bdot_result = export_bdot_geojson(
+                burn_path, frontend_data, clip_bbox_2180=mosaic_bbox_2180
+            )
             logger.info(f"BDOT10k GeoJSON exported: {bdot_result}")
         except Exception as e:
             logger.warning(f"BDOT10k GeoJSON export failed: {e}")
@@ -687,8 +693,10 @@ def step_soil_hsg(
 
         # Poland bbox in EPSG:2180 (PL-1992)
         bbox_poland = BBox(
-            min_x=167000, min_y=29000,
-            max_x=860000, max_y=814000,
+            min_x=167000,
+            min_y=29000,
+            max_x=860000,
+            max_y=814000,
             crs="EPSG:2180",
         )
         try:
@@ -741,10 +749,12 @@ def step_soil_hsg(
         from scipy.ndimage import distance_transform_edt
 
         _, nearest_idx = distance_transform_edt(
-            ~valid_mask, return_indices=True,
+            ~valid_mask,
+            return_indices=True,
         )
         dst_data = np.where(
-            valid_mask, dst_data,
+            valid_mask,
+            dst_data,
             dst_data[nearest_idx[0], nearest_idx[1]],
         )
         logger.info(
@@ -1110,7 +1120,9 @@ def run_pipeline(
     if not tracker.is_skipped(2):
         t0 = tracker.start(2)
         try:
-            downloaded_files, detail = step_download_nmt(sheets, cache_dir, resolution=resolution)
+            downloaded_files, detail = step_download_nmt(
+                sheets, cache_dir, resolution=resolution
+            )
             tracker.done(2, t0, detail)
         except Exception as e:
             tracker.fail(2, t0, str(e))
@@ -1127,7 +1139,9 @@ def run_pipeline(
         t0 = tracker.start(3)
         try:
             _, detail, teryts, bdot_paths, mosaic_bbox = step_process_dem(
-                downloaded_files, output_dir, cache_dir,
+                downloaded_files,
+                output_dir,
+                cache_dir,
                 waterbody_mode=waterbody_mode,
                 waterbody_min_area_m2=waterbody_min_area_m2,
                 sewer_config=sewer_config,
@@ -1143,8 +1157,11 @@ def run_pipeline(
         t0 = tracker.start(4)
         try:
             detail = step_landcover(
-                sheets, output_dir, cache_dir,
-                teryts=teryts, bdot_paths=bdot_paths,
+                sheets,
+                output_dir,
+                cache_dir,
+                teryts=teryts,
+                bdot_paths=bdot_paths,
                 mosaic_bbox_2180=mosaic_bbox,
             )
             tracker.done(4, t0, detail)
@@ -1156,7 +1173,9 @@ def run_pipeline(
     if not tracker.is_skipped(5):
         t0 = tracker.start(5)
         try:
-            detail = step_soil_hsg(sheets, output_dir, cache_dir, mosaic_bbox_2180=mosaic_bbox)
+            detail = step_soil_hsg(
+                sheets, output_dir, cache_dir, mosaic_bbox_2180=mosaic_bbox
+            )
             tracker.done(5, t0, detail)
         except Exception as e:
             tracker.fail(5, t0, str(e))
@@ -1371,8 +1390,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default="none",
         help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
-             '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
-             "(wszystkie traktowane jako endoreiczne). Default: none",
+        '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
+        "(wszystkie traktowane jako endoreiczne). Default: none",
     )
     wb_group.add_argument(
         "--waterbody-min-area",
@@ -1510,7 +1529,12 @@ def main():
     # Run pipeline
     total_start = time.time()
     tracker = run_pipeline(
-        sheets, bbox, output_dir, cache_dir, args.port, skips,
+        sheets,
+        bbox,
+        output_dir,
+        cache_dir,
+        args.port,
+        skips,
         waterbody_mode=args.waterbody_mode,
         waterbody_min_area_m2=args.waterbody_min_area,
         resolution=args.resolution,

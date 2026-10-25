@@ -32,9 +32,9 @@ class TestLandCoverTileEndpoint:
 
         paths = [r.path for r in router.routes if hasattr(r, "path")]
         landcover_paths = [p for p in paths if "landcover" in p]
-        assert any(
-            "{z}" in p and "{x}" in p and "{y}" in p for p in landcover_paths
-        ), f"Expected z/x/y path params, got: {landcover_paths}"
+        assert any("{z}" in p and "{x}" in p and "{y}" in p for p in landcover_paths), (
+            f"Expected z/x/y path params, got: {landcover_paths}"
+        )
 
     def test_endpoint_has_db_dependency(self):
         """Verify the endpoint uses database dependency injection."""

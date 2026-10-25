@@ -39,10 +39,18 @@ def upgrade() -> None:
             CONSTRAINT unique_precipitation_scenario UNIQUE (geom, duration, probability)
         )
     """)
-    op.execute("CREATE INDEX idx_precipitation_geom ON precipitation_data USING GIST (geom)")
-    op.execute("CREATE INDEX idx_precipitation_duration ON precipitation_data USING btree (duration)")
-    op.execute("CREATE INDEX idx_precipitation_probability ON precipitation_data USING btree (probability)")
-    op.execute("CREATE INDEX idx_precipitation_scenario ON precipitation_data USING btree (duration, probability)")
+    op.execute(
+        "CREATE INDEX idx_precipitation_geom ON precipitation_data USING GIST (geom)"
+    )
+    op.execute(
+        "CREATE INDEX idx_precipitation_duration ON precipitation_data USING btree (duration)"
+    )
+    op.execute(
+        "CREATE INDEX idx_precipitation_probability ON precipitation_data USING btree (probability)"
+    )
+    op.execute(
+        "CREATE INDEX idx_precipitation_scenario ON precipitation_data USING btree (duration, probability)"
+    )
 
     # ── land_cover ──────────────────────────────────────────────────
     op.execute("""
@@ -86,16 +94,34 @@ def upgrade() -> None:
             CONSTRAINT valid_strahler CHECK (strahler_order IS NULL OR strahler_order > 0)
         )
     """)
-    op.execute("CREATE INDEX idx_stream_network_geom ON stream_network USING GIST (geom)")
-    op.execute("CREATE INDEX idx_stream_geom_dem_derived ON stream_network USING GIST (geom) WHERE source = 'DEM_DERIVED'")
-    op.execute("CREATE INDEX idx_stream_geom_t1000 ON stream_network USING GIST (geom) WHERE threshold_m2 = 1000")
-    op.execute("CREATE INDEX idx_stream_geom_t10000 ON stream_network USING GIST (geom) WHERE threshold_m2 = 10000")
-    op.execute("CREATE INDEX idx_stream_geom_t100000 ON stream_network USING GIST (geom) WHERE threshold_m2 = 100000")
+    op.execute(
+        "CREATE INDEX idx_stream_network_geom ON stream_network USING GIST (geom)"
+    )
+    op.execute(
+        "CREATE INDEX idx_stream_geom_dem_derived ON stream_network USING GIST (geom) WHERE source = 'DEM_DERIVED'"
+    )
+    op.execute(
+        "CREATE INDEX idx_stream_geom_t1000 ON stream_network USING GIST (geom) WHERE threshold_m2 = 1000"
+    )
+    op.execute(
+        "CREATE INDEX idx_stream_geom_t10000 ON stream_network USING GIST (geom) WHERE threshold_m2 = 10000"
+    )
+    op.execute(
+        "CREATE INDEX idx_stream_geom_t100000 ON stream_network USING GIST (geom) WHERE threshold_m2 = 100000"
+    )
     op.execute("CREATE INDEX idx_stream_name ON stream_network USING btree (name)")
-    op.execute("CREATE INDEX idx_stream_threshold ON stream_network USING btree (threshold_m2, strahler_order)")
-    op.execute("CREATE INDEX idx_stream_threshold_segidx ON stream_network USING btree (threshold_m2, segment_idx)")
-    op.execute("CREATE INDEX idx_stream_upstream_area ON stream_network USING btree (upstream_area_km2)")
-    op.execute("CREATE INDEX idx_strahler_order ON stream_network USING btree (strahler_order)")
+    op.execute(
+        "CREATE INDEX idx_stream_threshold ON stream_network USING btree (threshold_m2, strahler_order)"
+    )
+    op.execute(
+        "CREATE INDEX idx_stream_threshold_segidx ON stream_network USING btree (threshold_m2, segment_idx)"
+    )
+    op.execute(
+        "CREATE INDEX idx_stream_upstream_area ON stream_network USING btree (upstream_area_km2)"
+    )
+    op.execute(
+        "CREATE INDEX idx_strahler_order ON stream_network USING btree (strahler_order)"
+    )
     op.execute("""
         CREATE UNIQUE INDEX idx_stream_unique ON stream_network
         USING btree (COALESCE(name, ''), threshold_m2, ST_GeoHash(ST_Transform(geom, 4326), 12))
@@ -113,9 +139,13 @@ def upgrade() -> None:
         )
     """)
     op.execute("CREATE INDEX idx_depressions_geom ON depressions USING GIST (geom)")
-    op.execute("CREATE INDEX idx_depressions_volume ON depressions USING btree (volume_m3)")
+    op.execute(
+        "CREATE INDEX idx_depressions_volume ON depressions USING btree (volume_m3)"
+    )
     op.execute("CREATE INDEX idx_depressions_area ON depressions USING btree (area_m2)")
-    op.execute("CREATE INDEX idx_depressions_max_depth ON depressions USING btree (max_depth_m)")
+    op.execute(
+        "CREATE INDEX idx_depressions_max_depth ON depressions USING btree (max_depth_m)"
+    )
 
     # ── stream_catchments ───────────────────────────────────────────
     op.execute("""
@@ -140,16 +170,36 @@ def upgrade() -> None:
             divide_flow_path_geom geometry(LineString, 2180)
         )
     """)
-    op.execute("CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST (geom)")
-    op.execute("CREATE INDEX idx_catchment_geom_t1000 ON stream_catchments USING GIST (geom) WHERE threshold_m2 = 1000")
-    op.execute("CREATE INDEX idx_catchment_geom_t10000 ON stream_catchments USING GIST (geom) WHERE threshold_m2 = 10000")
-    op.execute("CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST (geom) WHERE threshold_m2 = 100000")
-    op.execute("CREATE INDEX idx_catchments_area ON stream_catchments USING btree (area_km2)")
-    op.execute("CREATE INDEX idx_catchments_threshold ON stream_catchments USING btree (threshold_m2, strahler_order)")
-    op.execute("CREATE INDEX idx_catchments_threshold_segment ON stream_catchments USING btree (threshold_m2, segment_idx)")
-    op.execute("CREATE INDEX idx_catchments_downstream ON stream_catchments USING btree (threshold_m2, downstream_segment_idx)")
-    op.execute("CREATE INDEX idx_catchments_flow_path_geom ON stream_catchments USING GIST (longest_flow_path_geom) WHERE longest_flow_path_geom IS NOT NULL")
-    op.execute("CREATE INDEX idx_catchments_divide_flow_path_geom ON stream_catchments USING GIST (divide_flow_path_geom) WHERE divide_flow_path_geom IS NOT NULL")
+    op.execute(
+        "CREATE INDEX idx_catchments_geom ON stream_catchments USING GIST (geom)"
+    )
+    op.execute(
+        "CREATE INDEX idx_catchment_geom_t1000 ON stream_catchments USING GIST (geom) WHERE threshold_m2 = 1000"
+    )
+    op.execute(
+        "CREATE INDEX idx_catchment_geom_t10000 ON stream_catchments USING GIST (geom) WHERE threshold_m2 = 10000"
+    )
+    op.execute(
+        "CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST (geom) WHERE threshold_m2 = 100000"
+    )
+    op.execute(
+        "CREATE INDEX idx_catchments_area ON stream_catchments USING btree (area_km2)"
+    )
+    op.execute(
+        "CREATE INDEX idx_catchments_threshold ON stream_catchments USING btree (threshold_m2, strahler_order)"
+    )
+    op.execute(
+        "CREATE INDEX idx_catchments_threshold_segment ON stream_catchments USING btree (threshold_m2, segment_idx)"
+    )
+    op.execute(
+        "CREATE INDEX idx_catchments_downstream ON stream_catchments USING btree (threshold_m2, downstream_segment_idx)"
+    )
+    op.execute(
+        "CREATE INDEX idx_catchments_flow_path_geom ON stream_catchments USING GIST (longest_flow_path_geom) WHERE longest_flow_path_geom IS NOT NULL"
+    )
+    op.execute(
+        "CREATE INDEX idx_catchments_divide_flow_path_geom ON stream_catchments USING GIST (divide_flow_path_geom) WHERE divide_flow_path_geom IS NOT NULL"
+    )
 
     # ── soil_hsg ────────────────────────────────────────────────────
     op.execute("""
@@ -175,7 +225,9 @@ def upgrade() -> None:
         )
     """)
     op.execute("CREATE INDEX idx_bdot_streams_geom ON bdot_streams USING GIST (geom)")
-    op.execute("CREATE INDEX idx_bdot_streams_type ON bdot_streams USING btree (layer_type)")
+    op.execute(
+        "CREATE INDEX idx_bdot_streams_type ON bdot_streams USING btree (layer_type)"
+    )
 
     # ── sewer_nodes ─────────────────────────────────────────────────
     op.execute("""
@@ -205,8 +257,12 @@ def upgrade() -> None:
         )
     """)
     op.execute("CREATE INDEX idx_sewer_nodes_geom ON sewer_nodes USING GIST (geom)")
-    op.execute("CREATE INDEX idx_sewer_nodes_node_type ON sewer_nodes USING btree (node_type)")
-    op.execute("CREATE INDEX idx_sewer_nodes_root_outlet_node_type ON sewer_nodes USING btree (root_outlet_id, node_type)")
+    op.execute(
+        "CREATE INDEX idx_sewer_nodes_node_type ON sewer_nodes USING btree (node_type)"
+    )
+    op.execute(
+        "CREATE INDEX idx_sewer_nodes_root_outlet_node_type ON sewer_nodes USING btree (root_outlet_id, node_type)"
+    )
 
     # ── sewer_network ───────────────────────────────────────────────
     op.execute("""
@@ -233,8 +289,12 @@ def upgrade() -> None:
         )
     """)
     op.execute("CREATE INDEX idx_sewer_network_geom ON sewer_network USING GIST (geom)")
-    op.execute("CREATE INDEX idx_sewer_network_node_from_id ON sewer_network USING btree (node_from_id)")
-    op.execute("CREATE INDEX idx_sewer_network_node_to_id ON sewer_network USING btree (node_to_id)")
+    op.execute(
+        "CREATE INDEX idx_sewer_network_node_from_id ON sewer_network USING btree (node_from_id)"
+    )
+    op.execute(
+        "CREATE INDEX idx_sewer_network_node_to_id ON sewer_network USING btree (node_to_id)"
+    )
 
 
 def downgrade() -> None:
