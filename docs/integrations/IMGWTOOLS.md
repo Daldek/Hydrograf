@@ -1,14 +1,14 @@
 # Integracja z IMGWTools
 
-**Wersja:** 1.0
-**Data:** 2026-10-25 (the head of IMGWTools, ADR-060)
+**Wersja:** 1.1
+**Data:** 2026-10-25 (the head of IMGWTools, `3f7de36`, ADR-060)
 **Status:** Aktywna
 
 ---
 
 ## 1. Przegląd
 
-Hydrograf wykorzystuje [IMGWTools](https://github.com/Daldek/IMGWTools) (3.0.0, commit `a304521`) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
+Hydrograf wykorzystuje [IMGWTools](https://github.com/Daldek/IMGWTools) (3.0.0, commit `3f7de36`) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
 
 ### 1.1 Co to jest IMGWTools?
 
@@ -177,7 +177,7 @@ result.data.rb   # Błąd estymacji
 
 **Dostępne duracje:** 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
 
-**Dostępne prawdopodobieństwa:** od 0.01% do 99.99% (27 wartości)
+**Dostępne prawdopodobieństwa:** 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 98.5, 99, 99.5 i 99.9% (27 wartości). `PMaXTPData.get_precipitation(duration_minutes, probability_percent)` przyjmuje procent jako `float` i tylko jedną z tych wartości; każda inna to `IMGWValidationError` (`validation_error`).
 
 ---
 
@@ -277,19 +277,19 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 ### 11.1 Instalacja
 
 ```
-# W backend/pyproject.toml (dependencies):
-imgwtools @ git+https://github.com/Daldek/IMGWTools.git@a30452182b01f47cc18e48466da4edf4d0c8cb6a
+# In backend/pyproject.toml ([tool.uv.sources]; the range in dependencies is "imgwtools>=3.0.0.dev0,<4"):
+imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "3f7de36f98f1ba40d72ab5556942567cfbc55b92" }
 ```
 
 ### 11.2 Repozytorium
 
 - **GitHub:** https://github.com/Daldek/IMGWTools
-- **Branch:** `feature/data-output` (not pushed; the pin is a commit, REL-5.3, ADR-060)
-- **Wersja:** 3.0.0 (untagged), commit `a30452182b01f47cc18e48466da4edf4d0c8cb6a`
+- **Branch:** `feature/data-output` (on GitHub; the pin is a commit, REL-5.3, ADR-060)
+- **Wersja:** 3.0.0 (untagged), commit `3f7de36f98f1ba40d72ab5556942567cfbc55b92`
 - **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `IMGWValidationError`, `IMGWConnectionError` and `IMGWDataError`; both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
-- **uv:** the commit is not on GitHub, so a machine needs it in the uv git cache before `uv lock` or `uv sync` (`docs/PROGRESS.md`, Next 2); the release replaces it with the tag.
+- **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; the release replaces it with the tag.
 
 ---
 
-**Wersja dokumentu:** 1.0
+**Wersja dokumentu:** 1.1
 **Ostatnia aktualizacja:** 2026-10-25
