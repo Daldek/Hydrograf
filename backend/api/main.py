@@ -26,6 +26,7 @@ from api.endpoints import (
 from core.catchment_graph import get_catchment_graph
 from core.config import get_settings
 from core.database import get_db_session
+from core.version import get_version
 
 # Configure structured logging
 settings = get_settings()
@@ -79,7 +80,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Hydrograf API",
     description="System analizy hydrologicznej - wyznaczanie zlewni i hydrogramów",
-    version="0.4.0",
+    version=get_version(),
     lifespan=lifespan,
 )
 

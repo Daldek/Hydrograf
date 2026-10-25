@@ -3,7 +3,7 @@
 Open items moved out of `docs/PROGRESS.md` on 2026-10-25: the section "Backlog" of the former
 PROGRESS (`git show 704dcf7:docs/PROGRESS.md`), without the done items. This is the one list of
 things that are not scheduled; scheduled work is in [PROGRESS.md](PROGRESS.md), Next. The text is
-still Polish and is translated with the other documents (DEV-2.1, PROGRESS Next 1.9).
+still Polish and is translated with the other documents (DEV-2.1, PROGRESS Next 1, Translations).
 
 ## Bledy i diagnozy
 

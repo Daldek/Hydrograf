@@ -212,7 +212,8 @@ backend/
 │   ├── performance/               # Testy wydajnościowe (benchmarki)
 │   └── conftest.py
 │
-├── requirements.txt
+├── pyproject.toml           # zaleznosci (zakresy), grupa dev, konfiguracja narzedzi
+├── uv.lock                  # dokladne wersje (uv sync --locked)
 └── Dockerfile
 ```
 
@@ -1146,7 +1147,7 @@ volumes:
 ### 5.1.1 Konteneryzacja — Multi-stage i override (ADR-035)
 
 **Multi-stage Dockerfile** (`backend/Dockerfile`):
-- **Stage 1 (builder):** instalacja zaleznosci z `requirements.txt` (gcc, git dla pip install z GitHub)
+- **Stage 1 (builder):** instalacja zaleznosci z `uv.lock` (`uv sync --locked --no-dev`; gcc, git dla zaleznosci z GitHub), potem binding GDAL dopasowany do biblioteki systemowej (poza lockiem)
 - **Stage 2 (runtime):** kopiowanie zainstalowanych pakietow z buildera — obraz bez gcc/git w produkcji
 
 **`entrypoint.sh`:**

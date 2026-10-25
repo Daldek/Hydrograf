@@ -256,7 +256,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Plik | Zmiana | Status |
 |------|--------|--------|
-| `backend/requirements.txt` | + hydrolog (v0.6.3) | ✅ |
+| `backend/pyproject.toml` | + hydrolog (v0.6.3) | ✅ |
 | `backend/core/morphometry.py` | 6 funkcji obliczeniowych | ✅ |
 | `backend/core/morphometry_raster.py` | Obliczenia rastrowe (slope, aspect, TWI, Strahler) | ✅ |
 | `backend/core/catchment_graph.py` | In-memory graf, BFS, trace_main_channel | ✅ |
@@ -465,7 +465,7 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 - **Branch:** develop
 - **Wersja:** v0.6.3
 - **Dokumentacja:** `docs/INTEGRATION.md`
-- **Instalacja:** `pip install git+https://github.com/Daldek/Hydrolog.git@v0.6.3`
+- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.3`), instalowana przez `uv sync --locked`
 
 ---
 

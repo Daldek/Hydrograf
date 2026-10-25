@@ -360,24 +360,12 @@ def step_infra() -> str:
     """Step 1: Infrastructure — .venv, Docker DB, Alembic."""
     details = []
 
-    # 1a. Check/create .venv
+    # 1a. Check/create .venv from the lock (DEV-6.2, DEV-6.3)
     venv_python = BACKEND_DIR / ".venv" / "bin" / "python"
-    venv_pip = BACKEND_DIR / ".venv" / "bin" / "pip"
 
     if not venv_python.exists():
         logger.info("Tworzenie .venv...")
-        subprocess.run(
-            [sys.executable, "-m", "venv", str(BACKEND_DIR / ".venv")],
-            check=True,
-        )
-        subprocess.run(
-            [str(venv_pip), "install", "-r", str(BACKEND_DIR / "requirements.txt")],
-            check=True,
-        )
-        subprocess.run(
-            [str(venv_pip), "install", "-e", f"{BACKEND_DIR}[dev]"],
-            check=True,
-        )
+        subprocess.run(["uv", "sync", "--locked"], check=True, cwd=str(BACKEND_DIR))
         details.append(".venv utworzony")
     else:
         details.append(".venv OK")

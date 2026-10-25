@@ -44,11 +44,9 @@ docker compose up -d db
 
 # Backend
 cd backend
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/pip install -e ".[dev]"
-.venv/bin/alembic upgrade head
-.venv/bin/python -m uvicorn api.main:app --reload
+uv sync --locked
+uv run alembic upgrade head
+uv run uvicorn api.main:app --reload
 ```
 
 ## Preprocessing danych
@@ -59,7 +57,7 @@ Alternatywnie z CLI:
 
 ```bash
 cd backend
-.venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
+uv run python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
 ```
 
 Pipeline automatycznie pobiera NMT z GUGiK, pokrycie terenu z BDOT10k, grupy glebowe z SoilGrids i dane opadowe z IMGW.
@@ -68,7 +66,7 @@ Pipeline automatycznie pobiera NMT z GUGiK, pokrycie terenu z BDOT10k, grupy gle
 
 ```bash
 cd backend
-.venv/bin/python -m pytest tests/ -q
+uv run pytest tests/ -q
 ```
 
 ## Struktura projektu

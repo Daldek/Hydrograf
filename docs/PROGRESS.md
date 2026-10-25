@@ -14,13 +14,14 @@ sessions 98 and 99 are only on the unmerged branch `feature/kartograf-wykorzysta
 | Application (REST API, pipeline, frontend, admin panel) | done | released as 0.4.0; `develop` carries the storm-sewer integration (ADR-051, ADR-052), the feedback form (ADR-053) and the Kartograf 0.7.0 migration (ADR-057) |
 | Producer pins | behind the heads | Kartograf `v0.7.0`, Hydrolog `v0.6.3`, IMGWTools `v2.1.0`; the heads need the migration of Next 2; pins change only after the first release set (ADOPTION_PLAN 5.1) |
 | Branch `chore/nogat-2.1` | note | based on `develop`, not on `feature/kartograf-wykorzystanie`, which has 7 commits that `develop` lacks: `f3f23dd` (`affine>=2.4,<3`, carried here in `pyproject.toml`), a CHANGELOG line, and PROGRESS of sessions 98 and 99. Merging both needs a manual resolution of this file and of the deleted `requirements.txt` |
-| Nogat standard 2.1, structure and tooling | planned | uv and `uv.lock` for `backend/` (replace `requirements.txt`, keep the caps `sqlalchemy<2.1` and `affine<3`), version `0.5.0.dev0`, editor and git files, ruff rule set of DEV-7.2, mypy `strict` with per-module overrides, markers and `tests/contract`, coverage floor, `scripts/gate.sh`, CI, Dependabot |
+| Nogat standard 2.1, environment | done | `backend/uv.lock` replaces `requirements.txt`: seeded with the versions of the image built on 2026-10-18 (no third-party change), caps `sqlalchemy<2.1` and `affine<3` with their reasons in `pyproject.toml`; `dev` group, extra `viz`; `[tool.uv] package = false`; `develop` carries `0.5.0.dev0`, read through `core/version.py`; the Dockerfile builds with `uv sync --locked --no-dev` (GDAL's Python binding stays outside the lock); editor, git and `.env.example` files |
+| Nogat standard 2.1, quality tooling | planned | ruff rule set of DEV-7.2, mypy `strict` with per-module overrides, markers and `tests/contract`, coverage floor, `scripts/gate.sh`, CI, Dependabot |
 | Nogat standard 2.1, contribution files | planned | `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, pull request template (DEV-13.7, DEV-16.2, DEV-16.4) |
-| Nogat standard 2.1, documentation | in progress | done: this file and [BACKLOG.md](BACKLOG.md); planned: `CLAUDE.md` in English with Deviations, README in the order of DOC-2.1, ADR index and an ADR for the adoption, `docs/DEVELOPMENT_STANDARDS.md` deleted; the Polish documents are still to translate (Next 1.9) |
+| Nogat standard 2.1, documentation | in progress | done: this file and [BACKLOG.md](BACKLOG.md); planned: `CLAUDE.md` in English with Deviations, README in the order of DOC-2.1, ADR index and an ADR for the adoption, `docs/DEVELOPMENT_STANDARDS.md` deleted; the Polish documents are still to translate (Next 1, Translations) |
 | Nogat standard 2.1, error registry and REST (ERR-1 to ERR-6, DEV-11.1, AGI-6.2 to AGI-6.4) | planned | vendored registry and schemas, generated `core/_errors.py`, `HydrografError`, `application/problem+json`, `Accept-Language`, OpenAPI `operationId`s |
 | Data output (DEV §19, ECO-051) | planned | profile `app` consumes Kartograf in store mode; waits for the first release set; call sites in Next 2 |
 | Gate | not yet | `scripts/gate.sh` does not exist yet; the old checks were `ruff check`, `ruff format --check` and `pytest tests -m 'not db and not benchmark'` in `backend/` (187 ruff findings, 67 files to format, 1 failing test before this branch) |
-| CI | old | `.github/workflows/ci.yml` runs pip, ruff, pytest with PostGIS and `pip-audit`; nothing is pushed from this branch |
+| CI | old | `.github/workflows/ci.yml` runs lint, tests with PostGIS and the audit with uv and the lock (interim); nothing is pushed from this branch |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 
@@ -41,52 +42,43 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    green before each; rules: `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`;
    Archiwista's branch `chore/nogat-2.1` is the worked example of an `app`). Remaining
    gaps of the inventory of 2026-10-25, in this order:
-   1. Editor and git files: `.editorconfig` in English (the JavaScript keeps 4 spaces, a
-      deviation), `.gitattributes` (`* text=auto eol=lf`), `.env.example` listing every
-      variable (DEV-13.1, DEV-14.1, DEV-18.3).
-   2. uv: `[dependency-groups] dev`, `uv.lock`, `[tool.uv] package = false`, Python 3.12 in
-      `.python-version`, one version source (`api/main.py` repeats `0.4.0`), the Dockerfile
-      builds with `uv sync --locked` (GDAL's Python binding must match the system library and
-      stays outside the lock, a deviation of DEV-6.3), `.dockerignore` stops excluding
-      `pyproject.toml`, README and CLAUDE.md commands (DEV-6.2, DEV-6.3, DEV-6.5, REL-1.1).
-   3. `ruff format` over `backend/` (67 files), then the rule set of DEV-7.2 (`W`, `C4`, `D`
-      added; 187 findings today, about 70 more with `D`; tests ignore `D`).
-   4. mypy `strict` over `backend/` (2,313 errors today, 426 of them outside `tests/`): fix
-      what is mechanical, per-module overrides for the rest, listed in CLAUDE.md (DEV-7.3).
-   5. pytest: `--strict-markers`, markers `live`, `db`, `slow` (plus `benchmark`), `tests/contract`,
-      coverage floor 80 (DEV-7.5, DEV-10.1); two tests are wrong today:
-      `test_select_stream.py::test_graph_not_loaded_returns_503` mocks `loaded` while the route
-      calls `ensure_loaded`, and `test_catchment_graph.py::test_lock_exists` uses
-      `isinstance(..., threading.Lock)`, which raises on Python 3.12.
-   6. `scripts/gate.sh` and `scripts/check-commits.sh` (they run in `backend/`; the commit step
-      in the repository root), CI from `standards/ci` in the `app` variant (gate on Linux, a
-      `db` job with PostGIS, audit), Dependabot (DEV-7.6, DEV-7.7, DEV-13.6).
-   7. `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, `.github/PULL_REQUEST_TEMPLATE.md`
-      (without the CLA text).
-   8. `CLAUDE.md` in English within 200 lines with the profile, Deviations and the code map;
-      delete `docs/DEVELOPMENT_STANDARDS.md` (DEV-1.3); README in English in the order of DOC-2.1
-      (profile `app`: Run and Deploy), at most 400 lines; ADR index at the top of
-      `docs/DECISIONS.md` and a new ADR for the adoption (DOC-8.2).
-   9. Translate to English (DEV-2.1, ECO-005), most useful first: CHANGELOG (sections as
-      DOC-7.1), ARCHITECTURE, DECISIONS, DATA_MODEL, `docs/integrations/*`, SCOPE, PRD,
-      COMPUTATION_PIPELINE, QA_REPORT, TECHNICAL_DEBT, BENCHMARK_QUERIES, CROSS_PROJECT_ANALYSIS,
-      BACKLOG, `backend/scripts/README.md`; then docstrings, comments and log messages of the
-      23,700 lines of Python, and user-facing texts into translation resources (DEV-2.3,
-      DEV-15.2). The 40 plans of the ignored `notes/superpowers/plans/` move to `docs/plans/`
-      after translation, without `Approved:` lines (the author approves).
-   10. Error registry and REST: vendored `error_registry.json` and `schemas/agent/` from the
-       Nogat commit `cc656e7` in `schemas/nogat/`, `scripts/generate_errors.py`, generated
-       `core/_errors.py`, `HydrografError` with `code`, `message`, `details`, `hint`
-       (DEV-11.1); `application/problem+json` for every error with `type`, `title`, `status`,
-       `detail`, `instance`, `code`, `hint`, `details` and `errors[]` with JSON Pointers; the
-       status from the registry (validation errors become 400, not 422); English texts by
-       default and Polish with `Accept-Language: pl` (the front end sends it); OpenAPI
-       `operationId` from `generate_unique_id_function`; contract tests (AGI-6.2 to AGI-6.4,
-       AGI-6.6, ERR-3, ERR-4). The 68 `HTTPException`s in `backend/api` are the starting point.
-   11. Other gaps found, not in scope of a step: logs use f-strings (DEV-12.3), 60 lines of
-       JavaScript are longer than 100 columns and the modules are IIFEs, not ES modules
-       (DEV-15.1), the front end has Polish text inline (DEV-15.2), `tests/performance` stands
-       beside the standard tree (DEV-5.2). Deviations are recorded in CLAUDE.md.
+   - **Format and lint.** `ruff format` over `backend/` (67 files), then the rule set of
+     DEV-7.2 (`W`, `C4`, `D` added; 187 findings today, about 70 more with `D`; tests ignore
+     `D`).
+   - **mypy.** `strict` over `backend/` (2,313 errors today, 426 of them outside `tests/`):
+     fix what is mechanical, per-module overrides for the rest, listed in CLAUDE.md (DEV-7.3).
+   - **pytest.** `--strict-markers`, markers `live`, `db`, `slow` (plus `benchmark`),
+     `tests/contract`, coverage floor 80 (DEV-7.5, DEV-10.1).
+   - **Gate and CI.** `scripts/gate.sh` and `scripts/check-commits.sh` (they run in
+     `backend/`; the commit step in the repository root; `.pre-commit-config.yaml` goes), CI from
+     `standards/ci` in the `app` variant (gate on Linux, a `db` job with PostGIS, audit),
+     Dependabot (DEV-7.6, DEV-7.7, DEV-13.6).
+   - **Contribution files.** `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`,
+     `.github/PULL_REQUEST_TEMPLATE.md` (without the CLA text).
+   - **CLAUDE.md, README, ADR.** `CLAUDE.md` in English within 200 lines with the profile,
+     Deviations and the code map; delete `docs/DEVELOPMENT_STANDARDS.md` (DEV-1.3); README in
+     English in the order of DOC-2.1 (profile `app`: Run and Deploy), at most 400 lines; ADR
+     index at the top of `docs/DECISIONS.md` and a new ADR for the adoption (DOC-8.2).
+   - **Translations** to English (DEV-2.1, ECO-005), most useful first: CHANGELOG (sections
+     as DOC-7.1), ARCHITECTURE, DECISIONS, DATA_MODEL, `docs/integrations/*`, SCOPE, PRD,
+     COMPUTATION_PIPELINE, QA_REPORT, TECHNICAL_DEBT, BENCHMARK_QUERIES,
+     CROSS_PROJECT_ANALYSIS, BACKLOG, `backend/scripts/README.md`; then docstrings, comments
+     and log messages of the 23,700 lines of Python, and user-facing texts into translation
+     resources (DEV-2.3, DEV-15.2). The 40 plans of the ignored `notes/superpowers/plans/`
+     move to `docs/plans/` after translation, without `Approved:` lines (the author approves).
+   - **Error registry and REST.** Vendored `error_registry.json` and `schemas/agent/` from
+     the Nogat commit `cc656e7` in `schemas/nogat/`, `scripts/generate_errors.py`, generated
+     `core/_errors.py`, `HydrografError` with `code`, `message`, `details`, `hint`
+     (DEV-11.1); `application/problem+json` for every error with `type`, `title`, `status`,
+     `detail`, `instance`, `code`, `hint`, `details` and `errors[]` with JSON Pointers; the
+     status from the registry (validation errors become 400, not 422); English texts by
+     default and Polish with `Accept-Language: pl` (the front end sends it); OpenAPI
+     `operationId` from `generate_unique_id_function`; contract tests (AGI-6.2 to AGI-6.4,
+     AGI-6.6, ERR-3, ERR-4). The 68 `HTTPException`s in `backend/api` are the starting point.
+   - **Other gaps found**, not in scope of a step: logs use f-strings (DEV-12.3), 60 lines of
+     JavaScript are longer than 100 columns and the modules are IIFEs, not ES modules
+     (DEV-15.1), the front end has Polish text inline (DEV-15.2), `tests/performance` stands
+     beside the standard tree (DEV-5.2). Deviations are recorded in CLAUDE.md.
 2. **Migrate to the producers' heads after the first release set** (Nogat plans
    `2026-10-24-data-output.md` step 8 and `2026-10-20-first-release-set.md` step 8; pins stay
    until then). Probe of 2026-10-25 in a throwaway environment, committed nowhere: Kartograf

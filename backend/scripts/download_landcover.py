@@ -107,8 +107,7 @@ def download_landcover(
         from kartograf.landcover import LandCoverManager
     except ImportError as e:
         logger.error(
-            "Kartograf 0.7.0 not installed. Install with: "
-            "pip install git+https://github.com/Daldek/Kartograf.git@v0.7.0"
+            "Kartograf 0.7.0 not installed. Run `uv sync --locked` in backend/."
         )
         raise ImportError("Kartograf library not found or version too old") from e
 

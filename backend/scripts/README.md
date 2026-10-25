@@ -7,7 +7,7 @@ Skrypty do jednorazowego przetwarzania danych wejściowych przed uruchomieniem s
 - Python 3.12+ ze środowiskiem wirtualnym (`backend/.venv`)
 - Uruchomiona baza PostgreSQL/PostGIS
 - Wykonane migracje Alembic
-- [Kartograf 0.7.0](https://github.com/Daldek/Kartograf) (automatycznie instalowany z requirements.txt)
+- [Kartograf 0.7.0](https://github.com/Daldek/Kartograf) (instalowany przez `uv sync --locked` z `backend/uv.lock`)
   - NMT/NMPT: Dane wysokościowe z GUGiK
   - BDOT10k: Dane o pokryciu terenu z GUGiK (12 warstw)
   - BDOT10k hydro: Dane hydrograficzne z GUGiK (SWRS rzeki, SWKN kanały, SWRM rowy, PTWP wody)

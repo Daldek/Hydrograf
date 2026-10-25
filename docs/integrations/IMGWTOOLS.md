@@ -275,7 +275,7 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 ### 11.1 Instalacja
 
 ```
-# W backend/requirements.txt:
+# W backend/pyproject.toml (dependencies):
 imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
 ```
 

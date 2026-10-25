@@ -4,9 +4,8 @@ Hydrograf — hub hydrologiczny (FastAPI + PostGIS + Hydrolog + Kartograf + IMGW
 
 ## Srodowisko Python
 
-Uzywaj srodowiska wirtualnego z `backend/.venv`:
+Srodowisko tworzy uv z `backend/uv.lock` (`cd backend && uv sync --locked`), komendy przez `uv run`:
 - Python: `backend/.venv/bin/python`
-- Pip: `backend/.venv/bin/pip`
 - Wymagany Python: 3.12+
 
 ## Uruchamianie uslugi
@@ -132,7 +131,7 @@ Jesli prostsze rozwiazanie jest wolniejsze, wybierz prostsze. Jesli bezpieczniej
 
 ### Biblioteki wlasne
 - **Hydrolog**, **Kartograf**, **IMGWTools** — dostepne z GitHub, nie z PyPI
-- Wersje: `backend/requirements.txt`
+- Wersje: `backend/pyproject.toml` (zakresy i tagi), dokladne wersje: `backend/uv.lock`
 - Szczegoly integracji: `docs/integrations/*.md`, `docs/CROSS_PROJECT_ANALYSIS.md`
 
 ### Kluczowe ograniczenia
