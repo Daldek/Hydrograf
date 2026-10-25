@@ -140,6 +140,32 @@ def transform_polygon_pl1992_to_wgs84(polygon: Polygon) -> Polygon:
     return Polygon(exterior, interiors)
 
 
+def transform_polygon_wgs84_to_pl1992(polygon: Polygon) -> Polygon:
+    """
+    Transform Polygon from WGS84 to PL-1992.
+
+    Parameters
+    ----------
+    polygon : Polygon
+        Shapely Polygon in EPSG:4326 (WGS84), coordinates as (lon, lat)
+
+    Returns
+    -------
+    Polygon
+        Shapely Polygon in EPSG:2180 (PL-1992)
+    """
+    transformer = _get_transformer_wgs84_to_pl1992()
+
+    def transform_coords(coords: list[Any]) -> list[Any]:
+        """Transform list of coordinate tuples."""
+        return [transformer.transform(lon, lat) for lon, lat in coords]
+
+    exterior = transform_coords(polygon.exterior.coords)
+    interiors = [transform_coords(ring.coords) for ring in polygon.interiors]
+
+    return Polygon(exterior, interiors)
+
+
 def polygon_to_geojson_feature(
     polygon: Polygon, properties: dict[str, Any] | None = None
 ) -> dict[str, Any]:

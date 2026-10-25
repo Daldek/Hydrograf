@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from shapely.geometry import Polygon
 
-from core.watershed import FlowCell
+from models.schemas import MorphometricParameters
 from scripts.analyze_watershed import (
     AnalysisConfig,
     calculate_morphometry,
@@ -18,41 +18,25 @@ from scripts.analyze_watershed import (
 )
 
 
-def _cell(
-    cell_id: int,
-    x: float,
-    y: float,
-    elevation: float,
-    downstream_id: int | None,
-    *,
-    is_stream: bool,
-) -> FlowCell:
-    return FlowCell(
-        id=cell_id,
-        x=x,
-        y=y,
-        elevation=elevation,
-        flow_accumulation=1,
-        slope=3.0,
-        downstream_id=downstream_id,
-        cell_area=10000.0,
-        is_stream=is_stream,
-    )
-
-
 @pytest.fixture
 def watershed() -> dict[str, Any]:
-    """Five 100 m cells draining to the outlet at (0, 0)."""
-    cells = [
-        _cell(1, 0, 0, 100.0, None, is_stream=True),
-        _cell(2, 100, 0, 110.0, 1, is_stream=True),
-        _cell(3, 200, 0, 115.0, 2, is_stream=False),
-        _cell(4, 0, 100, 125.0, 1, is_stream=False),
-        _cell(5, 100, 100, 120.0, 2, is_stream=False),
-    ]
+    """A 3 km2 catchment as step 3 returns it: the morphometry of the API."""
+    morphometry = MorphometricParameters(
+        area_km2=3.0,
+        perimeter_km=8.0,
+        length_km=2.5,
+        elevation_min_m=100.0,
+        elevation_max_m=125.0,
+        elevation_mean_m=112.0,
+        mean_slope_m_per_m=0.03,
+        channel_length_km=2.4,
+        channel_slope_m_per_m=0.01,
+        compactness_coefficient=1.3,
+        circularity_ratio=0.6,
+        relief_ratio=14.4,
+    )
     return {
-        "cells": cells,
-        "outlet": cells[0],
+        "morphometry": morphometry.model_dump(),
         "boundary": Polygon([(0, 0), (300, 0), (300, 200), (0, 200)]),
         "boundary_wgs84": [[17.0, 52.0], [17.01, 52.0], [17.01, 52.01]],
     }

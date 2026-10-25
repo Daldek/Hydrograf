@@ -416,19 +416,12 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
 
 #### 2.4.1 `core/watershed.py`
 **Responsibilities:**
-- Finding the nearest stream
-- Upstream graph traversal
-- Building the watershed boundary
+- The `FlowCell` dataclass
+- Building a watershed boundary from cells (`build_boundary`, `build_boundary_polygonize`)
 
-**Main functions:**
-```python
-# Legacy CLI functions (replaced by watershed_service.py for runtime API):
-def find_nearest_stream(lat, lon) -> int | None: ...
-def traverse_upstream(outlet_id: int) -> list[Cell]: ...
-
-# Still used:
-def build_boundary(cells: list[Cell]) -> GeoJSON: ...
-```
+The delineation itself (nearest catchment, upstream traversal over the catchment graph, boundary
+merge) is in `core/watershed_service.py` and `core/catchment_graph.py`; the API endpoint and
+`scripts/analyze_watershed.py` both run it through `POST /api/delineate-watershed`.
 
 #### 2.4.2 `core/morphometry.py`
 **Responsibilities:**
