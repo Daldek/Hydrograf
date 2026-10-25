@@ -80,7 +80,7 @@ class AnalysisConfig:
     precipitation_scenarios_mm: list[float] | None = None
 
     # Metoda czasu koncentracji
-    tc_method: str = "kirpich"  # kirpich, scs, giandotti
+    tc_method: str = "kirpich"  # kirpich, nrcs, giandotti
 
     # Parametry przetwarzania
     stream_threshold: int = 1000  # Próg akumulacji dla cieków
@@ -552,7 +552,7 @@ def generate_hydrograph(
             # Uproszczona metoda dla krótkich opadów
             scs = SCSCN(cn=cn)
             eff_result = scs.effective_precipitation(P_mm)
-            Q_mm = eff_result.effective_mm
+            Q_mm = eff_result.total_effective_mm
             Qmax = q_peak_unit * Q_mm
 
         scenarios.append(
@@ -583,7 +583,7 @@ def generate_hydrograph(
         uh_result = uh.generate(timestep_min=timestep)
         scs = SCSCN(cn=cn)
         runoff_result = scs.effective_precipitation(P_design)
-        Q_design = runoff_result.effective_mm
+        Q_design = runoff_result.total_effective_mm
         hydrograph_times = uh_result.times_min.tolist()
         hydrograph_q = (uh_result.ordinates_m3s * Q_design).tolist()
         Qmax_design = max(hydrograph_q)
@@ -1238,7 +1238,7 @@ def main():
     )
     hydro.add_argument(
         "--tc-method",
-        choices=["kirpich", "scs", "giandotti"],
+        choices=["kirpich", "nrcs", "giandotti"],
         default="kirpich",
         help="Metoda czasu koncentracji",
     )
