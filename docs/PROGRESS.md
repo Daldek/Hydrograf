@@ -86,12 +86,18 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    - **Other gaps found**, not in scope of a step: logs use f-strings (DEV-12.3), 60 lines of
      JavaScript are longer than 100 columns and the modules are IIFEs, not ES modules
      (DEV-15.1), the front end has Polish text inline (DEV-15.2), `tests/performance` stands
-     beside the standard tree (DEV-5.2). Deviations are recorded in CLAUDE.md. Found by mypy and
-     marked `# type: ignore[attr-defined]  # stale, PROGRESS`: `scripts/analyze_watershed.py`
-     imports `find_nearest_stream` and `traverse_upstream` from `core.watershed`, which has neither,
-     so its delineation (step 3) fails at run time. The calls of `process_dem` in `prepare_area.py`
-     and `analyze_watershed.py` that passed parameters it had lost (`batch_size`,
-     `stream_threshold`) are fixed and tested (`tests/unit/test_process_dem_callers.py`).
+     beside the standard tree (DEV-5.2). Deviations are recorded in CLAUDE.md. Found by mypy:
+     `scripts/analyze_watershed.py` imported `find_nearest_stream` and `traverse_upstream` from
+     `core.watershed`, which has neither, so its delineation (step 3) failed at run time; fixed:
+     step 3 calls the route function of `POST /api/delineate-watershed` (precomputed mode), step 4
+     takes the morphometry from it, and `tests/unit/test_analyze_watershed_delineate.py` runs the
+     steps on a synthetic graph offline. `FlowCell`, `build_boundary`,
+     `calculate_watershed_area_km2` (`core/watershed.py`) and the cell functions of
+     `core/morphometry.py` (`build_morphometric_params`, `find_main_stream` and the like) have no
+     caller outside their tests now; deleting them with their tests is the author's call. The
+     calls of `process_dem` in `prepare_area.py` and `analyze_watershed.py` that passed parameters
+     it had lost (`batch_size`, `stream_threshold`) are fixed and tested
+     (`tests/unit/test_process_dem_callers.py`).
      Found by the tests of `load_bdot_streams_from_gpkg` (`core/db_bulk.py`), not fixed: a
      feature with an empty name column gets the name `'nan'` (a pandas NaN is truthy), and a
      feature without geometry stops the load (`row.geometry` is NaN, so `.is_empty` fails).

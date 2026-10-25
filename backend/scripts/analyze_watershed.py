@@ -39,8 +39,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
+from core.constants import DEFAULT_THRESHOLD_M2
 from utils.kartograf_store import metadata_cache_path, store_dir
 
 # Configure logging
@@ -86,9 +85,8 @@ class AnalysisConfig:
     tc_method: str = "kirpich"  # kirpich, nrcs, giandotti
 
     # Parametry przetwarzania
-    max_cells: int = 10_000_000  # Maksymalna liczba komórek zlewni
+    threshold_m2: int = DEFAULT_THRESHOLD_M2  # Próg akumulacji zlewni cząstkowych [m²]
     timestep_min: float = 5.0  # Krok czasowy hydrogramu [min]
-    max_stream_distance_m: float = 500.0  # Maks. odległość szukania cieku [m]
     dem_resolution_m: float = 1.0  # Rozdzielczość DEM [m] (1.0 = oryginalna)
 
     # Ścieżki
@@ -229,61 +227,70 @@ def process_nmt_data(config: AnalysisConfig, input_files: list[Path]) -> dict[st
 
 
 def delineate_watershed(config: AnalysisConfig, db) -> dict[str, Any]:
-    """Wyznacz zlewnię dla punktu."""
+    """Wyznacz zlewnię dla punktu.
+
+    Uruchamia ten sam kod co API (``POST /api/delineate-watershed``, tryb
+    precomputed: graf zlewni, kaskada progów, scalona granica, morfometria
+    z grafu), nie ma tu drugiej implementacji.
+    """
     logger.info("=" * 60)
     logger.info("KROK 3: Wyznaczanie zlewni")
     logger.info("=" * 60)
 
-    from core.watershed import (  # type: ignore[attr-defined]  # stale, PROGRESS
-        build_boundary,
-        calculate_watershed_area_km2,
-        find_nearest_stream,
-        traverse_upstream,
+    from fastapi import Response
+    from shapely.geometry import Polygon, shape
+
+    from api.endpoints.watershed import delineate_watershed as delineate_endpoint
+    from models.schemas import DelineateRequest
+    from utils.geometry import (
+        transform_polygon_wgs84_to_pl1992,
+        transform_wgs84_to_pl1992,
     )
-    from utils.geometry import transform_pl1992_to_wgs84, transform_wgs84_to_pl1992
 
-    # Transformacja współrzędnych
-    point = transform_wgs84_to_pl1992(config.latitude, config.longitude)
     logger.info(f"Punkt: ({config.latitude}, {config.longitude}) WGS84")
-    logger.info(f"Punkt: ({point.x:.1f}, {point.y:.1f}) EPSG:2180")
+    logger.info(f"Próg akumulacji: {config.threshold_m2} m²")
 
-    # Znajdź najbliższą komórkę cieku
     start = time.time()
-    outlet = find_nearest_stream(point, db, max_distance_m=config.max_stream_distance_m)
+    delineation = delineate_endpoint(
+        DelineateRequest(
+            latitude=config.latitude,
+            longitude=config.longitude,
+            threshold_m2=config.threshold_m2,
+        ),
+        Response(),
+        db=db,
+    )
+    result = delineation.watershed
+    if delineation.info_message:
+        logger.info(delineation.info_message)
 
-    if not outlet:
-        raise ValueError("Nie znaleziono cieku w pobliżu punktu!")
+    boundary_wgs84 = shape(result.boundary_geojson["geometry"])
+    if not isinstance(boundary_wgs84, Polygon):
+        raise TypeError(
+            f"Granica zlewni nie jest wielokątem: {boundary_wgs84.geom_type}"
+        )
+    boundary = transform_polygon_wgs84_to_pl1992(boundary_wgs84)
 
-    logger.info(f"Znaleziono outlet: ID={outlet.id}, acc={outlet.flow_accumulation:,}")
-
-    # Wyznacz zlewnię (upstream traversal)
-    cells = traverse_upstream(outlet.id, db, max_cells=config.max_cells)
-    logger.info(f"Komórek w zlewni: {len(cells):,}")
-
-    # Zbuduj granicę (polygonize = dokładna granica śledząca komórki)
-    # Oblicz rzeczywisty cell_size z cell_area (sqrt), nie z konfiguracji
-    # (resampling może dać nieokrągłą wartość, np. 5.0015 zamiast 5.0)
-    actual_cell_size = (cells[0].cell_area ** 0.5) if cells else config.dem_resolution_m
-    boundary = build_boundary(cells, method="polygonize", cell_size=actual_cell_size)
-    area_km2 = calculate_watershed_area_km2(cells)
-
+    catchment_count = len(delineation.upstream_segment_indices or [])
     elapsed = time.time() - start
-    logger.info(f"Powierzchnia: {area_km2:.2f} km²")
+    logger.info(f"Zlewni cząstkowych: {catchment_count:,}")
+    logger.info(f"Powierzchnia: {result.area_km2:.2f} km²")
     logger.info(f"Czas delineacji: {elapsed:.1f}s")
 
-    # Konwersja granicy do WGS84
-    boundary_wgs84 = []
-    for x, y in boundary.exterior.coords:
-        lat, lon = transform_pl1992_to_wgs84(x, y)
-        boundary_wgs84.append([lon, lat])
-
     return {
-        "outlet": outlet,
-        "cells": cells,
+        "outlet": result.outlet.model_dump(),
+        "outlet_point": transform_wgs84_to_pl1992(
+            result.outlet.latitude, result.outlet.longitude
+        ),
         "boundary": boundary,
-        "boundary_wgs84": boundary_wgs84,
-        "area_km2": area_km2,
-        "cell_count": len(cells),
+        "boundary_wgs84": [list(c) for c in boundary_wgs84.exterior.coords],
+        "area_km2": result.area_km2,
+        "catchment_count": catchment_count,
+        "morphometry": (
+            result.morphometry.model_dump() if result.morphometry is not None else {}
+        ),
+        "hypsometric_curve": [p.model_dump() for p in result.hypsometric_curve or []],
+        "main_stream_geojson": result.main_stream_geojson,
         "elapsed_s": elapsed,
     }
 
@@ -291,13 +298,16 @@ def delineate_watershed(config: AnalysisConfig, db) -> dict[str, Any]:
 def calculate_morphometry(
     config: AnalysisConfig, watershed: dict[str, Any], db
 ) -> dict[str, Any]:
-    """Oblicz parametry morfometryczne zlewni."""
+    """Uzupełnij morfometrię zlewni o CN.
+
+    Morfometria pochodzi z kroku 3 (te same liczby co w API); tu dochodzi CN
+    wg hierarchii ``determine_cn``.
+    """
     logger.info("=" * 60)
     logger.info("KROK 4: Obliczanie morfometrii")
     logger.info("=" * 60)
 
     from core.land_cover import determine_cn
-    from core.morphometry import build_morphometric_params
 
     # Okresl CN - zunifikowana logika w determine_cn()
     cn, cn_source, cn_details = determine_cn(
@@ -311,27 +321,19 @@ def calculate_morphometry(
         teryt=config.teryt,
     )
 
-    start = time.time()
-    morph = build_morphometric_params(
-        cells=watershed["cells"],
-        boundary=watershed["boundary"],
-        outlet=watershed["outlet"],
-        cn=cn,
-        include_stream_coords=config.save_qgis_layers,
-    )
-    elapsed = time.time() - start
-
-    logger.info(f"Dlugosc cieku: {morph['channel_length_km']:.2f} km")
-    logger.info(f"Spadek cieku: {morph['channel_slope_m_per_m'] * 100:.2f}%")
-    logger.info(f"Wysokosc srednia: {morph['elevation_mean_m']:.1f} m")
+    morph = dict(watershed["morphometry"])
+    if morph.get("channel_length_km") is not None:
+        logger.info(f"Dlugosc cieku: {morph['channel_length_km']:.2f} km")
+    if morph.get("channel_slope_m_per_m") is not None:
+        logger.info(f"Spadek cieku: {morph['channel_slope_m_per_m'] * 100:.2f}%")
+    if morph.get("elevation_mean_m") is not None:
+        logger.info(f"Wysokosc srednia: {morph['elevation_mean_m']:.1f} m")
     logger.info(f"CN: {cn} (zrodlo: {cn_source})")
-    logger.info(f"Czas obliczen: {elapsed:.1f}s")
 
     morph["cn"] = cn
     morph["cn_source"] = cn_source
     if cn_details:
         morph["cn_details"] = cn_details
-    morph["elapsed_s"] = elapsed
 
     return morph
 
@@ -656,7 +658,7 @@ def save_qgis_layers(
     logger.info("=" * 60)
 
     import geopandas as gpd
-    from shapely.geometry import LineString, Point
+    from shapely.geometry import shape
 
     qgis_dir = config.output_dir / "qgis"
     qgis_dir.mkdir(parents=True, exist_ok=True)
@@ -666,7 +668,10 @@ def save_qgis_layers(
 
     # 1. Granica zlewni (polygon)
     boundary_gdf = gpd.GeoDataFrame(
-        {"area_km2": [watershed["area_km2"]], "cell_count": [watershed["cell_count"]]},
+        {
+            "area_km2": [watershed["area_km2"]],
+            "catchment_count": [watershed["catchment_count"]],
+        },
         geometry=[watershed["boundary"]],
         crs=crs,
     )
@@ -675,33 +680,11 @@ def save_qgis_layers(
     output_files["boundary"] = path
     logger.info(f"  ✅ {path.name}")
 
-    # 2. Komórki zlewni (punkty)
-    cells_data = [
-        {
-            "id": c.id,
-            "elevation": c.elevation,
-            "flow_acc": c.flow_accumulation,
-            "slope": c.slope,
-            "is_stream": c.is_stream,
-            "geometry": Point(c.x, c.y),
-        }
-        for c in watershed["cells"]
-    ]
-    cells_gdf = gpd.GeoDataFrame(cells_data, crs=crs)
-    path = qgis_dir / "watershed_cells.gpkg"
-    cells_gdf.to_file(path, driver="GPKG")
-    output_files["cells"] = path
-    logger.info(f"  ✅ {path.name}")
-
-    # 3. Outlet (punkt)
+    # 2. Outlet (punkt)
     outlet = watershed["outlet"]
     outlet_gdf = gpd.GeoDataFrame(
-        {
-            "id": [outlet.id],
-            "elevation": [outlet.elevation],
-            "flow_acc": [outlet.flow_accumulation],
-        },
-        geometry=[Point(outlet.x, outlet.y)],
+        {"elevation": [outlet["elevation_m"]]},
+        geometry=[watershed["outlet_point"]],
         crs=crs,
     )
     path = qgis_dir / "outlet.gpkg"
@@ -709,24 +692,25 @@ def save_qgis_layers(
     output_files["outlet"] = path
     logger.info(f"  ✅ {path.name}")
 
-    # 4. Ciek główny (linia) - jeśli mamy współrzędne
-    if "main_stream_coords" in morph and morph["main_stream_coords"]:
-        coords = morph["main_stream_coords"]
-        if len(coords) >= 2:
-            stream_gdf = gpd.GeoDataFrame(
-                {
-                    "length_km": [morph["channel_length_km"]],
-                    "slope_m_per_m": [morph["channel_slope_m_per_m"]],
-                },
-                geometry=[LineString(coords)],
-                crs=crs,
+    # 3. Ciek główny (linie, WGS84 z API) - jeśli API go zwróciło
+    main_stream = watershed["main_stream_geojson"]
+    if main_stream:
+        if main_stream["type"] == "FeatureCollection":
+            stream_gdf = gpd.GeoDataFrame.from_features(
+                main_stream["features"], crs="EPSG:4326"
             )
-            path = qgis_dir / "main_stream.gpkg"
-            stream_gdf.to_file(path, driver="GPKG")
-            output_files["main_stream"] = path
-            logger.info(f"  ✅ {path.name}")
+        else:
+            stream_gdf = gpd.GeoDataFrame(
+                geometry=[shape(main_stream)], crs="EPSG:4326"
+            )
+        stream_gdf["length_km"] = morph["channel_length_km"]
+        stream_gdf["slope_m_per_m"] = morph["channel_slope_m_per_m"]
+        path = qgis_dir / "main_stream.gpkg"
+        stream_gdf.to_crs(crs).to_file(path, driver="GPKG")
+        output_files["main_stream"] = path
+        logger.info(f"  ✅ {path.name}")
 
-    # 5. Sieć cieków (linie) - wszystkie cieki z bazy danych
+    # 4. Sieć cieków (linie) - wszystkie cieki z bazy danych
     try:
         stream_lines = extract_stream_network(qgis_dir, crs)
         if stream_lines:
@@ -879,18 +863,24 @@ def generate_visualizations(
     # 3. Profil + parametry
     fig3, (ax3a, ax3b) = plt.subplots(1, 2, figsize=(14, 5))
 
-    elevations = np.array([c.elevation for c in watershed["cells"]])
-    ax3a.hist(elevations, bins=50, color="saddlebrown", edgecolor="black", alpha=0.7)
-    ax3a.axvline(
+    curve = watershed["hypsometric_curve"]
+    relief_m = morph["elevation_max_m"] - morph["elevation_min_m"]
+    ax3a.plot(
+        [p["relative_area"] for p in curve],
+        [morph["elevation_min_m"] + p["relative_height"] * relief_m for p in curve],
+        color="saddlebrown",
+        lw=2,
+    )
+    ax3a.axhline(
         morph["elevation_mean_m"],
         color="red",
         ls="--",
         lw=2,
         label=f"Średnia: {morph['elevation_mean_m']:.1f}m",
     )
-    ax3a.set_xlabel("Wysokość [m n.p.m.]", fontsize=11)
-    ax3a.set_ylabel("Liczba komórek", fontsize=11)
-    ax3a.set_title("Rozkład wysokości", fontsize=12)
+    ax3a.set_xlabel("Względna powierzchnia a/A", fontsize=11)
+    ax3a.set_ylabel("Wysokość [m n.p.m.]", fontsize=11)
+    ax3a.set_title("Krzywa hipsometryczna", fontsize=12)
     ax3a.legend()
 
     ax3b.axis("off")
@@ -984,7 +974,7 @@ def save_results(
         },
         "watershed": {
             "area_km2": round(watershed["area_km2"], 4),
-            "cell_count": watershed["cell_count"],
+            "catchment_count": watershed["catchment_count"],
             "boundary_geojson": {
                 "type": "Feature",
                 "properties": {"area_km2": round(watershed["area_km2"], 2)},
@@ -1220,10 +1210,13 @@ def main():
         "--tiles", type=str, nargs="+", help="Lista godeł kafli NMT (zamiast --buffer)"
     )
     loc.add_argument(
-        "--max-stream-distance",
-        type=float,
-        default=500.0,
-        help="Maks. odległość szukania cieku [m] (default: 500)",
+        "--threshold-m2",
+        type=int,
+        default=DEFAULT_THRESHOLD_M2,
+        help=(
+            "Próg akumulacji zlewni cząstkowych [m²], jak w API "
+            f"(default: {DEFAULT_THRESHOLD_M2})"
+        ),
     )
 
     # Parametry hydrologiczne
@@ -1314,7 +1307,7 @@ def main():
         longitude=args.lon,
         buffer_km=args.buffer,
         tiles=args.tiles,
-        max_stream_distance_m=args.max_stream_distance,
+        threshold_m2=args.threshold_m2,
         cn=args.cn,
         teryt=args.teryt,
         probability=args.probability,
