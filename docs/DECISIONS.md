@@ -67,6 +67,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-057](#adr-057-pozyskiwanie-danych-wylacznie-przez-kartograf) | Spatial data only through Kartograf | accepted | 2026-09-28 |
 | [ADR-058](decisions/0058-adopt-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | accepted | 2026-10-25 |
 | [ADR-059](decisions/0059-rest-errors-as-problem-json.md) | REST errors as problem+json with registry codes | accepted | 2026-10-25 |
+| [ADR-060](decisions/0060-pin-producer-heads-by-commit.md) | Pin the Hydrolog and IMGWTools heads by commit | accepted | 2026-10-25 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were

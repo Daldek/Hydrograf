@@ -1057,8 +1057,8 @@ requires-dist = [
     { name = "geoalchemy2", specifier = ">=0.14.3" },
     { name = "geojson", specifier = ">=3.1.0" },
     { name = "geopandas", specifier = ">=0.14.2" },
-    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=v0.6.3" },
-    { name = "imgwtools", git = "https://github.com/Daldek/IMGWTools.git?rev=v2.1.0" },
+    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=6c9ba5afae65c601c447f48f5c1412e93f3a1d60" },
+    { name = "imgwtools", git = "https://github.com/Daldek/IMGWTools.git?rev=a30452182b01f47cc18e48466da4edf4d0c8cb6a" },
     { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=v0.7.0" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "numba", specifier = ">=0.58" },
@@ -1097,10 +1097,12 @@ dev = [
 
 [[package]]
 name = "hydrolog"
-version = "0.6.3"
-source = { git = "https://github.com/Daldek/Hydrolog.git?rev=v0.6.3#cd325c38c021def3a587225442a667150c858ff5" }
+version = "1.0.0.dev0"
+source = { git = "https://github.com/Daldek/Hydrolog.git?rev=6c9ba5afae65c601c447f48f5c1412e93f3a1d60#6c9ba5afae65c601c447f48f5c1412e93f3a1d60" }
 dependencies = [
     { name = "numpy" },
+    { name = "platformdirs" },
+    { name = "scipy" },
 ]
 
 [[package]]
@@ -1114,11 +1116,13 @@ wheels = [
 
 [[package]]
 name = "imgwtools"
-version = "2.1.0"
-source = { git = "https://github.com/Daldek/IMGWTools.git?rev=v2.1.0#4bacf36173a9b463e1b838cea2519b9444ffb767" }
+version = "3.0.0"
+source = { git = "https://github.com/Daldek/IMGWTools.git?rev=a30452182b01f47cc18e48466da4edf4d0c8cb6a#a30452182b01f47cc18e48466da4edf4d0c8cb6a" }
 dependencies = [
     { name = "httpx" },
+    { name = "platformdirs" },
     { name = "pydantic" },
+    { name = "pydantic-settings" },
 ]
 
 [[package]]
@@ -1912,6 +1916,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8e/ed/d504165ef79af6fafe25c76726cf30f544cc236002f7ed054f1d51adc4ff/pillow-13.0.0-pp312-pypy312_pp80-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:93ff9c9c3663ce23aaa5d0b6b6abac55359e2a0c06c7e30f3771829af816be63", size = 5464358, upload-time = "2026-10-16T22:18:02.779Z" },
     { url = "https://files.pythonhosted.org/packages/7b/fe/a10aba5503ca13e9e009b8bd0a1a4ce5584bdce246245fd6f3a83701369c/pillow-13.0.0-pp312-pypy312_pp80-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e65dd6e75de67b2362a4fa3e16aa627595f65054dc4ec73d64680c84d592fa61", size = 6043514, upload-time = "2026-10-16T22:18:04.538Z" },
     { url = "https://files.pythonhosted.org/packages/c0/37/66b12dc476041fe523bca29c9d58fbf1ea92a4eaf73acfb9e993948f1191/pillow-13.0.0-pp312-pypy312_pp80-win_amd64.whl", hash = "sha256:567f20f1c75897d7663830da6ea8af719e03d712b1d9ee7f813319f9ece42e5a", size = 7366030, upload-time = "2026-10-16T22:18:06.638Z" },
+]
+
+[[package]]
+name = "platformdirs"
+version = "4.13.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/e6/d0abbb256b44e6a05748c6942511ff67db8dbb068de0c35b24bf1b395b09/platformdirs-4.13.5.tar.gz", hash = "sha256:05831adf87d392760f4b5c3a0a95579ab5a10b18b9b9bd43680dcb47544788a0", size = 62362, upload-time = "2026-10-19T01:02:11.778Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/8a/1d8cb3842909dc193a73835adedf412e32e18f8ffd59f43983949622fe6f/platformdirs-4.13.5-py3-none-any.whl", hash = "sha256:53d3ec4280b815c1e0b02edad7f9ee8fda1ba9c0865dd9c2e6e63849ce82fc1e", size = 32779, upload-time = "2026-10-19T01:02:10.17Z" },
 ]
 
 [[package]]
