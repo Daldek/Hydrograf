@@ -342,8 +342,17 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> dict[str, Any] | None:
     logger.info("=" * 60)
 
     try:
-        from imgwtools import fetch_pmaxtp
+        from imgwtools import (
+            IMGWConnectionError,
+            IMGWDataError,
+            IMGWValidationError,
+            fetch_pmaxtp,
+        )
+    except ImportError:
+        logger.warning("IMGWTools nie zainstalowane, użyto wartości domyślnych")
+        return None
 
+    try:
         logger.info(f"Punkt: ({config.latitude}, {config.longitude})")
         logger.info(f"Prawdopodobieństwo: {config.probability}%")
         logger.info(f"Czas trwania: {config.duration_min} min")
@@ -435,10 +444,9 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> dict[str, Any] | None:
             },
         }
 
-    except ImportError:
-        logger.warning("IMGWTools nie zainstalowane, użyto wartości domyślnych")
-        return None
-    except Exception as e:
+    except (IMGWConnectionError, IMGWDataError, IMGWValidationError) as e:
+        # Bledy IMGWTools wymienione w fetch_pmaxtp; kazdy inny wyjatek to blad
+        # programu lub zmiana API i ma sie ujawnic, a nie wygladac jak brak opadu.
         logger.error("Błąd pobierania z IMGW: %s", e, exc_info=True)
         return None
 

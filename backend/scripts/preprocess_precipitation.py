@@ -217,7 +217,12 @@ async def fetch_pmaxtp_for_point(
         {(duration_str, probability): precipitation_mm}
     """
     try:
-        from imgwtools import fetch_pmaxtp
+        from imgwtools import (
+            IMGWConnectionError,
+            IMGWDataError,
+            IMGWValidationError,
+            fetch_pmaxtp,
+        )
     except ImportError:
         logger.error("imgwtools not installed. Run `uv sync --locked` in backend/.")
         raise
@@ -238,7 +243,9 @@ async def fetch_pmaxtp_for_point(
 
         return scenarios
 
-    except Exception as e:
+    except (IMGWConnectionError, IMGWDataError, IMGWValidationError) as e:
+        # The errors fetch_pmaxtp documents (server, response, point outside the
+        # grid): skip the point. Anything else is a bug or an API change and stops.
         logger.warning(f"Failed to fetch data for ({lat}, {lon}): {e}")
         return {}
 

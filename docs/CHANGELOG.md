@@ -127,6 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **cleanup:** 3 deprecated scripts (e2e_task9, export_pipeline_gpkg, export_task9_gpkg).
 
 ### Fixed
+- The two `fetch_pmaxtp` call sites (`scripts/preprocess_precipitation.py`, `scripts/analyze_watershed.py`) caught every exception, so a change of IMGWTools showed as "no precipitation data". They catch only `IMGWConnectionError`, `IMGWDataError` and `IMGWValidationError`, the errors `fetch_pmaxtp` documents, and let anything else surface; `tests/unit/test_imgw_call_sites.py` runs both through the real library offline.
 - `scripts/analyze_watershed.py` step 6 (hydrograph) failed with `TypeError: unexpected keyword argument 'compactness_coefficient'` and, for `--tc-method nrcs`, would have failed with "CN is required": it built `WatershedParameters(**morph)` from the morphometry with the shape and relief indices and without the CN. It uses `WatershedParameters.from_dict(morph)` now, which takes only the fields Hydrolog accepts and keeps the CN computed in step 4; a test runs the step on a small synthetic catchment.
 - Pin `sqlalchemy>=2.0.25,<2.1` in `requirements.txt` — SQLAlchemy 2.1 selects the psycopg v3 driver for `postgresql://` URLs, while the image contains `psycopg2-binary`; rebuilding the image put the API into a restart loop on `alembic upgrade head`.
 - The VRT mosaic of the bootstrap duplicated the DEM sheets (copies in `kampanie/`) and could mix resolutions — step 3 uses the list from step 2; `discover_asc_files()` was removed.
