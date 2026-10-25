@@ -308,7 +308,7 @@ cover, HSG, precipitation, depressions, MVT tiles, overlays, server). Steps 1-3 
 | 5 HSG | `calculate_hsg(root=, bbox=<Poland>, depth="0-5cm", cache=)`: the raster of Poland is a version of the store; then clip to the mosaic, warp to EPSG:2180 at 250 m, nearest-neighbour fill, polygonize and import into `soil_hsg` (a DELETE limited to the bbox first) | a `KartografError` ends the step as "skipped" with its code; any other error fails it; the pipeline continues |
 
 The exit code is 1 only when one of steps 1-3 failed. Whether a failed step 5 should stop the
-bootstrap and whether the HSG fallback "B" is right are open (PROGRESS, Open questions 3).
+bootstrap and whether the HSG fallback "B" is right are open (PROGRESS, Open questions 1).
 
 ### 4.6 `scripts/prepare_area.py`
 
