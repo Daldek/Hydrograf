@@ -1,126 +1,167 @@
-# Skrypty preprocessingu
+# Preprocessing scripts
 
-Skrypty do jednorazowego przetwarzania danych wejściowych przed uruchomieniem systemu.
+Scripts that prepare the input data once, before the system runs. The API serves only what they
+leave in PostGIS, in `frontend/data/` and in `frontend/tiles/` (ADR-021, ADR-022).
 
-## Wymagania
+## Requirements
 
-- Python 3.12+ ze środowiskiem wirtualnym (`backend/.venv`)
-- Uruchomiona baza PostgreSQL/PostGIS
-- Wykonane migracje Alembic
-- [Kartograf 0.7.0](https://github.com/Daldek/Kartograf) (instalowany przez `uv sync --locked` z `backend/uv.lock`)
-  - NMT/NMPT: Dane wysokościowe z GUGiK
-  - BDOT10k: Dane o pokryciu terenu z GUGiK (12 warstw)
-  - BDOT10k hydro: Dane hydrograficzne z GUGiK (SWRS rzeki, SWKN kanały, SWRM rowy, PTWP wody)
-  - CORINE: Europejska klasyfikacja pokrycia terenu z Copernicus
+- Python 3.12+ in `backend/.venv` (`uv sync --locked`). Run the scripts from `backend/` as
+  `.venv/bin/python -m scripts.<name>` (or `uv run python -m scripts.<name>`).
+- A running PostgreSQL/PostGIS database with the Alembic migrations applied (`bootstrap.py` does
+  both).
+- [Kartograf](https://github.com/Daldek/Kartograf), pinned by commit in `backend/pyproject.toml`
+  (0.8.0.dev0, installed by `uv sync --locked`; details in
+  [docs/integrations/KARTOGRAF.md](../../docs/integrations/KARTOGRAF.md)):
+  - NMT (DEM): elevation data from GUGiK
+  - BDOT10k: one GeoPackage package per county (*powiat*) from GUGiK, every layer; the land cover
+    (`PT*` layers) and the hydrography (SWRS rivers, SWKN canals, SWRM ditches, PTWP waters) are
+    taken from it
+  - HSG: hydrologic soil groups, computed by Kartograf from SoilGrids
+  - CORINE: the European land cover classification from Copernicus (downloaded by
+    `download_landcover.py`, not used by the pipeline)
+- GDAL (`gdalbuildvrt`, `gdalwarp`) for the VRT mosaic; `tippecanoe` for the MVT tiles (optional:
+  bootstrap skips the step without it).
 
-## Dostępne skrypty
+### Where the files go
 
-### `bootstrap.py` - Jednokomendowy setup środowiska
+| Directory | Content |
+|---|---|
+| `cache/kartograf/` | the Kartograf store of the downloads: NMT sheets, BDOT10k packages, the HSG raster of Poland and its SoilGrids inputs, with versions and a sidecar per file |
+| `cache/kartograf_meta.db` | the Kartograf metadata cache (SQLite; a local disk, not a network share) |
+| `data/nmt/` | the VRT mosaic `dem_mosaic.vrt` (and `reprojected/`), the intermediate rasters `dem_mosaic_*` |
+| `data/hydro/` | `hydro_merged.gpkg`: the BDOT10k hydro layers of the area, for stream burning |
+| `frontend/data/` | overlays (PNG, JSON), the DEM tile pyramid, GeoJSON exports |
+| `frontend/tiles/` | MVT tiles |
 
-Orkiestrator wykonujący 9 kroków pipeline od zera do działającego systemu: infrastruktura (.venv, Docker, Alembic), pobieranie NMT, przetwarzanie DEM, pokrycie terenu, dane glebowe HSG, opady IMGW, depresje, kafelki MVT, overlay PNG i uruchomienie serwera.
+`data/` and `cache/` are ignored by Git. The store needs a file system with hard links (not FAT,
+exFAT or SMB); `prepare_area.py` keeps its own store in `<output>/kartograf`.
 
-**Użycie:**
+## Available scripts
+
+### `bootstrap.py`: one-command setup
+
+The orchestrator: ten steps from an empty machine to a running system. Steps 1 to 3 are critical
+(a failure stops the pipeline and the exit code is 1); steps 4 to 10 are optional and the pipeline
+continues when one fails.
+
+| Step | What it does | Skip flag |
+|---|---|---|
+| 1 | infrastructure: `.venv` (`uv sync --locked`), the database container, `alembic upgrade head`, the SRI hashes of the CDN resources | `--skip-infra` |
+| 2 | downloads the NMT sheets of the area into the Kartograf store (`download_dem.download_sheets`) | - |
+| 3 | processes the DEM: the VRT mosaic of the sheets of step 2, the BDOT10k hydro layers for stream burning, `process_dem` (`stream_network`, `stream_catchments`) | - |
+| 4 | downloads the BDOT10k packages of the counties of the mosaic and imports them into `land_cover` | `--skip-landcover` |
+| 5 | HSG: the raster of Poland (a version of the store), clipped to the mosaic, polygonized into `soil_hsg` | `--skip-hsg` |
+| 6 | IMGW precipitation (PMAXTP) on a 2 km grid into `precipitation_data` | `--skip-precipitation` |
+| 7 | depressions (blue spots) from the filled DEM | `--skip-depressions` |
+| 8 | MVT tiles (`tippecanoe`) | `--skip-tiles` |
+| 9 | DEM and stream overlays (PNG) and the DEM tile pyramid | `--skip-overlays` |
+| 10 | starts the Docker Compose stack | `--skip-serve` |
+
+**Usage:**
 
 ```bash
 cd backend
 
-# Przez bounding box (WGS84)
-.venv/bin/python -m scripts.bootstrap \
-    --bbox "20.8,52.1,21.2,52.4"
+# By a bounding box (WGS84)
+.venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
 
-# Przez godła arkuszy
-.venv/bin/python -m scripts.bootstrap \
-    --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2
+# By sheet codes
+.venv/bin/python -m scripts.bootstrap --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2
 
-# Dry run — tylko pokaż plan bez wykonywania
-.venv/bin/python -m scripts.bootstrap \
-    --bbox "20.8,52.1,21.2,52.4" --dry-run
+# By a boundary file (SHP/ZIP, GPKG, GeoJSON)
+.venv/bin/python -m scripts.bootstrap --boundary-file ../data/boundary/area.gpkg
 
-# Z pominięciem opcjonalnych kroków
-.venv/bin/python -m scripts.bootstrap \
-    --bbox "20.8,52.1,21.2,52.4" \
+# Dry run: show the plan without executing it
+.venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4" --dry-run
+
+# Skip optional steps
+.venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4" \
     --skip-precipitation --skip-tiles
 ```
 
-**Parametry:**
+**Parameters:**
 
-| Parametr | Opis | Domyślnie |
-|----------|------|-----------|
-| `--bbox` | Bounding box WGS84: `"min_lon,min_lat,max_lon,max_lat"` | (wymagane*) |
-| `--sheets` | Lista godeł arkuszy do pobrania | (wymagane*) |
-| `--scale` | Skala arkuszy (1:10000, 1:25000, 1:50000, 1:100000) | 1:10000 |
-| `--output` | Katalog wyjściowy | `../data/` |
-| `--port` | Port HTTP serwera | 8080 |
-| `--dry-run` | Tylko pokaż co zostanie zrobione | false |
+| Parameter | Description | Default |
+|---|---|---|
+| `--bbox` | bounding box in WGS84: `"min_lon,min_lat,max_lon,max_lat"` | (one of the three is required) |
+| `--sheets` | sheet codes to download | (one of the three is required) |
+| `--boundary-file` | vector boundary file (SHP/ZIP, GPKG, GeoJSON) | (one of the three is required) |
+| `--boundary-layer` | layer name of a GPKG boundary file | the first layer |
+| `--scale` | sheet scale in Kartograf's labels (`1:10000`, `1:25000`, `1:50000`, `1:100000`) | `1:10000` |
+| `--resolution` | NMT resolution: `1m` (high, slow) or `5m` | `5m` |
+| `--output` | output directory | `../data/` |
+| `--cache-dir` | directory of the cached downloads: the Kartograf store is `<cache-dir>/kartograf` | `paths.cache_dir` of the configuration (`cache/` in the repository root) |
+| `--config` | YAML configuration file | `config.yaml` |
+| `--port` | HTTP port of the server | 8080 |
+| `--dry-run` | only show what would be done | off |
 
-*Wymagany jeden z: `--bbox` lub `--sheets` (wzajemnie wykluczające).
+`--bbox`, `--sheets` and `--boundary-file` exclude each other.
 
-**Flagi pomijania kroków:**
+**Water bodies:**
 
-| Flaga | Opis |
-|-------|------|
-| `--skip-infra` | Pomiń .venv / Docker / Alembic |
-| `--skip-landcover` | Pomiń pokrycie terenu |
-| `--skip-hsg` | Pomiń dane glebowe HSG |
-| `--skip-precipitation` | Pomiń opady IMGW |
-| `--skip-depressions` | Pomiń depresje |
-| `--skip-tiles` | Pomiń kafelki MVT |
-| `--skip-overlays` | Pomiń overlay PNG |
-| `--skip-serve` | Pomiń uruchomienie serwera |
+| Parameter | Description | Default |
+|---|---|---|
+| `--waterbody-mode` | `auto` (BDOT10k classification), `none` (skip) or a path to a `.gpkg`/`.shp` file (all treated as endorheic) | `none` |
+| `--waterbody-min-area` | the smallest water body in m²; smaller ones are ignored | - |
 
-**Zbiorniki wodne:**
+**Storm sewer** (ADR-051, ADR-052): `--sewer-enabled`, `--sewer-source` (a GPKG/SHP/GeoJSON file)
+and `--sewer-layer` (the line layer of a multi-layer file); they override the `sewer` section of the
+configuration.
 
-| Parametr | Opis | Domyślnie |
-|----------|------|-----------|
-| `--waterbody-mode` | Tryb obsługi zbiorników: `auto` (BDOT10k klasyfikacja), `none` (pomiń), lub ścieżka do pliku `.gpkg`/`.shp` (wszystkie endoreiczne) | `none` |
-| `--waterbody-min-area` | Min. powierzchnia zbiornika (m²). Mniejsze zbiorniki ignorowane. | - |
-
-**Uwaga:** Kroki 1-3 (infrastruktura, pobieranie NMT, przetwarzanie DEM) są krytyczne. Kroki 4-9 są opcjonalne z graceful degradation — jeśli któryś zawiedzie, pipeline kontynuuje.
+A failed step 2 can be run again: the sheets that are already in the store are used without a
+request and only the rest is downloaded. The accumulation thresholds of step 3 are fixed at 10000
+and 100000 m² (`docs/BACKLOG.md`: a `--thresholds` flag for `bootstrap.py`).
 
 ---
 
-### `clean.py` - Czyszczenie wygenerowanych danych
+### `clean.py`: remove generated data
 
-Usuwa przetworzone dane (rastry, kafelki, overlays, GeoJSON, tabele DB) przygotowując czyste środowisko do ponownego uruchomienia `bootstrap.py`.
-
-**Użycie:**
+Removes the processed rasters, the frontend assets, the tiles and, on request, the database tables
+and the download cache, to prepare a clean run of `bootstrap.py`.
 
 ```bash
 cd backend
 
-# Standardowe czyszczenie (dane przetworzone, zachowuje cache pobierań)
+# Standard clean: processed data only (rasters, hydro, boundary, overlays, geojson, tiles)
 .venv/bin/python -m scripts.clean
 
-# Z usunięciem cache pobierań (NMT + BDOT10k)
+# Also the download cache
 .venv/bin/python -m scripts.clean --include-cache
 
-# Pełne czyszczenie (dane + cache + tabele DB)
+# Also the database tables
+.venv/bin/python -m scripts.clean --include-db
+
+# Everything: data, cache and tables
 .venv/bin/python -m scripts.clean --all
 
-# Tylko wybrane komponenty
+# Selected components only
 .venv/bin/python -m scripts.clean --only rasters tiles
 
-# Dry run — pokaż co zostanie usunięte
+# Dry run, and without the confirmation prompt
 .venv/bin/python -m scripts.clean --dry-run
-
-# Bez potwierdzenia (np. w skryptach CI)
 .venv/bin/python -m scripts.clean --yes
 ```
 
-**Komponenty:**
+`--output` and `--cache-dir` name the data and cache directories (defaults `../data` and
+`../cache`).
 
-| Komponent | Co usuwa |
-|-----------|----------|
-| `rasters` | Rastry NMT (TIF/VRT w `data/nmt/`) |
-| `hydro` | Dane hydro BDOT10k (`data/hydro/`) |
-| `boundary` | Pliki granicy obszaru (`data/boundary/`) |
-| `overlays` | PNG/JSON + piramida DEM tiles (`frontend/data/`) |
-| `geojson` | Eksporty GeoJSON (`frontend/data/*.geojson`) |
-| `tiles` | Kafelki MVT + mbtiles (`frontend/tiles/`) |
-| `db` | Tabele: stream_network, stream_catchments, depressions, land_cover, precipitation_data, soil_hsg |
-| `cache` | Cache NMT w układzie Kartografa `cache/nmt/pl_<układ>_<res>_evrf2007/` (+ `kampanie/`), cache BDOT10k oraz `kartograf_meta.db*` (cache metadanych Kartografa); soil_hsg zachowany — mały, ogólnopolski |
+**Components:**
 
-**Typowy workflow regeneracji:**
+| Component | What it removes |
+|---|---|
+| `rasters` | the NMT rasters (`*.tif`, `*.vrt` in `data/nmt/`) |
+| `hydro` | the merged BDOT10k hydro data (`data/hydro/`) |
+| `boundary` | the boundary files of the area (`data/boundary/`) |
+| `overlays` | PNG and JSON overlays and the DEM tile pyramid (`frontend/data/`) |
+| `geojson` | the GeoJSON exports (`frontend/data/*.geojson`) |
+| `tiles` | MVT tiles and mbtiles (`frontend/tiles/`) |
+| `db` | truncates the tables `stream_network`, `stream_catchments`, `bdot_streams`, `depressions`, `land_cover`, `precipitation_data`, `soil_hsg`, `sewer_nodes` and `sewer_network` |
+| `cache` | the large products of the Kartograf store that Kartograf fetches again (`cache/kartograf/nmt` and `cache/kartograf/landcover`), `cache/kartograf_meta.db*`, and the directories of the 0.7.0 layout, whole: `cache/nmt`, `cache/bdot10k`, `cache/soil_hsg` (nothing reads them any more, ADR-061). The HSG raster of Poland, its SoilGrids inputs and the marker of the store stay: they are small, Poland-wide and reusable |
+
+The standard clean takes the first six components; `--include-cache` adds `cache` and
+`--include-db` adds `db`.
+
+**A typical regeneration:**
 
 ```bash
 cd backend
@@ -130,367 +171,399 @@ cd backend
 
 ---
 
-### `prepare_area.py` - Pełny pipeline (ZALECANY)
+### `prepare_area.py`: one area from a point
 
-Pipeline łączący automatyczne pobieranie NMT z GUGiK i przetwarzanie do bazy danych.
-**Użyj tego skryptu gdy chcesz przygotować dane dla nowego obszaru.**
+Downloads the NMT for the area around a point, builds the VRT mosaic and processes it with
+`process_dem`; optionally with the BDOT10k hydro layers for stream burning and with land cover.
 
-**Użycie:**
+> **Known defect:** its DEM step passes `batch_size` to `process_dem`, which has no such parameter
+> (marked `# type: ignore[call-arg]  # stale call, PROGRESS`). The step ends with
+> `DEM processing failed` and nothing is imported. Use `bootstrap.py` until it is fixed
+> (`docs/PROGRESS.md`, Next 1, Other gaps).
 
 ```bash
 cd backend
 
-# Przygotowanie obszaru 5 km wokół punktu (tylko NMT)
-.venv/bin/python -m scripts.prepare_area \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5
+# The area of 5 km around a point (NMT only)
+.venv/bin/python -m scripts.prepare_area --lat 52.23 --lon 21.01 --buffer 5
 
-# Z danymi o pokryciu terenu (BDOT10k) - wymagane dla hydrogramów!
-.venv/bin/python -m scripts.prepare_area \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5 \
-    --with-landcover
+# With land cover (BDOT10k), which the hydrographs need
+.venv/bin/python -m scripts.prepare_area --lat 52.23 --lon 21.01 --buffer 5 --with-landcover
 
-# Z niższym progiem strumieni (więcej szczegółów)
-.venv/bin/python -m scripts.prepare_area \
-    --lat 52.23 --lon 21.01 \
-    --buffer 10 \
-    --stream-threshold 50
+# With the hydro layers burned into the DEM
+.venv/bin/python -m scripts.prepare_area --lat 52.23 --lon 21.01 --buffer 5 --with-hydro
 
-# Dry run - tylko pokaż jakie arkusze byłyby pobrane
-.venv/bin/python -m scripts.prepare_area \
-    --lat 52.23 --lon 21.01 \
-    --dry-run
+# Dry run: show the plan
+.venv/bin/python -m scripts.prepare_area --lat 52.23 --lon 21.01 --dry-run
 ```
 
-**Parametry:**
+**Parameters:**
 
-| Parametr | Opis | Domyślnie |
-|----------|------|-----------|
-| `--lat`, `--lon` | Współrzędne centrum obszaru (WGS84) | (wymagane) |
-| `--buffer` | Promień bufora w km | 5 |
-| `--stream-threshold` | Próg akumulacji dla strumieni | 1000 |
-| `--scale` | Skala arkuszy (1:10000, 1:25000, 1:50000, 1:100000) | 1:10000 |
-| `--with-landcover` | Pobierz też dane o pokryciu terenu (BDOT10k) | false |
-| `--with-hydro` | Pobierz też dane hydrograficzne BDOT10k (SWRS, SWKN, SWRM, PTWP) | false |
-| `--landcover-provider` | Źródło danych: bdot10k lub corine | bdot10k |
-| `--waterbody-mode` | Tryb obsługi zbiorników: `auto`, `none`, lub ścieżka do pliku | `none` |
-| `--waterbody-min-area` | Min. powierzchnia zbiornika (m²) | - |
-| `--keep-downloads` | Zachowaj pobrane pliki .asc | true |
-| `--save-intermediates` | Zapis plików GeoTIFF | false |
-| `--output`, `-o` | Katalog wyjściowy | `../data/nmt/` |
-| `--dry-run` | Tylko pokaż co byłoby zrobione | false |
+| Parameter | Description | Default |
+|---|---|---|
+| `--lat`, `--lon` | the centre of the area (WGS84) | (required) |
+| `--buffer` | the buffer radius in km | 5 |
+| `--scale` | sheet scale in Kartograf's labels (`1:10000`, `1:25000`, `1:50000`, `1:100000`) | `1:10000` |
+| `--batch-size` | database insert batch size | 10000 |
+| `--with-landcover` | also download and import the land cover (BDOT10k) | off |
+| `--with-hydro` | also download the BDOT10k hydro layers and burn the streams into the DEM | off |
+| `--burn-depth` | the burn depth in m | 2.0 |
+| `--waterbody-mode`, `--waterbody-min-area` | as in `bootstrap.py` | `none` |
+| `--output`, `-o` | output directory | `../data/nmt/` |
+| `--keep-downloads` / `--no-keep-downloads` | keep the downloaded `.asc` files, or work in a temporary directory and remove it | keep |
+| `--save-intermediates`, `-s` | write the intermediate GeoTIFF files | off |
+| `--dry-run` | only show what would be done | off |
 
-`--output` to korzeń danych Kartografa: arkusze NMT trafiają do `<output>/nmt/pl_<układ>_<res>_evrf2007/`, a cache metadanych do `<output>/kartograf_meta.db` (katalog musi być na dysku lokalnym).
+`--output` is the working directory of the run: the NMT sheets and the BDOT10k packages go to the
+Kartograf store `<output>/kartograf`, the metadata cache to `<output>/kartograf_meta.db` (a local
+disk), and the mosaic and the intermediates to `<output>` itself. There is no choice of the land
+cover provider: the county-level CORINE download never worked (ADR-061).
 
 ---
 
-### `download_dem.py` - Pobieranie NMT z GUGiK
+### `download_dem.py`: download the NMT from GUGiK
 
-Pobiera dane NMT z GUGiK używając biblioteki [Kartograf](https://github.com/Daldek/Kartograf) (v0.7.0).
-**Użyj gdy chcesz tylko pobrać dane bez przetwarzania.**
-
-> **Uwaga:** Kartograf 0.7.0 pobiera arkusze przez OpenData (ASC) z rozwijaniem godeł, najnowszą kampanią GUGiK i cache metadanych; brak pokrycia części arkuszy to ostrzeżenie, błąd pobrania — kod wyjścia 1.
-> Format nie jest konfigurowalny przy pobieraniu przez godła arkuszy.
-
-**Użycie:**
+Downloads the NMT through [Kartograf](https://github.com/Daldek/Kartograf) into its store and
+processes nothing. Kartograf downloads the sheets by OpenData (ASC), expands coarse sheet codes into
+the 1:10000 sheets they consist of, takes the newest flight of each sheet (partial or not, so the
+border and coast sheets are kept) and uses a version that is already local without a request. A sheet
+without coverage is a warning (an error when no sheet has coverage); a failed transfer is exit code 1.
+The format is not configurable.
 
 ```bash
 cd backend
 
-# Pobieranie dla punktu z buforem
-.venv/bin/python -m scripts.download_dem \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5 \
-    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
+# The area around a point
+.venv/bin/python -m scripts.download_dem --lat 52.23 --lon 21.01 --buffer 5 \
+    --root ../cache/kartograf --metadata-cache ../cache/kartograf_meta.db
 
-# Pobieranie konkretnych arkuszy
-.venv/bin/python -m scripts.download_dem \
-    --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \
-    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
+# Given sheets
+.venv/bin/python -m scripts.download_dem --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \
+    --root ../cache/kartograf --metadata-cache ../cache/kartograf_meta.db
 
-# Dry run - tylko pokaż jakie arkusze byłyby pobrane
-.venv/bin/python -m scripts.download_dem \
-    --lat 52.23 --lon 21.01 \
-    --dry-run
+# The sheets that cover a geometry file
+.venv/bin/python -m scripts.download_dem --geometry ../data/boundary.gpkg \
+    --root ../cache/kartograf --metadata-cache ../cache/kartograf_meta.db
+
+# Dry run: show the sheets, download nothing
+.venv/bin/python -m scripts.download_dem --lat 52.23 --lon 21.01 --dry-run
 ```
 
-**Parametry:**
+**Parameters:**
 
-| Parametr | Opis | Domyślnie |
-|----------|------|-----------|
-| `--lat`, `--lon` | Współrzędne centrum (WGS84) | - |
-| `--buffer` | Promień bufora w km | 5 |
-| `--sheets` | Lista godeł arkuszy do pobrania | - |
-| `--output`, `-o` | Korzeń danych Kartografa | `../cache/` |
-| `--metadata-cache` | Plik SQLite cache metadanych (dysk lokalny) | wymagany |
-| `--scale` | Skala arkuszy | 1:10000 |
-| `--no-skip-existing` | Pobierz ponownie istniejące pliki | false |
-| `--dry-run` | Tylko pokaż co byłoby pobrane | false |
+| Parameter | Description | Default |
+|---|---|---|
+| `--lat`, `--lon` | the centre (WGS84) | - |
+| `--buffer` | the buffer radius in km | 5 |
+| `--sheets` | sheet codes to download | - |
+| `--geometry`, `--layer` | an SHP/GPKG file that selects the sheets, and its layer | the first layer |
+| `--root` | the Kartograf store; a new or empty directory becomes one, a directory with other files is refused | `../cache/kartograf` |
+| `--metadata-cache` | the SQLite metadata cache, on a local disk, outside `--root` | required to download |
+| `--scale` | sheet scale in Kartograf's labels (`1:10000`, `1:25000`, `1:50000`, `1:100000`) | `1:10000` |
+| `--no-skip-existing` | fetch the sheets again although a version is local | off |
+| `--dry-run` | only show what would be downloaded | off |
+
+A sheet lands at `<root>/nmt/pl_1992_5m_evrf2007/<hierarchy>/<sheet>.asc`, for example
+`N-34/131/C/c/2/1/N-34-131-C-c-2-1.asc`; the versions are below `versions/`.
 
 ---
 
-### `process_dem.py` - Przetwarzanie NMT
+### `process_dem.py`: process the NMT
 
-Przetwarza plik NMT (Numeryczny Model Terenu) z formatu ASCII GRID i ładuje dane do tabeli `flow_network`.
+Processes an NMT file (ASCII GRID, a VRT mosaic or a GeoTIFF) with `pyflwdir` (Deltares) and writes
+the stream network and the sub-catchments into `stream_network` and `stream_catchments`.
 
-**Etapy przetwarzania (używa biblioteki `pyflwdir` — Deltares):**
-1. Odczyt pliku rastrowego (.asc, .vrt, .tif)
-2. Wypalanie cieków w DEM — krok 3a: stałe wypalanie (opcjonalne, `--burn-streams`)
-3. Monotoniczne wygładzanie cieków — krok 3b: running minimum downstream (BFS od ujścia), koryguje mosty/nasypy (opcjonalne, `--no-smooth-streams` wyłącza)
-4. Wypełnienie wewnętrznych dziur nodata
-5. Wypełnienie depresji + obliczenie kierunku przepływu D8 (`fill_depressions`)
-6. Obliczenie akumulacji przepływu (`upstream_area`)
-7. Obliczenie spadku terenu (Sobel)
-8. Obliczenie aspektu (ekspozycja stoku, 0-360°)
-9. Obliczenie rzędu Strahlera (`flw.stream_order`)
-10. Obliczenie TWI (Topographic Wetness Index)
-11. Identyfikacja strumieni (próg akumulacji)
-12. Wektoryzacja cieków jako LineString (`vectorize_streams`)
-13. Import do bazy PostgreSQL/PostGIS (COPY)
+**Stages:**
 
-**Użycie:**
+1. Read the raster (`.asc`, `.vrt`, `.tif`); with `--hydro-resolution` downsample it first.
+2. Raise the buildings (+5 m under the BUBD footprints, ADR-033): `process_dem()` takes the file as
+   `building_gpkg`, but no script passes it, so the stage does not run in the pipeline.
+3. Burn the streams into the DEM (`--burn-streams`, optional), then smooth them monotonically with a
+   running minimum downstream from the outlet, which corrects bridges and embankments (ADR-041;
+   `--no-smooth-streams` switches it off).
+4. Classify the endorheic lakes and their drain points (`--waterbody-mode`); burn the storm-sewer
+   inlets and route the flow accumulation through the sewer graph (optional, ADR-051).
+5. Fill the depressions, compute the D8 flow direction and the flow accumulation.
+6. Compute the distance along the flow to the outlet, the slope and the aspect (Sobel), the Strahler
+   order and the TWI.
+7. Make the stream mask of the lowest threshold and vectorize the streams per accumulation
+   threshold; delineate the sub-catchments (thresholds from 1000 m², ADR-026) with their statistics
+   and flow paths.
+8. Insert the result into PostGIS (COPY) with the matching of the streams against BDOT10k when
+   `--burn-streams` is given (ADR-044); `--clear-existing` first deletes the DEM-derived streams and
+   the sub-catchments.
 
 ```bash
 cd backend
 
-# Podstawowy import
-.venv/bin/python -m scripts.process_dem --input ../data/nmt/plik.asc
+# A VRT mosaic (or a single .asc sheet)
+.venv/bin/python -m scripts.process_dem --input ../data/nmt/dem_mosaic.vrt
 
-# Z zapisem plików pośrednich do weryfikacji w QGIS
-.venv/bin/python -m scripts.process_dem \
-    --input ../data/nmt/plik.asc \
-    --save-intermediates \
-    --output-dir ../data/nmt/output
+# With the intermediate GeoTIFF files for a check in QGIS
+.venv/bin/python -m scripts.process_dem --input ../data/nmt/dem_mosaic.vrt \
+    --save-intermediates --output-dir ../data/nmt/output
 
-# Tryb testowy (tylko statystyki)
-.venv/bin/python -m scripts.process_dem --input ../data/nmt/plik.asc --dry-run
+# Dry run: only the computation and the statistics
+.venv/bin/python -m scripts.process_dem --input ../data/nmt/dem_mosaic.vrt --dry-run
 ```
 
-**Parametry:**
+**Parameters:**
 
-| Parametr | Skrót | Opis | Domyślnie |
-|----------|-------|------|-----------|
-| `--input` | `-i` | Ścieżka do pliku .asc (wymagane) | - |
-| `--stream-threshold` | - | Próg flow accumulation dla strumieni | 1000 |
-| `--batch-size` | - | Rozmiar batch przy imporcie do bazy | 10000 |
-| `--dry-run` | - | Tylko obliczenia i statystyki, bez importu | false |
-| `--save-intermediates` | `-s` | Zapis rastrów pośrednich jako GeoTIFF | false |
-| `--output-dir` | `-o` | Katalog dla plików GeoTIFF | (katalog wejściowy) |
-| `--clear-existing` | - | Wyczyść istniejące dane (TRUNCATE flow_network) | false |
-| `--burn-streams` | - | Ścieżka do GeoPackage/Shapefile z ciekami | - |
-| `--burn-depth` | - | Głębokość wypalania [m] | 2.0 |
-| `--no-smooth-streams` | - | Wyłącz monotoniczne wygładzanie cieków (do debugowania) | false |
-| `--waterbody-mode` | - | Tryb obsługi zbiorników: `auto`, `none`, lub ścieżka do pliku | `none` |
-| `--waterbody-min-area` | - | Min. powierzchnia zbiornika (m²) | - |
-| `--skip-streams-vectorize` | - | Pomiń wektoryzację cieków | false |
+| Parameter | Short | Description | Default |
+|---|---|---|---|
+| `--input` | `-i` | path to the raster (required) | - |
+| `--thresholds` | - | the flow accumulation thresholds in m², comma separated (`1000,10000,100000`); the lowest makes the stream mask | `10000,100000,1000000` |
+| `--dry-run` | - | only compute and print the statistics, no insert | off |
+| `--save-intermediates` | `-s` | write the intermediate rasters as GeoTIFF | off |
+| `--output-dir` | `-o` | the directory of the GeoTIFF files | the directory of the input |
+| `--clear-existing` | - | delete the DEM-derived streams and the sub-catchments before the insert | off |
+| `--burn-streams` | - | a GeoPackage/Shapefile with the stream lines to burn into the DEM | - |
+| `--burn-depth` | - | the burn depth in m | 2.0 |
+| `--no-smooth-streams` | - | no monotonic smoothing after the burning (for debugging) | off |
+| `--skip-streams-vectorize` | - | no vectorization of the streams (useful without a database) | off |
+| `--skip-catchments` | - | no sub-catchments | off |
+| `--hydro-resolution` | - | downsample the DEM to this resolution in m before the hydrology; saves memory on large rasters | - |
+| `--waterbody-mode` | - | `auto`, `none` or a path to a file | `none` |
+| `--waterbody-min-area` | - | the smallest water body in m² | - |
 
-**Pliki pośrednie (GeoTIFF):**
+**Intermediate files (GeoTIFF):**
 
-Opcja `--save-intermediates` generuje pliki do weryfikacji obliczeń w oprogramowaniu GIS (np. QGIS):
+`--save-intermediates` writes files to check the computation in a GIS (for example QGIS); `*` is the
+name of the input without its extension.
 
-| Plik | Opis | Typ danych |
-|------|------|------------|
-| `*_01_dem.tif` | Oryginalny NMT | float32 |
-| `*_02a_burned.tif` | NMT po wypaleniu cieków (jeśli `--burn-streams`) | float32 |
-| `*_02b_smoothed.tif` | NMT po monotonycznym wygładzaniu cieków (jeśli `--burn-streams` bez `--no-smooth-streams`) | float32 |
-| `*_02_filled.tif` | NMT po wypełnieniu zagłębień | float32 |
-| `*_03_flowdir.tif` | Kierunek przepływu (D8 encoding) | int16 |
-| `*_04_flowacc.tif` | Akumulacja przepływu (liczba komórek upstream) | int32 |
-| `*_05_slope.tif` | Spadek terenu [%] | float32 |
-| `*_06_streams.tif` | Maska strumieni (0/1) | uint8 |
-| `*_07_stream_order.tif` | Rząd Strahlera (1-8+, 0=nie-ciek) | uint8 |
-| `*_08_twi.tif` | TWI — Topographic Wetness Index | float32 |
-| `*_09_aspect.tif` | Aspekt — ekspozycja stoku (0-360°, N=0) | float32 |
+| File | Description | Data type |
+|---|---|---|
+| `*_01_dem.tif` | the original DEM | float32 |
+| `*_02a_burned.tif` | the DEM after the stream burning (with `--burn-streams`) | float32 |
+| `*_02b_smoothed.tif` | the DEM after the monotonic smoothing (with `--burn-streams`, without `--no-smooth-streams`) | float32 |
+| `*_02_filled.tif` | the DEM after the depressions are filled | float32 |
+| `*_03_flowdir.tif` | the flow direction (D8) | int16 |
+| `*_04_flowacc.tif` | the flow accumulation (the number of cells upstream) | int32 |
+| `*_04b_stream_distance.tif` | the distance along the flow to the outlet [m] | float32 |
+| `*_05_slope.tif` | the slope [%] | float32 |
+| `*_06_streams.tif` | the stream mask (0/1) | uint8 |
+| `*_07_stream_order.tif` | the Strahler order (1 and more, 0 = not a stream) | uint8 |
+| `*_07_stream_order_<threshold>.tif` | the same per threshold | uint8 |
+| `*_08_twi.tif` | TWI, the Topographic Wetness Index | float32 |
+| `*_09_aspect.tif` | the aspect (0-360°, north = 0) | float32 |
+| `*_10_subcatchments_<threshold>.tif` | the labels of the sub-catchments per threshold | int32 |
 
-**Kodowanie D8 (flowdir):**
+**The D8 encoding (flow direction):**
 
-| Wartość | Kierunek |
-|---------|----------|
-| 1 | E (wschód) |
-| 2 | SE (południowy-wschód) |
-| 4 | S (południe) |
-| 8 | SW (południowy-zachód) |
-| 16 | W (zachód) |
-| 32 | NW (północny-zachód) |
-| 64 | N (północ) |
-| 128 | NE (północny-wschód) |
+| Value | Direction |
+|---|---|
+| 1 | E |
+| 2 | SE |
+| 4 | S |
+| 8 | SW |
+| 16 | W |
+| 32 | NW |
+| 64 | N |
+| 128 | NE |
 
-**Przykładowy output:**
+**Example output** (a dry run on a synthetic DEM of 240 x 240 cells of 5 m, a tilted plane with a
+valley, `--thresholds 1000,10000`; the timestamps and the log level are left out, the middle of the
+log is cut):
 
 ```
-============================================================
-DEM Processing Script
-============================================================
-Input: ../data/nmt/N-33-131-D-a-3-2.asc
-Stream threshold: 1000
-============================================================
-Read DEM: 473x435 cells
-Origin: (383202.5, 509297.5)
+Multi-threshold FA: [1000, 10000] m²
+Dry run: True
+Read DEM: 240x240 cells
+Origin: (500000.0, 500000.0)
 Cell size: 5.0 m
-Filling depressions...
-Depression filling completed after 1000 iterations
-Computing flow direction (D8)...
-Computing flow accumulation...
-Computing slope...
-Slope computed (range: 0.0% - 73.8%)
-Creating flow_network records...
-Created 196822 records
-Stream cells (acc >= 1000): 5734
-============================================================
+Waterbody mode: none — skipping lake classification
+Processing hydrology with pyflwdir (Deltares)...
+  Filling depressions and computing D8 flow direction...
+  Computing flow accumulation...
+Hydrology processing complete
+Slope computed (range: 0.0% - 8.1%)
+  Threshold 1000 m² = 40 cells
+  Threshold 10000 m² = 400 cells
+Strahler order computed (max order: 3, stream cells: 32,657)
+TWI computed (range: 4.8 - 19.5)
+...
+Dry run - skipping database insert
 Processing complete!
-  Grid size: 435 x 473
+  Grid size: 240 x 240
   Cell size: 5.0 m
-  Total cells: 205,755
-  Valid cells: 196,822
-  Max accumulation: 3,617
-  Mean slope: 10.0%
-  Stream cells: 5,734
-  Records created: 196,822
-  Records inserted: 196,822
-  Time elapsed: 264.2s
-============================================================
+  Total cells: 57,600
+  Valid cells: 57,600
+  Max accumulation: 57,600
+  Mean slope: 7.3%
+  Stream cells: 32,657
+  Stream segments: 923
+    Threshold 1000 m²: 920 segments
+    Threshold 10000 m²: 3 segments
+    Sub-catchments 1000 m²: 920
+    Sub-catchments 10000 m²: 3
+  Time elapsed: 5.5s
 ```
 
 ---
 
-### `download_landcover.py` - Pobieranie danych o pokryciu terenu
+### `download_landcover.py`: download land cover
 
-Pobiera dane o pokryciu terenu z BDOT10k (GUGiK) lub CORINE (Copernicus) używając Kartograf 0.7.0.
-
-**Użycie:**
+Downloads land cover through Kartograf into its store: BDOT10k (GUGiK; the whole package of a county,
+every layer, as a GeoPackage) or CORINE (Copernicus, a raster). A package that is already local is
+used again without a request. A bbox or a point gets every county it intersects.
 
 ```bash
 cd backend
 
-# BDOT10k dla punktu z buforem
-.venv/bin/python -m scripts.download_landcover \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5
+# BDOT10k for the area around a point (every county the square intersects)
+.venv/bin/python -m scripts.download_landcover --lat 52.23 --lon 21.01 --buffer 5 \
+    --root ../cache/kartograf
 
-# BDOT10k po kodzie TERYT (powiat)
-.venv/bin/python -m scripts.download_landcover \
-    --teryt 1465
+# BDOT10k for one county (powiat) by its TERYT code
+.venv/bin/python -m scripts.download_landcover --teryt 1465 --root ../cache/kartograf
 
 # CORINE Land Cover
-.venv/bin/python -m scripts.download_landcover \
-    --lat 52.23 --lon 21.01 \
-    --provider corine \
-    --year 2018
+.venv/bin/python -m scripts.download_landcover --lat 52.23 --lon 21.01 \
+    --provider corine --year 2018
 ```
 
-**Parametry:**
+**Parameters:**
 
-| Parametr | Opis | Domyślnie |
-|----------|------|-----------|
-| `--lat`, `--lon` | Współrzędne centrum (WGS84) | - |
-| `--buffer` | Promień bufora w km | 5 |
-| `--teryt` | Kod TERYT powiatu (4 cyfry) | - |
-| `--godlo` | Godło arkusza mapy | - |
-| `--provider`, `-p` | Źródło: bdot10k lub corine | bdot10k |
-| `--year` | Rok dla CORINE (1990-2018) | 2018 |
-| `--category`, `-c` | Kategoria BDOT10k do pobrania (np. PTLZ, SWRS) | (wszystkie) |
-| `--geometry` | Plik geometrii do filtrowania (GeoJSON/GPKG) | - |
-| `--with-hydro` | Pobierz też dane hydrograficzne (SWRS, SWKN, SWRM, PTWP) | false |
-| `--output`, `-o` | Katalog wyjściowy | `../data/landcover/` |
+| Parameter | Description | Default |
+|---|---|---|
+| `--lat`, `--lon` | the centre (WGS84) | - |
+| `--buffer` | the buffer radius in km | 5 |
+| `--teryt` | the TERYT code of a county (4 digits) | - |
+| `--godlo` | a sheet code | - |
+| `--provider`, `-p` | `bdot10k` or `corine` | `bdot10k` |
+| `--year` | the CORINE reference year (1990, 2000, 2006, 2012, 2018) | 2018 |
+| `--root` | the Kartograf store | `../cache/kartograf` |
+| `--metadata-cache` | the SQLite metadata cache | none |
+| `--no-skip-existing` | fetch the files again although a version is local | off |
+| `--dry-run` | only show what would be downloaded | off |
 
-**Format wyjściowy:** GeoPackage (.gpkg)
+One of `--teryt`, `--godlo` or `--lat` with `--lon` is required. The file of a county is
+`<root>/landcover/pl_bdot10k_gpkg/teryt/<teryt>.gpkg`; the exit code is 1 when the download failed or
+a county failed. The hydro layers are not selected here: `merge_hydro_gpkgs()` keeps `SWRS`, `SWKN`,
+`SWRM` and `PTWP` when the packages are merged for stream burning.
 
 ---
 
-### `import_landcover.py` - Import pokrycia terenu do bazy
+### `import_landcover.py`: import land cover into the database
 
-Importuje dane z GeoPackage do tabeli `land_cover` z przypisaniem wartości CN.
-
-**Użycie:**
+Imports the `PT*` layers of a BDOT10k GeoPackage into the table `land_cover` with a category, a CN
+value and the imperviousness.
 
 ```bash
 cd backend
 
-# Import danych BDOT10k
+# Import the package of a county
 .venv/bin/python -m scripts.import_landcover \
-    --input ../data/landcover/bdot10k_teryt_1465.gpkg
+    --input ../cache/kartograf/landcover/pl_bdot10k_gpkg/teryt/1465.gpkg
 
-# Dry run (tylko pokaż co byłoby zaimportowane)
-.venv/bin/python -m scripts.import_landcover \
-    --input ../data/landcover/bdot10k_teryt_1465.gpkg \
-    --dry-run
+# Dry run: show what would be imported
+.venv/bin/python -m scripts.import_landcover --input <package>.gpkg --dry-run
 
-# Wyczyść istniejące dane przed importem
-.venv/bin/python -m scripts.import_landcover \
-    --input ../data/landcover/bdot10k_teryt_1465.gpkg \
-    --clear-existing
+# Delete the existing land cover first
+.venv/bin/python -m scripts.import_landcover --input <package>.gpkg --clear-existing
 ```
 
-**Parametry:**
+**Parameters:**
 
-| Parametr | Opis | Domyślnie |
-|----------|------|-----------|
-| `--input`, `-i` | Ścieżka do pliku .gpkg (wymagane) | - |
-| `--batch-size` | Rekordów na batch | 1000 |
-| `--clear-existing` | Wyczyść istniejące dane | false |
-| `--dry-run` | Tylko pokaż co byłoby zaimportowane | false |
+| Parameter | Description | Default |
+|---|---|---|
+| `--input`, `-i` | path to the `.gpkg` file (required) | - |
+| `--batch-size` | records per database batch | 1000 |
+| `--clear-existing` | delete the existing `land_cover` data first | off |
+| `--dry-run` | only show what would be imported | off |
 
-**Mapowanie BDOT10k → CN:**
+**The BDOT10k mapping to categories and CN:**
 
-| Kod BDOT10k | Kategoria Hydrograf | CN | Imperviousness |
-|-------------|--------------------|----|----------------|
-| PTLZ | las | 60 | 0.0 |
-| PTTR, PTUT | grunt_orny | 78 | 0.1 |
-| PTWP | woda | 100 | 1.0 |
-| PTWZ, PTRK | łąka | 70 | 0.0 |
-| PTZB | zabudowa_mieszkaniowa | 85 | 0.5 |
-| PTKM, PTPL | droga | 98 | 0.95 |
-| PTGN, PTNZ, PTSO | inny | 75 | 0.2 |
+| BDOT10k code | Hydrograf category | CN | Imperviousness |
+|---|---|---|---|
+| PTLZ | `las` | 60 | 0.0 |
+| PTTR, PTUT | `grunt_orny` | 78 | 0.1 |
+| PTWP | `woda` | 100 | 1.0 |
+| PTWZ, PTRK | `łąka` | 70 | 0.0 |
+| PTZB | `zabudowa_mieszkaniowa` | 85 | 0.5 |
+| PTKM, PTPL | `droga` | 98 | 0.95 |
+| PTGN, PTNZ, PTSO | `inny` | 75 | 0.2 |
+
+Any other `PT*` layer gets the category `inny`, CN 75 and imperviousness 0.2.
 
 ---
 
-### `preprocess_precipitation.py` - Dane opadowe IMGW
+### `preprocess_precipitation.py`: IMGW precipitation
 
-Pobiera i przetwarza dane PMAXTP z IMGW do tabeli `precipitation_data`.
-
-**Użycie:**
+Downloads the PMAXTP maximum precipitation of IMGW (through IMGWTools) for a grid of points inside a
+bounding box and stores every scenario, 16 durations x 27 probabilities = 432 per point, in the table
+`precipitation_data`.
 
 ```bash
 cd backend
-.venv/bin/python -m scripts.preprocess_precipitation --help
+
+# A small test around Warsaw
+.venv/bin/python -m scripts.preprocess_precipitation --bbox "20.8,52.1,21.2,52.4" --spacing 5.0
+
+# Dry run: show the grid points
+.venv/bin/python -m scripts.preprocess_precipitation --bbox "20.8,52.1,21.2,52.4" --dry-run
 ```
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--bbox` | the bounding box (WGS84): `min_lon,min_lat,max_lon,max_lat` (required) | - |
+| `--spacing` | the grid spacing in km | 2.0 |
+| `--delay` | the delay between the requests in s | 0.5 |
+| `--dry-run` | only show the grid points, download nothing | off |
 
 ---
 
-## Weryfikacja danych
+## Checking the data
 
-### Sprawdzenie w bazie danych
+### In the database
 
 ```bash
-# Połączenie z bazą
+# Connect to the database
 docker exec -it hydro_db psql -U hydro_user -d hydro_db
-
-# Statystyki flow_network
-SELECT
-    COUNT(*) as total_cells,
-    SUM(CASE WHEN is_stream THEN 1 ELSE 0 END) as stream_cells,
-    MIN(elevation) as min_elevation,
-    MAX(elevation) as max_elevation,
-    AVG(slope)::numeric(6,2) as avg_slope_percent,
-    MAX(flow_accumulation) as max_accumulation
-FROM flow_network;
 ```
 
-### Weryfikacja w QGIS
+```sql
+-- Streams per accumulation threshold
+SELECT threshold_m2,
+       COUNT(*) AS segments,
+       ROUND(SUM(length_m) / 1000.0) AS length_km,
+       MAX(strahler_order) AS max_strahler
+FROM stream_network
+GROUP BY threshold_m2
+ORDER BY threshold_m2;
 
-1. Uruchom skrypt z `--save-intermediates`
-2. Otwórz wygenerowane pliki GeoTIFF w QGIS
-3. Sprawdź:
-   - `*_02_filled.tif` - czy zagłębienia zostały wypełnione
-   - `*_03_flowdir.tif` - czy kierunki przepływu są sensowne
-   - `*_04_flowacc.tif` - czy strumienie są w dolinach
-   - `*_06_streams.tif` - czy maska pokrywa się z rzeczywistymi ciekami
+-- Sub-catchments per accumulation threshold
+SELECT threshold_m2,
+       COUNT(*) AS catchments,
+       ROUND(SUM(area_km2)::numeric, 1) AS area_km2
+FROM stream_catchments
+GROUP BY threshold_m2
+ORDER BY threshold_m2;
+```
+
+### In QGIS
+
+1. Run `process_dem.py` with `--save-intermediates`.
+2. Open the generated GeoTIFF files in QGIS.
+3. Check:
+   - `*_02_filled.tif`: the depressions are filled
+   - `*_03_flowdir.tif`: the flow directions make sense
+   - `*_04_flowacc.tif`: the streams lie in the valleys
+   - `*_06_streams.tif`: the mask matches the real streams
 
 ---
 
-## Znane ograniczenia
+## Known limitations
 
-1. **Algorytm fill depressions** - prosta implementacja iteracyjna, może być wolna dla dużych rastrów
-2. **Pamięć** - cały raster ładowany do RAM
-3. **Układ współrzędnych** - obsługuje tylko EPSG:2180 (PL-1992)
+1. **Memory**: the whole raster is loaded into RAM. A raster of 113 million cells with the 1000 m²
+   threshold runs out of the 8 GB of memory while the sub-catchments are polygonized; `bootstrap.py`
+   therefore uses the thresholds 10000 and 100000 m² (`--hydro-resolution` of `process_dem.py`
+   reduces the grid).
+2. **Coordinate system**: only EPSG:2180 (PL-1992) is processed; sheets in PUWG 2000 are reprojected
+   to it before the mosaic is built.
+3. **`prepare_area.py` and `analyze_watershed.py`** call `process_dem()` with parameters it no longer
+   has (`batch_size`, `stream_threshold`), so their DEM processing fails; the delineation of
+   `analyze_watershed.py` imports two functions that `core/watershed.py` no longer has
+   (`docs/PROGRESS.md`, Next 1, Other gaps).
+4. **Real downloads are not tested**: the offline test suite runs the real Kartograf against stubbed
+   providers (`docs/integrations/KARTOGRAF.md` §10).
