@@ -411,18 +411,19 @@ This document defines precisely:
 #### 3.1.4 Precipitation Data
 
 **Source:** IMGW - the Pmax_PT atlas through IMGWTools 3.0.0 (commit `3f7de36`)
-**Format:** Points of meteorological stations
-**Spatial extent:** Stations within the bbox (~192 stations)
+**Format:** Points of a regular grid, not meteorological stations: one request to IMGW per point
+**Spatial extent:** The grid points within the bbox of the analysis, 2 km apart (`--spacing` of `scripts/preprocess_precipitation.py`, bootstrap step 6 uses 2.0)
 **Parameters:**
-- Duration: 15min, 30min, 1h, 2h, 6h, 12h, 24h
-- Probability: 1%, 2%, 5%, 10%, 20%, 50%
+- Duration: 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h (16 values)
+- Probability: 0.01%, 0.02%, 0.03%, 0.05%, 0.1%, 0.2%, 0.3%, 0.5%, 1%, 2%, 3%, 5%, 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%, 90%, 95%, 98%, 98.5%, 99%, 99.5%, 99.9% (27 values)
+- In total: 432 scenarios (16 × 27) per point
 - Value: precipitation [mm]
 
 **Preprocessing:**
-- Downloading all combinations (42 data sets × ~192 stations = ~8064 records)
-- Import into PostGIS (table `precipitation_data`)
+- Downloading all 432 scenarios of every grid point (one request per point); the bbox `20.8,52.1,21.2,52.4` gives 238 points, 102,816 records
+- Import into PostGIS (table `precipitation_data`: a record per point, duration and probability, source `IMGW_PMAXTP`)
 - Spatial indexing (GIST)
-- Interpolation for the watershed centroid at runtime
+- Interpolation for the watershed centroid at runtime (IDW over the 4 nearest grid points)
 
 **Update:** Once a year (or when IMGW publishes new data)
 
