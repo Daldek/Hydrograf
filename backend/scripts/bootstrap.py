@@ -23,7 +23,6 @@ Usage:
 
 import argparse
 import asyncio
-import json
 import logging
 import os
 import shutil
@@ -32,6 +31,16 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+
+from utils.kartograf_store import (
+    HSG_DEPTH,
+    SHEET_SYSTEM,
+    describe_error,
+    download_bdot10k,
+    metadata_cache_path,
+    open_metadata_cache,
+    store_dir,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -189,53 +198,13 @@ def sheets_to_bbox_2180(
     )
 
 
-class HsgCacheStaleError(RuntimeError):
-    """Cached hsg_poland.tif was not produced by the installed Kartograf."""
-
-
-def check_hsg_cache(hsg_path: Path, kartograf_version: str) -> None:
-    """Raise HsgCacheStaleError unless hsg_path is an HSG raster of this Kartograf.
-
-    Kartograf 0.7.0 changed the USDA texture thresholds, so a raster from
-    another version holds different HSG classes. Its ``.meta.json`` sidecar
-    (written since 0.7.0) records the producing version.
-    """
-    sidecar = hsg_path.with_name(hsg_path.name + ".meta.json")
-    fix = f"Usun {hsg_path} (i sidecar) — krok 5 pobierze raster ponownie."
-    if not sidecar.exists():
-        raise HsgCacheStaleError(
-            f"{hsg_path}: brak sidecara {sidecar.name} (raster sprzed "
-            f"Kartografa 0.7.0, stare progi HSG). {fix}"
-        )
-    try:
-        meta = json.loads(sidecar.read_text())
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
-        raise HsgCacheStaleError(
-            f"{hsg_path}: nieczytelny sidecar {sidecar.name} ({exc}). {fix}"
-        ) from exc
-    extra = meta.get("extra") if isinstance(meta, dict) else None
-    if not isinstance(extra, dict):
-        raise HsgCacheStaleError(
-            f"{hsg_path}: sidecar {sidecar.name} ma nieoczekiwana strukture. {fix}"
-        )
-    if extra.get("derived") != "hsg":
-        raise HsgCacheStaleError(f"{hsg_path}: sidecar nie opisuje rastra HSG. {fix}")
-    produced_by = meta.get("kartograf_version")
-    if produced_by != kartograf_version:
-        raise HsgCacheStaleError(
-            f"{hsg_path}: raster z Kartografa {produced_by}, zainstalowany "
-            f"{kartograf_version}. {fix}"
-        )
-
-
 def resolve_sheets(
     bbox: tuple[float, float, float, float] | None,
     sheets: list[str] | None,
     scale: str,
 ) -> tuple[list[str], tuple[float, float, float, float]]:
     """Resolve sheets and bbox from CLI arguments."""
-    from kartograf import find_sheets_for_bbox
-    from kartograf.core.geometry import BBox
+    from kartograf import BBox, find_sheets_for_bbox
 
     if sheets:
         resolved_bbox = sheets_to_bbox(sheets)
@@ -250,7 +219,9 @@ def resolve_sheets(
         max_y=max_lat,
         crs="EPSG:4326",
     )
-    resolved_sheets = find_sheets_for_bbox(kartograf_bbox, scale)
+    resolved_sheets = find_sheets_for_bbox(
+        kartograf_bbox, scale, sheet_system=SHEET_SYSTEM
+    )
     return resolved_sheets, bbox
 
 
@@ -260,8 +231,7 @@ def resolve_boundary_file(
     layer: str | None = None,
 ) -> tuple[list[str], tuple[float, float, float, float]]:
     """Load boundary file, resolve NMT sheets and bbox."""
-    from kartograf import find_sheets_for_bbox, find_sheets_for_geometry
-    from kartograf.core.geometry import BBox
+    from kartograf import BBox, find_sheets_for_bbox, find_sheets_for_geometry
 
     from core.boundary import (
         boundary_to_bbox_2180,
@@ -277,7 +247,7 @@ def resolve_boundary_file(
     ext = boundary_file.suffix.lower()
     if ext in (".shp", ".gpkg"):
         sheets = find_sheets_for_geometry(
-            boundary_file, target_scale=scale, layer=layer
+            boundary_file, target_scale=scale, layer=layer, sheet_system=SHEET_SYSTEM
         )
     else:
         bbox_2180 = boundary_to_bbox_2180(geom)
@@ -288,7 +258,7 @@ def resolve_boundary_file(
             max_y=bbox_2180[3],
             crs="EPSG:2180",
         )
-        sheets = find_sheets_for_bbox(kartograf_bbox, scale)
+        sheets = find_sheets_for_bbox(kartograf_bbox, scale, sheet_system=SHEET_SYSTEM)
 
     return sheets, bbox
 
@@ -456,23 +426,25 @@ def step_download_nmt(
     cache_dir: Path,
     resolution: str = "5m",
 ) -> tuple[list[Path], str]:
-    """Step 2: Download NMT sheets via Kartograf 0.7.0.
+    """Step 2: Download NMT sheets via Kartograf.
 
-    cache_dir is Kartograf's data root: sheets land in
-    ``cache_dir/nmt/pl_<uklad>_<res>_evrf2007/`` (campaign copies in its
-    ``kampanie/`` subtree), metadata cache in ``cache_dir/kartograf_meta.db``.
+    The sheets go into the Kartograf store of the pipeline, ``cache_dir/kartograf``
+    (ADR-061): the standard path of a sheet is
+    ``<store>/nmt/pl_1992_<res>_evrf2007/<hierarchy>/<sheet>.asc`` (a hard link to the
+    newest flight) and the versions are below ``versions/``. The metadata cache is
+    ``cache_dir/kartograf_meta.db``.
     Raises NmtDownloadError on any transport failure (full sheet list).
     """
     sys.path.insert(0, str(BACKEND_DIR))
-    from scripts.download_dem import METADATA_CACHE_NAME, download_sheets
+    from scripts.download_dem import download_sheets
 
     if not sheets:
         raise ValueError("Pusta lista arkuszy NMT — nic do pobrania")
 
     report = download_sheets(
         sheets,
-        cache_dir,
-        cache_dir / METADATA_CACHE_NAME,
+        store_dir(cache_dir),
+        metadata_cache_path(cache_dir),
         skip_existing=True,
         resolution=resolution,
     )
@@ -493,16 +465,10 @@ def step_process_dem(
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
     sewer_config: dict[str, Any] | None = None,
-) -> tuple[
-    dict[str, Any], str, list[str], dict[str, Path], tuple[float, float, float, float]
-]:
+) -> tuple[dict[str, Any], str, tuple[float, float, float, float]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis."""
     sys.path.insert(0, str(BACKEND_DIR))
-    from scripts.download_landcover import (
-        discover_teryts_for_bbox,
-        download_landcover,
-        merge_hydro_gpkgs,
-    )
+    from scripts.download_landcover import merge_hydro_gpkgs
     from scripts.process_dem import process_dem
     from utils.raster_utils import create_vrt_mosaic, normalize_crs
 
@@ -510,8 +476,8 @@ def step_process_dem(
     nmt_dir.mkdir(parents=True, exist_ok=True)
 
     # Exactly the sheets returned by step 2 (standard paths) — never a
-    # directory scan: Kartograf keeps campaign copies under kampanie/ and
-    # other resolutions/old 0.6.1 layouts may sit in the same cache.
+    # directory scan: the store keeps every version of a sheet under versions/
+    # (and full_sheet/ links), and other resolutions may sit in the same store.
     nmt_files = sorted(set(downloaded_files))
 
     # Reproject PUWG 2000 files to EPSG:2180 before mosaicking
@@ -524,14 +490,13 @@ def step_process_dem(
     )
 
     # Download & merge hydro BDOT10k for stream burning.
-    # Use the ACTUAL mosaic extent (not the user bbox) for TERYT discovery,
+    # Use the ACTUAL mosaic extent (not the user bbox) for the counties,
     # because NMT sheets extend beyond the bbox and the DEM analysis covers
     # the full mosaic area — BDOT must match.
     burn_path = None
-    teryts: list[str] = []
-    bdot_paths: dict[str, Path] = {}
     try:
         import rasterio
+        from kartograf import BBox
 
         with rasterio.open(mosaic_path) as src:
             mosaic_bounds = src.bounds  # (left, bottom, right, top) in EPSG:2180
@@ -542,36 +507,25 @@ def step_process_dem(
             mosaic_bounds.top,
         )
         logger.info(
-            f"Mosaic extent for TERYT discovery: "
+            f"Mosaic extent for BDOT10k: "
             f"({mosaic_bbox_2180[0]:.0f}, {mosaic_bbox_2180[1]:.0f}, "
             f"{mosaic_bbox_2180[2]:.0f}, {mosaic_bbox_2180[3]:.0f})"
         )
-        teryts = discover_teryts_for_bbox(mosaic_bbox_2180)
+        bdot_paths = download_bdot10k(
+            cache_dir, bbox=BBox(*mosaic_bbox_2180, crs="EPSG:2180")
+        )
 
-        if teryts:
-            bdot_cache_dir = cache_dir / "bdot10k"
-            bdot_cache_dir.mkdir(parents=True, exist_ok=True)
+        if bdot_paths:
             hydro_out_dir = output_dir / "hydro"
             hydro_out_dir.mkdir(parents=True, exist_ok=True)
-
-            hydro_paths: list[Path] = []
-            for teryt in teryts:
-                gpkg = download_landcover(
-                    output_dir=bdot_cache_dir,
-                    provider="bdot10k",
-                    teryt=teryt,
-                    skip_existing=True,
-                )
-                if gpkg:
-                    bdot_paths[teryt] = gpkg
-                    hydro_paths.append(gpkg)
-
-            if hydro_paths:
-                burn_path = merge_hydro_gpkgs(
-                    hydro_paths, hydro_out_dir / "hydro_merged.gpkg"
-                )
+            burn_path = merge_hydro_gpkgs(
+                list(bdot_paths.values()), hydro_out_dir / "hydro_merged.gpkg"
+            )
     except Exception as e:
-        logger.warning(f"Hydro download/merge failed, proceeding without burning: {e}")
+        logger.warning(
+            f"Hydro download/merge failed, proceeding without burning: "
+            f"{describe_error(e)}"
+        )
         burn_path = None
 
     # Export BDOT10k to GeoJSON for frontend
@@ -604,58 +558,45 @@ def step_process_dem(
     burn_info = f", burn={burn_path.name}" if burn_path else ""
     detail = f"{cells:,} cells, {streams} segments{burn_info}"
 
-    return stats, detail, teryts, bdot_paths, mosaic_bbox_2180
+    return stats, detail, mosaic_bbox_2180
 
 
 def step_landcover(
     sheets: list[str],
     output_dir: Path,
     cache_dir: Path,
-    teryts: list[str] | None = None,
-    bdot_paths: dict[str, Path] | None = None,
     mosaic_bbox_2180: tuple[float, float, float, float] | None = None,
 ) -> str:
-    """Step 4: Download and import land cover data (per-TERYT)."""
+    """Step 4: Download and import land cover data (per county).
+
+    The counties of the area (the mosaic of step 3, else the sheets) come from
+    Kartograf with their packages: a package that step 3 stored is local and not
+    requested again, one that failed there is tried again here.
+    """
     sys.path.insert(0, str(BACKEND_DIR))
-    from scripts.download_landcover import discover_teryts_for_bbox, download_landcover
+    from kartograf import BBox
+
     from scripts.import_landcover import import_landcover
 
-    bdot_cache_dir = cache_dir / "bdot10k"
-    bdot_cache_dir.mkdir(parents=True, exist_ok=True)
+    bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
+    bdot_paths = download_bdot10k(cache_dir, bbox=BBox(*bbox_2180, crs="EPSG:2180"))
 
-    if teryts is None:
-        bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
-        teryts = discover_teryts_for_bbox(bbox_2180)
-
-    if bdot_paths is None:
-        bdot_paths = {}
-
-    if not teryts:
-        logger.warning("Nie znaleziono TERYT-ów dla podanego obszaru")
+    if not bdot_paths:
+        logger.warning("Nie znaleziono powiatów dla podanego obszaru")
         return "0 obiektów, 0 powiatów"
 
     total_features = 0
-    for teryt in teryts:
+    for teryt, gpkg in sorted(bdot_paths.items()):
         try:
-            # Reuse cached GPKG if available, otherwise download to cache
-            gpkg = bdot_paths.get(teryt)
-            if gpkg is None or not gpkg.exists():
-                gpkg = download_landcover(
-                    output_dir=bdot_cache_dir,
-                    provider="bdot10k",
-                    teryt=teryt,
-                    skip_existing=True,
-                )
-            if gpkg and gpkg.exists():
-                lc_stats = import_landcover(
-                    input_path=gpkg,
-                    clear_existing=False,
-                )
-                total_features += lc_stats.get("records_inserted", 0)
+            lc_stats = import_landcover(
+                input_path=gpkg,
+                clear_existing=False,
+            )
+            total_features += lc_stats.get("records_inserted", 0)
         except Exception as e:
             logger.warning(f"Land cover dla TERYT {teryt}: {e}")
 
-    return f"{total_features} obiektów, {len(teryts)} powiatów"
+    return f"{total_features} obiektów, {len(bdot_paths)} powiatów"
 
 
 def step_soil_hsg(
@@ -666,17 +607,15 @@ def step_soil_hsg(
 ) -> str:
     """Step 5: Download HSG data from SoilGrids and import to DB.
 
-    Uses a Poland-wide HSG raster cached as hsg_poland.tif.
-    If the file exists, download is skipped (one-time download).
-    Processing: clip to project bbox -> warp to EPSG:2180 -> polygonize -> import.
+    The HSG raster of Poland is a version of the Kartograf store of the pipeline
+    (``cache_dir/kartograf``, ADR-061): Kartograf fetches the SoilGrids clay, sand and
+    silt once, computes the raster from them, and a second run uses it again without a
+    request. Processing: clip to project bbox -> warp to EPSG:2180 -> polygonize ->
+    import.
     """
-    try:
-        from kartograf import HSGCalculator
-    except ImportError:
-        return "pominięto (brak kartograf HSGCalculator)"
-
     import numpy as np
     import rasterio
+    from kartograf import BBox, KartografError, calculate_hsg
     from rasterio.features import shapes
     from rasterio.warp import Resampling, reproject
     from shapely.geometry import MultiPolygon, shape
@@ -684,40 +623,31 @@ def step_soil_hsg(
     sys.path.insert(0, str(BACKEND_DIR))
     from core.database import get_engine
 
-    hsg_dir = cache_dir / "soil_hsg"
-    hsg_dir.mkdir(parents=True, exist_ok=True)
+    # --- 1. Poland-wide HSG raster (one-time: a local version is used again) ---
+    logger.info("HSG: Poland-wide raster from SoilGrids (a local version is reused)...")
 
-    # --- 1. Download Poland-wide HSG raster (one-time) ---
-    hsg_poland = hsg_dir / "hsg_poland.tif"
-    if hsg_poland.exists():
-        import kartograf
-
-        check_hsg_cache(hsg_poland, kartograf.__version__)
-        logger.info("HSG: using cached hsg_poland.tif")
-    else:
-        logger.info("HSG: downloading Poland-wide raster from SoilGrids...")
-        from kartograf import BBox
-
-        # Poland bbox in EPSG:2180 (PL-1992)
-        bbox_poland = BBox(
-            min_x=167000,
-            min_y=29000,
-            max_x=860000,
-            max_y=814000,
-            crs="EPSG:2180",
+    # Poland bbox in EPSG:2180 (PL-1992)
+    bbox_poland = BBox(
+        min_x=167000,
+        min_y=29000,
+        max_x=860000,
+        max_y=814000,
+        crs="EPSG:2180",
+    )
+    try:
+        report = calculate_hsg(
+            root=store_dir(cache_dir),
+            bbox=bbox_poland,
+            depth=HSG_DEPTH,
+            cache=open_metadata_cache(cache_dir),
         )
-        try:
-            hsg_calc = HSGCalculator()
-            hsg_calc.calculate_hsg_by_bbox(
-                bbox=bbox_poland,
-                output_path=hsg_poland,
-                timeout=600,
-            )
-        except Exception as e:
-            return f"pominięto (SoilGrids: {e})"
+    except KartografError as e:
+        return f"pominięto (SoilGrids: {describe_error(e)})"
 
-    if not hsg_poland.exists():
-        return "pominięto (brak rastra HSG)"
+    if not report.files:
+        reasons = "; ".join(f"{f.unit}: {f.error}" for f in report.failed)
+        return f"pominięto (SoilGrids: {reasons})"
+    hsg_poland = report.files[0].file.path
 
     # --- 2. Clip + warp to project bbox in EPSG:2180 ---
     bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
@@ -1107,8 +1037,6 @@ def run_pipeline(
     """Run the full 10-step bootstrap pipeline."""
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
-    teryts: list[str] = []
-    bdot_paths: dict[str, Path] = {}
 
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1132,20 +1060,20 @@ def run_pipeline(
             )
             tracker.done(2, t0, detail)
         except Exception as e:
-            tracker.fail(2, t0, str(e))
-            logger.error(f"Krok 2 (pobieranie NMT) nie powiodl sie: {e}")
+            tracker.fail(2, t0, describe_error(e))
+            logger.error(
+                f"Krok 2 (pobieranie NMT) nie powiodl sie: {describe_error(e)}"
+            )
             return tracker
 
-    # Variables populated by step 3 and forwarded to steps 4-5
+    # Variable populated by step 3 and forwarded to steps 4-5
     mosaic_bbox = None
-    teryts = []
-    bdot_paths = {}
 
     # Step 3: Process DEM (CRITICAL)
     if not tracker.is_skipped(3):
         t0 = tracker.start(3)
         try:
-            _, detail, teryts, bdot_paths, mosaic_bbox = step_process_dem(
+            _, detail, mosaic_bbox = step_process_dem(
                 downloaded_files,
                 output_dir,
                 cache_dir,
@@ -1167,14 +1095,12 @@ def run_pipeline(
                 sheets,
                 output_dir,
                 cache_dir,
-                teryts=teryts,
-                bdot_paths=bdot_paths,
                 mosaic_bbox_2180=mosaic_bbox,
             )
             tracker.done(4, t0, detail)
         except Exception as e:
-            tracker.fail(4, t0, str(e))
-            logger.warning(f"Krok 4 (pokrycie terenu): {e}")
+            tracker.fail(4, t0, describe_error(e))
+            logger.warning(f"Krok 4 (pokrycie terenu): {describe_error(e)}")
 
     # Step 5: HSG (OPTIONAL)
     if not tracker.is_skipped(5):
@@ -1258,11 +1184,12 @@ def dry_run(
     tippecanoe_status = "(dostepne)" if shutil.which("tippecanoe") else "(NIEDOSTEPNE)"
     steps = [
         "Infrastruktura: .venv, docker compose up -d db, alembic upgrade head",
-        f"Pobieranie NMT: {len(sheets)} arkuszy do {cache_dir / 'nmt'}",
+        f"Pobieranie NMT: {len(sheets)} arkuszy do {store_dir(cache_dir) / 'nmt'}",
         "Przetwarzanie NMT: mozaika VRT, "
         "stream_network, stream_catchments (ZAWSZE od zera)",
-        f"Pokrycie terenu: BDOT10k per-TERYT (auto-discovery z {len(sheets)} arkuszy)",
-        "Dane glebowe HSG: SoilGrids przez Kartograf HSGCalculator",
+        f"Pokrycie terenu: BDOT10k per powiat (z {len(sheets)} arkuszy), "
+        f"magazyn {store_dir(cache_dir)}",
+        "Dane glebowe HSG: SoilGrids przez Kartograf (calculate_hsg)",
         f"Opady IMGW: grid 2km w bbox "
         f"{min_lon:.3f},{min_lat:.3f},"
         f"{max_lon:.3f},{max_lat:.3f}",
@@ -1330,7 +1257,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--cache-dir",
         type=Path,
         default=None,
-        help=f"Directory for cached raw downloads (default: {DEFAULT_CACHE_DIR})",
+        help=(
+            "Directory for cached raw downloads: the Kartograf store is "
+            f"<cache-dir>/kartograf (default: {DEFAULT_CACHE_DIR})"
+        ),
     )
     parser.add_argument(
         "--port",

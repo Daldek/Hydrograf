@@ -40,7 +40,7 @@ class TestDownloadForGeometryPassesPath:
 
         download_for_geometry(
             geometry_path,
-            output_dir=tmp_path / "out",
+            root=tmp_path / "out",
             metadata_cache_path=tmp_path / "m.db",
         )
 
@@ -50,6 +50,7 @@ class TestDownloadForGeometryPassesPath:
             f"find_sheets_for_geometry must receive a Path, got {type(passed_path)}"
         )
         assert passed_path == geometry_path
+        assert mock_find.call_args.kwargs["sheet_system"] == "1992"
 
     @patch("scripts.download_dem.download_sheets")
     @patch("kartograf.find_sheets_for_geometry")
@@ -62,7 +63,7 @@ class TestDownloadForGeometryPassesPath:
         with pytest.raises(NmtDownloadError, match="Brak arkuszy"):
             download_for_geometry(
                 geometry_path,
-                output_dir=tmp_path / "out",
+                root=tmp_path / "out",
                 metadata_cache_path=tmp_path / "m.db",
             )
 

@@ -2,10 +2,16 @@
 Kalkulator CN z wykorzystaniem danych z Kartografa.
 
 Integruje:
-- HSGCalculator (SoilGrids) - grupy hydrologiczne gleby
-- LandCoverManager (BDOT10k/CORINE) - pokrycie terenu
+- calculate_hsg + hsg_statistics (SoilGrids) - grupy hydrologiczne gleby
+- download_landcover (BDOT10k) - pokrycie terenu
 
 Oblicza CN na podstawie kombinacji HSG i pokrycia terenu.
+
+The two sources are used differently (ADR-061). The HSG raster of one analysis is read
+once and not kept: Kartograf writes it as a plain file into a temporary directory. The
+BDOT10k packages of the counties are the cache of raw downloads of the pipeline: they go
+into its Kartograf store and a later analysis (or bootstrap) of the same county reuses
+them.
 """
 
 import logging
@@ -15,10 +21,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from utils.kartograf_store import HSG_DEPTH, describe_error, download_bdot10k
+
 if TYPE_CHECKING:
     from kartograf import BBox
 
 logger = logging.getLogger(__name__)
+
+# Hydrologic soil groups of the USDA (keys of ``hsg_statistics``, besides ``nodata``)
+HSG_GROUPS = ("A", "B", "C", "D")
 
 
 @dataclass
@@ -57,11 +68,15 @@ def check_kartograf_available() -> bool:
     Returns
     -------
     bool
-        True jesli Kartograf jest zainstalowany
+        True jesli Kartograf jest zainstalowany i ma funkcje uzywane tutaj
     """
     try:
-        from kartograf import BBox  # noqa: F401
-        from kartograf.hydrology import HSGCalculator  # noqa: F401
+        from kartograf import (  # noqa: F401
+            BBox,
+            calculate_hsg,
+            download_landcover,
+            hsg_statistics,
+        )
 
         return True
     except ImportError:
@@ -120,7 +135,12 @@ def _has_hsg_data(hsg_stats: dict[str, Any]) -> bool:
 
 def get_hsg_from_soilgrids(bbox: "BBox") -> tuple[str, dict[str, float]]:
     """
-    Pobierz HSG z SoilGrids przez Kartograf HSGCalculator.
+    Pobierz HSG z SoilGrids przez Kartograf (calculate_hsg + hsg_statistics).
+
+    The HSG raster of the area exists only for this call: Kartograf writes it as a
+    plain file into a temporary directory (``output_dir``), fetches the SoilGrids
+    inputs into its own staging directory, and nothing stays in the Kartograf store
+    (ADR-061). A failure of Kartograf, or an area without data, gives the group B.
 
     Parameters
     ----------
@@ -130,41 +150,34 @@ def get_hsg_from_soilgrids(bbox: "BBox") -> tuple[str, dict[str, float]]:
     Returns
     -------
     Tuple[str, Dict[str, float]]
-        (dominant_hsg, hsg_stats)
+        (dominant_hsg, hsg_stats): the group of the largest share of the area that
+        has data and the shares of the groups A-D in percent
     """
-    from kartograf.hydrology import HSGCalculator
-
-    hsg_calc = HSGCalculator()
+    from kartograf import KartografError, calculate_hsg, hsg_statistics
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        hsg_path = Path(tmpdir) / "hsg.tif"
-
         try:
-            hsg_calc.calculate_hsg_by_bbox(bbox, hsg_path)
-            hsg_stats = hsg_calc.get_hsg_statistics(hsg_path)
-        except Exception as e:
-            logger.warning(f"Blad pobierania HSG: {e}")
+            report = calculate_hsg(
+                output_dir=tmpdir, bbox=bbox, depth=HSG_DEPTH, cache=False
+            )
+            if not report.files:
+                reasons = "; ".join(f"{f.unit}: {f.error}" for f in report.failed)
+                logger.warning(f"Blad pobierania HSG: {reasons}")
+                return ("B", {"B": 100.0})
+            hsg_stats = hsg_statistics(report.files[0].file.path)
+        except KartografError as e:
+            logger.warning(f"Blad pobierania HSG: {describe_error(e)}")
             return ("B", {"B": 100.0})
 
-        if not _has_hsg_data(hsg_stats):
-            logger.warning("Brak danych HSG, przyjeto domyslnie: B")
-            return ("B", {"B": 100.0})
+    # The groups A-D only: ``hsg_statistics`` also has ``nodata`` (cells without data)
+    groups = {name: hsg_stats[name] for name in HSG_GROUPS}
+    if not _has_hsg_data(groups):
+        logger.warning("Brak danych HSG, przyjeto domyslnie: B")
+        return ("B", {"B": 100.0})
 
-        # Obsluga roznych formatow wyniku
-        first_val = list(hsg_stats.values())[0]
-        if isinstance(first_val, dict):
-            # Nowy format: {'A': {'count': N, 'percent': X}, ...}
-            dominant_hsg = max(
-                hsg_stats.items(),
-                key=lambda x: x[1].get("percent", x[1].get("count", 0)),
-            )[0]
-            # Normalizuj do prostego formatu
-            hsg_stats = {k: v.get("percent", 0) for k, v in hsg_stats.items()}
-        else:
-            # Stary format: {'A': X, 'B': Y, ...}
-            dominant_hsg = max(hsg_stats.items(), key=lambda x: x[1])[0]
-
-        return (dominant_hsg, hsg_stats)
+    percents = {name: float(groups[name]["percent"]) for name in HSG_GROUPS}
+    dominant_hsg = max(percents, key=lambda name: percents[name])
+    return (dominant_hsg, percents)
 
 
 # Mapowanie kodow BDOT10k na kategorie pokrycia terenu.
@@ -214,18 +227,24 @@ def _extract_bdot_code(layer_name: str) -> str | None:
 
 def get_land_cover_stats(
     bbox: "BBox",
-    data_dir: Path,
+    cache_dir: Path,
     teryt: str | None = None,
 ) -> dict[str, float]:
     """
-    Pobierz statystyki pokrycia terenu z BDOT10k/CORINE.
+    Pobierz statystyki pokrycia terenu z BDOT10k.
+
+    The packages of the counties are versions of the Kartograf store of the pipeline
+    (``<cache_dir>/kartograf``, ADR-061): a package that is already local is used
+    without a request, also one that bootstrap stored. Without ``teryt`` the area is
+    the bbox and every county it intersects counts, each by the part of its area that
+    lies in the bbox.
 
     Parameters
     ----------
     bbox : BBox
         Bounding box w EPSG:2180
-    data_dir : Path
-        Katalog na pobrane dane
+    cache_dir : Path
+        Katalog cache pobranych danych (magazyn Kartografa: ``<cache_dir>/kartograf``)
     teryt : str, optional
         Kod TERYT powiatu (4 cyfry). Jeśli podany, używany zamiast
         automatycznego wykrywania (przydatne gdy punkt jest blisko
@@ -234,38 +253,31 @@ def get_land_cover_stats(
     Returns
     -------
     Dict[str, float]
-        Statystyki pokrycia {kategoria: procent}
+        Statystyki pokrycia {kategoria: procent}; {} gdy brak danych
     """
+    from kartograf import KartografError
+
     try:
-        from kartograf import LandCoverManager
-
-        lc_manager = LandCoverManager(output_dir=str(data_dir / "landcover"))
-
         if teryt:
             logger.info(f"Pobieranie BDOT10k dla TERYT: {teryt}")
-            lc_path = lc_manager.download_by_teryt(teryt)
+            packages = download_bdot10k(cache_dir, teryt=teryt)
         else:
-            lc_path = lc_manager.download_by_bbox(bbox)
+            packages = download_bdot10k(cache_dir, bbox=bbox)
+    except KartografError as e:
+        logger.warning(f"Blad pobierania pokrycia terenu: {describe_error(e)}")
+        return {}
 
-        if lc_path:
-            logger.info(f"Pobrano pokrycie terenu: {lc_path}")
-            return _analyze_land_cover_gpkg(lc_path, bbox)
-
-    except Exception as e:
-        logger.warning(f"Blad pobierania pokrycia terenu: {e}")
-
-    return {}
+    if not packages:
+        return {}
+    logger.info(f"Pobrano pokrycie terenu: {sorted(packages)}")
+    return _analyze_land_cover_gpkgs(list(packages.values()), bbox)
 
 
-def _analyze_land_cover_gpkg(
-    gpkg_path: Path,
-    bbox: "BBox",
-) -> dict[str, float]:
+def _land_cover_areas(gpkg_path: Path, bbox: "BBox") -> dict[str, float]:
     """
-    Analizuj plik GeoPackage z pokryciem terenu BDOT10k.
+    Zsumuj powierzchnie kategorii pokrycia terenu z pliku GeoPackage BDOT10k.
 
-    Czyta warstwy PT* z pliku, intersektuje z bbox i oblicza
-    procentowy udzial kazdej kategorii pokrycia terenu.
+    Czyta warstwy PT* z pliku i intersektuje je z bbox.
 
     Parameters
     ----------
@@ -277,7 +289,7 @@ def _analyze_land_cover_gpkg(
     Returns
     -------
     Dict[str, float]
-        Statystyki pokrycia {kategoria: procent}
+        Powierzchnia w bbox {kategoria: m2}; {} gdy plik nie daje sie przeanalizowac
     """
     try:
         import fiona
@@ -329,24 +341,54 @@ def _analyze_land_cover_gpkg(
                     category_areas.get(category, 0.0) + layer_area
                 )
 
-        if not category_areas:
-            logger.warning("Brak danych pokrycia terenu w bbox")
-            return {}
-
-        # Przelicz na procenty
-        total_area = sum(category_areas.values())
-        stats: dict[str, float] = {}
-        for category, area in category_areas.items():
-            pct = round((area / total_area) * 100, 1)
-            if pct > 0:
-                stats[category] = pct
-
-        logger.info(f"Statystyki pokrycia terenu: {stats}")
-        return stats
+        return category_areas
 
     except Exception as e:
         logger.warning(f"Blad analizy GeoPackage: {e}")
         return {}
+
+
+def _analyze_land_cover_gpkgs(
+    gpkg_paths: list[Path],
+    bbox: "BBox",
+) -> dict[str, float]:
+    """
+    Analizuj pliki GeoPackage z pokryciem terenu BDOT10k (jeden na powiat).
+
+    Sumuje powierzchnie kategorii ze wszystkich plikow w bbox i oblicza
+    procentowy udzial kazdej kategorii pokrycia terenu.
+
+    Parameters
+    ----------
+    gpkg_paths : list[Path]
+        Sciezki do plikow GeoPackage
+    bbox : BBox
+        Bounding box w EPSG:2180
+
+    Returns
+    -------
+    Dict[str, float]
+        Statystyki pokrycia {kategoria: procent}
+    """
+    category_areas: dict[str, float] = {}
+    for gpkg_path in gpkg_paths:
+        for category, area in _land_cover_areas(gpkg_path, bbox).items():
+            category_areas[category] = category_areas.get(category, 0.0) + area
+
+    if not category_areas:
+        logger.warning("Brak danych pokrycia terenu w bbox")
+        return {}
+
+    # Przelicz na procenty
+    total_area = sum(category_areas.values())
+    stats: dict[str, float] = {}
+    for category, area in category_areas.items():
+        pct = round((area / total_area) * 100, 1)
+        if pct > 0:
+            stats[category] = pct
+
+    logger.info(f"Statystyki pokrycia terenu: {stats}")
+    return stats
 
 
 def get_default_land_cover_stats() -> dict[str, float]:
@@ -371,23 +413,23 @@ def get_default_land_cover_stats() -> dict[str, float]:
 
 def calculate_cn_from_kartograf(
     boundary_wgs84: list[list[float]],
-    data_dir: Path,
+    cache_dir: Path,
     use_default_land_cover: bool = True,
     teryt: str | None = None,
 ) -> CNCalculationResult | None:
     """
     Oblicz CN na podstawie danych z Kartografa.
 
-    Wykorzystuje HSGCalculator do pobrania grup hydrologicznych gleby
-    z SoilGrids, oraz LandCoverManager do pobrania pokrycia terenu
-    z BDOT10k/CORINE.
+    Wykorzystuje calculate_hsg do pobrania grup hydrologicznych gleby
+    z SoilGrids, oraz download_landcover do pobrania pokrycia terenu
+    z BDOT10k.
 
     Parameters
     ----------
     boundary_wgs84 : List[List[float]]
         Granica zlewni jako lista [lon, lat]
-    data_dir : Path
-        Katalog na pobrane dane
+    cache_dir : Path
+        Katalog cache pobranych danych (magazyn Kartografa: ``<cache_dir>/kartograf``)
     use_default_land_cover : bool, optional
         Czy uzywac domyslnego pokrycia gdy brak danych, domyslnie True
     teryt : str, optional
@@ -402,7 +444,7 @@ def calculate_cn_from_kartograf(
     Examples
     --------
     >>> boundary = [[17.31, 52.45], [17.32, 52.46], ...]
-    >>> result = calculate_cn_from_kartograf(boundary, Path("./data"), teryt="3021")
+    >>> result = calculate_cn_from_kartograf(boundary, Path("./cache"), teryt="3021")
     >>> if result:
     ...     print(f"CN = {result.cn}, HSG = {result.dominant_hsg}")
     """
@@ -429,7 +471,7 @@ def calculate_cn_from_kartograf(
 
         # 3. Pobierz pokrycie terenu
         logger.info("Pobieranie pokrycia terenu...")
-        land_cover_stats = get_land_cover_stats(bbox, data_dir, teryt=teryt)
+        land_cover_stats = get_land_cover_stats(bbox, cache_dir, teryt=teryt)
 
         if not land_cover_stats and use_default_land_cover:
             land_cover_stats = get_default_land_cover_stats()

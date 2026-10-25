@@ -3,19 +3,27 @@ Unit tests for land cover stats analysis in cn_calculator module.
 
 Tests for:
 - _extract_bdot_code() helper
-- get_land_cover_stats() with mocked Kartograf
-- _analyze_land_cover_gpkg() with mocked geopandas/fiona
+- get_land_cover_stats() with the real Kartograf (stubbed BDOT10k service)
+- _analyze_land_cover_gpkgs() with mocked geopandas/fiona
 """
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
+
+import geopandas as gpd
+import kartograf
+import pytest
+from shapely.geometry import box
 
 from core.cn_calculator import (
     BDOT10K_CATEGORY_MAP,
-    _analyze_land_cover_gpkg,
+    _analyze_land_cover_gpkgs,
     _extract_bdot_code,
     get_land_cover_stats,
 )
+from tests.kartograf_offline import Counties, bdot10k_counties
+from tests.kartograf_offline import offline as offline  # noqa: F401
 
 
 class TestExtractBdotCode:
@@ -61,56 +69,65 @@ class TestExtractBdotCode:
             assert _extract_bdot_code(layer_name) == code
 
 
+def _write_gpkg(path: Path, layers: dict[str, Any]) -> Path:
+    """Write a BDOT10k-like GeoPackage: one polygon per PT* layer, in EPSG:2180."""
+    for name, geometry in layers.items():
+        gpd.GeoDataFrame({"geometry": [geometry]}, crs="EPSG:2180").to_file(
+            path, layer=name, driver="GPKG"
+        )
+    return path
+
+
+# the area of the tests: 1 km x 1 km, the west 60% is forest, the east 40% arable
+AREA = kartograf.BBox(500000, 600000, 501000, 601000, "EPSG:2180")
+WEST = box(500000, 600000, 500600, 601000)
+EAST = box(500600, 600000, 501000, 601000)
+
+
+@pytest.mark.usefixtures("offline")
 class TestGetLandCoverStats:
-    """Tests for get_land_cover_stats function."""
+    """get_land_cover_stats reads the packages of the counties from the store."""
 
-    @patch("core.cn_calculator._analyze_land_cover_gpkg")
-    @patch("core.cn_calculator.LandCoverManager", create=True)
-    def test_returns_percentages(self, mock_lc_cls, mock_analyze):
-        """Test returns percentage dict when GeoPackage is available."""
-        # Mock kartograf import inside function
-        mock_manager = MagicMock()
-        mock_manager.download_by_bbox.return_value = Path("/tmp/fake.gpkg")
+    def test_percentages_of_a_county_by_teryt(self, tmp_path):
+        gpkg = _write_gpkg(
+            tmp_path / "1465.gpkg", {"OT_PTLZ_A": WEST, "OT_PTTR_A": EAST}
+        )
+        with bdot10k_counties(Counties(["1465"], geopackages={"1465": gpkg})):
+            stats = get_land_cover_stats(AREA, tmp_path / "cache", teryt="1465")
 
-        expected_stats = {"forest": 60.0, "arable": 30.0, "meadow": 10.0}
-        mock_analyze.return_value = expected_stats
+        assert stats == {"forest": 60.0, "arable": 40.0}
 
-        bbox = MagicMock(min_x=500000, min_y=600000, max_x=501000, max_y=601000)
+    def test_counties_of_an_area_count_by_their_area_not_by_file(self, tmp_path):
+        west = _write_gpkg(tmp_path / "1401.gpkg", {"OT_PTLZ_A": WEST})
+        east = _write_gpkg(tmp_path / "1465.gpkg", {"OT_PTTR_A": EAST})
+        counties = Counties(["1401", "1465"], geopackages={"1401": west, "1465": east})
+        with bdot10k_counties(counties):
+            stats = get_land_cover_stats(AREA, tmp_path / "cache")
 
-        with patch.dict(
-            "sys.modules",
-            {"kartograf": MagicMock(LandCoverManager=lambda **kw: mock_manager)},
-        ):
-            result = get_land_cover_stats(bbox, Path("/tmp/data"))
+        assert stats == {"forest": 60.0, "arable": 40.0}
+        assert counties.packages == ["1401", "1465"]
 
-        assert result == expected_stats
+    def test_packages_are_versions_of_the_store_of_the_cache(self, tmp_path):
+        gpkg = _write_gpkg(tmp_path / "1465.gpkg", {"OT_PTLZ_A": WEST})
+        counties = Counties(["1465"], geopackages={"1465": gpkg})
+        with bdot10k_counties(counties):
+            get_land_cover_stats(AREA, tmp_path / "cache", teryt="1465")
+            get_land_cover_stats(AREA, tmp_path / "cache", teryt="1465")
 
-    def test_returns_empty_on_import_error(self):
-        """Test returns {} when kartograf is not available."""
-        bbox = MagicMock()
+        stored = tmp_path / "cache" / "kartograf" / "landcover"
+        assert (stored / "pl_bdot10k_gpkg" / "teryt" / "1465.gpkg").is_file()
+        assert counties.packages == ["1465"]  # the second call used the local one
 
-        with patch.dict("sys.modules", {"kartograf": None}):
-            # ImportError will be raised, caught by except block
-            result = get_land_cover_stats(bbox, Path("/tmp/data"))
+    def test_returns_empty_when_the_county_fails(self, tmp_path):
+        with bdot10k_counties(Counties(["1465"], failing=["1465"])):
+            assert get_land_cover_stats(AREA, tmp_path, teryt="1465") == {}
 
-        assert result == {}
-
-    @patch("core.cn_calculator._analyze_land_cover_gpkg")
-    def test_returns_empty_when_download_returns_none(self, mock_analyze):
-        """Test returns {} when LandCoverManager returns None."""
-        mock_manager = MagicMock()
-        mock_manager.download_by_bbox.return_value = None
-
-        bbox = MagicMock()
-
-        with patch.dict(
-            "sys.modules",
-            {"kartograf": MagicMock(LandCoverManager=lambda **kw: mock_manager)},
-        ):
-            result = get_land_cover_stats(bbox, Path("/tmp/data"))
-
-        assert result == {}
-        mock_analyze.assert_not_called()
+    def test_returns_empty_when_the_store_refuses_the_write(self, tmp_path):
+        store = tmp_path / "kartograf"
+        store.mkdir()
+        (store / "notes.txt").write_text("not a store")
+        with bdot10k_counties(Counties(["1465"])):
+            assert get_land_cover_stats(AREA, tmp_path, teryt="1465") == {}
 
 
 class TestAnalyzeLandCoverGpkg:
@@ -152,7 +169,7 @@ class TestAnalyzeLandCoverGpkg:
             ),
             patch("geopandas.clip", side_effect=lambda gdf, mask: gdf),
         ):
-            result = _analyze_land_cover_gpkg(gpkg_path, bbox)
+            result = _analyze_land_cover_gpkgs([gpkg_path], bbox)
 
         assert isinstance(result, dict)
         assert "forest" in result
@@ -166,7 +183,7 @@ class TestAnalyzeLandCoverGpkg:
         gpkg_path = Path("/tmp/empty.gpkg")
 
         with patch("fiona.listlayers", return_value=["gpkg_contents", "OT_BUBD_A"]):
-            result = _analyze_land_cover_gpkg(gpkg_path, bbox)
+            result = _analyze_land_cover_gpkgs([gpkg_path], bbox)
 
         assert result == {}
 
@@ -176,7 +193,7 @@ class TestAnalyzeLandCoverGpkg:
         gpkg_path = Path("/tmp/bad.gpkg")
 
         with patch("fiona.listlayers", side_effect=Exception("Cannot open file")):
-            result = _analyze_land_cover_gpkg(gpkg_path, bbox)
+            result = _analyze_land_cover_gpkgs([gpkg_path], bbox)
 
         assert result == {}
 
@@ -203,7 +220,7 @@ class TestAnalyzeLandCoverGpkg:
             ),
             patch("geopandas.clip", side_effect=lambda gdf, mask: gdf),
         ):
-            result = _analyze_land_cover_gpkg(gpkg_path, bbox)
+            result = _analyze_land_cover_gpkgs([gpkg_path], bbox)
 
         # Both PTTR and PTUT map to "arable"
         assert "arable" in result
@@ -223,7 +240,7 @@ class TestAnalyzeLandCoverGpkg:
             patch("fiona.listlayers", return_value=["OT_PTLZ_A"]),
             patch("geopandas.read_file", return_value=empty_gdf),
         ):
-            result = _analyze_land_cover_gpkg(gpkg_path, bbox)
+            result = _analyze_land_cover_gpkgs([gpkg_path], bbox)
 
         assert result == {}
 

@@ -259,7 +259,7 @@ def determine_cn(
     default_cn: int = DEFAULT_CN,
     use_kartograf: bool = True,
     boundary_wgs84: list[list[float]] | None = None,
-    data_dir: Path | None = None,
+    cache_dir: Path | None = None,
     teryt: str | None = None,
 ) -> tuple[int, str, dict[str, Any] | None]:
     """
@@ -285,8 +285,9 @@ def determine_cn(
         Czy uzywac Kartografa, domyslnie True
     boundary_wgs84 : List[List[float]], optional
         Granica w WGS84 (wymagana dla Kartografa)
-    data_dir : Path, optional
-        Katalog danych (wymagany dla Kartografa)
+    cache_dir : Path, optional
+        Katalog cache pobranych danych (wymagany dla Kartografa): jego magazyn to
+        ``<cache_dir>/kartograf`` (ADR-061)
 
     Returns
     -------
@@ -323,10 +324,10 @@ def determine_cn(
         logger.debug(f"Blad pobierania land_cover z bazy: {e}")
 
     # 3. Z Kartografa
-    if use_kartograf and boundary_wgs84 and data_dir:
+    if use_kartograf and boundary_wgs84 and cache_dir:
         from core.cn_calculator import calculate_cn_from_kartograf
 
-        result = calculate_cn_from_kartograf(boundary_wgs84, data_dir, teryt=teryt)
+        result = calculate_cn_from_kartograf(boundary_wgs84, cache_dir, teryt=teryt)
 
         if result and result.cn:
             logger.info(f"CN z Kartografa (HSG={result.dominant_hsg}): {result.cn}")

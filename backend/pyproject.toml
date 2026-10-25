@@ -54,18 +54,16 @@ dependencies = [
     # Deltares/pyflwdir#108, fixed on its main branch, not released). Lift the cap with
     # the release of pyflwdir.
     "affine>=2.4,<3",
-    # Ecosystem producers, pinned until the first release set (REL-5.1): precipitation
-    # PMAXTP of IMGWTools, spatial data download of Kartograf (NMT, BDOT10k, CORINE,
-    # SoilGrids) and the calculations of Hydrolog. Kartograf stays on its release tag: its
-    # data output is not migrated yet (docs/PROGRESS.md, Next 2). IMGWTools and Hydrolog
-    # are pinned by commit while their tags do not exist (REL-5.3, DEV-3.4): the head of
-    # IMGWTools `feature/data-output` and the head of Hydrolog `feature/routing-network`.
-    # Neither commit is pushed, so `uv lock` and `uv sync` resolve them only on a machine
-    # whose uv git cache holds them (docs/PROGRESS.md, Next 2). The release pull request
-    # replaces both commits with tags (REL-5.3).
-    "imgwtools @ git+https://github.com/Daldek/IMGWTools.git@a30452182b01f47cc18e48466da4edf4d0c8cb6a",
-    "kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.7.0",
-    "hydrolog @ git+https://github.com/Daldek/Hydrolog.git@6c9ba5afae65c601c447f48f5c1412e93f3a1d60",
+    # Ecosystem producers, pinned by commit until the first release set (REL-5.3, DEV-3.4,
+    # ADR-060, ADR-061): precipitation PMAXTP of IMGWTools, spatial data download of
+    # Kartograf (NMT, BDOT10k, CORINE, SoilGrids) and the calculations of Hydrolog. The
+    # range is the one the code supports and admits the development version of the pending
+    # release (REL-5.6, ECO-053: PEP 440 puts `0.8.0.dev0` below `0.8.0`); the commit is
+    # in `[tool.uv.sources]`. The release pull request narrows the ranges to `>=0.8.0`,
+    # `>=1.0.0` and `>=3.0.0` and replaces each `rev` with the release tag (REL-5.3).
+    "imgwtools>=3.0.0.dev0,<4",
+    "kartograf>=0.8.0.dev0,<0.9",
+    "hydrolog>=1.0.0.dev0,<2",
     "requests>=2.31",
     # Logging, process monitoring, utilities, caching
     "structlog>=24.1.0",
@@ -96,6 +94,14 @@ Repository = "https://github.com/Daldek/Hydrograf"
 # An application: uv installs the dependencies, not the code (Docker copies it, the
 # tests and scripts import it from this directory).
 package = false
+
+[tool.uv.sources]
+# The heads of the producers (REL-5.3): Kartograf `feature/data-output` (0.8.0.dev0),
+# IMGWTools `feature/data-output` (3.0.0), Hydrolog `feature/routing-objects`
+# (1.0.0.dev0). All three commits are on GitHub.
+imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "7e2114e1424903f1fd8fc036a2cb7aa81df44287" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "b73aad3327cf6faf7ec7d15fe47e9a897f21954a" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "31bf7967ba2a6de433737962eadabf86d93aa6ec" }
 
 [tool.ruff]
 target-version = "py312"
@@ -143,19 +149,6 @@ module = [
     "shapely",
     "shapely.*",
     "yaml",
-]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-# Ecosystem producers that ship no py.typed marker: IMGWTools at the pinned commit declares
-# `Typing :: Typed` but ships no marker, and Kartograf `v0.7.0` predates DEV-7.4. Hydrolog
-# ships `py.typed`, so mypy checks the calls against its types (no override). Drop a
-# producer from this list when its release ships the marker.
-module = [
-    "imgwtools",
-    "imgwtools.*",
-    "kartograf",
-    "kartograf.*",
 ]
 ignore_missing_imports = true
 

@@ -1,199 +1,107 @@
-"""Kontrakt download_sheets() z Kartografem 0.7.0: raport, glosne bledy, cache."""
+"""download_sheets with the real Kartograf: store, report, loud errors (ADR-061)."""
 
-from pathlib import Path
-from typing import Any
-from unittest.mock import patch
-
+import kartograf
 import pytest
-from kartograf.download.manager import DownloadResult
 
-from scripts.download_dem import NmtDownloadError, NmtDownloadReport, download_sheets
+from scripts.download_dem import NmtDownloadError, download_sheets
+from tests.kartograf_offline import GugikIndex, flight, gugik_index
+from tests.kartograf_offline import offline as offline  # noqa: F401
 
+pytestmark = pytest.mark.usefixtures("offline")
 
-class FakeManager:
-    """Atrapa DownloadManager: zwraca zadany wynik i zapisuje parametry."""
-
-    result: DownloadResult = DownloadResult()
-    paths: list[Path] = []
-    init_kwargs: dict[str, Any] = {}
-    disable_cache_with: str | None = None
-    calls: list[tuple[list[str], bool]] = []
-
-    def __init__(self, **kwargs):
-        FakeManager.init_kwargs = kwargs
-        self.last_result = None
-        self.last_sheet = None
-
-    def download_sheets(self, godla, skip_existing=True):
-        FakeManager.calls.append((list(godla), skip_existing))
-        if FakeManager.disable_cache_with:
-            cache = FakeManager.init_kwargs["provider"].cache
-            cache.on_disabled(FakeManager.disable_cache_with)
-        self.last_result = FakeManager.result
-        return list(FakeManager.paths)
+S1 = "N-34-130-D-d-2-1"
+S2 = "N-34-130-D-d-2-2"
+SEGMENT = "nmt/pl_1992_5m_evrf2007"
 
 
-class FakeProvider:
-    def __init__(self, resolution, cache):
-        self.resolution = resolution
-        self.cache = cache
+class TestDownloadSheetsStore:
+    def test_sheets_land_at_the_standard_path_of_a_store(self, tmp_path):
+        root = tmp_path / "kartograf"
+        with gugik_index(GugikIndex([flight(S1, "2023-05-01", "100")])):
+            report = download_sheets([S1], root, tmp_path / "m.db")
 
+        std = root / SEGMENT / "N-34/130/D/d/2/1" / f"{S1}.asc"
+        assert report.paths == [std]
+        assert std.is_file()
+        assert (root / "kartograf-store.json").is_file()
 
-class FakeCache:
-    def __init__(self, db_path, on_disabled):
-        self.db_path = Path(db_path)
-        self.on_disabled = on_disabled
+    def test_second_run_uses_the_local_version_without_a_transfer(self, tmp_path):
+        index = GugikIndex([flight(S1, "2023-05-01", "100")])
+        with gugik_index(index):
+            first = download_sheets([S1], tmp_path / "k", tmp_path / "m.db")
+            second = download_sheets([S1], tmp_path / "k", tmp_path / "m.db")
 
+        assert second.paths == first.paths  # a local sheet is still in the report
+        assert len(index.downloaded) == 1
 
-@pytest.fixture
-def fake_kartograf():
-    FakeManager.result = DownloadResult()
-    FakeManager.paths = []
-    FakeManager.init_kwargs = {}
-    FakeManager.disable_cache_with = None
-    FakeManager.calls = []
-    with (
-        patch("kartograf.DownloadManager", FakeManager),
-        patch("kartograf.GugikProvider", FakeProvider),
-        patch("kartograf.MetadataCache", FakeCache),
-    ):
-        yield FakeManager
+    def test_no_skip_existing_fetches_the_sheet_again(self, tmp_path):
+        index = GugikIndex([flight(S1, "2023-05-01", "100")])
+        with gugik_index(index):
+            download_sheets([S1], tmp_path / "k", tmp_path / "m.db")
+            again = download_sheets(
+                [S1], tmp_path / "k", tmp_path / "m.db", skip_existing=False
+            )
 
+        assert len(index.downloaded) == 2
+        assert len(again.paths) == 1
 
-def _asc(tmp_path: Path, godlo: str) -> Path:
-    return tmp_path / "nmt" / "pl_1992_5m_evrf2007" / f"{godlo}.asc"
-
-
-class TestDownloadSheetsWiring:
-    def test_uses_campaigns_newest_cache_and_data_root(self, fake_kartograf, tmp_path):
-        fake_kartograf.paths = [_asc(tmp_path, "N-33-130-D-d-1-1")]
-        fake_kartograf.result = DownloadResult(succeeded=list(fake_kartograf.paths))
-
-        download_sheets(
-            ["N-33-130-D-d-1-1"],
-            output_dir=tmp_path,
-            metadata_cache_path=tmp_path / "kartograf_meta.db",
-            resolution="5m",
+    def test_newest_flight_is_used_also_when_it_is_partial(self, tmp_path):
+        # A sheet on the border has no full flight: a plain directory would drop it
+        index = GugikIndex(
+            [
+                flight(S1, "2023-05-01", "100", full=True),
+                flight(S2, "2023-05-01", "101", full=False),
+            ]
         )
+        with gugik_index(index):
+            report = download_sheets([S1, S2], tmp_path / "k", tmp_path / "m.db")
 
-        kw = fake_kartograf.init_kwargs
-        assert kw["output_dir"] == str(tmp_path)
-        assert kw["resolution"] == "5m"
-        assert kw["campaigns"] == "newest"
-        assert kw["provider"].resolution == "5m"
-        assert kw["provider"].cache.db_path == tmp_path / "kartograf_meta.db"
-        assert fake_kartograf.calls == [(["N-33-130-D-d-1-1"], True)]
+        assert {p.name for p in report.paths} == {f"{S1}.asc", f"{S2}.asc"}
 
 
 class TestDownloadSheetsReport:
-    def test_returns_report_with_paths(self, fake_kartograf, tmp_path):
-        p = _asc(tmp_path, "N-33-130-D-d-1-1")
-        fake_kartograf.paths = [p]
-        fake_kartograf.result = DownloadResult(skipped=["N-33-130-D-d-1-1"])
+    def test_no_coverage_is_reported_not_raised(self, tmp_path):
+        with gugik_index(GugikIndex([flight(S1, "2023-05-01", "100")])):
+            report = download_sheets([S1, S2], tmp_path / "k", tmp_path / "m.db")
 
-        report = download_sheets(["N-33-130-D-d-1-1"], tmp_path, tmp_path / "m.db")
+        assert [p.name for p in report.paths] == [f"{S1}.asc"]
+        assert report.no_coverage == [S2]
 
-        assert isinstance(report, NmtDownloadReport)
-        assert report.paths == [p]
-        assert report.no_coverage == []
-        assert report.unverified == {}
+    def test_no_coverage_for_every_sheet_raises(self, tmp_path):
+        with gugik_index(GugikIndex()), pytest.raises(NmtDownloadError, match=S1):
+            download_sheets([S1], tmp_path / "k", tmp_path / "m.db")
 
-    def test_partial_no_coverage_is_reported_not_raised(self, fake_kartograf, tmp_path):
-        p = _asc(tmp_path, "N-33-130-D-d-1-1")
-        fake_kartograf.paths = [p]
-        fake_kartograf.result = DownloadResult(
-            succeeded=[p],
-            failed=["M-33-60-A-a-1-1"],
-            no_coverage=["M-33-60-A-a-1-1"],
-        )
+    def test_transfer_failure_raises_naming_the_sheet(self, tmp_path):
+        good, bad = flight(S1, "2023-05-01", "100"), flight(S2, "2023-05-01", "101")
+        with (
+            gugik_index(GugikIndex([good, bad], failing=[bad.url])),
+            pytest.raises(NmtDownloadError, match=S2),
+        ):
+            download_sheets([S1, S2], tmp_path / "k", tmp_path / "m.db")
 
-        report = download_sheets(
-            ["N-33-130-D-d-1-1", "M-33-60-A-a-1-1"], tmp_path, tmp_path / "m.db"
-        )
+    def test_empty_sheet_list_raises(self, tmp_path):
+        with pytest.raises(NmtDownloadError):
+            download_sheets([], tmp_path / "k", tmp_path / "m.db")
 
-        assert report.paths == [p]
-        assert report.no_coverage == ["M-33-60-A-a-1-1"]
-
-    def test_unverified_reuse_is_reported(self, fake_kartograf, tmp_path):
-        p = _asc(tmp_path, "N-33-130-D-d-1-1")
-        fake_kartograf.paths = [p]
-        fake_kartograf.result = DownloadResult(
-            skipped=["N-33-130-D-d-1-1"],
-            unverified={"N-33-130-D-d-1-1": "skorowidz niedostepny"},
-        )
-
-        report = download_sheets(["N-33-130-D-d-1-1"], tmp_path, tmp_path / "m.db")
-
-        assert report.unverified == {"N-33-130-D-d-1-1": "skorowidz niedostepny"}
-
-
-class TestDownloadSheetsLoudErrors:
-    def test_hard_failures_raise_with_full_list(self, fake_kartograf, tmp_path):
-        p = _asc(tmp_path, "N-33-130-D-d-1-1")
-        fake_kartograf.paths = [p]
-        fake_kartograf.result = DownloadResult(
-            succeeded=[p],
-            failed=["N-33-130-D-d-1-2", "N-33-130-D-d-1-3"],
-        )
-
-        with pytest.raises(NmtDownloadError) as exc:
-            download_sheets(
-                ["N-33-130-D-d-1-1", "N-33-130-D-d-1-2", "N-33-130-D-d-1-3"],
-                tmp_path,
-                tmp_path / "m.db",
-            )
-
-        msg = str(exc.value)
-        assert "2 z 3" in msg
-        assert "N-33-130-D-d-1-2" in msg
-        assert "N-33-130-D-d-1-3" in msg
-
-    def test_all_no_coverage_raises(self, fake_kartograf, tmp_path):
-        fake_kartograf.paths = []
-        fake_kartograf.result = DownloadResult(
-            failed=["N-35-1-A-a-1-1"], no_coverage=["N-35-1-A-a-1-1"]
-        )
-
-        with pytest.raises(NmtDownloadError, match="brak pokrycia"):
-            download_sheets(["N-35-1-A-a-1-1"], tmp_path, tmp_path / "m.db")
-
-    def test_disabled_metadata_cache_raises(self, fake_kartograf, tmp_path):
-        p = _asc(tmp_path, "N-33-130-D-d-1-1")
-        fake_kartograf.paths = [p]
-        fake_kartograf.result = DownloadResult(succeeded=[p])
-        fake_kartograf.disable_cache_with = "cache metadanych nieczytelny (m.db)"
-
-        with pytest.raises(NmtDownloadError, match="cache metadanych nieczytelny"):
-            download_sheets(["N-33-130-D-d-1-1"], tmp_path, tmp_path / "m.db")
-
-    def test_missing_cache_parent_dir_raises_before_download(
-        self, fake_kartograf, tmp_path
-    ):
+    def test_missing_metadata_cache_directory_raises(self, tmp_path):
         with pytest.raises(NmtDownloadError, match="nie istnieje"):
-            download_sheets(["N-33-130-D-d-1-1"], tmp_path, tmp_path / "brak" / "m.db")
-        assert fake_kartograf.calls == []
+            download_sheets([S1], tmp_path / "k", tmp_path / "absent" / "m.db")
 
-    def test_cache_problem_and_hard_failure_reported_together(
-        self, fake_kartograf, tmp_path
-    ):
-        p = _asc(tmp_path, "N-33-130-D-d-1-1")
-        fake_kartograf.paths = [p]
-        fake_kartograf.result = DownloadResult(
-            succeeded=[p], failed=["N-33-130-D-d-1-2"]
-        )
-        fake_kartograf.disable_cache_with = "cache metadanych nieczytelny (m.db)"
+    def test_invalid_sheet_code_raises_kartograf_parse_error(self, tmp_path):
+        with gugik_index(GugikIndex()), pytest.raises(kartograf.ParseError):
+            download_sheets(["not-a-sheet"], tmp_path / "k", tmp_path / "m.db")
 
-        with pytest.raises(NmtDownloadError) as exc:
-            download_sheets(
-                ["N-33-130-D-d-1-1", "N-33-130-D-d-1-2"], tmp_path, tmp_path / "m.db"
-            )
 
-        msg = str(exc.value)
-        assert "cache metadanych nieczytelny" in msg
-        assert "N-33-130-D-d-1-2" in msg
+class TestDownloadSheetsRefusedStore:
+    def test_a_root_with_foreign_files_is_a_conflict(self, tmp_path):
+        root = tmp_path / "k"
+        root.mkdir()
+        (root / "notes.txt").write_text("not a store")
+        with (
+            gugik_index(GugikIndex([flight(S1, "2023-05-01", "100")])),
+            pytest.raises(kartograf.ConflictError) as raised,
+        ):
+            download_sheets([S1], root, tmp_path / "m.db")
 
-    def test_empty_sheet_list_raises_before_any_work(self, fake_kartograf, tmp_path):
-        with pytest.raises(NmtDownloadError, match="Pusta lista arkuszy NMT"):
-            download_sheets([], tmp_path, tmp_path / "m.db")
-        assert fake_kartograf.init_kwargs == {}
-        assert fake_kartograf.calls == []
+        assert raised.value.code == "conflict"
+        assert raised.value.reason == "not_empty"

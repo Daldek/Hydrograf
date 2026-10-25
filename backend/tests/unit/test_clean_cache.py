@@ -1,43 +1,84 @@
-"""clean_cache usuwa cache metadanych Kartografa razem z cache pobran."""
+"""clean_cache empties the large products of the Kartograf store and keeps the rest."""
 
-from pathlib import Path
+import kartograf
+import pytest
+from kartograf.testing import build_fixture_store
 
 from scripts.clean import build_plan, clean_cache
+from tests.kartograf_offline import (
+    Counties,
+    SoilRasters,
+    bdot10k_counties,
+    soil_rasters,
+)
+from tests.kartograf_offline import offline as offline  # noqa: F401
 
 META_FILES = ("kartograf_meta.db", "kartograf_meta.db-wal", "kartograf_meta.db-shm")
+BBOX = kartograf.BBox(450000, 550000, 460000, 560000, "EPSG:2180")
 
 
-def _populate(cache_dir: Path) -> None:
-    sheet = cache_dir / "nmt" / "pl_1992_5m_evrf2007" / "N-33" / "a.asc"
-    sheet.parent.mkdir(parents=True)
-    sheet.write_text("x")
+@pytest.fixture
+def cache_dir(tmp_path, offline):  # noqa: F811
+    """A cache with a store (NMT, BDOT10k, SoilGrids, HSG) and the meta files."""
+    root = tmp_path / "kartograf"
+    build_fixture_store(root)
+    with bdot10k_counties(Counties(["1465"])):
+        report = kartograf.download_landcover(
+            product="bdot10k", root=root, teryt="1465", cache=False
+        )
+    assert report.ok
+    with soil_rasters(SoilRasters()):
+        report = kartograf.calculate_hsg(
+            root=root, bbox=BBOX, depth="0-5cm", cache=False
+        )
+    assert report.ok
     for name in META_FILES:
-        (cache_dir / name).write_bytes(b"sqlite")
-    (cache_dir / "soil_hsg").mkdir()
-    (cache_dir / "soil_hsg" / "hsg_poland.tif").write_bytes(b"hsg")
+        (tmp_path / name).write_text("sqlite")
+    return tmp_path
 
 
-class TestCleanCacheMetadata:
-    def test_removes_metadata_db_and_wal_files(self, tmp_path):
-        _populate(tmp_path)
+def _segments(cache_dir):
+    return {
+        segment.split("/")[0]
+        for segment in kartograf.list_segments(cache_dir / "kartograf")
+    }
 
-        clean_cache(tmp_path, dry_run=False)
 
-        for name in META_FILES:
-            assert not (tmp_path / name).exists()
-        assert (tmp_path / "soil_hsg" / "hsg_poland.tif").exists()
+def test_removes_nmt_bdot10k_and_metadata_and_keeps_hsg(cache_dir):
+    assert _segments(cache_dir) == {"nmt", "landcover", "soil", "hsg"}
 
-    def test_dry_run_counts_but_keeps_metadata(self, tmp_path):
-        _populate(tmp_path)
+    clean_cache(cache_dir, dry_run=False)
 
-        n_files, _ = clean_cache(tmp_path, dry_run=True)
+    assert _segments(cache_dir) == {"soil", "hsg"}
+    assert (cache_dir / "kartograf" / "kartograf-store.json").is_file()
+    assert not [p for p in cache_dir.iterdir() if p.name.startswith("kartograf_meta")]
 
-        assert n_files == 1 + len(META_FILES)
-        assert (tmp_path / "kartograf_meta.db").exists()
 
-    def test_plan_counts_metadata_files(self, tmp_path):
-        _populate(tmp_path)
+def test_what_is_left_is_a_store_that_kartograf_still_writes(cache_dir):
+    clean_cache(cache_dir, dry_run=False)
 
-        plan = build_plan(["cache"], tmp_path / "data", tmp_path)
+    with bdot10k_counties(Counties(["1465"])):
+        report = kartograf.download_landcover(
+            product="bdot10k", root=cache_dir / "kartograf", teryt="1465", cache=False
+        )
 
-        assert plan[0]["files"] == 1 + len(META_FILES)
+    assert report.ok
+    assert [item.file.status for item in report.files] == ["new"]
+
+
+def test_dry_run_removes_nothing(cache_dir):
+    before = sorted(p for p in cache_dir.rglob("*") if p.is_file())
+
+    clean_cache(cache_dir, dry_run=True)
+
+    assert sorted(p for p in cache_dir.rglob("*") if p.is_file()) == before
+
+
+def test_plan_counts_what_the_clean_removes(cache_dir):
+    (entry,) = build_plan(["cache"], cache_dir / "data", cache_dir)
+    files_before = sum(1 for p in cache_dir.rglob("*") if p.is_file())
+
+    removed_files, _ = clean_cache(cache_dir, dry_run=False)
+    files_after = sum(1 for p in cache_dir.rglob("*") if p.is_file())
+
+    assert entry["files"] == removed_files == files_before - files_after

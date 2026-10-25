@@ -37,7 +37,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from scripts.download_dem import METADATA_CACHE_NAME
+from utils.kartograf_store import METADATA_CACHE_NAME, store_dir
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,6 +53,13 @@ DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
 KARTOGRAF_META_GLOB = f"{METADATA_CACHE_NAME}*"
 
+# What a cache clean removes from the Kartograf store: the large products that Kartograf
+# fetches again (ADR-061). The HSG raster of Poland (``hsg/``) and its SoilGrids inputs
+# (``soil/``) stay: small, Poland-wide and reusable. The marker of the store stays too,
+# so what is left is still a valid store.
+STORE_PRODUCTS_REMOVED = ("nmt", "landcover")
+STORE_PRODUCTS_KEPT = ("hsg", "soil")
+
 # Components and what they remove
 COMPONENTS = [
     "rasters",
@@ -66,7 +73,7 @@ COMPONENTS = [
 ]
 
 # Tables truncated during DB cleanup. soil_hsg included because bootstrap
-# re-imports from cache/soil_hsg (which is intentionally preserved).
+# re-imports it from the HSG raster of the Kartograf store (which is preserved).
 DB_TABLES = [
     "sewer_network",
     "sewer_nodes",
@@ -229,33 +236,30 @@ def clean_tiles(dry_run: bool) -> tuple[int, int]:
 
 
 def clean_cache(cache_dir: Path, dry_run: bool) -> tuple[int, int]:
-    """Remove download caches (NMT, BDOT10k). Keeps soil_hsg (small, Poland-wide)."""
+    """Remove download caches (NMT, BDOT10k) of the Kartograf store.
+
+    Keeps the HSG raster of Poland and its inputs (small, Poland-wide).
+    """
     total_files = 0
     total_size = 0
+    store = store_dir(cache_dir)
 
-    # NMT cache (biggest, ~300MB)
-    nmt_cache = cache_dir / "nmt"
-    if nmt_cache.exists():
-        n, s = remove_dir(nmt_cache, dry_run)
-        total_files += n
-        total_size += s
-
-    # BDOT10k cache (~1.1GB)
-    bdot_cache = cache_dir / "bdot10k"
-    if bdot_cache.exists():
-        n, s = remove_dir(bdot_cache, dry_run)
-        total_files += n
-        total_size += s
+    # NMT and BDOT10k of the Kartograf store (the biggest part of the cache)
+    for product in STORE_PRODUCTS_REMOVED:
+        product_dir = store / product
+        if product_dir.exists():
+            n, s = remove_dir(product_dir, dry_run)
+            total_files += n
+            total_size += s
 
     # Kartograf MetadataCache (SQLite + WAL/SHM) — opisuje usuniete wyzej pliki
     n, s = remove_files_by_glob(cache_dir, KARTOGRAF_META_GLOB, dry_run)
     total_files += n
     total_size += s
 
-    # soil_hsg intentionally NOT removed (~700KB, Poland-wide, reusable)
-    hsg_cache = cache_dir / "soil_hsg"
-    if hsg_cache.exists():
-        logger.info("  (zachowano cache/soil_hsg — maly, ogolnopolski)")
+    # HSG intentionally NOT removed (small, Poland-wide, reusable)
+    if any((store / product).exists() for product in STORE_PRODUCTS_KEPT):
+        logger.info("  (zachowano cache/kartograf/hsg i soil — male, ogolnopolskie)")
 
     return total_files, total_size
 
@@ -408,15 +412,13 @@ def build_plan(
         )
 
     if "cache" in components:
-        nmt_cache = cache_dir / "nmt"
-        bdot_cache = cache_dir / "bdot10k"
+        store = store_dir(cache_dir)
+        removed = [store / product for product in STORE_PRODUCTS_REMOVED]
         meta_files = list(cache_dir.glob(KARTOGRAF_META_GLOB))
-        size = (
-            dir_size(nmt_cache)
-            + dir_size(bdot_cache)
-            + sum(f.stat().st_size for f in meta_files)
+        size = sum(dir_size(p) for p in removed) + sum(
+            f.stat().st_size for f in meta_files
         )
-        n = count_files(nmt_cache) + count_files(bdot_cache) + len(meta_files)
+        n = sum(count_files(p) for p in removed) + len(meta_files)
         plan.append(
             {
                 "name": "Cache pobran (NMT + BDOT10k)",
