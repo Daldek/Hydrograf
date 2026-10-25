@@ -153,7 +153,7 @@ def calculate_weighted_cn(
 def get_land_cover_for_boundary(
     boundary: Polygon,
     db: Session,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """
     Get detailed land cover information for a watershed boundary.
 

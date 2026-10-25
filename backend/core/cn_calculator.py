@@ -13,7 +13,7 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from kartograf import BBox
@@ -47,7 +47,7 @@ class CNCalculationResult:
     dominant_hsg: str
     hsg_stats: dict[str, float]
     land_cover_stats: dict[str, float]
-    cn_details: list[dict]
+    cn_details: list[dict[str, Any]]
 
 
 def check_kartograf_available() -> bool:
@@ -110,12 +110,12 @@ def convert_boundary_to_bbox(
     )
 
 
-def _has_hsg_data(hsg_stats: dict) -> bool:
+def _has_hsg_data(hsg_stats: dict[str, Any]) -> bool:
     """Return False for {} and for an all-nodata raster (Kartograf: counts all 0)."""
     amounts = [
         v.get("count", 0) if isinstance(v, dict) else v for v in hsg_stats.values()
     ]
-    return sum(amounts) > 0
+    return bool(sum(amounts) > 0)
 
 
 def get_hsg_from_soilgrids(bbox: "BBox") -> tuple[str, dict[str, float]]:

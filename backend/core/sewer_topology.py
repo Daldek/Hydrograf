@@ -10,9 +10,11 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from typing import Any
 
 import geopandas as gpd
 import numpy as np
+from affine import Affine
 from shapely.geometry import LineString
 
 logger = logging.getLogger(__name__)
@@ -24,8 +26,8 @@ VALID_ROLES = {"inlet", "outlet", "junction", "storage"}
 class ParsedTopology:
     """Unified result of parsing both input formats."""
 
-    nodes: list[dict] = field(default_factory=list)
-    edges: list[dict] = field(default_factory=list)
+    nodes: list[dict[str, Any]] = field(default_factory=list)
+    edges: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     source_format: str = "points_only"
 
@@ -33,7 +35,7 @@ class ParsedTopology:
 class TopologyValidationError(Exception):
     """Raised when topology data fails validation."""
 
-    def __init__(self, errors: list[dict]) -> None:
+    def __init__(self, errors: list[dict[str, Any]]) -> None:
         self.errors = errors
         messages = [e["message"] for e in errors]
         super().__init__(
@@ -42,16 +44,16 @@ class TopologyValidationError(Exception):
         )
 
 
-def _invert_role_mapping(role_mapping: dict) -> dict:
+def _invert_role_mapping(role_mapping: dict[str, Any]) -> dict[Any, str]:
     """Invert {canonical: user_value} -> {user_value: canonical}."""
     return {v: k for k, v in role_mapping.items()}
 
 
 def _parse_nodes(
     points_gdf: gpd.GeoDataFrame,
-    field_mapping: dict,
-    role_lookup: dict,
-) -> list[dict]:
+    field_mapping: dict[str, Any],
+    role_lookup: dict[str, Any],
+) -> list[dict[str, Any]]:
     """Extract nodes from points GeoDataFrame."""
     id_col = field_mapping["node_id"]
     role_col = field_mapping["node_role"]
@@ -99,10 +101,10 @@ def _parse_nodes(
 
 
 def _generate_edges_from_downstream(
-    nodes: list[dict],
+    nodes: list[dict[str, Any]],
     points_gdf: gpd.GeoDataFrame,
-    field_mapping: dict,
-) -> list[dict]:
+    field_mapping: dict[str, Any],
+) -> list[dict[str, Any]]:
     """Format A: generate LineString edges from downstream_id column."""
     ds_col = field_mapping["downstream_id"]
     id_col = field_mapping["node_id"]
@@ -142,10 +144,10 @@ def _generate_edges_from_downstream(
 
 
 def _parse_edges_from_lines(
-    nodes: list[dict],
+    nodes: list[dict[str, Any]],
     lines_gdf: gpd.GeoDataFrame,
-    field_mapping: dict,
-) -> list[dict]:
+    field_mapping: dict[str, Any],
+) -> list[dict[str, Any]]:
     """Format B: parse edges from lines GeoDataFrame with from_node/to_node."""
     from_col = field_mapping["edge_from"]
     to_col = field_mapping["edge_to"]
@@ -179,9 +181,11 @@ def _parse_edges_from_lines(
     return edges
 
 
-def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
+def _validate_topology(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     """Validate topology consistency. Returns list of error dicts (empty=OK)."""
-    errors: list[dict] = []
+    errors: list[dict[str, Any]] = []
 
     # 1. Duplicate IDs
     seen_ids: dict[str, int] = defaultdict(int)
@@ -375,7 +379,7 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
                     queue.append(neighbor)
         comp_id += 1
 
-    components: dict[int, list[dict]] = defaultdict(list)
+    components: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for node in nodes:
         cid = component_map.get(node["id"], -1)
         components[cid].append(node)
@@ -466,14 +470,14 @@ def _trace_fdir_downstream(
 def validate_against_fdir(
     topology: ParsedTopology,
     fdir: np.ndarray,
-    transform,
-) -> list[dict]:
+    transform: Affine,
+) -> list[dict[str, Any]]:
     """Check for feedback loops in the sewer topology.
 
     An outlet's downstream fdir path must not reach any inlet's capture zone in
     the same component.
     """
-    errors: list[dict] = []
+    errors: list[dict[str, Any]] = []
     nrows, ncols = fdir.shape
 
     # Map nodes to raster cells (local dict — do not mutate topology nodes)
@@ -553,8 +557,8 @@ def validate_against_fdir(
 def parse_sewer_topology(
     points_gdf: gpd.GeoDataFrame,
     lines_gdf: gpd.GeoDataFrame | None,
-    field_mapping: dict,
-    role_mapping: dict,
+    field_mapping: dict[str, Any],
+    role_mapping: dict[str, Any],
 ) -> ParsedTopology:
     """Parse and validate sewer topology from user data.
 

@@ -8,14 +8,17 @@ Unified endpoint with two modes:
 """
 
 import logging
+from typing import Any
 
+import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Response
 from shapely import wkb
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon, Point, Polygon
+from shapely.geometry.base import BaseGeometry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from core.catchment_graph import get_catchment_graph
+from core.catchment_graph import CatchmentGraph, get_catchment_graph
 from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.watershed_service import (
@@ -53,7 +56,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _smooth_polygon_sql(polygon, db: Session):
+def _smooth_polygon_sql(polygon: BaseGeometry, db: Session) -> BaseGeometry:
     """Apply PostGIS smoothing pipeline to a raw polygon.
 
     Same pipeline as merge_catchment_boundaries: SimplifyPreserveTopology(5.0) +
@@ -77,19 +80,19 @@ def _smooth_polygon_sql(polygon, db: Session):
 
 
 def _build_watershed_response(
-    cg,
-    point_2180,
-    boundary_2180,
-    boundary_poly,
-    upstream_indices_for_stats,
-    outlet_idx_for_stats,
-    segment_idx,
-    threshold,
-    merge_threshold,
-    area_km2,
-    stats,
-    include_hypsometric_curve,
-    db,
+    cg: CatchmentGraph,
+    point_2180: Point,
+    boundary_2180: BaseGeometry,
+    boundary_poly: Polygon,
+    upstream_indices_for_stats: np.ndarray,
+    outlet_idx_for_stats: int,
+    segment_idx: int,
+    threshold: int,
+    merge_threshold: int,
+    area_km2: float,
+    stats: dict[str, Any],
+    include_hypsometric_curve: bool,
+    db: Session,
 ) -> WatershedResponse:
     """Build WatershedResponse from computed data (shared by both modes)."""
     # Outlet
@@ -210,9 +213,17 @@ def _build_watershed_response(
     )
 
 
-def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curve):
+def _delineate_precomputed(
+    request: DelineateRequest,
+    point_2180: Point,
+    cg: CatchmentGraph,
+    db: Session,
+    include_hypsometric_curve: bool,
+) -> dict[str, Any]:
     """Precomputed mode: BFS on graph + ST_Union boundary."""
     threshold = request.threshold_m2
+    if threshold is None:
+        raise ValueError("Precomputed mode needs threshold_m2")
     escalated = False
     original_threshold = threshold
 
@@ -338,7 +349,13 @@ def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curv
     }
 
 
-def _delineate_precise(request, point_2180, cg, db, include_hypsometric_curve):
+def _delineate_precise(
+    request: DelineateRequest,
+    point_2180: Point,
+    cg: CatchmentGraph,
+    db: Session,
+    include_hypsometric_curve: bool,
+) -> dict[str, Any]:
     """Precise mode: BFS at 1000 + raster boundary."""
     from core.raster_service import get_raster_cache
 

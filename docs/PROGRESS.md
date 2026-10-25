@@ -15,12 +15,12 @@ sessions 98 and 99 are only on the unmerged branch `feature/kartograf-wykorzysta
 | Producer pins | behind the heads | Kartograf `v0.7.0`, Hydrolog `v0.6.3`, IMGWTools `v2.1.0`; the heads need the migration of Next 2; pins change only after the first release set (ADOPTION_PLAN 5.1) |
 | Branch `chore/nogat-2.1` | note | based on `develop`, not on `feature/kartograf-wykorzystanie`, which has 7 commits that `develop` lacks: `f3f23dd` (`affine>=2.4,<3`, carried here in `pyproject.toml`), a CHANGELOG line, and PROGRESS of sessions 98 and 99. Merging both needs a manual resolution of this file and of the deleted `requirements.txt` |
 | Nogat standard 2.1, environment | done | `backend/uv.lock` replaces `requirements.txt`: seeded with the versions of the image built on 2026-10-18 (no third-party change), caps `sqlalchemy<2.1` and `affine<3` with their reasons in `pyproject.toml`; `dev` group, extra `viz`; `[tool.uv] package = false`; `develop` carries `0.5.0.dev0`, read through `core/version.py`; the Dockerfile builds with `uv sync --locked --no-dev` (GDAL's Python binding stays outside the lock); editor, git and `.env.example` files |
-| Nogat standard 2.1, quality tooling | in progress | done: `ruff format` of 68 files (`2347433`) and the rule set of DEV-7.2 (`E F W I UP B SIM C4 D`, numpy docstrings, `ruff check` clean). Planned: mypy `strict` with per-module overrides, markers and `tests/contract`, coverage floor, `scripts/gate.sh`, CI, Dependabot |
+| Nogat standard 2.1, quality tooling | in progress | done: `ruff format` (`2347433`), the rule set of DEV-7.2 (`39eb15e`) and mypy `strict` over `api core models scripts utils tests` (clean, 142 files). Planned: `--strict-markers`, markers and `tests/contract`, coverage floor, `scripts/gate.sh`, CI, Dependabot |
 | Nogat standard 2.1, contribution files | planned | `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, pull request template (DEV-13.7, DEV-16.2, DEV-16.4) |
 | Nogat standard 2.1, documentation | in progress | done: this file and [BACKLOG.md](BACKLOG.md); planned: `CLAUDE.md` in English with Deviations, README in the order of DOC-2.1, ADR index and an ADR for the adoption, `docs/DEVELOPMENT_STANDARDS.md` deleted; the Polish documents are still to translate (Next 1, Translations) |
 | Nogat standard 2.1, error registry and REST (ERR-1 to ERR-6, DEV-11.1, AGI-6.2 to AGI-6.4) | planned | vendored registry and schemas, generated `core/_errors.py`, `HydrografError`, `application/problem+json`, `Accept-Language`, OpenAPI `operationId`s |
 | Data output (DEV §19, ECO-051) | planned | profile `app` consumes Kartograf in store mode; waits for the first release set; call sites in Next 2 |
-| Gate | not yet | `scripts/gate.sh` does not exist yet; the old checks were `ruff check`, `ruff format --check` and `pytest tests -m 'not db and not benchmark'` in `backend/` (187 ruff findings, 67 files to format, 1 failing test before this branch) |
+| Gate | not yet | `scripts/gate.sh` does not exist yet. Its steps run by hand in `backend/` are green: `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, `uv run pytest tests -m 'not db and not benchmark'` (1,175 passed in 15 s). The commit step and coverage are not run |
 | CI | old | `.github/workflows/ci.yml` runs lint, tests with PostGIS and the audit with uv and the lock (interim); nothing is pushed from this branch |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
@@ -42,21 +42,26 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    green before each; rules: `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`;
    Archiwista's branch `chore/nogat-2.1` is the worked example of an `app`). Remaining
    gaps of the inventory of 2026-10-25, in this order:
-   - **mypy.** `strict` over `backend/` (2,313 errors today, 426 of them outside `tests/`):
-     fix what is mechanical, per-module overrides for the rest, listed in CLAUDE.md (DEV-7.3).
-     Start with the error "Source file found twice under different module names:
-     backend.core.config and core.config": the empty `backend/__init__.py` makes mypy see two
-     modules; set `explicit_package_bases = true` with `mypy_path = "."`, or delete that file
-     (nothing imports `backend.`). Without `strict`, the old config gives 147 errors in 31
-     files. By code outside tests: `type-arg` 155, `no-untyped-def` 89, `no-untyped-call` 46,
-     `index` 35, `no-any-return` 27, `attr-defined` 21, `union-attr` 14; the tests (1,887) are
-     almost all missing annotations.
+   - **mypy is done**; its deviations go to the Deviations section of CLAUDE.md (DEV-7.3):
+     `migrations/` is excluded; the packages without types (`affine`, `fiona`, `geopandas`,
+     `pandas`, `psutil`, `pyflwdir`, `rasterio`, `scipy`, `shapely`, `yaml`) and the producers
+     pinned by tag (`hydrolog`, `imgwtools`, `kartograf`: no `py.typed` before their standard
+     2.1 releases, DEV-7.4) are per-module `ignore_missing_imports` overrides, not a global
+     switch; `tests.*` allows untyped definitions and calls and does not check the bodies of
+     untyped functions (`check_untyped_defs = false`, about 1,260 unannotated tests);
+     `scripts.*` allows untyped definitions and calls (46 findings) and its annotated code is
+     checked. To lift an override, annotate the module and delete its line in `pyproject.toml`.
    - **pytest.** `--strict-markers`, markers `live`, `db`, `slow` (plus `benchmark`),
-     `tests/contract`, coverage floor 80 (DEV-7.5, DEV-10.1).
+     `tests/contract`, coverage floor 80 (DEV-7.5, DEV-10.1). Starting point: `addopts` is
+     `-v --tb=short -m 'not db and not benchmark'` today and `[tool.coverage.run] source = ["."]`
+     omits `scripts/*`; measure first with `uv run pytest tests -m 'not db and not benchmark' --cov`
+     and lower `fail_under` only with a Deviations line.
    - **Gate and CI.** `scripts/gate.sh` and `scripts/check-commits.sh` (they run in
      `backend/`; the commit step in the repository root; `.pre-commit-config.yaml` goes), CI from
      `standards/ci` in the `app` variant (gate on Linux, a `db` job with PostGIS, audit),
-     Dependabot (DEV-7.6, DEV-7.7, DEV-13.6).
+     Dependabot (DEV-7.6, DEV-7.7, DEV-13.6). Adapt the template: `--cov="$PACKAGE"` becomes
+     a bare `--cov` (the app has several top-level packages, so `source` stays in
+     `[tool.coverage.run]`), and `mypy` takes no paths (`files` is set in `pyproject.toml`).
    - **Contribution files.** `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`,
      `.github/PULL_REQUEST_TEMPLATE.md` (without the CLA text).
    - **CLAUDE.md, README, ADR.** `CLAUDE.md` in English within 200 lines with the profile,
@@ -84,7 +89,11 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    - **Other gaps found**, not in scope of a step: logs use f-strings (DEV-12.3), 60 lines of
      JavaScript are longer than 100 columns and the modules are IIFEs, not ES modules
      (DEV-15.1), the front end has Polish text inline (DEV-15.2), `tests/performance` stands
-     beside the standard tree (DEV-5.2). Deviations are recorded in CLAUDE.md.
+     beside the standard tree (DEV-5.2). Deviations are recorded in CLAUDE.md. Found by mypy and
+     marked `# type: ignore[...]  # stale call, PROGRESS`: `scripts/prepare_area.py` passes
+     `batch_size` to `process_dem`, which has no such parameter; `scripts/analyze_watershed.py`
+     passes `stream_threshold` to `process_dem` and imports `find_nearest_stream` and
+     `traverse_upstream` from `core.watershed`, which has neither: those paths fail at run time.
 2. **Migrate to the producers' heads after the first release set** (Nogat plans
    `2026-10-24-data-output.md` step 8 and `2026-10-20-first-release-set.md` step 8; pins stay
    until then). Probe of 2026-10-25 in a throwaway environment, committed nowhere: Kartograf

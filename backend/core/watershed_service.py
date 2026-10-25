@@ -13,6 +13,7 @@ boundary merging and morphometric parameter lookup.
 import json
 import logging
 import math
+from typing import Any
 
 import numpy as np
 from shapely import wkb
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from core.catchment_graph import CatchmentGraph
 from core.morphometry import calculate_shape_indices
+from models.schemas import HsgStats, LandCoverStats
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,7 @@ def get_stream_info_by_segment_idx(
     segment_idx: int,
     threshold_m2: int,
     db: Session,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """
     Get stream segment info by segment_idx and threshold.
 
@@ -293,7 +295,7 @@ def get_segment_outlet(
     segment_idx: int,
     threshold_m2: int,
     db: Session,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """
     Get outlet point (downstream endpoint) of a stream segment.
 
@@ -330,7 +332,7 @@ def get_segment_outlet(
 
 
 def compute_watershed_length(
-    boundary,
+    boundary: Polygon | MultiPolygon,
     outlet_x: float,
     outlet_y: float,
 ) -> float:
@@ -369,7 +371,7 @@ def get_main_stream_geojson(
     segment_idx: int,
     threshold_m2: int,
     db: Session,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """
     Get the main stream line as WGS84 GeoJSON from stream_network.
 
@@ -403,7 +405,8 @@ def get_main_stream_geojson(
     if result is None or result.geojson is None:
         return None
 
-    return json.loads(result.geojson)
+    geojson: dict[str, Any] = json.loads(result.geojson)
+    return geojson
 
 
 def get_main_channel_feature_collection(
@@ -411,7 +414,7 @@ def get_main_channel_feature_collection(
     main_channel_nodes: list[int],
     threshold_m2: int,
     db: Session,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """
     Build GeoJSON FeatureCollection for the full main channel.
 
@@ -450,7 +453,7 @@ def get_main_channel_feature_collection(
         MAX_GAP = 2  # allow up to 2 consecutive non-real segments
         gap_count = 0
         started = False  # gap tolerance only after first real segment
-        pending_gap_nodes = []
+        pending_gap_nodes: list[int] = []
         for node_idx, node in enumerate(main_channel_nodes):
             si = cg.get_segment_idx(node)
             if cg._is_real_stream[node]:
@@ -553,9 +556,9 @@ def boundary_to_polygon(boundary_2180: MultiPolygon | Polygon) -> Polygon:
 
 
 def _compute_lc_along_channel(
-    db,
+    db: Session,
     cg: CatchmentGraph,
-    main_ch: dict,
+    main_ch: dict[str, Any],
     threshold_m2: int,
     centroid: Point,
     outlet_x: float,
@@ -606,7 +609,7 @@ def _compute_lc_along_channel(
 
         # Project centroid onto the merged channel
         lc_m = merged.project(centroid)
-        return round(lc_m / 1000, 4)
+        return float(round(lc_m / 1000, 4))
 
     except Exception as e:
         logger.warning(f"Failed to compute Lc along channel: {e}")
@@ -650,7 +653,7 @@ def _build_flow_path_geojson(
     geom_column: str,
     path_type: str,
     include_length: bool = True,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Build GeoJSON Feature for a flow path (longest or divide).
 
     Finds subcatchment with max max_flow_dist_m, fetches its
@@ -728,8 +731,8 @@ def _build_flow_path_geojson(
     if math.isnan(baseline):
         baseline = cg.get_max_flow_dist_m(outlet_idx)
 
-    def _make_properties() -> dict:
-        props: dict = {"type": path_type}
+    def _make_properties() -> dict[str, Any]:
+        props: dict[str, Any] = {"type": path_type}
         if include_length:
             props["length_km"] = round(max(0.0, max_dist - baseline) / 1000, 4)
         return props
@@ -802,7 +805,7 @@ def get_longest_flow_path_geojson(
     outlet_idx: int,
     threshold_m2: int,
     db: "Session",
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Build GeoJSON LineString of the longest flow path for the watershed."""
     return _build_flow_path_geojson(
         cg,
@@ -822,7 +825,7 @@ def get_divide_flow_path_geojson(
     outlet_idx: int,
     threshold_m2: int,
     db: "Session",
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Build GeoJSON LineString of the divide flow path for the watershed."""
     return _build_flow_path_geojson(
         cg,
@@ -848,7 +851,7 @@ def build_morph_dict_from_graph(
     imperviousness: float | None = None,
     db: "Session | None" = None,
     outlet_idx: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Build the morphometric parameter dict for Hydrolog.
 
     Compatible with Hydrolog's WatershedParameters.from_dict() and
@@ -1074,7 +1077,7 @@ def build_morph_dict_from_graph(
 def ensure_outlet_within_boundary(
     outlet_x: float,
     outlet_y: float,
-    boundary_geom,
+    boundary_geom: Polygon | MultiPolygon,
 ) -> tuple[float, float]:
     """Snap outlet to boundary if it falls outside.
 
@@ -1123,7 +1126,7 @@ def cascade_escalate(
     base_segment_idxs: list[int],
     max_merge: int,
     db: Session,
-) -> tuple[list[int], int, np.ndarray, int, dict, float] | None:
+) -> tuple[list[int], int, np.ndarray, int, dict[str, Any], float] | None:
     """Escalate to coarser threshold if segment count exceeds max_merge.
 
     Iterates through thresholds [1000, 10000, 100000] and re-runs BFS
@@ -1170,10 +1173,10 @@ def cascade_escalate(
 
 
 def build_land_cover_stats(
-    boundary,
+    boundary: Polygon | MultiPolygon,
     db: Session,
     simplify_tolerance: float | None = None,
-):
+) -> LandCoverStats | None:
     """Build LandCoverStats from boundary polygon.
 
     Parameters
@@ -1220,9 +1223,9 @@ def build_land_cover_stats(
 
 
 def build_hsg_stats(
-    boundary,
+    boundary: Polygon | MultiPolygon,
     db: Session,
-):
+) -> HsgStats | None:
     """Build HsgStats from boundary polygon.
 
     Parameters

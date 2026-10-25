@@ -26,7 +26,7 @@ def _make_geojson_file(
     gdf = gpd.GeoDataFrame(geometry=[geometry], crs=crs)
     path = tmp_path / filename
     gdf.to_file(path, driver="GeoJSON")
-    return path
+    return Path(path)
 
 
 @pytest.fixture

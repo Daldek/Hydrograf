@@ -6,6 +6,7 @@ avoiding per-label masking loops (O(n*M) → O(M)).
 """
 
 import logging
+from typing import Any
 
 import numpy as np
 
@@ -82,7 +83,7 @@ def zonal_max(
     """
     from scipy.ndimage import maximum
 
-    return maximum(values, labels, index=np.arange(1, n_labels + 1))
+    return np.asarray(maximum(values, labels, index=np.arange(1, n_labels + 1)))
 
 
 def zonal_min(
@@ -110,7 +111,7 @@ def zonal_min(
     """
     from scipy.ndimage import minimum
 
-    return minimum(values, labels, index=np.arange(1, n_labels + 1))
+    return np.asarray(minimum(values, labels, index=np.arange(1, n_labels + 1)))
 
 
 def zonal_elevation_histogram(
@@ -119,7 +120,7 @@ def zonal_elevation_histogram(
     max_label: int,
     nodata: float,
     interval_m: int = 1,
-) -> dict[int, dict]:
+) -> dict[int, dict[str, Any]]:
     """
     Compute per-label elevation histogram with fixed interval.
 

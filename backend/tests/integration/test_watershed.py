@@ -20,6 +20,7 @@ flow is:
 """
 
 import contextlib
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -61,7 +62,7 @@ def _make_mock_cg(area_km2: float = 10.0) -> MagicMock:
     return cg
 
 
-def _make_segment() -> dict:
+def _make_segment() -> dict[str, Any]:
     """Create a mock stream segment dict as returned by find_nearest_stream_segment."""
     return {
         "segment_idx": 12,
@@ -87,7 +88,7 @@ def _make_boundary() -> MultiPolygon:
     return MultiPolygon([poly])
 
 
-def _make_morph_dict(area_km2: float = 10.0) -> dict:
+def _make_morph_dict(area_km2: float = 10.0) -> dict[str, Any]:
     """Create a morphometric parameter dict matching MorphometricParameters schema."""
     return {
         "area_km2": area_km2,

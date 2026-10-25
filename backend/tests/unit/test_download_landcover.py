@@ -429,7 +429,7 @@ class TestMergeHydroGpkgs:
             path = tmp_path / name
             for layer_name, gdf in layers.items():
                 gdf.to_file(path, layer=layer_name, driver="GPKG")
-            return path
+            return Path(path)
 
         return _factory
 

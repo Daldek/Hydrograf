@@ -31,6 +31,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 logging.basicConfig(
     level=logging.INFO,
@@ -491,8 +492,10 @@ def step_process_dem(
     cache_dir: Path,
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
-    sewer_config: dict | None = None,
-) -> tuple[dict, str, list[str], dict[str, Path], tuple[float, float, float, float]]:
+    sewer_config: dict[str, Any] | None = None,
+) -> tuple[
+    dict[str, Any], str, list[str], dict[str, Path], tuple[float, float, float, float]
+]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis."""
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.download_landcover import (
@@ -845,7 +848,7 @@ def step_soil_hsg(
     except Exception as e:
         logger.warning(f"HSG GeoJSON export failed: {e}")
 
-    groups = {}
+    groups: dict[str, int] = {}
     for r in records:
         g = r["hsg_group"]
         groups[g] = groups.get(g, 0) + 1
@@ -1099,7 +1102,7 @@ def run_pipeline(
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
     resolution: str = "5m",
-    sewer_config: dict | None = None,
+    sewer_config: dict[str, Any] | None = None,
 ):
     """Run the full 10-step bootstrap pipeline."""
     tracker = StepTracker(TOTAL_STEPS, skips)
@@ -1135,8 +1138,8 @@ def run_pipeline(
 
     # Variables populated by step 3 and forwarded to steps 4-5
     mosaic_bbox = None
-    teryts: list[str] = []
-    bdot_paths: dict[str, Path] = {}
+    teryts = []
+    bdot_paths = {}
 
     # Step 3: Process DEM (CRITICAL)
     if not tracker.is_skipped(3):

@@ -127,7 +127,7 @@ def transform_polygon_pl1992_to_wgs84(polygon: Polygon) -> Polygon:
     """
     transformer = _get_transformer_pl1992_to_wgs84()
 
-    def transform_coords(coords: list) -> list:
+    def transform_coords(coords: list[Any]) -> list[Any]:
         """Transform list of coordinate tuples."""
         return [transformer.transform(x, y) for x, y in coords]
 

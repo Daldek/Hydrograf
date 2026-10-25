@@ -16,6 +16,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -32,7 +33,7 @@ TARGET_CRS = "EPSG:2180"  # PUWG 1992
 TARGET_RES_M = 5.0  # Default hydro resolution (matches Kartograf download)
 
 
-def _read_asc_header(path: Path) -> dict:
+def _read_asc_header(path: Path) -> dict[str, Any]:
     """Read ASC grid header (first 6 lines) to get origin and cellsize."""
     header = {}
     with open(path) as f:
@@ -406,7 +407,7 @@ def _create_mosaic_rasterio(
 
 def read_vrt_as_array(
     vrt_path: Path,
-) -> tuple[np.ndarray, dict]:
+) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Read VRT mosaic as numpy array with metadata.
 
@@ -454,7 +455,7 @@ def read_vrt_as_array(
     return data, metadata
 
 
-def get_mosaic_info(vrt_path: Path) -> dict:
+def get_mosaic_info(vrt_path: Path) -> dict[str, Any]:
     """
     Get information about VRT mosaic without loading data.
 
@@ -487,7 +488,7 @@ def get_mosaic_info(vrt_path: Path) -> dict:
     return info
 
 
-def validate_tiles_compatibility(input_files: list[Path]) -> dict:
+def validate_tiles_compatibility(input_files: list[Path]) -> dict[str, Any]:
     """
     Validate that all tiles are compatible for mosaicking.
 
@@ -505,7 +506,7 @@ def validate_tiles_compatibility(input_files: list[Path]) -> dict:
     """
     import rasterio
 
-    results = {
+    results: dict[str, Any] = {
         "valid": True,
         "issues": [],
         "summary": {},

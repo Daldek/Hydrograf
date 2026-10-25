@@ -35,6 +35,7 @@ import stat
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from scripts.download_dem import METADATA_CACHE_NAME
 
@@ -308,7 +309,7 @@ def build_plan(
     components: list[str],
     data_dir: Path,
     cache_dir: Path,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Build a plan of what will be cleaned, with sizes."""
     plan = []
 
@@ -434,7 +435,7 @@ def execute_clean(
     data_dir: Path,
     cache_dir: Path,
     dry_run: bool,
-) -> dict:
+) -> dict[str, Any]:
     """Execute cleanup, return summary."""
     results = {}
     total_files = 0

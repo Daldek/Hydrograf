@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
-def get_hsg_for_boundary(boundary_wkb_hex: str, db: Session) -> dict | None:
+def get_hsg_for_boundary(boundary_wkb_hex: str, db: Session) -> dict[str, Any] | None:
     """Get HSG statistics for a watershed boundary.
 
     Parameters

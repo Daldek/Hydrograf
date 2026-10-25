@@ -15,7 +15,9 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
+from typing import Any, NotRequired, TypedDict, cast
 
 import psutil
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -23,6 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import QueuePool
 
 from api.dependencies.admin_auth import verify_admin_key
 from core.catchment_graph import get_catchment_graph
@@ -147,9 +150,9 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
 class ResourcesResponse(BaseModel):
     """System resource usage response."""
 
-    process: dict = Field(description="Process CPU/memory info")
-    db_pool: dict = Field(description="Database connection pool stats")
-    catchment_graph: dict = Field(description="Catchment graph status")
+    process: dict[str, Any] = Field(description="Process CPU/memory info")
+    db_pool: dict[str, Any] = Field(description="Database connection pool stats")
+    catchment_graph: dict[str, Any] = Field(description="Catchment graph status")
     db_size_mb: float = Field(description="Database size in MB")
 
 
@@ -170,7 +173,7 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
     # DB pool info
     try:
         engine = get_db_engine()
-        pool = engine.pool
+        pool = cast(QueuePool, engine.pool)
         db_pool_info = {
             "pool_size": pool.size(),
             "checked_out": pool.checkedout(),
@@ -187,7 +190,7 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
 
     # Catchment graph info
     cg = get_catchment_graph()
-    cg_info: dict = {"loaded": cg.loaded, "nodes": 0, "threshold_m2": []}
+    cg_info: dict[str, Any] = {"loaded": cg.loaded, "nodes": 0, "threshold_m2": []}
     if cg.loaded:
         cg_info["nodes"] = cg._n
         if cg._threshold_m2 is not None:
@@ -216,9 +219,17 @@ def resources(db: Session = Depends(get_db)) -> ResourcesResponse:
 # ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
+
+
+class _CleanupTarget(TypedDict):
+    label: str
+    components: list[str]
+    exclude_from_all: NotRequired[bool]
+
+
 # Cleanup components — maps admin UI keys to scripts.clean component names.
 # "all" runs every component except cache; "cache" is opt-in.
-_CLEANUP_COMPONENTS = {
+_CLEANUP_COMPONENTS: dict[str, _CleanupTarget] = {
     "all": {
         "label": "Wszystko (bez cache)",
         "components": [
@@ -251,7 +262,7 @@ _ESTIMATE_DIRS = {
 class CleanupEstimateResponse(BaseModel):
     """Cleanup estimate response."""
 
-    targets: list[dict] = Field(description="List of targets with size_mb")
+    targets: list[dict[str, Any]] = Field(description="List of targets with size_mb")
 
 
 class CleanupRequest(BaseModel):
@@ -263,7 +274,7 @@ class CleanupRequest(BaseModel):
 class CleanupResponse(BaseModel):
     """Cleanup execution response."""
 
-    results: list[dict] = Field(description="Results per target")
+    results: list[dict[str, Any]] = Field(description="Results per target")
 
 
 @router.get("/cleanup/estimate", response_model=CleanupEstimateResponse)
@@ -352,7 +363,7 @@ MAX_UPLOAD_SIZE_MB = 50
 async def upload_boundary(
     file: UploadFile = File(...),
     _admin: None = Depends(verify_admin_key),
-) -> dict:
+) -> dict[str, Any]:
     """Upload and validate a boundary file. Returns metadata + filename."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
@@ -421,7 +432,7 @@ SHEET_CODE_PATTERN = re.compile(r"^[A-Za-z0-9\-]{3,30}$")
 
 _HISTORY_MAX = 10
 
-_bootstrap_state: dict = {
+_bootstrap_state: dict[str, Any] = {
     "process": None,
     "status": "idle",
     "log_lines": [],
@@ -450,10 +461,11 @@ def _validate_bbox(bbox_str: str) -> tuple[float, float, float, float]:
     return min_lon, min_lat, max_lon, max_lat
 
 
-def _read_process_output(process: subprocess.Popen, state: dict) -> None:
+def _read_process_output(process: subprocess.Popen[str], state: dict[str, Any]) -> None:
     """Background thread: read stdout lines into state."""
+    stdout = process.stdout
     try:
-        for line in process.stdout:
+        for line in stdout or ():
             stripped = line.rstrip("\n")
             state["log_lines"].append(stripped)
     except Exception:
@@ -524,7 +536,7 @@ class BootstrapStatusResponse(BaseModel):
     status: str = Field(description="idle/running/completed/failed")
     log_lines: int = Field(description="Number of log lines")
     started_at: float | None = Field(description="Start timestamp")
-    params: dict | None = Field(description="Parameters used")
+    params: dict[str, Any] | None = Field(description="Parameters used")
     pid: int | None = Field(default=None, description="Process PID")
 
 
@@ -688,7 +700,7 @@ def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
 
 
 @router.post("/bootstrap/cancel")
-def bootstrap_cancel() -> dict:
+def bootstrap_cancel() -> dict[str, Any]:
     """Cancel running bootstrap process."""
     proc = _bootstrap_state["process"]
     if proc is None or _bootstrap_state["status"] != "running":
@@ -705,7 +717,7 @@ def bootstrap_cancel() -> dict:
 async def bootstrap_stream() -> StreamingResponse:
     """SSE stream of bootstrap log lines."""
 
-    async def _event_generator():
+    async def _event_generator() -> AsyncIterator[str]:
         sent = 0
         while True:
             lines = _bootstrap_state["log_lines"]
@@ -737,7 +749,7 @@ async def bootstrap_stream() -> StreamingResponse:
 
 
 @router.get("/sewer/status")
-def sewer_status(db: Session = Depends(get_db)):
+def sewer_status(db: Session = Depends(get_db)) -> dict[str, Any]:
     """Get status of sewer data in the database and config."""
     try:
         result = db.execute(text("SELECT COUNT(*) FROM sewer_nodes"))
@@ -783,8 +795,10 @@ class SewerConfigUpdate(BaseModel):
     source_path: str | None = Field(default=None, description="Path to sewer data file")
     lines_layer: str | None = Field(default=None, description="Layer name for lines")
     points_layer: str | None = Field(default=None, description="Layer name for points")
-    field_mapping: dict | None = Field(default=None, description="Column name mapping")
-    role_mapping: dict | None = Field(
+    field_mapping: dict[str, Any] | None = Field(
+        default=None, description="Column name mapping"
+    )
+    role_mapping: dict[str, Any] | None = Field(
         default=None, description="Value mapping for roles"
     )
 
@@ -792,20 +806,21 @@ class SewerConfigUpdate(BaseModel):
 CONFIG_PATH = PROJECT_ROOT / "config.yaml"
 
 
-def _load_sewer_config() -> dict:
+def _load_sewer_config() -> dict[str, Any]:
     """Read sewer section from config.yaml merged with defaults."""
     from core.config import load_config
 
-    return load_config(str(CONFIG_PATH)).get("sewer", {})
+    sewer: dict[str, Any] = load_config(str(CONFIG_PATH)).get("sewer", {})
+    return sewer
 
 
-def _save_sewer_config(sewer: dict) -> None:
+def _save_sewer_config(sewer: dict[str, Any]) -> None:
     """Deep-merge sewer settings into config.yaml (create if needed)."""
     import yaml
 
     from core.config import _deep_merge
 
-    data: dict = {}
+    data: dict[str, Any] = {}
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH) as f:
             data = yaml.safe_load(f) or {}
@@ -816,12 +831,12 @@ def _save_sewer_config(sewer: dict) -> None:
 
 
 @router.post("/sewer/config")
-def sewer_config_update(body: SewerConfigUpdate):
+def sewer_config_update(body: SewerConfigUpdate) -> dict[str, Any]:
     """Toggle sewer processing and set source file path.
 
     Updates config.yaml so the next pipeline run picks up the settings.
     """
-    updates: dict = {"enabled": body.enabled}
+    updates: dict[str, Any] = {"enabled": body.enabled}
 
     if body.source_path is not None:
         source_file = Path(body.source_path)
@@ -865,7 +880,7 @@ def sewer_config_update(body: SewerConfigUpdate):
 async def sewer_upload(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-):
+) -> dict[str, Any]:
     """Upload sewer network file (SHP/GPKG/GeoJSON)."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
@@ -955,7 +970,7 @@ async def sewer_upload(
 
 
 @router.delete("/sewer/delete")
-def sewer_delete(db: Session = Depends(get_db)):
+def sewer_delete(db: Session = Depends(get_db)) -> dict[str, Any]:
     """Delete all sewer data from database and disk."""
     db.execute(text("TRUNCATE TABLE sewer_network CASCADE"))
     db.execute(text("TRUNCATE TABLE sewer_nodes CASCADE"))
@@ -972,7 +987,7 @@ def sewer_delete(db: Session = Depends(get_db)):
 
     if DATA_SEWER.exists():
 
-        def _on_error(_func, _path, _exc_info):
+        def _on_error(_func: Callable[..., Any], _path: str, _exc_info: Any) -> None:
             os.chmod(_path, _stat.S_IRWXU)
             _func(_path)
 

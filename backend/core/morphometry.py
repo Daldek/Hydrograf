@@ -6,9 +6,11 @@ from flow network cells, compatible with Hydrolog's WatershedParameters.
 """
 
 import logging
+from typing import Any, Literal, overload
 
 import numpy as np
 from shapely.geometry import Polygon
+from sqlalchemy.orm import Session
 
 from core.watershed import FlowCell
 
@@ -34,7 +36,7 @@ def calculate_perimeter_km(boundary: Polygon) -> float:
     >>> perimeter = calculate_perimeter_km(boundary)
     >>> print(f"Perimeter: {perimeter:.2f} km")
     """
-    return boundary.length / 1000.0
+    return float(boundary.length) / 1000.0
 
 
 def calculate_watershed_length_km(
@@ -68,12 +70,12 @@ def calculate_watershed_length_km(
         return 0.0
 
     distances = [((c.x - outlet.x) ** 2 + (c.y - outlet.y) ** 2) ** 0.5 for c in cells]
-    max_distance_m = max(distances)
+    max_distance_m: float = max(distances)
 
     return max_distance_m / 1000.0
 
 
-def calculate_elevation_stats(cells: list[FlowCell]) -> dict:
+def calculate_elevation_stats(cells: list[FlowCell]) -> dict[str, Any]:
     """
     Calculate elevation statistics from watershed cells.
 
@@ -147,6 +149,22 @@ def calculate_mean_slope(cells: list[FlowCell]) -> float:
 
     mean_slope_percent = float(np.average(slopes_array, weights=areas_array))
     return mean_slope_percent / 100.0
+
+
+@overload
+def find_main_stream(
+    cells: list[FlowCell],
+    outlet: FlowCell,
+    return_coords: Literal[False] = False,
+) -> tuple[float, float]: ...
+
+
+@overload
+def find_main_stream(
+    cells: list[FlowCell],
+    outlet: FlowCell,
+    return_coords: Literal[True],
+) -> tuple[float, float, list[tuple[float, float]]]: ...
 
 
 def find_main_stream(
@@ -266,7 +284,7 @@ def calculate_shape_indices(
     area_km2: float,
     perimeter_km: float,
     length_km: float,
-) -> dict:
+) -> dict[str, Any]:
     """
     Calculate watershed shape indices.
 
@@ -332,9 +350,9 @@ def calculate_shape_indices(
 
 
 def calculate_relief_indices(
-    elev_stats: dict,
+    elev_stats: dict[str, Any],
     length_km: float,
-) -> dict:
+) -> dict[str, Any]:
     """
     Calculate watershed relief indices.
 
@@ -377,7 +395,7 @@ def calculate_relief_indices(
 def calculate_hypsometric_curve(
     cells: list[FlowCell],
     n_bins: int = 20,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Calculate hypsometric curve (relative area vs relative height).
 
@@ -439,8 +457,8 @@ def calculate_hypsometric_curve(
 
 def get_stream_stats_in_watershed(
     boundary_wkt: str,
-    db_session,
-) -> dict | None:
+    db_session: Session,
+) -> dict[str, Any] | None:
     """
     Get stream network statistics within a watershed boundary.
 
@@ -496,10 +514,10 @@ def get_stream_stats_in_watershed(
 
 
 def calculate_drainage_indices(
-    stream_stats: dict,
+    stream_stats: dict[str, Any],
     area_km2: float,
     relief_m: float,
-) -> dict:
+) -> dict[str, Any]:
     """
     Calculate drainage network indices from stream statistics.
 
@@ -552,9 +570,9 @@ def build_morphometric_params(
     outlet: FlowCell,
     cn: int | None = None,
     include_stream_coords: bool = False,
-    db=None,
+    db: Session | None = None,
     include_hypsometric_curve: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """
     Build complete morphometric parameters dictionary.
 

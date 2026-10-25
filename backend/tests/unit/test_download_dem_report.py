@@ -1,6 +1,7 @@
 """Kontrakt download_sheets() z Kartografem 0.7.0: raport, glosne bledy, cache."""
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -14,7 +15,7 @@ class FakeManager:
 
     result: DownloadResult = DownloadResult()
     paths: list[Path] = []
-    init_kwargs: dict = {}
+    init_kwargs: dict[str, Any] = {}
     disable_cache_with: str | None = None
     calls: list[tuple[list[str], bool]] = []
 

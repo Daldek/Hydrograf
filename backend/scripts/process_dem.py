@@ -39,6 +39,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from sqlalchemy import text
@@ -128,7 +129,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _get_transform(metadata: dict, dem_shape: tuple[int, int]):
+def _get_transform(metadata: dict[str, Any], dem_shape: tuple[int, int]):
     """Retrieve or construct rasterio Affine transform from metadata."""
     transform = metadata.get("transform")
     if transform is not None:
@@ -216,11 +217,11 @@ def _clip_and_build_path(
 
 
 def _enrich_catchments_with_flow_paths(
-    catchments: list[dict],
+    catchments: list[dict[str, Any]],
     label_raster: np.ndarray,
     flow_dist_m: np.ndarray,
     flw,
-    metadata: dict,
+    metadata: dict[str, Any],
 ) -> None:
     """Add the flow path fields to each catchment dict.
 
@@ -395,8 +396,8 @@ def process_dem(
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
     building_gpkg: str | None = None,
-    sewer_config: dict | None = None,
-) -> dict:
+    sewer_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Process DEM file (ASC, VRT, or GeoTIFF) and extract stream network.
 
@@ -919,7 +920,7 @@ def process_dem(
                 and label_raster is not None
                 and threshold_m2 >= MIN_CATCHMENT_THRESHOLD_M2
             )
-            if generate_catchments:
+            if generate_catchments and label_raster is not None:
                 delineate_subcatchments(flw, label_raster, filled_dem, nodata)
 
                 # Compute downstream links for catchment graph
@@ -1044,7 +1045,8 @@ def process_dem(
                     sewer_graph,
                     db,
                     source_file=str(
-                        sewer_config.get("sewer", {})
+                        (sewer_config or {})
+                        .get("sewer", {})
                         .get("source", {})
                         .get("path", "unknown")
                     ),

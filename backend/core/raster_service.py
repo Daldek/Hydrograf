@@ -7,6 +7,7 @@ using pyflwdir, returning a Shapely polygon, boolean mask, and zonal stats.
 
 import logging
 import threading
+from typing import Any
 
 import numpy as np
 import pyflwdir
@@ -14,6 +15,7 @@ import rasterio
 from rasterio.features import shapes
 from rasterio.transform import Affine
 from shapely.geometry import shape
+from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
 from core.config import get_settings
@@ -139,7 +141,7 @@ class RasterCache:
     # Delineation
     # ------------------------------------------------------------------
 
-    def delineate_from_point(self, x: float, y: float) -> dict:
+    def delineate_from_point(self, x: float, y: float) -> dict[str, Any]:
         """Delineate watershed from a point in EPSG:2180 coordinates.
 
         Parameters
@@ -163,10 +165,13 @@ class RasterCache:
         # values sit on pixel edges.  Truncation (int()) maps to the correct
         # pixel index; round() would give wrong results at cell centres (x.5)
         # due to Python's banker's rounding.
-        col_f, row_f = ~self._transform * (x, y)
+        transform, shape, fdir = self._transform, self._shape, self._fdir
+        if transform is None or shape is None or fdir is None:
+            raise RuntimeError("Rasters are not loaded")
+        col_f, row_f = ~transform * (x, y)
         row, col = int(row_f), int(col_f)
 
-        if row < 0 or row >= self._shape[0] or col < 0 or col >= self._shape[1]:
+        if row < 0 or row >= shape[0] or col < 0 or col >= shape[1]:
             raise ValueError(
                 f"Point ({x}, {y}) is outside the raster extent (shape={self._shape})"
             )
@@ -174,21 +179,21 @@ class RasterCache:
         # --- Delineate basin via pyflwdir ---
         # pyflwdir.basins() only works from pit cells (fdir=0).
         # For arbitrary points, temporarily set the target cell to pit.
-        fdir_copy = self._fdir.copy()
+        fdir_copy = fdir.copy()
         original_fdir = fdir_copy[row, col]
         fdir_copy[row, col] = 0  # make it a pit/outlet
 
         flw = pyflwdir.from_array(
             fdir_copy,
             ftype="d8",
-            transform=self._transform,
+            transform=transform,
             latlon=False,
         )
-        flat_idx = np.ravel_multi_index((row, col), self._shape)
+        flat_idx = np.ravel_multi_index((row, col), shape)
         basins = flw.basins(idxs=[flat_idx])
         mask = basins > 0
 
-        cell_area_km2 = abs(self._transform.a * self._transform.e) / 1_000_000
+        cell_area_km2 = abs(transform.a * transform.e) / 1_000_000
         logger.info(
             "Delineated from row=%d col=%d (fdir=%d→0): %d cells, %.2f km2",
             row,
@@ -221,7 +226,7 @@ class RasterCache:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _vectorize_mask(self, mask: np.ndarray):
+    def _vectorize_mask(self, mask: np.ndarray) -> BaseGeometry | None:
         """Convert boolean mask to a Shapely geometry via rasterio."""
         mask_uint8 = mask.astype(np.uint8)
         geoms = []
@@ -232,18 +237,21 @@ class RasterCache:
             return None
         return unary_union(geoms)
 
-    def _compute_stats(self, mask: np.ndarray) -> dict:
+    def _compute_stats(self, mask: np.ndarray) -> dict[str, Any]:
         """Compute zonal statistics for the masked area."""
-        cell_area_m2 = abs(self._transform.a * self._transform.e)
+        transform, dem = self._transform, self._dem
+        if transform is None or dem is None:
+            raise RuntimeError("Rasters are not loaded")
+        cell_area_m2 = abs(transform.a * transform.e)
 
         # DEM stats
-        dem_vals = self._dem[mask]
+        dem_vals = dem[mask]
         if self._dem_nodata is not None:
             dem_vals = dem_vals[dem_vals != self._dem_nodata]
 
         has_dem = len(dem_vals) > 0
 
-        stats: dict = {
+        stats: dict[str, Any] = {
             "area_m2": float(np.sum(mask) * cell_area_m2),
             "elevation_min_m": float(np.min(dem_vals)) if has_dem else 0.0,
             "elevation_max_m": float(np.max(dem_vals)) if has_dem else 0.0,

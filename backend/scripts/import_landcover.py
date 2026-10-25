@@ -48,7 +48,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import geopandas
@@ -191,7 +191,7 @@ def transform_to_2180(gdf: "geopandas.GeoDataFrame") -> "geopandas.GeoDataFrame"
 
 def prepare_records(
     layers: dict[str, "geopandas.GeoDataFrame"],
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Prepare database records from GeoDataFrames.
 
@@ -255,7 +255,7 @@ def prepare_records(
 
 
 def import_to_database(
-    records: list[dict],
+    records: list[dict[str, Any]],
     database_url: str,
     batch_size: int = 1000,
     clear_existing: bool = False,
@@ -334,7 +334,7 @@ def import_landcover(
     batch_size: int = 1000,
     dry_run: bool = False,
     clear_existing: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """
     Import land cover data from GeoPackage to database.
 

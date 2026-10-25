@@ -6,6 +6,7 @@ with spatial interpolation for points not directly on the grid.
 """
 
 import logging
+from typing import Any
 
 from shapely.geometry import Point
 from sqlalchemy import text
@@ -312,7 +313,7 @@ def get_precipitation_wgs84(
 def get_all_scenarios(
     centroid: Point,
     db: Session,
-) -> dict:
+) -> dict[str, Any]:
     """
     Get precipitation values for all 42 scenarios.
 
@@ -334,7 +335,7 @@ def get_all_scenarios(
     >>> print(scenarios["1h"][10])  # P(1h, 10%)
     38.5
     """
-    result = {}
+    result: dict[str, dict[float, float | None]] = {}
 
     for duration_str in VALID_DURATIONS_STR:
         result[duration_str] = {}
@@ -346,9 +347,9 @@ def get_all_scenarios(
 
 
 def check_data_coverage(
-    bbox: tuple,
+    bbox: tuple[Any, ...],
     db: Session,
-) -> dict:
+) -> dict[str, Any]:
     """
     Check precipitation data coverage for a bounding box.
 
@@ -382,6 +383,9 @@ def check_data_coverage(
         query,
         {"min_x": min_x, "min_y": min_y, "max_x": max_x, "max_y": max_y},
     ).fetchone()
+
+    if result is None:  # an aggregate query always returns one row
+        raise RuntimeError("Precipitation coverage query returned no row")
 
     return {
         "point_count": result.point_count or 0,

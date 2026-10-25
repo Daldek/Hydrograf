@@ -11,6 +11,7 @@ Memory usage: ~0.5 MB RAM.
 import logging
 import threading
 import time
+from typing import Any
 
 import numpy as np
 from scipy import sparse
@@ -21,6 +22,9 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 _FETCH_SIZE = 50_000
+
+# Placeholder of an unloaded graph; never mutated, replaced by load().
+_EMPTY: np.ndarray = np.empty(0)
 
 # Column indices for stream_catchments SELECT in load()
 (
@@ -51,28 +55,28 @@ class CatchmentGraph:
     Per-node stats are stored in numpy arrays for fast aggregation.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._loaded = False
         self._load_lock = threading.Lock()
         self._n = 0
 
-        # Per-node numpy arrays (indexed 0..n-1)
-        self._segment_idx: np.ndarray | None = None
-        self._threshold_m2: np.ndarray | None = None
-        self._area_km2: np.ndarray | None = None
-        self._elev_min: np.ndarray | None = None
-        self._elev_max: np.ndarray | None = None
-        self._elev_mean: np.ndarray | None = None
-        self._slope_mean: np.ndarray | None = None
-        self._stream_length_km: np.ndarray | None = None
+        # Per-node numpy arrays (indexed 0..n-1); empty until load()
+        self._segment_idx: np.ndarray = _EMPTY
+        self._threshold_m2: np.ndarray = _EMPTY
+        self._area_km2: np.ndarray = _EMPTY
+        self._elev_min: np.ndarray = _EMPTY
+        self._elev_max: np.ndarray = _EMPTY
+        self._elev_mean: np.ndarray = _EMPTY
+        self._slope_mean: np.ndarray = _EMPTY
+        self._stream_length_km: np.ndarray = _EMPTY
         # Legacy per-subcatchment absolute distance (== max_flow_dist_m/1000).
         # Loaded for DB compatibility; NOT used by aggregate_stats — hydraulic
         # length is computed from max_flow_dist_m and outlet_flow_dist_m (see
         # aggregate_stats). Do not reintroduce as a fallback: absolute values
         # caused the feedback-#11 bug.
-        self._hydraulic_length_km: np.ndarray | None = None
-        self._strahler: np.ndarray | None = None
-        self._max_flow_dist_m: np.ndarray | None = None
+        self._hydraulic_length_km: np.ndarray = _EMPTY
+        self._strahler: np.ndarray = _EMPTY
+        self._max_flow_dist_m: np.ndarray = _EMPTY
         self._outlet_flow_dist_m: np.ndarray | None = None
 
         # Per-segment data from stream_network (loaded separately)
@@ -81,13 +85,13 @@ class CatchmentGraph:
         self._upstream_area_km2: np.ndarray | None = None
 
         # Adjacency: adj[i, j] = 1 means node j drains into node i
-        self._upstream_adj: sparse.csr_matrix | None = None
+        self._upstream_adj: sparse.csr_matrix = sparse.csr_matrix((0, 0))
 
         # Index lookup: (threshold_m2, segment_idx) → internal idx
         self._lookup: dict[tuple[int, int], int] = {}
 
         # Elevation histograms: list of dicts per node (variable size)
-        self._histograms: list[dict | None] = []
+        self._histograms: list[dict[str, Any] | None] = []
 
     @property
     def loaded(self) -> bool:
@@ -126,23 +130,23 @@ class CatchmentGraph:
         self._lookup.clear()
 
         # Release numpy arrays to free memory
-        self._segment_idx = None
-        self._threshold_m2 = None
-        self._area_km2 = None
-        self._elev_min = None
-        self._elev_max = None
-        self._elev_mean = None
-        self._slope_mean = None
-        self._strahler = None
-        self._stream_length_km = None
-        self._hydraulic_length_km = None
-        self._max_flow_dist_m = None
+        self._segment_idx = _EMPTY
+        self._threshold_m2 = _EMPTY
+        self._area_km2 = _EMPTY
+        self._elev_min = _EMPTY
+        self._elev_max = _EMPTY
+        self._elev_mean = _EMPTY
+        self._slope_mean = _EMPTY
+        self._strahler = _EMPTY
+        self._stream_length_km = _EMPTY
+        self._hydraulic_length_km = _EMPTY
+        self._max_flow_dist_m = _EMPTY
         self._outlet_flow_dist_m = None
         self._is_real_stream = None
         self._segment_length_km = None
         self._upstream_area_km2 = None
         self._histograms = []
-        self._upstream_adj = None
+        self._upstream_adj = sparse.csr_matrix((0, 0))
 
         logger.info("CatchmentGraph invalidated — will reload on next access")
 
@@ -164,7 +168,7 @@ class CatchmentGraph:
         count_result = db.execute(
             text("SELECT COUNT(*) FROM stream_catchments")
         ).fetchone()
-        n = count_result[0]
+        n = count_result[0] if count_result is not None else 0
         if n == 0:
             logger.warning("stream_catchments is empty, graph not loaded")
             return
@@ -194,7 +198,7 @@ class CatchmentGraph:
 
         # Stream via server-side cursor
         raw_conn = db.connection().connection
-        cursor = raw_conn.cursor(name="catchment_graph_load")
+        cursor: Any = raw_conn.cursor(name="catchment_graph_load")
         try:
             cursor.itersize = _FETCH_SIZE
             cursor.execute(
@@ -269,7 +273,7 @@ class CatchmentGraph:
         self._segment_length_km = np.zeros(n, dtype=np.float64)
         self._upstream_area_km2 = np.zeros(n, dtype=np.float64)
 
-        sn_cursor = raw_conn.cursor(name="catchment_graph_stream_network")
+        sn_cursor: Any = raw_conn.cursor(name="catchment_graph_stream_network")
         try:
             sn_cursor.itersize = _FETCH_SIZE
             sn_cursor.execute(
@@ -478,13 +482,13 @@ class CatchmentGraph:
             return float("nan")
         return float(self._outlet_flow_dist_m[internal_idx])
 
-    def verify_graph(self, db: Session | None = None) -> dict:
+    def verify_graph(self, db: Session | None = None) -> dict[str, Any]:
         """Verify graph integrity. Returns diagnostic dict."""
         if not self._loaded:
             raise RuntimeError("Catchment graph not loaded")
 
         thresholds = np.unique(self._threshold_m2)
-        report = {"thresholds": {}, "total_nodes": self._n}
+        report: dict[str, Any] = {"thresholds": {}, "total_nodes": self._n}
 
         for t in thresholds:
             t = int(t)
@@ -551,12 +555,13 @@ class CatchmentGraph:
         if not self._loaded:
             raise RuntimeError("Catchment graph not loaded")
 
-        return breadth_first_order(
+        order: np.ndarray = breadth_first_order(
             self._upstream_adj,
             start_idx,
             directed=True,
             return_predecessors=False,
         )
+        return order
 
     def get_segment_indices(
         self,
@@ -579,11 +584,12 @@ class CatchmentGraph:
             List of segment_idx values
         """
         mask = self._threshold_m2[indices] == threshold_m2
-        return self._segment_idx[indices[mask]].tolist()
+        segment_idxs: list[int] = self._segment_idx[indices[mask]].tolist()
+        return segment_idxs
 
     def aggregate_stats(
         self, indices: np.ndarray, outlet_idx: int | None = None
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Aggregate pre-computed stats across multiple catchment nodes.
 
@@ -739,7 +745,7 @@ class CatchmentGraph:
         self,
         outlet_idx: int,
         upstream_indices: np.ndarray,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Trace the main channel upstream from outlet following highest Strahler order.
 
@@ -859,7 +865,7 @@ class CatchmentGraph:
         self,
         indices: np.ndarray,
         n_points: int = 20,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """
         Merge elevation histograms and produce a normalized hypsometric curve.
 

@@ -7,10 +7,11 @@ it in the feedback table.
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
@@ -62,6 +63,8 @@ def submit_feedback(
         }
         row = db.execute(query, params).fetchone()
         db.commit()
+        if row is None:
+            raise RuntimeError("INSERT INTO feedback RETURNING id returned no row")
         return FeedbackResponse(id=row.id, status="ok")
     except Exception as e:
         db.rollback()
@@ -97,6 +100,8 @@ def list_feedback(
                 FROM feedback
             """)
         ).fetchone()
+        if counts is None:
+            raise RuntimeError("SELECT COUNT(*) returned no row")
         items = [
             {
                 "id": r.id,
@@ -130,7 +135,7 @@ def mark_feedback_read(
             {"id": feedback_id},
         )
         db.commit()
-        if result.rowcount == 0:
+        if cast("CursorResult[Any]", result).rowcount == 0:
             raise HTTPException(status_code=404, detail="Feedback not found")
         return {"status": "ok"}
     except HTTPException:
@@ -153,7 +158,7 @@ def delete_feedback(feedback_id: int, db: Session = Depends(get_db)) -> dict[str
             {"id": feedback_id},
         )
         db.commit()
-        if result.rowcount == 0:
+        if cast("CursorResult[Any]", result).rowcount == 0:
             raise HTTPException(status_code=404, detail="Feedback not found")
         return {"status": "deleted"}
     except HTTPException:

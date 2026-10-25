@@ -9,7 +9,9 @@ via BFS on pre-computed sub-catchments.
 """
 
 import logging
+from typing import Any
 
+import numpy.typing as npt
 from fastapi import APIRouter, Depends, HTTPException
 
 # Hydrolog imports
@@ -17,6 +19,7 @@ from hydrolog.morphometry import WatershedParameters
 from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogram
 from hydrolog.runoff import HydrographGenerator, NashIUH
 from hydrolog.time.concentration import ConcentrationTime
+from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import get_catchment_graph
@@ -61,10 +64,10 @@ router = APIRouter()
 
 
 def _compute_watershed(
-    point_2180,
-    request,
+    point_2180: Point,
+    request: HydrographRequest,
     db: Session,
-) -> tuple[dict, int, float, WatershedResponse]:
+) -> tuple[dict[str, Any], int, float, WatershedResponse]:
     """Full watershed computation path (steps 3-9).
 
     Returns (morph_dict, cn, area_km2, watershed_response).
@@ -174,7 +177,7 @@ def _compute_watershed(
 
 
 def _effective_duration_min(
-    intensities_mm,
+    intensities_mm: npt.ArrayLike,
     timestep_min: float,
     s_mm: float,
     ia_mm: float,
@@ -203,8 +206,8 @@ def _effective_duration_min(
 def _calculate_tc(
     method: str,
     wp: WatershedParameters,
-    morph_dict: dict,
-    request,
+    morph_dict: dict[str, Any],
+    request: HydrographRequest,
 ) -> float:
     """Calculate time of concentration using the specified method.
 
@@ -222,10 +225,10 @@ def _calculate_tc(
             # But length_km is Euclidean — override with hydraulic
             saved_wlength = wp.length_km
             wp.length_km = hydraulic
-            tc = wp.calculate_tc(method=method)
+            tc = float(wp.calculate_tc(method=method))
             wp.length_km = saved_wlength
         else:
-            tc = wp.calculate_tc(method=method)
+            tc = float(wp.calculate_tc(method=method))
         wp.channel_slope_m_per_m = saved_slope
         wp.channel_length_km = saved_length
         return tc
@@ -237,14 +240,14 @@ def _calculate_tc(
             saved_wl = wp.length_km
             wp.channel_length_km = None
             wp.length_km = hydraulic
-            tc = wp.calculate_tc(method=method)
+            tc = float(wp.calculate_tc(method=method))
             wp.length_km = saved_wl
             wp.channel_length_km = saved
             return tc
-        return wp.calculate_tc(method=method)
+        return float(wp.calculate_tc(method=method))
 
     if method == "giandotti":
-        return wp.calculate_tc(method=method)
+        return float(wp.calculate_tc(method=method))
 
     if method == "faa":
         runoff_coeff = request.tc_runoff_coeff
@@ -260,10 +263,12 @@ def _calculate_tc(
                 "Metoda FAA wymaga podania długości spływu powierzchniowego "
                 "(tc_overland_length_km). Typowy zakres: 0.015-3 km."
             )
-        return ConcentrationTime.faa(
-            length_km=length,
-            slope_m_per_m=slope,
-            runoff_coeff=runoff_coeff,
+        return float(
+            ConcentrationTime.faa(
+                length_km=length,
+                slope_m_per_m=slope,
+                runoff_coeff=runoff_coeff,
+            )
         )
 
     if method == "kerby":
@@ -276,10 +281,12 @@ def _calculate_tc(
                 "Metoda Kerby wymaga podania długości spływu powierzchniowego "
                 "(tc_overland_length_km). Typowy zakres: 0.01-0.366 km."
             )
-        return ConcentrationTime.kerby(
-            length_km=length,
-            slope_m_per_m=slope,
-            retardance=retardance,
+        return float(
+            ConcentrationTime.kerby(
+                length_km=length,
+                slope_m_per_m=slope,
+                retardance=retardance,
+            )
         )
 
     if method == "kerby_kirpich":
@@ -299,32 +306,34 @@ def _calculate_tc(
             )
             overland_length = max(total_length - channel_length, 0.1)
         overland_slope = morph_dict.get("mean_slope_m_per_m") or 0.01
-        return ConcentrationTime.kerby_kirpich(
-            overland_length_km=overland_length,
-            overland_slope_m_per_m=overland_slope,
-            retardance=retardance,
-            channel_length_km=channel_length,
-            channel_slope_m_per_m=channel_slope,
+        return float(
+            ConcentrationTime.kerby_kirpich(
+                overland_length_km=overland_length,
+                overland_slope_m_per_m=overland_slope,
+                retardance=retardance,
+                channel_length_km=channel_length,
+                channel_slope_m_per_m=channel_slope,
+            )
         )
 
     raise ValueError(f"Unknown tc method: {method}")
 
 
 def _estimate_nash_params(
-    request,
-    morph_dict: dict,
-    tc_min: float,
+    request: HydrographRequest,
+    morph_dict: dict[str, Any],
+    tc_min: float | None,
     precip_mm: float | None = None,
     cn: int | None = None,
     duration_min: float | None = None,
-    precip_result=None,
+    precip_result: Any = None,
     timestep_min: float = 5.0,
-) -> tuple[dict, dict]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Estimate Nash IUH parameters (n, k) using the requested method.
 
     Returns (uh_params, nash_meta) where nash_meta has extra info for response.
     """
-    nash_meta = {"estimation": request.nash_estimation}
+    nash_meta: dict[str, Any] = {"estimation": request.nash_estimation}
 
     if request.nash_estimation == "from_lutz":
         channel_length = morph_dict.get("channel_length_km")
@@ -513,7 +522,7 @@ def generate_hydrograph(
         )
 
         # ===== Generate hydrograph =====
-        nash_meta = {}
+        nash_meta: dict[str, Any] = {}
         if request.uh_model == "snyder":
             channel_length = morph_dict.get("channel_length_km")
             length_to_centroid = morph_dict.get("length_to_centroid_km")
@@ -634,7 +643,7 @@ def generate_hydrograph(
 
 
 @router.get("/scenarios")
-def list_scenarios() -> dict:
+def list_scenarios() -> dict[str, Any]:
     """
     List available hydrograph generation scenarios.
 

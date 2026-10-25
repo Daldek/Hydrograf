@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from shapely.geometry import Polygon, box
 
+from core.constants import DEFAULT_CN
 from core.land_cover import (
-    DEFAULT_CN,
     VALID_CATEGORIES,
     calculate_weighted_cn,
     determine_cn,

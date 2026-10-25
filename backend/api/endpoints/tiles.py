@@ -12,6 +12,7 @@ jumps between zoom levels.
 """
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import text
@@ -31,7 +32,7 @@ _CACHE_HIT = {"Cache-Control": "public, max-age=86400"}
 _CACHE_MISS = {"Cache-Control": "no-store"}
 
 
-def _tile_to_bbox_3857(z: int, x: int, y: int):
+def _tile_to_bbox_3857(z: int, x: int, y: int) -> tuple[float, float, float, float]:
     """Convert XYZ tile coordinates to EPSG:3857 bounding box."""
     n = 2**z
     # Web Mercator bounds
@@ -313,7 +314,7 @@ def get_sewer_mvt(
 
 
 @router.get("/tiles/thresholds")
-def get_available_thresholds(db: Session = Depends(get_db)) -> dict:
+def get_available_thresholds(db: Session = Depends(get_db)) -> dict[str, Any]:
     """
     Return available FA threshold values from the database.
 
