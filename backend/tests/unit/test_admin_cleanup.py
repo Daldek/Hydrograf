@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
 from api.endpoints.admin import _CLEANUP_COMPONENTS, router
+from api.errors import install_error_handlers
 from core.database import get_db
 
 
@@ -19,6 +20,7 @@ def _noop_auth():
 @pytest.fixture
 def app():
     test_app = FastAPI()
+    install_error_handlers(test_app)
     test_app.include_router(router, prefix="/api/admin")
     test_app.dependency_overrides[verify_admin_key] = _noop_auth
     yield test_app

@@ -11,9 +11,10 @@ import secrets
 import uuid
 from pathlib import Path
 
-from fastapi import Header, HTTPException
+from fastapi import Header
 
 from core.config import get_settings
+from core.errors import UnauthorizedError
 
 logger = logging.getLogger(__name__)
 
@@ -64,19 +65,19 @@ def _check_admin_key(x_admin_key: str | None, expected_key: str | None = None) -
 
     Raises
     ------
-    HTTPException
-        401 if key is missing, 403 if key is wrong.
+    UnauthorizedError
+        ``unauthorized`` (401) when the key is missing or wrong.
     """
     if expected_key is None:
         expected_key = _resolve_expected_key()
 
     if not x_admin_key:
-        raise HTTPException(status_code=401, detail="Missing admin API key")
+        raise UnauthorizedError("admin_key_missing", reason="admin_key_missing")
 
     supplied = x_admin_key.encode("utf-8")
     expected = expected_key.encode("utf-8")
     if not secrets.compare_digest(supplied, expected):
-        raise HTTPException(status_code=403, detail="Invalid admin API key")
+        raise UnauthorizedError("admin_key_invalid", reason="admin_key_invalid")
 
 
 def verify_admin_key(

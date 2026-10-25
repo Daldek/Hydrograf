@@ -379,14 +379,15 @@ class TestGenerateHydrographEndpoint:
                 )
 
             assert response.status_code == 404
-            assert "zlewni" in response.json()["detail"].lower()
+            assert response.json()["code"] == "not_found"
+            assert response.json()["details"]["reason"] == "no_catchment_at_point"
         finally:
             app.dependency_overrides.clear()
 
-    # ---- 8. test_area_too_large_returns_400 ----
+    # ---- 8. test_area_too_large_returns_422 ----
 
-    def test_area_too_large_returns_400(self, client):
-        """Test that watershed > 250 km2 returns 400."""
+    def test_area_too_large_returns_422(self, client):
+        """Test that watershed > 250 km2 is unsupported (422)."""
         mock_db = MagicMock()
         app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -409,15 +410,18 @@ class TestGenerateHydrographEndpoint:
             ):
                 response = self._post(client)
 
-            assert response.status_code == 400
-            assert "250" in response.json()["detail"]
+            assert response.status_code == 422
+            problem = response.json()
+            assert problem["code"] == "unsupported"
+            assert problem["details"]["limit_km2"] == 250
+            assert problem["details"]["area_km2"] == 300.0
         finally:
             app.dependency_overrides.clear()
 
-    # ---- 9. test_invalid_duration_returns_422 ----
+    # ---- 9. test_invalid_duration_returns_400 ----
 
-    def test_invalid_duration_returns_422(self, client):
-        """Test that invalid duration returns 422 (Pydantic validation)."""
+    def test_invalid_duration_returns_400(self, client):
+        """Test that invalid duration returns 400 (Pydantic validation)."""
         response = self._post(
             client,
             {
@@ -428,7 +432,7 @@ class TestGenerateHydrographEndpoint:
             },
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     # ---- 10. test_invalid_probability_returns_400 ----
 

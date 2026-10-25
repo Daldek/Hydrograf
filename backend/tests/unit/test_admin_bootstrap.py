@@ -13,6 +13,7 @@ from api.endpoints.admin import (
     _validate_bbox,
     router,
 )
+from api.errors import install_error_handlers
 
 
 def _noop_auth():
@@ -22,6 +23,7 @@ def _noop_auth():
 @pytest.fixture
 def app():
     test_app = FastAPI()
+    install_error_handlers(test_app)
     test_app.include_router(router, prefix="/api/admin")
     test_app.dependency_overrides[verify_admin_key] = _noop_auth
     yield test_app

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from api.dependencies.admin_auth import verify_admin_key
 from api.endpoints.feedback import admin_router
+from api.errors import install_error_handlers
 from core.database import get_db
 
 
@@ -19,6 +20,7 @@ def _noop_auth():
 @pytest.fixture
 def app():
     test_app = FastAPI()
+    install_error_handlers(test_app)
     test_app.include_router(admin_router, prefix="/api/admin")
     test_app.dependency_overrides[verify_admin_key] = _noop_auth
     yield test_app
@@ -112,11 +114,12 @@ class TestAdminFeedbackAuth:
         response = TestClient(main_app).get("/api/admin/feedback")
         assert response.status_code == 401
 
-    def test_wrong_key_returns_403(self):
+    def test_wrong_key_returns_401(self):
         from api.main import app as main_app
 
         response = TestClient(main_app).get(
             "/api/admin/feedback",
             headers={"X-Admin-Key": "definitely-wrong-key-12345"},
         )
-        assert response.status_code == 403
+        assert response.status_code == 401
+        assert response.json()["details"]["reason"] == "admin_key_invalid"

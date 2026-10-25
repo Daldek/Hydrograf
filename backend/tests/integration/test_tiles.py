@@ -153,10 +153,10 @@ class TestStreamsMVT:
         app.dependency_overrides.clear()
 
     def test_threshold_must_be_positive(self, client):
-        """Test that threshold < 1 returns 422."""
+        """Test that threshold < 1 returns 400."""
         response = client.get("/api/tiles/streams/10/550/340.pbf?threshold=0")
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_different_zoom_levels(self, client, mock_db_with_tile):
         """Test various zoom levels work."""
@@ -219,10 +219,10 @@ class TestCatchmentsMVT:
         app.dependency_overrides.clear()
 
     def test_threshold_must_be_positive(self, client):
-        """Test that threshold < 1 returns 422."""
+        """Test that threshold < 1 returns 400."""
         response = client.get("/api/tiles/catchments/10/550/340.pbf?threshold=0")
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
 
 class TestThresholdsEndpoint:

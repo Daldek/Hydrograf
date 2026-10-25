@@ -270,7 +270,8 @@ class TestPrecomputedDelineation:
             )
 
         assert response.status_code == 404
-        assert "Nie znaleziono zlewni" in response.json()["detail"]
+        assert response.json()["code"] == "not_found"
+        assert response.json()["details"]["reason"] == "no_catchment_at_point"
 
     def test_graph_not_loaded_returns_503(self, client):
         """Test that unloaded graph returns 503."""
@@ -290,8 +291,8 @@ class TestPrecomputedDelineation:
 
         assert response.status_code == 503
 
-    def test_invalid_coordinates_returns_422(self, client):
-        """Test that latitude=200 returns 422."""
+    def test_invalid_coordinates_returns_400(self, client):
+        """Test that latitude=200 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={
@@ -301,7 +302,7 @@ class TestPrecomputedDelineation:
             },
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_display_threshold_matches_request(self, client):
         """Test display_threshold_m2 in response matches request threshold."""

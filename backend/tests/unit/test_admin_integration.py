@@ -6,11 +6,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.endpoints.admin import router
+from api.errors import install_error_handlers
 
 
 def _create_app():
     """Create a fresh FastAPI app with admin router."""
     app = FastAPI()
+    install_error_handlers(app)
     app.include_router(router, prefix="/api/admin")
     return app
 
@@ -59,7 +61,8 @@ class TestAdminAuthIntegration:
                 "/api/admin/dashboard",
                 headers={"X-Admin-Key": "wrong"},
             )
-        assert response.status_code == 403
+        assert response.status_code == 401
+        assert response.json()["details"]["reason"] == "admin_key_invalid"
 
     def test_missing_key_blocked(self):
         app = _create_app()

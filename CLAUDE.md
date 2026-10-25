@@ -41,6 +41,10 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
   are English (DEV-2.1); the user interface is Polish (DEV-2.2). Much of the code and the
   documents are still Polish: `docs/PROGRESS.md` lists what remains. New and edited text is
   English.
+- Errors: raise a `HydrografError` subclass (`core/errors.py`) with a message ID of the
+  catalogue `core/messages.py` (English and Polish text) and a `reason`; never an
+  `HTTPException`, never a code outside the registry (ERR-1). `core/_errors.py` is generated:
+  `uv run python -m scripts.generate_errors` after the registry in `schemas/nogat/` changes.
 - Names carry units: `area_km2`, `elevation_m`, `discharge_m3s`, `time_concentration_min`,
   `slope_percent`, `precipitation_mm`, `length_km` (DEV-8.2).
 - A change that users see ships with its `docs/CHANGELOG.md` entry in the same commit
@@ -79,7 +83,8 @@ backend/                 # the Python project: pyproject.toml, uv.lock, .venv (n
 ├── api/                 # FastAPI: main.py, endpoints/ (watershed, hydrograph, tiles, profile,
 │                        #   depressions, feedback, health, admin), dependencies/ (admin key)
 ├── core/                # business logic: watershed, catchment_graph, hydrology, morphometry,
-│                        #   cn_calculator, raster_service, sewer_*, config, database
+│                        #   cn_calculator, raster_service, sewer_*, config, database,
+│                        #   errors, messages (error texts), _errors (generated registry)
 ├── models/schemas.py    # Pydantic request and response models
 ├── scripts/             # preprocessing CLI (bootstrap.py is the orchestrator), README.md
 ├── utils/               # geometry, raster and sheet-lookup helpers
@@ -166,3 +171,13 @@ Next 2.
 - DEV-16.2: `docs/CLA.md` is missing until the author supplies the text.
 - DEV-18, DEV-19: profile `tool` only; Hydrograf reads its settings from the environment
   (`.env.example`) and fetches data through Kartograf in the pipeline scripts.
+- AGI-4.1, AGI-4.2: REST responses are the Pydantic models of the endpoints, with no
+  `schema` member and no result envelope; the error document alone is
+  `application/problem+json`, and the vendored `result-1`, `error-1` and `commands-1`
+  schemas are unused.
+- AGI-6.1, AGI-6.2: there is no command catalog; `operationId` is the route function name
+  and the operations document `400`, the problems of their route and `500`.
+- AGI-6.3: the 429 of the nginx rate limits and the gateway errors of nginx are not problem
+  documents, and the application sends no `rate_limited`.
+- AGI-6.4: the interface sends `Accept-Language: pl` except `admin-sewer.js`, which still
+  gets English texts.

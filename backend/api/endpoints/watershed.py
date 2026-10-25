@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Response
 from shapely import wkb
 from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.geometry.base import BaseGeometry
@@ -21,6 +21,14 @@ from sqlalchemy.orm import Session
 from core.catchment_graph import CatchmentGraph, get_catchment_graph
 from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
+from core.errors import (
+    CalculationError,
+    HydrografError,
+    InternalError,
+    InvalidRequestError,
+    NotFoundError,
+    StoreUnavailableError,
+)
 from core.watershed_service import (
     boundary_to_polygon,
     build_hsg_stats,
@@ -245,7 +253,11 @@ def _delineate_precomputed(
             db,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise NotFoundError(
+            "no_catchment_at_point",
+            reason="no_catchment_at_point",
+            threshold_m2=threshold,
+        ) from e
 
     segment_idx = cg.get_segment_idx(clicked_idx)
     segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)
@@ -296,9 +308,7 @@ def _delineate_precomputed(
     # Boundary
     boundary_2180 = merge_catchment_boundaries(merge_idxs, merge_threshold, db)
     if boundary_2180 is None:
-        raise HTTPException(
-            status_code=500, detail="Nie udało się zbudować granicy zlewni."
-        )
+        raise CalculationError("boundary_build_failed", reason="boundary_build_failed")
 
     boundary_poly = boundary_to_polygon(boundary_2180)
 
@@ -370,7 +380,11 @@ def _delineate_precise(
             db,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise NotFoundError(
+            "no_catchment_at_point",
+            reason="no_catchment_at_point",
+            threshold_m2=threshold,
+        ) from e
 
     segment_idx = cg.get_segment_idx(clicked_idx)
 
@@ -446,9 +460,8 @@ def delineate_watershed(
 
         cg = get_catchment_graph()
         if not cg.ensure_loaded(db):
-            raise HTTPException(
-                status_code=503,
-                detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
+            raise StoreUnavailableError(
+                "catchment_graph_unavailable", reason="catchment_graph_unavailable"
             )
 
         # ---- Determine mode ----
@@ -484,14 +497,13 @@ def delineate_watershed(
             info_message=result.get("info_message"),
         )
 
-    except HTTPException:
+    except HydrografError:
         raise
     except ValueError as e:
         logger.error(f"Validation error: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise InvalidRequestError(
+            "invalid_parameters", reason="invalid_parameters", cause=str(e)
+        ) from e
     except Exception as e:
         logger.error(f"Error delineating watershed: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Błąd wewnętrzny podczas wyznaczania zlewni",
-        ) from e
+        raise InternalError("delineation_failed", reason="delineation_failed") from e
