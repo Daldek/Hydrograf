@@ -1,3 +1,14 @@
+# CI (DEV-7.7), from Nogat standards/ci/ci.yml in the variant of an `app` with a
+# database. The `gate` job runs scripts/gate.sh on Linux, on Python 3.12 (required) and
+# the newest stable Python (reported, not blocking: wheels of geospatial dependencies
+# often lag); it leaves out the `db` tests. The `db` job runs them against PostGIS (a
+# service container, so Linux only). Hydrograf is deployed with Docker on Linux, so the
+# Windows and macOS matrix of DEV-7.7 is not run (an `app` MAY run it). The `audit` job
+# checks the locked PyPI dependencies (DEV-13.6; informative, not a required check).
+# Commit messages are checked once, on pull requests into develop and from hotfix/*
+# into main (DEV-4.5).
+# Actions are pinned by commit SHA; Dependabot updates them (.github/dependabot.yml).
+# Required checks of the branch rulesets (DEV-3.6): the `gate` job of Python 3.12 and `db`.
 name: CI
 
 on:
@@ -5,27 +16,66 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  schedule:
+    - cron: "0 5 * * 1"   # weekly audit against new advisories
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
+  gate:
+    if: github.event_name != 'schedule'
+    name: gate (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.12"]
+        experimental: [false]
+        include:
+          - {os: ubuntu-latest, python: "3.15", experimental: true}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0   # the commit step needs history
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python }}
           enable-cache: true
-      - run: uv sync --locked --all-extras
-      - name: Ruff check
-        run: uv run --no-sync ruff check .
-      - name: Ruff format check
-        run: uv run --no-sync ruff format --check .
+      - name: Gate
+        shell: bash
+        env:
+          # Commits are checked once, when they enter develop or, for a hotfix,
+          # main (DEV-4.5); everything else skips the commit step.
+          GATE_COMMIT_RANGE: >-
+            ${{ github.event_name != 'pull_request' && 'none'
+                || github.base_ref == 'develop' && 'origin/develop..HEAD'
+                || (github.base_ref == 'main' && startsWith(github.head_ref, 'hotfix/'))
+                   && 'origin/main..HEAD'
+                || 'none' }}
+          # The author check applies to those pull requests from this
+          # repository's own branches, not to forks or Dependabot, whose
+          # commits keep their identity (DEV-16.5).
+          GATE_CHECK_AUTHOR: >-
+            ${{ (github.event_name == 'pull_request'
+                 && (github.base_ref == 'develop'
+                     || (github.base_ref == 'main' && startsWith(github.head_ref, 'hotfix/')))
+                 && github.event.pull_request.head.repo.full_name == github.repository
+                 && github.event.pull_request.user.login != 'dependabot[bot]') && '1' || '0' }}
+        run: bash scripts/gate.sh
 
-  test:
+  db:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
@@ -36,27 +86,29 @@ jobs:
           POSTGRES_DB: hydro_test
           POSTGRES_USER: hydro_user
           POSTGRES_PASSWORD: hydro_password
-        ports:
-          - 5432:5432
+        ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U hydro_user -d hydro_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       DATABASE_URL: postgresql://hydro_user:hydro_password@localhost:5432/hydro_test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
         with:
-          python-version: '3.12'
+          python-version: "3.12"
           enable-cache: true
       - run: uv sync --locked --all-extras
-      - name: Run tests
-        run: uv run --no-sync pytest tests/ -v --tb=short
+      - name: Migrations
+        run: uv run --no-sync alembic upgrade head
+      - name: Database tests
+        # The timing tests of tests/performance (marker `benchmark`) are not a check.
+        run: uv run --no-sync pytest tests -m "db and not benchmark" -q
 
-  security:
+  audit:
+    name: dependency audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: backend
@@ -64,12 +116,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
         with:
-          python-version: '3.12'
-      - name: Security audit
-        # PyPI packages only: the producers come from git tags and carry no hashes.
+          python-version: "3.12"
+      - name: pip-audit
+        # PyPI packages only: the ecosystem's own distributions come from git
+        # tags until they are on PyPI and carry no hashes. Accepted findings:
+        # add `--ignore-vuln <ID>` with a comment giving the reason (DEV-13.6).
         run: |
-          uv export --locked --no-dev --no-emit-project --format requirements.txt \
-            --no-emit-package kartograf --no-emit-package imgwtools \
-            --no-emit-package hydrolog > "$RUNNER_TEMP/requirements.txt"
+          skip=()
+          for p in kartograf imgwtools hydrolog retman archiwista hydraulik hydrograf; do
+            skip+=(--no-emit-package "$p" --no-emit-package "nogat-$p")
+          done
+          uv export --locked --all-extras --no-emit-project --format requirements.txt \
+            "${skip[@]}" > "$RUNNER_TEMP/requirements.txt"
           uvx pip-audit --strict --disable-pip -r "$RUNNER_TEMP/requirements.txt"
-        continue-on-error: true
