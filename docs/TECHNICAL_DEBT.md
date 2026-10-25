@@ -196,18 +196,20 @@ logger.info(f"Watershed area: {area_km2} km2")
 
 ---
 
-## TODO in the code (T5.x) — NEW
+## TODO in the code (T5.x)
 
-**Problem:** One active TODO in the production code (with .venv excluded):
+**Problem:** One active TODO in the production code (`api`, `core`, `models`, `scripts`, `utils`, `migrations`, `frontend/js` and the tests; checked 2026-10-25):
 
 | File | Line | Content | Priority |
 |------|------|---------|----------|
-| `core/cn_calculator.py:198` | `# TODO: Analiza pliku GeoPackage` (analyze the GeoPackage file) | The function `get_land_cover_stats()` returns an empty `{}` after downloading the GeoPackage — there is no parsing | MEDIUM |
+| `core/watershed_service.py:958` | `# TODO: compute AL and AP from main channel geometry` | `asymmetry_coefficient` (α = 2·(AL−AP)/A) is always `None`: the watershed is not split along the main channel into the areas of its two banks | LOW |
 
-**Context:** The function `get_land_cover_stats()` downloads the land cover file from Kartograf, but does not parse it — it returns an empty dictionary and falls back to the default values. This means that the CN calculation is based on estimated (not actual) land cover data when this code path is used.
+**Context:** The field is a placeholder among the relief indices (`MorphometricParameters`, the response, the table of the parameters in the front end, `docs/DATA_MODEL.md`). Nothing computes with it, so the gap shows as an empty value of one parameter.
 
-**Priority:** MEDIUM — it affects the accuracy of the CN calculation on the Kartograf path
+**Priority:** LOW — it affects the display of one parameter only
+
+**Closed:** the earlier entry of this section, `core/cn_calculator.py:198` (`# TODO: Analiza pliku GeoPackage`: `get_land_cover_stats()` returned `{}` after the download, without parsing the GeoPackage), no longer applies. `get_land_cover_stats()` reads the PT* layers of the BDOT10k packages of the Kartograf store and sums the area of every category in the bbox (`_analyze_land_cover_gpkgs`, `_land_cover_areas`; `tests/unit/test_land_cover_stats.py`). It still returns `{}` when Kartograf fails or finds no package: that is the backlog item on the `KartografError` catch (`docs/BACKLOG.md`, Bugs and diagnoses).
 
 ---
 
-*Last update: 2026-03-01*
+*Last update: 2026-10-25*
