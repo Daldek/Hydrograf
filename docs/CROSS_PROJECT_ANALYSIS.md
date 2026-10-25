@@ -349,7 +349,6 @@ fail_under = 80
 - ✅ The integration of WatershedParameters (Hydrograf ↔ Hydrolog)
 - ✅ A full preprocessing pipeline (bootstrap.py + 10 steps)
 - ✅ The CN calculation from HSG + land cover (Kartograf)
-- ✅ Building raising from BUBD (ADR-033)
 - ✅ Land cover MVT tiles
 - ✅ An admin panel with the bootstrap over SSE (ADR-034)
 - ✅ ConcentrationTime: 6 tc methods (kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti)
@@ -380,6 +379,7 @@ fail_under = 80
 
 - Unify the docstrings to EN (optional)
 - Kartograf: consider migrating to ruff (optional)
+- Building raising (ADR-033): `process_dem` takes the footprints, but no script passes them, so the pipeline does not raise buildings ([BACKLOG.md](BACKLOG.md))
 
 ---
 

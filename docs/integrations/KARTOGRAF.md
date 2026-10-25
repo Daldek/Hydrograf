@@ -718,8 +718,9 @@ unrealistic flow directions.
 
 ### 13.2 Solution
 
-`raise_buildings_in_dem()` in `core/hydrology.py` reads the footprints from a GeoPackage (the BUBD
-layer of BDOT10k), rasterises them onto the DEM grid and raises the DEM under them by 5 m:
+`raise_buildings_in_dem()` in `core/hydrology.py` reads the footprints from the first layer of a
+GeoPackage (a file of the BUBD footprints of BDOT10k), rasterises them onto the DEM grid and raises
+the DEM under them by 5 m:
 
 ```python
 from core.hydrology import raise_buildings_in_dem
@@ -738,7 +739,10 @@ dem = raise_buildings_in_dem(
 `process_dem()` takes the file as `building_gpkg` and raises the buildings after the DEM is read and
 before stream burning and depression filling. **No script passes `building_gpkg` today**: the
 bootstrap and `prepare_area` do not raise buildings, so the function is tested
-(`tests/unit/test_building_raising.py`) and available, and the pipeline does not use it yet.
+(`tests/unit/test_building_raising.py`) and available, and the pipeline does not use it yet. A
+BDOT10k county package cannot be passed as it is: it has a layer per object class and the function
+takes the first one, so with `OT_ADMS_A` before `OT_BUBD_A` it raised every cell of a test DEM. What
+the wiring needs, and why it is not done, is in [BACKLOG.md](../BACKLOG.md) (Bugs and diagnoses).
 
 ---
 
