@@ -19,7 +19,7 @@ This document defines precisely:
 ### 1.2 Business Context
 **Problem:** There is no internal tool for fast hydrological analyses of small watersheds.
 
-**Solution:** A web system that uses open data (GIOŚ, GUGiK, PIG, IMGW, RZGW) to delineate watersheds and to compute their parameters and hydrographs.
+**Solution:** A web system that uses open data (GIOŚ, GUGiK, ISRIC, IMGW, RZGW) to delineate watersheds and to compute their parameters and hydrographs.
 
 **Users:** Spatial planning specialists in municipalities (without advanced GIS knowledge).
 
@@ -341,9 +341,9 @@ This document defines precisely:
 
 #### 3.1.1 Digital Elevation Model (DEM, Polish NMT)
 
-**Source:** GUGiK through Kartograf v0.7.0 (`download_sheets` + `MetadataCache`, automatic download of the DEM sheets)
+**Source:** GUGiK through Kartograf 0.8.0 (`DownloadManager.download_sheets` into the Kartograf store `cache/kartograf/`, `MetadataCache`; automatic download of the DEM sheets)
 **Format:** ARC/INFO ASCII GRID → VRT mosaic
-**Resolution:** 5 m (configured in Kartograf `GugikProvider(resolution="5m")`)
+**Resolution:** 5 m (Kartograf `GugikProvider(resolution="5m")`, vertical datum EVRF2007; `bootstrap --resolution 1m` selects 1 m)
 **Coordinate system:** EPSG:2180 (PL-1992)
 **Spatial extent:** A bbox defined at setup (e.g. `16.9279,52.3729,17.3825,52.5870`)
 **Update:** Once, at the setup of the system (or on request after the DEM is updated)
@@ -363,7 +363,7 @@ This document defines precisely:
 
 #### 3.1.2 Land Cover
 
-**Sources:** GUGiK - BDOT10k (through Kartograf v0.7.0, automatic download by district, Polish *powiat*)
+**Sources:** GUGiK - BDOT10k (through Kartograf 0.8.0, `download_landcover`: automatic download of the whole package of each district, Polish *powiat*, into the store)
 **Format:** GeoPackage
 **Coordinate system:** EPSG:2180
 **Extent:** The districts that cover the bbox
@@ -410,7 +410,7 @@ This document defines precisely:
 
 #### 3.1.4 Precipitation Data
 
-**Source:** IMGW - the Pmax_PT atlas through IMGWTools 3.0.0 (commit `a304521`)
+**Source:** IMGW - the Pmax_PT atlas through IMGWTools 3.0.0 (commit `3f7de36`)
 **Format:** Points of meteorological stations
 **Spatial extent:** Stations within the bbox (~192 stations)
 **Parameters:**
@@ -428,11 +428,11 @@ This document defines precisely:
 
 #### 3.1.5 Soil Data (HSG)
 
-**Source:** PIG (the Polish Geological Institute) through Kartograf v0.7.0
-**Format:** GeoPackage → raster → PostGIS (table `soil_hsg`)
+**Source:** ISRIC SoilGrids (clay, sand and silt at 0-5 cm) through Kartograf 0.8.0, which classifies the USDA texture into hydrologic soil groups
+**Format:** GeoTIFF (the HSG raster of Poland, a version of the Kartograf store) → polygons → PostGIS (table `soil_hsg`)
 **Attributes:** Hydrologic Soil Group (A/B/C/D)
 **Preprocessing:**
-- Rasterization onto the DEM grid
+- Clipping to the DEM mosaic and warping to EPSG:2180 (250 m cells)
 - Nearest-neighbour fill of the missing pixels (distance_transform_edt)
 - Polygonization → import into PostGIS (~197 polygons)
 
@@ -445,7 +445,7 @@ This document defines precisely:
 - ❌ Weather forecasts
 - ❌ Data on retention reservoirs
 - ❌ Data on the capacity of bridges/culverts
-- ~~❌ Geological data (soil permeability)~~ — **DONE** (HSG from PIG, section 3.1.5)
+- ~~❌ Geological data (soil permeability)~~ — **DONE** (HSG from SoilGrids, section 3.1.5)
 - ❌ Data on historical land use (changes in time)
 - ❌ Satellite data (Sentinel, Landsat)
 - ❌ LiDAR (point clouds)
@@ -519,9 +519,9 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 1.0.0.dev0 (commit `6c9ba5a`; hydrological calculations)
-- Kartograf v0.7.0 (downloading the DEM, land cover, HSG, BDOT10k)
-- IMGWTools 3.0.0 (commit `a304521`; design precipitation from IMGW)
+- Hydrolog 1.0.0.dev0 (commit `5fa22b3`; hydrological calculations)
+- Kartograf 0.8.0.dev0 (commit `45dedf4`; downloading the DEM, land cover, HSG, BDOT10k)
+- IMGWTools 3.0.0 (commit `3f7de36`; design precipitation from IMGW)
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
@@ -949,13 +949,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.4
+**Document version:** 1.5
 **Date of the last update:** 2026-10-25
 **Current version:** v0.4.0 (CP4 finished, 899 tests, 19 endpoints, 49 ADRs)
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.5 (2026-10-25): Kartograf 0.8.0 and the head commits of the three producers (ADR-060, ADR-061); the HSG source is SoilGrids (ISRIC), not PIG, and its preprocessing is the clip and warp of the HSG raster of Poland
 - 1.4 (2026-10-25): the versions of Hydrolog and IMGWTools follow their pins by commit (ADR-060)
 - 1.3 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
 - 1.2 (2026-03-25): last content update
