@@ -118,12 +118,9 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
 **Status:** ✅ Zaimplementowane
 
 Funkcje:
-- `calculate_perimeter_km(boundary)` - obwód zlewni z boundary.length
-- `calculate_watershed_length_km(cells, outlet)` - max odległość od ujścia
-- `calculate_elevation_stats(cells)` - min/max/mean wysokości (ważona po area)
-- `calculate_mean_slope(cells)` - średni spadek ważony po area (% → m/m)
-- `find_main_stream(cells, outlet)` - długość i spadek głównego cieku (algorytm najdłuższej ścieżki)
-- `build_morphometric_params(cells, boundary, outlet, cn)` - kompletny dict dla Hydrologa
+- `calculate_shape_indices(area_km2, perimeter_km, length_km)` - wskaźniki kształtu (Kc, Rc, Re, Ff, Cl, W)
+
+Pozostałe parametry (powierzchnia, obwód, długość, wysokości, spadek, ciek główny, wskaźniki rzeźby i drenażu) liczy `build_morph_dict_from_graph()` w `core/watershed_service.py` z grafu zlewni cząstkowych; ciek główny wyznacza `CatchmentGraph.trace_main_channel()`.
 
 ### 2. Moduł: `backend/core/morphometry_raster.py`
 
@@ -246,7 +243,6 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator`, `NashIUH`, `ConcentrationTime` | Endpoint API generowania hydrogramu |
 | `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | Skrypt CLI pełnej analizy |
 | `core/morphometry.py` | `WatershedParameters` (w docstring/example) | Dokumentacja formatu wymiany |
-| `tests/unit/test_morphometry.py` | `WatershedParameters` | Test kompatybilności formatu |
 
 ---
 
@@ -257,7 +253,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | Plik | Zmiana | Status |
 |------|--------|--------|
 | `backend/pyproject.toml` | + hydrolog (commit `5fa22b3`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
-| `backend/core/morphometry.py` | 6 funkcji obliczeniowych | ✅ |
+| `backend/core/morphometry.py` | `calculate_shape_indices` (wskaźniki kształtu) | ✅ |
 | `backend/core/morphometry_raster.py` | Obliczenia rastrowe (slope, aspect, TWI, Strahler) | ✅ |
 | `backend/core/catchment_graph.py` | In-memory graf, BFS, trace_main_channel | ✅ |
 | `backend/core/watershed_service.py` | build_morph_dict_from_graph, boundary smoothing | ✅ |
@@ -269,7 +265,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | `backend/api/endpoints/hydrograph.py` | Endpoint hydrogramu (CatchmentGraph BFS) | ✅ |
 | `backend/api/main.py` | + router hydrograph | ✅ |
 | `backend/scripts/analyze_watershed.py` | Skrypt CLI pełnej analizy z Hydrologiem | ✅ |
-| `backend/tests/unit/test_morphometry.py` | 24+ testy jednostkowe | ✅ |
+| `backend/tests/unit/test_morphometry.py` | Testy wskaźników kształtu | ✅ |
 | `backend/tests/integration/test_hydrograph.py` | 16 testów integracyjnych | ✅ |
 
 ### Hydrolog

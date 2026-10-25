@@ -1,7 +1,7 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.5
+**Version:** 2.6
 **Date:** 2026-10-25
 **Status:** Approved
 
@@ -159,14 +159,13 @@ backend/
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
 │   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning, building raising (ADR-033)
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
-│   ├── morphometry.py             # Morphometric parameters calculation
+│   ├── morphometry.py             # Shape indices (calculate_shape_indices)
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
 │   ├── raster_service.py          # RasterCache — lazy-loaded raster data (DEM, flow direction, accumulation)
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
-│   ├── watershed.py               # Watershed boundary building + legacy CLI functions
 │   ├── sewer_service.py            # Storm-sewer integration (SewerGraph, burn inlets, FA routing, ADR-051/052)
 │   ├── sewer_topology.py           # Sewer topology parser and validator (ParsedTopology, parse_sewer_topology, validate_against_fdir, ADR-052)
 │   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022, Chaikin smoothing ADR-032)
@@ -414,38 +413,20 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
 
 ### 2.4 Core Logic Modules
 
-#### 2.4.1 `core/watershed.py`
+#### 2.4.1 `core/morphometry.py`
 **Responsibilities:**
-- The `FlowCell` dataclass
-- Building a watershed boundary from cells (`build_boundary`, `build_boundary_polygonize`)
+- The shape indices of a watershed (`calculate_shape_indices`: compactness, circularity, elongation, form factor, lemniscate ratio, mean width), compatible with Hydrolog's `WatershedParameters`
+
+It is the only function of the module. The rest of the morphometry of the runtime API (area, perimeter, length, elevation,
+slope, channel, drainage indices, hypsometric curve) is computed from the catchment graph by
+`build_morph_dict_from_graph()` in `core/watershed_service.py` and `CatchmentGraph.aggregate_stats()`.
+The main stream is traced by `CatchmentGraph.trace_main_channel()` in `core/catchment_graph.py`.
 
 The delineation itself (nearest catchment, upstream traversal over the catchment graph, boundary
 merge) is in `core/watershed_service.py` and `core/catchment_graph.py`; the API endpoint and
 `scripts/analyze_watershed.py` both run it through `POST /api/delineate-watershed`.
 
-#### 2.4.2 `core/morphometry.py`
-**Responsibilities:**
-- Computing geometric parameters (area, perimeter, length)
-- Computing morphometric parameters (slope, elevation)
-- Shape factors, relief indices, hypsometric curve
-
-**Main functions:**
-```python
-def build_morphometric_params(
-    cells: list[FlowCell],
-    boundary: Polygon,
-    outlet: FlowCell,
-    cn: int | None = None,
-    include_stream_coords: bool = False,
-    db=None,
-    include_hypsometric_curve: bool = False,
-) -> dict:
-    """Builds the complete dictionary of morphometric parameters (compatible with Hydrolog).
-    Note: in the runtime API the parameters are computed from CatchmentGraph.aggregate_stats()."""
-    pass
-```
-
-#### 2.4.3 `core/catchment_graph.py`
+#### 2.4.2 `core/catchment_graph.py`
 
 Singleton in-memory graph of sub-catchments based on numpy arrays and a scipy sparse CSR matrix (~87-285k nodes depending on the area, ~0.5 MB of RAM). Loaded lazily from the database on first use and invalidated after cleanup or the pipeline by `invalidate()`.
 
@@ -458,7 +439,7 @@ Singleton in-memory graph of sub-catchments based on numpy arrays and a scipy sp
 
 Details: `core/catchment_graph.py`
 
-#### 2.4.4 `core/watershed_service.py`
+#### 2.4.3 `core/watershed_service.py`
 
 Delineation logic shared by two endpoints (watershed, hydrograph). It avoids expensive raster operations at runtime: all work is based on CatchmentGraph and pre-computed stats.
 
@@ -472,23 +453,23 @@ Delineation logic shared by two endpoints (watershed, hydrograph). It avoids exp
 
 Details: `core/watershed_service.py`
 
-#### 2.4.5 `core/db_bulk.py`
+#### 2.4.4 `core/db_bulk.py`
 **Responsibilities:**
 - Bulk INSERT via PostgreSQL COPY (55k rec/s vs 2.6k rec/s with INSERT)
 - Management of statement_timeout (override + restore)
 
-#### 2.4.6 `core/stream_extraction.py`
+#### 2.4.5 `core/stream_extraction.py`
 **Responsibilities:**
 - Vectorization of streams from the accumulation raster
 - Segmentation at confluences (ADR-024) and at changes of the Strahler order
 - Generation of the label raster for `pyflwdir.basins()`
 
-#### 2.4.7 `core/zonal_stats.py`
+#### 2.4.6 `core/zonal_stats.py`
 **Responsibilities:**
 - Zonal statistics via `np.bincount` (O(M) instead of O(n*M) per-label masking)
 - Computing min/max/mean per label for elevation and slope
 
-#### 2.4.8 Hydrolog library (external)
+#### 2.4.7 Hydrolog library (external)
 **Responsibilities:** (delegated to `hydrolog`, pinned by commit in `backend/pyproject.toml`, ADR-060)
 - Hyetograph generation (Beta, Block, Euler II)
 - SCS CN model (effective precipitation)
@@ -503,7 +484,7 @@ from hydrolog.runoff import HydrographGenerator
 from hydrolog.morphometry import WatershedParameters
 ```
 
-#### 2.4.9 `core/precipitation.py`
+#### 2.4.8 `core/precipitation.py`
 **Responsibilities:**
 - Queries to the `precipitation_data` table
 - IDW interpolation (Inverse Distance Weighting)
@@ -519,7 +500,7 @@ def get_precipitation(
     pass
 ```
 
-#### 2.4.10 `core/land_cover.py`
+#### 2.4.9 `core/land_cover.py`
 **Responsibilities:**
 - Intersection of the boundary with the land cover
 - Computing the weighted CN
@@ -1778,11 +1759,12 @@ jobs:
 
 ---
 
-**Document version:** 2.5
+**Document version:** 2.6
 **Date of the last update:** 2026-10-25
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.6 (2026-10-25): `core/watershed.py` (`FlowCell`, `build_boundary`, `build_boundary_polygonize`, `calculate_watershed_area_km2`) and the cell functions of `core/morphometry.py` are removed, nothing called them; `core/morphometry.py` keeps `calculate_shape_indices`; the sections 2.4.1 to 2.4.9 are renumbered (section 2.4.7 is the Hydrolog library, 2.4.8 in version 2.4)
 - 2.5 (2026-10-25): Kartograf 0.8.0 (ADR-061): the downloads are versions of the Kartograf store `cache/kartograf/` (a hard-linked standard path, `versions/`, a sidecar per file), not the `cache/nmt/pl_<system>_<res>_evrf2007/` + `kampanie/` layout; `utils/kartograf_store.py`; `download_dem.py` writes into the store; the ADR table names ADR-060 and ADR-061 (details: `docs/integrations/KARTOGRAF.md` §3 and §7)
 - 2.4 (2026-10-25): Hydrolog and IMGWTools are pinned by commit (ADR-060): section 2.4.8 names no version
 - 2.3 (2026-10-25): translated to English (DEV-2.1); the content is unchanged

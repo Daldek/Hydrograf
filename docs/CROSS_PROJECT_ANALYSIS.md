@@ -77,7 +77,6 @@ hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "5fa22b35e5e1
 | `api/endpoints/hydrograph.py` | `uh_model` selector | The choice of the unit hydrograph model: scs / nash / snyder |
 | `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | The CLI script of the full analysis |
 | `core/morphometry.py` | `WatershedParameters` (in a docstring) | Documentation of the exchange format |
-| `tests/unit/test_morphometry.py` | `WatershedParameters` | A test of the format compatibility |
 | `tests/unit/test_tc_methods.py` | `ConcentrationTime` | Tests of the tc methods (faa, kerby, kerby_kirpich) |
 
 ### 3.2 Kartograf: imports in Hydrograf

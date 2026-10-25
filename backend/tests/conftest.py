@@ -12,80 +12,11 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from core.watershed import FlowCell
-
 
 @pytest.fixture
 def mock_db():
     """Create mock database session."""
     return MagicMock()
-
-
-@pytest.fixture
-def sample_outlet_cell():
-    """Sample outlet FlowCell for testing."""
-    return FlowCell(
-        id=1,
-        x=500000.0,
-        y=600000.0,
-        elevation=150.0,
-        flow_accumulation=1000,
-        slope=2.5,
-        downstream_id=None,
-        cell_area=25.0,
-        is_stream=True,
-    )
-
-
-@pytest.fixture
-def sample_cells():
-    """Sample list of FlowCells representing a small watershed."""
-    return [
-        FlowCell(
-            id=1,
-            x=500000.0,
-            y=600000.0,
-            elevation=150.0,
-            flow_accumulation=1000,
-            slope=2.5,
-            downstream_id=None,
-            cell_area=25.0,
-            is_stream=True,
-        ),
-        FlowCell(
-            id=2,
-            x=500005.0,
-            y=600000.0,
-            elevation=152.0,
-            flow_accumulation=500,
-            slope=3.0,
-            downstream_id=1,
-            cell_area=25.0,
-            is_stream=False,
-        ),
-        FlowCell(
-            id=3,
-            x=500010.0,
-            y=600000.0,
-            elevation=154.0,
-            flow_accumulation=200,
-            slope=2.8,
-            downstream_id=2,
-            cell_area=25.0,
-            is_stream=False,
-        ),
-        FlowCell(
-            id=4,
-            x=500000.0,
-            y=600005.0,
-            elevation=153.0,
-            flow_accumulation=300,
-            slope=2.2,
-            downstream_id=1,
-            cell_area=25.0,
-            is_stream=False,
-        ),
-    ]
 
 
 @pytest.fixture

@@ -14,8 +14,7 @@ The constants `M_PER_KM` and `M2_PER_KM2` exist in `core/constants.py`, but the 
 
 | Value | Location | Status |
 |-------|----------|--------|
-| `1000.0` (m/km) | `core/morphometry.py` ×4 (lines 37, 73, 253, 486) | Still hardcoded — `M_PER_KM` is not imported |
-| `1_000_000` (m²/km²) | `core/watershed.py:252`, `core/morphometry.py:598` | Still hardcoded — `M2_PER_KM2` is not imported |
+| `1000.0` (m/km) | `core/watershed_service.py` (`build_morph_dict_from_graph`, `compute_watershed_length`) | Still hardcoded — `M_PER_KM` is not imported |
 
 **Note:** `M2_PER_KM2` is imported in `api/endpoints/watershed.py`, but the core modules do not use the constants — a gap between the intent and the implementation.
 
@@ -23,7 +22,6 @@ The constants `M_PER_KM` and `M2_PER_KM2` exist in `core/constants.py`, but the 
 
 | Value | Location | Description | Status |
 |-------|----------|-------------|--------|
-| `0.3` | `core/watershed.py:211` | Concave hull ratio | Still hardcoded |
 | `75` | ~~`core/morphometry.py`~~ | Default CN value | DONE — `DEFAULT_CN` in `constants.py`, used by `land_cover.py` |
 
 ### CRS identifiers — PARTLY DONE
@@ -32,14 +30,14 @@ The constants `CRS_PL1992` and `CRS_WGS84` exist in `core/constants.py`, but the
 
 | Value | Location | Status |
 |-------|----------|--------|
-| `"EPSG:2180"` | `core/cn_calculator.py`, `core/hydrology.py` ×2, `core/morphometry.py`, `core/precipitation.py`, `core/raster_io.py`, `core/watershed_service.py` | Still hardcoded — `CRS_PL1992` is not imported |
+| `"EPSG:2180"` | `core/cn_calculator.py`, `core/hydrology.py` ×2, `core/precipitation.py`, `core/raster_io.py`, `core/watershed_service.py` | Still hardcoded — `CRS_PL1992` is not imported |
 | `"EPSG:2180"` | `utils/geometry.py`, `models/schemas.py` | Still hardcoded |
 
 ### Other
 
 | Value | Location | Status |
 |-------|----------|--------|
-| `"Hydrograf"` | `core/morphometry.py:613` | Still hardcoded |
+| `"Hydrograf"` | `core/watershed_service.py` (`build_morph_dict_from_graph`) | Still hardcoded |
 
 **Priority:** LOW — `constants.py` exists, but the core modules have to be migrated to import the constants instead of literals. A purely cosmetic refactoring with no risk of error.
 
@@ -166,7 +164,7 @@ There is no reference to `flow_network` in any file `core/*.py` or `api/endpoint
 - `utils/raster_utils.py` (20 occurrences)
 - `scripts/process_dem.py` (26 occurrences)
 - `scripts/bootstrap.py` (18 occurrences)
-- core modules: `raster_io.py` (11), `cn_calculator.py` (9), `land_cover.py` (7), `hydrology.py` (7), `watershed.py` (5)
+- core modules: `raster_io.py` (11), `cn_calculator.py` (9), `land_cover.py` (7), `hydrology.py` (7)
 
 **Standard (DEV-12.3 of the Nogat standard):**
 ```python
