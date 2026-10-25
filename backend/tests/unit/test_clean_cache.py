@@ -1,4 +1,7 @@
-"""clean_cache empties the large products of the Kartograf store and keeps the rest."""
+"""clean_cache empties the large products of the Kartograf store and keeps the rest.
+
+It also removes the cache directories of Kartograf 0.7.0, which nothing reads any more.
+"""
 
 import kartograf
 import pytest
@@ -14,12 +17,13 @@ from tests.kartograf_offline import (
 from tests.kartograf_offline import offline as offline  # noqa: F401
 
 META_FILES = ("kartograf_meta.db", "kartograf_meta.db-wal", "kartograf_meta.db-shm")
+LEGACY_DIRS = ("nmt", "bdot10k", "soil_hsg")
 BBOX = kartograf.BBox(450000, 550000, 460000, 560000, "EPSG:2180")
 
 
 @pytest.fixture
 def cache_dir(tmp_path, offline):  # noqa: F811
-    """A cache with a store (NMT, BDOT10k, SoilGrids, HSG) and the meta files."""
+    """A cache with a store (NMT, BDOT10k, SoilGrids, HSG), meta files, the old dirs."""
     root = tmp_path / "kartograf"
     build_fixture_store(root)
     with bdot10k_counties(Counties(["1465"])):
@@ -34,6 +38,11 @@ def cache_dir(tmp_path, offline):  # noqa: F811
     assert report.ok
     for name in META_FILES:
         (tmp_path / name).write_text("sqlite")
+    for name in LEGACY_DIRS:
+        (tmp_path / name / "sheets").mkdir(parents=True)
+        (tmp_path / name / "sheets" / "old.dat").write_text("0.7.0")
+    (tmp_path / "other").mkdir()
+    (tmp_path / "other" / "mine.txt").write_text("not a cache")
     return tmp_path
 
 
@@ -52,6 +61,13 @@ def test_removes_nmt_bdot10k_and_metadata_and_keeps_hsg(cache_dir):
     assert _segments(cache_dir) == {"soil", "hsg"}
     assert (cache_dir / "kartograf" / "kartograf-store.json").is_file()
     assert not [p for p in cache_dir.iterdir() if p.name.startswith("kartograf_meta")]
+
+
+def test_removes_the_cache_directories_of_kartograf_0_7_0_whole(cache_dir):
+    clean_cache(cache_dir, dry_run=False)
+
+    assert [(cache_dir / name).exists() for name in LEGACY_DIRS] == [False] * 3
+    assert (cache_dir / "other" / "mine.txt").is_file()
 
 
 def test_what_is_left_is_a_store_that_kartograf_still_writes(cache_dir):

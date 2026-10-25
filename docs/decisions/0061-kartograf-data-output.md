@@ -86,4 +86,18 @@ scripts catch `KartografError` where the old code caught `Exception` to mean "th
 
 ## Errata
 
-None.
+**2026-10-25: the cache clean removes the old directories.** `python -m scripts.clean
+--include-cache` and the `cache` target of the admin panel remove `cache/nmt/`,
+`cache/bdot10k/` and `cache/soil_hsg/` too, whole, together with the large products of the
+store (`nmt`, `landcover`) and `kartograf_meta.db*`. Nothing reads them since this ADR and
+there is no data migration, so nobody has to delete them by hand; there is no separate flag,
+and the plan and the dry run of the clean list their files with the rest of the cache. The
+Consequences above say "delete them": this is how.
+
+**2026-10-25: the plain HSG raster keeps the statistics of the whole raster.**
+`hsg_statistics` of the raster of `get_hsg_from_soilgrids` has no sidecar, so it counts every
+cell of the raster and the cells at the edge of the bbox count in full, as in 0.7.0; the
+store would give area weights through the sidecar of a version. The counting of the soil
+groups does not change by this migration. Option B (the raster as a version per bbox in the
+store) stays rejected for the reason given above; area weights would be a change of the CN
+calculation, decided on its own.

@@ -140,7 +140,9 @@ def get_hsg_from_soilgrids(bbox: "BBox") -> tuple[str, dict[str, float]]:
     The HSG raster of the area exists only for this call: Kartograf writes it as a
     plain file into a temporary directory (``output_dir``), fetches the SoilGrids
     inputs into its own staging directory, and nothing stays in the Kartograf store
-    (ADR-061). A failure of Kartograf, or an area without data, gives the group B.
+    (ADR-061). ``hsg_statistics`` of a raster without a sidecar counts the whole
+    raster, the cells at the edge of the bbox in full, as in 0.7.0 (ADR-061, erratum
+    of 2026-10-25). A failure of Kartograf or an area without data gives group B.
 
     Parameters
     ----------
