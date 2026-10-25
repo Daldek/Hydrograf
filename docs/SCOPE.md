@@ -1,960 +1,964 @@
-# SCOPE.md - Zakres Projektu
-## System Analizy Hydrologicznej
+# SCOPE.md - Project Scope
+## Hydrological Analysis System
 
-**Wersja:** 1.2
-**Data:** 2026-03-25
-**Status:** Zatwierdzony
-
----
-
-## 1. Wprowadzenie
-
-### 1.1 Cel Dokumentu
-Ten dokument precyzyjnie definiuje:
-- ✅ Co **JEST** w zakresie projektu (In Scope)
-- ❌ Co **NIE JEST** w zakresie projektu (Out of Scope)
-- ⏳ Co **MOŻE BYĆ** w przyszłości (Future Scope)
-- 🔒 Ograniczenia i założenia
-
-### 1.2 Kontekst Biznesowy
-**Problem:** Brak dostępnego wewnętrznego narzędzia do szybkich analiz hydrologicznych dla małych zlewni.
-
-**Rozwiązanie:** System webowy wykorzystujący otwarte dane (GIOŚ, GUGIK, PIG, IMGW, RZGW) do wyznaczania zlewni, parametrów i hydrogramów.
-
-**Użytkownicy:** Specjaliści ds. planowania przestrzennego w gminach (bez zaawansowanej wiedzy GIS).
+**Version:** 1.3
+**Date:** 2026-10-25
+**Status:** Approved
 
 ---
 
-## 2. ZAKRES FUNKCJONALNY
+## 1. Introduction
 
-### 2.1 ✅ IN SCOPE - Funkcjonalności MVP
+### 1.1 Purpose of the Document
+This document defines precisely:
+- ✅ What **IS** in the scope of the project (In Scope)
+- ❌ What is **NOT** in the scope of the project (Out of Scope)
+- ⏳ What **MAY BE** in the future (Future Scope)
+- 🔒 Constraints and assumptions
 
-#### 2.1.1 FAZA 1: Wyznaczanie Granic Zlewni
+### 1.2 Business Context
+**Problem:** There is no internal tool for fast hydrological analyses of small watersheds.
 
-**✅ W zakresie:**
-- Interaktywna mapa webowa z podkładami: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (ortofoto + topo)
-- Wybór punktu przez kliknięcie na mapie (tryb rysowania poligonu + tryb wyboru obiektow)
-- Automatyczne wykrywanie najbliższego cieku (snap-to-stream ST_Distance + fallback ST_Contains)
-- Wyznaczanie granicy zlewni metodą BFS na grafie in-memory (CatchmentGraph)
-- Wygladzanie granic zlewni: `ST_SimplifyPreserveTopology` + `ST_ChaikinSmoothing` (ADR-032)
-- Podniesienie budynkow w NMT (+5m pod obrysami BUBD z BDOT10k, ADR-033)
-- Wizualizacja granicy na mapie (GeoJSON polygon)
-- Eksport granicy jako GeoJSON
-- Eksport granicy jako Shapefile
-- Czas wykonania: < 10 sekund
-- Selekcja segmentu cieku z upstream traversal (POST `/api/delineate-watershed` z parametrem `threshold_m2`, ADR-050)
+**Solution:** A web system that uses open data (GIOŚ, GUGiK, PIG, IMGW, RZGW) to delineate watersheds and to compute their parameters and hydrographs.
 
-**Wymagania techniczne:**
-- Dane wejściowe: NMT z GUGIK (rozdzielczość 5m, pobieranie przez Kartograf)
-- Preprocessing: pyflwdir (D8 flow direction) → wektoryzacja → PostGIS + CatchmentGraph in-memory
-- Algorytm: D8 flow direction + BFS upstream traversal na CatchmentGraph
+**Users:** Spatial planning specialists in municipalities (without advanced GIS knowledge).
+
+---
+
+## 2. FUNCTIONAL SCOPE
+
+### 2.1 ✅ IN SCOPE - MVP Features
+
+#### 2.1.1 PHASE 1: Watershed Delineation
+
+**✅ In scope:**
+- An interactive web map with base layers: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (orthophoto + topographic)
+- Point selection by clicking on the map (polygon drawing mode + object selection mode)
+- Automatic detection of the nearest stream (snap-to-stream ST_Distance + fallback ST_Contains)
+- Delineation of the watershed boundary with BFS on the in-memory graph (CatchmentGraph)
+- Smoothing of the watershed boundaries: `ST_SimplifyPreserveTopology` + `ST_ChaikinSmoothing` (ADR-032)
+- Raising buildings in the DEM (+5 m under the BUBD footprints of BDOT10k, ADR-033)
+- Showing the boundary on the map (GeoJSON polygon)
+- Export of the boundary as GeoJSON
+- Export of the boundary as Shapefile
+- Execution time: < 10 seconds
+- Selection of a stream segment with upstream traversal (POST `/api/delineate-watershed` with the parameter `threshold_m2`, ADR-050)
+
+**Technical requirements:**
+- Input data: the DEM (NMT) from GUGiK (5 m resolution, downloaded through Kartograf)
+- Preprocessing: pyflwdir (D8 flow direction) → vectorization → PostGIS + in-memory CatchmentGraph
+- Algorithm: D8 flow direction + BFS upstream traversal on the CatchmentGraph
 - Output: GeoJSON FeatureCollection
 
-**Komunikaty błędów:**
-- "Nie znaleziono cieku w tym miejscu"
-- "Punkt poza obszarem danych"
+**Error messages:**
+- "No stream found at this location"
+- "Point outside the data area"
 
 ---
 
-#### 2.1.2 FAZA 2: Parametry Fizjograficzne Zlewni
+#### 2.1.2 PHASE 2: Physiographic Parameters of the Watershed
 
-**✅ W zakresie:**
+**✅ In scope:**
 
-**Parametry geometryczne:**
-- Powierzchnia zlewni [km²]
-- Obwód zlewni [km]
-- Długość zlewni [km]
-- Szerokość zlewni [km]
-- Długość głównego cieku [km]
-- Długość hydrauliczna zlewni (hydraulic_length_km) [km]
-- Rzeczywista długość cieku głównego (real_channel_length_km) [km]
-- Sciezki splywu (flow paths): najdluzsza, od dzialu wodnego, od centroidu [km]
-- Wazona nieprzepuszczalnosc (weighted_imperviousness) [-]
+**Geometric parameters:**
+- Watershed area [km²]
+- Watershed perimeter [km]
+- Watershed length [km]
+- Watershed width [km]
+- Length of the main stream [km]
+- Hydraulic length of the watershed (hydraulic_length_km) [km]
+- Actual length of the main channel (real_channel_length_km) [km]
+- Flow paths: the longest one, from the watershed divide, from the centroid [km]
+- Weighted imperviousness (weighted_imperviousness) [-]
 
-**Charakterystyki geometryczne:**
-- Wskaźnik formy C<sub>f</sub>
-- Wskaźnik zwartości C<sub>z</sub>
-- Wskaźnik kolistości C<sub>k</sub>
-- Wskaźnik wydłuenia C<sub>w</sub>
-- Wskaźnik lemniskaty C<sub>l</sub>
+**Geometric characteristics:**
+- Form factor C<sub>f</sub>
+- Compactness coefficient C<sub>z</sub>
+- Circularity ratio C<sub>k</sub>
+- Elongation ratio C<sub>w</sub>
+- Lemniscate ratio C<sub>l</sub>
 
-**Parametry morfometryczne:**
-- Wysokość maksymalna zlewni [m n.p.m.]
-- Średnia wysokość zlewni [m]
-- Wysokość minimalna zlewni [m n.p.m]
-- Wielkość deniwelacji [m]
-- Spadek zlewni [%]
-- Spadek działu wodnego [%]
-- Spadek głównego cieku [%]
-- Wskaźnik formy zlewni (Strahlera)
-- Gęstość sieci rzecznej
-- Wskaźnik jeziorności
-- Wskaźnik zalesienia
-- Wskaźnik rozwinięcia lesistości
-- Wskaźnik bagnistości
-- Wskaźnik rozwinięcia bagnistości
+**Morphometric parameters:**
+- Maximum elevation of the watershed [m a.s.l.]
+- Mean elevation of the watershed [m]
+- Minimum elevation of the watershed [m a.s.l.]
+- Relief, the elevation difference [m]
+- Watershed slope [%]
+- Slope of the watershed divide [%]
+- Slope of the main stream [%]
+- Watershed form factor (Strahler)
+- Drainage density
+- Lake ratio
+- Afforestation ratio
+- Forest development ratio
+- Swampiness ratio
+- Swamp development ratio
 
-**Sieć rzeczna (dla danych z MPHP):**
-- Klasyfikacja sieci rzecznej wg Hortona
-- Klasyfikacja sieci rzecznej wg Strahlera
-- Prawo liczby cieków
-- Prawo długości cieków
-- Prawo powierzchni zlewni
-- Liczba węzłów źródłowych
-- Całkowita liczba cieków róznego rzędu
-- Wskaźnik bifurkacji
-- Całkowita długość cieków róznego rzędu
-- Wskaźnik średniej długości cieków
-- Wskaźnik średniej powierzchni zlewni
-- Wskaźnik częstości cieków
-- Wskaźnik struktury sieci rzecznej
-- Współczynnik rozwinięcia cieku
-- Współczynnk krętości rzeki
-- Współczynnik rozwinięcia biegu rzeki
+**River network (for data from MPHP):**
+- Horton classification of the river network
+- Strahler classification of the river network
+- Law of stream numbers
+- Law of stream lengths
+- Law of watershed areas
+- Number of source nodes
+- Total number of streams of the different orders
+- Bifurcation ratio
+- Total length of streams of the different orders
+- Mean stream length ratio
+- Mean watershed area ratio
+- Stream frequency
+- River network structure ratio
+- Stream development coefficient
+- River sinuosity coefficient
+- River course development coefficient
 
-**Analiza pokrycia terenu:**
-- Integracja z danymi BDOT10k z GUGIK (import do PostGIS, 8 kategorii)
-- Rozkład kategorii pokrycia [%] wg Corine Land Cover
-- Obliczenie ważonego Curve Number (CN) z uwzglednieniem HSG (Hydrologic Soil Group)
-- Mapowanie CN dla każdej kategorii (zgodnie z USDA NRCS)
-- Warstwa tematyczna MVT: `/api/tiles/landcover/{z}/{x}/{y}.pbf` z kolorowaniem wg kategorii
+**Land cover analysis:**
+- Integration with the BDOT10k data from GUGiK (import into PostGIS, 8 categories)
+- Distribution of the land cover categories [%] by Corine Land Cover
+- Computation of the weighted Curve Number (CN) with the HSG (Hydrologic Soil Group) taken into account
+- CN mapping for each category (following USDA NRCS)
+- MVT thematic layer: `/api/tiles/landcover/{z}/{x}/{y}.pbf` coloured by category
 
-**Profil terenu:**
-- Profile podłużne cieku (POST /api/terrain-profile)
+**Terrain profile:**
+- Longitudinal profiles of a stream (POST /api/terrain-profile)
 
-**Zaglebienia terenu:**
-- Endpoint GET `/api/depressions` z filtrami (area, depth)
-- Wizualizacja depresji jako overlay na mapie
+**Terrain depressions:**
+- Endpoint GET `/api/depressions` with filters (area, depth)
+- Showing the depressions as an overlay on the map
 
-**Kafelki wektorowe (MVT):**
-- Cieki: GET `/api/tiles/streams/{z}/{x}/{y}.pbf` (filtr wg progu FA, styl wg rzedu Strahlera)
-- Zlewnie czastkowe: GET `/api/tiles/catchments/{z}/{x}/{y}.pbf`
-- Pokrycie terenu: GET `/api/tiles/landcover/{z}/{x}/{y}.pbf`
-- Dostepne progi: GET `/api/tiles/thresholds`
+**Vector tiles (MVT):**
+- Streams: GET `/api/tiles/streams/{z}/{x}/{y}.pbf` (filter by the FA threshold, style by Strahler order)
+- Sub-catchments: GET `/api/tiles/catchments/{z}/{x}/{y}.pbf`
+- Land cover: GET `/api/tiles/landcover/{z}/{x}/{y}.pbf`
+- Available thresholds: GET `/api/tiles/thresholds`
 
-**Kafelki rastrowe DEM:**
-- Piramida XYZ (zoom 8-16) z multi-directional hillshade (4 kierunki oswietlenia)
+**DEM raster tiles:**
+- XYZ pyramid (zoom 8-16) with a multi-directional hillshade (4 lighting directions)
 
-**Prezentacja wyników:**
-- Glassmorphism panel boczny (draggable, floating)
-- Tabela z parametrami w panelu bocznym
-- Tooltips wyjaśniające terminy techniczne
-- Możliwość kopiowania wartości
-- Eksport parametrów jako JSON/CSV
+**Presentation of the results:**
+- Glassmorphism side panel (draggable, floating)
+- A table of the parameters in the side panel
+- Tooltips that explain the technical terms
+- Values can be copied
+- Export of the parameters as JSON/CSV
 
 ---
 
-#### 2.1.3 FAZA 3: Generowanie Hydrogramów Odpływu
+#### 2.1.3 PHASE 3: Generating Runoff Hydrographs
 
-**✅ W zakresie:**
+**✅ In scope:**
 
-**Scenariusze opadowe:**
-- Źródło: Atlas Pmax_PT z IMGW (via API) lub dane pomiarowe
-- Czasy trwania: 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
-- Prawdopodobieństwa: 0.01%, 0.02%, 0.03%, 0.05%, 0.1%, 0.2%, 0.3%, 0.5%, 1%, 2%, 3%, 5%, 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%, 90%, 95%, 98%, 98.5%, 99%, 99.5%, 99.9%
-- Łącznie: 432 kombinacje (16 × 27)
-- Wybór scenariusza przez użytkownika (radio buttons)
-- Wyświetlenie wartości opadu dla centroidu zlewni
+**Rainfall scenarios:**
+- Source: the Pmax_PT atlas of IMGW (through the API) or measurement data
+- Durations: 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
+- Probabilities: 0.01%, 0.02%, 0.03%, 0.05%, 0.1%, 0.2%, 0.3%, 0.5%, 1%, 2%, 3%, 5%, 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%, 90%, 95%, 98%, 98.5%, 99%, 99.5%, 99.9%
+- In total: 432 combinations (16 × 27)
+- The user chooses a scenario (radio buttons)
+- Showing the precipitation value for the centroid of the watershed
 
-**Czas koncentracji (tc):**
-- Wzór Kirpicha
-- Wzór NRCS (SCS lag)
-- Wzór Giandottiego
-- Wzór FAA (Federal Aviation Administration)
-- Wzór Kerby'ego
-- Wzór Kerby-Kirpicha (zlozony)
+**Time of concentration (tc):**
+- Kirpich formula
+- NRCS formula (SCS lag)
+- Giandotti formula
+- FAA formula (Federal Aviation Administration)
+- Kerby formula
+- Kerby-Kirpich formula (composite)
 
-**Model opad-odpływ:**
-- Hietogram: rozkład Beta (α=2, β=5)
-- Krok czasowy: 5 minut
-- Metoda SCS Curve Number:
-  - Retencja maksymalna: S = 25400/CN - 254
+**Rainfall-runoff model:**
+- Hyetograph: Beta distribution (α=2, β=5)
+- Time step: 5 minutes
+- SCS Curve Number method:
+  - Maximum retention: S = 25400/CN - 254
   - Initial abstraction: Ia = 0.2 × S
-  - Opad efektywny: Pe = (P - Ia)² / (P + 0.8S) gdy P > Ia
+  - Effective precipitation: Pe = (P - Ia)² / (P + 0.8S) when P > Ia
 
-**Hydrogram jednostkowy:**
-- Metoda SCS Dimensionless Unit Hydrograph:
-  - Czas do szczytu: tp = 0.6 × tc
-  - Przepływ szczytowy: qp = 0.208 × A / tp
-  - Czas bazowy: tb = 2.67 × tp
-- Metoda Nash IUH (Instantaneous Unit Hydrograph):
-  - Estymacja parametrow: from_lutz, from_urban_regression
-  - Estymacja from_tc (deprecated)
-- Metoda Snyder UH:
-  - Parametry: ct (wspolczynnik opoznienia), cp (wspolczynnik szczytowy)
-- Typy hietogramu: Beta, Block, Euler II
+**Unit hydrograph:**
+- SCS Dimensionless Unit Hydrograph method:
+  - Time to peak: tp = 0.6 × tc
+  - Peak flow: qp = 0.208 × A / tp
+  - Base time: tb = 2.67 × tp
+- Nash IUH method (Instantaneous Unit Hydrograph):
+  - Parameter estimation: from_lutz, from_urban_regression
+  - Estimation from_tc (deprecated)
+- Snyder UH method:
+  - Parameters: ct (lag coefficient), cp (peak coefficient)
+- Hyetograph types: Beta, Block, Euler II
 
-**Transformacja opad → odpływ:**
-- Splot dyskretny: Q(t) = Pe(t) ⊗ UH(t)
-- Numeryczna implementacja convolution
+**Rainfall → runoff transformation:**
+- Discrete convolution: Q(t) = Pe(t) ⊗ UH(t)
+- Numerical implementation of the convolution
 
-**Wyniki:**
-- Wykres hydrogramu (Chart.js line chart)
-- Kluczowe parametry:
-  - Qmax [m³/s] - przepływ maksymalny
-  - Czas do szczytu [min]
-  - Objętość odpływu całkowitego [m³]
-  - Współczynnik odpływu [-]
-- Eksport szeregu czasowego (CSV):
-  - Kolumny: czas [min], przepływ [m³/s]
-- Eksport wykresu (PNG - opcjonalnie)
+**Results:**
+- Hydrograph chart (Chart.js line chart)
+- Key parameters:
+  - Qmax [m³/s] - peak flow
+  - Time to peak [min]
+  - Total runoff volume [m³]
+  - Runoff coefficient [-]
+- Export of the time series (CSV):
+  - Columns: time [min], flow [m³/s]
+- Export of the chart (PNG - optional)
 
-**Założenia modelu:**
-- Opad równomierny na całą zlewnię
-- Warunki wilgotnościowe: AMC-II (przeciętne)
-- Brak routingu w kanale (natychmiastowa agregacja)
-- Model SCS-CN dla zlewni niekontrolowanych o powierzchni do 250 km² (ograniczenie metody)
-
----
-
-#### 2.1.4 Panel Administracyjny (ADR-034)
-
-**✅ W zakresie:**
-- Strona `/admin` z uwierzytelnianiem API key (header X-Admin-Key)
-- Dashboard: status systemu, liczby rekordow w 6 tabelach, zuzycie dysku
-- Monitorowanie zasobow: CPU/RAM (psutil), pool DB, CatchmentGraph cache, rozmiar bazy
-- Uruchamianie bootstrap pipeline z panelu + real-time logi (SSE)
-- Czyszczenie danych: tiles, overlays, dem_mosaic, TRUNCATE tabel
-- 8 endpointow API `/api/admin/*`
+**Model assumptions:**
+- Precipitation is uniform over the whole watershed
+- Moisture conditions: AMC-II (average)
+- No channel routing (instant aggregation)
+- The SCS-CN model for ungauged watersheds up to 250 km² (a limit of the method)
 
 ---
 
-#### 2.1.5 Konfiguracja Pipeline (YAML)
+#### 2.1.4 Admin Panel (ADR-034)
 
-**✅ W zakresie:**
-- Plik `config.yaml` do konfiguracji pipeline (database, DEM, paths, steps, custom sources)
-- Flaga `--config` w `bootstrap.py`
-- Flaga `--waterbody-mode` (3 tryby: auto, none, custom) do sterowania obsluga zbiornikow wodnych (ADR-031)
-- Selektor rozdzielczosci NMT w panelu admin (5m / 1m)
-- Flaga `--waterbody-mode` rowniez dostepna z poziomu panelu admin
-
----
-
-#### 2.1.6 Integracja Kanalizacji Deszczowej (ADR-051)
-
-**✅ W zakresie:**
-- Import sieci kanalizacji deszczowej z pliku (SHP/GPKG/GeoJSON), WFS, bazy danych lub URL
-- Wyrywanie wlotow do NMT (inlet burning) + rekonstrukcja akumulacji przeplywu
-- Routing FA przez siec kanalizacyjna (SewerGraph + scipy sparse)
-- Tabele bazy danych: `sewer_nodes` (18 kol.), `sewer_network` (16 kol.), flaga `is_sewer_augmented`
-- Kafelki wektorowe MVT sieci kanalizacyjnej: `/api/tiles/sewer/{z}/{x}/{y}.pbf`
-- Overlay kanalizacji na mapie frontend
-- Admin: zarzadzanie danymi kanalizacji (upload/status/delete) — 3 endpointy `/api/admin/sewer/*`
-- Sekcja `sewer` w konfiguracji YAML pipeline
+**✅ In scope:**
+- A `/admin` page with API key authentication (header X-Admin-Key)
+- Dashboard: system status, record counts of 6 tables, disk usage
+- Resource monitoring: CPU/RAM (psutil), DB pool, CatchmentGraph cache, database size
+- Running the bootstrap pipeline from the panel + real-time logs (SSE)
+- Data cleanup: tiles, overlays, dem_mosaic, TRUNCATE of tables
+- 8 `/api/admin/*` API endpoints
 
 ---
 
-### 2.2 ❌ OUT OF SCOPE - Poza Zakresem MVP
+#### 2.1.5 Pipeline Configuration (YAML)
 
-#### 2.2.1 Funkcjonalności Zaawansowane
+**✅ In scope:**
+- A `config.yaml` file that configures the pipeline (database, DEM, paths, steps, custom sources)
+- The `--config` flag of `bootstrap.py`
+- The `--waterbody-mode` flag (3 modes: auto, none, custom) that controls the handling of water bodies (ADR-031)
+- A selector of the DEM resolution in the admin panel (5 m / 1 m)
+- The `--waterbody-mode` flag is also available from the admin panel
 
-**NIE w MVP:**
-- ❌ Routing przepływu w sieci rzecznej (modelowanie hydrauliczne — patrz: integracja kanalizacji deszczowej jest w zakresie, ADR-051)
-- ❌ Modelowanie retencji zbiorników/stawów
-- ❌ Symulacja powodziowa (mapy zalewowe)
-- ❌ Modelowanie transportu rumowiska
-- ❌ Modelowanie jakości wody
-- ❌ Analiza erozji i sedymentacji
-- ❌ Symulacje długoterminowe (seria czasowa)
-- ❌ Modelowanie topnienia śniegu
-- ❌ Infiltracja szczegółowa (Green-Ampt)
-- ❌ Modelowanie wód podziemnych
+---
 
-#### 2.2.2 Analiza Wieloscenariuszowa
+#### 2.1.6 Storm-Sewer Integration (ADR-051)
 
-**NIE w MVP:**
-- ❌ Porównanie wielu scenariuszy opadowych jednocześnie
-- ❌ Analiza wrażliwości parametrów (Monte Carlo)
-- ❌ Przedziały ufności wyników
-- ❌ Scenariusze "what-if" (zmiana użytkowania terenu)
-- ❌ Optymalizacja parametrów modelu (kalibracja)
-- ❌ Walidacja względem pomiarów terenowych
+**✅ In scope:**
+- Import of the storm-sewer network from a file (SHP/GPKG/GeoJSON), WFS, a database or a URL
+- Burning the inlets into the DEM (inlet burning) + reconstruction of the flow accumulation
+- FA routing through the sewer network (SewerGraph + scipy sparse)
+- Database tables: `sewer_nodes` (18 columns), `sewer_network` (16 columns), the flag `is_sewer_augmented`
+- MVT vector tiles of the sewer network: `/api/tiles/sewer/{z}/{x}/{y}.pbf`
+- A sewer overlay on the front-end map
+- Admin: management of the sewer data (upload/status/delete) — 3 `/api/admin/sewer/*` endpoints
+- A `sewer` section in the pipeline YAML configuration
 
-#### 2.2.3 Wizualizacje 3D i Zaawansowane
+---
 
-**NIE w MVP:**
-- ❌ Wizualizacja 3D terenu
-- ❌ Animacja przepływu wody
-- ❌ Heatmapy intensywności opadu
-- ❌ Mapy głębokości zalewu
-- ❌ Przekroje poprzeczne
+### 2.2 ❌ OUT OF SCOPE - Outside the MVP
 
-> **Uwaga:** Profile podłużne cieku (`POST /api/terrain-profile`) — pierwotnie w tej sekcji. Zaimplementowane w sesji 11 — przeniesione do zakresu MVP (sekcja 2.1.2).
+#### 2.2.1 Advanced Functions
 
-#### 2.2.4 Integracje i Dane Real-Time
+**NOT in the MVP:**
+- ❌ Flow routing in the river network (hydraulic modelling — note: the storm-sewer integration is in scope, ADR-051)
+- ❌ Modelling the retention of reservoirs/ponds
+- ❌ Flood simulation (inundation maps)
+- ❌ Sediment transport modelling
+- ❌ Water quality modelling
+- ❌ Erosion and sedimentation analysis
+- ❌ Long-term simulations (time series)
+- ❌ Snowmelt modelling
+- ❌ Detailed infiltration (Green-Ampt)
+- ❌ Groundwater modelling
 
-**NIE w MVP:**
-- ❌ Integracja z danymi IMGW real-time (opady, stany wód)
-- ❌ Prognoza pogodowa jako input
-- ❌ Integracja z systemami GIS (QGIS, ArcGIS)
-- ❌ Import własnych danych użytkownika (shapefiles, rasters)
-- ❌ Połączenie z bazami danych zewnętrznymi
-- ❌ API publiczne dla innych systemów
+#### 2.2.2 Multi-Scenario Analysis
 
-#### 2.2.5 Funkcjonalności Użytkownika
+**NOT in the MVP:**
+- ❌ Comparing several rainfall scenarios at once
+- ❌ Sensitivity analysis of the parameters (Monte Carlo)
+- ❌ Confidence intervals of the results
+- ❌ "What-if" scenarios (a change of land use)
+- ❌ Optimization of the model parameters (calibration)
+- ❌ Validation against field measurements
 
-**NIE w MVP:**
-- ❌ System kont użytkowników (rejestracja, login)
-- ❌ Zapisywanie analiz do profilu użytkownika
-- ❌ Historia analiz
-- ❌ Współpraca wieloużytkownikowa (sharing, comments)
-- ❌ Role i uprawnienia (admin, user, viewer) — uwaga: prosty admin API key auth jest zaimplementowany (ADR-034), ale nie jest to pelny system rol
-- ❌ Powiadomienia email/SMS o zakończeniu analizy
+#### 2.2.3 3D and Advanced Visualizations
 
-#### 2.2.6 Raporty i Eksporty
+**NOT in the MVP:**
+- ❌ 3D terrain visualization
+- ❌ Animation of the water flow
+- ❌ Heat maps of the rainfall intensity
+- ❌ Flood depth maps
+- ❌ Cross sections
 
-**NIE w MVP:**
-- ❌ Generowanie jakichkolwiek raportów
+> **Note:** Longitudinal profiles of a stream (`POST /api/terrain-profile`) were originally in this section. They were implemented in session 11 and moved into the MVP scope (section 2.1.2).
 
-#### 2.2.7 Interfejsy Alternatywne
+#### 2.2.4 Integrations and Real-Time Data
 
-**NIE w MVP:**
-- ❌ Aplikacja mobilna
-- ❌ Aplikacja desktopowa
+**NOT in the MVP:**
+- ❌ Integration with real-time IMGW data (precipitation, water levels)
+- ❌ Weather forecast as an input
+- ❌ Integration with GIS systems (QGIS, ArcGIS)
+- ❌ Import of the user's own data (shapefiles, rasters)
+- ❌ Connection to external databases
+- ❌ A public API for other systems
+
+#### 2.2.5 User Functions
+
+**NOT in the MVP:**
+- ❌ User accounts (registration, login)
+- ❌ Saving analyses to a user profile
+- ❌ Analysis history
+- ❌ Multi-user collaboration (sharing, comments)
+- ❌ Roles and permissions (admin, user, viewer) — note: a simple admin API key authentication is implemented (ADR-034), but it is not a full role system
+- ❌ Email/SMS notifications about the end of an analysis
+
+#### 2.2.6 Reports and Exports
+
+**NOT in the MVP:**
+- ❌ Generating any reports
+
+#### 2.2.7 Alternative Interfaces
+
+**NOT in the MVP:**
+- ❌ Mobile application
+- ❌ Desktop application
 - ❌ CLI (command-line interface)
 
 ---
 
-### 2.3 ⏳ FUTURE SCOPE - Planowane na Przyszłość
+### 2.3 ⏳ FUTURE SCOPE - Planned for the Future
 
-#### Roadmap Post-MVP
+#### Post-MVP Roadmap
 
-- 📊 Eksport raportów PDF (z mapą, wykresami, parametrami)
-- 📈 Analiza wieloscenariuszowa (porównanie Q1%, Q10%, Q50%)
-- ~~🎨 Konfigurowalne mapy (wybór podkładu)~~ — **ZREALIZOWANE** (CP4: OSM, ESRI, OpenTopoMap, GUGiK WMTS)
-- ~~🔗 API publiczne (REST, dokumentacja OpenAPI)~~ — **CZESCIOWO ZREALIZOWANE** (dokumentacja OpenAPI/Swagger dostepna pod `/docs`)
-- ~~🔬 Nash IUH / Snyder UH~~ — **ZREALIZOWANE** (CP5: 3 modele UH z selektorem)
-- ~~🗺️ BDOT stream matching~~ — **ZREALIZOWANE** (ADR-044: dopasowanie ciekow NMT do BDOT10k)
-- ~~📐 Flow paths (longest/divide/centroid)~~ — **ZREALIZOWANE** (CP5: sciezki splywu w parametrach)
-- ~~✨ Chaikin smoothing granic~~ — **ZREALIZOWANE** (ADR-032: ST_ChaikinSmoothing)
-- ~~🏛️ WFS TERYT~~ — **ZREALIZOWANE** (CP5: integracja z rejestrem TERYT)
-- ~~🔍 DEM auto-discovery~~ — **ZREALIZOWANE** (CP5: automatyczne wykrywanie arkuszy NMT)
-- 🧪 Moduł kalibracji (porównanie z pomiarami)
-- 🎯 Optymalizacja parametrów
-- 🔄 Podwojna analiza NMT (z/bez obszarow bezodplywowych) — backlog
+- 📊 Export of PDF reports (with a map, charts and parameters)
+- 📈 Multi-scenario analysis (comparing Q1%, Q10%, Q50%)
+- ~~🎨 Configurable maps (choice of the base layer)~~ — **DONE** (CP4: OSM, ESRI, OpenTopoMap, GUGiK WMTS)
+- ~~🔗 Public API (REST, OpenAPI documentation)~~ — **PARTLY DONE** (OpenAPI/Swagger documentation is available at `/docs`)
+- ~~🔬 Nash IUH / Snyder UH~~ — **DONE** (CP5: 3 UH models with a selector)
+- ~~🗺️ BDOT stream matching~~ — **DONE** (ADR-044: matching the DEM streams to BDOT10k)
+- ~~📐 Flow paths (longest/divide/centroid)~~ — **DONE** (CP5: flow paths in the parameters)
+- ~~✨ Chaikin smoothing of boundaries~~ — **DONE** (ADR-032: ST_ChaikinSmoothing)
+- ~~🏛️ WFS TERYT~~ — **DONE** (CP5: integration with the TERYT register)
+- ~~🔍 DEM auto-discovery~~ — **DONE** (CP5: automatic detection of the DEM sheets)
+- 🧪 Calibration module (comparison with measurements)
+- 🎯 Parameter optimization
+- 🔄 Double DEM analysis (with and without endorheic areas) — backlog
 
 ---
 
-## 3. ZAKRES DANYCH
+## 3. DATA SCOPE
 
-### 3.1 ✅ Dane Wejściowe - W Zakresie
+### 3.1 ✅ Input Data - In Scope
 
-#### 3.1.1 Numeryczny Model Terenu (NMT)
+#### 3.1.1 Digital Elevation Model (DEM, Polish NMT)
 
-**Źródło:** GUGIK via Kartograf v0.7.0 (`download_sheets` + `MetadataCache`, automatyczne pobieranie arkuszy NMT)
-**Format:** ARC/INFO ASCII GRID → mozaika VRT
-**Rozdzielczość:** 5m (konfigurowane w Kartograf `GugikProvider(resolution="5m")`)
-**Układ współrzędnych:** EPSG:2180 (PL-1992)
-**Zakres przestrzenny:** Bbox definiowany przy setupie (np. `16.9279,52.3729,17.3825,52.5870`)
-**Aktualizacja:** Raz, przy setupie systemu (lub na zadanie po aktualizacji NMT)
+**Source:** GUGiK through Kartograf v0.7.0 (`download_sheets` + `MetadataCache`, automatic download of the DEM sheets)
+**Format:** ARC/INFO ASCII GRID → VRT mosaic
+**Resolution:** 5 m (configured in Kartograf `GugikProvider(resolution="5m")`)
+**Coordinate system:** EPSG:2180 (PL-1992)
+**Spatial extent:** A bbox defined at setup (e.g. `16.9279,52.3729,17.3825,52.5870`)
+**Update:** Once, at the setup of the system (or on request after the DEM is updated)
 
 **Preprocessing (pyflwdir):**
-- Podniesienie budynkow w NMT (+5m pod BUBD z BDOT10k, ADR-033)
-- Klasyfikacja zbiornikow wodnych (waterbody-mode: auto/none/custom, ADR-031)
-- Wypełnienie depresji (sink filling)
-- Obliczenie kierunków spływu (D8)
-- Obliczenie akumulacji przepływu
-- Obliczenie nachylenia
-- Wektoryzacja ciekow (progi FA: 1000, 10000, 100000 m²) → PostGIS `stream_network`
-- Wektoryzacja zlewni czastkowych → PostGIS `stream_catchments`
-- Budowa grafu in-memory (CatchmentGraph, ~44k nodow, ~0.5 MB)
-- Generowanie overlayow: DEM hillshade (PNG + piramida XYZ), streams overlay
-- Generowanie kafelkow MVT (tippecanoe)
+- Raising buildings in the DEM (+5 m under BUBD of BDOT10k, ADR-033)
+- Classification of water bodies (waterbody-mode: auto/none/custom, ADR-031)
+- Filling depressions (sink filling)
+- Computing flow directions (D8)
+- Computing flow accumulation
+- Computing the slope
+- Vectorization of the streams (FA thresholds: 1000, 10000, 100000 m²) → PostGIS `stream_network`
+- Vectorization of the sub-catchments → PostGIS `stream_catchments`
+- Building the in-memory graph (CatchmentGraph, ~44k nodes, ~0.5 MB)
+- Generating overlays: DEM hillshade (PNG + XYZ pyramid), streams overlay
+- Generating MVT tiles (tippecanoe)
 
-#### 3.1.2 Pokrycie Terenu
+#### 3.1.2 Land Cover
 
-**Źródła:** GUGIK - BDOT10k (via Kartograf v0.7.0, automatyczne pobieranie wg powiatow)
+**Sources:** GUGiK - BDOT10k (through Kartograf v0.7.0, automatic download by district, Polish *powiat*)
 **Format:** GeoPackage
-**Układ współrzędnych:** EPSG:2180
-**Zakres:** Powiaty pokrywajace bbox
-**Aktualizacja:** Raz na kwartał (lub na zadanie)
+**Coordinate system:** EPSG:2180
+**Extent:** The districts that cover the bbox
+**Update:** Once a quarter (or on request)
 
-**Kategorie (8):**
-- Wody powierzchniowe
-- Trawniki, parki
-- Drogi i parkingi
-- Zabudowa przemysłowa/usługowa
-- Zabudowa mieszkaniowa
-- Grunty orne
-- Łąki i pastwiska
-- Lasy
+**Categories (8):**
+- Surface waters
+- Lawns, parks
+- Roads and car parks
+- Industrial/service buildings
+- Residential buildings
+- Arable land
+- Meadows and pastures
+- Forests
 
 **Preprocessing:**
-- Import do PostGIS (tabela `land_cover`, ~112k obiektow)
-- Mapowanie klas BDOT10k na kategorie CN (`cn_tables.py`)
-- Przypisanie wartości CN dla każdej kategorii z uwzglednieniem HSG
-- Serwowanie jako MVT (`/api/tiles/landcover/`)
+- Import into PostGIS (table `land_cover`, ~112k objects)
+- Mapping of the BDOT10k classes to the CN categories (`cn_tables.py`)
+- Assigning a CN value to each category with the HSG taken into account
+- Serving as MVT (`/api/tiles/landcover/`)
 
-#### 3.1.3 Siec Ciekow
+#### 3.1.3 Stream Network
 
-**Źródło:** Generowana automatycznie z NMT (progi flow accumulation: 1000, 10000, 100000 m²)
-**Format:** PostGIS (tabela `stream_network`)
-**Atrybuty:**
-- Rząd Strahlera
-- Długość [m]
+**Source:** Generated automatically from the DEM (flow accumulation thresholds: 1000, 10000, 100000 m²)
+**Format:** PostGIS (table `stream_network`)
+**Attributes:**
+- Strahler order
+- Length [m]
 - Upstream area [km²]
 - Segment index (1-based per threshold)
 - Threshold [m²]
 
-**Dopasowanie do BDOT10k (ADR-044):**
-- Matching ciekow NMT z ciekami referencyjnymi BDOT10k
-- Tabela `bdot_streams` — cieki referencyjne z BDOT10k
-- Nadawanie nazw cieków na podstawie dopasowania geometrycznego
+**Matching to BDOT10k (ADR-044):**
+- Matching the DEM streams to the BDOT10k reference streams
+- Table `bdot_streams` — the reference streams from BDOT10k
+- Naming the streams on the basis of the geometric match
 
 **Preprocessing:**
-- Wektoryzacja ciekow z rastra flow accumulation (pyflwdir)
-- Rozbicie na segmenty w konfluencjach i zmianach rzedu Strahlera
-- Uproszczenie geometrii (`simplify_tol = 2*cellsize`)
-- Import do PostGIS z indeksami przestrzennymi
-- Serwowanie jako MVT (`/api/tiles/streams/`)
+- Vectorization of the streams from the flow accumulation raster (pyflwdir)
+- Splitting into segments at confluences and at changes of the Strahler order
+- Geometry simplification (`simplify_tol = 2*cellsize`)
+- Import into PostGIS with spatial indexes
+- Serving as MVT (`/api/tiles/streams/`)
 
-#### 3.1.4 Dane Opadowe
+#### 3.1.4 Precipitation Data
 
-**Źródło:** IMGW - Atlas Pmax_PT via IMGWTools v2.1.0
-**Format:** Punkty stacji meteorologicznych
-**Zakres przestrzenny:** Stacje w obrebie bbox (~192 stacji)
-**Parametry:**
-- Czas trwania: 15min, 30min, 1h, 2h, 6h, 12h, 24h
-- Prawdopodobieństwo: 1%, 2%, 5%, 10%, 20%, 50%
-- Wartość: opad [mm]
+**Source:** IMGW - the Pmax_PT atlas through IMGWTools v2.1.0
+**Format:** Points of meteorological stations
+**Spatial extent:** Stations within the bbox (~192 stations)
+**Parameters:**
+- Duration: 15min, 30min, 1h, 2h, 6h, 12h, 24h
+- Probability: 1%, 2%, 5%, 10%, 20%, 50%
+- Value: precipitation [mm]
 
 **Preprocessing:**
-- Pobranie wszystkich kombinacji (42 zestawy danych × ~192 stacji = ~8064 rekordow)
-- Import do PostGIS (tabela `precipitation_data`)
-- Indeksowanie przestrzenne (GIST)
-- Interpolacja dla centroidu zlewni w runtime
+- Downloading all combinations (42 data sets × ~192 stations = ~8064 records)
+- Import into PostGIS (table `precipitation_data`)
+- Spatial indexing (GIST)
+- Interpolation for the watershed centroid at runtime
 
-**Aktualizacja:** Raz na rok (lub gdy IMGW publikuje nowe dane)
+**Update:** Once a year (or when IMGW publishes new data)
 
-#### 3.1.5 Dane Glebowe (HSG)
+#### 3.1.5 Soil Data (HSG)
 
-**Źródło:** PIG (Panstwowy Instytut Geologiczny) via Kartograf v0.7.0
-**Format:** GeoPackage → raster → PostGIS (tabela `soil_hsg`)
-**Atrybuty:** Hydrologic Soil Group (A/B/C/D)
+**Source:** PIG (the Polish Geological Institute) through Kartograf v0.7.0
+**Format:** GeoPackage → raster → PostGIS (table `soil_hsg`)
+**Attributes:** Hydrologic Soil Group (A/B/C/D)
 **Preprocessing:**
-- Rasteryzacja na siatke NMT
-- Nearest-neighbor fill brakujacych pikseli (distance_transform_edt)
-- Poligonizacja → import do PostGIS (~197 poligonow)
+- Rasterization onto the DEM grid
+- Nearest-neighbour fill of the missing pixels (distance_transform_edt)
+- Polygonization → import into PostGIS (~197 polygons)
 
 ---
 
-### 3.2 ❌ Dane Poza Zakresem MVP
+### 3.2 ❌ Data Outside the MVP
 
-**NIE w MVP:**
-- ❌ Dane pomiarowe z posterunków wodowskazowych
-- ❌ Prognozy pogodowe
-- ❌ Dane o zbiornikach retencyjnych
-- ❌ Dane o przepustowości mostów/przepustów
-- ~~❌ Dane geologiczne (przepuszczalność gruntów)~~ — **ZREALIZOWANE** (HSG z PIG, sekcja 3.1.5)
-- ❌ Dane o użytkowaniu historycznym (zmiany w czasie)
-- ❌ Dane satelitarne (Sentinel, Landsat)
-- ❌ LiDAR (chmury punktów)
-- ❌ Dane katasterowe
-- ❌ Ortofotomapy wysokiej rozdzielczości
+**NOT in the MVP:**
+- ❌ Measurement data from gauging stations
+- ❌ Weather forecasts
+- ❌ Data on retention reservoirs
+- ❌ Data on the capacity of bridges/culverts
+- ~~❌ Geological data (soil permeability)~~ — **DONE** (HSG from PIG, section 3.1.5)
+- ❌ Data on historical land use (changes in time)
+- ❌ Satellite data (Sentinel, Landsat)
+- ❌ LiDAR (point clouds)
+- ❌ Cadastral data
+- ❌ High-resolution orthophotos
 
 ---
 
-### 3.3 Format Danych Wyjściowych
+### 3.3 Output Data Formats
 
-**✅ W zakresie:**
-- GeoJSON (granica zlewni, główny ciek)
-- Shapefile (granica zlewni)
-- CSV (parametry zlewni, hydrogram)
-- JSON (pełne dane API response)
+**✅ In scope:**
+- GeoJSON (watershed boundary, main stream)
+- Shapefile (watershed boundary)
+- CSV (watershed parameters, hydrograph)
+- JSON (the full API response)
 
-**❌ Poza zakresem:**
+**❌ Out of scope:**
 - GeoPackage
 - KML/KMZ
 - DWG/DXF
-- GeoTIFF (rastry wynikowe)
+- GeoTIFF (result rasters)
 - NetCDF
 - HDF5
 
 ---
 
-## 4. ZAKRES GEOGRAFICZNY
+## 4. GEOGRAPHIC SCOPE
 
-### 4.1 ✅ Obszar Objęty Systemem
+### 4.1 ✅ Area Covered by the System
 
-**Zasięg przestrzenny:**
-- **Obszar bazowy:** Do wyboru przez użytkownika podczas setupu
-- **Powierzchnia:** typowo 50-200 km²
-- **Bufor:** +1 km poza granice gminy
+**Spatial extent:**
+- **Base area:** Chosen by the user during the setup
+- **Area size:** typically 50-200 km²
+- **Buffer:** +1 km beyond the municipal boundary
 
-**Limity:**
-- **Minimalna powierzchnia:** 2 koórki rastra NMT
+**Limits:**
+- **Minimum area:** 2 cells of the DEM raster
 
-**Układ współrzędnych:**
-- **Wewnętrzny:** EPSG:2180 (PL-1992)
-- **Frontend (mapa):** EPSG:4326 (WGS84) - automatyczna transformacja
+**Coordinate systems:**
+- **Internal:** EPSG:2180 (PL-1992)
+- **Frontend (map):** EPSG:4326 (WGS84) - automatic transformation
 - **API input/output:** WGS84 (lat/lon)
 
 ---
 
-### 4.2 ❌ Obszary Poza Zakresem
+### 4.2 ❌ Areas Outside the Scope
 
-**NIE w MVP:**
-- ❌ Obszary poza Polską
-- ❌ Dynamiczne dodawanie nowych obszarów przez użytkownika
-- ~~❌ Obszary górskie > 1500 m n.p.m. (ograniczenia modelu SCS)~~
+**NOT in the MVP:**
+- ❌ Areas outside Poland
+- ❌ Adding new areas dynamically by the user
+- ~~❌ Mountain areas > 1500 m a.s.l. (limits of the SCS model)~~
 
 ---
 
-## 5. ZAKRES TECHNICZNY
+## 5. TECHNICAL SCOPE
 
-### 5.1 ✅ Technologie i Narzędzia
+### 5.1 ✅ Technologies and Tools
 
 #### Backend
-**Język:** Python 3.12+
+**Language:** Python 3.12+
 **Framework:** FastAPI
-**Baza danych:** PostgreSQL 16+ z PostGIS 3.4+
-**Biblioteki:**
-- GeoPandas, Shapely (operacje przestrzenne)
-- Rasterio, GDAL (preprocessing rastrów)
-- NumPy, SciPy (obliczenia numeryczne)
-- pyflwdir (analiza hydrologiczna — D8, flow accumulation)
-- Pydantic (walidacja danych)
+**Database:** PostgreSQL 16+ with PostGIS 3.4+
+**Libraries:**
+- GeoPandas, Shapely (spatial operations)
+- Rasterio, GDAL (raster preprocessing)
+- NumPy, SciPy (numerical computation)
+- pyflwdir (hydrological analysis — D8, flow accumulation)
+- Pydantic (data validation)
 - SQLAlchemy (ORM)
 - structlog (structured logging)
-- psutil (monitorowanie zasobow — admin panel)
-- Alembic (migracje bazy danych)
-**Biblioteki wlasne:**
-- Hydrolog v0.6.3 (obliczenia hydrologiczne)
-- Kartograf v0.7.0 (pobieranie NMT, Land Cover, HSG, BDOT10k)
-- IMGWTools v2.1.0 (opady projektowe z IMGW)
+- psutil (resource monitoring — admin panel)
+- Alembic (database migrations)
+**Own libraries:**
+- Hydrolog v0.6.3 (hydrological calculations)
+- Kartograf v0.7.0 (downloading the DEM, land cover, HSG, BDOT10k)
+- IMGWTools v2.1.0 (design precipitation from IMGW)
 
 #### Frontend
-**Języki:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, brak frameworka
-**Mapa:** Leaflet.js 1.9.4
-**Wykresy:** Chart.js 4.4.7
-**UI Framework:** Bootstrap 5.3.3 (CDN)
-**Styl:** Glassmorphism (zmienne CSS w `glass.css`), floating draggable panel
-**Moduly:** 10 modulow JS (IIFE na `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app + 3 moduly admin
-**Podkład mapy:** OpenStreetMap, ESRI Satellite, OpenTopoMap, GUGiK WMTS (ortofoto + topo)
-**Strony:** `index.html` (glowna), `admin.html` (panel administracyjny)
+**Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
+**Map:** Leaflet.js 1.9.4
+**Charts:** Chart.js 4.4.7
+**UI framework:** Bootstrap 5.3.3 (CDN)
+**Style:** Glassmorphism (CSS variables in `glass.css`), floating draggable panel
+**Modules:** 10 JS modules (IIFE on `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app + 3 admin modules
+**Map base layers:** OpenStreetMap, ESRI Satellite, OpenTopoMap, GUGiK WMTS (orthophoto + topographic)
+**Pages:** `index.html` (main), `admin.html` (admin panel)
 
-#### Infrastruktura
-**Konteneryzacja:** Docker + Docker Compose (3 kontenery: db, api, nginx)
-**Reverse Proxy:** Nginx (alpine)
-**Serwer:** Własny
-**CI/CD:** GitHub Actions (lub GitLab CI)
-**Monitoring:** Panel administracyjny `/admin` (CPU/RAM, pool DB, uptime) + health check `/health`
+#### Infrastructure
+**Containerization:** Docker + Docker Compose (3 containers: db, api, nginx)
+**Reverse proxy:** Nginx (alpine)
+**Server:** Own
+**CI/CD:** GitHub Actions (or GitLab CI)
+**Monitoring:** The admin panel `/admin` (CPU/RAM, DB pool, uptime) + the health check `/health`
 
 ---
 
-### 5.2 ❌ Technologie Poza Zakresem
+### 5.2 ❌ Technologies Outside the Scope
 
-**NIE w MVP:**
+**NOT in the MVP:**
 - ❌ Kubernetes / orchestration
 - ❌ Cloud hosting (AWS, Azure, GCP)
 - ❌ Message queue (RabbitMQ, Kafka)
 - ❌ Caching layer (Redis, Memcached)
 - ❌ Load balancer
 - ❌ CDN
-- ❌ Elasticsearch (wyszukiwanie)
+- ❌ Elasticsearch (search)
 - ❌ Microservices architecture
 - ❌ GraphQL
-- ❌ WebSockets (real-time updates) — uwaga: SSE (Server-Sent Events) uzyty w panelu admin do streamowania logow bootstrap
+- ❌ WebSockets (real-time updates) — note: SSE (Server-Sent Events) is used in the admin panel to stream the bootstrap logs
 - ❌ Server-Side Rendering (SSR)
 - ❌ Progressive Web App (PWA)
 
 ---
 
-## 6. ZAKRES WYDAJNOŚCIOWY
+## 6. PERFORMANCE SCOPE
 
-### 6.1 ✅ Gwarantowane SLA (Service Level Agreement)
+### 6.1 ✅ Guaranteed SLA (Service Level Agreement)
 
-**Czas odpowiedzi API:**
-- Wyznaczenie zlewni: **< 10 sekund** (95th percentile)
-- Parametry fizjograficzne: **< 2 sekundy**
-- Generowanie hydrogramu: **< 5 sekund**
-- Ładowanie mapy: **< 2 sekundy**
+**API response time:**
+- Watershed delineation: **< 10 seconds** (95th percentile)
+- Physiographic parameters: **< 2 seconds**
+- Hydrograph generation: **< 5 seconds**
+- Map loading: **< 2 seconds**
 
 **Throughput:**
-- Równoczesnych użytkowników: **10** (MVP)
-- Requestów na minutę: **50**
+- Concurrent users: **10** (MVP)
+- Requests per minute: **50**
 
-**Dostępność:**
-- Uptime: **99%** (dopuszczalny downtime: ~7h/miesiąc)
-- Planned maintenance: max 2h/tydzień (w godzinach nocnych)
+**Availability:**
+- Uptime: **99%** (allowed downtime: ~7h/month)
+- Planned maintenance: max 2h/week (at night)
 
-**Limity danych:**
-- Timeout API: **30 sekund**
+**Data limits:**
+- API timeout: **30 seconds**
 
 ---
 
-### 6.2 ❌ Poza Gwarancją
+### 6.2 ❌ Not Guaranteed
 
-**NIE gwarantowane w MVP:**
-- ❌ Obsługa > 10 równoczesnych użytkowników
-- ❌ Czas odpowiedzi < 1s dla wszystkich operacji
+**NOT guaranteed in the MVP:**
+- ❌ Support for > 10 concurrent users
+- ❌ Response time < 1s for all operations
 - ❌ 99.9% uptime (three nines)
 - ❌ Horizontal scaling
 - ❌ Disaster recovery < 1h
-- ❌ Backups real-time (tylko daily)
+- ❌ Real-time backups (daily only)
 
 ---
 
-## 7. OGRANICZENIA I ZAŁOŻENIA
+## 7. CONSTRAINTS AND ASSUMPTIONS
 
-### 7.1 Ograniczenia Techniczne
+### 7.1 Technical Constraints
 
 **Preprocessing:**
-- ⚠️ **Jednorazowy preprocessing NMT:** ~45 minut (pipeline bootstrap, mierzone na bbox ~400 km²)
-- ⚠️ **Wymaga serwera:** minimum 8 GB RAM, 100 GB dysku
-- ⚠️ **Mozliwosc uruchomienia z panelu admin** (`/admin` → Bootstrap) lub CLI (`bootstrap.py`)
+- ⚠️ **One-off DEM preprocessing:** ~45 minutes (the bootstrap pipeline, measured on a bbox of ~400 km²)
+- ⚠️ **Needs a server:** at least 8 GB RAM, 100 GB of disk
+- ⚠️ **Can be started from the admin panel** (`/admin` → Bootstrap) or from the CLI (`bootstrap.py`)
 
-**Model hydrologiczny:**
-- ⚠️ **Model SCS CN:** Dla zlewni < 250 km²
-- ⚠️ **Opad równomierny:** Uproszczenie dla małych zlewni
-- ⚠️ **Brak routingu:** Hydrogram dla przekroju zamykającego
-- ⚠️ **Warunki AMC-II:** Przeciętne warunki wilgotnościowe
+**Hydrological model:**
+- ⚠️ **SCS CN model:** For watersheds < 250 km²
+- ⚠️ **Uniform precipitation:** A simplification for small watersheds
+- ⚠️ **No routing:** The hydrograph is for the closing cross-section
+- ⚠️ **AMC-II conditions:** Average moisture conditions
 
-**Dane:**
-- ⚠️ **Jakość NMT:** Zależna od GUGIK (artefakty możliwe)
-- ⚠️ **Aktualność danych:** Pokrycie terenu może być nieaktualne
-
----
-
-### 7.2 Założenia Biznesowe
-
-**Użytkownicy:**
-- ✓ Mają dostęp do komputera z przeglądarką (Chrome, Firefox, Edge)
-- ✓ Rozdzielczość ekranu: minimum 1280 × 720 px
-- ✓ Podstawowa znajomość map i GIS
-- ✓ Rozumienie pojęć hydrologicznych (lub chęć nauczenia się)
-
-**Środowisko:**
-- ✓ Sieć wewnętrzna (LAN) - brak dostępu z internetu (MVP)
-- ✓ Stabilne połączenie sieciowe (10 Mbps)
-- ✓ Serwer działa 24/7 (z wyjątkiem maintenance)
-
-**Wsparcie:**
-- ✓ Dokumentacja użytkownika w języku polskim
+**Data:**
+- ⚠️ **DEM quality:** Depends on GUGiK (artefacts are possible)
+- ⚠️ **Currency of the data:** The land cover may be out of date
 
 ---
 
-### 7.3 Założenia Prawne i Licencyjne
+### 7.2 Business Assumptions
 
-**Dane:**
-- ✓ Dane GUGIK: Licencja otwarta (użytek niekomercyjny OK)
-- ✓ Dane IMGW: Do weryfikacji (API terms of service)
-- ✓ OpenStreetMap: ODbL license (attribution required)
+**Users:**
+- ✓ Have a computer with a browser (Chrome, Firefox, Edge)
+- ✓ Screen resolution: at least 1280 × 720 px
+- ✓ Basic knowledge of maps and GIS
+- ✓ Understand hydrological terms (or are willing to learn)
 
-**Kod:**
-- ✓ Kod źródłowy: Proprietary (własność organizacji)
-- ✓ Biblioteki open-source: Zgodność z licencjami (MIT, BSD, Apache)
+**Environment:**
+- ✓ Internal network (LAN) - no access from the internet (MVP)
+- ✓ Stable network connection (10 Mbps)
+- ✓ The server runs 24/7 (except maintenance)
 
-**Odpowiedzialność:**
-- ⚠️ System jest narzędziem wspomagającym decyzje
-- ⚠️ Użytkownik odpowiada za interpretację wyników
-- ⚠️ Brak gwarancji 100% dokładności (zależność od danych wejściowych)
-
----
-
-## 8. KRYTERIA SUKCESU
-
-### 8.1 Definicja "Done" dla MVP
-
-**Funkcjonalnie:**
-- ✅ Wszystkie user stories (MUST HAVE) z PRD.md zaimplementowane
-- ✅ System wyznacza zlewnie dla 95%+ kliknięć na cieki
-- ✅ Generuje hydrogram dla wszystkich 432 scenariuszy
-
-**Jakościowo:**
-- ✅ Testy jednostkowe: > 80% pokrycia
-- ✅ Testy E2E: 100% critical paths pass
-- ✅ Code review: wszystkie PR zaapprowane
-- ✅ Dokumentacja: kompletna (user + tech docs)
-
-**Wydajnościowo:**
-- ✅ 95% requestów < targetów czasowych (10s, 5s, 2s)
-- ✅ System stabilny dla 10 równoczesnych użytkowników
-- ✅ Brak critical bugs w production przez 1 tydzień
-
-**Akceptacja:**
-- ✅ 3 użytkowników testowych zaakceptowało system (UAT)
-- ✅ Product Owner zaakceptował MVP
+**Support:**
+- ✓ User documentation in Polish
 
 ---
 
-### 8.2 Metryki Sukcesu Post-Launch
+### 7.3 Legal and Licensing Assumptions
 
-**Satysfakcja:**
-- 🎯 < 5 zgłoszeń błędów krytycznych/miesiąc
+**Data:**
+- ✓ GUGiK data: open licence (non-commercial use is fine)
+- ✓ IMGW data: to be verified (API terms of service)
+- ✓ OpenStreetMap: ODbL licence (attribution required)
 
-**Wydajność:**
-- 🎯 Średni czas odpowiedzi < 5s
-- 🎯 Brak timeoutów > 1% requestów
+**Code:**
+- ✓ Source code: Proprietary (owned by the organization)
+- ✓ Open-source libraries: Compliance with the licences (MIT, BSD, Apache)
 
----
-
-## 9. DEPENDENCIES - Zależności
-
-### 9.1 Zależności Zewnętrzne
-
-**Dane:**
-- 🔗 **GUGIK Geoportal:** Dostępność danych NMT i BDOT10k
-- 🔗 **IMGW:** Działające API lub dostępność danych historycznych
-- 🔗 **OpenStreetMap:** Podkład mapy
-
-**Infrastruktura:**
-- 🔗 **Serwer fizyczny:** Dostępność i działanie
-- 🔗 **Połączenie internetowe:** Dla dostępu do API i map
-
-**Zespół:**
-- 🔗 **Backend Developer:** Dostępność full-time
-- 🔗 **Frontend Developer:** Dostępność full-time
-- 🔗 **GIS Specialist:** Dostępność part-time dla preprocessingu
+**Responsibility:**
+- ⚠️ The system is a tool that supports decisions
+- ⚠️ The user is responsible for the interpretation of the results
+- ⚠️ No guarantee of 100% accuracy (it depends on the input data)
 
 ---
 
-### 9.2 Zależności Wewnętrzne (Między Fazami)
+## 8. SUCCESS CRITERIA
+
+### 8.1 Definition of "Done" for the MVP
+
+**Functionally:**
+- ✅ All user stories (MUST HAVE) of PRD.md are implemented
+- ✅ The system delineates a watershed for 95%+ of the clicks on streams
+- ✅ It generates a hydrograph for all 432 scenarios
+
+**Quality:**
+- ✅ Unit tests: > 80% coverage
+- ✅ E2E tests: 100% of the critical paths pass
+- ✅ Code review: all PRs approved
+- ✅ Documentation: complete (user + technical docs)
+
+**Performance:**
+- ✅ 95% of the requests are within the time targets (10s, 5s, 2s)
+- ✅ The system is stable for 10 concurrent users
+- ✅ No critical bugs in production for 1 week
+
+**Acceptance:**
+- ✅ 3 test users accepted the system (UAT)
+- ✅ The Product Owner accepted the MVP
+
+---
+
+### 8.2 Post-Launch Success Metrics
+
+**Satisfaction:**
+- 🎯 < 5 critical bug reports/month
+
+**Performance:**
+- 🎯 Mean response time < 5s
+- 🎯 No timeouts in more than 1% of the requests
+
+---
+
+## 9. DEPENDENCIES
+
+### 9.1 External Dependencies
+
+**Data:**
+- 🔗 **GUGiK Geoportal:** Availability of the DEM and BDOT10k data
+- 🔗 **IMGW:** A working API or the availability of historical data
+- 🔗 **OpenStreetMap:** The map base layer
+
+**Infrastructure:**
+- 🔗 **Physical server:** Availability and operation
+- 🔗 **Internet connection:** For access to the APIs and maps
+
+**Team:**
+- 🔗 **Backend developer:** Full-time availability
+- 🔗 **Frontend developer:** Full-time availability
+- 🔗 **GIS specialist:** Part-time availability for the preprocessing
+
+---
+
+### 9.2 Internal Dependencies (Between Phases)
 
 ```
-FAZA 0: Preprocessing
-   ↓ (dane w PostGIS)
-FAZA 1: Wyznaczanie zlewni
+PHASE 0: Preprocessing
+   ↓ (data in PostGIS)
+PHASE 1: Watershed delineation
    ↓ (boundary GeoJSON)
-FAZA 2: Parametry fizjograficzne
+PHASE 2: Physiographic parameters
    ↓ (CN, tc)
-FAZA 3: Generowanie hydrogramów
+PHASE 3: Hydrograph generation
 ```
 
-**Blokery:**
-- ⚠️ Faza 1 wymaga zakończenia Fazy 0 (preprocessing)
-- ⚠️ Faza 2 wymaga działającej Fazy 1 (granica zlewni)
-- ⚠️ Faza 3 wymaga Fazy 2 (CN, parametry morfometryczne)
+**Blockers:**
+- ⚠️ Phase 1 needs Phase 0 (preprocessing) to be finished
+- ⚠️ Phase 2 needs a working Phase 1 (watershed boundary)
+- ⚠️ Phase 3 needs Phase 2 (CN, morphometric parameters)
 
 ---
 
-## 10. RISKS & MITIGATION - Ryzyka
+## 10. RISKS & MITIGATION
 
-### 10.1 Wysokie Ryzyko
+### 10.1 High Risk
 
-**Ryzyko 1: Niedostępność IMGW**
-- **Prawdopodobieństwo:** Niskie
-- **Wpływ:** Wysoki (brak danych = brak hydrogramów)
-- **Mitigacja:**
-  - Plan A: Jednorazowe pobranie i lokalne przechowywanie
-  - Plan B: Wartości z literatury (wartości typowe dla regionu)
+**Risk 1: IMGW unavailable**
+- **Probability:** Low
+- **Impact:** High (no data = no hydrographs)
+- **Mitigation:**
+  - Plan A: Download once and store locally
+  - Plan B: Values from the literature (typical values for the region)
 
-**Ryzyko 2: Jakość danych NMT**
-- **Prawdopodobieństwo:** Średnie
-- **Wpływ:** Wysoki (błędne granice zlewni)
-- **Mitigacja:**
-  - Walidacja wizualna po preprocessingu
-  - Porównanie z danymi referencyjnymi (topomapa, ortofoto)
-  - Dokumentacja ograniczeń dla użytkownika
-  - Możliwość ręcznej korekty (future scope)
-
----
-
-### 10.2 Średnie Ryzyko
-
-**Ryzyko 3: Wydajność dla dużych zlewni**
-- **Prawdopodobieństwo:** Wysokie
-- **Wpływ:** Średni (czas > 10s dla zlewni > 200 km²)
-- **Mitigacja:**
-  - Optymalizacja algorytmów (early termination)
-  - Indeksy w bazie danych
-- **Uwaga:** Dla zlewni > 250 km² hydrogram SCS-CN niedostępny (ograniczenie metody)
-
-**Ryzyko 4: Brak doświadczenia użytkowników**
-- **Prawdopodobieństwo:** Średnie
-- **Wpływ:** Średni (nieprawidłowe użycie systemu)
-- **Mitigacja:**
-  - Intuicyjny interfejs (user testing)
-  - Tooltips i help text
-  - Dokumentacja użytkownika z przykładami
-  - Webinary/szkolenia po wdrożeniu
+**Risk 2: DEM data quality**
+- **Probability:** Medium
+- **Impact:** High (wrong watershed boundaries)
+- **Mitigation:**
+  - Visual validation after the preprocessing
+  - Comparison with reference data (topographic map, orthophoto)
+  - Documenting the limitations for the user
+  - Manual correction (future scope)
 
 ---
 
-### 10.3 Niskie Ryzyko
+### 10.2 Medium Risk
 
-**Ryzyko 5: Awaria serwera**
-- **Prawdopodobieństwo:** Niskie
-- **Wpływ:** Wysoki (downtime)
-- **Mitigacja:**
+**Risk 3: Performance for large watersheds**
+- **Probability:** High
+- **Impact:** Medium (time > 10s for watersheds > 200 km²)
+- **Mitigation:**
+  - Optimization of the algorithms (early termination)
+  - Database indexes
+- **Note:** For watersheds > 250 km² the SCS-CN hydrograph is not available (a limit of the method)
+
+**Risk 4: Users lack experience**
+- **Probability:** Medium
+- **Impact:** Medium (incorrect use of the system)
+- **Mitigation:**
+  - An intuitive interface (user testing)
+  - Tooltips and help text
+  - User documentation with examples
+  - Webinars/training after the deployment
+
+---
+
+### 10.3 Low Risk
+
+**Risk 5: Server failure**
+- **Probability:** Low
+- **Impact:** High (downtime)
+- **Mitigation:**
   - Daily backups
   - Monitoring (Prometheus + alerting)
-  - Procedura recovery (< 4h)
-  - Plan migracji na VPS (jeśli obecny serwer zawodzi)
+  - Recovery procedure (< 4h)
+  - A plan to migrate to a VPS (if the current server fails)
 
 ---
 
-## 11. ACCEPTANCE CRITERIA - Kryteria Akceptacji MVP
+## 11. ACCEPTANCE CRITERIA - MVP Acceptance Criteria
 
-### 11.1 Funkcjonalne (Must Pass)
+### 11.1 Functional (Must Pass)
 
-- ✅ **F1:** Użytkownik może kliknąć punkt na mapie i zobaczyć granicę zlewni w < 10s
-- ✅ **F2:** System wyświetla parametry fizjograficznych zlewni
-- ✅ **F3:** Użytkownik może wybrać jeden z 432 scenariuszy opadowych
-- ✅ **F4:** System generuje hydrogram w < 5s i wyświetla wykres
-- ✅ **F5:** Użytkownik może eksportować granicę jako GeoJSON/Shapefile
-- ✅ **F6:** Użytkownik może eksportować hydrogram jako CSV
-- ✅ **F7:** System wyświetla komunikaty błędów dla przypadków edge (brak cieku lub poza obszarem)
+- ✅ **F1:** The user can click a point on the map and see the watershed boundary in < 10s
+- ✅ **F2:** The system shows the physiographic parameters of the watershed
+- ✅ **F3:** The user can choose one of the 432 rainfall scenarios
+- ✅ **F4:** The system generates a hydrograph in < 5s and shows the chart
+- ✅ **F5:** The user can export the boundary as GeoJSON/Shapefile
+- ✅ **F6:** The user can export the hydrograph as CSV
+- ✅ **F7:** The system shows error messages for the edge cases (no stream or outside the area)
 
-### 11.2 Niefunkcjonalne (Must Pass)
+### 11.2 Non-Functional (Must Pass)
 
-- ✅ **NF1:** System działa w Chrome, Firefox, Edge (latest versions)
-- ✅ **NF2:** Responsywność UI < 100ms dla interakcji
-- ✅ **NF3:** Pokrycie testami > 80%
-- ✅ **NF4:** Dokumentacja użytkownika kompletna (setup, usage, troubleshooting)
-- ✅ **NF5:** Dokumentacja techniczna kompletna (architecture, API, deployment)
-- ✅ **NF6:** Brak SQL injection vulnerabilities (security audit)
-- ✅ **NF7:** Uptime > 99% w pierwszym tygodniu produkcyjnym
+- ✅ **NF1:** The system works in Chrome, Firefox, Edge (latest versions)
+- ✅ **NF2:** UI responsiveness < 100ms for interactions
+- ✅ **NF3:** Test coverage > 80%
+- ✅ **NF4:** The user documentation is complete (setup, usage, troubleshooting)
+- ✅ **NF5:** The technical documentation is complete (architecture, API, deployment)
+- ✅ **NF6:** No SQL injection vulnerabilities (security audit)
+- ✅ **NF7:** Uptime > 99% in the first production week
 
 ### 11.3 User Acceptance Testing (UAT)
 
-**Scenariusze testowe:**
-1. Nowy użytkownik może wykonać pełną analizę (zlewnia → hydrogram) bez pomocy w < 5 minut
-2. Użytkownik może wyeksportować wyniki i użyć ich w innym narzędziu (QGIS)
-3. Komunikaty błędów są zrozumiałe i pomocne
+**Test scenarios:**
+1. A new user can do a complete analysis (watershed → hydrograph) without help in < 5 minutes
+2. The user can export the results and use them in another tool (QGIS)
+3. The error messages are understandable and helpful
 
-**Akceptacja:**
-- Minimum 3 użytkowników testowych musi zaakceptować system (ocena ≥ 4/5)
-- Product Owner musi zaakceptować wszystkie funkcjonalności
-- Zero critical bugs w UAT
+**Acceptance:**
+- At least 3 test users must accept the system (rating ≥ 4/5)
+- The Product Owner must accept all the functions
+- Zero critical bugs in the UAT
 
 ---
 
-## 12. HANDOFF CRITERIA - Kryteria Przekazania
+## 12. HANDOFF CRITERIA
 
-### 12.1 Do Produkcji
+### 12.1 To Production
 
 **Code:**
-- ✅ Wszystkie PR zmergowane do `main`
-- ✅ Tagi wersji (semantic versioning): `v1.0.0`
-- ✅ CHANGELOG.md zaktualizowany
+- ✅ All PRs merged into `main`
+- ✅ Version tags (semantic versioning): `v1.0.0`
+- ✅ CHANGELOG.md updated
 
 **Deployment:**
-- ✅ Docker images zbudowane i przetestowane
-- ✅ docker-compose.yml gotowy na produkcję
-- ✅ Zmienne środowiskowe (.env) skonfigurowane
-- ✅ Nginx jako reverse proxy
-- ✅ HTTPS skonfigurowane (Certbot)
+- ✅ Docker images built and tested
+- ✅ docker-compose.yml ready for production
+- ✅ Environment variables (.env) configured
+- ✅ Nginx as a reverse proxy
+- ✅ HTTPS configured (Certbot)
 
 **Database:**
-- ✅ Preprocessing zakończony
-- ✅ Backup strategy skonfigurowany (cron job)
+- ✅ Preprocessing finished
+- ✅ Backup strategy configured (cron job)
 - ✅ Database migrations applied
 
 **Monitoring:**
-- ✅ Logi aplikacji działają
+- ✅ Application logs work
 - ✅ Health check endpoint: `/health`
-- ✅ Prometheus metrics exposed (opcjonalnie)
+- ✅ Prometheus metrics exposed (optional)
 
 **Documentation:**
-- ✅ README.md z instrukcjami deploymentu
-- ✅ User manual (PL) dostępny
+- ✅ README.md with deployment instructions
+- ✅ User manual (PL) available
 - ✅ API documentation (Swagger/OpenAPI)
-- ✅ Runbook dla operacji (restart, backup, restore)
+- ✅ Runbook for operations (restart, backup, restore)
 
 ---
 
-### 12.2 Do Utrzymania (Maintenance)
+### 12.2 To Maintenance
 
-**Przekazanie zespołowi utrzymaniowemu:**
-- 📋 Lista znanych limitacji i workarounds
-- 📋 Kontakty do deweloperów (email, Slack)
+**Handoff to the maintenance team:**
+- 📋 A list of the known limitations and workarounds
+- 📋 Contacts of the developers (email, Slack)
 
-**Monitoring i Alerty:**
-- 🔔 Alert: Downtime > 5 minut
-- 🔔 Alert: Czas odpowiedzi > 30s
+**Monitoring and alerts:**
+- 🔔 Alert: Downtime > 5 minutes
+- 🔔 Alert: Response time > 30s
 - 🔔 Alert: Disk usage > 80%
 - 🔔 Alert: Database connection failures
 
 ---
 
-## 13. OUT OF SCOPE - Podsumowanie
+## 13. OUT OF SCOPE - Summary
 
-### Co Definitywnie NIE JEST w MVP:
+### What Is Definitely NOT in the MVP:
 
-**Funkcjonalności:**
-- ❌ Routing, modelowanie retencji, mapy zalewowe
-- ❌ Analiza wieloscenariuszowa, kalibracja
-- ❌ Wizualizacje 3D, animacje
-- ❌ Integracje real-time, API publiczne
+**Functions:**
+- ❌ Routing, retention modelling, flood maps
+- ❌ Multi-scenario analysis, calibration
+- ❌ 3D visualizations, animations
+- ❌ Real-time integrations, a public API
 
-**Użytkownicy:**
-- ❌ System kont, historia, współpraca
-- ❌ Role i uprawnienia
-- ❌ Powiadomienia, newslettery
+**Users:**
+- ❌ Accounts, history, collaboration
+- ❌ Roles and permissions
+- ❌ Notifications, newsletters
 
-**Dane:**
-- ❌ Pomiary terenowe, prognozy, dane satelitarne
-- ❌ Multiple regiony, import własnych danych
+**Data:**
+- ❌ Field measurements, forecasts, satellite data
+- ❌ Multiple regions, import of own data
 
-**Technologia:**
+**Technology:**
 - ❌ Cloud hosting, Kubernetes, microservices
-- ❌ Aplikacje mobilne, CLI, GraphQL
+- ❌ Mobile applications, CLI, GraphQL
 
-**Raporty:**
-- ❌ PDF generation, szablony, batch export
+**Reports:**
+- ❌ PDF generation, templates, batch export
 
 ---
 
 ## 14. CHANGE MANAGEMENT
 
-### 14.1 Jak Zmienić Zakres?
+### 14.1 How to Change the Scope?
 
-**Proces:**
-1. **Propozycja:** Issue na GitHubie/GitLabie z tagiem `scope-change`
-2. **Analiza:** Ocena wpływu (czas, zasoby, ryzyko)
-3. **Dyskusja:** Zespół + Product Owner
-4. **Decyzja:** Go/No-Go
-5. **Dokumentacja:** Update SCOPE.md + PRD.md + CHANGELOG.md
+**Process:**
+1. **Proposal:** An issue on GitHub/GitLab with the tag `scope-change`
+2. **Analysis:** Impact assessment (time, resources, risk)
+3. **Discussion:** The team + the Product Owner
+4. **Decision:** Go/No-Go
+5. **Documentation:** Update SCOPE.md + PRD.md + CHANGELOG.md
 
-**Kryteria akceptacji zmiany:**
-- ✅ Uzasadnienie biznesowe
-- ✅ Oszacowanie nakładu pracy (story points)
-- ✅ Brak konfliktu z istniejącym zakresem
-- ✅ Akceptacja Product Ownera
-- ✅ Dostępne zasoby (czas, ludzie)
+**Acceptance criteria of a change:**
+- ✅ Business justification
+- ✅ Estimate of the effort (story points)
+- ✅ No conflict with the existing scope
+- ✅ Acceptance by the Product Owner
+- ✅ Available resources (time, people)
 
 ---
 
 ### 14.2 Scope Creep Prevention
 
-**Zasady:**
-- 🛑 **Żadnych nowych funkcji bez dokumentacji w SCOPE.md**
-- 🛑 **Nie "tylko szybkie dodanie X"** - zawsze przez proces change management
-- 🛑 **MVP = Minimum Viable Product** - oprzeć się pokusie "nice to have"
-- ✅ **Feature requests → backlog** (nie do MVP)
-- ✅ **Re-priorytetyzacja co 2 tygodnie** (sprint planning)
+**Rules:**
+- 🛑 **No new functions without documentation in SCOPE.md**
+- 🛑 **Not "just a quick addition of X"** - always through the change management process
+- 🛑 **MVP = Minimum Viable Product** - resist the temptation of "nice to have"
+- ✅ **Feature requests → backlog** (not the MVP)
+- ✅ **Re-prioritization every 2 weeks** (sprint planning)
 
 ---
 
 ## 15. GLOSSARY
 
-| Termin | Definicja |
-|--------|-----------|
-| **MVP** | Minimum Viable Product - podstawowa wersja z kluczowymi funkcjami |
-| **In Scope** | Funkcjonalność/element objęty zakresem projektu |
-| **Out of Scope** | Funkcjonalność/element poza zakresem projektu |
-| **Future Scope** | Funkcjonalność planowana na przyszłość (post-MVP) |
-| **SLA** | Service Level Agreement - gwarantowany poziom usług |
-| **UAT** | User Acceptance Testing - testy akceptacyjne użytkownika |
-| **NMT** | Numeryczny Model Terenu |
-| **CN** | Curve Number - parametr spływu powierzchniowego |
-| **SCS** | Soil Conservation Service - metoda hydrologiczna |
-| **Pmax_PT** | Maksymalne opady o określonym prawdopodobieństwie i czasie trwania |
-| **HSG** | Hydrologic Soil Group - grupa hydrologiczna gleby (A/B/C/D) |
-| **MVT** | Mapbox Vector Tiles - format kafelkow wektorowych |
-| **BFS** | Breadth-First Search - przeszukiwanie grafu wszerz |
-| **SSE** | Server-Sent Events - protokol streamowania danych z serwera |
-| **ADR** | Architecture Decision Record - rejestr decyzji architektonicznych |
+| Term | Definition |
+|------|------------|
+| **MVP** | Minimum Viable Product - a basic version with the key functions |
+| **In Scope** | A function/element covered by the scope of the project |
+| **Out of Scope** | A function/element outside the scope of the project |
+| **Future Scope** | A function planned for the future (post-MVP) |
+| **SLA** | Service Level Agreement - a guaranteed level of service |
+| **UAT** | User Acceptance Testing |
+| **NMT** | Numeryczny Model Terenu - the digital elevation model (DEM) |
+| **CN** | Curve Number - a parameter of the surface runoff |
+| **SCS** | Soil Conservation Service - a hydrological method |
+| **Pmax_PT** | Maximum precipitation of a given probability and duration |
+| **HSG** | Hydrologic Soil Group - the hydrologic group of a soil (A/B/C/D) |
+| **MVT** | Mapbox Vector Tiles - a format of vector tiles |
+| **BFS** | Breadth-First Search - a graph search that goes level by level |
+| **SSE** | Server-Sent Events - a protocol that streams data from the server |
+| **ADR** | Architecture Decision Record |
 
 ---
 
-**Wersja dokumentu:** 1.2
-**Data ostatniej aktualizacji:** 2026-03-25
-**Wersja biezaca:** v0.4.0 (CP4 zakonczone, 899 testow, 19 endpointow, 49 ADR)
-**Planowana wersja MVP:** v1.0.0 (CP5)
-**Status:** Zatwierdzony — projekt w aktywnym rozwoju
+**Document version:** 1.3
+**Date of the last update:** 2026-10-25
+**Current version:** v0.4.0 (CP4 finished, 899 tests, 19 endpoints, 49 ADRs)
+**Planned MVP version:** v1.0.0 (CP5)
+**Status:** Approved — the project is in active development
+
+**Change history:**
+- 1.3 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
+- 1.2 (2026-03-25): last content update
 
 ---
 
-*Ten dokument definiuje zakres projektu MVP. Wszelkie zmiany wymagają formalnego procesu change management i aktualizacji tego dokumentu.*
+*This document defines the scope of the MVP project. Every change requires a formal change management process and an update of this document.*
