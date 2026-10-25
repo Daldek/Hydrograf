@@ -6,12 +6,14 @@ Configures the API with routers, middleware, and exception handlers.
 
 import logging
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.base import RequestResponseEndpoint
 
 from api.endpoints import (
     admin,
@@ -61,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan handler — loads in-memory catchment graph."""
     logger.info("Starting Hydrograf API...")
 
@@ -97,7 +99,9 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 
 
 @app.middleware("http")
-async def add_request_id(request, call_next):
+async def add_request_id(
+    request: Request, call_next: RequestResponseEndpoint
+) -> Response:
     """Add unique request ID to each request for log traceability."""
     request_id = str(uuid.uuid4())[:8]
     structlog.contextvars.clear_contextvars()
@@ -120,7 +124,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 
 
 @app.get("/")
-async def root():
+async def root() -> dict[str, str]:
     """Root endpoint - redirect info."""
     return {
         "message": "Hydrograf API",

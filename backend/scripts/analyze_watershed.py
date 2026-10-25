@@ -36,6 +36,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -171,7 +172,7 @@ def download_nmt_data(config: AnalysisConfig) -> list[Path]:
     return report.paths
 
 
-def process_nmt_data(config: AnalysisConfig, input_files: list[Path]) -> dict:
+def process_nmt_data(config: AnalysisConfig, input_files: list[Path]) -> dict[str, Any]:
     """Przetwórz NMT i zaimportuj do bazy danych."""
     logger.info("=" * 60)
     logger.info("KROK 2: Przetwarzanie NMT")
@@ -201,7 +202,7 @@ def process_nmt_data(config: AnalysisConfig, input_files: list[Path]) -> dict:
         qgis_dir.mkdir(parents=True, exist_ok=True)
 
     # Przetwórz i zaimportuj
-    stats = process_dem(
+    stats = process_dem(  # type: ignore[call-arg]  # stale call, PROGRESS
         input_path=mosaic_path,
         stream_threshold=config.stream_threshold,
         clear_existing=True,
@@ -213,13 +214,13 @@ def process_nmt_data(config: AnalysisConfig, input_files: list[Path]) -> dict:
     return stats
 
 
-def delineate_watershed(config: AnalysisConfig, db) -> dict:
+def delineate_watershed(config: AnalysisConfig, db) -> dict[str, Any]:
     """Wyznacz zlewnię dla punktu."""
     logger.info("=" * 60)
     logger.info("KROK 3: Wyznaczanie zlewni")
     logger.info("=" * 60)
 
-    from core.watershed import (
+    from core.watershed import (  # type: ignore[attr-defined]  # stale, PROGRESS
         build_boundary,
         calculate_watershed_area_km2,
         find_nearest_stream,
@@ -273,7 +274,9 @@ def delineate_watershed(config: AnalysisConfig, db) -> dict:
     }
 
 
-def calculate_morphometry(config: AnalysisConfig, watershed: dict, db) -> dict:
+def calculate_morphometry(
+    config: AnalysisConfig, watershed: dict[str, Any], db
+) -> dict[str, Any]:
     """Oblicz parametry morfometryczne zlewni."""
     logger.info("=" * 60)
     logger.info("KROK 4: Obliczanie morfometrii")
@@ -319,7 +322,7 @@ def calculate_morphometry(config: AnalysisConfig, watershed: dict, db) -> dict:
     return morph
 
 
-def fetch_precipitation_imgw(config: AnalysisConfig) -> dict:
+def fetch_precipitation_imgw(config: AnalysisConfig) -> dict[str, Any] | None:
     """
     Pobierz dane opadowe z IMGW PMAXTP.
 
@@ -442,9 +445,9 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> dict:
 
 def generate_hydrograph(
     config: AnalysisConfig,
-    morph: dict,
-    precipitation: dict | None,
-) -> dict:
+    morph: dict[str, Any],
+    precipitation: dict[str, Any] | None,
+) -> dict[str, Any]:
     """Generuj hydrogram odpływu z konwolucją hietogramu.
 
     Dla krótkich opadów (duration <= tc) używa uproszczonego podejścia.
@@ -615,8 +618,8 @@ def generate_hydrograph(
 
 def save_qgis_layers(
     config: AnalysisConfig,
-    watershed: dict,
-    morph: dict,
+    watershed: dict[str, Any],
+    morph: dict[str, Any],
 ) -> dict[str, Path]:
     """
     Zapisz warstwy pośrednie w formatach GeoPackage/GeoTIFF dla QGIS.
@@ -783,9 +786,9 @@ def extract_stream_network(output_dir: Path, crs: str = "EPSG:2180") -> Path | N
 
 def generate_visualizations(
     config: AnalysisConfig,
-    watershed: dict,
-    morph: dict,
-    hydrograph: dict,
+    watershed: dict[str, Any],
+    morph: dict[str, Any],
+    hydrograph: dict[str, Any],
 ) -> list[Path]:
     """Generuj wizualizacje."""
     logger.info("=" * 60)
@@ -943,10 +946,10 @@ Tc ({hydrograph["tc_method"]}):   {hydrograph["tc_min"]:.1f} min"""
 
 def save_results(
     config: AnalysisConfig,
-    watershed: dict,
-    morph: dict,
-    precipitation: dict | None,
-    hydrograph: dict,
+    watershed: dict[str, Any],
+    morph: dict[str, Any],
+    precipitation: dict[str, Any] | None,
+    hydrograph: dict[str, Any],
 ) -> Path:
     """Zapisz wyniki do JSON."""
     logger.info("=" * 60)
@@ -996,7 +999,9 @@ def save_results(
     return json_path
 
 
-def load_cached_results(config: AnalysisConfig) -> tuple[dict, dict]:
+def load_cached_results(
+    config: AnalysisConfig,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Załaduj cache'owane wyniki zlewni i morfometrii z poprzedniej analizy.
 
@@ -1057,7 +1062,7 @@ def load_cached_results(config: AnalysisConfig) -> tuple[dict, dict]:
 # =============================================================================
 
 
-def analyze_watershed(config: AnalysisConfig) -> dict:
+def analyze_watershed(config: AnalysisConfig) -> dict[str, Any]:
     """
     Wykonaj pełną analizę hydrologiczną zlewni.
 

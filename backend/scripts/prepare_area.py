@@ -57,6 +57,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 # Configure logging
 logging.basicConfig(
@@ -82,7 +83,7 @@ def prepare_area(
     burn_depth_m: float = 2.0,
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     Download and process NMT data for an area around a point.
 
@@ -136,7 +137,7 @@ def prepare_area(
     from scripts.process_dem import process_dem
     from utils.sheet_lookup import sheets_for_point_buffer
 
-    stats = {
+    stats: dict[str, Any] = {
         "sheets_found": 0,
         "sheets_downloaded": 0,
         "sheets_processed": 0,
@@ -285,7 +286,7 @@ def prepare_area(
     logger.info("=" * 60)
 
     try:
-        dem_stats = process_dem(
+        dem_stats = process_dem(  # type: ignore[call-arg]  # stale call, PROGRESS
             input_path=mosaic_path,
             batch_size=batch_size,
             dry_run=False,

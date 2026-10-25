@@ -11,6 +11,7 @@ detection) to accelerate vectorize_streams from ~300s to ~10s.
 
 import logging
 from collections import defaultdict
+from typing import Any
 
 import numba
 import numpy as np
@@ -93,10 +94,10 @@ def vectorize_streams(
     acc: np.ndarray,
     slope: np.ndarray,
     strahler: np.ndarray,
-    metadata: dict,
+    metadata: dict[str, Any],
     stream_threshold: int = 1000,
     label_raster_out: np.ndarray | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Vectorize stream network from raster data as LineString segments.
 
@@ -162,13 +163,13 @@ def vectorize_streams(
 
     logger.info(f"  Found {len(hw_rows)} headwater cells")
 
-    def cell_xy(row, col):
+    def cell_xy(row: int, col: int) -> tuple[float, float]:
         """Get cell center coordinates in PL-1992."""
         x = xll + (col + 0.5) * cellsize
         y = yll + (nrows - row - 0.5) * cellsize
         return (x, y)
 
-    def downstream_cell(row, col):
+    def downstream_cell(row: int, col: int) -> tuple[int, int] | None:
         """Get downstream cell (row, col) or None."""
         d = fdir[row, col]
         if d not in D8_DIRECTIONS:
@@ -279,7 +280,7 @@ def vectorize_streams(
 
 
 def delineate_subcatchments(
-    flw,
+    flw: Any,
     label_raster: np.ndarray,
     dem: np.ndarray,
     nodata: float,
@@ -338,10 +339,10 @@ def polygonize_subcatchments(
     label_raster: np.ndarray,
     dem: np.ndarray,
     slope: np.ndarray,
-    metadata: dict,
-    segments: list[dict],
+    metadata: dict[str, Any],
+    segments: list[dict[str, Any]],
     flow_dist_m: np.ndarray | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Convert label raster to sub-catchment polygons.
 
@@ -559,10 +560,10 @@ def polygonize_subcatchments(
 
 
 def compute_downstream_links(
-    segments: list[dict],
+    segments: list[dict[str, Any]],
     label_raster: np.ndarray,
     fdir: np.ndarray,
-    metadata: dict,
+    metadata: dict[str, Any],
 ) -> None:
     """
     For each segment, follow fdir one cell from outlet to find downstream segment.

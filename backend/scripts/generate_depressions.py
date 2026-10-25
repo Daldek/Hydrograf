@@ -22,6 +22,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import rasterio
@@ -69,7 +70,7 @@ def compute_depressions(
     dem_path: str,
     filled_path: str,
     min_depth_m: float = 0.001,
-) -> tuple[list[dict], np.ndarray, dict]:
+) -> tuple[list[dict[str, Any]], np.ndarray, dict[str, Any]]:
     """
     Compute terrain depressions from DEM difference.
 
@@ -177,7 +178,9 @@ def compute_depressions(
     return depressions, depth, {"transform": transform, "crs": crs, "shape": dem.shape}
 
 
-def insert_depressions(db_session, depressions: list[dict], srid: int = 2180) -> int:
+def insert_depressions(
+    db_session, depressions: list[dict[str, Any]], srid: int = 2180
+) -> int:
     """
     Insert depressions into PostGIS using COPY bulk loading.
 
@@ -245,7 +248,7 @@ def insert_depressions(db_session, depressions: list[dict], srid: int = 2180) ->
         FROM temp_depressions_import
     """)
 
-    total = cursor.rowcount
+    total: int = cursor.rowcount
     raw_conn.commit()
     logger.info(f"  Inserted {total} depressions")
 
@@ -254,7 +257,7 @@ def insert_depressions(db_session, depressions: list[dict], srid: int = 2180) ->
 
 def generate_overlay(
     depth: np.ndarray,
-    raster_meta: dict,
+    raster_meta: dict[str, Any],
     output_png: str,
     output_meta: str,
     max_size: int = 1024,
@@ -330,7 +333,7 @@ def generate_overlay(
     # Save PNG
     img = Image.fromarray(rgba, mode="RGBA")
     if max_size and (width > max_size or height > max_size):
-        img.thumbnail((max_size, max_size), Image.NEAREST)
+        img.thumbnail((max_size, max_size), Image.Resampling.NEAREST)
         logger.info(f"Downsampled: {width}x{height} → {img.width}x{img.height}")
     img.save(output_png, optimize=True)
     file_size = Path(output_png).stat().st_size

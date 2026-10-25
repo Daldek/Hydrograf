@@ -11,6 +11,7 @@ Tests the CatchmentGraph-based hydrograph endpoint by mocking:
 - DB session for precipitation query (IDW interpolation)
 """
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -45,7 +46,7 @@ def _make_boundary() -> MultiPolygon:
     return MultiPolygon([poly])
 
 
-def _make_morph_dict(cn: int = 75) -> dict:
+def _make_morph_dict(cn: int = 75) -> dict[str, Any]:
     """
     Build a morph dict compatible with WatershedParameters.from_dict()
     and MorphometricParameters schema.
@@ -103,7 +104,7 @@ def _make_mock_cg():
     return cg
 
 
-def _make_segment_dict() -> dict:
+def _make_segment_dict() -> dict[str, Any]:
     """Return a segment dict as from find_nearest_stream_segment."""
     return {
         "segment_idx": 10,

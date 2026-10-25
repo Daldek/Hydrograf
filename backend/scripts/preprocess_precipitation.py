@@ -33,6 +33,7 @@ import logging
 import sys
 import time
 from datetime import datetime
+from typing import Any
 
 from pyproj import Transformer
 from sqlalchemy import text
@@ -197,7 +198,7 @@ async def fetch_pmaxtp_for_point(
     lat: float,
     lon: float,
     delay_s: float = 0.5,
-) -> dict:
+) -> dict[tuple[str, float], Any]:
     """
     Fetch all 432 precipitation scenarios for a single point.
 
@@ -246,7 +247,7 @@ def insert_precipitation_data(
     db_session,
     lat: float,
     lon: float,
-    scenarios: dict,
+    scenarios: dict[tuple[str, float], Any],
 ) -> int:
     """
     Insert precipitation data for a point into database.

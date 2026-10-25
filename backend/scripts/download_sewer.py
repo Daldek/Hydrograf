@@ -9,6 +9,7 @@ import logging
 import re
 import urllib.parse
 from pathlib import Path
+from typing import Any
 
 import fiona
 import geopandas as gpd
@@ -51,11 +52,11 @@ def _auto_detect_layer(path: str) -> str | None:
     except Exception:
         return None
     if len(layers) == 1:
-        return layers[0]
+        return str(layers[0])
     for layer_name in layers:
         with fiona.open(path, layer=layer_name) as src:
             if src.schema["geometry"] in ("LineString", "MultiLineString"):
-                return layer_name
+                return str(layer_name)
     return layers[0] if layers else None
 
 
@@ -194,7 +195,7 @@ def load_from_url(url: str) -> gpd.GeoDataFrame:
 
 
 def load_sewer_data(
-    config: dict,
+    config: dict[str, Any],
 ) -> tuple[gpd.GeoDataFrame | None, gpd.GeoDataFrame | None]:
     """Load sewer data based on config source type.
 

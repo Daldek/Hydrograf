@@ -134,7 +134,7 @@ def generate_overlay(
     # Save PNG (with optional downsampling)
     img = Image.fromarray(rgba, mode="RGBA")
     if max_size and (width > max_size or height > max_size):
-        img.thumbnail((max_size, max_size), Image.LANCZOS)
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
         print(f"Downsampled: {width}x{height} → {img.width}x{img.height}")
     img.save(output_png, optimize=True)
     file_size = Path(output_png).stat().st_size

@@ -113,10 +113,63 @@ quote-style = "double"
 
 [tool.mypy]
 python_version = "3.12"
-warn_return_any = true
-warn_unused_ignores = true
+strict = true
+files = ["api", "core", "models", "scripts", "utils", "tests"]
+exclude = ["migrations"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# Third-party packages without type information: no py.typed marker, and the stub
+# packages are not in the lock.
+module = [
+    "affine",
+    "fiona",
+    "fiona.*",
+    "geopandas",
+    "pandas",
+    "psutil",
+    "pyflwdir",
+    "pyflwdir.*",
+    "rasterio",
+    "rasterio.*",
+    "scipy",
+    "scipy.*",
+    "shapely",
+    "shapely.*",
+    "yaml",
+]
 ignore_missing_imports = true
-exclude = ["migrations", ".venv"]
+
+[[tool.mypy.overrides]]
+# Ecosystem producers pinned by release tag (REL-5.1): the pinned releases ship no
+# py.typed marker; DEV-7.4 comes with their standard 2.1 releases.
+module = [
+    "hydrolog",
+    "hydrolog.*",
+    "imgwtools",
+    "imgwtools.*",
+    "kartograf",
+    "kartograf.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# DEV-7.3 deviation: the tests carry no annotations (about 1,260 functions), so mypy
+# does not check the bodies of the untyped ones. Annotate a test file and drop it
+# from this list to have it checked.
+module = ["tests", "tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = false
+
+[[tool.mypy.overrides]]
+# DEV-7.3 deviation: the command line scripts are partly unannotated (46 findings of
+# untyped definitions and calls); their annotated code is checked in full.
+module = ["scripts", "scripts.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

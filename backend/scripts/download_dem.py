@@ -450,6 +450,8 @@ def main():
                 skip_existing=skip_existing,
             )
         else:
+            if sheets is None:
+                parser.error("no sheets to download")
             downloaded = download_sheets(
                 sheets, output_dir, args.metadata_cache, skip_existing=skip_existing
             )

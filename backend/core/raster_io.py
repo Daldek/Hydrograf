@@ -7,6 +7,7 @@ All outputs use PL-1992 (EPSG:2180) CRS.
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def save_raster_geotiff(
     data: np.ndarray,
-    metadata: dict,
+    metadata: dict[str, Any],
     output_path: Path,
     nodata: float = -9999.0,
     dtype: str = "float32",
@@ -90,7 +91,7 @@ def save_raster_geotiff(
     logger.info(f"Saved: {output_path} ({output_path.stat().st_size / 1024:.1f} KB)")
 
 
-def read_raster(filepath: Path) -> tuple[np.ndarray, dict]:
+def read_raster(filepath: Path) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Read raster file (ASC, VRT, or GeoTIFF) using rasterio.
 
@@ -178,7 +179,7 @@ def downsample_raster(input_path: Path, output_path: Path, target_res_m: float) 
     return output_path
 
 
-def read_ascii_grid(filepath: Path) -> tuple[np.ndarray, dict]:
+def read_ascii_grid(filepath: Path) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Read ARC/INFO ASCII GRID file.
 
@@ -208,7 +209,7 @@ def read_ascii_grid(filepath: Path) -> tuple[np.ndarray, dict]:
     if not filepath.exists():
         raise FileNotFoundError(f"DEM file not found: {filepath}")
 
-    metadata = {}
+    metadata: dict[str, float] = {}
     header_lines = 6
 
     with open(filepath) as f:

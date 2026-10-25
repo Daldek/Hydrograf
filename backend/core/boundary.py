@@ -4,6 +4,7 @@ import logging
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import geopandas as gpd
 from pyproj import CRS
@@ -171,7 +172,8 @@ def boundary_to_bbox_wgs84(
 
     Geometry must be in WGS84 (EPSG:4326).
     """
-    return geom.bounds  # (minx, miny, maxx, maxy)
+    bounds: tuple[float, float, float, float] = geom.bounds  # (minx, miny, maxx, maxy)
+    return bounds
 
 
 def boundary_to_bbox_2180(
@@ -194,7 +196,7 @@ def boundary_to_bbox_2180(
     return tuple(gdf_2180.total_bounds)
 
 
-def validate_boundary_file(file_path: Path) -> dict:
+def validate_boundary_file(file_path: Path) -> dict[str, Any]:
     """Validate boundary file and return metadata.
 
     Parameters

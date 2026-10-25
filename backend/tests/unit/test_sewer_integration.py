@@ -1,5 +1,7 @@
 """Integration test: full sewer pipeline on synthetic DEM."""
 
+from typing import Any
+
 import geopandas as gpd
 import numpy as np
 import pytest
@@ -31,7 +33,7 @@ _ROLE_MAPPING = {
 }
 
 
-def _build_graph_from_points(points_data: list[dict]) -> SewerGraph:
+def _build_graph_from_points(points_data: list[dict[str, Any]]) -> SewerGraph:
     """Build a SewerGraph from dicts with id, role, downstream_id, x, y."""
     gdf = gpd.GeoDataFrame(
         [

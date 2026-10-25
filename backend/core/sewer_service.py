@@ -11,10 +11,16 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy import sparse
 from scipy.sparse.csgraph import connected_components
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from core.sewer_topology import ParsedTopology
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +29,8 @@ class SewerGraph:
     """Directed graph of a stormwater sewer network."""
 
     def __init__(self) -> None:
-        self.nodes: list[dict] = []
-        self.edges: list[dict] = []
+        self.nodes: list[dict[str, Any]] = []
+        self.edges: list[dict[str, Any]] = []
         self.adj: sparse.csr_matrix = sparse.csr_matrix((0, 0), dtype=np.int8)
         self.warnings: list[str] = []
         self.n_components: int = 0
@@ -40,7 +46,7 @@ class SewerGraph:
         """Number of edges in the graph."""
         return len(self.edges)
 
-    def get_nodes_by_type(self, node_type: str) -> list[dict]:
+    def get_nodes_by_type(self, node_type: str) -> list[dict[str, Any]]:
         """Return all nodes with the given node_type."""
         return [n for n in self.nodes if n["node_type"] == node_type]
 
@@ -71,7 +77,7 @@ class SewerGraph:
         return inlet_ids
 
 
-def build_sewer_graph(topology) -> SewerGraph:
+def build_sewer_graph(topology: ParsedTopology) -> SewerGraph:
     """Build directed sewer graph from pre-validated ParsedTopology.
 
     Topology is explicit — nodes have roles, edges have from/to.
@@ -199,7 +205,7 @@ _D8_DC = {1: 1, 2: 1, 4: 0, 8: -1, 16: -1, 32: -1, 64: 0, 128: 1}
 
 def burn_inlets(
     dem: np.ndarray,
-    inlets: list[dict],
+    inlets: list[dict[str, Any]],
     default_depth_m: float = 0.5,
 ) -> tuple[np.ndarray, list[tuple[int, int]]]:
     """Lower DEM at inlet locations. Returns modified DEM and drain_points list.
@@ -260,7 +266,7 @@ def burn_inlets(
 def reconstruct_inlet_fa(
     fa: np.ndarray,
     fdir: np.ndarray,
-    inlets: list[dict],
+    inlets: list[dict[str, Any]],
 ) -> None:
     """Reconstruct FA for inlet cells (set to nodata by drain_points).
 
@@ -284,7 +290,7 @@ def reconstruct_inlet_fa(
         inlet["fa_value"] = reconstructed
 
 
-def route_fa_through_sewer(graph) -> None:
+def route_fa_through_sewer(graph: SewerGraph) -> None:
     """Route FA through sewer graph: sum inlet FA per outlet.
 
     For each outlet, BFS upstream to find all inlets, sum their fa_value.
@@ -305,7 +311,7 @@ def route_fa_through_sewer(graph) -> None:
 def propagate_fa_downstream(
     fa: np.ndarray,
     fdir: np.ndarray,
-    outlets: list[dict],
+    outlets: list[dict[str, Any]],
 ) -> None:
     """Propagate FA surplus from sewer outlets downstream along fdir.
 
@@ -354,8 +360,8 @@ def propagate_fa_downstream(
 
 
 def insert_sewer_data(
-    graph,
-    db_session,
+    graph: SewerGraph,
+    db_session: Session,
     source_file: str = "unknown",
 ) -> int:
     """Insert sewer graph into PostGIS (sewer_nodes + sewer_network).

@@ -15,6 +15,7 @@ import math
 import random
 import textwrap
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from scipy.spatial import Voronoi
@@ -110,7 +111,7 @@ def _elevation_at(y: float) -> float:
     return 80.0 + t * 120.0
 
 
-def _make_elev_histogram(mean_elev: float) -> dict:
+def _make_elev_histogram(mean_elev: float) -> dict[str, Any]:
     """Create a realistic elevation histogram around mean_elev."""
     base = int(mean_elev) - 5
     counts = []
@@ -306,7 +307,7 @@ def generate() -> None:
 
     # --- Step 5: Generate test_points.py ---
     # Find a point covered by all three thresholds
-    multi_pt = None
+    multi_pt: Any = None
     multi_seg_1000 = None
     multi_seg_10000 = None
     multi_seg_100000 = None
