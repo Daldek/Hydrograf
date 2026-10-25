@@ -168,7 +168,7 @@ Brak referencji do `flow_network` w zadnym pliku `core/*.py` ani `api/endpoints/
 - `scripts/bootstrap.py` (18 wystapien)
 - moduly core: `raster_io.py` (11), `cn_calculator.py` (9), `land_cover.py` (7), `hydrology.py` (7), `watershed.py` (5)
 
-**Standard (z DEVELOPMENT_STANDARDS.md sekcja 14.3):**
+**Standard (DEV-12.3 of the Nogat standard):**
 ```python
 # DOBRZE — lazy evaluation z %s
 logger.info("Watershed area: %s km2", area_km2)

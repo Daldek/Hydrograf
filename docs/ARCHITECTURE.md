@@ -1764,7 +1764,7 @@ jobs:
 
 **Level 3: Component Diagram** - patrz sekcja 2.1
 
-**Level 4: Code** - patrz DEVELOPMENT_STANDARDS.md i inline documentation
+**Level 4: Code** - see the [Nogat standard](https://github.com/Daldek/Nogat/tree/main/standards) (DEV-7 to DEV-9) and the inline documentation
 
 ---
 
