@@ -86,7 +86,6 @@ class AnalysisConfig:
     tc_method: str = "kirpich"  # kirpich, nrcs, giandotti
 
     # Parametry przetwarzania
-    stream_threshold: int = 1000  # Próg akumulacji dla cieków
     max_cells: int = 10_000_000  # Maksymalna liczba komórek zlewni
     timestep_min: float = 5.0  # Krok czasowy hydrogramu [min]
     max_stream_distance_m: float = 500.0  # Maks. odległość szukania cieku [m]
@@ -193,6 +192,8 @@ def process_nmt_data(config: AnalysisConfig, input_files: list[Path]) -> dict[st
 
     # Utwórz mozaikę
     mosaic_path = config.data_dir / "nmt" / "mosaic.tif"
+    # Nothing else creates it: the downloads go to the store of cache_dir (ADR-061)
+    mosaic_path.parent.mkdir(parents=True, exist_ok=True)
     mosaic_path = create_vrt_mosaic(input_files, mosaic_path)
     logger.info(f"Utworzono mozaikę: {mosaic_path}")
 
@@ -212,15 +213,18 @@ def process_nmt_data(config: AnalysisConfig, input_files: list[Path]) -> dict[st
         qgis_dir.mkdir(parents=True, exist_ok=True)
 
     # Przetwórz i zaimportuj
-    stats = process_dem(  # type: ignore[call-arg]  # stale call, PROGRESS
+    stats = process_dem(
         input_path=mosaic_path,
-        stream_threshold=config.stream_threshold,
         clear_existing=True,
         save_intermediates=config.save_qgis_layers,
         output_dir=qgis_dir,
     )
 
-    logger.info(f"Zaimportowano {stats.get('records_inserted', 0):,} rekordów")
+    logger.info(
+        "Inserted %d stream segments and %d sub-catchments",
+        stats.get("stream_segments_inserted", 0),
+        stats.get("catchments_inserted", 0),
+    )
     return stats
 
 
@@ -975,7 +979,6 @@ def save_results(
             },
             "config": {
                 "tc_method": config.tc_method,
-                "stream_threshold": config.stream_threshold,
                 "timestep_min": config.timestep_min,
             },
         },
@@ -1267,12 +1270,6 @@ def main():
         "--process", action="store_true", help="Przetwórz NMT i zaimportuj do DB"
     )
     proc.add_argument(
-        "--stream-threshold",
-        type=int,
-        default=1000,
-        help="Próg akumulacji dla cieków (default: 1000)",
-    )
-    proc.add_argument(
         "--resolution",
         type=float,
         default=1.0,
@@ -1324,7 +1321,6 @@ def main():
         duration_min=args.duration,
         tc_method=args.tc_method,
         timestep_min=args.timestep,
-        stream_threshold=args.stream_threshold,
         dem_resolution_m=args.resolution,
         download_dem=args.download,
         process_dem=args.process,
