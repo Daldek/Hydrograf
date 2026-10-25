@@ -85,9 +85,10 @@ flagged were annotated (`api/endpoints/hydrograph.py`) or switched to the float 
 migration: Hydrolog `6c9ba5a`, IMGWTools `a304521`, two commits that GitHub did not have, and
 Kartograf on `v0.7.0`. The producers have pushed their heads since and the lock follows them:
 IMGWTools `7e2114e`, then `3f7de36` (3.0.0: float PMAXTP percentages, so the `type: ignore` of
-`scripts/preprocess_precipitation.py` is gone; it ships `py.typed`); Hydrolog `31bf796`
+`scripts/preprocess_precipitation.py` is gone; it ships `py.typed`), then `6bd35a4` (a flush of
+the MCP server's stdout, which Hydrograf does not start); Hydrolog `31bf796`
 (`feature/routing-objects`), then `5fa22b3` (`feature/routing-schematic`); Kartograf `b73aad3`
-by ADR-061, then `45dedf4`. `uv lock`, `uv sync --locked` and the image build resolve all three
+by ADR-061, then `45dedf4`, then `c31ca04`. `uv lock`, `uv sync --locked` and the image build resolve all three
 anywhere, so the Consequences about unpushed commits and the uv git cache no longer apply, and
 the mypy override of IMGWTools is gone with the one of Kartograf (ADR-061). The decision
 (option B) stands.

@@ -2,7 +2,7 @@
 
 **Version:** 7.0
 **Date:** 2026-10-25
-**Status:** Active (Kartograf 0.8.0.dev0, head `45dedf4`; ADR-061)
+**Status:** Active (Kartograf 0.8.0.dev0, head `c31ca04`; ADR-061)
 
 ---
 
@@ -11,7 +11,7 @@
 Hydrograf uses [Kartograf](https://github.com/Daldek/Kartograf) to download spatial data from
 Polish and European sources and to do the arithmetic of the map sheet codes (*godła*). Kartograf
 is a library dependency used through its public API. It is pinned by the commit of the head of its
-`feature/data-output` branch (0.8.0.dev0, `45dedf4`), with the range `>=0.8.0.dev0,<0.9`, until the
+`feature/data-output` branch (0.8.0.dev0, `c31ca04`), with the range `>=0.8.0.dev0,<0.9`, until the
 0.8.0 tag exists; the release pull request replaces the commit with the tag (REL-5.3, REL-5.6,
 ADR-060, ADR-061).
 

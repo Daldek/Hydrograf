@@ -1,14 +1,14 @@
 # Integracja z IMGWTools
 
 **Wersja:** 1.1
-**Data:** 2026-10-25 (the head of IMGWTools, `3f7de36`, ADR-060)
+**Data:** 2026-10-25 (the head of IMGWTools, `6bd35a4`, ADR-060)
 **Status:** Aktywna
 
 ---
 
 ## 1. Przegląd
 
-Hydrograf wykorzystuje [IMGWTools](https://github.com/Daldek/IMGWTools) (3.0.0, commit `3f7de36`) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
+Hydrograf wykorzystuje [IMGWTools](https://github.com/Daldek/IMGWTools) (3.0.0, commit `6bd35a4`) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
 
 ### 1.1 Co to jest IMGWTools?
 
@@ -278,14 +278,14 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 
 ```
 # In backend/pyproject.toml ([tool.uv.sources]; the range in dependencies is "imgwtools>=3.0.0.dev0,<4"):
-imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "3f7de36f98f1ba40d72ab5556942567cfbc55b92" }
+imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "6bd35a49b329f99b591ffdee39367daec0e75af7" }
 ```
 
 ### 11.2 Repozytorium
 
 - **GitHub:** https://github.com/Daldek/IMGWTools
 - **Branch:** `feature/data-output` (on GitHub; the pin is a commit, REL-5.3, ADR-060)
-- **Wersja:** 3.0.0 (untagged), commit `3f7de36f98f1ba40d72ab5556942567cfbc55b92`
+- **Wersja:** 3.0.0 (untagged), commit `6bd35a49b329f99b591ffdee39367daec0e75af7`
 - **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `IMGWValidationError`, `IMGWConnectionError` and `IMGWDataError`; both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
 - **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; the release replaces it with the tag.
 
