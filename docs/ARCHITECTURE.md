@@ -1,7 +1,7 @@
 # ARCHITECTURE.md - System Architecture
 ## Hydrological Analysis System
 
-**Version:** 2.4
+**Version:** 2.5
 **Date:** 2026-10-25
 **Status:** Approved
 
@@ -108,19 +108,21 @@ Summary of the key ADRs:
 | ADR-034 | Admin panel | `/admin` + 13 `/api/admin/*` endpoints, API key auth, bootstrap SSE |
 | ADR-035 | Multi-stage containerization | Multi-stage Dockerfile, entrypoint with wait-for-db, dev/prod override |
 | ADR-036 | Docker container hardening | Security headers, resource limits, non-root user |
-| ADR-037 | Separation of cache and data + Kartograf v0.5.0 | Separate directories for the cache and for generated data |
-| ADR-038 | HSG Poland-wide cache | A Poland-wide HSG cache: no need to download it per area |
+| ADR-037 | Separation of cache and data + Kartograf v0.5.0 | Separate directories for the cache and for generated data; the cache of the downloads is the Kartograf store `cache/kartograf/` since ADR-061 |
+| ADR-038 | HSG Poland-wide cache | A Poland-wide HSG cache: no need to download it per area; the raster is a version of the Kartograf store (`hsg/`) since ADR-061 |
 | ADR-040 | Vector boundary file support | GPKG/GeoJSON/SHP as area boundaries (instead of a bbox only) |
 | ADR-041 | Monotonic stream smoothing | Keep the elevation monotonic after the stream lines are smoothed |
 | ADR-042 | delineate-watershed performance optimisation | Cascaded merge threshold, batched ST_Union, graph cache |
 | ADR-044 | BDOT10k stream matching | Match the DEM streams to the BDOT10k reference streams (is_real_stream) |
-| ADR-045 | WFS PRG instead of WMS grid sampling | TERYT discovery from the WFS PRG: faster and more accurate than the WMS grid |
+| ADR-045 | WFS PRG instead of WMS grid sampling | TERYT discovery from the WFS PRG: faster and more accurate than the WMS grid; replaced by Kartograf, which finds the counties of an area itself (ADR-061) |
 | ADR-046 | upstream_area_km2 in trace_main_channel | Branch selection by upstream_area_km2 instead of Strahler order |
 | ADR-047 | Chaikin smoothing of streams in preprocessing | Smooth the stream geometry during preprocessing |
 | ADR-048 | Flow path from the watershed divide | Longest flow path + divide flow path as morphometric parameters |
 | ADR-049 | DEM auto-discovery with a fallback chain | Find the DEM file automatically (VRT → mosaic → single TIFF) |
 | ADR-050 | Unified delineate-watershed endpoint | One endpoint with the modes precomputed (BFS) and precise (pyflwdir on the fly) |
 | ADR-051 | Storm-sewer network integration | Inlet burning + FA routing through the sewer network in preprocessing |
+| ADR-060 | Pin the Hydrolog and IMGWTools heads by commit | The producers are pinned by the commit of their head until their tags exist (REL-5.3); Kartograf joins them by ADR-061 |
+| ADR-061 | Kartograf data output | The store `cache/kartograf/` for the NMT, BDOT10k and the HSG raster of Poland; plain files for the HSG raster of one analysis |
 
 ---
 
@@ -179,12 +181,12 @@ backend/
 │   ├── __init__.py
 │   ├── bootstrap.py               # Orchestrator: runs the full preprocessing pipeline
 │   ├── process_dem.py             # Thin orchestrator (~700 lines) — NMT processing
-│   ├── prepare_area.py            # bbox and area parameter configuration
-│   ├── download_dem.py            # Downloads the NMT (DEM) from GUGiK (Kartograf 0.7.0): download_sheets() -> NmtDownloadReport / NmtDownloadError
-│   │                              #   MetadataCache: <cache_dir>/kartograf_meta.db (local disk, never a network share)
-│   │                              #   layout: cache/nmt/pl_<system>_<res>_evrf2007/ (+ kampanie/); mosaic from the step 2 list
-│   │                              #   details: docs/integrations/KARTOGRAF.md §6
-│   ├── download_landcover.py      # Downloads land cover (BDOT10k)
+│   ├── prepare_area.py            # Downloads and processes the NMT of one area (point + buffer); its Kartograf store is <output>/kartograf
+│   ├── download_dem.py            # Downloads the NMT (DEM) from GUGiK into the Kartograf store (ADR-061): download_sheets() -> NmtDownloadReport / NmtDownloadError
+│   │                              #   store: <cache_dir>/kartograf/nmt/pl_<system>_<res>_evrf2007/ (a hard-linked standard path, versions/)
+│   │                              #   MetadataCache: <cache_dir>/kartograf_meta.db (local disk, never a network share); mosaic from the step 2 list
+│   │                              #   details: docs/integrations/KARTOGRAF.md §3 and §7
+│   ├── download_landcover.py      # Downloads land cover (BDOT10k per county, CORINE) into the store; merge_hydro_gpkgs()
 │   ├── import_landcover.py        # Imports land cover into PostGIS
 │   ├── preprocess_precipitation.py # Imports precipitation from IMGW
 │   ├── generate_tiles.py          # Generates MVT tiles (streams, catchments, landcover)
@@ -203,6 +205,7 @@ backend/
 │   ├── __init__.py
 │   ├── dem_color.py               # DEM color palette, hillshade blending
 │   ├── geometry.py                # Geometric operations, CRS transforms
+│   ├── kartograf_store.py         # Where Kartograf writes (store, metadata cache), describe_error(), download_bdot10k() (ADR-061)
 │   ├── raster_utils.py            # Raster tools (resample, polygonize)
 │   └── sheet_lookup.py            # NMT sheet lookup, thin wrapper over kartograf.find_sheets_for_bbox (ADR-057)
 │
@@ -1782,14 +1785,15 @@ jobs:
 
 ---
 
-**Document version:** 2.4
+**Document version:** 2.5
 **Date of the last update:** 2026-10-25
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.5 (2026-10-25): Kartograf 0.8.0 (ADR-061): the downloads are versions of the Kartograf store `cache/kartograf/` (a hard-linked standard path, `versions/`, a sidecar per file), not the `cache/nmt/pl_<system>_<res>_evrf2007/` + `kampanie/` layout; `utils/kartograf_store.py`; `download_dem.py` writes into the store; the ADR table names ADR-060 and ADR-061 (details: `docs/integrations/KARTOGRAF.md` §3 and §7)
 - 2.4 (2026-10-25): Hydrolog and IMGWTools are pinned by commit (ADR-060): section 2.4.8 names no version
 - 2.3 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
-- 2.2 (2026-10-08): Kartograf 0.7.0 (stage K) — `download_dem.py`: `download_sheets()` returns `NmtDownloadReport` or raises `NmtDownloadError`; `MetadataCache` in `<cache_dir>/kartograf_meta.db` (local disk, never a network share); layout `cache/nmt/pl_<system>_<res>_evrf2007/` + `kampanie/`; mosaic from the file list of step 2 (details: `docs/integrations/KARTOGRAF.md` §6)
+- 2.2 (2026-10-08): Kartograf 0.7.0 (stage K) — `download_dem.py`: `download_sheets()` returns `NmtDownloadReport` or raises `NmtDownloadError`; `MetadataCache` in `<cache_dir>/kartograf_meta.db` (local disk, never a network share); layout `cache/nmt/pl_<system>_<res>_evrf2007/` + `kampanie/`; mosaic from the file list of step 2 (details: §6 of `docs/integrations/KARTOGRAF.md` version 6.0)
 - 2.1 (2026-09-28): `utils/sheet_finder.py` → `utils/sheet_lookup.py` — data acquisition only through Kartograf (ADR-057), a thin wrapper around `kartograf.find_sheets_for_bbox()` instead of our own reimplementation of the sheet-code arithmetic
 - 2.0 (2026-03-28): Rebuilt sewer topology (ADR-052) — new module sewer_topology.py (parser + validator), explicit topology instead of heuristics, 4 node roles (inlet/outlet/junction/storage), 2 input formats (A/B), two-phase pipeline, download_sewer.py returns a tuple, migration 027 (isolated->storage), admin sewer/config endpoint
 - 1.9 (2026-03-27): Storm-sewer network integration (ADR-051) — sewer_service.py, download_sewer.py, the tables sewer_nodes/sewer_network, 3 admin sewer endpoints, MVT sewer tiles, pipeline steps 3b/4a-4c, is_sewer_augmented in stream_network
