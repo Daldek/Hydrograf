@@ -14,7 +14,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-001](#adr-001-graf-w-bazie-zamiast-rastrow-runtime) | Graph in the database instead of runtime rasters | accepted | 2026-01-14 |
 | [ADR-002](#adr-002-monolityczna-aplikacja-fastapi) | Monolithic FastAPI application | accepted | 2026-01-14 |
 | [ADR-003](#adr-003-leafletjs-zamiast-google-maps) | Leaflet.js instead of Google Maps | accepted | 2026-01-14 |
-| [ADR-004](#adr-004-hietogram-beta-zamiast-blokowego) | Beta hietogram instead of block hietogram | accepted | 2026-01-14 |
+| [ADR-004](#adr-004-hietogram-beta-zamiast-blokowego) | Beta hyetograph instead of block hyetograph | accepted | 2026-01-14 |
 | [ADR-005](#adr-005-docker-compose-dla-deployment) | Docker Compose for deployment | accepted | 2026-01-14 |
 | [ADR-006](#adr-006-copy-zamiast-insert-dla-importu-dem) | COPY instead of INSERT for the DEM import | accepted | 2026-01-20 |
 | [ADR-007](#adr-007-reverse-trace-zamiast-iteracji-po-head-cells) | Reverse trace instead of iterating over head cells | accepted | 2026-01-20 |

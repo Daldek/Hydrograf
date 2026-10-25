@@ -57,13 +57,13 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `core/catchment_graph.py` 60%, `core/raster_io.py` 67%, `api/endpoints/hydrograph.py`
      and `watershed.py` 70%; most of what is missing is PostGIS SQL that only the `db` job
      runs.
-   - **Translations** to English (DEV-2.1, ECO-005). Done: ARCHITECTURE, PRD, SCOPE and the
-     [Unreleased] section of the CHANGELOG (sections as DOC-7.1). Still Polish, most useful
-     first: DECISIONS (the bodies of ADR-001 to ADR-057, kept as records; the index and
-     ADR-058 on are English), DATA_MODEL, `docs/integrations/*`, COMPUTATION_PIPELINE,
-     TECHNICAL_DEBT, BENCHMARK_QUERIES, CROSS_PROJECT_ANALYSIS, BACKLOG,
-     `backend/scripts/README.md`, the released versions of the CHANGELOG (0.4.0 and older,
-     records); QA_REPORT is English.
+   - **Translations** to English (DEV-2.1, ECO-005). Done: ARCHITECTURE, PRD, SCOPE,
+     BACKLOG, TECHNICAL_DEBT and the [Unreleased] section of the CHANGELOG (sections as
+     DOC-7.1). Still Polish, most useful first: DECISIONS (the bodies of ADR-001 to ADR-057,
+     kept as records; the index and ADR-058 on are English), DATA_MODEL,
+     COMPUTATION_PIPELINE, `docs/integrations/*` (they change with the migration of Next 2),
+     BENCHMARK_QUERIES, CROSS_PROJECT_ANALYSIS, `backend/scripts/README.md`, the released
+     versions of the CHANGELOG (0.4.0 and older, records); QA_REPORT is English.
      After the documents: docstrings, comments and log messages of the 23,700 lines of
      Python, and user-facing texts into translation resources (DEV-2.3, DEV-15.2). The 40
      plans of the ignored `notes/superpowers/plans/` move to `docs/plans/` after
