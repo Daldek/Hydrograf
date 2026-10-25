@@ -177,10 +177,15 @@ pythonpath = ["."]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-addopts = "-v --tb=short -m 'not db and not benchmark'"
+# DEV-10.1: the default run leaves out `live` and, because there is no database on a
+# development machine, `db`; `benchmark` is the project's own marker for the timing
+# tests of tests/performance.
+addopts = "--strict-markers --tb=short -m 'not live and not db and not benchmark'"
 markers = [
-    "db: tests requiring PostGIS database",
-    "benchmark: performance benchmark tests",
+    "live: real network services",
+    "db: needs a PostGIS database",
+    "slow: more than ~10 s or Docker",
+    "benchmark: timing measurements of tests/performance",
 ]
 
 [tool.coverage.run]
@@ -193,6 +198,10 @@ omit = [
 ]
 
 [tool.coverage.report]
+# DEV-7.5 deviation (CLAUDE.md): 73% of the statements of api, core, models and utils are
+# covered without a database; the rest runs only against PostGIS. Raise the floor toward
+# 80 as tests land; never lower it.
+fail_under = 70
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
