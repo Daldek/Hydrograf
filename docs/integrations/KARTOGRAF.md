@@ -1,316 +1,383 @@
-# Integracja z Kartografem
+# Kartograf integration
 
-**Wersja:** 6.0
-**Data:** 2026-10-08
-**Status:** Aktywna
-
----
-
-## 1. Przegląd
-
-Hydrograf wykorzystuje [Kartograf](https://github.com/Daldek/Kartograf) (v0.7.0) do automatycznego pobierania danych przestrzennych z polskich i europejskich zasobów:
-
-- **NMT** - Numeryczny Model Terenu z GUGiK
-- **NMPT** - Numeryczny Model Pokrycia Terenu z GUGiK
-- **Ortofotomapa** - Ortofotomapy z GUGiK
-- **BDOT10k** - Dane z GUGiK
-- **CORINE** - Europejska klasyfikacja pokrycia terenu z Copernicus (44 klasy)
-- **SoilGrids HSG** - Grupy hydrologiczne gleby (przez HSGCalculator)
-
-### 1.1 Co to jest Kartograf?
-
-Kartograf to narzędzie Python do:
-- **Parsowania godeł** arkuszy map topograficznych (układ 1992 i 2000)
-- **Pobierania danych NMT/NMPT** z GUGiK przez OpenData/WCS API
-- **Pobierania ortofotomap** z GUGiK (nowy w v0.4.0)
-- **Pobierania danych o pokryciu terenu** z BDOT10k i CORINE
-- **Obliczania HSG** z SoilGrids (HSGCalculator)
-- **Zarządzania hierarchią arkuszy** (od 1:1M do 1:10k)
-- **Auto-ekspansji godeł** — automatyczne rozwijanie godeł grubszych skal do arkuszy 1:10000
-- **Filtrowania po geometrii** — ograniczanie danych do zadanego zasięgu
-- **Pobierania BDOT10k**
-- **Batch download** z retry logic i progress tracking
-
-### 1.2 Dlaczego integracja?
-
-| Problem | Rozwiązanie |
-|---------|-------------|
-| Ręczne pobieranie NMT z Geoportalu | Automatyczne pobieranie przez Kartograf |
-| Użytkownik musi znać godła arkuszy | Konwersja współrzędnych -> godło |
-| Wiele arkuszy dla dużych zlewni | Automatyczne pobieranie sąsiednich arkuszy |
-| Brak spójności formatów | Jednolity format AAIGrid (.asc) / GeoPackage (.gpkg) |
-| Brak danych CN dla hydrogramów | Automatyczne pobieranie BDOT10k z wartościami CN |
-| Brak danych HSG | HSGCalculator z SoilGrids |
-| Budynki zaburzają kierunki spływu | Building raising +5m z BUBD (ADR-033) |
+**Version:** 7.0
+**Date:** 2026-10-25
+**Status:** Active (Kartograf 0.8.0.dev0, head `45dedf4`; ADR-061)
 
 ---
 
-## 2. Architektura Integracji
+## 1. Overview
+
+Hydrograf uses [Kartograf](https://github.com/Daldek/Kartograf) to download spatial data from
+Polish and European sources and to do the arithmetic of the map sheet codes (*godła*). Kartograf
+is a library dependency used through its public API. It is pinned by the commit of the head of its
+`feature/data-output` branch (0.8.0.dev0, `45dedf4`), with the range `>=0.8.0.dev0,<0.9`, until the
+0.8.0 tag exists; the release pull request replaces the commit with the tag (REL-5.3, REL-5.6,
+ADR-060, ADR-061).
+
+What Hydrograf takes from it:
+
+| Data | Source | Used by |
+|---|---|---|
+| NMT (DEM), 5 m (or 1 m), EVRF2007, ESRI ASCII Grid | GUGiK OpenData | bootstrap step 2, `download_dem`, `prepare_area`, `analyze_watershed --download` |
+| BDOT10k: one GeoPackage package per county (*powiat*), every layer | GUGiK | bootstrap steps 3 and 4, `download_landcover`, `prepare_area`, the CN calculation |
+| HSG raster (hydrologic soil groups): Kartograf classifies the USDA texture of the SoilGrids clay, sand and silt rasters at 0-5 cm | ISRIC SoilGrids | bootstrap step 5, the CN calculation |
+| CORINE Land Cover (raster, 44 classes) | Copernicus | only `download_landcover --provider corine`; nothing in the pipeline reads it |
+| Sheet codes and their frames | the PL-1992 sheet system | `utils/sheet_lookup.py`, bootstrap, `download_dem` |
+
+### 1.1 What Kartograf does
+
+- Parses map sheet codes of the 1992 and 2000 systems and finds the sheets that cover a bbox or a
+  geometry file (`SheetParser`, `find_sheets_for_bbox`, `find_sheets_for_geometry`).
+- Downloads the NMT and NMPT from GUGiK OpenData by sheet code, with the choice of the flight
+  (campaign), and orthophotos; expands a coarse sheet code into the 1:10000 sheets (in Kartograf's
+  labels) it consists of.
+- Downloads land cover: BDOT10k per county and CORINE.
+- Downloads SoilGrids and computes the HSG raster (`download_landcover`, `calculate_hsg`,
+  `hsg_statistics`).
+- Writes everything either into a **store** (versions, a marker, a sidecar per file, hard-linked
+  standard paths) or as **plain files** into a directory, the two targets of the data output
+  convention (ECO-051, DEV §19).
+- Retries transport failures, caches the answers of the GUGiK sheet index in a SQLite metadata cache
+  and reports every failure as a `KartografError` with a code of the Nogat error registry and a hint.
+
+Hydrograf does not call the NMPT, the orthophoto or the WCS download by bbox (`download_bbox`,
+see §7.4).
+
+### 1.2 Why the integration
+
+| Problem | Solution |
+|---|---|
+| Manual download of the NMT from Geoportal | Automatic download by Kartograf |
+| The user has to know the sheet codes | Coordinates (point + buffer, bbox, boundary file) to sheet codes |
+| Many sheets for a large watershed | The neighbouring sheets are downloaded together |
+| Inconsistent formats | One format: AAIGrid (`.asc`) for the DEM, GeoPackage for BDOT10k |
+| No CN data for hydrographs | BDOT10k land cover and SoilGrids HSG |
+| A re-run downloads everything again | A store: a local version is used without a request |
+| Buildings disturb the flow directions | Building raising (ADR-033, §13) |
+
+---
+
+## 2. Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         PRZEPŁYW DANYCH                             │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Użytkownik / Panel Admin                                           │
-│      │                                                              │
-│      │ (bbox WGS84 / sheets / --dry-run)                            │
-│      ▼                                                              │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │                    bootstrap.py                             │    │
-│  │  (Orchestrator: 10 kroków, subprocess, SSE streaming)       │    │
-│  └─────────────────┬───────────────────────────────────────────┘    │
-│                    │                                                │
-│      ┌─────────────┼─────────────┬─────────────┐                    │
-│      │             │             │             │                    │
-│      ▼             ▼             ▼             ▼                    │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐            │
-│  │download  │ │download  │ │ HSG      │ │ BDOT10k      │            │
-│  │_dem.py   │ │_landcover│ │ (Soil-   │ │ BUBD         │            │
-│  │          │ │.py       │ │ Grids)   │ │ (budynki)    │            │
-│  │Kartograf │ │Kartograf │ │Kartograf │ │Kartograf     │            │
-│  │GugikProv.│ │LandCover │ │HSGCalc.  │ │Bdot10kProv.  │            │
-│  │Download  │ │Manager   │ │          │ │              │            │
-│  │Manager   │ │          │ │          │ │              │            │
-│  └────┬─────┘ └─────┬────┘ └────┬─────┘ └───────┬──────┘            │
-│       │             │            │              │                   │
-│       │ .asc files  │ .gpkg      │ .tif (HSG)   │ .gpkg (BUBD)      │
-│       └──────┬──────┴────────────┴──────────────┘                   │
-│              │                                                      │
-│              ▼                                                      │
-│      ┌──────────────────┐                                           │
-│      │  process_dem.py  │                                           │
-│      │                  │                                           │
-│      │  VRT mosaic ->   │                                           │
-│      │  building raise  │                                           │
-│      │  stream burn ->  │                                           │
-│      │  pyflwdir ->     │                                           │
-│      │  stream_network  │                                           │
-│      │  + catchments    │                                           │
-│      └────────┬─────────┘                                           │
-│               │                                                     │
-│               ▼                                                     │
-│      ┌───────────────────┐                                          │
-│      │   PostgreSQL      │                                          │
-│      │   + PostGIS       │                                          │
-│      │                   │                                          │
-│      │  stream_network   │                                          │
-│      │  stream_catchments│                                          │
-│      │  land_cover       │                                          │
-│      │  soil_hsg         │                                          │
-│      │  depressions      │                                          │
-│      └───────────────────┘                                          │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+operator / admin panel
+    │  bbox (WGS84), sheet codes or a boundary file
+    ▼
+scripts/bootstrap.py   (10 steps; steps 2-5 use Kartograf)
+    │
+    ├─ step 2  scripts/download_dem.py ........ GugikProvider + DownloadManager(provider, root=)
+    ├─ step 3  utils/kartograf_store.py ....... download_landcover(product="bdot10k", root=)
+    │          (the hydro layers of the counties of the mosaic, for stream burning)
+    ├─ step 4  utils/kartograf_store.py ....... the same packages, imported into land_cover
+    └─ step 5  calculate_hsg(root=, bbox=Poland, depth="0-5cm")
+                          │
+                          ▼
+        Kartograf store  <cache_dir>/kartograf/            metadata cache  <cache_dir>/kartograf_meta.db
+          nmt/  landcover/  hsg/  soil/
+                          │
+    step 3: VRT mosaic of the sheet paths of step 2 ──► process_dem.py ──► PostGIS
+            (stream_network, stream_catchments)
+    step 4: import_landcover.py (county packages) ──► land_cover
+    step 5: clip + warp + polygonize the HSG raster ──► soil_hsg
+
+core/cn_calculator.py (CN on demand, `analyze_watershed`):
+    calculate_hsg(output_dir=<temporary directory>)  ──► a plain file, nothing stays
+    download_landcover(...)                          ──► the store, the same packages as bootstrap
 ```
 
 ---
 
-## 3. Komponenty
+## 3. The store of the pipeline
 
-### 3.1 `utils/sheet_lookup.py`
+### 3.1 Two targets (ADR-061)
 
-Moduł do konwersji punktu + bufora na godła arkuszy map. Od ADR-057 (sesja
-2026-09-28) Hydrograf **nie reimplementuje** matematyki godeł — `sheet_lookup.py`
-jest cienkim wrapperem delegującym do `kartograf.find_sheets_for_bbox()`
-(WGS84 -> EPSG:2180 przez `transform_wgs84_to_pl1992()`, budowa `kartograf.BBox`,
-wywołanie Kartografa). Zastąpił usunięty `utils/sheet_finder.py` (~616 linii
-własnej logiki godło↔współrzędne), który dzielił arkusz 1:25000 na 1:10000
-siatką 2×4 zamiast zagnieżdżonego 2×2 wg GUGiK — dawało to błędne godła bez
-pokrycia wspólnego z poprawnym wynikiem Kartografa dla tego samego punktu
-i bufora. Szczegóły: ADR-057.
+Kartograf writes either into a store (`root`) or as plain files (`output_dir`); a call that names
+neither would write the default store in the data directory of the user, so **every script of
+Hydrograf passes `root=` or `output_dir=` and `cache=` explicitly** and none relies on
+`KARTOGRAF_ROOT` or on the default store. The decision per call site:
 
-**Funkcje:**
+| Call site | Target | Reason |
+|---|---|---|
+| NMT sheets (`download_dem.download_sheets`: bootstrap step 2, `analyze_watershed --download`, `prepare_area`, the `download_dem` script) | store, `DownloadManager(provider, root=)` | a re-run skips the local sheets; the newest flight is used also when it is partial (border and coast sheets); the standard path is stable |
+| BDOT10k packages (bootstrap steps 3 and 4, `prepare_area`, the land cover of the CN calculation, the `download_landcover` script) | store, `download_landcover(product="bdot10k", root=)` | a county is 100 MB or more and is reused by the pipeline and by the CN calculation |
+| HSG raster of Poland (bootstrap step 5) | store, `calculate_hsg(root=, bbox=, depth="0-5cm")` | fetched once, `reused` after |
+| HSG raster of one analysis (`get_hsg_from_soilgrids`) | plain files, `calculate_hsg(output_dir=<temporary directory>, cache=False)` | used once; the inputs go to Kartograf's staging directory and nothing stays |
+| `prepare_area` | its own store `<output>/kartograf` | a stand-alone script with a working directory |
 
-| Funkcja | Opis |
-|---------|------|
-| `sheets_for_point_buffer(lat, lon, buffer_km, scale="1:10000")` | Punkt + bufor -> posortowana lista godeł (deleguje do `kartograf.find_sheets_for_bbox()`) |
+The store of the pipeline is `<cache_dir>/kartograf` (`paths.cache_dir`, default `cache/`;
+`bootstrap --cache-dir`). It is a directory of its own: Kartograf refuses a root that holds other
+files (`conflict`, reason `not_empty`) and a root that has the layout of a store and no marker
+(`store_unavailable`, hint `kartograf store init --root DIR`). A new or empty directory becomes a
+store: Kartograf writes the marker on the first write.
 
-**Przykład:**
+A plain directory would leave out a sheet that has no full flight, would take an older full flight
+for a sheet whose newest flight is partial, and would refuse a second run (`conflict`,
+`output_exists`); that is why the NMT and the BDOT10k go to the store (ADR-061).
+
+### 3.2 Layout
+
+Measured on the pinned Kartograf with the offline stubs of the tests:
+
+```
+<cache_dir>/kartograf/
+├── kartograf-store.json                       marker: schema kartograf-store/1, tool, created_at, producer_version
+├── nmt/pl_1992_5m_evrf2007/
+│   ├── N-34/131/C/c/2/1/N-34-131-C-c-2-1.asc            standard path: a hard link to the newest flight
+│   ├── N-34/131/C/c/2/1/N-34-131-C-c-2-1.asc.meta.json  its sidecar
+│   ├── full_sheet/N-34/131/C/c/2/1/…                    link to the newest FULL flight (absent without one)
+│   └── versions/N-34/131/C/c/2/1/2022-05-10_83233_0a7ed810/N-34-131-C-c-2-1.asc  (+ .meta.json)
+├── landcover/pl_bdot10k_gpkg/
+│   ├── teryt/1465.gpkg                                  the package of a county (+ .meta.json)
+│   └── versions/teryt/2026-10-25_c7dda0dc/1465.gpkg     (+ .meta.json)
+├── hsg/global_soilgrids_0-5cm_mean/
+│   ├── bbox/<minx>_<miny>_<maxx>_<maxy>.tif             the HSG raster of a bbox (+ .meta.json)
+│   └── versions/bbox/2.0_c12e8726/…
+└── soil/global_soilgrids_{clay,sand,silt}_0-5cm_mean/   the SoilGrids inputs of the HSG raster
+    └── bbox/…  and  versions/bbox/…
+<cache_dir>/kartograf_meta.db  (+ -wal, -shm)  the metadata cache, beside the store
+```
+
+`nmt/pl_<system>_<resolution>_evrf2007/<hierarchy>/<sheet>.asc`: the hierarchy is the sheet code
+split at the dashes without the last component (`N-34-131-C-c-2-1` is
+`N-34/131/C/c/2/1/N-34-131-C-c-2-1.asc`). The 1 m DEM is `pl_1992_1m_evrf2007`. The last directory
+of the hierarchy is the sheet of Kartograf's label `1:10000`, which is officially 1:5000 (§6).
+
+### 3.3 Versions and sidecars
+
+Every file is a **version** under `versions/` with a sidecar `<file>.meta.json` (schema
+`kartograf-meta/1`); the standard path and the `full_sheet/` link are hard links to it, so the names
+of one flight share one inode. The sidecar holds, among others: `dataset`
+(`pl.gugik.nmt_5m`, `pl.gugik.bdot10k`, `global.isric.soilgrids`), `provider`, `horizontal_crs`,
+`request`, `license`, `downloaded_at`, `kartograf_version`, `sha256`, `size_bytes` and `extra`:
+
+- NMT: `extra.source` (the OpenData URL, the index layer, `acquisition_date`, `full_sheet`, ...),
+  `extra.campaign` (`id`, `date`), `extra.version.label` (`<date>_<campaign>`), `extra.link`
+  (`hardlink`) and `extra.link_target`.
+- BDOT10k: `extra.source` (URL, `teryt`, `format`), `extra.http` and `extra.version.label`, which is
+  the download date (BDOT10k publishes no version of its data).
+- HSG: `extra.derived == "hsg"`, `depth`, `stat`, `classes` (`1=A, 2=B, 3=C, 4=D`), the
+  `source_files` with their `sha256` and `extra.version.label` (the SoilGrids edition).
+
+A version is written once; a second run answers `local` and transfers nothing, `update="force"`
+(`--no-skip-existing`) fetches again and answers `unchanged` when the content is the same or writes a
+new version. Hydrograf uses no other update mode: it does not fetch newer flights
+(`update="upgrade"`).
+
+**A store needs hard links.** The cache directory cannot be on FAT, exFAT or SMB. Copy the tree only
+with the hard links preserved (`rsync -aH`, `cp -a`): a copy without them splits a standard path and
+its version into independent files, which doubles the space.
+
+### 3.4 Metadata cache
+
+`<cache_dir>/kartograf_meta.db` (SQLite WAL) keeps the answers of the GUGiK sheet index and of the
+county register, with a TTL of 7 days (the default of `MetadataCache`). It must be on a local disk,
+never on a network share, and it stays **beside** the store, not in it: the store would refuse a
+foreign file. The directory must exist: `download_dem` does not create it and raises
+`NmtDownloadError` before any download (`open_metadata_cache` in `utils/kartograf_store.py` creates
+it). A cache that SQLite disables (`on_disabled`) is an error of the NMT download, not a silent
+degradation.
+
+### 3.5 Cleaning
+
+`python -m scripts.clean --include-cache` (and the `cache` target of the admin panel) removes the
+large products of the store that Kartograf fetches again, `nmt/` and `landcover/`, with
+`kartograf_meta.db*`, and keeps `hsg/`, `soil/` and the marker (small, Poland-wide, reusable), so
+what is left is still a valid store. It also removes the directories of the 0.7.0 layout (§3.6).
+
+### 3.6 No migration from the 0.7.0 layout
+
+Kartograf 0.7.0 wrote `cache/nmt/pl_<system>_<res>_evrf2007/` (+ `kampanie/`),
+`cache/bdot10k/bdot10k_teryt_<code>.gpkg` and `cache/soil_hsg/hsg_poland.tif`. The heads are
+unreleased and there is no data migration: Hydrograf does not read these directories, the first run
+downloads into `cache/kartograf/`, and the cache clean removes the old directories whole (ADR-061,
+erratum of 2026-10-25). Data of the 0.6.1 layout (`nmt_1m/`, `nmt_5m/`) was not reusable even in
+0.7.0.
+
+---
+
+## 4. Components
+
+### 4.1 `utils/kartograf_store.py`
+
+Where Kartograf writes and how its answers are read. It builds paths without importing Kartograf, so
+a script that needs only a path does not load it.
+
+| Name | Meaning |
+|---|---|
+| `store_dir(cache_dir)` | `<cache_dir>/kartograf` |
+| `metadata_cache_path(cache_dir)` | `<cache_dir>/kartograf_meta.db` |
+| `open_metadata_cache(cache_dir)` | opens the `MetadataCache` (creates the directory; logs when SQLite disables it) |
+| `SHEET_SYSTEM = "1992"` | the sheet grid of Hydrograf, PL-1992 (EPSG:2180); the find functions of Kartograf require it |
+| `HSG_DEPTH = "0-5cm"` | the depth of the SoilGrids layers of the HSG |
+| `describe_error(error)` | the text of a failure for a log line: `<message> [<code>] <hint>` for a `KartografError` |
+| `download_bdot10k(cache_dir, teryt=, bbox=)` | the packages of one county or of every county that a bbox intersects, as `{teryt: path}`; a failed county is logged and left out; an area without counties gives `{}` |
+
+### 4.2 `utils/sheet_lookup.py`
+
+Converts a point and a buffer into sheet codes. Since ADR-057 Hydrograf does not reimplement the
+sheet arithmetic: the module is a thin wrapper over `kartograf.find_sheets_for_bbox()` (WGS84 to
+EPSG:2180 with `transform_wgs84_to_pl1992()`, a `kartograf.BBox`, the call). It replaced the removed
+`utils/sheet_finder.py`, which split a 1:25000 sheet into 1:10000 sheets with a 2 x 4 grid instead of
+the nested 2 x 2 of GUGiK and returned wrong codes.
+
+| Function | Meaning |
+|---|---|
+| `point_buffer_bbox(lat, lon, buffer_km)` | the square of `buffer_km` around the point, as a `BBox` in EPSG:2180; the land cover downloads use it too |
+| `sheets_for_point_buffer(lat, lon, buffer_km, scale="1:10000")` | the sorted sheet codes that cover the square |
 
 ```python
 from utils.sheet_lookup import sheets_for_point_buffer
 
-# Arkusze dla obszaru 5km wokół punktu
 sheets = sheets_for_point_buffer(52.23, 21.01, buffer_km=5)
 # -> ["N-34-131-C-c-1-4", "N-34-131-C-c-2-1", "N-34-131-C-c-2-2", ...]
 ```
 
-### 3.2 `scripts/download_dem.py`
+### 4.3 `scripts/download_dem.py`
 
-Skrypt do pobierania danych NMT z GUGiK.
-
-**Użycie:**
-
-```bash
-# Pobieranie dla punktu z buforem
-python -m scripts.download_dem \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5 \
-    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
-
-# Pobieranie konkretnych arkuszy
-python -m scripts.download_dem \
-    --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \
-    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
-
-# Pobieranie arkuszy pokrywających plik geometrii
-python -m scripts.download_dem \
-    --geometry ../data/boundary.gpkg \
-    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
-```
-
-**Parametry:**
-
-| Parametr | Opis | Domyślnie |
-|----------|------|-----------|
-| `--lat`, `--lon` | Współrzędne centrum (WGS84) | - |
-| `--buffer` | Promień bufora [km] | 5 |
-| `--sheets` | Lista godeł do pobrania | - |
-| `--geometry` | Plik geometrii (SHP/GPKG) do selekcji arkuszy | - |
-| `--layer` | Nazwa warstwy w pliku GPKG | pierwsza warstwa |
-| `--output`, `-o` | Korzeń danych Kartografa | `../cache/` |
-| `--metadata-cache` | Plik SQLite cache metadanych (dysk lokalny) | wymagany |
-| `--scale` | Skala arkuszy (`1:10000`, `1:25000`, `1:50000`, `1:100000` — etykiety Kartografa, patrz §5.1) | 1:10000 |
-| `--no-skip-existing` | Pobierz ponownie mimo istniejącego pliku | wyłączone |
-| `--dry-run` | Pokaż plan bez pobierania | wyłączone |
-
-Format pliku wyjściowego jest zawsze ASC (ESRI ASCII Grid, OpenData GUGiK) — nie ma parametru `--format`, skrypt zawsze loguje `Format: ASC (OpenData)`.
-
-**Klasy Kartografa:**
-```python
-from kartograf import DownloadManager, GugikProvider
-from kartograf import find_sheets_for_geometry  # selekcja po geometrii
-```
-
-### 3.3 `scripts/download_landcover.py`
-
-Skrypt do pobierania danych pokrycia terenu.
-
-**Użycie:**
+Downloads the NMT into the store. `download_sheets(sheets, root, metadata_cache_path,
+skip_existing=True, resolution="5m")` builds `GugikProvider(vertical_crs="EVRF2007",
+resolution=..., cache=...)` and `DownloadManager(provider, root=root)`, calls
+`download_sheets(sheets, update=None | "force")` and returns an `NmtDownloadReport`: `paths` (the
+standard path of each sheet, new or already local), `no_coverage` and `unverified`.
+`download_for_point` and `download_for_geometry` find the sheets first.
 
 ```bash
-# BDOT10k dla punktu z buforem (v0.5.0: pobiera wszystkie 15 warstw)
-python -m scripts.download_landcover \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5
-
-# BDOT10k po kodzie TERYT (powiat)
-python -m scripts.download_landcover \
-    --teryt 1465
-
-# CORINE Land Cover
-python -m scripts.download_landcover \
-    --lat 52.23 --lon 21.01 \
-    --provider corine \
-    --year 2018
+cd backend
+python -m scripts.download_dem --lat 52.23 --lon 21.01 --buffer 5 \
+    --root ../cache/kartograf --metadata-cache ../cache/kartograf_meta.db
+python -m scripts.download_dem --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2 \
+    --root ../cache/kartograf --metadata-cache ../cache/kartograf_meta.db
+python -m scripts.download_dem --geometry ../data/boundary.gpkg \
+    --root ../cache/kartograf --metadata-cache ../cache/kartograf_meta.db
 ```
 
-**Klasy Kartografa:**
-```python
-from kartograf.landcover import LandCoverManager  # (lub from kartograf import LandCoverManager — re-export)
-from kartograf import Bdot10kProvider
-from kartograf import BBox  # (lub from kartograf.core.geometry import BBox)
-```
+| Option | Meaning | Default |
+|---|---|---|
+| `--lat`, `--lon`, `--buffer` | the centre (WGS84) and the buffer radius in km | buffer 5 |
+| `--sheets` | sheet codes to download | - |
+| `--geometry`, `--layer` | an SHP/GPKG file to select the sheets, and a GPKG layer | first layer |
+| `--root` | the Kartograf store | `../cache/kartograf` |
+| `--metadata-cache` | the SQLite metadata cache (local disk, outside `--root`) | required to download |
+| `--scale` | the sheet scale in Kartograf's labels (`1:10000`, `1:25000`, `1:50000`, `1:100000`, §6) | `1:10000` |
+| `--no-skip-existing` | fetch again although a version is local | off |
+| `--dry-run` | show the plan, download nothing | off |
 
-**Funkcja `discover_teryts_for_bbox()`** — automatyczne wykrywanie kodów TERYT powiatów w zadanym bounding boxie. Domyślnie wysyła pojedyncze zapytanie WFS GetFeature do PRG GUGiK (`A02_Granice_powiatow`, pole `JPT_KOD_JE`), żądając wyłącznie atrybutów (bez geometrii) dla szybkości. Jeśli WFS jest niedostępny (błąd sieci lub 0 wyników), fallback na starszą metodę `_discover_teryts_grid()`: próbkowanie punktów siatką o kroku `spacing_m=2000` (co ~2 km, liczba punktów zależy od rozmiaru bboxa — generowana przez `_generate_sample_coords()`) i odpytanie każdego przez `Bdot10kProvider._get_teryt_for_point()`. To **nie** jest stała siatka 25×25 — to podejście pochodzi jeszcze sprzed ADR-045. Ponieważ `_get_teryt_for_point()` jest prywatną metodą Kartografa (brak publicznej alternatywy także w 0.7.0; moduł `kartograf.providers.pl.bdot10k`), `_discover_teryts_grid()` zaczyna od jawnego guardu (`callable(getattr(Bdot10kProvider, "_get_teryt_for_point", None))`, podnosi `RuntimeError` gdy API zniknie) pilnowanego przez test kontraktowy w `test_download_landcover.py`. Parsowanie odpowiedzi GML w `_parse_teryts_from_gml()`. Szczegóły decyzji: ADR-045.
+The format is always ASC (ESRI ASCII Grid, OpenData); there is no `--format`.
 
-### 3.4 `scripts/bootstrap.py`
+### 4.4 `scripts/download_landcover.py`
 
-One-command orchestrator do pełnego preprocessingu.
-
-**Użycie Kartografa:**
-
-```python
-from kartograf import SheetParser       # parsowanie godeł -> BBox
-from kartograf import HSGCalculator     # obliczanie HSG z SoilGrids
-from kartograf import BBox              # obiekt bounding box (lub from kartograf.core.geometry import BBox)
-```
-
-**Kroki z Kartografem:**
-1. `SheetParser(godlo).get_bbox()` — obliczenie bbox z godeł
-2. `download_dem.py` — pobieranie NMT (GugikProvider + DownloadManager)
-3. `download_landcover.py` — pobieranie BDOT10k (LandCoverManager)
-4. `HSGCalculator().calculate_hsg_by_bbox()` — pobieranie HSG z SoilGrids
-5. Krok 3 buduje VRT dokładnie z listy ścieżek zwróconej przez krok 2 (bez skanowania cache — kopie w `kampanie/` i inne rozdzielczości nie trafiają do mozaiki).
-
-Krok 5: `hsg_poland.tif` jest reużywany tylko, gdy jego sidecar `.meta.json` ma `extra.derived == "hsg"` i `kartograf_version` równe zainstalowanej wersji; inaczej krok 5 kończy się błędem z instrukcją usunięcia pliku (progi USDA zmienione w 0.7.0). Błąd kroku 5 (także nieaktualny `hsg_poland.tif` lub uszkodzony sidecar) jest zapisywany jako krok nieudany (✗), ale bootstrap kontynuuje i kończy się kodem 0, jeśli kroki 1–3 się powiodły (zachowanie związane z oczekującą decyzją D5; fallback HSG "B" przy braku danych SoilGrids bez zmian — backlog).
-
-### 3.5 `scripts/prepare_area.py`
-
-Pipeline łączący pobieranie i przetwarzanie.
-
-**Użycie:**
+`fetch_landcover(root, provider="bdot10k", teryt=, godlo=, lat=, lon=, buffer_km=, year=2018,
+skip_existing=True, metadata_cache_path=)` calls `kartograf.download_landcover(product=..., root=...)`
+with a `teryt`, a `sheet` or the `bbox` of the square around a point, and returns a
+`LandCoverReport` (`files`, `failed`, `ok`). A bbox gets every county it intersects; the file of a
+county is `landcover/pl_bdot10k_gpkg/teryt/<teryt>.gpkg`. `merge_hydro_gpkgs()` merges the hydro
+layers of several packages (§12).
 
 ```bash
-# Pełny pipeline
-python -m scripts.prepare_area \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5
-
-# Z land cover
-python -m scripts.prepare_area \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5 \
-    --with-landcover
-
-# Z danymi hydro
-python -m scripts.prepare_area \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5 \
-    --with-hydro
+python -m scripts.download_landcover --lat 52.23 --lon 21.01 --buffer 5 --root ../cache/kartograf
+python -m scripts.download_landcover --teryt 1465 --root ../cache/kartograf
+python -m scripts.download_landcover --lat 52.23 --lon 21.01 --provider corine --year 2018
 ```
 
-**Klasa Kartografa:**
-```python
-from kartograf import SheetParser
-```
+| Option | Meaning | Default |
+|---|---|---|
+| `--teryt` / `--godlo` / `--lat` + `--lon` | the area: a 4-digit county code, a sheet code or a point | one is required |
+| `--buffer` | the buffer radius in km | 5 |
+| `--provider`, `-p` | `bdot10k` or `corine` | `bdot10k` |
+| `--year` | the CORINE reference year (1990, 2000, 2006, 2012, 2018) | 2018 |
+| `--root` | the Kartograf store | `../cache/kartograf` |
+| `--metadata-cache` | the SQLite metadata cache | none |
+| `--no-skip-existing` | fetch again although a version is local | off |
+| `--dry-run` | show the plan, download nothing | off |
 
-### 3.6 `core/cn_calculator.py`
+The exit code is 1 when the download failed or a county failed.
 
-Kalkulator CN z wykorzystaniem danych z Kartografa.
+### 4.5 `scripts/bootstrap.py`
 
-**Klasy Kartografa:**
-```python
-from kartograf import BBox, LandCoverManager  # (lub kartograf.core.geometry.BBox / kartograf.landcover.LandCoverManager)
-from kartograf.hydrology import HSGCalculator
-```
+The orchestrator of the whole preprocessing (10 steps: infrastructure, NMT, DEM processing, land
+cover, HSG, precipitation, depressions, MVT tiles, overlays, server). Steps 1-3 are critical, steps
+4-10 are optional and the pipeline continues when one fails.
 
-**Funkcje:**
-- `check_kartograf_available()` — weryfikacja dostępności Kartografa
-- `convert_boundary_to_bbox()` — konwersja granicy WGS84 -> BBox EPSG:2180
-- `get_hsg_from_soilgrids(bbox)` — HSG z SoilGrids przez HSGCalculator
-- `get_land_cover_stats(bbox, data_dir)` — pokrycie terenu z LandCoverManager
-- `calculate_cn_from_kartograf(boundary, data_dir)` — pełne obliczenie CN
+| Step | Kartograf | On failure |
+|---|---|---|
+| area | `SheetParser(code).get_bbox()` for `--sheets`; `find_sheets_for_bbox(bbox, scale, sheet_system="1992")` for `--bbox`; `find_sheets_for_geometry` for an SHP/GPKG `--boundary-file`, the bbox of the geometry for other formats | an invalid bbox or sheet code is a CLI error (exit 2) |
+| 2 NMT | `download_sheets(sheets, <cache>/kartograf, <cache>/kartograf_meta.db, resolution=--resolution)` | the step fails, the exit code is 1 |
+| 3 DEM | the VRT mosaic is built **from the paths that step 2 returned** (never from a directory scan: the store keeps every version under `versions/`); then `download_bdot10k` for the extent of the mosaic and `merge_hydro_gpkgs` for stream burning | a failed hydro download only logs a warning: no burning |
+| 4 land cover | `download_bdot10k(cache_dir, bbox=mosaic)`: the packages that step 3 stored are local and are not requested again; each is imported by `import_landcover` | the step fails, `describe_error` gives the code and the hint; the pipeline continues |
+| 5 HSG | `calculate_hsg(root=, bbox=<Poland>, depth="0-5cm", cache=)`: the raster of Poland is a version of the store; then clip to the mosaic, warp to EPSG:2180 at 250 m, nearest-neighbour fill, polygonize and import into `soil_hsg` (a DELETE limited to the bbox first) | a `KartografError` ends the step as "skipped" with its code; any other error fails it; the pipeline continues |
 
-### 3.7 `utils/raster_utils.py`
+The exit code is 1 only when one of steps 1-3 failed. Whether a failed step 5 should stop the
+bootstrap and whether the HSG fallback "B" is right are open (PROGRESS, Open questions 3).
 
-Narzędzia rastrowe.
+### 4.6 `scripts/prepare_area.py`
 
-`normalize_crs()` + `create_vrt_mosaic()` — reprojekcja PUWG 2000 i VRT. `discover_asc_files()` usunięta w etapie K (Kartograf 0.7.0) — lista arkuszy pochodzi z `download_sheets()`. Uwaga: `normalize_crs()` dopisuje `<godło>.prj` obok ścieżki standardowej w drzewie Kartografa.
+A pipeline for one area (point + buffer): NMT download, VRT mosaic, optional BDOT10k hydro for burning
+(`--with-hydro`), `process_dem`, optional land cover (`--with-landcover`). Its store is
+`<output>/kartograf` with `--output` defaulting to `../data/nmt` (a temporary directory with
+`--no-keep-downloads`), and its metadata cache is `<output>/kartograf_meta.db`. It uses `SheetParser`
+and `BBox` to get the bbox of the sheets. There is no `--landcover-provider` (CORINE by county never
+worked in 0.7.0).
+
+### 4.7 `core/cn_calculator.py`
+
+The CN calculation with Kartograf data. `determine_cn()` (`core/land_cover.py`) calls it as the third
+source, after an explicit CN and the `land_cover` table, when `use_kartograf` is true and
+`boundary_wgs84` and `cache_dir` are given; only `scripts/analyze_watershed.py` calls it.
+
+| Function | Meaning |
+|---|---|
+| `check_kartograf_available()` | whether `BBox`, `calculate_hsg`, `download_landcover` and `hsg_statistics` import |
+| `convert_boundary_to_bbox(boundary_wgs84, buffer_m=100)` | the boundary of the watershed (WGS84) as a `BBox` in EPSG:2180 |
+| `get_hsg_from_soilgrids(bbox)` | `calculate_hsg(output_dir=<temporary directory>, bbox=, depth="0-5cm", cache=False)` and `hsg_statistics` of the file; the dominant group and the shares of A-D. A Kartograf failure or an area without data gives group B |
+| `get_land_cover_stats(bbox, cache_dir, teryt=None)` | the BDOT10k packages of the store (`download_bdot10k`), the area of every PT layer clipped to the bbox, in percent per category; every county the bbox intersects counts, each by its part in the bbox. A `KartografError` of the download gives `{}` with a warning; any other error of the download reaches `calculate_cn_from_kartograf`, which logs it as an error and returns `None`; a package that cannot be read counts as no data (warning) |
+| `calculate_cn_from_kartograf(boundary_wgs84, cache_dir, use_default_land_cover=True, teryt=None)` | the weighted CN |
+
+`hsg_statistics` of a raster without a sidecar counts the whole raster, so the cells at the edge of
+the bbox count in full, as in 0.7.0; in the store the sidecar would give area weights (ADR-061,
+erratum of 2026-10-25).
+
+### 4.8 `scripts/analyze_watershed.py`
+
+`--download` downloads the NMT through `download_nmt_data` into `<cache_dir>/kartograf`
+(`AnalysisConfig.cache_dir`, default `../cache`, next to `data_dir`, default `../data`).
+`find_existing_nmt_files(cache_dir, resolution)` reads the store through its read API: the standard
+paths (`kind == "link"`) of the segments `nmt/pl_*_<resolution>_evrf2007` from `iter_store` and
+`list_segments`, so it lists neither `versions/` nor `full_sheet/`, other resolutions or the `.prj`
+files that `normalize_crs()` writes (§4.9).
+
+### 4.9 `utils/raster_utils.py`
+
+`normalize_crs()` reprojects PUWG 2000 sheets to EPSG:2180 and writes a `<sheet>.prj` beside the file
+of an EPSG:2180 sheet so that GDAL knows its CRS; for a sheet of the store that file lands next to
+the standard path. `iter_store` reports it as a `problem` entry (`missing_sidecar`), which Hydrograf
+ignores because it reads only `link` entries. `create_vrt_mosaic()` builds the VRT from the list it
+is given; the old directory scan `discover_asc_files()` is gone.
 
 ---
 
-## 4. Moduły Hydrografa korzystające z Kartografa
+## 5. Modules that use Kartograf
 
-| Moduł | Importy z Kartografa | Zastosowanie |
-|-------|---------------------|--------------|
-| `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `find_sheets_for_geometry` | Pobieranie NMT z GUGiK |
-| `utils/sheet_lookup.py` | `BBox`, `find_sheets_for_bbox` | Punkt + bufor -> godła arkuszy (ADR-057), używane przez `download_dem.py --lat/--lon` i `prepare_area.py` |
-| `scripts/download_landcover.py` | `LandCoverManager`, `BBox`, `Bdot10kProvider` | Pobieranie BDOT10k/CORINE |
-| `scripts/download_landcover.py` | `Bdot10kProvider` (`from kartograf import Bdot10kProvider`; moduł `kartograf.providers.pl.bdot10k`) | Fallback TERYT discovery (`_discover_teryts_grid`) — WMS point query dla kodów TERYT. Korzysta z **prywatnej** metody `_get_teryt_for_point()` (brak publicznej alternatywy także w 0.7.0) — zabezpieczone jawnym guardem + testem kontraktowym, udokumentowany wyjątek w ADR-057 |
-| `scripts/bootstrap.py` | `SheetParser`, `HSGCalculator`, `BBox` | Orchestrator preprocessingu |
-| `scripts/prepare_area.py` | `SheetParser` | Pipeline przygotowania obszaru |
-| `core/cn_calculator.py` | `BBox`, `HSGCalculator`, `LandCoverManager` | Obliczanie CN |
-| `utils/raster_utils.py` | (pośrednio, operuje na plikach .asc) | `normalize_crs()` + `create_vrt_mosaic()` — VRT z listy arkuszy |
+| Module | From Kartograf | Use |
+|---|---|---|
+| `utils/sheet_lookup.py` | `BBox`, `find_sheets_for_bbox` | point + buffer to sheet codes (ADR-057) |
+| `utils/kartograf_store.py` | `MetadataCache`, `KartografError`, `NoCoverageError`, `download_landcover`, `BBox` | the store and the BDOT10k download |
+| `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `MetadataCache`, `find_sheets_for_geometry` | NMT download |
+| `scripts/download_landcover.py` | `MetadataCache`, `download_landcover` | land cover download |
+| `scripts/bootstrap.py` | `SheetParser`, `BBox`, `find_sheets_for_bbox`, `find_sheets_for_geometry`, `calculate_hsg`, `KartografError`, `ParseError`, `ValidationError` | the orchestrator |
+| `scripts/prepare_area.py` | `BBox`, `SheetParser` | the area pipeline |
+| `scripts/analyze_watershed.py` | `iter_store`, `list_segments` | the NMT sheets of the store |
+| `core/cn_calculator.py` | `BBox`, `calculate_hsg`, `download_landcover`, `hsg_statistics`, `KartografError` | the CN calculation |
+| `utils/raster_utils.py` | none (works on the `.asc` files) | CRS normalisation and the VRT mosaic |
+| `tests/` | `kartograf.testing` (`build_fixture_store`, `PL_SEGMENT`), the provider classes (stubbed) | §10 |
 
 ---
 
-## 5. System Godeł Arkuszy Map
+## 6. The sheet system
 
-### 5.1 Hierarchia
+### 6.1 Hierarchy
 
-Oficjalna nomenklatura PUWG-1992 (godło -> rozmiar arkusza):
+The official PUWG-1992 nomenclature (sheet code, sheet size):
 
 ```
 1:1 000 000  │  N-34                    │  4° × 6°
@@ -319,423 +386,340 @@ Oficjalna nomenklatura PUWG-1992 (godło -> rozmiar arkusza):
 1:50 000     │  N-34-131-C              │  10' × 15'
 1:25 000     │  N-34-131-C-c            │  5' × 7'30"
 1:10 000     │  N-34-131-C-c-1          │  2'30" × 3'45"
-1:5 000      │  N-34-131-C-c-1-1        │  1'15" × 1'52,5"
+1:5 000      │  N-34-131-C-c-1-1        │  1'15" × 1'52.5"
 ```
 
-**Uwaga — przesunięte nazewnictwo skal w Kartografie:** `SheetParser(...).scale` i parametr `target_scale` w `find_sheets_for_bbox()`/`find_sheets_for_geometry()` używają **własnych etykiet Kartografa**, przesuniętych o jeden poziom względem powyższej oficjalnej nomenklatury:
+**Kartograf's scale labels are shifted by one level** against this nomenclature.
+`SheetParser(...).scale` and the parameter `target_scale` of `find_sheets_for_bbox()` and
+`find_sheets_for_geometry()` use Kartograf's own labels:
 
-| Wzorzec godła (liczba członów) | `scale` wg Kartografa | Faktyczna oficjalna skala |
+| Sheet code pattern (components) | `scale` in Kartograf | Official scale |
 |---|---|---|
-| `N-34-A` (3, litera A-D) | `"1:500000"` | 1:500 000 (bez przesunięcia) |
-| `N-34-131` (3, liczba) | `"1:200000"` | **1:100 000** |
+| `N-34-A` (3, a letter A-D) | `"1:500000"` | 1:500 000 (not shifted) |
+| `N-34-131` (3, a number) | `"1:200000"` | **1:100 000** |
 | `N-34-131-C` (4) | `"1:100000"` | **1:50 000** |
 | `N-34-131-C-c` (5) | `"1:50000"` | **1:25 000** |
 | `N-34-131-C-c-1` (6) | `"1:25000"` | **1:10 000** |
 | `N-34-131-C-c-1-1` (7) | `"1:10000"` | **1:5 000** |
 
-Zweryfikowano w `sheet_parser.py` (komentarz „mylące nazewnictwo w COMPONENT_NAMES" przy `arkusz_200k`, ok. :708) oraz empirycznie: `SheetParser("N-34-131").scale == "1:200000"`, `SheetParser("N-34-131-C-c-1-1").scale == "1:10000"`.
+Checked on the pinned head: `SheetParser("N-34-131").scale == "1:200000"` and
+`SheetParser("N-34-131-C-c-1-1").scale == "1:10000"`. So `target_scale="1:10000"`, which Hydrograf
+uses by default (`sheet_lookup.py`, `download_dem --scale 1:10000`), returns 7-component codes,
+officially 1:5000 sheets: the grid of the NMT files of GUGiK OpenData.
 
-W praktyce oznacza to, że wywołanie `find_sheets_for_bbox/geometry(..., target_scale="1:10000")` — którego Hydrograf używa domyślnie (`sheet_lookup.py`, `download_dem.py --scale 1:10000`) — zwraca **7-członowe godła, czyli oficjalnie arkusze 1:5000**. To jest właśnie siatka plików NMT pobieranych z GUGiK OpenData, np. `cache/nmt/nmt_1m/N-34/139/A/c/4/1/N-34-139-A-c-4-1.asc`.
+The find functions require `sheet_system` (Hydrograf passes `"1992"`). `DownloadManager.download_sheets()`
+expands a code coarser than the label `"1:10000"` into all its descendants of that label: a sheet
+labelled `"1:25000"` (6 components) gives 4 sheets, one labelled `"1:50000"` (5 components) gives 16.
 
-**Auto-ekspansja:** `DownloadManager.download_sheets(godla)` automatycznie rozwija każde godło grubsze niż etykieta Kartografa `"1:10000"` (czyli oficjalnie grubsze niż 1:5000) do listy wszystkich potomnych arkuszy 1:5000, wywołując `get_all_descendants("1:10000")`. Np. godło oznaczone przez Kartograf jako `"1:25000"` (oficjalnie 1:10 000, 6-członowe) rozwija się do 4 arkuszy 1:5000; godło `"1:50000"` (oficjalnie 1:25 000, 5-członowe) — do 16. Schemat podziału: patrz §5.2.
+### 6.2 Subdivision
 
-### 5.2 Podział arkuszy
-
-**1:100 000** - 144 arkuszy na 1:1M (12 x 12)
-```
-┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐
-│001│002│003│004│005│006│007│008│009│010│011│012│
-├───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┤
-│013│014│...│                               │024│
-├───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┤
-│...│   │                                   │...│
-├───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┤
-│133│134│135│136│137│138│139│140│141│142│143│144│
-└───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘
-```
-
-**1:50 000** - 4 arkusze na 1:100k (A, B, C, D)
-```
-┌───┬───┐
-│ A │ B │
-├───┼───┤
-│ C │ D │
-└───┴───┘
-```
-
-**1:25 000** - 4 arkusze na 1:50k (a, b, c, d)
-```
-┌───┬───┐
-│ a │ b │
-├───┼───┤
-│ c │ d │
-└───┴───┘
-```
-
-**1:10 000** - 4 arkusze na 1:25k (1, 2, 3, 4)
-```
-┌─────┬─────┐
-│  1  │  2  │
-├─────┼─────┤
-│  3  │  4  │
-└─────┴─────┘
-```
-(1=NW, 2=NE, 3=SW, 4=SE — `_QUADRANT_POSITIONS` w `sheet_parser.py` ok. :579)
-
-**1:5 000** - 4 arkusze na 1:10k (1, 2, 3, 4), ten sam schemat kodów
-```
-┌─────┬─────┐
-│  1  │  2  │
-├─────┼─────┤
-│  3  │  4  │
-└─────┴─────┘
-```
-
-Pełne godło 1:5000 zagnieżdża oba poziomy, np. `N-34-131-C-c-1-1` = `N-34-131-C-c` (1:25k) + `1` (ćwiartka 1:25k->1:10k, NW) + `1` (ćwiartka 1:10k->1:5k, NW).
-
-**Uwaga historyczna:** usunięty moduł `utils/sheet_finder.py` dzielił arkusz 1:25 000 na 1:10 000 błędną siatką 2×4 (wiersz-kolumna) zamiast poprawnego zagnieżdżonego podziału 2×2 pokazanego wyżej — patrz ADR-057.
+- 1:100 000 sheets are numbered 001-144 in a 12 × 12 grid on a 1:1 000 000 sheet (row by row).
+- 1:50 000: four sheets of a 1:100 000 sheet, `A B / C D`.
+- 1:25 000: four sheets of a 1:50 000 sheet, `a b / c d`.
+- 1:10 000 and 1:5 000: four sheets each, `1 2 / 3 4` (1 = NW, 2 = NE, 3 = SW, 4 = SE), the same
+  code at both levels. A full 1:5 000 code nests both: `N-34-131-C-c-1-1` is `N-34-131-C-c` + `1`
+  (the 1:10 000 quadrant) + `1` (the 1:5 000 quadrant).
 
 ---
 
-## 6. Pobieranie NMT z GUGiK (OpenData)
+## 7. NMT download from GUGiK (OpenData)
 
-### 6.1 Ścieżka wywołań
+### 7.1 Call chain
 
-Hydrograf pobiera NMT wyłącznie przez godła arkuszy (OpenData), nigdy przez WCS/bbox. Pełny łańcuch wywołań:
+Hydrograf downloads the NMT by sheet code only (OpenData), never by bbox:
 
 ```
 scripts/bootstrap.py / scripts/download_dem.py
     -> kartograf.MetadataCache(<cache_dir>/kartograf_meta.db, on_disabled=...)
-    -> kartograf.GugikProvider(resolution=..., cache=...)
-    -> kartograf.DownloadManager(output_dir=<cache_dir>, provider=..., resolution=..., campaigns="newest")
-        -> DownloadManager.download_sheets(godla, skip_existing=True)
-            (godła grubsze niż etykieta "1:10000" — rozwinięcie do 1:10000, §5.1/§5.2)
-            -> rekordy skorowidza GUGiK (warstwy z GetCapabilities) -> pliki kampanii
-            -> ścieżka standardowa = dowiązanie twarde do najnowszej lokalnej kampanii
-        -> DownloadManager.last_result: succeeded / skipped / failed / no_coverage /
-           hard_failures / unverified
+    -> kartograf.GugikProvider(vertical_crs="EVRF2007", resolution="5m", cache=...)
+    -> kartograf.DownloadManager(provider, root=<cache_dir>/kartograf)
+        -> .download_sheets(sheets, update=None | "force")
+            (a code coarser than the label "1:10000" is expanded, §6.1)
+            -> the GUGiK sheet index: the newest flight of each sheet
+            -> the file as a version of the store; the standard path is a hard link to it
+        -> DownloadResult: files, failed, no_coverage, hard_failures, unverified, ...
 ```
 
-**Polityka błędów w Hydrografie (`download_sheets()` → `NmtDownloadReport` / `NmtDownloadError`):**
-- `hard_failures` (sieć, 429/5xx po 3 próbach, błąd warstwy skorowidza) → `NmtDownloadError` z pełną listą godeł po próbie pobrania wszystkich arkuszy; bootstrap: krok 2 `fail`, kod wyjścia 1.
-- `no_coverage` dla części arkuszy (poza Polską, morze) → WARNING z listą + licznik w detalu kroku 2; dla wszystkich arkuszy → `NmtDownloadError`.
-- `unverified` (skorowidz niedostępny, użyto lokalnej kampanii bez sprawdzenia nowszej) → WARNING per arkusz + licznik.
-- `MetadataCache` wyłączony przez błąd SQLite (`on_disabled`) → `NmtDownloadError` po pobraniu.
-- Nieprawidłowe godło → `kartograf.ParseError` przed pobraniem; w bootstrapie błąd CLI (kod 2).
-- Pusta lista arkuszy w bootstrapie → `ValueError("Pusta lista arkuszy NMT — nic do pobrania")` (krok 2 nieudany).
+### 7.2 Parameters
 
-**Cache metadanych:** `<cache_dir>/kartograf_meta.db` (SQLite WAL, TTL rekordów 7 dni; drugi przebieg w oknie TTL nie odpytuje skorowidza). Musi leżeć na dysku lokalnym. Brak katalogu nadrzędnego pliku podanego w `--metadata-cache` daje `NmtDownloadError` przed pobraniem (katalog nie jest tworzony automatycznie). Czyszczony razem z cache pobrań (`python -m scripts.clean --include-cache`).
-
-### 6.2 Parametry używane przez Hydrograf
-
-| Parametr `GugikProvider`/`DownloadManager` | Wartość w Hydrografie | Gdzie ustawiane |
+| Parameter | Value in Hydrograf | Where |
 |---|---|---|
-| `resolution` | `"5m"` (domyślnie) | `scripts/download_dem.py: download_sheets()`, `scripts/bootstrap.py` (`--resolution`, domyślnie `5m`) |
-| `vertical_crs` | `"EVRF2007"` (domyślny w Kartografie, Hydrograf go nie nadpisuje) | — |
-| `skip_existing` | `True` — reużycie lokalnych plików kampanii; `newest` mimo to sprawdza skorowidz po wygaśnięciu TTL i pobiera nowszą kampanię (CLI: `--no-skip-existing` wyłącza) | `download_sheets(godla, skip_existing=...)` |
-| `campaigns` | `"newest"` | `DownloadManager(..., campaigns="newest")` / `download_sheets()` |
-| `cache` | `MetadataCache(<cache_dir>/kartograf_meta.db)` | `scripts/download_dem.py` (`--metadata-cache`), `scripts/bootstrap.py` |
-| Format wyjściowy | ASC (ESRI ASCII Grid) | stały dla ścieżki OpenData, `GugikProvider.default_extension == ".asc"` |
-| CRS pozioma | EPSG:2180 (PL-1992) | bbox arkuszy liczony przez `SheetParser` |
+| `root` | `<cache_dir>/kartograf` | `download_sheets(sheets, root, ...)` |
+| `resolution` | `"5m"` (the 5 m NMT exists in EVRF2007 only); `"1m"` by `bootstrap --resolution` | `download_dem.download_sheets`, bootstrap `--resolution` |
+| `vertical_crs` | `"EVRF2007"` (`VERTICAL_CRS`) | `scripts/download_dem.py` |
+| `update` | `None` (a local version is used without a request) or `"force"` (`--no-skip-existing`) | `download_sheets(..., skip_existing=)` |
+| `cache` | `MetadataCache(<cache_dir>/kartograf_meta.db)` | `--metadata-cache`, bootstrap |
+| the flight | the newest, partial or not | Kartograf's default |
+| format | ASC (ESRI ASCII Grid), fixed for OpenData | `GugikProvider` |
+| horizontal CRS | EPSG:2180 (PL-1992); PUWG 2000 sheets are reprojected by `normalize_crs()` | `utils/raster_utils.py` |
 
-### 6.3 Układ plików na dysku
+### 7.3 Error policy of Hydrograf (`download_sheets()` → `NmtDownloadReport` / `NmtDownloadError`)
 
-Kartograf 0.7.0 organizuje pliki wg układu, rozdzielczości i układu wysokościowego oraz członów godła:
+- `hard_failures` (network, 429/5xx after 3 attempts, an error of the sheet index layer) raise
+  `NmtDownloadError` with the full list of sheets after all sheets were tried; bootstrap: step 2
+  fails, exit code 1.
+- `no_coverage` for some sheets (outside Poland, the sea) is a warning with the list, and a count in
+  the detail of step 2; for every sheet it is an `NmtDownloadError`.
+- `unverified` (the index was unavailable, the local version was used without checking for a newer
+  one) is a warning per sheet and a count.
+- A metadata cache that SQLite disabled (`on_disabled`) is an `NmtDownloadError` after the download.
+- A metadata cache whose directory does not exist and an empty sheet list are an `NmtDownloadError`
+  before any download.
+- An invalid sheet code is a `kartograf.ParseError` before the download; in bootstrap it is a CLI
+  error (exit 2).
+- A store that refuses the write (`conflict`, `store_unavailable`) is a `KartografError` that the
+  scripts print through `describe_error`.
 
-```
-{cache_dir}/nmt/pl_1992_5m_evrf2007/N-34/131/C/c/1/1/N-34-131-C-c-1-1.asc            # dowiązanie twarde (ścieżka standardowa)
-{cache_dir}/nmt/pl_1992_5m_evrf2007/N-34/131/C/c/1/1/N-34-131-C-c-1-1.asc.meta.json  # sidecar (ADR-031 Kartografa)
-{cache_dir}/nmt/pl_1992_5m_evrf2007/kampanie/<data>_<id>/N-34/131/C/c/1/1/N-34-131-C-c-1-1.asc  # plik kampanii + sidecar
-{cache_dir}/nmt/pl_1992_1m_evrf2007/...                                                # 1 m
-{cache_dir}/kartograf_meta.db                                                          # MetadataCache
-```
+### 7.4 The WCS path (not used)
 
-(`nmt/pl_<układ>_<resolution>_evrf2007/<pas-słup>/<100k>/<50k>/<25k>/<10k_kartografa>/<godło>.asc` — ostatni katalog odpowiada oficjalnej skali 1:5000, patrz §5.1).
-
-Sidecar standardowy: `extra.source` (url, index_url, layer, acquisition_date, acquisition_year, pzgik_date, survey_work_id, data_source, declared_crs, full_sheet), `extra.campaign` (id, date, ...), `extra.link` (`hardlink`/`copy`), `kartograf_version`, `downloaded_at`. **Kopiowanie drzewa danych tylko z zachowaniem hardlinków** (`rsync -aH`, `cp -a`). Kopia bez `-H` rozbija ścieżkę standardową i plik kampanii na dwie niezależne kopie: podwójne zajęcie miejsca i rozjazd sidecarów.
-
-### 6.4 Ścieżka WCS (nieużywana przez Hydrograf)
-
-Kartograf udostępnia też `GugikProvider.download_bbox()` / `DownloadManager.download_bbox()` — pobieranie dowolnego bboxa (nie wyrównanego do siatki arkuszy) przez WCS `GetCoverage`. **Hydrograf tego nie wywołuje** (zweryfikowane grepem po `download_bbox` w `scripts/`, `core/`, `utils/` — jedyne wystąpienie to komentarz w docstringu `download_dem.py`). Ograniczenia tej ścieżki:
-
-- dostępna wyłącznie dla rozdzielczości **1m** (`WCS_ENDPOINTS` zawiera `.../NMT/GRID1/WCS/...`, `GRID1` = siatka 1m; dla 5m WCS nie istnieje)
-- formaty: tylko `GTiff` (`image/tiff`), `PNG` (`image/png`), `JPEG` (`image/jpeg`) — **brak ASC/AAIGrid przez WCS**
-- endpointy (`WCS_ENDPOINTS`, `gugik.py` ok. :81-85), po układzie wysokościowym:
-  - `KRON86`: `https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WCS/DigitalTerrainModelFormatTIFF`
-  - `EVRF2007`: `https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WCS/DigitalTerrainModelFormatTIFFEVRF2007`
-- `SERVICE=WCS`, `VERSION=2.0.1`, `REQUEST=GetCoverage`, `COVERAGEID` z `COVERAGE_IDS` (`DTM_PL-KRON86-NH_TIFF` / `DTM_PL-EVRF2007-NH_TIFF`), `SUBSET=x(...)`/`SUBSET=y(...)` dla bboxa w EPSG:2180
-
-### 6.5 Migracja danych z 0.6.1
-
-Kartograf 0.7.0 NIE reużywa plików z układu 0.6.1 (`nmt_1m/`, `nmt_5m/`) — także po ręcznym przeniesieniu (plik bez sidecara z `extra.link` jest nieznany). Pierwszy bootstrap na 0.7.0 pobiera arkusze ponownie do `<cache_dir>/nmt/pl_<uklad>_<res>_evrf2007/`.
-
-- `<cache_dir>/nmt/nmt_1m/`, `<cache_dir>/nmt/nmt_5m/` — można usunąć po pierwszym udanym pobraniu (Hydrograf ich już nie czyta).
-- `<HOST_DATA_DIR>/nmt/nmt_5m/` (pobrania ręczne, np. województwo) — jak wyżej; ponowne pobranie w 0.7.0 daje sidecary z datą i numerem zgłoszenia pracy dla każdego arkusza.
-- `<cache_dir>/soil_hsg/hsg_poland.tif` bez sidecara — usunąć (inne progi HSG); krok 5 pobierze nowy.
-- BDOT10k (`<cache_dir>/bdot10k/bdot10k_teryt_<kod>.gpkg`) — bez zmian.
+Kartograf also offers `GugikProvider.download_bbox()` / `DownloadManager.download_bbox()`: any bbox
+(not aligned to the sheet grid) through WCS `GetCoverage`. **Hydrograf does not call it** (no
+occurrence in `api/`, `core/`, `scripts/`, `utils/`). The path exists for the 1 m resolution only and
+returns GeoTIFF, PNG or JPEG: there is no ASC through WCS.
 
 ---
 
-## 7. Obsługa Błędów
+## 8. Errors
 
-### 7.1 Błędy pobierania
+### 8.1 Classes and codes
 
-| Wyjątek | Przyczyna | Reakcja Hydrografa |
-|---------|-----------|--------------------|
-| `NoCoverageError` | brak danych GUGiK dla arkusza | raport, nie błąd (chyba że wszystkie) |
-| `DownloadError` (podklasa nadrzędna `NoCoverageError`) | sieć/429/5xx po 3 próbach, błąd skorowidza/GetCapabilities | `NmtDownloadError`, ponów |
-| `ParseError` | nieprawidłowe godło | popraw godło |
-| `ValidationError` | odwrócony bbox / NaN | popraw bbox |
+Every failure of Kartograf is a `KartografError` with a `code` of the Nogat error registry, a
+`reason` and often a `hint`. Hydrograf catches `KartografError` where it used to catch `Exception`
+to mean "the download failed", so an API change is no longer reported as "no land cover".
 
-### 7.2 Retry Logic
+| Class | Code | Cause | Reaction of Hydrograf |
+|---|---|---|---|
+| `ValidationError`, `ParseError` | `validation_error` | an inverted or degenerate bbox, a bad sheet code, an invalid argument | fix the input; CLI error (exit 2) in bootstrap |
+| `DownloadError` | `source_unavailable` | network, 429/5xx after 3 attempts, an error of the sheet index | `NmtDownloadError`; run again |
+| `NoCoverageError` (a `DownloadError`) | `no_data` | GUGiK has no data for the sheet (or no county for the area) | a report, an error only for all sheets |
+| `ConflictError` | `conflict` | a store root with foreign files (`not_empty`), a store inside a store, an existing plain target | the script prints it; give the store a directory of its own |
+| `StoreUnavailableError` | `store_unavailable` | a root with the layout of a store and no marker | the hint: `kartograf store init --root DIR` |
+| `InvalidLayoutError` | `data_error` | a damaged layout of the store | the script prints it with its hint |
 
-Max 3 próby, backoff `kartograf.transport.http` (ponowienia tylko sieć/429/5xx), jeden transport HTTP.
+`describe_error()` prints `<message> [<code>] <hint>`; the scripts show it in the log and in the
+detail of a bootstrap step.
+
+### 8.2 Retries
+
+`kartograf.transport.http` makes up to 3 attempts with an exponential backoff (2 s, 4 s) and only for
+network errors, 429 and 5xx; one HTTP transport is shared.
 
 ---
 
-## 8. Przykłady Użycia
+## 9. Usage examples
 
-### 8.1 Przygotowanie danych dla nowego obszaru
+### 9.1 Preparing the data for a new area
 
 ```bash
-# 1. Sprawdź jakie arkusze są potrzebne
 cd backend
-python -c "
+
+# 1. Which sheets are needed
+.venv/bin/python -c "
 from utils.sheet_lookup import sheets_for_point_buffer
 sheets = sheets_for_point_buffer(52.23, 21.01, buffer_km=5)
-print(f'Arkusze do pobrania: {len(sheets)}')
+print(f'Sheets: {len(sheets)}')
 for s in sheets:
     print(f'  {s}')
 "
 
-# 2. Pobierz i przetwórz
-.venv/bin/python -m scripts.prepare_area \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5
+# 2. Download and process
+.venv/bin/python -m scripts.prepare_area --lat 52.23 --lon 21.01 --buffer 5
 ```
 
-### 8.2 Pełny bootstrap z panelu admin
+### 9.2 Full bootstrap
 
 ```bash
-# One-command bootstrap (wszystkie kroki)
-.venv/bin/python -m scripts.bootstrap \
-    --bbox "20.8,52.1,21.2,52.4"
-
-# Dry run (pokaż plan bez wykonywania)
-.venv/bin/python -m scripts.bootstrap \
-    --bbox "20.8,52.1,21.2,52.4" --dry-run
-
-# Bootstrap z pominięciem kroków
-.venv/bin/python -m scripts.bootstrap \
-    --bbox "20.8,52.1,21.2,52.4" \
-    --skip-precipitation --skip-tiles
+.venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
+.venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4" --dry-run
+.venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4" --skip-precipitation --skip-tiles
 ```
 
-### 8.3 Pobieranie konkretnego regionu
+### 9.3 A given region
 
 ```bash
-# Pobierz wszystkie arkusze 1:10k dla arkusza 1:100k
+# All 1:10 000 sheets of one quarter of a 1:100 000 sheet
 .venv/bin/python -m scripts.download_dem \
     --sheets N-34-131-A-a-1-1 N-34-131-A-a-1-2 N-34-131-A-a-1-3 N-34-131-A-a-1-4 \
-            N-34-131-A-a-2-1 N-34-131-A-a-2-2 N-34-131-A-a-2-3 N-34-131-A-a-2-4 \
-    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
+             N-34-131-A-a-2-1 N-34-131-A-a-2-2 N-34-131-A-a-2-3 N-34-131-A-a-2-4 \
+    --root ../cache/kartograf --metadata-cache ../cache/kartograf_meta.db
 ```
 
-### 8.4 Użycie w kodzie Python
+### 9.4 In Python
 
 ```python
-from utils.sheet_lookup import sheets_for_point_buffer
 from pathlib import Path
 
-from kartograf import DownloadManager, GugikProvider, MetadataCache
+from scripts.download_dem import download_sheets
+from utils.kartograf_store import metadata_cache_path, store_dir
+from utils.sheet_lookup import sheets_for_point_buffer
 
-# Znajdź arkusze
+cache_dir = Path("../cache")
 sheets = sheets_for_point_buffer(52.23, 21.01, buffer_km=5)
 
-# Pobierz dane (korzeń danych Kartografa = <cache_dir>)
-cache_dir = Path("../cache")
-cache_errors: list[str] = []
-cache = MetadataCache(cache_dir / "kartograf_meta.db", on_disabled=cache_errors.append)
-provider = GugikProvider(resolution="5m", cache=cache)
-manager = DownloadManager(
-    output_dir=str(cache_dir), provider=provider, resolution="5m", campaigns="newest"
-)
+# The standard paths of the sheets, e.g.
+# ../cache/kartograf/nmt/pl_1992_5m_evrf2007/N-34/131/C/c/1/1/N-34-131-C-c-1-1.asc
+report = download_sheets(sheets, store_dir(cache_dir), metadata_cache_path(cache_dir))
+print(f"Ready: {len(report.paths)}, no coverage: {report.no_coverage}")
+```
 
-# download_sheets() zwraca listę Path (ścieżki standardowe, np.
-# ../cache/nmt/pl_1992_5m_evrf2007/N-34/131/C/c/1/1/N-34-131-C-c-1-1.asc);
-# braki i błędy w manager.last_result (patrz §6.1)
-paths = manager.download_sheets(sheets, skip_existing=True)
-if cache_errors:  # cache wylaczony przez SQLite — nie degradujemy po cichu
-    raise RuntimeError("; ".join(cache_errors))
-print(f"Pobrano: {len(paths)}, brak pokrycia: {manager.last_result.no_coverage}")
+The BDOT10k packages of an area:
+
+```python
+from kartograf import BBox
+from utils.kartograf_store import download_bdot10k
+
+bbox = BBox(450000, 550000, 460000, 560000, crs="EPSG:2180")
+packages = download_bdot10k(cache_dir, bbox=bbox)   # {"1465": Path(".../teryt/1465.gpkg"), ...}
 ```
 
 ---
 
-## 9. Testy
+## 10. Tests
 
-### 9.1 Testy jednostkowe
-
-```bash
-# Testy sheet_lookup
-pytest tests/unit/test_sheet_lookup.py -v
-
-# Testy download_landcover (mocked Bdot10kProvider)
-pytest tests/unit/test_download_landcover.py -v
-
-# Testy cn_calculator
-pytest tests/unit/test_cn_calculator.py -v
-
-# Testy land_cover (spatial intersection CN)
-pytest tests/unit/test_land_cover.py -v
-
-# Testy cn_tables (tablice CN dla BDOT10k + BUBD)
-pytest tests/unit/test_cn_tables.py -v
-
-# Testy building raising
-pytest tests/unit/test_building_raising.py -v
-
-# Testy pobierania NMT (raport, bootstrap, bbox, cache HSG, czyszczenie cache)
-pytest tests/unit/test_download_dem_report.py tests/unit/test_bootstrap_nmt.py \
-    tests/unit/test_bootstrap_bbox.py tests/unit/test_hsg_cache.py \
-    tests/unit/test_clean_cache.py -v
-
-# Testy tiles landcover (MVT)
-pytest tests/unit/test_tiles_landcover.py -v
-```
-
-### 9.2 Test regresyjny download_dem (mocked, bez sieci)
+The tests run the **real Kartograf**, offline: `tests/kartograf_offline.py` replaces only what would
+leave the machine, the provider classes (the GUGiK sheet index, BDOT10k and SoilGrids), so the
+reports and the files are those of the pinned version: a real store with a marker, versions,
+sidecars and links. The fixture `offline` fails any call that reaches a socket. The stores that a test
+only reads are built by `kartograf.testing.build_fixture_store`.
 
 ```bash
-pytest tests/unit/test_download_dem.py -v
+cd backend
+uv run pytest tests/unit/test_sheet_lookup.py -v          # sheet lookup vs kartograf.find_sheets_for_bbox
+uv run pytest tests/unit/test_kartograf_store.py -v       # describe_error, download_bdot10k
+uv run pytest tests/unit/test_download_dem_report.py tests/unit/test_download_dem.py -v   # NMT download, report, errors, --geometry
+uv run pytest tests/unit/test_download_landcover.py -v    # fetch_landcover, merge_hydro_gpkgs
+uv run pytest tests/unit/test_bootstrap_nmt.py tests/unit/test_bootstrap_bbox.py -v      # steps 2-3, bbox validation
+uv run pytest tests/unit/test_analyze_watershed_nmt_files.py -v   # find_existing_nmt_files on a fixture store
+uv run pytest tests/unit/test_clean_cache.py -v           # the cache clean
+uv run pytest tests/unit/test_cn_calculator.py tests/unit/test_land_cover_stats.py tests/unit/test_land_cover.py tests/unit/test_cn_tables.py -v
+uv run pytest tests/unit/test_building_raising.py tests/unit/test_tiles_landcover.py -v
 ```
 
-Test pilnuje regresji Path vs `str` przy wywołaniu `find_sheets_for_geometry()` (commit 382c5f3) — w pełni zamockowany, nie wykonuje żadnych połączeń sieciowych. W repozytorium **nie ma obecnie testu integracyjnego z żywym połączeniem do GUGiK** — `tests/integration/` zawiera testy end-to-end na lokalnym stosie (DB/API), nie testy sieciowe Kartografa; `pyproject.toml` definiuje tylko markery `db` i `benchmark`, brak markera sieciowego.
+`tests/unit/test_download_dem.py` also guards a regression of `find_sheets_for_geometry()`, which
+needs a `pathlib.Path` (it calls `filepath.suffix`). No test has the `live` marker: **a real download
+is not covered**; the offline suite proves the calls against the library, not the servers of GUGiK,
+Copernicus or ISRIC.
 
 ---
 
-## 10. Land Cover (Kartograf 0.7.0)
+## 11. Land cover
 
-### 10.1 Dostępne źródła danych
+### 11.1 Sources
 
-| Źródło | Opis | Skala/Rozdzielczość |
-|--------|------|---------------------|
-| **BDOT10k** | Baza Danych Obiektów Topograficznych (GUGiK) | 1:10 000 |
-| **CORINE** | European Land Cover (Copernicus) | 100m raster |
+| Source | Description | Scale / resolution |
+|---|---|---|
+| **BDOT10k** | the Topographic Objects Database of GUGiK; the whole package of a county, every layer, as a GeoPackage | 1:10 000 |
+| **CORINE** | CORINE Land Cover (Copernicus), a raster | 100 m |
 
-Sidecar BDOT10k (`bdot10k_teryt_<kod>.gpkg.meta.json`) ma puste `extra` — brak wersji/daty danych BDOT (ograniczenie dla manifestu S2).
+### 11.2 BDOT10k layers used
 
-### 10.2 Warstwy BDOT10k
+The `PT*` layers (land cover) are imported into `land_cover` with a category and a CN
+(`scripts/import_landcover.py`, `BDOT10K_MAPPING`); `cn_calculator.py` maps the same codes to its
+CN-table categories (`BDOT10K_CATEGORY_MAP`). The `SW*` layers and `PTWP` serve stream burning
+(§12).
 
-Od Kartograf v0.5.0+ wszystkie 15 warstw (12 PT + 3 SW) pobierane są w jednym GPKG. Filtrowanie warstw hydro (SWRS, SWKN, SWRM) odbywa się w Hydrograf na etapie merge za pomocą stałej `HYDRO_LAYER_PREFIXES`.
+| Code | Description | Hydrograf category | CN |
+|---|---|---|---|
+| PTLZ | forests | `las` | 60 |
+| PTTR, PTUT | arable land, permanent crops | `grunt_orny` | 78 |
+| PTWP | surface waters | `woda` | 100 |
+| PTWZ, PTRK | wetlands, shrubs | `łąka` | 70 |
+| PTZB | built-up areas | `zabudowa_mieszkaniowa` | 85 |
+| PTKM, PTPL | roads, squares | `droga` | 98 |
+| PTGN, PTNZ, PTSO | unused, undeveloped land, dumps | `inny` | 75 |
+| BUBD | buildings | (building raising, §13) | - |
+| SWRS, SWKN, SWRM | rivers, canals, drainage ditches | (hydro, stream burning) | - |
 
-| Kod | Opis | -> Hydrograf category | CN |
-|-----|------|---------------------|-----|
-| PTLZ | Tereny leśne | `las` | 60 |
-| PTTR | Tereny rolne | `grunt_orny` | 78 |
-| PTUT | Uprawy trwałe | `grunt_orny` | 78 |
-| PTWP | Wody powierzchniowe | `woda` | 100 |
-| PTWZ | Tereny zabagnione | `łąka` | 70 |
-| PTRK | Roślinność krzewiasta | `łąka` | 70 |
-| PTZB | Tereny zabudowane | `zabudowa_mieszkaniowa` | 85 |
-| PTKM | Tereny komunikacyjne | `droga` | 98 |
-| PTPL | Place | `droga` | 98 |
-| PTGN | Grunty nieużytkowe | `inny` | 75 |
-| PTNZ | Tereny niezabudowane | `inny` | 75 |
-| PTSO | Składowiska | `inny` | 75 |
-| **BUBD** | **Budynki** | (building raising) | 77-92 (wg HSG) |
-| SWRS | Rzeki i strumienie | (hydro — stream burning) | — |
-| SWKN | Kanały | (hydro — stream burning) | — |
-| SWRM | Rowy melioracyjne | (hydro — stream burning) | — |
+### 11.3 Land cover MVT tiles
 
-### 10.3 Land Cover MVT (Vector Tiles)
+`/api/tiles/landcover/{z}/{x}/{y}.pbf` serves the `land_cover` table as Mapbox Vector Tiles
+(`ST_AsMVTGeom`, generated on request). The attributes in a tile are `category`, `cn_value` and
+`bdot_class`.
 
-Endpoint `/api/tiles/landcover/{z}/{x}/{y}.pbf` serwuje dane land cover jako Mapbox Vector Tiles. Generowane dynamicznie z tabeli `land_cover` (PostGIS `ST_AsMVTGeom`). Atrybuty w tile: `category`, `cn_value`, `bdot_class`.
-
-### 10.4 Import do bazy danych
+### 11.4 Import into the database
 
 ```bash
 .venv/bin/python -m scripts.import_landcover \
-    --input ../data/landcover/bdot10k_teryt_1465.gpkg
+    --input ../cache/kartograf/landcover/pl_bdot10k_gpkg/teryt/1465.gpkg
 ```
 
-### 10.5 Pełny pipeline z land cover
+### 11.5 Complete pipeline with land cover
 
 ```bash
-.venv/bin/python -m scripts.prepare_area \
-    --lat 52.23 --lon 21.01 \
-    --buffer 5 \
-    --with-landcover
+.venv/bin/python -m scripts.prepare_area --lat 52.23 --lon 21.01 --buffer 5 --with-landcover
 ```
 
-### 10.6 API Python
+### 11.6 Python API
 
 ```python
-from kartograf.landcover import LandCoverManager  # (lub from kartograf import LandCoverManager)
-from kartograf import BBox  # (lub from kartograf.core.geometry import BBox)
+import kartograf
+from kartograf import BBox
 
-# Inicjalizacja (domyślnie BDOT10k)
-manager = LandCoverManager(output_dir="./data/landcover")
+bbox = BBox(450000, 550000, 460000, 560000, crs="EPSG:2180")
 
-# Pobieranie przez godło arkusza
-gpkg_path = manager.download_by_godlo("N-34-131-C-c-2-1")
+# BDOT10k: by a county code, a sheet code or an area (every county the area intersects)
+report = kartograf.download_landcover(product="bdot10k", root="../cache/kartograf", teryt="1465")
+report = kartograf.download_landcover(product="bdot10k", root="../cache/kartograf", bbox=bbox)
+for item in report.files:            # one item per county
+    print(item.unit, item.file.path)
+for failure in report.failed:
+    print(failure.unit, failure.error)
 
-# Pobieranie przez bounding box (EPSG:2180)
-bbox = BBox(450000, 550000, 460000, 560000, "EPSG:2180")
-gpkg_path = manager.download_by_bbox(bbox)
-
-# Pobieranie przez TERYT powiatu
-gpkg_path = manager.download_by_teryt("1465")
-
-# Zmiana na CORINE Land Cover
-manager = LandCoverManager(output_dir="./data/landcover", provider="corine")
-gpkg_path = manager.download_by_godlo("N-34-130-D", year=2018)
+# CORINE
+report = kartograf.download_landcover(product="corine", root="../cache/kartograf", bbox=bbox, year=2018)
 ```
+
+`kartograf.discover_teryts_for_bbox()` (the counties of an area, without the data) is public in
+0.8.0; Hydrograf does not call it, because `download_landcover(bbox=)` finds the counties itself.
+This closed the private `Bdot10kProvider._get_teryt_for_point` exception of ADR-057.
 
 ---
 
-## 11. BDOT10k Hydro (Kartograf 0.7.0)
+## 12. BDOT10k hydro
 
-### 11.1 Warstwy hydrograficzne
+### 12.1 Hydrographic layers
 
-Od Kartograf v0.5.0+ wszystkie 15 warstw BDOT10k (12 PT + 3 SW) pobierane są w jednym GPKG. Filtrowanie warstw hydrograficznych odbywa się w Hydrograf na etapie merge za pomocą stałej `HYDRO_LAYER_PREFIXES`.
+A county package holds every BDOT10k layer. The hydrographic ones:
 
-| Kod BDOT10k | Opis | Typ geometrii |
-|-------------|------|---------------|
-| **SWRS** | Rzeki i strumienie | LineString |
-| **SWKN** | Kanały | LineString |
-| **SWRM** | Rowy melioracyjne | LineString |
-| **PTWP** | Wody powierzchniowe (jeziora, stawy) | Polygon |
+| Code | Description | Geometry |
+|---|---|---|
+| **SWRS** | rivers and streams | LineString |
+| **SWKN** | canals | LineString |
+| **SWRM** | drainage ditches | LineString |
+| **PTWP** | surface waters (lakes, ponds) | Polygon |
 
-### 11.2 Filtrowanie warstw hydro
+### 12.2 Filtering
 
-W Kartograf v0.5.0+ nie ma parametru `category` — wszystkie warstwy pobierane są razem. Filtrowanie warstw hydro (SWRS, SWKN, SWRM, PTWP) odbywa się w `merge_hydro_gpkgs()` za pomocą stałej `HYDRO_LAYER_PREFIXES`:
+Kartograf has no category parameter for the hydro layers; `merge_hydro_gpkgs()` in
+`scripts/download_landcover.py` keeps only these layers when it merges the packages of several
+counties into one GeoPackage (`hydro_merged.gpkg`), with the constant:
 
 ```python
 HYDRO_LAYER_PREFIXES = ("SWRS", "SWKN", "SWRM", "PTWP")
 ```
 
-### 11.3 Zastosowanie w Hydrograf
+### 12.3 Use in Hydrograf
 
-Dane hydrograficzne z BDOT10k służą do:
-- **Stream burning** — wypalanie cieków w NMT dla lepszego odwzorowania kierunków przepływu (`core/hydrology.py: burn_streams_into_dem()`)
-- **Walidacja sieci rzecznej** — porównanie wygenerowanej sieci z danymi referencyjnymi BDOT10k
-- **Uzupełnienie informacji** — nazwy cieków, klasyfikacja (rzeka/kanał/rów)
+- **Stream burning**: the streams are burned into the NMT for better flow directions
+  (`core/hydrology.py: burn_streams_into_dem()`), then smoothed monotonically (ADR-041).
+- **Validation of the stream network**: the generated network is compared with the BDOT10k streams
+  (`is_real_stream`, table `bdot_streams`, ADR-044).
+- **Supplementary information**: the names and the classification (river, canal, ditch).
+- Bootstrap exports the hydro layers as GeoJSON for the front end (`export_bdot_geojson`).
 
 ---
 
-## 12. Building Raising (ADR-033)
+## 13. Building raising (ADR-033)
 
-### 12.1 Problem
+### 13.1 Problem
 
-Budynki w NMT nie są wystarczająco "podwyższone" — woda w modelu przepływa przez budynki, co daje nierealistyczne kierunki spływu.
+Buildings in the NMT are not high enough: in the model the water flows through them, which gives
+unrealistic flow directions.
 
-### 12.2 Rozwiązanie
+### 13.2 Solution
 
-Funkcja `raise_buildings_in_dem()` w `core/hydrology.py`:
-- Pobiera footprinty budynków z BUBD (BDOT10k, GeoPackage)
-- Rasteryzuje geometrie na siatkę DEM
-- Podnosi wartości DEM pod budynkami o +5m
+`raise_buildings_in_dem()` in `core/hydrology.py` reads the footprints from a GeoPackage (the BUBD
+layer of BDOT10k), rasterises them onto the DEM grid and raises the DEM under them by 5 m:
 
 ```python
 from core.hydrology import raise_buildings_in_dem
@@ -744,82 +728,97 @@ dem = raise_buildings_in_dem(
     dem=dem_array,
     transform=rasterio_transform,
     crs_epsg=2180,
-    building_gpkg="data/landcover/bubd.gpkg",
+    building_gpkg="buildings.gpkg",
     building_raise_m=5.0,
 )
 ```
 
-### 12.3 Pipeline
+### 13.3 Pipeline
 
-Building raising jest zintegrowany w `process_dem.py` — wykonuje się automatycznie po załadowaniu NMT, przed obliczaniem kierunków przepływu.
+`process_dem()` takes the file as `building_gpkg` and raises the buildings after the DEM is read and
+before stream burning and depression filling. **No script passes `building_gpkg` today**: the
+bootstrap and `prepare_area` do not raise buildings, so the function is tested
+(`tests/unit/test_building_raising.py`) and available, and the pipeline does not use it yet.
 
 ---
 
-## 13. HSG — Grupy Hydrologiczne Gleby
+## 14. HSG, the hydrologic soil groups
 
-### 13.1 Przegląd
+### 14.1 Overview
 
-HSGCalculator z Kartografa pobiera dane z SoilGrids (globalny dataset gleb) i klasyfikuje je do grup hydrologicznych (A, B, C, D).
+`calculate_hsg()` of Kartograf downloads the SoilGrids rasters (clay, sand and silt, depth 0-5 cm,
+mean), computes the USDA texture class of each cell and classifies it into a hydrologic soil group
+(`uint8`: 0 no data, 1-4 are A-D). The inputs are versions of the store (`soil/`), the result is a
+version of `hsg/`. `hsg_statistics()` counts the cells per group.
 
-### 13.2 Użycie w Hydrograf
+### 14.2 Use in Hydrograf
 
-Dwa punkty integracji:
-1. **`bootstrap.py` krok 5** — masowe pobieranie HSG dla całego bbox, polygonizacja i import do tabeli `soil_hsg`
-2. **`cn_calculator.py`** — obliczanie CN na żądanie (online) dla konkretnej zlewni
+Two integration points:
 
-### 13.3 Tabela `soil_hsg`
+1. **Bootstrap step 5**: the raster of Poland (EPSG:2180 bbox `167000 29000 860000 814000`) is
+   fetched once into the store, `reused` after; the step clips it to the mosaic, warps it to
+   EPSG:2180 at 250 m, fills the missing pixels with the nearest neighbour, polygonizes it (the
+   fragments under 50 m² are dropped) and imports it into `soil_hsg`, replacing the polygons of the
+   bbox. It also writes `soil_hsg.geojson` for the front end.
+2. **`cn_calculator.py`**: the CN on demand for one watershed, with a plain raster in a temporary
+   directory (§4.7).
 
-| Kolumna | Typ | Opis |
-|---------|-----|------|
+### 14.3 The `soil_hsg` table
+
+| Column | Type | Description |
+|---|---|---|
 | id | SERIAL | PK |
-| hsg_group | VARCHAR(1) | Grupa HSG (A, B, C, D) — `CHECK (hsg_group IN ('A','B','C','D'))` |
-| area_m2 | DOUBLE PRECISION NOT NULL | Powierzchnia poligonu [m²] |
-| geom | GEOMETRY(MultiPolygon, 2180) | Geometria |
+| hsg_group | VARCHAR(1) | HSG group (A, B, C, D), `CHECK (hsg_group IN ('A','B','C','D'))` |
+| area_m2 | DOUBLE PRECISION NOT NULL | polygon area [m²] |
+| geom | GEOMETRY(MultiPolygon, 2180) | geometry |
 
-Zgodne z `backend/migrations/versions/001_initial_schema.py` (ok. :156-162) i `docs/DATA_MODEL.md` §3.7. Dane z tabeli `soil_hsg` używane w `core/soil_hsg.py: get_hsg_for_boundary()` — spatial intersection z granicą zlewni do obliczenia dominującej grupy HSG.
+As in `backend/migrations/versions/001_initial_schema.py` and `docs/DATA_MODEL.md` §3.7. The table is
+read by `core/soil_hsg.py: get_hsg_for_boundary()`, a spatial intersection with the watershed
+boundary that gives the dominant group.
 
 ---
 
-## 14. Filtrowanie po geometrii
+## 15. Filtering by geometry
 
-Kartograf umożliwia ograniczenie pobieranych danych do zadanego zasięgu przestrzennego:
+Kartograf limits a download to a spatial extent:
 
 ```python
 from pathlib import Path
 from kartograf import find_sheets_for_geometry
 
-# Selekcja arkuszy pokrywających plik geometrii
-# find_sheets_for_geometry() wymaga pathlib.Path — wywołuje filepath.suffix
-# wewnątrz _read_shp_bboxes/_read_gpkg_bboxes; str powoduje AttributeError
-# (regresja naprawiona w commit 382c5f3, pilnowana przez tests/unit/test_download_dem.py)
-sheets = find_sheets_for_geometry(Path("boundary.gpkg"), target_scale="1:10000")
+# The sheets that cover a geometry file (SHP or GPKG). The path must be a
+# pathlib.Path: the readers call filepath.suffix, a str raises AttributeError
+# (a regression fixed in 382c5f3, guarded by tests/unit/test_download_dem.py).
+sheets = find_sheets_for_geometry(
+    Path("boundary.gpkg"), target_scale="1:10000", sheet_system="1992"
+)
 ```
 
 ```bash
-# Pobieranie NMT dla pliku geometrii
-python -m scripts.download_dem \
-    --geometry ../data/watershed_boundary.geojson \
-    --output ../cache/ --metadata-cache ../cache/kartograf_meta.db
+python -m scripts.download_dem --geometry ../data/watershed_boundary.gpkg \
+    --root ../cache/kartograf --metadata-cache ../cache/kartograf_meta.db
 ```
 
----
-
-## 15. Przyszłe Rozszerzenia
-
-- [x] **Land Cover** - pobieranie BDOT10k i CORINE (Kartograf 0.3.0)
-- [x] **Auto-ekspansja godeł** - automatyczne rozwijanie godeł grubszych skal (Kartograf 0.4.0)
-- [x] **Progress callback** - `on_progress` w `download_sheet()` (Kartograf 0.4.0; Hydrograf używa `download_sheets()` od etapu K)
-- [x] **BDOT10k hydro** - kategorie hydrograficzne SWRS, SWKN, SWRM, PTWP (Kartograf 0.4.1)
-- [x] **Geometry file selection** - filtrowanie danych po pliku geometrii (Kartograf 0.4.1)
-- [x] **HSG Calculator** - grupy hydrologiczne gleby z SoilGrids (Kartograf 0.4.1)
-- [x] **Building raising** - BUBD footprints z BDOT10k -> +5m w DEM (ADR-033)
-- [x] **Land cover MVT** - endpoint `/api/tiles/landcover/{z}/{x}/{y}.pbf` (CP4)
-- [x] **CN calculation** - cn_calculator + cn_tables z danymi Kartografa
-- [ ] **NMPT integration** - wykorzystanie NMPT w analizach (dostępny od Kartograf 0.4.0)
-- [x] **Cache lokalny** - separacja cache/data, unikanie ponownego pobierania (ADR-037, Kartograf 0.5.0)
-- [ ] **Parallel download** - równoległe pobieranie wielu arkuszy
+Other formats (GeoJSON) of `bootstrap --boundary-file` fall back to the bbox of the geometry.
 
 ---
 
-**Wersja dokumentu:** 6.0
-**Ostatnia aktualizacja:** 2026-10-08 — etap K: Kartograf 0.7.0 (kampanie, sidecar, MetadataCache, głośne błędy pobierania, nowy układ cache, migracja z 0.6.1).
+## 16. Open items
+
+- **NMPT**: Kartograf downloads it, no analysis of Hydrograf uses it.
+- **Parallel download**: `DownloadManager(workers=)` exists; Hydrograf downloads sequentially (the
+  default).
+- **Area weights of the HSG of one analysis**: `hsg_statistics` of the plain raster counts the whole
+  raster (ADR-061, erratum); weights would be a change of the CN calculation, decided on its own.
+- **Building raising** in the scripts (§13.3).
+- **A real download** is not tested (§10).
+- **Versions of the DEM flights**: the store keeps every flight as a version with its campaign and
+  its sidecar; the ADR on how Hydrograf records and updates them is still to be decided
+  (BACKLOG).
+- **The `.prj` files** that `normalize_crs()` writes next to the standard paths of the store (§4.9).
+
+---
+
+**Document version:** 7.0
+**Last update:** 2026-10-25: Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `45dedf4`; the document is in English.
+**History:** 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).
