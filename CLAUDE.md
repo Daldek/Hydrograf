@@ -64,7 +64,7 @@ uv run python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"   # one-off prep
 
 Python 3.12 or newer. The default run and the gate leave out the markers `live`, `db` and
 `benchmark`; `slow` is registered and not used yet (DEV-10.1). Coverage floor:
-`fail_under` in `backend/pyproject.toml` (see Deviations).
+`fail_under = 80` in `backend/pyproject.toml` (DEV-7.5).
 
 Running the service. The agent user is not in the `docker` group and uses rootless Docker:
 start `dockerd-rootless.sh` if the daemon is down, `export
@@ -154,8 +154,10 @@ Next 2.
   does not check the bodies of untyped functions (about 1,260 tests); `scripts.*` allows
   untyped definitions and calls (46 findings) and its annotated code is checked. To lift an
   override, annotate the module and delete its line in `pyproject.toml`.
-- DEV-7.5: `fail_under = 70`: the offline suite covers 73% of `api`, `core`, `models` and
-  `utils`; the rest needs PostGIS. `scripts/` and `migrations/` are not measured.
+- DEV-7.5: the floor of 80% measures `api`, `core`, `models` and `utils` (the offline
+  suite covers 85%; the SQL over PostGIS that is left runs in the `db` job). `scripts/`
+  (the preprocessing pipeline, run by hand on real data) and `migrations/` are not
+  measured.
 - DEV-7.7: CI runs on Linux only: Hydrograf is deployed with Docker on Linux, and an `app`
   MAY skip the platform matrix.
 - DEV-10.1: `benchmark` is a marker besides `live`, `db` and `slow` (timing tests of

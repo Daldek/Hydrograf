@@ -72,4 +72,8 @@ releases follow the first release set; the call sites are listed in
 
 ## Errata
 
-None.
+**2026-10-25.** The Consequences list a lowered coverage floor among the deviations, and
+Option B gives the offline coverage as 73%. The floor is 80 now: new tests lifted the
+offline coverage of `api`, `core`, `models` and `utils` to 85%, so the deviation of
+DEV-7.5 no longer lowers the floor; it records only that `scripts/` and `migrations/`
+are not measured.

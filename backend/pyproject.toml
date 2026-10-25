@@ -198,10 +198,9 @@ omit = [
 ]
 
 [tool.coverage.report]
-# DEV-7.5 deviation (CLAUDE.md): 73% of the statements of api, core, models and utils are
-# covered without a database; the rest runs only against PostGIS. Raise the floor toward
-# 80 as tests land; never lower it.
-fail_under = 70
+# DEV-7.5: the floor of the standard. The offline suite covers 85% of the statements of
+# api, core, models and utils; the SQL over PostGIS that is left runs in the `db` job.
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
