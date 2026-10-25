@@ -1,0 +1,30 @@
+{
+  "schema": "nogat-error-registry/1",
+  "standard_version": "2.1",
+  "outcomes": [
+    {"status": "ok", "exit_code": 0, "meaning": "Operation completed for every unit."},
+    {"status": "partial", "exit_code": 10, "meaning": "Batch operation completed for some units; per-unit status in items[]."},
+    {"status": "failed", "exit_code": 11, "meaning": "Batch operation ran but no unit succeeded; per-unit codes in items[]."},
+    {"status": "cancelled", "exit_code": 130, "meaning": "Cancelled by the user (Ctrl+C, declined plan, MCP cancellation)."}
+  ],
+  "errors": [
+    {"code": "internal_error", "exit_code": 1, "http_status": 500, "title_en": "Internal error", "title_pl": "Błąd wewnętrzny", "meaning": "Defect in the tool or an unexpected exception."},
+    {"code": "validation_error", "exit_code": 2, "http_status": 400, "title_en": "Invalid input", "title_pl": "Nieprawidłowe dane wejściowe", "meaning": "Unknown command or option, wrong type, value out of range or not allowed, missing required option, violated exclusion rule."},
+    {"code": "not_found", "exit_code": 3, "http_status": 404, "title_en": "Not found", "title_pl": "Nie znaleziono", "meaning": "Referenced file, resource, station, project or identifier does not exist."},
+    {"code": "conflict", "exit_code": 4, "http_status": 409, "title_en": "State conflict", "title_pl": "Konflikt stanu", "meaning": "Operation conflicts with current state: version collision, lock held, identifier taken."},
+    {"code": "source_unavailable", "exit_code": 5, "http_status": 502, "title_en": "Data source unavailable", "title_pl": "Źródło danych niedostępne", "meaning": "Remote service failed: timeout, connection error, HTTP error, download failure."},
+    {"code": "missing_dependency", "exit_code": 6, "http_status": 503, "title_en": "Missing optional dependency", "title_pl": "Brak opcjonalnej zależności", "meaning": "Feature needs an extra or an external program that is not installed; hint names the install command."},
+    {"code": "data_error", "exit_code": 7, "http_status": 500, "title_en": "Invalid data", "title_pl": "Niepoprawne dane", "meaning": "Data read by the tool (input file, archive, sidecar, stored series) is malformed or violates its format."},
+    {"code": "store_unavailable", "exit_code": 8, "http_status": 503, "title_en": "Store unavailable", "title_pl": "Magazyn niedostępny", "meaning": "Data store or cache cannot be used: missing marker, locked, unreadable, network share disconnected."},
+    {"code": "io_error", "exit_code": 9, "http_status": 500, "title_en": "File system error", "title_pl": "Błąd systemu plików", "meaning": "Reading or writing files failed: permissions, no space, path missing."},
+    {"code": "forbidden", "exit_code": 12, "http_status": 403, "title_en": "Not allowed", "title_pl": "Operacja niedozwolona", "meaning": "Path outside allowed directories, write attempted in read-only mode, insufficient role."},
+    {"code": "calculation_error", "exit_code": 13, "http_status": 422, "title_en": "Calculation error", "title_pl": "Błąd obliczeń", "meaning": "Input is valid but no result can be computed: no convergence, series too short, numerical failure, transformation failed."},
+    {"code": "no_data", "exit_code": 14, "http_status": 404, "title_en": "No data", "title_pl": "Brak danych", "meaning": "Request is valid but the source has no data for the area, period or product requested."},
+    {"code": "unsupported", "exit_code": 15, "http_status": 422, "title_en": "Not supported", "title_pl": "Nieobsługiwane", "meaning": "Request is valid but this combination is not supported: no safe CRS transformation, product not offered for the country, operation outside the tool's scope."},
+    {"code": "cancelled", "exit_code": 130, "http_status": null, "title_en": "Cancelled", "title_pl": "Anulowano", "meaning": "Cancelled by the user or by SIGINT."},
+    {"code": "terminated", "exit_code": 143, "http_status": null, "title_en": "Terminated", "title_pl": "Przerwano", "meaning": "Terminated by SIGTERM (container stop, timeout)."},
+    {"code": "unauthorized", "exit_code": null, "http_status": 401, "title_en": "Authentication required", "title_pl": "Wymagane uwierzytelnienie", "meaning": "REST only: missing or invalid credentials."},
+    {"code": "method_not_allowed", "exit_code": null, "http_status": 405, "title_en": "Method not allowed", "title_pl": "Niedozwolona metoda", "meaning": "REST only: HTTP method not supported by the route."},
+    {"code": "rate_limited", "exit_code": null, "http_status": 429, "title_en": "Too many requests", "title_pl": "Zbyt wiele żądań", "meaning": "REST only: client exceeded a rate limit; Retry-After is set."}
+  ]
+}
