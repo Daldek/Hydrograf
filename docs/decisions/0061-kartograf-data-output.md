@@ -101,3 +101,8 @@ store would give area weights through the sidecar of a version. The counting of 
 groups does not change by this migration. Option B (the raster as a version per bbox in the
 store) stays rejected for the reason given above; area weights would be a change of the CN
 calculation, decided on its own.
+
+**2026-10-25: the pin moved to `45dedf4`.** The Context names the head `b73aad3`. Kartograf
+`45dedf4` adds the public, read-only `kartograf.store_root()` (the default root, the layer that
+gave it and whether the marker exists). Nothing that Hydrograf calls changed: every script
+passes `root=` and `cache=` explicitly and none relies on the default store, so no call moved.
