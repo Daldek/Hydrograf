@@ -1058,7 +1058,7 @@ requires-dist = [
     { name = "geojson", specifier = ">=3.1.0" },
     { name = "geopandas", specifier = ">=0.14.2" },
     { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=31bf7967ba2a6de433737962eadabf86d93aa6ec" },
-    { name = "imgwtools", git = "https://github.com/Daldek/IMGWTools.git?rev=7e2114e1424903f1fd8fc036a2cb7aa81df44287" },
+    { name = "imgwtools", git = "https://github.com/Daldek/IMGWTools.git?rev=3f7de36f98f1ba40d72ab5556942567cfbc55b92" },
     { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=b73aad3327cf6faf7ec7d15fe47e9a897f21954a" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "numba", specifier = ">=0.58" },
@@ -1117,7 +1117,7 @@ wheels = [
 [[package]]
 name = "imgwtools"
 version = "3.0.0"
-source = { git = "https://github.com/Daldek/IMGWTools.git?rev=7e2114e1424903f1fd8fc036a2cb7aa81df44287#7e2114e1424903f1fd8fc036a2cb7aa81df44287" }
+source = { git = "https://github.com/Daldek/IMGWTools.git?rev=3f7de36f98f1ba40d72ab5556942567cfbc55b92#3f7de36f98f1ba40d72ab5556942567cfbc55b92" }
 dependencies = [
     { name = "httpx" },
     { name = "platformdirs" },
