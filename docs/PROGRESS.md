@@ -12,9 +12,9 @@ sessions 98 and 99 are only on the unmerged branch `feature/kartograf-wykorzysta
 | Component | State | Note |
 |---|---|---|
 | Application (REST API, pipeline, frontend, admin panel) | done | released as 0.4.0; `develop` carries the storm-sewer integration (ADR-051, ADR-052), the feedback form (ADR-053) and the Kartograf 0.7.0 migration (ADR-057) |
-| Producer pins | all three on their heads | Branch `feature/producer-heads` (ADR-060, ADR-061, REL-5.3, REL-5.6): Kartograf `45dedf4` (`feature/data-output`, 0.8.0.dev0, range `>=0.8.0.dev0,<0.9`), IMGWTools `3f7de36` (`feature/data-output`, 3.0.0, `>=3.0.0.dev0,<4`) and Hydrolog `5fa22b3` (`feature/routing-schematic`, 1.0.0.dev0, `>=1.0.0.dev0,<2`) are pinned by commit in `[tool.uv.sources]`; all three commits are on GitHub, so `uv sync --locked` resolves them anywhere; the release replaces the commits with tags and narrows the ranges |
+| Producer pins | all three on their heads | Branch `feature/producer-heads` (ADR-060, ADR-061, REL-5.3, REL-5.6): Kartograf `c31ca04` (`feature/data-output`, 0.8.0.dev0, range `>=0.8.0.dev0,<0.9`), IMGWTools `6bd35a4` (`feature/data-output`, 3.0.0, `>=3.0.0.dev0,<4`) and Hydrolog `5fa22b3` (`feature/routing-schematic`, 1.0.0.dev0, `>=1.0.0.dev0,<2`) are pinned by commit in `[tool.uv.sources]`; all three commits are on GitHub, so `uv sync --locked` resolves them anywhere; the release replaces the commits with tags and narrows the ranges |
 | Branch `chore/nogat-2.1` | note | based on `develop`, not on `feature/kartograf-wykorzystanie`, which has 7 commits that `develop` lacks: `f3f23dd` (`affine>=2.4,<3`, carried here in `pyproject.toml`), a CHANGELOG line, and PROGRESS of sessions 98 and 99. Merging both needs a manual resolution of this file and of the deleted `requirements.txt` |
-| Branch `feature/producer-heads` | note | from `chore/nogat-2.1` (`788c105`) and meant to merge after it; the branch is pushed. The full gate is green on every commit that changed code or the lock (the last one is `930461f`, the pin of the Kartograf and Hydrolog heads); the commits after it change documents only and were checked with the reduced gate (Gate row). The running stack keeps the image built on the old pins (Kartograf 0.7.0) and was not touched: its admin-panel bootstrap runs the scripts of this branch through the dev mount and needs a rebuilt image |
+| Branch `feature/producer-heads` | note | from `chore/nogat-2.1` (`788c105`) and meant to merge after it; the branch is pushed. The full gate is green on every commit that changed code or the lock (the last one is the pin of the fixed Kartograf and IMGWTools heads `c31ca04` and `6bd35a4`, 2026-10-25); the other commits change documents only and were checked with the reduced gate (Gate row). The running stack keeps the image built on the old pins (Kartograf 0.7.0) and was not touched: its admin-panel bootstrap runs the scripts of this branch through the dev mount and needs a rebuilt image |
 | Nogat standard 2.1, environment | done | `backend/uv.lock` replaces `requirements.txt`: seeded with the versions of the image built on 2026-10-18 (no third-party change), caps `sqlalchemy<2.1` and `affine<3` with their reasons in `pyproject.toml`; `dev` group, extra `viz`; `[tool.uv] package = false`; `develop` carries `0.5.0.dev0`, read through `core/version.py`; the Dockerfile builds with `uv sync --locked --no-dev` (GDAL's Python binding stays outside the lock); editor, git and `.env.example` files |
 | `affine<3` cap | kept (ADR-062) | re-checked on 2026-10-25 for Nogat's final integration run (its F3): pyflwdir 0.5.12, the latest release, still fails with affine 3.0.1 (`stream_distance` and `path`; 15 of the 1,302 offline tests), and the fix (pyflwdir #109) waits for 0.5.13. Archiwista declares `affine>=3,<4`, so the two applications cannot share an environment: a known incompatible pair, which Nogat's `deps` reports as a `range_conflict` until the cap goes |
 | Nogat standard 2.1, quality tooling | done | `ruff format` (`2347433`), the rule set of DEV-7.2 (`39eb15e`), mypy `strict` over `api core models scripts utils tests` (`98178c5`, clean, 144 files), the pytest settings (`--strict-markers`, markers `live`, `db`, `slow`, `benchmark`, `tests/contract`, coverage floor 80), the gate, CI and Dependabot |
@@ -114,7 +114,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    commit while its tag is missing (REL-5.3), migrate, run the suite, then pin the tags: when a
    tag exists replace the `rev` in `[tool.uv.sources]` by it, narrow the range of `dependencies`
    (REL-5.6), run `uv lock` and the gate, and repeat the comparisons described below.
-   - **IMGWTools: done on `feature/producer-heads`** (ADR-060, pinned `3f7de36`, 3.0.0).
+   - **IMGWTools: done on `feature/producer-heads`** (ADR-060, pinned `6bd35a4`, 3.0.0).
      `fetch_pmaxtp(latitude, longitude, *, method='POT', timeout=30.0, validate_coords=True)` keeps
      its model (`result.data.get_precipitation(...)`, `ks`, `sg`, `rb`); `method` became
      keyword-only, and Hydrograf passes only `latitude=` and `longitude=`. Both call sites
@@ -158,7 +158,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      sewer and Hydraulik work. Open: the REST option `nash_estimation: "from_tc"` calls
      `NashIUH.from_tc`, which the changelog of Hydrolog announces for removal in 1.0.0 (the head
      keeps it and warns): Open questions 5.
-   - **Kartograf: done on `feature/producer-heads`** (ADR-061, pinned `45dedf4`, 0.8.0.dev0).
+   - **Kartograf: done on `feature/producer-heads`** (ADR-061, pinned `c31ca04`, 0.8.0.dev0).
      Every call is migrated and every migrated call runs against the real Kartograf in the tests
      (`tests/kartograf_offline.py` stubs only the provider classes: the GUGiK sheet index, BDOT10k
      and SoilGrids; `kartograf.testing` builds the stores the tests read). The cache of raw downloads

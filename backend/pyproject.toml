@@ -100,8 +100,8 @@ package = false
 # The heads of the producers (REL-5.3): Kartograf `feature/data-output` (0.8.0.dev0),
 # IMGWTools `feature/data-output` (3.0.0), Hydrolog `feature/routing-schematic`
 # (1.0.0.dev0). All three commits are on GitHub.
-imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "3f7de36f98f1ba40d72ab5556942567cfbc55b92" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "45dedf4a155e2d2f7302459a8c383876fed98e98" }
+imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "6bd35a49b329f99b591ffdee39367daec0e75af7" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "c31ca04c078ebbee36850d0aa4dcead59dd77a41" }
 hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "5fa22b35e5e1ec9076c41d0be04d2a99458f5049" }
 
 [tool.ruff]

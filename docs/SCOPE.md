@@ -410,7 +410,7 @@ This document defines precisely:
 
 #### 3.1.4 Precipitation Data
 
-**Source:** IMGW - the Pmax_PT atlas through IMGWTools 3.0.0 (commit `3f7de36`)
+**Source:** IMGW - the Pmax_PT atlas through IMGWTools 3.0.0 (commit `6bd35a4`)
 **Format:** Points of a regular grid, not meteorological stations: one request to IMGW per point
 **Spatial extent:** The grid points within the bbox of the analysis, 2 km apart (`--spacing` of `scripts/preprocess_precipitation.py`, bootstrap step 6 uses 2.0)
 **Parameters:**
@@ -521,8 +521,8 @@ This document defines precisely:
 - Alembic (database migrations)
 **Own libraries:**
 - Hydrolog 1.0.0.dev0 (commit `5fa22b3`; hydrological calculations)
-- Kartograf 0.8.0.dev0 (commit `45dedf4`; downloading the DEM, land cover, HSG, BDOT10k)
-- IMGWTools 3.0.0 (commit `3f7de36`; design precipitation from IMGW)
+- Kartograf 0.8.0.dev0 (commit `c31ca04`; downloading the DEM, land cover, HSG, BDOT10k)
+- IMGWTools 3.0.0 (commit `6bd35a4`; design precipitation from IMGW)
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework

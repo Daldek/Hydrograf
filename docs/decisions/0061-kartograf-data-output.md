@@ -106,3 +106,8 @@ calculation, decided on its own.
 `45dedf4` adds the public, read-only `kartograf.store_root()` (the default root, the layer that
 gave it and whether the marker exists). Nothing that Hydrograf calls changed: every script
 passes `root=` and `cache=` explicitly and none relies on the default store, so no call moved.
+
+**2026-10-25: the pin moved to `c31ca04`.** Kartograf `c31ca04` keeps a position whose check
+failed as `check_failed` in a plain-mode plan (`--output-dir --check`), and `ca7d538` before it
+flushes stray stdout of `kartograf-mcp` to stderr. Hydrograf asks Kartograf for no plan and
+starts no MCP server, so no call moved.
