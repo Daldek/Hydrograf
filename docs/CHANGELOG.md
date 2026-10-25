@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Editor and git settings follow the Nogat standard 2.1 (DEV-13.1, DEV-14.1): `.editorconfig` is in English, `.gitattributes` sets `* text=auto eol=lf`, and `.env.example` lists every variable that the code and Docker Compose read (the `CACHE_DIR` entry is gone: nothing reads it).
+
 ### Dodane
 - Integracja kanalizacji deszczowej z analiza splywu powierzchniowego (ADR-051)
 - Nowy modul `core/sewer_service.py`: budowa grafu sieci, inlet burning, rekonstrukcja FA, routing, propagacja
