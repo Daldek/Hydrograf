@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Editor and git settings follow the Nogat standard 2.1 (DEV-13.1, DEV-14.1): `.editorconfig` is in English, `.gitattributes` sets `* text=auto eol=lf`, and `.env.example` lists every variable that the code and Docker Compose read (the `CACHE_DIR` entry is gone: nothing reads it).
+- **Breaking for contributors:** uv and `backend/uv.lock` replace pip and `backend/requirements.txt` (DEV-6.2, DEV-6.3). Set up with `cd backend && uv sync --locked` and run everything through `uv run` (`uv run pytest`, `uv run alembic upgrade head`, `uv run python -m scripts.bootstrap`). The development tools are the `dev` dependency group, not an extra; `matplotlib` for the figures of `scripts/analyze_watershed.py` is the extra `viz`; the application is no longer installed as a package (`[tool.uv] package = false`), so `pip install -e ".[dev]"` is gone. The lock is seeded with the package versions of the image built on 2026-10-18, so no third-party package changes; it keeps the caps `sqlalchemy<2.1` and adds `affine<3` (affine 3.x breaks pyflwdir under numba) with their reasons in `pyproject.toml`. Producer pins are unchanged (Kartograf `v0.7.0`, Hydrolog `v0.6.3`, IMGWTools `v2.1.0`).
+- The Docker image installs from the lock (`uv sync --locked --no-dev`); GDAL's Python binding must equal the system library and is installed after the lock. `.dockerignore` no longer excludes `pyproject.toml`. `scripts/bootstrap.py` creates a missing `.venv` with `uv sync --locked`.
+- `develop` carries `0.5.0.dev0` (REL-1.1). The version is declared in `backend/pyproject.toml` only; the API reads it through `core/version.py` (it was repeated as `0.4.0` in `api/main.py`).
+- The CI jobs install with uv and the lock; the audit job exports the locked PyPI packages and leaves out the producers.
 
 ### Dodane
 - Integracja kanalizacji deszczowej z analiza splywu powierzchniowego (ADR-051)

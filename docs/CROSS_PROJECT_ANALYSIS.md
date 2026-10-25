@@ -36,14 +36,14 @@
 
 | Projekt | Zależy od | Typ zależności | Wersja |
 |---------|-----------|----------------|--------|
-| **Hydrograf** | IMGWTools | bezpośrednia (requirements.txt) | v2.1.0 |
-| **Hydrograf** | Kartograf | bezpośrednia (requirements.txt) | v0.7.0 |
-| **Hydrograf** | Hydrolog | bezpośrednia (requirements.txt) | v0.6.3 |
+| **Hydrograf** | IMGWTools | bezpośrednia (pyproject.toml) | v2.1.0 |
+| **Hydrograf** | Kartograf | bezpośrednia (pyproject.toml) | v0.7.0 |
+| **Hydrograf** | Hydrolog | bezpośrednia (pyproject.toml) | v0.6.3 |
 | **Hydrolog** | Kartograf | opcjonalna (`[spatial]`) | - |
 
 **Uwaga:** Hydrolog nie ma już zależności od IMGWTools (usunięta w v0.5.2).
 
-### Instalacja zależności (requirements.txt)
+### Instalacja zależności (backend/pyproject.toml, wersje w backend/uv.lock)
 
 ```
 imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0

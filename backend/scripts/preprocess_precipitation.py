@@ -162,7 +162,7 @@ async def fetch_pmaxtp_for_point(
     try:
         from imgwtools import fetch_pmaxtp
     except ImportError:
-        logger.error("imgwtools not installed. Run: pip install imgwtools")
+        logger.error("imgwtools not installed. Run `uv sync --locked` in backend/.")
         raise
 
     try:
