@@ -2,6 +2,7 @@
 
 import pytest
 from hydrolog.time.concentration import ConcentrationTime
+from pydantic import ValidationError
 
 
 class TestFAAMethod:
@@ -135,7 +136,7 @@ class TestTcMethodInSchema:
     def test_rejects_invalid_tc_method(self):
         from models.schemas import HydrographRequest
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             HydrographRequest(
                 latitude=52.0,
                 longitude=17.0,
@@ -164,8 +165,10 @@ class TestFaaRequiresOverlandLength:
     def test_faa_without_overland_raises(self):
         """FAA without tc_overland_length_km should raise ValueError."""
         from unittest.mock import MagicMock
-        from api.endpoints.hydrograph import _calculate_tc
+
         from hydrolog.morphometry import WatershedParameters
+
+        from api.endpoints.hydrograph import _calculate_tc
 
         morph_dict = {
             "area_km2": 10.0,
@@ -187,8 +190,10 @@ class TestFaaRequiresOverlandLength:
     def test_faa_with_overland_works(self):
         """FAA with tc_overland_length_km should compute valid tc."""
         from unittest.mock import MagicMock
-        from api.endpoints.hydrograph import _calculate_tc
+
         from hydrolog.morphometry import WatershedParameters
+
+        from api.endpoints.hydrograph import _calculate_tc
 
         morph_dict = {
             "area_km2": 10.0,
@@ -214,8 +219,10 @@ class TestKerbyRequiresOverlandLength:
     def test_kerby_without_overland_raises(self):
         """Kerby without tc_overland_length_km should raise ValueError."""
         from unittest.mock import MagicMock
-        from api.endpoints.hydrograph import _calculate_tc
+
         from hydrolog.morphometry import WatershedParameters
+
+        from api.endpoints.hydrograph import _calculate_tc
 
         morph_dict = {
             "area_km2": 10.0,
@@ -236,8 +243,10 @@ class TestKerbyRequiresOverlandLength:
     def test_kerby_with_overland_works(self):
         """Kerby with tc_overland_length_km should compute valid tc."""
         from unittest.mock import MagicMock
-        from api.endpoints.hydrograph import _calculate_tc
+
         from hydrolog.morphometry import WatershedParameters
+
+        from api.endpoints.hydrograph import _calculate_tc
 
         morph_dict = {
             "area_km2": 10.0,
@@ -263,7 +272,8 @@ class TestNrcsUsesHydraulicLength:
         """NRCS tc should be longer with hydraulic_length than without."""
         from hydrolog.morphometry import WatershedParameters
 
-        # Simulate what _calculate_tc does: clear channel_slope, set length_km = hydraulic
+        # Simulate what _calculate_tc does: clear channel_slope and set length_km to
+        # the hydraulic length
         base = {
             "area_km2": 10,
             "perimeter_km": 15,
@@ -287,8 +297,10 @@ class TestNrcsUsesHydraulicLength:
     def test_nrcs_calculate_tc_uses_hydraulic_from_morph_dict(self):
         """_calculate_tc for NRCS should use hydraulic_length_km from morph_dict."""
         from unittest.mock import MagicMock
-        from api.endpoints.hydrograph import _calculate_tc
+
         from hydrolog.morphometry import WatershedParameters
+
+        from api.endpoints.hydrograph import _calculate_tc
 
         morph_dict = {
             "area_km2": 10.0,
@@ -317,8 +329,10 @@ class TestNrcsUsesHydraulicLength:
     def test_kirpich_uses_hydraulic_from_morph_dict(self):
         """_calculate_tc for Kirpich should use hydraulic_length_km from morph_dict."""
         from unittest.mock import MagicMock
-        from api.endpoints.hydrograph import _calculate_tc
+
         from hydrolog.morphometry import WatershedParameters
+
+        from api.endpoints.hydrograph import _calculate_tc
 
         morph_dict = {
             "area_km2": 10.0,
@@ -344,8 +358,10 @@ class TestNrcsUsesHydraulicLength:
     def test_kerby_kirpich_uses_hydraulic_for_overland(self):
         """Kerby-Kirpich overland fallback should prefer hydraulic_length_km."""
         from unittest.mock import MagicMock
-        from api.endpoints.hydrograph import _calculate_tc
+
         from hydrolog.morphometry import WatershedParameters
+
+        from api.endpoints.hydrograph import _calculate_tc
 
         morph_dict = {
             "area_km2": 10.0,
@@ -381,8 +397,10 @@ class TestKerbyKirpichOverlandFallback:
     def test_kerby_kirpich_uses_provided_overland(self):
         """Kerby-Kirpich should prefer tc_overland_length_km when provided."""
         from unittest.mock import MagicMock
-        from api.endpoints.hydrograph import _calculate_tc
+
         from hydrolog.morphometry import WatershedParameters
+
+        from api.endpoints.hydrograph import _calculate_tc
 
         morph_dict = {
             "area_km2": 10.0,
@@ -411,8 +429,10 @@ class TestKerbyKirpichOverlandFallback:
     def test_kerby_kirpich_fallback_without_overland(self):
         """Kerby-Kirpich should fallback to total-channel when no overland."""
         from unittest.mock import MagicMock
-        from api.endpoints.hydrograph import _calculate_tc
+
         from hydrolog.morphometry import WatershedParameters
+
+        from api.endpoints.hydrograph import _calculate_tc
 
         morph_dict = {
             "area_km2": 10.0,

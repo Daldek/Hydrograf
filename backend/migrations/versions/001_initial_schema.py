@@ -15,6 +15,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Create the extension, all tables, indexes and constraints."""
     op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
 
     # ── precipitation_data ──────────────────────────────────────────
@@ -298,6 +299,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop all tables."""
     op.execute("DROP TABLE IF EXISTS sewer_network CASCADE")
     op.execute("DROP TABLE IF EXISTS sewer_nodes CASCADE")
     op.execute("DROP TABLE IF EXISTS bdot_streams CASCADE")

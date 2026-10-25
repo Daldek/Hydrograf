@@ -167,6 +167,7 @@ def generate_overlay(
 
 
 def main() -> None:
+    """Run the DEM overlay generator."""
     parser = argparse.ArgumentParser(description="Generate DEM overlay PNG for Leaflet")
     parser.add_argument("--input", required=True, help="Input DEM raster (GeoTIFF/VRT)")
     parser.add_argument("--output", required=True, help="Output PNG path")

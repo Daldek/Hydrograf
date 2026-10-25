@@ -1,4 +1,4 @@
-"""Tests for download_landcover: TERYT discovery (WFS + grid fallback) and hydro merge."""
+"""Tests for download_landcover: TERYT discovery (WFS, grid fallback), hydro merge."""
 
 import inspect
 from pathlib import Path

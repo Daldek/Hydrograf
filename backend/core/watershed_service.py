@@ -568,7 +568,6 @@ def _compute_lc_along_channel(
 
     Returns Lc in km, or None on failure.
     """
-    from shapely.geometry import LineString
     from shapely.ops import linemerge
 
     nodes = main_ch.get("main_channel_nodes", [])
@@ -850,9 +849,10 @@ def build_morph_dict_from_graph(
     db: "Session | None" = None,
     outlet_idx: int | None = None,
 ) -> dict:
-    """
-    Build morphometric parameter dict compatible with Hydrolog's
-    WatershedParameters.from_dict() and MorphometricParameters schema.
+    """Build the morphometric parameter dict for Hydrolog.
+
+    Compatible with Hydrolog's WatershedParameters.from_dict() and
+    MorphometricParameters schema.
 
     Uses pre-computed stats from CatchmentGraph (zero raster operations).
 
@@ -979,8 +979,6 @@ def build_morph_dict_from_graph(
     divide_flow_path_km = None
     centroid_flow_path_km = None
     try:
-        import os
-
         from core.config import get_settings
 
         settings = get_settings()
@@ -1145,6 +1143,7 @@ def cascade_escalate(
         Maximum allowed segment count before escalation
     db : Session
         Database session
+
     Returns
     -------
     tuple | None

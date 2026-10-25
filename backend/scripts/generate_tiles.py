@@ -346,6 +346,7 @@ def generate_tiles(output_dir: Path) -> None:
 
 
 def main() -> None:
+    """Run the MVT tile generator."""
     parser = argparse.ArgumentParser(description="Pre-generate MVT tiles from PostGIS")
     parser.add_argument(
         "--output-dir",

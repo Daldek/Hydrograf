@@ -2,7 +2,8 @@
 Watershed delineation endpoint.
 
 Unified endpoint with two modes:
-- Precomputed (threshold_m2 given): BFS on pre-computed catchment graph, ST_Union boundary
+- Precomputed (threshold_m2 given): BFS on pre-computed catchment graph,
+  ST_Union boundary
 - Precise (no threshold): BFS at 1000m² + on-the-fly raster boundary via pyflwdir
 """
 
@@ -55,7 +56,8 @@ router = APIRouter()
 def _smooth_polygon_sql(polygon, db: Session):
     """Apply PostGIS smoothing pipeline to a raw polygon.
 
-    Same pipeline as merge_catchment_boundaries: SimplifyPreserveTopology(5.0) + ChaikinSmoothing(3).
+    Same pipeline as merge_catchment_boundaries: SimplifyPreserveTopology(5.0) +
+    ChaikinSmoothing(3).
     """
     query = text("""
         SELECT ST_AsBinary(
@@ -90,7 +92,6 @@ def _build_watershed_response(
     db,
 ) -> WatershedResponse:
     """Build WatershedResponse from computed data (shared by both modes)."""
-
     # Outlet
     outlet_info = get_segment_outlet(segment_idx, threshold, db)
     if outlet_info is None:

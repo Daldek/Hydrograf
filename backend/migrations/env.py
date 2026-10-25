@@ -1,6 +1,4 @@
-"""
-Alembic environment configuration for Hydrograf.
-"""
+"""Alembic environment configuration for Hydrograf."""
 
 import os
 from logging.config import fileConfig

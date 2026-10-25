@@ -7,20 +7,19 @@ from rasterio.transform import Affine
 from shapely.geometry import Point
 from sqlalchemy import text  # noqa: F401 — used in Task 3 (DB tests)
 
-# Register DB fixtures from conftest_db
-pytest_plugins = ["tests.conftest_db"]
-
-from tests.conftest_db import requires_db
-
 from core.sewer_service import (
+    build_sewer_graph,
     burn_inlets,
     insert_sewer_data,  # noqa: F401 — used in Task 3 (DB tests)
     propagate_fa_downstream,
     reconstruct_inlet_fa,
     route_fa_through_sewer,
 )
-from core.sewer_service import build_sewer_graph
 from core.sewer_topology import parse_sewer_topology, validate_against_fdir
+from tests.conftest_db import requires_db
+
+# Register DB fixtures from conftest_db
+pytest_plugins = ["tests.conftest_db"]
 
 # --- Constants ---
 NROWS = NCOLS = 100

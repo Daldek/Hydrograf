@@ -209,7 +209,7 @@ class TestCatchmentGraphAggregateStats:
         assert stats["bdot_stream_count"] == 2
 
     def test_no_bdot_streams_returns_none(self):
-        """When no segments are real streams, drainage_density and frequency are None."""
+        """Without real stream segments, drainage_density and frequency are None."""
         cg = CatchmentGraph()
         n = 2
         cg._n = n
@@ -446,7 +446,9 @@ class TestTraceMainChannel:
 
 
 class TestContiguousRealChannel:
-    """Test that real_channel_length_km counts contiguous real from outlet with gap tolerance.
+    """real_channel_length_km counts the contiguous real channel from the outlet.
+
+    A gap tolerance applies.
 
     The DEM flow-path can run between two parallel BDOT channels (e.g. drainage
     ditches) whose buffers alternate coverage, producing a fragmented pattern:
@@ -564,7 +566,7 @@ class TestContiguousRealChannel:
         assert result["real_channel_length_km"] == pytest.approx(0.0, abs=0.001)
 
     def test_alternating_pattern_bridges_single_gaps(self):
-        """Pattern real-FALSE-real-FALSE-real: all counted (each gap is 1 <= MAX_GAP=2)."""
+        """Pattern real-FALSE-real-FALSE-real counts all (each gap 1 <= MAX_GAP=2)."""
         cg, upstream = self._build_linear_graph(
             n=5,
             is_real=[True, False, True, False, True],

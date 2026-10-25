@@ -1,4 +1,4 @@
-"""
+r"""
 Script to download land cover data from GUGiK (BDOT10k) or Copernicus (CORINE).
 
 Downloads land cover data for a specified area using Kartograf 0.7.0 library.
@@ -21,20 +21,20 @@ Usage
 Examples
 --------
     # Download BDOT10k land cover for area around point
-    python -m scripts.download_landcover \\
-        --lat 52.23 --lon 21.01 \\
-        --buffer 5 \\
+    python -m scripts.download_landcover \
+        --lat 52.23 --lon 21.01 \
+        --buffer 5 \
         --output ../data/landcover/
 
     # Download BDOT10k for specific TERYT code (powiat)
-    python -m scripts.download_landcover \\
-        --teryt 1465 \\
+    python -m scripts.download_landcover \
+        --teryt 1465 \
         --output ../data/landcover/
 
     # Download CORINE land cover
-    python -m scripts.download_landcover \\
-        --lat 52.23 --lon 21.01 \\
-        --provider corine \\
+    python -m scripts.download_landcover \
+        --lat 52.23 --lon 21.01 \
+        --provider corine \
         --year 2018
 """
 
@@ -459,7 +459,7 @@ def discover_teryts_for_bbox(
 
 
 def main():
-    """Main entry point for land cover download script."""
+    """Run the land cover download script."""
     parser = argparse.ArgumentParser(
         description="Download land cover data from GUGiK/Copernicus",
         formatter_class=argparse.RawDescriptionHelpFormatter,

@@ -63,7 +63,7 @@ class RasterCache:
             self._do_load()
 
     def _do_load(self) -> None:
-        """Internal loading logic (must be called under lock)."""
+        """Load the rasters; the caller holds the lock."""
         cfg = get_settings()
 
         # --- Flow direction (required) ---

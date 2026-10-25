@@ -5,7 +5,6 @@ import tempfile
 from pathlib import Path
 
 import geopandas as gpd
-import pytest
 from shapely.geometry import Polygon
 
 # We test via the endpoint functions directly to avoid needing full app setup

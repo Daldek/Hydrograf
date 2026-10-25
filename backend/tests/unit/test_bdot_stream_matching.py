@@ -1,6 +1,5 @@
 """Tests for BDOT10k stream matching pipeline."""
 
-import pytest
 from shapely.geometry import LineString
 
 
@@ -95,7 +94,7 @@ class TestLoadBdotStreams:
     def test_valid_bdot_types(self):
         from core.db_bulk import VALID_BDOT_LINE_TYPES
 
-        assert VALID_BDOT_LINE_TYPES == {"SWRS", "SWKN", "SWRM"}
+        assert {"SWRS", "SWKN", "SWRM"} == VALID_BDOT_LINE_TYPES
 
 
 class TestInsertBdotStreamsSchema:

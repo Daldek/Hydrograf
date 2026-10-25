@@ -11,12 +11,10 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from scipy import sparse
 from shapely.geometry import MultiPolygon, Polygon
 
 from api.main import app
 from core.catchment_graph import CatchmentGraph
-from core.database import get_db
 
 # Patch target prefix for the watershed endpoint module
 _WS = "api.endpoints.watershed"

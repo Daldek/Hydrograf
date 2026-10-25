@@ -25,17 +25,25 @@ def load_boundary(file_path: Path, layer: str | None = None) -> BaseGeometry:
     Multi-feature files are unioned into a single polygon.
     CRS is auto-detected; if missing, WGS84 is assumed with a warning.
 
-    Args:
-        file_path: Path to vector file (.gpkg, .geojson, .json, .zip with .shp)
-        layer: Layer name for multi-layer files (GPKG). Default: first layer.
+    Parameters
+    ----------
+    file_path : Path
+        Path to vector file (.gpkg, .geojson, .json, .zip with .shp).
+    layer : str, optional
+        Layer name for multi-layer files (GPKG). Default: first layer.
 
-    Returns:
+    Returns
+    -------
+    BaseGeometry
         Single Polygon or MultiPolygon geometry in WGS84.
 
-    Raises:
-        FileNotFoundError: If file doesn't exist.
-        ValueError: If file is too large, contains non-polygon geometries,
-                     or has no valid features.
+    Raises
+    ------
+    FileNotFoundError
+        If file doesn't exist.
+    ValueError
+        If file is too large, contains non-polygon geometries, or has no
+        valid features.
     """
     file_path = Path(file_path)
     if not file_path.exists():
@@ -59,8 +67,10 @@ def _validate_zip_entries(zf: zipfile.ZipFile) -> None:
 
     Checks file count, total size, path traversal, symlinks.
 
-    Raises:
-        ValueError: If any security check fails.
+    Raises
+    ------
+    ValueError
+        If any security check fails.
     """
     entries = zf.infolist()
     if len(entries) > MAX_ZIP_FILES:
@@ -169,10 +179,14 @@ def boundary_to_bbox_2180(
 ) -> tuple[float, float, float, float]:
     """Reproject geometry to EPSG:2180 and return bbox.
 
-    Args:
-        geom: Geometry in WGS84 (EPSG:4326).
+    Parameters
+    ----------
+    geom : BaseGeometry
+        Geometry in WGS84 (EPSG:4326).
 
-    Returns:
+    Returns
+    -------
+    tuple of float
         (minx, miny, maxx, maxy) in EPSG:2180.
     """
     gdf = gpd.GeoDataFrame(geometry=[geom], crs="EPSG:4326")
@@ -183,15 +197,22 @@ def boundary_to_bbox_2180(
 def validate_boundary_file(file_path: Path) -> dict:
     """Validate boundary file and return metadata.
 
-    Args:
-        file_path: Path to vector file.
+    Parameters
+    ----------
+    file_path : Path
+        Path to vector file.
 
-    Returns:
-        Dict with keys: crs, n_features, n_layers, area_km2, bbox_wgs84.
+    Returns
+    -------
+    dict
+        Keys: crs, n_features, n_layers, area_km2, bbox_wgs84.
 
-    Raises:
-        FileNotFoundError: If file doesn't exist.
-        ValueError: If file is invalid or unreadable.
+    Raises
+    ------
+    FileNotFoundError
+        If file doesn't exist.
+    ValueError
+        If file is invalid or unreadable.
     """
     import shutil as _shutil
 

@@ -4,9 +4,8 @@ import geopandas as gpd
 import numpy as np
 import pytest
 from scipy import sparse
-from shapely.geometry import LineString, Point
+from shapely.geometry import Point
 
-from core.sewer_topology import ParsedTopology, parse_sewer_topology
 from core.sewer_service import (
     SewerGraph,
     build_sewer_graph,
@@ -15,7 +14,7 @@ from core.sewer_service import (
     reconstruct_inlet_fa,
     route_fa_through_sewer,
 )
-
+from core.sewer_topology import ParsedTopology, parse_sewer_topology
 
 # ---------------------------------------------------------------------------
 # Fixtures

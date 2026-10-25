@@ -381,11 +381,15 @@ def _build_stream_network_graph(
     Endpoints are snapped to raster pixels. Nodes within snap_tolerance_px
     of each other are merged.
 
-    Returns:
-        graph: {node_id: [(neighbor_node_id, segment_index), ...]}
-        seg_nodes: {segment_index: (start_node, end_node)} — start corresponds
-            to geometry coords[0], end to coords[-1]
-        outlets: list of outlet node IDs (one per connected component)
+    Returns
+    -------
+    graph : dict
+        {node_id: [(neighbor_node_id, segment_index), ...]}
+    seg_nodes : dict
+        {segment_index: (start_node, end_node)}; start corresponds to
+        geometry coords[0], end to coords[-1].
+    outlets : list
+        Outlet node IDs (one per connected component).
     """
     nrows, ncols = dem.shape
 

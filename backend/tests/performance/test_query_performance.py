@@ -8,9 +8,6 @@ PostGIS with production data.
 Run: cd backend && .venv/bin/python -m pytest tests/performance/ -m benchmark -v
 """
 
-# Register DB fixtures from conftest_db
-pytest_plugins = ["tests.conftest_db"]
-
 import statistics
 import time
 
@@ -19,6 +16,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 from tests.conftest_db import requires_db
+
+# Register DB fixtures from conftest_db
+pytest_plugins = ["tests.conftest_db"]
 
 N_ITERATIONS = 100
 

@@ -1,4 +1,4 @@
-"""
+r"""
 Pipeline script to download and process spatial data for a specified area.
 
 This script combines:
@@ -27,26 +27,26 @@ Usage
 Examples
 --------
     # Full pipeline for area (NMT only)
-    python -m scripts.prepare_area \\
-        --lat 52.23 --lon 21.01 \\
+    python -m scripts.prepare_area \
+        --lat 52.23 --lon 21.01 \
         --buffer 5
 
     # With BDOT10k stream burning
-    python -m scripts.prepare_area \\
-        --lat 52.23 --lon 21.01 \\
-        --buffer 5 \\
+    python -m scripts.prepare_area \
+        --lat 52.23 --lon 21.01 \
+        --buffer 5 \
         --with-hydro
 
     # With land cover data (BDOT10k)
-    python -m scripts.prepare_area \\
-        --lat 52.23 --lon 21.01 \\
-        --buffer 5 \\
+    python -m scripts.prepare_area \
+        --lat 52.23 --lon 21.01 \
+        --buffer 5 \
         --with-landcover
 
     # Keep downloaded files and save intermediates
-    python -m scripts.prepare_area \\
-        --lat 52.23 --lon 21.01 \\
-        --keep-downloads \\
+    python -m scripts.prepare_area \
+        --lat 52.23 --lon 21.01 \
+        --keep-downloads \
         --save-intermediates
 """
 
@@ -395,7 +395,7 @@ def prepare_area(
 
 
 def main():
-    """Main entry point for prepare_area script."""
+    """Run the prepare_area script."""
     parser = argparse.ArgumentParser(
         description="Download and process NMT data for a specified area",
         formatter_class=argparse.RawDescriptionHelpFormatter,

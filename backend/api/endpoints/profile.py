@@ -7,7 +7,6 @@ by sampling the DEM raster file via rasterio.
 
 import logging
 import math
-import os
 
 import rasterio
 from fastapi import APIRouter, HTTPException, Response

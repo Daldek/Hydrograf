@@ -83,17 +83,20 @@ class StepTracker:
             self.statuses[s - 1] = "skip"
 
     def start(self, step: int) -> float:
+        """Mark the step as running and return its start time."""
         self.statuses[step - 1] = "active"
         self._print_status()
         return time.time()
 
     def done(self, step: int, t0: float, detail: str = ""):
+        """Mark the step as done, with an optional detail."""
         self.timings[step - 1] = time.time() - t0
         self.statuses[step - 1] = "done"
         self.details[step - 1] = detail
         self._print_status()
 
     def fail(self, step: int, t0: float, error: str):
+        """Mark the step as failed and record the error."""
         self.timings[step - 1] = time.time() - t0
         self.statuses[step - 1] = "fail"
         self.details[step - 1] = error
@@ -101,6 +104,7 @@ class StepTracker:
         self._print_status()
 
     def is_skipped(self, step: int) -> bool:
+        """Return whether the step was skipped."""
         return self.statuses[step - 1] == "skip"
 
     def _print_status(self):
@@ -975,7 +979,7 @@ def step_overlays(output_dir: Path) -> str:
             import stat as _stat
 
             def _force_remove(_func, _path, _exc_info):
-                """Handle permission errors during rmtree (rootless Docker UID remap)."""
+                """Handle permission errors in rmtree (rootless Docker UID remap)."""
                 os.chmod(_path, _stat.S_IRWXU)
                 _func(_path)
 
@@ -1439,7 +1443,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main():
-    """Main entry point."""
+    """Run the bootstrap pipeline."""
     parser = build_parser()
     args = parser.parse_args()
 

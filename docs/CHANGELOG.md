@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Docker image installs from the lock (`uv sync --locked --no-dev`); GDAL's Python binding must equal the system library and is installed after the lock. `.dockerignore` no longer excludes `pyproject.toml`. `scripts/bootstrap.py` creates a missing `.venv` with `uv sync --locked`.
 - `develop` carries `0.5.0.dev0` (REL-1.1). The version is declared in `backend/pyproject.toml` only; the API reads it through `core/version.py` (it was repeated as `0.4.0` in `api/main.py`).
 - The CI jobs install with uv and the lock; the audit job exports the locked PyPI packages and leaves out the producers.
+- Linting follows DEV-7.2: `ruff check` selects `E F W I UP B SIM C4 D` with the NumPy docstring convention (tests skip `D`; `E501` is off in `migrations/versions/`, where the DDL strings stay on one line). The code was brought in line: unused imports and variables removed, missing docstrings added, long lines wrapped, Google-style docstring sections turned into NumPy sections. The empty `backend/__init__.py` is gone (nothing imported `backend.`), and the terrain profile tests patch `os.path.exists` directly instead of through an `os` import that `api/endpoints/profile.py` never used.
 
 ### Dodane
 - Integracja kanalizacji deszczowej z analiza splywu powierzchniowego (ADR-051)

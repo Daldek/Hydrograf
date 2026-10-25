@@ -110,7 +110,6 @@ def load_from_file(
     lines_gdf: gpd.GeoDataFrame | None = None
 
     # Determine available layers for GPKG; other formats have a single layer
-    suffix = p.suffix.lower()
     try:
         available_layers = fiona.listlayers(path)
     except Exception:
@@ -162,7 +161,10 @@ def load_from_wfs(url: str, layer: str) -> gpd.GeoDataFrame:
     """Load sewer data from WFS service."""
     _validate_url(url)
     encoded_layer = urllib.parse.quote(layer, safe="")
-    wfs_url = f"{url}?service=WFS&request=GetFeature&typeName={encoded_layer}&outputFormat=json"
+    wfs_url = (
+        f"{url}?service=WFS&request=GetFeature"
+        f"&typeName={encoded_layer}&outputFormat=json"
+    )
     logger.info(f"Loading sewer data from WFS: {url} (layer={layer})")
     return gpd.read_file(wfs_url)
 

@@ -914,7 +914,7 @@ async def sewer_upload(
         logger.error(f"Sewer upload geodata validation failed: {e}")
         raise HTTPException(
             status_code=400, detail="Uploaded file is not valid geodata"
-        )
+        ) from e
 
     # Auto-detect format from layers and geometry types
     import fiona
@@ -961,7 +961,8 @@ def sewer_delete(db: Session = Depends(get_db)):
     db.execute(text("TRUNCATE TABLE sewer_nodes CASCADE"))
     db.execute(
         text(
-            "UPDATE stream_network SET is_sewer_augmented = FALSE WHERE is_sewer_augmented = TRUE"
+            "UPDATE stream_network SET is_sewer_augmented = FALSE "
+            "WHERE is_sewer_augmented = TRUE"
         )
     )
     db.commit()
