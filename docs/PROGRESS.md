@@ -15,12 +15,12 @@ sessions 98 and 99 are only on the unmerged branch `feature/kartograf-wykorzysta
 | Producer pins | behind the heads | Kartograf `v0.7.0`, Hydrolog `v0.6.3`, IMGWTools `v2.1.0`; the heads need the migration of Next 2; pins change only after the first release set (ADOPTION_PLAN 5.1) |
 | Branch `chore/nogat-2.1` | note | based on `develop`, not on `feature/kartograf-wykorzystanie`, which has 7 commits that `develop` lacks: `f3f23dd` (`affine>=2.4,<3`, carried here in `pyproject.toml`), a CHANGELOG line, and PROGRESS of sessions 98 and 99. Merging both needs a manual resolution of this file and of the deleted `requirements.txt` |
 | Nogat standard 2.1, environment | done | `backend/uv.lock` replaces `requirements.txt`: seeded with the versions of the image built on 2026-10-18 (no third-party change), caps `sqlalchemy<2.1` and `affine<3` with their reasons in `pyproject.toml`; `dev` group, extra `viz`; `[tool.uv] package = false`; `develop` carries `0.5.0.dev0`, read through `core/version.py`; the Dockerfile builds with `uv sync --locked --no-dev` (GDAL's Python binding stays outside the lock); editor, git and `.env.example` files |
-| Nogat standard 2.1, quality tooling | done | `ruff format` (`2347433`), the rule set of DEV-7.2 (`39eb15e`), mypy `strict` over `api core models scripts utils tests` (`98178c5`, clean, 144 files), the pytest settings (`--strict-markers`, markers `live`, `db`, `slow`, `benchmark`, `tests/contract`, coverage floor 70 as a recorded deviation of DEV-7.5), the gate, CI and Dependabot |
+| Nogat standard 2.1, quality tooling | done | `ruff format` (`2347433`), the rule set of DEV-7.2 (`39eb15e`), mypy `strict` over `api core models scripts utils tests` (`98178c5`, clean, 144 files), the pytest settings (`--strict-markers`, markers `live`, `db`, `slow`, `benchmark`, `tests/contract`, coverage floor 80), the gate, CI and Dependabot |
 | Nogat standard 2.1, contribution files | done, CLA text open | `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md` and `.github/PULL_REQUEST_TEMPLATE.md` with the CLA checkbox (DEV-13.7, DEV-16.2, DEV-16.4); `docs/CLA.md` is the author's text and does not exist yet, so `CONTRIBUTING.md` and the template name it without a link |
 | Nogat standard 2.1, documentation | in progress | done: this file, [BACKLOG.md](BACKLOG.md), `CLAUDE.md` in English with the Deviations section (`docs/DEVELOPMENT_STANDARDS.md` is deleted, DEV-1.3), the README in the order of DOC-2.1 with its contract test, the ADR index and ADR-058 (the adoption); the Polish documents are still to translate (Next 1, Translations) |
 | Nogat standard 2.1, error registry and REST (ERR-1 to ERR-6, DEV-11.1, AGI-6.2 to AGI-6.4) | done, see Next | the vendored registry and schemas in `schemas/nogat/`, the generated `core/_errors.py`, `HydrografError` with the message catalogue, `application/problem+json` with `Accept-Language`, OpenAPI `operationId`s, ADR-059 and the contract tests; the loose ends are in Next 1 (Error registry and REST) |
 | Data output (DEV §19, ECO-051) | planned | profile `app` consumes Kartograf in store mode; waits for the first release set; call sites in Next 2 |
-| Gate | done | `scripts/gate.sh` and `scripts/check-commits.sh` (unchanged from Nogat). The gate runs in `backend/`: `uv sync --locked --all-extras`, `ruff format --check`, `ruff check`, `mypy`, `pytest tests -m 'not live and not db and not benchmark' --cov` (1,232 passed in 34 s, 74% covered), then the commit step from the repository root. The commit step fails on the commits of `develop` that are not on `origin/develop` (19 of them: author `agent@local`, AI trailers; the history rewrite of phase 1 is the author's), so this branch is gated with `GATE_COMMIT_RANGE=develop..HEAD scripts/gate.sh`, which checks the commits of the branch only. The `db` tests are not run here (no database) |
+| Gate | done | `scripts/gate.sh` and `scripts/check-commits.sh` (unchanged from Nogat). The gate runs in `backend/`: `uv sync --locked --all-extras`, `ruff format --check`, `ruff check`, `mypy`, `pytest tests -m 'not live and not db and not benchmark' --cov` (1,362 passed in 26 s, 85% covered), then the commit step from the repository root. The commit step fails on the commits of `develop` that are not on `origin/develop` (19 of them: author `agent@local`, AI trailers; the history rewrite of phase 1 is the author's), so this branch is gated with `GATE_COMMIT_RANGE=develop..HEAD scripts/gate.sh`, which checks the commits of the branch only. The `db` tests are not run here (no database) |
 | CI | done, not run | `.github/workflows/ci.yml` is the `app` variant of `standards/ci`: the `gate` job runs `scripts/gate.sh` on Linux (Python 3.12, and 3.15 as a reported job), the `db` job runs the `db` tests against PostGIS after `alembic upgrade head`, the `audit` job runs `pip-audit` over the locked PyPI packages (not a required check). `.github/dependabot.yml` updates the actions weekly. There is no `live.yml`: no test has the `live` marker. Nothing is pushed, so no job has run; the `db` job and the migrations in it are unverified (no database here) |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
@@ -51,12 +51,12 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      untyped functions (`check_untyped_defs = false`, about 1,260 unannotated tests);
      `scripts.*` allows untyped definitions and calls (46 findings) and its annotated code is
      checked. To lift an override, annotate the module and delete its line in `pyproject.toml`.
-   - **Coverage floor** (DEV-7.5). `fail_under` is 70, not 80: 73% of `api`, `core`, `models`
-     and `utils` is covered by the offline suite (`pytest tests --cov`; `scripts/`, `migrations/`
-     and `tests/` are omitted) and the rest runs only against PostGIS. Raise the floor toward 80
-     as tests land, starting with the least covered modules: `utils/raster_utils.py` 11%,
-     `core/db_bulk.py` 32%, `core/stream_extraction.py` 40%, `core/watershed_service.py` 53%,
-     `core/catchment_graph.py` 60%, `api/endpoints/admin.py` 63%; `core/soil_hsg.py` has no test.
+   - **Coverage** (DEV-7.5) is done: `fail_under` is 80 and the offline suite covers 85% of
+     `api`, `core`, `models` and `utils` (`scripts/`, `migrations/` and `tests/` are omitted
+     from the measure). Modules still below 75%: `core/watershed_service.py` 53%,
+     `core/catchment_graph.py` 60%, `core/raster_io.py` 67%, `api/endpoints/hydrograph.py`
+     and `watershed.py` 70%; most of what is missing is PostGIS SQL that only the `db` job
+     runs.
    - **Translations** to English (DEV-2.1, ECO-005), most useful first: CHANGELOG (sections
      as DOC-7.1), ARCHITECTURE, DECISIONS, DATA_MODEL, `docs/integrations/*`, SCOPE, PRD,
      COMPUTATION_PIPELINE, QA_REPORT, TECHNICAL_DEBT, BENCHMARK_QUERIES,
@@ -84,6 +84,9 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      `batch_size` to `process_dem`, which has no such parameter; `scripts/analyze_watershed.py`
      passes `stream_threshold` to `process_dem` and imports `find_nearest_stream` and
      `traverse_upstream` from `core.watershed`, which has neither: those paths fail at run time.
+     Found by the tests of `load_bdot_streams_from_gpkg` (`core/db_bulk.py`), not fixed: a
+     feature with an empty name column gets the name `'nan'` (a pandas NaN is truthy), and a
+     feature without geometry stops the load (`row.geometry` is NaN, so `.is_empty` fails).
 2. **Migrate to the producers' heads after the first release set** (Nogat plans
    `2026-10-24-data-output.md` step 8 and `2026-10-20-first-release-set.md` step 8; pins stay
    until then). Probe of 2026-10-25 in a throwaway environment, committed nowhere: Kartograf

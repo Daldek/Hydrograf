@@ -1,8 +1,12 @@
 """Tests for HSG soil group queries."""
 
+from decimal import Decimal
+from types import SimpleNamespace
+
 import numpy as np
 from scipy.ndimage import distance_transform_edt
 
+from core.soil_hsg import get_hsg_for_boundary
 from models.schemas import HsgCategory, HsgStats
 
 
@@ -100,3 +104,59 @@ class TestHsgPolandCache:
         expected_where = "ST_Intersects(geom, ST_MakeEnvelope"
         assert "ST_Intersects" in expected_where
         assert "ST_MakeEnvelope" in expected_where
+
+
+class FakeSession:
+    """Answers `execute(sql, params).fetchall()` with prepared rows."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.executed = []
+
+    def execute(self, sql, params):
+        self.executed.append((str(sql), params))
+        return SimpleNamespace(fetchall=lambda: self.rows)
+
+
+def row(group, area_m2, percentage):
+    return SimpleNamespace(
+        hsg_group=group, total_area_m2=area_m2, percentage=percentage
+    )
+
+
+class TestGetHsgForBoundary:
+    def test_catchment_without_soil_data_has_no_statistics(self):
+        assert get_hsg_for_boundary("0102", FakeSession([])) is None
+
+    def test_groups_keep_the_order_of_the_query_and_the_first_is_dominant(self):
+        db = FakeSession(
+            [row("B", Decimal("7500.5"), Decimal("75.005")), row("A", 2500, 24.995)]
+        )
+
+        stats = get_hsg_for_boundary("0102", db)
+
+        assert stats == {
+            "categories": [
+                {"group": "B", "area_m2": 7500.5, "percentage": 75.005},
+                {"group": "A", "area_m2": 2500.0, "percentage": 24.995},
+            ],
+            "dominant_group": "B",
+        }
+        # numeric columns arrive as Decimal; the response model needs floats
+        assert all(
+            type(c[key]) is float
+            for c in stats["categories"]
+            for key in c
+            if key != "group"
+        )
+
+    def test_boundary_is_sent_as_a_bound_parameter_not_as_sql_text(self):
+        boundary = "0103000020B40800000100000004000000"
+        db = FakeSession([row("C", 10.0, 100.0)])
+
+        get_hsg_for_boundary(boundary, db)
+
+        ((sql, params),) = db.executed
+        assert params == {"boundary_wkb": boundary}
+        assert boundary not in sql
+        assert ":boundary_wkb" in sql
