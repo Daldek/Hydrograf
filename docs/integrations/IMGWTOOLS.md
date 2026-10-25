@@ -286,7 +286,7 @@ imgwtools @ git+https://github.com/Daldek/IMGWTools.git@a30452182b01f47cc18e4846
 - **GitHub:** https://github.com/Daldek/IMGWTools
 - **Branch:** `feature/data-output` (not pushed; the pin is a commit, REL-5.3, ADR-060)
 - **Wersja:** 3.0.0 (untagged), commit `a30452182b01f47cc18e48466da4edf4d0c8cb6a`
-- **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `IMGWValidationError`, `IMGWConnectionError` and `IMGWDataError`; both call sites of Hydrograf catch `Exception`.
+- **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `IMGWValidationError`, `IMGWConnectionError` and `IMGWDataError`; both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
 - **uv:** the commit is not on GitHub, so a machine needs it in the uv git cache before `uv lock` or `uv sync` (`docs/PROGRESS.md`, Next 2); the release replaces it with the tag.
 
 ---

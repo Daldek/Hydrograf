@@ -125,10 +125,12 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      (`scripts/preprocess_precipitation.py::fetch_pmaxtp_for_point` and
      `scripts/analyze_watershed.py::fetch_precipitation_imgw`) ran offline against the real
      parsing, with a canned PMAXTP answer in place of the HTTP call: 432 scenarios without a gap,
-     the nearest duration and a fractional probability. No test covers them, and both end in
-     `except Exception`, so a future change of IMGWTools would show as "no precipitation data",
-     not as an error; a test with an `httpx.MockTransport` answer through the real library would
-     catch it. Renames in IMGWTools that Hydrograf does not use: `IMGW_STORE_ROOT` is
+     the nearest duration and a fractional probability. They caught `Exception`, so a future
+     change of IMGWTools would have shown as "no precipitation data"; they catch only
+     `IMGWConnectionError`, `IMGWDataError` and `IMGWValidationError` now, and
+     `tests/unit/test_imgw_call_sites.py` runs both through the real library with an
+     `httpx.MockTransport` answer (`serve_imgw` in `tests/conftest.py`), also for the errors that
+     must surface. Renames in IMGWTools that Hydrograf does not use: `IMGW_STORE_ROOT` is
      `IMGW_ROOT`, `IMGW_DATA_DIR` is `IMGW_REFERENCE_DIR`, store and export options are `root`,
      `output_dir`, `output`. Hydrograf's own settings `IMGW_GRID_SPACING_KM` and
      `IMGW_RATE_LIMIT_DELAY_S` (`core/config.py`, `.env.example`) share the `IMGW_` prefix of
