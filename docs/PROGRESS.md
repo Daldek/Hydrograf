@@ -16,7 +16,7 @@ sessions 98 and 99 are only on the unmerged branch `feature/kartograf-wykorzysta
 | Branch `chore/nogat-2.1` | note | based on `develop`, not on `feature/kartograf-wykorzystanie`, which has 7 commits that `develop` lacks: `f3f23dd` (`affine>=2.4,<3`, carried here in `pyproject.toml`), a CHANGELOG line, and PROGRESS of sessions 98 and 99. Merging both needs a manual resolution of this file and of the deleted `requirements.txt` |
 | Nogat standard 2.1, environment | done | `backend/uv.lock` replaces `requirements.txt`: seeded with the versions of the image built on 2026-10-18 (no third-party change), caps `sqlalchemy<2.1` and `affine<3` with their reasons in `pyproject.toml`; `dev` group, extra `viz`; `[tool.uv] package = false`; `develop` carries `0.5.0.dev0`, read through `core/version.py`; the Dockerfile builds with `uv sync --locked --no-dev` (GDAL's Python binding stays outside the lock); editor, git and `.env.example` files |
 | Nogat standard 2.1, quality tooling | done | `ruff format` (`2347433`), the rule set of DEV-7.2 (`39eb15e`), mypy `strict` over `api core models scripts utils tests` (`98178c5`, clean, 144 files), the pytest settings (`--strict-markers`, markers `live`, `db`, `slow`, `benchmark`, `tests/contract`, coverage floor 70 as a recorded deviation of DEV-7.5), the gate, CI and Dependabot |
-| Nogat standard 2.1, contribution files | planned | `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, pull request template (DEV-13.7, DEV-16.2, DEV-16.4) |
+| Nogat standard 2.1, contribution files | done, CLA text open | `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md` and `.github/PULL_REQUEST_TEMPLATE.md` with the CLA checkbox (DEV-13.7, DEV-16.2, DEV-16.4); `docs/CLA.md` is the author's text and does not exist yet, so `CONTRIBUTING.md` and the template name it without a link |
 | Nogat standard 2.1, documentation | in progress | done: this file and [BACKLOG.md](BACKLOG.md); planned: `CLAUDE.md` in English with Deviations, README in the order of DOC-2.1, ADR index and an ADR for the adoption, `docs/DEVELOPMENT_STANDARDS.md` deleted; the Polish documents are still to translate (Next 1, Translations) |
 | Nogat standard 2.1, error registry and REST (ERR-1 to ERR-6, DEV-11.1, AGI-6.2 to AGI-6.4) | planned | vendored registry and schemas, generated `core/_errors.py`, `HydrografError`, `application/problem+json`, `Accept-Language`, OpenAPI `operationId`s |
 | Data output (DEV §19, ECO-051) | planned | profile `app` consumes Kartograf in store mode; waits for the first release set; call sites in Next 2 |
@@ -57,8 +57,6 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      as tests land, starting with the least covered modules: `utils/raster_utils.py` 11%,
      `core/db_bulk.py` 32%, `core/stream_extraction.py` 40%, `core/watershed_service.py` 53%,
      `core/catchment_graph.py` 60%, `api/endpoints/admin.py` 63%; `core/soil_hsg.py` has no test.
-   - **Contribution files.** `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`,
-     `.github/PULL_REQUEST_TEMPLATE.md` (without the CLA text).
    - **CLAUDE.md, README, ADR.** `CLAUDE.md` in English within 200 lines with the profile,
      Deviations and the code map; delete `docs/DEVELOPMENT_STANDARDS.md` (DEV-1.3); README in
      English in the order of DOC-2.1 (profile `app`: Run and Deploy), at most 400 lines; ADR
@@ -230,5 +228,6 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    (`generate_dem_tiles.py` runs `gdal2tiles.py`).
 5. Merge of `feature/kartograf-wykorzystanie` and `chore/nogat-2.1` into `develop`: order and
    who resolves PROGRESS, CHANGELOG and `requirements.txt`.
-6. Text of `docs/CLA.md` and how the CLA is signed (the pull request template has the checkbox
-   that `CONTRIBUTING.md` refers to).
+6. Text of `docs/CLA.md` and how the CLA is signed. `CONTRIBUTING.md` describes signing by a
+   comment on the pull request, as in Retman and Archiwista, and the template has the
+   checkbox; both name `docs/CLA.md`, which does not exist yet.
