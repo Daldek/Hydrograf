@@ -1,6 +1,6 @@
 # Procedura obliczeniowa — Hydrograf
 
-> Wersja: 1.2 | Data: 2026-02-14
+> Wersja: 1.3 | Data: 2026-10-25
 
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
@@ -443,13 +443,13 @@ END FROM nearest
 
 ### 5.1 Hierarchia wyznaczania CN
 
-**Funkcja:** `determine_cn()` (land_cover.py, linie 256-347)
+**Funkcja:** `determine_cn()` (`core/land_cover.py`)
 
 | Priorytet | Źródło | Warunek |
 |-----------|--------|---------|
 | 1 | Konfiguracja (explicit CN) | `config_cn is not None` |
 | 2 | Baza danych (land_cover table) | Istnieją dane pokrycia terenu |
-| 3 | Kartograf (HSG + Land Cover) | `use_kartograf=True` i dostępne dane |
+| 3 | Kartograf (HSG + Land Cover) | `use_kartograf=True`, `boundary_wgs84` and `cache_dir` given, Kartograf importable (`calculate_cn_from_kartograf()` returns a result) |
 | 4 | Wartość domyślna | `default_cn = 75` |
 
 ### 5.2 CN z pokrycia terenu w bazie
@@ -478,15 +478,15 @@ CN = clamp(CN, 0, 100)
 
 ### 5.3 CN z Kartografa (HSG)
 
-**Funkcja:** `calculate_cn_from_kartograf()` (cn_calculator.py, linie 228-334)
+**Funkcja:** `calculate_cn_from_kartograf(boundary_wgs84, cache_dir, use_default_land_cover=True, teryt=None)` (`core/cn_calculator.py`); only `scripts/analyze_watershed.py` calls it, through `determine_cn()`.
 
-1. Konwersja granicy zlewni → BBox (z buforem 100m)
-2. Pobranie HSG z SoilGrids (`Kartograf.HSGCalculator`): → dominujący typ gleby A/B/C/D
-3. Pobranie pokrycia terenu (BDOT10k / CORINE): → statystyki procentowe
-4. Lookup CN z tabeli `CN_LOOKUP_TABLE` per kategoria + HSG
-5. Średnia ważona: `CN = Σ(cn[i] × percentage[i] / 100)`
+1. The boundary of the watershed is converted to a `BBox` in EPSG:2180 with a buffer of 100 m (`convert_boundary_to_bbox`).
+2. The HSG of the area (`get_hsg_from_soilgrids`): `kartograf.calculate_hsg(output_dir=<temporary directory>, bbox=, depth="0-5cm", cache=False)` downloads the SoilGrids clay, sand and silt rasters, classifies the USDA texture of each cell into the groups A-D and writes the HSG raster as a plain file that exists only for this call; `kartograf.hsg_statistics` counts the cells per group. The dominant group is the one with the largest share of the cells that have data. A failure of Kartograf (`KartografError`) or an area without data gives the group B.
+3. The land cover (`get_land_cover_stats`): `download_bdot10k` takes the BDOT10k package of every county that the bbox intersects from the Kartograf store `<cache_dir>/kartograf` (a package that is already local is used without a request); the area of every `PT*` layer clipped to the bbox gives the shares in percent per category, each county by its part in the bbox. Without data the default land cover is used when `use_default_land_cover` is true.
+4. The CN of each category and the dominant group comes from `CN_LOOKUP_TABLE`.
+5. The weighted mean: `CN = Σ(cn[i] × percentage[i] / 100)`.
 
-> **Uwaga (Kartograf 0.7.0):** zmieniono progi tekstury USDA i `nodata=0` w rastrze HSG. Rastry HSG wyprodukowane starszą wersją są odrzucane przez `check_hsg_cache` (`HsgCacheStaleError`) i należy je pobrać ponownie.
+> **Note (ADR-061):** `HSGCalculator` and `LandCoverManager` are no longer public in Kartograf, and `check_hsg_cache` and `HsgCacheStaleError` of `scripts/bootstrap.py` are gone together with `soil_hsg/hsg_poland.tif`. The HSG raster of the bootstrap (the `soil_hsg` table) is a version of the Kartograf store (`hsg/`): its sidecar records the Kartograf version and the source rasters with their hashes. The raster of this function is not kept, and `hsg_statistics` of a file without a sidecar counts the whole raster, so the cells at the edge of the bbox count in full, as in Kartograf 0.7.0 (ADR-061, erratum of 2026-10-25).
 
 ### 5.4 Tabele CN
 
