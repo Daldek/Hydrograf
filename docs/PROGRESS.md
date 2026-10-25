@@ -15,7 +15,7 @@ sessions 98 and 99 are only on the unmerged branch `feature/kartograf-wykorzysta
 | Producer pins | behind the heads | Kartograf `v0.7.0`, Hydrolog `v0.6.3`, IMGWTools `v2.1.0`; the heads need the migration of Next 2; pins change only after the first release set (ADOPTION_PLAN 5.1) |
 | Branch `chore/nogat-2.1` | note | based on `develop`, not on `feature/kartograf-wykorzystanie`, which has 7 commits that `develop` lacks: `f3f23dd` (`affine>=2.4,<3`, carried here in `pyproject.toml`), a CHANGELOG line, and PROGRESS of sessions 98 and 99. Merging both needs a manual resolution of this file and of the deleted `requirements.txt` |
 | Nogat standard 2.1, environment | done | `backend/uv.lock` replaces `requirements.txt`: seeded with the versions of the image built on 2026-10-18 (no third-party change), caps `sqlalchemy<2.1` and `affine<3` with their reasons in `pyproject.toml`; `dev` group, extra `viz`; `[tool.uv] package = false`; `develop` carries `0.5.0.dev0`, read through `core/version.py`; the Dockerfile builds with `uv sync --locked --no-dev` (GDAL's Python binding stays outside the lock); editor, git and `.env.example` files |
-| Nogat standard 2.1, quality tooling | in progress | done: `ruff format` (`2347433`), the rule set of DEV-7.2 (`39eb15e`) and mypy `strict` over `api core models scripts utils tests` (clean, 142 files). Planned: `--strict-markers`, markers and `tests/contract`, coverage floor, `scripts/gate.sh`, CI, Dependabot |
+| Nogat standard 2.1, quality tooling | in progress | done: `ruff format` (`2347433`), the rule set of DEV-7.2 (`39eb15e`), mypy `strict` over `api core models scripts utils tests` (`98178c5`, clean, 144 files) and the pytest settings (`--strict-markers`, markers `live`, `db`, `slow`, `benchmark`, `tests/contract`, coverage floor 70 as a recorded deviation of DEV-7.5). Planned: `scripts/gate.sh`, CI, Dependabot |
 | Nogat standard 2.1, contribution files | planned | `SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, pull request template (DEV-13.7, DEV-16.2, DEV-16.4) |
 | Nogat standard 2.1, documentation | in progress | done: this file and [BACKLOG.md](BACKLOG.md); planned: `CLAUDE.md` in English with Deviations, README in the order of DOC-2.1, ADR index and an ADR for the adoption, `docs/DEVELOPMENT_STANDARDS.md` deleted; the Polish documents are still to translate (Next 1, Translations) |
 | Nogat standard 2.1, error registry and REST (ERR-1 to ERR-6, DEV-11.1, AGI-6.2 to AGI-6.4) | planned | vendored registry and schemas, generated `core/_errors.py`, `HydrografError`, `application/problem+json`, `Accept-Language`, OpenAPI `operationId`s |
@@ -51,11 +51,12 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      untyped functions (`check_untyped_defs = false`, about 1,260 unannotated tests);
      `scripts.*` allows untyped definitions and calls (46 findings) and its annotated code is
      checked. To lift an override, annotate the module and delete its line in `pyproject.toml`.
-   - **pytest.** `--strict-markers`, markers `live`, `db`, `slow` (plus `benchmark`),
-     `tests/contract`, coverage floor 80 (DEV-7.5, DEV-10.1). Starting point: `addopts` is
-     `-v --tb=short -m 'not db and not benchmark'` today and `[tool.coverage.run] source = ["."]`
-     omits `scripts/*`; measure first with `uv run pytest tests -m 'not db and not benchmark' --cov`
-     and lower `fail_under` only with a Deviations line.
+   - **Coverage floor** (DEV-7.5). `fail_under` is 70, not 80: 73% of `api`, `core`, `models`
+     and `utils` is covered by the offline suite (`pytest tests --cov`; `scripts/`, `migrations/`
+     and `tests/` are omitted) and the rest runs only against PostGIS. Raise the floor toward 80
+     as tests land, starting with the least covered modules: `utils/raster_utils.py` 11%,
+     `core/db_bulk.py` 32%, `core/stream_extraction.py` 40%, `core/watershed_service.py` 53%,
+     `core/catchment_graph.py` 60%, `api/endpoints/admin.py` 63%; `core/soil_hsg.py` has no test.
    - **Gate and CI.** `scripts/gate.sh` and `scripts/check-commits.sh` (they run in
      `backend/`; the commit step in the repository root; `.pre-commit-config.yaml` goes), CI from
      `standards/ci` in the `app` variant (gate on Linux, a `db` job with PostGIS, audit),
@@ -69,7 +70,8 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      English in the order of DOC-2.1 (profile `app`: Run and Deploy), at most 400 lines; ADR
      index at the top of `docs/DECISIONS.md` and a new ADR for the adoption (DOC-8.2). Deviations
      known so far, for its Deviations section (DEV-1.2): DEV-7.2 `E501` is off in
-     `migrations/versions/*` (28 single-line DDL strings of `001_initial_schema.py`).
+     `migrations/versions/*` (28 single-line DDL strings of `001_initial_schema.py`); DEV-7.5
+     `fail_under = 70` (see Coverage floor).
    - **Translations** to English (DEV-2.1, ECO-005), most useful first: CHANGELOG (sections
      as DOC-7.1), ARCHITECTURE, DECISIONS, DATA_MODEL, `docs/integrations/*`, SCOPE, PRD,
      COMPUTATION_PIPELINE, QA_REPORT, TECHNICAL_DEBT, BENCHMARK_QUERIES,
