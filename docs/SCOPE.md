@@ -604,6 +604,7 @@ This document defines precisely:
 - ⚠️ **One-off DEM preprocessing:** ~45 minutes (the bootstrap pipeline, measured on a bbox of ~400 km²)
 - ⚠️ **Needs a server:** at least 8 GB RAM, 100 GB of disk
 - ⚠️ **Can be started from the admin panel** (`/admin` → Bootstrap) or from the CLI (`bootstrap.py`)
+- ⚠️ **Buildings are not raised yet:** `process_dem` can raise the DEM under the building footprints (ADR-033), but no script passes them, so the flow paths can cross buildings ([BACKLOG.md](BACKLOG.md))
 
 **Hydrological model:**
 - ⚠️ **SCS CN model:** For watersheds < 250 km²

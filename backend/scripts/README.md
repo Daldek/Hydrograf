@@ -272,7 +272,8 @@ the stream network and the sub-catchments into `stream_network` and `stream_catc
 
 1. Read the raster (`.asc`, `.vrt`, `.tif`); with `--hydro-resolution` downsample it first.
 2. Raise the buildings (+5 m under the BUBD footprints, ADR-033): `process_dem()` takes the file as
-   `building_gpkg`, but no script passes it, so the stage does not run in the pipeline.
+   `building_gpkg`, but no script passes it, so the stage does not run in the pipeline (what the
+   wiring needs: `docs/BACKLOG.md`, Bugs and diagnoses).
 3. Burn the streams into the DEM (`--burn-streams`, optional), then smooth them monotonically with a
    running minimum downstream from the outlet, which corrects bridges and embankments (ADR-041;
    `--no-smooth-streams` switches it off).

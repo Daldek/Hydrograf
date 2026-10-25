@@ -158,7 +158,8 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
      output). Not run: a real download of the NMT, BDOT10k and SoilGrids (no network test in the
      offline suite), `bootstrap` end to end, the Docker image. Known defect that the documents
      state: no script passes `building_gpkg`, so building raising (ADR-033) does not run in the
-     pipeline.
+     pipeline; ADR-033 makes the parameter optional, so it is a backlog item for the author
+     ([BACKLOG.md](BACKLOG.md), Bugs and diagnoses).
    - **Hydraulik** (`depends_on`, planned): integration halted by the author (session 99);
      nothing to migrate.
 3. **Engineering items with the highest priority** from the former backlog (all of it:
