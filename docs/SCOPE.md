@@ -1,7 +1,7 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.3
+**Version:** 1.4
 **Date:** 2026-10-25
 **Status:** Approved
 
@@ -410,7 +410,7 @@ This document defines precisely:
 
 #### 3.1.4 Precipitation Data
 
-**Source:** IMGW - the Pmax_PT atlas through IMGWTools v2.1.0
+**Source:** IMGW - the Pmax_PT atlas through IMGWTools 3.0.0 (commit `a304521`)
 **Format:** Points of meteorological stations
 **Spatial extent:** Stations within the bbox (~192 stations)
 **Parameters:**
@@ -519,9 +519,9 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog v0.6.3 (hydrological calculations)
+- Hydrolog 1.0.0.dev0 (commit `6c9ba5a`; hydrological calculations)
 - Kartograf v0.7.0 (downloading the DEM, land cover, HSG, BDOT10k)
-- IMGWTools v2.1.0 (design precipitation from IMGW)
+- IMGWTools 3.0.0 (commit `a304521`; design precipitation from IMGW)
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
@@ -949,13 +949,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.3
+**Document version:** 1.4
 **Date of the last update:** 2026-10-25
 **Current version:** v0.4.0 (CP4 finished, 899 tests, 19 endpoints, 49 ADRs)
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.4 (2026-10-25): the versions of Hydrolog and IMGWTools follow their pins by commit (ADR-060)
 - 1.3 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
 - 1.2 (2026-03-25): last content update
 

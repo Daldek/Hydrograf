@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Data:** 2026-01-21
-**Ostatnia aktualizacja:** 2026-10-08
+**Ostatnia aktualizacja:** 2026-10-25 (the pins of Hydrolog and IMGWTools, ADR-060)
 **Autor:** Claude Code (sesja analizy)
 **Projekty:** Hydrograf, Hydrolog, Kartograf, IMGWTools
 
@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐             │
 │  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │             │
-│  │  v2.1.0       │   │   v0.7.0      │   │   v0.6.3      │             │
+│  │  a304521      │   │   v0.7.0      │   │   6c9ba5a     │             │
 │  │  (dane IMGW)  │   │ (dane GIS)    │   │ (obliczenia)  │             │
 │  └───────────────┘   └───────────────┘   └───────┬───────┘             │
 │                                                  │                      │
@@ -36,19 +36,19 @@
 
 | Projekt | Zależy od | Typ zależności | Wersja |
 |---------|-----------|----------------|--------|
-| **Hydrograf** | IMGWTools | bezpośrednia (pyproject.toml) | v2.1.0 |
+| **Hydrograf** | IMGWTools | bezpośrednia (pyproject.toml) | commit a304521 (3.0.0) |
 | **Hydrograf** | Kartograf | bezpośrednia (pyproject.toml) | v0.7.0 |
-| **Hydrograf** | Hydrolog | bezpośrednia (pyproject.toml) | v0.6.3 |
-| **Hydrolog** | Kartograf | opcjonalna (`[spatial]`) | - |
+| **Hydrograf** | Hydrolog | bezpośrednia (pyproject.toml) | commit 6c9ba5a (1.0.0.dev0) |
+| **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
 
 **Uwaga:** Hydrolog nie ma już zależności od IMGWTools (usunięta w v0.5.2).
 
 ### Instalacja zależności (backend/pyproject.toml, wersje w backend/uv.lock)
 
 ```
-imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
+imgwtools @ git+https://github.com/Daldek/IMGWTools.git@a30452182b01f47cc18e48466da4edf4d0c8cb6a
 kartograf @ git+https://github.com/Daldek/Kartograf.git@v0.7.0
-hydrolog @ git+https://github.com/Daldek/Hydrolog.git@v0.6.3
+hydrolog @ git+https://github.com/Daldek/Hydrolog.git@6c9ba5afae65c601c447f48f5c1412e93f3a1d60
 ```
 
 ---
