@@ -54,6 +54,14 @@ odpowiedzi i zapisuje rekord JSON `request_completed`/`request_failed` z
 w obu logach. Czas nginx obejmuje proxy i przesyłanie odpowiedzi, czas API
 dotyczy obsługi przez aplikację; te wartości nie muszą być identyczne.
 
+Podczas testów podaj testerowi adres tunelu zaczynający się od `https://`.
+Aktualne przekierowanie Cloudflare z HTTP zwraca 301: żądanie `POST`
+wysłane bezpośrednio na HTTP może zostać ponowione jako `GET`. Gdy tester
+zgłosi błąd, poproś o przybliżony czas i `X-Request-ID` z diagnostyki
+formularza uwag; log nginx pokazuje także błędy ładowania zasobów statycznych,
+które nie trafiają do API. Rotacja ogranicza rozmiar, lecz nie gwarantuje
+zachowania wpisów przez określoną liczbę dni.
+
 Zmiana opcji logowania wymaga odtworzenia odpowiednich kontenerów
 (`docker compose up -d db api nginx`); sam restart nie aktualizuje sterownika
 logów. Logi mogą zawierać adresy IP, ścieżki i parametry zapytań — nie
