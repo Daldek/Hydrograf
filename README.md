@@ -35,6 +35,7 @@ Aplikacja dostępna pod:
 - **Frontend:** http://localhost
 - **API:** http://localhost/api
 - **Admin:** http://localhost/admin
+- **Instrukcja:** http://localhost/instrukcja (na serwerze testowym: https://hydrograf-test.debever.pl/instrukcja)
 
 ## Logi usługi
 

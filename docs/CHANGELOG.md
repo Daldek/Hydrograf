@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Dodane
+- Siedmioslajdowy przewodnik użytkownika (`docs/Hydrograf-prezentacja.html` i `.pdf`): nawigacja, trzy tryby pracy, wyznaczanie granicy zlewni z wykresami, profil terenu i zgłaszanie uwag; pięć zrzutów działającej aplikacji. Opisy slajdów bez odwołań do konkretnych lokalizacji; krótkie objaśnienia pojęć hydrologicznych i instrukcja zakończenia profilu.
+- Publiczna podstrona z przewodnikiem HTML pod `/instrukcja` (siedem slajdów i pięć obrazów) oraz przycisk „Instrukcja” obok „Zgłoś uwagę” w górnym pasku aplikacji.
 - Integracja kanalizacji deszczowej z analiza splywu powierzchniowego (ADR-051)
 - Nowy modul `core/sewer_service.py`: budowa grafu sieci, inlet burning, rekonstrukcja FA, routing, propagacja
 - Nowy skrypt `scripts/download_sewer.py`: pozyskiwanie danych (plik/WFS/DB/URL)
@@ -39,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`backend/utils/sheet_finder.py`** (~616 linii) i `tests/unit/test_sheet_finder.py` — zastąpione przez `utils/sheet_lookup.py`, cienki wrapper na `kartograf.find_sheets_for_bbox()` zamiast własnej reimplementacji matematyki godeł (ADR-057)
 
 ### Naprawione
+- Mobilna prezentacja HTML: slajdy rosną wraz z treścią, karty układają się w jednej kolumnie, a zrzuty ekranu i stopki nie są ściskane. Usunięto zbędny przycisk „Następny slajd” i skrypt nawigacji; wydruk PDF 16:9 pozostaje bez zmian.
 - Logowanie nginx: access/error na stdout/stderr zamiast 10 MiB tmpfs (zapełniony tmpfs zatrzymywał zapis); log Docker `json-file` rotowany po 10 MiB, 5 plików. Dotyczy konfiguracji HTTP i szablonu HTTPS.
 - Logi API i PostgreSQL otrzymały tę samą rotację `json-file` co nginx: 10 MiB × 5 plików na kontener; konfiguracja działa po odtworzeniu usług.
 - Korelacja żądań: nginx nadaje `X-Request-ID` i loguje `request_id`, `request_time`, `upstream_time` dla HTTP i szablonu HTTPS; FastAPI zapisuje ten sam identyfikator, status i `duration_ms` także przy błędzie aplikacji. Żądania bez proxy otrzymują własny identyfikator w nginx.
