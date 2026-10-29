@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat(api+frontend): formularz „Zgłoś uwagę" — POST /api/feedback, tabela feedback (migracja 002), modal na stronie głównej z opt-in diagnostyką sesji (dziennik 50 zdarzeń + konfiguracja obszaru roboczego), sekcja zgłoszeń w panelu /admin, rate limit nginx 1r/m
 
 ### Zmienione
+- Publikacja Nginx Hydrografa jest ograniczona do `127.0.0.1:${HYDROGRAF_PORT:-8080}`; bezpośredni dostęp przez adres LAN hosta jest wyłączony, a aplikacja pozostaje dostępna przez Cloudflare Tunnel.
 - **Kartograf 0.6.1 → 0.7.0 (etap K)** — pobieranie NMT przez `DownloadManager.download_sheets()` z `campaigns="newest"` i `MetadataCache` (`<cache_dir>/kartograf_meta.db`); nowy układ cache `cache/nmt/pl_<uklad>_<res>_evrf2007/` (+ `kampanie/`, sidecary `.meta.json`); dane z układu 0.6.1 nie są reużywane (pierwszy bootstrap pobiera ponownie — `docs/integrations/KARTOGRAF.md` §6.5). `download_dem` CLI: wymagany `--metadata-cache`, domyślne `--output ../cache/`. `kartograf_meta.db` (SQLite WAL) musi leżeć na dysku lokalnym, nie na udziale sieciowym; `clean --include-cache` ją usuwa.
 - **Głośne błędy pobierania NMT** — błędy transportu kończą krok 2 bootstrapu błędem z pełną listą godeł (kod 1); brak pokrycia części arkuszy raportowany listą, całego obszaru — błąd; wyłączony cache metadanych — błąd; pusta lista arkuszy — błąd.
 - `bootstrap --bbox` odrzuca odwrócony/zdegenerowany bbox i nieprawidłowe godła błędem CLI (kod 2); bbox WGS84 równy arkuszowi zwraca teraz tylko ten arkusz (semantyka krawędzi Kartografa 0.7.0).
@@ -42,8 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Naprawione
 - Mobilna prezentacja HTML: slajdy rosną wraz z treścią, karty układają się w jednej kolumnie, a zrzuty ekranu i stopki nie są ściskane. Usunięto zbędny przycisk „Następny slajd” i skrypt nawigacji; wydruk PDF 16:9 pozostaje bez zmian.
-- Logowanie nginx: access/error na stdout/stderr zamiast 10 MiB tmpfs (zapełniony tmpfs zatrzymywał zapis); log Docker `json-file` rotowany po 10 MiB, 5 plików. Dotyczy konfiguracji HTTP i szablonu HTTPS.
-- Logi API i PostgreSQL otrzymały tę samą rotację `json-file` co nginx: 10 MiB × 5 plików na kontener; konfiguracja działa po odtworzeniu usług.
+- Logowanie nginx: access/error na stdout/stderr zamiast 10 MiB tmpfs (zapełniony tmpfs zatrzymywał zapis); log Docker `json-file` rotowany po 10 MiB, 50 plików (do 500 MiB na kontener). Dotyczy konfiguracji HTTP i szablonu HTTPS.
+- Logi API i PostgreSQL otrzymały tę samą rotację `json-file` co nginx: 10 MiB × 50 plików na kontener; konfiguracja działa po odtworzeniu usług.
 - Korelacja żądań: nginx nadaje `X-Request-ID` i loguje `request_id`, `request_time`, `upstream_time` dla HTTP i szablonu HTTPS; FastAPI zapisuje ten sam identyfikator, status i `duration_ms` także przy błędzie aplikacji. Żądania bez proxy otrzymują własny identyfikator w nginx.
 - Pin `sqlalchemy>=2.0.25,<2.1` w `requirements.txt` — SQLAlchemy 2.1 wybiera sterownik psycopg v3 dla URL-i `postgresql://`, a obraz zawiera `psycopg2-binary`; przebudowa obrazu zapetlala restart API na `alembic upgrade head`.
 - Mozaika VRT bootstrapu dublowała arkusze NMT (kopie w `kampanie/`) i mogła mieszać rozdzielczości — krok 3 używa listy z kroku 2; `discover_asc_files()` usunięta.
