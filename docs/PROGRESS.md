@@ -53,9 +53,16 @@
 - Nginx miał zapełniony `tmpfs /var/log/nginx` (10 MiB), przez co nie zapisywał nowych żądań. Access/error skierowano na stdout/stderr, usunięto tmpfs logów, włączono rotację `json-file` 10 MiB × 5 plików dla nginx, API i DB. Odtworzono kontenery wymagające nowych opcji logowania, nginx przeładowano po zmianie formatu.
 - Nginx zapisuje `request_id`, `request_time`, `upstream_time`, przekazuje ID do API na wszystkich trasach proxy. FastAPI zwraca `X-Request-ID` i loguje JSON ze statusem oraz `duration_ms`, również przy błędzie. Zaktualizowano konfigurację HTTP i nieaktywny szablon TLS.
 - Weryfikacja: `nginx -t`, `docker compose config`, `ruff`, 7 testów API; `/health` i `/api/tiles/thresholds` 200, admin bez klucza 401, nieznana trasa 404. ID w nagłówku odpowiedzi zgadza się z logami nginx i API. API i DB zdrowe.
+- Commit `9bd97d1 fix(docker): rotate and correlate request logs` na osobnej gałęzi `feature/logowanie-testow` utworzonej od `develop` (bez commitów z `feature/kartograf-wykorzystanie` i bez pusha). Przegląd końcowy potwierdził wyniki testów oraz korelację ID dla odpowiedzi 200 i 404.
+- Próbka logów z testów przez tunel: 2 delineacje i 17 hydrogramów zakończone 200, brak 5xx; 406 odpowiedzi 404 dla nieobecnych statycznych kafli `streams_100000` (powtarzające się współrzędne; sprawdzić pokrycie, jeśli tester zgłosi braki linii). Dla tunelu nginx widzi adres pośrednika, nie rzeczywiste IP testera. Cloudflare przekierowuje HTTP na HTTPS kodem 301 i zachowuje query; HTTPS `/` i `/health` odpowiadają 200. Do API i formularzy podawać bezpośrednio HTTPS (301 może zmienić POST na GET).
+
+### W trakcie
+- Brak otwartych zmian kodu w tej sesji; szablon nginx TLS jest zmieniony, ale pozostaje nieaktywny i bez testu z certyfikatami (TLS kończy Cloudflare).
 
 ### Następne kroki
-- Ustalić politykę retencji danych osobowych w logach i monitoring miejsca na dysku. Zweryfikować szablon nginx TLS dopiero po uruchomieniu go z certyfikatami; aktywne wdrożenie korzysta z TLS na Cloudflare.
+- Zweryfikować, czy nieobecne kafle `streams_100000` wynikają z braku danych poza obszarem pokrycia, jeśli tester zobaczy brak linii w obrębie analizowanego terenu; nie ukrywać 404 bez diagnozy.
+- Ustalić politykę prywatności/retencji logów i monitoring miejsca na dysku. Osobno zaplanować dashboard ruchu, jeśli potrzebne są statystyki; obecnie dostępny jest `docker compose logs`, bez realnego IP klientów tunelu.
+- Zintegrować `feature/logowanie-testow` z `develop` po decyzji o merge'u. Osobna gałąź Kartografa i jej commity nie są częścią tego commita; unikać przypadkowego przebudowania obrazu z zależnościami różniącymi się między gałęziami.
 
 ### Poprzednia sesja (2026-10-08, sesja 97 — etap K: wdrożenie Kartografa v0.7.0; przepisanie historii git)
 
