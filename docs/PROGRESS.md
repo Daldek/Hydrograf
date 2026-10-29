@@ -47,7 +47,17 @@
 
 ## Ostatnia sesja
 
-**Data:** 2026-10-08 (sesja 97 — etap K: wdrożenie Kartografa v0.7.0; przepisanie historii git)
+**Data:** 2026-10-29 (sesja 100 — logowanie podczas testów)
+
+### Co zrobiono
+- Nginx miał zapełniony `tmpfs /var/log/nginx` (10 MiB), przez co nie zapisywał nowych żądań. Access/error skierowano na stdout/stderr, usunięto tmpfs logów, włączono rotację `json-file` 10 MiB × 5 plików dla nginx, API i DB. Odtworzono kontenery wymagające nowych opcji logowania, nginx przeładowano po zmianie formatu.
+- Nginx zapisuje `request_id`, `request_time`, `upstream_time`, przekazuje ID do API na wszystkich trasach proxy. FastAPI zwraca `X-Request-ID` i loguje JSON ze statusem oraz `duration_ms`, również przy błędzie. Zaktualizowano konfigurację HTTP i nieaktywny szablon TLS.
+- Weryfikacja: `nginx -t`, `docker compose config`, `ruff`, 7 testów API; `/health` i `/api/tiles/thresholds` 200, admin bez klucza 401, nieznana trasa 404. ID w nagłówku odpowiedzi zgadza się z logami nginx i API. API i DB zdrowe.
+
+### Następne kroki
+- Ustalić politykę retencji danych osobowych w logach i monitoring miejsca na dysku. Zweryfikować szablon nginx TLS dopiero po uruchomieniu go z certyfikatami; aktywne wdrożenie korzysta z TLS na Cloudflare.
+
+### Poprzednia sesja (2026-10-08, sesja 97 — etap K: wdrożenie Kartografa v0.7.0; przepisanie historii git)
 
 ### Co zrobiono
 - **Analiza Kartografa v0.7.0** (wydany 2026-10-08) i sondy empiryczne na kodzie Hydrografa: 7 testów padało (przeniesiony `providers.bdot10k`), `discover_asc_files` dublowało arkusze (hardlink + `kampanie/`), błędy pobierania NMT przechodziły po cichu, bootstrap kończył się kodem 0 przy całkowitej porażce pobrania NMT.

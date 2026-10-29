@@ -5,6 +5,7 @@ Configures the API with routers, middleware, and exception handlers.
 """
 
 import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -57,6 +58,7 @@ logging.basicConfig(
     level=log_level,
 )
 logger = logging.getLogger(__name__)
+request_logger = structlog.get_logger("api.requests")
 
 
 @asynccontextmanager
@@ -97,12 +99,35 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 
 @app.middleware("http")
 async def add_request_id(request, call_next):
-    """Add unique request ID to each request for log traceability."""
-    request_id = str(uuid.uuid4())[:8]
+    """Correlate proxy and API logs with one request ID."""
+    forwarded_id = request.headers.get("x-request-id", "")
+    request_id = (
+        forwarded_id.lower()
+        if len(forwarded_id) == 32
+        and all(char in "0123456789abcdefABCDEF" for char in forwarded_id)
+        else uuid.uuid4().hex
+    )
     structlog.contextvars.clear_contextvars()
     structlog.contextvars.bind_contextvars(request_id=request_id)
-    response = await call_next(request)
+    started = time.perf_counter()
+    log_fields = {"method": request.method, "path": request.url.path}
+    try:
+        response = await call_next(request)
+    except Exception:
+        request_logger.exception(
+            "request_failed",
+            **log_fields,
+            status_code=500,
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
+        raise
     response.headers["X-Request-ID"] = request_id
+    request_logger.info(
+        "request_completed",
+        **log_fields,
+        status_code=response.status_code,
+        duration_ms=round((time.perf_counter() - started) * 1000, 2),
+    )
     return response
 
 

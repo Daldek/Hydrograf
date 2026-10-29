@@ -36,6 +36,30 @@ Aplikacja dostępna pod:
 - **API:** http://localhost/api
 - **Admin:** http://localhost/admin
 
+## Logi usługi
+
+Nginx zapisuje żądania i błędy na stdout/stderr; API i PostgreSQL również
+zapisują logi do Dockera. Wszystkie trzy serwisy Hydrografa mają rotację
+`json-file`: maksymalnie 5 plików po 10 MiB **na kontener**. Podgląd:
+
+```bash
+docker compose logs --since 10m nginx api db
+```
+
+Każdy wpis dostępu nginx zawiera `request_id` (także dla zasobów statycznych),
+`request_time` i `upstream_time` w sekundach (`-` bez backendu). Dla żądań API
+nginx przekazuje ten sam `X-Request-ID` do FastAPI; API odsyła go w nagłówku
+odpowiedzi i zapisuje rekord JSON `request_completed`/`request_failed` z
+`request_id`, `status_code` i `duration_ms`. Szukaj ID zgłoszonego przez testera
+w obu logach. Czas nginx obejmuje proxy i przesyłanie odpowiedzi, czas API
+dotyczy obsługi przez aplikację; te wartości nie muszą być identyczne.
+
+Zmiana opcji logowania wymaga odtworzenia odpowiednich kontenerów
+(`docker compose up -d db api nginx`); sam restart nie aktualizuje sterownika
+logów. Logi mogą zawierać adresy IP, ścieżki i parametry zapytań — nie
+udostępniaj ich testerom. Osobny kontener `imgwtools-api` nie należy do tego
+projektu Compose i nie jest objęty tą rotacją.
+
 ## Szybki start (Development)
 
 ```bash

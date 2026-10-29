@@ -10,6 +10,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init_scripts:/docker-entrypoint-initdb.d:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     restart: unless-stopped
     deploy:
       resources:
@@ -54,6 +59,11 @@ services:
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
       NUMBA_CACHE_DIR: /tmp/numba_cache
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     depends_on:
       db:
         condition: service_healthy
@@ -97,6 +107,11 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -111,7 +126,6 @@ services:
       - /tmp:size=10M
       - /var/cache/nginx:size=50M
       - /var/run:size=1M
-      - /var/log/nginx:size=10M
 
 volumes:
   postgres_data:
