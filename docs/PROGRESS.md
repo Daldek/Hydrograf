@@ -62,11 +62,13 @@
 ### W trakcie
 - `hydro_api` ma limit 12g RAM / 16g z `docker update` (do odtworzenia kontenera, potem 8G z `docker-compose.yml`); przy bootstrapie w osobnym kontenerze nie jest potrzebny.
 - Rastry pośrednie w `data/nmt/` to mniejszy obszar (Kaczawa nadpisana); arkusze NMT całej Kaczawy zostają w cache.
+- `feature/logowanie-testow` nie ma odpowiednika na origin. Commity `b195401` i `29e9f66` (sesja prezentacji) zawierały ścieżkę udziału i adres LAN hosta; bieżące pliki mają już placeholdery, ale przed pushem trzeba przepisać te dwa commity (lokalne, niewypchnięte), żeby szczegóły infrastruktury nie trafiły do historii.
 
 ### Następne kroki
 - Bootstrap uruchamiać wyłącznie w osobnym kontenerze (`docker compose run --rm --no-deps api ...`), nigdy przez `exec` w `hydro_api`.
 - Rastry powyżej ~160M komórek (np. cała Kaczawa, 183M) dopiero po wdrożeniu F1–F7 (`docs/TECHNICAL_DEBT.md`); wtedy ponowić Kaczawę.
 - Pozostałe wnioski dopisane do Backlogu: dobór arkuszy po wielokącie, czas delineacji przy ujściu dużych cieków.
+- Przycinanie prezentowanych danych do granicy zakresu analizy — priorytet wysoki (Backlog, „Funkcjonalnosci — pozostale”).
 
 ### Poprzednia sesja (2026-10-29 — prezentacja dla testerów)
 
