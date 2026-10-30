@@ -219,6 +219,72 @@ def extract_mbtiles_to_pbf(mbtiles_path: Path, output_dir: Path, prefix: str) ->
     return count
 
 
+def mbtiles_bounds(paths: list[Path]) -> list[float] | None:
+    """Return the union of the ``bounds`` of .mbtiles files, or None.
+
+    The frontend passes it to the tile layers so the browser never asks
+    for tiles outside the data (each of them would answer 404).
+
+    Returns
+    -------
+    list[float] or None
+        ``[west, south, east, north]`` in WGS84 (MBTiles convention);
+        None when no file holds valid bounds.
+    """
+    import sqlite3
+
+    union: list[float] | None = None
+    for path in paths:
+        if not path.exists():
+            continue
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            row = conn.execute(
+                "SELECT value FROM metadata WHERE name = 'bounds'"
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            continue
+        try:
+            west, south, east, north = (float(v) for v in row[0].split(","))
+        except ValueError:
+            logger.warning(f"Invalid bounds in {path.name}: {row[0]!r}")
+            continue
+        if union is None:
+            union = [west, south, east, north]
+        else:
+            union = [
+                min(union[0], west),
+                min(union[1], south),
+                max(union[2], east),
+                max(union[3], north),
+            ]
+    return union
+
+
+def write_metadata(output_dir: Path, thresholds: list[int]) -> Path:
+    """Write ``tiles_metadata.json`` for the tiles in ``output_dir``."""
+    metadata = {
+        "thresholds": thresholds,
+        "min_zoom": MIN_ZOOM,
+        "max_zoom": MAX_ZOOM,
+        "threshold_min_zoom": {str(k): v for k, v in THRESHOLD_MIN_ZOOM.items()},
+        "format": "pbf",
+        "bounds": mbtiles_bounds(
+            [
+                output_dir / f"{layer}_{threshold}.mbtiles"
+                for threshold in thresholds
+                for layer in ("streams", "catchments")
+            ]
+        ),
+    }
+    meta_path = output_dir / "tiles_metadata.json"
+    with open(meta_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+    return meta_path
+
+
 def generate_tiles(output_dir: Path) -> None:
     """Generate pre-built MVT tiles for all thresholds."""
     t0 = time.time()
@@ -328,17 +394,7 @@ def generate_tiles(output_dir: Path) -> None:
                             output_dir / f"catchments_{threshold}.pmtiles",
                         )
 
-    # Write metadata
-    metadata = {
-        "thresholds": thresholds,
-        "min_zoom": MIN_ZOOM,
-        "max_zoom": MAX_ZOOM,
-        "threshold_min_zoom": {str(k): v for k, v in THRESHOLD_MIN_ZOOM.items()},
-        "format": "pbf",
-    }
-    meta_path = output_dir / "tiles_metadata.json"
-    with open(meta_path, "w") as f:
-        json.dump(metadata, f, indent=2)
+    write_metadata(output_dir, thresholds)
 
     elapsed = time.time() - t0
     logger.info(

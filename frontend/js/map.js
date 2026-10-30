@@ -206,9 +206,24 @@
         }
         currentThreshold = threshold || currentThreshold;
 
+        // Limit requests to the data: outside its bounds and below its first
+        // zoom no tile exists and each request would answer 404.
+        var meta = window.Hydrograf._tilesMeta || {};
+        var extent = {};
+        if (meta.bounds && meta.bounds.length === 4) {
+            extent.bounds = L.latLngBounds(
+                [meta.bounds[1], meta.bounds[0]],
+                [meta.bounds[3], meta.bounds[2]]
+            );
+        }
+        if (meta.min_zoom) {
+            var zooms = meta.threshold_min_zoom || {};
+            extent.minZoom = zooms[String(currentThreshold)] || meta.min_zoom;
+        }
+
         streamsLayer = L.vectorGrid.protobuf(
             getTileUrl('streams', currentThreshold),
-            {
+            L.extend({
                 pane: 'streamsPane',
                 vectorTileLayerStyles: {
                     streams: function (properties) {
@@ -223,7 +238,7 @@
                 interactive: true,
                 maxNativeZoom: 18,
                 attribution: 'Linie spływu (flow acc)',
-            }
+            }, extent)
         );
 
         // Re-fire click to map so click mode routing works on stream features
