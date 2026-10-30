@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`backend/utils/sheet_finder.py`** (~616 linii) i `tests/unit/test_sheet_finder.py` — zastąpione przez `utils/sheet_lookup.py`, cienki wrapper na `kartograf.find_sheets_for_bbox()` zamiast własnej reimplementacji matematyki godeł (ADR-057)
 
 ### Naprawione
+- Warstwy ładowane z pliku (cieki i zbiorniki BDOT10k, HSG, pokrycie terenu) mogły zostać na mapie po wyłączeniu: odznaczenie w trakcie wczytywania nie zatrzymywało dodania warstwy, a ponowne zaznaczenie przed końcem wczytywania budowało drugą kopię, której żadne odznaczenie już nie usuwało. Teraz warstwa wczytuje się raz, a po wczytaniu trafia na mapę tylko wtedy, gdy pole jest nadal zaznaczone.
 - Mobilna prezentacja HTML: slajdy rosną wraz z treścią, karty układają się w jednej kolumnie, a zrzuty ekranu i stopki nie są ściskane. Usunięto zbędny przycisk „Następny slajd” i skrypt nawigacji; wydruk PDF 16:9 pozostaje bez zmian.
 - Logowanie nginx: access/error na stdout/stderr zamiast 10 MiB tmpfs (zapełniony tmpfs zatrzymywał zapis); log Docker `json-file` rotowany po 10 MiB, 50 plików (do 500 MiB na kontener). Dotyczy konfiguracji HTTP i szablonu HTTPS.
 - Logi API i PostgreSQL otrzymały tę samą rotację `json-file` co nginx: 10 MiB × 50 plików na kontener; konfiguracja działa po odtworzeniu usług.
