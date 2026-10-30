@@ -195,15 +195,25 @@
 
         _overlayRegistry.push({ label: label, cb: cb });
 
+        // One load at a time: a second check while the first load is pending
+        // must not build a second layer (it would be orphaned on the map and
+        // no later uncheck could remove it).
+        var pendingLoad = null;
+
         cb.addEventListener('change', function () {
             var mapObj = Hydrograf.map._getMap();
             if (cb.checked) {
                 var layer = getLayer();
                 if (layer) {
                     layer.addTo(mapObj);
-                } else {
-                    loadLayer().then(function (l) {
-                        if (l) l.addTo(mapObj);
+                } else if (!pendingLoad) {
+                    pendingLoad = Promise.resolve(loadLayer()).then(function (l) {
+                        pendingLoad = null;
+                        // The box may have been unchecked while loading.
+                        if (l && cb.checked && !mapObj.hasLayer(l)) l.addTo(mapObj);
+                    }, function (err) {
+                        pendingLoad = null;
+                        throw err;
                     });
                 }
                 sliderRow.classList.remove('d-none');
