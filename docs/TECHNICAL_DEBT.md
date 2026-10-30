@@ -210,4 +210,34 @@ logger.info(f"Watershed area: {area_km2} km2")
 
 ---
 
-*Ostatnia aktualizacja: 2026-03-01*
+## Pamiec przetwarzania NMT (`process_dem`) — ZAPLANOWANE, NIE WDROZONE
+
+**Problem:** bootstrap zlewni Kaczawy (513 arkuszy, raster 183 332 457 komorek 5 m) padl dwa razy na OOM 2026-10-29/30: przy limicie 8G + 8G swap na `zonal_stats` podzlewni progu 10000 (140 183 etykiety), przy 12G + 4G na TWI. Szczyt obecnego kodu to ~103 B/komorke, czyli ~19 GB przy 183M; ponad 13 GB zajmuje 8 roznych etapow (nie ma jednego waskiego gardla). Kotlina Klodzka (113M) zmiescila sie tylko dzieki domyslnemu swapowi Dockera (8G + 8G).
+
+**Pomiar (2026-10-30):** wycinek 4000×4000 (16M komorek, 57% waznych jak w calej mozaice) mozaiki Kaczawy, jednorazowe kontenery bez sieci i bez bazy (`dry_run`), szczyt RSS per etap przeskalowany na 183M; zgodny z miejscami obu OOM. Prototyp poprawek (poza repo) dal identyczne bit w bit 13 rastrow, statystyki, cieki i zlewnie, a czas wycinka spadl z 287,5 s do 52,5 s.
+
+**Glowne przyczyny:** pyflwdir 0.5.12 przy kazdym nowym `FlwdirRaster` buduje macierz doplywow n×7 int32 (28 B/komorke = 5,1 GB), a kod tworzy go 4 razy; pelne kopie float64 w `zonal_stats`, spadku, ekspozycji i TWI; sciezki splywu sledzone do ujscia calej zlewni (1,3 mld komorek, 5,2 GB) i dopiero potem przycinane; wyniki progu 10000 trzymane podczas liczenia progu 100000.
+
+| # | Zmiana | Miejsce | Oszczednosc przy 183M | Naklad |
+|---|--------|---------|-----------------------|--------|
+| F7 | Usunac zbedne kopie: `astype(copy=False)` w `save_raster_geotiff`, `np.asarray` zamiast `fdir.astype(np.int16)`, `upstream_count` uint8, `del dem` po hydrologii, `label_raster`/`strahler_t` w `del` | `core/raster_io.py:73`, `core/stream_extraction.py:47,153,324`, `scripts/process_dem.py:760,780,954` | 0,2–0,8 GB na etap | maly |
+| F1 | Statystyki podzlewni w jednym przejsciu numba (count, sumy, min, max, max hydrauliczny) + histogram numba; stare funkcje zostaja dla `generate_depressions.py` i testow | `core/stream_extraction.py:424-472`, `core/zonal_stats.py:44-171` | −9,4 GB (prog 100000: −10 GB) | sredni |
+| F2 | Argmax per etykieta w numba i sledzenie sciezki splywu tylko w obrebie podzlewni | `scripts/process_dem.py:145-186,257-299,333-342` | −7,2 GB oraz −5,2 GB | sredni-maly |
+| F3 | Spadek, ekspozycja i TWI pasami po 512 wierszy z 1-wierszowym marginesem, zapis okienkowy; usuwa tez wyciek `valid_aspect` | `scripts/process_dem.py:755-790,828-839`, `core/morphometry_raster.py:38-52,76-77,102-108,366-380` | TWI −9,9 GB, ekspozycja −9,3 GB | sredni |
+| F4 | Jeden `FlwdirRaster` dla calego przebiegu (`order_cells(method='sort')`), Strahler przez `pyflwdir.streams.strahler_order(...)`. Pulapka: `FlwdirRaster.stream_order` cache'uje `strord` i ignoruje maske | `core/hydrology.py:1311`, `scripts/process_dem.py:667-670,741,815,871`, `core/morphometry_raster.py:312-315`; `tests/unit/test_lake_drain.py` (4 miejsca) | −5 do −11 GB na etap | maly-sredni |
+| F5 | Wypelnianie dziur z licznikiem uint8 i srednia tylko dla wypelnialnych komorek; akumulacja Kahna w numba zamiast `deque`; `del dem_patched`; maska numba zamiast `np.isin` | `core/hydrology.py:61-113,1049-1090,1139-1157,1287-1331` | dziury 7,15 → 2,2 GB i 88 min → ~1 s; akumulacja 11,5 → 5,9 GB | maly-sredni |
+| F6 | Progi od najwiekszego, zwalnianie wynikow poprzedniego progu, sortowanie przed zapisem do bazy | `scripts/process_dem.py:860,885,943,954` | ~2 GB | maly |
+
+**Spodziewany szczyt przy 183M:** F1–F7 ~9,1 GB (wyniki identyczne). Dalsze kroki: F8 (wypelnianie `label_raster` w miejscu zamiast `flw.basins` + kopia), F9 (spadek float32; `mean_slope` rozni sie o 8,6e-8 wzglednie), F10 (`GDAL_CACHEMAX` 64–256 MB) daja ~8,3 GB; F11 (zwalnianie `acc`, `fdir`, `strahler`, `filled_dem`, `slope` w ostatnim progu) ~7,4 GB, czyli 8 GiB bez swapu. Nie warto: poligonizacja okienkowa (≤0,8 GB), przyciecie do obwiedni zlewni (zysk ~0), kafelkowanie (lamie ciaglosc hydrologiczna).
+
+**Kolejnosc wdrozenia:** F7 → F1 + F2 → F3 → F4 + F6 (bez nich Strahler progu 100000 zostaje na ~16,5 GB) → F5 → ewentualnie F8–F11. Potem jeden kontrolny bootstrap Kaczawy w osobnym kontenerze (`docker compose run --rm`), nie w `hydro_api`.
+
+**Testy do napisania:** rownowaznosc stare/nowe dla `fill_internal_nodata_holes` (dziury wielokrokowe, krawedzie, float64), `recompute_flow_accumulation` (kody 0/-1/255, nodata, pary cykli), obliczen pasami (pasy nie dzielace liczby wierszy, `strip_rows=1`, nodata na granicy pasa), Strahlera dla dwoch progow na wspolnym `flw` oraz `sort` vs `walk`, `zonal_summary` i histogramu wobec bincount/scipy (etykieta 0, brakujace etykiety, same nodata), argmax per etykieta i sledzenia w obrebie etykiety (rozszerzyc `tests/unit/test_flow_path.py`). Bez testu jednostkowego na pamiec — weryfikacja jednym przebiegiem na pelnym rastrze.
+
+**Przy okazji (osobne zadanie, wplywa na wyniki):** `fix_internal_sinks` strategia `max_acc` tworzy pary komorek splywajacych do siebie (Kaczawa: 4520 poprawek, wszystkie `max_acc`; to zaglebienia przy nodata, nie prawdziwe wewnetrzne). Kahn nie przetwarza komorek cyklu, wiec akumulacja w tych ujsciach pomija obszar partnera, a `d8_fdir`/`flw` nie dostaje poprawek — odleglosc splywu, Strahler i zlewnie licza sie na niepoprawionej sieci. Ponadto `pyflwdir.streams.stream_distance` (0.5.12) nie jest `@njit` (4 min przy 183M), a ekspozycja i TWI licza sie takze przy `save_intermediates=False`.
+
+**Priorytet:** HIGH przed kolejnym bootstrapem obszaru > ~110M komorek; do tego czasu duze obszary sa poza zasiegiem.
+
+---
+
+*Ostatnia aktualizacja: 2026-10-30*
