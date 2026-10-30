@@ -236,7 +236,7 @@ logger.info(f"Watershed area: {area_km2} km2")
 
 **Przy okazji (osobne zadanie, wplywa na wyniki):** `fix_internal_sinks` strategia `max_acc` tworzy pary komorek splywajacych do siebie (Kaczawa: 4520 poprawek, wszystkie `max_acc`; to zaglebienia przy nodata, nie prawdziwe wewnetrzne). Kahn nie przetwarza komorek cyklu, wiec akumulacja w tych ujsciach pomija obszar partnera, a `d8_fdir`/`flw` nie dostaje poprawek — odleglosc splywu, Strahler i zlewnie licza sie na niepoprawionej sieci. Ponadto `pyflwdir.streams.stream_distance` (0.5.12) nie jest `@njit` (4 min przy 183M), a ekspozycja i TWI licza sie takze przy `save_intermediates=False`.
 
-**Priorytet:** HIGH przed kolejnym bootstrapem obszaru > ~110M komorek; do tego czasu duze obszary sa poza zasiegiem.
+**Priorytet:** HIGH przed kolejnym bootstrapem rastra powyzej ~160M komorek (8G + 8G swap; ~80M bez swapu); do tego czasu takie obszary sa poza zasiegiem.
 
 ---
 
