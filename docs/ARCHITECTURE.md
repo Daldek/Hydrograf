@@ -972,6 +972,7 @@ frontend/
     ├── advanced.js           # Tryb zaawansowany: edycja morfometrii do POST /api/generate-hydrograph
     ├── depressions.js        # Depressions (blue spots) overlay
     ├── sewer.js              # Warstwa kanalizacji deszczowej (MVT overlay; tylko gdy GET /api/layers zgłasza dane)
+    ├── results.js            # Wyniki analiz zewnętrznych (np. SFINCS z Hydraulika) z manifestu /data/results/index.json: kafle, legenda, (i)
     ├── diagnostics.js        # Dziennik zdarzeń sesji (ADR-053)
     ├── feedback.js           # Formularz „Zgłoś uwagę” (natywny <dialog>)
     ├── app.js                # Orchestrator: init, tryby pracy, click routing, panel Zlewnia
@@ -1005,6 +1006,20 @@ Strona główna używa powłoki Archiwisty (`chrome.css` + `app.css` + `shell.js
 - **Tryb zaawansowany** — `advanced.js` pozwala zmienić morfometrię wysyłaną do `POST /api/generate-hydrograph` (szybka ścieżka `morphometry`): powierzchnia, obwód, długość, wysokości, średni spadek, długość i spadek cieku, `length_to_centroid_km`, CN. Dokładność pól: powierzchnia 0,01 km², długości i Lc 0,01 km, wysokości 0,1 m, spadki 0,01 %, CN 0,1 (1–100). Zmienione pola są oznaczone; przywracanie pola i całości („Przywróć dane z Hydrografa”); błędy walidacji blokują zapytanie; wynik ma komunikat „Obliczono na zmienionych danych wejściowych”. Opad i AMC ustawia się w sekcji Hietogram. Część zlewni ma `length_to_centroid_km = 0` — Snyder zawodzi, dopóki użytkownik nie poda Lc.
 - **CN** — API zwraca CN zlewni (`morphometry.cn`, `land_cover_stats.weighted_cn`) z dokładnością 0,1; panel pokazuje go z jednym miejscem po przecinku.
 - **Warstwa kanalizacji** — wpis „Kanalizacja deszczowa” w panelu „Warstwy” powstaje tylko, gdy `GET /api/layers` zwraca `sewer: true`; bez danych brak żądań kafli `/api/tiles/sewer`.
+- **Wyniki analiz zewnętrznych** — `results.js` czyta raz przy starcie manifest `/data/results/index.json` (`frontend/data/results/`, serwowany przez `location ^~ /data/`):
+
+  ```json
+  {"schema": "hydrograf-results/1",
+   "results": [{"id": "sfincs-kamiennik-12h-p1", "title": "Głębokość wody — SFINCS, opad 12 h, p = 1%",
+                "group": "Wyniki analiz", "kind": "raster_tiles",
+                "tiles": "/data/results/sfincs-kamiennik-12h-p1/tiles/{z}/{x}/{y}.png",
+                "bounds": [15.88, 50.98, 16.05, 51.06], "min_zoom": 10, "max_zoom": 16, "opacity": 0.8,
+                "legend": {"title": "Maks. głębokość wody", "unit": "m",
+                           "classes": [{"label": "0,05–0,2", "color": "#c6dbef"}, {"label": "> 2", "color": "#08306b"}]},
+                "description": "…", "source": "Hydraulik 0.1.0.dev0 / SFINCS v2.4.1"}]}
+  ```
+
+  `bounds` to [zachód, południe, wschód, północ] w WGS84, kafle XYZ PNG z przezroczystością (`gdal2tiles --xyz`). Każdy wynik `raster_tiles` daje wiersz w grupie `group` (istniejąca „Wyniki analiz” pod „Linie spływu”; nowa grupa powstaje nad podkładami tylko, gdy wynik jej wymaga): `L.tileLayer` w panelu `resultsPane` (z-index 300: nad NMT i pokryciem terenu, pod liniami spływu) z `bounds`, `minZoom` 8, `minNativeZoom`/`maxNativeZoom` z manifestu, kryciem z `opacity`; legenda (próbki z `legend.classes`, jednostka w tytule) tylko przy włączonej warstwie; `description` i `source` w objaśnieniu (i). Zasięg wliczany do „Przybliż do zasięgu warstw”. Inne `kind` są pomijane z ostrzeżeniem; brak manifestu, błędny JSON lub inny `schema` — jedno ostrzeżenie w konsoli i brak wierszy.
 - **Szerokość paneli** — uchwyty między panelami (lewy 260–560 px, prawy 340–720 px), zapamiętywane w `localStorage`; panele można zamknąć.
 - **Telefon (≤ 860 px)** — mapa na pełnym ekranie, dolny pasek zamiast szyny, panele jako arkusze wysuwane od dołu.
 
