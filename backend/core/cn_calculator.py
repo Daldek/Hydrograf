@@ -28,8 +28,8 @@ class CNCalculationResult:
 
     Attributes
     ----------
-    cn : int
-        Obliczona wartosc CN (0-100)
+    cn : float
+        Obliczona wartosc CN (0-100, zaokraglona do 0.1)
     method : str
         Metoda obliczenia ('kartograf_hsg', 'fallback', etc.)
     dominant_hsg : str
@@ -42,7 +42,7 @@ class CNCalculationResult:
         Szczegoly obliczenia CN dla kazdej kategorii
     """
 
-    cn: int
+    cn: float
     method: str
     dominant_hsg: str
     hsg_stats: dict[str, float]

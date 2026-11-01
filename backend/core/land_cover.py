@@ -38,7 +38,7 @@ VALID_CATEGORIES = frozenset(
 def calculate_weighted_cn(
     boundary: Polygon,
     db: Session,
-) -> tuple[int, dict[str, float]]:
+) -> tuple[float, dict[str, float]]:
     """
     Calculate area-weighted CN from land cover data.
 
@@ -54,15 +54,15 @@ def calculate_weighted_cn(
 
     Returns
     -------
-    Tuple[int, Dict[str, float]]
-        - weighted_cn: Area-weighted CN value (0-100)
+    Tuple[float, Dict[str, float]]
+        - weighted_cn: Area-weighted CN value (0-100), rounded to 0.1
         - land_cover_stats: Dictionary with category percentages
 
     Examples
     --------
     >>> cn, stats = calculate_weighted_cn(boundary, db)
     >>> print(f"CN = {cn}, Forest: {stats.get('las', 0):.1f}%")
-    CN = 72, Forest: 45.2%
+    CN = 72.4, Forest: 45.2%
 
     Notes
     -----
@@ -124,7 +124,7 @@ def calculate_weighted_cn(
         return (DEFAULT_CN, {})
 
     weighted_cn_sum = sum(row.cn_value * row.total_area_m2 for row in result)
-    weighted_cn = round(weighted_cn_sum / total_area)
+    weighted_cn = round(weighted_cn_sum / total_area, 1)
 
     # Clamp to valid range 0-100
     weighted_cn = max(0, min(100, weighted_cn))
@@ -170,7 +170,7 @@ def get_land_cover_for_boundary(
         Dictionary with land cover details:
         - categories: List of category stats
         - total_area_m2: Total intersection area
-        - weighted_cn: Calculated CN
+        - weighted_cn: Calculated CN (area-weighted, rounded to 0.1)
         - weighted_imperviousness: Weighted imperviousness fraction
 
         Returns None if no land cover data is found.
@@ -228,7 +228,7 @@ def get_land_cover_for_boundary(
         (row.imperviousness or 0) * row.total_area_m2 for row in result
     )
 
-    weighted_cn = round(weighted_cn_sum / total_area)
+    weighted_cn = round(weighted_cn_sum / total_area, 1)
     weighted_imperviousness = weighted_imperv_sum / total_area
 
     # Build category details
@@ -255,13 +255,13 @@ def get_land_cover_for_boundary(
 def determine_cn(
     boundary: Polygon,
     db: Session,
-    config_cn: int | None = None,
+    config_cn: float | None = None,
     default_cn: int = DEFAULT_CN,
     use_kartograf: bool = True,
     boundary_wgs84: list[list[float]] | None = None,
     data_dir: Path | None = None,
     teryt: str | None = None,
-) -> tuple[int, str, dict[str, Any] | None]:
+) -> tuple[float, str, dict[str, Any] | None]:
     """
     Okresl wartosc CN wedlug hierarchii zrodel.
 
@@ -277,7 +277,7 @@ def determine_cn(
         Granica zlewni w EPSG:2180
     db : Session
         Sesja bazy danych
-    config_cn : int, optional
+    config_cn : float, optional
         Wartosc CN z konfiguracji (najwyzszy priorytet)
     default_cn : int, optional
         Domyslna wartosc CN, domyslnie 75
@@ -290,9 +290,9 @@ def determine_cn(
 
     Returns
     -------
-    Tuple[int, str, Optional[Dict[str, Any]]]
+    Tuple[float, str, Optional[Dict[str, Any]]]
         (cn_value, source, details)
-        - cn_value: wartosc CN (0-100)
+        - cn_value: wartosc CN (0-100, wartosci wazone zaokraglone do 0.1)
         - source: zrodlo ('config', 'database_land_cover', 'kartograf_hsg', 'default')
         - details: dodatkowe informacje (dla kartograf)
 

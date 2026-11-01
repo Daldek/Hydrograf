@@ -307,6 +307,41 @@ def get_sewer_mvt(
     )
 
 
+@router.get("/layers")
+def get_layer_availability(db: Session = Depends(get_db)) -> dict:
+    """
+    Report which optional map layers have data in the database.
+
+    Public, read-only; lets the layers panel hide entries whose tiles
+    would always be empty.
+
+    Parameters
+    ----------
+    db : Session
+        Database session (injected by FastAPI)
+
+    Returns
+    -------
+    dict
+        ``{"sewer": bool}`` — True when the sewer network or its nodes
+        hold at least one row.
+    """
+    try:
+        sewer = bool(
+            db.execute(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM sewer_network)"
+                    " OR EXISTS (SELECT 1 FROM sewer_nodes)"
+                )
+            ).scalar()
+        )
+    except Exception as e:
+        logger.warning(f"Sewer availability check failed: {e}")
+        db.rollback()
+        sewer = False
+    return {"sewer": sewer}
+
+
 @router.get("/tiles/thresholds")
 def get_available_thresholds(db: Session = Depends(get_db)) -> dict:
     """

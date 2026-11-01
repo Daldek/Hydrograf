@@ -6,9 +6,10 @@ generation API endpoints.
 """
 
 import json
+import math
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class DelineateRequest(BaseModel):
@@ -86,8 +87,8 @@ class MorphometricParameters(BaseModel):
         Main channel length [km]
     channel_slope_m_per_m : float, optional
         Main channel slope [m/m]
-    cn : int, optional
-        SCS Curve Number (0-100)
+    cn : float, optional
+        SCS Curve Number (0-100); area-weighted values carry one decimal
     source : str, optional
         Data source identifier
     crs : str, optional
@@ -115,7 +116,7 @@ class MorphometricParameters(BaseModel):
         None, ge=0,
         description="Main channel length covered by BDOT10k real streams [km]",
     )
-    cn: int | None = Field(None, ge=0, le=100, description="SCS Curve Number")
+    cn: float | None = Field(None, ge=0, le=100, description="SCS Curve Number")
     imperviousness: float | None = Field(
         None, ge=0, le=1, description="Weighted imperviousness fraction [0-1]"
     )
@@ -204,7 +205,9 @@ class LandCoverStats(BaseModel):
     categories: list[LandCoverCategory] = Field(
         ..., description="Per-category statistics"
     )
-    weighted_cn: int = Field(..., ge=0, le=100, description="Area-weighted CN")
+    weighted_cn: float = Field(
+        ..., ge=0, le=100, description="Area-weighted CN (rounded to 0.1)"
+    )
     weighted_imperviousness: float = Field(
         ..., ge=0, le=1, description="Area-weighted imperviousness fraction"
     )
@@ -297,6 +300,61 @@ class DelineateResponse(BaseModel):
 # ===================== HYDROGRAPH MODELS =====================
 
 
+CUSTOM_PRECIPITATION_MAX_STEPS = 2000
+
+
+class CustomPrecipitation(BaseModel):
+    """
+    User-supplied rainfall series replacing the PMAXTP design storm.
+
+    Attributes
+    ----------
+    timestep_min : float
+        Length of every interval of the series [min], > 0
+    depths_mm : list[float]
+        Rainfall depth in each interval [mm], >= 0, 1-2000 values
+    """
+
+    timestep_min: float = Field(
+        ..., description="Interval length of the series [min]", examples=[10]
+    )
+    depths_mm: list[float] = Field(
+        ...,
+        description="Rainfall depth per interval [mm]",
+        examples=[[0.5, 2.0, 6.5, 3.0, 1.0]],
+    )
+
+    @field_validator("timestep_min")
+    @classmethod
+    def timestep_positive(cls, v: float) -> float:
+        if not v > 0:
+            raise ValueError("Krok czasowy szeregu opadu musi być większy od 0 min.")
+        if v > 1440:
+            raise ValueError(
+                "Krok czasowy szeregu opadu nie może przekraczać 1440 min (1 doba)."
+            )
+        return v
+
+    @field_validator("depths_mm")
+    @classmethod
+    def depths_valid(cls, v: list[float]) -> list[float]:
+        if not v:
+            raise ValueError("Szereg opadu musi zawierać co najmniej jedną wartość.")
+        if len(v) > CUSTOM_PRECIPITATION_MAX_STEPS:
+            raise ValueError(
+                f"Szereg opadu może mieć najwyżej {CUSTOM_PRECIPITATION_MAX_STEPS} "
+                f"wartości (podano {len(v)})."
+            )
+        for i, depth in enumerate(v, start=1):
+            if not math.isfinite(depth) or depth < 0:
+                raise ValueError(
+                    f"Wysokość opadu musi być liczbą nieujemną (krok {i}: {depth})."
+                )
+        if sum(v) <= 0:
+            raise ValueError("Suma opadu w szeregu musi być większa od 0 mm.")
+        return v
+
+
 class HydrographRequest(BaseModel):
     """
     Request model for hydrograph generation.
@@ -307,12 +365,13 @@ class HydrographRequest(BaseModel):
         Latitude in WGS84 (decimal degrees)
     longitude : float
         Longitude in WGS84 (decimal degrees)
-    duration : str
-        Rainfall duration (full PMAXTP range: '5min'...'72h')
-    probability : int
-        Exceedance probability [%] (1, 2, 5, 10, 20, 50)
+    duration : str, optional
+        Rainfall duration (full PMAXTP range: '5min'...'72h');
+        required unless custom_precipitation is given
+    probability : float, optional
+        Exceedance probability [%]; required unless custom_precipitation is given
     timestep_min : float, optional
-        Time step for calculations [min], default 5.0
+        Time step for calculations [min], default 5.0 (ignored for a custom series)
     tc_method : str, optional
         Time of concentration method ('kirpich', 'nrcs', 'giandotti')
     hietogram_type : str, optional
@@ -327,6 +386,10 @@ class HydrographRequest(BaseModel):
         Nash parameter estimation method ('from_tc', 'from_lutz')
     nash_n : float, optional
         Nash N parameter — number of reservoirs (used with from_tc)
+    amc : {'I', 'II', 'III'}, optional
+        Antecedent moisture condition applied to CN, default 'II'
+    custom_precipitation : CustomPrecipitation, optional
+        Own rainfall series; replaces PMAXTP and the hietogram
     """
 
     latitude: float = Field(
@@ -343,15 +406,16 @@ class HydrographRequest(BaseModel):
         description="Longitude in WGS84 (decimal degrees)",
         examples=[21.01],
     )
-    duration: str = Field(
-        ...,
+    duration: str | None = Field(
+        None,
         pattern=r"^(5min|10min|15min|30min|45min|1h|1\.5h|2h|3h|6h|12h|18h|24h|36h|48h|72h)$",
-        description="Rainfall duration",
+        description="Rainfall duration (required unless custom_precipitation is given)",
         examples=["1h"],
     )
-    probability: float = Field(
-        ...,
-        description="Exceedance probability [%]",
+    probability: float | None = Field(
+        None,
+        description="Exceedance probability [%] "
+        "(required unless custom_precipitation is given)",
         examples=[10],
     )
     timestep_min: float = Field(
@@ -423,14 +487,39 @@ class HydrographRequest(BaseModel):
         None,
         description="Pre-computed morphometry (skips watershed delineation)",
     )
+    amc: Literal["I", "II", "III"] = Field(
+        "II",
+        description="Antecedent moisture condition: I dry, II average, III wet",
+    )
+    custom_precipitation: CustomPrecipitation | None = Field(
+        None,
+        description="Own rainfall series; replaces PMAXTP and the hietogram "
+        "(duration, probability, hietogram_* and timestep_min are then ignored)",
+    )
+
+    @model_validator(mode="after")
+    def design_storm_or_custom(self) -> "HydrographRequest":
+        if self.custom_precipitation is None and (
+            self.duration is None or self.probability is None
+        ):
+            raise ValueError(
+                "Podaj czas trwania (duration) i prawdopodobieństwo (probability) "
+                "opadu albo własny szereg opadu (custom_precipitation)."
+            )
+        return self
 
 
 class PrecipitationInfo(BaseModel):
     """Precipitation event information."""
 
+    source: Literal["pmaxtp", "custom"] = Field(
+        ..., description="Rainfall origin: PMAXTP design storm or own series"
+    )
     total_mm: float = Field(..., ge=0, description="Total precipitation [mm]")
     duration_min: float = Field(..., ge=0, description="Duration [min]")
-    probability_percent: float = Field(..., description="Exceedance probability [%]")
+    probability_percent: float | None = Field(
+        ..., description="Exceedance probability [%] (null for a custom series)"
+    )
     timestep_min: float = Field(..., ge=0, description="Time step [min]")
     times_min: list[float] = Field(..., description="Time values [min]")
     intensities_mm: list[float] = Field(..., description="Precipitation depths [mm]")
@@ -460,7 +549,9 @@ class WaterBalance(BaseModel):
     runoff_coefficient: float = Field(
         ..., ge=0, le=1, description="Runoff coefficient [-]"
     )
-    cn_used: int = Field(..., ge=0, le=100, description="Curve Number used")
+    cn_used: float = Field(
+        ..., ge=0, le=100, description="Curve Number used (adjusted for AMC)"
+    )
     retention_mm: float = Field(..., ge=0, description="Maximum retention S [mm]")
     initial_abstraction_mm: float = Field(
         ..., ge=0, description="Initial abstraction Ia [mm]"
@@ -472,7 +563,12 @@ class HydrographMetadata(BaseModel):
 
     tc_min: float | None = Field(None, ge=0, description="Time of concentration [min]")
     tc_method: str | None = Field(None, description="TC calculation method used")
-    hietogram_type: str = Field(..., description="Hietogram type used")
+    hietogram_type: str | None = Field(
+        ..., description="Hietogram type used (null for a custom series)"
+    )
+    amc: Literal["I", "II", "III"] = Field(
+        "II", description="Antecedent moisture condition applied to CN"
+    )
     uh_model: str = Field("scs", description="Unit hydrograph model")
     nash_estimation: str | None = Field(None, description="Nash estimation method")
     nash_n: float | None = Field(None, description="Nash N parameter")

@@ -550,7 +550,7 @@ def build_morphometric_params(
     cells: list[FlowCell],
     boundary: Polygon,
     outlet: FlowCell,
-    cn: int | None = None,
+    cn: float | None = None,
     include_stream_coords: bool = False,
     db=None,
     include_hypsometric_curve: bool = False,
@@ -569,7 +569,7 @@ def build_morphometric_params(
         Watershed boundary polygon in EPSG:2180
     outlet : FlowCell
         Outlet cell (pour point)
-    cn : int, optional
+    cn : float, optional
         SCS Curve Number (will be calculated separately if None)
     include_stream_coords : bool, optional
         If True, include main_stream_coords in output for GIS export

@@ -10,12 +10,19 @@ via BFS on pre-computed sub-catchments.
 
 import logging
 
+import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
 
 # Hydrolog imports
+from hydrolog.exceptions import InvalidParameterError
 from hydrolog.morphometry import WatershedParameters
-from hydrolog.precipitation import BetaHietogram, BlockHietogram, EulerIIHietogram
-from hydrolog.runoff import HydrographGenerator, NashIUH
+from hydrolog.precipitation import (
+    BetaHietogram,
+    BlockHietogram,
+    EulerIIHietogram,
+    HietogramResult,
+)
+from hydrolog.runoff import AMC, SCSCN, HydrographGenerator, NashIUH
 from hydrolog.time.concentration import ConcentrationTime
 from sqlalchemy.orm import Session
 
@@ -39,6 +46,7 @@ from core.watershed_service import (
     merge_catchment_boundaries,
 )
 from models.schemas import (
+    CUSTOM_PRECIPITATION_MAX_STEPS,
     HydrographInfo,
     HydrographMetadata,
     HydrographRequest,
@@ -64,7 +72,7 @@ def _compute_watershed(
     point_2180,
     request,
     db: Session,
-) -> tuple[dict, int, float, WatershedResponse]:
+) -> tuple[dict, float, float, WatershedResponse]:
     """Full watershed computation path (steps 3-9).
 
     Returns (morph_dict, cn, area_km2, watershed_response).
@@ -188,8 +196,6 @@ def _effective_duration_min(
     Walks through the hietogram step by step, applying cumulative SCS-CN.
     Returns the number of minutes during which Pe(t) > 0.
     """
-    import numpy as np
-
     intensities = np.asarray(intensities_mm)
     p_cum = np.cumsum(intensities)
     # Cumulative effective precip: Pe_cum = (P_cum - Ia)^2 / (P_cum - Ia + S)
@@ -311,7 +317,7 @@ def _estimate_nash_params(
     morph_dict: dict,
     tc_min: float,
     precip_mm: float | None = None,
-    cn: int | None = None,
+    cn: float | None = None,
     duration_min: float | None = None,
     precip_result=None,
     timestep_min: float = 5.0,
@@ -397,6 +403,36 @@ HIETOGRAM_CLASSES = {
     "euler_ii": lambda: EulerIIHietogram(peak_position=0.33),
 }
 
+# Request AMC code -> Hydrolog enum
+AMC_BY_CODE = {"I": AMC.I, "II": AMC.II, "III": AMC.III}
+
+
+def _custom_hietogram(depths_mm: list[float], timestep_min: float) -> HietogramResult:
+    """Wrap a user rainfall series in Hydrolog's hietogram result.
+
+    Parameters
+    ----------
+    depths_mm : list[float]
+        Rainfall depth in each interval [mm].
+    timestep_min : float
+        Interval length [min].
+
+    Returns
+    -------
+    HietogramResult
+        Series with interval end times ``k * timestep_min`` (k = 1..n),
+        the same convention as Hydrolog's hietogram classes.
+    """
+    depths = np.asarray(depths_mm, dtype=np.float64)
+    n_steps = len(depths)
+    return HietogramResult(
+        times_min=np.arange(1, n_steps + 1, dtype=np.float64) * timestep_min,
+        intensities_mm=depths,
+        total_mm=float(depths.sum()),
+        duration_min=n_steps * timestep_min,
+        timestep_min=timestep_min,
+    )
+
 
 @router.post("/generate-hydrograph", response_model=HydrographResponse)
 def generate_hydrograph(
@@ -406,14 +442,16 @@ def generate_hydrograph(
     """
     Generate direct runoff hydrograph for a given point.
 
-    Uses SCS-CN method with configurable hietogram distribution and
-    time of concentration calculation. Watershed delineation via
-    CatchmentGraph (~87k nodes, ~5-50ms BFS).
+    Uses SCS-CN method (CN adjusted for the requested AMC) with either a
+    PMAXTP design storm distributed by a hietogram or a user-supplied
+    rainfall series, and a configurable time of concentration method.
+    Watershed delineation via CatchmentGraph (~87k nodes, ~5-50ms BFS).
 
     Parameters
     ----------
     request : HydrographRequest
-        Request with coordinates, duration, probability, and options
+        Request with coordinates, rainfall (duration + probability or
+        custom_precipitation), AMC and options
     db : Session
         Database session (injected by FastAPI)
 
@@ -434,16 +472,30 @@ def generate_hydrograph(
         On internal server error
     """
     try:
+        custom = request.custom_precipitation
+        if custom is not None:
+            rain_desc = (
+                f"custom series ({len(custom.depths_mm)} x {custom.timestep_min} min)"
+            )
+        else:
+            rain_desc = f"duration={request.duration}, p={request.probability}%"
         logger.info(
             "Generating hydrograph for "
             f"({request.latitude:.6f}, {request.longitude:.6f}), "
-            f"duration={request.duration}, p={request.probability}%"
+            f"{rain_desc}, AMC {request.amc}"
         )
 
         # ===== STEP 1: Validate parameters =====
-        duration_str = validate_duration(request.duration)
-        probability = validate_probability(request.probability)
-        duration_min = DURATION_STR_TO_MIN[duration_str]
+        if custom is None:
+            duration_str = validate_duration(request.duration)
+            probability = validate_probability(request.probability)
+            duration_min = float(DURATION_STR_TO_MIN[duration_str])
+            timestep_min = request.timestep_min
+        else:
+            probability = None
+            duration_min = len(custom.depths_mm) * custom.timestep_min
+            timestep_min = custom.timestep_min
+        amc = AMC_BY_CODE[request.amc]
 
         # ===== STEP 2: Transform coordinates =====
         point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
@@ -464,19 +516,50 @@ def generate_hydrograph(
                 point_2180, request, db
             )
 
-        # ===== Get precipitation (uses click point for IDW) =====
-        precip_mm = get_precipitation(point_2180, duration_str, probability, db)
+        # ===== Precipitation: own series or PMAXTP design storm =====
+        if custom is not None:
+            precip_result = _custom_hietogram(custom.depths_mm, timestep_min)
+            hietogram_type = None
+            logger.debug(
+                f"Custom precipitation: {precip_result.total_mm:.1f} mm "
+                f"in {duration_min:.0f} min"
+            )
+        else:
+            # PMAXTP depth at the click point (IDW)
+            precip_mm = get_precipitation(point_2180, duration_str, probability, db)
 
-        if precip_mm is None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Brak danych opadowych dla ({request.latitude:.4f}, "
-                f"{request.longitude:.4f})",
+            if precip_mm is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Brak danych opadowych dla ({request.latitude:.4f}, "
+                    f"{request.longitude:.4f})",
+                )
+
+            logger.debug(
+                f"Precipitation: {precip_mm:.1f} mm for {duration_str}, "
+                f"p={probability}%"
             )
 
-        logger.debug(
-            f"Precipitation: {precip_mm:.1f} mm for {duration_str}, p={probability}%"
-        )
+            hietogram_type = request.hietogram_type
+            if hietogram_type == "beta":
+                hietogram = BetaHietogram(
+                    alpha=request.hietogram_alpha,
+                    beta=request.hietogram_beta,
+                )
+            else:
+                hietogram_factory = HIETOGRAM_CLASSES.get(hietogram_type)
+                if hietogram_factory is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Nieznany typ hietogramu: {hietogram_type}",
+                    )
+                hietogram = hietogram_factory()
+            precip_result = hietogram.generate(
+                total_mm=precip_mm,
+                duration_min=duration_min,
+                timestep_min=timestep_min,
+            )
+        precip_total_mm = float(precip_result.total_mm)
 
         # ===== Create Hydrolog objects =====
         watershed_params = WatershedParameters.from_dict(morph_dict)
@@ -491,26 +574,6 @@ def generate_hydrograph(
         else:
             tc_method = None
             tc_min = None
-
-        # Create hietogram
-        if request.hietogram_type == "beta":
-            hietogram = BetaHietogram(
-                alpha=request.hietogram_alpha,
-                beta=request.hietogram_beta,
-            )
-        else:
-            hietogram_factory = HIETOGRAM_CLASSES.get(request.hietogram_type)
-            if hietogram_factory is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Nieznany typ hietogramu: {request.hietogram_type}",
-                )
-            hietogram = hietogram_factory()
-        precip_result = hietogram.generate(
-            total_mm=precip_mm,
-            duration_min=float(duration_min),
-            timestep_min=request.timestep_min,
-        )
 
         # ===== Generate hydrograph =====
         nash_meta = {}
@@ -536,11 +599,15 @@ def generate_hydrograph(
                 },
             )
         elif request.uh_model == "nash":
+            # The urban regression needs the event's effective rainfall, so it
+            # uses the same AMC-adjusted CN as the runoff calculation below.
+            cn_effective = SCSCN(cn=cn).adjust_cn_for_amc(amc)
             nash_params, nash_meta = _estimate_nash_params(
                 request, morph_dict, tc_min,
-                precip_mm=precip_mm, cn=cn, duration_min=float(duration_min),
+                precip_mm=precip_total_mm, cn=cn_effective,
+                duration_min=duration_min,
                 precip_result=precip_result,
-                timestep_min=request.timestep_min,
+                timestep_min=timestep_min,
             )
             generator = HydrographGenerator(
                 area_km2=area_km2,
@@ -558,17 +625,19 @@ def generate_hydrograph(
 
         hydro_result = generator.generate(
             precipitation=precip_result,
-            timestep_min=request.timestep_min,
+            timestep_min=timestep_min,
+            amc=amc,
         )
 
         # ===== Build response =====
         response = HydrographResponse(
             watershed=watershed_resp,
             precipitation=PrecipitationInfo(
-                total_mm=round(precip_mm, 2),
-                duration_min=float(duration_min),
+                source="custom" if custom is not None else "pmaxtp",
+                total_mm=round(precip_total_mm, 2),
+                duration_min=duration_min,
                 probability_percent=probability,
-                timestep_min=request.timestep_min,
+                timestep_min=timestep_min,
                 times_min=precip_result.times_min.tolist(),
                 intensities_mm=[
                     round(x, 3) for x in precip_result.intensities_mm.tolist()
@@ -590,14 +659,15 @@ def generate_hydrograph(
                 total_precip_mm=round(hydro_result.total_precip_mm, 2),
                 total_effective_mm=round(hydro_result.total_effective_mm, 2),
                 runoff_coefficient=round(hydro_result.runoff_coefficient, 3),
-                cn_used=hydro_result.cn_used,
+                cn_used=float(hydro_result.cn_used),
                 retention_mm=round(hydro_result.retention_mm, 2),
                 initial_abstraction_mm=round(hydro_result.initial_abstraction_mm, 2),
             ),
             metadata=HydrographMetadata(
                 tc_min=round(tc_min, 1) if tc_min is not None else None,
                 tc_method=tc_method,
-                hietogram_type=request.hietogram_type,
+                hietogram_type=hietogram_type,
+                amc=request.amc,
                 uh_model=request.uh_model,
                 nash_estimation=nash_meta.get("estimation"),
                 nash_n=nash_meta.get("n"),
@@ -618,7 +688,7 @@ def generate_hydrograph(
 
     except HTTPException:
         raise
-    except ValueError as e:
+    except (ValueError, InvalidParameterError) as e:
         logger.error(f"Validation error in hydrograph generation: {e}")
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -651,5 +721,7 @@ def list_scenarios() -> dict:
         "snyder_defaults": {"ct": 1.5, "cp": 0.6},
         "nash_estimation_methods": ["from_lutz", "from_urban_regression", "from_tc"],
         "nash_defaults": {"n": 3.0},
+        "amc": list(AMC_BY_CODE),
+        "custom_precipitation_max_steps": CUSTOM_PRECIPITATION_MAX_STEPS,
         "area_limit_km2": HYDROGRAPH_AREA_LIMIT_KM2,
     }

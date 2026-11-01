@@ -829,7 +829,7 @@ def build_morph_dict_from_graph(
     outlet_y: float,
     segment_idx: int,
     threshold_m2: int,
-    cn: int | None = None,
+    cn: float | None = None,
     imperviousness: float | None = None,
     db: "Session | None" = None,
     outlet_idx: int | None = None,
@@ -854,7 +854,7 @@ def build_morph_dict_from_graph(
         Outlet stream segment ID
     threshold_m2 : int
         Flow accumulation threshold
-    cn : int | None
+    cn : float | None
         SCS Curve Number (optional)
     imperviousness : float | None
         Weighted imperviousness fraction (optional)

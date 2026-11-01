@@ -136,7 +136,7 @@ def lookup_cn(
 def calculate_weighted_cn_from_stats(
     land_cover_stats: dict[str, float],
     dominant_hsg: str,
-) -> int:
+) -> float:
     """
     Oblicz wazony CN na podstawie statystyk pokrycia terenu.
 
@@ -149,14 +149,14 @@ def calculate_weighted_cn_from_stats(
 
     Returns
     -------
-    int
-        Wazony CN (0-100)
+    float
+        Wazony CN (0-100), zaokraglony do 0.1
 
     Examples
     --------
     >>> stats = {"forest": 60.0, "arable": 40.0}
     >>> calculate_weighted_cn_from_stats(stats, "B")
-    65
+    65.4
     """
     if not land_cover_stats:
         logger.warning("Brak statystyk pokrycia, zwracam DEFAULT_CN")
@@ -177,5 +177,5 @@ def calculate_weighted_cn_from_stats(
     if abs(total_percent - 100) > 0.1:
         weighted_cn = weighted_cn * (100 / total_percent)
 
-    final_cn = round(weighted_cn)
+    final_cn = round(weighted_cn, 1)
     return max(0, min(100, final_cn))
