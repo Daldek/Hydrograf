@@ -36,7 +36,7 @@
 │                          │    │                               │
 │  - REST API Endpoints    │    │  - Leaflet.js (Map)          │
 │  - Request Validation    │    │  - Chart.js (Plots)          │
-│  - Business Logic        │    │  - Bootstrap (UI)            │
+│  - Business Logic        │    │  - Tokeny Nogata (UI)        │
 │  - Error Handling        │    │  - Vanilla JavaScript        │
 └───────────┬──────────────┘    └───────────────────────────────┘
             │
@@ -121,6 +121,7 @@ Podsumowanie kluczowych ADR:
 | ADR-049 | DEM auto-discovery z fallback chain | Automatyczne znajdowanie pliku DEM (VRT → mosaic → single TIFF) |
 | ADR-050 | Unified delineate-watershed endpoint | Jeden endpoint z trybami precomputed (BFS) i precise (pyflwdir on-the-fly) |
 | ADR-051 | Integracja sieci kanalizacyjnej | Inlet burning + FA routing przez sieć kanalizacyjną w preprocessingu |
+| ADR-065 | Identyfikacja wizualna Nogata i powłoka Archiwisty | Spójny wygląd GUI ekosystemu (ECO-055) zamiast paneli glassmorphism; Bootstrap tylko w `/admin` |
 
 ---
 
@@ -888,53 +889,77 @@ engine = create_engine(
 
 ```
 frontend/
-├── index.html               # SPA — Leaflet + Bootstrap + Chart.js (CDN)
-├── admin.html               # Panel administracyjny (ADR-034)
+├── index.html               # SPA — powłoka Archiwisty; Leaflet + MapLibre GL + Chart.js (CDN z SRI), bez Bootstrapa
+├── admin.html               # Panel administracyjny (ADR-034) — powłoka + Bootstrap 5.3.3 (siatka, okna modalne)
+├── img/
+│   └── hydrograf.svg         # Znak Hydrografa (górny pasek, favicon)
+├── instrukcja/
+│   ├── index.html            # Przewodnik użytkownika (/instrukcja)
+│   ├── instrukcja.css        # Style slajdów przewodnika
+│   └── Hydrograf-*.png       # Zrzuty ekranu do przewodnika
 ├── css/
-│   ├── glass.css             # Glassmorphism CSS variables
-│   ├── style.css             # Custom styles
-│   └── admin.css             # Style panelu administracyjnego
+│   ├── tokens.css            # Kopia design/tokens.css Nogata (commit 29e7e1c) — NIE edytować, kopiować ponownie
+│   ├── chrome.css            # Powłoka wspólna: górny pasek, szyna, panele, przyciski (index, admin, instrukcja)
+│   ├── app.css               # Strona główna: mapa, panele Warstwy/Zlewnia, szuflada profilu, układ telefonu
+│   └── admin.css             # Panel administracyjny (Bootstrap przekolorowany tokenami)
 └── js/
+    ├── theme-init.js         # Motyw z localStorage (`nogat-theme`) przed pierwszym malowaniem
+    ├── theme-switch.js       # Przełącznik motywu Auto/Jasny/Ciemny w /admin i /instrukcja
+    ├── shell.js              # Powłoka strony głównej: panele, uchwyty szerokości, układ telefonu, motyw
     ├── api.js                # API calls (fetch wrappers)
-    ├── map.js                # Leaflet map, layers, drawing, MVT
-    ├── draggable.js          # Pointer-event drag for floating panel
-    ├── charts.js             # Chart.js: donut, histogram, profile, hydrograph
-    ├── layers.js             # Layers panel: base layers, overlays, opacity
+    ├── map.js                # Leaflet map, drawing, MVT
+    ├── charts.js             # Chart.js w kolorach tokenów: hipsometria, pokrycie/HSG, hietogram, hydrogram, profil
+    ├── layers.js             # Panel „Warstwy”: podkłady, nakładki, krycie, przybliżenie do zasięgu
     ├── profile.js            # Terrain profile (draw line / auto)
     ├── hydrograph.js         # Hydrograph scenario form + chart
     ├── depressions.js        # Depressions (blue spots) overlay
     ├── sewer.js              # Warstwa kanalizacji deszczowej (MVT overlay)
-    ├── app.js                # Orchestrator: init, click routing, panel
+    ├── diagnostics.js        # Dziennik zdarzeń sesji (ADR-053)
+    ├── feedback.js           # Formularz „Zgłoś uwagę” (natywny <dialog>)
+    ├── app.js                # Orchestrator: init, tryby pracy, click routing, panel Zlewnia
     └── admin/
         ├── admin-api.js      # Admin API client (fetch + X-Admin-Key header)
         ├── admin-bootstrap.js # Bootstrap SSE stream, start/cancel
         ├── admin-bbox-picker.js # Mapa do wyboru bbox obszaru
         ├── admin-sewer.js    # Karta zarządzania siecią kanalizacyjną
+        ├── admin-feedback.js # Lista zgłoszeń testerów
         └── admin-app.js      # Admin panel orchestrator
 ```
+
+Identyfikacja wizualna pochodzi z Nogata (standard DEV-15.3, ECO-055, ADR-065): wzorzec w `design/` Nogata, makieta `design/mockups/hydrograf/`. Kolory, czcionki, promienie i cienie wyłącznie przez zmienne z `css/tokens.css`; zmiana palety odbywa się w Nogacie i kończy ponownym skopiowaniem pliku.
 
 ---
 
 ### 4.2 Komponenty UI
 
+#### 4.2.0 Powłoka (shell)
+
+Strona główna używa powłoki Archiwisty (`chrome.css` + `app.css` + `shell.js`):
+
+- **Górny pasek** — znak `img/hydrograf.svg`, wskaźnik stanu usług, przyciski „Instrukcja” i „Zgłoś uwagę” oraz przełącznik motywu Auto/Jasny/Ciemny (`data-theme` na `<html>`, wybór w `localStorage` `nogat-theme`; `theme-init.js` ustawia go przed pierwszym malowaniem, więc nie ma mignięcia jasnego motywu).
+- **Szyna nawigacji** — Mapa, Profil, Administracja (`/admin`), Instrukcja (`/instrukcja/`).
+- **Lewy panel „Warstwy”** — podkłady, nakładki z suwakiem krycia i jeden przycisk przybliżenia do zasięgu włączonych warstw.
+- **Środek** — mapa z paskiem trybów Przeglądanie / Wybierz zlewnię / Profil terenu; profil terenu otwiera się w dolnej szufladzie nad mapą.
+- **Prawy panel „Zlewnia”** — kluczowe wartości (kafle) i sekcje `<details>`: parametry podstawowe, wskaźniki kształtu, rzeźba terenu, sieć rzeczna, pokrycie terenu, grupy HSG, hietogram, hydrogram.
+- **Szerokość paneli** — uchwyty między panelami (lewy 260–560 px, prawy 340–720 px), zapamiętywane w `localStorage`; panele można zamknąć.
+- **Telefon (≤ 860 px)** — mapa na pełnym ekranie, dolny pasek zamiast szyny, panele jako arkusze wysuwane od dołu.
+
+`/admin` i `/instrukcja` używają tej samej powłoki (`chrome.css`) i przełącznika `theme-switch.js`. Formularz „Zgłoś uwagę” to natywny `<dialog>`.
+
 #### 4.2.1 Mapa (Leaflet.js)
+
+Podkłady (`layers.js`): **OpenFreeMap szary** (wektorowy, styl `positron` z `https://tiles.openfreemap.org`, renderowany przez MapLibre GL 4.7.1 i `@maplibre/maplibre-gl-leaflet` 0.0.22; bez MapLibre powrót do OSM GUGiK), **OSM GUGiK szary** (rastrowy, tylko Polska, odbarwiony klasą `.basemap-grey`), **Ortofotomapa ESRI**, **bez podkładu**.
+
 ```javascript
-// map.js
+// map.js (szkic)
 const map = L.map('map').setView([52.0, 21.0], 10);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 18
+// Vector basemap: OpenFreeMap through MapLibre GL
+L.maplibreGL({
+    style: 'https://tiles.openfreemap.org/styles/positron'
 }).addTo(map);
 
-// Stream network layer
-const streamsLayer = L.geoJSON(null, {
-    style: { color: '#0066CC', weight: 2 }
-}).addTo(map);
-
-// Watershed boundary layer
-let watershedLayer = null;
-
+// Click routing depends on the mode bar (browse / select / profile)
 map.on('click', async (e) => {
     const { lat, lng } = e.latlng;
     await delineateWatershed(lat, lng);
@@ -980,6 +1005,9 @@ async function generateHydrograph(lat, lon, duration, probability) {
 ```
 
 #### 4.2.3 Wykres Hydrogramu
+
+Wszystkie wykresy (`charts.js`) biorą kolory, czcionkę i jej rozmiar z tokenów (`getComputedStyle`), a przy zmianie motywu (`data-theme` lub schemat systemu) przemalowują się w miejscu. Hietogram jest wykresem liniowym jak hydrogram; pokrycie terenu i grupy HSG to poziome słupki skumulowane. Poniższy szkic pokazuje sam układ Chart.js; stałe kolory w nim to tylko przykład.
+
 ```javascript
 // chart.js
 let hydrographChart = null;
@@ -1261,6 +1289,12 @@ http {
     }
 }
 ```
+
+**CSP — dozwolone hosty zewnętrzne** (`docker/nginx.conf` i `docker/nginx-ssl.conf.template`, identycznie):
+- `script-src`, `style-src`: `https://unpkg.com` (Leaflet, MapLibre GL, maplibre-gl-leaflet), `https://cdn.jsdelivr.net` (Chart.js, Bootstrap w `/admin`); wszystkie biblioteki z CDN z SRI (`integrity`).
+- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK, także mapa wyboru obszaru w `/admin`), `https://server.arcgisonline.com` (ortofotomapa ESRI).
+- `connect-src`: `https://tiles.openfreemap.org` (styl, kafle wektorowe i glify OpenFreeMap pobierane przez MapLibre).
+- `worker-src blob:`, `child-src blob:` — Web Worker MapLibre GL.
 
 ---
 
@@ -1781,11 +1815,12 @@ jobs:
 
 ---
 
-**Wersja dokumentu:** 2.2
-**Data ostatniej aktualizacji:** 2026-10-08
+**Wersja dokumentu:** 2.3
+**Data ostatniej aktualizacji:** 2026-11-01
 **Status:** Approved for implementation
 
 **Historia zmian:**
+- 2.3 (2026-11-01): GUI w identyfikacji wizualnej Nogata (ADR-065) — §4.1 nowa struktura `frontend/` (`tokens.css`, `chrome.css`, `app.css`, `shell.js`, `theme-init.js`, `theme-switch.js`, `img/hydrograf.svg`; usunięte `glass.css`, `style.css`, `draggable.js`), §4.2 powłoka Archiwisty i podkłady (OpenFreeMap przez MapLibre GL), wykresy w tokenach; §5.2 hosty CSP
 - 2.2 (2026-10-08): Kartograf 0.7.0 (etap K) — `download_dem.py`: `download_sheets()` zwraca `NmtDownloadReport` lub rzuca `NmtDownloadError`; `MetadataCache` w `<cache_dir>/kartograf_meta.db` (dysk lokalny, nigdy udział sieciowy); układ `cache/nmt/pl_<uklad>_<res>_evrf2007/` + `kampanie/`; mozaika z listy plików kroku 2 (szczegóły: `docs/integrations/KARTOGRAF.md` §6)
 - 2.1 (2026-09-28): `utils/sheet_finder.py` → `utils/sheet_lookup.py` — pozyskiwanie danych wylacznie przez Kartograf (ADR-057), cienki wrapper na `kartograf.find_sheets_for_bbox()` zamiast wlasnej reimplementacji matematyki godel
 - 2.0 (2026-03-28): Przebudowa topologii kanalizacji (ADR-052) — nowy modul sewer_topology.py (parser + walidator), jawna topologia zamiast heurystyk, 4 role wezlow (inlet/outlet/junction/storage), 2 formaty wejsciowe (A/B), pipeline dwufazowy, download_sewer.py zwraca tuple, migracja 027 (isolated->storage), admin sewer/config endpoint

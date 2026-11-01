@@ -551,38 +551,50 @@ omit = ["scripts/*", "migrations/*", "tests/*", "*/conftest.py"]
 |------------|-------------|
 | Leaflet.js 1.9+ | Mapa interaktywna |
 | Chart.js 4.x | Wykresy hydrogramow |
-| Bootstrap 5.x | UI components |
+| MapLibre GL 4.7.1 + maplibre-gl-leaflet 0.0.22 | Podkład wektorowy OpenFreeMap |
+| Bootstrap 5.3.3 | Tylko `/admin` (siatka, okna modalne), przekolorowany tokenami |
 
-Frontend jest statyczny (Vanilla JS) — brak frameworka SPA.
+Frontend jest statyczny (Vanilla JS) — brak frameworka SPA. Wygląd: identyfikacja wizualna Nogata (ADR-065). Kolory, czcionki, promienie i cienie wyłącznie przez zmienne z `css/tokens.css`; tego pliku nie edytuje się w Hydrografie — zmiany w Nogacie (`design/tokens.css`), potem ponowne skopiowanie. Biblioteki z CDN zawsze z SRI (`integrity` + `crossorigin`).
 
 ### 9.2 Struktura plikow
 
 ```
 frontend/
-├── index.html               # Glowna strona (mapa + panel)
+├── index.html               # Glowna strona (powloka: gorny pasek, szyna, panele Warstwy/Zlewnia, mapa)
 ├── admin.html               # Panel administracyjny
+├── img/hydrograf.svg        # Znak Hydrografa
+├── instrukcja/              # Przewodnik uzytkownika (/instrukcja) + instrukcja.css
 ├── css/
-│   ├── style.css            # Style glowne
-│   ├── glass.css            # Glassmorphism (zmienne CSS)
+│   ├── tokens.css           # Kopia tokenow Nogata — NIE edytowac
+│   ├── chrome.css           # Powloka wspolna (index, admin, instrukcja)
+│   ├── app.css              # Strona glowna
 │   └── admin.css            # Style panelu admin
 ├── js/
+│   ├── theme-init.js        # Motyw przed pierwszym malowaniem
+│   ├── theme-switch.js      # Przelacznik motywu (admin, instrukcja)
+│   ├── shell.js             # Panele, uchwyty szerokosci, motyw (strona glowna)
 │   ├── app.js               # Entry point + orkiestracja
 │   ├── api.js               # HTTP client dla backendu
 │   ├── map.js               # Leaflet — rysowanie, klikanie
-│   ├── layers.js            # Warstwy bazowe (OSM/ESRI/Topo)
-│   ├── charts.js            # Chart.js — renderowanie
-│   ├── draggable.js         # Przesuwalny panel glassmorphism
+│   ├── layers.js            # Podklady (OpenFreeMap/OSM GUGiK/ESRI) i nakladki
+│   ├── charts.js            # Chart.js — renderowanie w kolorach tokenow
 │   ├── profile.js           # Profil terenu
 │   ├── hydrograph.js        # Hydrogram
 │   ├── depressions.js       # Zaglebiania bezodplywowe
+│   ├── sewer.js             # Kanalizacja deszczowa (MVT)
+│   ├── diagnostics.js       # Dziennik zdarzen sesji
+│   ├── feedback.js          # Formularz „Zglos uwage” (<dialog>)
 │   └── admin/
 │       ├── admin-app.js     # Entry point panelu admin
 │       ├── admin-api.js     # HTTP client admin (z X-Admin-Key)
-│       └── admin-bootstrap.js # SSE streaming logów bootstrap
+│       ├── admin-bootstrap.js # SSE streaming logów bootstrap
+│       ├── admin-bbox-picker.js # Mapa wyboru bbox
+│       ├── admin-sewer.js   # Kanalizacja
+│       └── admin-feedback.js # Zgloszenia testerow
 └── data/                    # Dane statyczne (overlays, tiles, GeoJSON)
 ```
 
-**Uwaga:** Wszystkie moduly JS uzywaja IIFE na `window.Hydrograf` (13 modulow: 9 core + 4 admin).
+**Uwaga:** Moduly JS uzywaja IIFE na `window.Hydrograf` (18 modulow: 12 core + 6 admin); `theme-init.js` i `theme-switch.js` to samodzielne skrypty bez przestrzeni nazw.
 
 ### 9.3 API client pattern
 

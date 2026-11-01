@@ -7,7 +7,7 @@ System analizy hydrologicznej — wyznaczanie zlewni, obliczanie parametrów fiz
 - **Wyznaczanie zlewni** — kliknij na mapę, a system wyznaczy granicę zlewni w kilka sekund
 - **Parametry fizjograficzne** — powierzchnia, spadki, pokrycie terenu, CN, grupy glebowe HSG
 - **Hydrogram odpływu** — scenariusze opadowe z IMGW, modele SCS/Nash/Snyder
-- **Mapa interaktywna** — cieki, zlewnie, pokrycie terenu, DEM z hillshade
+- **Mapa interaktywna** — cieki, zlewnie, pokrycie terenu, DEM z hillshade; motyw jasny i ciemny, układ na telefon
 - **Panel administracyjny** — uruchamianie pipeline, monitoring, czyszczenie danych
 
 ## Stack technologiczny
@@ -16,7 +16,7 @@ System analizy hydrologicznej — wyznaczanie zlewni, obliczanie parametrów fiz
 |---------|-------------|
 | Backend | Python 3.12+, FastAPI, SQLAlchemy, GeoAlchemy2 |
 | Baza danych | PostgreSQL 16 + PostGIS 3.4 |
-| Frontend | Vanilla JS, Leaflet.js, Chart.js, Bootstrap 5 |
+| Frontend | Vanilla JS, Leaflet.js + MapLibre GL (podkład OpenFreeMap), Chart.js; identyfikacja wizualna Nogata (`frontend/css/tokens.css`); Bootstrap 5 tylko w `/admin` |
 | Infrastruktura | Docker Compose, Nginx |
 | Biblioteki własne | [Hydrolog](https://github.com/Daldek/Hydrolog), [Kartograf](https://github.com/Daldek/Kartograf), [IMGWTools](https://github.com/Daldek/IMGWTools) |
 

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Dodane
+- **Nowy interfejs w identyfikacji wizualnej Nogata** (standard DEV-15.3, decyzja ECO-055, ADR-065; wzorzec: Nogat `design/`, makieta `design/mockups/hydrograf/`) z powłoką Archiwisty: górny pasek ze znakiem Hydrografa i przełącznikiem motywu Auto/Jasny/Ciemny, szyna nawigacji Mapa/Profil/Administracja/Instrukcja, lewy panel „Warstwy”, mapa z paskiem trybów Przeglądanie/Wybierz zlewnię/Profil terenu i dolną szufladą profilu terenu, prawy panel „Zlewnia” z kluczowymi wartościami i sekcjami `<details>`. Panele o regulowanej szerokości (260–560 px i 340–720 px), układ telefonu (≤ 860 px) z dolnym paskiem i arkuszami od dołu; motyw jasny i ciemny.
+- Pliki frontendu: `css/tokens.css` (kopia `design/tokens.css` Nogata z commita 29e7e1c — nie edytować, kopiować ponownie), `css/chrome.css` (powłoka wspólna dla strony głównej, `/admin` i `/instrukcja`), `css/app.css` (strona główna), `instrukcja/instrukcja.css`, `img/hydrograf.svg` (znak), `js/shell.js` (panele, uchwyty szerokości, motyw na stronie głównej), `js/theme-init.js` (motyw przed pierwszym malowaniem), `js/theme-switch.js` (przełącznik motywu w `/admin` i `/instrukcja`).
+- Podkład wektorowy OpenFreeMap szary (styl positron) przez MapLibre GL 4.7.1 i `@maplibre/maplibre-gl-leaflet` 0.0.22 (CDN z SRI).
+- Jeden przycisk „Przybliż do zasięgu warstw” w panelu „Warstwy” dla włączonych warstw.
 - Siedmioslajdowy przewodnik użytkownika (`docs/Hydrograf-prezentacja.html` i `.pdf`): nawigacja, trzy tryby pracy, wyznaczanie granicy zlewni z wykresami, profil terenu i zgłaszanie uwag; pięć zrzutów działającej aplikacji. Opisy slajdów bez odwołań do konkretnych lokalizacji; krótkie objaśnienia pojęć hydrologicznych i instrukcja zakończenia profilu.
 - Publiczna podstrona z przewodnikiem HTML pod `/instrukcja` (siedem slajdów i pięć obrazów) oraz przycisk „Instrukcja” obok „Zgłoś uwagę” w górnym pasku aplikacji.
 - Integracja kanalizacji deszczowej z analiza splywu powierzchniowego (ADR-051)
@@ -22,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - feat(api+frontend): formularz „Zgłoś uwagę" — POST /api/feedback, tabela feedback (migracja 002), modal na stronie głównej z opt-in diagnostyką sesji (dziennik 50 zdarzeń + konfiguracja obszaru roboczego), sekcja zgłoszeń w panelu /admin, rate limit nginx 1r/m
 
 ### Zmienione
+- **Podkłady mapy:** OpenFreeMap szary (wektorowy), OSM GUGiK szary (tylko Polska), Ortofotomapa ESRI, bez podkładu.
+- **CSP** (`docker/nginx.conf`, `docker/nginx-ssl.conf.template`): `connect-src` dopuszcza `https://tiles.openfreemap.org`, `img-src` dodatkowo `blob:`, nowe `worker-src blob:` i `child-src blob:` (MapLibre); usunięty host OpenTopoMap.
+- **Wykresy** korzystają z tokenów i podążają za motywem; hietogram jest wykresem liniowym jak hydrogram; pokrycie terenu i grupy HSG jako poziome słupki skumulowane.
+- Wiersze warstw pokazują krycie (dawniej przezroczystość).
+- Panel `/admin` i `/instrukcja` w tej samej powłoce i tokenach; `/admin` zachowuje Bootstrap 5.3.3 (siatka i okna modalne) przekolorowany tokenami.
+- Formularz „Zgłoś uwagę” to natywny `<dialog>` zamiast modala Bootstrapa.
 - Publikacja Nginx Hydrografa jest ograniczona do `127.0.0.1:${HYDROGRAF_PORT:-8080}`; bezpośredni dostęp przez adres LAN hosta jest wyłączony, a aplikacja pozostaje dostępna przez Cloudflare Tunnel.
 - **Kartograf 0.6.1 → 0.7.0 (etap K)** — pobieranie NMT przez `DownloadManager.download_sheets()` z `campaigns="newest"` i `MetadataCache` (`<cache_dir>/kartograf_meta.db`); nowy układ cache `cache/nmt/pl_<uklad>_<res>_evrf2007/` (+ `kampanie/`, sidecary `.meta.json`); dane z układu 0.6.1 nie są reużywane (pierwszy bootstrap pobiera ponownie — `docs/integrations/KARTOGRAF.md` §6.5). `download_dem` CLI: wymagany `--metadata-cache`, domyślne `--output ../cache/`. `kartograf_meta.db` (SQLite WAL) musi leżeć na dysku lokalnym, nie na udziale sieciowym; `clean --include-cache` ją usuwa.
 - **Głośne błędy pobierania NMT** — błędy transportu kończą krok 2 bootstrapu błędem z pełną listą godeł (kod 1); brak pokrycia części arkuszy raportowany listą, całego obszaru — błąd; wyłączony cache metadanych — błąd; pusta lista arkuszy — błąd.
@@ -40,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Usuniete
 - **`backend/utils/sheet_finder.py`** (~616 linii) i `tests/unit/test_sheet_finder.py` — zastąpione przez `utils/sheet_lookup.py`, cienki wrapper na `kartograf.find_sheets_for_bbox()` zamiast własnej reimplementacji matematyki godeł (ADR-057)
+- Bootstrap ze strony głównej (zostaje tylko w `/admin`), `css/glass.css` (glassmorphism), `css/style.css`, `js/draggable.js` (przesuwany panel pływający).
+- Podkłady OSM kolorowy, GUGiK WMTS (ortofotomapa i topograficzna) i OpenTopoMap.
 
 ### Naprawione
 - Linie spływu nie żądają już kafli spoza zasięgu danych: `generate_tiles.py` zapisuje w `tiles_metadata.json` zasięg (`bounds`, suma zasięgów plików `.mbtiles` cieków i zlewni), a warstwa w przeglądarce dostaje `bounds` i `minZoom`. Wcześniej mapa prosiła o kafle dla całego widoku, a każdy kafel poza danymi kończył się 404 (2451 takich odpowiedzi 2026-10-30). Kafle bez obiektów w rogach prostokąta zasięgu (poza wielokątem obszaru) nadal odpowiadają 404 — zniknie to razem z przycinaniem do granicy zakresu analizy (Backlog).

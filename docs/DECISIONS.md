@@ -1253,3 +1253,29 @@ Dodatkowe zmiany:
 - b) zostaje - `kartograf.download_pl_cutout` (publiczne) i `kartograf.transport.mosaic.mosaic_and_crop` (nieeksportowane, krok wewnetrzny) daja identyczny pikselowo wynik i glosne braki, ale NIE zastepuja VRT Hydrografu: tworza fizyczny GeoTIFF (koszt dysku/czasu przy duzych obszarach), odrzucaja arkusze PL-2000, a przy roznej fazie siatki rzucaja `GridMismatchError`. `merge_hydro_gpkgs()` bez odpowiednika.
 - c) bez zmian.
 Kandydat do upstreamu "publiczne discover_teryts_for_bbox()" pozostaje otwarty.
+
+---
+
+## ADR-065: Identyfikacja wizualna Nogata i powloka Archiwisty zamiast paneli glassmorphism
+
+**Data:** 2026-11-01
+**Status:** Przyjeta
+
+**Kontekst:** Interfejs Hydrografa mial wlasny styl: polprzezroczyste panele glassmorphism (`css/glass.css`, `css/style.css`), plywajacy panel przesuwany mysza (`js/draggable.js`) i Bootstrap na kazdej stronie. Kazda aplikacja ekosystemu Nogata wygladala inaczej, wiec uzytkownik przechodzacy miedzy nimi uczyl sie od nowa ukladu, kolorow i kontrolek. Nogat przyjal wspolna identyfikacje wizualna (decyzja ECO-055, standard DEV-15.3): tokeny w `design/tokens.css` (paleta i czcionka z debever.pl, gestosc i kontrolki z Archiwisty), powloka Archiwisty jako wzorzec ukladu, makieta Hydrografa w `design/mockups/hydrograf/`.
+
+**Opcje:**
+- A) Zostawic interfejs glassmorphism bez zmian — zero pracy, ale Hydrograf zostaje jedyna aplikacja ekosystemu poza wspolnym wygladem
+- B) Tylko przekolorowac obecny interfejs tokenami Nogata — kolory wspolne, ale uklad (plywajacy panel, Bootstrap) nadal inny niz w pozostalych aplikacjach ekosystemu
+- C) Tokeny Nogata i powloka Archiwisty — gorny pasek, szyna nawigacji, panele boczne o regulowanej szerokosci, uklad telefonu, motyw jasny i ciemny
+
+**Decyzja:** Opcja C. `frontend/css/tokens.css` to kopia `design/tokens.css` Nogata (commit 29e7e1c, wskazany w naglowku pliku); w Hydrografie sie go nie edytuje — zmiana palety idzie przez Nogat i ponowne skopiowanie. Wszystkie kolory, czcionki, promienie i cienie wylacznie przez tokeny, rowniez w wykresach Chart.js (odczyt przez `getComputedStyle`, przemalowanie przy zmianie motywu). Powloka (`css/chrome.css`) jest wspolna dla strony glownej, `/admin` i `/instrukcja`; strona glowna: lewy panel „Warstwy” (260-560 px), mapa z paskiem trybow i dolna szuflada profilu terenu, prawy panel „Zlewnia” (340-720 px) z sekcjami `<details>`; ponizej 860 px dolny pasek i arkusze od dolu. Motyw Auto/Jasny/Ciemny w `localStorage` (`nogat-theme`), ustawiany przed pierwszym malowaniem (`js/theme-init.js`). Strona glowna bez Bootstrapa (formularz uwag jako natywny `<dialog>`); `/admin` zachowuje Bootstrap 5.3.3 dla siatki i okien modalnych, przekolorowany tokenami. Podklady dobrane do szarej palety: OpenFreeMap szary (wektorowy, MapLibre GL), OSM GUGiK szary, Ortofotomapa ESRI, bez podkladu.
+
+**Konsekwencje:**
+- (+) Jeden wyglad i uklad we wszystkich GUI ekosystemu (ECO-055) — uzytkownik Archiwisty od razu odnajduje sie w Hydrografie
+- (+) Motyw ciemny, uklad telefonu i wykresy zgodne z motywem bez osobnej pracy w kazdej aplikacji
+- (+) Mniej wlasnego CSS i JS: usuniete `glass.css`, `style.css`, `draggable.js`; Bootstrap zniknal ze strony glownej
+- (-) `tokens.css` to kopia, nie zaleznosc — po zmianie tokenow w Nogacie trzeba ja recznie skopiowac ponownie (commit zrodlowy w naglowku pliku)
+- (-) Bootstrap zostaje w `/admin` — dwa systemy styli na jednej stronie, Bootstrap trzeba przekolorowywac tokenami przy kazdej zmianie palety
+- (-) Nowe biblioteki z CDN (MapLibre GL 4.7.1, `@maplibre/maplibre-gl-leaflet` 0.0.22) — ladowane z SRI (`integrity` + `crossorigin`) jak Leaflet i Chart.js; CSP rozszerzone o `https://tiles.openfreemap.org` (`connect-src`) oraz `blob:` (`img-src`, `worker-src`, `child-src`)
+- (-) Podklad domyslny zalezy od zewnetrznego OpenFreeMap; bez MapLibre warstwa wraca do OSM GUGiK
+- (-) Panel wynikow nie jest juz plywajacy ani przesuwany — zamiast tego panele stale przy krawedziach, z regulowana szerokoscia i mozliwoscia zamkniecia

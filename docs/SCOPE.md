@@ -32,7 +32,7 @@ Ten dokument precyzyjnie definiuje:
 #### 2.1.1 FAZA 1: Wyznaczanie Granic Zlewni
 
 **✅ W zakresie:**
-- Interaktywna mapa webowa z podkładami: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (ortofoto + topo)
+- Interaktywna mapa webowa z podkładami: OpenFreeMap szary (wektorowy), OSM GUGiK szary (tylko Polska), Ortofotomapa ESRI, bez podkładu
 - Wybór punktu przez kliknięcie na mapie (tryb rysowania poligonu + tryb wyboru obiektow)
 - Automatyczne wykrywanie najbliższego cieku (snap-to-stream ST_Distance + fallback ST_Contains)
 - Wyznaczanie granicy zlewni metodą BFS na grafie in-memory (CatchmentGraph)
@@ -136,7 +136,7 @@ Ten dokument precyzyjnie definiuje:
 - Piramida XYZ (zoom 8-16) z multi-directional hillshade (4 kierunki oswietlenia)
 
 **Prezentacja wyników:**
-- Glassmorphism panel boczny (draggable, floating)
+- Prawy panel „Zlewnia” (powłoka Archiwisty, identyfikacja Nogata — ADR-065) z kluczowymi wartościami i sekcjami `<details>`, szerokość regulowana
 - Tabela z parametrami w panelu bocznym
 - Tooltips wyjaśniające terminy techniczne
 - Możliwość kopiowania wartości
@@ -525,13 +525,13 @@ Ten dokument precyzyjnie definiuje:
 
 #### Frontend
 **Języki:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, brak frameworka
-**Mapa:** Leaflet.js 1.9.4
-**Wykresy:** Chart.js 4.4.7
-**UI Framework:** Bootstrap 5.3.3 (CDN)
-**Styl:** Glassmorphism (zmienne CSS w `glass.css`), floating draggable panel
-**Moduly:** 10 modulow JS (IIFE na `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app + 3 moduly admin
-**Podkład mapy:** OpenStreetMap, ESRI Satellite, OpenTopoMap, GUGiK WMTS (ortofoto + topo)
-**Strony:** `index.html` (glowna), `admin.html` (panel administracyjny)
+**Mapa:** Leaflet.js 1.9.4; podkład wektorowy przez MapLibre GL 4.7.1 + `@maplibre/maplibre-gl-leaflet` 0.0.22
+**Wykresy:** Chart.js 4.4.7 (kolory z tokenów, zgodne z motywem)
+**UI Framework:** brak na stronie głównej (własna powłoka `chrome.css` + `app.css`); Bootstrap 5.3.3 (CDN) tylko w `/admin` (siatka, okna modalne), przekolorowany tokenami
+**Styl:** Identyfikacja wizualna Nogata (DEV-15.3, ECO-055, ADR-065) — tokeny w `css/tokens.css` (kopia `design/tokens.css` Nogata), powłoka Archiwisty (górny pasek, szyna nawigacji, panele „Warstwy” i „Zlewnia”, układ telefonu ≤ 860 px), motyw jasny i ciemny
+**Moduly:** 18 modulow JS na `window.Hydrograf` (IIFE): api, map, charts, layers, profile, hydrograph, depressions, sewer, diagnostics, feedback, shell, app + 6 modulow admin; poza przestrzenią nazw: `theme-init.js`, `theme-switch.js`
+**Podkład mapy:** OpenFreeMap szary (wektorowy), OSM GUGiK szary (tylko Polska), Ortofotomapa ESRI, bez podkładu
+**Strony:** `index.html` (glowna), `admin.html` (panel administracyjny), `instrukcja/index.html` (przewodnik)
 
 #### Infrastruktura
 **Konteneryzacja:** Docker + Docker Compose (3 kontenery: db, api, nginx)
