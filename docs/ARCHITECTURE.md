@@ -144,7 +144,7 @@ backend/
 │       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
-│       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf
+│       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, GET /layers
 │       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes)
 │
 ├── core/
@@ -278,12 +278,33 @@ Request:
 {
   "latitude": 52.123456,
   "longitude": 21.123456,
-  "duration": "1h",
-  "probability": 10
+  "duration": "1h",            // wymagane bez custom_precipitation
+  "probability": 10,           // wymagane bez custom_precipitation
+  "amc": "II",                 // I | II | III, domyślnie II
+  "custom_precipitation": {    // opcjonalnie: własna seria zamiast PMAXTP i hietogramu
+    "timestep_min": 10,        // > 0 i ≤ 1440
+    "depths_mm": [0.5, 2.0, 6.5, 3.0, 1.0]   // ≥ 0, 1–2000 wartości, suma > 0
+  },
+  "morphometry": { ... }       // opcjonalnie: szybka ścieżka (tryb zaawansowany), cn ułamkowe
 }
 
 Response: 200 OK (pełna struktura w DATA_MODEL.md, sekcja 6.4)
+  precipitation.source: "pmaxtp" | "custom"; probability_percent = null dla własnej serii
+  water_balance.cn_used: float (CN po przeliczeniu wg AMC)
+  metadata.amc; metadata.hietogram_type = null dla własnej serii
+Response: 422 — błędy walidacji (np. serii opadu) z polskim opisem
 ```
+
+`GET /api/scenarios` zwraca dodatkowo `amc` (`["I", "II", "III"]`) i `custom_precipitation_max_steps` (2000).
+
+#### 2.2.3a Layer Availability
+```
+GET /api/layers
+
+Response: 200 OK
+{"sewer": true}   // czy sewer_network lub sewer_nodes zawiera dane
+```
+Panel „Warstwy” pokazuje warstwę „Kanalizacja deszczowa” tylko przy `sewer: true`.
 
 #### 2.2.4 List Scenarios
 ```
@@ -396,9 +417,9 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
 ```
 1. Wyznacz zlewnię (jak wyżej)
 2. Oblicz parametry (area, length, slope, CN)
-3. Pobierz opad (SQL query)
-4. Wygeneruj hietogram Beta (Python, SciPy)
-5. Oblicz opad efektywny (SCS CN)
+3. Pobierz opad (SQL query PMAXTP) albo przyjmij własną serię (custom_precipitation)
+4. Wygeneruj hietogram (Beta / Block / Euler II; pomijany dla własnej serii)
+5. Oblicz opad efektywny (SCS CN przeliczony wg AMC)
 6. Oblicz tc (Kirpich)
 7. Wygeneruj UH (SCS)
 8. Splot Pe * UH = Q(t)
@@ -911,12 +932,13 @@ frontend/
     ├── charts.js             # Chart.js w kolorach tokenów: hipsometria, pokrycie/HSG, hietogram, hydrogram, profil
     ├── layers.js             # Panel „Warstwy”: podkłady, nakładki, krycie, przybliżenie do zasięgu
     ├── profile.js            # Terrain profile (draw line / auto)
-    ├── hydrograph.js         # Hydrograph scenario form + chart
-    ├── info.js               # Objaśnienia (i): znaczniki, wspólny dymek, najechanie/fokus/dotknięcie, Esc
-    ├── info-texts.js         # 65 tekstów objaśnień kluczowanych polem API lub id kontrolki formularza
+    ├── hydrograph.js         # Formularz hietogramu (AMC, źródło opadu) i hydrogramu, bilans, wykresy
+    ├── custom-rain.js        # Własna seria opadu: tabela kroków, wklejanie, import CSV, kopia hietogramu
+    ├── info.js               # Objaśnienia (i): znaczniki, wspólny dymek, wzory MathML, najechanie/fokus/dotknięcie, Esc
+    ├── info-texts.js         # 76 objaśnień (wzór, zmienne, jednostka, znaczenie) kluczowane polem API lub id kontrolki
     ├── advanced.js           # Tryb zaawansowany: edycja morfometrii do POST /api/generate-hydrograph
     ├── depressions.js        # Depressions (blue spots) overlay
-    ├── sewer.js              # Warstwa kanalizacji deszczowej (MVT overlay)
+    ├── sewer.js              # Warstwa kanalizacji deszczowej (MVT overlay; tylko gdy GET /api/layers zgłasza dane)
     ├── diagnostics.js        # Dziennik zdarzeń sesji (ADR-053)
     ├── feedback.js           # Formularz „Zgłoś uwagę” (natywny <dialog>)
     ├── app.js                # Orchestrator: init, tryby pracy, click routing, panel Zlewnia
@@ -944,8 +966,12 @@ Strona główna używa powłoki Archiwisty (`chrome.css` + `app.css` + `shell.js
 - **Lewy panel „Warstwy”** — podkłady, nakładki z suwakiem krycia i jeden przycisk przybliżenia do zasięgu włączonych warstw.
 - **Środek** — mapa z paskiem trybów Przeglądanie / Wybierz zlewnię / Profil terenu; profil terenu otwiera się w dolnej szufladzie nad mapą.
 - **Prawy panel „Zlewnia”** — kluczowe wartości (kafle) i sekcje `<details>`: parametry podstawowe, wskaźniki kształtu, rzeźba terenu, sieć rzeczna, pokrycie terenu, grupy HSG, hietogram, hydrogram.
-- **Objaśnienia (i)** — `info.js` dodaje znaczniki (i) w sekcjach Parametry podstawowe, Wskaźniki kształtu, Hietogram i Hydrogram; jeden wspólny dymek otwierany najechaniem, fokusem lub dotknięciem, zamykany Esc. Teksty (65) w `info-texts.js`, kluczowane polem API lub id kontrolki formularza, oparte na Hydrologu i backendzie (np. limit hydrogramu 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). Uwagi o stosowalności pod Model UH, Metoda Tc i Estymacja Nash zmieniają się z wyborem. API nie zwraca ostrzeżeń o stosowalności, więc GUI ich nie pokazuje.
-- **Tryb zaawansowany** — `advanced.js` pozwala zmienić morfometrię wysyłaną do `POST /api/generate-hydrograph` (istniejąca szybka ścieżka, bez zmian backendu): powierzchnia, obwód, długość, wysokości, średni spadek, długość i spadek cieku, `length_to_centroid_km`, CN. Zmienione pola są oznaczone; przywracanie pola i całości („Przywróć dane z Hydrografa”); błędy walidacji blokują zapytanie; wynik ma komunikat „Obliczono na zmienionych danych wejściowych”. Opad z PMAXTP nie podlega edycji. Część zlewni ma `length_to_centroid_km = 0` — Snyder zawodzi, dopóki użytkownik nie poda Lc.
+- **Objaśnienia (i)** — `info.js` dodaje znaczniki (i) w sekcjach Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram i Hydrogram; jeden wspólny dymek otwierany najechaniem, fokusem lub dotknięciem, zamykany Esc. Wpisy (64) w `info-texts.js`, kluczowane polem API lub id kontrolki formularza, mają strukturę: opis, wzór (składany jako MathML przez DOM, bez bibliotek), lista „gdzie:” ze zmiennymi i jednostkami, jednostka wyniku, osobny blok „Znaczenie dla analizy”, zakres stosowalności i uwaga. Treści oparte na Hydrologu i backendzie (np. limit hydrogramu 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). Uwagi o stosowalności pod Model UH, Metoda Tc i Estymacja Nash zmieniają się z wyborem. API nie zwraca ostrzeżeń o stosowalności, więc GUI ich nie pokazuje.
+- **Hietogram: AMC i źródło opadu** — pole „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` w zapytaniu, domyślnie II); bilans pokazuje użyty CN z jednym miejscem po przecinku i klasą AMC. Przełącznik „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” i „Krok czasowy [min]” tworzą tabelę kroków z edytowalnym opadem [mm]; wklejenie kolumny z arkusza wypełnia kolejne wiersze; „Importuj CSV” przyjmuje 1 kolumnę (opad, bieżący krok) albo 2 kolumny (czas, opad; równy krok ustawia krok i czas trwania); „Wczytaj z bieżącego hietogramu” kopiuje serię PMAXTP. Seria trafia do `custom_precipitation`, a hietogram PMAXTP jest wtedy pomijany.
+- **Formularz hydrogramu** — siatka dwóch kolumn: „Model UH” | „Metoda Tc”, dla Nasha „Model UH” | „Estymacja Nash”; uwagi o stosowalności w równych wierszach.
+- **Tryb zaawansowany** — `advanced.js` pozwala zmienić morfometrię wysyłaną do `POST /api/generate-hydrograph` (szybka ścieżka `morphometry`): powierzchnia, obwód, długość, wysokości, średni spadek, długość i spadek cieku, `length_to_centroid_km`, CN. Dokładność pól: powierzchnia 0,01 km², długości i Lc 0,01 km, wysokości 0,1 m, spadki 0,01 %, CN 0,1 (1–100). Zmienione pola są oznaczone; przywracanie pola i całości („Przywróć dane z Hydrografa”); błędy walidacji blokują zapytanie; wynik ma komunikat „Obliczono na zmienionych danych wejściowych”. Opad i AMC ustawia się w sekcji Hietogram. Część zlewni ma `length_to_centroid_km = 0` — Snyder zawodzi, dopóki użytkownik nie poda Lc.
+- **CN** — API zwraca CN zlewni (`morphometry.cn`, `land_cover_stats.weighted_cn`) z dokładnością 0,1; panel pokazuje go z jednym miejscem po przecinku.
+- **Warstwa kanalizacji** — wpis „Kanalizacja deszczowa” w panelu „Warstwy” powstaje tylko, gdy `GET /api/layers` zwraca `sewer: true`; bez danych brak żądań kafli `/api/tiles/sewer`.
 - **Szerokość paneli** — uchwyty między panelami (lewy 260–560 px, prawy 340–720 px), zapamiętywane w `localStorage`; panele można zamknąć.
 - **Telefon (≤ 860 px)** — mapa na pełnym ekranie, dolny pasek zamiast szyny, panele jako arkusze wysuwane od dołu.
 

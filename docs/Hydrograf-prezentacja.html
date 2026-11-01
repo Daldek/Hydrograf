@@ -363,6 +363,11 @@ body {
     border-left: 5px solid var(--info);
     border-radius: var(--radius-lg);
 }
+.slide code {
+    padding: 0 0.3em;
+    font-family: var(--font-mono); font-size: 0.92em;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-xs);
+}
 
 /* Screenshots */
 .app-shot {
@@ -451,7 +456,7 @@ body {
   <div class="rule"></div>
   <p class="lead">Mapa, zlewnie i scenariusze odpływu — poznaj podstawy obsługi i powiedz nam, co warto poprawić.</p>
   <p class="minor">Wyniki, wygląd oraz funkcje mogą się zmieniać. Liczymy na wasze uwagi, żeby dostosować projekt do potrzeb użytkowników!</p>
-  <div class="footer"><span>HYDROGRAF · PRZEWODNIK UŻYTKOWNIKA</span><span>01 / 09</span></div>
+  <div class="footer"><span>HYDROGRAF · PRZEWODNIK UŻYTKOWNIKA</span><span>01 / 10</span></div>
 </section>
 <section class="slide" aria-label="Slajd 2: układ ekranu">
   <p class="kicker">01 · Orientacja</p>
@@ -460,12 +465,12 @@ body {
     <img class="app-shot fit-shot" src="Hydrograf-ekran.png" alt="Cały ekran Hydrografa: u góry pasek z przyciskami Instrukcja, Zgłoś uwagę i przełącznikiem motywu, po lewej szyna nawigacji i panel Warstwy, w środku mapa z paskiem trybów, po prawej panel Zlewnia z wynikiem.">
     <div class="stack">
       <div class="card"><span class="label">Górny pasek</span><p>„Instrukcja” — ten przewodnik, „Zgłoś uwagę” — formularz uwag, Auto · Jasny · Ciemny — motyw.</p></div>
-      <div class="card"><span class="label">Panele</span><p>Po lewej szyna Mapa · Administracja i panel „Warstwy”: krycie, podkłady, przybliżenie do zasięgu włączonych warstw. Po prawej „Zlewnia” z wynikiem.</p></div>
+      <div class="card"><span class="label">Panele</span><p>Po lewej szyna Mapa · Administracja i panel „Warstwy”: krycie, podkłady, przybliżenie do zasięgu włączonych warstw; „Kanalizacja deszczowa” jest na liście tylko tam, gdzie są jej dane. Po prawej „Zlewnia” z wynikiem.</p></div>
       <div class="card"><span class="label">Nad mapą</span><p>Tryby pracy: Przeglądanie · Wybierz zlewnię · Profil terenu, a obok podpowiedź.</p></div>
     </div>
   </div>
   <p class="hint">Przeciągnij krawędź panelu, aby zmienić jego szerokość (dwuklik przywraca domyślną). × zwija panel, w „Zlewni” czyści też wynik; przyciski „Warstwy” i „Zlewnia” nad mapą otwierają panele ponownie.</p>
-  <div class="footer"><span>GÓRNY PASEK · PANELE · PASEK TRYBÓW</span><span>02 / 09</span></div>
+  <div class="footer"><span>GÓRNY PASEK · PANELE · PASEK TRYBÓW</span><span>02 / 10</span></div>
 </section>
 <section class="slide" aria-label="Slajd 3: wyznaczanie zlewni">
   <p class="kicker">02 · Pierwsza analiza</p>
@@ -477,51 +482,65 @@ body {
     <div class="step"><span class="number">03</span><strong>Sprawdź wynik</strong><p>Granica zlewni pojawi się na mapie, a panel „Zlewnia” otworzy się po prawej stronie.</p></div>
   </div>
   <p class="hint">Brak wyniku? Sprawdź, czy punkt leży na obszarze dostępnych danych, i kliknij bliżej linii spływu.</p>
-  <div class="footer"><span>OD MAPY DO GRANICY ZLEWNI</span><span>03 / 09</span></div>
+  <div class="footer"><span>OD MAPY DO GRANICY ZLEWNI</span><span>03 / 10</span></div>
 </section>
 <section class="slide" aria-label="Slajd 4: odczyt wyniku">
   <p class="kicker">03 · Wynik analizy</p>
   <h2>Jak czytać panel „Zlewnia”?</h2>
   <div class="split">
-    <img class="app-shot fit-shot" src="Hydrograf-wyniki.png" alt="Panel Zlewnia: rząd kluczowych wartości, rozwinięta sekcja Parametry podstawowe i otwarte objaśnienie parametru CN.">
+    <img class="app-shot fit-shot" src="Hydrograf-wyniki.png" alt="Panel Zlewnia: rząd kluczowych wartości, zwinięte sekcje od Parametrów podstawowych do Rzeźby terenu, rozwinięta sekcja Sieć rzeczna i otwarte objaśnienie gęstości sieci rzecznej: definicja, wzór, zmienne z jednostkami i blok Znaczenie dla analizy.">
     <div class="stack">
-      <div class="card"><span class="label">Kluczowe wartości</span><p>Zlewnia to obszar, z którego woda spływa do jednego miejsca — ujścia. U góry panelu: powierzchnia, CN, średnia wysokość i spadek terenu.</p></div>
-      <div class="card"><span class="label">Sekcje</span><p>Numerowane sekcje rozwiniesz kliknięciem: parametry podstawowe, kształt, rzeźba terenu, sieć rzeczna, pokrycie terenu, gleby, hietogram i hydrogram.</p></div>
-      <div class="card"><span class="label">Objaśnienia (i)</span><p>Najedź kursorem na (i) obok nazwy, a zobaczysz, co oznacza parametr i skąd pochodzi. Na telefonie dotknij (i); ponowne dotknięcie lub Esc je zamyka.</p></div>
+      <div class="card"><span class="label">Kluczowe wartości</span><p>Zlewnia to obszar, z którego woda spływa do jednego miejsca — ujścia. U góry panelu: powierzchnia, CN (z jednym miejscem po przecinku), średnia wysokość i spadek terenu.</p></div>
+      <div class="card"><span class="label">Sekcje</span><p>Numerowane sekcje rozwiniesz kliknięciem: parametry podstawowe, kształt, rzeźba terenu (z krzywą hipsometryczną), sieć rzeczna, pokrycie terenu, gleby, hietogram i hydrogram.</p></div>
+      <div class="card"><span class="label">Objaśnienia (i)</span><p>Najedź kursorem na (i): definicja, wzór, „gdzie:” ze zmiennymi i jednostkami, a osobno „Znaczenie dla analizy”. Tak opisane są też rzeźba terenu i sieć rzeczna. Na telefonie dotknij (i); ponowne dotknięcie lub Esc je zamyka.</p></div>
     </div>
   </div>
-  <div class="footer"><span>KLUCZOWE WARTOŚCI · SEKCJE · OBJAŚNIENIA</span><span>04 / 09</span></div>
+  <div class="footer"><span>KLUCZOWE WARTOŚCI · SEKCJE · OBJAŚNIENIA</span><span>04 / 10</span></div>
 </section>
 <section class="slide" aria-label="Slajd 5: hietogram i hydrogram">
   <p class="kicker">04 · Opad i odpływ</p>
   <h2>Hietogram i hydrogram</h2>
   <div class="split">
-    <img class="app-shot fit-shot" src="Hydrograf-hydrogram.png" alt="Sekcje Hietogram i Hydrogram: wybór czasu trwania i prawdopodobieństwa opadu, wykres opadu, wybór modelu i metody z notką o zakresie stosowalności, wartości Qmax, tp, V i wykres odpływu.">
+    <img class="app-shot fit-shot" src="Hydrograf-hydrogram.png" alt="Sekcje Hietogram i Hydrogram: źródło opadu PMAXTP, czas trwania, prawdopodobieństwo, rozkład i uwilgotnienie AMC, wykres opadu z użytym CN; obok w jednym rzędzie Model UH i Metoda Tc z zakresami stosowalności, wartości Qmax, tp, V i wykres odpływu.">
     <div class="stack">
-      <div class="card"><span class="label">Scenariusz opadu</span><p>Hietogram to opad w czasie. Wybierz czas trwania, prawdopodobieństwo i rozkład opadu; wysokość opadu pochodzi z danych PMAXTP.</p></div>
-      <div class="card"><span class="label">Model i metoda</span><p>Hydrogram to przepływ w ujściu w czasie: Qmax, czas do szczytu tp i objętość V. Wybierz model (SCS, Nash, Snyder) i metodę czasu koncentracji.</p></div>
-      <div class="card"><span class="label">Zakres stosowalności</span><p>Pod wybranym modelem i metodą widać, dla jakich zlewni je opracowano. Pełny opis jest w (i). Poza zakresem traktuj wynik ostrożnie.</p></div>
+      <div class="card"><span class="label">Scenariusz opadu</span><p>Hietogram to opad w czasie. „Źródło opadu”: PMAXTP — czas trwania, prawdopodobieństwo i rozkład — albo własna seria (następny slajd).</p></div>
+      <div class="card"><span class="label">Uwilgotnienie AMC</span><p>I — suche, II — przeciętne, III — mokre. AMC przelicza CN zlewni; użyty CN i AMC widać pod wykresem opadu.</p></div>
+      <div class="card"><span class="label">Model i metoda</span><p>Hydrogram to przepływ w ujściu w czasie: Qmax, czas do szczytu tp i objętość V. W jednym rzędzie: Model UH (SCS, Nash, Snyder) i Metoda Tc, dla Nasha — Estymacja. Pod polami zakres stosowalności; poza nim traktuj wynik ostrożnie.</p></div>
       <p class="hint">Hietogram i hydrogram są liczone dla zlewni o powierzchni do 250 km²; dla większych te sekcje się nie pojawiają.</p>
     </div>
   </div>
-  <div class="footer"><span>SCENARIUSZ · MODEL · ZAKRES STOSOWALNOŚCI</span><span>05 / 09</span></div>
+  <div class="footer"><span>SCENARIUSZ · AMC · MODEL · ZAKRES STOSOWALNOŚCI</span><span>05 / 10</span></div>
 </section>
-<section class="slide" aria-label="Slajd 6: tryb zaawansowany">
-  <p class="kicker">05 · Tryb zaawansowany</p>
-  <h2>Własne dane wejściowe hydrogramu</h2>
+<section class="slide" aria-label="Slajd 6: własna seria opadu">
+  <p class="kicker">05 · Własna seria opadu</p>
+  <h2>Własny opad zamiast PMAXTP</h2>
   <div class="split">
-    <img class="app-shot fit-shot" src="Hydrograf-zaawansowany.png" alt="Włączony tryb zaawansowany: pola danych wejściowych, zmienione pole CN wyróżnione kolorem z wartością Hydrografa pod spodem, przycisk Przywróć dane z Hydrografa i ostrzeżenie nad wykresem.">
+    <img class="app-shot fit-shot" src="Hydrograf-seria.png" alt="Sekcja Hietogram z wybraną Własną serią: pola Czas trwania i Krok czasowy, przyciski Wczytaj z bieżącego hietogramu, Importuj CSV i Wyczyść, opis formatów CSV, tabela czas–opad, suma serii i komunikat o wczytaniu hietogramu PMAXTP, a pod nimi uwilgotnienie AMC.">
     <div class="stack">
-      <div class="card"><span class="label">Włącz</span><p>W sekcji „Hydrogram” włącz „Tryb zaawansowany”. Pola są wypełnione parametrami wyznaczonej zlewni.</p></div>
-      <div class="card"><span class="label">Zmień</span><p>Wpisz własną wartość — hydrogram przeliczy się po chwili. Zmienione pole jest wyróżnione, pod nim widać wartość Hydrografa, a nad wykresem listę zmian.</p></div>
-      <div class="card"><span class="label">Przywróć</span><p>Strzałka obok pola cofa jedną zmianę, a „Przywróć dane z Hydrografa” — wszystkie. Zmiany nie dotyczą „Parametrów podstawowych”.</p></div>
-      <p class="hint">Opad projektowy pochodzi z PMAXTP dla klikniętego punktu i nie można go tu zmienić.</p>
+      <div class="card"><span class="label">Przełącz</span><p>W sekcji „Hietogram” wybierz „Źródło opadu”: Własna seria. Czas trwania i krok czasowy [min] tworzą tabelę; czas trwania musi być wielokrotnością kroku.</p></div>
+      <div class="card"><span class="label">Wpisz lub wklej</span><p>Wpisz opad [mm] w kolejnych krokach albo wklej kolumnę z arkusza: wartości trafią od wybranego wiersza w dół, a czas trwania w razie potrzeby się wydłuży.</p></div>
+      <div class="card"><span class="label">Importuj CSV</span><p>Jedna kolumna opadu [mm] z bieżącym krokiem albo dwie: czas [min] i opad [mm] z równym krokiem. Separator <code>,</code> <code>;</code> lub tabulator.</p></div>
+      <p class="hint">„Wczytaj z bieżącego hietogramu” kopiuje opad PMAXTP do tabeli — dobry punkt wyjścia do zmian. Seria dotyczy jednej zlewni; nowa zlewnia ją czyści.</p>
     </div>
   </div>
-  <div class="footer"><span>ZMIANY DOTYCZĄ TYLKO HIETOGRAMU I HYDROGRAMU</span><span>06 / 09</span></div>
+  <div class="footer"><span>PRZEŁĄCZ · WPISZ · WKLEJ · ZAIMPORTUJ</span><span>06 / 10</span></div>
 </section>
-<section class="slide" aria-label="Slajd 7: profil terenu">
-  <p class="kicker">06 · Profil terenu</p>
+<section class="slide" aria-label="Slajd 7: tryb zaawansowany">
+  <p class="kicker">06 · Tryb zaawansowany</p>
+  <h2>Własne dane wejściowe hydrogramu</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-zaawansowany.png" alt="Włączony tryb zaawansowany: pola danych wejściowych z dokładnością wyników, zmienione pole CN wyróżnione kolorem z wartością Hydrografa pod spodem, notka o opadzie i AMC, przycisk Przywróć dane z Hydrografa i ostrzeżenie nad wykresem.">
+    <div class="stack">
+      <div class="card"><span class="label">Włącz</span><p>W sekcji „Hydrogram” włącz „Tryb zaawansowany”. Pola są wypełnione parametrami zlewni z dokładnością wyników: 0,01 km² i km, 0,1 m, 0,01 %, CN 0,1.</p></div>
+      <div class="card"><span class="label">Zmień</span><p>Wpisz własną wartość — hydrogram przeliczy się po chwili. Zmienione pole jest wyróżnione, pod nim widać wartość Hydrografa, a nad wykresem listę zmian.</p></div>
+      <div class="card"><span class="label">Przywróć</span><p>Strzałka obok pola cofa jedną zmianę, a „Przywróć dane z Hydrografa” — wszystkie. Zmiany nie dotyczą „Parametrów podstawowych”.</p></div>
+      <p class="hint">Opad ustawisz w sekcji „Hietogram”: PMAXTP albo własna seria, np. z pomiarów. Tam też wybierzesz uwilgotnienie AMC.</p>
+    </div>
+  </div>
+  <div class="footer"><span>ZMIANY DOTYCZĄ TYLKO HIETOGRAMU I HYDROGRAMU</span><span>07 / 10</span></div>
+</section>
+<section class="slide" aria-label="Slajd 8: profil terenu">
+  <p class="kicker">07 · Profil terenu</p>
   <h2>Przekrój terenu wzdłuż linii</h2>
   <div class="split">
     <img class="app-shot fit-shot" src="Hydrograf-profil.png" alt="Mapa z włączoną warstwą NMT i narysowaną linią profilu; w dolnej szufladzie wykres wysokości terenu z długością linii i zakresem wysokości.">
@@ -531,10 +550,10 @@ body {
       <div class="step"><span class="number">03</span><strong>Zakończ dwuklikiem</strong><p>Wykres wysokości otworzy się w szufladzie u dołu mapy. Najedź na wykres, aby zobaczyć miejsce na linii.</p></div>
     </div>
   </div>
-  <div class="footer"><span>LINIA PROFILU I WYKRES WYSOKOŚCI</span><span>07 / 09</span></div>
+  <div class="footer"><span>LINIA PROFILU I WYKRES WYSOKOŚCI</span><span>08 / 10</span></div>
 </section>
-<section class="slide" aria-label="Slajd 8: telefon i ciemny motyw">
-  <p class="kicker">07 · Telefon i motyw</p>
+<section class="slide" aria-label="Slajd 9: telefon i ciemny motyw">
+  <p class="kicker">08 · Telefon i motyw</p>
   <h2>Na telefonie i po zmroku</h2>
   <div class="split">
     <img class="app-shot fit-shot" src="Hydrograf-telefon.png" alt="Hydrograf na telefonie: pasek trybów nad mapą, panel Zlewnia wysunięty od dołu i dolny pasek nawigacji.">
@@ -544,10 +563,10 @@ body {
       <div class="card"><span class="label">Ciemny motyw</span><p>Przełącznik na górnym pasku: Auto (jak w systemie), Jasny lub Ciemny. Wybór zostaje zapamiętany w przeglądarce.</p></div>
     </div>
   </div>
-  <div class="footer"><span>TEN SAM HYDROGRAF NA KAŻDYM EKRANIE</span><span>08 / 09</span></div>
+  <div class="footer"><span>TEN SAM HYDROGRAF NA KAŻDYM EKRANIE</span><span>09 / 10</span></div>
 </section>
-<section class="slide" aria-label="Slajd 9: feedback">
-  <p class="kicker">08 · Pomóż nam ulepszać aplikację</p>
+<section class="slide" aria-label="Slajd 10: feedback">
+  <p class="kicker">09 · Pomóż nam ulepszać aplikację</p>
   <h2>Jak przekazać feedback?</h2>
   <div class="split">
     <div class="steps-list">
@@ -557,7 +576,7 @@ body {
     </div>
     <img class="app-shot fit-shot" src="Hydrograf-feedback.png" alt="Formularz Zgłoś uwagę: opis problemu, opcjonalny kontakt, dołączenie danych diagnostycznych, podgląd wysyłanych danych i przycisk Wyślij.">
   </div>
-  <div class="footer"><span>TWÓJ FEEDBACK POMAGA POPRAWIAĆ WERSJĘ ROZWOJOWĄ</span><span>09 / 09</span></div>
+  <div class="footer"><span>TWÓJ FEEDBACK POMAGA POPRAWIAĆ WERSJĘ ROZWOJOWĄ</span><span>10 / 10</span></div>
 </section>
 </main>
 </body>

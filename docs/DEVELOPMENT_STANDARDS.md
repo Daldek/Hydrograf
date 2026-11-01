@@ -580,6 +580,7 @@ frontend/
 │   ├── charts.js            # Chart.js — renderowanie w kolorach tokenow
 │   ├── profile.js           # Profil terenu
 │   ├── hydrograph.js        # Hydrogram
+│   ├── custom-rain.js       # Wlasna seria opadu (tabela, wklejanie, CSV)
 │   ├── info.js              # Objasnienia (i) — dymek
 │   ├── info-texts.js        # Teksty objasnien (i)
 │   ├── advanced.js          # Tryb zaawansowany (edycja morfometrii)
@@ -597,7 +598,7 @@ frontend/
 └── data/                    # Dane statyczne (overlays, tiles, GeoJSON)
 ```
 
-**Uwaga:** Moduly JS uzywaja IIFE na `window.Hydrograf` (21 modulow: 15 core + 6 admin); `theme-init.js` i `theme-switch.js` to samodzielne skrypty bez przestrzeni nazw.
+**Uwaga:** Moduly JS uzywaja IIFE na `window.Hydrograf` (22 moduly: 16 core + 6 admin); `theme-init.js` i `theme-switch.js` to samodzielne skrypty bez przestrzeni nazw.
 
 ### 9.3 API client pattern
 

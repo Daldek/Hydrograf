@@ -1025,6 +1025,8 @@ class HydrographRequest(BaseModel):
         return v
 ```
 
+Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"II"`/`"III"`, domyślnie `"II"`), `custom_precipitation` (`{"timestep_min": float > 0 i ≤ 1440, "depths_mm": [float ≥ 0, 1–2000 wartości, suma > 0]}` — zastępuje PMAXTP i hietogram; wtedy `duration` i `probability` mogą być puste) oraz `morphometry` (szybka ścieżka; `cn` jako float). Błędy walidacji: 422 z polskim opisem.
+
 ---
 
 ### 6.4 Response: Generate Hydrograph
@@ -1085,6 +1087,8 @@ class HydrographRequest(BaseModel):
   }
 }
 ```
+
+Wartości CN są liczbami zmiennoprzecinkowymi z jednym miejscem po przecinku (`morphometry.cn`, `land_cover_stats.weighted_cn`). W aktualnym schemacie: `water_balance.cn_used` (float, CN po przeliczeniu wg AMC), `metadata.amc`, `precipitation.source` (`"pmaxtp"`/`"custom"`); dla własnej serii `precipitation.probability_percent` i `metadata.hietogram_type` są `null`. Schemat bazy danych bez zmian.
 
 ---
 

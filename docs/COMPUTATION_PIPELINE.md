@@ -472,7 +472,7 @@ FROM intersections GROUP BY category, cn_value ORDER BY total_area_m2 DESC
 
 **Wzór:**
 ```
-CN = round(Σ(cn_value[i] × area[i]) / Σ(area[i]))
+CN = round(Σ(cn_value[i] × area[i]) / Σ(area[i]), 1)    # jedno miejsce po przecinku
 CN = clamp(CN, 0, 100)
 ```
 
@@ -512,14 +512,14 @@ CN = clamp(CN, 0, 100)
 
 ### 6.1 Flow procesu
 
-1. **Walidacja** parametrów (czas trwania, prawdopodobieństwo)
-2. **Wyznaczenie zlewni** (CatchmentGraph BFS → `watershed_service`, ADR-022)
+1. **Walidacja** parametrów (czas trwania, prawdopodobieństwo — wymagane tylko bez `custom_precipitation`; `amc` I/II/III, domyślnie II)
+2. **Wyznaczenie zlewni** (CatchmentGraph BFS → `watershed_service`, ADR-022) albo szybka ścieżka z `morphometry` (tryb zaawansowany, CN ułamkowe)
 3. **Kontrola limitu**: `area_km2 ≤ 250` (ograniczenie SCS-CN)
 4. **Morfometria + CN** (build_morph_dict_from_graph, get_land_cover_for_boundary)
-5. **Opad projektowy** (get_precipitation z IDW)
+5. **Opad**: projektowy PMAXTP (get_precipitation z IDW) albo własna seria `custom_precipitation` (`timestep_min` > 0 i ≤ 1440, `depths_mm` ≥ 0, 1–2000 wartości, suma > 0); czas trwania = liczba kroków × krok
 6. **Czas koncentracji** (calculate_tc)
-7. **Hietogram** (rozkład opadu w czasie)
-8. **Hydrogram** (splot z UH)
+7. **Hietogram**: dla PMAXTP rozkład opadu w czasie (§6.3); dla własnej serii `_custom_hietogram()` opakowuje serię w `HietogramResult` Hydrologa (czasy końca kroków k·Δt), bez hietogramu syntetycznego (`metadata.hietogram_type = null`, `precipitation.source = "custom"`, `probability_percent = null`)
+8. **Hydrogram** (splot z UH; CN przeliczony wg AMC — także w regresji Nasha dla zlewni zurbanizowanych)
 
 ### 6.2 Czas koncentracji (tc)
 
@@ -569,6 +569,8 @@ jeśli P ≤ Ia:  Pe = 0
 w.p.p.:        Pe = (P - Ia)² / (P - Ia + S)
 ```
 
+**Uwilgotnienie początkowe (AMC):** CN zlewni odpowiada AMC II. Dla AMC I i III Hydrolog (`SCSCN.adjust_cn_for_amc`) przelicza CN i zaokrągla wynik do liczby całkowitej; AMC II zostawia CN ułamkowe. Tak przeliczony CN wchodzi do S, Ia i Pe.
+
 ### 6.5 Hydrogram jednostkowy SCS
 
 **Czas do szczytu:**
@@ -613,7 +615,7 @@ Generowane kombinatorycznie:
 | `total_precip_mm` | mm |
 | `total_effective_mm` | mm |
 | `runoff_coefficient` | — |
-| `cn_used` | — |
+| `cn_used` | — (float; CN po przeliczeniu wg AMC, klasa w `metadata.amc`) |
 | `retention_mm` | mm |
 | `initial_abstraction_mm` | mm |
 | `peak_discharge_m3s` | m³/s |

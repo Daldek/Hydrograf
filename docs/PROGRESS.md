@@ -55,19 +55,27 @@
 - **Podkłady:** OpenFreeMap szary (wektorowy; MapLibre GL 4.7.1 przez `@maplibre/maplibre-gl-leaflet` 0.0.22, styl positron), OSM GUGiK szary (tylko Polska), Ortofotomapa ESRI, bez podkładu. Usunięte: OSM kolorowy, GUGiK WMTS orto/topo, OpenTopoMap. CSP (`nginx.conf`, `nginx-ssl.conf.template`): `connect-src` + `https://tiles.openfreemap.org`, `img-src` + `blob:`, `worker-src`/`child-src blob:`, bez OpenTopoMap.
 - **Wykresy** w kolorach tokenów, zgodne z motywem; hietogram liniowy jak hydrogram; pokrycie terenu i HSG jako poziome słupki skumulowane. Wiersze warstw pokazują krycie (dawniej przezroczystość).
 - **Szyna** tylko Mapa i Administracja; profil terenu zostaje w trybach paska mapy, przewodnik to przycisk „Instrukcja” w górnym pasku każdej strony (główna, `/admin`, `/instrukcja`).
-- **Objaśnienia (i)** (`js/info.js`, `js/info-texts.js`, 65 tekstów kluczowanych polem API lub id kontrolki) w sekcjach Parametry podstawowe, Wskaźniki kształtu, Hietogram, Hydrogram; treści oparte na Hydrologu i backendzie (np. limit hydrogramu 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`); uwagi o stosowalności pod Model UH, Metoda Tc, Estymacja Nash zależą od wyboru. Ostrzeżeń o stosowalności brak — API ich nie zwraca.
+- **Objaśnienia (i)** (`js/info.js`, `js/info-texts.js`, teksty kluczowane polem API lub id kontrolki) w sekcjach Parametry podstawowe, Wskaźniki kształtu, Hietogram, Hydrogram; treści oparte na Hydrologu i backendzie (np. limit hydrogramu 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`); uwagi o stosowalności pod Model UH, Metoda Tc, Estymacja Nash zależą od wyboru. Ostrzeżeń o stosowalności brak — API ich nie zwraca.
 - **Tryb zaawansowany** (`js/advanced.js`): edycja morfometrii (powierzchnia, obwód, długość, wysokości, średni spadek, długość i spadek cieku, `length_to_centroid_km`, CN) wysyłanej do `POST /api/generate-hydrograph` bez zmian backendu; oznaczenie zmienionych pól, przywracanie pola i całości („Przywróć dane z Hydrografa”), walidacja blokuje zapytanie, komunikat „Obliczono na zmienionych danych wejściowych”; opad PMAXTP bez edycji. Luka danych: część zlewni ma `length_to_centroid_km = 0` — Snyder zawodzi do czasu wpisania Lc.
 - **Przewodnik** w nowej wersji dla nowego GUI: zregenerowane `/instrukcja` i `docs/Hydrograf-prezentacja.html`/`.pdf`.
+- **Runda 2 GUI (frontend + API, bez zmian schematu bazy):**
+  - Objaśnienia (i) o stałej strukturze: opis, wzór w MathML, lista „gdzie:” ze zmiennymi i jednostkami, jednostka, osobny blok „Znaczenie dla analizy”, stosowalność i uwaga; teraz także w sekcjach Rzeźba terenu i Sieć rzeczna (76 wpisów w `js/info-texts.js`).
+  - Hietogram: „Uwilgotnienie początkowe (AMC)” I/II/III (`amc`), bilans pokazuje CN użyty z jednym miejscem po przecinku i klasą AMC; „Źródło opadu” PMAXTP / Własna seria (`js/custom-rain.js`): czas trwania i krok tworzą tabelę, wklejanie z arkusza, import CSV 1 lub 2 kolumn, „Wczytaj z bieżącego hietogramu”.
+  - Formularz hydrogramu w równej siatce: Model UH | Metoda Tc, dla Nasha Model UH | Estymacja Nash.
+  - Tryb zaawansowany z dokładnością 0,01 km², 0,01 km, 0,1 m, 0,01 %, CN 0,1.
+  - Warstwa „Kanalizacja deszczowa” tylko przy danych kanalizacji (`GET /api/layers` → `{"sewer": bool}`).
+  - API: `POST /api/generate-hydrograph` przyjmuje `amc` i `custom_precipitation` (422 z polskim opisem przy błędach serii); `water_balance.cn_used` jako float, `precipitation.source`, `metadata.amc`; CN zlewni (`morphometry.cn`, `weighted_cn`) z dokładnością 0,1; `GET /api/scenarios` z `amc` i `custom_precipitation_max_steps`.
+  - Dokumentacja: CHANGELOG, ARCHITECTURE (§2.2.3, §2.2.3a, §4.1, §4.2), COMPUTATION_PIPELINE (§5.2, §6.1, §6.4, §6.8), DATA_MODEL (§6.3, §6.4), DEVELOPMENT_STANDARDS, przewodnik.
 - **Dokumentacja:** CHANGELOG, ARCHITECTURE (§4.1, §4.2, hosty CSP w §5.2), SCOPE, DEVELOPMENT_STANDARDS, README, ADR-065.
 
 ### W trakcie
-- Gałąź `feature/visual-identity` (worktree `Hydrograf-gui`), serwowana przez równoległy kontener nginx `hydro_nginx_gui` na porcie 8081, z tym samym API i bazą co produkcja. Produkcja (port 8080, `feature/logowanie-testow`) bez zmian.
+- Gałąź `feature/visual-identity` (worktree `Hydrograf-gui`), serwowana przez równoległy kontener nginx `hydro_nginx_gui` na porcie 8081, który ma teraz własny kontener API `hydro_api_gui` (backend z worktree, `uvicorn --reload`, ta sama baza PostGIS co produkcja) w osobnej sieci docker `hydrograf_gui`. `hydro_api_gui` uruchamia przy starcie `alembic upgrade head`, więc do czasu merge na tej gałęzi nie wolno dodawać migracji. Produkcja (port 8080, `feature/logowanie-testow`) bez zmian.
 
 ### Następne kroki
 - Przegląd GUI przez autora na porcie 8081.
-- Merge i wdrożenie na produkcję (restart nginx dla nowego CSP).
-- Rozważyć pole backendu z ostrzeżeniami o stosowalności metod oraz nadpisanie wysokości opadu w trybie zaawansowanym.
-- Naprawić `length_to_centroid_km = 0` w danych zlewni.
+- Merge i wdrożenie na produkcję: restart API produkcji (zmiany backendu: `amc`, `custom_precipitation`, CN float, `GET /api/layers`) i nginx (nowy CSP).
+- Zgłoszenie do Hydrologa: przeliczenie CN dla AMC I/III zaokrągla CN do liczby całkowitej.
+- Backend: ujednolicić dokładność powierzchni między pełną ścieżką (2 miejsca) a szybką (4 miejsca); ostrzeżenia o stosowalności metod w API; `length_to_centroid_km = 0` w danych zlewni (Snyder); niespójne wskaźniki kształtu bardzo małych zlewni (wartości > 1 / < 1 wbrew definicji); `asymmetry_coefficient` nigdy nie jest liczony.
 
 ### Poprzednia sesja (2026-10-29/30 — bootstrap zlewni Kaczawy i mniejszego obszaru; pamięć przetwarzania NMT)
 
