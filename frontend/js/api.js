@@ -224,6 +224,26 @@
     }
 
     /**
+     * Sub-catchments a precomputed delineation will merge, one feature per BFS
+     * depth from the outlet, for the animation while it is computed.
+     *
+     * @param {number} lat - Latitude (WGS84)
+     * @param {number} lng - Longitude (WGS84)
+     * @param {number} threshold - Flow accumulation threshold [m2]
+     * @returns {Promise<Object>} { threshold_m2, segment_count, catchments }
+     */
+    async function previewWatershed(lat, lng, threshold) {
+        const response = await fetch('/api/delineate-watershed/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ latitude: lat, longitude: lng, threshold_m2: threshold }),
+        });
+
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
+    /**
      * Submit user feedback.
      *
      * @param {Object} payload - { message, contact, page_url, diagnostics }
@@ -248,6 +268,7 @@
         getLayers: getLayers,
         getDepressions: getDepressions,
         delineateWatershed: delineateWatershed,
+        previewWatershed: previewWatershed,
         submitFeedback: submitFeedback,
     };
 })();

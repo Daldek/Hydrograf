@@ -145,7 +145,7 @@ backend/
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
 │       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, GET /layers
-│       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes)
+│       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes), POST /delineate-watershed/preview
 │
 ├── core/
 │   ├── __init__.py
@@ -268,6 +268,39 @@ Errors:
 - 422: Walidacja (niepoprawne wspolrzedne)
 - 500: "Błąd serwera"
 ```
+
+#### 2.2.2a Delineation Preview
+```
+POST /api/delineate-watershed/preview
+Content-Type: application/json
+
+Request (jak tryb precomputed; threshold_m2 wymagany — tryb precise nie ma podglądu):
+{
+  "latitude": 50.929,
+  "longitude": 16.119,
+  "threshold_m2": 10000
+}
+
+Response: 200 OK
+{
+  "threshold_m2": 100000,      // próg zlewni cząstkowych po progu minimalnym i kaskadzie
+  "segment_count": 289,        // ile zlewni cząstkowych scala delineate-watershed
+  "catchments": {              // GeoJSON FeatureCollection (WGS84), rosnąco po depth
+    "type": "FeatureCollection",
+    "features": [
+      { "type": "Feature", "geometry": { "type": "MultiPolygon", ... }, "properties": { "depth": 0 } },
+      ...
+    ]
+  }
+}
+
+Errors:
+- 404: "Nie znaleziono zlewni cząstkowej w tym punkcie. ..."
+- 422: Walidacja (współrzędne, brak lub niedodatni threshold_m2)
+- 503: Graf zlewni niezaładowany
+```
+
+Podgląd dla animacji w GUI, zanim `POST /api/delineate-watershed` scali granicę. Wybór zlewni cząstkowych jest wspólny z trybem precomputed (`_select_precomputed`: próg minimalny `DEFAULT_THRESHOLD_M2`, zlewnia cząstkowa w punkcie, BFS, kaskada przy > 300 segmentach), więc podgląd pokrywa ten sam obszar co wynik. `depth` to liczba połączeń w górę od zlewni ujściowej (`CatchmentGraph.upstream_segments_by_depth`); każda głębokość to jeden MultiPolygon zebrany przez `ST_Collect` (bez scalania), wielokąty uproszczone `ST_Simplify` z tolerancją √A / 500 m (ok. piksel po dopasowaniu mapy do zlewni, min. 1 m), współrzędne z dokładnością 5 miejsc. Najwyżej 5000 zlewni cząstkowych najbliżej ujścia. Czas (instancja przeglądowa): 52 km² — 25 ms wobec 4,6 s pełnego wyznaczania, 778 km² (4418 zlewni cząstkowych, 147 głębokości) — 0,15–0,24 s wobec 88 s.
 
 #### 2.2.3 Generate Hydrograph
 ```

@@ -9,11 +9,12 @@
     window.Hydrograf = window.Hydrograf || {};
 
     var state = {
-        isLoading: false,
         currentWatershed: null,
         clickLat: null,
         clickLng: null,
         clickMode: 'browse',
+        // Number of the latest watershed selection; answers to older ones are dropped
+        selection: 0,
     };
 
     var _clickDebounceTimer = null;
@@ -246,7 +247,6 @@
     }
 
     function setLoading(loading) {
-        state.isLoading = loading;
         Hydrograf.map.setLoadingCursor(loading);
 
         if (loading) {
@@ -255,10 +255,8 @@
             els.loading.classList.remove('d-none');
             els.error.classList.add('d-none');
             els.results.classList.add('d-none');
-            Hydrograf.map.disableClick();
         } else {
             els.loading.classList.add('d-none');
-            Hydrograf.map.enableClick();
         }
     }
 
@@ -274,10 +272,25 @@
     }
 
     /**
+     * Drop the pending watershed selection: its preview leaves the map and
+     * its answers are ignored.
+     */
+    function cancelSelection() {
+        state.selection += 1;
+        if (_clickDebounceTimer) {
+            clearTimeout(_clickDebounceTimer);
+            _clickDebounceTimer = null;
+        }
+        Hydrograf.map.clearDelineatePreview();
+    }
+
+    /**
      * Close results panel and clear all map overlays.
      * Used by "×" button and Escape key.
      */
     function closeResults() {
+        cancelSelection();
+        setLoading(false);
         Hydrograf.map.clearWatershed();
         Hydrograf.map.clearSelectionBoundary();
         Hydrograf.map.clearProfileLine();
@@ -300,8 +313,6 @@
             Hydrograf.diagnostics.log('map_click', { lat: lat, lng: lng, mode: state.clickMode });
         }
 
-        if (state.isLoading) return;
-
         // Browse mode — do nothing
         if (state.clickMode === 'browse') return;
 
@@ -322,24 +333,29 @@
             return;
         }
 
-        // Debounce: prevent double API calls from rapid clicking
-        if (_clickDebounceTimer) clearTimeout(_clickDebounceTimer);
+        // A new point replaces the pending selection at once; the debounce
+        // prevents double API calls from rapid clicking.
+        cancelSelection();
+        var selection = state.selection;
         _clickDebounceTimer = setTimeout(function () {
             _clickDebounceTimer = null;
-            onSelectClick(lat, lng);
+            onSelectClick(lat, lng, selection);
         }, 300);
     }
 
     /**
-     * Handle stream selection click.
+     * Handle stream selection click: the preview (sub-catchments filling up
+     * the network) and the delineation are requested together; the result
+     * replaces the preview whenever it arrives.
      */
-    async function onSelectClick(lat, lng) {
+    async function onSelectClick(lat, lng, selection) {
         hideError();
         setLoading(true);
         state.currentWatershed = null;
 
         // Clear previous watershed display
         Hydrograf.map.clearWatershed();
+        Hydrograf.map.clearSelectionBoundary();
 
         // Clear auto-select banner before new request
         var autoInfo = document.getElementById('panel-auto-select-info');
@@ -347,9 +363,20 @@
 
         // Determine active threshold from streams layer
         var threshold = Hydrograf.map.getStreamsThreshold() || 100000;
+        var settled = false;
+        function isCurrent() { return selection === state.selection; }
+
+        Hydrograf.api.previewWatershed(lat, lng, threshold)
+            .then(function (preview) {
+                if (isCurrent() && !settled) Hydrograf.map.showDelineatePreview(preview.catchments);
+            })
+            .catch(function () { /* no preview; the delineation reports errors */ });
 
         try {
             var data = await Hydrograf.api.delineateWatershed(lat, lng, threshold);
+            if (!isCurrent()) return;
+            settled = true;
+            Hydrograf.map.clearDelineatePreview();
 
             // Show selection boundary
             if (data.watershed && data.watershed.boundary_geojson) {
@@ -407,11 +434,14 @@
                 Hydrograf.hydrograph.generateHydrograph();
             }
         } catch (err) {
+            if (!isCurrent()) return;
+            settled = true;
+            Hydrograf.map.clearDelineatePreview();
             Hydrograf.map.clearSelectionBoundary();
             state.currentWatershed = null;
             showError(err.message);
         } finally {
-            setLoading(false);
+            if (isCurrent()) setLoading(false);
         }
     }
 

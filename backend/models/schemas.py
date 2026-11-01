@@ -297,6 +297,42 @@ class DelineateResponse(BaseModel):
     )
 
 
+class DelineatePreviewRequest(DelineateRequest):
+    """Request for the delineation preview.
+
+    Same input as precomputed mode of POST /api/delineate-watershed, so
+    threshold_m2 is required: precise mode has no preview.
+    """
+
+    threshold_m2: int = Field(
+        ...,
+        gt=0,
+        description="Flow accumulation threshold [m2], as in precomputed delineation",
+        examples=[10000],
+    )
+
+
+class DelineatePreviewResponse(BaseModel):
+    """Sub-catchments a precomputed delineation merges, by depth for animation."""
+
+    threshold_m2: int = Field(
+        ...,
+        description="Threshold of the sub-catchments (after the floor and cascade)",
+    )
+    segment_count: int = Field(
+        ..., ge=1, description="Number of sub-catchments the delineation merges",
+    )
+    catchments: dict[str, Any] = Field(
+        ...,
+        description=(
+            "GeoJSON FeatureCollection (WGS84) with one MultiPolygon per depth "
+            "(property depth: drainage links up from the outlet sub-catchment, "
+            "0 = outlet), by increasing depth; simplified to about a screen pixel "
+            "at the watershed's extent; at most 5000 sub-catchments nearest the outlet"
+        ),
+    )
+
+
 # ===================== HYDROGRAPH MODELS =====================
 
 

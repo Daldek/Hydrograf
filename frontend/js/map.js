@@ -17,7 +17,6 @@
     var streamTooltip = null;
     var watershedLayer = null;
     var outletMarker = null;
-    var clickEnabled = true;
 
     // Drawing state
     var drawMode = false;
@@ -118,13 +117,15 @@
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
         // Custom panes for layer ordering:
-        // Base (tilePane z-200) → NMT → Linie spływu → overlay (z-400)
+        // Base (tilePane z-200) → NMT → Linie spływu → delineation preview → overlay (z-400)
         map.createPane('demPane');
         map.getPane('demPane').style.zIndex = 250;
         map.createPane('landcoverPane');
         map.getPane('landcoverPane').style.zIndex = 260;
         map.createPane('streamsPane');
         map.getPane('streamsPane').style.zIndex = 350;
+        map.createPane('previewPane');
+        map.getPane('previewPane').style.zIndex = 390;
 
         // Load overlays
         loadDemOverlay();
@@ -136,7 +137,6 @@
                 return;
             }
 
-            if (!clickEnabled) return;
             if (onClickCallback) {
                 onClickCallback(e.latlng.lat, e.latlng.lng);
             }
@@ -401,6 +401,79 @@
             map.removeLayer(selectionBoundaryLayer);
             selectionBoundaryLayer = null;
         }
+    }
+
+    // ===== Delineation preview =====
+    //
+    // While the server merges the boundary, the sub-catchments it merges fill
+    // the network up from the outlet (POST /api/delineate-watershed/preview,
+    // one feature per BFS depth). The map first moves to the watershed, as
+    // paths added during a zoom animation are drawn out of place; then depth
+    // d appears at d / maxDepth of PREVIEW_DURATION_MS, as many levels per
+    // frame as are due, and the preview pane pulses (app.css) until
+    // clearDelineatePreview(). Reduced motion: all levels at once, no pulse.
+
+    var PREVIEW_DURATION_MS = 500;
+    var preview = null; // { levels: L.GeoJSON, shown: L.LayerGroup, onMoveEnd, frame }
+
+    /** Preview: the watershed's tool colour, thinner and fainter than the result. */
+    function previewStyle() {
+        var c = colors();
+        return { color: c.tool, weight: 1, opacity: 0.5, fillColor: c.tool, fillOpacity: 0.08 };
+    }
+
+    /**
+     * Animate the preview of a pending delineation, replacing any previous one.
+     * @param {Object} collection - FeatureCollection, one feature per depth
+     *     (property `depth`), by increasing depth
+     */
+    function showDelineatePreview(collection) {
+        clearDelineatePreview();
+        var levels = L.geoJSON(collection, { pane: 'previewPane', style: previewStyle, interactive: false });
+        var layers = levels.getLayers();
+        if (!layers.length) return;
+
+        var maxDepth = layers[layers.length - 1].feature.properties.depth;
+        var instant = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var next = 0;
+        var start = null;
+        var current = { levels: levels, shown: L.layerGroup().addTo(map), onMoveEnd: null, frame: null };
+        preview = current;
+
+        function step(now) {
+            if (start === null) start = now;
+            var reached = instant ? Infinity : (now - start) / PREVIEW_DURATION_MS * maxDepth;
+            while (next < layers.length && layers[next].feature.properties.depth <= reached) {
+                current.shown.addLayer(layers[next]);
+                next += 1;
+            }
+            if (next < layers.length) {
+                current.frame = requestAnimationFrame(step);
+            } else {
+                current.frame = null;
+                map.getPane('previewPane').classList.add('waiting');
+            }
+        }
+
+        // fitBounds always ends in moveend: at once when the view stays
+        // or jumps, after the animation when it pans or zooms.
+        current.onMoveEnd = function () {
+            map.off('moveend', current.onMoveEnd);
+            current.onMoveEnd = null;
+            current.frame = requestAnimationFrame(step);
+        };
+        map.on('moveend', current.onMoveEnd);
+        map.fitBounds(levels.getBounds(), { padding: [20, 20] });
+    }
+
+    /** Remove the preview and stop its animation. */
+    function clearDelineatePreview() {
+        if (!preview) return;
+        if (preview.onMoveEnd) map.off('moveend', preview.onMoveEnd);
+        if (preview.frame !== null) cancelAnimationFrame(preview.frame);
+        map.removeLayer(preview.shown);
+        map.getPane('previewPane').classList.remove('waiting');
+        preview = null;
     }
 
     // ===== Legends =====
@@ -954,9 +1027,6 @@
 
     // ===== Utilities =====
 
-    function disableClick() { clickEnabled = false; }
-    function enableClick() { clickEnabled = true; }
-
     function setLoadingCursor(loading) {
         if (map) map.getContainer().style.cursor = loading ? 'wait' : '';
     }
@@ -971,6 +1041,7 @@
         if (!map) return;
         var c = colors();
         if (selectionBoundaryLayer) selectionBoundaryLayer.setStyle(watershedStyle());
+        if (preview) preview.levels.setStyle(previewStyle);
         if (watershedLayer) watershedLayer.setStyle(watershedStyle());
         if (outletMarker) outletMarker.setStyle(outletStyle());
         if (mainChannelLayer) mainChannelLayer.setStyle(mainChannelStyle);
@@ -1017,14 +1088,14 @@
         setStreamsOpacity: setStreamsOpacity,
         showSelectionBoundary: showSelectionBoundary,
         clearSelectionBoundary: clearSelectionBoundary,
+        showDelineatePreview: showDelineatePreview,
+        clearDelineatePreview: clearDelineatePreview,
         showWatershed: showWatershed,
         getWatershedLayer: getWatershedLayer,
         showOutlet: showOutlet,
         clearWatershed: clearWatershed,
         showMainChannel: showMainChannel,
         clearMainChannel: clearMainChannel,
-        disableClick: disableClick,
-        enableClick: enableClick,
         setLoadingCursor: setLoadingCursor,
         invalidateSize: invalidateSize,
         // Drawing

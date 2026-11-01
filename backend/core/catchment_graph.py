@@ -554,6 +554,45 @@ class CatchmentGraph:
             return_predecessors=False,
         )
 
+    def upstream_segments_by_depth(
+        self,
+        start_idx: int,
+    ) -> tuple[list[int], list[int]]:
+        """
+        Sub-catchments upstream of a node in BFS order, with their depth.
+
+        Parameters
+        ----------
+        start_idx : int
+            Internal index of the starting node
+
+        Returns
+        -------
+        tuple[list[int], list[int]]
+            segment_idx of every node reached by traverse_upstream(start_idx),
+            in its BFS order (edges link nodes of one threshold, so all share
+            the threshold of start_idx), and for each of them the number of
+            drainage links up from start_idx: 0 for start_idx itself,
+            non-decreasing along the order.
+        """
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+
+        order, predecessors = breadth_first_order(
+            self._upstream_adj,
+            start_idx,
+            directed=True,
+            return_predecessors=True,
+        )
+        nodes = order.tolist()
+        depth_of = {nodes[0]: 0}
+        for node, downstream in zip(
+            nodes[1:], predecessors[order[1:]].tolist(), strict=True,
+        ):
+            depth_of[node] = depth_of[downstream] + 1
+        depths = [depth_of[node] for node in nodes]
+        return self._segment_idx[order].tolist(), depths
+
     def get_segment_indices(
         self,
         indices: np.ndarray,

@@ -4,10 +4,16 @@ Watershed delineation endpoint.
 Unified endpoint with two modes:
 - Precomputed (threshold_m2 given): BFS on pre-computed catchment graph, ST_Union boundary
 - Precise (no threshold): BFS at 1000m² + on-the-fly raster boundary via pyflwdir
+
+Preview endpoint: the sub-catchments precomputed mode will merge, without
+the slow merge, for a progress animation in the GUI.
 """
 
 import logging
+import math
+from dataclasses import dataclass
 
+import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Response
 from shapely import wkb
 from shapely.geometry import MultiPolygon, Polygon
@@ -24,6 +30,7 @@ from core.watershed_service import (
     build_morph_dict_from_graph,
     cascade_escalate,
     ensure_outlet_within_boundary,
+    get_catchment_levels_feature_collection,
     get_divide_flow_path_geojson,
     get_longest_flow_path_geojson,
     get_main_channel_feature_collection,
@@ -33,6 +40,8 @@ from core.watershed_service import (
     merge_catchment_boundaries,
 )
 from models.schemas import (
+    DelineatePreviewRequest,
+    DelineatePreviewResponse,
     DelineateRequest,
     DelineateResponse,
     HypsometricPoint,
@@ -187,22 +196,63 @@ def _build_watershed_response(
     )
 
 
-def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curve):
-    """Precomputed mode: BFS on graph + ST_Union boundary."""
-    threshold = request.threshold_m2
-    escalated = False
-    original_threshold = threshold
+# Above this many sub-catchments the boundary is merged from a coarser
+# threshold (cascade_escalate).
+_MAX_MERGE = 300
 
-    # ADR-026: catchments only for threshold >= 1000
+# Preview polygons are simplified to about one screen pixel once the map is
+# fitted to the watershed: its extent is ~sqrt(area), drawn ~500 px across.
+_PREVIEW_PX_ACROSS = 500
+_PREVIEW_MIN_TOLERANCE_M = 1.0
+
+# The preview carries at most this many sub-catchments, the ones nearest the
+# outlet in BFS order (the largest watershed of the current data has ~4400).
+_PREVIEW_MAX_CATCHMENTS = 5000
+
+
+@dataclass(frozen=True)
+class _Selection:
+    """Sub-catchments a precomputed delineation selects for a click."""
+
+    threshold: int  # of the clicked sub-catchment, after the ADR-026 floor
+    clicked_idx: int
+    bfs_segment_idxs: list[int]  # BFS at `threshold` (MVT highlighting)
+    merge_idxs: list[int]  # merged into the boundary
+    merge_threshold: int  # coarser than `threshold` after a cascade
+    upstream_indices: np.ndarray  # graph nodes of merge_idxs (stats)
+    outlet_idx: int  # graph node of the outlet at merge_threshold
+    stats: dict
+    area_km2: float
+
+
+def _loaded_catchment_graph(db: Session):
+    """The in-memory catchment graph; 503 when it cannot be loaded."""
+    cg = get_catchment_graph()
+    if not cg.ensure_loaded(db):
+        raise HTTPException(
+            status_code=503,
+            detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
+        )
+    return cg
+
+
+def _select_precomputed(threshold_m2, point_2180, cg, db) -> _Selection:
+    """Sub-catchments merged for a click in precomputed mode.
+
+    Shared by the delineation and its preview, so both cover the same area:
+    threshold floor, sub-catchment at the point (404 if none), BFS upstream
+    and the cascade to a coarser threshold above _MAX_MERGE segments.
+    """
+    threshold = threshold_m2
+
+    # ADR-026: catchments only for threshold >= DEFAULT_THRESHOLD_M2
     if threshold < DEFAULT_THRESHOLD_M2:
         threshold = DEFAULT_THRESHOLD_M2
-        escalated = True
         logger.info(
-            f"Threshold {original_threshold} escalated to {threshold} "
+            f"Threshold {threshold_m2} escalated to {threshold} "
             f"(no catchments below {DEFAULT_THRESHOLD_M2})"
         )
 
-    # Find catchment
     try:
         clicked_idx = cg.find_catchment_at_point(
             point_2180.x, point_2180.y, threshold, db,
@@ -210,37 +260,67 @@ def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curv
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
-    segment_idx = cg.get_segment_idx(clicked_idx)
-    segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)
-
-    # BFS
     upstream_indices = cg.traverse_upstream(clicked_idx)
     bfs_segment_idxs = cg.get_segment_indices(upstream_indices, threshold)
-
-    # Stats
-    upstream_indices_for_stats = upstream_indices
-    outlet_idx_for_stats = clicked_idx
-    stats = cg.aggregate_stats(upstream_indices_for_stats, outlet_idx=outlet_idx_for_stats)
-    area_km2 = stats["area_km2"]
-
-    # Cascade
-    _MAX_MERGE = 300
-    merge_idxs = bfs_segment_idxs
-    merge_threshold = threshold
+    stats = cg.aggregate_stats(upstream_indices, outlet_idx=clicked_idx)
 
     escalation = cascade_escalate(
         cg, point_2180.x, point_2180.y, threshold,
         bfs_segment_idxs, _MAX_MERGE, db,
     )
-    if escalation:
-        merge_idxs, merge_threshold, upstream_indices_for_stats, outlet_idx_for_stats, stats, area_km2 = escalation
-        logger.info(
-            "Cascade: %d -> %d (%d -> %d segments)",
-            threshold, merge_threshold, len(bfs_segment_idxs), len(merge_idxs),
+    if escalation is None:
+        return _Selection(
+            threshold=threshold,
+            clicked_idx=clicked_idx,
+            bfs_segment_idxs=bfs_segment_idxs,
+            merge_idxs=bfs_segment_idxs,
+            merge_threshold=threshold,
+            upstream_indices=upstream_indices,
+            outlet_idx=clicked_idx,
+            stats=stats,
+            area_km2=stats["area_km2"],
         )
 
+    merge_idxs, merge_threshold, merge_upstream, outlet_idx, stats, area_km2 = (
+        escalation
+    )
+    logger.info(
+        "Cascade: %d -> %d (%d -> %d segments)",
+        threshold, merge_threshold, len(bfs_segment_idxs), len(merge_idxs),
+    )
+    return _Selection(
+        threshold=threshold,
+        clicked_idx=clicked_idx,
+        bfs_segment_idxs=bfs_segment_idxs,
+        merge_idxs=merge_idxs,
+        merge_threshold=merge_threshold,
+        upstream_indices=merge_upstream,
+        outlet_idx=outlet_idx,
+        stats=stats,
+        area_km2=area_km2,
+    )
+
+
+def _preview_tolerance_m(area_km2: float) -> float:
+    """Simplification tolerance of preview polygons for a watershed area."""
+    return max(
+        math.sqrt(area_km2 * 1_000_000) / _PREVIEW_PX_ACROSS,
+        _PREVIEW_MIN_TOLERANCE_M,
+    )
+
+
+def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curve):
+    """Precomputed mode: BFS on graph + ST_Union boundary."""
+    selection = _select_precomputed(request.threshold_m2, point_2180, cg, db)
+    threshold = selection.threshold
+
+    segment_idx = cg.get_segment_idx(selection.clicked_idx)
+    segment = get_stream_info_by_segment_idx(segment_idx, threshold, db)
+
     # Boundary
-    boundary_2180 = merge_catchment_boundaries(merge_idxs, merge_threshold, db)
+    boundary_2180 = merge_catchment_boundaries(
+        selection.merge_idxs, selection.merge_threshold, db,
+    )
     if boundary_2180 is None:
         raise HTTPException(status_code=500, detail="Nie udało się zbudować granicy zlewni.")
 
@@ -249,9 +329,9 @@ def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curv
     # Build shared response
     watershed_response = _build_watershed_response(
         cg, point_2180, boundary_2180, boundary_poly,
-        upstream_indices_for_stats, outlet_idx_for_stats,
-        segment_idx, threshold, merge_threshold,
-        area_km2, stats, include_hypsometric_curve, db,
+        selection.upstream_indices, selection.outlet_idx,
+        segment_idx, threshold, selection.merge_threshold,
+        selection.area_km2, selection.stats, include_hypsometric_curve, db,
     )
 
     # Stream info
@@ -264,22 +344,22 @@ def _delineate_precomputed(request, point_2180, cg, db, include_hypsometric_curv
 
     info_message = (
         (
-            f"Zlewnie cząstkowe niedostępne dla progu {original_threshold} m². "
+            f"Zlewnie cząstkowe niedostępne dla progu {request.threshold_m2} m². "
             f"Zaznaczono z progu {threshold} m²."
         )
-        if escalated
+        if threshold != request.threshold_m2
         else None
     )
 
     logger.info(
-        f"Precomputed delineation: {area_km2:.2f} km2, "
-        f"{len(bfs_segment_idxs)} segments"
+        f"Precomputed delineation: {selection.area_km2:.2f} km2, "
+        f"{len(selection.bfs_segment_idxs)} segments"
     )
 
     return {
         "watershed_response": watershed_response,
         "stream_info": stream_info,
-        "upstream_segment_indices": bfs_segment_idxs,
+        "upstream_segment_indices": selection.bfs_segment_idxs,
         "display_threshold_m2": threshold,
         "info_message": info_message,
     }
@@ -360,12 +440,7 @@ def delineate_watershed(
         # ---- Shared: transform + graph ----
         point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
 
-        cg = get_catchment_graph()
-        if not cg.ensure_loaded(db):
-            raise HTTPException(
-                status_code=503,
-                detail="Graf zlewni nie został załadowany. Spróbuj ponownie.",
-            )
+        cg = _loaded_catchment_graph(db)
 
         # ---- Determine mode ----
         if request.threshold_m2 is not None:
@@ -402,4 +477,50 @@ def delineate_watershed(
         raise HTTPException(
             status_code=500,
             detail="Błąd wewnętrzny podczas wyznaczania zlewni",
+        ) from e
+
+
+@router.post(
+    "/delineate-watershed/preview", response_model=DelineatePreviewResponse,
+)
+def delineate_watershed_preview(
+    request: DelineatePreviewRequest,
+    db: Session = Depends(get_db),
+) -> DelineatePreviewResponse:
+    """Sub-catchments the precomputed delineation will merge, for animation.
+
+    Same selection as POST /delineate-watershed in precomputed mode (threshold
+    floor, sub-catchment at the point, BFS, cascade) without the merge and
+    statistics: simplified polygons in BFS order from the outlet, each with
+    its depth. Precise mode has no preview: its raster boundary starts at the
+    exact click point, not at a sub-catchment.
+    """
+    try:
+        point_2180 = transform_wgs84_to_pl1992(request.latitude, request.longitude)
+        cg = _loaded_catchment_graph(db)
+        selection = _select_precomputed(request.threshold_m2, point_2180, cg, db)
+        segment_idxs, depths = cg.upstream_segments_by_depth(selection.outlet_idx)
+        catchments = get_catchment_levels_feature_collection(
+            segment_idxs[:_PREVIEW_MAX_CATCHMENTS],
+            depths[:_PREVIEW_MAX_CATCHMENTS],
+            selection.merge_threshold,
+            _preview_tolerance_m(selection.area_km2),
+            db,
+        )
+        return DelineatePreviewResponse(
+            threshold_m2=selection.merge_threshold,
+            segment_count=len(segment_idxs),
+            catchments=catchments,
+        )
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.error(f"Error previewing watershed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Błąd wewnętrzny podczas wyznaczania podglądu zlewni",
         ) from e

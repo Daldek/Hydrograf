@@ -119,6 +119,61 @@ class TestCatchmentGraphTraversal:
             cg.traverse_upstream(0)
 
 
+def _branched_graph() -> CatchmentGraph:
+    """
+    Outlet 6 with a long and a short branch (segment_idx = node + 1):
+        2 → 4 → 5 → 6   (node 1 → 3 → 4 → 5)
+        1 → 3 → 6       (node 0 → 2 → 5)
+    """
+    cg = CatchmentGraph()
+    n = 6
+    cg._n = n
+    cg._loaded = True
+    cg._segment_idx = np.arange(1, n + 1, dtype=np.int32)
+    # adj[downstream, upstream] = 1
+    row = np.array([5, 4, 3, 5, 2], dtype=np.int32)
+    col = np.array([4, 3, 1, 2, 0], dtype=np.int32)
+    cg._upstream_adj = sparse.csr_matrix(
+        (np.ones(len(row), dtype=np.int8), (row, col)), shape=(n, n), dtype=np.int8,
+    )
+    return cg
+
+
+class TestUpstreamSegmentsByDepth:
+    """Tests for upstream_segments_by_depth (preview order)."""
+
+    def test_outlet_first_then_depths(self, small_graph):
+        """From the outlet: outlet at depth 0, each link upstream adds one."""
+        segments, depths = small_graph.upstream_segments_by_depth(3)
+        assert segments[0] == 4
+        assert dict(zip(segments, depths, strict=True)) == {4: 0, 3: 1, 1: 2, 2: 2}
+
+    def test_covers_traverse_upstream(self, small_graph):
+        """Same sub-catchments as traverse_upstream from a mid-basin node."""
+        segments, _ = small_graph.upstream_segments_by_depth(2)
+        expected = small_graph.get_segment_indices(
+            small_graph.traverse_upstream(2), 10000,
+        )
+        assert sorted(segments) == sorted(expected)
+
+    def test_depth_counts_links_on_each_branch(self):
+        """Depth follows the links of each branch, not the BFS position."""
+        segments, depths = _branched_graph().upstream_segments_by_depth(5)
+        assert dict(zip(segments, depths, strict=True)) == {
+            6: 0, 5: 1, 3: 1, 4: 2, 1: 2, 2: 3,
+        }
+        assert depths == sorted(depths)
+
+    def test_headwater_alone(self, small_graph):
+        """A headwater sub-catchment is its own outlet at depth 0."""
+        assert small_graph.upstream_segments_by_depth(0) == ([1], [0])
+
+    def test_not_loaded_raises(self):
+        """Unloaded graph should raise RuntimeError."""
+        with pytest.raises(RuntimeError, match="not loaded"):
+            CatchmentGraph().upstream_segments_by_depth(0)
+
+
 class TestCatchmentGraphSegmentIndices:
     """Tests for get_segment_indices."""
 

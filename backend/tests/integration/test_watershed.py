@@ -29,6 +29,7 @@ from shapely.geometry import MultiPolygon, Polygon
 
 from api.main import app
 from core.catchment_graph import CatchmentGraph
+from core.constants import DEFAULT_THRESHOLD_M2
 
 
 @pytest.fixture
@@ -440,3 +441,121 @@ class TestDelineateWatershedEndpoint:
         data = response.json()
         assert data["mode"] == "precomputed"
         assert data["upstream_segment_indices"] is not None
+
+
+class TestDelineateWatershedPreview:
+    """Tests for POST /api/delineate-watershed/preview.
+
+    The preview must show the sub-catchments the delineation merges: same
+    threshold floor, clicked sub-catchment and cascade, then one geometry
+    request for the merged set in BFS order with depths.
+    """
+
+    _URL = "/api/delineate-watershed/preview"
+    _LEVELS = {"type": "FeatureCollection", "features": []}
+
+    def _post(self, client, cg, threshold_m2=10000, escalation=None):
+        """POST a preview with the graph, cascade and geometry query mocked."""
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch(f"{_WS}.get_catchment_graph", return_value=cg))
+            stack.enter_context(
+                patch(f"{_WS}.cascade_escalate", return_value=escalation)
+            )
+            levels = stack.enter_context(
+                patch(
+                    f"{_WS}.get_catchment_levels_feature_collection",
+                    return_value=self._LEVELS,
+                )
+            )
+            response = client.post(
+                self._URL,
+                json={
+                    "latitude": 52.23,
+                    "longitude": 21.01,
+                    "threshold_m2": threshold_m2,
+                },
+            )
+        return response, levels
+
+    def test_levels_of_the_clicked_subcatchment(self, client):
+        """Without cascade the preview starts at the clicked sub-catchment."""
+        cg = _make_mock_cg()
+        cg.upstream_segments_by_depth.return_value = ([12, 10, 11], [0, 1, 1])
+
+        response, levels = self._post(client, cg)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["threshold_m2"] == 10000
+        assert data["segment_count"] == 3
+        assert data["catchments"] == self._LEVELS
+        cg.upstream_segments_by_depth.assert_called_once_with(0)
+        segment_idxs, depths, threshold = levels.call_args[0][:3]
+        assert (segment_idxs, depths, threshold) == ([12, 10, 11], [0, 1, 1], 10000)
+
+    def test_cascade_previews_the_merged_threshold(self, client):
+        """After a cascade the preview shows the coarser sub-catchments merged."""
+        cg = _make_mock_cg()
+        cg.upstream_segments_by_depth.return_value = ([6, 5], [0, 1])
+        escalation = ([5, 6], 100000, np.array([7, 8]), 7, {"area_km2": 12.0}, 12.0)
+
+        response, levels = self._post(client, cg, escalation=escalation)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["threshold_m2"] == 100000
+        assert data["segment_count"] == 2
+        cg.upstream_segments_by_depth.assert_called_once_with(7)
+        assert levels.call_args[0][2] == 100000
+
+    def test_threshold_below_floor_uses_default(self, client):
+        """Thresholds below the default floor select at the default, as delineation."""
+        cg = _make_mock_cg()
+        cg.upstream_segments_by_depth.return_value = ([12], [0])
+
+        response, _ = self._post(client, cg, threshold_m2=1000)
+
+        assert response.status_code == 200
+        assert response.json()["threshold_m2"] == DEFAULT_THRESHOLD_M2
+        assert cg.find_catchment_at_point.call_args[0][2] == DEFAULT_THRESHOLD_M2
+
+    def test_caps_subcatchments_nearest_outlet(self, client):
+        """Above the cap only the sub-catchments nearest the outlet are drawn."""
+        cg = _make_mock_cg()
+        cg.upstream_segments_by_depth.return_value = ([12, 10, 11], [0, 1, 2])
+
+        with patch(f"{_WS}._PREVIEW_MAX_CATCHMENTS", 2):
+            response, levels = self._post(client, cg)
+
+        assert response.status_code == 200
+        assert response.json()["segment_count"] == 3
+        segment_idxs, depths = levels.call_args[0][:2]
+        assert (segment_idxs, depths) == ([12, 10], [0, 1])
+
+    def test_missing_threshold_returns_422(self, client):
+        """Precise mode (no threshold) has no preview."""
+        response = client.post(self._URL, json={"latitude": 52.23, "longitude": 21.01})
+
+        assert response.status_code == 422
+
+    def test_no_subcatchment_returns_404(self, client):
+        """A point outside the sub-catchments fails like the delineation."""
+        cg = _make_mock_cg()
+        cg.find_catchment_at_point.side_effect = ValueError(
+            "Nie znaleziono zlewni cząstkowej"
+        )
+
+        response, levels = self._post(client, cg)
+
+        assert response.status_code == 404
+        assert "Nie znaleziono zlewni" in response.json()["detail"]
+        levels.assert_not_called()
+
+    def test_graph_not_loaded_returns_503(self, client):
+        """Unloaded catchment graph returns 503."""
+        cg = _make_mock_cg()
+        cg.ensure_loaded.return_value = False
+
+        response, _ = self._post(client, cg)
+
+        assert response.status_code == 503

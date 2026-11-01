@@ -251,6 +251,11 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .map-wrap .leaflet-tooltip-left::before { border-left-color: var(--surface); }
 .map-wrap .leaflet-tooltip-right::before { border-right-color: var(--surface); }
 
+/* Delineation preview (map.js): pulses while the server merges the boundary */
+.leaflet-preview-pane.waiting { animation: preview-wait 1.6s ease-in-out infinite; }
+@keyframes preview-wait { 50% { opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) { .leaflet-preview-pane.waiting { animation: none; } }
+
 /* Layer legends (map.js, bottom-left) */
 .layer-legend {
     width: 196px; padding: 10px var(--space-3);
@@ -425,10 +430,12 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .info-tip-sec { margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
 .info-tip-sec .info-tip-k { margin-bottom: 2px; }
 .info-tip-meaning { background: var(--accent-soft); color: var(--text); }
+/* "\n" separates the hydrological significance from the use in Hydrograf */
+.info-tip-meaning p { white-space: pre-line; }
 .info-tip-meaning .info-tip-k { color: var(--accent); }
 .info-tip-range { background: var(--surface-2); }
-.info-tip-note { margin-top: var(--space-2); color: var(--text-3); font-size: var(--text-xs); }
-.info-tip-note .info-tip-k { color: var(--text-2); }
+.info-tip-note, .info-tip-src { margin-top: var(--space-2); color: var(--text-3); font-size: var(--text-xs); }
+.info-tip-note .info-tip-k, .info-tip-src .info-tip-k { color: var(--text-2); }
 .info-tip-option { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); }
 .info-tip-option > .info-tip-k { margin-bottom: 2px; }
 .info-note { margin: 0; font-size: var(--text-xs); line-height: var(--line-height); color: var(--text-3); }

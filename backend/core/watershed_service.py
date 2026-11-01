@@ -518,6 +518,84 @@ def get_main_channel_feature_collection(
     }
 
 
+def get_catchment_levels_feature_collection(
+    segment_idxs: list[int],
+    depths: list[int],
+    threshold_m2: int,
+    tolerance_m: float,
+    db: Session,
+) -> dict:
+    """
+    Simplified sub-catchments grouped by depth as a WGS84 FeatureCollection.
+
+    Light geometry for the delineation preview: one MultiPolygon per depth,
+    collecting (not merging) its sub-catchments, each simplified with
+    ``tolerance_m`` (ST_Simplify keeping collapsed ones); coordinates
+    rounded to 5 decimals (~1 m).
+
+    Parameters
+    ----------
+    segment_idxs : list[int]
+        Segment indices of the sub-catchments
+    depths : list[int]
+        Depth of each segment, parallel to ``segment_idxs``
+    threshold_m2 : int
+        Flow accumulation threshold of the segments
+    tolerance_m : float
+        Simplification tolerance [m, EPSG:2180]
+    db : Session
+        Database session
+
+    Returns
+    -------
+    dict
+        FeatureCollection with one feature per depth (property ``depth``),
+        by increasing depth; depths without a polygon are left out.
+    """
+    query = text("""
+        SELECT
+            sel.depth,
+            ST_AsGeoJSON(
+                ST_Transform(
+                    ST_CollectionExtract(
+                        ST_Collect(ST_Simplify(c.geom, :tolerance, true)), 3
+                    ),
+                    4326
+                ),
+                5
+            ) AS geojson
+        FROM stream_catchments c
+        JOIN unnest(CAST(:idxs AS integer[]), CAST(:depths AS integer[]))
+            AS sel(segment_idx, depth) ON sel.segment_idx = c.segment_idx
+        WHERE c.threshold_m2 = :threshold
+          AND c.segment_idx = ANY(:idxs)
+          AND c.geom IS NOT NULL
+        GROUP BY sel.depth
+        ORDER BY sel.depth
+    """)
+    rows = db.execute(
+        query,
+        {
+            "threshold": threshold_m2,
+            "idxs": segment_idxs,
+            "depths": depths,
+            "tolerance": tolerance_m,
+        },
+    ).fetchall()
+
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": json.loads(row.geojson),
+                "properties": {"depth": row.depth},
+            }
+            for row in rows
+        ],
+    }
+
+
 def boundary_to_polygon(boundary_2180: MultiPolygon | Polygon) -> Polygon:
     """
     Extract largest Polygon from a MultiPolygon or pass through Polygon.

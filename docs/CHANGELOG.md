@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Uwilgotnienie początkowe (AMC)** I — suche / II — przeciętne / III — mokre w sekcji Hietogram (`amc` w zapytaniu); bilans opadu pokazuje użyty CN z jednym miejscem po przecinku i klasą AMC.
 - API: `POST /api/generate-hydrograph` przyjmuje `amc` (`I`/`II`/`III`, domyślnie `II`; CN przeliczany wg AMC, Hydrolog zaokrągla CN dla AMC I i III do liczby całkowitej) oraz `custom_precipitation` (`timestep_min` > 0 i ≤ 1440 min, `depths_mm` ≥ 0, 1–2000 wartości, suma > 0), które zastępuje PMAXTP i hietogram — wtedy `duration` i `probability` mogą być puste. Błędy walidacji serii: 422 z polskim opisem. Odpowiedź: `precipitation.source` (`pmaxtp`/`custom`), `probability_percent` równe `null` dla własnej serii, `water_balance.cn_used` jako liczba zmiennoprzecinkowa, `metadata.amc`, `metadata.hietogram_type` równe `null` dla własnej serii. `GET /api/scenarios` zwraca dodatkowo `amc` i `custom_precipitation_max_steps` (2000).
 - `GET /api/layers` → `{"sewer": bool}`: czy baza zawiera dane kanalizacji (`sewer_network` lub `sewer_nodes`).
+- **Podgląd wyznaczania zlewni** (`js/map.js`, `js/app.js`): po kliknięciu w trybie „Wybierz zlewnię” zlewnie cząstkowe, które backend scali w granicę, wypełniają sieć od ujścia w górę cieków w ok. 0,5 s (kolejne głębokości BFS w `requestAnimationFrame`, kolor `--tool-hydrograf` słabszy niż wynik); mapa najpierw przesuwa się do zasięgu podglądu. Do nadejścia granicy podgląd delikatnie pulsuje obok stanu „Wyznaczanie zlewni…”; wynik zastępuje go w dowolnej chwili, błąd usuwa. Przy `prefers-reduced-motion` podgląd pojawia się od razu i nie pulsuje. Nowe kliknięcie i „×” usuwają podgląd i porzucają spóźnione odpowiedzi.
+- API: `POST /api/delineate-watershed/preview` — wejście jak w trybie precomputed (`latitude`, `longitude`, wymagany `threshold_m2`) i ten sam wybór co `POST /api/delineate-watershed` (próg minimalny, zlewnia cząstkowa w punkcie, BFS, kaskada), bez scalania i statystyk. Odpowiedź `{threshold_m2, segment_count, catchments}`: `catchments` to GeoJSON z jednym MultiPolygonem na głębokość BFS (`CatchmentGraph.upstream_segments_by_depth`), uproszczony do ok. piksela ekranu, najwyżej 5000 zlewni cząstkowych najbliżej ujścia. Pomiar na instancji przeglądowej: 52 km² — 25 ms i 124 kB (26 kB gzip) wobec 4,6 s pełnego wyznaczania; 106 km² — 35 ms wobec 8 s; 778 km² (4418 zlewni cząstkowych) — 0,15–0,24 s i 742 kB (178 kB gzip) wobec 88 s. Tryb precise nie ma podglądu: jego granica rastrowa zaczyna się w samym punkcie kliknięcia, nie w zlewni cząstkowej (GUI używa trybu precomputed).
 - Integracja kanalizacji deszczowej z analiza splywu powierzchniowego (ADR-051)
 - Nowy modul `core/sewer_service.py`: budowa grafu sieci, inlet burning, rekonstrukcja FA, routing, propagacja
 - Nowy skrypt `scripts/download_sewer.py`: pozyskiwanie danych (plik/WFS/DB/URL)
@@ -51,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CN zlewni (`morphometry.cn`, `land_cover_stats.weighted_cn`) z dokładnością 0,1; panel „Zlewnia” pokazuje go z jednym miejscem po przecinku.
 - Błędy walidacji 422 (tablica pydantic) pokazują polski komunikat backendu bez przedrostka „Value error, ”.
 - Warstwa „Kanalizacja deszczowa” pojawia się w panelu „Warstwy” tylko wtedy, gdy `GET /api/layers` zgłasza dane kanalizacji; bez nich nie ma wpisu ani żądań kafli `/api/tiles/sewer`.
+- Mapa przyjmuje kliknięcia także w trakcie wyznaczania zlewni (dawniej były zablokowane do końca): nowy punkt zastępuje oczekujące wyznaczanie.
 
 ### Refaktoryzacja
 - **Przebudowa topologii kanalizacji (ADR-052)** — jawna topologia definiowana przez uzytkownika zamiast automatycznej detekcji (snapping, kaskada kierunkow, heurystyczna detekcja outletow). Usunieto ~530 linii heurystycznego kodu z sewer_service.py
@@ -59,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Nowy interfejs upload (ADR-052)** — auto-detect formatu (Format A: punkty z downstream_id, Format B: punkty + linie z from_node/to_node). Upload zwraca `detected_format` i `layers`. Config akceptuje `field_mapping`, `role_mapping`
 - **Migracja 027** — CHECK constraint `node_type` zmieniony z `isolated` na `storage` (kompatybilnosc SWMM/HEC-RAS)
 - **download_sewer.py** — zwraca tuple `(points_gdf, lines_gdf | None)` zamiast jednego GeoDataFrame
+- Wybór zlewni cząstkowych trybu precomputed (próg minimalny, punkt, BFS, kaskada `_MAX_MERGE`) w jednej funkcji `_select_precomputed` (`api/endpoints/watershed.py`), wspólnej dla wyznaczania i podglądu.
 
 ### Usuniete
 - **`backend/utils/sheet_finder.py`** (~616 linii) i `tests/unit/test_sheet_finder.py` — zastąpione przez `utils/sheet_lookup.py`, cienki wrapper na `kartograf.find_sheets_for_bbox()` zamiast własnej reimplementacji matematyki godeł (ADR-057)

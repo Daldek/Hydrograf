@@ -269,7 +269,7 @@ class TestPrecomputedCascadeStats:
             assert data["watershed"]["morphometry"]["area_km2"] == 105.0
 
             # aggregate_stats should have been called twice:
-            # 1. First with fine upstream indices (len=600) — in _delineate_precomputed
+            # 1. First with fine upstream indices (len=600) — in _select_precomputed
             # 2. Then with coarse upstream indices (len=50) — in cascade_escalate
             assert cg.aggregate_stats.call_count == 2
             first_call_indices = cg.aggregate_stats.call_args_list[0][0][0]
