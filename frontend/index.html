@@ -45,7 +45,7 @@
             <span class="label">Sprawdzanie usług…</span>
         </span>
         <div class="top-actions">
-            <a class="btn ghost" id="btn-guide" href="/instrukcja/">
+            <a class="btn ghost" id="btn-guide" href="/instrukcja/" aria-haspopup="dialog" aria-controls="welcome-modal">
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5z"/><path d="M4 16.5V4.5M7.5 6.5h5"/></svg>
                 <span class="label">Instrukcja</span>
             </a>
@@ -478,6 +478,30 @@
     </div>
 </dialog>
 
+<!-- Welcome dialog: on the first visit and from the Instrukcja button -->
+<dialog class="modal welcome" id="welcome-modal" aria-labelledby="welcome-title" aria-describedby="welcome-text">
+    <div class="panel-head">
+        <h2 id="welcome-title">Witaj w Hydrografie</h2>
+        <button class="btn ghost sm icon" type="button" id="welcome-close" aria-label="Zamknij" title="Zamknij">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
+        </button>
+    </div>
+    <div class="modal-body">
+        <div id="welcome-text">
+            <p>Hydrograf to mapa, która pokazuje, jak woda spływa po terenie. Wskaż miejsce przy rzece lub potoku, a Hydrograf wyznaczy obszar, z którego spływa tam woda (zlewnię), opisze go i oszacuje, ile wody może spłynąć po silnej ulewie.</p>
+            <p>Wyniki są szacunkowe — to narzędzie do poznawania terenu, nie prognoza powodzi. Dane obejmują na razie zlewnię Kaczawy.</p>
+        </div>
+        <label class="check">
+            <input type="checkbox" id="welcome-hide">
+            <span>Nie pokazuj ponownie</span>
+        </label>
+    </div>
+    <div class="modal-foot">
+        <a class="btn" id="welcome-guide" href="/instrukcja/" target="_blank" rel="noopener">Otwórz instrukcję</a>
+        <button class="btn primary" type="button" id="welcome-map">Przejdź do mapy</button>
+    </div>
+</dialog>
+
 <!-- Leaflet 1.9.4 JS -->
 <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
@@ -518,6 +542,7 @@
 <script defer src="js/sewer.js"></script>
 <script defer src="js/results.js"></script>
 <script defer src="js/feedback.js"></script>
+<script defer src="js/welcome.js"></script>
 <script defer src="js/app.js"></script>
 </body>
 </html>

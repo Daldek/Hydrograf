@@ -571,6 +571,10 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
 .modal-body .feedback-status.ok { color: var(--ok-ink); }
 .modal-body .feedback-status.bad { color: var(--bad-ink); }
 
+/* ---------- Welcome dialog ---------- */
+.welcome .modal-body p { color: var(--text); font-size: var(--text-site); line-height: var(--line-height); }
+.welcome .check { margin-top: var(--space-1); }
+
 /* ---------- Narrow desktop: panels at their minimum ---------- */
 @media (max-width: 1240px) and (min-width: 861px) {
     :root { --left-w: 260px; --right-w: 340px; }

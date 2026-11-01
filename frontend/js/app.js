@@ -598,7 +598,6 @@
             resultsSub: document.getElementById('results-sub'),
             hint: document.getElementById('map-hint-text'),
             mapWrap: document.getElementById('map-wrap'),
-            feedbackDialog: document.getElementById('feedback-modal'),
         };
 
         // Mode toolbar and rail
@@ -622,8 +621,8 @@
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
 
-            // Feedback dialog open — the native <dialog> handles Escape alone
-            if (els.feedbackDialog && els.feedbackDialog.open) return;
+            // A dialog is open (feedback, welcome) — the native <dialog> handles Escape alone
+            if (document.querySelector('dialog[open]')) return;
 
             // Drawing check FIRST — cancel active drawing and stop
             if (Hydrograf.map && Hydrograf.map.isDrawing && Hydrograf.map.isDrawing()) {
@@ -683,6 +682,11 @@
         // Init feedback module
         if (Hydrograf.feedback) {
             Hydrograf.feedback.init();
+        }
+
+        // Welcome dialog (first visit, Instrukcja button)
+        if (Hydrograf.welcome) {
+            Hydrograf.welcome.init();
         }
 
         checkSystemHealth();
