@@ -1,142 +1,564 @@
 <!doctype html>
-<html lang="pl">
+<html lang="pl" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hydrograf — krótki przewodnik</title>
+<!-- Standalone copy of frontend/instrukcja/index.html: the same slides with
+     css/tokens.css and instrukcja/instrukcja.css inlined, light theme, images
+     next to this file. Hydrograf-prezentacja.pdf is printed from this file. -->
 <style>
-  :root { --navy:#013e5c; --blue:#0089b3; --green:#84c340; --ice:#e4f0f5; --white:#fff; --ink:#173f52; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:#d5e4eb; font-family:Arial,Helvetica,sans-serif; color:var(--ink); }
-  .slide { width:min(100vw, 133.333vh); height:min(56.25vw, 100vh); min-height:0; margin:28px auto; padding:4.5% 5.6%; background:var(--white); position:relative; overflow:hidden; box-shadow:0 16px 45px #013e5c27; display:flex; flex-direction:column; gap:3%; }
-  .slide::before { content:""; position:absolute; top:0; left:0; right:0; height:1.15%; background:linear-gradient(90deg,var(--blue) 0 74%,var(--green) 74%); }
-  .slide.dark { color:var(--white); background:var(--navy); }
-  .slide.dark::after { content:""; position:absolute; width:48%; aspect-ratio:1; right:-14%; bottom:-50%; border:2.5vw solid #ffffff0d; border-radius:50%; pointer-events:none; }
-  .kicker { font-size:clamp(12px,1.5vw,24px); letter-spacing:.13em; text-transform:uppercase; font-weight:700; color:var(--blue); margin:0; }
-  .dark .kicker { color:var(--green); }
-  h1,h2,h3,p { margin:0; }
-  h1 { font-size:clamp(34px,5.5vw,84px); letter-spacing:-.045em; line-height:1.05; }
-  h2 { font-size:clamp(27px,3.45vw,54px); letter-spacing:-.035em; line-height:1.12; color:var(--navy); }
-  h3 { font-size:clamp(18px,2vw,32px); line-height:1.18; color:var(--navy); }
-  .lead { font-size:clamp(17px,2.1vw,32px); line-height:1.35; max-width:83%; }
-  .dark .lead { color:#d9eaf2; }
-  .dev { display:inline-block; align-self:flex-start; border:3px solid var(--green); color:var(--white); border-radius:100px; padding:.45em .9em; font-size:clamp(18px,2.35vw,36px); font-weight:800; letter-spacing:.035em; }
-  .rule { width:12%; height:1%; border-radius:99px; background:var(--green); }
-  .footer { position:absolute; left:5.6%; right:5.6%; bottom:4%; display:flex; justify-content:space-between; align-items:center; color:#587587; font-size:clamp(11px,1.05vw,16px); font-weight:700; letter-spacing:.035em; }
-  .dark .footer { color:#adcbd9; }
-  .grid { display:grid; gap:2.2%; flex:1; min-height:0; }
-  .two { grid-template-columns:1fr 1fr; }
-  .three { grid-template-columns:repeat(3,1fr); }
-  .card { background:var(--ice); padding:6%; border-radius:18px; border-left:6px solid var(--blue); display:flex; flex-direction:column; gap:10%; }
-  .card p, .step p { font-size:clamp(14px,1.55vw,24px); line-height:1.37; }
-  .label { font-size:clamp(12px,1.2vw,19px); font-weight:800; color:var(--blue); text-transform:uppercase; letter-spacing:.08em; }
-  .hint { font-size:clamp(14px,1.35vw,21px); line-height:1.3; background:#f0f7e7; padding:1.15% 2%; border-radius:12px; border-left:5px solid var(--green); }
-  .app-shot { display:block; width:100%; height:100%; min-height:0; object-fit:contain; background:var(--ice); border:2px solid #aecdd8; border-radius:16px; }
-  .nav-shots { display:flex; flex-direction:column; gap:2%; min-height:0; }
-  .nav-shots .app-shot { flex:1; height:0; }
-  .nav-shots .mode-shot { flex:none; height:28%; object-fit:cover; }
-  .wide-shot { display:block; width:100%; min-height:0; flex:1; object-fit:contain; background:var(--ice); border:2px solid #aecdd8; border-radius:16px; }
-  .number { color:var(--blue); font-weight:900; font-size:clamp(32px,4.2vw,64px); line-height:1; }
-  .step { border-top:7px solid var(--green); background:var(--ice); border-radius:12px; padding:7% 7% 5%; display:flex; flex-direction:column; gap:8%; }
-  .step strong { color:var(--navy); font-size:clamp(18px,1.85vw,29px); line-height:1.15; }
-  .minor { color:#34586b; font-size:clamp(13px,1.3vw,20px); line-height:1.3; }
-  .feedback-steps .step { display:grid; grid-template-columns:11% 1fr; grid-template-rows:auto 1fr; gap:3% 3%; padding:3.5% 4%; min-height:0; border-top-width:4px; }
-  .feedback-steps .number { grid-row:1/3; font-size:clamp(22px,2.3vw,36px); }
-  .feedback-steps .step strong { font-size:clamp(16px,1.55vw,24px); }
-  .feedback-steps .step p { font-size:clamp(13px,1.25vw,19px); }
-  .modal-shot { background:var(--ice); }
-  @media screen and (max-width:800px) {
-    .slide { width:min(calc(100% - 16px),640px); height:auto; margin:8px auto 16px; padding:24px 20px; overflow:visible; gap:16px; border-radius:10px; }
-    .slide.dark { overflow:hidden; }
-    .grid { display:flex; flex-direction:column; flex:none; gap:12px; }
-    .card,.step { flex:none !important; padding:16px; gap:10px; border-left-width:3px; border-top-width:3px; border-radius:8px; }
-    .card p,.step p,.hint { font-size:16px; }
-    .lead { max-width:none; }
-    .rule { height:5px; }
-    .app-shot,.wide-shot,.nav-shots .app-shot,.nav-shots .mode-shot { width:100%; height:auto; flex:none; object-fit:contain; }
-    .nav-shots { gap:12px; }
-    .nav-cards { gap:12px !important; }
-    .feedback-steps { gap:12px !important; }
-    .feedback-steps .step { grid-template-columns:32px 1fr; grid-template-rows:auto auto; column-gap:10px; row-gap:4px; }
-    .footer { position:static; margin-top:8px; gap:12px; font-size:11px; }
+/* Copied from Nogat design/tokens.css at commit 29e7e1c (DEV-15.3). Do not edit here:
+   change Nogat, then copy again. */
+/*
+ * Nogat ecosystem: shared design tokens.
+ * Brand from debever.pl (palette, waves favicon, Lato); UI from Archiwista
+ * (dense functional UI: status colours, radii, shadows, 32 px controls).
+ * Apps link this file before their own stylesheet.
+ * No remote fonts: apps run under CSP 'self' and offline on the LAN.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Brand surfaces */
+  --bg: #faf8f8;
+  --surface: #ffffff;
+  --surface-2: #f4f1f1;
+  --line: #e5e5e5;
+  --line-2: #d4cfcf;
+
+  /* Text */
+  --text: #2b2b2b;
+  --text-2: #4e4e4e;
+  --text-3: #6b6565;
+
+  /* Accent */
+  --accent: #284b63;
+  --accent-hover: #1a3a50;
+  --accent-soft: #e4ecf1;
+  --accent-ink: #ffffff;
+  --accent-green: #5f8a80;
+  --focus: #284b63;
+  --highlight: rgba(143, 159, 169, 0.15);
+
+  /* Status */
+  --ok: #16a34a;
+  --ok-bg: #dcfce7;
+  --ok-ink: #166534;
+  --warn: #d97706;
+  --warn-bg: #fef3c7;
+  --warn-ink: #92400e;
+  --bad: #dc2626;
+  --bad-bg: #fee2e2;
+  --bad-ink: #991b1b;
+  --info: #1d4ed8;
+  --info-bg: #dbeafe;
+  --info-ink: #1e40af;
+
+  /* Code and marks */
+  --code-bg: #0d1117;
+  --code-text: #e6edf3;
+  --mark-frame: #0d1117;
+
+  /* Tool accents (identity only, never status) */
+  --tool-nogat: #284b63;
+  --tool-archiwista: #4a776c;
+  --tool-hydrograf: #12708a;
+  --tool-kartograf: #8a5a1c;
+  --tool-imgwtools: #3b5bab;
+  --tool-hydrolog: #3f7a3a;
+  --tool-hydraulik: #5e4fa2;
+  --tool-retman: #a4472f;
+
+  /* Type */
+  --font-sans: Lato, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "DejaVu Sans", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+  --text-site: 16px;
+  --line-height: 1.4;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+
+  /* Space */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Radius */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* Controls */
+  --control-sm: 26px;
+  --control: 32px;
+  --control-lg: 38px;
+  --control-touch: 44px;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 4px 12px rgba(16, 24, 40, 0.06);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.16), 0 2px 6px rgba(16, 24, 40, 0.08);
+
+  /* Motion and layout */
+  --transition: 0.2s ease;
+  --container-max: 1200px;
+  --header-height: 52px;
+
+  /* Navigation rail */
+  --rail-bg: #0d1117;
+  --rail-hover: #161b22;
+  --rail-active: #284b63;
+  --rail-ink: #9da7b3;
+  --rail-ink-active: #ffffff;
+}
+
+/* Dark theme: follows the OS unless the app forces light */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    /* Brand surfaces */
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #21262d;
+    --line: #30363d;
+    --line-2: #3d444d;
+
+    /* Text */
+    --text: #e6edf3;
+    --text-2: #9da7b3;
+    --text-3: #8b949e;
+
+    /* Accent */
+    --accent: #58a6ff;
+    --accent-hover: #79b8ff;
+    --accent-soft: #132a44;
+    --accent-ink: #0d1117;
+    --accent-green: #3fb950;
+    --focus: #58a6ff;
+    --highlight: rgba(88, 166, 255, 0.1);
+
+    /* Status */
+    --ok: #3fb950;
+    --ok-bg: #12261a;
+    --ok-ink: #56d364;
+    --warn: #d29922;
+    --warn-bg: #2b2111;
+    --warn-ink: #e3b341;
+    --bad: #f85149;
+    --bad-bg: #2d1215;
+    --bad-ink: #ff7b72;
+    --info: #58a6ff;
+    --info-bg: #132a44;
+    --info-ink: #79c0ff;
+
+    /* Code and marks */
+    --code-bg: #010409;
+    --code-text: #e6edf3;
+    --mark-frame: #0d1117;
+
+    /* Tool accents */
+    --tool-nogat: #58a6ff;
+    --tool-archiwista: #7fbfae;
+    --tool-hydrograf: #4cc3e0;
+    --tool-kartograf: #d9a35f;
+    --tool-imgwtools: #8fa9f5;
+    --tool-hydrolog: #7cc474;
+    --tool-hydraulik: #b0a3f0;
+    --tool-retman: #f0907a;
+
+    /* Navigation rail */
+    --rail-bg: #010409;
+    --rail-hover: #161b22;
+    --rail-active: #1f3a5c;
+    --rail-ink: #9da7b3;
+    --rail-ink-active: #ffffff;
   }
-  @page { size:13.333in 7.5in; margin:0; }
-  @media print { body { background:#fff; } .slide { width:13.333in; height:7.5in; margin:0; box-shadow:none; break-after:page; page-break-after:always; } .slide:last-of-type { break-after:auto; page-break-after:auto; } }
+}
+
+/* Dark theme: forced by the app */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Brand surfaces */
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-2: #21262d;
+  --line: #30363d;
+  --line-2: #3d444d;
+
+  /* Text */
+  --text: #e6edf3;
+  --text-2: #9da7b3;
+  --text-3: #8b949e;
+
+  /* Accent */
+  --accent: #58a6ff;
+  --accent-hover: #79b8ff;
+  --accent-soft: #132a44;
+  --accent-ink: #0d1117;
+  --accent-green: #3fb950;
+  --focus: #58a6ff;
+  --highlight: rgba(88, 166, 255, 0.1);
+
+  /* Status */
+  --ok: #3fb950;
+  --ok-bg: #12261a;
+  --ok-ink: #56d364;
+  --warn: #d29922;
+  --warn-bg: #2b2111;
+  --warn-ink: #e3b341;
+  --bad: #f85149;
+  --bad-bg: #2d1215;
+  --bad-ink: #ff7b72;
+  --info: #58a6ff;
+  --info-bg: #132a44;
+  --info-ink: #79c0ff;
+
+  /* Code and marks */
+  --code-bg: #010409;
+  --code-text: #e6edf3;
+  --mark-frame: #0d1117;
+
+  /* Tool accents */
+  --tool-nogat: #58a6ff;
+  --tool-archiwista: #7fbfae;
+  --tool-hydrograf: #4cc3e0;
+  --tool-kartograf: #d9a35f;
+  --tool-imgwtools: #8fa9f5;
+  --tool-hydrolog: #7cc474;
+  --tool-hydraulik: #b0a3f0;
+  --tool-retman: #f0907a;
+
+  /* Navigation rail */
+  --rail-bg: #010409;
+  --rail-hover: #161b22;
+  --rail-active: #1f3a5c;
+  --rail-ink: #9da7b3;
+  --rail-ink-active: #ffffff;
+}
+
+/*
+ * Hydrograf user guide: 16:9 slides inside the Hydrograf shell.
+ * Colours, fonts and radii from tokens.css; type scales with the slide width
+ * (container query units), so a slide looks the same at any window size.
+ */
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--line-height);
+}
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* The scrolling deck; slides size against it */
+.deck {
+    container: deck / size;
+    padding: var(--space-6) 0;
+}
+
+.slide {
+    --slide-w: min(100cqw - var(--space-12), (100cqh - var(--space-12)) * 16 / 9);
+    container-type: inline-size;
+    width: var(--slide-w);
+    height: calc(var(--slide-w) * 9 / 16);
+    margin: 0 auto var(--space-6);
+    padding: 4.5% 5.6%;
+    position: relative;
+    overflow: hidden;
+    display: flex; flex-direction: column; gap: 3%;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+}
+.slide::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1.15%;
+    background: linear-gradient(90deg, var(--tool-hydrograf) 0 74%, var(--accent-green) 74%);
+}
+.slide h1, .slide h2, .slide h3, .slide p { margin: 0; }
+.slide h1 { font-size: clamp(34px, 5.5cqw, 84px); letter-spacing: -0.045em; line-height: 1.05; color: var(--tool-hydrograf); }
+.slide h2 { font-size: clamp(27px, 3.45cqw, 54px); letter-spacing: -0.035em; line-height: 1.12; color: var(--text); }
+.slide h3 { font-size: clamp(18px, 2cqw, 32px); line-height: 1.18; color: var(--text); }
+
+.kicker {
+    margin: 0;
+    font-size: clamp(12px, 1.5cqw, 24px); letter-spacing: 0.13em; text-transform: uppercase;
+    font-weight: var(--weight-bold); color: var(--tool-hydrograf);
+}
+.lead { max-width: 83%; font-size: clamp(17px, 2.1cqw, 32px); line-height: 1.35; color: var(--text); }
+.minor { color: var(--text-2); font-size: clamp(13px, 1.3cqw, 20px); line-height: 1.3; }
+.rule { width: 12%; height: 1%; border-radius: var(--radius-pill); background: var(--accent-green); }
+.footer {
+    position: absolute; left: 5.6%; right: 5.6%; bottom: 4%;
+    display: flex; justify-content: space-between; align-items: center;
+    color: var(--text-3); font-size: clamp(11px, 1.05cqw, 16px); font-weight: var(--weight-bold); letter-spacing: 0.035em;
+}
+
+/* Cover slide: mark, tool name, development status */
+.cover::after {
+    content: ""; position: absolute; width: 48%; aspect-ratio: 1; right: -14%; bottom: -50%;
+    border: 2.5cqw solid var(--surface-2); border-radius: 50%; pointer-events: none;
+}
+.cover-title { display: flex; align-items: center; gap: 2.2cqw; }
+.cover-mark { width: clamp(40px, 6.5cqw, 100px); height: auto; flex: none; }
+.cover .lead { color: var(--text-2); }
+.cover .minor { max-width: 80%; }
+.dev {
+    display: inline-block; align-self: flex-start;
+    padding: 0.45em 0.9em;
+    border: 3px solid var(--warn); border-radius: var(--radius-pill);
+    background: var(--warn-bg); color: var(--warn-ink);
+    font-size: clamp(18px, 2.35cqw, 36px); font-weight: var(--weight-bold); letter-spacing: 0.035em;
+}
+
+/* Layouts */
+.grid { display: grid; gap: 2.2%; flex: 1; min-height: 0; }
+.three { grid-template-columns: repeat(3, 1fr); }
+/* Screenshot beside text: the image fills the row height at its own proportions */
+.split { display: flex; gap: 2.2cqw; flex: 1; min-height: 0; }
+.stack, .steps-list { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1.2cqw; }
+
+.card {
+    display: flex; flex-direction: column; gap: 10%;
+    padding: 6%;
+    background: var(--surface-2);
+    border-left: 6px solid var(--tool-hydrograf);
+    border-radius: var(--radius-lg);
+}
+.card p, .step p { font-size: clamp(14px, 1.55cqw, 24px); line-height: 1.37; }
+.stack .card { flex: 1 1 auto; min-height: 0; justify-content: center; gap: 0.5cqw; padding: 1cqw 1.8cqw; }
+.stack .card p { font-size: clamp(13px, 1.4cqw, 21px); line-height: 1.35; }
+.stack .hint { flex: none; padding: 1cqw 1.8cqw; }
+.slide .label {
+    font-size: clamp(12px, 1.2cqw, 19px); font-weight: var(--weight-bold);
+    color: var(--tool-hydrograf); text-transform: uppercase; letter-spacing: 0.08em;
+}
+.hint {
+    padding: 1.15% 2%;
+    font-size: clamp(14px, 1.35cqw, 21px); line-height: 1.3;
+    background: var(--info-bg); color: var(--text);
+    border-left: 5px solid var(--info);
+    border-radius: var(--radius-lg);
+}
+
+/* Screenshots */
+.app-shot {
+    display: block; min-height: 0;
+    object-fit: contain;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+}
+.fit-shot { flex: none; height: 100%; width: auto; max-width: 64%; }
+.strip-shot { flex: none; align-self: center; width: 50%; height: auto; }
+
+/* Numbered steps */
+.number { color: var(--tool-hydrograf); font-weight: var(--weight-bold); font-size: clamp(32px, 4.2cqw, 64px); line-height: 1; }
+.step {
+    display: flex; flex-direction: column; gap: 8%;
+    padding: 7% 7% 5%;
+    background: var(--surface-2);
+    border-top: 7px solid var(--accent-green);
+    border-radius: var(--radius-lg);
+}
+.step strong { color: var(--text); font-size: clamp(18px, 1.85cqw, 29px); line-height: 1.15; }
+.steps-list .step {
+    flex: 1; min-height: 0;
+    display: grid; grid-template-columns: 3.4cqw 1fr; grid-template-rows: auto auto; gap: 0.5cqw 1.4cqw;
+    align-content: center;
+    padding: 1.2cqw 1.8cqw;
+    border-top-width: 4px;
+}
+.steps-list .number { grid-row: 1 / 3; font-size: clamp(22px, 2.3cqw, 36px); }
+.steps-list .step strong { font-size: clamp(16px, 1.55cqw, 24px); }
+.steps-list .step p { font-size: clamp(13px, 1.25cqw, 19px); }
+
+/* ---------- Phone: less room around the slides ---------- */
+@media screen and (max-width: 800px) {
+    .deck { padding: var(--space-2) 0; }
+}
+
+/* ---------- Deck too small for a 16:9 slide: slides become a readable column ---------- */
+@container deck (max-width: 948px) or (max-height: 554px) {
+    .slide {
+        width: min(100% - var(--space-4), 640px); height: auto;
+        margin: 0 auto var(--space-4);
+        padding: var(--space-6) 20px; gap: var(--space-4);
+        border-radius: var(--radius-md);
+    }
+    .grid, .split { display: flex; flex-direction: column; flex: none; gap: var(--space-3); }
+    .card, .step, .stack .card, .steps-list .step {
+        flex: none; padding: var(--space-4); gap: 10px;
+        border-left-width: 3px; border-top-width: 3px; border-radius: var(--radius-md);
+    }
+    .card p, .step p, .stack .card p, .steps-list .step p, .hint { font-size: var(--text-site); }
+    .lead, .cover .minor { max-width: none; }
+    .rule { height: 5px; }
+    .app-shot, .fit-shot, .strip-shot { width: 100%; max-width: 100%; height: auto; flex: none; }
+    .stack, .steps-list { gap: var(--space-3); }
+    .steps-list .step { grid-template-columns: 32px 1fr; column-gap: 10px; row-gap: var(--space-1); }
+    .footer { position: static; margin-top: var(--space-2); gap: var(--space-3); font-size: var(--text-xs); }
+}
+
+/* ---------- Print: one slide per page, no shell ---------- */
+@page { size: 13.333in 7.5in; margin: 0; }
+@media print {
+    html, body { height: auto; overflow: visible; }
+    .shell { display: block; height: auto; }
+    .topbar, .rail { display: none; }
+    .deck { container-type: normal; overflow: visible; padding: 0; }
+    .slide {
+        width: 13.333in; height: 7.5in; margin: 0;
+        border: 0; border-radius: 0; box-shadow: none;
+        break-after: page; page-break-after: always;
+    }
+    .slide:last-of-type { break-after: auto; page-break-after: auto; }
+}
+
+/* Standalone: no shell, the deck itself scrolls */
+@media screen { .deck { height: 100%; overflow-y: auto; } }
 </style>
 </head>
 <body>
-<section class="slide dark" aria-label="Slajd 1: wersja rozwojowa">
+<main class="deck">
+<section class="slide cover" aria-label="Slajd 1: wersja rozwojowa">
   <p class="kicker">Krótki przewodnik po aplikacji</p>
-  <h1>Hydrograf</h1>
+  <div class="cover-title"><img class="cover-mark" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPHRpdGxlPkh5ZHJvZ3JhZjwvdGl0bGU+CiAgPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzBkMTExNyIvPgogIDxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzRjYzNlMCIgc3Ryb2tlLXdpZHRoPSIyLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+CiAgICA8cGF0aCBkPSJNNiA2LjVjNyAwIDkgMTAuNSAyMCAxMC41Ii8+CiAgICA8cGF0aCBkPSJNMjMuNSA1Yy0xIDMtNC41IDUuNS0xMC4zIDUuNSIvPgogICAgPHBhdGggZD0iTTEwLjcgNWwtMi42IDQuOE0yMi42IDEzLjhsLTEuNSA1LjNNMjQuNCA4LjlsLTQuMi0zLjYiLz4KICAgIDxwYXRoIGQ9Ik00IDI0YzEgLjggMiAxLjUgNCAxLjVzMy0xLjUgNS0xLjUgMyAxLjUgNSAxLjUgMy0xLjUgNS0xLjUgMyAuNyA0IDEuNSIvPgogIDwvZz4KPC9zdmc+Cg==" alt=""><h1>Hydrograf</h1></div>
   <span class="dev">WERSJA ROZWOJOWA</span>
   <div class="rule"></div>
   <p class="lead">Mapa, zlewnie i scenariusze odpływu — poznaj podstawy obsługi i powiedz nam, co warto poprawić.</p>
-  <p class="minor" style="color:#bdd6e0;max-width:80%">Wyniki, wyglad oraz funkcje mogą się zmieniać. Liczmy na wasze uwagi, żeby dostosować projekt do potrzeb użytkowników!</p>
-  <div class="footer"><span>HYDROGRAF · PRZEWODNIK UŻYTKOWNIKA</span><span>01 / 07</span></div>
+  <p class="minor">Wyniki, wygląd oraz funkcje mogą się zmieniać. Liczymy na wasze uwagi, żeby dostosować projekt do potrzeb użytkowników!</p>
+  <div class="footer"><span>HYDROGRAF · PRZEWODNIK UŻYTKOWNIKA</span><span>01 / 09</span></div>
 </section>
-<section class="slide" aria-label="Slajd 2: nawigacja">
+<section class="slide" aria-label="Slajd 2: układ ekranu">
   <p class="kicker">01 · Orientacja</p>
-  <h2>Jak poruszać się po Hydrografie?</h2>
-  <div class="grid" style="grid-template-columns:1.55fr 1fr">
-    <div class="nav-shots">
-      <img class="app-shot" src="Hydrograf-mapa.png" alt="Cały ekran Hydrografa: po lewej panel warstw, w centrum mapa i nad nią pasek trybów pracy.">
-      <img class="app-shot mode-shot" src="Hydrograf-tryby.png" alt="Powiększony pasek u góry mapy: Przeglądanie, Wybierz zlewnię, Profil terenu.">
-    </div>
-    <div class="nav-cards" style="display:flex;flex-direction:column;gap:4%;justify-content:center">
-      <div class="card" style="flex:1"><span class="label">Mapa</span><p>Przesuwaj ją myszą i zmieniaj przybliżenie kółkiem lub przyciskami mapy.</p></div>
-      <div class="card" style="flex:1"><span class="label">Panele</span><p>Po lewej włączasz warstwy, po analizie po prawej odczytujesz wynik. Panele można zwijać.</p></div>
-      <div class="card" style="flex:1"><span class="label">Tryby u góry mapy</span><p>Przeglądanie · Wybierz zlewnię · Profil terenu. Zaznaczony na niebiesko tryb jest aktywny.</p></div>
+  <h2>Co jest na ekranie?</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-ekran.png" alt="Cały ekran Hydrografa: u góry pasek z przyciskami Instrukcja, Zgłoś uwagę i przełącznikiem motywu, po lewej szyna nawigacji i panel Warstwy, w środku mapa z paskiem trybów, po prawej panel Zlewnia z wynikiem.">
+    <div class="stack">
+      <div class="card"><span class="label">Górny pasek</span><p>„Instrukcja” — ten przewodnik, „Zgłoś uwagę” — formularz uwag, Auto · Jasny · Ciemny — motyw.</p></div>
+      <div class="card"><span class="label">Panele</span><p>Po lewej szyna Mapa · Administracja i panel „Warstwy”: krycie, podkłady, przybliżenie do zasięgu włączonych warstw. Po prawej „Zlewnia” z wynikiem.</p></div>
+      <div class="card"><span class="label">Nad mapą</span><p>Tryby pracy: Przeglądanie · Wybierz zlewnię · Profil terenu, a obok podpowiedź.</p></div>
     </div>
   </div>
-  <div class="footer"><span>TRZY TRYBY PRACY · PASEK NAD MAPĄ</span><span>02 / 07</span></div>
+  <p class="hint">Przeciągnij krawędź panelu, aby zmienić jego szerokość (dwuklik przywraca domyślną). × zwija panel, w „Zlewni” czyści też wynik; przyciski „Warstwy” i „Zlewnia” nad mapą otwierają panele ponownie.</p>
+  <div class="footer"><span>GÓRNY PASEK · PANELE · PASEK TRYBÓW</span><span>02 / 09</span></div>
 </section>
 <section class="slide" aria-label="Slajd 3: wyznaczanie zlewni">
   <p class="kicker">02 · Pierwsza analiza</p>
   <h2>Wyznacz zlewnię w trzech krokach</h2>
+  <img class="app-shot strip-shot" src="Hydrograf-tryby.png" alt="Pasek nad mapą: tryby Przeglądanie, Wybierz zlewnię (aktywny) i Profil terenu oraz podpowiedź „Kliknij na mapie w pobliżu cieku”.">
   <div class="grid three">
-    <div class="step"><span class="number">01</span><strong>Znajdź obszar</strong><p>Przybliż mapę i sprawdź warstwy w panelu „Warstwy”, np. „Linie spływu”.</p></div>
-    <div class="step"><span class="number">02</span><strong>Wybierz punkt</strong><p>Włącz „Wybierz zlewnię”, a potem kliknij mapę w pobliżu linii spływu.</p></div>
-    <div class="step"><span class="number">03</span><strong>Sprawdź wynik</strong><p>Granica pojawi się na mapie, a „Parametry zlewni” otworzą się po prawej stronie.</p></div>
+    <div class="step"><span class="number">01</span><strong>Znajdź obszar</strong><p>Przybliż mapę. W panelu „Warstwy” możesz włączyć „Linie spływu”, żeby zobaczyć, którędy spływa woda.</p></div>
+    <div class="step"><span class="number">02</span><strong>Wybierz punkt</strong><p>Na pasku nad mapą wybierz „Wybierz zlewnię”, a potem kliknij mapę w pobliżu linii spływu.</p></div>
+    <div class="step"><span class="number">03</span><strong>Sprawdź wynik</strong><p>Granica zlewni pojawi się na mapie, a panel „Zlewnia” otworzy się po prawej stronie.</p></div>
   </div>
-  <p class="hint">Brak wyniku? Sprawdź, czy punkt leży na obszarze dostępnych danych i spróbuj bliżej linii spływu.</p>
-  <div class="footer"><span>OD MAPY DO GRANICY ZLEWNI</span><span>03 / 07</span></div>
+  <p class="hint">Brak wyniku? Sprawdź, czy punkt leży na obszarze dostępnych danych, i kliknij bliżej linii spływu.</p>
+  <div class="footer"><span>OD MAPY DO GRANICY ZLEWNI</span><span>03 / 09</span></div>
 </section>
-<section class="slide" aria-label="Slajd 4: linie spływu, zlewnia i wykresy">
+<section class="slide" aria-label="Slajd 4: odczyt wyniku">
   <p class="kicker">03 · Wynik analizy</p>
-  <h2>Wyznaczanie granicy zlewni oraz jej parametrów</h2>
-  <img class="wide-shot" src="Hydrograf-zlewnia-wykresy.png" alt="Mapa z wyznaczoną granicą zlewni i włączonymi liniami spływu, po prawej panel wyników z hietogramem i hydrogramem.">
-  <div class="footer"><span>ZRZUT Z DZIAŁAJĄCEJ ANALIZY</span><span>04 / 07</span></div>
-</section>
-<section class="slide" aria-label="Slajd 5: NMT i profil terenu">
-  <p class="kicker">04 · Profil terenu</p>
-  <h2>Profil terenu</h2>
-  <img class="wide-shot" src="Hydrograf-NMT-profil.png" alt="Mapa z włączoną warstwą NMT, narysowaną linią profilu i wykresem wysokości terenu.">
-  <div class="footer"><span>LINIA PROFILU I WYKRES WYSOKOŚCI</span><span>05 / 07</span></div>
-</section>
-<section class="slide" aria-label="Slajd 6: podstawowe funkcje">
-  <p class="kicker">05 · Podstawowe funkcje</p>
-  <h2>Co można odczytać i zbadać?</h2>
-  <div class="grid two">
-    <div class="card"><span class="label">Parametry zlewni</span><h3>Obszar i charakterystyka</h3><p>Zlewnia to obszar, z którego woda spływa do jednego miejsca. Jej powierzchnię i inne parametry odczytasz w prawym panelu.</p></div>
-    <div class="card"><span class="label">Opad i odpływ</span><h3>Hietogram i hydrogram</h3><p>Hietogram: opad w czasie. Hydrogram: przepływ wody w czasie. Gdy są dostępne, ustaw czas i prawdopodobieństwo opadu.</p></div>
-    <div class="card"><span class="label">Profil terenu</span><h3>Przekrój na mapie</h3><p>W trybie „Profil terenu” kliknij dwa punkty na mapie i zakończ podwójnym kliknięciem. Zobaczysz wykres wysokości.</p></div>
-    <div class="card"><span class="label">Warstwy mapy</span><h3>Dodatkowy kontekst</h3><p>NMT (numeryczny model terenu) pokazuje wysokości. Możesz też włączyć cieki i pokrycie terenu, jeśli są dostępne.</p></div>
-  </div>
-  <p class="hint">Hydrogram metodą SCS-CN dotyczy zlewni o powierzchni do 250 km².</p>
-  <div class="footer"><span>FUNKCJE ZALEŻĄ OD DOSTĘPNOŚCI DANYCH</span><span>06 / 07</span></div>
-</section>
-<section class="slide" aria-label="Slajd 7: feedback">
-  <p class="kicker">06 · Pomóż nam ulepszać aplikację</p>
-  <h2>Jak przekazać feedback?</h2>
-  <div class="grid two">
-    <div class="feedback-steps" style="display:flex;flex-direction:column;gap:4%">
-      <div class="step" style="flex:1"><span class="number">01</span><strong>Kliknij „Zgłoś uwagę”</strong><p>Przycisk jest na górnym pasku aplikacji.</p></div>
-      <div class="step" style="flex:1"><span class="number">02</span><strong>Opisz konkretny przypadek</strong><p>Podaj miejsce na mapie, wykonane kroki, oczekiwany wynik i to, co się wydarzyło.</p></div>
-      <div class="step" style="flex:1"><span class="number">03</span><strong>Sprawdź dane i wyślij</strong><p>Kontakt jest opcjonalny. Przejrzyj diagnostykę przed wysłaniem lub odznacz jej dołączenie.</p></div>
+  <h2>Jak czytać panel „Zlewnia”?</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-wyniki.png" alt="Panel Zlewnia: rząd kluczowych wartości, rozwinięta sekcja Parametry podstawowe i otwarte objaśnienie parametru CN.">
+    <div class="stack">
+      <div class="card"><span class="label">Kluczowe wartości</span><p>Zlewnia to obszar, z którego woda spływa do jednego miejsca — ujścia. U góry panelu: powierzchnia, CN, średnia wysokość i spadek terenu.</p></div>
+      <div class="card"><span class="label">Sekcje</span><p>Numerowane sekcje rozwiniesz kliknięciem: parametry podstawowe, kształt, rzeźba terenu, sieć rzeczna, pokrycie terenu, gleby, hietogram i hydrogram.</p></div>
+      <div class="card"><span class="label">Objaśnienia (i)</span><p>Najedź kursorem na (i) obok nazwy, a zobaczysz, co oznacza parametr i skąd pochodzi. Na telefonie dotknij (i); ponowne dotknięcie lub Esc je zamyka.</p></div>
     </div>
-    <img class="app-shot modal-shot" src="Hydrograf-feedback.png" alt="Zrzut formularza Zgłoś uwagę: opis, opcjonalny kontakt, dołączenie diagnostyki, podgląd wysyłanych danych i przycisk Wyślij.">
   </div>
-  <div class="footer"><span>TWÓJ FEEDBACK POMAGA POPRAWIAĆ WERSJĘ ROZWOJOWĄ</span><span>07 / 07</span></div>
+  <div class="footer"><span>KLUCZOWE WARTOŚCI · SEKCJE · OBJAŚNIENIA</span><span>04 / 09</span></div>
 </section>
+<section class="slide" aria-label="Slajd 5: hietogram i hydrogram">
+  <p class="kicker">04 · Opad i odpływ</p>
+  <h2>Hietogram i hydrogram</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-hydrogram.png" alt="Sekcje Hietogram i Hydrogram: wybór czasu trwania i prawdopodobieństwa opadu, wykres opadu, wybór modelu i metody z notką o zakresie stosowalności, wartości Qmax, tp, V i wykres odpływu.">
+    <div class="stack">
+      <div class="card"><span class="label">Scenariusz opadu</span><p>Hietogram to opad w czasie. Wybierz czas trwania, prawdopodobieństwo i rozkład opadu; wysokość opadu pochodzi z danych PMAXTP.</p></div>
+      <div class="card"><span class="label">Model i metoda</span><p>Hydrogram to przepływ w ujściu w czasie: Qmax, czas do szczytu tp i objętość V. Wybierz model (SCS, Nash, Snyder) i metodę czasu koncentracji.</p></div>
+      <div class="card"><span class="label">Zakres stosowalności</span><p>Pod wybranym modelem i metodą widać, dla jakich zlewni je opracowano. Pełny opis jest w (i). Poza zakresem traktuj wynik ostrożnie.</p></div>
+      <p class="hint">Hietogram i hydrogram są liczone dla zlewni o powierzchni do 250 km²; dla większych te sekcje się nie pojawiają.</p>
+    </div>
+  </div>
+  <div class="footer"><span>SCENARIUSZ · MODEL · ZAKRES STOSOWALNOŚCI</span><span>05 / 09</span></div>
+</section>
+<section class="slide" aria-label="Slajd 6: tryb zaawansowany">
+  <p class="kicker">05 · Tryb zaawansowany</p>
+  <h2>Własne dane wejściowe hydrogramu</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-zaawansowany.png" alt="Włączony tryb zaawansowany: pola danych wejściowych, zmienione pole CN wyróżnione kolorem z wartością Hydrografa pod spodem, przycisk Przywróć dane z Hydrografa i ostrzeżenie nad wykresem.">
+    <div class="stack">
+      <div class="card"><span class="label">Włącz</span><p>W sekcji „Hydrogram” włącz „Tryb zaawansowany”. Pola są wypełnione parametrami wyznaczonej zlewni.</p></div>
+      <div class="card"><span class="label">Zmień</span><p>Wpisz własną wartość — hydrogram przeliczy się po chwili. Zmienione pole jest wyróżnione, pod nim widać wartość Hydrografa, a nad wykresem listę zmian.</p></div>
+      <div class="card"><span class="label">Przywróć</span><p>Strzałka obok pola cofa jedną zmianę, a „Przywróć dane z Hydrografa” — wszystkie. Zmiany nie dotyczą „Parametrów podstawowych”.</p></div>
+      <p class="hint">Opad projektowy pochodzi z PMAXTP dla klikniętego punktu i nie można go tu zmienić.</p>
+    </div>
+  </div>
+  <div class="footer"><span>ZMIANY DOTYCZĄ TYLKO HIETOGRAMU I HYDROGRAMU</span><span>06 / 09</span></div>
+</section>
+<section class="slide" aria-label="Slajd 7: profil terenu">
+  <p class="kicker">06 · Profil terenu</p>
+  <h2>Przekrój terenu wzdłuż linii</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-profil.png" alt="Mapa z włączoną warstwą NMT i narysowaną linią profilu; w dolnej szufladzie wykres wysokości terenu z długością linii i zakresem wysokości.">
+    <div class="steps-list">
+      <div class="step"><span class="number">01</span><strong>Włącz „Profil terenu”</strong><p>Tryb wybierzesz na pasku nad mapą. Warstwa NMT pokazuje wysokości kolorami.</p></div>
+      <div class="step"><span class="number">02</span><strong>Klikaj punkty linii</strong><p>Każde kliknięcie dodaje punkt. Backspace cofa ostatni, Esc anuluje rysowanie.</p></div>
+      <div class="step"><span class="number">03</span><strong>Zakończ dwuklikiem</strong><p>Wykres wysokości otworzy się w szufladzie u dołu mapy. Najedź na wykres, aby zobaczyć miejsce na linii.</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>LINIA PROFILU I WYKRES WYSOKOŚCI</span><span>07 / 09</span></div>
+</section>
+<section class="slide" aria-label="Slajd 8: telefon i ciemny motyw">
+  <p class="kicker">07 · Telefon i motyw</p>
+  <h2>Na telefonie i po zmroku</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-telefon.png" alt="Hydrograf na telefonie: pasek trybów nad mapą, panel Zlewnia wysunięty od dołu i dolny pasek nawigacji.">
+    <div class="stack">
+      <div class="card"><span class="label">Telefon</span><p>Nawigacja przechodzi na dolny pasek, a panele „Warstwy” i „Zlewnia” wysuwają się od dołu. Otworzysz je przyciskami na pasku nad mapą.</p></div>
+      <div class="card"><span class="label">Dotyk</span><p>Pasek trybów przewiniesz palcem w bok. Objaśnienie parametru pokaże dotknięcie (i).</p></div>
+      <div class="card"><span class="label">Ciemny motyw</span><p>Przełącznik na górnym pasku: Auto (jak w systemie), Jasny lub Ciemny. Wybór zostaje zapamiętany w przeglądarce.</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>TEN SAM HYDROGRAF NA KAŻDYM EKRANIE</span><span>08 / 09</span></div>
+</section>
+<section class="slide" aria-label="Slajd 9: feedback">
+  <p class="kicker">08 · Pomóż nam ulepszać aplikację</p>
+  <h2>Jak przekazać feedback?</h2>
+  <div class="split">
+    <div class="steps-list">
+      <div class="step"><span class="number">01</span><strong>Kliknij „Zgłoś uwagę”</strong><p>Przycisk jest na górnym pasku aplikacji; na telefonie to ikona dymka.</p></div>
+      <div class="step"><span class="number">02</span><strong>Opisz konkretny przypadek</strong><p>Podaj miejsce na mapie, wykonane kroki, oczekiwany wynik i to, co się wydarzyło.</p></div>
+      <div class="step"><span class="number">03</span><strong>Sprawdź dane i wyślij</strong><p>Kontakt jest opcjonalny. „Pokaż co zostanie wysłane” pokazuje diagnostykę; możesz odznaczyć jej dołączenie.</p></div>
+    </div>
+    <img class="app-shot fit-shot" src="Hydrograf-feedback.png" alt="Formularz Zgłoś uwagę: opis problemu, opcjonalny kontakt, dołączenie danych diagnostycznych, podgląd wysyłanych danych i przycisk Wyślij.">
+  </div>
+  <div class="footer"><span>TWÓJ FEEDBACK POMAGA POPRAWIAĆ WERSJĘ ROZWOJOWĄ</span><span>09 / 09</span></div>
+</section>
+</main>
 </body>
 </html>

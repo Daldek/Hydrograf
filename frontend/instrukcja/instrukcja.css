@@ -19,7 +19,7 @@ body {
 
 /* The scrolling deck; slides size against it */
 .deck {
-    container-type: size;
+    container: deck / size;
     padding: var(--space-6) 0;
 }
 
@@ -80,11 +80,10 @@ body {
 
 /* Layouts */
 .grid { display: grid; gap: 2.2%; flex: 1; min-height: 0; }
-.two { grid-template-columns: 1fr 1fr; }
 .three { grid-template-columns: repeat(3, 1fr); }
-.nav-grid { grid-template-columns: 1.55fr 1fr; }
-.nav-cards { display: flex; flex-direction: column; justify-content: center; gap: 4%; }
-.nav-cards .card { flex: 1; }
+/* Screenshot beside text: the image fills the row height at its own proportions */
+.split { display: flex; gap: 2.2cqw; flex: 1; min-height: 0; }
+.stack, .steps-list { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1.2cqw; }
 
 .card {
     display: flex; flex-direction: column; gap: 10%;
@@ -94,6 +93,9 @@ body {
     border-radius: var(--radius-lg);
 }
 .card p, .step p { font-size: clamp(14px, 1.55cqw, 24px); line-height: 1.37; }
+.stack .card { flex: 1 1 auto; min-height: 0; justify-content: center; gap: 0.5cqw; padding: 1cqw 1.8cqw; }
+.stack .card p { font-size: clamp(13px, 1.4cqw, 21px); line-height: 1.35; }
+.stack .hint { flex: none; padding: 1cqw 1.8cqw; }
 .slide .label {
     font-size: clamp(12px, 1.2cqw, 19px); font-weight: var(--weight-bold);
     color: var(--tool-hydrograf); text-transform: uppercase; letter-spacing: 0.08em;
@@ -107,18 +109,15 @@ body {
 }
 
 /* Screenshots */
-.app-shot, .wide-shot {
-    display: block; width: 100%; min-height: 0;
+.app-shot {
+    display: block; min-height: 0;
     object-fit: contain;
     background: var(--surface-2);
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
 }
-.app-shot { height: 100%; }
-.wide-shot { flex: 1; }
-.nav-shots { display: flex; flex-direction: column; gap: 2%; min-height: 0; }
-.nav-shots .app-shot { flex: 1; height: 0; }
-.nav-shots .mode-shot { flex: none; height: 28%; object-fit: cover; }
+.fit-shot { flex: none; height: 100%; width: auto; max-width: 64%; }
+.strip-shot { flex: none; align-self: center; width: 50%; height: auto; }
 
 /* Numbered steps */
 .number { color: var(--tool-hydrograf); font-weight: var(--weight-bold); font-size: clamp(32px, 4.2cqw, 64px); line-height: 1; }
@@ -130,37 +129,41 @@ body {
     border-radius: var(--radius-lg);
 }
 .step strong { color: var(--text); font-size: clamp(18px, 1.85cqw, 29px); line-height: 1.15; }
-.feedback-steps { display: flex; flex-direction: column; gap: 4%; }
-.feedback-steps .step {
+.steps-list .step {
     flex: 1; min-height: 0;
-    display: grid; grid-template-columns: 11% 1fr; grid-template-rows: auto 1fr; gap: 3% 3%;
-    padding: 3.5% 4%;
+    display: grid; grid-template-columns: 3.4cqw 1fr; grid-template-rows: auto auto; gap: 0.5cqw 1.4cqw;
+    align-content: center;
+    padding: 1.2cqw 1.8cqw;
     border-top-width: 4px;
 }
-.feedback-steps .number { grid-row: 1 / 3; font-size: clamp(22px, 2.3cqw, 36px); }
-.feedback-steps .step strong { font-size: clamp(16px, 1.55cqw, 24px); }
-.feedback-steps .step p { font-size: clamp(13px, 1.25cqw, 19px); }
+.steps-list .number { grid-row: 1 / 3; font-size: clamp(22px, 2.3cqw, 36px); }
+.steps-list .step strong { font-size: clamp(16px, 1.55cqw, 24px); }
+.steps-list .step p { font-size: clamp(13px, 1.25cqw, 19px); }
 
-/* ---------- Phone: slides become a readable column ---------- */
+/* ---------- Phone: less room around the slides ---------- */
 @media screen and (max-width: 800px) {
     .deck { padding: var(--space-2) 0; }
+}
+
+/* ---------- Deck too small for a 16:9 slide: slides become a readable column ---------- */
+@container deck (max-width: 948px) or (max-height: 554px) {
     .slide {
         width: min(100% - var(--space-4), 640px); height: auto;
         margin: 0 auto var(--space-4);
         padding: var(--space-6) 20px; gap: var(--space-4);
         border-radius: var(--radius-md);
     }
-    .grid { display: flex; flex-direction: column; flex: none; gap: var(--space-3); }
-    .card, .step, .nav-cards .card, .feedback-steps .step {
+    .grid, .split { display: flex; flex-direction: column; flex: none; gap: var(--space-3); }
+    .card, .step, .stack .card, .steps-list .step {
         flex: none; padding: var(--space-4); gap: 10px;
         border-left-width: 3px; border-top-width: 3px; border-radius: var(--radius-md);
     }
-    .card p, .step p, .hint { font-size: var(--text-site); }
+    .card p, .step p, .stack .card p, .steps-list .step p, .hint { font-size: var(--text-site); }
     .lead, .cover .minor { max-width: none; }
     .rule { height: 5px; }
-    .app-shot, .wide-shot, .nav-shots .app-shot, .nav-shots .mode-shot { width: 100%; height: auto; flex: none; object-fit: contain; }
-    .nav-shots, .nav-cards, .feedback-steps { gap: var(--space-3); }
-    .feedback-steps .step { grid-template-columns: 32px 1fr; grid-template-rows: auto auto; column-gap: 10px; row-gap: var(--space-1); }
+    .app-shot, .fit-shot, .strip-shot { width: 100%; max-width: 100%; height: auto; flex: none; }
+    .stack, .steps-list { gap: var(--space-3); }
+    .steps-list .step { grid-template-columns: 32px 1fr; column-gap: 10px; row-gap: var(--space-1); }
     .footer { position: static; margin-top: var(--space-2); gap: var(--space-3); font-size: var(--text-xs); }
 }
 

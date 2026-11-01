@@ -50,17 +50,24 @@
 **Data:** 2026-11-01 (GUI w identyfikacji Nogata)
 
 ### Co zrobiono
-- **Nowy interfejs w identyfikacji wizualnej Nogata** (standard DEV-15.3, decyzja ECO-055, wzorzec Nogat `design/`, makieta `design/mockups/hydrograf/`), ADR-065 (numer 065, bo 058–064 są zarezerwowane w specyfikacjach i planach Kartografa). Powłoka Archiwisty: górny pasek ze znakiem i przełącznikiem motywu Auto/Jasny/Ciemny, szyna Mapa/Profil/Administracja/Instrukcja, lewy panel „Warstwy” z jednym przyciskiem przybliżenia do zasięgu włączonych warstw, mapa z paskiem trybów Przeglądanie/Wybierz zlewnię/Profil terenu i dolną szufladą profilu, prawy panel „Zlewnia” z kluczowymi wartościami i sekcjami `<details>`. Panele z regulowaną szerokością 260–560 / 340–720 px, układ telefonu ≤ 860 px z dolnym paskiem i arkuszami od dołu; motyw jasny i ciemny.
+- **Nowy interfejs w identyfikacji wizualnej Nogata** (standard DEV-15.3, decyzja ECO-055, wzorzec Nogat `design/`, makieta `design/mockups/hydrograf/`), ADR-065 (numer 065, bo 058–064 są zarezerwowane w specyfikacjach i planach Kartografa). Powłoka Archiwisty: górny pasek ze znakiem, przyciskami „Instrukcja” i „Zgłoś uwagę” oraz przełącznikiem motywu Auto/Jasny/Ciemny, szyna Mapa/Administracja, lewy panel „Warstwy” z jednym przyciskiem przybliżenia do zasięgu włączonych warstw, mapa z paskiem trybów Przeglądanie/Wybierz zlewnię/Profil terenu i dolną szufladą profilu, prawy panel „Zlewnia” z kluczowymi wartościami i sekcjami `<details>`. Panele z regulowaną szerokością 260–560 / 340–720 px, układ telefonu ≤ 860 px z dolnym paskiem i arkuszami od dołu; motyw jasny i ciemny.
 - **Pliki:** `css/tokens.css` (kopia `design/tokens.css` Nogata z commita 29e7e1c, nagłówek go wskazuje; nie edytować, kopiować ponownie), `css/chrome.css` (powłoka wspólna dla strony głównej, `/admin`, `/instrukcja`), `css/app.css`, `css/admin.css`, `instrukcja/instrukcja.css`, `img/hydrograf.svg`, `js/shell.js`, `js/theme-init.js`, `js/theme-switch.js`. Usunięte: Bootstrap ze strony głównej (zostaje w `/admin` dla siatki i okien modalnych, przekolorowany tokenami), `css/glass.css`, `css/style.css`, `js/draggable.js`; formularz uwag to natywny `<dialog>`.
 - **Podkłady:** OpenFreeMap szary (wektorowy; MapLibre GL 4.7.1 przez `@maplibre/maplibre-gl-leaflet` 0.0.22, styl positron), OSM GUGiK szary (tylko Polska), Ortofotomapa ESRI, bez podkładu. Usunięte: OSM kolorowy, GUGiK WMTS orto/topo, OpenTopoMap. CSP (`nginx.conf`, `nginx-ssl.conf.template`): `connect-src` + `https://tiles.openfreemap.org`, `img-src` + `blob:`, `worker-src`/`child-src blob:`, bez OpenTopoMap.
 - **Wykresy** w kolorach tokenów, zgodne z motywem; hietogram liniowy jak hydrogram; pokrycie terenu i HSG jako poziome słupki skumulowane. Wiersze warstw pokazują krycie (dawniej przezroczystość).
+- **Szyna** tylko Mapa i Administracja; profil terenu zostaje w trybach paska mapy, przewodnik to przycisk „Instrukcja” w górnym pasku każdej strony (główna, `/admin`, `/instrukcja`).
+- **Objaśnienia (i)** (`js/info.js`, `js/info-texts.js`, 65 tekstów kluczowanych polem API lub id kontrolki) w sekcjach Parametry podstawowe, Wskaźniki kształtu, Hietogram, Hydrogram; treści oparte na Hydrologu i backendzie (np. limit hydrogramu 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`); uwagi o stosowalności pod Model UH, Metoda Tc, Estymacja Nash zależą od wyboru. Ostrzeżeń o stosowalności brak — API ich nie zwraca.
+- **Tryb zaawansowany** (`js/advanced.js`): edycja morfometrii (powierzchnia, obwód, długość, wysokości, średni spadek, długość i spadek cieku, `length_to_centroid_km`, CN) wysyłanej do `POST /api/generate-hydrograph` bez zmian backendu; oznaczenie zmienionych pól, przywracanie pola i całości („Przywróć dane z Hydrografa”), walidacja blokuje zapytanie, komunikat „Obliczono na zmienionych danych wejściowych”; opad PMAXTP bez edycji. Luka danych: część zlewni ma `length_to_centroid_km = 0` — Snyder zawodzi do czasu wpisania Lc.
+- **Przewodnik** w nowej wersji dla nowego GUI: zregenerowane `/instrukcja` i `docs/Hydrograf-prezentacja.html`/`.pdf`.
 - **Dokumentacja:** CHANGELOG, ARCHITECTURE (§4.1, §4.2, hosty CSP w §5.2), SCOPE, DEVELOPMENT_STANDARDS, README, ADR-065.
 
 ### W trakcie
 - Gałąź `feature/visual-identity` (worktree `Hydrograf-gui`), serwowana przez równoległy kontener nginx `hydro_nginx_gui` na porcie 8081, z tym samym API i bazą co produkcja. Produkcja (port 8080, `feature/logowanie-testow`) bez zmian.
 
 ### Następne kroki
-- Przegląd GUI przez autora, potem merge i wdrożenie na produkcję.
+- Przegląd GUI przez autora na porcie 8081.
+- Merge i wdrożenie na produkcję (restart nginx dla nowego CSP).
+- Rozważyć pole backendu z ostrzeżeniami o stosowalności metod oraz nadpisanie wysokości opadu w trybie zaawansowanym.
+- Naprawić `length_to_centroid_km = 0` w danych zlewni.
 
 ### Poprzednia sesja (2026-10-29/30 — bootstrap zlewni Kaczawy i mniejszego obszaru; pamięć przetwarzania NMT)
 

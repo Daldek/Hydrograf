@@ -912,6 +912,9 @@ frontend/
     ├── layers.js             # Panel „Warstwy”: podkłady, nakładki, krycie, przybliżenie do zasięgu
     ├── profile.js            # Terrain profile (draw line / auto)
     ├── hydrograph.js         # Hydrograph scenario form + chart
+    ├── info.js               # Objaśnienia (i): znaczniki, wspólny dymek, najechanie/fokus/dotknięcie, Esc
+    ├── info-texts.js         # 65 tekstów objaśnień kluczowanych polem API lub id kontrolki formularza
+    ├── advanced.js           # Tryb zaawansowany: edycja morfometrii do POST /api/generate-hydrograph
     ├── depressions.js        # Depressions (blue spots) overlay
     ├── sewer.js              # Warstwa kanalizacji deszczowej (MVT overlay)
     ├── diagnostics.js        # Dziennik zdarzeń sesji (ADR-053)
@@ -936,11 +939,13 @@ Identyfikacja wizualna pochodzi z Nogata (standard DEV-15.3, ECO-055, ADR-065): 
 
 Strona główna używa powłoki Archiwisty (`chrome.css` + `app.css` + `shell.js`):
 
-- **Górny pasek** — znak `img/hydrograf.svg`, wskaźnik stanu usług, przyciski „Instrukcja” i „Zgłoś uwagę” oraz przełącznik motywu Auto/Jasny/Ciemny (`data-theme` na `<html>`, wybór w `localStorage` `nogat-theme`; `theme-init.js` ustawia go przed pierwszym malowaniem, więc nie ma mignięcia jasnego motywu).
-- **Szyna nawigacji** — Mapa, Profil, Administracja (`/admin`), Instrukcja (`/instrukcja/`).
+- **Górny pasek** — znak `img/hydrograf.svg`, wskaźnik stanu usług, przyciski „Instrukcja” (`/instrukcja/`) i „Zgłoś uwagę” oraz przełącznik motywu Auto/Jasny/Ciemny (`data-theme` na `<html>`, wybór w `localStorage` `nogat-theme`; `theme-init.js` ustawia go przed pierwszym malowaniem, więc nie ma mignięcia jasnego motywu). Przycisk „Instrukcja” jest w górnym pasku każdej strony (główna, `/admin`, `/instrukcja`).
+- **Szyna nawigacji** — tylko Mapa i Administracja (`/admin`); profil terenu jest trybem paska mapy.
 - **Lewy panel „Warstwy”** — podkłady, nakładki z suwakiem krycia i jeden przycisk przybliżenia do zasięgu włączonych warstw.
 - **Środek** — mapa z paskiem trybów Przeglądanie / Wybierz zlewnię / Profil terenu; profil terenu otwiera się w dolnej szufladzie nad mapą.
 - **Prawy panel „Zlewnia”** — kluczowe wartości (kafle) i sekcje `<details>`: parametry podstawowe, wskaźniki kształtu, rzeźba terenu, sieć rzeczna, pokrycie terenu, grupy HSG, hietogram, hydrogram.
+- **Objaśnienia (i)** — `info.js` dodaje znaczniki (i) w sekcjach Parametry podstawowe, Wskaźniki kształtu, Hietogram i Hydrogram; jeden wspólny dymek otwierany najechaniem, fokusem lub dotknięciem, zamykany Esc. Teksty (65) w `info-texts.js`, kluczowane polem API lub id kontrolki formularza, oparte na Hydrologu i backendzie (np. limit hydrogramu 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). Uwagi o stosowalności pod Model UH, Metoda Tc i Estymacja Nash zmieniają się z wyborem. API nie zwraca ostrzeżeń o stosowalności, więc GUI ich nie pokazuje.
+- **Tryb zaawansowany** — `advanced.js` pozwala zmienić morfometrię wysyłaną do `POST /api/generate-hydrograph` (istniejąca szybka ścieżka, bez zmian backendu): powierzchnia, obwód, długość, wysokości, średni spadek, długość i spadek cieku, `length_to_centroid_km`, CN. Zmienione pola są oznaczone; przywracanie pola i całości („Przywróć dane z Hydrografa”); błędy walidacji blokują zapytanie; wynik ma komunikat „Obliczono na zmienionych danych wejściowych”. Opad z PMAXTP nie podlega edycji. Część zlewni ma `length_to_centroid_km = 0` — Snyder zawodzi, dopóki użytkownik nie poda Lc.
 - **Szerokość paneli** — uchwyty między panelami (lewy 260–560 px, prawy 340–720 px), zapamiętywane w `localStorage`; panele można zamknąć.
 - **Telefon (≤ 860 px)** — mapa na pełnym ekranie, dolny pasek zamiast szyny, panele jako arkusze wysuwane od dołu.
 
