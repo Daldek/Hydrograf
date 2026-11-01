@@ -2,7 +2,8 @@
  * Hydrograf Layers module.
  *
  * Layers panel: overlay rows (checkbox, name, opacity slider), rows for the
- * results of external analyses (results.js), base map radio list, and one
+ * results of external analyses (results.js), base map radio list with the
+ * flood hazard map overlay (MZP, WMS of Wody Polskie) above it, and one
  * zoom-to-extent action for all enabled overlays.
  */
 (function () {
@@ -392,6 +393,158 @@
         }
     }
 
+    // ===== Flood hazard map (MZP) of Wody Polskie / ISOK =====
+
+    /**
+     * Water depth of the flood hazard maps (MZP, 2020 update) for river
+     * floods: one ArcGIS WMS of Wody Polskie per probability, `layer` is the
+     * service's "głębokość wody w [m]" layer. The sea flood layers of the same
+     * services are left out.
+     */
+    var MZP_SCENARIOS = [
+        { p: '0,2', years: 500, service: 'MZP20_Glebokosc_NiskiePrawdopodPowodzi', layer: '16' },
+        { p: '1', years: 100, service: 'MZP20_Glebokosc_SredniePrawdopodPowodzi', layer: '16' },
+        { p: '10', years: 10, service: 'MZP20_Glebokosc_WysokiePrawdopodPowodzi', layer: '1' },
+    ];
+    var MZP_DEFAULT_SCENARIO = 1;
+
+    /**
+     * The services draw depths only at 1:50 000 and larger scales, i.e. from
+     * zoom 14. Below it the layer leaves the map instead of carrying minZoom,
+     * which would stop the map zooming out while it is the only tile layer.
+     */
+    var MZP_MIN_ZOOM = 14;
+    var MZP_ZOOM_HINT = 'Przybliż mapę — głębokości są rysowane od skali ok. 1:50\u00A0000.';
+
+    /** Depth classes [m] in the colours the services draw them. */
+    var MZP_CLASSES = [
+        { label: '≤ 0,5', color: '#cfe8fa' },
+        { label: '0,5–2,0', color: '#a7caf7' },
+        { label: '2,0–4,0', color: '#7face3' },
+        { label: '> 4,0', color: '#7f98b9' },
+    ];
+
+    var MZP_ATTRIBUTION = 'MZP &copy; <a href="https://wody.isok.gov.pl/imap_kzgw/?gpmap=gpMZP">Wody Polskie / ISOK</a>'
+        + ' (<a href="https://creativecommons.org/licenses/by/4.0/deed.pl">CC BY 4.0</a>)';
+
+    function mzpUrl(scenario) {
+        return 'https://wody.isok.gov.pl/gpservices/KZGW/' + scenario.service + '/MapServer/WMSServer';
+    }
+
+    function mzpLegendTitle(scenario) {
+        return 'Głębokość wody [m] — MZP, p\u00A0=\u00A0' + scenario.p + '\u00A0%';
+    }
+
+    /**
+     * Overlay row of the flood hazard map in the base maps group: a checkbox
+     * independent of the base map choice, drawn above any base map
+     * (hazardPane). While on: the probability select and the zoom hint below
+     * the row, the legend on the map. Another probability keeps the layer,
+     * its visibility and opacity.
+     */
+    function addHazardEntry(group) {
+        var label = 'Mapa zagrożenia powodziowego';
+        var map = Hydrograf.map._getMap();
+        var scenario = MZP_SCENARIOS[MZP_DEFAULT_SCENARIO];
+        var layer = null;
+
+        var entry = createLayerRow(group, label, function (opacity) {
+            if (layer) layer.setOpacity(opacity);
+        }, 20);
+        var cb = entry.cb;
+        entry.name.title = label + ' (MZP): głębokość wody, Wody Polskie / ISOK';
+
+        var extra = document.createElement('div');
+        extra.className = 'layer-extra d-none';
+        var field = document.createElement('div');
+        field.className = 'field';
+        var selectLabel = document.createElement('label');
+        selectLabel.htmlFor = 'mzp-scenario';
+        selectLabel.textContent = 'Prawdopodobieństwo powodzi';
+        var select = document.createElement('select');
+        select.id = 'mzp-scenario';
+        MZP_SCENARIOS.forEach(function (s) {
+            var text = s.p + '\u00A0% — raz na ' + s.years + ' lat';
+            select.add(new Option(text, s.service, false, s === scenario));
+        });
+        var hint = document.createElement('span');
+        hint.className = 'hint';
+        hint.textContent = MZP_ZOOM_HINT;
+        field.appendChild(selectLabel);
+        field.appendChild(select);
+        field.appendChild(hint);
+        extra.appendChild(field);
+        group.appendChild(extra);
+
+        var legendBox = L.DomUtil.create('div', 'layer-legend');
+        var legendTitle = L.DomUtil.create('div', 'layer-legend-title', legendBox);
+        legendTitle.textContent = mzpLegendTitle(scenario);
+        MZP_CLASSES.forEach(function (c) {
+            var item = L.DomUtil.create('div', 'legend-item', legendBox);
+            L.DomUtil.create('span', 'legend-swatch', item).style.background = c.color;
+            item.appendChild(document.createTextNode(' ' + c.label));
+        });
+        var legendHint = L.DomUtil.create('div', 'layer-legend-note', legendBox);
+        legendHint.textContent = MZP_ZOOM_HINT;
+        var legend = L.control({ position: 'bottomleft' });
+        legend.onAdd = function () { return legendBox; };
+
+        _overlayRegistry.push({ label: label, cb: cb, getBounds: noBounds });
+
+        function sync() {
+            var zoomedIn = map.getZoom() >= MZP_MIN_ZOOM;
+            if (cb.checked && zoomedIn) {
+                if (!map.hasLayer(layer)) layer.addTo(map);
+            } else if (layer && map.hasLayer(layer)) {
+                map.removeLayer(layer);
+            }
+            hint.hidden = zoomedIn;
+            legendHint.hidden = zoomedIn;
+        }
+
+        select.addEventListener('change', function () {
+            scenario = MZP_SCENARIOS[select.selectedIndex];
+            legendTitle.textContent = mzpLegendTitle(scenario);
+            if (layer) {
+                layer.setUrl(mzpUrl(scenario), true);
+                layer.setParams({ layers: scenario.layer });
+            }
+            if (window.Hydrograf.diagnostics) {
+                Hydrograf.diagnostics.log('layer_change', { layer: label, scenario: scenario.service });
+            }
+        });
+
+        cb.addEventListener('change', function () {
+            if (cb.checked) {
+                if (!layer) {
+                    // 512 px images: a third of the requests to a slow
+                    // service, at the resolution (and scale) of the zoom.
+                    layer = L.tileLayer.wms(mzpUrl(scenario), {
+                        layers: scenario.layer,
+                        format: 'image/png',
+                        transparent: true,
+                        version: '1.3.0',
+                        tileSize: 512,
+                        opacity: 0.8,
+                        maxZoom: 22,
+                        pane: 'hazardPane',
+                        attribution: MZP_ATTRIBUTION,
+                    });
+                    entry.applyOpacity();
+                }
+                map.on('zoomend', sync);
+                legend.addTo(map);
+            } else {
+                map.off('zoomend', sync);
+                legend.remove();
+            }
+            sync();
+            entry.row.classList.toggle('off', !cb.checked);
+            extra.classList.toggle('d-none', !cb.checked);
+            logLayerChange(label, cb.checked);
+        });
+    }
+
     /**
      * Fit the map to the union of the enabled overlays' extents; with nothing
      * enabled (or no extent known yet) fit to the data extent.
@@ -557,7 +710,10 @@
         }
 
         // ===== Base layers (at the bottom of the panel) =====
-        createBaseLayerList(createGroup(list, 'Podkłady kartograficzne'));
+        // The flood hazard map row sits above the base map list it is drawn over.
+        var baseGroup = createGroup(list, 'Podkłady kartograficzne');
+        addHazardEntry(baseGroup);
+        createBaseLayerList(baseGroup);
         setBaseLayer(DEFAULT_BASE_LAYER);
     }
 

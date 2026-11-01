@@ -963,7 +963,7 @@ frontend/
     ├── api.js                # API calls (fetch wrappers)
     ├── map.js                # Leaflet map, drawing, MVT
     ├── charts.js             # Chart.js w kolorach tokenów: hipsometria, pokrycie/HSG, hietogram, hydrogram, profil
-    ├── layers.js             # Panel „Warstwy”: podkłady, nakładki, krycie, przybliżenie do zasięgu
+    ├── layers.js             # Panel „Warstwy”: podkłady z nakładką mapy zagrożenia powodziowego (WMS Wód Polskich), nakładki, krycie, przybliżenie do zasięgu
     ├── profile.js            # Terrain profile (draw line / auto)
     ├── hydrograph.js         # Formularz hietogramu (AMC, źródło opadu) i hydrogramu, bilans, wykresy
     ├── custom-rain.js        # Własna seria opadu: tabela kroków, wklejanie, import CSV, kopia hietogramu
@@ -997,7 +997,7 @@ Strona główna używa powłoki Archiwisty (`chrome.css` + `app.css` + `shell.js
 
 - **Górny pasek** — znak `img/hydrograf.svg`, wskaźnik stanu usług, przyciski „Instrukcja” (`/instrukcja/`) i „Zgłoś uwagę” oraz przełącznik motywu Auto/Jasny/Ciemny (`data-theme` na `<html>`, wybór w `localStorage` `nogat-theme`; `theme-init.js` ustawia go przed pierwszym malowaniem, więc nie ma mignięcia jasnego motywu). Przycisk „Instrukcja” jest w górnym pasku każdej strony (główna, `/admin`, `/instrukcja`).
 - **Szyna nawigacji** — tylko Mapa i Administracja (`/admin`); profil terenu jest trybem paska mapy.
-- **Lewy panel „Warstwy”** — podkłady, nakładki z suwakiem krycia i jeden przycisk przybliżenia do zasięgu włączonych warstw.
+- **Lewy panel „Warstwy”** — podkłady (z nakładką „Mapa zagrożenia powodziowego”), nakładki z suwakiem krycia i jeden przycisk przybliżenia do zasięgu włączonych warstw.
 - **Środek** — mapa z paskiem trybów Przeglądanie / Wybierz zlewnię / Profil terenu; profil terenu otwiera się w dolnej szufladzie nad mapą.
 - **Prawy panel „Zlewnia”** — kluczowe wartości (kafle) i sekcje `<details>`: parametry podstawowe, wskaźniki kształtu, rzeźba terenu, sieć rzeczna, pokrycie terenu, grupy HSG, hietogram, hydrogram.
 - **Objaśnienia (i)** — `info.js` dodaje znaczniki (i) w sekcjach Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram i Hydrogram; jeden wspólny dymek otwierany najechaniem, fokusem lub dotknięciem, zamykany Esc. Wpisy (64) w `info-texts.js`, kluczowane polem API lub id kontrolki formularza, mają strukturę: opis, wzór (składany jako MathML przez DOM, bez bibliotek), lista „gdzie:” ze zmiennymi i jednostkami, jednostka wyniku, osobny blok „Znaczenie dla analizy”, zakres stosowalności i uwaga. Treści oparte na Hydrologu i backendzie (np. limit hydrogramu 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). Uwagi o stosowalności pod Model UH, Metoda Tc i Estymacja Nash zmieniają się z wyborem. API nie zwraca ostrzeżeń o stosowalności, więc GUI ich nie pokazuje.
@@ -1028,6 +1028,20 @@ Strona główna używa powłoki Archiwisty (`chrome.css` + `app.css` + `shell.js
 #### 4.2.1 Mapa (Leaflet.js)
 
 Podkłady (`layers.js`): **OpenFreeMap szary** (wektorowy, styl `positron` z `https://tiles.openfreemap.org`, renderowany przez MapLibre GL 4.7.1 i `@maplibre/maplibre-gl-leaflet` 0.0.22; bez MapLibre powrót do OSM GUGiK), **OSM GUGiK szary** (rastrowy, tylko Polska, odbarwiony klasą `.basemap-grey`), **Ortofotomapa ESRI**, **bez podkładu**.
+
+**Mapa zagrożenia powodziowego (MZP)** — nakładka w grupie „Podkłady kartograficzne”, nad listą podkładów: pole wyboru niezależne od wyboru podkładu (domyślnie wyłączone), krycie 80 %, a gdy włączona — pole „Prawdopodobieństwo powodzi” (0,2 % — raz na 500 lat, 1 % — raz na 100 lat (domyślnie), 10 % — raz na 10 lat), podpowiedź o skali i legenda w lewym dolnym rogu mapy. Źródło: usługi WMS 1.3.0 (ArcGIS Server) Państwowego Gospodarstwa Wodnego Wody Polskie (KZGW, ISOK) z głębokością wody w MZP z aktualizacji 2020, dla powodzi od rzek:
+
+| Prawdopodobieństwo | Usługa (`https://wody.isok.gov.pl/gpservices/KZGW/<usługa>/MapServer/WMSServer`) | Warstwa |
+|---|---|---|
+| 0,2 % (raz na 500 lat) | `MZP20_Glebokosc_NiskiePrawdopodPowodzi` | `16` |
+| 1 % (raz na 100 lat) | `MZP20_Glebokosc_SredniePrawdopodPowodzi` | `16` |
+| 10 % (raz na 10 lat) | `MZP20_Glebokosc_WysokiePrawdopodPowodzi` | `1` |
+
+- `L.tileLayer.wms` w EPSG:3857, PNG z przezroczystością, obrazy 512 px (trzy razy mniej zapytań niż 256 px przy tej samej rozdzielczości); zmiana prawdopodobieństwa podmienia adres i `layers` tej samej warstwy (`setUrl`, `setParams`), więc stan włączenia i krycie zostają. Warstwy morskie tych usług (warstwa `1` dla 1 % i 0,2 %) i inne scenariusze MZP nie są pokazywane. Numery warstw ArcGIS mogą się zmienić przy ponownej publikacji usług — wtedy trzeba poprawić `MZP_SCENARIOS` w `layers.js`.
+- Usługi rysują głębokości tylko w skali 1:50 000 i większej (`MaxScaleDenominator` 47 247 przy pikselu 0,28 mm), czyli od przybliżenia 14. Poniżej warstwa jest zdejmowana z mapy (bez pustych zapytań), a panel i legenda pokazują „Przybliż mapę…”. Warstwa nie ma `minZoom`: Leaflet przyjąłby go jako dolną granicę przybliżenia całej mapy, gdy to jedyna warstwa kaflowa (np. przy podkładzie OpenFreeMap).
+- Panel `hazardPane` (z-index 240): nad podkładem (`tilePane`, 200), pod NMT i wszystkimi warstwami Hydrografa — wyniki analiz (np. SFINCS) leżą nad MZP. Przy włączonym NMT (krycie 70 %) MZP jest przygaszona; trzeba zmniejszyć krycie NMT.
+- Legenda z klas głębokości usług (GetLegendGraphic: h ≤ 0,5 · 0,5 < h ≤ 2,0 · 2,0 < h ≤ 4,0 · h > 4,0 m) w kolorach, jakimi usługi rysują mapę (`#cfe8fa`, `#a7caf7`, `#7face3`, `#7f98b9`, sprawdzone GetFeatureInfo); obraz GetLegendGraphic (96 × 72 px na białym tle) nie jest używany, bo nie pasuje do ciemnego motywu.
+- Atrybucja: „MZP © Wody Polskie / ISOK (CC BY 4.0)” z odnośnikami do Hydroportalu i licencji; licencja CC BY 4.0 według zbioru „Mapa zagrożenia powodziowego (MZP)” na dane.gov.pl (dostawca: Krajowy Zarząd Gospodarki Wodnej). Usługi REST/WMTS ArcGIS tych map zwracają 401, publiczny jest tylko WMS. Czas odpowiedzi bywa nierówny: zwykle 0,4–2 s na obraz, czasem pojedyncze obrazy 10–30 s.
 
 ```javascript
 // map.js (szkic)
@@ -1371,7 +1385,7 @@ http {
 
 **CSP — dozwolone hosty zewnętrzne** (`docker/nginx.conf` i `docker/nginx-ssl.conf.template`, identycznie):
 - `script-src`, `style-src`: `https://unpkg.com` (Leaflet, MapLibre GL, maplibre-gl-leaflet), `https://cdn.jsdelivr.net` (Chart.js, Bootstrap w `/admin`); wszystkie biblioteki z CDN z SRI (`integrity`).
-- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK, także mapa wyboru obszaru w `/admin`), `https://server.arcgisonline.com` (ortofotomapa ESRI).
+- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK, także mapa wyboru obszaru w `/admin`), `https://server.arcgisonline.com` (ortofotomapa ESRI), `https://wody.isok.gov.pl` (mapa zagrożenia powodziowego, WMS Wód Polskich).
 - `connect-src`: `https://tiles.openfreemap.org` (styl, kafle wektorowe i glify OpenFreeMap pobierane przez MapLibre).
 - `worker-src blob:`, `child-src blob:` — Web Worker MapLibre GL.
 

@@ -270,6 +270,7 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .legend-labels { display: flex; justify-content: space-between; margin-top: 3px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .legend-item { display: flex; align-items: center; gap: var(--space-2); margin: 2px 0; }
 .legend-swatch { width: 16px; height: 10px; flex: none; border-radius: 2px; border: 1px solid var(--line); }
+.layer-legend-note { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 
 /* ---------- Profile drawer ---------- */
 .profile-drawer {
@@ -616,6 +617,8 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
     .map-bar .hint { display: none; }
     .map-bar .end { margin-left: 0; }
     .layer-legend { width: 170px; }
+    /* Attribution wraps to two lines here (base map + MZP or NMT); legends stay above it */
+    .map-wrap .leaflet-bottom.leaflet-left { bottom: 36px; }
     .profile-drawer { left: var(--space-2); right: var(--space-2); bottom: var(--space-2); }
     .draw-tools { top: var(--space-2); left: var(--space-2); right: var(--space-2); transform: none; max-width: none; flex-wrap: wrap; justify-content: center; }
     .draw-tools .draw-count { flex-basis: 100%; text-align: center; white-space: normal; }
