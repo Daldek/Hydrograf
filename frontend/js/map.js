@@ -117,11 +117,13 @@
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
         // Custom panes for layer ordering:
-        // Base (tilePane z-200) → NMT → Linie spływu → delineation preview → overlay (z-400)
+        // Base (tilePane z-200) → NMT → Pokrycie terenu → Wyniki analiz → Linie spływu → delineation preview → overlay (z-400)
         map.createPane('demPane');
         map.getPane('demPane').style.zIndex = 250;
         map.createPane('landcoverPane');
         map.getPane('landcoverPane').style.zIndex = 260;
+        map.createPane('resultsPane');
+        map.getPane('resultsPane').style.zIndex = 300;
         map.createPane('streamsPane');
         map.getPane('streamsPane').style.zIndex = 350;
         map.createPane('previewPane');

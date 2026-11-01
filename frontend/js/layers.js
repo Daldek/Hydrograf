@@ -1,8 +1,9 @@
 /**
  * Hydrograf Layers module.
  *
- * Layers panel: overlay rows (checkbox, name, opacity slider), base map
- * radio list, and one zoom-to-extent action for all enabled overlays.
+ * Layers panel: overlay rows (checkbox, name, opacity slider), rows for the
+ * results of external analyses (results.js), base map radio list, and one
+ * zoom-to-extent action for all enabled overlays.
  */
 (function () {
     'use strict';
@@ -14,6 +15,7 @@
     var DEFAULT_BASE_LAYER = 'openfreemap';
     var currentBaseLayerName = DEFAULT_BASE_LAYER;
     var _overlayRegistry = [];
+    var _groups = {};
     var _rowCount = 0;
 
     var GUGIK_OSM_URL = 'https://mapy.geoportal.gov.pl/wss/ext/OSM/BaseMap/wmts/osm_3857/GLOBAL_WEBMERCATOR/{z}/{x}/{y}.png';
@@ -55,19 +57,21 @@
     ];
 
     /**
-     * Create a panel group (section with a title) and append it to the list.
+     * Create a panel group (section with a title) and add it to the list.
      * @param {HTMLElement} list - Panel container.
      * @param {string} label - Group title.
+     * @param {?Node} [before] - Insert before this child; appended when omitted.
      * @returns {HTMLElement} The group section; rows are appended to it.
      */
-    function createGroup(list, label) {
+    function createGroup(list, label, before) {
         var section = document.createElement('section');
         section.className = 'group';
         var title = document.createElement('h3');
         title.className = 'group-title';
         title.textContent = label;
         section.appendChild(title);
-        list.appendChild(section);
+        list.insertBefore(section, before || null);
+        _groups[label] = section;
         return section;
     }
 
@@ -184,6 +188,7 @@
         return {
             row: row,
             cb: cb,
+            name: name,
             /** Re-apply a slider moved while the layer was not loaded yet. */
             applyOpacity: function () {
                 if (range.value !== defaultOpacity) setOpacity(parseInt(range.value, 10) / 100);
@@ -233,6 +238,7 @@
     /**
      * Overlay row for async-loaded layers (GeoJSON, MVT).
      * getLayer returns the existing layer, loadLayer returns a Promise of it.
+     * @returns {Object} The row entry of createLayerRow.
      */
     function addAsyncOverlayEntry(list, label, getLayer, loadLayer, getBounds, setOpacity, defaultTransparency, onShow, onHide) {
         var entry = createLayerRow(list, label, setOpacity, defaultTransparency);
@@ -276,6 +282,7 @@
             entry.row.classList.toggle('off', !cb.checked);
             logLayerChange(label, cb.checked);
         });
+        return entry;
     }
 
     /**
@@ -359,6 +366,30 @@
             extra.classList.toggle('d-none', !cb.checked);
             logLayerChange(label, cb.checked);
         });
+    }
+
+    /**
+     * Row of an analysis result (results.js): tile layer with the manifest's
+     * opacity and extent, legend while on, description and source in an (i).
+     */
+    function addResultEntry(list, result) {
+        function getLayer() { return result.layer; }
+        var entry = addAsyncOverlayEntry(
+            list,
+            result.title,
+            getLayer,
+            getLayer,
+            function () { return result.bounds; },
+            function (opacity) { result.layer.setOpacity(opacity); },
+            Math.round((1 - result.opacity) * 100),
+            function () { Hydrograf.results.showLegend(result); },
+            function () { Hydrograf.results.hideLegend(result); }
+        );
+        // Long titles are cut with an ellipsis: the full one on hover
+        entry.name.title = result.title;
+        if (result.infoKey && window.Hydrograf.info && Hydrograf.info.attach(entry.row, result.infoKey, result.title)) {
+            entry.row.classList.add('has-info');
+        }
     }
 
     /**
@@ -489,7 +520,16 @@
         }
 
         // ===== Analysis results group =====
+        // The streams row waits for the thresholds; its slot keeps it first.
         var resultsGroup = createGroup(list, 'Wyniki analiz');
+        var streamsSlot = document.createComment('streams');
+        resultsGroup.appendChild(streamsSlot);
+
+        function placeStreamsEntry(thresholds) {
+            var rows = document.createDocumentFragment();
+            addStreamsEntry(rows, thresholds);
+            streamsSlot.replaceWith(rows);
+        }
 
         // Fetch available thresholds, then build streams entry
         fetch('/api/tiles/thresholds')
@@ -497,11 +537,24 @@
             .then(function (data) {
                 var streamsThresholds = data.streams && data.streams.length > 0
                     ? data.streams : FALLBACK_THRESHOLDS;
-                addStreamsEntry(resultsGroup, streamsThresholds);
+                placeStreamsEntry(streamsThresholds);
             })
             .catch(function () {
-                addStreamsEntry(resultsGroup, FALLBACK_THRESHOLDS);
+                placeStreamsEntry(FALLBACK_THRESHOLDS);
             });
+
+        // Results of external analyses (manifest read by results.js) join the
+        // group named in the manifest; a group that does not exist yet is
+        // created above the base maps, so without results nothing is shown.
+        var baseMapsSlot = document.createComment('result groups');
+        list.appendChild(baseMapsSlot);
+        if (window.Hydrograf.results) {
+            Hydrograf.results.load().then(function (results) {
+                results.forEach(function (result) {
+                    addResultEntry(_groups[result.group] || createGroup(list, result.group, baseMapsSlot), result);
+                });
+            });
+        }
 
         // ===== Base layers (at the bottom of the panel) =====
         createBaseLayerList(createGroup(list, 'Podkłady kartograficzne'));
