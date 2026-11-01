@@ -4,8 +4,9 @@
  * A small round (i) button after a label opens one shared tooltip with the
  * structured text from Hydrograf.infoTexts: title and symbol, definition,
  * formulas, the "gdzie:" list of variables, unit, "Znaczenie dla analizy",
- * applicability and note. Formulas are typeset as MathML built with DOM
- * calls from the notation described in info-texts.js (never from HTML).
+ * applicability, note and the literature line "Źródła:". Formulas are
+ * typeset as MathML built with DOM calls from the notation described in
+ * info-texts.js (never from HTML).
  *
  * The tooltip opens on hover, on keyboard focus and on tap (tap or click
  * pins it, a second one closes it); Esc or a tap outside closes it. It stays
@@ -377,6 +378,12 @@
             var note = element('p', 'info-tip-note', parent);
             caption('Uwaga:', note, true);
             richText(note, ' ' + entry.note);
+        }
+        if (entry.sources) {
+            // A reference such as "USDA-NRCS 2007 (NEH 630-16)" does not break at its hyphens
+            var sources = element('p', 'info-tip-src', parent);
+            caption('Źródła:', sources, true);
+            richText(sources, ' ' + entry.sources.replace(/(\w)-(?=\w)/g, '$1-\u2060'));
         }
     }
 
