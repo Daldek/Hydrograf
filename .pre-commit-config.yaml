@@ -14,3 +14,12 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: bump-asset-versions
+        name: frontend asset versions (?v=)
+        entry: python3 scripts/bump_asset_versions.py
+        language: system
+        files: ^frontend/.*\.(html|js|css)$
+        pass_filenames: false

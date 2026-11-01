@@ -77,12 +77,22 @@ http {
             proxy_read_timeout 15s;
         }
 
-        # Cache for truly static assets (code, styles, icons)
+        # Own code and styles. Pages reference them as `?v=<content hash>`
+        # (scripts/bump_asset_versions.py), so a changed file gets a new URL
+        # and bypasses browser and CDN caches regardless of this TTL.
         location ~* \.(css|js|ico|svg)$ {
             root /usr/share/nginx/html;
             expires 1h;
             add_header Cache-Control "public, must-revalidate";
             add_header X-Content-Type-Options "nosniff" always;
+        }
+
+        # HTML pages — always revalidated (ETag), so a deploy's new asset
+        # URLs reach the browser on the next load. `expires` instead of
+        # add_header keeps the server-level security headers inherited.
+        location ~* \.html$ {
+            root /usr/share/nginx/html;
+            expires -1;
         }
 
         # Pipeline-generated data (tiles, overlays, geojson) — no browser cache
@@ -109,6 +119,7 @@ http {
         # Admin panel
         location = /admin {
             root /usr/share/nginx/html;
+            expires -1;
             try_files /admin.html =404;
         }
 

@@ -1334,16 +1334,23 @@ http {
             proxy_cache_valid 200 1d;
         }
 
-        # Cache for static files
-        location ~* \.(css|js|png|ico|svg|pbf|geojson)$ {
+        # Own code and styles, referenced as ?v=<content hash>
+        location ~* \.(css|js|ico|svg)$ {
             root /usr/share/nginx/html;
             expires 1h;
             add_header Cache-Control "public, must-revalidate";
         }
 
+        # HTML pages — always revalidated (Cache-Control: no-cache + ETag)
+        location ~* \.html$ {
+            root /usr/share/nginx/html;
+            expires -1;
+        }
+
         # Admin panel
         location = /admin {
             root /usr/share/nginx/html;
+            expires -1;
             try_files /admin.html =404;
         }
 
@@ -1388,6 +1395,11 @@ http {
 - `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK, także mapa wyboru obszaru w `/admin`), `https://server.arcgisonline.com` (ortofotomapa ESRI), `https://wody.isok.gov.pl` (mapa zagrożenia powodziowego, WMS Wód Polskich).
 - `connect-src`: `https://tiles.openfreemap.org` (styl, kafle wektorowe i glify OpenFreeMap pobierane przez MapLibre).
 - `worker-src blob:`, `child-src blob:` — Web Worker MapLibre GL.
+
+**Cache zasobów frontendu.** Przed nginx stoi Cloudflare (tunel), który cache'uje pliki `.js`/`.css` na brzegu (`cf-cache-status: HIT`) i wydłuża przeglądarkom `max-age` do 4 h (Browser Cache TTL strefy). Dlatego:
+- strony HTML (`/`, `/admin`, `/instrukcja/`, powrót SPA na `index.html`) idą z `Cache-Control: no-cache` i ETag — przeglądarka i Cloudflare pytają nginx przy każdym wejściu (zwykle 304), a Cloudflare ich nie cache'uje (`DYNAMIC`);
+- strony odwołują się do własnych JS/CSS adresem z wersją `?v=<10 znaków SHA-256 zawartości>`; zmieniony plik ma nowy adres (nowy klucz cache Cloudflare i przeglądarki), więc wdrożenie jest widoczne od pierwszego przeładowania bez czyszczenia cache. Niezmienione pliki zachowują adres i cache;
+- wersje ustawia `python3 scripts/bump_asset_versions.py` (bez kroku budowania); hook pre-commit uruchamia go przy zmianach w `frontend/`, CI sprawdza `--check`. Biblioteki z CDN mają wersję w adresie i SRI, skrypt ich nie dotyka.
 
 ---
 
@@ -1746,7 +1758,7 @@ def oblicz_opad_efektywny_slow(intensywnosci, cn):
 
 **Network:**
 - Gzip compression (Nginx)
-- Cache static assets (1 year)
+- Własne JS/CSS z wersją `?v=<hash zawartości>` w adresie (zob. 5.2, „Cache zasobów frontendu”)
 - Minify JS/CSS (production build)
 
 ---

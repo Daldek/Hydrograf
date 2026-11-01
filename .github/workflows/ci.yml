@@ -7,6 +7,13 @@ on:
     branches: [main, develop]
 
 jobs:
+  frontend-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Asset versions (?v=) up to date
+        run: python3 scripts/bump_asset_versions.py --check
+
   lint:
     runs-on: ubuntu-latest
     defaults:

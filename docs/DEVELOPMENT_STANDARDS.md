@@ -556,6 +556,8 @@ omit = ["scripts/*", "migrations/*", "tests/*", "*/conftest.py"]
 
 Frontend jest statyczny (Vanilla JS) — brak frameworka SPA. Wygląd: identyfikacja wizualna Nogata (ADR-065). Kolory, czcionki, promienie i cienie wyłącznie przez zmienne z `css/tokens.css`; tego pliku nie edytuje się w Hydrografie — zmiany w Nogacie (`design/tokens.css`), potem ponowne skopiowanie. Biblioteki z CDN zawsze z SRI (`integrity` + `crossorigin`).
 
+Własne pliki JS/CSS dołączane w `index.html`, `admin.html` i `instrukcja/index.html` mają w adresie wersję `?v=<hash zawartości>` — tylko tak wdrożenie przechodzi przez cache Cloudflare i przeglądarek (ARCHITECTURE 5.2, „Cache zasobów frontendu”). Po każdej zmianie pliku JS/CSS lub dodaniu nowego `<script>`/`<link>` uruchom przed commitem `python3 scripts/bump_asset_versions.py` (robi to hook pre-commit, CI sprawdza `--check`); nowy plik dołączaj bez `?v=`, skrypt go dopisze.
+
 ### 9.2 Struktura plikow
 
 ```
@@ -1240,6 +1242,7 @@ Kazdy endpoint tematyczny w osobnym pliku w `api/endpoints/`:
 ### Frontend
 - [ ] JSDoc dla publicznych funkcji
 - [ ] Error handling z user-friendly komunikatami
+- [ ] `python3 scripts/bump_asset_versions.py --check` przechodzi (wersje `?v=` własnych JS/CSS)
 
 ### Docker
 - [ ] `docker compose up -d` dziala bez bledow
