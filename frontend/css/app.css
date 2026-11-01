@@ -380,6 +380,89 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .share-list .pct { font-variant-numeric: tabular-nums; font-weight: var(--weight-bold); text-align: right; min-width: 44px; }
 .share-list .x { color: var(--text-3); font-size: var(--text-xs); font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
 
+/* ---------- Explanation markers and applicability notes (info.js) ---------- */
+.info-label { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.info-btn {
+    position: relative; display: inline-grid; place-items: center; flex: none;
+    width: 15px; height: 15px; margin: 0 0 0 var(--space-1); padding: 0;
+    border: 1px solid var(--line-2); border-radius: 50%;
+    background: var(--surface); color: var(--text-3);
+    font-family: var(--font-sans); font-size: var(--text-xs); font-style: normal; font-weight: var(--weight-bold); line-height: 1;
+    vertical-align: 1px; cursor: help;
+}
+.info-label .info-btn { margin-left: 0; }
+/* Larger hit area than the glyph, for touch */
+.info-btn::after { content: ""; position: absolute; inset: -7px; }
+.info-btn:hover, .info-btn.active { border-color: var(--accent); color: var(--accent); }
+.info-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.info-tip {
+    position: fixed; top: 0; left: 0; z-index: 50;
+    max-width: 280px; padding: var(--space-2) 10px;
+    border: 1px solid var(--line-2); border-radius: var(--radius-md);
+    background: var(--surface); color: var(--text-2); box-shadow: var(--shadow-lg);
+    font-size: var(--text-sm); font-weight: var(--weight-regular); line-height: var(--line-height);
+    overflow-wrap: break-word;
+}
+.info-tip[hidden] { display: none; }
+.info-tip-title { margin: 0 0 2px; font-weight: var(--weight-bold); color: var(--text); }
+.info-tip p { margin: 0; }
+.info-tip p + p { margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.info-tip strong { color: var(--text); }
+.info-note { margin: 0; font-size: var(--text-xs); line-height: var(--line-height); color: var(--text-3); }
+.info-note[hidden] { display: none; }
+.info-note-k { font-weight: var(--weight-bold); color: var(--text-2); }
+.hydro-stat { display: inline-flex; align-items: center; margin-right: var(--space-4); white-space: nowrap; }
+.hydro-stat:last-child { margin-right: 0; }
+
+/* ---------- Advanced mode, Hydrogram section (advanced.js) ---------- */
+.adv { margin: 0 0 var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.adv-switch {
+    display: flex; align-items: center; gap: var(--space-2);
+    font-size: var(--text-sm); font-weight: var(--weight-bold); color: var(--text-2); cursor: pointer;
+}
+.adv-switch input[type="checkbox"] {
+    appearance: none; position: relative; flex: none;
+    width: var(--space-8); height: calc(var(--space-4) + var(--space-1)); border-radius: var(--radius-pill);
+    background: var(--line-2); cursor: pointer; transition: background var(--transition);
+}
+.adv-switch input[type="checkbox"]::before {
+    content: ""; position: absolute; top: var(--space-1); left: var(--space-1); width: var(--space-3); height: var(--space-3);
+    border-radius: 50%; background: var(--text-3); transition: transform var(--transition), background var(--transition);
+}
+.adv-switch input[type="checkbox"]:checked { background: var(--accent); }
+.adv-switch input[type="checkbox"]:checked::before { transform: translateX(var(--space-3)); background: var(--accent-ink); }
+.adv-count { margin-left: auto; font-size: var(--text-xs); font-weight: var(--weight-regular); color: var(--warn-ink); }
+.adv-form { margin-top: var(--space-3); }
+.adv-intro { margin: 0 0 var(--space-3); font-size: var(--text-xs); color: var(--text-3); }
+.adv-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--space-3); }
+.adv-field { display: grid; grid-template-rows: subgrid; grid-row: span 4; row-gap: calc(var(--space-1) / 2); margin: 0 0 var(--space-3); min-width: 0; }
+.adv-field > label {
+    display: flex; align-items: flex-end; gap: var(--space-1); min-width: 0;
+    font-size: var(--text-sm); font-weight: var(--weight-bold); color: var(--text-2);
+}
+.adv-flag { display: none; }
+.adv-field.is-edited .adv-flag {
+    display: inline-block; flex: none; width: var(--space-2); height: var(--space-2); margin-bottom: var(--space-1);
+    border-radius: 50%; background: var(--warn); overflow: hidden; text-indent: 100%; white-space: nowrap;
+}
+.adv-line { display: grid; grid-template-columns: minmax(0, 1fr) var(--space-12) auto; align-items: center; gap: var(--space-1); }
+.adv-line input { width: 100%; font-variant-numeric: tabular-nums; }
+.adv-unit { font-size: var(--text-xs); color: var(--text-3); white-space: nowrap; }
+.adv-reset:disabled { visibility: hidden; }
+.adv-field.is-edited input { border-color: var(--warn); background: var(--warn-bg); color: var(--text); }
+.adv-field.is-invalid input { border-color: var(--bad); background: var(--bad-bg); }
+.adv-field.is-invalid input:focus { box-shadow: 0 0 0 var(--space-1) var(--bad-bg); }
+.adv-orig { font-size: var(--text-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.adv-err { font-size: var(--text-xs); color: var(--bad-ink); }
+.adv-form > .notice { margin-bottom: var(--space-2); }
+@media (max-width: 860px) {
+    .adv-fields { grid-template-columns: minmax(0, 1fr); }
+    .adv-switch input[type="checkbox"] { width: calc(var(--space-8) + var(--space-3)); height: var(--space-6); }
+    .adv-switch input[type="checkbox"]::before { width: var(--space-4); height: var(--space-4); }
+    .adv-switch input[type="checkbox"]:checked::before { transform: translateX(calc(var(--space-4) + var(--space-1))); }
+    .adv-line .btn.adv-reset { width: var(--control-touch); height: var(--control-touch); }
+}
+
 /* ---------- Feedback dialog ---------- */
 dialog.modal {
     width: min(520px, calc(100% - 32px)); max-height: calc(100vh - 32px); overflow: auto;
@@ -419,7 +502,7 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
 
 /* ---------- Phone ---------- */
 @media (max-width: 860px) {
-    .badge .label, #btn-guide { display: none; }
+    .badge .label { display: none; }
     .badge { padding: 0 7px; }
     .badge::before { width: 8px; height: 8px; }
 

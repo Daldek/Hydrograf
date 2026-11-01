@@ -68,12 +68,17 @@
         var alpha = parseFloat(document.getElementById('hydro-alpha').value) || 2.0;
         var beta = parseFloat(document.getElementById('hydro-beta').value) || 5.0;
         var uhModel = document.getElementById('hydro-uh-model').value;
+        // Advanced mode may replace the morphometry; no request while its form is invalid
+        var morph = Hydrograf.advanced
+            ? Hydrograf.advanced.requestMorphometry(data)
+            : { valid: true, morphometry: data.watershed.morphometry || null };
+        if (!morph.valid) return;
 
         var myId = ++_requestId;
 
         try {
             var opts = {
-                morphometry: data.watershed.morphometry || null,
+                morphometry: morph.morphometry,
                 hietogram_type: hietogramType,
                 hietogram_alpha: alpha,
                 hietogram_beta: beta,
@@ -127,12 +132,20 @@
                 result.hydrograph.discharge_m3s
             );
 
-            // Summary
+            // Summary: Qmax | tp | V, each with its (i)
             var summary = document.getElementById('hydro-summary');
-            summary.textContent =
-                'Qmax: ' + result.hydrograph.peak_discharge_m3s.toFixed(2) + ' m\u00b3/s | ' +
-                'tp: ' + result.hydrograph.time_to_peak_min.toFixed(0) + ' min | ' +
-                'V: ' + result.hydrograph.total_volume_m3.toFixed(0) + ' m\u00b3';
+            summary.textContent = '';
+            [
+                ['Qmax', result.hydrograph.peak_discharge_m3s.toFixed(2) + ' m\u00b3/s', 'peak_discharge_m3s'],
+                ['tp', result.hydrograph.time_to_peak_min.toFixed(0) + ' min', 'time_to_peak_min'],
+                ['V', result.hydrograph.total_volume_m3.toFixed(0) + ' m\u00b3', 'total_volume_m3'],
+            ].forEach(function (stat) {
+                var item = document.createElement('span');
+                item.className = 'hydro-stat';
+                item.textContent = stat[0] + ': ' + stat[1];
+                Hydrograf.info.attach(item, stat[2], stat[0]);
+                summary.appendChild(item);
+            });
 
             displayPrecipBalance(result.water_balance);
             displayMetadata(result.metadata);
@@ -155,18 +168,19 @@
         table.className = 'balance-table';
 
         var rows = [
-            ['Opad ca\u0142kowity', wb.total_precip_mm.toFixed(1) + ' mm'],
-            ['Opad efektywny', wb.total_effective_mm.toFixed(1) + ' mm'],
-            ['Wsp. odp\u0142ywu', wb.runoff_coefficient.toFixed(3)],
-            ['CN u\u017cyty', String(wb.cn_used)],
-            ['Retencja S', wb.retention_mm.toFixed(1) + ' mm'],
-            ['Straty pocz\u0105tkowe Ia', wb.initial_abstraction_mm.toFixed(1) + ' mm'],
+            ['Opad ca\u0142kowity', wb.total_precip_mm.toFixed(1) + ' mm', 'total_precip_mm'],
+            ['Opad efektywny', wb.total_effective_mm.toFixed(1) + ' mm', 'total_effective_mm'],
+            ['Wsp. odp\u0142ywu', wb.runoff_coefficient.toFixed(3), 'runoff_coefficient'],
+            ['CN u\u017cyty', String(wb.cn_used), 'cn_used'],
+            ['Retencja S', wb.retention_mm.toFixed(1) + ' mm', 'retention_mm'],
+            ['Straty pocz\u0105tkowe Ia', wb.initial_abstraction_mm.toFixed(1) + ' mm', 'initial_abstraction_mm'],
         ];
 
         rows.forEach(function (row) {
             var tr = document.createElement('tr');
             var td1 = document.createElement('td');
             td1.textContent = row[0];
+            Hydrograf.info.attach(td1, row[2]);
             var td2 = document.createElement('td');
             td2.textContent = row[1];
             tr.appendChild(td1);
@@ -215,32 +229,33 @@
 
         var rows = [];
         if (meta.tc_method != null) {
-            rows.push(['Metoda Tc', TC_METHOD_LABELS[meta.tc_method] || meta.tc_method]);
+            rows.push(['Metoda Tc', TC_METHOD_LABELS[meta.tc_method] || meta.tc_method, 'tc_method']);
         }
         if (meta.tc_min != null) {
-            rows.push(['Tc', meta.tc_min.toFixed(1) + ' min']);
+            rows.push(['Tc', meta.tc_min.toFixed(1) + ' min', 'tc_min']);
         }
-        rows.push(['Hydrogram jedn.', uhLabel]);
+        rows.push(['Hydrogram jedn.', uhLabel, 'uh_model']);
 
         if (meta.nash_n != null) {
-            rows.push(['Nash N', meta.nash_n.toFixed(2)]);
-            rows.push(['Nash K', meta.nash_k_min.toFixed(1) + ' min']);
+            rows.push(['Nash N', meta.nash_n.toFixed(2), 'nash_n']);
+            rows.push(['Nash K', meta.nash_k_min.toFixed(1) + ' min', 'nash_k_min']);
         }
         if (meta.nash_urban_fraction != null) {
-            rows.push(['Urbanizacja U', (meta.nash_urban_fraction * 100).toFixed(1) + '%']);
+            rows.push(['Urbanizacja U', (meta.nash_urban_fraction * 100).toFixed(1) + '%', 'nash_urban_fraction']);
         }
         if (meta.nash_effective_precip_mm != null) {
-            rows.push(['Pe (Nash)', meta.nash_effective_precip_mm.toFixed(1) + ' mm']);
+            rows.push(['Pe (Nash)', meta.nash_effective_precip_mm.toFixed(1) + ' mm', 'nash_effective_precip_mm']);
         }
         if (meta.nash_duration_h != null) {
             var dMin = Math.round(meta.nash_duration_h * 60);
-            rows.push(['D efektywny', dMin + ' min (' + meta.nash_duration_h.toFixed(2) + ' h)']);
+            rows.push(['D efektywny', dMin + ' min (' + meta.nash_duration_h.toFixed(2) + ' h)', 'nash_duration_h']);
         }
 
         rows.forEach(function (row) {
             var tr = document.createElement('tr');
             var td1 = document.createElement('td');
             td1.textContent = row[0];
+            Hydrograf.info.attach(td1, row[2]);
             var td2 = document.createElement('td');
             td2.textContent = row[1];
             tr.appendChild(td1);

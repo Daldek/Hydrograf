@@ -45,7 +45,7 @@
         return match ? [match[1], match[2]] : [text, ''];
     }
 
-    function buildRow(label, value) {
+    function buildRow(label, value, infoKey) {
         var parts = splitUnit(value);
         var tr = document.createElement('tr');
         var th = document.createElement('th');
@@ -53,6 +53,7 @@
         var tdUnit = document.createElement('td');
         th.scope = 'row';
         th.innerHTML = label;
+        if (infoKey) Hydrograf.info.attach(th, infoKey);
         tdValue.textContent = parts[0];
         tdUnit.className = 'u';
         tdUnit.textContent = parts[1];
@@ -66,7 +67,7 @@
         tbody.innerHTML = '';
         rows.forEach(function (row) {
             if (row[1] !== '—') {
-                tbody.appendChild(buildRow(row[0], row[1]));
+                tbody.appendChild(buildRow(row[0], row[1], row[2]));
             }
         });
     }
@@ -135,31 +136,31 @@
         var o = w.outlet;
 
         fillTable(els.paramsBasic, [
-            ['Powierzchnia zlewni', formatValue(m.area_km2, 'km²', 2)],
-            ['Obwód zlewni', formatValue(m.perimeter_km, 'km', 2)],
-            ['Długość zlewni', formatValue(m.length_km, 'km', 2)],
-            ['Średnia szerokość', formatValue(m.mean_width_km, 'km', 2)],
-            ['Wysokość min.', formatValue(m.elevation_min_m, 'm n.p.m.', 1)],
-            ['Wysokość max.', formatValue(m.elevation_max_m, 'm n.p.m.', 1)],
-            ['Wysokość średnia', formatValue(m.elevation_mean_m, 'm n.p.m.', 1)],
-            ['Średni spadek terenu', formatSlope(m.mean_slope_m_per_m)],
-            ['Długość cieku głównego', formatValue(m.channel_length_km, 'km', 2)],
-            ['  w tym ciek BDOT', formatValue(m.real_channel_length_km, 'km', 2)],
-            ['Spadek cieku głównego', formatSlope(m.channel_slope_m_per_m)],
-            ['Najdł. droga spływu', formatValue(m.hydraulic_length_km, 'km', 2)],
-            ['Droga spływu z działu', formatValue(m.divide_flow_path_km, 'km', 2)],
-            ['CN (krzywa odpływu)', m.cn !== null && m.cn !== undefined ? String(m.cn) : '—'],
-            ['Ujście — szerokość φ', formatValue(o.latitude, '°N', 6)],
-            ['Ujście — długość λ', formatValue(o.longitude, '°E', 6)],
-            ['Ujście — wysokość', formatValue(o.elevation_m, 'm n.p.m.', 1)],
+            ['Powierzchnia zlewni', formatValue(m.area_km2, 'km²', 2), 'area_km2'],
+            ['Obwód zlewni', formatValue(m.perimeter_km, 'km', 2), 'perimeter_km'],
+            ['Długość zlewni', formatValue(m.length_km, 'km', 2), 'length_km'],
+            ['Średnia szerokość', formatValue(m.mean_width_km, 'km', 2), 'mean_width_km'],
+            ['Wysokość min.', formatValue(m.elevation_min_m, 'm n.p.m.', 1), 'elevation_min_m'],
+            ['Wysokość max.', formatValue(m.elevation_max_m, 'm n.p.m.', 1), 'elevation_max_m'],
+            ['Wysokość średnia', formatValue(m.elevation_mean_m, 'm n.p.m.', 1), 'elevation_mean_m'],
+            ['Średni spadek terenu', formatSlope(m.mean_slope_m_per_m), 'mean_slope_m_per_m'],
+            ['Długość cieku głównego', formatValue(m.channel_length_km, 'km', 2), 'channel_length_km'],
+            ['  w tym ciek BDOT', formatValue(m.real_channel_length_km, 'km', 2), 'real_channel_length_km'],
+            ['Spadek cieku głównego', formatSlope(m.channel_slope_m_per_m), 'channel_slope_m_per_m'],
+            ['Najdł. droga spływu', formatValue(m.hydraulic_length_km, 'km', 2), 'hydraulic_length_km'],
+            ['Droga spływu z działu', formatValue(m.divide_flow_path_km, 'km', 2), 'divide_flow_path_km'],
+            ['CN (krzywa odpływu)', m.cn !== null && m.cn !== undefined ? String(m.cn) : '—', 'cn'],
+            ['Ujście — szerokość φ', formatValue(o.latitude, '°N', 6), 'latitude'],
+            ['Ujście — długość λ', formatValue(o.longitude, '°E', 6), 'longitude'],
+            ['Ujście — wysokość', formatValue(o.elevation_m, 'm n.p.m.', 1), 'elevation_m'],
         ]);
 
         fillTable(els.paramsShape, [
-            ['Wsk. zwartości C<sub>z</sub>', formatRatio(m.compactness_coefficient, 3)],
-            ['Wsk. kolistości C<sub>k</sub>', formatRatio(m.circularity_ratio, 3)],
-            ['Wsk. wydłużenia C<sub>w</sub>', formatRatio(m.elongation_ratio, 3)],
-            ['Wsk. formy C<sub>f</sub>', formatRatio(m.form_factor, 3)],
-            ['Wsk. lemniskaty C<sub>l</sub>', formatRatio(m.lemniscate_ratio, 3)],
+            ['Wsk. zwartości C<sub>z</sub>', formatRatio(m.compactness_coefficient, 3), 'compactness_coefficient'],
+            ['Wsk. kolistości C<sub>k</sub>', formatRatio(m.circularity_ratio, 3), 'circularity_ratio'],
+            ['Wsk. wydłużenia C<sub>w</sub>', formatRatio(m.elongation_ratio, 3), 'elongation_ratio'],
+            ['Wsk. formy C<sub>f</sub>', formatRatio(m.form_factor, 3), 'form_factor'],
+            ['Wsk. lemniskaty C<sub>l</sub>', formatRatio(m.lemniscate_ratio, 3), 'lemniscate_ratio'],
         ]);
 
         fillTable(els.paramsRelief, [
@@ -494,17 +495,6 @@
         profile: 'Kliknij na mapie, aby zacząć rysować profil',
     };
 
-    /** Mark the active rail item (Mapa or Profil). */
-    function setRail(activeId) {
-        ['rail-map', 'rail-profile'].forEach(function (id) {
-            var item = document.getElementById(id);
-            var on = id === activeId;
-            item.classList.toggle('active', on);
-            if (on) item.setAttribute('aria-current', 'page');
-            else item.removeAttribute('aria-current');
-        });
-    }
-
     /**
      * Switch click mode between 'browse', 'select', and 'profile'.
      */
@@ -524,7 +514,6 @@
         });
         els.hint.textContent = MODE_HINTS[mode];
         els.mapWrap.dataset.mode = mode;
-        setRail(mode === 'profile' ? 'rail-profile' : 'rail-map');
 
         // Leaving profile mode cancels drawing and closes the profile drawer
         if (mode !== 'profile' && Hydrograf.profile) {
@@ -590,10 +579,6 @@
             setClickMode('select');
         });
         document.getElementById('mode-profile').addEventListener('click', enterProfileMode);
-        document.getElementById('rail-profile').addEventListener('click', function (e) {
-            e.preventDefault();
-            if (state.clickMode !== 'profile') enterProfileMode();
-        });
         document.getElementById('rail-map').addEventListener('click', function (e) {
             e.preventDefault();
             if (state.clickMode === 'profile') setClickMode('browse');
