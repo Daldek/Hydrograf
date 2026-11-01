@@ -846,14 +846,16 @@
      * @param {Array} times - Step times [min]
      * @param {Array} total - Total precipitation per step [mm]
      * @param {Array} effective - Effective precipitation per step [mm]
+     * @param {Object} [opts] - { step: time step [min], source: rainfall origin shown in the title }
      */
-    function renderHietogramChart(canvasId, times, total, effective) {
+    function renderHietogramChart(canvasId, times, total, effective, opts) {
         var canvas = document.getElementById(canvasId);
         if (!canvas || typeof Chart === 'undefined' || !times.length) return;
 
-        var step = times.length > 1 ? times[1] - times[0] : times[0];
+        var raw = opts && opts.step != null ? opts.step : (times.length > 1 ? times[1] - times[0] : times[0]);
+        var step = String(Number(raw.toFixed(3)));
         var yTitle = 'P [mm / ' + step + ' min]';
-        setChartNote(canvas, 'krok ' + step + ' min');
+        setChartNote(canvas, (opts && opts.source ? opts.source + ' \u00b7 ' : '') + 'krok ' + step + ' min');
 
         var chart = charts[canvasId];
         if (chart) {

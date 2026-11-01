@@ -234,33 +234,95 @@
                                 <summary><span class="step-num" aria-hidden="true"></span><span class="title">Hietogram</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
                                 <div class="step-body">
                                     <div id="hietogram-form">
-                                        <div class="field-row">
-                                            <div class="field">
-                                                <label for="hydro-duration">Czas trwania</label>
-                                                <select id="hydro-duration"></select>
+                                        <div class="field">
+                                            <span class="label" id="rain-source-label">Źródło opadu</span>
+                                            <div class="seg full" id="rain-source" role="radiogroup" aria-labelledby="rain-source-label">
+                                                <button type="button" id="rain-source-pmaxtp" role="radio" aria-checked="true" class="on" aria-controls="pmaxtp-form">PMAXTP</button>
+                                                <button type="button" id="rain-source-custom" role="radio" aria-checked="false" aria-controls="custom-rain">Własna seria</button>
                                             </div>
-                                            <div class="field">
-                                                <label for="hydro-probability">Prawdopodobieństwo</label>
-                                                <select id="hydro-probability"></select>
+                                        </div>
+                                        <div id="pmaxtp-form">
+                                            <div class="form-grid">
+                                                <div class="field">
+                                                    <label for="hydro-duration">Czas trwania</label>
+                                                    <select id="hydro-duration"></select>
+                                                </div>
+                                                <div class="field">
+                                                    <label for="hydro-probability">Prawdopodobieństwo</label>
+                                                    <select id="hydro-probability"></select>
+                                                </div>
+                                                <div class="field wide">
+                                                    <label for="hydro-hietogram-type">Rozkład opadu</label>
+                                                    <select id="hydro-hietogram-type">
+                                                        <option value="beta">Beta</option>
+                                                        <option value="euler_ii">DVWK (Euler II)</option>
+                                                        <option value="block">Blokowy</option>
+                                                    </select>
+                                                </div>
                                             </div>
+                                            <div id="beta-params" class="form-grid">
+                                                <div class="field">
+                                                    <label for="hydro-alpha">&alpha;</label>
+                                                    <input id="hydro-alpha" type="number" value="2.0" min="0.1" max="20" step="0.1">
+                                                </div>
+                                                <div class="field">
+                                                    <label for="hydro-beta">&beta;</label>
+                                                    <input id="hydro-beta" type="number" value="5.0" min="0.1" max="20" step="0.1">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- Own rainfall series (custom-rain.js) -->
+                                        <div id="custom-rain" class="custom-rain d-none">
+                                            <h3 class="custom-rain-title" data-info="custom-rain">Własna seria opadu</h3>
+                                            <div class="form-grid">
+                                                <div class="field">
+                                                    <label for="custom-rain-duration">Czas trwania [min]</label>
+                                                    <input id="custom-rain-duration" type="number" value="60" min="0" step="any" inputmode="decimal" aria-describedby="custom-rain-invalid">
+                                                </div>
+                                                <div class="field">
+                                                    <label for="custom-rain-step">Krok czasowy [min]</label>
+                                                    <input id="custom-rain-step" type="number" value="5" min="0" max="1440" step="any" inputmode="decimal" aria-describedby="custom-rain-invalid">
+                                                </div>
+                                            </div>
+                                            <div class="custom-rain-actions">
+                                                <button type="button" class="btn sm" id="custom-rain-load" disabled>
+                                                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7M5 6.5l3 3 3-3"/><path d="M3 11v2.5h10V11"/></svg>
+                                                    Wczytaj z bieżącego hietogramu
+                                                </button>
+                                                <button type="button" class="btn sm" id="custom-rain-import" aria-describedby="custom-rain-csv-hint">
+                                                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5l3 3v10H4z"/><path d="M9 1.5v3h3"/></svg>
+                                                    Importuj CSV
+                                                </button>
+                                                <button type="button" class="btn sm" id="custom-rain-clear">
+                                                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+                                                    Wyczyść
+                                                </button>
+                                                <input id="custom-rain-file" type="file" accept=".csv,.txt,text/csv,text/plain" class="d-none" tabindex="-1" aria-hidden="true">
+                                            </div>
+                                            <p id="custom-rain-csv-hint" class="custom-rain-hint">CSV: jedna kolumna opadu [mm] (z bieżącym krokiem) albo dwie kolumny: czas [min], opad [mm] z równym krokiem. Separator <code>,</code> <code>;</code> lub tabulator; przy <code>;</code> i tabulatorze także przecinek dziesiętny.</p>
+                                            <div class="custom-rain-table">
+                                                <table>
+                                                    <thead><tr><th scope="col">Czas [min]</th><th scope="col">Opad [mm]</th></tr></thead>
+                                                    <tbody id="custom-rain-rows"></tbody>
+                                                </table>
+                                            </div>
+                                            <p id="custom-rain-sum" class="custom-rain-sum num"></p>
+                                            <p id="custom-rain-msg" class="notice d-none" role="status">
+                                                <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
+                                                <span id="custom-rain-msg-text"></span>
+                                            </p>
+                                            <p id="custom-rain-invalid" class="notice bad d-none" role="alert">
+                                                <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5v4M8 11v.01"/></svg>
+                                                <span id="custom-rain-invalid-text"></span>
+                                            </p>
                                         </div>
                                         <div class="field">
-                                            <label for="hydro-hietogram-type">Rozkład opadu</label>
-                                            <select id="hydro-hietogram-type">
-                                                <option value="beta">Beta</option>
-                                                <option value="euler_ii">DVWK (Euler II)</option>
-                                                <option value="block">Blokowy</option>
+                                            <label for="hydro-amc">Uwilgotnienie początkowe (AMC)</label>
+                                            <select id="hydro-amc">
+                                                <option value="I">I — suche</option>
+                                                <option value="II" selected>II — przeciętne</option>
+                                                <option value="III">III — mokre</option>
                                             </select>
-                                        </div>
-                                        <div id="beta-params" class="field-row">
-                                            <div class="field">
-                                                <label for="hydro-alpha">&alpha;</label>
-                                                <input id="hydro-alpha" type="number" value="2.0" min="0.1" max="20" step="0.1">
-                                            </div>
-                                            <div class="field">
-                                                <label for="hydro-beta">&beta;</label>
-                                                <input id="hydro-beta" type="number" value="5.0" min="0.1" max="20" step="0.1">
-                                            </div>
                                         </div>
                                     </div>
                                     <div id="hietogram-results" class="d-none">
@@ -276,65 +338,58 @@
                             <details class="step d-none" id="acc-hydrograph">
                                 <summary><span class="step-num" aria-hidden="true"></span><span class="title">Hydrogram</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
                                 <div class="step-body">
-                                    <div id="hydrograph-form">
-                                        <div class="field-row">
-                                            <div class="field">
-                                                <label for="hydro-uh-model">Model UH</label>
-                                                <select id="hydro-uh-model">
-                                                    <option value="scs">SCS</option>
-                                                    <option value="nash">Nash</option>
-                                                    <option value="snyder">Snyder</option>
-                                                </select>
-                                            </div>
-                                            <div id="tc-method-params" class="field">
-                                                <label for="hydro-tc-method">Metoda Tc</label>
-                                                <select id="hydro-tc-method">
-                                                    <option value="nrcs">NRCS (SCS Lag)</option>
-                                                    <option value="kirpich">Kirpich</option>
-                                                    <option value="giandotti">Giandotti</option>
-                                                    <option value="faa">FAA (spływ pow.)</option>
-                                                    <option value="kerby">Kerby</option>
-                                                    <option value="kerby_kirpich">Kerby-Kirpich</option>
-                                                </select>
-                                            </div>
+                                    <!-- One 2-column grid; hydrograph.js hides the fields a model does not use -->
+                                    <div id="hydrograph-form" class="form-grid">
+                                        <div class="field">
+                                            <label for="hydro-uh-model">Model UH</label>
+                                            <select id="hydro-uh-model">
+                                                <option value="scs">SCS</option>
+                                                <option value="nash">Nash</option>
+                                                <option value="snyder">Snyder</option>
+                                            </select>
                                         </div>
-                                        <div id="tc-extra-params" class="field-row d-none">
-                                            <div id="tc-runoff-coeff-col" class="field d-none">
-                                                <label for="hydro-tc-runoff-coeff">C (spływ) 0–1</label>
-                                                <input id="hydro-tc-runoff-coeff" type="number" value="" min="0" max="1" step="0.05" placeholder="auto z CN">
-                                            </div>
-                                            <div id="tc-retardance-col" class="field d-none">
-                                                <label for="hydro-tc-retardance">N (opór) 0.02–0.8</label>
-                                                <input id="hydro-tc-retardance" type="number" value="0.4" min="0.02" max="0.8" step="0.02">
-                                            </div>
-                                            <div id="tc-overland-col" class="field d-none">
-                                                <label for="hydro-tc-overland-length">L spływu [km]</label>
-                                                <input id="hydro-tc-overland-length" type="number" value="" min="0.01" max="5" step="0.01" placeholder="wymagane">
-                                            </div>
+                                        <div id="nash-params" class="field d-none">
+                                            <label for="hydro-nash-estimation">Estymacja Nash</label>
+                                            <select id="hydro-nash-estimation">
+                                                <option value="from_lutz">Lutz</option>
+                                                <option value="from_tc">z Tc (deprecated)</option>
+                                                <option value="from_urban_regression">Regresja urban.</option>
+                                            </select>
                                         </div>
-                                        <div class="field-row">
-                                            <div id="nash-params" class="field d-none">
-                                                <label for="hydro-nash-estimation">Estymacja Nash</label>
-                                                <select id="hydro-nash-estimation">
-                                                    <option value="from_lutz">Lutz</option>
-                                                    <option value="from_tc">z Tc (deprecated)</option>
-                                                    <option value="from_urban_regression">Regresja urban.</option>
-                                                </select>
-                                            </div>
-                                            <div id="nash-n-row" class="field d-none">
-                                                <label for="hydro-nash-n">N (zbiorniki)</label>
-                                                <input id="hydro-nash-n" type="number" value="3.0" min="0.5" max="20" step="0.5">
-                                            </div>
+                                        <div id="tc-method-params" class="field">
+                                            <label for="hydro-tc-method">Metoda Tc</label>
+                                            <select id="hydro-tc-method">
+                                                <option value="nrcs">NRCS (SCS Lag)</option>
+                                                <option value="kirpich">Kirpich</option>
+                                                <option value="giandotti">Giandotti</option>
+                                                <option value="faa">FAA (spływ pow.)</option>
+                                                <option value="kerby">Kerby</option>
+                                                <option value="kerby_kirpich">Kerby-Kirpich</option>
+                                            </select>
                                         </div>
-                                        <div id="snyder-params" class="field-row d-none">
-                                            <div class="field">
-                                                <label for="hydro-snyder-ct">Ct (1.35–1.65)</label>
-                                                <input id="hydro-snyder-ct" type="number" value="1.5" min="0.5" max="5" step="0.05">
-                                            </div>
-                                            <div class="field">
-                                                <label for="hydro-snyder-cp">Cp (0.4–0.8)</label>
-                                                <input id="hydro-snyder-cp" type="number" value="0.6" min="0.1" max="1.0" step="0.05">
-                                            </div>
+                                        <div id="nash-n-row" class="field d-none">
+                                            <label for="hydro-nash-n">N (zbiorniki)</label>
+                                            <input id="hydro-nash-n" type="number" value="3.0" min="0.5" max="20" step="0.5">
+                                        </div>
+                                        <div id="tc-runoff-coeff-col" class="field d-none">
+                                            <label for="hydro-tc-runoff-coeff">C (spływ) 0–1</label>
+                                            <input id="hydro-tc-runoff-coeff" type="number" value="" min="0" max="1" step="0.05" placeholder="auto z CN">
+                                        </div>
+                                        <div id="tc-retardance-col" class="field d-none">
+                                            <label for="hydro-tc-retardance">N (opór) 0.02–0.8</label>
+                                            <input id="hydro-tc-retardance" type="number" value="0.4" min="0.02" max="0.8" step="0.02">
+                                        </div>
+                                        <div id="tc-overland-col" class="field d-none">
+                                            <label for="hydro-tc-overland-length">L spływu [km]</label>
+                                            <input id="hydro-tc-overland-length" type="number" value="" min="0.01" max="5" step="0.01" placeholder="wymagane">
+                                        </div>
+                                        <div id="snyder-ct-col" class="field d-none">
+                                            <label for="hydro-snyder-ct">Ct (1.35–1.65)</label>
+                                            <input id="hydro-snyder-ct" type="number" value="1.5" min="0.5" max="5" step="0.05">
+                                        </div>
+                                        <div id="snyder-cp-col" class="field d-none">
+                                            <label for="hydro-snyder-cp">Cp (0.4–0.8)</label>
+                                            <input id="hydro-snyder-cp" type="number" value="0.6" min="0.1" max="1.0" step="0.05">
                                         </div>
                                     </div>
                                     <div id="advanced-inputs" class="adv">
@@ -352,7 +407,7 @@
                                             </p>
                                             <p class="notice">
                                                 <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
-                                                <span>Opad projektowy pochodzi z PMAXTP dla klikniętego punktu i nie można go tu zmienić.</span>
+                                                <span>Opad (PMAXTP dla klikniętego punktu albo własna seria) i uwilgotnienie AMC ustawia się w sekcji Hietogram.</span>
                                             </p>
                                             <button id="adv-reset-all" type="button" class="btn sm" disabled>
                                                 <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8a4.5 4.5 0 1 0 1.3-3.2"/><path d="M4.5 2v3h3"/></svg>
@@ -452,6 +507,7 @@
 <script defer src="js/info.js"></script>
 <script defer src="js/hydrograph.js"></script>
 <script defer src="js/advanced.js"></script>
+<script defer src="js/custom-rain.js"></script>
 <script defer src="js/depressions.js"></script>
 <script defer src="js/sewer.js"></script>
 <script defer src="js/feedback.js"></script>

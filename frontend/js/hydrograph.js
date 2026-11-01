@@ -43,6 +43,10 @@
             });
             probSelect.value = '10';
 
+            if (Hydrograf.customRain) {
+                Hydrograf.customRain.setMaxSteps(scenarios.custom_precipitation_max_steps);
+            }
+
             scenariosLoaded = true;
         } catch (err) {
             console.warn('Failed to load scenarios:', err.message);
@@ -62,28 +66,36 @@
         if (!data.watershed.hydrograph_available) return;
 
         var click = Hydrograf.app.getClickCoords();
-        var duration = document.getElementById('hydro-duration').value;
-        var probability = parseFloat(document.getElementById('hydro-probability').value);
-        var hietogramType = document.getElementById('hydro-hietogram-type').value;
-        var alpha = parseFloat(document.getElementById('hydro-alpha').value) || 2.0;
-        var beta = parseFloat(document.getElementById('hydro-beta').value) || 5.0;
         var uhModel = document.getElementById('hydro-uh-model').value;
-        // Advanced mode may replace the morphometry; no request while its form is invalid
+        // Advanced mode may replace the morphometry and an own rainfall series
+        // the PMAXTP design storm; no request while either form is invalid
         var morph = Hydrograf.advanced
             ? Hydrograf.advanced.requestMorphometry(data)
             : { valid: true, morphometry: data.watershed.morphometry || null };
-        if (!morph.valid) return;
+        var rain = Hydrograf.customRain
+            ? Hydrograf.customRain.request(data)
+            : { active: false, valid: true, series: null };
+        if (!morph.valid || !rain.valid) return;
 
         var myId = ++_requestId;
+        var duration = null;
+        var probability = null;
 
         try {
             var opts = {
                 morphometry: morph.morphometry,
-                hietogram_type: hietogramType,
-                hietogram_alpha: alpha,
-                hietogram_beta: beta,
+                amc: document.getElementById('hydro-amc').value,
                 uh_model: uhModel,
             };
+            if (rain.active) {
+                opts.custom_precipitation = rain.series;
+            } else {
+                duration = document.getElementById('hydro-duration').value;
+                probability = parseFloat(document.getElementById('hydro-probability').value);
+                opts.hietogram_type = document.getElementById('hydro-hietogram-type').value;
+                opts.hietogram_alpha = parseFloat(document.getElementById('hydro-alpha').value) || 2.0;
+                opts.hietogram_beta = parseFloat(document.getElementById('hydro-beta').value) || 5.0;
+            }
             if (uhModel !== 'nash' || document.getElementById('hydro-nash-estimation').value === 'from_tc') {
                 opts.tc_method = document.getElementById('hydro-tc-method').value;
                 // TC extra params
@@ -123,9 +135,16 @@
 
             // Hietogram and hydrograph: filled line charts, each on its own time range
             var precip = result.precipitation;
+            if (Hydrograf.customRain) Hydrograf.customRain.noteResult(data, precip);
             Hydrograf.charts.renderHietogramChart(
                 'chart-hietogram', precip.times_min,
-                precip.intensities_mm, precip.effective_mm || []
+                precip.intensities_mm, precip.effective_mm || [],
+                {
+                    step: precip.timestep_min,
+                    source: precip.source === 'custom'
+                        ? 'w\u0142asna seria'
+                        : 'PMAXTP ' + duration + ', p = ' + precip.probability_percent + '%',
+                }
             );
             Hydrograf.charts.renderHydrographChart(
                 'chart-hydrograph', result.hydrograph.times_min,
@@ -147,7 +166,7 @@
                 summary.appendChild(item);
             });
 
-            displayPrecipBalance(result.water_balance);
+            displayPrecipBalance(result.water_balance, result.metadata);
             displayMetadata(result.metadata);
         } catch (err) {
             if (myId !== _requestId) return;
@@ -160,7 +179,7 @@
 
     // ── Water balance & metadata tables ────────────────────────────────
 
-    function displayPrecipBalance(wb) {
+    function displayPrecipBalance(wb, meta) {
         var container = document.getElementById('hietogram-balance');
         container.innerHTML = '';
 
@@ -171,7 +190,7 @@
             ['Opad ca\u0142kowity', wb.total_precip_mm.toFixed(1) + ' mm', 'total_precip_mm'],
             ['Opad efektywny', wb.total_effective_mm.toFixed(1) + ' mm', 'total_effective_mm'],
             ['Wsp. odp\u0142ywu', wb.runoff_coefficient.toFixed(3), 'runoff_coefficient'],
-            ['CN u\u017cyty', String(wb.cn_used), 'cn_used'],
+            ['CN u\u017cyty', wb.cn_used.toFixed(1) + (meta.amc ? ' (AMC ' + meta.amc + ')' : ''), 'cn_used'],
             ['Retencja S', wb.retention_mm.toFixed(1) + ' mm', 'retention_mm'],
             ['Straty pocz\u0105tkowe Ia', wb.initial_abstraction_mm.toFixed(1) + ' mm', 'initial_abstraction_mm'],
         ];
@@ -274,55 +293,39 @@
         betaParams.classList.toggle('d-none', htype !== 'beta');
     }
 
-    function updateNashVisibility() {
+    /**
+     * Show the fields the selected model uses. The form is one 2-column grid,
+     * so the visible fields close up: for Nash its estimation sits next to
+     * "Model UH" and "Metoda Tc" follows only when the estimation needs Tc.
+     */
+    function updateHydrographFields() {
         var model = document.getElementById('hydro-uh-model').value;
-        var nashParams = document.getElementById('nash-params');
-        var nashNRow = document.getElementById('nash-n-row');
-        var snyderParams = document.getElementById('snyder-params');
-        var tcMethodParams = document.getElementById('tc-method-params');
         var estimation = document.getElementById('hydro-nash-estimation').value;
-
-        if (model === 'nash') {
-            nashParams.classList.remove('d-none');
-            nashNRow.classList.toggle('d-none', estimation !== 'from_tc');
-        } else {
-            nashParams.classList.add('d-none');
-            nashNRow.classList.add('d-none');
-        }
-        snyderParams.classList.toggle('d-none', model !== 'snyder');
-        // Tc method visible for SCS, Snyder, and Nash from_tc
-        var needsTc = model !== 'nash' || estimation === 'from_tc';
-        tcMethodParams.classList.toggle('d-none', !needsTc);
-        updateTcExtraParams();
-    }
-
-    function updateTcExtraParams() {
         var method = document.getElementById('hydro-tc-method').value;
-        var extraRow = document.getElementById('tc-extra-params');
-        var runoffCol = document.getElementById('tc-runoff-coeff-col');
-        var retardanceCol = document.getElementById('tc-retardance-col');
-        var overlandCol = document.getElementById('tc-overland-col');
-
-        // Ukryj extra params gdy tc-method jest ukryty (np. Nash + from_lutz)
-        var tcMethodParams = document.getElementById('tc-method-params');
-        var tcVisible = !tcMethodParams.classList.contains('d-none');
-
-        var needsRunoff = tcVisible && (method === 'faa');
-        var needsRetardance = tcVisible && (method === 'kerby' || method === 'kerby_kirpich');
-        var needsOverland = tcVisible && (method === 'faa' || method === 'kerby' || method === 'kerby_kirpich');
-        var needsExtra = needsRunoff || needsRetardance || needsOverland;
-
-        extraRow.classList.toggle('d-none', !needsExtra);
-        runoffCol.classList.toggle('d-none', !needsRunoff);
-        retardanceCol.classList.toggle('d-none', !needsRetardance);
-        overlandCol.classList.toggle('d-none', !needsOverland);
+        var nash = model === 'nash';
+        // Tc method for SCS, Snyder and Nash from_tc
+        var needsTc = !nash || estimation === 'from_tc';
+        var kerby = method === 'kerby' || method === 'kerby_kirpich';
+        var visible = {
+            'nash-params': nash,
+            'tc-method-params': needsTc,
+            'nash-n-row': nash && estimation === 'from_tc',
+            'tc-runoff-coeff-col': needsTc && method === 'faa',
+            'tc-retardance-col': needsTc && kerby,
+            'tc-overland-col': needsTc && (method === 'faa' || kerby),
+            'snyder-ct-col': model === 'snyder',
+            'snyder-cp-col': model === 'snyder',
+        };
+        Object.keys(visible).forEach(function (id) {
+            document.getElementById(id).classList.toggle('d-none', !visible[id]);
+        });
     }
 
     // ── Init ───────────────────────────────────────────────────────────
 
     var _INPUT_IDS = [
         'hydro-duration', 'hydro-probability', 'hydro-hietogram-type',
-        'hydro-alpha', 'hydro-beta',
+        'hydro-alpha', 'hydro-beta', 'hydro-amc',
         'hydro-uh-model', 'hydro-tc-method',
         'hydro-nash-estimation', 'hydro-nash-n',
         'hydro-snyder-ct', 'hydro-snyder-cp',
@@ -338,20 +341,12 @@
             hietogramType.addEventListener('change', updateHietogramVisibility);
         }
 
-        var uhSelect = document.getElementById('hydro-uh-model');
-        if (uhSelect) {
-            uhSelect.addEventListener('change', updateNashVisibility);
-        }
-        var nashEst = document.getElementById('hydro-nash-estimation');
-        if (nashEst) {
-            nashEst.addEventListener('change', updateNashVisibility);
-        }
-
-        var tcMethodSelect = document.getElementById('hydro-tc-method');
-        if (tcMethodSelect) {
-            tcMethodSelect.addEventListener('change', updateTcExtraParams);
-        }
-        updateTcExtraParams();
+        ['hydro-uh-model', 'hydro-nash-estimation', 'hydro-tc-method'].forEach(function (id) {
+            var select = document.getElementById(id);
+            if (select) select.addEventListener('change', updateHydrographFields);
+        });
+        updateHietogramVisibility();
+        updateHydrographFields();
 
         // Auto-regenerate on any parameter change
         _INPUT_IDS.forEach(function (id) {

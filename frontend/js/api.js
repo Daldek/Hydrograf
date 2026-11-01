@@ -47,6 +47,18 @@
     }
 
     /**
+     * Text of a FastAPI `detail`: a string, or the first pydantic error of an
+     * array (422), whose "Value error, " prefix is dropped.
+     */
+    function detailMessage(detail) {
+        if (typeof detail === 'string') return detail;
+        if (Array.isArray(detail) && detail.length && detail[0] && typeof detail[0].msg === 'string') {
+            return detail[0].msg.replace(/^Value error,\s*/, '');
+        }
+        return null;
+    }
+
+    /**
      * Generic error handler for API responses.
      */
     async function handleError(response) {
@@ -55,10 +67,10 @@
             message = 'Nieoczekiwany błąd (' + response.status + '). Spróbuj ponownie.';
         }
 
-        if (response.status === 404 || response.status === 400) {
+        if (response.status === 404 || response.status === 400 || response.status === 422) {
             try {
                 const data = await response.json();
-                if (data.detail) message = data.detail;
+                message = detailMessage(data.detail) || message;
             } catch { /* use default */ }
         }
 
@@ -100,16 +112,20 @@
 
     /**
      * Generate hydrograph for given parameters.
+     * With opts.custom_precipitation ({ timestep_min, depths_mm }) the PMAXTP
+     * design storm is replaced and duration/probability may be null.
      */
     async function generateHydrograph(lat, lng, duration, probability, opts) {
         var payload = {
             latitude: lat,
             longitude: lng,
-            duration: duration,
-            probability: probability,
         };
+        if (duration != null) payload.duration = duration;
+        if (probability != null) payload.probability = probability;
         if (opts) {
             if (opts.morphometry) payload.morphometry = opts.morphometry;
+            if (opts.custom_precipitation) payload.custom_precipitation = opts.custom_precipitation;
+            if (opts.amc) payload.amc = opts.amc;
             if (opts.hietogram_type) payload.hietogram_type = opts.hietogram_type;
             if (opts.hietogram_alpha != null) payload.hietogram_alpha = opts.hietogram_alpha;
             if (opts.hietogram_beta != null) payload.hietogram_beta = opts.hietogram_beta;
@@ -139,6 +155,15 @@
      */
     async function getScenarios() {
         const response = await fetch('/api/scenarios');
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
+    /**
+     * Optional layers available on this server, e.g. { sewer: false }.
+     */
+    async function getLayers() {
+        const response = await fetch('/api/layers');
         if (!response.ok) await handleError(response);
         return response.json();
     }
@@ -220,6 +245,7 @@
         getTerrainProfile: getTerrainProfile,
         generateHydrograph: generateHydrograph,
         getScenarios: getScenarios,
+        getLayers: getLayers,
         getDepressions: getDepressions,
         delineateWatershed: delineateWatershed,
         submitFeedback: submitFeedback,

@@ -97,7 +97,7 @@
     function renderSummary(m) {
         var items = [
             ['Powierzchnia', m.area_km2, 2, 'km²'],
-            ['CN', m.cn, 0, ''],
+            ['CN', m.cn, 1, ''],
             ['Wys. średnia', m.elevation_mean_m, 0, 'm n.p.m.'],
             ['Spadek', m.mean_slope_m_per_m != null ? m.mean_slope_m_per_m * 100 : null, 2, '%'],
         ].filter(function (item) { return item[1] !== null && item[1] !== undefined; });
@@ -149,7 +149,7 @@
             ['Spadek cieku głównego', formatSlope(m.channel_slope_m_per_m), 'channel_slope_m_per_m'],
             ['Najdł. droga spływu', formatValue(m.hydraulic_length_km, 'km', 2), 'hydraulic_length_km'],
             ['Droga spływu z działu', formatValue(m.divide_flow_path_km, 'km', 2), 'divide_flow_path_km'],
-            ['CN (krzywa odpływu)', m.cn !== null && m.cn !== undefined ? String(m.cn) : '—', 'cn'],
+            ['CN (krzywa odpływu)', formatRatio(m.cn, 1), 'cn'],
             ['Ujście — szerokość φ', formatValue(o.latitude, '°N', 6), 'latitude'],
             ['Ujście — długość λ', formatValue(o.longitude, '°E', 6), 'longitude'],
             ['Ujście — wysokość', formatValue(o.elevation_m, 'm n.p.m.', 1), 'elevation_m'],
@@ -164,28 +164,28 @@
         ]);
 
         fillTable(els.paramsRelief, [
-            ['Wsk. rzeźby R', formatValue(m.relief_ratio, '‰', 2)],
-            ['Spadek działu wodnego R<sub>p</sub>', formatValue(m.divide_slope, '‰', 2)],
-            ['Wsp. asymetrii α', formatRatio(m.asymmetry_coefficient, 3)],
-            ['Całka hipsometryczna HI', formatRatio(m.hypsometric_integral, 3)],
+            ['Wsk. rzeźby R', formatValue(m.relief_ratio, '‰', 2), 'relief_ratio'],
+            ['Spadek działu wodnego R<sub>p</sub>', formatValue(m.divide_slope, '‰', 2), 'divide_slope'],
+            ['Wsp. asymetrii α', formatRatio(m.asymmetry_coefficient, 3), 'asymmetry_coefficient'],
+            ['Całka hipsometryczna HI', formatRatio(m.hypsometric_integral, 3), 'hypsometric_integral'],
         ]);
 
         fillTable(els.paramsDrainage, [
-            ['Gęstość sieci Dd', m.drainage_density_km_per_km2 != null
+            ['Gęstość sieci D<sub>d</sub>', m.drainage_density_km_per_km2 != null
                 ? formatValue(m.drainage_density_km_per_km2, 'km/km²', 2)
-                : 'brak cieków BDOT'],
-            ['Częstość cieków Fs', m.stream_frequency_per_km2 != null
+                : 'brak cieków BDOT', 'drainage_density_km_per_km2'],
+            ['Częstość cieków F<sub>s</sub>', m.stream_frequency_per_km2 != null
                 ? formatValue(m.stream_frequency_per_km2, '1/km²', 2)
-                : 'brak cieków BDOT'],
-            ['Liczba chropowatoś. Rn', m.ruggedness_number != null
+                : 'brak cieków BDOT', 'stream_frequency_per_km2'],
+            ['Liczba chropowatości R<sub>n</sub>', m.ruggedness_number != null
                 ? formatRatio(m.ruggedness_number, 3)
-                : 'brak cieków BDOT'],
+                : 'brak cieków BDOT', 'ruggedness_number'],
             ['Max rząd Strahlera', m.max_strahler_order != null
                 ? String(m.max_strahler_order)
-                : 'brak cieków BDOT'],
+                : 'brak cieków BDOT', 'max_strahler_order'],
             ['Pokrycie BDOT', m.real_channel_length_km != null && m.channel_length_km
                 ? (100 * m.real_channel_length_km / m.channel_length_km).toFixed(0) + '%'
-                : '—'],
+                : '—', 'bdot_coverage'],
         ]);
 
         // Charts: land cover donut

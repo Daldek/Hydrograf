@@ -13,20 +13,21 @@
 
     var DEBOUNCE_MS = 300;
 
-    // kind: 'pos' (> 0), 'elev' (any number), 'cn' (integer 1-100).
+    // kind: 'pos' (> 0), 'elev' (any number), 'cn' (1-100, fractional allowed).
+    // digits: display precision, also the input step (0.01 km, 0.1 m, ...).
     // scale: display value = request value * scale (slopes m/m shown in %).
     var FIELDS = [
-        { key: 'area_km2', label: 'Powierzchnia zlewni', unit: 'km²', digits: 4, kind: 'pos' },
-        { key: 'perimeter_km', label: 'Obwód zlewni', unit: 'km', digits: 4, kind: 'pos' },
-        { key: 'length_km', label: 'Długość zlewni', unit: 'km', digits: 4, kind: 'pos' },
-        { key: 'elevation_min_m', label: 'Wysokość min.', unit: 'm n.p.m.', digits: 2, kind: 'elev' },
-        { key: 'elevation_max_m', label: 'Wysokość max.', unit: 'm n.p.m.', digits: 2, kind: 'elev' },
-        { key: 'elevation_mean_m', label: 'Wysokość średnia', unit: 'm n.p.m.', digits: 2, kind: 'elev' },
-        { key: 'mean_slope_m_per_m', label: 'Średni spadek terenu', unit: '%', digits: 3, kind: 'pos', scale: 100 },
-        { key: 'channel_length_km', label: 'Długość cieku głównego', unit: 'km', digits: 4, kind: 'pos' },
-        { key: 'channel_slope_m_per_m', label: 'Spadek cieku głównego', unit: '%', digits: 3, kind: 'pos', scale: 100 },
-        { key: 'length_to_centroid_km', label: 'Odległość do środka ciężkości Lc', unit: 'km', digits: 4, kind: 'pos' },
-        { key: 'cn', label: 'CN (krzywa odpływu)', unit: '–', digits: 0, kind: 'cn' },
+        { key: 'area_km2', label: 'Powierzchnia zlewni', unit: 'km²', digits: 2, kind: 'pos' },
+        { key: 'perimeter_km', label: 'Obwód zlewni', unit: 'km', digits: 2, kind: 'pos' },
+        { key: 'length_km', label: 'Długość zlewni', unit: 'km', digits: 2, kind: 'pos' },
+        { key: 'elevation_min_m', label: 'Wysokość min.', unit: 'm n.p.m.', digits: 1, kind: 'elev' },
+        { key: 'elevation_max_m', label: 'Wysokość max.', unit: 'm n.p.m.', digits: 1, kind: 'elev' },
+        { key: 'elevation_mean_m', label: 'Wysokość średnia', unit: 'm n.p.m.', digits: 1, kind: 'elev' },
+        { key: 'mean_slope_m_per_m', label: 'Średni spadek terenu', unit: '%', digits: 2, kind: 'pos', scale: 100 },
+        { key: 'channel_length_km', label: 'Długość cieku głównego', unit: 'km', digits: 2, kind: 'pos' },
+        { key: 'channel_slope_m_per_m', label: 'Spadek cieku głównego', unit: '%', digits: 2, kind: 'pos', scale: 100 },
+        { key: 'length_to_centroid_km', label: 'Odległość do środka ciężkości Lc', unit: 'km', digits: 2, kind: 'pos' },
+        { key: 'cn', label: 'CN (krzywa odpływu)', unit: '–', digits: 1, kind: 'cn' },
     ];
 
     var RESET_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true">' +
@@ -46,8 +47,8 @@
         return Number(scaled.toFixed(field.digits));
     }
 
-    function formatNumber(n) {
-        return n === null ? '' : String(n);
+    function formatNumber(field, n) {
+        return n === null ? '' : n.toFixed(field.digits);
     }
 
     /** Parsed input: null when empty, NaN when not a number. */
@@ -75,8 +76,8 @@
         if (v === null) return row.shown === null ? '' : 'Podaj wartość.';
         if (!isFinite(v)) return 'Podaj liczbę.';
         if (f.kind === 'pos' && v <= 0) return 'Wartość musi być dodatnia.';
-        if (f.kind === 'cn' && (v < 1 || v > 100 || Math.floor(v) !== v)) {
-            return 'CN: liczba całkowita od 1 do 100.';
+        if (f.kind === 'cn' && (v < 1 || v > 100)) {
+            return 'CN: liczba od 1 do 100 (np. 68.4).';
         }
         if (f.key === 'elevation_max_m') {
             var vmin = values.elevation_min_m;
@@ -111,7 +112,7 @@
             row.err.textContent = msg;
             row.err.classList.toggle('d-none', !msg);
             row.orig.textContent = edited[f.key]
-                ? 'Hydrograf: ' + (row.shown === null ? 'brak' : formatNumber(row.shown) + (f.unit === '–' ? '' : ' ' + f.unit))
+                ? 'Hydrograf: ' + (row.shown === null ? 'brak' : formatNumber(f, row.shown) + (f.unit === '–' ? '' : ' ' + f.unit))
                 : '';
             row.orig.classList.toggle('d-none', !edited[f.key]);
         });
@@ -146,7 +147,7 @@
         FIELDS.forEach(function (f) {
             var row = _rows[f.key];
             row.shown = _original ? toDisplay(f, _original[f.key]) : null;
-            row.input.value = formatNumber(row.shown);
+            row.input.value = formatNumber(f, row.shown);
             row.input.placeholder = row.shown === null ? 'brak' : '';
         });
         evaluate();
@@ -211,7 +212,7 @@
     }
 
     function resetRow(row) {
-        row.input.value = formatNumber(row.shown);
+        row.input.value = formatNumber(row.field, row.shown);
     }
 
     function onToggle() {
@@ -251,7 +252,11 @@
         var input = document.createElement('input');
         input.id = id;
         input.type = 'number';
-        input.step = 'any';
+        input.step = Math.pow(10, -f.digits).toFixed(f.digits);
+        if (f.kind === 'cn') {
+            input.min = '1';
+            input.max = '100';
+        }
         input.inputMode = 'decimal';
         input.setAttribute('aria-describedby', id + '-err ' + id + '-orig');
 

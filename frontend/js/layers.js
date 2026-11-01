@@ -455,20 +455,37 @@
             Hydrograf.map.removeLandCoverLegend
         );
 
-        // Sewer network overlay (MVT, no known extent)
+        // Sewer network overlay (MVT, no known extent): only when the server
+        // holds sewer data (GET /api/layers). A placeholder keeps the row's
+        // place in the group while the answer is pending.
         if (window.Hydrograf.sewer) {
-            addOverlayEntry(
-                overlayGroup,
-                'Kanalizacja deszczowa',
-                function () { return window.Hydrograf.sewer.getLayer(); },
-                noBounds,
-                function (opacity) {
-                    var layer = window.Hydrograf.sewer.getLayer();
-                    var container = layer && layer.getContainer();
-                    if (container) container.style.opacity = opacity;
-                },
-                50
-            );
+            var sewerSlot = document.createComment('sewer');
+            overlayGroup.appendChild(sewerSlot);
+            Hydrograf.api.getLayers()
+                .then(function (available) {
+                    if (!available.sewer) {
+                        sewerSlot.remove();
+                        return;
+                    }
+                    var rows = document.createDocumentFragment();
+                    addOverlayEntry(
+                        rows,
+                        'Kanalizacja deszczowa',
+                        function () { return window.Hydrograf.sewer.getLayer(); },
+                        noBounds,
+                        function (opacity) {
+                            var layer = window.Hydrograf.sewer.getLayer();
+                            var container = layer && layer.getContainer();
+                            if (container) container.style.opacity = opacity;
+                        },
+                        50
+                    );
+                    sewerSlot.replaceWith(rows);
+                })
+                .catch(function (err) {
+                    sewerSlot.remove();
+                    console.warn('Layer availability unknown, sewer layer hidden:', err.message);
+                });
         }
 
         // ===== Analysis results group =====
