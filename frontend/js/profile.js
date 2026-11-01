@@ -2,7 +2,7 @@
  * Hydrograf Profile module.
  *
  * Terrain profile via manual line drawing on the map.
- * Renders in a standalone floating panel (#profile-panel).
+ * Renders in the profile drawer at the bottom of the map (#profile-drawer).
  * Hover over chart shows corresponding point on the map line.
  */
 (function () {
@@ -20,28 +20,39 @@
         var canvas = document.getElementById(canvasId);
         if (!canvas) return;
         var container = canvas.parentElement;
-        var existing = container.querySelector('.profile-error-alert');
-        if (existing) existing.remove();
+        clearProfileError();
         var isDemError = /503|DEM|dane wysoko/.test(message);
         var text = isDemError
             ? 'DEM niedostępny — profil terenu wymaga wgranych danych wysokościowych'
             : 'Nie udało się pobrać profilu terenu';
-        var alertDiv = document.createElement('div');
-        alertDiv.className = 'alert alert-warning alert-dismissible small py-1 px-2 mb-1 profile-error-alert';
-        alertDiv.setAttribute('role', 'alert');
+        var alertEl = document.createElement('p');
+        alertEl.className = 'notice warn profile-error-alert';
+        alertEl.setAttribute('role', 'alert');
         var textSpan = document.createElement('span');
         textSpan.textContent = text;
-        alertDiv.appendChild(textSpan);
-        var btnClose = document.createElement('button');
-        btnClose.type = 'button';
-        btnClose.className = 'btn-close btn-close-sm';
-        btnClose.style.cssText = 'padding:0.15rem 0.25rem;font-size:0.65rem;';
-        btnClose.setAttribute('aria-label', 'Zamknij');
-        btnClose.addEventListener('click', function () {
-            alertDiv.remove();
-        });
-        alertDiv.appendChild(btnClose);
-        container.insertBefore(alertDiv, canvas);
+        alertEl.appendChild(textSpan);
+        container.parentElement.insertBefore(alertEl, container);
+    }
+
+    function clearProfileError() {
+        var drawer = document.getElementById('profile-drawer');
+        var existing = drawer && drawer.querySelector('.profile-error-alert');
+        if (existing) existing.remove();
+    }
+
+    /** Drawer subtitle: line length and elevation range. */
+    function setProfileSummary(distances, elevations) {
+        var el = document.getElementById('profile-summary');
+        if (!el) return;
+        var valid = (elevations || []).filter(function (h) { return h !== null && h !== undefined; });
+        if (!distances || distances.length === 0 || valid.length === 0) {
+            el.textContent = '';
+            return;
+        }
+        var lengthKm = distances[distances.length - 1] / 1000;
+        el.textContent = 'Długość ' + lengthKm.toFixed(2) + ' km · H ' +
+            Math.min.apply(null, valid).toFixed(0) + '–' +
+            Math.max.apply(null, valid).toFixed(0) + ' m n.p.m.';
     }
 
     /**
@@ -89,7 +100,7 @@
 
     /**
      * Activate draw-profile mode.
-     * Renders result in the standalone floating panel (#profile-panel).
+     * Renders result in the profile drawer (#profile-drawer).
      */
     function activateDrawProfile() {
         hideProfilePanel();
@@ -105,10 +116,11 @@
             };
 
             Hydrograf.api.getTerrainProfile(lineGeojson, 100).then(function (result) {
-                // Ensure panel is visible BEFORE rendering the chart
-                var panel = document.getElementById('profile-panel');
-                if (panel) panel.classList.remove('d-none');
-
+                // Ensure drawer is visible BEFORE rendering the chart
+                var drawer = document.getElementById('profile-drawer');
+                if (drawer) drawer.hidden = false;
+                clearProfileError();
+                setProfileSummary(result.distances_m, result.elevations_m);
                 Hydrograf.charts.renderProfileChart(
                     'chart-profile-standalone',
                     result.distances_m,
@@ -123,19 +135,21 @@
                 }, 50);
             }).catch(function (err) {
                 console.warn('Profile error:', err.message);
-                var panel = document.getElementById('profile-panel');
-                if (panel) panel.classList.remove('d-none');
+                var drawer = document.getElementById('profile-drawer');
+                if (drawer) drawer.hidden = false;
+                setProfileSummary(null, null);
                 showProfileError('chart-profile-standalone', err.message || 'Błąd');
             });
         });
     }
 
     /**
-     * Hide profile panel, clear drawn line, destroy standalone chart.
+     * Hide profile drawer, clear drawn line, destroy standalone chart.
      */
     function hideProfilePanel() {
-        var panel = document.getElementById('profile-panel');
-        if (panel) panel.classList.add('d-none');
+        var drawer = document.getElementById('profile-drawer');
+        if (drawer) drawer.hidden = true;
+        clearProfileError();
         Hydrograf.map.cancelDrawing();
         Hydrograf.map.clearProfileLine();
         Hydrograf.map.clearProfileHoverMarker();

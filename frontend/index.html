@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hydrograf — Hub hydrologiczny</title>
+    <link rel="icon" type="image/svg+xml" href="img/hydrograf.svg">
+
+    <!-- Theme before first paint -->
+    <script src="js/theme-init.js"></script>
 
     <!-- Preconnect to CDNs -->
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
@@ -14,384 +18,422 @@
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
           crossorigin="anonymous">
 
-    <!-- Bootstrap 5.3.3 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-          rel="stylesheet"
-          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+    <!-- MapLibre GL 4.7.1 (vector basemap) -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+          integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V"
           crossorigin="anonymous">
 
-    <!-- Glassmorphism tokens -->
-    <link rel="stylesheet" href="css/glass.css">
-    <!-- Custom styles -->
-    <link rel="stylesheet" href="css/style.css">
+    <!-- Nogat design tokens, shell chrome, then the app -->
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/chrome.css">
+    <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-dark navbar-glass px-3">
-        <span class="navbar-brand mb-0 h1">Hydrograf</span>
-        <div class="d-flex align-items-center gap-3">
-            <span class="navbar-text d-none d-md-inline" id="system-status" aria-live="polite"></span>
-            <a href="/instrukcja" class="btn btn-outline-secondary btn-sm">Instrukcja</a>
-            <button type="button" id="feedback-open-btn" class="btn btn-outline-secondary btn-sm">Zgłoś uwagę</button>
+<div class="shell">
+
+    <!-- Top bar: mark + tool name, context, status, actions -->
+    <header class="topbar">
+        <a class="brand" href="/" aria-label="Hydrograf, strona główna">
+            <img src="img/hydrograf.svg" alt="">
+            <span class="name">Hydrograf</span>
+        </a>
+        <nav class="crumbs" aria-label="Kontekst">
+            <span>Mapa</span><span class="sep" id="crumb-sep" hidden>/</span>
+            <strong id="crumb-context"></strong>
+        </nav>
+        <span class="badge" id="system-status" role="status" aria-live="polite">
+            <span class="label">Sprawdzanie usług…</span>
+        </span>
+        <div class="top-actions">
+            <a class="btn ghost" id="btn-guide" href="/instrukcja/">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5z"/><path d="M4 16.5V4.5M7.5 6.5h5"/></svg>
+                <span class="label">Instrukcja</span>
+            </a>
+            <button class="btn" id="feedback-open-btn" type="button" aria-haspopup="dialog" aria-controls="feedback-modal" title="Zgłoś uwagę">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v10H8.5L5 17v-3H3z"/></svg>
+                <span class="label">Zgłoś uwagę</span>
+            </button>
+            <div class="seg" role="group" aria-label="Motyw">
+                <button type="button" id="theme-auto" aria-pressed="true" title="Motyw systemowy">
+                    <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor"/></svg>
+                    <span class="label">Auto</span>
+                </button>
+                <button type="button" id="theme-light" aria-pressed="false" title="Jasny">
+                    <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"/></svg>
+                    <span class="label">Jasny</span>
+                </button>
+                <button type="button" id="theme-dark" aria-pressed="false" title="Ciemny">
+                    <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"/></svg>
+                    <span class="label">Ciemny</span>
+                </button>
+            </div>
         </div>
+    </header>
+
+    <!-- Navigation rail (bottom bar on phones) -->
+    <nav class="rail" aria-label="Widoki">
+        <a class="rail-item active" href="#" aria-current="page" id="rail-map">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>
+            Mapa
+        </a>
+        <a class="rail-item" href="#" id="rail-profile">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18"/><path d="M3 16.5l5-7 4 4 3-5 6 8.5"/></svg>
+            Profil
+        </a>
+        <a class="rail-item" href="/admin">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+            Admini&shy;stracja
+        </a>
+        <span class="spacer"></span>
+        <a class="rail-item" href="/instrukcja/">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v15H7.5A2.5 2.5 0 0 0 5 20.5z"/><path d="M5 20.5v-15M9 7.5h6"/></svg>
+            Instrukcja
+        </a>
     </nav>
 
-    <!-- Full-screen map -->
-    <div id="map-wrapper">
-        <div id="map"></div>
+    <main class="main">
+        <div class="view-layout" id="view">
 
-        <!-- Layers panel (left side) -->
-        <div id="layers-panel" class="glass-panel">
-            <h6 class="layers-header">Warstwy</h6>
-            <div id="layers-list"></div>
+            <!-- Left panel: layers (filled by layers.js) -->
+            <aside class="view-panel left" id="layers-panel" aria-labelledby="layers-title">
+                <div class="panel-head">
+                    <span class="grip" aria-hidden="true"></span>
+                    <h2 id="layers-title">Warstwy</h2>
+                    <button class="btn ghost sm icon" type="button" id="zoom-extent" title="Przybliż do zasięgu warstw" aria-label="Przybliż do zasięgu warstw">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/><rect x="7" y="7" width="6" height="6" rx="1"/></svg>
+                    </button>
+                    <button class="btn ghost sm icon" type="button" id="layers-close" aria-label="Zamknij panel warstw" title="Zamknij panel warstw">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
+                    </button>
+                </div>
+                <div class="view-panel-body">
+                    <div id="layers-list"></div>
+                </div>
+            </aside>
+            <div class="resizer" id="left-resizer" role="separator" aria-orientation="vertical" aria-controls="layers-panel" aria-label="Szerokość panelu warstw" aria-valuemin="260" aria-valuemax="560" aria-valuenow="300" tabindex="0"></div>
+
+            <!-- Centre: mode bar + map -->
+            <section class="view-center" aria-label="Mapa">
+                <div class="map-bar">
+                    <button class="btn sm phone-only" type="button" id="open-layers" aria-controls="layers-panel" aria-expanded="true">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3l7 4-7 4-7-4z"/><path d="M3 11l7 4 7-4"/></svg>
+                        Warstwy
+                    </button>
+                    <div class="seg" id="mode-toolbar" role="radiogroup" aria-label="Tryb pracy">
+                        <button type="button" id="mode-browse" role="radio" aria-checked="true" class="on">Przeglądanie</button>
+                        <button type="button" id="mode-select" role="radio" aria-checked="false">Wybierz zlewnię</button>
+                        <button type="button" id="mode-profile" role="radio" aria-checked="false">Profil terenu</button>
+                    </div>
+                    <span class="hint">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
+                        <span id="map-hint-text">Przesuwaj i przybliżaj mapę</span>
+                        <span id="draw-instructions" class="d-none">Klikaj, aby dodać wierzchołki; dwuklik kończy, Backspace cofa, Esc anuluje</span>
+                    </span>
+                    <div class="end phone-only">
+                        <button class="btn sm" type="button" id="open-results" aria-controls="results-panel" aria-expanded="false">Zlewnia</button>
+                    </div>
+                </div>
+
+                <div class="map-wrap" id="map-wrap" data-mode="browse">
+                    <div id="map"></div>
+
+                    <!-- Terrain profile drawer (profile mode) -->
+                    <section class="profile-drawer" id="profile-drawer" aria-labelledby="profile-title" hidden>
+                        <div class="panel-head">
+                            <h2 id="profile-title">Profil terenu</h2>
+                            <span class="sub num" id="profile-summary"></span>
+                            <button class="btn ghost sm icon" type="button" id="profile-close" aria-label="Zamknij profil" title="Zamknij profil">
+                                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
+                            </button>
+                        </div>
+                        <div class="chart">
+                            <div class="chart-container chart-profile">
+                                <canvas id="chart-profile-standalone" role="img" aria-label="Profil terenu"></canvas>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </section>
+
+            <!-- Right panel: watershed results -->
+            <div class="resizer" id="right-resizer" role="separator" aria-orientation="vertical" aria-controls="results-panel" aria-label="Szerokość panelu zlewni" aria-valuemin="340" aria-valuemax="720" aria-valuenow="400" tabindex="0"></div>
+            <aside class="view-panel right" id="results-panel" aria-labelledby="results-title">
+                <div class="panel-head">
+                    <span class="grip" aria-hidden="true"></span>
+                    <h2 id="results-title">Zlewnia</h2>
+                    <span class="sub num" id="results-sub"></span>
+                    <button class="btn ghost sm icon" type="button" id="results-close" aria-label="Zamknij panel zlewni i wyczyść wynik" title="Zamknij i wyczyść">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
+                    </button>
+                </div>
+                <div class="view-panel-body" id="results-body">
+                    <!-- Instruction -->
+                    <p id="panel-instruction" class="muted">Wybierz tryb „Wybierz zlewnię” i kliknij na mapie w pobliżu linii spływu, aby wyznaczyć zlewnię.</p>
+
+                    <!-- Loading spinner -->
+                    <div id="panel-loading" class="loading d-none" role="status">
+                        <span class="spinner" aria-hidden="true"></span>
+                        <span>Wyznaczanie zlewni…</span>
+                    </div>
+
+                    <!-- Error -->
+                    <p id="panel-error" class="notice bad d-none" role="alert">
+                        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5v4M8 11v.01"/></svg>
+                        <span><strong>Błąd:</strong> <span id="error-message"></span></span>
+                    </p>
+
+                    <!-- Results -->
+                    <div id="panel-results" class="d-none">
+                        <div class="summary d-none" id="results-summary"></div>
+
+                        <!-- Auto-selection info -->
+                        <p id="panel-auto-select-info" class="notice d-none" role="status">
+                            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
+                            <span id="auto-select-message"></span>
+                        </p>
+
+                        <div class="steps">
+                            <details class="step" id="acc-basic" open>
+                                <summary><span class="step-num" aria-hidden="true"></span><span class="title">Parametry podstawowe</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
+                                <div class="step-body">
+                                    <table class="params"><tbody id="params-basic"></tbody></table>
+                                </div>
+                            </details>
+
+                            <details class="step" id="acc-shape">
+                                <summary><span class="step-num" aria-hidden="true"></span><span class="title">Wskaźniki kształtu</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
+                                <div class="step-body">
+                                    <table class="params"><tbody id="params-shape"></tbody></table>
+                                </div>
+                            </details>
+
+                            <details class="step" id="acc-relief">
+                                <summary><span class="step-num" aria-hidden="true"></span><span class="title">Rzeźba terenu</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
+                                <div class="step-body">
+                                    <div class="chart">
+                                        <div class="chart-title">Krzywa hipsometryczna</div>
+                                        <div class="chart-container"><canvas id="chart-hypsometric" role="img" aria-label="Krzywa hipsometryczna"></canvas></div>
+                                    </div>
+                                    <table class="params"><tbody id="params-relief"></tbody></table>
+                                </div>
+                            </details>
+
+                            <details class="step" id="acc-drainage">
+                                <summary><span class="step-num" aria-hidden="true"></span><span class="title">Sieć rzeczna</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
+                                <div class="step-body">
+                                    <table class="params"><tbody id="params-drainage"></tbody></table>
+                                </div>
+                            </details>
+
+                            <details class="step" id="acc-landcover">
+                                <summary><span class="step-num" aria-hidden="true"></span><span class="title">Pokrycie terenu</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
+                                <div class="step-body">
+                                    <div class="chart-container"><canvas id="chart-landcover" role="img" aria-label="Wykres pokrycia terenu"></canvas></div>
+                                </div>
+                            </details>
+
+                            <details class="step d-none" id="acc-hsg">
+                                <summary><span class="step-num" aria-hidden="true"></span><span class="title">Grupy glebowe (HSG)</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
+                                <div class="step-body">
+                                    <div class="chart-container"><canvas id="chart-hsg" role="img" aria-label="Wykres grup glebowych HSG"></canvas></div>
+                                </div>
+                            </details>
+
+                            <details class="step d-none" id="acc-hietogram">
+                                <summary><span class="step-num" aria-hidden="true"></span><span class="title">Hietogram</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
+                                <div class="step-body">
+                                    <div id="hietogram-form">
+                                        <div class="field-row">
+                                            <div class="field">
+                                                <label for="hydro-duration">Czas trwania</label>
+                                                <select id="hydro-duration"></select>
+                                            </div>
+                                            <div class="field">
+                                                <label for="hydro-probability">Prawdopodobieństwo</label>
+                                                <select id="hydro-probability"></select>
+                                            </div>
+                                        </div>
+                                        <div class="field">
+                                            <label for="hydro-hietogram-type">Rozkład opadu</label>
+                                            <select id="hydro-hietogram-type">
+                                                <option value="beta">Beta</option>
+                                                <option value="euler_ii">DVWK (Euler II)</option>
+                                                <option value="block">Blokowy</option>
+                                            </select>
+                                        </div>
+                                        <div id="beta-params" class="field-row">
+                                            <div class="field">
+                                                <label for="hydro-alpha">&alpha;</label>
+                                                <input id="hydro-alpha" type="number" value="2.0" min="0.1" max="20" step="0.1">
+                                            </div>
+                                            <div class="field">
+                                                <label for="hydro-beta">&beta;</label>
+                                                <input id="hydro-beta" type="number" value="5.0" min="0.1" max="20" step="0.1">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="hietogram-results" class="d-none">
+                                        <div class="chart">
+                                            <div class="chart-title">Opad</div>
+                                            <div class="chart-container chart-sm"><canvas id="chart-hietogram" role="img" aria-label="Hietogram opadu"></canvas></div>
+                                        </div>
+                                        <div id="hietogram-balance"></div>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <details class="step d-none" id="acc-hydrograph">
+                                <summary><span class="step-num" aria-hidden="true"></span><span class="title">Hydrogram</span><span class="meta"></span><svg class="chev" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 5l4 4 4-4"/></svg></summary>
+                                <div class="step-body">
+                                    <div id="hydrograph-form">
+                                        <div class="field-row">
+                                            <div class="field">
+                                                <label for="hydro-uh-model">Model UH</label>
+                                                <select id="hydro-uh-model">
+                                                    <option value="scs">SCS</option>
+                                                    <option value="nash">Nash</option>
+                                                    <option value="snyder">Snyder</option>
+                                                </select>
+                                            </div>
+                                            <div id="tc-method-params" class="field">
+                                                <label for="hydro-tc-method">Metoda Tc</label>
+                                                <select id="hydro-tc-method">
+                                                    <option value="nrcs">NRCS (SCS Lag)</option>
+                                                    <option value="kirpich">Kirpich</option>
+                                                    <option value="giandotti">Giandotti</option>
+                                                    <option value="faa">FAA (spływ pow.)</option>
+                                                    <option value="kerby">Kerby</option>
+                                                    <option value="kerby_kirpich">Kerby-Kirpich</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div id="tc-extra-params" class="field-row d-none">
+                                            <div id="tc-runoff-coeff-col" class="field d-none">
+                                                <label for="hydro-tc-runoff-coeff">C (spływ) 0–1</label>
+                                                <input id="hydro-tc-runoff-coeff" type="number" value="" min="0" max="1" step="0.05" placeholder="auto z CN">
+                                            </div>
+                                            <div id="tc-retardance-col" class="field d-none">
+                                                <label for="hydro-tc-retardance">N (opór) 0.02–0.8</label>
+                                                <input id="hydro-tc-retardance" type="number" value="0.4" min="0.02" max="0.8" step="0.02">
+                                            </div>
+                                            <div id="tc-overland-col" class="field d-none">
+                                                <label for="hydro-tc-overland-length">L spływu [km]</label>
+                                                <input id="hydro-tc-overland-length" type="number" value="" min="0.01" max="5" step="0.01" placeholder="wymagane">
+                                            </div>
+                                        </div>
+                                        <div class="field-row">
+                                            <div id="nash-params" class="field d-none">
+                                                <label for="hydro-nash-estimation">Estymacja Nash</label>
+                                                <select id="hydro-nash-estimation">
+                                                    <option value="from_lutz">Lutz</option>
+                                                    <option value="from_tc">z Tc (deprecated)</option>
+                                                    <option value="from_urban_regression">Regresja urban.</option>
+                                                </select>
+                                            </div>
+                                            <div id="nash-n-row" class="field d-none">
+                                                <label for="hydro-nash-n">N (zbiorniki)</label>
+                                                <input id="hydro-nash-n" type="number" value="3.0" min="0.5" max="20" step="0.5">
+                                            </div>
+                                        </div>
+                                        <div id="snyder-params" class="field-row d-none">
+                                            <div class="field">
+                                                <label for="hydro-snyder-ct">Ct (1.35–1.65)</label>
+                                                <input id="hydro-snyder-ct" type="number" value="1.5" min="0.5" max="5" step="0.05">
+                                            </div>
+                                            <div class="field">
+                                                <label for="hydro-snyder-cp">Cp (0.4–0.8)</label>
+                                                <input id="hydro-snyder-cp" type="number" value="0.6" min="0.1" max="1.0" step="0.05">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="hydrograph-results" class="d-none">
+                                        <div id="hydro-summary" class="hydro-summary num"></div>
+                                        <div class="chart">
+                                            <div class="chart-title">Hydrogram odpływu</div>
+                                            <div class="chart-container chart-md"><canvas id="chart-hydrograph" role="img" aria-label="Hydrogram odpływu"></canvas></div>
+                                        </div>
+                                    </div>
+                                    <div id="hydrograph-info"></div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+            </aside>
         </div>
-        <button id="layers-toggle" class="layers-toggle layers-open glass-panel" title="Warstwy" aria-label="Warstwy" aria-expanded="true"><span aria-hidden="true">&#8249;</span></button>
+    </main>
+</div>
 
-        <!-- Drawing instructions banner -->
-        <div id="draw-instructions" class="draw-banner d-none glass-panel">Klik = wierzchołek, Podwójny klik = zakończ, Backspace = cofnij, Esc = anuluj</div>
-
-        <!-- Click mode toolbar -->
-        <div id="mode-toolbar" class="mode-toolbar glass-panel" role="radiogroup" aria-label="Tryb kliknięcia">
-            <button id="mode-browse" class="mode-btn mode-btn-active" title="Przeglądanie mapy" role="radio" aria-checked="true">
-                <span>Przeglądanie</span>
-            </button>
-            <button id="mode-select" class="mode-btn" title="Wybierz zlewnię" role="radio" aria-checked="false">
-                <span>Wybierz zlewnię</span>
-            </button>
-            <button id="mode-profile" class="mode-btn" title="Rysuj profil terenu" role="radio" aria-checked="false">
-                <span>Profil terenu</span>
-            </button>
-        </div>
-
-        <!-- Results panel (docked right) -->
-        <div id="results-panel" class="glass-panel d-none results-hidden">
-            <div id="results-header" class="results-header">
-                <span class="results-title">Parametry zlewni</span>
-                <div class="results-header-actions">
-                    <button id="results-close" class="results-btn" title="Zamknij">&times;</button>
-                </div>
-            </div>
-
-            <!-- Content (scrollable) -->
-            <div id="results-body" class="results-body">
-                <!-- Instruction -->
-                <div id="panel-instruction">
-                    <p class="text-secondary small mb-0">Kliknij na mapie w pobliżu linii spływu, aby wyznaczyć zlewnię.</p>
-                </div>
-
-                <!-- Loading spinner -->
-                <div id="panel-loading" class="text-center py-4 d-none">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status">
-                        <span class="visually-hidden">Wyznaczanie zlewni...</span>
-                    </div>
-                    <p class="mt-2 text-secondary small">Wyznaczanie zlewni...</p>
-                </div>
-
-                <!-- Error alert -->
-                <div id="panel-error" class="alert alert-danger py-2 px-3 small d-none" role="alert">
-                    <strong>Błąd:</strong> <span id="error-message"></span>
-                </div>
-
-                <!-- Results -->
-                <div id="panel-results" class="d-none">
-                    <!-- Auto-selection info banner -->
-                    <div id="panel-auto-select-info" class="alert alert-info py-2 px-3 small d-none" role="status">
-                        <span id="auto-select-message"></span>
-                    </div>
-
-                    <!-- Basic parameters -->
-                    <div class="glass-accordion" id="acc-basic">
-                        <div class="glass-accordion-header">
-                            <span>Parametry podstawowe</span>
-                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
-                        </div>
-                        <div class="glass-accordion-body">
-                            <table class="table table-sm param-table"><tbody id="params-basic"></tbody></table>
-                        </div>
-                    </div>
-
-                    <!-- Shape indices -->
-                    <div class="glass-accordion collapsed" id="acc-shape">
-                        <div class="glass-accordion-header">
-                            <span>Wskaźniki kształtu</span>
-                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
-                        </div>
-                        <div class="glass-accordion-body">
-                            <table class="table table-sm param-table"><tbody id="params-shape"></tbody></table>
-                        </div>
-                    </div>
-
-                    <!-- Relief indices -->
-                    <div class="glass-accordion collapsed" id="acc-relief">
-                        <div class="glass-accordion-header">
-                            <span>Rzeźba terenu</span>
-                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
-                        </div>
-                        <div class="glass-accordion-body">
-                            <table class="table table-sm param-table"><tbody id="params-relief"></tbody></table>
-                            <div class="chart-container"><canvas id="chart-hypsometric" role="img" aria-label="Krzywa hipsometryczna"></canvas></div>
-                        </div>
-                    </div>
-
-                    <!-- Drainage network -->
-                    <div class="glass-accordion collapsed" id="acc-drainage">
-                        <div class="glass-accordion-header">
-                            <span>Sieć rzeczna</span>
-                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
-                        </div>
-                        <div class="glass-accordion-body">
-                            <table class="table table-sm param-table"><tbody id="params-drainage"></tbody></table>
-                        </div>
-                    </div>
-
-                    <!-- Land cover -->
-                    <div class="glass-accordion collapsed" id="acc-landcover">
-                        <div class="glass-accordion-header">
-                            <span>Pokrycie terenu</span>
-                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
-                        </div>
-                        <div class="glass-accordion-body">
-                            <div class="chart-container"><canvas id="chart-landcover" role="img" aria-label="Wykres pokrycia terenu"></canvas></div>
-                        </div>
-                    </div>
-
-                    <!-- Soil HSG -->
-                    <div class="glass-accordion collapsed d-none" id="acc-hsg">
-                        <div class="glass-accordion-header">
-                            <span>Grupy glebowe (HSG)</span>
-                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
-                        </div>
-                        <div class="glass-accordion-body">
-                            <div class="chart-container"><canvas id="chart-hsg" role="img" aria-label="Wykres grup glebowych HSG"></canvas></div>
-                        </div>
-                    </div>
-
-                    <!-- Hietogram (precipitation) -->
-                    <div class="glass-accordion collapsed d-none" id="acc-hietogram">
-                        <div class="glass-accordion-header">
-                            <span>Hietogram</span>
-                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
-                        </div>
-                        <div class="glass-accordion-body">
-                            <div id="hietogram-form" class="mb-2">
-                                <div class="row g-1 mb-1">
-                                    <div class="col-6">
-                                        <label class="form-label small mb-0">Czas trwania</label>
-                                        <select id="hydro-duration" class="form-select form-select-sm"></select>
-                                    </div>
-                                    <div class="col-6">
-                                        <label class="form-label small mb-0">Prawdopodobieństwo</label>
-                                        <select id="hydro-probability" class="form-select form-select-sm"></select>
-                                    </div>
-                                </div>
-                                <div class="row g-1 mb-1">
-                                    <div class="col-6">
-                                        <label class="form-label small mb-0">Rozkład opadu</label>
-                                        <select id="hydro-hietogram-type" class="form-select form-select-sm">
-                                            <option value="beta">Beta</option>
-                                            <option value="euler_ii">DVWK (Euler II)</option>
-                                            <option value="block">Blokowy</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div id="beta-params" class="row g-1 mb-1">
-                                    <div class="col-6">
-                                        <label class="form-label small mb-0">&alpha;</label>
-                                        <input id="hydro-alpha" type="number" class="form-control form-control-sm" value="2.0" min="0.1" max="20" step="0.1">
-                                    </div>
-                                    <div class="col-6">
-                                        <label class="form-label small mb-0">&beta;</label>
-                                        <input id="hydro-beta" type="number" class="form-control form-control-sm" value="5.0" min="0.1" max="20" step="0.1">
-                                    </div>
-                                </div>
-                            </div>
-                            <div id="hietogram-results" class="d-none">
-                                <div class="chart-container" style="height:120px"><canvas id="chart-hietogram" role="img" aria-label="Hietogram opadu"></canvas></div>
-                                <div id="hietogram-balance" class="mt-2"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Hydrograph (discharge) -->
-                    <div class="glass-accordion collapsed d-none" id="acc-hydrograph">
-                        <div class="glass-accordion-header">
-                            <span>Hydrogram</span>
-                            <span class="glass-accordion-chevron" aria-hidden="true">&#9660;</span>
-                        </div>
-                        <div class="glass-accordion-body">
-                            <div id="hydrograph-form" class="mb-2">
-                                <div class="row g-1 mb-1">
-                                    <div class="col-6">
-                                        <label class="form-label small mb-0">Model UH</label>
-                                        <select id="hydro-uh-model" class="form-select form-select-sm">
-                                            <option value="scs">SCS</option>
-                                            <option value="nash">Nash</option>
-                                            <option value="snyder">Snyder</option>
-                                        </select>
-                                    </div>
-                                    <div id="tc-method-params" class="col-6">
-                                        <label class="form-label small mb-0">Metoda Tc</label>
-                                        <select id="hydro-tc-method" class="form-select form-select-sm">
-                                            <option value="nrcs">NRCS (SCS Lag)</option>
-                                            <option value="kirpich">Kirpich</option>
-                                            <option value="giandotti">Giandotti</option>
-                                            <option value="faa">FAA (spływ pow.)</option>
-                                            <option value="kerby">Kerby</option>
-                                            <option value="kerby_kirpich">Kerby-Kirpich</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div id="tc-extra-params" class="row g-1 mb-1 d-none">
-                                    <div id="tc-runoff-coeff-col" class="col-6 d-none">
-                                        <label class="form-label small mb-0">C (spływ) 0–1</label>
-                                        <input id="hydro-tc-runoff-coeff" type="number"
-                                               class="form-control form-control-sm"
-                                               value="" min="0" max="1" step="0.05"
-                                               placeholder="auto z CN">
-                                    </div>
-                                    <div id="tc-retardance-col" class="col-6 d-none">
-                                        <label class="form-label small mb-0">N (opór) 0.02–0.8</label>
-                                        <input id="hydro-tc-retardance" type="number"
-                                               class="form-control form-control-sm"
-                                               value="0.4" min="0.02" max="0.8" step="0.02">
-                                    </div>
-                                    <div id="tc-overland-col" class="col-6 d-none">
-                                        <label class="form-label small mb-0">L spływu [km]</label>
-                                        <input id="hydro-tc-overland-length" type="number"
-                                               class="form-control form-control-sm"
-                                               value="" min="0.01" max="5" step="0.01"
-                                               placeholder="wymagane">
-                                    </div>
-                                </div>
-                                <div class="row g-1 mb-1">
-                                    <div id="nash-params" class="col-6 d-none">
-                                        <label class="form-label small mb-0">Estymacja Nash</label>
-                                        <select id="hydro-nash-estimation" class="form-select form-select-sm">
-                                            <option value="from_lutz">Lutz</option>
-                                            <option value="from_tc">z Tc (deprecated)</option>
-                                            <option value="from_urban_regression">Regresja urban.</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div id="nash-n-row" class="row g-1 mb-1 d-none">
-                                    <div class="col-6">
-                                        <label class="form-label small mb-0">N (zbiorniki)</label>
-                                        <input id="hydro-nash-n" type="number" class="form-control form-control-sm" value="3.0" min="0.5" max="20" step="0.5">
-                                    </div>
-                                </div>
-                                <div id="snyder-params" class="row g-1 mb-1 d-none">
-                                    <div class="col-6">
-                                        <label class="form-label small mb-0">Ct (1.35–1.65)</label>
-                                        <input id="hydro-snyder-ct" type="number" class="form-control form-control-sm" value="1.5" min="0.5" max="5" step="0.05">
-                                    </div>
-                                    <div class="col-6">
-                                        <label class="form-label small mb-0">Cp (0.4–0.8)</label>
-                                        <input id="hydro-snyder-cp" type="number" class="form-control form-control-sm" value="0.6" min="0.1" max="1.0" step="0.05">
-                                    </div>
-                                </div>
-                            </div>
-                            <div id="hydrograph-results" class="d-none">
-                                <div id="hydro-summary" class="small text-secondary mb-1"></div>
-                                <div class="chart-container" style="height:160px"><canvas id="chart-hydrograph" role="img" aria-label="Hydrogram odpływu"></canvas></div>
-                            </div>
-                            <div id="hydrograph-info" class="mt-1"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- External toggle button for collapsed results panel -->
-        <button id="results-toggle-btn" class="results-toggle glass-panel d-none"
-                title="Parametry zlewni" aria-label="Parametry zlewni"><span aria-hidden="true">&#8249;</span></button>
+<!-- Feedback dialog -->
+<dialog class="modal" id="feedback-modal" aria-labelledby="feedback-title">
+    <div class="panel-head">
+        <h2 id="feedback-title">Zgłoś uwagę</h2>
+        <button class="btn ghost sm icon" type="button" id="feedback-close" aria-label="Zamknij" title="Zamknij">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
+        </button>
     </div>
-
-    <!-- Floating profile panel (independent from watershed results) -->
-    <div id="profile-panel" class="glass-panel d-none">
-        <div id="profile-header" class="results-header">
-            <span class="results-title">Profil terenu</span>
-            <div class="results-header-actions">
-                <button id="profile-close" class="results-btn" title="Zamknij">&times;</button>
-            </div>
+    <form class="modal-body" id="feedback-form" novalidate>
+        <p>Opisz błąd lub pomysł. Zgłoszenie trafi do administratora Hydrografu.</p>
+        <div class="field">
+            <label for="feedback-message">Opis problemu lub sugestii</label>
+            <textarea id="feedback-message" rows="6" maxlength="5000" placeholder="Opisz co się stało lub co można poprawić…"></textarea>
+            <span class="counter num"><span id="feedback-char-count">0</span>/5000</span>
         </div>
-        <div class="results-body" style="padding: 8px 12px;">
-            <div class="chart-container" style="height: 160px;">
-                <canvas id="chart-profile-standalone" role="img" aria-label="Profil terenu"></canvas>
-            </div>
+        <div class="field">
+            <label for="feedback-contact">Imię lub e-mail <span class="muted">(opcjonalnie)</span></label>
+            <input type="text" id="feedback-contact" maxlength="200">
         </div>
+        <label class="check">
+            <input type="checkbox" id="feedback-diagnostics" checked>
+            <span>Dołącz dane diagnostyczne (ostatnie akcje w aplikacji, błędy, parametry zapytań)</span>
+        </label>
+        <details class="preview">
+            <summary>Pokaż co zostanie wysłane</summary>
+            <pre id="feedback-diagnostics-preview"></pre>
+        </details>
+        <p id="feedback-status" class="feedback-status d-none" role="status"></p>
+    </form>
+    <div class="modal-foot">
+        <button class="btn" type="button" id="feedback-cancel">Anuluj</button>
+        <button class="btn primary" type="submit" form="feedback-form" id="feedback-submit-btn">Wyślij</button>
     </div>
+</dialog>
 
-    <!-- Feedback modal -->
-    <div class="modal fade" id="feedback-modal" tabindex="-1" aria-labelledby="feedback-modal-label" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="feedback-modal-label">Zgłoś uwagę</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Zamknij"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="feedback-message" class="form-label">Opis problemu lub sugestii</label>
-                        <textarea id="feedback-message" class="form-control" rows="5" maxlength="5000"
-                                  placeholder="Opisz co się stało lub co można poprawić..."></textarea>
-                        <div class="form-text text-end"><span id="feedback-char-count">0</span>/5000</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="feedback-contact" class="form-label">Imię lub email (opcjonalnie)</label>
-                        <input type="text" id="feedback-contact" class="form-control" maxlength="200">
-                    </div>
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" id="feedback-diagnostics" checked>
-                        <label class="form-check-label small" for="feedback-diagnostics">
-                            Dołącz dane diagnostyczne (ostatnie akcje w aplikacji, błędy, parametry zapytań)
-                        </label>
-                    </div>
-                    <details class="mb-2">
-                        <summary class="small text-secondary">Pokaż co zostanie wysłane</summary>
-                        <pre id="feedback-diagnostics-preview" class="small mt-2"></pre>
-                    </details>
-                    <div id="feedback-status" class="small d-none" role="status"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Anuluj</button>
-                    <button type="button" id="feedback-submit-btn" class="btn btn-primary btn-sm">Wyślij</button>
-                </div>
-            </div>
-        </div>
-    </div>
+<!-- Leaflet 1.9.4 JS -->
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin="anonymous"></script>
 
-    <!-- Leaflet 1.9.4 JS -->
-    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-            crossorigin="anonymous"></script>
+<!-- MapLibre GL 4.7.1 + Leaflet binding (vector basemap) -->
+<script defer src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"
+        integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj"
+        crossorigin="anonymous"></script>
+<script defer src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"
+        integrity="sha384-4CB9Vtol9LN6lGgBCvmPLbUEZwilrqIvPieSRurgAXAB7FVJaLS9n8WyAIA5wjQ+"
+        crossorigin="anonymous"></script>
 
-    <!-- Bootstrap 5.3.3 JS -->
-    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-            integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
-            crossorigin="anonymous"></script>
+<!-- Chart.js 4.4.7 -->
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+        integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC"
+        crossorigin="anonymous"></script>
 
-    <!-- Chart.js 4.4.7 -->
-    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
-            integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC"
-            crossorigin="anonymous"></script>
+<!-- Leaflet.VectorGrid 1.3.0 (MVT support) -->
+<script defer src="https://unpkg.com/leaflet.vectorgrid@1.3.0/dist/Leaflet.VectorGrid.bundled.min.js"
+        integrity="sha384-QDTA8MXPewzk8Ryt7UyfUmk+WcHcVYLcxAydowJk1WPgwjdXOIlJIDz25ITLVwTl"
+        crossorigin="anonymous"></script>
 
-    <!-- Leaflet.VectorGrid 1.3.0 (MVT support) -->
-    <script defer src="https://unpkg.com/leaflet.vectorgrid@1.3.0/dist/Leaflet.VectorGrid.bundled.min.js"
-            integrity="sha384-QDTA8MXPewzk8Ryt7UyfUmk+WcHcVYLcxAydowJk1WPgwjdXOIlJIDz25ITLVwTl"
-            crossorigin="anonymous"></script>
-
-    <!-- Application modules -->
-    <script defer src="js/diagnostics.js"></script>
-    <script defer src="js/api.js"></script>
-    <script defer src="js/map.js"></script>
-    <script defer src="js/draggable.js"></script>
-    <script defer src="js/charts.js"></script>
-    <script defer src="js/layers.js"></script>
-    <script defer src="js/profile.js"></script>
-    <script defer src="js/hydrograph.js"></script>
-    <script defer src="js/depressions.js"></script>
-    <script defer src="js/sewer.js"></script>
-    <script defer src="js/feedback.js"></script>
-    <script defer src="js/app.js"></script>
+<!-- Application modules -->
+<script defer src="js/diagnostics.js"></script>
+<script defer src="js/api.js"></script>
+<script defer src="js/shell.js"></script>
+<script defer src="js/map.js"></script>
+<script defer src="js/charts.js"></script>
+<script defer src="js/layers.js"></script>
+<script defer src="js/profile.js"></script>
+<script defer src="js/hydrograph.js"></script>
+<script defer src="js/depressions.js"></script>
+<script defer src="js/sewer.js"></script>
+<script defer src="js/feedback.js"></script>
+<script defer src="js/app.js"></script>
 </body>
 </html>

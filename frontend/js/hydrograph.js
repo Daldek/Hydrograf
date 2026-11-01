@@ -10,119 +10,9 @@
     window.Hydrograf = window.Hydrograf || {};
 
     var scenariosLoaded = false;
-    var _charts = {};
     var _debounceTimer = null;
     var _DEBOUNCE_MS = 300;
     var _requestId = 0;
-
-    // ── Chart helpers ──────────────────────────────────────────────────
-
-    function _ensureLineChart(canvasId, yLabel, tooltipFn) {
-        if (_charts[canvasId]) return _charts[canvasId];
-        var canvas = document.getElementById(canvasId);
-        if (!canvas || typeof Chart === 'undefined') return null;
-        var chart = new Chart(canvas, {
-            type: 'line',
-            data: { datasets: [{
-                label: yLabel,
-                data: [],
-                borderColor: '#0A84FF',
-                backgroundColor: 'rgba(10, 132, 255, 0.1)',
-                fill: true,
-                tension: 0.3,
-                pointRadius: 0,
-                borderWidth: 2,
-            }] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: { duration: 400, easing: 'easeInOutQuart' },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        intersect: false,
-                        mode: 'index',
-                        callbacks: {
-                            title: function (items) { return 't = ' + items[0].parsed.x + ' min'; },
-                            label: tooltipFn,
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        type: 'linear',
-                        min: 0,
-                        max: 60,
-                        title: { display: true, text: 'Czas [min]', font: { size: 10 } },
-                        ticks: { font: { size: 9 }, maxTicksLimit: 8 },
-                    },
-                    y: {
-                        title: { display: true, text: yLabel, font: { size: 10 } },
-                        ticks: { font: { size: 9 } },
-                        beginAtZero: true,
-                    },
-                },
-            },
-        });
-        _charts[canvasId] = chart;
-        return chart;
-    }
-
-    function _ensureHietogramChart(canvasId) {
-        if (_charts[canvasId]) return _charts[canvasId];
-        var canvas = document.getElementById(canvasId);
-        if (!canvas || typeof Chart === 'undefined') return null;
-        var chart = new Chart(canvas, {
-            type: 'bar',
-            data: { labels: [], datasets: [
-                {
-                    label: 'Opad ca\u0142kowity [mm]',
-                    data: [],
-                    backgroundColor: 'rgba(10, 132, 255, 0.35)',
-                    borderColor: '#0A84FF',
-                    borderWidth: 1,
-                    borderRadius: 1,
-                    order: 2,
-                },
-                {
-                    label: 'Opad efektywny [mm]',
-                    data: [],
-                    backgroundColor: 'rgba(10, 132, 255, 0.8)',
-                    borderColor: '#0A84FF',
-                    borderWidth: 1,
-                    borderRadius: 1,
-                    order: 1,
-                },
-            ] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: { duration: 400, easing: 'easeInOutQuart' },
-                plugins: {
-                    legend: { display: true, labels: { boxWidth: 12, font: { size: 9 } } },
-                    tooltip: {
-                        callbacks: {
-                            title: function (items) { return items[0].label + ' min'; },
-                            label: function (ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2) + ' mm'; },
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        title: { display: true, text: 'Czas [min]', font: { size: 10 } },
-                        ticks: { font: { size: 9 }, maxTicksLimit: 12 },
-                    },
-                    y: {
-                        title: { display: true, text: 'P [mm]', font: { size: 10 } },
-                        ticks: { font: { size: 9 } },
-                        beginAtZero: true,
-                    },
-                },
-            },
-        });
-        _charts[canvasId] = chart;
-        return chart;
-    }
 
     // ── Scenarios ──────────────────────────────────────────────────────
 
@@ -226,31 +116,16 @@
             document.getElementById('hietogram-results').classList.remove('d-none');
             document.getElementById('hydrograph-results').classList.remove('d-none');
 
-            // Hietogram — bar chart with total + effective, own time range
+            // Hietogram and hydrograph: filled line charts, each on its own time range
             var precip = result.precipitation;
-            var hietoChart = _ensureHietogramChart('chart-hietogram');
-            if (hietoChart) {
-                hietoChart.data.labels = precip.times_min.map(function (t) { return String(t); });
-                hietoChart.data.datasets[0].data = precip.intensities_mm.slice();
-                hietoChart.data.datasets[1].data = (precip.effective_mm || []).slice();
-                hietoChart.update('default');
-            }
-
-            // Hydrograph — line chart
-            var hydroTimes = result.hydrograph.times_min;
-            var maxTimeMin = hydroTimes[hydroTimes.length - 1];
-            var hydroChart = _ensureLineChart(
-                'chart-hydrograph', 'Q [m\u00b3/s]',
-                function (ctx) { return 'Q = ' + ctx.parsed.y.toFixed(3) + ' m\u00b3/s'; }
+            Hydrograf.charts.renderHietogramChart(
+                'chart-hietogram', precip.times_min,
+                precip.intensities_mm, precip.effective_mm || []
             );
-            if (hydroChart) {
-                var hydroData = hydroTimes.map(function (t, i) {
-                    return { x: t, y: result.hydrograph.discharge_m3s[i] };
-                });
-                hydroChart.data.datasets[0].data = hydroData;
-                hydroChart.options.scales.x.max = maxTimeMin;
-                hydroChart.update('default');
-            }
+            Hydrograf.charts.renderHydrographChart(
+                'chart-hydrograph', result.hydrograph.times_min,
+                result.hydrograph.discharge_m3s
+            );
 
             // Summary
             var summary = document.getElementById('hydro-summary');

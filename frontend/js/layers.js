@@ -1,8 +1,8 @@
 /**
  * Hydrograf Layers module.
  *
- * Accordion-style layers panel with groups, base layer switching,
- * and per-layer settings (opacity, zoom-to-extent).
+ * Layers panel: overlay rows (checkbox, name, opacity slider), base map
+ * radio list, and one zoom-to-extent action for all enabled overlays.
  */
 (function () {
     'use strict';
@@ -11,49 +11,92 @@
 
     var currentBaseLayer = null;
     var baseLayers = {};
-    var currentBaseLayerName = 'osm';
+    var DEFAULT_BASE_LAYER = 'openfreemap';
+    var currentBaseLayerName = DEFAULT_BASE_LAYER;
     var _overlayRegistry = [];
+    var _rowCount = 0;
+
+    var GUGIK_OSM_URL = 'https://mapy.geoportal.gov.pl/wss/ext/OSM/BaseMap/wmts/osm_3857/GLOBAL_WEBMERCATOR/{z}/{x}/{y}.png';
+
+    /** GUGiK OSM raster (Poland only), desaturated by the .basemap-grey class. */
+    function createGugikOsmLayer() {
+        return L.tileLayer(GUGIK_OSM_URL, {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="https://www.geoportal.gov.pl">GUGiK</a>',
+            className: 'basemap-grey',
+            maxZoom: 19,
+        });
+    }
+
+    /** OpenFreeMap vector basemap; falls back to GUGiK when MapLibre is missing. */
+    function createOpenFreeMapLayer() {
+        if (typeof L.maplibreGL !== 'function') {
+            console.warn('MapLibre GL Leaflet not loaded — falling back to OSM GUGiK basemap');
+            return createGugikOsmLayer();
+        }
+        return L.maplibreGL({
+            style: 'https://tiles.openfreemap.org/styles/positron',
+            attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        });
+    }
+
+    function createEsriOrthoLayer() {
+        return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '&copy; Esri, Maxar, Earthstar Geographics',
+            maxZoom: 19,
+        });
+    }
+
+    /** Base maps in panel order; `create` null means no base map. */
+    var BASEMAPS = [
+        { name: 'openfreemap', label: 'OpenFreeMap szary', create: createOpenFreeMapLayer },
+        { name: 'gugik-osm', label: 'OSM GUGiK szary (tylko Polska)', create: createGugikOsmLayer },
+        { name: 'esri-ortho', label: 'Ortofotomapa ESRI', create: createEsriOrthoLayer },
+        { name: 'none', label: 'bez podkładu', create: null },
+    ];
 
     /**
-     * Create a group header element.
+     * Create a panel group (section with a title) and append it to the list.
+     * @param {HTMLElement} list - Panel container.
+     * @param {string} label - Group title.
+     * @returns {HTMLElement} The group section; rows are appended to it.
      */
-    function createGroupHeader(label) {
-        var div = document.createElement('div');
-        div.className = 'layer-group-header';
-        div.textContent = label;
-        return div;
+    function createGroup(list, label) {
+        var section = document.createElement('section');
+        section.className = 'group';
+        var title = document.createElement('h3');
+        title.className = 'group-title';
+        title.textContent = label;
+        section.appendChild(title);
+        list.appendChild(section);
+        return section;
     }
 
     /**
-     * Create a base layer radio entry.
+     * Build the base map radio list.
      */
-    function createBaseLayerEntry(list, name, label, tileLayerFn) {
-        var item = document.createElement('div');
-        item.className = 'layer-item';
-        var headerRow = document.createElement('div');
-        headerRow.className = 'layer-header';
-        var radio = document.createElement('input');
-        radio.type = 'radio';
-        radio.name = 'base-layer';
-        radio.value = name;
-        var text = document.createTextNode(' ' + label);
-        headerRow.appendChild(radio);
-        headerRow.appendChild(text);
-        item.appendChild(headerRow);
+    function createBaseLayerList(group) {
+        var radioList = document.createElement('div');
+        radioList.className = 'radio-list';
+        radioList.setAttribute('role', 'radiogroup');
+        radioList.setAttribute('aria-label', 'Podkład kartograficzny');
 
-        radio.addEventListener('change', function () {
-            if (radio.checked) {
-                setBaseLayer(name);
-            }
+        BASEMAPS.forEach(function (basemap) {
+            var lbl = document.createElement('label');
+            var radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'basemap';
+            radio.value = basemap.name;
+            radio.checked = basemap.name === DEFAULT_BASE_LAYER;
+            radio.addEventListener('change', function () {
+                if (radio.checked) setBaseLayer(basemap.name);
+            });
+            lbl.appendChild(radio);
+            lbl.appendChild(document.createTextNode(' ' + basemap.label));
+            radioList.appendChild(lbl);
+            baseLayers[basemap.name] = basemap.create;
         });
 
-        // Check OSM by default
-        if (name === 'osm') {
-            radio.checked = true;
-        }
-
-        baseLayers[name] = tileLayerFn;
-        list.appendChild(item);
+        group.appendChild(radioList);
     }
 
     /**
@@ -73,127 +116,129 @@
             currentBaseLayer = null;
         }
 
-        if (name === 'none') return;
-
         var factory = baseLayers[name];
         if (factory) {
             currentBaseLayer = factory();
             currentBaseLayer.addTo(map);
-            currentBaseLayer.bringToBack();
+            // The MapLibre layer has no bringToBack; it sits in tilePane below overlays anyway.
+            if (typeof currentBaseLayer.bringToBack === 'function') {
+                currentBaseLayer.bringToBack();
+            }
         }
     }
 
     /**
-     * Create an overlay layer entry with checkbox, zoom, and opacity slider.
+     * Bounds getter for a layer that exposes getBounds() once loaded.
      */
-    function addOverlayEntry(list, label, getLayer, fitBounds, setOpacity, defaultTransparency) {
-        var item = document.createElement('div');
-        item.className = 'layer-item';
+    function layerBounds(getLayer) {
+        return function () {
+            var layer = getLayer();
+            return layer && typeof layer.getBounds === 'function' ? layer.getBounds() : null;
+        };
+    }
 
-        var headerRow = document.createElement('div');
-        headerRow.className = 'layer-header';
+    function noBounds() { return null; }
+
+    /**
+     * Build a layer row: checkbox, name, opacity slider and value.
+     * The slider shows opacity in percent (100 − transparency).
+     */
+    function createLayerRow(list, label, setOpacity, defaultTransparency) {
+        var id = 'ly-' + (++_rowCount);
+        var defaultOpacity = String(100 - defaultTransparency);
+
+        var row = document.createElement('div');
+        row.className = 'layer off';
+
         var cb = document.createElement('input');
         cb.type = 'checkbox';
-        var text = document.createTextNode(' ' + label);
-        var zoomBtn = document.createElement('button');
-        zoomBtn.className = 'layer-zoom-btn';
-        zoomBtn.title = 'Przybliż do zasięgu';
-        zoomBtn.textContent = '\u2316';
-        zoomBtn.addEventListener('click', function () { fitBounds(); });
-        headerRow.appendChild(cb);
-        headerRow.appendChild(text);
-        headerRow.appendChild(zoomBtn);
-        item.appendChild(headerRow);
+        cb.id = id;
 
-        // Opacity slider
-        var sliderRow = document.createElement('div');
-        sliderRow.className = 'layer-opacity d-none';
-        var sliderLabel = document.createElement('span');
-        sliderLabel.textContent = 'Przezr.:';
-        var slider = document.createElement('input');
-        slider.type = 'range';
-        slider.min = '0';
-        slider.max = '100';
-        slider.value = String(defaultTransparency);
-        var sliderValue = document.createElement('span');
-        sliderValue.className = 'layer-opacity-val';
-        sliderValue.textContent = defaultTransparency + '%';
-        slider.addEventListener('input', function () {
-            var opacity = (100 - slider.value) / 100;
-            setOpacity(opacity);
-            sliderValue.textContent = slider.value + '%';
-        });
-        sliderRow.appendChild(sliderLabel);
-        sliderRow.appendChild(slider);
-        sliderRow.appendChild(sliderValue);
-        item.appendChild(sliderRow);
+        var name = document.createElement('label');
+        name.className = 'name';
+        name.htmlFor = id;
+        name.textContent = label;
 
-        _overlayRegistry.push({ label: label, cb: cb });
+        var range = document.createElement('input');
+        range.type = 'range';
+        range.min = '0';
+        range.max = '100';
+        range.value = defaultOpacity;
+        range.setAttribute('aria-label', 'Krycie: ' + label);
 
-        cb.addEventListener('change', function () {
-            var layer = getLayer();
-            if (!layer) return;
-            if (cb.checked) {
-                layer.addTo(Hydrograf.map._getMap());
-                sliderRow.classList.remove('d-none');
-            } else {
-                Hydrograf.map._getMap().removeLayer(layer);
-                sliderRow.classList.add('d-none');
-            }
-            if (window.Hydrograf.diagnostics) {
-                Hydrograf.diagnostics.log('layer_change', { layer: label, visible: cb.checked });
-            }
+        var val = document.createElement('span');
+        val.className = 'val';
+        val.textContent = defaultOpacity + '%';
+
+        range.addEventListener('input', function () {
+            setOpacity(parseInt(range.value, 10) / 100);
+            val.textContent = range.value + '%';
         });
 
-        list.appendChild(item);
+        row.appendChild(cb);
+        row.appendChild(name);
+        row.appendChild(range);
+        row.appendChild(val);
+        list.appendChild(row);
+
+        return {
+            row: row,
+            cb: cb,
+            /** Re-apply a slider moved while the layer was not loaded yet. */
+            applyOpacity: function () {
+                if (range.value !== defaultOpacity) setOpacity(parseInt(range.value, 10) / 100);
+            },
+        };
+    }
+
+    function logLayerChange(label, visible) {
+        if (window.Hydrograf.diagnostics) {
+            Hydrograf.diagnostics.log('layer_change', { layer: label, visible: visible });
+        }
     }
 
     /**
-     * Overlay entry for async-loaded layers (BDOT10k GeoJSON).
-     * getLayer returns the existing layer, loadLayer returns a Promise.
+     * Add an overlay row for a layer that already exists (or is created synchronously).
+     * @param {HTMLElement} list - Group to append the row to.
+     * @param {string} label - Layer name shown in the panel.
+     * @param {function(): ?L.Layer} getLayer - Returns the layer (null if unavailable).
+     * @param {function(): ?L.LatLngBounds} getBounds - Layer extent for #zoom-extent.
+     * @param {function(number)} setOpacity - Called with opacity 0..1.
+     * @param {number} defaultTransparency - Initial transparency in percent.
      */
-    function addBdotOverlayEntry(list, label, getLayer, loadLayer, fitBounds, setOpacity, defaultTransparency, onShow, onHide) {
-        var item = document.createElement('div');
-        item.className = 'layer-item';
+    function addOverlayEntry(list, label, getLayer, getBounds, setOpacity, defaultTransparency) {
+        var entry = createLayerRow(list, label, setOpacity, defaultTransparency);
+        var cb = entry.cb;
 
-        var headerRow = document.createElement('div');
-        headerRow.className = 'layer-header';
-        var cb = document.createElement('input');
-        cb.type = 'checkbox';
-        var text = document.createTextNode(' ' + label);
-        var zoomBtn = document.createElement('button');
-        zoomBtn.className = 'layer-zoom-btn';
-        zoomBtn.title = 'Przybliż do zasięgu';
-        zoomBtn.textContent = '\u2316';
-        zoomBtn.addEventListener('click', function () { fitBounds(); });
-        headerRow.appendChild(cb);
-        headerRow.appendChild(text);
-        headerRow.appendChild(zoomBtn);
-        item.appendChild(headerRow);
+        _overlayRegistry.push({ label: label, cb: cb, getBounds: getBounds });
 
-        var sliderRow = document.createElement('div');
-        sliderRow.className = 'layer-opacity d-none';
-        var sliderLabel = document.createElement('span');
-        sliderLabel.textContent = 'Przezr.:';
-        var slider = document.createElement('input');
-        slider.type = 'range';
-        slider.min = '0';
-        slider.max = '100';
-        slider.value = String(defaultTransparency);
-        var sliderValue = document.createElement('span');
-        sliderValue.className = 'layer-opacity-val';
-        sliderValue.textContent = defaultTransparency + '%';
-        slider.addEventListener('input', function () {
-            var opacity = (100 - slider.value) / 100;
-            setOpacity(opacity);
-            sliderValue.textContent = slider.value + '%';
+        cb.addEventListener('change', function () {
+            var layer = getLayer();
+            if (!layer) {
+                cb.checked = false;
+                return;
+            }
+            var map = Hydrograf.map._getMap();
+            if (cb.checked) {
+                layer.addTo(map);
+                entry.applyOpacity();
+            } else {
+                map.removeLayer(layer);
+            }
+            entry.row.classList.toggle('off', !cb.checked);
+            logLayerChange(label, cb.checked);
         });
-        sliderRow.appendChild(sliderLabel);
-        sliderRow.appendChild(slider);
-        sliderRow.appendChild(sliderValue);
-        item.appendChild(sliderRow);
+    }
 
-        _overlayRegistry.push({ label: label, cb: cb });
+    /**
+     * Overlay row for async-loaded layers (GeoJSON, MVT).
+     * getLayer returns the existing layer, loadLayer returns a Promise of it.
+     */
+    function addAsyncOverlayEntry(list, label, getLayer, loadLayer, getBounds, setOpacity, defaultTransparency, onShow, onHide) {
+        var entry = createLayerRow(list, label, setOpacity, defaultTransparency);
+        var cb = entry.cb;
+
+        _overlayRegistry.push({ label: label, cb: cb, getBounds: getBounds });
 
         // One load at a time: a second check while the first load is pending
         // must not build a second layer (it would be orphaned on the map and
@@ -206,32 +251,31 @@
                 var layer = getLayer();
                 if (layer) {
                     layer.addTo(mapObj);
+                    entry.applyOpacity();
                 } else if (!pendingLoad) {
                     pendingLoad = Promise.resolve(loadLayer()).then(function (l) {
                         pendingLoad = null;
                         // The box may have been unchecked while loading.
-                        if (l && cb.checked && !mapObj.hasLayer(l)) l.addTo(mapObj);
+                        if (l && cb.checked && !mapObj.hasLayer(l)) {
+                            l.addTo(mapObj);
+                            entry.applyOpacity();
+                        }
                     }, function (err) {
                         pendingLoad = null;
                         throw err;
                     });
                 }
-                sliderRow.classList.remove('d-none');
                 if (onShow) onShow();
             } else {
                 var existing = getLayer();
                 if (existing && mapObj.hasLayer(existing)) {
                     mapObj.removeLayer(existing);
                 }
-                sliderRow.classList.add('d-none');
                 if (onHide) onHide();
             }
-            if (window.Hydrograf.diagnostics) {
-                Hydrograf.diagnostics.log('layer_change', { layer: label, visible: cb.checked });
-            }
+            entry.row.classList.toggle('off', !cb.checked);
+            logLayerChange(label, cb.checked);
         });
-
-        list.appendChild(item);
     }
 
     /**
@@ -257,80 +301,39 @@
     }
 
     /**
-     * Create a streams layer entry with checkbox, threshold selector, and opacity slider.
+     * Streams row (MVT) with the flow accumulation threshold below it.
      */
     function addStreamsEntry(list, availableThresholds) {
         var label = 'Linie spływu';
-        var item = document.createElement('div');
-        item.className = 'layer-item';
+        var entry = createLayerRow(list, label, Hydrograf.map.setStreamsOpacity, 0);
+        var cb = entry.cb;
 
-        // Header row: checkbox + label + zoom button
-        var headerRow = document.createElement('div');
-        headerRow.className = 'layer-header';
-        var cb = document.createElement('input');
-        cb.type = 'checkbox';
-        var text = document.createTextNode(' ' + label);
-        var zoomBtn = document.createElement('button');
-        zoomBtn.className = 'layer-zoom-btn';
-        zoomBtn.title = 'Przybliż do zasięgu';
-        zoomBtn.textContent = '\u2316';
-        zoomBtn.addEventListener('click', function () { Hydrograf.map.fitStreamsBounds(); });
-        headerRow.appendChild(cb);
-        headerRow.appendChild(text);
-        headerRow.appendChild(zoomBtn);
-        item.appendChild(headerRow);
-
-        // Controls wrapper (hidden until checkbox is on)
-        var controlsRow = document.createElement('div');
-        controlsRow.className = 'layer-opacity d-none';
-
-        // Threshold selector
-        var threshLabel = document.createElement('span');
-        threshLabel.textContent = 'Próg FA:';
+        // Threshold selector (shown while the layer is on)
+        var extra = document.createElement('div');
+        extra.className = 'layer-extra d-none';
+        var field = document.createElement('div');
+        field.className = 'field';
+        var threshLabel = document.createElement('label');
+        threshLabel.htmlFor = 'fa-threshold';
+        threshLabel.textContent = 'Próg FA';
         var select = document.createElement('select');
-        select.className = 'form-select form-select-sm';
-        select.style.width = 'auto';
-        select.style.display = 'inline-block';
-        select.style.marginLeft = '4px';
-        select.style.fontSize = '0.75rem';
-
+        select.id = 'fa-threshold';
         populateThresholdSelect(select, availableThresholds);
+        field.appendChild(threshLabel);
+        field.appendChild(select);
+        extra.appendChild(field);
+        list.appendChild(extra);
 
         select.addEventListener('change', function () {
-            var layer = Hydrograf.map.loadStreamsVector(parseInt(select.value));
+            var layer = Hydrograf.map.loadStreamsVector(parseInt(select.value, 10));
             if (cb.checked && layer) {
                 layer.addTo(Hydrograf.map._getMap());
+                entry.applyOpacity();
             }
         });
 
-        controlsRow.appendChild(threshLabel);
-        controlsRow.appendChild(select);
-
-        // Opacity slider
-        var sliderWrap = document.createElement('div');
-        sliderWrap.style.marginTop = '4px';
-        var sliderLabel = document.createElement('span');
-        sliderLabel.textContent = 'Przezr.:';
-        var slider = document.createElement('input');
-        slider.type = 'range';
-        slider.min = '0';
-        slider.max = '100';
-        slider.value = '0';
-        var sliderValue = document.createElement('span');
-        sliderValue.className = 'layer-opacity-val';
-        sliderValue.textContent = '0%';
-        slider.addEventListener('input', function () {
-            var opacity = (100 - parseInt(slider.value)) / 100;
-            Hydrograf.map.setStreamsOpacity(opacity);
-            sliderValue.textContent = slider.value + '%';
-        });
-        sliderWrap.appendChild(sliderLabel);
-        sliderWrap.appendChild(slider);
-        sliderWrap.appendChild(sliderValue);
-        controlsRow.appendChild(sliderWrap);
-        item.appendChild(controlsRow);
-
-        _overlayRegistry.push({ label: label, cb: cb });
+        // MVT layers have no bounds of their own; use the DEM extent.
+        _overlayRegistry.push({ label: label, cb: cb, getBounds: Hydrograf.map.getDemBounds });
 
         cb.addEventListener('change', function () {
             var map = Hydrograf.map._getMap();
@@ -338,120 +341,138 @@
             if (cb.checked) {
                 layer = Hydrograf.map.getStreamsLayer();
                 if (!layer) {
-                    layer = Hydrograf.map.loadStreamsVector(parseInt(select.value));
+                    layer = Hydrograf.map.loadStreamsVector(parseInt(select.value, 10));
                 }
-                if (layer) layer.addTo(map);
-                controlsRow.classList.remove('d-none');
+                if (layer) {
+                    layer.addTo(map);
+                    entry.applyOpacity();
+                }
                 Hydrograf.map.createStreamsLegend();
             } else {
                 layer = Hydrograf.map.getStreamsLayer();
                 if (layer && map.hasLayer(layer)) {
                     map.removeLayer(layer);
                 }
-                controlsRow.classList.add('d-none');
                 Hydrograf.map.removeStreamsLegend();
             }
-            if (window.Hydrograf.diagnostics) {
-                Hydrograf.diagnostics.log('layer_change', { layer: label, visible: cb.checked });
+            entry.row.classList.toggle('off', !cb.checked);
+            extra.classList.toggle('d-none', !cb.checked);
+            logLayerChange(label, cb.checked);
+        });
+    }
+
+    /**
+     * Fit the map to the union of the enabled overlays' extents; with nothing
+     * enabled (or no extent known yet) fit to the data extent.
+     */
+    function zoomToEnabledLayers() {
+        var union = null;
+        _overlayRegistry.forEach(function (entry) {
+            if (!entry.cb.checked) return;
+            var b = entry.getBounds();
+            if (!b || !b.isValid()) return;
+            if (union) {
+                union.extend(b);
+            } else {
+                // Copy: extend() mutates and b may be a module's own bounds.
+                union = L.latLngBounds(b.getSouthWest(), b.getNorthEast());
             }
         });
-
-        list.appendChild(item);
+        Hydrograf.map.fitToBounds(union || Hydrograf.map.getDataBounds());
     }
 
     /** Fallback thresholds if backend is unavailable. */
     var FALLBACK_THRESHOLDS = [1000, 10000, 100000];
 
     /**
-     * Initialize the layers panel.
+     * Initialize the layers panel and bind #zoom-extent.
      */
     function init() {
         var list = document.getElementById('layers-list');
         if (!list) return;
 
-        // ===== Overlay layers =====
-        list.appendChild(createGroupHeader('Warstwy podkładowe'));
+        var zoomBtn = document.getElementById('zoom-extent');
+        if (zoomBtn) zoomBtn.addEventListener('click', zoomToEnabledLayers);
 
-        // Wrapper for overlay entries (depressions.js appends here)
-        var overlayGroup = document.createElement('div');
+        // ===== Overlay layers (depressions.js appends to #overlay-group-entries) =====
+        var overlayGroup = createGroup(list, 'Warstwy podkładowe');
         overlayGroup.id = 'overlay-group-entries';
-        list.appendChild(overlayGroup);
 
         addOverlayEntry(
             overlayGroup,
             'NMT (wysokości)',
             Hydrograf.map.getDemLayer,
-            Hydrograf.map.fitDemBounds,
+            Hydrograf.map.getDemBounds,
             Hydrograf.map.setDemOpacity,
             30
         );
 
         // BDOT10k water bodies
-        addBdotOverlayEntry(
+        addAsyncOverlayEntry(
             overlayGroup,
             'Zbiorniki wodne (BDOT10k)',
-            function () { return Hydrograf.map.getBdotLakesLayer(); },
-            function () { return Hydrograf.map.loadBdotLakes(); },
-            Hydrograf.map.fitBdotBounds,
+            Hydrograf.map.getBdotLakesLayer,
+            Hydrograf.map.loadBdotLakes,
+            layerBounds(Hydrograf.map.getBdotLakesLayer),
             Hydrograf.map.setBdotLakesOpacity,
             0
         );
 
         // BDOT10k streams
-        addBdotOverlayEntry(
+        addAsyncOverlayEntry(
             overlayGroup,
             'Cieki BDOT10k',
-            function () { return Hydrograf.map.getBdotStreamsLayer(); },
-            function () { return Hydrograf.map.loadBdotStreams(); },
-            Hydrograf.map.fitBdotBounds,
+            Hydrograf.map.getBdotStreamsLayer,
+            Hydrograf.map.loadBdotStreams,
+            layerBounds(Hydrograf.map.getBdotStreamsLayer),
             Hydrograf.map.setBdotStreamsOpacity,
             0
         );
 
         // HSG soil groups
-        addBdotOverlayEntry(
+        addAsyncOverlayEntry(
             overlayGroup,
             'Grupy glebowe (HSG)',
-            function () { return Hydrograf.map.getHsgLayer(); },
-            function () { return Hydrograf.map.loadHsgLayer(); },
-            Hydrograf.map.fitHsgBounds,
+            Hydrograf.map.getHsgLayer,
+            Hydrograf.map.loadHsgLayer,
+            layerBounds(Hydrograf.map.getHsgLayer),
             Hydrograf.map.setHsgOpacity,
             0,
             Hydrograf.map.createHsgLegend,
             Hydrograf.map.removeHsgLegend
         );
 
-        // Land cover (BDOT10k) — MVT tiles
-        addBdotOverlayEntry(
+        // Land cover (BDOT10k) — MVT tiles, no own bounds: DEM extent
+        addAsyncOverlayEntry(
             overlayGroup,
             'Pokrycie terenu (BDOT10k)',
-            function () { return Hydrograf.map.getLandCoverLayer(); },
-            function () { return Promise.resolve(Hydrograf.map.loadLandCoverVector()); },
-            Hydrograf.map.fitDemBounds,
+            Hydrograf.map.getLandCoverLayer,
+            Hydrograf.map.loadLandCoverVector,
+            Hydrograf.map.getDemBounds,
             Hydrograf.map.setLandCoverOpacity,
             30,
             Hydrograf.map.createLandCoverLegend,
             Hydrograf.map.removeLandCoverLegend
         );
 
-        // Sewer network overlay
+        // Sewer network overlay (MVT, no known extent)
         if (window.Hydrograf.sewer) {
             addOverlayEntry(
                 overlayGroup,
                 'Kanalizacja deszczowa',
                 function () { return window.Hydrograf.sewer.getLayer(); },
-                function () { /* no-op: sewer has no bounds */ },
-                function () { /* no-op */ },
+                noBounds,
+                function (opacity) {
+                    var layer = window.Hydrograf.sewer.getLayer();
+                    var container = layer && layer.getContainer();
+                    if (container) container.style.opacity = opacity;
+                },
                 50
             );
         }
 
-        // Placeholder for stream/catchment entries (async populated)
-        var streamsPlaceholder = document.createElement('div');
-        list.appendChild(streamsPlaceholder);
-
         // ===== Analysis results group =====
-        list.appendChild(createGroupHeader('Wyniki analiz'));
+        var resultsGroup = createGroup(list, 'Wyniki analiz');
 
         // Fetch available thresholds, then build streams entry
         fetch('/api/tiles/thresholds')
@@ -459,62 +480,20 @@
             .then(function (data) {
                 var streamsThresholds = data.streams && data.streams.length > 0
                     ? data.streams : FALLBACK_THRESHOLDS;
-                addStreamsEntry(streamsPlaceholder, streamsThresholds);
+                addStreamsEntry(resultsGroup, streamsThresholds);
             })
             .catch(function () {
-                addStreamsEntry(streamsPlaceholder, FALLBACK_THRESHOLDS);
+                addStreamsEntry(resultsGroup, FALLBACK_THRESHOLDS);
             });
-
-        // Depressions entry will be added by depressions.js if available
 
         // ===== Base layers (at the bottom of the panel) =====
-        list.appendChild(createGroupHeader('Podkłady kartograficzne'));
-
-        createBaseLayerEntry(list, 'osm', 'OpenStreetMap', function () {
-            return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-                maxZoom: 19,
-            });
-        });
-
-        createBaseLayerEntry(list, 'esri', 'Ortofotomapa (ESRI)', function () {
-            return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: '&copy; Esri, Maxar, Earthstar Geographics',
-                maxZoom: 19,
-            });
-        });
-
-        createBaseLayerEntry(list, 'gugik-orto', 'Ortofotomapa (GUGiK)', function () {
-            return L.tileLayer('https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMTS/HighResolution?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTOFOTOMAPA&STYLE=default&FORMAT=image/jpeg&TILEMATRIXSET=EPSG:3857&TILEMATRIX=EPSG:3857:{z}&TILEROW={y}&TILECOL={x}', {
-                attribution: '&copy; <a href="https://www.geoportal.gov.pl">GUGiK</a>',
-                maxZoom: 19,
-            });
-        });
-
-        createBaseLayerEntry(list, 'gugik-topo', 'Mapa topograficzna (GUGiK)', function () {
-            return L.tileLayer('https://mapy.geoportal.gov.pl/wss/service/WMTS/guest/wmts/TOPO?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=MAPA_TOPOGRAFICZNA&STYLE=default&FORMAT=image/jpeg&TILEMATRIXSET=EPSG:3857&TILEMATRIX=EPSG:3857:{z}&TILEROW={y}&TILECOL={x}', {
-                attribution: '&copy; <a href="https://www.geoportal.gov.pl">GUGiK</a>',
-                maxZoom: 18,
-            });
-        });
-
-        createBaseLayerEntry(list, 'topo', 'OpenTopoMap', function () {
-            return L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>',
-                maxZoom: 17,
-            });
-        });
-
-        createBaseLayerEntry(list, 'none', 'Brak', null);
-
-        // Set initial base layer
-        setBaseLayer('osm');
+        createBaseLayerList(createGroup(list, 'Podkłady kartograficzne'));
+        setBaseLayer(DEFAULT_BASE_LAYER);
     }
 
     window.Hydrograf.layers = {
         init: init,
         addOverlayEntry: addOverlayEntry,
-        createGroupHeader: createGroupHeader,
         getBaseLayerName: function () { return currentBaseLayerName; },
         getActiveOverlays: function () {
             return _overlayRegistry

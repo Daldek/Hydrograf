@@ -1,0 +1,180 @@
+/*
+ * Hydrograf user guide: 16:9 slides inside the Hydrograf shell.
+ * Colours, fonts and radii from tokens.css; type scales with the slide width
+ * (container query units), so a slide looks the same at any window size.
+ */
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--line-height);
+}
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* The scrolling deck; slides size against it */
+.deck {
+    container-type: size;
+    padding: var(--space-6) 0;
+}
+
+.slide {
+    --slide-w: min(100cqw - var(--space-12), (100cqh - var(--space-12)) * 16 / 9);
+    container-type: inline-size;
+    width: var(--slide-w);
+    height: calc(var(--slide-w) * 9 / 16);
+    margin: 0 auto var(--space-6);
+    padding: 4.5% 5.6%;
+    position: relative;
+    overflow: hidden;
+    display: flex; flex-direction: column; gap: 3%;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+}
+.slide::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1.15%;
+    background: linear-gradient(90deg, var(--tool-hydrograf) 0 74%, var(--accent-green) 74%);
+}
+.slide h1, .slide h2, .slide h3, .slide p { margin: 0; }
+.slide h1 { font-size: clamp(34px, 5.5cqw, 84px); letter-spacing: -0.045em; line-height: 1.05; color: var(--tool-hydrograf); }
+.slide h2 { font-size: clamp(27px, 3.45cqw, 54px); letter-spacing: -0.035em; line-height: 1.12; color: var(--text); }
+.slide h3 { font-size: clamp(18px, 2cqw, 32px); line-height: 1.18; color: var(--text); }
+
+.kicker {
+    margin: 0;
+    font-size: clamp(12px, 1.5cqw, 24px); letter-spacing: 0.13em; text-transform: uppercase;
+    font-weight: var(--weight-bold); color: var(--tool-hydrograf);
+}
+.lead { max-width: 83%; font-size: clamp(17px, 2.1cqw, 32px); line-height: 1.35; color: var(--text); }
+.minor { color: var(--text-2); font-size: clamp(13px, 1.3cqw, 20px); line-height: 1.3; }
+.rule { width: 12%; height: 1%; border-radius: var(--radius-pill); background: var(--accent-green); }
+.footer {
+    position: absolute; left: 5.6%; right: 5.6%; bottom: 4%;
+    display: flex; justify-content: space-between; align-items: center;
+    color: var(--text-3); font-size: clamp(11px, 1.05cqw, 16px); font-weight: var(--weight-bold); letter-spacing: 0.035em;
+}
+
+/* Cover slide: mark, tool name, development status */
+.cover::after {
+    content: ""; position: absolute; width: 48%; aspect-ratio: 1; right: -14%; bottom: -50%;
+    border: 2.5cqw solid var(--surface-2); border-radius: 50%; pointer-events: none;
+}
+.cover-title { display: flex; align-items: center; gap: 2.2cqw; }
+.cover-mark { width: clamp(40px, 6.5cqw, 100px); height: auto; flex: none; }
+.cover .lead { color: var(--text-2); }
+.cover .minor { max-width: 80%; }
+.dev {
+    display: inline-block; align-self: flex-start;
+    padding: 0.45em 0.9em;
+    border: 3px solid var(--warn); border-radius: var(--radius-pill);
+    background: var(--warn-bg); color: var(--warn-ink);
+    font-size: clamp(18px, 2.35cqw, 36px); font-weight: var(--weight-bold); letter-spacing: 0.035em;
+}
+
+/* Layouts */
+.grid { display: grid; gap: 2.2%; flex: 1; min-height: 0; }
+.two { grid-template-columns: 1fr 1fr; }
+.three { grid-template-columns: repeat(3, 1fr); }
+.nav-grid { grid-template-columns: 1.55fr 1fr; }
+.nav-cards { display: flex; flex-direction: column; justify-content: center; gap: 4%; }
+.nav-cards .card { flex: 1; }
+
+.card {
+    display: flex; flex-direction: column; gap: 10%;
+    padding: 6%;
+    background: var(--surface-2);
+    border-left: 6px solid var(--tool-hydrograf);
+    border-radius: var(--radius-lg);
+}
+.card p, .step p { font-size: clamp(14px, 1.55cqw, 24px); line-height: 1.37; }
+.slide .label {
+    font-size: clamp(12px, 1.2cqw, 19px); font-weight: var(--weight-bold);
+    color: var(--tool-hydrograf); text-transform: uppercase; letter-spacing: 0.08em;
+}
+.hint {
+    padding: 1.15% 2%;
+    font-size: clamp(14px, 1.35cqw, 21px); line-height: 1.3;
+    background: var(--info-bg); color: var(--text);
+    border-left: 5px solid var(--info);
+    border-radius: var(--radius-lg);
+}
+
+/* Screenshots */
+.app-shot, .wide-shot {
+    display: block; width: 100%; min-height: 0;
+    object-fit: contain;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+}
+.app-shot { height: 100%; }
+.wide-shot { flex: 1; }
+.nav-shots { display: flex; flex-direction: column; gap: 2%; min-height: 0; }
+.nav-shots .app-shot { flex: 1; height: 0; }
+.nav-shots .mode-shot { flex: none; height: 28%; object-fit: cover; }
+
+/* Numbered steps */
+.number { color: var(--tool-hydrograf); font-weight: var(--weight-bold); font-size: clamp(32px, 4.2cqw, 64px); line-height: 1; }
+.step {
+    display: flex; flex-direction: column; gap: 8%;
+    padding: 7% 7% 5%;
+    background: var(--surface-2);
+    border-top: 7px solid var(--accent-green);
+    border-radius: var(--radius-lg);
+}
+.step strong { color: var(--text); font-size: clamp(18px, 1.85cqw, 29px); line-height: 1.15; }
+.feedback-steps { display: flex; flex-direction: column; gap: 4%; }
+.feedback-steps .step {
+    flex: 1; min-height: 0;
+    display: grid; grid-template-columns: 11% 1fr; grid-template-rows: auto 1fr; gap: 3% 3%;
+    padding: 3.5% 4%;
+    border-top-width: 4px;
+}
+.feedback-steps .number { grid-row: 1 / 3; font-size: clamp(22px, 2.3cqw, 36px); }
+.feedback-steps .step strong { font-size: clamp(16px, 1.55cqw, 24px); }
+.feedback-steps .step p { font-size: clamp(13px, 1.25cqw, 19px); }
+
+/* ---------- Phone: slides become a readable column ---------- */
+@media screen and (max-width: 800px) {
+    .deck { padding: var(--space-2) 0; }
+    .slide {
+        width: min(100% - var(--space-4), 640px); height: auto;
+        margin: 0 auto var(--space-4);
+        padding: var(--space-6) 20px; gap: var(--space-4);
+        border-radius: var(--radius-md);
+    }
+    .grid { display: flex; flex-direction: column; flex: none; gap: var(--space-3); }
+    .card, .step, .nav-cards .card, .feedback-steps .step {
+        flex: none; padding: var(--space-4); gap: 10px;
+        border-left-width: 3px; border-top-width: 3px; border-radius: var(--radius-md);
+    }
+    .card p, .step p, .hint { font-size: var(--text-site); }
+    .lead, .cover .minor { max-width: none; }
+    .rule { height: 5px; }
+    .app-shot, .wide-shot, .nav-shots .app-shot, .nav-shots .mode-shot { width: 100%; height: auto; flex: none; object-fit: contain; }
+    .nav-shots, .nav-cards, .feedback-steps { gap: var(--space-3); }
+    .feedback-steps .step { grid-template-columns: 32px 1fr; grid-template-rows: auto auto; column-gap: 10px; row-gap: var(--space-1); }
+    .footer { position: static; margin-top: var(--space-2); gap: var(--space-3); font-size: var(--text-xs); }
+}
+
+/* ---------- Print: one slide per page, no shell ---------- */
+@page { size: 13.333in 7.5in; margin: 0; }
+@media print {
+    html, body { height: auto; overflow: visible; }
+    .shell { display: block; height: auto; }
+    .topbar, .rail { display: none; }
+    .deck { container-type: normal; overflow: visible; padding: 0; }
+    .slide {
+        width: 13.333in; height: 7.5in; margin: 0;
+        border: 0; border-radius: 0; box-shadow: none;
+        break-after: page; page-break-after: always;
+    }
+    .slide:last-of-type { break-after: auto; page-break-after: auto; }
+}

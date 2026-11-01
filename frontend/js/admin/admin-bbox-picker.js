@@ -78,9 +78,11 @@
             zoom: 6,
         });
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors',
-            maxZoom: 18,
+        // GUGiK OSM raster (Poland only), desaturated by the .basemap-grey class
+        L.tileLayer('https://mapy.geoportal.gov.pl/wss/ext/OSM/BaseMap/wmts/osm_3857/GLOBAL_WEBMERCATOR/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="https://www.geoportal.gov.pl">GUGiK</a>',
+            className: 'basemap-grey',
+            maxZoom: 19,
         }).addTo(_map);
 
         _map.on('mousedown', onMouseDown);
@@ -150,7 +152,7 @@
             _map.removeLayer(_drawRect);
         }
         _drawRect = L.rectangle(bounds, {
-            color: '#f97316',
+            color: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
             weight: 2,
             fillOpacity: 0.15,
         }).addTo(_map);

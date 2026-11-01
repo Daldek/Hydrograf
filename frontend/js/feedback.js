@@ -1,5 +1,5 @@
 /**
- * Hydrograf Feedback — modal form for tester feedback submissions.
+ * Hydrograf Feedback — dialog form for tester feedback submissions.
  */
 (function () {
     'use strict';
@@ -7,7 +7,7 @@
     window.Hydrograf = window.Hydrograf || {};
 
     var els = {};
-    var modal = null;
+    var closeTimer = null;
 
     function updateCharCount() {
         els.charCount.textContent = String(els.message.value.length);
@@ -22,8 +22,8 @@
     }
 
     function showStatus(msg, isError) {
-        els.status.classList.remove('d-none', 'text-danger', 'text-success');
-        els.status.classList.add(isError ? 'text-danger' : 'text-success');
+        els.status.classList.remove('d-none', 'bad', 'ok');
+        els.status.classList.add(isError ? 'bad' : 'ok');
         els.status.textContent = msg;
     }
 
@@ -33,13 +33,24 @@
         }
         els.status.classList.add('d-none');
         updatePreview();
-        modal.show();
+        els.dialog.showModal();
+        els.message.focus();
     }
 
-    async function submit() {
+    function closeModal() {
+        if (closeTimer) {
+            clearTimeout(closeTimer);
+            closeTimer = null;
+        }
+        if (els.dialog.open) els.dialog.close();
+    }
+
+    async function submit(e) {
+        e.preventDefault();
         var message = els.message.value.trim();
         if (!message) {
             showStatus('Opis nie może być pusty.', true);
+            els.message.focus();
             return;
         }
         var payload = {
@@ -57,20 +68,22 @@
             els.message.value = '';
             els.contact.value = '';
             updateCharCount();
-            setTimeout(function () { modal.hide(); }, 2000);
-        } catch (e) {
-            showStatus(e.message, true);
+            closeTimer = setTimeout(closeModal, 2000);
+        } catch (err) {
+            showStatus(err.message, true);
         } finally {
             els.submitBtn.disabled = false;
         }
     }
 
     function init() {
-        var modalEl = document.getElementById('feedback-modal');
+        var dialog = document.getElementById('feedback-modal');
         var openBtn = document.getElementById('feedback-open-btn');
-        if (!modalEl || !openBtn || typeof bootstrap === 'undefined') return;
+        if (!dialog || !openBtn || typeof dialog.showModal !== 'function') return;
 
         els = {
+            dialog: dialog,
+            form: document.getElementById('feedback-form'),
             message: document.getElementById('feedback-message'),
             contact: document.getElementById('feedback-contact'),
             charCount: document.getElementById('feedback-char-count'),
@@ -79,11 +92,21 @@
             status: document.getElementById('feedback-status'),
             submitBtn: document.getElementById('feedback-submit-btn'),
         };
-        modal = bootstrap.Modal.getOrCreateInstance(modalEl);
         openBtn.addEventListener('click', openModal);
+        document.getElementById('feedback-close').addEventListener('click', closeModal);
+        document.getElementById('feedback-cancel').addEventListener('click', closeModal);
+        // Click on the backdrop (outside the dialog box) closes it
+        dialog.addEventListener('click', function (e) {
+            if (e.target === dialog) closeModal();
+        });
+        dialog.addEventListener('close', function () {
+            if (closeTimer) {
+                clearTimeout(closeTimer);
+                closeTimer = null;
+            }
+        });
         els.message.addEventListener('input', updateCharCount);
-        els.submitBtn.addEventListener('click', submit);
-        modalEl.addEventListener('shown.bs.modal', function () { els.message.focus(); });
+        els.form.addEventListener('submit', submit);
     }
 
     window.Hydrograf.feedback = {
