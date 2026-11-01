@@ -184,6 +184,9 @@ body {
 .toc-num { color: var(--tool-hydrograf); font-weight: var(--weight-bold); font-size: clamp(14px, 1.9cqw, 30px); }
 .toc strong { color: var(--text); font-size: clamp(13px, 1.75cqw, 27px); line-height: 1.2; }
 .toc-pages { color: var(--text-3); font-weight: var(--weight-bold); font-size: clamp(10px, 1.05cqw, 16px); letter-spacing: 0.06em; text-transform: uppercase; }
+/* Plain-language start: a full-width entry above the chapters */
+.toc a.toc-start { grid-column: 1 / -1; border-left-color: var(--accent-green); background: var(--accent-soft); }
+.toc-start .toc-num { font-size: clamp(12px, 1.5cqw, 24px); }
 
 /* Term and description lists */
 .defs { margin: 0; display: flex; flex-direction: column; }
