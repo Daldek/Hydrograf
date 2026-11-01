@@ -118,7 +118,7 @@
                     <span class="hint">
                         <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
                         <span id="map-hint-text">Przesuwaj i przybliżaj mapę</span>
-                        <span id="draw-instructions" class="d-none">Klikaj, aby dodać wierzchołki; dwuklik kończy, Backspace cofa, Esc anuluje</span>
+                        <span id="draw-instructions" class="d-none">Klikaj, aby dodać punkty; kliknij ostatni punkt lub dwuklik, aby zakończyć; Backspace cofa, Esc anuluje</span>
                     </span>
                     <div class="end phone-only">
                         <button class="btn sm" type="button" id="open-results" aria-controls="results-panel" aria-expanded="false">Zlewnia</button>
@@ -127,6 +127,12 @@
 
                 <div class="map-wrap" id="map-wrap" data-mode="browse">
                     <div id="map"></div>
+                    <div class="draw-tools" id="draw-tools" role="toolbar" aria-label="Rysowanie profilu terenu" hidden>
+                        <span class="draw-count" id="draw-count" aria-live="polite"></span>
+                        <button class="btn sm" type="button" id="draw-undo">Cofnij</button>
+                        <button class="btn sm primary" type="button" id="draw-finish">Zakończ</button>
+                        <button class="btn sm ghost" type="button" id="draw-cancel">Anuluj</button>
+                    </div>
 
                     <!-- Terrain profile drawer (profile mode) -->
                     <section class="profile-drawer" id="profile-drawer" aria-labelledby="profile-title" hidden>

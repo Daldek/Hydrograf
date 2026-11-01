@@ -163,6 +163,15 @@
             }
         });
 
+        // On-screen drawing controls: phones have no Esc/Backspace and no reliable dblclick.
+        // Absent in an index.html cached from before they existed; drawing still works then.
+        var drawTools = document.getElementById('draw-tools');
+        if (drawTools) {
+            document.getElementById('draw-undo').addEventListener('click', undoLastVertex);
+            document.getElementById('draw-finish').addEventListener('click', finishDrawing);
+            document.getElementById('draw-cancel').addEventListener('click', cancelDrawing);
+        }
+
         // The shell resizes panels around the map; Leaflet must re-measure.
         window.addEventListener('hydrograf:layout', function () {
             map.invalidateSize();
@@ -658,6 +667,35 @@
 
     // ===== Drawing mode (polyline for terrain profile) =====
 
+    // A tap or click this close to the last vertex ends the line instead of adding a
+    // vertex: the second tap of a double tap never lands on the exact same spot.
+    var FINISH_TAP_PX = 20;
+
+    function setDrawUi(active) {
+        var banner = document.getElementById('draw-instructions');
+        if (banner) banner.classList.toggle('d-none', !active);
+        var tools = document.getElementById('draw-tools');
+        if (tools) tools.hidden = !active;
+        if (active) updateDrawCount();
+    }
+
+    function pointsLabel(n) {
+        var lastDigit = n % 10, lastTwo = n % 100;
+        var few = lastDigit >= 2 && lastDigit <= 4 && (lastTwo < 12 || lastTwo > 14);
+        return n + (few ? ' punkty' : ' punktów');
+    }
+
+    function updateDrawCount() {
+        var n = drawVertices.length;
+        if (!document.getElementById('draw-tools')) return;
+        document.getElementById('draw-count').textContent =
+            n === 0 ? 'Wskaż początek profilu' :
+            n === 1 ? '1 punkt — wskaż kolejny' :
+            pointsLabel(n) + ' — dotknij ostatniego, aby zakończyć';
+        document.getElementById('draw-undo').disabled = n === 0;
+        document.getElementById('draw-finish').disabled = n < 2;
+    }
+
     function startDrawing(onComplete) {
         drawMode = true;
         drawVertices = [];
@@ -667,16 +705,15 @@
         map.getContainer().style.cursor = 'crosshair';
         // Disable double-click zoom during drawing
         map.doubleClickZoom.disable();
-        var banner = document.getElementById('draw-instructions');
-        if (banner) banner.classList.remove('d-none');
+        setDrawUi(true);
     }
 
     function addDrawVertex(latlng) {
-        // Ignore duplicate vertex from dblclick (browser fires click+click+dblclick)
         if (drawVertices.length > 0) {
             var last = drawVertices[drawVertices.length - 1];
-            if (Math.abs(last.lat - latlng.lat) < 0.00001 &&
-                Math.abs(last.lng - latlng.lng) < 0.00001) {
+            var gap = map.latLngToContainerPoint(latlng).distanceTo(map.latLngToContainerPoint(last));
+            if (gap <= FINISH_TAP_PX) {
+                if (drawVertices.length >= 2) finishDrawing();
                 return;
             }
         }
@@ -690,6 +727,7 @@
         if (drawVertices.length > 1) {
             drawPolyline = L.polyline(drawVertices, drawLineStyle()).addTo(map);
         }
+        updateDrawCount();
     }
 
     function undoLastVertex() {
@@ -701,6 +739,7 @@
         if (drawVertices.length > 1) {
             drawPolyline = L.polyline(drawVertices, drawLineStyle()).addTo(map);
         }
+        updateDrawCount();
     }
 
     function finishDrawing() {
@@ -713,8 +752,7 @@
         drawMode = false;
         map.getContainer().style.cursor = '';
         map.doubleClickZoom.enable();
-        var banner = document.getElementById('draw-instructions');
-        if (banner) banner.classList.add('d-none');
+        setDrawUi(false);
 
         // Clean up markers
         drawMarkers.forEach(function (m) { map.removeLayer(m); });
@@ -735,8 +773,7 @@
         drawMode = false;
         map.getContainer().style.cursor = '';
         map.doubleClickZoom.enable();
-        var banner = document.getElementById('draw-instructions');
-        if (banner) banner.classList.add('d-none');
+        setDrawUi(false);
         drawMarkers.forEach(function (m) { map.removeLayer(m); });
         drawMarkers = [];
         if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
