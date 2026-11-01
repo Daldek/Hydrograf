@@ -14,7 +14,7 @@
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). Jawna topologia (ADR-052), walidacja strict, 2-fazowy pipeline. MVT tiles, overlay frontend, admin panel sewer. |
-| Frontend | 🔶 Faza 4+ gotowa | 18 modulow JS na `window.Hydrograf` (12 core + 6 admin) + `theme-init.js`/`theme-switch.js`. Sewer overlay + admin-sewer. GUI w identyfikacji Nogata (ADR-065) na `feature/visual-identity` — do przeglądu. |
+| Frontend | 🔶 Faza 4+ gotowa | 22 moduły JS na `window.Hydrograf` (16 core + 6 admin) + `theme-init.js`/`theme-switch.js`. Sewer overlay + admin-sewer. GUI w identyfikacji Nogata (ADR-065) wdrożone na porcie 8080 z `feature/visual-identity` (2026-11-01, niezmergowane). |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie, Kanalizacja (ADR-034, ADR-051) |
 | Testy | ✅ Gotowy | 1165 passed (sesja 88) + znany fail środowiskowy (test_select_stream, brak DB na localhost) |
 | Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
@@ -65,15 +65,18 @@
   - Tryb zaawansowany z dokładnością 0,01 km², 0,01 km, 0,1 m, 0,01 %, CN 0,1.
   - Warstwa „Kanalizacja deszczowa” tylko przy danych kanalizacji (`GET /api/layers` → `{"sewer": bool}`).
   - API: `POST /api/generate-hydrograph` przyjmuje `amc` i `custom_precipitation` (422 z polskim opisem przy błędach serii); `water_balance.cn_used` jako float, `precipitation.source`, `metadata.amc`; CN zlewni (`morphometry.cn`, `weighted_cn`) z dokładnością 0,1; `GET /api/scenarios` z `amc` i `custom_precipitation_max_steps`.
-  - Dokumentacja: CHANGELOG, ARCHITECTURE (§2.2.3, §2.2.3a, §4.1, §4.2), COMPUTATION_PIPELINE (§5.2, §6.1, §6.4, §6.8), DATA_MODEL (§6.3, §6.4), DEVELOPMENT_STANDARDS, przewodnik.
+  - Dokumentacja: CHANGELOG, ARCHITECTURE (§2.2.3, §2.2.3a, §4.1, §4.2), COMPUTATION_PIPELINE (§5.2, §6.1, §6.4, §6.8), DATA_MODEL (§6.3, §6.4), DEVELOPMENT_STANDARDS, przewodnik (10 slajdów, zrzuty dodane `git add -f`, bo `.gitignore` ignoruje `*.png`).
+- **Objaśnienia (i) zweryfikowane:** każde twierdzenie z `js/info-texts.js` sprawdzone w kodzie albo w literaturze; ewidencja `docs/INFO_TEXTS_SOURCES.md` (985 twierdzeń: 858 potwierdzonych, 113 poprawionych, 7 usuniętych, 7 nieweryfikowalnych). „Znaczenie dla analizy” rozdziela znaczenie hydrologiczne od użycia w Hydrografie (np. średnia szerokość i wskaźniki kształtu: wpływ na czas i kształt fali, w obliczeniach pośrednio przez L, L_g, L_c); 72 wpisy z linią „Źródła:”. Pozostałe do decyzji autora: nazwy „Wskaźnik rzeźby” (ΔH/√A to raczej spadek zlewni ψ / wskaźnik Meltona) i „Liczba chropowatości” (brak polskiego źródła nazwy).
+- **Animacja wyznaczania zlewni:** `POST /api/delineate-watershed/preview` zwraca zlewnie cząstkowe, które scali właściwe wyznaczenie (wspólna funkcja `_select_precomputed`), pogrupowane wg głębokości w sieci, w ~25–35 ms (52–106 km²) i ~0,2 s (778 km²); mapa zapala je od ujścia w górę przez 0,5 s, pulsuje do nadejścia scalonej granicy (52 km²: ~4,7 s, 778 km²: ~88 s). Tryb precise bez podglądu.
 - **Dokumentacja:** CHANGELOG, ARCHITECTURE (§4.1, §4.2, hosty CSP w §5.2), SCOPE, DEVELOPMENT_STANDARDS, README, ADR-065.
+- **Wdrożenie na produkcję (port 8080, 2026-11-01):** checkout produkcyjny `Hydrograf/` przełączony na `feature/visual-identity` (`7d3c1d7`), restart `hydro_api` i `hydro_nginx` (nowy CSP). Instancja przeglądowa (`hydro_nginx_gui`, `hydro_api_gui`, sieć `hydrograf_gui`, worktree `Hydrograf-gui`) usunięta. Przerwa w działaniu ok. 3–4 min: pliki wypisane przez `git checkout` miały prawa 600 (powłoka miała `umask 077`), więc API (uid 999) nie mogło ich czytać; naprawione `chmod 644` na 75 plikach. Smoke: `/`, `/admin`, `/instrukcja/`, wyznaczenie zlewni, hydrogram, `GET /api/layers`, podgląd zlewni — bez błędów w konsoli.
 
 ### W trakcie
-- Gałąź `feature/visual-identity` (worktree `Hydrograf-gui`), serwowana przez równoległy kontener nginx `hydro_nginx_gui` na porcie 8081, który ma teraz własny kontener API `hydro_api_gui` (backend z worktree, `uvicorn --reload`, ta sama baza PostGIS co produkcja) w osobnej sieci docker `hydrograf_gui`. `hydro_api_gui` uruchamia przy starcie `alembic upgrade head`, więc do czasu merge na tej gałęzi nie wolno dodawać migracji. Produkcja (port 8080, `feature/logowanie-testow`) bez zmian.
+- Produkcja działa z gałęzi `feature/visual-identity`, której nie zmergowano do `develop` ani nie wypchnięto; `feature/logowanie-testow` zostaje w miejscu (`3a06d41`). Merge i push wymagają zgody autora.
 
 ### Następne kroki
-- Przegląd GUI przez autora na porcie 8081.
-- Merge i wdrożenie na produkcję: restart API produkcji (zmiany backendu: `amc`, `custom_precipitation`, CN float, `GET /api/layers`) i nginx (nowy CSP).
+- Przegląd GUI przez autora na produkcji (port 8080); merge `feature/visual-identity` i push za zgodą autora.
+- Decyzja autora: nazwy wierszy „Wskaźnik rzeźby” i „Liczba chropowatości”.
 - Zgłoszenie do Hydrologa: przeliczenie CN dla AMC I/III zaokrągla CN do liczby całkowitej.
 - Backend: ujednolicić dokładność powierzchni między pełną ścieżką (2 miejsca) a szybką (4 miejsca); ostrzeżenia o stosowalności metod w API; `length_to_centroid_km = 0` w danych zlewni (Snyder); niespójne wskaźniki kształtu bardzo małych zlewni (wartości > 1 / < 1 wbrew definicji); `asymmetry_coefficient` nigdy nie jest liczony.
 
