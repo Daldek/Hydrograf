@@ -1,5 +1,5 @@
 """
-What Hydrograf knows at one point of the map (``POST /api/identify-point``).
+What Hydrograf knows at one point of the map (``GET /api/identify-point``).
 
 Every function takes the point in PL-1992 (EPSG:2180) and answers None where its
 source has nothing there. The terrain comes from the rasters of the preprocessing

@@ -1,4 +1,4 @@
-"""Integration tests for POST /api/identify-point (offline).
+"""Integration tests for GET /api/identify-point (offline).
 
 Rasters, the results manifest and the water bodies file are synthetic files; the
 answers of the PostGIS queries are stubbed (their SQL runs in
@@ -179,19 +179,19 @@ def database():
         }
 
 
-def _post(client, settings, col=0, headers=None, **extra):
+def _get(client, settings, col=0, headers=None, **extra):
     lon, lat = _cell(col)
     with patch("api.endpoints.identify.get_settings", return_value=settings):
-        return client.post(
+        return client.get(
             "/api/identify-point",
-            json={"latitude": lat, "longitude": lon, **extra},
+            params={"latitude": lat, "longitude": lon, **extra},
             headers=headers or {},
         )
 
 
 class TestIdentifyPoint:
     def test_everything_known_at_the_point(self, client, settings, database):
-        response = _post(client, settings, result_ids=["sfincs", "other", "nope"])
+        response = _get(client, settings, result_ids=["sfincs", "other", "nope"])
 
         assert response.status_code == 200
         data = response.json()
@@ -227,13 +227,13 @@ class TestIdentifyPoint:
     def test_depth_only_where_the_water_lies_above_the_terrain(
         self, client, settings, database, col, water
     ):
-        response = _post(client, settings, col=col, result_ids=["sfincs"])
+        response = _get(client, settings, col=col, result_ids=["sfincs"])
 
         assert response.status_code == 200
         assert response.json()["water"] == [water]
 
     def test_no_water_without_result_ids(self, client, settings, database):
-        assert _post(client, settings).json()["water"] == []
+        assert _get(client, settings).json()["water"] == []
 
     @pytest.mark.parametrize(
         ("requested", "used"),
@@ -244,7 +244,7 @@ class TestIdentifyPoint:
     ):
         extra = {} if requested is None else {"threshold_m2": requested}
 
-        response = _post(client, settings, **extra)
+        response = _get(client, settings, **extra)
 
         assert response.json()["subcatchment"]["threshold_m2"] == used
         assert database["subcatchment_at"].call_args.args[3] == used
@@ -253,7 +253,7 @@ class TestIdentifyPoint:
         for stub in database.values():
             stub.return_value = None
 
-        response = _post(client, settings, col=1)
+        response = _get(client, settings, col=1)
 
         assert response.status_code == 200
         data = response.json()
@@ -269,7 +269,7 @@ class TestIdentifyPoint:
             assert data[member] is None, member
 
     def test_point_off_the_dem_is_404_in_polish(self, client, settings, database):
-        response = _post(client, settings, col=4, headers={"Accept-Language": "pl"})
+        response = _get(client, settings, col=4, headers={"Accept-Language": "pl"})
 
         assert response.status_code == 404
         assert response.headers["content-type"] == "application/problem+json"
@@ -283,7 +283,7 @@ class TestIdentifyPoint:
         database["land_cover_at"].assert_not_called()
 
     def test_point_outside_the_dem_extent_is_404(self, client, settings, database):
-        response = _post(client, settings, col=40)
+        response = _get(client, settings, col=40)
 
         assert response.status_code == 404
         assert response.json()["code"] == "no_data"
@@ -291,27 +291,54 @@ class TestIdentifyPoint:
     def test_missing_dem_is_503(self, client, settings, database, tmp_path):
         settings.dem_path = str(tmp_path / "missing.tif")
 
-        response = _post(client, settings)
+        response = _get(client, settings)
 
         assert response.status_code == 503
         problem = response.json()
         assert problem["code"] == "store_unavailable"
         assert str(tmp_path) not in response.text
 
-    def test_invalid_latitude_is_400(self, client, settings, database):
-        response = client.post(
-            "/api/identify-point", json={"latitude": 95.0, "longitude": 16.0}
-        )
+    @pytest.mark.parametrize(
+        ("params", "pointer"),
+        [
+            ({"latitude": 95.0, "longitude": 16.0}, "/query/latitude"),
+            ({"longitude": 16.0}, "/query/latitude"),
+            (
+                {"latitude": 51.0, "longitude": 16.0, "threshold_m2": 0},
+                "/query/threshold_m2",
+            ),
+            (
+                {"latitude": 51.0, "longitude": 16.0, "result_ids": [""]},
+                "/query/result_ids/0",
+            ),
+            (
+                {"latitude": 51.0, "longitude": 16.0, "result_ids": ["r"] * 21},
+                "/query/result_ids",
+            ),
+        ],
+        ids=["latitude-range", "latitude-missing", "threshold", "empty-id", "21-ids"],
+    )
+    def test_invalid_query_is_400(self, client, settings, database, params, pointer):
+        response = client.get("/api/identify-point", params=params)
 
         assert response.status_code == 400
+        assert response.headers["content-type"] == "application/problem+json"
         problem = response.json()
         assert problem["code"] == "validation_error"
-        assert problem["details"]["fields"] == ["/body/latitude"]
+        assert problem["details"]["fields"] == [pointer]
+        assert [error["pointer"] for error in problem["errors"]] == [pointer]
+
+    def test_post_is_405(self, client):
+        response = client.post(
+            "/api/identify-point", json={"latitude": 51.0, "longitude": 16.0}
+        )
+
+        assert response.status_code == 405
 
     def test_database_failure_is_500(self, client, settings, database):
         database["nearest_stream"].side_effect = RuntimeError("connection lost")
 
-        response = _post(client, settings)
+        response = _get(client, settings)
 
         assert response.status_code == 500
         problem = response.json()

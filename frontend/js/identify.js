@@ -2,7 +2,7 @@
  * Hydrograf Identify module.
  *
  * Mode "Identyfikuj": a click on the map puts a marker there and asks the API
- * (POST /api/identify-point) what Hydrograf knows at the point: coordinates,
+ * (GET /api/identify-point) what Hydrograf knows at the point: coordinates,
  * terrain elevation and slope, the water of the analysis results shown on the
  * map (as the terrain profile does), the nearest BDOT10k stream and the water
  * body, land cover with its CN, soil group, terrain depression and the

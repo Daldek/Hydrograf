@@ -12,8 +12,9 @@ the answer is partial, each source that has nothing at the point gives null.
 """
 
 import logging
+from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from core.analysis_results import sample_water_levels
@@ -52,9 +53,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/identify-point", response_model=IdentifyPointResponse)
+@router.get("/identify-point", response_model=IdentifyPointResponse)
 def identify_point(
-    request: IdentifyPointRequest,
+    request: Annotated[IdentifyPointRequest, Query()],
     db: Session = Depends(get_db),
 ) -> IdentifyPointResponse:
     """
@@ -63,8 +64,9 @@ def identify_point(
     Parameters
     ----------
     request : IdentifyPointRequest
-        The point (WGS84), the threshold of the sub-catchment network and the
-        analysis results whose water is read
+        Query parameters: the point (WGS84), the threshold of the sub-catchment
+        network and the analysis results whose water is read (``result_ids``
+        repeated, ``?result_ids=a&result_ids=b``)
     db : Session
         Database session (injected by FastAPI)
 

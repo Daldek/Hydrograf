@@ -20,7 +20,7 @@ classifiers = [
 
 dependencies = [
     # FastAPI and server
-    "fastapi>=0.109.0",
+    "fastapi>=0.115.0",
     "uvicorn[standard]>=0.27.0",
     "python-multipart>=0.0.6",
     # Database. SQLAlchemy 2.1 selects the psycopg v3 driver for `postgresql://` URLs

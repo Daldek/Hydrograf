@@ -275,13 +275,10 @@
         var cached = _cacheGet(key);
         if (cached) return cached;
 
-        var payload = { latitude: lat, longitude: lng, threshold_m2: threshold };
-        if (ids.length) payload.result_ids = ids;
-        const response = await apiFetch('/api/identify-point', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
+        const params = new URLSearchParams({ latitude: lat, longitude: lng });
+        if (threshold !== undefined && threshold !== null) params.set('threshold_m2', threshold);
+        ids.forEach(function (id) { params.append('result_ids', id); });
+        const response = await apiFetch('/api/identify-point?' + params.toString());
 
         if (!response.ok) await handleError(response);
         var data = await response.json();

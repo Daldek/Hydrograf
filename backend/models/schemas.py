@@ -729,7 +729,7 @@ class TerrainProfileResponse(BaseModel):
 
 
 class IdentifyPointRequest(BaseModel):
-    """Request model for the identification of one map point."""
+    """Query parameters of the identification of one map point (GET)."""
 
     latitude: float = Field(
         ...,

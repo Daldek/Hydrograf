@@ -146,7 +146,7 @@ backend/
 │       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
-│       ├── identify.py            # POST /identify-point (core/point_info.py)
+│       ├── identify.py            # GET /identify-point (core/point_info.py)
 │       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, GET /layers
 │       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes), POST /delineate-watershed/preview
 │
@@ -392,10 +392,11 @@ Response: 404 no_data (no_elevation_data) when no sample has DEM data
 
 #### 2.2.5a Identify Point
 ```
-POST /api/identify-point
-{"latitude": 51.0158, "longitude": 15.9042, "threshold_m2": 100000, "result_ids": ["sfincs-kamiennik-24h-p1"]}
+GET /api/identify-point?latitude=51.0158&longitude=15.9042&threshold_m2=100000&result_ids=sfincs-kamiennik-24h-p1
 ```
 Everything Hydrograf knows at one point, for the mode „Identyfikuj”: `coordinates` (WGS84; PL-1992 `easting_m`/`northing_m`), `elevation_m` and `slope_percent` (DEM rasters), `water` (per requested result whose `water_level` raster holds the point: `water_level_m`, `depth_m` = level − DEM, `null` where dry or below the terrain), `stream` (nearest `bdot_streams` line within 25 m), `water_body` (BDOT10k `OT_PTWP_A` polygon from `FRONTEND_DATA_DIR/bdot_lakes.geojson`, not in the database), `land_cover` (category, BDOT10k class, CN AMC-II, imperviousness), `soil_hsg`, `depression` and `subcatchment` (`stream_catchments` + `stream_network` at `threshold_m2`, floored to 10000). A member is `null` where its source has nothing; a point off the DEM is outside the data: 404 `no_data`; no DEM: 503 `store_unavailable`.
+
+The query parameters: `latitude` and `longitude` (required, WGS84), `threshold_m2` (optional, > 0) and `result_ids` (repeated, `&result_ids=a&result_ids=b`, up to 20, each 1–100 characters). An invalid parameter is a `validation_error` problem (400) whose `errors[].pointer` names it, e.g. `/query/latitude` or `/query/result_ids/0`. The answer has no side effects and can be cached; the front end keeps it for 5 minutes (`js/api.js`).
 
 #### 2.2.6 Depressions (Blue Spots)
 ```
@@ -970,7 +971,7 @@ frontend/
     ├── depressions.js        # Depressions (blue spots) overlay
     ├── sewer.js              # Storm-sewer layer (MVT overlay; only when GET /api/layers reports data)
     ├── results.js            # External analysis results (e.g. SFINCS of Hydraulik) from the manifest /data/results/index.json: tiles, legend, (i)
-    ├── identify.js           # Mode „Identyfikuj”: marker and point card (POST /api/identify-point)
+    ├── identify.js           # Mode „Identyfikuj”: marker and point card (GET /api/identify-point)
     ├── diagnostics.js        # Session event log (ADR-053)
     ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>)
     ├── welcome.js            # Welcome dialog (native <dialog>): first visit and the „Instrukcja” item of the rail on the main page
@@ -1000,7 +1001,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 - **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two plain-language paragraphs (what Hydrograf is, that the results are estimates and not a flood forecast, the area of the data) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`).
 - **Navigation rail** — Mapa, Instrukcja (`/instrukcja/`, the same tab) and Logowanie (`/admin`), on every page (a bottom bar on phones); on the main page „Instrukcja” opens the welcome dialog again (a click with Ctrl/Shift or the middle button still opens the guide). The terrain profile is a mode of the map bar.
 - **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
-- **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `POST /api/identify-point`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones).
+- **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `GET /api/identify-point`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones).
 - **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph. The × of its head hides the panel and keeps the result on the map (the button „Zlewnia” of the map bar brings it back); the button with the bin („Wyczyść wynik”, disabled while the panel shows only its instruction) clears the result. Esc once hides the panel, twice clears the result.
 - **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 64 entries of `info-texts.js` keyed by an API field or a form control id (the other 12 belong to the options of the UH model, Tc method and Nash estimation selects) hold: a description, a formula (built as MathML through the DOM, without libraries), the list „gdzie:” of the variables with their units, the unit of the result, a separate block „Znaczenie dla analizy”, the range of applicability and a note. The texts rest on Hydrolog and the backend (e.g. the hydrograph limit of 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice. The API returns no applicability warnings, so the GUI shows none.
 - **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.

@@ -1052,7 +1052,7 @@ requires-dist = [
     { name = "affine", specifier = ">=2.4,<3" },
     { name = "alembic", specifier = ">=1.13.1" },
     { name = "cachetools", specifier = ">=5.3.0" },
-    { name = "fastapi", specifier = ">=0.109.0" },
+    { name = "fastapi", specifier = ">=0.115.0" },
     { name = "fiona", specifier = ">=1.9.5" },
     { name = "geoalchemy2", specifier = ">=0.14.3" },
     { name = "geojson", specifier = ">=3.1.0" },
