@@ -248,6 +248,17 @@
         }
     }
 
+    /**
+     * Public service status (GET /health, no admin key).
+     *
+     * @returns {Promise<Object>} { status: 'healthy'|'unhealthy', database, version }
+     */
+    async function getHealth() {
+        var response = await fetch('/health');
+        if (!response.ok) throw new Error('Błąd serwera (' + response.status + ')');
+        return response.json();
+    }
+
     window.Hydrograf.adminApi = {
         setApiKey: setApiKey,
         getApiKey: getApiKey,
@@ -266,5 +277,6 @@
         uploadBoundary: uploadBoundary,
         streamBootstrapLogs: streamBootstrapLogs,
         verifyKey: verifyKey,
+        getHealth: getHealth,
     };
 })();

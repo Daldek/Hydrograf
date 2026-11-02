@@ -50,7 +50,7 @@
     var _origFetch = window.fetch;
     window.fetch = function (input, init) {
         var url = typeof input === 'string' ? input : (input && input.url) || '';
-        if (url.indexOf('/api/') !== 0 && url !== '/health') {
+        if (url.indexOf('/api/') !== 0) {
             return _origFetch.apply(window, arguments);
         }
         if (url.indexOf('/api/tiles/') === 0) {

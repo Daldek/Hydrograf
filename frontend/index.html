@@ -25,13 +25,13 @@
 
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
-    <link rel="stylesheet" href="css/chrome.css?v=d3ddba09e7">
-    <link rel="stylesheet" href="css/app.css?v=100984edac">
+    <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
+    <link rel="stylesheet" href="css/app.css?v=16ebb6977e">
 </head>
 <body>
 <div class="shell">
 
-    <!-- Top bar: mark + tool name, context, status, actions -->
+    <!-- Top bar: mark + tool name, context, actions -->
     <header class="topbar">
         <a class="brand" href="/" aria-label="Hydrograf, strona główna">
             <img src="img/hydrograf.svg" alt="">
@@ -41,14 +41,7 @@
             <span>Mapa</span><span class="sep" id="crumb-sep" hidden>/</span>
             <strong id="crumb-context"></strong>
         </nav>
-        <span class="badge" id="system-status" role="status" aria-live="polite">
-            <span class="label">Sprawdzanie usług…</span>
-        </span>
         <div class="top-actions">
-            <a class="btn ghost" id="btn-guide" href="/instrukcja/" aria-haspopup="dialog" aria-controls="welcome-modal">
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5z"/><path d="M4 16.5V4.5M7.5 6.5h5"/></svg>
-                <span class="label">Instrukcja</span>
-            </a>
             <button class="btn" id="feedback-open-btn" type="button" aria-haspopup="dialog" aria-controls="feedback-modal" title="Zgłoś uwagę">
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v10H8.5L5 17v-3H3z"/></svg>
                 <span class="label">Zgłoś uwagę</span>
@@ -76,9 +69,13 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>
             Mapa
         </a>
+        <a class="rail-item" href="/instrukcja/" id="rail-guide" aria-haspopup="dialog" aria-controls="welcome-modal">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.5h5.5A3.5 3.5 0 0 1 12 8v12a2.5 2.5 0 0 0-2.5-2.5H3z"/><path d="M21 4.5h-5.5A3.5 3.5 0 0 0 12 8v12a2.5 2.5 0 0 1 2.5-2.5H21z"/></svg>
+            Instrukcja
+        </a>
         <a class="rail-item" href="/admin">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
-            Admini&shy;stracja
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>
+            Logowanie
         </a>
     </nav>
 
@@ -478,7 +475,7 @@
     </div>
 </dialog>
 
-<!-- Welcome dialog: on the first visit and from the Instrukcja button -->
+<!-- Welcome dialog: on the first visit and from the Instrukcja item of the rail -->
 <dialog class="modal welcome" id="welcome-modal" aria-labelledby="welcome-title" aria-describedby="welcome-text">
     <div class="panel-head">
         <h2 id="welcome-title">Witaj w Hydrografie</h2>
@@ -526,15 +523,15 @@
         crossorigin="anonymous"></script>
 
 <!-- Application modules -->
-<script defer src="js/diagnostics.js?v=fe7b48db24"></script>
-<script defer src="js/api.js?v=2d485ccea3"></script>
+<script defer src="js/diagnostics.js?v=a06afc9760"></script>
+<script defer src="js/api.js?v=9cfceb93f6"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
-<script defer src="js/map.js?v=c325aad00a"></script>
+<script defer src="js/map.js?v=094c8802f1"></script>
 <script defer src="js/charts.js?v=9e81526377"></script>
-<script defer src="js/layers.js?v=f1b610e73c"></script>
+<script defer src="js/layers.js?v=e412c6b6b0"></script>
 <script defer src="js/profile.js?v=48daa99e7d"></script>
 <script defer src="js/info-texts.js?v=38c9c8ae53"></script>
-<script defer src="js/info.js?v=6a2be89bf4"></script>
+<script defer src="js/info.js?v=ee57e1b82f"></script>
 <script defer src="js/hydrograph.js?v=ac35ed43da"></script>
 <script defer src="js/advanced.js?v=0ec3199ceb"></script>
 <script defer src="js/custom-rain.js?v=6c9cd8da7b"></script>
@@ -542,7 +539,7 @@
 <script defer src="js/sewer.js?v=5734849f77"></script>
 <script defer src="js/results.js?v=b13c087a48"></script>
 <script defer src="js/feedback.js?v=c940b8604e"></script>
-<script defer src="js/welcome.js?v=8a980a0abd"></script>
-<script defer src="js/app.js?v=0eea3433d9"></script>
+<script defer src="js/welcome.js?v=b1ddbcaaf3"></script>
+<script defer src="js/app.js?v=ca2bc5d225"></script>
 </body>
 </html>

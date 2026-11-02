@@ -383,10 +383,14 @@
                 Hydrograf.map.showSelectionBoundary(data.watershed.boundary_geojson);
             }
 
-            // Show info banner if threshold was escalated
+            // Show info banner if threshold was escalated (the API words it in m²)
             if (data.info_message) {
                 var autoMsg = document.getElementById('auto-select-message');
-                if (autoMsg) autoMsg.textContent = data.info_message;
+                if (autoMsg) {
+                    autoMsg.textContent = 'Zlewnie cząstkowe niedostępne dla progu '
+                        + Hydrograf.layers.formatThreshold(threshold) + '. Zaznaczono z progu '
+                        + Hydrograf.layers.formatThreshold(data.display_threshold_m2) + '.';
+                }
                 if (autoInfo) autoInfo.classList.remove('d-none');
             }
 
@@ -471,52 +475,6 @@
 
         // Clear relief table
         if (els.paramsRelief) els.paramsRelief.innerHTML = '';
-    }
-
-    function removeRetryButton() {
-        var existing = document.getElementById('health-retry-btn');
-        if (existing) existing.remove();
-    }
-
-    function showRetryButton() {
-        removeRetryButton();
-        var statusEl = document.getElementById('system-status');
-        if (!statusEl || !statusEl.parentNode) return;
-        var retryBtn = document.createElement('button');
-        retryBtn.id = 'health-retry-btn';
-        retryBtn.type = 'button';
-        retryBtn.className = 'btn sm';
-        retryBtn.textContent = 'Ponów';
-        retryBtn.addEventListener('click', function () { checkSystemHealth(); });
-        statusEl.parentNode.insertBefore(retryBtn, statusEl.nextSibling);
-    }
-
-    /**
-     * Show the service status badge in the top bar.
-     * @param {'ok'|'warn'|'bad'} kind - badge colour
-     * @param {string} text - label (also the tooltip, the label is hidden on phones)
-     */
-    function setSystemStatus(kind, text) {
-        var statusEl = document.getElementById('system-status');
-        statusEl.className = 'badge ' + kind;
-        statusEl.title = text;
-        statusEl.querySelector('.label').textContent = text;
-    }
-
-    async function checkSystemHealth() {
-        try {
-            var health = await Hydrograf.api.checkHealth();
-            if (health.status === 'healthy') {
-                setSystemStatus('ok', 'Usługi działają');
-                removeRetryButton();
-            } else {
-                setSystemStatus('warn', 'Problem z bazą danych');
-                showRetryButton();
-            }
-        } catch {
-            setSystemStatus('bad', 'Usługi niedostępne');
-            showRetryButton();
-        }
     }
 
     var MODE_HINTS = {
@@ -684,12 +642,10 @@
             Hydrograf.feedback.init();
         }
 
-        // Welcome dialog (first visit, Instrukcja button)
+        // Welcome dialog (first visit, Instrukcja in the rail)
         if (Hydrograf.welcome) {
             Hydrograf.welcome.init();
         }
-
-        checkSystemHealth();
     }
 
     document.addEventListener('DOMContentLoaded', init);

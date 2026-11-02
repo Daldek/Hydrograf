@@ -86,6 +86,38 @@
     };
 
     // ----------------------------------------------------------------
+    // Service status (top bar; the map page does not show it)
+    // ----------------------------------------------------------------
+
+    var STATUS_TEXT = {
+        healthy: 'Usługi działają',
+        unhealthy: 'Problem z bazą danych',
+        down: 'Usługi niedostępne',
+    };
+
+    /**
+     * Show the service status in the top bar.
+     *
+     * @param {'healthy'|'unhealthy'|'down'} state
+     */
+    function setServiceStatus(state) {
+        var badge = document.getElementById('nav-status-badge');
+        if (!badge) return;
+        badge.textContent = STATUS_TEXT[state];
+        badge.className = 'badge badge-' + (state === 'healthy' ? 'healthy' : 'unhealthy');
+    }
+
+    /** Status from the public GET /health, shown before logging in too. */
+    async function checkHealth() {
+        try {
+            var health = await window.Hydrograf.adminApi.getHealth();
+            setServiceStatus(health.status === 'healthy' ? 'healthy' : 'unhealthy');
+        } catch (e) {
+            setServiceStatus('down');
+        }
+    }
+
+    // ----------------------------------------------------------------
     // Auth flow
     // ----------------------------------------------------------------
 
@@ -203,14 +235,9 @@
         try {
             var data = await window.Hydrograf.adminApi.getDashboard();
             renderDashboard(data);
-
-            // Update navbar badge
-            var navBadge = document.getElementById('nav-status-badge');
-            if (navBadge) {
-                navBadge.textContent = data.status === 'healthy' ? 'Healthy' : 'Unhealthy';
-                navBadge.className = 'badge badge-' + (data.status === 'healthy' ? 'healthy' : 'unhealthy');
-            }
+            setServiceStatus(data.status === 'healthy' ? 'healthy' : 'unhealthy');
         } catch (e) {
+            setServiceStatus('down');
             var el = document.getElementById('dashboard-content');
             if (el) el.innerHTML = '<p class="text-danger small">Błąd: ' + escapeHtml(e.message) + '</p>';
         }
@@ -402,6 +429,7 @@
     // ----------------------------------------------------------------
 
     document.addEventListener('DOMContentLoaded', function () {
+        checkHealth();
         var savedKey = localStorage.getItem('admin_api_key');
 
         if (savedKey) {

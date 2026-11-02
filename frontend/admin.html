@@ -24,7 +24,7 @@
           crossorigin="anonymous">
 
     <!-- Shell chrome, then the admin page -->
-    <link rel="stylesheet" href="css/chrome.css?v=d3ddba09e7">
+    <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
     <link rel="stylesheet" href="css/admin.css?v=1c4870df37">
 </head>
 <body>
@@ -39,12 +39,8 @@
         <nav class="crumbs" aria-label="Kontekst">
             <strong>Administracja</strong>
         </nav>
-        <span id="nav-status-badge" class="badge badge-idle d-none" role="status" aria-live="polite">Nieznany</span>
+        <span id="nav-status-badge" class="badge badge-idle" role="status" aria-live="polite">Sprawdzanie usług…</span>
         <div class="top-actions">
-            <a class="btn ghost" id="btn-guide" href="/instrukcja/">
-                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5z"/><path d="M4 16.5V4.5M7.5 6.5h5"/></svg>
-                <span class="label">Instrukcja</span>
-            </a>
             <div class="seg" role="group" aria-label="Motyw">
                 <button type="button" id="theme-auto" aria-pressed="true" title="Motyw systemowy">
                     <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor"/></svg>
@@ -68,9 +64,13 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>
             Mapa
         </a>
+        <a class="rail-item" href="/instrukcja/">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.5h5.5A3.5 3.5 0 0 1 12 8v12a2.5 2.5 0 0 0-2.5-2.5H3z"/><path d="M21 4.5h-5.5A3.5 3.5 0 0 0 12 8v12a2.5 2.5 0 0 1 2.5-2.5H21z"/></svg>
+            Instrukcja
+        </a>
         <a class="rail-item active" href="/admin" aria-current="page">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
-            Admini&shy;stracja
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>
+            Logowanie
         </a>
     </nav>
 
@@ -291,11 +291,11 @@
 
 <!-- Shell and admin modules -->
 <script defer src="js/theme-switch.js?v=b1e53f98a8"></script>
-<script defer src="js/admin/admin-api.js?v=5d0c3fe574"></script>
+<script defer src="js/admin/admin-api.js?v=871223a28f"></script>
 <script defer src="js/admin/admin-bootstrap.js?v=5427e169d3"></script>
 <script defer src="js/admin/admin-bbox-picker.js?v=c837db9e0a"></script>
 <script defer src="js/admin/admin-sewer.js?v=f1a160efa5"></script>
 <script defer src="js/admin/admin-feedback.js?v=7bff0e2b4d"></script>
-<script defer src="js/admin/admin-app.js?v=eb5040a5d4"></script>
+<script defer src="js/admin/admin-app.js?v=e298718a97"></script>
 </body>
 </html>
