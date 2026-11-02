@@ -51,6 +51,8 @@ htmlcov/
 .env.local
 .env.*.local
 *.env
+# Secrets of the staging stack of the store migration (scripts/staging-compose.sh)
+.env.staging
 
 # Database
 *.db
