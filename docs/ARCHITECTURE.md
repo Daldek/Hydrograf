@@ -149,6 +149,7 @@ backend/
 │
 ├── core/
 │   ├── __init__.py
+│   ├── analysis_results.py        # Manifest wyników analiz (frontend/data/results/index.json): poziom wody wzdłuż profilu terenu
 │   ├── catchment_graph.py         # In-memory sub-catchment graph (~87-285k nodes, scipy CSR + BFS, invalidate())
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
@@ -364,16 +365,20 @@ Content-Type: application/json
 Request:
 {
   "geometry": { "type": "LineString", "coordinates": [[lon, lat], ...] },
-  "n_samples": 100
+  "n_samples": 100,
+  "result_ids": ["sfincs-kamiennik-12h-p1"]
 }
 
 Response: 200 OK
 {
   "distances_m": [0.0, 10.5, ...],
   "elevations_m": [150.0, 151.2, ...],
-  "total_length_m": 1050.0
+  "total_length_m": 1050.0,
+  "water_levels": [{"result_id": "sfincs-kamiennik-12h-p1", "levels_m": [null, 152.4, ...]}]
 }
 ```
+
+`result_ids` (opcjonalne, do 20 id) to wyniki analiz z manifestu `/data/results/index.json` (§4.2.0). Dla każdego wyniku z rastrem `water_level`, na który trafia choć jeden punkt profilu, `water_levels` podaje maksymalny poziom wody [m n.p.m.] w tych samych punktach co `elevations_m`; `null` tam, gdzie sucho, poza rastrem albo bez danych NMT. Nieznane id, wyniki bez `water_level` i rastry poza linią są pomijane; bez `result_ids` lista jest pusta.
 
 #### 2.2.6 Depressions (Blue Spots)
 ```
@@ -964,7 +969,7 @@ frontend/
     ├── map.js                # Leaflet map, drawing, MVT
     ├── charts.js             # Chart.js w kolorach tokenów: hipsometria, pokrycie/HSG, hietogram, hydrogram, profil
     ├── layers.js             # Panel „Warstwy”: podkłady z nakładką mapy zagrożenia powodziowego (WMS Wód Polskich), nakładki, krycie, przybliżenie do zasięgu
-    ├── profile.js            # Terrain profile (draw line / auto)
+    ├── profile.js            # Profil terenu (rysowanie linii) ze zwierciadłem wody włączonych wyników analiz
     ├── hydrograph.js         # Formularz hietogramu (AMC, źródło opadu) i hydrogramu, bilans, wykresy
     ├── custom-rain.js        # Własna seria opadu: tabela kroków, wklejanie, import CSV, kopia hietogramu
     ├── info.js               # Objaśnienia (i): znaczniki, wspólny dymek, wzory MathML, najechanie/fokus/dotknięcie, Esc
@@ -1016,10 +1021,14 @@ Strona główna używa powłoki Archiwisty (`chrome.css` + `app.css` + `shell.js
                 "bounds": [15.88, 50.98, 16.05, 51.06], "min_zoom": 10, "max_zoom": 16, "opacity": 0.8,
                 "legend": {"title": "Maks. głębokość wody", "unit": "m",
                            "classes": [{"label": "0,05–0,2", "color": "#c6dbef"}, {"label": "> 2", "color": "#08306b"}]},
-                "description": "…", "source": "Hydraulik 0.1.0.dev0 / SFINCS v2.4.1"}]}
+                "description": "…", "source": "Hydraulik 0.1.0.dev0 / SFINCS v2.4.1",
+                "water_level": {"path": "/data/results/sfincs-kamiennik-12h-p1/wse_max.tif",
+                                "crs": "EPSG:2180", "unit": "m n.p.m."}}]}
   ```
 
   `bounds` to [zachód, południe, wschód, północ] w WGS84, kafle XYZ PNG z przezroczystością (`gdal2tiles --xyz`). Każdy wynik `raster_tiles` daje wiersz w grupie `group` (istniejąca „Wyniki analiz” pod „Linie spływu”; nowa grupa powstaje nad podkładami tylko, gdy wynik jej wymaga): `L.tileLayer` w panelu `resultsPane` (z-index 300: nad NMT i pokryciem terenu, pod liniami spływu) z `bounds`, `minZoom` 8, `minNativeZoom`/`maxNativeZoom` z manifestu, kryciem z `opacity`; legenda (próbki z `legend.classes`, jednostka w tytule) tylko przy włączonej warstwie; `description` i `source` w objaśnieniu (i). Zasięg wliczany do „Przybliż do zasięgu warstw”. Inne `kind` są pomijane z ostrzeżeniem; brak manifestu, błędny JSON lub inny `schema` — jedno ostrzeżenie w konsoli i brak wierszy.
+
+  `water_level` (opcjonalne; zgodne wstecz rozszerzenie `hydrograf-results/1`, starsze klienty je pomijają) wskazuje GeoTIFF maksymalnego poziomu zwierciadła wody na siatce modelu (float32, LZW, nodata tam, gdzie maksymalna głębokość < 0,05 m — poniżej najniższej klasy legendy); `crs` i `unit` opisują raster. Czyta go API, nie przeglądarka: `POST /api/terrain-profile` z `result_ids` (§2.2.5) próbkuje raster w punktach profilu. Ścieżka `/data/…` wskazuje plik w `FRONTEND_DATA_DIR` (domyślnie `/frontend/data`, katalog `frontend/data` zamontowany w kontenerze API) i musi zostać w jego podkatalogu `results/` — inaczej wynik jest pomijany. Profil terenu (`profile.js`) prosi o wyniki z `water_level`, których warstwa jest włączona (`results.shownWaterLevels()`), a włączenie lub wyłączenie takiej warstwy przerysowuje otwarty profil. Zwierciadło to niebieskie pole między terenem a poziomem wody tam, gdzie woda leży nad NMT; pod wykresem legenda „Teren” i „Zwierciadło wody — <tytuł wyniku>”, a odczyt pod kursorem (na telefonie pod palcem) podaje teren, poziom wody i głębokość (poziom wody minus NMT). Linia, która nie przecina wyniku, daje niezmieniony wykres. Raster tworzy skrypt publikacji przebiegu Hydraulika z `zsmax` w `sfincs_map.nc`.
 - **Szerokość paneli** — uchwyty między panelami (lewy 260–560 px, prawy 340–720 px), zapamiętywane w `localStorage`; panele można zamknąć.
 - **Telefon (≤ 860 px)** — mapa na pełnym ekranie, dolny pasek zamiast szyny, panele jako arkusze wysuwane od dołu.
 
