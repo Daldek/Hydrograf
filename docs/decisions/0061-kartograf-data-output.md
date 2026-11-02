@@ -111,3 +111,14 @@ passes `root=` and `cache=` explicitly and none relies on the default store, so 
 failed as `check_failed` in a plain-mode plan (`--output-dir --check`), and `ca7d538` before it
 flushes stray stdout of `kartograf-mcp` to stderr. Hydrograf asks Kartograf for no plan and
 starts no MCP server, so no call moved.
+
+**2026-11-02: the pin moved to `26ee459`.** At the merge into `feature/store-migration`
+(docs/plans/2026-11-02-store-migration.md, step S1) the pin follows the commit that Archiwista
+pins, `26ee459` of Kartograf's `feature/archiwista-projects` (0.8.0.dev0). It selects the sheets
+of a geometry file by the features, not by their envelopes (`find_sheets_for_geometry`: a polygon
+takes the sheets it overlaps), removes the projects that Archiwista keeps (Hydrograf uses none),
+and raises every validation error with a catalogue message. The signatures of the functions
+Hydrograf calls did not change, so no call moved and the offline tests pass unchanged. By that
+contract a bootstrap with an SHP or GPKG `--boundary-file` and `download_dem --geometry` ask for
+the sheets the area meets instead of every sheet of a feature's envelope; no download has run on
+this pin yet.

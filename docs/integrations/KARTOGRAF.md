@@ -1,8 +1,8 @@
 # Kartograf integration
 
-**Version:** 7.0
-**Date:** 2026-10-25
-**Status:** Active (Kartograf 0.8.0.dev0, head `c31ca04`; ADR-061)
+**Version:** 7.1
+**Date:** 2026-11-02
+**Status:** Active (Kartograf 0.8.0.dev0, head `26ee459`; ADR-061)
 
 ---
 
@@ -10,10 +10,10 @@
 
 Hydrograf uses [Kartograf](https://github.com/Daldek/Kartograf) to download spatial data from
 Polish and European sources and to do the arithmetic of the map sheet codes (*godła*). Kartograf
-is a library dependency used through its public API. It is pinned by the commit of the head of its
-`feature/data-output` branch (0.8.0.dev0, `c31ca04`), with the range `>=0.8.0.dev0,<0.9`, until the
-0.8.0 tag exists; the release pull request replaces the commit with the tag (REL-5.3, REL-5.6,
-ADR-060, ADR-061).
+is a library dependency used through its public API. It is pinned by the commit `26ee459` of its
+`feature/archiwista-projects` branch (0.8.0.dev0, the commit Archiwista pins), with the range
+`>=0.8.0.dev0,<0.9`, until the 0.8.0 tag exists; the release pull request replaces the commit with
+the tag (REL-5.3, REL-5.6, ADR-060, ADR-061).
 
 What Hydrograf takes from it:
 
@@ -823,6 +823,6 @@ Other formats (GeoJSON) of `bootstrap --boundary-file` fall back to the bbox of 
 
 ---
 
-**Document version:** 7.0
-**Last update:** 2026-10-25: Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `45dedf4`; the document is in English.
-**History:** 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).
+**Document version:** 7.1
+**Last update:** 2026-11-02: the pin of the head `26ee459` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum).
+**History:** 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `45dedf4`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).

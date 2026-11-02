@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-10-25 (the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-02 (Kartograf pinned to `26ee459`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
 **Projects:** Hydrograf, Hydrolog, Kartograf, IMGWTools
 
@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
 │  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │              │
-│  │  6bd35a4      │   │   c31ca04     │   │   5fa22b3     │              │
+│  │  6bd35a4      │   │   26ee459     │   │   5fa22b3     │              │
 │  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
 │  └───────────────┘   └───────────────┘   └───────────────┘              │
 │                                                                         │
@@ -31,7 +31,7 @@
 | Project | Depends on | Type of dependency | Version |
 |---------|-----------|--------------------|---------|
 | **Hydrograf** | IMGWTools | direct (pyproject.toml) | commit 6bd35a4 (3.0.0) |
-| **Hydrograf** | Kartograf | direct (pyproject.toml) | commit c31ca04 (0.8.0.dev0) |
+| **Hydrograf** | Kartograf | direct (pyproject.toml) | commit 26ee459 (0.8.0.dev0) |
 | **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 5fa22b3 (1.0.0.dev0) |
 | **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
 
@@ -44,7 +44,7 @@ The three producers are pinned by the commit of their head until their tags exis
 ```toml
 # [tool.uv.sources]
 imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "6bd35a49b329f99b591ffdee39367daec0e75af7" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "c31ca04c078ebbee36850d0aa4dcead59dd77a41" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "26ee45924b719b4f357ab02c88cda58aa806843f" }
 hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "5fa22b35e5e1ec9076c41d0be04d2a99458f5049" }
 ```
 
@@ -61,7 +61,7 @@ hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "5fa22b35e5e1
 
 **Note:** IMGWTools uses `master/slave` instead of `main/develop`.
 
-**Pinned branches:** the pins point at topic branches, not at the working branches: Kartograf and IMGWTools `feature/data-output`, Hydrolog `feature/routing-schematic`. All three commits are on GitHub (ADR-060).
+**Pinned branches:** the pins point at topic branches, not at the working branches: Kartograf `feature/archiwista-projects` (the commit Archiwista pins), IMGWTools `feature/data-output`, Hydrolog `feature/routing-schematic`. All three commits are on GitHub (ADR-060).
 
 ---
 
