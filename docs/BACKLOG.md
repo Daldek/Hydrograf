@@ -29,6 +29,7 @@ merged with `feature/producer-heads` on 2026-11-02; the done items stay in PROGR
 - [ ] **B4** (GPT report): on a 375 px phone the mode bar cuts off „Profil terenu”, and the button „Zlewnia” lies off screen (scrollWidth 491) with no sign of scrolling; × in the sheet „Zlewnia” deletes the result, and the sheet can be hidden only by its 36×4 px handle. Priority: medium.
 - [ ] **B5** (GPT report): a terrain profile that crosses the data boundary drops to 0 m a.s.l. (50 of 100 samples = 0, the summary „H 0–388 m”); expected: a gap in the chart or a message that there is no DEM. Part of the entry „Clipping the presented data to the boundary of the analysis extent” in Features — other. Priority: medium.
 - [ ] GPT report, the low items B6–B15 (B14 solved by `4866617`) and the informational I1–I3 (among them no legends of the DEM and of the depressions, the unused field `download` of the results manifest): review them and choose what to fix. Priority: low.
+- [ ] The bbox picker map of `/admin` (`js/admin/admin-bbox-picker.js`) keeps Leaflet's default wheel zoom, so a touchpad's momentum tail still zooms it on after the fingers stop; the main map got `wheelZoomHandler` (`js/map.js`, `feature/store-ui`, 2026-11-02). Reuse the handler if admins notice it. Priority: low.
 
 ## Features — Kamil's feedback (2026-07, original: `notes/feedback/Kamil.md`)
 
