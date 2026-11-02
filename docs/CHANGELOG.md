@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new script `scripts/download_sewer.py`: data acquisition (file/WFS/DB/URL).
 - A DB migration (025): the tables `sewer_nodes` (18 columns), `sewer_network` (16 columns) and the column `stream_network.is_sewer_augmented`.
 - A `sewer` section in the pipeline YAML configuration.
-- New admin endpoints: `/api/admin/sewer/upload`, `/status`, `/delete`.
+- New admin endpoints: `POST /api/admin/sewer/upload`, `GET /api/admin/sewer/status`, `DELETE /api/admin/sewer`.
 - MVT tiles of the sewer network: `/api/tiles/sewer/{z}/{x}/{y}.pbf`.
 - A sewer overlay layer on the front-end map (`sewer.js`, `admin-sewer.js`).
 - Sewer burning in `process_dem.py` (steps 3b and 4a-4c).
@@ -88,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migration 018: a composite index `(threshold_m2, segment_idx)` on `stream_catchments`.
 
 ### Changed
+- **Breaking for clients of the admin API:** three admin routes address resources and the old ones are gone (404): `DELETE /api/admin/sewer/delete` → `DELETE /api/admin/sewer`; `POST /api/admin/sewer/config` → `PUT /api/admin/sewer/config` (the same body); `POST /api/admin/feedback/{id}/read` → `PATCH /api/admin/feedback/{id}` with `{"is_read": true}` or `{"is_read": false}` (a missing or non-boolean `is_read` is a `validation_error`, 400). CORS allows `PUT` and `PATCH`. The feedback list of `/admin` has a button „Oznacz przeczytane” / „Oznacz nieprzeczytane” in every row, and the unread counter follows it.
 - **Hydrolog `4f02ffd` (`fix/snyder-recession`, was `5fa22b3`, ADR-060):** the Snyder unit hydrograph runs to the end of its recession, peak = qpR (no cut-off tail, B3); values of Snyder hydrographs change, other methods identical.
 - **The shared Kartograf store is read-only for Hydrograf** (ADR-067): while `HYDROGRAF_KARTOGRAF_ROOT` is set, every download refuses with `forbidden` (reason `shared_store_read_only`, exit 12): `--bbox`, `--sheets` and `--boundary-file` of the bootstrap, `download_dem`, `download_landcover`, `prepare_area`, `analyze_watershed --download` and the land cover of the CN fallback (logged as an error, the default CN is used); Archiwista alone writes that store. Unset or empty, the private store `<cache_dir>/kartograf` downloads as before. The bootstrap of the admin panel (`POST /api/admin/bootstrap/start`) answers `403` problem+json before it starts a process while a shared store is set. The staging stack mounts the store read-only for every container.
 - `describe_error` also renders a `HydrografError` as `<message> [<code>] <hint>`.

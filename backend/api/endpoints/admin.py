@@ -851,7 +851,7 @@ def _save_sewer_config(sewer: dict[str, Any]) -> None:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
 
 
-@router.post("/sewer/config")
+@router.put("/sewer/config")
 def sewer_config_update(body: SewerConfigUpdate) -> dict[str, Any]:
     """Toggle sewer processing and set source file path.
 
@@ -988,7 +988,7 @@ async def sewer_upload(
     }
 
 
-@router.delete("/sewer/delete")
+@router.delete("/sewer")
 def sewer_delete(db: Session = Depends(get_db)) -> dict[str, Any]:
     """Delete all sewer data from database and disk."""
     db.execute(text("TRUNCATE TABLE sewer_network CASCADE"))

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from api.dependencies.admin_auth import verify_admin_key
 from core.database import get_db
 from core.errors import HydrografError, InternalError, NotFoundError
-from models.schemas import FeedbackRequest, FeedbackResponse
+from models.schemas import FeedbackRequest, FeedbackResponse, FeedbackUpdate
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -123,15 +123,15 @@ def list_feedback(
         ) from e
 
 
-@admin_router.post("/feedback/{feedback_id}/read")
-def mark_feedback_read(
-    feedback_id: int, db: Session = Depends(get_db)
+@admin_router.patch("/feedback/{feedback_id}")
+def update_feedback(
+    feedback_id: int, body: FeedbackUpdate, db: Session = Depends(get_db)
 ) -> dict[str, str]:
-    """Mark a feedback submission as read."""
+    """Mark a feedback submission as read or unread."""
     try:
         result = db.execute(
-            text("UPDATE feedback SET is_read = true WHERE id = :id"),
-            {"id": feedback_id},
+            text("UPDATE feedback SET is_read = :is_read WHERE id = :id"),
+            {"id": feedback_id, "is_read": body.is_read},
         )
         db.commit()
         if cast("CursorResult[Any]", result).rowcount == 0:
@@ -145,7 +145,7 @@ def mark_feedback_read(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error marking feedback read: {e}", exc_info=True)
+        logger.error(f"Error updating feedback: {e}", exc_info=True)
         raise InternalError(
             "feedback_update_failed", reason="feedback_update_failed"
         ) from e

@@ -61,16 +61,20 @@ class TestListFeedback:
         assert data["items"][0]["created_at"].startswith("2026-08-02")
 
 
-class TestMarkFeedbackRead:
-    def test_marks_and_commits(self, app):
+class TestUpdateFeedback:
+    @pytest.mark.parametrize("is_read", [True, False])
+    def test_sets_the_read_flag_and_commits(self, app, is_read):
         db = MagicMock()
         db.execute.return_value.rowcount = 1
         app.dependency_overrides[get_db] = lambda: db
 
-        response = TestClient(app).post("/api/admin/feedback/5/read")
+        response = TestClient(app).patch(
+            "/api/admin/feedback/5", json={"is_read": is_read}
+        )
 
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
+        assert db.execute.call_args.args[1] == {"id": 5, "is_read": is_read}
         db.commit.assert_called_once()
 
     def test_missing_returns_404(self, app):
@@ -78,7 +82,25 @@ class TestMarkFeedbackRead:
         db.execute.return_value.rowcount = 0
         app.dependency_overrides[get_db] = lambda: db
 
-        response = TestClient(app).post("/api/admin/feedback/999/read")
+        response = TestClient(app).patch(
+            "/api/admin/feedback/999", json={"is_read": True}
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize("body", [{}, {"is_read": "yes"}, {"is_read": 1}])
+    def test_a_body_without_a_boolean_is_read_is_rejected(self, app, body):
+        db = MagicMock()
+        app.dependency_overrides[get_db] = lambda: db
+
+        response = TestClient(app).patch("/api/admin/feedback/5", json=body)
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "validation_error"
+        db.execute.assert_not_called()
+
+    def test_the_old_read_route_is_gone(self, app):
+        response = TestClient(app).post("/api/admin/feedback/5/read")
 
         assert response.status_code == 404
 

@@ -924,3 +924,11 @@ class FeedbackResponse(BaseModel):
 
     id: int = Field(..., description="Created feedback record id")
     status: str = Field("ok", description="Submission status")
+
+
+class FeedbackUpdate(BaseModel):
+    """Request model for changing the read flag of a feedback submission."""
+
+    is_read: bool = Field(
+        ..., strict=True, description="Whether the submission is read"
+    )

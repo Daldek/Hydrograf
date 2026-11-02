@@ -433,8 +433,12 @@ POST /api/admin/bootstrap/upload-boundary — upload a watershed boundary
 
 POST   /api/admin/sewer/upload     — upload a sewer network file (ADR-051/052), auto-detects the format, returns detected_format and layers
 GET    /api/admin/sewer/status     — status of the sewer data
-DELETE /api/admin/sewer/delete     — delete the sewer data
-POST   /api/admin/sewer/config    — field_mapping and role_mapping configuration (ADR-052)
+DELETE /api/admin/sewer            — delete the sewer data
+PUT    /api/admin/sewer/config     — enabled, source file and layers, field_mapping and role_mapping (ADR-052)
+
+GET    /api/admin/feedback         — testers' reports, newest first (limit, offset), with unread_count
+PATCH  /api/admin/feedback/{id}    — {"is_read": true|false}: mark a report read or unread
+DELETE /api/admin/feedback/{id}    — delete a report
 ```
 
 ---
@@ -1931,11 +1935,12 @@ jobs:
 
 ---
 
-**Document version:** 2.8
+**Document version:** 2.9
 **Date of the last update:** 2026-11-02
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.9 (2026-11-02): §2.2.8 — the admin endpoints address resources: `DELETE /api/admin/sewer` (was `DELETE /api/admin/sewer/delete`), `PUT /api/admin/sewer/config` (was `POST`), `PATCH /api/admin/feedback/{id}` with `{"is_read": bool}` (was `POST /api/admin/feedback/{id}/read`); the feedback endpoints are listed; CORS allows `PUT` and `PATCH`
 - 2.8 (2026-11-02): fixes from the testers' feedback (`feature/store-ui`): §4.1 and §4.2 — wheel zoom without the tail of a gesture or late input, (i) explanations open on a click only, the flow accumulation threshold in ha/km², the rail Mapa · Instrukcja · Logowanie on every page, the service status only in `/admin`
 - 2.7 (2026-11-02): merge of `feature/visual-identity` (its version 2.3 of 2026-11-01): GUI in the Nogat visual identity (ADR-065) — §4.1 new structure of `frontend/` (`tokens.css`, `chrome.css`, `app.css`, `shell.js`, `theme-init.js`, `theme-switch.js`, `welcome.js`, `img/hydrograf.svg`, `instrukcja/`; removed `glass.css`, `style.css`, `draggable.js`), §4.2 the Archiwista shell and basemaps (OpenFreeMap through MapLibre GL), charts in tokens, (i) explanations, AMC and your own rainfall series, advanced mode, analysis results (`hydrograf-results/1` with `water_level`), the MZP overlay; §2.2 `POST /api/delineate-watershed/preview`, `amc` and `custom_precipitation`, `GET /api/layers`, `result_ids` and `water_levels` of the terrain profile (`core/analysis_results.py`); §5.1 nginx on the loopback; §5.2 CSP hosts and the front-end asset cache (`?v=`, HTML `no-cache`); §7.1 request correlation and log rotation; ADR-065 in the table
 - 2.6 (2026-10-25): `core/watershed.py` (`FlowCell`, `build_boundary`, `build_boundary_polygonize`, `calculate_watershed_area_km2`) and the cell functions of `core/morphometry.py` are removed, nothing called them; `core/morphometry.py` keeps `calculate_shape_indices`; the sections 2.4.1 to 2.4.9 are renumbered (section 2.4.7 is the Hydrolog library, 2.4.8 in version 2.4)

@@ -217,7 +217,7 @@ class TestSewerConfig:
         return yaml.safe_load((project / "config.yaml").read_text())["sewer"]
 
     def test_a_source_outside_the_project_is_forbidden(self, client, project):
-        response = client.post(
+        response = client.put(
             "/api/admin/sewer/config",
             json={"enabled": True, "source_path": "../../etc/passwd"},
         )
@@ -227,7 +227,7 @@ class TestSewerConfig:
         assert not (project / "config.yaml").exists()
 
     def test_a_source_that_does_not_exist_is_not_found(self, client, project):
-        response = client.post(
+        response = client.put(
             "/api/admin/sewer/config",
             json={"enabled": True, "source_path": "data/sewer/gone.gpkg"},
         )
@@ -236,7 +236,7 @@ class TestSewerConfig:
         assert response.json()["details"]["reason"] == "source_file_missing"
 
     def test_settings_are_merged_into_the_config_file(self, client, project):
-        client.post(
+        client.put(
             "/api/admin/sewer/config",
             json={
                 "enabled": True,
@@ -246,7 +246,7 @@ class TestSewerConfig:
                 "field_mapping": {"diameter": "DN"},
             },
         )
-        response = client.post(
+        response = client.put(
             "/api/admin/sewer/config",
             json={"enabled": False, "field_mapping": {"material": "MAT"}},
         )
@@ -265,7 +265,7 @@ class TestSewerConfig:
         }
 
     def test_enabling_asks_for_a_pipeline_run(self, client, project):
-        response = client.post("/api/admin/sewer/config", json={"enabled": True})
+        response = client.put("/api/admin/sewer/config", json={"enabled": True})
 
         assert response.json()["message"] == "Sewer enabled"
         assert response.json()["next_step"]
@@ -330,7 +330,7 @@ class TestSewerDelete:
         locked.chmod(0o400)
         monkeypatch.setattr(admin, "DATA_SEWER", sewer)
 
-        response = client.delete("/api/admin/sewer/delete")
+        response = client.delete("/api/admin/sewer")
 
         assert response.status_code == 200
         assert response.json()["pipeline_dirty"] is True
@@ -346,7 +346,7 @@ class TestSewerDelete:
     ):
         monkeypatch.setattr(admin, "DATA_SEWER", tmp_path / "never_created")
 
-        response = client.delete("/api/admin/sewer/delete")
+        response = client.delete("/api/admin/sewer")
 
         assert response.status_code == 200
         db.commit.assert_called_once()

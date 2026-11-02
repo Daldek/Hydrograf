@@ -105,8 +105,8 @@
         return request('GET', '/api/admin/feedback?limit=100&offset=0');
     }
 
-    function markFeedbackRead(id) {
-        return request('POST', '/api/admin/feedback/' + id + '/read');
+    function setFeedbackRead(id, isRead) {
+        return request('PATCH', '/api/admin/feedback/' + id, { is_read: isRead });
     }
 
     function deleteFeedback(id) {
@@ -272,7 +272,7 @@
         startBootstrap: startBootstrap,
         cancelBootstrap: cancelBootstrap,
         getFeedback: getFeedback,
-        markFeedbackRead: markFeedbackRead,
+        setFeedbackRead: setFeedbackRead,
         deleteFeedback: deleteFeedback,
         uploadBoundary: uploadBoundary,
         streamBootstrapLogs: streamBootstrapLogs,

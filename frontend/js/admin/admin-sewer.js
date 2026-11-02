@@ -110,7 +110,7 @@
                     // Auto-configure source path to uploaded file
                     var sourcePath = 'data/sewer/' + data.filename;
                     await fetch('/api/admin/sewer/config', {
-                        method: 'POST',
+                        method: 'PUT',
                         headers: {
                             'X-Admin-Key': apiKey,
                             'Accept-Language': 'pl',
@@ -147,7 +147,7 @@
         try {
             var apiKey = window.Hydrograf.adminApi.getApiKey();
             var resp = await fetch('/api/admin/sewer/config', {
-                method: 'POST',
+                method: 'PUT',
                 headers: {
                     'X-Admin-Key': apiKey,
                     'Accept-Language': 'pl',
@@ -189,7 +189,7 @@
 
         try {
             var apiKey = window.Hydrograf.adminApi.getApiKey();
-            var resp = await fetch('/api/admin/sewer/delete', {
+            var resp = await fetch('/api/admin/sewer', {
                 method: 'DELETE',
                 headers: { 'X-Admin-Key': apiKey, 'Accept-Language': 'pl' },
             });
