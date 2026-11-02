@@ -270,6 +270,36 @@
     }
 
     /**
+     * What Hydrograf knows at a point (mode "Identyfikuj").
+     *
+     * @param {number} lat - Latitude (WGS84)
+     * @param {number} lng - Longitude (WGS84)
+     * @param {number} threshold - Flow accumulation threshold of the flow lines [m2]
+     * @param {Array<string>} resultIds - Analysis results on the map whose water is read
+     * @returns {Promise<Object>} { coordinates, elevation_m, slope_percent, water, stream,
+     *     water_body, land_cover, soil_hsg, depression, subcatchment }
+     */
+    async function identifyPoint(lat, lng, threshold, resultIds) {
+        var ids = resultIds || [];
+        var key = _cacheKey('ip', lat, lng, threshold, ids.join('|'));
+        var cached = _cacheGet(key);
+        if (cached) return cached;
+
+        var payload = { latitude: lat, longitude: lng, threshold_m2: threshold };
+        if (ids.length) payload.result_ids = ids;
+        const response = await apiFetch('/api/identify-point', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) await handleError(response);
+        var data = await response.json();
+        _cacheSet(key, data);
+        return data;
+    }
+
+    /**
      * Submit user feedback.
      *
      * @param {Object} payload - { message, contact, page_url, diagnostics }
@@ -295,6 +325,7 @@
         getDepressions: getDepressions,
         delineateWatershed: delineateWatershed,
         previewWatershed: previewWatershed,
+        identifyPoint: identifyPoint,
         submitFeedback: submitFeedback,
     };
 })();

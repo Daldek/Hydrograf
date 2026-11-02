@@ -26,7 +26,7 @@
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
     <link rel="stylesheet" href="css/chrome.css?v=d3ddba09e7">
-    <link rel="stylesheet" href="css/app.css?v=100984edac">
+    <link rel="stylesheet" href="css/app.css?v=3494228afc">
 </head>
 <body>
 <div class="shell">
@@ -114,6 +114,7 @@
                         <button type="button" id="mode-browse" role="radio" aria-checked="true" class="on">Przeglądanie</button>
                         <button type="button" id="mode-select" role="radio" aria-checked="false">Wybierz zlewnię</button>
                         <button type="button" id="mode-profile" role="radio" aria-checked="false">Profil terenu</button>
+                        <button type="button" id="mode-identify" role="radio" aria-checked="false">Identyfikuj</button>
                     </div>
                     <span class="hint">
                         <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
@@ -148,6 +149,17 @@
                                 <canvas id="chart-profile-standalone" role="img" aria-label="Profil terenu"></canvas>
                             </div>
                         </div>
+                    </section>
+
+                    <!-- Point card (identify mode, js/identify.js) -->
+                    <section class="identify-card" id="identify-card" aria-labelledby="identify-title" hidden>
+                        <div class="panel-head">
+                            <h2 id="identify-title">Informacje o punkcie</h2>
+                            <button class="btn ghost sm icon" type="button" id="identify-close" aria-label="Zamknij informacje o punkcie" title="Zamknij">
+                                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
+                            </button>
+                        </div>
+                        <div class="identify-body" id="identify-body" aria-live="polite"></div>
                     </section>
                 </div>
             </section>
@@ -527,7 +539,7 @@
 
 <!-- Application modules -->
 <script defer src="js/diagnostics.js?v=fe7b48db24"></script>
-<script defer src="js/api.js?v=2d485ccea3"></script>
+<script defer src="js/api.js?v=86a3ca5ac2"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
 <script defer src="js/map.js?v=c325aad00a"></script>
 <script defer src="js/charts.js?v=9e81526377"></script>
@@ -540,9 +552,10 @@
 <script defer src="js/custom-rain.js?v=6c9cd8da7b"></script>
 <script defer src="js/depressions.js?v=1ae5396489"></script>
 <script defer src="js/sewer.js?v=5734849f77"></script>
-<script defer src="js/results.js?v=b13c087a48"></script>
+<script defer src="js/results.js?v=73398284b4"></script>
 <script defer src="js/feedback.js?v=c940b8604e"></script>
 <script defer src="js/welcome.js?v=8a980a0abd"></script>
-<script defer src="js/app.js?v=0eea3433d9"></script>
+<script defer src="js/identify.js?v=26b0c1016b"></script>
+<script defer src="js/app.js?v=0572531b19"></script>
 </body>
 </html>

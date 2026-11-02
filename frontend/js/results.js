@@ -8,7 +8,8 @@
  * tile layers, legends and (i) texts; layers.js turns each entry into a row
  * of the "Warstwy" panel. No manifest, or no usable entry, means no rows.
  * A result with a `water_level` raster (sampled by the API) adds its water
- * surface to the terrain profile while its layer is on the map.
+ * surface to the terrain profile and its water depth to the point card of
+ * the mode "Identyfikuj" while its layer is on the map.
  */
 (function () {
     'use strict';
@@ -164,10 +165,16 @@
             .map(function (r) { return { id: r.id, title: r.title }; });
     }
 
+    /** Whether the manifest lists a result with a water level raster. */
+    function hasWaterLevels() {
+        return _results.some(function (r) { return r.waterLevel; });
+    }
+
     window.Hydrograf.results = {
         load: load,
         showLegend: showLegend,
         hideLegend: hideLegend,
         shownWaterLevels: shownWaterLevels,
+        hasWaterLevels: hasWaterLevels,
     };
 })();
