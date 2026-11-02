@@ -421,7 +421,7 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
    - przy ustawionym `HYDROGRAF_KARTOGRAF_ROOT` każde pobieranie Hydrografa jest odrzucane (`forbidden`), panel admina odpowiada `403`, montowanie zawsze `ro`; czyszczenie cache nie rusza magazynu wspólnego;
    - uprawnienia UID 999 przez ACL zawężone w H2 do odczytu (`rX`) na magazynie i na katalogu projektu (bez grupy `hydro-readers`: umask 077 Archiwisty odbiera grupie nowe pliki);
    - reguła „nikt nie pobiera w Archiwiście w czasie bootstrapu” i strażnik `writes_in_progress` w kroku 2 usunięte: przy jednym piszącym nie ma czego pilnować.
-2. **Zmiana Snydera widoczna dla testerów.** Hydrolog 1.0 daje szczyt o 11–12% wyższy i 25–70 min wcześniej. Do ustalenia, czy testerzy dostają informację (ekran powitalny lub notka w panelu wyników), czy wystarczy CHANGELOG.
+2. **Zmiana Snydera widoczna dla testerów.** Hydrolog 1.0 daje szczyt o 11–12% wyższy i 25–70 min wcześniej. Rozstrzygnięte 2026-11-02: testerzy nie dostają osobnej informacji (ani na ekranie powitalnym, ani w panelu wyników); wystarcza CHANGELOG.
 3. **Aktualizacja instrukcji** (`frontend/instrukcja`, prezentacja PDF): slajdy o Snyderze i komunikaty błędów, które teraz pochodzą z `detail` problem+json. Do ustalenia, czy w S7, czy osobno.
 4. **Docelowe miejsce produkcji po S8:** zielony stos zostaje w `Hydrograf-store` albo produkcja wraca do `~/workspace/Hydrograf` po scaleniu gałęzi, drugim przełączeniem według S7.
 5. **Kolejność scaleń i push** (pytanie 3 z analizy). Nie blokuje S1–S7.

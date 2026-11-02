@@ -364,6 +364,14 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
   3. Czy zapis zestawu (`bootstrap_set.json`) pokazywać w panelu admina? Nie zrobione (poza zakresem H1).
 - **Następne kroki:** H2 (montowania pod ścieżkami hosta, katalog projektu, ACL `rX`) po A3 i A4, potem S5 z zestawu zamkniętego przez autora (A5). Szczegóły w „Wynikach” planu.
 
+### Drobne poprawki przed S5 (2026-11-02, decyzje autora)
+- **MZP nad NMT** (`375da5d`): `hazardPane` z-index 240 → 255, między `demPane` (250) a `landcoverPane` (260); wyniki analiz (300) i linie spływu (350) dalej nad MZP. Slajd 14 instrukcji i prezentacji („nad podkładem i NMT, ale pod wynikiem SFINCS”), PDF prezentacji wydrukowany ponownie (30 slajdów, zmienione tylko to zdanie), `?v=` przeliczone, ARCHITECTURE, CHANGELOG, pozycja backlogu zamknięta. Sprawdzone na stagingu 8081 (`frontend/` montowany z worktree, bez restartu): NMT i MZP 1 % włączone, Legnica, zoom 14 — głębokości MZP widoczne nad NMT, 0 błędów JS (zrzut `/home/claude-agent/data/tmp/mzp-over-nmt.png`).
+- **`HYDROGRAF_PUBLIC_HOST`** (`a42a936`): `hydrograf-test.debever.pl` w `.env.staging` (tryb 600) i jako zakomentowany wpis `.env.example`; żaden kod zmiennej nie czyta; `.env` zamrożonej produkcji bez zmian. Pozycja backlogu zamknięta.
+- **Nota ADR-061** (`a42a936`): wskazuje ADR-066 i ADR-067 — magazyn wspólny tylko do odczytu, czytany wyłącznie przez `bootstrap --project --set`, pobierania odrzucane; indeks ADR „amended by ADR-066 and ADR-067”.
+- **Instrukcja: karta potwierdzona przez autora, kod bez zmian:** „Otwórz instrukcję” w oknie powitalnym otwiera przewodnik w nowej karcie (`target="_blank"`); „Instrukcja” na szynie to zwykły odnośnik `/instrukcja/` w tej samej karcie (na `/admin` i `/instrukcja`); na stronie mapy zwykłe kliknięcie otwiera najpierw okno powitalne (Ctrl/Shift/środkowy przycisk — odnośnik), jak dotąd.
+- **Snyder:** testerzy nie dostają osobnej informacji (decyzja autora); zmiana opisana tylko w CHANGELOG. Pozycja 2 „Otwartych decyzji” planu migracji rozstrzygnięta.
+- K0 pusty diff i `/health` 200 przed i po sprawdzeniu w przeglądarce.
+
 ### Poprzednia sesja (2026-11-01/02 — kopia produkcji, przycięcie danych do zlewni Kaczawy, wyniki SFINCS w „Wynikach analiz”, instrukcja i ekran powitalny, nakładka MZP ISOK, cache zasobów za Cloudflare, zwierciadło wody na profilu terenu)
 
 ### Co zrobiono
@@ -393,8 +401,8 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
 ### Następne kroki
 - Po przebiegu 3: `compare_sections.py` (SFINCS vs Hydrolog w 7 przekrojach), publikacja wyniku 24 h w manifeście (kafle, `max_depth.tif`, `wse_max.tif` jako `water_level`), porównanie z MZP 1%.
 - Ustalenia dla Hydraulika (do jego dokumentacji): `huthresh` w `model build` (domyślne 0,05 m nie nadaje się do deszczu na siatce), brak `dtout`/`dtmaxout` i `crsfile` w `model build`, błędne podsumowanie przy `dtmaxout` < `tstop`, exit 9 przy `--output-dir` wewnątrz katalogu modelu, siatka wyrównana do wielokrotności `dx` (pół komórki przy NMT GUGiK), PMAXTP tylko 15–180 min, `results export` bez poziomu wody (`zsmax`).
-- Decyzje autora: kolejność MZP względem NMT (`docs/BACKLOG.md`, Features — other); ekran powitalny otwiera instrukcję w nowej karcie, a przycisk „Instrukcja” w górnym pasku w tej samej — potwierdzić.
-- Błędy B1–B5 z raportu testów GPT (`docs/BACKLOG.md`, Bugs and diagnoses); poprawić `HYDROGRAF_PUBLIC_HOST` w `.env`.
+- Decyzje autora (rozstrzygnięte 2026-11-02, „Drobne poprawki przed S5” wyżej): MZP nad NMT; ekran powitalny otwiera instrukcję w nowej karcie, a przycisk „Instrukcja” w tej samej — potwierdzone.
+- Błędy B1–B5 z raportu testów GPT (`docs/BACKLOG.md`, Bugs and diagnoses); `HYDROGRAF_PUBLIC_HOST` poprawiony (wyżej).
 - Przycinanie w pipeline (bootstrap zapisuje granicę, API odmawia poza nią) — pozycja backlogu (`docs/BACKLOG.md`, Features — other) nadal otwarta; tym razem przycięto jednorazowo skryptem.
 - Merge `feature/visual-identity` do `develop` i push za zgodą autora.
 
