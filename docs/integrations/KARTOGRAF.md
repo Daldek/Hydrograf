@@ -343,16 +343,17 @@ erratum of 2026-10-25).
 (`AnalysisConfig.cache_dir`, default `../cache`, next to `data_dir`, default `../data`).
 `find_existing_nmt_files(cache_dir, resolution)` reads the store through its read API: the standard
 paths (`kind == "link"`) of the segments `nmt/pl_*_<resolution>_evrf2007` from `iter_store` and
-`list_segments`, so it lists neither `versions/` nor `full_sheet/`, other resolutions or the `.prj`
-files that `normalize_crs()` writes (§4.9).
+`list_segments`, so it lists neither `versions/` nor `full_sheet/` nor other resolutions.
 
 ### 4.9 `utils/raster_utils.py`
 
-`normalize_crs()` reprojects PUWG 2000 sheets to EPSG:2180 and writes a `<sheet>.prj` beside the file
-of an EPSG:2180 sheet so that GDAL knows its CRS; for a sheet of the store that file lands next to
-the standard path. `iter_store` reports it as a `problem` entry (`missing_sidecar`), which Hydrograf
-ignores because it reads only `link` entries. `create_vrt_mosaic()` builds the VRT from the list it
-is given; the old directory scan `discover_asc_files()` is gone.
+`normalize_crs(files, output_dir)` reprojects PUWG 2000 sheets to EPSG:2180 into `output_dir`, a
+directory of Hydrograf (the bootstrap: `data/nmt/reprojected/`); EPSG:2180 sheets pass through and
+nothing is written next to them, so the store stays as Kartograf wrote it. The ASC sheets of the
+store have no `.prj`: `create_vrt_mosaic(..., target_crs="EPSG:2180")` assigns the CRS to the mosaic
+(`gdalbuildvrt -a_srs EPSG:2180 -allow_projection_difference`, or the CRS of the GeoTIFF of the
+`rasterio.merge` fallback when the GDAL tools are absent). It builds the mosaic from the list it is
+given; the old directory scan `discover_asc_files()` is gone.
 
 ---
 
@@ -819,7 +820,6 @@ Other formats (GeoJSON) of `bootstrap --boundary-file` fall back to the bbox of 
 - **Versions of the DEM flights**: the store keeps every flight as a version with its campaign and
   its sidecar; the ADR on how Hydrograf records and updates them is still to be decided
   (BACKLOG).
-- **The `.prj` files** that `normalize_crs()` writes next to the standard paths of the store (§4.9).
 
 ---
 

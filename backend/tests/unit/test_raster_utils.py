@@ -106,10 +106,9 @@ def write_asc(path, xll, *, yll=500000.0, cellsize=1.0, xkey="xllcorner"):
 
 @pytest.fixture
 def gdal(monkeypatch):
-    """Working GDAL tools and a known EPSG:2180 definition."""
+    """Working GDAL tools."""
     fake = FakeGdal()
     monkeypatch.setattr(raster_utils, "subprocess", fake)
-    monkeypatch.setattr(raster_utils, "_epsg2180_wkt_cache", "TEST-WKT")
     return fake
 
 
@@ -162,77 +161,29 @@ class TestDetectCrsFromCoords:
         assert "Unknown PUWG 2000 zone" in caplog.text
 
 
-class TestEpsg2180Definition:
-    @pytest.fixture(autouse=True)
-    def _empty_cache(self, monkeypatch):
-        monkeypatch.setattr(raster_utils, "_epsg2180_wkt_cache", None)
-
-    def test_definition_comes_from_gdalsrsinfo_when_it_is_installed(self, monkeypatch):
-        fake = FakeGdal(stdout='  PROJCS["from-gdal"]\n')
-        monkeypatch.setattr(raster_utils, "subprocess", fake)
-
-        assert raster_utils._get_epsg2180_wkt() == 'PROJCS["from-gdal"]'
-        assert fake.calls[0][:2] == ["gdalsrsinfo", "EPSG:2180"]
-
-    @pytest.mark.parametrize("failure", [{"missing": True}, {"stderr": "no EPSG db"}])
-    def test_builtin_definition_is_used_when_gdalsrsinfo_fails(
-        self, monkeypatch, failure
-    ):
-        monkeypatch.setattr(raster_utils, "subprocess", FakeGdal(**failure))
-
-        wkt = raster_utils._get_epsg2180_wkt()
-
-        assert wkt.startswith('PROJCS["ETRF2000-PL / CS92"')
-        assert 'PARAMETER["central_meridian",19]' in wkt
-        assert 'PARAMETER["scale_factor",0.9993]' in wkt
-
-    def test_the_definition_is_looked_up_once(self, monkeypatch):
-        fake = FakeGdal(stdout="WKT")
-        monkeypatch.setattr(raster_utils, "subprocess", fake)
-
-        first = raster_utils._get_epsg2180_wkt()
-        second = raster_utils._get_epsg2180_wkt()
-
-        assert first == second == "WKT"
-        assert len(fake.calls) == 1
-
-
-class TestPrjSidecar:
-    def test_sidecar_is_written_next_to_the_grid(self, tmp_path, gdal):
-        asc = write_asc(tmp_path / "t.asc", 500000.0)
-
-        raster_utils._ensure_prj_sidecar(asc)
-
-        assert (tmp_path / "t.prj").read_text() == "TEST-WKT"
-
-    def test_an_existing_sidecar_is_kept(self, tmp_path, gdal):
-        asc = write_asc(tmp_path / "t.asc", 500000.0)
-        (tmp_path / "t.prj").write_text("the author's definition")
-
-        raster_utils._ensure_prj_sidecar(asc)
-
-        assert (tmp_path / "t.prj").read_text() == "the author's definition"
-
-
 class TestNormalizeCrs:
-    def test_no_files_give_no_files(self, gdal):
-        assert normalize_crs([]) == []
+    def test_no_files_give_no_files(self, tmp_path, gdal):
+        assert normalize_crs([], tmp_path / "out") == []
 
-    def test_puwg1992_tiles_pass_through_and_get_a_projection_sidecar(
+    def test_puwg1992_tiles_pass_through_and_nothing_is_written_beside_them(
         self, tmp_path, gdal
     ):
-        tile = write_asc(tmp_path / "n33.asc", 500000.0)
+        store = tmp_path / "store"
+        store.mkdir()
+        tile = write_asc(store / "n33.asc", 500000.0)
+        before = sorted(store.iterdir())
 
-        result = normalize_crs([tile])
+        result = normalize_crs([tile], tmp_path / "reprojected")
 
         assert result == [tile]
-        assert (tmp_path / "n33.prj").read_text() == "TEST-WKT"
+        assert sorted(store.iterdir()) == before
+        assert not (tmp_path / "reprojected").exists()
         assert gdal.calls == []
 
     def test_files_that_do_not_exist_are_skipped(self, tmp_path, gdal):
         tile = write_asc(tmp_path / "n33.asc", 500000.0)
 
-        assert normalize_crs([tmp_path / "gone.asc", tile]) == [tile]
+        assert normalize_crs([tmp_path / "gone.asc", tile], tmp_path / "out") == [tile]
 
     @pytest.mark.parametrize(
         ("easting", "source_crs"),
@@ -241,14 +192,17 @@ class TestNormalizeCrs:
     def test_puwg2000_tile_is_warped_from_the_crs_of_its_zone(
         self, tmp_path, gdal, easting, source_crs
     ):
-        tile = write_asc(tmp_path / "n34.asc", easting)
+        store = tmp_path / "store"
+        store.mkdir()
+        tile = write_asc(store / "n34.asc", easting)
+        target = tmp_path / "hydrograf" / "reprojected"
 
-        result = normalize_crs([tile])
+        result = normalize_crs([tile], target)
 
-        out = tmp_path / "reprojected" / "n34.asc"
+        out = target / "n34.asc"
         assert result == [out]
         assert out.exists()
-        assert (tmp_path / "reprojected" / "n34.prj").read_text() == "TEST-WKT"
+        assert sorted(p.name for p in store.iterdir()) == ["n34.asc"]
         (cmd,) = gdal.calls
         assert cmd[0] == "gdalwarp"
         assert option(cmd, "-s_srs") == source_crs
@@ -262,7 +216,7 @@ class TestNormalizeCrs:
         fine = write_asc(tmp_path / "fine.asc", 6_450_000.0, cellsize=1.0)
         coarse = write_asc(tmp_path / "coarse.asc", 6_450_000.0, cellsize=10.0)
 
-        normalize_crs([fine, coarse])
+        normalize_crs([fine, coarse], tmp_path / "out")
 
         fine_cmd, coarse_cmd = gdal.calls
         assert option(fine_cmd, "-tr", 2) == ["5.0", "5.0"]
@@ -271,17 +225,17 @@ class TestNormalizeCrs:
     def test_xllcenter_headers_are_understood(self, tmp_path, gdal):
         tile = write_asc(tmp_path / "c.asc", 8_450_000.0, xkey="xllcenter")
 
-        normalize_crs([tile])
+        normalize_crs([tile], tmp_path / "out")
 
         assert option(gdal.calls[0], "-s_srs") == "EPSG:2179"
 
     def test_an_earlier_reprojection_is_reused(self, tmp_path, gdal):
         tile = write_asc(tmp_path / "n34.asc", 6_450_000.0)
-        earlier = tmp_path / "reprojected" / "n34.asc"
+        earlier = tmp_path / "out" / "n34.asc"
         earlier.parent.mkdir()
         earlier.write_text("from the previous run")
 
-        result = normalize_crs([tile])
+        result = normalize_crs([tile], tmp_path / "out")
 
         assert result == [earlier]
         assert gdal.calls == []
@@ -302,12 +256,11 @@ class TestNormalizeCrs:
     def test_a_failing_warp_names_the_tile_and_the_tool_message(
         self, tmp_path, monkeypatch
     ):
-        monkeypatch.setattr(raster_utils, "_epsg2180_wkt_cache", "TEST-WKT")
         monkeypatch.setattr(raster_utils, "subprocess", FakeGdal(stderr="ERROR 1: bad"))
         tile = write_asc(tmp_path / "n34.asc", 6_450_000.0)
 
         with pytest.raises(RuntimeError, match="Reprojection failed for n34.asc") as e:
-            normalize_crs([tile])
+            normalize_crs([tile], tmp_path / "out")
 
         assert "ERROR 1: bad" in str(e.value)
 
@@ -337,6 +290,7 @@ class TestCreateVrtMosaic:
         assert option(cmd, "-srcnodata") == "-1.0"
         assert option(cmd, "-vrtnodata") == "-1.0"
         assert option(cmd, "-a_srs") == "EPSG:2180"
+        assert "-allow_projection_difference" in cmd
         assert cmd[-3:] == [str(vrt), str(a), str(b)]
 
     def test_no_target_crs_leaves_the_projection_of_the_inputs(self, tmp_path, gdal):
@@ -345,6 +299,7 @@ class TestCreateVrtMosaic:
         create_vrt_mosaic([a], tmp_path / "m.vrt")
 
         assert "-a_srs" not in gdal.calls[0]
+        assert "-allow_projection_difference" not in gdal.calls[0]
 
     def test_missing_inputs_are_left_out_and_reported(self, tmp_path, gdal, caplog):
         a = write_geotiff(tmp_path / "a.tif", np.ones((3, 3)))
@@ -387,17 +342,44 @@ class TestCreateVrtMosaic:
         monkeypatch.setattr(raster_utils, "subprocess", FakeGdal(missing=True))
         west_tile = np.arange(1.0, 10.0).reshape(3, 3)
         east_tile = np.arange(11.0, 20.0).reshape(3, 3)
-        a = write_geotiff(tmp_path / "a.tif", west_tile)
-        b = write_geotiff(tmp_path / "b.tif", east_tile, west=WEST + 30)
+        a = write_geotiff(tmp_path / "a.tif", west_tile, crs="EPSG:2177")
+        b = write_geotiff(
+            tmp_path / "b.tif", east_tile, west=WEST + 30, crs="EPSG:2177"
+        )
 
         result = create_vrt_mosaic([a, b], tmp_path / "mosaic.vrt", nodata=-1.0)
 
         assert result == tmp_path / "mosaic.tif"
         with rasterio.open(result) as merged:
+            assert merged.crs == rasterio.crs.CRS.from_epsg(2177)
             assert merged.nodata == -1.0
             assert merged.bounds.left == WEST
             assert merged.bounds.right == WEST + 60
             assert np.array_equal(merged.read(1), np.hstack([west_tile, east_tile]))
+
+    def test_without_gdal_grids_without_a_projection_get_the_target_crs(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(raster_utils, "subprocess", FakeGdal(missing=True))
+        store = tmp_path / "store"
+        store.mkdir()
+        a = write_asc(store / "a.asc", 500000.0)
+        b = write_asc(store / "b.asc", 500002.0)
+        before = sorted(store.iterdir())
+        out = tmp_path / "hydrograf"
+        out.mkdir()
+
+        result = create_vrt_mosaic(
+            [a, b], out / "mosaic.vrt", nodata=NODATA, target_crs="EPSG:2180"
+        )
+
+        assert result == out / "mosaic.tif"
+        assert sorted(store.iterdir()) == before
+        with rasterio.open(result) as merged:
+            assert merged.crs == rasterio.crs.CRS.from_epsg(2180)
+            assert tuple(merged.bounds) == (500000.0, 500000.0, 500004.0, 500002.0)
+            expected = np.array([[1.0, 2.0, 1.0, 2.0], [3.0, 4.0, 3.0, 4.0]])
+            assert np.array_equal(merged.read(1), expected)
 
     def test_merged_tiles_fill_the_nodata_of_earlier_tiles(self, tmp_path, monkeypatch):
         monkeypatch.setattr(raster_utils, "subprocess", FakeGdal(missing=True))
