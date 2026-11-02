@@ -100,15 +100,6 @@
     }
 
     /**
-     * Check system health.
-     */
-    async function checkHealth() {
-        const response = await fetch('/health');
-        if (!response.ok) throw new Error('System niedostępny');
-        return response.json();
-    }
-
-    /**
      * Get terrain profile along a line.
      *
      * @param {Object} lineGeojson - GeoJSON LineString geometry
@@ -287,7 +278,6 @@
     }
 
     window.Hydrograf.api = {
-        checkHealth: checkHealth,
         getTerrainProfile: getTerrainProfile,
         generateHydrograph: generateHydrograph,
         getScenarios: getScenarios,

@@ -104,6 +104,69 @@
     });
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshTheme);
 
+    // ===== Mouse-wheel zoom =====
+    //
+    // Leaflet's scroll-wheel zoom turns every 40 ms batch of wheel events into
+    // at least one whole zoom level (zoomSnap 1), however small the batch.
+    // Touchpads, the Magic Mouse and smooth-scrolling mouse drivers go on
+    // sending a fading tail of small events after the fingers or the wheel
+    // stop, so each batch of the tail zoomed one more level; and while the
+    // vector base map draws the new zoom, wheel input and the zoom timer wait
+    // and run after the wheel has stopped. This handler starts a zoom step
+    // only on fresh input: events weaker than WHEEL_TAIL_RATIO of the
+    // gesture's strongest are its tail, and input older than WHEEL_STALE_MS
+    // (an event or a whole batch) is dropped.
+
+    var WHEEL_STALE_MS = 150;        // older wheel input does not start a zoom step
+    var WHEEL_GESTURE_GAP_MS = 80;   // a longer pause between events starts a new gesture
+    var WHEEL_TAIL_RATIO = 0.5;      // share of the gesture's strongest event below which events are its tail
+
+    /** Time of a wheel event on the performance.now() clock; a foreign clock counts as now. */
+    function wheelEventTime(e) {
+        var age = performance.now() - e.timeStamp;
+        return performance.now() - (age >= 0 && age < 10000 ? age : 0);
+    }
+
+    /** Leaflet's scroll-wheel zoom without the tail of a gesture and without late input. */
+    function wheelZoomHandler() {
+        var Base = L.Map.ScrollWheelZoom;
+        return Base.extend({
+            _onWheelScroll: function (e) {
+                var delta = L.DomEvent.getWheelDelta(e);
+                if (delta) {
+                    var t = wheelEventTime(e);
+                    var size = Math.abs(delta);
+                    var g = this._gesture;
+                    if (performance.now() - t > WHEEL_STALE_MS) {
+                        L.DomEvent.stop(e);
+                        return;
+                    }
+                    if (!g || t - g.last > WHEEL_GESTURE_GAP_MS || (delta > 0) !== g.zoomIn) {
+                        g = this._gesture = { zoomIn: delta > 0, peak: size, last: t };
+                    }
+                    g.last = t;
+                    if (size < g.peak * WHEEL_TAIL_RATIO) {
+                        L.DomEvent.stop(e);
+                        return;
+                    }
+                    g.peak = Math.max(g.peak, size);
+                    this._lastInput = t;
+                }
+                Base.prototype._onWheelScroll.call(this, e);
+            },
+
+            _performZoom: function () {
+                // The timer ran late (the page was busy): the wheel has stopped meanwhile
+                if (performance.now() - this._lastInput > WHEEL_STALE_MS) {
+                    this._delta = 0;
+                    this._startTime = null;
+                    return;
+                }
+                Base.prototype._performZoom.call(this);
+            },
+        });
+    }
+
     /**
      * Initialize the Leaflet map.
      * Base layer is NOT added here — layers.js handles it via setBaseLayer().
@@ -113,7 +176,10 @@
             center: [51.9, 19.5],
             zoom: 7,
             zoomControl: false,
+            scrollWheelZoom: false,     // replaced by wheelZoomHandler()
         });
+        map.addHandler('wheelZoom', wheelZoomHandler());
+        map.wheelZoom.enable();
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
         // Custom panes for layer ordering:

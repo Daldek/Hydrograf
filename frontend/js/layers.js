@@ -287,10 +287,14 @@
     }
 
     /**
-     * Format threshold value for display (e.g. 10000 → "10 000 m²").
+     * Flow accumulation threshold [m²] for display: hectares below 1 km²,
+     * square kilometres from 1 km² (10 000 m² → "1 ha", 100 000 m² →
+     * "10 ha", 1 000 000 m² → "1 km²"). The API keeps m².
      */
-    function formatThreshold(value) {
-        return value.toLocaleString('pl-PL') + ' m\u00B2';
+    function formatThreshold(value_m2) {
+        var km2 = value_m2 >= 1e6;
+        var value = km2 ? value_m2 / 1e6 : value_m2 / 1e4;
+        return value.toLocaleString('pl-PL', { maximumFractionDigits: 2 }) + '\u00A0' + (km2 ? 'km\u00B2' : 'ha');
     }
 
     /**
@@ -323,7 +327,7 @@
         field.className = 'field';
         var threshLabel = document.createElement('label');
         threshLabel.htmlFor = 'fa-threshold';
-        threshLabel.textContent = 'Próg FA';
+        threshLabel.textContent = 'Próg akumulacji spływu';
         var select = document.createElement('select');
         select.id = 'fa-threshold';
         populateThresholdSelect(select, availableThresholds);
@@ -725,6 +729,7 @@
     window.Hydrograf.layers = {
         init: init,
         addOverlayEntry: addOverlayEntry,
+        formatThreshold: formatThreshold,
         getBaseLayerName: function () { return currentBaseLayerName; },
         getActiveOverlays: function () {
             return _overlayRegistry

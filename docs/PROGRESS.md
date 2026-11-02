@@ -243,6 +243,16 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
 - S2 planu: pliki stagingu (`docker-compose.staging.yml`, `scripts/staging-compose.sh`, `.env.staging` w `.gitignore`), K0, obraz `hydrograf-api:store-staging` po K1, testy `db` na jednorazowej bazie, smoke API (Snyder, problem+json, `water_levels`) i frontendu na 8081.
 - Push i kolejność scaleń tylko za zgodą autora.
 
+### Poprawki interfejsu z uwag testerów, przed S3 (gałąź `feature/store-ui`, worktree `~/workspace/Hydrograf-store-ui`, 2026-11-02)
+- **Zoom kółkiem nie zatrzymywał się po przestaniu kręcenia** (`js/map.js`). Odtworzone w Chromium (atrapa serwera statycznego worktree, zdarzenia `wheel` syntetyczne i przez CDP): (1) Leaflet zamienia każdą 40-ms paczkę zdarzeń na co najmniej cały poziom (`zoomSnap` 1, sigmoida zaokrąglana w górę), a touchpad, Magic Mouse i sterowniki płynnego przewijania wysyłają po zatrzymaniu wygasający ogon małych zdarzeń: muśnięcie na 1 poziom dawało 4–7 poziomów w 1–2 s; (2) po każdym kroku MapLibre przerysowuje podkład wektorowy, strona jest zajęta, kolejka zdarzeń i timer zoomu czekają i przybliżają (często o kilka poziomów naraz) już po zatrzymaniu kółka (programowy WebGL: 8 ząbków → zoom jeszcze 1,1 s, muśnięcie → 3,4 s). Poprawka: `wheelZoomHandler` = `ScrollWheelZoom` Leafletu z dwoma strażnikami (ogon gestu < 0,5 najsilniejszego zdarzenia ignorowany, przerwa 80 ms lub zmiana kierunku = nowy gest; wejście starsze niż 150 ms nie zaczyna kroku). Kółko z ząbkami bez zmian. Dowody: `~/scratch/store-ui/ui/wheel-evidence.txt`, `wheel-before.json`, `wheel-after.json`, skrypt `wheel-lab.js`.
+- **Objaśnienia (i) tylko po kliknięciu/dotknięciu** (`js/info.js`, `css/app.css`): Enter/spacja na przycisku, zamykanie tym samym (i), Esc, kliknięciem obok i przejściem fokusu do innego pola; bez otwierania po najechaniu i fokusie; `aria-expanded`/`aria-controls`.
+- **„Próg akumulacji spływu”** zamiast „Próg FA” (`js/layers.js`): ha poniżej 1 km², km² od 1 km² (`Hydrograf.layers.formatThreshold`), także w komunikacie o zmianie progu przy wyznaczaniu (`js/app.js`); API bez zmian (m²).
+- **Szyna Mapa · Instrukcja · Logowanie na każdej stronie** (`index.html`, `admin.html`, `instrukcja/index.html`, `css/chrome.css`, `js/welcome.js`): „Instrukcja” przeniesiona z górnego paska (na stronie mapy nadal otwiera okno powitalne), „Administracja” → „Logowanie”.
+- **„Usługi działają” tylko w `/admin`** (`js/admin/admin-app.js`, `js/admin/admin-api.js`): z `GET /health` od otwarcia strony, potem z dashboardu; teksty po polsku zamiast „Healthy/Unhealthy”. Ze strony mapy usunięte: plakietka, „Ponów”, `checkHealth`.
+- Instrukcja i prezentacja HTML: slajdy 8, 12, 19, 26 i 29; zrzut telefonu (slajd 29) z nowym górnym i dolnym paskiem wklejonym z bieżącego interfejsu. `docs/ARCHITECTURE.md` 2.8, `docs/CHANGELOG.md`.
+- Produkcja nietknięta (bez Dockera; serwery deweloperskie na portach 18765/18766 z atrapami API).
+- Następne: PDF prezentacji nieprzegenerowany (po scaleniu z `feature/store-identify`, która też zmienia prezentację); zrzuty slajdów 10 i 13 mają na krawędzi ścinki starej szyny i górnego paska (do podmiany przy nowych zrzutach po S3); mapa wyboru bbox w `/admin` ma domyślne kółko Leafleta (`docs/BACKLOG.md`).
+
 ### Poprzednia sesja (2026-11-01/02 — kopia produkcji, przycięcie danych do zlewni Kaczawy, wyniki SFINCS w „Wynikach analiz”, instrukcja i ekran powitalny, nakładka MZP ISOK, cache zasobów za Cloudflare, zwierciadło wody na profilu terenu)
 
 ### Co zrobiono
@@ -1706,3 +1716,8 @@ Otwarte pozycje są w [BACKLOG.md](BACKLOG.md) (po angielsku, sekcje Bugs and di
 - [x] Kartograf 0.7.0 — `_get_opendata_url()` traktowal blad sieci jak brak arkusza (sesja 93, pobranie Opolskiego): rozwiazane w 0.7.0 (DownloadError zamiast przejscia do starszej warstwy; warstwy z GetCapabilities) — etap K.
 - [x] Kartograf 0.7.0 — `requests.Session()` per zapytanie: 0.7.0 - jeden transport HTTP — etap K.
 - [x] (czesciowo) Kartograf 0.7.0 — pelny rekord metadanych arkusza: sidecar `.meta.json` (`extra.source`: url, layer, acquisition_date/year, pzgik_date, survey_work_id, data_source, full_sheet) — etap K; BRAK w sidecarze: bladSredniWysokosci, bladSredniPolozenia, modulArchiwizacji, sha256 — do ADR-058/backlogu Kartografa.
+- [x] Zoom kółkiem myszy zatrzymuje się po przestaniu kręcenia (uwagi testerów 2026-11-02, `feature/store-ui`)
+- [x] Objaśnienia (i) po kliknięciu, nie po najechaniu (uwagi testerów 2026-11-02, `feature/store-ui`)
+- [x] „Próg FA” → „Próg akumulacji spływu”, wartości w ha i km² (uwagi testerów 2026-11-02, `feature/store-ui`)
+- [x] „Administracja” → „Logowanie”, „Instrukcja” na lewej szynie (uwagi testerów 2026-11-02, `feature/store-ui`)
+- [x] „Usługi działają” tylko w panelu admina (uwagi testerów 2026-11-02, `feature/store-ui`)

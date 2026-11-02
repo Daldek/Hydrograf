@@ -1,6 +1,6 @@
 /**
  * Hydrograf Welcome — a short plain-language introduction shown on the first
- * visit and from the "Instrukcja" button in the top bar.
+ * visit and from the "Instrukcja" item of the navigation rail.
  */
 (function () {
     'use strict';
@@ -58,8 +58,8 @@
             saveHidden(els.hide.checked);
         });
 
-        // The top-bar link opens the introduction; modified clicks keep the plain link
-        var guideLink = document.getElementById('btn-guide');
+        // The rail's guide link opens the introduction; modified clicks keep the plain link
+        var guideLink = document.getElementById('rail-guide');
         if (guideLink) {
             guideLink.addEventListener('click', function (e) {
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;

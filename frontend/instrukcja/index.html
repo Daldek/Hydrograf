@@ -9,7 +9,7 @@
 <link rel="icon" type="image/svg+xml" href="../img/hydrograf.svg">
 <!-- Nogat design tokens, shell chrome, then the guide -->
 <link rel="stylesheet" href="../css/tokens.css?v=d620ffee72">
-<link rel="stylesheet" href="../css/chrome.css?v=d3ddba09e7">
+<link rel="stylesheet" href="../css/chrome.css?v=71eb63c310">
 <link rel="stylesheet" href="instrukcja.css?v=61601d7650">
 </head>
 <body>
@@ -25,10 +25,6 @@
     <strong>Instrukcja</strong>
   </nav>
   <div class="top-actions">
-    <a class="btn ghost" id="btn-guide" href="/instrukcja/" aria-current="page">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5z"/><path d="M4 16.5V4.5M7.5 6.5h5"/></svg>
-      <span class="label">Instrukcja</span>
-    </a>
     <div class="seg" role="group" aria-label="Motyw">
       <button type="button" id="theme-auto" aria-pressed="true" title="Motyw systemowy">
         <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor"/></svg>
@@ -52,9 +48,13 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>
     Mapa
   </a>
+  <a class="rail-item active" href="/instrukcja/" aria-current="page">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.5h5.5A3.5 3.5 0 0 1 12 8v12a2.5 2.5 0 0 0-2.5-2.5H3z"/><path d="M21 4.5h-5.5A3.5 3.5 0 0 0 12 8v12a2.5 2.5 0 0 1 2.5-2.5H21z"/></svg>
+    Instrukcja
+  </a>
   <a class="rail-item" href="/admin">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
-    Admini&shy;stracja
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>
+    Logowanie
   </a>
 </nav>
 
@@ -182,9 +182,9 @@
   <div class="split">
     <img class="app-shot wide-shot" src="Hydrograf-v2-zlewnia.png" width="1544" height="1055" alt="Ekran po wyznaczeniu zlewni Kamiennika: nad mapą pasek trybów z aktywnym „Wybierz zlewnię” i podpowiedzią; na mapie linie spływu z legendą, granica zlewni i ujście; po prawej panel „Zlewnia” z ujściem 51.01544 °N, 15.88984 °E, kluczowymi wartościami (37.23 km², CN 67.9, 363 m n.p.m., 8.20 %) i rozwiniętą sekcją Parametry podstawowe.">
     <div class="stack">
-      <div class="card"><span class="label">Górny pasek</span><p>Kontekst („Mapa / Zlewnia … km²”), stan usług („Usługi działają”; przy awarii przycisk „Ponów”), „Instrukcja” (okno powitalne z odnośnikiem do tego przewodnika), „Zgłoś uwagę” i motyw Auto · Jasny · Ciemny.</p></div>
-      <div class="card"><span class="label">Panele</span><p>Po lewej szyna Mapa · Administracja i panel „Warstwy”, po prawej panel „Zlewnia” z wynikiem i współrzędnymi ujścia w tytule.</p></div>
-      <div class="card"><span class="label">Nad mapą</span><p>Trzy tryby pracy i podpowiedź. Przy zwiniętym panelu pojawia się tu przycisk „Warstwy” lub „Zlewnia”.</p></div>
+      <div class="card"><span class="label">Górny pasek</span><p>Kontekst („Mapa / Zlewnia … km²”), „Zgłoś uwagę” i motyw Auto · Jasny · Ciemny.</p></div>
+      <div class="card"><span class="label">Panele</span><p>Po lewej szyna Mapa · Instrukcja · Logowanie i panel „Warstwy”, po prawej panel „Zlewnia” z wynikiem i współrzędnymi ujścia w tytule. „Instrukcja” otwiera okno powitalne z odnośnikiem do tego przewodnika, „Logowanie” — panel administratora ze stanem usług.</p></div>
+      <div class="card"><span class="label">Nad mapą</span><p>Tryby pracy i podpowiedź. Przy zwiniętym panelu pojawia się tu przycisk „Warstwy” lub „Zlewnia”.</p></div>
     </div>
   </div>
   <p class="hint">Krawędź panelu przeciągnij, by zmienić szerokość; dwuklik przywraca domyślną, a przeglądarka zapamięta wybór. × w „Warstwach” zwija panel, × w „Zlewni” zamyka go i czyści wynik.</p>
@@ -251,16 +251,16 @@
   <p class="hint">Cieki BDOT10k pochodzą z mapy, a linie spływu Hydrograf wylicza z NMT — to na nich wyznacza zlewnie. Porównaj obie warstwy przed wyborem punktu.</p>
   <div class="footer"><span>WARSTWY PODKŁADOWE · PODKŁADY · WYNIKI ANALIZ</span><span>11 / 30</span></div>
 </section>
-<section class="slide" id="linie-splywu" aria-label="Slajd 12: linie spływu i próg FA">
+<section class="slide" id="linie-splywu" aria-label="Slajd 12: linie spływu i próg akumulacji spływu">
   <p class="kicker">03 · Warstwy</p>
-  <h2>Linie spływu i próg FA</h2>
+  <h2>Linie spływu i próg akumulacji spływu</h2>
   <div class="grid two">
     <div class="card"><span class="label">Skąd się biorą</span><p>Hydrograf wylicza je z NMT: woda z każdej komórki terenu spływa w dół stoku, a linia zaczyna się tam, gdzie zbiera się z dostatecznie dużej powierzchni. Na tej sieci wyznacza się zlewnie.</p></div>
     <div class="card"><span class="label">Grubość i kolor</span><p>Im większa zlewnia powyżej danego miejsca, tym linia grubsza i ciemniejsza. Skala legendy „Linie spływu — zlewnia [km²]” biegnie od 0.001 do 20&nbsp;km².</p></div>
     <div class="card"><span class="label">Dymek nad linią</span><p>Najedź kursorem na linię: „Zlewnia” to powierzchnia w km², dalej „Rząd Strahlera” i „Długość” odcinka w km. Odcinki kończą się na połączeniach cieków.</p></div>
-    <div class="card"><span class="label">Próg FA</span><p>Pole pod włączoną warstwą: 10&nbsp;000&nbsp;m² — gęstsza sieć, także bardzo małe zlewnie — albo 100&nbsp;000&nbsp;m² (domyślnie). Zlewnia jest wyznaczana na sieci z wybranym progiem.</p></div>
+    <div class="card"><span class="label">Próg akumulacji spływu</span><p>Pole pod włączoną warstwą: 1&nbsp;ha — gęstsza sieć, także bardzo małe zlewnie — albo 10&nbsp;ha (domyślnie). Zlewnia jest wyznaczana na sieci z wybranym progiem.</p></div>
   </div>
-  <p class="hint">Próg FA (akumulacji spływu) to najmniejsza powierzchnia, z której musi spływać woda, żeby powstała linia: 10&nbsp;000&nbsp;m² = 0,01&nbsp;km², 100&nbsp;000&nbsp;m² = 0,1&nbsp;km².</p>
+  <p class="hint">Próg akumulacji spływu to najmniejsza powierzchnia, z której musi spływać woda, żeby powstała linia. Hydrograf podaje go w hektarach, a od 1&nbsp;km² (100&nbsp;ha) w km²: 1&nbsp;ha = 10&nbsp;000&nbsp;m², 10&nbsp;ha = 0,1&nbsp;km².</p>
   <div class="footer"><span>SIEĆ Z NMT · DYMEK · PRÓG AKUMULACJI</span><span>12 / 30</span></div>
 </section>
 <section class="slide" id="sfincs" aria-label="Slajd 13: głębokość wody z modelu SFINCS">
@@ -376,7 +376,7 @@
     <img class="app-shot fit-shot" src="Hydrograf-v2-info.png" width="503" height="1044" alt="Panel zlewni Kamiennika 37,23 km² z rozwiniętą sekcją Sieć rzeczna i otwartym objaśnieniem Gęstość sieci Dd: definicja, wzór, zmienne z jednostkami, Znaczenie dla analizy, uwaga i źródła.">
     <div class="stack">
       <div class="card"><span class="label">Gdzie są</span><p>Przy wierszach parametrów, przy Qmax, tp, V i bilansie opadu, przy polach hietogramu i hydrogramu oraz przy wynikach analiz w panelu „Warstwy”.</p></div>
-      <div class="card"><span class="label">Jak otworzyć</span><p>Najedź kursorem na (i) albo dojdź do niego klawiszem <kbd>Tab</kbd>. Kliknięcie przypina objaśnienie; drugie kliknięcie, kliknięcie obok lub <kbd>Esc</kbd> je zamyka. Na telefonie dotknij (i).</p></div>
+      <div class="card"><span class="label">Jak otworzyć</span><p>Kliknij (i) albo dojdź do niego klawiszem <kbd>Tab</kbd> i naciśnij <kbd>Enter</kbd> lub spację; na telefonie dotknij (i). Ponowne kliknięcie, kliknięcie obok lub <kbd>Esc</kbd> zamyka objaśnienie. Samo najechanie kursorem go nie otwiera.</p></div>
       <div class="card"><span class="label">Co zawiera</span><p>Definicję z symbolem, wzór, „gdzie:” ze zmiennymi i jednostkami, „Jednostka:”, blok „Znaczenie dla analizy”, a w razie potrzeby „Zakres stosowalności”, „Uwaga:” i „Źródła:”.</p></div>
     </div>
   </div>
@@ -479,7 +479,7 @@
     <div class="step"><span class="number">01</span><strong>Włącz warstwę</strong><p>W „Warstwach” zaznacz „Głębokość wody — SFINCS, opad 12&nbsp;h, p&nbsp;=&nbsp;1%”. W lewym dolnym rogu mapy pojawi się legenda.</p></div>
     <div class="step"><span class="number">02</span><strong>Pokaż cały wynik</strong><p>Wyłącz inne warstwy i kliknij „Przybliż do zasięgu warstw” — mapa pokaże zasięg modelu, czyli zlewnię Kamiennika.</p></div>
     <div class="step"><span class="number">03</span><strong>Odczytaj klasę</strong><p>Kolor porównaj z legendą „Maks. głębokość wody [m]”. Zmniejsz krycie albo wybierz „Ortofotomapa ESRI”, by zobaczyć teren pod wodą.</p></div>
-    <div class="step"><span class="number">04</span><strong>Przeczytaj (i)</strong><p>Najedź na (i) przy nazwie warstwy: scenariusz, dane, ograniczenie i źródła. Na telefonie dotknij (i).</p></div>
+    <div class="step"><span class="number">04</span><strong>Przeczytaj (i)</strong><p>Kliknij (i) przy nazwie warstwy: scenariusz, dane, ograniczenie i źródła. Na telefonie dotknij (i).</p></div>
     <div class="step"><span class="number">05</span><strong>Porównaj z siecią</strong><p>Włącz „Linie spływu” lub „Cieki BDOT10k”. Rozległe płytkie plamy na zboczach i małe głębokości w korytach to skutek ograniczenia z (i).</p></div>
     <div class="step"><span class="number">06</span><strong>Wnioskuj ostrożnie</strong><p>Traktuj mapę jako podgląd metody, nie zasięg zalewu. Jeśli coś wygląda nie tak — zgłoś uwagę.</p></div>
   </div>
@@ -522,9 +522,9 @@
   <p class="kicker">08 · Telefon i motyw</p>
   <h2>Na telefonie i po zmroku</h2>
   <div class="split">
-    <img class="app-shot fit-shot" src="Hydrograf-v2-telefon.png" width="469" height="1015" alt="Hydrograf na telefonie: górny pasek z ikonami Instrukcja, Zgłoś uwagę i motywu oraz zieloną kropką stanu usług; pasek trybów z aktywnym Wybierz zlewnię i przyciskiem Zlewnia; od dołu wysunięty arkusz Zlewnia z uchwytem, kluczowymi wartościami 37.23 km², CN 67.9, 363 m n.p.m., 8.20 % i sekcjami 1–8; na dole pasek Mapa i Administracja.">
+    <img class="app-shot fit-shot" src="Hydrograf-v2-telefon.png" width="469" height="1015" alt="Hydrograf na telefonie: górny pasek z ikoną Zgłoś uwagę i przełącznikiem motywu; pasek trybów z aktywnym Wybierz zlewnię i przyciskiem Zlewnia; od dołu wysunięty arkusz Zlewnia z uchwytem, kluczowymi wartościami 37.23 km², CN 67.9, 363 m n.p.m., 8.20 % i sekcjami 1–8; na dole pasek Mapa, Instrukcja i Logowanie.">
     <div class="stack">
-      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Szyna nawigacji staje się dolnym paskiem, a górny pasek pokazuje same ikony; stan usług to kolorowa kropka.</p></div>
+      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Szyna nawigacji (Mapa, Instrukcja, Logowanie) staje się dolnym paskiem, a górny pasek pokazuje same ikony.</p></div>
       <div class="card"><span class="label">Arkusze</span><p>„Warstwy” i „Zlewnia” wysuwają się od dołu, zawsze jeden naraz. Otwierają je przyciski na pasku nad mapą, zamyka uchwyt u góry arkusza; po wyznaczeniu zlewni arkusz „Zlewnia” otwiera się sam.</p></div>
       <div class="card"><span class="label">Dotyk</span><p>Pasek trybów przewiniesz palcem w bok; podpowiedzi trybu są ukryte. Profil zakończysz, dotykając ponownie ostatniego punktu albo przyciskiem „Zakończ”. Objaśnienie pokaże dotknięcie (i), drugie je zamknie.</p></div>
       <div class="card"><span class="label">Motyw</span><p>Auto (jak w systemie), Jasny lub Ciemny — linie na mapie, legendy i wykresy zmieniają kolory razem z motywem. Przeglądarka zapamięta wybór, także dla administracji i tej instrukcji.</p></div>

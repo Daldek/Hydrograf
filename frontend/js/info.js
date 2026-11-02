@@ -1,15 +1,16 @@
 /**
  * Hydrograf explanation markers.
  *
- * A small round (i) button after a label opens one shared tooltip with the
+ * A small round (i) button after a label opens one shared panel with the
  * structured text from Hydrograf.infoTexts: title and symbol, definition,
  * formulas, the "gdzie:" list of variables, unit, "Znaczenie dla analizy",
  * applicability, note and the literature line "Źródła:". Formulas are
  * typeset as MathML built with DOM calls from the notation described in
  * info-texts.js (never from HTML).
  *
- * The tooltip opens on hover, on keyboard focus and on tap (tap or click
- * pins it, a second one closes it); Esc or a tap outside closes it. It stays
+ * The panel opens only on a click or tap of the (i), or Enter or Space on it
+ * (never on hover or focus); the same (i) again, Esc, a click or tap outside
+ * the panel, or moving the focus to another control closes it. It stays
  * inside the panel that holds the button and scrolls when taller. Selects
  * with per-option texts (UH model, Tc method, Nash estimation) also get a
  * compact applicability note under them that follows the selected option.
@@ -22,10 +23,9 @@
     window.Hydrograf = window.Hydrograf || {};
 
     var TIP_ID = 'info-tip';
-    var GAP = 6;            // px between the button and the tooltip
+    var GAP = 6;            // px between the button and the panel
     var EDGE = 8;           // px kept free at the panel edges
     var MAX_WIDTH = 360;    // px
-    var HIDE_DELAY_MS = 120;
 
     /** Form controls whose static <label for> gets an (i). */
     var FORM_FIELDS = [
@@ -41,10 +41,7 @@
     var NOTE_SELECTS = ['hydro-uh-model', 'hydro-tc-method', 'hydro-nash-estimation'];
 
     var tip = null;
-    var current = null;     // button whose tooltip is shown
-    var pinned = false;     // opened by click/tap: survives mouse-out and scroll
-    var hideTimer = null;
-    var lastPointer = 'mouse';
+    var current = null;     // button whose explanation is open
 
     function texts() {
         return window.Hydrograf.infoTexts || {};
@@ -241,6 +238,8 @@
         btn.dataset.infoKey = key;
         btn.dataset.infoLabel = label;
         btn.setAttribute('aria-label', 'Wyjaśnienie: ' + label);
+        btn.setAttribute('aria-expanded', 'false');
+        btn.setAttribute('aria-controls', TIP_ID);
         btn.textContent = 'i';
         return btn;
     }
@@ -448,31 +447,22 @@
         tip.style.top = Math.round(top) + 'px';
     }
 
-    function show(btn, pin) {
-        clearTimeout(hideTimer);
-        if (current && current !== btn) hide();
+    function show(btn) {
+        if (current) hide();
         current = btn;
-        pinned = pin;
         render(btn);
         tip.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
         btn.setAttribute('aria-describedby', TIP_ID);
-        btn.classList.add('active');
         position(btn);
     }
 
     function hide() {
-        clearTimeout(hideTimer);
         if (!current) return;
+        current.setAttribute('aria-expanded', 'false');
         current.removeAttribute('aria-describedby');
-        current.classList.remove('active');
         current = null;
-        pinned = false;
         tip.hidden = true;
-    }
-
-    function scheduleHide() {
-        clearTimeout(hideTimer);
-        hideTimer = setTimeout(hide, HIDE_DELAY_MS);
     }
 
     function infoButton(target) {
@@ -482,43 +472,21 @@
     // ── Events (delegated, so rows rendered later work too) ────────────
 
     function onPointerDown(e) {
-        lastPointer = e.pointerType || 'mouse';
         if (current && !infoButton(e.target) && !tip.contains(e.target)) hide();
     }
 
-    function onMouseOver(e) {
-        if (lastPointer === 'touch') return;
-        var btn = infoButton(e.target);
-        if (btn) {
-            if (btn !== current) show(btn, false);
-            else clearTimeout(hideTimer);
-        } else if (current && tip.contains(e.target)) {
-            clearTimeout(hideTimer);
-        }
-    }
-
-    function onMouseOut(e) {
-        if (!current || pinned || lastPointer === 'touch') return;
-        var from = infoButton(e.target) === current || tip.contains(e.target);
-        var to = e.relatedTarget && (infoButton(e.relatedTarget) === current || tip.contains(e.relatedTarget));
-        if (from && !to && !current.matches(':focus-visible')) scheduleHide();
-    }
-
-    function onFocusIn(e) {
-        var btn = infoButton(e.target);
-        if (btn && btn !== current) show(btn, false);
-    }
-
+    /** The keyboard moved the focus to another control (a click inside the panel moves it nowhere). */
     function onFocusOut(e) {
-        if (current && e.target === current && !(e.relatedTarget && tip.contains(e.relatedTarget))) hide();
+        if (current && e.target === current && e.relatedTarget && !tip.contains(e.relatedTarget)) hide();
     }
 
+    /** Click, tap, Enter or Space on an (i): open its explanation, or close it when it is open. */
     function onClick(e) {
         var btn = infoButton(e.target);
         if (!btn) return;
         e.preventDefault();
-        if (btn === current && pinned) hide();
-        else show(btn, true);
+        if (btn === current) hide();
+        else show(btn);
     }
 
     function onKeyDown(e) {
@@ -531,15 +499,13 @@
 
     function onScroll(e) {
         if (!current || (e.target && e.target.nodeType === 1 && tip.contains(e.target))) return;
-        if (pinned) position(current);
-        else hide();
+        position(current);
     }
 
     function init() {
         tip = document.createElement('div');
         tip.id = TIP_ID;
         tip.className = 'info-tip';
-        tip.setAttribute('role', 'tooltip');
         tip.hidden = true;
         document.body.appendChild(tip);
 
@@ -548,9 +514,6 @@
         decorateMarked();
 
         document.addEventListener('pointerdown', onPointerDown, true);
-        document.addEventListener('mouseover', onMouseOver);
-        document.addEventListener('mouseout', onMouseOut);
-        document.addEventListener('focusin', onFocusIn);
         document.addEventListener('focusout', onFocusOut);
         document.addEventListener('click', onClick);
         document.addEventListener('keydown', onKeyDown, true);

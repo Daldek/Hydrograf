@@ -944,13 +944,13 @@ frontend/
     ├── theme-switch.js       # Theme switch Auto/Jasny/Ciemny in /admin and /instrukcja
     ├── shell.js              # Main-page shell: panels, width handles, phone layout, theme
     ├── api.js                # API calls (fetch wrappers)
-    ├── map.js                # Leaflet map, drawing, MVT
+    ├── map.js                # Leaflet map, drawing, MVT; wheel zoom without the tail of a gesture or late input
     ├── charts.js             # Chart.js in the token colours: hypsometry, land cover/HSG, hietogram, hydrograph, profile
-    ├── layers.js             # „Warstwy” panel: basemaps with the flood hazard map overlay (WMS of Wody Polskie), overlays, opacity, zoom to extent
+    ├── layers.js             # „Warstwy” panel: basemaps with the flood hazard map overlay (WMS of Wody Polskie), overlays, opacity, zoom to extent; flow accumulation threshold in ha/km²
     ├── profile.js            # Terrain profile (line drawing) with the water surface of the analysis results that are on
     ├── hydrograph.js         # Hietogram form (AMC, rainfall source) and hydrograph form, balance, charts
     ├── custom-rain.js        # Own rainfall series: table of steps, paste, CSV import, copy of the hietogram
-    ├── info.js               # (i) explanations: markers, shared tooltip, MathML formulas, hover/focus/touch, Esc
+    ├── info.js               # (i) explanations: markers, shared panel, MathML formulas; opened by a click, a tap, Enter or Space, closed by the same (i), Esc or a click outside
     ├── info-texts.js         # 76 explanations (formula, variables, unit, meaning) keyed by an API field or a control id
     ├── advanced.js           # Advanced mode: editing of the morphometry for POST /api/generate-hydrograph
     ├── depressions.js        # Depressions (blue spots) overlay
@@ -958,7 +958,7 @@ frontend/
     ├── results.js            # External analysis results (e.g. SFINCS of Hydraulik) from the manifest /data/results/index.json: tiles, legend, (i)
     ├── diagnostics.js        # Session event log (ADR-053)
     ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>)
-    ├── welcome.js            # Welcome dialog (native <dialog>): first visit and the „Instrukcja” button of the main page
+    ├── welcome.js            # Welcome dialog (native <dialog>): first visit and the „Instrukcja” item of the rail on the main page
     ├── app.js                # Orchestrator: init, work modes, click routing, Zlewnia panel
     └── admin/
         ├── admin-api.js      # Admin API client (fetch + X-Admin-Key header)
@@ -981,13 +981,13 @@ The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the 
 
 The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 
-- **Top bar** — the mark `img/hydrograf.svg`, a service status indicator, the buttons „Instrukcja” (`/instrukcja/`) and „Zgłoś uwagę” and the theme switch Auto/Jasny/Ciemny (`data-theme` on `<html>`, the choice in `localStorage` `nogat-theme`; `theme-init.js` sets it before the first paint, so the light theme does not flash). The „Instrukcja” button is in the top bar of every page (main, `/admin`, `/instrukcja`); on the main page it opens the welcome dialog again (a click with Ctrl/Shift or the middle button still opens the guide).
+- **Top bar** — the mark `img/hydrograf.svg`, the button „Zgłoś uwagę” and the theme switch Auto/Jasny/Ciemny (`data-theme` on `<html>`, the choice in `localStorage` `nogat-theme`; `theme-init.js` sets it before the first paint, so the light theme does not flash). The service status („Usługi działają”) is only in the top bar of `/admin` (`admin-app.js`: `GET /health` when the page opens, then the dashboard refresh).
 - **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two plain-language paragraphs (what Hydrograf is, that the results are estimates and not a flood forecast, the area of the data) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`).
-- **Navigation rail** — only Mapa and Administracja (`/admin`); the terrain profile is a mode of the map bar.
+- **Navigation rail** — Mapa, Instrukcja (`/instrukcja/`) and Logowanie (`/admin`), on every page (a bottom bar on phones); on the main page „Instrukcja” opens the welcome dialog again (a click with Ctrl/Shift or the middle button still opens the guide). The terrain profile is a mode of the map bar.
 - **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
 - **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu; the terrain profile opens in a bottom drawer over the map.
 - **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph.
-- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram; one shared tooltip opens on hover, focus or touch and closes with Esc. The 64 entries of `info-texts.js` keyed by an API field or a form control id (the other 12 belong to the options of the UH model, Tc method and Nash estimation selects) hold: a description, a formula (built as MathML through the DOM, without libraries), the list „gdzie:” of the variables with their units, the unit of the result, a separate block „Znaczenie dla analizy”, the range of applicability and a note. The texts rest on Hydrolog and the backend (e.g. the hydrograph limit of 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice. The API returns no applicability warnings, so the GUI shows none.
+- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 64 entries of `info-texts.js` keyed by an API field or a form control id (the other 12 belong to the options of the UH model, Tc method and Nash estimation selects) hold: a description, a formula (built as MathML through the DOM, without libraries), the list „gdzie:” of the variables with their units, the unit of the result, a separate block „Znaczenie dla analizy”, the range of applicability and a note. The texts rest on Hydrolog and the backend (e.g. the hydrograph limit of 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice. The API returns no applicability warnings, so the GUI shows none.
 - **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.
 - **Hydrograph form** — a grid of two columns: „Model UH” | „Metoda Tc”, for Nash „Model UH” | „Estymacja Nash”; the applicability notes in even rows.
 - **Advanced mode** — `advanced.js` lets the user change the morphometry sent to `POST /api/generate-hydrograph` (the fast path `morphometry`): area, perimeter, length, elevations, mean slope, stream length and slope, `length_to_centroid_km`, CN. Precision of the fields: area 0.01 km², lengths and Lc 0.01 km, elevations 0.1 m, slopes 0.01 %, CN 0.1 (1–100). Changed fields are marked; one field or all of them can be restored („Przywróć dane z Hydrografa”); validation errors block the request; the result carries the message „Obliczono na zmienionych danych wejściowych”. Rainfall and AMC are set in the Hietogram section. Some catchments have `length_to_centroid_km = 0`: Snyder fails until the user gives Lc.
@@ -1019,6 +1019,8 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 #### 4.2.1 Map (Leaflet.js)
 
 Basemaps (`layers.js`): **OpenFreeMap szary** (vector, the `positron` style from `https://tiles.openfreemap.org`, rendered by MapLibre GL 4.7.1 and `@maplibre/maplibre-gl-leaflet` 0.0.22; without MapLibre it falls back to OSM GUGiK), **OSM GUGiK szary** (raster, Poland only, greyed by the class `.basemap-grey`), **Ortofotomapa ESRI**, **bez podkładu** (no basemap).
+
+**Wheel zoom** (`map.js`, `wheelZoomHandler`): Leaflet's scroll-wheel handler (`scrollWheelZoom` is off) with two guards, because the default turned every 40 ms batch of wheel events, however small, into a whole zoom level and went on zooming after the wheel had stopped. An event weaker than half of the strongest event of its gesture is the fading tail of a touchpad, a Magic Mouse or a smooth-scrolling mouse driver and is ignored (a pause of 80 ms or a change of direction starts a new gesture), and wheel input older than 150 ms, an event or a whole batch that waited while the page was busy (e.g. MapLibre redrawing the base map), does not start a zoom step.
 
 **Flood hazard map (MZP)** — an overlay in the group „Podkłady kartograficzne”, above the list of basemaps: a checkbox independent of the basemap choice (off by default), opacity 80 %, and while it is on, the field „Prawdopodobieństwo powodzi” (0,2 % — raz na 500 lat, 1 % — raz na 100 lat (the default), 10 % — raz na 10 lat), a hint about the scale and a legend in the lower left corner of the map. Source: the WMS 1.3.0 services (ArcGIS Server) of Państwowe Gospodarstwo Wodne Wody Polskie (KZGW, ISOK) with the water depth of the MZP of the 2020 update, for river floods:
 
@@ -1913,11 +1915,12 @@ jobs:
 
 ---
 
-**Document version:** 2.7
+**Document version:** 2.8
 **Date of the last update:** 2026-11-02
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.8 (2026-11-02): fixes from the testers' feedback (`feature/store-ui`): §4.1 and §4.2 — wheel zoom without the tail of a gesture or late input, (i) explanations open on a click only, the flow accumulation threshold in ha/km², the rail Mapa · Instrukcja · Logowanie on every page, the service status only in `/admin`
 - 2.7 (2026-11-02): merge of `feature/visual-identity` (its version 2.3 of 2026-11-01): GUI in the Nogat visual identity (ADR-065) — §4.1 new structure of `frontend/` (`tokens.css`, `chrome.css`, `app.css`, `shell.js`, `theme-init.js`, `theme-switch.js`, `welcome.js`, `img/hydrograf.svg`, `instrukcja/`; removed `glass.css`, `style.css`, `draggable.js`), §4.2 the Archiwista shell and basemaps (OpenFreeMap through MapLibre GL), charts in tokens, (i) explanations, AMC and your own rainfall series, advanced mode, analysis results (`hydrograf-results/1` with `water_level`), the MZP overlay; §2.2 `POST /api/delineate-watershed/preview`, `amc` and `custom_precipitation`, `GET /api/layers`, `result_ids` and `water_levels` of the terrain profile (`core/analysis_results.py`); §5.1 nginx on the loopback; §5.2 CSP hosts and the front-end asset cache (`?v=`, HTML `no-cache`); §7.1 request correlation and log rotation; ADR-065 in the table
 - 2.6 (2026-10-25): `core/watershed.py` (`FlowCell`, `build_boundary`, `build_boundary_polygonize`, `calculate_watershed_area_km2`) and the cell functions of `core/morphometry.py` are removed, nothing called them; `core/morphometry.py` keeps `calculate_shape_indices`; the sections 2.4.1 to 2.4.9 are renumbered (section 2.4.7 is the Hydrolog library, 2.4.8 in version 2.4)
 - 2.5 (2026-10-25): Kartograf 0.8.0 (ADR-061): the downloads are versions of the Kartograf store `cache/kartograf/` (a hard-linked standard path, `versions/`, a sidecar per file), not the `cache/nmt/pl_<system>_<res>_evrf2007/` + `kampanie/` layout; `utils/kartograf_store.py`; `download_dem.py` writes into the store; the ADR table names ADR-060 and ADR-061 (details: `docs/integrations/KARTOGRAF.md` §3 and §7)
