@@ -956,7 +956,6 @@ frontend/
     ├── charts.js             # Chart.js in the token colours: hypsometry, land cover/HSG, hietogram, hydrograph, profile
     ├── layers.js             # „Warstwy” panel: basemaps with the flood hazard map overlay (WMS of Wody Polskie), overlays, opacity, zoom to extent
     ├── profile.js            # Terrain profile (line drawing) with the water surface of the analysis results that are on
-    ├── identify.js           # Mode „Identyfikuj”: marker and point card (POST /api/identify-point)
     ├── hydrograph.js         # Hietogram form (AMC, rainfall source) and hydrograph form, balance, charts
     ├── custom-rain.js        # Own rainfall series: table of steps, paste, CSV import, copy of the hietogram
     ├── info.js               # (i) explanations: markers, shared tooltip, MathML formulas, hover/focus/touch, Esc
@@ -965,6 +964,7 @@ frontend/
     ├── depressions.js        # Depressions (blue spots) overlay
     ├── sewer.js              # Storm-sewer layer (MVT overlay; only when GET /api/layers reports data)
     ├── results.js            # External analysis results (e.g. SFINCS of Hydraulik) from the manifest /data/results/index.json: tiles, legend, (i)
+    ├── identify.js           # Mode „Identyfikuj”: marker and point card (POST /api/identify-point)
     ├── diagnostics.js        # Session event log (ADR-053)
     ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>)
     ├── welcome.js            # Welcome dialog (native <dialog>): first visit and the „Instrukcja” button of the main page
@@ -978,7 +978,7 @@ frontend/
         └── admin-app.js      # Admin panel orchestrator
 ```
 
-`js/` holds 24 modules on `window.Hydrograf` (IIFE), 18 for the main page and 6 in `admin/`; `theme-init.js` and `theme-switch.js` stay outside the namespace. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
+`js/` holds 25 modules on `window.Hydrograf` (IIFE), 19 for the main page and 6 in `admin/`; `theme-init.js` and `theme-switch.js` stay outside the namespace. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
 
 The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the pattern is in Nogat's `design/`, the mockup in `design/mockups/hydrograf/`. Colours, fonts, radii and shadows only through the variables of `css/tokens.css`; a change of the palette is made in Nogat and ends with copying the file again.
 
@@ -994,7 +994,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 - **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two plain-language paragraphs (what Hydrograf is, that the results are estimates and not a flood forecast, the area of the data) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`).
 - **Navigation rail** — only Mapa and Administracja (`/admin`); the terrain profile is a mode of the map bar.
 - **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
-- **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu; the terrain profile opens in a bottom drawer over the map.
+- **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `POST /api/identify-point`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones).
 - **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph.
 - **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram; one shared tooltip opens on hover, focus or touch and closes with Esc. The 64 entries of `info-texts.js` keyed by an API field or a form control id (the other 12 belong to the options of the UH model, Tc method and Nash estimation selects) hold: a description, a formula (built as MathML through the DOM, without libraries), the list „gdzie:” of the variables with their units, the unit of the result, a separate block „Znaczenie dla analizy”, the range of applicability and a note. The texts rest on Hydrolog and the backend (e.g. the hydrograph limit of 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice. The API returns no applicability warnings, so the GUI shows none.
 - **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.
