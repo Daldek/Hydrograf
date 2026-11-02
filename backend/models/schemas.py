@@ -715,6 +715,172 @@ class TerrainProfileResponse(BaseModel):
     )
 
 
+# ===================== POINT IDENTIFICATION MODELS =====================
+
+
+class IdentifyPointRequest(BaseModel):
+    """Request model for the identification of one map point."""
+
+    latitude: float = Field(
+        ...,
+        ge=-90,
+        le=90,
+        description="Latitude in WGS84 (decimal degrees)",
+        examples=[51.0376],
+    )
+    longitude: float = Field(
+        ...,
+        ge=-180,
+        le=180,
+        description="Longitude in WGS84 (decimal degrees)",
+        examples=[16.1723],
+    )
+    threshold_m2: int | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Flow accumulation threshold [m2] of the sub-catchment network to read "
+            "(the flow lines on the map); raised to 10000, the default, if lower"
+        ),
+        examples=[100000],
+    )
+    result_ids: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Ids of analysis results (manifest /data/results/index.json) whose "
+            "maximum water level is read at the point"
+        ),
+    )
+
+
+class PointCoordinates(BaseModel):
+    """The point in WGS84 and in PL-1992."""
+
+    latitude: float = Field(..., description="Latitude in WGS84 [°]")
+    longitude: float = Field(..., description="Longitude in WGS84 [°]")
+    easting_m: float = Field(
+        ..., description="PL-1992 (EPSG:2180) easting [m], Y of Polish surveying"
+    )
+    northing_m: float = Field(
+        ..., description="PL-1992 (EPSG:2180) northing [m], X of Polish surveying"
+    )
+
+
+class PointWater(BaseModel):
+    """Maximum water of one analysis result at the point."""
+
+    result_id: str = Field(..., description="Analysis result id (results manifest)")
+    water_level_m: float | None = Field(
+        ..., description="Maximum water level [m a.s.l.]; null where the result is dry"
+    )
+    depth_m: float | None = Field(
+        ...,
+        description=(
+            "Water level minus the terrain elevation [m]; null where the water "
+            "does not lie above the terrain"
+        ),
+    )
+
+
+class PointStream(BaseModel):
+    """Nearest BDOT10k stream line within 25 m of the point."""
+
+    name: str | None = Field(None, description="Name (BDOT10k), null if unnamed")
+    layer_type: str = Field(
+        ..., description="BDOT10k layer: SWRS river, SWKN canal, SWRM ditch"
+    )
+    distance_m: float = Field(..., ge=0, description="Distance from the point [m]")
+
+
+class PointWaterBody(BaseModel):
+    """BDOT10k water body polygon (lake, pond, wide river) containing the point."""
+
+    name: str | None = Field(None, description="Name (BDOT10k NAZWA), null if unnamed")
+    kind: str | None = Field(
+        None, description="Kind of water (BDOT10k RODZAJ), e.g. 'woda stojąca'"
+    )
+
+
+class PointLandCover(BaseModel):
+    """Land cover at the point."""
+
+    category: str = Field(
+        ..., description="Land cover category, as in land_cover_stats"
+    )
+    bdot_class: str | None = Field(None, description="BDOT10k layer, e.g. PTLZ")
+    cn: int = Field(
+        ..., description="CN of the category (AMC-II), as in the catchment CN"
+    )
+    imperviousness: float | None = Field(
+        None, description="Impervious fraction of the category (0-1)"
+    )
+
+
+class PointDepression(BaseModel):
+    """Terrain depression (blue spot) containing the point."""
+
+    max_depth_m: float = Field(..., description="Maximum depth of the depression [m]")
+    mean_depth_m: float | None = Field(None, description="Mean depth [m]")
+    area_m2: float = Field(..., description="Area of the depression [m2]")
+    volume_m3: float = Field(..., description="Volume of the depression [m3]")
+
+
+class PointSubcatchment(BaseModel):
+    """Precomputed sub-catchment containing the point and its stream segment."""
+
+    threshold_m2: int = Field(
+        ..., description="Flow accumulation threshold of the network [m2]"
+    )
+    segment_idx: int = Field(..., description="Stream segment index")
+    area_km2: float = Field(..., description="Area of the sub-catchment [km2]")
+    upstream_area_km2: float | None = Field(
+        None,
+        description=(
+            "Catchment area at the segment's downstream end [km2], as a "
+            "precomputed delineation from this sub-catchment"
+        ),
+    )
+    strahler_order: int | None = Field(None, description="Strahler order")
+    segment_length_m: float | None = Field(None, description="Segment length [m]")
+    is_real_stream: bool | None = Field(
+        None,
+        description="Segment matched to a BDOT10k stream; null if not matched",
+    )
+
+
+class IdentifyPointResponse(BaseModel):
+    """What Hydrograf knows at a point; a member is null where its source is empty."""
+
+    coordinates: PointCoordinates = Field(..., description="The point")
+    elevation_m: float = Field(
+        ..., description="Terrain elevation of the DEM [m a.s.l.]"
+    )
+    slope_percent: float | None = Field(
+        None, description="Terrain slope of the DEM [%]"
+    )
+    water: list[PointWater] = Field(
+        default_factory=list,
+        description="Requested results whose water level raster holds the point",
+    )
+    stream: PointStream | None = Field(
+        None, description="Nearest BDOT10k stream within 25 m"
+    )
+    water_body: PointWaterBody | None = Field(
+        None, description="BDOT10k water body containing the point"
+    )
+    land_cover: PointLandCover | None = Field(None, description="Land cover")
+    soil_hsg: str | None = Field(
+        None, description="Hydrologic soil group (A, B, C or D)"
+    )
+    depression: PointDepression | None = Field(
+        None, description="Terrain depression containing the point"
+    )
+    subcatchment: PointSubcatchment | None = Field(
+        None, description="Sub-catchment of the precomputed network at the point"
+    )
+
+
 # ===================== FEEDBACK MODELS =====================
 
 

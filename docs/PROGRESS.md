@@ -253,6 +253,10 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
 - Produkcja nietknięta (bez Dockera; serwery deweloperskie na portach 18765/18766 z atrapami API).
 - Następne: PDF prezentacji nieprzegenerowany (po scaleniu z `feature/store-identify`, która też zmienia prezentację); zrzuty slajdów 10 i 13 mają na krawędzi ścinki starej szyny i górnego paska (do podmiany przy nowych zrzutach po S3); mapa wyboru bbox w `/admin` ma domyślne kółko Leafleta (`docs/BACKLOG.md`).
 
+### Tryb „Identyfikuj” (2026-11-02, gałąź `feature/store-identify`, pozycja 6 uwag testerów przed S3)
+- [x] **Tryb identyfikacji punktu:** `POST /api/identify-point` (`api/endpoints/identify.py`, `core/point_info.py`, modele w `models/schemas.py`, komunikaty `no_data_at_point`, `identify_failed`) i czwarty przycisk „Identyfikuj” z kartą „Informacje o punkcie” (`js/identify.js`); współrzędne WGS84/PL-1992 z kopiowaniem, rzędna i spadek z NMT, głębokość i zwierciadło wody włączonych wyników, ciek BDOT10k do 25 m, wody powierzchniowe z `bdot_lakes.geojson` (nie ma ich w bazie), pokrycie terenu z CN, HSG, zagłębienie, zlewnia cząstkowa. Poza NMT 404 `no_data`. Instrukcja i prezentacja: slajd 9 „Cztery tryby pracy”, nowy `Hydrograf-tryby.png`; PDF prezentacji nie regenerowany.
+- Testy: 14 jednostkowych (`test_point_info.py`), 15 integracyjnych endpointu offline (`test_identify_point.py`), 5 testów SQL z markerem `db` (`test_identify_point_db.py`) do uruchomienia w S2 na PostGIS. Smoke: API i przeglądarka na kopii danych (NMT, SFINCS, BDOT10k), baza zastąpiona atrapą; zrzuty w `~/scratch/store-ui/identify/`.
+
 ### Poprzednia sesja (2026-11-01/02 — kopia produkcji, przycięcie danych do zlewni Kaczawy, wyniki SFINCS w „Wynikach analiz”, instrukcja i ekran powitalny, nakładka MZP ISOK, cache zasobów za Cloudflare, zwierciadło wody na profilu terenu)
 
 ### Co zrobiono

@@ -316,6 +316,12 @@
         // Browse mode — do nothing
         if (state.clickMode === 'browse') return;
 
+        // Identify mode — read what is known at the point (js/identify.js)
+        if (state.clickMode === 'identify') {
+            if (Hydrograf.identify) Hydrograf.identify.identifyAt(lat, lng);
+            return;
+        }
+
         // Profile mode — re-activate drawing if not currently drawing
         if (state.clickMode === 'profile') {
             if (!Hydrograf.map.isDrawing || !Hydrograf.map.isDrawing()) {
@@ -481,10 +487,11 @@
         browse: 'Przesuwaj i przybliżaj mapę',
         select: 'Kliknij na mapie w pobliżu cieku',
         profile: 'Kliknij na mapie, aby zacząć rysować profil',
+        identify: 'Kliknij na mapie, aby odczytać dane o punkcie',
     };
 
     /**
-     * Switch click mode between 'browse', 'select', and 'profile'.
+     * Switch click mode between 'browse', 'select', 'profile' and 'identify'.
      */
     function setClickMode(mode) {
         state.clickMode = mode;
@@ -493,7 +500,7 @@
         }
 
         // Segmented control (radio group with roving tabindex)
-        ['browse', 'select', 'profile'].forEach(function (m) {
+        ['browse', 'select', 'profile', 'identify'].forEach(function (m) {
             var btn = document.getElementById('mode-' + m);
             var on = m === mode;
             btn.classList.toggle('on', on);
@@ -508,8 +515,14 @@
             Hydrograf.profile.hideProfilePanel();
         }
 
+        // Leaving identify mode removes the point card and its marker
+        if (mode !== 'identify' && Hydrograf.identify) {
+            Hydrograf.identify.close();
+        }
+
         // Panels: browsing frees the map, selecting shows the results column,
-        // profile mode on phones drops any sheet that would cover the drawer.
+        // profile and identify modes on phones drop any sheet that would cover
+        // the profile drawer or the point card.
         if (mode === 'browse') {
             Hydrograf.shell.close('right');
         } else if (mode === 'select') {
@@ -566,6 +579,9 @@
             setClickMode('select');
         });
         document.getElementById('mode-profile').addEventListener('click', enterProfileMode);
+        document.getElementById('mode-identify').addEventListener('click', function () {
+            setClickMode('identify');
+        });
         document.getElementById('rail-map').addEventListener('click', function (e) {
             e.preventDefault();
             if (state.clickMode === 'profile') setClickMode('browse');
@@ -574,7 +590,8 @@
         // Panel controls
         document.getElementById('results-close').addEventListener('click', closeResults);
 
-        // Escape: cancel drawing first, then single = close panel, double = clear result (like ×)
+        // Escape: cancel drawing first, then close the point card, then
+        // single = close panel, double = clear result (like ×)
         var _escTimer = null;
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
@@ -585,6 +602,12 @@
             // Drawing check FIRST — cancel active drawing and stop
             if (Hydrograf.map && Hydrograf.map.isDrawing && Hydrograf.map.isDrawing()) {
                 Hydrograf.map.cancelDrawing();
+                return;
+            }
+
+            // An open point card closes next (identify mode stays on)
+            if (Hydrograf.identify && Hydrograf.identify.isOpen()) {
+                Hydrograf.identify.close();
                 return;
             }
 
@@ -625,6 +648,11 @@
         // Init profile module
         if (Hydrograf.profile) {
             Hydrograf.profile.init();
+        }
+
+        // Init identify module (point card of the identify mode)
+        if (Hydrograf.identify) {
+            Hydrograf.identify.init();
         }
 
         // Init hydrograph module
