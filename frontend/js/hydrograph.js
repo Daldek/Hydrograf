@@ -3,6 +3,9 @@
  *
  * Hietogram form (precipitation), hydrograph form (UH model),
  * charts, water balance table. Auto-regenerates on parameter change.
+ * The number fields are checked against the limits of the API before a
+ * request; an invalid field (or a server error at it) shows its message under
+ * it, and the result of an earlier calculation is hidden until it is fixed.
  */
 (function () {
     'use strict';
@@ -10,118 +13,183 @@
     window.Hydrograf = window.Hydrograf || {};
 
     var scenariosLoaded = false;
-    var _charts = {};
     var _debounceTimer = null;
     var _DEBOUNCE_MS = 300;
     var _requestId = 0;
 
-    // ── Chart helpers ──────────────────────────────────────────────────
+    // ── Number fields ──────────────────────────────────────────────────
 
-    function _ensureLineChart(canvasId, yLabel, tooltipFn) {
-        if (_charts[canvasId]) return _charts[canvasId];
-        var canvas = document.getElementById(canvasId);
-        if (!canvas || typeof Chart === 'undefined') return null;
-        var chart = new Chart(canvas, {
-            type: 'line',
-            data: { datasets: [{
-                label: yLabel,
-                data: [],
-                borderColor: '#0A84FF',
-                backgroundColor: 'rgba(10, 132, 255, 0.1)',
-                fill: true,
-                tension: 0.3,
-                pointRadius: 0,
-                borderWidth: 2,
-            }] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: { duration: 400, easing: 'easeInOutQuart' },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        intersect: false,
-                        mode: 'index',
-                        callbacks: {
-                            title: function (items) { return 't = ' + items[0].parsed.x + ' min'; },
-                            label: tooltipFn,
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        type: 'linear',
-                        min: 0,
-                        max: 60,
-                        title: { display: true, text: 'Czas [min]', font: { size: 10 } },
-                        ticks: { font: { size: 9 }, maxTicksLimit: 8 },
-                    },
-                    y: {
-                        title: { display: true, text: yLabel, font: { size: 10 } },
-                        ticks: { font: { size: 9 } },
-                        beginAtZero: true,
-                    },
-                },
-            },
-        });
-        _charts[canvasId] = chart;
-        return chart;
+    // The limits of the API (HydrographRequest): gt is an exclusive lower
+    // bound, min and max are inclusive. `key` is the request field, which is
+    // also the JSON Pointer /body/<key> of a server validation error; `part`
+    // is the element whose choice (hydrographParts) puts the field in use.
+    var NUMBER_FIELDS = [
+        { id: 'hydro-alpha', key: 'hietogram_alpha', label: '\u03b1', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
+        { id: 'hydro-beta', key: 'hietogram_beta', label: '\u03b2', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
+        { id: 'hydro-nash-n', key: 'nash_n', label: 'N (zbiorniki)', section: 'Hydrogram', part: 'nash-n-row', gt: 0, max: 20 },
+        { id: 'hydro-tc-runoff-coeff', key: 'tc_runoff_coeff', label: 'C (sp\u0142yw)', section: 'Hydrogram', part: 'tc-runoff-coeff-col', min: 0, max: 1, optional: true },
+        { id: 'hydro-tc-retardance', key: 'tc_retardance', label: 'N (op\u00f3r)', section: 'Hydrogram', part: 'tc-retardance-col', min: 0.02, max: 0.8 },
+        { id: 'hydro-tc-overland-length', key: 'tc_overland_length_km', label: 'L sp\u0142ywu', section: 'Hydrogram', part: 'tc-overland-col', gt: 0, max: 5 },
+        { id: 'hydro-snyder-ct', key: 'snyder_ct', label: 'Ct', section: 'Hydrogram', part: 'snyder-ct-col', gt: 0 },
+        { id: 'hydro-snyder-cp', key: 'snyder_cp', label: 'Cp', section: 'Hydrogram', part: 'snyder-cp-col', gt: 0, max: 1 },
+    ];
+    var FIELD_BY_KEY = {};
+    NUMBER_FIELDS.forEach(function (field) { FIELD_BY_KEY[field.key] = field; });
+
+    /** A number as Polish text shows it: 0.8 -> "0,8". */
+    function plNumber(n) {
+        return String(n).replace('.', ',');
     }
 
-    function _ensureHietogramChart(canvasId) {
-        if (_charts[canvasId]) return _charts[canvasId];
-        var canvas = document.getElementById(canvasId);
-        if (!canvas || typeof Chart === 'undefined') return null;
-        var chart = new Chart(canvas, {
-            type: 'bar',
-            data: { labels: [], datasets: [
-                {
-                    label: 'Opad ca\u0142kowity [mm]',
-                    data: [],
-                    backgroundColor: 'rgba(10, 132, 255, 0.35)',
-                    borderColor: '#0A84FF',
-                    borderWidth: 1,
-                    borderRadius: 1,
-                    order: 2,
-                },
-                {
-                    label: 'Opad efektywny [mm]',
-                    data: [],
-                    backgroundColor: 'rgba(10, 132, 255, 0.8)',
-                    borderColor: '#0A84FF',
-                    borderWidth: 1,
-                    borderRadius: 1,
-                    order: 1,
-                },
-            ] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: { duration: 400, easing: 'easeInOutQuart' },
-                plugins: {
-                    legend: { display: true, labels: { boxWidth: 12, font: { size: 9 } } },
-                    tooltip: {
-                        callbacks: {
-                            title: function (items) { return items[0].label + ' min'; },
-                            label: function (ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2) + ' mm'; },
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        title: { display: true, text: 'Czas [min]', font: { size: 10 } },
-                        ticks: { font: { size: 9 }, maxTicksLimit: 12 },
-                    },
-                    y: {
-                        title: { display: true, text: 'P [mm]', font: { size: 10 } },
-                        ticks: { font: { size: 9 } },
-                        beginAtZero: true,
-                    },
-                },
-            },
+    /** Choices of the forms that decide which fields a request uses. */
+    function choices() {
+        var model = document.getElementById('hydro-uh-model').value;
+        var estimation = document.getElementById('hydro-nash-estimation').value;
+        return {
+            hietogram: document.getElementById('hydro-hietogram-type').value,
+            model: model,
+            estimation: estimation,
+            // Tc for SCS, Snyder and Nash from_tc
+            needsTc: model !== 'nash' || estimation === 'from_tc',
+            tc: document.getElementById('hydro-tc-method').value,
+        };
+    }
+
+    /** The parts of the Hydrogram form the choices use, by element id. */
+    function hydrographParts(c) {
+        var kerby = c.tc === 'kerby' || c.tc === 'kerby_kirpich';
+        return {
+            'nash-params': c.model === 'nash',
+            'tc-method-params': c.needsTc,
+            'nash-n-row': c.model === 'nash' && c.estimation === 'from_tc',
+            'tc-runoff-coeff-col': c.needsTc && c.tc === 'faa',
+            'tc-retardance-col': c.needsTc && kerby,
+            'tc-overland-col': c.needsTc && (c.tc === 'faa' || kerby),
+            'snyder-ct-col': c.model === 'snyder',
+            'snyder-cp-col': c.model === 'snyder',
+        };
+    }
+
+    /** Whether the request sends the field: α and β only with a PMAXTP Beta storm. */
+    function inUse(field, c, customRain) {
+        if (field.part === 'beta-params') return !customRain && c.hietogram === 'beta';
+        return hydrographParts(c)[field.part];
+    }
+
+    /**
+     * Check a field the request uses against the API limits:
+     * { value, error }; value is null for an empty optional field.
+     */
+    function checkNumber(field, c) {
+        var input = document.getElementById(field.id);
+        var raw = input.value.trim();
+        if (raw === '') {
+            // type=number reports '' for text it cannot parse as well
+            if (input.validity && input.validity.badInput) return { value: null, error: 'Podaj liczb\u0119.' };
+            // Kerby-Kirpich estimates L when it is empty, FAA and Kerby need it
+            if (field.optional || (field.key === 'tc_overland_length_km' && c.tc === 'kerby_kirpich')) {
+                return { value: null, error: '' };
+            }
+            if (field.key === 'tc_overland_length_km') {
+                return { value: null, error: 'Metoda ' + (c.tc === 'faa' ? 'FAA' : 'Kerby') + ' wymaga d\u0142ugo\u015bci sp\u0142ywu L.' };
+            }
+            return { value: null, error: 'Podaj warto\u015b\u0107.' };
+        }
+        var v = Number(raw.replace(',', '.'));
+        var error = '';
+        if (!isFinite(v)) error = 'Podaj liczb\u0119.';
+        else if (field.gt !== undefined && !(v > field.gt)) error = 'Warto\u015b\u0107 musi by\u0107 wi\u0119ksza od ' + plNumber(field.gt) + '.';
+        else if (field.min !== undefined && v < field.min) error = 'Warto\u015b\u0107 nie mo\u017ce by\u0107 mniejsza ni\u017c ' + plNumber(field.min) + '.';
+        else if (field.max !== undefined && v > field.max) error = 'Warto\u015b\u0107 nie mo\u017ce by\u0107 wi\u0119ksza ni\u017c ' + plNumber(field.max) + '.';
+        return { value: error ? null : v, error: error };
+    }
+
+    /** Show the message of a field under it, or clear it (''). */
+    function setFieldError(field, message) {
+        var input = document.getElementById(field.id);
+        var wrap = input.closest('.field');
+        var err = document.getElementById(field.id + '-err');
+        if (!err && message) {
+            err = document.createElement('div');
+            err.id = field.id + '-err';
+            err.className = 'field-err';
+            wrap.appendChild(err);
+            input.setAttribute('aria-describedby', err.id);
+        }
+        wrap.classList.toggle('is-invalid', !!message);
+        input.setAttribute('aria-invalid', message ? 'true' : 'false');
+        if (err) {
+            err.textContent = message;
+            err.classList.toggle('d-none', !message);
+        }
+    }
+
+    /**
+     * Read the fields the request uses and mark each one; the fields out of
+     * use lose their marks. Returns { values: { key: number|null }, invalid }.
+     */
+    function readNumberFields(c, customRain) {
+        var values = {};
+        var invalid = [];
+        NUMBER_FIELDS.forEach(function (field) {
+            var used = inUse(field, c, customRain);
+            var checked = used ? checkNumber(field, c) : { value: null, error: '' };
+            setFieldError(field, checked.error);
+            if (checked.error) invalid.push(field);
+            else if (used) values[field.key] = checked.value;
         });
-        _charts[canvasId] = chart;
-        return chart;
+        return { values: values, invalid: invalid };
+    }
+
+    function fieldName(field) {
+        return field.label + ' (' + field.section + ')';
+    }
+
+    // ── Errors and stale results ───────────────────────────────────────
+
+    /** Messages of the calculation in the Hietogram and Hydrogram sections; '' hides one. */
+    function showCalcErrors(hietogram, hydrograph) {
+        [['hietogram-error', hietogram], ['hydro-error', hydrograph]].forEach(function (pair) {
+            var el = document.getElementById(pair[0]);
+            el.querySelector('.calc-error-text').textContent = pair[1];
+            el.classList.toggle('d-none', !pair[1]);
+        });
+    }
+
+    /** Why no calculation runs: the invalid fields by name, '' for none. */
+    function blockedMessage(names) {
+        if (!names.length) return '';
+        return 'Popraw zaznaczone pola: ' + names.join(', ') +
+            '. Do tego czasu hietogram i hydrogram nie s\u0105 przeliczane.';
+    }
+
+    /** Hide the result of an earlier calculation: it no longer matches the form. */
+    function hideResults() {
+        document.getElementById('hietogram-results').classList.add('d-none');
+        document.getElementById('hydrograph-results').classList.add('d-none');
+        document.getElementById('hydrograph-info').textContent = '';
+    }
+
+    /**
+     * Place the invalid values of a server validation error at their fields;
+     * return the message for the sections.
+     */
+    function serverErrorMessage(err) {
+        var problem = err && err.problem;
+        var errors = problem && Array.isArray(problem.errors) ? problem.errors : [];
+        if (!errors.length) return err.message;
+        var fields = [];
+        var other = [];
+        errors.forEach(function (e) {
+            var field = FIELD_BY_KEY[String(e.pointer || '').replace(/^\/body\//, '')];
+            if (field) {
+                setFieldError(field, e.message);
+                fields.push(fieldName(field));
+            } else {
+                other.push(e.message);
+            }
+        });
+        return (fields.length ? 'Popraw zaznaczone pola: ' + fields.join(', ') + '. ' : '') + other.join(' ');
     }
 
     // ── Scenarios ──────────────────────────────────────────────────────
@@ -153,6 +221,13 @@
             });
             probSelect.value = '10';
 
+            if (Hydrograf.customRain) {
+                Hydrograf.customRain.setMaxSteps(scenarios.custom_precipitation_max_steps);
+            }
+            if (Hydrograf.advanced) {
+                Hydrograf.advanced.setAreaLimit(scenarios.area_limit_km2);
+            }
+
             scenariosLoaded = true;
         } catch (err) {
             console.warn('Failed to load scenarios:', err.message);
@@ -172,49 +247,65 @@
         if (!data.watershed.hydrograph_available) return;
 
         var click = Hydrograf.app.getClickCoords();
-        var duration = document.getElementById('hydro-duration').value;
-        var probability = parseFloat(document.getElementById('hydro-probability').value);
-        var hietogramType = document.getElementById('hydro-hietogram-type').value;
-        var alpha = parseFloat(document.getElementById('hydro-alpha').value) || 2.0;
-        var beta = parseFloat(document.getElementById('hydro-beta').value) || 5.0;
-        var uhModel = document.getElementById('hydro-uh-model').value;
+        // Advanced mode may replace the morphometry and an own rainfall series
+        // the PMAXTP design storm; no request while a form is invalid, and the
+        // earlier result is hidden because it no longer matches the form
+        var morph = Hydrograf.advanced
+            ? Hydrograf.advanced.requestMorphometry(data)
+            : { valid: true, morphometry: data.watershed.morphometry || null };
+        var rain = Hydrograf.customRain
+            ? Hydrograf.customRain.request(data)
+            : { active: false, valid: true, series: null };
+        var c = choices();
+        var fields = readNumberFields(c, rain.active);
 
         var myId = ++_requestId;
+        var invalid = fields.invalid.map(fieldName);
+        if (invalid.length || !rain.valid || !morph.valid) {
+            hideResults();
+            // The own series and the advanced mode name their errors in their own section
+            showCalcErrors(
+                blockedMessage(invalid.concat(morph.valid ? [] : ['tryb zaawansowany (Hydrogram)'])),
+                blockedMessage(invalid.concat(rain.valid ? [] : ['w\u0142asna seria opadu (Hietogram)']))
+            );
+            return;
+        }
+
+        var duration = null;
+        var probability = null;
+        var values = fields.values;
 
         try {
             var opts = {
-                morphometry: data.watershed.morphometry || null,
-                hietogram_type: hietogramType,
-                hietogram_alpha: alpha,
-                hietogram_beta: beta,
-                uh_model: uhModel,
+                morphometry: morph.morphometry,
+                amc: document.getElementById('hydro-amc').value,
+                uh_model: c.model,
             };
-            if (uhModel !== 'nash' || document.getElementById('hydro-nash-estimation').value === 'from_tc') {
-                opts.tc_method = document.getElementById('hydro-tc-method').value;
-                // TC extra params
-                if (opts.tc_method === 'faa') {
-                    var cVal = document.getElementById('hydro-tc-runoff-coeff').value;
-                    if (cVal) opts.tc_runoff_coeff = parseFloat(cVal);
-                }
-                if (opts.tc_method === 'kerby' || opts.tc_method === 'kerby_kirpich') {
-                    opts.tc_retardance = parseFloat(
-                        document.getElementById('hydro-tc-retardance').value
-                    ) || 0.4;
-                }
-                if (opts.tc_method === 'faa' || opts.tc_method === 'kerby' || opts.tc_method === 'kerby_kirpich') {
-                    var ovVal = document.getElementById('hydro-tc-overland-length').value;
-                    if (ovVal) opts.tc_overland_length_km = parseFloat(ovVal);
+            if (rain.active) {
+                opts.custom_precipitation = rain.series;
+            } else {
+                duration = document.getElementById('hydro-duration').value;
+                probability = parseFloat(document.getElementById('hydro-probability').value);
+                opts.hietogram_type = c.hietogram;
+                if (c.hietogram === 'beta') {
+                    opts.hietogram_alpha = values.hietogram_alpha;
+                    opts.hietogram_beta = values.hietogram_beta;
                 }
             }
-            if (uhModel === 'nash') {
-                opts.nash_estimation = document.getElementById('hydro-nash-estimation').value;
-                if (opts.nash_estimation === 'from_tc') {
-                    opts.nash_n = parseFloat(document.getElementById('hydro-nash-n').value) || 3.0;
-                }
+            if (c.needsTc) {
+                opts.tc_method = c.tc;
+                // Tc extra parameters; an empty optional one is left to the API
+                ['tc_runoff_coeff', 'tc_retardance', 'tc_overland_length_km'].forEach(function (key) {
+                    if (values[key] != null) opts[key] = values[key];
+                });
             }
-            if (uhModel === 'snyder') {
-                opts.snyder_ct = parseFloat(document.getElementById('hydro-snyder-ct').value) || 1.5;
-                opts.snyder_cp = parseFloat(document.getElementById('hydro-snyder-cp').value) || 0.6;
+            if (c.model === 'nash') {
+                opts.nash_estimation = c.estimation;
+                if (c.estimation === 'from_tc') opts.nash_n = values.nash_n;
+            }
+            if (c.model === 'snyder') {
+                opts.snyder_ct = values.snyder_ct;
+                opts.snyder_cp = values.snyder_cp;
             }
 
             var result = await Hydrograf.api.generateHydrograph(
@@ -223,56 +314,57 @@
 
             if (myId !== _requestId) return;
 
+            showCalcErrors('', '');
             document.getElementById('hietogram-results').classList.remove('d-none');
             document.getElementById('hydrograph-results').classList.remove('d-none');
 
-            // Hietogram — bar chart with total + effective, own time range
+            // Hietogram and hydrograph: filled line charts, each on its own time range
             var precip = result.precipitation;
-            var hietoChart = _ensureHietogramChart('chart-hietogram');
-            if (hietoChart) {
-                hietoChart.data.labels = precip.times_min.map(function (t) { return String(t); });
-                hietoChart.data.datasets[0].data = precip.intensities_mm.slice();
-                hietoChart.data.datasets[1].data = (precip.effective_mm || []).slice();
-                hietoChart.update('default');
-            }
-
-            // Hydrograph — line chart
-            var hydroTimes = result.hydrograph.times_min;
-            var maxTimeMin = hydroTimes[hydroTimes.length - 1];
-            var hydroChart = _ensureLineChart(
-                'chart-hydrograph', 'Q [m\u00b3/s]',
-                function (ctx) { return 'Q = ' + ctx.parsed.y.toFixed(3) + ' m\u00b3/s'; }
+            if (Hydrograf.customRain) Hydrograf.customRain.noteResult(data, precip);
+            Hydrograf.charts.renderHietogramChart(
+                'chart-hietogram', precip.times_min,
+                precip.intensities_mm, precip.effective_mm || [],
+                {
+                    step: precip.timestep_min,
+                    source: precip.source === 'custom'
+                        ? 'w\u0142asna seria'
+                        : 'PMAXTP ' + duration + ', p = ' + precip.probability_percent + '%',
+                }
             );
-            if (hydroChart) {
-                var hydroData = hydroTimes.map(function (t, i) {
-                    return { x: t, y: result.hydrograph.discharge_m3s[i] };
-                });
-                hydroChart.data.datasets[0].data = hydroData;
-                hydroChart.options.scales.x.max = maxTimeMin;
-                hydroChart.update('default');
-            }
+            Hydrograf.charts.renderHydrographChart(
+                'chart-hydrograph', result.hydrograph.times_min,
+                result.hydrograph.discharge_m3s
+            );
 
-            // Summary
+            // Summary: Qmax | tp | V, each with its (i)
             var summary = document.getElementById('hydro-summary');
-            summary.textContent =
-                'Qmax: ' + result.hydrograph.peak_discharge_m3s.toFixed(2) + ' m\u00b3/s | ' +
-                'tp: ' + result.hydrograph.time_to_peak_min.toFixed(0) + ' min | ' +
-                'V: ' + result.hydrograph.total_volume_m3.toFixed(0) + ' m\u00b3';
+            summary.textContent = '';
+            [
+                ['Qmax', result.hydrograph.peak_discharge_m3s.toFixed(2) + ' m\u00b3/s', 'peak_discharge_m3s'],
+                ['tp', result.hydrograph.time_to_peak_min.toFixed(0) + ' min', 'time_to_peak_min'],
+                ['V', result.hydrograph.total_volume_m3.toFixed(0) + ' m\u00b3', 'total_volume_m3'],
+            ].forEach(function (stat) {
+                var item = document.createElement('span');
+                item.className = 'hydro-stat';
+                item.textContent = stat[0] + ': ' + stat[1];
+                Hydrograf.info.attach(item, stat[2], stat[0]);
+                summary.appendChild(item);
+            });
 
-            displayPrecipBalance(result.water_balance);
+            displayPrecipBalance(result.water_balance, result.metadata);
             displayMetadata(result.metadata);
         } catch (err) {
             if (myId !== _requestId) return;
             console.warn('Hydrograph error:', err.message);
-            var summary2 = document.getElementById('hydro-summary');
-            summary2.textContent = 'B\u0142\u0105d: ' + err.message;
-            document.getElementById('hydrograph-results').classList.remove('d-none');
+            hideResults();
+            var message = serverErrorMessage(err);
+            showCalcErrors(message, message);
         }
     }
 
     // ── Water balance & metadata tables ────────────────────────────────
 
-    function displayPrecipBalance(wb) {
+    function displayPrecipBalance(wb, meta) {
         var container = document.getElementById('hietogram-balance');
         container.innerHTML = '';
 
@@ -280,18 +372,19 @@
         table.className = 'balance-table';
 
         var rows = [
-            ['Opad ca\u0142kowity', wb.total_precip_mm.toFixed(1) + ' mm'],
-            ['Opad efektywny', wb.total_effective_mm.toFixed(1) + ' mm'],
-            ['Wsp. odp\u0142ywu', wb.runoff_coefficient.toFixed(3)],
-            ['CN u\u017cyty', String(wb.cn_used)],
-            ['Retencja S', wb.retention_mm.toFixed(1) + ' mm'],
-            ['Straty pocz\u0105tkowe Ia', wb.initial_abstraction_mm.toFixed(1) + ' mm'],
+            ['Opad ca\u0142kowity', wb.total_precip_mm.toFixed(1) + ' mm', 'total_precip_mm'],
+            ['Opad efektywny', wb.total_effective_mm.toFixed(1) + ' mm', 'total_effective_mm'],
+            ['Wsp. odp\u0142ywu', wb.runoff_coefficient.toFixed(3), 'runoff_coefficient'],
+            ['CN u\u017cyty', wb.cn_used.toFixed(1) + (meta.amc ? ' (AMC ' + meta.amc + ')' : ''), 'cn_used'],
+            ['Retencja S', wb.retention_mm.toFixed(1) + ' mm', 'retention_mm'],
+            ['Straty pocz\u0105tkowe Ia', wb.initial_abstraction_mm.toFixed(1) + ' mm', 'initial_abstraction_mm'],
         ];
 
         rows.forEach(function (row) {
             var tr = document.createElement('tr');
             var td1 = document.createElement('td');
             td1.textContent = row[0];
+            Hydrograf.info.attach(td1, row[2]);
             var td2 = document.createElement('td');
             td2.textContent = row[1];
             tr.appendChild(td1);
@@ -340,32 +433,33 @@
 
         var rows = [];
         if (meta.tc_method != null) {
-            rows.push(['Metoda Tc', TC_METHOD_LABELS[meta.tc_method] || meta.tc_method]);
+            rows.push(['Metoda Tc', TC_METHOD_LABELS[meta.tc_method] || meta.tc_method, 'tc_method']);
         }
         if (meta.tc_min != null) {
-            rows.push(['Tc', meta.tc_min.toFixed(1) + ' min']);
+            rows.push(['Tc', meta.tc_min.toFixed(1) + ' min', 'tc_min']);
         }
-        rows.push(['Hydrogram jedn.', uhLabel]);
+        rows.push(['Hydrogram jedn.', uhLabel, 'uh_model']);
 
         if (meta.nash_n != null) {
-            rows.push(['Nash N', meta.nash_n.toFixed(2)]);
-            rows.push(['Nash K', meta.nash_k_min.toFixed(1) + ' min']);
+            rows.push(['Nash N', meta.nash_n.toFixed(2), 'nash_n']);
+            rows.push(['Nash K', meta.nash_k_min.toFixed(1) + ' min', 'nash_k_min']);
         }
         if (meta.nash_urban_fraction != null) {
-            rows.push(['Urbanizacja U', (meta.nash_urban_fraction * 100).toFixed(1) + '%']);
+            rows.push(['Urbanizacja U', (meta.nash_urban_fraction * 100).toFixed(1) + '%', 'nash_urban_fraction']);
         }
         if (meta.nash_effective_precip_mm != null) {
-            rows.push(['Pe (Nash)', meta.nash_effective_precip_mm.toFixed(1) + ' mm']);
+            rows.push(['Pe (Nash)', meta.nash_effective_precip_mm.toFixed(1) + ' mm', 'nash_effective_precip_mm']);
         }
         if (meta.nash_duration_h != null) {
             var dMin = Math.round(meta.nash_duration_h * 60);
-            rows.push(['D efektywny', dMin + ' min (' + meta.nash_duration_h.toFixed(2) + ' h)']);
+            rows.push(['D efektywny', dMin + ' min (' + meta.nash_duration_h.toFixed(2) + ' h)', 'nash_duration_h']);
         }
 
         rows.forEach(function (row) {
             var tr = document.createElement('tr');
             var td1 = document.createElement('td');
             td1.textContent = row[0];
+            Hydrograf.info.attach(td1, row[2]);
             var td2 = document.createElement('td');
             td2.textContent = row[1];
             tr.appendChild(td1);
@@ -384,55 +478,27 @@
         betaParams.classList.toggle('d-none', htype !== 'beta');
     }
 
-    function updateNashVisibility() {
-        var model = document.getElementById('hydro-uh-model').value;
-        var nashParams = document.getElementById('nash-params');
-        var nashNRow = document.getElementById('nash-n-row');
-        var snyderParams = document.getElementById('snyder-params');
-        var tcMethodParams = document.getElementById('tc-method-params');
-        var estimation = document.getElementById('hydro-nash-estimation').value;
-
-        if (model === 'nash') {
-            nashParams.classList.remove('d-none');
-            nashNRow.classList.toggle('d-none', estimation !== 'from_tc');
-        } else {
-            nashParams.classList.add('d-none');
-            nashNRow.classList.add('d-none');
-        }
-        snyderParams.classList.toggle('d-none', model !== 'snyder');
-        // Tc method visible for SCS, Snyder, and Nash from_tc
-        var needsTc = model !== 'nash' || estimation === 'from_tc';
-        tcMethodParams.classList.toggle('d-none', !needsTc);
-        updateTcExtraParams();
-    }
-
-    function updateTcExtraParams() {
-        var method = document.getElementById('hydro-tc-method').value;
-        var extraRow = document.getElementById('tc-extra-params');
-        var runoffCol = document.getElementById('tc-runoff-coeff-col');
-        var retardanceCol = document.getElementById('tc-retardance-col');
-        var overlandCol = document.getElementById('tc-overland-col');
-
-        // Ukryj extra params gdy tc-method jest ukryty (np. Nash + from_lutz)
-        var tcMethodParams = document.getElementById('tc-method-params');
-        var tcVisible = !tcMethodParams.classList.contains('d-none');
-
-        var needsRunoff = tcVisible && (method === 'faa');
-        var needsRetardance = tcVisible && (method === 'kerby' || method === 'kerby_kirpich');
-        var needsOverland = tcVisible && (method === 'faa' || method === 'kerby' || method === 'kerby_kirpich');
-        var needsExtra = needsRunoff || needsRetardance || needsOverland;
-
-        extraRow.classList.toggle('d-none', !needsExtra);
-        runoffCol.classList.toggle('d-none', !needsRunoff);
-        retardanceCol.classList.toggle('d-none', !needsRetardance);
-        overlandCol.classList.toggle('d-none', !needsOverland);
+    /**
+     * Show the fields the selected model uses. The form is one 2-column grid,
+     * so the visible fields close up: for Nash its estimation sits next to
+     * "Model UH" and "Metoda Tc" follows only when the estimation needs Tc.
+     */
+    function updateHydrographFields() {
+        var c = choices();
+        var parts = hydrographParts(c);
+        Object.keys(parts).forEach(function (id) {
+            document.getElementById(id).classList.toggle('d-none', !parts[id]);
+        });
+        // FAA and Kerby need L; Kerby-Kirpich estimates it when it is empty
+        document.getElementById('hydro-tc-overland-length').placeholder =
+            c.tc === 'kerby_kirpich' ? 'auto' : 'wymagane';
     }
 
     // ── Init ───────────────────────────────────────────────────────────
 
     var _INPUT_IDS = [
         'hydro-duration', 'hydro-probability', 'hydro-hietogram-type',
-        'hydro-alpha', 'hydro-beta',
+        'hydro-alpha', 'hydro-beta', 'hydro-amc',
         'hydro-uh-model', 'hydro-tc-method',
         'hydro-nash-estimation', 'hydro-nash-n',
         'hydro-snyder-ct', 'hydro-snyder-cp',
@@ -448,20 +514,12 @@
             hietogramType.addEventListener('change', updateHietogramVisibility);
         }
 
-        var uhSelect = document.getElementById('hydro-uh-model');
-        if (uhSelect) {
-            uhSelect.addEventListener('change', updateNashVisibility);
-        }
-        var nashEst = document.getElementById('hydro-nash-estimation');
-        if (nashEst) {
-            nashEst.addEventListener('change', updateNashVisibility);
-        }
-
-        var tcMethodSelect = document.getElementById('hydro-tc-method');
-        if (tcMethodSelect) {
-            tcMethodSelect.addEventListener('change', updateTcExtraParams);
-        }
-        updateTcExtraParams();
+        ['hydro-uh-model', 'hydro-nash-estimation', 'hydro-tc-method'].forEach(function (id) {
+            var select = document.getElementById(id);
+            if (select) select.addEventListener('change', updateHydrographFields);
+        });
+        updateHietogramVisibility();
+        updateHydrographFields();
 
         // Auto-regenerate on any parameter change
         _INPUT_IDS.forEach(function (id) {

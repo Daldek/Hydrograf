@@ -7,15 +7,17 @@ it in the feedback table.
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import text
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
 from core.database import get_db
-from models.schemas import FeedbackRequest, FeedbackResponse
+from core.errors import HydrografError, InternalError, NotFoundError
+from models.schemas import FeedbackRequest, FeedbackResponse, FeedbackUpdate
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -62,13 +64,14 @@ def submit_feedback(
         }
         row = db.execute(query, params).fetchone()
         db.commit()
+        if row is None:
+            raise RuntimeError("INSERT INTO feedback RETURNING id returned no row")
         return FeedbackResponse(id=row.id, status="ok")
     except Exception as e:
         db.rollback()
         logger.error(f"Error storing feedback: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error storing feedback",
+        raise InternalError(
+            "feedback_store_failed", reason="feedback_store_failed"
         ) from e
 
 
@@ -97,6 +100,8 @@ def list_feedback(
                 FROM feedback
             """)
         ).fetchone()
+        if counts is None:
+            raise RuntimeError("SELECT COUNT(*) returned no row")
         items = [
             {
                 "id": r.id,
@@ -113,41 +118,41 @@ def list_feedback(
         return {"items": items, "total": counts.total, "unread_count": counts.unread}
     except Exception as e:
         logger.error(f"Error listing feedback: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error listing feedback",
+        raise InternalError(
+            "feedback_list_failed", reason="feedback_list_failed"
         ) from e
 
 
-@admin_router.post("/feedback/{feedback_id}/read")
-def mark_feedback_read(
-    feedback_id: int, db: Session = Depends(get_db)
+@admin_router.patch("/feedback/{feedback_id}")
+def update_feedback(
+    feedback_id: int, body: FeedbackUpdate, db: Session = Depends(get_db)
 ) -> dict[str, str]:
-    """Mark a feedback submission as read."""
+    """Mark a feedback submission as read or unread."""
     try:
         result = db.execute(
-            text("UPDATE feedback SET is_read = true WHERE id = :id"),
-            {"id": feedback_id},
+            text("UPDATE feedback SET is_read = :is_read WHERE id = :id"),
+            {"id": feedback_id, "is_read": body.is_read},
         )
         db.commit()
-        if result.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Feedback not found")
+        if cast("CursorResult[Any]", result).rowcount == 0:
+            raise NotFoundError(
+                "feedback_not_found",
+                reason="feedback_not_found",
+                feedback_id=feedback_id,
+            )
         return {"status": "ok"}
-    except HTTPException:
+    except HydrografError:
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error marking feedback read: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error updating feedback",
+        logger.error(f"Error updating feedback: {e}", exc_info=True)
+        raise InternalError(
+            "feedback_update_failed", reason="feedback_update_failed"
         ) from e
 
 
 @admin_router.delete("/feedback/{feedback_id}")
-def delete_feedback(
-    feedback_id: int, db: Session = Depends(get_db)
-) -> dict[str, str]:
+def delete_feedback(feedback_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
     """Delete a feedback submission. Returns JSON (admin-api.js expects it)."""
     try:
         result = db.execute(
@@ -155,15 +160,18 @@ def delete_feedback(
             {"id": feedback_id},
         )
         db.commit()
-        if result.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Feedback not found")
+        if cast("CursorResult[Any]", result).rowcount == 0:
+            raise NotFoundError(
+                "feedback_not_found",
+                reason="feedback_not_found",
+                feedback_id=feedback_id,
+            )
         return {"status": "deleted"}
-    except HTTPException:
+    except HydrografError:
         raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error deleting feedback: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error deleting feedback",
+        raise InternalError(
+            "feedback_delete_failed", reason="feedback_delete_failed"
         ) from e

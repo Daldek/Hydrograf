@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from api.dependencies.admin_auth import verify_admin_key
 from api.endpoints.admin import _CLEANUP_COMPONENTS, router
+from api.errors import install_error_handlers
 from core.database import get_db
 
 
@@ -19,6 +20,7 @@ def _noop_auth():
 @pytest.fixture
 def app():
     test_app = FastAPI()
+    install_error_handlers(test_app)
     test_app.include_router(router, prefix="/api/admin")
     test_app.dependency_overrides[verify_admin_key] = _noop_auth
     yield test_app
@@ -49,8 +51,16 @@ class TestCleanupComponents:
         assert _CLEANUP_COMPONENTS["cache"]["components"] == ["cache"]
 
     def test_all_target_covers_all_data(self):
-        """'all' target includes rasters, hydro, boundary, overlays, geojson, tiles, db."""
-        expected = {"rasters", "hydro", "boundary", "overlays", "geojson", "tiles", "db"}
+        """'all' includes rasters, hydro, boundary, overlays, geojson, tiles and db."""
+        expected = {
+            "rasters",
+            "hydro",
+            "boundary",
+            "overlays",
+            "geojson",
+            "tiles",
+            "db",
+        }
         actual = set(_CLEANUP_COMPONENTS["all"]["components"])
         assert actual == expected
 
@@ -129,7 +139,7 @@ class TestCleanupExecute:
 
     @patch("api.endpoints.admin.execute_clean")
     def test_cleanup_cache_delegates_to_execute_clean(self, mock_exec, app):
-        """'cache' target delegates to scripts.clean.execute_clean with cache component."""
+        """'cache' target delegates to execute_clean with the cache component."""
         mock_exec.return_value = {"total_files": 10, "total_size": 512, "results": {}}
         mock_db = _make_mock_db()
         app.dependency_overrides[get_db] = lambda: mock_db
@@ -168,12 +178,14 @@ class TestDbTablesImport:
 
     def test_db_tables_includes_bdot_streams(self):
         from scripts.clean import DB_TABLES
+
         assert "bdot_streams" in DB_TABLES
 
     def test_admin_uses_same_db_tables(self):
         """Admin module imports DB_TABLES from scripts.clean."""
         from api.endpoints import admin
         from scripts.clean import DB_TABLES
+
         # The admin module should use the same list
         # (it imports DB_TABLES at module level)
         assert admin.DB_TABLES is DB_TABLES

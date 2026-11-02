@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from shapely.geometry import Polygon, box
 
+from core.constants import DEFAULT_CN
 from core.land_cover import (
-    DEFAULT_CN,
     VALID_CATEGORIES,
     calculate_weighted_cn,
     determine_cn,
@@ -85,8 +85,8 @@ class TestCalculateWeightedCN:
 
         cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
 
-        # Expected: (60*0.6 + 78*0.4) = 36 + 31.2 = 67.2 -> 67
-        assert cn == 67
+        # Expected: (60*0.6 + 78*0.4) = 36 + 31.2 = 67.2 (one decimal kept)
+        assert cn == pytest.approx(67.2)
         assert stats["las"] == pytest.approx(60.0, abs=0.1)
         assert stats["grunt_orny"] == pytest.approx(40.0, abs=0.1)
 
@@ -123,9 +123,9 @@ class TestCalculateWeightedCN:
 
         cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
 
-        # Average of all CN values: (60+70+78+85+92+98+100+75)/8 = 82.25 -> 82
+        # Average of all CN values: (60+70+78+85+92+98+100+75)/8 = 82.25 -> 0.1
         expected_cn = round(
-            sum(c[1] for c in categories_with_cn) / len(categories_with_cn)
+            sum(c[1] for c in categories_with_cn) / len(categories_with_cn), 1
         )
         assert cn == expected_cn
         assert len(stats) == 8
@@ -184,8 +184,8 @@ class TestCalculateWeightedCN:
 
         cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
 
-        # Weighted: (60*0.5 + 65*0.5) = 62.5 -> 62 (Python banker's rounding)
-        assert cn == 62
+        # Weighted: (60*0.5 + 65*0.5) = 62.5 (one decimal kept)
+        assert cn == pytest.approx(62.5)
         # Stats should aggregate percentages
         assert stats["las"] == 100.0
 
@@ -249,7 +249,7 @@ class TestGetLandCoverForBoundary:
         assert "weighted_cn" in result
         assert "weighted_imperviousness" in result
         assert len(result["categories"]) == 2
-        assert result["weighted_cn"] == 67
+        assert result["weighted_cn"] == pytest.approx(67.2)
         assert result["total_area_m2"] == 1000000
 
     def test_returns_none_for_invalid_boundary(self, mock_db):
@@ -437,7 +437,7 @@ class TestDetermineCN:
             config_cn=None,
             use_kartograf=True,
             boundary_wgs84=[[17.31, 52.45], [17.32, 52.46]],
-            data_dir=tmp_path,
+            cache_dir=tmp_path,
         )
 
         assert cn == 72
@@ -476,7 +476,7 @@ class TestDetermineCN:
             config_cn=None,
             use_kartograf=True,
             boundary_wgs84=None,
-            data_dir=None,
+            cache_dir=None,
         )
 
         assert source == "default"

@@ -1,7 +1,7 @@
 [project]
 name = "hydrograf"
-version = "0.4.0"
-description = "Hydrological analysis system - watershed delineation and hydrograph generation"
+version = "0.8.0.dev0"
+description = "Web application for watershed delineation, catchment parameters and design hydrographs in Poland (FastAPI, PostGIS)."
 readme = {text = "Hydrological analysis system", content-type = "text/plain"}
 requires-python = ">=3.12"
 license = {text = "MIT"}
@@ -18,7 +18,66 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Hydrology",
 ]
 
+dependencies = [
+    # FastAPI and server
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.6",
+    # Database. SQLAlchemy 2.1 selects the psycopg v3 driver for `postgresql://` URLs
+    # while the image ships psycopg2-binary: the rebuilt image looped on
+    # `alembic upgrade head` (2026-10-08). Lift the cap together with the URLs.
+    "sqlalchemy>=2.0.25,<2.1",
+    "psycopg2-binary>=2.9.9",
+    "geoalchemy2>=0.14.3",
+    "alembic>=1.13.1",
+    # Validation and settings
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+    "pyyaml>=6.0",
+    # Geospatial
+    "shapely>=2.0.2",
+    "pyproj>=3.6.1",
+    "geojson>=3.1.0",
+    "geopandas>=0.14.2",
+    "fiona>=1.9.5",
+    "pandas>=2.0",
+    # Scientific computing
+    "numpy>=1.26.3",
+    "scipy>=1.12.0",
+    "numba>=0.58",
+    # DEM processing
+    "pyflwdir>=0.5.8",
+    "rasterio>=1.3.9",
+    "Pillow>=10.0.0",
+    # affine 3.x is an attrs class, not a namedtuple, and pyflwdir passes the transform
+    # to a numba function (`Cannot determine Numba type of affine.Affine`, 2026-10-18;
+    # Deltares/pyflwdir#108). pyflwdir 0.5.12, its latest release, still fails
+    # (re-checked 2026-10-25, ADR-062); the fix (#109) waits for 0.5.13. Lift the cap
+    # with that release.
+    "affine>=2.4,<3",
+    # Ecosystem producers, pinned by commit until the first release set (REL-5.3, DEV-3.4,
+    # ADR-060, ADR-061): precipitation PMAXTP of IMGWTools, spatial data download of
+    # Kartograf (NMT, BDOT10k, CORINE, SoilGrids) and the calculations of Hydrolog. The
+    # range is the one the code supports and admits the development version of the pending
+    # release (REL-5.6, ECO-053: PEP 440 puts `0.8.0.dev0` below `0.8.0`); the commit is
+    # in `[tool.uv.sources]`. The release pull request narrows the ranges to `>=0.8.0`,
+    # `>=1.0.0` and `>=3.0.0` and replaces each `rev` with the release tag (REL-5.3).
+    "imgwtools>=3.0.0.dev0,<4",
+    "kartograf>=0.8.0.dev0,<0.9",
+    "hydrolog>=1.0.0.dev0,<2",
+    "requests>=2.31",
+    # Logging, process monitoring, utilities, caching
+    "structlog>=24.1.0",
+    "psutil>=5.9",
+    "python-dotenv>=1.0.0",
+    "cachetools>=5.3.0",
+]
+
 [project.optional-dependencies]
+# Figures of scripts/analyze_watershed.py (not needed by the API or the pipeline).
+viz = ["matplotlib>=3.8"]
+
+[dependency-groups]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
@@ -32,44 +91,103 @@ dev = [
 [project.urls]
 Repository = "https://github.com/Daldek/Hydrograf"
 
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+[tool.uv]
+# An application: uv installs the dependencies, not the code (Docker copies it, the
+# tests and scripts import it from this directory).
+package = false
 
-[tool.setuptools.packages.find]
-include = ["api*", "core*", "models*", "utils*"]
+[tool.uv.sources]
+# The heads of the producers (REL-5.3): Kartograf `feature/archiwista-projects`
+# (0.8.0.dev0; 26ee459, the commit Archiwista pins, which selects the sheets by the
+# features of `--geometry`, not their envelopes), IMGWTools `feature/data-output`
+# (3.0.0), Hydrolog `feature/routing-schematic` (1.0.0.dev0). All three commits are on
+# GitHub.
+imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "6bd35a49b329f99b591ffdee39367daec0e75af7" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "26ee45924b719b4f357ab02c88cda58aa806843f" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "4f02ffdb3f7f7d1d863cd5c9ac5f2dab56f5eb3b" }
 
 [tool.ruff]
 target-version = "py312"
 line-length = 88
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
 "api/endpoints/*.py" = ["B008"]
-"tests/integration/test_select_stream_correctness.py" = ["E402"]
-"tests/performance/test_query_performance.py" = ["E402"]
+# DEV-7.2: tests may skip the docstring rules.
+"tests/**" = ["D"]
+# DEV-7.2 deviation: the migrations hold DDL strings that stay on one line.
+"migrations/versions/*" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"
 
 [tool.mypy]
 python_version = "3.12"
-warn_return_any = true
-warn_unused_ignores = true
+strict = true
+files = ["api", "core", "models", "scripts", "utils", "tests"]
+exclude = ["migrations"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# Third-party packages without type information: no py.typed marker, and the stub
+# packages are not in the lock.
+module = [
+    "affine",
+    "fiona",
+    "fiona.*",
+    "geopandas",
+    "pandas",
+    "psutil",
+    "pyflwdir",
+    "pyflwdir.*",
+    "rasterio",
+    "rasterio.*",
+    "scipy",
+    "scipy.*",
+    "shapely",
+    "shapely.*",
+    "yaml",
+]
 ignore_missing_imports = true
-exclude = ["migrations", ".venv"]
+
+[[tool.mypy.overrides]]
+# DEV-7.3 deviation: the tests carry no annotations (about 1,260 functions), so mypy
+# does not check the bodies of the untyped ones. Annotate a test file and drop it
+# from this list to have it checked.
+module = ["tests", "tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = false
+
+[[tool.mypy.overrides]]
+# DEV-7.3 deviation: the command line scripts are partly unannotated (46 findings of
+# untyped definitions and calls); their annotated code is checked in full.
+module = ["scripts", "scripts.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-addopts = "-v --tb=short -m 'not db and not benchmark'"
+# DEV-10.1: the default run leaves out `live` and, because there is no database on a
+# development machine, `db`; `benchmark` is the project's own marker for the timing
+# tests of tests/performance.
+addopts = "--strict-markers --tb=short -m 'not live and not db and not benchmark'"
 markers = [
-    "db: tests requiring PostGIS database",
-    "benchmark: performance benchmark tests",
+    "live: real network services",
+    "db: needs a PostGIS database",
+    "slow: more than ~10 s or Docker",
+    "benchmark: timing measurements of tests/performance",
 ]
 
 [tool.coverage.run]
@@ -82,6 +200,9 @@ omit = [
 ]
 
 [tool.coverage.report]
+# DEV-7.5: the floor of the standard. The offline suite covers 85% of the statements of
+# api, core, models and utils; the SQL over PostGIS that is left runs in the `db` job.
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",

@@ -178,15 +178,15 @@ class TestCalculateWeightedCNFromStats:
         """Test two categories at 50% each."""
         stats = {"forest": 50.0, "road": 50.0}
         cn = calculate_weighted_cn_from_stats(stats, "B")
-        # (55*0.5 + 98*0.5) = 76.5 -> 76 or 77
-        assert cn in [76, 77]
+        # (55*0.5 + 98*0.5) = 76.5 (one decimal kept)
+        assert cn == pytest.approx(76.5)
 
     def test_three_categories_weighted(self):
         """Test three categories with different weights."""
         stats = {"forest": 60.0, "arable": 30.0, "road": 10.0}
         cn = calculate_weighted_cn_from_stats(stats, "B")
-        # (55*0.6 + 81*0.3 + 98*0.1) = 33 + 24.3 + 9.8 = 67.1 -> 67
-        assert cn == 67
+        # (55*0.6 + 81*0.3 + 98*0.1) = 33 + 24.3 + 9.8 = 67.1
+        assert cn == pytest.approx(67.1)
 
     def test_empty_stats_returns_default(self):
         """Test empty stats returns DEFAULT_CN."""
@@ -204,8 +204,8 @@ class TestCalculateWeightedCNFromStats:
         # Only 50% specified
         stats = {"forest": 25.0, "road": 25.0}
         cn = calculate_weighted_cn_from_stats(stats, "B")
-        # Should normalize to 100%: (55*0.5 + 98*0.5) = 76.5 -> 76 or 77
-        assert cn in [76, 77]
+        # Should normalize to 100%: (55*0.5 + 98*0.5) = 76.5
+        assert cn == pytest.approx(76.5)
 
     def test_different_hsg_affects_result(self):
         """Test different HSG produces different CN."""

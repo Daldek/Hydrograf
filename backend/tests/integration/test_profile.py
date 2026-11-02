@@ -2,14 +2,19 @@
 Integration tests for terrain profile endpoint.
 """
 
+import json
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+import rasterio
 from fastapi.testclient import TestClient
+from pyproj import Transformer
+from rasterio.transform import from_origin
 
 from api.main import app
+from core.config import Settings
 
 
 @pytest.fixture
@@ -63,7 +68,7 @@ class TestTerrainProfileEndpoint:
     def test_success_returns_200(self, client, mock_rasterio_dataset):
         """Test successful profile extraction returns 200."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -85,7 +90,7 @@ class TestTerrainProfileEndpoint:
     def test_response_structure(self, client, mock_rasterio_dataset):
         """Test response has correct structure."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -112,7 +117,7 @@ class TestTerrainProfileEndpoint:
     ):
         """Test that distances and elevations arrays have same length."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -136,7 +141,7 @@ class TestTerrainProfileEndpoint:
     def test_total_length_positive(self, client, mock_rasterio_dataset):
         """Test that total_length_m is positive for a real line."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -159,7 +164,7 @@ class TestTerrainProfileEndpoint:
     def test_elevations_are_floats(self, client, mock_rasterio_dataset):
         """Test that elevation values are numeric."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -194,7 +199,7 @@ class TestTerrainProfileEndpoint:
         )
 
         assert response.status_code == 400
-        assert "LineString" in response.json()["detail"]
+        assert response.json()["details"]["reason"] == "invalid_geometry_type"
 
     def test_too_few_coordinates_returns_400(self, client):
         """Test that LineString with < 2 coordinates returns 400."""
@@ -210,12 +215,12 @@ class TestTerrainProfileEndpoint:
         )
 
         assert response.status_code == 400
-        assert "2 coordinates" in response.json()["detail"]
+        assert response.json()["details"]["reason"] == "too_few_coordinates"
 
     def test_nodata_result_returns_404(self, client, mock_rasterio_nodata):
         """Test that all-nodata profile result returns 404."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_nodata),
@@ -236,7 +241,7 @@ class TestTerrainProfileEndpoint:
 
     def test_dem_not_found_returns_503(self, client):
         """Test that missing DEM file returns 503."""
-        with patch("api.endpoints.profile.os.path.exists", return_value=False):
+        with patch("os.path.exists", return_value=False):
             response = client.post(
                 "/api/terrain-profile",
                 json={
@@ -249,10 +254,11 @@ class TestTerrainProfileEndpoint:
             )
 
         assert response.status_code == 503
-        assert "DEM" in response.json()["detail"]
+        assert response.json()["code"] == "store_unavailable"
+        assert response.json()["details"]["reason"] == "dem_unavailable"
 
-    def test_n_samples_too_low_returns_422(self, client):
-        """Test that n_samples < 2 returns 422."""
+    def test_n_samples_too_low_returns_400(self, client):
+        """Test that n_samples < 2 returns 400."""
         response = client.post(
             "/api/terrain-profile",
             json={
@@ -264,10 +270,10 @@ class TestTerrainProfileEndpoint:
             },
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_n_samples_too_high_returns_422(self, client):
-        """Test that n_samples > 1000 returns 422."""
+    def test_n_samples_too_high_returns_400(self, client):
+        """Test that n_samples > 1000 returns 400."""
         response = client.post(
             "/api/terrain-profile",
             json={
@@ -279,16 +285,16 @@ class TestTerrainProfileEndpoint:
             },
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_missing_geometry_returns_422(self, client):
-        """Test that missing geometry returns 422."""
+    def test_missing_geometry_returns_400(self, client):
+        """Test that missing geometry returns 400."""
         response = client.post(
             "/api/terrain-profile",
             json={"n_samples": 5},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_default_n_samples(self, client, mock_rasterio_dataset):
         """Test that default n_samples is used when not specified."""
@@ -303,7 +309,7 @@ class TestTerrainProfileEndpoint:
         mock_ds.sample = sample_gen
 
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_ds),
@@ -326,7 +332,7 @@ class TestTerrainProfileEndpoint:
     def test_multi_point_linestring(self, client, mock_rasterio_dataset):
         """Test profile with multi-point LineString geometry."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -353,7 +359,7 @@ class TestTerrainProfileEndpoint:
     def test_cache_control_header(self, client, mock_rasterio_dataset):
         """Test that successful response includes Cache-Control header."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -376,7 +382,7 @@ class TestTerrainProfileEndpoint:
     def test_distances_start_at_zero(self, client, mock_rasterio_dataset):
         """Test that the first distance value is 0."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -399,7 +405,7 @@ class TestTerrainProfileEndpoint:
     def test_distances_monotonically_increasing(self, client, mock_rasterio_dataset):
         """Test that distances are monotonically increasing."""
         with (
-            patch("api.endpoints.profile.os.path.exists", return_value=True),
+            patch("os.path.exists", return_value=True),
             patch(
                 "api.endpoints.profile.rasterio.open",
                 new=_make_rasterio_ctx(mock_rasterio_dataset),
@@ -423,7 +429,7 @@ class TestTerrainProfileEndpoint:
 
     def test_503_does_not_leak_server_path(self, client):
         """503 error must not contain server filesystem paths (CR8)."""
-        with patch("api.endpoints.profile.os.path.exists", return_value=False):
+        with patch("os.path.exists", return_value=False):
             response = client.post(
                 "/api/terrain-profile",
                 json={
@@ -436,19 +442,105 @@ class TestTerrainProfileEndpoint:
             )
 
         assert response.status_code == 503
-        detail = response.json()["detail"]
-        assert "/data/" not in detail
-        assert ".vrt" not in detail
+        body = response.text
+        assert "/data/" not in body
+        assert ".vrt" not in body
 
-    def test_nodata_uses_approximate_comparison(self, client):
-        """Nodata detection must use approximate float comparison, not == (CR8)."""
-        import inspect
 
-        from api.endpoints.profile import terrain_profile
-        source = inspect.getsource(terrain_profile)
-        assert "isclose" in source, (
-            "Must use math.isclose for nodata comparison"
+class TestTerrainProfileWaterLevels:
+    """Water levels of analysis results in POST /api/terrain-profile."""
+
+    X0, Y_TOP, CELL, NODATA = 500000.0, 600000.0, 5.0, -9999.0
+
+    def _raster(self, path, row):
+        with rasterio.open(
+            path,
+            "w",
+            driver="GTiff",
+            height=1,
+            width=len(row),
+            count=1,
+            dtype="float32",
+            crs="EPSG:2180",
+            transform=from_origin(self.X0, self.Y_TOP, self.CELL, self.CELL),
+            nodata=self.NODATA,
+        ) as dst:
+            dst.write(np.array([row], dtype=np.float32), 1)
+
+    @pytest.fixture
+    def settings(self, tmp_path):
+        """DEM with a gap in the last cell; result 'sfincs' dry in the second."""
+        self._raster(tmp_path / "dem.tif", [100.0, 100.0, 100.0, self.NODATA])
+        result_dir = tmp_path / "data" / "results" / "sfincs"
+        result_dir.mkdir(parents=True)
+        self._raster(result_dir / "wse_max.tif", [101.5, self.NODATA, 102.0, 102.0])
+        (tmp_path / "data" / "results" / "index.json").write_text(
+            json.dumps(
+                {
+                    "schema": "hydrograf-results/1",
+                    "results": [
+                        {
+                            "id": "sfincs",
+                            "water_level": {
+                                "path": "/data/results/sfincs/wse_max.tif",
+                                "crs": "EPSG:2180",
+                                "unit": "m n.p.m.",
+                            },
+                        }
+                    ],
+                }
+            )
         )
-        assert "elev == dataset.nodata" not in source, (
-            "Must not use == for float nodata"
+        return Settings(
+            dem_path=str(tmp_path / "dem.tif"),
+            frontend_data_dir=str(tmp_path / "data"),
         )
+
+    def _post(self, client, settings, **extra):
+        """Line through the centres of the four cells, one sample per cell."""
+        to_wgs84 = Transformer.from_crs("EPSG:2180", "EPSG:4326", always_xy=True)
+        y = self.Y_TOP - self.CELL / 2
+        coords = [
+            list(to_wgs84.transform(self.X0 + self.CELL / 2, y)),
+            list(to_wgs84.transform(self.X0 + 3.5 * self.CELL, y)),
+        ]
+        with patch("api.endpoints.profile.get_settings", return_value=settings):
+            return client.post(
+                "/api/terrain-profile",
+                json={
+                    "geometry": {"type": "LineString", "coordinates": coords},
+                    "n_samples": 4,
+                    **extra,
+                },
+            )
+
+    def test_levels_aligned_with_samples(self, client, settings):
+        """Null where the result is dry and where the DEM has no data."""
+        response = self._post(client, settings, result_ids=["sfincs", "unknown"])
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["elevations_m"] == [100.0, 100.0, 100.0, 0.0]
+        assert data["water_levels"] == [
+            {"result_id": "sfincs", "levels_m": [101.5, None, 102.0, None]}
+        ]
+
+    def test_samples_without_dem_data_are_gaps_and_0_m_is_not(self, client, settings):
+        """A nodata sample is a gap; an elevation of 0 m is not."""
+        self._raster(settings.dem_path, [0.0, 12.5, self.NODATA, 12.5])
+
+        response = self._post(client, settings)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["dem_gaps"] == [False, False, True, False]
+        assert data["elevations_m"] == [0.0, 12.5, 0.0, 12.5]
+
+    def test_too_many_result_ids_returns_400(self, client, settings):
+        response = self._post(client, settings, result_ids=[f"r{i}" for i in range(21)])
+
+        assert response.status_code == 400
+        assert response.headers["content-type"] == "application/problem+json"
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"]["fields"] == ["/body/result_ids"]

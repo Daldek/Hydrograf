@@ -5,7 +5,8 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-# Build-time system dependencies (gcc, git for git+https:// pip deps)
+# Build-time system dependencies (gcc for source builds, git for the git+https://
+# dependencies of the lock)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libgeos-dev \
@@ -24,12 +25,21 @@ RUN git clone --depth 1 --branch 2.79.0 https://github.com/felt/tippecanoe.git /
     cd /tmp/tippecanoe && make -j$(nproc) && make install && \
     rm -rf /tmp/tippecanoe
 
-COPY requirements.txt .
+# uv installs the locked environment (DEV-6.2, DEV-6.3); the version is pinned.
+COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /usr/local/bin/uv
 
-RUN python -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
-    /opt/venv/bin/pip install --no-cache-dir GDAL==$(gdal-config --version) && \
-    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never
+
+COPY pyproject.toml uv.lock ./
+
+# The application code is copied in the runtime stage, so the project itself is not
+# installed. GDAL's Python binding must equal the system library (gdal-config), so
+# it is installed after the lock (a deviation of DEV-6.3, listed in CLAUDE.md).
+RUN uv sync --locked --no-dev --no-install-project && \
+    uv pip install --python /opt/venv/bin/python --no-cache "GDAL==$(gdal-config --version)"
 
 # ============================================================
 # Stage 2: runtime — lean production image

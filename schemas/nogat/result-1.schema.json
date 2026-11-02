@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Daldek/Nogat/schemas/agent/result-1.schema.json",
+  "title": "<tool>-result/1",
+  "description": "Result envelope of every command (AGI-4.2). Unknown fields are allowed: adding optional fields keeps the version (AGI-4.1).",
+  "type": "object",
+  "required": ["schema", "tool", "version", "command", "check", "status", "result"],
+  "properties": {
+    "schema": {"type": "string", "pattern": "^[a-z][a-z0-9]*-result/1$"},
+    "tool": {"type": "string", "pattern": "^[a-z][a-z0-9]*$"},
+    "version": {"type": "string", "minLength": 1},
+    "command": {"$ref": "commands-1.schema.json#/$defs/command_name"},
+    "check": {"type": "boolean", "description": "true when the run was a plan without effects"},
+    "status": {"enum": ["ok", "partial", "failed", "cancelled"]},
+    "result": {
+      "description": "Domain document, a list of them, or null when nothing was produced",
+      "oneOf": [
+        {"$ref": "#/$defs/document"},
+        {"type": "array", "items": {"$ref": "#/$defs/document"}},
+        {"type": "null"}
+      ]
+    },
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}},
+    "notices": {"type": "array", "items": {"$ref": "#/$defs/notice"}},
+    "page": {"$ref": "#/$defs/page"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "partial"}}, "required": ["status"]},
+      "then": {
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "allOf": [
+              {"contains": {"properties": {"status": {"const": "ok"}}}},
+              {"contains": {"properties": {"status": {"const": "failed"}}}}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "failed"}}, "required": ["status"]},
+      "then": {
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "minItems": 1,
+            "not": {"contains": {"properties": {"status": {"const": "ok"}}}}
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "document": {
+      "type": "object",
+      "required": ["schema"],
+      "properties": {
+        "schema": {"type": "string", "pattern": "^[a-z][a-z0-9]*-[a-z0-9-]+/[1-9][0-9]*$"}
+      }
+    },
+    "item": {
+      "description": "Outcome of one unit of a batch",
+      "type": "object",
+      "required": ["id", "status"],
+      "properties": {
+        "id": {"type": ["string", "integer"]},
+        "status": {"enum": ["ok", "failed"]},
+        "code": {"$ref": "error-1.schema.json#/$defs/code"},
+        "reason": {"$ref": "error-1.schema.json#/$defs/reason"},
+        "message": {"type": "string"}
+      },
+      "if": {"properties": {"status": {"const": "failed"}}},
+      "then": {"required": ["code"]}
+    },
+    "notice": {
+      "type": "object",
+      "required": ["level", "code", "message"],
+      "properties": {
+        "level": {"enum": ["info", "warning"]},
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "message": {"type": "string"}
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["truncated"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "next_cursor": {"type": ["string", "null"]},
+        "truncated": {"type": "boolean", "description": "true when more results exist than this page holds"}
+      },
+      "if": {"properties": {"truncated": {"const": true}}},
+      "then": {"required": ["next_cursor"], "properties": {"next_cursor": {"type": "string"}}}
+    }
+  }
+}

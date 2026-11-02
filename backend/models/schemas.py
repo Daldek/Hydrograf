@@ -6,9 +6,10 @@ generation API endpoints.
 """
 
 import json
-from typing import Any, Literal
+import math
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class DelineateRequest(BaseModel):
@@ -35,7 +36,10 @@ class DelineateRequest(BaseModel):
     threshold_m2: int | None = Field(
         None,
         gt=0,
-        description="Flow accumulation threshold [m2]. If provided, uses pre-computed catchments (fast). If omitted, performs precise on-the-fly delineation.",
+        description=(
+            "Flow accumulation threshold [m2]. If provided, uses pre-computed "
+            "catchments (fast). If omitted, performs precise on-the-fly delineation."
+        ),
         examples=[10000],
     )
 
@@ -86,8 +90,8 @@ class MorphometricParameters(BaseModel):
         Main channel length [km]
     channel_slope_m_per_m : float, optional
         Main channel slope [m/m]
-    cn : int, optional
-        SCS Curve Number (0-100)
+    cn : float, optional
+        SCS Curve Number (0-100); area-weighted values carry one decimal
     source : str, optional
         Data source identifier
     crs : str, optional
@@ -112,10 +116,11 @@ class MorphometricParameters(BaseModel):
         None, ge=0, description="Main channel slope [m/m]"
     )
     real_channel_length_km: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Main channel length covered by BDOT10k real streams [km]",
     )
-    cn: int | None = Field(None, ge=0, le=100, description="SCS Curve Number")
+    cn: float | None = Field(None, ge=0, le=100, description="SCS Curve Number")
     imperviousness: float | None = Field(
         None, ge=0, le=1, description="Weighted imperviousness fraction [0-1]"
     )
@@ -133,7 +138,9 @@ class MorphometricParameters(BaseModel):
         None, description="Schumm elongation ratio Re"
     )
     form_factor: float | None = Field(None, description="Horton form factor Ff")
-    lemniscate_ratio: float | None = Field(None, description="Chorley lemniscate ratio Cl = 0.5*L/A")
+    lemniscate_ratio: float | None = Field(
+        None, description="Chorley lemniscate ratio Cl = 0.5*L/A"
+    )
     mean_width_km: float | None = Field(None, ge=0, description="Mean width A/L [km]")
 
     # Relief indices
@@ -163,21 +170,25 @@ class MorphometricParameters(BaseModel):
         None, ge=0, description="Distance from outlet to boundary centroid [km]"
     )
     hydraulic_length_km: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Longest flow path from most remote point to outlet [km]",
     )
 
     # Flow path parameters
     longest_flow_path_km: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Longest flow path from most remote cell to outlet [km]",
     )
     divide_flow_path_km: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Longest flow path from watershed divide (boundary) to outlet [km]",
     )
     centroid_flow_path_km: float | None = Field(
-        None, ge=0,
+        None,
+        ge=0,
         description="Flow path from watershed centroid to outlet [km]",
     )
 
@@ -204,7 +215,9 @@ class LandCoverStats(BaseModel):
     categories: list[LandCoverCategory] = Field(
         ..., description="Per-category statistics"
     )
-    weighted_cn: int = Field(..., ge=0, le=100, description="Area-weighted CN")
+    weighted_cn: float = Field(
+        ..., ge=0, le=100, description="Area-weighted CN (rounded to 0.1)"
+    )
     weighted_imperviousness: float = Field(
         ..., ge=0, le=1, description="Area-weighted imperviousness fraction"
     )
@@ -275,26 +288,128 @@ class DelineateResponse(BaseModel):
 
     mode: str = Field(
         ...,
-        description="Delineation mode: 'precomputed' (with threshold) or 'precise' (without)",
+        description=(
+            "Delineation mode: 'precomputed' (with threshold) or 'precise' (without)"
+        ),
     )
     watershed: WatershedResponse = Field(
-        ..., description="Watershed delineation results",
+        ...,
+        description="Watershed delineation results",
     )
     stream: StreamInfo | None = Field(
-        None, description="Selected stream segment info (precomputed mode only)",
+        None,
+        description="Selected stream segment info (precomputed mode only)",
     )
     upstream_segment_indices: list[int] | None = Field(
-        None, description="Segment indices for MVT stream highlighting",
+        None,
+        description="Segment indices for MVT stream highlighting",
     )
     display_threshold_m2: int | None = Field(
-        None, description="Threshold used for upstream_segment_indices (for MVT matching)",
+        None,
+        description="Threshold used for upstream_segment_indices (for MVT matching)",
     )
     info_message: str | None = Field(
-        None, description="User-facing info about parameter changes",
+        None,
+        description="User-facing info about parameter changes",
+    )
+
+
+class DelineatePreviewRequest(DelineateRequest):
+    """Request for the delineation preview.
+
+    Same input as precomputed mode of POST /api/delineate-watershed, so
+    threshold_m2 is required: precise mode has no preview.
+    """
+
+    threshold_m2: int = Field(
+        ...,
+        gt=0,
+        description="Flow accumulation threshold [m2], as in precomputed delineation",
+        examples=[10000],
+    )
+
+
+class DelineatePreviewResponse(BaseModel):
+    """Sub-catchments a precomputed delineation merges, by depth for animation."""
+
+    threshold_m2: int = Field(
+        ...,
+        description="Threshold of the sub-catchments (after the floor and cascade)",
+    )
+    segment_count: int = Field(
+        ...,
+        ge=1,
+        description="Number of sub-catchments the delineation merges",
+    )
+    catchments: dict[str, Any] = Field(
+        ...,
+        description=(
+            "GeoJSON FeatureCollection (WGS84) with one MultiPolygon per depth "
+            "(property depth: drainage links up from the outlet sub-catchment, "
+            "0 = outlet), by increasing depth; simplified to about a screen pixel "
+            "at the watershed's extent; at most 5000 sub-catchments nearest the outlet"
+        ),
     )
 
 
 # ===================== HYDROGRAPH MODELS =====================
+
+
+CUSTOM_PRECIPITATION_MAX_STEPS = 2000
+
+
+class CustomPrecipitation(BaseModel):
+    """
+    User-supplied rainfall series replacing the PMAXTP design storm.
+
+    Attributes
+    ----------
+    timestep_min : float
+        Length of every interval of the series [min], > 0
+    depths_mm : list[float]
+        Rainfall depth in each interval [mm], >= 0, 1-2000 values
+    """
+
+    timestep_min: float = Field(
+        ..., description="Interval length of the series [min]", examples=[10]
+    )
+    depths_mm: list[float] = Field(
+        ...,
+        description="Rainfall depth per interval [mm]",
+        examples=[[0.5, 2.0, 6.5, 3.0, 1.0]],
+    )
+
+    @field_validator("timestep_min")
+    @classmethod
+    def timestep_positive(cls, v: float) -> float:
+        """Accept an interval length above 0 and up to one day [min]."""
+        if not v > 0:
+            raise ValueError("Krok czasowy szeregu opadu musi być większy od 0 min.")
+        if v > 1440:
+            raise ValueError(
+                "Krok czasowy szeregu opadu nie może przekraczać 1440 min (1 doba)."
+            )
+        return v
+
+    @field_validator("depths_mm")
+    @classmethod
+    def depths_valid(cls, v: list[float]) -> list[float]:
+        """Accept 1 to the maximum number of finite depths >= 0 with a positive sum."""
+        if not v:
+            raise ValueError("Szereg opadu musi zawierać co najmniej jedną wartość.")
+        if len(v) > CUSTOM_PRECIPITATION_MAX_STEPS:
+            raise ValueError(
+                f"Szereg opadu może mieć najwyżej {CUSTOM_PRECIPITATION_MAX_STEPS} "
+                f"wartości (podano {len(v)})."
+            )
+        for i, depth in enumerate(v, start=1):
+            if not math.isfinite(depth) or depth < 0:
+                raise ValueError(
+                    f"Wysokość opadu musi być liczbą nieujemną (krok {i}: {depth})."
+                )
+        if sum(v) <= 0:
+            raise ValueError("Suma opadu w szeregu musi być większa od 0 mm.")
+        return v
 
 
 class HydrographRequest(BaseModel):
@@ -307,12 +422,13 @@ class HydrographRequest(BaseModel):
         Latitude in WGS84 (decimal degrees)
     longitude : float
         Longitude in WGS84 (decimal degrees)
-    duration : str
-        Rainfall duration (full PMAXTP range: '5min'...'72h')
-    probability : int
-        Exceedance probability [%] (1, 2, 5, 10, 20, 50)
+    duration : str, optional
+        Rainfall duration (full PMAXTP range: '5min'...'72h');
+        required unless custom_precipitation is given
+    probability : float, optional
+        Exceedance probability [%]; required unless custom_precipitation is given
     timestep_min : float, optional
-        Time step for calculations [min], default 5.0
+        Time step for calculations [min], default 5.0 (ignored for a custom series)
     tc_method : str, optional
         Time of concentration method ('kirpich', 'nrcs', 'giandotti')
     hietogram_type : str, optional
@@ -327,6 +443,10 @@ class HydrographRequest(BaseModel):
         Nash parameter estimation method ('from_tc', 'from_lutz')
     nash_n : float, optional
         Nash N parameter — number of reservoirs (used with from_tc)
+    amc : {'I', 'II', 'III'}, optional
+        Antecedent moisture condition applied to CN, default 'II'
+    custom_precipitation : CustomPrecipitation, optional
+        Own rainfall series; replaces PMAXTP and the hietogram
     """
 
     latitude: float = Field(
@@ -343,15 +463,16 @@ class HydrographRequest(BaseModel):
         description="Longitude in WGS84 (decimal degrees)",
         examples=[21.01],
     )
-    duration: str = Field(
-        ...,
+    duration: str | None = Field(
+        None,
         pattern=r"^(5min|10min|15min|30min|45min|1h|1\.5h|2h|3h|6h|12h|18h|24h|36h|48h|72h)$",
-        description="Rainfall duration",
+        description="Rainfall duration (required unless custom_precipitation is given)",
         examples=["1h"],
     )
-    probability: float = Field(
-        ...,
-        description="Exceedance probability [%]",
+    probability: float | None = Field(
+        None,
+        description="Exceedance probability [%] "
+        "(required unless custom_precipitation is given)",
         examples=[10],
     )
     timestep_min: float = Field(
@@ -390,7 +511,10 @@ class HydrographRequest(BaseModel):
     )
     nash_estimation: Literal["from_tc", "from_lutz", "from_urban_regression"] = Field(
         "from_lutz",
-        description="Nash parameter estimation method (from_tc deprecated since Hydrolog v0.6.2)",
+        description=(
+            "Nash parameter estimation method "
+            "(from_tc deprecated since Hydrolog v0.6.2)"
+        ),
     )
     nash_n: float = Field(
         3.0,
@@ -421,16 +545,44 @@ class HydrographRequest(BaseModel):
     )
     morphometry: MorphometricParameters | None = Field(
         None,
-        description="Pre-computed morphometry (skips watershed delineation)",
+        description="Pre-computed morphometry (skips watershed delineation); its "
+        "area_km2 has the limit of a delineated catchment (area_limit_km2 of "
+        "GET /api/scenarios, 422 above it)",
     )
+    amc: Literal["I", "II", "III"] = Field(
+        "II",
+        description="Antecedent moisture condition: I dry, II average, III wet",
+    )
+    custom_precipitation: CustomPrecipitation | None = Field(
+        None,
+        description="Own rainfall series; replaces PMAXTP and the hietogram "
+        "(duration, probability, hietogram_* and timestep_min are then ignored)",
+    )
+
+    @model_validator(mode="after")
+    def design_storm_or_custom(self) -> "HydrographRequest":
+        """Require a PMAXTP design storm (duration and probability) or own series."""
+        if self.custom_precipitation is None and (
+            self.duration is None or self.probability is None
+        ):
+            raise ValueError(
+                "Podaj czas trwania (duration) i prawdopodobieństwo (probability) "
+                "opadu albo własny szereg opadu (custom_precipitation)."
+            )
+        return self
 
 
 class PrecipitationInfo(BaseModel):
     """Precipitation event information."""
 
+    source: Literal["pmaxtp", "custom"] = Field(
+        ..., description="Rainfall origin: PMAXTP design storm or own series"
+    )
     total_mm: float = Field(..., ge=0, description="Total precipitation [mm]")
     duration_min: float = Field(..., ge=0, description="Duration [min]")
-    probability_percent: float = Field(..., description="Exceedance probability [%]")
+    probability_percent: float | None = Field(
+        ..., description="Exceedance probability [%] (null for a custom series)"
+    )
     timestep_min: float = Field(..., ge=0, description="Time step [min]")
     times_min: list[float] = Field(..., description="Time values [min]")
     intensities_mm: list[float] = Field(..., description="Precipitation depths [mm]")
@@ -460,7 +612,9 @@ class WaterBalance(BaseModel):
     runoff_coefficient: float = Field(
         ..., ge=0, le=1, description="Runoff coefficient [-]"
     )
-    cn_used: int = Field(..., ge=0, le=100, description="Curve Number used")
+    cn_used: float = Field(
+        ..., ge=0, le=100, description="Curve Number used (adjusted for AMC)"
+    )
     retention_mm: float = Field(..., ge=0, description="Maximum retention S [mm]")
     initial_abstraction_mm: float = Field(
         ..., ge=0, description="Initial abstraction Ia [mm]"
@@ -472,7 +626,12 @@ class HydrographMetadata(BaseModel):
 
     tc_min: float | None = Field(None, ge=0, description="Time of concentration [min]")
     tc_method: str | None = Field(None, description="TC calculation method used")
-    hietogram_type: str = Field(..., description="Hietogram type used")
+    hietogram_type: str | None = Field(
+        ..., description="Hietogram type used (null for a custom series)"
+    )
+    amc: Literal["I", "II", "III"] = Field(
+        "II", description="Antecedent moisture condition applied to CN"
+    )
     uh_model: str = Field("scs", description="Unit hydrograph model")
     nash_estimation: str | None = Field(None, description="Nash estimation method")
     nash_n: float | None = Field(None, description="Nash N parameter")
@@ -523,14 +682,213 @@ class TerrainProfileRequest(BaseModel):
 
     geometry: dict[str, Any] = Field(..., description="GeoJSON LineString geometry")
     n_samples: int = Field(100, ge=2, le=1000, description="Number of sample points")
+    result_ids: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Ids of analysis results (manifest /data/results/index.json) whose "
+            "maximum water level is sampled along the line"
+        ),
+    )
+
+
+class ProfileWaterLevel(BaseModel):
+    """Maximum water level of one analysis result along the profile."""
+
+    result_id: str = Field(..., description="Analysis result id (results manifest)")
+    levels_m: list[float | None] = Field(
+        ...,
+        description=(
+            "Water level [m a.s.l.] at each sample; null where dry, off the "
+            "result or without DEM data"
+        ),
+    )
 
 
 class TerrainProfileResponse(BaseModel):
     """Response model for terrain profile."""
 
     distances_m: list[float] = Field(..., description="Cumulative distances [m]")
-    elevations_m: list[float] = Field(..., description="Elevations [m a.s.l.]")
+    elevations_m: list[float] = Field(
+        ...,
+        description="Elevations [m a.s.l.]; 0.0 at the samples that dem_gaps marks",
+    )
+    dem_gaps: list[bool] = Field(
+        ...,
+        description="True at each sample where the DEM has no data (off its extent): "
+        "a gap of the profile, not an elevation",
+    )
     total_length_m: float = Field(..., ge=0, description="Total line length [m]")
+    water_levels: list[ProfileWaterLevel] = Field(
+        default_factory=list,
+        description="Requested results whose water level raster the line crosses",
+    )
+
+
+# ===================== POINT IDENTIFICATION MODELS =====================
+
+
+class IdentifyPointRequest(BaseModel):
+    """Query parameters of the identification of one map point (GET)."""
+
+    latitude: float = Field(
+        ...,
+        ge=-90,
+        le=90,
+        description="Latitude in WGS84 (decimal degrees)",
+        examples=[51.0376],
+    )
+    longitude: float = Field(
+        ...,
+        ge=-180,
+        le=180,
+        description="Longitude in WGS84 (decimal degrees)",
+        examples=[16.1723],
+    )
+    threshold_m2: int | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Flow accumulation threshold [m2] of the sub-catchment network to read "
+            "(the flow lines on the map); raised to 10000, the default, if lower"
+        ),
+        examples=[100000],
+    )
+    result_ids: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Ids of analysis results (manifest /data/results/index.json) whose "
+            "maximum water level is read at the point"
+        ),
+    )
+
+
+class PointCoordinates(BaseModel):
+    """The point in WGS84 and in PL-1992."""
+
+    latitude: float = Field(..., description="Latitude in WGS84 [°]")
+    longitude: float = Field(..., description="Longitude in WGS84 [°]")
+    easting_m: float = Field(
+        ..., description="PL-1992 (EPSG:2180) easting [m], Y of Polish surveying"
+    )
+    northing_m: float = Field(
+        ..., description="PL-1992 (EPSG:2180) northing [m], X of Polish surveying"
+    )
+
+
+class PointWater(BaseModel):
+    """Maximum water of one analysis result at the point."""
+
+    result_id: str = Field(..., description="Analysis result id (results manifest)")
+    water_level_m: float | None = Field(
+        ..., description="Maximum water level [m a.s.l.]; null where the result is dry"
+    )
+    depth_m: float | None = Field(
+        ...,
+        description=(
+            "Water level minus the terrain elevation [m]; null where the water "
+            "does not lie above the terrain"
+        ),
+    )
+
+
+class PointStream(BaseModel):
+    """Nearest BDOT10k stream line within 25 m of the point."""
+
+    name: str | None = Field(None, description="Name (BDOT10k), null if unnamed")
+    layer_type: str = Field(
+        ..., description="BDOT10k layer: SWRS river, SWKN canal, SWRM ditch"
+    )
+    distance_m: float = Field(..., ge=0, description="Distance from the point [m]")
+
+
+class PointWaterBody(BaseModel):
+    """BDOT10k water body polygon (lake, pond, wide river) containing the point."""
+
+    name: str | None = Field(None, description="Name (BDOT10k NAZWA), null if unnamed")
+    kind: str | None = Field(
+        None, description="Kind of water (BDOT10k RODZAJ), e.g. 'woda stojąca'"
+    )
+
+
+class PointLandCover(BaseModel):
+    """Land cover at the point."""
+
+    category: str = Field(
+        ..., description="Land cover category, as in land_cover_stats"
+    )
+    bdot_class: str | None = Field(None, description="BDOT10k layer, e.g. PTLZ")
+    cn: int = Field(
+        ..., description="CN of the category (AMC-II), as in the catchment CN"
+    )
+    imperviousness: float | None = Field(
+        None, description="Impervious fraction of the category (0-1)"
+    )
+
+
+class PointDepression(BaseModel):
+    """Terrain depression (blue spot) containing the point."""
+
+    max_depth_m: float = Field(..., description="Maximum depth of the depression [m]")
+    mean_depth_m: float | None = Field(None, description="Mean depth [m]")
+    area_m2: float = Field(..., description="Area of the depression [m2]")
+    volume_m3: float = Field(..., description="Volume of the depression [m3]")
+
+
+class PointSubcatchment(BaseModel):
+    """Precomputed sub-catchment containing the point and its stream segment."""
+
+    threshold_m2: int = Field(
+        ..., description="Flow accumulation threshold of the network [m2]"
+    )
+    segment_idx: int = Field(..., description="Stream segment index")
+    area_km2: float = Field(..., description="Area of the sub-catchment [km2]")
+    upstream_area_km2: float | None = Field(
+        None,
+        description=(
+            "Catchment area at the segment's downstream end [km2], as a "
+            "precomputed delineation from this sub-catchment"
+        ),
+    )
+    strahler_order: int | None = Field(None, description="Strahler order")
+    segment_length_m: float | None = Field(None, description="Segment length [m]")
+    is_real_stream: bool | None = Field(
+        None,
+        description="Segment matched to a BDOT10k stream; null if not matched",
+    )
+
+
+class IdentifyPointResponse(BaseModel):
+    """What Hydrograf knows at a point; a member is null where its source is empty."""
+
+    coordinates: PointCoordinates = Field(..., description="The point")
+    elevation_m: float = Field(
+        ..., description="Terrain elevation of the DEM [m a.s.l.]"
+    )
+    slope_percent: float | None = Field(
+        None, description="Terrain slope of the DEM [%]"
+    )
+    water: list[PointWater] = Field(
+        default_factory=list,
+        description="Requested results whose water level raster holds the point",
+    )
+    stream: PointStream | None = Field(
+        None, description="Nearest BDOT10k stream within 25 m"
+    )
+    water_body: PointWaterBody | None = Field(
+        None, description="BDOT10k water body containing the point"
+    )
+    land_cover: PointLandCover | None = Field(None, description="Land cover")
+    soil_hsg: str | None = Field(
+        None, description="Hydrologic soil group (A, B, C or D)"
+    )
+    depression: PointDepression | None = Field(
+        None, description="Terrain depression containing the point"
+    )
+    subcatchment: PointSubcatchment | None = Field(
+        None, description="Sub-catchment of the precomputed network at the point"
+    )
 
 
 # ===================== FEEDBACK MODELS =====================
@@ -554,9 +912,8 @@ class FeedbackRequest(BaseModel):
 
     @field_validator("diagnostics")
     @classmethod
-    def diagnostics_size_limit(
-        cls, v: dict[str, Any] | None
-    ) -> dict[str, Any] | None:
+    def diagnostics_size_limit(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Reject a diagnostics payload larger than 100 KB."""
         if v is not None and len(json.dumps(v)) > 100_000:
             raise ValueError("diagnostics payload exceeds 100 KB limit")
         return v
@@ -567,3 +924,11 @@ class FeedbackResponse(BaseModel):
 
     id: int = Field(..., description="Created feedback record id")
     status: str = Field("ok", description="Submission status")
+
+
+class FeedbackUpdate(BaseModel):
+    """Request model for changing the read flag of a feedback submission."""
+
+    is_read: bool = Field(
+        ..., strict=True, description="Whether the submission is read"
+    )

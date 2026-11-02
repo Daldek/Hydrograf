@@ -6,6 +6,7 @@ with spatial interpolation for points not directly on the grid.
 """
 
 import logging
+from typing import Any
 
 from shapely.geometry import Point
 from sqlalchemy import text
@@ -14,16 +15,72 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 # Valid duration values (full PMAXTP range: 5 min – 72 h)
-VALID_DURATIONS_MIN = {5, 10, 15, 30, 45, 60, 90, 120, 180, 360, 720, 1080, 1440, 2160, 2880, 4320}
+VALID_DURATIONS_MIN = {
+    5,
+    10,
+    15,
+    30,
+    45,
+    60,
+    90,
+    120,
+    180,
+    360,
+    720,
+    1080,
+    1440,
+    2160,
+    2880,
+    4320,
+}
 VALID_DURATIONS_STR = {
-    "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
-    "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+    "5min",
+    "10min",
+    "15min",
+    "30min",
+    "45min",
+    "1h",
+    "1.5h",
+    "2h",
+    "3h",
+    "6h",
+    "12h",
+    "18h",
+    "24h",
+    "36h",
+    "48h",
+    "72h",
 }
 
 # Valid probability values (full PMAXTP range)
 VALID_PROBABILITIES = {
-    0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5,
-    1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 98.5, 99, 99.5, 99.9,
+    0.01,
+    0.02,
+    0.03,
+    0.05,
+    0.1,
+    0.2,
+    0.3,
+    0.5,
+    1,
+    2,
+    3,
+    5,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    98,
+    98.5,
+    99,
+    99.5,
+    99.9,
 }
 
 # Duration mapping: minutes -> database string
@@ -256,7 +313,7 @@ def get_precipitation_wgs84(
 def get_all_scenarios(
     centroid: Point,
     db: Session,
-) -> dict:
+) -> dict[str, Any]:
     """
     Get precipitation values for all 42 scenarios.
 
@@ -278,7 +335,7 @@ def get_all_scenarios(
     >>> print(scenarios["1h"][10])  # P(1h, 10%)
     38.5
     """
-    result = {}
+    result: dict[str, dict[float, float | None]] = {}
 
     for duration_str in VALID_DURATIONS_STR:
         result[duration_str] = {}
@@ -290,9 +347,9 @@ def get_all_scenarios(
 
 
 def check_data_coverage(
-    bbox: tuple,
+    bbox: tuple[Any, ...],
     db: Session,
-) -> dict:
+) -> dict[str, Any]:
     """
     Check precipitation data coverage for a bounding box.
 
@@ -326,6 +383,9 @@ def check_data_coverage(
         query,
         {"min_x": min_x, "min_y": min_y, "max_x": max_x, "max_y": max_y},
     ).fetchone()
+
+    if result is None:  # an aggregate query always returns one row
+        raise RuntimeError("Precipitation coverage query returned no row")
 
     return {
         "point_count": result.point_count or 0,

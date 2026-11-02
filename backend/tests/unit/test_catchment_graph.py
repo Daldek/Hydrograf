@@ -52,9 +52,7 @@ def small_graph():
     # Odleglosc spływu w PUNKCIE ujscia kazdej podzlewni (baza dla
     # hydraulic_length). Lancuch: node3 (globalne ujscie) -> 0 m;
     # node2 wpada do node3 -> 4000 m; nodes 0/1 wpadaja do node2 -> 7500 m.
-    cg._outlet_flow_dist_m = np.array(
-        [7500.0, 7500.0, 4000.0, 0.0], dtype=np.float64
-    )
+    cg._outlet_flow_dist_m = np.array([7500.0, 7500.0, 4000.0, 0.0], dtype=np.float64)
 
     # BDOT stream matching: nodes 0 and 2 are real streams
     cg._is_real_stream = np.array([True, False, True, False], dtype=np.bool_)
@@ -117,6 +115,69 @@ class TestCatchmentGraphTraversal:
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.traverse_upstream(0)
+
+
+def _branched_graph() -> CatchmentGraph:
+    """
+    Outlet 6 with a long and a short branch (segment_idx = node + 1):
+        2 → 4 → 5 → 6   (node 1 → 3 → 4 → 5)
+        1 → 3 → 6       (node 0 → 2 → 5)
+    """
+    cg = CatchmentGraph()
+    n = 6
+    cg._n = n
+    cg._loaded = True
+    cg._segment_idx = np.arange(1, n + 1, dtype=np.int32)
+    # adj[downstream, upstream] = 1
+    row = np.array([5, 4, 3, 5, 2], dtype=np.int32)
+    col = np.array([4, 3, 1, 2, 0], dtype=np.int32)
+    cg._upstream_adj = sparse.csr_matrix(
+        (np.ones(len(row), dtype=np.int8), (row, col)),
+        shape=(n, n),
+        dtype=np.int8,
+    )
+    return cg
+
+
+class TestUpstreamSegmentsByDepth:
+    """Tests for upstream_segments_by_depth (preview order)."""
+
+    def test_outlet_first_then_depths(self, small_graph):
+        """From the outlet: outlet at depth 0, each link upstream adds one."""
+        segments, depths = small_graph.upstream_segments_by_depth(3)
+        assert segments[0] == 4
+        assert dict(zip(segments, depths, strict=True)) == {4: 0, 3: 1, 1: 2, 2: 2}
+
+    def test_covers_traverse_upstream(self, small_graph):
+        """Same sub-catchments as traverse_upstream from a mid-basin node."""
+        segments, _ = small_graph.upstream_segments_by_depth(2)
+        expected = small_graph.get_segment_indices(
+            small_graph.traverse_upstream(2),
+            10000,
+        )
+        assert sorted(segments) == sorted(expected)
+
+    def test_depth_counts_links_on_each_branch(self):
+        """Depth follows the links of each branch, not the BFS position."""
+        segments, depths = _branched_graph().upstream_segments_by_depth(5)
+        assert dict(zip(segments, depths, strict=True)) == {
+            6: 0,
+            5: 1,
+            3: 1,
+            4: 2,
+            1: 2,
+            2: 3,
+        }
+        assert depths == sorted(depths)
+
+    def test_headwater_alone(self, small_graph):
+        """A headwater sub-catchment is its own outlet at depth 0."""
+        assert small_graph.upstream_segments_by_depth(0) == ([1], [0])
+
+    def test_not_loaded_raises(self):
+        """Unloaded graph should raise RuntimeError."""
+        with pytest.raises(RuntimeError, match="not loaded"):
+            CatchmentGraph().upstream_segments_by_depth(0)
 
 
 class TestCatchmentGraphSegmentIndices:
@@ -211,7 +272,7 @@ class TestCatchmentGraphAggregateStats:
         assert stats["bdot_stream_count"] == 2
 
     def test_no_bdot_streams_returns_none(self):
-        """When no segments are real streams, drainage_density and frequency are None."""
+        """Without real stream segments, drainage_density and frequency are None."""
         cg = CatchmentGraph()
         n = 2
         cg._n = n
@@ -448,7 +509,9 @@ class TestTraceMainChannel:
 
 
 class TestContiguousRealChannel:
-    """Test that real_channel_length_km counts contiguous real from outlet with gap tolerance.
+    """real_channel_length_km counts the contiguous real channel from the outlet.
+
+    A gap tolerance applies.
 
     The DEM flow-path can run between two parallel BDOT channels (e.g. drainage
     ditches) whose buffers alternate coverage, producing a fragmented pattern:
@@ -566,7 +629,7 @@ class TestContiguousRealChannel:
         assert result["real_channel_length_km"] == pytest.approx(0.0, abs=0.001)
 
     def test_alternating_pattern_bridges_single_gaps(self):
-        """Pattern real-FALSE-real-FALSE-real: all counted (each gap is 1 <= MAX_GAP=2)."""
+        """Pattern real-FALSE-real-FALSE-real counts all (each gap 1 <= MAX_GAP=2)."""
         cg, upstream = self._build_linear_graph(
             n=5,
             is_real=[True, False, True, False, True],
@@ -637,7 +700,9 @@ class TestGetCatchmentGraphThreadSafety:
         import threading
 
         from core.catchment_graph import _catchment_graph_lock
-        assert isinstance(_catchment_graph_lock, threading.Lock)
+
+        # threading.Lock is a function before Python 3.13, so compare with its type.
+        assert isinstance(_catchment_graph_lock, type(threading.Lock()))
 
 
 class TestGetSegmentIdx:
@@ -657,6 +722,7 @@ class TestGetSegmentIdx:
         import pytest
 
         from core.catchment_graph import CatchmentGraph
+
         cg = CatchmentGraph()
         with pytest.raises(RuntimeError, match="not loaded"):
             cg.get_segment_idx(0)

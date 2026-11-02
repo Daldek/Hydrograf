@@ -33,6 +33,7 @@
         return {
             'Content-Type': 'application/json',
             'X-Admin-Key': _apiKey,
+            'Accept-Language': 'pl',
         };
     }
 
@@ -104,8 +105,8 @@
         return request('GET', '/api/admin/feedback?limit=100&offset=0');
     }
 
-    function markFeedbackRead(id) {
-        return request('POST', '/api/admin/feedback/' + id + '/read');
+    function setFeedbackRead(id, isRead) {
+        return request('PATCH', '/api/admin/feedback/' + id, { is_read: isRead });
     }
 
     function deleteFeedback(id) {
@@ -127,7 +128,7 @@
 
         var response = await fetch('/api/admin/bootstrap/upload-boundary', {
             method: 'POST',
-            headers: { 'X-Admin-Key': _apiKey },
+            headers: { 'X-Admin-Key': _apiKey, 'Accept-Language': 'pl' },
             body: formData,
         });
 
@@ -238,12 +239,24 @@
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Admin-Key': key,
+                    'Accept-Language': 'pl',
                 },
             });
             return response.ok;
         } catch (e) {
             return false;
         }
+    }
+
+    /**
+     * Public service status (GET /health, no admin key).
+     *
+     * @returns {Promise<Object>} { status: 'healthy'|'unhealthy', database, version }
+     */
+    async function getHealth() {
+        var response = await fetch('/health');
+        if (!response.ok) throw new Error('Błąd serwera (' + response.status + ')');
+        return response.json();
     }
 
     window.Hydrograf.adminApi = {
@@ -259,10 +272,11 @@
         startBootstrap: startBootstrap,
         cancelBootstrap: cancelBootstrap,
         getFeedback: getFeedback,
-        markFeedbackRead: markFeedbackRead,
+        setFeedbackRead: setFeedbackRead,
         deleteFeedback: deleteFeedback,
         uploadBoundary: uploadBoundary,
         streamBootstrapLogs: streamBootstrapLogs,
         verifyKey: verifyKey,
+        getHealth: getHealth,
     };
 })();

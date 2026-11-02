@@ -16,6 +16,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -32,7 +33,7 @@ TARGET_CRS = "EPSG:2180"  # PUWG 1992
 TARGET_RES_M = 5.0  # Default hydro resolution (matches Kartograf download)
 
 
-def _read_asc_header(path: Path) -> dict:
+def _read_asc_header(path: Path) -> dict[str, Any]:
     """Read ASC grid header (first 6 lines) to get origin and cellsize."""
     header = {}
     with open(path) as f:
@@ -60,81 +61,37 @@ def _detect_crs_from_coords(xll: float, yll: float) -> str | None:
     return None  # EPSG:2180 or unknown
 
 
-_epsg2180_wkt_cache: str | None = None
-
-
-def _get_epsg2180_wkt() -> str:
-    """Get WKT for EPSG:2180 from the local GDAL installation.
-
-    Caches the result to avoid repeated subprocess calls.
-    """
-    global _epsg2180_wkt_cache  # noqa: PLW0603
-    if _epsg2180_wkt_cache is not None:
-        return _epsg2180_wkt_cache
-
-    try:
-        result = subprocess.run(
-            ["gdalsrsinfo", "EPSG:2180", "-o", "wkt_simple", "--single-line"],
-            capture_output=True, text=True, check=True,
-        )
-        _epsg2180_wkt_cache = result.stdout.strip()
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        # Fallback — matches GDAL 3.9+ EPSG database
-        _epsg2180_wkt_cache = (
-            'PROJCS["ETRF2000-PL / CS92",'
-            'GEOGCS["ETRF2000-PL",'
-            'DATUM["ETRF2000_Poland",'
-            'SPHEROID["GRS 1980",6378137,298.257222101]],'
-            'PRIMEM["Greenwich",0],'
-            'UNIT["degree",0.0174532925199433]],'
-            'PROJECTION["Transverse_Mercator"],'
-            'PARAMETER["latitude_of_origin",0],'
-            'PARAMETER["central_meridian",19],'
-            'PARAMETER["scale_factor",0.9993],'
-            'PARAMETER["false_easting",500000],'
-            'PARAMETER["false_northing",-5300000],'
-            'UNIT["metre",1]]'
-        )
-    return _epsg2180_wkt_cache
-
-
-def _ensure_prj_sidecar(asc_path: Path) -> None:
-    """Create .prj sidecar file for ASC grid if it doesn't exist."""
-    prj_path = asc_path.with_suffix(".prj")
-    if not prj_path.exists():
-        prj_path.write_text(_get_epsg2180_wkt())
-
-
 def normalize_crs(
     input_files: list[Path],
-    output_dir: Path | None = None,
+    output_dir: Path,
 ) -> list[Path]:
     """Detect and reproject ASC files not in EPSG:2180 (PUWG 1992).
 
     GUGiK serves NMT 1m data in PUWG 1992 (EPSG:2180) or PUWG 2000
     (EPSG:2176-2179) depending on the region.  Files in PUWG 2000 are
-    reprojected to EPSG:2180 at 1 m resolution using gdalwarp so that
-    all tiles can be mosaicked into a single VRT.
+    reprojected to EPSG:2180 using gdalwarp so that all tiles can be
+    mosaicked into a single VRT.  Files already in EPSG:2180 pass through
+    unchanged and nothing is written next to any input: the inputs may live
+    in a store that Hydrograf must not modify.
 
     Parameters
     ----------
     input_files : list[Path]
         ASC files to check.
-    output_dir : Path, optional
-        Directory for reprojected GeoTIFFs.  Defaults to a ``reprojected/``
-        subdirectory next to the first input file.
+    output_dir : Path
+        Hydrograf's directory for the reprojected copies (gdalwarp writes
+        each ``.asc`` with its ``.prj`` there).  Never the directory of the
+        inputs.
 
     Returns
     -------
     list[Path]
-        Paths ready for mosaicking — original files for EPSG:2180,
-        reprojected GeoTIFFs for others.
+        Paths ready for mosaicking, in input order: original files for
+        EPSG:2180, reprojected ASC grids for the others.  Missing inputs
+        are skipped.
     """
     if not input_files:
         return []
-
-    if output_dir is None:
-        output_dir = input_files[0].parent / "reprojected"
 
     result: list[Path] = []
     n_reprojected = 0
@@ -150,8 +107,7 @@ def normalize_crs(
         source_crs = _detect_crs_from_coords(xll, yll)
 
         if source_crs is None:
-            # Already in EPSG:2180 — ensure .prj sidecar exists for GDAL
-            _ensure_prj_sidecar(f)
+            # Already in EPSG:2180: used as it is, nothing written beside it.
             result.append(f)
             continue
 
@@ -174,18 +130,23 @@ def normalize_crs(
 
         if out_asc.exists():
             logger.debug(f"Reprojected file exists, reusing: {out_asc.name}")
-            _ensure_prj_sidecar(out_asc)
             result.append(out_asc)
             n_reprojected += 1
             continue
 
         cmd = [
             "gdalwarp",
-            "-s_srs", source_crs,
-            "-t_srs", TARGET_CRS,
-            "-tr", str(target_res), str(target_res),
-            "-r", "bilinear",
-            "-of", "AAIGrid",
+            "-s_srs",
+            source_crs,
+            "-t_srs",
+            TARGET_CRS,
+            "-tr",
+            str(target_res),
+            str(target_res),
+            "-r",
+            "bilinear",
+            "-of",
+            "AAIGrid",
             "-overwrite",
             str(f),
             str(out_asc),
@@ -193,14 +154,11 @@ def normalize_crs(
 
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True)
-            _ensure_prj_sidecar(out_asc)
             result.append(out_asc)
             n_reprojected += 1
         except subprocess.CalledProcessError as e:
             logger.error(f"gdalwarp failed for {f.name}: {e.stderr}")
-            raise RuntimeError(
-                f"Reprojection failed for {f.name}: {e.stderr}"
-            ) from e
+            raise RuntimeError(f"Reprojection failed for {f.name}: {e.stderr}") from e
 
     if n_reprojected:
         logger.info(
@@ -240,6 +198,11 @@ def create_vrt_mosaic(
         Default 'highest' uses the finest resolution among inputs.
     nodata : float
         NoData value for the mosaic (default: -9999.0)
+    target_crs : str, optional
+        CRS of every input (e.g. ``"EPSG:2180"``), assigned to the mosaic;
+        the CRS an input declares itself, or the lack of one (ASC sheets of
+        the Kartograf store have no ``.prj``), is ignored.  If None, the
+        mosaic takes the CRS of the inputs.
 
     Returns
     -------
@@ -286,7 +249,9 @@ def create_vrt_mosaic(
             logger.warning("GDAL not available, falling back to rasterio.merge")
             # Change extension to .tif for physical merge
             output_tif = output_vrt.with_suffix(".tif")
-            return _create_mosaic_rasterio(existing_files, output_tif, nodata)
+            return _create_mosaic_rasterio(
+                existing_files, output_tif, nodata, target_crs
+            )
         raise
 
 
@@ -297,7 +262,13 @@ def _create_vrt_gdal(
     nodata: float,
     target_crs: str | None = None,
 ) -> Path:
-    """Create VRT using GDAL's gdalbuildvrt command."""
+    """Create VRT using GDAL's gdalbuildvrt command.
+
+    With ``target_crs`` the VRT gets that CRS (``-a_srs``) and inputs whose
+    own projection differs or is missing are kept
+    (``-allow_projection_difference``); without the flag gdalbuildvrt
+    silently drops them.
+    """
     cmd = [
         "gdalbuildvrt",
         "-resolution",
@@ -309,7 +280,7 @@ def _create_vrt_gdal(
         "-overwrite",
     ]
     if target_crs:
-        cmd.extend(["-a_srs", target_crs])
+        cmd.extend(["-a_srs", target_crs, "-allow_projection_difference"])
     cmd.append(str(output_vrt))
     cmd.extend(str(f) for f in input_files)
 
@@ -345,12 +316,14 @@ def _create_mosaic_rasterio(
     input_files: list[Path],
     output_path: Path,
     nodata: float,
+    target_crs: str | None = None,
 ) -> Path:
     """
     Create physical mosaic using rasterio.merge.
 
     This is a fallback when GDAL is not available. Creates a GeoTIFF
-    file with LZW compression.
+    file with LZW compression.  The mosaic gets ``target_crs`` when given,
+    otherwise the CRS of the first input.
     """
     import rasterio
     from rasterio.merge import merge
@@ -380,6 +353,8 @@ def _create_mosaic_rasterio(
                 "compress": "lzw",
             }
         )
+        if target_crs:
+            out_meta["crs"] = target_crs
 
         # Write output
         with rasterio.open(output_path, "w", **out_meta) as dest:
@@ -400,7 +375,7 @@ def _create_mosaic_rasterio(
 
 def read_vrt_as_array(
     vrt_path: Path,
-) -> tuple[np.ndarray, dict]:
+) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Read VRT mosaic as numpy array with metadata.
 
@@ -448,7 +423,7 @@ def read_vrt_as_array(
     return data, metadata
 
 
-def get_mosaic_info(vrt_path: Path) -> dict:
+def get_mosaic_info(vrt_path: Path) -> dict[str, Any]:
     """
     Get information about VRT mosaic without loading data.
 
@@ -481,7 +456,7 @@ def get_mosaic_info(vrt_path: Path) -> dict:
     return info
 
 
-def validate_tiles_compatibility(input_files: list[Path]) -> dict:
+def validate_tiles_compatibility(input_files: list[Path]) -> dict[str, Any]:
     """
     Validate that all tiles are compatible for mosaicking.
 
@@ -499,7 +474,7 @@ def validate_tiles_compatibility(input_files: list[Path]) -> dict:
     """
     import rasterio
 
-    results = {
+    results: dict[str, Any] = {
         "valid": True,
         "issues": [],
         "summary": {},

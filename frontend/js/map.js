@@ -17,7 +17,6 @@
     var streamTooltip = null;
     var watershedLayer = null;
     var outletMarker = null;
-    var clickEnabled = true;
 
     // Drawing state
     var drawMode = false;
@@ -32,9 +31,141 @@
     // BDOT10k vector layers (lakes + streams)
     var bdotLakesLayer = null;
     var bdotStreamsLayer = null;
-    var bdotBounds = null;
     var hsgLayer = null;
     var landCoverLayer = null;
+
+    // ===== Theme: overlay colours from tokens.css =====
+    //
+    // Leaflet writes colours into SVG attributes, where var() does not work,
+    // so the tokens are read with getComputedStyle. A theme change (data-theme
+    // attribute or the OS scheme) drops the cached colours and runs every
+    // restyler registered with onThemeChange().
+
+    var palette = null;
+    var restylers = [];
+    var _colorCtx = null;
+
+    function token(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    /** Any CSS colour as [r, g, b]. */
+    function rgb(color) {
+        if (!_colorCtx) _colorCtx = document.createElement('canvas').getContext('2d');
+        _colorCtx.fillStyle = '#000000';
+        _colorCtx.fillStyle = color;
+        var s = _colorCtx.fillStyle;
+        if (s.charAt(0) === '#') {
+            return [1, 3, 5].map(function (i) { return parseInt(s.slice(i, i + 2), 16); });
+        }
+        return s.replace(/^rgba?\(|\)$/g, '').split(',').slice(0, 3).map(parseFloat);
+    }
+
+    /** `weight` of colour a mixed with colour b (like color-mix in srgb). */
+    function mix(a, b, weight) {
+        var ca = rgb(a);
+        var cb = rgb(b);
+        return 'rgb(' + [0, 1, 2].map(function (i) {
+            return Math.round(ca[i] * weight + cb[i] * (1 - weight));
+        }).join(', ') + ')';
+    }
+
+    /** Token colours of the current theme, cached until the theme changes. */
+    function colors() {
+        if (palette) return palette;
+        var surface = token('--surface');
+        var info = token('--info');
+        var infoSoft = mix(info, surface, 0.35);
+        palette = {
+            tool: token('--tool-hydrograf'),
+            surface: surface,
+            accent: token('--accent'),
+            info: info,
+            infoSoft: infoSoft,
+            warn: token('--warn'),
+            streamRamp: [rgb(infoSoft), rgb(info)],
+            landCover: {},
+            hsg: {},
+        };
+        return palette;
+    }
+
+    /** Run `fn` after every theme change, when the new tokens are readable. */
+    function onThemeChange(fn) { restylers.push(fn); }
+
+    function refreshTheme() {
+        palette = null;
+        restylers.forEach(function (fn) { fn(); });
+    }
+
+    new MutationObserver(refreshTheme).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme'],
+    });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refreshTheme);
+
+    // ===== Mouse-wheel zoom =====
+    //
+    // Leaflet's scroll-wheel zoom turns every 40 ms batch of wheel events into
+    // at least one whole zoom level (zoomSnap 1), however small the batch.
+    // Touchpads, the Magic Mouse and smooth-scrolling mouse drivers go on
+    // sending a fading tail of small events after the fingers or the wheel
+    // stop, so each batch of the tail zoomed one more level; and while the
+    // vector base map draws the new zoom, wheel input and the zoom timer wait
+    // and run after the wheel has stopped. This handler starts a zoom step
+    // only on fresh input: events weaker than WHEEL_TAIL_RATIO of the
+    // gesture's strongest are its tail, and input older than WHEEL_STALE_MS
+    // (an event or a whole batch) is dropped.
+
+    var WHEEL_STALE_MS = 150;        // older wheel input does not start a zoom step
+    var WHEEL_GESTURE_GAP_MS = 80;   // a longer pause between events starts a new gesture
+    var WHEEL_TAIL_RATIO = 0.5;      // share of the gesture's strongest event below which events are its tail
+
+    /** Time of a wheel event on the performance.now() clock; a foreign clock counts as now. */
+    function wheelEventTime(e) {
+        var age = performance.now() - e.timeStamp;
+        return performance.now() - (age >= 0 && age < 10000 ? age : 0);
+    }
+
+    /** Leaflet's scroll-wheel zoom without the tail of a gesture and without late input. */
+    function wheelZoomHandler() {
+        var Base = L.Map.ScrollWheelZoom;
+        return Base.extend({
+            _onWheelScroll: function (e) {
+                var delta = L.DomEvent.getWheelDelta(e);
+                if (delta) {
+                    var t = wheelEventTime(e);
+                    var size = Math.abs(delta);
+                    var g = this._gesture;
+                    if (performance.now() - t > WHEEL_STALE_MS) {
+                        L.DomEvent.stop(e);
+                        return;
+                    }
+                    if (!g || t - g.last > WHEEL_GESTURE_GAP_MS || (delta > 0) !== g.zoomIn) {
+                        g = this._gesture = { zoomIn: delta > 0, peak: size, last: t };
+                    }
+                    g.last = t;
+                    if (size < g.peak * WHEEL_TAIL_RATIO) {
+                        L.DomEvent.stop(e);
+                        return;
+                    }
+                    g.peak = Math.max(g.peak, size);
+                    this._lastInput = t;
+                }
+                Base.prototype._onWheelScroll.call(this, e);
+            },
+
+            _performZoom: function () {
+                // The timer ran late (the page was busy): the wheel has stopped meanwhile
+                if (performance.now() - this._lastInput > WHEEL_STALE_MS) {
+                    this._delta = 0;
+                    this._startTime = null;
+                    return;
+                }
+                Base.prototype._performZoom.call(this);
+            },
+        });
+    }
 
     /**
      * Initialize the Leaflet map.
@@ -45,17 +176,26 @@
             center: [51.9, 19.5],
             zoom: 7,
             zoomControl: false,
+            scrollWheelZoom: false,     // replaced by wheelZoomHandler()
         });
+        map.addHandler('wheelZoom', wheelZoomHandler());
+        map.wheelZoom.enable();
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
         // Custom panes for layer ordering:
-        // Base (tilePane z-200) → NMT → Linie spływu → overlay (z-400)
+        // Base (tilePane z-200) → NMT → Mapa zagrożenia powodziowego → Pokrycie terenu → Wyniki analiz → Linie spływu → delineation preview → overlay (z-400)
         map.createPane('demPane');
         map.getPane('demPane').style.zIndex = 250;
+        map.createPane('hazardPane');
+        map.getPane('hazardPane').style.zIndex = 255;
         map.createPane('landcoverPane');
         map.getPane('landcoverPane').style.zIndex = 260;
+        map.createPane('resultsPane');
+        map.getPane('resultsPane').style.zIndex = 300;
         map.createPane('streamsPane');
         map.getPane('streamsPane').style.zIndex = 350;
+        map.createPane('previewPane');
+        map.getPane('previewPane').style.zIndex = 390;
 
         // Load overlays
         loadDemOverlay();
@@ -67,7 +207,6 @@
                 return;
             }
 
-            if (!clickEnabled) return;
             if (onClickCallback) {
                 onClickCallback(e.latlng.lat, e.latlng.lng);
             }
@@ -90,6 +229,20 @@
                 e.preventDefault();
                 undoLastVertex();
             }
+        });
+
+        // On-screen drawing controls: phones have no Esc/Backspace and no reliable dblclick.
+        // Absent in an index.html cached from before they existed; drawing still works then.
+        var drawTools = document.getElementById('draw-tools');
+        if (drawTools) {
+            document.getElementById('draw-undo').addEventListener('click', undoLastVertex);
+            document.getElementById('draw-finish').addEventListener('click', finishDrawing);
+            document.getElementById('draw-cancel').addEventListener('click', cancelDrawing);
+        }
+
+        // The shell resizes panels around the map; Leaflet must re-measure.
+        window.addEventListener('hydrograf:layout', function () {
+            map.invalidateSize();
         });
     }
 
@@ -143,9 +296,7 @@
     }
 
     function getDemLayer() { return demLayer; }
-    function fitDemBounds() {
-        if (demBounds && map) map.fitBounds(demBounds, { padding: [20, 20] });
-    }
+    function getDemBounds() { return demBounds; }
     function setDemOpacity(opacity) {
         if (demLayer) demLayer.setOpacity(opacity);
     }
@@ -153,31 +304,27 @@
     // ===== Streams Vector (MVT) =====
 
     /**
-     * Compute stream color from upstream_area_km2 using log10 scale.
-     * Gradient: light cyan (#B3E5FC) → navy (#002F6C).
+     * Position of a stream on the log10 upstream-area scale:
+     * 0 at 0.0001 km² (and below), 1 at 20 km² (and above).
      */
-    function flowAccColor(area_km2) {
-        // Map log10(area) from [-4, 1.3] (0.0001–20 km²) to [0, 1]
+    function flowAccT(area_km2) {
         var logVal = Math.log10(Math.max(area_km2, 0.0001));
         var t = (logVal - (-4)) / (1.3 - (-4)); // range 5.3
-        t = Math.max(0, Math.min(1, t));
-
-        // Interpolate between light cyan and navy (RGB)
-        var r = Math.round(179 * (1 - t) + 0 * t);
-        var g = Math.round(229 * (1 - t) + 47 * t);
-        var b = Math.round(252 * (1 - t) + 108 * t);
-        return 'rgb(' + r + ',' + g + ',' + b + ')';
+        return Math.max(0, Math.min(1, t));
     }
 
-    /**
-     * Compute stream width from upstream_area_km2 using log10 scale.
-     * Range: 0.5px (tiny streams) → 4px (large rivers).
-     */
+    /** Stream colour: a soft --info for tiny streams, full --info for large rivers. */
+    function flowAccColor(area_km2) {
+        var ramp = colors().streamRamp;
+        var t = flowAccT(area_km2);
+        return 'rgb(' + [0, 1, 2].map(function (i) {
+            return Math.round(ramp[0][i] * (1 - t) + ramp[1][i] * t);
+        }).join(', ') + ')';
+    }
+
+    /** Stream width: 0.5px (tiny streams) → 4px (large rivers). */
     function flowAccWidth(area_km2) {
-        var logVal = Math.log10(Math.max(area_km2, 0.0001));
-        var t = (logVal - (-4)) / (1.3 - (-4));
-        t = Math.max(0, Math.min(1, t));
-        return 0.5 + t * 3.5;
+        return 0.5 + flowAccT(area_km2) * 3.5;
     }
 
     /**
@@ -206,9 +353,24 @@
         }
         currentThreshold = threshold || currentThreshold;
 
+        // Limit requests to the data: outside its bounds and below its first
+        // zoom no tile exists and each request would answer 404.
+        var meta = window.Hydrograf._tilesMeta || {};
+        var extent = {};
+        if (meta.bounds && meta.bounds.length === 4) {
+            extent.bounds = L.latLngBounds(
+                [meta.bounds[1], meta.bounds[0]],
+                [meta.bounds[3], meta.bounds[2]]
+            );
+        }
+        if (meta.min_zoom) {
+            var zooms = meta.threshold_min_zoom || {};
+            extent.minZoom = zooms[String(currentThreshold)] || meta.min_zoom;
+        }
+
         streamsLayer = L.vectorGrid.protobuf(
             getTileUrl('streams', currentThreshold),
-            {
+            L.extend({
                 pane: 'streamsPane',
                 vectorTileLayerStyles: {
                     streams: function (properties) {
@@ -223,7 +385,7 @@
                 interactive: true,
                 maxNativeZoom: 18,
                 attribution: 'Linie spływu (flow acc)',
-            }
+            }, extent)
         );
 
         // Re-fire click to map so click mode routing works on stream features
@@ -259,9 +421,30 @@
 
     function getStreamsThreshold() { return currentThreshold; }
 
-    function fitStreamsBounds() {
-        // MVT layers don't have predefined bounds; fit to DEM bounds if available
-        if (demBounds && map) map.fitBounds(demBounds, { padding: [20, 20] });
+    /**
+     * Data extent from the vector tiles metadata (bounds as [W, S, E, N]),
+     * falling back to the DEM extent.
+     * @returns {L.LatLngBounds|null}
+     */
+    function getDataBounds() {
+        var meta = window.Hydrograf._tilesMeta || {};
+        if (meta.bounds && meta.bounds.length === 4) {
+            return L.latLngBounds(
+                [meta.bounds[1], meta.bounds[0]],
+                [meta.bounds[3], meta.bounds[2]]
+            );
+        }
+        return demBounds;
+    }
+
+    /**
+     * Fit the map to the given bounds; ignores missing or invalid bounds.
+     * @param {L.LatLngBounds|null} bounds
+     */
+    function fitToBounds(bounds) {
+        if (map && bounds && bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [20, 20] });
+        }
     }
 
     function setStreamsOpacity(opacity) {
@@ -284,13 +467,7 @@
     function showSelectionBoundary(geojsonFeature) {
         clearSelectionBoundary();
         selectionBoundaryLayer = L.geoJSON(geojsonFeature, {
-            style: {
-                color: '#FF6B00',
-                weight: 2.5,
-                fillColor: '#FF6B00',
-                fillOpacity: 0.1,
-                dashArray: '6, 4',
-            },
+            style: watershedStyle(),
         }).addTo(map);
         map.fitBounds(selectionBoundaryLayer.getBounds(), { padding: [20, 20] });
     }
@@ -305,19 +482,96 @@
         }
     }
 
+    // ===== Delineation preview =====
+    //
+    // While the server merges the boundary, the sub-catchments it merges fill
+    // the network up from the outlet (POST /api/delineate-watershed/preview,
+    // one feature per BFS depth). The map first moves to the watershed, as
+    // paths added during a zoom animation are drawn out of place; then depth
+    // d appears at d / maxDepth of PREVIEW_DURATION_MS, as many levels per
+    // frame as are due, and the preview pane pulses (app.css) until
+    // clearDelineatePreview(). Reduced motion: all levels at once, no pulse.
+
+    var PREVIEW_DURATION_MS = 500;
+    var preview = null; // { levels: L.GeoJSON, shown: L.LayerGroup, onMoveEnd, frame }
+
+    /** Preview: the watershed's tool colour, thinner and fainter than the result. */
+    function previewStyle() {
+        var c = colors();
+        return { color: c.tool, weight: 1, opacity: 0.5, fillColor: c.tool, fillOpacity: 0.08 };
+    }
+
+    /**
+     * Animate the preview of a pending delineation, replacing any previous one.
+     * @param {Object} collection - FeatureCollection, one feature per depth
+     *     (property `depth`), by increasing depth
+     */
+    function showDelineatePreview(collection) {
+        clearDelineatePreview();
+        var levels = L.geoJSON(collection, { pane: 'previewPane', style: previewStyle, interactive: false });
+        var layers = levels.getLayers();
+        if (!layers.length) return;
+
+        var maxDepth = layers[layers.length - 1].feature.properties.depth;
+        var instant = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var next = 0;
+        var start = null;
+        var current = { levels: levels, shown: L.layerGroup().addTo(map), onMoveEnd: null, frame: null };
+        preview = current;
+
+        function step(now) {
+            if (start === null) start = now;
+            var reached = instant ? Infinity : (now - start) / PREVIEW_DURATION_MS * maxDepth;
+            while (next < layers.length && layers[next].feature.properties.depth <= reached) {
+                current.shown.addLayer(layers[next]);
+                next += 1;
+            }
+            if (next < layers.length) {
+                current.frame = requestAnimationFrame(step);
+            } else {
+                current.frame = null;
+                map.getPane('previewPane').classList.add('waiting');
+            }
+        }
+
+        // fitBounds always ends in moveend: at once when the view stays
+        // or jumps, after the animation when it pans or zooms.
+        current.onMoveEnd = function () {
+            map.off('moveend', current.onMoveEnd);
+            current.onMoveEnd = null;
+            current.frame = requestAnimationFrame(step);
+        };
+        map.on('moveend', current.onMoveEnd);
+        map.fitBounds(levels.getBounds(), { padding: [20, 20] });
+    }
+
+    /** Remove the preview and stop its animation. */
+    function clearDelineatePreview() {
+        if (!preview) return;
+        if (preview.onMoveEnd) map.off('moveend', preview.onMoveEnd);
+        if (preview.frame !== null) cancelAnimationFrame(preview.frame);
+        map.removeLayer(preview.shown);
+        map.getPane('previewPane').classList.remove('waiting');
+        preview = null;
+    }
+
     // ===== Legends =====
 
     var streamsLegend = null;
+
+    function streamsLegendHtml() {
+        return '<div class="layer-legend-title">Linie spływu — zlewnia [km²]</div>' +
+            '<div class="legend-gradient" style="background: linear-gradient(to right, ' +
+            flowAccColor(0.001) + ', ' + flowAccColor(0.1) + ', ' + flowAccColor(20) + ');"></div>' +
+            '<div class="legend-labels"><span>0.001</span><span>0.1</span><span>20</span></div>';
+    }
 
     function createStreamsLegend() {
         if (streamsLegend) return;
         streamsLegend = L.control({ position: 'bottomleft' });
         streamsLegend.onAdd = function () {
             var div = L.DomUtil.create('div', 'layer-legend');
-            div.innerHTML =
-                '<div class="layer-legend-title">Linie spływu — zlewnia [km²]</div>' +
-                '<div class="legend-gradient" style="background: linear-gradient(to right, rgb(179,229,252), rgb(90,138,180), rgb(0,47,108));"></div>' +
-                '<div class="legend-labels"><span>0.001</span><span>0.1</span><span>20</span></div>';
+            div.innerHTML = streamsLegendHtml();
             return div;
         };
         streamsLegend.addTo(map);
@@ -332,17 +586,20 @@
 
     var hsgLegend = null;
 
+    function hsgLegendHtml() {
+        return '<div class="layer-legend-title">Grupy glebowe HSG</div>' +
+            ['A', 'B', 'C', 'D'].map(function (g) {
+                return '<div class="legend-item"><span class="legend-swatch" style="background:' +
+                    hsgColor(g) + ';"></span> ' + g + '</div>';
+            }).join('');
+    }
+
     function createHsgLegend() {
         if (hsgLegend) return;
         hsgLegend = L.control({ position: 'bottomleft' });
         hsgLegend.onAdd = function () {
             var div = L.DomUtil.create('div', 'layer-legend');
-            div.innerHTML =
-                '<div class="layer-legend-title">Grupy glebowe HSG</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#4CAF50;"></span> A</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#8BC34A;"></span> B</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#FF9800;"></span> C</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#F44336;"></span> D</div>';
+            div.innerHTML = hsgLegendHtml();
             return div;
         };
         hsgLegend.addTo(map);
@@ -357,15 +614,22 @@
 
     // ===== Watershed display =====
 
+    /** Delineated catchment: tool colour outline with a light fill of the same colour. */
+    function watershedStyle() {
+        var c = colors();
+        return { color: c.tool, weight: 2.5, opacity: 1, fillColor: c.tool, fillOpacity: 0.12 };
+    }
+
+    /** Outlet: tool colour ring on the surface colour. */
+    function outletStyle() {
+        var c = colors();
+        return { radius: 6, color: c.tool, weight: 3, opacity: 1, fillColor: c.surface, fillOpacity: 1 };
+    }
+
     function showWatershed(geojsonFeature) {
         clearWatershed();
         watershedLayer = L.geoJSON(geojsonFeature, {
-            style: {
-                color: '#28A745',
-                weight: 2,
-                fillColor: '#28A745',
-                fillOpacity: 0.3,
-            },
+            style: watershedStyle(),
         }).addTo(map);
         map.fitBounds(watershedLayer.getBounds(), { padding: [20, 20] });
     }
@@ -374,13 +638,7 @@
 
     function showOutlet(lat, lng, elevation) {
         if (outletMarker) map.removeLayer(outletMarker);
-        outletMarker = L.circleMarker([lat, lng], {
-            radius: 7,
-            color: '#DC3545',
-            fillColor: '#DC3545',
-            fillOpacity: 0.8,
-            weight: 2,
-        }).addTo(map);
+        outletMarker = L.circleMarker([lat, lng], outletStyle()).addTo(map);
         outletMarker.bindTooltip(
             'Ujście: ' + elevation.toFixed(1) + ' m n.p.m.',
             { permanent: false, direction: 'top' }
@@ -400,36 +658,31 @@
     var mainChannelLayer = null;
 
     /**
+     * Main channel style: BDOT-matched segments (is_real_stream) in full
+     * --info, the rest of the channel thinner and translucent.
+     */
+    function mainChannelStyle(feature) {
+        var info = colors().info;
+        var isReal = feature && feature.properties && feature.properties.is_real_stream;
+        return isReal
+            ? { color: info, weight: 3, opacity: 0.9 }
+            : { color: info, weight: 2, opacity: 0.45 };
+    }
+
+    /**
      * Show main channel on map with BDOT stream highlighting.
      *
      * Accepts either a FeatureCollection (per-segment features with
-     * is_real_stream property) or a plain LineString geometry.
-     *
-     * - Full main channel: light blue (#64B5F6), weight 2, opacity 0.5
-     * - BDOT-matched segments: dark blue (#1565C0), weight 3, opacity 0.9
+     * is_real_stream property) or a plain LineString geometry, drawn as
+     * the full channel.
      */
     function showMainChannel(geojson) {
         clearMainChannel();
         if (!geojson) return;
-
-        // FeatureCollection with is_real_stream per feature
-        if (geojson.type === 'FeatureCollection' && geojson.features) {
-            mainChannelLayer = L.geoJSON(geojson, {
-                style: function (feature) {
-                    var isReal = feature.properties && feature.properties.is_real_stream;
-                    return isReal
-                        ? { color: '#1565C0', weight: 3, opacity: 0.9 }
-                        : { color: '#64B5F6', weight: 2, opacity: 0.5 };
-                },
-                interactive: false,
-            }).addTo(map);
-        } else {
-            // Fallback: single LineString geometry — draw as full channel
-            mainChannelLayer = L.geoJSON(geojson, {
-                style: { color: '#64B5F6', weight: 2, opacity: 0.5 },
-                interactive: false,
-            }).addTo(map);
-        }
+        mainChannelLayer = L.geoJSON(geojson, {
+            style: mainChannelStyle,
+            interactive: false,
+        }).addTo(map);
     }
 
     function clearMainChannel() {
@@ -448,9 +701,9 @@
         if (!geojson) return;
         divideFlowPathLayer = L.geoJSON(geojson, {
             style: {
-                color: '#D32F2F',
+                color: colors().warn,
                 weight: 2.5,
-                opacity: 0.8,
+                opacity: 0.85,
                 dashArray: '2,6',
             },
             interactive: false,
@@ -464,7 +717,52 @@
         }
     }
 
+    // ===== Profile line styles =====
+
+    function drawLineStyle() {
+        return { color: colors().accent, weight: 2, opacity: 1, dashArray: '6, 4' };
+    }
+
+    function profileLineStyle() {
+        return { color: colors().accent, weight: 3, opacity: 0.9, dashArray: null };
+    }
+
+    /** Vertex and chart-hover markers: accent dot with a surface ring. */
+    function pointStyle(radius) {
+        var c = colors();
+        return { radius: radius, color: c.surface, weight: 2, opacity: 1, fillColor: c.accent, fillOpacity: 1 };
+    }
+
     // ===== Drawing mode (polyline for terrain profile) =====
+
+    // A tap or click this close to the last vertex ends the line instead of adding a
+    // vertex: the second tap of a double tap never lands on the exact same spot.
+    var FINISH_TAP_PX = 20;
+
+    function setDrawUi(active) {
+        var banner = document.getElementById('draw-instructions');
+        if (banner) banner.classList.toggle('d-none', !active);
+        var tools = document.getElementById('draw-tools');
+        if (tools) tools.hidden = !active;
+        if (active) updateDrawCount();
+    }
+
+    function pointsLabel(n) {
+        var lastDigit = n % 10, lastTwo = n % 100;
+        var few = lastDigit >= 2 && lastDigit <= 4 && (lastTwo < 12 || lastTwo > 14);
+        return n + (few ? ' punkty' : ' punktów');
+    }
+
+    function updateDrawCount() {
+        var n = drawVertices.length;
+        if (!document.getElementById('draw-tools')) return;
+        document.getElementById('draw-count').textContent =
+            n === 0 ? 'Wskaż początek profilu' :
+            n === 1 ? '1 punkt — wskaż kolejny' :
+            pointsLabel(n) + ' — dotknij ostatniego, aby zakończyć';
+        document.getElementById('draw-undo').disabled = n === 0;
+        document.getElementById('draw-finish').disabled = n < 2;
+    }
 
     function startDrawing(onComplete) {
         drawMode = true;
@@ -475,39 +773,29 @@
         map.getContainer().style.cursor = 'crosshair';
         // Disable double-click zoom during drawing
         map.doubleClickZoom.disable();
-        var banner = document.getElementById('draw-instructions');
-        if (banner) banner.classList.remove('d-none');
+        setDrawUi(true);
     }
 
     function addDrawVertex(latlng) {
-        // Ignore duplicate vertex from dblclick (browser fires click+click+dblclick)
         if (drawVertices.length > 0) {
             var last = drawVertices[drawVertices.length - 1];
-            if (Math.abs(last.lat - latlng.lat) < 0.00001 &&
-                Math.abs(last.lng - latlng.lng) < 0.00001) {
+            var gap = map.latLngToContainerPoint(latlng).distanceTo(map.latLngToContainerPoint(last));
+            if (gap <= FINISH_TAP_PX) {
+                if (drawVertices.length >= 2) finishDrawing();
                 return;
             }
         }
         drawVertices.push(latlng);
 
-        var marker = L.circleMarker(latlng, {
-            radius: 5,
-            color: '#0A84FF',
-            fillColor: '#0A84FF',
-            fillOpacity: 1,
-            weight: 1,
-        }).addTo(map);
+        var marker = L.circleMarker(latlng, pointStyle(5)).addTo(map);
         drawMarkers.push(marker);
 
         // Update polyline
         if (drawPolyline) map.removeLayer(drawPolyline);
         if (drawVertices.length > 1) {
-            drawPolyline = L.polyline(drawVertices, {
-                color: '#0A84FF',
-                weight: 2,
-                dashArray: '6, 4',
-            }).addTo(map);
+            drawPolyline = L.polyline(drawVertices, drawLineStyle()).addTo(map);
         }
+        updateDrawCount();
     }
 
     function undoLastVertex() {
@@ -517,12 +805,9 @@
         if (lastMarker) map.removeLayer(lastMarker);
         if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
         if (drawVertices.length > 1) {
-            drawPolyline = L.polyline(drawVertices, {
-                color: '#0A84FF',
-                weight: 2,
-                dashArray: '6, 4',
-            }).addTo(map);
+            drawPolyline = L.polyline(drawVertices, drawLineStyle()).addTo(map);
         }
+        updateDrawCount();
     }
 
     function finishDrawing() {
@@ -535,8 +820,7 @@
         drawMode = false;
         map.getContainer().style.cursor = '';
         map.doubleClickZoom.enable();
-        var banner = document.getElementById('draw-instructions');
-        if (banner) banner.classList.add('d-none');
+        setDrawUi(false);
 
         // Clean up markers
         drawMarkers.forEach(function (m) { map.removeLayer(m); });
@@ -546,7 +830,7 @@
         if (drawPolyline) {
             if (profileLine) map.removeLayer(profileLine);
             profileLine = drawPolyline;
-            profileLine.setStyle({ color: '#DC3545', weight: 3, opacity: 0.8, dashArray: null });
+            profileLine.setStyle(profileLineStyle());
             drawPolyline = null;
         }
 
@@ -557,8 +841,7 @@
         drawMode = false;
         map.getContainer().style.cursor = '';
         map.doubleClickZoom.enable();
-        var banner = document.getElementById('draw-instructions');
-        if (banner) banner.classList.add('d-none');
+        setDrawUi(false);
         drawMarkers.forEach(function (m) { map.removeLayer(m); });
         drawMarkers = [];
         if (drawPolyline) { map.removeLayer(drawPolyline); drawPolyline = null; }
@@ -579,9 +862,9 @@
         if (!geojson) return;
         longestFlowPathLayer = L.geoJSON(geojson, {
             style: {
-                color: '#D32F2F',
+                color: colors().warn,
                 weight: 2,
-                opacity: 0.8,
+                opacity: 0.85,
                 dashArray: '8,4',
             },
             interactive: false,
@@ -601,11 +884,7 @@
         clearProfileLine();
         // coords: [[lng, lat], ...] (GeoJSON order)
         var latlngs = coords.map(function (c) { return [c[1], c[0]]; });
-        profileLine = L.polyline(latlngs, {
-            color: '#DC3545',
-            weight: 3,
-            opacity: 0.8,
-        }).addTo(map);
+        profileLine = L.polyline(latlngs, profileLineStyle()).addTo(map);
     }
 
     function clearProfileLine() {
@@ -619,13 +898,7 @@
         if (profileHoverMarker) {
             profileHoverMarker.setLatLng([lat, lng]);
         } else {
-            profileHoverMarker = L.circleMarker([lat, lng], {
-                radius: 6,
-                color: '#fff',
-                fillColor: '#DC3545',
-                fillOpacity: 1,
-                weight: 2,
-            }).addTo(map);
+            profileHoverMarker = L.circleMarker([lat, lng], pointStyle(6)).addTo(map);
         }
     }
 
@@ -645,15 +918,15 @@
                 return res.json();
             })
             .then(function (geojson) {
+                var info = colors().info;
                 bdotLakesLayer = L.geoJSON(geojson, {
                     style: {
-                        color: '#1565C0',
+                        color: info,
                         weight: 1,
-                        fillColor: '#42A5F5',
+                        fillColor: info,
                         fillOpacity: 0.4,
                     },
                 });
-                bdotBounds = bdotLakesLayer.getBounds();
                 return bdotLakesLayer;
             })
             .catch(function (err) { console.warn('BDOT lakes not available:', err.message); return null; });
@@ -679,6 +952,13 @@
         }
     }
 
+    /** BDOT10k streams: rivers (SWRS) and canals (SWKN) in --info, ditches softer. */
+    function bdotStreamColor(feature) {
+        var src = feature.properties.source_layer || '';
+        var c = colors();
+        return (src === 'OT_SWRS_L' || src === 'OT_SWKN_L') ? c.info : c.infoSoft;
+    }
+
     function loadBdotStreams() {
         return fetch('/data/bdot_streams.geojson')
             .then(function (res) {
@@ -689,19 +969,15 @@
                 bdotStreamsLayer = L.geoJSON(geojson, {
                     style: function (feature) {
                         var src = feature.properties.source_layer || '';
+                        var color = bdotStreamColor(feature);
                         if (src === 'OT_SWRS_L') {
-                            return { color: '#0D47A1', weight: 2, opacity: 0.8 };
+                            return { color: color, weight: 2, opacity: 0.8 };
                         } else if (src === 'OT_SWKN_L') {
-                            return { color: '#1976D2', weight: 1.5, opacity: 0.7, dashArray: '6,3' };
+                            return { color: color, weight: 1.5, opacity: 0.7, dashArray: '6,3' };
                         }
-                        return { color: '#64B5F6', weight: 1, opacity: 0.6, dashArray: '4,4' };
+                        return { color: color, weight: 1, opacity: 0.6, dashArray: '4,4' };
                     },
                 });
-                if (!bdotBounds) {
-                    bdotBounds = bdotStreamsLayer.getBounds();
-                } else {
-                    bdotBounds.extend(bdotStreamsLayer.getBounds());
-                }
                 return bdotStreamsLayer;
             })
             .catch(function (err) { console.warn('BDOT streams not available:', err.message); return null; });
@@ -715,15 +991,18 @@
         }
     }
 
-    function fitBdotBounds() {
-        if (bdotBounds && bdotBounds.isValid()) {
-            map.fitBounds(bdotBounds, { padding: [20, 20] });
-        }
-    }
-
     // ===== HSG soil layer =====
 
-    var HSG_FILL = { 'A': '#4CAF50', 'B': '#8BC34A', 'C': '#FF9800', 'D': '#F44336' };
+    /** HSG group colour, shared with the HSG chart (charts.js palette). */
+    function hsgColor(group) {
+        var memo = colors().hsg;
+        if (!(group in memo)) memo[group] = Hydrograf.charts.hsgColor(group);
+        return memo[group];
+    }
+
+    function hsgFeatureColor(feature) {
+        return hsgColor(feature.properties.hsg_group || 'B');
+    }
 
     function loadHsgLayer() {
         return fetch('/data/soil_hsg.geojson')
@@ -734,11 +1013,11 @@
             .then(function (geojson) {
                 hsgLayer = L.geoJSON(geojson, {
                     style: function (feature) {
-                        var g = feature.properties.hsg_group || 'B';
+                        var color = hsgFeatureColor(feature);
                         return {
-                            color: HSG_FILL[g],
+                            color: color,
                             weight: 0.5,
-                            fillColor: HSG_FILL[g],
+                            fillColor: color,
                             fillOpacity: 0.35,
                         };
                     },
@@ -755,39 +1034,31 @@
             if (opacity === 0) {
                 hsgLayer.setStyle({ weight: 0, fillOpacity: 0, opacity: 0 });
             } else {
-                hsgLayer.setStyle(function (feature) {
-                    var g = feature.properties.hsg_group || 'B';
-                    return {
-                        color: HSG_FILL[g],
-                        weight: 0.5,
-                        fillColor: HSG_FILL[g],
-                        fillOpacity: opacity * 0.35,
-                        opacity: opacity,
-                    };
-                });
+                hsgLayer.setStyle({ weight: 0.5, fillOpacity: opacity * 0.35, opacity: opacity });
             }
-        }
-    }
-
-    function fitHsgBounds() {
-        if (hsgLayer) {
-            var bounds = hsgLayer.getBounds();
-            if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
         }
     }
 
     // ===== Land Cover (MVT) =====
 
-    var LANDCOVER_COLORS = {
-        'las': '#2E7D32',
-        'łąka': '#7CB342',
-        'grunt_orny': '#D4A574',
-        'zabudowa_mieszkaniowa': '#E53935',
-        'zabudowa_przemysłowa': '#757575',
-        'droga': '#424242',
-        'woda': '#1565C0',
-        'inny': '#BDBDBD'
-    };
+    // Land cover classes in legend order, labels for the map legend
+    var LANDCOVER_LEGEND = [
+        ['las', 'Las'],
+        ['łąka', 'Łąka'],
+        ['grunt_orny', 'Grunt orny'],
+        ['zabudowa_mieszkaniowa', 'Zabudowa mieszk.'],
+        ['zabudowa_przemysłowa', 'Zabudowa przem.'],
+        ['droga', 'Droga'],
+        ['woda', 'Woda'],
+        ['inny', 'Inny'],
+    ];
+
+    /** Land cover class colour, shared with the land cover chart (charts.js palette). */
+    function landCoverColor(category) {
+        var memo = colors().landCover;
+        if (!(category in memo)) memo[category] = Hydrograf.charts.landCoverColor(category);
+        return memo[category];
+    }
 
     function loadLandCoverVector() {
         if (!L.vectorGrid) { console.warn('VectorGrid plugin not loaded'); return null; }
@@ -801,8 +1072,7 @@
                 pane: 'landcoverPane',
                 vectorTileLayerStyles: {
                     landcover: function (properties) {
-                        var cat = properties.category || 'inny';
-                        var color = LANDCOVER_COLORS[cat] || LANDCOVER_COLORS['inny'];
+                        var color = landCoverColor(properties.category || 'inny');
                         return {
                             fill: true,
                             fillColor: color,
@@ -836,21 +1106,20 @@
 
     var landCoverLegend = null;
 
+    function landCoverLegendHtml() {
+        return '<div class="layer-legend-title">Pokrycie terenu</div>' +
+            LANDCOVER_LEGEND.map(function (entry) {
+                return '<div class="legend-item"><span class="legend-swatch" style="background:' +
+                    landCoverColor(entry[0]) + ';"></span> ' + entry[1] + '</div>';
+            }).join('');
+    }
+
     function createLandCoverLegend() {
         if (landCoverLegend) return;
         landCoverLegend = L.control({ position: 'bottomleft' });
         landCoverLegend.onAdd = function () {
             var div = L.DomUtil.create('div', 'layer-legend');
-            div.innerHTML =
-                '<div class="layer-legend-title">Pokrycie terenu</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#2E7D32;"></span> Las</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#7CB342;"></span> Łąka</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#D4A574;"></span> Grunt orny</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#E53935;"></span> Zabudowa mieszk.</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#757575;"></span> Zabudowa przem.</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#424242;"></span> Droga</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#1565C0;"></span> Woda</div>' +
-                '<div class="legend-item"><span class="legend-swatch" style="background:#BDBDBD;"></span> Inny</div>';
+            div.innerHTML = landCoverLegendHtml();
             return div;
         };
         landCoverLegend.addTo(map);
@@ -865,9 +1134,6 @@
 
     // ===== Utilities =====
 
-    function disableClick() { clickEnabled = false; }
-    function enableClick() { clickEnabled = true; }
-
     function setLoadingCursor(loading) {
         if (map) map.getContainer().style.cursor = loading ? 'wait' : '';
     }
@@ -876,34 +1142,67 @@
         if (map) setTimeout(function () { map.invalidateSize(); }, 50);
     }
 
-    function shiftZoomControls(show) {
-        var wrapper = document.getElementById('map-wrapper');
-        if (wrapper) {
-            wrapper.classList.toggle('results-visible', show);
+    // ===== Theme change: restyle every live overlay =====
+
+    onThemeChange(function () {
+        if (!map) return;
+        var c = colors();
+        if (selectionBoundaryLayer) selectionBoundaryLayer.setStyle(watershedStyle());
+        if (preview) preview.levels.setStyle(previewStyle);
+        if (watershedLayer) watershedLayer.setStyle(watershedStyle());
+        if (outletMarker) outletMarker.setStyle(outletStyle());
+        if (mainChannelLayer) mainChannelLayer.setStyle(mainChannelStyle);
+        if (longestFlowPathLayer) longestFlowPathLayer.setStyle({ color: c.warn });
+        if (divideFlowPathLayer) divideFlowPathLayer.setStyle({ color: c.warn });
+        drawMarkers.forEach(function (m) { m.setStyle(pointStyle(5)); });
+        if (drawPolyline) drawPolyline.setStyle(drawLineStyle());
+        if (profileLine) profileLine.setStyle(profileLineStyle());
+        if (profileHoverMarker) profileHoverMarker.setStyle(pointStyle(6));
+        // Colours only: the opacity set from the layers panel stays
+        if (bdotLakesLayer) bdotLakesLayer.setStyle({ color: c.info, fillColor: c.info });
+        if (bdotStreamsLayer) {
+            bdotStreamsLayer.setStyle(function (f) { return { color: bdotStreamColor(f) }; });
         }
-    }
+        if (hsgLayer) {
+            hsgLayer.setStyle(function (f) {
+                var color = hsgFeatureColor(f);
+                return { color: color, fillColor: color };
+            });
+        }
+        // Vector tiles take their style when drawn: redraw the visible ones
+        if (streamsLayer && map.hasLayer(streamsLayer)) streamsLayer.redraw();
+        if (landCoverLayer && map.hasLayer(landCoverLayer)) landCoverLayer.redraw();
+        if (streamsLegend) streamsLegend.getContainer().innerHTML = streamsLegendHtml();
+        if (hsgLegend) hsgLegend.getContainer().innerHTML = hsgLegendHtml();
+        if (landCoverLegend) landCoverLegend.getContainer().innerHTML = landCoverLegendHtml();
+    });
 
     window.Hydrograf.map = {
         init: init,
         _getMap: function () { return map; },
+        // Theme: token colours for overlays drawn by other modules
+        token: token,
+        mix: mix,
+        onThemeChange: onThemeChange,
         getDemLayer: getDemLayer,
-        fitDemBounds: fitDemBounds,
+        getDemBounds: getDemBounds,
+        getDataBounds: getDataBounds,
+        fitToBounds: fitToBounds,
         setDemOpacity: setDemOpacity,
         getStreamsLayer: getStreamsLayer,
         getStreamsThreshold: getStreamsThreshold,
         loadStreamsVector: loadStreamsVector,
-        fitStreamsBounds: fitStreamsBounds,
         setStreamsOpacity: setStreamsOpacity,
         showSelectionBoundary: showSelectionBoundary,
         clearSelectionBoundary: clearSelectionBoundary,
+        showDelineatePreview: showDelineatePreview,
+        clearDelineatePreview: clearDelineatePreview,
         showWatershed: showWatershed,
         getWatershedLayer: getWatershedLayer,
         showOutlet: showOutlet,
         clearWatershed: clearWatershed,
         showMainChannel: showMainChannel,
         clearMainChannel: clearMainChannel,
-        disableClick: disableClick,
-        enableClick: enableClick,
         setLoadingCursor: setLoadingCursor,
         invalidateSize: invalidateSize,
         // Drawing
@@ -923,12 +1222,10 @@
         loadBdotStreams: loadBdotStreams,
         getBdotStreamsLayer: getBdotStreamsLayer,
         setBdotStreamsOpacity: setBdotStreamsOpacity,
-        fitBdotBounds: fitBdotBounds,
         // HSG soil
         loadHsgLayer: loadHsgLayer,
         getHsgLayer: getHsgLayer,
         setHsgOpacity: setHsgOpacity,
-        fitHsgBounds: fitHsgBounds,
         // Land Cover (MVT)
         loadLandCoverVector: loadLandCoverVector,
         getLandCoverLayer: getLandCoverLayer,
@@ -939,8 +1236,6 @@
         // Divide flow path (from watershed boundary)
         showDivideFlowPath: showDivideFlowPath,
         clearDivideFlowPath: clearDivideFlowPath,
-        // Panel/zoom interaction
-        shiftZoomControls: shiftZoomControls,
         // Legends
         createStreamsLegend: createStreamsLegend,
         removeStreamsLegend: removeStreamsLegend,

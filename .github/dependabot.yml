@@ -1,0 +1,20 @@
+# Dependency updates (DEV-13.6), template from Nogat standards/ci/dependabot.yml.
+# Copy to .github/dependabot.yml. GitHub Actions only: weekly, grouped pull
+# requests into develop with Conventional Commit messages (`ci(deps): ...`)
+# that the gate accepts.
+# Python vulnerabilities: enable "Dependabot security updates" in the
+# repository settings (Code security). Third-party versions otherwise change
+# with release sets (REL §6), so there is no uv entry.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+      include: scope

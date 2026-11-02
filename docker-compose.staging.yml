@@ -1,0 +1,50 @@
+# Staging (green) stack of the store migration: docs/plans/2026-11-02-store-migration.md.
+# Use only through scripts/staging-compose.sh (project hydrograf-staging, this file, .env.staging).
+services:
+  db:
+    container_name: hydro_staging_db
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+          cpus: "1.0"
+
+  api:
+    image: hydrograf-api:store-staging
+    container_name: hydro_staging_api
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${HYDROGRAF_STAGING_DB:-hydro_db}
+      # The Kartograf store shared with Archiwista (ADR-066), mounted below.
+      HYDROGRAF_KARTOGRAF_ROOT: /kartograf
+    deploy:
+      resources:
+        limits:
+          memory: ${HYDROGRAF_STAGING_API_MEM:-3G}
+          cpus: "2.0"
+    volumes:
+      - ${HYDROGRAF_STAGING_ROOT:?Set HYDROGRAF_STAGING_ROOT}/cache:/cache
+      - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/data:/data
+      - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-data:/frontend/data
+      - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-tiles:/frontend/tiles
+      # Read-only for every container, the bootstrap included: Archiwista alone writes the
+      # shared store (ADR-067); the host-path mounts and the project mount come with H2.
+      - ${HYDROGRAF_KARTOGRAF_STORE:?Set HYDROGRAF_KARTOGRAF_STORE}:/kartograf:ro
+
+  nginx:
+    container_name: hydro_staging_nginx
+    # Localhost (the port S7 moves to 8080) and, until S7, the home network for testers
+    # (the LAN binding is removed after S7); production (hydro_nginx) stays on 127.0.0.1.
+    ports: !override
+      - "127.0.0.1:${HYDROGRAF_STAGING_PORT:-8081}:80"
+      - "192.168.88.9:8081:80"
+    volumes:
+      - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-data:/usr/share/nginx/html/data:ro
+      - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-tiles:/usr/share/nginx/html/tiles:ro
+
+volumes:
+  postgres_data:
+    name: hydrograf_staging_postgres_data
+
+networks:
+  default:
+    name: hydrograf_staging_default

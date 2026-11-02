@@ -234,6 +234,7 @@ def generate_tiles(
 
 
 def main() -> None:
+    """Run the DEM tile generator."""
     parser = argparse.ArgumentParser(
         description="Generate XYZ tile pyramid from DEM raster"
     )

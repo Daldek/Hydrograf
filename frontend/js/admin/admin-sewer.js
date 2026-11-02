@@ -19,7 +19,7 @@
         try {
             var apiKey = window.Hydrograf.adminApi.getApiKey();
             var resp = await fetch('/api/admin/sewer/status', {
-                headers: { 'X-Admin-Key': apiKey },
+                headers: { 'X-Admin-Key': apiKey, 'Accept-Language': 'pl' },
             });
 
             if (resp.status === 401 || resp.status === 403) {
@@ -81,7 +81,7 @@
             var apiKey = window.Hydrograf.adminApi.getApiKey();
             var resp = await fetch('/api/admin/sewer/upload', {
                 method: 'POST',
-                headers: { 'X-Admin-Key': apiKey },
+                headers: { 'X-Admin-Key': apiKey, 'Accept-Language': 'pl' },
                 body: formData,
             });
 
@@ -110,9 +110,10 @@
                     // Auto-configure source path to uploaded file
                     var sourcePath = 'data/sewer/' + data.filename;
                     await fetch('/api/admin/sewer/config', {
-                        method: 'POST',
+                        method: 'PUT',
                         headers: {
                             'X-Admin-Key': apiKey,
+                            'Accept-Language': 'pl',
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({ enabled: true, source_path: sourcePath }),
@@ -146,9 +147,10 @@
         try {
             var apiKey = window.Hydrograf.adminApi.getApiKey();
             var resp = await fetch('/api/admin/sewer/config', {
-                method: 'POST',
+                method: 'PUT',
                 headers: {
                     'X-Admin-Key': apiKey,
+                    'Accept-Language': 'pl',
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({ enabled: enabled }),
@@ -187,9 +189,9 @@
 
         try {
             var apiKey = window.Hydrograf.adminApi.getApiKey();
-            var resp = await fetch('/api/admin/sewer/delete', {
+            var resp = await fetch('/api/admin/sewer', {
                 method: 'DELETE',
-                headers: { 'X-Admin-Key': apiKey },
+                headers: { 'X-Admin-Key': apiKey, 'Accept-Language': 'pl' },
             });
 
             var data = await resp.json();

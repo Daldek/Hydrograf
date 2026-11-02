@@ -41,9 +41,12 @@ class TestMainRejectsBadBbox:
             "argv",
             [
                 "bootstrap",
-                "--bbox", "21.2,52.1,20.8,52.4",
-                "--output", str(tmp_path / "data"),
-                "--cache-dir", str(tmp_path / "cache"),
+                "--bbox",
+                "21.2,52.1,20.8,52.4",
+                "--output",
+                str(tmp_path / "data"),
+                "--cache-dir",
+                str(tmp_path / "cache"),
                 "--dry-run",
             ],
         )
@@ -60,9 +63,12 @@ class TestMainRejectsBadBbox:
             "argv",
             [
                 "bootstrap",
-                "--sheets", "abc",
-                "--output", str(tmp_path / "data"),
-                "--cache-dir", str(tmp_path / "cache"),
+                "--sheets",
+                "abc",
+                "--output",
+                str(tmp_path / "data"),
+                "--cache-dir",
+                str(tmp_path / "cache"),
                 "--dry-run",
             ],
         )

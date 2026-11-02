@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<!-- Theme before first paint -->
+<script src="../js/theme-init.js?v=38a679da99"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hydrograf — przewodnik użytkownika</title>
+<link rel="icon" type="image/svg+xml" href="../img/hydrograf.svg">
+<!-- Nogat design tokens, shell chrome, then the guide -->
+<link rel="stylesheet" href="../css/tokens.css?v=d620ffee72">
+<link rel="stylesheet" href="../css/chrome.css?v=71eb63c310">
+<link rel="stylesheet" href="instrukcja.css?v=61601d7650">
+</head>
+<body>
+<div class="shell">
+
+<!-- Top bar: mark + tool name, context, theme -->
+<header class="topbar">
+  <a class="brand" href="/" aria-label="Hydrograf, strona główna">
+    <img src="../img/hydrograf.svg" alt="">
+    <span class="name">Hydrograf</span>
+  </a>
+  <nav class="crumbs" aria-label="Kontekst">
+    <strong>Instrukcja</strong>
+  </nav>
+  <div class="top-actions">
+    <div class="seg" role="group" aria-label="Motyw">
+      <button type="button" id="theme-auto" aria-pressed="true" title="Motyw systemowy">
+        <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor"/></svg>
+        <span class="label">Auto</span>
+      </button>
+      <button type="button" id="theme-light" aria-pressed="false" title="Jasny">
+        <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4"/></svg>
+        <span class="label">Jasny</span>
+      </button>
+      <button type="button" id="theme-dark" aria-pressed="false" title="Ciemny">
+        <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 12.5A6.5 6.5 0 0 1 7.5 4a6.5 6.5 0 1 0 8.5 8.5z"/></svg>
+        <span class="label">Ciemny</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Navigation rail (bottom bar on phones) -->
+<nav class="rail" aria-label="Widoki">
+  <a class="rail-item" href="/">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>
+    Mapa
+  </a>
+  <a class="rail-item active" href="/instrukcja/" aria-current="page">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.5h5.5A3.5 3.5 0 0 1 12 8v12a2.5 2.5 0 0 0-2.5-2.5H3z"/><path d="M21 4.5h-5.5A3.5 3.5 0 0 0 12 8v12a2.5 2.5 0 0 1 2.5-2.5H21z"/></svg>
+    Instrukcja
+  </a>
+  <a class="rail-item" href="/admin">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>
+    Logowanie
+  </a>
+</nav>
+
+<main class="main deck">
+<!-- Slides: the same markup as docs/Hydrograf-prezentacja.html (image paths differ) -->
+<section class="slide cover" id="start" aria-label="Slajd 1: Hydrograf, wersja rozwojowa">
+  <p class="kicker">Przewodnik użytkownika</p>
+  <div class="cover-title"><img class="cover-mark" src="../img/hydrograf.svg" alt=""><h1>Hydrograf</h1></div>
+  <span class="dev">WERSJA ROZWOJOWA</span>
+  <div class="rule"></div>
+  <p class="lead">Mapa, zlewnie, opad i odpływ — od pierwszego kliknięcia do własnych scenariuszy.</p>
+  <p class="minor">Wyniki, wygląd i funkcje mogą się jeszcze zmieniać. Liczymy na Wasze uwagi — przycisk „Zgłoś uwagę” znajdziesz na górnym pasku nad mapą.</p>
+  <div class="footer"><span>HYDROGRAF · PRZEWODNIK UŻYTKOWNIKA</span><span>01 / 30</span></div>
+</section>
+<section class="slide" id="spis" aria-label="Slajd 2: spis treści">
+  <p class="kicker">Spis treści</p>
+  <h2>Co znajdziesz w przewodniku</h2>
+  <nav class="toc" aria-label="Rozdziały przewodnika">
+    <a class="toc-start" href="#czym-jest"><span class="toc-head"><span class="toc-num">▶</span><strong>Na start — bez szczegółów technicznych</strong></span><span>Czym jest Hydrograf, czego się po nim spodziewać, na jakie pytania odpowiada, jak zacząć i gdzie są dane</span><span class="toc-pages">Slajdy 3–6</span></a>
+    <a href="#zanim-zaczniesz"><span class="toc-head"><span class="toc-num">01</span><strong>Zanim zaczniesz</strong></span><span>Obszar danych, komunikaty, status wyników</span><span class="toc-pages">Slajd 7</span></a>
+    <a href="#ekran"><span class="toc-head"><span class="toc-num">02</span><strong>Orientacja</strong></span><span>Ekran, górny pasek, cztery tryby pracy</span><span class="toc-pages">Slajdy 8–9</span></a>
+    <a href="#warstwy"><span class="toc-head"><span class="toc-num">03</span><strong>Warstwy</strong></span><span>Panel, podkłady, linie spływu, SFINCS, mapa zagrożenia powodziowego</span><span class="toc-pages">Slajdy 10–14</span></a>
+    <a href="#wyznaczanie"><span class="toc-head"><span class="toc-num">04</span><strong>Zlewnia</strong></span><span>Wyznaczanie, wynik, parametry, objaśnienia (i)</span><span class="toc-pages">Slajdy 15–19</span></a>
+    <a href="#hietogram"><span class="toc-head"><span class="toc-num">05</span><strong>Opad i odpływ</strong></span><span>PMAXTP, własna seria, hydrogram, AMC, tryb zaawansowany</span><span class="toc-pages">Slajdy 20–25</span></a>
+    <a href="#krok-sfincs"><span class="toc-head"><span class="toc-num">06</span><strong>SFINCS w praktyce</strong></span><span>Odczyt mapy, porównanie z hydrogramem</span><span class="toc-pages">Slajdy 26–27</span></a>
+    <a href="#profil"><span class="toc-head"><span class="toc-num">07</span><strong>Profil terenu</strong></span><span>Linia i wykres wysokości</span><span class="toc-pages">Slajd 28</span></a>
+    <a href="#telefon"><span class="toc-head"><span class="toc-num">08</span><strong>Telefon i motyw</strong></span><span>Układ do 860&nbsp;px, jasny i ciemny motyw</span><span class="toc-pages">Slajd 29</span></a>
+    <a href="#uwagi"><span class="toc-head"><span class="toc-num">09</span><strong>Zgłoś uwagę</strong></span><span>Formularz dla testerów</span><span class="toc-pages">Slajd 30</span></a>
+  </nav>
+  <p class="hint"><strong>Pierwszy raz?</strong> Wystarczą slajdy 3–6 — po nich możesz od razu pracować z mapą. Rozdziały 01–09 opisują każdą funkcję szczegółowo (z przykładami krok po kroku na slajdach 22, 24 i 26); wracaj do nich, gdy będą potrzebne.</p>
+  <div class="footer"><span>NA START + 9 ROZDZIAŁÓW · 30 SLAJDÓW</span><span>02 / 30</span></div>
+</section>
+<section class="slide" id="czym-jest" aria-label="Slajd 3: czym jest Hydrograf">
+  <p class="kicker">Na start</p>
+  <h2>Czym jest Hydrograf?</h2>
+  <div class="cols">
+    <div class="col">
+      <div class="card"><span class="label">W skrócie</span><p>Hydrograf to mapa w przeglądarce, która pokazuje, jak woda spływa po terenie. Wskazujesz miejsce przy rzece lub potoku, a Hydrograf wyznacza obszar, z którego spływa tam woda, opisuje go liczbami i szacuje, ile wody może spłynąć po silnym deszczu.</p></div>
+      <div class="card"><span class="label">Bez instalacji</span><p>Wystarczy przeglądarka — na komputerze lub telefonie. Nie trzeba znać programów do map (GIS) ani wzorów: Hydrograf liczy sam, a znak (i) przy każdej wartości wyjaśnia, co ona znaczy.</p></div>
+    </div>
+    <div class="col">
+      <h3 class="label">Kilka słów, które spotkasz</h3>
+      <dl class="defs">
+        <div><dt>Zlewnia</dt><dd>Cały obszar, z którego deszcz spływa do wybranego miejsca na rzece; jej granica biegnie grzbietami wzniesień.</dd></div>
+        <div><dt>Ciek</dt><dd>Rzeka, potok lub rów, którym płynie woda.</dd></div>
+        <div><dt>NMT</dt><dd>Numeryczny model terenu — cyfrowa mapa wysokości, z której Hydrograf odczytuje, dokąd spływa woda.</dd></div>
+        <div><dt>Linie spływu</dt><dd>Drogi, którymi woda spływa po terenie, wyliczone z NMT; to na nich wskazuje się miejsce.</dd></div>
+        <div><dt>Opad projektowy</dt><dd>Umowny silny deszcz, np. taki, który zdarza się średnio raz na 100 lat.</dd></div>
+        <div><dt>Hydrogram</dt><dd>Wykres pokazujący, jak po deszczu rośnie i opada ilość wody płynącej w cieku.</dd></div>
+      </dl>
+    </div>
+  </div>
+  <div class="footer"><span>NA START · CZYM JEST HYDROGRAF</span><span>03 / 30</span></div>
+</section>
+<section class="slide" id="czego-oczekiwac" aria-label="Slajd 4: czego się spodziewać, a czego nie">
+  <p class="kicker">Na start</p>
+  <h2>Czego się spodziewać — a czego nie</h2>
+  <div class="cols">
+    <div class="col">
+      <h3 class="label">Hydrograf da Ci</h3>
+      <div class="card"><span class="label">Obraz zlewni w kilka sekund</span><p>Granicę na mapie, powierzchnię, wysokości i spadki terenu, udział lasów, pól, łąk i zabudowy oraz rodzaje gleb.</p></div>
+      <div class="card"><span class="label">Szacunek odpływu po ulewie</span><p>Ile wody i jak szybko może spłynąć do wybranego miejsca po silnym deszczu — dla zlewni do 250&nbsp;km².</p></div>
+      <div class="card"><span class="label">Przekrój terenu</span><p>Wykres wysokości wzdłuż dowolnej linii narysowanej na mapie.</p></div>
+    </div>
+    <div class="col">
+      <h3 class="label">Hydrograf nie jest</h3>
+      <div class="card"><span class="label">Prognozą powodzi</span><p>Nie korzysta z bieżących pomiarów ani prognoz pogody — nie powie, czy rzeka wyleje jutro. Ostrzeżenia hydrologiczne wydaje IMGW-PIB.</p></div>
+      <div class="card"><span class="label">Źródłem dokładnych liczb</span><p>Wyniki to szacunki z uproszczonych modeli; prawdziwy przepływ może być wyraźnie inny. Do decyzji i projektów potrzebna jest ocena specjalisty.</p></div>
+      <div class="card"><span class="label">Oficjalną mapą zagrożenia</span><p>Mapa głębokości wody to wstępny wynik dla jednej małej zlewni. Oficjalne mapy zagrożenia powodziowego publikują Wody Polskie.</p></div>
+    </div>
+  </div>
+  <p class="hint warn"><strong>Wersja rozwojowa:</strong> wygląd, funkcje i liczby mogą się jeszcze zmieniać.</p>
+  <div class="footer"><span>NA START · MOŻLIWOŚCI I OGRANICZENIA</span><span>04 / 30</span></div>
+</section>
+<section class="slide" id="zastosowania" aria-label="Slajd 5: pytania i użytkownicy">
+  <p class="kicker">Na start</p>
+  <h2>Na jakie pytania odpowiada i komu się przyda?</h2>
+  <div class="cols">
+    <div class="col">
+      <h3 class="label">Przykładowe pytania</h3>
+      <dl class="defs">
+        <div><dt>Skąd spływa woda do tego miejsca?</dt><dd>Granica zlewni na mapie.</dd></div>
+        <div><dt>Jak duża jest zlewnia i jak ukształtowana?</dt><dd>Powierzchnia, wysokości, spadki, kształt.</dd></div>
+        <div><dt>Co pokrywa teren?</dt><dd>Udział lasów, pól, łąk, zabudowy i wód oraz rodzaje gleb.</dd></div>
+        <div><dt>Ile wody może spłynąć po ulewie?</dt><dd>Hydrogram: największy przepływ, czas do jego wystąpienia, objętość wody.</dd></div>
+        <div><dt>Jak wygląda teren wzdłuż linii?</dt><dd>Profil terenu: wykres wysokości.</dd></div>
+      </dl>
+    </div>
+    <div class="col">
+      <h3 class="label">Kto może korzystać</h3>
+      <div class="card"><span class="label">Przyrodnicy</span><p>Skąd pochodzi woda zasilająca potok, mokradło czy staw i jakie tereny — lasy, pola, zabudowa — ją otaczają.</p></div>
+      <div class="card"><span class="label">Samorządy</span><p>Wstępnie: skąd po ulewie spływa woda w stronę dróg i zabudowy, zanim zleci się dokładne obliczenia.</p></div>
+      <div class="card"><span class="label">Studenci i nauczyciele</span><p>Hydrologia na prawdziwych danych — bez instalowania programów.</p></div>
+      <div class="card"><span class="label">Projektanci</span><p>Szybki pierwszy szacunek parametrów zlewni i odpływu przed szczegółowym projektem.</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>NA START · PYTANIA · UŻYTKOWNICY</span><span>05 / 30</span></div>
+</section>
+<section class="slide" id="jak-zaczac" aria-label="Slajd 6: jak zacząć w trzech krokach">
+  <p class="kicker">Na start</p>
+  <h2>Jak zacząć — w trzech krokach</h2>
+  <div class="grid three">
+    <div class="step"><span class="number">01</span><strong>Pokaż drogi wody</strong><p>W panelu „Warstwy” (na telefonie przycisk „Warstwy” nad mapą) zaznacz „Linie spływu”. Niebieskie linie pokażą, którędy płynie woda.</p></div>
+    <div class="step"><span class="number">02</span><strong>Wskaż miejsce</strong><p>Na pasku nad mapą wybierz „Wybierz zlewnię” i kliknij przy niebieskiej linii — w miejscu, dla którego chcesz poznać zlewnię.</p></div>
+    <div class="step"><span class="number">03</span><strong>Przeczytaj wynik</strong><p>Na mapie pojawi się granica zlewni, a w panelu „Zlewnia” — powierzchnia, wysokości, pokrycie terenu, a niżej deszcz i odpływ.</p></div>
+  </div>
+  <p class="hint"><strong>Gdzie są dane?</strong> Na razie tylko w zlewni Kaczawy — od źródeł w Górach Kaczawskich do Legnicy (ok.&nbsp;790&nbsp;km²), m.in. okolice Złotoryi i Świerzawy. Mapa po otwarciu sama pokazuje ten obszar; poza nim Hydrograf nie wyznaczy zlewni.</p>
+  <p class="hint">Szczegóły każdej funkcji — od slajdu 7. Coś nie działa albo masz pomysł? Przycisk „Zgłoś uwagę” na górnym pasku.</p>
+  <div class="footer"><span>NA START · TRZY KROKI · OBSZAR DANYCH</span><span>06 / 30</span></div>
+</section>
+<section class="slide" id="zanim-zaczniesz" aria-label="Slajd 7: obszar danych i status wyników">
+  <p class="kicker">01 · Zanim zaczniesz</p>
+  <h2>Obszar danych i status wyników</h2>
+  <div class="grid three">
+    <div class="card"><span class="label">Obszar danych</span><p>Dane obejmują tylko zlewnię Kaczawy powyżej punktu 51,222825°&nbsp;N, 16,179380°&nbsp;E (ok.&nbsp;790&nbsp;km²). Po otwarciu mapa sama pokazuje ten obszar, a warstwy kończą się na jego granicy.</p></div>
+    <div class="card"><span class="label">Poza obszarem</span><p>Kliknięcie w trybie „Wybierz zlewnię” poza liniami spływu kończy się komunikatem „Nie znaleziono zlewni cząstkowej w tym punkcie. Kliknij w obszarze pokrytym liniami spływu.” Profil przecinający granicę danych może pokazać 0&nbsp;m na odcinku bez danych; profil całkiem poza nimi może zwrócić błąd.</p></div>
+    <div class="card"><span class="label">Status wyników</span><p>To wersja rozwojowa: wartości i funkcje mogą się zmieniać. Hietogram i hydrogram powstają tylko dla zlewni do 250&nbsp;km². Mapa głębokości wody SFINCS to wynik wstępny, do podmiany.</p></div>
+  </div>
+  <p class="hint">Zgubiłeś obszar? Ikona ramki „Przybliż do zasięgu warstw” w panelu „Warstwy” pokazuje zasięg włączonych warstw, a gdy żadna nie jest włączona — cały obszar danych.</p>
+  <div class="footer"><span>OBSZAR DANYCH · KOMUNIKATY · STATUS</span><span>07 / 30</span></div>
+</section>
+<section class="slide" id="ekran" aria-label="Slajd 8: układ ekranu">
+  <p class="kicker">02 · Orientacja</p>
+  <h2>Co jest na ekranie?</h2>
+  <div class="split">
+    <img class="app-shot wide-shot" src="Hydrograf-v2-zlewnia.png" width="1544" height="1055" alt="Ekran po wyznaczeniu zlewni Kamiennika: nad mapą pasek trybów z aktywnym „Wybierz zlewnię” i podpowiedzią; na mapie linie spływu z legendą, granica zlewni i ujście; po prawej panel „Zlewnia” z ujściem 51.01544 °N, 15.88984 °E, kluczowymi wartościami (37.23 km², CN 67.9, 363 m n.p.m., 8.20 %) i rozwiniętą sekcją Parametry podstawowe.">
+    <div class="stack">
+      <div class="card"><span class="label">Górny pasek</span><p>Kontekst („Mapa / Zlewnia … km²”), „Zgłoś uwagę” i motyw Auto · Jasny · Ciemny.</p></div>
+      <div class="card"><span class="label">Panele</span><p>Po lewej szyna Mapa · Instrukcja · Logowanie i panel „Warstwy”, po prawej panel „Zlewnia” z wynikiem i współrzędnymi ujścia w tytule. „Instrukcja” otwiera okno powitalne z odnośnikiem do tego przewodnika, „Logowanie” — panel administratora ze stanem usług.</p></div>
+      <div class="card"><span class="label">Nad mapą</span><p>Tryby pracy i podpowiedź. Przy zwiniętym panelu pojawia się tu przycisk „Warstwy” lub „Zlewnia”.</p></div>
+    </div>
+  </div>
+  <p class="hint">Krawędź panelu przeciągnij, by zmienić szerokość; dwuklik przywraca domyślną, a przeglądarka zapamięta wybór. × w „Warstwach” zwija panel, × w „Zlewni” chowa go, a wynik zostaje na mapie (przycisk „Zlewnia” go przywraca); kosz w „Zlewni” czyści wynik.</p>
+  <div class="footer"><span>GÓRNY PASEK · PANELE · PASEK TRYBÓW</span><span>08 / 30</span></div>
+</section>
+<section class="slide" id="tryby" aria-label="Slajd 9: cztery tryby pracy">
+  <p class="kicker">02 · Orientacja</p>
+  <h2>Cztery tryby pracy</h2>
+  <img class="app-shot strip-shot" src="Hydrograf-tryby.png" width="763" height="81" alt="Pasek nad mapą: tryby Przeglądanie, Wybierz zlewnię (aktywny), Profil terenu i Identyfikuj oraz podpowiedź „Kliknij na mapie w pobliżu cieku”.">
+  <div class="grid four">
+    <div class="card"><span class="label">Przeglądanie</span><p>Przesuwaj mapę i przybliżaj ją kółkiem myszy lub przyciskami + i − w prawym dolnym rogu. Kliknięcie niczego nie zaznacza. Ten tryb zwija panel „Zlewnia”, ale wyniku nie usuwa.</p></div>
+    <div class="card"><span class="label">Wybierz zlewnię</span><p>Kursor zmienia się w krzyżyk, a panel „Zlewnia” się otwiera. Kliknij przy linii spływu — Hydrograf wyznaczy zlewnię klikniętego odcinka (slajd 15).</p></div>
+    <div class="card"><span class="label">Profil terenu</span><p>Klikaj kolejne punkty linii. Zakończ, klikając ponownie ostatni punkt, dwuklikiem albo przyciskiem „Zakończ” na pasku rysowania; „Cofnij” (<kbd>Backspace</kbd>) usuwa punkt, „Anuluj” (<kbd>Esc</kbd>) porzuca linię. Wykres otworzy się w szufladzie u dołu mapy (slajd 28).</p></div>
+    <div class="card"><span class="label">Identyfikuj</span><p>Kliknij dowolne miejsce, a okienko na mapie pokaże, co Hydrograf o nim wie: współrzędne (przycisk „Kopiuj”), wysokość terenu, najbliższy ciek, pokrycie terenu i glebę. Gdy w „Warstwach” jest włączony wynik SFINCS — także głębokość wody.</p></div>
+  </div>
+  <p class="hint"><kbd>Esc</kbd> najpierw przerywa rysowanie, a potem zamyka okienko punktu. Gdy nic nie rysujesz, jedno naciśnięcie zwija panel „Zlewnia”, a dwa szybkie czyszczą wynik.</p>
+  <div class="footer"><span>PRZEGLĄDANIE · WYBIERZ ZLEWNIĘ · PROFIL TERENU · IDENTYFIKUJ</span><span>09 / 30</span></div>
+</section>
+<section class="slide" id="warstwy" aria-label="Slajd 10: panel Warstwy">
+  <p class="kicker">03 · Warstwy</p>
+  <h2>Panel „Warstwy”</h2>
+  <div class="split">
+    <img class="app-shot wide-shot crop-left" src="Hydrograf-v2-warstwy.png" width="1900" height="1044" alt="Panel „Warstwy”: grupa Warstwy podkładowe (NMT (wysokości), Zbiorniki wodne (BDOT10k), Cieki BDOT10k, Grupy glebowe (HSG), Pokrycie terenu (BDOT10k), Zagłębienia), grupa Wyniki analiz (Linie spływu i zaznaczona Głębokość wody — SFINCS z kryciem 80 % i znakiem (i)) oraz Podkłady kartograficzne z wybranym OpenFreeMap szary; każda warstwa ma suwak krycia. Obok fragment mapy z niebieskimi plamami głębokości wody przy Świerzawie i legendą Maks. głębokość wody [m] z klasami od 0,05–0,2 do > 2.">
+    <div class="stack">
+      <div class="card"><span class="label">Wiersz warstwy</span><p>Pole wyboru włącza warstwę, suwak ustawia krycie w %. Pełną nazwę skróconego wiersza pokaże najechanie kursorem.</p></div>
+      <div class="card"><span class="label">Trzy grupy</span><p>Warstwy podkładowe (teren, wody, gleby, pokrycie), Wyniki analiz (linie spływu, wyniki modeli) i Podkłady kartograficzne — mapa tła, zawsze jedna, oraz nakładka „Mapa zagrożenia powodziowego”.</p></div>
+      <div class="card"><span class="label">Przybliż do zasięgu</span><p>Ikona ramki obok tytułu panelu dopasowuje widok do włączonych warstw, a gdy żadna nie jest włączona — do całego obszaru danych.</p></div>
+      <div class="card"><span class="label">Legendy</span><p>Linie spływu, grupy glebowe, pokrycie terenu, wynik SFINCS i mapa zagrożenia powodziowego mają legendę w lewym dolnym rogu mapy, dopóki są włączone.</p></div>
+    </div>
+  </div>
+  <p class="hint">„Kanalizacja deszczowa” pojawia się na liście tylko wtedy, gdy serwer ma dane kanalizacji — dla obecnego obszaru ich nie ma.</p>
+  <div class="footer"><span>KRYCIE · ZASIĘG · LEGENDY</span><span>10 / 30</span></div>
+</section>
+<section class="slide" id="podklady" aria-label="Slajd 11: warstwy i podkłady">
+  <p class="kicker">03 · Warstwy</p>
+  <h2>Co pokazują warstwy i podkłady</h2>
+  <div class="cols">
+    <div class="col">
+      <h3 class="label">Warstwy podkładowe</h3>
+      <dl class="defs">
+        <div><dt>NMT (wysokości)</dt><dd>Numeryczny model terenu GUGiK: wysokość kolorem, z cieniowaniem rzeźby.</dd></div>
+        <div><dt>Zbiorniki wodne (BDOT10k)</dt><dd>Wody stojące z bazy topograficznej BDOT10k.</dd></div>
+        <div><dt>Cieki BDOT10k</dt><dd>Rzeki i potoki z bazy BDOT10k — z mapy, nie z NMT.</dd></div>
+        <div><dt>Grupy glebowe (HSG)</dt><dd>Hydrologiczne grupy gleb A–D, od przepuszczalnych do nieprzepuszczalnych.</dd></div>
+        <div><dt>Pokrycie terenu (BDOT10k)</dt><dd>Grunty orne, lasy, łąki, zabudowa, drogi, wody — z tych klas Hydrograf liczy CN.</dd></div>
+        <div><dt>Zagłębienia</dt><dd>Bezodpływowe obniżenia terenu wyznaczone z NMT.</dd></div>
+      </dl>
+    </div>
+    <div class="col">
+      <h3 class="label">Podkłady kartograficzne</h3>
+      <dl class="defs">
+        <div><dt>OpenFreeMap szary</dt><dd>Domyślny podkład wektorowy w odcieniach szarości.</dd></div>
+        <div><dt>OSM GUGiK szary (tylko Polska)</dt><dd>OpenStreetMap z serwera GUGiK, w szarości.</dd></div>
+        <div><dt>Ortofotomapa ESRI</dt><dd>Zdjęcia lotnicze i satelitarne.</dd></div>
+        <div><dt>bez podkładu</dt><dd>Same warstwy na jednolitym tle.</dd></div>
+        <div><dt>Mapa zagrożenia powodziowego</dt><dd>Nakładka nad podkładem: głębokość wody przy powodzi od rzeki według Wód Polskich — slajd 14.</dd></div>
+      </dl>
+      <h3 class="label">Wyniki analiz</h3>
+      <dl class="defs">
+        <div><dt>Linie spływu</dt><dd>Sieć wyliczona z NMT — slajd 12.</dd></div>
+        <div><dt>Głębokość wody — SFINCS…</dt><dd>Wynik modelu hydraulicznego — slajd 13.</dd></div>
+      </dl>
+    </div>
+  </div>
+  <p class="hint">Cieki BDOT10k pochodzą z mapy, a linie spływu Hydrograf wylicza z NMT — to na nich wyznacza zlewnie. Porównaj obie warstwy przed wyborem punktu.</p>
+  <div class="footer"><span>WARSTWY PODKŁADOWE · PODKŁADY · WYNIKI ANALIZ</span><span>11 / 30</span></div>
+</section>
+<section class="slide" id="linie-splywu" aria-label="Slajd 12: linie spływu i próg akumulacji spływu">
+  <p class="kicker">03 · Warstwy</p>
+  <h2>Linie spływu i próg akumulacji spływu</h2>
+  <div class="grid two">
+    <div class="card"><span class="label">Skąd się biorą</span><p>Hydrograf wylicza je z NMT: woda z każdej komórki terenu spływa w dół stoku, a linia zaczyna się tam, gdzie zbiera się z dostatecznie dużej powierzchni. Na tej sieci wyznacza się zlewnie.</p></div>
+    <div class="card"><span class="label">Grubość i kolor</span><p>Im większa zlewnia powyżej danego miejsca, tym linia grubsza i ciemniejsza. Skala legendy „Linie spływu — zlewnia [km²]” biegnie od 0.001 do 20&nbsp;km².</p></div>
+    <div class="card"><span class="label">Dymek nad linią</span><p>Najedź kursorem na linię: „Zlewnia” to powierzchnia w km², dalej „Rząd Strahlera” i „Długość” odcinka w km. Odcinki kończą się na połączeniach cieków.</p></div>
+    <div class="card"><span class="label">Próg akumulacji spływu</span><p>Pole pod włączoną warstwą: 1&nbsp;ha — gęstsza sieć, także bardzo małe zlewnie — albo 10&nbsp;ha (domyślnie). Zlewnia jest wyznaczana na sieci z wybranym progiem.</p></div>
+  </div>
+  <p class="hint">Próg akumulacji spływu to najmniejsza powierzchnia, z której musi spływać woda, żeby powstała linia. Hydrograf podaje go w hektarach, a od 1&nbsp;km² (100&nbsp;ha) w km²: 1&nbsp;ha = 10&nbsp;000&nbsp;m², 10&nbsp;ha = 0,1&nbsp;km².</p>
+  <div class="footer"><span>SIEĆ Z NMT · DYMEK · PRÓG AKUMULACJI</span><span>12 / 30</span></div>
+</section>
+<section class="slide" id="sfincs" aria-label="Slajd 13: głębokość wody z modelu SFINCS">
+  <p class="kicker">03 · Warstwy</p>
+  <h2>Głębokość wody z modelu SFINCS</h2>
+  <div class="split">
+    <img class="app-shot wide-shot" src="Hydrograf-v2-sfincs.png" width="1888" height="1006" alt="Mapa z włączoną warstwą Głębokość wody — SFINCS, opad 12 h, p = 1% (krycie 80 %): niebieskie plamy maksymalnej głębokości wody w zlewni Kamiennika wzdłuż dolin od Świerzawy przez Rzeszówek po Muchów; po lewej panel „Warstwy”, w lewym dolnym rogu mapy legenda Maks. głębokość wody [m].">
+    <div class="stack">
+      <div class="card"><span class="label">Co pokazuje</span><p>Największą głębokość wody w każdym miejscu w symulacji modelem hydraulicznym 2D SFINCS: zlewnia Kamiennika (ok.&nbsp;37&nbsp;km²), opad 12&nbsp;h, p&nbsp;=&nbsp;1&nbsp;% — 105,0&nbsp;mm wg PMAXTP.</p></div>
+      <div class="card"><span class="label">Legenda</span><p>„Maks. głębokość wody [m]”: 0,05–0,2 · 0,2–0,5 · 0,5–1 · 1–2 · &gt;&nbsp;2. Domyślne krycie — 80&nbsp;%.</p></div>
+      <div class="card"><span class="label">(i) przy nazwie</span><p>Założenia i źródła: NMT 5&nbsp;m bez zmian (zapora zbiornika Świerzawa bez upustu dennego), Manning i CN z BDOT10k i HSG, bez kalibracji.</p></div>
+    </div>
+  </div>
+  <p class="hint warn"><strong>WYNIK WSTĘPNY — do podmiany.</strong> Próg suchy/mokry huthresh&nbsp;=&nbsp;0,05&nbsp;m zatrzymał na zboczach wodę płytszą niż 5&nbsp;cm, więc głębokości w korytach i w czaszy zbiornika są silnie zaniżone. Nie traktuj tej mapy jako danych projektowych.</p>
+  <div class="footer"><span>WYNIK WSTĘPNY · NIE DO PROJEKTOWANIA</span><span>13 / 30</span></div>
+</section>
+<section class="slide" id="mzp" aria-label="Slajd 14: mapa zagrożenia powodziowego">
+  <p class="kicker">03 · Warstwy</p>
+  <h2>Mapa zagrożenia powodziowego (MZP)</h2>
+  <div class="split">
+    <img class="app-shot wide-shot" src="Hydrograf-v2-mzp.png" width="1872" height="1016" alt="Panel „Warstwy” z zaznaczoną nakładką Mapa zagrożenia powodziowego (krycie 80 %) i polem Prawdopodobieństwo powodzi ustawionym na 1 % — raz na 100 lat, pod nią lista podkładów z wybranym OpenFreeMap szary. Obok mapa Legnicy: niebieskie plamy głębokości wody wzdłuż Kaczawy i legenda Głębokość wody [m] — MZP, p = 1 % z klasami ≤ 0,5 · 0,5–2,0 · 2,0–4,0 · &gt; 4,0.">
+    <div class="stack">
+      <div class="card"><span class="label">Co to jest</span><p>Oficjalna mapa Wód Polskich z systemu ISOK: gdzie i jak głęboko stanie woda, gdy wyleje rzeka. Hydrograf pobiera ją wprost z serwera Wód Polskich.</p></div>
+      <div class="card"><span class="label">0,2&nbsp;% · 1&nbsp;% · 10&nbsp;%</span><p>Szansa na taką powódź w każdym roku: 10&nbsp;% — średnio raz na 10&nbsp;lat, 1&nbsp;% — raz na 100&nbsp;lat, 0,2&nbsp;% — raz na 500&nbsp;lat (rzadka, najwięcej wody). „Raz na 100 lat” nie znaczy „co 100 lat” — może przyjść dwa lata z rzędu.</p></div>
+      <div class="card"><span class="label">Jak włączyć</span><p>W „Podkładach kartograficznych” zaznacz „Mapa zagrożenia powodziowego” i wybierz prawdopodobieństwo. Mapa leży nad podkładem i NMT, ale pod wynikiem SFINCS.</p></div>
+    </div>
+  </div>
+  <p class="hint">Głębokości widać po przybliżeniu mapy (od skali ok. 1:50&nbsp;000) i tylko przy rzekach objętych mapami Wód Polskich. Dane: Wody Polskie / ISOK, licencja CC&nbsp;BY&nbsp;4.0.</p>
+  <div class="footer"><span>WODY POLSKIE · ISOK · 0,2 % · 1 % · 10 %</span><span>14 / 30</span></div>
+</section>
+<section class="slide" id="wyznaczanie" aria-label="Slajd 15: wyznaczanie zlewni">
+  <p class="kicker">04 · Zlewnia</p>
+  <h2>Wyznacz zlewnię w trzech krokach</h2>
+  <div class="grid three">
+    <div class="step"><span class="number">01</span><strong>Pokaż sieć</strong><p>W panelu „Warstwy” włącz „Linie spływu” i przybliż mapę do wybranego cieku.</p></div>
+    <div class="step"><span class="number">02</span><strong>Kliknij odcinek</strong><p>Włącz tryb „Wybierz zlewnię” i kliknij przy linii. Ujście wypadnie na dolnym końcu klikniętego odcinka — zwykle na najbliższym połączeniu cieków poniżej.</p></div>
+    <div class="step"><span class="number">03</span><strong>Poczekaj na granicę</strong><p>Zlewnie cząstkowe zapalają się od ujścia w górę i pulsują, aż serwer scali granicę — przy setkach km² nawet ponad minutę. Wynik trafi do panelu „Zlewnia”.</p></div>
+  </div>
+  <p class="hint warn"><strong>Przy zbiegu cieków</strong> przybliż mapę do poziomu pojedynczych budynków (zoom&nbsp;≥&nbsp;15) — kilka metrów decyduje, który odcinek zostanie wybrany. Potem sprawdź znacznik ujścia na mapie i współrzędne w tytule panelu.</p>
+  <p class="hint">Nowe kliknięcie od razu zastępuje poprzedni wynik. Poza obszarem danych panel pokaże „Błąd: Nie znaleziono zlewni cząstkowej w tym punkcie…”.</p>
+  <div class="footer"><span>OD KLIKNIĘCIA DO GRANICY ZLEWNI</span><span>15 / 30</span></div>
+</section>
+<section class="slide" id="wynik" aria-label="Slajd 16: wynik na mapie i w panelu">
+  <p class="kicker">04 · Zlewnia</p>
+  <h2>Wynik na mapie i w panelu</h2>
+  <div class="cols">
+    <div class="col">
+      <h3 class="label">Na mapie</h3>
+      <ul class="symbols">
+        <li><span class="sym sym-area" aria-hidden="true"></span><span><strong>Granica zlewni</strong> — kontur z jasnym wypełnieniem; mapa sama się do niej przybliża.</span></li>
+        <li><span class="sym sym-ring" aria-hidden="true"></span><span><strong>Ujście</strong> — kółko; po najechaniu „Ujście: … m n.p.m.”.</span></li>
+        <li><span class="sym sym-pair" aria-hidden="true"><span class="sym-line"></span><span class="sym-line faint"></span></span><span><strong>Ciek główny</strong> — odcinki zgodne z ciekami BDOT10k grubsze, pozostałe cieńsze i bledsze.</span></li>
+        <li><span class="sym sym-dash" aria-hidden="true"></span><span><strong>Najdłuższa droga spływu</strong> — od najdalszego punktu zlewni do ujścia.</span></li>
+        <li><span class="sym sym-dot" aria-hidden="true"></span><span><strong>Droga spływu z działu</strong> — od granicy zlewni do ujścia.</span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3 class="label">W panelu „Zlewnia”</h3>
+      <div class="card"><span class="label">Kluczowe wartości</span><p>Powierzchnia [km²], CN, Wys. średnia [m n.p.m.] i Spadek [%] — zawsze na górze panelu.</p></div>
+      <div class="card"><span class="label">Sekcje 1–8</span><p>Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Pokrycie terenu, Grupy glebowe (HSG), Hietogram, Hydrogram. Kliknij nagłówek, by rozwinąć; po prawej skrót, np. liczba wierszy, „HI …”, „rząd …”.</p></div>
+    </div>
+  </div>
+  <p class="hint">Kolory: granica i ujście — morski kolor Hydrografa, ciek główny — niebieski, drogi spływu — pomarańczowe. Hietogram i Hydrogram pojawiają się tylko dla zlewni do 250&nbsp;km².</p>
+  <div class="footer"><span>GRANICA · UJŚCIE · CIEK GŁÓWNY · DROGI SPŁYWU</span><span>16 / 30</span></div>
+</section>
+<section class="slide" id="parametry" aria-label="Slajd 17: parametry podstawowe i wskaźniki kształtu">
+  <p class="kicker">04 · Zlewnia</p>
+  <h2>Parametry podstawowe i wskaźniki kształtu</h2>
+  <div class="cols">
+    <div class="col">
+      <h3 class="label">1 · Parametry podstawowe</h3>
+      <dl class="defs">
+        <div><dt>Wymiary</dt><dd>Powierzchnia zlewni [km²], Obwód zlewni, Długość zlewni, Średnia szerokość [km].</dd></div>
+        <div><dt>Wysokości</dt><dd>Wysokość min., max. i średnia [m n.p.m.] z NMT.</dd></div>
+        <div><dt>Spadki</dt><dd>Średni spadek terenu i Spadek cieku głównego [%].</dd></div>
+        <div><dt>Ciek i drogi spływu</dt><dd>Długość cieku głównego (w tym ciek BDOT), Najdł. droga spływu, Droga spływu z działu [km].</dd></div>
+        <div><dt>CN (krzywa odpływu)</dt><dd>Średnia ważona z klas pokrycia terenu BDOT10k dla AMC II; grupy glebowe HSG jej nie zmieniają.</dd></div>
+        <div><dt>Ujście</dt><dd>Szerokość φ, długość λ [°] i wysokość [m n.p.m.].</dd></div>
+      </dl>
+    </div>
+    <div class="col">
+      <h3 class="label">2 · Wskaźniki kształtu (bez jednostek)</h3>
+      <dl class="defs">
+        <div><dt>C<sub>z</sub> zwartości</dt><dd>Obwód zlewni do obwodu koła o tej samej powierzchni; dla koła 1.</dd></div>
+        <div><dt>C<sub>k</sub> kolistości</dt><dd>Powierzchnia zlewni do powierzchni koła o tym samym obwodzie.</dd></div>
+        <div><dt>C<sub>w</sub> wydłużenia</dt><dd>Średnica koła o powierzchni zlewni do długości zlewni.</dd></div>
+        <div><dt>C<sub>f</sub> formy</dt><dd>Powierzchnia zlewni do kwadratu jej długości.</dd></div>
+        <div><dt>C<sub>l</sub> lemniskaty</dt><dd>Koło o średnicy równej długości zlewni do powierzchni zlewni.</dd></div>
+      </dl>
+    </div>
+  </div>
+  <p class="hint">Wiersze bez wartości są pomijane. Wydłużona zlewnia daje zwykle niższą i późniejszą falę niż zwarta; w bardzo małych zlewniach wskaźniki bywają niespójne (np. C<sub>z</sub> &lt; 1) — szczegóły w (i).</p>
+  <div class="footer"><span>WYMIARY · WYSOKOŚCI · SPADKI · KSZTAŁT</span><span>17 / 30</span></div>
+</section>
+<section class="slide" id="rzezba" aria-label="Slajd 18: rzeźba terenu, sieć rzeczna, pokrycie i gleby">
+  <p class="kicker">04 · Zlewnia</p>
+  <h2>Rzeźba, sieć rzeczna, pokrycie i gleby</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-v2-rzezba.png" width="503" height="1044" alt="Panel „Zlewnia” dla zlewni Kamiennika (37.23 km²) z rozwiniętą sekcją 3 Rzeźba terenu, w nagłówku HI 0.49: krzywa hipsometryczna — wysokość [m n.p.m.] od powierzchni powyżej [%] — i wiersze Wsk. rzeźby R, Spadek działu wodnego Rp oraz Całka hipsometryczna HI; niżej zwinięte sekcje Sieć rzeczna (rząd 4), Pokrycie terenu (6 klas) i Grupy glebowe (HSG) (1 grupa).">
+    <div class="stack">
+      <div class="card"><span class="label">3 · Krzywa hipsometryczna</span><p>Dla każdej wysokości pokazuje, jaka część powierzchni zlewni leży wyżej (oś „Pow. powyżej [%]”). Pole pod krzywą to całka HI, podana też w nagłówku sekcji: im wyższa, tym więcej terenu wysoko nad ujściem.</p></div>
+      <div class="card"><span class="label">3 · Wskaźniki rzeźby</span><p>Wsk. rzeźby R i Spadek działu wodnego R<sub>p</sub> [‰]: deniwelacja zlewni odniesiona do pierwiastka z powierzchni i do obwodu.</p></div>
+      <div class="card"><span class="label">4 · Sieć rzeczna</span><p>Gęstość sieci D<sub>d</sub>, Częstość cieków F<sub>s</sub>, Liczba chropowatości R<sub>n</sub>, Max rząd Strahlera, Pokrycie BDOT — z odcinków zgodnych z ciekami BDOT10k; bez nich „brak cieków BDOT”.</p></div>
+      <div class="card"><span class="label">5–6 · Pokrycie i gleby</span><p>Słupki z udziałem klas pokrycia terenu (grunty orne, lasy, łąki i pastwiska, zabudowa, drogi, wody, inne) i grup glebowych A–D; sekcja HSG — tylko przy danych gleb.</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>KRZYWA HIPSOMETRYCZNA · SIEĆ RZECZNA · POKRYCIE · GLEBY</span><span>18 / 30</span></div>
+</section>
+<section class="slide" id="objasnienia" aria-label="Slajd 19: objaśnienia (i)">
+  <p class="kicker">04 · Zlewnia</p>
+  <h2>Objaśnienia (i)</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-v2-info.png" width="503" height="1044" alt="Panel zlewni Kamiennika 37,23 km² z rozwiniętą sekcją Sieć rzeczna i otwartym objaśnieniem Gęstość sieci Dd: definicja, wzór, zmienne z jednostkami, Znaczenie dla analizy, uwaga i źródła.">
+    <div class="stack">
+      <div class="card"><span class="label">Gdzie są</span><p>Przy wierszach parametrów, przy Qmax, tp, V i bilansie opadu, przy polach hietogramu i hydrogramu oraz przy wynikach analiz w panelu „Warstwy”.</p></div>
+      <div class="card"><span class="label">Jak otworzyć</span><p>Kliknij (i) albo dojdź do niego klawiszem <kbd>Tab</kbd> i naciśnij <kbd>Enter</kbd> lub spację; na telefonie dotknij (i). Ponowne kliknięcie, kliknięcie obok lub <kbd>Esc</kbd> zamyka objaśnienie. Samo najechanie kursorem go nie otwiera.</p></div>
+      <div class="card"><span class="label">Co zawiera</span><p>Definicję z symbolem, wzór, „gdzie:” ze zmiennymi i jednostkami, „Jednostka:”, blok „Znaczenie dla analizy”, a w razie potrzeby „Zakres stosowalności”, „Uwaga:” i „Źródła:”.</p></div>
+    </div>
+  </div>
+  <p class="hint">Pod polami „Model UH”, „Metoda Tc” i „Estymacja Nash” zawsze widać „Zakres stosowalności” wybranej opcji.</p>
+  <div class="footer"><span>DEFINICJA · WZÓR · ZNACZENIE · ŹRÓDŁA</span><span>19 / 30</span></div>
+</section>
+<section class="slide" id="hietogram" aria-label="Slajd 20: hietogram PMAXTP">
+  <p class="kicker">05 · Opad i odpływ</p>
+  <h2>Hietogram: scenariusz opadu PMAXTP</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-v2-pmaxtp.png" width="503" height="1044" alt="Hietogram dla zlewni Kamiennika: opad PMAXTP 1 h o prawdopodobieństwie 10%, rozkład Beta, AMC II; wykres opadu całkowitego i efektywnego oraz bilans poniżej.">
+    <div class="stack">
+      <div class="card"><span class="label">Opad PMAXTP</span><p>Suma opadu z atlasu PMAXTP (IMGW-PIB) w klikniętym punkcie. Czas trwania 5&nbsp;min–72&nbsp;h (domyślnie 1h), prawdopodobieństwo 0,01–99,9&nbsp;% (domyślnie 10&nbsp;%); p&nbsp;=&nbsp;1&nbsp;% to okres powtarzalności 100&nbsp;lat.</p></div>
+      <div class="card"><span class="label">Rozkład opadu</span><p>Podział sumy na kroki po 5&nbsp;min: Beta (α, β; domyślnie szczyt w 0,2 czasu trwania), DVWK (Euler II) — szczyt w 1/3 czasu, Blokowy — stałe natężenie.</p></div>
+      <div class="card"><span class="label">Uwilgotnienie AMC</span><p>I — suche, II — przeciętne (domyślne), III — mokre. AMC przelicza CN zlewni, a z nim straty, opad efektywny i cały hydrogram.</p></div>
+      <div class="card"><span class="label">Wykres i bilans</span><p>Wykres „Opad” pokazuje opad całkowity i efektywny oraz szczyt Pmax. Pod nim bilans: sumy obu opadów, wsp. odpływu, CN użyty (z AMC), retencja S i straty początkowe Ia.</p></div>
+    </div>
+  </div>
+  <p class="hint">Każda zmiana pola przelicza hietogram i hydrogram po chwili — nie ma przycisku „Oblicz”.</p>
+  <div class="footer"><span>CZAS TRWANIA · PRAWDOPODOBIEŃSTWO · ROZKŁAD · AMC</span><span>20 / 30</span></div>
+</section>
+<section class="slide" id="wlasna-seria" aria-label="Slajd 21: własna seria opadu">
+  <p class="kicker">05 · Opad i odpływ</p>
+  <h2>Własna seria opadu zamiast PMAXTP</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-v2-opad.png" width="503" height="1044" alt="Sekcja 7 Hietogram z wybraną Własną serią: Czas trwania 20 min i Krok czasowy 5 min, przyciski Wczytaj z bieżącego hietogramu, Importuj CSV i Wyczyść, opis formatu CSV, tabela czas–opad z wartościami 5, 20, 15 i 5 mm, suma 45.00 mm w 4 krokach po 5 min, uwilgotnienie II — przeciętne i wykres Opad z opisem własna seria · krok 5 min oraz szczytem Pmax.">
+    <div class="stack">
+      <div class="card"><span class="label">Tabela</span><p>W „Hietogramie” wybierz „Własna seria”. Czas trwania i krok [min] tworzą tabelę: czas trwania to wielokrotność kroku, krok do 1440&nbsp;min, najwyżej 2000&nbsp;kroków. „Czas [min]” to koniec kroku.</p></div>
+      <div class="card"><span class="label">Wartości</span><p>W „Opad [mm]” wpisz wysokość opadu w kroku (≥&nbsp;0, suma&nbsp;&gt;&nbsp;0) — nie natężenie w mm/h. Kolumnę z arkusza wklejasz od wybranej komórki w dół.</p></div>
+      <div class="card"><span class="label">Importuj CSV</span><p>Jedna kolumna — opad z bieżącym krokiem; dwie — czas [min] i opad [mm] w równych odstępach. Separator <code>,</code> <code>;</code> lub tabulator; nagłówek jest pomijany; przy <code>;</code> i tabulatorze działa przecinek dziesiętny.</p></div>
+      <div class="card"><span class="label">Przyciski</span><p>„Wczytaj z bieżącego hietogramu” kopiuje ostatni hietogram PMAXTP, „Wyczyść” opróżnia tabelę. Seria dotyczy jednej zlewni — nowa zlewnia ją czyści.</p></div>
+    </div>
+  </div>
+  <p class="hint">Błąd, np. czas trwania niebędący wielokrotnością kroku albo ujemny opad w wierszu, pokazuje czerwony komunikat; do czasu poprawy hydrogram nie jest przeliczany.</p>
+  <div class="footer"><span>TABELA · WKLEJANIE · CSV · KONTROLA</span><span>21 / 30</span></div>
+</section>
+<section class="slide" id="krok-opad" aria-label="Slajd 22: krok po kroku — własny opad">
+  <p class="kicker">05 · Krok po kroku</p>
+  <h2>Własny opad z arkusza lub pliku CSV</h2>
+  <div class="split">
+    <div class="steps-list">
+      <div class="step"><span class="number">01</span><strong>Przygotuj dane</strong><p>Kolumna opadu w równych krokach — wysokość w kroku [mm], nie natężenie [mm/h]; w CSV opcjonalnie kolumna czasu [min].</p></div>
+      <div class="step"><span class="number">02</span><strong>Przełącz źródło</strong><p>Wyznacz zlewnię, w sekcji „Hietogram” wybierz „Własna seria” i ustaw „Krok czasowy [min]” jak w danych.</p></div>
+      <div class="step"><span class="number">03</span><strong>Wklej albo zaimportuj</strong><p>Kliknij pierwszą komórkę kolumny „Opad [mm]” i wklej dane (<kbd>Ctrl</kbd>+<kbd>V</kbd>) — czas trwania sam się wydłuży. Albo użyj „Importuj CSV”.</p></div>
+      <div class="step"><span class="number">04</span><strong>Sprawdź komunikat i sumę</strong><p>„Wklejono … wartości od wiersza 1…” i „Suma: … mm · … kroków po … min”. Czerwony komunikat powie, co poprawić.</p></div>
+      <div class="step"><span class="number">05</span><strong>Odczytaj hydrogram</strong><p>Przeliczy się sam. To odpowiedź na to jedno zdarzenie — bez przypisanego prawdopodobieństwa.</p></div>
+    </div>
+    <img class="app-shot fit-shot" src="Hydrograf-v2-opad.png" width="503" height="1044" alt="Własna seria opadu dla Kamiennika: czas 20 minut, krok 5 minut, cztery wysokości opadu 5, 20, 15, 5 mm; suma 45 mm, AMC II i wykres.">
+  </div>
+  <p class="hint">Start od opadu projektowego: „Wczytaj z bieżącego hietogramu” kopiuje do tabeli ostatni hietogram PMAXTP tej zlewni — potem zmieniaj wartości.</p>
+  <div class="footer"><span>DANE · ŹRÓDŁO · WKLEJENIE · KONTROLA · WYNIK</span><span>22 / 30</span></div>
+</section>
+<section class="slide" id="hydrogram" aria-label="Slajd 23: hydrogram">
+  <p class="kicker">05 · Opad i odpływ</p>
+  <h2>Hydrogram: model, czas koncentracji, wynik</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-v2-hydrogram.png" width="503" height="1044" alt="Sekcja 8 Hydrogram dla zlewni Kamiennika: Model UH SCS i Metoda Tc NRCS (SCS Lag) z opisami Zakres stosowalności, wyłączony przełącznik Tryb zaawansowany, pasek z wartościami Qmax, tp i V ze znakami (i), wykres Hydrogram odpływu z zaznaczonym szczytem oraz wiersze Metoda Tc, Tc i Hydrogram jedn.">
+    <div class="stack">
+      <div class="card"><span class="label">Model UH</span><p>Hydrogram jednostkowy zamienia opad efektywny w przepływ: SCS (domyślny); Nash — kaskada zbiorników, „Estymacja Nash”: Lutz, Regresja urban. lub z Tc (deprecated, z polem N); Snyder — z długości cieku i odległości L<sub>c</sub>, ze współczynnikami Ct i Cp.</p></div>
+      <div class="card"><span class="label">Metoda Tc</span><p>Czas koncentracji dla SCS i Nasha z Tc: NRCS (SCS Lag), Kirpich, Giandotti, FAA (spływ pow.), Kerby, Kerby-Kirpich. FAA i obie metody Kerby’ego wymagają „L spływu [km]”; FAA ma też „C (spływ)”, Kerby — „N (opór)”. Snyder liczy własny czas opóźnienia z L i L<sub>c</sub> — wybór metody Tc nie zmienia jego wyniku.</p></div>
+      <div class="card"><span class="label">Wynik</span><p>Qmax — przepływ maksymalny [m³/s], tp — czas do szczytu [min], V — objętość odpływu [m³]; wykres „Hydrogram odpływu” i tabela: Metoda Tc, Tc, Hydrogram jedn. (dla Nasha także N i K).</p></div>
+      <div class="card"><span class="label">Zakres stosowalności</span><p>Pod wyborem: dla jakich zlewni powstała metoda (np. Kirpich — małe zlewnie rolnicze, Giandotti — duże). Aplikacja nie ostrzega o przekroczeniu zakresu — oceń to sam.</p></div>
+    </div>
+  </div>
+  <p class="hint">Hydrogram powstaje tylko dla zlewni do 250&nbsp;km²; dla większych sekcje „Hietogram” i „Hydrogram” nie pojawiają się — bez komunikatu.</p>
+  <div class="footer"><span>MODEL UH · METODA TC · QMAX · TP · V</span><span>23 / 30</span></div>
+</section>
+<section class="slide" id="krok-amc" aria-label="Slajd 24: krok po kroku — porównanie AMC">
+  <p class="kicker">05 · Krok po kroku</p>
+  <h2>Porównaj uwilgotnienie AMC</h2>
+  <div class="grid four">
+    <div class="step"><span class="number">01</span><strong>Ustal scenariusz</strong><p>Wyznacz zlewnię do 250&nbsp;km². W „Hietogramie” wybierz czas trwania, prawdopodobieństwo i rozkład — i nie zmieniaj ich do końca porównania.</p></div>
+    <div class="step"><span class="number">02</span><strong>Zapisz AMC II</strong><p>Przy „II — przeciętne” zanotuj z bilansu „Opad efektywny” i „CN użyty”, a z sekcji „Hydrogram” — Qmax, tp i V.</p></div>
+    <div class="step"><span class="number">03</span><strong>Przełącz na I i III</strong><p>Wybierz „I — suche”, potem „III — mokre”. Wyniki przeliczą się same — zanotuj te same wartości.</p></div>
+    <div class="step"><span class="number">04</span><strong>Porównaj</strong><p>Mokra zlewnia (III): wyższy CN, mniejsza retencja S i mniejsze straty Ia, więcej opadu efektywnego, wyższe Qmax i V. Sucha (I) — odwrotnie.</p></div>
+  </div>
+  <p class="hint">Przy AMC I i niewielkim opadzie odpływ może wyjść zerowy — cały opad mieszczą straty początkowe Ia. CN dla AMC I i III jest zaokrąglany do liczby całkowitej.</p>
+  <p class="hint">To samo porównanie działa dla własnej serii opadu, a tryb zaawansowany pozwala osobno sprawdzić wpływ samego CN.</p>
+  <div class="footer"><span>TEN SAM OPAD · TRZY STANY ZLEWNI</span><span>24 / 30</span></div>
+</section>
+<section class="slide" id="zaawansowany" aria-label="Slajd 25: tryb zaawansowany">
+  <p class="kicker">05 · Opad i odpływ</p>
+  <h2>Tryb zaawansowany: własne dane wejściowe</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-v2-zaawansowany.png" width="503" height="1044" alt="Tryb zaawansowany dla zlewni Kamiennika: pola morfometrii, wyróżnione CN 70,0 zamiast 67,9 z Hydrografa, przycisk przywracania i przeliczony hydrogram.">
+    <div class="stack">
+      <div class="card"><span class="label">Włącz</span><p>W sekcji „Hydrogram” włącz „Tryb zaawansowany”: 11 pól z wartościami zlewni (powierzchnia, obwód, długość, wysokości, spadki, ciek główny, odległość do środka ciężkości L<sub>c</sub>, CN) z dokładnością wyników.</p></div>
+      <div class="card"><span class="label">Zmień</span><p>Wpisz własną wartość — hydrogram przeliczy się po chwili. Pole dostaje znacznik „zmieniono” i podpis „Hydrograf: …”, przy przełączniku pojawia się licznik „Zmienione: N”, a nad wykresem — lista zmian.</p></div>
+      <div class="card"><span class="label">Przywróć</span><p>Strzałka przy polu cofa jedną zmianę, „Przywróć dane z Hydrografa” — wszystkie. Po wyłączeniu trybu wynik wraca do danych Hydrografa, a wpisy czekają na ponowne włączenie.</p></div>
+      <div class="card"><span class="label">Walidacja</span><p>Przy błędnym polu pojawia się opis, np. „Wartość musi być dodatnia.” albo „CN: liczba od 1 do 100 (np. 68.4).” — do poprawy hydrogram nie jest przeliczany.</p></div>
+    </div>
+  </div>
+  <p class="hint">Zmiany dotyczą tylko hietogramu i hydrogramu, nie panelu parametrów. Gdy Snyder zgłasza „Model Snydera wymaga …”, wpisz tutaj L<sub>c</sub>.</p>
+  <div class="footer"><span>WŁĄCZ · ZMIEŃ · PRZYWRÓĆ · SPRAWDŹ</span><span>25 / 30</span></div>
+</section>
+<section class="slide" id="krok-sfincs" aria-label="Slajd 26: krok po kroku — odczyt wyniku SFINCS">
+  <p class="kicker">06 · Krok po kroku</p>
+  <h2>Odczytaj wynik SFINCS</h2>
+  <div class="grid three rows">
+    <div class="step"><span class="number">01</span><strong>Włącz warstwę</strong><p>W „Warstwach” zaznacz „Głębokość wody — SFINCS, opad 12&nbsp;h, p&nbsp;=&nbsp;1%”. W lewym dolnym rogu mapy pojawi się legenda.</p></div>
+    <div class="step"><span class="number">02</span><strong>Pokaż cały wynik</strong><p>Wyłącz inne warstwy i kliknij „Przybliż do zasięgu warstw” — mapa pokaże zasięg modelu, czyli zlewnię Kamiennika.</p></div>
+    <div class="step"><span class="number">03</span><strong>Odczytaj klasę</strong><p>Kolor porównaj z legendą „Maks. głębokość wody [m]”. Zmniejsz krycie albo wybierz „Ortofotomapa ESRI”, by zobaczyć teren pod wodą.</p></div>
+    <div class="step"><span class="number">04</span><strong>Przeczytaj (i)</strong><p>Kliknij (i) przy nazwie warstwy: scenariusz, dane, ograniczenie i źródła. Na telefonie dotknij (i).</p></div>
+    <div class="step"><span class="number">05</span><strong>Porównaj z siecią</strong><p>Włącz „Linie spływu” lub „Cieki BDOT10k”. Rozległe płytkie plamy na zboczach i małe głębokości w korytach to skutek ograniczenia z (i).</p></div>
+    <div class="step"><span class="number">06</span><strong>Wnioskuj ostrożnie</strong><p>Traktuj mapę jako podgląd metody, nie zasięg zalewu. Jeśli coś wygląda nie tak — zgłoś uwagę.</p></div>
+  </div>
+  <p class="hint warn"><strong>Wynik wstępny, do podmiany:</strong> głębokości w korytach i w czaszy zbiornika są silnie zaniżone — mapa nie nadaje się do projektowania ani do decyzji.</p>
+  <div class="footer"><span>WARSTWA · ZASIĘG · LEGENDA · OBJAŚNIENIE</span><span>26 / 30</span></div>
+</section>
+<section class="slide" id="hydrogram-sfincs" aria-label="Slajd 27: hydrogram a mapa SFINCS">
+  <p class="kicker">06 · SFINCS w praktyce</p>
+  <h2>Hydrogram a mapa SFINCS — dwa różne wyniki</h2>
+  <table class="compare">
+    <thead><tr><td></td><th scope="col">Hydrogram (Hydrograf)</th><th scope="col">Mapa głębokości (SFINCS)</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Co pokazuje</th><td data-label="Hydrogram">Przepływ w ujściu w czasie: Qmax, tp, V.</td><td data-label="SFINCS">Największą głębokość wody w każdym miejscu zlewni.</td></tr>
+      <tr><th scope="row">Model</th><td data-label="Hydrogram">Hydrologiczny: straty SCS-CN i hydrogram jednostkowy (SCS, Nash, Snyder).</td><td data-label="SFINCS">Hydrauliczny 2D: przepływ wody po siatce 5&nbsp;m z NMT.</td></tr>
+      <tr><th scope="row">Czas</th><td data-label="Hydrogram">Cały przebieg fali: przepływ w kolejnych minutach.</td><td data-label="SFINCS">Na mapie tylko maksimum z całej symulacji, bez przebiegu w czasie.</td></tr>
+      <tr><th scope="row">Zakres</th><td data-label="Hydrogram">Każda wyznaczona zlewnia do 250&nbsp;km², liczony na żądanie.</td><td data-label="SFINCS">Jedna zlewnia (Kamiennik) i jeden scenariusz, policzone raz poza aplikacją.</td></tr>
+      <tr><th scope="row">Dane wejściowe</th><td data-label="Hydrogram">Opad PMAXTP w klikniętym punkcie lub własna seria; CN z pokrycia terenu, przeliczany wg AMC.</td><td data-label="SFINCS">Opad 12&nbsp;h, p&nbsp;=&nbsp;1&nbsp;% (105,0&nbsp;mm, PMAXTP w środku zlewni); Manning i CN z BDOT10k i HSG.</td></tr>
+      <tr><th scope="row">Status</th><td data-label="Hydrogram">Wersja rozwojowa — sprawdzaj „Zakres stosowalności”.</td><td data-label="SFINCS">Wynik wstępny, do podmiany; głębokości zaniżone.</td></tr>
+    </tbody>
+  </table>
+  <p class="hint">Ten sam scenariusz w Hydrografie: wyznacz zlewnię Kamiennika przy ujściu do Kaczawy (ujście ok.&nbsp;51.0154&nbsp;°N, 15.8898&nbsp;°E, ok.&nbsp;37&nbsp;km²) i ustaw 12h, 1%, rozkład Beta z domyślnymi α&nbsp;=&nbsp;2 i β&nbsp;=&nbsp;5. Dostaniesz hydrogram w ujściu, nie mapę zalewu — liczby obu modeli nie muszą się zgadzać.</p>
+  <div class="footer"><span>HYDROLOGIA W UJŚCIU · HYDRAULIKA NA MAPIE</span><span>27 / 30</span></div>
+</section>
+<section class="slide" id="profil" aria-label="Slajd 28: profil terenu">
+  <p class="kicker">07 · Profil terenu</p>
+  <h2>Przekrój terenu wzdłuż linii</h2>
+  <div class="split">
+    <img class="app-shot wide-shot" src="Hydrograf-v2-profil.png" width="1341" height="1060" alt="Dwa momenty pracy w trybie Profil terenu na mapie NMT koło Świerzawy. U góry: rysowanie — podpowiedź „Klikaj, aby dodać punkty; kliknij ostatni punkt lub dwuklik, aby zakończyć; Backspace cofa, Esc anuluje”, nad mapą pasek „3 punkty — dotknij ostatniego, aby zakończyć” z przyciskami Cofnij, Zakończ i Anuluj oraz przerywana linia przez trzy punkty. U dołu: szuflada Profil terenu po zakończeniu linii — Długość 8.94 km · H 281–389 m n.p.m. i wykres wysokości H [m n.p.m.] od odległości [km].">
+    <div class="steps-list">
+      <div class="step"><span class="number">01</span><strong>Włącz „Profil terenu”</strong><p>Na pasku nad mapą; pomaga warstwa „NMT (wysokości)”. Pojawi się pasek rysowania z licznikiem punktów.</p></div>
+      <div class="step"><span class="number">02</span><strong>Klikaj punkty linii</strong><p>Kliknięcie (dotknięcie) dodaje punkt; „Cofnij” lub <kbd>Backspace</kbd> usuwa ostatni, „Anuluj” lub <kbd>Esc</kbd> porzuca linię.</p></div>
+      <div class="step"><span class="number">03</span><strong>Zakończ linię</strong><p>Kliknij lub dotknij ponownie ostatni punkt, kliknij dwukrotnie albo naciśnij „Zakończ” (min. 2&nbsp;punkty). Szuflada pokaże długość, wysokości i wykres.</p></div>
+      <div class="step"><span class="number">04</span><strong>Odczytaj i zacznij od nowa</strong><p>Najechanie na wykres wskaże miejsce na linii. Kliknięcie mapy zaczyna nową linię; × w szufladzie zamyka profil.</p></div>
+    </div>
+  </div>
+  <p class="hint">Wykres ma zawsze 100&nbsp;punktów — przy długiej linii drobne formy terenu znikają. Część linii poza obszarem danych spada do 0&nbsp;m; linia całkiem poza nim daje „Nie udało się pobrać profilu terenu”. <strong>Woda na wykresie:</strong> gdy w panelu „Warstwy” jest włączony wynik modelu (np. SFINCS), a linia przecina zalany teren, wykres pokaże wodę na niebiesko — do najwyższego poziomu z symulacji. Najechanie na wodę poda poziom wody i głębokość.</p>
+  <div class="footer"><span>LINIA PROFILU · SZUFLADA · WYKRES WYSOKOŚCI</span><span>28 / 30</span></div>
+</section>
+<section class="slide" id="telefon" aria-label="Slajd 29: telefon i motyw">
+  <p class="kicker">08 · Telefon i motyw</p>
+  <h2>Na telefonie i po zmroku</h2>
+  <div class="split">
+    <img class="app-shot fit-shot" src="Hydrograf-v2-telefon.png" width="469" height="1015" alt="Hydrograf na telefonie: górny pasek z ikoną Zgłoś uwagę i przełącznikiem motywu; pasek trybów z aktywnym Wybierz zlewnię i przyciskiem Zlewnia; od dołu wysunięty arkusz Zlewnia z uchwytem, kluczowymi wartościami 37.23 km², CN 67.9, 363 m n.p.m., 8.20 % i sekcjami 1–8; na dole pasek Mapa, Instrukcja i Logowanie.">
+    <div class="stack">
+      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Szyna nawigacji (Mapa, Instrukcja, Logowanie) staje się dolnym paskiem, a górny pasek pokazuje same ikony.</p></div>
+      <div class="card"><span class="label">Arkusze</span><p>„Warstwy” i „Zlewnia” wysuwają się od dołu, zawsze jeden naraz. Otwierają je przyciski na pasku nad mapą, zamyka uchwyt u góry arkusza; po wyznaczeniu zlewni arkusz „Zlewnia” otwiera się sam.</p></div>
+      <div class="card"><span class="label">Dotyk</span><p>Pasek trybów przewiniesz palcem w bok; podpowiedzi trybu są ukryte. Profil zakończysz, dotykając ponownie ostatniego punktu albo przyciskiem „Zakończ”. Objaśnienie pokaże dotknięcie (i), drugie je zamknie.</p></div>
+      <div class="card"><span class="label">Motyw</span><p>Auto (jak w systemie), Jasny lub Ciemny — linie na mapie, legendy i wykresy zmieniają kolory razem z motywem. Przeglądarka zapamięta wybór, także dla administracji i tej instrukcji.</p></div>
+    </div>
+  </div>
+  <div class="footer"><span>TEN SAM HYDROGRAF NA KAŻDYM EKRANIE</span><span>29 / 30</span></div>
+</section>
+<section class="slide" id="uwagi" aria-label="Slajd 30: zgłaszanie uwag">
+  <p class="kicker">09 · Zgłoś uwagę</p>
+  <h2>Jak przekazać uwagę?</h2>
+  <div class="split">
+    <div class="steps-list">
+      <div class="step"><span class="number">01</span><strong>Otwórz formularz</strong><p>Kliknij „Zgłoś uwagę” na górnym pasku strony z mapą; na telefonie to ikona dymka.</p></div>
+      <div class="step"><span class="number">02</span><strong>Opisz jeden przypadek</strong><p>Miejsce na mapie, wykonane kroki, oczekiwany wynik i to, co się stało. Opis jest wymagany (do 5000&nbsp;znaków), imię lub e-mail — nie.</p></div>
+      <div class="step"><span class="number">03</span><strong>Sprawdź diagnostykę</strong><p>„Dołącz dane diagnostyczne” (ostatnie akcje, błędy, parametry zapytań) jest zaznaczone; „Pokaż co zostanie wysłane” pokazuje treść. Możesz je odznaczyć.</p></div>
+      <div class="step"><span class="number">04</span><strong>Wyślij lub anuluj</strong><p>Po „Wyślij” pojawi się „Dziękujemy! Zgłoszenie zostało zapisane.” „Anuluj”, × lub <kbd>Esc</kbd> zamykają okno bez wysyłania.</p></div>
+    </div>
+    <img class="app-shot fit-shot" src="Hydrograf-feedback.png" width="568" height="511" alt="Formularz „Zgłoś uwagę”: opis problemu, opcjonalny kontakt, dołączenie danych diagnostycznych, podgląd wysyłanych danych i przycisk Wyślij.">
+  </div>
+  <div class="footer"><span>TWOJA UWAGA POMAGA POPRAWIAĆ WERSJĘ ROZWOJOWĄ</span><span>30 / 30</span></div>
+</section>
+</main>
+</div>
+<script defer src="../js/theme-switch.js?v=b1e53f98a8"></script>
+</body>
+</html>

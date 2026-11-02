@@ -7,14 +7,14 @@ Provides SQLAlchemy engine and session factory with connection pooling.
 from collections.abc import Generator
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
 from core.config import get_settings
 
 
-def get_engine():
+def get_engine() -> Engine:
     """
     Create SQLAlchemy engine with connection pooling.
 
@@ -39,10 +39,10 @@ def get_engine():
 
 
 # Global engine instance (lazy initialization)
-_engine = None
+_engine: Engine | None = None
 
 
-def get_db_engine():
+def get_db_engine() -> Engine:
     """
     Get or create the database engine.
 

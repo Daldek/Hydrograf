@@ -9,8 +9,11 @@ sink fixing, and flow accumulation recomputation.
 import logging
 from collections import defaultdict, deque
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+from affine import Affine
+from shapely.geometry.base import BaseGeometry
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +74,9 @@ def fill_internal_nodata_holes(
         # Count valid neighbors for each cell (3x3 window)
         valid_map = (patched != nodata).astype(np.float64)
 
-        def count_valid_neighbors(window):
+        def count_valid_neighbors(window: np.ndarray) -> float:
             # window is 3x3 flattened (9 elements), center is index 4
-            return np.sum(window) - window[4]
+            return float(np.sum(window) - window[4])
 
         neighbor_count = generic_filter(
             valid_map, count_valid_neighbors, size=3, mode="constant", cval=0.0
@@ -86,13 +89,13 @@ def fill_internal_nodata_holes(
             break
 
         # Compute mean of valid neighbors for each cell
-        def mean_valid_neighbors(window):
+        def mean_valid_neighbors(window: np.ndarray) -> float:
             center = window[4]
             neighbors = np.concatenate([window[:4], window[5:]])
             valid = neighbors[neighbors != nodata]
             if len(valid) == 0:
-                return center
-            return np.mean(valid)
+                return float(center)
+            return float(np.mean(valid))
 
         neighbor_mean = generic_filter(
             patched, mean_valid_neighbors, size=3, mode="constant", cval=nodata
@@ -115,7 +118,7 @@ def fill_internal_nodata_holes(
 
 def raise_buildings_in_dem(
     dem: np.ndarray,
-    transform,
+    transform: Affine,
     crs_epsg: int,
     building_gpkg: str | None,
     building_raise_m: float = 5.0,
@@ -158,7 +161,9 @@ def raise_buildings_in_dem(
     return dem
 
 
-def _load_stream_geometries(streams_path, transform, dem_shape):
+def _load_stream_geometries(
+    streams_path: str | Path, transform: Affine, dem_shape: tuple[int, int]
+) -> list[Any]:
     """Load stream geometries from BDOT10k GeoPackage/Shapefile.
 
     Reads SWRS/SWKN/SWRM/PTWP layers, reprojects to EPSG:2180,
@@ -187,8 +192,10 @@ def _load_stream_geometries(streams_path, transform, dem_shape):
     left, top = transform * (0, 0)
     right, bottom = transform * (ncols, nrows)
     dem_bounds = box(
-        min(left, right), min(top, bottom),
-        max(left, right), max(top, bottom),
+        min(left, right),
+        min(top, bottom),
+        max(left, right),
+        max(top, bottom),
     )
 
     try:
@@ -198,8 +205,7 @@ def _load_stream_geometries(streams_path, transform, dem_shape):
 
     stream_prefixes = ("SWRS", "SWKN", "SWRM", "PTWP")
     target_layers = [
-        lyr for lyr in layers
-        if lyr and any(p in lyr.upper() for p in stream_prefixes)
+        lyr for lyr in layers if lyr and any(p in lyr.upper() for p in stream_prefixes)
     ]
     if not target_layers:
         target_layers = layers[:1] if layers else []
@@ -238,11 +244,11 @@ def _load_stream_geometries(streams_path, transform, dem_shape):
 
 def burn_streams_into_dem(
     dem: np.ndarray,
-    transform,
-    streams_path,
+    transform: Affine,
+    streams_path: str | Path,
     burn_depth_m: float = 2.0,
     nodata: float = -9999.0,
-) -> tuple[np.ndarray, dict]:
+) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Wypalanie ciekow w DEM — obniza DEM wzdluz znanych ciekow.
 
@@ -334,8 +340,8 @@ def _bresenham(r0: int, c0: int, r1: int, c1: int) -> list[tuple[int, int]]:
 
 
 def _rasterize_line_ordered(
-    line,
-    transform,
+    line: BaseGeometry,
+    transform: Affine,
     shape: tuple[int, int] | None = None,
 ) -> list[tuple[int, int]]:
     """Rasterize a LineString to an ordered sequence of (row, col) cells.
@@ -370,9 +376,9 @@ def _rasterize_line_ordered(
 
 
 def _build_stream_network_graph(
-    geometries: list,
+    geometries: list[Any],
     dem: np.ndarray,
-    transform,
+    transform: Affine,
     snap_tolerance_px: int = 1,
 ) -> tuple[dict[int, list[tuple[int, int]]], dict[int, tuple[int, int]], list[int]]:
     """Build a topology graph from stream LineString geometries.
@@ -380,11 +386,15 @@ def _build_stream_network_graph(
     Endpoints are snapped to raster pixels. Nodes within snap_tolerance_px
     of each other are merged.
 
-    Returns:
-        graph: {node_id: [(neighbor_node_id, segment_index), ...]}
-        seg_nodes: {segment_index: (start_node, end_node)} — start corresponds
-            to geometry coords[0], end to coords[-1]
-        outlets: list of outlet node IDs (one per connected component)
+    Returns
+    -------
+    graph : dict
+        {node_id: [(neighbor_node_id, segment_index), ...]}
+    seg_nodes : dict
+        {segment_index: (start_node, end_node)}; start corresponds to
+        geometry coords[0], end to coords[-1].
+    outlets : list
+        Outlet node IDs (one per connected component).
     """
     nrows, ncols = dem.shape
 
@@ -463,10 +473,14 @@ def _build_stream_network_graph(
             degree_one = component
 
         edge_nodes = [
-            n for n in degree_one
-            if n in node_coords and (
-                node_coords[n][0] <= 0 or node_coords[n][0] >= nrows - 1
-                or node_coords[n][1] <= 0 or node_coords[n][1] >= ncols - 1
+            n
+            for n in degree_one
+            if n in node_coords
+            and (
+                node_coords[n][0] <= 0
+                or node_coords[n][0] >= nrows - 1
+                or node_coords[n][1] <= 0
+                or node_coords[n][1] >= ncols - 1
             )
         ]
 
@@ -475,7 +489,8 @@ def _build_stream_network_graph(
 
     # Filter out incomplete segment mappings
     seg_nodes_clean: dict[int, tuple[int, int]] = {
-        idx: (s, e) for idx, (s, e) in seg_nodes.items()
+        idx: (s, e)
+        for idx, (s, e) in seg_nodes.items()
         if s is not None and e is not None
     }
 
@@ -484,10 +499,10 @@ def _build_stream_network_graph(
 
 def smooth_streams_monotonic(
     dem: np.ndarray,
-    transform,
-    streams_path,
+    transform: Affine,
+    streams_path: str | Path,
     nodata: float = -9999.0,
-) -> tuple[np.ndarray, dict]:
+) -> tuple[np.ndarray, dict[str, Any]]:
     """Enforce monotonically decreasing elevation along stream channels.
 
     Loads stream geometries, builds a topology graph, and applies a
@@ -558,9 +573,7 @@ def smooth_streams_monotonic(
         geom_list_for_graph[idx] = geom
 
     # 3. Build topology graph
-    graph, seg_nodes, outlets = _build_stream_network_graph(
-        geoms, smoothed, transform
-    )
+    graph, seg_nodes, outlets = _build_stream_network_graph(geoms, smoothed, transform)
     diag["disconnected_components"] = len(outlets)
 
     # 4. Process each connected component
@@ -672,7 +685,7 @@ def smooth_streams_monotonic(
 
 def _sample_dem_at_point(
     dem: np.ndarray,
-    transform,
+    transform: Affine,
     x: float,
     y: float,
     nodata: float,
@@ -723,12 +736,12 @@ def _sample_dem_at_point(
 
 def classify_endorheic_lakes(
     dem: np.ndarray,
-    transform,
+    transform: Affine,
     gpkg_path: str | Path,
     nodata: float,
     min_area_m2: float | None = None,
     waterbody_path: str | Path | None = None,
-) -> tuple[list[tuple[int, int]], dict]:
+) -> tuple[list[tuple[int, int]], dict[str, Any]]:
     """
     Classify water bodies and return drain points for endorheic lakes.
 
@@ -914,7 +927,7 @@ def classify_endorheic_lakes(
                 break
 
     # Build cluster → original geometries mapping
-    cluster_lakes: dict[int, list] = {}
+    cluster_lakes: dict[int, list[Any]] = {}
     for i, ci in lake_to_cluster.items():
         cluster_lakes.setdefault(ci, []).append(lake_geoms[i])
 
@@ -1004,8 +1017,8 @@ def classify_endorheic_lakes(
 
 def _add_drain_point(
     dem: np.ndarray,
-    transform,
-    lake_geom,
+    transform: Affine,
+    lake_geom: BaseGeometry,
     nodata: float,
     drain_points: list[tuple[int, int]],
 ) -> None:
@@ -1069,7 +1082,7 @@ def recompute_flow_accumulation(
                     inflow_count[ni, nj] += 1
 
     # BFS from headwaters (valid cells with no inflows and valid fdir)
-    queue = deque()
+    queue: deque[tuple[int, int]] = deque()
     for i in range(nrows):
         for j in range(ncols):
             if valid[i, j] and inflow_count[i, j] == 0:
@@ -1097,7 +1110,7 @@ def fix_internal_sinks(
     dem: np.ndarray,
     nodata: float,
     max_iterations: int = 3,
-) -> tuple[np.ndarray, np.ndarray, dict]:
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     """
     Naprawia wewnetrzne zlewy po pyflwdir.
 
@@ -1143,7 +1156,7 @@ def fix_internal_sinks(
     edge_mask[:, 0] = True
     edge_mask[:, -1] = True
 
-    diag = {
+    diag: dict[str, Any] = {
         "total_fixed": 0,
         "by_strategy": {"steepest": 0, "max_acc": 0, "any_valid": 0},
         "iterations": 0,
@@ -1231,7 +1244,7 @@ def fix_internal_sinks(
 
 def process_hydrology_pyflwdir(
     dem: np.ndarray,
-    metadata: dict,
+    metadata: dict[str, Any],
     drain_points: list[tuple[int, int]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """

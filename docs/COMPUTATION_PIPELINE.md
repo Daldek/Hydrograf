@@ -1,6 +1,6 @@
 # Procedura obliczeniowa — Hydrograf
 
-> Wersja: 1.2 | Data: 2026-02-14
+> Wersja: 1.4 | Data: 2026-10-25
 
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
@@ -208,99 +208,45 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~44k wierszy) —
 **Moduł:** `backend/core/watershed_service.py` (ADR-022)
 **Endpoint:** `POST /api/delineate-watershed`
 
-> **Uwaga (ADR-022):** Od 2026-02-14 endpointy API (`watershed.py`, `hydrograph.py`, `select_stream.py`) korzystają z CatchmentGraph (~44k węzłów, ~0.5 MB) zamiast FlowGraph (~19.7M komórek, ~1 GB). Poniższe opisy SQL dotyczą legacy CLI scripts — API runtime używa `watershed_service.py` z BFS po grafie zlewni cząstkowych.
+> **Uwaga (ADR-022, ADR-028):** Od 2026-02-14 endpointy API (`watershed.py`, `hydrograph.py`, `select_stream.py`) korzystają z CatchmentGraph (~44k węzłów, ~0.5 MB) zamiast FlowGraph (~19.7M komórek, ~1 GB). Tabela `flow_network` została usunięta (migracja 015), a funkcje działające na komórkach (`FlowCell`, `build_boundary`, `build_boundary_polygonize`, `calculate_watershed_area_km2` i funkcje komórkowe `core/morphometry.py`) usunięto razem z `core/watershed.py`. Skrypt `scripts/analyze_watershed.py` wywołuje tę samą funkcję trasy co endpoint.
 
-### 2.1 Znalezienie najbliższego cieku
+### 2.1 Znalezienie zlewni cząstkowej punktu
 
-**Funkcja (API):** `watershed_service.find_nearest_stream_segment()` — query do `stream_network` (~44k)
-**Funkcja (legacy CLI):** `watershed.find_nearest_stream()` — query do `flow_network` (19.7M)
+**Funkcja:** `CatchmentGraph.find_catchment_at_point()` — `ST_Contains` na `stream_catchments`, zwraca wewnętrzny indeks węzła grafu.
 
-```sql
-SELECT id, ST_X(geom) as x, ST_Y(geom) as y,
-       elevation, flow_accumulation, slope, downstream_id,
-       cell_area, is_stream,
-       ST_Distance(geom, ST_SetSRID(ST_Point(:x, :y), 2180)) as distance
-FROM flow_network
-WHERE is_stream = TRUE
-  AND ST_DWithin(geom, ST_SetSRID(ST_Point(:x, :y), 2180), :max_dist)
-ORDER BY distance LIMIT 1
-```
+### 2.2 Przejście w górę (BFS)
 
-- `max_distance_m = 1000` — maksymalny promień szukania
+**Funkcja:** `CatchmentGraph.traverse_upstream()` — BFS po macierzy sparse CSR, zwraca indeksy wszystkich zlewni cząstkowych powyżej punktu (patrz 1b.3).
 
-### 2.2 Kontrola rozmiaru (pre-flight)
+### 2.3 Granica zlewni
 
-**Funkcja:** `check_watershed_size()` (linie 147-193)
-- `estimated_cells = flow_accumulation + 1`
-- Limit: `max_cells = 2 000 000` — zapobiega OOM
-- Jedno zapytanie PK (<1ms)
+**Funkcja:** `watershed_service.merge_catchment_boundaries()` — łączenie granic zlewni cząstkowych (`ST_UnaryUnion`: bezpośrednio, partiami lub z grubszym progiem), potem `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` (ADR-032). Dla dużych zlewni `cascade_escalate()` podnosi próg.
 
-### 2.3 Rekurencyjne przejście w górę (CTE)
+### 2.4 Powierzchnia
 
-**Funkcja:** `traverse_upstream()` (linie 196-310)
-
-```sql
-WITH RECURSIVE upstream AS (
-    -- Baza: komórka ujściowa
-    SELECT id, ST_X(geom) as x, ST_Y(geom) as y,
-           elevation, flow_accumulation, slope,
-           downstream_id, cell_area, is_stream, 1 as depth
-    FROM flow_network WHERE id = :outlet_id
-
-    UNION ALL
-
-    -- Rekurencja: komórki gdzie downstream_id = bieżący id
-    SELECT f.id, ST_X(f.geom) as x, ST_Y(f.geom) as y,
-           f.elevation, f.flow_accumulation, f.slope,
-           f.downstream_id, f.cell_area, f.is_stream, u.depth + 1
-    FROM flow_network f
-    INNER JOIN upstream u ON f.downstream_id = u.id
-    WHERE u.depth < :max_depth
-)
-SELECT ... FROM upstream LIMIT :max_rows
-```
-
-- `max_depth = 10 000`
-- Wyjście: `list[FlowCell]` — wszystkie komórki zlewni
-
-### 2.4 Budowanie granicy zlewni
-
-**Funkcja:** `build_boundary_polygonize()` (linie 313-411)
-
-**Algorytm: poligonizacja rastrowa:**
-1. Wyznaczenie zasięgu (min/max XY) z buforem 1 komórki
-2. Tworzenie binarnego rastra (0/1) z komórek zlewni
-3. `rasterio.features.shapes(raster, mask=raster==1, transform=transform)`
-4. `unary_union(polygons)` — połączenie wieloczęściowych granic
-5. Jeśli MultiPolygon → wybór największego poligonu
-
-### 2.5 Obliczenie powierzchni
-
-**Funkcja:** `calculate_watershed_area_km2()` (linie 481-508)
-
-```python
-total_area_m2 = Σ(cell.cell_area for cell in cells)
-area_km2 = total_area_m2 / 1 000 000
-```
+**Funkcja:** `CatchmentGraph.aggregate_stats()["area_km2"]` — suma `area_km2` zlewni cząstkowych z `traverse_upstream()`.
 
 ---
 
 ## Faza 3: Parametry morfometryczne
 
-**Moduł:** `backend/core/morphometry.py` (666 linii)
+**Moduły:** `backend/core/watershed_service.py` (`build_morph_dict_from_graph()`), `backend/core/catchment_graph.py` (`aggregate_stats()`, `trace_main_channel()`, `aggregate_hypsometric()`), `backend/core/morphometry.py` (`calculate_shape_indices()`)
+
+Parametry liczy `build_morph_dict_from_graph()` z wartości wstępnie policzonych w grafie zlewni cząstkowych; w runtime nie ma operacji na rastrach (poza próbkowaniem `stream_distance.tif` dla długości ścieżek spływu).
 
 ### 3.1 Parametry podstawowe
 
-| Parametr | Wzór | Funkcja |
-|----------|-------|---------|
-| **Obwód** | `perimeter_km = boundary.length / 1000` | `calculate_perimeter_km()` (18-37) |
-| **Długość zlewni** | `length_km = max(dist(cell, outlet)) / 1000` | `calculate_watershed_length_km()` (40-73) |
-| **Min/Max/Średnia wys.** | `mean = np.average(elevations, weights=areas)` | `calculate_elevation_stats()` (76-112) |
-| **Średnie nachylenie** | `mean_slope = np.average(slopes, weights=areas)` | `calculate_mean_slope()` (115-149) |
+| Parametr | Źródło |
+|----------|--------|
+| **Powierzchnia** | `aggregate_stats()["area_km2"]` (suma zlewni cząstkowych) |
+| **Obwód** | `perimeter_km = boundary.length / 1000` (granica po scaleniu i wygładzeniu) |
+| **Długość zlewni** | `hydraulic_length_km` z `aggregate_stats()` (najdłuższa ścieżka spływu); gdy brak — `compute_watershed_length()` (maks. odległość od ujścia do wierzchołka granicy) |
+| **Min/Max/Średnia wys.** | `aggregate_stats()`: min, max, średnia ważona powierzchnią |
+| **Średnie nachylenie** | `aggregate_stats()["mean_slope_m_per_m"]` (średnia ważona powierzchnią) |
 
 ### 3.2 Ciek główny (trace wg Strahlera)
 
-**Metoda:** `CatchmentGraph.trace_main_channel()` (ADR-029)
+**Metoda:** `CatchmentGraph.trace_main_channel()` (ADR-029) w `core/catchment_graph.py`, wywoływana z `watershed_service.build_morph_dict_from_graph()`; geometrię składa `watershed_service.get_main_channel_feature_collection()`.
 
 **Algorytm:**
 1. Start od outlet node (wewnętrzny indeks)
@@ -310,13 +256,11 @@ area_km2 = total_area_m2 / 1 000 000
    - `channel_length_km = Σ(stream_length_km[node])` wzdłuż głównego cieku
    - `channel_slope = (elev_max[head] - elev_min[outlet]) / (length_km * 1000)`
 
-**Uwaga:** `aggregate_stats()["stream_length_km"]` zwraca sumę CAŁEJ sieci (do drainage density). Długość głównego cieku pochodzi wyłącznie z `trace_main_channel()`.
-
-**Legacy:** `morphometry.py:find_main_stream()` (linie 152-262) — używana tylko w CLI, nie w API runtime.
+**Uwaga:** `aggregate_stats()["stream_length_km"]` zwraca sumę CAŁEJ sieci. Długość głównego cieku pochodzi wyłącznie z `trace_main_channel()`.
 
 ### 3.3 Wskaźniki kształtu
 
-**Funkcja:** `calculate_shape_indices()` (linie 265-329)
+**Funkcja:** `morphometry.calculate_shape_indices()`
 
 | Wskaźnik | Wzór | Interpretacja |
 |----------|-------|--------------|
@@ -330,45 +274,37 @@ Gdzie: A = area_km2, P = perimeter_km, L = length_km
 
 ### 3.4 Wskaźniki rzeźby terenu
 
-**Funkcja:** `calculate_relief_indices()` (linie 332-374)
+**Funkcja:** `build_morph_dict_from_graph()`
 
 | Wskaźnik | Wzór | Interpretacja |
 |----------|-------|--------------|
-| **Relief Ratio (Rh)** | `Rh = (H_max - H_min) / (L × 1000)` | bezwymiarowy |
+| **Relief Ratio (R)** | `R = (H_max - H_min) / √A` [‰] | A w km² |
+| **Spadek działu wodnego (Rp)** | `Rp = (H_max - H_min) / P` [‰] | P w km |
 | **Całka hipsometryczna (HI)** | `HI = (H_mean - H_min) / (H_max - H_min)` | >0.6 młoda, 0.3-0.6 dojrzała, <0.3 stara |
 
 ### 3.5 Krzywa hipsometryczna
 
-**Funkcja:** `calculate_hypsometric_curve()` (linie 377-437)
+**Funkcja:** `CatchmentGraph.aggregate_hypsometric()`
 
-- 20 przedziałów wysokości (relative_height: 0.0 → 1.0)
-- Dla każdego: `relative_area = Σ(areas[elev >= threshold]) / total_area`
-- Format wyjścia: `[{relative_height: 1.0, relative_area: 0.0}, ..., {relative_height: 0.0, relative_area: 1.0}]`
+- Histogramy wysokości zlewni cząstkowych scalane na osi wysokości bezwzględnych
+- 20 punktów (`relative_height`: 0.0 → 1.0)
+- Format wyjścia: `[{relative_height: ..., relative_area: ...}, ...]`
 
 ### 3.6 Wskaźniki drenażu
 
-**Funkcja:** `get_stream_stats_in_watershed()` (linie 440-491)
-
-```sql
-SELECT COALESCE(SUM(length_m), 0) AS total_length_m,
-       COUNT(*) AS n_segments,
-       COALESCE(MAX(strahler_order), 0) AS max_order
-FROM stream_network
-WHERE source = 'DEM_DERIVED'
-  AND ST_Intersects(geom, ST_SetSRID(ST_GeomFromText(:wkt), 2180))
-```
+**Funkcja:** `CatchmentGraph.aggregate_stats()` (tylko cieki rzeczywiste, dopasowane do BDOT10k — ADR-044)
 
 | Wskaźnik | Wzór |
 |----------|-------|
-| **Gęstość drenażu (Dd)** | `Dd = total_stream_length_km / area_km2` [km/km²] |
-| **Częstość cieków (Fs)** | `Fs = n_segments / area_km2` [1/km²] |
-| **Ruggedness Number (Rn)** | `Rn = (relief_m / 1000) × Dd` |
+| **Gęstość drenażu (Dd)** | `Dd = bdot_stream_length_km / area_km2` [km/km²] |
+| **Częstość cieków (Fs)** | `Fs = bdot_stream_count / area_km2` [1/km²] |
+| **Ruggedness Number (Rn)** | `Rn = ((H_max - H_min) / 1000) × Dd` |
 
 ### 3.7 Kompletny zestaw parametrów
 
-**Funkcja:** `build_morphometric_params()` (linie 545-665)
+**Funkcja:** `watershed_service.build_morph_dict_from_graph()`
 
-Klucze wyjściowe:
+Klucze wyjściowe (wybór):
 ```python
 {
     "area_km2", "perimeter_km", "length_km",
@@ -381,14 +317,12 @@ Klucze wyjściowe:
     "elongation_ratio",             # Re
     "form_factor",                  # Ff
     "mean_width_km",                # W
-    "relief_ratio",                 # Rh
+    "relief_ratio",                 # R
     "hypsometric_integral",         # HI
     "drainage_density_km_per_km2",  # Dd
     "stream_frequency_per_km2",     # Fs
     "ruggedness_number",            # Rn
     "max_strahler_order",
-    "main_stream_coords",           # opcjonalnie
-    "hypsometric_curve",            # opcjonalnie
 }
 ```
 
@@ -443,13 +377,13 @@ END FROM nearest
 
 ### 5.1 Hierarchia wyznaczania CN
 
-**Funkcja:** `determine_cn()` (land_cover.py, linie 256-347)
+**Funkcja:** `determine_cn()` (`core/land_cover.py`)
 
 | Priorytet | Źródło | Warunek |
 |-----------|--------|---------|
 | 1 | Konfiguracja (explicit CN) | `config_cn is not None` |
 | 2 | Baza danych (land_cover table) | Istnieją dane pokrycia terenu |
-| 3 | Kartograf (HSG + Land Cover) | `use_kartograf=True` i dostępne dane |
+| 3 | Kartograf (HSG + Land Cover) | `use_kartograf=True`, `boundary_wgs84` and `cache_dir` given, Kartograf importable (`calculate_cn_from_kartograf()` returns a result) |
 | 4 | Wartość domyślna | `default_cn = 75` |
 
 ### 5.2 CN z pokrycia terenu w bazie
@@ -472,21 +406,21 @@ FROM intersections GROUP BY category, cn_value ORDER BY total_area_m2 DESC
 
 **Wzór:**
 ```
-CN = round(Σ(cn_value[i] × area[i]) / Σ(area[i]))
+CN = round(Σ(cn_value[i] × area[i]) / Σ(area[i]), 1)    # jedno miejsce po przecinku
 CN = clamp(CN, 0, 100)
 ```
 
 ### 5.3 CN z Kartografa (HSG)
 
-**Funkcja:** `calculate_cn_from_kartograf()` (cn_calculator.py, linie 228-334)
+**Funkcja:** `calculate_cn_from_kartograf(boundary_wgs84, cache_dir, use_default_land_cover=True, teryt=None)` (`core/cn_calculator.py`); only `scripts/analyze_watershed.py` calls it, through `determine_cn()`.
 
-1. Konwersja granicy zlewni → BBox (z buforem 100m)
-2. Pobranie HSG z SoilGrids (`Kartograf.HSGCalculator`): → dominujący typ gleby A/B/C/D
-3. Pobranie pokrycia terenu (BDOT10k / CORINE): → statystyki procentowe
-4. Lookup CN z tabeli `CN_LOOKUP_TABLE` per kategoria + HSG
-5. Średnia ważona: `CN = Σ(cn[i] × percentage[i] / 100)`
+1. The boundary of the watershed is converted to a `BBox` in EPSG:2180 with a buffer of 100 m (`convert_boundary_to_bbox`).
+2. The HSG of the area (`get_hsg_from_soilgrids`): `kartograf.calculate_hsg(output_dir=<temporary directory>, bbox=, depth="0-5cm", cache=False)` downloads the SoilGrids clay, sand and silt rasters, classifies the USDA texture of each cell into the groups A-D and writes the HSG raster as a plain file that exists only for this call; `kartograf.hsg_statistics` counts the cells per group. The dominant group is the one with the largest share of the cells that have data. A failure of Kartograf (`KartografError`) or an area without data gives the group B.
+3. The land cover (`get_land_cover_stats`): `download_bdot10k` takes the BDOT10k package of every county that the bbox intersects from the Kartograf store `<cache_dir>/kartograf` (a package that is already local is used without a request); the area of every `PT*` layer clipped to the bbox gives the shares in percent per category, each county by its part in the bbox. Without data the default land cover is used when `use_default_land_cover` is true.
+4. The CN of each category and the dominant group comes from `CN_LOOKUP_TABLE`.
+5. The weighted mean: `CN = Σ(cn[i] × percentage[i] / 100)`.
 
-> **Uwaga (Kartograf 0.7.0):** zmieniono progi tekstury USDA i `nodata=0` w rastrze HSG. Rastry HSG wyprodukowane starszą wersją są odrzucane przez `check_hsg_cache` (`HsgCacheStaleError`) i należy je pobrać ponownie.
+> **Note (ADR-061):** `HSGCalculator` and `LandCoverManager` are no longer public in Kartograf, and `check_hsg_cache` and `HsgCacheStaleError` of `scripts/bootstrap.py` are gone together with `soil_hsg/hsg_poland.tif`. The HSG raster of the bootstrap (the `soil_hsg` table) is a version of the Kartograf store (`hsg/`): its sidecar records the Kartograf version and the source rasters with their hashes. The raster of this function is not kept, and `hsg_statistics` of a file without a sidecar counts the whole raster, so the cells at the edge of the bbox count in full, as in Kartograf 0.7.0 (ADR-061, erratum of 2026-10-25).
 
 ### 5.4 Tabele CN
 
@@ -512,14 +446,14 @@ CN = clamp(CN, 0, 100)
 
 ### 6.1 Flow procesu
 
-1. **Walidacja** parametrów (czas trwania, prawdopodobieństwo)
-2. **Wyznaczenie zlewni** (CatchmentGraph BFS → `watershed_service`, ADR-022)
+1. **Walidacja** parametrów (czas trwania, prawdopodobieństwo — wymagane tylko bez `custom_precipitation`; `amc` I/II/III, domyślnie II)
+2. **Wyznaczenie zlewni** (CatchmentGraph BFS → `watershed_service`, ADR-022) albo szybka ścieżka z `morphometry` (tryb zaawansowany, CN ułamkowe)
 3. **Kontrola limitu**: `area_km2 ≤ 250` (ograniczenie SCS-CN)
 4. **Morfometria + CN** (build_morph_dict_from_graph, get_land_cover_for_boundary)
-5. **Opad projektowy** (get_precipitation z IDW)
+5. **Opad**: projektowy PMAXTP (get_precipitation z IDW) albo własna seria `custom_precipitation` (`timestep_min` > 0 i ≤ 1440, `depths_mm` ≥ 0, 1–2000 wartości, suma > 0); czas trwania = liczba kroków × krok
 6. **Czas koncentracji** (calculate_tc)
-7. **Hietogram** (rozkład opadu w czasie)
-8. **Hydrogram** (splot z UH)
+7. **Hietogram**: dla PMAXTP rozkład opadu w czasie (§6.3); dla własnej serii `_custom_hietogram()` opakowuje serię w `HietogramResult` Hydrologa (czasy końca kroków k·Δt), bez hietogramu syntetycznego (`metadata.hietogram_type = null`, `precipitation.source = "custom"`, `probability_percent = null`)
+8. **Hydrogram** (splot z UH; CN przeliczony wg AMC — także w regresji Nasha dla zlewni zurbanizowanych)
 
 ### 6.2 Czas koncentracji (tc)
 
@@ -569,6 +503,8 @@ jeśli P ≤ Ia:  Pe = 0
 w.p.p.:        Pe = (P - Ia)² / (P - Ia + S)
 ```
 
+**Uwilgotnienie początkowe (AMC):** CN zlewni odpowiada AMC II. Dla AMC I i III Hydrolog (`SCSCN.adjust_cn_for_amc`) przelicza CN i zaokrągla wynik do liczby całkowitej; AMC II zostawia CN ułamkowe. Tak przeliczony CN wchodzi do S, Ia i Pe.
+
 ### 6.5 Hydrogram jednostkowy SCS
 
 **Czas do szczytu:**
@@ -613,7 +549,7 @@ Generowane kombinatorycznie:
 | `total_precip_mm` | mm |
 | `total_effective_mm` | mm |
 | `runoff_coefficient` | — |
-| `cn_used` | — |
+| `cn_used` | — (float; CN po przeliczeniu wg AMC, klasa w `metadata.amc`) |
 | `retention_mm` | mm |
 | `initial_abstraction_mm` | mm |
 | `peak_discharge_m3s` | m³/s |
@@ -703,11 +639,7 @@ CREATE TABLE land_cover (
 ### Runtime (per żądanie)
 | Operacja | Czas |
 |----------|------|
-| Find nearest stream | <1ms (GIST + ST_DWithin) |
-| Pre-flight size check | <1ms (PK lookup) |
-| Traverse upstream (CTE) | 1-5s (10k-100k komórek) |
 | Traverse upstream (CatchmentGraph BFS) | 5-50ms (~44k węzłów, ADR-021) |
-| Build boundary (polygonize) | 0.5-2s |
 | Morfometria | <0.5s |
 | Opad IDW | <5ms (KNN-GIST) |
 | CN z land_cover | 0.1-1s (spatial intersection) |
@@ -724,8 +656,6 @@ CREATE TABLE land_cover (
 |----------|---------|
 | Preprocessing (1000×1000 float32) | ~64 MB peak |
 | CatchmentGraph (startup API) | ~0.5 MB |
-| Runtime — typowa zlewnia (50k komórek) | ~5 MB |
-| Runtime — duża zlewnia (1M komórek) | ~100 MB |
 
 ---
 
@@ -739,11 +669,11 @@ CREATE TABLE land_cover (
 | 4 | Rząd Strahlera | Strahler 1952 |
 | 5 | Wektoryzacja cieków | Śledzenie od źródeł do skrzyżowań |
 | 6 | Delimitacja zlewni cząstkowych | pyflwdir.basins() — propagacja upstream (ADR-016) |
-| 7 | Budowanie granicy zlewni | Poligonizacja rastrowa (rasterio) |
-| 8 | Ciek główny | Reverse trace (max akumulacja) |
+| 7 | Granica zlewni | `ST_UnaryUnion` granic zlewni cząstkowych + wygładzanie (ADR-032) |
+| 8 | Ciek główny | `CatchmentGraph.trace_main_channel()` (Strahler → długość → powierzchnia) |
 | 9 | Interpolacja opadów | IDW (p=2, 4 najbliższe stacje) |
 | 10 | Krzywa CN | Średnia ważona powierzchnią |
-| 11 | Przejście w górę | Rekurencyjna CTE (PostgreSQL) |
+| 11 | Przejście w górę | BFS po grafie zlewni cząstkowych (`CatchmentGraph.traverse_upstream`) |
 | 12 | Bulk load do bazy | PostgreSQL COPY przez temp tables |
 | 13 | Odpływ SCS-CN | Metoda SCS z konwolucją |
 | 14 | Czas koncentracji | Kirpich / SCS Lag / Giandotti |
@@ -755,7 +685,4 @@ CREATE TABLE land_cover (
 
 | Parametr | Wartość | Lokalizacja |
 |----------|---------|-------------|
-| MAX_WATERSHED_CELLS | 2 000 000 | watershed.py:22 |
-| MAX_STREAM_DISTANCE_M | 1 000 | watershed.py:25 |
-| MAX_RECURSION_DEPTH | 10 000 | watershed.py:28 |
 | HYDROGRAPH_AREA_LIMIT_KM2 | 250.0 | hydrograph.py (SCS-CN) |

@@ -4,8 +4,6 @@ Correctness tests for ST_Contains catchment selection (ADR-039).
 Verifies that the simplified ST_Contains approach returns correct results
 for various spatial scenarios against a real PostGIS database.
 """
-# Register DB fixtures from conftest_db
-pytest_plugins = ["tests.conftest_db"]
 
 import json
 
@@ -14,6 +12,9 @@ from sqlalchemy import text
 
 from tests.conftest_db import requires_db
 from tests.fixtures.test_points import TEST_POINTS
+
+# Register DB fixtures from conftest_db
+pytest_plugins = ["tests.conftest_db"]
 
 ST_CONTAINS_QUERY = """
     SELECT segment_idx FROM stream_catchments

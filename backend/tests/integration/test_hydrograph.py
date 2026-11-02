@@ -11,6 +11,7 @@ Tests the CatchmentGraph-based hydrograph endpoint by mocking:
 - DB session for precipitation query (IDW interpolation)
 """
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -45,7 +46,7 @@ def _make_boundary() -> MultiPolygon:
     return MultiPolygon([poly])
 
 
-def _make_morph_dict(cn: int = 75) -> dict:
+def _make_morph_dict(cn: int = 75) -> dict[str, Any]:
     """
     Build a morph dict compatible with WatershedParameters.from_dict()
     and MorphometricParameters schema.
@@ -103,7 +104,7 @@ def _make_mock_cg():
     return cg
 
 
-def _make_segment_dict() -> dict:
+def _make_segment_dict() -> dict[str, Any]:
     """Return a segment dict as from find_nearest_stream_segment."""
     return {
         "segment_idx": 10,
@@ -378,14 +379,15 @@ class TestGenerateHydrographEndpoint:
                 )
 
             assert response.status_code == 404
-            assert "zlewni" in response.json()["detail"].lower()
+            assert response.json()["code"] == "not_found"
+            assert response.json()["details"]["reason"] == "no_catchment_at_point"
         finally:
             app.dependency_overrides.clear()
 
-    # ---- 8. test_area_too_large_returns_400 ----
+    # ---- 8. test_area_too_large_returns_422 ----
 
-    def test_area_too_large_returns_400(self, client):
-        """Test that watershed > 250 km2 returns 400."""
+    def test_area_too_large_returns_422(self, client):
+        """Test that watershed > 250 km2 is unsupported (422)."""
         mock_db = MagicMock()
         app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -408,15 +410,18 @@ class TestGenerateHydrographEndpoint:
             ):
                 response = self._post(client)
 
-            assert response.status_code == 400
-            assert "250" in response.json()["detail"]
+            assert response.status_code == 422
+            problem = response.json()
+            assert problem["code"] == "unsupported"
+            assert problem["details"]["limit_km2"] == 250
+            assert problem["details"]["area_km2"] == 300.0
         finally:
             app.dependency_overrides.clear()
 
-    # ---- 9. test_invalid_duration_returns_422 ----
+    # ---- 9. test_invalid_duration_returns_400 ----
 
-    def test_invalid_duration_returns_422(self, client):
-        """Test that invalid duration returns 422 (Pydantic validation)."""
+    def test_invalid_duration_returns_400(self, client):
+        """Test that invalid duration returns 400 (Pydantic validation)."""
         response = self._post(
             client,
             {
@@ -427,7 +432,7 @@ class TestGenerateHydrographEndpoint:
             },
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     # ---- 10. test_invalid_probability_returns_400 ----
 
@@ -460,8 +465,22 @@ class TestGenerateHydrographEndpoint:
         app.dependency_overrides[get_db] = lambda: mock_db
 
         valid_durations = [
-            "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
-            "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+            "5min",
+            "10min",
+            "15min",
+            "30min",
+            "45min",
+            "1h",
+            "1.5h",
+            "2h",
+            "3h",
+            "6h",
+            "12h",
+            "18h",
+            "24h",
+            "36h",
+            "48h",
+            "72h",
         ]
 
         try:
@@ -643,8 +662,22 @@ class TestScenariosEndpoint:
         data = response.json()
 
         expected = [
-            "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
-            "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+            "5min",
+            "10min",
+            "15min",
+            "30min",
+            "45min",
+            "1h",
+            "1.5h",
+            "2h",
+            "3h",
+            "6h",
+            "12h",
+            "18h",
+            "24h",
+            "36h",
+            "48h",
+            "72h",
         ]
         assert data["durations"] == expected
 

@@ -64,17 +64,24 @@
         return wrap;
     }
 
-    function renderList(data) {
-        var content = document.getElementById('feedback-content');
-        content.replaceChildren();
+    var unreadCount = 0;
 
+    function showUnreadCount() {
         var badge = document.getElementById('feedback-unread-badge');
-        if (data.unread_count > 0) {
-            badge.textContent = String(data.unread_count);
+        if (unreadCount > 0) {
+            badge.textContent = String(unreadCount);
             badge.classList.remove('d-none');
         } else {
             badge.classList.add('d-none');
         }
+    }
+
+    function renderList(data) {
+        var content = document.getElementById('feedback-content');
+        content.replaceChildren();
+
+        unreadCount = data.unread_count;
+        showUnreadCount();
 
         if (!data.items.length) {
             content.appendChild(el('p', 'text-secondary small', 'Brak zgłoszeń.'));
@@ -89,14 +96,45 @@
             var excerpt = item.message.length > 80
                 ? item.message.slice(0, 80) + '…'
                 : item.message;
-            header.appendChild(el('span', 'small feedback-excerpt' + (item.is_read ? '' : ' fw-bold'), excerpt));
-            var newBadge = null;
-            if (!item.is_read) {
-                newBadge = el('span', 'badge bg-danger', 'nowe');
-                header.appendChild(newBadge);
+            var excerptEl = el('span', 'small feedback-excerpt', excerpt);
+            header.appendChild(excerptEl);
+            var newBadge = el('span', 'badge bg-danger', 'nowe');
+            header.appendChild(newBadge);
+
+            var readBtn = el('button', 'btn btn-outline-secondary btn-sm text-nowrap');
+            readBtn.type = 'button';
+
+            function showReadState() {
+                excerptEl.classList.toggle('fw-bold', !item.is_read);
+                newBadge.classList.toggle('d-none', item.is_read);
+                readBtn.textContent = item.is_read ? 'Oznacz nieprzeczytane' : 'Oznacz przeczytane';
             }
 
+            // Optimistic: the row and the counter change at once and are
+            // restored when the PATCH fails.
+            function setRead(isRead) {
+                if (item.is_read === isRead) return;
+                item.is_read = isRead;
+                unreadCount += isRead ? -1 : 1;
+                showReadState();
+                showUnreadCount();
+                window.Hydrograf.adminApi.setFeedbackRead(item.id, isRead).catch(function (err) {
+                    item.is_read = !isRead;
+                    unreadCount += isRead ? 1 : -1;
+                    showReadState();
+                    showUnreadCount();
+                    window.alert('Błąd zapisu: ' + err.message);
+                });
+            }
+
+            readBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                setRead(!item.is_read);
+            });
+            header.appendChild(readBtn);
+
             var deleteBtn = el('button', 'btn btn-outline-danger btn-sm', 'Usuń');
+            deleteBtn.type = 'button';
             deleteBtn.addEventListener('click', function (e) {
                 e.stopPropagation();
                 if (!window.confirm('Usunąć zgłoszenie #' + item.id + '?')) return;
@@ -105,17 +143,14 @@
                 });
             });
             header.appendChild(deleteBtn);
+            showReadState();
 
             var details = renderDetails(item);
             details.classList.add('d-none');
 
             header.addEventListener('click', function () {
                 details.classList.toggle('d-none');
-                if (!item.is_read) {
-                    item.is_read = true;
-                    if (newBadge) newBadge.remove();
-                    window.Hydrograf.adminApi.markFeedbackRead(item.id);
-                }
+                setRead(true);
             });
 
             row.appendChild(header);

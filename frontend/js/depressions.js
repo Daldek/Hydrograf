@@ -14,6 +14,42 @@
     var geojsonLayer = null;
     var debounceTimer = null;
 
+    // Volume classes [m³]: upper bounds, then fill opacity per class
+    var VOLUME_STEPS = [1, 10, 100, 1000];
+    var VOLUME_OPACITY = [0.5, 0.6, 0.65, 0.7, 0.8];
+
+    // Class colours of the current theme: --warn → --bad ramp (reset on theme change)
+    var volumeRamp = null;
+
+    function volumeColors() {
+        if (!volumeRamp) {
+            var m = Hydrograf.map;
+            var warn = m.token('--warn');
+            var bad = m.token('--bad');
+            volumeRamp = [
+                m.mix(warn, m.token('--surface'), 0.45),
+                warn,
+                m.mix(warn, bad, 0.5),
+                bad,
+                m.mix(bad, m.token('--code-bg'), 0.65),
+            ];
+        }
+        return volumeRamp;
+    }
+
+    function depressionStyle(feature) {
+        var vol = feature.properties.volume_m3 || 0;
+        var i = 0;
+        while (i < VOLUME_STEPS.length && vol >= VOLUME_STEPS[i]) i++;
+        var color = volumeColors()[i];
+        return { color: color, weight: 1, fillColor: color, fillOpacity: VOLUME_OPACITY[i] };
+    }
+
+    Hydrograf.map.onThemeChange(function () {
+        volumeRamp = null;
+        if (geojsonLayer) geojsonLayer.setStyle(depressionStyle);
+    });
+
     /**
      * Load depressions overlay from static files.
      */
@@ -39,11 +75,7 @@
                             overlayGroup,
                             'Zagłębienia',
                             function () { return depressionsOverlay; },
-                            function () {
-                                if (depressionsBounds) {
-                                    Hydrograf.map._getMap().fitBounds(depressionsBounds, { padding: [20, 20] });
-                                }
-                            },
+                            function () { return depressionsBounds; },
                             function (opacity) {
                                 if (depressionsOverlay) depressionsOverlay.setOpacity(opacity);
                             },
@@ -102,21 +134,7 @@
                 }
 
                 geojsonLayer = L.geoJSON(geojson, {
-                    style: function (feature) {
-                        var vol = feature.properties.volume_m3 || 0;
-                        var fillColor, fillOpacity;
-                        if (vol < 1)         { fillColor = '#ffffb2'; fillOpacity = 0.5; }
-                        else if (vol < 10)   { fillColor = '#fecc5c'; fillOpacity = 0.6; }
-                        else if (vol < 100)  { fillColor = '#fd8d3c'; fillOpacity = 0.65; }
-                        else if (vol < 1000) { fillColor = '#f03b20'; fillOpacity = 0.7; }
-                        else                 { fillColor = '#bd0026'; fillOpacity = 0.8; }
-                        return {
-                            color: fillColor,
-                            weight: 1,
-                            fillColor: fillColor,
-                            fillOpacity: fillOpacity,
-                        };
-                    },
+                    style: depressionStyle,
                     onEachFeature: function (feature, layer) {
                         var p = feature.properties;
                         layer.bindTooltip(

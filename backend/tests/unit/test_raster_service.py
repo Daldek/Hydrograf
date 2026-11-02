@@ -13,7 +13,6 @@ from rasterio.transform import Affine
 
 from core.raster_service import RasterCache, get_raster_cache
 
-
 # -----------------------------------------------------------------------
 # Fixtures — synthetic 5x5 rasters
 # -----------------------------------------------------------------------
@@ -160,7 +159,7 @@ class TestRasterCacheLoad:
         assert np.all(loaded_cache._fdir[4, :] == 0)
 
     def test_fdir_nodata_where_dem_nodata(self):
-        """Cells with DEM nodata get fdir=247 (pyflwdir nodata), regardless of fdir value."""
+        """DEM nodata cells get fdir=247 (pyflwdir nodata) whatever the fdir value."""
         # DEM with nodata in top-left corner
         dem_with_nodata = DEM.copy()
         dem_with_nodata[0, 0] = -9999.0
@@ -215,9 +214,11 @@ class TestRasterCacheLoad:
         settings = MagicMock()
         settings.resolve_flowdir_path.return_value = None
         cache = RasterCache()
-        with patch("core.raster_service.get_settings", return_value=settings):
-            with pytest.raises(FileNotFoundError, match="Flow direction"):
-                cache.load()
+        with (
+            patch("core.raster_service.get_settings", return_value=settings),
+            pytest.raises(FileNotFoundError, match="Flow direction"),
+        ):
+            cache.load()
 
     def test_load_without_dem_raises(self):
         """FileNotFoundError when DEM raster is missing."""

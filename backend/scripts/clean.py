@@ -11,7 +11,8 @@ Usage:
     # Standard clean (processed data only, keeps caches)
     python -m scripts.clean
 
-    # Full clean (including download caches)
+    # Full clean (including the download caches: the big products of the Kartograf
+    # store and the old cache/nmt, cache/bdot10k and cache/soil_hsg of Kartograf 0.7.0)
     python -m scripts.clean --include-cache
 
     # Nuclear clean (everything + database reset)
@@ -35,8 +36,9 @@ import stat
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
-from scripts.download_dem import METADATA_CACHE_NAME
+from utils.kartograf_store import METADATA_CACHE_NAME, shared_store_root, store_dir
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +54,20 @@ DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
 KARTOGRAF_META_GLOB = f"{METADATA_CACHE_NAME}*"
 
+# What a cache clean removes from the Kartograf store: the large products that Kartograf
+# fetches again (ADR-061). The HSG raster of Poland (``hsg/``) and its SoilGrids inputs
+# (``soil/``) stay: small, Poland-wide and reusable. The marker of the store stays too,
+# so what is left is still a valid store. A store shared with other producers
+# (``HYDROGRAF_KARTOGRAF_ROOT``, ADR-066) is not Hydrograf's to empty: it stays whole.
+STORE_PRODUCTS_REMOVED = ("nmt", "landcover")
+STORE_PRODUCTS_KEPT = ("hsg", "soil")
+
+# The cache of Kartograf 0.7.0, before its store (ADR-061): NMT sheets, BDOT10k packages
+# and the HSG raster of Poland, each in a directory of its own under the cache
+# directory. Nothing reads them any more and there is no data migration, so the cache
+# clean removes them too, whole, once; they are not a separate component.
+LEGACY_CACHE_DIRS = ("nmt", "bdot10k", "soil_hsg")
+
 # Components and what they remove
 COMPONENTS = [
     "rasters",
@@ -65,7 +81,7 @@ COMPONENTS = [
 ]
 
 # Tables truncated during DB cleanup. soil_hsg included because bootstrap
-# re-imports from cache/soil_hsg (which is intentionally preserved).
+# re-imports it from the HSG raster of the Kartograf store (which is preserved).
 DB_TABLES = [
     "sewer_network",
     "sewer_nodes",
@@ -108,6 +124,7 @@ def count_files(path: Path) -> int:
 
 def _force_rmtree(path: Path) -> None:
     """shutil.rmtree with permission fix for rootless Docker UID remapping."""
+
     def _on_error(_func, _path, _exc_info):
         os.chmod(_path, stat.S_IRWXU)
         _func(_path)
@@ -116,10 +133,11 @@ def _force_rmtree(path: Path) -> None:
 
 
 def remove_dir(path: Path, dry_run: bool = False) -> tuple[int, int]:
-    """Remove directory contents (not the directory itself), return (files_removed, bytes_freed).
+    """Remove directory contents (not the directory itself).
 
-    Keeps the top-level directory intact — important when it is a Docker
-    volume mount point that cannot be removed and re-created.
+    Returns (files_removed, bytes_freed). Keeps the top-level directory intact,
+    which matters when it is a Docker volume mount point that cannot be removed
+    and re-created.
     """
     if not path.exists():
         return 0, 0
@@ -134,8 +152,18 @@ def remove_dir(path: Path, dry_run: bool = False) -> tuple[int, int]:
     return n_files, size
 
 
+def remove_tree(path: Path, dry_run: bool = False) -> tuple[int, int]:
+    """Remove a directory with its contents, return (files_removed, bytes_freed)."""
+    n_files, size = remove_dir(path, dry_run)
+    if not dry_run and path.exists():
+        path.rmdir()
+    return n_files, size
+
+
 def remove_files_by_glob(
-    directory: Path, pattern: str, dry_run: bool = False,
+    directory: Path,
+    pattern: str,
+    dry_run: bool = False,
 ) -> tuple[int, int]:
     """Remove files matching glob pattern, return (files_removed, bytes_freed)."""
     if not directory.exists():
@@ -223,34 +251,49 @@ def clean_tiles(dry_run: bool) -> tuple[int, int]:
     return remove_dir(tiles_dir, dry_run)
 
 
+def _store_products_removed(cache_dir: Path) -> list[Path]:
+    """Directories of the store that the cache clean removes; none of a shared store."""
+    if shared_store_root() is not None:
+        return []
+    store = store_dir(cache_dir)
+    return [store / product for product in STORE_PRODUCTS_REMOVED]
+
+
 def clean_cache(cache_dir: Path, dry_run: bool) -> tuple[int, int]:
-    """Remove download caches (NMT, BDOT10k). Keeps soil_hsg (small, Poland-wide)."""
+    """Remove download caches (NMT, BDOT10k) of the Kartograf store.
+
+    Keeps the HSG raster of Poland and its inputs (small, Poland-wide). Removes also
+    the directories of the cache of Kartograf 0.7.0 (``LEGACY_CACHE_DIRS``), which
+    nothing reads any more. A shared store (ADR-066) keeps everything: only the
+    metadata cache and the old directories of Hydrograf go.
+    """
     total_files = 0
     total_size = 0
+    store = store_dir(cache_dir)
 
-    # NMT cache (biggest, ~300MB)
-    nmt_cache = cache_dir / "nmt"
-    if nmt_cache.exists():
-        n, s = remove_dir(nmt_cache, dry_run)
-        total_files += n
-        total_size += s
-
-    # BDOT10k cache (~1.1GB)
-    bdot_cache = cache_dir / "bdot10k"
-    if bdot_cache.exists():
-        n, s = remove_dir(bdot_cache, dry_run)
-        total_files += n
-        total_size += s
+    # NMT and BDOT10k of the Kartograf store (the biggest part of the cache)
+    for product_dir in _store_products_removed(cache_dir):
+        if product_dir.exists():
+            n, s = remove_dir(product_dir, dry_run)
+            total_files += n
+            total_size += s
 
     # Kartograf MetadataCache (SQLite + WAL/SHM) — opisuje usuniete wyzej pliki
     n, s = remove_files_by_glob(cache_dir, KARTOGRAF_META_GLOB, dry_run)
     total_files += n
     total_size += s
 
-    # soil_hsg intentionally NOT removed (~700KB, Poland-wide, reusable)
-    hsg_cache = cache_dir / "soil_hsg"
-    if hsg_cache.exists():
-        logger.info("  (zachowano cache/soil_hsg — maly, ogolnopolski)")
+    # Cache directories of Kartograf 0.7.0 (nmt, bdot10k, soil_hsg): dead, removed whole
+    for name in LEGACY_CACHE_DIRS:
+        n, s = remove_tree(cache_dir / name, dry_run)
+        total_files += n
+        total_size += s
+
+    if shared_store_root() is not None:
+        logger.info(f"  (magazyn wspolny {store} bez zmian, ADR-066)")
+    # HSG intentionally NOT removed (small, Poland-wide, reusable)
+    elif any((store / product).exists() for product in STORE_PRODUCTS_KEPT):
+        logger.info("  (zachowano cache/kartograf/hsg i soil — male, ogolnopolskie)")
 
     return total_files, total_size
 
@@ -283,7 +326,10 @@ def clean_db(dry_run: bool) -> int:
 
                     if not dry_run:
                         conn.execute(text(f"TRUNCATE TABLE {table} CASCADE"))  # noqa: S608 — table names from hardcoded DB_TABLES, not user input
-                    logger.info(f"  {table}: {count} rekordow {'usunietych' if not dry_run else '(dry run)'}")
+                    logger.info(
+                        f"  {table}: {count} rekordow "
+                        f"{'usunietych' if not dry_run else '(dry run)'}"
+                    )
                     cleaned += 1
                 except Exception as e:
                     logger.warning(f"  {table}: {e}")
@@ -301,39 +347,45 @@ def build_plan(
     components: list[str],
     data_dir: Path,
     cache_dir: Path,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Build a plan of what will be cleaned, with sizes."""
     plan = []
 
     if "rasters" in components:
         nmt_dir = data_dir / "nmt"
-        plan.append({
-            "name": "Rastry NMT",
-            "component": "rasters",
-            "path": str(nmt_dir),
-            "files": count_files(nmt_dir) if nmt_dir.exists() else 0,
-            "size": dir_size(nmt_dir),
-        })
+        plan.append(
+            {
+                "name": "Rastry NMT",
+                "component": "rasters",
+                "path": str(nmt_dir),
+                "files": count_files(nmt_dir) if nmt_dir.exists() else 0,
+                "size": dir_size(nmt_dir),
+            }
+        )
 
     if "hydro" in components:
         hydro_dir = data_dir / "hydro"
-        plan.append({
-            "name": "Dane hydro BDOT10k",
-            "component": "hydro",
-            "path": str(hydro_dir),
-            "files": count_files(hydro_dir) if hydro_dir.exists() else 0,
-            "size": dir_size(hydro_dir),
-        })
+        plan.append(
+            {
+                "name": "Dane hydro BDOT10k",
+                "component": "hydro",
+                "path": str(hydro_dir),
+                "files": count_files(hydro_dir) if hydro_dir.exists() else 0,
+                "size": dir_size(hydro_dir),
+            }
+        )
 
     if "boundary" in components:
         boundary_dir = data_dir / "boundary"
-        plan.append({
-            "name": "Pliki boundary",
-            "component": "boundary",
-            "path": str(boundary_dir),
-            "files": count_files(boundary_dir) if boundary_dir.exists() else 0,
-            "size": dir_size(boundary_dir),
-        })
+        plan.append(
+            {
+                "name": "Pliki boundary",
+                "component": "boundary",
+                "path": str(boundary_dir),
+                "files": count_files(boundary_dir) if boundary_dir.exists() else 0,
+                "size": dir_size(boundary_dir),
+            }
+        )
 
     if "overlays" in components:
         overlay_dir = FRONTEND_DIR / "data"
@@ -345,61 +397,71 @@ def build_plan(
         if dem_tiles and dem_tiles.exists():
             size += dir_size(dem_tiles)
             n += count_files(dem_tiles)
-        plan.append({
-            "name": "Overlay PNG/JSON + DEM tiles",
-            "component": "overlays",
-            "path": str(overlay_dir),
-            "files": n,
-            "size": size,
-        })
+        plan.append(
+            {
+                "name": "Overlay PNG/JSON + DEM tiles",
+                "component": "overlays",
+                "path": str(overlay_dir),
+                "files": n,
+                "size": size,
+            }
+        )
 
     if "geojson" in components:
         data_dir_fe = FRONTEND_DIR / "data"
-        geojson_files = list(data_dir_fe.glob("*.geojson")) if data_dir_fe.exists() else []
-        plan.append({
-            "name": "Eksporty GeoJSON",
-            "component": "geojson",
-            "path": str(data_dir_fe),
-            "files": len(geojson_files),
-            "size": sum(f.stat().st_size for f in geojson_files),
-        })
+        geojson_files = (
+            list(data_dir_fe.glob("*.geojson")) if data_dir_fe.exists() else []
+        )
+        plan.append(
+            {
+                "name": "Eksporty GeoJSON",
+                "component": "geojson",
+                "path": str(data_dir_fe),
+                "files": len(geojson_files),
+                "size": sum(f.stat().st_size for f in geojson_files),
+            }
+        )
 
     if "tiles" in components:
         tiles_dir = FRONTEND_DIR / "tiles"
-        plan.append({
-            "name": "Kafelki MVT",
-            "component": "tiles",
-            "path": str(tiles_dir),
-            "files": count_files(tiles_dir) if tiles_dir.exists() else 0,
-            "size": dir_size(tiles_dir),
-        })
+        plan.append(
+            {
+                "name": "Kafelki MVT",
+                "component": "tiles",
+                "path": str(tiles_dir),
+                "files": count_files(tiles_dir) if tiles_dir.exists() else 0,
+                "size": dir_size(tiles_dir),
+            }
+        )
 
     if "db" in components:
-        plan.append({
-            "name": "Tabele bazy danych",
-            "component": "db",
-            "path": "PostgreSQL",
-            "files": len(DB_TABLES),
-            "size": 0,  # unknown without query
-        })
+        plan.append(
+            {
+                "name": "Tabele bazy danych",
+                "component": "db",
+                "path": "PostgreSQL",
+                "files": len(DB_TABLES),
+                "size": 0,  # unknown without query
+            }
+        )
 
     if "cache" in components:
-        nmt_cache = cache_dir / "nmt"
-        bdot_cache = cache_dir / "bdot10k"
+        removed = _store_products_removed(cache_dir)
+        removed += [cache_dir / name for name in LEGACY_CACHE_DIRS]
         meta_files = list(cache_dir.glob(KARTOGRAF_META_GLOB))
-        size = (
-            dir_size(nmt_cache)
-            + dir_size(bdot_cache)
-            + sum(f.stat().st_size for f in meta_files)
+        size = sum(dir_size(p) for p in removed) + sum(
+            f.stat().st_size for f in meta_files
         )
-        n = count_files(nmt_cache) + count_files(bdot_cache) + len(meta_files)
-        plan.append({
-            "name": "Cache pobran (NMT + BDOT10k)",
-            "component": "cache",
-            "path": str(cache_dir),
-            "files": n,
-            "size": size,
-        })
+        n = sum(count_files(p) for p in removed) + len(meta_files)
+        plan.append(
+            {
+                "name": "Cache pobran (NMT + BDOT10k)",
+                "component": "cache",
+                "path": str(cache_dir),
+                "files": n,
+                "size": size,
+            }
+        )
 
     return plan
 
@@ -409,7 +471,7 @@ def execute_clean(
     data_dir: Path,
     cache_dir: Path,
     dry_run: bool,
-) -> dict:
+) -> dict[str, Any]:
     """Execute cleanup, return summary."""
     results = {}
     total_files = 0
@@ -477,6 +539,7 @@ def execute_clean(
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command line parser."""
     parser = argparse.ArgumentParser(
         description="Czyszczenie wygenerowanych danych Hydrograf",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -493,7 +556,8 @@ def build_parser() -> argparse.ArgumentParser:
     scope_group.add_argument(
         "--include-cache",
         action="store_true",
-        help="Usun rowniez cache pobran (NMT, BDOT10k)",
+        help="Usun rowniez cache pobran (NMT, BDOT10k; takze stare cache/nmt, "
+        "cache/bdot10k i cache/soil_hsg z Kartografa 0.7.0)",
     )
     scope_group.add_argument(
         "--include-db",
@@ -527,7 +591,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Tylko pokaz co zostanie usuniete",
     )
     parser.add_argument(
-        "--yes", "-y",
+        "--yes",
+        "-y",
         action="store_true",
         help="Pomin potwierdzenie",
     )
@@ -536,6 +601,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main():
+    """Run the cleanup."""
     parser = build_parser()
     args = parser.parse_args()
 
@@ -573,14 +639,20 @@ def main():
         if item["files"] > 0 or item["component"] == "db":
             marker = "*" if item["size"] > 100 * 1024 * 1024 else " "  # >100MB
             size_str = fmt_size(item["size"]) if item["size"] > 0 else "—"
-            print(f"  {marker} {item['name']:<30} {item['files']:>6} plikow  {size_str:>10}")
+            print(
+                f"  {marker} {item['name']:<30} {item['files']:>6} plikow  "
+                f"{size_str:>10}"
+            )
 
     print(f"\n  RAZEM: {total_files} plikow, {fmt_size(total_size)}")
 
     if "cache" not in components:
         cache_size = dir_size(cache_dir)
         if cache_size > 0:
-            print(f"  (cache zachowany: {fmt_size(cache_size)} — uzyj --include-cache aby usunac)")
+            print(
+                f"  (cache zachowany: {fmt_size(cache_size)} — "
+                "uzyj --include-cache aby usunac)"
+            )
 
     print()
 
@@ -598,13 +670,16 @@ def main():
 
     verb = "zostaloby usuniete" if args.dry_run else "usunieto"
     print(f"\n{'=' * 58}")
-    print(f"  {verb.upper()}: {summary['total_files']} plikow, {fmt_size(summary['total_size'])}")
+    print(
+        f"  {verb.upper()}: {summary['total_files']} plikow, "
+        f"{fmt_size(summary['total_size'])}"
+    )
     print(f"  Czas: {elapsed:.1f}s")
 
     if not args.dry_run:
-        print(f"\n  Gotowe do regeneracji:")
-        print(f"    cd backend")
-        print(f"    python -m scripts.bootstrap --bbox \"...\"")
+        print("\n  Gotowe do regeneracji:")
+        print("    cd backend")
+        print('    python -m scripts.bootstrap --bbox "..."')
 
     print(f"{'=' * 58}\n")
 

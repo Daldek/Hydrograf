@@ -7,20 +7,19 @@ from rasterio.transform import Affine
 from shapely.geometry import Point
 from sqlalchemy import text  # noqa: F401 — used in Task 3 (DB tests)
 
-# Register DB fixtures from conftest_db
-pytest_plugins = ["tests.conftest_db"]
-
-from tests.conftest_db import requires_db
-
 from core.sewer_service import (
+    build_sewer_graph,
     burn_inlets,
     insert_sewer_data,  # noqa: F401 — used in Task 3 (DB tests)
     propagate_fa_downstream,
     reconstruct_inlet_fa,
     route_fa_through_sewer,
 )
-from core.sewer_service import build_sewer_graph
 from core.sewer_topology import parse_sewer_topology, validate_against_fdir
+from tests.conftest_db import requires_db
+
+# Register DB fixtures from conftest_db
+pytest_plugins = ["tests.conftest_db"]
 
 # --- Constants ---
 NROWS = NCOLS = 100
@@ -191,9 +190,7 @@ class TestSewerPipelineInMemory:
 
         for inlet in inlets:
             r, c = inlet["row"], inlet["col"]
-            assert dem_after[r, c] < dem_before[r, c], (
-                f"Inlet at ({r},{c}) not burned"
-            )
+            assert dem_after[r, c] < dem_before[r, c], f"Inlet at ({r},{c}) not burned"
             assert inlet["dem_elev_m"] is not None
             assert inlet["burn_elev_m"] is not None
             assert inlet["burn_elev_m"] < inlet["dem_elev_m"]
@@ -270,9 +267,7 @@ class TestSewerPipelineInMemory:
         assert d8 in d8_dr, f"Outlet fdir={d8} is not a valid D8 direction"
         nr = r + d8_dr[d8]
         nc = c + d8_dc[d8]
-        assert 0 <= nr < NROWS and 0 <= nc < NCOLS, (
-            "Downstream cell out of bounds"
-        )
+        assert 0 <= nr < NROWS and 0 <= nc < NCOLS, "Downstream cell out of bounds"
         assert acc_after[nr, nc] > acc_before[nr, nc]
 
 
@@ -290,12 +285,8 @@ class TestSewerDatabase:
         db_session.execute(
             text("TRUNCATE TABLE sewer_network RESTART IDENTITY CASCADE")
         )
-        db_session.execute(
-            text("TRUNCATE TABLE sewer_nodes RESTART IDENTITY CASCADE")
-        )
-        db_session.execute(
-            text("DELETE FROM stream_network WHERE segment_idx = 9999")
-        )
+        db_session.execute(text("TRUNCATE TABLE sewer_nodes RESTART IDENTITY CASCADE"))
+        db_session.execute(text("DELETE FROM stream_network WHERE segment_idx = 9999"))
         db_session.execute(
             text(
                 "UPDATE stream_network SET is_sewer_augmented = FALSE "
@@ -312,22 +303,15 @@ class TestSewerDatabase:
         assert count == 4 + 3  # 4 nodes + 3 edges
 
         # Verify node counts
-        result = db_session.execute(
-            text("SELECT COUNT(*) FROM sewer_nodes")
-        )
+        result = db_session.execute(text("SELECT COUNT(*) FROM sewer_nodes"))
         assert result.scalar() == 4
 
-        result = db_session.execute(
-            text("SELECT COUNT(*) FROM sewer_network")
-        )
+        result = db_session.execute(text("SELECT COUNT(*) FROM sewer_network"))
         assert result.scalar() == 3
 
         # Verify outlet has total_upstream_fa > 0
         result = db_session.execute(
-            text(
-                "SELECT total_upstream_fa FROM sewer_nodes "
-                "WHERE node_type = 'outlet'"
-            )
+            text("SELECT total_upstream_fa FROM sewer_nodes WHERE node_type = 'outlet'")
         )
         row = result.fetchone()
         assert row is not None
@@ -335,10 +319,7 @@ class TestSewerDatabase:
 
         # Verify inlets have fa_value > 0
         result = db_session.execute(
-            text(
-                "SELECT fa_value FROM sewer_nodes "
-                "WHERE node_type = 'inlet'"
-            )
+            text("SELECT fa_value FROM sewer_nodes WHERE node_type = 'inlet'")
         )
         rows = result.fetchall()
         assert len(rows) == 2
@@ -346,11 +327,7 @@ class TestSewerDatabase:
             assert row[0] > 0
 
         # Verify edges have positive length and correct source
-        result = db_session.execute(
-            text(
-                "SELECT length_m, source FROM sewer_network"
-            )
-        )
+        result = db_session.execute(text("SELECT length_m, source FROM sewer_network"))
         for length_m, source in result.fetchall():
             assert length_m > 0
             assert source == "synthetic_test"
@@ -392,8 +369,7 @@ class TestSewerDatabase:
         # Verify flag was set
         result = db_session.execute(
             text(
-                "SELECT is_sewer_augmented FROM stream_network "
-                "WHERE segment_idx = 9999"
+                "SELECT is_sewer_augmented FROM stream_network WHERE segment_idx = 9999"
             )
         )
         assert result.scalar() is True

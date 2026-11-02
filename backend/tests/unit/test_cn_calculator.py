@@ -6,6 +6,7 @@ Tests for CN calculation using Kartograf integration.
 
 from unittest.mock import MagicMock, patch
 
+import kartograf
 import pytest
 
 from core.cn_calculator import (
@@ -13,7 +14,10 @@ from core.cn_calculator import (
     calculate_cn_from_kartograf,
     check_kartograf_available,
     get_default_land_cover_stats,
+    get_hsg_from_soilgrids,
 )
+from tests.kartograf_offline import LOAM, SANDY, SoilRasters, soil_rasters
+from tests.kartograf_offline import offline as offline  # noqa: F401
 
 
 class TestCNCalculationResult:
@@ -56,17 +60,9 @@ class TestCNCalculationResult:
 class TestCheckKartografAvailable:
     """Tests for check_kartograf_available function."""
 
-    def test_returns_bool(self):
-        """Test function returns boolean."""
-        result = check_kartograf_available()
-        assert isinstance(result, bool)
-
-    @patch.dict("sys.modules", {"kartograf": None})
-    def test_returns_false_when_kartograf_missing(self):
-        """Test returns False when kartograf not installed."""
-        # Note: This test may not work properly due to module caching
-        # The function should handle ImportError gracefully
-        pass
+    def test_true_when_the_functions_used_here_are_importable(self):
+        """The Kartograf names that core.cn_calculator calls exist in the pinned one."""
+        assert check_kartograf_available() is True
 
 
 class TestGetDefaultLandCoverStats:
@@ -441,37 +437,43 @@ class TestIntegrationScenarios:
         assert result.dominant_hsg == "A"
 
 
-class TestGetHsgFromSoilgridsNoData:
-    """Raster HSG z samymi nodata: Kartograf zwraca slownik zer, nie pusty."""
+@pytest.mark.usefixtures("offline")
+class TestGetHsgFromSoilgrids:
+    """The dominant soil group of an area through calculate_hsg (plain, temporary)."""
 
-    @staticmethod
-    def _zero_stats():
-        return {
-            group: {"count": 0, "area_m2": 0.0, "area_ha": 0.0, "percent": 0.0}
-            for group in ("A", "B", "C", "D")
-        }
+    BBOX = kartograf.BBox(450000, 550000, 460000, 560000, "EPSG:2180")
 
-    @patch("kartograf.hydrology.HSGCalculator")
-    def test_all_nodata_uses_no_data_branch_not_group_a(self, mock_cls):
-        from core.cn_calculator import get_hsg_from_soilgrids
+    def test_loam_is_group_b(self):
+        with soil_rasters(SoilRasters(LOAM)):
+            dominant, stats = get_hsg_from_soilgrids(self.BBOX)
 
-        mock_cls.return_value.get_hsg_statistics.return_value = self._zero_stats()
+        assert dominant == "B"
+        assert stats == {"A": 0.0, "B": 100.0, "C": 0.0, "D": 0.0}
 
-        dominant, stats = get_hsg_from_soilgrids(MagicMock())
+    def test_loamy_sand_is_group_a(self):
+        with soil_rasters(SoilRasters(SANDY)):
+            dominant, stats = get_hsg_from_soilgrids(self.BBOX)
 
-        assert dominant != "A"
-        assert (dominant, stats) == ("B", {"B": 100.0})
+        assert dominant == "A"
+        assert stats["A"] == pytest.approx(100.0)
 
-    @patch("kartograf.hydrology.HSGCalculator")
-    def test_valid_stats_pick_dominant(self, mock_cls):
-        from core.cn_calculator import get_hsg_from_soilgrids
+    def test_all_nodata_uses_the_default_group_not_group_a(self):
+        empty = {"clay": 0.0, "sand": 0.0, "silt": 0.0}
+        with soil_rasters(SoilRasters(empty)):
+            result = get_hsg_from_soilgrids(self.BBOX)
 
-        stats = self._zero_stats()
-        stats["C"].update(count=30, percent=75.0)
-        stats["A"].update(count=10, percent=25.0)
-        mock_cls.return_value.get_hsg_statistics.return_value = stats
+        assert result == ("B", {"B": 100.0})
 
-        dominant, normalized = get_hsg_from_soilgrids(MagicMock())
+    def test_a_failed_download_uses_the_default_group(self):
+        down = {name: kartograf.DownloadError("HTTP 500") for name in LOAM}
+        with soil_rasters(SoilRasters(down)):
+            result = get_hsg_from_soilgrids(self.BBOX)
 
-        assert dominant == "C"
-        assert normalized == {"A": 25.0, "B": 0.0, "C": 75.0, "D": 0.0}
+        assert result == ("B", {"B": 100.0})
+
+    def test_nothing_of_the_call_stays_on_disk(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        with soil_rasters(SoilRasters(LOAM)):
+            get_hsg_from_soilgrids(self.BBOX)
+
+        assert list(tmp_path.iterdir()) == []

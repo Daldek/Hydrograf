@@ -6,17 +6,16 @@ which uses CatchmentGraph BFS and ST_Union boundary (precomputed mode).
 """
 
 import contextlib
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from scipy import sparse
 from shapely.geometry import MultiPolygon, Polygon
 
 from api.main import app
 from core.catchment_graph import CatchmentGraph
-from core.database import get_db
 
 # Patch target prefix for the watershed endpoint module
 _WS = "api.endpoints.watershed"
@@ -52,7 +51,7 @@ def _make_mock_cg(area_km2: float = 10.0) -> MagicMock:
     return cg
 
 
-def _make_segment() -> dict:
+def _make_segment() -> dict[str, Any]:
     """Create a mock stream segment dict."""
     return {
         "segment_idx": 12,
@@ -78,7 +77,7 @@ def _make_boundary() -> MultiPolygon:
     return MultiPolygon([poly])
 
 
-def _make_morph_dict(area_km2: float = 10.0) -> dict:
+def _make_morph_dict(area_km2: float = 10.0) -> dict[str, Any]:
     """Create a morphometric parameter dict matching MorphometricParameters schema."""
     return {
         "area_km2": area_km2,
@@ -271,12 +270,14 @@ class TestPrecomputedDelineation:
             )
 
         assert response.status_code == 404
-        assert "Nie znaleziono zlewni" in response.json()["detail"]
+        assert response.json()["code"] == "not_found"
+        assert response.json()["details"]["reason"] == "no_catchment_at_point"
 
     def test_graph_not_loaded_returns_503(self, client):
         """Test that unloaded graph returns 503."""
         cg = MagicMock(spec=CatchmentGraph)
         cg.loaded = False
+        cg.ensure_loaded.return_value = False
 
         with patch(f"{_WS}.get_catchment_graph", return_value=cg):
             response = client.post(
@@ -290,8 +291,8 @@ class TestPrecomputedDelineation:
 
         assert response.status_code == 503
 
-    def test_invalid_coordinates_returns_422(self, client):
-        """Test that latitude=200 returns 422."""
+    def test_invalid_coordinates_returns_400(self, client):
+        """Test that latitude=200 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={
@@ -301,7 +302,7 @@ class TestPrecomputedDelineation:
             },
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_display_threshold_matches_request(self, client):
         """Test display_threshold_m2 in response matches request threshold."""

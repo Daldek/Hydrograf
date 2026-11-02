@@ -1,4 +1,4 @@
-"""Bootstrap kroki 2-3 z Kartografem 0.7.0: uklad danych, brak duplikatow kampanii."""
+"""Bootstrap steps 2-3 with the real Kartograf: the store of the cache, no copies."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -6,12 +6,15 @@ from unittest.mock import patch
 import pytest
 
 from scripts.bootstrap import step_download_nmt, step_process_dem
-from scripts.download_dem import NmtDownloadReport
+from tests.kartograf_offline import GugikIndex, flight, gugik_index
+from tests.kartograf_offline import offline as offline  # noqa: F401
 
-STD = "nmt/pl_1992_5m_evrf2007/N-33/130/D/d/1/1/N-33-130-D-d-1-1.asc"
-CAMPAIGN = (
-    "nmt/pl_1992_5m_evrf2007/kampanie/2025-09-09_83980/"
-    "N-33/130/D/d/1/1/N-33-130-D-d-1-1.asc"
+SHEET = "N-33-130-D-d-1-1"
+NO_COVERAGE = "N-35-1-A-a-1-1"
+STD = f"kartograf/nmt/pl_1992_5m_evrf2007/N-33/130/D/d/1/1/{SHEET}.asc"
+VERSION = (
+    "kartograf/nmt/pl_1992_5m_evrf2007/versions/N-33/130/D/d/1/1/"
+    f"2025-09-09_83980_ab12cd34/{SHEET}.asc"
 )
 
 
@@ -25,30 +28,26 @@ def _touch(path: Path) -> Path:
     return path
 
 
+@pytest.mark.usefixtures("offline")
 class TestStepDownloadNmt:
-    def test_cache_dir_is_kartograf_data_root(self, tmp_path):
-        std = tmp_path / STD
-        report = NmtDownloadReport(paths=[std], no_coverage=["N-35-1-A-a-1-1"])
-        with patch(
-            "scripts.download_dem.download_sheets", return_value=report
-        ) as mock_dl:
+    def test_sheets_go_into_the_store_of_the_cache_dir(self, tmp_path):
+        index = GugikIndex([flight(SHEET, "2025-09-09", "83980")])
+        with gugik_index(index):
             paths, detail = step_download_nmt(
-                ["N-33-130-D-d-1-1", "N-35-1-A-a-1-1"], tmp_path, resolution="5m"
+                [SHEET, NO_COVERAGE], tmp_path, resolution="5m"
             )
 
-        args, kwargs = mock_dl.call_args
-        assert args[1] == tmp_path
-        assert args[2] == tmp_path / "kartograf_meta.db"
-        assert kwargs["resolution"] == "5m"
-        assert paths == [std]
+        assert paths == [tmp_path / STD]
+        assert paths[0].is_file()
+        assert (tmp_path / "kartograf" / "kartograf-store.json").is_file()
         assert "1/2 arkuszy" in detail
         assert "1 bez pokrycia" in detail
 
 
 class TestStepProcessDemUsesDownloadedFiles:
-    def test_campaign_copies_never_reach_mosaic(self, tmp_path):
+    def test_version_copies_never_reach_mosaic(self, tmp_path):
         std = _touch(tmp_path / "cache" / STD)
-        _touch(tmp_path / "cache" / CAMPAIGN)
+        _touch(tmp_path / "cache" / VERSION)
         seen: dict[str, list[Path]] = {}
 
         def fake_normalize(files, _out):
