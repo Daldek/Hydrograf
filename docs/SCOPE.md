@@ -520,7 +520,7 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 1.0.0.dev0 (commit `5fa22b3`; hydrological calculations)
+- Hydrolog 1.0.0.dev0 (commit `4f02ffd`; hydrological calculations)
 - Kartograf 0.8.0.dev0 (commit `26ee459` of the branch `feature/archiwista-projects`, 2026-10-31, the same as Archiwista; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
 - IMGWTools 3.0.0 (commit `6bd35a4`; design precipitation from IMGW)
 
