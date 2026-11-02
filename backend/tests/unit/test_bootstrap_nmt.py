@@ -43,6 +43,40 @@ class TestStepDownloadNmt:
         assert "1/2 arkuszy" in detail
         assert "1 bez pokrycia" in detail
 
+    def test_sheets_go_into_the_shared_store_and_not_into_the_cache_dir(
+        self, tmp_path, monkeypatch
+    ):
+        shared = tmp_path / "shared"
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        monkeypatch.setenv("HYDROGRAF_KARTOGRAF_ROOT", str(shared))
+        index = GugikIndex([flight(SHEET, "2025-09-09", "83980")])
+        with gugik_index(index):
+            paths, _ = step_download_nmt([SHEET], cache_dir, resolution="5m")
+
+        assert paths == [shared / STD.removeprefix("kartograf/")]
+        assert (shared / "kartograf-store.json").is_file()
+        assert not (cache_dir / "kartograf").exists()
+
+    def test_a_write_in_progress_in_the_store_stops_the_step_before_writing(
+        self, tmp_path
+    ):
+        staging = (
+            tmp_path
+            / "kartograf/nmt/pl_1992_5m_evrf2007/versions/.incoming"
+            / "archiwista_4242_0a1b2c3d"
+        )
+        staging.mkdir(parents=True)
+        (staging / f"{SHEET}.asc.4242_1.tmp").write_text("partial")
+        index = GugikIndex([flight(SHEET, "2025-09-09", "83980")])
+
+        with gugik_index(index), pytest.raises(RuntimeError, match="ADR-066") as e:
+            step_download_nmt([SHEET], tmp_path, resolution="5m")
+
+        assert "archiwista_4242_0a1b2c3d" in str(e.value)
+        assert not (tmp_path / STD).exists()
+        assert not (tmp_path / "kartograf" / "kartograf-store.json").exists()
+
 
 class TestStepProcessDemUsesDownloadedFiles:
     def test_version_copies_never_reach_mosaic(self, tmp_path):

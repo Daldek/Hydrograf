@@ -1,8 +1,8 @@
 # Kartograf integration
 
-**Version:** 7.1
+**Version:** 7.2
 **Date:** 2026-11-02
-**Status:** Active (Kartograf 0.8.0.dev0, head `26ee459`; ADR-061)
+**Status:** Active (Kartograf 0.8.0.dev0, head `26ee459`; ADR-061, ADR-066)
 
 ---
 
@@ -106,7 +106,8 @@ Hydrograf passes `root=` or `output_dir=` and `cache=` explicitly** and none rel
 | `prepare_area` | its own store `<output>/kartograf` | a stand-alone script with a working directory |
 
 The store of the pipeline is `<cache_dir>/kartograf` (`paths.cache_dir`, default `cache/`;
-`bootstrap --cache-dir`). It is a directory of its own: Kartograf refuses a root that holds other
+`bootstrap --cache-dir`), or the store that `HYDROGRAF_KARTOGRAF_ROOT` names, shared with Archiwista
+(§3.7, ADR-066). It is a directory of its own: Kartograf refuses a root that holds other
 files (`conflict`, reason `not_empty`) and a root that has the layout of a store and no marker
 (`store_unavailable`, hint `kartograf store init --root DIR`). A new or empty directory becomes a
 store: Kartograf writes the marker on the first write.
@@ -183,7 +184,9 @@ degradation.
 `python -m scripts.clean --include-cache` (and the `cache` target of the admin panel) removes the
 large products of the store that Kartograf fetches again, `nmt/` and `landcover/`, with
 `kartograf_meta.db*`, and keeps `hsg/`, `soil/` and the marker (small, Poland-wide, reusable), so
-what is left is still a valid store. It also removes the directories of the 0.7.0 layout (§3.6).
+what is left is still a valid store. It also removes the directories of the 0.7.0 layout (§3.6). A
+shared store (§3.7) stays whole: the clean removes only `kartograf_meta.db*` and the 0.7.0
+directories of the cache.
 
 ### 3.6 No migration from the 0.7.0 layout
 
@@ -193,6 +196,31 @@ unreleased and there is no data migration: Hydrograf does not read these directo
 downloads into `cache/kartograf/`, and the cache clean removes the old directories whole (ADR-061,
 erratum of 2026-10-25). Data of the 0.6.1 layout (`nmt_1m/`, `nmt_5m/`) was not reusable even in
 0.7.0.
+
+### 3.7 A store shared with Archiwista (ADR-066)
+
+`HYDROGRAF_KARTOGRAF_ROOT` names a Kartograf store outside the cache directory; every script then
+writes and reads there instead of `<cache_dir>/kartograf`, and the metadata cache stays in
+`<cache_dir>` (one per producer). Since S4 of the store migration it is the store of the public
+Archiwista instance, `/home/claude-agent/data/archiwista-public/store`; the staging stack mounts it
+at `/kartograf` (read-only for the serving API, read-write for the bootstrap container).
+
+- **Writers:** Archiwista (`claude-agent`, its download jobs) and the bootstrap of Hydrograf
+  (UID 999). Hydrograf writes nothing into the store but what Kartograf writes: the mosaic gets
+  its CRS from `create_vrt_mosaic(target_crs=)`, not from `.prj` files beside the sheets (§4.9).
+- **Permissions:** POSIX ACL on the store, set by its owner:
+  `setfacl -R -m u:999:rwX <store>` and `setfacl -R -d -m u:999:rwX,u:claude-agent:rwX <store>`.
+  The default entries replace the umask of both producers (077 of Archiwista, 022 of the
+  container), so each reads the other's files and can hard-link them, which
+  `fs.protected_hardlinks = 1` requires. The parent directories stay as they are: a bind mount
+  does not look them up.
+- **Concurrency:** Kartograf takes no lock and needs none (versions published by an exclusive
+  `os.link`, links moved by `os.replace`). The bootstrap writes only while no Archiwista download
+  job runs; step 2 stops before its first write when `writes_in_progress` finds a staging entry
+  in `versions/.incoming` changed in the last 10 minutes.
+- **Limit:** BDOT10k packages are unpacked in the system temporary directory and moved into the
+  store with their mode; a package of Archiwista is unreadable for UID 999 and one of Hydrograf
+  cannot be hard-linked by Archiwista until the first `setfacl` command runs again.
 
 ---
 
@@ -205,7 +233,9 @@ a script that needs only a path does not load it.
 
 | Name | Meaning |
 |---|---|
-| `store_dir(cache_dir)` | `<cache_dir>/kartograf` |
+| `store_dir(cache_dir)` | the store that `HYDROGRAF_KARTOGRAF_ROOT` names, else `<cache_dir>/kartograf` |
+| `shared_store_root()` | the shared store of `HYDROGRAF_KARTOGRAF_ROOT`, or `None` for the private store |
+| `writes_in_progress(root)` | the staging entries (`versions/.incoming/*`) changed in the last `ACTIVE_WRITE_WINDOW_S` (10 min): writes of another producer in progress |
 | `metadata_cache_path(cache_dir)` | `<cache_dir>/kartograf_meta.db` |
 | `open_metadata_cache(cache_dir)` | opens the `MetadataCache` (creates the directory; logs when SQLite disables it) |
 | `SHEET_SYSTEM = "1992"` | the sheet grid of Hydrograf, PL-1992 (EPSG:2180); the find functions of Kartograf require it |
@@ -302,7 +332,7 @@ cover, HSG, precipitation, depressions, MVT tiles, overlays, server). Steps 1-3 
 | Step | Kartograf | On failure |
 |---|---|---|
 | area | `SheetParser(code).get_bbox()` for `--sheets`; `find_sheets_for_bbox(bbox, scale, sheet_system="1992")` for `--bbox`; `find_sheets_for_geometry` for an SHP/GPKG `--boundary-file`, the bbox of the geometry for other formats | an invalid bbox or sheet code is a CLI error (exit 2) |
-| 2 NMT | `download_sheets(sheets, <cache>/kartograf, <cache>/kartograf_meta.db, resolution=--resolution)` | the step fails, the exit code is 1 |
+| 2 NMT | `writes_in_progress(store)` first: a write of another producer in progress stops the step before its first write (ADR-066); then `download_sheets(sheets, store_dir(cache_dir), <cache>/kartograf_meta.db, resolution=--resolution)` | the step fails, the exit code is 1 |
 | 3 DEM | the VRT mosaic is built **from the paths that step 2 returned** (never from a directory scan: the store keeps every version under `versions/`); then `download_bdot10k` for the extent of the mosaic and `merge_hydro_gpkgs` for stream burning | a failed hydro download only logs a warning: no burning |
 | 4 land cover | `download_bdot10k(cache_dir, bbox=mosaic)`: the packages that step 3 stored are local and are not requested again; each is imported by `import_landcover` | the step fails, `describe_error` gives the code and the hint; the pipeline continues |
 | 5 HSG | `calculate_hsg(root=, bbox=<Poland>, depth="0-5cm", cache=)`: the raster of Poland is a version of the store; then clip to the mosaic, warp to EPSG:2180 at 250 m, nearest-neighbour fill, polygonize and import into `soil_hsg` (a DELETE limited to the bbox first) | a `KartografError` ends the step as "skipped" with its code; any other error fails it; the pipeline continues |
@@ -823,6 +853,6 @@ Other formats (GeoJSON) of `bootstrap --boundary-file` fall back to the bbox of 
 
 ---
 
-**Document version:** 7.1
-**Last update:** 2026-11-02: the pin of the head `26ee459` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum).
-**History:** 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `45dedf4`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).
+**Document version:** 7.2
+**Last update:** 2026-11-02: the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9).
+**History:** 7.1 (2026-11-02): the pin of the head `26ee459` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `45dedf4`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).

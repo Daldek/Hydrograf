@@ -9,11 +9,20 @@ beside it, in ``<cache_dir>``: the store would refuse a foreign file, and SQLite
 local disk. Every script passes the root and the cache explicitly; none relies on
 ``KARTOGRAF_ROOT`` or on the default store in the data directory of the user.
 
+ADR-066. ``HYDROGRAF_KARTOGRAF_ROOT`` names a store outside the cache directory that
+Hydrograf shares with other producers (Archiwista); every script then uses it instead of
+``<cache_dir>/kartograf``. The metadata cache stays in ``<cache_dir>``: each producer
+keeps its own. Hydrograf writes nothing into a store but what Kartograf writes, and the
+cache clean leaves a shared store whole.
+
 This module only builds paths and reads reports, so a script that imports it for a path
 does not import Kartograf.
 """
 
+import contextlib
 import logging
+import os
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,19 +31,90 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# <cache_dir>/kartograf: the Kartograf store of the pipeline.
+# <cache_dir>/kartograf: the private Kartograf store of the pipeline.
 STORE_DIR_NAME = "kartograf"
+# A Kartograf store shared with other producers (ADR-066). Not Kartograf's own
+# KARTOGRAF_ROOT: a root set for the Kartograf command line must not redirect the
+# pipeline.
+STORE_ROOT_ENV = "HYDROGRAF_KARTOGRAF_ROOT"
 # <cache_dir>/kartograf_meta.db (+ -wal, -shm): the SQLite metadata cache of Kartograf.
 METADATA_CACHE_NAME = "kartograf_meta.db"
 # The sheet grid of Hydrograf: PL-1992 (EPSG:2180), the one GUGiK publishes the NMT in.
 SHEET_SYSTEM = "1992"
 # Depth of the SoilGrids layers of the hydrologic soil groups (HSG) of Hydrograf.
 HSG_DEPTH = "0-5cm"
+# Kartograf stages each write in <product>/<variant>/versions/.incoming/<host>_<pid>_<n>
+# and removes the entry when the file is published (its spec, D19); the entry changes
+# while the writer works. An entry changed within this window is a write in progress
+# (ADR-066); an older one is the leftover of a stopped write, which Kartograf removes
+# after 24 h.
+STAGING_GLOB = "*/*/versions/.incoming/*"
+ACTIVE_WRITE_WINDOW_S = 10 * 60
+
+
+def shared_store_root() -> Path | None:
+    """Return the shared store that ``HYDROGRAF_KARTOGRAF_ROOT`` names, if any.
+
+    Returns
+    -------
+    Path or None
+        The root of a Kartograf store shared with other producers (ADR-066); None
+        when the variable is unset or empty, that is for the private store of the
+        cache directory.
+    """
+    value = os.environ.get(STORE_ROOT_ENV, "").strip()
+    return Path(value).expanduser() if value else None
 
 
 def store_dir(cache_dir: Path) -> Path:
-    """Return the Kartograf store inside the cache directory of the pipeline."""
-    return cache_dir / STORE_DIR_NAME
+    """Return the Kartograf store of the pipeline.
+
+    The shared store of ``HYDROGRAF_KARTOGRAF_ROOT`` when it is set (ADR-066), else
+    the private store inside the cache directory, ``<cache_dir>/kartograf`` (ADR-061).
+    """
+    return shared_store_root() or cache_dir / STORE_DIR_NAME
+
+
+def writes_in_progress(root: Path, *, now: float | None = None) -> list[Path]:
+    """Return the staging entries of the Kartograf writes in progress in a store.
+
+    A writer of the store (Archiwista, another bootstrap) keeps an entry in
+    ``versions/.incoming`` of the segment while it writes. Entries that changed in the
+    last ``ACTIVE_WRITE_WINDOW_S`` count; older ones are leftovers of stopped writes.
+    The check is a snapshot: a writer that starts later is not seen (ADR-066).
+
+    Parameters
+    ----------
+    root : Path
+        Root of the store; a root that does not exist has no writes.
+    now : float, optional
+        Current time as a POSIX timestamp (default: the clock).
+
+    Returns
+    -------
+    list[Path]
+        The staging entries of writes in progress, sorted; empty when none.
+    """
+    limit = (time.time() if now is None else now) - ACTIVE_WRITE_WINDOW_S
+    active = []
+    for entry in sorted(root.glob(STAGING_GLOB)):
+        try:
+            changed = _newest_mtime(entry)
+        except FileNotFoundError:  # the write was published meanwhile
+            continue
+        if changed >= limit:
+            active.append(entry)
+    return active
+
+
+def _newest_mtime(path: Path) -> float:
+    """Return the newest modification time of ``path`` and of all it holds."""
+    newest = path.lstat().st_mtime
+    if path.is_dir() and not path.is_symlink():
+        for child in path.rglob("*"):
+            with contextlib.suppress(FileNotFoundError):
+                newest = max(newest, child.lstat().st_mtime)
+    return newest
 
 
 def metadata_cache_path(cache_dir: Path) -> Path:
@@ -88,7 +168,7 @@ def download_bdot10k(
     Parameters
     ----------
     cache_dir : Path
-        Cache directory of the pipeline; the store is ``<cache_dir>/kartograf``.
+        Cache directory of the pipeline; the store is ``store_dir(cache_dir)``.
     teryt : str, optional
         TERYT code of a county (powiat), 4 digits.
     bbox : BBox, optional

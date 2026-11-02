@@ -1,5 +1,10 @@
 # ADR-061: Kartograf data output: the store for the cache, plain files for single-use rasters
 
+> **Amended by ADR-066 (2026-11-02):** `HYDROGRAF_KARTOGRAF_ROOT` may name a store outside the
+> cache directory, shared with Archiwista; every script then uses it instead of
+> `<cache_dir>/kartograf`, the metadata cache stays in `<cache_dir>`, and the cache clean leaves
+> that store whole.
+
 **Date:** 2026-10-25
 **Status:** accepted
 

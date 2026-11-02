@@ -98,3 +98,19 @@ def test_plan_counts_what_the_clean_removes(cache_dir):
     files_after = sum(1 for p in cache_dir.rglob("*") if p.is_file())
 
     assert entry["files"] == removed_files == files_before - files_after
+
+
+def test_a_shared_store_is_left_whole(cache_dir, monkeypatch):
+    shared = cache_dir / "shared"
+    build_fixture_store(shared)
+    shared_before = sorted(shared.rglob("*"))
+    monkeypatch.setenv("HYDROGRAF_KARTOGRAF_ROOT", str(shared))
+
+    (entry,) = build_plan(["cache"], cache_dir / "data", cache_dir)
+    removed_files, _ = clean_cache(cache_dir, dry_run=False)
+
+    assert sorted(shared.rglob("*")) == shared_before
+    # Only what is Hydrograf's goes: its metadata cache and the 0.7.0 directories.
+    assert entry["files"] == removed_files == len(META_FILES) + len(LEGACY_DIRS)
+    assert not [p for p in cache_dir.iterdir() if p.name.startswith("kartograf_meta")]
+    assert [(cache_dir / name).exists() for name in LEGACY_DIRS] == [False] * 3

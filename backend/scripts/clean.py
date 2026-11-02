@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from utils.kartograf_store import METADATA_CACHE_NAME, store_dir
+from utils.kartograf_store import METADATA_CACHE_NAME, shared_store_root, store_dir
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,7 +57,8 @@ KARTOGRAF_META_GLOB = f"{METADATA_CACHE_NAME}*"
 # What a cache clean removes from the Kartograf store: the large products that Kartograf
 # fetches again (ADR-061). The HSG raster of Poland (``hsg/``) and its SoilGrids inputs
 # (``soil/``) stay: small, Poland-wide and reusable. The marker of the store stays too,
-# so what is left is still a valid store.
+# so what is left is still a valid store. A store shared with other producers
+# (``HYDROGRAF_KARTOGRAF_ROOT``, ADR-066) is not Hydrograf's to empty: it stays whole.
 STORE_PRODUCTS_REMOVED = ("nmt", "landcover")
 STORE_PRODUCTS_KEPT = ("hsg", "soil")
 
@@ -250,20 +251,28 @@ def clean_tiles(dry_run: bool) -> tuple[int, int]:
     return remove_dir(tiles_dir, dry_run)
 
 
+def _store_products_removed(cache_dir: Path) -> list[Path]:
+    """Directories of the store that the cache clean removes; none of a shared store."""
+    if shared_store_root() is not None:
+        return []
+    store = store_dir(cache_dir)
+    return [store / product for product in STORE_PRODUCTS_REMOVED]
+
+
 def clean_cache(cache_dir: Path, dry_run: bool) -> tuple[int, int]:
     """Remove download caches (NMT, BDOT10k) of the Kartograf store.
 
     Keeps the HSG raster of Poland and its inputs (small, Poland-wide). Removes also
     the directories of the cache of Kartograf 0.7.0 (``LEGACY_CACHE_DIRS``), which
-    nothing reads any more.
+    nothing reads any more. A shared store (ADR-066) keeps everything: only the
+    metadata cache and the old directories of Hydrograf go.
     """
     total_files = 0
     total_size = 0
     store = store_dir(cache_dir)
 
     # NMT and BDOT10k of the Kartograf store (the biggest part of the cache)
-    for product in STORE_PRODUCTS_REMOVED:
-        product_dir = store / product
+    for product_dir in _store_products_removed(cache_dir):
         if product_dir.exists():
             n, s = remove_dir(product_dir, dry_run)
             total_files += n
@@ -280,8 +289,10 @@ def clean_cache(cache_dir: Path, dry_run: bool) -> tuple[int, int]:
         total_files += n
         total_size += s
 
+    if shared_store_root() is not None:
+        logger.info(f"  (magazyn wspolny {store} bez zmian, ADR-066)")
     # HSG intentionally NOT removed (small, Poland-wide, reusable)
-    if any((store / product).exists() for product in STORE_PRODUCTS_KEPT):
+    elif any((store / product).exists() for product in STORE_PRODUCTS_KEPT):
         logger.info("  (zachowano cache/kartograf/hsg i soil — male, ogolnopolskie)")
 
     return total_files, total_size
@@ -435,8 +446,7 @@ def build_plan(
         )
 
     if "cache" in components:
-        store = store_dir(cache_dir)
-        removed = [store / product for product in STORE_PRODUCTS_REMOVED]
+        removed = _store_products_removed(cache_dir)
         removed += [cache_dir / name for name in LEGACY_CACHE_DIRS]
         meta_files = list(cache_dir.glob(KARTOGRAF_META_GLOB))
         size = sum(dir_size(p) for p in removed) + sum(

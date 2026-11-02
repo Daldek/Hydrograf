@@ -13,6 +13,16 @@ import httpx
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _private_kartograf_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give every test the private Kartograf store of its cache directory (ADR-061).
+
+    A ``HYDROGRAF_KARTOGRAF_ROOT`` of the shell names a real store shared with other
+    producers (ADR-066); no test may download into it or clean it.
+    """
+    monkeypatch.delenv("HYDROGRAF_KARTOGRAF_ROOT", raising=False)
+
+
 @pytest.fixture
 def mock_db():
     """Create mock database session."""

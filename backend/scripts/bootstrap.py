@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from utils.kartograf_store import (
+    ACTIVE_WRITE_WINDOW_S,
     HSG_DEPTH,
     SHEET_SYSTEM,
     describe_error,
@@ -40,6 +41,7 @@ from utils.kartograf_store import (
     metadata_cache_path,
     open_metadata_cache,
     store_dir,
+    writes_in_progress,
 )
 
 logging.basicConfig(
@@ -428,12 +430,14 @@ def step_download_nmt(
 ) -> tuple[list[Path], str]:
     """Step 2: Download NMT sheets via Kartograf.
 
-    The sheets go into the Kartograf store of the pipeline, ``cache_dir/kartograf``
-    (ADR-061): the standard path of a sheet is
+    The sheets go into the Kartograf store of the pipeline, ``store_dir(cache_dir)``
+    (ADR-061, ADR-066): the standard path of a sheet is
     ``<store>/nmt/pl_1992_<res>_evrf2007/<hierarchy>/<sheet>.asc`` (a hard link to the
     newest flight) and the versions are below ``versions/``. The metadata cache is
     ``cache_dir/kartograf_meta.db``.
-    Raises NmtDownloadError on any transport failure (full sheet list).
+    Raises RuntimeError before the first write when another producer is writing into
+    the store (ADR-066), and NmtDownloadError on any transport failure (full sheet
+    list).
     """
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.download_dem import download_sheets
@@ -441,9 +445,21 @@ def step_download_nmt(
     if not sheets:
         raise ValueError("Pusta lista arkuszy NMT — nic do pobrania")
 
+    root = store_dir(cache_dir)
+    busy = writes_in_progress(root)
+    if busy:
+        entries = ", ".join(str(entry.relative_to(root)) for entry in busy)
+        minutes = ACTIVE_WRITE_WINDOW_S // 60
+        raise RuntimeError(
+            f"Magazyn Kartografa {root} jest wlasnie zapisywany przez inny proces "
+            f"(wpisy versions/.incoming zmienione w ciagu {minutes} min: {entries}). "
+            "Uruchom bootstrap, gdy nie trwa zadne pobieranie Archiwisty ani inny "
+            "bootstrap do tego magazynu (ADR-066)."
+        )
+
     report = download_sheets(
         sheets,
-        store_dir(cache_dir),
+        root,
         metadata_cache_path(cache_dir),
         skip_existing=True,
         resolution=resolution,

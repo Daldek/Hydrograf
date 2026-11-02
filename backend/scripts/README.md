@@ -26,7 +26,7 @@ leave in PostGIS, in `frontend/data/` and in `frontend/tiles/` (ADR-021, ADR-022
 
 | Directory | Content |
 |---|---|
-| `cache/kartograf/` | the Kartograf store of the downloads: NMT sheets, BDOT10k packages, the HSG raster of Poland and its SoilGrids inputs, with versions and a sidecar per file |
+| `cache/kartograf/` | the Kartograf store of the downloads: NMT sheets, BDOT10k packages, the HSG raster of Poland and its SoilGrids inputs, with versions and a sidecar per file; with `HYDROGRAF_KARTOGRAF_ROOT` set, the store it names instead, shared with Archiwista (ADR-066) |
 | `cache/kartograf_meta.db` | the Kartograf metadata cache (SQLite; a local disk, not a network share) |
 | `data/nmt/` | the VRT mosaic `dem_mosaic.vrt` (and `reprojected/`), the intermediate rasters `dem_mosaic_*` |
 | `data/hydro/` | `hydro_merged.gpkg`: the BDOT10k hydro layers of the area, for stream burning |
@@ -156,7 +156,7 @@ cd backend
 | `geojson` | the GeoJSON exports (`frontend/data/*.geojson`) |
 | `tiles` | MVT tiles and mbtiles (`frontend/tiles/`) |
 | `db` | truncates the tables `stream_network`, `stream_catchments`, `bdot_streams`, `depressions`, `land_cover`, `precipitation_data`, `soil_hsg`, `sewer_nodes` and `sewer_network` |
-| `cache` | the large products of the Kartograf store that Kartograf fetches again (`cache/kartograf/nmt` and `cache/kartograf/landcover`), `cache/kartograf_meta.db*`, and the directories of the 0.7.0 layout, whole: `cache/nmt`, `cache/bdot10k`, `cache/soil_hsg` (nothing reads them any more, ADR-061). The HSG raster of Poland, its SoilGrids inputs and the marker of the store stay: they are small, Poland-wide and reusable |
+| `cache` | the large products of the Kartograf store that Kartograf fetches again (`cache/kartograf/nmt` and `cache/kartograf/landcover`), `cache/kartograf_meta.db*`, and the directories of the 0.7.0 layout, whole: `cache/nmt`, `cache/bdot10k`, `cache/soil_hsg` (nothing reads them any more, ADR-061). The HSG raster of Poland, its SoilGrids inputs and the marker of the store stay: they are small, Poland-wide and reusable. A shared store (`HYDROGRAF_KARTOGRAF_ROOT`, ADR-066) stays whole |
 
 The standard clean takes the first six components; `--include-cache` adds `cache` and
 `--include-db` adds `db`.
