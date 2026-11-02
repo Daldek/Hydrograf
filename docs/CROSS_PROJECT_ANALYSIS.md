@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
 │  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │              │
-│  │  6bd35a4      │   │   26ee459     │   │   5fa22b3     │              │
+│  │  6bd35a4      │   │   26ee459     │   │   4f02ffd     │              │
 │  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
 │  └───────────────┘   └───────────────┘   └───────────────┘              │
 │                                                                         │
@@ -32,7 +32,7 @@
 |---------|-----------|--------------------|---------|
 | **Hydrograf** | IMGWTools | direct (pyproject.toml) | commit 6bd35a4 (3.0.0) |
 | **Hydrograf** | Kartograf | direct (pyproject.toml) | commit 26ee459 (0.8.0.dev0) |
-| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 5fa22b3 (1.0.0.dev0) |
+| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 4f02ffd (1.0.0.dev0, `fix/snyder-recession`) |
 | **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
 
 **Note:** Hydrolog no longer depends on IMGWTools (removed in v0.5.2).
@@ -45,7 +45,7 @@ The three producers are pinned by the commit of their head until their tags exis
 # [tool.uv.sources]
 imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "6bd35a49b329f99b591ffdee39367daec0e75af7" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "26ee45924b719b4f357ab02c88cda58aa806843f" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "5fa22b35e5e1ec9076c41d0be04d2a99458f5049" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "4f02ffdb3f7f7d1d863cd5c9ac5f2dab56f5eb3b" }
 ```
 
 ---

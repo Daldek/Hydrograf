@@ -104,7 +104,7 @@ package = false
 # GitHub.
 imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "6bd35a49b329f99b591ffdee39367daec0e75af7" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "26ee45924b719b4f357ab02c88cda58aa806843f" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "5fa22b35e5e1ec9076c41d0be04d2a99458f5049" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "4f02ffdb3f7f7d1d863cd5c9ac5f2dab56f5eb3b" }
 
 [tool.ruff]
 target-version = "py312"

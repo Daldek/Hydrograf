@@ -87,7 +87,7 @@ Kartograf on `v0.7.0`. The producers have pushed their heads since and the lock 
 IMGWTools `7e2114e`, then `3f7de36` (3.0.0: float PMAXTP percentages, so the `type: ignore` of
 `scripts/preprocess_precipitation.py` is gone; it ships `py.typed`), then `6bd35a4` (a flush of
 the MCP server's stdout, which Hydrograf does not start); Hydrolog `31bf796`
-(`feature/routing-objects`), then `5fa22b3` (`feature/routing-schematic`); Kartograf `b73aad3`
+(`feature/routing-objects`), then `5fa22b3` (`feature/routing-schematic`), then (2026-11-02) `4f02ffd` (`fix/snyder-recession`: the Snyder unit hydrograph runs to the end of its recession); Kartograf `b73aad3`
 by ADR-061, then `45dedf4`, then `c31ca04`, then (2026-11-02) `26ee459`, the commit Archiwista
 pins (ADR-061, erratum). `uv lock`, `uv sync --locked` and the image build resolve all three
 anywhere, so the Consequences about unpushed commits and the uv git cache no longer apply, and

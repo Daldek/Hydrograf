@@ -86,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migration 018: a composite index `(threshold_m2, segment_idx)` on `stream_catchments`.
 
 ### Changed
+- **Hydrolog `4f02ffd` (`fix/snyder-recession`, was `5fa22b3`, ADR-060):** the Snyder unit hydrograph runs to the end of its recession, peak = qpR (no cut-off tail, B3); values of Snyder hydrographs change, other methods identical.
 - **The shared Kartograf store is read-only for Hydrograf** (ADR-067): while `HYDROGRAF_KARTOGRAF_ROOT` is set, every download refuses with `forbidden` (reason `shared_store_read_only`, exit 12): `--bbox`, `--sheets` and `--boundary-file` of the bootstrap, `download_dem`, `download_landcover`, `prepare_area`, `analyze_watershed --download` and the land cover of the CN fallback (logged as an error, the default CN is used); Archiwista alone writes that store. Unset or empty, the private store `<cache_dir>/kartograf` downloads as before. The bootstrap of the admin panel (`POST /api/admin/bootstrap/start`) answers `403` problem+json before it starts a process while a shared store is set. The staging stack mounts the store read-only for every container.
 - `describe_error` also renders a `HydrografError` as `<message> [<code>] <hint>`.
 - The contract test of the error messages (`tests/contract/test_messages.py`) also scans `utils/` and `scripts/`.
