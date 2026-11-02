@@ -1,244 +1,249 @@
 # Product Requirements Document (PRD)
-## System Analizy Hydrologicznej
+## Hydrological Analysis System
 
-**Wersja:** 1.1
-**Data:** 2026-03-01
+**Version:** 1.2
+**Date:** 2026-10-25
 **Status:** Approved
-**Autor:** Zespół projektowy
+**Author:** Project team
 
 ---
 
-## 1. Podsumowanie Wykonawcze
+## 1. Executive Summary
 
-### 1.1 Cel Produktu
-Stworzenie wewnętrznego narzędzia webowego do szybkiego wyznaczania granic zlewni, parametrów fizjograficznych i hydrogramów odpływu. System ma być alternatywą dla komercyjnego oprogramowania, wykorzystującą otwarte dane GUGIK i IMGW. Uwaga: generowanie hydrogramów metodą SCS-CN ograniczone do zlewni ≤ 250 km² (ograniczenie metody).
+### 1.1 Product Goal
+Build an internal web tool for fast delineation of watershed boundaries, physiographic parameters and runoff hydrographs. The system is meant as an alternative to commercial software and uses open data of GUGiK and IMGW. Note: hydrograph generation with the SCS-CN method is limited to watersheds ≤ 250 km² (a limit of the method).
 
-### 1.2 Problem Biznesowy
-Obecnie profesjonalne narzędzia do analiz hydrologicznych są:
-- Kosztowne w licencjonowaniu
-- Wymagają zaawansowanej wiedzy GIS
-- Opierają się na danych nie zawsze dostępnych lokalnie
-- Nie pozwalają na pełną kontrolę nad danymi i algorytmami
+### 1.2 Business Problem
+Professional tools for hydrological analysis are currently:
+- Expensive to license
+- Dependent on advanced GIS knowledge
+- Based on data that is not always available locally
+- Unable to give full control over the data and the algorithms
 
-### 1.3 Grupa Docelowa
-**Użytkownicy pierwotni:**
-- Specjaliści ds. planowania przestrzennego
-- Pracownicy urzędów gmin
-- Konsultanci środowiskowi
+### 1.3 Target Group
+**Primary users:**
+- Spatial planning specialists
+- Municipal office staff
+- Environmental consultants
 
-**Charakterystyka użytkowników:**
-- Niekoniecznie posiadają umiejętności GIS
-- Potrzebują szybkich wyników dla decyzji planistycznych
+**User characteristics:**
+- They do not necessarily have GIS skills
+- They need fast results for planning decisions
 
-### 1.4 Kluczowe Metryki Sukcesu
-- Czas wyznaczenia zlewni i hydrogramu: **< 30 sekund**
-- Dokładność granic zlewni: **95%+ zgodności z metodami referencyjnymi**
-- Dostępność systemu: **99% uptime**
-- Satysfakcja użytkowników: **> 4/5** w badaniach
+### 1.4 Key Success Metrics
+- Time to delineate a watershed and a hydrograph: **< 30 seconds**
+- Accuracy of watershed boundaries: **95%+ agreement with reference methods**
+- System availability: **99% uptime**
+- User satisfaction: **> 4/5** in surveys
 
 ---
 
-## 2. Zakres Produktu
+## 2. Product Scope
 
-### 2.1 Co JEST w zakresie (MVP)
+### 2.1 What IS in scope (MVP)
 
-**FAZA 1: Wyznaczanie granic zlewni**
-- Wybór punktu na mapie interaktywnej
-- Automatyczne wyznaczenie granicy zlewni
-- Wizualizacja wyniku jako GeoJSON
+**PHASE 1: Watershed delineation**
+- Selecting a point on an interactive map
+- Automatic delineation of the watershed boundary
+- Showing the result as GeoJSON
 
-**FAZA 2: Parametry fizjograficzne**
-- Powierzchnia i obwód zlewni
-- Długość głównego cieku
-- Średnie spadki (terenu i cieku)
-- Współczynniki morfometryczne
-- Rozkład pokrycia terenu
+**PHASE 2: Physiographic parameters**
+- Area and perimeter of the watershed
+- Length of the main stream
+- Mean slopes (terrain and stream)
+- Morphometric coefficients
+- Land cover distribution
 - Curve Number (CN)
 
-**FAZA 3: Hydrogram odpływu**
-- Wybór scenariusza opadowego (czas × prawdopodobieństwo)
-- Dane z IMGW
-- Hietogram z rozkładu Beta
-- Model SCS Curve Number
-- Hydrogram jednostkowy SCS
-- Wizualizacja wykresu hydrogramu
-- Parametry: Qmax, czas do szczytu, objętość
+**PHASE 3: Runoff hydrograph**
+- Choosing a rainfall scenario (duration × probability)
+- IMGW data
+- Beta-distribution hyetograph
+- SCS Curve Number model
+- SCS unit hydrograph
+- Hydrograph chart
+- Parameters: Qmax, time to peak, volume
 
-### 2.2 Co NIE JEST w zakresie (MVP)
+### 2.2 What is NOT in scope (MVP)
 
-**Poza MVP:**
-- Routing (wyznaczanie tras przepływu)
-- Symulacje różnych scenariuszy klimatycznych jednocześnie
-- Analiza ryzyka powodziowego (mapy zalewowe)
-- Wizualizacja 3D terenu
-- Integracja z danymi pomiarowymi w czasie rzeczywistym
-- Aplikacja mobilna
-- Współpraca wieloużytkownikowa w czasie rzeczywistym
-- Eksport raportów PDF (możliwe w przyszłości)
+**Outside the MVP:**
+- Routing (determining flow routes)
+- Simulating several climate scenarios at once
+- Flood risk analysis (inundation maps)
+- 3D terrain visualization
+- Integration with real-time measurement data
+- Mobile application
+- Real-time multi-user collaboration
+- PDF report export (possible in the future)
 
-### 2.3 Źródła Danych
+### 2.3 Data Sources
 
-**Dane przestrzenne:**
-- NMT (Numeryczny Model Terenu)
-- Pokrycie terenu - BDOT10k z GUGIK lub CLC
-- Osie cieków - MPHP lub własne dane wektorowe
+**Spatial data:**
+- DEM (digital elevation model, Polish NMT)
+- Land cover: BDOT10k from GUGiK, or CLC
+- Stream centrelines: MPHP (the Hydrographic Division Map of Poland) or own vector data
 
-**Dane opadowe:**
-- IMGW pmaxpt lub dane historyczne
-- Wszystkie kombinacje:
-  - Czasy: 15min, 30min, 1h, 2h, 6h, 12h, 24h
-  - Prawdopodobieństwa: 1%, 2%, 5%, 10%, 20%, 50%
+**Precipitation data:**
+- IMGW pmaxpt or historical data
+- All combinations:
+  - Durations: 15min, 30min, 1h, 2h, 6h, 12h, 24h
+  - Probabilities: 1%, 2%, 5%, 10%, 20%, 50%
 
-**Założenia:**
-- Opad równomierny na całą zlewnię
-- Dane aktualizowane raz na rok
+**Assumptions:**
+- Precipitation is uniform over the whole watershed
+- Data is updated once a year
 
 ---
 
-## 3. Wymagania Funkcjonalne - User Stories
+## 3. Functional Requirements - User Stories
 
-### US-01: Wyznaczenie zlewni
-**Jako** specjalista ds. planowania przestrzennego  
-**Chcę** wybrać punkt na mapie i otrzymać granicę zlewni  
-**Aby** szybko określić obszar oddziaływania dla planowanej inwestycji
+### US-01: Delineating a watershed
+**As a** spatial planning specialist  
+**I want** to choose a point on the map and get the watershed boundary  
+**So that** I can quickly determine the area of influence of a planned investment
 
-**Kryteria akceptacji:**
-- Użytkownik klika punkt na mapie
-- System znajduje najbliższy ciek
-- System wyznacza zlewnię w < 10 sekund
-- Granica zlewni jest wyświetlana na mapie
-- Możliwość eksportu granicy jako GeoJSON/Shapefile
+**Acceptance criteria:**
+- The user clicks a point on the map
+- The system finds the nearest stream
+- The system delineates the watershed in < 10 seconds
+- The watershed boundary is shown on the map
+- The boundary can be exported as GeoJSON/Shapefile
 
-**Priorytet:** MUST HAVE  
+**Priority:** MUST HAVE  
 **Story Points:** 8
 
 ---
 
-### US-02: Wyświetlenie parametrów zlewni
-**Jako** użytkownik  
-**Chcę** zobaczyć kluczowe parametry wyznaczonej zlewni  
-**Aby** ocenić jej charakterystykę hydrologiczną
+### US-02: Showing the watershed parameters
+**As a** user  
+**I want** to see the key parameters of the delineated watershed  
+**So that** I can assess its hydrological characteristics
 
-**Kryteria akceptacji:**
-- Wyświetlenie powierzchni [km²]
-- Wyświetlenie długości głównego cieku [km]
-- Wyświetlenie średniego spadku [%]
-- Wyświetlenie rozkładu pokrycia terenu [%]
-- Wyświetlenie CN
-- Wszystkie parametry w przejrzystej tabeli
+**Acceptance criteria:**
+- Showing the area [km²]
+- Showing the length of the main stream [km]
+- Showing the mean slope [%]
+- Showing the land cover distribution [%]
+- Showing the CN
+- All parameters in a clear table
 
-**Priorytet:** MUST HAVE  
+**Priority:** MUST HAVE  
 **Story Points:** 5
 
 ---
 
-### US-03: Wybór scenariusza opadowego
-**Jako** użytkownik  
-**Chcę** wybrać czas trwania i prawdopodobieństwo opadu  
-**Aby** wygenerować hydrogram dla konkretnego scenariusza
+### US-03: Choosing a rainfall scenario
+**As a** user  
+**I want** to choose the duration and the probability of the rainfall  
+**So that** I can generate a hydrograph for a specific scenario
 
-**Kryteria akceptacji:**
-- Lista dostępnych czasów trwania (7 opcji)
-- Lista dostępnych prawdopodobieństw (6 opcji)
-- Wyświetlenie wartości opadu dla wybranego scenariusza
-- Przycisk "Oblicz hydrogram"
+**Acceptance criteria:**
+- A list of the available durations (7 options)
+- A list of the available probabilities (6 options)
+- Showing the precipitation value for the chosen scenario
+- A "Calculate hydrograph" button
 
-**Priorytet:** MUST HAVE  
+**Priority:** MUST HAVE  
 **Story Points:** 3
 
 ---
 
-### US-04: Generowanie hydrogramu
-**Jako** użytkownik  
-**Chcę** wygenerować hydrogram odpływu  
-**Aby** określić przepływy maksymalne dla wybranego scenariusza
+### US-04: Generating a hydrograph
+**As a** user  
+**I want** to generate a runoff hydrograph  
+**So that** I can determine the peak flows for the chosen scenario
 
-**Kryteria akceptacji:**
-- Wygenerowanie hydrogramu w < 5 sekund
-- Wykres liniowy (czas vs przepływ)
-- Wyświetlenie kluczowych parametrów:
+**Acceptance criteria:**
+- The hydrograph is generated in < 5 seconds
+- A line chart (time vs. flow)
+- Showing the key parameters:
   - Qmax [m³/s]
-  - Czas do szczytu [min]
-  - Objętość odpływu [m³]
-- Możliwość eksportu danych jako CSV
+  - Time to peak [min]
+  - Runoff volume [m³]
+- The data can be exported as CSV
 
-**Priorytet:** MUST HAVE  
+**Priority:** MUST HAVE  
 **Story Points:** 8
 
 ---
 
-### US-05: Eksport wyników
-**Jako** użytkownik  
-**Chcę** wyeksportować wyniki analizy  
-**Aby** użyć ich w innych narzędziach lub dokumentacji
+### US-05: Exporting the results
+**As a** user  
+**I want** to export the results of the analysis  
+**So that** I can use them in other tools or in documentation
 
-**Kryteria akceptacji:**
-- Eksport granicy zlewni (GeoJSON/Shapefile)
-- Eksport hydrogramu (CSV: czas, przepływ)
-- Eksport parametrów (JSON lub CSV)
-- Przyciski eksportu w interfejsie
+**Acceptance criteria:**
+- Export of the watershed boundary (GeoJSON/Shapefile)
+- Export of the hydrograph (CSV: time, flow)
+- Export of the parameters (JSON or CSV)
+- Export buttons in the interface
 
-**Priorytet:** SHOULD HAVE  
+**Priority:** SHOULD HAVE  
 **Story Points:** 3
 
 ---
 
-### US-06: Komunikaty o błędach
-**Jako** użytkownik  
-**Chcę** otrzymać jasne komunikaty o błędach  
-**Aby** zrozumieć, co poszło nie tak
+### US-06: Error messages
+**As a** user  
+**I want** to get clear error messages  
+**So that** I understand what went wrong
 
-**Kryteria akceptacji:**
-- "Nie można znaleźć cieku w tym miejscu"
-- "Błąd połączenia z serwerem - spróbuj ponownie"
-- Komunikaty wyświetlane jako modal lub toast
+**Acceptance criteria:**
+- "Cannot find a stream at this location"
+- "Error connecting to the server - try again"
+- Messages are shown as a modal or a toast
 
-**Priorytet:** MUST HAVE  
+**Priority:** MUST HAVE  
 **Story Points:** 2
 
 ---
 
-## 4. Wymagania Niefunkcjonalne
+## 4. Non-Functional Requirements
 
-### NFR-01: Wydajność
-- Wyznaczenie zlewni: **< 10 sekund**
-- Generowanie hydrogramu: **< 5 sekund**
-- Ładowanie mapy: **< 2 sekundy**
-- Responsywność UI: **< 100ms** dla interakcji użytkownika
+### NFR-01: Performance
+- Watershed delineation: **< 10 seconds**
+- Hydrograph generation: **< 5 seconds**
+- Map loading: **< 2 seconds**
+- UI responsiveness: **< 100ms** for user interactions
 
-### NFR-02: Skalowalność
-- Obsługa **10 równoczesnych użytkowników** (MVP)
-- Możliwość skalowania do **50+ użytkowników** w przyszłości
-- Architektura umożliwiająca dodawanie serwerów obliczeniowych
+### NFR-02: Scalability
+- Support for **10 concurrent users** (MVP)
+- Possible scaling to **50+ users** in the future
+- An architecture that allows adding compute servers
 
-### NFR-03: Dostępność
-- **99% uptime** (dopuszczalny downtime: ~7h/miesiąc)
-- Automatyczne restarty w przypadku awarii
-- Backupy bazy danych: codziennie
+### NFR-03: Availability
+- **99% uptime** (allowed downtime: ~7h/month)
+- Automatic restarts after a failure
+- Database backups: daily
 
-### NFR-04: Bezpieczeństwo
-- Dostęp do systemu: **tylko z sieci wewnętrznej** (MVP)
-- HTTPS dla wszystkich połączeń
-- Walidacja wszystkich danych wejściowych
-- Brak przechowywania danych osobowych użytkowników
+### NFR-04: Security
+- Access to the system: **internal network only** (MVP)
+- HTTPS for all connections
+- Validation of all input data
+- No storage of users' personal data
 
-### NFR-05: Użyteczność
-- Intuicyjny interfejs, **bez wymaganego szkolenia** dla podstawowych funkcji
-- Dostępność na desktop (Chrome, Firefox, Safari, Edge)
-- Responsywność: ekrany ≥ 1280px szerokości
-- Język: **polski**
+### NFR-05: Usability
+- An intuitive interface, **no training required** for the basic functions
+- Available on desktop (Chrome, Firefox, Safari, Edge)
+- Responsive for screens ≥ 1280px wide
+- Language: **Polish**
 
-### NFR-06: Utrzymanie
-- Kod zgodny z PEP 8 (Python)
-- Dokumentacja API (OpenAPI/Swagger)
-- Dokumentacja użytkownika (Markdown)
-- Testy jednostkowe: **> 80% pokrycia**
+### NFR-06: Maintainability
+- Code that follows PEP 8 (Python)
+- API documentation (OpenAPI/Swagger)
+- User documentation (Markdown)
+- Unit tests: **> 80% coverage**
 
 ---
 
-## 5. Interfejs Użytkownika (UI/UX)
+## 5. User Interface (UI/UX)
 
-### 5.1 Wireframe - Ekran Główny
+### 5.1 Wireframe - Main Screen
+
+The labels in the wireframe are the texts of the Polish interface (DEV-2.2): PARAMETRY
+ZLEWNI = watershed parameters, POKRYCIE TERENU = land cover, SCENARIUSZ OPADOWY =
+rainfall scenario, OBLICZ HYDROGRAM = calculate hydrograph, HYDROGRAM ODPŁYWU = runoff
+hydrograph, Eksport = export.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -297,256 +302,263 @@ Obecnie profesjonalne narzędzia do analiz hydrologicznych są:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 5.2 Paleta Kolorów
+### 5.2 Color Palette
 
-**Główne:**
-- Tło: `#FFFFFF` (biały)
-- Panel boczny: `#F8F9FA` (jasnoszary)
-- Przycisk główny: `#007BFF` (niebieski)
-- Przycisk hover: `#0056B3` (ciemnoniebieski)
+**Main:**
+- Background: `#FFFFFF` (white)
+- Side panel: `#F8F9FA` (light grey)
+- Primary button: `#007BFF` (blue)
+- Button hover: `#0056B3` (dark blue)
 
-**Mapa:**
-- Cieki: `#0066CC` (niebieski)
-- Granica zlewni: `#28A745` z opacity 0.3 (zielony)
-- Główny ciek: `#DC3545` (czerwony)
+**Map:**
+- Streams: `#0066CC` (blue)
+- Watershed boundary: `#28A745` with opacity 0.3 (green)
+- Main stream: `#DC3545` (red)
 
-**Wykres:**
-- Linia hydrogramu: `#007BFF` (niebieski)
-- Siatka: `#E0E0E0` (jasnoszary)
-- Qmax marker: `#DC3545` (czerwony)
+**Chart:**
+- Hydrograph line: `#007BFF` (blue)
+- Grid: `#E0E0E0` (light grey)
+- Qmax marker: `#DC3545` (red)
 
-### 5.3 Typografia
+### 5.3 Typography
 
-- **Nagłówki:** Roboto Bold, 18-24px
-- **Tekst:** Roboto Regular, 14-16px
-- **Etykiety:** Roboto Medium, 12-14px
-- **Dane liczbowe:** Roboto Mono, 14px
+- **Headings:** Roboto Bold, 18-24px
+- **Text:** Roboto Regular, 14-16px
+- **Labels:** Roboto Medium, 12-14px
+- **Numeric data:** Roboto Mono, 14px
 
 ---
 
-## 6. Przepływ Użytkownika (User Flow)
+## 6. User Flow
 
-### 6.1 Główny Przepływ - Generowanie Hydrogramu
+Interface texts are quoted in English; the Polish text of each message is in the
+interface (DEV-2.2).
+
+### 6.1 Main Flow - Generating a Hydrograph
 
 ```
 START
   │
-  ├─> [1] Użytkownik otwiera aplikację
+  ├─> [1] The user opens the application
   │        ↓
-  │   [2] Mapa ładuje się z podkładem OSM
+  │   [2] The map loads with an OSM base layer
   │        ↓
-  │   [3] Użytkownik klika punkt na mapie
+  │   [3] The user clicks a point on the map
   │        ↓
-  │   [4] System wyznacza granicę zlewni (loader: "Wyznaczam zlewnię...")
+  │   [4] The system delineates the watershed (loader: "Delineating the watershed...")
   │        ↓
-  │   [5] Granica wyświetla się na mapie
+  │   [5] The boundary is shown on the map
   │        ↓
-  │   [6] Parametry zlewni wyświetlają się w panelu bocznym
+  │   [6] The watershed parameters are shown in the side panel
   │        │
-  │        ├─> Powierzchnia: 45.3 km²
+  │        ├─> Area: 45.3 km²
   │        ├─> CN: 72
-  │        ├─> Długość cieku: 8.2 km
-  │        └─> Rozkład pokrycia: las 35%, pola 42%, ...
+  │        ├─> Stream length: 8.2 km
+  │        └─> Land cover distribution: forest 35%, fields 42%, ...
   │        ↓
-  │   [7] Użytkownik wybiera scenariusz opadowy
+  │   [7] The user chooses a rainfall scenario
   │        │
-  │        ├─> Czas trwania: [○15min ○30min ●1h ○2h ○6h ○24h]
-  │        └─> Prawdopodobieństwo: [○1% ○2% ●10% ○20% ○50%]
+  │        ├─> Duration: [○15min ○30min ●1h ○2h ○6h ○24h]
+  │        └─> Probability: [○1% ○2% ●10% ○20% ○50%]
   │        ↓
-  │   [8] System wyświetla wartość opadu: "P = 38.5 mm"
+  │   [8] The system shows the precipitation value: "P = 38.5 mm"
   │        ↓
-  │   [9] Użytkownik klika "OBLICZ HYDROGRAM"
+  │   [9] The user clicks "CALCULATE HYDROGRAPH"
   │        ↓
-  │   [10] System generuje hydrogram (loader: "Obliczam...")
+  │   [10] The system generates the hydrograph (loader: "Calculating...")
   │        ↓
-  │   [11] Wykres hydrogramu wyświetla się
+  │   [11] The hydrograph chart is shown
   │        │
   │        ├─> Qmax = 42.3 m³/s
-  │        ├─> Czas do szczytu = 75 min
-  │        └─> Objętość = 156,780 m³
+  │        ├─> Time to peak = 75 min
+  │        └─> Volume = 156,780 m³
   │        ↓
-  │   [12] Użytkownik może:
+  │   [12] The user can:
   │        │
-  │        ├─> Zmienić scenariusz i przeliczyć
-  │        ├─> Eksportować wyniki (CSV/GeoJSON)
-  │        └─> Wybrać nowy punkt na mapie
+  │        ├─> Change the scenario and recalculate
+  │        ├─> Export the results (CSV/GeoJSON)
+  │        └─> Choose a new point on the map
   │
 END
 ```
 
-### 6.2 Przepływ Alternatywny - Błędy
+### 6.2 Alternative Flow - Errors
 
 ```
-[3] Użytkownik klika punkt
+[3] The user clicks a point
      ↓
-[4a] Punkt nie jest na cieku
+[4a] The point is not on a stream
      ↓
-     Komunikat: "Nie znaleziono cieku w tym miejscu. 
-                  Wybierz punkt na niebieskiej linii."
+     Message: "No stream was found at this location.
+               Choose a point on the blue line."
      ↓
-     Powrót do [3]
+     Back to [3]
 
 ---
 
-[4b] Zlewnia > 250 km²
+[4b] Watershed > 250 km²
      ↓
-     Zlewnia wyznaczona poprawnie, ale:
-     - Komunikat ostrzegawczy: "Zlewnia przekracza 250 km².
-       Obliczenie hydrogramu metodą SCS-CN niedostępne."
-     - Przycisk "OBLICZ HYDROGRAM" nieaktywny
-     - Wyznaczanie zlewni i parametry fizjograficzne działają normalnie
+     The watershed is delineated correctly, but:
+     - Warning message: "The watershed exceeds 250 km².
+       The hydrograph calculation with the SCS-CN method is not available."
+     - The "CALCULATE HYDROGRAPH" button is disabled
+     - Watershed delineation and the physiographic parameters work as usual
      ↓
-     Użytkownik może eksportować granicę zlewni i parametry
+     The user can export the watershed boundary and the parameters
 
 ---
 
-[10a] Błąd serwera
+[10a] Server error
       ↓
-      Komunikat: "Nie udało się obliczyć hydrogramu. 
-                   Spróbuj ponownie."
+      Message: "The hydrograph could not be calculated.
+                Try again."
       ↓
-      Powrót do [9]
+      Back to [9]
 ```
 
 ---
 
-## 7. Harmonogram i Kamienie Milowe
+## 7. Schedule and Milestones
 
 ### 7.1 Timeline (Gantt Chart)
 
 ```
-Koleność:  1    2    3    4    5    6    7    8    9    10
+Week:      1    2    3    4    5    6    7    8    9    10
          ────────────────────────────────────────────────────
-Faza 0:  ████████
-Faza 1:          ████████████████████
-Faza 2:                              ██████████████
-Faza 3:                                            ██████████████
-Faza 4:                                                          ██████
+Phase 0: ████████
+Phase 1:          ████████████████████
+Phase 2:                              ██████████████
+Phase 3:                                            ██████████████
+Phase 4:                                                          ██████
          ────────────────────────────────────────────────────
 Launch:                                                            🚀
 ```
 
-**Szacowany czas całkowity: 10 tygodni**
+**Estimated total time: 10 weeks**
 
-### 7.2 Fazy Projektu
+### 7.2 Project Phases
 
-#### **Faza 0: Preprocessing (2 tygodnie)**
-**Kamienie milowe:**
-- ☑ Pobrane dane z IMGW
-- ☑ Wygenerowana tabela `flow_network` (WYELIMINOWANA w ADR-028, migracja 015 — zastapiona przez stream_network + CatchmentGraph in-memory)
-- ☑ Zaimportowane pokrycie terenu i cieki
-- ☑ Walidacja danych: pokrycie 100% obszaru gminy
+#### **Phase 0: Preprocessing (2 weeks)**
+**Milestones:**
+- ☑ Data downloaded from IMGW
+- ☑ The `flow_network` table generated (REMOVED in ADR-028, migration 015 — replaced by stream_network + the in-memory CatchmentGraph)
+- ☑ Land cover and streams imported
+- ☑ Data validation: 100% coverage of the municipality area
 
-#### **Faza 1: Backend MVP (3 tygodnie)**
-**Kamienie milowe:**
-- ☑ Setup FastAPI + PostgreSQL
+#### **Phase 1: Backend MVP (3 weeks)**
+**Milestones:**
+- ☑ FastAPI + PostgreSQL setup
 - ☑ Endpoint: POST `/api/delineate-watershed`
-- ☑ Endpoint: POST `/api/select-stream` — selekcja segmentu cieku + upstream traversal
-- ☑ Endpoint: POST `/api/terrain-profile` — profil terenu wzdluz polilinii
-- ☑ Endpoint: GET `/api/depressions` — zaglbienia terenu z filtrami
-- ☑ Endpoint: GET `/api/tiles/streams/{z}/{x}/{y}.pbf` — kafelki MVT ciekow
-- ☑ Endpoint: GET `/api/tiles/catchments/{z}/{x}/{y}.pbf` — kafelki MVT zlewni czastkowych
-- ☑ Endpoint: GET `/api/tiles/landcover/{z}/{x}/{y}.pbf` — kafelki MVT pokrycia terenu BDOT10k
-- ☑ Endpoint: GET `/api/tiles/thresholds` — dostepne progi FA
-- ☑ Endpoint: GET `/api/scenarios` — lista dostepnych scenariuszy opadowych
+- ☑ Endpoint: POST `/api/select-stream` — stream segment selection + upstream traversal
+- ☑ Endpoint: POST `/api/terrain-profile` — terrain profile along a polyline
+- ☑ Endpoint: GET `/api/depressions` — terrain depressions with filters
+- ☑ Endpoint: GET `/api/tiles/streams/{z}/{x}/{y}.pbf` — MVT tiles of streams
+- ☑ Endpoint: GET `/api/tiles/catchments/{z}/{x}/{y}.pbf` — MVT tiles of sub-catchments
+- ☑ Endpoint: GET `/api/tiles/landcover/{z}/{x}/{y}.pbf` — MVT tiles of BDOT10k land cover
+- ☑ Endpoint: GET `/api/tiles/thresholds` — available flow accumulation thresholds
+- ☑ Endpoint: GET `/api/scenarios` — list of the available rainfall scenarios
 - ☑ Endpoint: GET `/health` — health check
-- ☑ Algorytm wyznaczania zlewni z grafu (CatchmentGraph in-memory + BFS)
-- ☑ Obliczanie parametrów fizjograficznych
-- ☑ Testy jednostkowe: > 80% pokrycia (720 testow, 43 pliki testowe)
+- ☑ Watershed delineation algorithm over the graph (in-memory CatchmentGraph + BFS)
+- ☑ Calculation of the physiographic parameters
+- ☑ Unit tests: > 80% coverage (720 tests, 43 test files)
 
-#### **Faza 2: Model Hydrologiczny (2 tygodnie)**
-**Kamienie milowe:**
-- ☑ Implementacja hietogramu Beta
-- ☑ Model SCS Curve Number
-- ☑ Hydrogram jednostkowy SCS
-- ☑ Splot numeryczny
+#### **Phase 2: Hydrological Model (2 weeks)**
+**Milestones:**
+- ☑ Beta hyetograph implementation
+- ☑ SCS Curve Number model
+- ☑ SCS unit hydrograph
+- ☑ Numerical convolution
 - ☑ Endpoint: POST `/api/generate-hydrograph`
-- ☑ Walidacja na 3 przykładowych zlewniach
+- ☑ Validation on 3 sample watersheds
 
-#### **Faza 3: Frontend (2 tygodnie)**
-**Kamienie milowe:**
-- ☑ Mapa Leaflet z wyborem punktu (tryb rysowania poligonu, tryb wyboru obiektow)
-- ☑ Formularz scenariusza opadowego
-- ☑ Wywołania API z obsługą błędów
-- ☑ Wykres Chart.js (hydrogram, histogram)
-- ☑ Eksport CSV/GeoJSON
-- ☑ Glassmorphism UI z draggable panelem bocznym
-- ☑ Warstwy podkladowe: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (ortofoto + topo)
-- ☑ Warstwy tematyczne: cieki MVT, zlewnie MVT, pokrycie terenu MVT, DEM hillshade, depresje
-- ☑ Profil terenu — wizualizacja podluzna cieku
-- ☑ 10 modulow JS (IIFE na `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app
+#### **Phase 3: Frontend (2 weeks)**
+**Milestones:**
+- ☑ Leaflet map with point selection (polygon drawing mode, object selection mode)
+- ☑ Rainfall scenario form
+- ☑ API calls with error handling
+- ☑ Chart.js charts (hydrograph, histogram)
+- ☑ CSV/GeoJSON export
+- ☑ Glassmorphism UI with a draggable side panel
+- ☑ Base layers: OSM, ESRI Satellite, OpenTopoMap, GUGiK WMTS (orthophoto + topographic)
+- ☑ Thematic layers: MVT streams, MVT watersheds, MVT land cover, DEM hillshade, depressions
+- ☑ Terrain profile — longitudinal profile of a stream
+- ☑ 10 JS modules (IIFE on `window.Hydrograf`): api, map, draggable, charts, layers, profile, hydrograph, depressions, app
 
-#### **Faza 3b: Panel administracyjny (ADR-034)**
-**Kamienie milowe:**
-- ☑ Frontend `/admin` — glassmorphism, 4 sekcje (Dashboard, Bootstrap, Zasoby, Czyszczenie)
-- ☑ 8 endpointow API `/api/admin/*` (dashboard, resources, cleanup estimate/execute, bootstrap start/cancel/status/stream)
-- ☑ Uwierzytelnianie API key (header X-Admin-Key, env ADMIN_API_KEY)
-- ☑ Uruchamianie bootstrap.py z panelu + real-time logi SSE
-- ☑ Monitorowanie zasobow: CPU/RAM (psutil), pool DB, CatchmentGraph cache
-- ☑ Czyszczenie danych: tiles, overlays, dem_mosaic, TRUNCATE tabel
-- ☑ 3 moduly JS admin: admin-api.js, admin-app.js, admin-bootstrap.js
+#### **Phase 3b: Admin panel (ADR-034)**
+**Milestones:**
+- ☑ Frontend `/admin` — glassmorphism, 4 sections (Dashboard, Bootstrap, Resources, Cleanup)
+- ☑ 8 `/api/admin/*` API endpoints (dashboard, resources, cleanup estimate/execute, bootstrap start/cancel/status/stream)
+- ☑ API key authentication (header X-Admin-Key, env ADMIN_API_KEY)
+- ☑ Running bootstrap.py from the panel + real-time SSE logs
+- ☑ Resource monitoring: CPU/RAM (psutil), DB pool, CatchmentGraph cache
+- ☑ Data cleanup: tiles, overlays, dem_mosaic, TRUNCATE of tables
+- ☑ 3 admin JS modules: admin-api.js, admin-app.js, admin-bootstrap.js
 
-#### **Faza 4: Testy i Deploy (1 tydzień)**
-**Kamienie milowe:**
-- ☑ Optymalizacja wydajności (CatchmentGraph in-memory, O(n) downstream links, boundary smoothing)
-- ☑ Docker Compose setup (db + api + nginx, 3 kontenery)
-- ☑ Dokumentacja techniczna (34 ADR, architektura, integracje)
-- ⏳ Testy akceptacyjne z użytkownikami (UAT) — planowane na CP5
-- ⏳ Deploy produkcyjny — planowany na CP5
-
----
-
-## 8. Kryteria Sukcesu i Metryki
-
-### 8.1 Metryki Produktowe (MVP)
-
-| Metryka | Target | Pomiar |
-|---------|--------|--------|
-| Czas wyznaczenia zlewni | < 10s | Backend logs |
-| Czas generowania hydrogramu | < 5s | Backend logs |
-| Dokładność granic zlewni | > 95% | Walidacja vs. metody referencyjne |
-| Dostępność systemu | > 99% | Uptime monitoring |
-| Liczba użytkowników/miesiąc | > 20 | Analytics |
-| Średnia liczba analiz/użytkownik | > 5 | Analytics |
-
-### 8.2 Metryki Jakościowe
-
-| Metryka | Target | Pomiar |
-|---------|--------|--------|
-| Satysfakcja użytkowników (NPS) | > 8/10 | Ankiety |
-| Łatwość użycia (SUS) | > 75/100 | SUS questionnaire |
-| Liczba zgłoszeń błędów | < 5/miesiąc | Issue tracker |
-| Czas rozwiązania błędu krytycznego | < 24h | Issue tracker |
-
-### 8.3 Kryteria Akceptacji (Go/No-Go)
-
-**MVP jest gotowy do wdrożenia, gdy:**
-- ✅ Wszystkie user stories (MUST HAVE) są zaimplementowane
-- ✅ Testy jednostkowe: > 80% pokrycia
-- ✅ Testy akceptacyjne: 100% pass rate
-- ✅ Wydajność: wszystkie operacje < targetów czasowych
-- ✅ Dokumentacja użytkownika: gotowa
-- ✅ 3 użytkowników testowych zaakceptowało system
+#### **Phase 4: Testing and Deploy (1 week)**
+**Milestones:**
+- ☑ Performance optimization (in-memory CatchmentGraph, O(n) downstream links, boundary smoothing)
+- ☑ Docker Compose setup (db + api + nginx, 3 containers)
+- ☑ Technical documentation (34 ADRs, architecture, integrations)
+- ⏳ User acceptance tests (UAT) — planned for CP5
+- ⏳ Production deploy — planned for CP5
 
 ---
 
-## 9. Przykładowe Scenariusze Użycia
+## 8. Success Criteria and Metrics
 
-### Scenariusz 1: Ocena wpływu inwestycji
-> Użytkownik planuje nową osiedlową inwestycję. Chce sprawdzić, czy zwiększenie powierzchni uszczelnionej wpłynie na przepływy maksymalne. Wyznacza zlewnię, zapisuje wyniki, następnie ręcznie zmienia CN (symulując zwiększenie zabudowy) i generuje nowy hydrogram.
+### 8.1 Product Metrics (MVP)
 
-### Scenariusz 2: Weryfikacja przekroju mostowego
-> Inżynier sprawdza, czy istniejący most jest odpowiedni dla przepływu Q10%. Wyznacza zlewnię powyżej mostu, generuje hydrogram dla p=10%, porównuje Qmax z przepustowością mostu.
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| Watershed delineation time | < 10s | Backend logs |
+| Hydrograph generation time | < 5s | Backend logs |
+| Accuracy of watershed boundaries | > 95% | Validation vs. reference methods |
+| System availability | > 99% | Uptime monitoring |
+| Users per month | > 20 | Analytics |
+| Average number of analyses per user | > 5 | Analytics |
 
-### Scenariusz 3: Raport dla urzędu
-> Konsultant przygotowuje raport o oddziaływaniu na środowisko. Wyznacza 5 zlewni, dla każdej generuje hydrogram, eksportuje wyniki (CSV + GeoJSON), wkleja do raportu w Word.
+### 8.2 Quality Metrics
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| User satisfaction (NPS) | > 8/10 | Surveys |
+| Ease of use (SUS) | > 75/100 | SUS questionnaire |
+| Number of bug reports | < 5/month | Issue tracker |
+| Time to resolve a critical bug | < 24h | Issue tracker |
+
+### 8.3 Acceptance Criteria (Go/No-Go)
+
+**The MVP is ready for deployment when:**
+- ✅ All user stories (MUST HAVE) are implemented
+- ✅ Unit tests: > 80% coverage
+- ✅ Acceptance tests: 100% pass rate
+- ✅ Performance: all operations are within their time targets
+- ✅ User documentation: ready
+- ✅ 3 test users have accepted the system
 
 ---
 
-**Wersja dokumentu:** 1.1
-**Data ostatniej aktualizacji:** 2026-03-01
-**Status:** Approved — projekt w aktywnym rozwoju (CP4 zakonczone, CP5 MVP w przygotowaniu)  
+## 9. Example Usage Scenarios
+
+### Scenario 1: Assessing the impact of an investment
+> A user plans a new housing development. They want to check whether a larger impervious area changes the peak flows. They delineate the watershed, save the results, then change the CN by hand (simulating more built-up area) and generate a new hydrograph.
+
+### Scenario 2: Verifying a bridge cross-section
+> An engineer checks whether an existing bridge suits the flow Q10%. They delineate the watershed above the bridge, generate the hydrograph for p=10% and compare Qmax with the capacity of the bridge.
+
+### Scenario 3: A report for an authority
+> A consultant prepares an environmental impact report. They delineate 5 watersheds, generate a hydrograph for each, export the results (CSV + GeoJSON) and paste them into a Word report.
 
 ---
 
-*Ten dokument stanowi podstawę do rozpoczęcia prac nad systemem analizy hydrologicznej. Wszelkie zmiany w wymaganiach muszą być zatwierdzone przez Product Ownera i udokumentowane jako addendum do tego PRD.*
+**Document version:** 1.2
+**Date of the last update:** 2026-10-25
+**Status:** Approved — the project is in active development (CP4 finished, CP5 MVP in preparation)
+
+**Change history:**
+- 1.2 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
+- 1.1 (2026-03-01): last content update
+
+---
+
+*This document is the basis for starting work on the hydrological analysis system. Every change of the requirements must be approved by the Product Owner and documented as an addendum to this PRD.*

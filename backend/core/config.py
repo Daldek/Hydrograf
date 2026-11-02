@@ -9,6 +9,7 @@ import logging
 import os
 from copy import deepcopy
 from functools import lru_cache
+from typing import Any
 
 import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -248,7 +249,7 @@ _DEFAULT_CONFIG = {
 }
 
 
-def _deep_merge(base: dict, override: dict) -> dict:
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge *override* into *base*, returning a new dict."""
     result = deepcopy(base)
     for key, value in override.items():
@@ -259,7 +260,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def load_config(path: str) -> dict:
+def load_config(path: str) -> dict[str, Any]:
     """Load pipeline config from a YAML file, merging with defaults.
 
     If the file does not exist, returns default configuration.
@@ -273,7 +274,7 @@ def load_config(path: str) -> dict:
     return config
 
 
-def get_database_url_from_config(config: dict) -> str:
+def get_database_url_from_config(config: dict[str, Any]) -> str:
     """Build a PostgreSQL connection URL from YAML config dict."""
     db = config["database"]
     return (

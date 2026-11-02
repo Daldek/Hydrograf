@@ -26,13 +26,15 @@ def client():
 
 def _make_boundary_wkb():
     """Create a simple boundary WKB for mocking merge_catchment_boundaries."""
-    poly = Polygon([
-        (639100, 486650),
-        (639200, 486650),
-        (639200, 486750),
-        (639100, 486750),
-        (639100, 486650),
-    ])
+    poly = Polygon(
+        [
+            (639100, 486650),
+            (639200, 486650),
+            (639200, 486750),
+            (639100, 486750),
+            (639100, 486650),
+        ]
+    )
     return MultiPolygon([poly])
 
 
@@ -88,14 +90,14 @@ def _make_mock_cg_with_cascade():
 
     # traverse_upstream -> fine indices (600 items)
     cg.traverse_upstream.side_effect = [
-        fine_upstream,       # First call: fine threshold BFS
-        coarse_upstream,     # Second call: coarse threshold BFS (during cascade)
+        fine_upstream,  # First call: fine threshold BFS
+        coarse_upstream,  # Second call: coarse threshold BFS (during cascade)
     ]
 
     # get_segment_indices: maps indices to segment_idxs
     cg.get_segment_indices.side_effect = [
-        fine_segment_idxs,     # First call: fine -> 600 segments
-        coarse_segment_idxs,   # Second call: coarse -> 50 segments
+        fine_segment_idxs,  # First call: fine -> 600 segments
+        coarse_segment_idxs,  # Second call: coarse -> 50 segments
     ]
 
     # aggregate_stats: different results for fine vs coarse
@@ -190,61 +192,71 @@ class TestPrecomputedCascadeStats:
         cg, fine_stats, coarse_stats = _make_mock_cg_with_cascade()
         mock_db = _make_mock_db()
 
-        with patch(
-            "api.endpoints.watershed.get_catchment_graph",
-            return_value=cg,
-        ), patch(
-            "api.endpoints.watershed.merge_catchment_boundaries",
-            return_value=_make_boundary_wkb(),
-        ), patch(
-            "api.endpoints.watershed.get_stream_info_by_segment_idx",
-            return_value={
-                "strahler_order": 3,
-                "length_m": 5000.0,
-                "upstream_area_km2": 100.0,
-                "downstream_x": 639139.0,
-                "downstream_y": 486706.0,
-            },
-        ), patch(
-            "api.endpoints.watershed.get_segment_outlet",
-            return_value={"x": 639139.0, "y": 486706.0},
-        ), patch(
-            "api.endpoints.watershed.get_main_stream_geojson",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.get_main_channel_feature_collection",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_land_cover_stats",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_hsg_stats",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_morph_dict_from_graph",
-            return_value={
-                "area_km2": 105.0,
-                "perimeter_km": 50.0,
-                "length_km": 20.0,
-                "elevation_min_m": 95.0,
-                "elevation_max_m": 310.0,
-                "elevation_mean_m": 202.0,
-                "mean_slope_m_per_m": 0.048,
-                "channel_length_km": 15.0,
-                "channel_slope_m_per_m": 0.003,
-                "compactness_coefficient": 1.4,
-                "circularity_ratio": 0.5,
-                "elongation_ratio": 0.6,
-                "form_factor": 0.3,
-                "mean_width_km": 5.0,
-                "relief_ratio": 0.01,
-                "hypsometric_integral": 0.45,
-                "drainage_density_km_per_km2": 1.8,
-                "stream_frequency_per_km2": 1.3,
-                "ruggedness_number": 0.4,
-                "max_strahler_order": 4,
-                "_main_channel_nodes": [],
-            },
+        with (
+            patch(
+                "api.endpoints.watershed.get_catchment_graph",
+                return_value=cg,
+            ),
+            patch(
+                "api.endpoints.watershed.merge_catchment_boundaries",
+                return_value=_make_boundary_wkb(),
+            ),
+            patch(
+                "api.endpoints.watershed.get_stream_info_by_segment_idx",
+                return_value={
+                    "strahler_order": 3,
+                    "length_m": 5000.0,
+                    "upstream_area_km2": 100.0,
+                    "downstream_x": 639139.0,
+                    "downstream_y": 486706.0,
+                },
+            ),
+            patch(
+                "api.endpoints.watershed.get_segment_outlet",
+                return_value={"x": 639139.0, "y": 486706.0},
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_stream_geojson",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_channel_feature_collection",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_land_cover_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_hsg_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_morph_dict_from_graph",
+                return_value={
+                    "area_km2": 105.0,
+                    "perimeter_km": 50.0,
+                    "length_km": 20.0,
+                    "elevation_min_m": 95.0,
+                    "elevation_max_m": 310.0,
+                    "elevation_mean_m": 202.0,
+                    "mean_slope_m_per_m": 0.048,
+                    "channel_length_km": 15.0,
+                    "channel_slope_m_per_m": 0.003,
+                    "compactness_coefficient": 1.4,
+                    "circularity_ratio": 0.5,
+                    "elongation_ratio": 0.6,
+                    "form_factor": 0.3,
+                    "mean_width_km": 5.0,
+                    "relief_ratio": 0.01,
+                    "hypsometric_integral": 0.45,
+                    "drainage_density_km_per_km2": 1.8,
+                    "stream_frequency_per_km2": 1.3,
+                    "ruggedness_number": 0.4,
+                    "max_strahler_order": 4,
+                    "_main_channel_nodes": [],
+                },
+            ),
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -316,50 +328,60 @@ class TestPrecomputedCascadeStats:
 
         mock_db = _make_mock_db()
 
-        with patch(
-            "api.endpoints.watershed.get_catchment_graph",
-            return_value=cg,
-        ), patch(
-            "api.endpoints.watershed.merge_catchment_boundaries",
-            return_value=_make_boundary_wkb(),
-        ), patch(
-            "api.endpoints.watershed.get_stream_info_by_segment_idx",
-            return_value={
-                "strahler_order": 3,
-                "length_m": 5000.0,
-                "upstream_area_km2": 25.0,
-                "downstream_x": 639139.0,
-                "downstream_y": 486706.0,
-            },
-        ), patch(
-            "api.endpoints.watershed.get_segment_outlet",
-            return_value={"x": 639139.0, "y": 486706.0},
-        ), patch(
-            "api.endpoints.watershed.get_main_stream_geojson",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.get_main_channel_feature_collection",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_land_cover_stats",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_hsg_stats",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_morph_dict_from_graph",
-            return_value={
-                "area_km2": 25.0,
-                "perimeter_km": 30.0,
-                "length_km": 10.0,
-                "elevation_min_m": 120.0,
-                "elevation_max_m": 250.0,
-                "elevation_mean_m": 185.0,
-                "mean_slope_m_per_m": 0.04,
-                "channel_length_km": 5.0,
-                "channel_slope_m_per_m": 0.005,
-                "_main_channel_nodes": [],
-            },
+        with (
+            patch(
+                "api.endpoints.watershed.get_catchment_graph",
+                return_value=cg,
+            ),
+            patch(
+                "api.endpoints.watershed.merge_catchment_boundaries",
+                return_value=_make_boundary_wkb(),
+            ),
+            patch(
+                "api.endpoints.watershed.get_stream_info_by_segment_idx",
+                return_value={
+                    "strahler_order": 3,
+                    "length_m": 5000.0,
+                    "upstream_area_km2": 25.0,
+                    "downstream_x": 639139.0,
+                    "downstream_y": 486706.0,
+                },
+            ),
+            patch(
+                "api.endpoints.watershed.get_segment_outlet",
+                return_value={"x": 639139.0, "y": 486706.0},
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_stream_geojson",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_channel_feature_collection",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_land_cover_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_hsg_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_morph_dict_from_graph",
+                return_value={
+                    "area_km2": 25.0,
+                    "perimeter_km": 30.0,
+                    "length_km": 10.0,
+                    "elevation_min_m": 120.0,
+                    "elevation_max_m": 250.0,
+                    "elevation_mean_m": 185.0,
+                    "mean_slope_m_per_m": 0.04,
+                    "channel_length_km": 5.0,
+                    "channel_slope_m_per_m": 0.005,
+                    "_main_channel_nodes": [],
+                },
+            ),
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -394,46 +416,56 @@ class TestPrecomputedCascadeStats:
         cg, fine_stats, coarse_stats = _make_mock_cg_with_cascade()
         mock_db = _make_mock_db()
 
-        with patch(
-            "api.endpoints.watershed.get_catchment_graph",
-            return_value=cg,
-        ), patch(
-            "api.endpoints.watershed.merge_catchment_boundaries",
-            return_value=_make_boundary_wkb(),
-        ), patch(
-            "api.endpoints.watershed.get_stream_info_by_segment_idx",
-            return_value={
-                "strahler_order": 3,
-                "length_m": 5000.0,
-                "upstream_area_km2": 100.0,
-                "downstream_x": 639139.0,
-                "downstream_y": 486706.0,
-            },
-        ), patch(
-            "api.endpoints.watershed.get_segment_outlet",
-            return_value={"x": 639139.0, "y": 486706.0},
-        ), patch(
-            "api.endpoints.watershed.get_main_stream_geojson",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.get_main_channel_feature_collection",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_land_cover_stats",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_hsg_stats",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_morph_dict_from_graph",
-            return_value={
-                "area_km2": 105.0,
-                "perimeter_km": 50.0,
-                "length_km": 20.0,
-                "elevation_min_m": 95.0,
-                "elevation_max_m": 310.0,
-                "_main_channel_nodes": [],
-            },
+        with (
+            patch(
+                "api.endpoints.watershed.get_catchment_graph",
+                return_value=cg,
+            ),
+            patch(
+                "api.endpoints.watershed.merge_catchment_boundaries",
+                return_value=_make_boundary_wkb(),
+            ),
+            patch(
+                "api.endpoints.watershed.get_stream_info_by_segment_idx",
+                return_value={
+                    "strahler_order": 3,
+                    "length_m": 5000.0,
+                    "upstream_area_km2": 100.0,
+                    "downstream_x": 639139.0,
+                    "downstream_y": 486706.0,
+                },
+            ),
+            patch(
+                "api.endpoints.watershed.get_segment_outlet",
+                return_value={"x": 639139.0, "y": 486706.0},
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_stream_geojson",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_channel_feature_collection",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_land_cover_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_hsg_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_morph_dict_from_graph",
+                return_value={
+                    "area_km2": 105.0,
+                    "perimeter_km": 50.0,
+                    "length_km": 20.0,
+                    "elevation_min_m": 95.0,
+                    "elevation_max_m": 310.0,
+                    "_main_channel_nodes": [],
+                },
+            ),
         ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
@@ -505,62 +537,72 @@ class TestWatershedCascadeStats:
 
         mock_db = _make_mock_db()
 
-        with patch(
-            "api.endpoints.watershed.get_catchment_graph",
-            return_value=cg,
-        ), patch(
-            "api.endpoints.watershed.get_stream_info_by_segment_idx",
-            return_value={
-                "strahler_order": 3,
-                "length_m": 5000.0,
-                "upstream_area_km2": 100.0,
-                "downstream_x": 639139.0,
-                "downstream_y": 486706.0,
-            },
-        ), patch(
-            "api.endpoints.watershed.merge_catchment_boundaries",
-            return_value=_make_boundary_wkb(),
-        ), patch(
-            "api.endpoints.watershed.get_segment_outlet",
-            return_value={"x": 639139.0, "y": 486706.0},
-        ), patch(
-            "api.endpoints.watershed.get_main_stream_geojson",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.get_main_channel_feature_collection",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_land_cover_stats",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_hsg_stats",
-            return_value=None,
-        ), patch(
-            "api.endpoints.watershed.build_morph_dict_from_graph",
-            return_value={
-                "area_km2": 105.0,
-                "perimeter_km": 50.0,
-                "length_km": 20.0,
-                "elevation_min_m": 95.0,
-                "elevation_max_m": 310.0,
-                "elevation_mean_m": 202.0,
-                "mean_slope_m_per_m": 0.048,
-                "channel_length_km": 15.0,
-                "channel_slope_m_per_m": 0.003,
-                "compactness_coefficient": 1.4,
-                "circularity_ratio": 0.5,
-                "elongation_ratio": 0.6,
-                "form_factor": 0.3,
-                "mean_width_km": 5.0,
-                "relief_ratio": 0.01,
-                "hypsometric_integral": 0.45,
-                "drainage_density_km_per_km2": 1.8,
-                "stream_frequency_per_km2": 1.3,
-                "ruggedness_number": 0.4,
-                "max_strahler_order": 4,
-                "_main_channel_nodes": [],
-            },
-        ) as mock_morph:
+        with (
+            patch(
+                "api.endpoints.watershed.get_catchment_graph",
+                return_value=cg,
+            ),
+            patch(
+                "api.endpoints.watershed.get_stream_info_by_segment_idx",
+                return_value={
+                    "strahler_order": 3,
+                    "length_m": 5000.0,
+                    "upstream_area_km2": 100.0,
+                    "downstream_x": 639139.0,
+                    "downstream_y": 486706.0,
+                },
+            ),
+            patch(
+                "api.endpoints.watershed.merge_catchment_boundaries",
+                return_value=_make_boundary_wkb(),
+            ),
+            patch(
+                "api.endpoints.watershed.get_segment_outlet",
+                return_value={"x": 639139.0, "y": 486706.0},
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_stream_geojson",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.get_main_channel_feature_collection",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_land_cover_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_hsg_stats",
+                return_value=None,
+            ),
+            patch(
+                "api.endpoints.watershed.build_morph_dict_from_graph",
+                return_value={
+                    "area_km2": 105.0,
+                    "perimeter_km": 50.0,
+                    "length_km": 20.0,
+                    "elevation_min_m": 95.0,
+                    "elevation_max_m": 310.0,
+                    "elevation_mean_m": 202.0,
+                    "mean_slope_m_per_m": 0.048,
+                    "channel_length_km": 15.0,
+                    "channel_slope_m_per_m": 0.003,
+                    "compactness_coefficient": 1.4,
+                    "circularity_ratio": 0.5,
+                    "elongation_ratio": 0.6,
+                    "form_factor": 0.3,
+                    "mean_width_km": 5.0,
+                    "relief_ratio": 0.01,
+                    "hypsometric_integral": 0.45,
+                    "drainage_density_km_per_km2": 1.8,
+                    "stream_frequency_per_km2": 1.3,
+                    "ruggedness_number": 0.4,
+                    "max_strahler_order": 4,
+                    "_main_channel_nodes": [],
+                },
+            ) as mock_morph,
+        ):
             app.dependency_overrides[get_db] = lambda: mock_db
 
             response = client.post(

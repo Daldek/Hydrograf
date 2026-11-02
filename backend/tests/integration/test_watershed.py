@@ -20,6 +20,7 @@ flow is:
 """
 
 import contextlib
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -62,7 +63,7 @@ def _make_mock_cg(area_km2: float = 10.0) -> MagicMock:
     return cg
 
 
-def _make_segment() -> dict:
+def _make_segment() -> dict[str, Any]:
     """Create a mock stream segment dict as returned by find_nearest_stream_segment."""
     return {
         "segment_idx": 12,
@@ -88,7 +89,7 @@ def _make_boundary() -> MultiPolygon:
     return MultiPolygon([poly])
 
 
-def _make_morph_dict(area_km2: float = 10.0) -> dict:
+def _make_morph_dict(area_km2: float = 10.0) -> dict[str, Any]:
     """Create a morphometric parameter dict matching MorphometricParameters schema."""
     return {
         "area_km2": area_km2,
@@ -262,7 +263,7 @@ class TestDelineateWatershedEndpoint:
         assert "area_km2" in geojson["properties"]
 
     def test_no_stream_returns_404(self, client):
-        """Test that missing catchment returns 404 with Polish error message."""
+        """Test that a missing catchment returns 404 ``not_found``."""
         cg = _make_mock_cg()
         cg.find_catchment_at_point.side_effect = ValueError(
             "Nie znaleziono zlewni cząstkowej"
@@ -282,70 +283,71 @@ class TestDelineateWatershedEndpoint:
             )
 
         assert response.status_code == 404
-        assert "Nie znaleziono zlewni" in response.json()["detail"]
+        assert response.json()["code"] == "not_found"
+        assert response.json()["details"]["reason"] == "no_catchment_at_point"
 
-    def test_invalid_latitude_too_high_returns_422(self, client):
-        """Test that latitude > 90 returns 422."""
+    def test_invalid_latitude_too_high_returns_400(self, client):
+        """Test that latitude > 90 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 100.0, "longitude": 21.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_invalid_latitude_too_low_returns_422(self, client):
-        """Test that latitude < -90 returns 422."""
+    def test_invalid_latitude_too_low_returns_400(self, client):
+        """Test that latitude < -90 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": -100.0, "longitude": 21.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_invalid_longitude_too_high_returns_422(self, client):
-        """Test that longitude > 180 returns 422."""
+    def test_invalid_longitude_too_high_returns_400(self, client):
+        """Test that longitude > 180 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 52.0, "longitude": 200.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_invalid_longitude_too_low_returns_422(self, client):
-        """Test that longitude < -180 returns 422."""
+    def test_invalid_longitude_too_low_returns_400(self, client):
+        """Test that longitude < -180 returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 52.0, "longitude": -200.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_missing_latitude_returns_422(self, client):
-        """Test that missing latitude returns 422."""
+    def test_missing_latitude_returns_400(self, client):
+        """Test that missing latitude returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"longitude": 21.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_missing_longitude_returns_422(self, client):
-        """Test that missing longitude returns 422."""
+    def test_missing_longitude_returns_400(self, client):
+        """Test that missing longitude returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={"latitude": 52.0},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_empty_body_returns_422(self, client):
-        """Test that empty request body returns 422."""
+    def test_empty_body_returns_400(self, client):
+        """Test that empty request body returns 400."""
         response = client.post(
             "/api/delineate-watershed",
             json={},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
     def test_small_watershed_hydrograph_available(self, client):
         """Test small watershed has hydrograph_available=True."""
@@ -532,11 +534,14 @@ class TestDelineateWatershedPreview:
         segment_idxs, depths = levels.call_args[0][:2]
         assert (segment_idxs, depths) == ([12, 10], [0, 1])
 
-    def test_missing_threshold_returns_422(self, client):
+    def test_missing_threshold_returns_400(self, client):
         """Precise mode (no threshold) has no preview."""
         response = client.post(self._URL, json={"latitude": 52.23, "longitude": 21.01})
 
-        assert response.status_code == 422
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"]["fields"] == ["/body/threshold_m2"]
 
     def test_no_subcatchment_returns_404(self, client):
         """A point outside the sub-catchments fails like the delineation."""
@@ -548,7 +553,10 @@ class TestDelineateWatershedPreview:
         response, levels = self._post(client, cg)
 
         assert response.status_code == 404
-        assert "Nie znaleziono zlewni" in response.json()["detail"]
+        assert response.headers["content-type"] == "application/problem+json"
+        problem = response.json()
+        assert problem["code"] == "not_found"
+        assert problem["details"]["reason"] == "no_catchment_at_point"
         levels.assert_not_called()
 
     def test_graph_not_loaded_returns_503(self, client):
@@ -559,3 +567,4 @@ class TestDelineateWatershedPreview:
         response, _ = self._post(client, cg)
 
         assert response.status_code == 503
+        assert response.json()["code"] == "store_unavailable"

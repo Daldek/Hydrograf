@@ -12,12 +12,12 @@ jumps between zoom levels.
 """
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from api.dependencies.admin_auth import verify_admin_key
 from core.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ _CACHE_HIT = {"Cache-Control": "public, max-age=86400"}
 _CACHE_MISS = {"Cache-Control": "no-store"}
 
 
-def _tile_to_bbox_3857(z: int, x: int, y: int):
+def _tile_to_bbox_3857(z: int, x: int, y: int) -> tuple[float, float, float, float]:
     """Convert XYZ tile coordinates to EPSG:3857 bounding box."""
     n = 2**z
     # Web Mercator bounds
@@ -260,18 +260,24 @@ def get_sewer_mvt(
         WITH
         bbox AS (
             SELECT
-                ST_Transform(ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857), 2180) AS geom_2180,
+                ST_Transform(
+                    ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857), 2180
+                ) AS geom_2180,
                 ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 3857) AS geom_3857
         ),
         sewer_lines AS (
             SELECT
-                ST_AsMVTGeom(ST_Transform(n.geom, 3857), b.geom_3857, 4096, 64, true) AS geom
+                ST_AsMVTGeom(
+                    ST_Transform(n.geom, 3857), b.geom_3857, 4096, 64, true
+                ) AS geom
             FROM sewer_network n, bbox b
             WHERE n.geom IS NOT NULL AND ST_Intersects(n.geom, b.geom_2180)
         ),
         sewer_pts AS (
             SELECT
-                ST_AsMVTGeom(ST_Transform(p.geom, 3857), b.geom_3857, 4096, 64, true) AS geom,
+                ST_AsMVTGeom(
+                    ST_Transform(p.geom, 3857), b.geom_3857, 4096, 64, true
+                ) AS geom,
                 p.node_type
             FROM sewer_nodes p, bbox b
             WHERE p.geom IS NOT NULL AND ST_Intersects(p.geom, b.geom_2180)
@@ -308,7 +314,7 @@ def get_sewer_mvt(
 
 
 @router.get("/layers")
-def get_layer_availability(db: Session = Depends(get_db)) -> dict:
+def get_layer_availability(db: Session = Depends(get_db)) -> dict[str, bool]:
     """
     Report which optional map layers have data in the database.
 
@@ -343,7 +349,7 @@ def get_layer_availability(db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/tiles/thresholds")
-def get_available_thresholds(db: Session = Depends(get_db)) -> dict:
+def get_available_thresholds(db: Session = Depends(get_db)) -> dict[str, Any]:
     """
     Return available FA threshold values from the database.
 

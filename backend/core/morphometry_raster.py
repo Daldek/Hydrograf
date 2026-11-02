@@ -5,6 +5,7 @@ All functions operate on numpy arrays representing raster grids.
 """
 
 import logging
+from typing import Any
 
 import numpy as np
 
@@ -74,7 +75,7 @@ def compute_slope_from_gradients(
         Slope array in percent
     """
     slope = np.sqrt(dx**2 + dy**2) * 100
-    return np.nan_to_num(slope, nan=0.0)
+    return np.asarray(np.nan_to_num(slope, nan=0.0))
 
 
 def compute_aspect_from_gradients(
@@ -107,7 +108,7 @@ def compute_aspect_from_gradients(
     aspect_deg[flat_mask] = -1.0
     aspect_deg = np.nan_to_num(aspect_deg, nan=-1.0)
 
-    return aspect_deg
+    return np.asarray(aspect_deg)
 
 
 def compute_slope(
@@ -179,7 +180,7 @@ def compute_aspect(
 
 def compute_strahler_order(
     dem: np.ndarray,
-    metadata: dict,
+    metadata: dict[str, Any],
     stream_threshold: int = 1000,
 ) -> np.ndarray:
     """
@@ -261,13 +262,13 @@ def compute_strahler_order(
         f"stream cells: {stream_count:,})"
     )
 
-    return strahler
+    return np.asarray(strahler)
 
 
 def compute_strahler_from_fdir(
     d8_fdir: np.ndarray,
     acc: np.ndarray,
-    metadata: dict,
+    metadata: dict[str, Any],
     stream_threshold: int,
 ) -> np.ndarray:
     """
@@ -322,7 +323,7 @@ def compute_strahler_from_fdir(
         f"stream cells: {stream_count:,})"
     )
 
-    return strahler
+    return np.asarray(strahler)
 
 
 def compute_twi(

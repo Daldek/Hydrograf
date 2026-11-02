@@ -161,9 +161,7 @@ class TestSmoothStreamsMonotonic:
         line = LineString([(5, 18), (5, 2)])
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [line]
-            result, diag = smooth_streams_monotonic(
-                dem.copy(), transform, "dummy.gpkg"
-            )
+            result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         assert result[10, 5] <= result[9, 5]
         assert diag["cells_smoothed"] > 0
 
@@ -197,9 +195,7 @@ class TestSmoothStreamsMonotonic:
         main = LineString([(10, 10), (10, 2)])
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [trib_a, trib_b, main]
-            result, diag = smooth_streams_monotonic(
-                dem.copy(), transform, "dummy.gpkg"
-            )
+            result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         assert diag["segments_processed"] == 3
         assert diag["disconnected_components"] == 1
         assert result[10, 10] <= dem[10, 10]
@@ -212,9 +208,7 @@ class TestSmoothStreamsMonotonic:
         dem[10, 5] = 200.0  # bridge bump
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [line]
-            result, diag = smooth_streams_monotonic(
-                dem.copy(), transform, "dummy.gpkg"
-            )
+            result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         assert result[10, 5] <= result[9, 5]
         assert diag["cells_smoothed"] > 0
 
@@ -226,9 +220,7 @@ class TestSmoothStreamsMonotonic:
         part_b = LineString([(5, 10), (5, 2)])
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [part_a, part_b]
-            _, diag = smooth_streams_monotonic(
-                dem.copy(), transform, "dummy.gpkg"
-            )
+            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         assert diag["segments_processed"] == 2
 
     # Spec #7: NoData cells
@@ -253,9 +245,7 @@ class TestSmoothStreamsMonotonic:
         stream_b = LineString([(15, 18), (15, 2)])
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [stream_a, stream_b]
-            _, diag = smooth_streams_monotonic(
-                dem.copy(), transform, "dummy.gpkg"
-            )
+            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         assert diag["disconnected_components"] == 2
         assert diag["segments_processed"] == 2
 
@@ -268,9 +258,7 @@ class TestSmoothStreamsMonotonic:
         line_b = LineString([(5, 18), (5, 2)])
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [line_a, line_b]
-            result, _ = smooth_streams_monotonic(
-                dem.copy(), transform, "dummy.gpkg"
-            )
+            result, _ = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         assert result[10, 5] <= result[9, 5]
 
     # Spec #12: short segment
@@ -280,9 +268,7 @@ class TestSmoothStreamsMonotonic:
         short = LineString([(5.1, 10.1), (5.4, 10.4)])
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [short]
-            _, diag = smooth_streams_monotonic(
-                dem.copy(), transform, "dummy.gpkg"
-            )
+            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         assert diag["segments_processed"] + diag["segments_skipped"] == 1
 
     # Spec #13: segment outside DEM
@@ -292,9 +278,7 @@ class TestSmoothStreamsMonotonic:
         line = LineString([(50, 50), (60, 60)])
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [line]
-            _, diag = smooth_streams_monotonic(
-                dem.copy(), transform, "dummy.gpkg"
-            )
+            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         assert diag["segments_skipped"] >= 1
         assert diag["segments_processed"] == 0
 
@@ -305,9 +289,7 @@ class TestSmoothStreamsMonotonic:
         line = LineString([(5, 18), (5, 2)])
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [line]
-            _, diag = smooth_streams_monotonic(
-                dem.copy(), transform, "dummy.gpkg"
-            )
+            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         required_keys = {
             "segments_processed",
             "segments_skipped",

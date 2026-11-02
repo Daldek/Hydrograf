@@ -16,6 +16,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -32,7 +33,7 @@ TARGET_CRS = "EPSG:2180"  # PUWG 1992
 TARGET_RES_M = 5.0  # Default hydro resolution (matches Kartograf download)
 
 
-def _read_asc_header(path: Path) -> dict:
+def _read_asc_header(path: Path) -> dict[str, Any]:
     """Read ASC grid header (first 6 lines) to get origin and cellsize."""
     header = {}
     with open(path) as f:
@@ -75,7 +76,9 @@ def _get_epsg2180_wkt() -> str:
     try:
         result = subprocess.run(
             ["gdalsrsinfo", "EPSG:2180", "-o", "wkt_simple", "--single-line"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         _epsg2180_wkt_cache = result.stdout.strip()
     except (FileNotFoundError, subprocess.CalledProcessError):
@@ -181,11 +184,17 @@ def normalize_crs(
 
         cmd = [
             "gdalwarp",
-            "-s_srs", source_crs,
-            "-t_srs", TARGET_CRS,
-            "-tr", str(target_res), str(target_res),
-            "-r", "bilinear",
-            "-of", "AAIGrid",
+            "-s_srs",
+            source_crs,
+            "-t_srs",
+            TARGET_CRS,
+            "-tr",
+            str(target_res),
+            str(target_res),
+            "-r",
+            "bilinear",
+            "-of",
+            "AAIGrid",
             "-overwrite",
             str(f),
             str(out_asc),
@@ -198,9 +207,7 @@ def normalize_crs(
             n_reprojected += 1
         except subprocess.CalledProcessError as e:
             logger.error(f"gdalwarp failed for {f.name}: {e.stderr}")
-            raise RuntimeError(
-                f"Reprojection failed for {f.name}: {e.stderr}"
-            ) from e
+            raise RuntimeError(f"Reprojection failed for {f.name}: {e.stderr}") from e
 
     if n_reprojected:
         logger.info(
@@ -400,7 +407,7 @@ def _create_mosaic_rasterio(
 
 def read_vrt_as_array(
     vrt_path: Path,
-) -> tuple[np.ndarray, dict]:
+) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Read VRT mosaic as numpy array with metadata.
 
@@ -448,7 +455,7 @@ def read_vrt_as_array(
     return data, metadata
 
 
-def get_mosaic_info(vrt_path: Path) -> dict:
+def get_mosaic_info(vrt_path: Path) -> dict[str, Any]:
     """
     Get information about VRT mosaic without loading data.
 
@@ -481,7 +488,7 @@ def get_mosaic_info(vrt_path: Path) -> dict:
     return info
 
 
-def validate_tiles_compatibility(input_files: list[Path]) -> dict:
+def validate_tiles_compatibility(input_files: list[Path]) -> dict[str, Any]:
     """
     Validate that all tiles are compatible for mosaicking.
 
@@ -499,7 +506,7 @@ def validate_tiles_compatibility(input_files: list[Path]) -> dict:
     """
     import rasterio
 
-    results = {
+    results: dict[str, Any] = {
         "valid": True,
         "issues": [],
         "summary": {},

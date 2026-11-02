@@ -1025,7 +1025,7 @@ class HydrographRequest(BaseModel):
         return v
 ```
 
-Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"II"`/`"III"`, domyślnie `"II"`), `custom_precipitation` (`{"timestep_min": float > 0 i ≤ 1440, "depths_mm": [float ≥ 0, 1–2000 wartości, suma > 0]}` — zastępuje PMAXTP i hietogram; wtedy `duration` i `probability` mogą być puste) oraz `morphometry` (szybka ścieżka; `cn` jako float). Błędy walidacji: 422 z polskim opisem.
+Pola dodatkowe (aktualny schemat w `backend/models/schemas.py`): `amc` (`"I"`/`"II"`/`"III"`, domyślnie `"II"`), `custom_precipitation` (`{"timestep_min": float > 0 i ≤ 1440, "depths_mm": [float ≥ 0, 1–2000 wartości, suma > 0]}` — zastępuje PMAXTP i hietogram; wtedy `duration` i `probability` mogą być puste) oraz `morphometry` (szybka ścieżka; `cn` jako float). Błędy walidacji: 400 `validation_error` jako `application/problem+json` (ADR-059; opis po angielsku, po polsku z `Accept-Language: pl`).
 
 ---
 

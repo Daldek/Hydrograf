@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-03-25
+**Ostatnia aktualizacja:** 2026-10-25 (the head of Hydrolog, `5fa22b3`, ADR-060)
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -118,12 +118,9 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
 **Status:** ✅ Zaimplementowane
 
 Funkcje:
-- `calculate_perimeter_km(boundary)` - obwód zlewni z boundary.length
-- `calculate_watershed_length_km(cells, outlet)` - max odległość od ujścia
-- `calculate_elevation_stats(cells)` - min/max/mean wysokości (ważona po area)
-- `calculate_mean_slope(cells)` - średni spadek ważony po area (% → m/m)
-- `find_main_stream(cells, outlet)` - długość i spadek głównego cieku (algorytm najdłuższej ścieżki)
-- `build_morphometric_params(cells, boundary, outlet, cn)` - kompletny dict dla Hydrologa
+- `calculate_shape_indices(area_km2, perimeter_km, length_km)` - wskaźniki kształtu (Kc, Rc, Re, Ff, Cl, W)
+
+Pozostałe parametry (powierzchnia, obwód, długość, wysokości, spadek, ciek główny, wskaźniki rzeźby i drenażu) liczy `build_morph_dict_from_graph()` w `core/watershed_service.py` z grafu zlewni cząstkowych; ciek główny wyznacza `CatchmentGraph.trace_main_channel()`.
 
 ### 2. Moduł: `backend/core/morphometry_raster.py`
 
@@ -246,7 +243,6 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator`, `NashIUH`, `ConcentrationTime` | Endpoint API generowania hydrogramu |
 | `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | Skrypt CLI pełnej analizy |
 | `core/morphometry.py` | `WatershedParameters` (w docstring/example) | Dokumentacja formatu wymiany |
-| `tests/unit/test_morphometry.py` | `WatershedParameters` | Test kompatybilności formatu |
 
 ---
 
@@ -256,8 +252,8 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Plik | Zmiana | Status |
 |------|--------|--------|
-| `backend/requirements.txt` | + hydrolog (v0.6.3) | ✅ |
-| `backend/core/morphometry.py` | 6 funkcji obliczeniowych | ✅ |
+| `backend/pyproject.toml` | + hydrolog (commit `5fa22b3`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
+| `backend/core/morphometry.py` | `calculate_shape_indices` (wskaźniki kształtu) | ✅ |
 | `backend/core/morphometry_raster.py` | Obliczenia rastrowe (slope, aspect, TWI, Strahler) | ✅ |
 | `backend/core/catchment_graph.py` | In-memory graf, BFS, trace_main_channel | ✅ |
 | `backend/core/watershed_service.py` | build_morph_dict_from_graph, boundary smoothing | ✅ |
@@ -269,7 +265,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | `backend/api/endpoints/hydrograph.py` | Endpoint hydrogramu (CatchmentGraph BFS) | ✅ |
 | `backend/api/main.py` | + router hydrograph | ✅ |
 | `backend/scripts/analyze_watershed.py` | Skrypt CLI pełnej analizy z Hydrologiem | ✅ |
-| `backend/tests/unit/test_morphometry.py` | 24+ testy jednostkowe | ✅ |
+| `backend/tests/unit/test_morphometry.py` | Testy wskaźników kształtu | ✅ |
 | `backend/tests/integration/test_hydrograph.py` | 16 testów integracyjnych | ✅ |
 
 ### Hydrolog
@@ -321,6 +317,8 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 - **`tc_overland_length_km`** — długość spływu powierzchniowego podawana przez użytkownika. Wymagana przez FAA i Kerby (nie może być estymowana automatycznie).
 - **`channel_length_km`** — długość głównego cieku z `trace_main_channel()`. Używana przez Giandotti.
 
+**Hydrolog 1.0.0.dev0 and these methods (checked on the endpoint against v0.6.3, ADR-060):** `WatershedParameters.calculate_tc("nrcs")` now reads the mean slope before the channel slope, and `calculate_tc("faa")` and `calculate_tc("kerby")` need `overland_length_km` and `overland_slope_m_per_m` of the watershed (`InvalidParameterError`, also a `ValueError`). The endpoint is not affected: `_calculate_tc` forces the mean slope for NRCS and calls `ConcentrationTime.faa`, `kerby` and `kerby_kirpich` with its own arguments, so every `tc_min` of the API is the number it was. `scripts/analyze_watershed.py` accepts `kirpich`, `nrcs` and `giandotti` (`scs` was never a Hydrolog name).
+
 ---
 
 ## Typy hietogramów
@@ -343,6 +341,8 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 
 **Uwaga:** `NashIUH.from_tc()` jest oznaczona jako deprecated od Hydrolog v0.6.2. W Hydrografie domyślna estymacja Nash zmieniona na `from_lutz`. W UI metoda `from_tc` ma etykietę `[deprecated]`.
 
+**Hydrolog 1.0.0.dev0:** the changelog of Hydrolog announces the removal of `NashIUH.from_tc()` in 1.0.0; the head still has it and warns with `DeprecationWarning`. Hydrograf still offers the REST option `nash_estimation: "from_tc"`; it stops working when Hydrolog removes the method, and whether the option goes first is the author's decision (`docs/PROGRESS.md`, Open questions).
+
 **Znane ograniczenie:** Endpoint `GET /api/scenarios` (`list_scenarios()`) nadal zwraca `from_tc` w liście `nash_estimation_methods` bez oznaczenia deprecation — klient API nie dostaje informacji o statusie deprecated tej metody.
 
 ---
@@ -360,6 +360,8 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 - `length_to_centroid_km` — odległość od ujścia do centroidu zlewni wzdłuż cieku
 
 **Implementacja:** `backend/api/endpoints/hydrograph.py`
+
+**Hydrolog 1.0.0.dev0 (ADR-060):** `HydrographGenerator` builds the Snyder unit hydrograph for a duration equal to the time step (the duration correction of Snyder: `tLR = tL + 0.25 (D - tD)`, `tpR = tLR + D/2`, `qpR = qp tL / tLR`), not for the standard duration `tD = tL/5.5` as 0.6.3 did. Measured on the endpoint at a time step of 5 minutes (three catchments, six concentration-time methods, three hyetograph types): the peak is 11 to 12% higher, comes 25 to 70 minutes earlier, and the volume is the same. The SCS and Nash unit hydrographs give the numbers they gave before.
 
 **Dostępne modele hydrogramu jednostkowego:**
 - `scs` — SCS Unit Hydrograph (domyślny)
@@ -462,11 +464,11 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 ## Repozytorium Hydrologa
 
 - **GitHub:** https://github.com/Daldek/Hydrolog.git
-- **Branch:** develop
-- **Wersja:** v0.6.3
+- **Branch:** `feature/routing-schematic` (the head of the stack `chore/nogat-2.1` and `feature/routing-*`; on GitHub)
+- **Wersja:** 1.0.0.dev0, commit `5fa22b35e5e1ec9076c41d0be04d2a99458f5049`
 - **Dokumentacja:** `docs/INTEGRATION.md`
-- **Instalacja:** `pip install git+https://github.com/Daldek/Hydrolog.git@v0.6.3`
+- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "5fa22b35e5e1ec9076c41d0be04d2a99458f5049" }`), instalowana przez `uv sync --locked`; the commit is on GitHub, so every machine resolves it; the release replaces it with a tag (REL-5.3)
 
 ---
 
-**Ostatnia aktualizacja:** 2026-03-25
+**Ostatnia aktualizacja:** 2026-10-25

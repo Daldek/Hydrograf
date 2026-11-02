@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from shapely.geometry import Polygon, box
 
+from core.constants import DEFAULT_CN
 from core.land_cover import (
-    DEFAULT_CN,
     VALID_CATEGORIES,
     calculate_weighted_cn,
     determine_cn,
@@ -437,7 +437,7 @@ class TestDetermineCN:
             config_cn=None,
             use_kartograf=True,
             boundary_wgs84=[[17.31, 52.45], [17.32, 52.46]],
-            data_dir=tmp_path,
+            cache_dir=tmp_path,
         )
 
         assert cn == 72
@@ -476,7 +476,7 @@ class TestDetermineCN:
             config_cn=None,
             use_kartograf=True,
             boundary_wgs84=None,
-            data_dir=None,
+            cache_dir=None,
         )
 
         assert source == "default"

@@ -10,9 +10,11 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from typing import Any
 
 import geopandas as gpd
 import numpy as np
+from affine import Affine
 from shapely.geometry import LineString
 
 logger = logging.getLogger(__name__)
@@ -24,8 +26,8 @@ VALID_ROLES = {"inlet", "outlet", "junction", "storage"}
 class ParsedTopology:
     """Unified result of parsing both input formats."""
 
-    nodes: list[dict] = field(default_factory=list)
-    edges: list[dict] = field(default_factory=list)
+    nodes: list[dict[str, Any]] = field(default_factory=list)
+    edges: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     source_format: str = "points_only"
 
@@ -33,7 +35,7 @@ class ParsedTopology:
 class TopologyValidationError(Exception):
     """Raised when topology data fails validation."""
 
-    def __init__(self, errors: list[dict]) -> None:
+    def __init__(self, errors: list[dict[str, Any]]) -> None:
         self.errors = errors
         messages = [e["message"] for e in errors]
         super().__init__(
@@ -42,16 +44,16 @@ class TopologyValidationError(Exception):
         )
 
 
-def _invert_role_mapping(role_mapping: dict) -> dict:
+def _invert_role_mapping(role_mapping: dict[str, Any]) -> dict[Any, str]:
     """Invert {canonical: user_value} -> {user_value: canonical}."""
     return {v: k for k, v in role_mapping.items()}
 
 
 def _parse_nodes(
     points_gdf: gpd.GeoDataFrame,
-    field_mapping: dict,
-    role_lookup: dict,
-) -> list[dict]:
+    field_mapping: dict[str, Any],
+    role_lookup: dict[str, Any],
+) -> list[dict[str, Any]]:
     """Extract nodes from points GeoDataFrame."""
     id_col = field_mapping["node_id"]
     role_col = field_mapping["node_role"]
@@ -77,9 +79,17 @@ def _parse_nodes(
                 node[attr] = None if (val is None or val != val) else val
 
         # Extended attributes
-        for attr in ("rim_elevation", "max_depth", "ponded_area",
-                      "outfall_type", "manning", "material",
-                      "cross_section", "width", "height"):
+        for attr in (
+            "rim_elevation",
+            "max_depth",
+            "ponded_area",
+            "outfall_type",
+            "manning",
+            "material",
+            "cross_section",
+            "width",
+            "height",
+        ):
             col = field_mapping.get(attr)
             if col and col in points_gdf.columns:
                 val = row[col]
@@ -91,10 +101,10 @@ def _parse_nodes(
 
 
 def _generate_edges_from_downstream(
-    nodes: list[dict],
+    nodes: list[dict[str, Any]],
     points_gdf: gpd.GeoDataFrame,
-    field_mapping: dict,
-) -> list[dict]:
+    field_mapping: dict[str, Any],
+) -> list[dict[str, Any]]:
     """Format A: generate LineString edges from downstream_id column."""
     ds_col = field_mapping["downstream_id"]
     id_col = field_mapping["node_id"]
@@ -113,27 +123,31 @@ def _generate_edges_from_downstream(
         to_node = node_by_id.get(to_id)
         if to_node is None:
             # Unknown target — record edge stub; validation will catch it
-            geom = LineString([(from_node["x"], from_node["y"]),
-                               (from_node["x"], from_node["y"])])
+            geom = LineString(
+                [(from_node["x"], from_node["y"]), (from_node["x"], from_node["y"])]
+            )
         else:
-            geom = LineString([(from_node["x"], from_node["y"]),
-                               (to_node["x"], to_node["y"])])
+            geom = LineString(
+                [(from_node["x"], from_node["y"]), (to_node["x"], to_node["y"])]
+            )
 
-        edges.append({
-            "from_id": from_id,
-            "to_id": to_id,
-            "geometry": geom,
-            "source": "auto_generated",
-        })
+        edges.append(
+            {
+                "from_id": from_id,
+                "to_id": to_id,
+                "geometry": geom,
+                "source": "auto_generated",
+            }
+        )
 
     return edges
 
 
 def _parse_edges_from_lines(
-    nodes: list[dict],
+    nodes: list[dict[str, Any]],
     lines_gdf: gpd.GeoDataFrame,
-    field_mapping: dict,
-) -> list[dict]:
+    field_mapping: dict[str, Any],
+) -> list[dict[str, Any]]:
     """Format B: parse edges from lines GeoDataFrame with from_node/to_node."""
     from_col = field_mapping["edge_from"]
     to_col = field_mapping["edge_to"]
@@ -148,8 +162,15 @@ def _parse_edges_from_lines(
         }
 
         # Pipe attributes from line layer
-        for attr in ("diameter", "width", "height", "cross_section",
-                      "manning", "material", "invert_elev"):
+        for attr in (
+            "diameter",
+            "width",
+            "height",
+            "cross_section",
+            "manning",
+            "material",
+            "invert_elev",
+        ):
             col = field_mapping.get(attr)
             if col and col in lines_gdf.columns:
                 val = row[col]
@@ -160,9 +181,11 @@ def _parse_edges_from_lines(
     return edges
 
 
-def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
+def _validate_topology(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     """Validate topology consistency. Returns list of error dicts (empty=OK)."""
-    errors: list[dict] = []
+    errors: list[dict[str, Any]] = []
 
     # 1. Duplicate IDs
     seen_ids: dict[str, int] = defaultdict(int)
@@ -170,28 +193,31 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
         seen_ids[node["id"]] += 1
     for nid, count in seen_ids.items():
         if count > 1:
-            errors.append({
-                "type": "duplicate_id",
-                "node_id": nid,
-                "message": f"Node id={nid} appears {count} times",
-            })
+            errors.append(
+                {
+                    "type": "duplicate_id",
+                    "node_id": nid,
+                    "message": f"Node id={nid} appears {count} times",
+                }
+            )
     if errors:
         return errors  # can't continue with duplicate IDs
 
     node_ids = {n["id"] for n in nodes}
-    node_by_id = {n["id"]: n for n in nodes}
 
     # 2. Invalid roles
     for node in nodes:
         if node["role"] not in VALID_ROLES:
-            errors.append({
-                "type": "invalid_role",
-                "node_id": node["id"],
-                "message": (
-                    f"Node id={node['id']}: role '{node['role']}' "
-                    f"not in {VALID_ROLES}"
-                ),
-            })
+            errors.append(
+                {
+                    "type": "invalid_role",
+                    "node_id": node["id"],
+                    "message": (
+                        f"Node id={node['id']}: role '{node['role']}' "
+                        f"not in {VALID_ROLES}"
+                    ),
+                }
+            )
 
     # 3. Direction mismatch: inlet should not be to_node, outlet should not be from_node
     node_role_by_id = {n["id"]: n["role"] for n in nodes}
@@ -199,23 +225,29 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
         to_role = node_role_by_id.get(edge["to_id"])
         from_role = node_role_by_id.get(edge["from_id"])
         if to_role == "inlet":
-            errors.append({
-                "type": "direction_mismatch",
-                "node_id": edge["to_id"],
-                "message": (
-                    f"Edge {edge['from_id']}→{edge['to_id']}: "
-                    f"node {edge['to_id']} is inlet (should not be downstream target)"
-                ),
-            })
+            errors.append(
+                {
+                    "type": "direction_mismatch",
+                    "node_id": edge["to_id"],
+                    "message": (
+                        f"Edge {edge['from_id']}→{edge['to_id']}: "
+                        f"node {edge['to_id']} is inlet "
+                        "(should not be downstream target)"
+                    ),
+                }
+            )
         if from_role == "outlet":
-            errors.append({
-                "type": "direction_mismatch",
-                "node_id": edge["from_id"],
-                "message": (
-                    f"Edge {edge['from_id']}→{edge['to_id']}: "
-                    f"node {edge['from_id']} is outlet (should not be upstream source)"
-                ),
-            })
+            errors.append(
+                {
+                    "type": "direction_mismatch",
+                    "node_id": edge["from_id"],
+                    "message": (
+                        f"Edge {edge['from_id']}→{edge['to_id']}: "
+                        f"node {edge['from_id']} is outlet "
+                        "(should not be upstream source)"
+                    ),
+                }
+            )
 
     # 4. Downstream map + outlet/missing_downstream checks
     downstream_map: dict[str, str] = {}
@@ -227,46 +259,58 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
         has_downstream = nid in downstream_map
 
         if node["role"] == "outlet" and has_downstream:
-            errors.append({
-                "type": "outlet_has_downstream",
-                "node_id": nid,
-                "message": (
-                    f"Outlet id={nid} has downstream_id="
-                    f"{downstream_map[nid]} — outlets must be terminal"
-                ),
-            })
+            errors.append(
+                {
+                    "type": "outlet_has_downstream",
+                    "node_id": nid,
+                    "message": (
+                        f"Outlet id={nid} has downstream_id="
+                        f"{downstream_map[nid]} — outlets must be terminal"
+                    ),
+                }
+            )
 
         if node["role"] != "outlet" and not has_downstream:
-            errors.append({
-                "type": "missing_downstream",
-                "node_id": nid,
-                "message": f"{node['role'].capitalize()} id={nid} has no downstream_id",
-            })
+            errors.append(
+                {
+                    "type": "missing_downstream",
+                    "node_id": nid,
+                    "message": (
+                        f"{node['role'].capitalize()} id={nid} has no downstream_id"
+                    ),
+                }
+            )
 
     # 5. Edge targets exist (orphan edges + missing_target)
     has_broken_refs = False
     for edge in edges:
         if edge["from_id"] not in node_ids:
-            errors.append({
-                "type": "orphan_edge",
-                "node_id": edge["from_id"],
-                "message": f"Edge from_node={edge['from_id']}: no matching point",
-            })
+            errors.append(
+                {
+                    "type": "orphan_edge",
+                    "node_id": edge["from_id"],
+                    "message": f"Edge from_node={edge['from_id']}: no matching point",
+                }
+            )
             has_broken_refs = True
         if edge["to_id"] not in node_ids:
-            errors.append({
-                "type": "orphan_edge",
-                "node_id": edge["to_id"],
-                "message": f"Edge to_node={edge['to_id']}: no matching point",
-            })
-            errors.append({
-                "type": "missing_target",
-                "node_id": edge["from_id"],
-                "message": (
-                    f"Node id={edge['from_id']}: downstream_id="
-                    f"{edge['to_id']} not found"
-                ),
-            })
+            errors.append(
+                {
+                    "type": "orphan_edge",
+                    "node_id": edge["to_id"],
+                    "message": f"Edge to_node={edge['to_id']}: no matching point",
+                }
+            )
+            errors.append(
+                {
+                    "type": "missing_target",
+                    "node_id": edge["from_id"],
+                    "message": (
+                        f"Node id={edge['from_id']}: downstream_id="
+                        f"{edge['to_id']} not found"
+                    ),
+                }
+            )
             has_broken_refs = True
 
     if has_broken_refs:
@@ -301,11 +345,13 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
                 globally_visited.add(cur)
                 cur = downstream_map.get(cur)
             if cycle_str:
-                errors.append({
-                    "type": "cycle_detected",
-                    "node_id": nid,
-                    "message": f"Cycle: {cycle_str}",
-                })
+                errors.append(
+                    {
+                        "type": "cycle_detected",
+                        "node_id": nid,
+                        "message": f"Cycle: {cycle_str}",
+                    }
+                )
                 break
 
     if errors:
@@ -333,46 +379,52 @@ def _validate_topology(nodes: list[dict], edges: list[dict]) -> list[dict]:
                     queue.append(neighbor)
         comp_id += 1
 
-    components: dict[int, list[dict]] = defaultdict(list)
+    components: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for node in nodes:
         cid = component_map.get(node["id"], -1)
         components[cid].append(node)
 
-    for cid, comp_nodes in components.items():
+    for comp_nodes in components.values():
         roles_in_comp = {n["role"] for n in comp_nodes}
         ids_in_comp = {n["id"] for n in comp_nodes}
 
         if "outlet" not in roles_in_comp:
-            errors.append({
-                "type": "no_outlet",
-                "node_id": None,
-                "message": f"Component {ids_in_comp} has no outlet",
-            })
+            errors.append(
+                {
+                    "type": "no_outlet",
+                    "node_id": None,
+                    "message": f"Component {ids_in_comp} has no outlet",
+                }
+            )
         if "inlet" not in roles_in_comp:
-            errors.append({
-                "type": "no_inlet",
-                "node_id": None,
-                "message": f"Component {ids_in_comp} has no inlet",
-            })
+            errors.append(
+                {
+                    "type": "no_inlet",
+                    "node_id": None,
+                    "message": f"Component {ids_in_comp} has no inlet",
+                }
+            )
 
     return errors
 
 
 # D8 direction offsets: value → (drow, dcol)
 _D8_OFFSETS = {
-    1: (0, 1),     # E
-    2: (1, 1),     # SE
-    4: (1, 0),     # S
-    8: (1, -1),    # SW
-    16: (0, -1),   # W
+    1: (0, 1),  # E
+    2: (1, 1),  # SE
+    4: (1, 0),  # S
+    8: (1, -1),  # SW
+    16: (0, -1),  # W
     32: (-1, -1),  # NW
-    64: (-1, 0),   # N
+    64: (-1, 0),  # N
     128: (-1, 1),  # NE
 }
 
 
 def _get_capture_zone(
-    row: int, col: int, fdir: np.ndarray,
+    row: int,
+    col: int,
+    fdir: np.ndarray,
 ) -> set[tuple[int, int]]:
     """Get inlet capture zone: the cell + 8-neighbors whose fdir points to it."""
     nrows, ncols = fdir.shape
@@ -391,7 +443,10 @@ def _get_capture_zone(
 
 
 def _trace_fdir_downstream(
-    row: int, col: int, fdir: np.ndarray, max_steps: int = 10_000,
+    row: int,
+    col: int,
+    fdir: np.ndarray,
+    max_steps: int = 10_000,
 ) -> set[tuple[int, int]]:
     """Trace fdir downstream from a cell. Returns set of visited cells."""
     nrows, ncols = fdir.shape
@@ -415,11 +470,14 @@ def _trace_fdir_downstream(
 def validate_against_fdir(
     topology: ParsedTopology,
     fdir: np.ndarray,
-    transform,
-) -> list[dict]:
-    """Check for feedback loops: outlet's downstream fdir path must not
-    reach any inlet's capture zone in the same component."""
-    errors: list[dict] = []
+    transform: Affine,
+) -> list[dict[str, Any]]:
+    """Check for feedback loops in the sewer topology.
+
+    An outlet's downstream fdir path must not reach any inlet's capture zone in
+    the same component.
+    """
+    errors: list[dict[str, Any]] = []
     nrows, ncols = fdir.shape
 
     # Map nodes to raster cells (local dict — do not mutate topology nodes)
@@ -481,14 +539,16 @@ def validate_against_fdir(
         for cell in path:
             if cell in all_zone_cells:
                 inlet_id = all_zone_cells[cell]
-                errors.append({
-                    "type": "feedback_loop",
-                    "node_id": node["id"],
-                    "message": (
-                        f"Outlet id={node['id']} drains to inlet "
-                        f"id={inlet_id} capture zone"
-                    ),
-                })
+                errors.append(
+                    {
+                        "type": "feedback_loop",
+                        "node_id": node["id"],
+                        "message": (
+                            f"Outlet id={node['id']} drains to inlet "
+                            f"id={inlet_id} capture zone"
+                        ),
+                    }
+                )
                 break
 
     return errors
@@ -497,8 +557,8 @@ def validate_against_fdir(
 def parse_sewer_topology(
     points_gdf: gpd.GeoDataFrame,
     lines_gdf: gpd.GeoDataFrame | None,
-    field_mapping: dict,
-    role_mapping: dict,
+    field_mapping: dict[str, Any],
+    role_mapping: dict[str, Any],
 ) -> ParsedTopology:
     """Parse and validate sewer topology from user data.
 

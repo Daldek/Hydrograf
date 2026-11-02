@@ -1,4 +1,4 @@
-"""
+r"""
 Pipeline script to download and process spatial data for a specified area.
 
 This script combines:
@@ -7,15 +7,19 @@ This script combines:
 3. (Optional) Downloading BDOT10k hydrographic data for stream burning
 4. Processing mosaic with pyflwdir (fill depressions, flow direction, accumulation)
 5. Loading data into PostgreSQL/PostGIS (stream_network, stream_catchments)
-6. (Optional) Downloading land cover data from BDOT10k/CORINE
+6. (Optional) Downloading land cover data from BDOT10k
 7. (Optional) Loading land cover into land_cover table
 
 IMPORTANT: Multiple tiles are merged into a VRT (Virtual Raster) before
 hydrological analysis. This ensures correct flow routing across tile
 boundaries - water can flow from one tile to another without artifacts.
 
+The downloads (NMT sheets and BDOT10k packages) go into the Kartograf store
+``<output>/kartograf`` (ADR-061); the mosaic and the intermediates are files of
+``<output>``.
+
 Requires:
-- Kartograf 0.7.0 for data download
+- Kartograf for data download
 - GDAL for VRT creation (gdalbuildvrt)
 
 Usage
@@ -27,26 +31,26 @@ Usage
 Examples
 --------
     # Full pipeline for area (NMT only)
-    python -m scripts.prepare_area \\
-        --lat 52.23 --lon 21.01 \\
+    python -m scripts.prepare_area \
+        --lat 52.23 --lon 21.01 \
         --buffer 5
 
     # With BDOT10k stream burning
-    python -m scripts.prepare_area \\
-        --lat 52.23 --lon 21.01 \\
-        --buffer 5 \\
+    python -m scripts.prepare_area \
+        --lat 52.23 --lon 21.01 \
+        --buffer 5 \
         --with-hydro
 
     # With land cover data (BDOT10k)
-    python -m scripts.prepare_area \\
-        --lat 52.23 --lon 21.01 \\
-        --buffer 5 \\
+    python -m scripts.prepare_area \
+        --lat 52.23 --lon 21.01 \
+        --buffer 5 \
         --with-landcover
 
     # Keep downloaded files and save intermediates
-    python -m scripts.prepare_area \\
-        --lat 52.23 --lon 21.01 \\
-        --keep-downloads \\
+    python -m scripts.prepare_area \
+        --lat 52.23 --lon 21.01 \
+        --keep-downloads \
         --save-intermediates
 """
 
@@ -57,6 +61,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 # Configure logging
 logging.basicConfig(
@@ -77,12 +82,11 @@ def prepare_area(
     save_intermediates: bool = False,
     output_dir: Path | None = None,
     with_landcover: bool = False,
-    landcover_provider: str = "bdot10k",
     with_hydro: bool = False,
     burn_depth_m: float = 2.0,
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """
     Download and process NMT data for an area around a point.
 
@@ -97,17 +101,17 @@ def prepare_area(
     scale : str
         Map scale for sheet selection
     batch_size : int
-        Database insert batch size
+        Batch size of the land cover insert (``with_landcover``)
     keep_downloads : bool
         If True, keep downloaded .asc files
     save_intermediates : bool
         If True, save intermediate GeoTIFF files
     output_dir : Path, optional
-        Output directory for downloads (default: temp directory)
+        Output directory: the Kartograf store of the downloads is
+        ``<output_dir>/kartograf``; the mosaic and the intermediates are written here
+        (default: temp directory)
     with_landcover : bool
-        If True, also download and import land cover data
-    landcover_provider : str
-        Land cover provider: 'bdot10k' or 'corine'
+        If True, also download and import land cover data (BDOT10k)
     with_hydro : bool
         If True, download BDOT10k hydrographic data and burn streams into DEM
     burn_depth_m : float
@@ -132,11 +136,17 @@ def prepare_area(
     # Add parent to path for imports
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    from scripts.download_dem import METADATA_CACHE_NAME, download_for_point
+    from scripts.download_dem import download_for_point
     from scripts.process_dem import process_dem
+    from utils.kartograf_store import (
+        describe_error,
+        download_bdot10k,
+        metadata_cache_path,
+        store_dir,
+    )
     from utils.sheet_lookup import sheets_for_point_buffer
 
-    stats = {
+    stats: dict[str, Any] = {
         "sheets_found": 0,
         "sheets_downloaded": 0,
         "sheets_processed": 0,
@@ -186,8 +196,8 @@ def prepare_area(
         lat=lat,
         lon=lon,
         buffer_km=buffer_km,
-        output_dir=output_dir,
-        metadata_cache_path=output_dir / METADATA_CACHE_NAME,
+        root=store_dir(output_dir),
+        metadata_cache_path=metadata_cache_path(output_dir),
         scale=scale,
     )
     downloaded_files = report.paths
@@ -239,35 +249,30 @@ def prepare_area(
         logger.info("=" * 60)
 
         try:
-            from kartograf import SheetParser
+            from kartograf import BBox, SheetParser
 
-            from scripts.download_landcover import (
-                discover_teryts_for_bbox,
-                download_landcover,
-            )
+            from scripts.download_landcover import merge_hydro_gpkgs
 
-            hydro_dir = output_dir.parent / "hydro"
-            hydro_dir.mkdir(parents=True, exist_ok=True)
-
-            # Compute EPSG:2180 bbox from sheets and discover TERYTs
+            # Compute the EPSG:2180 bbox from the sheets; Kartograf finds the counties
             all_bboxes = [SheetParser(s).get_bbox(crs="EPSG:2180") for s in sheets]
-            bbox_2180 = (
-                min(b.min_x for b in all_bboxes),
-                min(b.min_y for b in all_bboxes),
-                max(b.max_x for b in all_bboxes),
-                max(b.max_y for b in all_bboxes),
+            bdot_paths = download_bdot10k(
+                output_dir,
+                bbox=BBox(
+                    min(b.min_x for b in all_bboxes),
+                    min(b.min_y for b in all_bboxes),
+                    max(b.max_x for b in all_bboxes),
+                    max(b.max_y for b in all_bboxes),
+                    "EPSG:2180",
+                ),
             )
-            teryts = discover_teryts_for_bbox(bbox_2180)
 
-            for teryt in teryts:
-                gpkg = download_landcover(
-                    output_dir=hydro_dir,
-                    provider="bdot10k",
-                    teryt=teryt,
+            if bdot_paths:
+                hydro_dir = output_dir.parent / "hydro"
+                hydro_dir.mkdir(parents=True, exist_ok=True)
+                burn_streams_path = merge_hydro_gpkgs(
+                    list(bdot_paths.values()), hydro_dir / "hydro_merged.gpkg"
                 )
-                if gpkg and gpkg.exists():
-                    burn_streams_path = gpkg
-                    logger.info(f"Hydro data downloaded: {gpkg}")
+                logger.info(f"Hydro data downloaded: {sorted(bdot_paths)}")
 
             stats["hydro_downloaded"] = burn_streams_path is not None
             if burn_streams_path:
@@ -276,8 +281,8 @@ def prepare_area(
                 logger.warning("No hydro data downloaded, skipping stream burning")
 
         except Exception as e:
-            logger.warning(f"Hydro download failed: {e}")
-            stats["errors"].append(f"Hydro download: {e}")
+            logger.warning(f"Hydro download failed: {describe_error(e)}")
+            stats["errors"].append(f"Hydro download: {describe_error(e)}")
 
     # Step 4: Process the mosaic as single continuous DEM
     logger.info("=" * 60)
@@ -287,7 +292,6 @@ def prepare_area(
     try:
         dem_stats = process_dem(
             input_path=mosaic_path,
-            batch_size=batch_size,
             dry_run=False,
             save_intermediates=save_intermediates,
             output_dir=output_dir if save_intermediates else None,
@@ -324,67 +328,43 @@ def prepare_area(
         logger.info("=" * 60)
 
         try:
-            from scripts.download_landcover import (
-                discover_teryts_for_bbox,
-                download_landcover,
-            )
             from scripts.import_landcover import import_landcover
-            from utils.geometry import transform_wgs84_to_pl1992
+            from utils.sheet_lookup import point_buffer_bbox
 
-            # Create landcover output directory
-            landcover_dir = (
-                output_dir.parent / "landcover"
-                if output_dir
-                else Path("../data/landcover")
+            # The counties of the area (EPSG:2180 bbox of lat/lon + buffer) come from
+            # Kartograf with their packages
+            bdot_paths = download_bdot10k(
+                output_dir, bbox=point_buffer_bbox(lat, lon, buffer_km)
             )
-            landcover_dir.mkdir(parents=True, exist_ok=True)
-
-            # Compute EPSG:2180 bbox from lat/lon + buffer
-            x, y = transform_wgs84_to_pl1992(lat, lon)
-            buffer_m = buffer_km * 1000
-            bbox_2180 = (
-                x - buffer_m,
-                y - buffer_m,
-                x + buffer_m,
-                y + buffer_m,
-            )
-            teryts = discover_teryts_for_bbox(bbox_2180)
 
             total_features = 0
-            for teryt in teryts:
-                gpkg_file = download_landcover(
-                    output_dir=landcover_dir,
-                    provider=landcover_provider,
-                    teryt=teryt,
-                    skip_existing=True,
-                )
-                if gpkg_file and gpkg_file.exists():
-                    logger.info(f"Downloaded: {gpkg_file}")
+            for _, gpkg_file in sorted(bdot_paths.items()):
+                logger.info(f"Downloaded: {gpkg_file}")
 
-                    lc_stats = import_landcover(
-                        input_path=gpkg_file,
-                        batch_size=batch_size,
-                        dry_run=False,
-                        clear_existing=False,
-                    )
-                    total_features += lc_stats.get("records_inserted", 0)
+                lc_stats = import_landcover(
+                    input_path=gpkg_file,
+                    batch_size=batch_size,
+                    dry_run=False,
+                    clear_existing=False,
+                )
+                total_features += lc_stats.get("records_inserted", 0)
 
             stats["landcover_features"] = total_features
             logger.info(
                 f"Imported {total_features} land cover features "
-                f"from {len(teryts)} TERYT(s)"
+                f"from {len(bdot_paths)} county package(s)"
             )
 
-            if not teryts:
-                logger.warning("No TERYTs discovered for landcover area")
-                stats["errors"].append("No TERYTs discovered for landcover")
+            if not bdot_paths:
+                logger.warning("No counties found for the land cover area")
+                stats["errors"].append("No counties found for the land cover area")
 
         except ImportError as e:
             logger.warning(f"Land cover support not available: {e}")
             stats["errors"].append(f"Land cover import error: {e}")
         except Exception as e:
-            logger.error(f"Land cover processing failed: {e}")
-            stats["errors"].append(f"Land cover error: {e}")
+            logger.error(f"Land cover processing failed: {describe_error(e)}")
+            stats["errors"].append(f"Land cover error: {describe_error(e)}")
 
     # Cleanup temp directory if not keeping downloads
     if not keep_downloads and output_dir.name.startswith("hydrolog_nmt_"):
@@ -395,7 +375,7 @@ def prepare_area(
 
 
 def main():
-    """Main entry point for prepare_area script."""
+    """Run the prepare_area script."""
     parser = argparse.ArgumentParser(
         description="Download and process NMT data for a specified area",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -429,7 +409,7 @@ def main():
         "--batch-size",
         type=int,
         default=10000,
-        help="Database insert batch size (default: 10000)",
+        help="Batch size of the land cover insert (default: 10000)",
     )
     process_group.add_argument(
         "--scale",
@@ -440,9 +420,7 @@ def main():
     )
 
     # Hydrographic data options
-    hydro_group = parser.add_argument_group(
-        "Hydrographic data (requires Kartograf 0.7.0)"
-    )
+    hydro_group = parser.add_argument_group("Hydrographic data (Kartograf)")
     hydro_group.add_argument(
         "--with-hydro",
         action="store_true",
@@ -456,20 +434,11 @@ def main():
     )
 
     # Land cover options
-    landcover_group = parser.add_argument_group(
-        "Land cover options (requires Kartograf 0.7.0)"
-    )
+    landcover_group = parser.add_argument_group("Land cover options (Kartograf)")
     landcover_group.add_argument(
         "--with-landcover",
         action="store_true",
         help="Also download and import land cover data (BDOT10k)",
-    )
-    landcover_group.add_argument(
-        "--landcover-provider",
-        type=str,
-        default="bdot10k",
-        choices=["bdot10k", "corine"],
-        help="Land cover provider (default: bdot10k)",
     )
 
     # Waterbody options
@@ -479,8 +448,8 @@ def main():
         type=str,
         default="none",
         help='Tryb obslugi zbiornikow: "auto" (BDOT10k klasyfikacja), '
-             '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
-             "(wszystkie traktowane jako endoreiczne). Default: none",
+        '"none" (pomin), lub sciezka do pliku .gpkg/.shp '
+        "(wszystkie traktowane jako endoreiczne). Default: none",
     )
     wb_group.add_argument(
         "--waterbody-min-area",
@@ -496,7 +465,10 @@ def main():
         "-o",
         type=str,
         default=None,
-        help="Output directory for downloads (default: ../data/nmt/)",
+        help=(
+            "Output directory (default: ../data/nmt/): the Kartograf store of the "
+            "downloads is <output>/kartograf; the mosaic and intermediates go here"
+        ),
     )
     output_group.add_argument(
         "--keep-downloads",
@@ -539,8 +511,6 @@ def main():
     if args.with_hydro:
         logger.info(f"Burn depth: {args.burn_depth} m")
     logger.info(f"With land cover: {args.with_landcover}")
-    if args.with_landcover:
-        logger.info(f"Land cover provider: {args.landcover_provider}")
     logger.info("=" * 60)
 
     if args.dry_run:
@@ -548,9 +518,7 @@ def main():
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from utils.sheet_lookup import sheets_for_point_buffer
 
-        sheets = sheets_for_point_buffer(
-            args.lat, args.lon, args.buffer, args.scale
-        )
+        sheets = sheets_for_point_buffer(args.lat, args.lon, args.buffer, args.scale)
 
         logger.info("DRY RUN - would download and process:")
         logger.info("NMT sheets:")
@@ -560,7 +528,7 @@ def main():
         if args.with_hydro:
             logger.info("Would also download BDOT10k hydro data for stream burning")
         if args.with_landcover:
-            logger.info(f"Would also download land cover ({args.landcover_provider})")
+            logger.info("Would also download land cover (BDOT10k)")
         return
 
     # Run pipeline
@@ -577,7 +545,6 @@ def main():
             save_intermediates=args.save_intermediates,
             output_dir=Path(args.output) if args.output else None,
             with_landcover=args.with_landcover,
-            landcover_provider=args.landcover_provider,
             with_hydro=args.with_hydro,
             burn_depth_m=args.burn_depth,
             waterbody_mode=args.waterbody_mode,

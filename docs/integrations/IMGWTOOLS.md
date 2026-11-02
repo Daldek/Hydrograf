@@ -1,14 +1,14 @@
 # Integracja z IMGWTools
 
-**Wersja:** 1.0
-**Data:** 2026-03-25
+**Wersja:** 1.1
+**Data:** 2026-10-25 (the head of IMGWTools, `6bd35a4`, ADR-060)
 **Status:** Aktywna
 
 ---
 
 ## 1. Przegląd
 
-Hydrograf wykorzystuje [IMGWTools](https://github.com/Daldek/IMGWTools) (v2.1.0) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
+Hydrograf wykorzystuje [IMGWTools](https://github.com/Daldek/IMGWTools) (3.0.0, commit `6bd35a4`) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
 
 ### 1.1 Co to jest IMGWTools?
 
@@ -100,6 +100,8 @@ Parametry w pliku konfiguracyjnym YAML:
 
 **Uwaga:** Mniejszy `grid_spacing_km` daje dokładniejszą interpolację, ale wydłuża czas preprocessingu (więcej punktów = więcej żądań HTTP).
 
+**The `IMGW_` prefix (IMGWTools 3.0.0):** `imgw_grid_spacing_km` and `imgw_rate_limit_delay_s` are settings of Hydrograf (`core/config.py`, `.env.example`), read from `IMGW_GRID_SPACING_KM` and `IMGW_RATE_LIMIT_DELAY_S`, and `IMGW_` is also the prefix of the settings of IMGWTools (`IMGW_ROOT`, `IMGW_DATA_DIR`, `IMGW_RATE_LIMIT`, ...), which it reads from the environment, from `.env` in the working directory and from `nogat.toml` when `imgwtools` is imported. IMGWTools ignores the names it does not know, so both coexist (checked with the repository `.env` and with exported variables, and `fetch_pmaxtp` works); a setting that IMGWTools adds under one of the two names would be read by both. Hydrograf sets no variable that IMGWTools renamed (`IMGW_STORE_ROOT` is `IMGW_ROOT`, `IMGW_DATA_DIR` is `IMGW_REFERENCE_DIR` for the reference data).
+
 ---
 
 ## 4. Tabela bazy danych: `precipitation_data`
@@ -152,7 +154,7 @@ Preprocessing opadów to **krok 6** w orchestratorze `bootstrap.py`. Może być 
 1. **Parsowanie bbox** — WGS84 (min_lon, min_lat, max_lon, max_lat)
 2. **Generowanie siatki** — grid punktów co `imgw_grid_spacing_km` km w obrębie bbox
 3. **Iteracja po punktach** — dla każdego punktu siatki:
-   - `fetch_pmaxtp(latitude, longitude)` → `PrecipitationResult`
+   - `fetch_pmaxtp(latitude=..., longitude=...)` → `PMaXTPResult`
    - Rate limiting: `sleep(imgw_rate_limit_delay_s)` między żądaniami
 4. **INSERT do bazy** — `INSERT ON CONFLICT DO UPDATE` (aktualizacja istniejących punktów)
 5. **Reprojekcja** — geometrie przechowywane w EPSG:2180
@@ -175,7 +177,7 @@ result.data.rb   # Błąd estymacji
 
 **Dostępne duracje:** 5min, 10min, 15min, 30min, 45min, 1h, 1.5h, 2h, 3h, 6h, 12h, 18h, 24h, 36h, 48h, 72h
 
-**Dostępne prawdopodobieństwa:** od 0.01% do 99.99% (27 wartości)
+**Dostępne prawdopodobieństwa:** 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 98.5, 99, 99.5 i 99.9% (27 wartości). `PMaXTPData.get_precipitation(duration_minutes, probability_percent)` przyjmuje procent jako `float` i tylko jedną z tych wartości; każda inna to `IMGWValidationError` (`validation_error`).
 
 ---
 
@@ -275,17 +277,19 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 ### 11.1 Instalacja
 
 ```
-# W backend/requirements.txt:
-imgwtools @ git+https://github.com/Daldek/IMGWTools.git@v2.1.0
+# In backend/pyproject.toml ([tool.uv.sources]; the range in dependencies is "imgwtools>=3.0.0.dev0,<4"):
+imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "6bd35a49b329f99b591ffdee39367daec0e75af7" }
 ```
 
 ### 11.2 Repozytorium
 
 - **GitHub:** https://github.com/Daldek/IMGWTools
-- **Branch:** v2.1.0 (tag)
-- **Wersja:** 2.1.0
+- **Branch:** `feature/data-output` (on GitHub; the pin is a commit, REL-5.3, ADR-060)
+- **Wersja:** 3.0.0 (untagged), commit `6bd35a49b329f99b591ffdee39367daec0e75af7`
+- **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `IMGWValidationError`, `IMGWConnectionError` and `IMGWDataError`; both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
+- **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; the release replaces it with the tag.
 
 ---
 
-**Wersja dokumentu:** 1.0
-**Ostatnia aktualizacja:** 2026-03-25
+**Wersja dokumentu:** 1.1
+**Ostatnia aktualizacja:** 2026-10-25

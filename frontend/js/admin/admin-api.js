@@ -33,6 +33,7 @@
         return {
             'Content-Type': 'application/json',
             'X-Admin-Key': _apiKey,
+            'Accept-Language': 'pl',
         };
     }
 
@@ -127,7 +128,7 @@
 
         var response = await fetch('/api/admin/bootstrap/upload-boundary', {
             method: 'POST',
-            headers: { 'X-Admin-Key': _apiKey },
+            headers: { 'X-Admin-Key': _apiKey, 'Accept-Language': 'pl' },
             body: formData,
         });
 
@@ -238,6 +239,7 @@
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Admin-Key': key,
+                    'Accept-Language': 'pl',
                 },
             });
             return response.ok;

@@ -1,15 +1,15 @@
-# ARCHITECTURE.md - Architektura Systemu
-## System Analizy Hydrologicznej
+# ARCHITECTURE.md - System Architecture
+## Hydrological Analysis System
 
-**Wersja:** 1.9
-**Data:** 2026-03-27
+**Version:** 2.7
+**Date:** 2026-11-02
 **Status:** Approved
 
 ---
 
-## 1. Przegląd Architektury
+## 1. Architecture Overview
 
-### 1.1 Architektura Wysokiego Poziomu
+### 1.1 High-Level Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -36,7 +36,7 @@
 │                          │    │                               │
 │  - REST API Endpoints    │    │  - Leaflet.js (Map)          │
 │  - Request Validation    │    │  - Chart.js (Plots)          │
-│  - Business Logic        │    │  - Tokeny Nogata (UI)        │
+│  - Business Logic        │    │  - Nogat tokens (UI)         │
 │  - Error Handling        │    │  - Vanilla JavaScript        │
 └───────────┬──────────────┘    └───────────────────────────────┘
             │
@@ -80,54 +80,56 @@
 
 ---
 
-### 1.2 Kluczowe Decyzje Architektoniczne (ADR)
+### 1.2 Key Architectural Decisions (ADR)
 
-Pełny rejestr decyzji architektonicznych: [docs/DECISIONS.md](DECISIONS.md)
+The index of all architectural decisions: [docs/DECISIONS.md](DECISIONS.md)
 
-Podsumowanie kluczowych ADR:
+Summary of the key ADRs:
 
-| ADR | Decyzja | Uzasadnienie |
+| ADR | Decision | Rationale |
 |-----|---------|--------------|
-| ADR-001 | Graf w bazie zamiast rastrów runtime | Szybkość runtime (< 10s) kosztem jednorazowego preprocessingu |
-| ADR-002 | Monolityczna aplikacja FastAPI | Prostota deployment dla MVP (10 użytkowników) |
-| ADR-003 | Leaflet.js zamiast Google Maps | Open-source, darmowy, lekki (40KB) |
-| ADR-004 | Hietogram Beta zamiast blokowego | Realistyczny rozkład opadu (α=2, β=5) |
-| ADR-005 | Docker Compose dla deployment | Environment parity, izolacja zależności |
-| ADR-006 | COPY zamiast INSERT | Import DEM 27x szybciej (3.8 min vs 102 min) |
-| ADR-007 | Reverse trace | find_main_stream 330x szybciej (0.74s vs 246s) |
-| ADR-012 | pyflwdir zamiast pysheds | Deltares — stabilny, wydajny, 3 deps |
-| ADR-017 | Podział process_dem na moduły core/ | Thin orchestrator + testowalne moduły |
-| ADR-021 | CatchmentGraph zamiast rastrowych operacji | BFS po grafie zlewni cząstkowych zamiast CTE po 20M+ rekordach |
-| ADR-022 | Eliminacja FlowGraph z runtime | RAM z ~1 GB → ~40 MB, startup z ~90s → ~3s |
-| ADR-024 | ~~Segmentacja konfluencyjna~~ | ~~SUPERSEDED by ADR-026~~ |
-| ADR-025 | ~~Warunkowy próg BFS~~ | ~~SUPERSEDED by ADR-026~~ |
-| ADR-026 | Lookup by segment_idx | O(1) lookup po `(threshold_m2, segment_idx)` zamiast auto-increment `id` |
-| ADR-029 | trace_main_channel() | Wyznaczanie głównego cieku wg Strahlera (do channel_slope) |
+| ADR-001 | Graph in the database instead of runtime rasters | Runtime speed (< 10 s) at the cost of one-off preprocessing |
+| ADR-002 | Monolithic FastAPI application | Simple deployment for the MVP (10 users) |
+| ADR-003 | Leaflet.js instead of Google Maps | Open source, free, light (40 KB) |
+| ADR-004 | Beta hyetograph instead of block | Realistic rainfall distribution (α=2, β=5) |
+| ADR-005 | Docker Compose for deployment | Environment parity, isolated dependencies |
+| ADR-006 | COPY instead of INSERT | DEM import 27x faster (3.8 min vs 102 min) |
+| ADR-007 | Reverse trace | find_main_stream 330x faster (0.74 s vs 246 s) |
+| ADR-012 | pyflwdir instead of pysheds | Deltares: stable, efficient, 3 dependencies |
+| ADR-017 | Split process_dem into core/ modules | Thin orchestrator + testable modules |
+| ADR-021 | CatchmentGraph instead of raster operations | BFS over the graph of sub-catchments instead of a CTE over 20M+ records |
+| ADR-022 | Remove FlowGraph from the runtime | RAM from ~1 GB to ~40 MB, startup from ~90 s to ~3 s |
+| ADR-024 | ~~Confluence segmentation~~ | ~~SUPERSEDED by ADR-026~~ |
+| ADR-025 | ~~Conditional BFS threshold~~ | ~~SUPERSEDED by ADR-026~~ |
+| ADR-026 | Lookup by segment_idx | O(1) lookup by `(threshold_m2, segment_idx)` instead of the auto-increment `id` |
+| ADR-029 | trace_main_channel() | Selection of the main channel by Strahler order (for channel_slope) |
 | ADR-032 | Boundary smoothing | `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` |
-| ADR-033 | Building raising | `raise_buildings_in_dem()` +5m pod footprints BUBD |
-| ADR-034 | Panel administracyjny | `/admin` + 13 endpointów `/api/admin/*`, API key auth, bootstrap SSE |
-| ADR-035 | Konteneryzacja multi-stage | Multi-stage Dockerfile, entrypoint z wait-for-db, override dev/prod |
-| ADR-036 | Hardening kontenerów Docker | Security headers, resource limits, non-root user |
-| ADR-037 | Separacja cache/data + Kartograf v0.5.0 | Rozdzielenie katalogów cache i danych generowanych |
-| ADR-038 | HSG Poland-wide cache | Ogólnopolski cache HSG — brak potrzeby pobierania per-obszar |
-| ADR-040 | Vector boundary file support | Obsługa GPKG/GeoJSON/SHP jako granic obszaru (zamiast tylko bbox) |
-| ADR-041 | Monotoniczne wygładzanie cieków | Zapewnienie monotoniczności elevacji po smoothingu linii cieków |
-| ADR-042 | Optymalizacja wydajności delineate-watershed | Cascaded merge threshold, batch ST_Union, cache grafowy |
-| ADR-044 | BDOT10k stream matching | Dopasowanie cieków DEM do referencyjnych BDOT10k (is_real_stream) |
-| ADR-045 | WFS PRG zamiast grid-sampling WMS | TERYT discovery z WFS PRG — szybciej i dokładniej niż WMS grid |
-| ADR-046 | upstream_area_km2 w trace_main_channel | Branch selection wg upstream_area_km2 zamiast Strahlera |
-| ADR-047 | Chaikin smoothing cieków w preprocessingu | Wygładzanie geometrii cieków na etapie preprocessingu |
-| ADR-048 | Droga spływu z działu wód | Longest flow path + divide flow path jako parametry morfometryczne |
-| ADR-049 | DEM auto-discovery z fallback chain | Automatyczne znajdowanie pliku DEM (VRT → mosaic → single TIFF) |
-| ADR-050 | Unified delineate-watershed endpoint | Jeden endpoint z trybami precomputed (BFS) i precise (pyflwdir on-the-fly) |
-| ADR-051 | Integracja sieci kanalizacyjnej | Inlet burning + FA routing przez sieć kanalizacyjną w preprocessingu |
-| ADR-065 | Identyfikacja wizualna Nogata i powłoka Archiwisty | Spójny wygląd GUI ekosystemu (ECO-055) zamiast paneli glassmorphism; Bootstrap tylko w `/admin` |
+| ADR-033 | Building raising | `raise_buildings_in_dem()` +5 m under the BUBD footprints |
+| ADR-034 | Admin panel | `/admin` + 13 `/api/admin/*` endpoints, API key auth, bootstrap SSE |
+| ADR-035 | Multi-stage containerization | Multi-stage Dockerfile, entrypoint with wait-for-db, dev/prod override |
+| ADR-036 | Docker container hardening | Security headers, resource limits, non-root user |
+| ADR-037 | Separation of cache and data + Kartograf v0.5.0 | Separate directories for the cache and for generated data; the cache of the downloads is the Kartograf store `cache/kartograf/` since ADR-061 |
+| ADR-038 | HSG Poland-wide cache | A Poland-wide HSG cache: no need to download it per area; the raster is a version of the Kartograf store (`hsg/`) since ADR-061 |
+| ADR-040 | Vector boundary file support | GPKG/GeoJSON/SHP as area boundaries (instead of a bbox only) |
+| ADR-041 | Monotonic stream smoothing | Keep the elevation monotonic after the stream lines are smoothed |
+| ADR-042 | delineate-watershed performance optimisation | Cascaded merge threshold, batched ST_Union, graph cache |
+| ADR-044 | BDOT10k stream matching | Match the DEM streams to the BDOT10k reference streams (is_real_stream) |
+| ADR-045 | WFS PRG instead of WMS grid sampling | TERYT discovery from the WFS PRG: faster and more accurate than the WMS grid; replaced by Kartograf, which finds the counties of an area itself (ADR-061) |
+| ADR-046 | upstream_area_km2 in trace_main_channel | Branch selection by upstream_area_km2 instead of Strahler order |
+| ADR-047 | Chaikin smoothing of streams in preprocessing | Smooth the stream geometry during preprocessing |
+| ADR-048 | Flow path from the watershed divide | Longest flow path + divide flow path as morphometric parameters |
+| ADR-049 | DEM auto-discovery with a fallback chain | Find the DEM file automatically (VRT → mosaic → single TIFF) |
+| ADR-050 | Unified delineate-watershed endpoint | One endpoint with the modes precomputed (BFS) and precise (pyflwdir on the fly) |
+| ADR-051 | Storm-sewer network integration | Inlet burning + FA routing through the sewer network in preprocessing |
+| ADR-060 | Pin the Hydrolog and IMGWTools heads by commit | The producers are pinned by the commit of their head until their tags exist (REL-5.3); Kartograf joins them by ADR-061 |
+| ADR-061 | Kartograf data output | The store `cache/kartograf/` for the NMT, BDOT10k and the HSG raster of Poland; plain files for the HSG raster of one analysis |
+| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and the Archiwista shell | A consistent GUI across the ecosystem (ECO-055) instead of glassmorphism panels; Bootstrap only in `/admin` |
 
 ---
 
-## 2. Architektura Backendu
+## 2. Backend Architecture
 
-### 2.1 Struktura Aplikacji FastAPI
+### 2.1 FastAPI Application Structure
 
 ```
 backend/
@@ -139,7 +141,7 @@ backend/
 │   │   └── admin_auth.py          # Admin API key verification (X-Admin-Key header)
 │   └── endpoints/
 │       ├── __init__.py
-│       ├── admin.py               # 13 endpointów /api/admin/* (dashboard, resources, cleanup, bootstrap, sewer)
+│       ├── admin.py               # 13 /api/admin/* endpoints (dashboard, resources, cleanup, bootstrap, sewer)
 │       ├── depressions.py         # GET /depressions
 │       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
@@ -149,7 +151,7 @@ backend/
 │
 ├── core/
 │   ├── __init__.py
-│   ├── analysis_results.py        # Manifest wyników analiz (frontend/data/results/index.json): poziom wody wzdłuż profilu terenu
+│   ├── analysis_results.py        # Manifest of the analysis results (frontend/data/results/index.json): water level along the terrain profile
 │   ├── catchment_graph.py         # In-memory sub-catchment graph (~87-285k nodes, scipy CSR + BFS, invalidate())
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
@@ -159,19 +161,18 @@ backend/
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
 │   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning, building raising (ADR-033)
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
-│   ├── morphometry.py             # Morphometric parameters calculation
+│   ├── morphometry.py             # Shape indices (calculate_shape_indices)
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
 │   ├── raster_service.py          # RasterCache — lazy-loaded raster data (DEM, flow direction, accumulation)
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
-│   ├── watershed.py               # Watershed boundary building + legacy CLI functions
-│   ├── sewer_service.py            # Integracja sieci kanalizacyjnej (SewerGraph, burn inlets, FA routing, ADR-051/052)
-│   ├── sewer_topology.py           # Parser + walidator topologii kanalizacji (ParsedTopology, parse_sewer_topology, validate_against_fdir, ADR-052)
+│   ├── sewer_service.py            # Storm-sewer integration (SewerGraph, burn inlets, FA routing, ADR-051/052)
+│   ├── sewer_topology.py           # Sewer topology parser and validator (ParsedTopology, parse_sewer_topology, validate_against_fdir, ADR-052)
 │   ├── watershed_service.py       # Shared delineation logic (CatchmentGraph-based, ADR-022, Chaikin smoothing ADR-032)
 │   ├── zonal_stats.py             # Zonal statistics (bincount, max)
-│   └── boundary.py               # Obsługa plików wektorowych granic (GPKG/GeoJSON/SHP), walidacja, konwersja bbox (ADR-040)
+│   └── boundary.py               # Vector boundary file handling (GPKG/GeoJSON/SHP), validation, bbox conversion (ADR-040)
 │
 ├── models/
 │   ├── __init__.py
@@ -179,42 +180,44 @@ backend/
 │
 ├── scripts/
 │   ├── __init__.py
-│   ├── bootstrap.py               # Orchestrator — uruchamia pełny pipeline preprocessingu
+│   ├── bootstrap.py               # Orchestrator: runs the full preprocessing pipeline
 │   ├── process_dem.py             # Thin orchestrator (~700 lines) — NMT processing
-│   ├── prepare_area.py            # Konfiguracja bbox i parametrów obszaru
-│   ├── download_dem.py            # Pobieranie NMT z GUGiK (Kartograf 0.7.0): download_sheets() -> NmtDownloadReport / NmtDownloadError
-│   │                              #   MetadataCache: <cache_dir>/kartograf_meta.db (dysk lokalny, nigdy udział sieciowy)
-│   │                              #   układ: cache/nmt/pl_<uklad>_<res>_evrf2007/ (+ kampanie/); mozaika z listy kroku 2
-│   │                              #   szczegóły: docs/integrations/KARTOGRAF.md §6
-│   ├── download_landcover.py      # Pobieranie pokrycia terenu (BDOT10k)
-│   ├── import_landcover.py        # Import land cover do PostGIS
-│   ├── preprocess_precipitation.py # Import opadów z IMGW
-│   ├── generate_tiles.py          # Generowanie MVT tiles (streams, catchments, landcover)
-│   ├── generate_dem_overlay.py    # Overlay DEM (PNG)
-│   ├── generate_dem_tiles.py      # Piramida XYZ tiles DEM (hillshade)
-│   ├── generate_streams_overlay.py # Overlay cieków (PNG)
-│   ├── generate_depressions.py    # Generowanie depresji (blue spots)
-│   ├── analyze_watershed.py       # Analiza zlewni (CLI)
-│   ├── download_sewer.py          # Pobieranie sieci kanalizacyjnej (plik/WFS/DB/URL, walidacja CRS, SSRF protection). Zwraca tuple (points_gdf, lines_gdf | None)
-│   └── clean.py                  # Czyszczenie danych generowanych (rasters, tiles, DB, cache)
+│   ├── prepare_area.py            # Downloads and processes the NMT of one area (point + buffer); its Kartograf store is <output>/kartograf
+│   ├── download_dem.py            # Downloads the NMT (DEM) from GUGiK into the Kartograf store (ADR-061): download_sheets() -> NmtDownloadReport / NmtDownloadError
+│   │                              #   store: <cache_dir>/kartograf/nmt/pl_<system>_<res>_evrf2007/ (a hard-linked standard path, versions/)
+│   │                              #   MetadataCache: <cache_dir>/kartograf_meta.db (local disk, never a network share); mosaic from the step 2 list
+│   │                              #   details: docs/integrations/KARTOGRAF.md §3 and §7
+│   ├── download_landcover.py      # Downloads land cover (BDOT10k per county, CORINE) into the store; merge_hydro_gpkgs()
+│   ├── import_landcover.py        # Imports land cover into PostGIS
+│   ├── preprocess_precipitation.py # Imports precipitation from IMGW
+│   ├── generate_tiles.py          # Generates MVT tiles (streams, catchments, landcover)
+│   ├── generate_dem_overlay.py    # DEM overlay (PNG)
+│   ├── generate_dem_tiles.py      # XYZ tile pyramid of the DEM (hillshade)
+│   ├── generate_streams_overlay.py # Streams overlay (PNG)
+│   ├── generate_depressions.py    # Generates depressions (blue spots)
+│   ├── analyze_watershed.py       # Watershed analysis (CLI)
+│   ├── download_sewer.py          # Downloads the sewer network (file/WFS/DB/URL, CRS validation, SSRF protection). Returns tuple (points_gdf, lines_gdf | None)
+│   └── clean.py                  # Cleans generated data (rasters, tiles, DB, cache)
 │
 ├── migrations/
-│   └── versions/                  # 1 migracja (squashed initial schema)
+│   └── versions/                  # 1 migration (squashed initial schema)
 │
 ├── utils/
 │   ├── __init__.py
 │   ├── dem_color.py               # DEM color palette, hillshade blending
 │   ├── geometry.py                # Geometric operations, CRS transforms
+│   ├── kartograf_store.py         # Where Kartograf writes (store, metadata cache), describe_error(), download_bdot10k() (ADR-061)
 │   ├── raster_utils.py            # Raster tools (resample, polygonize)
 │   └── sheet_lookup.py            # NMT sheet lookup, thin wrapper over kartograf.find_sheets_for_bbox (ADR-057)
 │
 ├── tests/
-│   ├── unit/                      # 45+ plików testów jednostkowych
-│   ├── integration/               # 8+ plików testów integracyjnych
-│   ├── performance/               # Testy wydajnościowe (benchmarki)
+│   ├── unit/                      # 45+ unit test files
+│   ├── integration/               # 8+ integration test files
+│   ├── performance/               # Performance tests (benchmarks)
 │   └── conftest.py
 │
-├── requirements.txt
+├── pyproject.toml           # dependencies (ranges), dev group, tool configuration
+├── uv.lock                  # exact versions (uv sync --locked)
 └── Dockerfile
 ```
 
@@ -238,7 +241,7 @@ Response: 200 OK
 POST /api/delineate-watershed
 Content-Type: application/json
 
-Tryb precomputed (z threshold_m2 — snap-to-stream + BFS po grafie):
+Precomputed mode (with threshold_m2: snap-to-stream + BFS over the graph):
 Request:
 {
   "latitude": 52.123456,
@@ -247,7 +250,7 @@ Request:
   "display_threshold_m2": 10000
 }
 
-Tryb precise (bez threshold_m2 — delimitacja rastrowa pyflwdir on-the-fly):
+Precise mode (no threshold_m2; raster delineation with pyflwdir on the fly):
 Request:
 {
   "latitude": 52.123456,
@@ -256,7 +259,7 @@ Request:
 
 Response: 200 OK
 {
-  "mode": "precomputed",  // lub "precise"
+  "mode": "precomputed",  // or "precise"
   "stream": { "segment_idx": 42, "strahler_order": 3, ... },
   "upstream_segment_indices": [42, 43, 44, ...],
   "boundary_geojson": { "type": "Feature", ... },
@@ -265,9 +268,9 @@ Response: 200 OK
 }
 
 Errors:
-- 404: "Nie znaleziono cieku w tym miejscu"
-- 422: Walidacja (niepoprawne wspolrzedne)
-- 500: "Błąd serwera"
+- 404: "No stream found at this location"
+- 422: Validation (invalid coordinates)
+- 500: "Server error"
 ```
 
 #### 2.2.2a Delineation Preview
@@ -275,7 +278,7 @@ Errors:
 POST /api/delineate-watershed/preview
 Content-Type: application/json
 
-Request (jak tryb precomputed; threshold_m2 wymagany — tryb precise nie ma podglądu):
+Request (as in the precomputed mode; threshold_m2 is required, the precise mode has no preview):
 {
   "latitude": 50.929,
   "longitude": 16.119,
@@ -284,9 +287,9 @@ Request (jak tryb precomputed; threshold_m2 wymagany — tryb precise nie ma pod
 
 Response: 200 OK
 {
-  "threshold_m2": 100000,      // próg zlewni cząstkowych po progu minimalnym i kaskadzie
-  "segment_count": 289,        // ile zlewni cząstkowych scala delineate-watershed
-  "catchments": {              // GeoJSON FeatureCollection (WGS84), rosnąco po depth
+  "threshold_m2": 100000,      // threshold of the sub-catchments after the minimum threshold and the cascade
+  "segment_count": 289,        // how many sub-catchments delineate-watershed merges
+  "catchments": {              // GeoJSON FeatureCollection (WGS84), ascending by depth
     "type": "FeatureCollection",
     "features": [
       { "type": "Feature", "geometry": { "type": "MultiPolygon", ... }, "properties": { "depth": 0 } },
@@ -295,13 +298,13 @@ Response: 200 OK
   }
 }
 
-Errors:
-- 404: "Nie znaleziono zlewni cząstkowej w tym punkcie. ..."
-- 422: Walidacja (współrzędne, brak lub niedodatni threshold_m2)
-- 503: Graf zlewni niezaładowany
+Errors (application/problem+json):
+- 404 not_found: no sub-catchment at this point
+- 400 validation_error: coordinates, a missing or non-positive threshold_m2
+- 503 store_unavailable: the catchment graph is not loaded
 ```
 
-Podgląd dla animacji w GUI, zanim `POST /api/delineate-watershed` scali granicę. Wybór zlewni cząstkowych jest wspólny z trybem precomputed (`_select_precomputed`: próg minimalny `DEFAULT_THRESHOLD_M2`, zlewnia cząstkowa w punkcie, BFS, kaskada przy > 300 segmentach), więc podgląd pokrywa ten sam obszar co wynik. `depth` to liczba połączeń w górę od zlewni ujściowej (`CatchmentGraph.upstream_segments_by_depth`); każda głębokość to jeden MultiPolygon zebrany przez `ST_Collect` (bez scalania), wielokąty uproszczone `ST_Simplify` z tolerancją √A / 500 m (ok. piksel po dopasowaniu mapy do zlewni, min. 1 m), współrzędne z dokładnością 5 miejsc. Najwyżej 5000 zlewni cząstkowych najbliżej ujścia. Czas (instancja przeglądowa): 52 km² — 25 ms wobec 4,6 s pełnego wyznaczania, 778 km² (4418 zlewni cząstkowych, 147 głębokości) — 0,15–0,24 s wobec 88 s.
+A preview for the animation of the GUI, before `POST /api/delineate-watershed` merges the boundary. The selection of the sub-catchments is shared with the precomputed mode (`_select_precomputed`: the minimum threshold `DEFAULT_THRESHOLD_M2`, the sub-catchment at the point, BFS, the cascade above 300 segments), so the preview covers the same area as the result. `depth` is the number of links upstream from the outlet sub-catchment (`CatchmentGraph.upstream_segments_by_depth`); each depth is one MultiPolygon collected by `ST_Collect` (no union), the polygons are simplified by `ST_Simplify` with a tolerance of √A / 500 m (about one pixel once the map fits the catchment, at least 1 m), and the coordinates have 5 decimal places. At most 5000 sub-catchments, the nearest to the outlet. Time (review instance): 52 km², 25 ms against 4.6 s of the full delineation; 778 km² (4418 sub-catchments, 147 depths), 0.15–0.24 s against 88 s.
 
 #### 2.2.3 Generate Hydrograph
 ```
@@ -312,33 +315,33 @@ Request:
 {
   "latitude": 52.123456,
   "longitude": 21.123456,
-  "duration": "1h",            // wymagane bez custom_precipitation
-  "probability": 10,           // wymagane bez custom_precipitation
-  "amc": "II",                 // I | II | III, domyślnie II
-  "custom_precipitation": {    // opcjonalnie: własna seria zamiast PMAXTP i hietogramu
-    "timestep_min": 10,        // > 0 i ≤ 1440
-    "depths_mm": [0.5, 2.0, 6.5, 3.0, 1.0]   // ≥ 0, 1–2000 wartości, suma > 0
+  "duration": "1h",            // required without custom_precipitation
+  "probability": 10,           // required without custom_precipitation
+  "amc": "II",                 // I | II | III, II by default
+  "custom_precipitation": {    // optional: your own series instead of PMAXTP and the hietogram
+    "timestep_min": 10,        // > 0 and ≤ 1440
+    "depths_mm": [0.5, 2.0, 6.5, 3.0, 1.0]   // ≥ 0, 1–2000 values, sum > 0
   },
-  "morphometry": { ... }       // opcjonalnie: szybka ścieżka (tryb zaawansowany), cn ułamkowe
+  "morphometry": { ... }       // optional: the fast path (advanced mode), fractional cn
 }
 
-Response: 200 OK (pełna struktura w DATA_MODEL.md, sekcja 6.4)
-  precipitation.source: "pmaxtp" | "custom"; probability_percent = null dla własnej serii
-  water_balance.cn_used: float (CN po przeliczeniu wg AMC)
-  metadata.amc; metadata.hietogram_type = null dla własnej serii
-Response: 422 — błędy walidacji (np. serii opadu) z polskim opisem
+Response: 200 OK (full structure in DATA_MODEL.md, section 6.4)
+  precipitation.source: "pmaxtp" | "custom"; probability_percent = null for your own series
+  water_balance.cn_used: float (the CN after the AMC conversion)
+  metadata.amc; metadata.hietogram_type = null for your own series
+Response: 400 validation_error (application/problem+json), e.g. for the rainfall series
 ```
 
-`GET /api/scenarios` zwraca dodatkowo `amc` (`["I", "II", "III"]`) i `custom_precipitation_max_steps` (2000).
+`GET /api/scenarios` also returns `amc` (`["I", "II", "III"]`) and `custom_precipitation_max_steps` (2000).
 
 #### 2.2.3a Layer Availability
 ```
 GET /api/layers
 
 Response: 200 OK
-{"sewer": true}   // czy sewer_network lub sewer_nodes zawiera dane
+{"sewer": true}   // whether sewer_network or sewer_nodes holds data
 ```
-Panel „Warstwy” pokazuje warstwę „Kanalizacja deszczowa” tylko przy `sewer: true`.
+The „Warstwy” panel shows the layer „Kanalizacja deszczowa” only with `sewer: true`.
 
 #### 2.2.4 List Scenarios
 ```
@@ -378,7 +381,7 @@ Response: 200 OK
 }
 ```
 
-`result_ids` (opcjonalne, do 20 id) to wyniki analiz z manifestu `/data/results/index.json` (§4.2.0). Dla każdego wyniku z rastrem `water_level`, na który trafia choć jeden punkt profilu, `water_levels` podaje maksymalny poziom wody [m n.p.m.] w tych samych punktach co `elevations_m`; `null` tam, gdzie sucho, poza rastrem albo bez danych NMT. Nieznane id, wyniki bez `water_level` i rastry poza linią są pomijane; bez `result_ids` lista jest pusta.
+`result_ids` (optional, up to 20 ids) are analysis results of the manifest `/data/results/index.json` (§4.2.0). For each result with a `water_level` raster that at least one point of the profile hits, `water_levels` gives the maximum water level [m a.s.l.] at the same points as `elevations_m`; `null` where it is dry, outside the raster or without DEM data. Unknown ids, results without `water_level` and rasters off the line are skipped; without `result_ids` the list is empty. `core/analysis_results.py` reads the manifest and the rasters from `FRONTEND_DATA_DIR` (§4.2.0).
 
 #### 2.2.6 Depressions (Blue Spots)
 ```
@@ -400,30 +403,30 @@ Response: Mapbox Vector Tiles (PBF) / JSON
 
 #### 2.2.8 Admin Panel (ADR-034)
 ```
-Wszystkie endpointy wymagają nagłówka X-Admin-Key (lub ADMIN_API_KEY nie ustawiony).
+All endpoints require the X-Admin-Key header (or ADMIN_API_KEY is not set).
 Prefix: /api/admin
 
-GET  /api/admin/dashboard          — statystyki tabel, uptime, wersja
-GET  /api/admin/resources          — CPU, RAM, dysk (psutil)
-GET  /api/admin/cleanup/estimate   — szacunek zwolnionego miejsca
-POST /api/admin/cleanup            — usuwanie cache/tiles
-GET  /api/admin/bootstrap/status   — status procesu bootstrap
-POST /api/admin/bootstrap/start    — uruchomienie bootstrap subprocess
-POST /api/admin/bootstrap/cancel   — anulowanie bootstrap
-GET  /api/admin/bootstrap/stream   — SSE stream logów bootstrap (timeout 3600s)
-POST /api/admin/bootstrap/upload-boundary — upload granicy zlewni
+GET  /api/admin/dashboard          — table statistics, uptime, version
+GET  /api/admin/resources          — CPU, RAM, disk (psutil)
+GET  /api/admin/cleanup/estimate   — estimate of the space that cleanup frees
+POST /api/admin/cleanup            — delete cache/tiles
+GET  /api/admin/bootstrap/status   — status of the bootstrap process
+POST /api/admin/bootstrap/start    — start the bootstrap subprocess
+POST /api/admin/bootstrap/cancel   — cancel bootstrap
+GET  /api/admin/bootstrap/stream   — SSE stream of the bootstrap logs (timeout 3600s)
+POST /api/admin/bootstrap/upload-boundary — upload a watershed boundary
 
-POST   /api/admin/sewer/upload     — upload pliku z siecią kanalizacyjną (ADR-051/052), auto-detect format, zwraca detected_format i layers
-GET    /api/admin/sewer/status     — status danych kanalizacji
-DELETE /api/admin/sewer/delete     — usunięcie danych kanalizacji
-POST   /api/admin/sewer/config    — konfiguracja field_mapping, role_mapping (ADR-052)
+POST   /api/admin/sewer/upload     — upload a sewer network file (ADR-051/052), auto-detects the format, returns detected_format and layers
+GET    /api/admin/sewer/status     — status of the sewer data
+DELETE /api/admin/sewer/delete     — delete the sewer data
+POST   /api/admin/sewer/config    — field_mapping and role_mapping configuration (ADR-052)
 ```
 
 ---
 
-### 2.3 Logika Biznesowa - Przepływ Danych
+### 2.3 Business Logic - Data Flow
 
-#### Wyznaczanie Zlewni (Sequen ce Diagram)
+#### Watershed Delineation (Sequence Diagram)
 ```
 User → Frontend → API → Core Logic → Database → Core Logic → API → Frontend → User
   |       |        |         |           |          |        |       |        |
@@ -432,166 +435,141 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
                              stream      upstream
 ```
 
-**Szczegółowy przepływ (ADR-022, ADR-026):**
-1. **Frontend:** Użytkownik klika punkt (lat, lon) → POST /api/delineate-watershed (tryb precomputed lub precise)
-2. **API (FastAPI):** Walidacja Pydantic (czy lat/lon w zakresie)
+**Detailed flow (ADR-022, ADR-026):**
+1. **Frontend:** The user clicks a point (lat, lon) → POST /api/delineate-watershed (precomputed or precise mode)
+2. **API (FastAPI):** Pydantic validation (are lat/lon in range)
 3. **Core Logic** (`watershed_service.py` + `catchment_graph.py`):
-   - `find_stream_catchment_at_point(x, y, threshold)` → snap-to-stream via `ST_ClosestPoint` na `stream_network`
-   - `CatchmentGraph.traverse_upstream()` → BFS po grafie zlewni cząstkowych
-   - Cascaded merge threshold: jeśli >500 segmentów, kaskada do grubszego progu (1000→10000→100000)
-   - `merge_catchment_boundaries()` → ST_UnaryUnion gotowych poligonów w PostGIS
-   - `map_boundary_to_display_segments()` → mapowanie na próg wyświetlany dla MVT tiles
-   - Agregacja pre-computed stats z numpy arrays (zero operacji rastrowych)
-4. **Database:** Zapytania PostGIS do `stream_network` + `stream_catchments`
-5. **Core Logic:** Konwersja do GeoJSON (EPSG:2180 → WGS84)
+   - `find_stream_catchment_at_point(x, y, threshold)` → snap-to-stream via `ST_ClosestPoint` on `stream_network`
+   - `CatchmentGraph.traverse_upstream()` → BFS over the graph of sub-catchments
+   - Cascaded merge threshold: if there are more than 500 segments, cascade to a coarser threshold (1000→10000→100000)
+   - `merge_catchment_boundaries()` → ST_UnaryUnion of the pre-computed polygons in PostGIS
+   - `map_boundary_to_display_segments()` → mapping to the threshold displayed for the MVT tiles
+   - Aggregation of the pre-computed stats from numpy arrays (zero raster operations)
+4. **Database:** PostGIS queries to `stream_network` + `stream_catchments`
+5. **Core Logic:** Conversion to GeoJSON (EPSG:2180 → WGS84)
 6. **API:** Return JSON response
-7. **Frontend:** Leaflet.js renderuje polygon na mapie, MVT tiles podświetlają zlewnie cząstkowe
+7. **Frontend:** Leaflet.js renders the polygon on the map, MVT tiles highlight the sub-catchments
 
-**Czas wykonania:** < 1s (typowy), < 5s (duże zlewnie)
-
----
-
-#### Generowanie Hydrogramu (Sequence Diagram)
-```
-1. Wyznacz zlewnię (jak wyżej)
-2. Oblicz parametry (area, length, slope, CN)
-3. Pobierz opad (SQL query PMAXTP) albo przyjmij własną serię (custom_precipitation)
-4. Wygeneruj hietogram (Beta / Block / Euler II; pomijany dla własnej serii)
-5. Oblicz opad efektywny (SCS CN przeliczony wg AMC)
-6. Oblicz tc (Kirpich)
-7. Wygeneruj UH (SCS)
-8. Splot Pe * UH = Q(t)
-9. Return JSON z wykresem
-```
-
-**Czas wykonania:** < 5s
+**Execution time:** < 1s (typical), < 5s (large watersheds)
 
 ---
 
-### 2.4 Moduły Core Logic
-
-#### 2.4.1 `core/watershed.py`
-**Odpowiedzialności:**
-- Znajdowanie najbliższego cieku
-- Traversal grafu upstream
-- Budowanie granicy zlewni
-
-**Główne funkcje:**
-```python
-# Legacy CLI functions (replaced by watershed_service.py for runtime API):
-def find_nearest_stream(lat, lon) -> int | None: ...
-def traverse_upstream(outlet_id: int) -> list[Cell]: ...
-
-# Still used:
-def build_boundary(cells: list[Cell]) -> GeoJSON: ...
+#### Hydrograph Generation (Sequence Diagram)
+```
+1. Delineate the watershed (as above)
+2. Compute the parameters (area, length, slope, CN)
+3. Fetch the precipitation (SQL query of PMAXTP) or take your own series (custom_precipitation)
+4. Generate the hyetograph (Beta / Block / Euler II; skipped for your own series)
+5. Compute the effective precipitation (SCS CN converted by the AMC)
+6. Compute tc (Kirpich)
+7. Generate the UH (SCS)
+8. Convolution Pe * UH = Q(t)
+9. Return JSON with a chart
 ```
 
-#### 2.4.2 `core/morphometry.py`
-**Odpowiedzialności:**
-- Obliczanie parametrów geometrycznych (area, perimeter, length)
-- Obliczanie parametrów morfometrycznych (slope, elevation)
-- Współczynniki kształtu, indeksy rzeźby, krzywa hipsometryczna
+**Execution time:** < 5s
 
-**Główne funkcje:**
-```python
-def build_morphometric_params(
-    cells: list[FlowCell],
-    boundary: Polygon,
-    outlet: FlowCell,
-    cn: int | None = None,
-    include_stream_coords: bool = False,
-    db=None,
-    include_hypsometric_curve: bool = False,
-) -> dict:
-    """Buduje kompletny słownik parametrów morfometrycznych (kompatybilny z Hydrolog).
-    Uwaga: W runtime API, parametry obliczane z CatchmentGraph.aggregate_stats()."""
-    pass
-```
+---
 
-#### 2.4.3 `core/catchment_graph.py`
+### 2.4 Core Logic Modules
 
-Singleton in-memory graf zlewni cząstkowych oparty na numpy arrays i scipy sparse CSR matrix (~87-285k węzłów w zależności od obszaru, ~0.5 MB RAM). Ładowany lazy z bazy danych przy pierwszym użyciu, invalidowany po cleanup/pipeline przez `invalidate()`.
+#### 2.4.1 `core/morphometry.py`
+**Responsibilities:**
+- The shape indices of a watershed (`calculate_shape_indices`: compactness, circularity, elongation, form factor, lemniscate ratio, mean width), compatible with Hydrolog's `WatershedParameters`
 
-**Kluczowe koncepty:**
-- **BFS traversal** — `traverse_upstream` do wyznaczania zlewni
-- **trace_main_channel** — wyznaczanie głównego cieku z branch selection wg `upstream_area_km2` (ADR-046), zwraca FeatureCollection z geometriami segmentów
-- **aggregate_stats** — agregacja pre-computed zonal stats (area, elevation, slope, stream metrics) + hydraulic length relative to outlet
-- **is_real_stream** — oznaczenie segmentów dopasowanych do referencyjnych cieków BDOT10k (ADR-044)
-- **aggregate_hypsometric** — krzywa hipsometryczna z mergowania histogramów elevation per segment
+It is the only function of the module. The rest of the morphometry of the runtime API (area, perimeter, length, elevation,
+slope, channel, drainage indices, hypsometric curve) is computed from the catchment graph by
+`build_morph_dict_from_graph()` in `core/watershed_service.py` and `CatchmentGraph.aggregate_stats()`.
+The main stream is traced by `CatchmentGraph.trace_main_channel()` in `core/catchment_graph.py`.
 
-Szczegóły: `core/catchment_graph.py`
+The delineation itself (nearest catchment, upstream traversal over the catchment graph, boundary
+merge) is in `core/watershed_service.py` and `core/catchment_graph.py`; the API endpoint and
+`scripts/analyze_watershed.py` both run it through `POST /api/delineate-watershed`.
 
-#### 2.4.4 `core/watershed_service.py`
+#### 2.4.2 `core/catchment_graph.py`
 
-Współdzielona logika delineacji używana przez 2 endpointy (watershed, hydrograph). Eliminuje kosztowne operacje rastrowe w runtime — cała praca oparta na CatchmentGraph i pre-computed stats.
+Singleton in-memory graph of sub-catchments based on numpy arrays and a scipy sparse CSR matrix (~87-285k nodes depending on the area, ~0.5 MB of RAM). Loaded lazily from the database on first use and invalidated after cleanup or the pipeline by `invalidate()`.
 
-**Kluczowe odpowiedzialności:**
-- **Merge catchment boundaries** — 3 strategie: direct (małe zlewnie), batched ST_UnaryUnion, fallback na grubszy próg. Cascade threshold escalation dla dużych zlewni (>500 segmentów: 1000 → 10000 → 100000)
-- **Smoothing granic** — `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` (ADR-032)
-- **Main channel FeatureCollection** — geometria głównego cieku z flagą `is_real_stream` per segment (ADR-044)
-- **Flow path GeoJSON** — longest flow path + divide flow path (ADR-048) jako geometrie do wyświetlenia
-- **Parametry morfometryczne** — `build_morph_dict_from_graph()` buduje słownik kompatybilny z Hydrolog
-- **Land cover / HSG stats** — helpery do obliczania CN i pokrycia terenu w granicach zlewni
+**Key concepts:**
+- **BFS traversal** — `traverse_upstream` to delineate the watershed
+- **trace_main_channel** — selects the main channel with branch selection by `upstream_area_km2` (ADR-046) and returns a FeatureCollection with the segment geometries
+- **aggregate_stats** — aggregation of the pre-computed zonal stats (area, elevation, slope, stream metrics) + hydraulic length relative to the outlet
+- **is_real_stream** — marks the segments matched to the BDOT10k reference streams (ADR-044)
+- **aggregate_hypsometric** — hypsometric curve from merging the elevation histograms per segment
 
-Szczegóły: `core/watershed_service.py`
+Details: `core/catchment_graph.py`
 
-#### 2.4.5 `core/db_bulk.py`
-**Odpowiedzialności:**
-- Bulk INSERT via PostgreSQL COPY (55k rec/s vs 2.6k rec/s z INSERT)
-- Zarządzanie statement_timeout (override + restore)
+#### 2.4.3 `core/watershed_service.py`
 
-#### 2.4.6 `core/stream_extraction.py`
-**Odpowiedzialności:**
-- Wektoryzacja cieków z rastra akumulacji
-- Segmentacja na konfluencjach (ADR-024) i zmianach rzędu Strahlera
-- Generowanie label raster dla `pyflwdir.basins()`
+Delineation logic shared by two endpoints (watershed, hydrograph). It avoids expensive raster operations at runtime: all work is based on CatchmentGraph and pre-computed stats.
 
-#### 2.4.7 `core/zonal_stats.py`
-**Odpowiedzialności:**
-- Statystyki strefowe via `np.bincount` (O(M) zamiast O(n*M) per-label masking)
-- Obliczanie min/max/mean per label dla elevation, slope
+**Key responsibilities:**
+- **Merge catchment boundaries** — 3 strategies: direct (small watersheds), batched ST_UnaryUnion, fallback to a coarser threshold. Cascade threshold escalation for large watersheds (>500 segments: 1000 → 10000 → 100000)
+- **Boundary smoothing** — `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` (ADR-032)
+- **Main channel FeatureCollection** — geometry of the main channel with the `is_real_stream` flag per segment (ADR-044)
+- **Flow path GeoJSON** — longest flow path + divide flow path (ADR-048) as geometries to display
+- **Morphometric parameters** — `build_morph_dict_from_graph()` builds a dictionary compatible with Hydrolog
+- **Land cover / HSG stats** — helpers that compute the CN and the land cover within the watershed boundary
 
-#### 2.4.8 Biblioteka Hydrolog (zewnetrzna)
-**Odpowiedzialnosci:** (delegowane do `hydrolog` v0.6.3)
-- Generowanie hietogramu (Beta, Block, Euler II)
-- Model SCS CN (opad efektywny)
-- Hydrogram jednostkowy: SCS, Nash IUH, Snyder
-- Splot numeryczny
-- Czas koncentracji (Kirpich, NRCS, Giandotti, FAA, Kerby, Kerby-Kirpich)
+Details: `core/watershed_service.py`
 
-Hydrograf wywoluje Hydrolog przez endpoint `api/endpoints/hydrograph.py`:
+#### 2.4.4 `core/db_bulk.py`
+**Responsibilities:**
+- Bulk INSERT via PostgreSQL COPY (55k rec/s vs 2.6k rec/s with INSERT)
+- Management of statement_timeout (override + restore)
+
+#### 2.4.5 `core/stream_extraction.py`
+**Responsibilities:**
+- Vectorization of streams from the accumulation raster
+- Segmentation at confluences (ADR-024) and at changes of the Strahler order
+- Generation of the label raster for `pyflwdir.basins()`
+
+#### 2.4.6 `core/zonal_stats.py`
+**Responsibilities:**
+- Zonal statistics via `np.bincount` (O(M) instead of O(n*M) per-label masking)
+- Computing min/max/mean per label for elevation and slope
+
+#### 2.4.7 Hydrolog library (external)
+**Responsibilities:** (delegated to `hydrolog`, pinned by commit in `backend/pyproject.toml`, ADR-060)
+- Hyetograph generation (Beta, Block, Euler II)
+- SCS CN model (effective precipitation)
+- Unit hydrograph: SCS, Nash IUH, Snyder
+- Numerical convolution
+- Time of concentration (Kirpich, NRCS, Giandotti, FAA, Kerby, Kerby-Kirpich)
+
+Hydrograf calls Hydrolog through the endpoint `api/endpoints/hydrograph.py`:
 ```python
 from hydrolog.precipitation import BetaHietogram
 from hydrolog.runoff import HydrographGenerator
 from hydrolog.morphometry import WatershedParameters
 ```
 
-#### 2.4.9 `core/precipitation.py`
-**Odpowiedzialności:**
-- Zapytania do tabeli `precipitation_data`
-- Interpolacja IDW (Inverse Distance Weighting)
+#### 2.4.8 `core/precipitation.py`
+**Responsibilities:**
+- Queries to the `precipitation_data` table
+- IDW interpolation (Inverse Distance Weighting)
 
-**Główne funkcje:**
+**Main functions:**
 ```python
 def get_precipitation(
     centroid: Point,
     duration: str,
     probability: float
 ) -> float:
-    """Pobiera wartość opadu (interpolacja IDW z siatki punktów IMGW)."""
+    """Returns the precipitation value (IDW interpolation of the IMGW point grid)."""
     pass
 ```
 
-#### 2.4.10 `core/land_cover.py`
-**Odpowiedzialności:**
-- Intersection granicy z pokryciem terenu
-- Obliczanie ważonego CN
+#### 2.4.9 `core/land_cover.py`
+**Responsibilities:**
+- Intersection of the boundary with the land cover
+- Computing the weighted CN
 
-**Główne funkcje:**
+**Main functions:**
 ```python
 def calculate_cn(boundary: GeoJSON) -> Dict:
     """
-    Zwraca:
+    Returns:
     {
         'cn': 72.4,
         'land_cover_percent': {'las': 35.2, 'pola': 42.1, ...}
@@ -602,49 +580,49 @@ def calculate_cn(boundary: GeoJSON) -> Dict:
 
 ---
 
-### 2.5 Nowe koncepty (CP4+)
+### 2.5 New Concepts (CP4+)
 
 #### WFS TERYT discovery (ADR-045)
-Automatyczne wykrywanie powiatów (TERYT) na podstawie bbox za pomocą usługi WFS PRG (Państwowy Rejestr Granic). Zastępuje wcześniejszą metodę grid-sampling WMS, dając dokładniejsze wyniki przy mniejszej liczbie zapytań sieciowych. Używane przy pobieraniu danych BDOT10k i land cover.
+Automatic detection of districts (TERYT) from a bbox with the WFS PRG service (Państwowy Rejestr Granic, the National Register of Boundaries). It replaces the earlier WMS grid-sampling method with more accurate results and fewer network queries. Used when downloading BDOT10k and land cover data.
 
 #### DEM auto-discovery (ADR-049)
-Mechanizm automatycznego znajdowania pliku DEM z fallback chain: VRT mosaic → single GeoTIFF → katalog z plikami ASC. Konfigurowany przez `resolve_dem_path()` w `core/config.py`, eliminuje konieczność ręcznego podawania ścieżki DEM w zmiennych środowiskowych. Obsługuje też `resolve_stream_distance_path()` dla rastrów odległości od cieków.
+A mechanism that finds the DEM file automatically with a fallback chain: VRT mosaic → single GeoTIFF → a directory of ASC files. It is configured by `resolve_dem_path()` in `core/config.py` and removes the need to give the DEM path in environment variables by hand. It also handles `resolve_stream_distance_path()` for the stream distance rasters.
 
-#### Chaikin smoothing cieków (ADR-047)
-Wygładzanie geometrii cieków algorytmem Chaikina na etapie preprocessingu (w `process_dem.py`). Redukuje szum z rasterowej wektoryzacji, zachowując topologię sieci. Stosowane razem z monotonic smoothing (ADR-041).
+#### Chaikin stream smoothing (ADR-047)
+Smoothing of the stream geometry with the Chaikin algorithm during preprocessing (in `process_dem.py`). It reduces the noise of the raster vectorization and keeps the topology of the network. Used together with monotonic smoothing (ADR-041).
 
 #### BDOT10k stream matching (ADR-044)
-Dopasowanie cieków wyznaczonych z DEM do referencyjnych cieków z BDOT10k (baza danych obiektów topograficznych). Segmenty dopasowane oznaczane jako `is_real_stream=True` w `stream_network`. Informacja ta propagowana do CatchmentGraph i zwracana w main channel FeatureCollection.
+Matching of the streams derived from the DEM to the reference streams of BDOT10k (the topographic objects database). Matched segments are marked `is_real_stream=True` in `stream_network`. The flag is propagated to CatchmentGraph and returned in the main channel FeatureCollection.
 
 #### Divide flow path (ADR-048)
-Wyznaczanie drogi spływu z działu wód (najdłuższa ścieżka od granicy zlewni do ujścia). Uzupełnia longest flow path jako dodatkowy parametr morfometryczny. Geometrie obu ścieżek przechowywane w `stream_catchments` (kolumny `longest_flow_path_geom`, `divide_flow_path_geom`).
+Determination of the flow path from the watershed divide (the longest path from the watershed boundary to the outlet). It complements the longest flow path as an additional morphometric parameter. The geometries of both paths are stored in `stream_catchments` (columns `longest_flow_path_geom`, `divide_flow_path_geom`).
 
-#### Monotoniczne wygładzanie cieków (ADR-041)
-Zapewnienie monotoniczności profilu podłużnego cieków po wygładzeniu geometrii. Eliminuje artefakty, w których wygładzona linia cieku miała lokalne „podskoki" elevacji niezgodne z kierunkiem przepływu.
+#### Monotonic stream smoothing (ADR-041)
+Keeping the longitudinal profile of the streams monotonic after the geometry is smoothed. It removes artefacts where the smoothed stream line had local elevation "jumps" against the flow direction.
 
-#### Integracja sieci kanalizacyjnej (ADR-051, ADR-052)
-Uwzględnienie sieci kanalizacji deszczowej w modelu hydrologicznym. Topologia sieci definiowana jawnie przez uzytkownika (nie wykrywana heurystycznie). Dwa formaty wejsciowe: Format A (punkty z `downstream_id`) i Format B (punkty + linie z `from_node`/`to_node`). 4 role wezlow: inlet, outlet, junction, storage (kompatybilnosc SWMM/HEC-RAS).
+#### Storm-sewer network integration (ADR-051, ADR-052)
+Inclusion of the storm-sewer network in the hydrological model. The network topology is defined explicitly by the user (it is not detected by heuristics). Two input formats: Format A (points with `downstream_id`) and Format B (points + lines with `from_node`/`to_node`). 4 node roles: inlet, outlet, junction, storage (compatible with SWMM/HEC-RAS).
 
-**Pipeline dwufazowy:**
-- **Faza 1 — Czysty fdir:** preprocessing DEM bez sieci kanalizacyjnej (fill → fdir → acc), walidacja petli fdir (`validate_against_fdir()`)
-- **Faza 2 — Sewer burning + hydrologia:**
-  - **Step 3b — Inlet burning:** wypalenie wlotów kanalizacyjnych w DEM (`burn_inlets()`) — obniżenie elevacji w komórkach wlotowych
-  - **Step 4a — FA reconstruction:** rekonstrukcja flow accumulation w komórkach wlotowych (`reconstruct_inlet_fa()`)
-  - **Step 4b — Sewer routing:** trasowanie flow accumulation przez sieć kanalizacyjną (`route_fa_through_sewer()`)
-  - **Step 4c — FA propagation:** propagacja zmodyfikowanego FA w dół sieci cieków (`propagate_fa_downstream()`)
+**Two-phase pipeline:**
+- **Phase 1 — Clean fdir:** DEM preprocessing without the sewer network (fill → fdir → acc), validation of the fdir loops (`validate_against_fdir()`)
+- **Phase 2 — Sewer burning + hydrology:**
+  - **Step 3b — Inlet burning:** burning of the sewer inlets into the DEM (`burn_inlets()`): lowering the elevation in the inlet cells
+  - **Step 4a — FA reconstruction:** reconstruction of the flow accumulation in the inlet cells (`reconstruct_inlet_fa()`)
+  - **Step 4b — Sewer routing:** routing of the flow accumulation through the sewer network (`route_fa_through_sewer()`)
+  - **Step 4c — FA propagation:** propagation of the modified FA down the stream network (`propagate_fa_downstream()`)
 
-Dane kanalizacyjne przechowywane w tabelach `sewer_nodes` (węzły: wloty, wyloty, połączenia, zbiorniki) i `sewer_network` (odcinki rur). Import przez panel admin (`/api/admin/sewer/upload`) z walidacją CRS, auto-detekcja formatu i ochrona SSRF. Moduły: `core/sewer_topology.py` (parser + walidator topologii, 11 reguł walidacji), `core/sewer_service.py` (logika budowy grafu i routing FA), `scripts/download_sewer.py` (pobieranie danych, zwraca tuple `(points_gdf, lines_gdf | None)`).
+Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junctions, storage) and `sewer_network` (pipe segments). They are imported through the admin panel (`/api/admin/sewer/upload`) with CRS validation, format auto-detection and SSRF protection. Modules: `core/sewer_topology.py` (parser + topology validator, 11 validation rules), `core/sewer_service.py` (graph building and FA routing logic), `scripts/download_sewer.py` (data download, returns the tuple `(points_gdf, lines_gdf | None)`).
 
 ---
 
-## 3. Architektura Bazy Danych
+## 3. Database Architecture
 
 ### 3.1 Schema Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                          flow_network                            │
-│              -- USUNIETA (ADR-028, migracja 015)                │
+│              -- REMOVED (ADR-028, migration 015)                │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -652,8 +630,8 @@ Dane kanalizacyjne przechowywane w tabelach `sewer_nodes` (węzły: wloty, wylot
 ├─────────────────────────────────────────────────────────────────┤
 │ id (PK)              SERIAL                                     │
 │ geom                 GEOMETRY(Point, 2180)                      │
-│ duration             VARCHAR(10)  ('5min'...'72h', 16 wartości) │
-│ probability          FLOAT        (0.01...99.9, 27 wartości)    │
+│ duration             VARCHAR(10)  ('5min'...'72h', 16 values)   │
+│ probability          FLOAT        (0.01...99.9, 27 values)      │
 │ precipitation_mm     FLOAT                                      │
 │ source               VARCHAR(50)  ('IMGW_API')                 │
 │ updated_at           TIMESTAMP                                  │
@@ -689,9 +667,9 @@ Dane kanalizacyjne przechowywane w tabelach `sewer_nodes` (węzły: wloty, wylot
 │ upstream_area_km2    FLOAT                                      │
 │ mean_slope_percent   FLOAT                                      │
 │ source               VARCHAR(20)  ('DEM_DERIVED', 'MPHP')      │
-│ segment_idx          INTEGER  -- 1-based per threshold (migracja 014, ADR-026) │
-│ is_real_stream       BOOLEAN  -- dopasowanie do BDOT10k (ADR-044)│
-│ is_sewer_augmented   BOOLEAN  -- flaga modyfikacji przez sieć kanalizacyjną (ADR-051) │
+│ segment_idx          INTEGER  -- 1-based per threshold (migration 014, ADR-026) │
+│ is_real_stream       BOOLEAN  -- matched to BDOT10k (ADR-044)│
+│ is_sewer_augmented   BOOLEAN  -- flag: modified by the sewer network (ADR-051) │
 │                                                                 │
 │ Indexes:                                                        │
 │   - idx_stream_geom (GIST on geom)                             │
@@ -822,9 +800,9 @@ Dane kanalizacyjne przechowywane w tabelach `sewer_nodes` (węzły: wloty, wylot
 
 ---
 
-### 3.2 Przykładowe Zapytania SQL
+### 3.2 Example SQL Queries
 
-#### Znajdź Najbliższy Ciek (stream_network)
+#### Find the Nearest Stream (stream_network)
 ```sql
 SELECT
     id, geom, strahler_order, length_m, threshold_m2,
@@ -836,9 +814,9 @@ ORDER BY distance
 LIMIT 1;
 ```
 
-#### ~~Znajdź Komórki Upstream (Rekurencyjne CTE)~~ — DEPRECATED (ADR-022)
-> **Uwaga:** Runtime API używa `CatchmentGraph.traverse_upstream()` (BFS in-memory, ~5-50ms).
-> Poniższy CTE zachowany wyłącznie jako dokumentacja — `core/flow_graph.py` USUNIĘTY (ADR-028).
+#### ~~Find Upstream Cells (Recursive CTE)~~ — DEPRECATED (ADR-022)
+> **Note:** The runtime API uses `CatchmentGraph.traverse_upstream()` (in-memory BFS, ~5-50ms).
+> The CTE below is kept only as documentation — `core/flow_graph.py` REMOVED (ADR-028).
 
 ```sql
 WITH RECURSIVE upstream AS (
@@ -859,7 +837,7 @@ WITH RECURSIVE upstream AS (
 SELECT * FROM upstream;
 ```
 
-#### Pobierz Opad (Wieloboki równego zadeszczenia)
+#### Fetch Precipitation (Thiessen polygons)
 ```sql
 WITH nearest AS (
     SELECT
@@ -876,7 +854,7 @@ SELECT
 FROM nearest;
 ```
 
-#### Oblicz CN dla Zlewni
+#### Compute the CN for a Watershed
 ```sql
 SELECT 
     lc.category,
@@ -913,11 +891,11 @@ FROM (
 
 ---
 
-### 3.3 Optymalizacja Bazy Danych
+### 3.3 Database Optimization
 
-#### Indeksy
-- **GIST indexes** dla wszystkich kolumn geometrycznych
-- **B-tree indexes** dla kluczy obcych i często filtrowanych kolumn
+#### Indexes
+- **GIST indexes** for all geometry columns
+- **B-tree indexes** for foreign keys and frequently filtered columns
 
 #### Connection Pooling
 ```python
@@ -936,82 +914,86 @@ engine = create_engine(
 ```
 
 #### Query Optimization
-- **EXPLAIN ANALYZE** dla wszystkich slow queries
-- **Partial indexes** dla is_stream (tylko TRUE)
-- **Materialized views** dla często używanych agregacji (future)
+- **EXPLAIN ANALYZE** for all slow queries
+- **Partial indexes** for is_stream (TRUE only)
+- **Materialized views** for frequently used aggregations (future)
 
 ---
 
-## 4. Architektura Frontendu
+## 4. Frontend Architecture
 
-### 4.1 Struktura Plików
+### 4.1 File Structure
 
 ```
 frontend/
-├── index.html               # SPA — powłoka Archiwisty; Leaflet + MapLibre GL + Chart.js (CDN z SRI), bez Bootstrapa
-├── admin.html               # Panel administracyjny (ADR-034) — powłoka + Bootstrap 5.3.3 (siatka, okna modalne)
+├── index.html               # SPA — Archiwista shell; Leaflet + MapLibre GL + Chart.js (CDN with SRI), no Bootstrap
+├── admin.html               # Admin panel (ADR-034) — shell + Bootstrap 5.3.3 (grid, modal dialogs)
 ├── img/
-│   └── hydrograf.svg         # Znak Hydrografa (górny pasek, favicon)
+│   └── hydrograf.svg         # Hydrograf mark (top bar, favicon)
 ├── instrukcja/
-│   ├── index.html            # Przewodnik użytkownika (/instrukcja)
-│   ├── instrukcja.css        # Style slajdów przewodnika
-│   └── Hydrograf-*.png       # Zrzuty ekranu do przewodnika
+│   ├── index.html            # User guide (/instrukcja)
+│   ├── instrukcja.css        # Styles of the guide slides
+│   └── Hydrograf-*.png       # Screenshots for the guide
 ├── css/
-│   ├── tokens.css            # Kopia design/tokens.css Nogata (commit 29e7e1c) — NIE edytować, kopiować ponownie
-│   ├── chrome.css            # Powłoka wspólna: górny pasek, szyna, panele, przyciski (index, admin, instrukcja)
-│   ├── app.css               # Strona główna: mapa, panele Warstwy/Zlewnia, szuflada profilu, układ telefonu
-│   └── admin.css             # Panel administracyjny (Bootstrap przekolorowany tokenami)
+│   ├── tokens.css            # Copy of Nogat's design/tokens.css (commit 29e7e1c) — do NOT edit, copy it again
+│   ├── chrome.css            # Shared shell: top bar, rail, panels, buttons (index, admin, instrukcja)
+│   ├── app.css               # Main page: map, Warstwy/Zlewnia panels, profile drawer, phone layout
+│   └── admin.css             # Admin panel (Bootstrap recoloured with the tokens)
 └── js/
-    ├── theme-init.js         # Motyw z localStorage (`nogat-theme`) przed pierwszym malowaniem
-    ├── theme-switch.js       # Przełącznik motywu Auto/Jasny/Ciemny w /admin i /instrukcja
-    ├── shell.js              # Powłoka strony głównej: panele, uchwyty szerokości, układ telefonu, motyw
+    ├── theme-init.js         # Theme from localStorage (`nogat-theme`) before the first paint
+    ├── theme-switch.js       # Theme switch Auto/Jasny/Ciemny in /admin and /instrukcja
+    ├── shell.js              # Main-page shell: panels, width handles, phone layout, theme
     ├── api.js                # API calls (fetch wrappers)
     ├── map.js                # Leaflet map, drawing, MVT
-    ├── charts.js             # Chart.js w kolorach tokenów: hipsometria, pokrycie/HSG, hietogram, hydrogram, profil
-    ├── layers.js             # Panel „Warstwy”: podkłady z nakładką mapy zagrożenia powodziowego (WMS Wód Polskich), nakładki, krycie, przybliżenie do zasięgu
-    ├── profile.js            # Profil terenu (rysowanie linii) ze zwierciadłem wody włączonych wyników analiz
-    ├── hydrograph.js         # Formularz hietogramu (AMC, źródło opadu) i hydrogramu, bilans, wykresy
-    ├── custom-rain.js        # Własna seria opadu: tabela kroków, wklejanie, import CSV, kopia hietogramu
-    ├── info.js               # Objaśnienia (i): znaczniki, wspólny dymek, wzory MathML, najechanie/fokus/dotknięcie, Esc
-    ├── info-texts.js         # 76 objaśnień (wzór, zmienne, jednostka, znaczenie) kluczowane polem API lub id kontrolki
-    ├── advanced.js           # Tryb zaawansowany: edycja morfometrii do POST /api/generate-hydrograph
+    ├── charts.js             # Chart.js in the token colours: hypsometry, land cover/HSG, hietogram, hydrograph, profile
+    ├── layers.js             # „Warstwy” panel: basemaps with the flood hazard map overlay (WMS of Wody Polskie), overlays, opacity, zoom to extent
+    ├── profile.js            # Terrain profile (line drawing) with the water surface of the analysis results that are on
+    ├── hydrograph.js         # Hietogram form (AMC, rainfall source) and hydrograph form, balance, charts
+    ├── custom-rain.js        # Own rainfall series: table of steps, paste, CSV import, copy of the hietogram
+    ├── info.js               # (i) explanations: markers, shared tooltip, MathML formulas, hover/focus/touch, Esc
+    ├── info-texts.js         # 76 explanations (formula, variables, unit, meaning) keyed by an API field or a control id
+    ├── advanced.js           # Advanced mode: editing of the morphometry for POST /api/generate-hydrograph
     ├── depressions.js        # Depressions (blue spots) overlay
-    ├── sewer.js              # Warstwa kanalizacji deszczowej (MVT overlay; tylko gdy GET /api/layers zgłasza dane)
-    ├── results.js            # Wyniki analiz zewnętrznych (np. SFINCS z Hydraulika) z manifestu /data/results/index.json: kafle, legenda, (i)
-    ├── diagnostics.js        # Dziennik zdarzeń sesji (ADR-053)
-    ├── feedback.js           # Formularz „Zgłoś uwagę” (natywny <dialog>)
-    ├── app.js                # Orchestrator: init, tryby pracy, click routing, panel Zlewnia
+    ├── sewer.js              # Storm-sewer layer (MVT overlay; only when GET /api/layers reports data)
+    ├── results.js            # External analysis results (e.g. SFINCS of Hydraulik) from the manifest /data/results/index.json: tiles, legend, (i)
+    ├── diagnostics.js        # Session event log (ADR-053)
+    ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>)
+    ├── welcome.js            # Welcome dialog (native <dialog>): first visit and the „Instrukcja” button of the main page
+    ├── app.js                # Orchestrator: init, work modes, click routing, Zlewnia panel
     └── admin/
         ├── admin-api.js      # Admin API client (fetch + X-Admin-Key header)
         ├── admin-bootstrap.js # Bootstrap SSE stream, start/cancel
-        ├── admin-bbox-picker.js # Mapa do wyboru bbox obszaru
-        ├── admin-sewer.js    # Karta zarządzania siecią kanalizacyjną
-        ├── admin-feedback.js # Lista zgłoszeń testerów
+        ├── admin-bbox-picker.js # Map for choosing the area bbox
+        ├── admin-sewer.js    # Card for managing the sewer network
+        ├── admin-feedback.js # List of the testers' reports
         └── admin-app.js      # Admin panel orchestrator
 ```
 
-Identyfikacja wizualna pochodzi z Nogata (standard DEV-15.3, ECO-055, ADR-065): wzorzec w `design/` Nogata, makieta `design/mockups/hydrograf/`. Kolory, czcionki, promienie i cienie wyłącznie przez zmienne z `css/tokens.css`; zmiana palety odbywa się w Nogacie i kończy ponownym skopiowaniem pliku.
+`js/` holds 24 modules on `window.Hydrograf` (IIFE), 18 for the main page and 6 in `admin/`; `theme-init.js` and `theme-switch.js` stay outside the namespace. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
+
+The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the pattern is in Nogat's `design/`, the mockup in `design/mockups/hydrograf/`. Colours, fonts, radii and shadows only through the variables of `css/tokens.css`; a change of the palette is made in Nogat and ends with copying the file again.
 
 ---
 
-### 4.2 Komponenty UI
+### 4.2 UI Components
 
-#### 4.2.0 Powłoka (shell)
+#### 4.2.0 Shell
 
-Strona główna używa powłoki Archiwisty (`chrome.css` + `app.css` + `shell.js`):
+The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 
-- **Górny pasek** — znak `img/hydrograf.svg`, wskaźnik stanu usług, przyciski „Instrukcja” (`/instrukcja/`) i „Zgłoś uwagę” oraz przełącznik motywu Auto/Jasny/Ciemny (`data-theme` na `<html>`, wybór w `localStorage` `nogat-theme`; `theme-init.js` ustawia go przed pierwszym malowaniem, więc nie ma mignięcia jasnego motywu). Przycisk „Instrukcja” jest w górnym pasku każdej strony (główna, `/admin`, `/instrukcja`).
-- **Szyna nawigacji** — tylko Mapa i Administracja (`/admin`); profil terenu jest trybem paska mapy.
-- **Lewy panel „Warstwy”** — podkłady (z nakładką „Mapa zagrożenia powodziowego”), nakładki z suwakiem krycia i jeden przycisk przybliżenia do zasięgu włączonych warstw.
-- **Środek** — mapa z paskiem trybów Przeglądanie / Wybierz zlewnię / Profil terenu; profil terenu otwiera się w dolnej szufladzie nad mapą.
-- **Prawy panel „Zlewnia”** — kluczowe wartości (kafle) i sekcje `<details>`: parametry podstawowe, wskaźniki kształtu, rzeźba terenu, sieć rzeczna, pokrycie terenu, grupy HSG, hietogram, hydrogram.
-- **Objaśnienia (i)** — `info.js` dodaje znaczniki (i) w sekcjach Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram i Hydrogram; jeden wspólny dymek otwierany najechaniem, fokusem lub dotknięciem, zamykany Esc. Wpisy (64) w `info-texts.js`, kluczowane polem API lub id kontrolki formularza, mają strukturę: opis, wzór (składany jako MathML przez DOM, bez bibliotek), lista „gdzie:” ze zmiennymi i jednostkami, jednostka wyniku, osobny blok „Znaczenie dla analizy”, zakres stosowalności i uwaga. Treści oparte na Hydrologu i backendzie (np. limit hydrogramu 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). Uwagi o stosowalności pod Model UH, Metoda Tc i Estymacja Nash zmieniają się z wyborem. API nie zwraca ostrzeżeń o stosowalności, więc GUI ich nie pokazuje.
-- **Hietogram: AMC i źródło opadu** — pole „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` w zapytaniu, domyślnie II); bilans pokazuje użyty CN z jednym miejscem po przecinku i klasą AMC. Przełącznik „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” i „Krok czasowy [min]” tworzą tabelę kroków z edytowalnym opadem [mm]; wklejenie kolumny z arkusza wypełnia kolejne wiersze; „Importuj CSV” przyjmuje 1 kolumnę (opad, bieżący krok) albo 2 kolumny (czas, opad; równy krok ustawia krok i czas trwania); „Wczytaj z bieżącego hietogramu” kopiuje serię PMAXTP. Seria trafia do `custom_precipitation`, a hietogram PMAXTP jest wtedy pomijany.
-- **Formularz hydrogramu** — siatka dwóch kolumn: „Model UH” | „Metoda Tc”, dla Nasha „Model UH” | „Estymacja Nash”; uwagi o stosowalności w równych wierszach.
-- **Tryb zaawansowany** — `advanced.js` pozwala zmienić morfometrię wysyłaną do `POST /api/generate-hydrograph` (szybka ścieżka `morphometry`): powierzchnia, obwód, długość, wysokości, średni spadek, długość i spadek cieku, `length_to_centroid_km`, CN. Dokładność pól: powierzchnia 0,01 km², długości i Lc 0,01 km, wysokości 0,1 m, spadki 0,01 %, CN 0,1 (1–100). Zmienione pola są oznaczone; przywracanie pola i całości („Przywróć dane z Hydrografa”); błędy walidacji blokują zapytanie; wynik ma komunikat „Obliczono na zmienionych danych wejściowych”. Opad i AMC ustawia się w sekcji Hietogram. Część zlewni ma `length_to_centroid_km = 0` — Snyder zawodzi, dopóki użytkownik nie poda Lc.
-- **CN** — API zwraca CN zlewni (`morphometry.cn`, `land_cover_stats.weighted_cn`) z dokładnością 0,1; panel pokazuje go z jednym miejscem po przecinku.
-- **Warstwa kanalizacji** — wpis „Kanalizacja deszczowa” w panelu „Warstwy” powstaje tylko, gdy `GET /api/layers` zwraca `sewer: true`; bez danych brak żądań kafli `/api/tiles/sewer`.
-- **Wyniki analiz zewnętrznych** — `results.js` czyta raz przy starcie manifest `/data/results/index.json` (`frontend/data/results/`, serwowany przez `location ^~ /data/`):
+- **Top bar** — the mark `img/hydrograf.svg`, a service status indicator, the buttons „Instrukcja” (`/instrukcja/`) and „Zgłoś uwagę” and the theme switch Auto/Jasny/Ciemny (`data-theme` on `<html>`, the choice in `localStorage` `nogat-theme`; `theme-init.js` sets it before the first paint, so the light theme does not flash). The „Instrukcja” button is in the top bar of every page (main, `/admin`, `/instrukcja`); on the main page it opens the welcome dialog again (a click with Ctrl/Shift or the middle button still opens the guide).
+- **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two plain-language paragraphs (what Hydrograf is, that the results are estimates and not a flood forecast, the area of the data) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`).
+- **Navigation rail** — only Mapa and Administracja (`/admin`); the terrain profile is a mode of the map bar.
+- **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
+- **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu; the terrain profile opens in a bottom drawer over the map.
+- **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph.
+- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram; one shared tooltip opens on hover, focus or touch and closes with Esc. The 64 entries of `info-texts.js` keyed by an API field or a form control id (the other 12 belong to the options of the UH model, Tc method and Nash estimation selects) hold: a description, a formula (built as MathML through the DOM, without libraries), the list „gdzie:” of the variables with their units, the unit of the result, a separate block „Znaczenie dla analizy”, the range of applicability and a note. The texts rest on Hydrolog and the backend (e.g. the hydrograph limit of 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice. The API returns no applicability warnings, so the GUI shows none.
+- **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.
+- **Hydrograph form** — a grid of two columns: „Model UH” | „Metoda Tc”, for Nash „Model UH” | „Estymacja Nash”; the applicability notes in even rows.
+- **Advanced mode** — `advanced.js` lets the user change the morphometry sent to `POST /api/generate-hydrograph` (the fast path `morphometry`): area, perimeter, length, elevations, mean slope, stream length and slope, `length_to_centroid_km`, CN. Precision of the fields: area 0.01 km², lengths and Lc 0.01 km, elevations 0.1 m, slopes 0.01 %, CN 0.1 (1–100). Changed fields are marked; one field or all of them can be restored („Przywróć dane z Hydrografa”); validation errors block the request; the result carries the message „Obliczono na zmienionych danych wejściowych”. Rainfall and AMC are set in the Hietogram section. Some catchments have `length_to_centroid_km = 0`: Snyder fails until the user gives Lc.
+- **CN** — the API returns the CN of the catchment (`morphometry.cn`, `land_cover_stats.weighted_cn`) to 0.1; the panel shows it with one decimal place.
+- **Sewer layer** — the entry „Kanalizacja deszczowa” of the „Warstwy” panel appears only when `GET /api/layers` returns `sewer: true`; without data no `/api/tiles/sewer` tiles are requested.
+- **External analysis results** — `results.js` reads the manifest `/data/results/index.json` once at startup (`frontend/data/results/`, served by `location ^~ /data/`):
 
   ```json
   {"schema": "hydrograf-results/1",
@@ -1026,34 +1008,34 @@ Strona główna używa powłoki Archiwisty (`chrome.css` + `app.css` + `shell.js
                                 "crs": "EPSG:2180", "unit": "m n.p.m."}}]}
   ```
 
-  `bounds` to [zachód, południe, wschód, północ] w WGS84, kafle XYZ PNG z przezroczystością (`gdal2tiles --xyz`). Każdy wynik `raster_tiles` daje wiersz w grupie `group` (istniejąca „Wyniki analiz” pod „Linie spływu”; nowa grupa powstaje nad podkładami tylko, gdy wynik jej wymaga): `L.tileLayer` w panelu `resultsPane` (z-index 300: nad NMT i pokryciem terenu, pod liniami spływu) z `bounds`, `minZoom` 8, `minNativeZoom`/`maxNativeZoom` z manifestu, kryciem z `opacity`; legenda (próbki z `legend.classes`, jednostka w tytule) tylko przy włączonej warstwie; `description` i `source` w objaśnieniu (i). Zasięg wliczany do „Przybliż do zasięgu warstw”. Inne `kind` są pomijane z ostrzeżeniem; brak manifestu, błędny JSON lub inny `schema` — jedno ostrzeżenie w konsoli i brak wierszy.
+  `bounds` is [west, south, east, north] in WGS84; the tiles are XYZ PNG with transparency (`gdal2tiles --xyz`). Every `raster_tiles` result gives a row in the group `group` (the existing „Wyniki analiz” under „Linie spływu”; a new group is created above the basemaps only when a result needs it): an `L.tileLayer` in the pane `resultsPane` (z-index 300: above the DEM and the land cover, below the flow lines) with `bounds`, `minZoom` 8, `minNativeZoom`/`maxNativeZoom` from the manifest and the opacity from `opacity`; the legend (swatches from `legend.classes`, the unit in the title) only while the layer is on; `description` and `source` in the (i) explanation. The extent counts for „Przybliż do zasięgu warstw”. Other values of `kind` are skipped with a warning; a missing manifest, invalid JSON or another `schema` give one console warning and no rows.
 
-  `water_level` (opcjonalne; zgodne wstecz rozszerzenie `hydrograf-results/1`, starsze klienty je pomijają) wskazuje GeoTIFF maksymalnego poziomu zwierciadła wody na siatce modelu (float32, LZW, nodata tam, gdzie maksymalna głębokość < 0,05 m — poniżej najniższej klasy legendy); `crs` i `unit` opisują raster. Czyta go API, nie przeglądarka: `POST /api/terrain-profile` z `result_ids` (§2.2.5) próbkuje raster w punktach profilu. Ścieżka `/data/…` wskazuje plik w `FRONTEND_DATA_DIR` (domyślnie `/frontend/data`, katalog `frontend/data` zamontowany w kontenerze API) i musi zostać w jego podkatalogu `results/` — inaczej wynik jest pomijany. Profil terenu (`profile.js`) prosi o wyniki z `water_level`, których warstwa jest włączona (`results.shownWaterLevels()`), a włączenie lub wyłączenie takiej warstwy przerysowuje otwarty profil. Zwierciadło to niebieskie pole między terenem a poziomem wody tam, gdzie woda leży nad NMT; pod wykresem legenda „Teren” i „Zwierciadło wody — <tytuł wyniku>”, a odczyt pod kursorem (na telefonie pod palcem) podaje teren, poziom wody i głębokość (poziom wody minus NMT). Linia, która nie przecina wyniku, daje niezmieniony wykres. Raster tworzy skrypt publikacji przebiegu Hydraulika z `zsmax` w `sfincs_map.nc`.
-- **Szerokość paneli** — uchwyty między panelami (lewy 260–560 px, prawy 340–720 px), zapamiętywane w `localStorage`; panele można zamknąć.
-- **Telefon (≤ 860 px)** — mapa na pełnym ekranie, dolny pasek zamiast szyny, panele jako arkusze wysuwane od dołu.
+  `water_level` (optional; a backward-compatible extension of `hydrograf-results/1` that older clients skip) names a GeoTIFF of the maximum water surface elevation on the model grid (float32, LZW, nodata where the maximum depth is below 0.05 m, the lowest legend class); `crs` and `unit` describe the raster. The API reads it, not the browser: `POST /api/terrain-profile` with `result_ids` (§2.2.5) samples the raster at the points of the profile (`core/analysis_results.py`). The path `/data/…` names a file in `FRONTEND_DATA_DIR` (default `/frontend/data`, the directory `frontend/data` mounted in the API container) and must stay in its subdirectory `results/`; otherwise the result is skipped. The terrain profile (`profile.js`) asks for the results with `water_level` whose layer is on (`results.shownWaterLevels()`), and switching such a layer on or off redraws an open profile. The water surface is a blue area between the terrain and the water level where the water lies above the DEM; under the chart the legend „Teren” and „Zwierciadło wody — <result title>”, and the readout under the cursor (under the finger on a phone) gives the terrain, the water level and the depth (water level minus DEM). A line that does not cross a result gives an unchanged chart. The raster is made by the publication script of a Hydraulik run from `zsmax` in `sfincs_map.nc`.
+- **Panel width** — handles between the panels (left 260–560 px, right 340–720 px), kept in `localStorage`; the panels can be closed.
+- **Phone (≤ 860 px)** — a full-screen map, a bottom bar instead of the rail, the panels as sheets that slide up from the bottom.
 
-`/admin` i `/instrukcja` używają tej samej powłoki (`chrome.css`) i przełącznika `theme-switch.js`. Formularz „Zgłoś uwagę” to natywny `<dialog>`.
+`/admin` and `/instrukcja` use the same shell (`chrome.css`) and the switch `theme-switch.js`. The form „Zgłoś uwagę” is a native `<dialog>`.
 
-#### 4.2.1 Mapa (Leaflet.js)
+#### 4.2.1 Map (Leaflet.js)
 
-Podkłady (`layers.js`): **OpenFreeMap szary** (wektorowy, styl `positron` z `https://tiles.openfreemap.org`, renderowany przez MapLibre GL 4.7.1 i `@maplibre/maplibre-gl-leaflet` 0.0.22; bez MapLibre powrót do OSM GUGiK), **OSM GUGiK szary** (rastrowy, tylko Polska, odbarwiony klasą `.basemap-grey`), **Ortofotomapa ESRI**, **bez podkładu**.
+Basemaps (`layers.js`): **OpenFreeMap szary** (vector, the `positron` style from `https://tiles.openfreemap.org`, rendered by MapLibre GL 4.7.1 and `@maplibre/maplibre-gl-leaflet` 0.0.22; without MapLibre it falls back to OSM GUGiK), **OSM GUGiK szary** (raster, Poland only, greyed by the class `.basemap-grey`), **Ortofotomapa ESRI**, **bez podkładu** (no basemap).
 
-**Mapa zagrożenia powodziowego (MZP)** — nakładka w grupie „Podkłady kartograficzne”, nad listą podkładów: pole wyboru niezależne od wyboru podkładu (domyślnie wyłączone), krycie 80 %, a gdy włączona — pole „Prawdopodobieństwo powodzi” (0,2 % — raz na 500 lat, 1 % — raz na 100 lat (domyślnie), 10 % — raz na 10 lat), podpowiedź o skali i legenda w lewym dolnym rogu mapy. Źródło: usługi WMS 1.3.0 (ArcGIS Server) Państwowego Gospodarstwa Wodnego Wody Polskie (KZGW, ISOK) z głębokością wody w MZP z aktualizacji 2020, dla powodzi od rzek:
+**Flood hazard map (MZP)** — an overlay in the group „Podkłady kartograficzne”, above the list of basemaps: a checkbox independent of the basemap choice (off by default), opacity 80 %, and while it is on, the field „Prawdopodobieństwo powodzi” (0,2 % — raz na 500 lat, 1 % — raz na 100 lat (the default), 10 % — raz na 10 lat), a hint about the scale and a legend in the lower left corner of the map. Source: the WMS 1.3.0 services (ArcGIS Server) of Państwowe Gospodarstwo Wodne Wody Polskie (KZGW, ISOK) with the water depth of the MZP of the 2020 update, for river floods:
 
-| Prawdopodobieństwo | Usługa (`https://wody.isok.gov.pl/gpservices/KZGW/<usługa>/MapServer/WMSServer`) | Warstwa |
+| Probability | Service (`https://wody.isok.gov.pl/gpservices/KZGW/<service>/MapServer/WMSServer`) | Layer |
 |---|---|---|
-| 0,2 % (raz na 500 lat) | `MZP20_Glebokosc_NiskiePrawdopodPowodzi` | `16` |
-| 1 % (raz na 100 lat) | `MZP20_Glebokosc_SredniePrawdopodPowodzi` | `16` |
-| 10 % (raz na 10 lat) | `MZP20_Glebokosc_WysokiePrawdopodPowodzi` | `1` |
+| 0.2 % (once in 500 years) | `MZP20_Glebokosc_NiskiePrawdopodPowodzi` | `16` |
+| 1 % (once in 100 years) | `MZP20_Glebokosc_SredniePrawdopodPowodzi` | `16` |
+| 10 % (once in 10 years) | `MZP20_Glebokosc_WysokiePrawdopodPowodzi` | `1` |
 
-- `L.tileLayer.wms` w EPSG:3857, PNG z przezroczystością, obrazy 512 px (trzy razy mniej zapytań niż 256 px przy tej samej rozdzielczości); zmiana prawdopodobieństwa podmienia adres i `layers` tej samej warstwy (`setUrl`, `setParams`), więc stan włączenia i krycie zostają. Warstwy morskie tych usług (warstwa `1` dla 1 % i 0,2 %) i inne scenariusze MZP nie są pokazywane. Numery warstw ArcGIS mogą się zmienić przy ponownej publikacji usług — wtedy trzeba poprawić `MZP_SCENARIOS` w `layers.js`.
-- Usługi rysują głębokości tylko w skali 1:50 000 i większej (`MaxScaleDenominator` 47 247 przy pikselu 0,28 mm), czyli od przybliżenia 14. Poniżej warstwa jest zdejmowana z mapy (bez pustych zapytań), a panel i legenda pokazują „Przybliż mapę…”. Warstwa nie ma `minZoom`: Leaflet przyjąłby go jako dolną granicę przybliżenia całej mapy, gdy to jedyna warstwa kaflowa (np. przy podkładzie OpenFreeMap).
-- Panel `hazardPane` (z-index 240): nad podkładem (`tilePane`, 200), pod NMT i wszystkimi warstwami Hydrografa — wyniki analiz (np. SFINCS) leżą nad MZP. Przy włączonym NMT (krycie 70 %) MZP jest przygaszona; trzeba zmniejszyć krycie NMT.
-- Legenda z klas głębokości usług (GetLegendGraphic: h ≤ 0,5 · 0,5 < h ≤ 2,0 · 2,0 < h ≤ 4,0 · h > 4,0 m) w kolorach, jakimi usługi rysują mapę (`#cfe8fa`, `#a7caf7`, `#7face3`, `#7f98b9`, sprawdzone GetFeatureInfo); obraz GetLegendGraphic (96 × 72 px na białym tle) nie jest używany, bo nie pasuje do ciemnego motywu.
-- Atrybucja: „MZP © Wody Polskie / ISOK (CC BY 4.0)” z odnośnikami do Hydroportalu i licencji; licencja CC BY 4.0 według zbioru „Mapa zagrożenia powodziowego (MZP)” na dane.gov.pl (dostawca: Krajowy Zarząd Gospodarki Wodnej). Usługi REST/WMTS ArcGIS tych map zwracają 401, publiczny jest tylko WMS. Czas odpowiedzi bywa nierówny: zwykle 0,4–2 s na obraz, czasem pojedyncze obrazy 10–30 s.
+- `L.tileLayer.wms` in EPSG:3857, PNG with transparency, 512 px images (three times fewer requests than 256 px at the same resolution); a change of the probability swaps the URL and the `layers` of the same layer (`setUrl`, `setParams`), so the on state and the opacity stay. The marine layers of these services (layer `1` for 1 % and 0.2 %) and the other MZP scenarios are not shown. The ArcGIS layer numbers can change when the services are republished; then `MZP_SCENARIOS` in `layers.js` must be corrected.
+- The services draw the depths only at the scale 1:50 000 and larger (`MaxScaleDenominator` 47 247 at a pixel of 0.28 mm), that is from zoom 14. Below it the layer is taken off the map (no empty requests), and the panel and the legend show „Przybliż mapę…”. The layer has no `minZoom`: Leaflet would take it as the lower zoom limit of the whole map when it is the only tile layer (e.g. with the OpenFreeMap basemap).
+- The pane `hazardPane` (z-index 240): above the basemap (`tilePane`, 200), below the DEM and all the layers of Hydrograf; the analysis results (e.g. SFINCS) lie above the MZP. With the DEM on (opacity 70 %) the MZP is dimmed; lower the opacity of the DEM.
+- The legend uses the depth classes of the services (GetLegendGraphic: h ≤ 0.5 · 0.5 < h ≤ 2.0 · 2.0 < h ≤ 4.0 · h > 4.0 m) in the colours the services draw (`#cfe8fa`, `#a7caf7`, `#7face3`, `#7f98b9`, checked with GetFeatureInfo); the GetLegendGraphic image (96 × 72 px on white) is not used because it does not fit the dark theme.
+- Attribution: „MZP © Wody Polskie / ISOK (CC BY 4.0)” with links to the Hydroportal and the licence; the CC BY 4.0 licence follows the dataset „Mapa zagrożenia powodziowego (MZP)” on dane.gov.pl (provider: Krajowy Zarząd Gospodarki Wodnej). The ArcGIS REST/WMTS services of these maps return 401; only the WMS is public. Response times vary: usually 0.4–2 s per image, sometimes single images take 10–30 s.
 
 ```javascript
-// map.js (szkic)
+// map.js (sketch)
 const map = L.map('map').setView([52.0, 21.0], 10);
 
 // Vector basemap: OpenFreeMap through MapLibre GL
@@ -1106,9 +1088,9 @@ async function generateHydrograph(lat, lon, duration, probability) {
 }
 ```
 
-#### 4.2.3 Wykres Hydrogramu
+#### 4.2.3 Hydrograph Chart
 
-Wszystkie wykresy (`charts.js`) biorą kolory, czcionkę i jej rozmiar z tokenów (`getComputedStyle`), a przy zmianie motywu (`data-theme` lub schemat systemu) przemalowują się w miejscu. Hietogram jest wykresem liniowym jak hydrogram; pokrycie terenu i grupy HSG to poziome słupki skumulowane. Poniższy szkic pokazuje sam układ Chart.js; stałe kolory w nim to tylko przykład.
+All charts (`charts.js`) take their colours, font and font size from the tokens (`getComputedStyle`) and repaint in place when the theme changes (`data-theme` or the system scheme). The hietogram is a line chart like the hydrograph; land cover and HSG groups are horizontal stacked bars. The sketch below shows only the layout of Chart.js; its fixed colours are only an example.
 
 ```javascript
 // chart.js
@@ -1168,7 +1150,7 @@ function displayHydrograph(hydrographData) {
 
 ### 4.3 State Management
 
-**Prosty state w vanilla JS:**
+**Simple state in vanilla JS:**
 ```javascript
 // app.js
 const appState = {
@@ -1259,7 +1241,7 @@ services:
     image: nginx:alpine
     container_name: hydro_nginx
     ports:
-      - "${HYDROGRAF_PORT:-8080}:80"
+      - "127.0.0.1:${HYDROGRAF_PORT:-8080}:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -1273,28 +1255,28 @@ volumes:
 
 ---
 
-### 5.1.1 Konteneryzacja — Multi-stage i override (ADR-035)
+### 5.1.1 Containerization — Multi-stage and override (ADR-035)
 
 **Multi-stage Dockerfile** (`backend/Dockerfile`):
-- **Stage 1 (builder):** instalacja zaleznosci z `requirements.txt` (gcc, git dla pip install z GitHub)
-- **Stage 2 (runtime):** kopiowanie zainstalowanych pakietow z buildera — obraz bez gcc/git w produkcji
+- **Stage 1 (builder):** installs the dependencies from `uv.lock` (`uv sync --locked --no-dev`; gcc and git for the dependencies from GitHub), then the GDAL binding that matches the system library (outside the lock)
+- **Stage 2 (runtime):** copies the installed packages from the builder; the production image has no gcc/git
 
 **`entrypoint.sh`:**
-- Wait-for-db — petla `pg_isready` z retry (max 30 prob, 1s interwal)
-- Automatyczne migracje Alembic (`alembic upgrade head`) na starcie kontenera
-- Exec do procesu glownego (uvicorn)
+- Wait-for-db — `pg_isready` loop with retry (max 30 attempts, 1 s interval)
+- Automatic Alembic migrations (`alembic upgrade head`) when the container starts
+- Exec into the main process (uvicorn)
 
 **Override pattern (dev/prod):**
-- `docker-compose.yml` — bazowy plik (db + api + nginx), bez `--reload`, bez bind mount kodu
-- `docker-compose.override.yml` — automatycznie ladowany w dev: bind mount `./backend:/app`, `--reload`, `LOG_LEVEL=DEBUG`
-- `docker-compose.prod.yml` — override produkcyjny: 2 workery uvicorn, `LOG_LEVEL=WARNING`, bez `--reload`
+- `docker-compose.yml` — base file (db + api + nginx), without `--reload`, without a code bind mount
+- `docker-compose.override.yml` — loaded automatically in dev: bind mount `./backend:/app`, `--reload`, `LOG_LEVEL=DEBUG`
+- `docker-compose.prod.yml` — production override: 2 uvicorn workers, `LOG_LEVEL=WARNING`, without `--reload`
 
 **Healthcheck API:**
-- Kontener `api`: healthcheck `python -c "urllib.request.urlopen('http://localhost:8000/health')"` (30s interval)
-- Kontener `nginx`: `depends_on: api: condition: service_healthy`
+- Container `api`: healthcheck `python -c "urllib.request.urlopen('http://localhost:8000/health')"` (30 s interval)
+- Container `nginx`: `depends_on: api: condition: service_healthy`
 
-**Uruchomienie:**
-- Dev: `docker compose up` (automatycznie laduje override.yml)
+**Running:**
+- Dev: `docker compose up` (loads override.yml automatically)
 - Prod: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
 
 ---
@@ -1399,25 +1381,25 @@ http {
 }
 ```
 
-**CSP — dozwolone hosty zewnętrzne** (`docker/nginx.conf` i `docker/nginx-ssl.conf.template`, identycznie):
-- `script-src`, `style-src`: `https://unpkg.com` (Leaflet, MapLibre GL, maplibre-gl-leaflet), `https://cdn.jsdelivr.net` (Chart.js, Bootstrap w `/admin`); wszystkie biblioteki z CDN z SRI (`integrity`).
-- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK, także mapa wyboru obszaru w `/admin`), `https://server.arcgisonline.com` (ortofotomapa ESRI), `https://wody.isok.gov.pl` (mapa zagrożenia powodziowego, WMS Wód Polskich).
-- `connect-src`: `https://tiles.openfreemap.org` (styl, kafle wektorowe i glify OpenFreeMap pobierane przez MapLibre).
-- `worker-src blob:`, `child-src blob:` — Web Worker MapLibre GL.
+**CSP — allowed external hosts** (`docker/nginx.conf` and `docker/nginx-ssl.conf.template`, identical):
+- `script-src`, `style-src`: `https://unpkg.com` (Leaflet, MapLibre GL, maplibre-gl-leaflet), `https://cdn.jsdelivr.net` (Chart.js, Bootstrap in `/admin`); every library from a CDN has SRI (`integrity`).
+- `img-src`: `data:`, `blob:`, `https://mapy.geoportal.gov.pl` (OSM GUGiK, also the area selection map of `/admin`), `https://server.arcgisonline.com` (ESRI orthophoto), `https://wody.isok.gov.pl` (flood hazard map, WMS of Wody Polskie).
+- `connect-src`: `https://tiles.openfreemap.org` (style, vector tiles and glyphs of OpenFreeMap, fetched by MapLibre).
+- `worker-src blob:`, `child-src blob:` — the Web Worker of MapLibre GL.
 
-**Cache zasobów frontendu.** Przed nginx stoi Cloudflare (tunel), który cache'uje pliki `.js`/`.css` na brzegu (`cf-cache-status: HIT`) i wydłuża przeglądarkom `max-age` do 4 h (Browser Cache TTL strefy). Dlatego:
-- strony HTML (`/`, `/admin`, `/instrukcja/`, powrót SPA na `index.html`) idą z `Cache-Control: no-cache` i ETag — przeglądarka i Cloudflare pytają nginx przy każdym wejściu (zwykle 304), a Cloudflare ich nie cache'uje (`DYNAMIC`);
-- strony odwołują się do własnych JS/CSS adresem z wersją `?v=<10 znaków SHA-256 zawartości>`; zmieniony plik ma nowy adres (nowy klucz cache Cloudflare i przeglądarki), więc wdrożenie jest widoczne od pierwszego przeładowania bez czyszczenia cache. Niezmienione pliki zachowują adres i cache;
-- wersje ustawia `python3 scripts/bump_asset_versions.py` (bez kroku budowania); hook pre-commit uruchamia go przy zmianach w `frontend/`, CI sprawdza `--check`. Biblioteki z CDN mają wersję w adresie i SRI, skrypt ich nie dotyka.
+**Front-end asset cache.** Cloudflare (a tunnel) stands in front of nginx; it caches the `.js`/`.css` files at the edge (`cf-cache-status: HIT`) and extends the browsers' `max-age` to 4 h (the Browser Cache TTL of the zone). Therefore:
+- the HTML pages (`/`, `/admin`, `/instrukcja/`, the SPA fallback to `index.html`) are sent with `Cache-Control: no-cache` and an ETag: the browser and Cloudflare ask nginx at every visit (usually 304), and Cloudflare does not cache them (`DYNAMIC`);
+- the pages reference their own JS/CSS by a URL with the version `?v=<10 characters of the SHA-256 of the content>`; a changed file gets a new URL (a new cache key of Cloudflare and of the browser), so a deployment is visible from the first reload without clearing a cache. Unchanged files keep their URL and their cache;
+- the versions are set by `python3 scripts/bump_asset_versions.py` (no build step): run it after a change of JS/CSS; `scripts/gate.sh` and the CI job `frontend-assets` check them with `--check`. The CDN libraries carry their version in the URL and SRI; the script does not touch them.
 
 ---
 
-### 5.3 Środowiska (Environments)
+### 5.3 Environments
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      DEVELOPMENT                        │
-│  - .venv + docker compose up -d db (tylko PostGIS)     │
+│  - .venv + docker compose up -d db (PostGIS only)      │
 │  - uvicorn api.main:app --reload                       │
 │  - Debug logs (DEBUG level)                            │
 │  - Sample data in database                             │
@@ -1449,9 +1431,9 @@ http {
 ### 6.1 Threat Model
 
 **Assets:**
-- Database (NMT graf, precipitation data)
+- Database (the NMT graph, precipitation data)
 - API endpoints
-- User data (minimal - tylko lokalizacje zlewni)
+- User data (minimal - only watershed locations)
 
 **Threats:**
 - SQL Injection
@@ -1461,15 +1443,15 @@ http {
 - Unauthorized access
 
 **Mitigations:**
-- ✅ Parametryzowane SQL queries (SQLAlchemy ORM)
+- ✅ Parameterised SQL queries (SQLAlchemy ORM)
 - ✅ Input validation (Pydantic)
-- ✅ Rate limiting (Nginx — 3 strefy: api_limit, tile_limit, general_limit)
-- ✅ CORS z restrykcyjnymi origins (env var `CORS_ORIGINS`), `allow_credentials=False`
+- ✅ Rate limiting (Nginx — 3 zones: api_limit, tile_limit, general_limit)
+- ✅ CORS with restrictive origins (env var `CORS_ORIGINS`), `allow_credentials=False`
 - ✅ GZip middleware (FastAPI)
 - ✅ Request ID tracing (`X-Request-ID` header, structlog context)
 - ✅ Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options)
 - ✅ Resource limits Docker (memory: 2G db, 8G api)
-- ✅ Admin API key auth (X-Admin-Key header, file-based lub env var, ADR-034)
+- ✅ Admin API key auth (X-Admin-Key header, file-based or env var, ADR-034)
 - ✅ No user authentication needed (internal network only in MVP)
 
 ---
@@ -1479,7 +1461,7 @@ http {
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    NETWORK LAYER                        │
-│  - Firewall (UFW): tylko porty 80, 443, 22            │
+│  - Firewall (UFW): only ports 80, 443, 22             │
 │  - Internal network only (no public internet access)    │
 └─────────────────────────────────────────────────────────┘
                            │
@@ -1494,8 +1476,8 @@ http {
                            │
 ┌──────────────────────────▼──────────────────────────────┐
 │                   DATABASE LAYER                        │
-│  - Parametryzowane queries (SQLAlchemy)               │
-│  - Read-only user dla preprocessing data              │
+│  - Parameterised queries (SQLAlchemy)                 │
+│  - Read-only user for preprocessing data              │
 │  - Backups encrypted                                   │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -1539,13 +1521,15 @@ async def add_request_id(request, call_next):
     return response
 ```
 
+**Request correlation and log rotation.** nginx gives every request an `X-Request-ID` and logs `request_id`, `request_time` and `upstream_time` (the HTTP configuration and the HTTPS template); requests without the proxy get their own ID in nginx. For API requests nginx passes the same ID to FastAPI. The middleware `add_request_id` of `api/main.py` takes a forwarded ID of 32 hexadecimal characters (otherwise it makes `uuid4().hex`), binds it to the structlog context, returns it in the `X-Request-ID` header and writes `request_completed`, or `request_failed` when the application raises, with `method`, `path`, `status_code` and `duration_ms`. nginx writes to stdout/stderr; the logs of nginx, the API and PostgreSQL rotate as Docker `json-file` logs of 10 MiB × 50 files per container (README, „Service logs”).
+
 **Log Levels:**
 
 ---
 
-### 7.2 Metrics (Opcjonalnie - Prometheus)
+### 7.2 Metrics (Optional - Prometheus)
 
-**Metryki do zbierania:**
+**Metrics to collect:**
 - Request count (by endpoint)
 - Request duration (histogram)
 - Active connections
@@ -1642,10 +1626,10 @@ async def health_check(db = Depends(get_db)):
          └─────────────────────┘
 ```
 
-**Dodatkowe komponenty:**
-- Redis dla cache i session storage
-- Message queue (Celery + RabbitMQ) dla długich zadań
-- CDN dla static assets
+**Additional components:**
+- Redis for cache and session storage
+- Message queue (Celery + RabbitMQ) for long tasks
+- CDN for static assets
 
 ---
 
@@ -1655,10 +1639,10 @@ async def health_check(db = Depends(get_db)):
 
 **Database backups:**
 ```bash
-# Cron job: codziennie o 2 AM
+# Cron job: every day at 2 AM
 0 2 * * * docker exec hydro_db pg_dump -U hydro_user hydro_db | gzip > /backups/hydro_db_$(date +\%Y\%m\%d).sql.gz
 
-# Retention: 7 dni local, 30 dni remote (rsync na zdalny magazyn)
+# Retention: 7 days local, 30 days remote (rsync to a remote store)
 ```
 
 **Application code:**
@@ -1666,47 +1650,47 @@ async def health_check(db = Depends(get_db)):
 - Tagged releases
 
 **Preprocessing data:**
-- Export `stream_network`, `stream_catchments`, `precipitation_data`, `land_cover` raz po preprocessingu
-- Store na zewnętrznym dysku
+- Export `stream_network`, `stream_catchments`, `precipitation_data`, `land_cover` once after preprocessing
+- Stored on an external disk
 
 ---
 
 ### 9.2 Recovery Procedures
 
-**Scenariusz 1: Database corruption**
-1. Stop aplikację: `docker compose down`
-2. Restore z backupu: `gunzip -c backup.sql.gz | docker exec -i hydro_db psql -U hydro_user hydro_db`
+**Scenario 1: Database corruption**
+1. Stop the application: `docker compose down`
+2. Restore from the backup: `gunzip -c backup.sql.gz | docker exec -i hydro_db psql -U hydro_user hydro_db`
 3. Restart: `docker compose up -d`
 4. Verify: Check `/health` endpoint
 
-**Scenariusz 2: Server failure**
-1. Provision nowy serwer
+**Scenario 2: Server failure**
+1. Provision a new server
 2. Install Docker
 3. Clone repo: `git clone ...`
-4. Restore database z backupu
+4. Restore the database from the backup
 5. Deploy: `docker compose up -d`
-6. Update DNS (jeśli dotyczy)
+6. Update DNS (if applicable)
 
-**RTO (Recovery Time Objective):** < 4 godziny  
-**RPO (Recovery Point Objective):** < 24 godziny (daily backups)
+**RTO (Recovery Time Objective):** < 4 hours  
+**RPO (Recovery Point Objective):** < 24 hours (daily backups)
 
 ---
 
 ## 10. Performance Optimization
 
-### 10.0 Podejście do Wydajności
+### 10.0 Performance Approach
 
-**Preprocessing (jednorazowy):**
-- Bulk INSERT via PostgreSQL COPY (ADR-006) zamiast individual INSERT
-- Numba `@njit` dla operacji na rastrach (ADR-017)
-- `pyflwdir.basins()` zamiast Python loops (ADR-016)
+**Preprocessing (one-off):**
+- Bulk INSERT via PostgreSQL COPY (ADR-006) instead of individual INSERTs
+- Numba `@njit` for raster operations (ADR-017)
+- `pyflwdir.basins()` instead of Python loops (ADR-016)
 
 **Runtime API:**
-- CatchmentGraph BFS in-memory (milisekundy) zamiast recursive CTE na flow_network (sekundy) — ADR-021, ADR-022
-- Pre-computed stats w `stream_catchments` (zero operacji rastrowych w runtime)
-- Cascaded merge threshold dla dużych zlewni (>500 segmentów) — ADR-042
+- CatchmentGraph BFS in memory (milliseconds) instead of a recursive CTE on flow_network (seconds) — ADR-021, ADR-022
+- Pre-computed stats in `stream_catchments` (zero raster operations at runtime)
+- Cascaded merge threshold for large watersheds (>500 segments) — ADR-042
 
-**Aktualne wyniki benchmarków:** patrz `docs/PROGRESS.md`
+**Current benchmark results:** see `docs/PROGRESS.md`
 
 ---
 
@@ -1714,32 +1698,32 @@ async def health_check(db = Depends(get_db)):
 
 **Database:**
 - Connection pooling (10 connections + 5 overflow)
-- Partial indexes (is_stream = TRUE tylko)
+- Partial indexes (is_stream = TRUE only)
 - Materialized views (future)
 
 **Python:**
-- Używaj NumPy vectorization zamiast Python loops
-- Leniwe ładowanie danych (generator expressions)
-- Async I/O dla API calls (FastAPI async endpoints)
+- Use NumPy vectorization instead of Python loops
+- Lazy loading of data (generator expressions)
+- Async I/O for API calls (FastAPI async endpoints)
 
 **Example - Vectorized calculations:**
 ```python
-# DOBRZE - vectorized
+# GOOD - vectorized
 import numpy as np
 
-def oblicz_opad_efektywny(intensywnosci, cn):
-    P_cum = np.cumsum(intensywnosci)
+def effective_rainfall(intensities, cn):
+    P_cum = np.cumsum(intensities)
     S = 25400 / cn - 254
     Pe_cum = np.where(P_cum > 0.2 * S, 
                       (P_cum - 0.2 * S)**2 / (P_cum + 0.8 * S), 
                       0)
     return np.diff(Pe_cum, prepend=0)
 
-# ŹLE - Python loop (wolniejsze 10-100x)
-def oblicz_opad_efektywny_slow(intensywnosci, cn):
+# BAD - Python loop (10-100x slower)
+def effective_rainfall_slow(intensities, cn):
     P_cum = []
     total = 0
-    for i in intensywnosci:
+    for i in intensities:
         total += i
         P_cum.append(total)
     
@@ -1758,16 +1742,16 @@ def oblicz_opad_efektywny_slow(intensywnosci, cn):
 
 **Map:**
 - Lazy loading tiles
-- Simplify geometries (Douglas-Peucker) dla wyświetlania
-- Use canvas renderer dla dużej liczby features
+- Simplify geometries (Douglas-Peucker) for display
+- Use the canvas renderer for a large number of features
 
 **Chart:**
-- Downsampling dla > 1000 punktów (Largest Triangle Three Buckets)
+- Downsampling for > 1000 points (Largest Triangle Three Buckets)
 - Use decimation plugin
 
 **Network:**
 - Gzip compression (Nginx)
-- Własne JS/CSS z wersją `?v=<hash zawartości>` w adresie (zob. 5.2, „Cache zasobów frontendu”)
+- Own JS/CSS with the version `?v=<content hash>` in the URL (see 5.2, „Front-end asset cache”)
 - Minify JS/CSS (production build)
 
 ---
@@ -1791,11 +1775,11 @@ def oblicz_opad_efektywny_slow(intensywnosci, cn):
 /--------------------\ - Mocked dependencies
 ```
 
-**Strategia testowania:**
-- **Unit tests** — moduły core z mockowanymi zależnościami (pytest + fixtures)
-- **Integration tests** — endpointy API z prawdziwą bazą PostGIS (test service w CI)
-- **E2E scripts** — `process_dem.py` (pełny pipeline end-to-end)
-- **CI:** pytest z coverage (aktualna liczba testów w wynikach CI)
+**Test strategy:**
+- **Unit tests** — core modules with mocked dependencies (pytest + fixtures)
+- **Integration tests** — API endpoints with a real PostGIS database (test service in CI)
+- **E2E scripts** — `process_dem.py` (the full end-to-end pipeline)
+- **CI:** pytest with coverage (the current number of tests is in the CI results)
 
 ---
 
@@ -1884,7 +1868,7 @@ jobs:
 
 ---
 
-## 12. Dokumentacja Architektury
+## 12. Architecture Documentation
 
 ### 12.1 C4 Model
 
@@ -1892,63 +1876,67 @@ jobs:
 ```
 ┌──────────────┐         ┌────────────────────────┐
 │              │         │                        │
-│  Użytkownik  ├────────►│  System Analizy        │
-│  (Planista)  │  Używa  │  Hydrologicznej        │
+│  User        ├────────►│  Hydrological          │
+│  (Planner)   │  Uses   │  Analysis System       │
 │              │         │                        │
 └──────────────┘         └───────┬────────────────┘
                                  │
-                                 │ Pobiera dane
+                                 │ Fetches data
                                  │
                     ┌────────────▼────────────┐
                     │                         │
                     │  GUGIK / IMGW           │
-                    │  (Źródła danych)        │
+                    │  (Data sources)         │
                     │                         │
                     └─────────────────────────┘
 ```
 
-**Level 2: Container Diagram** - patrz sekcja 1.1
+**Level 2: Container Diagram** - see section 1.1
 
-**Level 3: Component Diagram** - patrz sekcja 2.1
+**Level 3: Component Diagram** - see section 2.1
 
-**Level 4: Code** - patrz DEVELOPMENT_STANDARDS.md i inline documentation
+**Level 4: Code** - see the [Nogat standard](https://github.com/Daldek/Nogat/tree/main/standards) (DEV-7 to DEV-9) and the inline documentation
 
 ---
 
-## 13. Podsumowanie Decyzji Architektonicznych
+## 13. Summary of Architectural Decisions
 
-| Aspekt | Decyzja | Uzasadnienie |
+| Aspect | Decision | Rationale |
 |--------|---------|--------------|
-| **Backend Framework** | FastAPI | Szybkie, async, auto docs (OpenAPI) |
-| **Database** | PostgreSQL + PostGIS | Standardowe dla GIS, potężne spatial queries |
-| **Frontend** | Vanilla JS + Leaflet | Prostota, brak build step dla MVP |
-| **Deployment** | Docker Compose | Powtarzalność, izolacja |
-| **Preprocessing** | Jednorazowy (graf) | Szybkość runtime > czas preprocessing |
-| **Model hydrologiczny** | SCS CN + UH / Nash IUH / Snyder UH | Sprawdzony, odpowiedni dla małych zlewni |
-| **Hietogram** | Block / Euler II / Beta | 3 metody do wyboru w zależności od zastosowania |
+| **Backend Framework** | FastAPI | Fast, async, auto docs (OpenAPI) |
+| **Database** | PostgreSQL + PostGIS | Standard for GIS, powerful spatial queries |
+| **Frontend** | Vanilla JS + Leaflet | Simplicity, no build step for the MVP |
+| **Deployment** | Docker Compose | Repeatability, isolation |
+| **Preprocessing** | One-off (graph) | Runtime speed > preprocessing time |
+| **Hydrological model** | SCS CN + UH / Nash IUH / Snyder UH | Proven, suitable for small watersheds |
+| **Hyetograph** | Block / Euler II / Beta | 3 methods to choose from, depending on the use |
 
 ---
 
-**Wersja dokumentu:** 2.3
-**Data ostatniej aktualizacji:** 2026-11-01
+**Document version:** 2.7
+**Date of the last update:** 2026-11-02
 **Status:** Approved for implementation
 
-**Historia zmian:**
-- 2.3 (2026-11-01): GUI w identyfikacji wizualnej Nogata (ADR-065) — §4.1 nowa struktura `frontend/` (`tokens.css`, `chrome.css`, `app.css`, `shell.js`, `theme-init.js`, `theme-switch.js`, `img/hydrograf.svg`; usunięte `glass.css`, `style.css`, `draggable.js`), §4.2 powłoka Archiwisty i podkłady (OpenFreeMap przez MapLibre GL), wykresy w tokenach; §5.2 hosty CSP
-- 2.2 (2026-10-08): Kartograf 0.7.0 (etap K) — `download_dem.py`: `download_sheets()` zwraca `NmtDownloadReport` lub rzuca `NmtDownloadError`; `MetadataCache` w `<cache_dir>/kartograf_meta.db` (dysk lokalny, nigdy udział sieciowy); układ `cache/nmt/pl_<uklad>_<res>_evrf2007/` + `kampanie/`; mozaika z listy plików kroku 2 (szczegóły: `docs/integrations/KARTOGRAF.md` §6)
-- 2.1 (2026-09-28): `utils/sheet_finder.py` → `utils/sheet_lookup.py` — pozyskiwanie danych wylacznie przez Kartograf (ADR-057), cienki wrapper na `kartograf.find_sheets_for_bbox()` zamiast wlasnej reimplementacji matematyki godel
-- 2.0 (2026-03-28): Przebudowa topologii kanalizacji (ADR-052) — nowy modul sewer_topology.py (parser + walidator), jawna topologia zamiast heurystyk, 4 role wezlow (inlet/outlet/junction/storage), 2 formaty wejsciowe (A/B), pipeline dwufazowy, download_sewer.py zwraca tuple, migracja 027 (isolated->storage), admin sewer/config endpoint
-- 1.9 (2026-03-27): Integracja sieci kanalizacyjnej (ADR-051) — sewer_service.py, download_sewer.py, tabele sewer_nodes/sewer_network, 3 endpointy admin sewer, MVT sewer tiles, pipeline steps 3b/4a-4c, is_sewer_augmented w stream_network
-- 1.8 (2026-03-25): Aktualizacja po CP4+ — ADR 035-049 w tabeli, boundary.py i clean.py, koncepcyjne opisy CatchmentGraph/watershed_service (bez sygnatur), bdot_streams + nowe kolumny w schema, sekcja 2.5 (nowe koncepty), aktualizacja liczników (24+ migracji, 45+ unit tests, 8+ integration), modele hydrologiczne (Nash IUH, Snyder UH) i hietogramy (Block/Euler II/Beta)
-- 1.7 (2026-03-01): Aktualizacja vs rzeczywisty stan kodu — dodano: panel admin (ADR-034, 8 endpointów, admin.html, 3 moduły JS admin/), landcover MVT tiles, api/dependencies/, sekcja scripts/ (16 skryptów), 17 migracji, ADR-026..034; zaktualizowano: Docker (API memory 4G, ADMIN_API_KEY, volumes), Nginx (admin, SSE, health, static cache), config.py opis YAML, security (admin auth)
-- 1.6 (2026-02-16): Pełna aktualizacja — nowe tabele (stream_catchments, depressions), ADR-008..025, segmentacja konfluencyjna, Docker/Nginx zgodne z faktycznym stanem, structlog, security headers, usunięcie benchmarków liczbowych
-- 1.5 (2026-02-14): Eliminacja FlowGraph z runtime (ADR-022) — diagram, moduły, przepływ danych zaktualizowane; +watershed_service.py, flow_graph.py DEPRECATED
-- 1.4 (2026-02-13): Dodano catchment_graph.py i constants.py do core, zaktualizowano sygnatury morphometry.py, alfabetyczne uporządkowanie modulow core
-- 1.3 (2026-02-07): Aktualizacja struktury modulow (morphometry, cn_tables, cn_calculator, raster_utils, sheet_finder), usuniecie core/hydrograph.py (przeniesiony do Hydrolog)
-- 1.2 (2026-01-20): Dodano wyniki testów optymalizacji (COPY 21x, reverse trace 257x)
-- 1.1 (2026-01-20): Dodano sekcję 10.0 z wynikami benchmarków z testu end-to-end
-- 1.0 (2026-01-14): Wersja początkowa
+**Change history:**
+- 2.7 (2026-11-02): merge of `feature/visual-identity` (its version 2.3 of 2026-11-01): GUI in the Nogat visual identity (ADR-065) — §4.1 new structure of `frontend/` (`tokens.css`, `chrome.css`, `app.css`, `shell.js`, `theme-init.js`, `theme-switch.js`, `welcome.js`, `img/hydrograf.svg`, `instrukcja/`; removed `glass.css`, `style.css`, `draggable.js`), §4.2 the Archiwista shell and basemaps (OpenFreeMap through MapLibre GL), charts in tokens, (i) explanations, AMC and your own rainfall series, advanced mode, analysis results (`hydrograf-results/1` with `water_level`), the MZP overlay; §2.2 `POST /api/delineate-watershed/preview`, `amc` and `custom_precipitation`, `GET /api/layers`, `result_ids` and `water_levels` of the terrain profile (`core/analysis_results.py`); §5.1 nginx on the loopback; §5.2 CSP hosts and the front-end asset cache (`?v=`, HTML `no-cache`); §7.1 request correlation and log rotation; ADR-065 in the table
+- 2.6 (2026-10-25): `core/watershed.py` (`FlowCell`, `build_boundary`, `build_boundary_polygonize`, `calculate_watershed_area_km2`) and the cell functions of `core/morphometry.py` are removed, nothing called them; `core/morphometry.py` keeps `calculate_shape_indices`; the sections 2.4.1 to 2.4.9 are renumbered (section 2.4.7 is the Hydrolog library, 2.4.8 in version 2.4)
+- 2.5 (2026-10-25): Kartograf 0.8.0 (ADR-061): the downloads are versions of the Kartograf store `cache/kartograf/` (a hard-linked standard path, `versions/`, a sidecar per file), not the `cache/nmt/pl_<system>_<res>_evrf2007/` + `kampanie/` layout; `utils/kartograf_store.py`; `download_dem.py` writes into the store; the ADR table names ADR-060 and ADR-061 (details: `docs/integrations/KARTOGRAF.md` §3 and §7)
+- 2.4 (2026-10-25): Hydrolog and IMGWTools are pinned by commit (ADR-060): section 2.4.8 names no version
+- 2.3 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
+- 2.2 (2026-10-08): Kartograf 0.7.0 (stage K) — `download_dem.py`: `download_sheets()` returns `NmtDownloadReport` or raises `NmtDownloadError`; `MetadataCache` in `<cache_dir>/kartograf_meta.db` (local disk, never a network share); layout `cache/nmt/pl_<system>_<res>_evrf2007/` + `kampanie/`; mosaic from the file list of step 2 (details: §6 of `docs/integrations/KARTOGRAF.md` version 6.0)
+- 2.1 (2026-09-28): `utils/sheet_finder.py` → `utils/sheet_lookup.py` — data acquisition only through Kartograf (ADR-057), a thin wrapper around `kartograf.find_sheets_for_bbox()` instead of our own reimplementation of the sheet-code arithmetic
+- 2.0 (2026-03-28): Rebuilt sewer topology (ADR-052) — new module sewer_topology.py (parser + validator), explicit topology instead of heuristics, 4 node roles (inlet/outlet/junction/storage), 2 input formats (A/B), two-phase pipeline, download_sewer.py returns a tuple, migration 027 (isolated->storage), admin sewer/config endpoint
+- 1.9 (2026-03-27): Storm-sewer network integration (ADR-051) — sewer_service.py, download_sewer.py, the tables sewer_nodes/sewer_network, 3 admin sewer endpoints, MVT sewer tiles, pipeline steps 3b/4a-4c, is_sewer_augmented in stream_network
+- 1.8 (2026-03-25): Update after CP4+ — ADR 035-049 in the table, boundary.py and clean.py, conceptual descriptions of CatchmentGraph/watershed_service (without signatures), bdot_streams + new columns in the schema, section 2.5 (new concepts), updated counters (24+ migrations, 45+ unit tests, 8+ integration), hydrological models (Nash IUH, Snyder UH) and hyetographs (Block/Euler II/Beta)
+- 1.7 (2026-03-01): Update against the actual state of the code — added: admin panel (ADR-034, 8 endpoints, admin.html, 3 admin/ JS modules), landcover MVT tiles, api/dependencies/, scripts/ section (16 scripts), 17 migrations, ADR-026..034; updated: Docker (API memory 4G, ADMIN_API_KEY, volumes), Nginx (admin, SSE, health, static cache), config.py YAML description, security (admin auth)
+- 1.6 (2026-02-16): Full update — new tables (stream_catchments, depressions), ADR-008..025, confluence segmentation, Docker/Nginx matching the actual state, structlog, security headers, removal of numeric benchmarks
+- 1.5 (2026-02-14): Removal of FlowGraph from the runtime (ADR-022) — diagram, modules and data flow updated; +watershed_service.py, flow_graph.py DEPRECATED
+- 1.4 (2026-02-13): Added catchment_graph.py and constants.py to core, updated the signatures of morphometry.py, alphabetical order of the core modules
+- 1.3 (2026-02-07): Update of the module structure (morphometry, cn_tables, cn_calculator, raster_utils, sheet_finder), removal of core/hydrograph.py (moved to Hydrolog)
+- 1.2 (2026-01-20): Added the results of the optimization tests (COPY 21x, reverse trace 257x)
+- 1.1 (2026-01-20): Added section 10.0 with the benchmark results of the end-to-end test
+- 1.0 (2026-01-14): Initial version
 
 ---
 
-*Ten dokument definiuje architekturę techniczną systemu. Wszelkie znaczące zmiany wymagają update tego dokumentu i review przez Tech Lead.*
+*This document defines the technical architecture of the system. Every significant change requires an update of this document and a review by the Tech Lead.*

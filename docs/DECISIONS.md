@@ -1,7 +1,82 @@
-# Rejestr decyzji — Hydrograf
+# Decisions: Hydrograf
 
-Kazda decyzja architektoniczna lub projektowa jest udokumentowana ponizej.
-Format: numer, data, kontekst (dlaczego temat powstal), rozwazone opcje, decyzja, konsekwencje.
+A decision with alternatives is an ADR (DOC-8, DEV-17.2). ADR-001 to ADR-057 are in this
+file, below the index; their text is still Polish and is translated with the other
+documents. New ADRs are separate files `docs/decisions/NNNN-slug.md`. An ADR has an ID,
+title, date, status (`proposed`, `accepted`, `amended by ...`, `superseded by ...`),
+context, options considered, decision and consequences; errata are appended with a date
+and never rewrite the decision. An amendment is noted at the top of the amended ADR.
+
+## Index
+
+| ID | Title | Status | Date |
+|---|---|---|---|
+| [ADR-001](#adr-001-graf-w-bazie-zamiast-rastrow-runtime) | Graph in the database instead of runtime rasters | accepted | 2026-01-14 |
+| [ADR-002](#adr-002-monolityczna-aplikacja-fastapi) | Monolithic FastAPI application | accepted | 2026-01-14 |
+| [ADR-003](#adr-003-leafletjs-zamiast-google-maps) | Leaflet.js instead of Google Maps | accepted | 2026-01-14 |
+| [ADR-004](#adr-004-hietogram-beta-zamiast-blokowego) | Beta hyetograph instead of block hyetograph | accepted | 2026-01-14 |
+| [ADR-005](#adr-005-docker-compose-dla-deployment) | Docker Compose for deployment | accepted | 2026-01-14 |
+| [ADR-006](#adr-006-copy-zamiast-insert-dla-importu-dem) | COPY instead of INSERT for the DEM import | accepted | 2026-01-20 |
+| [ADR-007](#adr-007-reverse-trace-zamiast-iteracji-po-head-cells) | Reverse trace instead of iterating over head cells | accepted | 2026-01-20 |
+| [ADR-008](#adr-008-bezposrednia-zaleznosc-imgwtools) | Direct dependency on IMGWTools | accepted | 2026-01-21 |
+| [ADR-009](#adr-009-migracja-blackflake8-na-ruff) | Migration from black and flake8 to Ruff | amended by ADR-058 | 2026-02-07 |
+| [ADR-010](#adr-010-kondensacja-progressmd-z-975-do-75-linii) | Condensing PROGRESS.md from 975 to about 75 lines | accepted | 2026-02-07 |
+| [ADR-011](#adr-011-venv-jako-podstawowe-srodowisko-deweloperskie) | .venv as the primary development environment | amended by ADR-058 | 2026-02-07 |
+| [ADR-012](#adr-012-migracja-z-pysheds-na-pyflwdir-deltares) | Migration from pysheds to pyflwdir (Deltares) | accepted | 2026-02-07 |
+| [ADR-013](#adr-013-wypalanie-ciekow-w-dem-stream-burning) | Stream burning in the DEM | accepted | 2026-02-07 |
+| [ADR-014](#adr-014-rozszerzenie-parametrow-morfometrycznych-i-analiz-rastrowych) | Extended morphometric parameters and raster analyses | accepted | 2026-02-07 |
+| [ADR-015](#adr-015-ochrona-przed-resource-exhaustion-oom) | Protection against resource exhaustion (OOM) | accepted | 2026-02-09 |
+| [ADR-016](#adr-016-przepisanie-delineate_subcatchments-na-pyflwdirbasins) | Rewriting delineate_subcatchments with pyflwdir.basins() | accepted | 2026-02-12 |
+| [ADR-017](#adr-017-podzial-process_dempy-na-moduly-core-i-optymalizacja-pipeline) | Splitting process_dem.py into core/ modules and optimising the pipeline | accepted | 2026-02-12 |
+| [ADR-018](#adr-018-optymalizacja-postgis-w-workflow--in-memory-flow-graph--pre-gen-tiles) | PostGIS optimisation in the workflow: in-memory flow graph and pre-generated tiles | accepted | 2026-02-12 |
+| [ADR-019](#adr-019-naprawa-deduplikacji-ciekow-multi-threshold) | Fix of the multi-threshold stream deduplication | accepted | 2026-02-12 |
+| [ADR-020](#adr-020-punkty-drenazu-w-zbiornikach-bezodplywowych-bdot10k) | Drain points in endorheic water bodies (BDOT10k) | accepted | 2026-02-12 |
+| [ADR-021](#adr-021-graf-zlewni-czastkowych-zamiast-rastrowych-operacji-runtime) | Sub-catchment graph instead of runtime raster operations | accepted | 2026-02-13 |
+| [ADR-022](#adr-022-eliminacja-flowgraph-z-runtime-api) | Removing FlowGraph from the runtime API | accepted | 2026-02-14 |
+| [ADR-023](#adr-023-hierarchiczne-zlewnie--merge-zamiast-redundancyjnej-ekstrakcji) | Hierarchical catchments: merge instead of redundant extraction | superseded by ADR-026 | 2026-02-15 |
+| [ADR-024](#adr-024-precyzyjna-selekcja-cieku--segmentacja-konfluencyjna--fine-threshold-bfs) | Precise stream selection: confluence segmentation and fine-threshold BFS | superseded by ADR-026 | 2026-02-15 |
+| [ADR-025](#adr-025-warunkowy-prog-selekcji-cieku--fine-bfs-tylko-dla-display_threshold100) | Conditional selection threshold: fine BFS only for display_threshold == 100 | superseded by ADR-026 | 2026-02-16 |
+| [ADR-026](#adr-026-selekcja-oparta-o-poligon-zlewni-2026-02-16) | Selection based on the catchment polygon | amended by ADR-027 | 2026-02-16 |
+| [ADR-027](#adr-027-snap-to-stream-zamiast-st_contains-w-selekcji-cieku-2026-02-17) | Snap-to-stream instead of ST_Contains in stream selection | accepted | 2026-02-17 |
+| [ADR-028](#adr-028-eliminacja-tabeli-flow_network-2026-02-17) | Removing the flow_network table | accepted | 2026-02-17 |
+| [ADR-029](#adr-029-wyznaczanie-glownego-cieku-w-catchmentgraph-trace_main_channel) | Main stream tracing in CatchmentGraph (trace_main_channel) | accepted | 2026-02-22 |
+| [ADR-030](#adr-030-usuniecie-progu-fa-100-m²-z-systemu) | Removing the 100 m² flow accumulation threshold | accepted | 2026-02-24 |
+| [ADR-031](#adr-031-flaga---waterbody-mode-do-sterowania-obsługa-zbiornikow-wodnych) | The --waterbody-mode flag for handling water bodies | accepted | 2026-02-24 |
+| [ADR-032](#adr-032-wygladzanie-granic-zlewni-chaikin-smoothing) | Smoothing of catchment boundaries (Chaikin) | accepted | 2026-03-01 |
+| [ADR-033](#adr-033-podniesienie-budynkow-w-nmt-building-raising) | Raising buildings in the DEM | accepted | 2026-03-01 |
+| [ADR-034](#adr-034-panel-administracyjno-diagnostyczny) | Administration and diagnostics panel | accepted | 2026-03-01 |
+| [ADR-035](#adr-035-uzupelnienie-konteneryzacji-multi-stage-entrypoint-prod-override) | Completing the containerisation (multi-stage build, entrypoint, production override) | accepted | 2026-03-02 |
+| [ADR-036](#adr-036-hardening-kontenerow-docker) | Docker container hardening | accepted | 2026-03-02 |
+| [ADR-037](#adr-037-separacja-cachedata--kartograf-v050) | Separating cache from data; Kartograf v0.5.0 | accepted | 2026-03-02 |
+| [ADR-038](#adr-038-hsg-poland-wide-cache--cleanup-extension) | Poland-wide HSG cache and the cleanup extension | accepted | 2026-03-02 |
+| [ADR-039](#adr-039-uproszczenie-selekcji-zlewni-do-czystego-st_contains) | Simplifying catchment selection to plain ST_Contains | accepted | 2026-03-05 |
+| [ADR-040](#adr-040-vector-boundary-file-support) | Vector boundary file support | accepted | 2026-03-09 |
+| [ADR-041](#adr-041-monotoniczne-wygładzanie-cieków) | Monotonic stream smoothing | accepted | 2026-03-18 |
+| [ADR-042](#adr-042-optymalizacja-wydajnosci-select-stream-dla-duzych-zlewni) | Performance of select-stream for large catchments | accepted | 2026-03-17 |
+| [ADR-044](#adr-044-bdot10k-stream-matching-w-preprocessingu) | BDOT10k stream matching in the preprocessing | accepted | 2026-03-23 |
+| [ADR-045](#adr-045-wfs-prg-zamiast-grid-sampling-wms-dla-teryt-discovery) | WFS PRG instead of WMS grid sampling for TERYT discovery | accepted | 2026-03-24 |
+| [ADR-046](#adr-046-upstream_area_km2-jako-kryterium-wyboru-galezi-w-trace_main_channel) | upstream_area_km2 as the branch criterion in trace_main_channel | accepted | 2026-03-24 |
+| [ADR-047](#adr-047-wygładzanie-chaikin-cieków-w-preprocessingu) | Chaikin smoothing of streams in the preprocessing | accepted | 2026-03-24 |
+| [ADR-048](#adr-048-droga-spływu-z-działu-wód-jako-osobna-geometria) | Flow path from the divide as a separate geometry | accepted | 2026-03-24 |
+| [ADR-049](#adr-049-dem-auto-discovery-z-lancuchem-fallback) | DEM auto-discovery with a fallback chain | accepted | 2026-03-25 |
+| [ADR-050](#adr-050-unified-delineate-watershed-endpoint) | Unified delineate-watershed endpoint | accepted | 2026-03-25 |
+| [ADR-051](#adr-051-integracja-kanalizacji-deszczowej-2026-03-27) | Storm-sewer integration | amended by ADR-052 | 2026-03-27 |
+| [ADR-052](#adr-052-jawna-topologia-sieci-kanalizacyjnej-przebudowa) | Explicit storm-sewer topology (rebuild) | accepted | 2026-03-28 |
+| [ADR-053](#adr-053-feedback-testerow-z-opt-in-diagnostyka-po-stronie-klienta) | Tester feedback with opt-in client-side diagnostics | accepted | 2026-08-02 |
+| [ADR-054](#adr-054-baza-odniesienia-dla-hydraulic_length_km--outlet_flow_dist_m) | Reference base of hydraulic_length_km: outlet_flow_dist_m | accepted | 2026-08-02 |
+| [ADR-057](#adr-057-pozyskiwanie-danych-wylacznie-przez-kartograf) | Spatial data only through Kartograf | accepted | 2026-09-28 |
+| [ADR-058](decisions/0058-adopt-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | accepted | 2026-10-25 |
+| [ADR-059](decisions/0059-rest-errors-as-problem-json.md) | REST errors as problem+json with registry codes | accepted | 2026-10-25 |
+| [ADR-060](decisions/0060-pin-producer-heads-by-commit.md) | Pin the Hydrolog and IMGWTools heads by commit | accepted | 2026-10-25 |
+| [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | accepted | 2026-10-25 |
+| [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
+| [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | accepted | 2026-11-01 |
+
+ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
+dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were
+withdrawn with the dashboard in session 85; their text is in git (`git show
+b7605de:docs/DECISIONS.md`). ADR-063 and ADR-064 are not used: they were reserved in the
+specifications and plans of the Kartograf work when ADR-065 was numbered.
 
 ---
 
@@ -148,6 +223,9 @@ Format: numer, data, kontekst (dlaczego temat powstal), rozwazone opcje, decyzja
 
 ## ADR-009: Migracja black+flake8 na Ruff
 
+> **Amended by ADR-058 (2026-10-25):** the rule set is `E F W I UP B SIM C4 D` with NumPy
+> docstrings (DEV-7.2) and `ruff format` sets the style (DEV-7.1).
+
 **Data:** 2026-02-07
 **Status:** Przyjeta
 
@@ -182,6 +260,10 @@ Format: numer, data, kontekst (dlaczego temat powstal), rozwazone opcje, decyzja
 ---
 
 ## ADR-011: .venv jako podstawowe srodowisko deweloperskie
+
+> **Amended by ADR-058 (2026-10-25):** uv manages the environment from `backend/uv.lock`
+> (`uv sync --locked`); the development tools are the `dev` dependency group and
+> `backend/requirements.txt` is gone.
 
 **Data:** 2026-02-07
 **Status:** Przyjeta
@@ -1254,28 +1336,4 @@ Dodatkowe zmiany:
 - c) bez zmian.
 Kandydat do upstreamu "publiczne discover_teryts_for_bbox()" pozostaje otwarty.
 
----
-
-## ADR-065: Identyfikacja wizualna Nogata i powloka Archiwisty zamiast paneli glassmorphism
-
-**Data:** 2026-11-01
-**Status:** Przyjeta
-
-**Kontekst:** Interfejs Hydrografa mial wlasny styl: polprzezroczyste panele glassmorphism (`css/glass.css`, `css/style.css`), plywajacy panel przesuwany mysza (`js/draggable.js`) i Bootstrap na kazdej stronie. Kazda aplikacja ekosystemu Nogata wygladala inaczej, wiec uzytkownik przechodzacy miedzy nimi uczyl sie od nowa ukladu, kolorow i kontrolek. Nogat przyjal wspolna identyfikacje wizualna (decyzja ECO-055, standard DEV-15.3): tokeny w `design/tokens.css` (paleta i czcionka z debever.pl, gestosc i kontrolki z Archiwisty), powloka Archiwisty jako wzorzec ukladu, makieta Hydrografa w `design/mockups/hydrograf/`.
-
-**Opcje:**
-- A) Zostawic interfejs glassmorphism bez zmian — zero pracy, ale Hydrograf zostaje jedyna aplikacja ekosystemu poza wspolnym wygladem
-- B) Tylko przekolorowac obecny interfejs tokenami Nogata — kolory wspolne, ale uklad (plywajacy panel, Bootstrap) nadal inny niz w pozostalych aplikacjach ekosystemu
-- C) Tokeny Nogata i powloka Archiwisty — gorny pasek, szyna nawigacji, panele boczne o regulowanej szerokosci, uklad telefonu, motyw jasny i ciemny
-
-**Decyzja:** Opcja C. `frontend/css/tokens.css` to kopia `design/tokens.css` Nogata (commit 29e7e1c, wskazany w naglowku pliku); w Hydrografie sie go nie edytuje — zmiana palety idzie przez Nogat i ponowne skopiowanie. Wszystkie kolory, czcionki, promienie i cienie wylacznie przez tokeny, rowniez w wykresach Chart.js (odczyt przez `getComputedStyle`, przemalowanie przy zmianie motywu). Powloka (`css/chrome.css`) jest wspolna dla strony glownej, `/admin` i `/instrukcja`; strona glowna: lewy panel „Warstwy” (260-560 px), mapa z paskiem trybow i dolna szuflada profilu terenu, prawy panel „Zlewnia” (340-720 px) z sekcjami `<details>`; ponizej 860 px dolny pasek i arkusze od dolu. Motyw Auto/Jasny/Ciemny w `localStorage` (`nogat-theme`), ustawiany przed pierwszym malowaniem (`js/theme-init.js`). Strona glowna bez Bootstrapa (formularz uwag jako natywny `<dialog>`); `/admin` zachowuje Bootstrap 5.3.3 dla siatki i okien modalnych, przekolorowany tokenami. Podklady dobrane do szarej palety: OpenFreeMap szary (wektorowy, MapLibre GL), OSM GUGiK szary, Ortofotomapa ESRI, bez podkladu.
-
-**Konsekwencje:**
-- (+) Jeden wyglad i uklad we wszystkich GUI ekosystemu (ECO-055) — uzytkownik Archiwisty od razu odnajduje sie w Hydrografie
-- (+) Motyw ciemny, uklad telefonu i wykresy zgodne z motywem bez osobnej pracy w kazdej aplikacji
-- (+) Mniej wlasnego CSS i JS: usuniete `glass.css`, `style.css`, `draggable.js`; Bootstrap zniknal ze strony glownej
-- (-) `tokens.css` to kopia, nie zaleznosc — po zmianie tokenow w Nogacie trzeba ja recznie skopiowac ponownie (commit zrodlowy w naglowku pliku)
-- (-) Bootstrap zostaje w `/admin` — dwa systemy styli na jednej stronie, Bootstrap trzeba przekolorowywac tokenami przy kazdej zmianie palety
-- (-) Nowe biblioteki z CDN (MapLibre GL 4.7.1, `@maplibre/maplibre-gl-leaflet` 0.0.22) — ladowane z SRI (`integrity` + `crossorigin`) jak Leaflet i Chart.js; CSP rozszerzone o `https://tiles.openfreemap.org` (`connect-src`) oraz `blob:` (`img-src`, `worker-src`, `child-src`)
-- (-) Podklad domyslny zalezy od zewnetrznego OpenFreeMap; bez MapLibre warstwa wraca do OSM GUGiK
-- (-) Panel wynikow nie jest juz plywajacy ani przesuwany — zamiast tego panele stale przy krawedziach, z regulowana szerokoscia i mozliwoscia zamkniecia
+**Update 2026-10-25 (ADR-061, Kartograf 0.8.0 head):** exception a) is closed: Kartograf has the public `discover_teryts_for_bbox`, and `download_landcover(bbox=)` finds the counties of an area itself, so the WFS code of Hydrograf, the fallback through the private method and its contract test are deleted. Exceptions b) and c) stand.

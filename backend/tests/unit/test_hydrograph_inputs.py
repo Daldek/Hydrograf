@@ -6,6 +6,7 @@ The fast path (pre-computed morphometry in the request) is used so no
 watershed delineation is needed; PMAXTP lookup is patched.
 """
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,7 +25,7 @@ from models.schemas import (
 _HG = "api.endpoints.hydrograph"
 
 
-def _morphometry(cn: float = 72.0) -> dict:
+def _morphometry(cn: float = 72.0) -> dict[str, Any]:
     return {
         "area_km2": 10.0,
         "perimeter_km": 20.0,
@@ -41,7 +42,7 @@ def _morphometry(cn: float = 72.0) -> dict:
     }
 
 
-def _request(**overrides) -> dict:
+def _request(**overrides) -> dict[str, Any]:
     body = {
         "latitude": 51.0,
         "longitude": 16.05,
@@ -143,21 +144,19 @@ def test_custom_hietogram_uses_interval_end_times():
 # ---------------------------------------------------------------------------
 
 
-def _post(client, body) -> dict:
+def _post(client, body) -> dict[str, Any]:
     response = client.post("/api/generate-hydrograph", json=body)
     assert response.status_code == 200, response.text
-    return response.json()
+    data: dict[str, Any] = response.json()
+    return data
 
 
 class TestAmc:
     def test_amc_changes_cn_and_effective_rainfall(self, client, pmaxtp_45mm):
-        results = {
-            amc: _post(client, _request(amc=amc)) for amc in ("I", "II", "III")
-        }
+        results = {amc: _post(client, _request(amc=amc)) for amc in ("I", "II", "III")}
         cn = {amc: r["water_balance"]["cn_used"] for amc, r in results.items()}
         pe = {
-            amc: r["water_balance"]["total_effective_mm"]
-            for amc, r in results.items()
+            amc: r["water_balance"]["total_effective_mm"] for amc, r in results.items()
         }
 
         assert cn["II"] == 72.0
@@ -228,23 +227,24 @@ class TestCustomPrecipitation:
         assert data["precipitation"]["source"] == "custom"
         assert data["precipitation"]["total_mm"] == 40.0
 
-    def test_pmaxtp_response_reports_source_and_probability(
-        self, client, pmaxtp_45mm
-    ):
+    def test_pmaxtp_response_reports_source_and_probability(self, client, pmaxtp_45mm):
         precip = _post(client, _request())["precipitation"]
         assert precip["source"] == "pmaxtp"
         assert precip["probability_percent"] == 10
         assert precip["total_mm"] == 45.0
 
-    def test_invalid_series_returns_422(self, client, pmaxtp_45mm):
+    def test_invalid_series_returns_400_with_polish_message(self, client, pmaxtp_45mm):
         response = client.post(
             "/api/generate-hydrograph",
             json=_request(
                 custom_precipitation={"timestep_min": 10, "depths_mm": [1.0, -2.0]}
             ),
         )
-        assert response.status_code == 422
-        assert "nieujemną" in response.text
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"]["fields"] == ["/body/custom_precipitation/depths_mm"]
+        assert "nieujemną" in problem["errors"][0]["message"]
 
 
 # ---------------------------------------------------------------------------

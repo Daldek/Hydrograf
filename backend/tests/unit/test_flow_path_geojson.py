@@ -20,9 +20,7 @@ def _mock_cg():
 def _mock_db():
     db = MagicMock()
     row = MagicMock()
-    row.geojson = (
-        '{"type": "LineString", "coordinates": [[15.0, 50.0], [15.1, 50.1]]}'
-    )
+    row.geojson = '{"type": "LineString", "coordinates": [[15.0, 50.0], [15.1, 50.1]]}'
     db.execute.return_value.fetchone.return_value = row
     return db
 
@@ -31,8 +29,13 @@ class TestFlowPathLabel:
     def test_label_uses_outlet_baseline(self):
         """length_km = (max_dist - outlet_flow_dist) / 1000."""
         feature = _build_flow_path_geojson(
-            _mock_cg(), np.array([0, 1]), 1, 100000, _mock_db(),
-            "longest_flow_path_geom", "longest_flow_path",
+            _mock_cg(),
+            np.array([0, 1]),
+            1,
+            100000,
+            _mock_db(),
+            "longest_flow_path_geom",
+            "longest_flow_path",
         )
         assert feature["properties"]["length_km"] == pytest.approx(5.0)
 
@@ -41,8 +44,13 @@ class TestFlowPathLabel:
         cg = _mock_cg()
         cg.get_outlet_flow_dist_m.return_value = float("nan")
         feature = _build_flow_path_geojson(
-            cg, np.array([0, 1]), 1, 100000, _mock_db(),
-            "longest_flow_path_geom", "longest_flow_path",
+            cg,
+            np.array([0, 1]),
+            1,
+            100000,
+            _mock_db(),
+            "longest_flow_path_geom",
+            "longest_flow_path",
         )
         # baseline = max_flow_dist_m[outlet_idx=1] = 5000 -> (8000-5000)/1000
         assert feature["properties"]["length_km"] == pytest.approx(3.0)

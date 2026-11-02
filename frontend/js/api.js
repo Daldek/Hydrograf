@@ -9,6 +9,18 @@
 
     window.Hydrograf = window.Hydrograf || {};
 
+    /**
+     * fetch() that asks for Polish error texts: the API answers in English
+     * without Accept-Language (AGI-6.4).
+     */
+    function apiFetch(url, options) {
+        var opts = Object.assign({}, options);
+        var headers = new Headers(opts.headers || {});
+        if (!headers.has('Accept-Language')) headers.set('Accept-Language', 'pl');
+        opts.headers = headers;
+        return fetch(url, opts);
+    }
+
     const ERROR_MESSAGES = {
         400: 'Nieprawidłowe żądanie. Sprawdź współrzędne i spróbuj ponownie.',
         404: 'Nie znaleziono linii spływu w tym miejscu. Kliknij bliżej linii spływu.',
@@ -47,15 +59,28 @@
     }
 
     /**
-     * Text of a FastAPI `detail`: a string, or the first pydantic error of an
-     * array (422), whose "Value error, " prefix is dropped.
+     * Text of an API error, an application/problem+json document (ADR-059).
+     * `detail` is Polish because apiFetch sends Accept-Language: pl. A
+     * validation error (it lists `errors`) shows the first message of a
+     * backend validator instead, without the pydantic "Value error, " prefix,
+     * else its `detail` alone (its hint only points at `errors`); any other
+     * client error appends its `hint` (e.g. "Kliknij w obszarze zlewni.").
      */
-    function detailMessage(detail) {
-        if (typeof detail === 'string') return detail;
-        if (Array.isArray(detail) && detail.length && detail[0] && typeof detail[0].msg === 'string') {
-            return detail[0].msg.replace(/^Value error,\s*/, '');
+    function problemMessage(problem) {
+        if (!problem || typeof problem.detail !== 'string') return null;
+        if (Array.isArray(problem.errors)) {
+            for (var i = 0; i < problem.errors.length; i++) {
+                var text = problem.errors[i] && problem.errors[i].message;
+                if (typeof text === 'string' && /^Value error,\s*/.test(text)) {
+                    return text.replace(/^Value error,\s*/, '');
+                }
+            }
+            return problem.detail;
         }
-        return null;
+        if (typeof problem.hint === 'string' && problem.status < 500) {
+            return problem.detail + ' ' + problem.hint;
+        }
+        return problem.detail;
     }
 
     /**
@@ -67,12 +92,9 @@
             message = 'Nieoczekiwany błąd (' + response.status + '). Spróbuj ponownie.';
         }
 
-        if (response.status === 404 || response.status === 400 || response.status === 422) {
-            try {
-                const data = await response.json();
-                message = detailMessage(data.detail) || message;
-            } catch { /* use default */ }
-        }
+        try {
+            message = problemMessage(await response.json()) || message;
+        } catch { /* not JSON, e.g. an nginx error page: use the default */ }
 
         throw new Error(message);
     }
@@ -102,7 +124,7 @@
 
         var payload = { geometry: lineGeojson, n_samples: nSamples || 100 };
         if (ids.length) payload.result_ids = ids;
-        const response = await fetch('/api/terrain-profile', {
+        const response = await apiFetch('/api/terrain-profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -144,7 +166,7 @@
             if (opts.tc_overland_length_km != null) payload.tc_overland_length_km = opts.tc_overland_length_km;
         }
 
-        const response = await fetch('/api/generate-hydrograph', {
+        const response = await apiFetch('/api/generate-hydrograph', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -158,7 +180,7 @@
      * Get available hydrograph scenarios.
      */
     async function getScenarios() {
-        const response = await fetch('/api/scenarios');
+        const response = await apiFetch('/api/scenarios');
         if (!response.ok) await handleError(response);
         return response.json();
     }
@@ -167,7 +189,7 @@
      * Optional layers available on this server, e.g. { sewer: false }.
      */
     async function getLayers() {
-        const response = await fetch('/api/layers');
+        const response = await apiFetch('/api/layers');
         if (!response.ok) await handleError(response);
         return response.json();
     }
@@ -185,7 +207,7 @@
         if (filters.min_area !== undefined) params.set('min_area', filters.min_area);
         if (filters.max_area !== undefined) params.set('max_area', filters.max_area);
 
-        const response = await fetch('/api/depressions?' + params.toString());
+        const response = await apiFetch('/api/depressions?' + params.toString());
         if (!response.ok) await handleError(response);
         return response.json();
     }
@@ -215,7 +237,7 @@
         }
 
         var url = '/api/delineate-watershed?include_hypsometric_curve=true';
-        const response = await fetch(url, {
+        const response = await apiFetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
@@ -237,7 +259,7 @@
      * @returns {Promise<Object>} { threshold_m2, segment_count, catchments }
      */
     async function previewWatershed(lat, lng, threshold) {
-        const response = await fetch('/api/delineate-watershed/preview', {
+        const response = await apiFetch('/api/delineate-watershed/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ latitude: lat, longitude: lng, threshold_m2: threshold }),
@@ -254,7 +276,7 @@
      * @returns {Promise<Object>} { id, status }
      */
     async function submitFeedback(payload) {
-        const response = await fetch('/api/feedback', {
+        const response = await apiFetch('/api/feedback', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),

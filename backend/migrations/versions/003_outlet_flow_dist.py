@@ -16,10 +16,12 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Add the outlet_flow_dist_m column."""
     op.execute(
         "ALTER TABLE stream_catchments ADD COLUMN outlet_flow_dist_m DOUBLE PRECISION"
     )
 
 
 def downgrade() -> None:
+    """Drop the outlet_flow_dist_m column."""
     op.execute("ALTER TABLE stream_catchments DROP COLUMN IF EXISTS outlet_flow_dist_m")

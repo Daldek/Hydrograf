@@ -13,6 +13,7 @@ class TestRaiseBuildingsInDem:
     @pytest.fixture()
     def dem_transform(self):
         from rasterio.transform import from_bounds
+
         return from_bounds(400000, 500000, 400050, 500050, 10, 10)
 
     def _make_gpkg(self, geometries_with_props):
@@ -28,17 +29,21 @@ class TestRaiseBuildingsInDem:
         os.unlink(path)  # fiona needs the file to not exist for GPKG creation
 
         schema = {"geometry": "Polygon", "properties": {"typ": "str"}}
-        with fiona.open(path, "w", driver="GPKG",
-                       schema=schema, crs=from_epsg(2180)) as dst:
+        with fiona.open(
+            path, "w", driver="GPKG", schema=schema, crs=from_epsg(2180)
+        ) as dst:
             for geom, props in geometries_with_props:
-                dst.write({
-                    "geometry": geom.__geo_interface__,
-                    "properties": props,
-                })
+                dst.write(
+                    {
+                        "geometry": geom.__geo_interface__,
+                        "properties": props,
+                    }
+                )
         return path
 
     def test_no_buildings_returns_unchanged(self, flat_dem, dem_transform):
         from core.hydrology import raise_buildings_in_dem
+
         result = raise_buildings_in_dem(flat_dem.copy(), dem_transform, 2180, None)
         np.testing.assert_array_equal(result, flat_dem)
 
@@ -51,8 +56,7 @@ class TestRaiseBuildingsInDem:
         path = self._make_gpkg([(building, {"typ": "budynek"})])
         try:
             result = raise_buildings_in_dem(
-                flat_dem.copy(), dem_transform, 2180,
-                path, building_raise_m=5.0
+                flat_dem.copy(), dem_transform, 2180, path, building_raise_m=5.0
             )
             assert result.max() > 100.0
             assert result[0, 0] == pytest.approx(100.0)
@@ -68,8 +72,7 @@ class TestRaiseBuildingsInDem:
         path = self._make_gpkg([(building, {"typ": "budynek"})])
         try:
             result = raise_buildings_in_dem(
-                flat_dem.copy(), dem_transform, 2180,
-                path, building_raise_m=10.0
+                flat_dem.copy(), dem_transform, 2180, path, building_raise_m=10.0
             )
             assert result.max() == pytest.approx(110.0)
         finally:

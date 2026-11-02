@@ -1,4 +1,4 @@
-"""
+r"""
 Script to import land cover data from GeoPackage into PostgreSQL/PostGIS.
 
 Reads BDOT10k or CORINE land cover data from GeoPackage files and imports
@@ -28,17 +28,17 @@ Usage
 Examples
 --------
     # Import BDOT10k data
-    python -m scripts.import_landcover \\
+    python -m scripts.import_landcover \
         --input ../data/landcover/bdot10k_teryt_1465.gpkg
 
     # Dry run (show what would be imported)
-    python -m scripts.import_landcover \\
-        --input ../data/landcover/bdot10k_teryt_1465.gpkg \\
+    python -m scripts.import_landcover \
+        --input ../data/landcover/bdot10k_teryt_1465.gpkg \
         --dry-run
 
     # Clear existing data before import
-    python -m scripts.import_landcover \\
-        --input ../data/landcover/bdot10k_teryt_1465.gpkg \\
+    python -m scripts.import_landcover \
+        --input ../data/landcover/bdot10k_teryt_1465.gpkg \
         --clear-existing
 """
 
@@ -48,7 +48,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import geopandas
@@ -191,7 +191,7 @@ def transform_to_2180(gdf: "geopandas.GeoDataFrame") -> "geopandas.GeoDataFrame"
 
 def prepare_records(
     layers: dict[str, "geopandas.GeoDataFrame"],
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Prepare database records from GeoDataFrames.
 
@@ -255,7 +255,7 @@ def prepare_records(
 
 
 def import_to_database(
-    records: list[dict],
+    records: list[dict[str, Any]],
     database_url: str,
     batch_size: int = 1000,
     clear_existing: bool = False,
@@ -334,7 +334,7 @@ def import_landcover(
     batch_size: int = 1000,
     dry_run: bool = False,
     clear_existing: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """
     Import land cover data from GeoPackage to database.
 
@@ -413,7 +413,7 @@ def import_landcover(
 
 
 def main():
-    """Main entry point for land cover import script."""
+    """Run the land cover import script."""
     parser = argparse.ArgumentParser(
         description="Import land cover data from GeoPackage to PostgreSQL/PostGIS",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -475,7 +475,9 @@ def main():
         )
     except ImportError as e:
         logger.error(f"Missing dependency: {e}")
-        logger.error("Install with: pip install geopandas fiona")
+        logger.error(
+            "Run `uv sync --locked` in backend/ to install geopandas and fiona."
+        )
         sys.exit(1)
     except Exception as e:
         logger.error(f"Import failed: {e}")

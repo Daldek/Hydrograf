@@ -1,29 +1,29 @@
-"""
+r"""
 Script to download IMGW PMAXTP precipitation data and store in PostgreSQL.
 
 Downloads maximum precipitation data for a grid of points within specified
-bounding box and stores all 42 scenarios (7 durations x 6 probabilities)
+bounding box and stores all 432 scenarios (16 durations x 27 probabilities)
 in the precipitation_data table.
 
 Usage
 -----
     cd backend
     python -m scripts.preprocess_precipitation --help
-    python -m scripts.preprocess_precipitation \\
-        --bbox "19.5,51.5,20.5,52.5" \\
+    python -m scripts.preprocess_precipitation \
+        --bbox "19.5,51.5,20.5,52.5" \
         --spacing 2.0
 
 Examples
 --------
     # Download data for Warsaw area (small test)
-    python -m scripts.preprocess_precipitation \\
-        --bbox "20.8,52.1,21.2,52.4" \\
+    python -m scripts.preprocess_precipitation \
+        --bbox "20.8,52.1,21.2,52.4" \
         --spacing 5.0
 
     # Full municipality preprocessing
-    python -m scripts.preprocess_precipitation \\
-        --bbox "19.5,51.5,20.5,52.5" \\
-        --spacing 2.0 \\
+    python -m scripts.preprocess_precipitation \
+        --bbox "19.5,51.5,20.5,52.5" \
+        --spacing 2.0 \
         --delay 0.5
 """
 
@@ -33,6 +33,7 @@ import logging
 import sys
 import time
 from datetime import datetime
+from typing import Any
 
 from pyproj import Transformer
 from sqlalchemy import text
@@ -47,13 +48,69 @@ logger = logging.getLogger(__name__)
 
 # Rainfall scenarios — full PMAXTP range (16 durations × 27 probabilities = 432)
 DURATIONS = [
-    "5min", "10min", "15min", "30min", "45min", "1h", "1.5h", "2h",
-    "3h", "6h", "12h", "18h", "24h", "36h", "48h", "72h",
+    "5min",
+    "10min",
+    "15min",
+    "30min",
+    "45min",
+    "1h",
+    "1.5h",
+    "2h",
+    "3h",
+    "6h",
+    "12h",
+    "18h",
+    "24h",
+    "36h",
+    "48h",
+    "72h",
 ]
-DURATION_MINUTES = [5, 10, 15, 30, 45, 60, 90, 120, 180, 360, 720, 1080, 1440, 2160, 2880, 4320]
+DURATION_MINUTES = [
+    5,
+    10,
+    15,
+    30,
+    45,
+    60,
+    90,
+    120,
+    180,
+    360,
+    720,
+    1080,
+    1440,
+    2160,
+    2880,
+    4320,
+]
 PROBABILITIES = [
-    0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.5,
-    1, 2, 3, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 98, 98.5, 99, 99.5, 99.9,
+    0.01,
+    0.02,
+    0.03,
+    0.05,
+    0.1,
+    0.2,
+    0.3,
+    0.5,
+    1,
+    2,
+    3,
+    5,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90,
+    95,
+    98,
+    98.5,
+    99,
+    99.5,
+    99.9,
 ]
 
 # Coordinate transformer: WGS84 -> PL-1992
@@ -141,7 +198,7 @@ async def fetch_pmaxtp_for_point(
     lat: float,
     lon: float,
     delay_s: float = 0.5,
-) -> dict:
+) -> dict[tuple[str, float], Any]:
     """
     Fetch all 432 precipitation scenarios for a single point.
 
@@ -160,9 +217,14 @@ async def fetch_pmaxtp_for_point(
         {(duration_str, probability): precipitation_mm}
     """
     try:
-        from imgwtools import fetch_pmaxtp
+        from imgwtools import (
+            IMGWConnectionError,
+            IMGWDataError,
+            IMGWValidationError,
+            fetch_pmaxtp,
+        )
     except ImportError:
-        logger.error("imgwtools not installed. Run: pip install imgwtools")
+        logger.error("imgwtools not installed. Run `uv sync --locked` in backend/.")
         raise
 
     try:
@@ -181,7 +243,9 @@ async def fetch_pmaxtp_for_point(
 
         return scenarios
 
-    except Exception as e:
+    except (IMGWConnectionError, IMGWDataError, IMGWValidationError) as e:
+        # The errors fetch_pmaxtp documents (server, response, point outside the
+        # grid): skip the point. Anything else is a bug or an API change and stops.
         logger.warning(f"Failed to fetch data for ({lat}, {lon}): {e}")
         return {}
 
@@ -190,7 +254,7 @@ def insert_precipitation_data(
     db_session,
     lat: float,
     lon: float,
-    scenarios: dict,
+    scenarios: dict[tuple[str, float], Any],
 ) -> int:
     """
     Insert precipitation data for a point into database.
@@ -282,7 +346,10 @@ async def process_grid(
     logger.info(f"Generated {total_points} grid points with {spacing_km} km spacing")
     logger.info(f"Bounding box: {bbox}")
     scenarios_per_point = len(DURATIONS) * len(PROBABILITIES)
-    logger.info(f"Expected records: {total_points * scenarios_per_point} ({scenarios_per_point} scenarios per point)")
+    logger.info(
+        f"Expected records: {total_points * scenarios_per_point} "
+        f"({scenarios_per_point} scenarios per point)"
+    )
 
     successful_points = 0
     total_records = 0
@@ -309,7 +376,7 @@ async def process_grid(
 
 
 def main():
-    """Main entry point for preprocessing script."""
+    """Run the preprocessing script."""
     parser = argparse.ArgumentParser(
         description="Download IMGW PMAXTP precipitation data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -350,7 +417,9 @@ def main():
     if args.dry_run:
         points = generate_grid_points(bbox, args.spacing)
         logger.info(f"Dry run: would process {len(points)} points")
-        logger.info(f"Expected records: {len(points) * len(DURATIONS) * len(PROBABILITIES)}")
+        logger.info(
+            f"Expected records: {len(points) * len(DURATIONS) * len(PROBABILITIES)}"
+        )
         for i, (lat, lon) in enumerate(points[:10], 1):
             logger.info(f"  Point {i}: ({lat:.4f}, {lon:.4f})")
         if len(points) > 10:

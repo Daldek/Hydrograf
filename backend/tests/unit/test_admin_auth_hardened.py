@@ -11,6 +11,7 @@ def test_configured_key_returned():
 def test_empty_key_generates_fallback():
     """Empty key generates a UUID fallback (for dev convenience)."""
     import api.dependencies.admin_auth as mod
+
     mod._generated_key = None  # Reset module state
     result = _get_or_generate_admin_key("")
     assert len(result) == 36  # UUID format
@@ -20,6 +21,7 @@ def test_empty_key_generates_fallback():
 def test_generated_key_not_logged_in_full(caplog):
     """Generated key must NOT appear in full in log messages."""
     import api.dependencies.admin_auth as mod
+
     mod._generated_key = None
     with caplog.at_level("WARNING"):
         key = _get_or_generate_admin_key("")

@@ -8,15 +8,21 @@ water level of analysis results along the same samples.
 
 import logging
 import math
-import os
 
 import rasterio
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Response
 from pyproj import Transformer
 from shapely.geometry import LineString
 
 from core.analysis_results import sample_water_levels
 from core.config import get_settings
+from core.errors import (
+    HydrografError,
+    InternalError,
+    InvalidRequestError,
+    NoDataError,
+    StoreUnavailableError,
+)
 from models.schemas import (
     ProfileWaterLevel,
     TerrainProfileRequest,
@@ -58,16 +64,18 @@ def terrain_profile(
     try:
         geom = request.geometry
         if geom.get("type") != "LineString":
-            raise HTTPException(
-                status_code=400,
-                detail="Geometry must be a LineString",
+            raise InvalidRequestError(
+                "profile_geometry_type",
+                reason="invalid_geometry_type",
+                geometry_type=geom.get("type"),
             )
 
         coords = geom.get("coordinates", [])
         if len(coords) < 2:
-            raise HTTPException(
-                status_code=400,
-                detail="LineString must have at least 2 coordinates",
+            raise InvalidRequestError(
+                "profile_too_few_coordinates",
+                reason="too_few_coordinates",
+                coordinates=len(coords),
             )
 
         n_samples = request.n_samples
@@ -92,10 +100,7 @@ def terrain_profile(
 
         if dem_path is None:
             logger.error("No DEM raster found in %s", settings.dem_dir)
-            raise HTTPException(
-                status_code=503,
-                detail="Plik DEM nie jest dostepny. Skontaktuj sie z administratorem.",
-            )
+            raise StoreUnavailableError("dem_unavailable", reason="dem_unavailable")
 
         elevations: list[float] = []
         dem_gaps: list[bool] = []
@@ -109,10 +114,7 @@ def terrain_profile(
                 dem_gaps.append(gap)
 
         if not elevations or all(dem_gaps):
-            raise HTTPException(
-                status_code=404,
-                detail="Brak danych wysokosciowych dla podanej linii",
-            )
+            raise NoDataError("no_elevation_data", reason="no_elevation_data")
 
         # Water levels only where the terrain is known (a gap reads as 0 m)
         water_levels = [
@@ -136,11 +138,8 @@ def terrain_profile(
             water_levels=water_levels,
         )
 
-    except HTTPException:
+    except HydrografError:
         raise
     except Exception as e:
         logger.error(f"Error extracting terrain profile: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error during profile extraction",
-        ) from e
+        raise InternalError("profile_failed", reason="profile_failed") from e

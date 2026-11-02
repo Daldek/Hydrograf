@@ -4,20 +4,21 @@
 
 | Element | Status | Uwagi |
 |---------|--------|-------|
-| API (FastAPI + PostGIS) | ✅ Gotowy | 24 endpointy (11 core + 13 admin). Unified delineate-watershed (ADR-050). Sewer admin API (ADR-051). |
+| API (FastAPI + PostGIS) | ✅ Gotowy | 24 endpointy (11 core + 13 admin). Unified delineate-watershed (ADR-050). Sewer admin API (ADR-051). Od scalenia `feature/producer-heads` (2026-11-02) błędy jako `application/problem+json` z kodami wspólnego rejestru Nogata i tekstami wg `Accept-Language` (ADR-059). |
 | Wyznaczanie zlewni | ✅ Gotowy | traverse_upstream, concave hull, tryb precomputed + precise (ADR-050) |
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 432 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k. Limit pamięci: szczyt ~103 B/komórkę rastra, czyli ~160M komórek przy 8G + 8G swap (~80M bez swapu); plan F1–F7 w `docs/TECHNICAL_DEBT.md` |
-| Integracja Hydrolog | ✅ Gotowy | v0.6.3 (Nash IUH, 3 nowe metody tc) |
-| Integracja Kartograf | ✅ Gotowy | v0.7.0 (NMT przez `download_sheets` + `MetadataCache`, Land Cover, HSG, BDOT10k hydro) |
-| Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) |
+| Integracja Hydrolog | ✅ Gotowy | v0.6.3 (Nash IUH, 3 nowe metody tc) na produkcji (obraz ze starymi pinami). W kodzie od scalenia `feature/producer-heads`: pin `5fa22b3` (1.0.0.dev0, ADR-060); Snyder daje inny hydrogram (korekta czasu trwania: szczyt +11–12%, 25–70 min wcześniej, ta sama objętość) |
+| Integracja Kartograf | ✅ Gotowy | v0.7.0 (NMT przez `download_sheets` + `MetadataCache`, Land Cover, HSG, BDOT10k hydro) na produkcji. W kodzie od scalenia `feature/producer-heads`: pin `26ee459` (0.8.0.dev0, gałąź Kartografa `feature/archiwista-projects`, 2026-10-31; ten sam co Archiwista; wybór arkuszy po obiektach `--geometry`); cache surowych pobrań to magazyn Kartografa `cache/kartograf/` (ADR-061), raster HSG jednej analizy to zwykły plik tymczasowy; katalogi układu 0.7.0 nie są czytane |
+| Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) na produkcji. W kodzie od scalenia `feature/producer-heads`: pin `6bd35a4` (3.0.0, ADR-060) |
+| Środowisko i jakość kodu | ✅ Gotowy | Od scalenia `feature/producer-heads` (standard Nogata 2.1, ADR-058): uv i `backend/uv.lock` zamiast `requirements.txt`, ruff (DEV-7.2), mypy `strict` (DEV-7.3), `affine>=2.4,<3` (ADR-062) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). Jawna topologia (ADR-052), walidacja strict, 2-fazowy pipeline. MVT tiles, overlay frontend, admin panel sewer. |
 | Frontend | 🔶 Faza 4+ gotowa | 22 moduły JS na `window.Hydrograf` (16 core + 6 admin) + `theme-init.js`/`theme-switch.js`. Sewer overlay + admin-sewer. GUI w identyfikacji Nogata (ADR-065) wdrożone na porcie 8080 z `feature/visual-identity` (2026-11-01, niezmergowane); 2026-11-01/02 doszły wyniki analiz zewnętrznych (SFINCS), nakładka MZP ISOK, ekran powitalny, instrukcja 30 slajdów, zwierciadło wody na profilu terenu, wersjonowanie zasobów `?v=`. |
 | Panel administracyjny | ✅ Gotowy | /admin: Dashboard, Bootstrap, Zasoby, Czyszczenie, Kanalizacja (ADR-034, ADR-051) |
-| Testy | ✅ Gotowy | 1165 passed (sesja 88) + znany fail środowiskowy (test_select_stream, brak DB na localhost) |
-| Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07) |
+| Testy | ✅ Gotowy | 1165 passed (sesja 88) + znany fail środowiskowy (test_select_stream, brak DB na localhost). Od scalenia `feature/producer-heads`: bramka `scripts/gate.sh` (ruff format, ruff check, mypy, pytest offline z pokryciem ≥ 80%, wersje zasobów `?v=`, commity) i CI `.github/workflows/ci.yml` |
+| Dokumentacja | ✅ Gotowy | Audyt 16 plikow (2026-02-22), standaryzacja wg shared/standards (2026-02-07). Od scalenia `feature/producer-heads`: dokumenty wg standardu Nogata 2.1 po angielsku (część jeszcze po polsku), `docs/DEVELOPMENT_STANDARDS.md` usunięty (reguły w `CLAUDE.md`), backlog w `docs/BACKLOG.md`, ADR-058 i dalsze w `docs/decisions/` |
 
 ## Checkpointy
 
@@ -45,6 +46,184 @@
 - **Wersja:** v1.0.0 (planowana)
 - **Zakres:** Pelna integracja frontend+backend, deploy produkcyjny
 
+## Gałąź `feature/producer-heads` (scalona 2026-11-02)
+
+Gałąź `feature/producer-heads` (od `chore/nogat-2.1`, prace do 2026-10-25) scalono 2026-11-02 do `feature/store-migration` razem z `feature/visual-identity` (krok S1 planu `docs/plans/2026-11-02-store-migration.md`). Jej stan w skrócie:
+- **Standard Nogata 2.1 (ADR-058):** uv i `backend/uv.lock` zamiast `requirements.txt` (wersje z obrazu z 2026-10-18, ograniczenia `sqlalchemy<2.1` i `affine<3`), ruff (DEV-7.2), mypy `strict` nad `api core models scripts utils tests`, ustawienia pytest (markery `live`, `db`, `slow`, `benchmark`, `tests/contract`, próg pokrycia 80), bramka `scripts/gate.sh` i `scripts/check-commits.sh` (bez zmian z Nogata), CI i Dependabot, pliki kontrybucji (`SECURITY.md`, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, szablon PR z polem CLA; `docs/CLA.md` jeszcze nie istnieje), `CLAUDE.md` po angielsku z sekcją Deviations, README wg DOC-2.1, indeks ADR. `docs/DEVELOPMENT_STANDARDS.md` i `.pre-commit-config.yaml` usunięte; wersje zasobów `?v=` po scaleniu sprawdzają bramka i zadanie CI `frontend-assets` (`python3 scripts/bump_asset_versions.py --check`).
+- **Błędy REST jako problem+json (ADR-059):** `HydrografError` z komunikatami z `core/messages.py`, kody wspólnego rejestru (`schemas/nogat/`, generowany `core/_errors.py`), `Accept-Language` (interfejs wysyła `pl`), statusy wg rejestru (m.in. błędne wartości 422 → 400, zły klucz admina 403 → 401, zlewnia > 250 km² 400 → 422, brak opadu 400 → 404).
+- **Piny producentów po commicie (ADR-060, ADR-061):** po scaleniu Kartograf `26ee45924b719b4f357ab02c88cda58aa806843f` (0.8.0.dev0, gałąź `feature/archiwista-projects`, 2026-10-31; ten sam co Archiwista, wybiera arkusze po obiektach `--geometry`; gałąź PH miała `c31ca04` z `feature/data-output`), IMGWTools `6bd35a4` (3.0.0) i Hydrolog `5fa22b3` (1.0.0.dev0) bez zmian; `affine>=2.4,<3` zostaje (ADR-062: pyflwdir 0.5.12 nie działa z affine 3, poprawka czeka na 0.5.13).
+- **Magazyn Kartografa (ADR-061):** cache surowych pobrań (NMT, BDOT10k, raster HSG Polski) to `cache/kartograf/`, cache metadanych `cache/kartograf_meta.db`, raster HSG jednej analizy CN to zwykły plik tymczasowy (`calculate_hsg`); katalogi `cache/nmt/`, `cache/bdot10k/`, `cache/soil_hsg/` układu 0.7.0 nie są czytane, czyszczenie cache je usuwa; `download_dem` i `download_landcover` biorą `--root` i `--metadata-cache`.
+- **Hydrolog 1.0 API:** Snyder liczy hydrogram jednostkowy dla czasu trwania równego krokowi (korekta czasu trwania) — przy kroku 5 min szczyt wyższy o 11–12% i wcześniejszy o 25–70 min, objętość ta sama (zmiana łamiąca dla klientów API); SCS, Nash, wszystkie metody tc i hietogramy bez zmian.
+- **Usunięty martwy kod:** `core/watershed.py` i funkcje komórkowe `core/morphometry.py` (zostaje `calculate_shape_indices`) z testami; naprawione kroki 3, 4 i 6 `scripts/analyze_watershed.py` oraz wywołania `process_dem` w `prepare_area.py` i `analyze_watershed.py`.
+
+Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie nie ruszyło, gałęzie bez pull requestu), prawdziwego pobrania NMT, BDOT10k i SoilGrids, `bootstrap` od początku do końca ani obrazu Docker (działający stos ma obraz zbudowany na starych pinach). Pominięte pozycje adopcji należą do autora: przepisanie historii, rulesety GitHub, `docs/CLA.md`, linie `Approved:` planów, wpis w rejestrze Nogata, tagi i wydania, push i merge `chore/nogat-2.1`. Poniżej listy Next i Open questions z PROGRESS gałęzi PH (`git show feature/producer-heads:docs/PROGRESS.md`) bez zmian, po angielsku; jedyna zmiana to pin Kartografa po scaleniu (`26ee459` zamiast `c31ca04`). Otwarte pozycje backlogu obu gałęzi są w [BACKLOG.md](BACKLOG.md).
+
+### Next (z gałęzi PH)
+
+1. **Finish the standard 2.1 adoption on `chore/nogat-2.1`** (one commit per step, gate
+   green before each; rules: `git -C ~/workspace/Nogat show feature/data-output:standards/<file>`;
+   Archiwista's branch `chore/nogat-2.1` is the worked example of an `app`). Remaining
+   gaps of the inventory of 2026-10-25, in this order:
+   - **mypy is done**; its deviations go to the Deviations section of CLAUDE.md (DEV-7.3):
+     `migrations/` is excluded; the packages without types (`affine`, `fiona`, `geopandas`,
+     `pandas`, `psutil`, `pyflwdir`, `rasterio`, `scipy`, `shapely`, `yaml`) are per-module
+     `ignore_missing_imports` overrides, not a global switch; Hydrolog, Kartograf and IMGWTools
+     ship `py.typed` at the pinned heads (DEV-7.4), so their calls are checked;
+     `tests.*` allows untyped definitions and calls and does not check the bodies of
+     untyped functions (`check_untyped_defs = false`, about 1,260 unannotated tests);
+     `scripts.*` allows untyped definitions and calls (46 findings) and its annotated code is
+     checked. To lift an override, annotate the module and delete its line in `pyproject.toml`.
+   - **Coverage** (DEV-7.5) is done: `fail_under` is 80 and the offline suite covers 85% of
+     `api`, `core`, `models` and `utils` (`scripts/`, `migrations/` and `tests/` are omitted
+     from the measure). Modules still below 75%: `core/watershed_service.py` 53%,
+     `core/catchment_graph.py` 60%, `core/raster_io.py` 67%, `api/endpoints/hydrograph.py`
+     and `watershed.py` 70%; most of what is missing is PostGIS SQL that only the `db` job
+     runs.
+   - **Translations** to English (DEV-2.1, ECO-005). Done: ARCHITECTURE, PRD, SCOPE,
+     BACKLOG, TECHNICAL_DEBT, CROSS_PROJECT_ANALYSIS, `docs/integrations/KARTOGRAF.md`,
+     `backend/scripts/README.md` and the [Unreleased] section of the CHANGELOG (sections as
+     DOC-7.1). Still Polish, most useful first: DECISIONS (the bodies of ADR-001 to ADR-057,
+     kept as records; the index and ADR-058 on are English), DATA_MODEL (nothing in it
+     describes the Kartograf layout: a translation only), COMPUTATION_PIPELINE (its sections
+     5.1 and 5.3 are English), `docs/integrations/HYDROLOG.md` and `IMGWTOOLS.md` (their pins
+     are English), BENCHMARK_QUERIES, the released versions of the CHANGELOG (0.4.0 and
+     older, records); QA_REPORT is English.
+     After the documents: docstrings, comments and log messages of the 23,700 lines of
+     Python, and user-facing texts into translation resources (DEV-2.3, DEV-15.2). The 40
+     plans of the ignored `notes/superpowers/plans/` move to `docs/plans/` after
+     translation, without `Approved:` lines (the author approves). The links of the ADR
+     index in `docs/DECISIONS.md` follow the headings of ADR-001 to ADR-057; translating a
+     heading means regenerating its link.
+   - **Error registry and REST: loose ends.** Done: registry, `HydrografError`, the catalogue
+     of 45 messages, problem documents, `Accept-Language`, OpenAPI ids, contract tests.
+     Left: `frontend/js/admin/admin-sewer.js` (5 `fetch` calls) does not send
+     `Accept-Language` yet; the admin operations document `401` only, so `404` and `409` of
+     `bootstrap/start`, `bootstrap/cancel` and the feedback routes are undocumented; the 429
+     of nginx (`limit_req`) and its gateway errors are plain responses, and an `error_page`
+     that returns a problem document would close AGI-6.3; the validation texts in `errors[]`
+     are pydantic's English; the texts of core exceptions that reach `details.cause`
+     (`invalid_parameters`, `invalid_bbox`, `invalid_boundary_file`) are whatever the
+     library said.
+   - **Other gaps found**, not in scope of a step: logs use f-strings (DEV-12.3), 60 lines of
+     JavaScript are longer than 100 columns and the modules are IIFEs, not ES modules
+     (DEV-15.1), the front end has Polish text inline (DEV-15.2), `tests/performance` stands
+     beside the standard tree (DEV-5.2). Deviations are recorded in CLAUDE.md. Found by mypy:
+     `scripts/analyze_watershed.py` imported `find_nearest_stream` and `traverse_upstream` from
+     `core.watershed`, which has neither, so its delineation (step 3) failed at run time; fixed:
+     step 3 calls the route function of `POST /api/delineate-watershed` (precomputed mode), step 4
+     takes the morphometry from it, and `tests/unit/test_analyze_watershed_delineate.py` runs the
+     steps on a synthetic graph offline. `FlowCell`, `build_boundary`,
+     `build_boundary_polygonize`, `calculate_watershed_area_km2` (all of `core/watershed.py`,
+     deleted with the module) and the cell functions of `core/morphometry.py`
+     (`build_morphometric_params`, `find_main_stream` and the like) had no caller outside
+     their tests and are deleted with those tests, together with the constants
+     `MAX_WATERSHED_CELLS` and `MAX_STREAM_DISTANCE_M`; `core/morphometry.py` keeps
+     `calculate_shape_indices`. The main stream of the API path (the catchment-graph route) is
+     determined by `CatchmentGraph.trace_main_channel()` in `core/catchment_graph.py`, called from
+     `build_morph_dict_from_graph()` in `core/watershed_service.py` (the route
+     `POST /api/delineate-watershed` and `scripts/analyze_watershed.py` step 3 both use it). The
+     calls of `process_dem` in `prepare_area.py` and `analyze_watershed.py` that passed parameters
+     it had lost (`batch_size`, `stream_threshold`) are fixed and tested
+     (`tests/unit/test_process_dem_callers.py`).
+     Found by the tests of `load_bdot_streams_from_gpkg` (`core/db_bulk.py`), not fixed: a
+     feature with an empty name column gets the name `'nan'` (a pandas NaN is truthy), and a
+     feature without geometry stops the load (`row.geometry` is NaN, so `.is_empty` fails).
+2. **Migrate to the producers' heads** (Nogat plans `2026-10-24-data-output.md` step 8 and
+   `2026-10-20-first-release-set.md` step 8; ADOPTION_PLAN 5.1). Done on `feature/producer-heads`
+   (ADR-060, ADR-061): Hydrolog, IMGWTools and Kartograf, below. The method: pin the producer's
+   commit while its tag is missing (REL-5.3), migrate, run the suite, then pin the tags: when a
+   tag exists replace the `rev` in `[tool.uv.sources]` by it, narrow the range of `dependencies`
+   (REL-5.6), run `uv lock` and the gate, and repeat the comparisons described below.
+   - **IMGWTools: done on `feature/producer-heads`** (ADR-060, pinned `6bd35a4`, 3.0.0).
+     `fetch_pmaxtp(latitude, longitude, *, method='POT', timeout=30.0, validate_coords=True)` keeps
+     its model (`result.data.get_precipitation(...)`, `ks`, `sg`, `rb`); `method` became
+     keyword-only, and Hydrograf passes only `latitude=` and `longitude=`. Both call sites
+     (`scripts/preprocess_precipitation.py::fetch_pmaxtp_for_point` and
+     `scripts/analyze_watershed.py::fetch_precipitation_imgw`) ran offline against the real
+     parsing, with a canned PMAXTP answer in place of the HTTP call: 432 scenarios without a gap,
+     the nearest duration and a fractional probability. They catch only `IMGWConnectionError`,
+     `IMGWDataError` and `IMGWValidationError`, and `tests/unit/test_imgw_call_sites.py` runs both
+     through the real library with an `httpx.MockTransport` answer (`serve_imgw` in
+     `tests/conftest.py`), also for the errors that must surface. Renames in IMGWTools that
+     Hydrograf does not use: `IMGW_STORE_ROOT` is `IMGW_ROOT`, `IMGW_DATA_DIR` is
+     `IMGW_REFERENCE_DIR`, store and export options are `root`, `output_dir`, `output`.
+     Hydrograf's own settings `IMGW_GRID_SPACING_KM` and `IMGW_RATE_LIMIT_DELAY_S`
+     (`core/config.py`, `.env.example`) share the `IMGW_` prefix of IMGWTools, which ignores the
+     names it does not know. IMGWTools ships `py.typed`, so mypy checks the call. Its probability
+     parameter was annotated `int` while the keys are `str(percent)` and Hydrograf asks for 0.01 to
+     98.5 (a `type: ignore` in `scripts/preprocess_precipitation.py`): IMGWTools took the request
+     (`9291eb3`: a `float`, one of the 27 published percentages, else `IMGWValidationError` with
+     the allowed list) and the pin moved to its head, so the `type: ignore` is gone.
+   - **Hydrolog: done on `feature/producer-heads`** (ADR-060, pinned `5fa22b3`, 1.0.0.dev0, the
+     head of `feature/routing-schematic`, which stacks `chore/nogat-2.1` and `feature/routing-*`).
+     The imports resolve and the offline suite passed unchanged at the first pin `6c9ba5a` (1,362
+     tests): no test pinned a number that changed. The commits after it add the network objects
+     (ADR-0012, `31bf796`) and the network schematic (ADR-0013, `5fa22b3`), which nothing in
+     Hydrograf calls; the gate is green at `5fa22b3` too. mypy
+     checks the calls now (Hydrolog ships `py.typed`): three errors in
+     `api/endpoints/hydrograph.py` and two in `scripts/analyze_watershed.py`, fixed. The real
+     endpoint (`generate_hydrograph` on the fast path with `morphometry`, only the precipitation
+     lookup replaced) ran on 0.6.3 and on `6c9ba5a` over 138 combinations (three catchments, six
+     concentration-time methods, three hyetograph types, the SCS and Snyder models and the three
+     Nash estimations): every `tc_min` is the same (`_calculate_tc` forces the mean slope for NRCS
+     and calls `ConcentrationTime.faa|kerby|kerby_kirpich` itself, so the changes of
+     `calculate_tc` do not reach the API), the SCS and Nash hydrographs are the same, and the
+     Snyder hydrograph differs: the peak is 11 to 12% higher and comes 25 to 70 minutes earlier at
+     a time step of 5 minutes, the volume is the same (the duration correction of Snyder;
+     CHANGELOG, breaking for API clients). `scripts/analyze_watershed.py` offers `nrcs` instead of
+     `scs`, which Hydrolog never accepted. The CLI of Hydrolog changed (catalog,
+     `hydrolog-result/1`, exit codes 13 for `calculation_error` and 12 for `forbidden`); Hydrograf
+     uses the library only. Routing (`route lag|cascade|level-pool|muskingum|muskingum-cunge|
+     network`, ADR-0007 to ADR-0010) is in the pinned head; nothing calls it, an option for the
+     sewer and Hydraulik work. Open: the REST option `nash_estimation: "from_tc"` calls
+     `NashIUH.from_tc`, which the changelog of Hydrolog announces for removal in 1.0.0 (the head
+     keeps it and warns): Open questions 5.
+   - **Kartograf: done on `feature/producer-heads`** (ADR-061, pinned `26ee459` since the merge of
+     2026-11-02, 0.8.0.dev0, Kartograf branch `feature/archiwista-projects`; the branch had `c31ca04`).
+     Every call is migrated and every migrated call runs against the real Kartograf in the tests
+     (`tests/kartograf_offline.py` stubs only the provider classes: the GUGiK sheet index, BDOT10k
+     and SoilGrids; `kartograf.testing` builds the stores the tests read). The cache of raw downloads
+     is the store `cache/kartograf/` (NMT, BDOT10k, the HSG raster of Poland), the metadata cache is
+     `cache/kartograf_meta.db`, the HSG raster of one CN calculation is a plain temporary file.
+     Measured on the real library with a stubbed index: a plain directory drops a sheet that has only
+     a partial flight, takes an older full flight for a sheet whose newest flight is partial, and
+     refuses a second run (`conflict`, `output_exists`); the store keeps both and answers `local`.
+     The documents that describe the layout and the API are rewritten in English (Status, Data
+     output). Not run: a real download of the NMT, BDOT10k and SoilGrids (no network test in the
+     offline suite), `bootstrap` end to end, the Docker image. Known defect that the documents
+     state: no script passes `building_gpkg`, so building raising (ADR-033) does not run in the
+     pipeline; ADR-033 makes the parameter optional, so it is a backlog item for the author
+     ([BACKLOG.md](BACKLOG.md), Bugs and diagnoses).
+   - **Hydraulik** (`depends_on`, planned): integration halted by the author (session 99);
+     nothing to migrate.
+3. **Engineering items with the highest priority** from the former backlog (all of it:
+   [BACKLOG.md](BACKLOG.md)): the hardening of the public attack surface, starting with three
+   unauthenticated denial-of-service paths (precise delineation without an area limit, XYZ
+   tiles without zoom validation, tile routes without a zoom floor and `statement_timeout`;
+   spec `notes/superpowers/specs/2026-08-08-public-security-hardening-spec.md`, outside the
+   repository); the hyetograph and hydrograph "no data" bug from the tester's feedback; the
+   hardcoded accumulation thresholds in `scripts/bootstrap.py` (`--thresholds`); the
+   decision on the NMT versioning ADR (superseded in part by Kartograf's store); hardcoded
+   secrets in `core/config.py` and `migrations/env.py`.
+
+### Open questions (z gałęzi PH)
+
+1. D5 and D6 of session 97: the HSG fallback "B" and step 5 as non-critical (a failed step 5
+   still ends bootstrap with exit 0); data of the 0.6.1 layout are not reused.
+2. GDAL's Python binding stays outside `uv.lock` because it must equal the system library of
+   the image: accept as a deviation of DEV-6.3, or install `gdal-bin` and drop the pip build
+   (`generate_dem_tiles.py` runs `gdal2tiles.py`).
+3. Merge of `feature/kartograf-wykorzystanie` and `chore/nogat-2.1` into `develop`: order and
+   who resolves PROGRESS, CHANGELOG and `requirements.txt`.
+4. Text of `docs/CLA.md` and how the CLA is signed. `CONTRIBUTING.md` describes signing by a
+   comment on the pull request, as in Retman and Archiwista, and the template has the
+   checkbox; both name `docs/CLA.md`, which does not exist yet.
+5. `nash_estimation: "from_tc"` of `POST /api/generate-hydrograph` calls `NashIUH.from_tc`,
+   deprecated since Hydrolog 0.6.2 and announced for removal in 1.0.0 (the pinned head keeps it
+   and warns). Remove the REST option and the front-end choice before Hydrolog 1.0.0 (a change of
+   a public interface: a plan with the author's approval, DEV-17.4), or ask Hydrolog to keep the
+   method. Until then the option works.
+
 ## Ostatnia sesja
 
 **Data:** 2026-11-01/02 (kopia produkcji, przycięcie danych do zlewni Kaczawy, wyniki SFINCS w „Wynikach analiz”, instrukcja i ekran powitalny, nakładka MZP ISOK, cache zasobów za Cloudflare, zwierciadło wody na profilu terenu)
@@ -55,7 +234,7 @@
   - Baza: `stream_catchments`/`stream_network` — tylko domknięcie w górę od ujścia (41 277 / 4 492 zlewni, po 790,566 km²); `downstream_segment_idx` ujścia ustawione na NULL jak przy innych ujściach brzegowych. `land_cover`, `soil_hsg`, `bdot_streams` przycięte geometrycznie (`soil_hsg.area_m2` i `bdot_streams.length_m` przeliczone); `land_cover` i `soil_hsg` pokrywają granicę w 100% (790,564 km²). `precipitation_data`: punkty w buforze 3,5 km (maks. odległość do 4. sąsiada IDW w granicy 2,93 km, więc opad w każdym punkcie zlewni bez zmian; 314 → mniej punktów). `depressions` przeliczone z przyciętych rastrów (214 907; zagłębienia przecięte granicą mają poprawną objętość).
   - Rastry `data/nmt/*.tif` (16): przycięte do okna granicy, nodata poza nią (31 622 576 komórek = 790,564 km²). `data/hydro/hydro_merged.gpkg` i `data/sewer_network.gpkg` przycięte. `cache/` bez zmian (surowe arkusze i powiaty).
   - Frontend: kafle MVT, `dem.png`, `dem_tiles/` (okno barw p5–p95 policzone na nowo z przyciętego NMT), `streams.png`, `depressions.png`, `soil_hsg.geojson`, `bdot_*.geojson` wygenerowane od nowa. Restart `hydro_api`: graf 45 769 węzłów, 45 767 krawędzi.
-  - Smoke: delineacja 51,0376/16,1723 → 15,16 km² (jak przed przycięciem), przekrój Kamiennika → 37,23 km², punkt poza granicą → 404 z komunikatem; warstwy w przeglądarce kończą się na granicy, bez błędów JS. Profil terenu poza granicą zwraca 0,0 m (dotychczasowe zachowanie poza mozaiką; komunikat to część pozycji Backlogu o przycinaniu).
+  - Smoke: delineacja 51,0376/16,1723 → 15,16 km² (jak przed przycięciem), przekrój Kamiennika → 37,23 km², punkt poza granicą → 404 z komunikatem; warstwy w przeglądarce kończą się na granicy, bez błędów JS. Profil terenu poza granicą zwraca 0,0 m (dotychczasowe zachowanie poza mozaiką; komunikat to część pozycji backlogu o przycinaniu, `docs/BACKLOG.md`).
 - **Wyniki analiz zewnętrznych w panelu „Warstwy”** (gałąź `feature/analysis-results`, commity `5c7c325`, `e2eafca`, fast-forward do `feature/visual-identity` w checkoucie produkcyjnym): manifest `frontend/data/results/index.json` (`hydrograf-results/1`, `kind: raster_tiles`), wiersze w istniejącej grupie „Wyniki analiz” pod „Liniami spływu”, legenda, krycie, (i), przybliżenie do zasięgu; bez manifestu interfejs bez zmian.
 - **Model SFINCS zlewni Kamiennika** (Hydraulik `Hydraulik-sfincs`, `feature/sfincs-swmm`, SFINCS v2.4.1 w Dockerze; katalog `~/hydraulik-work/kamiennik-12h-p1/`): domena = zlewnie cząstkowe w górę od segmentu 21911 (37,22 km², `data/boundary/kamiennik_37km2_sfincs.gpkg`), NMT 5 m z Hydrografa bez zmian (decyzja autora: zapora zbiornika Świerzawa bez upustu, niecka ~1,12 mln m³ do przelewu 279,63 m n.p.m.), BDOT10k 0205+0226 i HSG z `cache/`, opad 12 h p = 1% 105,0 mm (PMAXTP z `precipitation_data`, IDW w centroidzie; Hydraulik pobiera PMAXTP tylko do 180 min), Beta α = 2 β = 5, recesja 6 h, siatka 5 m (1 491 703 komórki; Hydraulik wyrównuje siatkę do wielokrotności 5 m, a NMT GUGiK ma narożniki na x,5 — teren jest interpolowany o pół komórki). Przebieg 1 (50 min): bilans 0,04%, ale `huthresh` = 0,05 m Hydraulika zatrzymał wodę na zboczach — przez przekrój wypłynęło ~1,7 tys. z 1,14 mln m³.
   - **Przebieg 2 (`huthresh` = 0,001 m, 4 h 50 min, `exit=0` 2026-11-02 00:04) opublikowany zamiast wstępnego** (ten sam `id` `sfincs-kamiennik-12h-p1`; `results/max_depth_huthresh0001.tif`, `results/summary_huthresh0001.json`, szeregi stacji `stacje_run2.csv` z `results export --variable stations` w katalogu wyniku; `stacje_run2_czesciowe.csv` usunięty). Bilans: opad 3,916 mln m³, infiltracja 2,774 mln m³, spływ 1,141 mln m³; przez przekrój wypłynęło 11,6 tys. m³ (1% spływu, przebieg 1: 1,7 tys.), w zlewni zostało 1,130 mln m³, z tego ~0,67 mln m³ w czaszy (0,155 km²). Zbiornik: maks. głębokość 12,3 m przy zaporze, poziom 277,48 m n.p.m. na koniec (18 h), wciąż rośnie ~0,19 m/h, 2,15 m poniżej przelewu — bez przelania; w siatce modelu (teren interpolowany) przelew wychodzi wyżej, ~281,2 m. Poniżej zapory ≤ 5 mm. Przekrój: maks. 0,76 m po 4 h 28 min (komórka w lokalnym obniżeniu, w przebiegu 1 0,67 m). Powierzchnia ≥ 0,1 m: 1,92 km² (przebieg 1: 0,57), ≥ 0,3 m: 1,16 km² (0,11). Weryfikacja: manifest przez :8080, kafle 200, warstwa i (i) w przeglądarce bez błędów konsoli. Mały odpływ wynika z zapory bez upustu (prawie cała zlewnia jest powyżej zapory), nie z modelu.
@@ -63,9 +242,9 @@
 - **Wynik SFINCS z poziomem wody:** w katalogu wyniku `wse_max.tif` (`zsmax` przebiegu 2, EPSG:2180, siatka jak `max_depth.tif`, nodata przy głębokości < 0,05 m; 103 667 mokrych komórek, 260,16–471,76 m n.p.m.), w manifeście pole `water_level`.
 - **Profil terenu na telefonie** (`4866617`): linii nie dało się zakończyć (koniec tylko na `dblclick`, dotyk dodawał dwa punkty). Teraz stuknięcie do 20 px od ostatniego punktu kończy linię, a pasek nad mapą (licznik punktów, Cofnij, Zakończ, Anuluj) zastępuje Esc i Backspace.
 - **Instrukcja i ekran powitalny** (gałąź `docs/instrukcja-v2`, worktree `Hydrograf-guide`): przewodnik rozbudowany z 10 do 25 slajdów przez GPT-6-Sol (przerwał na limicie ChatGPT przed commitem; pracę przejrzał i poprawił Opus: opis nowego paska profilu, nowy zrzut profilu, Snyder bez wpływu Tc, ekran powitalny w opisie przycisku) — `cc5bc94`; rozdział „Na start” prostym językiem (slajdy 3–6: czym jest Hydrograf ze słowniczkiem, czego się spodziewać, kto i po co, start w 3 krokach, obszar danych) — `0377ec1`; ekran powitalny `js/welcome.js` (natywny `<dialog>`, „Otwórz instrukcję” w nowej karcie, „Przejdź do mapy”, „Nie pokazuj ponownie” w `localStorage` `hydrograf-welcome-hidden`, ponowne otwarcie przyciskiem „Instrukcja”) — `6a4e798`. Prezentacja HTML/PDF zgodna z przewodnikiem.
-- **Raport testów frontendu (GPT, 2026-11-01, wersja `e2eafca`):** `~/scratch/gpt-guides/hydrograf-test-report.md` — 0 krytycznych, 0 wysokich, 5 średnich (B1–B5, w Backlogu), 10 niskich (B6–B15; B14 rozwiązane przez `4866617`), 3 informacyjne; zero błędów JS. Wyznaczanie zlewni 37 km² trwa 4–5 s.
-- **Nakładka „Mapa zagrożenia powodziowego” (MZP ISOK)** (gałąź `feature/isok-mzp`, worktree `Hydrograf-isok`; `ca0d920`, slajd 14 przewodnika `1b8c199`): WMS 1.3.0 Wód Polskich/KZGW (`wody.isok.gov.pl`, usługi `MZP20_Glebokosc_{Niskie,Srednie,Wysokie}PrawdopodPowodzi`, warstwy `16`/`16`/`1`; REST i WMTS dają 401), głębokości dla p = 0,2 / 1 / 10 %, legenda w HTML (4 klasy), CC BY 4.0. Głębokości rysowane od przybliżenia 14 (poniżej podpowiedź, bez zapytań); obrazy 512 px, odpowiedzi 0,4–2 s, pojedyncze 10–30 s. Panel `hazardPane` z-index 240: nad podkładami, pod NMT (250) i wynikami analiz (300) — przy NMT na kryciu 70% MZP jest przygaszona (kolejność do decyzji, Backlog). CSP `img-src` + `https://wody.isok.gov.pl`. Wdrożenie wymagało restartu `hydro_nginx`, nie reloadu: `nginx.conf` jest montowany jako pojedynczy plik, a merge zapisał go pod nowym i-węzłem, więc kontener widział starą wersję.
-- **Cache zasobów za Cloudflare** (`eb5e28a`): po wdrożeniu MZP Cloudflare serwował stary `js/layers.js` (`HIT`, przeglądarkom `max-age` 4 h). `scripts/bump_asset_versions.py` dopisuje `?v=<10 znaków SHA-256>` do własnych JS/CSS w `index.html`, `admin.html`, `instrukcja/index.html` (`--check` w nowym zadaniu CI `frontend-assets`, hook `pre-commit` przy zmianach w `frontend/` — w tym checkoucie `pre-commit install` nie jest wykonane, więc skrypt trzeba uruchamiać ręcznie); HTML i `/admin` z `Cache-Control: no-cache` + ETag (`expires -1`, nagłówki bezpieczeństwa dziedziczone). Przy okazji: `HYDROGRAF_PUBLIC_HOST` w `.env` wskazuje host, którego nie ma w DNS (Backlog).
+- **Raport testów frontendu (GPT, 2026-11-01, wersja `e2eafca`):** `~/scratch/gpt-guides/hydrograf-test-report.md` — 0 krytycznych, 0 wysokich, 5 średnich (B1–B5, w `docs/BACKLOG.md`, Bugs and diagnoses), 10 niskich (B6–B15; B14 rozwiązane przez `4866617`), 3 informacyjne; zero błędów JS. Wyznaczanie zlewni 37 km² trwa 4–5 s.
+- **Nakładka „Mapa zagrożenia powodziowego” (MZP ISOK)** (gałąź `feature/isok-mzp`, worktree `Hydrograf-isok`; `ca0d920`, slajd 14 przewodnika `1b8c199`): WMS 1.3.0 Wód Polskich/KZGW (`wody.isok.gov.pl`, usługi `MZP20_Glebokosc_{Niskie,Srednie,Wysokie}PrawdopodPowodzi`, warstwy `16`/`16`/`1`; REST i WMTS dają 401), głębokości dla p = 0,2 / 1 / 10 %, legenda w HTML (4 klasy), CC BY 4.0. Głębokości rysowane od przybliżenia 14 (poniżej podpowiedź, bez zapytań); obrazy 512 px, odpowiedzi 0,4–2 s, pojedyncze 10–30 s. Panel `hazardPane` z-index 240: nad podkładami, pod NMT (250) i wynikami analiz (300) — przy NMT na kryciu 70% MZP jest przygaszona (kolejność do decyzji, `docs/BACKLOG.md`). CSP `img-src` + `https://wody.isok.gov.pl`. Wdrożenie wymagało restartu `hydro_nginx`, nie reloadu: `nginx.conf` jest montowany jako pojedynczy plik, a merge zapisał go pod nowym i-węzłem, więc kontener widział starą wersję.
+- **Cache zasobów za Cloudflare** (`eb5e28a`): po wdrożeniu MZP Cloudflare serwował stary `js/layers.js` (`HIT`, przeglądarkom `max-age` 4 h). `scripts/bump_asset_versions.py` dopisuje `?v=<10 znaków SHA-256>` do własnych JS/CSS w `index.html`, `admin.html`, `instrukcja/index.html` (`--check` w nowym zadaniu CI `frontend-assets`, hook `pre-commit` przy zmianach w `frontend/` — w tym checkoucie `pre-commit install` nie jest wykonane, więc skrypt trzeba uruchamiać ręcznie); HTML i `/admin` z `Cache-Control: no-cache` + ETag (`expires -1`, nagłówki bezpieczeństwa dziedziczone). Przy okazji: `HYDROGRAF_PUBLIC_HOST` w `.env` wskazuje host, którego nie ma w DNS (`docs/BACKLOG.md`). Od scalenia z `feature/producer-heads` (2026-11-02) hooka `pre-commit` nie ma (`.pre-commit-config.yaml` usunięty): po zmianie pliku JS/CSS uruchomić `python3 scripts/bump_asset_versions.py`, a `--check` wykonują bramka `scripts/gate.sh` i zadanie CI `frontend-assets`.
 - **Zwierciadło wody na profilu terenu** (gałąź `feature/profile-water-level`, worktree `Hydrograf-wse`; `347a9d9` API, `e625d92` frontend, `4098956` dokumentacja): `POST /api/terrain-profile` przyjmuje `result_ids` (≤ 20) i zwraca `water_levels` z rastrów `water_level` manifestu (`core/analysis_results.py`, ustawienie `FRONTEND_DATA_DIR`, tylko pliki w `results/`; nieznane lub nieczytelne pomijane); wykres rysuje wodę (kolor `--info`) dla włączonych wyników, odczyt teren / zwierciadło / głębokość. Sprawdzenie: przekrój czaszy zbiornika 277,48 m n.p.m., głębokość przy zaporze 12,33 m (maks. modelu 12,31 m). Przerwa API ok. 2,5 min (2026-11-01 23:50–23:53 UTC): edycja `profile.py` przez pomyłkę w checkoucie produkcyjnym, cofnięta `git restore`, ale uvicorn `--reload` przeładował API dwa razy (graf zlewni 134 s).
 - **Wdrożenia:** wszystkie gałęzie dnia (`feature/analysis-results`, `docs/instrukcja-v2`, `feature/isok-mzp`, `feature/profile-water-level`) scalone fast-forwardem do `feature/visual-identity` w checkoucie produkcyjnym (HEAD `4098956`); podglądy na osobnych kontenerach usunięte, worktree zostawione. Pliki w trybie 644.
 
@@ -76,9 +255,9 @@
 ### Następne kroki
 - Po przebiegu 3: `compare_sections.py` (SFINCS vs Hydrolog w 7 przekrojach), publikacja wyniku 24 h w manifeście (kafle, `max_depth.tif`, `wse_max.tif` jako `water_level`), porównanie z MZP 1%.
 - Ustalenia dla Hydraulika (do jego dokumentacji): `huthresh` w `model build` (domyślne 0,05 m nie nadaje się do deszczu na siatce), brak `dtout`/`dtmaxout` i `crsfile` w `model build`, błędne podsumowanie przy `dtmaxout` < `tstop`, exit 9 przy `--output-dir` wewnątrz katalogu modelu, siatka wyrównana do wielokrotności `dx` (pół komórki przy NMT GUGiK), PMAXTP tylko 15–180 min, `results export` bez poziomu wody (`zsmax`).
-- Decyzje autora: kolejność MZP względem NMT (Backlog); ekran powitalny otwiera instrukcję w nowej karcie, a przycisk „Instrukcja” w górnym pasku w tej samej — potwierdzić.
-- Błędy B1–B5 z raportu testów GPT (Backlog, „Bledy i diagnozy”); poprawić `HYDROGRAF_PUBLIC_HOST` w `.env`.
-- Przycinanie w pipeline (bootstrap zapisuje granicę, API odmawia poza nią) — pozycja Backlogu nadal otwarta; tym razem przycięto jednorazowo skryptem.
+- Decyzje autora: kolejność MZP względem NMT (`docs/BACKLOG.md`, Features — other); ekran powitalny otwiera instrukcję w nowej karcie, a przycisk „Instrukcja” w górnym pasku w tej samej — potwierdzić.
+- Błędy B1–B5 z raportu testów GPT (`docs/BACKLOG.md`, Bugs and diagnoses); poprawić `HYDROGRAF_PUBLIC_HOST` w `.env`.
+- Przycinanie w pipeline (bootstrap zapisuje granicę, API odmawia poza nią) — pozycja backlogu (`docs/BACKLOG.md`, Features — other) nadal otwarta; tym razem przycięto jednorazowo skryptem.
 - Merge `feature/visual-identity` do `develop` i push za zgodą autora.
 
 ### Poprzednia sesja (2026-11-01 — GUI w identyfikacji Nogata)
@@ -135,7 +314,7 @@
 - Bootstrap uruchamiać wyłącznie w osobnym kontenerze (`docker compose run --rm --no-deps api ...`), nigdy przez `exec` w `hydro_api`.
 - Rastry powyżej ~160M komórek (np. cała Kaczawa, 183M) dopiero po wdrożeniu F1–F7 (`docs/TECHNICAL_DEBT.md`); wtedy ponowić Kaczawę.
 - Pozostałe wnioski dopisane do Backlogu: dobór arkuszy po wielokącie, czas delineacji przy ujściu dużych cieków.
-- Przycinanie prezentowanych danych do granicy zakresu analizy — priorytet wysoki (Backlog, „Funkcjonalnosci — pozostale”).
+- Przycinanie prezentowanych danych do granicy zakresu analizy — priorytet wysoki (`docs/BACKLOG.md`, Features — other).
 
 ### Poprzednia sesja (2026-10-29 — prezentacja dla testerów)
 
@@ -1483,99 +1662,7 @@ Usuniecie starych danych generowanych (frontend/data, frontend/tiles, dem_mosaic
 
 ## Backlog
 
-**Jedyne zrodlo prawdy dla rzeczy do zrobienia** (konsolidacja 2026-07-31). Sekcje "Nastepne kroki" w opisach sesji to zapis historyczny — nowe zadania dopisuj wylacznie tutaj.
-
-### Bledy i diagnozy
-
-- [ ] **Pamiec przetwarzania NMT (`process_dem`) — zaplanowane, nie wdrozone (decyzja usera 2026-10-30).** Bootstrap Kaczawy (183M komorek) padl dwa razy na OOM; szczyt obecnego kodu ~19 GB (~103 B/komorke). Poprawki F1–F7 obnizaja go do ~9,1 GB bez zmiany wynikow (sprawdzone bit w bit na prototypie). Pomiar, tabela poprawek z plikami i liniami, kolejnosc wdrozenia i testy: `docs/TECHNICAL_DEBT.md`, sekcja „Pamiec przetwarzania NMT”. Do tego czasu raster powyzej ~160M komorek nie przejdzie przy 8G + 8G swap (~80M bez swapu); bootstrap uruchamiac w osobnym kontenerze (`docker compose run --rm`), bo OOM w `hydro_api` zabija API testowe (2026-10-30, ~3,5 h przerwy). Priorytet: wysoki.
-- [ ] `fix_internal_sinks` (strategia `max_acc`) tworzy pary komorek splywajacych do siebie, a poprawki nie trafiaja do `d8_fdir`/`flw` — akumulacja w tych ujsciach jest zanizona, a odleglosc splywu, Strahler i zlewnie licza sie na niepoprawionej sieci (Kaczawa: 4520 poprawek). Szczegoly: `docs/TECHNICAL_DEBT.md`, sekcja „Pamiec przetwarzania NMT”, akapit „Przy okazji”. Priorytet: sredni (wplywa na wyniki).
-- [ ] Bootstrap z `--boundary-file` pobiera arkusze z obwiedni obiektu, nie z wielokata: `kartograf.find_sheets_for_geometry` (0.7.0) liczy arkusze dla bboxu kazdego obiektu (`backend/scripts/bootstrap.py::resolve_boundary_file`). Kaczawa: 928 zamiast 513 arkuszy (+81%), obszar mniejszy: 342 zamiast 207. Obejscie 2026-10-30: lista przecinajacych wielokat (`SheetParser(godlo).get_bbox()` ∩ wielokat w EPSG:2180) i `--sheets`. Naprawa: filtrowac w `resolve_boundary_file` albo zglosic do Kartografa. Uwaga: z `--sheets` bootstrap liczy obszar z zasiegu arkuszy, nie z pliku granicy. Priorytet: sredni.
-- [ ] Delineacja precomputed przy glownym cieku duzej zlewni trwa > 60 s: punkt 51,2130 / 16,1734 (prog 100000, obszar mniejszy 2026-10-30) — `Large merge: 4492 segments, using batched union`, klient przerwal po 60 s, bez wpisu zakonczenia w logu API. Zlewnia 15 km² liczy sie w 4,6 s. Zdiagnozowac czas laczenia (ADR-042) i zachowanie przy zerwanym polaczeniu; powiazane z DoS w specyfikacji utwardzenia. Priorytet: sredni.
-- [ ] **Utwardzenie bezpieczeństwa publicznej powierzchni ataku** — specyfikacja: `notes/superpowers/specs/2026-08-08-public-security-hardening-spec.md` (sesja 86; weryfikacja raportu `notes/reports/2026-08-08-admin-security-audit.md` + niezależny audyt całej powierzchni). 9 obszarów; następny krok = plan (writing-plans). **Priorytet KRYTYCZNY: 3× HIGH nieuwierzytelniony DoS z internetu** — delineacja precise bez limitu obszaru (OOM), kafle `2**z` bez walidacji zoomu (OOM), brak zoom-floor+`statement_timeout` na streams/catchments/landcover (wysycenie puli DB); wzorzec naprawy jest już w kodzie (endpoint sewer odporny). Dalej: **E1 real_ip za tunelem** (prerekwizyt rate-limitu i dashboardu ruchu), containment `sewer_source`/`--waterbody-mode`, precedencja `ADMIN_API_KEY_FILE`, hasło DB w env kontenera, supply-chain (git tagi→SHA), DoS panelu feedbacku, + LOW/INFO. Decyzje: dwa tory (konta osobno), BEZ bramki admina interim. Krytyczny bypass `expected_key` już naprawiony (`d7f6bd7`).
-- [ ] Hietogram i hydrogram — "brak danych" wszedzie, gdzie klikal tester (feedback Kamila 2026-07; jedyny twardy bug zgloszenia). Dane pokrywaja testowany obszar (Warszawa), wiec to nie kwestia zasiegu — wymaga diagnozy (dane opadowe? endpoint? frontend?). Priorytet: wysoki.
-- [ ] Cztery lokacje nginx (regex `.css/.js`, `.pbf/.geojson`, `^~ /data/`, `^~ /tiles/`) nadpisują własnym `add_header` dziedziczone nagłówki bezpieczeństwa (CSP, X-Frame-Options, Referrer-Policy) — `add_header` w bloku location kasuje wszystkie z poziomu server. Znalezione przy review sesji 84; niezależne od wycofanego dashboardu, dotyczy obu configów. Priorytet: średni. → **ujęte w specyfikacji utwardzenia jako E3** (podniesione do MEDIUM; sesja 86).
-- [ ] Naprawa bledow UX (zgloszenie 2026-02-14, 13 pozycji — D1-D4, E1-E3, F1, G1-G4)
-- [ ] Weryfikacja podkladow GUGiK WMTS (czy URL-e dzialaja z `EPSG:3857:{z}`)
-- [ ] Wolne kafle landcover MVT na niskich zoomach: `/api/tiles/landcover/{z}/{x}/{y}.pbf` przy zoom 11-12 do 6.7 s (72 zadania >2 s w sesji testowej 2026-08-01, monitoring sesja 82) — prawdopodobnie kosztowne zapytanie przestrzenne przy pierwszym ladowaniu warstwy (zimny cache). Do diagnozy: EXPLAIN ANALYZE zapytania MVT na niskim zoomie, ew. cache/preagregacja. Priorytet: sredni.
-- [ ] Tryb precise (`POST /api/delineate-watershed` bez `threshold_m2`) zwraca `area_km2 = 0.0` dla niektorych punktow (`raster_service.delineate_from_point()`) — odkryte przy diagnozie feedbacku #11 (`notes/reports/2026-08-02-length-km-diagnosis.md` §10.2), poza zakresem naprawy `hydraulic_length_km` (sesja 83). Priorytet: sredni.
-- [ ] Wygladzanie granicy zlewni (`ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)`) skraca obwod o ~28% przy zachowanej powierzchni — liczenie wskaznikow ksztaltu na hybrydzie (`area_km2` z rastra, `perimeter_km` z wygladzonego wieloboku) zaniza `compactness_coefficient` (Kc) i zawyza `circularity_ratio` (Rc). Odkryte przy diagnozie feedbacku #11 (§10.1 diagnozy, sesja 83). Priorytet: sredni.
-- [ ] `scripts/download_landcover.py` (~l.180-197): dla `--provider corine` z `--lat/--lon` wymusza rozszerzenie `.gpkg`, a CORINE zapisuje raster — niezgodny format/rozszerzenie pliku wyjsciowego (wada spoza migracji na Kartograf 0.7.0). Priorytet: sredni.
-- [ ] `core/cn_calculator.py::get_land_cover_stats` (~l.254) lapie kazdy `Exception` i zwraca `{}` — cicha degradacja (brak pokrycia nieodroznialny od bledu); zawezic wyjatki i podniesc blad glosno (wada spoza migracji na Kartograf 0.7.0). Priorytet: sredni.
-- [ ] **B1** (raport testów frontendu GPT 2026-11-01, wersja `e2eafca`: `~/scratch/gpt-guides/hydrograf-test-report.md`): błędy hydrogramu — angielski komunikat Pydantic (np. α = 50 → „Input should be less than or equal to 20”) w podsumowaniu Hydrogramu zamiast przy polu, stary wykres i tabela zostają obok błędu, pola bez sprawdzenia `min`/`max` przed wysłaniem, α = 0 lub puste po cichu zastąpione 2,0. Priorytet: sredni.
-- [ ] **B2** (raport GPT): tryb zaawansowany liczy hydrogram dla powierzchni > 250 km² (300 km² → 200 OK) bez blokady ani ostrzeżenia, choć `GET /api/scenarios` podaje `area_limit_km2: 250`. Priorytet: sredni.
-- [ ] **B3** (raport GPT): Snyder z Ct = 1,65 i Cp = 0,8 (wartości z zakresu w etykietach) daje urwaną recesję — spadek z ~28% szczytu do zera w ~25 min przy poprawnej objętości (ucięta podstawa hydrogramu jednostkowego w Hydrologu albo backendzie). Priorytet: sredni.
-- [ ] **B4** (raport GPT): telefon 375 px — pasek trybów ucina „Profil terenu”, a przycisk „Zlewnia” leży poza ekranem (scrollWidth 491) bez sygnału przewijania; × w arkuszu „Zlewnia” kasuje wynik, schować arkusz można tylko uchwytem 36×4 px. Priorytet: sredni.
-- [ ] **B5** (raport GPT): profil terenu przecinający granicę danych spada do 0 m n.p.m. (50 ze 100 próbek = 0, podsumowanie „H 0–388 m”); oczekiwana przerwa w wykresie albo komunikat o braku NMT. Część pozycji „Przycinanie prezentowanych danych do granicy zakresu analizy” w „Funkcjonalnosci — pozostale”. Priorytet: sredni.
-- [ ] Raport GPT, pozycje niskie B6–B15 (B14 rozwiązane przez `4866617`) i informacyjne I1–I3 (m.in. brak legend NMT i zagłębień, nieużywane pole `download` manifestu wyników) — przejrzeć i wybrać do naprawy. Priorytet: niski.
-
-### Funkcjonalnosci — feedback Kamila (2026-07, oryginal: `notes/feedback/Kamil.md`)
-
-- [ ] Eksport zlewni (pobranie geometrii) + reczna edycja wierzcholkow granicy — kluczowe dla zastosowan miejskich (zlewnie realnie modyfikuje kanalizacja deszczowa). Priorytet: wysoki.
-- [ ] Przycisk "i" — inspekcja punktu na mapie: wysokosc, pokrycie terenu itd. Synergia z terrain-RGB (etap B skali NMT daje odczyt wysokosci gratis). Priorytet: sredni.
-- [ ] Zaglebienia — czytelna skala barw: warstwa MVT `/api/tiles/depressions/{z}/{x}/{y}.pbf` (wzorzec landcover, tiles.py:177-232) + stylowanie client-side wg `max_depth_m`, suwak zamknietych przedzialow glebokosci, klik → glebokosc (tooltip gotowy w martwym kodzie depressions.js:63-146 — podlaczyc albo usunac), endpoint statystyk glebokosci (percentyle) do kalibracji suwaka. Wymaga minZoom ~12-13 + filtr powierzchni (338k poligonow). Priorytet: sredni. ODLOZONE (decyzja 2026-07-31).
-- [ ] NMT — dynamiczna/definiowana skala barw. Etap A (0.5-1 dnia): legenda skali (metadane juz w dem_tiles.json, frontend ich nie czyta) + parametry `--elev-min/--elev-max/--pct` w dem_color.py/generate_dem_tiles.py/adminie — obecne okno p5-p95 (81.8-114.1 m) pokrywa ~35% zakresu wysokosci, stad "wszystko zielone". Etap B (2-5 dni): rozdzielenie hillshade od koloru (statyczna piramida hillshade + `mix-blend-mode: multiply`), kolor dynamicznie: endpoint on-the-fly `/api/tiles/dem/...?vmin=&vmax=` (RasterCache ma DEM w RAM; por. ADR-018) LUB kafelki terrain-RGB + canvas client-side (plynny suwak, gratis odczyt wysokosci pod kursorem = przycisk "i"). Priorytet: sredni. ODLOZONE (decyzja 2026-07-31).
-- [ ] Mniejszy prog linii splywu — rewizja ADR-030 (prog 100 m2 usuniety, tester go potrzebuje do drobnych linii splywu). Priorytet: do decyzji.
-- [ ] Kanalizacja deszczowa — warstwa pusta: dostepne WMS lacza siec deszczowa z sanitarna i nie da sie ich rozdzielic. Do decyzji zrodlo danych. Decyzja UI (2026-07-31): gdy brak danych, warstwa znika z GUI (nie pokazujemy pustej pozycji). Priorytet: do ustalenia.
-- [ ] HSG — za mala rozdzielczosc (cala Warszawa = grupa A); rozwazyc mape glebowo-rolnicza jako zrodlo. Priorytet: do ustalenia.
-- [ ] Morfometria — parametry z faktycznych ciekow: obecne wartosci bazuja na wygenerowanej sieci splywu (progi akumulacji z NMT), przez co czesc wskaznikow nie ma sensu fizycznego. Decyzja (2026-07-31): parametry zlewni i sieci rzecznej liczyc z faktycznych ciekow (wgrana warstwa lub BDOT10k), NIE z generowanych linii splywu. Realizacja odlozona. Priorytet: sredni.
-
-### Wlasne dane i nowe zrodla (rozszerzenia trybu przegladowego)
-
-Wizja (brainstorm 2026-07-31, pelne uzasadnienia: `notes/plans/2026-07-31-wlasne-dane-i-nowe-zrodla-wizja.md`): rdzeniem pozostaje tryb przegladowy — automatyczna analiza z danych publicznych. Wgrywanie wlasnych danych to opcjonalne rozszerzenie dla zastosowan projektowych tam, gdzie dane publiczne nie wystarczaja (feedback Kamila: zlewnie miejskie, kanalizacja, HSG).
-
-- [ ] Zakres analizy z pliku wektorowego w panelu admina (zamiast rysowania prostokata). Dlaczego: realne projekty maja nieregularne granice; prostokat wymusza przetwarzanie nadmiaru danych.
-- [ ] Przyciecie danych wynikowych do obszaru analizy. Dlaczego: wyniki poza granica obszaru to szum i falszywy kontekst; naturalna konsekwencja wektorowego zakresu.
-- [ ] Zlewnie aPGW jako zrodlo danych + wskazanie obszaru analizy przez ID zlewni. Dlaczego: urzedowy podzial hydrograficzny jako referencja i szybkie definiowanie obszaru bez rysowania.
-- [ ] Wgranie wlasnego NMT zamiast pobierania z geoportalu. Dlaczego: projekty dysponuja dokladniejszym/aktualniejszym pomiarem (nalot, LiDAR); uniezaleznienie od dostepnosci geoportalu.
-- [ ] Wgranie wlasnej warstwy ciekow (wyniesione z wpisu o pliku YAML). Dlaczego: BDOT10k bywa niepelny; wgrana warstwa staje sie podstawa parametrow sieci rzecznej (por. wpis o morfometrii).
-- [ ] Wgranie wlasnych danych o gruntach. Dlaczego: projekty maja badania gruntowe dokladniejsze niz HSG (por. wpis o HSG).
-- [ ] Wgranie wlasnego uzytkowania terenu. Dlaczego: stan projektowy (np. planowana zabudowa) zamiast stanu obecnego z danych publicznych.
-- [ ] Wodowskazy IMGW (przez IMGWTools): warstwa lokalizacji + odczyty (stany/przeplywy); docelowo weryfikacja obliczanych przeplywow obserwacjami. Dlaczego: walidacja modelu w zlewniach zamknietych wodowskazem.
-- [ ] PMAXTP (przez IMGWTools): pobranie opadow maksymalnych o zadanym prawdopodobienstwie dla wybranego punktu. Dlaczego: opad obliczeniowy do hietogramu/hydrogramu projektowego.
-- [ ] Eksport danych dla zaznaczonego obszaru z poziomu GUI (NMT, linie splywu, zaglebienia, wyniki analiz — GeoTIFF/GeoJSON/GPKG). Dlaczego: wyniki musza trafiac do dalszych narzedzi projektowych (QGIS, modele kanalizacji). Uwaga: chodzi o eksport plikowy, NIE o uruchamianie pipeline z GUI (doprecyzowane w brainstormie).
-- [ ] Podpiecie wlasnych WMS jako podklad (obsluga client-side). Dlaczego: uzytkownicy maja branzowe WMS (kanalizacja, MPZP); client-side = zero obciazenia backendu.
-- [ ] Wskazowki i wyjasnienia do parametrow i wskaznikow w "Parametrach zlewni" (tooltips/ikona "i" przy pozycjach). Dlaczego: obnizenie progu wejscia — interpretacja wynikow bez wiedzy eksperckiej.
-
-### Funkcjonalnosci — pozostale
-
-- [ ] **Przycinanie prezentowanych danych do granicy zakresu analizy (wymaganie usera 2026-10-30). Priorytet: wysoki.** Dziś BDOT10k (pokrycie terenu) trafia do bazy dla całych powiatów (obszar mniejszy 2026-10-30: 95 804 obiekty z 10 powiatów), a kafle NMT, overlay, cieki, zlewnie i depresje obejmują całą mozaikę arkuszy. Przy bboxie to wystarcza, ale przy zakresie z wielokąta (`--boundary-file`) obszar widoczny dla użytkownika jest poszarpany: arkusze i powiaty wystają poza granicę. Zasada: obliczenia mogą iść na pełnym komplecie danych (ciągłość hydrologiczna, bufor), ale wszystko, co jest wyświetlane i dostępne dla użytkownika, ma być przycięte do granicy zakresu. Zakres: kafle MVT (cieki, zlewnie, pokrycie terenu, depresje), kafle i overlay NMT (maska poza granicą), wyniki punktowe (wybór/generowanie zlewni i profil poza granicą — odmowa lub komunikat). Wymaga zapisania granicy zakresu w bazie przez bootstrap; dziś z `--sheets` (obejście doboru arkuszy po wielokącie z 2026-10-30) bootstrap jej nie zna. Powiązane: wpis o doborze arkuszy po wielokącie w „Bledy i diagnozy”, „Zakres analizy z pliku wektorowego w panelu admina” w sekcji „Wlasne dane i nowe zrodla”.
-  - 2026-11-01: dane produkcji przycięte jednorazowo skryptem do zlewni Kaczawy 790,57 km² (patrz sesja 2026-11-01/02); profil terenu poza granicą nadal daje 0 m (B5 w „Bledy i diagnozy”).
-- [ ] CP5: MVP — pelna integracja frontend+backend, deploy produkcyjny (v1.0.0)
-- [ ] Podwojna analiza NMT (z/bez obszarow bezodplywowych): pipeline generuje 2 warianty — pelny DEM (z endoreicznymi) i DEM hydrologicznie poprawny (bez). Cieki i obliczenia hydrologiczne (SCS-CN, hydrogram) oparte na wariancie bez bezodplywowych. W UI zlewnie bezodplywowe oznaczane innym kolorem (np. szarym/przezroczystym) ale widoczne na mapie. Wymaga: 2x process_hydrology_pyflwdir, osobne stream_network/catchments, warstwa UI z rozroznieniem. Priorytet: sredni.
-- [ ] Optymalizacja wydajnosci selekcji zlewni czastkowych powyzej punktu (precomputed transitive closure + boundary cache). Szacowany speedup ~10x dla zlewni 100 km^2, ~20-50x dla >500 km^2. Koszt RAM ~500 MB. Szczegoly: `notes/plans/2026-05-19-catchment-selection-performance-design.md`. Status: do rozwazenia, wymaga decyzji produktowej + mikrobenchmark baseline. Priorytet: sredni.
-- [ ] Plik konfiguracyjny YAML — niestandardowe parametry i sciezki pipeline. Priorytet: sredni. (Wlasne wektory ciekow wyniesione do sekcji "Wlasne dane i nowe zrodla".)
-- [ ] Ikony trybow w toolbarze — lapka (przegladanie), kursor klikajacy (wybierz zlewnię), kafelki/siatka (wygeneruj zlewnię), profil terenu (profil). Priorytet: niski.
-- [ ] **Kolejność nakładki MZP względem NMT — do decyzji autora.** `hazardPane` (z-index 240, `js/map.js`) leży nad podkładami, ale pod NMT (250) i wynikami analiz (300), więc przy NMT na domyślnym kryciu 70% mapa zagrożenia jest przygaszona. Przestawienie nad NMT to zmiana z-index na 255. Priorytet: do decyzji.
-- [ ] Proxy WMS dla MZP (opcja): obrazy z `wody.isok.gov.pl` przez nginx Hydrografa z cache. Dlaczego: usługi odpowiadają zwykle 0,4–2 s, pojedyncze obrazy 10–30 s (pełny widok 0,5–24 s); cache przyspieszyłby powtórne widoki, a host ISOK zniknąłby z CSP. Priorytet: niski.
-
-### Infrastruktura i jakosc kodu
-
-- [ ] Migracja na SQLAlchemy 2.1 i zdjecie pinu `<2.1` — albo URL-e `postgresql+psycopg2://` (docker-compose.yml, `config.py`, migrations `env.py`), albo przejscie na psycopg v3. Pin dodany, bo 2.1 wybiera psycopg v3 dla `postgresql://`, a obraz ma `psycopg2-binary`. Priorytet: niski.
-- [ ] Plik lock/constraints zaleznosci wygenerowany z dzialajacego obrazu — wiekszosc pozycji w `requirements.txt` ma niezwiazane `>=`, wiec kazda przebudowa obrazu moze zepsuc zywe API (jak przy SQLAlchemy 2.1). Priorytet: sredni.
-- [ ] Dashboard ruchu — przebudowa od zera (poprzednia implementacja GoAccess z sesji 82/84 wycofana w całości w sesji 85; kod referencyjny w gałęzi `backup/develop-pre-cleanup`, decyzje ADR-055/056 tylko w starej historii). Przed startem: brainstorming wymagań z użytkownikiem. **Zależność: E1 (real_ip za tunelem) ze specyfikacji utwardzenia jest prerekwizytem** — bez niego logi zapisują IP tunelu, analiza per-IP ślepa; `log_format` definiować razem z real_ip; decyzja anonimizacja/retencja IP (RODO).
-- [ ] Flaga `--thresholds` w `bootstrap.py` + pole w API/panelu admina — dziś progi akumulacji są hardcodowane w wywołaniu `process_dem` (`bootstrap.py:540`), choć sam `process_dem.py` ma flagę `--thresholds`. Kontekst (sesja 88): przy bboxie Kotliny Kłodzkiej (113M komórek) próg 1000 m² powoduje OOM (polygonizacja 872k podzlewni > limit 8G) — dane wygenerowano progami [10000, 100000] przez jednorazową edycję hardcode'u; ponowny bootstrap z domyślną listą znów wpadnie w OOM. Po dodaniu flagi: `DEFAULT_THRESHOLD_M2` (`core/constants.py`) musi być zawsze równy najniższemu progowi w danych. Priorytet: sredni.
-- [ ] Migracja bind mountow na named volumes Docker (`./data`, `./cache`, `./frontend/data`, `./frontend/tiles`) — w obecnym ksztalcie kazda zmiana engine ryzykuje powtorke EPERM z sesji 80. Priorytet: sredni.
-- [ ] `HYDROGRAF_PUBLIC_HOST` w `.env` wskazuje host, którego nie ma w DNS (NXDOMAIN, 2026-11-01); tunel Cloudflare wystawia aplikację pod `hydrograf-test.debever.pl`. Kod w repo tej zmiennej nie czyta — poprawić wartość albo usunąć. Priorytet: niski.
-- [ ] Usuniecie hardcoded secrets z config.py i migrations/env.py
-- [ ] Testy scripts/ (process_dem.py, import_landcover.py — 0% coverage)
-- [ ] Code review CR12-CR16 (sugestie): duplikacja morph, _MAX_MERGE const, inline import, n_bins ceil, POST cache
-- [ ] Upstream do Kartografa: publiczne `discover_teryts_for_bbox()` (TERYT dla bbox bez pobierania danych) nadal brak w 0.7.0 - po wydaniu usunac fallback na prywatnym `Bdot10kProvider._get_teryt_for_point()` w `download_landcover.py::_discover_teryts_grid()` (dzis zabezpieczony guardem + testem kontraktowym, ADR-057). `mosaic_and_crop`/`download_pl_cutout` ocenione w etapie K - nie zastepuja VRT Hydrografu (ADR-057, aktualizacja 2026-10-08); `merge_hydro_gpkgs()` bez odpowiednika. Priorytet: niski.
-- [x] Kartograf 0.7.0 — `_get_opendata_url()` traktowal blad sieci jak brak arkusza (sesja 93, pobranie Opolskiego): rozwiazane w 0.7.0 (DownloadError zamiast przejscia do starszej warstwy; warstwy z GetCapabilities) — etap K.
-- [ ] Opolskie: ponowne pobranie w 0.7.0 (decyzja D6), zastepuje weryfikacje 92 arkuszy z listy podejrzanych. Dane z ukladu 0.6.1 nie sa reuzywane (docs/integrations/KARTOGRAF.md §6.5).
-- [x] Kartograf 0.7.0 — `requests.Session()` per zapytanie: 0.7.0 - jeden transport HTTP — etap K.
-- [x] (czesciowo) Kartograf 0.7.0 — pelny rekord metadanych arkusza: sidecar `.meta.json` (`extra.source`: url, layer, acquisition_date/year, pzgik_date, survey_work_id, data_source, full_sheet) — etap K; BRAK w sidecarze: bladSredniWysokosci, bladSredniPolozenia, modulArchiwizacji, sha256 — do ADR-058/backlogu Kartografa.
-- [ ] Bootstrap krok 5 (HSG): blad (w tym nieaktualny `hsg_poland.tif`) jest zapisywany jako krok nieudany, ale bootstrap konczy sie kodem 0 przy udanych krokach 1-3; fallback HSG "B" przy braku danych SoilGrids bez zmian - do decyzji D5 (zgodnie z zasada "brak danych = blad, nie wartosc domyslna").
-- [ ] **ADR do decyzji — wersjonowanie arkuszy NMT** (sesja 93). Problem: GUGiK publikuje NMT w warstwach wg roku aktualnosci (`SkorowidzeNMT2025`/`2024`/`2023`/`2022iStarsze`), a po stronie Hydrografu plik = sama sciezka z godla — rok przepada, `skip_existing` blokuje aktualizacje, mozaika miesza naloty z roznych lat bez sladu (mozliwe progi wysokosci na stykach, niewyjasnialne zmiany zlewni miedzy bootstrapami). Proponowane rozwiazanie:
-  1. Uklad plikow bez zmian (jedna, najnowsza znana wersja per godlo, sciezki Kartografa) + manifest w `<HOST_DATA_DIR>/nmt/` (SQLite/GPKG) z pelnym rekordem skorowidza: godlo, `aktualnosc`, `numerZgloszeniaPracy`, `zrDanych`, `bladSredniWysokosci`, `dt_pzgik`, URL OpenData, czas pobrania (timestamp, wymagany), sha256. Klucz wersji: `numerZgloszeniaPracy` + `aktualnosc`. `zrDanych` istotne hydrologicznie (fotogrametria vs lidar — rozna jakosc przy tym samym bledzie sredniym). Odrzucone: katalogi per rok (`nmt_5m/2025/...`) — psuja `skip_existing`, duplikuja dane, mozaika i tak wymaga wyboru "najnowszej per arkusz".
-  2. Aktualizacja = diff skorowidza z manifestem: odpytanie WMS bez pobierania plikow, ponowne pobranie tylko arkuszy ze zmienionym URL-em; poprzednia wersja przenoszona do `archive/`.
-  3. Provenance w bootstrapie: lista wersji arkuszy (lub hash manifestu) zapisana w metadanych przebiegu w DB; opcjonalnie warstwa "rok nalotu per arkusz" do diagnozy stykow.
-  - **Zdecydowane (user, s93):** stare wersje sa archiwizowane, nie nadpisywane. Uklad archiwum: wspolny katalog `archive/` w `<HOST_DATA_DIR>/nmt/` z podkatalogiem per produkt (odpowiednik biezacego, np. `archive/nmt_5m`, `archive/nmt_1m`, inne w razie potrzeby), dalej hierarchia godla jak w danych biezacych, rok aktualnosci (nalotu) jako prefiks nazwy oddzielony `_`: `archive/nmt_5m/<hierarchia godla>/<aktualnoscRok>_<godlo>.asc`, np. `archive/nmt_5m/M-33/48/D/d/3/1/2019_M-33-48-D-d-3-1.asc`. Rok z pola `aktualnoscRok` rekordu skorowidza (stan terenu), nie z `dt_pzgik` (publikacja) ani z nazwy warstwy (`2022iStarsze` to grupowanie). **Bez przyrostka kolizji** — user akceptuje ryzyko, ze dwie wersje arkusza z tego samego roku (np. poprawka tego samego nalotu) zajma te sama nazwe i pozniej archiwizowana nadpisze wczesniejsza; pelna identyfikacja wersji tylko w manifescie (`numerZgloszeniaPracy`, `aktualnosc`, `dt_pzgik` + czas pobrania). Odrzucone: katalogi per rok — stan "na dzien bootstrapu" miesza lata, wiec odtwarza sie go z manifestu.
-  - Zrodlo metadanych: docelowo Kartograf 0.7.0 (punkt wyzej); na 0.6.1 — wlasne zapytanie GetFeatureInfo i parsowanie `skor_NMT_wg_akt.push({...})` (`MetadataCache` przechowuje tylko URL). Pierwszy manifest: Opolskie, przy okazji weryfikacji 92 arkuszy pobranych po bledzie warstwy 2025.
-  - Numer ADR nadac przy przyjeciu (nastepny wolny: 058). Priorytet: sredni, przed pobraniem calej Polski.
-
-### Pomysly niewdrozeniowe (komercjalizacja, feedback Kamila 2026-07)
-
-Audyt wodny dla gmin w 24h (tani/darmowy skrot + platny poglebiony); "sprawdz dzialke" (skad plynie woda, czemu zalewa, rekomendacje — z LLM, monetyzacja przez kontakty do wykonawcow); "waterscore" dla deweloperow; podejrzec otwartego konkurenta SCALGO z uniwersytetu w Lund. Szczegoly: `notes/feedback/Kamil.md`.
+Otwarte pozycje są w [BACKLOG.md](BACKLOG.md) (po angielsku, sekcje Bugs and diagnoses, Features — Kamil's feedback, Own data and new sources, Features — other, Infrastructure and code quality, Ideas outside the deployment): to jedyne źródło prawdy dla rzeczy do zrobienia. Pozycje dopisane tu na `feature/visual-identity` (m.in. pamięć `process_dem`, B1–B15 z raportu testów GPT, przycinanie do granicy zakresu, MZP) przeniesiono tam przy scaleniu z `feature/producer-heads` 2026-11-02. Tu zostaje tylko archiwum zrobionych pozycji.
 
 ### Zrobione (archiwum)
 
@@ -1599,3 +1686,6 @@ Audyt wodny dla gmin w 24h (tani/darmowy skrot + platny poglebiony); "sprawdz dz
 - [x] Code review CR4-CR11 (wazne) — zamkniete w sesjach 39/49/55 (2026-03-03); wpis byl blednie otwarty
 - [x] Nomenklatura: warstwa "Cieki" → "Linie splywu" (feedback Kamila 2026-07) — commit c2adfd5, sesja 2026-07-31
 - [x] `backend/utils/sheet_finder.py` duplikowal funkcjonalnosc Kartografa (`find_sheets_for_bbox()`) — usuniety (~616 linii + testy), zastapiony `utils/sheet_lookup.py` (cienki wrapper delegujacy do Kartografa). Przy okazji naprawiony bug w sciezce punkt+bufor (siatka 2×4 zamiast zagniezdzonego 2×2 dla 1:10000 — bledne godla, zero pokrycia wspolnego z poprawnym wynikiem). Polityka „pozyskiwanie danych wylacznie przez Kartograf" z udokumentowanymi wyjatkami: ADR-057. Commity: `75dc859`, `e9d940d`, `1524992`.
+- [x] Kartograf 0.7.0 — `_get_opendata_url()` traktowal blad sieci jak brak arkusza (sesja 93, pobranie Opolskiego): rozwiazane w 0.7.0 (DownloadError zamiast przejscia do starszej warstwy; warstwy z GetCapabilities) — etap K.
+- [x] Kartograf 0.7.0 — `requests.Session()` per zapytanie: 0.7.0 - jeden transport HTTP — etap K.
+- [x] (czesciowo) Kartograf 0.7.0 — pelny rekord metadanych arkusza: sidecar `.meta.json` (`extra.source`: url, layer, acquisition_date/year, pzgik_date, survey_work_id, data_source, full_sheet) — etap K; BRAK w sidecarze: bladSredniWysokosci, bladSredniPolozenia, modulArchiwizacji, sha256 — do ADR-058/backlogu Kartografa.
