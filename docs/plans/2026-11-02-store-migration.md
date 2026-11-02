@@ -224,7 +224,7 @@ Szacunek w sesjach agenta. Ścieżka krytyczna: S1 → S2 → S3 → S4 → S5 �
   - przekrój Kamiennika: 37,23 km²;
   - punkt poza granicą: 404 jako `application/problem+json` z `type`/`title`/`status`/`detail`;
   - `POST /api/generate-hydrograph` dla tych zlewni: SCS-CN i Nash jak w produkcji, Snyder ze szczytem o 11–12% wyższym i 25–70 min wcześniej (ADR-060);
-  - `POST /api/terrain-profile` z `result_ids` (dzisiejsza funkcja): `water_levels` dla przekroju czaszy, 277,48 m n.p.m., głębokość przy zaporze 12,33 m;
+  - `POST /api/terrain-profile` z `result_ids` (dzisiejsza funkcja): `water_levels` dla przekroju czaszy, 277,48 m n.p.m., głębokość przy zaporze 12,33 m (wynik 12 h `sfincs-kamiennik-12h-p1`; obecny wynik 24 h `sfincs-kamiennik-24h-p1` daje 281,43 m);
   - `POST /api/feedback`: wiersz z prefiksem `[staging-smoke]`, usunąć po teście;
   - admin z kluczem stagingu, tylko GET: `dashboard`, `resources`, `bootstrap/status`, `sewer/status`, `cleanup/estimate`, `feedback`.
 - [x] Smoke frontendu w przeglądarce na 8081:
@@ -297,6 +297,8 @@ Warunek: K1 spełnione.
 
 ### S5: bootstrap z zestawu, przycięcie, ponowna publikacja wyników (1 sesja)
 
+**Decyzja autora z 2026-11-02 (wieczór): S5 w pełnym zasięgu, czyli bootstrap z zestawu Archiwisty dla całej Kaczawy, jest odłożony na po wydaniu v0.8.0.** Kod `--project/--set` (ADR-067, H1) zostaje. Wydanie v0.8.0 przełącza produkcję w miejscu, bez S5; szczegóły przełączenia dojdą w osobnym kroku. Przed nim: poprawki B1, B2, B4, B5 z raportu GPT (`2418776`, `be4d264`), mały test bootstrapu na Kamienniku, porządki w git, merge i push, potem przełączenie produkcji i koniec stagingu na 8081.
+
 Krok przepisany według S5 planu Nogata `docs/plans/2026-11-02-archiwista-sets-for-hydrograf.md` (repozytorium Nogat, gałąź `plan/archiwista-sets-hydrograf`, commit `d2f17ac` i następne): wariant B autora z 2026-11-02, ADR-067. Bootstrap czyta dane Kartografa wyłącznie z zamkniętego zestawu projektu Kaczawa w Archiwiście i niczego nie pobiera.
 
 Warunki: S4 potwierdzone; H1 i H2 zrobione; Kaczawa w `/home/claude-agent/data/archiwista-public/projects/kaczawa` (A4) i zestaw zbudowany oraz zamknięty przez autora (A5), zweryfikowany w Archiwiście („Weryfikuj”); K1 spełnione; `free -g` pokazuje co najmniej 9 GB dostępnej pamięci, `df -h /` co najmniej 5 GB wolnego. Reguła z ADR-066, że w Archiwiście nie może trwać żadne pobieranie, odpada: zamknięty zestaw się nie zmienia, a bootstrap sprawdza każdy pin (rozmiar i SHA-256) na starcie.
@@ -319,8 +321,7 @@ Warunki: S4 potwierdzone; H1 i H2 zrobione; Kaczawa w `/home/claude-agent/data/a
   - fazy `rasters db vectors frontend` w `run --rm --no-deps` projektu stagingu z `-v` na skrypt;
   - podmiana katalogów `rename` wpis po wpisie wewnątrz `s5/`.
 - [ ] Ponowna publikacja wyników:
-  - `frontend/data/results/` (manifest `index.json`, warstwy SFINCS `sfincs-kamiennik-12h-p1` z `wse_max.tif`) i `data/results/` skopiować z produkcji do `s5`;
-  - przebieg 3, jeśli autor zdążył go opublikować w produkcji, wchodzi tą samą kopią;
+  - `frontend/data/results/` (manifest `index.json`, warstwa SFINCS `sfincs-kamiennik-24h-p1`, przebieg 3: 24 h p = 1%, zwierciadło w zbiorniku do 281,43 m n.p.m., z `wse_max.tif`) i `data/results/` skopiować z zestawu `copy` do `s5` (w produkcji leży jeszcze wynik 12 h `sfincs-kamiennik-12h-p1`, który 24 h zastąpił);
   - sprawdzić, że `index.json` jest zgodny z `hydrograf-results/1`.
 - [ ] Przełączyć zielony stos na `s5`: w `.env.staging` ustawić `HYDROGRAF_STAGING_SET=s5`, `HYDROGRAF_STAGING_DB=hydro_s5`, potem `scripts/staging-compose.sh up -d api nginx`. Powtórzyć smoke z S2 na 8081. Zestaw `copy` zostaje jako zapasowy.
 
@@ -482,7 +483,7 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
     - `depressions`;
     - delineacja 51,0376/16,1723: 15,16 km², CN 70,5; przekrój Kamiennika: 37,23 km², CN 67,9, ujście 51,01544/15,88984; podgląd zlewni;
     - SCS-CN i Nash: 12 hydrogramów identycznych;
-    - profil czaszy z `result_ids`: zwierciadło 277,48 m n.p.m.;
+    - profil czaszy z `result_ids`: zwierciadło 277,48 m n.p.m. (wynik 12 h; wynik 24 h `sfincs-kamiennik-24h-p1`: 281,43 m);
   - oczekiwane:
     - Snyder: przy opadzie 1 h szczyt +11,9–12,2% i 40–65 min wcześniej; przy 24 h +5,5–7,8% i 45–65 min wcześniej; objętość równa;
     - błędy jako `application/problem+json`: 404 z `detail` i `hint` po polsku, walidacja 400 zamiast 422, 401 admina;
@@ -498,7 +499,7 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
     - „Próg akumulacji spływu” 1 ha / 10 ha (w produkcji „Próg FA” w m²);
     - szyna Mapa · Instrukcja · Logowanie;
     - „Usługi działają” tylko w `/admin`;
-    - tryb „Identyfikuj”: czasza 4,04 m wody, zwierciadło 277,48 m n.p.m.
+    - tryb „Identyfikuj”: czasza 4,04 m wody, zwierciadło 277,48 m n.p.m. (wynik 12 h; wynik 24 h: 16,55 m wody, 281,43 m).
 - K0:
   - baza zapisana o 12:00:49 przed pierwszą zmianą;
   - diff pusty i `/health` 200 po każdym kroku: pliki i katalogi, prune, zrzut, kopia, testy `db`, budowa, `up`, oba smoke, commit;

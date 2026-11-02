@@ -278,11 +278,11 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
 | Hydrogram SCS-CN i Nash, 3 zlewnie × 1 h i 24 h | — | Q, tp i V identyczne (12 przypadków) | równe |
 | Snyder, 1 h | Q 1,898 / 3,599 / 11,755 m³/s; tp 385 / 420 / 565 min | 2,123 / 4,028 / 13,194 m³/s; 345 / 375 / 500 min | oczekiwane (ADR-060): +11,9–12,2%, 40–65 min wcześniej, V równe |
 | Snyder, 24 h | Q 14,517 / 38,825 / 122,551 m³/s; tp 940 / 975 / 1125 min | 15,309 / 41,150 / 132,126 m³/s; 895 / 925 / 1060 min | oczekiwane co do kierunku: +5,5–7,8% (ADR-060 podaje 11–12% dla krótszych opadów), 45–65 min wcześniej, V równe |
-| Profil przez czaszę zbiornika z `result_ids` | zwierciadło 277,48 m n.p.m., 323 próbki mokre, gł. maks. 12,6 m | ta sama odpowiedź | równe |
+| Profil przez czaszę zbiornika z `result_ids` | zwierciadło 277,48 m n.p.m., 323 próbki mokre, gł. maks. 12,6 m | ta sama odpowiedź | równe (wynik 12 h `sfincs-kamiennik-12h-p1`; obecny wynik 24 h `sfincs-kamiennik-24h-p1`: zwierciadło 281,43 m) |
 | Błędy: punkt poza granicą (delineacja, hydrogram), profil poza NMT | 404 `application/json`, `{"detail": …}` | 404 `application/problem+json` (`type`, `title`, `status`, `detail`, `code`, `hint`) | oczekiwane (ADR-059) |
 | Walidacja (szerokość 200, hydrogram bez `duration`) | 422, lista błędów pydantic | 400 problem+json z `errors[]` | oczekiwane |
 | Admin bez klucza | 401 `application/json` | 401 problem+json | oczekiwane |
-| `POST /api/identify-point` | 404 (brak trasy) | 200: czasza 4,04 m i 12,6 m wody, zwierciadło 277,48 m; poza danymi 404 problem+json po polsku | nowa funkcja (uwaga 6) |
+| `POST /api/identify-point` | 404 (brak trasy) | 200: czasza 4,04 m i 12,6 m wody, zwierciadło 277,48 m (wynik 12 h; z wynikiem 24 h: 16,55 m wody, 281,43 m); poza danymi 404 problem+json po polsku | nowa funkcja (uwaga 6) |
 | Admin z kluczem stagingu: 6 GET, zgłoszenie `[staging-smoke]` | — | 200; wiersz id 14 dodany, widoczny i usunięty | OK |
 | Komunikat w panelu po kliknięciu poza granicą | „… w tym punkcie. Kliknij w obszarze pokrytym liniami spływu.” | „… w tym miejscu. Kliknij w obszarze zlewni.” (`detail` + `hint`) | oczekiwane |
 | Kółko: zdarzenia syntetyczne od poziomu 10, bez podkładu, 3 powtórzenia | muśnięcia z ogonem → 14 / 15 / 17, przeciągnięcie 1 s → 16–17, ząbki 5 × 120 ms → 12 | → 11 / 11 / 11 (koniec po ok. 0,3 s), → 12, → 12 | oczekiwane (uwaga 1) |
@@ -371,6 +371,13 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
 - **Instrukcja: karta potwierdzona przez autora, kod bez zmian:** „Otwórz instrukcję” w oknie powitalnym otwiera przewodnik w nowej karcie (`target="_blank"`); „Instrukcja” na szynie to zwykły odnośnik `/instrukcja/` w tej samej karcie (na `/admin` i `/instrukcja`); na stronie mapy zwykłe kliknięcie otwiera najpierw okno powitalne (Ctrl/Shift/środkowy przycisk — odnośnik), jak dotąd.
 - **Snyder:** testerzy nie dostają osobnej informacji (decyzja autora); zmiana opisana tylko w CHANGELOG. Pozycja 2 „Otwartych decyzji” planu migracji rozstrzygnięta.
 - K0 pusty diff i `/health` 200 przed i po sprawdzeniu w przeglądarce.
+
+### Błędy B1, B2, B4, B5 z raportu GPT przed v0.8.0 (2026-11-02 wieczór)
+- **Decyzja autora:** pełny S5 (bootstrap z zestawu dla całej Kaczawy) odłożony na po v0.8.0; v0.8.0 przełącza produkcję w miejscu (zapis w planie migracji, przy S5). Kod `--project/--set` zostaje.
+- **API** (`2418776`): `errors[].message` po polsku dla `Accept-Language: pl` (tekst typu błędu pydantic z granicami, np. „Wartość nie może być większa niż 0,8.”; angielski bez zmian); `morphometry.area_km2` powyżej `area_limit_km2` (250) daje 422 `catchment_too_large` jak zlewnia wyznaczona; `POST /api/terrain-profile` zwraca `dem_gaps` (addytywnie, `elevations_m` dalej 0,0 w luce). Testy: kontrakt komunikatów, limit powierzchni (250,01 → 422, 250 → 200), luka NMT vs 0 m n.p.m.
+- **Frontend** (`be4d264`): B1 walidacja pól liczbowych przed żądaniem z komunikatem pod polem (też `errors[]` serwera), stary wynik ukryty, bez cichych wartości domyślnych; B2 limit powierzchni w trybie zaawansowanym; B4 pasek trybów w dwóch rzędach na telefonie (375 px: scrollWidth 375), × chowa panel „Zlewnia” bez kasowania, przycisk „Wyczyść wynik”; B5 luka na wykresie profilu, notka z udziałem luki, komunikat dla linii poza NMT.
+- Staging: obraz `hydrograf-api:store-staging` przebudowany z worktree, `hydro_staging_api` odtworzony (teraz z montowaniem `/kartograf:ro`); sprawdzone w Chromium na 8081 (1440 × 900 i 375 × 812), 0 błędów JS, zrzuty `/home/claude-agent/data/tmp/r1-*.png`. K0 pusty diff i `/health` 200 przed i po.
+- Otwarte dla autora: `null` zamiast 0,0 w `elevations_m` (zmiana schematu odpowiedzi, łamiąca); B3 (Snyder) diagnozowany osobno.
 
 ### Poprzednia sesja (2026-11-01/02 — kopia produkcji, przycięcie danych do zlewni Kaczawy, wyniki SFINCS w „Wynikach analiz”, instrukcja i ekran powitalny, nakładka MZP ISOK, cache zasobów za Cloudflare, zwierciadło wody na profilu terenu)
 
