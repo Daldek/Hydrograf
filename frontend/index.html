@@ -26,7 +26,7 @@
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
     <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
-    <link rel="stylesheet" href="css/app.css?v=cc684d57f1">
+    <link rel="stylesheet" href="css/app.css?v=2f1971c5e0">
 </head>
 <body>
 <div class="shell">
@@ -168,7 +168,10 @@
                     <span class="grip" aria-hidden="true"></span>
                     <h2 id="results-title">Zlewnia</h2>
                     <span class="sub num" id="results-sub"></span>
-                    <button class="btn ghost sm icon" type="button" id="results-close" aria-label="Zamknij panel zlewni i wyczyść wynik" title="Zamknij i wyczyść">
+                    <button class="btn ghost sm icon" type="button" id="results-clear" aria-label="Wyczyść wynik zlewni" title="Wyczyść wynik" disabled>
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 5.5h13M8 5.5V3.5h4v2M5.5 5.5l1 11h7l1-11M8.5 8.5v5M11.5 8.5v5"/></svg>
+                    </button>
+                    <button class="btn ghost sm icon" type="button" id="results-close" aria-label="Schowaj panel zlewni (wynik zostaje)" title="Schowaj panel">
                         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
                     </button>
                 </div>
@@ -340,6 +343,10 @@
                                             </select>
                                         </div>
                                     </div>
+                                    <p id="hietogram-error" class="notice bad d-none">
+                                        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5v4M8 11v.01"/></svg>
+                                        <span class="calc-error-text"></span>
+                                    </p>
                                     <div id="hietogram-results" class="d-none">
                                         <div class="chart">
                                             <div class="chart-title">Opad</div>
@@ -430,6 +437,10 @@
                                             </button>
                                         </div>
                                     </div>
+                                    <p id="hydro-error" class="notice bad d-none" role="alert">
+                                        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5v4M8 11v.01"/></svg>
+                                        <span class="calc-error-text"></span>
+                                    </p>
                                     <div id="hydrograph-results" class="d-none">
                                         <div id="hydro-summary" class="hydro-summary num"></div>
                                         <p id="adv-notice" class="notice warn d-none" role="status">
@@ -536,23 +547,23 @@
 
 <!-- Application modules -->
 <script defer src="js/diagnostics.js?v=a06afc9760"></script>
-<script defer src="js/api.js?v=20ec0dcb99"></script>
+<script defer src="js/api.js?v=43c619a227"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
 <script defer src="js/map.js?v=5cdb8201c4"></script>
-<script defer src="js/charts.js?v=9e81526377"></script>
+<script defer src="js/charts.js?v=8baccb0ef9"></script>
 <script defer src="js/layers.js?v=594951821d"></script>
-<script defer src="js/profile.js?v=48daa99e7d"></script>
+<script defer src="js/profile.js?v=adf70f4108"></script>
 <script defer src="js/info-texts.js?v=38c9c8ae53"></script>
 <script defer src="js/info.js?v=ee57e1b82f"></script>
-<script defer src="js/hydrograph.js?v=ac35ed43da"></script>
-<script defer src="js/advanced.js?v=0ec3199ceb"></script>
-<script defer src="js/custom-rain.js?v=6c9cd8da7b"></script>
+<script defer src="js/hydrograph.js?v=15913fab44"></script>
+<script defer src="js/advanced.js?v=cc8ebe931b"></script>
+<script defer src="js/custom-rain.js?v=e0026dfb92"></script>
 <script defer src="js/depressions.js?v=1ae5396489"></script>
 <script defer src="js/sewer.js?v=5734849f77"></script>
 <script defer src="js/results.js?v=73398284b4"></script>
 <script defer src="js/feedback.js?v=c940b8604e"></script>
 <script defer src="js/welcome.js?v=b1ddbcaaf3"></script>
 <script defer src="js/identify.js?v=26b0c1016b"></script>
-<script defer src="js/app.js?v=3af3311df2"></script>
+<script defer src="js/app.js?v=faf009e82d"></script>
 </body>
 </html>

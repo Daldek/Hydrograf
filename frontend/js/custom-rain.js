@@ -280,10 +280,13 @@
         _timer = setTimeout(regenerate, DEBOUNCE_MS);
     }
 
-    /** After any change of the series: recalculate when it is valid. */
+    /**
+     * After any change of the series: recalculate. While the series is invalid
+     * hydrograph.js sends nothing and hides the earlier result.
+     */
     function changed() {
-        if (refresh().valid) scheduleRegenerate();
-        else clearTimeout(_timer);
+        refresh();
+        scheduleRegenerate();
     }
 
     // ── Paste ──────────────────────────────────────────────────────────

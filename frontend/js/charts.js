@@ -569,7 +569,7 @@
      *
      * @param {string} canvasId - Canvas element ID
      * @param {Array} distances - Distance values [m]
-     * @param {Array} elevations - Elevation values [m]
+     * @param {Array} elevations - Elevation values [m], null where the DEM has no data (a gap)
      * @param {Function} [onHover] - Callback(fraction) when hovering, fraction 0..1
      * @param {Function} [onHoverEnd] - Callback when mouse leaves chart
      * @param {Array} [water] - [{ title, levels }]: water level [m] per sample, null where dry
@@ -655,6 +655,8 @@
                     label: 'Wysoko\u015b\u0107 [m n.p.m.]',
                     data: elevations,
                     fill: true,
+                    // A sample off the DEM breaks the line and its fill
+                    spanGaps: false,
                     tension: 0,
                     pointRadius: 0,
                     borderWidth: 1.5,

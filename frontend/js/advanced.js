@@ -37,6 +37,7 @@
     var _original = null;    // its morphometry (never modified)
     var _rows = {};          // key -> { field, wrap, input, reset, err, orig, shown }
     var _timer = null;
+    var _areaLimit = null;   // km², area_limit_km2 of GET /api/scenarios
     var els = {};
 
     // ── Values ─────────────────────────────────────────────────────────
@@ -78,6 +79,11 @@
         if (f.kind === 'pos' && v <= 0) return 'Wartość musi być dodatnia.';
         if (f.kind === 'cn' && (v < 1 || v > 100)) {
             return 'CN: liczba od 1 do 100 (np. 68.4).';
+        }
+        // The API refuses a larger catchment, as it does for a delineated one
+        if (f.key === 'area_km2' && _areaLimit !== null && v > _areaLimit) {
+            return 'Hietogram i hydrogram są liczone dla zlewni do ' +
+                String(_areaLimit).replace('.', ',') + ' km².';
         }
         if (f.key === 'elevation_max_m') {
             var vmin = values.elevation_min_m;
@@ -192,6 +198,19 @@
         };
     }
 
+    /**
+     * Area limit of the hydrograph (GET /api/scenarios); the field "Powierzchnia
+     * zlewni" accepts no more, like a delineated watershed.
+     */
+    function setAreaLimit(limit) {
+        _areaLimit = typeof limit === 'number' && isFinite(limit) ? limit : null;
+        var row = _rows.area_km2;
+        if (!row) return;
+        if (_areaLimit === null) row.input.removeAttribute('max');
+        else row.input.max = String(_areaLimit);
+        evaluate();
+    }
+
     // ── Events ─────────────────────────────────────────────────────────
 
     function regenerate() {
@@ -205,10 +224,11 @@
         _timer = setTimeout(regenerate, DEBOUNCE_MS);
     }
 
+    // Every edit reaches hydrograph.js: while the form is invalid it sends
+    // nothing and hides the earlier result
     function onFieldInput() {
-        var state = evaluate();
-        if (state.valid) scheduleRegenerate();
-        else clearTimeout(_timer);
+        evaluate();
+        scheduleRegenerate();
     }
 
     function resetRow(row) {
@@ -323,5 +343,6 @@
 
     window.Hydrograf.advanced = {
         requestMorphometry: requestMorphometry,
+        setAreaLimit: setAreaLimit,
     };
 })();

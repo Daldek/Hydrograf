@@ -6,6 +6,8 @@
  * Hover over chart shows corresponding point on the map line.
  * Analysis results with a water level that are shown on the map add their
  * water surface where the line crosses them (results.js, API result_ids).
+ * Samples off the DEM (API dem_gaps) are gaps of the chart, left out of the
+ * elevation range; a line wholly off the DEM gets a message instead.
  */
 (function () {
     'use strict';
@@ -19,33 +21,50 @@
     var _request = 0;
 
     /**
-     * Show an inline error message near the profile chart canvas.
+     * Show a notice above the profile chart: a warning about the line, or
+     * (error) why there is no profile.
      */
-    function showProfileError(canvasId, message) {
-        var canvas = document.getElementById(canvasId);
+    function showProfileNotice(text, error) {
+        var canvas = document.getElementById('chart-profile-standalone');
         if (!canvas) return;
         var container = canvas.parentElement;
-        clearProfileError();
-        var isDemError = /503|DEM|dane wysoko/.test(message);
-        var text = isDemError
-            ? 'DEM niedostępny — profil terenu wymaga wgranych danych wysokościowych'
-            : 'Nie udało się pobrać profilu terenu';
-        var alertEl = document.createElement('p');
-        alertEl.className = 'notice warn profile-error-alert';
-        alertEl.setAttribute('role', 'alert');
+        clearProfileNotice();
+        var note = document.createElement('p');
+        note.className = 'notice warn profile-notice';
+        note.setAttribute('role', error ? 'alert' : 'status');
         var textSpan = document.createElement('span');
         textSpan.textContent = text;
-        alertEl.appendChild(textSpan);
-        container.parentElement.insertBefore(alertEl, container);
+        note.appendChild(textSpan);
+        container.parentElement.insertBefore(note, container);
     }
 
-    function clearProfileError() {
+    function clearProfileNotice() {
         var drawer = document.getElementById('profile-drawer');
-        var existing = drawer && drawer.querySelector('.profile-error-alert');
+        var existing = drawer && drawer.querySelector('.profile-notice');
         if (existing) existing.remove();
     }
 
-    /** Drawer subtitle: line length and elevation range. */
+    /** Text for a failed profile request, by the reason of the API problem. */
+    function profileErrorText(err) {
+        var problem = err && err.problem;
+        var reason = problem && problem.details && problem.details.reason;
+        if (reason === 'no_elevation_data') {
+            return 'Linia leży poza zasięgiem NMT: brak danych wysokościowych.';
+        }
+        if (reason === 'dem_unavailable') {
+            return 'NMT niedostępny: profil terenu wymaga wgranych danych wysokościowych.';
+        }
+        // Another API problem has its own Polish text; a network failure does not
+        return problem ? err.message : 'Nie udało się pobrać profilu terenu.';
+    }
+
+    /** Elevations of the profile with null where the DEM has no data (a gap). */
+    function terrainLine(result) {
+        var gaps = result.dem_gaps || [];
+        return result.elevations_m.map(function (h, i) { return gaps[i] ? null : h; });
+    }
+
+    /** Drawer subtitle: line length and elevation range of the samples with DEM data. */
     function setProfileSummary(distances, elevations) {
         var el = document.getElementById('profile-summary');
         if (!el) return;
@@ -107,12 +126,11 @@
      * Water surface of each shown result the line crosses, for the chart:
      * [{ title, levels }] with a level only where it lies above the terrain.
      */
-    function waterSeries(result, shown) {
-        var elevations = result.elevations_m;
+    function waterSeries(result, shown, elevations) {
         return (result.water_levels || []).map(function (wl) {
             var source = shown.filter(function (r) { return r.id === wl.result_id; })[0];
             var levels = wl.levels_m.map(function (level, i) {
-                return level !== null && level > elevations[i] ? level : null;
+                return level !== null && elevations[i] !== null && level > elevations[i] ? level : null;
             });
             var wet = levels.some(function (level) { return level !== null; });
             return source && wet ? { title: source.title, levels: levels } : null;
@@ -140,15 +158,21 @@
             // Ensure drawer is visible BEFORE rendering the chart
             var drawer = document.getElementById('profile-drawer');
             if (drawer) drawer.hidden = false;
-            clearProfileError();
-            setProfileSummary(result.distances_m, result.elevations_m);
+            var elevations = terrainLine(result);
+            var gaps = elevations.filter(function (h) { return h === null; }).length;
+            clearProfileNotice();
+            if (gaps) {
+                showProfileNotice('Część linii (' + Math.round(100 * gaps / elevations.length) +
+                    '% próbek) leży poza zasięgiem NMT: wykres ma tam przerwę.', false);
+            }
+            setProfileSummary(result.distances_m, elevations);
             Hydrograf.charts.renderProfileChart(
                 'chart-profile-standalone',
                 result.distances_m,
-                result.elevations_m,
+                elevations,
                 onChartHover,
                 onChartHoverEnd,
-                waterSeries(result, shown)
+                waterSeries(result, shown, elevations)
             );
 
             // Resize after render to ensure correct dimensions
@@ -161,7 +185,9 @@
             var drawer = document.getElementById('profile-drawer');
             if (drawer) drawer.hidden = false;
             setProfileSummary(null, null);
-            showProfileError('chart-profile-standalone', err.message || 'Błąd');
+            // No chart of an earlier line under the message
+            Hydrograf.charts.destroyChart('chart-profile-standalone');
+            showProfileNotice(profileErrorText(err), true);
         });
     }
 
@@ -194,7 +220,7 @@
     function hideProfilePanel() {
         var drawer = document.getElementById('profile-drawer');
         if (drawer) drawer.hidden = true;
-        clearProfileError();
+        clearProfileNotice();
         Hydrograf.map.cancelDrawing();
         Hydrograf.map.clearProfileLine();
         Hydrograf.map.clearProfileHoverMarker();

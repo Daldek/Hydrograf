@@ -60,22 +60,17 @@
 
     /**
      * Text of an API error, an application/problem+json document (ADR-059).
-     * `detail` is Polish because apiFetch sends Accept-Language: pl. A
-     * validation error (it lists `errors`) shows the first message of a
-     * backend validator instead, without the pydantic "Value error, " prefix,
-     * else its `detail` alone (its hint only points at `errors`); any other
-     * client error appends its `hint` (e.g. "Kliknij w obszarze zlewni.").
+     * `detail` and the messages of `errors` are Polish because apiFetch sends
+     * Accept-Language: pl. A validation error (it lists `errors`) shows the
+     * message of its first invalid value (its `detail` only lists the JSON
+     * Pointers, its hint points at `errors`); any other client error appends
+     * its `hint` (e.g. "Kliknij w obszarze zlewni.").
      */
     function problemMessage(problem) {
         if (!problem || typeof problem.detail !== 'string') return null;
         if (Array.isArray(problem.errors)) {
-            for (var i = 0; i < problem.errors.length; i++) {
-                var text = problem.errors[i] && problem.errors[i].message;
-                if (typeof text === 'string' && /^Value error,\s*/.test(text)) {
-                    return text.replace(/^Value error,\s*/, '');
-                }
-            }
-            return problem.detail;
+            var first = problem.errors[0];
+            return first && typeof first.message === 'string' ? first.message : problem.detail;
         }
         if (typeof problem.hint === 'string' && problem.status < 500) {
             return problem.detail + ' ' + problem.hint;
@@ -84,19 +79,23 @@
     }
 
     /**
-     * Generic error handler for API responses.
+     * Throw the error of a failed API response: an Error with the text for the
+     * user, its HTTP `status` and the parsed `problem` document (null when the
+     * body is not JSON), from which a form places `errors` at its fields.
      */
     async function handleError(response) {
-        let message = ERROR_MESSAGES[response.status];
-        if (!message) {
-            message = 'Nieoczekiwany błąd (' + response.status + '). Spróbuj ponownie.';
-        }
-
+        var problem = null;
         try {
-            message = problemMessage(await response.json()) || message;
+            problem = await response.json();
         } catch { /* not JSON, e.g. an nginx error page: use the default */ }
 
-        throw new Error(message);
+        var error = new Error(
+            problemMessage(problem) || ERROR_MESSAGES[response.status] ||
+            'Nieoczekiwany błąd (' + response.status + '). Spróbuj ponownie.'
+        );
+        error.status = response.status;
+        error.problem = problem;
+        throw error;
     }
 
     /**

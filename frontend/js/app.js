@@ -246,12 +246,21 @@
         Hydrograf.shell.close('right');
     }
 
+    /**
+     * The panel shows its instruction (nothing to clear) or a selection: its
+     * loading state, error or result, which the clear button removes.
+     */
+    function setInstruction(shown) {
+        els.instruction.classList.toggle('d-none', !shown);
+        els.clear.disabled = shown;
+    }
+
     function setLoading(loading) {
         Hydrograf.map.setLoadingCursor(loading);
 
         if (loading) {
             showPanel();
-            els.instruction.classList.add('d-none');
+            setInstruction(false);
             els.loading.classList.remove('d-none');
             els.error.classList.add('d-none');
             els.results.classList.add('d-none');
@@ -262,7 +271,7 @@
 
     function showError(msg) {
         showPanel();
-        els.instruction.classList.add('d-none');
+        setInstruction(false);
         els.error.classList.remove('d-none');
         els.errorMessage.textContent = msg;
     }
@@ -285,8 +294,9 @@
     }
 
     /**
-     * Close results panel and clear all map overlays.
-     * Used by "×" button and Escape key.
+     * Clear the selection: the result, the error and the map overlays, then
+     * close the panel. Used by the clear button and a double Escape; the ×
+     * of the panel only hides it, so the result stays.
      */
     function closeResults() {
         cancelSelection();
@@ -300,7 +310,7 @@
         state.currentWatershed = null;
         els.results.classList.add('d-none');
         els.error.classList.add('d-none');
-        els.instruction.classList.remove('d-none');
+        setInstruction(true);
         setContext('', '');
         hidePanel();
     }
@@ -567,6 +577,7 @@
             crumb: document.getElementById('crumb-context'),
             crumbSep: document.getElementById('crumb-sep'),
             resultsSub: document.getElementById('results-sub'),
+            clear: document.getElementById('results-clear'),
             hint: document.getElementById('map-hint-text'),
             mapWrap: document.getElementById('map-wrap'),
         };
@@ -587,11 +598,13 @@
             if (state.clickMode === 'profile') setClickMode('browse');
         });
 
-        // Panel controls
-        document.getElementById('results-close').addEventListener('click', closeResults);
+        // Panel controls: × hides the panel (the result stays on the map and
+        // the "Zlewnia" button brings it back), the clear button removes it
+        document.getElementById('results-close').addEventListener('click', hidePanel);
+        els.clear.addEventListener('click', closeResults);
 
         // Escape: cancel drawing first, then close the point card, then
-        // single = close panel, double = clear result (like ×)
+        // single = hide panel, double = clear result (like the clear button)
         var _escTimer = null;
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
