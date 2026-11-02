@@ -403,6 +403,32 @@ class TestLoadBdotStreamsFromGpkg:
         assert 400_000 < y < 700_000
         assert 65.0 < stream["length_m"] < 72.0
 
+    def test_missing_or_blank_names_are_none_and_names_are_stripped(self, tmp_path):
+        gpkg = tmp_path / "hydro.gpkg"
+        lines = [
+            LineString([(500000, 500000 + 10 * i), (500050, 500000 + 10 * i)])
+            for i in range(4)
+        ]
+        self._write(gpkg, "OT_SWRS_L", lines, NAZWA=["Bzura", None, "  ", " Rawka "])
+
+        streams = load_bdot_streams_from_gpkg(gpkg)
+
+        assert [s["name"] for s in streams] == ["Bzura", None, None, "Rawka"]
+
+    def test_a_blank_first_name_column_falls_back_to_the_next_one(self, tmp_path):
+        gpkg = tmp_path / "hydro.gpkg"
+        lines = [
+            LineString([(500000, 500000 + 10 * i), (500050, 500000 + 10 * i)])
+            for i in range(2)
+        ]
+        self._write(
+            gpkg, "OT_SWKN_L", lines, NAZWA=[None, " "], Name=["Kanał Żerański", None]
+        )
+
+        streams = load_bdot_streams_from_gpkg(gpkg)
+
+        assert [s["name"] for s in streams] == ["Kanał Żerański", None]
+
 
 class TestInsertBdotStreams:
     def test_without_a_known_layer_type_nothing_is_loaded(self):

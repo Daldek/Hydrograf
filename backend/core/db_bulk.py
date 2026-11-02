@@ -340,6 +340,28 @@ def insert_catchments(
 VALID_BDOT_LINE_TYPES = {"SWRS", "SWKN", "SWRM"}
 
 
+def _text_or_none(value: Any) -> str | None:
+    """Turn a GeoDataFrame cell into a clean text value.
+
+    Parameters
+    ----------
+    value : Any
+        Cell value; missing text may be ``None``, ``NaN`` or ``pd.NA``
+        depending on the pandas string dtype.
+
+    Returns
+    -------
+    str or None
+        The stripped text, or ``None`` when the value is missing or blank.
+    """
+    import pandas as pd
+
+    if value is None or (pd.api.types.is_scalar(value) and pd.isna(value)):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def load_bdot_streams_from_gpkg(gpkg_path: str | Path) -> list[dict[str, Any]]:
     """Load BDOT10k linear hydro features from merged GeoPackage.
 
@@ -380,9 +402,10 @@ def load_bdot_streams_from_gpkg(gpkg_path: str | Path) -> list[dict[str, Any]]:
                 continue
             name = None
             for col in ("NAZWA", "nazwa", "Name", "name"):
-                if col in row.index and row[col]:
-                    name = str(row[col])
-                    break
+                if col in row.index:
+                    name = _text_or_none(row[col])
+                    if name is not None:
+                        break
 
             lines = []
             if isinstance(geom, MultiLineString):
