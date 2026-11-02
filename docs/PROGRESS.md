@@ -261,6 +261,44 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
 - `5207813` scalenie `feature/store-ui` (bez konfliktów), `eada999` scalenie `feature/store-identify` (konflikt tylko w hashach `?v=` w `frontend/index.html`; `scripts/bump_asset_versions.py`). PDF prezentacji wydrukowany raz po scaleniu (30 slajdów 16:9). Bramka offline zielona (1381 testów, pokrycie 86,64%), smoke w Chromium na serwerze statycznym z atrapami API; szczegóły w „Wynikach” planu `docs/plans/2026-11-02-store-migration.md`, zrzuty w `~/scratch/store-ui/landing/`.
 - Następne: zrzuty slajdów 8 i 29 (pasek z trzema trybami) oraz 10 i 13 do podmiany po S3; S2 planu.
 
+### Krok S2 planu: zielony stos na kopii produkcji (2026-11-02)
+- **Stos `hydrograf-staging` na 127.0.0.1:8081** z `scripts/staging-compose.sh` (`eddf1d7`): obraz `hydrograf-api:store-staging` (`sha256:ce03f2f4f201…`, 1,94 GB; kartograf 0.8.0.dev0 `26ee459`, hydrolog 1.0.0.dev0 `5fa22b3`, imgwtools 3.0.0 `6bd35a4`, affine 2.4.0, pyflwdir 0.5.12), baza `hydro_staging_db` z świeżego `pg_dump` produkcji (12 tabel z równymi liczbami wierszy, `alembic current` = `003`), dane zestawu `copy` skopiowane `cp -a` do `/data/nmt/hydrograf-staging/copy/` (liczby plików i rozmiary równe źródłu). Limity: db 1,5 GB/1 CPU, api 3 GB/2 CPU.
+- **Testy `db`** na jednorazowej `hydro_staging_testdb`: 15 zaliczonych, 1 pominięty (`test_st_contains_vs_production_data` potrzebuje zlewni progu 1000, których produkcja nie ma), w tym 5 testów SQL trybu „Identyfikuj”.
+- **Smoke: te same żądania do produkcji (8080) i stagingu (8081)** — do produkcji tylko GET i obliczeniowe POST; zgłoszenie (`[staging-smoke]`, usunięte) i admin z kluczem tylko w stagingu. Hydrogramy: p = 1%, Beta 2/5, AMC II, morfometria z delineacji tego samego serwera (jak w interfejsie); zlewnie 15,16 km² (51,0376/16,1723), 37,23 km² (przekrój Kamiennika, 51,01538/15,890496) i 134,97 km² (punkt 51,01544/15,88984 trafia w zlewnię Kaczawy).
+
+| Obszar | Produkcja 8080 | Staging 8081 | Ocena |
+|---|---|---|---|
+| `/health`, `/api/scenarios`, `/api/tiles/thresholds`, `/api/layers` | 200 | 200, ten sam JSON | równe |
+| 21 plików statycznych: `results/index.json`, `wse_max.tif`, `max_depth.tif`, kafle wyniku, `.pbf`, `dem_tiles`, `bdot_*.geojson`, `soil_hsg.geojson`, PNG nakładek | 200 | 200, te same SHA-256 | równe |
+| Kafle MVT `streams`, `catchments` (progi 10000 i 100000), `landcover`; z12 i z14 | 200 | 200, te same obiekty; rozmiar −472…+18 B | równe (kolejność obiektów w kafelku; rozmiar produkcji też się zmienia między wywołaniami) |
+| `/api/depressions` (dwa filtry) | 500 i 115 obiektów | to samo | równe |
+| Delineacja 51,0376/16,1723, progi 100000 i 10000 | 15,16 km², CN 70,5 | ta sama odpowiedź | równe |
+| Przekrój Kamiennika, progi 100000 i 10000 | 37,23 km², CN 67,9, ujście 51,01544/15,88984 | ta sama odpowiedź | równe |
+| Podgląd zlewni (69, 718, 209 odcinków) | 200 | te same wielokąty; przy 209 inna kolejność w MultiPolygon | równe |
+| Hydrogram SCS-CN i Nash, 3 zlewnie × 1 h i 24 h | — | Q, tp i V identyczne (12 przypadków) | równe |
+| Snyder, 1 h | Q 1,898 / 3,599 / 11,755 m³/s; tp 385 / 420 / 565 min | 2,123 / 4,028 / 13,194 m³/s; 345 / 375 / 500 min | oczekiwane (ADR-060): +11,9–12,2%, 40–65 min wcześniej, V równe |
+| Snyder, 24 h | Q 14,517 / 38,825 / 122,551 m³/s; tp 940 / 975 / 1125 min | 15,309 / 41,150 / 132,126 m³/s; 895 / 925 / 1060 min | oczekiwane co do kierunku: +5,5–7,8% (ADR-060 podaje 11–12% dla krótszych opadów), 45–65 min wcześniej, V równe |
+| Profil przez czaszę zbiornika z `result_ids` | zwierciadło 277,48 m n.p.m., 323 próbki mokre, gł. maks. 12,6 m | ta sama odpowiedź | równe |
+| Błędy: punkt poza granicą (delineacja, hydrogram), profil poza NMT | 404 `application/json`, `{"detail": …}` | 404 `application/problem+json` (`type`, `title`, `status`, `detail`, `code`, `hint`) | oczekiwane (ADR-059) |
+| Walidacja (szerokość 200, hydrogram bez `duration`) | 422, lista błędów pydantic | 400 problem+json z `errors[]` | oczekiwane |
+| Admin bez klucza | 401 `application/json` | 401 problem+json | oczekiwane |
+| `POST /api/identify-point` | 404 (brak trasy) | 200: czasza 4,04 m i 12,6 m wody, zwierciadło 277,48 m; poza danymi 404 problem+json po polsku | nowa funkcja (uwaga 6) |
+| Admin z kluczem stagingu: 6 GET, zgłoszenie `[staging-smoke]` | — | 200; wiersz id 14 dodany, widoczny i usunięty | OK |
+| Komunikat w panelu po kliknięciu poza granicą | „… w tym punkcie. Kliknij w obszarze pokrytym liniami spływu.” | „… w tym miejscu. Kliknij w obszarze zlewni.” (`detail` + `hint`) | oczekiwane |
+| Kółko: zdarzenia syntetyczne od poziomu 10, bez podkładu, 3 powtórzenia | muśnięcia z ogonem → 14 / 15 / 17, przeciągnięcie 1 s → 16–17, ząbki 5 × 120 ms → 12 | → 11 / 11 / 11 (koniec po ok. 0,3 s), → 12, → 12 | oczekiwane (uwaga 1) |
+| Objaśnienie (i) | otwiera się po najechaniu | tylko po kliknięciu, Esc zamyka | oczekiwane (uwaga 2) |
+| Próg linii spływu | „Próg FA” 10 000 / 100 000 m² | „Próg akumulacji spływu” 1 ha / 10 ha | oczekiwane (uwaga 3) |
+| Szyna | Mapa · Administracja, „Instrukcja” w górnym pasku | Mapa · Instrukcja · Logowanie na mapie, w `/instrukcja/` i `/admin`; telefon: dolny pasek | oczekiwane (uwaga 4) |
+| Status usług | plakietka „Usługi działają” na mapie | tylko w `/admin` (ekran logowania i panel) | oczekiwane (uwaga 5) |
+| Warstwy, SFINCS z legendą i kryciem, MZP (`wody.isok.gov.pl` 200), profil z wodą, ekran powitalny, instrukcja, `?v=`, błędy JS | działa, 0 błędów | działa, 0 błędów; te same 404 kafli poza zasięgiem danych | równe |
+| Nazwa cieku w karcie punktu | — | „nan (rów)” zamiast „bez nazwy (rów)” | **nieoczekiwane**, niżej |
+
+- **Otwarte:**
+  - „nan” w karcie punktu: 3436 z 3812 wierszy `bdot_streams` ma `name = 'nan'` (w produkcji też, ale tam nazwy nic nie pokazuje). Przyczyna: `core/db_bulk.py` `load_bdot_streams_from_gpkg` sprawdza `if row[col]`, a NaN to prawda, więc zapisuje `str(NaN)`. Poprawka do decyzji przed S3/S5: loader z `pd.notna` plus dane (`NULLIF(name, 'nan')` albo ponowny import); można też dodać osłonę w `core/point_info.py`;
+  - Snyder przy opadzie 24 h odbiega od zakresu z ADR-060 (+5,5–7,8% zamiast 11–12%); kierunek i przesunięcie się zgadzają;
+  - „Głębokość przy zaporze 12,33 m” z 2026-11-01 to odczyt kursora na innej linii; linia przez najgłębszą komórkę NMT (264,88 m n.p.m.) daje 12,6 m, w produkcji tak samo.
+- **Następne kroki:** S3 planu (K1 spełnione; nie rozpoczęte), potem punkt kontrolny autora S4. Szczegóły i K0 są w „Wynikach” planu.
+
 ### Poprzednia sesja (2026-11-01/02 — kopia produkcji, przycięcie danych do zlewni Kaczawy, wyniki SFINCS w „Wynikach analiz”, instrukcja i ekran powitalny, nakładka MZP ISOK, cache zasobów za Cloudflare, zwierciadło wody na profilu terenu)
 
 ### Co zrobiono

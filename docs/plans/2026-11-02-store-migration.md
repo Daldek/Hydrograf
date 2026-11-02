@@ -194,20 +194,20 @@ Szacunek w sesjach agenta. Ścieżka krytyczna: S1 → S2 → S3 → S4 → S5 �
 
 ### S2: zielony stos na kopii produkcji (1 sesja)
 
-- [ ] Commit plików stagingu: `docker-compose.staging.yml`, `scripts/staging-compose.sh`, `.env.staging` w `.gitignore`. Utworzyć `.env.staging` i katalogi `${HYDROGRAF_STAGING_ROOT}/{cache,copy,s3,s5,dump}`.
-- [ ] K0 i zapis bazy porównawczej.
-- [ ] `docker builder prune -f`, potem `df -h /`. Budowę obrazu (`scripts/staging-compose.sh build api`) najlepiej robić po K1. Wcześniej tylko wtedy, gdy swap nie rośnie.
-- [ ] Baza:
+- [x] Commit plików stagingu: `docker-compose.staging.yml`, `scripts/staging-compose.sh`, `.env.staging` w `.gitignore`. Utworzyć `.env.staging` i katalogi `${HYDROGRAF_STAGING_ROOT}/{cache,copy,s3,s5,dump}`.
+- [x] K0 i zapis bazy porównawczej.
+- [x] `docker builder prune -f`, potem `df -h /`. Budowę obrazu (`scripts/staging-compose.sh build api`) najlepiej robić po K1. Wcześniej tylko wtedy, gdy swap nie rośnie.
+- [x] Baza:
   - świeży zrzut `docker exec hydro_db pg_dump -U hydro_user -d hydro_db -Fc > ${HYDROGRAF_STAGING_ROOT}/dump/hydro_db-<data>.dump`;
   - zrzut z 2026-11-01 (`/data/nmt/hydrograf-backup-2026-11-01/hydro_db.dump`) jest sprzed przycięcia, więc nie pasuje do dzisiejszych `data/` i `frontend/`. Służy tylko jako awaryjny, a wtedy dane trzeba wziąć z tarów tej samej kopii;
   - `scripts/staging-compose.sh up -d db`, potem `pg_restore --no-owner` przez `docker exec -i hydro_staging_db`.
-- [ ] Dane zestawu `copy`: `cp -a` produkcyjnych `data/`, `frontend/data/` i `frontend/tiles/` (około 2,9 GB) do `${HYDROGRAF_STAGING_ROOT}/copy/{data,frontend-data,frontend-tiles}`. Źródło tylko do odczytu, bez twardych dowiązań.
-- [ ] `scripts/staging-compose.sh up -d`. Entrypoint uruchamia `alembic upgrade head`; migracje 001–003 różnią się w PH tylko formatowaniem.
-- [ ] Testy `db` jak w CI PH, na jednorazowej bazie, nigdy na `hydro_db` stagingu:
+- [x] Dane zestawu `copy`: `cp -a` produkcyjnych `data/`, `frontend/data/` i `frontend/tiles/` (około 2,9 GB) do `${HYDROGRAF_STAGING_ROOT}/copy/{data,frontend-data,frontend-tiles}`. Źródło tylko do odczytu, bez twardych dowiązań.
+- [x] `scripts/staging-compose.sh up -d`. Entrypoint uruchamia `alembic upgrade head`; migracje 001–003 różnią się w PH tylko formatowaniem.
+- [x] Testy `db` jak w CI PH, na jednorazowej bazie, nigdy na `hydro_db` stagingu:
   - `docker run -d --rm --name hydro_staging_testdb -p 127.0.0.1:55432:5432 -e POSTGRES_DB=hydro_test ... postgis/postgis:16-3.4`;
   - z `backend/`: `alembic upgrade head`, potem `pytest tests -m "db and not benchmark"`;
   - na koniec `docker stop hydro_staging_testdb`.
-- [ ] Smoke API na 127.0.0.1:8081. Te same żądania wysłać do produkcji (8080) i porównać:
+- [x] Smoke API na 127.0.0.1:8081. Te same żądania wysłać do produkcji (8080) i porównać:
   - `/health`, `/api/scenarios`, `/api/tiles/thresholds`, kafle `streams`/`catchments`/`landcover` (200, rozmiar ±), `/api/depressions`;
   - `POST /api/delineate-watershed` w 51,0376/16,1723: 15,16 km²;
   - przekrój Kamiennika: 37,23 km²;
@@ -216,7 +216,7 @@ Szacunek w sesjach agenta. Ścieżka krytyczna: S1 → S2 → S3 → S4 → S5 �
   - `POST /api/terrain-profile` z `result_ids` (dzisiejsza funkcja): `water_levels` dla przekroju czaszy, 277,48 m n.p.m., głębokość przy zaporze 12,33 m;
   - `POST /api/feedback`: wiersz z prefiksem `[staging-smoke]`, usunąć po teście;
   - admin z kluczem stagingu, tylko GET: `dashboard`, `resources`, `bootstrap/status`, `sewer/status`, `cleanup/estimate`, `feedback`.
-- [ ] Smoke frontendu w przeglądarce na 8081:
+- [x] Smoke frontendu w przeglądarce na 8081:
   - mapa, warstwy, grupa „Wyniki analiz” (SFINCS z `results/index.json`, legenda, krycie);
   - nakładka MZP (CSP `img-src` z `wody.isok.gov.pl`);
   - profil z wodą, ekran powitalny, instrukcja;
@@ -435,3 +435,64 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
 - `GATE_COMMIT_RANGE=4d510a6..HEAD bash scripts/gate.sh` zielony: 1381 testów offline, 24 pominięte (`db`, `benchmark`), pokrycie 86,64%, wersje `?v=` aktualne, krok commitów zielony. 5 testów SQL trybu „Identyfikuj” (`test_identify_point_db.py`) czeka na S2.
 - Smoke w Chromium na serwerze statycznym worktree z atrapami API (`~/scratch/store-ui/landing/devserver.py`, bez Dockera i bez bazy): szyna Mapa · Instrukcja · Logowanie na mapie, w `/instrukcja/` i `/admin`; na stronie mapy brak plakietki statusu; (i) nie otwiera się po najechaniu ani fokusie, otwiera po kliknięciu, zamyka Esc; „Próg akumulacji spływu” 0,1 ha / 1 ha / 10 ha; cztery tryby z „Identyfikuj”, karta punktu z progiem 10 ha i po zmianie progu 0,1 ha, Esc zamyka kartę; syntetyczny ogon kółka (`~/scratch/store-ui/ui/wheel-lab.js`, DPR 1, start z poziomu 10): muśnięcia z ogonem kończą się po 1 poziomie w ok. 0,3 s, przeciągnięcie 1 s z ogonem → 14, ząbki jak w `wheel-after.json` (5 × 120 ms → 14, Firefox 5 × 3 linie → 12); telefon 390 px bez poziomego przewijania; oba motywy; konsola bez błędów. Zrzuty w `~/scratch/store-ui/landing/`.
 - Produkcja nietknięta: checkout `~/workspace/Hydrograf` na `1a3e3be`, `git status --short` = `?? .claude/`; bez Dockera.
+
+### S2 (2026-11-02): zrobione
+
+- Commity na `feature/store-migration` (bez push): `eddf1d7` pliki stagingu (`docker-compose.staging.yml` i `scripts/staging-compose.sh` jak w planie, `.env.staging` w `.gitignore`), potem commit z zapisem w PROGRESS (sesja S2, tabela porównań) i tymi wynikami.
+- Środowisko:
+  - `.env.staging` (tryb 600, poza gitem): nowe `POSTGRES_PASSWORD` i `ADMIN_API_KEY`, różne od produkcyjnych; `LOG_LEVEL`, `IMGW_*` i `HYDROGRAF_*_HOST` z produkcyjnego `.env`; `HYDROGRAF_STAGING_ROOT=/data/nmt/hydrograf-staging`, `HYDROGRAF_STAGING_SET=copy`, `HYDROGRAF_STAGING_DB=hydro_db`, `HYDROGRAF_STAGING_PORT=8081`;
+  - w `${HYDROGRAF_STAGING_ROOT}`: `cache`, `copy`, `s3`, `s5` (777), `dump` (700, zrzut z danymi zgłoszeń), `prod-baseline.txt` (K0);
+  - w worktree puste katalogi poza gitem pod montowania z `docker-compose.yml`: `docker/init_scripts` (w produkcji też pusty; bez niego Docker utworzyłby go jako root) oraz `frontend/data` i `frontend/tiles` (punkty montowania zagnieżdżone w `./frontend:ro` nginx);
+  - `scripts/staging-compose.sh config` pokazuje wyłącznie nazwy z tabeli i jeden port `127.0.0.1:8081`; źródła montowań leżą tylko w worktree i w `/data/nmt/hydrograf-staging`, żadne w `~/workspace/Hydrograf/`. `docker inspect`: db 1,5 GB i 1 CPU, api 3 GB i 2 CPU, api z `read_only`.
+- Obraz:
+  - `docker builder prune -f` odzyskał 11,22 GB (`/`: 8,1 → 19 GB wolnego);
+  - budowa po K1 (`run_24h.exit` = `exit=0`, brak kontenera `hydraulik-sfincs`) trwała 7 min 57 s;
+  - `hydrograf-api:store-staging` = `sha256:ce03f2f4f201…`, 1,94 GB. W obrazie: kartograf 0.8.0.dev0 (`26ee459`), hydrolog 1.0.0.dev0 (`5fa22b3`), imgwtools 3.0.0 (`6bd35a4`), affine 2.4.0, pyflwdir 0.5.12, GDAL 3.10.3, tippecanoe 2.79.0. Kryterium mówi „imgwtools 3.0.0.dev0”, ale `uv.lock` od S1 ma 3.0.0 przy tym samym commicie, więc to omyłka w kryterium;
+  - `hydrograf-api:latest` bez zmian. Po budowie na `/` jest 12 GB wolnego, a cache budowania zajmuje 7,3 GB (3,2 GB do odzyskania).
+- Baza:
+  - zrzut `dump/hydro_db-2026-11-02.dump`: 99 MB w 24 s, SHA-256 w pliku `.sha256`; liczby wierszy produkcji przed zrzutem i po nim takie same;
+  - `pg_restore --no-owner` w 33 s bez błędów, potem `ANALYZE`;
+  - 12 tabel równych w produkcji i stagingu: `alembic_version` 1, `bdot_streams` 3812, `depressions` 214 907, `feedback` 3, `land_cover` 14 594, `precipitation_data` 134 352, `sewer_network` 0, `sewer_nodes` 0, `soil_hsg` 8, `spatial_ref_sys` 8500, `stream_catchments` 45 769, `stream_network` 45 769;
+  - `alembic current` = `003 (head)` (entrypoint bez migracji), PostGIS 3.4.3; baza stagingu ma 319 MB wobec 645 MB produkcji (bez rozdęcia);
+  - zgłoszenia: maks. `id` 13 w obu bazach. Po smoke sekwencja stagingu stoi na 14; S7 i tak ustawia `setval` na `max(id)`.
+- Dane zestawu `copy`: `cp -a` w 2 min 30 s. Liczby plików i rozmiary pozorne są równe źródłu: `data` 37 plików (1 149 975 370 B), `frontend-data` 8360 (90 253 370 B), `frontend-tiles` 359 297 (496 221 138 B).
+- Testy `db` na jednorazowej `hydro_staging_testdb` (`alembic upgrade head` 001 → 003, na koniec `docker stop`): 15 zaliczonych, 0 porażek, 1 pominięty. Pominięty `test_st_contains_vs_production_data` wymaga zlewni progu 1000, których produkcja nie ma (progi 10000 i 100000). Wszystkie 5 testów SQL trybu „Identyfikuj” zaliczone.
+- Smoke API (te same żądania do 8080 i 8081; do produkcji tylko GET i obliczeniowe POST; zgłoszenie i admin z kluczem tylko do stagingu). Tabela jest w PROGRESS (sesja S2). Wyniki:
+  - równe:
+    - `/health`, `scenarios`, `thresholds`, `layers`;
+    - 21 plików statycznych (SHA-256), w tym `results/index.json`, rastry wyniku i kafle;
+    - kafle MVT: te same obiekty, a rozmiar różni się o −472…+18 B przez kolejność obiektów (produkcja też zmienia rozmiar między wywołaniami);
+    - `depressions`;
+    - delineacja 51,0376/16,1723: 15,16 km², CN 70,5; przekrój Kamiennika: 37,23 km², CN 67,9, ujście 51,01544/15,88984; podgląd zlewni;
+    - SCS-CN i Nash: 12 hydrogramów identycznych;
+    - profil czaszy z `result_ids`: zwierciadło 277,48 m n.p.m.;
+  - oczekiwane:
+    - Snyder: przy opadzie 1 h szczyt +11,9–12,2% i 40–65 min wcześniej; przy 24 h +5,5–7,8% i 45–65 min wcześniej; objętość równa;
+    - błędy jako `application/problem+json`: 404 z `detail` i `hint` po polsku, walidacja 400 zamiast 422, 401 admina;
+    - nowa trasa `identify-point` (produkcja: 404);
+    - admin: 6 GET z kluczem stagingu dało 200; wiersz `[staging-smoke]` (id 14) dodany, widoczny w panelu i usunięty przez `DELETE`.
+- Smoke frontendu w Chromium (1440 × 900 oraz telefon 390 px; ta sama ścieżka na 8080):
+  - na mapie: warstwy, SFINCS z legendą i kryciem, nakładka MZP (żądania do `wody.isok.gov.pl` 200), profil z wodą, ekran powitalny (też z „Instrukcji” na szynie), `/instrukcja/` (17 obrazów), `/admin` z kluczem (same GET);
+  - komunikat błędu poza granicą = `detail` + `hint`;
+  - wszystkie własne zasoby z `?v=`, 0 błędów JS. 404 kafli poza zasięgiem danych są takie same w produkcji;
+  - uwagi testerów 1–6 działają na prawdziwym API:
+    - kółko, syntetyczne zdarzenia od poziomu 10, bez podkładu: muśnięcia z ogonem kończą się na 11 (produkcja 14/15/17), przeciągnięcie 1 s na 12 (produkcja 16–17), ząbki 5 × 120 ms dają 12 w obu;
+    - (i) otwiera tylko kliknięcie (w produkcji najechanie);
+    - „Próg akumulacji spływu” 1 ha / 10 ha (w produkcji „Próg FA” w m²);
+    - szyna Mapa · Instrukcja · Logowanie;
+    - „Usługi działają” tylko w `/admin`;
+    - tryb „Identyfikuj”: czasza 4,04 m wody, zwierciadło 277,48 m n.p.m.
+- K0:
+  - baza zapisana o 12:00:49 przed pierwszą zmianą;
+  - diff pusty i `/health` 200 po każdym kroku: pliki i katalogi, prune, zrzut, kopia, testy `db`, budowa, `up`, oba smoke, commit;
+  - `git status` w K0 wołany z `--no-optional-locks`, więc nie odświeża indeksu checkoutu produkcji.
+- Otwarte:
+  - **„nan” zamiast „bez nazwy” w karcie punktu** dla cieków BDOT10k bez nazwy (3436 z 3812 wierszy `bdot_streams` ma `name = 'nan'`, także w produkcji):
+    - przyczyna: `core/db_bulk.py:383` (`if row[col]` przepuszcza NaN, `str(NaN)`);
+    - poprawka: loader (`pd.notna`) i dane (`NULLIF(name, 'nan')` albo ponowny import), ewentualnie osłona w `core/point_info.py`;
+    - nie naprawiane w S2, decyzja przed S3/S5;
+  - Snyder przy 24 h odbiega od zakresu 11–12% z ADR-060, liczonego dla krótkich opadów; kierunek i przesunięcie się zgadzają;
+  - „głębokość przy zaporze 12,33 m” to odczyt kursora na innej linii. Na linii przez najgłębszą komórkę NMT wychodzi 12,6 m, tak samo w produkcji i stagingu;
+  - punkt 51,01544/15,88984 (wyświetlane ujście Kamiennika) trafia w zlewnię cząstkową Kaczawy (134,97 km² w obu stosach). 37,23 km² daje punkt na odcinku 21911/2477 (51,01538/15,890496);
+  - po błędzie wyznaczania pasek kontekstu i tytuł panelu pokazują poprzednią zlewnię; tak samo w produkcji.
+- Stan: zielony stos działa na 8081 (zestaw `copy`), K1 spełnione. S3 nie rozpoczęty.
