@@ -7,10 +7,12 @@ of the code on the registry page), ``title``, ``status`` (the HTTP status of the
 values, ``errors[]`` with a JSON Pointer, the type and the message of each value.
 
 The texts follow ``Accept-Language``: English without the header, Polish for ``pl``
-(the interface sends it); ``Content-Language`` names the language. Codes, keys and
-reasons do not change with it. An error that the code raises is a ``HydrografError``;
-the framework's own errors (an unknown route, a wrong method, invalid values) and every
-unexpected exception are mapped to registry codes here.
+(the interface sends it); ``Content-Language`` names the language. So do the messages
+of ``errors[]``: pydantic's own in English, a Polish text of the error type in Polish.
+Codes, keys, pointers, types and reasons do not change with it. An error that the code
+raises is a ``HydrografError``; the framework's own errors (an unknown route, a wrong
+method, invalid values) and every unexpected exception are mapped to registry codes
+here.
 
 The OpenAPI document (``install_openapi``) names every operation after its route
 function, documents the problem of each status a route answers with, and shows
@@ -60,7 +62,9 @@ class ProblemError(BaseModel):
     type: str = Field(
         ..., description="Type of the failure", examples=["less_than_equal"]
     )
-    message: str = Field(..., description="What is wrong with the value")
+    message: str = Field(
+        ..., description="What is wrong with the value, in the language of the response"
+    )
 
 
 class Problem(BaseModel):
@@ -235,14 +239,98 @@ async def _hydrograf_error(request: Request, error: HydrografError) -> JSONRespo
     )
 
 
+# Polish ``errors[].message`` by the type of pydantic's error; ``{name}`` fields come
+# from the context of the error. English keeps pydantic's own message, and so does a
+# type that is not listed here.
+_VALUE_MESSAGES_PL: Final = {
+    "missing": "Brak wymaganej wartości.",
+    "greater_than": "Wartość musi być większa od {gt}.",
+    "greater_than_equal": "Wartość nie może być mniejsza niż {ge}.",
+    "less_than": "Wartość musi być mniejsza od {lt}.",
+    "less_than_equal": "Wartość nie może być większa niż {le}.",
+    "multiple_of": "Wartość musi być wielokrotnością {multiple_of}.",
+    "finite_number": "Wartość musi być skończoną liczbą.",
+    "float_parsing": "Wartość musi być liczbą.",
+    "float_type": "Wartość musi być liczbą.",
+    "int_parsing": "Wartość musi być liczbą całkowitą.",
+    "int_type": "Wartość musi być liczbą całkowitą.",
+    "int_from_float": "Wartość musi być liczbą całkowitą.",
+    "bool_parsing": "Wartość musi być logiczna (true albo false).",
+    "bool_type": "Wartość musi być logiczna (true albo false).",
+    "string_type": "Wartość musi być tekstem.",
+    "string_too_short": "Tekst jest za krótki (minimum: {min_length}).",
+    "string_too_long": "Tekst jest za długi (maksimum: {max_length}).",
+    "string_pattern_mismatch": "Niedozwolona wartość.",
+    "literal_error": "Dozwolone wartości: {expected}.",
+    "enum": "Dozwolone wartości: {expected}.",
+    "too_short": "Za mało elementów (minimum: {min_length}).",
+    "too_long": "Za dużo elementów (maksimum: {max_length}).",
+    "list_type": "Wartość musi być listą.",
+    "dict_type": "Wartość musi być obiektem.",
+    "model_type": "Wartość musi być obiektem.",
+    "model_attributes_type": "Wartość musi być obiektem.",
+    "json_invalid": "Nieprawidłowy JSON.",
+    "extra_forbidden": "Nieznane pole.",
+}
+# Pydantic's prefixes of the messages of the project's own validators, which are Polish.
+_VALIDATOR_PREFIXES: Final = ("Value error, ", "Assertion failed, ")
+
+
+def _polish_context(key: str, value: object) -> object:
+    """Return a context value of a pydantic error as a Polish text shows it."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if isinstance(value, int | float):
+        return str(value).replace(".", ",")
+    if key == "expected" and isinstance(value, str):
+        return value.replace(" or ", " lub ")
+    return value
+
+
+def value_message(item: Mapping[str, Any], lang: Language) -> str:
+    """Return the message of one invalid value of a request in ``lang``.
+
+    Parameters
+    ----------
+    item : Mapping[str, Any]
+        One error of ``RequestValidationError.errors()``: ``type``, ``msg``, ``ctx``.
+    lang : {"en", "pl"}
+        Language of the response.
+
+    Returns
+    -------
+    str
+        Pydantic's message in English. In Polish the text of the error type with the
+        limits of its context (``0,8``), the text of a project validator without
+        pydantic's prefix (it is Polish already), or pydantic's message for a type
+        without a Polish text.
+    """
+    message = str(item["msg"])
+    if lang != "pl":
+        return message
+    for prefix in _VALIDATOR_PREFIXES:
+        if message.startswith(prefix):
+            return message.removeprefix(prefix)
+    template = _VALUE_MESSAGES_PL.get(str(item["type"]))
+    if template is None:
+        return message
+    context = item.get("ctx") or {}
+    return render(
+        template, {key: _polish_context(key, value) for key, value in context.items()}
+    )
+
+
 async def _validation_error(
     request: Request, error: RequestValidationError
 ) -> JSONResponse:
+    lang = language_of(request.headers.get("accept-language"))
     errors = [
         {
             "pointer": pointer_of(item["loc"]),
             "type": str(item["type"]),
-            "message": str(item["msg"]),
+            "message": value_message(item, lang),
         }
         for item in error.errors()
     ]

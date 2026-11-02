@@ -47,9 +47,11 @@ def terrain_profile(
     Extract terrain elevation profile along a line.
 
     Samples N equally spaced points along the input LineString and
-    reads elevation values directly from the DEM raster file. For each
-    requested analysis result with a water level raster crossed by the line,
-    the water level at the same samples (null where dry).
+    reads elevation values directly from the DEM raster file. A sample where
+    the DEM has no data is a gap: ``dem_gaps`` marks it and ``elevations_m``
+    holds 0.0 there. For each requested analysis result with a water level
+    raster crossed by the line, the water level at the same samples (null
+    where dry or in a gap).
 
     Parameters
     ----------
@@ -59,7 +61,20 @@ def terrain_profile(
     Returns
     -------
     TerrainProfileResponse
-        Arrays of distances and elevations along the profile, water levels
+        Arrays of distances, elevations and gaps along the profile, water levels
+
+    Raises
+    ------
+    InvalidRequestError
+        ``validation_error`` (400) for a geometry other than a LineString of at
+        least two points
+    NoDataError
+        ``no_data`` (404, ``no_elevation_data``) when the DEM has no data at any
+        sample of the line
+    StoreUnavailableError
+        ``store_unavailable`` (503) when there is no DEM raster
+    InternalError
+        ``internal_error`` (500) on an unexpected failure
     """
     try:
         geom = request.geometry
@@ -134,6 +149,7 @@ def terrain_profile(
         return TerrainProfileResponse(
             distances_m=distances,
             elevations_m=elevations,
+            dem_gaps=dem_gaps,
             total_length_m=total_length_m,
             water_levels=water_levels,
         )

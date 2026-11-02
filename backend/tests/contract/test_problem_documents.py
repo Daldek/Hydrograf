@@ -99,6 +99,18 @@ def test_invalid_values_are_400_with_json_pointers(client):
     assert problem["details"]["fields"] == ["/body/latitude"]
 
 
+def test_polish_request_gets_polish_messages_of_invalid_values(client):
+    body = {"latitude": 200, "longitude": 21.0}
+    english = client.post("/echo", json=body).json()["errors"][0]
+    polish = client.post("/echo", json=body, headers={"Accept-Language": "pl"})
+    polish_error = polish.json()["errors"][0]
+
+    assert polish_error["message"] != english["message"]
+    assert "90" in polish_error["message"]  # the limit the value breaks
+    for key in ("pointer", "type"):
+        assert polish_error[key] == english[key]
+
+
 def test_unknown_route_and_wrong_method_use_registry_codes(client):
     unknown = client.get("/nowhere")
     wrong_method = client.get("/echo")

@@ -545,7 +545,9 @@ class HydrographRequest(BaseModel):
     )
     morphometry: MorphometricParameters | None = Field(
         None,
-        description="Pre-computed morphometry (skips watershed delineation)",
+        description="Pre-computed morphometry (skips watershed delineation); its "
+        "area_km2 has the limit of a delineated catchment (area_limit_km2 of "
+        "GET /api/scenarios, 422 above it)",
     )
     amc: Literal["I", "II", "III"] = Field(
         "II",
@@ -707,7 +709,15 @@ class TerrainProfileResponse(BaseModel):
     """Response model for terrain profile."""
 
     distances_m: list[float] = Field(..., description="Cumulative distances [m]")
-    elevations_m: list[float] = Field(..., description="Elevations [m a.s.l.]")
+    elevations_m: list[float] = Field(
+        ...,
+        description="Elevations [m a.s.l.]; 0.0 at the samples that dem_gaps marks",
+    )
+    dem_gaps: list[bool] = Field(
+        ...,
+        description="True at each sample where the DEM has no data (off its extent): "
+        "a gap of the profile, not an elevation",
+    )
     total_length_m: float = Field(..., ge=0, description="Total line length [m]")
     water_levels: list[ProfileWaterLevel] = Field(
         default_factory=list,

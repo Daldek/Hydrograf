@@ -189,6 +189,35 @@ def test_fractional_cn_is_used_as_given(client, pmaxtp_45mm):
     )
 
 
+class TestAreaLimit:
+    """The SCS-CN limit holds for a catchment given in ``morphometry`` too."""
+
+    def _area(self, area_km2: float) -> dict[str, Any]:
+        morphometry = _morphometry()
+        morphometry["area_km2"] = area_km2
+        return _request(morphometry=morphometry)
+
+    def test_area_above_the_published_limit_is_unsupported(self, client, pmaxtp_45mm):
+        limit = client.get("/api/scenarios").json()["area_limit_km2"]
+
+        response = client.post(
+            "/api/generate-hydrograph", json=self._area(limit + 0.01)
+        )
+
+        assert response.status_code == 422
+        problem = response.json()
+        assert problem["code"] == "unsupported"
+        assert problem["details"]["reason"] == "area_exceeds_limit"
+        assert problem["details"]["limit_km2"] == limit
+
+    def test_area_at_the_limit_is_computed(self, client, pmaxtp_45mm):
+        limit = client.get("/api/scenarios").json()["area_limit_km2"]
+
+        data = _post(client, self._area(limit))
+
+        assert data["hydrograph"]["peak_discharge_m3s"] > 0
+
+
 class TestCustomPrecipitation:
     def test_series_replaces_pmaxtp(self, client, pmaxtp_45mm):
         depths = [1.5, 4.0, 12.5, 20.0, 8.0]

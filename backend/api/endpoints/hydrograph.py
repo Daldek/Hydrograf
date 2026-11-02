@@ -84,6 +84,29 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _require_area_within_limit(area_km2: float) -> None:
+    """Refuse a catchment above the SCS-CN limit, delineated or given in the request.
+
+    Parameters
+    ----------
+    area_km2 : float
+        Area of the catchment [km2].
+
+    Raises
+    ------
+    UnsupportedError
+        ``unsupported`` (422, ``catchment_too_large``) above
+        ``HYDROGRAPH_AREA_LIMIT_KM2``, the ``area_limit_km2`` of ``GET /api/scenarios``.
+    """
+    if area_km2 > HYDROGRAPH_AREA_LIMIT_KM2:
+        raise UnsupportedError(
+            "catchment_too_large",
+            reason="area_exceeds_limit",
+            area_km2=float(area_km2),
+            limit_km2=HYDROGRAPH_AREA_LIMIT_KM2,
+        )
+
+
 def _compute_watershed(
     point_2180: Point,
     request: HydrographRequest,
@@ -119,13 +142,7 @@ def _compute_watershed(
     stats = cg.aggregate_stats(upstream_indices, outlet_idx=clicked_idx)
     area_km2 = stats["area_km2"]
 
-    if area_km2 > HYDROGRAPH_AREA_LIMIT_KM2:
-        raise UnsupportedError(
-            "catchment_too_large",
-            reason="area_exceeds_limit",
-            area_km2=float(area_km2),
-            limit_km2=HYDROGRAPH_AREA_LIMIT_KM2,
-        )
+    _require_area_within_limit(area_km2)
 
     boundary_2180 = merge_catchment_boundaries(segment_idxs, DEFAULT_THRESHOLD_M2, db)
     if boundary_2180 is None:
@@ -527,8 +544,9 @@ def generate_hydrograph(
     InvalidRequestError
         ``validation_error`` (400) for invalid parameters
     UnsupportedError
-        ``unsupported`` (422) when the catchment is larger than 250 km2 or lacks the
-        parameters of the chosen model
+        ``unsupported`` (422) when the catchment, delineated or given in
+        ``morphometry``, is larger than 250 km2 or lacks the parameters of the chosen
+        model
     StoreUnavailableError
         ``store_unavailable`` (503) when the catchment graph is not loaded
     InternalError
@@ -573,6 +591,7 @@ def generate_hydrograph(
                 f"Fast path: using pre-computed morphometry "
                 f"(area={area_km2:.2f} km2, CN={cn})"
             )
+            _require_area_within_limit(area_km2)
         else:
             # ===== Full path: compute watershed from scratch =====
             morph_dict, cn, area_km2, watershed_resp = _compute_watershed(

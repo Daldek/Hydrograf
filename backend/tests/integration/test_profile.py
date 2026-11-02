@@ -525,6 +525,17 @@ class TestTerrainProfileWaterLevels:
             {"result_id": "sfincs", "levels_m": [101.5, None, 102.0, None]}
         ]
 
+    def test_samples_without_dem_data_are_gaps_and_0_m_is_not(self, client, settings):
+        """A nodata sample is a gap; an elevation of 0 m is not."""
+        self._raster(settings.dem_path, [0.0, 12.5, self.NODATA, 12.5])
+
+        response = self._post(client, settings)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["dem_gaps"] == [False, False, True, False]
+        assert data["elevations_m"] == [0.0, 12.5, 0.0, 12.5]
+
     def test_too_many_result_ids_returns_400(self, client, settings):
         response = self._post(client, settings, result_ids=[f"r{i}" for i in range(21)])
 
