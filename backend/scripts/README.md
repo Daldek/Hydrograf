@@ -26,7 +26,7 @@ leave in PostGIS, in `frontend/data/` and in `frontend/tiles/` (ADR-021, ADR-022
 
 | Directory | Content |
 |---|---|
-| `cache/kartograf/` | the Kartograf store of the downloads: NMT sheets, BDOT10k packages, the HSG raster of Poland and its SoilGrids inputs, with versions and a sidecar per file; with `HYDROGRAF_KARTOGRAF_ROOT` set, the store it names instead, shared with Archiwista (ADR-066) |
+| `cache/kartograf/` | the Kartograf store of the downloads: NMT sheets, BDOT10k packages, the HSG raster of Poland and its SoilGrids inputs, with versions and a sidecar per file. With `HYDROGRAF_KARTOGRAF_ROOT` set, the store it names (shared with Archiwista, ADR-066) is only read, through a set (`bootstrap --project --set`), and every download is refused (ADR-067) |
 | `cache/kartograf_meta.db` | the Kartograf metadata cache (SQLite; a local disk, not a network share) |
 | `data/nmt/` | the VRT mosaic `dem_mosaic.vrt` (and `reprojected/`), the intermediate rasters `dem_mosaic_*` |
 | `data/hydro/` | `hydro_merged.gpkg`: the BDOT10k hydro layers of the area, for stream burning |
@@ -47,10 +47,10 @@ continues when one fails.
 | Step | What it does | Skip flag |
 |---|---|---|
 | 1 | infrastructure: `.venv` (`uv sync --locked`), the database container, `alembic upgrade head`, the SRI hashes of the CDN resources | `--skip-infra` |
-| 2 | downloads the NMT sheets of the area into the Kartograf store (`download_dem.download_sheets`) | - |
+| 2 | downloads the NMT sheets of the area into the Kartograf store (`download_dem.download_sheets`); from a set: the pinned sheets, nothing downloaded | - |
 | 3 | processes the DEM: the VRT mosaic of the sheets of step 2, the BDOT10k hydro layers for stream burning, `process_dem` (`stream_network`, `stream_catchments`) | - |
-| 4 | downloads the BDOT10k packages of the counties of the mosaic and imports them into `land_cover` | `--skip-landcover` |
-| 5 | HSG: the raster of Poland (a version of the store), clipped to the mosaic, polygonized into `soil_hsg` | `--skip-hsg` |
+| 4 | downloads the BDOT10k packages of the counties of the mosaic and imports them into `land_cover`; from a set: the pinned packages | `--skip-landcover` |
+| 5 | HSG: the raster of Poland (a version of the store), clipped to the mosaic, polygonized into `soil_hsg`; from a set: the pinned raster | `--skip-hsg` |
 | 6 | IMGW precipitation (PMAXTP) on a 2 km grid into `precipitation_data` | `--skip-precipitation` |
 | 7 | depressions (blue spots) from the filled DEM | `--skip-depressions` |
 | 8 | MVT tiles (`tippecanoe`) | `--skip-tiles` |
@@ -71,6 +71,11 @@ cd backend
 # By a boundary file (SHP/ZIP, GPKG, GeoJSON)
 .venv/bin/python -m scripts.bootstrap --boundary-file ../data/boundary/area.gpkg
 
+# From a closed set of an Archiwista project (the shared store, ADR-067):
+# check everything and show the plan, then run
+.venv/bin/python -m scripts.bootstrap --project /path/to/project --set "Hydrograf 2020" --dry-run
+.venv/bin/python -m scripts.bootstrap --project /path/to/project --set "Hydrograf 2020"
+
 # Dry run: show the plan without executing it
 .venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4" --dry-run
 
@@ -83,9 +88,11 @@ cd backend
 
 | Parameter | Description | Default |
 |---|---|---|
-| `--bbox` | bounding box in WGS84: `"min_lon,min_lat,max_lon,max_lat"` | (one of the three is required) |
-| `--sheets` | sheet codes to download | (one of the three is required) |
-| `--boundary-file` | vector boundary file (SHP/ZIP, GPKG, GeoJSON) | (one of the three is required) |
+| `--bbox` | bounding box in WGS84: `"min_lon,min_lat,max_lon,max_lat"` | (one of the four is required) |
+| `--sheets` | sheet codes to download | (one of the four is required) |
+| `--boundary-file` | vector boundary file (SHP/ZIP, GPKG, GeoJSON) | (one of the four is required) |
+| `--project` | an Archiwista project: its directory or its `archiwista-project.json`; the Kartograf data come only from the closed set `--set` (ADR-067) | (one of the four is required) |
+| `--set` | the set of `--project` (compared case-folded); required with `--project` | - |
 | `--boundary-layer` | layer name of a GPKG boundary file | the first layer |
 | `--scale` | sheet scale in Kartograf's labels (`1:10000`, `1:25000`, `1:50000`, `1:100000`) | `1:10000` |
 | `--resolution` | NMT resolution: `1m` (high, slow) or `5m` | `5m` |
@@ -93,9 +100,44 @@ cd backend
 | `--cache-dir` | directory of the cached downloads: the Kartograf store is `<cache-dir>/kartograf` | `paths.cache_dir` of the configuration (`cache/` in the repository root) |
 | `--config` | YAML configuration file | `config.yaml` |
 | `--port` | HTTP port of the server | 8080 |
-| `--dry-run` | only show what would be done | off |
+| `--dry-run` | only show what would be done; with `--project`, after every check of the set | off |
 
-`--bbox`, `--sheets` and `--boundary-file` exclude each other.
+`--bbox`, `--sheets`, `--boundary-file` and `--project` exclude each other.
+
+**From a set** (ADR-067): `--project` and `--set` read a closed set of an Archiwista project
+(`archiwista-project/1`) and download nothing. Before step 1 the bootstrap checks the project file,
+the area file and its SHA-256, that the set is closed (an open set, „w budowie”, is refused), its
+recorded `pins_sha256`, the project's Kartograf store (the same directory as
+`HYDROGRAF_KARTOGRAF_ROOT` when that is set) and every Kartograf pin by size and SHA-256; then that
+the set holds the NMT sheets of the project's area, the BDOT10k packages of the counties of the
+mosaic (unless `--skip-landcover`) and one HSG raster that covers the mosaic (unless
+`--skip-hsg`), one version per sheet, county and raster. Steps 2 to 5 read the pinned files (step 2
+reports `N/N arkuszy z zestawu`); steps 6 to 10 do not change. The run logs the set and writes
+`<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`: project, set, `pins_sha256`, inputs,
+start, end, status); a run without a set removes the file.
+
+**The shared store is read-only:** while `HYDROGRAF_KARTOGRAF_ROOT` is set, `--bbox`, `--sheets` and
+`--boundary-file` are refused (`forbidden`, exit 12), as are `download_dem.py`,
+`download_landcover.py`, `prepare_area.py` and `analyze_watershed.py --download`; unset it to
+download into `<cache-dir>/kartograf`. A refusal prints `BŁĄD:` and `Wskazówka:` and, as the last
+line of standard error, the error document `hydrograf-error/1`; the exit code is the registry's:
+
+| Exit | Code | When |
+|---|---|---|
+| 2 | `validation_error` | an argument error (also `--project` without `--set`); the project's store is not `HYDROGRAF_KARTOGRAF_ROOT` |
+| 3 | `not_found` | no project file, no area file, no set of the name, a pinned file absent |
+| 4 | `conflict` | the set is open; two versions of one sheet, county or raster, or two HSG rasters that cover the mosaic |
+| 5 | `source_unavailable` | PRG does not answer (the counties of the mosaic) |
+| 7 | `data_error` | the project file breaks its format; the area or a pinned file changed; the recorded `pins_sha256` differs |
+| 8 | `store_unavailable` | no store, or not a marked Kartograf store |
+| 9 | `io_error` | the project file or a pinned file cannot be read (the ACL) |
+| 12 | `forbidden` | `--bbox`, `--sheets` or `--boundary-file` while `HYDROGRAF_KARTOGRAF_ROOT` is set |
+| 14 | `no_data` | sheets, counties or the HSG raster missing from the set |
+| 15 | `unsupported` | a project schema other than `archiwista-project/1` |
+
+The hint names the Archiwista action that fixes the set: „Zamknij zestaw”, „Weryfikuj”,
+„Przywróć brakujące”, or „Otwórz do edycji”, a call that covers the project's area and
+„Zamknij zestaw”.
 
 **Water bodies:**
 

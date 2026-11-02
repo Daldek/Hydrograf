@@ -1,9 +1,9 @@
 """Contract: errors raised in the code use the message catalogue correctly (DEV-2.3).
 
-Every ``<Something>Error("<message id>", reason=..., key=value)`` call in ``api`` and
-``core`` names a message of ``core.messages``, gives its ``reason`` and supplies every
-``{field}`` of the English text and its hint; both languages of a message use the same
-fields.
+Every ``<Something>Error("<message id>", reason=..., key=value)`` call in ``api``,
+``core``, ``utils`` and ``scripts`` names a message of ``core.messages``, gives its
+``reason`` and supplies every ``{field}`` of the English text and its hint; both
+languages of a message use the same fields.
 """
 
 import ast
@@ -27,7 +27,7 @@ def _fields(template: str | None) -> set[str]:
 
 
 def _raised_errors() -> Iterator[tuple[str, ast.Call]]:
-    for folder in ("api", "core"):
+    for folder in ("api", "core", "utils", "scripts"):
         for path in sorted((BACKEND / folder).rglob("*.py")):
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):

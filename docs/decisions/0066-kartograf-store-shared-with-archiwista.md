@@ -1,7 +1,7 @@
 # ADR-066: The Kartograf store shared with Archiwista
 
 **Date:** 2026-11-02
-**Status:** accepted
+**Status:** accepted; superseded in part by ADR-067 (decisions 2 and 4)
 **Amends:** ADR-061 (the store of the pipeline may be a store outside the cache directory)
 
 ## Context
@@ -33,10 +33,15 @@ Checked on the pinned Kartograf (`26ee459`) and on this host:
    the default ACL of its directory. With `fs.protected_hardlinks = 1` (this host) a process
    may hard-link only a file it owns or can read and write; otherwise `EPERM`, which Kartograf
    reports as `download.hardlink_fs_required`.
-4. **One product bypasses the directory.** A BDOT10k package is unpacked in the system
-   temporary directory and moved into the store with `shutil.move`
-   (`kartograf/transport/unit_package.py`, `_unpack_checked_layers`). Across file systems the
-   move copies the mode of the temporary file, which narrows the ACL mask of the copy.
+4. **One product bypasses the directory.** *(Erratum of 2026-11-02, ADR-067: this fact named the
+   wrong product.)* BDOT10k is not affected: a package is merged in the temporary directory,
+   copied by content (`shutil.copyfile`) into the staging directory of the store and published
+   with `os.replace`, so UID 999 reads it. The defect, a file unpacked
+   with `tempfile.mkdtemp` and moved into the store with `shutil.move`, which across file systems
+   copies the mode of the temporary file and narrows the ACL mask of the copy, is in Kartograf's
+   `_unpack_checked_layers` (`kartograf/transport/unit_package.py`, only the channels with
+   `unpack_layers`: the RCN transaction prices, `pl.gugik.rcn`) and in `_fetch_features`
+   (`kartograf/download/collections.py`, the WFS cut-outs), which Hydrograf does not use.
 5. **Bind mounts skip the parents.** `/home/claude-agent` and `.../archiwista-public` are 700.
    A container that bind-mounts the store itself does not look them up: UID 999 listed and
    wrote a test store below a 700 parent without any permission on the parents.
@@ -67,9 +72,11 @@ Option C.
    `analyze_watershed`, `prepare_area` and the land cover of the CN calculation. Unset or
    empty, the private store of ADR-061 stays. The metadata cache stays in `<cache_dir>`, one
    per producer.
-2. **Writers.** Archiwista (its download jobs) and the bootstrap of Hydrograf, in a
-   `run --rm` container that mounts the store read-write. The serving API mounts it
-   read-only, so the bootstrap of its admin panel cannot write into it (it stops in step 2).
+2. **Writers.** *(Replaced by ADR-067: Archiwista alone writes the shared store; every
+   download of Hydrograf refuses while `HYDROGRAF_KARTOGRAF_ROOT` is set, and the store is
+   mounted read-only for every container.)* Archiwista (its download jobs) and the bootstrap of
+   Hydrograf, in a `run --rm` container that mounts the store read-write. The serving API mounts
+   it read-only, so the bootstrap of its admin panel cannot write into it (it stops in step 2).
    The cache clean (`scripts.clean --include-cache` and the `cache` target of the panel)
    removes nothing from a shared store, only Hydrograf's metadata cache and the 0.7.0
    directories.
@@ -85,7 +92,9 @@ Option C.
    umask, so each can read the other's files and hard-link them when it re-points a standard
    path (fact 3). The parents keep their modes (fact 5): nothing outside the containers runs
    as UID 999.
-4. **Concurrency.** Kartograf needs no lock to keep the store consistent (fact 1). The rule:
+4. **Concurrency.** *(Replaced by ADR-067: with one writer there is no rule and no guard;
+   `writes_in_progress` and the guard of step 2 are removed.)* Kartograf needs no lock to keep
+   the store consistent (fact 1). The rule:
    the bootstrap of Hydrograf writes into the shared store only while no Archiwista download
    job writes into it. Two writers of the same sheets would transfer them twice, and a
    standard path may stay on an older version until the next call. The guard: step 2 of the
@@ -100,16 +109,16 @@ Option C.
   sheets) as versions of its store, and Hydrograf reuses Archiwista's sheets.
 - The store lies on `/` (ext4, 95 % used on 2026-11-02, 12 GB free); what the bootstrap adds
   lands there, not on `/data`.
-- Limit of fact 4: a BDOT10k package written by Archiwista arrives with the mask `---`, so
-  UID 999 cannot read it; one written by Hydrograf arrives with `r--`, so Archiwista reads it
-  but cannot link it again (a forced or upgrading download of that county by Archiwista
-  fails with `download.hardlink_fs_required`). The grant command of item 3 run again repairs
-  the masks. A candidate request to Kartograf: unpack in the staging directory of the store,
-  or copy without the mode.
+- Limit of fact 4: *(erratum of 2026-11-02, ADR-067)* BDOT10k packages, of Archiwista and of
+  Hydrograf alike, are readable for UID 999. The narrowed mask (`---` for UID 999) concerns only
+  the RCN packages and the WFS cut-outs (fact 4), which neither the pipeline nor a set of
+  Hydrograf reads; Kartograf fixes them in its own session.
 - Staging: `docker-compose.staging.yml` mounts the store at `/kartograf`
-  (`HYDROGRAF_KARTOGRAF_STORE` in `.env.staging`, read-only unless
-  `HYDROGRAF_KARTOGRAF_STORE_MODE=rw`) and sets `HYDROGRAF_KARTOGRAF_ROOT=/kartograf`;
-  `docker-compose.yml` of the production stack does not change.
+  (`HYDROGRAF_KARTOGRAF_STORE` in `.env.staging`) and sets `HYDROGRAF_KARTOGRAF_ROOT=/kartograf`;
+  *(erratum of 2026-11-02, ADR-067)* the mount is read-only for every container and
+  `HYDROGRAF_KARTOGRAF_STORE_MODE` is removed; step H2 mounts the store and the project's
+  directory read-only at their host paths. `docker-compose.yml` of the production stack does
+  not change.
 - Rollback: unset `HYDROGRAF_KARTOGRAF_ROOT` (the private store returns); `setfacl -R -b` on the
   store removes the ACL and gives back modes 700 and 600.
 - Tests clear `HYDROGRAF_KARTOGRAF_ROOT` (`tests/conftest.py`), so a shell that sets it never

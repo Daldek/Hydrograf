@@ -5,7 +5,8 @@ the shared registry (``core._errors``), a message, a hint when a fix is known, a
 JSON-compatible ``details`` whose ``reason`` is the project's own cause in snake_case
 English (ERR-1). Each subclass selects a default code. The texts come from the message
 catalogue (``core.messages``), so one error has an English and a Polish wording; the API
-answers with ``application/problem+json`` in ``api.errors``.
+answers with ``application/problem+json`` in ``api.errors``, and a script ends with the
+error document of :meth:`HydrografError.document` as the last line of standard error.
 """
 
 from typing import Any, ClassVar
@@ -86,6 +87,26 @@ class HydrografError(Exception):
         """int: HTTP status of the code (ERR section 2)."""
         return BY_CODE[self.code].http_status or 500
 
+    def document(self) -> dict[str, Any]:
+        """Return the error document ``hydrograf-error/1`` of a command line (AGI-4.3).
+
+        A script prints it as the last line of standard error and exits with
+        ``exit_code`` (AGI-3.3). It is machine output, so its texts are English
+        (AGI-9.2); the ``details`` must be JSON-compatible.
+        """
+        entry = BY_CODE[self.code]
+        document: dict[str, Any] = {
+            "schema": "hydrograf-error/1",
+            "code": self.code,
+            "title": entry.title,
+            "message": self.message,
+        }
+        if self.hint is not None:
+            document["hint"] = self.hint
+        document["details"] = self.details
+        document["exit_code"] = entry.exit_code
+        return document
+
 
 class InvalidRequestError(HydrografError):
     """A value of the request is wrong or not allowed (``validation_error``)."""
@@ -109,6 +130,18 @@ class ConflictError(HydrografError):
     """The request conflicts with the current state (``conflict``)."""
 
     default_code: ClassVar[ErrorCodeName] = "conflict"
+
+
+class SourceUnavailableError(HydrografError):
+    """A remote service did not answer (``source_unavailable``)."""
+
+    default_code: ClassVar[ErrorCodeName] = "source_unavailable"
+
+
+class InvalidDataError(HydrografError):
+    """Data read from a file is malformed or changed (``data_error``)."""
+
+    default_code: ClassVar[ErrorCodeName] = "data_error"
 
 
 class UnauthorizedError(HydrografError):

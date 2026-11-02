@@ -306,8 +306,8 @@ def _is_loopback(address: Any) -> bool:
     return address[0] in ("localhost", "127.0.0.1", "::1")
 
 
-@pytest.fixture
-def offline(monkeypatch: pytest.MonkeyPatch) -> None:
+@contextmanager
+def no_network() -> Iterator[None]:
     """Fail any connection to another machine, so a call that is not stubbed shows."""
     original = socket.socket.connect
 
@@ -316,4 +316,12 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
             raise RuntimeError(f"Network access in an offline test: {address!r}")
         return original(self, address)
 
-    monkeypatch.setattr(socket.socket, "connect", guarded)
+    with patch.object(socket.socket, "connect", guarded):
+        yield
+
+
+@pytest.fixture
+def offline() -> Iterator[None]:
+    """Fail any connection to another machine during the test (``no_network``)."""
+    with no_network():
+        yield

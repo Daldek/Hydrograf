@@ -71,7 +71,8 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | amended by ADR-066 | 2026-10-25 |
 | [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
 | [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | accepted | 2026-11-01 |
-| [ADR-066](decisions/0066-kartograf-store-shared-with-archiwista.md) | The Kartograf store shared with Archiwista | accepted | 2026-11-02 |
+| [ADR-066](decisions/0066-kartograf-store-shared-with-archiwista.md) | The Kartograf store shared with Archiwista | superseded in part by ADR-067 | 2026-11-02 |
+| [ADR-067](decisions/0067-archiwista-sets-as-the-only-kartograf-input.md) | Archiwista's sets as the only Kartograf input of the shared store | accepted | 2026-11-02 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were

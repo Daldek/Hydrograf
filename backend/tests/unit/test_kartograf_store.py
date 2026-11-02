@@ -1,22 +1,21 @@
 """The helpers that say where Kartograf writes and how its answers are read."""
 
 import logging
-import os
 from pathlib import Path
 
 import kartograf
 import pytest
-from kartograf.testing import build_fixture_store
 
+from core.errors import ForbiddenError
+from scripts.download_dem import download_sheets
+from scripts.download_landcover import fetch_landcover
 from tests.kartograf_offline import Counties, bdot10k_counties
 from tests.kartograf_offline import offline as offline  # noqa: F401
 from utils.kartograf_store import (
-    ACTIVE_WRITE_WINDOW_S,
     describe_error,
     download_bdot10k,
     metadata_cache_path,
     store_dir,
-    writes_in_progress,
 )
 
 AREA = kartograf.BBox(450000, 550000, 460000, 560000, "EPSG:2180")
@@ -46,52 +45,34 @@ class TestSharedStore:
 
         assert store_dir(tmp_path) == tmp_path / "kartograf"
 
+    @pytest.mark.usefixtures("offline")
+    @pytest.mark.parametrize(
+        "download",
+        [
+            lambda cache: download_bdot10k(cache, bbox=AREA),
+            lambda cache: download_sheets(
+                ["N-33-130-D-d-1-1"], cache / "kartograf", cache / "meta.db"
+            ),
+            lambda cache: fetch_landcover(cache / "kartograf", teryt="1465"),
+        ],
+        ids=["download_bdot10k", "download_sheets", "fetch_landcover"],
+    )
+    def test_no_download_while_a_shared_store_is_set(
+        self, tmp_path, monkeypatch, download
+    ):
+        """Archiwista alone writes the shared store (ADR-067): nothing is written."""
+        shared = tmp_path / "shared"
+        shared.mkdir()
+        monkeypatch.setenv("HYDROGRAF_KARTOGRAF_ROOT", str(shared))
+        cache = tmp_path / "cache"
+        cache.mkdir()
 
-class TestWritesInProgress:
-    NOW = 1_800_000_000.0
+        with pytest.raises(ForbiddenError) as raised:
+            download(cache)
 
-    def _staging(self, root, age_s, name="archiwista_4242_0a1b2c3d"):
-        """A staging entry of a write with one partial file, both ``age_s`` old."""
-        entry = root / "nmt" / "pl_1992_5m_evrf2007" / "versions" / ".incoming" / name
-        entry.mkdir(parents=True)
-        part = entry / "N-33-130-D-d-1-1.asc.4242_1.tmp"
-        part.write_text("partial")
-        self._age(part, age_s)
-        self._age(entry, age_s)
-        return entry
-
-    def _age(self, path, age_s):
-        os.utime(path, (self.NOW - age_s, self.NOW - age_s))
-
-    def test_an_entry_changed_within_the_window_is_a_write(self, tmp_path):
-        entry = self._staging(tmp_path, age_s=ACTIVE_WRITE_WINDOW_S - 1)
-
-        assert writes_in_progress(tmp_path, now=self.NOW) == [entry]
-
-    def test_an_older_entry_is_the_leftover_of_a_stopped_write(self, tmp_path):
-        self._staging(tmp_path, age_s=ACTIVE_WRITE_WINDOW_S + 1)
-
-        assert writes_in_progress(tmp_path, now=self.NOW) == []
-
-    def test_a_file_still_being_written_keeps_an_old_entry_active(self, tmp_path):
-        entry = self._staging(tmp_path, age_s=3 * ACTIVE_WRITE_WINDOW_S)
-        growing = entry / "1465.gpkg.4242_2.tmp"
-        growing.write_text("still coming")
-        self._age(growing, 5)
-        self._age(entry, 3 * ACTIVE_WRITE_WINDOW_S)
-
-        assert writes_in_progress(tmp_path, now=self.NOW) == [entry]
-
-    def test_a_store_without_staging_entries_has_no_writes(self, tmp_path):
-        root = tmp_path / "store"
-        build_fixture_store(root)
-        # Kartograf keeps the empty .incoming directory after a published write.
-        (root / "nmt" / "pl_1992_5m_evrf2007" / "versions" / ".incoming").mkdir(
-            parents=True, exist_ok=True
-        )
-
-        assert writes_in_progress(root) == []
-        assert writes_in_progress(tmp_path / "no-store") == []
+        assert raised.value.details["reason"] == "shared_store_read_only"
+        assert list(shared.iterdir()) == []
+        assert list(cache.iterdir()) == []
 
 
 class TestDescribeError:
@@ -117,6 +98,13 @@ class TestDescribeError:
         assert describe_error(error) == (
             "no marker [store_unavailable] kartograf store init --root DIR"
         )
+
+    def test_an_error_of_hydrograf_says_its_code_and_hint(self):
+        error = ForbiddenError(
+            "shared_store_read_only", reason="shared_store_read_only", root="/s"
+        )
+
+        assert describe_error(error) == f"{error} [forbidden] {error.hint}"
 
 
 @pytest.mark.usefixtures("offline")

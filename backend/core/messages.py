@@ -1,11 +1,12 @@
-"""Message catalogue of the errors of the REST API (DEV-2.3, ERR-6, AGI-6.4).
+"""Message catalogue of the errors of the REST API and the scripts (ERR-6, AGI-6.4).
 
 Code refers to a message by its English ID. Each message has an English text, which
-answers requests without ``Accept-Language``, and a Polish text for
-``Accept-Language: pl`` (the interface sends it). A text may use ``{name}`` fields,
-which the details of the error fill in; a message may also carry a hint, the one line
-that tells how to fix the call (ERR-5). Codes, ``details`` keys and reasons do not
-depend on the language.
+answers requests without ``Accept-Language`` and fills the error document of a script
+(AGI-9.2), and a Polish text for ``Accept-Language: pl`` (the interface sends it) and
+for the human-readable lines of a script. A text may use ``{name}`` fields, which the
+details of the error fill in; a message may also carry a hint, the one line that tells
+how to fix the call (ERR-5). Codes, ``details`` keys and reasons do not depend on the
+language.
 """
 
 from collections.abc import Mapping
@@ -285,6 +286,191 @@ MESSAGES: Final[dict[str, Message]] = {
     "identify_failed": Message(
         "The information about the point could not be read.",
         "Nie udało się odczytać informacji o punkcie.",
+    ),
+    # --- Bootstrap: the shared store and the sets of Archiwista projects (ADR-067) ---
+    "bootstrap_arguments_invalid": Message(
+        "Invalid arguments: {cause}.",
+        "Nieprawidłowe argumenty: {cause}.",
+        "See python -m scripts.bootstrap --help.",
+        "Zobacz python -m scripts.bootstrap --help.",
+    ),
+    "shared_store_read_only": Message(
+        "The Kartograf store {root} is shared with Archiwista and Hydrograf only reads "
+        "it: nothing is downloaded into it.",
+        "Magazyn Kartografa {root} jest wspólny z Archiwistą i Hydrograf tylko z niego "
+        "czyta: nic nie jest do niego pobierane.",
+        "Bootstrap from a set of an Archiwista project (--project and --set), or unset "
+        "HYDROGRAF_KARTOGRAF_ROOT to download into <cache_dir>/kartograf.",
+        "Uruchom bootstrap z zestawu projektu Archiwisty (--project i --set) albo usuń "
+        "HYDROGRAF_KARTOGRAF_ROOT, aby pobierać do <cache_dir>/kartograf.",
+    ),
+    "project_file_missing": Message(
+        "There is no Archiwista project file archiwista-project.json in {path}.",
+        "W {path} nie ma pliku projektu Archiwisty archiwista-project.json.",
+        "Give the directory of the project that its card in Archiwista shows.",
+        "Podaj katalog projektu pokazany na jego karcie w Archiwiście.",
+    ),
+    "project_schema_unsupported": Message(
+        "The project file has the schema {schema}; Hydrograf reads "
+        "archiwista-project/1.",
+        "Plik projektu ma schemat {schema}; Hydrograf czyta archiwista-project/1.",
+        "Use a newer Hydrograf.",
+        "Użyj nowszej wersji Hydrografa.",
+    ),
+    "project_file_invalid": Message(
+        "The project file {path} breaks the rule {rule} of archiwista-project/1 at the "
+        "JSON pointer '{pointer}'.",
+        "Plik projektu {path} narusza regułę {rule} formatu archiwista-project/1 we "
+        "wskaźniku JSON '{pointer}'.",
+        "Open the project's card in Archiwista: it names the problem.",
+        "Otwórz kartę projektu w Archiwiście: wskaże problem.",
+    ),
+    "file_unreadable": Message(
+        "{path} cannot be read: {cause}",
+        "Nie można odczytać {path}: {cause}",
+        "Grant the bootstrap read access to the project and the store (ADR-067).",
+        "Nadaj bootstrapowi prawo odczytu projektu i magazynu (ADR-067).",
+    ),
+    "project_area_unset": Message(
+        "The project {project} has no area.",
+        "Projekt {project} nie ma obszaru.",
+        "In Archiwista, set the project's area on its card.",
+        "Ustaw obszar projektu na jego karcie w Archiwiście.",
+    ),
+    "project_area_missing": Message(
+        "The area file {path} of the project is missing.",
+        "Brak pliku obszaru projektu {path}.",
+        "In Archiwista, set the project's area again on its card.",
+        "Ustaw obszar projektu ponownie na jego karcie w Archiwiście.",
+    ),
+    "project_area_changed": Message(
+        "The area file {path} changed after Archiwista recorded it (SHA-256 {actual}, "
+        "recorded {expected}).",
+        "Plik obszaru {path} zmienił się po zapisaniu przez Archiwistę (SHA-256 "
+        "{actual}, zapisany {expected}).",
+        "In Archiwista, set the project's area again on its card.",
+        "Ustaw obszar projektu ponownie na jego karcie w Archiwiście.",
+    ),
+    "project_area_unreadable": Message(
+        "The area file {path} cannot be read as an area: {cause}",
+        "Nie można odczytać pliku obszaru {path} jako obszaru: {cause}",
+        "In Archiwista, set the project's area again on its card.",
+        "Ustaw obszar projektu ponownie na jego karcie w Archiwiście.",
+    ),
+    "set_not_found": Message(
+        "The project {project} has no set {name}.",
+        "Projekt {project} nie ma zestawu {name}.",
+        "Name one of its sets (letter case does not matter): {sets}.",
+        "Podaj jeden z jego zestawów (wielkość liter nie ma znaczenia): {sets}.",
+    ),
+    "set_open": Message(
+        "The set {name} is open: it is being built in Archiwista, and Hydrograf reads "
+        "only closed sets.",
+        "Zestaw {name} jest otwarty: jest w budowie w Archiwiście, a Hydrograf czyta "
+        "tylko zamknięte zestawy.",
+        "Close it in Archiwista: „Zamknij zestaw” on the project's card.",
+        "Zamknij go w Archiwiście: „Zamknij zestaw” na karcie projektu.",
+    ),
+    "set_digest_mismatch": Message(
+        "The pins of the set {name} do not match its pins_sha256 (recorded {expected}, "
+        "computed {actual}): the project file was changed outside Archiwista.",
+        "Piny zestawu {name} nie zgadzają się z jego pins_sha256 (zapisany {expected}, "
+        "obliczony {actual}): plik projektu zmieniono poza Archiwistą.",
+        "In Archiwista, check the set („Weryfikuj”), then „Otwórz do edycji” and "
+        "„Zamknij zestaw” to record its pins again.",
+        "Sprawdź zestaw w Archiwiście („Weryfikuj”), potem „Otwórz do edycji” i "
+        "„Zamknij zestaw”, aby zapisać jego piny na nowo.",
+    ),
+    "project_store_unset": Message(
+        "The project {project} names no Kartograf store.",
+        "Projekt {project} nie wskazuje magazynu Kartografa.",
+        "In Archiwista, choose the project's store („Zmień…” on its card).",
+        "Wybierz magazyn projektu w Archiwiście („Zmień…” na jego karcie).",
+    ),
+    "project_store_unusable": Message(
+        "The project's Kartograf store {root} cannot be used ({state}).",
+        "Nie można użyć magazynu Kartografa projektu {root} ({state}).",
+        "Check that the store is mounted at this path, or change the project's store "
+        "in Archiwista („Zmień…”).",
+        "Sprawdź, czy magazyn jest zamontowany pod tą ścieżką, albo zmień magazyn "
+        "projektu w Archiwiście („Zmień…”).",
+    ),
+    "project_store_mismatch": Message(
+        "The project's Kartograf store {root} is not the store {shared} that "
+        "HYDROGRAF_KARTOGRAF_ROOT names.",
+        "Magazyn Kartografa projektu {root} to nie magazyn {shared} wskazany przez "
+        "HYDROGRAF_KARTOGRAF_ROOT.",
+        "Mount the project's store at its own path and set HYDROGRAF_KARTOGRAF_ROOT "
+        "to it.",
+        "Zamontuj magazyn projektu pod jego własną ścieżką i ustaw na nią "
+        "HYDROGRAF_KARTOGRAF_ROOT.",
+    ),
+    "pins_missing": Message(
+        "Pinned files of the set {name} missing from the store {root}: {count}.",
+        "Przypięte pliki zestawu {name}, których brakuje w magazynie {root}: {count}.",
+        "In Archiwista, restore them: „Przywróć brakujące” of the set "
+        "(archiwista project-restore).",
+        "Przywróć je w Archiwiście: „Przywróć brakujące” w zestawie "
+        "(archiwista project-restore).",
+    ),
+    "pins_changed": Message(
+        "Pinned files of the set {name} whose size or SHA-256 differs from the pin: "
+        "{count}.",
+        "Przypięte pliki zestawu {name}, których rozmiar lub SHA-256 różni się od "
+        "pinu: {count}.",
+        "In Archiwista, check the set („Weryfikuj”, archiwista project-verify), then "
+        "„Przywróć brakujące”.",
+        "Sprawdź zestaw w Archiwiście („Weryfikuj”, archiwista project-verify), potem "
+        "„Przywróć brakujące”.",
+    ),
+    "pins_unreadable": Message(
+        "Pinned files of the set {name} that cannot be read: {count} ({cause}).",
+        "Przypięte pliki zestawu {name}, których nie można odczytać: {count} "
+        "({cause}).",
+        "Grant the bootstrap read access to the store (ADR-067).",
+        "Nadaj bootstrapowi prawo odczytu magazynu (ADR-067).",
+    ),
+    "set_sheets_missing": Message(
+        "NMT sheets ({resolution}) of the project's area that the set {name} lacks: "
+        "{count}.",
+        "Arkusze NMT ({resolution}) obszaru projektu, których brakuje w zestawie "
+        "{name}: {count}.",
+        "In Archiwista: „Otwórz do edycji”, add an elevation download over the "
+        "project's area, then „Zamknij zestaw”.",
+        "W Archiwiście: „Otwórz do edycji”, dodaj polecenie elevation download na "
+        "obszarze projektu, potem „Zamknij zestaw”.",
+    ),
+    "set_counties_missing": Message(
+        "Counties of the NMT mosaic whose BDOT10k package the set {name} lacks: "
+        "{count}.",
+        "Powiaty mozaiki NMT, których paczki BDOT10k brakuje w zestawie {name}: "
+        "{count}.",
+        "In Archiwista: „Otwórz do edycji”, add a landcover download over the "
+        "project's area, then „Zamknij zestaw”.",
+        "W Archiwiście: „Otwórz do edycji”, dodaj polecenie landcover download na "
+        "obszarze projektu, potem „Zamknij zestaw”.",
+    ),
+    "set_hsg_missing": Message(
+        "The set {name} has no HSG raster ({depth}) that covers the NMT mosaic.",
+        "Zestaw {name} nie ma rastra HSG ({depth}) pokrywającego mozaikę NMT.",
+        "In Archiwista: „Otwórz do edycji”, add a soil hsg call whose box covers the "
+        "mosaic, then „Zamknij zestaw”.",
+        "W Archiwiście: „Otwórz do edycji”, dodaj polecenie soil hsg o prostokącie "
+        "pokrywającym mozaikę, potem „Zamknij zestaw”.",
+    ),
+    "set_unit_ambiguous": Message(
+        "Units with more than one version in the set {name} ({count}): {units}.",
+        "Jednostki z więcej niż jedną wersją w zestawie {name} ({count}): {units}.",
+        "In Archiwista: „Otwórz do edycji”, keep one version per sheet, county and "
+        "raster, then „Zamknij zestaw”.",
+        "W Archiwiście: „Otwórz do edycji”, zostaw jedną wersję na arkusz, powiat i "
+        "raster, potem „Zamknij zestaw”.",
+    ),
+    "prg_unavailable": Message(
+        "The county register (PRG) did not answer: {cause}",
+        "Rejestr powiatów (PRG) nie odpowiedział: {cause}",
+        "Try again later.",
+        "Spróbuj ponownie później.",
     ),
 }
 

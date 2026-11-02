@@ -1,8 +1,8 @@
 # Kartograf integration
 
-**Version:** 7.2
+**Version:** 7.3
 **Date:** 2026-11-02
-**Status:** Active (Kartograf 0.8.0.dev0, head `26ee459`; ADR-061, ADR-066)
+**Status:** Active (Kartograf 0.8.0.dev0, head `26ee459`; ADR-061, ADR-066, ADR-067)
 
 ---
 
@@ -86,6 +86,10 @@ core/cn_calculator.py (CN on demand, `analyze_watershed`):
     download_landcover(...)                          ──► the store, the same packages as bootstrap
 ```
 
+These are the downloads into the private store; with `HYDROGRAF_KARTOGRAF_ROOT` set they refuse. A
+run from a closed set of an Archiwista project (`--project`, `--set`) downloads nothing: steps 2 to
+5 take the pinned files (§3.7, §4.5).
+
 ---
 
 ## 3. The store of the pipeline
@@ -106,8 +110,9 @@ Hydrograf passes `root=` or `output_dir=` and `cache=` explicitly** and none rel
 | `prepare_area` | its own store `<output>/kartograf` | a stand-alone script with a working directory |
 
 The store of the pipeline is `<cache_dir>/kartograf` (`paths.cache_dir`, default `cache/`;
-`bootstrap --cache-dir`), or the store that `HYDROGRAF_KARTOGRAF_ROOT` names, shared with Archiwista
-(§3.7, ADR-066). It is a directory of its own: Kartograf refuses a root that holds other
+`bootstrap --cache-dir`). The store that `HYDROGRAF_KARTOGRAF_ROOT` names, shared with Archiwista,
+is only read, through a set (§3.7, ADR-067); the call sites above refuse while it is set. A store is
+a directory of its own: Kartograf refuses a root that holds other
 files (`conflict`, reason `not_empty`) and a root that has the layout of a store and no marker
 (`store_unavailable`, hint `kartograf store init --root DIR`). A new or empty directory becomes a
 store: Kartograf writes the marker on the first write.
@@ -197,30 +202,42 @@ downloads into `cache/kartograf/`, and the cache clean removes the old directori
 erratum of 2026-10-25). Data of the 0.6.1 layout (`nmt_1m/`, `nmt_5m/`) was not reusable even in
 0.7.0.
 
-### 3.7 A store shared with Archiwista (ADR-066)
+### 3.7 A store shared with Archiwista, read through sets (ADR-066, ADR-067)
 
-`HYDROGRAF_KARTOGRAF_ROOT` names a Kartograf store outside the cache directory; every script then
-writes and reads there instead of `<cache_dir>/kartograf`, and the metadata cache stays in
-`<cache_dir>` (one per producer). Since S4 of the store migration it is the store of the public
-Archiwista instance, `/home/claude-agent/data/archiwista-public/store`; the staging stack mounts it
-at `/kartograf` (read-only for the serving API, read-write for the bootstrap container).
+`HYDROGRAF_KARTOGRAF_ROOT` names a Kartograf store outside the cache directory that Archiwista
+alone writes: since S4 of the store migration the store of the public Archiwista instance,
+`/home/claude-agent/data/archiwista-public/store`. Hydrograf reads it only through a closed set of
+an Archiwista project (`bootstrap --project PATH --set NAME`, §4.5); the metadata cache stays in
+`<cache_dir>` (one per producer). The staging stack mounts the store read-only at `/kartograf` for
+every container; step H2 of the plan mounts the store and the project's directory read-only at
+their host paths.
 
-- **Writers:** Archiwista (`claude-agent`, its download jobs) and the bootstrap of Hydrograf
-  (UID 999). Hydrograf writes nothing into the store but what Kartograf writes: the mosaic gets
-  its CRS from `create_vrt_mosaic(target_crs=)`, not from `.prj` files beside the sheets (§4.9).
-- **Permissions:** POSIX ACL on the store, set by its owner:
-  `setfacl -R -m u:999:rwX <store>` and `setfacl -R -d -m u:999:rwX,u:claude-agent:rwX <store>`.
-  The default entries replace the umask of both producers (077 of Archiwista, 022 of the
-  container), so each reads the other's files and can hard-link them, which
-  `fs.protected_hardlinks = 1` requires. The parent directories stay as they are: a bind mount
-  does not look them up.
-- **Concurrency:** Kartograf takes no lock and needs none (versions published by an exclusive
-  `os.link`, links moved by `os.replace`). The bootstrap writes only while no Archiwista download
-  job runs; step 2 stops before its first write when `writes_in_progress` finds a staging entry
-  in `versions/.incoming` changed in the last 10 minutes.
-- **Limit:** BDOT10k packages are unpacked in the system temporary directory and moved into the
-  store with their mode; a package of Archiwista is unreadable for UID 999 and one of Hydrograf
-  cannot be hard-linked by Archiwista until the first `setfacl` command runs again.
+- **Writers:** Archiwista only (`claude-agent`, its download jobs). While the variable is set,
+  every download of Hydrograf refuses with `forbidden`, reason `shared_store_read_only`
+  (`refuse_shared_store`, §4.1): `download_bdot10k`, `download_sheets`, `fetch_landcover` and
+  steps 2 and 5 of the bootstrap's private path, so `download_dem`, `download_landcover`,
+  `prepare_area`, `analyze_watershed --download` and the CN fallback refuse too; the admin panel's
+  `POST /api/admin/bootstrap/start` answers `403` before it starts a process. Unset or empty, the
+  private store `<cache_dir>/kartograf` downloads as before.
+- **Input:** every Kartograf input of the bootstrap is a pin of the set, read whole and checked by
+  size and SHA-256 before step 1; what the run needs (the sheets of the project's area, the
+  counties of the mosaic, an HSG raster that covers the mosaic) must be pinned, one version per
+  unit; a missing or changed input stops the run with a registry code and a hint naming the
+  Archiwista action (ADR-067, decision 9).
+- **Permissions:** POSIX ACL set by the owner in step H2, read only for UID 999 (ADR-067, narrowed
+  from the `rwX` of ADR-066):
+  `setfacl -R -m u:999:rX <dir>` and `setfacl -R -d -m u:999:rX,u:claude-agent:rwX <dir>`, on the
+  store and on the project's directory. The default entries keep the files that Archiwista writes
+  under its umask 077 readable for the container. The parent directories stay as they are: a bind
+  mount does not look them up.
+- **No concurrency rule:** with one writer there is nothing to coordinate. A closed set does not
+  change, its version paths never change, and the run checks every pin at its start, so Archiwista
+  may download while a bootstrap runs.
+- **Limit:** two writers of Kartograf, `_unpack_checked_layers` (the RCN transaction prices) and
+  `_fetch_features` (WFS cut-outs), move a file from the system temporary directory with its mode,
+  which narrows the ACL mask so that UID 999 cannot read it. Neither product is an input of
+  Hydrograf; the BDOT10k packages, the NMT sheets, the SoilGrids inputs and the HSG raster are
+  readable (ADR-066, erratum of fact 4).
 
 ---
 
@@ -233,15 +250,16 @@ a script that needs only a path does not load it.
 
 | Name | Meaning |
 |---|---|
-| `store_dir(cache_dir)` | the store that `HYDROGRAF_KARTOGRAF_ROOT` names, else `<cache_dir>/kartograf` |
+| `store_dir(cache_dir)` | the store that the pipeline reads: the one `HYDROGRAF_KARTOGRAF_ROOT` names, else `<cache_dir>/kartograf` (the readers: the sheet listing of `analyze_watershed`, the cache clean) |
 | `shared_store_root()` | the shared store of `HYDROGRAF_KARTOGRAF_ROOT`, or `None` for the private store |
-| `writes_in_progress(root)` | the staging entries (`versions/.incoming/*`) changed in the last `ACTIVE_WRITE_WINDOW_S` (10 min): writes of another producer in progress |
+| `refuse_shared_store()` | raises `forbidden` (reason `shared_store_read_only`) while `HYDROGRAF_KARTOGRAF_ROOT` is set: every download calls it first (ADR-067) |
+| `private_store_dir(cache_dir)` | the store a download writes into, `<cache_dir>/kartograf`; calls `refuse_shared_store()` first |
 | `metadata_cache_path(cache_dir)` | `<cache_dir>/kartograf_meta.db` |
 | `open_metadata_cache(cache_dir)` | opens the `MetadataCache` (creates the directory; logs when SQLite disables it) |
 | `SHEET_SYSTEM = "1992"` | the sheet grid of Hydrograf, PL-1992 (EPSG:2180); the find functions of Kartograf require it |
 | `HSG_DEPTH = "0-5cm"` | the depth of the SoilGrids layers of the HSG |
-| `describe_error(error)` | the text of a failure for a log line: `<message> [<code>] <hint>` for a `KartografError` |
-| `download_bdot10k(cache_dir, teryt=, bbox=)` | the packages of one county or of every county that a bbox intersects, as `{teryt: path}`; a failed county is logged and left out; an area without counties gives `{}` |
+| `describe_error(error)` | the text of a failure for a log line: `<message> [<code>] <hint>` for a `KartografError` and for a `HydrografError` |
+| `download_bdot10k(cache_dir, teryt=, bbox=)` | the packages of one county or of every county that a bbox intersects, in the private store, as `{teryt: path}`; a failed county is logged and left out; an area without counties gives `{}`; refuses while a shared store is set |
 
 ### 4.2 `utils/sheet_lookup.py`
 
@@ -270,7 +288,8 @@ skip_existing=True, resolution="5m")` builds `GugikProvider(vertical_crs="EVRF20
 resolution=..., cache=...)` and `DownloadManager(provider, root=root)`, calls
 `download_sheets(sheets, update=None | "force")` and returns an `NmtDownloadReport`: `paths` (the
 standard path of each sheet, new or already local), `no_coverage` and `unverified`.
-`download_for_point` and `download_for_geometry` find the sheets first.
+`download_for_point` and `download_for_geometry` find the sheets first. `download_sheets` refuses
+while `HYDROGRAF_KARTOGRAF_ROOT` is set (`forbidden`, `shared_store_read_only`; ADR-067).
 
 ```bash
 cd backend
@@ -302,7 +321,8 @@ skip_existing=True, metadata_cache_path=)` calls `kartograf.download_landcover(p
 with a `teryt`, a `sheet` or the `bbox` of the square around a point, and returns a
 `LandCoverReport` (`files`, `failed`, `ok`). A bbox gets every county it intersects; the file of a
 county is `landcover/pl_bdot10k_gpkg/teryt/<teryt>.gpkg`. `merge_hydro_gpkgs()` merges the hydro
-layers of several packages (§12).
+layers of several packages (§12). `fetch_landcover` refuses while `HYDROGRAF_KARTOGRAF_ROOT` is set
+(ADR-067).
 
 ```bash
 python -m scripts.download_landcover --lat 52.23 --lon 21.01 --buffer 5 --root ../cache/kartograf
@@ -331,14 +351,31 @@ cover, HSG, precipitation, depressions, MVT tiles, overlays, server). Steps 1-3 
 
 | Step | Kartograf | On failure |
 |---|---|---|
-| area | `SheetParser(code).get_bbox()` for `--sheets`; `find_sheets_for_bbox(bbox, scale, sheet_system="1992")` for `--bbox`; `find_sheets_for_geometry` for an SHP/GPKG `--boundary-file`, the bbox of the geometry for other formats | an invalid bbox or sheet code is a CLI error (exit 2) |
-| 2 NMT | `writes_in_progress(store)` first: a write of another producer in progress stops the step before its first write (ADR-066); then `download_sheets(sheets, store_dir(cache_dir), <cache>/kartograf_meta.db, resolution=--resolution)` | the step fails, the exit code is 1 |
+| area | `SheetParser(code).get_bbox()` for `--sheets`; `find_sheets_for_bbox(bbox, scale, sheet_system="1992")` for `--bbox`; `find_sheets_for_geometry` for an SHP/GPKG `--boundary-file`, the bbox of the geometry for other formats; all three refused while `HYDROGRAF_KARTOGRAF_ROOT` is set | an invalid bbox or sheet code is a CLI error (exit 2); a shared store: `forbidden`, exit 12 |
+| 2 NMT | `download_sheets(sheets, private_store_dir(cache_dir), <cache>/kartograf_meta.db, resolution=--resolution)` | the step fails, the exit code is 1 |
 | 3 DEM | the VRT mosaic is built **from the paths that step 2 returned** (never from a directory scan: the store keeps every version under `versions/`); then `download_bdot10k` for the extent of the mosaic and `merge_hydro_gpkgs` for stream burning | a failed hydro download only logs a warning: no burning |
 | 4 land cover | `download_bdot10k(cache_dir, bbox=mosaic)`: the packages that step 3 stored are local and are not requested again; each is imported by `import_landcover` | the step fails, `describe_error` gives the code and the hint; the pipeline continues |
-| 5 HSG | `calculate_hsg(root=, bbox=<Poland>, depth="0-5cm", cache=)`: the raster of Poland is a version of the store; then clip to the mosaic, warp to EPSG:2180 at 250 m, nearest-neighbour fill, polygonize and import into `soil_hsg` (a DELETE limited to the bbox first) | a `KartografError` ends the step as "skipped" with its code; any other error fails it; the pipeline continues |
+| 5 HSG | `calculate_hsg(root=, bbox=<Poland>, depth="0-5cm", cache=)` into the private store: the raster of Poland is a version of the store; then clip to the mosaic, warp to EPSG:2180 at 250 m, nearest-neighbour fill, polygonize and import into `soil_hsg` (a DELETE limited to the bbox first) | a `KartografError` ends the step as "skipped" with its code; any other error fails it; the pipeline continues |
+| set: before step 1 | `--project`, `--set`: the checks of `utils/kartograf_set.set_inputs` (below) | a refusal of ADR-067: the error document as the last line of standard error, the registry's exit code |
+| set: 2 NMT | nothing is downloaded: every pinned sheet of `nmt/pl_1992_<--resolution>_evrf2007/versions/`, by its version path; reports `N/N arkuszy z zestawu` | - |
+| set: 3 DEM | the mosaic of the pinned sheets; the streams of the pinned BDOT10k packages for burning | as above |
+| set: 4 land cover | the pinned BDOT10k packages, imported by `import_landcover` | as above |
+| set: 5 HSG | the pinned HSG raster, clipped to the mosaic and processed as above | as above |
 
-The exit code is 1 only when one of steps 1-3 failed. Whether a failed step 5 should stop the
+The exit code is 1 when one of steps 1-3 failed. Whether a failed step 5 should stop the
 bootstrap and whether the HSG fallback "B" is right are open (PROGRESS, Open questions 1).
+
+**Bootstrap from a set (ADR-067).** `python -m scripts.bootstrap --project PATH --set NAME`
+(`PATH` is the project's directory or its `archiwista-project.json`) takes every Kartograf input
+from a closed set of an Archiwista project; `--dry-run` stops after the checks and prints the
+project, the set's state, the area's SHA-256, `pins_sha256`, the store, the pins and steps 2 to 5.
+Steps 6 to 10 do not change (IMGW PMAXTP stays outside sets; the precipitation grid takes the WGS84
+box of the area). Two modules read the set:
+
+| Module | Contents |
+|---|---|
+| `utils/archiwista_project.py` | the reader of `archiwista-project/1`: `read_project` (the directory or the file), `read_set` (a closed set by its name, NFC, trimmed, case-folded; `state` absent or `closed`), `pins_digest` (`pins_sha256`: SHA-256 of the sorted lines `<producer>\t<version>\t<sha256>\n`), `project_area` (the area file with its SHA-256), `kartograf_root` (the project's store, absolute or relative to the project; Kartograf's `store_state` must be `marked`, and the same directory as `HYDROGRAF_KARTOGRAF_ROOT` when that is set), `verify_pins` (every pin read whole, size and SHA-256) |
+| `utils/kartograf_set.py` | `set_inputs(...) -> SetInputs`: the pins by product (the segment of the version: NMT, BDOT10k, HSG; other Kartograf pins verified, not used; pins of other producers not read), one version per unit (the file's stem); the requirements: the sheets of the area (`find_sheets_for_geometry(<area>, "1:10000", sheet_system="1992")`) among the NMT pins, the counties that `Bdot10kProvider(cache=).teryts_for_area` names for the box of the pinned sheets' frames (`SheetParser`) among the BDOT10k pins, exactly one HSG pin whose requested box (`read_sidecar(...).request`, `transform_bbox` to EPSG:2180) covers the mosaic; `SetInputs.identity()`, what the log line `Bootstrap from a set: {json}` and `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`) record |
 
 ### 4.6 `scripts/prepare_area.py`
 
@@ -395,7 +432,9 @@ given; the old directory scan `discover_asc_files()` is gone.
 | `utils/kartograf_store.py` | `MetadataCache`, `KartografError`, `NoCoverageError`, `download_landcover`, `BBox` | the store and the BDOT10k download |
 | `scripts/download_dem.py` | `DownloadManager`, `GugikProvider`, `MetadataCache`, `find_sheets_for_geometry` | NMT download |
 | `scripts/download_landcover.py` | `MetadataCache`, `download_landcover` | land cover download |
-| `scripts/bootstrap.py` | `SheetParser`, `BBox`, `find_sheets_for_bbox`, `find_sheets_for_geometry`, `calculate_hsg`, `KartografError`, `ParseError`, `ValidationError` | the orchestrator |
+| `scripts/bootstrap.py` | `SheetParser`, `BBox`, `find_sheets_for_bbox`, `find_sheets_for_geometry`, `calculate_hsg`, `KartografError`, `ParseError`, `ValidationError` | the orchestrator; a run from a set reads through `utils/kartograf_set.py` |
+| `utils/archiwista_project.py` | `store_state`, `KartografError` | the project file and the pins of a set (ADR-067) |
+| `utils/kartograf_set.py` | `find_sheets_for_geometry`, `SheetParser`, `BBox`, `Bdot10kProvider.teryts_for_area`, `read_sidecar`, `transform_bbox`, `KartografError` | the inputs of a bootstrap from a set (ADR-067) |
 | `scripts/prepare_area.py` | `BBox`, `SheetParser` | the area pipeline |
 | `scripts/analyze_watershed.py` | `iter_store`, `list_segments` | the NMT sheets of the store |
 | `core/cn_calculator.py` | `BBox`, `calculate_hsg`, `download_landcover`, `hsg_statistics`, `KartografError` | the CN calculation |
@@ -563,6 +602,8 @@ for s in sheets:
 .venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
 .venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4" --dry-run
 .venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4" --skip-precipitation --skip-tiles
+# From a closed set of an Archiwista project (the shared store, ADR-067)
+.venv/bin/python -m scripts.bootstrap --project /path/to/project --set "Hydrograf 2020" --dry-run
 ```
 
 ### 9.3 A given region
@@ -616,10 +657,11 @@ only reads are built by `kartograf.testing.build_fixture_store`.
 ```bash
 cd backend
 uv run pytest tests/unit/test_sheet_lookup.py -v          # sheet lookup vs kartograf.find_sheets_for_bbox
-uv run pytest tests/unit/test_kartograf_store.py -v       # describe_error, download_bdot10k
+uv run pytest tests/unit/test_kartograf_store.py -v       # describe_error, download_bdot10k, no download while a shared store is set
 uv run pytest tests/unit/test_download_dem_report.py tests/unit/test_download_dem.py -v   # NMT download, report, errors, --geometry
 uv run pytest tests/unit/test_download_landcover.py -v    # fetch_landcover, merge_hydro_gpkgs
 uv run pytest tests/unit/test_bootstrap_nmt.py tests/unit/test_bootstrap_bbox.py -v      # steps 2-3, bbox validation
+uv run pytest tests/unit/test_bootstrap_set.py -v         # bootstrap from a set: every refusal, the requirements, the digest
 uv run pytest tests/unit/test_analyze_watershed_nmt_files.py -v   # find_existing_nmt_files on a fixture store
 uv run pytest tests/unit/test_clean_cache.py -v           # the cache clean
 uv run pytest tests/unit/test_cn_calculator.py tests/unit/test_land_cover_stats.py tests/unit/test_land_cover.py tests/unit/test_cn_tables.py -v
@@ -790,8 +832,10 @@ version of `hsg/`. `hsg_statistics()` counts the cells per group.
 
 Two integration points:
 
-1. **Bootstrap step 5**: the raster of Poland (EPSG:2180 bbox `167000 29000 860000 814000`) is
-   fetched once into the store, `reused` after; the step clips it to the mosaic, warps it to
+1. **Bootstrap step 5**: on the private path the raster of Poland (EPSG:2180 bbox
+   `167000 29000 860000 814000`) is fetched once into the store, `reused` after; from a set, the
+   pinned HSG raster whose requested box covers the mosaic (ADR-067; the Kaczawa set: Poland's
+   box plus 100 km, `67000 -71000 960000 914000`). The step clips it to the mosaic, warps it to
    EPSG:2180 at 250 m, fills the missing pixels with the nearest neighbour, polygonizes it (the
    fragments under 50 m² are dropped) and imports it into `soil_hsg`, replacing the polygons of the
    bbox. It also writes `soil_hsg.geojson` for the front end.
@@ -853,6 +897,6 @@ Other formats (GeoJSON) of `bootstrap --boundary-file` fall back to the bbox of 
 
 ---
 
-**Document version:** 7.2
-**Last update:** 2026-11-02: the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9).
-**History:** 7.1 (2026-11-02): the pin of the head `26ee459` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `45dedf4`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).
+**Document version:** 7.3
+**Last update:** 2026-11-02: Archiwista's sets as the only Kartograf input of the shared store (ADR-067): `bootstrap --project --set` with its checks and refusals, `utils/archiwista_project.py` and `utils/kartograf_set.py` (§4.5), every download refused while `HYDROGRAF_KARTOGRAF_ROOT` is set (`refuse_shared_store`, `private_store_dir`), read-only ACL, no concurrency rule; `writes_in_progress` and the guard of step 2 removed (§3.7, §4.1).
+**History:** 7.2 (2026-11-02): the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9). 7.1 (2026-11-02): the pin of the head `26ee459` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `45dedf4`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).

@@ -52,7 +52,12 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from utils.kartograf_store import SHEET_SYSTEM, describe_error, store_dir
+from utils.kartograf_store import (
+    SHEET_SYSTEM,
+    describe_error,
+    refuse_shared_store,
+    store_dir,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -121,6 +126,9 @@ def download_sheets(
 
     Raises
     ------
+    core.errors.ForbiddenError
+        ``shared_store_read_only`` while ``HYDROGRAF_KARTOGRAF_ROOT`` is set: the
+        shared store is Archiwista's to write (ADR-067).
     NmtDownloadError
         Transport/service failures (full list of sheets), no coverage for
         every sheet, missing cache directory or a cache disabled by SQLite.
@@ -132,6 +140,8 @@ def download_sheets(
         the error names the way out.
     """
     from kartograf import DownloadManager, GugikProvider, MetadataCache
+
+    refuse_shared_store()
 
     if not sheets:
         raise NmtDownloadError("Pusta lista arkuszy NMT — nic do pobrania")

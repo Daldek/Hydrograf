@@ -38,6 +38,7 @@ from core.errors import (
     NotFoundError,
 )
 from scripts.clean import DB_TABLES, execute_clean
+from utils.kartograf_store import refuse_shared_store
 
 logger = logging.getLogger(__name__)
 
@@ -601,7 +602,14 @@ def bootstrap_status() -> BootstrapStatusResponse:
 
 @router.post("/bootstrap/start", response_model=BootstrapStartResponse)
 def bootstrap_start(request: BootstrapStartRequest) -> BootstrapStartResponse:
-    """Start bootstrap subprocess."""
+    """Start bootstrap subprocess.
+
+    Refused with 403 (``forbidden``, ``shared_store_read_only``) before any process
+    starts while ``HYDROGRAF_KARTOGRAF_ROOT`` names a shared store: the panel's
+    bootstrap downloads by area, and a bootstrap from a set runs from the command
+    line (ADR-067).
+    """
+    refuse_shared_store()
     if _bootstrap_state["status"] == "running":
         raise ConflictError("bootstrap_running", reason="bootstrap_running")
 

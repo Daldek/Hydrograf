@@ -9,22 +9,23 @@ beside it, in ``<cache_dir>``: the store would refuse a foreign file, and SQLite
 local disk. Every script passes the root and the cache explicitly; none relies on
 ``KARTOGRAF_ROOT`` or on the default store in the data directory of the user.
 
-ADR-066. ``HYDROGRAF_KARTOGRAF_ROOT`` names a store outside the cache directory that
-Hydrograf shares with other producers (Archiwista); every script then uses it instead of
-``<cache_dir>/kartograf``. The metadata cache stays in ``<cache_dir>``: each producer
-keeps its own. Hydrograf writes nothing into a store but what Kartograf writes, and the
-cache clean leaves a shared store whole.
+ADR-066, ADR-067. ``HYDROGRAF_KARTOGRAF_ROOT`` names a store outside the cache directory
+that Archiwista alone writes; Hydrograf only reads it, through a set of an Archiwista
+project (``utils.archiwista_project``). While it is set, every download into a store
+is refused (:func:`refuse_shared_store`): a write goes only into the private store of
+the cache directory (:func:`private_store_dir`). The metadata cache stays in
+``<cache_dir>``, and the cache clean leaves a shared store whole.
 
 This module only builds paths and reads reports, so a script that imports it for a path
 does not import Kartograf.
 """
 
-import contextlib
 import logging
 import os
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from core.errors import ForbiddenError, HydrografError
 
 if TYPE_CHECKING:
     from kartograf import BBox, MetadataCache
@@ -33,9 +34,9 @@ logger = logging.getLogger(__name__)
 
 # <cache_dir>/kartograf: the private Kartograf store of the pipeline.
 STORE_DIR_NAME = "kartograf"
-# A Kartograf store shared with other producers (ADR-066). Not Kartograf's own
-# KARTOGRAF_ROOT: a root set for the Kartograf command line must not redirect the
-# pipeline.
+# A Kartograf store shared with Archiwista, read only (ADR-066, ADR-067). Not
+# Kartograf's own KARTOGRAF_ROOT: a root set for the Kartograf command line must not
+# redirect the pipeline.
 STORE_ROOT_ENV = "HYDROGRAF_KARTOGRAF_ROOT"
 # <cache_dir>/kartograf_meta.db (+ -wal, -shm): the SQLite metadata cache of Kartograf.
 METADATA_CACHE_NAME = "kartograf_meta.db"
@@ -43,13 +44,6 @@ METADATA_CACHE_NAME = "kartograf_meta.db"
 SHEET_SYSTEM = "1992"
 # Depth of the SoilGrids layers of the hydrologic soil groups (HSG) of Hydrograf.
 HSG_DEPTH = "0-5cm"
-# Kartograf stages each write in <product>/<variant>/versions/.incoming/<host>_<pid>_<n>
-# and removes the entry when the file is published (its spec, D19); the entry changes
-# while the writer works. An entry changed within this window is a write in progress
-# (ADR-066); an older one is the leftover of a stopped write, which Kartograf removes
-# after 24 h.
-STAGING_GLOB = "*/*/versions/.incoming/*"
-ACTIVE_WRITE_WINDOW_S = 10 * 60
 
 
 def shared_store_root() -> Path | None:
@@ -58,63 +52,53 @@ def shared_store_root() -> Path | None:
     Returns
     -------
     Path or None
-        The root of a Kartograf store shared with other producers (ADR-066); None
-        when the variable is unset or empty, that is for the private store of the
-        cache directory.
+        The root of a Kartograf store that Archiwista writes and Hydrograf only reads
+        (ADR-067); None when the variable is unset or empty, that is for the private
+        store of the cache directory.
     """
     value = os.environ.get(STORE_ROOT_ENV, "").strip()
     return Path(value).expanduser() if value else None
 
 
 def store_dir(cache_dir: Path) -> Path:
-    """Return the Kartograf store of the pipeline.
+    """Return the Kartograf store that the pipeline reads.
 
     The shared store of ``HYDROGRAF_KARTOGRAF_ROOT`` when it is set (ADR-066), else
     the private store inside the cache directory, ``<cache_dir>/kartograf`` (ADR-061).
+    A download writes only into the private store: :func:`private_store_dir`.
     """
     return shared_store_root() or cache_dir / STORE_DIR_NAME
 
 
-def writes_in_progress(root: Path, *, now: float | None = None) -> list[Path]:
-    """Return the staging entries of the Kartograf writes in progress in a store.
+def refuse_shared_store() -> None:
+    """Refuse a download while ``HYDROGRAF_KARTOGRAF_ROOT`` names a shared store.
 
-    A writer of the store (Archiwista, another bootstrap) keeps an entry in
-    ``versions/.incoming`` of the segment while it writes. Entries that changed in the
-    last ``ACTIVE_WRITE_WINDOW_S`` count; older ones are leftovers of stopped writes.
-    The check is a snapshot: a writer that starts later is not seen (ADR-066).
+    Archiwista alone writes the shared store (ADR-067), so every function of
+    Hydrograf that may write into a Kartograf store calls this first.
 
-    Parameters
-    ----------
-    root : Path
-        Root of the store; a root that does not exist has no writes.
-    now : float, optional
-        Current time as a POSIX timestamp (default: the clock).
-
-    Returns
-    -------
-    list[Path]
-        The staging entries of writes in progress, sorted; empty when none.
+    Raises
+    ------
+    ForbiddenError
+        ``shared_store_read_only``: the variable is set.
     """
-    limit = (time.time() if now is None else now) - ACTIVE_WRITE_WINDOW_S
-    active = []
-    for entry in sorted(root.glob(STAGING_GLOB)):
-        try:
-            changed = _newest_mtime(entry)
-        except FileNotFoundError:  # the write was published meanwhile
-            continue
-        if changed >= limit:
-            active.append(entry)
-    return active
+    root = shared_store_root()
+    if root is not None:
+        raise ForbiddenError(
+            "shared_store_read_only", reason="shared_store_read_only", root=str(root)
+        )
 
 
-def _newest_mtime(path: Path) -> float:
-    """Return the newest modification time of ``path`` and of all it holds."""
-    newest = path.lstat().st_mtime
-    if path.is_dir() and not path.is_symlink():
-        for child in path.rglob("*"):
-            with contextlib.suppress(FileNotFoundError):
-                newest = max(newest, child.lstat().st_mtime)
-    return newest
+def private_store_dir(cache_dir: Path) -> Path:
+    """Return the store a download writes into: ``<cache_dir>/kartograf`` (ADR-061).
+
+    Raises
+    ------
+    ForbiddenError
+        ``shared_store_read_only`` while ``HYDROGRAF_KARTOGRAF_ROOT`` is set
+        (:func:`refuse_shared_store`).
+    """
+    refuse_shared_store()
+    return cache_dir / STORE_DIR_NAME
 
 
 def metadata_cache_path(cache_dir: Path) -> Path:
@@ -138,14 +122,14 @@ def open_metadata_cache(cache_dir: Path) -> "MetadataCache":
 def describe_error(error: BaseException) -> str:
     """Return the text of a failure for a log line or the detail of a step.
 
-    An error of Kartograf says its code of the Nogat registry and, when it has one,
-    the hint that names the way out (for example ``kartograf store init --root DIR``
-    for a root that has the layout of a store and no marker); any other error is its
-    text.
+    An error of Kartograf or of Hydrograf says its code of the Nogat registry and,
+    when it has one, the hint that names the way out (for example ``kartograf store
+    init --root DIR`` for a root that has the layout of a store and no marker); any
+    other error is its text.
     """
     from kartograf import KartografError
 
-    if not isinstance(error, KartografError):
+    if not isinstance(error, KartografError | HydrografError):
         return str(error)
     text = f"{error} [{error.code}]"
     return f"{text} {error.hint}" if error.hint else text
@@ -157,7 +141,7 @@ def download_bdot10k(
     teryt: str | None = None,
     bbox: "BBox | None" = None,
 ) -> dict[str, Path]:
-    """Download BDOT10k into the store of ``cache_dir`` and return the package paths.
+    """Download BDOT10k into the private store of ``cache_dir``; return the packages.
 
     The data of one county (``teryt``, 4 digits) or of every county that an area
     (``bbox``) intersects: the whole package of a county, all layers, as a GeoPackage
@@ -168,7 +152,7 @@ def download_bdot10k(
     Parameters
     ----------
     cache_dir : Path
-        Cache directory of the pipeline; the store is ``store_dir(cache_dir)``.
+        Cache directory of the pipeline; the store is ``<cache_dir>/kartograf``.
     teryt : str, optional
         TERYT code of a county (powiat), 4 digits.
     bbox : BBox, optional
@@ -181,6 +165,8 @@ def download_bdot10k(
 
     Raises
     ------
+    ForbiddenError
+        ``shared_store_read_only`` while ``HYDROGRAF_KARTOGRAF_ROOT`` is set.
     kartograf.KartografError
         A request that Kartograf refuses (``validation_error``), a store that
         refuses the write (``conflict``, ``store_unavailable``) or a failed query of
@@ -188,10 +174,11 @@ def download_bdot10k(
     """
     from kartograf import NoCoverageError, download_landcover
 
+    root = private_store_dir(cache_dir)
     try:
         report = download_landcover(
             product="bdot10k",
-            root=store_dir(cache_dir),
+            root=root,
             teryt=teryt,
             bbox=bbox,
             cache=open_metadata_cache(cache_dir),

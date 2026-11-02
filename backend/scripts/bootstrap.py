@@ -13,35 +13,49 @@ Usage:
     # By sheet codes
     python -m scripts.bootstrap --sheets N-34-131-C-c-2-1 N-34-131-C-c-2-2
 
-    # Dry run (show plan without executing)
+    # From a closed set of an Archiwista project (ADR-067): nothing is downloaded
+    python -m scripts.bootstrap --project /srv/projects/kaczawa --set "Hydrograf 2020"
+
+    # Dry run (show plan without executing; with --project: after every check)
     python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4" --dry-run
 
     # Skip optional steps
     python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4" \
         --skip-precipitation --skip-tiles
+
+With HYDROGRAF_KARTOGRAF_ROOT set (a Kartograf store that Archiwista writes and
+Hydrograf only reads) only --project and --set are allowed: --bbox, --sheets and
+--boundary-file would download, and are refused (exit 12, forbidden). A refusal
+ends with the error document hydrograf-error/1 as the last line of standard error
+and the exit code of the Nogat registry.
 """
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import shutil
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
+from core._errors import BY_CODE
+from core.errors import HydrografError, InvalidRequestError
+from utils.kartograf_set import SetInputs, nmt_segment, set_inputs
 from utils.kartograf_store import (
-    ACTIVE_WRITE_WINDOW_S,
     HSG_DEPTH,
     SHEET_SYSTEM,
     describe_error,
     download_bdot10k,
     metadata_cache_path,
     open_metadata_cache,
+    private_store_dir,
+    refuse_shared_store,
     store_dir,
-    writes_in_progress,
 )
 
 logging.basicConfig(
@@ -58,6 +72,12 @@ PROJECT_ROOT = BACKEND_DIR.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
+# <output>/bootstrap_set.json: the set of an Archiwista project that a run took its
+# Kartograf data from (ADR-067), written when the run starts and completed when it
+# ends. A run without a set removes it, so no data is credited to a set it did not
+# come from.
+SET_RECORD_NAME = "bootstrap_set.json"
+SET_RECORD_SCHEMA = "hydrograf-bootstrap-set/1"
 
 # Status symbols
 SYM_DONE = "\u2713"  # checkmark
@@ -270,6 +290,7 @@ def print_header(
     sheets: list[str],
     port: int,
     boundary_file: Path | None = None,
+    inputs: SetInputs | None = None,
 ):
     """Print bootstrap header with configuration summary."""
     min_lon, min_lat, max_lon, max_lat = bbox
@@ -278,13 +299,18 @@ def print_header(
         f"{min_lon:.3f}\u00b0E\u2013{max_lon:.3f}\u00b0E, "
         f"{min_lat:.3f}\u00b0N\u2013{max_lat:.3f}\u00b0N"
     )
-    boundary_line = ""
+    source = ""
     if boundary_file is not None:
-        boundary_line = f"  Plik granicy: {boundary_file}\n"
+        source = f"  Plik granicy: {boundary_file}\n"
+    if inputs is not None:
+        source = (
+            f"  Projekt: {inputs.project.name} ({inputs.project.directory})\n"
+            f"  Zestaw: {inputs.pin_set.name}\n"
+        )
     header = (
         f"{sep}\n"
         f"  Hydrograf Bootstrap\n"
-        f"{boundary_line}"
+        f"{source}"
         f"  Obszar: {area}\n"
         f"  Arkusze: {len(sheets)}\n"
         f"  Port: {port}\n"
@@ -430,14 +456,14 @@ def step_download_nmt(
 ) -> tuple[list[Path], str]:
     """Step 2: Download NMT sheets via Kartograf.
 
-    The sheets go into the Kartograf store of the pipeline, ``store_dir(cache_dir)``
-    (ADR-061, ADR-066): the standard path of a sheet is
+    The sheets go into the private Kartograf store of the pipeline,
+    ``<cache_dir>/kartograf`` (ADR-061): the standard path of a sheet is
     ``<store>/nmt/pl_1992_<res>_evrf2007/<hierarchy>/<sheet>.asc`` (a hard link to the
     newest flight) and the versions are below ``versions/``. The metadata cache is
     ``cache_dir/kartograf_meta.db``.
-    Raises RuntimeError before the first write when another producer is writing into
-    the store (ADR-066), and NmtDownloadError on any transport failure (full sheet
-    list).
+    Raises ForbiddenError while HYDROGRAF_KARTOGRAF_ROOT names a shared store, which
+    Hydrograf only reads (ADR-067), and NmtDownloadError on any transport failure
+    (full sheet list).
     """
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.download_dem import download_sheets
@@ -445,21 +471,9 @@ def step_download_nmt(
     if not sheets:
         raise ValueError("Pusta lista arkuszy NMT — nic do pobrania")
 
-    root = store_dir(cache_dir)
-    busy = writes_in_progress(root)
-    if busy:
-        entries = ", ".join(str(entry.relative_to(root)) for entry in busy)
-        minutes = ACTIVE_WRITE_WINDOW_S // 60
-        raise RuntimeError(
-            f"Magazyn Kartografa {root} jest wlasnie zapisywany przez inny proces "
-            f"(wpisy versions/.incoming zmienione w ciagu {minutes} min: {entries}). "
-            "Uruchom bootstrap, gdy nie trwa zadne pobieranie Archiwisty ani inny "
-            "bootstrap do tego magazynu (ADR-066)."
-        )
-
     report = download_sheets(
         sheets,
-        root,
+        private_store_dir(cache_dir),
         metadata_cache_path(cache_dir),
         skip_existing=True,
         resolution=resolution,
@@ -474,6 +488,16 @@ def step_download_nmt(
     return report.paths, detail
 
 
+def step_set_nmt(inputs: SetInputs) -> tuple[list[Path], str]:
+    """Step 2 from a set: the pinned sheets, by their version paths (ADR-067).
+
+    Nothing is downloaded: every sheet of the set's NMT segment was checked with its
+    SHA-256 before step 1, and a version path never changes.
+    """
+    files = list(inputs.sheets.values())
+    return files, f"{len(files)}/{len(files)} arkuszy z zestawu"
+
+
 def step_process_dem(
     downloaded_files: list[Path],
     output_dir: Path,
@@ -481,8 +505,13 @@ def step_process_dem(
     waterbody_mode: str = "none",
     waterbody_min_area_m2: float | None = None,
     sewer_config: dict[str, Any] | None = None,
+    bdot10k: dict[str, Path] | None = None,
 ) -> tuple[dict[str, Any], str, tuple[float, float, float, float]]:
-    """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis."""
+    """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis.
+
+    ``bdot10k`` (TERYT to package) are the BDOT10k packages of a set (ADR-067); without
+    it the packages of the mosaic's counties are downloaded.
+    """
     sys.path.insert(0, str(BACKEND_DIR))
     from scripts.download_landcover import merge_hydro_gpkgs
     from scripts.process_dem import process_dem
@@ -491,9 +520,9 @@ def step_process_dem(
     nmt_dir = output_dir / "nmt"
     nmt_dir.mkdir(parents=True, exist_ok=True)
 
-    # Exactly the sheets returned by step 2 (standard paths) — never a
-    # directory scan: the store keeps every version of a sheet under versions/
-    # (and full_sheet/ links), and other resolutions may sit in the same store.
+    # Exactly the sheets returned by step 2 (standard paths, or the version paths
+    # of a set) — never a directory scan: the store keeps every version of a sheet
+    # under versions/ (and full_sheet/ links), and other resolutions may sit in it.
     nmt_files = sorted(set(downloaded_files))
 
     # Reproject PUWG 2000 files to EPSG:2180 before mosaicking
@@ -527,8 +556,12 @@ def step_process_dem(
             f"({mosaic_bbox_2180[0]:.0f}, {mosaic_bbox_2180[1]:.0f}, "
             f"{mosaic_bbox_2180[2]:.0f}, {mosaic_bbox_2180[3]:.0f})"
         )
-        bdot_paths = download_bdot10k(
-            cache_dir, bbox=BBox(*mosaic_bbox_2180, crs="EPSG:2180")
+        bdot_paths = (
+            bdot10k
+            if bdot10k is not None
+            else download_bdot10k(
+                cache_dir, bbox=BBox(*mosaic_bbox_2180, crs="EPSG:2180")
+            )
         )
 
         if bdot_paths:
@@ -582,20 +615,25 @@ def step_landcover(
     output_dir: Path,
     cache_dir: Path,
     mosaic_bbox_2180: tuple[float, float, float, float] | None = None,
+    bdot10k: dict[str, Path] | None = None,
 ) -> str:
     """Step 4: Download and import land cover data (per county).
 
     The counties of the area (the mosaic of step 3, else the sheets) come from
     Kartograf with their packages: a package that step 3 stored is local and not
-    requested again, one that failed there is tried again here.
+    requested again, one that failed there is tried again here. ``bdot10k`` (TERYT to
+    package) are the packages of a set (ADR-067), imported without a download.
     """
     sys.path.insert(0, str(BACKEND_DIR))
     from kartograf import BBox
 
     from scripts.import_landcover import import_landcover
 
-    bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
-    bdot_paths = download_bdot10k(cache_dir, bbox=BBox(*bbox_2180, crs="EPSG:2180"))
+    if bdot10k is not None:
+        bdot_paths = bdot10k
+    else:
+        bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
+        bdot_paths = download_bdot10k(cache_dir, bbox=BBox(*bbox_2180, crs="EPSG:2180"))
 
     if not bdot_paths:
         logger.warning("Nie znaleziono powiatów dla podanego obszaru")
@@ -620,12 +658,14 @@ def step_soil_hsg(
     output_dir: Path,
     cache_dir: Path,
     mosaic_bbox_2180: tuple[float, float, float, float] | None = None,
+    hsg_raster: Path | None = None,
 ) -> str:
     """Step 5: Download HSG data from SoilGrids and import to DB.
 
-    The HSG raster of Poland is a version of the Kartograf store of the pipeline
-    (``cache_dir/kartograf``, ADR-061): Kartograf fetches the SoilGrids clay, sand and
-    silt once, computes the raster from them, and a second run uses it again without a
+    The HSG raster of Poland is a version of the private Kartograf store of the
+    pipeline (``cache_dir/kartograf``, ADR-061): Kartograf fetches the SoilGrids clay,
+    sand and silt once, computes the raster from them, and a second run uses it again
+    without a request. ``hsg_raster`` is the raster of a set (ADR-067), used without a
     request. Processing: clip to project bbox -> warp to EPSG:2180 -> polygonize ->
     import.
     """
@@ -639,31 +679,36 @@ def step_soil_hsg(
     sys.path.insert(0, str(BACKEND_DIR))
     from core.database import get_engine
 
-    # --- 1. Poland-wide HSG raster (one-time: a local version is used again) ---
-    logger.info("HSG: Poland-wide raster from SoilGrids (a local version is reused)...")
-
-    # Poland bbox in EPSG:2180 (PL-1992)
-    bbox_poland = BBox(
-        min_x=167000,
-        min_y=29000,
-        max_x=860000,
-        max_y=814000,
-        crs="EPSG:2180",
-    )
-    try:
-        report = calculate_hsg(
-            root=store_dir(cache_dir),
-            bbox=bbox_poland,
-            depth=HSG_DEPTH,
-            cache=open_metadata_cache(cache_dir),
+    if hsg_raster is not None:
+        logger.info("HSG: the raster of the set, %s", hsg_raster)
+        hsg_path = hsg_raster
+    else:
+        # --- 1. Poland-wide HSG raster (one-time: a local version is used again) ---
+        logger.info(
+            "HSG: Poland-wide raster from SoilGrids (a local version is reused)..."
         )
-    except KartografError as e:
-        return f"pominięto (SoilGrids: {describe_error(e)})"
+        # Poland bbox in EPSG:2180 (PL-1992)
+        bbox_poland = BBox(
+            min_x=167000,
+            min_y=29000,
+            max_x=860000,
+            max_y=814000,
+            crs="EPSG:2180",
+        )
+        try:
+            report = calculate_hsg(
+                root=private_store_dir(cache_dir),
+                bbox=bbox_poland,
+                depth=HSG_DEPTH,
+                cache=open_metadata_cache(cache_dir),
+            )
+        except KartografError as e:
+            return f"pominięto (SoilGrids: {describe_error(e)})"
 
-    if not report.files:
-        reasons = "; ".join(f"{f.unit}: {f.error}" for f in report.failed)
-        return f"pominięto (SoilGrids: {reasons})"
-    hsg_poland = report.files[0].file.path
+        if not report.files:
+            reasons = "; ".join(f"{f.unit}: {f.error}" for f in report.failed)
+            return f"pominięto (SoilGrids: {reasons})"
+        hsg_path = report.files[0].file.path
 
     # --- 2. Clip + warp to project bbox in EPSG:2180 ---
     bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
@@ -681,7 +726,7 @@ def step_soil_hsg(
     dst_transform = from_bounds(min_x, min_y, max_x, max_y, width, height)
     dst_crs = rasterio.crs.CRS.from_epsg(2180)
 
-    with rasterio.open(hsg_poland) as src:
+    with rasterio.open(hsg_path) as src:
         dst_data = np.zeros((height, width), dtype=np.uint8)
         reproject(
             source=rasterio.band(src, 1),
@@ -1049,8 +1094,13 @@ def run_pipeline(
     waterbody_min_area_m2: float | None = None,
     resolution: str = "5m",
     sewer_config: dict[str, Any] | None = None,
+    inputs: SetInputs | None = None,
 ):
-    """Run the full 10-step bootstrap pipeline."""
+    """Run the full 10-step bootstrap pipeline.
+
+    With ``inputs``, the checked files of a set of an Archiwista project (ADR-067),
+    steps 2 to 5 read the pinned files and download nothing.
+    """
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
 
@@ -1071,9 +1121,12 @@ def run_pipeline(
     if not tracker.is_skipped(2):
         t0 = tracker.start(2)
         try:
-            downloaded_files, detail = step_download_nmt(
-                sheets, cache_dir, resolution=resolution
-            )
+            if inputs is not None:
+                downloaded_files, detail = step_set_nmt(inputs)
+            else:
+                downloaded_files, detail = step_download_nmt(
+                    sheets, cache_dir, resolution=resolution
+                )
             tracker.done(2, t0, detail)
         except Exception as e:
             tracker.fail(2, t0, describe_error(e))
@@ -1096,6 +1149,7 @@ def run_pipeline(
                 waterbody_mode=waterbody_mode,
                 waterbody_min_area_m2=waterbody_min_area_m2,
                 sewer_config=sewer_config,
+                bdot10k=inputs.counties if inputs is not None else None,
             )
             tracker.done(3, t0, detail)
         except Exception as e:
@@ -1112,6 +1166,7 @@ def run_pipeline(
                 output_dir,
                 cache_dir,
                 mosaic_bbox_2180=mosaic_bbox,
+                bdot10k=inputs.counties if inputs is not None else None,
             )
             tracker.done(4, t0, detail)
         except Exception as e:
@@ -1123,7 +1178,11 @@ def run_pipeline(
         t0 = tracker.start(5)
         try:
             detail = step_soil_hsg(
-                sheets, output_dir, cache_dir, mosaic_bbox_2180=mosaic_bbox
+                sheets,
+                output_dir,
+                cache_dir,
+                mosaic_bbox_2180=mosaic_bbox,
+                hsg_raster=inputs.hsg if inputs is not None else None,
             )
             tracker.done(5, t0, detail)
         except Exception as e:
@@ -1190,8 +1249,9 @@ def dry_run(
     cache_dir: Path,
     port: int,
     skips: set[int],
+    inputs: SetInputs | None = None,
 ):
-    """Show what would be done without executing."""
+    """Show what would be done without executing (with a set: after every check)."""
     min_lon, min_lat, max_lon, max_lat = bbox
     print("\nDRY RUN — plan wykonania:\n")
     print(f"  Output dir: {output_dir}")
@@ -1214,6 +1274,9 @@ def dry_run(
         f"Overlay PNG: DEM + streams do {FRONTEND_DIR / 'data'}",
         f"Uruchom serwer: docker compose up -d, port {port}",
     ]
+    if inputs is not None:
+        print_set(inputs)
+        steps[1:5] = _set_steps(inputs)
 
     for i, desc in enumerate(steps, 1):
         skip = SYM_SKIP if i in skips else " "
@@ -1222,9 +1285,119 @@ def dry_run(
     print()
 
 
+def print_set(inputs: SetInputs) -> None:
+    """Print what a set gives the run, below the header (the human-readable output)."""
+    pin_set = inputs.pin_set
+    state = (
+        f"zamknięty {pin_set.closed_at} przez {pin_set.closed_by}"
+        if pin_set.closed_at is not None
+        else "zamknięty (bez daty zamknięcia: zestaw sprzed stanu zestawów)"
+    )
+    source = "z pliku projektu" if pin_set.pins_sha256 else "obliczony"
+    area = inputs.project.area
+    print(f"  Stan:        {state}")
+    print(f"  Obszar:      {inputs.area} (SHA-256 {area.sha256 if area else '-'})")
+    print(f"  pins_sha256: {inputs.digest} ({source})")
+    print(f"  Magazyn:     {inputs.root}")
+    print(
+        f"  Piny:        {len(pin_set.pins)}; piny Kartografa sprawdzone (SHA-256), "
+        f"nieużywane: {len(inputs.unused)}; innych producentów: {inputs.foreign}"
+    )
+    print()
+
+
+def _set_steps(inputs: SetInputs) -> list[str]:
+    """Return the dry-run lines of steps 2 to 5 of a run from a set."""
+    counties = ", ".join(inputs.counties) or "-"
+    which = "powiaty mozaiki (PRG)" if inputs.counties_checked else "paczki zestawu"
+    hsg = inputs.hsg.relative_to(inputs.root).as_posix() if inputs.hsg else "-"
+    return [
+        f"NMT z zestawu, {nmt_segment(inputs.resolution)}: {len(inputs.sheets)} ark."
+        f" (obszar projektu: {len(inputs.required_sheets)} ark.), bez pobierania",
+        "Przetwarzanie NMT: mozaika VRT z wersji zestawu, "
+        "stream_network, stream_catchments (ZAWSZE od zera)",
+        f"Pokrycie terenu: BDOT10k z zestawu, {which}: {counties}",
+        f"Dane glebowe HSG: raster z zestawu {hsg}",
+    ]
+
+
+# The longest list of pins or units a refusal prints for a person; the error document
+# holds all of them.
+REFUSAL_LIST_LIMIT = 20
+
+
+def fail(error: HydrografError) -> NoReturn:
+    """End the bootstrap on a refusal (AGI-3.3).
+
+    Standard error gets the Polish message, its hint and the first pins or units of
+    the error for a person, then, as its last line, the error document
+    ``hydrograf-error/1`` in English; the exit code is the registry's.
+    """
+    print(f"BŁĄD: {error.text('pl')}", file=sys.stderr)
+    hint = error.hint_text("pl")
+    if hint is not None:
+        print(f"Wskazówka: {hint}", file=sys.stderr)
+    for key in ("pins", "units"):
+        items = error.details.get(key) or []
+        for item in items[:REFUSAL_LIST_LIMIT]:
+            print(f"  {item}", file=sys.stderr)
+        if len(items) > REFUSAL_LIST_LIMIT:
+            print(f"  … i {len(items) - REFUSAL_LIST_LIMIT} więcej", file=sys.stderr)
+    document = json.dumps(error.document(), ensure_ascii=False, separators=(",", ":"))
+    print(document, file=sys.stderr, flush=True)
+    sys.exit(BY_CODE[error.code].exit_code or 1)
+
+
+class _Parser(argparse.ArgumentParser):
+    """The parser of the bootstrap: a wrong argument ends with the error document."""
+
+    def error(self, message: str) -> NoReturn:
+        """Print the usage, then refuse with ``validation_error`` (exit 2)."""
+        self.print_usage(sys.stderr)
+        fail(
+            InvalidRequestError(
+                "bootstrap_arguments_invalid",
+                reason="invalid_arguments",
+                cause=message,
+            )
+        )
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def write_set_record(
+    path: Path,
+    inputs: SetInputs,
+    *,
+    started_at: str,
+    finished_at: str | None,
+    status: str,
+) -> None:
+    """Write the record of the set a run took its Kartograf data from (ADR-067).
+
+    ``<output>/bootstrap_set.json``: the identity of the set (project, set,
+    ``closed_at``, ``pins_sha256``, the pins per product), when the run started and
+    ended, and ``status`` (``running``, ``ok`` or ``failed``: a step 1 to 3 failed).
+    """
+    record = {
+        "schema": SET_RECORD_SCHEMA,
+        **inputs.identity(),
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "status": status,
+    }
+    partial = path.with_name(f".{path.name}.tmp")
+    partial.write_text(
+        json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    os.replace(partial, path)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build CLI argument parser."""
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         description="Jednokomendowy setup srodowiska Hydrograf",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
@@ -1247,6 +1420,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--boundary-file",
         type=Path,
         help="Vector boundary file (SHP/ZIP, GPKG, GeoJSON)",
+    )
+    area_group.add_argument(
+        "--project",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Katalog projektu Archiwisty (albo jego archiwista-project.json): dane "
+            "Kartografa tylko z zamkniętego zestawu --set, sprawdzone SHA-256, bez "
+            "pobierania (ADR-067)"
+        ),
+    )
+    parser.add_argument(
+        "--set",
+        metavar="NAME",
+        help="Zestaw projektu --project (wielkość liter bez znaczenia)",
     )
 
     # Optional
@@ -1395,6 +1583,14 @@ def main():
     """Run the bootstrap pipeline."""
     parser = build_parser()
     args = parser.parse_args()
+    if (args.project is None) != (args.set is None):
+        parser.error("--project and --set go together")
+    if args.project is None:
+        # --bbox, --sheets and --boundary-file download: never into a shared store
+        try:
+            refuse_shared_store()
+        except HydrografError as error:
+            fail(error)
 
     # Load YAML pipeline configuration (merged with defaults)
     sys.path.insert(0, str(BACKEND_DIR))
@@ -1416,25 +1612,6 @@ def main():
     cache_dir = cache_dir.resolve()
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # Parse bbox, resolve sheets, or load boundary file
-    from kartograf import ParseError as KartografParseError
-    from kartograf import ValidationError as KartografValidationError
-
-    try:
-        if args.boundary_file:
-            sheets, bbox = resolve_boundary_file(
-                args.boundary_file, args.scale, args.boundary_layer
-            )
-        else:
-            bbox_parsed = parse_bbox(args.bbox) if args.bbox else None
-            sheets, bbox = resolve_sheets(bbox_parsed, args.sheets, args.scale)
-    except (ValueError, KartografValidationError, KartografParseError) as e:
-        parser.error(str(e))
-
-    if not sheets:
-        logger.error("Nie znaleziono arkuszy dla podanego obszaru")
-        sys.exit(1)
-
     # Collect skip flags → step numbers
     skips: set[int] = set()
     if args.skip_infra:
@@ -1454,16 +1631,57 @@ def main():
     if args.skip_serve:
         skips.add(10)
 
+    inputs: SetInputs | None = None
+    if args.project is not None:
+        # Every check of ADR-067 before step 1: the project, the set, every pin
+        try:
+            inputs = set_inputs(
+                args.project,
+                args.set,
+                resolution=args.resolution,
+                cache_dir=cache_dir,
+                landcover=4 not in skips,
+                hsg=5 not in skips,
+            )
+        except HydrografError as error:
+            fail(error)
+        logger.info(
+            "Bootstrap from a set: %s",
+            json.dumps(inputs.identity(), ensure_ascii=False),
+        )
+        sheets = list(inputs.sheets)
+        bbox = inputs.area_bbox_wgs84
+    else:
+        # Parse bbox, resolve sheets, or load boundary file
+        from kartograf import ParseError as KartografParseError
+        from kartograf import ValidationError as KartografValidationError
+
+        try:
+            if args.boundary_file:
+                sheets, bbox = resolve_boundary_file(
+                    args.boundary_file, args.scale, args.boundary_layer
+                )
+            else:
+                bbox_parsed = parse_bbox(args.bbox) if args.bbox else None
+                sheets, bbox = resolve_sheets(bbox_parsed, args.sheets, args.scale)
+        except (ValueError, KartografValidationError, KartografParseError) as e:
+            parser.error(str(e))
+
+        if not sheets:
+            logger.error("Nie znaleziono arkuszy dla podanego obszaru")
+            sys.exit(1)
+
     # Print header
     print_header(
         bbox,
         sheets,
         args.port,
         boundary_file=getattr(args, "boundary_file", None),
+        inputs=inputs,
     )
 
     if args.dry_run:
-        dry_run(sheets, bbox, output_dir, cache_dir, args.port, skips)
+        dry_run(sheets, bbox, output_dir, cache_dir, args.port, skips, inputs=inputs)
         return
 
     # Build sewer config: CLI flags override config.yaml
@@ -1479,6 +1697,17 @@ def main():
     # Wrap in top-level dict (process_dem expects sewer_config["sewer"])
     full_sewer_config = {"sewer": sewer_config} if sewer_config.get("enabled") else None
 
+    # The record of the set ties the data of this run to it; a run without a set
+    # leaves none (ADR-067)
+    record = output_dir / SET_RECORD_NAME
+    started_at = _utc_now()
+    if inputs is not None:
+        write_set_record(
+            record, inputs, started_at=started_at, finished_at=None, status="running"
+        )
+    else:
+        record.unlink(missing_ok=True)
+
     # Run pipeline
     total_start = time.time()
     tracker = run_pipeline(
@@ -1492,6 +1721,7 @@ def main():
         waterbody_min_area_m2=args.waterbody_min_area,
         resolution=args.resolution,
         sewer_config=full_sewer_config,
+        inputs=inputs,
     )
     total_elapsed = time.time() - total_start
 
@@ -1509,6 +1739,14 @@ def main():
         tracker.statuses[i] == "fail"
         for i in range(3)  # steps 1-3
     )
+    if inputs is not None:
+        write_set_record(
+            record,
+            inputs,
+            started_at=started_at,
+            finished_at=_utc_now(),
+            status="failed" if critical_failed else "ok",
+        )
     if critical_failed:
         sys.exit(1)
 

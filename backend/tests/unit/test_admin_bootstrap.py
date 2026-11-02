@@ -139,6 +139,25 @@ class TestBootstrapStart:
         assert response.status_code == 409
 
     @patch("api.endpoints.admin.subprocess.Popen")
+    def test_a_shared_store_refuses_the_start_before_any_process(
+        self, mock_popen, app, monkeypatch, tmp_path
+    ):
+        """The panel downloads by area; Archiwista alone writes a shared store."""
+        monkeypatch.setenv("HYDROGRAF_KARTOGRAF_ROOT", str(tmp_path))
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/admin/bootstrap/start",
+            json={"bbox": "20.8,52.1,21.2,52.4"},
+        )
+
+        assert response.status_code == 403
+        assert response.headers["content-type"] == "application/problem+json"
+        assert response.json()["details"]["reason"] == "shared_store_read_only"
+        mock_popen.assert_not_called()
+        assert _bootstrap_state["status"] == "idle"
+
+    @patch("api.endpoints.admin.subprocess.Popen")
     def test_start_with_bbox(self, mock_popen, app):
         """Start with valid bbox starts subprocess."""
         mock_proc = MagicMock()

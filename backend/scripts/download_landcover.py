@@ -48,7 +48,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from utils.kartograf_store import describe_error, store_dir
+from utils.kartograf_store import describe_error, refuse_shared_store, store_dir
 
 if TYPE_CHECKING:
     from kartograf import LandCoverReport
@@ -199,6 +199,9 @@ def fetch_landcover(
 
     Raises
     ------
+    core.errors.ForbiddenError
+        ``shared_store_read_only`` while ``HYDROGRAF_KARTOGRAF_ROOT`` is set: the
+        shared store is Archiwista's to write (ADR-067).
     ValueError
         No area given.
     kartograf.KartografError
@@ -208,6 +211,8 @@ def fetch_landcover(
     from kartograf import MetadataCache, download_landcover
 
     from utils.sheet_lookup import point_buffer_bbox
+
+    refuse_shared_store()
 
     request: dict[str, Any]
     if teryt:
