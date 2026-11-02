@@ -2,6 +2,8 @@
 
 **Zatwierdzono:** 2026-11-02, autor. Wybrany wariant A, wdrożenie blue/green, produkcja zamrożona do jawnego przełączenia (S7).
 
+**Stan (2026-11-02, 22:20):** produkcja zaktualizowana **w miejscu** do `develop` `532be07` (v0.8.0.dev0), bez przełączenia nginx blue/green; S5 (i S6) odłożone na po v0.8.0, S7 wykonany w miejscu, S8 częściowo (staging usunięty, gałęzie scalone i usunięte). Szczegóły: „Wyniki”, sekcja „S7 w miejscu i S8 częściowo”.
+
 **Cel:** Hydrograf działa na kodzie `feature/producer-heads` (magazyn Kartografa wg ADR-061, Nogat 2.1, problem+json, Hydrolog 1.0) połączonym z całą pracą `feature/visual-identity`. Dane pochodzą z bootstrapu do magazynu, przyciętego do zlewni Kaczawy jak 2026-11-01. Przełączenie trwa sekundy i ma gotowy rollback. Do chwili przełączenia produkcja (port 8080) działa bez żadnej zmiany.
 
 **Architektura:** Kod: gałąź `feature/store-migration` od `feature/visual-identity` (HEAD `1a3e3be`), do której scalamy `feature/producer-heads` (`9dfa3a8`). Środowisko: worktree `~/workspace/Hydrograf-store`, w którym działa osobny stos Compose `hydrograf-staging` (zielony): własne kontenery, obraz, wolumen bazy, sieć, port 8081 i katalogi danych na `/data`. Produkcyjny stos `hydrograf` (niebieski) pracuje dalej bez zmian. Przełączenie polega na zatrzymaniu niebieskiego nginx i wystawieniu zielonego nginx na 127.0.0.1:8080, a rollback na operacji odwrotnej.
@@ -295,9 +297,9 @@ Warunek: K1 spełnione.
   3. wiązanie LAN stagingu (`192.168.88.9:8081`) usunąć po S7.
 - [x] Przygotowanie S5 (wyniki „S4 i przygotowanie S5”): obie poprawki z testami, ADR-066, `HYDROGRAF_KARTOGRAF_ROOT`, strażnik zapisu w kroku 2 bootstrapu (usunięty w H1, ADR-067), ACL dla UID 999, montowanie w stagingu, obraz przebudowany, bramka i testy `db` zielone.
 
-### S5: bootstrap z zestawu, przycięcie, ponowna publikacja wyników (1 sesja)
+### S5: bootstrap z zestawu, przycięcie, ponowna publikacja wyników (1 sesja) — odłożony na po v0.8.0
 
-**Decyzja autora z 2026-11-02 (wieczór): S5 w pełnym zasięgu, czyli bootstrap z zestawu Archiwisty dla całej Kaczawy, jest odłożony na po wydaniu v0.8.0.** Kod `--project/--set` (ADR-067, H1) zostaje. Wydanie v0.8.0 przełącza produkcję w miejscu, bez S5; szczegóły przełączenia dojdą w osobnym kroku. Przed nim: poprawki B1, B2, B4, B5 z raportu GPT (`2418776`, `be4d264`), mały test bootstrapu na Kamienniku, porządki w git, merge i push, potem przełączenie produkcji i koniec stagingu na 8081.
+**Decyzja autora z 2026-11-02 (wieczór): S5 w pełnym zasięgu, czyli bootstrap z zestawu Archiwisty dla całej Kaczawy, jest odłożony na po wydaniu v0.8.0.** Kod `--project/--set` (ADR-067, H1) zostaje. Wydanie v0.8.0 przełącza produkcję w miejscu, bez S5 (wykonane 2026-11-02, S7 niżej). Przed nim: poprawki B1, B2, B4, B5 z raportu GPT (`2418776`, `be4d264`), mały test bootstrapu na Kamienniku (zaliczony: pusty magazyn prywatny, 331 s), porządki w git, merge, potem przełączenie produkcji i koniec stagingu na 8081 (oba zrobione 2026-11-02). Stos stagingu, zestawy `copy` i `s3` oraz katalog `/data/nmt/hydrograf-staging/` są usunięte; S5 zaczyna się od postawienia stagingu od nowa (`scripts/staging-compose.sh`, `docker-compose.staging.yml` zostały w repo).
 
 Krok przepisany według S5 planu Nogata `docs/plans/2026-11-02-archiwista-sets-for-hydrograf.md` (repozytorium Nogat, gałąź `plan/archiwista-sets-hydrograf`, commit `d2f17ac` i następne): wariant B autora z 2026-11-02, ADR-067. Bootstrap czyta dane Kartografa wyłącznie z zamkniętego zestawu projektu Kaczawa w Archiwiście i niczego nie pobiera.
 
@@ -321,9 +323,9 @@ Warunki: S4 potwierdzone; H1 i H2 zrobione; Kaczawa w `/home/claude-agent/data/a
   - fazy `rasters db vectors frontend` w `run --rm --no-deps` projektu stagingu z `-v` na skrypt;
   - podmiana katalogów `rename` wpis po wpisie wewnątrz `s5/`.
 - [ ] Ponowna publikacja wyników:
-  - `frontend/data/results/` (manifest `index.json`, warstwa SFINCS `sfincs-kamiennik-24h-p1`, przebieg 3: 24 h p = 1%, zwierciadło w zbiorniku do 281,43 m n.p.m., z `wse_max.tif`) i `data/results/` skopiować z zestawu `copy` do `s5` (w produkcji leży jeszcze wynik 12 h `sfincs-kamiennik-12h-p1`, który 24 h zastąpił);
+  - `frontend/data/results/` (manifest `index.json`, warstwa SFINCS `sfincs-kamiennik-24h-p1`, przebieg 3: 24 h p = 1%, zwierciadło w zbiorniku do 281,43 m n.p.m., z `wse_max.tif`) i `data/results/` skopiować z produkcji do `s5` (produkcja ma wynik 24 h od aktualizacji w miejscu 2026-11-02; wynik 12 h `sfincs-kamiennik-12h-p1` jest tylko w kopii `/data/nmt/hydrograf-backup-2026-11-02/frontend-data-results`);
   - sprawdzić, że `index.json` jest zgodny z `hydrograf-results/1`.
-- [ ] Przełączyć zielony stos na `s5`: w `.env.staging` ustawić `HYDROGRAF_STAGING_SET=s5`, `HYDROGRAF_STAGING_DB=hydro_s5`, potem `scripts/staging-compose.sh up -d api nginx`. Powtórzyć smoke z S2 na 8081. Zestaw `copy` zostaje jako zapasowy.
+- [ ] Przełączyć zielony stos na `s5`: w `.env.staging` ustawić `HYDROGRAF_STAGING_SET=s5`, `HYDROGRAF_STAGING_DB=hydro_s5`, potem `scripts/staging-compose.sh up -d api nginx`. Powtórzyć smoke z S2 na 8081.
 
 **Kryteria akceptacji:**
 - bootstrap kończy się kodem 0; log pokazuje `205/205 arkuszy z zestawu`, dziesięć powiatów (0205, 0206, 0207, 0209, 0218, 0219, 0221, 0226, 0261, 0262) i `pins_sha256` zestawu, a `bootstrap_set.json` (`hydrograf-bootstrap-set/1`, `status: ok`) zostaje z wynikami w zestawie `s5`;
@@ -339,10 +341,11 @@ Warunki: S4 potwierdzone; H1 i H2 zrobione; Kaczawa w `/home/claude-agent/data/a
 
 ### S6: punkt kontrolny autora
 
-- [ ] Autor dostaje: raport S5, porównanie `s5` z produkcją, wybór zestawu do przełączenia (`s5` domyślnie, `copy` awaryjnie) i termin okna przełączenia.
-- [ ] **S7 tylko po wyraźnym potwierdzeniu autora.**
+- Pominięty 2026-11-02: S5 odłożony, a autor wybrał aktualizację produkcji w miejscu (S7 niżej) zamiast przełączenia na zestaw stagingu.
 
-### S7: przełączenie i rollback (0,5 sesji, przerwa liczona w sekundach)
+### S7: przełączenie i rollback — wykonany w miejscu 2026-11-02 zamiast przełączenia nginx
+
+**Wykonane inaczej (2026-11-02, ok. 22:15–22:20):** checkout `~/workspace/Hydrograf` z `1a3e3be` na `develop` `532be07`, przebudowany obraz `hydrograf-api:latest` (tag rollbacku `hydrograf-api:vi-0.7.0` jak w pierwszym punkcie niżej), odtworzony `hydro_api`; `hydro_nginx` i `hydro_db` bez zmian, migracji brak (alembic `003`). Przerwa ok. 21 s. Procedura blue/green poniżej (stop `hydro_nginx`, zielony nginx na 8080, synchronizacja zgłoszeń) nie była uruchamiana; zostaje jako zapis planu. Rollback: `/data/nmt/hydrograf-backup-2026-11-02/ROLLBACK.txt`.
 
 Warunki wejścia:
 - S6 potwierdzone;
@@ -379,15 +382,15 @@ Warunki wejścia:
 - procedura rollbacku jest sprawdzona na sucho: polecenia i nazwy zweryfikowane `docker inspect`/`config`, bez wykonywania;
 - PROGRESS jest zaktualizowany.
 
-### S8: sprzątanie po okresie stabilności (0,25 sesji)
+### S8: sprzątanie po okresie stabilności (0,25 sesji) — częściowo zrobione 2026-11-02
 
 Warunek: co najmniej 7 dni bez rollbacku i zgoda autora.
 
-- [ ] Zrzut końcowy niebieskiej bazy do `/data/nmt/...`, potem `docker rm` kontenerów `hydro_nginx`, `hydro_api`, `hydro_db`. Wolumen `hydrograf_postgres_data` i tag `vi-0.7.0` usuwamy dopiero po kolejnej zgodzie autora.
-- [ ] Zestawy `copy` i `s3`, bazy `hydro_db` i `hydro_s3` stagingu, `hydro_staging_testdb` i katalog `clip-staging` usunąć. `docker builder prune -f` po budowach.
-- [ ] Git (decyzja autora): kolejność scaleń do `develop` (VI, `chore/nogat-2.1`, PH, `feature/store-migration`), los `feature/kartograf-wykorzystanie`, push, usunięcie worktree dnia (`Hydrograf-guide`, `-isok`, `-results`, `-wse`).
-- [ ] Docelowe miejsce produkcji (decyzja autora, patrz niżej). Jeśli wraca do `~/workspace/Hydrograf`, odbywa się to drugim przełączeniem według procedury S7.
-- [ ] Docs: PROGRESS, CHANGELOG, instrukcja (Snyder). Aneks do ADR-061 o magazynie wspólnym to ADR-066 (zrobione przed S5).
+- [x] Nie dotyczy po S7 w miejscu: stos `hydrograf` (`hydro_nginx`, `hydro_api`, `hydro_db`, wolumen `hydrograf_postgres_data`) jest nadal produkcją. Tag `hydrograf-api:vi-0.7.0` zostaje jako rollback (`ROLLBACK.txt`).
+- [x] Staging usunięty 2026-11-02: stos `hydrograf-staging` (kontenery, wolumen, sieć, obraz `store-staging`) i katalog `/data/nmt/hydrograf-staging/` z zestawami `copy` i `s3`; `docker-compose.staging.yml` i `scripts/staging-compose.sh` zostają w repo na kolejne wydania.
+- [x] Git: wszystkie gałęzie scalone do `develop` (`532be07`) i usunięte; lokalnie tylko `develop` i `main`, worktree dnia usunięte (został checkout produkcji). Merge `develop` → `main` i tag `v0.8.0` należą do wydania (autor).
+- [x] Docelowe miejsce produkcji: zostaje w `~/workspace/Hydrograf`, na `develop`; drugie przełączenie niepotrzebne.
+- [ ] Docs: PROGRESS i ten plan zaktualizowane 2026-11-02; sekcja `[0.8.0]` CHANGELOG w commicie wydania; instrukcja (Snyder) — pozycja 3 „Otwartych decyzji”. Aneks do ADR-061 o magazynie wspólnym to ADR-066 (zrobione przed S5).
 
 **Kryteria akceptacji:** na hoście działa jeden stos produkcyjny, nie ma osieroconych kontenerów, wolumenów ani katalogów stagingu (poza świadomie zachowanymi kopiami), a dokumentacja zgadza się ze stanem.
 
@@ -424,8 +427,8 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
    - reguła „nikt nie pobiera w Archiwiście w czasie bootstrapu” i strażnik `writes_in_progress` w kroku 2 usunięte: przy jednym piszącym nie ma czego pilnować.
 2. **Zmiana Snydera widoczna dla testerów.** Hydrolog 1.0 daje szczyt o 11–12% wyższy i 25–70 min wcześniej. Rozstrzygnięte 2026-11-02: testerzy nie dostają osobnej informacji (ani na ekranie powitalnym, ani w panelu wyników); wystarcza CHANGELOG.
 3. **Aktualizacja instrukcji** (`frontend/instrukcja`, prezentacja PDF): slajdy o Snyderze i komunikaty błędów, które teraz pochodzą z `detail` problem+json. Do ustalenia, czy w S7, czy osobno.
-4. **Docelowe miejsce produkcji po S8:** zielony stos zostaje w `Hydrograf-store` albo produkcja wraca do `~/workspace/Hydrograf` po scaleniu gałęzi, drugim przełączeniem według S7.
-5. **Kolejność scaleń i push** (pytanie 3 z analizy). Nie blokuje S1–S7.
+4. **Docelowe miejsce produkcji po S8:** rozstrzygnięte 2026-11-02: produkcja zostaje w `~/workspace/Hydrograf` i działa z `develop` (S7 w miejscu).
+5. **Kolejność scaleń i push** (pytanie 3 z analizy). Rozstrzygnięte 2026-11-02: wszystkie gałęzie scalone do `develop` i usunięte; merge do `main` i tag `v0.8.0` w wydaniu (autor).
 
 ## Wyniki
 
@@ -609,3 +612,14 @@ Krok H1 planu Nogata `docs/plans/2026-11-02-archiwista-sets-for-hydrograf.md` (g
 - **Pełny przebieg kroków 2–5 z zestawu** (bez `--dry-run`, kopia kodu w `/home/claude-agent/data/tmp/h1-smoke/app`, baza `hydro_h1_smoke` w `hydro_h1_testdb`, `HYDROGRAF_KARTOGRAF_ROOT` = magazyn jednorazowy, `--skip-infra`, kroki 6–10 pominięte): kod 0 w 110 s; krok 2 `15/15 arkuszy z zestawu`, krok 3 3 048 412 komórek i 4437 odcinków z wypalaniem przypiętego BDOT10k, krok 4 18 305 obiektów z 2 powiatów, krok 5 raster HSG zestawu (1 poligon B) — te same liczby co bootstrap S3 (`stream_network` 4421, `stream_catchments` 4437, `land_cover` 18 305, `soil_hsg` 1); `bootstrap_set.json` ze statusem `ok`, `started_at` i `finished_at`; magazyn bez zmian. Kontener bazy zatrzymany (`--rm`).
 - **Bramka:** `GATE_COMMIT_RANGE=04d4550..HEAD bash scripts/gate.sh` zielona: 1416 testów offline, pokrycie 86,84%.
 - Montowania pod ścieżkami hosta, katalog projektu i ACL `rX` to krok H2 (po A3 i A4).
+
+### S7 w miejscu i S8 częściowo (2026-11-02, 22:10–22:33): zrobione
+
+- **Kopia przed zmianą** w `/data/nmt/hydrograf-backup-2026-11-02/`: `hydro_db.dump` (z `hydro_db.dump.sha256`), `rowcounts-before.txt` (12 tabel, te same liczby co w S2), `env` (stary `.env`), `frontend-data-results` (wynik 12 h), `git-head.txt` (`1a3e3be`), K0 `k0-before.txt`, `prod-baseline.txt` (przed) i `prod-baseline-080.txt` (po), `ROLLBACK.txt`.
+- **Aktualizacja w miejscu** ok. 22:15–22:20: checkout `~/workspace/Hydrograf` na `develop` `532be07` (v0.8.0.dev0), obraz `hydrograf-api:latest` przebudowany (piny Kartograf `26ee459`, Hydrolog `4f02ffd`, IMGWTools `6bd35a4`), `hydro_api` odtworzony. Przerwa ok. 21 s (`health-loop.log`, `curl` co 1 s). Bez migracji bazy: alembic `003` = head. `.env`: `HYDROGRAF_PUBLIC_HOST=hydrograf-test.debever.pl`, magazyn Kartografa prywatny (`cache/kartograf`, bez `HYDROGRAF_KARTOGRAF_ROOT`). Wynik SFINCS `sfincs-kamiennik-24h-p1` zastąpił w produkcji wynik 12 h.
+- **Smoke po aktualizacji** (`smoke-8080.txt`, `smoke-public.txt`; 8080 i host publiczny dają to samo): `/health` 200; delineacja 51,0376/16,1723 15,15 km², przekrój Kamiennika 37,22 km²; punkt poza granicą 404 `application/problem+json`; hydrogram SCS 4,63 m³/s, Snyder 1,918 m³/s; „Identyfikuj” w czaszy: zwierciadło 281,43 m, 16,28 m wody; profil z `water_levels` wyniku 24 h; manifest wyników = `sfincs-kamiennik-24h-p1`, kafel 200; `/admin` 200, API admina bez klucza 401; 23 zasoby z `?v=`.
+- **Testy przeglądarkowe GPT:** staging 7/8, produkcja 8/8 PASS.
+- **Bootstrap Kamiennika z pustego magazynu prywatnego:** zaliczony, 331 s.
+- **S8 częściowo:** stos `hydrograf-staging` usunięty (narzędzia zostają w repo), gałęzie scalone do `develop` i usunięte (lokalnie `develop` i `main`).
+- **Zamrożenie (autor):** do scalenia `develop` → `main` i tagu `v0.8.0` tylko krytyczne poprawki łamiące API albo rażące błędy. Do wydania zostało: kolejna runda testów i code review, commit wydania (wersja 0.8.0, sekcja CHANGELOG), piny producentów po tagach (REL-5.3), merge do `main`, tag autora. S5 po wydaniu.
+- **Ryzyko dysku:** dane Dockera leżą na `/` (95% zajęte; budowa obrazu zostawiła 568 MB wolnego) — pozycja w `docs/BACKLOG.md`.
