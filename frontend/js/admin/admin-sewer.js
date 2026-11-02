@@ -19,7 +19,7 @@
         try {
             var apiKey = window.Hydrograf.adminApi.getApiKey();
             var resp = await fetch('/api/admin/sewer/status', {
-                headers: { 'X-Admin-Key': apiKey },
+                headers: { 'X-Admin-Key': apiKey, 'Accept-Language': 'pl' },
             });
 
             if (resp.status === 401 || resp.status === 403) {
@@ -81,7 +81,7 @@
             var apiKey = window.Hydrograf.adminApi.getApiKey();
             var resp = await fetch('/api/admin/sewer/upload', {
                 method: 'POST',
-                headers: { 'X-Admin-Key': apiKey },
+                headers: { 'X-Admin-Key': apiKey, 'Accept-Language': 'pl' },
                 body: formData,
             });
 
@@ -113,6 +113,7 @@
                         method: 'POST',
                         headers: {
                             'X-Admin-Key': apiKey,
+                            'Accept-Language': 'pl',
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({ enabled: true, source_path: sourcePath }),
@@ -149,6 +150,7 @@
                 method: 'POST',
                 headers: {
                     'X-Admin-Key': apiKey,
+                    'Accept-Language': 'pl',
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({ enabled: enabled }),
@@ -189,7 +191,7 @@
             var apiKey = window.Hydrograf.adminApi.getApiKey();
             var resp = await fetch('/api/admin/sewer/delete', {
                 method: 'DELETE',
-                headers: { 'X-Admin-Key': apiKey },
+                headers: { 'X-Admin-Key': apiKey, 'Accept-Language': 'pl' },
             });
 
             var data = await resp.json();
