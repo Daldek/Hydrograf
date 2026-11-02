@@ -60,6 +60,10 @@ class Settings(BaseSettings):
     # Stream distance raster path (for flow path point sampling)
     stream_distance_path: str = ""
 
+    # Frontend data served by nginx under /data/ (mounted in the API container);
+    # holds the analysis results manifest results/index.json
+    frontend_data_dir: str = "/frontend/data"
+
     def resolve_dem_path(self) -> str | None:
         """Find the best available DEM raster, checking candidates in order.
 

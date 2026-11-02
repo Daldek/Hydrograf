@@ -7,7 +7,7 @@ generation API endpoints.
 
 import json
 import math
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -655,6 +655,27 @@ class TerrainProfileRequest(BaseModel):
 
     geometry: dict[str, Any] = Field(..., description="GeoJSON LineString geometry")
     n_samples: int = Field(100, ge=2, le=1000, description="Number of sample points")
+    result_ids: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Ids of analysis results (manifest /data/results/index.json) whose "
+            "maximum water level is sampled along the line"
+        ),
+    )
+
+
+class ProfileWaterLevel(BaseModel):
+    """Maximum water level of one analysis result along the profile."""
+
+    result_id: str = Field(..., description="Analysis result id (results manifest)")
+    levels_m: list[float | None] = Field(
+        ...,
+        description=(
+            "Water level [m a.s.l.] at each sample; null where dry, off the "
+            "result or without DEM data"
+        ),
+    )
 
 
 class TerrainProfileResponse(BaseModel):
@@ -663,6 +684,10 @@ class TerrainProfileResponse(BaseModel):
     distances_m: list[float] = Field(..., description="Cumulative distances [m]")
     elevations_m: list[float] = Field(..., description="Elevations [m a.s.l.]")
     total_length_m: float = Field(..., ge=0, description="Total line length [m]")
+    water_levels: list[ProfileWaterLevel] = Field(
+        default_factory=list,
+        description="Requested results whose water level raster the line crosses",
+    )
 
 
 # ===================== FEEDBACK MODELS =====================

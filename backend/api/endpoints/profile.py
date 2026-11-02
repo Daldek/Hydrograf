@@ -2,7 +2,8 @@
 Terrain profile endpoint.
 
 Extracts elevation profile along a GeoJSON LineString
-by sampling the DEM raster file via rasterio.
+by sampling the DEM raster file via rasterio, and on request the maximum
+water level of analysis results along the same samples.
 """
 
 import logging
@@ -14,8 +15,13 @@ from fastapi import APIRouter, HTTPException, Response
 from pyproj import Transformer
 from shapely.geometry import LineString
 
+from core.analysis_results import sample_water_levels
 from core.config import get_settings
-from models.schemas import TerrainProfileRequest, TerrainProfileResponse
+from models.schemas import (
+    ProfileWaterLevel,
+    TerrainProfileRequest,
+    TerrainProfileResponse,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,17 +41,19 @@ def terrain_profile(
     Extract terrain elevation profile along a line.
 
     Samples N equally spaced points along the input LineString and
-    reads elevation values directly from the DEM raster file.
+    reads elevation values directly from the DEM raster file. For each
+    requested analysis result with a water level raster crossed by the line,
+    the water level at the same samples (null where dry).
 
     Parameters
     ----------
     request : TerrainProfileRequest
-        GeoJSON LineString geometry and number of samples
+        GeoJSON LineString geometry, number of samples, analysis result ids
 
     Returns
     -------
     TerrainProfileResponse
-        Arrays of distances and elevations along the profile
+        Arrays of distances and elevations along the profile, water levels
     """
     try:
         geom = request.geometry
@@ -90,29 +98,42 @@ def terrain_profile(
             )
 
         elevations: list[float] = []
-        nodata_count = 0
+        dem_gaps: list[bool] = []
         with rasterio.open(dem_path) as dataset:
             for val in dataset.sample(sample_points):
                 elev = float(val[0])
-                if dataset.nodata is not None and math.isclose(
+                gap = dataset.nodata is not None and math.isclose(
                     elev, float(dataset.nodata), rel_tol=1e-6
-                ):
-                    elevations.append(0.0)
-                    nodata_count += 1
-                else:
-                    elevations.append(elev)
+                )
+                elevations.append(0.0 if gap else elev)
+                dem_gaps.append(gap)
 
-        if not elevations or nodata_count == len(elevations):
+        if not elevations or all(dem_gaps):
             raise HTTPException(
                 status_code=404,
                 detail="Brak danych wysokosciowych dla podanej linii",
             )
+
+        # Water levels only where the terrain is known (a gap reads as 0 m)
+        water_levels = [
+            ProfileWaterLevel(
+                result_id=result_id,
+                levels_m=[
+                    None if gap else level
+                    for level, gap in zip(levels, dem_gaps, strict=True)
+                ],
+            )
+            for result_id, levels in sample_water_levels(
+                settings.frontend_data_dir, request.result_ids, sample_points
+            )
+        ]
 
         response.headers["Cache-Control"] = "public, max-age=3600"
         return TerrainProfileResponse(
             distances_m=distances,
             elevations_m=elevations,
             total_length_m=total_length_m,
+            water_levels=water_levels,
         )
 
     except HTTPException:

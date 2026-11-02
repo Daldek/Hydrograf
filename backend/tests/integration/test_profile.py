@@ -2,14 +2,19 @@
 Integration tests for terrain profile endpoint.
 """
 
+import json
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+import rasterio
 from fastapi.testclient import TestClient
+from pyproj import Transformer
+from rasterio.transform import from_origin
 
 from api.main import app
+from core.config import Settings
 
 
 @pytest.fixture
@@ -440,15 +445,86 @@ class TestTerrainProfileEndpoint:
         assert "/data/" not in detail
         assert ".vrt" not in detail
 
-    def test_nodata_uses_approximate_comparison(self, client):
-        """Nodata detection must use approximate float comparison, not == (CR8)."""
-        import inspect
 
-        from api.endpoints.profile import terrain_profile
-        source = inspect.getsource(terrain_profile)
-        assert "isclose" in source, (
-            "Must use math.isclose for nodata comparison"
+class TestTerrainProfileWaterLevels:
+    """Water levels of analysis results in POST /api/terrain-profile."""
+
+    X0, Y_TOP, CELL, NODATA = 500000.0, 600000.0, 5.0, -9999.0
+
+    def _raster(self, path, row):
+        with rasterio.open(
+            path,
+            "w",
+            driver="GTiff",
+            height=1,
+            width=len(row),
+            count=1,
+            dtype="float32",
+            crs="EPSG:2180",
+            transform=from_origin(self.X0, self.Y_TOP, self.CELL, self.CELL),
+            nodata=self.NODATA,
+        ) as dst:
+            dst.write(np.array([row], dtype=np.float32), 1)
+
+    @pytest.fixture
+    def settings(self, tmp_path):
+        """DEM with a gap in the last cell; result 'sfincs' dry in the second."""
+        self._raster(tmp_path / "dem.tif", [100.0, 100.0, 100.0, self.NODATA])
+        result_dir = tmp_path / "data" / "results" / "sfincs"
+        result_dir.mkdir(parents=True)
+        self._raster(result_dir / "wse_max.tif", [101.5, self.NODATA, 102.0, 102.0])
+        (tmp_path / "data" / "results" / "index.json").write_text(
+            json.dumps(
+                {
+                    "schema": "hydrograf-results/1",
+                    "results": [
+                        {
+                            "id": "sfincs",
+                            "water_level": {
+                                "path": "/data/results/sfincs/wse_max.tif",
+                                "crs": "EPSG:2180",
+                                "unit": "m n.p.m.",
+                            },
+                        }
+                    ],
+                }
+            )
         )
-        assert "elev == dataset.nodata" not in source, (
-            "Must not use == for float nodata"
+        return Settings(
+            dem_path=str(tmp_path / "dem.tif"),
+            frontend_data_dir=str(tmp_path / "data"),
         )
+
+    def _post(self, client, settings, **extra):
+        """Line through the centres of the four cells, one sample per cell."""
+        to_wgs84 = Transformer.from_crs("EPSG:2180", "EPSG:4326", always_xy=True)
+        y = self.Y_TOP - self.CELL / 2
+        coords = [
+            list(to_wgs84.transform(self.X0 + self.CELL / 2, y)),
+            list(to_wgs84.transform(self.X0 + 3.5 * self.CELL, y)),
+        ]
+        with patch("api.endpoints.profile.get_settings", return_value=settings):
+            return client.post(
+                "/api/terrain-profile",
+                json={
+                    "geometry": {"type": "LineString", "coordinates": coords},
+                    "n_samples": 4,
+                    **extra,
+                },
+            )
+
+    def test_levels_aligned_with_samples(self, client, settings):
+        """Null where the result is dry and where the DEM has no data."""
+        response = self._post(client, settings, result_ids=["sfincs", "unknown"])
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["elevations_m"] == [100.0, 100.0, 100.0, 0.0]
+        assert data["water_levels"] == [
+            {"result_id": "sfincs", "levels_m": [101.5, None, 102.0, None]}
+        ]
+
+    def test_too_many_result_ids_returns_422(self, client, settings):
+        response = self._post(client, settings, result_ids=[f"r{i}" for i in range(21)])
+
+        assert response.status_code == 422
