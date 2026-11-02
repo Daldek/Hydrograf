@@ -152,7 +152,7 @@ Szacunek w sesjach agenta. Ścieżka krytyczna: S1 → S2 → S3 → S4 → S5 �
 
 ### S1: scalenie `feature/producer-heads`, konflikty, piny, bramka (2–2,5 sesji)
 
-- [ ] W worktree uruchomić `git merge --no-ff feature/producer-heads` i rozwiązać 18 konfliktów:
+- [x] W worktree uruchomić `git merge --no-ff feature/producer-heads` i rozwiązać 18 konfliktów:
 
 | Plik | Rozstrzygnięcie |
 |---|---|
@@ -170,18 +170,18 @@ Szacunek w sesjach agenta. Ścieżka krytyczna: S1 → S2 → S3 → S4 → S5 �
 | `docs/DEVELOPMENT_STANDARDS.md` | usunięty jak w PH. Reguły VI (wersjonowanie `?v=`) przenieść do odpowiednika w PH. |
 | `frontend/js/api.js` (4 linie) | `apiFetch` z `Accept-Language` (PH) plus zmiany VI. Komunikat błędu brać z pola `detail` problem+json. |
 
-- [ ] Dostosować kod VI, który scalił się bez konfliktów, do bramki PH:
+- [x] Dostosować kod VI, który scalił się bez konfliktów, do bramki PH:
   - `core/analysis_results.py`, MZP, `generate_tiles.py`: rejestr błędów (`HydrografError`), mypy strict, ruff, docstringi numpy;
   - z próbnego scalenia znane są: 10 błędów mypy w 4 plikach (m.in. `tests/unit/test_hydrograph_inputs.py`, `api/endpoints/tiles.py:317`, `core/watershed_service.py:532`), 4 pliki do `ruff format` i 3× D102.
-- [ ] Testy VI dostosować, nie kasować:
+- [x] Testy VI dostosować, nie kasować:
   - przyczyny 21 porażek z próby to utracone funkcje VI (preview, AMC) i `test_request_logging`;
   - kasować wolno tylko testy funkcji, które PH usunęło (`core/watershed.py`, część `morphometry.py`), z listą w opisie commita.
-- [ ] Piny w `backend/pyproject.toml` i `uv lock`:
+- [x] Piny w `backend/pyproject.toml` i `uv lock`:
   - Kartograf `26ee45924b719b4f357ab02c88cda58aa806843f`, ten sam co Archiwista; zawiera wybór arkuszy po obiektach `--geometry`;
   - `affine>=2.4,<3` zostaje (ADR-062, pyflwdir 0.5.12);
   - Hydrolog `5fa22b3` i IMGWTools `6bd35a4` bez zmian, chyba że bramka wymusi IMGWTools `4bf8bb0`.
-- [ ] Bramka offline w worktree: `uv sync --locked --all-extras`, potem `bash scripts/gate.sh` (ruff, mypy strict, pytest offline, pokrycie, commity).
-- [ ] Commity zgodne z Conventional Commits, autor `Daldek <git@debever.pl>`, bez stopek AI (`check-commits.sh`). Bez push.
+- [x] Bramka offline w worktree: `uv sync --locked --all-extras`, potem `bash scripts/gate.sh` (ruff, mypy strict, pytest offline, pokrycie, commity).
+- [x] Commity zgodne z Conventional Commits, autor `Daldek <git@debever.pl>`, bez stopek AI (`check-commits.sh`). Bez push.
 
 **Kryteria akceptacji:**
 - `git diff --name-only --diff-filter=U` jest pusty;
@@ -408,3 +408,21 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
 3. **Aktualizacja instrukcji** (`frontend/instrukcja`, prezentacja PDF): slajdy o Snyderze i komunikaty błędów, które teraz pochodzą z `detail` problem+json. Do ustalenia, czy w S7, czy osobno.
 4. **Docelowe miejsce produkcji po S8:** zielony stos zostaje w `Hydrograf-store` albo produkcja wraca do `~/workspace/Hydrograf` po scaleniu gałęzi, drugim przełączeniem według S7.
 5. **Kolejność scaleń i push** (pytanie 3 z analizy). Nie blokuje S1–S7.
+
+## Wyniki
+
+### S1 (2026-11-02): zrobione
+
+- Commity na `feature/store-migration` (bez push): `a514f7f` scalenie `feature/producer-heads` (18 konfliktów, opis rozstrzygnięć w komunikacie), `4d12f34` `Accept-Language: pl` w sekcji kanalizacji panelu admina, `24c691d` pin `26ee459` w ADR-060/061, `integrations/KARTOGRAF.md` i `CROSS_PROJECT_ANALYSIS.md`, potem commit z zapisem sesji w PROGRESS i tymi wynikami.
+- Kryteria akceptacji:
+  - brak ścieżek `U` i znaczników konfliktu;
+  - `uv lock --check` zielony; w `uv.lock` kartograf `26ee459` (0.8.0.dev0, gałąź `feature/archiwista-projects`), affine 2.4.0, pyflwdir 0.5.12; Hydrolog `5fa22b3`, IMGWTools `6bd35a4` bez zmian (bramka nie wymagała `4bf8bb0`);
+  - `bash scripts/gate.sh` zielony (GATE OK, 30 s): ruff format i check czyste, mypy strict czysty (167 plików), 1351 testów offline zaliczonych, 0 porażek, 19 pominiętych (11 `db`, 8 `benchmark`), pokrycie 86,52%, wersje `?v=` aktualne, krok commitów zielony;
+  - liczba testów: kryterium „≥ 1360 plus testy VI” wzięło liczbę z PROGRESS PH sprzed `9101547` (usunięcie testów martwego kodu); `feature/producer-heads` ma 1302 testy offline. Po scaleniu 1351 = 1302 − 1 (test tekstu źródła, usunięty na VI) + 45 testów VI + 3 testy VI przepisane z 422 na 400 + 2 przypadki kontraktu OpenAPI dla nowych tras VI. Żaden test VI nie zginął;
+  - funkcje VI w kodzie i testach: podgląd zlewni (`TestDelineateWatershedPreview`), AMC i własny szereg opadu (`test_hydrograph_inputs.py`), request-id (`test_request_logging.py`), wyniki analiz (`test_analysis_results.py`), `water_levels` profilu (`TestTerrainProfileWaterLevels`), wersjonowanie zasobów (`scripts/bump_asset_versions.py`, krok bramki i zadanie CI `frontend-assets`);
+  - `python3 scripts/bump_asset_versions.py --check` zielony;
+  - K0: część git sprawdzona (checkout produkcji na `1a3e3be`, `git status --short` = `?? .claude/` przed i po); część Dockera nie była uruchamiana, bo S1 z założenia jej nie używa — pierwszy pełny K0 na początku S2.
+- Do wiadomości przed S2:
+  - `docs/ARCHITECTURE.md` §2.2.2 nadal podaje „422: Validation”, a §11.2 opisuje CI z `pip install -r requirements.txt` — tekst PH sprzed problem+json i uv, nie z tego scalenia;
+  - Hydrolog typuje `cn: int` w `HydrographGenerator` i `SCSCN`, a Hydrograf (VI) podaje CN z jednym miejscem po przecinku; w czasie wykonania działa (tylko kontrola zakresu 1–100), mypy tego nie wykrywa, bo `cn` pochodzi z `dict[str, Any]`. Kandydat na zgłoszenie `request` w Hydrologu (DEV-17.5);
+  - testy `db`, obraz, smoke API i frontendu oraz prawdziwe pobieranie Kartografa należą do S2/S3.
