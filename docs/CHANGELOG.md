@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.0] — 2026-11-02 (release candidate)
-
 ### Added
 - **Bootstrap from a set of an Archiwista project** (ADR-067, `utils/archiwista_project.py`, `utils/kartograf_set.py`): `python -m scripts.bootstrap --project PATH --set NAME [--dry-run]` takes every Kartograf input from a closed set of the project (`archiwista-project/1`; `PATH` is the project's directory or its `archiwista-project.json`; exclusive with `--bbox`, `--sheets` and `--boundary-file`). Before step 1 it checks the project file, the area file and its SHA-256, the set (closed: `state` absent or `closed`), a recorded `pins_sha256` against the pins, the project's Kartograf store (the same directory as `HYDROGRAF_KARTOGRAF_ROOT` when that is set) and every Kartograf pin by size and SHA-256, then that the set holds what the run needs: the sheets of the project's area among the NMT pins, the counties of the mosaic among the BDOT10k pins (unless `--skip-landcover`) and exactly one HSG raster that covers the mosaic (unless `--skip-hsg`), one version per sheet, county and raster. Steps 2 to 5 download nothing: they read the pinned sheets (`N/N arkuszy z zestawu`), BDOT10k packages and HSG raster. `--dry-run` stops after the checks and prints the project, the set's state, the area's SHA-256, `pins_sha256`, the store, the pins and steps 2 to 5. A refusal prints `BŁĄD:` and `Wskazówka:` and, as the last line of standard error, the error document `hydrograf-error/1`, and exits with the registry's code (`not_found` 3, `conflict` 4 for an open set, `data_error` 7 for a changed pin or digest, `store_unavailable` 8, `io_error` 9, `forbidden` 12, `no_data` 14 for sheets, counties or HSG missing from the set, `unsupported` 15 among others). The run logs the set (`Bootstrap from a set: {json}`) and writes `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`: project, set, `pins_sha256`, store, inputs, start, end and status), which a run without a set removes.
 - **A Kartograf store shared with Archiwista** (ADR-066, `utils/kartograf_store.py`): `HYDROGRAF_KARTOGRAF_ROOT` names a store outside the cache directory, which every script then uses instead of `<cache_dir>/kartograf` (the bootstrap, `download_dem`, `download_landcover`, `analyze_watershed`, `prepare_area`, the land cover of the CN calculation); unset or empty, the private store of ADR-061 stays, and the metadata cache stays in `<cache_dir>` either way. Step 2 of the bootstrap stops before its first write when another producer is writing into the store (`writes_in_progress`: a staging entry in `versions/.incoming` changed in the last 10 minutes) and names the entries. The staging stack mounts the store of the public Archiwista instance at `/kartograf` (`HYDROGRAF_KARTOGRAF_STORE` in `.env.staging`, read-only unless `HYDROGRAF_KARTOGRAF_STORE_MODE=rw`). (Superseded in part by ADR-067: the shared store is read-only for Hydrograf, and the guard of step 2 and the store mode are removed; see Changed and Removed.)
@@ -1043,8 +1041,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DATA_MODEL.md - Database schema
 - PRD.md - Product requirements
 
-[Unreleased]: https://github.com/Daldek/Hydrograf/compare/v0.8.0...HEAD
-[0.8.0]: https://github.com/Daldek/Hydrograf/compare/v0.4.0...v0.8.0
+[Unreleased]: https://github.com/Daldek/Hydrograf/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/Daldek/Hydrograf/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Daldek/Hydrograf/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Daldek/Hydrograf/compare/v0.2.1...v0.2.2
