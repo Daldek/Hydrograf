@@ -446,8 +446,8 @@
 
     /**
      * Overlay row of the flood hazard map in the base maps group: a checkbox
-     * independent of the base map choice, drawn above any base map
-     * (hazardPane). While on: the probability select and the zoom hint below
+     * independent of the base map choice, drawn above any base map and the
+     * DEM (hazardPane). While on: the probability select and the zoom hint below
      * the row, the legend on the map. Another probability keeps the layer,
      * its visibility and opacity.
      */

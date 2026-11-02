@@ -183,11 +183,11 @@
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
         // Custom panes for layer ordering:
-        // Base (tilePane z-200) → Mapa zagrożenia powodziowego → NMT → Pokrycie terenu → Wyniki analiz → Linie spływu → delineation preview → overlay (z-400)
-        map.createPane('hazardPane');
-        map.getPane('hazardPane').style.zIndex = 240;
+        // Base (tilePane z-200) → NMT → Mapa zagrożenia powodziowego → Pokrycie terenu → Wyniki analiz → Linie spływu → delineation preview → overlay (z-400)
         map.createPane('demPane');
         map.getPane('demPane').style.zIndex = 250;
+        map.createPane('hazardPane');
+        map.getPane('hazardPane').style.zIndex = 255;
         map.createPane('landcoverPane');
         map.getPane('landcoverPane').style.zIndex = 260;
         map.createPane('resultsPane');
