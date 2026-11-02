@@ -257,6 +257,10 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
 - [x] **Tryb identyfikacji punktu:** `POST /api/identify-point` (`api/endpoints/identify.py`, `core/point_info.py`, modele w `models/schemas.py`, komunikaty `no_data_at_point`, `identify_failed`) i czwarty przycisk „Identyfikuj” z kartą „Informacje o punkcie” (`js/identify.js`); współrzędne WGS84/PL-1992 z kopiowaniem, rzędna i spadek z NMT, głębokość i zwierciadło wody włączonych wyników, ciek BDOT10k do 25 m, wody powierzchniowe z `bdot_lakes.geojson` (nie ma ich w bazie), pokrycie terenu z CN, HSG, zagłębienie, zlewnia cząstkowa. Poza NMT 404 `no_data`. Instrukcja i prezentacja: slajd 9 „Cztery tryby pracy”, nowy `Hydrograf-tryby.png`; PDF prezentacji nie regenerowany.
 - Testy: 14 jednostkowych (`test_point_info.py`), 15 integracyjnych endpointu offline (`test_identify_point.py`), 5 testów SQL z markerem `db` (`test_identify_point_db.py`) do uruchomienia w S2 na PostGIS. Smoke: API i przeglądarka na kopii danych (NMT, SFINCS, BDOT10k), baza zastąpiona atrapą; zrzuty w `~/scratch/store-ui/identify/`.
 
+### Scalenie uwag testerów 1–6 do `feature/store-migration` (2026-11-02, przed S3)
+- `5207813` scalenie `feature/store-ui` (bez konfliktów), `eada999` scalenie `feature/store-identify` (konflikt tylko w hashach `?v=` w `frontend/index.html`; `scripts/bump_asset_versions.py`). PDF prezentacji wydrukowany raz po scaleniu (30 slajdów 16:9). Bramka offline zielona (1381 testów, pokrycie 86,64%), smoke w Chromium na serwerze statycznym z atrapami API; szczegóły w „Wynikach” planu `docs/plans/2026-11-02-store-migration.md`, zrzuty w `~/scratch/store-ui/landing/`.
+- Następne: zrzuty slajdów 8 i 29 (pasek z trzema trybami) oraz 10 i 13 do podmiany po S3; S2 planu.
+
 ### Poprzednia sesja (2026-11-01/02 — kopia produkcji, przycięcie danych do zlewni Kaczawy, wyniki SFINCS w „Wynikach analiz”, instrukcja i ekran powitalny, nakładka MZP ISOK, cache zasobów za Cloudflare, zwierciadło wody na profilu terenu)
 
 ### Co zrobiono
