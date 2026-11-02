@@ -26,10 +26,9 @@ services:
       - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/data:/data
       - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-data:/frontend/data
       - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-tiles:/frontend/tiles
-      # Read-only for the serving API, so the bootstrap of its admin panel cannot write
-      # into the shared store; the bootstrap container (S5) runs with
-      # HYDROGRAF_KARTOGRAF_STORE_MODE=rw.
-      - ${HYDROGRAF_KARTOGRAF_STORE:?Set HYDROGRAF_KARTOGRAF_STORE}:/kartograf:${HYDROGRAF_KARTOGRAF_STORE_MODE:-ro}
+      # Read-only for every container, the bootstrap included: Archiwista alone writes the
+      # shared store (ADR-067); the host-path mounts and the project mount come with H2.
+      - ${HYDROGRAF_KARTOGRAF_STORE:?Set HYDROGRAF_KARTOGRAF_STORE}:/kartograf:ro
 
   nginx:
     container_name: hydro_staging_nginx
