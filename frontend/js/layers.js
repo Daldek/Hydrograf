@@ -372,9 +372,14 @@
     /**
      * Row of an analysis result (results.js): tile layer with the manifest's
      * opacity and extent, legend while on, description and source in an (i).
+     * Turning on or off a result with a water level redraws an open terrain
+     * profile with or without its water surface.
      */
     function addResultEntry(list, result) {
         function getLayer() { return result.layer; }
+        function refreshProfile() {
+            if (result.waterLevel && window.Hydrograf.profile) Hydrograf.profile.refresh();
+        }
         var entry = addAsyncOverlayEntry(
             list,
             result.title,
@@ -383,8 +388,8 @@
             function () { return result.bounds; },
             function (opacity) { result.layer.setOpacity(opacity); },
             Math.round((1 - result.opacity) * 100),
-            function () { Hydrograf.results.showLegend(result); },
-            function () { Hydrograf.results.hideLegend(result); }
+            function () { Hydrograf.results.showLegend(result); refreshProfile(); },
+            function () { Hydrograf.results.hideLegend(result); refreshProfile(); }
         );
         // Long titles are cut with an ellipsis: the full one on hover
         entry.name.title = result.title;

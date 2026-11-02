@@ -4,6 +4,8 @@
  * Terrain profile via manual line drawing on the map.
  * Renders in the profile drawer at the bottom of the map (#profile-drawer).
  * Hover over chart shows corresponding point on the map line.
+ * Analysis results with a water level that are shown on the map add their
+ * water surface where the line crosses them (results.js, API result_ids).
  */
 (function () {
     'use strict';
@@ -12,6 +14,9 @@
 
     // Store drawn line coords (lat/lng pairs) for hover interpolation
     var _lineLatLngs = null;
+
+    // Number of the latest profile request; answers to older ones are dropped
+    var _request = 0;
 
     /**
      * Show an inline error message near the profile chart canvas.
@@ -99,6 +104,68 @@
     }
 
     /**
+     * Water surface of each shown result the line crosses, for the chart:
+     * [{ title, levels }] with a level only where it lies above the terrain.
+     */
+    function waterSeries(result, shown) {
+        var elevations = result.elevations_m;
+        return (result.water_levels || []).map(function (wl) {
+            var source = shown.filter(function (r) { return r.id === wl.result_id; })[0];
+            var levels = wl.levels_m.map(function (level, i) {
+                return level !== null && level > elevations[i] ? level : null;
+            });
+            var wet = levels.some(function (level) { return level !== null; });
+            return source && wet ? { title: source.title, levels: levels } : null;
+        }).filter(Boolean);
+    }
+
+    /**
+     * Fetch the profile of the drawn line, with the water level of the results
+     * shown on the map, and render it in the profile drawer (#profile-drawer).
+     */
+    function loadProfile() {
+        var request = ++_request;
+        var shown = Hydrograf.results ? Hydrograf.results.shownWaterLevels() : [];
+
+        // Build GeoJSON line (lon, lat order)
+        var lineGeojson = {
+            type: 'LineString',
+            coordinates: _lineLatLngs.map(function (c) { return [c[1], c[0]]; }),
+        };
+        var ids = shown.map(function (r) { return r.id; });
+
+        Hydrograf.api.getTerrainProfile(lineGeojson, 100, ids).then(function (result) {
+            // A newer line, a redraw or a closed drawer took its place
+            if (request !== _request) return;
+            // Ensure drawer is visible BEFORE rendering the chart
+            var drawer = document.getElementById('profile-drawer');
+            if (drawer) drawer.hidden = false;
+            clearProfileError();
+            setProfileSummary(result.distances_m, result.elevations_m);
+            Hydrograf.charts.renderProfileChart(
+                'chart-profile-standalone',
+                result.distances_m,
+                result.elevations_m,
+                onChartHover,
+                onChartHoverEnd,
+                waterSeries(result, shown)
+            );
+
+            // Resize after render to ensure correct dimensions
+            setTimeout(function () {
+                if (Hydrograf.charts) Hydrograf.charts.resizeChart('chart-profile-standalone');
+            }, 50);
+        }).catch(function (err) {
+            if (request !== _request) return;
+            console.warn('Profile error:', err.message);
+            var drawer = document.getElementById('profile-drawer');
+            if (drawer) drawer.hidden = false;
+            setProfileSummary(null, null);
+            showProfileError('chart-profile-standalone', err.message || 'Błąd');
+        });
+    }
+
+    /**
      * Activate draw-profile mode.
      * Renders result in the profile drawer (#profile-drawer).
      */
@@ -108,39 +175,17 @@
         Hydrograf.map.startDrawing(function (coords) {
             // coords: [[lat, lng], ...] — store for hover interpolation
             _lineLatLngs = coords;
-
-            // Build GeoJSON line (lon, lat order)
-            var lineGeojson = {
-                type: 'LineString',
-                coordinates: coords.map(function (c) { return [c[1], c[0]]; }),
-            };
-
-            Hydrograf.api.getTerrainProfile(lineGeojson, 100).then(function (result) {
-                // Ensure drawer is visible BEFORE rendering the chart
-                var drawer = document.getElementById('profile-drawer');
-                if (drawer) drawer.hidden = false;
-                clearProfileError();
-                setProfileSummary(result.distances_m, result.elevations_m);
-                Hydrograf.charts.renderProfileChart(
-                    'chart-profile-standalone',
-                    result.distances_m,
-                    result.elevations_m,
-                    onChartHover,
-                    onChartHoverEnd
-                );
-
-                // Resize after render to ensure correct dimensions
-                setTimeout(function () {
-                    if (Hydrograf.charts) Hydrograf.charts.resizeChart('chart-profile-standalone');
-                }, 50);
-            }).catch(function (err) {
-                console.warn('Profile error:', err.message);
-                var drawer = document.getElementById('profile-drawer');
-                if (drawer) drawer.hidden = false;
-                setProfileSummary(null, null);
-                showProfileError('chart-profile-standalone', err.message || 'Błąd');
-            });
+            loadProfile();
         });
+    }
+
+    /**
+     * Draw the open profile again: a result with a water level was turned on
+     * or off in the "Warstwy" panel.
+     */
+    function refresh() {
+        var drawer = document.getElementById('profile-drawer');
+        if (_lineLatLngs && drawer && !drawer.hidden) loadProfile();
     }
 
     /**
@@ -155,6 +200,7 @@
         Hydrograf.map.clearProfileHoverMarker();
         Hydrograf.charts.destroyChart('chart-profile-standalone');
         _lineLatLngs = null;
+        _request++;
     }
 
     /**
@@ -166,6 +212,7 @@
         Hydrograf.map.clearProfileHoverMarker();
         Hydrograf.charts.destroyChart('chart-profile-standalone');
         _lineLatLngs = null;
+        _request++;
     }
 
     function init() {
@@ -177,6 +224,7 @@
         activateDrawProfile: activateDrawProfile,
         deactivateProfile: deactivateProfile,
         hideProfilePanel: hideProfilePanel,
+        refresh: refresh,
         getLineLatLngs: function () { return _lineLatLngs; },
     };
 })();

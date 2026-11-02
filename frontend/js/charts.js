@@ -564,21 +564,26 @@
     }
 
     /**
-     * Render terrain profile chart.
+     * Render terrain profile chart, with the water surface of analysis
+     * results filled between the terrain and the water level where wet.
      *
      * @param {string} canvasId - Canvas element ID
      * @param {Array} distances - Distance values [m]
      * @param {Array} elevations - Elevation values [m]
      * @param {Function} [onHover] - Callback(fraction) when hovering, fraction 0..1
      * @param {Function} [onHoverEnd] - Callback when mouse leaves chart
+     * @param {Array} [water] - [{ title, levels }]: water level [m] per sample, null where dry
      */
-    function renderProfileChart(canvasId, distances, elevations, onHover, onHoverEnd) {
+    function renderProfileChart(canvasId, distances, elevations, onHover, onHoverEnd, water) {
         destroyChart(canvasId);
 
         var canvas = document.getElementById(canvasId);
         if (!canvas || typeof Chart === 'undefined') return;
 
         var nSamples = distances.length;
+        var WATER = 'Zwierciad\u0142o wody';
+        water = water || [];
+        canvas.setAttribute('aria-label', water.length ? 'Profil terenu i zwierciad\u0142o wody' : 'Profil terenu');
 
         // Vertical crosshair + hover callback plugin
         var hoverPlugin = {
@@ -629,6 +634,19 @@
             },
         };
 
+        // A wet sample between dry ones has no line to draw: mark it with a dot
+        function isolatedPointRadius(ctx) {
+            var data = ctx.dataset.data;
+            var i = ctx.dataIndex;
+            var alone = data[i] !== null && (i === 0 || data[i - 1] === null) &&
+                (i === data.length - 1 || data[i + 1] === null);
+            return alone ? 2.5 : 0;
+        }
+
+        function waterLabel(w) { return WATER + ' \u2014 ' + w.title; }
+
+        if (water.length) lineLegend(canvas, ['Teren'].concat(water.map(waterLabel)));
+
         createChart(canvas, {
             type: 'line',
             data: {
@@ -640,7 +658,15 @@
                     tension: 0,
                     pointRadius: 0,
                     borderWidth: 1.5,
-                }],
+                }].concat(water.map(function (w) {
+                    return {
+                        label: waterLabel(w),
+                        data: w.levels,
+                        tension: 0,
+                        pointRadius: isolatedPointRadius,
+                        borderWidth: 1.5,
+                    };
+                })),
             },
             options: {
                 responsive: true,
@@ -656,7 +682,17 @@
                         mode: 'index',
                         callbacks: {
                             title: function (items) { return items[0].label + ' km'; },
-                            label: function (ctx) { return ctx.parsed.y.toFixed(1) + ' m n.p.m.'; },
+                            label: function (ctx) {
+                                if (!water.length) return ctx.parsed.y.toFixed(1) + ' m n.p.m.';
+                                if (ctx.datasetIndex === 0) return 'Teren: ' + ctx.parsed.y.toFixed(2) + ' m n.p.m.';
+                                // Several results: name the one the line belongs to
+                                var name = water.length > 1 ? waterLabel(water[ctx.datasetIndex - 1]) : WATER;
+                                var depth = ctx.parsed.y - elevations[ctx.dataIndex];
+                                return [
+                                    name + ': ' + ctx.parsed.y.toFixed(2) + ' m n.p.m.',
+                                    'G\u0142\u0119boko\u015b\u0107: ' + depth.toFixed(2) + ' m',
+                                ];
+                            },
                         },
                     },
                 },
@@ -679,6 +715,16 @@
             ds.borderColor = c.text2;
             ds.backgroundColor = alpha(mix(c.green, c.warnBg, 0.42), 0.8);
             ds.pointBackgroundColor = c.text2;
+            ds.legendColor = c.text2;
+            // Water: filled down to the terrain (dataset 0) only where it lies above it
+            target.data.datasets.slice(1).forEach(function (w) {
+                var fill = alpha(c.info, 0.45);
+                w.borderColor = c.info;
+                w.backgroundColor = fill;
+                w.pointBackgroundColor = c.info;
+                w.fill = { target: 0, above: fill, below: 'transparent' };
+                w.legendColor = c.info;
+            });
         });
     }
 

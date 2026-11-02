@@ -7,6 +7,8 @@
  * entries it can show (kind "raster_tiles": XYZ PNG tiles) and builds their
  * tile layers, legends and (i) texts; layers.js turns each entry into a row
  * of the "Warstwy" panel. No manifest, or no usable entry, means no rows.
+ * A result with a `water_level` raster (sampled by the API) adds its water
+ * surface to the terrain profile while its layer is on the map.
  */
 (function () {
     'use strict';
@@ -17,6 +19,9 @@
     var SCHEMA = 'hydrograf-results/1';
     var DEFAULT_GROUP = 'Wyniki analiz';
     var DEFAULT_OPACITY = 0.8;
+
+    // Results read from the manifest (load)
+    var _results = [];
 
     /** Leaflet bounds from [west, south, east, north] (WGS84); null if invalid. */
     function parseBounds(b) {
@@ -82,6 +87,7 @@
             opacity: opacity,
             legend: parseLegend(raw.legend),
             legendControl: null,
+            waterLevel: !!(raw.water_level && typeof raw.water_level.path === 'string'),
             layer: L.tileLayer(tiles, {
                 bounds: bounds,
                 minZoom: 8,
@@ -112,9 +118,10 @@
                 if (!manifest || manifest.schema !== SCHEMA) {
                     throw new Error('unsupported schema ' + (manifest && manifest.schema));
                 }
-                return (Array.isArray(manifest.results) ? manifest.results : [])
+                _results = (Array.isArray(manifest.results) ? manifest.results : [])
                     .map(parseResult)
                     .filter(Boolean);
+                return _results;
             })
             .catch(function (err) {
                 console.warn('Analysis results not available (' + MANIFEST_URL + '):', err.message);
@@ -149,9 +156,18 @@
         result.legendControl = null;
     }
 
+    /** Results with a water level raster whose layer is on the map: [{ id, title }]. */
+    function shownWaterLevels() {
+        var map = Hydrograf.map._getMap();
+        return _results
+            .filter(function (r) { return r.waterLevel && map.hasLayer(r.layer); })
+            .map(function (r) { return { id: r.id, title: r.title }; });
+    }
+
     window.Hydrograf.results = {
         load: load,
         showLegend: showLegend,
         hideLegend: hideLegend,
+        shownWaterLevels: shownWaterLevels,
     };
 })();

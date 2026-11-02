@@ -91,17 +91,21 @@
      *
      * @param {Object} lineGeojson - GeoJSON LineString geometry
      * @param {number} nSamples - Number of sample points
-     * @returns {Promise<Object>} { distances_m, elevations_m, total_length_m }
+     * @param {Array<string>} [resultIds] - Analysis results whose water level is sampled too
+     * @returns {Promise<Object>} { distances_m, elevations_m, total_length_m, water_levels }
      */
-    async function getTerrainProfile(lineGeojson, nSamples) {
-        var key = _cacheKey('tp', JSON.stringify(lineGeojson), nSamples);
+    async function getTerrainProfile(lineGeojson, nSamples, resultIds) {
+        var ids = resultIds || [];
+        var key = _cacheKey('tp', JSON.stringify(lineGeojson), nSamples, ids.join('|'));
         var cached = _cacheGet(key);
         if (cached) return cached;
 
+        var payload = { geometry: lineGeojson, n_samples: nSamples || 100 };
+        if (ids.length) payload.result_ids = ids;
         const response = await fetch('/api/terrain-profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ geometry: lineGeojson, n_samples: nSamples || 100 }),
+            body: JSON.stringify(payload),
         });
 
         if (!response.ok) await handleError(response);
