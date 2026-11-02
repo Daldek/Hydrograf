@@ -80,14 +80,13 @@ Python 3.12 or newer. The default run and the gate leave out the markers `live`,
 `benchmark`; `slow` is registered and not used yet (DEV-10.1). Coverage floor:
 `fail_under = 80` in `backend/pyproject.toml` (DEV-7.5).
 
-Running the service. The agent user is not in the `docker` group and uses rootless Docker:
-start `dockerd-rootless.sh` if the daemon is down, `export
-DOCKER_HOST=unix://$HOME/.docker/run/docker.sock`, then `docker compose up -d` serves the
-full stack on port 8080. In development `docker-compose.override.yml` is loaded
+Running the service. The stack runs on the system Docker daemon (`/var/run/docker.sock`;
+the agent user is in the `docker` group; rootless Docker does not start here and is not
+used, so leave `DOCKER_HOST` unset): `docker compose up -d` serves the full stack on port
+8080. In development `docker-compose.override.yml` is loaded
 automatically (`--reload`, `./backend:/app` mounted, `read_only` off); production uses
 `docker compose -f docker-compose.yml up -d`. Never add `user:` to the override: it clashes
-with `cap_drop: ALL` and breaks file operations. Access from the local network needs a UFW
-rule (rootless Docker does not touch iptables); outside access goes through a Cloudflare
+with `cap_drop: ALL` and breaks file operations. Outside access goes through a Cloudflare
 Tunnel (`cloudflared tunnel --url http://localhost:8080`).
 
 ## Code map

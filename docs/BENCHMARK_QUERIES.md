@@ -307,3 +307,26 @@ with e.connect() as c:
 e.dispose()
 "
 ```
+
+## 6. Benchmark magazynu: PostGIS vs pliki w pamięci (niewykonany)
+
+Na gałęzi `feature/storage-benchmark` (commit `5962720`, przed jej usunięciem) powstał skrypt
+`backend/scripts/benchmark_storage.py` (1141 linii, nie przeniesiony; dostępny w historii git
+pod tym commitem) z instrukcją `docs/STORAGE_BENCHMARK.md`. Pytanie: czy źródłem prawdy
+wspólnego GUI ekosystemu (Archiwista + Hydrograf; plan w Nogacie
+`docs/plans/2026-10-20-unified-gui.md`) mogą być pliki GeoPackage/GeoParquet wczytane do
+pamięci zamiast PostGIS, bez spowolnienia Hydrografa.
+
+- Zakres: eksport `stream_catchments`, `stream_network`, `land_cover` (tylko odczyt bazy);
+  czas wczytania i budowy indeksów przestrzennych (osobny proces na format); zapytania Q1–Q8
+  z tego dokumentu i ich odpowiedniki shapely/GEOS na tych samych losowych wejściach, plus
+  Q3r/Q4r (łączenie rzeczywistych zlewni z grafu `downstream_segment_idx`) i Q9 (nakładka
+  pokrycia terenu, CN); zgodność wyników (tolerancja 0,5 % powierzchni, IoU ≥ 0,99 —
+  wygładzanie Chaikina przepisane w Pythonie, duże zlewnie bez przyciągania do siatki 10 m);
+  przepustowość wielowątkowa.
+- Kryteria decyzji: najpierw poprawność, potem Q8 i Q3r/Q4r (czas widziany przez
+  użytkownika), czas wczytania nowej wersji warstwy, przepustowość.
+- Ograniczenia: mierzony jeden proces Pythona (API z wieloma procesami trzyma kopię danych
+  w każdym), bez kafli MVT/PMTiles, PostGIS na tej samej maszynie (faworyzuje go).
+- Wynik: **brak** — benchmark nie został uruchomiony na bazie z danymi; decyzja o magazynie
+  pozostaje otwarta.
