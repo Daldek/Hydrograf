@@ -68,7 +68,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-058](decisions/0058-adopt-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | accepted | 2026-10-25 |
 | [ADR-059](decisions/0059-rest-errors-as-problem-json.md) | REST errors as problem+json with registry codes | accepted | 2026-10-25 |
 | [ADR-060](decisions/0060-pin-producer-heads-by-commit.md) | Pin the Hydrolog and IMGWTools heads by commit | accepted | 2026-10-25 |
-| [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | amended by ADR-066 | 2026-10-25 |
+| [ADR-061](decisions/0061-kartograf-data-output.md) | Kartograf data output: the store for the cache, plain files for single-use rasters | amended by ADR-066 and ADR-067 | 2026-10-25 |
 | [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
 | [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | accepted | 2026-11-01 |
 | [ADR-066](decisions/0066-kartograf-store-shared-with-archiwista.md) | The Kartograf store shared with Archiwista | superseded in part by ADR-067 | 2026-11-02 |
