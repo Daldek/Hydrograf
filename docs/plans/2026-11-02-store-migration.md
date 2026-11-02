@@ -20,7 +20,7 @@
   - zero zmian w niebieskim stosie, w checkoucie produkcyjnym i w danych produkcyjnych;
   - nowe funkcje VI, jeśli w ogóle, wchodzą tylko przez worktree i są dodatkowo scalane do `feature/store-migration` (warunek wejścia S7);
   - panel admina na produkcji tylko do odczytu: bez bootstrapu, czyszczenia i kanalizacji. Jeśli w panelu coś się zapisze po zrzucie bazy z S2, zrzut trzeba powtórzyć.
-- **Magazyn:** do S3 prywatny magazyn Hydrografa `<cache_dir>/kartograf` (ADR-061), w zielonym stosie `${HYDROGRAF_STAGING_ROOT}/cache/kartograf`. **Od S4 (decyzja autora 2026-11-02) magazyn wspólny z Archiwistą:** `~/data/archiwista-public/store`, w zielonym stosie pod `/kartograf` (`HYDROGRAF_KARTOGRAF_ROOT`, ADR-066).
+- **Magazyn:** do S3 prywatny magazyn Hydrografa `<cache_dir>/kartograf` (ADR-061), w zielonym stosie `${HYDROGRAF_STAGING_ROOT}/cache/kartograf`. **Od S4 (decyzja autora 2026-11-02) magazyn wspólny z Archiwistą:** `~/data/archiwista-public/store`, w zielonym stosie pod `/kartograf` (`HYDROGRAF_KARTOGRAF_ROOT`, ADR-066). **Od H1 (wariant B autora 2026-11-02, ADR-067) tylko do odczytu:** pisze do niego wyłącznie Archiwista, a Hydrograf czyta go tylko przez zamknięty zestaw projektu Archiwisty (`bootstrap --project … --set …`); każde pobieranie Hydrografa przy ustawionym `HYDROGRAF_KARTOGRAF_ROOT` jest odrzucane (`forbidden`).
 
 ## Zasady izolacji (obowiązują w każdym kroku)
 
@@ -45,7 +45,7 @@ cd "$(dirname "$0")/.."
 exec docker compose -p hydrograf-staging -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging "$@"
 ```
 
-`docker-compose.staging.yml`, sprawdzony `docker compose config` 2026-11-02 (Compose v5.3.0). Wynik: port 8081 na `127.0.0.1` i (od S3, polecenie autora; do S7) na adresie LAN `192.168.88.9`, montowania w worktree, w `HYDROGRAF_STAGING_ROOT` i (od S4) magazyn wspólny z Archiwistą `HYDROGRAF_KARTOGRAF_STORE` pod `/kartograf`, domyślnie tylko do odczytu. `ports: !override` jest konieczne, bo Compose dokleja listę portów zamiast ją zastąpić.
+`docker-compose.staging.yml`, sprawdzony `docker compose config` 2026-11-02 (Compose v5.3.0). Wynik: port 8081 na `127.0.0.1` i (od S3, polecenie autora; do S7) na adresie LAN `192.168.88.9`, montowania w worktree, w `HYDROGRAF_STAGING_ROOT` i (od S4) magazyn wspólny z Archiwistą `HYDROGRAF_KARTOGRAF_STORE` pod `/kartograf`, od H1 tylko do odczytu dla każdego kontenera (ADR-067; montowania pod ścieżkami hosta i katalog projektu dochodzą w H2). `ports: !override` jest konieczne, bo Compose dokleja listę portów zamiast ją zastąpić.
 ```yaml
 # Staging (green) stack of the store migration: docs/plans/2026-11-02-store-migration.md.
 # Use only through scripts/staging-compose.sh (project hydrograf-staging, this file, .env.staging).
@@ -75,10 +75,9 @@ services:
       - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/data:/data
       - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-data:/frontend/data
       - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-tiles:/frontend/tiles
-      # Read-only for the serving API, so the bootstrap of its admin panel cannot write
-      # into the shared store; the bootstrap container (S5) runs with
-      # HYDROGRAF_KARTOGRAF_STORE_MODE=rw.
-      - ${HYDROGRAF_KARTOGRAF_STORE:?Set HYDROGRAF_KARTOGRAF_STORE}:/kartograf:${HYDROGRAF_KARTOGRAF_STORE_MODE:-ro}
+      # Read-only for every container, the bootstrap included: Archiwista alone writes the
+      # shared store (ADR-067); the host-path mounts and the project mount come with H2.
+      - ${HYDROGRAF_KARTOGRAF_STORE:?Set HYDROGRAF_KARTOGRAF_STORE}:/kartograf:ro
 
   nginx:
     container_name: hydro_staging_nginx
@@ -113,21 +112,21 @@ networks:
 | Magazyn i cache | `./cache` (układ 0.7.0) | do S3 `${HYDROGRAF_STAGING_ROOT}/cache` (`kartograf/` + `kartograf_meta.db`); od S4 magazyn wspólny z Archiwistą `~/data/archiwista-public/store` pod `/kartograf`, `kartograf_meta.db` nadal w `${HYDROGRAF_STAGING_ROOT}/cache` |
 | Dane | `./data`, `./frontend/{data,tiles}` | `${HYDROGRAF_STAGING_ROOT}/<zestaw>/{data,frontend-data,frontend-tiles}` |
 
-- `HYDROGRAF_STAGING_ROOT=/data/nmt/hydrograf-staging`. To dysk `/data` z 237 GB wolnego; na `/` zostaje około 8 GB (12 GB 2026-11-02 przed S5), a `/data/nmt` jest jedynym zapisywalnym katalogiem na `/data`. Magazyn wspólny z Archiwistą leży na `/`, więc to, co S5 do niego dopisze (BDOT10k powiatów obszaru, SoilGrids, 2 brakujące arkusze), zajmie miejsce na `/`.
+- `HYDROGRAF_STAGING_ROOT=/data/nmt/hydrograf-staging`. To dysk `/data` z 237 GB wolnego; na `/` zostaje około 8 GB (12 GB 2026-11-02 przed S5), a `/data/nmt` jest jedynym zapisywalnym katalogiem na `/data`. Magazyn wspólny z Archiwistą leży na `/`, więc to, co Archiwista dopisze do niego dla zestawu autora (krok A5 planu Nogata: BDOT10k dziesięciu powiatów, SoilGrids i raster HSG, około 0,83 GB), zajmie miejsce na `/`; S5 niczego do magazynu nie dopisuje.
 - Uprawnienia katalogów jak w produkcji (777), bo kontener pracuje jako `hydro`, UID 999.
 - Zestawy danych (`HYDROGRAF_STAGING_SET` razem z bazą `HYDROGRAF_STAGING_DB`):
   - `copy` / `hydro_db`: kopia produkcji (S2);
   - `s3` / `hydro_s3`: zlewnia Kamiennika (S3);
-  - `s5` / `hydro_s5`: obszar produkcji z magazynu (S5).
+  - `s5` / `hydro_s5`: obszar produkcji z zamkniętego zestawu Archiwisty (S5).
 - Wszystkie trzy bazy leżą w jednym serwerze `hydro_staging_db`.
 - **Staging w sieci domowej** (2026-11-02, polecenie autora w trakcie S3): zielony nginx słucha także na `192.168.88.9:8081`, więc testerzy w LAN widzą nową wersję pod `http://192.168.88.9:8081/`. Produkcja (`hydro_nginx`) nadal tylko na `127.0.0.1:8080`, z LAN niedostępna. Zmiana dotknęła wyłącznie `hydro_staging_nginx` (`scripts/staging-compose.sh up -d --no-deps --force-recreate nginx`), K0 przed i po bez zmian. Wiązanie LAN ma stały port 8081, a S7 (`HYDROGRAF_STAGING_PORT=8080`) przenosi tylko wiązanie localhost. **Decyzja autora w S4 (2026-11-02): wiązanie LAN usuwamy po S7** (krok 2 przełączenia w S7, sprawdzenie w „Po przełączeniu”), bo po przełączeniu zielony nginx podaje produkcję, a ta ma zostać tylko na localhost.
-- **Magazyn wspólny z Archiwistą** (decyzja autora w S4, ADR-066): `HYDROGRAF_KARTOGRAF_STORE=/home/claude-agent/data/archiwista-public/store` montowany pod `/kartograf`, `HYDROGRAF_KARTOGRAF_ROOT=/kartograf`. Działające API ma go tylko do odczytu (bootstrap z panelu admina nie zapisze do magazynu); zapis wyłącznie w kontenerze bootstrapu z `HYDROGRAF_KARTOGRAF_STORE_MODE=rw` (S5). Uprawnienia UID 999 przez ACL (wyniki „S4 i przygotowanie S5”), rodzice katalogu bez zmian.
+- **Magazyn wspólny z Archiwistą** (decyzja autora w S4, ADR-066; od H1 ADR-067): `HYDROGRAF_KARTOGRAF_STORE=/home/claude-agent/data/archiwista-public/store` montowany pod `/kartograf`, `HYDROGRAF_KARTOGRAF_ROOT=/kartograf`, tylko do odczytu dla każdego kontenera, także bootstrapu: pisze do niego wyłącznie Archiwista. Panel admina odpowiada na start bootstrapu `403` (bootstrap z zestawu w panelu jest poza zakresem, D8 planu Nogata). W H2 magazyn i katalog projektu (`HYDROGRAF_PROJECT_DIR=…/projects/kaczawa`) montowane tylko do odczytu pod ścieżkami hosta, a ACL UID 999 zawężone do odczytu (`rX`). Rodzice katalogu bez zmian.
 - **`.env.staging`** (dopisać do `.gitignore` w S2, bo zawiera sekrety):
   - nowe `POSTGRES_PASSWORD` i `ADMIN_API_KEY`, inne niż produkcyjne;
   - `POSTGRES_DB=hydro_db`, `POSTGRES_USER=hydro_user`;
   - `LOG_LEVEL`, `IMGW_*` i `HYDROGRAF_*_HOST` przepisane z produkcyjnego `.env`;
   - `HYDROGRAF_STAGING_ROOT`, `HYDROGRAF_STAGING_SET`, `HYDROGRAF_STAGING_DB`, `HYDROGRAF_STAGING_PORT=8081`;
-  - od S4: `HYDROGRAF_KARTOGRAF_STORE` (bez `HYDROGRAF_KARTOGRAF_STORE_MODE`: domyślnie `ro`).
+  - od S4: `HYDROGRAF_KARTOGRAF_STORE` (montowany zawsze `ro`, ADR-067); w H2 dochodzi `HYDROGRAF_PROJECT_DIR`.
 - Worktree nie ma `.env`. Zwykłe `docker compose` w worktree padnie więc na `POSTGRES_PASSWORD:?` i nie podmieni produkcji. To jednak tylko siatka bezpieczeństwa; regułą pozostaje wrapper.
 
 **Kontrola produkcji (K0)** wykonywana na początku S2 (zapis bazowy do `${HYDROGRAF_STAGING_ROOT}/prod-baseline.txt`) i po każdym kroku S2–S6. Kryterium: `diff` z bazą jest pusty, a `/health` zwraca 200.
@@ -294,21 +293,23 @@ Warunek: K1 spełnione.
   1. przed S5 naprawić dwie wady z S2/S3: pliki `.prj` Hydrografa w magazynie i „nan” jako nazwa cieku;
   2. magazyn **wspólny z Archiwistą** (`~/data/archiwista-public/store`); aneks do ADR-061 to ADR-066;
   3. wiązanie LAN stagingu (`192.168.88.9:8081`) usunąć po S7.
-- [x] Przygotowanie S5 (wyniki „S4 i przygotowanie S5”): obie poprawki z testami, ADR-066, `HYDROGRAF_KARTOGRAF_ROOT`, strażnik zapisu w kroku 2 bootstrapu, ACL dla UID 999, montowanie w stagingu, obraz przebudowany, bramka i testy `db` zielone.
+- [x] Przygotowanie S5 (wyniki „S4 i przygotowanie S5”): obie poprawki z testami, ADR-066, `HYDROGRAF_KARTOGRAF_ROOT`, strażnik zapisu w kroku 2 bootstrapu (usunięty w H1, ADR-067), ACL dla UID 999, montowanie w stagingu, obraz przebudowany, bramka i testy `db` zielone.
 
-### S5: bootstrap obszaru produkcji, przycięcie, ponowna publikacja wyników (1 sesja)
+### S5: bootstrap z zestawu, przycięcie, ponowna publikacja wyników (1 sesja)
 
-Warunki: S4 potwierdzone, przygotowanie z S4 zrobione, K1 spełnione, `free -g` pokazuje co najmniej 9 GB dostępnej pamięci, `df -h /` co najmniej 5 GB wolnego (magazyn wspólny leży na `/`), w Archiwiście nie trwa żadne zadanie pobierania do magazynu `zespol` i nikt go nie uruchomi do końca kroku 2–5 bootstrapu (ADR-066; Archiwista nie sprawdza zapisów Hydrografa).
+Krok przepisany według S5 planu Nogata `docs/plans/2026-11-02-archiwista-sets-for-hydrograf.md` (repozytorium Nogat, gałąź `plan/archiwista-sets-hydrograf`, commit `d2f17ac` i następne): wariant B autora z 2026-11-02, ADR-067. Bootstrap czyta dane Kartografa wyłącznie z zamkniętego zestawu projektu Kaczawa w Archiwiście i niczego nie pobiera.
+
+Warunki: S4 potwierdzone; H1 i H2 zrobione; Kaczawa w `/home/claude-agent/data/archiwista-public/projects/kaczawa` (A4) i zestaw zbudowany oraz zamknięty przez autora (A5), zweryfikowany w Archiwiście („Weryfikuj”); K1 spełnione; `free -g` pokazuje co najmniej 9 GB dostępnej pamięci, `df -h /` co najmniej 5 GB wolnego. Reguła z ADR-066, że w Archiwiście nie może trwać żadne pobieranie, odpada: zamknięty zestaw się nie zmienia, a bootstrap sprawdza każdy pin (rozmiar i SHA-256) na starcie.
 
 - [ ] Zestaw `s5`:
   - baza `hydro_s5` z PostGIS;
   - katalogi `s5/...`;
-  - do `s5/data/` skopiować z produkcji `boundary/` (`mniejszy_sheets.txt`, `obszar_mniejszy.gpkg`, `zlewnia_kaczawy_790km2_przyciecie.gpkg`) oraz `sewer_network.gpkg` i `sewer/`.
-- [ ] Bootstrap w `run --rm` z `HYDROGRAF_STAGING_SET=s5 HYDROGRAF_STAGING_DB=hydro_s5 HYDROGRAF_STAGING_API_MEM=8G HYDROGRAF_KARTOGRAF_STORE_MODE=rw` (magazyn wspólny pod `/kartograf` z zapisem tylko w tym kontenerze; `--cache-dir /cache` zostaje, bo tam leży `kartograf_meta.db`):
-  - ten sam zasięg co bootstrap produkcji z 2026-10-30, czyli 207 arkuszy z `mniejszy_sheets.txt` (`--sheets`) albo `--boundary-file obszar_mniejszy.gpkg`; log musi pokazać 207;
+  - z produkcji do `s5/data/` tylko `boundary/zlewnia_kaczawy_790km2_przyciecie.gpkg` (do przycięcia) oraz `sewer_network.gpkg` i `sewer/`.
+- [ ] Bootstrap w `run --rm` z `HYDROGRAF_STAGING_SET=s5 HYDROGRAF_STAGING_DB=hydro_s5 HYDROGRAF_STAGING_API_MEM=8G`, bez trybu magazynu (magazyn i katalog projektu tylko do odczytu; `--cache-dir /cache` zostaje, bo tam leży `kartograf_meta.db`):
+  - najpierw `--project /home/claude-agent/data/archiwista-public/projects/kaczawa --set "<nazwa zestawu autora>" --dry-run`: kod 0, 205 arkuszy obszaru, dziesięć powiatów, jeden raster HSG i `pins_sha256` zestawu; potem to samo bez `--dry-run`;
   - ta sama konfiguracja pipeline'u (log: „Konfiguracja zaladowana z”, sekcja `sewer`);
-  - punkt odniesienia z 2026-10-30: 4478 s dla 827,7 km²; oczekiwane około 75 min plus pobieranie (205 arkuszy jest już w magazynie, więc głównie BDOT10k powiatów i SoilGrids);
-  - krok 2 zatrzyma się sam, gdy w magazynie trwa zapis innego producenta (wpis `versions/.incoming` młodszy niż 10 min); wtedy poczekać i powtórzyć, nie usuwać wpisów.
+  - punkt odniesienia z 2026-10-30: 4478 s dla 827,7 km²; pobierania nie ma;
+  - odmowa kończy się kodem z rejestru i dokumentem błędu w ostatnim wierszu stderr; wskazówka mówi, co poprawić w Archiwiście (np. „Otwórz do edycji”, „Przywróć brakujące”, „Zamknij zestaw”); niczego nie poprawiać w magazynie ręcznie.
 - [ ] Przycięcie jak 2026-11-01 do zlewni Kaczawy powyżej węzła 51,222825 N; 16,179380 E (790,57 km²):
   - skopiować `~/scratch/hydrograf-clip/clip_hydrograf.py` do `~/scratch/hydrograf-clip-staging/` i dostosować;
   - `OUTLET` liczony na nowo w `hydro_s5`: segmenty przy progach 100000 i 10000 najbliższe węzłowi (stare 159/870 nie obowiązują);
@@ -324,14 +325,15 @@ Warunki: S4 potwierdzone, przygotowanie z S4 zrobione, K1 spełnione, `free -g` 
 - [ ] Przełączyć zielony stos na `s5`: w `.env.staging` ustawić `HYDROGRAF_STAGING_SET=s5`, `HYDROGRAF_STAGING_DB=hydro_s5`, potem `scripts/staging-compose.sh up -d api nginx`. Powtórzyć smoke z S2 na 8081. Zestaw `copy` zostaje jako zapasowy.
 
 **Kryteria akceptacji:**
-- bootstrap kończy się kodem 0 z 207/207 arkuszami w magazynie (205 z nich Archiwista miała wcześniej: Kartograf odpowiada dla nich `local`, bez pobierania; SHA-256 z sidecarów zgodne);
-- magazyn wspólny po bootstrapie: `iter_store` bez `missing_sidecar` i obcych plików, w Archiwiście magazyn `zespol` dalej `available` z nowymi wersjami (odczyt `index.sqlite` tylko do odczytu, GET `/` i `/api/v1/session/methods` 200);
+- bootstrap kończy się kodem 0; log pokazuje `205/205 arkuszy z zestawu`, dziesięć powiatów (0205, 0206, 0207, 0209, 0218, 0219, 0221, 0226, 0261, 0262) i `pins_sha256` zestawu, a `bootstrap_set.json` (`hydrograf-bootstrap-set/1`, `status: ok`) zostaje z wynikami w zestawie `s5`;
+- magazyn bez zmian: liczby `iter_store` i indeks Archiwisty dla magazynu `zespol` takie same przed i po, nic nowego w `versions/.incoming`;
+- zlewnia liczona z mozaiki 205 arkuszy (D3): stara granica przycięcia wchodzi na około 935 m² w arkusz `M-33-45-B-c-1-1` spoza zestawu (do pominięcia); kryterium pokrycia to granica przycięcia wewnątrz mozaiki (poza co najwyżej około 0,001 km² przy dziale wód w `M-33-45-B-c-1-1`), a `land_cover` i `soil_hsg` pokrywają część granicy przycięcia leżącą w mozaice, nie 100% starej granicy;
 - powierzchnia granicy przycięcia 790,57 km² ±0,5%;
-- `land_cover` i `soil_hsg` pokrywają granicę w 100%;
 - `is_sewer_augmented` = 0 jak w produkcji;
 - delineacja 51,0376/16,1723 ≈ 15,16 km² (±2%), przekrój Kamiennika ≈ 37,23 km², punkt poza granicą zwraca 404 problem+json;
 - warstwy w przeglądarce kończą się na granicy;
 - wyniki SFINCS i woda na profilu działają;
+- pokrycie terenu i CN porównane z produkcją, różnice opisane w raporcie (dzisiejsze paczki BDOT10k mogą różnić się od pobranych przez produkcję między 2026-03-24 a 2026-10-29);
 - K0 bez zmian.
 
 ### S6: punkt kontrolny autora
@@ -414,11 +416,11 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
 
 ## Otwarte decyzje autora
 
-1. **Magazyn prywatny czy wspólny z Archiwistą.** Rozstrzygnięte w S4 (2026-11-02): **wspólny** (`~/data/archiwista-public/store`, 205 z 207 arkuszy obszaru produkcji już w nim jest). Zrobione przed S5 (wyniki „S4 i przygotowanie S5”):
-   - aneks do ADR-061: ADR-066, konfigurowalny root `HYDROGRAF_KARTOGRAF_ROOT` w `store_dir()`;
-   - uprawnienia UID 999 przez ACL (bez grupy `hydro-readers`: umask 077 Archiwisty odbiera grupie nowe pliki);
-   - rw tylko w kontenerze bootstrapu, API i panel admina tylko do odczytu; czyszczenie cache nie rusza magazynu wspólnego;
-   - blokady: Kartograf ich nie ma i do spójności nie potrzebuje; reguła i strażnik w kroku 2 bootstrapu (ADR-066).
+1. **Magazyn prywatny czy wspólny z Archiwistą.** Rozstrzygnięte w S4 (2026-11-02): **wspólny** (`~/data/archiwista-public/store`, 205 z 207 arkuszy obszaru produkcji już w nim jest), aneks do ADR-061 to ADR-066. **Zmienione tego samego dnia wariantem B autora (ADR-067, H1, plan Nogata `docs/plans/2026-11-02-archiwista-sets-for-hydrograf.md`):**
+   - pisze do magazynu wyłącznie Archiwista; Hydrograf czyta go tylko przez zamknięty zestaw projektu Archiwisty (`--project`, `--set`), ściśle: każde wejście Kartografa to pin zestawu sprawdzony SHA-256;
+   - przy ustawionym `HYDROGRAF_KARTOGRAF_ROOT` każde pobieranie Hydrografa jest odrzucane (`forbidden`), panel admina odpowiada `403`, montowanie zawsze `ro`; czyszczenie cache nie rusza magazynu wspólnego;
+   - uprawnienia UID 999 przez ACL zawężone w H2 do odczytu (`rX`) na magazynie i na katalogu projektu (bez grupy `hydro-readers`: umask 077 Archiwisty odbiera grupie nowe pliki);
+   - reguła „nikt nie pobiera w Archiwiście w czasie bootstrapu” i strażnik `writes_in_progress` w kroku 2 usunięte: przy jednym piszącym nie ma czego pilnować.
 2. **Zmiana Snydera widoczna dla testerów.** Hydrolog 1.0 daje szczyt o 11–12% wyższy i 25–70 min wcześniej. Do ustalenia, czy testerzy dostają informację (ekran powitalny lub notka w panelu wyników), czy wystarczy CHANGELOG.
 3. **Aktualizacja instrukcji** (`frontend/instrukcja`, prezentacja PDF): slajdy o Snyderze i komunikaty błędów, które teraz pochodzą z `detail` problem+json. Do ustalenia, czy w S7, czy osobno.
 4. **Docelowe miejsce produkcji po S8:** zielony stos zostaje w `Hydrograf-store` albo produkcja wraca do `~/workspace/Hydrograf` po scaleniu gałęzi, drugim przełączeniem według S7.
@@ -579,3 +581,30 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
 - **Bramka i testy:** `GATE_COMMIT_RANGE=04d4550..HEAD bash scripts/gate.sh` zielona: 1389 testów offline (było 1381: +14 nowych, −6 testów usuniętych funkcji `.prj`), pokrycie 86,64%; testy `db` na jednorazowej `hydro_staging_testdb` (migracje 001 → 003): 15 zaliczonych, 1 pominięty jak w S2, kontener zatrzymany.
 - K0: pusty diff i `/health` 200 przed każdą czynnością i po niej (ACL, usuwanie `.prj`, SQL, budowa obrazu, smoke, commity).
 - Stan: zielony stos na `127.0.0.1:8081` i `192.168.88.9:8081` z zestawem `copy`; magazyn wspólny gotowy dla S5 (ACL, montowanie, obraz). S5 nie rozpoczęty.
+
+### H1 (2026-11-02): zrobione
+
+Krok H1 planu Nogata `docs/plans/2026-11-02-archiwista-sets-for-hydrograf.md` (gałąź `plan/archiwista-sets-hydrograf`): zestaw Archiwisty jako jedyne wejście Kartografa, ADR-067 (ADR-066 zastąpiony w części: decyzje 2 i 4).
+
+- **Bootstrap z zestawu:** `python -m scripts.bootstrap --project PATH --set NAZWA [--dry-run]` (`PATH` to katalog projektu albo jego `archiwista-project.json`; wyklucza się z `--bbox`, `--sheets`, `--boundary-file`; nazwa zestawu porównywana po NFC, przycięciu i case-fold). Przed krokiem 1, po kolei: plik projektu (`archiwista-project/1`), plik obszaru (`obszary/…`) i jego SHA-256, zestaw zamknięty (`state` brak albo `closed`; `open` odrzucany), zapisany `pins_sha256` równy obliczonemu, magazyn Kartografa projektu (`store_state` = `marked`; przy ustawionym `HYDROGRAF_KARTOGRAF_ROOT` ten sam katalog, `os.path.samefile`), każdy pin Kartografa czytany w całości (rozmiar i SHA-256), potem wymagania:
+  - arkusze obszaru projektu (`find_sheets_for_geometry(<obszar>, "1:10000", sheet_system="1992")`) wśród pinów segmentu `nmt/pl_1992_<--resolution>_evrf2007/versions/` (D3: 205 arkuszy, które Kartograf wybiera z obszaru; przypięte arkusze spoza obszaru też wchodzą do mozaiki);
+  - bez `--skip-landcover`: powiaty, które PRG podaje dla prostokąta ramek przypiętych arkuszy (`Bdot10kProvider.teryts_for_area`), wśród pinów BDOT10k;
+  - bez `--skip-hsg`: dokładnie jeden pin HSG, którego zamówiony prostokąt z sidecara Kartografa (`read_sidecar(...).request`, przeliczony do EPSG:2180) pokrywa prostokąt mozaiki NMT (D4: zestaw ma prostokąt Polski + 100 km; ścieżka magazynu prywatnego zostaje przy `167000 29000 860000 814000`);
+  - jedna wersja na jednostkę (arkusz, TERYT, prostokąt); inne piny Kartografa (wejścia SoilGrids) sprawdzone, nieużywane; piny innych producentów nie są czytane.
+- **Kroki 2–5 z zestawu:** krok 2 niczego nie pobiera i podaje `N/N arkuszy z zestawu`, krok 3 wypala cieki z przypiętych paczek BDOT10k, krok 4 je importuje, krok 5 przycina przypięty raster HSG do mozaiki; kroki 6–10 bez zmian (IMGW PMAXTP poza zestawami, siatka opadów z prostokąta WGS84 obszaru). `--dry-run` kończy się po wszystkich sprawdzeniach i wypisuje projekt, stan (`closed_at`, `closed_by`), SHA-256 obszaru, `pins_sha256`, magazyn, piny i kroki 2–5.
+- **Tożsamość zestawu:** jeden wiersz INFO `Bootstrap from a set: {json}` i plik `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`: projekt, zestaw z `pins_sha256`, magazyn, wejścia, `started_at`, `finished_at`, `status` running → ok albo failed); przebieg bez zestawu usuwa plik. Panel admina go nie pokazuje (poza zakresem).
+- **Odmowy:** ostatni wiersz stderr to dokument błędu `hydrograf-error/1`, przed nim polskie `BŁĄD:` i `Wskazówka:`; kod wyjścia z rejestru (tabela w ADR-067: m.in. `set_open` 4, `pin_missing` 3, `pin_changed` i `set_digest_mismatch` 7, `store_missing` 8, `pin_unreadable` 9, `shared_store_read_only` 12, `set_sheets_missing`/`set_counties_missing`/`set_hsg_missing` 14). Wszystkie kody są w rejestrze, nowych nie ma; nowe klasy `InvalidDataError` (`data_error`) i `SourceUnavailableError` (`source_unavailable`), teksty EN i PL w `core/messages.py`.
+- **Tylko odczyt (D8, D11):** `refuse_shared_store()` i `private_store_dir(cache_dir)` w `utils/kartograf_store.py`; przy ustawionym `HYDROGRAF_KARTOGRAF_ROOT` odmawiają `download_bdot10k`, `download_dem.download_sheets`, `download_landcover.fetch_landcover` i kroki 2 i 5 ścieżki prywatnej, więc także `download_dem`, `download_landcover`, `prepare_area`, `analyze_watershed --download` i zapasowe CN (błąd w logu, CN domyślne). `POST /api/admin/bootstrap/start` odpowiada `403` problem+json przed uruchomieniem procesu. Usunięte bez podkładek: `writes_in_progress`, `ACTIVE_WRITE_WINDOW_S`, `STAGING_GLOB`, strażnik kroku 2, `HYDROGRAF_KARTOGRAF_STORE_MODE` w `docker-compose.staging.yml`. `describe_error` opisuje też `HydrografError`.
+- **Moduły i testy:** `utils/archiwista_project.py` (czytnik projektu i zestawu, `pins_digest`, `verify_pins`), `utils/kartograf_set.py` (`set_inputs` → `SetInputs`); `tests/unit/test_bootstrap_set.py` (prawdziwy Kartograf, magazyn offline: zamknięty zestaw, każda odmowa z tabeli, powiaty, PRG, arkusze, HSG, niejednoznaczność, opcje obszaru przy magazynie wspólnym, wektor testowy skrótu), `test_kartograf_store.py` (brak pobierania przy magazynie wspólnym), `test_admin_bootstrap.py` (403); test kontraktowy `test_messages.py` przegląda też `utils` i `scripts`.
+- **Poprawka ADR-066 (fakt 4):** wada trybu pliku (`mkdtemp` + `shutil.move` zawęża maskę ACL) jest w RCN `_unpack_checked_layers` i WFS `_fetch_features` Kartografa, nie w BDOT10k; paczki BDOT10k są kopiowane treścią (`shutil.copyfile`) do katalogu roboczego magazynu i publikowane `os.replace`, więc UID 999 je czyta. Naprawa w Kartografie później, w jego sesji (D10).
+- **Smoke `--dry-run` (2026-11-02, kod worktree), magazyn jednorazowy:** kopia prywatnego magazynu S3 (15 arkuszy, BDOT10k 0205 i 0226, HSG Polski, 3 wejścia SoilGrids; 21 wersji) w `/home/claude-agent/data/tmp/h1-smoke/`, projekt z czterema zestawami:
+  - zamknięty zestaw: kod 0, 15/15 arkuszy obszaru, PRG odpowiedział 0205 i 0226, raster HSG, skrót z pliku;
+  - zestaw otwarty: kod 4 `set_open`; brakujący pin: kod 3; zestaw bez BDOT10k: kod 14 `set_counties_missing` (0205, 0226);
+  - kopia z jednym zmienionym SHA-256: kod 7 `pin_changed` (zestaw bez skrótu) i kod 7 `set_digest_mismatch` (zamknięty zestaw ze skrótem);
+  - nieznany zestaw: kod 3 (lista zestawów); `--bbox` przy `HYDROGRAF_KARTOGRAF_ROOT`: kod 12 `forbidden`; `--project` bez `--set`: kod 2; inny `HYDROGRAF_KARTOGRAF_ROOT`: kod 2 `store_mismatch`;
+  - magazyn bez zmian (272 wpisy).
+- **Smoke na prawdziwym magazynie wspólnym** (tylko odczyt) z kopią pliku projektu Kaczawy (zestaw „2020”, 205 pinów, bez `state`): `--skip-landcover --skip-hsg --dry-run` kod 0, 205/205 pinów zweryfikowanych, 205 arkuszy obszaru (około 3 s); bez pominięć kod 14 `set_counties_missing` z dziesięcioma powiatami 0205, 0206, 0207, 0209, 0218, 0219, 0221, 0226, 0261, 0262 (zestaw „2020” ma tylko NMT, zestaw dla S5 zbuduje autor w A5). Magazyn bez zmian (7868 wpisów).
+- **Testy `db`** na jednorazowej bazie PostGIS `hydro_h1_testdb` (127.0.0.1:55432, migracje 001 → 003): 15 zaliczonych, 1 pominięty.
+- **Pełny przebieg kroków 2–5 z zestawu** (bez `--dry-run`, kopia kodu w `/home/claude-agent/data/tmp/h1-smoke/app`, baza `hydro_h1_smoke` w `hydro_h1_testdb`, `HYDROGRAF_KARTOGRAF_ROOT` = magazyn jednorazowy, `--skip-infra`, kroki 6–10 pominięte): kod 0 w 110 s; krok 2 `15/15 arkuszy z zestawu`, krok 3 3 048 412 komórek i 4437 odcinków z wypalaniem przypiętego BDOT10k, krok 4 18 305 obiektów z 2 powiatów, krok 5 raster HSG zestawu (1 poligon B) — te same liczby co bootstrap S3 (`stream_network` 4421, `stream_catchments` 4437, `land_cover` 18 305, `soil_hsg` 1); `bootstrap_set.json` ze statusem `ok`, `started_at` i `finished_at`; magazyn bez zmian. Kontener bazy zatrzymany (`--rm`).
+- **Bramka:** `GATE_COMMIT_RANGE=04d4550..HEAD bash scripts/gate.sh` zielona: 1416 testów offline, pokrycie 86,84%.
+- Montowania pod ścieżkami hosta, katalog projektu i ACL `rX` to krok H2 (po A3 i A4).
