@@ -9,7 +9,7 @@
 | Parametry morfometryczne | ✅ Gotowy | area, slope, length, CN + 11 nowych wskaznikow |
 | Generowanie hydrogramu | ✅ Gotowy | SCS-CN + Nash (3 estymacje), 432 scenariusze |
 | Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k. Limit pamięci: szczyt ~103 B/komórkę rastra, czyli ~160M komórek przy 8G + 8G swap (~80M bez swapu); plan F1–F7 w `docs/TECHNICAL_DEBT.md` |
-| Integracja Hydrolog | ✅ Gotowy | v0.6.3 (Nash IUH, 3 nowe metody tc) na produkcji (obraz ze starymi pinami). W kodzie od scalenia `feature/producer-heads`: pin `5fa22b3` (1.0.0.dev0, ADR-060); Snyder daje inny hydrogram (korekta czasu trwania: szczyt +11–12%, 25–70 min wcześniej, ta sama objętość) |
+| Integracja Hydrolog | ✅ Gotowy | v0.6.3 (Nash IUH, 3 nowe metody tc) na produkcji (obraz ze starymi pinami). W kodzie od scalenia `feature/producer-heads`: pin `5fa22b3` (1.0.0.dev0, ADR-060); Snyder daje inny hydrogram (korekta czasu trwania, ta sama objętość): przy opadzie 1 h szczyt +11–12% i 25–70 min wcześniej, przy 12–24 h +3,5…+9,6% i 15–65 min wcześniej (pomiary S2/S3 planu migracji magazynu) |
 | Integracja Kartograf | ✅ Gotowy | v0.7.0 (NMT przez `download_sheets` + `MetadataCache`, Land Cover, HSG, BDOT10k hydro) na produkcji. W kodzie od scalenia `feature/producer-heads`: pin `26ee459` (0.8.0.dev0, gałąź Kartografa `feature/archiwista-projects`, 2026-10-31; ten sam co Archiwista; wybór arkuszy po obiektach `--geometry`); cache surowych pobrań to magazyn Kartografa `cache/kartograf/` (ADR-061), raster HSG jednej analizy to zwykły plik tymczasowy; katalogi układu 0.7.0 nie są czytane |
 | Integracja IMGWTools | ✅ Gotowy | v2.1.0 (opady projektowe) na produkcji. W kodzie od scalenia `feature/producer-heads`: pin `6bd35a4` (3.0.0, ADR-060) |
 | Środowisko i jakość kodu | ✅ Gotowy | Od scalenia `feature/producer-heads` (standard Nogata 2.1, ADR-058): uv i `backend/uv.lock` zamiast `requirements.txt`, ruff (DEV-7.2), mypy `strict` (DEV-7.3), `affine>=2.4,<3` (ADR-062) |
@@ -298,6 +298,43 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
   - Snyder przy opadzie 24 h odbiega od zakresu z ADR-060 (+5,5–7,8% zamiast 11–12%); kierunek i przesunięcie się zgadzają;
   - „Głębokość przy zaporze 12,33 m” z 2026-11-01 to odczyt kursora na innej linii; linia przez najgłębszą komórkę NMT (264,88 m n.p.m.) daje 12,6 m, w produkcji tak samo.
 - **Następne kroki:** S3 planu (K1 spełnione; nie rozpoczęte), potem punkt kontrolny autora S4. Szczegóły i K0 są w „Wynikach” planu.
+
+### Krok S3 planu: bootstrap Kamiennika do magazynu Kartografa i porównanie (2026-11-02)
+- **Zestaw `s3`:** baza `hydro_s3` (PostGIS, migracje 001 → 003 z entrypointu), katalogi `/data/nmt/hydrograf-staging/s3/`, granica `kamiennik_37km2_sfincs.gpkg` skopiowana z produkcji (37,2234 km²).
+- **Bootstrap** `run --rm --no-deps --name hydro_staging_bootstrap_s3 api python -m scripts.bootstrap --boundary-file /data/boundary/kamiennik_37km2_sfincs.gpkg --cache-dir /cache --skip-infra --skip-serve` (z `HYDROGRAF_STAGING_SET=s3 HYDROGRAF_STAGING_DB=hydro_s3`; dodane tylko `-T` i `PYTHONUNBUFFERED=1` dla kolejności logu): kod 0, 372,4 s, szczyt pamięci 2,09 GiB przy limicie 3 GiB (krok 5, HSG z rastra Polski: 1,45 GiB pamięci anonimowej), swap 0. Kroki: NMT 15/15 arkuszy 27,4 s; przetwarzanie NMT 210,6 s (3 048 412 komórek, 4437 odcinków); pokrycie terenu 4,8 s (18 305 obiektów, powiaty 0205 i 0226); HSG 41,0 s; opady 31,7 s (24 punkty); depresje 2,3 s (13 173); kafle MVT 36,4 s; nakładki 18,1 s. Logi i próbki cgroup: `/data/nmt/hydrograf-staging/bootstrap-s3-20261102*`.
+- **Magazyn** `/data/nmt/hydrograf-staging/cache/kartograf` (256 MB): znacznik `kartograf-store/1`; segmenty NMT 5 m (15 arkuszy = lista z logu kroku 2), BDOT10k 0205 i 0226, HSG `0-5cm` i trzy warstwy SoilGrids; 57 sidecarów `kartograf-meta/1` z SHA-256 zgodnym z plikami; `kartograf_meta.db` obok magazynu; brak starego układu `cache/nmt|bdot10k|soil_hsg`. **Niezgodność:** 15 plików `<arkusz>.prj` obok arkuszy NMT (`missing_sidecar` w `iter_store`) zapisuje Hydrograf (`utils/raster_utils.py`, `_ensure_prj_sidecar`) — obcy plik w magazynie (ADR-061), do decyzji przed S5.
+- **Wyjścia:** wszystkie tabele niepuste (`stream_network` 4421, `stream_catchments` 4437, `land_cover` 18 305, `soil_hsg` 1, `precipitation_data` 10 368, `depressions` 13 173); NMT, `land_cover` i `soil_hsg` pokrywają granicę w 100%; kafle MVT, `dem_tiles`, nakładki PNG i GeoJSON wygenerowane.
+- **Porównanie:** produkcja 8080 (stary kod, stare dane), `copy` 8081 (nowy kod, stare dane) i `s3` (nowy kod, dane z magazynu; API w `hydro_staging_api_s3` bez portu, przez `docker exec`, po porównaniu usunięty). Punkty: wyświetlane ujście Kamiennika, punkt na odcinku 21911/2477 i punkty delineacji przekrojów K1–T3 z `cross_sections.gpkg`. Hydrogramy: 12 h, p = 1%, AMC II, Beta 2/5, tc NRCS, Nash `from_lutz`, Snyder Ct 1,5 / Cp 0,6, morfometria z delineacji tego samego serwera.
+
+| Punkt (próg) | Pow. prod / copy / s3 [km²] | Δ s3–prod | CN prod / copy / s3 | IoU prod–copy / prod–s3 | Ocena |
+|---|---|---|---|---|---|
+| Ujście wyświetlane 51,015442/15,889836 (10 ha i 1 ha) | 134,97 / 134,97 / 40,22 | −70,2% | 69,6 / 69,6 / 68,6 | 1,000 / 0,298 | efekt krawędzi obszaru `s3` (Kaczawa ucięta na arkuszach Kamiennika) |
+| Ujście, odcinek 21911/2477 (10 ha i 1 ha) | 37,23 / 37,23 / 37,23 | 0,0% | 67,9 / 67,9 / 67,9 | 1,000 / 1,000 | OK |
+| K1 | 29,35 / 29,35 / 29,35 | 0,0% | 67,3 / 67,3 / 67,3 | 1,000 / 1,000 | OK |
+| K2 | 18,71 / 18,71 / 18,71 | 0,0% | 65,4 / 65,4 / 65,4 | 1,000 / 1,000 | OK |
+| K3 | 15,53 / 15,53 / 15,53 | 0,0% | 64,7 / 64,7 / 64,7 | 1,000 / 1,000 | OK |
+| K4 | 10,06 / 10,06 / 10,06 | 0,0% | 66,4 / 66,4 / 66,4 | 1,000 / 1,000 | OK |
+| C1 | 8,67 / 8,67 / 8,67 | 0,0% | 69,3 / 69,3 / 69,3 | 1,000 / 1,000 | OK |
+| T2 | 3,96 / 3,96 / 3,96 | 0,0% | 68,2 / 68,2 / 68,2 | 1,000 / 1,000 | OK |
+| T3 | 2,43 / 2,43 / 2,43 | 0,0% | 65,0 / 65,0 / 65,0 | 1,000 / 1,000 | OK |
+
+| Punkt | P prod / s3 [mm] | SCS Q prod = copy → s3 [m³/s] | Nash Q prod = copy → s3 [m³/s] | Snyder prod → copy (efekt kodu) | Snyder s3 względem copy | Ocena |
+|---|---|---|---|---|---|---|
+| Ujście, odcinek 21911/2477 | 103,07 / 103,19 | 48,32 → 48,44 (+0,3%) | 50,87 → 51,00 (+0,2%) | 29,73 → 32,57 (+9,6%, tp −45 min) | +0,2%, tp 0 | OK |
+| K1 | 102,72 / 103,13 | 40,27 → 40,61 (+0,8%) | 44,03 → 44,40 (+0,8%) | 26,68 → 28,95 (+8,5%, −35 min) | +0,8% | OK |
+| K2 | 103,06 / 103,08 | 23,61 → 23,62 (+0,1%) | 26,32 → 26,33 (0,0%) | 16,06 → 17,40 (+8,3%, −30 min) | 0,0% | OK |
+| K3 | 103,79 / 104,23 | 20,75 → 20,94 (+0,9%) | 23,29 → 23,50 (+0,9%) | 14,82 → 15,90 (+7,3%, −30 min) | +0,9% | OK |
+| K4 | 104,21 / 103,36 | 16,21 → 15,94 (−1,7%) | 18,28 → 17,97 (−1,7%) | 12,62 → 13,34 (+5,7%, −20 min) | −1,7% | OK |
+| C1 | 102,41 / 103,26 | 13,74 → 13,96 (+1,6%) | 14,53 → 14,77 (+1,6%) | 8,96 → 9,70 (+8,2%, −30 min) | +1,7% | OK |
+| T2 | 103,90 / 103,12 | 7,73 → 7,61 (−1,5%) | 8,35 → 8,22 (−1,5%) | 6,44 → 6,67 (+3,6%, −15 min) | −1,5% | OK |
+| T3 | 104,10 / 103,31 | 4,34 → 4,27 (−1,6%) | 4,50 → 4,43 (−1,6%) | 3,45 → 3,57 (+3,5%, −15 min) | −1,6% | OK |
+| Ujście wyświetlane (inne zlewnie) | 103,04 / 103,19 | 193,18 → 54,73 | 175,92 → 56,74 | 88,66 → 98,27 (+10,8%, −60 min) | — | nie porównywać (134,97 vs 40,22 km²) |
+
+- **Wnioski:** granice, powierzchnie i CN zlewni Kamiennika z magazynu są identyczne z produkcją (te same arkusze i kampanie GUGiK, ten sam BDOT10k do wypalania). Różnice hydrogramów `s3`–`copy` (±1,7%) biorą się wyłącznie z opadu: siatka PMAXTP 2 km w `s3` jest przesunięta o 815 m (jej początek to narożnik bbox obszaru), więc IDW w centroidzie daje ±0,8%. Snyder Hydrologa 1.0 (ADR-060) przy 12 h: +3,5…+9,6% szczytu i 15–45 min wcześniej, objętość równa; zakres 11–12% z planu dotyczy krótkich opadów. Drobna różnica morfometrii: `divide_flow_path_km` przy ujściu 17,59 → 16,04 (w `s3` równa najdłuższej drodze spływu).
+- **Smoke w przeglądarce, 8081 z danymi `s3`** (12:54:31–12:57:55, potem powrót na `copy`): warstwy (NMT, BDOT10k, HSG, pokrycie, zagłębienia, linie spływu 1 i 10 ha, SFINCS 24 h, MZP z `wody.isok.gov.pl` 200), (i) tylko kliknięciem, „Próg akumulacji spływu” 1 ha / 10 ha, szyna Mapa · Instrukcja · Logowanie, Identyfikuj w czaszy (264,88 m n.p.m., woda 16,55 m, Kamiennik, HSG B, odcinek 37,11 km²) i na Kamienniku przy K3 (15,53 km²), profil przez czaszę z linią wody, zlewnia w ujściu 37,23 km²; 0 błędów JS. Zrzuty w `~/scratch/store-s3/`.
+- **Staging w sieci domowej** (polecenie autora, `0f913a2`): nginx stagingu także na `192.168.88.9:8081`; odtworzony tylko `hydro_staging_nginx`; przez adres LAN 200 z CSP, zasoby, API i kafle działają, 0 błędów JS. Produkcja nadal tylko na 127.0.0.1:8080.
+- **Otwarte (do S4):** `.prj` w magazynie; „nan” w karcie punktu odtwarza się na danych z bootstrapu (T2 „nan (rzeka)”, 4410 z 4915 wierszy `bdot_streams` w `hydro_s3`), więc bez poprawki loadera S5 zapisze to samo; wynik SFINCS 12 h zastąpiony na stagingu (`copy` i `s3`) wynikiem 24 h z równoległej sesji.
+- K0: pusty diff i `/health` 200 przed każdą czynnością i po niej. Staging po kroku: zestaw `copy` (baza `hydro_db`) na 127.0.0.1:8081 i 192.168.88.9:8081. **Następne kroki:** S4, punkt kontrolny autora.
 
 ### Poprzednia sesja (2026-11-01/02 — kopia produkcji, przycięcie danych do zlewni Kaczawy, wyniki SFINCS w „Wynikach analiz”, instrukcja i ekran powitalny, nakładka MZP ISOK, cache zasobów za Cloudflare, zwierciadło wody na profilu terenu)
 

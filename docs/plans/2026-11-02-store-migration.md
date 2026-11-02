@@ -240,11 +240,11 @@ Szacunek w sesjach agenta. Ścieżka krytyczna: S1 → S2 → S3 → S4 → S5 �
 
 Warunek: K1 spełnione.
 
-- [ ] Zestaw `s3`:
+- [x] Zestaw `s3`:
   - baza `hydro_s3` w `hydro_staging_db` (`CREATE DATABASE`, `CREATE EXTENSION postgis`);
   - katalogi `s3/{data,frontend-data,frontend-tiles}`;
   - `s3/data/boundary/kamiennik_37km2_sfincs.gpkg` skopiowany z produkcyjnego `data/boundary/` (37,22 km², ta sama domena co model SFINCS).
-- [ ] Bootstrap w osobnym kontenerze `run --rm` projektu stagingu. Działający `hydro_staging_api` (zestaw `copy`) nie zmienia się.
+- [x] Bootstrap w osobnym kontenerze `run --rm` projektu stagingu. Działający `hydro_staging_api` (zestaw `copy`) nie zmienia się.
   ```bash
   HYDROGRAF_STAGING_SET=s3 HYDROGRAF_STAGING_DB=hydro_s3 \
     scripts/staging-compose.sh run --rm --no-deps --name hydro_staging_bootstrap_s3 api \
@@ -252,19 +252,19 @@ Warunek: K1 spełnione.
       --cache-dir /cache --skip-infra --skip-serve
   ```
   Krok 1 bootstrapu woła `uv sync` i `docker compose`, więc w kontenerze musi być pominięty. Nie używać bootstrapu z panelu admina.
-- [ ] Sprawdzić magazyn (`${HYDROGRAF_STAGING_ROOT}/cache`):
+- [x] Sprawdzić magazyn (`${HYDROGRAF_STAGING_ROOT}/cache`):
   - jest znacznik `kartograf/kartograf-store.json` (`kartograf-store/1`);
   - `list_segments` zwraca `pl_1992_5m_evrf2007` z arkuszami z logu kroku 2;
   - sidecary `kartograf-meta/1` mają SHA-256 zgodne z plikami;
   - jest BDOT10k powiatów 0205 i 0226 oraz raster HSG (`0-5cm`);
   - `kartograf_meta.db` leży obok magazynu, poza nim;
   - nie ma starego układu `cache/nmt`, `cache/bdot10k`, `cache/soil_hsg`.
-- [ ] Sprawdzić wyjścia pipeline'u:
+- [x] Sprawdzić wyjścia pipeline'u:
   - wszystkie kroki `done`, kod 0;
   - niepuste `stream_network`, `stream_catchments`, `land_cover`, `soil_hsg`, `precipitation_data`, `depressions`;
   - rastry `s3/data/nmt` pokrywają granicę;
   - kafle i nakładki są wygenerowane.
-- [ ] Porównanie z produkcją w tych samych punktach:
+- [x] Porównanie z produkcją w tych samych punktach:
   - punkty: ujście Kamiennika (segment 21911) i przekroje z `~/hydraulik-work/kamiennik-12h-p1/inputs/cross_sections.gpkg` (K1–K4: 29,35 / 18,71 / 15,53 / 10,06 km², C1: 8,67, T2: 3,96, T3: 2,43 km²);
   - API zestawu `s3` w tymczasowym kontenerze bez publikowania portu: `run --rm -d --name hydro_staging_api_s3 ... api`, zapytania przez `docker exec`;
   - trzy porównania: produkcja (stary kod, stare dane), zestaw `copy` (nowy kod, stare dane: efekt samego kodu) i zestaw `s3` (nowy kod, dane z magazynu: efekt danych).
@@ -500,3 +500,51 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
   - punkt 51,01544/15,88984 (wyświetlane ujście Kamiennika) trafia w zlewnię cząstkową Kaczawy (134,97 km² w obu stosach). 37,23 km² daje punkt na odcinku 21911/2477 (51,01538/15,890496);
   - po błędzie wyznaczania pasek kontekstu i tytuł panelu pokazują poprzednią zlewnię; tak samo w produkcji.
 - Stan: zielony stos działa na 8081 (zestaw `copy`), K1 spełnione. S3 nie rozpoczęty.
+
+### S3 (2026-11-02): zrobione
+
+- Commity na `feature/store-migration` (bez push): `0f913a2` nginx stagingu także na `192.168.88.9:8081` (polecenie autora w trakcie S3, opis w „Zasadach izolacji”), potem commit z zapisem w PROGRESS (sesja S3, tabele porównań) i tymi wynikami.
+- Zestaw `s3`: `CREATE DATABASE hydro_s3` i `CREATE EXTENSION postgis` (PostGIS 3.4.3), migracje 001 → 003 z entrypointu kontenera bootstrapu; katalogi `s3/{data,frontend-data,frontend-tiles}` (777); granica `s3/data/boundary/kamiennik_37km2_sfincs.gpkg` skopiowana z produkcji (SHA-256 równe, 37,2234 km²).
+- Bootstrap poleceniem z planu; dodane tylko `-T` i `-e PYTHONUNBUFFERED=1`, żeby wiersze logu szły po kolei:
+  - kod 0, 372,4 s (377,7 s z kontenerem), obraz `hydrograf-api:store-staging` (`ce03f2f4f201…`); `hydro_staging_api` (zestaw `copy`) bez zmian;
+  - limity kontenera z `docker inspect`: 3 GiB RAM (+3 GiB swap), 2 CPU, `read_only`, `/tmp` 2G;
+  - logi w `${HYDROGRAF_STAGING_ROOT}`: `bootstrap-s3-20261102.log`, `.ts.log` (czas hosta), `-mem.tsv` (cgroup co 1 s), `.exit`;
+  - kroki (czas z bootstrapu, szczyt `memory.current` cgroup, w nawiasie pamięć anonimowa): 2 NMT 15/15 arkuszy 27,4 s, 214 MiB (110); 3 przetwarzanie NMT 3 048 412 komórek, 4437 odcinków, wypalanie BDOT10k 210,6 s, 1306 MiB (729); 4 pokrycie terenu 18 305 obiektów, 2 powiaty 4,8 s, 1116 MiB (539); 5 HSG z rastra Polski (`calculate_hsg`) 1 poligon B 41,0 s, 2059 MiB (1446); 6 opady 24/24 punkty, 10 368 rekordów 31,7 s, 1180 MiB (565); 7 depresje 13 173 2,3 s, 1249 MiB (631); 8 kafle MVT 36,4 s, 1553 MiB (754); 9 nakładki PNG i 850 kafli NMT 18,1 s, 1775 MiB (853). Szczyt całego przebiegu 2,09 GiB (`memory.peak`), swap 0;
+  - ostrzeżenia w logu tylko trzy, te same co w bootstrapie produkcji z 2026-10-30: `GDAL not available, falling back to rasterio.merge`, `POSTGRES_PASSWORD is empty`, `16 segments dropped by unique constraint (threshold=10000 m²)` (w produkcji 65 i 4).
+- Magazyn (`${HYDROGRAF_STAGING_ROOT}/cache`, 256 MB):
+  - znacznik `kartograf/kartograf-store.json` = `kartograf-store/1` (producer 0.8.0.dev0);
+  - `list_segments`: `nmt/pl_1992_5m_evrf2007` z 15 arkuszami, tymi samymi co w logu kroku 2 (14 z kampanii 2020-04-18, 1 z 2025-06-13), `landcover/pl_bdot10k_gpkg` z powiatami 0205 (49,9 MB) i 0226 (161,3 MB), `hsg/global_soilgrids_0-5cm_mean` (raster Polski `167000_29000_860000_814000.tif`) oraz `soil/global_soilgrids_{clay,sand,silt}_0-5cm_mean`;
+  - 57 sidecarów `kartograf-meta/1`, SHA-256 i rozmiar zgodne z plikami we wszystkich;
+  - `kartograf_meta.db` obok magazynu; w `cache/` są tylko `kartograf/` i `kartograf_meta.db`, bez `cache/nmt`, `cache/bdot10k`, `cache/soil_hsg`;
+  - **niezgodność:** `iter_store` zgłasza 15 × `missing_sidecar`. To pliki `<arkusz>.prj` obok `.asc` w ścieżkach standardowych segmentu NMT, zapisane w kroku 3 przez Hydrografa (`utils/raster_utils.py`, `_ensure_prj_sidecar` w `normalize_crs`), nie przez Kartografa. Kolejnym zapisom Kartografa nie przeszkadzają (magazyn ma znacznik), ale magazyn nie jest czysty w sensie ADR-061, a przy magazynie wspólnym z Archiwistą obce pliki byłyby błędem. Decyzja przed S5: CRS bez pliku obok arkusza (np. `crs=EPSG:2180` przy odczycie albo `.prj` w `data/nmt/`) i usunięcie tych 15 plików.
+- Wyjścia pipeline'u: kroki 2–9 `done`, 1 i 10 pominięte; `hydro_s3` (70 MB): `stream_network` 4421 (395 przy progu 100000, 4026 przy 10000), `stream_catchments` 4437, `land_cover` 18 305, `soil_hsg` 1, `precipitation_data` 10 368, `depressions` 13 173, `bdot_streams` 4915. NMT pokrywa granicę w 100% (37,2234 km², bez nodata), `land_cover` i `soil_hsg` też w 100%, zlewnie progu 100000 w 99,98%. Są kafle MVT `streams`/`catchments` dla obu progów (33 829 plików), `dem.png`, `dem_tiles/` (850), `streams.png`, `depressions.png`, `bdot_*.geojson`, `soil_hsg.geojson`.
+- Porównanie (tabele w PROGRESS, sesja S3). API zestawu `s3` w `hydro_staging_api_s3` bez portu, zapytania przez `docker exec`; po porównaniu kontener usunięty. Przekroje K1–T3 brane z punktów delineacji `x_delin`/`y_delin` z `cross_sections.gpkg`, hydrogramy 12 h, p = 1%.
+  - Kamiennik (ujście na odcinku 21911/2477 i K1–T3): powierzchnie i CN w `s3` identyczne z produkcją i `copy` (Δ 0,0%, ΔCN 0), IoU granic 1,000 (przy ujściu różnica symetryczna 0 m²). Te same arkusze i kampanie GUGiK oraz ten sam BDOT10k do wypalania dają tę samą sieć. IoU z domeną SFINCS wynosi 0,998 w obu stosach;
+  - wyświetlane ujście 51,015442/15,889836 trafia w zlewnię cząstkową Kaczawy (jak w S2): produkcja i `copy` 134,97 km², `s3` 40,22 km² (IoU 0,298). Obszar `s3` kończy się na arkuszach Kamiennika, więc Kaczawa ma w nim tylko około 3 km² własnej zlewni. To efekt krawędzi obszaru testowego, nie danych magazynu;
+  - PMAXTP: źródło jest to samo, ale siatka 2 km w `s3` jest przesunięta o 815 m względem produkcji (jej początek to narożnik bbox obszaru). IDW w centroidzie daje więc −0,8…+0,8% (102,41–104,23 mm). W S5 obszar, bbox i siatka będą jak w produkcji;
+  - SCS-CN i Nash: `s3` względem `copy` −1,7…+1,6% szczytu, cała różnica z opadu; `copy` = produkcja co do wartości;
+  - Snyder, efekt kodu (Hydrolog 1.0, ADR-060): `copy` względem produkcji +3,5…+9,6% szczytu i 15–45 min wcześniej przy 12 h (mniej w małych zlewniach T2/T3), objętość równa; w `s3` tak samo jak w `copy` (±1,7%). Zakres „+11–12%, 25–70 min” z kryterium dotyczy krótkich opadów (S2: 1 h +11,9–12,2%). To oczekiwana zmiana, nie błąd;
+  - drobna różnica morfometrii przy ujściu: `divide_flow_path_km` 17,59 → 16,04 (w `s3` równa najdłuższej drodze spływu), `length_km` 16,048 → 16,042. Drogi spływu z działu ma około 5% zlewni cząstkowych w obu bazach; tu inaczej wypadła jedna zlewnia czołowa. Na hydrogramy wpływ pomijalny.
+- Kryteria akceptacji:
+  - magazyn kompletny i zweryfikowany, kod 0: tak, z niezgodnością `.prj` opisaną wyżej;
+  - powierzchnie ≤ 2%: tak (0,0%); wyświetlane ujście odstaje przez krawędź obszaru (opisane);
+  - CN ≤ 2: tak (0);
+  - opad PMAXTP równy: źródło tak, wartość ±0,8% przez przesuniętą siatkę;
+  - SCS-CN i Nash ±5% `s3`–`copy`: tak (≤ 1,7%);
+  - Snyder `copy`–produkcja: kierunek zgodny z ADR-060, wielkość przy 12 h +3,5…+9,6% i 15–45 min, czyli poniżej zakresu dla krótkich opadów; opisane;
+  - tabela w PROGRESS, `hydro_staging_api_s3` usunięty: tak;
+  - K0 bez zmian: tak.
+- Smoke w przeglądarce na 8081 z danymi `s3`, 12:54:31–12:57:55. `HYDROGRAF_STAGING_SET=s3 HYDROGRAF_STAGING_DB=hydro_s3 scripts/staging-compose.sh up -d --no-deps api nginx`, potem powrót tym samym poleceniem bez zmiennych (zestaw `copy`):
+  - warstwy: NMT, zbiorniki i cieki BDOT10k, HSG, pokrycie terenu, zagłębienia, linie spływu 1 ha i 10 ha, wynik SFINCS 24 h (opublikowany w `s3` przez równoległą sesję, nie przez bootstrap), MZP (`wody.isok.gov.pl` 200);
+  - (i) otwiera tylko kliknięcie, Esc zamyka; „Próg akumulacji spływu” 1 ha / 10 ha; szyna Mapa · Instrukcja · Logowanie;
+  - Identyfikuj: w czaszy 264,88 m n.p.m., woda 16,55 m i zwierciadło 281,43 m (wynik 24 h), Kamiennik 0,1 m, HSG B, odcinek 37,11 km² (te same wartości co w `copy`); na Kamienniku przy K3 326,10 m i 15,53 km²;
+  - profil przez czaszę: 1,04 km z linią wody; wyznaczenie zlewni w ujściu: 37,23 km², CN 67,9;
+  - 0 błędów JS (raz `ERR_ABORTED` przerwanego kafla MZP przy zmianie widoku); zrzuty w `~/scratch/store-s3/`.
+- Staging w sieci domowej (`0f913a2`): odtworzony tylko `hydro_staging_nginx`; `curl -sI http://192.168.88.9:8081/` daje 200 z CSP. Strona przez adres LAN działa: zasoby z `?v=`, API, kafle, 0 błędów JS. Produkcja z LAN niedostępna.
+- K0: pusty diff i `/health` 200 przed każdą czynnością i po niej (od 12:36 do końca kroku), w tym przed i po bootstrapie, kontenerze `hydro_staging_api_s3`, oknie `s3` na 8081 i zmianie nginx.
+- Do S4 (poza decyzjami z „Otwartych decyzji”):
+  - pliki `.prj` Hydrografa w magazynie Kartografa (wyżej);
+  - „nan” w karcie punktu odtwarza się na danych z bootstrapu: T2 pokazuje „nan (rzeka)”, a w `hydro_s3` 4410 z 4915 wierszy `bdot_streams` ma `name = 'nan'`. Winny jest loader (`core/db_bulk.py`), więc bez poprawki S5 zapisze to samo;
+  - siatka PMAXTP zależy od bbox obszaru; w S5 ten sam bbox co w produkcji;
+  - wynik SFINCS 12 h zastąpiła w obu zestawach stagingu (`copy`, `s3`) publikacja wyniku 24 h z równoległej sesji, więc smoke z S2 z 277,48 m dotyczy teraz 281,43 m.
+- Stan: zielony stos na `127.0.0.1:8081` i `192.168.88.9:8081` z zestawem `copy` (API na bazie `hydro_db`); zestaw `s3` i baza `hydro_s3` gotowe do ponownego użycia; S4 czeka na autora.
