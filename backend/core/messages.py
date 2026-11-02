@@ -275,6 +275,17 @@ MESSAGES: Final[dict[str, Message]] = {
         "The depressions could not be read.",
         "Nie udało się odczytać zagłębień terenu.",
     ),
+    # --- Point identification ---
+    "no_data_at_point": Message(
+        "There is no data at this point: it lies outside the area of Hydrograf's data.",
+        "Brak danych w tym miejscu: punkt leży poza obszarem danych Hydrografu.",
+        "Click inside the area covered by the data.",
+        "Kliknij w obszarze objętym danymi.",
+    ),
+    "identify_failed": Message(
+        "The information about the point could not be read.",
+        "Nie udało się odczytać informacji o punkcie.",
+    ),
 }
 
 

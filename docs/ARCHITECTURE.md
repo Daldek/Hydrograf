@@ -146,6 +146,7 @@ backend/
 │       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
+│       ├── identify.py            # POST /identify-point (core/point_info.py)
 │       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, GET /layers
 │       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes), POST /delineate-watershed/preview
 │
@@ -382,6 +383,13 @@ Response: 200 OK
 ```
 
 `result_ids` (optional, up to 20 ids) are analysis results of the manifest `/data/results/index.json` (§4.2.0). For each result with a `water_level` raster that at least one point of the profile hits, `water_levels` gives the maximum water level [m a.s.l.] at the same points as `elevations_m`; `null` where it is dry, outside the raster or without DEM data. Unknown ids, results without `water_level` and rasters off the line are skipped; without `result_ids` the list is empty. `core/analysis_results.py` reads the manifest and the rasters from `FRONTEND_DATA_DIR` (§4.2.0).
+
+#### 2.2.5a Identify Point
+```
+POST /api/identify-point
+{"latitude": 51.0158, "longitude": 15.9042, "threshold_m2": 100000, "result_ids": ["sfincs-kamiennik-12h-p1"]}
+```
+Everything Hydrograf knows at one point, for the mode „Identyfikuj”: `coordinates` (WGS84; PL-1992 `easting_m`/`northing_m`), `elevation_m` and `slope_percent` (DEM rasters), `water` (per requested result whose `water_level` raster holds the point: `water_level_m`, `depth_m` = level − DEM, `null` where dry or below the terrain), `stream` (nearest `bdot_streams` line within 25 m), `water_body` (BDOT10k `OT_PTWP_A` polygon from `FRONTEND_DATA_DIR/bdot_lakes.geojson`, not in the database), `land_cover` (category, BDOT10k class, CN AMC-II, imperviousness), `soil_hsg`, `depression` and `subcatchment` (`stream_catchments` + `stream_network` at `threshold_m2`, floored to 10000). A member is `null` where its source has nothing; a point off the DEM is outside the data: 404 `no_data`; no DEM: 503 `store_unavailable`.
 
 #### 2.2.6 Depressions (Blue Spots)
 ```
@@ -948,6 +956,7 @@ frontend/
     ├── charts.js             # Chart.js in the token colours: hypsometry, land cover/HSG, hietogram, hydrograph, profile
     ├── layers.js             # „Warstwy” panel: basemaps with the flood hazard map overlay (WMS of Wody Polskie), overlays, opacity, zoom to extent
     ├── profile.js            # Terrain profile (line drawing) with the water surface of the analysis results that are on
+    ├── identify.js           # Mode „Identyfikuj”: marker and point card (POST /api/identify-point)
     ├── hydrograph.js         # Hietogram form (AMC, rainfall source) and hydrograph form, balance, charts
     ├── custom-rain.js        # Own rainfall series: table of steps, paste, CSV import, copy of the hietogram
     ├── info.js               # (i) explanations: markers, shared tooltip, MathML formulas, hover/focus/touch, Esc
