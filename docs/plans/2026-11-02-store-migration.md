@@ -45,7 +45,7 @@ cd "$(dirname "$0")/.."
 exec docker compose -p hydrograf-staging -f docker-compose.yml -f docker-compose.staging.yml --env-file .env.staging "$@"
 ```
 
-`docker-compose.staging.yml`, sprawdzony `docker compose config` 2026-11-02 (Compose v5.3.0). Wynik: jeden port 8081, wszystkie montowania w worktree lub w `HYDROGRAF_STAGING_ROOT`. `ports: !override` jest konieczne, bo Compose dokleja listę portów zamiast ją zastąpić.
+`docker-compose.staging.yml`, sprawdzony `docker compose config` 2026-11-02 (Compose v5.3.0). Wynik: port 8081 na `127.0.0.1` i (od S3, polecenie autora) na adresie LAN `192.168.88.9`, wszystkie montowania w worktree lub w `HYDROGRAF_STAGING_ROOT`. `ports: !override` jest konieczne, bo Compose dokleja listę portów zamiast ją zastąpić.
 ```yaml
 # Staging (green) stack of the store migration: docs/plans/2026-11-02-store-migration.md.
 # Use only through scripts/staging-compose.sh (project hydrograf-staging, this file, .env.staging).
@@ -76,8 +76,11 @@ services:
 
   nginx:
     container_name: hydro_staging_nginx
+    # Localhost (the port S7 moves to 8080) and the home network for testers; production
+    # (hydro_nginx) stays on 127.0.0.1 only.
     ports: !override
       - "127.0.0.1:${HYDROGRAF_STAGING_PORT:-8081}:80"
+      - "192.168.88.9:8081:80"
     volumes:
       - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-data:/usr/share/nginx/html/data:ro
       - ${HYDROGRAF_STAGING_ROOT:?}/${HYDROGRAF_STAGING_SET:-copy}/frontend-tiles:/usr/share/nginx/html/tiles:ro
@@ -100,7 +103,7 @@ networks:
 | Obraz API | `hydrograf-api:latest` (+ tag rollbacku `vi-0.7.0` w S7) | `hydrograf-api:store-staging` |
 | Wolumen bazy | `hydrograf_postgres_data` | `hydrograf_staging_postgres_data` |
 | Sieć | `hydrograf_default` | `hydrograf_staging_default` |
-| Port | `127.0.0.1:8080` | `127.0.0.1:8081` (8080 dopiero w S7) |
+| Port | `127.0.0.1:8080` (tylko localhost) | `127.0.0.1:8081` (8080 dopiero w S7) i `192.168.88.9:8081` (sieć domowa) |
 | Magazyn i cache | `./cache` (układ 0.7.0) | `${HYDROGRAF_STAGING_ROOT}/cache` (`kartograf/` + `kartograf_meta.db`) |
 | Dane | `./data`, `./frontend/{data,tiles}` | `${HYDROGRAF_STAGING_ROOT}/<zestaw>/{data,frontend-data,frontend-tiles}` |
 
@@ -111,6 +114,7 @@ networks:
   - `s3` / `hydro_s3`: zlewnia Kamiennika (S3);
   - `s5` / `hydro_s5`: obszar produkcji z magazynu (S5).
 - Wszystkie trzy bazy leżą w jednym serwerze `hydro_staging_db`.
+- **Staging w sieci domowej** (2026-11-02, polecenie autora w trakcie S3): zielony nginx słucha także na `192.168.88.9:8081`, więc testerzy w LAN widzą nową wersję pod `http://192.168.88.9:8081/`. Produkcja (`hydro_nginx`) nadal tylko na `127.0.0.1:8080`, z LAN niedostępna. Zmiana dotknęła wyłącznie `hydro_staging_nginx` (`scripts/staging-compose.sh up -d --no-deps --force-recreate nginx`), K0 przed i po bez zmian. Wiązanie LAN ma stały port 8081, a S7 (`HYDROGRAF_STAGING_PORT=8080`) przenosi tylko wiązanie localhost; czy po przełączeniu zielony stos zostaje w LAN, rozstrzyga autor w S6.
 - **`.env.staging`** (dopisać do `.gitignore` w S2, bo zawiera sekrety):
   - nowe `POSTGRES_PASSWORD` i `ADMIN_API_KEY`, inne niż produkcyjne;
   - `POSTGRES_DB=hydro_db`, `POSTGRES_USER=hydro_user`;
