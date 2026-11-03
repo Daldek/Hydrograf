@@ -24,5 +24,5 @@ injection or missing validation in the endpoints, requests that exhaust the serv
 (unbounded delineation areas, tiles, uploads), the handling of uploaded files (sewer
 network data), secrets or internal paths in responses and logs, the container, nginx and
 Compose configuration, or the supply chain of the application are in scope. The producers
-(Hydrolog, Kartograf, IMGWTools) and the third-party libraries have their own policies;
+(Hydrolog, Kartograf, Obserwator) and the third-party libraries have their own policies;
 report their defects to them.

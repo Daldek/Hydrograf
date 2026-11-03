@@ -1,9 +1,9 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-11-02 (Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-03 (IMGWTools is named Obserwator from its v3.0.0; Hydrograf keeps the pin `71bae77` and the package `imgwtools` until after v0.5.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
-**Projects:** Hydrograf, Hydrolog, Kartograf, IMGWTools
+**Projects:** Hydrograf, Hydrolog, Kartograf, Obserwator (IMGWTools until its v3.0.0)
 
 ---
 
@@ -18,7 +18,7 @@
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
-│  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │              │
+│  │  Obserwator   │   │   Kartograf   │   │   Hydrolog    │              │
 │  │  71bae77      │   │   eab8612     │   │   1708a09     │              │
 │  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
 │  └───────────────┘   └───────────────┘   └───────────────┘              │
@@ -30,7 +30,7 @@
 
 | Project | Depends on | Type of dependency | Version |
 |---------|-----------|--------------------|---------|
-| **Hydrograf** | IMGWTools | direct (pyproject.toml) | commit 71bae77 (3.0.0) |
+| **Hydrograf** | Obserwator (package `imgwtools`) | direct (pyproject.toml) | commit 71bae77 (3.0.0, before the rename) |
 | **Hydrograf** | Kartograf | direct (pyproject.toml) | commit eab8612 (0.8.0.dev0) |
 | **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 1708a09 (1.0.0.dev0, `fix/snyder-recession`) |
 | **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
@@ -39,7 +39,7 @@
 
 ### Installing the dependencies (`backend/pyproject.toml`, versions in `backend/uv.lock`)
 
-The three producers are pinned by the commit of their head until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag:
+The three producers are pinned by the commit of their head until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag. Obserwator is still pinned as `imgwtools` at the IMGWTools commit `71bae77`; the move to `obserwator` comes after v0.5.0 ([PROGRESS.md](PROGRESS.md)):
 
 ```toml
 # [tool.uv.sources]
@@ -61,7 +61,7 @@ hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1708a092d1cd
 
 **Note:** IMGWTools uses `master/slave` instead of `main/develop`.
 
-**Pinned branches:** the pins point at topic branches, not at the working branches: Kartograf `feature/archiwista-projects` (the commit Archiwista pins), IMGWTools `feature/data-output`, Hydrolog `feature/routing-schematic`. All three commits are on GitHub (ADR-060).
+**Pinned branches:** the pins point at topic branches, not at the working branches: Kartograf `feature/archiwista-projects` (the commit Archiwista pins), Obserwator `feature/data-output` (then IMGWTools), Hydrolog `feature/routing-schematic`. All three commits are on GitHub (ADR-060).
 
 ---
 
@@ -95,9 +95,11 @@ hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1708a092d1cd
 
 The WFS PRG discovery of the counties (ADR-045) and its fallback on a private method of Kartograf (ADR-057, exception a) are gone: `download_landcover(bbox=)` finds the counties of an area itself (ADR-061). `LandCoverManager` and `HSGCalculator` are no longer public in Kartograf 0.8.0. Details: [integrations/KARTOGRAF.md](integrations/KARTOGRAF.md) §5.
 
-### 3.3 IMGWTools: imports in Hydrograf
+### 3.3 Obserwator: imports in Hydrograf
 
-| Hydrograf module | Imports from IMGWTools | Use |
+Hydrograf imports the package `imgwtools` (IMGWTools at `71bae77`, before the rename) until after v0.5.0; then `obserwator`.
+
+| Hydrograf module | Imports from `imgwtools` | Use |
 |------------------|------------------------|-----|
 | `scripts/preprocess_precipitation.py` | `fetch_pmaxtp` | Downloading PMAXTP from IMGW (432 scenarios) |
 | `scripts/analyze_watershed.py` | `fetch_pmaxtp` | Downloading the precipitation for the CLI script |
@@ -299,7 +301,7 @@ qp = 0.208 * self.area_km2 / tp_hours
 |------|-------------|--------|
 | `docs/integrations/HYDROLOG.md` | The exchange format, endpoints, modules | ✅ Current |
 | `docs/integrations/KARTOGRAF.md` | The Kartograf store, NMT, BDOT10k, HSG, building raising, MVT (version 7.0, ADR-061) | ✅ Current |
-| `docs/integrations/IMGWTOOLS.md` | PMAXTP, `fetch_pmaxtp`, the errors | ✅ Current |
+| `docs/integrations/OBSERWATOR.md` | PMAXTP, `fetch_pmaxtp`, the errors | ✅ Current |
 | `docs/CROSS_PROJECT_ANALYSIS.md` | Dependencies, standards, metrics | ✅ Current |
 
 ---

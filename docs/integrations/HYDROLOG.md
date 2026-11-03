@@ -23,7 +23,7 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
 │  - Obliczanie parametrów geometrycznych z boundary/cells        │
 │  - Obliczanie statystyk wysokości z DEM (zonal_stats)           │
 │  - Obliczanie CN z pokrycia terenu (cn_calculator + cn_tables)  │
-│  - Interpolacja opadów (IDW/Thiessen, IMGWTools PMAXTP)         │
+│  - Interpolacja opadów (IDW/Thiessen, Obserwator PMAXTP)        │
 │  - Śledzenie głównego cieku (trace_main_channel)                │
 │                                                                 │
 │  OUTPUT: JSON zgodny ze schematem WatershedParameters           │

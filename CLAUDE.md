@@ -2,7 +2,7 @@
 
 Hydrograf is a web application for watershed delineation, catchment parameters and design
 hydrographs in Poland: a FastAPI service over PostGIS, a static map front end and an admin
-panel, built on Hydrolog (calculations), Kartograf (spatial data) and IMGWTools
+panel, built on Hydrolog (calculations), Kartograf (spatial data) and Obserwator
 (precipitation). Profile `app` (DEV-1.1; `ecosystem.yaml` is authoritative).
 Introduction: [README.md](README.md). The Nogat standard 2.1 is in
 [standards/](https://github.com/Daldek/Nogat/tree/main/standards)
@@ -28,11 +28,14 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
 - The runtime path is SQL over PostGIS plus the in-memory `CatchmentGraph` (ADR-001,
   ADR-021, ADR-022); rasters are processed only by the preprocessing pipeline in
   `backend/scripts/`. PostGIS is required.
-- Hydrolog, Kartograf and IMGWTools are dependencies used through their public API, pinned
+- Hydrolog, Kartograf and Obserwator are dependencies used through their public API, pinned
   in `backend/pyproject.toml` by the commit of their head while their tags do not exist
   (REL-5.3, ADR-060, ADR-061), each with the supported range of REL-5.6 in `dependencies`
   and the commit in `[tool.uv.sources]`; all three commits are on GitHub, so
-  `uv sync --locked` resolves them. Kartograf writes into the store `cache/kartograf/`
+  `uv sync --locked` resolves them. Obserwator was IMGWTools until its v3.0.0: Hydrograf
+  pins its commit `71bae77` (distribution and package `imgwtools`, `from imgwtools import
+  fetch_pmaxtp`, the `IMGW*Error` exceptions) until after v0.5.0, then moves to
+  `obserwator` (docs/PROGRESS.md). Kartograf writes into the store `cache/kartograf/`
   (ADR-061): every script passes `root=` and `cache=` explicitly. A missing function is a
   GitHub issue labelled `request` in the producer's repository (DEV-17.5), not a
   workaround here.
@@ -119,7 +122,7 @@ The full module map is in `docs/ARCHITECTURE.md` (backend §2.1, frontend §4.1)
 | Scope (in and out), product requirements | [docs/SCOPE.md](docs/SCOPE.md), [docs/PRD.md](docs/PRD.md) |
 | Architecture, database schema | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DATA_MODEL.md](docs/DATA_MODEL.md) |
 | Decisions | [docs/DECISIONS.md](docs/DECISIONS.md) (index; ADR-001 to 057), [docs/decisions/](docs/decisions/) (ADR-058 and later) |
-| The producers | [docs/integrations/](docs/integrations/) (KARTOGRAF, HYDROLOG, IMGWTOOLS), [docs/CROSS_PROJECT_ANALYSIS.md](docs/CROSS_PROJECT_ANALYSIS.md) |
+| The producers | [docs/integrations/](docs/integrations/) (KARTOGRAF, HYDROLOG, OBSERWATOR), [docs/CROSS_PROJECT_ANALYSIS.md](docs/CROSS_PROJECT_ANALYSIS.md) |
 | Calculations | [docs/COMPUTATION_PIPELINE.md](docs/COMPUTATION_PIPELINE.md) |
 | Open items | [docs/BACKLOG.md](docs/BACKLOG.md), [docs/TECHNICAL_DEBT.md](docs/TECHNICAL_DEBT.md) |
 | Preprocessing scripts | [backend/scripts/README.md](backend/scripts/README.md) |
@@ -142,9 +145,9 @@ Docker notes above); independent pieces run in parallel.
 Registry entry:
 [ecosystem.yaml](https://github.com/Daldek/Nogat/blob/main/ecosystem.yaml) (Hydrograf).
 Kartograf (NMT download, land cover, HSG), Hydrolog (hydrographs, concentration time) and
-IMGWTools (PMAXTP precipitation) are runtime dependencies used as libraries; Hydraulik is a
-planned compute node. The three producers are pinned to their heads, which follow the
-standard 2.1 (ADR-060, ADR-061).
+Obserwator (PMAXTP precipitation; IMGWTools until its v3.0.0) are runtime dependencies used
+as libraries; Hydraulik is a planned compute node. The three producers are pinned to their
+heads, which follow the standard 2.1 (ADR-060, ADR-061).
 
 ## Deviations
 
@@ -162,7 +165,7 @@ standard 2.1 (ADR-060, ADR-061).
 - DEV-7.3: `migrations/` is excluded from mypy. Packages without type information
   (`affine`, `fiona`, `geopandas`, `pandas`, `psutil`, `pyflwdir`, `rasterio`, `scipy`,
   `shapely`, `yaml`) are per-module `ignore_missing_imports` overrides; Hydrolog,
-  Kartograf and IMGWTools ship `py.typed` at the pinned heads, so their calls are checked.
+  Kartograf and Obserwator ship `py.typed` at the pinned heads, so their calls are checked.
   `tests.*` allows untyped definitions and calls and
   does not check the bodies of untyped functions (about 1,260 tests); `scripts.*` allows
   untyped definitions and calls (46 findings) and its annotated code is checked. To lift an

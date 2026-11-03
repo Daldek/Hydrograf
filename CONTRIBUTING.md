@@ -28,7 +28,7 @@ it, and [`docs/PROGRESS.md`](docs/PROGRESS.md) the current state and the next st
   `docs/plans/YYYY-MM-DD-slug.md` (goal, options, decision, steps) that the maintainer
   approves; a decision with alternatives is recorded as an ADR in
   [`docs/DECISIONS.md`](docs/DECISIONS.md).
-- **Producers.** Hydrograf uses Hydrolog, Kartograf and IMGWTools through their public
+- **Producers.** Hydrograf uses Hydrolog, Kartograf and Obserwator through their public
   APIs. If a producer lacks a function, open an issue labelled `request` in its repository
   instead of working around it here.
 - **Language.** Code, identifiers, docstrings, comments, logs, tests, documentation,
@@ -81,6 +81,6 @@ Please also tick the CLA box in the pull request template.
 Found a bug or have a feature idea? Open an issue at
 <https://github.com/Daldek/Hydrograf/issues> with as much detail as you can (steps to
 reproduce, expected and actual behaviour, the versions of Hydrograf, Hydrolog, Kartograf
-and IMGWTools).
+and Obserwator, which Hydrograf still installs as `imgwtools`).
 
 Security problems are not reported as public issues: see [`SECURITY.md`](SECURITY.md).
