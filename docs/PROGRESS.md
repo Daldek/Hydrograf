@@ -12,7 +12,7 @@
 - **Otwarte w produkcji:** baza produkcji ma nadal 3436 z 3812 wierszy `bdot_streams` z nazwą `'nan'` (`SELECT`, 2026-11-02 ok. 22:40), więc karta „Identyfikuj” pokazuje przy ciekach bez nazwy „nan (…)” zamiast „bez nazwy (…)” (jak na stagingu w S2). Poprawka loadera (`2da5b2a`) działa tylko przy nowym imporcie; dla tej bazy CHANGELOG podaje `UPDATE bdot_streams SET name = NULL WHERE btrim(name) IN ('', 'nan');` — zapis do produkcji na decyzję autora.
 
 ### Decyzje
-- **ZAMROŻENIE (autor, 2026-11-02):** od teraz do scalenia `develop` → `main` i tagu `v0.5.0` (stawia autor) praca nad Hydrografem jest zamrożona: wyłącznie krytyczne poprawki łamiące API albo rażące błędy.
+- **ZAMROŻENIE (autor, 2026-11-02):** od teraz do scalenia `develop` → `main` i tagu `v0.5.0` (stawia autor) praca nad Hydrografem jest zamrożona: wyłącznie krytyczne poprawki łamiące API albo rażące błędy. Decyzją autora z 2026-11-03 zamrożenie dopuszcza też zmianę samej dokumentacji: IMGWTools nazywa się Obserwator (od swojej v3.0.0; plan Nogata `docs/plans/2026-11-03-imgwtools-to-obserwator.md`, krok 4). Kod, konfiguracja, `pyproject.toml`, `uv.lock`, Docker i pliki env bez zmian.
 - **Numer wydania (autor, 2026-11-03):** następne wydanie Hydrografa to **v0.5.0** (ostatnie: v0.4.0 na `main`; `develop` ma `0.5.0.dev0` od `a115135`). Commity z 2026-11-02 (`7109d36`, `8f3216e`) błędnie podały 0.8.0 / 0.8.0.dev0 (to wersja Kartografa); poprawione 2026-11-03.
 - Produkcja przełączona w miejscu na `develop` zamiast przełączenia nginx blue/green (S7 planu `docs/plans/2026-11-02-store-migration.md`); S5 po v0.5.0.
 - **Wyjątek od zamrożenia (2026-11-03):** CI na GitHubie (`pip-audit`) zgłosiło PYSEC-2026-4320 w `certifi` 2026.7.22; `backend/uv.lock` podniesiony do 2026.10.23 (`a6fe779`), bramka i `pip-audit` zielone, obraz produkcji przebudowany (`/health` 200, `certifi` 2026.10.23 w kontenerze, przerwa ok. 10 s). Archiwista miał tę samą wersję: `34e83f4`, instancja :8090 zaktualizowana.
@@ -20,9 +20,10 @@
 ### Następne kroki (wydanie v0.5.0)
 1. Kolejna runda testów i code review.
 2. Commit wydania: wersja 0.5.0, sekcja `[0.5.0]` w CHANGELOG (z `[Unreleased]`).
-3. Piny producentów po tagach: Kartograf, IMGWTools, Hydrolog (REL-5.3, ADR-060, ADR-061).
+3. Piny producentów po tagach: Kartograf, Hydrolog (REL-5.3, ADR-060, ADR-061). Obserwator zostaje do wydania na commicie IMGWTools `71bae77` (pakiet `imgwtools`), bo jego v3.0.0 zmienia nazwę pakietu: krok 6.
 4. Merge `develop` → `main`; tag `v0.5.0` stawia autor.
 5. Po wydaniu: S5 (bootstrap z zestawu Archiwisty), dane Dockera z `/` na `/data` ([BACKLOG.md](BACKLOG.md)).
+6. Po v0.5.0: pin Obserwatora zamiast IMGWTools `71bae77` (dystrybucja `obserwator`, tag, `uv lock`) i zmiana importów: `obserwator.fetch_pmaxtp` zamiast `imgwtools.fetch_pmaxtp`, `ObserwatorConnectionError`, `ObserwatorDataError` i `ObserwatorValidationError` zamiast `IMGW*Error` (`scripts/preprocess_precipitation.py`, `scripts/analyze_watershed.py`, `tests/unit/test_imgw_call_sites.py`, `tests/conftest.py`), komentarze `backend/pyproject.toml` i dokumenty (`docs/integrations/OBSERWATOR.md`, `docs/CROSS_PROJECT_ANALYSIS.md`). Własne ustawienia `IMGW_GRID_SPACING_KM` i `IMGW_RATE_LIMIT_DELAY_S` nazywają dostawcę i zostają.
 
 ## Status projektu
 
@@ -35,7 +36,7 @@
 | Preprocessing NMT | ✅ Gotowy | pyflwdir (~12 min/8 arkuszy po eliminacji flow_network), stream burning BDOT10k. Limit pamięci: szczyt ~103 B/komórkę rastra, czyli ~160M komórek przy 8G + 8G swap (~80M bez swapu); plan F1–F7 w `docs/TECHNICAL_DEBT.md` |
 | Integracja Hydrolog | ✅ Gotowy | Na produkcji od 2026-11-02 (`develop` `a247bf3`; wcześniej v0.6.3): pin `1708a09` (1.0.0.dev0, `fix/snyder-recession`, ADR-060; było `2a5ba1a`; od 2026-11-02 hydrogram jednostkowy Snydera biegnie do końca recesji, szczyt = qpR, B3); Snyder daje inny hydrogram (korekta czasu trwania, ta sama objętość): przy opadzie 1 h szczyt +11–12% i 25–70 min wcześniej, przy 12–24 h +3,5…+9,6% i 15–65 min wcześniej (pomiary S2/S3 planu migracji magazynu) |
 | Integracja Kartograf | ✅ Gotowy | Na produkcji od 2026-11-02 (`develop` `a247bf3`; wcześniej v0.7.0): pin `eab8612` (0.8.0.dev0, gałąź Kartografa `feature/archiwista-projects`, 2026-10-31; ten sam co Archiwista; wybór arkuszy po obiektach `--geometry`); cache surowych pobrań to magazyn Kartografa `cache/kartograf/` (ADR-061), raster HSG jednej analizy to zwykły plik tymczasowy; katalogi układu 0.7.0 nie są czytane. Od S4 planu migracji (2026-11-02) magazyn może być wspólny z Archiwistą: `HYDROGRAF_KARTOGRAF_ROOT` (ADR-066); od H1 (ADR-067) magazyn wspólny jest dla Hydrografa tylko do odczytu, a wejście Kartografa bootstrapu pochodzi z zamkniętego zestawu projektu Archiwisty (`--project`, `--set`). Produkcja ma magazyn prywatny; bootstrap Kamiennika z pustego magazynu prywatnego zaliczony (331 s) |
-| Integracja IMGWTools | ✅ Gotowy | Na produkcji od 2026-11-02 (`develop` `a247bf3`; wcześniej v2.1.0): pin `71bae77` (3.0.0, ADR-060) |
+| Integracja Obserwatora | ✅ Gotowy | Na produkcji od 2026-11-02 (`develop` `a247bf3`; wcześniej IMGWTools v2.1.0): pin `71bae77` (IMGWTools 3.0.0 sprzed zmiany nazwy, pakiet `imgwtools`, ADR-060) do czasu po v0.5.0 |
 | Środowisko i jakość kodu | ✅ Gotowy | Od scalenia `feature/producer-heads` (standard Nogata 2.1, ADR-058): uv i `backend/uv.lock` zamiast `requirements.txt`, ruff (DEV-7.2), mypy `strict` (DEV-7.3), `affine>=2.4,<3` (ADR-062) |
 | CN calculation | ✅ Gotowy | cn_tables + cn_calculator + determine_cn() |
 | Kanalizacja deszczowa | ✅ Gotowy | SewerGraph, inlet burning, FA routing (ADR-051). Jawna topologia (ADR-052), walidacja strict, 2-fazowy pipeline. MVT tiles, overlay frontend, admin panel sewer. |
@@ -109,7 +110,7 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
      DOC-7.1). Still Polish, most useful first: DECISIONS (the bodies of ADR-001 to ADR-057,
      kept as records; the index and ADR-058 on are English), DATA_MODEL (nothing in it
      describes the Kartograf layout: a translation only), COMPUTATION_PIPELINE (its sections
-     5.1 and 5.3 are English), `docs/integrations/HYDROLOG.md` and `IMGWTOOLS.md` (their pins
+     5.1 and 5.3 are English), `docs/integrations/HYDROLOG.md` and `IMGWTOOLS.md` (now `OBSERWATOR.md`; their pins
      are English), BENCHMARK_QUERIES, the released versions of the CHANGELOG (0.4.0 and
      older, records); QA_REPORT is English.
      After the documents: docstrings, comments and log messages of the 23,700 lines of

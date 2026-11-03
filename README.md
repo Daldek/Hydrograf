@@ -30,7 +30,7 @@ Hydrograf is a web application for watershed delineation and design hydrographs 
 | Hydraulic modelling: flood inundation maps, channel routing, reservoir retention | [Hydraulik](https://github.com/Daldek/Hydraulik) (SFINCS flood models, in research), or HEC-RAS and EPA SWMM |
 | Areas outside Poland | QGIS with GRASS or WhiteboxTools on your own DEM |
 | Downloading spatial data files or browsing the downloaded stores | [Kartograf](https://github.com/Daldek/Kartograf), [Archiwista](https://github.com/Daldek/Archiwista) |
-| Precipitation series, station data, PMAXTP as files | [IMGWTools](https://github.com/Daldek/IMGWTools) |
+| Precipitation series, station data, PMAXTP as files | [Obserwator](https://github.com/Daldek/IMGWTools) |
 | User accounts, saved analyses, PDF reports, real-time or forecast data | not provided |
 
 ## Run and Deploy
@@ -141,8 +141,8 @@ does not keep the entries for a set number of days.
 A change of the logging options needs the containers to be recreated
 (`docker compose up -d db api nginx`); a restart does not update the log driver. The logs
 can hold IP addresses, paths and query parameters: do not share them with testers. The
-separate `imgwtools-api` container is not part of this Compose project and is not covered
-by this rotation.
+separate `imgwtools-api` container (the REST server of IMGWTools 2.1, now Obserwator) is not
+part of this Compose project and is not covered by this rotation.
 
 ## Capabilities
 
@@ -167,7 +167,9 @@ vanilla JS with Leaflet, MapLibre GL and Chart.js in the Nogat visual identity
 (`frontend/css/tokens.css`); Bootstrap 5 is used only in `/admin`. Hydrograf uses
 [Hydrolog](https://github.com/Daldek/Hydrolog) for the
 calculations, [Kartograf](https://github.com/Daldek/Kartograf) for the spatial data and
-[IMGWTools](https://github.com/Daldek/IMGWTools) for the precipitation.
+[Obserwator](https://github.com/Daldek/IMGWTools) for the precipitation (IMGWTools until its
+v3.0.0; until after v0.5.0 Hydrograf pins its commit `71bae77` and imports the package
+`imgwtools`).
 
 ## For AI agents
 
@@ -184,7 +186,7 @@ Developing this repository? Read
   concentration, hietograms, unit hydrographs), used as a library.
 - [Kartograf](https://github.com/Daldek/Kartograf): downloads the DEM, land cover and soil
   data that the preprocessing needs.
-- [IMGWTools](https://github.com/Daldek/IMGWTools): the PMAXTP precipitation of IMGW-PIB.
+- [Obserwator](https://github.com/Daldek/IMGWTools): the PMAXTP precipitation of IMGW-PIB.
 - [Hydraulik](https://github.com/Daldek/Hydraulik): planned as a compute node for the
   hydraulic models of a catchment.
 - [Archiwista](https://github.com/Daldek/Archiwista): browser of the Kartograf data stores.
@@ -224,7 +226,7 @@ and with 2 when the command line is invalid.
 | Wody Polskie (KZGW, ISOK) | flood hazard map (MZP, 2020 update): water depth of river floods, as a WMS overlay | CC BY 4.0, „MZP © Wody Polskie / ISOK (CC BY 4.0)” on the map |
 | OpenStreetMap and others | background maps in the interface | the attribution shown on the map |
 
-The data are downloaded by Kartograf and IMGWTools, whose documentation has the details and
+The data are downloaded by Kartograf and Obserwator, whose documentation has the details and
 the attribution texts. Downloaded and derived data are written to `data/` and `cache/`
 (outside Git) and to the database; pass on the attribution when you publish results.
 
@@ -239,7 +241,7 @@ the attribution texts. Downloaded and derived data are written to `data/` and `c
 - Integrations:
   [Kartograf](https://github.com/Daldek/Hydrograf/blob/main/docs/integrations/KARTOGRAF.md),
   [Hydrolog](https://github.com/Daldek/Hydrograf/blob/main/docs/integrations/HYDROLOG.md),
-  [IMGWTools](https://github.com/Daldek/Hydrograf/blob/main/docs/integrations/IMGWTOOLS.md)
+  [Obserwator](https://github.com/Daldek/Hydrograf/blob/main/docs/integrations/OBSERWATOR.md)
 - [Current state and next steps](https://github.com/Daldek/Hydrograf/blob/main/docs/PROGRESS.md)
   and [backlog](https://github.com/Daldek/Hydrograf/blob/main/docs/BACKLOG.md)
 - For users: the guide at `/instrukcja/` of a running instance (`frontend/instrukcja/`) and

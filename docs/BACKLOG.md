@@ -53,8 +53,8 @@ Vision (brainstorm 2026-07-31, full reasons: `notes/plans/2026-07-31-wlasne-dane
 - [ ] Uploading an own streams layer (moved out of the entry about the YAML file). Why: BDOT10k is sometimes incomplete; an uploaded layer becomes the basis of the river network parameters (cf. the morphometry entry).
 - [ ] Uploading own soil data. Why: projects have soil surveys more accurate than the HSG (cf. the HSG entry).
 - [ ] Uploading own land use. Why: the design state (e.g. planned development) instead of the current state from public data.
-- [ ] IMGW river gauges (through IMGWTools): a layer of the locations + readings (levels/flows); in the end a verification of the computed flows with observations. Why: validation of the model in watersheds closed by a gauge.
-- [ ] PMAXTP (through IMGWTools): downloading the maximum precipitation of a given probability for a chosen point. Why: the design precipitation for the design hyetograph/hydrograph.
+- [ ] IMGW river gauges (through Obserwator): a layer of the locations + readings (levels/flows); in the end a verification of the computed flows with observations. Why: validation of the model in watersheds closed by a gauge.
+- [ ] PMAXTP (through Obserwator): downloading the maximum precipitation of a given probability for a chosen point. Why: the design precipitation for the design hyetograph/hydrograph.
 - [ ] Export of the data of a selected area from the GUI (DEM, flow lines, depressions, results of the analyses — GeoTIFF/GeoJSON/GPKG). Why: the results must reach further design tools (QGIS, sewer models). Note: this means a file export, NOT running the pipeline from the GUI (clarified in the brainstorm).
 - [ ] Attaching own WMS services as a base layer (client-side handling). Why: users have sector WMS services (sewer, local spatial plans); client-side = zero load on the backend.
 - [ ] Hints and explanations of the parameters and indices in "Parametry zlewni" (watershed parameters): tooltips/an "i" icon at the items. Why: a lower entry threshold — interpreting the results without expert knowledge.
