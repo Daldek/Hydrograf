@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-11-03 (IMGWTools is named Obserwator from its v3.0.0; Hydrograf keeps the pin `71bae77` and the package `imgwtools` until after v0.5.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-03 (the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `38855a1`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
 **Projects:** Hydrograf, Hydrolog, Kartograf, Obserwator (IMGWTools until its v3.0.0)
 
@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
 │  │  Obserwator   │   │   Kartograf   │   │   Hydrolog    │              │
-│  │  71bae77      │   │   eab8612     │   │   1708a09     │              │
+│  │  ea158dc      │   │   9deaa31     │   │   38855a1     │              │
 │  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
 │  └───────────────┘   └───────────────┘   └───────────────┘              │
 │                                                                         │
@@ -30,22 +30,22 @@
 
 | Project | Depends on | Type of dependency | Version |
 |---------|-----------|--------------------|---------|
-| **Hydrograf** | Obserwator (package `imgwtools`) | direct (pyproject.toml) | commit 71bae77 (3.0.0, before the rename) |
-| **Hydrograf** | Kartograf | direct (pyproject.toml) | commit eab8612 (0.8.0.dev0) |
-| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 1708a09 (1.0.0.dev0, `fix/snyder-recession`) |
+| **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit ea158dc (3.0.0) |
+| **Hydrograf** | Kartograf | direct (pyproject.toml) | commit 9deaa31 (0.8.0.dev0) |
+| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 38855a1 (1.0.0.dev0) |
 | **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
 
 **Note:** Hydrolog no longer depends on IMGWTools (removed in v0.5.2).
 
 ### Installing the dependencies (`backend/pyproject.toml`, versions in `backend/uv.lock`)
 
-The three producers are pinned by the commit of their head until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag. Obserwator is still pinned as `imgwtools` at the IMGWTools commit `71bae77`; the move to `obserwator` comes after v0.5.0 ([PROGRESS.md](PROGRESS.md)):
+The three producers are pinned by the commits of the release set of Nogat (candidate-1: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag. The repository of Obserwator is still `IMGWTools`:
 
 ```toml
 # [tool.uv.sources]
-imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "71bae778a6573019a0b8da6498b4429f0e03ddfb" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "eab8612d5666cafa43d1e2c4f0a034583310b66e" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1708a092d1cd8c49f3b437818b2a868bf8a7264d" }
+obserwator = { git = "https://github.com/Daldek/IMGWTools.git", rev = "ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "9deaa314c88f89ea2d9308481e0c0b04751fc792" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "38855a1bf73baaab1879beece6536197e36deb96" }
 ```
 
 ---
@@ -97,9 +97,9 @@ The WFS PRG discovery of the counties (ADR-045) and its fallback on a private me
 
 ### 3.3 Obserwator: imports in Hydrograf
 
-Hydrograf imports the package `imgwtools` (IMGWTools at `71bae77`, before the rename) until after v0.5.0; then `obserwator`.
+Hydrograf imports the package `obserwator` (`IMGWTools` before its v3.0.0).
 
-| Hydrograf module | Imports from `imgwtools` | Use |
+| Hydrograf module | Imports from `obserwator` | Use |
 |------------------|------------------------|-----|
 | `scripts/preprocess_precipitation.py` | `fetch_pmaxtp` | Downloading PMAXTP from IMGW (432 scenarios) |
 | `scripts/analyze_watershed.py` | `fetch_pmaxtp` | Downloading the precipitation for the CLI script |
