@@ -2,23 +2,24 @@
 
 ## Stan bieżący (2026-11-02, po 22:20)
 
-- **Produkcja = `develop` `532be07` (v0.8.0.dev0)** na `127.0.0.1:8080`, z zewnątrz przez tunel Cloudflare `hydrograf-test.debever.pl`. Zaktualizowana **w miejscu** ok. 22:15–22:20: checkout `~/workspace/Hydrograf` z `1a3e3be` (`feature/visual-identity`) na `develop`, obraz `hydrograf-api:latest` przebudowany (piny Kartograf `26ee459`, Hydrolog `4f02ffd`, IMGWTools `6bd35a4`), `hydro_api` odtworzony; przerwa ok. 21 s. Bez migracji bazy (alembic `003` = head). `.env`: `HYDROGRAF_PUBLIC_HOST=hydrograf-test.debever.pl`, magazyn Kartografa prywatny (`cache/kartograf`, bez `HYDROGRAF_KARTOGRAF_ROOT`). Wynik SFINCS `sfincs-kamiennik-24h-p1` (24 h, p = 1%, zwierciadło do 281,43 m n.p.m.) zastąpił wynik 12 h.
-- **Kopia i rollback:** `/data/nmt/hydrograf-backup-2026-11-02/`: `ROLLBACK.txt` (procedura), `hydro_db.dump` z sumą SHA-256, `env`, `frontend-data-results` (wynik 12 h), `git-head.txt` (`1a3e3be`), K0 przed i po (`prod-baseline.txt`, `prod-baseline-080.txt`), `health-loop.log`, smoke. Rollback: `git checkout --detach 1a3e3be`, `docker tag hydrograf-api:vi-0.7.0 hydrograf-api:latest` (obraz z 2026-10-18), `.env` i `frontend/data/results` z kopii, `docker compose up -d --no-build --force-recreate api`; baza bez zmian schematu, jej odtworzenie tylko w razie potrzeby.
+- **Produkcja = `develop` `532be07` (0.5.0.dev0, wcześniej błędnie v0.8.0.dev0)** na `127.0.0.1:8080`, z zewnątrz przez tunel Cloudflare `hydrograf-test.debever.pl`. Zaktualizowana **w miejscu** ok. 22:15–22:20: checkout `~/workspace/Hydrograf` z `1a3e3be` (`feature/visual-identity`) na `develop`, obraz `hydrograf-api:latest` przebudowany (piny Kartograf `26ee459`, Hydrolog `4f02ffd`, IMGWTools `6bd35a4`), `hydro_api` odtworzony; przerwa ok. 21 s. Bez migracji bazy (alembic `003` = head). `.env`: `HYDROGRAF_PUBLIC_HOST=hydrograf-test.debever.pl`, magazyn Kartografa prywatny (`cache/kartograf`, bez `HYDROGRAF_KARTOGRAF_ROOT`). Wynik SFINCS `sfincs-kamiennik-24h-p1` (24 h, p = 1%, zwierciadło do 281,43 m n.p.m.) zastąpił wynik 12 h.
+- **Kopia i rollback:** `/data/nmt/hydrograf-backup-2026-11-02/`: `ROLLBACK.txt` (procedura), `hydro_db.dump` z sumą SHA-256, `env`, `frontend-data-results` (wynik 12 h), `git-head.txt` (`1a3e3be`), K0 przed i po (`prod-baseline.txt`, `prod-baseline-080.txt`), `health-loop.log`, smoke. Rollback: `git checkout --detach 1a3e3be`, `docker tag hydrograf-api:pre-0.5.0 hydrograf-api:latest` (obraz z 2026-10-18; do 2026-11-03 tag `vi-0.7.0`), `.env` i `frontend/data/results` z kopii, `docker compose up -d --no-build --force-recreate api`; baza bez zmian schematu, jej odtworzenie tylko w razie potrzeby.
 - **Sprawdzenie:** smoke po przełączeniu na 8080 i przez host publiczny z tymi samymi wynikami (`/health` 200, delineacja 15,15 km² i 37,22 km² przy przekroju Kamiennika, punkt poza granicą 404 `application/problem+json`, „Identyfikuj” w czaszy 281,43 m / 16,28 m wody, `water_levels` profilu z wynikiem 24 h, admin bez klucza 401, zasoby z `?v=`). Testy przeglądarkowe GPT: staging 7/8, produkcja 8/8 PASS.
 - **Staging zakończony:** stos `hydrograf-staging` (port 8081) usunięty; narzędzia `docker-compose.staging.yml` i `scripts/staging-compose.sh` zostają w repo na kolejne wydania.
 - **Git:** gałęzie scalone do `develop` i usunięte; lokalnie tylko `develop` i `main`, jeden worktree (produkcja).
-- **Bootstrap:** test Kamiennika z pustego magazynu prywatnego zaliczony (331 s). Pełny bootstrap obszaru z zestawu Archiwisty (S5 planu migracji) odłożony na po v0.8.0.
+- **Bootstrap:** test Kamiennika z pustego magazynu prywatnego zaliczony (331 s). Pełny bootstrap obszaru z zestawu Archiwisty (S5 planu migracji) odłożony na po v0.5.0.
 - **Otwarte w produkcji:** baza produkcji ma nadal 3436 z 3812 wierszy `bdot_streams` z nazwą `'nan'` (`SELECT`, 2026-11-02 ok. 22:40), więc karta „Identyfikuj” pokazuje przy ciekach bez nazwy „nan (…)” zamiast „bez nazwy (…)” (jak na stagingu w S2). Poprawka loadera (`059f44a`) działa tylko przy nowym imporcie; dla tej bazy CHANGELOG podaje `UPDATE bdot_streams SET name = NULL WHERE btrim(name) IN ('', 'nan');` — zapis do produkcji na decyzję autora.
 
 ### Decyzje
-- **ZAMROŻENIE (autor, 2026-11-02):** od teraz do scalenia `develop` → `main` i tagu `v0.8.0` (stawia autor) praca nad Hydrografem jest zamrożona: wyłącznie krytyczne poprawki łamiące API albo rażące błędy.
-- Produkcja przełączona w miejscu na `develop` zamiast przełączenia nginx blue/green (S7 planu `docs/plans/2026-11-02-store-migration.md`); S5 po v0.8.0.
+- **ZAMROŻENIE (autor, 2026-11-02):** od teraz do scalenia `develop` → `main` i tagu `v0.5.0` (stawia autor) praca nad Hydrografem jest zamrożona: wyłącznie krytyczne poprawki łamiące API albo rażące błędy.
+- **Numer wydania (autor, 2026-11-03):** następne wydanie Hydrografa to **v0.5.0** (ostatnie: v0.4.0 na `main`; `develop` ma `0.5.0.dev0` od `3ca62f2`). Commity z 2026-11-02 (`c616b6a`, `3dc9ccc`) błędnie podały 0.8.0 / 0.8.0.dev0 (to wersja Kartografa); poprawione 2026-11-03.
+- Produkcja przełączona w miejscu na `develop` zamiast przełączenia nginx blue/green (S7 planu `docs/plans/2026-11-02-store-migration.md`); S5 po v0.5.0.
 
-### Następne kroki (wydanie v0.8.0)
+### Następne kroki (wydanie v0.5.0)
 1. Kolejna runda testów i code review.
-2. Commit wydania: wersja 0.8.0, sekcja `[0.8.0]` w CHANGELOG (z `[Unreleased]`).
+2. Commit wydania: wersja 0.5.0, sekcja `[0.5.0]` w CHANGELOG (z `[Unreleased]`).
 3. Piny producentów po tagach: Kartograf, IMGWTools, Hydrolog (REL-5.3, ADR-060, ADR-061).
-4. Merge `develop` → `main`; tag `v0.8.0` stawia autor.
+4. Merge `develop` → `main`; tag `v0.5.0` stawia autor.
 5. Po wydaniu: S5 (bootstrap z zestawu Archiwisty), dane Dockera z `/` na `/data` ([BACKLOG.md](BACKLOG.md)).
 
 ## Status projektu
@@ -393,17 +394,17 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
 - **Snyder:** testerzy nie dostają osobnej informacji (decyzja autora); zmiana opisana tylko w CHANGELOG. Pozycja 2 „Otwartych decyzji” planu migracji rozstrzygnięta.
 - K0 pusty diff i `/health` 200 przed i po sprawdzeniu w przeglądarce.
 
-### Błędy B1, B2, B4, B5 z raportu GPT przed v0.8.0 (2026-11-02 wieczór)
-- **Decyzja autora:** pełny S5 (bootstrap z zestawu dla całej Kaczawy) odłożony na po v0.8.0; v0.8.0 przełącza produkcję w miejscu (zapis w planie migracji, przy S5). Kod `--project/--set` zostaje.
+### Błędy B1, B2, B4, B5 z raportu GPT przed v0.5.0 (2026-11-02 wieczór; wcześniej błędnie v0.8.0)
+- **Decyzja autora:** pełny S5 (bootstrap z zestawu dla całej Kaczawy) odłożony na po v0.5.0; v0.5.0 przełącza produkcję w miejscu (zapis w planie migracji, przy S5). Kod `--project/--set` zostaje.
 - **API** (`2418776`): `errors[].message` po polsku dla `Accept-Language: pl` (tekst typu błędu pydantic z granicami, np. „Wartość nie może być większa niż 0,8.”; angielski bez zmian); `morphometry.area_km2` powyżej `area_limit_km2` (250) daje 422 `catchment_too_large` jak zlewnia wyznaczona; `POST /api/terrain-profile` zwraca `dem_gaps` (addytywnie, `elevations_m` dalej 0,0 w luce). Testy: kontrakt komunikatów, limit powierzchni (250,01 → 422, 250 → 200), luka NMT vs 0 m n.p.m.
 - **Frontend** (`be4d264`): B1 walidacja pól liczbowych przed żądaniem z komunikatem pod polem (też `errors[]` serwera), stary wynik ukryty, bez cichych wartości domyślnych; B2 limit powierzchni w trybie zaawansowanym; B4 pasek trybów w dwóch rzędach na telefonie (375 px: scrollWidth 375), × chowa panel „Zlewnia” bez kasowania, przycisk „Wyczyść wynik”; B5 luka na wykresie profilu, notka z udziałem luki, komunikat dla linii poza NMT.
 - Staging: obraz `hydrograf-api:store-staging` przebudowany z worktree, `hydro_staging_api` odtworzony (teraz z montowaniem `/kartograf:ro`); sprawdzone w Chromium na 8081 (1440 × 900 i 375 × 812), 0 błędów JS, zrzuty `/home/claude-agent/data/tmp/r1-*.png`. K0 pusty diff i `/health` 200 przed i po.
 - Otwarte dla autora: `null` zamiast 0,0 w `elevations_m` (zmiana schematu odpowiedzi, łamiąca); B3 (Snyder) diagnozowany osobno.
 
-### Trasy admina jako zasoby, przed v0.8.0 (2026-11-02)
+### Trasy admina jako zasoby, przed v0.5.0 (2026-11-02; wcześniej błędnie v0.8.0)
 - **API (łamiące, w miejscu, bez starych tras):** `DELETE /api/admin/sewer/delete` → `DELETE /api/admin/sewer`; `POST /api/admin/sewer/config` → `PUT /api/admin/sewer/config` (to samo ciało); `POST /api/admin/feedback/{id}/read` → `PATCH /api/admin/feedback/{id}` z `{"is_read": true|false}` (`FeedbackUpdate`, ścisły `bool`; brak lub inny typ → 400 `validation_error`). CORS dopuszcza `PUT` i `PATCH`. Stare trasy: 404 (`/sewer/delete`, `/feedback/{id}/read`) i 405 (`POST /sewer/config`).
 - **Panel `/admin`:** `admin-api.js` `setFeedbackRead(id, isRead)` zamiast `markFeedbackRead`; w każdym wierszu zgłoszenia przycisk „Oznacz przeczytane” / „Oznacz nieprzeczytane” (zmiana od razu, licznik nieprzeczytanych za nią, cofnięcie przy błędzie); rozwinięcie wiersza nadal oznacza przeczytane; `admin-sewer.js` z `PUT` i `DELETE /api/admin/sewer`. `?v=` przeliczone.
-- Testy: `test_admin_feedback.py` (PATCH na `true` i `false`, 404, trzy błędne ciała, brak starej trasy), `test_admin_uploads.py` na nowych trasach. ARCHITECTURE 2.9 (§2.2.8 z endpointami zgłoszeń), CHANGELOG (jeden wpis łamiący), BACKLOG: pozycja v0.8.x `GET /api/streams`, `/api/catchments`, `/api/catchments/{id}`.
+- Testy: `test_admin_feedback.py` (PATCH na `true` i `false`, 404, trzy błędne ciała, brak starej trasy), `test_admin_uploads.py` na nowych trasach. ARCHITECTURE 2.9 (§2.2.8 z endpointami zgłoszeń), CHANGELOG (jeden wpis łamiący), BACKLOG: pozycja v0.5.x `GET /api/streams`, `/api/catchments`, `/api/catchments/{id}`.
 - Staging: obraz `hydrograf-api:store-staging` przebudowany, `hydro_staging_api` odtworzony; na 8081 w Chromium (1440 × 900): zgłoszenia 13 i 12 przełączone na przeczytane i z powrotem (6 × `PATCH` 200, stan w bazie zgodny z widokiem, na końcu przywrócony: 13 nieprzeczytane, 12 i 11 przeczytane), status kanalizacji „Brak danych”, 0 błędów JS. Stare trasy przez `curl`: 404/405. K0 pusty diff i `/health` 200 przed i po.
 
 ### Poprzednia sesja (2026-11-01/02 — kopia produkcji, przycięcie danych do zlewni Kaczawy, wyniki SFINCS w „Wynikach analiz”, instrukcja i ekran powitalny, nakładka MZP ISOK, cache zasobów za Cloudflare, zwierciadło wody na profilu terenu)
