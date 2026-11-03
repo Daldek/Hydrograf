@@ -233,9 +233,10 @@ Response: 200 OK
 {
   "status": "healthy",
   "database": "connected",
-  "version": "1.0.0"
+  "version": "0.5.0.dev0"
 }
 ```
+`version` is Hydrograf's version, `get_version()` of `core/version.py` (declared in `backend/pyproject.toml` only, REL-1.1); the admin dashboard (`GET /api/admin/dashboard`) reports the same.
 
 #### 2.2.2 Delineate Watershed (ADR-050)
 ```
@@ -1582,6 +1583,8 @@ async def prometheus_middleware(request, call_next):
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 
+from core.version import get_version
+
 router = APIRouter()
 
 @router.get("/health")
@@ -1596,7 +1599,7 @@ async def health_check(db = Depends(get_db)):
     return {
         "status": "healthy" if db_status == "connected" else "unhealthy",
         "database": db_status,
-        "version": "1.0.0"
+        "version": get_version()
     }
 ```
 
@@ -1935,11 +1938,12 @@ jobs:
 
 ---
 
-**Document version:** 2.9
-**Date of the last update:** 2026-11-02
+**Document version:** 2.10
+**Date of the last update:** 2026-11-03
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.10 (2026-11-03): §2.2.1 and §7.3 — `/health` reports Hydrograf's version from `core/version.py` (it was a constant `1.0.0`), as does the admin dashboard
 - 2.9 (2026-11-02): §2.2.8 — the admin endpoints address resources: `DELETE /api/admin/sewer` (was `DELETE /api/admin/sewer/delete`), `PUT /api/admin/sewer/config` (was `POST`), `PATCH /api/admin/feedback/{id}` with `{"is_read": bool}` (was `POST /api/admin/feedback/{id}/read`); the feedback endpoints are listed; CORS allows `PUT` and `PATCH`
 - 2.8 (2026-11-02): fixes from the testers' feedback (`feature/store-ui`): §4.1 and §4.2 — wheel zoom without the tail of a gesture or late input, (i) explanations open on a click only, the flow accumulation threshold in ha/km², the rail Mapa · Instrukcja · Logowanie on every page, the service status only in `/admin`
 - 2.7 (2026-11-02): merge of `feature/visual-identity` (its version 2.3 of 2026-11-01): GUI in the Nogat visual identity (ADR-065) — §4.1 new structure of `frontend/` (`tokens.css`, `chrome.css`, `app.css`, `shell.js`, `theme-init.js`, `theme-switch.js`, `welcome.js`, `img/hydrograf.svg`, `instrukcja/`; removed `glass.css`, `style.css`, `draggable.js`), §4.2 the Archiwista shell and basemaps (OpenFreeMap through MapLibre GL), charts in tokens, (i) explanations, AMC and your own rainfall series, advanced mode, analysis results (`hydrograf-results/1` with `water_level`), the MZP overlay; §2.2 `POST /api/delineate-watershed/preview`, `amc` and `custom_precipitation`, `GET /api/layers`, `result_ids` and `water_levels` of the terrain profile (`core/analysis_results.py`); §5.1 nginx on the loopback; §5.2 CSP hosts and the front-end asset cache (`?v=`, HTML `no-cache`); §7.1 request correlation and log rotation; ADR-065 in the table

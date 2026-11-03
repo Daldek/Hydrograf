@@ -37,6 +37,7 @@ from core.errors import (
     InvalidRequestError,
     NotFoundError,
 )
+from core.version import get_version
 from scripts.clean import DB_TABLES, execute_clean
 from utils.kartograf_store import refuse_shared_store
 
@@ -99,7 +100,7 @@ class DashboardResponse(BaseModel):
     """Dashboard overview response."""
 
     status: str = Field(description="healthy or unhealthy")
-    version: str = Field(default="1.0.0")
+    version: str = Field(description="Hydrograf version, from backend/pyproject.toml")
     uptime_s: float = Field(description="Seconds since module loaded")
     database: str = Field(description="connected or error message")
     tables: dict[str, int] = Field(description="Row counts per table")
@@ -135,7 +136,7 @@ def dashboard(db: Session = Depends(get_db)) -> DashboardResponse:
 
     return DashboardResponse(
         status=status,
-        version="1.0.0",
+        version=get_version(),
         uptime_s=round(time.time() - _start_time, 1),
         database=db_status,
         tables=tables,

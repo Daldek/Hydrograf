@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from api.dependencies.admin_auth import verify_admin_key
 from api.endpoints.admin import _dir_size_mb, router
 from core.database import get_db
+from core.version import get_version
 
 
 def _noop_auth():
@@ -54,7 +55,7 @@ class TestDashboard:
 
         data = response.json()
         assert data["status"] == "healthy"
-        assert data["version"] == "1.0.0"
+        assert data["version"] == get_version()
         assert data["database"] == "connected"
         assert isinstance(data["uptime_s"], float)
         assert isinstance(data["tables"], dict)
