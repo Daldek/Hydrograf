@@ -13,7 +13,7 @@
 
 ## Context
 
-Kartograf 0.8.0 (head `b73aad3`, untagged) follows the Nogat data output convention (ECO-051,
+Kartograf 0.8.0 (head `e3c0ab3`, untagged) follows the Nogat data output convention (ECO-051,
 DEV §19): every command that writes has two targets, `root` (a versioned store: marker
 `kartograf-store.json`, `versions/`, a hard-linked standard path, a sidecar per file) and
 `output_dir` (plain files named as in the store, no metadata). A call that names neither
@@ -110,19 +110,19 @@ groups does not change by this migration. Option B (the raster as a version per 
 store) stays rejected for the reason given above; area weights would be a change of the CN
 calculation, decided on its own.
 
-**2026-10-25: the pin moved to `45dedf4`.** The Context names the head `b73aad3`. Kartograf
-`45dedf4` adds the public, read-only `kartograf.store_root()` (the default root, the layer that
+**2026-10-25: the pin moved to `c655639`.** The Context names the head `e3c0ab3`. Kartograf
+`c655639` adds the public, read-only `kartograf.store_root()` (the default root, the layer that
 gave it and whether the marker exists). Nothing that Hydrograf calls changed: every script
 passes `root=` and `cache=` explicitly and none relies on the default store, so no call moved.
 
-**2026-10-25: the pin moved to `c31ca04`.** Kartograf `c31ca04` keeps a position whose check
-failed as `check_failed` in a plain-mode plan (`--output-dir --check`), and `ca7d538` before it
+**2026-10-25: the pin moved to `d11f621`.** Kartograf `d11f621` keeps a position whose check
+failed as `check_failed` in a plain-mode plan (`--output-dir --check`), and `813708e` before it
 flushes stray stdout of `kartograf-mcp` to stderr. Hydrograf asks Kartograf for no plan and
 starts no MCP server, so no call moved.
 
-**2026-11-02: the pin moved to `26ee459`.** At the merge into `feature/store-migration`
+**2026-11-02: the pin moved to `eab8612`.** At the merge into `feature/store-migration`
 (docs/plans/2026-11-02-store-migration.md, step S1) the pin follows the commit that Archiwista
-pins, `26ee459` of Kartograf's `feature/archiwista-projects` (0.8.0.dev0). It selects the sheets
+pins, `eab8612` of Kartograf's `feature/archiwista-projects` (0.8.0.dev0). It selects the sheets
 of a geometry file by the features, not by their envelopes (`find_sheets_for_geometry`: a polygon
 takes the sheets it overlaps), removes the projects that Archiwista keeps (Hydrograf uses none),
 and raises every validation error with a catalogue message. The signatures of the functions

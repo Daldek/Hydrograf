@@ -2,11 +2,11 @@
 
 **Zatwierdzono:** 2026-11-02, autor. Wybrany wariant A, wdrożenie blue/green, produkcja zamrożona do jawnego przełączenia (S7).
 
-**Stan (2026-11-02, 22:20):** produkcja zaktualizowana **w miejscu** do `develop` `532be07` (0.5.0.dev0, wcześniej błędnie v0.8.0.dev0), bez przełączenia nginx blue/green; S5 (i S6) odłożone na po v0.5.0, S7 wykonany w miejscu, S8 częściowo (staging usunięty, gałęzie scalone i usunięte). Szczegóły: „Wyniki”, sekcja „S7 w miejscu i S8 częściowo”.
+**Stan (2026-11-02, 22:20):** produkcja zaktualizowana **w miejscu** do `develop` `a247bf3` (0.5.0.dev0, wcześniej błędnie v0.8.0.dev0), bez przełączenia nginx blue/green; S5 (i S6) odłożone na po v0.5.0, S7 wykonany w miejscu, S8 częściowo (staging usunięty, gałęzie scalone i usunięte). Szczegóły: „Wyniki”, sekcja „S7 w miejscu i S8 częściowo”.
 
 **Cel:** Hydrograf działa na kodzie `feature/producer-heads` (magazyn Kartografa wg ADR-061, Nogat 2.1, problem+json, Hydrolog 1.0) połączonym z całą pracą `feature/visual-identity`. Dane pochodzą z bootstrapu do magazynu, przyciętego do zlewni Kaczawy jak 2026-11-01. Przełączenie trwa sekundy i ma gotowy rollback. Do chwili przełączenia produkcja (port 8080) działa bez żadnej zmiany.
 
-**Architektura:** Kod: gałąź `feature/store-migration` od `feature/visual-identity` (HEAD `1a3e3be`), do której scalamy `feature/producer-heads` (`9dfa3a8`). Środowisko: worktree `~/workspace/Hydrograf-store`, w którym działa osobny stos Compose `hydrograf-staging` (zielony): własne kontenery, obraz, wolumen bazy, sieć, port 8081 i katalogi danych na `/data`. Produkcyjny stos `hydrograf` (niebieski) pracuje dalej bez zmian. Przełączenie polega na zatrzymaniu niebieskiego nginx i wystawieniu zielonego nginx na 127.0.0.1:8080, a rollback na operacji odwrotnej.
+**Architektura:** Kod: gałąź `feature/store-migration` od `feature/visual-identity` (HEAD `08d8190`), do której scalamy `feature/producer-heads` (`f9d2118`). Środowisko: worktree `~/workspace/Hydrograf-store`, w którym działa osobny stos Compose `hydrograf-staging` (zielony): własne kontenery, obraz, wolumen bazy, sieć, port 8081 i katalogi danych na `/data`. Produkcyjny stos `hydrograf` (niebieski) pracuje dalej bez zmian. Przełączenie polega na zatrzymaniu niebieskiego nginx i wystawieniu zielonego nginx na 127.0.0.1:8080, a rollback na operacji odwrotnej.
 
 **Podstawa:** analiza kosztów migracji magazynu z 2026-11-02 (stan `feature/producer-heads`, 18 konfliktów, piny, obraz, lokalizacja magazynu, ryzyka, szacunek), ADR-060/061/062 z `feature/producer-heads`, `docs/PROGRESS.md` (sesja 2026-11-01/02: kopia produkcji, przycięcie, wyniki SFINCS, MZP, profil).
 
@@ -190,16 +190,16 @@ Szacunek w sesjach agenta. Ścieżka krytyczna: S1 → S2 → S3 → S4 → S5 �
   - przyczyny 21 porażek z próby to utracone funkcje VI (preview, AMC) i `test_request_logging`;
   - kasować wolno tylko testy funkcji, które PH usunęło (`core/watershed.py`, część `morphometry.py`), z listą w opisie commita.
 - [x] Piny w `backend/pyproject.toml` i `uv lock`:
-  - Kartograf `26ee45924b719b4f357ab02c88cda58aa806843f`, ten sam co Archiwista; zawiera wybór arkuszy po obiektach `--geometry`;
+  - Kartograf `eab8612d5666cafa43d1e2c4f0a034583310b66e`, ten sam co Archiwista; zawiera wybór arkuszy po obiektach `--geometry`;
   - `affine>=2.4,<3` zostaje (ADR-062, pyflwdir 0.5.12);
-  - Hydrolog `5fa22b3` i IMGWTools `6bd35a4` bez zmian, chyba że bramka wymusi IMGWTools `4bf8bb0`.
+  - Hydrolog `2a5ba1a` i IMGWTools `71bae77` bez zmian, chyba że bramka wymusi IMGWTools `8cd6844`.
 - [x] Bramka offline w worktree: `uv sync --locked --all-extras`, potem `bash scripts/gate.sh` (ruff, mypy strict, pytest offline, pokrycie, commity).
 - [x] Commity zgodne z Conventional Commits, autor `Daldek <git@debever.pl>`, bez stopek AI (`check-commits.sh`). Bez push.
 
 **Kryteria akceptacji:**
 - `git diff --name-only --diff-filter=U` jest pusty;
 - `git grep -nE '^(<<<<<<<|>>>>>>>)'` nic nie znajduje;
-- `uv lock --check` przechodzi, a `uv.lock` zawiera kartograf@26ee459, affine 2.x i pyflwdir 0.5.12;
+- `uv lock --check` przechodzi, a `uv.lock` zawiera kartograf@eab8612, affine 2.x i pyflwdir 0.5.12;
 - `scripts/gate.sh` jest zielony: ruff czysty, mypy strict czysty, pokrycie ≥ 85%, liczba testów offline ≥ 1360 plus testy VI, 0 porażek;
 - funkcje VI są w kodzie i w testach: preview zlewni, AMC i własny szereg opadu, request-id, wyniki analiz, `water_levels` profilu, wersjonowanie zasobów;
 - `python3 scripts/bump_asset_versions.py --check` jest zielony;
@@ -239,7 +239,7 @@ Szacunek w sesjach agenta. Ścieżka krytyczna: S1 → S2 → S3 → S4 → S5 �
 
 **Kryteria akceptacji:**
 - `scripts/staging-compose.sh config` pokazuje wyłącznie nazwy z tabeli i port 8081, a żadne źródło montowania nie leży w `~/workspace/Hydrograf/`;
-- w obrazie `hydrograf-api:store-staging` są kartograf 0.8.0.dev0 (26ee459), hydrolog 1.0.0.dev0, imgwtools 3.0.0.dev0, affine 2.4.x i pyflwdir 0.5.12;
+- w obrazie `hydrograf-api:store-staging` są kartograf 0.8.0.dev0 (eab8612), hydrolog 1.0.0.dev0, imgwtools 3.0.0.dev0, affine 2.4.x i pyflwdir 0.5.12;
 - liczby wierszy w 12 tabelach są równe w produkcji i stagingu, `alembic current` = `003`;
 - testy `db` są zielone;
 - smoke API i frontendu bez rozbieżności poza oczekiwanymi (Snyder, format błędów), a różnice zapisane w tabeli w PROGRESS;
@@ -299,7 +299,7 @@ Warunek: K1 spełnione.
 
 ### S5: bootstrap z zestawu, przycięcie, ponowna publikacja wyników (1 sesja) — odłożony na po v0.5.0
 
-**Decyzja autora z 2026-11-02 (wieczór): S5 w pełnym zasięgu, czyli bootstrap z zestawu Archiwisty dla całej Kaczawy, jest odłożony na po wydaniu v0.5.0 (wcześniej błędnie v0.8.0).** Kod `--project/--set` (ADR-067, H1) zostaje. Wydanie v0.5.0 przełącza produkcję w miejscu, bez S5 (wykonane 2026-11-02, S7 niżej). Przed nim: poprawki B1, B2, B4, B5 z raportu GPT (`2418776`, `be4d264`), mały test bootstrapu na Kamienniku (zaliczony: pusty magazyn prywatny, 331 s), porządki w git, merge, potem przełączenie produkcji i koniec stagingu na 8081 (oba zrobione 2026-11-02). Stos stagingu, zestawy `copy` i `s3` oraz katalog `/data/nmt/hydrograf-staging/` są usunięte; S5 zaczyna się od postawienia stagingu od nowa (`scripts/staging-compose.sh`, `docker-compose.staging.yml` zostały w repo).
+**Decyzja autora z 2026-11-02 (wieczór): S5 w pełnym zasięgu, czyli bootstrap z zestawu Archiwisty dla całej Kaczawy, jest odłożony na po wydaniu v0.5.0 (wcześniej błędnie v0.8.0).** Kod `--project/--set` (ADR-067, H1) zostaje. Wydanie v0.5.0 przełącza produkcję w miejscu, bez S5 (wykonane 2026-11-02, S7 niżej). Przed nim: poprawki B1, B2, B4, B5 z raportu GPT (`2418776`, `46f2162`), mały test bootstrapu na Kamienniku (zaliczony: pusty magazyn prywatny, 331 s), porządki w git, merge, potem przełączenie produkcji i koniec stagingu na 8081 (oba zrobione 2026-11-02). Stos stagingu, zestawy `copy` i `s3` oraz katalog `/data/nmt/hydrograf-staging/` są usunięte; S5 zaczyna się od postawienia stagingu od nowa (`scripts/staging-compose.sh`, `docker-compose.staging.yml` zostały w repo).
 
 Krok przepisany według S5 planu Nogata `docs/plans/2026-11-02-archiwista-sets-for-hydrograf.md` (repozytorium Nogat, gałąź `plan/archiwista-sets-hydrograf`, commit `d2f17ac` i następne): wariant B autora z 2026-11-02, ADR-067. Bootstrap czyta dane Kartografa wyłącznie z zamkniętego zestawu projektu Kaczawa w Archiwiście i niczego nie pobiera.
 
@@ -345,7 +345,7 @@ Warunki: S4 potwierdzone; H1 i H2 zrobione; Kaczawa w `/home/claude-agent/data/a
 
 ### S7: przełączenie i rollback — wykonany w miejscu 2026-11-02 zamiast przełączenia nginx
 
-**Wykonane inaczej (2026-11-02, ok. 22:15–22:20):** checkout `~/workspace/Hydrograf` z `1a3e3be` na `develop` `532be07`, przebudowany obraz `hydrograf-api:latest` (tag rollbacku `hydrograf-api:vi-0.7.0` jak w pierwszym punkcie niżej, 2026-11-03 przemianowany na `hydrograf-api:pre-0.5.0`), odtworzony `hydro_api`; `hydro_nginx` i `hydro_db` bez zmian, migracji brak (alembic `003`). Przerwa ok. 21 s. Procedura blue/green poniżej (stop `hydro_nginx`, zielony nginx na 8080, synchronizacja zgłoszeń) nie była uruchamiana; zostaje jako zapis planu. Rollback: `/data/nmt/hydrograf-backup-2026-11-02/ROLLBACK.txt`.
+**Wykonane inaczej (2026-11-02, ok. 22:15–22:20):** checkout `~/workspace/Hydrograf` z `08d8190` na `develop` `a247bf3`, przebudowany obraz `hydrograf-api:latest` (tag rollbacku `hydrograf-api:vi-0.7.0` jak w pierwszym punkcie niżej, 2026-11-03 przemianowany na `hydrograf-api:pre-0.5.0`), odtworzony `hydro_api`; `hydro_nginx` i `hydro_db` bez zmian, migracji brak (alembic `003`). Przerwa ok. 21 s. Procedura blue/green poniżej (stop `hydro_nginx`, zielony nginx na 8080, synchronizacja zgłoszeń) nie była uruchamiana; zostaje jako zapis planu. Rollback: `/data/nmt/hydrograf-backup-2026-11-02/ROLLBACK.txt`.
 
 Warunki wejścia:
 - S6 potwierdzone;
@@ -388,7 +388,7 @@ Warunek: co najmniej 7 dni bez rollbacku i zgoda autora.
 
 - [x] Nie dotyczy po S7 w miejscu: stos `hydrograf` (`hydro_nginx`, `hydro_api`, `hydro_db`, wolumen `hydrograf_postgres_data`) jest nadal produkcją. Tag `hydrograf-api:pre-0.5.0` (do 2026-11-03 `vi-0.7.0`) zostaje jako rollback (`ROLLBACK.txt`).
 - [x] Staging usunięty 2026-11-02: stos `hydrograf-staging` (kontenery, wolumen, sieć, obraz `store-staging`) i katalog `/data/nmt/hydrograf-staging/` z zestawami `copy` i `s3`; `docker-compose.staging.yml` i `scripts/staging-compose.sh` zostają w repo na kolejne wydania.
-- [x] Git: wszystkie gałęzie scalone do `develop` (`532be07`) i usunięte; lokalnie tylko `develop` i `main`, worktree dnia usunięte (został checkout produkcji). Merge `develop` → `main` i tag `v0.5.0` należą do wydania (autor).
+- [x] Git: wszystkie gałęzie scalone do `develop` (`a247bf3`) i usunięte; lokalnie tylko `develop` i `main`, worktree dnia usunięte (został checkout produkcji). Merge `develop` → `main` i tag `v0.5.0` należą do wydania (autor).
 - [x] Docelowe miejsce produkcji: zostaje w `~/workspace/Hydrograf`, na `develop`; drugie przełączenie niepotrzebne.
 - [ ] Docs: PROGRESS i ten plan zaktualizowane 2026-11-02; sekcja `[0.5.0]` CHANGELOG w commicie wydania; instrukcja (Snyder) — pozycja 3 „Otwartych decyzji”. Aneks do ADR-061 o magazynie wspólnym to ADR-066 (zrobione przed S5).
 
@@ -434,15 +434,15 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
 
 ### S1 (2026-11-02): zrobione
 
-- Commity na `feature/store-migration` (bez push): `a514f7f` scalenie `feature/producer-heads` (18 konfliktów, opis rozstrzygnięć w komunikacie), `4d12f34` `Accept-Language: pl` w sekcji kanalizacji panelu admina, `24c691d` pin `26ee459` w ADR-060/061, `integrations/KARTOGRAF.md` i `CROSS_PROJECT_ANALYSIS.md`, potem commit z zapisem sesji w PROGRESS i tymi wynikami.
+- Commity na `feature/store-migration` (bez push): `dcae5be` scalenie `feature/producer-heads` (18 konfliktów, opis rozstrzygnięć w komunikacie), `ceed7ef` `Accept-Language: pl` w sekcji kanalizacji panelu admina, `9389ede` pin `eab8612` w ADR-060/061, `integrations/KARTOGRAF.md` i `CROSS_PROJECT_ANALYSIS.md`, potem commit z zapisem sesji w PROGRESS i tymi wynikami.
 - Kryteria akceptacji:
   - brak ścieżek `U` i znaczników konfliktu;
-  - `uv lock --check` zielony; w `uv.lock` kartograf `26ee459` (0.8.0.dev0, gałąź `feature/archiwista-projects`), affine 2.4.0, pyflwdir 0.5.12; Hydrolog `5fa22b3`, IMGWTools `6bd35a4` bez zmian (bramka nie wymagała `4bf8bb0`);
+  - `uv lock --check` zielony; w `uv.lock` kartograf `eab8612` (0.8.0.dev0, gałąź `feature/archiwista-projects`), affine 2.4.0, pyflwdir 0.5.12; Hydrolog `2a5ba1a`, IMGWTools `71bae77` bez zmian (bramka nie wymagała `8cd6844`);
   - `bash scripts/gate.sh` zielony (GATE OK, 30 s): ruff format i check czyste, mypy strict czysty (167 plików), 1351 testów offline zaliczonych, 0 porażek, 19 pominiętych (11 `db`, 8 `benchmark`), pokrycie 86,52%, wersje `?v=` aktualne, krok commitów zielony;
   - liczba testów: kryterium „≥ 1360 plus testy VI” wzięło liczbę z PROGRESS PH sprzed `9101547` (usunięcie testów martwego kodu); `feature/producer-heads` ma 1302 testy offline. Po scaleniu 1351 = 1302 − 1 (test tekstu źródła, usunięty na VI) + 45 testów VI + 3 testy VI przepisane z 422 na 400 + 2 przypadki kontraktu OpenAPI dla nowych tras VI. Żaden test VI nie zginął;
   - funkcje VI w kodzie i testach: podgląd zlewni (`TestDelineateWatershedPreview`), AMC i własny szereg opadu (`test_hydrograph_inputs.py`), request-id (`test_request_logging.py`), wyniki analiz (`test_analysis_results.py`), `water_levels` profilu (`TestTerrainProfileWaterLevels`), wersjonowanie zasobów (`scripts/bump_asset_versions.py`, krok bramki i zadanie CI `frontend-assets`);
   - `python3 scripts/bump_asset_versions.py --check` zielony;
-  - K0: część git sprawdzona (checkout produkcji na `1a3e3be`, `git status --short` = `?? .claude/` przed i po); część Dockera nie była uruchamiana, bo S1 z założenia jej nie używa — pierwszy pełny K0 na początku S2.
+  - K0: część git sprawdzona (checkout produkcji na `08d8190`, `git status --short` = `?? .claude/` przed i po); część Dockera nie była uruchamiana, bo S1 z założenia jej nie używa — pierwszy pełny K0 na początku S2.
 - Do wiadomości przed S2:
   - `docs/ARCHITECTURE.md` §2.2.2 nadal podaje „422: Validation”, a §11.2 opisuje CI z `pip install -r requirements.txt` — tekst PH sprzed problem+json i uv, nie z tego scalenia;
   - Hydrolog typuje `cn: int` w `HydrographGenerator` i `SCSCN`, a Hydrograf (VI) podaje CN z jednym miejscem po przecinku; w czasie wykonania działa (tylko kontrola zakresu 1–100), mypy tego nie wykrywa, bo `cn` pochodzi z `dict[str, Any]`. Kandydat na zgłoszenie `request` w Hydrologu (DEV-17.5);
@@ -450,16 +450,16 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
 
 ### Uwagi testerów 1–6 przed S3 (2026-11-02): scalone
 
-- Commity na `feature/store-migration` (bez push): `5207813` scalenie `feature/store-ui` (pozycje 1–5: zoom kółkiem, (i) tylko po kliknięciu, „Próg akumulacji spływu” w ha/km², szyna Mapa · Instrukcja · Logowanie, status usług tylko w `/admin`; bez konfliktów), `eada999` scalenie `feature/store-identify` (pozycja 6: tryb „Identyfikuj”, `POST /api/identify-point`; jeden konflikt w `frontend/index.html`, tylko hashe `?v=`), potem commit z PDF prezentacji, zapisem w PROGRESS i tymi wynikami.
+- Commity na `feature/store-migration` (bez push): `5207813` scalenie `feature/store-ui` (pozycje 1–5: zoom kółkiem, (i) tylko po kliknięciu, „Próg akumulacji spływu” w ha/km², szyna Mapa · Instrukcja · Logowanie, status usług tylko w `/admin`; bez konfliktów), `db71226` scalenie `feature/store-identify` (pozycja 6: tryb „Identyfikuj”, `POST /api/identify-point`; jeden konflikt w `frontend/index.html`, tylko hashe `?v=`), potem commit z PDF prezentacji, zapisem w PROGRESS i tymi wynikami.
 - Sprawdzone po scaleniu: `js/app.js` ma `MODE_HINTS` z podpowiedzią „Identyfikuj”, bez funkcji statusu usług, Esc zamyka kartę punktu przed panelami; karta punktu nie ma (i), a jej „Próg akumulacji spływu” jest w ha/km² (ta sama reguła co `Hydrograf.layers.formatThreshold`); `docs/ARCHITECTURE.md` 25 modułów (19 strony głównej, 6 `admin/`), zgodnie z `frontend/js`.
 - `docs/Hydrograf-prezentacja.pdf` wydrukowany raz po scaleniu (Chromium, 16:9, 30 slajdów 960 × 540 pt); slajdy 8–12, 26 i 29 obejrzane. Zrzut telefonu na slajdzie 29 i zrzut na slajdzie 8 mają jeszcze trzy tryby na pasku (środek zrzutów sprzed pozycji 6) — do podmiany razem ze zrzutami slajdów 10 i 13 po S3.
-- `GATE_COMMIT_RANGE=4d510a6..HEAD bash scripts/gate.sh` zielony: 1381 testów offline, 24 pominięte (`db`, `benchmark`), pokrycie 86,64%, wersje `?v=` aktualne, krok commitów zielony. 5 testów SQL trybu „Identyfikuj” (`test_identify_point_db.py`) czeka na S2.
+- `GATE_COMMIT_RANGE=4f98a05..HEAD bash scripts/gate.sh` zielony: 1381 testów offline, 24 pominięte (`db`, `benchmark`), pokrycie 86,64%, wersje `?v=` aktualne, krok commitów zielony. 5 testów SQL trybu „Identyfikuj” (`test_identify_point_db.py`) czeka na S2.
 - Smoke w Chromium na serwerze statycznym worktree z atrapami API (`~/scratch/store-ui/landing/devserver.py`, bez Dockera i bez bazy): szyna Mapa · Instrukcja · Logowanie na mapie, w `/instrukcja/` i `/admin`; na stronie mapy brak plakietki statusu; (i) nie otwiera się po najechaniu ani fokusie, otwiera po kliknięciu, zamyka Esc; „Próg akumulacji spływu” 0,1 ha / 1 ha / 10 ha; cztery tryby z „Identyfikuj”, karta punktu z progiem 10 ha i po zmianie progu 0,1 ha, Esc zamyka kartę; syntetyczny ogon kółka (`~/scratch/store-ui/ui/wheel-lab.js`, DPR 1, start z poziomu 10): muśnięcia z ogonem kończą się po 1 poziomie w ok. 0,3 s, przeciągnięcie 1 s z ogonem → 14, ząbki jak w `wheel-after.json` (5 × 120 ms → 14, Firefox 5 × 3 linie → 12); telefon 390 px bez poziomego przewijania; oba motywy; konsola bez błędów. Zrzuty w `~/scratch/store-ui/landing/`.
-- Produkcja nietknięta: checkout `~/workspace/Hydrograf` na `1a3e3be`, `git status --short` = `?? .claude/`; bez Dockera.
+- Produkcja nietknięta: checkout `~/workspace/Hydrograf` na `08d8190`, `git status --short` = `?? .claude/`; bez Dockera.
 
 ### S2 (2026-11-02): zrobione
 
-- Commity na `feature/store-migration` (bez push): `eddf1d7` pliki stagingu (`docker-compose.staging.yml` i `scripts/staging-compose.sh` jak w planie, `.env.staging` w `.gitignore`), potem commit z zapisem w PROGRESS (sesja S2, tabela porównań) i tymi wynikami.
+- Commity na `feature/store-migration` (bez push): `491daec` pliki stagingu (`docker-compose.staging.yml` i `scripts/staging-compose.sh` jak w planie, `.env.staging` w `.gitignore`), potem commit z zapisem w PROGRESS (sesja S2, tabela porównań) i tymi wynikami.
 - Środowisko:
   - `.env.staging` (tryb 600, poza gitem): nowe `POSTGRES_PASSWORD` i `ADMIN_API_KEY`, różne od produkcyjnych; `LOG_LEVEL`, `IMGW_*` i `HYDROGRAF_*_HOST` z produkcyjnego `.env`; `HYDROGRAF_STAGING_ROOT=/data/nmt/hydrograf-staging`, `HYDROGRAF_STAGING_SET=copy`, `HYDROGRAF_STAGING_DB=hydro_db`, `HYDROGRAF_STAGING_PORT=8081`;
   - w `${HYDROGRAF_STAGING_ROOT}`: `cache`, `copy`, `s3`, `s5` (777), `dump` (700, zrzut z danymi zgłoszeń), `prod-baseline.txt` (K0);
@@ -468,7 +468,7 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
 - Obraz:
   - `docker builder prune -f` odzyskał 11,22 GB (`/`: 8,1 → 19 GB wolnego);
   - budowa po K1 (`run_24h.exit` = `exit=0`, brak kontenera `hydraulik-sfincs`) trwała 7 min 57 s;
-  - `hydrograf-api:store-staging` = `sha256:ce03f2f4f201…`, 1,94 GB. W obrazie: kartograf 0.8.0.dev0 (`26ee459`), hydrolog 1.0.0.dev0 (`5fa22b3`), imgwtools 3.0.0 (`6bd35a4`), affine 2.4.0, pyflwdir 0.5.12, GDAL 3.10.3, tippecanoe 2.79.0. Kryterium mówi „imgwtools 3.0.0.dev0”, ale `uv.lock` od S1 ma 3.0.0 przy tym samym commicie, więc to omyłka w kryterium;
+  - `hydrograf-api:store-staging` = `sha256:ce03f2f4f201…`, 1,94 GB. W obrazie: kartograf 0.8.0.dev0 (`eab8612`), hydrolog 1.0.0.dev0 (`2a5ba1a`), imgwtools 3.0.0 (`71bae77`), affine 2.4.0, pyflwdir 0.5.12, GDAL 3.10.3, tippecanoe 2.79.0. Kryterium mówi „imgwtools 3.0.0.dev0”, ale `uv.lock` od S1 ma 3.0.0 przy tym samym commicie, więc to omyłka w kryterium;
   - `hydrograf-api:latest` bez zmian. Po budowie na `/` jest 12 GB wolnego, a cache budowania zajmuje 7,3 GB (3,2 GB do odzyskania).
 - Baza:
   - zrzut `dump/hydro_db-2026-11-02.dump`: 99 MB w 24 s, SHA-256 w pliku `.sha256`; liczby wierszy produkcji przed zrzutem i po nim takie same;
@@ -520,7 +520,7 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
 
 ### S3 (2026-11-02): zrobione
 
-- Commity na `feature/store-migration` (bez push): `0f913a2` nginx stagingu także na `192.168.88.9:8081` (polecenie autora w trakcie S3, opis w „Zasadach izolacji”), potem commit z zapisem w PROGRESS (sesja S3, tabele porównań) i tymi wynikami.
+- Commity na `feature/store-migration` (bez push): `aa6758f` nginx stagingu także na `192.168.88.9:8081` (polecenie autora w trakcie S3, opis w „Zasadach izolacji”), potem commit z zapisem w PROGRESS (sesja S3, tabele porównań) i tymi wynikami.
 - Zestaw `s3`: `CREATE DATABASE hydro_s3` i `CREATE EXTENSION postgis` (PostGIS 3.4.3), migracje 001 → 003 z entrypointu kontenera bootstrapu; katalogi `s3/{data,frontend-data,frontend-tiles}` (777); granica `s3/data/boundary/kamiennik_37km2_sfincs.gpkg` skopiowana z produkcji (SHA-256 równe, 37,2234 km²).
 - Bootstrap poleceniem z planu; dodane tylko `-T` i `-e PYTHONUNBUFFERED=1`, żeby wiersze logu szły po kolei:
   - kod 0, 372,4 s (377,7 s z kontenerem), obraz `hydrograf-api:store-staging` (`ce03f2f4f201…`); `hydro_staging_api` (zestaw `copy`) bez zmian;
@@ -557,7 +557,7 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
   - Identyfikuj: w czaszy 264,88 m n.p.m., woda 16,55 m i zwierciadło 281,43 m (wynik 24 h), Kamiennik 0,1 m, HSG B, odcinek 37,11 km² (te same wartości co w `copy`); na Kamienniku przy K3 326,10 m i 15,53 km²;
   - profil przez czaszę: 1,04 km z linią wody; wyznaczenie zlewni w ujściu: 37,23 km², CN 67,9;
   - 0 błędów JS (raz `ERR_ABORTED` przerwanego kafla MZP przy zmianie widoku); zrzuty w `~/scratch/store-s3/`.
-- Staging w sieci domowej (`0f913a2`): odtworzony tylko `hydro_staging_nginx`; `curl -sI http://192.168.88.9:8081/` daje 200 z CSP. Strona przez adres LAN działa: zasoby z `?v=`, API, kafle, 0 błędów JS. Produkcja z LAN niedostępna.
+- Staging w sieci domowej (`aa6758f`): odtworzony tylko `hydro_staging_nginx`; `curl -sI http://192.168.88.9:8081/` daje 200 z CSP. Strona przez adres LAN działa: zasoby z `?v=`, API, kafle, 0 błędów JS. Produkcja z LAN niedostępna.
 - K0: pusty diff i `/health` 200 przed każdą czynnością i po niej (od 12:36 do końca kroku), w tym przed i po bootstrapie, kontenerze `hydro_staging_api_s3`, oknie `s3` na 8081 i zmianie nginx.
 - Do S4 (poza decyzjami z „Otwartych decyzji”):
   - pliki `.prj` Hydrografa w magazynie Kartografa (wyżej);
@@ -569,10 +569,10 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
 ### S4 i przygotowanie S5 (2026-11-02): zrobione
 
 - Decyzje autora (S4): dwie wady naprawić przed S5; magazyn wspólny z Archiwistą; wiązanie LAN stagingu usunąć po S7 (wpisane w „Zasadach izolacji” i w S7).
-- Commity na `feature/store-migration` (bez push): `625089e` CRS mozaiki zamiast plików `.prj` w magazynie, `059f44a` brak nazwy cieku BDOT10k jako `NULL` zamiast `'nan'`, `ac06921` magazyn wspólny (ADR-066, `HYDROGRAF_KARTOGRAF_ROOT`, strażnik kroku 2, czyszczenie), `c519a98` montowanie magazynu w stagingu, potem commit z zapisem w PROGRESS i tymi wynikami.
+- Commity na `feature/store-migration` (bez push): `ecc0aae` CRS mozaiki zamiast plików `.prj` w magazynie, `2da5b2a` brak nazwy cieku BDOT10k jako `NULL` zamiast `'nan'`, `a39e69d` magazyn wspólny (ADR-066, `HYDROGRAF_KARTOGRAF_ROOT`, strażnik kroku 2, czyszczenie), `360e789` montowanie magazynu w stagingu, potem commit z zapisem w PROGRESS i tymi wynikami.
 - **`.prj`:** `normalize_crs(files, output_dir)` niczego nie zapisuje obok arkuszy (`output_dir` wymagany, bez domyślnego `reprojected/` w magazynie), CRS mozaiki nadaje `create_vrt_mosaic(target_crs="EPSG:2180")`: `gdalbuildvrt -a_srs … -allow_projection_difference` (bez tej flagi GDAL 3.10.3 pomija arkusz o innym lub brakującym CRS, sprawdzone) albo GeoTIFF zapasowego `rasterio.merge`, którego używa kontener (nie ma narzędzi GDAL). Magazyn stagingu (`${HYDROGRAF_STAGING_ROOT}/cache/kartograf`) oczyszczony w `run --rm` jako UID 999: `iter_store` przed — 15 × `missing_sidecar` (wszystkie to `<arkusz>.prj` obok `.asc` w ścieżkach standardowych), usunięte dokładnie te pliki, po — 0 problemów (21 `link`, 21 `version`, 15 `full_sheet`, 6 segmentów).
 - **„nan”:** loader (`core/db_bulk.py`) zapisuje brak lub pustą nazwę jako `NULL` i przycina nazwy; GeoJSON-y BDOT10k już miały `null` (test), `land_cover` nie bierze tekstu z GeoPackage. Polecenie dla baz sprzed poprawki: `UPDATE bdot_streams SET name = NULL WHERE btrim(name) IN ('', 'nan');` — wykonane w stagingu w transakcji: `hydro_s3` 4410 wierszy (zostaje 505 nazw), `hydro_db` zestawu `copy` 3436 (zostaje 376); produkcyjnej bazy nie ruszano, S5 zbuduje `hydro_s5` poprawionym loaderem. `POST /api/identify-point` na 8081 przy cieku bez nazwy zwraca `name: null`, karta w Chromium: „Ciek: bez nazwy (rzeka)”, 0 błędów JS.
-- **Magazyn wspólny (ADR-066):** `~/data/archiwista-public/store` (`kartograf-store/1`, 4 segmenty NMT, 735 wersji, 205 z 207 arkuszy `mniejszy_sheets.txt`; brakuje `M-33-33-C-b-2-1` i `M-33-45-B-c-1-1`). Kartograf `26ee459` nie ma blokad: wersje i sidecary publikuje wyłączne `os.link`, ścieżki standardowe przestawia `os.replace`, równoległe zapisy tej samej treści dają jedną wersję. Reguła: bootstrap Hydrografa pisze tylko wtedy, gdy nie trwa zadanie pobierania Archiwisty; strażnik w kroku 2 (`writes_in_progress`: wpis `versions/.incoming` zmieniony w ostatnich 10 min) zatrzymuje go przed pierwszym zapisem. Archiwista nie sprawdza zapisów Hydrografa, więc w czasie S5 nikt nie uruchamia pobierań w Archiwiście.
+- **Magazyn wspólny (ADR-066):** `~/data/archiwista-public/store` (`kartograf-store/1`, 4 segmenty NMT, 735 wersji, 205 z 207 arkuszy `mniejszy_sheets.txt`; brakuje `M-33-33-C-b-2-1` i `M-33-45-B-c-1-1`). Kartograf `eab8612` nie ma blokad: wersje i sidecary publikuje wyłączne `os.link`, ścieżki standardowe przestawia `os.replace`, równoległe zapisy tej samej treści dają jedną wersję. Reguła: bootstrap Hydrografa pisze tylko wtedy, gdy nie trwa zadanie pobierania Archiwisty; strażnik w kroku 2 (`writes_in_progress`: wpis `versions/.incoming` zmieniony w ostatnich 10 min) zatrzymuje go przed pierwszym zapisem. Archiwista nie sprawdza zapisów Hydrografa, więc w czasie S5 nikt nie uruchamia pobierań w Archiwiście.
 - **Uprawnienia (ACL), wykonane jako właściciel `claude-agent` o 13:50:48Z:** na hoście nie ma pakietu `acl` ani sudo, więc `setfacl`/`getfacl` 2.3.2 z paczki Debiana (`apt-get download acl`, `dpkg-deb -x` do `~/scratch/store-pre-s5/acl/`):
   ```bash
   setfacl -R -m u:999:rwX /home/claude-agent/data/archiwista-public/store
@@ -582,7 +582,7 @@ S4 i S6 to punkty kontrolne autora, bez kosztu agenta, ale czas oczekiwania wyd�
 - **Archiwista po zmianie (bez restartu i bez sesji w imieniu autora):** proces 408498 działa od 1 d 4 h; `GET /` 200 i `GET /api/v1/session/methods` 200 (z nagłówkami proxy HTTPS); `index.sqlite` czytany tylko do odczytu: skan `07d9d4c2114afb3e` o 13:56:41Z (pierwszy po ACL) `succeeded`, magazyn `zespol` `available`, 735 wersji, 4 segmenty, 2 problemy (te same `stale_incoming` z 2026-11-01), brak zadań w kolejce.
 - **Staging:** `docker-compose.staging.yml` montuje `${HYDROGRAF_KARTOGRAF_STORE}` pod `/kartograf` (domyślnie `:ro`, `HYDROGRAF_KARTOGRAF_STORE_MODE=rw` tylko dla kontenera bootstrapu) i ustawia `HYDROGRAF_KARTOGRAF_ROOT=/kartograf`; `.env.staging` ma `HYDROGRAF_KARTOGRAF_STORE`. `config` pokazuje `read_only: true` domyślnie i montowanie rw z `MODE=rw`. Obraz `hydrograf-api:store-staging` przebudowany z tym kodem (`sha256:2a8b1eb4fc68…`, 3,6 s z cache warstw); `hydrograf-api:latest` bez zmian. Działający `hydro_staging_api` (zestaw `copy`) nie był odtwarzany: nowe montowanie dostanie przy `up` w S5.
 - **Smoke** `scripts/staging-compose.sh run --rm --no-deps -T --entrypoint python -e PYTHONPATH=/app --name hydro_staging_store_smoke … api /smoke_store.py` (bez migracji i bazy): UID 999, `store_dir(/cache)` = `/kartograf`, metadane w `/cache/kartograf_meta.db`, zapis do magazynu niemożliwy (ro); `list_segments` = `nmt/pl_1992_1m_evrf2007`, `nmt/pl_1992_1m_kron86`, `nmt/pl_1992_5m_evrf2007`, `nmt/pl_1992_xyz_5m_evrf2007`; `iter_store` 642 `link`, 642 `full_sheet`, 735 `version`, 2 `stale_incoming`; `writes_in_progress` = []; mozaika dwóch arkuszy magazynu bez `.prj` (`M-33-32-D-d-3-1`, `-3-2`) → `dem_mosaic.tif` EPSG:2180 897 × 500, katalogi arkuszy bez zmian; kontener usunięty.
-- **Bramka i testy:** `GATE_COMMIT_RANGE=04d4550..HEAD bash scripts/gate.sh` zielona: 1389 testów offline (było 1381: +14 nowych, −6 testów usuniętych funkcji `.prj`), pokrycie 86,64%; testy `db` na jednorazowej `hydro_staging_testdb` (migracje 001 → 003): 15 zaliczonych, 1 pominięty jak w S2, kontener zatrzymany.
+- **Bramka i testy:** `GATE_COMMIT_RANGE=babe8ff..HEAD bash scripts/gate.sh` zielona: 1389 testów offline (było 1381: +14 nowych, −6 testów usuniętych funkcji `.prj`), pokrycie 86,64%; testy `db` na jednorazowej `hydro_staging_testdb` (migracje 001 → 003): 15 zaliczonych, 1 pominięty jak w S2, kontener zatrzymany.
 - K0: pusty diff i `/health` 200 przed każdą czynnością i po niej (ACL, usuwanie `.prj`, SQL, budowa obrazu, smoke, commity).
 - Stan: zielony stos na `127.0.0.1:8081` i `192.168.88.9:8081` z zestawem `copy`; magazyn wspólny gotowy dla S5 (ACL, montowanie, obraz). S5 nie rozpoczęty.
 
@@ -610,13 +610,13 @@ Krok H1 planu Nogata `docs/plans/2026-11-02-archiwista-sets-for-hydrograf.md` (g
 - **Smoke na prawdziwym magazynie wspólnym** (tylko odczyt) z kopią pliku projektu Kaczawy (zestaw „2020”, 205 pinów, bez `state`): `--skip-landcover --skip-hsg --dry-run` kod 0, 205/205 pinów zweryfikowanych, 205 arkuszy obszaru (około 3 s); bez pominięć kod 14 `set_counties_missing` z dziesięcioma powiatami 0205, 0206, 0207, 0209, 0218, 0219, 0221, 0226, 0261, 0262 (zestaw „2020” ma tylko NMT, zestaw dla S5 zbuduje autor w A5). Magazyn bez zmian (7868 wpisów).
 - **Testy `db`** na jednorazowej bazie PostGIS `hydro_h1_testdb` (127.0.0.1:55432, migracje 001 → 003): 15 zaliczonych, 1 pominięty.
 - **Pełny przebieg kroków 2–5 z zestawu** (bez `--dry-run`, kopia kodu w `/home/claude-agent/data/tmp/h1-smoke/app`, baza `hydro_h1_smoke` w `hydro_h1_testdb`, `HYDROGRAF_KARTOGRAF_ROOT` = magazyn jednorazowy, `--skip-infra`, kroki 6–10 pominięte): kod 0 w 110 s; krok 2 `15/15 arkuszy z zestawu`, krok 3 3 048 412 komórek i 4437 odcinków z wypalaniem przypiętego BDOT10k, krok 4 18 305 obiektów z 2 powiatów, krok 5 raster HSG zestawu (1 poligon B) — te same liczby co bootstrap S3 (`stream_network` 4421, `stream_catchments` 4437, `land_cover` 18 305, `soil_hsg` 1); `bootstrap_set.json` ze statusem `ok`, `started_at` i `finished_at`; magazyn bez zmian. Kontener bazy zatrzymany (`--rm`).
-- **Bramka:** `GATE_COMMIT_RANGE=04d4550..HEAD bash scripts/gate.sh` zielona: 1416 testów offline, pokrycie 86,84%.
+- **Bramka:** `GATE_COMMIT_RANGE=babe8ff..HEAD bash scripts/gate.sh` zielona: 1416 testów offline, pokrycie 86,84%.
 - Montowania pod ścieżkami hosta, katalog projektu i ACL `rX` to krok H2 (po A3 i A4).
 
 ### S7 w miejscu i S8 częściowo (2026-11-02, 22:10–22:33): zrobione
 
-- **Kopia przed zmianą** w `/data/nmt/hydrograf-backup-2026-11-02/`: `hydro_db.dump` (z `hydro_db.dump.sha256`), `rowcounts-before.txt` (12 tabel, te same liczby co w S2), `env` (stary `.env`), `frontend-data-results` (wynik 12 h), `git-head.txt` (`1a3e3be`), K0 `k0-before.txt`, `prod-baseline.txt` (przed) i `prod-baseline-080.txt` (po), `ROLLBACK.txt`.
-- **Aktualizacja w miejscu** ok. 22:15–22:20: checkout `~/workspace/Hydrograf` na `develop` `532be07` (0.5.0.dev0, wcześniej błędnie v0.8.0.dev0), obraz `hydrograf-api:latest` przebudowany (piny Kartograf `26ee459`, Hydrolog `4f02ffd`, IMGWTools `6bd35a4`), `hydro_api` odtworzony. Przerwa ok. 21 s (`health-loop.log`, `curl` co 1 s). Bez migracji bazy: alembic `003` = head. `.env`: `HYDROGRAF_PUBLIC_HOST=hydrograf-test.debever.pl`, magazyn Kartografa prywatny (`cache/kartograf`, bez `HYDROGRAF_KARTOGRAF_ROOT`). Wynik SFINCS `sfincs-kamiennik-24h-p1` zastąpił w produkcji wynik 12 h.
+- **Kopia przed zmianą** w `/data/nmt/hydrograf-backup-2026-11-02/`: `hydro_db.dump` (z `hydro_db.dump.sha256`), `rowcounts-before.txt` (12 tabel, te same liczby co w S2), `env` (stary `.env`), `frontend-data-results` (wynik 12 h), `git-head.txt` (`08d8190`), K0 `k0-before.txt`, `prod-baseline.txt` (przed) i `prod-baseline-080.txt` (po), `ROLLBACK.txt`.
+- **Aktualizacja w miejscu** ok. 22:15–22:20: checkout `~/workspace/Hydrograf` na `develop` `a247bf3` (0.5.0.dev0, wcześniej błędnie v0.8.0.dev0), obraz `hydrograf-api:latest` przebudowany (piny Kartograf `eab8612`, Hydrolog `1708a09`, IMGWTools `71bae77`), `hydro_api` odtworzony. Przerwa ok. 21 s (`health-loop.log`, `curl` co 1 s). Bez migracji bazy: alembic `003` = head. `.env`: `HYDROGRAF_PUBLIC_HOST=hydrograf-test.debever.pl`, magazyn Kartografa prywatny (`cache/kartograf`, bez `HYDROGRAF_KARTOGRAF_ROOT`). Wynik SFINCS `sfincs-kamiennik-24h-p1` zastąpił w produkcji wynik 12 h.
 - **Smoke po aktualizacji** (`smoke-8080.txt`, `smoke-public.txt`; 8080 i host publiczny dają to samo): `/health` 200; delineacja 51,0376/16,1723 15,15 km², przekrój Kamiennika 37,22 km²; punkt poza granicą 404 `application/problem+json`; hydrogram SCS 4,63 m³/s, Snyder 1,918 m³/s; „Identyfikuj” w czaszy: zwierciadło 281,43 m, 16,28 m wody; profil z `water_levels` wyniku 24 h; manifest wyników = `sfincs-kamiennik-24h-p1`, kafel 200; `/admin` 200, API admina bez klucza 401; 23 zasoby z `?v=`.
 - **Testy przeglądarkowe GPT:** staging 7/8, produkcja 8/8 PASS.
 - **Bootstrap Kamiennika z pustego magazynu prywatnego:** zaliczony, 331 s.

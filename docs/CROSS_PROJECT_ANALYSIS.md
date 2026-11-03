@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-11-02 (Kartograf pinned to `26ee459`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-02 (Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
 **Projects:** Hydrograf, Hydrolog, Kartograf, IMGWTools
 
@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
 │  │  IMGWTools    │   │   Kartograf   │   │   Hydrolog    │              │
-│  │  6bd35a4      │   │   26ee459     │   │   4f02ffd     │              │
+│  │  71bae77      │   │   eab8612     │   │   1708a09     │              │
 │  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
 │  └───────────────┘   └───────────────┘   └───────────────┘              │
 │                                                                         │
@@ -30,9 +30,9 @@
 
 | Project | Depends on | Type of dependency | Version |
 |---------|-----------|--------------------|---------|
-| **Hydrograf** | IMGWTools | direct (pyproject.toml) | commit 6bd35a4 (3.0.0) |
-| **Hydrograf** | Kartograf | direct (pyproject.toml) | commit 26ee459 (0.8.0.dev0) |
-| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 4f02ffd (1.0.0.dev0, `fix/snyder-recession`) |
+| **Hydrograf** | IMGWTools | direct (pyproject.toml) | commit 71bae77 (3.0.0) |
+| **Hydrograf** | Kartograf | direct (pyproject.toml) | commit eab8612 (0.8.0.dev0) |
+| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 1708a09 (1.0.0.dev0, `fix/snyder-recession`) |
 | **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
 
 **Note:** Hydrolog no longer depends on IMGWTools (removed in v0.5.2).
@@ -43,9 +43,9 @@ The three producers are pinned by the commit of their head until their tags exis
 
 ```toml
 # [tool.uv.sources]
-imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "6bd35a49b329f99b591ffdee39367daec0e75af7" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "26ee45924b719b4f357ab02c88cda58aa806843f" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "4f02ffdb3f7f7d1d863cd5c9ac5f2dab56f5eb3b" }
+imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "71bae778a6573019a0b8da6498b4429f0e03ddfb" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "eab8612d5666cafa43d1e2c4f0a034583310b66e" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1708a092d1cd8c49f3b437818b2a868bf8a7264d" }
 ```
 
 ---
@@ -110,7 +110,7 @@ The WFS PRG discovery of the counties (ADR-045) and its fallback on a private me
 
 | # | Project | Problem | Commit | Status |
 |---|---------|---------|--------|--------|
-| 1 | **Hydrolog** | A bug in the SCS constant: Qmax overstated ~10x | `cc3e2a7` | ✅ FIXED |
+| 1 | **Hydrolog** | A bug in the SCS constant: Qmax overstated ~10x | `aa8a0f3` | ✅ FIXED |
 | 2 | **Hydrolog** | Inconsistent versions | v0.5.2 | ✅ FIXED |
 | 3 | **Kartograf** | Missing exports `SoilGridsProvider`, `HSGCalculator` | `23887db` | ✅ FIXED |
 | 4 | **Kartograf** | SCOPE.md/PRD.md out of date | `b99c08e` | ✅ FIXED |
@@ -136,8 +136,8 @@ qp = 0.208 * self.area_km2 / tp_hours
 
 | # | Project | Problem | Commit | Status |
 |---|---------|---------|--------|--------|
-| 5 | **IMGWTools** | Python `>=3.11` (the others `>=3.12`) | `4bacf36` | ✅ FIXED |
-| 6 | **IMGWTools** | No DEVELOPMENT_STANDARDS.md | `4bacf36` | ✅ FIXED |
+| 5 | **IMGWTools** | Python `>=3.11` (the others `>=3.12`) | `e8ca92d` | ✅ FIXED |
+| 6 | **IMGWTools** | No DEVELOPMENT_STANDARDS.md | `e8ca92d` | ✅ FIXED |
 
 ### 4.3 ✅ FIXED (Hydrograf - session 2+)
 
@@ -228,7 +228,7 @@ qp = 0.208 * self.area_km2 / tp_hours
 ### ✅ Priority 1: CRITICAL - DONE
 
 ```markdown
-✅ Hydrolog: Fix the SCS constant (commit cc3e2a7)
+✅ Hydrolog: Fix the SCS constant (commit aa8a0f3)
   - File: hydrolog/runoff/unit_hydrograph.py:214
   - Change: 2.08 → 0.208
   - The docstring was updated with the correct maths
@@ -252,12 +252,12 @@ qp = 0.208 * self.area_km2 / tp_hours
 ### ✅ Priority 3: IMGWTools - DONE
 
 ```markdown
-✅ IMGWTools: Python raised to >=3.12 (commit 4bacf36)
+✅ IMGWTools: Python raised to >=3.12 (commit e8ca92d)
   - File: pyproject.toml
   - Change: requires-python = ">=3.11" → ">=3.12"
   - Version: v2.1.0
 
-✅ IMGWTools: DEVELOPMENT_STANDARDS.md created (commit 4bacf36)
+✅ IMGWTools: DEVELOPMENT_STANDARDS.md created (commit e8ca92d)
   - File: docs/DEVELOPMENT_STANDARDS.md
   - 425 lines, the full coding standards
 ```

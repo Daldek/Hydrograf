@@ -2,7 +2,7 @@
 
 **Version:** 7.3
 **Date:** 2026-11-02
-**Status:** Active (Kartograf 0.8.0.dev0, head `26ee459`; ADR-061, ADR-066, ADR-067)
+**Status:** Active (Kartograf 0.8.0.dev0, head `eab8612`; ADR-061, ADR-066, ADR-067)
 
 ---
 
@@ -10,7 +10,7 @@
 
 Hydrograf uses [Kartograf](https://github.com/Daldek/Kartograf) to download spatial data from
 Polish and European sources and to do the arithmetic of the map sheet codes (*godła*). Kartograf
-is a library dependency used through its public API. It is pinned by the commit `26ee459` of its
+is a library dependency used through its public API. It is pinned by the commit `eab8612` of its
 `feature/archiwista-projects` branch (0.8.0.dev0, the commit Archiwista pins), with the range
 `>=0.8.0.dev0,<0.9`, until the 0.8.0 tag exists; the release pull request replaces the commit with
 the tag (REL-5.3, REL-5.6, ADR-060, ADR-061).
@@ -899,4 +899,4 @@ Other formats (GeoJSON) of `bootstrap --boundary-file` fall back to the bbox of 
 
 **Document version:** 7.3
 **Last update:** 2026-11-02: Archiwista's sets as the only Kartograf input of the shared store (ADR-067): `bootstrap --project --set` with its checks and refusals, `utils/archiwista_project.py` and `utils/kartograf_set.py` (§4.5), every download refused while `HYDROGRAF_KARTOGRAF_ROOT` is set (`refuse_shared_store`, `private_store_dir`), read-only ACL, no concurrency rule; `writes_in_progress` and the guard of step 2 removed (§3.7, §4.1).
-**History:** 7.2 (2026-11-02): the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9). 7.1 (2026-11-02): the pin of the head `26ee459` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `45dedf4`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).
+**History:** 7.2 (2026-11-02): the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9). 7.1 (2026-11-02): the pin of the head `eab8612` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `c655639`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).

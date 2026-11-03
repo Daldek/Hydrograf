@@ -16,9 +16,9 @@ committed.
 
 The heads of 2026-10-25 are:
 
-- Hydrolog `feature/routing-network` @ `6c9ba5a` (1.0.0.dev0): `chore/nogat-2.1` and the
+- Hydrolog `feature/routing-network` @ `28be47d` (1.0.0.dev0): `chore/nogat-2.1` and the
   flood-routing branches stacked on it. It ships `py.typed`.
-- IMGWTools `feature/data-output` @ `a304521` (3.0.0). `fetch_pmaxtp`, the only function
+- IMGWTools `feature/data-output` @ `08f1a7b` (3.0.0). `fetch_pmaxtp`, the only function
   Hydrograf calls, keeps its model (`result.data.ks`, `sg`, `rb`, `get_precipitation`);
   its `method` argument became keyword-only, and Hydrograf passes only `latitude=` and
   `longitude=`. It ships no `py.typed` although it declares `Typing :: Typed`.
@@ -42,7 +42,7 @@ hydrograph endpoint and two in `scripts/analyze_watershed.py`.
   the commits with tags.
 - **C. Path or editable dependencies on the sibling checkouts.** No git cache to seed, but
   the lock would name a directory of one machine, and REL-5.3 forbids committing it.
-- **D. Hydrolog at `chore/nogat-2.1` (`d4f7282`) instead of the routing head.** The same
+- **D. Hydrolog at `chore/nogat-2.1` (`8ae4a6d`) instead of the routing head.** The same
   library without the routing code, which Hydrograf does not call. The routing head was
   chosen because it holds everything that Hydrolog's next release is to carry once its
   branches are merged in the order of its PROGRESS, so the pin does not have to move for
@@ -51,8 +51,8 @@ hydrograph endpoint and two in `scripts/analyze_watershed.py`.
 ## Decision
 
 Option B, on the branch `feature/producer-heads`. `backend/pyproject.toml` pins Hydrolog
-`6c9ba5afae65c601c447f48f5c1412e93f3a1d60` and IMGWTools
-`a30452182b01f47cc18e48466da4edf4d0c8cb6a`; Kartograf stays on `v0.7.0`, because its data
+`28be47d640e86cabb1058e1822e5f3abd4a279c0` and IMGWTools
+`08f1a7bb5978a070c70eeea5edf76766b827de95`; Kartograf stays on `v0.7.0`, because its data
 output is not finished and the plain mode that its migration waits for is still moving
 (`docs/PROGRESS.md`, Next 2, lists what remains). The lock records `rev=<sha>`. The unpushed
 commits reach the uv git cache with `git fetch` from the local checkout into the database
@@ -82,13 +82,13 @@ flagged were annotated (`api/endpoints/hydrograph.py`) or switched to the float 
 ## Errata
 
 **2026-10-25: the pins moved and every commit is on GitHub.** The text above records the first
-migration: Hydrolog `6c9ba5a`, IMGWTools `a304521`, two commits that GitHub did not have, and
+migration: Hydrolog `28be47d`, IMGWTools `08f1a7b`, two commits that GitHub did not have, and
 Kartograf on `v0.7.0`. The producers have pushed their heads since and the lock follows them:
-IMGWTools `7e2114e`, then `3f7de36` (3.0.0: float PMAXTP percentages, so the `type: ignore` of
-`scripts/preprocess_precipitation.py` is gone; it ships `py.typed`), then `6bd35a4` (a flush of
-the MCP server's stdout, which Hydrograf does not start); Hydrolog `31bf796`
-(`feature/routing-objects`), then `5fa22b3` (`feature/routing-schematic`), then (2026-11-02) `4f02ffd` (`fix/snyder-recession`: the Snyder unit hydrograph runs to the end of its recession); Kartograf `b73aad3`
-by ADR-061, then `45dedf4`, then `c31ca04`, then (2026-11-02) `26ee459`, the commit Archiwista
+IMGWTools `b0ef83c`, then `4faf884` (3.0.0: float PMAXTP percentages, so the `type: ignore` of
+`scripts/preprocess_precipitation.py` is gone; it ships `py.typed`), then `71bae77` (a flush of
+the MCP server's stdout, which Hydrograf does not start); Hydrolog `5ae6d49`
+(`feature/routing-objects`), then `2a5ba1a` (`feature/routing-schematic`), then (2026-11-02) `1708a09` (`fix/snyder-recession`: the Snyder unit hydrograph runs to the end of its recession); Kartograf `e3c0ab3`
+by ADR-061, then `c655639`, then `d11f621`, then (2026-11-02) `eab8612`, the commit Archiwista
 pins (ADR-061, erratum). `uv lock`, `uv sync --locked` and the image build resolve all three
 anywhere, so the Consequences about unpushed commits and the uv git cache no longer apply, and
 the mypy override of IMGWTools is gone with the one of Kartograf (ADR-061). The decision

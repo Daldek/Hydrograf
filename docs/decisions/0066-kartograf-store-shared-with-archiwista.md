@@ -16,7 +16,7 @@ versions) that already holds 205 of the 207 sheets of the production area. Archi
 through Kartograf's API (`run_command(root=...)`, download jobs started from its interface).
 The bootstrap of Hydrograf runs in a container as `hydro` (UID 999, umask 022).
 
-Checked on the pinned Kartograf (`26ee459`) and on this host:
+Checked on the pinned Kartograf (`eab8612`) and on this host:
 
 1. **No lock, by design.** Kartograf publishes a version and its sidecar with an exclusive
    `os.link` (never overwrites) and re-points a standard path with a temporary link and

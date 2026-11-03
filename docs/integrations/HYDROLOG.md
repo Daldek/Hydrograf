@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-10-25 (the head of Hydrolog, `4f02ffd`, ADR-060)
+**Ostatnia aktualizacja:** 2026-10-25 (the head of Hydrolog, `1708a09`, ADR-060)
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -252,7 +252,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Plik | Zmiana | Status |
 |------|--------|--------|
-| `backend/pyproject.toml` | + hydrolog (commit `4f02ffd`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
+| `backend/pyproject.toml` | + hydrolog (commit `1708a09`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
 | `backend/core/morphometry.py` | `calculate_shape_indices` (wskaźniki kształtu) | ✅ |
 | `backend/core/morphometry_raster.py` | Obliczenia rastrowe (slope, aspect, TWI, Strahler) | ✅ |
 | `backend/core/catchment_graph.py` | In-memory graf, BFS, trace_main_channel | ✅ |
@@ -465,9 +465,9 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 - **GitHub:** https://github.com/Daldek/Hydrolog.git
 - **Branch:** `feature/routing-schematic` (the head of the stack `chore/nogat-2.1` and `feature/routing-*`; on GitHub)
-- **Wersja:** 1.0.0.dev0, commit `4f02ffdb3f7f7d1d863cd5c9ac5f2dab56f5eb3b`
+- **Wersja:** 1.0.0.dev0, commit `1708a092d1cd8c49f3b437818b2a868bf8a7264d`
 - **Dokumentacja:** `docs/INTEGRATION.md`
-- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "4f02ffdb3f7f7d1d863cd5c9ac5f2dab56f5eb3b" }`), instalowana przez `uv sync --locked`; the commit is on GitHub, so every machine resolves it; the release replaces it with a tag (REL-5.3)
+- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1708a092d1cd8c49f3b437818b2a868bf8a7264d" }`), instalowana przez `uv sync --locked`; the commit is on GitHub, so every machine resolves it; the release replaces it with a tag (REL-5.3)
 
 ---
 

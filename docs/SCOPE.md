@@ -410,7 +410,7 @@ This document defines precisely:
 
 #### 3.1.4 Precipitation Data
 
-**Source:** IMGW - the Pmax_PT atlas through IMGWTools 3.0.0 (commit `6bd35a4`)
+**Source:** IMGW - the Pmax_PT atlas through IMGWTools 3.0.0 (commit `71bae77`)
 **Format:** Points of a regular grid, not meteorological stations: one request to IMGW per point
 **Spatial extent:** The grid points within the bbox of the analysis, 2 km apart (`--spacing` of `scripts/preprocess_precipitation.py`, bootstrap step 6 uses 2.0)
 **Parameters:**
@@ -520,9 +520,9 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 1.0.0.dev0 (commit `4f02ffd`; hydrological calculations)
-- Kartograf 0.8.0.dev0 (commit `26ee459` of the branch `feature/archiwista-projects`, 2026-10-31, the same as Archiwista; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
-- IMGWTools 3.0.0 (commit `6bd35a4`; design precipitation from IMGW)
+- Hydrolog 1.0.0.dev0 (commit `1708a09`; hydrological calculations)
+- Kartograf 0.8.0.dev0 (commit `eab8612` of the branch `feature/archiwista-projects`, 2026-10-31, the same as Archiwista; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
+- IMGWTools 3.0.0 (commit `71bae77`; design precipitation from IMGW)
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
@@ -958,7 +958,7 @@ PHASE 3: Hydrograph generation
 **Status:** Approved — the project is in active development
 
 **Change history:**
-- 1.6 (2026-11-02): merge of `feature/visual-identity`: Nogat visual identity and the Archiwista shell (ADR-065) in 2.1.1 (base layers OpenFreeMap, OSM GUGiK, ESRI), 2.1.2 (the panel „Zlewnia”) and the frontend stack (MapLibre GL, tokens, Bootstrap only in `/admin`, 24 modules, MZP overlay, the guide `instrukcja/`); Kartograf pinned at `26ee459` (`feature/archiwista-projects`)
+- 1.6 (2026-11-02): merge of `feature/visual-identity`: Nogat visual identity and the Archiwista shell (ADR-065) in 2.1.1 (base layers OpenFreeMap, OSM GUGiK, ESRI), 2.1.2 (the panel „Zlewnia”) and the frontend stack (MapLibre GL, tokens, Bootstrap only in `/admin`, 24 modules, MZP overlay, the guide `instrukcja/`); Kartograf pinned at `eab8612` (`feature/archiwista-projects`)
 - 1.5 (2026-10-25): Kartograf 0.8.0 and the head commits of the three producers (ADR-060, ADR-061); the HSG source is SoilGrids (ISRIC), not PIG, and its preprocessing is the clip and warp of the HSG raster of Poland
 - 1.4 (2026-10-25): the versions of Hydrolog and IMGWTools follow their pins by commit (ADR-060)
 - 1.3 (2026-10-25): translated to English (DEV-2.1); the content is unchanged
