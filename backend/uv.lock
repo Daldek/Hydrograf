@@ -1057,9 +1057,9 @@ requires-dist = [
     { name = "geoalchemy2", specifier = ">=0.14.3" },
     { name = "geojson", specifier = ">=3.1.0" },
     { name = "geopandas", specifier = ">=0.14.2" },
-    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=4f02ffdb3f7f7d1d863cd5c9ac5f2dab56f5eb3b" },
-    { name = "imgwtools", git = "https://github.com/Daldek/IMGWTools.git?rev=6bd35a49b329f99b591ffdee39367daec0e75af7" },
-    { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=26ee45924b719b4f357ab02c88cda58aa806843f" },
+    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=1708a092d1cd8c49f3b437818b2a868bf8a7264d" },
+    { name = "imgwtools", git = "https://github.com/Daldek/IMGWTools.git?rev=71bae778a6573019a0b8da6498b4429f0e03ddfb" },
+    { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=eab8612d5666cafa43d1e2c4f0a034583310b66e" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "numba", specifier = ">=0.58" },
     { name = "numpy", specifier = ">=1.26.3" },
@@ -1098,7 +1098,7 @@ dev = [
 [[package]]
 name = "hydrolog"
 version = "1.0.0.dev0"
-source = { git = "https://github.com/Daldek/Hydrolog.git?rev=4f02ffdb3f7f7d1d863cd5c9ac5f2dab56f5eb3b#4f02ffdb3f7f7d1d863cd5c9ac5f2dab56f5eb3b" }
+source = { git = "https://github.com/Daldek/Hydrolog.git?rev=1708a092d1cd8c49f3b437818b2a868bf8a7264d#1708a092d1cd8c49f3b437818b2a868bf8a7264d" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
@@ -1117,7 +1117,7 @@ wheels = [
 [[package]]
 name = "imgwtools"
 version = "3.0.0"
-source = { git = "https://github.com/Daldek/IMGWTools.git?rev=6bd35a49b329f99b591ffdee39367daec0e75af7#6bd35a49b329f99b591ffdee39367daec0e75af7" }
+source = { git = "https://github.com/Daldek/IMGWTools.git?rev=71bae778a6573019a0b8da6498b4429f0e03ddfb#71bae778a6573019a0b8da6498b4429f0e03ddfb" }
 dependencies = [
     { name = "httpx" },
     { name = "platformdirs" },
@@ -1137,7 +1137,7 @@ wheels = [
 [[package]]
 name = "kartograf"
 version = "0.8.0.dev0"
-source = { git = "https://github.com/Daldek/Kartograf.git?rev=26ee45924b719b4f357ab02c88cda58aa806843f#26ee45924b719b4f357ab02c88cda58aa806843f" }
+source = { git = "https://github.com/Daldek/Kartograf.git?rev=eab8612d5666cafa43d1e2c4f0a034583310b66e#eab8612d5666cafa43d1e2c4f0a034583310b66e" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },

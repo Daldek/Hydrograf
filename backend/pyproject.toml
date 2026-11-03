@@ -102,9 +102,9 @@ package = false
 # features of `--geometry`, not their envelopes), IMGWTools `feature/data-output`
 # (3.0.0), Hydrolog `feature/routing-schematic` (1.0.0.dev0). All three commits are on
 # GitHub.
-imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "6bd35a49b329f99b591ffdee39367daec0e75af7" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "26ee45924b719b4f357ab02c88cda58aa806843f" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "4f02ffdb3f7f7d1d863cd5c9ac5f2dab56f5eb3b" }
+imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "71bae778a6573019a0b8da6498b4429f0e03ddfb" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "eab8612d5666cafa43d1e2c4f0a034583310b66e" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1708a092d1cd8c49f3b437818b2a868bf8a7264d" }
 
 [tool.ruff]
 target-version = "py312"
