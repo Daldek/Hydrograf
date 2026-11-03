@@ -15,6 +15,7 @@
 - **ZAMROŻENIE (autor, 2026-11-02):** od teraz do scalenia `develop` → `main` i tagu `v0.5.0` (stawia autor) praca nad Hydrografem jest zamrożona: wyłącznie krytyczne poprawki łamiące API albo rażące błędy.
 - **Numer wydania (autor, 2026-11-03):** następne wydanie Hydrografa to **v0.5.0** (ostatnie: v0.4.0 na `main`; `develop` ma `0.5.0.dev0` od `3ca62f2`). Commity z 2026-11-02 (`c616b6a`, `3dc9ccc`) błędnie podały 0.8.0 / 0.8.0.dev0 (to wersja Kartografa); poprawione 2026-11-03.
 - Produkcja przełączona w miejscu na `develop` zamiast przełączenia nginx blue/green (S7 planu `docs/plans/2026-11-02-store-migration.md`); S5 po v0.5.0.
+- **Wyjątek od zamrożenia (2026-11-03):** CI na GitHubie (`pip-audit`) zgłosiło PYSEC-2026-4320 w `certifi` 2026.7.22; `backend/uv.lock` podniesiony do 2026.10.23 (`b42d038`), bramka i `pip-audit` zielone, obraz produkcji przebudowany (`/health` 200, `certifi` 2026.10.23 w kontenerze, przerwa ok. 10 s). Archiwista miał tę samą wersję: `34e83f4`, instancja :8090 zaktualizowana.
 
 ### Następne kroki (wydanie v0.5.0)
 1. Kolejna runda testów i code review.
