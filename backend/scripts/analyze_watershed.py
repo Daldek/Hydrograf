@@ -8,7 +8,7 @@ Workflow:
 3. Import do PostgreSQL
 4. Wyznaczanie zlewni
 5. Obliczanie parametrów morfometrycznych
-6. Pobieranie danych opadowych z IMGW (IMGWTools)
+6. Pobieranie danych opadowych z IMGW (Obserwator)
 7. Generowanie hydrogramu (Hydrolog)
 8. Wizualizacje i eksport wyników
 
@@ -358,14 +358,14 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> dict[str, Any] | None:
     logger.info("=" * 60)
 
     try:
-        from imgwtools import (
-            IMGWConnectionError,
-            IMGWDataError,
-            IMGWValidationError,
+        from obserwator import (
+            ObserwatorConnectionError,
+            ObserwatorDataError,
+            ObserwatorValidationError,
             fetch_pmaxtp,
         )
     except ImportError:
-        logger.warning("IMGWTools nie zainstalowane, użyto wartości domyślnych")
+        logger.warning("Obserwator nie zainstalowany, użyto wartości domyślnych")
         return None
 
     try:
@@ -460,8 +460,12 @@ def fetch_precipitation_imgw(config: AnalysisConfig) -> dict[str, Any] | None:
             },
         }
 
-    except (IMGWConnectionError, IMGWDataError, IMGWValidationError) as e:
-        # Bledy IMGWTools wymienione w fetch_pmaxtp; kazdy inny wyjatek to blad
+    except (
+        ObserwatorConnectionError,
+        ObserwatorDataError,
+        ObserwatorValidationError,
+    ) as e:
+        # Bledy Obserwatora wymienione w fetch_pmaxtp; kazdy inny wyjatek to blad
         # programu lub zmiana API i ma sie ujawnic, a nie wygladac jak brak opadu.
         logger.error("Błąd pobierania z IMGW: %s", e, exc_info=True)
         return None

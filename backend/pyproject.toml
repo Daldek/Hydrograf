@@ -56,13 +56,13 @@ dependencies = [
     # with that release.
     "affine>=2.4,<3",
     # Ecosystem producers, pinned by commit until the first release set (REL-5.3, DEV-3.4,
-    # ADR-060, ADR-061): precipitation PMAXTP of IMGWTools, spatial data download of
+    # ADR-060, ADR-061): precipitation PMAXTP of Obserwator, spatial data download of
     # Kartograf (NMT, BDOT10k, CORINE, SoilGrids) and the calculations of Hydrolog. The
     # range is the one the code supports and admits the development version of the pending
     # release (REL-5.6, ECO-053: PEP 440 puts `0.8.0.dev0` below `0.8.0`); the commit is
     # in `[tool.uv.sources]`. The release pull request narrows the ranges to `>=0.8.0`,
     # `>=1.0.0` and `>=3.0.0` and replaces each `rev` with the release tag (REL-5.3).
-    "imgwtools>=3.0.0.dev0,<4",
+    "obserwator>=3.0.0.dev0,<4",
     "kartograf>=0.8.0.dev0,<0.9",
     "hydrolog>=1.0.0.dev0,<2",
     "requests>=2.31",
@@ -97,14 +97,12 @@ Repository = "https://github.com/Daldek/Hydrograf"
 package = false
 
 [tool.uv.sources]
-# The heads of the producers (REL-5.3): Kartograf `feature/archiwista-projects`
-# (0.8.0.dev0; 26ee459, the commit Archiwista pins, which selects the sheets by the
-# features of `--geometry`, not their envelopes), IMGWTools `feature/data-output`
-# (3.0.0), Hydrolog `feature/routing-schematic` (1.0.0.dev0). All three commits are on
-# GitHub.
-imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "71bae778a6573019a0b8da6498b4429f0e03ddfb" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "eab8612d5666cafa43d1e2c4f0a034583310b66e" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1708a092d1cd8c49f3b437818b2a868bf8a7264d" }
+# The release set of Nogat (candidate-1, its plan `2026-11-03-one-pin-set.md`): the
+# heads of `develop` of Kartograf (0.8.0.dev0), Obserwator (3.0.0; the repository is
+# still `IMGWTools`) and Hydrolog (1.0.0.dev0). All three commits are on GitHub.
+obserwator = { git = "https://github.com/Daldek/IMGWTools.git", rev = "ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "9deaa314c88f89ea2d9308481e0c0b04751fc792" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "38855a1bf73baaab1879beece6536197e36deb96" }
 
 [tool.ruff]
 target-version = "py312"

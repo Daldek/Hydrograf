@@ -134,7 +134,7 @@ jobs:
         # add `--ignore-vuln <ID>` with a comment giving the reason (DEV-13.6).
         run: |
           skip=()
-          for p in kartograf imgwtools hydrolog retman archiwista hydraulik hydrograf; do
+          for p in kartograf obserwator hydrolog retman archiwista hydraulik hydrograf; do
             skip+=(--no-emit-package "$p" --no-emit-package "nogat-$p")
           done
           uv export --locked --all-extras --no-emit-project --format requirements.txt \

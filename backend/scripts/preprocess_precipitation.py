@@ -217,14 +217,14 @@ async def fetch_pmaxtp_for_point(
         {(duration_str, probability): precipitation_mm}
     """
     try:
-        from imgwtools import (
-            IMGWConnectionError,
-            IMGWDataError,
-            IMGWValidationError,
+        from obserwator import (
+            ObserwatorConnectionError,
+            ObserwatorDataError,
+            ObserwatorValidationError,
             fetch_pmaxtp,
         )
     except ImportError:
-        logger.error("imgwtools not installed. Run `uv sync --locked` in backend/.")
+        logger.error("obserwator not installed. Run `uv sync --locked` in backend/.")
         raise
 
     try:
@@ -243,7 +243,11 @@ async def fetch_pmaxtp_for_point(
 
         return scenarios
 
-    except (IMGWConnectionError, IMGWDataError, IMGWValidationError) as e:
+    except (
+        ObserwatorConnectionError,
+        ObserwatorDataError,
+        ObserwatorValidationError,
+    ) as e:
         # The errors fetch_pmaxtp documents (server, response, point outside the
         # grid): skip the point. Anything else is a bug or an API change and stops.
         logger.warning(f"Failed to fetch data for ({lat}, {lon}): {e}")
@@ -337,7 +341,7 @@ async def process_grid(
     tuple
         (total_points, successful_points, total_records)
     """
-    # Import here to avoid issues when imgwtools not installed
+    # Import here to avoid issues when obserwator not installed
     from core.database import get_db_session
 
     points = generate_grid_points(bbox, spacing_km)
