@@ -168,8 +168,7 @@ vanilla JS with Leaflet, MapLibre GL and Chart.js in the Nogat visual identity
 [Hydrolog](https://github.com/Daldek/Hydrolog) for the
 calculations, [Kartograf](https://github.com/Daldek/Kartograf) for the spatial data and
 [Obserwator](https://github.com/Daldek/IMGWTools) for the precipitation (IMGWTools until its
-v3.0.0; until after v0.5.0 Hydrograf pins its commit `71bae77` and imports the package
-`imgwtools`).
+v3.0.0; Hydrograf imports the package `obserwator`).
 
 ## For AI agents
 

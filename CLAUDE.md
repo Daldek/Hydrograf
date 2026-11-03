@@ -33,9 +33,9 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
   (REL-5.3, ADR-060, ADR-061), each with the supported range of REL-5.6 in `dependencies`
   and the commit in `[tool.uv.sources]`; all three commits are on GitHub, so
   `uv sync --locked` resolves them. Obserwator was IMGWTools until its v3.0.0: Hydrograf
-  pins its commit `71bae77` (distribution and package `imgwtools`, `from imgwtools import
-  fetch_pmaxtp`, the `IMGW*Error` exceptions) until after v0.5.0, then moves to
-  `obserwator` (docs/PROGRESS.md). Kartograf writes into the store `cache/kartograf/`
+  installs the distribution `obserwator` (`from obserwator import fetch_pmaxtp`, the
+  `Obserwator*Error` exceptions) from the repository `IMGWTools`. The three pins follow
+  the release set of Nogat. Kartograf writes into the store `cache/kartograf/`
   (ADR-061): every script passes `root=` and `cache=` explicitly. A missing function is a
   GitHub issue labelled `request` in the producer's repository (DEV-17.5), not a
   workaround here.

@@ -81,6 +81,6 @@ Please also tick the CLA box in the pull request template.
 Found a bug or have a feature idea? Open an issue at
 <https://github.com/Daldek/Hydrograf/issues> with as much detail as you can (steps to
 reproduce, expected and actual behaviour, the versions of Hydrograf, Hydrolog, Kartograf
-and Obserwator, which Hydrograf still installs as `imgwtools`).
+and Obserwator).
 
 Security problems are not reported as public issues: see [`SECURITY.md`](SECURITY.md).

@@ -1,7 +1,7 @@
 # Integracja z Obserwatorem
 
-**Wersja:** 1.2
-**Data:** 2026-11-03 (IMGWTools is named Obserwator from its v3.0.0; Hydrograf keeps the IMGWTools head `71bae77`, ADR-060, until after v0.5.0)
+**Wersja:** 1.3
+**Data:** 2026-11-03 (Hydrograf pins Obserwator `ea158dc`, the release set of Nogat, and imports the package `obserwator`)
 **Status:** Aktywna
 
 ---
@@ -10,7 +10,7 @@
 
 Hydrograf wykorzystuje [Obserwatora](https://github.com/Daldek/IMGWTools) (do v3.0.0 IMGWTools) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
 
-**Pin i pakiet:** do czasu po wydaniu v0.5.0 Hydrograf przypina commit `71bae77` (wersja 3.0.0 sprzed zmiany nazwy) i importuje pakiet `imgwtools` (`fetch_pmaxtp`, wyjątki `IMGW*Error`); przejście na `obserwator` (`obserwator.fetch_pmaxtp`, `Obserwator*Error`) jest w [PROGRESS.md](../PROGRESS.md). Nazwy kodu w tym dokumencie opisują stan przy tym pinie.
+**Pin i pakiet:** Hydrograf przypina commit `ea158dc` Obserwatora (wersja 3.0.0, zestaw wydania Nogata) i importuje pakiet `obserwator` (`fetch_pmaxtp`, wyjątki `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`). Repozytorium nadal nazywa się `IMGWTools`.
 
 ### 1.1 Co to jest Obserwator?
 
@@ -102,7 +102,7 @@ Parametry w pliku konfiguracyjnym YAML:
 
 **Uwaga:** Mniejszy `grid_spacing_km` daje dokładniejszą interpolację, ale wydłuża czas preprocessingu (więcej punktów = więcej żądań HTTP).
 
-**The `IMGW_` prefix (IMGWTools at the pin `71bae77`):** `imgw_grid_spacing_km` and `imgw_rate_limit_delay_s` are settings of Hydrograf (`core/config.py`, `.env.example`), read from `IMGW_GRID_SPACING_KM` and `IMGW_RATE_LIMIT_DELAY_S`; they name the provider IMGW and keep their names. At the pinned commit `IMGW_` is also the prefix of the settings of IMGWTools (`IMGW_ROOT`, `IMGW_DATA_DIR`, `IMGW_RATE_LIMIT`, ...), which it reads from the environment, from `.env` in the working directory and from `nogat.toml` when `imgwtools` is imported. IMGWTools ignores the names it does not know, so both coexist (checked with the repository `.env` and with exported variables, and `fetch_pmaxtp` works); a setting that IMGWTools adds under one of the two names would be read by both. Hydrograf sets no variable that IMGWTools renamed (`IMGW_STORE_ROOT` is `IMGW_ROOT`, `IMGW_DATA_DIR` is `IMGW_REFERENCE_DIR` for the reference data). Obserwator v3.0.0 reads `OBSERWATOR_<KEY>` and the `[obserwator]` table of `nogat.toml`, so the shared prefix ends when the pin moves to it (after v0.5.0).
+**The `IMGW_` prefix:** `imgw_grid_spacing_km` and `imgw_rate_limit_delay_s` are settings of Hydrograf (`core/config.py`, `.env.example`), read from `IMGW_GRID_SPACING_KM` and `IMGW_RATE_LIMIT_DELAY_S`; they name the provider IMGW and keep their names. Obserwator reads its own settings from `OBSERWATOR_<KEY>`, the shared `NOGAT_<KEY>` and `nogat.toml` (IMGWTools before the rename read `IMGW_*`), so the two sets of names no longer share a prefix.
 
 ---
 
@@ -126,13 +126,11 @@ Parametry w pliku konfiguracyjnym YAML:
 
 | Moduł | Import / Użycie | Zastosowanie |
 |-------|-----------------|--------------|
-| `scripts/preprocess_precipitation.py` | `from imgwtools import fetch_pmaxtp` | Grid preprocessing — pobieranie danych opadowych per punkt |
-| `scripts/analyze_watershed.py` | `from imgwtools import fetch_pmaxtp` | Skrypt CLI — fetch opadu dla pojedynczego punktu |
+| `scripts/preprocess_precipitation.py` | `from obserwator import fetch_pmaxtp` | Grid preprocessing — pobieranie danych opadowych per punkt |
+| `scripts/analyze_watershed.py` | `from obserwator import fetch_pmaxtp` | Skrypt CLI — fetch opadu dla pojedynczego punktu |
 | `core/precipitation.py` | (pośrednio, operuje na tabeli `precipitation_data`) | Walidacja, interpolacja IDW |
 | `api/endpoints/hydrograph.py` | (pośrednio, przez `get_precipitation()`) | Endpoint generowania hydrogramu |
 | `api/endpoints/scenarios.py` | (pośrednio, definiuje dostępne duracje/prawdopodobieństwa) | Lista scenariuszy |
-
-Po przejściu pinu na Obserwatora (po v0.5.0) import to `from obserwator import fetch_pmaxtp`.
 
 ---
 
@@ -166,7 +164,7 @@ Preprocessing opadów to **krok 6** w orchestratorze `bootstrap.py`. Może być 
 ### 6.3 Struktura odpowiedzi Obserwatora
 
 ```python
-from imgwtools import fetch_pmaxtp
+from obserwator import fetch_pmaxtp
 
 result = fetch_pmaxtp(latitude=52.23, longitude=21.01)
 
@@ -281,19 +279,19 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 ### 11.1 Instalacja
 
 ```
-# In backend/pyproject.toml ([tool.uv.sources]; the range in dependencies is "imgwtools>=3.0.0.dev0,<4"):
-imgwtools = { git = "https://github.com/Daldek/IMGWTools.git", rev = "71bae778a6573019a0b8da6498b4429f0e03ddfb" }
+# In backend/pyproject.toml ([tool.uv.sources]; the range in dependencies is "obserwator>=3.0.0.dev0,<4"):
+obserwator = { git = "https://github.com/Daldek/IMGWTools.git", rev = "ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
 ```
 
 ### 11.2 Repozytorium
 
 - **GitHub:** https://github.com/Daldek/IMGWTools (the repository of Obserwator keeps the name IMGWTools until the author renames it)
-- **Branch:** `feature/data-output` (on GitHub; the pin is a commit, REL-5.3, ADR-060)
-- **Wersja:** 3.0.0 (untagged), commit `71bae778a6573019a0b8da6498b4429f0e03ddfb`
-- **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `IMGWValidationError`, `IMGWConnectionError` and `IMGWDataError` (in Obserwator `ObserwatorValidationError`, `ObserwatorConnectionError`, `ObserwatorDataError`); both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
-- **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; it stays through v0.5.0, and after v0.5.0 the pin moves to a tag of Obserwator (distribution `obserwator`) with the imports.
+- **Branch:** `develop` (on GitHub; the pin is a commit of the release set of Nogat, candidate-1)
+- **Wersja:** 3.0.0 (untagged), commit `ea158dc6f703a5ababd91ff54e7ddec35b4f389b`
+- **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `ObserwatorValidationError`, `ObserwatorConnectionError` and `ObserwatorDataError` (`IMGW*Error` before the rename); both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
+- **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; the release replaces it with a tag of Obserwator.
 
 ---
 
-**Wersja dokumentu:** 1.2
+**Wersja dokumentu:** 1.3
 **Ostatnia aktualizacja:** 2026-11-03

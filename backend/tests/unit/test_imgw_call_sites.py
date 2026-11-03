@@ -1,8 +1,8 @@
-"""The two IMGWTools call sites of Hydrograf, through the real library, offline.
+"""The two Obserwator call sites of Hydrograf, through the real library, offline.
 
 ``fetch_pmaxtp`` documents three errors (server, response, point outside the PMAXTP
 grid). The call sites report those as "no precipitation data"; every other exception is
-a bug or a change of IMGWTools and has to reach the caller.
+a bug or a change of Obserwator and has to reach the caller.
 """
 
 from collections.abc import Callable
@@ -37,7 +37,7 @@ def _answer(response: httpx.Response) -> Callable[[httpx.Request], httpx.Respons
 
 
 def _boom(request: httpx.Request) -> httpx.Response:
-    raise RuntimeError("not an IMGWTools error")
+    raise RuntimeError("not an Obserwator error")
 
 
 @pytest.fixture
@@ -95,16 +95,16 @@ class TestAnalyzeWatershedPrecipitation:
     ) -> None:
         serve_imgw(_boom)
 
-        with pytest.raises(RuntimeError, match="not an IMGWTools error"):
+        with pytest.raises(RuntimeError, match="not an Obserwator error"):
             fetch_precipitation_imgw(config)
 
-    def test_a_changed_imgwtools_signature_surfaces(
+    def test_a_changed_obserwator_signature_surfaces(
         self, monkeypatch: pytest.MonkeyPatch, config: AnalysisConfig
     ) -> None:
         def fetch_pmaxtp(lat: float, lon: float) -> None:
             raise AssertionError("unreachable: the call must fail on the keywords")
 
-        monkeypatch.setattr("imgwtools.fetch_pmaxtp", fetch_pmaxtp)
+        monkeypatch.setattr("obserwator.fetch_pmaxtp", fetch_pmaxtp)
 
         with pytest.raises(TypeError, match="latitude"):
             fetch_precipitation_imgw(config)
@@ -137,16 +137,16 @@ class TestPreprocessPrecipitation:
     async def test_any_other_error_surfaces(self, serve_imgw: Serve) -> None:
         serve_imgw(_boom)
 
-        with pytest.raises(RuntimeError, match="not an IMGWTools error"):
+        with pytest.raises(RuntimeError, match="not an Obserwator error"):
             await fetch_pmaxtp_for_point(52.4, 17.3, delay_s=0)
 
-    async def test_a_changed_imgwtools_signature_surfaces(
+    async def test_a_changed_obserwator_signature_surfaces(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         def fetch_pmaxtp(lat: float, lon: float) -> None:
             raise AssertionError("unreachable: the call must fail on the keywords")
 
-        monkeypatch.setattr("imgwtools.fetch_pmaxtp", fetch_pmaxtp)
+        monkeypatch.setattr("obserwator.fetch_pmaxtp", fetch_pmaxtp)
 
         with pytest.raises(TypeError, match="latitude"):
             await fetch_pmaxtp_for_point(52.4, 17.3, delay_s=0)

@@ -1007,10 +1007,10 @@ dependencies = [
     { name = "geojson" },
     { name = "geopandas" },
     { name = "hydrolog" },
-    { name = "imgwtools" },
     { name = "kartograf" },
     { name = "numba" },
     { name = "numpy" },
+    { name = "obserwator" },
     { name = "pandas" },
     { name = "pillow" },
     { name = "psutil" },
@@ -1057,12 +1057,12 @@ requires-dist = [
     { name = "geoalchemy2", specifier = ">=0.14.3" },
     { name = "geojson", specifier = ">=3.1.0" },
     { name = "geopandas", specifier = ">=0.14.2" },
-    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=1708a092d1cd8c49f3b437818b2a868bf8a7264d" },
-    { name = "imgwtools", git = "https://github.com/Daldek/IMGWTools.git?rev=71bae778a6573019a0b8da6498b4429f0e03ddfb" },
-    { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=eab8612d5666cafa43d1e2c4f0a034583310b66e" },
+    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=38855a1bf73baaab1879beece6536197e36deb96" },
+    { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=9deaa314c88f89ea2d9308481e0c0b04751fc792" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "numba", specifier = ">=0.58" },
     { name = "numpy", specifier = ">=1.26.3" },
+    { name = "obserwator", git = "https://github.com/Daldek/IMGWTools.git?rev=ea158dc6f703a5ababd91ff54e7ddec35b4f389b" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "psutil", specifier = ">=5.9" },
@@ -1098,7 +1098,7 @@ dev = [
 [[package]]
 name = "hydrolog"
 version = "1.0.0.dev0"
-source = { git = "https://github.com/Daldek/Hydrolog.git?rev=1708a092d1cd8c49f3b437818b2a868bf8a7264d#1708a092d1cd8c49f3b437818b2a868bf8a7264d" }
+source = { git = "https://github.com/Daldek/Hydrolog.git?rev=38855a1bf73baaab1879beece6536197e36deb96#38855a1bf73baaab1879beece6536197e36deb96" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
@@ -1115,17 +1115,6 @@ wheels = [
 ]
 
 [[package]]
-name = "imgwtools"
-version = "3.0.0"
-source = { git = "https://github.com/Daldek/IMGWTools.git?rev=71bae778a6573019a0b8da6498b4429f0e03ddfb#71bae778a6573019a0b8da6498b4429f0e03ddfb" }
-dependencies = [
-    { name = "httpx" },
-    { name = "platformdirs" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-]
-
-[[package]]
 name = "iniconfig"
 version = "2.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1137,7 +1126,7 @@ wheels = [
 [[package]]
 name = "kartograf"
 version = "0.8.0.dev0"
-source = { git = "https://github.com/Daldek/Kartograf.git?rev=eab8612d5666cafa43d1e2c4f0a034583310b66e#eab8612d5666cafa43d1e2c4f0a034583310b66e" }
+source = { git = "https://github.com/Daldek/Kartograf.git?rev=9deaa314c88f89ea2d9308481e0c0b04751fc792#9deaa314c88f89ea2d9308481e0c0b04751fc792" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
@@ -1751,6 +1740,17 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/b5/4da41c328788f575838f97a098fe8ca691ebc6f6fd73ad4a262ee40b184d/numpy-2.5.4-cp315-cp315t-win32.whl", hash = "sha256:ad62a416ddcf863bf44bba76fbf6b53366ab0692e294f51cae4b5fbe0d246788", size = 6335804, upload-time = "2026-10-10T20:05:19.921Z" },
     { url = "https://files.pythonhosted.org/packages/98/94/6482ddfa3d312490cb9358f375bf2ad56427dbea8769187158e94d653753/numpy-2.5.4-cp315-cp315t-win_amd64.whl", hash = "sha256:38f47be9f74ab870d2633b5456ae519c43758a8d1fd05342f0ce4ecc034396ee", size = 12890095, upload-time = "2026-10-10T20:05:21.875Z" },
     { url = "https://files.pythonhosted.org/packages/48/7f/c2d1b436b6e7cfebac140c2579a298344b85f2991a2ce5c3615cefb29400/numpy-2.5.4-cp315-cp315t-win_arm64.whl", hash = "sha256:7a14a461d9340f1b46b8648578aed9cdb8b3b018a8fac6c1dde2c9192a01a87f", size = 10883718, upload-time = "2026-10-10T20:05:28.547Z" },
+]
+
+[[package]]
+name = "obserwator"
+version = "3.0.0"
+source = { git = "https://github.com/Daldek/IMGWTools.git?rev=ea158dc6f703a5ababd91ff54e7ddec35b4f389b#ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
+dependencies = [
+    { name = "httpx" },
+    { name = "platformdirs" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
 ]
 
 [[package]]

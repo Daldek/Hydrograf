@@ -33,10 +33,10 @@ def mock_db():
 def serve_imgw() -> Iterator[
     Callable[[Callable[[httpx.Request], httpx.Response]], None]
 ]:
-    """Answer the HTTP calls of the real imgwtools client from a handler, offline.
+    """Answer the HTTP calls of the real obserwator client from a handler, offline.
 
     Call the returned function with ``handler(request) -> httpx.Response``; whatever
-    imgwtools asks for from then on goes to the handler, never to the network.
+    obserwator asks for from then on goes to the handler, never to the network.
     """
     real_client = httpx.Client
     patcher = pytest.MonkeyPatch()
