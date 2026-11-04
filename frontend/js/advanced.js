@@ -179,22 +179,24 @@
 
     /**
      * Morphometry for the hydrograph request of the given watershed.
-     * Returns { valid, morphometry }; valid is false while the advanced
-     * form is on and has errors (the caller must not send the request).
+     * Returns { valid, morphometry, changed }; valid is false while the advanced
+     * form is on and has errors (the caller must not send the request), changed
+     * lists the keys of the fields the person changed (the hand-off names them).
      */
     function requestMorphometry(data) {
         if (data !== _watershed) load(data);
         var original = _original;
         if (!els.toggle || !els.toggle.checked || !original) {
             updateNotice([]);
-            return { valid: true, morphometry: original };
+            return { valid: true, morphometry: original, changed: [] };
         }
         var state = evaluate();
-        if (!state.valid) return { valid: false, morphometry: null };
+        if (!state.valid) return { valid: false, morphometry: null, changed: [] };
         updateNotice(state.changed);
         return {
             valid: true,
             morphometry: state.changed.length ? buildMorphometry(state) : original,
+            changed: state.changed.map(function (f) { return f.key; }),
         };
     }
 

@@ -168,6 +168,8 @@
         document.getElementById('hietogram-results').classList.add('d-none');
         document.getElementById('hydrograph-results').classList.add('d-none');
         document.getElementById('hydrograph-info').textContent = '';
+        // The hand-off to Hydrolog keeps the watershed without the hidden result
+        if (Hydrograf.handoff) Hydrograf.handoff.showHydrograph(Hydrograf.app.getCurrentWatershed(), null);
     }
 
     /**
@@ -252,7 +254,7 @@
         // earlier result is hidden because it no longer matches the form
         var morph = Hydrograf.advanced
             ? Hydrograf.advanced.requestMorphometry(data)
-            : { valid: true, morphometry: data.watershed.morphometry || null };
+            : { valid: true, morphometry: data.watershed.morphometry || null, changed: [] };
         var rain = Hydrograf.customRain
             ? Hydrograf.customRain.request(data)
             : { active: false, valid: true, series: null };
@@ -281,6 +283,14 @@
                 amc: document.getElementById('hydro-amc').value,
                 uh_model: c.model,
             };
+            if (morph.morphometry) {
+                // Where the morphometry came from: the hand-off of the response names it
+                opts.morphometry_origin = {
+                    latitude: data.watershed.outlet.latitude,
+                    longitude: data.watershed.outlet.longitude,
+                    changed: morph.changed,
+                };
+            }
             if (rain.active) {
                 opts.custom_precipitation = rain.series;
             } else {
@@ -353,6 +363,7 @@
 
             displayPrecipBalance(result.water_balance, result.metadata);
             displayMetadata(result.metadata);
+            if (Hydrograf.handoff) Hydrograf.handoff.showHydrograph(data, result.handoff);
         } catch (err) {
             if (myId !== _requestId) return;
             console.warn('Hydrograph error:', err.message);
