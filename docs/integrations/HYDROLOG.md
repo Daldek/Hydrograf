@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-11-03 (the head of `develop` of Hydrolog, `38855a1`, the release set of Nogat; was `1708a09`)
+**Ostatnia aktualizacja:** 2026-11-03 (the head of `develop` of Hydrolog, `2eb8bd0`, the release set of Nogat; was `1708a09`)
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -252,7 +252,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Plik | Zmiana | Status |
 |------|--------|--------|
-| `backend/pyproject.toml` | + hydrolog (commit `38855a1`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
+| `backend/pyproject.toml` | + hydrolog (commit `2eb8bd0`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
 | `backend/core/morphometry.py` | `calculate_shape_indices` (wskaźniki kształtu) | ✅ |
 | `backend/core/morphometry_raster.py` | Obliczenia rastrowe (slope, aspect, TWI, Strahler) | ✅ |
 | `backend/core/catchment_graph.py` | In-memory graf, BFS, trace_main_channel | ✅ |
@@ -465,9 +465,9 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 - **GitHub:** https://github.com/Daldek/Hydrolog.git
 - **Branch:** `feature/routing-schematic` (the head of the stack `chore/nogat-2.1` and `feature/routing-*`; on GitHub)
-- **Wersja:** 1.0.0.dev0, commit `38855a1bf73baaab1879beece6536197e36deb96` (the head of `develop`, the release set of Nogat)
+- **Wersja:** 1.0.0.dev0, commit `2eb8bd0c0af7a4219bfe9a0f756c1fa27cc15c52` (the head of `develop`, the release set of Nogat)
 - **Dokumentacja:** `docs/INTEGRATION.md`
-- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "38855a1bf73baaab1879beece6536197e36deb96" }`), instalowana przez `uv sync --locked`; the commit is on GitHub, so every machine resolves it; the release replaces it with a tag (REL-5.3)
+- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "2eb8bd0c0af7a4219bfe9a0f756c1fa27cc15c52" }`), instalowana przez `uv sync --locked`; the commit is on GitHub, so every machine resolves it; the release replaces it with a tag (REL-5.3)
 
 ---
 

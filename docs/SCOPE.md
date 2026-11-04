@@ -520,7 +520,7 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 1.0.0.dev0 (commit `38855a1` of `develop`; hydrological calculations)
+- Hydrolog 1.0.0.dev0 (commit `2eb8bd0` of `develop`; hydrological calculations)
 - Kartograf 0.8.0.dev0 (commit `9deaa31` of `develop`, the release set of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
 - Obserwator 3.0.0 (IMGWTools until its v3.0.0; commit `ea158dc`, package `obserwator`; design precipitation from IMGW)
 
@@ -958,7 +958,7 @@ PHASE 3: Hydrograph generation
 **Status:** Approved — the project is in active development
 
 **Change history:**
-- 1.8 (2026-11-03): the producers follow the release set of Nogat (Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `38855a1`); the package `imgwtools` becomes `obserwator`
+- 1.8 (2026-11-03): the producers follow the release set of Nogat (Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`); the package `imgwtools` becomes `obserwator`
 - 1.7 (2026-11-03): the producer IMGWTools is named Obserwator (its v3.0.0); the pin `71bae77` and the package `imgwtools` stay until after v0.5.0
 - 1.6 (2026-11-02): merge of `feature/visual-identity`: Nogat visual identity and the Archiwista shell (ADR-065) in 2.1.1 (base layers OpenFreeMap, OSM GUGiK, ESRI), 2.1.2 (the panel „Zlewnia”) and the frontend stack (MapLibre GL, tokens, Bootstrap only in `/admin`, 24 modules, MZP overlay, the guide `instrukcja/`); Kartograf pinned at `eab8612` (`feature/archiwista-projects`)
 - 1.5 (2026-10-25): Kartograf 0.8.0 and the head commits of the three producers (ADR-060, ADR-061); the HSG source is SoilGrids (ISRIC), not PIG, and its preprocessing is the clip and warp of the HSG raster of Poland
