@@ -529,7 +529,7 @@ Any other `PT*` layer gets the category `inny`, CN 75 and imperviousness 0.2.
 ### `preprocess_precipitation.py`: IMGW precipitation
 
 Downloads the PMAXTP maximum precipitation of IMGW (through Obserwator, the package `obserwator`
-at the pinned commit `ea158dc`) for a grid of points inside a
+at the pinned commit `1ee5457`) for a grid of points inside a
 bounding box and stores every scenario, 16 durations x 27 probabilities = 432 per point, in the table
 `precipitation_data`.
 

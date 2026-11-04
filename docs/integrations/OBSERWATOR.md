@@ -1,7 +1,7 @@
 # Integracja z Obserwatorem
 
 **Wersja:** 1.3
-**Data:** 2026-11-03 (Hydrograf pins Obserwator `ea158dc`, the release set of Nogat, and imports the package `obserwator`)
+**Data:** 2026-11-04 (Hydrograf pins Obserwator `1ee5457`, 3.0.0.dev0, the release set of Nogat, and imports the package `obserwator`)
 **Status:** Aktywna
 
 ---
@@ -10,7 +10,7 @@
 
 Hydrograf wykorzystuje [Obserwatora](https://github.com/Daldek/Obserwator) (do v3.0.0 IMGWTools) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
 
-**Pin i pakiet:** Hydrograf przypina commit `ea158dc` Obserwatora (wersja 3.0.0, zestaw wydania Nogata) i importuje pakiet `obserwator` (`fetch_pmaxtp`, wyjątki `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`). Repozytorium nadal nazywa się `IMGWTools`.
+**Pin i pakiet:** Hydrograf przypina commit `1ee5457` Obserwatora (wersja 3.0.0.dev0, zestaw wydania Nogata) i importuje pakiet `obserwator` (`fetch_pmaxtp`, wyjątki `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`). Dokumenty wyniku i błędu Obserwatora (standard Nogata 1.0) nie dotyczą Hydrografa, który woła tylko funkcję biblioteki.
 
 ### 1.1 Co to jest Obserwator?
 
@@ -280,18 +280,18 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 
 ```
 # In backend/pyproject.toml ([tool.uv.sources]; the range in dependencies is "obserwator>=3.0.0.dev0,<4"):
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "1ee54573453473392f21e2c8bb34f76e4976e03f" }
 ```
 
 ### 11.2 Repozytorium
 
 - **GitHub:** https://github.com/Daldek/Obserwator
 - **Branch:** `develop` (on GitHub; the pin is a commit of the release set of Nogat, candidate-1)
-- **Wersja:** 3.0.0 (untagged), commit `ea158dc6f703a5ababd91ff54e7ddec35b4f389b`
+- **Wersja:** 3.0.0.dev0 (untagged), commit `1ee54573453473392f21e2c8bb34f76e4976e03f`
 - **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `ObserwatorValidationError`, `ObserwatorConnectionError` and `ObserwatorDataError` (`IMGW*Error` before the rename); both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
 - **uv:** the commit is on GitHub, so `uv lock`, `uv sync --locked` and the image build resolve it anywhere; the release replaces it with a tag of Obserwator.
 
 ---
 
 **Wersja dokumentu:** 1.3
-**Ostatnia aktualizacja:** 2026-11-03
+**Ostatnia aktualizacja:** 2026-11-04
