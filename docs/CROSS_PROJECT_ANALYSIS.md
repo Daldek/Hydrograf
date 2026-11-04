@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-11-04 (the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-04 (Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
 **Projects:** Hydrograf, Hydrolog, Kartograf, Obserwator (IMGWTools until its v3.0.0)
 
@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
 │  │  Obserwator   │   │   Kartograf   │   │   Hydrolog    │              │
-│  │  ea158dc      │   │   9deaa31     │   │   2eb8bd0     │              │
+│  │  1ee5457      │   │   9deaa31     │   │   2eb8bd0     │              │
 │  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
 │  └───────────────┘   └───────────────┘   └───────────────┘              │
 │                                                                         │
@@ -30,7 +30,7 @@
 
 | Project | Depends on | Type of dependency | Version |
 |---------|-----------|--------------------|---------|
-| **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit ea158dc (3.0.0) |
+| **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit 1ee5457 (3.0.0.dev0) |
 | **Hydrograf** | Kartograf | direct (pyproject.toml) | commit 9deaa31 (0.8.0.dev0) |
 | **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 2eb8bd0 (1.0.0.dev0) |
 | **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
@@ -39,11 +39,11 @@
 
 ### Installing the dependencies (`backend/pyproject.toml`, versions in `backend/uv.lock`)
 
-The three producers are pinned by the commits of the release set of Nogat (candidate-1: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag. The repository of Obserwator is still `IMGWTools`:
+The three producers are pinned by the commits of the release set of Nogat (candidate-1: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag:
 
 ```toml
 # [tool.uv.sources]
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "1ee54573453473392f21e2c8bb34f76e4976e03f" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "9deaa314c88f89ea2d9308481e0c0b04751fc792" }
 hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "2eb8bd0c0af7a4219bfe9a0f756c1fa27cc15c52" }
 ```

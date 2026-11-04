@@ -100,7 +100,7 @@ package = false
 # The release set of Nogat (candidate-1, its plan `2026-11-03-one-pin-set.md`): the
 # heads of `develop` of Kartograf (0.8.0.dev0), Obserwator (3.0.0; the repository is
 # still `IMGWTools`) and Hydrolog (1.0.0.dev0). All three commits are on GitHub.
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "1ee54573453473392f21e2c8bb34f76e4976e03f" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "9deaa314c88f89ea2d9308481e0c0b04751fc792" }
 hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "2eb8bd0c0af7a4219bfe9a0f756c1fa27cc15c52" }
 
