@@ -30,7 +30,7 @@ Hydrograf is a web application for watershed delineation and design hydrographs 
 | Hydraulic modelling: flood inundation maps, channel routing, reservoir retention | [Hydraulik](https://github.com/Daldek/Hydraulik) (SFINCS flood models, in research), or HEC-RAS and EPA SWMM |
 | Areas outside Poland | QGIS with GRASS or WhiteboxTools on your own DEM |
 | Downloading spatial data files or browsing the downloaded stores | [Kartograf](https://github.com/Daldek/Kartograf), [Archiwista](https://github.com/Daldek/Archiwista) |
-| Precipitation series, station data, PMAXTP as files | [Obserwator](https://github.com/Daldek/IMGWTools) |
+| Precipitation series, station data, PMAXTP as files | [Obserwator](https://github.com/Daldek/Obserwator) |
 | User accounts, saved analyses, PDF reports, real-time or forecast data | not provided |
 
 ## Run and Deploy
@@ -167,7 +167,7 @@ vanilla JS with Leaflet, MapLibre GL and Chart.js in the Nogat visual identity
 (`frontend/css/tokens.css`); Bootstrap 5 is used only in `/admin`. Hydrograf uses
 [Hydrolog](https://github.com/Daldek/Hydrolog) for the
 calculations, [Kartograf](https://github.com/Daldek/Kartograf) for the spatial data and
-[Obserwator](https://github.com/Daldek/IMGWTools) for the precipitation (IMGWTools until its
+[Obserwator](https://github.com/Daldek/Obserwator) for the precipitation (IMGWTools until its
 v3.0.0; Hydrograf imports the package `obserwator`).
 
 ## For AI agents
@@ -185,7 +185,7 @@ Developing this repository? Read
   concentration, hietograms, unit hydrographs), used as a library.
 - [Kartograf](https://github.com/Daldek/Kartograf): downloads the DEM, land cover and soil
   data that the preprocessing needs.
-- [Obserwator](https://github.com/Daldek/IMGWTools): the PMAXTP precipitation of IMGW-PIB.
+- [Obserwator](https://github.com/Daldek/Obserwator): the PMAXTP precipitation of IMGW-PIB.
 - [Hydraulik](https://github.com/Daldek/Hydraulik): planned as a compute node for the
   hydraulic models of a catchment.
 - [Archiwista](https://github.com/Daldek/Archiwista): browser of the Kartograf data stores.

@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-11-03 (the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-04 (the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
 **Projects:** Hydrograf, Hydrolog, Kartograf, Obserwator (IMGWTools until its v3.0.0)
 
@@ -43,7 +43,7 @@ The three producers are pinned by the commits of the release set of Nogat (candi
 
 ```toml
 # [tool.uv.sources]
-obserwator = { git = "https://github.com/Daldek/IMGWTools.git", rev = "ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "9deaa314c88f89ea2d9308481e0c0b04751fc792" }
 hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "2eb8bd0c0af7a4219bfe9a0f756c1fa27cc15c52" }
 ```
