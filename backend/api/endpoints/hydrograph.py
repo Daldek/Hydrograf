@@ -45,6 +45,20 @@ from core.errors import (
     StoreUnavailableError,
     UnsupportedError,
 )
+from core.handoff import (
+    PRODUCER,
+    DesignHydrograph,
+    build_handoff,
+    curve_number_runoff,
+    delineated_origin,
+    design_storm,
+    given_origin,
+    hydrograph_result,
+    pmaxtp_origin,
+    rainfall_series,
+    watershed_name,
+    watershed_parameters,
+)
 from core.land_cover import get_land_cover_for_boundary
 from core.precipitation import (
     DURATION_STR_TO_MIN,
@@ -82,6 +96,19 @@ from utils.geometry import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Manning's n of the channel in Lutz's estimation of Nash's n and K
+LUTZ_MANNING_N = 0.035
+
+# Relative position of the peak of the Euler II hyetograph
+EULER_II_PEAK_POSITION = 0.33
+
+# The options of each tc method the request gives (provenance of the hand-off)
+_TC_OPTIONS = {
+    "faa": ("tc_overland_length_km", "tc_runoff_coeff"),
+    "kerby": ("tc_overland_length_km", "tc_retardance"),
+    "kerby_kirpich": ("tc_overland_length_km", "tc_retardance"),
+}
 
 
 def _require_area_within_limit(area_km2: float) -> None:
@@ -383,7 +410,7 @@ def _estimate_nash_params(
             L_km=channel_length,
             Lc_km=length_to_centroid,
             slope=channel_slope,
-            manning_n=0.035,
+            manning_n=LUTZ_MANNING_N,
         )
         logger.info(f"Nash (Lutz): N={nash.n:.2f}, K={nash.k_min:.1f} min")
     elif request.nash_estimation == "from_urban_regression":
@@ -439,7 +466,7 @@ def _estimate_nash_params(
 HIETOGRAM_CLASSES: dict[str, Callable[[], Hietogram]] = {
     "beta": lambda: BetaHietogram(alpha=2.0, beta=5.0),
     "block": lambda: BlockHietogram(),
-    "euler_ii": lambda: EulerIIHietogram(peak_position=0.33),
+    "euler_ii": lambda: EulerIIHietogram(peak_position=EULER_II_PEAK_POSITION),
 }
 
 # Request AMC code -> Hydrolog enum
@@ -503,6 +530,147 @@ def _design_storm(request: HydrographRequest) -> tuple[str, float]:
     return validate_duration(request.duration), validate_probability(
         request.probability
     )
+
+
+def _handoff_watershed(
+    request: HydrographRequest, watershed_resp: WatershedResponse | None
+) -> tuple[str, dict[str, Any]]:
+    """Return the name and the provenance of the watershed of the hand-off.
+
+    Parameters
+    ----------
+    request : HydrographRequest
+        The request.
+    watershed_resp : WatershedResponse or None
+        The watershed the endpoint delineated, None for a given morphometry.
+
+    Returns
+    -------
+    tuple[str, dict[str, Any]]
+        A delineated watershed is named after its outlet. A given morphometry is
+        named after the outlet of its ``morphometry_origin`` and comes from Hydrograf
+        with the fields the person changed; without the origin it is named after the
+        request point and is the user's.
+    """
+    if watershed_resp is not None:
+        outlet = watershed_resp.outlet
+        return (
+            watershed_name(outlet.latitude, outlet.longitude),
+            delineated_origin(outlet.latitude, outlet.longitude),
+        )
+    origin = request.morphometry_origin
+    if origin is None:
+        return watershed_name(request.latitude, request.longitude), given_origin()
+    return (
+        watershed_name(origin.latitude, origin.longitude),
+        delineated_origin(origin.latitude, origin.longitude, origin.changed),
+    )
+
+
+def _storm_shape(request: HydrographRequest) -> dict[str, float]:
+    """Return the shape parameters of the request's hyetograph in Hydrolog's names.
+
+    Parameters
+    ----------
+    request : HydrographRequest
+        Request of a PMAXTP design storm.
+
+    Returns
+    -------
+    dict[str, float]
+        ``alpha`` and ``beta`` of the Beta hyetograph, ``peak_position`` of Euler II,
+        nothing for the block.
+    """
+    if request.hietogram_type == "beta":
+        return {"alpha": request.hietogram_alpha, "beta": request.hietogram_beta}
+    if request.hietogram_type == "euler_ii":
+        return {"peak_position": EULER_II_PEAK_POSITION}
+    return {}
+
+
+def _tc_origin(request: HydrographRequest, tc_method: str) -> dict[str, Any]:
+    """Return the method of tc and the options of it the request gave.
+
+    Parameters
+    ----------
+    request : HydrographRequest
+        The request.
+    tc_method : str
+        The method that computed tc.
+
+    Returns
+    -------
+    dict[str, Any]
+        ``tc_method`` and the given ``tc_*`` options the method reads.
+    """
+    origin: dict[str, Any] = {"tc_method": tc_method}
+    for option in _TC_OPTIONS.get(tc_method, ()):
+        value = getattr(request, option)
+        if value is not None:
+            origin[option] = value
+    return origin
+
+
+def _handoff_runoff(
+    request: HydrographRequest,
+    tc_min: float | None,
+    tc_method: str | None,
+    uh_params: dict[str, Any],
+    nash_meta: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Return the runoff of the hand-off and the provenance of its derived parameters.
+
+    Parameters
+    ----------
+    request : HydrographRequest
+        The request.
+    tc_min : float or None
+        The time of concentration the computation used [min].
+    tc_method : str or None
+        The method that computed it.
+    uh_params : dict[str, Any]
+        The ``uh_params`` of the Nash or Snyder generator.
+    nash_meta : dict[str, Any]
+        What the Nash estimation reports (``_estimate_nash_params``).
+
+    Returns
+    -------
+    tuple[dict[str, Any], dict[str, Any] | None]
+        The runoff with the values the generator used: tc for SCS, n and K for Nash,
+        L, Lc, Ct and Cp for Snyder. The provenance of ``runoff`` names the method of
+        tc (SCS) or of n and K (Nash) with its parameters; Snyder derives nothing.
+    """
+    if request.uh_model == "nash":
+        runoff = curve_number_runoff(
+            "nash", request.amc, nash_n=uh_params["n"], nash_k_min=uh_params["k"]
+        )
+        origin: dict[str, Any] = {
+            "source": PRODUCER,
+            "nash_estimation": request.nash_estimation,
+        }
+        if request.nash_estimation == "from_lutz":
+            origin["manning_n"] = LUTZ_MANNING_N
+        elif request.nash_estimation == "from_urban_regression":
+            for key in ("urban_fraction", "effective_precip_mm", "duration_h"):
+                origin[key] = nash_meta[key]
+        elif tc_method is not None:
+            origin.update(_tc_origin(request, tc_method))
+            origin["tc_min"] = tc_min
+        return runoff, origin
+    if request.uh_model == "snyder":
+        runoff = curve_number_runoff(
+            "snyder",
+            request.amc,
+            snyder_length_km=uh_params["L_km"],
+            snyder_centroid_length_km=uh_params["Lc_km"],
+            snyder_ct=uh_params["ct"],
+            snyder_cp=uh_params["cp"],
+        )
+        return runoff, None
+    if tc_method is None:
+        raise ValueError("The SCS unit hydrograph needs the time of concentration")
+    runoff = curve_number_runoff("scs", request.amc, tc_min=tc_min)
+    return runoff, {"source": PRODUCER, **_tc_origin(request, tc_method)}
 
 
 @router.post(
@@ -602,6 +770,8 @@ def generate_hydrograph(
         if custom is not None:
             precip_result = _custom_hietogram(custom.depths_mm, timestep_min)
             hietogram_type = None
+            handoff_rainfall = rainfall_series(custom.depths_mm, timestep_min)
+            rainfall_origin = given_origin()
             logger.debug(
                 f"Custom precipitation: {precip_result.total_mm:.1f} mm "
                 f"in {duration_min:.0f} min"
@@ -647,6 +817,15 @@ def generate_hydrograph(
                 duration_min=duration_min,
                 timestep_min=timestep_min,
             )
+            handoff_rainfall = design_storm(
+                request.hietogram_type,
+                precip_mm,
+                duration_min,
+                **_storm_shape(request),
+            )
+            rainfall_origin = pmaxtp_origin(
+                design_probability, duration_min, request.latitude, request.longitude
+            )
         precip_total_mm = float(precip_result.total_mm)
 
         # ===== Create Hydrolog objects =====
@@ -665,6 +844,7 @@ def generate_hydrograph(
 
         # ===== Generate hydrograph =====
         nash_meta: dict[str, Any] = {}
+        uh_params: dict[str, Any] = {}
         if request.uh_model == "snyder":
             channel_length = morph_dict.get("channel_length_km")
             length_to_centroid = morph_dict.get("length_to_centroid_km")
@@ -674,23 +854,24 @@ def generate_hydrograph(
                     reason="missing_morphometry",
                     method="snyder",
                 )
+            uh_params = {
+                "L_km": channel_length,
+                "Lc_km": length_to_centroid,
+                "ct": request.snyder_ct or 1.5,
+                "cp": request.snyder_cp or 0.6,
+            }
             generator = HydrographGenerator(
                 area_km2=area_km2,
                 cn=cn,
                 tc_min=tc_min,
                 uh_model="snyder",
-                uh_params={
-                    "L_km": channel_length,
-                    "Lc_km": length_to_centroid,
-                    "ct": request.snyder_ct or 1.5,
-                    "cp": request.snyder_cp or 0.6,
-                },
+                uh_params=uh_params,
             )
         elif request.uh_model == "nash":
             # The urban regression needs the event's effective rainfall, so it
             # uses the same AMC-adjusted CN as the runoff calculation below.
             cn_effective = SCSCN(cn=cn).adjust_cn_for_amc(amc)
-            nash_params, nash_meta = _estimate_nash_params(
+            uh_params, nash_meta = _estimate_nash_params(
                 request,
                 morph_dict,
                 tc_min,
@@ -704,7 +885,7 @@ def generate_hydrograph(
                 area_km2=area_km2,
                 cn=cn,
                 uh_model="nash",
-                uh_params=nash_params,
+                uh_params=uh_params,
             )
         else:
             generator = HydrographGenerator(
@@ -718,6 +899,31 @@ def generate_hydrograph(
             precipitation=precip_result,
             timestep_min=timestep_min,
             amc=amc,
+        )
+
+        # ===== Hand-off to Hydrolog: the values used, unrounded (ADR-068) =====
+        name, watershed_origin = _handoff_watershed(request, watershed_resp)
+        runoff, runoff_origin = _handoff_runoff(
+            request, tc_min, tc_method, uh_params, nash_meta
+        )
+        provenance = {"rainfall": rainfall_origin}
+        if runoff_origin is not None:
+            provenance["runoff"] = runoff_origin
+        handoff = build_handoff(
+            name=name,
+            watershed=watershed_parameters(morph_dict, name, cn=cn),
+            watershed_origin=watershed_origin,
+            hydrograph=DesignHydrograph(
+                timestep_min=timestep_min,
+                runoff=runoff,
+                rainfall=handoff_rainfall,
+                provenance=provenance,
+                result=hydrograph_result(
+                    hydro_result.peak_discharge_m3s,
+                    hydro_result.time_to_peak_min,
+                    hydro_result.total_volume_m3,
+                ),
+            ),
         )
 
         # ===== Build response =====
@@ -767,6 +973,7 @@ def generate_hydrograph(
                 nash_effective_precip_mm=nash_meta.get("effective_precip_mm"),
                 nash_duration_h=nash_meta.get("duration_h"),
             ),
+            handoff=handoff,
         )
 
         logger.info(

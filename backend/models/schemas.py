@@ -312,6 +312,14 @@ class DelineateResponse(BaseModel):
         None,
         description="User-facing info about parameter changes",
     )
+    handoff: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "The watershed as a hand-off to Hydrolog's GUI: nogat-handoff/1 "
+            "(schemas/nogat/handoff-1.schema.json) carrying hydrolog-network/1, "
+            "without rainfall and result (ADR-068)"
+        ),
+    )
 
 
 class DelineatePreviewRequest(DelineateRequest):
@@ -412,6 +420,48 @@ class CustomPrecipitation(BaseModel):
         return v
 
 
+class MorphometryOrigin(BaseModel):
+    """
+    Where the pre-computed morphometry of a hydrograph request came from.
+
+    The interface sends the morphometry of a delineation; it names the outlet of the
+    watershed and the fields the person changed since (the advanced mode), which the
+    hand-off of the response gives as the provenance of the watershed.
+
+    Attributes
+    ----------
+    latitude : float
+        Outlet latitude of the delineated watershed in WGS84
+    longitude : float
+        Outlet longitude of the delineated watershed in WGS84
+    changed : list[str]
+        Fields of the morphometry the person changed after the delineation
+    """
+
+    latitude: float = Field(
+        ..., ge=-90, le=90, description="Outlet latitude of the delineated watershed"
+    )
+    longitude: float = Field(
+        ..., ge=-180, le=180, description="Outlet longitude of the delineated watershed"
+    )
+    changed: list[str] = Field(
+        default_factory=list,
+        description="Fields of `morphometry` the person changed after the delineation",
+        examples=[["cn"]],
+    )
+
+    @field_validator("changed")
+    @classmethod
+    def morphometry_fields(cls, v: list[str]) -> list[str]:
+        """Accept the names of fields of the morphometry, each once."""
+        for name in v:
+            if name not in MorphometricParameters.model_fields:
+                raise ValueError(f"Nieznane pole morfometrii: {name}.")
+        if len(set(v)) != len(v):
+            raise ValueError("Pole morfometrii podano więcej niż raz.")
+        return v
+
+
 class HydrographRequest(BaseModel):
     """
     Request model for hydrograph generation.
@@ -447,6 +497,8 @@ class HydrographRequest(BaseModel):
         Antecedent moisture condition applied to CN, default 'II'
     custom_precipitation : CustomPrecipitation, optional
         Own rainfall series; replaces PMAXTP and the hietogram
+    morphometry_origin : MorphometryOrigin, optional
+        Outlet and changed fields of the delineation `morphometry` came from
     """
 
     latitude: float = Field(
@@ -558,6 +610,12 @@ class HydrographRequest(BaseModel):
         description="Own rainfall series; replaces PMAXTP and the hietogram "
         "(duration, probability, hietogram_* and timestep_min are then ignored)",
     )
+    morphometry_origin: MorphometryOrigin | None = Field(
+        None,
+        description="Where `morphometry` came from: the outlet of the delineated "
+        "watershed and the fields the person changed since; the hand-off of the "
+        "response names them (without it, it gives the morphometry as the user's)",
+    )
 
     @model_validator(mode="after")
     def design_storm_or_custom(self) -> "HydrographRequest":
@@ -663,6 +721,8 @@ class HydrographResponse(BaseModel):
         Water balance from SCS-CN
     metadata : HydrographMetadata
         Calculation metadata
+    handoff : dict
+        The watershed, its rainfall, runoff and result as a hand-off to Hydrolog
     """
 
     watershed: WatershedResponse | None = Field(
@@ -672,6 +732,15 @@ class HydrographResponse(BaseModel):
     hydrograph: HydrographInfo = Field(..., description="Generated hydrograph")
     water_balance: WaterBalance = Field(..., description="Water balance")
     metadata: HydrographMetadata = Field(..., description="Calculation metadata")
+    handoff: dict[str, Any] = Field(
+        ...,
+        description=(
+            "The watershed with the rainfall, runoff and unrounded result of this "
+            "computation as a hand-off to Hydrolog's GUI: nogat-handoff/1 "
+            "(schemas/nogat/handoff-1.schema.json) carrying hydrolog-network/1 "
+            "(ADR-068)"
+        ),
+    )
 
 
 # ===================== TERRAIN PROFILE MODELS =====================

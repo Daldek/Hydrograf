@@ -111,6 +111,29 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
 
 ---
 
+## Przekazanie do GUI Hydrologa (`nogat-handoff/1`, ADR-068)
+
+GUI Hydrologa („Wczytaj z Hydrografa” w „Hydrogramie zlewni”) czyta kopertę Nogata
+`nogat-handoff/1` (kopia: `schemas/nogat/handoff-1.schema.json`) z dokumentem
+`hydrolog-network/1`: jedna zlewnia cząstkowa `Z1` (pola `WatershedParameters`,
+`length_to_centroid_km` jako `Lc_km`) i wylot `OUT`. Buduje je `backend/core/handoff.py`:
+
+- `POST /api/delineate-watershed` → `handoff`: sama zlewnia, bez opadu i wyniku;
+- `POST /api/generate-hydrograph` → `handoff`: zlewnia z `runoff` (SCS-CN z użytym
+  `tc_min`, n i K Nasha albo L, Lc, Ct, Cp Snydera; AMC), `rainfall` (opad projektowy
+  PMAXTP z kształtem hietogramu albo własny szereg), `timestep_min` i `result` (Qmax,
+  czas do szczytu, objętość, `computed_with` z wersją Hydrologa). Wartości są te, których
+  użyło obliczenie, bez zaokrągleń: `hydrograph generate` Hydrologa daje z nich ten sam
+  wynik (`backend/tests/unit/test_handoff.py`).
+
+Pochodzenie (`provenance`): zlewnia z Hydrografa z ujściem i polami zmienionymi w trybie
+zaawansowanym (pole żądania `morphometry_origin`; bez niego `user`), opad `pmaxtp`
+(POT, prawdopodobieństwo, czas trwania, punkt żądania, `interpolation: idw`) albo `user`,
+parametry odpływu (metoda tc, estymacja Nasha). W interfejsie: „Kopiuj do Hydrologa” i
+„Plik przekazania” pod sekcjami panelu „Zlewnia” (`frontend/js/handoff.js`).
+
+---
+
 ## Zaimplementowane komponenty
 
 ### 1. Moduł: `backend/core/morphometry.py`
