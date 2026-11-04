@@ -8,7 +8,7 @@
 
 ## 1. Przegląd
 
-Hydrograf wykorzystuje [Obserwatora](https://github.com/Daldek/IMGWTools) (do v3.0.0 IMGWTools) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
+Hydrograf wykorzystuje [Obserwatora](https://github.com/Daldek/Obserwator) (do v3.0.0 IMGWTools) do automatycznego pobierania danych opadowych z IMGW (Instytut Meteorologii i Gospodarki Wodnej). Dane opadowe stanowią kluczowy input do generowania hydrogramów metodą SCS-CN.
 
 **Pin i pakiet:** Hydrograf przypina commit `ea158dc` Obserwatora (wersja 3.0.0, zestaw wydania Nogata) i importuje pakiet `obserwator` (`fetch_pmaxtp`, wyjątki `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError`). Repozytorium nadal nazywa się `IMGWTools`.
 
@@ -280,12 +280,12 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 
 ```
 # In backend/pyproject.toml ([tool.uv.sources]; the range in dependencies is "obserwator>=3.0.0.dev0,<4"):
-obserwator = { git = "https://github.com/Daldek/IMGWTools.git", rev = "ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "ea158dc6f703a5ababd91ff54e7ddec35b4f389b" }
 ```
 
 ### 11.2 Repozytorium
 
-- **GitHub:** https://github.com/Daldek/IMGWTools (the repository of Obserwator keeps the name IMGWTools until the author renames it)
+- **GitHub:** https://github.com/Daldek/Obserwator
 - **Branch:** `develop` (on GitHub; the pin is a commit of the release set of Nogat, candidate-1)
 - **Wersja:** 3.0.0 (untagged), commit `ea158dc6f703a5ababd91ff54e7ddec35b4f389b`
 - **`fetch_pmaxtp`:** `fetch_pmaxtp(latitude, longitude, *, method="POT", timeout=30.0, validate_coords=True)`; `method` was positional in 2.1.0 and Hydrograf passes only `latitude=` and `longitude=`. Failures are `ObserwatorValidationError`, `ObserwatorConnectionError` and `ObserwatorDataError` (`IMGW*Error` before the rename); both call sites of Hydrograf catch these three and let every other exception surface (`tests/unit/test_imgw_call_sites.py`).
