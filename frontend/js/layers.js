@@ -574,8 +574,8 @@
         Hydrograf.map.fitToBounds(union || Hydrograf.map.getDataBounds());
     }
 
-    /** Fallback thresholds if backend is unavailable. */
-    var FALLBACK_THRESHOLDS = [1000, 10000, 100000];
+    /** Fallback thresholds if backend is unavailable (those of the preprocessing). */
+    var FALLBACK_THRESHOLDS = [10000, 100000, 1000000, 10000000];
 
     /**
      * Initialize the layers panel and bind #zoom-extent.

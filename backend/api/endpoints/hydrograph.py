@@ -279,7 +279,7 @@ def _calculate_tc(
     For kirpich/nrcs/giandotti delegates to WatershedParameters.calculate_tc().
     For faa/kerby/kerby_kirpich uses ConcentrationTime static methods directly.
     """
-    if method == "nrcs" and wp.channel_slope_m_per_m is not None:
+    if method == "nrcs":
         saved_slope = wp.channel_slope_m_per_m
         saved_length = wp.channel_length_km
         wp.channel_slope_m_per_m = None  # force mean_slope

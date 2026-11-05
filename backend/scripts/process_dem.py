@@ -44,6 +44,7 @@ from typing import Any
 import numpy as np
 from sqlalchemy import text
 
+from core.constants import PIPELINE_THRESHOLDS_M2
 from core.db_bulk import (
     insert_bdot_streams,
     insert_catchments,
@@ -103,14 +104,17 @@ __all__ = [
     "compute_strahler_from_fdir",
     "compute_strahler_order",
     "compute_twi",
+    "d8_from_saved_flowdir",
     "delineate_subcatchments",
     "fill_internal_nodata_holes",
     "fix_internal_sinks",
     "insert_catchments",
     "insert_stream_segments",
+    "load_hydrology_intermediates",
     "main",
     "polygonize_subcatchments",
     "process_dem",
+    "process_dem_from_intermediates",
     "process_hydrology_pyflwdir",
     "raise_buildings_in_dem",
     "read_ascii_grid",
@@ -127,6 +131,19 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+# Catchments only for thresholds >= 1000 m² (ADR-026)
+MIN_CATCHMENT_THRESHOLD_M2 = 1000
+
+# Hydrology rasters saved with save_intermediates that later runs read again
+# (load_hydrology_intermediates): name -> file suffix after the DEM's stem
+INTERMEDIATE_SUFFIXES = {
+    "filled_dem": "02_filled",
+    "fdir": "03_flowdir",
+    "acc": "04_flowacc",
+    "flow_dist_m": "04b_stream_distance",
+    "slope": "05_slope",
+}
 
 
 def _get_transform(metadata: dict[str, Any], dem_shape: tuple[int, int]):
@@ -216,16 +233,99 @@ def _clip_and_build_path(
     return line.wkt, outlet_flow_dist_m
 
 
+def _stream_head_cells(
+    flat_labels: np.ndarray,
+    stream_flat: np.ndarray,
+    flat_dist: np.ndarray,
+    max_label: int,
+) -> np.ndarray:
+    """Return the upstream end of the stream segment of each label.
+
+    The cells of a segment lie on one flow path, so its upstream end is its
+    stream cell farthest from the outlet.
+
+    Parameters
+    ----------
+    flat_labels : np.ndarray
+        Flattened label raster (1-based segment indices, 0 = unassigned).
+    stream_flat : np.ndarray
+        Flattened stream mask of the labels' threshold (bool).
+    flat_dist : np.ndarray
+        Flattened flow distance to the outlet [m].
+    max_label : int
+        Highest label.
+
+    Returns
+    -------
+    np.ndarray
+        array[max_label + 1] of flat indices, -1 for a label without a stream cell.
+    """
+    stream_idx = np.flatnonzero(stream_flat & (flat_labels > 0))
+    if stream_idx.size == 0:
+        return np.full(max_label + 1, -1, dtype=np.intp)
+    _, head_idx = _per_label_argmax(
+        flat_labels[stream_idx], flat_dist[stream_idx], stream_idx, max_label
+    )
+    return head_idx
+
+
+def _overland_segments(
+    head_idxs: np.ndarray,
+    flw: Any,
+    stream_mask: np.ndarray,
+    flat_dem: np.ndarray,
+) -> tuple[list[float | None], list[float | None]]:
+    """Measure the overland segment of flow paths, from their heads to the streams.
+
+    The segment runs along the flow directions from a head cell to the first
+    cell of the stream mask. It is not measurable (None) when the head is a
+    stream cell or the path ends in a pit before it reaches a stream.
+
+    Parameters
+    ----------
+    head_idxs : np.ndarray
+        Flat indices of the head cells.
+    flw : pyflwdir.FlwdirRaster
+        Flow directions.
+    stream_mask : np.ndarray
+        2-D stream mask of the threshold (bool).
+    flat_dem : np.ndarray
+        Flattened filled DEM.
+
+    Returns
+    -------
+    tuple[list[float | None], list[float | None]]
+        Length [m] and drop [m] of the segment of each head.
+    """
+    paths, dists = flw.path(idxs=head_idxs, mask=stream_mask, unit="m")
+    stream_flat = stream_mask.ravel()
+    lengths: list[float | None] = []
+    drops: list[float | None] = []
+    for head, path, dist in zip(head_idxs, paths, dists, strict=True):
+        end = path[-1]
+        if len(path) < 2 or not stream_flat[end]:
+            lengths.append(None)
+            drops.append(None)
+            continue
+        lengths.append(round(float(dist), 1))
+        drops.append(round(float(flat_dem[head]) - float(flat_dem[end]), 2))
+    return lengths, drops
+
+
 def _enrich_catchments_with_flow_paths(
     catchments: list[dict[str, Any]],
     label_raster: np.ndarray,
     flow_dist_m: np.ndarray,
     flw,
     metadata: dict[str, Any],
+    filled_dem: np.ndarray,
+    stream_mask: np.ndarray,
 ) -> None:
     """Add the flow path fields to each catchment dict.
 
-    Sets max_flow_dist_m, longest_flow_path_wkt and divide_flow_path_wkt.
+    Sets max_flow_dist_m, longest_flow_path_wkt, divide_flow_path_wkt,
+    outlet_flow_dist_m, flow_path_head_elev_m, overland_length_m,
+    overland_drop_m and stream_head_elev_m.
 
     Uses batch flw.path() for performance: collects the farthest cell
     (max flow distance) per sub-catchment, traces all paths in one call,
@@ -234,6 +334,12 @@ def _enrich_catchments_with_flow_paths(
     Two flow paths are computed per subcatchment:
     - longest_flow_path: from the cell with max flow_dist_m (anywhere)
     - divide_flow_path: from the cell with max flow_dist_m on the boundary
+
+    The head of the longest flow path gets its elevation and its overland
+    segment (to the first cell of ``stream_mask``); the stream segment of the
+    sub-catchment gets the elevation of its upstream end. Elevations come from
+    ``filled_dem``, the DEM of the zonal statistics; what cannot be measured
+    is None.
 
     Parameters
     ----------
@@ -247,12 +353,17 @@ def _enrich_catchments_with_flow_paths(
         Flow direction raster object.
     metadata : dict
         Grid metadata (cellsize, transform, etc.).
+    filled_dem : np.ndarray
+        Filled DEM.
+    stream_mask : np.ndarray
+        Stream cells of the threshold of ``label_raster`` (bool, 2-D).
     """
     t0 = time.time()
     cellsize = metadata["cellsize"]
     simplify_tol = 2 * cellsize
     flat_dist = flow_dist_m.ravel()
     flat_labels = label_raster.ravel()
+    flat_dem = filled_dem.ravel()
 
     # Phase 1: find cell with max flow distance per sub-catchment
     max_label = int(label_raster.max())
@@ -267,6 +378,11 @@ def _enrich_catchments_with_flow_paths(
     )
 
     del valid_mask, valid_indices, valid_labels, valid_dists
+
+    # Phase 1a: upstream end of the stream segment of each sub-catchment
+    stream_head_idx = _stream_head_cells(
+        flat_labels, stream_mask.ravel(), flat_dist, max_label
+    )
 
     # Phase 1b: find cell with max flow distance on subcatchment BOUNDARY
     # A cell is on the boundary if any 4-connected neighbor has a different label
@@ -305,6 +421,10 @@ def _enrich_catchments_with_flow_paths(
     divide_start_idxs = []  # flat index of farthest boundary cell
     for ci, catch in enumerate(catchments):
         seg_idx = catch["segment_idx"]
+        head = stream_head_idx[seg_idx] if seg_idx <= max_label else -1
+        catch["stream_head_elev_m"] = (
+            round(float(flat_dem[head]), 2) if head >= 0 else None
+        )
         if seg_idx <= max_label and best_idx[seg_idx] >= 0:
             catch_order.append(ci)
             start_idxs.append(best_idx[seg_idx])
@@ -314,6 +434,9 @@ def _enrich_catchments_with_flow_paths(
             catch["longest_flow_path_wkt"] = None
             catch["divide_flow_path_wkt"] = None
             catch["outlet_flow_dist_m"] = None
+            catch["flow_path_head_elev_m"] = None
+            catch["overland_length_m"] = None
+            catch["overland_drop_m"] = None
             continue
 
         # Divide path: only if boundary cell differs from overall max cell
@@ -327,14 +450,26 @@ def _enrich_catchments_with_flow_paths(
         else:
             catch["divide_flow_path_wkt"] = None
 
-    del best_idx, best_dist, divide_best_idx, divide_best_dist
+    del best_idx, best_dist, divide_best_idx, divide_best_dist, stream_head_idx
 
     if not start_idxs:
         logger.info("  No flow paths to trace (no valid catchments)")
         return
 
-    # Phase 2: batch trace all paths downstream (longest flow paths)
     start_arr = np.array(start_idxs, dtype=np.intp)
+
+    # Phase 2a: head of each longest flow path and its overland segment
+    lengths, drops = _overland_segments(start_arr, flw, stream_mask, flat_dem)
+    for i, ci in enumerate(catch_order):
+        catchments[ci]["flow_path_head_elev_m"] = round(
+            float(flat_dem[start_arr[i]]), 2
+        )
+        catchments[ci]["overland_length_m"] = lengths[i]
+        catchments[ci]["overland_drop_m"] = drops[i]
+    overland_measured = sum(length is not None for length in lengths)
+    del lengths, drops
+
+    # Phase 2: batch trace all paths downstream (longest flow paths)
     paths, _dists = flw.path(idxs=start_arr, unit="m")
 
     # Phase 2b: batch trace divide flow paths
@@ -376,8 +511,424 @@ def _enrich_catchments_with_flow_paths(
     elapsed = time.time() - t0
     logger.info(
         f"  Flow path tracing: {traced} longest + {divide_traced} divide "
-        f"/ {len(catchments)} catchments in {elapsed:.1f}s"
+        f"/ {len(catchments)} catchments, {overland_measured} overland segments "
+        f"in {elapsed:.1f}s"
     )
+
+
+def _process_thresholds(
+    threshold_list_m2: list[int],
+    *,
+    filled_dem: np.ndarray,
+    fdir: np.ndarray,
+    acc: np.ndarray,
+    slope: np.ndarray,
+    d8_fdir: np.ndarray,
+    flw: Any,
+    flow_dist_m: np.ndarray,
+    metadata: dict[str, Any],
+    strahler_by_cells: dict[int, np.ndarray],
+    skip_catchments: bool,
+    save_intermediates: bool,
+    output_dir: Path,
+    base_name: str,
+) -> tuple[dict[int, list[dict[str, Any]]], dict[int, list[dict[str, Any]]]]:
+    """Vectorize the streams and delineate the sub-catchments of each threshold.
+
+    Parameters
+    ----------
+    threshold_list_m2 : list[int]
+        Flow accumulation thresholds [m²], ascending.
+    filled_dem : np.ndarray
+        Filled DEM, the DEM of the zonal statistics.
+    fdir : np.ndarray
+        D8 flow directions (int16, 0 = none) of the stream tracing.
+    acc : np.ndarray
+        Flow accumulation [cells].
+    slope : np.ndarray
+        Slope [%].
+    d8_fdir : np.ndarray
+        pyflwdir D8 flow directions (uint8) of ``flw``.
+    flw : pyflwdir.FlwdirRaster
+        Flow directions of the basins and the flow paths.
+    flow_dist_m : np.ndarray
+        Flow distance to the outlet [m].
+    metadata : dict
+        Grid metadata (cellsize, nodata_value, transform).
+    strahler_by_cells : dict[int, np.ndarray]
+        Strahler orders computed beforehand, by threshold in cells. The others
+        are computed here and, with ``save_intermediates``, saved as
+        ``<base_name>_07_stream_order_<threshold>.tif``.
+    skip_catchments : bool
+        Vectorize the streams only.
+    save_intermediates : bool
+        Save the rasters of each threshold as GeoTIFF.
+    output_dir : Path
+        Directory of the saved rasters.
+    base_name : str
+        Prefix of the saved rasters.
+
+    Returns
+    -------
+    tuple[dict, dict]
+        Stream segments and sub-catchments by threshold [m²].
+    """
+    nodata = metadata["nodata_value"]
+    cell_area = metadata["cellsize"] * metadata["cellsize"]
+    all_stream_segments: dict[int, list[dict[str, Any]]] = {}
+    all_catchment_data: dict[int, list[dict[str, Any]]] = {}
+    for threshold_m2 in threshold_list_m2:
+        threshold_cells = max(1, int(threshold_m2 / cell_area))
+        logger.info(
+            f"--- Vectorizing streams for threshold "
+            f"{threshold_m2} m² ({threshold_cells} cells) ---"
+        )
+
+        strahler_t = strahler_by_cells.get(threshold_cells)
+        if strahler_t is None:
+            strahler_t = compute_strahler_from_fdir(
+                d8_fdir, acc, metadata, threshold_cells
+            )
+            if save_intermediates:
+                save_raster_geotiff(
+                    strahler_t,
+                    metadata,
+                    output_dir / f"{base_name}_07_stream_order_{threshold_m2}.tif",
+                    nodata=0,
+                    dtype="uint8",
+                )
+
+        # Allocate label raster for sub-catchment delineation
+        label_raster = None
+        if not skip_catchments:
+            label_raster = np.zeros_like(filled_dem, dtype=np.int32)
+
+        segments = vectorize_streams(
+            filled_dem,
+            fdir,
+            acc,
+            slope,
+            strahler_t,
+            metadata,
+            threshold_cells,
+            label_raster_out=label_raster,
+        )
+        all_stream_segments[threshold_m2] = segments
+
+        # Delineate and polygonize sub-catchments
+        if label_raster is not None and threshold_m2 >= MIN_CATCHMENT_THRESHOLD_M2:
+            delineate_subcatchments(flw, label_raster, filled_dem, nodata)
+
+            # Compute downstream links for catchment graph
+            compute_downstream_links(segments, label_raster, fdir, metadata)
+
+            if save_intermediates:
+                save_raster_geotiff(
+                    label_raster,
+                    metadata,
+                    output_dir / f"{base_name}_10_subcatchments_{threshold_m2}.tif",
+                    nodata=0,
+                    dtype="int32",
+                )
+
+            catchments = polygonize_subcatchments(
+                label_raster,
+                filled_dem,
+                slope,
+                metadata,
+                segments,
+                flow_dist_m=flow_dist_m,
+            )
+
+            # Flow paths, their heads and overland segments (batch)
+            stream_mask = (acc >= threshold_cells) & (filled_dem != nodata)
+            _enrich_catchments_with_flow_paths(
+                catchments,
+                label_raster,
+                flow_dist_m,
+                flw,
+                metadata,
+                filled_dem,
+                stream_mask,
+            )
+            del stream_mask
+
+            all_catchment_data[threshold_m2] = catchments
+
+        logger.info(f"  Threshold {threshold_m2} m²: {len(segments)} segments")
+
+    return all_stream_segments, all_catchment_data
+
+
+def _record_threshold_stats(
+    stats: dict[str, Any],
+    all_stream_segments: dict[int, list[dict[str, Any]]],
+    all_catchment_data: dict[int, list[dict[str, Any]]],
+) -> None:
+    """Put the counts of segments and sub-catchments per threshold in ``stats``."""
+    stats["stream_segments"] = sum(len(s) for s in all_stream_segments.values())
+    stats["stream_thresholds"] = {t: len(s) for t, s in all_stream_segments.items()}
+    if all_catchment_data:
+        stats["catchment_thresholds"] = {
+            t: len(c) for t, c in all_catchment_data.items()
+        }
+
+
+def _insert_thresholds(
+    db: Any,
+    all_stream_segments: dict[int, list[dict[str, Any]]],
+    all_catchment_data: dict[int, list[dict[str, Any]]],
+    stats: dict[str, Any],
+) -> None:
+    """Insert the stream segments and sub-catchments of each threshold.
+
+    Parameters
+    ----------
+    db : Session
+        Database session.
+    all_stream_segments, all_catchment_data : dict
+        Results of _process_thresholds.
+    stats : dict
+        Gets ``stream_segments_inserted`` and ``catchments_inserted``.
+    """
+    total_seg_inserted = 0
+    for threshold_m2, segments in all_stream_segments.items():
+        if segments:
+            total_seg_inserted += insert_stream_segments(
+                db, segments, threshold_m2=threshold_m2
+            )
+    if total_seg_inserted > 0:
+        stats["stream_segments_inserted"] = total_seg_inserted
+
+    total_catch_inserted = 0
+    for threshold_m2, catchments in all_catchment_data.items():
+        if catchments:
+            total_catch_inserted += insert_catchments(
+                db, catchments, threshold_m2=threshold_m2
+            )
+    if total_catch_inserted > 0:
+        stats["catchments_inserted"] = total_catch_inserted
+
+    # Validate stream vs catchment counts per threshold
+    for threshold_m2 in all_stream_segments:
+        stream_count = len(all_stream_segments.get(threshold_m2, []))
+        catchment_count = len(all_catchment_data.get(threshold_m2, []))
+        if stream_count != catchment_count:
+            logger.warning(
+                f"Stream/catchment mismatch for threshold={threshold_m2} m²: "
+                f"{stream_count} streams vs {catchment_count} catchments"
+            )
+
+
+def load_hydrology_intermediates(
+    input_path: Path,
+    output_dir: Path | None = None,
+    names: tuple[str, ...] = tuple(INTERMEDIATE_SUFFIXES),
+) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+    """Read the hydrology rasters that a run saved with ``save_intermediates``.
+
+    Parameters
+    ----------
+    input_path : Path
+        DEM of that run; its stem prefixes the rasters
+        (``<stem>_02_filled.tif``, ``_03_flowdir``, ``_04_flowacc``,
+        ``_04b_stream_distance``, ``_05_slope``).
+    output_dir : Path, optional
+        Directory of the rasters (default: the directory of ``input_path``).
+    names : tuple[str, ...]
+        Rasters to read, keys of INTERMEDIATE_SUFFIXES (default: all).
+
+    Returns
+    -------
+    tuple[dict[str, np.ndarray], dict[str, Any]]
+        The rasters by name (``filled_dem``, ``fdir``, ``acc``, ``flow_dist_m``,
+        ``slope``) and the grid metadata of the first of them.
+
+    Raises
+    ------
+    FileNotFoundError
+        When a raster is missing.
+    ValueError
+        When the rasters are not on one grid.
+    """
+    directory = Path(output_dir) if output_dir is not None else input_path.parent
+    paths = {
+        name: directory / f"{input_path.stem}_{INTERMEDIATE_SUFFIXES[name]}.tif"
+        for name in names
+    }
+    missing = [str(path) for path in paths.values() if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Saved hydrology rasters not found: " + ", ".join(missing)
+        )
+    rasters: dict[str, np.ndarray] = {}
+    metadata: dict[str, Any] = {}
+    for name, path in paths.items():
+        data, meta = read_raster(path)
+        if not rasters:
+            metadata = meta
+        elif data.shape != (metadata["nrows"], metadata["ncols"]) or (
+            meta["transform"] != metadata["transform"]
+        ):
+            raise ValueError(f"{path} is not on the grid of {paths[names[0]]}")
+        rasters[name] = data
+    return rasters, metadata
+
+
+def d8_from_saved_flowdir(
+    fdir: np.ndarray,
+    flow_dist_m: np.ndarray,
+    valid: np.ndarray,
+) -> np.ndarray:
+    """Rebuild the pyflwdir D8 grid of a run from its saved rasters.
+
+    The saved flow directions (``_03_flowdir``) are pyflwdir's D8 grid in which
+    fix_internal_sinks gave the internal sinks a direction. Those sinks are pits
+    of pyflwdir's grid, the only cells with a flow distance of 0, so they become
+    pits again; cells outside the DEM become pyflwdir's nodata (247).
+
+    Parameters
+    ----------
+    fdir : np.ndarray
+        Saved D8 flow directions (int16, 0 = none).
+    flow_dist_m : np.ndarray
+        Saved flow distance to the outlet [m].
+    valid : np.ndarray
+        Cells of the DEM (bool).
+
+    Returns
+    -------
+    np.ndarray
+        pyflwdir D8 flow directions (uint8).
+    """
+    d8 = fdir.astype(np.uint8)
+    d8[valid & (flow_dist_m == 0)] = 0
+    d8[~valid] = 247
+    return d8
+
+
+def _thresholds_in_database(db: Any) -> set[int]:
+    """Return the thresholds [m²] of the stream networks and sub-catchments."""
+    rows = db.execute(
+        text(
+            "SELECT threshold_m2 FROM stream_network "
+            "UNION SELECT threshold_m2 FROM stream_catchments"
+        )
+    ).fetchall()
+    return {int(row[0]) for row in rows}
+
+
+def process_dem_from_intermediates(
+    input_path: Path,
+    thresholds: list[int],
+    output_dir: Path | None = None,
+    dry_run: bool = False,
+    save_intermediates: bool = False,
+) -> dict[str, Any]:
+    """Add the stream networks and sub-catchments of new thresholds.
+
+    Reads the hydrology rasters of an earlier run (load_hydrology_intermediates)
+    instead of computing it again, so the new thresholds share the flow
+    directions, accumulation and flow distances of the data in the database,
+    whose rows stay as they are. A threshold the database already holds is
+    refused. The new streams are matched against the BDOT10k streams of the
+    database.
+
+    Parameters
+    ----------
+    input_path : Path
+        DEM of the earlier run (only its stem and directory are used).
+    thresholds : list[int]
+        New flow accumulation thresholds [m²].
+    output_dir : Path, optional
+        Directory of the saved rasters (default: the directory of ``input_path``).
+    dry_run : bool
+        Compute without touching the database.
+    save_intermediates : bool
+        Save the Strahler and sub-catchment rasters of the new thresholds.
+
+    Returns
+    -------
+    dict
+        Processing statistics.
+
+    Raises
+    ------
+    ValueError
+        When a threshold is already in the database.
+    """
+    import pyflwdir
+
+    from core.database import get_db_session
+
+    directory = Path(output_dir) if output_dir is not None else input_path.parent
+    threshold_list_m2 = sorted(set(thresholds))
+    if not dry_run:
+        with get_db_session() as db:
+            present = sorted(set(threshold_list_m2) & _thresholds_in_database(db))
+        if present:
+            raise ValueError(
+                f"Thresholds already in the database: {present} m². "
+                "Run the full pipeline (--clear-existing) to compute them again."
+            )
+
+    rasters, metadata = load_hydrology_intermediates(input_path, directory)
+    filled_dem = rasters["filled_dem"]
+    d8_fdir = d8_from_saved_flowdir(
+        rasters["fdir"],
+        rasters["flow_dist_m"],
+        filled_dem != metadata["nodata_value"],
+    )
+    flw = pyflwdir.from_array(
+        d8_fdir,
+        ftype="d8",
+        transform=_get_transform(metadata, filled_dem.shape),
+        latlon=False,
+    )
+    stats: dict[str, Any] = {
+        "ncols": metadata["ncols"],
+        "nrows": metadata["nrows"],
+        "cellsize": metadata["cellsize"],
+        "thresholds": threshold_list_m2,
+    }
+
+    all_stream_segments, all_catchment_data = _process_thresholds(
+        threshold_list_m2,
+        filled_dem=filled_dem,
+        fdir=rasters["fdir"],
+        acc=rasters["acc"],
+        slope=rasters["slope"],
+        d8_fdir=d8_fdir,
+        flw=flw,
+        flow_dist_m=rasters["flow_dist_m"],
+        metadata=metadata,
+        strahler_by_cells={},
+        skip_catchments=False,
+        save_intermediates=save_intermediates,
+        output_dir=directory,
+        base_name=input_path.stem,
+    )
+    _record_threshold_stats(stats, all_stream_segments, all_catchment_data)
+    del rasters, filled_dem, d8_fdir, flw
+
+    if dry_run:
+        logger.info("Dry run - skipping database insert")
+        return stats
+
+    with get_db_session() as db:
+        _insert_thresholds(db, all_stream_segments, all_catchment_data, stats)
+        bdot_count = db.execute(text("SELECT COUNT(*) FROM bdot_streams")).scalar()
+        if bdot_count:
+            all_match = update_stream_real_flags_all(db, threshold_list_m2)
+            for threshold_m2, stats_match in all_match.items():
+                logger.info(
+                    f"Stream matching (threshold={threshold_m2}): "
+                    f"{stats_match['real']}/{stats_match['total']} real, "
+                    f"{stats_match['overland']} overland"
+                )
+        else:
+            logger.warning("No BDOT10k streams in the database: no stream matching")
+    return stats
 
 
 def process_dem(
@@ -439,9 +990,9 @@ def process_dem(
         Path to GeoPackage with building footprints (BUBD from BDOT10k).
         DEM is raised by +5m under building footprints before stream burning.
     thresholds : list[int], optional
-        List of FA thresholds in m² for multi-density stream networks.
-        If provided, generates separate stream networks per threshold.
-        The lowest threshold is used for stream_mask and strahler_order.
+        FA thresholds in m², one stream network and set of sub-catchments
+        each (default: core.constants.PIPELINE_THRESHOLDS_M2). The lowest
+        threshold is used for stream_mask and strahler_order.
 
     Returns
     -------
@@ -809,15 +1360,7 @@ def process_dem(
 
     # Determine thresholds for multi-density stream networks
     cell_area = metadata["cellsize"] * metadata["cellsize"]
-    DEFAULT_THRESHOLDS_M2 = [10000, 100000, 1000000]
-
-    # Catchments only for thresholds >= 1000 m² (ADR-026)
-    MIN_CATCHMENT_THRESHOLD_M2 = 1000
-
-    if thresholds:
-        threshold_list_m2 = sorted(thresholds)
-    else:
-        threshold_list_m2 = sorted(DEFAULT_THRESHOLDS_M2)
+    threshold_list_m2 = sorted(thresholds or PIPELINE_THRESHOLDS_M2)
 
     logger.info(f"Cell size: {metadata['cellsize']}m, cell area: {cell_area} m²")
     for t_m2 in threshold_list_m2:
@@ -870,101 +1413,26 @@ def process_dem(
     del stream_mask  # Free — only needed for count above
 
     # 7b. Vectorize streams per threshold
-    all_stream_segments = {}  # threshold_m2 → segments
-    all_catchment_data = {}  # threshold_m2 → catchments
+    all_stream_segments: dict[int, list[dict[str, Any]]] = {}
+    all_catchment_data: dict[int, list[dict[str, Any]]] = {}
     if not skip_streams_vectorize:
-        for threshold_m2 in threshold_list_m2:
-            threshold_cells = max(1, int(threshold_m2 / cell_area))
-            logger.info(
-                f"--- Vectorizing streams for threshold "
-                f"{threshold_m2} m² ({threshold_cells} cells) ---"
-            )
-
-            # Compute Strahler for this threshold
-            if threshold_cells == lowest_threshold_cells:
-                strahler_t = strahler
-            else:
-                strahler_t = compute_strahler_from_fdir(
-                    d8_fdir, acc, metadata, threshold_cells
-                )
-
-            if save_intermediates and threshold_cells != lowest_threshold_cells:
-                save_raster_geotiff(
-                    strahler_t,
-                    metadata,
-                    output_dir / f"{base_name}_07_stream_order_{threshold_m2}.tif",
-                    nodata=0,
-                    dtype="uint8",
-                )
-
-            # Allocate label raster for sub-catchment delineation
-            label_raster = None
-            if not skip_catchments:
-                label_raster = np.zeros_like(filled_dem, dtype=np.int32)
-
-            segments = vectorize_streams(
-                filled_dem,
-                fdir,
-                acc,
-                slope,
-                strahler_t,
-                metadata,
-                threshold_cells,
-                label_raster_out=label_raster,
-            )
-            all_stream_segments[threshold_m2] = segments
-
-            # Delineate and polygonize sub-catchments
-            generate_catchments = (
-                not skip_catchments
-                and label_raster is not None
-                and threshold_m2 >= MIN_CATCHMENT_THRESHOLD_M2
-            )
-            if generate_catchments and label_raster is not None:
-                delineate_subcatchments(flw, label_raster, filled_dem, nodata)
-
-                # Compute downstream links for catchment graph
-                compute_downstream_links(
-                    segments,
-                    label_raster,
-                    fdir,
-                    metadata,
-                )
-
-                if save_intermediates:
-                    save_raster_geotiff(
-                        label_raster,
-                        metadata,
-                        output_dir / f"{base_name}_10_subcatchments_{threshold_m2}.tif",
-                        nodata=0,
-                        dtype="int32",
-                    )
-
-                catchments = polygonize_subcatchments(
-                    label_raster,
-                    filled_dem,
-                    slope,
-                    metadata,
-                    segments,
-                    flow_dist_m=flow_dist_m,
-                )
-
-                # Compute longest flow path per sub-catchment (batch)
-                _enrich_catchments_with_flow_paths(
-                    catchments, label_raster, flow_dist_m, flw, metadata
-                )
-
-                all_catchment_data[threshold_m2] = catchments
-
-            logger.info(f"  Threshold {threshold_m2} m²: {len(segments)} segments")
-
-        total_segments = sum(len(s) for s in all_stream_segments.values())
-        stats["stream_segments"] = total_segments
-        stats["stream_thresholds"] = {t: len(s) for t, s in all_stream_segments.items()}
-        if all_catchment_data:
-            stats["catchment_thresholds"] = {
-                t: len(c) for t, c in all_catchment_data.items()
-            }
+        all_stream_segments, all_catchment_data = _process_thresholds(
+            threshold_list_m2,
+            filled_dem=filled_dem,
+            fdir=fdir,
+            acc=acc,
+            slope=slope,
+            d8_fdir=d8_fdir,
+            flw=flw,
+            flow_dist_m=flow_dist_m,
+            metadata=metadata,
+            strahler_by_cells={lowest_threshold_cells: strahler},
+            skip_catchments=skip_catchments,
+            save_intermediates=save_intermediates,
+            output_dir=output_dir,
+            base_name=base_name,
+        )
+        _record_threshold_stats(stats, all_stream_segments, all_catchment_data)
 
     # Free large raster arrays no longer needed (~1.7 GB at 54.5M cells)
     del filled_dem, slope, d8_fdir, acc, strahler, flow_dist_m, flw, fdir
@@ -982,41 +1450,7 @@ def process_dem(
                 db.execute(text("DELETE FROM stream_catchments"))
                 db.commit()
 
-            # Insert stream segments per threshold
-            total_seg_inserted = 0
-            for threshold_m2, segments in all_stream_segments.items():
-                if segments:
-                    seg_inserted = insert_stream_segments(
-                        db,
-                        segments,
-                        threshold_m2=threshold_m2,
-                    )
-                    total_seg_inserted += seg_inserted
-            if total_seg_inserted > 0:
-                stats["stream_segments_inserted"] = total_seg_inserted
-
-            # Insert sub-catchments per threshold
-            total_catch_inserted = 0
-            for threshold_m2, catchments in all_catchment_data.items():
-                if catchments:
-                    catch_inserted = insert_catchments(
-                        db,
-                        catchments,
-                        threshold_m2=threshold_m2,
-                    )
-                    total_catch_inserted += catch_inserted
-            if total_catch_inserted > 0:
-                stats["catchments_inserted"] = total_catch_inserted
-
-            # Validate stream vs catchment counts per threshold
-            for threshold_m2 in all_stream_segments:
-                stream_count = len(all_stream_segments.get(threshold_m2, []))
-                catchment_count = len(all_catchment_data.get(threshold_m2, []))
-                if stream_count != catchment_count:
-                    logger.warning(
-                        f"Stream/catchment mismatch for threshold={threshold_m2} m²: "
-                        f"{stream_count} streams vs {catchment_count} catchments"
-                    )
+            _insert_thresholds(db, all_stream_segments, all_catchment_data, stats)
 
             # === BDOT stream matching ===
             if burn_streams_path:
@@ -1129,7 +1563,21 @@ def main():
         default=None,
         help=(
             "Comma-separated FA thresholds in m² for multi-density "
-            "stream networks (e.g. 1000,10000,100000)."
+            "stream networks (default: "
+            + ",".join(str(t) for t in PIPELINE_THRESHOLDS_M2)
+            + ")."
+        ),
+    )
+    parser.add_argument(
+        "--from-intermediates",
+        action="store_true",
+        help=(
+            "Add the stream networks and sub-catchments of --thresholds (new "
+            "ones only) from the hydrology rasters an earlier run saved with "
+            "--save-intermediates (<stem of --input>_02_filled.tif, _03_flowdir, "
+            "_04_flowacc, _04b_stream_distance, _05_slope in --output-dir or "
+            "next to --input) without computing the hydrology again; the "
+            "existing thresholds stay as they are."
         ),
     )
     parser.add_argument(
@@ -1167,6 +1615,34 @@ def main():
     threshold_list = None
     if args.thresholds:
         threshold_list = [int(t.strip()) for t in args.thresholds.split(",")]
+
+    if args.from_intermediates:
+        if not threshold_list:
+            parser.error("--from-intermediates needs --thresholds")
+        if args.clear_existing or burn_streams_path or args.hydro_resolution:
+            parser.error(
+                "--from-intermediates reuses saved rasters: --clear-existing, "
+                "--burn-streams and --hydro-resolution do not apply"
+            )
+        start_time = time.time()
+        try:
+            stats = process_dem_from_intermediates(
+                input_path,
+                threshold_list,
+                output_dir=output_dir,
+                dry_run=args.dry_run,
+                save_intermediates=args.save_intermediates,
+            )
+        except (FileNotFoundError, ValueError) as e:
+            logger.error(str(e))
+            sys.exit(1)
+        for t, count in stats["stream_thresholds"].items():
+            logger.info(
+                f"Threshold {t} m²: {count} segments, "
+                f"{stats.get('catchment_thresholds', {}).get(t, 0)} sub-catchments"
+            )
+        logger.info(f"Time elapsed: {time.time() - start_time:.1f}s")
+        return
 
     logger.info("=" * 60)
     logger.info("DEM Processing Script")

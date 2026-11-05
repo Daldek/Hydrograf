@@ -87,9 +87,19 @@ class MorphometricParameters(BaseModel):
     mean_slope_m_per_m : float, optional
         Area-weighted mean slope [m/m]
     channel_length_km : float, optional
-        Main channel length [km]
+        Main channel length along the DEM stream network, from the outlet to the
+        channel head at the accumulation threshold [km]
     channel_slope_m_per_m : float, optional
-        Main channel slope [m/m]
+        Main channel slope from its source (the channel head) to the outlet [m/m]
+    real_channel_length_km : float, optional
+        Length of the main channel along BDOT10k streams, from the outlet [km]
+    flow_path_length_km : float, optional
+        Longest flow path from the watershed divide to the outlet [km]
+    flow_path_slope_m_per_m : float, optional
+        (Elevation of its head on the divide − outlet elevation) / its length [m/m]
+    overland_length_km, overland_slope_m_per_m : float, optional
+        Length [km] and slope [m/m] of the overland segment of the longest flow
+        path, from its head to the DEM stream network of the delineation threshold
     cn : float, optional
         SCS Curve Number (0-100); area-weighted values carry one decimal
     forest_pct, urban_pct : float, optional
@@ -112,15 +122,28 @@ class MorphometricParameters(BaseModel):
         None, ge=0, description="Area-weighted mean slope [m/m]"
     )
     channel_length_km: float | None = Field(
-        None, ge=0, description="Main channel length [km]"
+        None,
+        ge=0,
+        description=(
+            "Main channel length along the DEM stream network, from the outlet to "
+            "the channel head at the accumulation threshold [km]"
+        ),
     )
     channel_slope_m_per_m: float | None = Field(
-        None, ge=0, description="Main channel slope [m/m]"
+        None,
+        ge=0,
+        description=(
+            "Main channel slope: (elevation of its source, the channel head, - "
+            "outlet elevation) / channel_length_km [m/m]"
+        ),
     )
     real_channel_length_km: float | None = Field(
         None,
         ge=0,
-        description="Main channel length covered by BDOT10k real streams [km]",
+        description=(
+            "Length of the main channel along BDOT10k streams, counted from the "
+            "outlet upstream [km]"
+        ),
     )
     cn: float | None = Field(None, ge=0, le=100, description="SCS Curve Number")
     imperviousness: float | None = Field(
@@ -183,7 +206,10 @@ class MorphometricParameters(BaseModel):
     hydraulic_length_km: float | None = Field(
         None,
         ge=0,
-        description="Longest flow path from most remote point to outlet [km]",
+        description=(
+            "Longest flow path from the watershed divide to the outlet [km] "
+            "(the value of flow_path_length_km)"
+        ),
     )
 
     # Flow path parameters
@@ -201,6 +227,36 @@ class MorphometricParameters(BaseModel):
         None,
         ge=0,
         description="Flow path from watershed centroid to outlet [km]",
+    )
+    flow_path_length_km: float | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Longest flow path from the watershed divide to the outlet, along the "
+            "flow directions of the DEM [km]"
+        ),
+    )
+    flow_path_slope_m_per_m: float | None = Field(
+        None,
+        gt=0,
+        description=(
+            "(Elevation of the head of the longest flow path on the divide - "
+            "outlet elevation) / flow_path_length_km [m/m]"
+        ),
+    )
+    overland_length_km: float | None = Field(
+        None,
+        gt=0,
+        description=(
+            "Overland segment of the longest flow path, from its head on the "
+            "divide to the first cell of the DEM stream network at the "
+            "delineation threshold [km]"
+        ),
+    )
+    overland_slope_m_per_m: float | None = Field(
+        None,
+        gt=0,
+        description="Drop along the overland segment / its length [m/m]",
     )
 
 

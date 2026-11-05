@@ -326,6 +326,41 @@ class TestNrcsUsesHydraulicLength:
 
         assert tc_with_hydraulic > tc_no_hydraulic
 
+    def test_nrcs_without_a_channel_slope_uses_the_mean_slope(self):
+        """No channel slope (e.g. a source not above the outlet) still gives NRCS.
+
+        The guard on the channel slope used to skip the NRCS branch, and the
+        call ended in "Unknown tc method: nrcs".
+        """
+        from unittest.mock import MagicMock
+
+        from hydrolog.morphometry import WatershedParameters
+
+        from api.endpoints.hydrograph import _calculate_tc
+
+        morph_dict = {
+            "area_km2": 10.0,
+            "perimeter_km": 15.0,
+            "length_km": 7.0,
+            "elevation_min_m": 100.0,
+            "elevation_max_m": 200.0,
+            "mean_slope_m_per_m": 0.03,
+            "channel_length_km": 5.0,
+            "channel_slope_m_per_m": None,
+            "hydraulic_length_km": 9.0,
+            "cn": 75,
+        }
+        with_slope = {**morph_dict, "channel_slope_m_per_m": 0.005}
+
+        tc = _calculate_tc(
+            "nrcs", WatershedParameters.from_dict(morph_dict), morph_dict, MagicMock()
+        )
+        expected = _calculate_tc(
+            "nrcs", WatershedParameters.from_dict(with_slope), with_slope, MagicMock()
+        )
+
+        assert tc == pytest.approx(expected)
+
     def test_kirpich_uses_hydraulic_from_morph_dict(self):
         """_calculate_tc for Kirpich should use hydraulic_length_km from morph_dict."""
         from unittest.mock import MagicMock

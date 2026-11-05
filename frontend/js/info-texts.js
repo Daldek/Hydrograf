@@ -171,7 +171,7 @@
             sources: 'KZGW 2017; Tarboton i in. 1991; Giandotti 1934 (za Grimaldi i in. 2012)',
         },
         real_channel_length_km: {
-            title: 'Ciek główny zgodny z BDOT10k',
+            title: 'Długość cieku wg BDOT10k',
             symbol: 'L_{BDOT}',
             definition: 'Długość części cieku głównego od ujścia w górę, która pokrywa się z ciekami BDOT10k. Przerwy do dwóch odcinków są wliczane; liczenie kończy się na dłuższej przerwie.',
             unit: 'km',
@@ -183,19 +183,19 @@
             title: 'Spadek cieku głównego',
             symbol: 'I_g',
             definition: 'Różnica wysokości wzdłuż cieku głównego podzielona przez jego długość.',
-            formula: f`I_g = \frac{H_{max,g} - H_{min,u}}{1000 · L_g}`,
+            formula: f`I_g = \frac{H_{źr} - H_{min,u}}{1000 · L_g}`,
             variables: [
-                ['H_{max,g}', 'najwyższa wysokość zlewni cząstkowej na górnym końcu cieku', 'm n.p.m.'],
+                ['H_{źr}', 'wysokość źródła cieku głównego: górnego końca cieku w sieci z NMT', 'm n.p.m.'],
                 ['H_{min,u}', 'najniższa wysokość zlewni cząstkowej przy ujściu', 'm n.p.m.'],
                 L_G,
             ],
             unit: 'm/m (w tabeli w %)',
             meaning: 'Większy spadek cieku przyspiesza przepływ korytem: skraca czas koncentracji i czas do szczytu, więc szczyt jest wcześniejszy i wyższy.\nW Hydrografie używają go metoda Kirpicha ($T_c ∝ I_g^{-0,385}$), część korytowa Kerby-Kirpich i estymacja Nasha metodą Lutza ($t_p ∝ I_g^{-0,39}$).',
-            note: 'Górna wysokość to najwyższy punkt całej zlewni cząstkowej, a nie koryta – przy krótkim cieku spadek bywa wyraźnie zawyżony. Metoda Lutza zakłada spadek wyrównany (z równych pól pod i nad linią spadku), a nie spadek między końcami cieku.',
+            note: 'Źródło to początek cieku w sieci z NMT, tam gdzie powierzchnia spływająca przekracza próg akumulacji, więc spadek zależy od progu sieci. Metoda Lutza zakłada spadek wyrównany (z równych pól pod i nad linią spadku), a nie spadek między końcami cieku.',
             sources: 'Kirpich 1940 (za Roussel i in. 2005); KZGW 2017; Baścik 2006',
         },
-        hydraulic_length_km: {
-            title: 'Najdłuższa droga spływu',
+        flow_path_length_km: {
+            title: 'Najdłuższa droga spływu (od działu wodnego)',
             symbol: 'L_{max}',
             definition: 'Długość drogi spływu od najdalszej komórki NMT zlewni do ujścia, po kierunkach spływu z NMT.',
             formula: 'L_{max} = max_i d_i - d_u',
@@ -208,7 +208,7 @@
             sources: 'USDA-NRCS 2010 (NEH 630-15); USDA-SCS 1986 (TR-55)',
         },
         divide_flow_path_km: {
-            title: 'Droga spływu z działu wodnego',
+            title: 'Droga spływu z granicy zlewni (kontrolna)',
             symbol: 'L_{dz}',
             definition: 'Najdłuższa droga spływu z punktu na granicy zlewni do ujścia, odczytana z rastra odległości spływu w wierzchołkach granicy.',
             formula: 'L_{dz} = max_k d_k - d_u',

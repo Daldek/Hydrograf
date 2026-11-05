@@ -238,6 +238,10 @@ class TestInsertCatchments:
         "longest_flow_path_wkt": "LINESTRING(0 0, 1 1)",
         "divide_flow_path_wkt": "LINESTRING(0 0, 2 2)",
         "outlet_flow_dist_m": 250.0,
+        "flow_path_head_elev_m": 614.07,
+        "overland_length_m": 221.3,
+        "overland_drop_m": 37.25,
+        "stream_head_elev_m": 576.8,
     }
     MINIMAL = {
         "wkt": "MULTIPOLYGON(((5 5, 5 6, 6 6, 5 5)))",

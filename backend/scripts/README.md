@@ -151,8 +151,9 @@ and `--sewer-layer` (the line layer of a multi-layer file); they override the `s
 configuration.
 
 A failed step 2 can be run again: the sheets that are already in the store are used without a
-request and only the rest is downloaded. The accumulation thresholds of step 3 are fixed at 10000
-and 100000 m² (`docs/BACKLOG.md`: a `--thresholds` flag for `bootstrap.py`).
+request and only the rest is downloaded. The accumulation thresholds of step 3 are fixed at 10000,
+100000, 1000000 and 10000000 m² (`core.constants.PIPELINE_THRESHOLDS_M2`; `docs/BACKLOG.md`: a
+`--thresholds` flag for `bootstrap.py`).
 
 ---
 
@@ -326,10 +327,21 @@ the stream network and the sub-catchments into `stream_network` and `stream_catc
    order and the TWI.
 7. Make the stream mask of the lowest threshold and vectorize the streams per accumulation
    threshold; delineate the sub-catchments (thresholds from 1000 m², ADR-026) with their statistics
-   and flow paths.
+   and flow paths. Each sub-catchment gets the elevation of the head (farthest cell) of its longest
+   flow path, the length and drop of the overland segment of that path down to the first stream
+   cell of its threshold, and the elevation of the upstream end of its stream segment, all on the
+   filled DEM (ADR-070); what cannot be measured stays empty.
 8. Insert the result into PostGIS (COPY) with the matching of the streams against BDOT10k when
    `--burn-streams` is given (ADR-044); `--clear-existing` first deletes the DEM-derived streams and
    the sub-catchments.
+
+`--from-intermediates` skips stages 1–6: it reads the rasters that an earlier run saved with
+`--save-intermediates` (`*_02_filled`, `*_03_flowdir`, `*_04_flowacc`, `*_04b_stream_distance`,
+`*_05_slope`, where `*` is the stem of `--input`) and adds the streams and sub-catchments of
+`--thresholds` to the database without touching the thresholds already there (it refuses a threshold
+the database holds). The new streams are matched against the BDOT10k streams of the database. This is
+how the thresholds of 1 km² and 10 km² are added to data processed before them
+(`docs/runbooks/2026-11-v050-reprocessing.md`).
 
 ```bash
 cd backend
@@ -343,6 +355,10 @@ cd backend
 
 # Dry run: only the computation and the statistics
 .venv/bin/python -m scripts.process_dem --input ../data/nmt/dem_mosaic.vrt --dry-run
+
+# Add the thresholds of 1 km² and 10 km² from the rasters of an earlier run
+.venv/bin/python -m scripts.process_dem --input ../data/nmt/dem_mosaic.tif \
+    --from-intermediates --thresholds 1000000,10000000 --save-intermediates
 ```
 
 **Parameters:**
@@ -350,7 +366,8 @@ cd backend
 | Parameter | Short | Description | Default |
 |---|---|---|---|
 | `--input` | `-i` | path to the raster (required) | - |
-| `--thresholds` | - | the flow accumulation thresholds in m², comma separated (`1000,10000,100000`); the lowest makes the stream mask | `10000,100000,1000000` |
+| `--thresholds` | - | the flow accumulation thresholds in m², comma separated (`1000,10000,100000`); the lowest makes the stream mask | `10000,100000,1000000,10000000` |
+| `--from-intermediates` | - | add the thresholds from the saved rasters of an earlier run, without the hydrology; needs `--thresholds`, refuses `--clear-existing`, `--burn-streams` and `--hydro-resolution` | off |
 | `--dry-run` | - | only compute and print the statistics, no insert | off |
 | `--save-intermediates` | `-s` | write the intermediate rasters as GeoTIFF | off |
 | `--output-dir` | `-o` | the directory of the GeoTIFF files | the directory of the input |
@@ -436,6 +453,37 @@ Processing complete!
     Sub-catchments 10000 m²: 3
   Time elapsed: 5.5s
 ```
+
+---
+
+### `backfill_flow_path_heads.py`: fill the flow path heads of existing data
+
+Fills `flow_path_head_elev_m`, `overland_length_m`, `overland_drop_m` and `stream_head_elev_m`
+of `stream_catchments` (migration 004, ADR-070) for data processed before them, from the rasters
+their run saved (`*_02_filled`, `*_03_flowdir`, `*_04_flowacc`, `*_04b_stream_distance` and
+`*_10_subcatchments_<threshold>`), with the code of the pipeline and without running it again. The
+head of a sub-catchment's longest flow path is the first vertex of `longest_flow_path_geom`; when a
+head is not in its own label or its flow distance differs from `max_flow_dist_m` by more than
+0.05 m, the rasters are not those of the data and the script stops before it writes anything.
+Idempotent.
+
+```bash
+cd backend
+.venv/bin/python -m scripts.backfill_flow_path_heads --input ../data/nmt/dem_mosaic.tif
+.venv/bin/python -m scripts.backfill_flow_path_heads --input ../data/nmt/dem_mosaic.tif \
+    --thresholds 10000 --dry-run
+```
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--input` | the DEM of the run; its stem prefixes the rasters (the file itself is not read) | required |
+| `--output-dir` | the directory of the rasters | the directory of `--input` |
+| `--thresholds` | the thresholds to fill, comma separated | every threshold of `stream_catchments` |
+| `--dry-run` | compute and check, no `UPDATE` | off |
+
+`scripts/generate_tiles.py --thresholds 1000000,10000000` builds the tiles of those thresholds only
+and keeps the others; `tiles_metadata.json` then lists every threshold of the database that has
+tiles.
 
 ---
 
@@ -596,8 +644,9 @@ ORDER BY threshold_m2;
 
 1. **Memory**: the whole raster is loaded into RAM. A raster of 113 million cells with the 1000 m²
    threshold runs out of the 8 GB of memory while the sub-catchments are polygonized; `bootstrap.py`
-   therefore uses the thresholds 10000 and 100000 m² (`--hydro-resolution` of `process_dem.py`
-   reduces the grid).
+   therefore starts at 10000 m² (`--hydro-resolution` of `process_dem.py` reduces the grid). The
+   peak is ~103 B per cell of the raster (`docs/TECHNICAL_DEBT.md`); `--from-intermediates` needs
+   ~85 B per cell.
 2. **Coordinate system**: only EPSG:2180 (PL-1992) is processed; sheets in PUWG 2000 are reprojected
    to it before the mosaic is built.
 3. **`analyze_watershed.py` delineates sub-catchments, not cells**: step 3 runs the code of

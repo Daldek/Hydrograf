@@ -228,7 +228,11 @@ def insert_catchments(
                 max_flow_dist_m FLOAT,
                 longest_flow_path_wkt TEXT,
                 divide_flow_path_wkt TEXT,
-                outlet_flow_dist_m FLOAT
+                outlet_flow_dist_m FLOAT,
+                flow_path_head_elev_m FLOAT,
+                overland_length_m FLOAT,
+                overland_drop_m FLOAT,
+                stream_head_elev_m FLOAT
             )
         """)
 
@@ -256,7 +260,11 @@ def insert_catchments(
                 f"{_tsv_val(cat.get('max_flow_dist_m'))}\t"
                 f"{_tsv_val(cat.get('longest_flow_path_wkt'))}\t"
                 f"{_tsv_val(cat.get('divide_flow_path_wkt'))}\t"
-                f"{_tsv_val(cat.get('outlet_flow_dist_m'))}\n"
+                f"{_tsv_val(cat.get('outlet_flow_dist_m'))}\t"
+                f"{_tsv_val(cat.get('flow_path_head_elev_m'))}\t"
+                f"{_tsv_val(cat.get('overland_length_m'))}\t"
+                f"{_tsv_val(cat.get('overland_drop_m'))}\t"
+                f"{_tsv_val(cat.get('stream_head_elev_m'))}\n"
             )
 
         tsv_buffer.seek(0)
@@ -277,7 +285,9 @@ def insert_catchments(
                 perimeter_km, stream_length_km,
                 hydraulic_length_km, elev_histogram,
                 max_flow_dist_m, longest_flow_path_geom,
-                divide_flow_path_geom, outlet_flow_dist_m
+                divide_flow_path_geom, outlet_flow_dist_m,
+                flow_path_head_elev_m, overland_length_m,
+                overland_drop_m, stream_head_elev_m
             )
             SELECT
                 ST_SetSRID(ST_GeomFromText(wkt), 2180),
@@ -298,7 +308,9 @@ def insert_catchments(
                     THEN ST_SetSRID(ST_GeomFromText(divide_flow_path_wkt), 2180)
                     ELSE NULL
                 END,
-                outlet_flow_dist_m
+                outlet_flow_dist_m,
+                flow_path_head_elev_m, overland_length_m,
+                overland_drop_m, stream_head_elev_m
             FROM temp_catchments_import
         """)
 
@@ -548,6 +560,11 @@ def update_stream_real_flags(
                     (buffer_m,),
                 )
                 cursor.execute("CREATE INDEX ON temp_bdot_buffer USING GIST (geom)")
+
+            # Fresh statistics first: right after the segments of a threshold
+            # are inserted the planner estimates one row for it and runs the
+            # aggregate below once per segment (minutes for long segments).
+            cursor.execute("ANALYZE stream_network")
 
             # Step 3: Spatial join with per-buffer intersection to avoid
             # expensive ST_Union of overlapping polygons.

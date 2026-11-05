@@ -9,6 +9,7 @@ Pre-generated tiles serve in ~1ms (static file) vs ~50-200ms (SQL per request).
 Usage:
     cd backend
     .venv/bin/python -m scripts.generate_tiles [--output-dir ../frontend/tiles]
+        [--thresholds 1000000,10000000]
 
 Prerequisites:
     - tippecanoe: https://github.com/felt/tippecanoe
@@ -285,8 +286,29 @@ def write_metadata(output_dir: Path, thresholds: list[int]) -> Path:
     return meta_path
 
 
-def generate_tiles(output_dir: Path) -> None:
-    """Generate pre-built MVT tiles for all thresholds."""
+def tiled_thresholds(output_dir: Path, thresholds: list[int]) -> list[int]:
+    """Return the thresholds of ``thresholds`` that have tiles in ``output_dir``."""
+    return [
+        t
+        for t in thresholds
+        if any(
+            (output_dir / f"{layer}_{t}").is_dir()
+            for layer in ("streams", "catchments")
+        )
+    ]
+
+
+def generate_tiles(output_dir: Path, only_thresholds: list[int] | None = None) -> None:
+    """Generate pre-built MVT tiles for the thresholds of the database.
+
+    Parameters
+    ----------
+    output_dir : Path
+        Directory of the tiles and of ``tiles_metadata.json``.
+    only_thresholds : list[int], optional
+        Build only these thresholds and keep the tiles of the others; the
+        metadata then lists every threshold of the database with tiles.
+    """
     t0 = time.time()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -299,10 +321,18 @@ def generate_tiles(output_dir: Path) -> None:
     has_pmtiles = tools.get("pmtiles") is not None
 
     with get_db_session() as db:
-        thresholds = get_thresholds(db)
-        if not thresholds:
+        db_thresholds = get_thresholds(db)
+        if not db_thresholds:
             logger.error("No thresholds found in stream_network")
             sys.exit(1)
+
+        thresholds = db_thresholds
+        if only_thresholds:
+            unknown = sorted(set(only_thresholds) - set(db_thresholds))
+            if unknown:
+                logger.error(f"Thresholds not in stream_network: {unknown}")
+                sys.exit(1)
+            thresholds = sorted(set(only_thresholds))
 
         logger.info(f"Thresholds: {thresholds}")
 
@@ -392,7 +422,7 @@ def generate_tiles(output_dir: Path) -> None:
                             output_dir / f"catchments_{threshold}.pmtiles",
                         )
 
-    write_metadata(output_dir, thresholds)
+    write_metadata(output_dir, tiled_thresholds(output_dir, db_thresholds))
 
     elapsed = time.time() - t0
     logger.info(
@@ -409,9 +439,22 @@ def main() -> None:
         default="../frontend/tiles",
         help="Output directory for tile files (default: ../frontend/tiles)",
     )
+    parser.add_argument(
+        "--thresholds",
+        default=None,
+        help=(
+            "Comma-separated thresholds [m²] to build; the tiles of the other "
+            "thresholds stay (default: every threshold of the database)"
+        ),
+    )
     args = parser.parse_args()
 
-    generate_tiles(Path(args.output_dir))
+    only = (
+        [int(t.strip()) for t in args.thresholds.split(",")]
+        if args.thresholds
+        else None
+    )
+    generate_tiles(Path(args.output_dir), only)
 
 
 if __name__ == "__main__":
