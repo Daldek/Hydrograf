@@ -368,6 +368,117 @@ class TestFlowPathHeadsAndOverland:
         assert one["stream_head_elev_m"] == 140.0
 
 
+class TestRouteLengthsAddUpToTheFlowPath:
+    """Overland segment + stream segments of one route = its flow path.
+
+    The pipeline from flow directions to sub-catchments (vectorize_streams,
+    delineate_subcatchments, compute_downstream_links,
+    _enrich_catchments_with_flow_paths) on 10 x 7 cells of 5 m: a stem in
+    column 3 flowing south to a pit at (9, 3), the slopes on both sides draining
+    into it, and a tributary in column 5 that turns west in row 5 and joins the
+    stem at (5, 3). Segments: 1 the stem above the confluence, 2 the stem below
+    it, 3 the tributary.
+    """
+
+    @staticmethod
+    def _fdir(lateral: bool) -> np.ndarray:
+        east, south, west = 1, 4, 16
+        fdir = np.full((10, 7), west, dtype=np.uint8)
+        fdir[:, :3] = east
+        fdir[:, 3] = south
+        fdir[9, 3] = 0
+        fdir[:5, 5] = south
+        if lateral:
+            # The farthest cell (0, 0) drains south, then east into the stem at
+            # row 4, below the head of the stem's stream (row 2 at 10 cells)
+            fdir[:4, 0] = south
+        return fdir
+
+    @staticmethod
+    def _run(fdir: np.ndarray, threshold_cells: int):
+        from core.morphometry_raster import compute_strahler_from_fdir
+        from core.stream_extraction import (
+            compute_downstream_links,
+            delineate_subcatchments,
+            vectorize_streams,
+        )
+        from scripts.process_dem import _enrich_catchments_with_flow_paths
+
+        nrows = fdir.shape[0]
+        meta = {
+            "cellsize": 5.0,
+            "xllcorner": 0.0,
+            "yllcorner": 0.0,
+            "nodata_value": -9999.0,
+        }
+        flw = pyflwdir.from_array(
+            fdir, ftype="d8", transform=(5, 0, 0, 0, -5, 5 * nrows), latlon=False
+        )
+        acc = flw.upstream_area(unit="cell").astype(np.int32)
+        dem = np.full(fdir.shape, 100.0)
+        labels = np.zeros(fdir.shape, dtype=np.int32)
+        fdir_i16 = fdir.astype(np.int16)
+        segments = vectorize_streams(
+            dem,
+            fdir_i16,
+            acc,
+            np.zeros(fdir.shape),
+            compute_strahler_from_fdir(fdir, acc, meta, threshold_cells),
+            meta,
+            threshold_cells,
+            label_raster_out=labels,
+        )
+        delineate_subcatchments(flw, labels, dem, -9999.0)
+        compute_downstream_links(segments, labels, fdir_i16, meta)
+        catchments = [{"segment_idx": i + 1} for i in range(len(segments))]
+        _enrich_catchments_with_flow_paths(
+            catchments,
+            labels,
+            flw.stream_distance(unit="m"),
+            flw,
+            meta,
+            dem,
+            acc >= threshold_cells,
+        )
+        return segments, catchments
+
+    @staticmethod
+    def _route_excess(segments, catchments, start: int) -> list[float]:
+        """Overland + segments minus the flow path, at each node of the route."""
+        head = catchments[start - 1]
+        total = head["overland_length_m"]
+        excess = []
+        idx = start
+        while idx is not None:
+            total += segments[idx - 1]["length_m"]
+            outlet = catchments[idx - 1]["outlet_flow_dist_m"]
+            excess.append(total - (head["max_flow_dist_m"] - outlet))
+            idx = segments[idx - 1]["downstream_segment_idx"]
+        return excess
+
+    def test_route_entering_the_stream_at_its_head_adds_up(self):
+        segments, catchments = self._run(self._fdir(lateral=False), 5)
+
+        assert len(segments) == 3
+        for start in (1, 2, 3):
+            # Through the junction and to the outlet: no step counted twice or
+            # past the outlet of the last sub-catchment of the route
+            for excess in self._route_excess(segments, catchments, start):
+                assert excess == pytest.approx(0.0, abs=0.1)
+
+    def test_route_joining_the_stream_below_its_head_skips_the_stream_above(self):
+        segments, catchments = self._run(self._fdir(lateral=True), 10)
+
+        # Segment 1's stream starts at (2, 3); its longest flow path from (0, 0)
+        # joins it at (4, 3), so its 10 m above the junction are not on the path
+        assert self._route_excess(segments, catchments, 1) == pytest.approx(
+            [10.0, 10.0], abs=0.1
+        )
+        assert self._route_excess(segments, catchments, 3) == pytest.approx(
+            [0.0, 0.0], abs=0.1
+        )
+
+
 class TestSampleStreamDistance:
     """Tests for sample_stream_distance point sampling."""
 
