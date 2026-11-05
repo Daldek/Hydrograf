@@ -513,6 +513,7 @@ def step_process_dem(
     it the packages of the mosaic's counties are downloaded.
     """
     sys.path.insert(0, str(BACKEND_DIR))
+    from core.constants import PIPELINE_THRESHOLDS_M2
     from scripts.download_landcover import merge_hydro_gpkgs
     from scripts.process_dem import process_dem
     from utils.raster_utils import create_vrt_mosaic, normalize_crs
@@ -594,7 +595,7 @@ def step_process_dem(
         clear_existing=True,
         save_intermediates=True,
         output_dir=nmt_dir,
-        thresholds=[10000, 100000],
+        thresholds=list(PIPELINE_THRESHOLDS_M2),
         burn_streams_path=burn_path,
         # hydro_resolution_m not needed when NMT downloaded at 5m resolution
         waterbody_mode=waterbody_mode,

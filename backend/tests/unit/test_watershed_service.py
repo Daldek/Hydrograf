@@ -25,6 +25,7 @@ from core.watershed_service import (
     get_segment_outlet,
     merge_catchment_boundaries,
 )
+from models.schemas import MorphometricParameters
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -555,6 +556,79 @@ class TestBuildMorphDictFromGraph:
         )
 
         assert result["length_km"] == 3.4567
+
+    @staticmethod
+    def _morph(cg, polygon, **stats):
+        cg.aggregate_stats.return_value = {
+            **cg.aggregate_stats.return_value,
+            **stats,
+        }
+        return build_morph_dict_from_graph(
+            cg=cg,
+            upstream_indices=np.array([0, 1, 2]),
+            boundary_2180=polygon,
+            outlet_x=500095.0,
+            outlet_y=600095.0,
+            segment_idx=42,
+            threshold_m2=10000,
+        )
+
+    def test_flow_path_from_the_divide_with_the_slope_of_its_head(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        result = self._morph(
+            mock_catchment_graph,
+            simple_polygon,
+            hydraulic_length_km=12.5,
+            flow_path_head_elevation_m=320.0,
+            overland_length_km=0.3,
+            overland_slope_m_per_m=0.1,
+        )
+
+        assert result["flow_path_length_km"] == 12.5
+        # (head 320 m - outlet 120 m) / 12 500 m
+        assert result["flow_path_slope_m_per_m"] == pytest.approx(0.016)
+        assert result["overland_length_km"] == 0.3
+        assert result["overland_slope_m_per_m"] == 0.1
+        assert MorphometricParameters(**result).flow_path_length_km == 12.5
+
+    def test_no_head_elevation_gives_no_flow_path_slope(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        result = self._morph(
+            mock_catchment_graph,
+            simple_polygon,
+            hydraulic_length_km=12.5,
+            flow_path_head_elevation_m=None,
+        )
+
+        assert result["flow_path_length_km"] == 12.5
+        assert result["flow_path_slope_m_per_m"] is None
+
+    def test_a_head_not_above_the_outlet_gives_no_flow_path_slope(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        result = self._morph(
+            mock_catchment_graph,
+            simple_polygon,
+            hydraulic_length_km=12.5,
+            flow_path_head_elevation_m=120.0,
+        )
+
+        assert result["flow_path_slope_m_per_m"] is None
+
+    def test_a_zero_hydraulic_length_is_no_flow_path(
+        self, mock_catchment_graph, simple_polygon
+    ):
+        result = self._morph(
+            mock_catchment_graph,
+            simple_polygon,
+            hydraulic_length_km=0.0,
+            flow_path_head_elevation_m=320.0,
+        )
+
+        assert result["flow_path_length_km"] is None
+        assert result["flow_path_slope_m_per_m"] is None
 
 
 # ---------------------------------------------------------------------------

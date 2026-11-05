@@ -153,7 +153,13 @@ class TestEnrichCatchmentsWithFlowPaths:
         ]
 
         _enrich_catchments_with_flow_paths(
-            catchments, label_raster, flow_dist_m, flw, metadata
+            catchments,
+            label_raster,
+            flow_dist_m,
+            flw,
+            metadata,
+            np.zeros((5, 5), dtype=np.float32),
+            np.zeros((5, 5), dtype=bool),
         )
 
         assert catchments[0]["max_flow_dist_m"] is not None
@@ -202,7 +208,13 @@ class TestEnrichCatchmentsWithFlowPaths:
         ]
 
         _enrich_catchments_with_flow_paths(
-            catchments, label_raster, flow_dist_m, flw, metadata
+            catchments,
+            label_raster,
+            flow_dist_m,
+            flw,
+            metadata,
+            np.zeros((5, 5), dtype=np.float32),
+            np.zeros((5, 5), dtype=bool),
         )
 
         # Both catchments should have flow path WKT (LINESTRING)
@@ -228,11 +240,24 @@ class TestEnrichCatchmentsWithFlowPaths:
         ]
 
         _enrich_catchments_with_flow_paths(
-            catchments, label_raster, flow_dist_m, flw, metadata
+            catchments,
+            label_raster,
+            flow_dist_m,
+            flw,
+            metadata,
+            np.zeros((2, 1), dtype=np.float32),
+            np.zeros((2, 1), dtype=bool),
         )
 
         assert catchments[0]["max_flow_dist_m"] is None
         assert catchments[0]["longest_flow_path_wkt"] is None
+        for key in (
+            "flow_path_head_elev_m",
+            "overland_length_m",
+            "overland_drop_m",
+            "stream_head_elev_m",
+        ):
+            assert catchments[0][key] is None
 
     def test_single_cell_catchment_gets_none_path(self):
         """Catchment with only one cell should get None for flow path."""
@@ -252,7 +277,13 @@ class TestEnrichCatchmentsWithFlowPaths:
         ]
 
         _enrich_catchments_with_flow_paths(
-            catchments, label_raster, flow_dist_m, flw, metadata
+            catchments,
+            label_raster,
+            flow_dist_m,
+            flw,
+            metadata,
+            np.zeros((2, 2), dtype=np.float32),
+            np.zeros((2, 2), dtype=bool),
         )
 
         # max_flow_dist_m should be set (it's 0 for pit cells)
@@ -264,70 +295,77 @@ class TestEnrichCatchmentsWithFlowPaths:
         assert catchments[0]["outlet_flow_dist_m"] == catchments[0]["max_flow_dist_m"]
 
 
-class TestInsertCatchmentsFlowPath:
-    """Tests for flow path columns in insert_catchments TSV generation."""
+class TestFlowPathHeadsAndOverland:
+    """The head of the longest flow path, its overland segment, the stream head.
 
-    def test_tsv_includes_flow_path_columns(self):
-        """TSV buffer should include max_flow_dist_m and longest_flow_path_wkt."""
-        import io
+    5 x 5 cells of 5 m, all draining south into pits in the bottom row; the left
+    three columns are sub-catchment 1, the right two sub-catchment 2. The terrain
+    rises 10 m per row to the north (row 0 at 140 m, row 4 at 100 m).
+    """
 
-        # Simulate what insert_catchments does for TSV generation
-        def _tsv_val(v):
-            return "" if v is None else str(v)
+    @staticmethod
+    def _run(stream_mask):
+        from scripts.process_dem import _enrich_catchments_with_flow_paths
 
-        cat = {
-            "wkt": "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))",
-            "segment_idx": 1,
-            "area_km2": 0.5,
-            "mean_elevation_m": 100.0,
-            "mean_slope_percent": 5.0,
-            "strahler_order": 2,
-            "downstream_segment_idx": None,
-            "elevation_min_m": 90.0,
-            "elevation_max_m": 110.0,
-            "perimeter_km": 0.1,
-            "stream_length_km": 0.05,
-            "elev_histogram": None,
-            "max_flow_dist_m": 1234.5,
-            "longest_flow_path_wkt": "LINESTRING(0 0, 0.5 0.5, 1 1)",
-            "outlet_flow_dist_m": 987.6,
-        }
-
-        tsv_buffer = io.StringIO()
-        hist_str = ""
-        tsv_buffer.write(
-            f"{cat['wkt']}\t{cat['segment_idx']}\t"
-            f"1000\t{cat['area_km2']}\t"
-            f"{_tsv_val(cat['mean_elevation_m'])}\t"
-            f"{_tsv_val(cat['mean_slope_percent'])}\t"
-            f"{_tsv_val(cat.get('strahler_order'))}\t"
-            f"{_tsv_val(cat.get('downstream_segment_idx'))}\t"
-            f"{_tsv_val(cat.get('elevation_min_m'))}\t"
-            f"{_tsv_val(cat.get('elevation_max_m'))}\t"
-            f"{_tsv_val(cat.get('perimeter_km'))}\t"
-            f"{_tsv_val(cat.get('stream_length_km'))}\t"
-            f"{hist_str}\t"
-            f"{_tsv_val(cat.get('max_flow_dist_m'))}\t"
-            f"{_tsv_val(cat.get('longest_flow_path_wkt'))}\t"
-            f"{_tsv_val(cat.get('outlet_flow_dist_m'))}\n"
+        fdir = np.full((5, 5), 4, dtype=np.uint8)
+        fdir[4, :] = 0
+        flw = pyflwdir.from_array(
+            fdir, ftype="d8", transform=(5, 0, 0, 0, -5, 25), latlon=False
         )
+        labels = np.array([[1, 1, 1, 2, 2]] * 5, dtype=np.int32)
+        dem = np.repeat(140.0 - 10.0 * np.arange(5), 5).reshape(5, 5)
+        catchments = [{"segment_idx": 1}, {"segment_idx": 2}]
+        _enrich_catchments_with_flow_paths(
+            catchments,
+            labels,
+            flw.stream_distance(unit="m"),
+            flw,
+            {"cellsize": 5},
+            dem.astype(np.float32),
+            stream_mask,
+        )
+        return catchments
 
-        tsv_content = tsv_buffer.getvalue()
-        fields = tsv_content.strip().split("\t")
-        # 16 fields total (13 original + 2 flow path + 1 outlet)
-        assert len(fields) == 16
-        assert fields[-1] == "987.6"
-        assert fields[-2] == "LINESTRING(0 0, 0.5 0.5, 1 1)"
+    def test_overland_runs_from_the_head_to_the_first_stream_cell(self):
+        stream = np.zeros((5, 5), dtype=bool)
+        stream[3:, 0] = True  # the stream of sub-catchment 1 starts in row 3
 
-    def test_tsv_handles_none_flow_path(self):
-        """TSV should use empty string for None flow path values."""
+        one, _ = self._run(stream)
 
-        def _tsv_val(v):
-            return "" if v is None else str(v)
+        # Head: the first farthest cell, (0, 0) at 140 m; stream entry (3, 0) at 110 m
+        assert one["flow_path_head_elev_m"] == 140.0
+        assert one["overland_length_m"] == 15.0
+        assert one["overland_drop_m"] == 30.0
 
-        assert _tsv_val(None) == ""
-        assert _tsv_val(1234.5) == "1234.5"
-        assert _tsv_val("LINESTRING(0 0, 1 1)") == "LINESTRING(0 0, 1 1)"
+    def test_stream_head_is_the_upstream_end_of_the_segment(self):
+        stream = np.zeros((5, 5), dtype=bool)
+        stream[2:, 0] = True
+
+        one, _ = self._run(stream)
+
+        assert one["stream_head_elev_m"] == 120.0
+
+    def test_no_stream_on_the_path_leaves_the_overland_segment_unmeasured(self):
+        stream = np.zeros((5, 5), dtype=bool)
+        stream[3:, 0] = True  # only sub-catchment 1 has a stream
+
+        _, two = self._run(stream)
+
+        # The head of 2 drains into a pit without passing a stream cell
+        assert two["flow_path_head_elev_m"] == 140.0
+        assert two["overland_length_m"] is None
+        assert two["overland_drop_m"] is None
+        assert two["stream_head_elev_m"] is None
+
+    def test_a_head_on_a_stream_cell_has_no_overland_segment(self):
+        stream = np.zeros((5, 5), dtype=bool)
+        stream[:, 0] = True  # the farthest cell is already in the stream
+
+        one, _ = self._run(stream)
+
+        assert one["overland_length_m"] is None
+        assert one["overland_drop_m"] is None
+        assert one["stream_head_elev_m"] == 140.0
 
 
 class TestSampleStreamDistance:

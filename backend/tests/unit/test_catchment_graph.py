@@ -54,6 +54,13 @@ def small_graph():
     # node2 wpada do node3 -> 4000 m; nodes 0/1 wpadaja do node2 -> 7500 m.
     cg._outlet_flow_dist_m = np.array([7500.0, 7500.0, 4000.0, 0.0], dtype=np.float64)
 
+    # Head of each node's longest flow path and its overland segment; the
+    # upstream end of each node's stream segment (below the node's elev_max)
+    cg._flow_path_head_elev_m = np.array([199.0, 208.0, 190.0, 178.0], np.float32)
+    cg._overland_length_m = np.array([300.0, 250.0, 200.0, 150.0], np.float32)
+    cg._overland_drop_m = np.array([30.0, 25.0, 10.0, 0.0], np.float32)
+    cg._stream_head_elev_m = np.array([180.0, 190.0, 150.0, 140.0], np.float32)
+
     # BDOT stream matching: nodes 0 and 2 are real streams
     cg._is_real_stream = np.array([True, False, True, False], dtype=np.bool_)
     cg._segment_length_km = np.array([1.8, 1.2, 2.5, 3.5], dtype=np.float64)
@@ -426,10 +433,11 @@ class TestTraceMainChannel:
 
         assert result["main_channel_nodes"] == [3, 2, 0]
         assert result["main_channel_length_km"] == pytest.approx(9.0, abs=0.01)
-        # Slope = (elev_max[0] - elev_min[3]) / (9.0 * 1000) = (200-120)/9000
-        expected_slope = (200.0 - 120.0) / (9.0 * 1000)
+        # Slope from the source of node 0 (180 m), not its elev_max (200 m):
+        # (180 - elev_min[3]) / (9.0 * 1000)
+        expected_slope = (180.0 - 120.0) / (9.0 * 1000)
         assert result["main_channel_slope_m_per_m"] == pytest.approx(
-            expected_slope, abs=1e-5
+            expected_slope, abs=1e-6
         )
 
     def test_main_channel_shorter_than_total(self, small_graph):
@@ -455,11 +463,29 @@ class TestTraceMainChannel:
 
         assert result["main_channel_nodes"] == [2, 0]
         assert result["main_channel_length_km"] == pytest.approx(5.0, abs=0.01)
-        # Slope = (elev_max[0] - elev_min[2]) / (5.0 * 1000) = (200-140)/5000
-        expected_slope = (200.0 - 140.0) / (5.0 * 1000)
+        # Slope = (source of node 0 - elev_min[2]) / (5.0 * 1000) = (180-140)/5000
+        expected_slope = (180.0 - 140.0) / (5.0 * 1000)
         assert result["main_channel_slope_m_per_m"] == pytest.approx(
-            expected_slope, abs=1e-5
+            expected_slope, abs=1e-6
         )
+
+    def test_no_source_elevation_gives_no_slope(self, small_graph):
+        """A head node without the elevation of its source has no slope (not 0)."""
+        small_graph._stream_head_elev_m[0] = np.nan
+        upstream = small_graph.traverse_upstream(3)
+
+        result = small_graph.trace_main_channel(3, upstream)
+
+        assert result["main_channel_length_km"] == pytest.approx(9.0, abs=0.01)
+        assert result["main_channel_slope_m_per_m"] is None
+
+    def test_a_source_not_above_the_outlet_gives_no_slope(self, small_graph):
+        small_graph._stream_head_elev_m[0] = 120.0  # the outlet's elevation
+        upstream = small_graph.traverse_upstream(3)
+
+        result = small_graph.trace_main_channel(3, upstream)
+
+        assert result["main_channel_slope_m_per_m"] is None
 
     def test_main_channel_not_loaded_raises(self):
         """RuntimeError if graph not loaded."""
@@ -816,3 +842,46 @@ class TestHydraulicLength:
 
         stats = cg.aggregate_stats(np.array([0, 1]))
         assert stats["hydraulic_length_km"] is None
+        assert stats["flow_path_head_elevation_m"] is None
+        assert stats["overland_length_km"] is None
+        assert stats["overland_slope_m_per_m"] is None
+
+
+class TestFlowPathHead:
+    """The head of the longest flow path and its overland segment in aggregate_stats.
+
+    They belong to the node of the largest max_flow_dist_m, the node whose
+    farthest cell starts hydraulic_length_km.
+    """
+
+    def test_full_watershed_takes_the_farthest_node(self, small_graph):
+        stats = small_graph.aggregate_stats(np.array([0, 1, 2, 3]), outlet_idx=3)
+
+        # Node 0: max_flow_dist 12500 m, head 199 m, 300 m overland dropping 30 m
+        assert stats["flow_path_head_elevation_m"] == pytest.approx(199.0)
+        assert stats["overland_length_km"] == pytest.approx(0.3)
+        assert stats["overland_slope_m_per_m"] == pytest.approx(0.1)
+
+    def test_partial_watershed_takes_its_own_farthest_node(self, small_graph):
+        stats = small_graph.aggregate_stats(np.array([1, 2]), outlet_idx=2)
+
+        assert stats["flow_path_head_elevation_m"] == pytest.approx(208.0)
+        assert stats["overland_length_km"] == pytest.approx(0.25)
+        assert stats["overland_slope_m_per_m"] == pytest.approx(0.1)
+
+    def test_no_drop_gives_a_length_without_a_slope(self, small_graph):
+        stats = small_graph.aggregate_stats(np.array([3]), outlet_idx=3)
+
+        assert stats["overland_length_km"] == pytest.approx(0.15)
+        assert stats["overland_slope_m_per_m"] is None
+
+    def test_unmeasured_values_stay_empty(self, small_graph):
+        small_graph._flow_path_head_elev_m[0] = np.nan
+        small_graph._overland_length_m[0] = np.nan
+
+        stats = small_graph.aggregate_stats(np.array([0, 1, 2, 3]), outlet_idx=3)
+
+        # Node 0 stays the head: the values of another node are no substitute
+        assert stats["flow_path_head_elevation_m"] is None
+        assert stats["overland_length_km"] is None
+        assert stats["overland_slope_m_per_m"] is None

@@ -26,6 +26,15 @@ _FETCH_SIZE = 50_000
 # Placeholder of an unloaded graph; never mutated, replaced by load().
 _EMPTY: np.ndarray = np.empty(0)
 
+
+def _measured(values: np.ndarray, idx: int) -> float | None:
+    """Value of a node, None when it was not measured (NaN or not loaded)."""
+    if idx >= values.size:
+        return None
+    value = float(values[idx])
+    return None if np.isnan(value) else value
+
+
 # Column indices for stream_catchments SELECT in load()
 (
     _COL_SEG_IDX,
@@ -43,7 +52,11 @@ _EMPTY: np.ndarray = np.empty(0)
     _COL_HYDRAULIC_LEN,
     _COL_FLOW_DIST,
     _COL_OUTLET_DIST,
-) = range(15)
+    _COL_HEAD_ELEV,
+    _COL_OVERLAND_LEN,
+    _COL_OVERLAND_DROP,
+    _COL_STREAM_HEAD_ELEV,
+) = range(19)
 
 
 class CatchmentGraph:
@@ -78,6 +91,13 @@ class CatchmentGraph:
         self._strahler: np.ndarray = _EMPTY
         self._max_flow_dist_m: np.ndarray = _EMPTY
         self._outlet_flow_dist_m: np.ndarray | None = None
+        # Head of each node's longest flow path: its elevation and the
+        # overland segment down to the node's stream (NaN: not measured)
+        self._flow_path_head_elev_m: np.ndarray = _EMPTY
+        self._overland_length_m: np.ndarray = _EMPTY
+        self._overland_drop_m: np.ndarray = _EMPTY
+        # Elevation of the upstream end of each node's stream segment
+        self._stream_head_elev_m: np.ndarray = _EMPTY
 
         # Per-segment data from stream_network (loaded separately)
         self._is_real_stream: np.ndarray | None = None
@@ -142,6 +162,10 @@ class CatchmentGraph:
         self._hydraulic_length_km = _EMPTY
         self._max_flow_dist_m = _EMPTY
         self._outlet_flow_dist_m = None
+        self._flow_path_head_elev_m = _EMPTY
+        self._overland_length_m = _EMPTY
+        self._overland_drop_m = _EMPTY
+        self._stream_head_elev_m = _EMPTY
         self._is_real_stream = None
         self._segment_length_km = None
         self._upstream_area_km2 = None
@@ -190,6 +214,10 @@ class CatchmentGraph:
         self._strahler = np.zeros(n, dtype=np.int8)
         self._max_flow_dist_m = np.full(n, 0.0, dtype=np.float64)
         self._outlet_flow_dist_m = np.full(n, np.nan, dtype=np.float64)
+        self._flow_path_head_elev_m = np.full(n, np.nan, dtype=np.float32)
+        self._overland_length_m = np.full(n, np.nan, dtype=np.float32)
+        self._overland_drop_m = np.full(n, np.nan, dtype=np.float32)
+        self._stream_head_elev_m = np.full(n, np.nan, dtype=np.float32)
         self._histograms = [None] * n
 
         # Edge lists for sparse matrix
@@ -208,7 +236,9 @@ class CatchmentGraph:
                 "perimeter_km, stream_length_km, elev_histogram, "
                 "hydraulic_length_km, "
                 "COALESCE(max_flow_dist_m, 0), "
-                "outlet_flow_dist_m "
+                "outlet_flow_dist_m, "
+                "flow_path_head_elev_m, overland_length_m, overland_drop_m, "
+                "stream_head_elev_m "
                 "FROM stream_catchments ORDER BY threshold_m2, segment_idx"
             )
 
@@ -252,6 +282,14 @@ class CatchmentGraph:
 
                     if r[_COL_OUTLET_DIST] is not None:
                         self._outlet_flow_dist_m[i] = r[_COL_OUTLET_DIST]
+                    if r[_COL_HEAD_ELEV] is not None:
+                        self._flow_path_head_elev_m[i] = r[_COL_HEAD_ELEV]
+                    if r[_COL_OVERLAND_LEN] is not None:
+                        self._overland_length_m[i] = r[_COL_OVERLAND_LEN]
+                    if r[_COL_OVERLAND_DROP] is not None:
+                        self._overland_drop_m[i] = r[_COL_OVERLAND_DROP]
+                    if r[_COL_STREAM_HEAD_ELEV] is not None:
+                        self._stream_head_elev_m[i] = r[_COL_STREAM_HEAD_ELEV]
 
                     # Register in lookup
                     self._lookup[(threshold, seg_idx)] = i
@@ -349,6 +387,10 @@ class CatchmentGraph:
                 self._strahler,
                 self._max_flow_dist_m,
                 self._outlet_flow_dist_m,
+                self._flow_path_head_elev_m,
+                self._overland_length_m,
+                self._overland_drop_m,
+                self._stream_head_elev_m,
                 self._is_real_stream,
                 self._segment_length_km,
                 self._upstream_area_km2,
@@ -374,6 +416,15 @@ class CatchmentGraph:
                 "hydraulic_length_km will use understating fallback; "
                 "run scripts/backfill_outlet_flow_dist.py",
                 n_missing_outlet,
+                self._n,
+            )
+        n_missing_head = int(np.isnan(self._flow_path_head_elev_m).sum())
+        if n_missing_head > 0:
+            logger.warning(
+                "%d/%d catchments missing flow_path_head_elev_m — the flow path "
+                "slope, overland segment and channel slope stay empty; "
+                "run scripts/backfill_flow_path_heads.py",
+                n_missing_head,
                 self._n,
             )
 
@@ -659,6 +710,11 @@ class CatchmentGraph:
             - stream_frequency_per_km2: n_segments / total_area
             - hydraulic_length_km: (max(max_flow_dist_m) -
               outlet_flow_dist_m[outlet]) / 1000; None bez outlet_idx
+            - flow_path_head_elevation_m, overland_length_km,
+              overland_slope_m_per_m: the head of the longest flow path (the
+              farthest cell of the node with the largest max_flow_dist_m) and
+              its overland segment down to that node's stream; None when not
+              measured, a slope also when it is not positive
         """
         areas = self._area_km2[indices]
         total_area = float(np.nansum(areas))
@@ -750,6 +806,20 @@ class CatchmentGraph:
                     baseline = float(self._max_flow_dist_m[outlet_idx])
                 hydraulic_length_km = max(0.0, max_flow_dist - baseline) / 1000.0
 
+        # Head of the longest flow path and its overland segment
+        head_elev = None
+        overland_length_km = None
+        overland_slope = None
+        far = self._farthest_node(indices)
+        if far is not None:
+            head_elev = _measured(self._flow_path_head_elev_m, far)
+            length_m = _measured(self._overland_length_m, far)
+            drop_m = _measured(self._overland_drop_m, far)
+            if length_m is not None and length_m > 0:
+                overland_length_km = length_m / 1000.0
+                if drop_m is not None and drop_m > 0:
+                    overland_slope = drop_m / length_m
+
         return {
             "area_km2": round(total_area, 6),
             "elevation_min_m": round(elev_min, 2) if elev_min is not None else None,
@@ -780,7 +850,27 @@ class CatchmentGraph:
                 if hydraulic_length_km is not None
                 else None
             ),
+            "flow_path_head_elevation_m": (
+                round(head_elev, 2) if head_elev is not None else None
+            ),
+            "overland_length_km": (
+                round(overland_length_km, 4) if overland_length_km is not None else None
+            ),
+            "overland_slope_m_per_m": (
+                round(overland_slope, 6) if overland_slope is not None else None
+            ),
         }
+
+    def _farthest_node(self, indices: np.ndarray) -> int | None:
+        """Node of ``indices`` with the largest max_flow_dist_m, None when unknown.
+
+        Its farthest cell is the head of the longest flow path of the nodes.
+        """
+        if len(indices) == 0 or self._max_flow_dist_m.size == 0:
+            return None
+        dists = self._max_flow_dist_m[indices]
+        k = int(np.argmax(dists))
+        return int(indices[k]) if dists[k] > 0 else None
 
     def trace_main_channel(
         self,
@@ -806,8 +896,12 @@ class CatchmentGraph:
         -------
         dict
             - main_channel_length_km: float — sum of stream lengths
-            - main_channel_slope_m_per_m: float | None — relief/length
+            - main_channel_slope_m_per_m: float | None — (elevation of the
+              channel's source, the upstream end of the head node's stream
+              segment, − elevation of the outlet) / length; None when an
+              elevation is missing or the slope is not positive
             - main_channel_nodes: list[int] — path indices
+            - real_channel_length_km: float | None — BDOT10k part from the outlet
         """
         if not self._loaded:
             raise RuntimeError("Catchment graph not loaded")
@@ -848,22 +942,18 @@ class CatchmentGraph:
         lengths = self._stream_length_km[path_arr]
         main_length_km = float(np.nansum(lengths))
 
-        # Slope: head elev_max - outlet elev_min
+        # Slope from the source of the main channel (the upstream end of the
+        # head node's stream segment), not from the highest point of the head
+        # sub-catchment: feedback #13
         head_idx = path[-1]  # furthest upstream node
-        head_elev_max = self._elev_max[head_idx]
-        outlet_elev_min = self._elev_min[outlet_idx]
+        source_elev = _measured(self._stream_head_elev_m, head_idx)
+        outlet_elev = _measured(self._elev_min, outlet_idx)
 
         main_slope = None
-        if (
-            main_length_km > 0
-            and not np.isnan(head_elev_max)
-            and not np.isnan(outlet_elev_min)
-        ):
-            main_slope = round(
-                (float(head_elev_max) - float(outlet_elev_min))
-                / (main_length_km * 1000),
-                6,
-            )
+        if main_length_km > 0 and source_elev is not None and outlet_elev is not None:
+            slope = (source_elev - outlet_elev) / (main_length_km * 1000)
+            if slope > 0:
+                main_slope = round(slope, 6)
 
         # Real channel length: contiguous BDOT-matched segments from outlet upstream.
         # Walk from outlet (path_arr[0]) upstream, sum segment lengths while

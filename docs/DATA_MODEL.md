@@ -373,7 +373,12 @@ CREATE TABLE stream_catchments (
     -- Nowa kolumna (migracja 024):
     divide_flow_path_geom GEOMETRY(LINESTRING, 2180),  -- geometria ścieżki spływu z działu wód (granica zlewni → ujście)
     -- Nowa kolumna (migracja 003, 2026-08-02, ADR-054):
-    outlet_flow_dist_m DOUBLE PRECISION           -- odległość spływu w punkcie ujścia podzlewni [m] (baza dla hydraulic_length_km)
+    outlet_flow_dist_m DOUBLE PRECISION,          -- odległość spływu w punkcie ujścia podzlewni [m] (baza dla hydraulic_length_km)
+    -- Nowe kolumny (migracja 004, 2026-11-05, ADR-070), na NMT po wypełnieniu zagłębień:
+    flow_path_head_elev_m DOUBLE PRECISION,       -- wysokość początku (najdalszej komórki) najdłuższej drogi spływu [m n.p.m.]
+    overland_length_m DOUBLE PRECISION,           -- długość jej odcinka powierzchniowego do pierwszej komórki cieku progu [m]
+    overland_drop_m DOUBLE PRECISION,             -- spadek wysokości na tym odcinku [m]
+    stream_head_elev_m DOUBLE PRECISION           -- wysokość górnego końca odcinka cieku podzlewni (źródło cieku 1. rzędu) [m n.p.m.]
 );
 
 -- Indeksy
@@ -423,6 +428,17 @@ CREATE INDEX idx_catchment_geom_t100000 ON stream_catchments USING GIST(geom)
 | Kolumna | Typ | Nullable | Opis |
 |---------|-----|----------|------|
 | `outlet_flow_dist_m` | DOUBLE PRECISION | YES | Odległość spływu w punkcie ujścia podzlewni [m], próbkowana z `stream_distance.tif` (`pyflwdir.stream_distance()`). Naprawia `hydraulic_length_km`: `(max(max_flow_dist_m[indices]) − outlet_flow_dist_m[outlet]) / 1000` zamiast bezwzględnej odległości do ujścia całego basenu (feedback testera #11, ADR-054). Backfill istniejących wierszy: `scripts/backfill_outlet_flow_dist.py` |
+
+**Nowe kolumny (migracja 004, ADR-070) — dane do metod Tc wg ich źródeł i spadek cieku od źródła:**
+
+| Kolumna | Typ | Nullable | Opis |
+|---------|-----|----------|------|
+| `flow_path_head_elev_m` | DOUBLE PRECISION | YES | Wysokość najdalszej komórki podzlewni (początku najdłuższej drogi spływu) na wypełnionym NMT [m n.p.m.]; ze spadkiem `flow_path_slope_m_per_m` morfometrii |
+| `overland_length_m` | DOUBLE PRECISION | YES | Długość [m] drogi D8 od tej komórki do pierwszej komórki cieku progu podzlewni (akumulacja ≥ próg); NULL, gdy początek leży w cieku albo droga kończy się w zagłębieniu |
+| `overland_drop_m` | DOUBLE PRECISION | YES | Różnica wysokości na tym odcinku [m] |
+| `stream_head_elev_m` | DOUBLE PRECISION | YES | Wysokość górnego końca odcinka cieku podzlewni [m n.p.m.]; na węźle górnym cieku głównego to wysokość źródła w `channel_slope_m_per_m` |
+
+Partial GIST na `geom` dla progów 1 000 000 i 10 000 000 m² w obu tabelach (`idx_stream_geom_t1000000`, `idx_catchment_geom_t1000000` itd.). Backfill istniejących wierszy: `scripts/backfill_flow_path_heads.py`.
 
 **Format `elev_histogram`:** stały interwał 1m, klucze: `base_m` (dolna granica najniższego binu), `interval_m` (zawsze 1), `counts` (tablica liczności per bin). Mergowalny — histogramy na wspólnej osi bezwzględnej, agregacja = suma z offset.
 

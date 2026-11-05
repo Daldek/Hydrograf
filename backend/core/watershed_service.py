@@ -1056,6 +1056,23 @@ def build_morph_dict_from_graph(
     # Flow path parameters
     longest_flow_path_km = stats.get("hydraulic_length_km")
 
+    # The longest flow path from the divide to the outlet and its slope from
+    # the elevation of its head (Kirpich's L and S; the flow length of NEH 630
+    # ch. 15), with the overland segment of its head
+    flow_path_length_km = (
+        hydraulic_len if hydraulic_len is not None and hydraulic_len > 0 else None
+    )
+    flow_path_slope = None
+    head_elev = stats.get("flow_path_head_elevation_m")
+    if (
+        flow_path_length_km is not None
+        and head_elev is not None
+        and elev_min is not None
+    ):
+        slope = (head_elev - elev_min) / (flow_path_length_km * 1000)
+        if slope > 0:
+            flow_path_slope = round(slope, 6)
+
     # Point sampling stream_distance.tif for divide and centroid flow paths
     divide_flow_path_km = None
     centroid_flow_path_km = None
@@ -1139,6 +1156,10 @@ def build_morph_dict_from_graph(
         "longest_flow_path_km": longest_flow_path_km,
         "divide_flow_path_km": divide_flow_path_km,
         "centroid_flow_path_km": centroid_flow_path_km,
+        "flow_path_length_km": flow_path_length_km,
+        "flow_path_slope_m_per_m": flow_path_slope,
+        "overland_length_km": stats.get("overland_length_km"),
+        "overland_slope_m_per_m": stats.get("overland_slope_m_per_m"),
     }
 
     # Private key: internal node indices for main channel (not part of Pydantic schema)
