@@ -56,6 +56,8 @@ class TestPointQueries:
         assert land_cover_at(db_session, X0 + 50, Y0 + 50) == {
             "category": "woda",
             "cn": 100,
+            "cn_amc_i": 100,
+            "cn_amc_iii": 100,
             "imperviousness": 0.1,
             "bdot_class": "PTWP",
         }
@@ -101,7 +103,7 @@ class TestPointQueries:
         assert depression_at(db_session, X0 + 5, Y0 + 5)["max_depth_m"] == 2.0
         assert depression_at(db_session, X0 - 5, Y0 - 5) is None
 
-    def test_nearest_stream_within_the_radius(self, db_session):
+    def test_nearest_stream_at_any_distance_up_to_the_limit(self, db_session):
         for wkt, layer, name in [
             (f"LINESTRING({X0 - 50} {Y0 + 10}, {X0 + 50} {Y0 + 10})", "SWRS", "Potok"),
             (f"LINESTRING({X0 - 50} {Y0 - 20}, {X0 + 50} {Y0 - 20})", "SWRM", None),
@@ -125,8 +127,12 @@ class TestPointQueries:
             "layer_type": "SWRM",
             "distance_m": pytest.approx(5.0),
         }
-        # 50 m from the river, 80 m from the ditch
-        assert nearest_stream(db_session, X0, Y0 + 60) is None
+        # Far from both lines: still the nearer one, 2 km away
+        assert nearest_stream(db_session, X0, Y0 + 2010)["distance_m"] == (
+            pytest.approx(2000.0)
+        )
+        # Beyond STREAM_SEARCH_MAX_DISTANCE_M (5 km)
+        assert nearest_stream(db_session, X0, Y0 + 5110) is None
 
     def test_subcatchment_of_the_requested_threshold(self, db_session):
         for threshold, segment, area, strahler in [

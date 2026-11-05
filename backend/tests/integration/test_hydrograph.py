@@ -118,18 +118,17 @@ def _make_segment_dict() -> dict[str, Any]:
 
 def _make_precip_db_mock():
     """
-    Create a mock DB session that returns precipitation = 45.0 mm
+    Create a mock DB session whose PMAXTP grid is one point with 45.0 mm
     for any precipitation_data query.
     """
     mock_session = MagicMock()
+    grid_point = MagicMock(x=639139.0, y=486706.0, precipitation_mm=45.0)
 
     def execute_side_effect(query, params=None):
         result = MagicMock()
         query_str = str(query)
         if "precipitation_data" in query_str:
-            precip = MagicMock()
-            precip.precipitation_interpolated = 45.0
-            result.fetchone.return_value = precip
+            result.fetchall.return_value = [grid_point]
         else:
             result.fetchone.return_value = None
             result.fetchall.return_value = []

@@ -1,6 +1,6 @@
 /**
- * Hydrograf Welcome — a short plain-language introduction shown on the first
- * visit and from the "Instrukcja" item of the navigation rail.
+ * Hydrograf Welcome — a short factual introduction (scope, methods, data area)
+ * shown on the first visit and from the "Instrukcja" item of the navigation rail.
  */
 (function () {
     'use strict';

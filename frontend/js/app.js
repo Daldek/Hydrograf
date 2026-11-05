@@ -681,6 +681,11 @@
             Hydrograf.hydrograph.init();
         }
 
+        // Export of the hietogram and its PMAXTP points (Hietogram section)
+        if (Hydrograf.rainExport) {
+            Hydrograf.rainExport.init();
+        }
+
         // Init depressions module
         if (Hydrograf.depressions) {
             Hydrograf.depressions.init();

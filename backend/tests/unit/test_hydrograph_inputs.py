@@ -6,6 +6,7 @@ The fast path (pre-computed morphometry in the request) is used so no
 watershed delineation is needed; PMAXTP lookup is patched.
 """
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +17,7 @@ from pydantic import ValidationError
 from api.endpoints.hydrograph import _custom_hietogram
 from api.main import app
 from core.database import get_db
+from core.precipitation import DesignDepth
 from models.schemas import (
     CUSTOM_PRECIPITATION_MAX_STEPS,
     CustomPrecipitation,
@@ -65,7 +67,8 @@ def client():
 
 @pytest.fixture
 def pmaxtp_45mm():
-    with patch(f"{_HG}.get_precipitation", return_value=45.0) as mocked:
+    depth = DesignDepth(45.0, "idw", ())
+    with patch(f"{_HG}.point_depth", return_value=depth) as mocked:
         yield mocked
 
 
@@ -274,6 +277,130 @@ class TestCustomPrecipitation:
         assert problem["code"] == "validation_error"
         assert problem["details"]["fields"] == ["/body/custom_precipitation/depths_mm"]
         assert "nieujemną" in problem["errors"][0]["message"]
+
+
+class TestPmaxtpGrid:
+    """The delineation's Thiessen weights make the depth the watershed mean."""
+
+    GRID = [
+        {"easting_m": 280000.0, "northing_m": 350000.0, "area_km2": 3.0},
+        {"easting_m": 282000.0, "northing_m": 350000.0, "area_km2": 1.0},
+    ]
+
+    def _client_with_rows(self, rows):
+        db = MagicMock()
+        db.execute.return_value.fetchall.return_value = rows
+        app.dependency_overrides[get_db] = lambda: db
+        return TestClient(app)
+
+    def test_depth_is_the_mean_over_the_grid_given(self):
+        rows = [
+            SimpleNamespace(x=282000.0, y=350000.0, precipitation_mm=60.0),
+            SimpleNamespace(x=280000.0, y=350000.0, precipitation_mm=40.0),
+        ]
+        try:
+            data = _post(self._client_with_rows(rows), _request(pmaxtp_grid=self.GRID))
+        finally:
+            app.dependency_overrides.clear()
+
+        precip = data["precipitation"]
+        assert precip["total_mm"] == pytest.approx(45.0)  # (40*3 + 60*1) / 4
+        assert precip["interpolation"] == "thiessen"
+        assert [p["weight"] for p in precip["pmaxtp_points"]] == [0.75, 0.25]
+        first = precip["pmaxtp_points"][0]
+        assert (first["easting_m"], first["area_km2"]) == (280000.0, 3.0)
+        assert 50 < first["latitude"] < 52 and 15 < first["longitude"] < 17
+        rainfall = data["handoff"]["provenance"]["rainfall"]
+        assert rainfall["interpolation"] == "thiessen"
+
+    def test_a_point_off_the_grid_is_a_validation_error(self):
+        rows = [SimpleNamespace(x=280000.0, y=350000.0, precipitation_mm=40.0)]
+        try:
+            response = self._client_with_rows(rows).post(
+                "/api/generate-hydrograph", json=_request(pmaxtp_grid=self.GRID)
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["details"]["reason"] == "pmaxtp_grid_point_unknown"
+        assert problem["details"]["easting_m"] == 282000.0
+
+    def test_without_the_grid_the_depth_is_taken_at_the_point(
+        self, client, pmaxtp_45mm
+    ):
+        precip = _post(client, _request())["precipitation"]
+
+        pmaxtp_45mm.assert_called_once()
+        assert precip["interpolation"] == "idw"
+
+
+class TestArealReductionFactor:
+    """The user's own areal reduction factor; none by default (ADR-069)."""
+
+    def test_without_a_factor_the_depth_is_not_reduced(self, client, pmaxtp_45mm):
+        data = _post(client, _request())
+
+        precip = data["precipitation"]
+        assert precip["total_mm"] == 45.0
+        assert precip["pmaxtp_depth_mm"] == 45.0
+        assert precip["areal_reduction_factor"] is None
+        assert data["water_balance"]["total_precip_mm"] == 45.0
+        rainfall = data["handoff"]["provenance"]["rainfall"]
+        assert "areal_reduction_factor" not in rainfall
+
+    def test_the_factor_multiplies_the_depth(self, client, pmaxtp_45mm):
+        data = _post(client, _request(areal_reduction_factor=0.9))
+
+        precip = data["precipitation"]
+        assert precip["pmaxtp_depth_mm"] == 45.0
+        assert precip["areal_reduction_factor"] == 0.9
+        assert precip["total_mm"] == pytest.approx(40.5)
+        assert sum(precip["intensities_mm"]) == pytest.approx(40.5, abs=0.01)
+        assert data["water_balance"]["total_precip_mm"] == pytest.approx(40.5)
+        handoff = data["handoff"]
+        assert handoff["provenance"]["rainfall"]["areal_reduction_factor"] == 0.9
+        rainfall = handoff["payload"]["nodes"][0]["rainfall"]
+        assert rainfall["total_mm"] == pytest.approx(40.5)
+
+    def test_a_custom_series_ignores_the_factor(self, client, pmaxtp_45mm):
+        data = _post(
+            client,
+            _request(
+                areal_reduction_factor=0.5,
+                custom_precipitation={"timestep_min": 5, "depths_mm": [10.0, 30.0]},
+            ),
+        )
+
+        precip = data["precipitation"]
+        assert precip["total_mm"] == 40.0
+        assert precip["pmaxtp_depth_mm"] is None
+        assert precip["areal_reduction_factor"] is None
+
+    @pytest.mark.parametrize(
+        ("factor", "message"),
+        [
+            (0, "Wartość musi być większa od 0."),
+            (-0.2, "Wartość musi być większa od 0."),
+            (1.01, "Wartość nie może być większa niż 1."),
+        ],
+    )
+    def test_a_factor_outside_0_1_is_refused_in_polish(
+        self, client, pmaxtp_45mm, factor, message
+    ):
+        response = client.post(
+            "/api/generate-hydrograph",
+            json=_request(areal_reduction_factor=factor),
+            headers={"Accept-Language": "pl"},
+        )
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"]["fields"] == ["/body/areal_reduction_factor"]
+        assert problem["errors"][0]["message"] == message
+        pmaxtp_45mm.assert_not_called()
 
 
 class TestNashEstimation:

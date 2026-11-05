@@ -23,6 +23,7 @@ from jsonschema import Draft202012Validator
 from api.endpoints.watershed import _watershed_handoff
 from api.main import app
 from core.database import get_db
+from core.precipitation import DesignDepth
 from models.schemas import MorphometricParameters, OutletInfo, WatershedResponse
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -87,7 +88,8 @@ def _post(client: TestClient, **options: Any):
         "morphometry": _morphometry(),
         **options,
     }
-    with patch("api.endpoints.hydrograph.get_precipitation", return_value=PMAXTP_MM):
+    depth = DesignDepth(PMAXTP_MM, "idw", ())
+    with patch("api.endpoints.hydrograph.point_depth", return_value=depth):
         return client.post("/api/generate-hydrograph", json=body)
 
 

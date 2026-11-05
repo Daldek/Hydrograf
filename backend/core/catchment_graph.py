@@ -655,6 +655,34 @@ class CatchmentGraph:
         depths = [depth_of[node] for node in nodes]
         return self._segment_idx[order].tolist(), depths
 
+    def trace_downstream(self, start_idx: int) -> np.ndarray:
+        """
+        Nodes from a catchment node down to the outlet of its network.
+
+        Parameters
+        ----------
+        start_idx : int
+            Internal index of the starting node
+
+        Returns
+        -------
+        np.ndarray
+            Internal indices in the order of the flow: start_idx first, the
+            outlet of the network (the node that drains into no other) last
+        """
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+
+        # Every node drains into one node at most, so the search over the
+        # reversed edges walks the single path downstream
+        order: np.ndarray = breadth_first_order(
+            self._upstream_adj.T,
+            start_idx,
+            directed=True,
+            return_predecessors=False,
+        )
+        return order
+
     def get_segment_indices(
         self,
         indices: np.ndarray,

@@ -26,6 +26,7 @@
     var NUMBER_FIELDS = [
         { id: 'hydro-alpha', key: 'hietogram_alpha', label: '\u03b1', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
         { id: 'hydro-beta', key: 'hietogram_beta', label: '\u03b2', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
+        { id: 'hydro-arf', key: 'areal_reduction_factor', label: 'Wsp. redukcji obszarowej', section: 'Hietogram', part: 'pmaxtp', gt: 0, max: 1, optional: true },
         { id: 'hydro-tc-runoff-coeff', key: 'tc_runoff_coeff', label: 'C (sp\u0142yw)', section: 'Hydrogram', part: 'tc-runoff-coeff-col', min: 0, max: 1, optional: true },
         { id: 'hydro-tc-retardance', key: 'tc_retardance', label: 'N (op\u00f3r)', section: 'Hydrogram', part: 'tc-retardance-col', min: 0.02, max: 0.8 },
         { id: 'hydro-tc-overland-length', key: 'tc_overland_length_km', label: 'L sp\u0142ywu', section: 'Hydrogram', part: 'tc-overland-col', gt: 0, max: 5 },
@@ -70,6 +71,8 @@
     /** Whether the request sends the field: α and β only with a PMAXTP Beta storm. */
     function inUse(field, c, customRain) {
         if (field.part === 'beta-params') return !customRain && c.hietogram === 'beta';
+        // The user's own areal reduction of the PMAXTP depth; empty = none
+        if (field.part === 'pmaxtp') return !customRain;
         return hydrographParts(c)[field.part];
     }
 
@@ -165,6 +168,7 @@
         document.getElementById('hietogram-results').classList.add('d-none');
         document.getElementById('hydrograph-results').classList.add('d-none');
         document.getElementById('hydrograph-info').textContent = '';
+        if (Hydrograf.rainExport) Hydrograf.rainExport.clear();
         // The hand-off to Hydrolog keeps the watershed without the hidden result
         if (Hydrograf.handoff) Hydrograf.handoff.showHydrograph(Hydrograf.app.getCurrentWatershed(), null);
     }
@@ -287,6 +291,8 @@
                     longitude: data.watershed.outlet.longitude,
                     changed: morph.changed,
                 };
+                // The Thiessen weights of the PMAXTP grid: the depth is the watershed mean
+                opts.pmaxtp_grid = data.watershed.pmaxtp_grid || null;
             }
             if (rain.active) {
                 opts.custom_precipitation = rain.series;
@@ -297,6 +303,9 @@
                 if (c.hietogram === 'beta') {
                     opts.hietogram_alpha = values.hietogram_alpha;
                     opts.hietogram_beta = values.hietogram_beta;
+                }
+                if (values.areal_reduction_factor != null) {
+                    opts.areal_reduction_factor = values.areal_reduction_factor;
                 }
             }
             if (c.needsTc) {
@@ -332,7 +341,8 @@
                     step: precip.timestep_min,
                     source: precip.source === 'custom'
                         ? 'w\u0142asna seria'
-                        : 'PMAXTP ' + duration + ', p = ' + precip.probability_percent + '%',
+                        : 'PMAXTP ' + duration + ', p = ' + precip.probability_percent + '%' +
+                          (precip.interpolation === 'thiessen' ? ', \u015brednia w zlewni' : ', w punkcie'),
                 }
             );
             Hydrograf.charts.renderHydrographChart(
@@ -355,7 +365,17 @@
                 summary.appendChild(item);
             });
 
-            displayPrecipBalance(result.water_balance, result.metadata);
+            displayPrecipBalance(result.water_balance, result.metadata, precip);
+            if (Hydrograf.rainExport) {
+                Hydrograf.rainExport.show(result, {
+                    duration: duration,
+                    hietogram: rain.active ? null : c.hietogram,
+                    alpha: values.hietogram_alpha,
+                    beta: values.hietogram_beta,
+                    point: { latitude: click.lat, longitude: click.lng },
+                    boundary: data.watershed.boundary_geojson || null,
+                });
+            }
             displayMetadata(result.metadata);
             if (Hydrograf.handoff) Hydrograf.handoff.showHydrograph(data, result.handoff);
         } catch (err) {
@@ -369,7 +389,14 @@
 
     // ── Water balance & metadata tables ────────────────────────────────
 
-    function displayPrecipBalance(wb, meta) {
+    /** How the PMAXTP depth came from the grid, for the balance table. */
+    function interpolationText(precip) {
+        var n = (precip.pmaxtp_points || []).length;
+        if (precip.interpolation === 'thiessen') return '\u015brednia w zlewni, ' + n + ' pkt';
+        return 'w punkcie (IDW), ' + n + ' pkt';
+    }
+
+    function displayPrecipBalance(wb, meta, precip) {
         var container = document.getElementById('hietogram-balance');
         container.innerHTML = '';
 
@@ -378,12 +405,21 @@
 
         var rows = [
             ['Opad ca\u0142kowity', wb.total_precip_mm.toFixed(1) + ' mm', 'total_precip_mm'],
+        ];
+        if (precip.interpolation) {
+            rows.push(['Opad PMAXTP', interpolationText(precip), 'pmaxtp_interpolation']);
+        }
+        if (precip.areal_reduction_factor != null) {
+            rows.push(['Redukcja obszarowa', '\u00d7 ' + plNumber(precip.areal_reduction_factor) +
+                ' (z ' + precip.pmaxtp_depth_mm.toFixed(1) + ' mm)', 'hydro-arf']);
+        }
+        rows = rows.concat([
             ['Opad efektywny', wb.total_effective_mm.toFixed(1) + ' mm', 'total_effective_mm'],
             ['Wsp. odp\u0142ywu', wb.runoff_coefficient.toFixed(3), 'runoff_coefficient'],
             ['CN u\u017cyty', wb.cn_used.toFixed(1) + (meta.amc ? ' (AMC ' + meta.amc + ')' : ''), 'cn_used'],
             ['Retencja S', wb.retention_mm.toFixed(1) + ' mm', 'retention_mm'],
             ['Straty pocz\u0105tkowe Ia', wb.initial_abstraction_mm.toFixed(1) + ' mm', 'initial_abstraction_mm'],
-        ];
+        ]);
 
         rows.forEach(function (row) {
             var tr = document.createElement('tr');
@@ -508,7 +544,7 @@
 
     var _INPUT_IDS = [
         'hydro-duration', 'hydro-probability', 'hydro-hietogram-type',
-        'hydro-alpha', 'hydro-beta', 'hydro-amc',
+        'hydro-alpha', 'hydro-beta', 'hydro-arf', 'hydro-amc',
         'hydro-uh-model', 'hydro-tc-method',
         'hydro-nash-estimation',
         'hydro-snyder-ct', 'hydro-snyder-cp',

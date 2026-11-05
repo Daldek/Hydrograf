@@ -110,6 +110,7 @@ def served(outlet_point: Point) -> Iterator[MagicMock]:
         patch(f"{target}.get_divide_flow_path_geojson", return_value=None),
         patch(f"{target}.build_land_cover_stats", return_value=None),
         patch(f"{target}.build_hsg_stats", return_value=None),
+        patch(f"{target}.thiessen_cells", return_value=[]),
     ):
         yield db
 

@@ -422,7 +422,7 @@ This document defines precisely:
 - Downloading all 432 scenarios of every grid point (one request per point); the bbox `20.8,52.1,21.2,52.4` gives 238 points, 102,816 records
 - Import into PostGIS (table `precipitation_data`: a record per point, duration and probability, source `IMGW_PMAXTP`)
 - Spatial indexing (GIST)
-- Interpolation for the watershed centroid at runtime (IDW over the 4 nearest grid points)
+- At runtime, the design depth of a watershed is the mean of the grid points weighted by their Thiessen polygons inside it (ADR-069); IDW over the 4 nearest grid points only without a watershed boundary
 
 **Update:** Once a year (or when IMGW publishes new data)
 

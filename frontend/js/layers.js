@@ -211,8 +211,10 @@
      * @param {function(): ?L.LatLngBounds} getBounds - Layer extent for #zoom-extent.
      * @param {function(number)} setOpacity - Called with opacity 0..1.
      * @param {number} defaultTransparency - Initial transparency in percent.
+     * @param {function()=} onShow - Called when the layer is turned on (legend).
+     * @param {function()=} onHide - Called when the layer is turned off.
      */
-    function addOverlayEntry(list, label, getLayer, getBounds, setOpacity, defaultTransparency) {
+    function addOverlayEntry(list, label, getLayer, getBounds, setOpacity, defaultTransparency, onShow, onHide) {
         var entry = createLayerRow(list, label, setOpacity, defaultTransparency);
         var cb = entry.cb;
 
@@ -228,8 +230,10 @@
             if (cb.checked) {
                 layer.addTo(map);
                 entry.applyOpacity();
+                if (onShow) onShow();
             } else {
                 map.removeLayer(layer);
+                if (onHide) onHide();
             }
             entry.row.classList.toggle('off', !cb.checked);
             logLayerChange(label, cb.checked);
@@ -597,7 +601,9 @@
             Hydrograf.map.getDemLayer,
             Hydrograf.map.getDemBounds,
             Hydrograf.map.setDemOpacity,
-            30
+            30,
+            Hydrograf.map.createDemLegend,
+            Hydrograf.map.removeDemLegend
         );
 
         // BDOT10k water bodies

@@ -1,4 +1,4 @@
-"""Tests for core.point_info: rasters and BDOT10k water bodies at one point.
+"""Tests for core.point_info: rasters, BDOT10k water bodies and the main channel.
 
 The SQL queries of the module need PostGIS: tests/integration/test_identify_point_db.py.
 """
@@ -6,13 +6,23 @@ The SQL queries of the module need PostGIS: tests/integration/test_identify_poin
 import json
 import logging
 import os
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 import rasterio
 from rasterio.transform import from_origin
+from scipy import sparse
 
-from core.point_info import WATER_BODIES_FILE, sample_raster, water_body_at
+from core.catchment_graph import CatchmentGraph
+from core.point_info import (
+    WATER_BODIES_FILE,
+    land_cover_at,
+    main_channel_at,
+    sample_raster,
+    water_body_at,
+)
 
 NODATA = -9999.0
 X0, Y_TOP, CELL = 500000.0, 600000.0, 5.0
@@ -72,6 +82,28 @@ class TestSampleRaster:
         _write_raster(path, [[0.0, 12.5]], nodata=None)
 
         assert sample_raster(str(path), *_centre(0)) == 0.0
+
+
+class TestLandCoverAt:
+    @pytest.mark.parametrize(
+        ("cn", "cn_amc_i", "cn_amc_iii"),
+        [(60, 40, 78), (78, 61, 89), (100, 100, 100)],
+        ids=["forest", "arable", "water"],
+    )
+    def test_cn_of_the_three_moisture_classes(self, cn, cn_amc_i, cn_amc_iii):
+        """Hydrolog's conversion of the AMC II value, as for the hydrograph."""
+        db = MagicMock()
+        db.execute.return_value.fetchone.return_value = SimpleNamespace(
+            category="grunt_orny", cn_value=cn, imperviousness=0.1, bdot_class="PTTR"
+        )
+
+        result = land_cover_at(db, *_centre(0))
+
+        assert (result["cn_amc_i"], result["cn"], result["cn_amc_iii"]) == (
+            cn_amc_i,
+            cn,
+            cn_amc_iii,
+        )
 
 
 def _square(lon, lat, half):
@@ -179,3 +211,63 @@ class TestWaterBodyAt:
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
 
         assert water_body_at(str(data_dir), LON, LAT)["name"] == "Zalew"
+
+
+def _network():
+    """Graph of segments 11 to 14 at 10 000 m², nodes 0 to 3: 11 and 12 → 13 → 14.
+
+    Segment 11 has the larger catchment, so the main channel takes it. The flow
+    distances run on 2 km below the outlet of the network (segment 14), to the
+    edge of the DEM, as they do in the data.
+    """
+    cg = CatchmentGraph()
+    cg._n = 4
+    cg._loaded = True
+    cg._segment_idx = np.array([11, 12, 13, 14], dtype=np.int32)
+    cg._threshold_m2 = np.full(4, 10000, dtype=np.int32)
+    cg._lookup = {(10000, 11 + i): i for i in range(4)}
+    cg._area_km2 = np.array([5.0, 2.0, 2.0, 6.0], dtype=np.float32)
+    cg._upstream_area_km2 = np.array([5.0, 2.0, 9.0, 15.0])
+    cg._strahler = np.array([1, 1, 2, 2], dtype=np.int8)
+    cg._elev_min = np.array([300.0, 310.0, 250.0, 200.0], dtype=np.float32)
+    cg._elev_max = np.array([400.0, 380.0, 320.0, 260.0], dtype=np.float32)
+    cg._stream_length_km = np.array([2.0, 1.0, 3.0, 4.0], dtype=np.float32)
+    cg._outlet_flow_dist_m = np.array([9000.0, 9000.0, 6000.0, 2000.0])
+    cg._upstream_adj = sparse.csr_matrix(
+        (np.ones(3, dtype=np.int8), ([2, 2, 3], [0, 1, 2])), shape=(4, 4)
+    )
+    return cg
+
+
+class TestMainChannelAt:
+    @pytest.mark.parametrize(
+        ("segment", "channel_km", "outlet_km"),
+        [(11, 2.0, 7.0), (13, 5.0, 4.0), (14, 9.0, 0.0)],
+        ids=["headwater", "middle", "network-outlet"],
+    )
+    def test_main_channel_and_distance_to_the_network_outlet(
+        self, segment, channel_km, outlet_km
+    ):
+        result = main_channel_at(_network(), MagicMock(), 10000, segment)
+
+        assert result == pytest.approx(
+            {"channel_length_km": channel_km, "distance_to_outlet_km": outlet_km}
+        )
+
+    def test_without_flow_distances_only_the_channel(self):
+        cg = _network()
+        cg._outlet_flow_dist_m = None
+
+        assert main_channel_at(cg, MagicMock(), 10000, 13) == {
+            "channel_length_km": pytest.approx(5.0),
+            "distance_to_outlet_km": None,
+        }
+
+    def test_nothing_without_the_graph_or_the_segment(self):
+        db = MagicMock()
+        # stream_catchments is empty: the graph cannot be loaded
+        db.execute.return_value.fetchone.return_value = (0,)
+        nothing = {"channel_length_km": None, "distance_to_outlet_km": None}
+
+        assert main_channel_at(CatchmentGraph(), db, 10000, 13) == nothing
+        assert main_channel_at(_network(), db, 100000, 13) == nothing

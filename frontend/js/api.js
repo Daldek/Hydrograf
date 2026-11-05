@@ -129,7 +129,9 @@
     /**
      * Generate hydrograph for given parameters.
      * With opts.custom_precipitation ({ timestep_min, depths_mm }) the PMAXTP
-     * design storm is replaced and duration/probability may be null.
+     * design storm is replaced and duration/probability may be null. With
+     * opts.morphometry, opts.pmaxtp_grid (the delineation's) makes the PMAXTP
+     * depth the watershed mean instead of the value at the point.
      */
     async function generateHydrograph(lat, lng, duration, probability, opts) {
         var payload = {
@@ -141,11 +143,13 @@
         if (opts) {
             if (opts.morphometry) payload.morphometry = opts.morphometry;
             if (opts.morphometry_origin) payload.morphometry_origin = opts.morphometry_origin;
+            if (opts.pmaxtp_grid) payload.pmaxtp_grid = opts.pmaxtp_grid;
             if (opts.custom_precipitation) payload.custom_precipitation = opts.custom_precipitation;
             if (opts.amc) payload.amc = opts.amc;
             if (opts.hietogram_type) payload.hietogram_type = opts.hietogram_type;
             if (opts.hietogram_alpha != null) payload.hietogram_alpha = opts.hietogram_alpha;
             if (opts.hietogram_beta != null) payload.hietogram_beta = opts.hietogram_beta;
+            if (opts.areal_reduction_factor != null) payload.areal_reduction_factor = opts.areal_reduction_factor;
             if (opts.uh_model) payload.uh_model = opts.uh_model;
             if (opts.tc_method) payload.tc_method = opts.tc_method;
             if (opts.nash_estimation) payload.nash_estimation = opts.nash_estimation;

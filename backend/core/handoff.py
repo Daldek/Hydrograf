@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cache
 from importlib.metadata import version
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from core.version import get_version
 
@@ -230,8 +230,10 @@ def pmaxtp_origin(
     duration_min: float,
     latitude: float,
     longitude: float,
+    interpolation: Literal["thiessen", "idw"],
+    areal_reduction_factor: float | None = None,
 ) -> dict[str, Any]:
-    """Return the provenance of a PMAXTP depth Hydrograf interpolated at a point.
+    """Return the provenance of a PMAXTP depth Hydrograf took from its grid.
 
     Parameters
     ----------
@@ -240,24 +242,34 @@ def pmaxtp_origin(
     duration_min : float
         Duration [min].
     latitude, longitude : float
-        The point of the depth in WGS84 [°] (the point of the request).
+        The point of the request in WGS84 [°] (the click).
+    interpolation : {"thiessen", "idw"}
+        ``"thiessen"``: the depth is the watershed mean over the Thiessen polygons of
+        the points of the grid of ``precipitation_data`` (ADR-069); ``"idw"``: the
+        inverse distance weighting at the point of its four nearest points.
+    areal_reduction_factor : float or None, optional
+        The user's areal reduction factor the depth was multiplied by; None when the
+        depth was not reduced.
 
     Returns
     -------
     dict[str, Any]
-        ``source`` ``"pmaxtp"`` with its method, probability, duration and point, and
-        ``interpolation`` ``"idw"``: the depth is the inverse distance weighting of the
-        four nearest points of the grid of ``precipitation_data``.
+        ``source`` ``"pmaxtp"`` with its method, probability, duration, point and
+        interpolation, and ``areal_reduction_factor`` when the user gave one (the
+        rainfall's ``total_mm`` is then the reduced depth).
     """
-    return {
+    origin: dict[str, Any] = {
         "source": "pmaxtp",
         "method": PMAXTP_METHOD,
         "probability_percent": probability_percent,
         "duration_min": duration_min,
         "latitude": latitude,
         "longitude": longitude,
-        "interpolation": "idw",
+        "interpolation": interpolation,
     }
+    if areal_reduction_factor is not None:
+        origin["areal_reduction_factor"] = areal_reduction_factor
+    return origin
 
 
 def curve_number_runoff(
