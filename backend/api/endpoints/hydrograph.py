@@ -951,10 +951,12 @@ def generate_hydrograph(
         provenance = {"rainfall": rainfall_origin}
         if runoff_origin is not None:
             provenance["runoff"] = runoff_origin
-        watershed_fields = morph_dict
+        # The area the generator used: the full path takes it from the catchment graph
+        # unrounded, while the morphometry carries it to 0.01 km2
+        watershed_fields = {**morph_dict, "area_km2": area_km2}
         if request.uh_model == "nash" and request.nash_estimation == "from_lutz":
             # Lutz's inputs, where Hydrolog's GUI reads them to estimate n and K again
-            watershed_fields = {**morph_dict, **_lutz_inputs(morph_dict)}
+            watershed_fields = {**watershed_fields, **_lutz_inputs(watershed_fields)}
         handoff = build_handoff(
             name=name,
             watershed=watershed_parameters(watershed_fields, name, cn=cn),

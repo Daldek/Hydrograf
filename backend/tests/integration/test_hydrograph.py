@@ -277,6 +277,28 @@ class TestGenerateHydrographEndpoint:
         finally:
             app.dependency_overrides.clear()
 
+    def test_handoff_carries_the_area_the_hydrograph_used(self, client):
+        """The graph's unrounded area, not the morphometry's 0.01 km2, is handed off."""
+        mock_db = _make_precip_db_mock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        try:
+            with _HappyPathContext() as mocks:
+                stats = mocks["cg"].return_value.aggregate_stats.return_value
+                stats["area_km2"] = 10.004321
+                small = self._post(client).json()
+                stats["area_km2"] = 10.0
+                rounded = self._post(client).json()
+
+            watershed = small["handoff"]["payload"]["nodes"][0]["watershed"]
+            assert watershed["area_km2"] == 10.004321
+            volume = small["handoff"]["result"]["total_volume_m3"]
+            assert volume == pytest.approx(
+                rounded["handoff"]["result"]["total_volume_m3"] * 1.0004321
+            )
+        finally:
+            app.dependency_overrides.clear()
+
     # ---- 4. test_water_balance_structure ----
 
     def test_water_balance_structure(self, client):
