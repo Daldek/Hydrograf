@@ -237,7 +237,7 @@ def _compute_watershed(
     )
     # Remove private keys before passing to Pydantic schema
     morph_dict.pop("_main_channel_nodes", None)
-    morph_dict.pop("_divide_flow_path", None)
+    morph_dict.pop("_flow_paths", None)
     pmaxtp_cells = thiessen_cells(boundary_poly, db)
 
     watershed_resp = WatershedResponse(
