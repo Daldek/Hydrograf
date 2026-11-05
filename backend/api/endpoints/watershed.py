@@ -47,9 +47,9 @@ from core.watershed_service import (
     build_land_cover_stats,
     build_morph_dict_from_graph,
     cascade_escalate,
+    divide_flow_path_geojson,
     ensure_outlet_within_boundary,
     get_catchment_levels_feature_collection,
-    get_divide_flow_path_geojson,
     get_longest_flow_path_geojson,
     get_main_channel_feature_collection,
     get_main_stream_geojson,
@@ -161,6 +161,7 @@ def _build_watershed_response(
 
     # Main channel
     main_channel_nodes = morph_dict.pop("_main_channel_nodes", [])
+    divide_path = morph_dict.pop("_divide_flow_path", None)
     main_stream_geojson = get_main_channel_feature_collection(
         cg,
         main_channel_nodes,
@@ -201,17 +202,9 @@ def _build_watershed_response(
     except Exception as e:
         logger.debug(f"Longest flow path not available: {e}")
 
-    divide_path_geojson = None
-    try:
-        divide_path_geojson = get_divide_flow_path_geojson(
-            cg,
-            upstream_indices_for_stats,
-            outlet_idx_for_stats,
-            threshold,
-            db,
-        )
-    except Exception as e:
-        logger.debug(f"Divide flow path not available: {e}")
+    divide_path_geojson = (
+        divide_flow_path_geojson(divide_path) if divide_path is not None else None
+    )
 
     # Build WGS84 boundary
     boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_poly)

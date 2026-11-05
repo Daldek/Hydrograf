@@ -96,6 +96,13 @@ class Settings(BaseSettings):
         candidate = os.path.join(self.dem_dir, "dem_mosaic_03_flowdir.tif")
         return candidate if os.path.exists(candidate) else None
 
+    def resolve_subcatchment_labels_path(self, threshold_m2: int) -> str | None:
+        """Find the sub-catchment label raster of a threshold (int32, segment_idx)."""
+        candidate = os.path.join(
+            self.dem_dir, f"dem_mosaic_10_subcatchments_{threshold_m2}.tif"
+        )
+        return candidate if os.path.exists(candidate) else None
+
     def resolve_slope_path(self) -> str | None:
         """Find slope raster."""
         candidate = os.path.join(self.dem_dir, "dem_mosaic_05_slope.tif")
