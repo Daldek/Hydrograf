@@ -175,6 +175,7 @@ class TestDelineateWatershedEndpoint:
             patch(f"{_WS}.get_longest_flow_path_geojson", return_value=None),
             patch(f"{_WS}.get_divide_flow_path_geojson", return_value=None),
             patch(f"{_WS}.cascade_escalate", return_value=None),
+            patch(f"{_WS}.thiessen_cells", return_value=[]),
         ]
 
     def test_success_returns_200(self, client):

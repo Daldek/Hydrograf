@@ -10,6 +10,7 @@ via BFS on pre-computed sub-catchments.
 
 import logging
 from collections.abc import Callable
+from dataclasses import asdict
 from typing import Any
 
 import numpy as np
@@ -64,7 +65,12 @@ from core.precipitation import (
     DURATION_STR_TO_MIN,
     VALID_DURATIONS_STR,
     VALID_PROBABILITIES,
-    get_precipitation,
+    DesignDepth,
+    ThiessenCell,
+    UnknownGridPointError,
+    areal_depth,
+    point_depth,
+    thiessen_cells,
     validate_duration,
     validate_probability,
 )
@@ -83,6 +89,8 @@ from models.schemas import (
     HydrographResponse,
     MorphometricParameters,
     OutletInfo,
+    PmaxtpGridCell,
+    PmaxtpPoint,
     PrecipitationInfo,
     WaterBalance,
     WatershedResponse,
@@ -138,10 +146,11 @@ def _compute_watershed(
     point_2180: Point,
     request: HydrographRequest,
     db: Session,
-) -> tuple[dict[str, Any], float, float, WatershedResponse]:
+) -> tuple[dict[str, Any], float, float, WatershedResponse, list[ThiessenCell]]:
     """Full watershed computation path (steps 3-9).
 
-    Returns (morph_dict, cn, area_km2, watershed_response).
+    Returns (morph_dict, cn, area_km2, watershed_response, pmaxtp_cells): the cells
+    weigh the PMAXTP grid over the watershed (ADR-069).
     """
     cg = get_catchment_graph()
     if not cg.ensure_loaded(db):
@@ -227,6 +236,7 @@ def _compute_watershed(
     )
     # Remove private key before passing to Pydantic schema
     morph_dict.pop("_main_channel_nodes", None)
+    pmaxtp_cells = thiessen_cells(boundary_poly, db)
 
     watershed_resp = WatershedResponse(
         boundary_geojson=boundary_geojson,
@@ -238,9 +248,67 @@ def _compute_watershed(
         area_km2=round(area_km2, 2),
         hydrograph_available=True,
         morphometry=MorphometricParameters(**morph_dict),
+        pmaxtp_grid=[PmaxtpGridCell(**asdict(cell)) for cell in pmaxtp_cells] or None,
     )
 
-    return morph_dict, cn, area_km2, watershed_resp
+    return morph_dict, cn, area_km2, watershed_resp, pmaxtp_cells
+
+
+def _design_depth(
+    request: HydrographRequest,
+    point_2180: Point,
+    cells: list[ThiessenCell] | None,
+    duration_str: str,
+    probability: float,
+    db: Session,
+) -> DesignDepth:
+    """PMAXTP depth of the design storm (ADR-069).
+
+    The watershed mean over the Thiessen polygons ``cells``; without them (own
+    morphometry without ``pmaxtp_grid``) the inverse distance weighting at the point.
+
+    Raises
+    ------
+    InvalidRequestError
+        ``validation_error`` (400) when a cell of the request's ``pmaxtp_grid`` is
+        not a grid point
+    NoDataError
+        ``no_data`` (404) when the grid has no data there
+    """
+    no_data = NoDataError(
+        "no_precipitation_data",
+        reason="no_precipitation_data",
+        latitude=request.latitude,
+        longitude=request.longitude,
+    )
+    try:
+        depth = (
+            point_depth(point_2180, duration_str, probability, db)
+            if cells is None
+            else areal_depth(cells, duration_str, probability, db)
+        )
+    except UnknownGridPointError as e:
+        if request.morphometry is None:
+            # The cells came from the table: the scenario has no data there
+            raise no_data from e
+        raise InvalidRequestError(
+            "pmaxtp_grid_point_unknown",
+            reason="pmaxtp_grid_point_unknown",
+            easting_m=round(e.easting_m, 2),
+            northing_m=round(e.northing_m, 2),
+        ) from e
+    if depth is None:
+        raise no_data
+    return depth
+
+
+def _pmaxtp_points(depth: DesignDepth) -> list[PmaxtpPoint]:
+    """Return the grid points of a design depth with their WGS84 coordinates."""
+    points = []
+    for point in depth.points:
+        lon, lat = transform_pl1992_to_wgs84(point.easting_m, point.northing_m)
+        points.append(PmaxtpPoint(latitude=lat, longitude=lon, **asdict(point)))
+    return points
 
 
 def _effective_duration_min(
@@ -782,6 +850,7 @@ def generate_hydrograph(
 
         # ===== Fast path: use pre-computed morphometry =====
         watershed_resp = None
+        pmaxtp_cells: list[ThiessenCell] | None = None
         if request.morphometry is not None:
             morph_dict = request.morphometry.model_dump(exclude_none=True)
             cn = morph_dict.get("cn") or DEFAULT_CN
@@ -791,13 +860,19 @@ def generate_hydrograph(
                 f"(area={area_km2:.2f} km2, CN={cn})"
             )
             _require_area_within_limit(area_km2)
+            if request.pmaxtp_grid is not None:
+                pmaxtp_cells = [
+                    ThiessenCell(cell.easting_m, cell.northing_m, cell.area_km2)
+                    for cell in request.pmaxtp_grid
+                ]
         else:
             # ===== Full path: compute watershed from scratch =====
-            morph_dict, cn, area_km2, watershed_resp = _compute_watershed(
+            morph_dict, cn, area_km2, watershed_resp, pmaxtp_cells = _compute_watershed(
                 point_2180, request, db
             )
 
         # ===== Precipitation: own series or PMAXTP design storm =====
+        depth: DesignDepth | None = None
         if custom is not None:
             precip_result = _custom_hietogram(custom.depths_mm, timestep_min)
             hietogram_type = None
@@ -808,22 +883,15 @@ def generate_hydrograph(
                 f"in {duration_min:.0f} min"
             )
         else:
-            # PMAXTP depth at the click point (IDW)
-            precip_mm = get_precipitation(
-                point_2180, duration_str, design_probability, db
+            # PMAXTP depth: the watershed mean, or at the point without the grid
+            depth = _design_depth(
+                request, point_2180, pmaxtp_cells, duration_str, design_probability, db
             )
-
-            if precip_mm is None:
-                raise NoDataError(
-                    "no_precipitation_data",
-                    reason="no_precipitation_data",
-                    latitude=request.latitude,
-                    longitude=request.longitude,
-                )
-
+            precip_mm = depth.precipitation_mm
             logger.debug(
                 f"Precipitation: {precip_mm:.1f} mm for {duration_str}, "
-                f"p={probability}%"
+                f"p={probability}% ({depth.interpolation}, "
+                f"{len(depth.points)} grid points)"
             )
 
             hietogram_type = request.hietogram_type
@@ -855,7 +923,11 @@ def generate_hydrograph(
                 **_storm_shape(request),
             )
             rainfall_origin = pmaxtp_origin(
-                design_probability, duration_min, request.latitude, request.longitude
+                design_probability,
+                duration_min,
+                request.latitude,
+                request.longitude,
+                depth.interpolation,
             )
         precip_total_mm = float(precip_result.total_mm)
 
@@ -975,6 +1047,8 @@ def generate_hydrograph(
                 effective_mm=[
                     round(x, 3) for x in hydro_result.effective_precip_mm.tolist()
                 ],
+                interpolation=None if depth is None else depth.interpolation,
+                pmaxtp_points=[] if depth is None else _pmaxtp_points(depth),
             ),
             hydrograph=HydrographInfo(
                 times_min=hydro_result.hydrograph.times_min.tolist(),

@@ -258,6 +258,21 @@ class HsgStats(BaseModel):
     dominant_group: str = Field(..., description="Dominant HSG group")
 
 
+class PmaxtpGridCell(BaseModel):
+    """A PMAXTP grid point and the area of its Thiessen polygon in a watershed."""
+
+    easting_m: float = Field(..., description="Grid point easting, EPSG:2180 [m]")
+    northing_m: float = Field(..., description="Grid point northing, EPSG:2180 [m]")
+    area_km2: float = Field(
+        ..., gt=0, description="Area of its Thiessen polygon inside the watershed [km2]"
+    )
+
+
+# Grid points one watershed may weigh: a 250 km2 watershed on the default 2 km grid
+# has about 90, a 0.5 km grid would give about 1100
+PMAXTP_GRID_MAX_CELLS = 2000
+
+
 class WatershedResponse(BaseModel):
     """Watershed delineation result."""
 
@@ -289,6 +304,13 @@ class WatershedResponse(BaseModel):
     )
     divide_flow_path_geojson: dict[str, Any] | None = Field(
         None, description="Divide flow path (from boundary) as GeoJSON Feature (WGS84)"
+    )
+    pmaxtp_grid: list[PmaxtpGridCell] | None = Field(
+        None,
+        description="PMAXTP grid points weighing the watershed's design depth: the "
+        "areas of their Thiessen polygons inside it (ADR-069); send them back as "
+        "`pmaxtp_grid` of POST /api/generate-hydrograph with `morphometry`; null "
+        "without grid data around the watershed",
     )
 
 
@@ -518,6 +540,8 @@ class HydrographRequest(BaseModel):
         Own rainfall series; replaces PMAXTP and the hietogram
     morphometry_origin : MorphometryOrigin, optional
         Outlet and changed fields of the delineation `morphometry` came from
+    pmaxtp_grid : list[PmaxtpGridCell], optional
+        With `morphometry`: the delineation's Thiessen weights of the PMAXTP grid
     """
 
     latitude: float = Field(
@@ -626,6 +650,15 @@ class HydrographRequest(BaseModel):
         "watershed and the fields the person changed since; the hand-off of the "
         "response names them (without it, it gives the morphometry as the user's)",
     )
+    pmaxtp_grid: list[PmaxtpGridCell] | None = Field(
+        None,
+        max_length=PMAXTP_GRID_MAX_CELLS,
+        description="With `morphometry`: the `pmaxtp_grid` of the delineation, so "
+        "the PMAXTP depth is the watershed mean over these Thiessen polygons; "
+        "without it the depth is interpolated at the point (IDW of the 4 nearest "
+        "grid points). Ignored without `morphometry` (the watershed is delineated "
+        "and weighed again) and with `custom_precipitation`",
+    )
 
     @model_validator(mode="after")
     def design_storm_or_custom(self) -> "HydrographRequest":
@@ -638,6 +671,28 @@ class HydrographRequest(BaseModel):
                 "opadu albo własny szereg opadu (custom_precipitation)."
             )
         return self
+
+
+class PmaxtpPoint(BaseModel):
+    """A PMAXTP grid point used for the design depth."""
+
+    easting_m: float = Field(..., description="Easting, EPSG:2180 [m]")
+    northing_m: float = Field(..., description="Northing, EPSG:2180 [m]")
+    latitude: float = Field(..., description="Latitude, WGS84 [deg]")
+    longitude: float = Field(..., description="Longitude, WGS84 [deg]")
+    precipitation_mm: float = Field(
+        ..., ge=0, description="PMAXTP depth of the scenario at the point [mm]"
+    )
+    weight: float = Field(
+        ..., ge=0, le=1, description="Share of the point in the depth [-]"
+    )
+    area_km2: float | None = Field(
+        None,
+        description="Thiessen: area of its polygon inside the watershed [km2]",
+    )
+    distance_m: float | None = Field(
+        None, description="IDW: distance from the point of the request [m]"
+    )
 
 
 class PrecipitationInfo(BaseModel):
@@ -657,6 +712,17 @@ class PrecipitationInfo(BaseModel):
     effective_mm: list[float] = Field(
         default_factory=list,
         description="Effective precipitation depths per timestep [mm]",
+    )
+    interpolation: Literal["thiessen", "idw"] | None = Field(
+        None,
+        description="How the PMAXTP depth came from the grid: 'thiessen', the "
+        "watershed mean over Thiessen polygons, or 'idw' at the point of the "
+        "request (null for a custom series)",
+    )
+    pmaxtp_points: list[PmaxtpPoint] = Field(
+        default_factory=list,
+        description="The grid points of the PMAXTP depth with their depths and "
+        "weights (empty for a custom series)",
     )
 
 
@@ -849,8 +915,25 @@ class IdentifyPointRequest(BaseModel):
     )
 
 
+class PointPl2000(BaseModel):
+    """The point in PL-2000, in the zone of its longitude."""
+
+    zone: int = Field(
+        ...,
+        ge=5,
+        le=8,
+        description="Zone: 5 west of 16.5°E, 6 to 19.5°E, 7 to 22.5°E, 8 east of it",
+    )
+    epsg: int = Field(..., description="EPSG code of the zone, 2176 to 2179")
+    easting_m: float = Field(
+        ...,
+        description="Easting [m], Y of Polish surveying; starts with the zone number",
+    )
+    northing_m: float = Field(..., description="Northing [m], X of Polish surveying")
+
+
 class PointCoordinates(BaseModel):
-    """The point in WGS84 and in PL-1992."""
+    """The point in WGS84, PL-1992 and PL-2000 (Polish grids only)."""
 
     latitude: float = Field(..., description="Latitude in WGS84 [°]")
     longitude: float = Field(..., description="Longitude in WGS84 [°]")
@@ -860,6 +943,7 @@ class PointCoordinates(BaseModel):
     northing_m: float = Field(
         ..., description="PL-1992 (EPSG:2180) northing [m], X of Polish surveying"
     )
+    pl2000: PointPl2000 = Field(..., description="PL-2000 (EPSG:2176 to 2179)")
 
 
 class PointWater(BaseModel):
@@ -879,7 +963,7 @@ class PointWater(BaseModel):
 
 
 class PointStream(BaseModel):
-    """Nearest BDOT10k stream line within 25 m of the point."""
+    """Nearest BDOT10k stream line to the point, at most 5 km away."""
 
     name: str | None = Field(None, description="Name (BDOT10k), null if unnamed")
     layer_type: str = Field(
@@ -905,7 +989,14 @@ class PointLandCover(BaseModel):
     )
     bdot_class: str | None = Field(None, description="BDOT10k layer, e.g. PTLZ")
     cn: int = Field(
-        ..., description="CN of the category (AMC-II), as in the catchment CN"
+        ...,
+        description="CN of the category for AMC II (average), as in the catchment CN",
+    )
+    cn_amc_i: int = Field(
+        ..., description="CN for AMC I (dry), converted from cn by Hydrolog"
+    )
+    cn_amc_iii: int = Field(
+        ..., description="CN for AMC III (wet), converted from cn by Hydrolog"
     )
     imperviousness: float | None = Field(
         None, description="Impervious fraction of the category (0-1)"
@@ -942,6 +1033,22 @@ class PointSubcatchment(BaseModel):
         None,
         description="Segment matched to a BDOT10k stream; null if not matched",
     )
+    channel_length_km: float | None = Field(
+        None,
+        description=(
+            "Main channel length [km] of the catchment at the segment's downstream "
+            "end, as channel_length_km of a delineated watershed; null without the "
+            "in-memory catchment graph"
+        ),
+    )
+    distance_to_outlet_km: float | None = Field(
+        None,
+        description=(
+            "Flow distance [km] from the segment's downstream end to the outlet of "
+            "the network, where the water leaves the data area (not necessarily a "
+            "river mouth); null without the in-memory catchment graph"
+        ),
+    )
 
 
 class IdentifyPointResponse(BaseModel):
@@ -959,7 +1066,7 @@ class IdentifyPointResponse(BaseModel):
         description="Requested results whose water level raster holds the point",
     )
     stream: PointStream | None = Field(
-        None, description="Nearest BDOT10k stream within 25 m"
+        None, description="Nearest BDOT10k stream, at most 5 km away"
     )
     water_body: PointWaterBody | None = Field(
         None, description="BDOT10k water body containing the point"

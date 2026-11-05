@@ -165,6 +165,7 @@
         document.getElementById('hietogram-results').classList.add('d-none');
         document.getElementById('hydrograph-results').classList.add('d-none');
         document.getElementById('hydrograph-info').textContent = '';
+        if (Hydrograf.rainExport) Hydrograf.rainExport.clear();
         // The hand-off to Hydrolog keeps the watershed without the hidden result
         if (Hydrograf.handoff) Hydrograf.handoff.showHydrograph(Hydrograf.app.getCurrentWatershed(), null);
     }
@@ -287,6 +288,8 @@
                     longitude: data.watershed.outlet.longitude,
                     changed: morph.changed,
                 };
+                // The Thiessen weights of the PMAXTP grid: the depth is the watershed mean
+                opts.pmaxtp_grid = data.watershed.pmaxtp_grid || null;
             }
             if (rain.active) {
                 opts.custom_precipitation = rain.series;
@@ -332,7 +335,8 @@
                     step: precip.timestep_min,
                     source: precip.source === 'custom'
                         ? 'w\u0142asna seria'
-                        : 'PMAXTP ' + duration + ', p = ' + precip.probability_percent + '%',
+                        : 'PMAXTP ' + duration + ', p = ' + precip.probability_percent + '%' +
+                          (precip.interpolation === 'thiessen' ? ', \u015brednia w zlewni' : ', w punkcie'),
                 }
             );
             Hydrograf.charts.renderHydrographChart(
@@ -355,7 +359,17 @@
                 summary.appendChild(item);
             });
 
-            displayPrecipBalance(result.water_balance, result.metadata);
+            displayPrecipBalance(result.water_balance, result.metadata, precip);
+            if (Hydrograf.rainExport) {
+                Hydrograf.rainExport.show(result, {
+                    duration: duration,
+                    hietogram: rain.active ? null : c.hietogram,
+                    alpha: values.hietogram_alpha,
+                    beta: values.hietogram_beta,
+                    point: { latitude: click.lat, longitude: click.lng },
+                    boundary: data.watershed.boundary_geojson || null,
+                });
+            }
             displayMetadata(result.metadata);
             if (Hydrograf.handoff) Hydrograf.handoff.showHydrograph(data, result.handoff);
         } catch (err) {
@@ -369,7 +383,14 @@
 
     // ── Water balance & metadata tables ────────────────────────────────
 
-    function displayPrecipBalance(wb, meta) {
+    /** How the PMAXTP depth came from the grid, for the balance table. */
+    function interpolationText(precip) {
+        var n = (precip.pmaxtp_points || []).length;
+        if (precip.interpolation === 'thiessen') return '\u015brednia w zlewni, ' + n + ' pkt';
+        return 'w punkcie (IDW), ' + n + ' pkt';
+    }
+
+    function displayPrecipBalance(wb, meta, precip) {
         var container = document.getElementById('hietogram-balance');
         container.innerHTML = '';
 
@@ -378,12 +399,17 @@
 
         var rows = [
             ['Opad ca\u0142kowity', wb.total_precip_mm.toFixed(1) + ' mm', 'total_precip_mm'],
+        ];
+        if (precip.interpolation) {
+            rows.push(['Opad PMAXTP', interpolationText(precip), 'pmaxtp_interpolation']);
+        }
+        rows = rows.concat([
             ['Opad efektywny', wb.total_effective_mm.toFixed(1) + ' mm', 'total_effective_mm'],
             ['Wsp. odp\u0142ywu', wb.runoff_coefficient.toFixed(3), 'runoff_coefficient'],
             ['CN u\u017cyty', wb.cn_used.toFixed(1) + (meta.amc ? ' (AMC ' + meta.amc + ')' : ''), 'cn_used'],
             ['Retencja S', wb.retention_mm.toFixed(1) + ' mm', 'retention_mm'],
             ['Straty pocz\u0105tkowe Ia', wb.initial_abstraction_mm.toFixed(1) + ' mm', 'initial_abstraction_mm'],
-        ];
+        ]);
 
         rows.forEach(function (row) {
             var tr = document.createElement('tr');

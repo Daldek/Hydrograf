@@ -4,7 +4,11 @@ What Hydrograf knows at one point of the map (``GET /api/identify-point``).
 Every function takes the point in PL-1992 (EPSG:2180) and answers None where its
 source has nothing there. The terrain comes from the rasters of the preprocessing
 (the DEM and its slope), the land cover with its CN, the hydrologic soil group, the
-depressions, the BDOT10k streams and the precomputed sub-catchments from PostGIS.
+depressions, the BDOT10k streams and the precomputed sub-catchments from PostGIS;
+the main channel at the sub-catchment's segment and the distance to the outlet of
+the network from the in-memory ``CatchmentGraph``. The CN of the land cover is the
+AMC II value of the catchment CN, converted to AMC I and III by Hydrolog as for
+the hydrograph.
 
 The BDOT10k water bodies (``OT_PTWP_A``: lakes, ponds and wide rivers drawn as
 polygons) are not in the database: the bootstrap writes them only to
@@ -21,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import rasterio
+from hydrolog.runoff import AMC, SCSCN
 from shapely import STRtree, make_valid
 from shapely.errors import ShapelyError
 from shapely.geometry import Point, shape
@@ -28,10 +33,18 @@ from shapely.geometry.base import BaseGeometry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.catchment_graph import CatchmentGraph
+
 logger = logging.getLogger(__name__)
 
-# Streams farther from the point than this are not "at" the point
-STREAM_SEARCH_RADIUS_M = 25.0
+# Farthest stream reported as the nearest one: beyond a few kilometres a stream
+# says nothing about the point, and near the edge of the data, where the BDOT10k
+# layer is cut, the true nearest stream may lie outside it. In the data area
+# (790 km², 1550 km of BDOT10k streams) a 250 m grid of 12 652 points found a
+# stream within 163 m at the median, 1.0 km at the 99th percentile and 2.07 km
+# at most (2026-11-05), so 5 km leaves room for sparser areas. The search walks
+# the GiST index nearest first and stops at the first line, whatever the limit.
+STREAM_SEARCH_MAX_DISTANCE_M = 5000.0
 # The water bodies of the map, relative to the directory served under /data/
 WATER_BODIES_FILE = "bdot_lakes.geojson"
 
@@ -67,11 +80,16 @@ def sample_raster(path: str, x: float, y: float) -> float | None:
 def land_cover_at(db: Session, x: float, y: float) -> dict[str, Any] | None:
     """Land cover polygon containing the point (the smallest where they overlap).
 
+    The CN of the category is the AMC II value the catchment CN averages
+    (``core/land_cover.py``), independent of the soil group; Hydrolog converts it
+    to AMC I and III with the conversion the hydrograph uses.
+
     Returns
     -------
     dict | None
-        ``category``, ``cn`` (AMC-II, as in the catchment CN), ``imperviousness``
-        (0–1 or None) and ``bdot_class`` (BDOT10k layer code or None)
+        ``category``, ``cn`` (AMC II), ``cn_amc_i`` and ``cn_amc_iii``,
+        ``imperviousness`` (0–1 or None) and ``bdot_class`` (BDOT10k layer code
+        or None)
     """
     row = db.execute(
         text("""
@@ -85,9 +103,13 @@ def land_cover_at(db: Session, x: float, y: float) -> dict[str, Any] | None:
     ).fetchone()
     if row is None:
         return None
+    cn = int(row.cn_value)
+    scs = SCSCN(cn=cn)
     return {
         "category": row.category,
-        "cn": int(row.cn_value),
+        "cn": cn,
+        "cn_amc_i": scs.adjust_cn_for_amc(AMC.I),
+        "cn_amc_iii": scs.adjust_cn_for_amc(AMC.III),
         "imperviousness": row.imperviousness,
         "bdot_class": row.bdot_class,
     }
@@ -136,26 +158,31 @@ def depression_at(db: Session, x: float, y: float) -> dict[str, Any] | None:
 
 
 def nearest_stream(
-    db: Session, x: float, y: float, radius_m: float = STREAM_SEARCH_RADIUS_M
+    db: Session,
+    x: float,
+    y: float,
+    max_distance_m: float = STREAM_SEARCH_MAX_DISTANCE_M,
 ) -> dict[str, Any] | None:
-    """Nearest BDOT10k stream line within ``radius_m`` of the point.
+    """Nearest BDOT10k stream line to the point, at most ``max_distance_m`` away.
+
+    A nearest-neighbour (KNN, ``<->``) search over the GiST index of the lines.
 
     Returns
     -------
     dict | None
         ``name`` (or None), ``layer_type`` (SWRS river, SWKN canal, SWRM ditch)
-        and ``distance_m``
+        and ``distance_m``; None when no stream is within ``max_distance_m``
     """
     row = db.execute(
         text("""
             SELECT name, layer_type,
                    ST_Distance(geom, ST_SetSRID(ST_Point(:x, :y), 2180)) AS distance_m
             FROM bdot_streams
-            WHERE ST_DWithin(geom, ST_SetSRID(ST_Point(:x, :y), 2180), :radius)
-            ORDER BY distance_m
+            WHERE ST_DWithin(geom, ST_SetSRID(ST_Point(:x, :y), 2180), :max_distance)
+            ORDER BY geom <-> ST_SetSRID(ST_Point(:x, :y), 2180)
             LIMIT 1
         """),
-        {"x": x, "y": y, "radius": radius_m},
+        {"x": x, "y": y, "max_distance": max_distance_m},
     ).fetchone()
     if row is None:
         return None
@@ -211,6 +238,52 @@ def subcatchment_at(
         "strahler_order": row.strahler_order,
         "segment_length_m": row.segment_length_m,
         "is_real_stream": row.is_real_stream,
+    }
+
+
+def main_channel_at(
+    cg: CatchmentGraph, db: Session, threshold_m2: int, segment_idx: int
+) -> dict[str, float | None]:
+    """Read the main channel at a segment's end and the distance to the outlet.
+
+    Both come from the in-memory graph. The main channel is traced up from the
+    segment's sub-catchment as for a watershed delineated there (its
+    ``channel_length_km``). The distance to the outlet is the difference of the
+    D8 flow distances at the outlet points of the sub-catchment and of the last
+    node below it: the outlet of the network, where the water leaves the data
+    area, which need not be the mouth of the river. The flow distances run on
+    from there to where the D8 flow leaves the DEM, hence the difference. Tracing
+    up from the outlet of the 790 km² network at 10 000 m² takes about 20 ms.
+
+    Parameters
+    ----------
+    cg : CatchmentGraph
+        The graph (``get_catchment_graph()``); loaded here if it is not yet
+    db : Session
+        Database session the graph is loaded from
+    threshold_m2, segment_idx : int
+        Network and segment of the sub-catchment (``subcatchment_at``)
+
+    Returns
+    -------
+    dict
+        ``channel_length_km`` and ``distance_to_outlet_km``, None when the graph
+        cannot be loaded or lacks the segment (and the distance without the flow
+        distances)
+    """
+    if not cg.ensure_loaded(db):
+        return {"channel_length_km": None, "distance_to_outlet_km": None}
+    idx = cg.lookup_by_segment_idx(threshold_m2, segment_idx)
+    if idx is None:
+        return {"channel_length_km": None, "distance_to_outlet_km": None}
+    main = cg.trace_main_channel(idx, cg.traverse_upstream(idx))
+    outlet = int(cg.trace_downstream(idx)[-1])
+    distance_m = cg.get_outlet_flow_dist_m(idx) - cg.get_outlet_flow_dist_m(outlet)
+    return {
+        "channel_length_km": main["main_channel_length_km"],
+        "distance_to_outlet_km": (
+            round(distance_m / 1000, 3) if math.isfinite(distance_m) else None
+        ),
     }
 
 

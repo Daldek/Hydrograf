@@ -216,7 +216,7 @@ from hydrolog.time.concentration import ConcentrationTime
 6. Budowa granicy zlewni (merge + Chaikin smoothing)
 7. Obliczenie CN z pokrycia terenu (land_cover + cn_tables)
 8. Budowa dict morfometrycznego (build_morph_dict_from_graph)
-9. Pobranie opadu (interpolacja IDW z tabeli precipitation_data)
+9. Pobranie opadu: the watershed mean of `precipitation_data` by Thiessen polygons (**Hydrolog:** `thiessen_polygons`, ADR-069); without a boundary IDW at the point (**Hydrolog:** `inverse_distance_weighting`)
 10. **Hydrolog:** `WatershedParameters.from_dict()` → `calculate_tc()`
 11. **Hydrolog:** Hietogram (Beta/Block/Euler II) → `generate()`
 12. **Hydrolog:** `HydrographGenerator` → `generate()`
@@ -270,6 +270,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 | Moduł | Importy z Hydrologa | Zastosowanie |
 |-------|---------------------|--------------|
 | `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator`, `NashIUH`, `ConcentrationTime` | Endpoint API generowania hydrogramu |
+| `core/precipitation.py` | `Station`, `thiessen_polygons`, `inverse_distance_weighting` | The PMAXTP design depth: the watershed mean, IDW at a point (ADR-069) |
 | `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | Skrypt CLI pełnej analizy |
 | `core/morphometry.py` | `WatershedParameters` (w docstring/example) | Dokumentacja formatu wymiany |
 

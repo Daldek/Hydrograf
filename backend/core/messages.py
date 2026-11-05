@@ -235,6 +235,16 @@ MESSAGES: Final[dict[str, Message]] = {
         "No precipitation data for ({latitude:.4f}, {longitude:.4f}).",
         "Brak danych opadowych dla ({latitude:.4f}, {longitude:.4f}).",
     ),
+    "pmaxtp_grid_point_unknown": Message(
+        "pmaxtp_grid has no PMAXTP grid point at ({easting_m}, {northing_m}) "
+        "EPSG:2180.",
+        "pmaxtp_grid nie ma punktu siatki PMAXTP w ({easting_m}, {northing_m}) "
+        "EPSG:2180.",
+        "Send the pmaxtp_grid of a delineation of this server, or leave it out to "
+        "interpolate the depth at the point.",
+        "Wyślij pmaxtp_grid z wyznaczenia zlewni na tym serwerze albo pomiń je, by "
+        "interpolować opad w punkcie.",
+    ),
     "unknown_hietogram_type": Message(
         "Unknown hietogram type: {value}.",
         "Nieznany typ hietogramu: {value}.",

@@ -4,22 +4,41 @@ Unit tests for precipitation module.
 Tests validation functions and data retrieval logic.
 """
 
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
-from shapely.geometry import Point
+from shapely.geometry import Point, box
 
 from core.precipitation import (
     DURATION_MIN_TO_STR,
     VALID_DURATIONS_MIN,
     VALID_DURATIONS_STR,
     VALID_PROBABILITIES,
-    get_all_scenarios,
-    get_precipitation,
-    get_precipitation_wgs84,
+    ThiessenCell,
+    UnknownGridPointError,
+    areal_depth,
+    point_depth,
+    thiessen_cells,
     validate_duration,
     validate_probability,
 )
+
+
+def _db(rows):
+    """A session whose every query returns ``rows``."""
+    db = MagicMock()
+    db.execute.return_value.fetchall.return_value = rows
+    return db
+
+
+def _grid(spacing_m=2000.0, n=5):
+    """Points of a regular grid from (-spacing, -spacing), as the table rows."""
+    return [
+        SimpleNamespace(x=(i - 1) * spacing_m, y=(j - 1) * spacing_m)
+        for i in range(n)
+        for j in range(n)
+    ]
 
 
 class TestValidateDuration:
@@ -154,118 +173,127 @@ class TestValidateProbability:
             validate_probability(invalid_probability)
 
 
-class TestGetPrecipitation:
-    """Tests for get_precipitation function."""
+class TestThiessenCells:
+    """Thiessen polygons of the grid points inside a watershed."""
 
-    def test_get_precipitation_returns_value(self):
-        """Test that get_precipitation returns interpolated value."""
-        mock_db = MagicMock()
-        mock_result = MagicMock()
-        mock_result.precipitation_interpolated = 38.5
-        mock_db.execute.return_value.fetchone.return_value = mock_result
+    def test_each_point_gets_the_part_of_the_watershed_nearest_to_it(self):
+        # Grid every 2 km: the polygon of (0, 0) spans x, y in [-1, 1] km. The
+        # watershed x in [0.5, 2] km, y in [0, 2] km takes 0.5 km x 1 km of the
+        # polygons of (0, 0) and (0, 2000) and 1 km x 1 km of (2000, 0), (2000, 2000)
+        cells = thiessen_cells(box(500, 0, 2000, 2000), _db(_grid()))
 
-        centroid = Point(500000, 600000)
-        result = get_precipitation(centroid, 60, 10, mock_db)
+        areas = {(c.easting_m, c.northing_m): c.area_km2 for c in cells}
+        assert areas == pytest.approx(
+            {
+                (0.0, 0.0): 0.5,
+                (0.0, 2000.0): 0.5,
+                (2000.0, 0.0): 1.0,
+                (2000.0, 2000.0): 1.0,
+            }
+        )
 
-        assert result == 38.5
-        mock_db.execute.assert_called_once()
+    def test_areas_add_up_to_the_watershed(self):
+        watershed = Point(3100, 2900).buffer(2500)
 
-    def test_get_precipitation_returns_none_when_no_data(self):
-        """Test that get_precipitation returns None when no data found."""
-        mock_db = MagicMock()
-        mock_result = MagicMock()
-        mock_result.precipitation_interpolated = None
-        mock_db.execute.return_value.fetchone.return_value = mock_result
+        cells = thiessen_cells(watershed, _db(_grid(n=7)))
 
-        centroid = Point(500000, 600000)
-        result = get_precipitation(centroid, 60, 10, mock_db)
+        assert sum(c.area_km2 for c in cells) == pytest.approx(watershed.area / 1e6)
 
-        assert result is None
+    def test_a_watershed_inside_one_polygon_takes_that_point_only(self):
+        cells = thiessen_cells(box(1800, 1800, 2200, 2200), _db(_grid()))
 
-    def test_get_precipitation_validates_duration(self):
-        """Test that invalid duration raises ValueError."""
-        mock_db = MagicMock()
-        centroid = Point(500000, 600000)
+        assert cells == [ThiessenCell(2000.0, 2000.0, pytest.approx(0.16))]
 
+    def test_no_grid_points_near_the_watershed(self):
+        assert thiessen_cells(box(0, 0, 100, 100), _db([])) == []
+
+
+class TestArealDepth:
+    """Watershed mean of a scenario over the Thiessen polygons."""
+
+    CELLS = [
+        ThiessenCell(0.0, 0.0, 0.5),
+        ThiessenCell(0.0, 2000.0, 0.5),
+        ThiessenCell(2000.0, 0.0, 1.0),
+        ThiessenCell(2000.0, 2000.0, 1.0),
+    ]
+
+    def test_mean_weighted_by_polygon_area(self):
+        # Rows in another order and off by centimetres (rounded coordinates)
+        rows = [
+            SimpleNamespace(x=2000.004, y=2000.0, precipitation_mm=40.0),
+            SimpleNamespace(x=0.0, y=0.0, precipitation_mm=10.0),
+            SimpleNamespace(x=2000.0, y=0.0, precipitation_mm=30.0),
+            SimpleNamespace(x=0.0, y=1999.996, precipitation_mm=20.0),
+        ]
+
+        depth = areal_depth(self.CELLS, "1h", 10, _db(rows))
+
+        # (10*0.5 + 20*0.5 + 30*1 + 40*1) / 3
+        assert depth.precipitation_mm == pytest.approx(85.0 / 3)
+        assert depth.interpolation == "thiessen"
+        assert [p.precipitation_mm for p in depth.points] == [10.0, 20.0, 30.0, 40.0]
+        assert [p.weight for p in depth.points] == pytest.approx(
+            [1 / 6, 1 / 6, 1 / 3, 1 / 3]
+        )
+        assert [p.area_km2 for p in depth.points] == [0.5, 0.5, 1.0, 1.0]
+
+    def test_a_cell_off_the_grid_is_refused(self):
+        rows = [
+            SimpleNamespace(x=c.easting_m, y=c.northing_m, precipitation_mm=1.0)
+            for c in self.CELLS
+        ]
+        cells = [*self.CELLS, ThiessenCell(1000.0, 1000.0, 1.0)]
+
+        with pytest.raises(UnknownGridPointError) as err:
+            areal_depth(cells, "1h", 10, _db(rows))
+
+        assert (err.value.easting_m, err.value.northing_m) == (1000.0, 1000.0)
+
+    def test_no_rows_of_the_scenario_is_refused(self):
+        with pytest.raises(UnknownGridPointError):
+            areal_depth(self.CELLS, "1h", 10, _db([]))
+
+    def test_no_cells_gives_no_depth(self):
+        assert areal_depth([], "1h", 10, _db([])) is None
+
+    def test_validates_the_scenario(self):
         with pytest.raises(ValueError, match="Invalid duration"):
-            get_precipitation(centroid, 100, 10, mock_db)
-
-    def test_get_precipitation_validates_probability(self):
-        """Test that invalid probability raises ValueError."""
-        mock_db = MagicMock()
-        centroid = Point(500000, 600000)
-
+            areal_depth(self.CELLS, 100, 10, _db([]))
         with pytest.raises(ValueError, match="Invalid probability"):
-            get_precipitation(centroid, 60, 15, mock_db)
-
-    def test_get_precipitation_accepts_string_duration(self):
-        """Test that string duration is accepted."""
-        mock_db = MagicMock()
-        mock_result = MagicMock()
-        mock_result.precipitation_interpolated = 42.0
-        mock_db.execute.return_value.fetchone.return_value = mock_result
-
-        centroid = Point(500000, 600000)
-        result = get_precipitation(centroid, "1h", 10, mock_db)
-
-        assert result == 42.0
-
-    def test_get_precipitation_accepts_fractional_probability(self):
-        """Test that fractional probability is accepted."""
-        mock_db = MagicMock()
-        mock_result = MagicMock()
-        mock_result.precipitation_interpolated = 77.3
-        mock_db.execute.return_value.fetchone.return_value = mock_result
-
-        centroid = Point(500000, 600000)
-        result = get_precipitation(centroid, 60, 0.01, mock_db)
-
-        assert result == 77.3
+            areal_depth(self.CELLS, 60, 15, _db([]))
 
 
-class TestGetPrecipitationWgs84:
-    """Tests for get_precipitation_wgs84 function."""
+class TestPointDepth:
+    """Inverse distance weighting at a point."""
 
-    @patch("core.precipitation.get_precipitation")
-    def test_transforms_coordinates(self, mock_get_precip):
-        """Test that WGS84 coordinates are transformed to PL-1992."""
-        mock_get_precip.return_value = 38.5
-        mock_db = MagicMock()
+    def test_weights_fall_with_the_squared_distance(self):
+        rows = [
+            SimpleNamespace(x=1000.0, y=0.0, precipitation_mm=10.0),
+            SimpleNamespace(x=0.0, y=2000.0, precipitation_mm=40.0),
+        ]
 
-        result = get_precipitation_wgs84(52.23, 21.01, "1h", 10, mock_db)
+        depth = point_depth(Point(0, 0), 60, 10, _db(rows))
 
-        assert result == 38.5
-        mock_get_precip.assert_called_once()
+        # weights 1/1000^2 and 1/2000^2: 4/5 and 1/5
+        assert depth.precipitation_mm == pytest.approx(16.0)
+        assert depth.interpolation == "idw"
+        assert [p.weight for p in depth.points] == pytest.approx([0.8, 0.2])
+        assert [p.distance_m for p in depth.points] == pytest.approx([1000.0, 2000.0])
 
-        # Check that transformed point is in reasonable PL-1992 range
-        call_args = mock_get_precip.call_args
-        centroid = call_args[0][0]
-        assert 100000 < centroid.x < 900000  # PL-1992 X range
-        assert 100000 < centroid.y < 900000  # PL-1992 Y range
+    def test_a_point_on_the_grid_takes_its_value(self):
+        rows = [
+            SimpleNamespace(x=0.0, y=0.0, precipitation_mm=10.0),
+            SimpleNamespace(x=2000.0, y=0.0, precipitation_mm=40.0),
+        ]
 
+        depth = point_depth(Point(0, 0), 60, 10, _db(rows))
 
-class TestGetAllScenarios:
-    """Tests for get_all_scenarios function."""
+        assert depth.precipitation_mm == 10.0
+        assert [p.weight for p in depth.points] == [1.0, 0.0]
 
-    @patch("core.precipitation.get_precipitation")
-    def test_returns_all_scenarios(self, mock_get_precip):
-        """Test that all 432 scenarios are returned."""
-        mock_get_precip.return_value = 30.0
-        mock_db = MagicMock()
-        centroid = Point(500000, 600000)
-
-        result = get_all_scenarios(centroid, mock_db)
-
-        # Check structure
-        assert len(result) == 16  # 16 durations
-        for duration in VALID_DURATIONS_STR:
-            assert duration in result
-            assert len(result[duration]) == 27  # 27 probabilities
-            for prob in VALID_PROBABILITIES:
-                assert prob in result[duration]
-
-        # Check total calls (16 * 27 = 432)
-        assert mock_get_precip.call_count == 432
+    def test_no_data_gives_no_depth(self):
+        assert point_depth(Point(0, 0), "1h", 0.01, _db([])) is None
 
 
 class TestDurationMapping:

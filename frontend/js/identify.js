@@ -2,13 +2,16 @@
  * Hydrograf Identify module.
  *
  * Mode "Identyfikuj": a click on the map puts a marker there and asks the API
- * (GET /api/identify-point) what Hydrograf knows at the point: coordinates,
- * terrain elevation and slope, the water of the analysis results shown on the
- * map (as the terrain profile does), the nearest BDOT10k stream and the water
- * body, land cover with its CN, soil group, terrain depression and the
- * sub-catchment of the flow lines. The answer fills the card #identify-card
- * over the map (a sheet at the bottom of the map on phones). Turning a result
- * or the flow lines threshold on or off reads the open point again.
+ * (GET /api/identify-point) what Hydrograf knows at the point: coordinates in
+ * WGS84, PL-1992 and PL-2000, terrain elevation and slope, the water of the
+ * analysis results shown on the map (as the terrain profile does), the nearest
+ * BDOT10k stream (up to 5 km, with its distance) and the water body, land cover
+ * with its CN for AMC I, II and III, soil group, terrain depression and the
+ * sub-catchment of the flow lines with the main channel at its end and the
+ * distance to the outlet of the network. The answer fills the card
+ * #identify-card over the map (a sheet at the bottom of the map on phones).
+ * Turning a result or the flow lines threshold on or off reads the open point
+ * again.
  */
 (function () {
     'use strict';
@@ -34,8 +37,8 @@
         C: 'słabo przepuszczalne',
         D: 'nieprzepuszczalne',
     };
-    // Search radius of the nearest stream in the API (core/point_info.py)
-    var STREAM_RADIUS_M = 25;
+    // Farthest stream the API reports as the nearest (core/point_info.py)
+    var STREAM_MAX_KM = 5;
     // Threshold of "Wybierz zlewnię" while the flow lines were never shown
     var DEFAULT_THRESHOLD_M2 = 100000;
     var COPY_FEEDBACK_MS = 1500;
@@ -85,7 +88,8 @@
 
     /**
      * Table of rows: [label, value, unit] for a quantity, [label, text] for a
-     * text over the value and unit columns, [title] for a subheading.
+     * text over the value and unit columns, [title] for a subheading. A fourth
+     * item [label, value, unit, key] adds the (i) explanation `key` to the label.
      */
     function table(rows) {
         var t = el('table', 'params');
@@ -100,6 +104,7 @@
             } else {
                 var th = el('th', null, row[0]);
                 th.scope = 'row';
+                if (row[3] && Hydrograf.info) Hydrograf.info.attach(th, row[3]);
                 tr.appendChild(th);
                 if (row.length === 2) {
                     var text = el('td', 'text', row[1]);
@@ -150,15 +155,20 @@
         }
     }
 
-    /** WGS84 and PL-1992 rows, each with its copy button. */
+    /** WGS84, PL-1992 and PL-2000 rows, each with its copy button. */
     function coordinates(c) {
         var wgs = c.latitude.toFixed(6) + ', ' + c.longitude.toFixed(6);
         var x = c.northing_m.toFixed(2);
         var y = c.easting_m.toFixed(2);
+        var p = c.pl2000;
+        var x2000 = p.northing_m.toFixed(2);
+        var y2000 = p.easting_m.toFixed(2);
         var block = el('div', 'identify-coords');
         [
             ['WGS84', wgs, wgs, 'Kopiuj współrzędne WGS84 (szerokość, długość)'],
             ['PL-1992', 'X ' + x + ', Y ' + y, 'X=' + x + ' Y=' + y, 'Kopiuj współrzędne PL-1992 (X, Y)'],
+            ['PL-2000/' + p.zone, 'X ' + x2000 + ', Y ' + y2000, 'X=' + x2000 + ' Y=' + y2000,
+                'Kopiuj współrzędne PL-2000, strefa ' + p.zone + ' (EPSG:' + p.epsg + ') (X, Y)'],
         ].forEach(function (row) {
             block.appendChild(el('span', 'k', row[0]));
             block.appendChild(el('span', 'v num', row[1]));
@@ -200,10 +210,11 @@
         if (shown.length) rows.push(['Cieki i wody powierzchniowe']);
         var s = data.stream;
         if (s) {
-            rows.push(['Ciek', named(s.name, STREAM_KIND[s.layer_type])]);
-            rows.push(['Odległość od cieku', metres(s.distance_m), 'm']);
+            // The distance goes with the name: the nearest stream may be far from the point
+            rows.push(['Najbliższy ciek', named(s.name, STREAM_KIND[s.layer_type]) + ', ' +
+                metres(s.distance_m) + ' m od punktu']);
         } else {
-            rows.push(['Ciek', 'brak w promieniu ' + STREAM_RADIUS_M + ' m']);
+            rows.push(['Najbliższy ciek', 'brak w promieniu ' + STREAM_MAX_KM + ' km']);
         }
         var b = data.water_body;
         rows.push(['Wody powierzchniowe', b ? named(b.name, b.kind) : 'brak']);
@@ -222,7 +233,7 @@
         if (lc) {
             var label = LAND_COVER[lc.category] || lc.category;
             rows.push(['Pokrycie terenu', label + (lc.bdot_class ? ' (' + lc.bdot_class + ')' : '')]);
-            rows.push(['CN (AMC II)', String(lc.cn), '']);
+            rows.push(['CN (AMC I / II / III)', lc.cn_amc_i + ' / ' + lc.cn + ' / ' + lc.cn_amc_iii, '', 'hydro-amc']);
             if (lc.imperviousness !== null) {
                 rows.push(['Nieprzepuszczalność', num(lc.imperviousness * 100, 0), '%']);
             }
@@ -248,17 +259,24 @@
         if (!sub) return [['Zlewnia cząstkowa', 'punkt poza siecią spływu']];
         var rows = [];
         if (sub.strahler_order !== null) rows.push(['Rząd Strahlera', String(sub.strahler_order), '']);
-        if (sub.upstream_area_km2 !== null) {
-            var upstream = area(sub.upstream_area_km2 * 1e6);
-            rows.push(['Zlewnia na końcu odcinka', upstream[0], upstream[1]]);
-        }
         var own = area(sub.area_km2 * 1e6);
         rows.push(['Zlewnia cząstkowa', own[0], own[1]]);
         if (sub.segment_length_m !== null) rows.push(['Długość odcinka', num(sub.segment_length_m, 0), 'm']);
         if (sub.is_real_stream !== null) rows.push(['Ciek w BDOT10k', sub.is_real_stream ? 'tak' : 'nie']);
         var threshold = area(sub.threshold_m2);
         rows.push(['Próg akumulacji spływu', threshold[0], threshold[1]]);
-        return rows;
+        var end = [];
+        if (sub.upstream_area_km2 !== null) {
+            var upstream = area(sub.upstream_area_km2 * 1e6);
+            end.push(['Powierzchnia zlewni', upstream[0], upstream[1]]);
+        }
+        if (sub.channel_length_km !== null) {
+            end.push(['Długość cieku głównego', num(sub.channel_length_km, 2), 'km', 'channel_length_km']);
+        }
+        if (sub.distance_to_outlet_km !== null) {
+            end.push(['Odległość do ujścia sieci', num(sub.distance_to_outlet_km, 2), 'km']);
+        }
+        return end.length ? rows.concat([['Na końcu odcinka']], end) : rows;
     }
 
     function render(data, shown) {
@@ -269,9 +287,9 @@
             (shown.length ? 'wyniki analiz włączone w panelu „Warstwy”; ' : '') +
             'cieki i wody powierzchniowe — BDOT10k (GUGiK)'));
         els.body.appendChild(section('Teren i gleba', [table(landRows(data))],
-            'pokrycie terenu — BDOT10k (GUGiK), CN — Hydrograf; grupy glebowe — SoilGrids (Kartograf); zagłębienia — analiza NMT'));
+            'pokrycie terenu — BDOT10k (GUGiK), CN — Hydrograf, przeliczenie AMC — Hydrolog; grupy glebowe — SoilGrids (Kartograf); zagłębienia — analiza NMT'));
         els.body.appendChild(section('Sieć spływu', [table(networkRows(data.subcatchment))],
-            'zlewnie cząstkowe i linie spływu z NMT — Hydrograf'));
+            'zlewnie cząstkowe i linie spływu z NMT — Hydrograf; ujście sieci to miejsce, w którym woda opuszcza obszar danych Hydrografu (nie musi to być ujście rzeki)'));
     }
 
     function showLoading() {

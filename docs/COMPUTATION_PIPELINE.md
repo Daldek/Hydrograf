@@ -339,34 +339,31 @@ Klucze wyjściowe (wybór):
 | **Czas trwania** | 15min, 30min, 1h, 2h, 6h, 12h, 24h |
 | **Prawdopodobieństwo** | 1%, 2%, 5%, 10%, 20%, 50% |
 
-### 4.2 Interpolacja IDW
+### 4.2 The design depth: the watershed mean by Thiessen polygons (ADR-069)
 
-**Funkcja:** `get_precipitation()` (linie 104-192)
+**Functions:** `thiessen_cells()`, `areal_depth()`, `point_depth()` in
+`core/precipitation.py`.
 
-```sql
-WITH nearest AS (
-    SELECT precipitation_mm,
-           ST_Distance(geom, ST_SetSRID(ST_Point(:x, :y), 2180)) as dist
-    FROM precipitation_data
-    WHERE duration = :duration AND probability = :probability
-    ORDER BY geom <-> ST_SetSRID(ST_Point(:x, :y), 2180)
-    LIMIT 4
-)
-SELECT CASE
-    WHEN MIN(dist) < 0.001
-        THEN (SELECT precipitation_mm FROM nearest WHERE dist < 0.001 LIMIT 1)
-    ELSE
-        SUM(precipitation_mm / POWER(dist + 0.001, 2)) /
-        SUM(1 / POWER(dist + 0.001, 2))
-END FROM nearest
-```
+The design depth of a watershed is the mean of the PMAXTP grid points weighted by
+the areas of their Thiessen (Voronoi) polygons inside it, the method of equal-rainfall
+polygons of KZGW 2017 (ch. II, eq. 2.1: P = (1/A) Σ Pᵢ·Aᵢ).
 
-**Wzór IDW (Inverse Distance Weighting):**
-- Potęga: p = 2
-- 4 najbliższe stacje (KNN-GIST operator `<->`)
-- `weight[i] = 1 / (distance[i] + 0.001)²`
-- `precip = Σ(value[i] × weight[i]) / Σ(weight[i])`
-- Jeśli `min(distance) < 0.001m` → dokładna wartość stacji
+- `thiessen_cells(boundary, db)`: the distinct grid points within 5 km
+  (`THIESSEN_SEARCH_M`) of the watershed's bounding box, their Voronoi polygons
+  (`shapely.voronoi_polygons`, ordered by point) clipped to the watershed; the cells
+  with an area > 0 (easting, northing, `area_km2`). Run by the delineation, which
+  returns them as `watershed.pmaxtp_grid`, and by the full path of the hydrograph.
+- `areal_depth(cells, duration, probability, db)`: the scenario's depth at each cell
+  (a point of the table within 1 m), averaged by Hydrolog's `thiessen_polygons`; a cell
+  off the grid raises `UnknownGridPointError` (400 `pmaxtp_grid_point_unknown` for a
+  request's `pmaxtp_grid`).
+- `point_depth(point, duration, probability, db)`: without a boundary (own
+  `morphometry` without `pmaxtp_grid`), Hydrolog's `inverse_distance_weighting` of the
+  4 nearest points (KNN `<->`), power 2; a point on the grid takes its value.
+
+The response gives the method (`precipitation.interpolation`: `thiessen` or `idw`) and
+the points with depth, weight and area or distance (`precipitation.pmaxtp_points`).
+Point depths are not reduced to areal ones (no areal reduction factor).
 
 ---
 
@@ -450,7 +447,7 @@ CN = clamp(CN, 0, 100)
 2. **Wyznaczenie zlewni** (CatchmentGraph BFS → `watershed_service`, ADR-022) albo szybka ścieżka z `morphometry` (tryb zaawansowany, CN ułamkowe)
 3. **Kontrola limitu**: `area_km2 ≤ 250` (ograniczenie SCS-CN)
 4. **Morfometria + CN** (build_morph_dict_from_graph, get_land_cover_for_boundary)
-5. **Opad**: projektowy PMAXTP (get_precipitation z IDW) albo własna seria `custom_precipitation` (`timestep_min` > 0 i ≤ 1440, `depths_mm` ≥ 0, 1–2000 wartości, suma > 0); czas trwania = liczba kroków × krok
+5. **Opad**: projektowy PMAXTP (the watershed mean by Thiessen polygons, `areal_depth`; IDW at the point without a boundary, §4.2) albo własna seria `custom_precipitation` (`timestep_min` > 0 i ≤ 1440, `depths_mm` ≥ 0, 1–2000 wartości, suma > 0); czas trwania = liczba kroków × krok
 6. **Czas koncentracji** (calculate_tc)
 7. **Hietogram**: dla PMAXTP rozkład opadu w czasie (§6.3); dla własnej serii `_custom_hietogram()` opakowuje serię w `HietogramResult` Hydrologa (czasy końca kroków k·Δt), bez hietogramu syntetycznego (`metadata.hietogram_type = null`, `precipitation.source = "custom"`, `probability_percent = null`)
 8. **Hydrogram** (splot z UH; CN przeliczony wg AMC — także w regresji Nasha dla zlewni zurbanizowanych)
@@ -641,7 +638,7 @@ CREATE TABLE land_cover (
 |----------|------|
 | Traverse upstream (CatchmentGraph BFS) | 5-50ms (~44k węzłów, ADR-021) |
 | Morfometria | <0.5s |
-| Opad IDW | <5ms (KNN-GIST) |
+| PMAXTP depth (Thiessen weights at delineation) | ~0.25 s for 240 km² (86 cells), a few ms per hydrograph |
 | CN z land_cover | 0.1-1s (spatial intersection) |
 | **Łącznie wyznaczanie zlewni** | **2-10s** |
 | Hydrogram (Hydrolog) | <0.1s (numpy) |
@@ -671,7 +668,7 @@ CREATE TABLE land_cover (
 | 6 | Delimitacja zlewni cząstkowych | pyflwdir.basins() — propagacja upstream (ADR-016) |
 | 7 | Granica zlewni | `ST_UnaryUnion` granic zlewni cząstkowych + wygładzanie (ADR-032) |
 | 8 | Ciek główny | `CatchmentGraph.trace_main_channel()` (Strahler → długość → powierzchnia) |
-| 9 | Interpolacja opadów | IDW (p=2, 4 najbliższe stacje) |
+| 9 | Interpolacja opadów | Thiessen polygons of the PMAXTP grid inside the watershed (ADR-069); IDW (p=2, 4 nearest points) without a boundary |
 | 10 | Krzywa CN | Średnia ważona powierzchnią |
 | 11 | Przejście w górę | BFS po grafie zlewni cząstkowych (`CatchmentGraph.traverse_upstream`) |
 | 12 | Bulk load do bazy | PostgreSQL COPY przez temp tables |

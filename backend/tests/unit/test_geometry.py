@@ -2,13 +2,16 @@
 Unit tests for geometry utilities module.
 """
 
+import pytest
 from shapely.geometry import Point, Polygon
 
 from utils.geometry import (
+    pl2000_zone,
     polygon_to_geojson_feature,
     transform_pl1992_to_wgs84,
     transform_polygon_pl1992_to_wgs84,
     transform_wgs84_to_pl1992,
+    transform_wgs84_to_pl2000,
 )
 
 
@@ -55,6 +58,44 @@ class TestTransformWgs84ToPl1992:
 
         assert result1.x != result2.x
         assert result1.y != result2.y
+
+
+class TestTransformWgs84ToPl2000:
+    """WGS84 to PL-2000: the zone follows the longitude."""
+
+    @pytest.mark.parametrize(
+        ("longitude", "zone"),
+        [
+            (12.0, 5),
+            (16.4999, 5),
+            (16.5, 6),
+            (19.4999, 6),
+            (19.5, 7),
+            (22.4999, 7),
+            (22.5, 8),
+            (26.0, 8),
+        ],
+    )
+    def test_zone_by_longitude(self, longitude, zone):
+        """Zones change at 16.5°, 19.5° and 22.5°E; outside Poland the nearest."""
+        assert pl2000_zone(longitude) == zone
+
+    @pytest.mark.parametrize("zone", [5, 6, 7, 8])
+    def test_easting_on_the_central_meridian(self, zone):
+        """On the meridian 3·zone °E the easting is zone·10⁶ + 500 000 m."""
+        result = transform_wgs84_to_pl2000(51.0, 3.0 * zone)
+
+        easting_m = zone * 1_000_000 + 500_000
+        assert result[:2] == (zone, pytest.approx(easting_m, abs=0.01))
+
+    def test_both_sides_of_the_boundary_of_zones_5_and_6(self):
+        """At 16.5°E a point 105 km east of 15°E becomes 105 km west of 18°E."""
+        west = transform_wgs84_to_pl2000(51.0, 16.4999)
+        east = transform_wgs84_to_pl2000(51.0, 16.5)
+
+        assert west[:2] == (5, pytest.approx(5_605_279, abs=1))
+        assert east[:2] == (6, pytest.approx(6_394_714, abs=1))
+        assert west[2] == pytest.approx(east[2], abs=1)
 
 
 class TestTransformPl1992ToWgs84:

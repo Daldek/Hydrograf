@@ -12,7 +12,7 @@ the slow merge, for a progress animation in the GUI.
 
 import logging
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 import numpy as np
@@ -40,6 +40,7 @@ from core.handoff import (
     watershed_name,
     watershed_parameters,
 )
+from core.precipitation import thiessen_cells
 from core.watershed_service import (
     boundary_to_polygon,
     build_hsg_stats,
@@ -64,6 +65,7 @@ from models.schemas import (
     HypsometricPoint,
     MorphometricParameters,
     OutletInfo,
+    PmaxtpGridCell,
     StreamInfo,
     WatershedResponse,
 )
@@ -218,6 +220,9 @@ def _build_watershed_response(
         properties={"area_km2": round(area_km2, 2)},
     )
 
+    # Weights of the PMAXTP grid for the design depth of the hydrograph (ADR-069)
+    pmaxtp_cells = thiessen_cells(boundary_poly, db)
+
     return WatershedResponse(
         boundary_geojson=boundary_geojson,
         outlet=OutletInfo(
@@ -234,6 +239,7 @@ def _build_watershed_response(
         main_stream_geojson=main_stream_geojson,
         longest_flow_path_geojson=flow_path_geojson,
         divide_flow_path_geojson=divide_path_geojson,
+        pmaxtp_grid=[PmaxtpGridCell(**asdict(cell)) for cell in pmaxtp_cells] or None,
     )
 
 

@@ -252,6 +252,17 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 @keyframes preview-wait { 50% { opacity: 0.6; } }
 @media (prefers-reduced-motion: reduce) { .leaflet-preview-pane.waiting { animation: none; } }
 
+/* Cursor coordinates (coords.js, bottom-left under the legends); touch screens have no cursor */
+.map-wrap .coord-readout {
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: 2px var(--space-2) 2px 2px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow);
+    font-size: var(--text-xs); color: var(--text); white-space: nowrap;
+}
+.map-wrap .coord-readout select { height: var(--control-sm); padding: 0 var(--space-1); font-size: var(--text-xs); border-radius: var(--radius-sm); }
+.coord-readout.empty .coord-value, .coord-readout .coord-zone { color: var(--text-3); }
+@media (hover: none) { .map-wrap .coord-readout { display: none; } }
+
 /* Layer legends (map.js, bottom-left) */
 .layer-legend {
     width: 196px; padding: 10px var(--space-3);
@@ -361,6 +372,12 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .balance-table td { padding: 4px 0; border-bottom: 1px solid var(--line); color: var(--text-2); vertical-align: baseline; }
 .balance-table tr:last-child td { border-bottom: 0; }
 .balance-table td:last-child { text-align: right; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: var(--space-2); }
+/* Export of the hietogram and its PMAXTP points (rain-export.js) */
+.rain-export { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); }
+.rain-export-label { font-size: var(--text-sm); color: var(--text-2); }
+@media (max-width: 860px) {
+    .rain-export .btn { height: var(--control-touch); }
+}
 .hydro-summary {
     margin: 0 0 var(--space-3); padding: var(--space-2) 10px;
     border: 1px solid color-mix(in srgb, var(--info) 45%, var(--line)); border-radius: var(--radius-md);
@@ -575,6 +592,7 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
 .counter { justify-self: end; font-size: var(--text-xs); color: var(--text-3); }
 .check { display: flex; gap: var(--space-2); align-items: flex-start; font-size: var(--text-sm); color: var(--text-2); }
 .check input { margin-top: 2px; flex: none; }
+#feedback-form input:disabled, #feedback-form textarea:disabled { background: var(--surface-2); color: var(--text-2); cursor: not-allowed; }
 .preview { margin: var(--space-3) 0 0; font-size: var(--text-sm); }
 .preview summary { color: var(--text-3); cursor: pointer; }
 .preview pre {

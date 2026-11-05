@@ -12,6 +12,8 @@
     var map = null;
     var demLayer = null;
     var demBounds = null;
+    // Metadata of the rendered DEM (dem_tiles.json or dem.json): elevation and colour range
+    var demMeta = null;
     var streamsLayer = null;
     var currentThreshold = null;
     var streamTooltip = null;
@@ -181,6 +183,8 @@
         map.addHandler('wheelZoom', wheelZoomHandler());
         map.wheelZoom.enable();
         L.control.zoom({ position: 'bottomright' }).addTo(map);
+        // Cursor coordinates, bottom left: added first, so the legends stack above it
+        Hydrograf.coords.addReadout(map);
 
         // Custom panes for layer ordering:
         // Base (tilePane z-200) → NMT → Mapa zagrożenia powodziowego → Pokrycie terenu → Wyniki analiz → Linie spływu → delineation preview → overlay (z-400)
@@ -257,6 +261,7 @@
             })
             .then(function (meta) {
                 demBounds = L.latLngBounds(meta.bounds);
+                demMeta = meta;
                 var tileUrl = '/data/dem_tiles/{z}/{x}/{y}.png';
                 if (meta.generated_at) tileUrl += '?v=' + meta.generated_at;
                 demLayer = L.tileLayer(tileUrl, {
@@ -280,6 +285,7 @@
                     })
                     .then(function (meta) {
                         demBounds = L.latLngBounds(meta.bounds);
+                        demMeta = meta;
                         var demUrl = '/data/dem.png';
                         if (meta.generated_at) demUrl += '?v=' + meta.generated_at;
                         demLayer = L.imageOverlay(demUrl, demBounds, {
@@ -584,6 +590,66 @@
         }
     }
 
+    /**
+     * Hypsometric ramp of the DEM tiles and image: COLOR_STOPS of
+     * backend/utils/dem_color.py, linear in RGB between the stops. The ramp
+     * spans color_min_m..color_max_m of the metadata (5th to 95th percentile of
+     * the elevations); lower and higher terrain keeps the end colours.
+     */
+    var DEM_COLOR_STOPS = [
+        [0.0, 'rgb(56, 128, 60)'],
+        [0.15, 'rgb(76, 175, 80)'],
+        [0.30, 'rgb(139, 195, 74)'],
+        [0.45, 'rgb(205, 220, 57)'],
+        [0.60, 'rgb(255, 193, 7)'],
+        [0.75, 'rgb(161, 110, 60)'],
+        [0.90, 'rgb(120, 100, 90)'],
+        [1.0, 'rgb(245, 245, 240)'],
+    ];
+
+    var demLegend = null;
+
+    function formatElevation(elevation_m) {
+        return Math.round(elevation_m).toLocaleString('pl-PL');
+    }
+
+    function demLegendHtml(meta) {
+        var lo = meta.color_min_m;
+        var hi = meta.color_max_m;
+        var ramp = DEM_COLOR_STOPS.map(function (s) {
+            return s[1] + ' ' + Math.round(s[0] * 100) + '%';
+        }).join(', ');
+        return '<div class="layer-legend-title">Wysokość terenu [m n.p.m.]</div>' +
+            '<div class="legend-gradient" style="background: linear-gradient(to right, ' + ramp + ');"></div>' +
+            '<div class="legend-labels"><span>≤\u00A0' + formatElevation(lo) + '</span>' +
+            '<span>' + formatElevation((lo + hi) / 2) + '</span>' +
+            '<span>≥\u00A0' + formatElevation(hi) + '</span></div>' +
+            '<div class="layer-legend-note">Skala barw: 5.–95. percentyl wysokości, poza nim barwy skrajne' +
+            ' (cały NMT: ' + formatElevation(meta.elevation_min_m) + '–' + formatElevation(meta.elevation_max_m) +
+            '\u00A0m n.p.m.). Cieniowanie rzeźby przyciemnia stoki.</div>';
+    }
+
+    /** Legend of the DEM layer; none for metadata without the colour and elevation range. */
+    function createDemLegend() {
+        if (demLegend || !demMeta) return;
+        var keys = ['color_min_m', 'color_max_m', 'elevation_min_m', 'elevation_max_m'];
+        if (!keys.every(function (k) { return typeof demMeta[k] === 'number'; })) return;
+        demLegend = L.control({ position: 'bottomleft' });
+        demLegend.onAdd = function () {
+            var div = L.DomUtil.create('div', 'layer-legend');
+            div.innerHTML = demLegendHtml(demMeta);
+            return div;
+        };
+        demLegend.addTo(map);
+    }
+
+    function removeDemLegend() {
+        if (demLegend) {
+            map.removeControl(demLegend);
+            demLegend = null;
+        }
+    }
+
     var hsgLegend = null;
 
     function hsgLegendHtml() {
@@ -759,7 +825,7 @@
         document.getElementById('draw-count').textContent =
             n === 0 ? 'Wskaż początek profilu' :
             n === 1 ? '1 punkt — wskaż kolejny' :
-            pointsLabel(n) + ' — dotknij ostatniego, aby zakończyć';
+            pointsLabel(n) + ' — dotknij ostatniego, aby narysować profil';
         document.getElementById('draw-undo').disabled = n === 0;
         document.getElementById('draw-finish').disabled = n < 2;
     }
@@ -1239,6 +1305,8 @@
         // Legends
         createStreamsLegend: createStreamsLegend,
         removeStreamsLegend: removeStreamsLegend,
+        createDemLegend: createDemLegend,
+        removeDemLegend: removeDemLegend,
         createHsgLegend: createHsgLegend,
         removeHsgLegend: removeHsgLegend,
         createLandCoverLegend: createLandCoverLegend,

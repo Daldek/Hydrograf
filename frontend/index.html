@@ -26,7 +26,7 @@
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
     <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
-    <link rel="stylesheet" href="css/app.css?v=852d06cabe">
+    <link rel="stylesheet" href="css/app.css?v=ffb1535b05">
 </head>
 <body>
 <div class="shell">
@@ -116,7 +116,7 @@
                     <span class="hint">
                         <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.5v4M8 5v.01"/></svg>
                         <span id="map-hint-text">Przesuwaj i przybliżaj mapę</span>
-                        <span id="draw-instructions" class="d-none">Klikaj, aby dodać punkty; kliknij ostatni punkt lub dwuklik, aby zakończyć; Backspace cofa, Esc anuluje</span>
+                        <span id="draw-instructions" class="d-none">Klikaj, aby dodać punkty; kliknij ostatni punkt lub dwuklik, aby narysować profil; Backspace cofa, Esc anuluje</span>
                     </span>
                     <div class="end phone-only">
                         <button class="btn sm" type="button" id="open-results" aria-controls="results-panel" aria-expanded="false">Zlewnia</button>
@@ -128,7 +128,7 @@
                     <div class="draw-tools" id="draw-tools" role="toolbar" aria-label="Rysowanie profilu terenu" hidden>
                         <span class="draw-count" id="draw-count" aria-live="polite"></span>
                         <button class="btn sm" type="button" id="draw-undo">Cofnij</button>
-                        <button class="btn sm primary" type="button" id="draw-finish">Zakończ</button>
+                        <button class="btn sm primary" type="button" id="draw-finish" title="Narysuj profil terenu wzdłuż wskazanej linii">Rysuj profil</button>
                         <button class="btn sm ghost" type="button" id="draw-cancel">Anuluj</button>
                     </div>
 
@@ -353,6 +353,21 @@
                                             <div class="chart-container chart-sm"><canvas id="chart-hietogram" role="img" aria-label="Hietogram opadu"></canvas></div>
                                         </div>
                                         <div id="hietogram-balance"></div>
+                                        <div id="rain-export" class="rain-export d-none">
+                                            <span class="rain-export-label" data-info="rain-export">Eksport</span>
+                                            <button class="btn sm" type="button" id="rain-export-csv" title="Pobierz kroki hietogramu (opad, opad efektywny, opad narastający) jako CSV">
+                                                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                                Hietogram CSV
+                                            </button>
+                                            <button class="btn sm" type="button" id="rain-export-json" title="Pobierz hietogram ze scenariuszem i punktami PMAXTP jako JSON">
+                                                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                                Hietogram JSON
+                                            </button>
+                                            <button class="btn sm" type="button" id="rain-export-geojson" title="Pobierz punkty siatki PMAXTP z ich opadem i wagami jako GeoJSON (WGS84)">
+                                                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                                Punkty PMAXTP (GeoJSON)
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </details>
@@ -528,8 +543,8 @@
     </div>
     <div class="modal-body">
         <div id="welcome-text">
-            <p>Hydrograf to mapa, która pokazuje, jak woda spływa po terenie. Wskaż miejsce przy rzece lub potoku, a Hydrograf wyznaczy obszar, z którego spływa tam woda (zlewnię), opisze go i oszacuje, ile wody może spłynąć po silnej ulewie.</p>
-            <p>Wyniki są szacunkowe — to narzędzie do poznawania terenu, nie prognoza powodzi. Dane obejmują na razie zlewnię Kaczawy.</p>
+            <p>Hydrograf wyznacza z NMT zlewnię wskazanego przekroju i oblicza jej parametry fizjograficzne oraz CN z pokrycia terenu (BDOT10k) i grup glebowych HSG. Dla zlewni do 250&nbsp;km² oblicza hydrogram odpływu metodą SCS-CN z opadu projektowego PMAXTP, z hydrogramem jednostkowym SCS, Nasha lub Snydera. Ponadto: profil terenu, identyfikacja punktu i mapa zagłębień bezodpływowych.</p>
+            <p>Obszar danych: zlewnia Kaczawy do Legnicy (ok.&nbsp;790&nbsp;km²). Wyniki są szacunkami do analiz wstępnych, nie prognozą hydrologiczną.</p>
         </div>
         <label class="check">
             <input type="checkbox" id="welcome-hide">
@@ -567,24 +582,26 @@
 
 <!-- Application modules -->
 <script defer src="js/diagnostics.js?v=ab59bcb3cc"></script>
-<script defer src="js/api.js?v=3e6cb84e54"></script>
+<script defer src="js/api.js?v=a35bd0158b"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
-<script defer src="js/map.js?v=5cdb8201c4"></script>
+<script defer src="js/map.js?v=5e89ac51ad"></script>
+<script defer src="js/coords.js?v=38cf3b9025"></script>
 <script defer src="js/charts.js?v=8baccb0ef9"></script>
-<script defer src="js/layers.js?v=594951821d"></script>
+<script defer src="js/layers.js?v=a436443585"></script>
 <script defer src="js/profile.js?v=adf70f4108"></script>
-<script defer src="js/info-texts.js?v=5f4932cacd"></script>
+<script defer src="js/info-texts.js?v=d3c6ed48df"></script>
 <script defer src="js/info.js?v=3c7632aac9"></script>
-<script defer src="js/hydrograph.js?v=cf441fd2a2"></script>
+<script defer src="js/hydrograph.js?v=6ac446f655"></script>
+<script defer src="js/rain-export.js?v=2e56e2f87c"></script>
 <script defer src="js/advanced.js?v=db148b023b"></script>
 <script defer src="js/custom-rain.js?v=e0026dfb92"></script>
 <script defer src="js/depressions.js?v=1ae5396489"></script>
 <script defer src="js/sewer.js?v=5734849f77"></script>
 <script defer src="js/results.js?v=73398284b4"></script>
-<script defer src="js/feedback.js?v=c940b8604e"></script>
-<script defer src="js/welcome.js?v=b1ddbcaaf3"></script>
-<script defer src="js/identify.js?v=c9a25f59fe"></script>
+<script defer src="js/feedback.js?v=8ce70a740a"></script>
+<script defer src="js/welcome.js?v=65a74442f1"></script>
+<script defer src="js/identify.js?v=512ae6de24"></script>
 <script defer src="js/handoff.js?v=a933b0e690"></script>
-<script defer src="js/app.js?v=04b14872d6"></script>
+<script defer src="js/app.js?v=7b2282e58a"></script>
 </body>
 </html>

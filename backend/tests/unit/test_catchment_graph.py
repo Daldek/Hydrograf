@@ -180,6 +180,25 @@ class TestUpstreamSegmentsByDepth:
             CatchmentGraph().upstream_segments_by_depth(0)
 
 
+class TestTraceDownstream:
+    """Tests for trace_downstream (the path to the outlet of the network)."""
+
+    def test_path_in_flow_order_ends_at_the_outlet(self):
+        """Each node below the start once, in the order of the flow."""
+        cg = _branched_graph()
+        assert cg.trace_downstream(1).tolist() == [1, 3, 4, 5]
+        assert cg.trace_downstream(0).tolist() == [0, 2, 5]
+
+    def test_outlet_alone(self):
+        """The outlet of the network drains into no other node."""
+        assert _branched_graph().trace_downstream(5).tolist() == [5]
+
+    def test_not_loaded_raises(self):
+        """Unloaded graph should raise RuntimeError."""
+        with pytest.raises(RuntimeError, match="not loaded"):
+            CatchmentGraph().trace_downstream(0)
+
+
 class TestCatchmentGraphSegmentIndices:
     """Tests for get_segment_indices."""
 

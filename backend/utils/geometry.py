@@ -1,18 +1,24 @@
 """
 Coordinate transformation utilities.
 
-Provides functions for transforming coordinates between WGS84 (EPSG:4326)
-and PL-1992 (EPSG:2180) coordinate reference systems.
+Provides functions for transforming coordinates between WGS84 (EPSG:4326),
+PL-1992 (EPSG:2180) and PL-2000 (EPSG:2176 to 2179, one per zone) coordinate
+reference systems.
 """
 
+import math
 from typing import Any
 
 from pyproj import Transformer
 from shapely.geometry import Point, Polygon, mapping
 
+# PL-2000 zone -> EPSG code; zone n has its central meridian at 3n °E
+PL2000_EPSG_BY_ZONE = {5: 2176, 6: 2177, 7: 2178, 8: 2179}
+
 # Cached transformers (thread-safe in PyProj 3.0+)
 _transformer_wgs84_to_pl1992: Transformer | None = None
 _transformer_pl1992_to_wgs84: Transformer | None = None
+_transformers_wgs84_to_pl2000: dict[int, Transformer] = {}
 
 
 def _get_transformer_wgs84_to_pl1992() -> Transformer:
@@ -102,6 +108,64 @@ def transform_pl1992_to_wgs84(x: float, y: float) -> tuple[float, float]:
     transformer = _get_transformer_pl1992_to_wgs84()
     lon, lat = transformer.transform(x, y)
     return lon, lat
+
+
+def pl2000_zone(longitude: float) -> int:
+    """
+    PL-2000 zone of a longitude.
+
+    Zone n reaches 1.5° either side of its central meridian 3n °E: zone 5
+    west of 16.5°, 6 from 16.5° to 19.5°, 7 from 19.5° to 22.5° and 8 from
+    22.5° east. A point outside Poland gets the nearest of the four zones.
+
+    Parameters
+    ----------
+    longitude : float
+        Longitude in WGS84 (decimal degrees)
+
+    Returns
+    -------
+    int
+        Zone number, 5 to 8 (EPSG code in ``PL2000_EPSG_BY_ZONE``)
+    """
+    return min(max(math.floor((longitude + 1.5) / 3), 5), 8)
+
+
+def transform_wgs84_to_pl2000(
+    latitude: float, longitude: float
+) -> tuple[int, float, float]:
+    """
+    Transform WGS84 coordinates to PL-2000, in the zone of the longitude.
+
+    Parameters
+    ----------
+    latitude : float
+        Latitude in WGS84 (decimal degrees)
+    longitude : float
+        Longitude in WGS84 (decimal degrees)
+
+    Returns
+    -------
+    tuple[int, float, float]
+        (zone, easting, northing): the zone (``pl2000_zone``) and the
+        coordinates in metres; the easting (Y of Polish surveying) starts with
+        the zone number
+
+    Examples
+    --------
+    >>> zone, easting, northing = transform_wgs84_to_pl2000(52.23, 21.01)
+    >>> print(f"zone {zone}: X {northing:.0f}, Y {easting:.0f}")
+    zone 7: X 5788490, Y 7500683
+    """
+    zone = pl2000_zone(longitude)
+    transformer = _transformers_wgs84_to_pl2000.get(zone)
+    if transformer is None:
+        transformer = Transformer.from_crs(
+            "EPSG:4326", f"EPSG:{PL2000_EPSG_BY_ZONE[zone]}", always_xy=True
+        )
+        _transformers_wgs84_to_pl2000[zone] = transformer
+    easting, northing = transformer.transform(longitude, latitude)
+    return zone, easting, northing
 
 
 def transform_polygon_pl1992_to_wgs84(polygon: Polygon) -> Polygon:

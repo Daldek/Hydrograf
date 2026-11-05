@@ -22,11 +22,15 @@ from core.database import get_db
 NODATA = -9999.0
 X0, Y_TOP, CELL = 500000.0, 600000.0, 5.0
 TO_WGS84 = Transformer.from_crs("EPSG:2180", "EPSG:4326", always_xy=True)
+# The cells lie on 19°E, the meridian of PL-1992: zone 6 of PL-2000
+TO_PL2000 = Transformer.from_crs("EPSG:2180", "EPSG:2177", always_xy=True)
 
 # What the database holds at the point, as core.point_info returns it
 LAND_COVER = {
     "category": "las",
     "cn": 60,
+    "cn_amc_i": 40,
+    "cn_amc_iii": 78,
     "imperviousness": 0.0,
     "bdot_class": "PTLZ",
 }
@@ -45,6 +49,8 @@ SUBCATCHMENT = {
     "segment_length_m": 812.5,
     "is_real_stream": True,
 }
+# What the catchment graph gives for the segment, as core.point_info returns it
+MAIN_CHANNEL = {"channel_length_km": 9.8123, "distance_to_outlet_km": 41.375}
 
 
 def _raster(path, row):
@@ -160,7 +166,7 @@ def settings(tmp_path):
 
 @pytest.fixture
 def database():
-    """Stubbed answers of the PostGIS queries at the point."""
+    """Stubbed answers of the PostGIS queries and of the graph at the point."""
     with (
         patch("api.endpoints.identify.land_cover_at", return_value=LAND_COVER) as lc,
         patch("api.endpoints.identify.soil_group_at", return_value="B") as soil,
@@ -169,6 +175,9 @@ def database():
         patch(
             "api.endpoints.identify.subcatchment_at", return_value=SUBCATCHMENT
         ) as sub,
+        patch(
+            "api.endpoints.identify.main_channel_at", return_value=MAIN_CHANNEL
+        ) as main,
     ):
         yield {
             "land_cover_at": lc,
@@ -176,6 +185,7 @@ def database():
             "depression_at": dep,
             "nearest_stream": stream,
             "subcatchment_at": sub,
+            "main_channel_at": main,
         }
 
 
@@ -196,11 +206,18 @@ class TestIdentifyPoint:
         assert response.status_code == 200
         data = response.json()
         lon, lat = _cell(0)
+        easting, northing = TO_PL2000.transform(X0 + CELL / 2, Y_TOP - CELL / 2)
         assert data["coordinates"] == {
             "latitude": lat,
             "longitude": lon,
             "easting_m": X0 + CELL / 2,
             "northing_m": Y_TOP - CELL / 2,
+            "pl2000": {
+                "zone": 6,
+                "epsg": 2177,
+                "easting_m": pytest.approx(easting, abs=0.01),
+                "northing_m": pytest.approx(northing, abs=0.01),
+            },
         }
         assert data["elevation_m"] == 100.0
         assert data["slope_percent"] == 4.3
@@ -213,7 +230,11 @@ class TestIdentifyPoint:
         assert data["land_cover"] == LAND_COVER
         assert data["soil_hsg"] == "B"
         assert data["depression"] == DEPRESSION
-        assert data["subcatchment"] == {"threshold_m2": 10000, **SUBCATCHMENT}
+        assert data["subcatchment"] == {
+            "threshold_m2": 10000,
+            **SUBCATCHMENT,
+            **MAIN_CHANNEL,
+        }
 
     @pytest.mark.parametrize(
         ("col", "water"),
@@ -248,6 +269,11 @@ class TestIdentifyPoint:
 
         assert response.json()["subcatchment"]["threshold_m2"] == used
         assert database["subcatchment_at"].call_args.args[3] == used
+        # The main channel is read on the same network
+        assert database["main_channel_at"].call_args.args[2:] == (
+            used,
+            SUBCATCHMENT["segment_idx"],
+        )
 
     def test_sources_without_data_give_null(self, client, settings, database):
         for stub in database.values():

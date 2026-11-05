@@ -92,7 +92,7 @@
   <h2>Czym jest Hydrograf?</h2>
   <div class="cols">
     <div class="col">
-      <div class="card"><span class="label">W skrócie</span><p>Hydrograf to mapa w przeglądarce, która pokazuje, jak woda spływa po terenie. Wskazujesz miejsce przy rzece lub potoku, a Hydrograf wyznacza obszar, z którego spływa tam woda, opisuje go liczbami i szacuje, ile wody może spłynąć po silnym deszczu.</p></div>
+      <div class="card"><span class="label">W skrócie</span><p>Hydrograf wyznacza z NMT zlewnię wskazanego przekroju, oblicza jej parametry fizjograficzne i CN z pokrycia terenu oraz grup glebowych HSG, a dla zlewni do 250&nbsp;km² — hydrogram odpływu metodą SCS-CN z opadu projektowego PMAXTP. Wszystko na mapie w przeglądarce.</p></div>
       <div class="card"><span class="label">Bez instalacji</span><p>Wystarczy przeglądarka — na komputerze lub telefonie. Nie trzeba znać programów do map (GIS) ani wzorów: Hydrograf liczy sam, a znak (i) przy każdej wartości wyjaśnia, co ona znaczy.</p></div>
     </div>
     <div class="col">
@@ -195,10 +195,10 @@
   <h2>Cztery tryby pracy</h2>
   <img class="app-shot strip-shot" src="Hydrograf-tryby.png" width="763" height="81" alt="Pasek nad mapą: tryby Przeglądanie, Wybierz zlewnię (aktywny), Profil terenu i Identyfikuj oraz podpowiedź „Kliknij na mapie w pobliżu cieku”.">
   <div class="grid four">
-    <div class="card"><span class="label">Przeglądanie</span><p>Przesuwaj mapę i przybliżaj ją kółkiem myszy lub przyciskami + i − w prawym dolnym rogu. Kliknięcie niczego nie zaznacza. Ten tryb zwija panel „Zlewnia”, ale wyniku nie usuwa.</p></div>
+    <div class="card"><span class="label">Przeglądanie</span><p>Przesuwaj mapę i przybliżaj ją kółkiem myszy lub przyciskami + i − w prawym dolnym rogu. Kliknięcie niczego nie zaznacza. Ten tryb zwija panel „Zlewnia”, ale wyniku nie usuwa. W lewym dolnym rogu widać współrzędne kursora (WGS84, PL-1992 lub PL-2000).</p></div>
     <div class="card"><span class="label">Wybierz zlewnię</span><p>Kursor zmienia się w krzyżyk, a panel „Zlewnia” się otwiera. Kliknij przy linii spływu — Hydrograf wyznaczy zlewnię klikniętego odcinka (slajd 15).</p></div>
-    <div class="card"><span class="label">Profil terenu</span><p>Klikaj kolejne punkty linii. Zakończ, klikając ponownie ostatni punkt, dwuklikiem albo przyciskiem „Zakończ” na pasku rysowania; „Cofnij” (<kbd>Backspace</kbd>) usuwa punkt, „Anuluj” (<kbd>Esc</kbd>) porzuca linię. Wykres otworzy się w szufladzie u dołu mapy (slajd 29).</p></div>
-    <div class="card"><span class="label">Identyfikuj</span><p>Kliknij dowolne miejsce, a okienko na mapie pokaże, co Hydrograf o nim wie: współrzędne (przycisk „Kopiuj”), wysokość terenu, najbliższy ciek, pokrycie terenu i glebę. Gdy w „Warstwach” jest włączony wynik SFINCS — także głębokość wody.</p></div>
+    <div class="card"><span class="label">Profil terenu</span><p>Klikaj kolejne punkty linii. Profil narysujesz, klikając ponownie ostatni punkt, dwuklikiem albo przyciskiem „Rysuj profil” na pasku rysowania; „Cofnij” (<kbd>Backspace</kbd>) usuwa punkt, „Anuluj” (<kbd>Esc</kbd>) porzuca linię. Wykres otworzy się w szufladzie u dołu mapy (slajd 29).</p></div>
+    <div class="card"><span class="label">Identyfikuj</span><p>Kliknij dowolne miejsce, a okienko pokaże, co Hydrograf o nim wie: współrzędne w trzech układach („Kopiuj”), wysokość, najbliższy ciek z odległością, pokrycie terenu z CN dla AMC I–III, glebę i sieć spływu. Z wynikiem SFINCS w „Warstwach” — także głębokość wody.</p></div>
   </div>
   <p class="hint"><kbd>Esc</kbd> najpierw przerywa rysowanie, a potem zamyka okienko punktu. Gdy nic nie rysujesz, jedno naciśnięcie zwija panel „Zlewnia”, a dwa szybkie czyszczą wynik.</p>
   <div class="footer"><span>PRZEGLĄDANIE · WYBIERZ ZLEWNIĘ · PROFIL TERENU · IDENTYFIKUJ</span><span>09 / 31</span></div>
@@ -212,7 +212,7 @@
       <div class="card"><span class="label">Wiersz warstwy</span><p>Pole wyboru włącza warstwę, suwak ustawia krycie w %. Pełną nazwę skróconego wiersza pokaże najechanie kursorem.</p></div>
       <div class="card"><span class="label">Trzy grupy</span><p>Warstwy podkładowe (teren, wody, gleby, pokrycie), Wyniki analiz (linie spływu, wyniki modeli) i Podkłady kartograficzne — mapa tła, zawsze jedna, oraz nakładka „Mapa zagrożenia powodziowego”.</p></div>
       <div class="card"><span class="label">Przybliż do zasięgu</span><p>Ikona ramki obok tytułu panelu dopasowuje widok do włączonych warstw, a gdy żadna nie jest włączona — do całego obszaru danych.</p></div>
-      <div class="card"><span class="label">Legendy</span><p>Linie spływu, grupy glebowe, pokrycie terenu, wynik SFINCS i mapa zagrożenia powodziowego mają legendę w lewym dolnym rogu mapy, dopóki są włączone.</p></div>
+      <div class="card"><span class="label">Legendy</span><p>NMT, linie spływu, grupy glebowe, pokrycie terenu, wynik SFINCS i mapa zagrożenia powodziowego mają legendę w lewym dolnym rogu mapy, dopóki są włączone.</p></div>
     </div>
   </div>
   <p class="hint">„Kanalizacja deszczowa” pojawia się na liście tylko wtedy, gdy serwer ma dane kanalizacji — dla obecnego obszaru ich nie ma.</p>
@@ -225,7 +225,7 @@
     <div class="col">
       <h3 class="label">Warstwy podkładowe</h3>
       <dl class="defs">
-        <div><dt>NMT (wysokości)</dt><dd>Numeryczny model terenu GUGiK: wysokość kolorem, z cieniowaniem rzeźby.</dd></div>
+        <div><dt>NMT (wysokości)</dt><dd>Numeryczny model terenu GUGiK: wysokość kolorem, z cieniowaniem rzeźby; legenda podaje skalę barw w m n.p.m.</dd></div>
         <div><dt>Zbiorniki wodne (BDOT10k)</dt><dd>Wody stojące z bazy topograficznej BDOT10k.</dd></div>
         <div><dt>Cieki BDOT10k</dt><dd>Rzeki i potoki z bazy BDOT10k — z mapy, nie z NMT.</dd></div>
         <div><dt>Grupy glebowe (HSG)</dt><dd>Hydrologiczne grupy gleb A–D, od przepuszczalnych do nieprzepuszczalnych.</dd></div>
@@ -388,12 +388,12 @@
   <p class="kicker">05 · Opad i odpływ</p>
   <h2>Hietogram: scenariusz opadu PMAXTP</h2>
   <div class="split">
-    <img class="app-shot fit-shot" src="Hydrograf-v2-pmaxtp.png" width="503" height="1044" alt="Hietogram dla zlewni Kamiennika: opad PMAXTP 1 h o prawdopodobieństwie 10%, rozkład Beta, AMC II; wykres opadu całkowitego i efektywnego oraz bilans poniżej.">
+    <img class="app-shot fit-shot" src="Hydrograf-v2-pmaxtp.png" width="503" height="1044" alt="Hietogram dla zlewni Kamiennika (97,7 km²): opad PMAXTP 1 h o prawdopodobieństwie 10%, średnia w zlewni, rozkład Beta, AMC II; wykres opadu całkowitego i efektywnego, a pod nim bilans: opad całkowity 28,6 mm, opad PMAXTP — średnia w zlewni z 42 punktów.">
     <div class="stack">
-      <div class="card"><span class="label">Opad PMAXTP</span><p>Suma opadu z atlasu PMAXTP (IMGW-PIB) w klikniętym punkcie. Czas trwania 5&nbsp;min–72&nbsp;h (domyślnie 1h), prawdopodobieństwo 0,01–99,9&nbsp;% (domyślnie 10&nbsp;%); p&nbsp;=&nbsp;1&nbsp;% to okres powtarzalności 100&nbsp;lat.</p></div>
+      <div class="card"><span class="label">Opad PMAXTP</span><p>Suma opadu z atlasu PMAXTP (IMGW-PIB), średnia w zlewni z punktów siatki co 2&nbsp;km ważonych wielobokami Thiessena. Czas trwania 5&nbsp;min–72&nbsp;h (domyślnie 1h), prawdopodobieństwo 0,01–99,9&nbsp;% (domyślnie 10&nbsp;%); p&nbsp;=&nbsp;1&nbsp;% to okres powtarzalności 100&nbsp;lat.</p></div>
       <div class="card"><span class="label">Rozkład opadu</span><p>Podział sumy na kroki po 5&nbsp;min: Beta (α, β; domyślnie szczyt w 0,2 czasu trwania), DVWK (Euler II) — szczyt w 1/3 czasu, Blokowy — stałe natężenie.</p></div>
       <div class="card"><span class="label">Uwilgotnienie AMC</span><p>I — suche, II — przeciętne (domyślne), III — mokre. AMC przelicza CN zlewni, a z nim straty, opad efektywny i cały hydrogram.</p></div>
-      <div class="card"><span class="label">Wykres i bilans</span><p>Wykres „Opad” pokazuje opad całkowity i efektywny oraz szczyt Pmax. Pod nim bilans: sumy obu opadów, wsp. odpływu, CN użyty (z AMC), retencja S i straty początkowe Ia.</p></div>
+      <div class="card"><span class="label">Wykres, bilans, eksport</span><p>Wykres „Opad” pokazuje opad całkowity i efektywny oraz szczyt Pmax. Pod nim bilans: sumy opadów, skąd opad PMAXTP (liczba punktów), wsp. odpływu, CN użyty (z AMC), S i Ia. „Eksport”: hietogram CSV lub JSON, punkty PMAXTP z wagami jako GeoJSON.</p></div>
     </div>
   </div>
   <p class="hint">Każda zmiana pola przelicza hietogram i hydrogram po chwili — nie ma przycisku „Oblicz”.</p>
@@ -509,7 +509,7 @@
       <tr><th scope="row">Model</th><td data-label="Hydrogram">Hydrologiczny: straty SCS-CN i hydrogram jednostkowy (SCS, Nash, Snyder).</td><td data-label="SFINCS">Hydrauliczny 2D: przepływ wody po siatce 5&nbsp;m z NMT.</td></tr>
       <tr><th scope="row">Czas</th><td data-label="Hydrogram">Cały przebieg fali: przepływ w kolejnych minutach.</td><td data-label="SFINCS">Na mapie tylko maksimum z całej symulacji, bez przebiegu w czasie.</td></tr>
       <tr><th scope="row">Zakres</th><td data-label="Hydrogram">Każda wyznaczona zlewnia do 250&nbsp;km², liczony na żądanie.</td><td data-label="SFINCS">Jedna zlewnia (Kamiennik) i jeden scenariusz, policzone raz poza aplikacją.</td></tr>
-      <tr><th scope="row">Dane wejściowe</th><td data-label="Hydrogram">Opad PMAXTP w klikniętym punkcie lub własna seria; CN z pokrycia terenu, przeliczany wg AMC.</td><td data-label="SFINCS">Opad 12&nbsp;h, p&nbsp;=&nbsp;1&nbsp;% (105,0&nbsp;mm, PMAXTP w środku zlewni); Manning i CN z BDOT10k i HSG.</td></tr>
+      <tr><th scope="row">Dane wejściowe</th><td data-label="Hydrogram">Opad PMAXTP uśredniony w zlewni lub własna seria; CN z pokrycia terenu, przeliczany wg AMC.</td><td data-label="SFINCS">Opad 12&nbsp;h, p&nbsp;=&nbsp;1&nbsp;% (105,0&nbsp;mm, PMAXTP w środku zlewni); Manning i CN z BDOT10k i HSG.</td></tr>
       <tr><th scope="row">Status</th><td data-label="Hydrogram">Wersja rozwojowa — sprawdzaj „Zakres stosowalności”.</td><td data-label="SFINCS">Wynik wstępny, do podmiany; głębokości zaniżone.</td></tr>
     </tbody>
   </table>
@@ -520,11 +520,11 @@
   <p class="kicker">07 · Profil terenu</p>
   <h2>Przekrój terenu wzdłuż linii</h2>
   <div class="split">
-    <img class="app-shot wide-shot" src="Hydrograf-v2-profil.png" width="1341" height="1060" alt="Dwa momenty pracy w trybie Profil terenu na mapie NMT koło Świerzawy. U góry: rysowanie — podpowiedź „Klikaj, aby dodać punkty; kliknij ostatni punkt lub dwuklik, aby zakończyć; Backspace cofa, Esc anuluje”, nad mapą pasek „3 punkty — dotknij ostatniego, aby zakończyć” z przyciskami Cofnij, Zakończ i Anuluj oraz przerywana linia przez trzy punkty. U dołu: szuflada Profil terenu po zakończeniu linii — Długość 8.94 km · H 281–389 m n.p.m. i wykres wysokości H [m n.p.m.] od odległości [km].">
+    <img class="app-shot wide-shot" src="Hydrograf-v2-profil.png" width="1341" height="1060" alt="Dwa momenty pracy w trybie Profil terenu na mapie NMT koło Świerzawy. U góry: rysowanie — podpowiedź „Klikaj, aby dodać punkty; kliknij ostatni punkt lub dwuklik, aby narysować profil; Backspace cofa, Esc anuluje”, nad mapą pasek „3 punkty — dotknij ostatniego, aby narysować profil” z przyciskami Cofnij, Rysuj profil i Anuluj oraz przerywana linia przez trzy punkty. U dołu: szuflada Profil terenu po narysowaniu profilu — Długość 5.64 km · H 281–338 m n.p.m. i wykres wysokości H [m n.p.m.] od odległości [km].">
     <div class="steps-list">
       <div class="step"><span class="number">01</span><strong>Włącz „Profil terenu”</strong><p>Na pasku nad mapą; pomaga warstwa „NMT (wysokości)”. Pojawi się pasek rysowania z licznikiem punktów.</p></div>
       <div class="step"><span class="number">02</span><strong>Klikaj punkty linii</strong><p>Kliknięcie (dotknięcie) dodaje punkt; „Cofnij” lub <kbd>Backspace</kbd> usuwa ostatni, „Anuluj” lub <kbd>Esc</kbd> porzuca linię.</p></div>
-      <div class="step"><span class="number">03</span><strong>Zakończ linię</strong><p>Kliknij lub dotknij ponownie ostatni punkt, kliknij dwukrotnie albo naciśnij „Zakończ” (min. 2&nbsp;punkty). Szuflada pokaże długość, wysokości i wykres.</p></div>
+      <div class="step"><span class="number">03</span><strong>Narysuj profil</strong><p>Kliknij lub dotknij ponownie ostatni punkt, kliknij dwukrotnie albo naciśnij „Rysuj profil” (min. 2&nbsp;punkty). Szuflada pokaże długość, wysokości i wykres.</p></div>
       <div class="step"><span class="number">04</span><strong>Odczytaj i zacznij od nowa</strong><p>Najechanie na wykres wskaże miejsce na linii. Kliknięcie mapy zaczyna nową linię; × w szufladzie zamyka profil.</p></div>
     </div>
   </div>
@@ -539,7 +539,7 @@
     <div class="stack">
       <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Szyna nawigacji (Mapa, Instrukcja, Logowanie) staje się dolnym paskiem, a górny pasek pokazuje same ikony.</p></div>
       <div class="card"><span class="label">Arkusze</span><p>„Warstwy” i „Zlewnia” wysuwają się od dołu, zawsze jeden naraz. Otwierają je przyciski na pasku nad mapą, zamyka uchwyt u góry arkusza; po wyznaczeniu zlewni arkusz „Zlewnia” otwiera się sam.</p></div>
-      <div class="card"><span class="label">Dotyk</span><p>Pasek trybów przewiniesz palcem w bok; podpowiedzi trybu są ukryte. Profil zakończysz, dotykając ponownie ostatniego punktu albo przyciskiem „Zakończ”. Objaśnienie pokaże dotknięcie (i), drugie je zamknie.</p></div>
+      <div class="card"><span class="label">Dotyk</span><p>Pasek trybów przewiniesz palcem w bok; podpowiedzi trybu są ukryte. Profil narysujesz, dotykając ponownie ostatniego punktu albo przyciskiem „Rysuj profil”. Objaśnienie pokaże dotknięcie (i), drugie je zamknie. Współrzędnych kursora bez myszy nie ma — punkt opisze „Identyfikuj”.</p></div>
       <div class="card"><span class="label">Motyw</span><p>Auto (jak w systemie), Jasny lub Ciemny — linie na mapie, legendy i wykresy zmieniają kolory razem z motywem. Przeglądarka zapamięta wybór, także dla administracji i tej instrukcji.</p></div>
     </div>
   </div>
@@ -553,7 +553,7 @@
       <div class="step"><span class="number">01</span><strong>Otwórz formularz</strong><p>Kliknij „Zgłoś uwagę” na górnym pasku strony z mapą; na telefonie to ikona dymka.</p></div>
       <div class="step"><span class="number">02</span><strong>Opisz jeden przypadek</strong><p>Miejsce na mapie, wykonane kroki, oczekiwany wynik i to, co się stało. Opis jest wymagany (do 5000&nbsp;znaków), imię lub e-mail — nie.</p></div>
       <div class="step"><span class="number">03</span><strong>Sprawdź diagnostykę</strong><p>„Dołącz dane diagnostyczne” (ostatnie akcje, błędy, parametry zapytań) jest zaznaczone; „Pokaż co zostanie wysłane” pokazuje treść. Możesz je odznaczyć.</p></div>
-      <div class="step"><span class="number">04</span><strong>Wyślij lub anuluj</strong><p>Po „Wyślij” pojawi się „Dziękujemy! Zgłoszenie zostało zapisane.” „Anuluj”, × lub <kbd>Esc</kbd> zamykają okno bez wysyłania.</p></div>
+      <div class="step"><span class="number">04</span><strong>Wyślij lub anuluj</strong><p>Po „Wyślij” formularz się blokuje i pojawia się podziękowanie; okno zamknie się samo po 2&nbsp;s, chyba że w nim klikasz lub piszesz. „Anuluj”, × lub <kbd>Esc</kbd> zamykają je bez wysyłania.</p></div>
     </div>
     <img class="app-shot fit-shot" src="Hydrograf-feedback.png" width="568" height="511" alt="Formularz „Zgłoś uwagę”: opis problemu, opcjonalny kontakt, dołączenie danych diagnostycznych, podgląd wysyłanych danych i przycisk Wyślij.">
   </div>

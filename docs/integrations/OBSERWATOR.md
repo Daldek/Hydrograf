@@ -25,7 +25,7 @@ Obserwator to biblioteka Python do:
 |---------|-------------|
 | Ręczne pobieranie danych z IMGW | Automatyczne pobieranie przez `fetch_pmaxtp()` |
 | Brak spójności formatów CSV | Ujednolicony obiekt `PrecipitationResult` |
-| Punktowe dane wymagają interpolacji | Grid preprocessing + IDW w runtime |
+| Punktowe dane wymagają interpolacji | Grid preprocessing; at runtime the watershed mean by Thiessen polygons (ADR-069) |
 | Manualny import do bazy danych | Pipeline INSERT ON CONFLICT z grid WGS84 |
 
 **Decyzja:** ADR-008 — użycie IMGWTools (obecnie Obserwator) zamiast manualnych importów CSV.
@@ -74,9 +74,9 @@ Obserwator to biblioteka Python do:
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │              core/precipitation.py                           │   │
 │  │                                                             │   │
-│  │  get_precipitation(centroid, duration, probability)          │   │
-│  │  → 4 najbliższe punkty (ST_Distance)                       │   │
-│  │  → Interpolacja IDW (power=2)                               │   │
+│  │  thiessen_cells(boundary) → areal_depth(cells, D, p)         │   │
+│  │  → Thiessen polygons of the grid points in the watershed    │   │
+│  │  → mean weighted by area (Hydrolog thiessen_polygons)       │   │
 │  │  → precipitation_mm                                         │   │
 │  └─────────────────┬───────────────────────────────────────────┘   │
 │                    │                                                │
@@ -128,8 +128,8 @@ Parametry w pliku konfiguracyjnym YAML:
 |-------|-----------------|--------------|
 | `scripts/preprocess_precipitation.py` | `from obserwator import fetch_pmaxtp` | Grid preprocessing — pobieranie danych opadowych per punkt |
 | `scripts/analyze_watershed.py` | `from obserwator import fetch_pmaxtp` | Skrypt CLI — fetch opadu dla pojedynczego punktu |
-| `core/precipitation.py` | (pośrednio, operuje na tabeli `precipitation_data`) | Walidacja, interpolacja IDW |
-| `api/endpoints/hydrograph.py` | (pośrednio, przez `get_precipitation()`) | Endpoint generowania hydrogramu |
+| `core/precipitation.py` | (pośrednio, operuje na tabeli `precipitation_data`) | Validation, the watershed mean by Thiessen polygons, IDW at a point without a boundary |
+| `api/endpoints/hydrograph.py` | (pośrednio, przez `areal_depth()` / `point_depth()`) | Endpoint generowania hydrogramu |
 | `api/endpoints/scenarios.py` | (pośrednio, definiuje dostępne duracje/prawdopodobieństwa) | Lista scenariuszy |
 
 ---
@@ -188,8 +188,8 @@ result.data.rb   # Błąd estymacji
 ### 7.1 `POST /api/generate-hydrograph`
 
 Wewnętrznie korzysta z danych opadowych:
-1. Centroid zlewni → `get_precipitation(centroid, duration, probability)`
-2. Interpolacja IDW z tabeli `precipitation_data`
+1. The Thiessen cells of the watershed (`pmaxtp_grid` of the delineation, or computed from the boundary on the full path) → `areal_depth(cells, duration, probability)`; without a boundary `point_depth()` (IDW at the point)
+2. The mean of the scenario's depths at the grid points of `precipitation_data`, weighted by area
 3. Wynikowy opad [mm] → hietogram → hydrolog → hydrogram
 
 **Parametry opadowe w request:**
@@ -205,29 +205,33 @@ Zwraca dostępne kombinacje parametrów:
 
 ---
 
-## 8. Interpolacja IDW
+## 8. The design depth (ADR-069)
 
-### 8.1 Moduł: `core/precipitation.py`
+### 8.1 Module: `core/precipitation.py`
 
-Interpolacja Inverse Distance Weighting (IDW) dla centroidu zlewni:
+The design depth of a watershed is the mean of the PMAXTP grid points weighted by the
+areas of their Thiessen polygons inside it (KZGW 2017, ch. II, eq. 2.1):
 
 ```
-                    Σ (precipitation_i / distance_i²)
-precipitation = ──────────────────────────────────────
-                      Σ (1 / distance_i²)
+                Σ (precipitation_i × area_i)
+precipitation = ────────────────────────────
+                        Σ area_i
 ```
 
-**Parametry:**
-- **Liczba sąsiadów:** 4 (najbliższe punkty z `precipitation_data`)
-- **Wykładnik (power):** 2
-- **Wyszukiwanie:** ST_Distance na geometriach EPSG:2180
+- `thiessen_cells(boundary, db)`: the grid points within 5 km of the watershed's bounding
+  box, their Voronoi polygons clipped to the watershed (`area_km2` > 0).
+- `areal_depth(cells, duration, probability, db)`: Hydrolog's `thiessen_polygons` over
+  the scenario's depths at the cells.
+- `point_depth(point, duration, probability, db)`: without a boundary, Hydrolog's
+  `inverse_distance_weighting` of the 4 nearest points (KNN `<->`, EPSG:2180), power 2.
 
-### 8.2 Walidacja
+### 8.2 Validation
 
-Moduł `core/precipitation.py` waliduje:
-- Czy duracja jest w dopuszczonym zbiorze
-- Czy prawdopodobieństwo jest w dopuszczonym zbiorze
-- Czy znaleziono wystarczającą liczbę punktów do interpolacji
+`core/precipitation.py` checks:
+- that the duration and the probability are in the allowed sets;
+- that every cell given back is a point of the grid (within 1 m), else
+  `UnknownGridPointError` (400 `pmaxtp_grid_point_unknown` for the request's
+  `pmaxtp_grid`).
 
 ---
 
@@ -259,14 +263,14 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 | Ograniczenie | Opis |
 |-------------|------|
 | Zasięg geograficzny | Tylko Polska (14.0-24.2°E, 49.0-54.9°N) |
-| Typ danych | Dane punktowe — interpolacja IDW dla centroidu zlewni |
+| Typ danych | Dane punktowe — the watershed mean by Thiessen polygons (ADR-069); IDW at a point without a boundary |
 | Rozkład domyślny | KS (kwantylowy) — SG i RB dostępne w bazie, ale nieużywane w API |
 | Aktualizacja | Wymagany manualny re-run preprocessingu przy aktualizacji danych IMGW |
-| Brak agregacji areowej | Opad interpolowany dla centroidu, nie uśredniany po powierzchni zlewni |
+| No areal reduction | The watershed mean of point depths is not reduced to an areal depth (KZGW 2017, p. 105: up to 10 % for 10–100 km²); the author's decision (ADR-069) |
 
 ### 10.2 Przyszłe rozszerzenia
 
-- [ ] **Agregacja powierzchniowa** — uśrednianie opadu po powierzchni zlewni (poligony Thiessena lub grid)
+- [x] **Agregacja powierzchniowa** — the watershed mean by Thiessen polygons (ADR-069, 2026-11-05); the areal reduction of point depths stays open
 - [ ] **Użycie rozkładów SG/RB** — udostępnienie górnej granicy i błędu estymacji w API
 - [ ] **Automatyczna aktualizacja** — cykliczne odświeżanie danych opadowych
 - [ ] **Cache HTTP** — cachowanie odpowiedzi Obserwatora dla tych samych współrzędnych

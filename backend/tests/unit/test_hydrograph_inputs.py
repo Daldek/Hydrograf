@@ -6,6 +6,7 @@ The fast path (pre-computed morphometry in the request) is used so no
 watershed delineation is needed; PMAXTP lookup is patched.
 """
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +17,7 @@ from pydantic import ValidationError
 from api.endpoints.hydrograph import _custom_hietogram
 from api.main import app
 from core.database import get_db
+from core.precipitation import DesignDepth
 from models.schemas import (
     CUSTOM_PRECIPITATION_MAX_STEPS,
     CustomPrecipitation,
@@ -65,7 +67,8 @@ def client():
 
 @pytest.fixture
 def pmaxtp_45mm():
-    with patch(f"{_HG}.get_precipitation", return_value=45.0) as mocked:
+    depth = DesignDepth(45.0, "idw", ())
+    with patch(f"{_HG}.point_depth", return_value=depth) as mocked:
         yield mocked
 
 
@@ -274,6 +277,63 @@ class TestCustomPrecipitation:
         assert problem["code"] == "validation_error"
         assert problem["details"]["fields"] == ["/body/custom_precipitation/depths_mm"]
         assert "nieujemną" in problem["errors"][0]["message"]
+
+
+class TestPmaxtpGrid:
+    """The delineation's Thiessen weights make the depth the watershed mean."""
+
+    GRID = [
+        {"easting_m": 280000.0, "northing_m": 350000.0, "area_km2": 3.0},
+        {"easting_m": 282000.0, "northing_m": 350000.0, "area_km2": 1.0},
+    ]
+
+    def _client_with_rows(self, rows):
+        db = MagicMock()
+        db.execute.return_value.fetchall.return_value = rows
+        app.dependency_overrides[get_db] = lambda: db
+        return TestClient(app)
+
+    def test_depth_is_the_mean_over_the_grid_given(self):
+        rows = [
+            SimpleNamespace(x=282000.0, y=350000.0, precipitation_mm=60.0),
+            SimpleNamespace(x=280000.0, y=350000.0, precipitation_mm=40.0),
+        ]
+        try:
+            data = _post(self._client_with_rows(rows), _request(pmaxtp_grid=self.GRID))
+        finally:
+            app.dependency_overrides.clear()
+
+        precip = data["precipitation"]
+        assert precip["total_mm"] == pytest.approx(45.0)  # (40*3 + 60*1) / 4
+        assert precip["interpolation"] == "thiessen"
+        assert [p["weight"] for p in precip["pmaxtp_points"]] == [0.75, 0.25]
+        first = precip["pmaxtp_points"][0]
+        assert (first["easting_m"], first["area_km2"]) == (280000.0, 3.0)
+        assert 50 < first["latitude"] < 52 and 15 < first["longitude"] < 17
+        rainfall = data["handoff"]["provenance"]["rainfall"]
+        assert rainfall["interpolation"] == "thiessen"
+
+    def test_a_point_off_the_grid_is_a_validation_error(self):
+        rows = [SimpleNamespace(x=280000.0, y=350000.0, precipitation_mm=40.0)]
+        try:
+            response = self._client_with_rows(rows).post(
+                "/api/generate-hydrograph", json=_request(pmaxtp_grid=self.GRID)
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["details"]["reason"] == "pmaxtp_grid_point_unknown"
+        assert problem["details"]["easting_m"] == 282000.0
+
+    def test_without_the_grid_the_depth_is_taken_at_the_point(
+        self, client, pmaxtp_45mm
+    ):
+        precip = _post(client, _request())["precipitation"]
+
+        pmaxtp_45mm.assert_called_once()
+        assert precip["interpolation"] == "idw"
 
 
 class TestNashEstimation:

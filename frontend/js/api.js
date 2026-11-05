@@ -129,7 +129,9 @@
     /**
      * Generate hydrograph for given parameters.
      * With opts.custom_precipitation ({ timestep_min, depths_mm }) the PMAXTP
-     * design storm is replaced and duration/probability may be null.
+     * design storm is replaced and duration/probability may be null. With
+     * opts.morphometry, opts.pmaxtp_grid (the delineation's) makes the PMAXTP
+     * depth the watershed mean instead of the value at the point.
      */
     async function generateHydrograph(lat, lng, duration, probability, opts) {
         var payload = {
@@ -141,6 +143,7 @@
         if (opts) {
             if (opts.morphometry) payload.morphometry = opts.morphometry;
             if (opts.morphometry_origin) payload.morphometry_origin = opts.morphometry_origin;
+            if (opts.pmaxtp_grid) payload.pmaxtp_grid = opts.pmaxtp_grid;
             if (opts.custom_precipitation) payload.custom_precipitation = opts.custom_precipitation;
             if (opts.amc) payload.amc = opts.amc;
             if (opts.hietogram_type) payload.hietogram_type = opts.hietogram_type;
