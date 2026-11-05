@@ -1,488 +1,201 @@
-"""Tests for new tc methods integration (FAA, Kerby, Kerby-Kirpich)."""
+"""
+Time of concentration of POST /api/generate-hydrograph (Nogat plan
+2026-11-05-official-tc-inputs, D5).
+
+Hydrolog computes every method from the inputs its source defines: the endpoint's tc
+is ``WatershedParameters.calculate_tc`` of the morphometry, the CN used and FAA's C or
+Kerby's N of the request, and a missing input is a 400 that names it, never a
+substitute.
+"""
+
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
-from hydrolog.time.concentration import ConcentrationTime
+from fastapi.testclient import TestClient
+from hydrolog.morphometry import WatershedParameters
 from pydantic import ValidationError
 
+from api.main import app
+from core.database import get_db
+from core.precipitation import DesignDepth
+from models.schemas import HydrographRequest
 
-class TestFAAMethod:
-    def test_faa_returns_positive(self):
-        tc = ConcentrationTime.faa(length_km=1.0, slope_m_per_m=0.02, runoff_coeff=0.5)
-        assert tc > 0
+POINT = {"latitude": 51.01544, "longitude": 15.88984}
 
-    def test_faa_shorter_with_steeper_slope(self):
-        tc_flat = ConcentrationTime.faa(
-            length_km=1.0, slope_m_per_m=0.01, runoff_coeff=0.5
+
+def _morphometry() -> dict[str, Any]:
+    """The Kamiennik above its mouth into the Kaczawa, with its flow path (ADR-070)."""
+    return {
+        "area_km2": 134.97,
+        "perimeter_km": 84.4609,
+        "length_km": 22.2789,
+        "elevation_min_m": 256.77,
+        "elevation_max_m": 722.68,
+        "elevation_mean_m": 418.93,
+        "mean_slope_m_per_m": 0.135822,
+        "channel_length_km": 21.7949,
+        "channel_slope_m_per_m": 0.014959,
+        "real_channel_length_km": 20.686,
+        "hydraulic_length_km": 22.2789,
+        "flow_path_length_km": 22.2789,
+        "flow_path_slope_m_per_m": 0.016038,
+        "overland_length_km": 0.2563,
+        "overland_slope_m_per_m": 0.163324,
+        "length_to_centroid_km": 13.6173,
+        "cn": 69.6,
+    }
+
+
+@pytest.fixture
+def client():
+    app.dependency_overrides[get_db] = lambda: MagicMock()
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def _post(client: TestClient, morphometry: dict[str, Any], **options: Any):
+    body = {
+        **POINT,
+        "duration": "6h",
+        "probability": 1,
+        "uh_model": "scs",
+        "morphometry": morphometry,
+        **options,
+    }
+    depth = DesignDepth(70.0, "idw", ())
+    with patch("api.endpoints.hydrograph.point_depth", return_value=depth):
+        return client.post(
+            "/api/generate-hydrograph", json=body, headers={"Accept-Language": "pl"}
         )
-        tc_steep = ConcentrationTime.faa(
-            length_km=1.0, slope_m_per_m=0.05, runoff_coeff=0.5
+
+
+class TestTcIsHydrologs:
+    @pytest.mark.parametrize(
+        ("options", "coefficients"),
+        [
+            ({"tc_method": "kirpich"}, {}),
+            ({"tc_method": "nrcs"}, {}),
+            ({"tc_method": "giandotti"}, {}),
+            ({"tc_method": "faa", "tc_runoff_coeff": 0.3}, {"runoff_coeff": 0.3}),
+            ({"tc_method": "kerby", "tc_retardance": 0.4}, {"retardance": 0.4}),
+            (
+                {"tc_method": "kerby_kirpich", "tc_retardance": 0.6},
+                {"retardance": 0.6},
+            ),
+        ],
+        ids=["kirpich", "nrcs", "giandotti", "faa", "kerby", "kerby-kirpich"],
+    )
+    def test_tc_is_calculate_tc_of_the_same_inputs(self, client, options, coefficients):
+        response = _post(client, _morphometry(), **options)
+
+        assert response.status_code == 200, response.text
+        expected = WatershedParameters.from_dict(
+            {**_morphometry(), **coefficients}
+        ).calculate_tc(options["tc_method"])
+        origin = response.json()["handoff"]["provenance"]["runoff"]
+        assert origin["tc_min"] == expected
+        assert response.json()["metadata"]["tc_min"] == round(expected, 1)
+
+    def test_a_given_coefficient_another_method_does_not_read_is_ignored(self, client):
+        response = _post(client, _morphometry(), tc_method="nrcs", tc_runoff_coeff=0.9)
+
+        assert response.status_code == 200, response.text
+        expected = WatershedParameters.from_dict(_morphometry()).calculate_tc("nrcs")
+        assert response.json()["handoff"]["provenance"]["runoff"]["tc_min"] == expected
+
+
+class TestMissingInput:
+    @pytest.mark.parametrize(
+        ("method", "options", "dropped", "missing"),
+        [
+            # C is not derived from CN
+            ("faa", {}, (), ["tc_runoff_coeff"]),
+            # N has no default
+            ("kerby", {}, (), ["tc_retardance"]),
+            # The overland slope is not the mean slope
+            ("kerby", {"tc_retardance": 0.4}, ("overland_slope_m_per_m",), None),
+            # Kirpich's slope is not the channel slope
+            ("kirpich", {}, ("flow_path_slope_m_per_m",), None),
+            # NRCS's length is not the hydraulic length under another name
+            ("nrcs", {}, ("flow_path_length_km",), None),
+            (
+                "kerby_kirpich",
+                {"tc_retardance": 0.4},
+                ("overland_length_km", "flow_path_slope_m_per_m"),
+                None,
+            ),
+        ],
+        ids=[
+            "faa-c",
+            "kerby-n",
+            "kerby-overland-slope",
+            "kirpich-flow-path-slope",
+            "nrcs-flow-path-length",
+            "kerby-kirpich-overland-and-flow-path",
+        ],
+    )
+    def test_missing_input_is_a_polish_400_naming_it(
+        self, client, method, options, dropped, missing
+    ):
+        morphometry = _morphometry()
+        for key in dropped:
+            del morphometry[key]
+        missing = missing or list(dropped)
+
+        response = _post(client, morphometry, tc_method=method, **options)
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"] == {
+            "reason": "missing_field",
+            "method": method,
+            "missing": missing,
+        }
+        assert problem["detail"] == (
+            f"Czas koncentracji metodą {method} wymaga: {', '.join(missing)}."
         )
-        assert tc_steep < tc_flat
 
-    def test_faa_shorter_with_higher_runoff_coeff(self):
-        tc_low = ConcentrationTime.faa(
-            length_km=1.0, slope_m_per_m=0.02, runoff_coeff=0.3
+    def test_flow_path_not_longer_than_the_overland_segment_is_refused(self, client):
+        morphometry = {**_morphometry(), "overland_length_km": 25.0}
+
+        response = _post(
+            client, morphometry, tc_method="kerby_kirpich", tc_retardance=0.4
         )
-        tc_high = ConcentrationTime.faa(
-            length_km=1.0, slope_m_per_m=0.02, runoff_coeff=0.8
-        )
-        assert tc_high < tc_low
+
+        assert response.status_code == 400
+        assert response.json()["details"]["reason"] == "invalid_parameters"
 
 
-class TestKerbyMethod:
-    def test_kerby_returns_positive(self):
-        tc = ConcentrationTime.kerby(length_km=0.5, slope_m_per_m=0.03, retardance=0.4)
-        assert tc > 0
-
-    def test_kerby_longer_with_higher_retardance(self):
-        tc_smooth = ConcentrationTime.kerby(
-            length_km=0.5, slope_m_per_m=0.03, retardance=0.1
-        )
-        tc_rough = ConcentrationTime.kerby(
-            length_km=0.5, slope_m_per_m=0.03, retardance=0.6
-        )
-        assert tc_rough > tc_smooth
-
-
-class TestKerbyKirpichMethod:
-    def test_kerby_kirpich_returns_positive(self):
-        tc = ConcentrationTime.kerby_kirpich(
-            overland_length_km=0.3,
-            overland_slope_m_per_m=0.05,
-            retardance=0.4,
-            channel_length_km=2.0,
-            channel_slope_m_per_m=0.01,
-        )
-        assert tc > 0
-
-    def test_kerby_kirpich_longer_than_kirpich_alone(self):
-        tc_composite = ConcentrationTime.kerby_kirpich(
-            overland_length_km=0.3,
-            overland_slope_m_per_m=0.05,
-            retardance=0.4,
-            channel_length_km=2.0,
-            channel_slope_m_per_m=0.01,
-        )
-        tc_kirpich = ConcentrationTime.kirpich(
-            length_km=2.0,
-            slope_m_per_m=0.01,
-        )
-        assert tc_composite >= tc_kirpich
-
-
-class TestTcMethodInSchema:
-    def test_accepts_faa(self):
-        from models.schemas import HydrographRequest
-
+class TestTcOptionsInSchema:
+    @pytest.mark.parametrize("method", ["faa", "kerby", "kerby_kirpich"])
+    def test_accepts_the_method(self, method):
         req = HydrographRequest(
-            latitude=52.0,
-            longitude=17.0,
-            duration="1h",
-            probability=10,
-            tc_method="faa",
+            **POINT, duration="1h", probability=10, tc_method=method
         )
-        assert req.tc_method == "faa"
-
-    def test_accepts_kerby(self):
-        from models.schemas import HydrographRequest
-
-        req = HydrographRequest(
-            latitude=52.0,
-            longitude=17.0,
-            duration="1h",
-            probability=10,
-            tc_method="kerby",
-        )
-        assert req.tc_method == "kerby"
-
-    def test_accepts_kerby_kirpich(self):
-        from models.schemas import HydrographRequest
-
-        req = HydrographRequest(
-            latitude=52.0,
-            longitude=17.0,
-            duration="1h",
-            probability=10,
-            tc_method="kerby_kirpich",
-        )
-        assert req.tc_method == "kerby_kirpich"
-
-    def test_runoff_coeff_optional(self):
-        from models.schemas import HydrographRequest
-
-        req = HydrographRequest(
-            latitude=52.0,
-            longitude=17.0,
-            duration="1h",
-            probability=10,
-            tc_method="faa",
-            tc_runoff_coeff=0.6,
-        )
-        assert req.tc_runoff_coeff == 0.6
-
-    def test_retardance_optional(self):
-        from models.schemas import HydrographRequest
-
-        req = HydrographRequest(
-            latitude=52.0,
-            longitude=17.0,
-            duration="1h",
-            probability=10,
-            tc_method="kerby",
-            tc_retardance=0.4,
-        )
-        assert req.tc_retardance == 0.4
+        assert req.tc_method == method
+        assert (req.tc_runoff_coeff, req.tc_retardance) == (None, None)
 
     def test_rejects_invalid_tc_method(self):
-        from models.schemas import HydrographRequest
-
         with pytest.raises(ValidationError):
             HydrographRequest(
-                latitude=52.0,
-                longitude=17.0,
-                duration="1h",
-                probability=10,
-                tc_method="invalid_method",
+                **POINT, duration="1h", probability=10, tc_method="invalid_method"
             )
 
-    def test_overland_length_optional(self):
-        from models.schemas import HydrographRequest
-
-        req = HydrographRequest(
-            latitude=52.0,
-            longitude=17.0,
-            duration="1h",
-            probability=10,
-            tc_method="faa",
-            tc_overland_length_km=0.5,
-        )
-        assert req.tc_overland_length_km == 0.5
-
-
-class TestFaaRequiresOverlandLength:
-    """Tests that FAA method requires tc_overland_length_km."""
-
-    def test_faa_without_overland_raises(self):
-        """FAA without tc_overland_length_km should raise ValueError."""
-        from unittest.mock import MagicMock
-
-        from hydrolog.morphometry import WatershedParameters
-
-        from api.endpoints.hydrograph import _calculate_tc
-
-        morph_dict = {
-            "area_km2": 10.0,
-            "perimeter_km": 15.0,
-            "length_km": 5.0,
-            "elevation_min_m": 100.0,
-            "elevation_max_m": 200.0,
-            "mean_slope_m_per_m": 0.02,
-            "cn": 75,
-        }
-        wp = WatershedParameters.from_dict(morph_dict)
-        request = MagicMock()
-        request.tc_runoff_coeff = None
-        request.tc_overland_length_km = None
-
-        with pytest.raises(ValueError, match="FAA wymaga"):
-            _calculate_tc("faa", wp, morph_dict, request)
-
-    def test_faa_with_overland_works(self):
-        """FAA with tc_overland_length_km should compute valid tc."""
-        from unittest.mock import MagicMock
-
-        from hydrolog.morphometry import WatershedParameters
-
-        from api.endpoints.hydrograph import _calculate_tc
-
-        morph_dict = {
-            "area_km2": 10.0,
-            "perimeter_km": 15.0,
-            "length_km": 5.0,
-            "elevation_min_m": 100.0,
-            "elevation_max_m": 200.0,
-            "mean_slope_m_per_m": 0.02,
-            "cn": 75,
-        }
-        wp = WatershedParameters.from_dict(morph_dict)
-        request = MagicMock()
-        request.tc_runoff_coeff = None
-        request.tc_overland_length_km = 0.5
-
-        tc = _calculate_tc("faa", wp, morph_dict, request)
-        assert tc > 0
-
-
-class TestKerbyRequiresOverlandLength:
-    """Tests that Kerby method requires tc_overland_length_km."""
-
-    def test_kerby_without_overland_raises(self):
-        """Kerby without tc_overland_length_km should raise ValueError."""
-        from unittest.mock import MagicMock
-
-        from hydrolog.morphometry import WatershedParameters
-
-        from api.endpoints.hydrograph import _calculate_tc
-
-        morph_dict = {
-            "area_km2": 10.0,
-            "perimeter_km": 15.0,
-            "length_km": 5.0,
-            "elevation_min_m": 100.0,
-            "elevation_max_m": 200.0,
-            "mean_slope_m_per_m": 0.02,
-        }
-        wp = WatershedParameters.from_dict(morph_dict)
-        request = MagicMock()
-        request.tc_retardance = 0.4
-        request.tc_overland_length_km = None
-
-        with pytest.raises(ValueError, match="Kerby wymaga"):
-            _calculate_tc("kerby", wp, morph_dict, request)
-
-    def test_kerby_with_overland_works(self):
-        """Kerby with tc_overland_length_km should compute valid tc."""
-        from unittest.mock import MagicMock
-
-        from hydrolog.morphometry import WatershedParameters
-
-        from api.endpoints.hydrograph import _calculate_tc
-
-        morph_dict = {
-            "area_km2": 10.0,
-            "perimeter_km": 15.0,
-            "length_km": 5.0,
-            "elevation_min_m": 100.0,
-            "elevation_max_m": 200.0,
-            "mean_slope_m_per_m": 0.02,
-        }
-        wp = WatershedParameters.from_dict(morph_dict)
-        request = MagicMock()
-        request.tc_retardance = 0.4
-        request.tc_overland_length_km = 0.2
-
-        tc = _calculate_tc("kerby", wp, morph_dict, request)
-        assert tc > 0
-
-
-class TestNrcsUsesHydraulicLength:
-    """Verify NRCS uses hydraulic_length_km when available."""
-
-    def test_nrcs_with_hydraulic_length(self):
-        """NRCS tc should be longer with hydraulic_length than without."""
-        from hydrolog.morphometry import WatershedParameters
-
-        # Simulate what _calculate_tc does: clear channel_slope and set length_km to
-        # the hydraulic length
-        base = {
-            "area_km2": 10,
-            "perimeter_km": 15,
-            "length_km": 7.0,
-            "elevation_min_m": 100,
-            "elevation_max_m": 200,
-            "mean_slope_m_per_m": 0.03,
-            "cn": 75,
-        }
-        # tc with default length (7km) — as if no hydraulic available
-        wp1 = WatershedParameters.from_dict(base)
-        tc_short = wp1.calculate_tc(method="nrcs")
-
-        # tc with hydraulic length (9km)
-        wp2 = WatershedParameters.from_dict({**base, "length_km": 9.0})
-        tc_long = wp2.calculate_tc(method="nrcs")
-
-        # Longer flow path → longer tc
-        assert tc_long > tc_short
-
-    def test_nrcs_calculate_tc_uses_hydraulic_from_morph_dict(self):
-        """_calculate_tc for NRCS should use hydraulic_length_km from morph_dict."""
-        from unittest.mock import MagicMock
-
-        from hydrolog.morphometry import WatershedParameters
-
-        from api.endpoints.hydrograph import _calculate_tc
-
-        morph_dict = {
-            "area_km2": 10.0,
-            "perimeter_km": 15.0,
-            "length_km": 7.0,
-            "elevation_min_m": 100.0,
-            "elevation_max_m": 200.0,
-            "mean_slope_m_per_m": 0.03,
-            "channel_length_km": 5.0,
-            "channel_slope_m_per_m": 0.005,
-            "cn": 75,
-        }
-        wp = WatershedParameters.from_dict(morph_dict)
-        request = MagicMock()
-
-        # Without hydraulic_length
-        tc_no_hydraulic = _calculate_tc("nrcs", wp, morph_dict, request)
-
-        # With hydraulic_length (longer path)
-        morph_with_hydraulic = {**morph_dict, "hydraulic_length_km": 9.0}
-        wp2 = WatershedParameters.from_dict(morph_dict)
-        tc_with_hydraulic = _calculate_tc("nrcs", wp2, morph_with_hydraulic, request)
-
-        assert tc_with_hydraulic > tc_no_hydraulic
-
-    def test_nrcs_without_a_channel_slope_uses_the_mean_slope(self):
-        """No channel slope (e.g. a source not above the outlet) still gives NRCS.
-
-        The guard on the channel slope used to skip the NRCS branch, and the
-        call ended in "Unknown tc method: nrcs".
-        """
-        from unittest.mock import MagicMock
-
-        from hydrolog.morphometry import WatershedParameters
-
-        from api.endpoints.hydrograph import _calculate_tc
-
-        morph_dict = {
-            "area_km2": 10.0,
-            "perimeter_km": 15.0,
-            "length_km": 7.0,
-            "elevation_min_m": 100.0,
-            "elevation_max_m": 200.0,
-            "mean_slope_m_per_m": 0.03,
-            "channel_length_km": 5.0,
-            "channel_slope_m_per_m": None,
-            "hydraulic_length_km": 9.0,
-            "cn": 75,
-        }
-        with_slope = {**morph_dict, "channel_slope_m_per_m": 0.005}
-
-        tc = _calculate_tc(
-            "nrcs", WatershedParameters.from_dict(morph_dict), morph_dict, MagicMock()
-        )
-        expected = _calculate_tc(
-            "nrcs", WatershedParameters.from_dict(with_slope), with_slope, MagicMock()
-        )
-
-        assert tc == pytest.approx(expected)
-
-    def test_kirpich_uses_hydraulic_from_morph_dict(self):
-        """_calculate_tc for Kirpich should use hydraulic_length_km from morph_dict."""
-        from unittest.mock import MagicMock
-
-        from hydrolog.morphometry import WatershedParameters
-
-        from api.endpoints.hydrograph import _calculate_tc
-
-        morph_dict = {
-            "area_km2": 10.0,
-            "perimeter_km": 15.0,
-            "length_km": 7.0,
-            "elevation_min_m": 100.0,
-            "elevation_max_m": 200.0,
-            "mean_slope_m_per_m": 0.03,
-            "channel_length_km": 5.0,
-            "channel_slope_m_per_m": 0.005,
-        }
-        wp = WatershedParameters.from_dict(morph_dict)
-        request = MagicMock()
-
-        tc_no_hydraulic = _calculate_tc("kirpich", wp, morph_dict, request)
-
-        morph_with_hydraulic = {**morph_dict, "hydraulic_length_km": 9.0}
-        wp2 = WatershedParameters.from_dict(morph_dict)
-        tc_with_hydraulic = _calculate_tc("kirpich", wp2, morph_with_hydraulic, request)
-
-        assert tc_with_hydraulic > tc_no_hydraulic
-
-    def test_kerby_kirpich_uses_hydraulic_for_overland(self):
-        """Kerby-Kirpich overland fallback should prefer hydraulic_length_km."""
-        from unittest.mock import MagicMock
-
-        from hydrolog.morphometry import WatershedParameters
-
-        from api.endpoints.hydrograph import _calculate_tc
-
-        morph_dict = {
-            "area_km2": 10.0,
-            "perimeter_km": 15.0,
-            "length_km": 5.0,
-            "elevation_min_m": 100.0,
-            "elevation_max_m": 200.0,
-            "mean_slope_m_per_m": 0.02,
-            "channel_length_km": 3.0,
-            "channel_slope_m_per_m": 0.01,
-        }
-        wp = WatershedParameters.from_dict(morph_dict)
-        request = MagicMock()
-        request.tc_retardance = 0.4
-        request.tc_overland_length_km = None
-
-        # Without hydraulic: overland = max(5.0 - 3.0, 0.1) = 2.0
-        tc_no_hydraulic = _calculate_tc("kerby_kirpich", wp, morph_dict, request)
-
-        # With hydraulic_length (8km): overland = max(8.0 - 3.0, 0.1) = 5.0
-        morph_with_hydraulic = {**morph_dict, "hydraulic_length_km": 8.0}
-        wp2 = WatershedParameters.from_dict(morph_dict)
-        tc_with_hydraulic = _calculate_tc(
-            "kerby_kirpich", wp2, morph_with_hydraulic, request
-        )
-
-        assert tc_with_hydraulic > tc_no_hydraulic
-
-
-class TestKerbyKirpichOverlandFallback:
-    """Tests that Kerby-Kirpich uses overland from request or fallback."""
-
-    def test_kerby_kirpich_uses_provided_overland(self):
-        """Kerby-Kirpich should prefer tc_overland_length_km when provided."""
-        from unittest.mock import MagicMock
-
-        from hydrolog.morphometry import WatershedParameters
-
-        from api.endpoints.hydrograph import _calculate_tc
-
-        morph_dict = {
-            "area_km2": 10.0,
-            "perimeter_km": 15.0,
-            "length_km": 5.0,
-            "elevation_min_m": 100.0,
-            "elevation_max_m": 200.0,
-            "mean_slope_m_per_m": 0.02,
-            "channel_length_km": 3.0,
-            "channel_slope_m_per_m": 0.01,
-        }
-        wp = WatershedParameters.from_dict(morph_dict)
-        request = MagicMock()
-        request.tc_retardance = 0.4
-        request.tc_overland_length_km = 0.3
-
-        tc_with = _calculate_tc("kerby_kirpich", wp, morph_dict, request)
-
-        # Without overland: fallback = max(5.0 - 3.0, 0.1) = 2.0 km
-        request.tc_overland_length_km = None
-        tc_without = _calculate_tc("kerby_kirpich", wp, morph_dict, request)
-
-        # With 0.3 km overland should give shorter tc than 2.0 km fallback
-        assert tc_with < tc_without
-
-    def test_kerby_kirpich_fallback_without_overland(self):
-        """Kerby-Kirpich should fallback to total-channel when no overland."""
-        from unittest.mock import MagicMock
-
-        from hydrolog.morphometry import WatershedParameters
-
-        from api.endpoints.hydrograph import _calculate_tc
-
-        morph_dict = {
-            "area_km2": 10.0,
-            "perimeter_km": 15.0,
-            "length_km": 5.0,
-            "elevation_min_m": 100.0,
-            "elevation_max_m": 200.0,
-            "mean_slope_m_per_m": 0.02,
-            "channel_length_km": 3.0,
-            "channel_slope_m_per_m": 0.01,
-        }
-        wp = WatershedParameters.from_dict(morph_dict)
-        request = MagicMock()
-        request.tc_retardance = 0.4
-        request.tc_overland_length_km = None
-
-        tc = _calculate_tc("kerby_kirpich", wp, morph_dict, request)
-        assert tc > 0
+    @pytest.mark.parametrize(
+        ("value", "valid"), [(0.0, False), (0.01, True), (1.0, True), (1.01, False)]
+    )
+    def test_runoff_coeff_is_above_0_and_at_most_1(self, value, valid):
+        if valid:
+            req = HydrographRequest(
+                **POINT, duration="1h", probability=10, tc_runoff_coeff=value
+            )
+            assert req.tc_runoff_coeff == value
+        else:
+            with pytest.raises(ValidationError):
+                HydrographRequest(
+                    **POINT, duration="1h", probability=10, tc_runoff_coeff=value
+                )

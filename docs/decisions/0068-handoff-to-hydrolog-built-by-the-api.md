@@ -85,3 +85,15 @@ its comparison agrees: the Kamiennik at 51,01548° N, 15,89074° E (W 57.6%, U 0
 3.6295 and K 82.849 min in both, „Wynik producenta zgodny z wynikiem Hydrologa”. The other
 Nash estimations keep `nash_estimation` in their provenance: Hydrolog's GUI offers only
 Lutz or the given n and K.
+
+**2026-11-05: tc travels as its method.** The reason why tc travelled as a value, that
+Hydrograf's own tc methods were not Hydrolog's, is gone: Hydrograf computes every tc method
+with Hydrolog's `WatershedParameters.calculate_tc` from the inputs its source defines,
+without substitutes (Nogat plan `2026-11-05-official-tc-inputs`, D5; Hydrolog `1ffcd6b`).
+The SCS runoff of the hand-off carries `tc_method` and no `tc_min`; the watershed carries
+the inputs, `flow_path_length_km`, `flow_path_slope_m_per_m`, `overland_length_km` and
+`overland_slope_m_per_m` when measured, and FAA's `runoff_coeff` or Kerby's `retardance`
+when the method used it. Hydrolog's `hydrograph generate` computes tc again from them and
+gets Hydrograf's tc exactly (`tests/unit/test_handoff.py`, every method);
+`provenance.runoff` keeps `tc_method`, the given coefficient option and Hydrograf's
+`tc_min` for the comparison.

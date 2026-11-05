@@ -451,29 +451,26 @@ CN = clamp(CN, 0, 100)
 3. **Kontrola limitu**: `area_km2 ≤ 250` (ograniczenie SCS-CN)
 4. **Morfometria + CN** (build_morph_dict_from_graph, get_land_cover_for_boundary)
 5. **Opad**: projektowy PMAXTP (the watershed mean by Thiessen polygons, `areal_depth`; IDW at the point without a boundary, §4.2) albo własna seria `custom_precipitation` (`timestep_min` > 0 i ≤ 1440, `depths_mm` ≥ 0, 1–2000 wartości, suma > 0); czas trwania = liczba kroków × krok
-6. **Czas koncentracji** (calculate_tc)
+6. **Czas koncentracji** (`_calculate_tc` → Hydrolog `WatershedParameters.calculate_tc`, §6.2)
 7. **Hietogram**: dla PMAXTP rozkład opadu w czasie (§6.3); dla własnej serii `_custom_hietogram()` opakowuje serię w `HietogramResult` Hydrologa (czasy końca kroków k·Δt), bez hietogramu syntetycznego (`metadata.hietogram_type = null`, `precipitation.source = "custom"`, `probability_percent = null`)
 8. **Hydrogram** (splot z UH; CN przeliczony wg AMC — także w regresji Nasha dla zlewni zurbanizowanych)
 
 ### 6.2 Czas koncentracji (tc)
 
-**Metoda Kirpicha:**
-```
-tc = 0.0195 × L^0.77 × S^(-0.385)
-```
-Gdzie: L = długość cieku [m], S = spadek cieku [m/m]
+Hydrograf nie wybiera danych metod sam: `_calculate_tc` buduje Hydrologowe `WatershedParameters` z morfometrii (obszar grafu bez zaokrąglenia, CN użyty w obliczeniu) i współczynników żądania i woła `calculate_tc(tc_method)` (Nogat plan `2026-11-05-official-tc-inputs`, D5). Każda metoda bierze pola, które definiuje jej źródło, bez zastępników (bez spadku cieku zamiast spadku drogi spływu, bez C z CN, bez domyślnego N 0,4, bez długości BDOT10k i bez „L_max − L_k”):
 
-**Metoda SCS Lag:**
-```
-lag = 0.057 × L^0.8 × ((1000/CN - 9)^0.7) / √S
-tc = lag / 0.6
-```
+| Metoda | Pola `WatershedParameters` | Źródło |
+|---|---|---|
+| `kirpich` | `flow_path_length_km`, `flow_path_slope_m_per_m` | Kirpich 1940 (za Fang i in. 2005, TxDOT 0-4696-1) |
+| `nrcs` | `flow_path_length_km`, `mean_slope_m_per_m` (Y), `cn` | NEH 630 rozdz. 15, wz. 15-4 |
+| `giandotti` | `channel_length_km`, `elevation_mean_m − elevation_min_m`, `area_km2` | Giandotti 1934 (za Grimaldi i in. 2012) |
+| `faa` | `overland_length_km`, `overland_slope_m_per_m`, `runoff_coeff` (= `tc_runoff_coeff`) | FAA 1970, AC 150/5320-5B, rys. 7, C z tab. I |
+| `kerby` | `overland_length_km`, `overland_slope_m_per_m`, `retardance` (= `tc_retardance`) | Kerby 1959; TxDOT HDM, tab. N |
+| `kerby_kirpich` | `retardance`, `overland_length_km`, `overland_slope_m_per_m`, `flow_path_length_km`, `flow_path_slope_m_per_m` (koryto: `flow_path_length_km − overland_length_km` przy spadku drogi spływu, musi być > 0) | Roussel i in. 2005; Cleveland i in. 2012 (TxDOT 0-6382-P1) |
 
-**Metoda Giandottiego:**
-```
-tc = (4√A + 1.5L) / (0.8 × √(H_mean - H_min))
-```
-Gdzie: A = powierzchnia [km²], L = długość [km], H = wysokość [m]
+`flow_path_*` i `overland_*` mierzy preprocessing (ADR-070): najdłuższa droga spływu od działu wodnego do ujścia, jej spadek (wysokość początku − wysokość ujścia) / długość, odcinek powierzchniowy od jej początku do pierwszej komórki sieci cieków progu wyznaczenia. Tryb zaawansowany może je zmienić (`morphometry`). C metody FAA i N metody Kerby'ego podaje tylko użytkownik (`tc_runoff_coeff`, `tc_retardance`); każda metoda dostaje tylko swój współczynnik. Brak pola → 400 `validation_error`, `details.reason` `missing_field`, `details.missing` (pola morfometrii albo opcje żądania), komunikat „Czas koncentracji metodą … wymaga: …”. Wzory: `hydrolog/time/concentration.py` przypiętego Hydrologu.
+
+Przekazanie do Hydrologa (ADR-068) niesie w zlewni te same pola (z `runoff_coeff`/`retardance`, gdy metoda ich użyła), a `runoff` — `tc_method` bez `tc_min`: GUI Hydrologa liczy tc ponownie tą samą metodą; tc Hydrografu jest w `provenance.runoff.tc_min` do porównania.
 
 ### 6.3 Hietogramy (rozkład opadu w czasie)
 
@@ -676,7 +673,7 @@ CREATE TABLE land_cover (
 | 11 | Przejście w górę | BFS po grafie zlewni cząstkowych (`CatchmentGraph.traverse_upstream`) |
 | 12 | Bulk load do bazy | PostgreSQL COPY przez temp tables |
 | 13 | Odpływ SCS-CN | Metoda SCS z konwolucją |
-| 14 | Czas koncentracji | Kirpich / SCS Lag / Giandotti |
+| 14 | Czas koncentracji | Hydrolog `WatershedParameters.calculate_tc`: Kirpich / NRCS (lag) / Giandotti / FAA / Kerby / Kerby-Kirpich z pól źródła metody |
 | 15 | Graf zlewni cząstkowych | BFS po sparse CSR (~44k węzłów, ADR-021) |
 
 ---

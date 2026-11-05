@@ -117,6 +117,8 @@
               "mean_slope_m_per_m": 0.082,
               "channel_length_km": 14.78,
               "channel_slope_m_per_m": 0.0142,
+              "flow_path_length_km": 15.88,
+              "flow_path_slope_m_per_m": 0.0114,
               "cn": 65
             },
             "runoff": {"model": "curve-number", "tc_method": "kirpich", "amc": "II", "uh_model": "scs"},
@@ -134,9 +136,9 @@
       },
       "result": {
         "command": "hydrograph generate",
-        "peak_discharge_m3s": 60.2148,
-        "time_to_peak_min": 380.0,
-        "total_volume_m3": 1046213.2
+        "peak_discharge_m3s": 57.8786,
+        "time_to_peak_min": 400.0,
+        "total_volume_m3": 1046712.9
       }
     }
   ]

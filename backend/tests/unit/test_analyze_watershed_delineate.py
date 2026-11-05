@@ -47,6 +47,8 @@ def _graph() -> CatchmentGraph:
     cg._strahler = np.array([1, 1, 2, 3], dtype=np.int8)
     cg._max_flow_dist_m = np.array([12500.0, 10000.0, 8000.0, 5000.0])
     cg._outlet_flow_dist_m = np.array([7500.0, 7500.0, 4000.0, 0.0])
+    # Head of each node's longest flow path (the slope of Kirpich's tc)
+    cg._flow_path_head_elev_m = np.array([199.0, 208.0, 190.0, 178.0], np.float32)
     cg._is_real_stream = np.array([True, False, True, False], dtype=np.bool_)
     cg._segment_length_km = np.array([1.8, 1.2, 2.5, 3.5])
     cg._histograms = [

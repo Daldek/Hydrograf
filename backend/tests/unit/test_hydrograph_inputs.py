@@ -39,6 +39,8 @@ def _morphometry(cn: float = 72.0) -> dict[str, Any]:
         "mean_slope_m_per_m": 0.04,
         "channel_length_km": 6.5,
         "channel_slope_m_per_m": 0.0108,
+        "flow_path_length_km": 7.0,
+        "flow_path_slope_m_per_m": 0.01,
         "length_to_centroid_km": 3.5,
         "imperviousness": 0.1,
         "cn": cn,

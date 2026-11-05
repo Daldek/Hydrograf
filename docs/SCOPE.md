@@ -519,7 +519,7 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 1.0.0.dev0 (commit `2eb8bd0` of `develop`; hydrological calculations)
+- Hydrolog 1.0.0.dev0 (commit `1ffcd6b` of `develop`, with the official inputs of tc; hydrological calculations)
 - Kartograf 0.8.0.dev0 (commit `9deaa31` of `develop`, the release set of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
 - Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `1ee5457`, package `obserwator`; design precipitation from IMGW)
 
@@ -957,6 +957,7 @@ PHASE 3: Hydrograph generation
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.10 (2026-11-05): Hydrolog moves to `1ffcd6b` of `develop` (the official inputs of tc); Hydrograf computes tc only with Hydrolog
 - 1.9 (2026-11-04): Obserwator moves to `1ee5457` of the release set (3.0.0.dev0)
 - 1.8 (2026-11-03): the producers follow the release set of Nogat (Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`); the package `imgwtools` becomes `obserwator`
 - 1.7 (2026-11-03): the producer IMGWTools is named Obserwator (its v3.0.0); the pin `71bae77` and the package `imgwtools` stay until after v0.5.0

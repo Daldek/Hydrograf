@@ -35,9 +35,10 @@ HYDROGRAPH_COMMAND: Final = "POST /api/generate-hydrograph"
 # The method of fetch_pmaxtp (its default) that filled precipitation_data
 PMAXTP_METHOD: Final = "POT"
 
-# Hydrograf's morphometry, with Lutz's Manning's n that the hydrograph adds -> the keys
-# of Hydrolog's WatershedParameters, in their order. `source` and `crs` stay out: the
-# provenance names the source.
+# Hydrograf's morphometry, with the coefficients of the tc method (FAA's C, Kerby's N)
+# and Lutz's Manning's n that the hydrograph adds -> the keys of Hydrolog's
+# WatershedParameters, in their order. `source` and `crs` stay out: the provenance
+# names the source.
 _WATERSHED_KEYS: Final = {
     "area_km2": "area_km2",
     "perimeter_km": "perimeter_km",
@@ -49,10 +50,16 @@ _WATERSHED_KEYS: Final = {
     "channel_length_km": "channel_length_km",
     "channel_slope_m_per_m": "channel_slope_m_per_m",
     "cn": "cn",
+    "runoff_coeff": "runoff_coeff",
+    "retardance": "retardance",
+    "overland_length_km": "overland_length_km",
+    "overland_slope_m_per_m": "overland_slope_m_per_m",
     "length_to_centroid_km": "Lc_km",
     "manning_n": "manning_n",
     "urban_pct": "urban_pct",
     "forest_pct": "forest_pct",
+    "flow_path_length_km": "flow_path_length_km",
+    "flow_path_slope_m_per_m": "flow_path_slope_m_per_m",
 }
 
 
@@ -99,6 +106,7 @@ def watershed_parameters(
     ----------
     morphometry : Mapping[str, Any]
         Hydrograf's morphometry (the fields of ``MorphometricParameters``), with
+        ``runoff_coeff`` or ``retardance`` when the method of tc used them and
         ``manning_n`` when Lutz's method estimated Nash's n and K.
     name : str
         Name of the watershed.
@@ -109,7 +117,8 @@ def watershed_parameters(
     Returns
     -------
     dict[str, Any]
-        ``name`` and the known values of ``WatershedParameters``;
+        ``name`` and the known values of ``WatershedParameters``, among them the
+        longest flow path and its slope and the overland segment (the inputs of tc);
         ``length_to_centroid_km`` becomes ``Lc_km``. The other fields of the
         morphometry (shape and relief indices, the hydraulic length, the
         imperviousness) have no key in Hydrolog's watershed, and ``source`` and
@@ -276,7 +285,7 @@ def curve_number_runoff(
     uh_model: str,
     amc: str,
     *,
-    tc_min: float | None = None,
+    tc_method: str | None = None,
     nash_n: float | None = None,
     nash_k_min: float | None = None,
     snyder_length_km: float | None = None,
@@ -292,8 +301,9 @@ def curve_number_runoff(
         ``"scs"``, ``"nash"`` or ``"snyder"``.
     amc : str
         Antecedent moisture condition, ``"I"``, ``"II"`` or ``"III"``.
-    tc_min : float, optional
-        Time of concentration [min] of the ``scs`` model.
+    tc_method : str, optional
+        Method of the time of concentration of the ``scs`` model: Hydrolog computes
+        tc from the watershed, so the runoff carries no ``tc_min``.
     nash_n, nash_k_min : float, optional
         Nash's n and K [min].
     snyder_length_km, snyder_centroid_length_km, snyder_ct, snyder_cp : float, optional
@@ -306,8 +316,8 @@ def curve_number_runoff(
         abstraction ratio (0.2) is left out.
     """
     runoff: dict[str, Any] = {"model": "curve-number"}
-    if tc_min is not None:
-        runoff["tc_min"] = float(tc_min)
+    if tc_method is not None:
+        runoff["tc_method"] = tc_method
     runoff["amc"] = amc
     runoff["uh_model"] = uh_model
     options = {

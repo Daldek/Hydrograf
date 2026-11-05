@@ -26,6 +26,12 @@
         { key: 'mean_slope_m_per_m', label: 'Średni spadek terenu', unit: '%', digits: 2, kind: 'pos', scale: 100 },
         { key: 'channel_length_km', label: 'Długość cieku głównego', unit: 'km', digits: 2, kind: 'pos' },
         { key: 'channel_slope_m_per_m', label: 'Spadek cieku głównego', unit: '%', digits: 2, kind: 'pos', scale: 100 },
+        // The inputs of Tc (ADR-070): Kirpich, NRCS and Kerby-Kirpich read the flow
+        // path, FAA, Kerby and Kerby-Kirpich the overland segment
+        { key: 'flow_path_length_km', label: 'Najdłuższa droga spływu (od działu wodnego)', unit: 'km', digits: 2, kind: 'pos' },
+        { key: 'flow_path_slope_m_per_m', label: 'Spadek najdłuższej drogi spływu', unit: '%', digits: 2, kind: 'pos', scale: 100 },
+        { key: 'overland_length_km', label: 'Spływ powierzchniowy – długość', unit: 'km', digits: 3, kind: 'pos' },
+        { key: 'overland_slope_m_per_m', label: 'Spływ powierzchniowy – spadek', unit: '%', digits: 2, kind: 'pos', scale: 100 },
         { key: 'length_to_centroid_km', label: 'Odległość do środka ciężkości Lc', unit: 'km', digits: 2, kind: 'pos' },
         { key: 'cn', label: 'CN (krzywa odpływu)', unit: '–', digits: 1, kind: 'cn' },
     ];
