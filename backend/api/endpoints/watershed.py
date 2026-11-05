@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from core.catchment_graph import CatchmentGraph, get_catchment_graph
 from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
+from core.divide_flow_path import NO_FLOW_PATHS
 from core.errors import (
     CalculationError,
     HydrografError,
@@ -47,10 +48,9 @@ from core.watershed_service import (
     build_land_cover_stats,
     build_morph_dict_from_graph,
     cascade_escalate,
-    divide_flow_path_geojson,
     ensure_outlet_within_boundary,
+    flow_path_geojson,
     get_catchment_levels_feature_collection,
-    get_longest_flow_path_geojson,
     get_main_channel_feature_collection,
     get_main_stream_geojson,
     get_segment_outlet,
@@ -161,7 +161,7 @@ def _build_watershed_response(
 
     # Main channel
     main_channel_nodes = morph_dict.pop("_main_channel_nodes", [])
-    divide_path = morph_dict.pop("_divide_flow_path", None)
+    flow_paths = morph_dict.pop("_flow_paths", NO_FLOW_PATHS)
     main_stream_geojson = get_main_channel_feature_collection(
         cg,
         main_channel_nodes,
@@ -189,23 +189,6 @@ def _build_watershed_response(
         morph_dict["forest_pct"] = lc_stats.forest_pct
         morph_dict["urban_pct"] = lc_stats.urban_pct
 
-    # Flow paths
-    flow_path_geojson = None
-    try:
-        flow_path_geojson = get_longest_flow_path_geojson(
-            cg,
-            upstream_indices_for_stats,
-            outlet_idx_for_stats,
-            threshold,
-            db,
-        )
-    except Exception as e:
-        logger.debug(f"Longest flow path not available: {e}")
-
-    divide_path_geojson = (
-        divide_flow_path_geojson(divide_path) if divide_path is not None else None
-    )
-
     # Build WGS84 boundary
     boundary_wgs84 = transform_polygon_pl1992_to_wgs84(boundary_poly)
     boundary_geojson = polygon_to_geojson_feature(
@@ -230,8 +213,12 @@ def _build_watershed_response(
         land_cover_stats=lc_stats,
         hsg_stats=hsg_stats_data,
         main_stream_geojson=main_stream_geojson,
-        longest_flow_path_geojson=flow_path_geojson,
-        divide_flow_path_geojson=divide_path_geojson,
+        longest_flow_path_geojson=flow_path_geojson(
+            flow_paths.longest, "longest_flow_path"
+        ),
+        divide_flow_path_geojson=flow_path_geojson(
+            flow_paths.divide, "divide_flow_path"
+        ),
         pmaxtp_grid=[PmaxtpGridCell(**asdict(cell)) for cell in pmaxtp_cells] or None,
     )
 

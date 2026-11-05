@@ -22,7 +22,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import CatchmentGraph
-from core.divide_flow_path import DivideFlowPath, compute_divide_flow_path
+from core.divide_flow_path import (
+    NO_FLOW_PATHS,
+    FlowPath,
+    WatershedFlowPaths,
+    compute_flow_paths,
+)
 from core.morphometry import calculate_shape_indices
 from models.schemas import HsgStats, LandCoverStats
 from utils.geometry import transform_pl1992_to_wgs84
@@ -736,162 +741,19 @@ def _outlet_baseline_m(cg: CatchmentGraph, outlet_idx: int) -> float:
     return baseline
 
 
-def get_longest_flow_path_geojson(
-    cg: CatchmentGraph,
-    upstream_indices: np.ndarray,
-    outlet_idx: int,
-    threshold_m2: int,
-    db: "Session",
-) -> dict[str, Any] | None:
-    """Build GeoJSON Feature of the longest flow path of the watershed.
-
-    Finds subcatchment with max max_flow_dist_m, fetches its
-    longest_flow_path_geom, then appends downstream main channel segments
-    to the outlet.
-
-    Parameters
-    ----------
-    cg : CatchmentGraph
-        Loaded catchment graph
-    upstream_indices : np.ndarray
-        Internal indices from cg.traverse_upstream()
-    outlet_idx : int
-        Internal index of the outlet node
-    threshold_m2 : int
-        Flow accumulation threshold
-    db : Session
-        Database session
-
-    Returns
-    -------
-    dict | None
-        GeoJSON Feature with LineString geometry and ``length_km`` (max_flow_dist
-        minus the outlet baseline, as aggregate_stats hydraulic_length_km), or
-        None on failure
-    """
-    from shapely.geometry import LineString
-    from shapely.ops import linemerge
-
-    # 1. Find node with max max_flow_dist_m
-    max_dist = 0.0
-    max_idx = None
-    for idx in upstream_indices:
-        dist = cg.get_max_flow_dist_m(int(idx))
-        if dist > max_dist:
-            max_dist = dist
-            max_idx = int(idx)
-
-    if max_idx is None:
-        return None
-
-    max_seg_idx = cg.get_segment_idx(max_idx)
-
-    # 2. Fetch the longest flow path of that subcatchment
-    result = db.execute(
-        text(
-            "SELECT ST_AsGeoJSON(ST_Transform(longest_flow_path_geom, 4326)) "
-            "as geojson "
-            "FROM stream_catchments "
-            "WHERE threshold_m2 = :threshold AND segment_idx = :seg_idx "
-            "AND longest_flow_path_geom IS NOT NULL "
-            "LIMIT 1"
-        ),
-        {"threshold": threshold_m2, "seg_idx": max_seg_idx},
-    ).fetchone()
-
-    if result is None or result.geojson is None:
-        logger.debug(
-            "No longest_flow_path_geom for segment_idx=%d threshold=%d",
-            max_seg_idx,
-            threshold_m2,
-        )
-        return None
-
-    head_geom = json.loads(result.geojson)
-
-    baseline = _outlet_baseline_m(cg, outlet_idx)
-
-    def _make_properties() -> dict[str, Any]:
-        return {
-            "type": "longest_flow_path",
-            "length_km": round(max(0.0, max_dist - baseline) / 1000, 4),
-        }
-
-    # 3. Trace main channel from max_idx downstream to outlet
-    main_ch = cg.trace_main_channel(outlet_idx, upstream_indices)
-    main_nodes = main_ch.get("main_channel_nodes", [])
-
-    downstream_seg_idxs = []
-    collecting = False
-    for node in reversed(main_nodes):
-        if node == max_idx:
-            collecting = True
-            continue
-        if collecting:
-            downstream_seg_idxs.append(cg.get_segment_idx(node))
-
-    if not downstream_seg_idxs:
-        return {
-            "type": "Feature",
-            "geometry": head_geom,
-            "properties": _make_properties(),
-        }
-
-    # 4. Fetch downstream stream geometries
-    rows = db.execute(
-        text(
-            "SELECT ST_AsGeoJSON(ST_Transform(geom, 4326)) as geojson "
-            "FROM stream_network "
-            "WHERE threshold_m2 = :threshold AND segment_idx = ANY(:idxs)"
-        ),
-        {"threshold": threshold_m2, "idxs": downstream_seg_idxs},
-    ).fetchall()
-
-    if not rows:
-        return {
-            "type": "Feature",
-            "geometry": head_geom,
-            "properties": _make_properties(),
-        }
-
-    # 5. Combine geometries
-    all_lines = [LineString(head_geom["coordinates"])]
-    for r in rows:
-        geom = json.loads(r.geojson)
-        all_lines.append(LineString(geom["coordinates"]))
-
-    try:
-        merged = linemerge(all_lines)
-        if merged.geom_type == "MultiLineString":
-            merged = max(merged.geoms, key=lambda g: g.length)
-        merged_geojson = {
-            "type": "LineString",
-            "coordinates": [list(c) for c in merged.coords],
-        }
-    except Exception as e:
-        logger.warning("Failed to merge longest flow path geometries: %s", e)
-        merged_geojson = head_geom
-
-    return {
-        "type": "Feature",
-        "geometry": merged_geojson,
-        "properties": _make_properties(),
-    }
-
-
-def get_divide_flow_path(
+def get_flow_paths(
     cg: CatchmentGraph,
     upstream_indices: np.ndarray,
     outlet_idx: int,
     threshold_m2: int,
     boundary_2180: MultiPolygon | Polygon,
-) -> DivideFlowPath | None:
-    """Flow path from the farthest cell on the boundary of the watershed.
+) -> WatershedFlowPaths:
+    """Longest flow path of the watershed and the one from its boundary.
 
     The watershed is the union of the sub-catchments of ``upstream_indices``
-    in the label raster of ``threshold_m2``; the path follows the D8 flow
-    directions to the outlet and its length has the baseline of the longest
-    flow path (core.divide_flow_path).
+    in the label raster of ``threshold_m2``; both paths follow the D8 flow
+    directions to the outlet and their lengths have the baseline of the
+    longest flow path (core.divide_flow_path).
 
     Parameters
     ----------
@@ -908,8 +770,8 @@ def get_divide_flow_path(
 
     Returns
     -------
-    DivideFlowPath | None
-        None without the label, distance or flow direction raster.
+    WatershedFlowPaths
+        No paths without the label, distance or flow direction raster.
     """
     from core.config import get_settings
 
@@ -919,15 +781,15 @@ def get_divide_flow_path(
     flowdir_path = settings.resolve_flowdir_path()
     if labels_path is None or flow_dist_path is None or flowdir_path is None:
         logger.debug(
-            "Divide flow path: no label (%s), distance (%s) or flow direction "
+            "Flow paths: no label (%s), distance (%s) or flow direction "
             "(%s) raster for threshold %d",
             labels_path,
             flow_dist_path,
             flowdir_path,
             threshold_m2,
         )
-        return None
-    return compute_divide_flow_path(
+        return NO_FLOW_PATHS
+    return compute_flow_paths(
         cg.get_segment_indices(upstream_indices, threshold_m2),
         boundary_2180.bounds,
         _outlet_baseline_m(cg, outlet_idx),
@@ -937,9 +799,12 @@ def get_divide_flow_path(
     )
 
 
-def divide_flow_path_geojson(path: DivideFlowPath) -> dict[str, Any] | None:
-    """GeoJSON Feature (WGS84) of a divide flow path, None for a single cell."""
-    if len(path.coords_2180) < 2:
+def flow_path_geojson(path: FlowPath | None, kind: str) -> dict[str, Any] | None:
+    """GeoJSON Feature (WGS84) of a flow path, None without one or for one cell.
+
+    ``kind`` is its ``type`` property (``longest_flow_path``, ``divide_flow_path``).
+    """
+    if path is None or len(path.coords_2180) < 2:
         return None
     return {
         "type": "Feature",
@@ -949,7 +814,7 @@ def divide_flow_path_geojson(path: DivideFlowPath) -> dict[str, Any] | None:
                 list(transform_pl1992_to_wgs84(x, y)) for x, y in path.coords_2180
             ],
         },
-        "properties": {"type": "divide_flow_path", "length_km": path.length_km},
+        "properties": {"type": kind, "length_km": path.length_km},
     }
 
 
@@ -1109,17 +974,20 @@ def build_morph_dict_from_graph(
         if slope > 0:
             flow_path_slope = round(slope, 6)
 
-    # Longest flow path from the boundary of the watershed: the boundary cells
-    # of its sub-catchments in the label raster, the baseline of flow_path_length
-    divide_path = None
+    # The lines of the longest flow path and of the one from the boundary of
+    # the watershed (the boundary cells of its sub-catchments in the label
+    # raster), with the baseline of flow_path_length
+    flow_paths = NO_FLOW_PATHS
     if outlet_idx is not None:
         try:
-            divide_path = get_divide_flow_path(
+            flow_paths = get_flow_paths(
                 cg, upstream_indices, outlet_idx, threshold_m2, boundary_2180
             )
         except Exception as e:
-            logger.warning("Failed to compute the divide flow path: %s", e)
-    divide_flow_path_km = divide_path.length_km if divide_path is not None else None
+            logger.warning("Failed to compute the flow paths: %s", e)
+    divide_flow_path_km = (
+        flow_paths.divide.length_km if flow_paths.divide is not None else None
+    )
 
     # Point sampling stream_distance.tif for the centroid flow path
     centroid_flow_path_km = None
@@ -1187,9 +1055,9 @@ def build_morph_dict_from_graph(
     }
 
     # Private keys (not part of Pydantic schema): internal node indices of the
-    # main channel and the divide flow path for the map
+    # main channel and the flow paths for the map
     params["_main_channel_nodes"] = main_channel_nodes
-    params["_divide_flow_path"] = divide_path
+    params["_flow_paths"] = flow_paths
 
     logger.info(
         f"Built morph dict from graph: area={area_km2:.2f} km2, "

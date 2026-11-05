@@ -130,7 +130,6 @@ def _patch_all(cg=None, segment=None, boundary=None, morph=None):
         patch(f"{_WS}.get_main_channel_feature_collection", return_value=None),
         patch(f"{_WS}.build_land_cover_stats", return_value=None),
         patch(f"{_WS}.build_hsg_stats", return_value=None),
-        patch(f"{_WS}.get_longest_flow_path_geojson", return_value=None),
         patch(f"{_WS}.cascade_escalate", return_value=None),
         patch(f"{_WS}.thiessen_cells", return_value=[]),
     ]

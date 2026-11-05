@@ -219,8 +219,9 @@ body {
 .sym-pair { width: 3.6cqw; display: flex; flex-direction: column; gap: 0.6cqw; }
 .sym-line { display: block; border-top: 3px solid var(--info); }
 .sym-line.faint { border-top-width: 2px; opacity: 0.45; }
-.sym-dash { width: 3.6cqw; border-top: 2px dashed var(--warn); }
-.sym-dot { width: 3.6cqw; border-top: 3px dotted var(--warn); }
+/* As the map: long dashes (12 on, 8 off) and round dots 8 apart */
+.sym-dash { width: 3.6cqw; height: 3px; background: repeating-linear-gradient(90deg, var(--warn) 0 12px, transparent 12px 20px); }
+.sym-dot { width: 3.6cqw; height: 4px; background: radial-gradient(circle, var(--warn) 1.6px, transparent 2.2px) 0 0 / 8px 4px repeat-x; }
 
 /* Side-by-side comparison */
 .compare { width: 100%; border-collapse: collapse; font-size: clamp(11px, 1.45cqw, 22px); line-height: 1.32; }

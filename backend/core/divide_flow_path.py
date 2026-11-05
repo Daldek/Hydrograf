@@ -1,19 +1,24 @@
-"""Longest flow path from the boundary of a watershed to its outlet.
+"""Longest flow paths of a watershed: from its farthest cell and its boundary.
 
 The watershed is the union of its sub-catchments: the cells of the label raster
 of their threshold (``<stem>_10_subcatchments_<threshold>.tif``) whose label is
 one of their ``segment_idx``. Its boundary cells are the cells of the watershed
 with a 4-neighbour outside it (another label, no label or beyond the raster).
-The path starts at the boundary cell farthest from the outlet along the flow
-(``<stem>_04b_stream_distance.tif``) and follows the D8 flow directions
+The longest flow path starts at the cell of the watershed farthest from the
+outlet along the flow (``<stem>_04b_stream_distance.tif``), the divide flow
+path at its farthest boundary cell. Both follow the D8 flow directions
 (``<stem>_03_flowdir.tif``) to the first cell outside the watershed, where the
 longest flow path of the outlet sub-catchment ends too.
 
-Its length is the flow distance of that cell minus the flow distance at the
-outlet of the watershed, the baseline of the longest flow path. The pipeline
-took the ``max_flow_dist_m`` of every sub-catchment from the same distance grid
-the raster stores (float32 in both), so a boundary cell is never farther than
-the longest flow path.
+The length of a path is the flow distance of its first cell minus the flow
+distance at the outlet of the watershed, the baseline of the longest flow path.
+The pipeline took the ``max_flow_dist_m`` of every sub-catchment from the same
+distance grid the raster stores (float32 in both), so the longest flow path has
+the length of ``hydraulic_length_km`` and a boundary cell is never farther.
+
+The line of a path joins the centres of its cells, as the lines of
+``stream_network`` (``core.stream_extraction``), without the cells inside its
+straight runs, so it lies on the streams where it follows them.
 """
 
 from __future__ import annotations
@@ -24,9 +29,9 @@ from dataclasses import dataclass
 
 import numpy as np
 import rasterio
+from rasterio.transform import Affine
 from rasterio.windows import Window, from_bounds
 from rasterio.windows import transform as window_transform
-from shapely.geometry import LineString
 
 from core.hydrology import D8_DIRECTIONS
 
@@ -37,20 +42,39 @@ _MIN_GROWTH_CELLS = 64
 
 
 @dataclass(frozen=True)
-class DivideFlowPath:
-    """The flow path from the farthest boundary cell of a watershed.
+class FlowPath:
+    """A flow path from a cell of a watershed to its outlet.
 
     Attributes
     ----------
     length_km : float
-        Flow distance from the boundary cell to the outlet [km].
+        Flow distance from the first cell to the outlet [km].
     coords_2180 : list[tuple[float, float]]
-        Cell centres in EPSG:2180, from the boundary cell to the outlet,
-        simplified with the tolerance of the pipeline's flow paths.
+        Cell centres in EPSG:2180, from the first cell to the outlet, where
+        the flow direction changes (and both ends).
     """
 
     length_km: float
     coords_2180: list[tuple[float, float]]
+
+
+@dataclass(frozen=True)
+class WatershedFlowPaths:
+    """The longest flow path of a watershed and the one from its boundary.
+
+    Attributes
+    ----------
+    longest : FlowPath | None
+        From the cell of the watershed farthest from the outlet.
+    divide : FlowPath | None
+        From the boundary cell of the watershed farthest from the outlet.
+    """
+
+    longest: FlowPath | None
+    divide: FlowPath | None
+
+
+NO_FLOW_PATHS = WatershedFlowPaths(longest=None, divide=None)
 
 
 def boundary_mask(member: np.ndarray) -> np.ndarray:
@@ -171,15 +195,72 @@ def _read_members(
         win = _clamped(src, *new)
 
 
-def compute_divide_flow_path(
+def path_coords(
+    cells: Sequence[tuple[int, int]], transform: Affine
+) -> list[tuple[float, float]]:
+    """Centres of the cells of a path where its direction changes, and its ends.
+
+    The dropped cells lie on the straight line between their neighbours, so
+    the line is the one through all the centres (as ``stream_network``).
+
+    Parameters
+    ----------
+    cells : Sequence[tuple[int, int]]
+        Rows and columns of the path in the grid of ``transform``.
+    transform : Affine
+        Transform of the grid of ``cells`` (EPSG:2180).
+
+    Returns
+    -------
+    list[tuple[float, float]]
+        Coordinates in EPSG:2180, from the first cell to the last.
+    """
+    kept = list(cells[:1])
+    for prev, cell, nxt in zip(cells, cells[1:], cells[2:], strict=False):
+        step_in = (cell[0] - prev[0], cell[1] - prev[1])
+        if step_in != (nxt[0] - cell[0], nxt[1] - cell[1]):
+            kept.append(cell)
+    kept.extend(cells[1:][-1:])
+    coords = []
+    for row, col in kept:
+        x, y = transform * (col + 0.5, row + 0.5)
+        coords.append((float(x), float(y)))
+    return coords
+
+
+def _flow_path_from(
+    starts: np.ndarray,
+    member: np.ndarray,
+    fdir: np.ndarray,
+    flow_dist: np.ndarray,
+    baseline_m: float,
+    transform: Affine,
+) -> FlowPath | None:
+    """Flow path from the cell of ``starts`` farthest from the outlet."""
+    if not starts.any():
+        return None
+    head = np.unravel_index(
+        int(np.argmax(np.where(starts, flow_dist, -np.inf))), member.shape
+    )
+    length_m = float(flow_dist[head]) - baseline_m
+    if length_m <= 0:
+        return None
+    cells = trace_flow_path((int(head[0]), int(head[1])), member, fdir, flow_dist)
+    return FlowPath(
+        length_km=round(length_m / 1000.0, 4),
+        coords_2180=path_coords(cells, transform),
+    )
+
+
+def compute_flow_paths(
     segment_idxs: Sequence[int],
     bounds_2180: tuple[float, float, float, float],
     baseline_m: float,
     labels_path: str,
     flow_dist_path: str,
     flowdir_path: str,
-) -> DivideFlowPath | None:
-    """Flow path from the farthest boundary cell of a watershed to its outlet.
+) -> WatershedFlowPaths:
+    """Longest flow path of a watershed and the one from its boundary.
 
     Parameters
     ----------
@@ -200,13 +281,13 @@ def compute_divide_flow_path(
 
     Returns
     -------
-    DivideFlowPath | None
-        None when the watershed has no cell in ``labels_path`` or its
-        farthest boundary cell is not upstream of the outlet.
+    WatershedFlowPaths
+        A path is None when the watershed has no cell in ``labels_path`` or
+        the first cell of the path is not upstream of the outlet.
     """
     labels = np.asarray(segment_idxs, dtype=np.int64)
     if labels.size == 0 or np.isnan(baseline_m):
-        return None
+        return NO_FLOW_PATHS
     with (
         rasterio.open(labels_path) as labels_src,
         rasterio.open(flow_dist_path) as dist_src,
@@ -218,37 +299,29 @@ def compute_divide_flow_path(
             fdir_src.transform,
         ) != grid:
             logger.warning(
-                "Divide flow path: %s, %s and %s are not on one grid",
+                "Flow paths: %s, %s and %s are not on one grid",
                 labels_path,
                 flow_dist_path,
                 flowdir_path,
             )
-            return None
+            return NO_FLOW_PATHS
         win, member = _read_members(labels_src, labels, bounds_2180)
         if not member.any():
-            return None
+            return NO_FLOW_PATHS
         flow_dist = dist_src.read(1, window=win)
-        candidates = boundary_mask(member)
-        if dist_src.nodata is not None:
-            candidates &= flow_dist != dist_src.nodata
-        if not candidates.any():
-            return None
-        head = np.unravel_index(
-            int(np.argmax(np.where(candidates, flow_dist, -np.inf))), member.shape
-        )
-        length_m = float(flow_dist[head]) - baseline_m
-        if length_m <= 0:
-            return None
         fdir = fdir_src.read(1, window=win)
-        cells = trace_flow_path((int(head[0]), int(head[1])), member, fdir, flow_dist)
+        nodata = dist_src.nodata
         transform = window_transform(win, labels_src.transform)
-        cellsize = abs(labels_src.transform.a)
 
-    coords = [transform * (col + 0.5, row + 0.5) for row, col in cells]
-    if len(coords) > 3:
-        line = LineString(coords).simplify(2 * cellsize, preserve_topology=True)
-        coords = list(line.coords)
-    return DivideFlowPath(
-        length_km=round(length_m / 1000.0, 4),
-        coords_2180=[(float(x), float(y)) for x, y in coords],
+    starts = member if nodata is None else member & (flow_dist != nodata)
+    return WatershedFlowPaths(
+        longest=_flow_path_from(starts, member, fdir, flow_dist, baseline_m, transform),
+        divide=_flow_path_from(
+            starts & boundary_mask(member),
+            member,
+            fdir,
+            flow_dist,
+            baseline_m,
+            transform,
+        ),
     )

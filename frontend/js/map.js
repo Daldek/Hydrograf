@@ -476,6 +476,7 @@
             style: watershedStyle(),
         }).addTo(map);
         map.fitBounds(selectionBoundaryLayer.getBounds(), { padding: [20, 20] });
+        updateWatershedLegend();
     }
 
     /**
@@ -485,6 +486,7 @@
         if (selectionBoundaryLayer) {
             map.removeLayer(selectionBoundaryLayer);
             selectionBoundaryLayer = null;
+            updateWatershedLegend();
         }
     }
 
@@ -697,6 +699,7 @@
         watershedLayer = L.geoJSON(geojsonFeature, {
             style: watershedStyle(),
         }).addTo(map);
+        updateWatershedLegend();
         map.fitBounds(watershedLayer.getBounds(), { padding: [20, 20] });
     }
 
@@ -705,6 +708,7 @@
     function showOutlet(lat, lng, elevation) {
         if (outletMarker) map.removeLayer(outletMarker);
         outletMarker = L.circleMarker([lat, lng], outletStyle()).addTo(map);
+        updateWatershedLegend();
         outletMarker.bindTooltip(
             'Ujście: ' + elevation.toFixed(1) + ' m n.p.m.',
             { permanent: false, direction: 'top' }
@@ -717,6 +721,7 @@
         clearLongestFlowPath();
         clearDivideFlowPath();
         clearMainChannel();
+        updateWatershedLegend();
     }
 
     // ===== Main channel display =====
@@ -749,38 +754,159 @@
             style: mainChannelStyle,
             interactive: false,
         }).addTo(map);
+        updateWatershedLegend();
     }
 
     function clearMainChannel() {
         if (mainChannelLayer) {
             map.removeLayer(mainChannelLayer);
             mainChannelLayer = null;
+            updateWatershedLegend();
         }
     }
 
-    // ===== Divide flow path (longest flow path from watershed boundary) =====
+    // ===== Flow paths: the longest one and the one from the watershed boundary =====
+    //
+    // Both in the warning colour; long dashes and round dots tell them apart,
+    // also where they run along the same cells (the dots are drawn on top).
 
+    var longestFlowPathLayer = null;
     var divideFlowPathLayer = null;
+
+    function longestFlowPathStyle() {
+        return { color: colors().warn, weight: 2.5, opacity: 0.9, dashArray: '12,8' };
+    }
+
+    function divideFlowPathStyle() {
+        return { color: colors().warn, weight: 4, opacity: 0.9, dashArray: '0.1,8', lineCap: 'round' };
+    }
+
+    function showLongestFlowPath(geojson) {
+        clearLongestFlowPath();
+        if (!geojson) return;
+        longestFlowPathLayer = L.geoJSON(geojson, {
+            style: longestFlowPathStyle(),
+            interactive: false,
+        }).addTo(map);
+        if (divideFlowPathLayer) divideFlowPathLayer.bringToFront();
+        updateWatershedLegend();
+    }
+
+    function clearLongestFlowPath() {
+        if (longestFlowPathLayer) {
+            map.removeLayer(longestFlowPathLayer);
+            longestFlowPathLayer = null;
+            updateWatershedLegend();
+        }
+    }
 
     function showDivideFlowPath(geojson) {
         clearDivideFlowPath();
         if (!geojson) return;
         divideFlowPathLayer = L.geoJSON(geojson, {
-            style: {
-                color: colors().warn,
-                weight: 2.5,
-                opacity: 0.85,
-                dashArray: '2,6',
-            },
+            style: divideFlowPathStyle(),
             interactive: false,
         }).addTo(map);
+        updateWatershedLegend();
     }
 
     function clearDivideFlowPath() {
         if (divideFlowPathLayer) {
             map.removeLayer(divideFlowPathLayer);
             divideFlowPathLayer = null;
+            updateWatershedLegend();
         }
+    }
+
+    // ===== Watershed legend =====
+    //
+    // While a watershed is shown, a legend lists the parts of it on the map,
+    // each with a swatch in the style of its layer.
+
+    var watershedLegend = null;
+
+    function escapeAttr(value) {
+        return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    }
+
+    /** SVG swatch of a Leaflet path style: a line, an area (`area`) or a circle marker (`point`). */
+    function pathSwatch(style, shape) {
+        var attrs = ' stroke="' + escapeAttr(style.color) + '" stroke-width="' + style.weight + '"' +
+            ' stroke-opacity="' + style.opacity + '"' +
+            // Leaflet's default caps and joins are round
+            ' stroke-linecap="' + (style.lineCap || 'round') + '" stroke-linejoin="round"' +
+            (style.dashArray ? ' stroke-dasharray="' + style.dashArray + '"' : '');
+        var fill = ' fill="' + escapeAttr(style.fillColor) + '" fill-opacity="' + style.fillOpacity + '"';
+        var body;
+        if (shape === 'area') {
+            body = '<rect x="2" y="3" width="28" height="10" rx="2"' + fill + attrs + '/>';
+        } else if (shape === 'point') {
+            body = '<circle cx="16" cy="8" r="' + style.radius + '"' + fill + attrs + '/>';
+        } else {
+            body = '<line x1="2" y1="8" x2="30" y2="8" fill="none"' + attrs + '/>';
+        }
+        return '<svg class="legend-line" width="32" height="16" viewBox="0 0 32 16" aria-hidden="true">' +
+            body + '</svg>';
+    }
+
+    /** Main channel segments on the map: BDOT10k-matched (`real`) and the rest (`dem`). */
+    function mainChannelKinds() {
+        var kinds = { real: false, dem: false };
+        if (mainChannelLayer) {
+            mainChannelLayer.eachLayer(function (layer) {
+                var props = layer.feature && layer.feature.properties;
+                kinds[props && props.is_real_stream ? 'real' : 'dem'] = true;
+            });
+        }
+        return kinds;
+    }
+
+    function watershedLegendRows() {
+        var rows = [];
+        if (selectionBoundaryLayer || watershedLayer) {
+            rows.push([pathSwatch(watershedStyle(), 'area'), 'Granica zlewni']);
+        }
+        if (outletMarker) rows.push([pathSwatch(outletStyle(), 'point'), 'Ujście']);
+        var channel = mainChannelKinds();
+        if (channel.real) {
+            rows.push([pathSwatch(mainChannelStyle({ properties: { is_real_stream: true } })),
+                'Ciek główny (BDOT10k)']);
+        }
+        if (channel.dem) {
+            rows.push([pathSwatch(mainChannelStyle({ properties: { is_real_stream: false } })),
+                'Ciek główny (z NMT)']);
+        }
+        if (longestFlowPathLayer) {
+            rows.push([pathSwatch(longestFlowPathStyle()), 'Najdłuższa droga spływu']);
+        }
+        if (divideFlowPathLayer) {
+            rows.push([pathSwatch(divideFlowPathStyle()), 'Najdłuższa droga spływu od granicy zlewni']);
+        }
+        return rows;
+    }
+
+    /** Show, update or remove the watershed legend after a change of its layers or the theme. */
+    function updateWatershedLegend() {
+        if (!map) return;
+        var rows = watershedLegendRows();
+        if (!rows.length) {
+            if (watershedLegend) {
+                map.removeControl(watershedLegend);
+                watershedLegend = null;
+            }
+            return;
+        }
+        if (!watershedLegend) {
+            watershedLegend = L.control({ position: 'bottomleft' });
+            watershedLegend.onAdd = function () {
+                return L.DomUtil.create('div', 'layer-legend watershed-legend');
+            };
+            watershedLegend.addTo(map);
+        }
+        watershedLegend.getContainer().innerHTML = '<div class="layer-legend-title">Zlewnia</div>' +
+            rows.map(function (row) {
+                return '<div class="legend-item">' + row[0] + '<span>' + row[1] + '</span></div>';
+            }).join('');
     }
 
     // ===== Profile line styles =====
@@ -918,31 +1044,6 @@
     }
 
     function isDrawing() { return drawMode; }
-
-    // ===== Longest flow path display =====
-
-    var longestFlowPathLayer = null;
-
-    function showLongestFlowPath(geojson) {
-        clearLongestFlowPath();
-        if (!geojson) return;
-        longestFlowPathLayer = L.geoJSON(geojson, {
-            style: {
-                color: colors().warn,
-                weight: 2,
-                opacity: 0.85,
-                dashArray: '8,4',
-            },
-            interactive: false,
-        }).addTo(map);
-    }
-
-    function clearLongestFlowPath() {
-        if (longestFlowPathLayer) {
-            map.removeLayer(longestFlowPathLayer);
-            longestFlowPathLayer = null;
-        }
-    }
 
     // ===== Profile line display =====
 
@@ -1218,8 +1319,8 @@
         if (watershedLayer) watershedLayer.setStyle(watershedStyle());
         if (outletMarker) outletMarker.setStyle(outletStyle());
         if (mainChannelLayer) mainChannelLayer.setStyle(mainChannelStyle);
-        if (longestFlowPathLayer) longestFlowPathLayer.setStyle({ color: c.warn });
-        if (divideFlowPathLayer) divideFlowPathLayer.setStyle({ color: c.warn });
+        if (longestFlowPathLayer) longestFlowPathLayer.setStyle(longestFlowPathStyle());
+        if (divideFlowPathLayer) divideFlowPathLayer.setStyle(divideFlowPathStyle());
         drawMarkers.forEach(function (m) { m.setStyle(pointStyle(5)); });
         if (drawPolyline) drawPolyline.setStyle(drawLineStyle());
         if (profileLine) profileLine.setStyle(profileLineStyle());
@@ -1241,6 +1342,7 @@
         if (streamsLegend) streamsLegend.getContainer().innerHTML = streamsLegendHtml();
         if (hsgLegend) hsgLegend.getContainer().innerHTML = hsgLegendHtml();
         if (landCoverLegend) landCoverLegend.getContainer().innerHTML = landCoverLegendHtml();
+        updateWatershedLegend();
     });
 
     window.Hydrograf.map = {
