@@ -9,7 +9,7 @@ import json
 import math
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class DelineateRequest(BaseModel):
@@ -316,6 +316,8 @@ class HsgStats(BaseModel):
 
 class PmaxtpGridCell(BaseModel):
     """A PMAXTP grid point and the area of its Thiessen polygon in a watershed."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
 
     easting_m: float = Field(..., description="Grid point easting, EPSG:2180 [m]")
     northing_m: float = Field(..., description="Grid point northing, EPSG:2180 [m]")

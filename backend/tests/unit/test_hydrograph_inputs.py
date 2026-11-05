@@ -6,6 +6,7 @@ The fast path (pre-computed morphometry in the request) is used so no
 watershed delineation is needed; PMAXTP lookup is patched.
 """
 
+import json
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -326,6 +327,24 @@ class TestPmaxtpGrid:
         problem = response.json()
         assert problem["details"]["reason"] == "pmaxtp_grid_point_unknown"
         assert problem["details"]["easting_m"] == 282000.0
+
+    @pytest.mark.parametrize("field", ["easting_m", "northing_m", "area_km2"])
+    @pytest.mark.parametrize("value", [float("inf"), float("nan")])
+    def test_a_non_finite_cell_value_is_a_validation_error(self, field, value):
+        grid = [dict(self.GRID[0], **{field: value}), self.GRID[1]]
+        try:
+            response = self._client_with_rows([]).post(
+                "/api/generate-hydrograph",
+                content=json.dumps(_request(pmaxtp_grid=grid)),  # Infinity, NaN
+                headers={"Content-Type": "application/json"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"]["fields"] == [f"/body/pmaxtp_grid/0/{field}"]
 
     def test_without_the_grid_the_depth_is_taken_at_the_point(
         self, client, pmaxtp_45mm
