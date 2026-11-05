@@ -199,6 +199,8 @@ body {
 .defs dt { font-weight: var(--weight-bold); color: var(--text); }
 .defs dd { margin: 0; color: var(--text-2); }
 .defs dt, .defs dd { font-size: clamp(11px, 1.45cqw, 22px); line-height: 1.3; }
+/* Long lists (slide 17): narrower term column and rows so the list clears the note */
+.defs-tight > div { grid-template-columns: minmax(0, 28%) minmax(0, 1fr); padding: 0.5cqw 0; }
 
 /* Map symbols: the same tokens the map draws with */
 .symbols { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; justify-content: space-around; gap: 1.4cqw; flex: 1; }
