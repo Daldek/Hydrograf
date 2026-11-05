@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from hydrolog.morphometry import WatershedParameters
 from hydrolog.operations import hydrograph_generate, uh_nash
 from jsonschema import Draft202012Validator
 
@@ -68,6 +69,10 @@ def _morphometry() -> dict[str, Any]:
         "compactness_coefficient": 2.0509,
         "length_to_centroid_km": 13.6173,
         "hydraulic_length_km": 22.2789,
+        "flow_path_length_km": 22.2789,
+        "flow_path_slope_m_per_m": 0.016038,
+        "overland_length_km": 0.2563,
+        "overland_slope_m_per_m": 0.163324,
     }
 
 
@@ -153,6 +158,8 @@ class TestHydrographHandoff:
                 "hietogram_alpha": 3.5,
                 "hietogram_beta": 2.0,
             },
+            {"uh_model": "scs", "tc_method": "faa", "tc_runoff_coeff": 0.3},
+            {"uh_model": "scs", "tc_method": "kerby", "tc_retardance": 0.4},
             {"uh_model": "snyder", "snyder_ct": 1.4, "snyder_cp": 0.65},
             {"uh_model": "nash", "nash_estimation": "from_lutz"},
             {"uh_model": "nash", "nash_estimation": "from_urban_regression"},
@@ -168,6 +175,8 @@ class TestHydrographHandoff:
             "scs-kirpich-euler-amc3",
             "scs-giandotti-block-amc1",
             "scs-kerby-kirpich-beta-shape",
+            "scs-faa",
+            "scs-kerby",
             "snyder",
             "nash-lutz",
             "nash-urban",
@@ -209,6 +218,53 @@ class TestHydrographHandoff:
         assert doc["provenance"]["rainfall"] == {"source": "user"}
         assert doc["payload"]["timestep_min"] == 15
 
+    @pytest.mark.parametrize(
+        ("options", "coefficients"),
+        [
+            ({"tc_method": "nrcs", "tc_runoff_coeff": 0.3}, {}),
+            ({"tc_method": "faa", "tc_runoff_coeff": 0.3}, {"runoff_coeff": 0.3}),
+            ({"tc_method": "kerby", "tc_retardance": 0.4}, {"retardance": 0.4}),
+            (
+                {"tc_method": "kerby_kirpich", "tc_retardance": 0.6},
+                {"retardance": 0.6},
+            ),
+        ],
+        ids=["nrcs", "faa", "kerby", "kerby-kirpich"],
+    )
+    def test_hydrolog_computes_tc_from_the_inputs_handed_off(
+        self, client, options, coefficients
+    ):
+        doc = _handoff(client, uh_model="scs", **options)
+
+        (subcatchment, _) = doc["payload"]["nodes"]
+        watershed = subcatchment["watershed"]
+        morphometry = _morphometry()
+        for key in (
+            "flow_path_length_km",
+            "flow_path_slope_m_per_m",
+            "overland_length_km",
+            "overland_slope_m_per_m",
+        ):
+            assert watershed[key] == morphometry[key]
+        # C or N only with the method that used it
+        assert {
+            key: watershed[key]
+            for key in ("runoff_coeff", "retardance")
+            if key in watershed
+        } == coefficients
+        # Hydrolog computes tc again by the method; Hydrograf's tc is the provenance's
+        assert subcatchment["runoff"] == {
+            "model": "curve-number",
+            "tc_method": options["tc_method"],
+            "amc": "II",
+            "uh_model": "scs",
+        }
+        origin = doc["provenance"]["runoff"]
+        assert origin["tc_method"] == options["tc_method"]
+        assert origin["tc_min"] == WatershedParameters.from_dict(
+            watershed
+        ).calculate_tc(options["tc_method"])
+
 
 class TestLutzHandoff:
     @pytest.mark.parametrize(
@@ -247,7 +303,7 @@ class TestLutzHandoff:
             lutz_manning_n=watershed["manning_n"],
             lutz_forest_pct=watershed["forest_pct"],
             lutz_urban_pct=watershed["urban_pct"],
-        ).parameters
+        ).result.parameters
         assert (lutz["n"], lutz["k_min"]) == (runoff["nash_n"], runoff["nash_k_min"])
 
 
@@ -314,7 +370,11 @@ class TestDelineatedWatershedHandoff:
             "channel_length_km": 21.3978,
             "channel_slope_m_per_m": 0.016872,
             "cn": 69.6,
+            "overland_length_km": 0.2563,
+            "overland_slope_m_per_m": 0.163324,
             "Lc_km": 13.6173,
             "urban_pct": 2.5,
             "forest_pct": 47.9,
+            "flow_path_length_km": 22.2789,
+            "flow_path_slope_m_per_m": 0.016038,
         }

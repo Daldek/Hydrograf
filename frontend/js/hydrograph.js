@@ -27,9 +27,9 @@
         { id: 'hydro-alpha', key: 'hietogram_alpha', label: '\u03b1', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
         { id: 'hydro-beta', key: 'hietogram_beta', label: '\u03b2', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
         { id: 'hydro-arf', key: 'areal_reduction_factor', label: 'Wsp. redukcji obszarowej', section: 'Hietogram', part: 'pmaxtp', gt: 0, max: 1, optional: true },
-        { id: 'hydro-tc-runoff-coeff', key: 'tc_runoff_coeff', label: 'C (sp\u0142yw)', section: 'Hydrogram', part: 'tc-runoff-coeff-col', min: 0, max: 1, optional: true },
+        // FAA's C and Kerby's N: the user's choice from the source's table, no default
+        { id: 'hydro-tc-runoff-coeff', key: 'tc_runoff_coeff', label: 'C (sp\u0142yw)', section: 'Hydrogram', part: 'tc-runoff-coeff-col', gt: 0, max: 1 },
         { id: 'hydro-tc-retardance', key: 'tc_retardance', label: 'N (op\u00f3r)', section: 'Hydrogram', part: 'tc-retardance-col', min: 0.02, max: 0.8 },
-        { id: 'hydro-tc-overland-length', key: 'tc_overland_length_km', label: 'L sp\u0142ywu', section: 'Hydrogram', part: 'tc-overland-col', gt: 0, max: 5 },
         { id: 'hydro-snyder-ct', key: 'snyder_ct', label: 'Ct', section: 'Hydrogram', part: 'snyder-ct-col', gt: 0 },
         { id: 'hydro-snyder-cp', key: 'snyder_cp', label: 'Cp', section: 'Hydrogram', part: 'snyder-cp-col', gt: 0, max: 1 },
     ];
@@ -62,7 +62,6 @@
             'tc-method-params': c.needsTc,
             'tc-runoff-coeff-col': c.needsTc && c.tc === 'faa',
             'tc-retardance-col': c.needsTc && kerby,
-            'tc-overland-col': c.needsTc && (c.tc === 'faa' || kerby),
             'snyder-ct-col': c.model === 'snyder',
             'snyder-cp-col': c.model === 'snyder',
         };
@@ -80,19 +79,13 @@
      * Check a field the request uses against the API limits:
      * { value, error }; value is null for an empty optional field.
      */
-    function checkNumber(field, c) {
+    function checkNumber(field) {
         var input = document.getElementById(field.id);
         var raw = input.value.trim();
         if (raw === '') {
             // type=number reports '' for text it cannot parse as well
             if (input.validity && input.validity.badInput) return { value: null, error: 'Podaj liczb\u0119.' };
-            // Kerby-Kirpich estimates L when it is empty, FAA and Kerby need it
-            if (field.optional || (field.key === 'tc_overland_length_km' && c.tc === 'kerby_kirpich')) {
-                return { value: null, error: '' };
-            }
-            if (field.key === 'tc_overland_length_km') {
-                return { value: null, error: 'Metoda ' + (c.tc === 'faa' ? 'FAA' : 'Kerby') + ' wymaga d\u0142ugo\u015bci sp\u0142ywu L.' };
-            }
+            if (field.optional) return { value: null, error: '' };
             return { value: null, error: 'Podaj warto\u015b\u0107.' };
         }
         var v = Number(raw.replace(',', '.'));
@@ -133,7 +126,7 @@
         var invalid = [];
         NUMBER_FIELDS.forEach(function (field) {
             var used = inUse(field, c, customRain);
-            var checked = used ? checkNumber(field, c) : { value: null, error: '' };
+            var checked = used ? checkNumber(field) : { value: null, error: '' };
             setFieldError(field, checked.error);
             if (checked.error) invalid.push(field);
             else if (used) values[field.key] = checked.value;
@@ -310,8 +303,8 @@
             }
             if (c.needsTc) {
                 opts.tc_method = c.tc;
-                // Tc extra parameters; an empty optional one is left to the API
-                ['tc_runoff_coeff', 'tc_retardance', 'tc_overland_length_km'].forEach(function (key) {
+                // FAA's C and Kerby's N, for the methods that read them
+                ['tc_runoff_coeff', 'tc_retardance'].forEach(function (key) {
                     if (values[key] != null) opts[key] = values[key];
                 });
             }
@@ -535,9 +528,6 @@
         Object.keys(parts).forEach(function (id) {
             document.getElementById(id).classList.toggle('d-none', !parts[id]);
         });
-        // FAA and Kerby need L; Kerby-Kirpich estimates it when it is empty
-        document.getElementById('hydro-tc-overland-length').placeholder =
-            c.tc === 'kerby_kirpich' ? 'auto' : 'wymagane';
     }
 
     // ── Init ───────────────────────────────────────────────────────────
@@ -549,7 +539,6 @@
         'hydro-nash-estimation',
         'hydro-snyder-ct', 'hydro-snyder-cp',
         'hydro-tc-runoff-coeff', 'hydro-tc-retardance',
-        'hydro-tc-overland-length',
     ];
 
     function init() {

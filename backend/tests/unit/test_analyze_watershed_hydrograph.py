@@ -31,6 +31,8 @@ def watershed() -> dict[str, Any]:
         mean_slope_m_per_m=0.03,
         channel_length_km=2.4,
         channel_slope_m_per_m=0.01,
+        flow_path_length_km=2.6,
+        flow_path_slope_m_per_m=0.0115,
         compactness_coefficient=1.3,
         circularity_ratio=0.6,
         relief_ratio=14.4,

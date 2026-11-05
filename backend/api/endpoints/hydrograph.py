@@ -28,7 +28,6 @@ from hydrolog.precipitation import (
     HietogramResult,
 )
 from hydrolog.runoff import AMC, SCSCN, HydrographGenerator, NashIUH
-from hydrolog.time.concentration import ConcentrationTime
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
@@ -111,11 +110,13 @@ LUTZ_MANNING_N = 0.035
 # Relative position of the peak of the Euler II hyetograph
 EULER_II_PEAK_POSITION = 0.33
 
-# The options of each tc method the request gives (provenance of the hand-off)
-_TC_OPTIONS = {
-    "faa": ("tc_overland_length_km", "tc_runoff_coeff"),
-    "kerby": ("tc_overland_length_km", "tc_retardance"),
-    "kerby_kirpich": ("tc_overland_length_km", "tc_retardance"),
+# The coefficients of the tc methods that only the request gives, Hydrolog's field ->
+# the request's option: FAA's C and Kerby's N are inputs, never derived (Nogat plan
+# 2026-11-05-official-tc-inputs, D4)
+_TC_COEFFICIENTS: dict[str, dict[str, str]] = {
+    "faa": {"runoff_coeff": "tc_runoff_coeff"},
+    "kerby": {"retardance": "tc_retardance"},
+    "kerby_kirpich": {"retardance": "tc_retardance"},
 }
 
 
@@ -336,120 +337,83 @@ def _effective_duration_min(
     return max(n_steps * timestep_min, timestep_min)
 
 
+def _tc_coefficients(request: HydrographRequest, method: str) -> dict[str, float]:
+    """Return the coefficients of a tc method the request gives, in Hydrolog's names.
+
+    Parameters
+    ----------
+    request : HydrographRequest
+        The request.
+    method : str
+        The method of tc.
+
+    Returns
+    -------
+    dict[str, float]
+        ``runoff_coeff`` (``tc_runoff_coeff``) for FAA, ``retardance``
+        (``tc_retardance``) for Kerby and Kerby-Kirpich, when given; nothing for the
+        other methods, which do not use them.
+    """
+    coefficients: dict[str, float] = {}
+    for field, option in _TC_COEFFICIENTS.get(method, {}).items():
+        value = getattr(request, option)
+        if value is not None:
+            coefficients[field] = value
+    return coefficients
+
+
 def _calculate_tc(
     method: str,
-    wp: WatershedParameters,
     morph_dict: dict[str, Any],
+    cn: float,
     request: HydrographRequest,
 ) -> float:
-    """Calculate time of concentration using the specified method.
+    """Compute the time of concentration with Hydrolog from the method's own inputs.
 
-    For kirpich/nrcs/giandotti delegates to WatershedParameters.calculate_tc().
-    For faa/kerby/kerby_kirpich uses ConcentrationTime static methods directly.
+    Hydrolog's ``WatershedParameters.calculate_tc`` takes for each method the
+    watershed fields its source defines, with no substitute (Nogat plan
+    2026-11-05-official-tc-inputs): Kirpich the longest flow path and its slope, NRCS
+    the flow path, the mean slope and CN, Giandotti the main channel and the
+    elevations, FAA and Kerby the overland segment with C or N, Kerby-Kirpich the
+    overland segment, N and the flow path.
+
+    Parameters
+    ----------
+    method : str
+        The method of tc (``tc_method``).
+    morph_dict : dict[str, Any]
+        The morphometry of the computation.
+    cn : float
+        The CN the computation uses (the default CN of a watershed without land
+        cover).
+    request : HydrographRequest
+        The request, with FAA's C and Kerby's N.
+
+    Returns
+    -------
+    float
+        The time of concentration [min].
+
+    Raises
+    ------
+    InvalidRequestError
+        ``tc_inputs_missing`` (400, reason ``missing_field``) when the method lacks
+        an input; ``details.missing`` names the request option (``tc_runoff_coeff``,
+        ``tc_retardance``) or the morphometry field of each.
     """
-    if method == "nrcs":
-        saved_slope = wp.channel_slope_m_per_m
-        saved_length = wp.channel_length_km
-        wp.channel_slope_m_per_m = None  # force mean_slope
-        # Use hydraulic length (longest flow path) per TR-55
-        hydraulic = morph_dict.get("hydraulic_length_km")
-        if hydraulic:
-            wp.channel_length_km = None  # force Hydrolog to use length_km
-            # But length_km is Euclidean — override with hydraulic
-            saved_wlength = wp.length_km
-            wp.length_km = hydraulic
-            tc = float(wp.calculate_tc(method=method))
-            wp.length_km = saved_wlength
-        else:
-            tc = float(wp.calculate_tc(method=method))
-        wp.channel_slope_m_per_m = saved_slope
-        wp.channel_length_km = saved_length
-        return tc
-
-    if method == "kirpich":
-        hydraulic = morph_dict.get("hydraulic_length_km")
-        if hydraulic:
-            saved = wp.channel_length_km
-            saved_wl = wp.length_km
-            wp.channel_length_km = None
-            wp.length_km = hydraulic
-            tc = float(wp.calculate_tc(method=method))
-            wp.length_km = saved_wl
-            wp.channel_length_km = saved
-            return tc
-        return float(wp.calculate_tc(method=method))
-
-    if method == "giandotti":
-        return float(wp.calculate_tc(method=method))
-
-    if method == "faa":
-        runoff_coeff = request.tc_runoff_coeff
-        if runoff_coeff is None:
-            cn = morph_dict.get("cn") or 75
-            s_mm = (25400.0 / cn - 254.0) if cn < 100 else 0.0
-            runoff_coeff = 1.0 - s_mm / (s_mm + 25.4) if s_mm > 0 else 0.95
-        slope = morph_dict.get("mean_slope_m_per_m") or 0.01
-        # FAA requires overland flow length (0.015-3 km), NOT watershed length
-        length = request.tc_overland_length_km
-        if length is None:
-            raise ValueError(
-                "Metoda FAA wymaga podania długości spływu powierzchniowego "
-                "(tc_overland_length_km). Typowy zakres: 0.015-3 km."
-            )
-        return float(
-            ConcentrationTime.faa(
-                length_km=length,
-                slope_m_per_m=slope,
-                runoff_coeff=runoff_coeff,
-            )
-        )
-
-    if method == "kerby":
-        retardance = request.tc_retardance or 0.4
-        slope = morph_dict.get("mean_slope_m_per_m") or 0.01
-        # Kerby requires overland flow length (max ~0.366 km), NOT watershed length
-        length = request.tc_overland_length_km
-        if length is None:
-            raise ValueError(
-                "Metoda Kerby wymaga podania długości spływu powierzchniowego "
-                "(tc_overland_length_km). Typowy zakres: 0.01-0.366 km."
-            )
-        return float(
-            ConcentrationTime.kerby(
-                length_km=length,
-                slope_m_per_m=slope,
-                retardance=retardance,
-            )
-        )
-
-    if method == "kerby_kirpich":
-        retardance = request.tc_retardance or 0.4
-        # Prefer BDOT-based real channel length if available
-        real_channel = morph_dict.get("real_channel_length_km")
-        channel_length = real_channel or morph_dict.get("channel_length_km") or 1.0
-        channel_slope = morph_dict.get("channel_slope_m_per_m") or 0.01
-        # Prefer user-provided overland length, fallback to total - channel
-        if request.tc_overland_length_km is not None:
-            overland_length = request.tc_overland_length_km
-        else:
-            total_length = (
-                morph_dict.get("hydraulic_length_km")
-                or morph_dict.get("length_km")
-                or channel_length
-            )
-            overland_length = max(total_length - channel_length, 0.1)
-        overland_slope = morph_dict.get("mean_slope_m_per_m") or 0.01
-        return float(
-            ConcentrationTime.kerby_kirpich(
-                overland_length_km=overland_length,
-                overland_slope_m_per_m=overland_slope,
-                retardance=retardance,
-                channel_length_km=channel_length,
-                channel_slope_m_per_m=channel_slope,
-            )
-        )
-
-    raise ValueError(f"Unknown tc method: {method}")
+    fields = {**morph_dict, "cn": cn, **_tc_coefficients(request, method)}
+    try:
+        return float(WatershedParameters.from_dict(fields).calculate_tc(method))
+    except InvalidParameterError as e:
+        if e.details.get("reason") != "missing_field":
+            raise
+        options = _TC_COEFFICIENTS.get(method, {})
+        raise InvalidRequestError(
+            "tc_inputs_missing",
+            reason="missing_field",
+            method=method,
+            missing=[options.get(name, name) for name in e.details["missing"]],
+        ) from e
 
 
 def _lutz_inputs(morph_dict: dict[str, Any]) -> dict[str, float]:
@@ -689,7 +653,7 @@ def _storm_shape(request: HydrographRequest) -> dict[str, float]:
 
 
 def _tc_origin(request: HydrographRequest, tc_method: str) -> dict[str, Any]:
-    """Return the method of tc and the options of it the request gave.
+    """Return the method of tc and the coefficients of it the request gave.
 
     Parameters
     ----------
@@ -704,7 +668,7 @@ def _tc_origin(request: HydrographRequest, tc_method: str) -> dict[str, Any]:
         ``tc_method`` and the given ``tc_*`` options the method reads.
     """
     origin: dict[str, Any] = {"tc_method": tc_method}
-    for option in _TC_OPTIONS.get(tc_method, ()):
+    for option in _TC_COEFFICIENTS.get(tc_method, {}).values():
         value = getattr(request, option)
         if value is not None:
             origin[option] = value
@@ -736,12 +700,14 @@ def _handoff_runoff(
     Returns
     -------
     tuple[dict[str, Any], dict[str, Any] | None]
-        The runoff with the values the generator used: tc for SCS, n and K for Nash,
-        L, Lc, Ct and Cp for Snyder. The provenance of ``runoff`` names the method of
-        tc (SCS) or of n and K (Nash) with its parameters; for Lutz it is Hydrolog's
-        own record (``method`` ``lutz``), whose inputs the watershed carries
-        (``_lutz_inputs``), so that Hydrolog estimates n and K again. Snyder derives
-        nothing.
+        The runoff with the values the generator used: the method of tc for SCS
+        (``tc_method``, so that Hydrolog computes tc from the watershed again), n and
+        K for Nash, L, Lc, Ct and Cp for Snyder. The provenance of ``runoff`` names
+        the method of tc with Hydrograf's tc (``tc_min``, for the comparison) and its
+        coefficients (SCS), or the method of n and K (Nash) with its parameters; for
+        Lutz it is Hydrolog's own record (``method`` ``lutz``), whose inputs the
+        watershed carries (``_lutz_inputs``), so that Hydrolog estimates n and K
+        again. Snyder derives nothing.
     """
     if request.uh_model == "nash":
         runoff = curve_number_runoff(
@@ -766,10 +732,14 @@ def _handoff_runoff(
             snyder_cp=uh_params["cp"],
         )
         return runoff, None
-    if tc_method is None:
+    if tc_method is None or tc_min is None:
         raise ValueError("The SCS unit hydrograph needs the time of concentration")
-    runoff = curve_number_runoff("scs", request.amc, tc_min=tc_min)
-    return runoff, {"source": PRODUCER, **_tc_origin(request, tc_method)}
+    runoff = curve_number_runoff("scs", request.amc, tc_method=tc_method)
+    return runoff, {
+        "source": PRODUCER,
+        **_tc_origin(request, tc_method),
+        "tc_min": float(tc_min),
+    }
 
 
 @router.post(
@@ -934,13 +904,20 @@ def generate_hydrograph(
             )
         precip_total_mm = float(precip_result.total_mm)
 
-        # ===== Create Hydrolog objects =====
-        watershed_params = WatershedParameters.from_dict(morph_dict)
+        # ===== Time of concentration (Hydrolog, from the method's own inputs) =====
+        # The area the generator used: the full path takes it from the catchment graph
+        # unrounded, while the morphometry carries it to 0.01 km2
+        watershed_fields = {**morph_dict, "area_km2": area_km2}
         # Nash (Lutz, urban regression) does not use tc
         if request.uh_model != "nash":
             tc_method = request.tc_method
-            tc_min = _calculate_tc(tc_method, watershed_params, morph_dict, request)
+            tc_min = _calculate_tc(tc_method, watershed_fields, cn, request)
             logger.debug(f"Time of concentration: {tc_min:.1f} min ({tc_method})")
+            # FAA's C or Kerby's N, which the hand-off's watershed carries
+            watershed_fields = {
+                **watershed_fields,
+                **_tc_coefficients(request, tc_method),
+            }
         else:
             tc_method = None
             tc_min = None
@@ -1011,9 +988,6 @@ def generate_hydrograph(
         provenance = {"rainfall": rainfall_origin}
         if runoff_origin is not None:
             provenance["runoff"] = runoff_origin
-        # The area the generator used: the full path takes it from the catchment graph
-        # unrounded, while the morphometry carries it to 0.01 km2
-        watershed_fields = {**morph_dict, "area_km2": area_km2}
         if request.uh_model == "nash" and request.nash_estimation == "from_lutz":
             # Lutz's inputs, where Hydrolog's GUI reads them to estimate n and K again
             watershed_fields = {**watershed_fields, **_lutz_inputs(watershed_fields)}

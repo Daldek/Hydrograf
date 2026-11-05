@@ -251,6 +251,16 @@ MESSAGES: Final[dict[str, Message]] = {
         "Use one of: {allowed}.",
         "Użyj jednego z: {allowed}.",
     ),
+    "tc_inputs_missing": Message(
+        "The time of concentration by the {method} method needs: {missing}.",
+        "Czas koncentracji metodą {method} wymaga: {missing}.",
+        "Give tc_runoff_coeff (FAA's C) or tc_retardance (Kerby's N) in the request "
+        "and the missing watershed fields in the morphometry (advanced mode), or "
+        "choose another method.",
+        "Podaj w żądaniu tc_runoff_coeff (C metody FAA) albo tc_retardance (N metody "
+        "Kerby'ego), a brakujące parametry zlewni w morfometrii (tryb zaawansowany), "
+        "albo wybierz inną metodę.",
+    ),
     "invalid_parameters": Message(
         "Invalid parameters: {cause}",
         "Nieprawidłowe parametry: {cause}",

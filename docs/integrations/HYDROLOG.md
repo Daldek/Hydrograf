@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-11-03 (the head of `develop` of Hydrolog, `2eb8bd0`, the release set of Nogat; was `1708a09`)
+**Ostatnia aktualizacja:** 2026-11-05 (Hydrolog `1ffcd6b` of `develop`, the official inputs of tc; was `2eb8bd0`)
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -233,9 +233,9 @@ from hydrolog.time.concentration import ConcentrationTime
 - `nash_estimation` - metoda estymacji Nash IUH: from_lutz, from_urban_regression
 - `snyder_ct` - współczynnik opóźnienia Snydera (default: 1.5)
 - `snyder_cp` - współczynnik szczytu Snydera (default: 0.6)
-- `tc_runoff_coeff` - współczynnik spływu C (dla metody FAA)
-- `tc_retardance` - współczynnik retardacji N (dla metod Kerby i Kerby-Kirpich)
-- `tc_overland_length_km` - długość spływu powierzchniowego [km] (dla metod FAA i Kerby)
+- `tc_runoff_coeff` - współczynnik spływu C metody FAA (0 < C ≤ 1, z tab. I FAA 1970, AC 150/5320-5B); wymagany dla `faa`, nigdy nie liczony z CN
+- `tc_retardance` - współczynnik oporu N Kerby'ego (0,02–0,8, tabela Kerby'ego / TxDOT HDM); wymagany dla `kerby` i `kerby_kirpich`, bez wartości domyślnej
+- `morphometry` - morfometria (tryb zaawansowany), w tym `flow_path_length_km`, `flow_path_slope_m_per_m`, `overland_length_km`, `overland_slope_m_per_m`
 
 **Ograniczenia:**
 - Maksymalna powierzchnia zlewni: 250 km² (limit metody SCS-CN)
@@ -282,7 +282,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Plik | Zmiana | Status |
 |------|--------|--------|
-| `backend/pyproject.toml` | + hydrolog (commit `2eb8bd0`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
+| `backend/pyproject.toml` | + hydrolog (commit `1ffcd6b`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
 | `backend/core/morphometry.py` | `calculate_shape_indices` (wskaźniki kształtu) | ✅ |
 | `backend/core/morphometry_raster.py` | Obliczenia rastrowe (slope, aspect, TWI, Strahler) | ✅ |
 | `backend/core/catchment_graph.py` | In-memory graf, BFS, trace_main_channel | ✅ |
@@ -329,25 +329,22 @@ Od migracji 023 dostępne są dodatkowe parametry długościowe oparte na ście�
 
 ## Metody czasu koncentracji (Tc)
 
-Import: `from hydrolog.time.concentration import ConcentrationTime`
+Tc liczy wyłącznie Hydrolog: `_calculate_tc` (`api/endpoints/hydrograph.py`) buduje `WatershedParameters.from_dict` z morfometrii (obszar użyty w obliczeniu, CN użyty w obliczeniu) i współczynnika metody z żądania i woła `calculate_tc(tc_method)` (Nogat plan `2026-11-05-official-tc-inputs`, D5). Każda metoda bierze pola, które definiuje jej źródło, bez zastępników:
 
-| Metoda | Klucz API | Parametry dodatkowe | Długość | Zastosowanie |
-|--------|-----------|---------------------|---------|--------------|
-| Kirpich | `kirpich` | — | `hydraulic_length_km` (preprocessing) | Małe zlewnie rolnicze |
-| NRCS | `nrcs` | — | `hydraulic_length_km` (preprocessing) | Metoda NRCS (TR-55) |
-| Giandotti | `giandotti` | — | `channel_length_km` | Zlewnie górskie |
-| FAA | `faa` | `tc_runoff_coeff` (C), `tc_overland_length_km` | `tc_overland_length_km` (od użytkownika) | Spływ powierzchniowy (Federal Aviation Agency) |
-| Kerby | `kerby` | `tc_retardance` (N), `tc_overland_length_km` | `tc_overland_length_km` (od użytkownika) | Spływ powierzchniowy z retardance coefficient |
-| Kerby-Kirpich | `kerby_kirpich` | `tc_retardance` (N) | overland: `hydraulic_length_km`, channel: `real_channel_length_km` | Metoda złożona: overland (Kerby) + channel (Kirpich) |
+| Metoda | Klucz API | Pola zlewni (Hydrolog) | Z żądania | Źródło |
+|--------|-----------|------------------------|-----------|--------|
+| Kirpich | `kirpich` | `flow_path_length_km`, `flow_path_slope_m_per_m` | — | Kirpich 1940 (za Fang i in. 2005) |
+| NRCS (lag) | `nrcs` | `flow_path_length_km`, `mean_slope_m_per_m`, `cn` | — | NEH 630 rozdz. 15 |
+| Giandotti | `giandotti` | `channel_length_km`, `elevation_min_m`, `elevation_mean_m`, `area_km2` | — | Giandotti 1934 (za Grimaldi i in. 2012) |
+| FAA | `faa` | `overland_length_km`, `overland_slope_m_per_m`, `runoff_coeff` | `tc_runoff_coeff` → `runoff_coeff` | FAA 1970, AC 150/5320-5B, rys. 7 i tab. I |
+| Kerby | `kerby` | `overland_length_km`, `overland_slope_m_per_m`, `retardance` | `tc_retardance` → `retardance` | Kerby 1959; TxDOT HDM |
+| Kerby-Kirpich | `kerby_kirpich` | `retardance`, `overland_*`, `flow_path_*` (koryto = `flow_path_length_km − overland_length_km`) | `tc_retardance` → `retardance` | Roussel i in. 2005; Cleveland i in. 2012 (TxDOT 0-6382-P1) |
 
-**Źródła długości dla metod tc:**
+**Pola zlewni** mierzy preprocessing (ADR-070): `flow_path_length_km` (= `hydraulic_length_km`, najdłuższa droga spływu od działu wodnego do ujścia), `flow_path_slope_m_per_m` ((wysokość jej początku − wysokość ujścia) / długość), `overland_length_km` i `overland_slope_m_per_m` (odcinek od jej początku do pierwszej komórki sieci cieków progu wyznaczenia). Pole, którego nie da się zmierzyć, jest puste, nie 0 ani wartością domyślną; tryb zaawansowany może je podać.
 
-- **`hydraulic_length_km`** — maksymalna droga spływu z flow direction grid (`pyflwdir.stream_distance()`), obliczana w preprocessingu (migracja 022). Używana przez NRCS i Kirpich.
-- **`real_channel_length_km`** — długość segmentów sieci oznaczonych jako rzeczywiste cieki (BDOT10k matching, ADR-044). Używana przez Kerby-Kirpich jako długość kanału.
-- **`tc_overland_length_km`** — długość spływu powierzchniowego podawana przez użytkownika. Wymagana przez FAA i Kerby (nie może być estymowana automatycznie).
-- **`channel_length_km`** — długość głównego cieku z `trace_main_channel()`. Używana przez Giandotti.
+**Brak danych:** Hydrologowy `InvalidParameterError` z `details.reason` `missing_field` staje się 400 `validation_error` z `details` `{"reason": "missing_field", "method": …, "missing": […]}` (nazwy pól morfometrii albo opcji żądania `tc_runoff_coeff`, `tc_retardance`) i komunikatem „Czas koncentracji metodą … wymaga: …” (`tc_inputs_missing`). Usunięte: wybór pól po stronie Hydrografu (długość hydrauliczna podstawiana pod `length_km`, spadek cieku dla Kirpicha, średni spadek terenu dla FAA i Kerby'ego, C z CN, N 0,4, długość BDOT10k i „L_max − L_k” w Kerby-Kirpich) oraz opcja żądania `tc_overland_length_km` (odcinek powierzchniowy podaje się razem ze spadkiem w `morphometry`).
 
-**Hydrolog 1.0.0.dev0 and these methods (checked on the endpoint against v0.6.3, ADR-060):** `WatershedParameters.calculate_tc("nrcs")` now reads the mean slope before the channel slope, and `calculate_tc("faa")` and `calculate_tc("kerby")` need `overland_length_km` and `overland_slope_m_per_m` of the watershed (`InvalidParameterError`, also a `ValueError`). The endpoint is not affected: `_calculate_tc` forces the mean slope for NRCS and calls `ConcentrationTime.faa`, `kerby` and `kerby_kirpich` with its own arguments, so every `tc_min` of the API is the number it was. `scripts/analyze_watershed.py` accepts `kirpich`, `nrcs` and `giandotti` (`scs` was never a Hydrolog name).
+**Przekazanie (ADR-068):** zlewnia niesie `flow_path_*` i `overland_*` (gdy niepuste) oraz `runoff_coeff`/`retardance` metody, która ich użyła; `runoff` niesie `tc_method` bez `tc_min`, więc Hydrolog liczy tc ponownie; `provenance.runoff.tc_min` zostaje do porównania.
 
 ---
 
@@ -490,9 +487,9 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 - **GitHub:** https://github.com/Daldek/Hydrolog.git
 - **Branch:** `feature/routing-schematic` (the head of the stack `chore/nogat-2.1` and `feature/routing-*`; on GitHub)
-- **Wersja:** 1.0.0.dev0, commit `2eb8bd0c0af7a4219bfe9a0f756c1fa27cc15c52` (the head of `develop`, the release set of Nogat)
+- **Wersja:** 1.0.0.dev0, commit `1ffcd6b6badcd75e7ace9f2d59d4640830e176ff` (`develop` with the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`)
 - **Dokumentacja:** `docs/INTEGRATION.md`
-- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "2eb8bd0c0af7a4219bfe9a0f756c1fa27cc15c52" }`), instalowana przez `uv sync --locked`; the commit is on GitHub, so every machine resolves it; the release replaces it with a tag (REL-5.3)
+- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1ffcd6b6badcd75e7ace9f2d59d4640830e176ff" }`), instalowana przez `uv sync --locked`; the commit is on GitHub, so every machine resolves it; the release replaces it with a tag (REL-5.3)
 
 ---
 

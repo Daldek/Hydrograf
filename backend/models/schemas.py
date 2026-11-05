@@ -580,7 +580,13 @@ class HydrographRequest(BaseModel):
     timestep_min : float, optional
         Time step for calculations [min], default 5.0 (ignored for a custom series)
     tc_method : str, optional
-        Time of concentration method ('kirpich', 'nrcs', 'giandotti')
+        Time of concentration method ('kirpich', 'nrcs', 'giandotti', 'faa', 'kerby',
+        'kerby_kirpich'), default 'nrcs'; Hydrolog computes it from the inputs the
+        method's source defines
+    tc_runoff_coeff : float, optional
+        FAA's runoff coefficient C, required by the 'faa' method; never derived
+    tc_retardance : float, optional
+        Kerby's retardance N, required by 'kerby' and 'kerby_kirpich'; never derived
     hietogram_type : str, optional
         Hietogram type ('beta', 'block', 'euler_ii'), default 'beta'
     uh_model : str, optional
@@ -670,24 +676,20 @@ class HydrographRequest(BaseModel):
     )
     tc_runoff_coeff: float | None = Field(
         None,
-        ge=0.0,
+        gt=0.0,
         le=1.0,
-        description="Runoff coefficient C for FAA method [0-1]. "
-        "If not provided, estimated from CN.",
+        description="Runoff coefficient C of the FAA method (0 < C <= 1; FAA 1970, "
+        "AC 150/5320-5B, table I). Required by tc_method 'faa', never derived; "
+        "without it the request gets 400 tc_inputs_missing.",
     )
     tc_retardance: float | None = Field(
         None,
         ge=0.02,
         le=0.8,
-        description="Kerby retardance coefficient N (0.02=smooth, 0.8=dense forest). "
-        "Default 0.4 (grass/crops).",
-    )
-    tc_overland_length_km: float | None = Field(
-        None,
-        gt=0,
-        le=5.0,
-        description="Overland flow length for FAA/Kerby methods [km]. "
-        "Required for FAA (typ. 0.015-3 km) and Kerby (max 0.366 km).",
+        description="Kerby retardance coefficient N (0.02 smooth impervious - 0.8 "
+        "dense grass, forest; Kerby 1959, TxDOT Hydraulic Design Manual). Required "
+        "by tc_method 'kerby' and 'kerby_kirpich', never derived; without it the "
+        "request gets 400 tc_inputs_missing.",
     )
     morphometry: MorphometricParameters | None = Field(
         None,

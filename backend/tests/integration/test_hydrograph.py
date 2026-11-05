@@ -62,6 +62,12 @@ def _make_morph_dict(cn: int = 75) -> dict[str, Any]:
         "channel_length_km": 6.5,
         "channel_slope_m_per_m": 0.0108,
         "length_to_centroid_km": 3.5,
+        # The longest flow path and its overland segment (ADR-070), the inputs of tc
+        "hydraulic_length_km": 7.0,
+        "flow_path_length_km": 7.0,
+        "flow_path_slope_m_per_m": 0.01,
+        "overland_length_km": 0.2,
+        "overland_slope_m_per_m": 0.05,
         "cn": cn,
         "source": "Hydrograf",
         "crs": "EPSG:2180",
