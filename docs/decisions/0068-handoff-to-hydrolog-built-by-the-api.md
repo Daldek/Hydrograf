@@ -64,4 +64,24 @@ derived runoff parameters (the tc method, the Nash estimation). The front end
 
 ## Errata
 
-None.
+**2026-11-05: Nash by Lutz travels as Lutz.** The hand-off of Nash by Lutz carried n and K
+with the provenance `{"source": "hydrograf", "nash_estimation": "from_lutz", "manning_n":
+0.035}`. Hydrolog's GUI opens Lutz only for `provenance.runoff.method` `lutz` with
+`channel_length_km`, `Lc_km`, `channel_slope_m_per_m` and `manning_n` in the watershed
+(`handoff/mapping.js`, `LUTZ_FIELDS` of `sections/hydrogram/state.js`), so it opened the
+given n and K, and a person who switched to Lutz got Hydrolog's own shares of forest and
+urbanised land. Hydrograf itself computed Lutz with both shares 0 (`NashIUH.from_lutz`
+without `forest_pct` and `urban_pct`). Now Lutz takes the shares from the land cover of
+the watershed, `forest_pct` (class `las`) and `urban_pct` (`zabudowa_mieszkaniowa`,
+`zabudowa_przemysłowa`, `droga`: the built-up and transport land; KZGW 2017, eq. 6.17,
+„udział terenów zurbanizowanych”), which the morphometry of the delineation carries (0
+without land cover). The watershed of the hand-off carries Lutz's inputs, `manning_n`
+(0.035), `forest_pct` and `urban_pct` (keys of `hydrolog-network/1` in the pinned Hydrolog
+and on its `develop`), and `provenance.runoff` is Hydrolog's own record `{"source":
+"hydrograf", "method": "lutz"}`; `runoff` keeps n and K, so `hydrograph generate` still
+recomputes the result. Hydrolog opens such a hand-off in Lutz mode, its `uh nash` estimates
+the same n and K from the watershed (`TestLutzHandoff` of `tests/unit/test_handoff.py`) and
+its comparison agrees: the Kamiennik at 51,01548° N, 15,89074° E (W 57.6%, U 0.9%) gives n
+3.6295 and K 82.849 min in both, „Wynik producenta zgodny z wynikiem Hydrologa”. The other
+Nash estimations keep `nash_estimation` in their provenance: Hydrolog's GUI offers only
+Lutz or the given n and K.

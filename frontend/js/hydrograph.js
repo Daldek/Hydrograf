@@ -455,6 +455,12 @@
             rows.push(['Nash N', meta.nash_n.toFixed(2), 'nash_n']);
             rows.push(['Nash K', meta.nash_k_min.toFixed(1) + ' min', 'nash_k_min']);
         }
+        if (meta.nash_forest_pct != null) {
+            rows.push(['Lasy W', meta.nash_forest_pct.toFixed(1) + '%', 'nash_forest_pct']);
+        }
+        if (meta.nash_urban_pct != null) {
+            rows.push(['Tereny zurbanizowane U', meta.nash_urban_pct.toFixed(1) + '%', 'nash_urban_pct']);
+        }
         if (meta.nash_urban_fraction != null) {
             rows.push(['Urbanizacja U', (meta.nash_urban_fraction * 100).toFixed(1) + '%', 'nash_urban_fraction']);
         }

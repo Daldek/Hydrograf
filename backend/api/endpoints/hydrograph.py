@@ -176,11 +176,13 @@ def _compute_watershed(
         raise CalculationError("boundary_build_failed", reason="boundary_build_failed")
 
     imperviousness = None
+    lutz_shares: dict[str, float] = {}
     try:
         lc_data = get_land_cover_for_boundary(boundary_2180, db)
         if lc_data:
             cn = lc_data["weighted_cn"]
             imperviousness = lc_data.get("weighted_imperviousness")
+            lutz_shares = {key: lc_data[key] for key in ("forest_pct", "urban_pct")}
             logger.info(f"CN={cn} calculated from land cover")
         else:
             cn = DEFAULT_CN
@@ -189,6 +191,7 @@ def _compute_watershed(
         logger.warning(f"Failed to calculate CN from land cover: {e}, using default")
         cn = DEFAULT_CN
         imperviousness = None
+        lutz_shares = {}
 
     outlet_info = get_segment_outlet(segment_idx, DEFAULT_THRESHOLD_M2, db)
     if outlet_info is not None:
@@ -211,6 +214,7 @@ def _compute_watershed(
         db=db,
         outlet_idx=clicked_idx,
     )
+    morph_dict.update(lutz_shares)
 
     # Build WatershedResponse for full-path callers
     outlet_elevation = stats.get("elevation_min_m") or 0.0
@@ -380,6 +384,29 @@ def _calculate_tc(
     raise ValueError(f"Unknown tc method: {method}")
 
 
+def _lutz_inputs(morph_dict: dict[str, Any]) -> dict[str, float]:
+    """Return the inputs of Lutz's estimation besides the main channel.
+
+    Parameters
+    ----------
+    morph_dict : dict[str, Any]
+        The morphometry of the computation.
+
+    Returns
+    -------
+    dict[str, float]
+        ``manning_n`` (``LUTZ_MANNING_N``) and the shares of urbanised land and of
+        forest of the land cover [%], 0 for a watershed without land cover (Hydrolog's
+        default): the arguments of ``NashIUH.from_lutz`` and the fields of Hydrolog's
+        ``WatershedParameters``.
+    """
+    return {
+        "manning_n": LUTZ_MANNING_N,
+        "urban_pct": morph_dict.get("urban_pct") or 0.0,
+        "forest_pct": morph_dict.get("forest_pct") or 0.0,
+    }
+
+
 def _estimate_nash_params(
     request: HydrographRequest,
     morph_dict: dict[str, Any],
@@ -406,13 +433,25 @@ def _estimate_nash_params(
                 reason="missing_morphometry",
                 method="from_lutz",
             )
+        lutz = _lutz_inputs(morph_dict)
         nash = NashIUH.from_lutz(
             L_km=channel_length,
             Lc_km=length_to_centroid,
             slope=channel_slope,
-            manning_n=LUTZ_MANNING_N,
+            manning_n=lutz["manning_n"],
+            urban_pct=lutz["urban_pct"],
+            forest_pct=lutz["forest_pct"],
+            area_km2=morph_dict["area_km2"],
         )
-        logger.info(f"Nash (Lutz): N={nash.n:.2f}, K={nash.k_min:.1f} min")
+        nash_meta["forest_pct"] = lutz["forest_pct"]
+        nash_meta["urban_pct"] = lutz["urban_pct"]
+        logger.info(
+            "Nash (Lutz): N=%.2f, K=%.1f min, W=%.1f%%, U=%.1f%%",
+            nash.n,
+            nash.k_min,
+            lutz["forest_pct"],
+            lutz["urban_pct"],
+        )
     elif request.nash_estimation == "from_urban_regression":
         area_km2 = morph_dict["area_km2"]
         # Compute SCS-CN retention and initial abstraction
@@ -638,19 +677,22 @@ def _handoff_runoff(
     tuple[dict[str, Any], dict[str, Any] | None]
         The runoff with the values the generator used: tc for SCS, n and K for Nash,
         L, Lc, Ct and Cp for Snyder. The provenance of ``runoff`` names the method of
-        tc (SCS) or of n and K (Nash) with its parameters; Snyder derives nothing.
+        tc (SCS) or of n and K (Nash) with its parameters; for Lutz it is Hydrolog's
+        own record (``method`` ``lutz``), whose inputs the watershed carries
+        (``_lutz_inputs``), so that Hydrolog estimates n and K again. Snyder derives
+        nothing.
     """
     if request.uh_model == "nash":
         runoff = curve_number_runoff(
             "nash", request.amc, nash_n=uh_params["n"], nash_k_min=uh_params["k"]
         )
+        if request.nash_estimation == "from_lutz":
+            return runoff, {"source": PRODUCER, "method": "lutz"}
         origin: dict[str, Any] = {
             "source": PRODUCER,
             "nash_estimation": request.nash_estimation,
         }
-        if request.nash_estimation == "from_lutz":
-            origin["manning_n"] = LUTZ_MANNING_N
-        elif request.nash_estimation == "from_urban_regression":
+        if request.nash_estimation == "from_urban_regression":
             for key in ("urban_fraction", "effective_precip_mm", "duration_h"):
                 origin[key] = nash_meta[key]
         elif tc_method is not None:
@@ -909,9 +951,13 @@ def generate_hydrograph(
         provenance = {"rainfall": rainfall_origin}
         if runoff_origin is not None:
             provenance["runoff"] = runoff_origin
+        watershed_fields = morph_dict
+        if request.uh_model == "nash" and request.nash_estimation == "from_lutz":
+            # Lutz's inputs, where Hydrolog's GUI reads them to estimate n and K again
+            watershed_fields = {**morph_dict, **_lutz_inputs(morph_dict)}
         handoff = build_handoff(
             name=name,
-            watershed=watershed_parameters(morph_dict, name, cn=cn),
+            watershed=watershed_parameters(watershed_fields, name, cn=cn),
             watershed_origin=watershed_origin,
             hydrograph=DesignHydrograph(
                 timestep_min=timestep_min,
@@ -969,6 +1015,8 @@ def generate_hydrograph(
                 nash_estimation=nash_meta.get("estimation"),
                 nash_n=nash_meta.get("n"),
                 nash_k_min=nash_meta.get("k_min"),
+                nash_forest_pct=nash_meta.get("forest_pct"),
+                nash_urban_pct=nash_meta.get("urban_pct"),
                 nash_urban_fraction=nash_meta.get("urban_fraction"),
                 nash_effective_precip_mm=nash_meta.get("effective_precip_mm"),
                 nash_duration_h=nash_meta.get("duration_h"),

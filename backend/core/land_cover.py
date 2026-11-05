@@ -9,8 +9,9 @@ direct runoff from rainfall.
 """
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from shapely.geometry import Polygon
 from sqlalchemy import text
@@ -32,6 +33,19 @@ VALID_CATEGORIES = frozenset(
         "woda",
         "inny",
     ]
+)
+
+# The land cover of Lutz's estimation of Nash's n and K (KZGW 2017, eq. 6.17): W is the
+# share of forest, U the share of urbanised land ("udział terenów zurbanizowanych";
+# Lutz 1984: "Bebauungsanteil"). Urbanised land is the built-up and the transport land
+# (BDOT10k PTZB, and PTKM with PTPL as `droga`), as the land register counts it (its
+# "grunty zabudowane i zurbanizowane" include roads and railways: Dz.U. 2021 poz. 1390,
+# § 9 ust. 3) and as KZGW names the impervious surfaces of an urbanised catchment
+# (roads, pavements, car parks and buildings); `inny` (unused land, undeveloped land,
+# dumps) is not.
+FOREST_CATEGORIES: Final = frozenset({"las"})
+URBAN_CATEGORIES: Final = frozenset(
+    {"zabudowa_mieszkaniowa", "zabudowa_przemysłowa", "droga"}
 )
 
 
@@ -172,6 +186,9 @@ def get_land_cover_for_boundary(
         - total_area_m2: Total intersection area
         - weighted_cn: Calculated CN (area-weighted, rounded to 0.1)
         - weighted_imperviousness: Weighted imperviousness fraction
+        - forest_pct: Share of forest, Lutz's W [%] (``FOREST_CATEGORIES``, to 0.1)
+        - urban_pct: Share of urbanised land, Lutz's U [%] (``URBAN_CATEGORIES``,
+          to 0.1)
 
         Returns None if no land cover data is found.
     """
@@ -249,7 +266,34 @@ def get_land_cover_for_boundary(
         "total_area_m2": round(total_area, 1),
         "weighted_cn": weighted_cn,
         "weighted_imperviousness": round(weighted_imperviousness, 3),
+        "forest_pct": _share_pct(result, FOREST_CATEGORIES, total_area),
+        "urban_pct": _share_pct(result, URBAN_CATEGORIES, total_area),
     }
+
+
+def _share_pct(
+    rows: Sequence[Any], categories: frozenset[str], total_area_m2: float
+) -> float:
+    """Return the share of the categories in the land cover of a watershed.
+
+    Parameters
+    ----------
+    rows : Sequence[Any]
+        The rows of the land cover query, with ``category`` and ``total_area_m2``.
+    categories : frozenset[str]
+        The categories counted.
+    total_area_m2 : float
+        Area of all the rows [m2], > 0.
+
+    Returns
+    -------
+    float
+        The share [%], rounded to 0.1 like the shares of the categories.
+    """
+    area_m2: float = sum(
+        row.total_area_m2 for row in rows if row.category in categories
+    )
+    return round(area_m2 / total_area_m2 * 100, 1)
 
 
 def determine_cn(

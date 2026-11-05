@@ -353,6 +353,42 @@ class TestGenerateHydrographEndpoint:
         finally:
             app.dependency_overrides.clear()
 
+    # ---- 6a. test_lutz_uses_the_land_cover_of_the_watershed ----
+
+    def test_lutz_uses_the_land_cover_of_the_watershed(self, client):
+        """Nash by Lutz takes W and U from the land cover of the delineation."""
+        mock_db = _make_precip_db_mock()
+        app.dependency_overrides[get_db] = lambda: mock_db
+        land_cover = {
+            "categories": [],
+            "total_area_m2": 10_000_000.0,
+            "weighted_cn": 70.0,
+            "weighted_imperviousness": 0.08,
+            "forest_pct": 40.0,
+            "urban_pct": 5.0,
+        }
+        payload = {
+            **self._DEFAULT_PAYLOAD,
+            "uh_model": "nash",
+            "nash_estimation": "from_lutz",
+        }
+
+        try:
+            with _HappyPathContext() as mocks:
+                mocks["lc"].return_value = land_cover
+                response = self._post(client, payload)
+
+            assert response.status_code == 200, response.text
+            data = response.json()
+            meta = data["metadata"]
+            morph = data["watershed"]["morphometry"]
+            handed = data["handoff"]["payload"]["nodes"][0]["watershed"]
+            assert (meta["nash_forest_pct"], meta["nash_urban_pct"]) == (40.0, 5.0)
+            assert (morph["forest_pct"], morph["urban_pct"]) == (40.0, 5.0)
+            assert (handed["forest_pct"], handed["urban_pct"]) == (40.0, 5.0)
+        finally:
+            app.dependency_overrides.clear()
+
     # ---- 7. test_no_stream_returns_404 ----
 
     def test_no_stream_returns_404(self, client):

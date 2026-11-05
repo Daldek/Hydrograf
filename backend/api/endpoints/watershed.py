@@ -179,10 +179,12 @@ def _build_watershed_response(
     lc_boundary = boundary_poly.simplify(20.0) if area_km2 > 5 else boundary_poly
     hsg_stats_data = build_hsg_stats(lc_boundary, db)
 
-    # Inject CN
+    # Inject CN and Lutz's shares of forest and urbanised land
     if lc_stats is not None:
         morph_dict["cn"] = lc_stats.weighted_cn
         morph_dict["imperviousness"] = round(lc_stats.weighted_imperviousness, 3)
+        morph_dict["forest_pct"] = lc_stats.forest_pct
+        morph_dict["urban_pct"] = lc_stats.urban_pct
 
     # Flow paths
     flow_path_geojson = None

@@ -35,8 +35,9 @@ HYDROGRAPH_COMMAND: Final = "POST /api/generate-hydrograph"
 # The method of fetch_pmaxtp (its default) that filled precipitation_data
 PMAXTP_METHOD: Final = "POT"
 
-# Hydrograf's morphometry -> the keys of Hydrolog's WatershedParameters, in their
-# order. `source` and `crs` stay out: the provenance names the source.
+# Hydrograf's morphometry, with Lutz's Manning's n that the hydrograph adds -> the keys
+# of Hydrolog's WatershedParameters, in their order. `source` and `crs` stay out: the
+# provenance names the source.
 _WATERSHED_KEYS: Final = {
     "area_km2": "area_km2",
     "perimeter_km": "perimeter_km",
@@ -49,6 +50,9 @@ _WATERSHED_KEYS: Final = {
     "channel_slope_m_per_m": "channel_slope_m_per_m",
     "cn": "cn",
     "length_to_centroid_km": "Lc_km",
+    "manning_n": "manning_n",
+    "urban_pct": "urban_pct",
+    "forest_pct": "forest_pct",
 }
 
 
@@ -94,7 +98,8 @@ def watershed_parameters(
     Parameters
     ----------
     morphometry : Mapping[str, Any]
-        Hydrograf's morphometry (the fields of ``MorphometricParameters``).
+        Hydrograf's morphometry (the fields of ``MorphometricParameters``), with
+        ``manning_n`` when Lutz's method estimated Nash's n and K.
     name : str
         Name of the watershed.
     cn : float, optional
@@ -106,8 +111,9 @@ def watershed_parameters(
     dict[str, Any]
         ``name`` and the known values of ``WatershedParameters``;
         ``length_to_centroid_km`` becomes ``Lc_km``. The other fields of the
-        morphometry (shape and relief indices, the hydraulic length) have no key in
-        Hydrolog's watershed, and ``source`` and ``crs`` are left to the provenance.
+        morphometry (shape and relief indices, the hydraulic length, the
+        imperviousness) have no key in Hydrolog's watershed, and ``source`` and
+        ``crs`` are left to the provenance.
     """
     parameters: dict[str, Any] = {"name": name}
     for key, target in _WATERSHED_KEYS.items():
