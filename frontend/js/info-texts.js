@@ -199,7 +199,7 @@
             sources: 'Kirpich 1940 (za Roussel i in. 2005); KZGW 2017; Baścik 2006',
         },
         flow_path_length_km: {
-            title: 'Najdłuższa droga spływu (od punktu najdalszego hydraulicznie)',
+            title: 'Najdłuższa droga spływu',
             symbol: 'L_{max}',
             definition: 'Długość drogi spływu od najdalszej hydraulicznie komórki NMT zlewni (o największej odległości spływu do ujścia) do ujścia, po kierunkach spływu z NMT. Ta komórka leży na grzbiecie – zwykle na dziale wodnym, ale może leżeć na grzbiecie wewnątrz zlewni, między dwiema dolinami.',
             formula: 'L_{max} = max_i d_i - d_u',
@@ -243,17 +243,17 @@
             sources: 'FAA 1970; Kerby 1959 (za Roussel i in. 2005); TxDOT 2019; Cleveland i in. 2012 (TxDOT 0-6382-P1)',
         },
         divide_flow_path_km: {
-            title: 'Droga spływu z granicy zlewni (kontrolna)',
+            title: 'Najdłuższa droga spływu od granicy zlewni',
             symbol: 'L_{dz}',
-            definition: 'Najdłuższa droga spływu z punktu na granicy zlewni do ujścia, odczytana z rastra odległości spływu w wierzchołkach granicy.',
+            definition: 'Długość drogi spływu od najdalszej hydraulicznie komórki NMT na granicy zlewni (komórki zlewni z sąsiadem poza zlewnią) do ujścia, po kierunkach spływu z NMT. Nigdy nie jest dłuższa od najdłuższej drogi spływu $L_{max}$; jest jej równa, gdy najdalszy hydraulicznie punkt zlewni leży na jej granicy.',
             formula: 'L_{dz} = max_k d_k - d_u',
             variables: [
-                ['d_k', 'droga spływu z k-tego wierzchołka granicy do ujścia obszaru danych', 'km'],
+                ['d_k', 'droga spływu z k-tej komórki na granicy zlewni do ujścia obszaru danych', 'km'],
                 ['d_u', 'droga spływu z ujścia zlewni do ujścia obszaru danych', 'km'],
             ],
             unit: 'km',
-            meaning: 'W metodach Tc długość spływu mierzy się od działu wodnego do ujścia; $L_{dz}$ szacuje tę wielkość z wierzchołków granicy, niezależnie od $L_{max}$.\nW Hydrografie to wartość kontrolna – nie wchodzi do obliczeń $T_c$ ani hydrogramu, które używają $L_{max}$.',
-            note: 'Granica jest wygładzona, więc jej wierzchołki mogą leżeć w komórkach odwadnianych inną drogą; wtedy wynik przekracza najdłuższą drogę spływu i nie opisuje tej zlewni.',
+            meaning: 'W metodach Tc długość spływu mierzy się od działu wodnego do ujścia; gdy najdalszy hydraulicznie punkt leży na grzbiecie wewnątrz zlewni, $L_{dz}$ pokazuje, o ile krótsza jest droga od granicy.\nW Hydrografie nie wchodzi do obliczeń $T_c$ ani hydrogramu, które używają $L_{max}$.',
+            note: 'Granicę tworzą komórki zlewni cząstkowych, z których złożono zlewnię, a nie wygładzona linia granicy na mapie. Pusta wartość – brak rastra zlewni cząstkowych progu, przy którym wyznaczono zlewnię.',
             sources: 'USDA-NRCS 2010 (NEH 630-15)',
         },
         cn: {

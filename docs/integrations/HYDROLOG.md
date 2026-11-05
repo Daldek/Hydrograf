@@ -322,7 +322,7 @@ Różnica może wynosić 2-10x. Channel slope MUSI być obliczany z głównego c
 Od migracji 023 dostępne są dodatkowe parametry długościowe oparte na ścieżkach spływu:
 
 - **`longest_flow_path_km`** — najdłuższa ścieżka spływu w zlewni (hydraulic length). Agregacja `max_flow_dist_m` z subcatchments przez CatchmentGraph. Geometria dostępna jako `longest_flow_path_geojson`
-- **`divide_flow_path_km`** — odległość spływu z punktu na dziale wodnym (boundary) do ujścia. Point sampling `stream_distance.tif` na granicy zlewni
+- **`divide_flow_path_km`** — najdłuższa droga spływu od granicy zlewni do ujścia: największa odległość spływu (`stream_distance.tif`) w komórkach granicy zlewni (komórki jej zlewni cząstkowych z rastra `dem_mosaic_10_subcatchments_<próg>.tif` z sąsiadem poza zlewnią) minus baza ujścia jak dla `longest_flow_path_km`, więc nigdy od niej dłuższa (`core/divide_flow_path.py`). Geometria `divide_flow_path_geojson` po kierunkach spływu D8 do ujścia. Nie wchodzi do Tc
 - **`centroid_flow_path_km`** — odległość spływu z centroidu zlewni do ujścia. Point sampling `stream_distance.tif` na centroidzie. Dostępny dla modeli izochron (wewnętrzny, ukryty w GUI)
 
 ---

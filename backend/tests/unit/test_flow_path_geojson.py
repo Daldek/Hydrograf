@@ -1,11 +1,11 @@
-"""Tests for the length_km label in _build_flow_path_geojson."""
+"""Tests for the length_km label in get_longest_flow_path_geojson."""
 
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
-from core.watershed_service import _build_flow_path_geojson
+from core.watershed_service import get_longest_flow_path_geojson
 
 
 def _mock_cg():
@@ -28,14 +28,8 @@ def _mock_db():
 class TestFlowPathLabel:
     def test_label_uses_outlet_baseline(self):
         """length_km = (max_dist - outlet_flow_dist) / 1000."""
-        feature = _build_flow_path_geojson(
-            _mock_cg(),
-            np.array([0, 1]),
-            1,
-            100000,
-            _mock_db(),
-            "longest_flow_path_geom",
-            "longest_flow_path",
+        feature = get_longest_flow_path_geojson(
+            _mock_cg(), np.array([0, 1]), 1, 100000, _mock_db()
         )
         assert feature["properties"]["length_km"] == pytest.approx(5.0)
 
@@ -43,14 +37,8 @@ class TestFlowPathLabel:
         """NaN baseline -> max_flow_dist_m[outlet] (zanizanie, nie zawyzanie)."""
         cg = _mock_cg()
         cg.get_outlet_flow_dist_m.return_value = float("nan")
-        feature = _build_flow_path_geojson(
-            cg,
-            np.array([0, 1]),
-            1,
-            100000,
-            _mock_db(),
-            "longest_flow_path_geom",
-            "longest_flow_path",
+        feature = get_longest_flow_path_geojson(
+            cg, np.array([0, 1]), 1, 100000, _mock_db()
         )
         # baseline = max_flow_dist_m[outlet_idx=1] = 5000 -> (8000-5000)/1000
         assert feature["properties"]["length_km"] == pytest.approx(3.0)
