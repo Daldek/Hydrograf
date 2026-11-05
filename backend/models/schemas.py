@@ -92,6 +92,8 @@ class MorphometricParameters(BaseModel):
         Main channel slope [m/m]
     cn : float, optional
         SCS Curve Number (0-100); area-weighted values carry one decimal
+    forest_pct, urban_pct : float, optional
+        Shares of forest and of urbanised land [%] in the land cover, Lutz's W and U
     source : str, optional
         Data source identifier
     crs : str, optional
@@ -123,6 +125,15 @@ class MorphometricParameters(BaseModel):
     cn: float | None = Field(None, ge=0, le=100, description="SCS Curve Number")
     imperviousness: float | None = Field(
         None, ge=0, le=1, description="Weighted imperviousness fraction [0-1]"
+    )
+    forest_pct: float | None = Field(
+        None, ge=0, le=100, description="Share of forest [%] (Lutz's W)"
+    )
+    urban_pct: float | None = Field(
+        None,
+        ge=0,
+        le=100,
+        description="Share of urbanised (built-up and transport) land [%] (Lutz's U)",
     )
     source: str | None = Field("Hydrograf", description="Data source")
     crs: str | None = Field("EPSG:2180", description="Coordinate reference system")
@@ -221,6 +232,15 @@ class LandCoverStats(BaseModel):
     weighted_imperviousness: float = Field(
         ..., ge=0, le=1, description="Area-weighted imperviousness fraction"
     )
+    forest_pct: float = Field(
+        ..., ge=0, le=100, description="Share of forest [%] (Lutz's W)"
+    )
+    urban_pct: float = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Share of urbanised (built-up and transport) land [%] (Lutz's U)",
+    )
 
 
 class HsgCategory(BaseModel):
@@ -311,6 +331,14 @@ class DelineateResponse(BaseModel):
     info_message: str | None = Field(
         None,
         description="User-facing info about parameter changes",
+    )
+    handoff: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "The watershed as a hand-off to Hydrolog's GUI: nogat-handoff/1 "
+            "(schemas/nogat/handoff-1.schema.json) carrying hydrolog-network/1, "
+            "without rainfall and result (ADR-068)"
+        ),
     )
 
 
@@ -412,6 +440,48 @@ class CustomPrecipitation(BaseModel):
         return v
 
 
+class MorphometryOrigin(BaseModel):
+    """
+    Where the pre-computed morphometry of a hydrograph request came from.
+
+    The interface sends the morphometry of a delineation; it names the outlet of the
+    watershed and the fields the person changed since (the advanced mode), which the
+    hand-off of the response gives as the provenance of the watershed.
+
+    Attributes
+    ----------
+    latitude : float
+        Outlet latitude of the delineated watershed in WGS84
+    longitude : float
+        Outlet longitude of the delineated watershed in WGS84
+    changed : list[str]
+        Fields of the morphometry the person changed after the delineation
+    """
+
+    latitude: float = Field(
+        ..., ge=-90, le=90, description="Outlet latitude of the delineated watershed"
+    )
+    longitude: float = Field(
+        ..., ge=-180, le=180, description="Outlet longitude of the delineated watershed"
+    )
+    changed: list[str] = Field(
+        default_factory=list,
+        description="Fields of `morphometry` the person changed after the delineation",
+        examples=[["cn"]],
+    )
+
+    @field_validator("changed")
+    @classmethod
+    def morphometry_fields(cls, v: list[str]) -> list[str]:
+        """Accept the names of fields of the morphometry, each once."""
+        for name in v:
+            if name not in MorphometricParameters.model_fields:
+                raise ValueError(f"Nieznane pole morfometrii: {name}.")
+        if len(set(v)) != len(v):
+            raise ValueError("Pole morfometrii podano więcej niż raz.")
+        return v
+
+
 class HydrographRequest(BaseModel):
     """
     Request model for hydrograph generation.
@@ -447,6 +517,8 @@ class HydrographRequest(BaseModel):
         Antecedent moisture condition applied to CN, default 'II'
     custom_precipitation : CustomPrecipitation, optional
         Own rainfall series; replaces PMAXTP and the hietogram
+    morphometry_origin : MorphometryOrigin, optional
+        Outlet and changed fields of the delineation `morphometry` came from
     """
 
     latitude: float = Field(
@@ -558,6 +630,12 @@ class HydrographRequest(BaseModel):
         description="Own rainfall series; replaces PMAXTP and the hietogram "
         "(duration, probability, hietogram_* and timestep_min are then ignored)",
     )
+    morphometry_origin: MorphometryOrigin | None = Field(
+        None,
+        description="Where `morphometry` came from: the outlet of the delineated "
+        "watershed and the fields the person changed since; the hand-off of the "
+        "response names them (without it, it gives the morphometry as the user's)",
+    )
 
     @model_validator(mode="after")
     def design_storm_or_custom(self) -> "HydrographRequest":
@@ -636,6 +714,12 @@ class HydrographMetadata(BaseModel):
     nash_estimation: str | None = Field(None, description="Nash estimation method")
     nash_n: float | None = Field(None, description="Nash N parameter")
     nash_k_min: float | None = Field(None, description="Nash K parameter [min]")
+    nash_forest_pct: float | None = Field(
+        None, description="Share of forest W in Lutz's estimation [%]"
+    )
+    nash_urban_pct: float | None = Field(
+        None, description="Share of urbanised land U in Lutz's estimation [%]"
+    )
     nash_urban_fraction: float | None = Field(
         None, description="Urbanization index used [0-1]"
     )
@@ -663,6 +747,8 @@ class HydrographResponse(BaseModel):
         Water balance from SCS-CN
     metadata : HydrographMetadata
         Calculation metadata
+    handoff : dict
+        The watershed, its rainfall, runoff and result as a hand-off to Hydrolog
     """
 
     watershed: WatershedResponse | None = Field(
@@ -672,6 +758,15 @@ class HydrographResponse(BaseModel):
     hydrograph: HydrographInfo = Field(..., description="Generated hydrograph")
     water_balance: WaterBalance = Field(..., description="Water balance")
     metadata: HydrographMetadata = Field(..., description="Calculation metadata")
+    handoff: dict[str, Any] = Field(
+        ...,
+        description=(
+            "The watershed with the rainfall, runoff and unrounded result of this "
+            "computation as a hand-off to Hydrolog's GUI: nogat-handoff/1 "
+            "(schemas/nogat/handoff-1.schema.json) carrying hydrolog-network/1 "
+            "(ADR-068)"
+        ),
+    )
 
 
 # ===================== TERRAIN PROFILE MODELS =====================

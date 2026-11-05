@@ -26,7 +26,7 @@
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
     <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
-    <link rel="stylesheet" href="css/app.css?v=2f1971c5e0">
+    <link rel="stylesheet" href="css/app.css?v=852d06cabe">
 </head>
 <body>
 <div class="shell">
@@ -456,6 +456,31 @@
                                 </div>
                             </details>
                         </div>
+
+                        <!-- Hand-off of the watershed to Hydrolog (js/handoff.js) -->
+                        <section class="handoff" id="handoff" aria-labelledby="handoff-title" hidden>
+                            <div class="handoff-head">
+                                <h3 id="handoff-title">Przekazanie do Hydrologa</h3>
+                                <span class="meta">nogat-handoff/1</span>
+                            </div>
+                            <p class="handoff-note" id="handoff-note"></p>
+                            <div class="handoff-actions">
+                                <button class="btn sm" type="button" id="handoff-copy" title="Skopiuj przekazanie nogat-handoff/1 do schowka; w Hydrologu: „Wczytaj z Hydrografa” → „Wklej ze schowka”" disabled>
+                                    <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>
+                                    Kopiuj do Hydrologa
+                                </button>
+                                <button class="btn sm" type="button" id="handoff-file" title="Pobierz przekazanie jako plik &lt;nazwa&gt;.handoff.json; w Hydrologu: „Wczytaj z Hydrografa” → „Plik przekazania…”" disabled>
+                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                    Plik przekazania
+                                </button>
+                            </div>
+                            <p class="handoff-status" id="handoff-status" role="status"></p>
+                            <div class="handoff-fallback d-none" id="handoff-fallback">
+                                <label for="handoff-text">Przeglądarka nie dała dostępu do schowka. Tekst przekazania jest zaznaczony: skopiuj go (Ctrl+C) i wklej w Hydrologu („Wczytaj z Hydrografa” → „Wklej ze schowka”).</label>
+                                <textarea id="handoff-text" rows="6" readonly spellcheck="false"></textarea>
+                                <button class="btn sm ghost" type="button" id="handoff-fallback-close">Zamknij</button>
+                            </div>
+                        </section>
                     </div>
                 </div>
             </aside>
@@ -547,16 +572,16 @@
 
 <!-- Application modules -->
 <script defer src="js/diagnostics.js?v=a06afc9760"></script>
-<script defer src="js/api.js?v=5829b2545f"></script>
+<script defer src="js/api.js?v=531e4c0bd8"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
 <script defer src="js/map.js?v=5cdb8201c4"></script>
 <script defer src="js/charts.js?v=8baccb0ef9"></script>
 <script defer src="js/layers.js?v=594951821d"></script>
 <script defer src="js/profile.js?v=adf70f4108"></script>
-<script defer src="js/info-texts.js?v=38c9c8ae53"></script>
+<script defer src="js/info-texts.js?v=1799cd73db"></script>
 <script defer src="js/info.js?v=ee57e1b82f"></script>
-<script defer src="js/hydrograph.js?v=15913fab44"></script>
-<script defer src="js/advanced.js?v=cc8ebe931b"></script>
+<script defer src="js/hydrograph.js?v=580592a7e3"></script>
+<script defer src="js/advanced.js?v=db148b023b"></script>
 <script defer src="js/custom-rain.js?v=e0026dfb92"></script>
 <script defer src="js/depressions.js?v=1ae5396489"></script>
 <script defer src="js/sewer.js?v=5734849f77"></script>
@@ -564,6 +589,7 @@
 <script defer src="js/feedback.js?v=c940b8604e"></script>
 <script defer src="js/welcome.js?v=b1ddbcaaf3"></script>
 <script defer src="js/identify.js?v=c9a25f59fe"></script>
-<script defer src="js/app.js?v=faf009e82d"></script>
+<script defer src="js/handoff.js?v=a933b0e690"></script>
+<script defer src="js/app.js?v=04b14872d6"></script>
 </body>
 </html>

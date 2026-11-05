@@ -140,6 +140,7 @@
         if (probability != null) payload.probability = probability;
         if (opts) {
             if (opts.morphometry) payload.morphometry = opts.morphometry;
+            if (opts.morphometry_origin) payload.morphometry_origin = opts.morphometry_origin;
             if (opts.custom_precipitation) payload.custom_precipitation = opts.custom_precipitation;
             if (opts.amc) payload.amc = opts.amc;
             if (opts.hietogram_type) payload.hietogram_type = opts.hietogram_type;

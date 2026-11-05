@@ -34,6 +34,12 @@ from core.errors import (
     NotFoundError,
     StoreUnavailableError,
 )
+from core.handoff import (
+    build_handoff,
+    delineated_origin,
+    watershed_name,
+    watershed_parameters,
+)
 from core.watershed_service import (
     boundary_to_polygon,
     build_hsg_stats,
@@ -173,10 +179,12 @@ def _build_watershed_response(
     lc_boundary = boundary_poly.simplify(20.0) if area_km2 > 5 else boundary_poly
     hsg_stats_data = build_hsg_stats(lc_boundary, db)
 
-    # Inject CN
+    # Inject CN and Lutz's shares of forest and urbanised land
     if lc_stats is not None:
         morph_dict["cn"] = lc_stats.weighted_cn
         morph_dict["imperviousness"] = round(lc_stats.weighted_imperviousness, 3)
+        morph_dict["forest_pct"] = lc_stats.forest_pct
+        morph_dict["urban_pct"] = lc_stats.urban_pct
 
     # Flow paths
     flow_path_geojson = None
@@ -532,6 +540,33 @@ def _delineate_precise(
     }
 
 
+def _watershed_handoff(watershed: WatershedResponse) -> dict[str, Any] | None:
+    """Return the hand-off of a delineated watershed, without rainfall and result.
+
+    Parameters
+    ----------
+    watershed : WatershedResponse
+        The delineated watershed.
+
+    Returns
+    -------
+    dict[str, Any] or None
+        ``nogat-handoff/1`` of the watershed named after its outlet (ADR-068), None
+        without morphometry.
+    """
+    if watershed.morphometry is None:
+        return None
+    outlet = watershed.outlet
+    name = watershed_name(outlet.latitude, outlet.longitude)
+    return build_handoff(
+        name=name,
+        watershed=watershed_parameters(
+            watershed.morphometry.model_dump(exclude_none=True), name
+        ),
+        watershed_origin=delineated_origin(outlet.latitude, outlet.longitude),
+    )
+
+
 @router.post("/delineate-watershed", response_model=DelineateResponse)
 def delineate_watershed(
     request: DelineateRequest,
@@ -584,6 +619,7 @@ def delineate_watershed(
             upstream_segment_indices=result.get("upstream_segment_indices"),
             display_threshold_m2=result.get("display_threshold_m2"),
             info_message=result.get("info_message"),
+            handoff=_watershed_handoff(result["watershed_response"]),
         )
 
     except HydrografError:

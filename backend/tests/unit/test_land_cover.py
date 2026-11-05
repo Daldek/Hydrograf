@@ -309,6 +309,30 @@ class TestGetLandCoverForBoundary:
         assert result is not None
         assert result["weighted_imperviousness"] == 0.0
 
+    def test_shares_of_forest_and_urbanised_land(self, sample_boundary, mock_db):
+        """Lutz's W is the forest, U the built-up and transport land, to 0.1%."""
+        areas_m2 = {
+            "las": 100,
+            "grunt_orny": 89,
+            "zabudowa_mieszkaniowa": 20,
+            "zabudowa_przemysłowa": 5,
+            "droga": 12,
+            "inny": 40,
+            "woda": 20,
+            "łąka": 14,
+        }
+        mock_db.execute.return_value.fetchall.return_value = [
+            MagicMock(
+                category=category, cn_value=70, imperviousness=0.0, total_area_m2=area
+            )
+            for category, area in areas_m2.items()
+        ]
+
+        result = get_land_cover_for_boundary(sample_boundary, mock_db)
+
+        # Of 300 m2: forest 100 (33.33%), built-up 25 and roads 12 (12.33%)
+        assert (result["forest_pct"], result["urban_pct"]) == (33.3, 12.3)
+
 
 class TestDetermineCN:
     """Tests for determine_cn function (CN hierarchy)."""

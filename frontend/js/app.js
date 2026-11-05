@@ -308,6 +308,7 @@
         if (autoInfo) autoInfo.classList.add('d-none');
         if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
         state.currentWatershed = null;
+        if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
         els.results.classList.add('d-none');
         els.error.classList.add('d-none');
         setInstruction(true);
@@ -368,6 +369,7 @@
         hideError();
         setLoading(true);
         state.currentWatershed = null;
+        if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
 
         // Clear previous watershed display
         Hydrograf.map.clearWatershed();
@@ -446,8 +448,10 @@
                     }
                 }
             });
-
             els.results.classList.remove('d-none');
+
+            // Hand-off to Hydrolog: the watershed now, its hydrograph when it comes
+            if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(data);
 
             // Auto-generate hydrograph on first load
             if (hydroAvail2 && Hydrograf.hydrograph) {
@@ -459,6 +463,7 @@
             Hydrograf.map.clearDelineatePreview();
             Hydrograf.map.clearSelectionBoundary();
             state.currentWatershed = null;
+            if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
             showError(err.message);
         } finally {
             if (isCurrent()) setLoading(false);

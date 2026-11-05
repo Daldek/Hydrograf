@@ -111,6 +111,35 @@ Umożliwić łatwą wymianę danych między Hydrografem (analizy przestrzenne GI
 
 ---
 
+## Przekazanie do GUI Hydrologa (`nogat-handoff/1`, ADR-068)
+
+GUI Hydrologa („Wczytaj z Hydrografa” w „Hydrogramie zlewni”) czyta kopertę Nogata
+`nogat-handoff/1` (kopia: `schemas/nogat/handoff-1.schema.json`) z dokumentem
+`hydrolog-network/1`: jedna zlewnia cząstkowa `Z1` (pola `WatershedParameters`,
+`length_to_centroid_km` jako `Lc_km`) i wylot `OUT`. Buduje je `backend/core/handoff.py`:
+
+- `POST /api/delineate-watershed` → `handoff`: sama zlewnia, bez opadu i wyniku;
+- `POST /api/generate-hydrograph` → `handoff`: zlewnia z `runoff` (SCS-CN z użytym
+  `tc_min`, n i K Nasha albo L, Lc, Ct, Cp Snydera; AMC), `rainfall` (opad projektowy
+  PMAXTP z kształtem hietogramu albo własny szereg), `timestep_min` i `result` (Qmax,
+  czas do szczytu, objętość, `computed_with` z wersją Hydrologa). Wartości są te, których
+  użyło obliczenie, bez zaokrągleń: `hydrograph generate` Hydrologa daje z nich ten sam
+  wynik (`backend/tests/unit/test_handoff.py`).
+
+Pochodzenie (`provenance`): zlewnia z Hydrografa z ujściem i polami zmienionymi w trybie
+zaawansowanym (pole żądania `morphometry_origin`; bez niego `user`), opad `pmaxtp`
+(POT, prawdopodobieństwo, czas trwania, punkt żądania, `interpolation: idw`) albo `user`,
+parametry odpływu (metoda tc, estymacja Nasha). W interfejsie: „Kopiuj do Hydrologa” i
+„Plik przekazania” pod sekcjami panelu „Zlewnia” (`frontend/js/handoff.js`).
+
+Nash by Lutz travels as Lutz (ADR-068, erratum 2026-11-05): the watershed carries Lutz's
+inputs `manning_n` (0.035), `forest_pct` and `urban_pct` (the land cover shares the
+computation used) and the provenance of `runoff` is Hydrolog's own record `{"source":
+"hydrograf", "method": "lutz"}`, so Hydrolog opens Nash in Lutz mode and its `uh nash`
+gives Hydrograf's n and K; `runoff` keeps them for the recomputation.
+
+---
+
 ## Zaimplementowane komponenty
 
 ### 1. Moduł: `backend/core/morphometry.py`
@@ -335,7 +364,7 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 
 | Metoda | Klucz API | Parametry wymagane | Uwagi |
 |--------|-----------|---------------------|-------|
-| Lutz (domyślna) | `from_lutz` | dane fizjograficzne | Estymacja fizjograficzna wg Lutz (1984) |
+| Lutz (domyślna) | `from_lutz` | `channel_length_km`, `length_to_centroid_km`, `channel_slope_m_per_m`; `forest_pct`, `urban_pct` | Lutz (1984) after KZGW 2017, eq. 6.17: Manning's n 0.035 (`LUTZ_MANNING_N`), W = share of forest (`las`), U = share of urbanised land (`zabudowa_mieszkaniowa`, `zabudowa_przemysłowa`, `droga`) from the land cover of the delineation, 0 without it; `area_km2` passed too. The hand-off carries `manning_n`, `forest_pct` and `urban_pct` in the watershed and `{"source": "hydrograf", "method": "lutz"}` as the provenance of `runoff`, so Hydrolog reopens Nash by Lutz (ADR-068, erratum 2026-11-05) |
 | Z Tc | `from_tc` | tc_method | **DEPRECATED od v0.6.2** — zastąpiona przez `from_lutz` |
 | Regresja zurbanizowana | `from_urban_regression` | `nash_urban_fraction` | Rao et al. (1972), wymaga wskaźnika urbanizacji |
 

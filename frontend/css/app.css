@@ -539,6 +539,27 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
     .adv-line .btn.adv-reset { width: var(--control-touch); height: var(--control-touch); }
 }
 
+/* ---------- Hand-off to Hydrolog, below the sections of the results panel (handoff.js) ---------- */
+.handoff {
+    margin-top: var(--space-3); padding: var(--space-3);
+    border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface);
+}
+.handoff-head { display: flex; align-items: baseline; gap: var(--space-2); margin: 0 0 var(--space-1); }
+.handoff-head h3 { margin: 0; font-size: var(--text-base); font-weight: var(--weight-bold); }
+.handoff-head .meta { margin-left: auto; color: var(--text-3); font-size: var(--text-xs); white-space: nowrap; }
+.handoff-note { margin: 0 0 var(--space-3); font-size: var(--text-sm); color: var(--text-2); }
+.handoff-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.handoff-status { margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--ok-ink); }
+.handoff-status:empty { display: none; }
+.handoff-fallback { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+.handoff-fallback label { font-size: var(--text-sm); color: var(--text-2); }
+.handoff-fallback textarea { width: 100%; font-family: var(--font-mono); font-size: var(--text-xs); }
+.handoff-fallback .btn { justify-self: start; }
+@media (max-width: 860px) {
+    .handoff-actions .btn { height: var(--control-touch); }
+    .handoff-fallback textarea { font-size: var(--text-site); }
+}
+
 /* ---------- Feedback dialog ---------- */
 dialog.modal {
     width: min(520px, calc(100% - 32px)); max-height: calc(100vh - 32px); overflow: auto;

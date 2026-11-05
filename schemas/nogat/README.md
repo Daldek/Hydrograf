@@ -13,4 +13,15 @@ Verbatim copies (ERR-3, AGI-4.1) of the files below, from the standard 2.1 of th
   reports REST errors as `application/problem+json` and uses only the registry (see the
   deviations AGI-4.1 and AGI-4.2 in `CLAUDE.md`).
 
+And, outside the standard, from commit `a01097c` of Nogat's `develop` (item 6 of Nogat's
+`docs/plans/2026-11-01-nogat-gui-platform.md`; SHA-256
+`59018fd7f565abee6b674d1985e2eb87e8b8bf6ba6a6d34d6c15b2705bc8231a`, the copy Hydrolog
+reads):
+
+- `handoff-1.schema.json` (Nogat `schemas/exchange/handoff-1.schema.json`): the envelope
+  `nogat-handoff/1` of data handed between the GUIs of the ecosystem. The API writes the
+  hand-off of a watershed to Hydrolog with the payload `hydrolog-network/1`
+  (`backend/core/handoff.py`, ADR-068); `backend/tests/unit/test_handoff.py` validates
+  it against this copy.
+
 Do not edit these files; copy them again when the standard changes.

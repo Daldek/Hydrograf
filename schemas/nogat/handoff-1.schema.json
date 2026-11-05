@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Daldek/Nogat/schemas/exchange/handoff-1.schema.json",
+  "title": "nogat-handoff/1",
+  "description": "Data handed from one tool's GUI to another's (item 6 of docs/plans/2026-11-01-nogat-gui-platform.md): an envelope with provenance around one domain document, the payload. Projects copy this file like schemas/agent/ (ECO-050) and never define the envelope themselves. The envelope does not check the payload's content: a consumer validates it against its owner's schema and refuses kinds it does not take. Unknown fields are allowed: adding optional fields keeps the version (AGI-4.1).",
+  "type": "object",
+  "required": ["schema", "created_at", "producer", "subject", "provenance", "payload"],
+  "properties": {
+    "schema": {"const": "nogat-handoff/1"},
+    "created_at": {
+      "description": "When the producer wrote the hand-off: RFC 3339 date and time with an offset, UTC (`Z`) by preference",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "producer": {"$ref": "#/$defs/producer"},
+    "subject": {
+      "description": "What is handed off, as the person named it (a watershed, a network); shown by the consumer",
+      "type": "string",
+      "minLength": 1
+    },
+    "provenance": {
+      "description": "Where the inputs of the payload came from, one entry per input (`rainfall`, `watershed`, ...); empty when nothing is known. The values the payload holds are not repeated here, only what produced them (e.g. the PMAXTP probability and duration of a design depth)",
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"$ref": "#/$defs/origin"}
+    },
+    "payload": {"$ref": "#/$defs/payload"},
+    "result": {"$ref": "#/$defs/result"}
+  },
+  "$defs": {
+    "tool": {
+      "description": "Lowercase project name of the registry (`hydrolog`, `hydrograf`)",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*$"
+    },
+    "producer": {
+      "description": "The tool that wrote the hand-off",
+      "type": "object",
+      "required": ["tool", "version"],
+      "properties": {
+        "tool": {"$ref": "#/$defs/tool"},
+        "version": {"description": "The producer's package or app version", "type": "string", "minLength": 1},
+        "page": {
+          "description": "Where the person returns to in the producer: a fragment of its page (`#hydrogram`) or an address",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "origin": {
+      "description": "The origin of one input: `source` names it (a tool, a data set such as `pmaxtp`, or `user` for values a person typed); the other fields are its parameters (`probability_percent`, `duration_min`, `latitude`, `longitude`, ...)",
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}
+      }
+    },
+    "payload": {
+      "description": "The domain document handed off, `<tool>-<kind>/<n>` (AGI-4.1), validated by the consumer against its owner's schema. Known payloads: `hydrolog-network/1` (Hydrolog, `src/hydrolog/schemas/hydrolog-network-1.schema.json`): one watershed is one `subcatchment` with the values used and the `outlet`, joined sub-catchments are more nodes",
+      "type": "object",
+      "required": ["schema"],
+      "properties": {
+        "schema": {"type": "string", "pattern": "^[a-z][a-z0-9]*-[a-z0-9][a-z0-9-]*/[1-9][0-9]*$"}
+      }
+    },
+    "result": {
+      "description": "The producer's own result of the payload, for comparison only: a consumer recomputes and shows it beside its own numbers, never as an input. For `hydrolog-network/1` the values of the outlet",
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "command": {
+          "description": "What computed it: a catalog command (`hydrograph generate`) or an endpoint of an app",
+          "type": "string",
+          "minLength": 1
+        },
+        "computed_with": {
+          "description": "The tool and version that computed the result when it is not the producer (Hydrograf computes with Hydrolog)",
+          "type": "object",
+          "required": ["tool", "version"],
+          "properties": {
+            "tool": {"$ref": "#/$defs/tool"},
+            "version": {"type": "string", "minLength": 1}
+          }
+        },
+        "peak_discharge_m3s": {"description": "Peak discharge [m3/s]", "type": "number", "minimum": 0},
+        "time_to_peak_min": {"description": "Time to the peak [min]", "type": "number", "minimum": 0},
+        "total_volume_m3": {"description": "Volume of the hydrograph [m3]", "type": "number", "minimum": 0}
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema": "nogat-handoff/1",
+      "created_at": "2026-11-02T10:15:00Z",
+      "producer": {"tool": "hydrolog", "version": "1.0.0.dev0", "page": "#hydrogram"},
+      "subject": "Kamiennik — Świerzawa",
+      "provenance": {
+        "rainfall": {"source": "pmaxtp", "probability_percent": 1, "duration_min": 720},
+        "watershed": {"source": "hydrograf", "latitude": 51.0154, "longitude": 15.89}
+      },
+      "payload": {
+        "schema": "hydrolog-network/1",
+        "name": "Kamiennik — Świerzawa",
+        "timestep_min": 10,
+        "nodes": [
+          {
+            "id": "Z1",
+            "type": "subcatchment",
+            "watershed": {
+              "area_km2": 37.22,
+              "perimeter_km": 40.89,
+              "length_km": 16.05,
+              "elevation_min_m": 257.3,
+              "elevation_max_m": 475.1,
+              "elevation_mean_m": 363.2,
+              "mean_slope_m_per_m": 0.082,
+              "channel_length_km": 14.78,
+              "channel_slope_m_per_m": 0.0142,
+              "cn": 65
+            },
+            "runoff": {"model": "curve-number", "tc_method": "kirpich", "amc": "II", "uh_model": "scs"},
+            "rainfall": {
+              "kind": "design",
+              "hietogram_type": "beta",
+              "total_mm": 105.0,
+              "duration_min": 720.0,
+              "alpha": 2.0,
+              "beta": 5.0
+            }
+          },
+          {"id": "OUT", "type": "outlet", "from": ["Z1"]}
+        ]
+      },
+      "result": {
+        "command": "hydrograph generate",
+        "peak_discharge_m3s": 60.2148,
+        "time_to_peak_min": 380.0,
+        "total_volume_m3": 1046213.2
+      }
+    }
+  ]
+}
