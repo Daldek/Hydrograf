@@ -1294,6 +1294,8 @@ def build_land_cover_stats(
             ],
             weighted_cn=lc_data["weighted_cn"],
             weighted_imperviousness=lc_data["weighted_imperviousness"],
+            forest_pct=lc_data["forest_pct"],
+            urban_pct=lc_data["urban_pct"],
         )
     except Exception as e:
         logger.debug(f"Land cover stats not available: {e}")

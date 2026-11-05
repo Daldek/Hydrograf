@@ -92,6 +92,8 @@ class MorphometricParameters(BaseModel):
         Main channel slope [m/m]
     cn : float, optional
         SCS Curve Number (0-100); area-weighted values carry one decimal
+    forest_pct, urban_pct : float, optional
+        Shares of forest and of urbanised land [%] in the land cover, Lutz's W and U
     source : str, optional
         Data source identifier
     crs : str, optional
@@ -123,6 +125,15 @@ class MorphometricParameters(BaseModel):
     cn: float | None = Field(None, ge=0, le=100, description="SCS Curve Number")
     imperviousness: float | None = Field(
         None, ge=0, le=1, description="Weighted imperviousness fraction [0-1]"
+    )
+    forest_pct: float | None = Field(
+        None, ge=0, le=100, description="Share of forest [%] (Lutz's W)"
+    )
+    urban_pct: float | None = Field(
+        None,
+        ge=0,
+        le=100,
+        description="Share of urbanised (built-up and transport) land [%] (Lutz's U)",
     )
     source: str | None = Field("Hydrograf", description="Data source")
     crs: str | None = Field("EPSG:2180", description="Coordinate reference system")
@@ -220,6 +231,15 @@ class LandCoverStats(BaseModel):
     )
     weighted_imperviousness: float = Field(
         ..., ge=0, le=1, description="Area-weighted imperviousness fraction"
+    )
+    forest_pct: float = Field(
+        ..., ge=0, le=100, description="Share of forest [%] (Lutz's W)"
+    )
+    urban_pct: float = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Share of urbanised (built-up and transport) land [%] (Lutz's U)",
     )
 
 
@@ -694,6 +714,12 @@ class HydrographMetadata(BaseModel):
     nash_estimation: str | None = Field(None, description="Nash estimation method")
     nash_n: float | None = Field(None, description="Nash N parameter")
     nash_k_min: float | None = Field(None, description="Nash K parameter [min]")
+    nash_forest_pct: float | None = Field(
+        None, description="Share of forest W in Lutz's estimation [%]"
+    )
+    nash_urban_pct: float | None = Field(
+        None, description="Share of urbanised land U in Lutz's estimation [%]"
+    )
     nash_urban_fraction: float | None = Field(
         None, description="Urbanization index used [0-1]"
     )

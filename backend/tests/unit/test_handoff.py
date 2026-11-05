@@ -5,7 +5,8 @@ The hand-offs of POST /api/generate-hydrograph (fast path, PMAXTP lookup patched
 of a delineated watershed validate against the vendored envelope and against the
 network schema of the pinned Hydrolog, and Hydrolog's `hydrograph generate`, which
 Hydrogram zlewni runs on an opened hand-off, recomputes the payload to the hand-off's
-result: the comparison Hydrolog shows agrees.
+result: the comparison Hydrolog shows agrees. Nash by Lutz reopens as Lutz: Hydrolog's
+`uh nash` estimates n and K from the watershed handed over to Hydrograf's values.
 """
 
 import json
@@ -16,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from hydrolog.operations import hydrograph_generate
+from hydrolog.operations import hydrograph_generate, uh_nash
 from jsonschema import Draft202012Validator
 
 from api.endpoints.watershed import _watershed_handoff
@@ -61,6 +62,8 @@ def _morphometry() -> dict[str, Any]:
         "real_channel_length_km": 20.724,
         "cn": 69.6,
         "imperviousness": 0.067,
+        "forest_pct": 47.9,
+        "urban_pct": 2.5,
         "compactness_coefficient": 2.0509,
         "length_to_centroid_km": 13.6173,
         "hydraulic_length_km": 22.2789,
@@ -207,6 +210,47 @@ class TestHydrographHandoff:
         assert doc["payload"]["timestep_min"] == 15
 
 
+class TestLutzHandoff:
+    @pytest.mark.parametrize(
+        ("shares", "used"),
+        [
+            ({"forest_pct": 47.9, "urban_pct": 2.5}, (47.9, 2.5)),
+            ({}, (0.0, 0.0)),
+        ],
+        ids=["land-cover", "without-land-cover"],
+    )
+    def test_hydrologs_lutz_gives_hydrografs_n_and_k(self, client, shares, used):
+        morphometry = _morphometry()
+        del morphometry["forest_pct"], morphometry["urban_pct"]
+        response = _post(
+            client,
+            uh_model="nash",
+            nash_estimation="from_lutz",
+            morphometry={**morphometry, **shares},
+        )
+
+        assert response.status_code == 200, response.text
+        metadata = response.json()["metadata"]
+        doc = response.json()["handoff"]
+        watershed = doc["payload"]["nodes"][0]["watershed"]
+        runoff = doc["payload"]["nodes"][0]["runoff"]
+        assert (metadata["nash_forest_pct"], metadata["nash_urban_pct"]) == used
+        assert (watershed["forest_pct"], watershed["urban_pct"]) == used
+        assert watershed["manning_n"] == 0.035
+        assert doc["provenance"]["runoff"] == {"source": "hydrograf", "method": "lutz"}
+        # What Hydrolog's GUI runs when it opens Nash by Lutz (`uh nash`, lutzOptions)
+        lutz = uh_nash(
+            area_km2=watershed["area_km2"],
+            lutz_length_km=watershed["channel_length_km"],
+            lutz_centroid_length_km=watershed["Lc_km"],
+            lutz_slope_m_per_m=watershed["channel_slope_m_per_m"],
+            lutz_manning_n=watershed["manning_n"],
+            lutz_forest_pct=watershed["forest_pct"],
+            lutz_urban_pct=watershed["urban_pct"],
+        ).parameters
+        assert (lutz["n"], lutz["k_min"]) == (runoff["nash_n"], runoff["nash_k_min"])
+
+
 class TestWatershedOrigin:
     def test_delineated_morphometry_names_the_outlet_and_the_changed_fields(
         self, client
@@ -271,4 +315,6 @@ class TestDelineatedWatershedHandoff:
             "channel_slope_m_per_m": 0.016872,
             "cn": 69.6,
             "Lc_km": 13.6173,
+            "urban_pct": 2.5,
+            "forest_pct": 47.9,
         }
