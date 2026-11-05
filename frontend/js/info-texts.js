@@ -59,8 +59,8 @@
     var S = ['S', 'retencja maksymalna zlewni, $S = 25400/CN - 254$', 'mm'];
     var TC = ['T_c', 'czas koncentracji', 'min'];
     var DT = ['Δt', 'krok czasowy obliczeń: 5 min, przy własnej serii opadu – jej krok', 'min'];
-    var L_MAX = ['L_{max}', 'najdłuższa droga spływu od działu wodnego do ujścia', 'km'];
-    var H_POCZ = ['H_{pocz}', 'wysokość początku najdłuższej drogi spływu na dziale wodnym (najdalszej komórki NMT zlewni)', 'm n.p.m.'];
+    var L_MAX = ['L_{max}', 'najdłuższa droga spływu od punktu zlewni najdalszego hydraulicznie do ujścia', 'km'];
+    var H_POCZ = ['H_{pocz}', 'wysokość początku najdłuższej drogi spływu (najdalszej hydraulicznie komórki NMT zlewni, zwykle na dziale wodnym)', 'm n.p.m.'];
     var L_SP = ['L_{sp}', 'długość spływu powierzchniowego: od początku najdłuższej drogi spływu do sieci cieków z NMT', 'km'];
 
     var BETA_PEAK = {
@@ -104,7 +104,7 @@
         length_km: {
             title: 'Długość zlewni',
             symbol: 'L',
-            definition: 'Długość zlewni mierzona wzdłuż najdłuższej drogi spływu od działu wodnego do ujścia, po kierunkach spływu z NMT. Gdy jej brak – największa odległość w linii prostej od ujścia do granicy zlewni.',
+            definition: 'Długość zlewni mierzona wzdłuż najdłuższej drogi spływu od punktu najdalszego hydraulicznie do ujścia, po kierunkach spływu z NMT. Gdy jej brak – największa odległość w linii prostej od ujścia do granicy zlewni.',
             unit: 'km',
             meaning: 'Dłuższa droga spływu wydłuża czas koncentracji i opóźnienie odpływu, co daje późniejszy i niższy szczyt.\nW Hydrografie wchodzi do wskaźników kształtu $C_w$, $C_f$, $C_l$ i do średniej szerokości $B$. Metody Tc nie biorą $L$: NRCS, Kirpich i Kerby-Kirpich używają najdłuższej drogi spływu $L_{max}$ (gdy jest zmierzona – ta sama wartość), a Giandotti – tylko długości cieku głównego $L_g$.',
             note: 'W klasycznych wskaźnikach kształtu (Schumm, Chorley) długość zlewni to odcinek prosty; droga spływu jest dłuższa, więc wartości wskaźników nie są wprost porównywalne z literaturą.',
@@ -199,9 +199,9 @@
             sources: 'Kirpich 1940 (za Roussel i in. 2005); KZGW 2017; Baścik 2006',
         },
         flow_path_length_km: {
-            title: 'Najdłuższa droga spływu (od działu wodnego)',
+            title: 'Najdłuższa droga spływu (od punktu najdalszego hydraulicznie)',
             symbol: 'L_{max}',
-            definition: 'Długość drogi spływu od najdalszej komórki NMT zlewni do ujścia, po kierunkach spływu z NMT.',
+            definition: 'Długość drogi spływu od najdalszej hydraulicznie komórki NMT zlewni (o największej odległości spływu do ujścia) do ujścia, po kierunkach spływu z NMT. Ta komórka leży na grzbiecie – zwykle na dziale wodnym, ale może leżeć na grzbiecie wewnątrz zlewni, między dwiema dolinami.',
             formula: 'L_{max} = max_i d_i - d_u',
             variables: [
                 ['d_i', 'najdłuższa droga spływu z i-tej zlewni cząstkowej do ujścia całego obszaru danych', 'km'],
@@ -214,7 +214,7 @@
         flow_path_slope_m_per_m: {
             title: 'Spadek najdłuższej drogi spływu',
             symbol: 'I_{dr}',
-            definition: 'Różnica wysokości między początkiem najdłuższej drogi spływu na dziale wodnym a ujściem, podzielona przez długość tej drogi.',
+            definition: 'Różnica wysokości między początkiem najdłuższej drogi spływu (punktem zlewni najdalszym hydraulicznie) a ujściem, podzielona przez długość tej drogi.',
             formula: f`I_{dr} = \frac{H_{pocz} - H_{min}}{1000 · L_{max}}`,
             variables: [H_POCZ, ['H_{min}', 'najniższa wysokość terenu w zlewni, przyjmowana jako wysokość ujścia', 'm n.p.m.'], L_MAX],
             unit: 'm/m (w tabeli w %)',
@@ -225,7 +225,7 @@
         overland_length_km: {
             title: 'Spływ powierzchniowy – długość',
             symbol: 'L_{sp}',
-            definition: 'Długość początkowego odcinka najdłuższej drogi spływu, na którym woda spływa po stoku: od jej początku na dziale wodnym, po kierunkach spływu z NMT, do pierwszej komórki sieci cieków z NMT wyznaczonej przy progu akumulacji, przy którym wyznaczono zlewnię.',
+            definition: 'Długość początkowego odcinka najdłuższej drogi spływu, na którym woda spływa po stoku: od jej początku (punktu zlewni najdalszego hydraulicznie), po kierunkach spływu z NMT, do pierwszej komórki sieci cieków z NMT wyznaczonej przy progu akumulacji, przy którym wyznaczono zlewnię.',
             unit: 'km',
             meaning: 'Spływ po stoku jest wolny, więc nawet krótki jego odcinek może stanowić dużą część czasu dopływu w małej zlewni. W metodzie Kerby’ego to droga od najdalszego punktu do wyraźnego koryta, w metodzie FAA – do wpustu.\nW Hydrografie to długość metod FAA i Kerby oraz części spływu po stoku w Kerby-Kirpich (część korytowa ma długość $L_{max} - L_{sp}$). Można ją zmienić w trybie zaawansowanym – wtedy sprawdź też spadek.',
             note: 'Koniec odcinka zależy od progu sieci cieków: im większy próg, tym dalej od działu wodnego zaczyna się sieć i tym dłuższy odcinek. Przy progach 1 i 10 km² obejmuje on też fragmenty, w których płynie już ciek, i może przekraczać 0,366 km (1200 ft) – górną granicę danych Kerby’ego; nomogram FAA sięga 0,24 km, dłuższe odcinki liczy się wzorem. Hydrograf mierzy odcinek wzdłuż drogi spływu, Kerby – w linii prostej, równolegle do spadku. Pusta wartość – odcinka nie zmierzono (np. początek drogi leży już w sieci cieków); FAA, Kerby i Kerby-Kirpich zgłaszają wtedy brak danych.',
@@ -234,7 +234,7 @@
         overland_slope_m_per_m: {
             title: 'Spływ powierzchniowy – spadek',
             symbol: 'I_{sp}',
-            definition: 'Spadek odcinka spływu powierzchniowego: różnica wysokości jego początku na dziale wodnym i końca (pierwszej komórki sieci cieków z NMT) podzielona przez jego długość.',
+            definition: 'Spadek odcinka spływu powierzchniowego: różnica wysokości jego początku (punktu zlewni najdalszego hydraulicznie) i końca (pierwszej komórki sieci cieków z NMT) podzielona przez jego długość.',
             formula: f`I_{sp} = \frac{H_{pocz} - H_k}{1000 · L_{sp}}`,
             variables: [H_POCZ, ['H_k', 'wysokość pierwszej komórki sieci cieków na najdłuższej drodze spływu', 'm n.p.m.'], L_SP],
             unit: 'm/m (w tabeli w %)',
@@ -985,7 +985,7 @@
             definition: 'Opóźnienie zlewni z równania NRCS (Mockus 1961; NEH 630, rozdz. 15) przeliczone na czas koncentracji, $T_c = t_{lag}/0,6$. Opór powierzchni zlewni ujmuje przez CN.',
             formula: f`T_c = 0,01416 · L_{max}^{0,8} (S + 25,4)^{0,7} I_{śr}^{-0,5}`,
             variables: [
-                ['L_{max}', 'najdłuższa droga spływu od działu wodnego do ujścia', 'm'],
+                ['L_{max}', 'najdłuższa droga spływu od punktu zlewni najdalszego hydraulicznie do ujścia', 'm'],
                 S,
                 ['I_{śr}', 'średni spadek terenu zlewni (nie spadek drogi spływu)', '%'],
             ],
@@ -997,7 +997,7 @@
         'hydro-tc-method:kirpich': {
             summary: 'Małe zlewnie rolnicze z wyraźnym korytem (dane: 7 zlewni w Tennessee, 0,005–0,45 km², spadki 3–10%).',
             title: 'Kirpich (1940)',
-            definition: 'Wzór empiryczny dla małych zlewni rolniczych z wyraźnymi korytami; opisuje głównie czas przepływu korytem. Długość i spadek mierzy się wzdłuż drogi wody od ujścia do najdalszego punktu na dziale wodnym.',
+            definition: 'Wzór empiryczny dla małych zlewni rolniczych z wyraźnymi korytami; opisuje głównie czas przepływu korytem. Długość i spadek mierzy się wzdłuż drogi wody od ujścia do punktu zlewni najdalszego hydraulicznie.',
             formula: f`T_c = 3,981 · L_{max}^{0,77} · I_{dr}^{-0,385}`,
             variables: [
                 L_MAX,
@@ -1052,7 +1052,7 @@
         'hydro-tc-method:kerby_kirpich': {
             summary: 'Spływ po stoku (Kerby) + koryto (Kirpich); weryfikacja: 92 zlewnie w Teksasie, 0,65–388 km².',
             title: 'Kerby-Kirpich',
-            definition: 'Metoda złożona: czas spływu po stoku (Kerby) plus czas przepływu korytem (Kirpich). Koryto to najdłuższa droga spływu od działu wodnego do ujścia bez odcinka spływu po stoku, a jego spadek liczy się na całej tej drodze.',
+            definition: 'Metoda złożona: czas spływu po stoku (Kerby) plus czas przepływu korytem (Kirpich). Koryto to najdłuższa droga spływu od punktu zlewni najdalszego hydraulicznie do ujścia bez odcinka spływu po stoku, a jego spadek liczy się na całej tej drodze.',
             formula: [
                 'T_c = t_{sp} + t_k',
                 f`t_{sp} = 36,37 · (L_{sp} N)^{0,467} I_{sp}^{-0,2335}`,
@@ -1063,7 +1063,7 @@
                 ['N', 'współczynnik oporu (pole „N (opór)”)', '–'],
                 ['I_{sp}', 'spadek odcinka spływu powierzchniowego', 'm/m'],
                 L_MAX,
-                ['I_{dr}', 'spadek najdłuższej drogi spływu od działu wodnego do ujścia', 'm/m'],
+                ['I_{dr}', 'spadek najdłuższej drogi spływu od punktu zlewni najdalszego hydraulicznie do ujścia', 'm/m'],
             ],
             unit: 'min',
             meaning: 'Rozdziela wolny spływ po stoku i szybszy przepływ korytem – kilometr spływu po stoku trwa zwykle znacznie dłużej niż kilometr w korycie. Dla 92 zlewni w Teksasie dawała $T_c$ zgodne z czasami do szczytu obserwowanych wezbrań.\nW Hydrografie drogę wody dzieli sieć cieków z NMT: odcinek do jej pierwszej komórki to spływ po stoku ($L_{sp}$, $I_{sp}$), reszta $L_{max} - L_{sp}$ to koryto ze spadkiem całej drogi $I_{dr}$ – jak w przykładzie TxDOT; $L_{max}$ musi być większa od $L_{sp}$. $N$ – z wymaganego pola „N (opór)”.',

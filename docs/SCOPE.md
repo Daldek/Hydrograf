@@ -68,7 +68,7 @@ This document defines precisely:
 - Length of the main stream [km]
 - Hydraulic length of the watershed (hydraulic_length_km) [km]
 - Actual length of the main channel (real_channel_length_km) [km]
-- Flow paths: the longest one, from the watershed divide, from the centroid [km]
+- Flow paths: the longest one, from the hydraulically most distant point (usually on the divide), from the centroid [km]
 - Weighted imperviousness (weighted_imperviousness) [-]
 
 **Geometric characteristics:**

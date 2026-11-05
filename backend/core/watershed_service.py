@@ -1056,9 +1056,9 @@ def build_morph_dict_from_graph(
     # Flow path parameters
     longest_flow_path_km = stats.get("hydraulic_length_km")
 
-    # The longest flow path from the divide to the outlet and its slope from
-    # the elevation of its head (Kirpich's L and S; the flow length of NEH 630
-    # ch. 15), with the overland segment of its head
+    # The longest flow path from the hydraulically most distant point to the
+    # outlet and its slope from the elevation of its head (Kirpich's L and S;
+    # the flow length of NEH 630 ch. 15), with the overland segment of its head
     flow_path_length_km = (
         hydraulic_len if hydraulic_len is not None and hydraulic_len > 0 else None
     )

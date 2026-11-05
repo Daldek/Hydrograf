@@ -148,7 +148,7 @@
             ['Długość cieku głównego', formatValue(m.channel_length_km, 'km', 2), 'channel_length_km'],
             ['Długość cieku wg BDOT10k', formatValue(m.real_channel_length_km, 'km', 2), 'real_channel_length_km'],
             ['Spadek cieku głównego', formatSlope(m.channel_slope_m_per_m), 'channel_slope_m_per_m'],
-            ['Najdłuższa droga spływu (od działu wodnego)', formatValue(m.flow_path_length_km, 'km', 2), 'flow_path_length_km'],
+            ['Najdłuższa droga spływu (od punktu najdalszego hydraulicznie)', formatValue(m.flow_path_length_km, 'km', 2), 'flow_path_length_km'],
             ['Spadek najdłuższej drogi spływu', formatSlope(m.flow_path_slope_m_per_m), 'flow_path_slope_m_per_m'],
             ['Spływ powierzchniowy – długość', formatValue(m.overland_length_km, 'km', 3), 'overland_length_km'],
             ['Spływ powierzchniowy – spadek', formatSlope(m.overland_slope_m_per_m), 'overland_slope_m_per_m'],
