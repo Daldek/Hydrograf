@@ -8,7 +8,9 @@ The longest flow path starts at the cell of the watershed farthest from the
 outlet along the flow (``<stem>_04b_stream_distance.tif``), the divide flow
 path at its farthest boundary cell. Both follow the D8 flow directions
 (``<stem>_03_flowdir.tif``) to the first cell outside the watershed, where the
-longest flow path of the outlet sub-catchment ends too.
+longest flow path of the outlet sub-catchment ends too. D8 paths coincide
+downstream of their first common cell, so the line of the divide flow path
+ends there, and there is none when both start at the same cell.
 
 The length of a path is the flow distance of its first cell minus the flow
 distance at the outlet of the watershed, the baseline of the longest flow path.
@@ -49,12 +51,17 @@ class FlowPath:
     ----------
     length_km : float
         Flow distance from the first cell to the outlet [km].
+    own_length_km : float
+        Flow distance from the first cell to the last cell of the line [km];
+        less than ``length_km`` when the line stops where it joins the
+        longest flow path.
     coords_2180 : list[tuple[float, float]]
-        Cell centres in EPSG:2180, from the first cell to the outlet, where
-        the flow direction changes (and both ends).
+        Cell centres in EPSG:2180, from the first cell to the end of the line,
+        where the flow direction changes (and both ends).
     """
 
     length_km: float
+    own_length_km: float
     coords_2180: list[tuple[float, float]]
 
 
@@ -67,11 +74,15 @@ class WatershedFlowPaths:
     longest : FlowPath | None
         From the cell of the watershed farthest from the outlet.
     divide : FlowPath | None
-        From the boundary cell of the watershed farthest from the outlet.
+        From the boundary cell of the watershed farthest from the outlet to
+        its first cell on the longest path; None when it is the longest path.
+    divide_is_longest : bool
+        The farthest boundary cell is the head of the longest path.
     """
 
     longest: FlowPath | None
     divide: FlowPath | None
+    divide_is_longest: bool = False
 
 
 NO_FLOW_PATHS = WatershedFlowPaths(longest=None, divide=None)
@@ -228,26 +239,36 @@ def path_coords(
     return coords
 
 
-def _flow_path_from(
-    starts: np.ndarray,
-    member: np.ndarray,
-    fdir: np.ndarray,
+def _farthest(starts: np.ndarray, flow_dist: np.ndarray) -> tuple[int, int] | None:
+    """Cell of ``starts`` farthest from the outlet, None without one."""
+    if not starts.any():
+        return None
+    row, col = np.unravel_index(
+        int(np.argmax(np.where(starts, flow_dist, -np.inf))), starts.shape
+    )
+    return int(row), int(col)
+
+
+def _flow_path(
+    cells: Sequence[tuple[int, int]],
     flow_dist: np.ndarray,
     baseline_m: float,
     transform: Affine,
+    own_end_m: float | None = None,
 ) -> FlowPath | None:
-    """Flow path from the cell of ``starts`` farthest from the outlet."""
-    if not starts.any():
-        return None
-    head = np.unravel_index(
-        int(np.argmax(np.where(starts, flow_dist, -np.inf))), member.shape
-    )
-    length_m = float(flow_dist[head]) - baseline_m
+    """Flow path of ``cells``; None when its head is not upstream of the outlet.
+
+    ``own_end_m`` is the flow distance of the last cell when ``cells`` is only
+    the part of a path from its head (the default: ``baseline_m``).
+    """
+    head_m = float(flow_dist[cells[0]])
+    length_m = head_m - baseline_m
     if length_m <= 0:
         return None
-    cells = trace_flow_path((int(head[0]), int(head[1])), member, fdir, flow_dist)
+    own_m = length_m if own_end_m is None else head_m - own_end_m
     return FlowPath(
         length_km=round(length_m / 1000.0, 4),
+        own_length_km=round(own_m / 1000.0, 4),
         coords_2180=path_coords(cells, transform),
     )
 
@@ -283,7 +304,10 @@ def compute_flow_paths(
     -------
     WatershedFlowPaths
         A path is None when the watershed has no cell in ``labels_path`` or
-        the first cell of the path is not upstream of the outlet.
+        the first cell of the path is not upstream of the outlet. The divide
+        path is also None when it starts at the head of the longest path
+        (``divide_is_longest``); otherwise its line ends at its first cell on
+        the longest path, downstream of which D8 paths coincide.
     """
     labels = np.asarray(segment_idxs, dtype=np.int64)
     if labels.size == 0 or np.isnan(baseline_m):
@@ -314,14 +338,29 @@ def compute_flow_paths(
         transform = window_transform(win, labels_src.transform)
 
     starts = member if nodata is None else member & (flow_dist != nodata)
-    return WatershedFlowPaths(
-        longest=_flow_path_from(starts, member, fdir, flow_dist, baseline_m, transform),
-        divide=_flow_path_from(
-            starts & boundary_mask(member),
-            member,
-            fdir,
+    longest_head = _farthest(starts, flow_dist)
+    if longest_head is None:
+        return NO_FLOW_PATHS
+    longest_cells = trace_flow_path(longest_head, member, fdir, flow_dist)
+    longest = _flow_path(longest_cells, flow_dist, baseline_m, transform)
+    divide_head = _farthest(starts & boundary_mask(member), flow_dist)
+    if divide_head is None:
+        return WatershedFlowPaths(longest=longest, divide=None)
+    if divide_head == longest_head:
+        return WatershedFlowPaths(
+            longest=longest, divide=None, divide_is_longest=longest is not None
+        )
+    divide_cells = trace_flow_path(divide_head, member, fdir, flow_dist)
+    on_longest = set(longest_cells)
+    meet = next((i for i, cell in enumerate(divide_cells) if cell in on_longest), None)
+    if meet is None:
+        divide = _flow_path(divide_cells, flow_dist, baseline_m, transform)
+    else:
+        divide = _flow_path(
+            divide_cells[: meet + 1],
             flow_dist,
             baseline_m,
             transform,
-        ),
-    )
+            own_end_m=float(flow_dist[divide_cells[meet]]),
+        )
+    return WatershedFlowPaths(longest=longest, divide=divide)

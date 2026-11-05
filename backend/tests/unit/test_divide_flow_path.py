@@ -161,14 +161,13 @@ class TestDivideFlowPath:
         assert paths.divide.length_km < longest_km
         assert paths.divide.coords_2180[0] == pytest.approx(_centre(2, 1))
 
-    def test_line_ends_where_the_flow_leaves_the_watershed(self, rasters):
+    def test_head_on_the_longest_path_has_no_own_stretch(self, rasters):
+        # The spiral passes (2, 1) on its way from the centre to the outlet.
         path = _paths([1, 2], rasters).divide
 
         assert path is not None
-        assert path.coords_2180[-1] == pytest.approx(_centre(1, 0))
-        assert LineString(path.coords_2180).length == pytest.approx(
-            path.length_km * 1000
-        )
+        assert path.own_length_km == 0
+        assert path.coords_2180 == pytest.approx([_centre(2, 1)])
 
     def test_length_is_measured_from_the_outlet_baseline(self, rasters):
         path = _paths([1, 2], rasters, baseline_m=10.0).divide
@@ -184,16 +183,58 @@ class TestDivideFlowPath:
         assert path.length_km == pytest.approx(0.16)
         assert path.coords_2180[0] == pytest.approx(_centre(2, 1))
 
-    def test_one_sub_catchment_has_its_own_boundary(self, rasters):
+    def test_head_of_the_longest_path_on_the_boundary_gives_no_divide_path(
+        self, rasters
+    ):
         # Sub-catchment 2 alone: its farthest cell (4, 2), 23rd from the
-        # outlet, is on its boundary with sub-catchment 1; its flow leaves 2
-        # into 1 at (3, 4).
-        path = _paths([2], rasters).divide
+        # outlet, is on its boundary with sub-catchment 1.
+        paths = _paths([2], rasters)
 
-        assert path is not None
-        assert path.length_km == pytest.approx(0.23)
-        assert path.coords_2180[0] == pytest.approx(_centre(4, 2))
-        assert path.coords_2180[-1] == pytest.approx(_centre(3, 4))
+        assert paths.longest is not None
+        assert paths.longest.coords_2180[0] == pytest.approx(_centre(4, 2))
+        assert paths.divide is None
+        assert paths.divide_is_longest
+
+
+@pytest.fixture
+def branch_rasters(tmp_path):
+    """5x5 watershed (rows 1-5, cols 1-5) draining west along row 3.
+
+    The other cells flow north or south to row 3. The farthest cell (2, 3) is
+    inside; the farthest boundary cell (1, 5) joins its path at (3, 3).
+    """
+    labels = np.zeros((7, 7), dtype=np.int32)
+    fdir = np.zeros((7, 7), dtype=np.int16)
+    dist = np.full((7, 7), -1.0, dtype=np.float32)
+    labels[1:6, 1:6] = 1
+    labels[3, 0] = 2  # the pit the watershed drains to
+    dist[3, 0] = 0.0
+    for row in range(1, 6):
+        for col in range(1, 6):
+            step = (0, -1) if row == 3 else ((1, 0) if row < 3 else (-1, 0))
+            fdir[row, col] = _code(*step)
+            dist[row, col] = CELL * (col + abs(row - 3))
+    dist[2, 3] = 100.0
+    dist[5, 5] = 65.0
+    return {
+        "labels_path": _write(tmp_path / "labels.tif", labels, "int32", 0),
+        "flow_dist_path": _write(tmp_path / "dist.tif", dist, "float32", -1.0),
+        "flowdir_path": _write(tmp_path / "fdir.tif", fdir, "int16", 0),
+    }
+
+
+def test_divide_line_ends_on_its_first_cell_of_the_longest_path(branch_rasters):
+    paths = compute_flow_paths([1], (10.0, 10.0, 60.0, 60.0), 0.0, **branch_rasters)
+
+    assert paths.longest is not None
+    assert paths.longest.coords_2180[0] == pytest.approx(_centre(2, 3))
+    assert not paths.divide_is_longest
+    assert paths.divide is not None
+    assert paths.divide.length_km == pytest.approx(0.07)
+    assert paths.divide.own_length_km == pytest.approx(0.04)
+    assert paths.divide.coords_2180 == pytest.approx(
+        [_centre(1, 5), _centre(3, 5), _centre(3, 3)]
+    )
 
 
 def test_labels_not_in_the_raster_give_no_paths(rasters):

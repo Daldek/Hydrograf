@@ -224,7 +224,8 @@ class MorphometricParameters(BaseModel):
     divide_flow_path_km: float | None = Field(
         None,
         ge=0,
-        description="Longest flow path from watershed divide (boundary) to outlet [km]",
+        description="Longest flow path from watershed divide (boundary) to outlet "
+        "[km]; null when it starts at the head of the longest flow path",
     )
     centroid_flow_path_km: float | None = Field(
         None,
@@ -367,7 +368,11 @@ class WatershedResponse(BaseModel):
         None, description="Longest flow path as GeoJSON Feature (WGS84)"
     )
     divide_flow_path_geojson: dict[str, Any] | None = Field(
-        None, description="Divide flow path (from boundary) as GeoJSON Feature (WGS84)"
+        None,
+        description="Divide flow path (from boundary) as GeoJSON Feature (WGS84): "
+        "only its part up to its first cell on the longest flow path, properties "
+        "length_km (whole path) and own_length_km (the part); null when both "
+        "paths start at one cell",
     )
     pmaxtp_grid: list[PmaxtpGridCell] | None = Field(
         None,

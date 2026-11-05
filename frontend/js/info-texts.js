@@ -253,7 +253,7 @@
             ],
             unit: 'km',
             meaning: 'W metodach Tc długość spływu mierzy się od działu wodnego do ujścia; gdy najdalszy hydraulicznie punkt leży na grzbiecie wewnątrz zlewni, $L_{dz}$ pokazuje, o ile krótsza jest droga od granicy.\nW Hydrografie nie wchodzi do obliczeń $T_c$ ani hydrogramu, które używają $L_{max}$.',
-            note: 'Granicę tworzą komórki zlewni cząstkowych, z których złożono zlewnię, a nie wygładzona linia granicy na mapie. Pusta wartość – brak rastra zlewni cząstkowych progu, przy którym wyznaczono zlewnię.',
+            note: 'Granicę tworzą komórki zlewni cząstkowych, z których złożono zlewnię, a nie wygładzona linia granicy na mapie. Mapa pokazuje tylko część tej drogi niewspólną z najdłuższą drogą spływu – od granicy do miejsca, gdzie się z nią łączy; dalej obie biegną tą samą drogą. Wiersza nie ma, gdy najdalszy hydraulicznie punkt zlewni leży na jej granicy (obie drogi są wtedy jedną) albo brak rastra zlewni cząstkowych progu, przy którym wyznaczono zlewnię.',
             sources: 'USDA-NRCS 2010 (NEH 630-15)',
         },
         cn: {
