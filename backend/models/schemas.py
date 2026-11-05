@@ -510,9 +510,8 @@ class HydrographRequest(BaseModel):
     snyder_cp : float, optional
         Snyder peak coefficient Cp (used when uh_model='snyder')
     nash_estimation : str, optional
-        Nash parameter estimation method ('from_tc', 'from_lutz')
-    nash_n : float, optional
-        Nash N parameter — number of reservoirs (used with from_tc)
+        Nash parameter estimation method ('from_lutz', 'from_urban_regression'),
+        default 'from_lutz'
     amc : {'I', 'II', 'III'}, optional
         Antecedent moisture condition applied to CN, default 'II'
     custom_precipitation : CustomPrecipitation, optional
@@ -581,18 +580,9 @@ class HydrographRequest(BaseModel):
         le=1,
         description="Snyder peak coefficient Cp (default 0.6 if not provided)",
     )
-    nash_estimation: Literal["from_tc", "from_lutz", "from_urban_regression"] = Field(
+    nash_estimation: Literal["from_lutz", "from_urban_regression"] = Field(
         "from_lutz",
-        description=(
-            "Nash parameter estimation method "
-            "(from_tc deprecated since Hydrolog v0.6.2)"
-        ),
-    )
-    nash_n: float = Field(
-        3.0,
-        gt=0,
-        le=20,
-        description="Nash N parameter (number of reservoirs, used with from_tc)",
+        description="Nash parameter estimation method",
     )
     tc_runoff_coeff: float | None = Field(
         None,

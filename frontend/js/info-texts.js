@@ -594,7 +594,7 @@
             symbol: 'T_c',
             definition: 'Czas dopływu wody z hydraulicznie najdalszego punktu zlewni – tego o najdłuższym czasie dopływu, niekoniecznie najdalszego – do ujścia.',
             unit: 'min',
-            meaning: 'Czas koncentracji wpływa na kształt i szczyt hydrogramu: krótszy $T_c$ – wcześniejszy i wyższy szczyt (urbanizacja zwykle skraca $T_c$). Różne metody dają dla tej samej zlewni wartości różniące się nawet kilkukrotnie.\nW Hydrografie w modelu SCS $T_c$ wyznacza opóźnienie $t_{lag} = 0,6·T_c$, a w Nashu „z Tc” – $K = 0,6·T_c/N$. W modelu Snydera $T_c$ jest liczony, ale nie zmienia hydrogramu; przy estymacji Nasha metodą Lutza lub regresji nie jest liczony.',
+            meaning: 'Czas koncentracji wpływa na kształt i szczyt hydrogramu: krótszy $T_c$ – wcześniejszy i wyższy szczyt (urbanizacja zwykle skraca $T_c$). Różne metody dają dla tej samej zlewni wartości różniące się nawet kilkukrotnie.\nW Hydrografie w modelu SCS $T_c$ wyznacza opóźnienie $t_{lag} = 0,6·T_c$. W modelu Snydera $T_c$ jest liczony, ale nie zmienia hydrogramu; w modelu Nasha (metoda Lutza lub regresja) nie jest liczony.',
             note: 'Sprawdź zakres stosowalności wybranej metody.',
             sources: 'USDA-SCS 1986 (TR-55); USDA-NRCS 2010 (NEH 630-15); Grimaldi i in. 2012',
         },
@@ -640,17 +640,7 @@
         'hydro-nash-estimation': {
             title: 'Estymacja parametrów Nasha',
             definition: 'Sposób wyznaczenia liczby zbiorników $N$ i stałej retencji $K$ kaskady Nasha.',
-            meaning: '$N$ i $K$ wyznacza się metodą momentów z obserwowanych wezbrań; w zlewni bez pomiarów szacuje się je z cech zlewni i opadu, a różne metody dają różne $N$ i $K$, więc różne $Q_{max}$ i czas do szczytu.\nW Hydrografie do wyboru są metoda Lutza (domyślna), regresja urbanizacyjna i przestarzała estymacja „z Tc”; warto porównać wyniki.',
-            sources: 'Nash 1957; Chow i in. 1988',
-        },
-        'hydro-nash-n': {
-            title: 'Liczba zbiorników',
-            symbol: 'N',
-            definition: 'Liczba zbiorników kaskady Nasha w estymacji „z Tc” (domyślnie 3); może być ułamkowa.',
-            formula: f`K = \frac{0,6 · T_c}{N}`,
-            variables: [TC],
-            unit: '–',
-            meaning: '$N$ jest parametrem kształtu: przy tym samym opóźnieniu $N·K$ małe $N$ daje hydrogram szybko narastający i długo opadający, duże – skupiony wokół opóźnienia (wariancja $N·K^2$ maleje).\nW Hydrografie przy stałym $N·K = 0,6·T_c$ większe $N$ przesuwa szczyt później ($t_p = (N - 1)·K$), a dla $N ≥ 2$ także go podwyższa.',
+            meaning: '$N$ i $K$ wyznacza się metodą momentów z obserwowanych wezbrań; w zlewni bez pomiarów szacuje się je z cech zlewni i opadu, a różne metody dają różne $N$ i $K$, więc różne $Q_{max}$ i czas do szczytu.\nW Hydrografie do wyboru są metoda Lutza (domyślna) i regresja urbanizacyjna; warto porównać wyniki.',
             sources: 'Nash 1957; Chow i in. 1988',
         },
         'hydro-snyder-ct': {
@@ -710,7 +700,7 @@
         tc_method: {
             title: 'Metoda czasu koncentracji',
             definition: 'Metoda, którą policzono $T_c$ (wybór w polu „Metoda Tc”).',
-            meaning: 'Wybór metody może zmienić $T_c$ kilkukrotnie, a przez to czas i wysokość szczytu hydrogramu.\nW Hydrografie metoda wpływa na hydrogram w modelu SCS i w Nashu „z Tc”; w modelu Snydera $T_c$ jest liczony, ale nie zmienia hydrogramu.',
+            meaning: 'Wybór metody może zmienić $T_c$ kilkukrotnie, a przez to czas i wysokość szczytu hydrogramu.\nW Hydrografie metoda wpływa na hydrogram tylko w modelu SCS; w modelu Snydera $T_c$ jest liczony, ale nie zmienia hydrogramu.',
             sources: 'Grimaldi i in. 2012; Roussel i in. 2005',
         },
         tc_min: {
@@ -720,7 +710,7 @@
             formula: 't_{lag} = 0,6 · T_c',
             variables: [['t_{lag}', 'opóźnienie zlewni: czas od środka ciężkości opadu efektywnego do szczytu odpływu (model SCS)', 'min']],
             unit: 'min',
-            meaning: 'Krótszy $T_c$ oznacza szybszą reakcję zlewni – wcześniejszy i wyższy szczyt.\nW Hydrografie w modelu SCS czas do szczytu hydrogramu jednostkowego wynosi $Δt/2 + 0,6·T_c$, w Nashu „z Tc” $T_c$ wyznacza $K$; w modelu Snydera nie zmienia hydrogramu.',
+            meaning: 'Krótszy $T_c$ oznacza szybszą reakcję zlewni – wcześniejszy i wyższy szczyt.\nW Hydrografie w modelu SCS czas do szczytu hydrogramu jednostkowego wynosi $Δt/2 + 0,6·T_c$; w modelu Snydera nie zmienia hydrogramu.',
             sources: 'USDA-NRCS 2010 (NEH 630-15); USDA-NRCS 2007 (NEH 630-16)',
         },
         uh_model: {
@@ -911,17 +901,6 @@
             range: 'Równanie opóźnienia dopasowano do 125 opadów z 11 zlewni o powierzchni 0,12–50 km² i $U$ = 0–0,38 w Indianie i Teksasie (Sarma i in. 1969; w pracy z 1972 r. – ok. 200 opadów); autorzy przestrzegają przed ekstrapolacją. KZGW 2017 zaleca te wzory dla zlewni zurbanizowanych do 52 km². Hydrolog wymaga $0 ≤ U < 1$ i nie ostrzega poza zakresem kalibracji.',
             note: 'Gdy opad nie przekracza strat $I_a$, Hydrograf przyjmuje $H$ = 1 mm.',
             sources: 'Sarma i in. 1969; Rao i in. 1972; KZGW 2017',
-        },
-        'hydro-nash-estimation:from_tc': {
-            summary: 'Przestarzała: relacja SCS $t_{lag} = 0,6·T_c$ nie ma uzasadnienia dla modelu Nasha.',
-            title: 'Z czasu koncentracji (przestarzała)',
-            definition: 'Stała $K$ z czasu koncentracji przy zadanej liczbie zbiorników $N$.',
-            formula: f`K = \frac{0,6 · T_c}{N}`,
-            variables: [TC, ['N', 'liczba zbiorników (pole „N (zbiorniki)”)', '–']],
-            unit: 'min',
-            meaning: 'Opóźnienie kaskady $N·K$ jest wymuszone równe $0,6·T_c$, więc wynik zależy wprost od metody Tc; szczyt hydrogramu chwilowego wypada po $0,6·T_c·(N - 1)/N$ ($0,4·T_c$ przy $N = 3$), wcześniej niż w hydrogramie SCS.\nW Hydrografie domyślnie $N = 3$.',
-            range: 'Oznaczona w Hydrologu jako przestarzała: w NEH 630 $t_{lag} = 0,6·T_c$ to opóźnienie szczytu hydrogramu SCS względem środka opadu efektywnego, a w kaskadzie Nasha $N·K$ jest odstępem środków ciężkości. Lepiej użyć metody Lutza lub regresji.',
-            sources: 'USDA-NRCS 2010 (NEH 630-15); KZGW 2017',
         },
 
         // ── Zakres stosowalności: metody Tc ────────────────────────────

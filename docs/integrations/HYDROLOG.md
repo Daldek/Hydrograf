@@ -230,7 +230,7 @@ from hydrolog.time.concentration import ConcentrationTime
 - `tc_method` - metoda tc: kirpich, nrcs, giandotti, faa, kerby, kerby_kirpich
 - `hietogram_type` - typ hietogramu: beta, block, euler_ii
 - `uh_model` - model hydrogramu jednostkowego: scs, snyder, nash
-- `nash_estimation` - metoda estymacji Nash IUH: from_lutz, from_tc, from_urban_regression
+- `nash_estimation` - metoda estymacji Nash IUH: from_lutz, from_urban_regression
 - `snyder_ct` - współczynnik opóźnienia Snydera (default: 1.5)
 - `snyder_cp` - współczynnik szczytu Snydera (default: 0.6)
 - `tc_runoff_coeff` - współczynnik spływu C (dla metody FAA)
@@ -365,14 +365,9 @@ Import: `from hydrolog.time.concentration import ConcentrationTime`
 | Metoda | Klucz API | Parametry wymagane | Uwagi |
 |--------|-----------|---------------------|-------|
 | Lutz (domyślna) | `from_lutz` | `channel_length_km`, `length_to_centroid_km`, `channel_slope_m_per_m`; `forest_pct`, `urban_pct` | Lutz (1984) after KZGW 2017, eq. 6.17: Manning's n 0.035 (`LUTZ_MANNING_N`), W = share of forest (`las`), U = share of urbanised land (`zabudowa_mieszkaniowa`, `zabudowa_przemysłowa`, `droga`) from the land cover of the delineation, 0 without it; `area_km2` passed too. The hand-off carries `manning_n`, `forest_pct` and `urban_pct` in the watershed and `{"source": "hydrograf", "method": "lutz"}` as the provenance of `runoff`, so Hydrolog reopens Nash by Lutz (ADR-068, erratum 2026-11-05) |
-| Z Tc | `from_tc` | tc_method | **DEPRECATED od v0.6.2** — zastąpiona przez `from_lutz` |
 | Regresja zurbanizowana | `from_urban_regression` | `nash_urban_fraction` | Rao et al. (1972), wymaga wskaźnika urbanizacji |
 
-**Uwaga:** `NashIUH.from_tc()` jest oznaczona jako deprecated od Hydrolog v0.6.2. W Hydrografie domyślna estymacja Nash zmieniona na `from_lutz`. W UI metoda `from_tc` ma etykietę `[deprecated]`.
-
-**Hydrolog 1.0.0.dev0:** the changelog of Hydrolog announces the removal of `NashIUH.from_tc()` in 1.0.0; the head still has it and warns with `DeprecationWarning`. Hydrograf still offers the REST option `nash_estimation: "from_tc"`; it stops working when Hydrolog removes the method, and whether the option goes first is the author's decision (`docs/PROGRESS.md`, Open questions).
-
-**Znane ograniczenie:** Endpoint `GET /api/scenarios` (`list_scenarios()`) nadal zwraca `from_tc` w liście `nash_estimation_methods` bez oznaczenia deprecation — klient API nie dostaje informacji o statusie deprecated tej metody.
+**Removed 2026-11-05:** the estimation from the time of concentration (`nash_estimation: "from_tc"`, `NashIUH.from_tc()`, deprecated in Hydrolog since 0.6.2 and announced for removal in 1.0.0) and the request field `nash_n` it used. The relation $t_{lag} = 0.6·T_c$ of the SCS hydrograph has no ground in the Nash cascade, so Hydrograf no longer offers it: a request with `from_tc` gets 400 `validation_error` at `/body/nash_estimation` with the allowed values, `GET /api/scenarios` lists only `from_lutz` and `from_urban_regression`, and no Nash estimation computes Tc.
 
 ---
 

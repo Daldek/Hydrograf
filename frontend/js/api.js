@@ -149,7 +149,6 @@
             if (opts.uh_model) payload.uh_model = opts.uh_model;
             if (opts.tc_method) payload.tc_method = opts.tc_method;
             if (opts.nash_estimation) payload.nash_estimation = opts.nash_estimation;
-            if (opts.nash_n != null) payload.nash_n = opts.nash_n;
             if (opts.snyder_ct != null) payload.snyder_ct = opts.snyder_ct;
             if (opts.snyder_cp != null) payload.snyder_cp = opts.snyder_cp;
             if (opts.tc_runoff_coeff != null) payload.tc_runoff_coeff = opts.tc_runoff_coeff;

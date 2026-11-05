@@ -73,7 +73,7 @@ hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "2eb8bd0c0af7
 |------------------|-----------------------|-----|
 | `api/endpoints/hydrograph.py` | `WatershedParameters`, `BetaHietogram`, `BlockHietogram`, `EulerIIHietogram`, `HydrographGenerator` | The hydrograph generation endpoint |
 | `api/endpoints/hydrograph.py` | `ConcentrationTime` | Time of concentration: 6 methods: kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti |
-| `api/endpoints/hydrograph.py` | `NashIUH` | The Nash model: 3 parameter estimations: from_lutz, from_urban_regression, from_tc |
+| `api/endpoints/hydrograph.py` | `NashIUH` | The Nash model: 2 parameter estimations: from_lutz, from_urban_regression |
 | `api/endpoints/hydrograph.py` | `uh_model` selector | The choice of the unit hydrograph model: scs / nash / snyder |
 | `scripts/analyze_watershed.py` | `WatershedParameters`, `BetaHietogram`, `SCSCN`, `HydrographGenerator`, `SCSUnitHydrograph` | The CLI script of the full analysis |
 | `core/morphometry.py` | `WatershedParameters` (in a docstring) | Documentation of the exchange format |
@@ -353,7 +353,7 @@ fail_under = 80
 - ✅ Land cover MVT tiles
 - ✅ An admin panel with the bootstrap over SSE (ADR-034)
 - ✅ ConcentrationTime: 6 tc methods (kirpich, nrcs, faa, kerby, kerby_kirpich, giandotti)
-- ✅ NashIUH: 3 parameter estimations (from_lutz, from_urban_regression, from_tc)
+- ✅ NashIUH: 2 parameter estimations (from_lutz, from_urban_regression)
 - ✅ The UH model selector (scs/nash/snyder)
 - ✅ County (TERYT) discovery by Kartograf (ADR-061; it replaced the WFS PRG code of ADR-045)
 - ✅ BDOT stream matching with is_real_stream (ADR-044)

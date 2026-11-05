@@ -33,7 +33,7 @@
         'hydro-alpha', 'hydro-beta', 'hydro-amc',
         'hydro-uh-model', 'hydro-tc-method',
         'hydro-tc-runoff-coeff', 'hydro-tc-retardance', 'hydro-tc-overland-length',
-        'hydro-nash-estimation', 'hydro-nash-n',
+        'hydro-nash-estimation',
         'hydro-snyder-ct', 'hydro-snyder-cp',
     ];
 

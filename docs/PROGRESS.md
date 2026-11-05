@@ -1,8 +1,9 @@
 # PROGRESS — Hydrograf
 
-## Stan bieżący (2026-11-04, 12:00)
+## Stan bieżący (2026-11-05)
 
-- **Gałąź `feature/handoff-to-hydrolog` (2026-11-04, nie scalona; scalenie po v0.5.0, decyzja autora):** przekazanie zlewni do GUI Hydrologa jako `nogat-handoff/1` z `hydrolog-network/1` (ADR-068, plan `docs/plans/2026-11-04-handoff-to-hydrolog.md`). API: `handoff` w odpowiedziach delineacji (sama zlewnia) i hydrogramu (zlewnia, opad, odpływ, wynik bez zaokrągleń), pole żądania `morphometry_origin`; GUI: „Kopiuj do Hydrologa” i „Plik przekazania” pod sekcjami panelu „Zlewnia”; przewodnik slajd 26 (31 slajdów; PDF prezentacji nieodświeżony). Próba w obie strony z Kamiennikiem (51,01544; 15,88984) przez produkcyjne API tylko do odczytu: Hydrolog otwiera przekazanie w „Hydrogramie zlewni”, porównanie „zgodny” (SCS, Nash, Snyder, własna seria, tryb zaawansowany). Do zmiany po stronie Hydrologa: przekazanie bez opadu jest odrzucane, teksty „Do schowka” i „w przygotowaniu”.
+- **Gałąź `fix/remove-nash-from-tc` (2026-11-05, do kandydata v0.5.0; decyzja autora):** usunięta estymacja Nasha z czasu koncentracji (`nash_estimation: "from_tc"`, `NashIUH.from_tc`, przestarzała w Hydrologu od 0.6.2) i pole żądania `nash_n`; żądanie z `from_tc` dostaje 400 `validation_error` przy `/body/nash_estimation` z dozwolonymi wartościami, `GET /api/scenarios` bez `from_tc` i `nash_defaults`, żadna estymacja Nasha nie liczy Tc. GUI: bez opcji „z Tc (deprecated)” i pola „N (zbiorniki)”; objaśnienia (i), instrukcja, prezentacja HTML i PDF (przedrukowany, 31 slajdów) bez wzmianek. Zamyka Open questions 5.
+- **Gałąź `feature/handoff-to-hydrolog` (2026-11-04, nie scalona; scalenie po v0.5.0, decyzja autora):** przekazanie zlewni do GUI Hydrologa jako `nogat-handoff/1` z `hydrolog-network/1` (ADR-068, plan `docs/plans/2026-11-04-handoff-to-hydrolog.md`). API: `handoff` w odpowiedziach delineacji (sama zlewnia) i hydrogramu (zlewnia, opad, odpływ, wynik bez zaokrągleń), pole żądania `morphometry_origin`; GUI: „Kopiuj do Hydrologa” i „Plik przekazania” pod sekcjami panelu „Zlewnia”; przewodnik slajd 26 (31 slajdów; PDF prezentacji odświeżony 2026-11-05 na gałęzi `fix/remove-nash-from-tc`). Próba w obie strony z Kamiennikiem (51,01544; 15,88984) przez produkcyjne API tylko do odczytu: Hydrolog otwiera przekazanie w „Hydrogramie zlewni”, porównanie „zgodny” (SCS, Nash, Snyder, własna seria, tryb zaawansowany). Do zmiany po stronie Hydrologa: przekazanie bez opadu jest odrzucane, teksty „Do schowka” i „w przygotowaniu”.
 
 - **Produkcja = `develop` (0.5.0.dev0; 2026-11-02 `a247bf3`, wtedy błędnie v0.8.0.dev0)** na `127.0.0.1:8080`, z zewnątrz przez tunel Cloudflare `hydrograf-test.debever.pl`. Zaktualizowana **w miejscu** 2026-11-02 ok. 22:15–22:20: checkout `~/workspace/Hydrograf` z `08d8190` (`feature/visual-identity`) na `develop`, obraz `hydrograf-api:latest` przebudowany (piny Kartograf `eab8612`, Hydrolog `1708a09`, IMGWTools `71bae77`), `hydro_api` odtworzony; przerwa ok. 21 s. Bez migracji bazy (alembic `003` = head). `.env`: `HYDROGRAF_PUBLIC_HOST=hydrograf-test.debever.pl`, magazyn Kartografa prywatny (`cache/kartograf`, bez `HYDROGRAF_KARTOGRAF_ROOT`). Wynik SFINCS `sfincs-kamiennik-24h-p1` (24 h, p = 1%, zwierciadło do 281,43 m n.p.m.) zastąpił wynik 12 h.
 - **Przebudowa 2026-11-03, 08:39–08:41:** obraz `hydrograf-api:latest` z `develop` `aafeb5a` (`6afc6f68a760`; wersja 0.5.0.dev0, `/health` i panel admina podają ją z `core/version.py` zamiast stałej `1.0.0`), `hydro_api` odtworzony (`--no-deps --force-recreate`), `docker builder prune -f` przed budową. Przerwa ok. 9 s (502 od 08:40:57 do 08:41:05, `health-loop-2026-11-03.log` w katalogu kopii). Po: `/health` 200 z `"version": "0.5.0.dev0"` (8080 i host publiczny), OpenAPI `info.version` 0.5.0.dev0, delineacja 15,15 km² i 37,22 km², admin bez klucza 401. Tag rollbacku przemianowany: `hydrograf-api:pre-0.5.0` (było `vi-0.7.0`).
@@ -204,9 +205,9 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
      `hydrolog-result/1`, exit codes 13 for `calculation_error` and 12 for `forbidden`); Hydrograf
      uses the library only. Routing (`route lag|cascade|level-pool|muskingum|muskingum-cunge|
      network`, ADR-0007 to ADR-0010) is in the pinned head; nothing calls it, an option for the
-     sewer and Hydraulik work. Open: the REST option `nash_estimation: "from_tc"` calls
-     `NashIUH.from_tc`, which the changelog of Hydrolog announces for removal in 1.0.0 (the head
-     keeps it and warns): Open questions 5.
+     sewer and Hydraulik work. Closed 2026-11-05: the REST option `nash_estimation: "from_tc"`
+     (it called `NashIUH.from_tc`, which the changelog of Hydrolog announces for removal in
+     1.0.0) is removed: Open questions 5.
    - **Kartograf: done on `feature/producer-heads`** (ADR-061, pinned `eab8612` since the merge of
      2026-11-02, 0.8.0.dev0, Kartograf branch `feature/archiwista-projects`; the branch had `d11f621`).
      Every call is migrated and every migrated call runs against the real Kartograf in the tests
@@ -247,11 +248,10 @@ Czego gałąź PH nie uruchomiła: testów `db` (brak bazy), CI (żadne zadanie 
 4. Text of `docs/CLA.md` and how the CLA is signed. `CONTRIBUTING.md` describes signing by a
    comment on the pull request, as in Retman and Archiwista, and the template has the
    checkbox; both name `docs/CLA.md`, which does not exist yet.
-5. `nash_estimation: "from_tc"` of `POST /api/generate-hydrograph` calls `NashIUH.from_tc`,
-   deprecated since Hydrolog 0.6.2 and announced for removal in 1.0.0 (the pinned head keeps it
-   and warns). Remove the REST option and the front-end choice before Hydrolog 1.0.0 (a change of
-   a public interface: a plan with the author's approval, DEV-17.4), or ask Hydrolog to keep the
-   method. Until then the option works.
+5. ✅ (2026-11-05, `fix/remove-nash-from-tc`, author's decision) `nash_estimation: "from_tc"` of
+   `POST /api/generate-hydrograph` (it called `NashIUH.from_tc`, deprecated since Hydrolog 0.6.2
+   and announced for removal in 1.0.0), the request field `nash_n` and the front-end choice are
+   removed; a request with `from_tc` gets 400 `validation_error`.
 
 ## Ostatnia sesja
 

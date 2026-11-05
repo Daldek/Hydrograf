@@ -276,6 +276,21 @@ class TestCustomPrecipitation:
         assert "nieujemną" in problem["errors"][0]["message"]
 
 
+class TestNashEstimation:
+    def test_estimation_from_tc_is_refused_with_the_allowed_methods(self, client):
+        response = client.post(
+            "/api/generate-hydrograph",
+            json=_request(uh_model="nash", nash_estimation="from_tc"),
+        )
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"]["fields"] == ["/body/nash_estimation"]
+        assert problem["errors"][0]["message"] == (
+            "Input should be 'from_lutz' or 'from_urban_regression'"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Layer availability
 # ---------------------------------------------------------------------------
