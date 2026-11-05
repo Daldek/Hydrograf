@@ -206,7 +206,7 @@
                 opt.textContent = d;
                 durSelect.appendChild(opt);
             });
-            durSelect.value = '1h';
+            durSelect.value = '24h';
 
             probSelect.innerHTML = '';
             scenarios.probabilities.forEach(function (p) {
@@ -215,7 +215,7 @@
                 opt.textContent = p + '%';
                 probSelect.appendChild(opt);
             });
-            probSelect.value = '10';
+            probSelect.value = '1';
 
             if (Hydrograf.customRain) {
                 Hydrograf.customRain.setMaxSteps(scenarios.custom_precipitation_max_steps);
