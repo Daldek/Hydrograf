@@ -814,7 +814,11 @@ def flow_path_geojson(path: FlowPath | None, kind: str) -> dict[str, Any] | None
                 list(transform_pl1992_to_wgs84(x, y)) for x, y in path.coords_2180
             ],
         },
-        "properties": {"type": kind, "length_km": path.length_km},
+        "properties": {
+            "type": kind,
+            "length_km": path.length_km,
+            "own_length_km": path.own_length_km,
+        },
     }
 
 
