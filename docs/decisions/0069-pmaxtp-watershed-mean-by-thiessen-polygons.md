@@ -1,7 +1,8 @@
 # ADR-069: The PMAXTP design depth is the watershed mean by Thiessen polygons
 
 **Date:** 2026-11-05
-**Status:** proposed (implemented on `feature/v050-gui-reports`; for the author's review)
+**Status:** accepted (the author, 2026-11-05; plan
+`docs/plans/2026-11-05-pmaxtp-watershed-mean.md`)
 
 ## Context
 
@@ -56,7 +57,11 @@ know the watershed. The boundary of a 240 km² watershed is about 1.2 MB of GeoJ
 
 ## Decision
 
-Option D. `core/precipitation.py`: `thiessen_cells(boundary, db)` takes the distinct grid
+Option D, with option E as the user's own input: the author approved the Thiessen
+watershed mean on 2026-11-05 and decided that the areal reduction is optional, entered by
+the user, and absent by default (no curve or formula of Hydrograf).
+
+`core/precipitation.py`: `thiessen_cells(boundary, db)` takes the distinct grid
 points within 5 km of the watershed's bounding box (every place lies at most half a cell
 diagonal from its nearest point, so a margin of the grid spacing is enough), builds their
 Voronoi polygons (`shapely.voronoi_polygons`, ordered by point) and keeps the area of
@@ -76,8 +81,16 @@ depths, weights and areas or distances (`precipitation.pmaxtp_points`), which th
 end shows in the Hietogram section and exports (report #39); the hand-off's rainfall
 provenance carries the same `interpolation`.
 
-The areal reduction (E) is not applied: the explanation (i) says so and cites the
-methodology. Whether to reduce, and by which curve, is the author's decision.
+The areal reduction (E) is the user's: the hydrograph request takes an optional
+`areal_reduction_factor` (0 < ARF ≤ 1; null by default, no reduction; out of range a 400
+`validation_error` with the Polish message of the field), which multiplies the PMAXTP
+depth (the watershed mean or IDW at the point; a custom series ignores it). The response
+`precipitation` gives `pmaxtp_depth_mm` (unreduced), `areal_reduction_factor` (or null)
+and `total_mm` (the depth used); the hand-off's rainfall provenance carries
+`areal_reduction_factor` when one was given, and its `total_mm` is the reduced depth. The
+front end has the empty field „Współczynnik redukcji obszarowej (własny)” in the
+Hietogram section; its (i) cites the methodology (KZGW 2017, p. 105) and says the value
+is the user's own; the exports carry the factor.
 
 ## Consequences
 

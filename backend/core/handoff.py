@@ -231,6 +231,7 @@ def pmaxtp_origin(
     latitude: float,
     longitude: float,
     interpolation: Literal["thiessen", "idw"],
+    areal_reduction_factor: float | None = None,
 ) -> dict[str, Any]:
     """Return the provenance of a PMAXTP depth Hydrograf took from its grid.
 
@@ -246,14 +247,18 @@ def pmaxtp_origin(
         ``"thiessen"``: the depth is the watershed mean over the Thiessen polygons of
         the points of the grid of ``precipitation_data`` (ADR-069); ``"idw"``: the
         inverse distance weighting at the point of its four nearest points.
+    areal_reduction_factor : float or None, optional
+        The user's areal reduction factor the depth was multiplied by; None when the
+        depth was not reduced.
 
     Returns
     -------
     dict[str, Any]
         ``source`` ``"pmaxtp"`` with its method, probability, duration, point and
-        interpolation.
+        interpolation, and ``areal_reduction_factor`` when the user gave one (the
+        rainfall's ``total_mm`` is then the reduced depth).
     """
-    return {
+    origin: dict[str, Any] = {
         "source": "pmaxtp",
         "method": PMAXTP_METHOD,
         "probability_percent": probability_percent,
@@ -262,6 +267,9 @@ def pmaxtp_origin(
         "longitude": longitude,
         "interpolation": interpolation,
     }
+    if areal_reduction_factor is not None:
+        origin["areal_reduction_factor"] = areal_reduction_factor
+    return origin
 
 
 def curve_number_runoff(

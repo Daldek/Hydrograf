@@ -429,7 +429,21 @@
             unit: 'min lub h (od 5 min do 72 h)',
             meaning: 'Dłuższy opad ma większą sumę, ale mniejsze średnie natężenie; $Q_{max}$ zależy od obu, a krytyczny czas trwania – dający największe wezbranie – nie jest znany z góry (wg DVWK zwykle między $T_c$ a $2 T_c$), dlatego warto porównać kilka czasów trwania.\nW Hydrografie hietogram dzieli opad na $n = D/Δt$ kroków po 5 min.',
             sources: 'IMGW-PIB 2022 (PMAXTP); KZGW 2017; DVWK 1984 (za KZGW 2017)',
-            note: 'PMAXTP podaje opady punktowe; Hydrograf uśrednia je w zlewni, ale nie redukuje do opadu obszarowego – KZGW 2017 uznaje opad punktowy za reprezentatywny do ok. 10 km², a dla zlewni 10–100 km² podaje redukcję do 10% (DVWK). Bez granicy zlewni (żądanie API z własną morfometrią bez pmaxtp_grid) opad jest interpolowany w punkcie z 4 najbliższych punktów siatki metodą odwrotnych odległości (IDW, potęga 2).',
+            note: 'PMAXTP podaje opady punktowe; Hydrograf uśrednia je w zlewni, ale sam nie redukuje ich do opadu obszarowego – KZGW 2017 uznaje opad punktowy za reprezentatywny do ok. 10 km², a dla zlewni 10–100 km² podaje redukcję do 10% (DVWK). Własny współczynnik redukcji możesz wpisać w polu „Współczynnik redukcji obszarowej (własny)”. Bez granicy zlewni (żądanie API z własną morfometrią bez pmaxtp_grid) opad jest interpolowany w punkcie z 4 najbliższych punktów siatki metodą odwrotnych odległości (IDW, potęga 2).',
+        },
+        'hydro-arf': {
+            title: 'Współczynnik redukcji obszarowej (własny)',
+            symbol: 'ARF',
+            definition: 'Twój własny mnożnik opadu PMAXTP, przeliczający średnią opadów punktowych na opad obszarowy. Pole puste (domyślnie) – bez redukcji. Hydrograf nie wylicza tego współczynnika ani nie stosuje żadnego wzoru domyślnego: wartość i jej uzasadnienie (krzywa redukcyjna, źródło) są po stronie użytkownika.',
+            formula: f`P = ARF · P_{PMAXTP}`,
+            variables: [
+                ['P_{PMAXTP}', 'opad PMAXTP: średnia w zlewni albo IDW w punkcie', 'mm'],
+                ['ARF', 'współczynnik redukcji obszarowej, 0 < ARF ≤ 1', '–'],
+            ],
+            unit: '– (0 < ARF ≤ 1)',
+            meaning: 'Opad punktowy jest reprezentatywny tylko dla małych zlewni, do ok. 10 km²; dla większych opad obszarowy jest mniejszy – redukcja rośnie z powierzchnią zlewni i maleje z czasem trwania opadu, a dla zlewni 10–100 km² nie przekracza 10%.\nW Hydrografie $P$ jest sumą hietogramu i wchodzi do bilansu SCS-CN; bilans pokazuje wtedy wiersz „Redukcja obszarowa” z wysokością przed redukcją, a współczynnik trafia do eksportu i do przekazania do Hydrologa.',
+            note: 'Nie dotyczy własnej serii opadu.',
+            sources: 'KZGW 2017; DVWK 1984 (za KZGW 2017); Chow i in. 1988 (za KZGW 2017)',
         },
         'hydro-probability': {
             title: 'Prawdopodobieństwo przewyższenia',
@@ -544,13 +558,13 @@
                 ['d_i', 'IDW: odległość punktu siatki od klikniętego punktu', 'm'],
             ],
             meaning: 'Do modelu opad–odpływ potrzebny jest opad średni w zlewni, a metoda wieloboków równego opadu jest jedną z dwóch najczęściej stosowanych (obok izohiet). Opad z jednego punktu jest reprezentatywny tylko dla małych zlewni, do ok. 10 km².\nW Hydrografie ta wysokość jest sumą hietogramu; punkty, ich opad i wagi pobierzesz przyciskami „Hietogram JSON” i „Punkty PMAXTP (GeoJSON)”.',
-            note: 'Średnia opadów punktowych nie jest opadem obszarowym: Hydrograf nie stosuje współczynnika redukcji, który dla zlewni 10–100 km² wynosi do 10% (DVWK).',
+            note: 'Średnia opadów punktowych nie jest opadem obszarowym: Hydrograf sam nie stosuje współczynnika redukcji (dla zlewni 10–100 km² do 10%, DVWK); możesz wpisać własny w polu „Współczynnik redukcji obszarowej (własny)”.',
             sources: 'KZGW 2017; IMGW-PIB 2022 (PMAXTP); DVWK 1984 (za KZGW 2017)',
         },
         'rain-export': {
             title: 'Eksport hietogramu',
             definition: '„Hietogram CSV”: kroki hietogramu – czas od i do [min], opad, opad efektywny i opad narastający [mm]. „Hietogram JSON”: te same kroki ze scenariuszem (czas trwania, prawdopodobieństwo, typ hietogramu) i punktami PMAXTP. „Punkty PMAXTP (GeoJSON)”: punkty siatki użyte do wysokości opadu (WGS84) z opadem, wagą, polem wieloboku Thiessena w zlewni [km²] albo odległością od punktu IDW [m] i współrzędnymi PL-1992; przy średniej w zlewni także jej granica, przy IDW – punkt interpolacji.',
-            meaning: 'Pozwala sprawdzić i powtórzyć obliczenie opadu projektowego poza Hydrografem, np. wczytać punkty i granicę zlewni do QGIS.\nW Hydrografie pliki zawierają wartości z ostatnio policzonego hydrogramu; własna seria opadu nie ma punktów PMAXTP.',
+            meaning: 'Pozwala sprawdzić i powtórzyć obliczenie opadu projektowego poza Hydrografem, np. wczytać punkty i granicę zlewni do QGIS.\nW Hydrografie pliki zawierają wartości z ostatnio policzonego hydrogramu; własna seria opadu nie ma punktów PMAXTP. Z własnym współczynnikiem redukcji kroki hietogramu są już zredukowane, JSON i GeoJSON podają współczynnik i wysokość przed redukcją, a nazwy plików kończą się na „_arf…”.',
         },
         total_effective_mm: {
             title: 'Opad efektywny',

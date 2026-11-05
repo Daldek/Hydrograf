@@ -26,6 +26,7 @@
     var NUMBER_FIELDS = [
         { id: 'hydro-alpha', key: 'hietogram_alpha', label: '\u03b1', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
         { id: 'hydro-beta', key: 'hietogram_beta', label: '\u03b2', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
+        { id: 'hydro-arf', key: 'areal_reduction_factor', label: 'Wsp. redukcji obszarowej', section: 'Hietogram', part: 'pmaxtp', gt: 0, max: 1, optional: true },
         { id: 'hydro-tc-runoff-coeff', key: 'tc_runoff_coeff', label: 'C (sp\u0142yw)', section: 'Hydrogram', part: 'tc-runoff-coeff-col', min: 0, max: 1, optional: true },
         { id: 'hydro-tc-retardance', key: 'tc_retardance', label: 'N (op\u00f3r)', section: 'Hydrogram', part: 'tc-retardance-col', min: 0.02, max: 0.8 },
         { id: 'hydro-tc-overland-length', key: 'tc_overland_length_km', label: 'L sp\u0142ywu', section: 'Hydrogram', part: 'tc-overland-col', gt: 0, max: 5 },
@@ -70,6 +71,8 @@
     /** Whether the request sends the field: α and β only with a PMAXTP Beta storm. */
     function inUse(field, c, customRain) {
         if (field.part === 'beta-params') return !customRain && c.hietogram === 'beta';
+        // The user's own areal reduction of the PMAXTP depth; empty = none
+        if (field.part === 'pmaxtp') return !customRain;
         return hydrographParts(c)[field.part];
     }
 
@@ -301,6 +304,9 @@
                     opts.hietogram_alpha = values.hietogram_alpha;
                     opts.hietogram_beta = values.hietogram_beta;
                 }
+                if (values.areal_reduction_factor != null) {
+                    opts.areal_reduction_factor = values.areal_reduction_factor;
+                }
             }
             if (c.needsTc) {
                 opts.tc_method = c.tc;
@@ -402,6 +408,10 @@
         ];
         if (precip.interpolation) {
             rows.push(['Opad PMAXTP', interpolationText(precip), 'pmaxtp_interpolation']);
+        }
+        if (precip.areal_reduction_factor != null) {
+            rows.push(['Redukcja obszarowa', '\u00d7 ' + plNumber(precip.areal_reduction_factor) +
+                ' (z ' + precip.pmaxtp_depth_mm.toFixed(1) + ' mm)', 'hydro-arf']);
         }
         rows = rows.concat([
             ['Opad efektywny', wb.total_effective_mm.toFixed(1) + ' mm', 'total_effective_mm'],
@@ -534,7 +544,7 @@
 
     var _INPUT_IDS = [
         'hydro-duration', 'hydro-probability', 'hydro-hietogram-type',
-        'hydro-alpha', 'hydro-beta', 'hydro-amc',
+        'hydro-alpha', 'hydro-beta', 'hydro-arf', 'hydro-amc',
         'hydro-uh-model', 'hydro-tc-method',
         'hydro-nash-estimation',
         'hydro-snyder-ct', 'hydro-snyder-cp',

@@ -266,11 +266,11 @@ cd backend && .venv/bin/python -m pytest tests/unit/test_preprocess_precipitatio
 | Typ danych | Dane punktowe — the watershed mean by Thiessen polygons (ADR-069); IDW at a point without a boundary |
 | Rozkład domyślny | KS (kwantylowy) — SG i RB dostępne w bazie, ale nieużywane w API |
 | Aktualizacja | Wymagany manualny re-run preprocessingu przy aktualizacji danych IMGW |
-| No areal reduction | The watershed mean of point depths is not reduced to an areal depth (KZGW 2017, p. 105: up to 10 % for 10–100 km²); the author's decision (ADR-069) |
+| Areal reduction | The watershed mean of point depths is reduced only by the user's own `areal_reduction_factor` (none by default; KZGW 2017, p. 105: up to 10 % for 10–100 km²); the author's decision (ADR-069) |
 
 ### 10.2 Przyszłe rozszerzenia
 
-- [x] **Agregacja powierzchniowa** — the watershed mean by Thiessen polygons (ADR-069, 2026-11-05); the areal reduction of point depths stays open
+- [x] **Agregacja powierzchniowa** — the watershed mean by Thiessen polygons and the user's optional areal reduction factor (ADR-069, 2026-11-05)
 - [ ] **Użycie rozkładów SG/RB** — udostępnienie górnej granicy i błędu estymacji w API
 - [ ] **Automatyczna aktualizacja** — cykliczne odświeżanie danych opadowych
 - [ ] **Cache HTTP** — cachowanie odpowiedzi Obserwatora dla tych samych współrzędnych

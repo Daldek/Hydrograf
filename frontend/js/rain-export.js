@@ -7,6 +7,9 @@
  * downloads those points (WGS84, RFC 7946) with their depths and weights: the
  * Thiessen polygon areas of a watershed mean with its boundary, or the distances
  * of the interpolation at a point with that point. A custom series has no points.
+ * With the user's areal reduction factor the depths are the reduced ones; the JSON
+ * and GeoJSON give the factor and the unreduced depth, and every file name ends in
+ * "_arf<factor>".
  */
 (function () {
     'use strict';
@@ -16,11 +19,13 @@
     var _current = null; // { result, context } of the hietogram shown
     var els = {};
 
-    /** "1h, p = 10%" in a file name: "1h_p10"; a custom series: "wlasna_seria". */
+    /** "1h, p = 10%" in a file name: "1h_p10" ("1h_p10_arf0,9" with a factor); a custom series: "wlasna_seria". */
     function fileStem(c) {
         var p = c.result.precipitation;
         if (p.source === 'custom') return 'wlasna_seria';
-        return c.context.duration + '_p' + String(p.probability_percent).replace('.', ',');
+        var stem = c.context.duration + '_p' + String(p.probability_percent).replace('.', ',');
+        if (p.areal_reduction_factor != null) stem += '_arf' + String(p.areal_reduction_factor).replace('.', ',');
+        return stem;
     }
 
     function round(x, digits) {
@@ -78,7 +83,10 @@
                 duration: p.source === 'custom' ? null : c.duration,
                 duration_min: p.duration_min,
                 probability_percent: p.probability_percent,
+                // total_mm and the steps are the depth used: pmaxtp_depth_mm × the factor
                 total_mm: p.total_mm,
+                pmaxtp_depth_mm: p.pmaxtp_depth_mm != null ? p.pmaxtp_depth_mm : null,
+                areal_reduction_factor: p.areal_reduction_factor != null ? p.areal_reduction_factor : null,
                 timestep_min: p.timestep_min,
                 hietogram_type: c.hietogram,
                 hietogram_alpha: c.hietogram === 'beta' ? c.alpha : null,
@@ -125,6 +133,8 @@
                 duration: c.duration,
                 probability_percent: p.probability_percent,
                 total_mm: p.total_mm,
+                pmaxtp_depth_mm: p.pmaxtp_depth_mm,
+                areal_reduction_factor: p.areal_reduction_factor,
                 interpolation: p.interpolation,
             },
             features: features,

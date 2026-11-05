@@ -887,11 +887,13 @@ def generate_hydrograph(
             depth = _design_depth(
                 request, point_2180, pmaxtp_cells, duration_str, design_probability, db
             )
-            precip_mm = depth.precipitation_mm
+            # The user's own areal reduction factor; none by default (ADR-069)
+            arf = request.areal_reduction_factor
+            precip_mm = depth.precipitation_mm * (1.0 if arf is None else arf)
             logger.debug(
                 f"Precipitation: {precip_mm:.1f} mm for {duration_str}, "
                 f"p={probability}% ({depth.interpolation}, "
-                f"{len(depth.points)} grid points)"
+                f"{len(depth.points)} grid points, ARF {arf})"
             )
 
             hietogram_type = request.hietogram_type
@@ -928,6 +930,7 @@ def generate_hydrograph(
                 request.latitude,
                 request.longitude,
                 depth.interpolation,
+                arf,
             )
         precip_total_mm = float(precip_result.total_mm)
 
@@ -1047,6 +1050,12 @@ def generate_hydrograph(
                 effective_mm=[
                     round(x, 3) for x in hydro_result.effective_precip_mm.tolist()
                 ],
+                pmaxtp_depth_mm=(
+                    None if depth is None else round(depth.precipitation_mm, 2)
+                ),
+                areal_reduction_factor=(
+                    None if custom is not None else request.areal_reduction_factor
+                ),
                 interpolation=None if depth is None else depth.interpolation,
                 pmaxtp_points=[] if depth is None else _pmaxtp_points(depth),
             ),

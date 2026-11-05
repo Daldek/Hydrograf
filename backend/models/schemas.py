@@ -542,6 +542,8 @@ class HydrographRequest(BaseModel):
         Outlet and changed fields of the delineation `morphometry` came from
     pmaxtp_grid : list[PmaxtpGridCell], optional
         With `morphometry`: the delineation's Thiessen weights of the PMAXTP grid
+    areal_reduction_factor : float, optional
+        The user's own areal reduction factor of the PMAXTP depth (0, 1]; none
     """
 
     latitude: float = Field(
@@ -659,6 +661,16 @@ class HydrographRequest(BaseModel):
         "grid points). Ignored without `morphometry` (the watershed is delineated "
         "and weighed again) and with `custom_precipitation`",
     )
+    areal_reduction_factor: float | None = Field(
+        None,
+        gt=0,
+        le=1,
+        description="The user's own areal reduction factor of the PMAXTP depth "
+        "(0 < ARF <= 1): the depth used is the PMAXTP depth (watershed mean or IDW "
+        "at the point) times ARF. Null (default): no reduction; Hydrograf never "
+        "estimates the factor itself (ADR-069). Ignored with `custom_precipitation`",
+        examples=[0.95],
+    )
 
     @model_validator(mode="after")
     def design_storm_or_custom(self) -> "HydrographRequest":
@@ -701,7 +713,23 @@ class PrecipitationInfo(BaseModel):
     source: Literal["pmaxtp", "custom"] = Field(
         ..., description="Rainfall origin: PMAXTP design storm or own series"
     )
-    total_mm: float = Field(..., ge=0, description="Total precipitation [mm]")
+    total_mm: float = Field(
+        ...,
+        ge=0,
+        description="Total precipitation used [mm]: for PMAXTP `pmaxtp_depth_mm` "
+        "times `areal_reduction_factor` when one was given",
+    )
+    pmaxtp_depth_mm: float | None = Field(
+        None,
+        ge=0,
+        description="PMAXTP depth before any areal reduction [mm] (the watershed "
+        "mean or IDW at the point; null for a custom series)",
+    )
+    areal_reduction_factor: float | None = Field(
+        None,
+        description="The user's areal reduction factor applied to the PMAXTP "
+        "depth (null: no reduction, and for a custom series)",
+    )
     duration_min: float = Field(..., ge=0, description="Duration [min]")
     probability_percent: float | None = Field(
         ..., description="Exceedance probability [%] (null for a custom series)"

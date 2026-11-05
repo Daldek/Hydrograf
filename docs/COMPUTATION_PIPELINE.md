@@ -363,7 +363,10 @@ polygons of KZGW 2017 (ch. II, eq. 2.1: P = (1/A) Σ Pᵢ·Aᵢ).
 
 The response gives the method (`precipitation.interpolation`: `thiessen` or `idw`) and
 the points with depth, weight and area or distance (`precipitation.pmaxtp_points`).
-Point depths are not reduced to areal ones (no areal reduction factor).
+Point depths are not reduced to areal ones unless the request gives the user's own
+`areal_reduction_factor` (0 < ARF ≤ 1, none by default); the depth used is then the
+PMAXTP depth × ARF, and the response reports `pmaxtp_depth_mm`, `areal_reduction_factor`
+and `total_mm` (ADR-069).
 
 ---
 

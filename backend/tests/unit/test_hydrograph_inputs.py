@@ -336,6 +336,73 @@ class TestPmaxtpGrid:
         assert precip["interpolation"] == "idw"
 
 
+class TestArealReductionFactor:
+    """The user's own areal reduction factor; none by default (ADR-069)."""
+
+    def test_without_a_factor_the_depth_is_not_reduced(self, client, pmaxtp_45mm):
+        data = _post(client, _request())
+
+        precip = data["precipitation"]
+        assert precip["total_mm"] == 45.0
+        assert precip["pmaxtp_depth_mm"] == 45.0
+        assert precip["areal_reduction_factor"] is None
+        assert data["water_balance"]["total_precip_mm"] == 45.0
+        rainfall = data["handoff"]["provenance"]["rainfall"]
+        assert "areal_reduction_factor" not in rainfall
+
+    def test_the_factor_multiplies_the_depth(self, client, pmaxtp_45mm):
+        data = _post(client, _request(areal_reduction_factor=0.9))
+
+        precip = data["precipitation"]
+        assert precip["pmaxtp_depth_mm"] == 45.0
+        assert precip["areal_reduction_factor"] == 0.9
+        assert precip["total_mm"] == pytest.approx(40.5)
+        assert sum(precip["intensities_mm"]) == pytest.approx(40.5, abs=0.01)
+        assert data["water_balance"]["total_precip_mm"] == pytest.approx(40.5)
+        handoff = data["handoff"]
+        assert handoff["provenance"]["rainfall"]["areal_reduction_factor"] == 0.9
+        rainfall = handoff["payload"]["nodes"][0]["rainfall"]
+        assert rainfall["total_mm"] == pytest.approx(40.5)
+
+    def test_a_custom_series_ignores_the_factor(self, client, pmaxtp_45mm):
+        data = _post(
+            client,
+            _request(
+                areal_reduction_factor=0.5,
+                custom_precipitation={"timestep_min": 5, "depths_mm": [10.0, 30.0]},
+            ),
+        )
+
+        precip = data["precipitation"]
+        assert precip["total_mm"] == 40.0
+        assert precip["pmaxtp_depth_mm"] is None
+        assert precip["areal_reduction_factor"] is None
+
+    @pytest.mark.parametrize(
+        ("factor", "message"),
+        [
+            (0, "Wartość musi być większa od 0."),
+            (-0.2, "Wartość musi być większa od 0."),
+            (1.01, "Wartość nie może być większa niż 1."),
+        ],
+    )
+    def test_a_factor_outside_0_1_is_refused_in_polish(
+        self, client, pmaxtp_45mm, factor, message
+    ):
+        response = client.post(
+            "/api/generate-hydrograph",
+            json=_request(areal_reduction_factor=factor),
+            headers={"Accept-Language": "pl"},
+        )
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["code"] == "validation_error"
+        assert problem["details"]["fields"] == ["/body/areal_reduction_factor"]
+        assert problem["errors"][0]["message"] == message
+        pmaxtp_45mm.assert_not_called()
+
+
 class TestNashEstimation:
     def test_estimation_from_tc_is_refused_with_the_allowed_methods(self, client):
         response = client.post(

@@ -149,6 +149,7 @@
             if (opts.hietogram_type) payload.hietogram_type = opts.hietogram_type;
             if (opts.hietogram_alpha != null) payload.hietogram_alpha = opts.hietogram_alpha;
             if (opts.hietogram_beta != null) payload.hietogram_beta = opts.hietogram_beta;
+            if (opts.areal_reduction_factor != null) payload.areal_reduction_factor = opts.areal_reduction_factor;
             if (opts.uh_model) payload.uh_model = opts.uh_model;
             if (opts.tc_method) payload.tc_method = opts.tc_method;
             if (opts.nash_estimation) payload.nash_estimation = opts.nash_estimation;
