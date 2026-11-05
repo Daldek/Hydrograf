@@ -94,9 +94,11 @@ class MorphometricParameters(BaseModel):
     real_channel_length_km : float, optional
         Length of the main channel along BDOT10k streams, from the outlet [km]
     flow_path_length_km : float, optional
-        Longest flow path from the watershed divide to the outlet [km]
+        Longest flow path from the hydraulically most distant point of the
+        watershed (usually on the divide, possibly on an internal ridge) to the
+        outlet [km]
     flow_path_slope_m_per_m : float, optional
-        (Elevation of its head on the divide − outlet elevation) / its length [m/m]
+        (Elevation of its head − outlet elevation) / its length [m/m]
     overland_length_km, overland_slope_m_per_m : float, optional
         Length [km] and slope [m/m] of the overland segment of the longest flow
         path, from its head to the DEM stream network of the delineation threshold
@@ -207,7 +209,8 @@ class MorphometricParameters(BaseModel):
         None,
         ge=0,
         description=(
-            "Longest flow path from the watershed divide to the outlet [km] "
+            "Longest flow path from the hydraulically most distant point of the "
+            "watershed to the outlet [km] "
             "(the value of flow_path_length_km)"
         ),
     )
@@ -232,7 +235,9 @@ class MorphometricParameters(BaseModel):
         None,
         gt=0,
         description=(
-            "Longest flow path from the watershed divide to the outlet, along the "
+            "Longest flow path from the hydraulically most distant point of the "
+            "watershed (usually on the divide, possibly on a ridge inside the "
+            "watershed) to the outlet, along the "
             "flow directions of the DEM [km]"
         ),
     )
@@ -240,7 +245,8 @@ class MorphometricParameters(BaseModel):
         None,
         gt=0,
         description=(
-            "(Elevation of the head of the longest flow path on the divide - "
+            "(Elevation of the head of the longest flow path, the hydraulically "
+            "most distant point of the watershed - "
             "outlet elevation) / flow_path_length_km [m/m]"
         ),
     )
@@ -248,9 +254,9 @@ class MorphometricParameters(BaseModel):
         None,
         gt=0,
         description=(
-            "Overland segment of the longest flow path, from its head on the "
-            "divide to the first cell of the DEM stream network at the "
-            "delineation threshold [km]"
+            "Overland segment of the longest flow path, from its head (the "
+            "hydraulically most distant point) to the first cell of the DEM "
+            "stream network at the delineation threshold [km]"
         ),
     )
     overland_slope_m_per_m: float | None = Field(

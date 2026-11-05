@@ -7,7 +7,8 @@
 
 The time of concentration methods take the inputs their primary sources define (Nogat plan
 `docs/plans/2026-11-05-official-tc-inputs.md`, decision D5): Kirpich's slope is
-(elevation of the head of the longest flow path on the divide − elevation of the outlet) /
+(elevation of the head of the longest flow path, the hydraulically most distant point of the
+watershed, usually on the divide but possibly on a ridge inside it − elevation of the outlet) /
 the length of that path, and FAA, Kerby and Kerby–Kirpich time the overland segment of
 that path, from its head to the stream network. Hydrograf measured neither: the
 preprocessing knew the head cell of each sub-catchment's longest flow path but stored only
