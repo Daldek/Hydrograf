@@ -179,7 +179,6 @@ This document defines precisely:
   - Base time: tb = 2.67 × tp
 - Nash IUH method (Instantaneous Unit Hydrograph):
   - Parameter estimation: from_lutz, from_urban_regression
-  - Estimation from_tc (deprecated)
 - Snyder UH method:
   - Parameters: ct (lag coefficient), cp (peak coefficient)
 - Hyetograph types: Beta, Block, Euler II

@@ -410,7 +410,6 @@ def _lutz_inputs(morph_dict: dict[str, Any]) -> dict[str, float]:
 def _estimate_nash_params(
     request: HydrographRequest,
     morph_dict: dict[str, Any],
-    tc_min: float | None,
     precip_mm: float | None = None,
     cn: float | None = None,
     duration_min: float | None = None,
@@ -452,7 +451,7 @@ def _estimate_nash_params(
             lutz["forest_pct"],
             lutz["urban_pct"],
         )
-    elif request.nash_estimation == "from_urban_regression":
+    else:  # from_urban_regression
         area_km2 = morph_dict["area_km2"]
         # Compute SCS-CN retention and initial abstraction
         s_mm = (25400.0 / cn - 254.0) if cn and cn < 100 else 0.0
@@ -488,12 +487,6 @@ def _estimate_nash_params(
             f"Pe={pe_mm:.1f} mm, D_eff={eff_dur_min:.0f} min, "
             f"U={urban_fraction:.2f}"
         )
-    else:
-        # from_tc: deprecated in Hydrolog; generate_hydrograph computes tc_min for it
-        if tc_min is None:
-            raise ValueError("Nash from_tc needs the time of concentration")
-        nash = NashIUH.from_tc(tc_min=tc_min, n=request.nash_n)
-        logger.info(f"Nash (from_tc): N={nash.n:.2f}, K={nash.k_min:.1f} min")
 
     nash_meta["n"] = round(nash.n, 3)
     nash_meta["k_min"] = round(nash.k_min, 2)
@@ -692,12 +685,8 @@ def _handoff_runoff(
             "source": PRODUCER,
             "nash_estimation": request.nash_estimation,
         }
-        if request.nash_estimation == "from_urban_regression":
-            for key in ("urban_fraction", "effective_precip_mm", "duration_h"):
-                origin[key] = nash_meta[key]
-        elif tc_method is not None:
-            origin.update(_tc_origin(request, tc_method))
-            origin["tc_min"] = tc_min
+        for key in ("urban_fraction", "effective_precip_mm", "duration_h"):
+            origin[key] = nash_meta[key]
         return runoff, origin
     if request.uh_model == "snyder":
         runoff = curve_number_runoff(
@@ -872,11 +861,8 @@ def generate_hydrograph(
 
         # ===== Create Hydrolog objects =====
         watershed_params = WatershedParameters.from_dict(morph_dict)
-        # Nash from_lutz / from_urban_regression don't need tc
-        nash_needs_tc = (
-            request.uh_model == "nash" and request.nash_estimation == "from_tc"
-        )
-        if request.uh_model != "nash" or nash_needs_tc:
+        # Nash (Lutz, urban regression) does not use tc
+        if request.uh_model != "nash":
             tc_method = request.tc_method
             tc_min = _calculate_tc(tc_method, watershed_params, morph_dict, request)
             logger.debug(f"Time of concentration: {tc_min:.1f} min ({tc_method})")
@@ -916,7 +902,6 @@ def generate_hydrograph(
             uh_params, nash_meta = _estimate_nash_params(
                 request,
                 morph_dict,
-                tc_min,
                 precip_mm=precip_total_mm,
                 cn=cn_effective,
                 duration_min=duration_min,
@@ -1066,8 +1051,7 @@ def list_scenarios() -> dict[str, Any]:
         "hietogram_types": ["beta", "block", "euler_ii"],
         "uh_models": ["scs", "nash", "snyder"],
         "snyder_defaults": {"ct": 1.5, "cp": 0.6},
-        "nash_estimation_methods": ["from_lutz", "from_urban_regression", "from_tc"],
-        "nash_defaults": {"n": 3.0},
+        "nash_estimation_methods": ["from_lutz", "from_urban_regression"],
         "amc": list(AMC_BY_CODE),
         "custom_precipitation_max_steps": CUSTOM_PRECIPITATION_MAX_STEPS,
         "area_limit_km2": HYDROGRAPH_AREA_LIMIT_KM2,

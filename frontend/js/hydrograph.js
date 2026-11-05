@@ -26,7 +26,6 @@
     var NUMBER_FIELDS = [
         { id: 'hydro-alpha', key: 'hietogram_alpha', label: '\u03b1', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
         { id: 'hydro-beta', key: 'hietogram_beta', label: '\u03b2', section: 'Hietogram', part: 'beta-params', gt: 0, max: 20 },
-        { id: 'hydro-nash-n', key: 'nash_n', label: 'N (zbiorniki)', section: 'Hydrogram', part: 'nash-n-row', gt: 0, max: 20 },
         { id: 'hydro-tc-runoff-coeff', key: 'tc_runoff_coeff', label: 'C (sp\u0142yw)', section: 'Hydrogram', part: 'tc-runoff-coeff-col', min: 0, max: 1, optional: true },
         { id: 'hydro-tc-retardance', key: 'tc_retardance', label: 'N (op\u00f3r)', section: 'Hydrogram', part: 'tc-retardance-col', min: 0.02, max: 0.8 },
         { id: 'hydro-tc-overland-length', key: 'tc_overland_length_km', label: 'L sp\u0142ywu', section: 'Hydrogram', part: 'tc-overland-col', gt: 0, max: 5 },
@@ -44,13 +43,12 @@
     /** Choices of the forms that decide which fields a request uses. */
     function choices() {
         var model = document.getElementById('hydro-uh-model').value;
-        var estimation = document.getElementById('hydro-nash-estimation').value;
         return {
             hietogram: document.getElementById('hydro-hietogram-type').value,
             model: model,
-            estimation: estimation,
-            // Tc for SCS, Snyder and Nash from_tc
-            needsTc: model !== 'nash' || estimation === 'from_tc',
+            estimation: document.getElementById('hydro-nash-estimation').value,
+            // Tc for SCS and Snyder
+            needsTc: model !== 'nash',
             tc: document.getElementById('hydro-tc-method').value,
         };
     }
@@ -61,7 +59,6 @@
         return {
             'nash-params': c.model === 'nash',
             'tc-method-params': c.needsTc,
-            'nash-n-row': c.model === 'nash' && c.estimation === 'from_tc',
             'tc-runoff-coeff-col': c.needsTc && c.tc === 'faa',
             'tc-retardance-col': c.needsTc && kerby,
             'tc-overland-col': c.needsTc && (c.tc === 'faa' || kerby),
@@ -309,10 +306,7 @@
                     if (values[key] != null) opts[key] = values[key];
                 });
             }
-            if (c.model === 'nash') {
-                opts.nash_estimation = c.estimation;
-                if (c.estimation === 'from_tc') opts.nash_n = values.nash_n;
-            }
+            if (c.model === 'nash') opts.nash_estimation = c.estimation;
             if (c.model === 'snyder') {
                 opts.snyder_ct = values.snyder_ct;
                 opts.snyder_cp = values.snyder_cp;
@@ -420,7 +414,6 @@
         'snyder': 'Snyder',
     };
     var NASH_EST_LABELS = {
-        'from_tc': 'z Tc (deprecated)',
         'from_lutz': 'Lutz',
         'from_urban_regression': 'Regresja urban.',
     };
@@ -517,7 +510,7 @@
         'hydro-duration', 'hydro-probability', 'hydro-hietogram-type',
         'hydro-alpha', 'hydro-beta', 'hydro-amc',
         'hydro-uh-model', 'hydro-tc-method',
-        'hydro-nash-estimation', 'hydro-nash-n',
+        'hydro-nash-estimation',
         'hydro-snyder-ct', 'hydro-snyder-cp',
         'hydro-tc-runoff-coeff', 'hydro-tc-retardance',
         'hydro-tc-overland-length',
@@ -531,7 +524,7 @@
             hietogramType.addEventListener('change', updateHietogramVisibility);
         }
 
-        ['hydro-uh-model', 'hydro-nash-estimation', 'hydro-tc-method'].forEach(function (id) {
+        ['hydro-uh-model', 'hydro-tc-method'].forEach(function (id) {
             var select = document.getElementById(id);
             if (select) select.addEventListener('change', updateHydrographFields);
         });

@@ -75,6 +75,8 @@ flagged were annotated (`api/endpoints/hydrograph.py`) or switched to the float 
 - `nash_estimation: "from_tc"` calls `NashIUH.from_tc`, which Hydrolog has marked deprecated
   since 0.6.2 and announced for removal in 1.0.0; the head still has it and warns. Whether
   the REST option goes with it is a decision of the author (PROGRESS, Open questions).
+  *(Update of 2026-11-05: the author removed the option and the request field `nash_n`;
+  CHANGELOG, Removed.)*
 - When a producer is tagged, the release pull request replaces its commit with the tag
   (REL-5.3), the lock is refreshed and the gate run again; the Kartograf pin changes in its
   own migration.

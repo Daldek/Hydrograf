@@ -154,7 +154,6 @@ class TestHydrographHandoff:
             {"uh_model": "snyder", "snyder_ct": 1.4, "snyder_cp": 0.65},
             {"uh_model": "nash", "nash_estimation": "from_lutz"},
             {"uh_model": "nash", "nash_estimation": "from_urban_regression"},
-            {"uh_model": "nash", "nash_estimation": "from_tc", "nash_n": 2.5},
             {
                 "custom_precipitation": {
                     "timestep_min": 10,
@@ -170,7 +169,6 @@ class TestHydrographHandoff:
             "snyder",
             "nash-lutz",
             "nash-urban",
-            "nash-from-tc",
             "own-series",
         ],
     )
