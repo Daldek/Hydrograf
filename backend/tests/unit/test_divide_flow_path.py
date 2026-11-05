@@ -82,7 +82,8 @@ def rasters(tmp_path):
 
 
 def _centre(row: int, col: int) -> tuple[float, float]:
-    return TRANSFORM * (col + 0.5, row + 0.5)
+    x, y = TRANSFORM * (col + 0.5, row + 0.5)
+    return float(x), float(y)
 
 
 WATERSHED_BOUNDS = (10.0, 10.0, 60.0, 60.0)
