@@ -14,9 +14,20 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+# Rows and columns of the tiles of the GeoTIFFs that GeoTiffWriter writes
+_TILE_CELLS = 256
+
 
 class GeoTiffWriter:
     """A GeoTIFF in PL-1992 (EPSG:2180), LZW, written whole or strip by strip.
+
+    The file is tiled (256 x 256 cells), so a windowed reader decodes only the
+    tiles its window touches, not rows across the whole width. Strips of a
+    multiple of 256 rows write every tile once. A strip that ends inside a row of
+    tiles leaves them for the next strip to complete; a tile that GDAL's block
+    cache cannot keep until then is written again at the end of the file, which
+    grows (strips of 7 rows of a 2000 x 2000 raster with a cache of 1 MB: 19 times
+    the size).
 
     Uses the original transform from the input raster if ``metadata`` has it, for a
     perfect alignment with the source DEM; else one from its corner and cell size.
@@ -80,6 +91,9 @@ class GeoTiffWriter:
             transform=transform,
             nodata=nodata,
             compress="lzw",
+            tiled=True,
+            blockxsize=_TILE_CELLS,
+            blockysize=_TILE_CELLS,
         )
 
     def write_rows(self, row_start: int, data: np.ndarray) -> None:

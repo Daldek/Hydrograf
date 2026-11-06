@@ -148,7 +148,9 @@ INTERMEDIATE_SUFFIXES = {
     "slope": "05_slope",
 }
 
-# Rows of a strip of the slope, aspect and TWI computation (_slope_aspect_twi)
+# Rows of a strip of the slope, aspect and TWI computation (_slope_aspect_twi); a
+# multiple of the 256 rows of the tiles of GeoTiffWriter, which then writes every
+# tile once
 STRIP_ROWS = 512
 # GeoTIFFs of _slope_aspect_twi: name -> nodata (float32)
 _STRIP_RASTER_NODATA = {"slope": -1.0, "aspect": -1.0, "twi": -9999.0}

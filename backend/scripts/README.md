@@ -384,7 +384,8 @@ cd backend
 **Intermediate files (GeoTIFF):**
 
 `--save-intermediates` writes files to check the computation in a GIS (for example QGIS); `*` is the
-name of the input without its extension.
+name of the input without its extension. The files are LZW-compressed and tiled in 256 × 256 cells,
+so a read of a window (the API, a GIS) decodes only the tiles the window touches.
 
 | File | Description | Data type |
 |---|---|---|
