@@ -656,6 +656,8 @@ def _process_thresholds(
             all_catchment_data[threshold_m2] = catchments
 
         logger.info(f"  Threshold {threshold_m2} m²: {len(segments)} segments")
+        # Free the rasters of this threshold before the next one is computed
+        del label_raster, strahler_t
 
     return all_stream_segments, all_catchment_data
 
@@ -1231,11 +1233,15 @@ def process_dem(
         dem, metadata, drain_points=drain_points
     )
     stats["max_accumulation"] = int(acc.max())
+    # The DEM is not needed after the hydrology (filled_dem from here on), only its
+    # cells, which give the mean slope (drain points are nodata in filled_dem)
+    dem_valid = dem != nodata
+    del dem
 
     # Build FlwdirRaster once for reuse (subcatchments, potentially strahler)
     import pyflwdir
 
-    transform = _get_transform(metadata, dem.shape)
+    transform = _get_transform(metadata, filled_dem.shape)
     flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
 
     if save_intermediates:
@@ -1326,7 +1332,8 @@ def process_dem(
     dx, dy = _compute_gradients(filled_dem, metadata["cellsize"], nodata)
     slope = compute_slope_from_gradients(dx, dy)
     logger.info(f"Slope computed (range: {slope.min():.1f}% - {slope.max():.1f}%)")
-    stats["mean_slope"] = float(np.mean(slope[dem != nodata]))
+    stats["mean_slope"] = float(np.mean(slope[dem_valid]))
+    del dem_valid
 
     if save_intermediates:
         save_raster_geotiff(
@@ -1346,7 +1353,6 @@ def process_dem(
             f"{valid_aspect.max():.1f}°)"
         )
     del dx, dy  # Free gradient memory
-    del dem  # No longer needed — filled_dem used from here on
 
     if save_intermediates:
         save_raster_geotiff(

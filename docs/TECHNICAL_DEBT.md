@@ -210,7 +210,7 @@ logger.info(f"Watershed area: {area_km2} km2")
 
 ---
 
-## Memory of the DEM processing (`process_dem`) — PLANNED, NOT IMPLEMENTED
+## Memory of the DEM processing (`process_dem`) — IN PROGRESS (F7 DONE)
 
 **Problem:** the bootstrap of the Kaczawa catchment (513 sheets, a raster of 183 332 457 cells of 5 m) failed twice with OOM on 2026-10-29/30: with a limit of 8G + 8G swap in the `zonal_stats` of the sub-catchments of the threshold 10000 (140 183 labels), with 12G + 4G in the TWI. The peak of the current code is ~103 B/cell, that is ~19 GB at 183M; more than 13 GB is taken by 8 different stages (there is no single bottleneck). Kotlina Kłodzka (113M) fitted only thanks to the default swap of Docker (8G + 8G).
 
@@ -232,7 +232,7 @@ logger.info(f"Watershed area: {area_km2} km2")
 
 **Order of implementation:** F7 → F1 + F2 → F3 → F4 + F6 (without them the Strahler of the threshold 100000 stays at ~16.5 GB) → F5 → possibly F8–F11. Then one control bootstrap of the Kaczawa in a separate container (`docker compose run --rm`), not in `hydro_api`.
 
-**Tests to write:** equivalence of old and new for `fill_internal_nodata_holes` (multi-step holes, edges, float64), `recompute_flow_accumulation` (codes 0/-1/255, nodata, cycle pairs), the strip computation (strips that do not divide the number of rows, `strip_rows=1`, nodata at a strip border), Strahler for two thresholds on a shared `flw` and `sort` vs `walk`, `zonal_summary` and the histogram against bincount/scipy (label 0, missing labels, only nodata), argmax per label and tracing within a label (extend `tests/unit/test_flow_path.py`). No unit test of the memory: verification by one run on the full raster.
+**Tests to write:** equivalence of old and new for `fill_internal_nodata_holes` (multi-step holes, edges, float64), `recompute_flow_accumulation` (codes 0/-1/255, nodata, cycle pairs), the strip computation (strips that do not divide the number of rows, `strip_rows=1`, nodata at a strip border), Strahler for two thresholds on a shared `flw` and `sort` vs `walk`, `zonal_summary` and the histogram against bincount/scipy (label 0, missing labels, only nodata), argmax per label and tracing within a label (extend `tests/unit/test_flow_path.py`). No unit test of the memory: verification by one run on the full raster. The shared helpers of these tests are in `backend/tests/dem_equivalence.py`: deterministic synthetic DEMs with pits, flats, a nodata border, holes and internal sinks, the hydrology of `process_dem` on them, and `assert_identical` (bit for bit).
 
 **On the side (a separate task, it changes the results):** the `max_acc` strategy of `fix_internal_sinks` creates pairs of cells that drain into each other (Kaczawa: 4520 fixes, all `max_acc`; these are depressions next to nodata, not true internal ones). Kahn does not process the cells of a cycle, so the accumulation at these outlets leaves out the area of the partner, and `d8_fdir`/`flw` does not get the fixes: the flow distance, Strahler and the catchments are computed on the uncorrected network. Moreover `pyflwdir.streams.stream_distance` (0.5.12) is not `@njit` (4 min at 183M), and aspect and TWI are computed also with `save_intermediates=False`.
 
@@ -240,4 +240,4 @@ logger.info(f"Watershed area: {area_km2} km2")
 
 ---
 
-*Last update: 2026-11-02*
+*Last update: 2026-11-06*

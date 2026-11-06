@@ -45,7 +45,8 @@ def _count_upstream_and_find_headwaters(
     Returns upstream_count, hw_rows, hw_cols arrays.
     """
     nrows, ncols = fdir.shape
-    upstream_count = np.zeros((nrows, ncols), dtype=np.int32)
+    # At most 8 neighbours drain into a cell
+    upstream_count = np.zeros((nrows, ncols), dtype=np.uint8)
 
     # Pass 1: count upstream stream neighbors
     for i in range(nrows):
@@ -151,7 +152,7 @@ def vectorize_streams(
     nodata_mask = dem == nodata
 
     # Numba-accelerated upstream counting + headwater detection
-    fdir_i16 = fdir.astype(np.int16)
+    fdir_i16 = np.asarray(fdir, dtype=np.int16)
     upstream_count, hw_rows, hw_cols = _count_upstream_and_find_headwaters(
         fdir_i16,
         stream_mask,
@@ -322,7 +323,7 @@ def delineate_subcatchments(
     )
 
     basin_map = flw.basins(idxs=stream_idxs, ids=stream_ids)
-    label_raster[:] = basin_map.astype(np.int32)
+    label_raster[:] = basin_map
 
     total_valid = int(np.sum(dem != nodata))
     total_labeled = int(np.sum(label_raster != 0))

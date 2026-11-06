@@ -70,8 +70,8 @@ def save_raster_geotiff(
 
     np_dtype, rio_dtype = dtype_map.get(dtype, (np.float32, rasterio.float32))
 
-    # Prepare data (flip vertically because ASCII GRID is top-down)
-    out_data = data.astype(np_dtype)
+    # Cast to the output type (no copy when the data already has it)
+    out_data = data.astype(np_dtype, copy=False)
 
     with rasterio.open(
         output_path,
