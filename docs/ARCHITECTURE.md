@@ -165,7 +165,7 @@ backend/
 │   ├── morphometry.py             # Shape indices (calculate_shape_indices)
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── precipitation.py           # Precipitation queries
-│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF)
+│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF); read_raster_window: a window around a query (the API)
 │   ├── raster_service.py          # RasterCache — lazy-loaded raster data (DEM, flow direction, accumulation)
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
@@ -387,6 +387,8 @@ Response: 404 no_data (no_elevation_data) when no sample has DEM data
 ```
 
 `dem_gaps` marks the samples where the DEM has no data (off its extent, e.g. past the boundary of the clipped data); `elevations_m` holds 0.0 there, so a client must read the mask, not the value (the frontend draws a gap, B5).
+
+The DEM is read in windows, not sample by sample: a window is the bounding box of consecutive samples with one cell around it, at most 2 km across (`PROFILE_WINDOW_SIDE_M`), so a line up to 2 km is one read and a longer one never holds more of the DEM than one window (`core.raster_io.read_raster_window`; a window past the DEM is nodata).
 
 `result_ids` (optional, up to 20 ids) are analysis results of the manifest `/data/results/index.json` (§4.2.0). For each result with a `water_level` raster that at least one point of the profile hits, `water_levels` gives the maximum water level [m a.s.l.] at the same points as `elevations_m`; `null` where it is dry, outside the raster or without DEM data. Unknown ids, results without `water_level` and rasters off the line are skipped; without `result_ids` the list is empty. `core/analysis_results.py` reads the manifest and the rasters from `FRONTEND_DATA_DIR` (§4.2.0).
 
