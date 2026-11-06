@@ -5,9 +5,17 @@ and flow accumulation recomputation.
 
 import numpy as np
 import pytest
+import rasterio
 
+from core.morphometry_raster import (
+    _compute_gradients,
+    compute_aspect_from_gradients,
+    gradient_strips,
+)
+from core.raster_io import save_raster_geotiff
 from scripts.process_dem import (
     VALID_D8_SET,
+    _slope_aspect_twi,
     burn_streams_into_dem,
     compute_aspect,
     compute_strahler_order,
@@ -16,6 +24,12 @@ from scripts.process_dem import (
     fix_internal_sinks,
     process_hydrology_pyflwdir,
     recompute_flow_accumulation,
+)
+from tests.dem_equivalence import (
+    DEM_CASES,
+    assert_identical,
+    derive_hydrology,
+    synthetic_dem,
 )
 
 NODATA = -9999.0
@@ -775,6 +789,68 @@ class TestComputeTwi:
         twi = compute_twi(acc, slope, cellsize, nodata_acc=0)
         valid = twi[twi > -9999]
         assert np.all(valid > 0)
+
+
+@pytest.fixture(scope="module", params=list(DEM_CASES.values()), ids=list(DEM_CASES))
+def hydrology(request):
+    """The hydrology of process_dem on a synthetic DEM."""
+    return derive_hydrology(*synthetic_dem(**request.param))
+
+
+def _raster(path):
+    """The data and the profile of a GeoTIFF."""
+    with rasterio.open(path) as src:
+        return src.read(), dict(src.profile)
+
+
+class TestSlopeAspectTwiInStrips:
+    """Strips of rows give the gradients, slope, aspect and TWI of the whole raster.
+
+    Strip heights that divide the rows and that do not, one row per strip, and a
+    nodata row at a strip border; the nodata of the synthetic DEMs lies across
+    many strip borders too.
+    """
+
+    @pytest.mark.parametrize("case", list(DEM_CASES.values()), ids=list(DEM_CASES))
+    @pytest.mark.parametrize("strip_rows", [1, 2, 7, 16, 46, 47, 60])
+    def test_gradients_of_the_strips_equal_those_of_the_whole_dem(
+        self, case, strip_rows
+    ):
+        dem, _ = synthetic_dem(**case)
+        dem[16] = NODATA  # at a border of strips of 1, 2 and 16 rows
+        whole_dx, whole_dy = _compute_gradients(dem, 5.0, NODATA)
+
+        strips = list(gradient_strips(dem, 5.0, NODATA, strip_rows))
+
+        starts = [rows.start for rows, _, _ in strips]
+        assert starts == list(range(0, dem.shape[0], strip_rows))
+        assert_identical(np.concatenate([dx for _, dx, _ in strips]), whole_dx)
+        assert_identical(np.concatenate([dy for _, _, dy in strips]), whole_dy)
+
+    @pytest.mark.parametrize("strip_rows", [1, 7, 512])
+    def test_slope_aspect_and_twi_equal_those_of_the_whole_raster(
+        self, hydrology, tmp_path, strip_rows
+    ):
+        metadata = hydrology.metadata
+        cellsize = metadata["cellsize"]
+        slope_percent = hydrology.slope_percent
+        dx, dy = _compute_gradients(hydrology.filled_dem, cellsize, NODATA)
+        whole = {
+            "slope": (slope_percent, -1.0),
+            "aspect": (compute_aspect_from_gradients(dx, dy), -1.0),
+            "twi": (compute_twi(hydrology.acc, slope_percent, cellsize), -9999.0),
+        }
+        for name, (data, nodata) in whole.items():
+            save_raster_geotiff(data, metadata, tmp_path / f"whole_{name}.tif", nodata)
+        paths = {name: tmp_path / f"{name}.tif" for name in whole}
+
+        slope = _slope_aspect_twi(
+            hydrology.filled_dem, hydrology.acc, metadata, paths, strip_rows
+        )
+
+        assert_identical(slope, slope_percent)
+        for name, path in paths.items():
+            assert_identical(_raster(path), _raster(tmp_path / f"whole_{name}.tif"))
 
 
 class TestComputeStrahlerOrder:

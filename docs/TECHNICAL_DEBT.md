@@ -210,7 +210,7 @@ logger.info(f"Watershed area: {area_km2} km2")
 
 ---
 
-## Memory of the DEM processing (`process_dem`) — IN PROGRESS (F7, F1, F2 DONE)
+## Memory of the DEM processing (`process_dem`) — IN PROGRESS (F7, F1, F2, F3 DONE)
 
 **Problem:** the bootstrap of the Kaczawa catchment (513 sheets, a raster of 183 332 457 cells of 5 m) failed twice with OOM on 2026-10-29/30: with a limit of 8G + 8G swap in the `zonal_stats` of the sub-catchments of the threshold 10000 (140 183 labels), with 12G + 4G in the TWI. The peak of the current code is ~103 B/cell, that is ~19 GB at 183M; more than 13 GB is taken by 8 different stages (there is no single bottleneck). Kotlina Kłodzka (113M) fitted only thanks to the default swap of Docker (8G + 8G).
 

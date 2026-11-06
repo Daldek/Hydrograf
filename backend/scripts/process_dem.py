@@ -38,6 +38,7 @@ import argparse
 import logging
 import sys
 import time
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -64,15 +65,16 @@ from core.hydrology import (
     recompute_flow_accumulation,
 )
 from core.morphometry_raster import (
-    _compute_gradients,
     compute_aspect,
     compute_aspect_from_gradients,
     compute_slope_from_gradients,
     compute_strahler_from_fdir,
     compute_strahler_order,
     compute_twi,
+    gradient_strips,
 )
 from core.raster_io import (
+    GeoTiffWriter,
     downsample_raster,
     read_ascii_grid,
     read_raster,
@@ -145,6 +147,11 @@ INTERMEDIATE_SUFFIXES = {
     "flow_dist_m": "04b_stream_distance",
     "slope": "05_slope",
 }
+
+# Rows of a strip of the slope, aspect and TWI computation (_slope_aspect_twi)
+STRIP_ROWS = 512
+# GeoTIFFs of _slope_aspect_twi: name -> nodata (float32)
+_STRIP_RASTER_NODATA = {"slope": -1.0, "aspect": -1.0, "twi": -9999.0}
 
 
 def _get_transform(metadata: dict[str, Any], dem_shape: tuple[int, int]):
@@ -573,6 +580,89 @@ def _enrich_catchments_with_flow_paths(
         f"/ {len(catchments)} catchments, {overland_measured} overland segments "
         f"in {elapsed:.1f}s"
     )
+
+
+def _slope_aspect_twi(
+    filled_dem: np.ndarray,
+    acc: np.ndarray,
+    metadata: dict[str, Any],
+    output_paths: dict[str, Path] | None = None,
+    strip_rows: int = STRIP_ROWS,
+) -> np.ndarray:
+    """Compute the slope, aspect and TWI strip by strip; return the slope.
+
+    The Sobel gradients of each strip of ``strip_rows`` rows come from
+    gradient_strips, so the three rasters equal their computation over the whole
+    raster bit for bit, while besides the slope only one strip is in memory. The
+    aspect and the TWI are not kept: with ``output_paths`` their strips are
+    written to GeoTIFF windows, and the ranges of all three are logged.
+
+    Parameters
+    ----------
+    filled_dem : np.ndarray
+        Filled DEM.
+    acc : np.ndarray
+        Flow accumulation [cells] (0 = nodata).
+    metadata : dict
+        Grid metadata (cellsize, nodata_value, transform).
+    output_paths : dict[str, Path], optional
+        GeoTIFFs (float32) of "slope", "aspect" and "twi", nodata in
+        _STRIP_RASTER_NODATA.
+    strip_rows : int
+        Rows of a strip.
+
+    Returns
+    -------
+    np.ndarray
+        Slope [%] (float64).
+    """
+    cellsize = metadata["cellsize"]
+    logger.info("Computing slope, aspect and TWI in strips of %d rows...", strip_rows)
+    slope = np.empty(filled_dem.shape, dtype=np.float64)
+    aspect_min, aspect_max = np.inf, -np.inf
+    twi_min, twi_max = np.inf, -np.inf
+    with ExitStack() as stack:
+        writers = {
+            name: stack.enter_context(
+                GeoTiffWriter(
+                    path,
+                    metadata,
+                    filled_dem.shape,
+                    nodata=_STRIP_RASTER_NODATA[name],
+                    dtype="float32",
+                )
+            )
+            for name, path in (output_paths or {}).items()
+        }
+        for rows, dx, dy in gradient_strips(
+            filled_dem, cellsize, metadata["nodata_value"], strip_rows
+        ):
+            slope[rows] = compute_slope_from_gradients(dx, dy)
+            aspect = compute_aspect_from_gradients(dx, dy)
+            del dx, dy
+            twi = compute_twi(acc[rows], slope[rows], cellsize, nodata_acc=0)
+            valid_aspect = aspect[aspect >= 0]
+            if valid_aspect.size:
+                aspect_min = min(aspect_min, valid_aspect.min())
+                aspect_max = max(aspect_max, valid_aspect.max())
+            valid_twi = twi[twi > -9999]
+            if valid_twi.size:
+                twi_min = min(twi_min, valid_twi.min())
+                twi_max = max(twi_max, valid_twi.max())
+            del valid_aspect, valid_twi
+            for name, strip in (
+                ("slope", slope[rows]),
+                ("aspect", aspect),
+                ("twi", twi),
+            ):
+                if name in writers:
+                    writers[name].write_rows(rows.start, strip)
+    logger.info("Slope computed (range: %.1f%% - %.1f%%)", slope.min(), slope.max())
+    if aspect_min <= aspect_max:
+        logger.info("Aspect computed (range: %.1f° - %.1f°)", aspect_min, aspect_max)
+    if twi_min <= twi_max:
+        logger.info("TWI computed (range: %.1f - %.1f)", twi_min, twi_max)
+    return slope
 
 
 def _process_thresholds(
@@ -1386,42 +1476,17 @@ def process_dem(
             dtype="float32",
         )
 
-    # 5. Compute slope and aspect (shared Sobel gradients)
-    logger.info("Computing slope and aspect (shared gradients)...")
-    dx, dy = _compute_gradients(filled_dem, metadata["cellsize"], nodata)
-    slope = compute_slope_from_gradients(dx, dy)
-    logger.info(f"Slope computed (range: {slope.min():.1f}% - {slope.max():.1f}%)")
+    # 5. Slope, aspect and TWI, strip by strip (shared Sobel gradients)
+    strip_rasters = None
+    if save_intermediates:
+        strip_rasters = {
+            "slope": output_dir / f"{base_name}_05_slope.tif",
+            "aspect": output_dir / f"{base_name}_09_aspect.tif",
+            "twi": output_dir / f"{base_name}_08_twi.tif",
+        }
+    slope = _slope_aspect_twi(filled_dem, acc, metadata, strip_rasters)
     stats["mean_slope"] = float(np.mean(slope[dem_valid]))
     del dem_valid
-
-    if save_intermediates:
-        save_raster_geotiff(
-            slope,
-            metadata,
-            output_dir / f"{base_name}_05_slope.tif",
-            nodata=-1,
-            dtype="float32",
-        )
-
-    aspect = compute_aspect_from_gradients(dx, dy)
-    valid_aspect = aspect[aspect >= 0]
-    if len(valid_aspect) > 0:
-        logger.info(
-            f"Aspect computed "
-            f"(range: {valid_aspect.min():.1f}° - "
-            f"{valid_aspect.max():.1f}°)"
-        )
-    del dx, dy  # Free gradient memory
-
-    if save_intermediates:
-        save_raster_geotiff(
-            aspect,
-            metadata,
-            output_dir / f"{base_name}_09_aspect.tif",
-            nodata=-1,
-            dtype="float32",
-        )
-    del aspect  # Free — not needed for stream/catchment processing
 
     # Determine thresholds for multi-density stream networks
     cell_area = metadata["cellsize"] * metadata["cellsize"]
@@ -1448,19 +1513,6 @@ def process_dem(
             nodata=0,
             dtype="uint8",
         )
-
-    # 5d. Compute TWI
-    twi = compute_twi(acc, slope, metadata["cellsize"], nodata_acc=0)
-
-    if save_intermediates:
-        save_raster_geotiff(
-            twi,
-            metadata,
-            output_dir / f"{base_name}_08_twi.tif",
-            nodata=-9999,
-            dtype="float32",
-        )
-    del twi  # Free — not needed for stream/catchment processing
 
     # 6. Create stream mask (lowest threshold)
     stream_mask = (acc >= lowest_threshold_cells).astype(np.uint8)

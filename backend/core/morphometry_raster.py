@@ -5,6 +5,7 @@ All functions operate on numpy arrays representing raster grids.
 """
 
 import logging
+from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
@@ -53,6 +54,47 @@ def _compute_gradients(
     ) / (8 * cellsize)
 
     return dx, dy
+
+
+def gradient_strips(
+    dem: np.ndarray,
+    cellsize: float,
+    nodata: float,
+    strip_rows: int = 512,
+) -> Iterator[tuple[slice, np.ndarray, np.ndarray]]:
+    """
+    Yield the Sobel gradients of the DEM strip by strip.
+
+    Each strip of ``strip_rows`` rows (the last one may be shorter) is computed
+    with the row of the DEM above it and the one below it, which the 3 x 3 Sobel
+    kernel reads, so its gradients equal those rows of _compute_gradients over the
+    whole DEM bit for bit, with the memory of one strip.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        DEM array
+    cellsize : float
+        Cell size in meters
+    nodata : float
+        NoData value
+    strip_rows : int
+        Rows of a strip (at least 1)
+
+    Yields
+    ------
+    tuple[slice, np.ndarray, np.ndarray]
+        The rows of the strip and its gradients (dx, dy)
+    """
+    if strip_rows < 1:
+        raise ValueError(f"strip_rows must be at least 1, not {strip_rows}")
+    nrows = dem.shape[0]
+    for start in range(0, nrows, strip_rows):
+        stop = min(start + strip_rows, nrows)
+        top = max(start - 1, 0)
+        dx, dy = _compute_gradients(dem[top : min(stop + 1, nrows)], cellsize, nodata)
+        inner = slice(start - top, stop - top)
+        yield slice(start, stop), dx[inner], dy[inner]
 
 
 def compute_slope_from_gradients(
@@ -357,10 +399,9 @@ def compute_twi(
     Returns
     -------
     np.ndarray
-        TWI array (float32, nodata=-9999)
+        TWI array (float32, nodata=-9999); cell by cell, so the rows of a strip
+        of ``acc`` and ``slope`` give those rows of the TWI
     """
-    logger.info("Computing TWI (Topographic Wetness Index)...")
-
     cell_area = cellsize * cellsize
 
     # Upstream area in m2 and specific catchment area (SCA)
@@ -379,9 +420,5 @@ def compute_twi(
     twi_result[valid_mask] = np.log(sca[valid_mask] / tan_slope[valid_mask]).astype(
         np.float32
     )
-
-    valid = twi_result[twi_result > -9999]
-    if len(valid) > 0:
-        logger.info(f"TWI computed (range: {valid.min():.1f} - {valid.max():.1f})")
 
     return twi_result
