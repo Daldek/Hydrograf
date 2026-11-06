@@ -16,18 +16,9 @@ from typing import Any
 import numba
 import numpy as np
 
-from core.hydrology import D8_DIRECTIONS
+from core.hydrology import D8_COL_OFFSET, D8_DIRECTIONS, D8_ROW_OFFSET, D8_VALID
 
 logger = logging.getLogger(__name__)
-
-# D8 lookup arrays for numba (dict not supported in njit)
-_DR = np.zeros(256, dtype=np.int32)
-_DC = np.zeros(256, dtype=np.int32)
-_VALID = np.zeros(256, dtype=np.bool_)
-for _d, (_di, _dj) in D8_DIRECTIONS.items():
-    _DR[_d] = _di
-    _DC[_d] = _dj
-    _VALID[_d] = True
 
 
 @numba.njit(cache=True)
@@ -157,9 +148,9 @@ def vectorize_streams(
         fdir_i16,
         stream_mask,
         nodata_mask,
-        _DR,
-        _DC,
-        _VALID,
+        D8_ROW_OFFSET,
+        D8_COL_OFFSET,
+        D8_VALID,
     )
 
     logger.info(f"  Found {len(hw_rows)} headwater cells")

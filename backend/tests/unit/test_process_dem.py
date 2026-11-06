@@ -3,11 +3,15 @@ Unit tests for DEM processing fixes: nodata hole filling, sink fixing,
 and flow accumulation recomputation.
 """
 
+from collections import deque
+
 import numpy as np
 import pyflwdir
 import pytest
 import rasterio
+from scipy.ndimage import generic_filter
 
+from core.hydrology import D8_DIRECTIONS, D8_VALID, _internal_sinks
 from core.morphometry_raster import (
     _compute_gradients,
     compute_aspect_from_gradients,
@@ -904,6 +908,158 @@ class TestOneFlowDirectionRasterForTheRun:
 
         assert_identical(actual, expected)
         assert actual[0].max() > actual[1].max() > 0
+
+
+def _holes_by_generic_filter(dem, nodata, min_valid_neighbors, max_iterations):
+    """fill_internal_nodata_holes as it was before numba, the reference."""
+    patched = dem.copy()
+    total_filled = 0
+    for _ in range(max_iterations):
+        nodata_mask = patched == nodata
+        if not np.any(nodata_mask):
+            break
+        neighbor_count = generic_filter(
+            (patched != nodata).astype(np.float64),
+            lambda window: float(np.sum(window) - window[4]),
+            size=3,
+            mode="constant",
+            cval=0.0,
+        )
+        fillable = nodata_mask & (neighbor_count >= min_valid_neighbors)
+        if not np.any(fillable):
+            break
+
+        def mean_valid_neighbors(window):
+            neighbors = np.concatenate([window[:4], window[5:]])
+            valid = neighbors[neighbors != nodata]
+            return float(window[4]) if len(valid) == 0 else float(np.mean(valid))
+
+        neighbor_mean = generic_filter(
+            patched, mean_valid_neighbors, size=3, mode="constant", cval=nodata
+        )
+        patched[fillable] = neighbor_mean[fillable]
+        total_filled += int(np.sum(fillable))
+    return patched, total_filled
+
+
+def _accumulation_by_deque(fdir, dem, nodata):
+    """recompute_flow_accumulation as it was before numba, the reference."""
+    nrows, ncols = fdir.shape
+    acc = np.zeros((nrows, ncols), dtype=np.int32)
+    inflow_count = np.zeros((nrows, ncols), dtype=np.int32)
+    valid = dem != nodata
+    acc[valid] = 1
+    for i in range(nrows):
+        for j in range(ncols):
+            if valid[i, j] and fdir[i, j] in D8_DIRECTIONS:
+                di, dj = D8_DIRECTIONS[fdir[i, j]]
+                ni, nj = i + di, j + dj
+                if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
+                    inflow_count[ni, nj] += 1
+    queue = deque(
+        (i, j)
+        for i in range(nrows)
+        for j in range(ncols)
+        if valid[i, j] and inflow_count[i, j] == 0
+    )
+    while queue:
+        i, j = queue.popleft()
+        if fdir[i, j] in D8_DIRECTIONS:
+            di, dj = D8_DIRECTIONS[fdir[i, j]]
+            ni, nj = i + di, j + dj
+            if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
+                acc[ni, nj] += acc[i, j]
+                inflow_count[ni, nj] -= 1
+                if inflow_count[ni, nj] == 0:
+                    queue.append((ni, nj))
+    return acc
+
+
+def _odd_flow_directions(hydrology, seed):
+    """The flow directions and DEM of the run with what the pipeline can meet.
+
+    Codes 0, -1 and 255 on valid cells, new nodata cells inside the network
+    and pairs of cells that drain into each other, besides those that
+    fix_internal_sinks made.
+    """
+    rng = np.random.default_rng(seed)
+    fdir = hydrology.fdir.copy()
+    dem = hydrology.filled_dem.copy()
+    nrows, ncols = fdir.shape
+    picks = rng.choice(np.flatnonzero(dem != NODATA), size=60, replace=False)
+    fdir.ravel()[picks[:10]] = 0
+    fdir.ravel()[picks[10:20]] = -1
+    fdir.ravel()[picks[20:30]] = 255
+    dem.ravel()[picks[30:40]] = NODATA
+    back = {offset: code for code, offset in D8_DIRECTIONS.items()}
+    for cell in picks[40:]:
+        row, col = divmod(int(cell), ncols)
+        if int(fdir[row, col]) in D8_DIRECTIONS:
+            drow, dcol = D8_DIRECTIONS[int(fdir[row, col])]
+            if 0 <= row + drow < nrows and 0 <= col + dcol < ncols:
+                fdir[row + drow, col + dcol] = back[(-drow, -dcol)]
+    return fdir, dem
+
+
+class TestHoleFillingAndAccumulationInNumba:
+    """The numba hole filling, accumulation and sink mask equal the code before.
+
+    The holes of the synthetic DEMs fill in one to four passes or stay open,
+    lie on the frame of the raster and along its ragged nodata border; float32
+    and float64 DEMs.
+    """
+
+    @pytest.mark.parametrize("case", list(DEM_CASES.values()), ids=list(DEM_CASES))
+    @pytest.mark.parametrize(
+        ("min_valid_neighbors", "max_iterations"),
+        [(5, 3), (5, 10), (3, 2), (8, 1), (0, 2)],
+    )
+    def test_holes_are_filled_as_by_generic_filter(
+        self, case, min_valid_neighbors, max_iterations
+    ):
+        dem, _ = synthetic_dem(**case)
+
+        result = fill_internal_nodata_holes(
+            dem, NODATA, min_valid_neighbors, max_iterations
+        )
+
+        assert_identical(
+            result,
+            _holes_by_generic_filter(dem, NODATA, min_valid_neighbors, max_iterations),
+        )
+
+    def test_means_add_up_as_numpy_does(self):
+        # float64 values of full precision, where the order of the sum shows:
+        # single holes (8 valid neighbours), pairs (7) and holes on the frame (5)
+        rng = np.random.default_rng(5)
+        dem = rng.normal(100.0, 30.0, (40, 40))
+        dem[2:38:3, 2:38:3] = NODATA
+        dem[3:37:6, 4:36:6] = NODATA
+        dem[0, 5:35:4] = NODATA
+
+        result = fill_internal_nodata_holes(dem, NODATA)
+
+        assert_identical(result, _holes_by_generic_filter(dem, NODATA, 5, 3))
+
+    @pytest.mark.parametrize("seed", [0, 1])
+    def test_accumulation_equals_the_queue_of_kahn(self, hydrology, seed):
+        fdir, dem = _odd_flow_directions(hydrology, seed)
+
+        acc = recompute_flow_accumulation(fdir, dem, NODATA)
+
+        assert_identical(acc, _accumulation_by_deque(fdir, dem, NODATA))
+
+    @pytest.mark.parametrize("seed", [0, 1])
+    def test_internal_sinks_equal_those_of_isin(self, hydrology, seed):
+        fdir, dem = _odd_flow_directions(hydrology, seed)
+        inside = np.zeros(fdir.shape, dtype=bool)
+        inside[1:-1, 1:-1] = True
+        expected = ~np.isin(fdir, list(VALID_D8_SET)) & (dem != NODATA) & inside
+
+        sinks = _internal_sinks(fdir, dem, dem.dtype.type(NODATA), D8_VALID)
+
+        assert_identical(sinks, np.flatnonzero(expected))
+        assert sinks.size > 20
 
 
 class TestComputeStrahlerOrder:

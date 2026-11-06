@@ -11,6 +11,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
+import numba
 import numpy as np
 from affine import Affine
 from shapely.geometry.base import BaseGeometry
@@ -31,6 +32,16 @@ D8_DIRECTIONS = {
 }
 VALID_D8_SET = frozenset(D8_DIRECTIONS.keys())
 
+# D8 lookup tables for numba (no dicts in njit), indexed by code 0-255: whether
+# the code is a D8 direction, and the row and column offsets of its downstream cell
+D8_VALID = np.zeros(256, dtype=np.bool_)
+D8_ROW_OFFSET = np.zeros(256, dtype=np.int32)
+D8_COL_OFFSET = np.zeros(256, dtype=np.int32)
+for _code, (_drow, _dcol) in D8_DIRECTIONS.items():
+    D8_VALID[_code] = True
+    D8_ROW_OFFSET[_code] = _drow
+    D8_COL_OFFSET[_code] = _dcol
+
 
 def fill_internal_nodata_holes(
     dem: np.ndarray,
@@ -39,11 +50,15 @@ def fill_internal_nodata_holes(
     max_iterations: int = 3,
 ) -> tuple[np.ndarray, int]:
     """
-    Wypelnia wewnetrzne dziury nodata w DEM.
+    Fill internal nodata holes of a DEM.
 
-    Iteracyjnie wypelnia komorki nodata otoczone wystarczajaca liczba
-    validnych sasiadow (okno 3x3). Komorki brzegowe i duze bloki nodata
-    nie sa wypelniane.
+    In each pass a nodata cell with at least ``min_valid_neighbors`` valid cells
+    among its 8 neighbours (cells outside the raster are not valid) gets the mean
+    of those neighbours, all from the DEM before the pass; the passes stop when
+    no cell is filled. Cells at the edge of large nodata areas and the inside of
+    large holes stay nodata. A numba pass per iteration with memory per filled
+    cell; the results equal bit for bit those of the scipy generic_filter
+    version it replaced (the mean added up as np.mean does).
 
     Parameters
     ----------
@@ -52,68 +67,128 @@ def fill_internal_nodata_holes(
     nodata : float
         NoData value
     min_valid_neighbors : int
-        Minimalna liczba validnych sasiadow (z 8) aby uznac za dziure wewnetrzna
+        Valid neighbours (of 8) for a nodata cell to be filled
     max_iterations : int
-        Maksymalna liczba iteracji wypelniania
+        Maximum number of passes
 
     Returns
     -------
     tuple
-        (patched_dem, total_filled) — naprawiony DEM i liczba wypelnionych komorek
+        (patched_dem, total_filled): the filled DEM and the number of cells filled
     """
-    from scipy.ndimage import generic_filter
-
     patched = dem.copy()
     total_filled = 0
+    # NumPy compares the DEM with nodata in this type; the neighbour means
+    # compare in float64, the values of scipy's generic_filter
+    nodata_value = np.result_type(dem.dtype, nodata).type(nodata)
 
     for iteration in range(max_iterations):
-        nodata_mask = patched == nodata
-        if not np.any(nodata_mask):
-            break
-
-        # Count valid neighbors for each cell (3x3 window)
-        valid_map = (patched != nodata).astype(np.float64)
-
-        def count_valid_neighbors(window: np.ndarray) -> float:
-            # window is 3x3 flattened (9 elements), center is index 4
-            return float(np.sum(window) - window[4])
-
-        neighbor_count = generic_filter(
-            valid_map, count_valid_neighbors, size=3, mode="constant", cval=0.0
+        cells, means = _fillable_holes(
+            patched, nodata_value, float(nodata), min_valid_neighbors
         )
-
-        # Internal holes: nodata cells with enough valid neighbors
-        fillable = nodata_mask & (neighbor_count >= min_valid_neighbors)
-
-        if not np.any(fillable):
+        if cells.size == 0:
             break
-
-        # Compute mean of valid neighbors for each cell
-        def mean_valid_neighbors(window: np.ndarray) -> float:
-            center = window[4]
-            neighbors = np.concatenate([window[:4], window[5:]])
-            valid = neighbors[neighbors != nodata]
-            if len(valid) == 0:
-                return float(center)
-            return float(np.mean(valid))
-
-        neighbor_mean = generic_filter(
-            patched, mean_valid_neighbors, size=3, mode="constant", cval=nodata
-        )
-
-        filled_count = int(np.sum(fillable))
-        patched[fillable] = neighbor_mean[fillable]
-        total_filled += filled_count
+        patched.ravel()[cells] = means
+        total_filled += cells.size
 
         logger.debug(
             f"  fill_internal_nodata_holes iteration {iteration + 1}: "
-            f"filled {filled_count} cells"
+            f"filled {cells.size} cells"
         )
 
-        if filled_count == 0:
-            break
-
     return patched, total_filled
+
+
+@numba.njit(cache=True)
+def _fillable_holes(
+    dem: np.ndarray,
+    nodata: Any,
+    nodata_f64: float,
+    min_valid_neighbors: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the flat indices of the fillable nodata cells and their means."""
+    nrows, ncols = dem.shape
+    values = np.empty(8, dtype=np.float64)
+    count = 0
+    for row in range(nrows):
+        for col in range(ncols):
+            if dem[row, col] == nodata:
+                n_valid, _ = _valid_neighbours(
+                    dem, row, col, nodata, nodata_f64, values
+                )
+                if n_valid >= min_valid_neighbors:
+                    count += 1
+    cells = np.empty(count, dtype=np.int64)
+    means = np.empty(count, dtype=np.float64)
+    count = 0
+    for row in range(nrows):
+        for col in range(ncols):
+            if dem[row, col] != nodata:
+                continue
+            n_valid, n_values = _valid_neighbours(
+                dem, row, col, nodata, nodata_f64, values
+            )
+            if n_valid < min_valid_neighbors:
+                continue
+            cells[count] = row * ncols + col
+            # Without valid neighbours (min_valid_neighbors 0) a cell keeps nodata
+            means[count] = (
+                _mean_as_numpy(values, n_values)
+                if n_values > 0
+                else np.float64(dem[row, col])
+            )
+            count += 1
+    return cells, means
+
+
+@numba.njit(cache=True)
+def _valid_neighbours(
+    dem: np.ndarray,
+    row: int,
+    col: int,
+    nodata: Any,
+    nodata_f64: float,
+    values: np.ndarray,
+) -> tuple[int, int]:
+    """Count the valid neighbours of a cell; put their values in ``values``.
+
+    The count compares with ``nodata`` in the type of NumPy's ``dem != nodata``;
+    the values (row by row through the 3 x 3 window, as generic_filter gives
+    them) are compared in float64. Returns the count and the number of values.
+    """
+    nrows, ncols = dem.shape
+    n_valid = 0
+    n_values = 0
+    for drow in range(-1, 2):
+        for dcol in range(-1, 2):
+            r, c = row + drow, col + dcol
+            if (drow == 0 and dcol == 0) or not (0 <= r < nrows and 0 <= c < ncols):
+                continue
+            if dem[r, c] != nodata:
+                n_valid += 1
+            value = np.float64(dem[r, c])
+            if value != nodata_f64:
+                values[n_values] = value
+                n_values += 1
+    return n_valid, n_values
+
+
+@numba.njit(cache=True)
+def _mean_as_numpy(values: np.ndarray, n: int) -> float:
+    """Return np.mean(values[:n]) for n <= 8, added up in the same order.
+
+    NumPy starts its sum at 0.0 and adds fewer than 8 values one by one, and 8
+    values in pairs.
+    """
+    if n == 8:
+        total = ((values[0] + values[1]) + (values[2] + values[3])) + (
+            (values[4] + values[5]) + (values[6] + values[7])
+        )
+    else:
+        total = 0.0
+        for k in range(n):
+            total += values[k]
+    return float((0.0 + total) / n)
 
 
 def raise_buildings_in_dem(
@@ -1038,12 +1113,16 @@ def recompute_flow_accumulation(
     nodata: float,
 ) -> np.ndarray:
     """
-    Rekompozycja flow accumulation z algorytmem Kahna (BFS topological sort).
+    Recompute the flow accumulation with Kahn's topological order.
 
-    W odroznieniu od legacy compute_flow_accumulation():
-    - Pomija komorki nodata (acc=0)
-    - Brak deprecation warning
-    - Obsluguje komorki z fdir=0 (brzeg/outlet) jako terminale
+    Unlike the legacy compute_flow_accumulation():
+    - nodata cells are skipped (acc=0)
+    - cells without a D8 direction (0, a pit, any other code) are terminals
+
+    A cell passes its accumulation on once all the cells draining into it have
+    passed theirs; the cells of a cycle never do, and keep what reached them
+    from outside the cycle. In numba, following each chain downstream as far as
+    it is complete, without a queue.
 
     Parameters
     ----------
@@ -1059,48 +1138,98 @@ def recompute_flow_accumulation(
     np.ndarray
         Flow accumulation array (number of upstream cells including self)
     """
-    from collections import deque
+    nodata_value = np.result_type(dem.dtype, nodata).type(nodata)
+    return _kahn_accumulation(
+        fdir, dem, nodata_value, D8_VALID, D8_ROW_OFFSET, D8_COL_OFFSET
+    )
 
+
+@numba.njit(cache=True)
+def _kahn_accumulation(
+    fdir: np.ndarray,
+    dem: np.ndarray,
+    nodata: Any,
+    d8_valid: np.ndarray,
+    d8_row: np.ndarray,
+    d8_col: np.ndarray,
+) -> np.ndarray:
+    """Accumulate along the flow directions (recompute_flow_accumulation)."""
     nrows, ncols = fdir.shape
     acc = np.zeros((nrows, ncols), dtype=np.int32)
-    inflow_count = np.zeros((nrows, ncols), dtype=np.int32)
-
-    # Set acc=1 for valid cells, 0 for nodata
-    valid = dem != nodata
-    acc[valid] = 1
-
-    # Count inflows for each cell
-    for i in range(nrows):
-        for j in range(ncols):
-            if not valid[i, j]:
+    # Valid cells draining into each cell (at most 8); 255 once the cell has
+    # passed its accumulation on
+    inflow = np.zeros((nrows, ncols), dtype=np.uint8)
+    done = np.uint8(255)
+    for row in range(nrows):
+        for col in range(ncols):
+            if dem[row, col] == nodata:
                 continue
-            d = fdir[i, j]
-            if d in D8_DIRECTIONS:
-                di, dj = D8_DIRECTIONS[d]
-                ni, nj = i + di, j + dj
-                if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
-                    inflow_count[ni, nj] += 1
-
-    # BFS from headwaters (valid cells with no inflows and valid fdir)
-    queue: deque[tuple[int, int]] = deque()
-    for i in range(nrows):
-        for j in range(ncols):
-            if valid[i, j] and inflow_count[i, j] == 0:
-                queue.append((i, j))
-
-    while queue:
-        i, j = queue.popleft()
-        d = fdir[i, j]
-        if d in D8_DIRECTIONS:
-            di, dj = D8_DIRECTIONS[d]
-            ni, nj = i + di, j + dj
-            if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
-                acc[ni, nj] += acc[i, j]
-                inflow_count[ni, nj] -= 1
-                if inflow_count[ni, nj] == 0:
-                    queue.append((ni, nj))
-
+            acc[row, col] = 1
+            code = fdir[row, col]
+            if code < 0 or code > 255 or not d8_valid[code]:
+                continue
+            r, c = row + d8_row[code], col + d8_col[code]
+            if 0 <= r < nrows and 0 <= c < ncols and dem[r, c] != nodata:
+                inflow[r, c] += 1
+    for row in range(nrows):
+        for col in range(ncols):
+            if inflow[row, col] != 0 or dem[row, col] == nodata:
+                continue
+            r, c = row, col
+            while True:
+                inflow[r, c] = done
+                code = fdir[r, c]
+                if code < 0 or code > 255 or not d8_valid[code]:
+                    break
+                down_r, down_c = r + d8_row[code], c + d8_col[code]
+                if not (
+                    0 <= down_r < nrows
+                    and 0 <= down_c < ncols
+                    and dem[down_r, down_c] != nodata
+                ):
+                    break
+                acc[down_r, down_c] += acc[r, c]
+                inflow[down_r, down_c] -= 1
+                if inflow[down_r, down_c] != 0:
+                    break
+                r, c = down_r, down_c
     return acc
+
+
+@numba.njit(cache=True)
+def _internal_sinks(
+    fdir: np.ndarray,
+    dem: np.ndarray,
+    nodata: Any,
+    d8_valid: np.ndarray,
+) -> np.ndarray:
+    """Return the flat indices of the internal sinks, row by row.
+
+    An internal sink is a valid cell off the frame of the raster whose flow
+    direction is not a D8 code (0, -1, any other value).
+    """
+    nrows, ncols = fdir.shape
+    count = 0
+    for row in range(1, nrows - 1):
+        for col in range(1, ncols - 1):
+            if _is_sink(fdir[row, col], dem[row, col], nodata, d8_valid):
+                count += 1
+    sinks = np.empty(count, dtype=np.int64)
+    count = 0
+    for row in range(1, nrows - 1):
+        for col in range(1, ncols - 1):
+            if _is_sink(fdir[row, col], dem[row, col], nodata, d8_valid):
+                sinks[count] = row * ncols + col
+                count += 1
+    return sinks
+
+
+@numba.njit(cache=True)
+def _is_sink(code: int, elevation: Any, nodata: Any, d8_valid: np.ndarray) -> bool:
+    """Say whether a valid cell has no D8 flow direction."""
+    if elevation == nodata:
+        return False
+    return not (0 <= code <= 255 and d8_valid[code])
 
 
 def fix_internal_sinks(
@@ -1149,12 +1278,14 @@ def fix_internal_sinks(
     offsets = [(0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1), (-1, 0), (-1, 1)]
     distances = [1.0, 1.414, 1.0, 1.414, 1.0, 1.414, 1.0, 1.414]
 
-    valid = dem != nodata
-    edge_mask = np.zeros((nrows, ncols), dtype=bool)
-    edge_mask[0, :] = True
-    edge_mask[-1, :] = True
-    edge_mask[:, 0] = True
-    edge_mask[:, -1] = True
+    # NumPy compares the DEM with nodata in this type
+    nodata_value = np.result_type(dem.dtype, nodata).type(nodata)
+
+    def has_data(row: int, col: int) -> bool:
+        """Say whether a cell lies in the raster and has data."""
+        return bool(
+            0 <= row < nrows and 0 <= col < ncols and dem[row, col] != nodata_value
+        )
 
     diag: dict[str, Any] = {
         "total_fixed": 0,
@@ -1163,20 +1294,18 @@ def fix_internal_sinks(
     }
 
     for iteration in range(max_iterations):
-        # Find internal sinks: fdir not a valid D8 direction, valid, not on edge
-        # pysheds returns 0 (nodata), -1 (pit/outlet), -2 (unresolved flat)
-        is_valid_d8 = np.isin(fdir_fixed, list(VALID_D8_SET))
-        internal_sinks = ~is_valid_d8 & valid & ~edge_mask
-        sink_rows, sink_cols = np.where(internal_sinks)
-        sink_indices = list(zip(sink_rows, sink_cols, strict=True))
+        # Internal sinks: valid cells off the frame without a D8 direction
+        # (pysheds returned 0 (nodata), -1 (pit/outlet), -2 (unresolved flat))
+        sinks = _internal_sinks(fdir_fixed, dem, nodata_value, D8_VALID)
 
-        if not sink_indices:
+        if sinks.size == 0:
             break
 
         diag["iterations"] = iteration + 1
         fixed_this_iter = 0
 
-        for i, j in sink_indices:
+        for sink in sinks:
+            i, j = divmod(int(sink), ncols)
             best_dir = None
             strategy = None
 
@@ -1184,7 +1313,7 @@ def fix_internal_sinks(
             max_slope = 0.0
             for d, (di, dj), dist in zip(directions, offsets, distances, strict=True):
                 ni, nj = i + di, j + dj
-                if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
+                if has_data(ni, nj):
                     slope = (filled_dem[i, j] - filled_dem[ni, nj]) / dist
                     if slope > max_slope:
                         max_slope = slope
@@ -1198,12 +1327,7 @@ def fix_internal_sinks(
                     directions, offsets, distances, strict=True
                 ):
                     ni, nj = i + di, j + dj
-                    if (
-                        0 <= ni < nrows
-                        and 0 <= nj < ncols
-                        and valid[ni, nj]
-                        and acc[ni, nj] > max_acc_val
-                    ):
+                    if has_data(ni, nj) and acc[ni, nj] > max_acc_val:
                         max_acc_val = acc[ni, nj]
                         best_dir = d
                         strategy = "max_acc"
@@ -1214,7 +1338,7 @@ def fix_internal_sinks(
                     directions, offsets, distances, strict=True
                 ):
                     ni, nj = i + di, j + dj
-                    if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
+                    if has_data(ni, nj):
                         best_dir = d
                         strategy = "any_valid"
                         break
@@ -1302,6 +1426,7 @@ def process_hydrology_pyflwdir(
     filled_dem, d8_fdir = pyflwdir_fill_depressions(
         dem_patched, nodata=nodata, max_depth=-1.0, outlets="edge"
     )
+    del dem_patched
 
     # Convert fdir types:
     # pyflwdir d8_fdir: uint8, nodata=247, pit=0
@@ -1338,20 +1463,17 @@ def process_hydrology_pyflwdir(
     filled_dem[restore_mask] = nodata
 
     # Safety net: fix internal sinks (if pyflwdir left any)
-    valid = filled_dem != nodata
-    edge_mask = np.zeros_like(valid)
-    edge_mask[0, :] = True
-    edge_mask[-1, :] = True
-    edge_mask[:, 0] = True
-    edge_mask[:, -1] = True
-
-    is_valid_d8 = np.isin(fdir_arr, list(VALID_D8_SET))
-    internal_sinks = ~is_valid_d8 & valid & ~edge_mask
-    sink_count = int(np.sum(internal_sinks))
+    sinks = _internal_sinks(
+        fdir_arr,
+        filled_dem,
+        np.result_type(filled_dem.dtype, nodata).type(nodata),
+        D8_VALID,
+    )
+    sink_count = sinks.size
 
     if sink_count > 0:
         # Log breakdown of invalid fdir values
-        invalid_fdir = fdir_arr[internal_sinks]
+        invalid_fdir = fdir_arr.ravel()[sinks]
         unique_vals, counts = np.unique(invalid_fdir, return_counts=True)
         breakdown = ", ".join(
             f"fdir={v}: {c}" for v, c in zip(unique_vals, counts, strict=True)

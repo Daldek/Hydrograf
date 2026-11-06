@@ -37,7 +37,7 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 ### 1.2 Łatanie wewnętrznych luk nodata
 
 **Funkcja:** `fill_internal_nodata_holes()` (linie 296-377)
-- Algorytm: `scipy.ndimage.generic_filter` z oknem 3×3
+- Algorithm: a numba pass per iteration over the 3×3 window of every nodata cell, the neighbour values from the DEM before the pass (results as the earlier `scipy.ndimage.generic_filter`)
 - Warunek: komórka nodata z ≥5 prawidłowymi sąsiadami
 - Wzór: `new_value = mean(valid_neighbors)`
 - Maksymalnie 3 iteracje
@@ -61,12 +61,12 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 - Wyjście: int32 array (liczba komórek, nie m²)
 
 #### Krok 4: Naprawa wewnętrznych zlewów (internal sinks)
-- Wykrywanie: `~is_valid_d8 & valid & ~edge_mask`
+- Detection: valid cells off the frame of the raster whose flow direction is not a D8 code (a numba pass, `_internal_sinks`)
 - Hierarchia naprawy:
   1. Najstromszy spadek: `slope = (elev[i,j] - elev[neighbor]) / distance`
   2. Maksymalna akumulacja: sąsiad z najwyższym `acc`
   3. Dowolny prawidłowy sąsiad
-- Ponowna kalkulacja akumulacji po naprawach
+- Recomputation of the accumulation after the fixes: Kahn's order in numba (`recompute_flow_accumulation`); the cells of a cycle never pass their accumulation on
 
 ### 1.4 Nachylenie i ekspozycja
 
@@ -662,7 +662,7 @@ CREATE TABLE land_cover (
 |----|----------|--------|
 | 1 | Wypełnianie depresji | Wang & Liu 2006 (pyflwdir) |
 | 2 | Kierunki odpływu | D8 steepest descent |
-| 3 | Akumulacja spływu | Sortowanie topologiczne (Kahn) + BFS |
+| 3 | Akumulacja spływu | `pyflwdir` `upstream_area`; after the fixes of the internal sinks Kahn's topological order in numba |
 | 4 | Rząd Strahlera | Strahler 1952 |
 | 5 | Wektoryzacja cieków | Śledzenie od źródeł do skrzyżowań |
 | 6 | Delimitacja zlewni cząstkowych | pyflwdir.basins() — propagacja upstream (ADR-016) |
