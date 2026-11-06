@@ -1,7 +1,7 @@
 services:
   db:
     image: postgis/postgis:16-3.4
-    container_name: hydro_db
+    container_name: ${HYDROGRAF_CONTAINER_PREFIX:-hydro}_db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-hydro_db}
       POSTGRES_USER: ${POSTGRES_USER:-hydro_user}
@@ -51,7 +51,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: hydro_api
+    container_name: ${HYDROGRAF_CONTAINER_PREFIX:-hydro}_api
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-hydro_user}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hydro_db}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -77,10 +77,10 @@ services:
           memory: 8G
           cpus: "2.0"
     volumes:
-      - ./cache:/cache
-      - ./data:/data
-      - ./frontend/data:/frontend/data
-      - ./frontend/tiles:/frontend/tiles
+      - ${HYDROGRAF_CACHE_PATH:-./cache}:/cache
+      - ${HYDROGRAF_DATA_PATH:-./data}:/data
+      - ${HYDROGRAF_FRONTEND_DATA_PATH:-./frontend/data}:/frontend/data
+      - ${HYDROGRAF_FRONTEND_TILES_PATH:-./frontend/tiles}:/frontend/tiles
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -97,11 +97,14 @@ services:
 
   nginx:
     image: nginx:alpine
-    container_name: hydro_nginx
+    container_name: ${HYDROGRAF_CONTAINER_PREFIX:-hydro}_nginx
     ports:
       - "127.0.0.1:${HYDROGRAF_PORT:-8080}:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
+      # The same directories as the API's, so an instance with its own data paths serves them.
+      - ${HYDROGRAF_FRONTEND_DATA_PATH:-./frontend/data}:/usr/share/nginx/html/data:ro
+      - ${HYDROGRAF_FRONTEND_TILES_PATH:-./frontend/tiles}:/usr/share/nginx/html/tiles:ro
       - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       api:
@@ -127,5 +130,7 @@ services:
       - /var/cache/nginx:size=50M
       - /var/run:size=1M
 
+# The volume and the default network carry the compose project's name (`-p`), never a fixed
+# one, so every instance has its own.
 volumes:
   postgres_data:

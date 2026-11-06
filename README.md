@@ -55,6 +55,23 @@ reload, the code mounted from `./backend`); production runs
 `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` (secrets from
 `SECRETS_DIR`, no reload).
 
+A second instance runs beside the first on the same Docker host from its own checkout, with
+its own compose project and env file:
+
+```bash
+docker compose -p NAME --env-file NAME.env up -d   # with -f ... as above for production
+```
+
+`NAME.env` holds the instance's settings (`POSTGRES_PASSWORD`, `SECRETS_DIR` and so on) and
+its names: `HYDROGRAF_CONTAINER_PREFIX` (containers `<prefix>_db`, `<prefix>_api`,
+`<prefix>_nginx`; default `hydro`), a free `HYDROGRAF_PORT`, and the host directories
+`HYDROGRAF_CACHE_PATH`, `HYDROGRAF_DATA_PATH`, `HYDROGRAF_FRONTEND_DATA_PATH` and
+`HYDROGRAF_FRONTEND_TILES_PATH` (defaults `./cache`, `./data`, `./frontend/data`,
+`./frontend/tiles`). The database volume and the network take the project's name
+(`NAME_postgres_data`, `NAME_default`). The checkout needs the empty directories
+`frontend/data` and `frontend/tiles`: nginx mounts the instance's directories there inside
+its read-only `./frontend`.
+
 The API needs data before it can delineate: a one-off preprocessing of the DEM and its
 derivatives for your area. The easiest way is the admin panel (give a bounding box and
 press Start); the same from the command line, which takes a few hours for a large area:
@@ -111,7 +128,8 @@ Every variable is listed in
 manifest of the analysis results), the admin key
 (`ADMIN_API_KEY` or `ADMIN_API_KEY_FILE`), the IMGW preprocessing (`IMGW_GRID_SPACING_KM`,
 `IMGW_RATE_LIMIT_DELAY_S`) and Docker Compose (`HYDROGRAF_PORT`, `SERVER_NAME`,
-`SECRETS_DIR`). Secrets are read from the environment only and `.env` is not committed.
+`SECRETS_DIR`, and the names and host paths of an instance: `HYDROGRAF_CONTAINER_PREFIX`,
+`HYDROGRAF_*_PATH`). Secrets are read from the environment only and `.env` is not committed.
 
 ### Service logs
 
