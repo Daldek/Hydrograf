@@ -3,8 +3,8 @@ Raster I/O utilities for reading and writing DEM files.
 
 Supports ASCII GRID (.asc), VRT mosaics (.vrt), and GeoTIFF (.tif) formats.
 All outputs use PL-1992 (EPSG:2180) CRS. ``read_raster`` reads a whole raster
-(the preprocessing); ``read_raster_window`` reads only a window around a query
-(the API).
+(the preprocessing); ``read_window`` reads only a window of whole cells, such as
+``cells_window`` around a query (the API).
 """
 
 import logging
@@ -174,24 +174,22 @@ class RasterWindow:
     nodata: float | None
 
 
-def read_raster_window(
-    filepath: str | Path,
+def cells_window(
+    transform: Affine,
     bounds: tuple[float, float, float, float],
     margin_m: float = 0.0,
-) -> RasterWindow:
-    """Read the first band of a raster in a window around a bounding box.
+) -> Window:
+    """Window of the whole cells of a grid around a bounding box.
 
     The window holds the whole cells covering ``bounds`` widened by
     ``margin_m``, plus one cell on every side, so a point on the edge of
-    ``bounds`` lies inside it whatever the rounding. Only the part of the
-    raster in the window is read (of a VRT mosaic, only the tiles it touches).
-    The window may reach beyond the raster: those cells are filled with the
-    nodata value. The whole window is allocated, so the caller keeps it small.
+    ``bounds`` lies inside it whatever the rounding. It may reach beyond the
+    raster.
 
     Parameters
     ----------
-    filepath : str | Path
-        Raster file (GeoTIFF or VRT)
+    transform : Affine
+        Transform of the raster
     bounds : tuple[float, float, float, float]
         (minx, miny, maxx, maxy) in the CRS of the raster
     margin_m : float
@@ -199,33 +197,57 @@ def read_raster_window(
 
     Returns
     -------
+    Window
+        Rows and columns of the raster; negative or past its size beyond it
+    """
+    minx, miny, maxx, maxy = bounds
+    span = from_bounds(
+        minx - margin_m,
+        miny - margin_m,
+        maxx + margin_m,
+        maxy + margin_m,
+        transform=transform,
+    )
+    row0 = math.floor(span.row_off) - 1
+    col0 = math.floor(span.col_off) - 1
+    row1 = math.ceil(span.row_off + span.height) + 1
+    col1 = math.ceil(span.col_off + span.width) + 1
+    return Window(col0, row0, col1 - col0, row1 - row0)
+
+
+def read_window(src: rasterio.DatasetReader, window: Window) -> RasterWindow:
+    """Read the first band of an open raster in a window of whole cells.
+
+    Only the part of the raster in the window is read (of a VRT mosaic, only
+    the tiles it touches). The window may reach beyond the raster: those cells
+    are filled with the nodata value. The whole window is allocated, so the
+    caller keeps it small.
+
+    Parameters
+    ----------
+    src : rasterio.DatasetReader
+        Open raster
+    window : Window
+        Whole rows and columns of the raster, e.g. from ``cells_window``
+
+    Returns
+    -------
     RasterWindow
         The values of the window, its transform and the nodata of the raster
     """
-    minx, miny, maxx, maxy = bounds
-    with rasterio.open(filepath) as src:
-        span = from_bounds(
-            minx - margin_m,
-            miny - margin_m,
-            maxx + margin_m,
-            maxy + margin_m,
-            transform=src.transform,
-        )
-        row0 = math.floor(span.row_off) - 1
-        col0 = math.floor(span.col_off) - 1
-        row1 = math.ceil(span.row_off + span.height) + 1
-        col1 = math.ceil(span.col_off + span.width) + 1
-        fill = src.nodata if src.nodata is not None else 0
-        data = np.full((row1 - row0, col1 - col0), fill, dtype=src.dtypes[0])
-        # The rows and columns of the window on the raster, read in place
-        top, bottom = max(row0, 0), min(row1, src.height)
-        left, right = max(col0, 0), min(col1, src.width)
-        if top < bottom and left < right:
-            part = data[top - row0 : bottom - row0, left - col0 : right - col0]
-            src.read(1, window=Window(left, top, right - left, bottom - top), out=part)
-        transform = src.window_transform(Window(col0, row0, col1 - col0, row1 - row0))
-        nodata = src.nodata
-    return RasterWindow(data=data, transform=transform, nodata=nodata)
+    row0, col0 = int(window.row_off), int(window.col_off)
+    height, width = int(window.height), int(window.width)
+    fill = src.nodata if src.nodata is not None else 0
+    data = np.full((height, width), fill, dtype=src.dtypes[0])
+    # The rows and columns of the window on the raster, read in place
+    top, bottom = max(row0, 0), min(row0 + height, src.height)
+    left, right = max(col0, 0), min(col0 + width, src.width)
+    if top < bottom and left < right:
+        part = data[top - row0 : bottom - row0, left - col0 : right - col0]
+        src.read(1, window=Window(left, top, right - left, bottom - top), out=part)
+    return RasterWindow(
+        data=data, transform=src.window_transform(window), nodata=src.nodata
+    )
 
 
 def downsample_raster(input_path: Path, output_path: Path, target_res_m: float) -> Path:

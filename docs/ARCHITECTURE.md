@@ -165,8 +165,8 @@ backend/
 │   ├── morphometry.py             # Shape indices (calculate_shape_indices)
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── precipitation.py           # Precipitation queries
-│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF); read_raster_window: a window around a query (the API)
-│   ├── raster_service.py          # RasterCache — lazy-loaded raster data (DEM, flow direction, accumulation)
+│   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF); cells_window + read_window: a window around a query (the API)
+│   ├── raster_service.py          # Precise-mode delineation (pyflwdir) in a window of the flow directions and the DEM
 │   ├── soil_hsg.py                # HSG soil group data (SoilGrids)
 │   ├── stream_extraction.py       # Stream vectorization, subcatchments
 │   ├── sewer_service.py            # Storm-sewer integration (SewerGraph, burn inlets, FA routing, ADR-051/052)
@@ -269,11 +269,16 @@ Response: 200 OK
   "watershed": { "outlet": {...}, "morphometry": {...}, ... }
 }
 
-Errors:
-- 404: "No stream found at this location"
-- 422: Validation (invalid coordinates)
-- 500: "Server error"
+Errors (application/problem+json):
+- 404 not_found: no sub-catchment at this point
+- 400 validation_error: coordinates, a non-positive threshold_m2; in the precise mode a point off the rasters
+- 422 calculation_error: the boundary could not be built
+- 422 unsupported (reason window_too_large): precise mode, the window of the rasters holds more than 40 million cells
+- 503 store_unavailable: the catchment graph is not loaded; in the precise mode the DEM is not on the grid of the flow directions (reason raster_grids_differ)
+- 500 internal_error: the delineation failed
 ```
+
+The precise mode delineates the watershed of the point with pyflwdir on the flow directions of the preprocessing (`core/raster_service.py`), but reads them and the DEM only in a window: the bounding box of the precomputed watershed of the point at `DEFAULT_THRESHOLD_M2` (`ST_Extent` of its sub-catchments, `catchments_bounds`) plus 50 m. While the delineated watershed touches a side of the window that is not the edge of the rasters, that side moves out by half the window (at least 64 cells) and the delineation runs again, so the result is the one of the whole rasters. A window of more than 40 million cells (1000 km² of 5 m cells, about 1.5 GB at the peak of a delineation) is refused before it is read, and the DEM must have the transform and the shape of `dem_mosaic_03_flowdir.tif`.
 
 #### 2.2.2a Delineation Preview
 ```

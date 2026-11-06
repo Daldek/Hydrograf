@@ -7,7 +7,12 @@ import pytest
 import rasterio
 from rasterio.transform import from_origin, rowcol
 
-from core.raster_io import read_ascii_grid, read_raster_window, save_raster_geotiff
+from core.raster_io import (
+    cells_window,
+    read_ascii_grid,
+    read_window,
+    save_raster_geotiff,
+)
 
 
 class TestReadAsciiGrid:
@@ -141,8 +146,14 @@ def _centre(row, col):
     return X0 + (col + 0.5) * CELL, Y_TOP - (row + 0.5) * CELL
 
 
-class TestReadRasterWindow:
-    """Tests for read_raster_window (the reads of the API at query time)."""
+def _read(path, bounds, margin_m=0.0):
+    """The cells_window around ``bounds``, read from the raster at ``path``."""
+    with rasterio.open(path) as src:
+        return read_window(src, cells_window(src.transform, bounds, margin_m))
+
+
+class TestReadWindow:
+    """Tests for cells_window and read_window (the reads of the API at query time)."""
 
     @pytest.fixture(params=["GeoTIFF", "VRT of two tiles"])
     def raster(self, request, tmp_path):
@@ -157,7 +168,7 @@ class TestReadRasterWindow:
         """From the centre of cell (2, 3) to the centre of cell (3, 9)."""
         (x0, y1), (x1, y0) = _centre(2, 3), _centre(3, 9)
 
-        window = read_raster_window(raster, (x0, y0, x1, y1))
+        window = _read(raster, (x0, y0, x1, y1))
 
         assert np.array_equal(window.data, GRID[1:5, 2:11])
         assert window.transform * (0, 0) == (X0 + 2 * CELL, Y_TOP - CELL)
@@ -167,7 +178,7 @@ class TestReadRasterWindow:
         """Around the south-east corner: 3 x 3 cells on the raster."""
         (x0, y1), (x1, y0) = _centre(4, 14), _centre(7, 17)
 
-        window = read_raster_window(raster, (x0, y0, x1, y1))
+        window = _read(raster, (x0, y0, x1, y1))
 
         assert window.data.shape == (6, 6)
         assert np.array_equal(window.data, _on_grid(window))
@@ -177,7 +188,7 @@ class TestReadRasterWindow:
     def test_window_off_the_raster_is_all_nodata(self, raster):
         x, y = _centre(-20, 40)
 
-        window = read_raster_window(raster, (x, y, x + 2 * CELL, y + CELL))
+        window = _read(raster, (x, y, x + 2 * CELL, y + CELL))
 
         assert window.data.shape == (4, 5)
         assert np.all(window.data == NODATA)
@@ -186,7 +197,7 @@ class TestReadRasterWindow:
     def test_margin_widens_the_window(self, raster):
         x, y = _centre(2, 3)
 
-        window = read_raster_window(raster, (x, y, x, y), margin_m=2 * CELL)
+        window = _read(raster, (x, y, x, y), margin_m=2 * CELL)
 
         assert window.data.shape == (7, 7)
         assert window.transform * (0, 0) == (X0, Y_TOP + CELL)
@@ -199,7 +210,7 @@ class TestReadRasterWindow:
         xs = [bounds[0], bounds[2], bounds[0], bounds[2]]
         ys = [bounds[1], bounds[1], bounds[3], bounds[3]]
 
-        window = read_raster_window(raster, bounds)
+        window = _read(raster, bounds)
 
         rows, cols = rowcol(window.transform, xs, ys)
         assert np.all((rows >= 0) & (rows < window.data.shape[0]))
@@ -211,7 +222,7 @@ class TestReadRasterWindow:
         path = _write_tif(tmp_path / "slope.tif", GRID, nodata=None)
         x, y = _centre(0, 0)
 
-        window = read_raster_window(path, (x, y, x, y))
+        window = _read(path, (x, y, x, y))
 
         assert window.nodata is None
         assert np.array_equal(window.data[0], [0.0, 0.0, 0.0])
