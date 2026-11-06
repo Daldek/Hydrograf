@@ -30,7 +30,16 @@ from rasterio.transform import from_origin
 from scipy import ndimage
 
 from core.hydrology import process_hydrology_pyflwdir
-from core.morphometry_raster import _compute_gradients, compute_slope_from_gradients
+from core.morphometry_raster import (
+    _compute_gradients,
+    compute_slope_from_gradients,
+    compute_strahler_from_fdir,
+)
+from core.stream_extraction import (
+    compute_downstream_links,
+    delineate_subcatchments,
+    vectorize_streams,
+)
 
 NODATA = -9999.0
 CELLSIZE_M = 5.0
@@ -209,6 +218,40 @@ def derive_hydrology(dem: np.ndarray, metadata: dict[str, Any]) -> Hydrology:
         slope_percent=slope_percent,
         metadata=metadata,
     )
+
+
+def subcatchments(
+    hydrology: Hydrology, threshold_m2: int
+) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]]]:
+    """Delineate the sub-catchments of a threshold as process_dem does.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, list[dict]]
+        The label raster (int32 segment indices, 0 = none), the stream mask of the
+        threshold and the stream segments with their downstream links.
+    """
+    metadata = hydrology.metadata
+    nodata = metadata["nodata_value"]
+    threshold_cells = max(1, int(threshold_m2 / metadata["cellsize"] ** 2))
+    strahler = compute_strahler_from_fdir(
+        hydrology.d8_fdir, hydrology.acc, metadata, threshold_cells
+    )
+    labels = np.zeros_like(hydrology.filled_dem, dtype=np.int32)
+    segments = vectorize_streams(
+        hydrology.filled_dem,
+        hydrology.fdir,
+        hydrology.acc,
+        hydrology.slope_percent,
+        strahler,
+        metadata,
+        threshold_cells,
+        label_raster_out=labels,
+    )
+    delineate_subcatchments(hydrology.flw, labels, hydrology.filled_dem, nodata)
+    compute_downstream_links(segments, labels, hydrology.fdir, metadata)
+    stream_mask = (hydrology.acc >= threshold_cells) & (hydrology.filled_dem != nodata)
+    return labels, stream_mask, segments
 
 
 def assert_identical(actual: Any, expected: Any, where: str = "result") -> None:
