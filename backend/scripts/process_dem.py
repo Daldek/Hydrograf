@@ -939,6 +939,7 @@ def process_dem(
     clear_existing: bool = False,
     burn_streams_path: Path | None = None,
     burn_depth_m: float = 2.0,
+    stream_burning: str = "all",
     smooth_streams: bool = True,
     skip_streams_vectorize: bool = False,
     thresholds: list[int] | None = None,
@@ -972,6 +973,9 @@ def process_dem(
         Path to GeoPackage/Shapefile with stream lines for DEM burning
     burn_depth_m : float
         Burn depth in meters (default: 2.0)
+    stream_burning : str
+        BDOT10k streams burned and smoothed: "all" (every line layer) or "main"
+        (the main watercourses, ``core.hydrology._select_burned_features``)
     smooth_streams : bool
         If True, apply monotonic stream smoothing after burning (default: True)
     skip_streams_vectorize : bool
@@ -1076,9 +1080,10 @@ def process_dem(
     if burn_streams_path is not None:
         transform = _get_transform(metadata, dem.shape)
         dem, burn_diag = burn_streams_into_dem(
-            dem, transform, burn_streams_path, burn_depth_m, nodata
+            dem, transform, burn_streams_path, burn_depth_m, nodata, stream_burning
         )
         stats["burn_cells"] = burn_diag["cells_burned"]
+        stats["stream_burning"] = stream_burning
         if save_intermediates:
             save_raster_geotiff(
                 dem,
@@ -1093,7 +1098,7 @@ def process_dem(
             from core.hydrology import smooth_streams_monotonic
 
             dem, smooth_diag = smooth_streams_monotonic(
-                dem, transform, burn_streams_path, nodata
+                dem, transform, burn_streams_path, nodata, stream_burning
             )
             stats["smooth_cells"] = smooth_diag["cells_smoothed"]
             stats["smooth_max_correction_m"] = smooth_diag["max_correction_m"]

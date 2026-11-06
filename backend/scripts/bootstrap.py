@@ -506,11 +506,13 @@ def step_process_dem(
     waterbody_min_area_m2: float | None = None,
     sewer_config: dict[str, Any] | None = None,
     bdot10k: dict[str, Path] | None = None,
+    stream_burning: str = "all",
 ) -> tuple[dict[str, Any], str, tuple[float, float, float, float]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis.
 
     ``bdot10k`` (TERYT to package) are the BDOT10k packages of a set (ADR-067); without
-    it the packages of the mosaic's counties are downloaded.
+    it the packages of the mosaic's counties are downloaded. ``stream_burning``
+    (``dem.stream_burning`` of the configuration) selects the burned streams.
     """
     sys.path.insert(0, str(BACKEND_DIR))
     from core.constants import PIPELINE_THRESHOLDS_M2
@@ -597,6 +599,7 @@ def step_process_dem(
         output_dir=nmt_dir,
         thresholds=list(PIPELINE_THRESHOLDS_M2),
         burn_streams_path=burn_path,
+        stream_burning=stream_burning,
         # hydro_resolution_m not needed when NMT downloaded at 5m resolution
         waterbody_mode=waterbody_mode,
         waterbody_min_area_m2=waterbody_min_area_m2,
@@ -605,7 +608,7 @@ def step_process_dem(
 
     cells = stats.get("valid_cells", 0)
     streams = stats.get("stream_segments", 0)
-    burn_info = f", burn={burn_path.name}" if burn_path else ""
+    burn_info = f", burn={burn_path.name} ({stream_burning})" if burn_path else ""
     detail = f"{cells:,} cells, {streams} segments{burn_info}"
 
     return stats, detail, mosaic_bbox_2180
@@ -1096,6 +1099,7 @@ def run_pipeline(
     resolution: str = "5m",
     sewer_config: dict[str, Any] | None = None,
     inputs: SetInputs | None = None,
+    stream_burning: str = "all",
 ):
     """Run the full 10-step bootstrap pipeline.
 
@@ -1151,6 +1155,7 @@ def run_pipeline(
                 waterbody_min_area_m2=waterbody_min_area_m2,
                 sewer_config=sewer_config,
                 bdot10k=inputs.counties if inputs is not None else None,
+                stream_burning=stream_burning,
             )
             tracker.done(3, t0, detail)
         except Exception as e:
@@ -1375,16 +1380,19 @@ def write_set_record(
     started_at: str,
     finished_at: str | None,
     status: str,
+    stream_burning: str,
 ) -> None:
     """Write the record of the set a run took its Kartograf data from (ADR-067).
 
     ``<output>/bootstrap_set.json``: the identity of the set (project, set,
-    ``closed_at``, ``pins_sha256``, the pins per product), when the run started and
-    ended, and ``status`` (``running``, ``ok`` or ``failed``: a step 1 to 3 failed).
+    ``closed_at``, ``pins_sha256``, the pins per product), the BDOT10k streams the
+    run burned (``stream_burning``), when the run started and ended, and ``status``
+    (``running``, ``ok`` or ``failed``: a step 1 to 3 failed).
     """
     record = {
         "schema": SET_RECORD_SCHEMA,
         **inputs.identity(),
+        "stream_burning": stream_burning,
         "started_at": started_at,
         "finished_at": finished_at,
         "status": status,
@@ -1596,9 +1604,18 @@ def main():
     # Load YAML pipeline configuration (merged with defaults)
     sys.path.insert(0, str(BACKEND_DIR))
     from core.config import load_config
+    from core.hydrology import STREAM_BURNING_MODES
 
     config = load_config(args.config)
     logger.info(f"Konfiguracja zaladowana z: {args.config}")
+
+    stream_burning = config["dem"]["stream_burning"]
+    if stream_burning not in STREAM_BURNING_MODES:
+        parser.error(
+            f"dem.stream_burning in {args.config} must be one of "
+            f"{', '.join(STREAM_BURNING_MODES)}, not {stream_burning!r}"
+        )
+    logger.info("Stream burning: %s", stream_burning)
 
     # Resolve output directory
     output_dir = Path(args.output) if args.output else DEFAULT_DATA_DIR
@@ -1704,7 +1721,12 @@ def main():
     started_at = _utc_now()
     if inputs is not None:
         write_set_record(
-            record, inputs, started_at=started_at, finished_at=None, status="running"
+            record,
+            inputs,
+            started_at=started_at,
+            finished_at=None,
+            status="running",
+            stream_burning=stream_burning,
         )
     else:
         record.unlink(missing_ok=True)
@@ -1723,6 +1745,7 @@ def main():
         resolution=args.resolution,
         sewer_config=full_sewer_config,
         inputs=inputs,
+        stream_burning=stream_burning,
     )
     total_elapsed = time.time() - total_start
 
@@ -1747,6 +1770,7 @@ def main():
             started_at=started_at,
             finished_at=_utc_now(),
             status="failed" if critical_failed else "ok",
+            stream_burning=stream_burning,
         )
     if critical_failed:
         sys.exit(1)

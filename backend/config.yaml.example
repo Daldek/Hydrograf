@@ -14,6 +14,13 @@ dem:
   resolution: "5m"           # GUGiK NMT resolution: "1m" or "5m"
   thresholds_m2: [1000, 10000, 100000]
   burn_depth_m: 2.0
+  # BDOT10k streams burned into the DEM (bootstrap step 3):
+  #   all  - every line of OT_SWRS_L, OT_SWKN_L and OT_SWRM_L
+  #   main - OT_SWRS_L main courses (PRZEBIEG 'ciek główny') that are rivers or carry
+  #          an MPHP identifier, OT_SWKN_L with an MPHP identifier, no OT_SWRM_L
+  # Water bodies (OT_PTWP_A) are burned in both; bdot_streams and the lake
+  # classification always use every layer.
+  stream_burning: all
   building_raise_m: 5.0      # DEM raise under buildings (0 = disabled)
 
 # Paths (relative to project root)
