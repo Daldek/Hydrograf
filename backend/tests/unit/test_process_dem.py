@@ -4,6 +4,7 @@ and flow accumulation recomputation.
 """
 
 import numpy as np
+import pyflwdir
 import pytest
 import rasterio
 
@@ -18,6 +19,7 @@ from scripts.process_dem import (
     _slope_aspect_twi,
     burn_streams_into_dem,
     compute_aspect,
+    compute_strahler_from_fdir,
     compute_strahler_order,
     compute_twi,
     fill_internal_nodata_holes,
@@ -408,7 +410,7 @@ class TestProcessHydrologyPyflwdir:
     def test_returns_correct_shapes(self, synthetic_dem_10x10):
         """Output arrays have same shape as input DEM."""
         dem, metadata = synthetic_dem_10x10
-        filled, fdir, acc, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, acc, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         assert filled.shape == dem.shape
         assert fdir.shape == dem.shape
@@ -417,7 +419,7 @@ class TestProcessHydrologyPyflwdir:
     def test_fdir_contains_only_valid_d8(self, synthetic_dem_10x10):
         """All internal valid cells have D8 flow direction from VALID_D8_SET."""
         dem, metadata = synthetic_dem_10x10
-        filled, fdir, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, _, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         edge_mask = np.zeros_like(valid)
@@ -437,7 +439,7 @@ class TestProcessHydrologyPyflwdir:
     def test_acc_positive_for_valid_cells(self, synthetic_dem_10x10):
         """Flow accumulation >= 1 for all valid cells."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, acc, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, acc, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         assert np.all(acc[valid] >= 1)
@@ -445,14 +447,14 @@ class TestProcessHydrologyPyflwdir:
     def test_nodata_preserved(self, synthetic_dem_10x10):
         """Nodata cells in input remain nodata in filled DEM."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, _, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         assert filled[0, 0] == NODATA
 
     def test_depression_filled(self, synthetic_dem_10x10):
         """The depression at (5,5) is filled (elevation raised)."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, _, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         # Filled DEM should have the depression raised
         assert filled[5, 5] >= dem[5, 5]
@@ -460,7 +462,7 @@ class TestProcessHydrologyPyflwdir:
     def test_no_internal_sinks(self, synthetic_dem_10x10):
         """No internal sinks remain after processing."""
         dem, metadata = synthetic_dem_10x10
-        filled, fdir, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, _, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         edge_mask = np.zeros_like(valid)
@@ -851,6 +853,57 @@ class TestSlopeAspectTwiInStrips:
         assert_identical(slope, slope_percent)
         for name, path in paths.items():
             assert_identical(_raster(path), _raster(tmp_path / f"whole_{name}.tif"))
+
+
+class TestOneFlowDirectionRasterForTheRun:
+    """The FlwdirRaster of process_hydrology_pyflwdir serves the whole run.
+
+    Its cells are ordered by sorting; its rasters equal those of pyflwdir's
+    default walk, and the Strahler orders of two thresholds computed one after
+    the other on it equal those of a new FlwdirRaster per threshold (with
+    FlwdirRaster.stream_order the second threshold would get the orders of the
+    first, which it caches).
+    """
+
+    @staticmethod
+    def _walked(hydrology):
+        """A new FlwdirRaster of the run's D8 grid, its cells ordered by walking."""
+        flw = pyflwdir.from_array(
+            hydrology.flw.to_array("d8"),
+            ftype="d8",
+            transform=hydrology.metadata["transform"],
+            latlon=False,
+        )
+        flw.order_cells(method="walk")
+        return flw
+
+    def test_sorted_cells_give_the_rasters_of_walked_cells(self, hydrology):
+        flw, walked = hydrology.flw, self._walked(hydrology)
+
+        assert_identical(
+            flw.upstream_area(unit="cell"), walked.upstream_area(unit="cell")
+        )
+        assert_identical(
+            flw.stream_distance(unit="m"), walked.stream_distance(unit="m")
+        )
+        assert_identical(flw.basins(), walked.basins())
+
+    def test_strahler_of_two_thresholds_on_one_raster(self, hydrology):
+        expected = []
+        for threshold_cells in (10, 40):
+            mask = hydrology.acc >= threshold_cells
+            strahler = self._walked(hydrology).stream_order(mask=mask)
+            strahler = strahler.astype(np.uint8)
+            strahler[~mask] = 0
+            expected.append(strahler)
+
+        actual = [
+            compute_strahler_from_fdir(hydrology.flw, hydrology.acc, threshold_cells)
+            for threshold_cells in (10, 40)
+        ]
+
+        assert_identical(actual, expected)
+        assert actual[0].max() > actual[1].max() > 0
 
 
 class TestComputeStrahlerOrder:

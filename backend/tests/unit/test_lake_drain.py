@@ -489,7 +489,7 @@ class TestPipelineIntegration:
         drain_points = [(10, 10)]
 
         # We can verify by checking the output — drain point should be NoData
-        filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
+        filled_dem, fdir, acc, flw = process_hydrology_pyflwdir(
             dem, metadata, drain_points=drain_points
         )
         # Drain point must be NoData in final filled_dem
@@ -500,7 +500,7 @@ class TestPipelineIntegration:
         dem, metadata = self._make_small_dem_metadata()
         drain_points = [(5, 5), (15, 15)]
 
-        filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
+        filled_dem, fdir, acc, flw = process_hydrology_pyflwdir(
             dem, metadata, drain_points=drain_points
         )
         assert filled_dem[5, 5] == NODATA
@@ -530,7 +530,7 @@ class TestPipelineIntegration:
         metadata = _make_metadata(dem, Affine(1, 0, 500000.0, 0, -1, 600011.0))
         drain_points = [(5, 5)]
 
-        filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
+        filled_dem, fdir, acc, flw = process_hydrology_pyflwdir(
             dem, metadata, drain_points=drain_points
         )
 

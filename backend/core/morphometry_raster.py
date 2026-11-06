@@ -308,27 +308,27 @@ def compute_strahler_order(
 
 
 def compute_strahler_from_fdir(
-    d8_fdir: np.ndarray,
+    flw: Any,
     acc: np.ndarray,
-    metadata: dict[str, Any],
     stream_threshold: int,
 ) -> np.ndarray:
     """
-    Compute Strahler stream order using pre-computed fdir and acc.
+    Compute Strahler stream order using pre-computed flow directions and acc.
 
     Unlike ``compute_strahler_order()``, this function does NOT recompute
-    hydrology from scratch. It reuses the same ``d8_fdir`` and ``acc``
-    produced by ``process_hydrology_pyflwdir()``, ensuring that Strahler
-    orders are consistent with the vectorized stream network.
+    hydrology from scratch. It reuses the FlwdirRaster and ``acc`` produced
+    by ``process_hydrology_pyflwdir()``, ensuring that Strahler orders are
+    consistent with the vectorized stream network. The orders come from
+    pyflwdir.streams.strahler_order, not from FlwdirRaster.stream_order: that
+    one caches the orders of its first call and ignores the mask of the next
+    one, so the thresholds of a run could not share the FlwdirRaster.
 
     Parameters
     ----------
-    d8_fdir : np.ndarray
-        Original pyflwdir D8 flow direction (uint8, nodata=247, pit=0)
+    flw : pyflwdir.FlwdirRaster
+        Flow directions of the run (process_hydrology_pyflwdir)
     acc : np.ndarray
         Flow accumulation from the main pipeline (after fix_internal_sinks)
-    metadata : dict
-        Grid metadata with transform or xllcorner/yllcorner/cellsize
     stream_threshold : int
         Flow accumulation threshold (in cells) for stream identification
 
@@ -337,25 +337,14 @@ def compute_strahler_from_fdir(
     np.ndarray
         Strahler stream order array (uint8, nodata=0)
     """
-    import pyflwdir
+    from pyflwdir import streams
 
     logger.info("Computing Strahler stream order (from pre-computed fdir)...")
 
-    transform = metadata.get("transform")
-    if transform is None:
-        from rasterio.transform import from_bounds
-
-        xll, yll = metadata["xllcorner"], metadata["yllcorner"]
-        nrows, ncols = d8_fdir.shape
-        cs = metadata["cellsize"]
-        transform = from_bounds(
-            xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
-        )
-
-    flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
-
     stream_mask = acc >= stream_threshold
-    strahler = flw.stream_order(type="strahler", mask=stream_mask).astype(np.uint8)
+    strahler = streams.strahler_order(
+        flw.idxs_ds, flw.idxs_seq, mask=stream_mask.ravel()
+    ).reshape(acc.shape)
     strahler[~stream_mask] = 0
 
     max_order = int(strahler.max()) if np.any(strahler > 0) else 0

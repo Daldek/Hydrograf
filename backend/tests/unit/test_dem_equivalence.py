@@ -52,10 +52,12 @@ def test_holes_take_up_to_four_passes_and_one_stays_open(case):
 @pytest.mark.parametrize("case", DEM_CASES.values(), ids=DEM_CASES.keys())
 def test_pyflwdir_leaves_internal_sinks_next_to_nodata(case):
     hydrology = derive_hydrology(*synthetic_dem(**case))
-    inside = np.zeros(hydrology.d8_fdir.shape, dtype=bool)
+    shape = hydrology.filled_dem.shape
+    pits = hydrology.flw.idxs_ds == np.arange(hydrology.flw.size)
+    inside = np.zeros(shape, dtype=bool)
     inside[1:-1, 1:-1] = True
 
-    sinks = (hydrology.d8_fdir == 0) & (hydrology.filled_dem != NODATA) & inside
+    sinks = pits.reshape(shape) & (hydrology.filled_dem != NODATA) & inside
 
     assert sinks.any()
 

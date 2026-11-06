@@ -672,7 +672,6 @@ def _process_thresholds(
     fdir: np.ndarray,
     acc: np.ndarray,
     slope: np.ndarray,
-    d8_fdir: np.ndarray,
     flw: Any,
     flow_dist_m: np.ndarray,
     metadata: dict[str, Any],
@@ -687,7 +686,10 @@ def _process_thresholds(
     Parameters
     ----------
     threshold_list_m2 : list[int]
-        Flow accumulation thresholds [m²], ascending.
+        Flow accumulation thresholds [m²]. They are processed from the largest,
+        so that the many results of the smallest one are not held while the
+        others are computed; the results come back in ascending order of the
+        thresholds, the order of the database rows.
     filled_dem : np.ndarray
         Filled DEM, the DEM of the zonal statistics.
     fdir : np.ndarray
@@ -696,8 +698,6 @@ def _process_thresholds(
         Flow accumulation [cells].
     slope : np.ndarray
         Slope [%].
-    d8_fdir : np.ndarray
-        pyflwdir D8 flow directions (uint8) of ``flw``.
     flw : pyflwdir.FlwdirRaster
         Flow directions of the basins and the flow paths.
     flow_dist_m : np.ndarray
@@ -726,7 +726,7 @@ def _process_thresholds(
     cell_area = metadata["cellsize"] * metadata["cellsize"]
     all_stream_segments: dict[int, list[dict[str, Any]]] = {}
     all_catchment_data: dict[int, list[dict[str, Any]]] = {}
-    for threshold_m2 in threshold_list_m2:
+    for threshold_m2 in sorted(threshold_list_m2, reverse=True):
         threshold_cells = max(1, int(threshold_m2 / cell_area))
         logger.info(
             f"--- Vectorizing streams for threshold "
@@ -735,9 +735,7 @@ def _process_thresholds(
 
         strahler_t = strahler_by_cells.get(threshold_cells)
         if strahler_t is None:
-            strahler_t = compute_strahler_from_fdir(
-                d8_fdir, acc, metadata, threshold_cells
-            )
+            strahler_t = compute_strahler_from_fdir(flw, acc, threshold_cells)
             if save_intermediates:
                 save_raster_geotiff(
                     strahler_t,
@@ -808,7 +806,10 @@ def _process_thresholds(
         # Free the rasters of this threshold before the next one is computed
         del label_raster, strahler_t
 
-    return all_stream_segments, all_catchment_data
+    return (
+        {t: all_stream_segments[t] for t in sorted(all_stream_segments)},
+        {t: all_catchment_data[t] for t in sorted(all_catchment_data)},
+    )
 
 
 def _record_threshold_stats(
@@ -1036,6 +1037,10 @@ def process_dem_from_intermediates(
         transform=_get_transform(metadata, filled_dem.shape),
         latlon=False,
     )
+    # As in process_hydrology_pyflwdir: ordered by sorting, without the upstream
+    # matrix of pyflwdir's default walk
+    flw.order_cells(method="sort")
+    del d8_fdir
     stats: dict[str, Any] = {
         "ncols": metadata["ncols"],
         "nrows": metadata["nrows"],
@@ -1049,7 +1054,6 @@ def process_dem_from_intermediates(
         fdir=rasters["fdir"],
         acc=rasters["acc"],
         slope=rasters["slope"],
-        d8_fdir=d8_fdir,
         flw=flw,
         flow_dist_m=rasters["flow_dist_m"],
         metadata=metadata,
@@ -1060,7 +1064,7 @@ def process_dem_from_intermediates(
         base_name=input_path.stem,
     )
     _record_threshold_stats(stats, all_stream_segments, all_catchment_data)
-    del rasters, filled_dem, d8_fdir, flw
+    del rasters, filled_dem, flw
 
     if dry_run:
         logger.info("Dry run - skipping database insert")
@@ -1378,7 +1382,9 @@ def process_dem(
 
     # 3-5. Process hydrology using pyflwdir (fill depressions, flow dir, accumulation)
     # Note: Migrated from pysheds to pyflwdir (Deltares) — fewer deps, no temp files
-    filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
+    # The FlwdirRaster of the hydrology serves the whole run (stream distance,
+    # Strahler, sub-catchments, flow paths)
+    filled_dem, fdir, acc, flw = process_hydrology_pyflwdir(
         dem, metadata, drain_points=drain_points
     )
     stats["max_accumulation"] = int(acc.max())
@@ -1386,12 +1392,6 @@ def process_dem(
     # cells, which give the mean slope (drain points are nodata in filled_dem)
     dem_valid = dem != nodata
     del dem
-
-    # Build FlwdirRaster once for reuse (subcatchments, potentially strahler)
-    import pyflwdir
-
-    transform = _get_transform(metadata, filled_dem.shape)
-    flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
 
     if save_intermediates:
         save_raster_geotiff(
@@ -1462,7 +1462,7 @@ def process_dem(
     # 4b. Compute stream distance (flow distance from each cell to outlet)
     logger.info("Computing stream distance to outlet...")
     t_sd = time.time()
-    flow_dist_m = flw.stream_distance(unit="m").reshape(d8_fdir.shape)
+    flow_dist_m = flw.stream_distance(unit="m").reshape(filled_dem.shape)
     logger.info(
         f"Stream distance computed in {time.time() - t_sd:.1f}s "
         f"(max={np.nanmax(flow_dist_m):.0f}m)"
@@ -1501,9 +1501,7 @@ def process_dem(
     lowest_threshold_cells = max(1, int(threshold_list_m2[0] / cell_area))
 
     # 5c. Compute Strahler stream order via pyflwdir (lowest threshold)
-    strahler = compute_strahler_from_fdir(
-        d8_fdir, acc, metadata, lowest_threshold_cells
-    )
+    strahler = compute_strahler_from_fdir(flw, acc, lowest_threshold_cells)
 
     if save_intermediates:
         save_raster_geotiff(
@@ -1539,7 +1537,6 @@ def process_dem(
             fdir=fdir,
             acc=acc,
             slope=slope,
-            d8_fdir=d8_fdir,
             flw=flw,
             flow_dist_m=flow_dist_m,
             metadata=metadata,
@@ -1552,7 +1549,7 @@ def process_dem(
         _record_threshold_stats(stats, all_stream_segments, all_catchment_data)
 
     # Free large raster arrays no longer needed (~1.7 GB at 54.5M cells)
-    del filled_dem, slope, d8_fdir, acc, strahler, flow_dist_m, flw, fdir
+    del filled_dem, slope, acc, strahler, flow_dist_m, flw, fdir
 
     # 8. Insert into database
     if not dry_run:

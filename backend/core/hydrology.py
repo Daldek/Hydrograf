@@ -1246,7 +1246,7 @@ def process_hydrology_pyflwdir(
     dem: np.ndarray,
     metadata: dict[str, Any],
     drain_points: list[tuple[int, int]] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, Any]:
     """
     Process DEM using pyflwdir (Deltares) for hydrological analysis.
 
@@ -1269,11 +1269,13 @@ def process_hydrology_pyflwdir(
     Returns
     -------
     tuple
-        (filled_dem, flow_direction, flow_accumulation, d8_fdir) arrays
-        - filled_dem: DEM po wypelnieniu zaglebie (rzeczywiste wysokosci)
-        - flow_direction: kierunki splywy D8 (int16, nodata=0)
-        - flow_accumulation: akumulacja przeplywu (po fix_internal_sinks)
-        - d8_fdir: oryginalny pyflwdir D8 (uint8) do budowy FlwdirRaster
+        (filled_dem, flow_direction, flow_accumulation, flw)
+        - filled_dem: DEM after depression filling (real elevations)
+        - flow_direction: D8 flow directions (int16, nodata=0)
+        - flow_accumulation: flow accumulation (after fix_internal_sinks)
+        - flw: pyflwdir.FlwdirRaster of pyflwdir's D8 grid (before
+          fix_internal_sinks), with its cells ordered; the one FlwdirRaster of
+          the run
     """
     import pyflwdir
     from pyflwdir.dem import fill_depressions as pyflwdir_fill_depressions
@@ -1319,9 +1321,12 @@ def process_hydrology_pyflwdir(
             xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
         )
 
-    # Flow accumulation via FlwdirRaster
+    # Flow accumulation via the FlwdirRaster of the whole run. Its cells are
+    # ordered by sorting: pyflwdir's default walk builds a matrix of the
+    # upstream cells of every cell (7-8 per cell)
     logger.info("  Computing flow accumulation...")
     flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
+    flw.order_cells(method="sort")
     acc_float = flw.upstream_area(unit="cell")
     acc_arr = np.where(acc_float == -9999, 0, acc_float).astype(np.int32)
 
@@ -1366,4 +1371,4 @@ def process_hydrology_pyflwdir(
         logger.info("  All internal cells have valid flow direction")
 
     logger.info("Hydrology processing complete")
-    return filled_dem, fdir_arr, acc_arr, d8_fdir
+    return filled_dem, fdir_arr, acc_arr, flw

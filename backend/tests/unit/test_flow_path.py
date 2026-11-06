@@ -432,7 +432,7 @@ class TestRouteLengthsAddUpToTheFlowPath:
             fdir_i16,
             acc,
             np.zeros(fdir.shape),
-            compute_strahler_from_fdir(fdir, acc, meta, threshold_cells),
+            compute_strahler_from_fdir(flw, acc, threshold_cells),
             meta,
             threshold_cells,
             label_raster_out=labels,

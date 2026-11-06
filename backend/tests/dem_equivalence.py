@@ -24,7 +24,6 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-import pyflwdir
 from rasterio.coords import BoundingBox
 from rasterio.transform import from_origin
 from scipy import ndimage
@@ -185,8 +184,7 @@ class Hydrology:
     fdir: np.ndarray
     # Flow accumulation [cells] (int32)
     acc: np.ndarray
-    # pyflwdir D8 flow directions of flw (uint8)
-    d8_fdir: np.ndarray
+    # pyflwdir.FlwdirRaster of the run (process_hydrology_pyflwdir)
     flw: Any
     flow_dist_m: np.ndarray
     slope_percent: np.ndarray
@@ -199,11 +197,8 @@ def derive_hydrology(dem: np.ndarray, metadata: dict[str, Any]) -> Hydrology:
     Every call computes new arrays. A function that changes its inputs in place needs
     copies when the old and the new code run on one Hydrology.
     """
-    filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(dem, metadata)
-    flw = pyflwdir.from_array(
-        d8_fdir, ftype="d8", transform=metadata["transform"], latlon=False
-    )
-    flow_dist_m = flw.stream_distance(unit="m").reshape(d8_fdir.shape)
+    filled_dem, fdir, acc, flw = process_hydrology_pyflwdir(dem, metadata)
+    flow_dist_m = flw.stream_distance(unit="m").reshape(filled_dem.shape)
     dx, dy = _compute_gradients(
         filled_dem, metadata["cellsize"], metadata["nodata_value"]
     )
@@ -212,7 +207,6 @@ def derive_hydrology(dem: np.ndarray, metadata: dict[str, Any]) -> Hydrology:
         filled_dem=filled_dem,
         fdir=fdir,
         acc=acc,
-        d8_fdir=d8_fdir,
         flw=flw,
         flow_dist_m=flow_dist_m,
         slope_percent=slope_percent,
@@ -234,9 +228,7 @@ def subcatchments(
     metadata = hydrology.metadata
     nodata = metadata["nodata_value"]
     threshold_cells = max(1, int(threshold_m2 / metadata["cellsize"] ** 2))
-    strahler = compute_strahler_from_fdir(
-        hydrology.d8_fdir, hydrology.acc, metadata, threshold_cells
-    )
+    strahler = compute_strahler_from_fdir(hydrology.flw, hydrology.acc, threshold_cells)
     labels = np.zeros_like(hydrology.filled_dem, dtype=np.int32)
     segments = vectorize_streams(
         hydrology.filled_dem,

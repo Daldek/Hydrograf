@@ -56,7 +56,7 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 - Nodata pyflwdir (247) → int16 (0)
 
 #### Krok 3: Akumulacja spływu (flow accumulation)
-- Metoda: `pyflwdir.FlwdirRaster.upstream_area(unit="cell")`
+- Method: `pyflwdir.FlwdirRaster.upstream_area(unit="cell")` on the one FlwdirRaster of the run, its cells ordered by `order_cells(method="sort")` (pyflwdir's default walk builds a matrix of 7–8 upstream cells per cell)
 - Wzór: `acc[cell] = 1 + Σ(acc[upstream_cells])`
 - Wyjście: int32 array (liczba komórek, nie m²)
 
@@ -83,7 +83,7 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 
 **Funkcja:** `compute_strahler_from_fdir()` (linie 1271-1329)
 - Maska cieków: `acc >= stream_threshold`
-- Algorytm: `pyflwdir.FlwdirRaster.stream_order(type="strahler", mask=stream_mask)`
+- Algorithm: `pyflwdir.streams.strahler_order(flw.idxs_ds, flw.idxs_seq, mask=stream_mask)` on the FlwdirRaster of the run; `FlwdirRaster.stream_order` caches the orders of its first call and would ignore the mask of the next threshold
 - Komórki niebędące ciekiem: `strahler = 0`
 
 ### 1.6 Wektoryzacja cieków
