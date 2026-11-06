@@ -257,17 +257,17 @@ class TestTerrainProfileEndpoint:
         assert ".vrt" not in body
 
 
-class TestTerrainProfileDemWindows:
-    """The DEM is read in windows of consecutive samples along the line."""
+class TestTerrainProfileDemSamples:
+    """Each sample of the profile reads the DEM cell under it."""
 
     X0, Y_TOP, CELL, CELLS = 500000.0, 600000.0, 50.0, 60
 
     def test_each_sample_reads_its_cell_also_past_the_dem(self, client, tmp_path):
-        """A line longer than a window: every sample gets the value of its cell.
+        """Every sample gets the value of its cell, a gap where there is none.
 
-        One row of 60 cells of 50 m (3 km, more than PROFILE_WINDOW_SIDE_M)
-        holding 100 + column, no data in column 30; the line runs from the centre
-        of the first cell to 10 cells past the east edge, one sample per cell.
+        One row of 60 cells of 50 m holding 100 + column, no data in column 30;
+        the line runs from the centre of the first cell to 10 cells past the
+        east edge, one sample per cell.
         """
         values = 100.0 + np.arange(self.CELLS, dtype=np.float64)
         values[30] = NODATA
