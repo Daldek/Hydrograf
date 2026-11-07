@@ -1,7 +1,7 @@
 # ADR-071: PGW ownership with cell-level boundary-event routing, not cycle merging
 
 **Date:** 2026-11-06 (measured 2026-11-07)
-**Status:** accepted; implemented 2026-11-07 (opt-in `--units`; the full 5 m Hydroni run is pending)
+**Status:** accepted; implemented 2026-11-07 (opt-in `--units`); the full 5 m Hydroni run does not converge on its seams (Open, 1)
 
 ## Context
 
@@ -50,12 +50,14 @@ Synthetic two-/three-unit DEMs must agree with an uncut single-raster reference 
 - **Burning, smoothing, buildings and lakes run on the whole DEM.** A window cannot do them (measured: 37 cells differ by up to 5.2 m where a stream enters a window), so they run once, as in `process_dem`, and the owners are processed from the prepared DEM; lake drain points are whole-grid cells that each window uses if it contains them. `dem.stream_burning` is honoured.
 - **Units file.** Kartograf's PGW GeoPackage as delivered (`zlewnie_jcwp_rzecznych`, `pozostale_obszary_jcwp`); the analysis area is a separate optional file (the `--boundary-file` or project area of the bootstrap), not a layer of it.
 - **Mosaics hold owned cells.** Cells without DEM data, including the repaired holes that carry flow in the whole-raster run, are nodata in the VRTs; the rows and statistics do not depend on them.
-- **Publication.** One transaction replaces the DEM-derived rows and activates the run; the unit checkpoints verify the staged files, not intermediate results: a failed run is marked failed and computed again, there is no resume of a run. Tiles are built from the published rows by the unchanged generators, without an atomic switch.
+- **Publication.** One transaction replaces the DEM-derived rows and activates the run; tiles are built from the published rows by the unchanged generators, without an atomic switch. `<output>/active_run.json` (not a link: `/mnt/magazyn` refuses them) names the published run, and the API reads its VRT mosaics.
+- **Owners from catchments** (2026-11-07, afternoon). With `--units-catchments` an owner is the union of the catchments (Hydroni: the 223 MPHP catchments h07) that overlap its PGW unit most, named by the unit's `MS_KOD`; `processing_units.catchment_keys` keeps their keys for the later steps.
+- **Resume.** A unit is checkpointed (`routed`, with its halo and the SHA-256 of the file of its fill and D8) as soon as it is computed; a run with the same fingerprint (VRT texts, size and mtime of the other files) and settings resumes the latest staging or failed run and restores its intact units; an advisory lock refuses a second process.
 
 ### Open for the full Hydroni run
 
-1. The whole-grid stages (`polygonize_subcatchments`, `vectorize_streams`, the preparation of the DEM) hold arrays of up to 4 B per cell besides the memmaps; the 4 GB budget is measured on the 24.6 M-cell pair only (126 s wall, peak RSS 2.5 GB (0.8 GB anonymous), 18,956 segments, run active) and must be measured on the 117.6 M-cell run [INFERENCE: about 5 times the pair's numbers].
-2. Bootstrap step 7 (depressions) and the stream overlay of step 9 read whole rasters (float64 for the depressions): skip them or window them for the whole area.
-3. The API resolves `dem_mosaic_*.tif` in `DEM_DIR`; a unit run leaves `dem_mosaic_*.vrt` in `active_run/`, which the runtime must be pointed at.
-4. No resume of an interrupted run; the fingerprint hashes every NMT sheet (708) before the work starts.
-5. The input VRT must lie on the grid of its sheets: a window of a VRT that resamples can read differently from another window (found on a hand-made VRT shifted by half a cell), and the run would disagree with itself.
+Closed on 2026-11-07: the whole-grid preparation measured on the 233.2 M-cell grid (peak 3.64 GB with buildings, 3.42 GB without: kept whole-grid); steps 7 and 9 windowed (under 0.9 GB each); the API resolves the active run's mosaics; the fingerprint no longer reads the sheets and an interrupted run resumes; the bootstrap's mosaic lies on the grid of its 5 m sheets (20 sheets delivered as 1 m grids are averaged) and a resampling VRT is refused.
+
+1. **The windowed fill does not converge at 5 m** (plan, “Completion and the full-area run”): three full-area runs disagreed on seams at every halo (with burning and lakes up to 16 km, then the window cap; without burning 113 cells of the filled DEM of one owner at 2 and 4 km; with burning 3 D8 cells on a flat whose filled elevations agree). The seam rule stays (never publish a disagreement); the fill needs global spill elevations: fill each tile with its edges open, solve the small graph of the tile-edge spill levels with a priority flood, then finish each tile (and resolve flats by a rule that does not depend on the window), the “disk-backed boundary summaries” of the plan. Until then the full area cannot be published by units.
+2. The global stages after the fill (routing, `vectorize_streams`, `polygonize_subcatchments`, the mosaics, the publication) were not reached at full size: their memory at 233 M cells is still unmeasured [INFERENCE: the pair needed 0.8 GB anonymous at 24.6 M cells; the scratch memory maps reach about 18 GB of files, whose pages a memory cgroup reclaims].
+3. `raise_buildings_in_dem` raises nodata cells under buildings (-9999 becomes -9994); the bootstrap passes no buildings, a run with them is wrong at the edges of the data.
