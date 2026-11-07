@@ -336,7 +336,39 @@ def compute_flow_paths(
         fdir = fdir_src.read(1, window=win)
         nodata = dist_src.nodata
         transform = window_transform(win, labels_src.transform)
+    return watershed_flow_paths(member, flow_dist, fdir, nodata, baseline_m, transform)
 
+
+def watershed_flow_paths(
+    member: np.ndarray,
+    flow_dist: np.ndarray,
+    fdir: np.ndarray,
+    nodata: float | None,
+    baseline_m: float,
+    transform: Affine,
+) -> WatershedFlowPaths:
+    """Longest flow path and the one from the boundary of the cells of a watershed.
+
+    Parameters
+    ----------
+    member : np.ndarray
+        Cells of the watershed (bool, 2-D), all upstream of its outlet.
+    flow_dist : np.ndarray
+        Flow distance to the outlet of the grid [m], on the grid of ``member``.
+    fdir : np.ndarray
+        Saved D8 flow directions of the pipeline (1 = E ... 128 = NE, 0 = none).
+    nodata : float | None
+        Nodata value of ``flow_dist``.
+    baseline_m : float
+        Flow distance at the outlet of the watershed [m].
+    transform : Affine
+        Transform of the grid of ``member`` (EPSG:2180).
+
+    Returns
+    -------
+    WatershedFlowPaths
+        As ``compute_flow_paths``.
+    """
     starts = member if nodata is None else member & (flow_dist != nodata)
     longest_head = _farthest(starts, flow_dist)
     if longest_head is None:

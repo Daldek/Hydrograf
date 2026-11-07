@@ -499,6 +499,68 @@ tiles.
 
 ---
 
+### `export_catchment_parameters.py`: the parameters of the panel for given polygons
+
+Computes, for every polygon of a layer, what the panel „Zlewnia” shows in „Parametry
+podstawowe”, „Wskaźniki kształtu” and „Pokrycie terenu”, with the polygon as the boundary of
+the watershed (no delineation from the NMT), and writes the polygons with their key, the fields
+asked for and these values to a new GeoPackage. It reads the rasters that the pipeline saved in
+`DEM_DIR` (`dem_mosaic_02_filled`, `_03_flowdir`, `_04_flowacc`, `_04b_stream_distance`,
+`_05_slope` and `_10_subcatchments_<threshold>`) and the database (`land_cover`, the BDOT10k flags
+and lengths of `stream_network` and `stream_catchments`), only reading both. The values come from
+the code behind the panel: the zonal statistics of the sub-catchments over the cells whose centre
+lies in the polygon, the flow paths of `core.divide_flow_path`, the overland segment of
+`process_dem`, the BDOT10k part of the main channel of `core.catchment_graph`, the shape indices
+of `core.morphometry` and the land cover of `core.watershed_service`. The outlet is the cell of
+the largest flow accumulation in the polygon; the flow paths start in the part of the polygon
+that drains to it; the main channel goes up the stream network of the threshold from it, at each
+confluence into the branch of the larger accumulation, to its source or to where it flows in from
+outside the polygon. The length and the mean width of the watershed and the shape indices computed
+from them (elongation, form factor, lemniscate) are left out.
+
+```bash
+cd backend
+.venv/bin/python -m scripts.export_catchment_parameters --input zlewnie.gpkg --layer zlew_h_07 \
+    --key ID_HYD_10 --keep ID_HYD_50,NAZ_ZLEWNI --output parametry.gpkg
+```
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--input` | the GeoPackage of the polygons, in PL-1992 (EPSG:2180; ESRI:102173 is accepted as the same) | required |
+| `--layer` | the layer of the polygons | the only layer of the file |
+| `--key` | a field with a unique, non-empty value per polygon | required |
+| `--keep` | other fields to keep, comma separated | none |
+| `--output` | the new GeoPackage; an existing file is refused | required |
+| `--output-layer` | the layer of the output | `catchment_parameters` |
+| `--threshold-m2` | the flow accumulation threshold of the main channel, the overland segment and the BDOT10k length | `100000`, the default of the panel |
+| `--dem-dir` | the directory of the rasters | `DEM_DIR` |
+
+The script stops with a message, before it computes anything, when the layer is not in PL-1992, a
+field is missing, the key is empty or repeated, a geometry is not a valid polygon, a raster is
+missing or the database has no stream network of the threshold. The output keeps each geometry as
+it was, in EPSG:2180, with the key and the kept fields, then these columns (the table
+`<output layer>_units` of the same GeoPackage gives the unit, the section, the row of the panel and
+the source of each; the layer's metadata the threshold, the raster directory and the version):
+
+| Section | Columns |
+|---|---|
+| Parametry podstawowe | `area_km2`, `perimeter_km`, `elevation_min_m`, `elevation_max_m`, `elevation_mean_m`, `mean_slope_m_per_m`, `channel_length_km`, `real_channel_length_km`, `channel_slope_m_per_m`, `flow_path_length_km`, `flow_path_slope_m_per_m`, `overland_length_km`, `overland_slope_m_per_m`, `divide_flow_path_km`, `cn`, `outlet_latitude_deg`, `outlet_longitude_deg`, `outlet_elevation_m` |
+| Wskaźniki kształtu | `compactness_coefficient`, `circularity_ratio` |
+| Pokrycie terenu | `lc_<class>_pct` and `lc_<class>_cn` of `grunt_orny`, `las`, `laka`, `zabudowa_mieszkaniowa`, `zabudowa_przemyslowa`, `droga`, `woda`, `inny` |
+| Kontrola | `polygon_area_km2` (of the geometry), `outlet_upstream_area_km2` (the NMT watershed of the outlet), `polygon_to_upstream_area_ratio` (about 1 for a polygon that is that watershed, less with inflow from outside), `cell_count`, `quality_flag` (`under_100_cells`, `partly_outside_nmt`, `outside_nmt`) |
+
+Slopes are in m/m like the API (the panel shows them times 100 in %). For the boundary of a
+watershed of the panel the values are those of the panel, with these differences: the mean
+elevation and the mean slope may differ by 0.01 m and 0.005 % (the panel averages
+sub-catchment means rounded to 0.01), the outlet is the centre of the outlet cell (the panel takes
+the end of the outlet's stream segment snapped to its boundary, up to two cells away), the
+perimeter is that of the given polygon (the panel's includes the rings of the micro-holes of its
+merged boundary) and the land cover counts every part of a multipart polygon (the panel takes its
+largest part). A polygon with cells without NMT data is computed over the cells with data. On the
+production rasters a polygon of 33 km² takes about 1 s and the run peaks at about 1.3 GB.
+
+---
+
 ### `download_landcover.py`: download land cover
 
 Downloads land cover through Kartograf into its store: BDOT10k (GUGiK; the whole package of a county,

@@ -11,6 +11,7 @@ Memory usage: ~0.5 MB RAM.
 import logging
 import threading
 import time
+from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
@@ -33,6 +34,56 @@ def _measured(values: np.ndarray, idx: int) -> float | None:
         return None
     value = float(values[idx])
     return None if np.isnan(value) else value
+
+
+# Consecutive segments without a BDOT10k stream that the main channel along BDOT10k
+# streams bridges: the flow path of the DEM can leave the BDOT10k channel for a
+# segment or two at bends and meanders, or run between two parallel channels whose
+# buffers alternate.
+MAX_REAL_CHANNEL_GAP = 2
+
+
+def contiguous_real_length_km(
+    is_real: Iterable[bool], lengths_km: Iterable[float]
+) -> float:
+    """Length of a main channel along BDOT10k streams, counted from its outlet.
+
+    The segments come from the outlet upstream. The length adds up the segments
+    matched to BDOT10k streams from the outlet, with the gaps of at most
+    MAX_REAL_CHANNEL_GAP consecutive unmatched segments between two matched ones;
+    it stops at the first unmatched segment before any matched one and at a longer
+    gap: everything above is overland flow, even where later segments are matched.
+
+    Parameters
+    ----------
+    is_real : Iterable[bool]
+        Whether each segment matches a BDOT10k stream, from the outlet upstream.
+    lengths_km : Iterable[float]
+        Length of each segment [km], in the same order.
+
+    Returns
+    -------
+    float
+        The length [km], 0 when the segment of the outlet is unmatched.
+    """
+    contiguous_real_km = 0.0
+    gap_count = 0
+    pending_gap_km = 0.0
+    started = False  # gap tolerance only after the first real segment
+    for real, length_km in zip(is_real, lengths_km, strict=True):
+        if real:
+            started = True
+            contiguous_real_km += pending_gap_km + length_km
+            pending_gap_km = 0.0
+            gap_count = 0
+        else:
+            if not started:
+                break  # not real before any real one: no real channel
+            gap_count += 1
+            if gap_count > MAX_REAL_CHANNEL_GAP:
+                break
+            pending_gap_km += length_km
+    return contiguous_real_km
 
 
 # Column indices for stream_catchments SELECT in load()
@@ -983,33 +1034,13 @@ class CatchmentGraph:
             if slope > 0:
                 main_slope = round(slope, 6)
 
-        # Real channel length: contiguous BDOT-matched segments from outlet upstream.
-        # Walk from outlet (path_arr[0]) upstream, sum segment lengths while
-        # is_real_stream is True.  Stop at the FIRST non-real segment — everything
-        # above is overland flow, even if later segments are flagged real (can
-        # happen when the DEM flow-path runs between two parallel BDOT channels
-        # whose buffers alternate coverage).
+        # Real channel length: contiguous BDOT-matched segments from the outlet
+        # (path_arr[0]) upstream
         real_length_km = None
         if self._is_real_stream is not None and self._segment_length_km is not None:
-            contiguous_real_km = 0.0
-            gap_count = 0
-            MAX_GAP = 2  # allow up to 2 consecutive non-real segments
-            pending_gap_km = 0.0
-            started = False  # gap tolerance only after first real segment
-            for node in path_arr:
-                if self._is_real_stream[node]:
-                    started = True
-                    contiguous_real_km += pending_gap_km + self._segment_length_km[node]
-                    pending_gap_km = 0.0
-                    gap_count = 0
-                else:
-                    if not started:
-                        break  # not-real before any real → no real channel
-                    gap_count += 1
-                    if gap_count > MAX_GAP:
-                        break
-                    pending_gap_km += self._segment_length_km[node]
-            real_length_km = contiguous_real_km
+            real_length_km = contiguous_real_length_km(
+                self._is_real_stream[path_arr], self._segment_length_km[path_arr]
+            )
 
         return {
             "main_channel_length_km": round(main_length_km, 4),
