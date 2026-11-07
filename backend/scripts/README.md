@@ -328,9 +328,11 @@ the stream network and the sub-catchments into `stream_network` and `stream_catc
 2. Raise the buildings (+5 m under the BUBD footprints, ADR-033): `process_dem()` takes the file as
    `building_gpkg`, but no script passes it, so the stage does not run in the pipeline (what the
    wiring needs: `docs/BACKLOG.md`, Bugs and diagnoses).
-3. Burn the streams into the DEM (`--burn-streams`, optional), then smooth them monotonically with a
-   running minimum downstream from the outlet, which corrects bridges and embankments (ADR-041;
-   `--no-smooth-streams` switches it off).
+3. Burn the streams into the DEM (`--burn-streams`, optional), then smooth them monotonically: each
+   line descends strictly in the direction BDOT10k digitizes it (the other way where the DEM rises
+   along it by more than 2 m), the lines in the order of the flow, which corrects bridges and
+   embankments and keeps a river that crosses the edge of the data flowing out downstream
+   (ADR-041, ADR-072; `--no-smooth-streams` switches it off).
 4. Classify the endorheic lakes and their drain points (`--waterbody-mode`); burn the storm-sewer
    inlets and route the flow accumulation through the sewer graph (optional, ADR-051).
 5. Fill the depressions, compute the D8 flow direction and the flow accumulation.

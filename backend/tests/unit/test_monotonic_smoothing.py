@@ -1,18 +1,23 @@
-"""Tests for H4 monotonic stream smoothing (ADR-041)."""
+"""Tests for the monotonic stream smoothing (ADR-041, ADR-072)."""
 
 from unittest.mock import patch
 
+import geopandas as gpd
 import numpy as np
 import pytest
-from rasterio.transform import from_bounds
+from rasterio.transform import from_bounds, from_origin
 from shapely.geometry import LineString
 
 from core.hydrology import (
     _bresenham,
-    _build_stream_network_graph,
+    _line_nodes,
     _rasterize_line_ordered,
+    burn_streams_into_dem,
+    process_hydrology_pyflwdir,
     smooth_streams_monotonic,
 )
+
+NODATA = -9999.0
 
 
 class TestBresenham:
@@ -84,65 +89,23 @@ class TestRasterizeLineOrdered:
             assert 0 <= r < 10 and 0 <= c < 10
 
 
-class TestBuildStreamNetworkGraph:
-    """Test topology graph construction from stream geometries."""
+class TestLineNodes:
+    """The nodes that join the ends of the stream lines."""
 
-    def _make_dem_and_transform(self, nrows=20, ncols=20):
-        """Create a sloped DEM (high top-left, low bottom-right) + transform."""
-        dem = np.zeros((nrows, ncols), dtype=np.float32)
-        for r in range(nrows):
-            for c in range(ncols):
-                dem[r, c] = 200.0 - r * 5.0 - c * 2.0
-        transform = from_bounds(0, 0, ncols, nrows, ncols, nrows)
-        return dem, transform
-
-    def test_single_segment(self):
-        dem, transform = self._make_dem_and_transform()
-        geoms = [LineString([(1, 19), (1, 1)])]
-        graph, seg_nodes, outlets = _build_stream_network_graph(geoms, dem, transform)
-        assert len(outlets) == 1
-        assert len(graph) == 2
-        assert 0 in seg_nodes
-
-    def test_y_junction(self):
-        """Two tributaries merging into one main stem."""
-        dem, transform = self._make_dem_and_transform()
-        trib_a = LineString([(2, 18), (5, 15)])
-        trib_b = LineString([(8, 18), (5, 15)])
-        main = LineString([(5, 15), (5, 2)])
-        geoms = [trib_a, trib_b, main]
-        graph, seg_nodes, outlets = _build_stream_network_graph(geoms, dem, transform)
-        assert len(outlets) == 1
-        assert len(seg_nodes) == 3
-
-    def test_seg_nodes_maps_start_end(self):
-        """seg_nodes correctly maps segment -> (start_node, end_node)."""
-        dem, transform = self._make_dem_and_transform()
-        geoms = [LineString([(2, 18), (10, 10)])]
-        graph, seg_nodes, outlets = _build_stream_network_graph(geoms, dem, transform)
-        start_node, end_node = seg_nodes[0]
-        assert start_node != end_node
-
-    def test_disconnected_components(self):
-        dem, transform = self._make_dem_and_transform()
-        stream_a = LineString([(1, 19), (1, 15)])
-        stream_b = LineString([(15, 19), (15, 15)])
-        geoms = [stream_a, stream_b]
-        graph, seg_nodes, outlets = _build_stream_network_graph(geoms, dem, transform)
-        assert len(outlets) == 2
-
-    def test_edge_outlet_preferred(self):
-        """Node on raster edge is preferred as outlet over interior node."""
-        dem, transform = self._make_dem_and_transform()
-        geoms = [LineString([(5, 10), (5, 0)])]
-        graph, seg_nodes, outlets = _build_stream_network_graph(geoms, dem, transform)
-        assert len(outlets) == 1
+    def test_ends_within_one_cell_share_a_node(self):
+        transform = from_bounds(0, 0, 20, 20, 20, 20)
+        main = LineString([(10.4, 10.4), (10.4, 1.4)])
+        joined = LineString([(3.4, 18.4), (11.3, 11.3)])  # ends a cell off main's start
+        apart = LineString([(17.4, 18.4), (12.4, 12.4)])  # ends two cells off
+        ends, _ = _line_nodes([main, joined, apart], transform)
+        assert ends[1][1] == ends[0][0]
+        assert ends[2][1] not in ends[0]
 
 
 class TestSmoothStreamsMonotonic:
     """Test the main monotonic smoothing function.
 
-    Covers spec test cases #1-#8, #11-#13.
+    Covers spec test cases #1-#7, #11-#13 (ADR-041) and the direction of ADR-072.
     """
 
     def _make_sloped_dem(self, nrows=20, ncols=20):
@@ -166,13 +129,18 @@ class TestSmoothStreamsMonotonic:
         assert diag["cells_smoothed"] > 0
 
     # Spec #2: flat terrain
-    def test_flat_terrain_unchanged(self):
+    def test_flat_line_descends_strictly_by_float32_steps(self):
+        """No flat is left for the fill to drain either way (ADR-072)."""
         dem = np.full((20, 20), 100.0, dtype=np.float32)
         transform = from_bounds(0, 0, 20, 20, 20, 20)
-        line = LineString([(5, 18), (5, 2)])
+        line = LineString([(5, 18), (5, 2)])  # rows 2 to 18
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [line]
-            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+            result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+        profile = result[2:19, 5]
+        assert profile[0] == 100.0
+        assert np.all(np.diff(profile) < 0)
+        assert 100.0 - profile[-1] < 1e-3
         assert diag["cells_smoothed"] == 0
 
     # Spec #3: already monotonic
@@ -186,31 +154,39 @@ class TestSmoothStreamsMonotonic:
         assert diag["cells_smoothed"] == 0
 
     # Spec #4: confluence
-    def test_confluence_takes_min_of_tributaries(self):
+    def test_a_line_starts_below_the_lines_ending_at_its_start(self):
+        """The main stem, listed before its tributaries, starts below the lower one."""
         dem = self._make_sloped_dem()
         transform = from_bounds(0, 0, 20, 20, 20, 20)
-        dem[5, 8] = 200.0  # bump on trib_a path
+        main = LineString([(10, 10), (10, 2)])  # rows 10 to 18
         trib_a = LineString([(8, 18), (10, 10)])
         trib_b = LineString([(12, 18), (10, 10)])
-        main = LineString([(10, 10), (10, 2)])
+        for cell in _rasterize_line_ordered(trib_b, transform)[1:-1]:
+            dem[cell] = 120.0  # a hollow along trib_b, below the junction (150 m)
         with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [trib_a, trib_b, main]
+            mock_load.return_value = [main, trib_a, trib_b]
             result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         assert diag["segments_processed"] == 3
-        assert diag["disconnected_components"] == 1
-        assert result[10, 10] <= dem[10, 10]
+        main_profile = result[10:19, 10]
+        assert main_profile[0] < 120.0
+        assert np.all(np.diff(main_profile) < 0)
 
     # Spec #5: reversed geometry
-    def test_reversed_geometry_handled(self):
-        dem = self._make_sloped_dem()
-        transform = from_bounds(0, 0, 20, 20, 20, 20)
-        line = LineString([(5, 2), (5, 18)])  # reversed: low elev first
-        dem[10, 5] = 200.0  # bridge bump
+    def test_a_line_digitized_up_a_clear_rise_is_taken_down_it(self):
+        """A digitizing error on a slope is not cut into a trench (ADR-072)."""
+        dem = np.repeat(
+            (200.0 - 0.5 * np.arange(40, dtype=np.float32))[:, None], 20, axis=1
+        )
+        transform = from_bounds(0, 0, 200, 400, 20, 40)  # 10 m cells, 5% slope
+        dem[20, 5] = 200.0  # a bridge, 10 m above the cell below it
+        line = LineString([(52, 17), (52, 383)])  # from row 38 up to row 2
         with patch("core.hydrology._load_stream_geometries") as mock_load:
             mock_load.return_value = [line]
             result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
-        assert result[10, 5] <= result[9, 5]
-        assert diag["cells_smoothed"] > 0
+        assert diag["segments_reversed"] == 1
+        np.testing.assert_array_equal(result[2:20, 5], dem[2:20, 5])
+        assert result[20, 5] < result[19, 5]
+        np.testing.assert_array_equal(result[21:39, 5], dem[21:39, 5])
 
     # Spec #6: MultiLineString decomposition
     def test_multilinestring_decomposed(self):
@@ -237,17 +213,21 @@ class TestSmoothStreamsMonotonic:
             )
         assert result[10, 5] == nodata
 
-    # Spec #8: disconnected network
-    def test_disconnected_network_separate_outlets(self):
+    def test_a_loop_is_taken_from_its_first_line(self):
+        """A directed cycle has no flow order; each of its lines is smoothed once."""
         dem = self._make_sloped_dem()
         transform = from_bounds(0, 0, 20, 20, 20, 20)
-        stream_a = LineString([(3, 18), (3, 2)])
-        stream_b = LineString([(15, 18), (15, 2)])
+        down = LineString([(5, 18), (5, 2)])
+        back = LineString([(5, 2), (15, 2), (15, 18), (5, 18)])
         with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [stream_a, stream_b]
-            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
-        assert diag["disconnected_components"] == 2
+            mock_load.return_value = [down, back]
+            result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
         assert diag["segments_processed"] == 2
+        assert diag["segments_out_of_order"] == 1
+        back_profile = [
+            result[cell] for cell in _rasterize_line_ordered(back, transform)
+        ]
+        assert np.all(np.diff(back_profile) < 0)
 
     # Spec #11: overlapping geometries
     def test_overlapping_geometries_min_wins(self):
@@ -282,21 +262,85 @@ class TestSmoothStreamsMonotonic:
         assert diag["segments_skipped"] >= 1
         assert diag["segments_processed"] == 0
 
-    # Diagnostics structure
-    def test_diagnostics_structure(self):
-        dem = self._make_sloped_dem()
-        transform = from_bounds(0, 0, 20, 20, 20, 20)
-        line = LineString([(5, 18), (5, 2)])
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [line]
-            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
-        required_keys = {
-            "segments_processed",
-            "segments_skipped",
-            "cells_smoothed",
-            "cells_unchanged",
-            "max_correction_m",
-            "mean_correction_m",
-            "disconnected_components",
-        }
-        assert required_keys.issubset(set(diag.keys()))
+
+class TestRiverCrossingTheEdgeOfTheData:
+    """A river that crosses the data leaves it downstream (the Noteć of ADR-072).
+
+    A valley runs west to east across a 5 m grid; its river is digitized eastwards, the
+    way it flows. The floor rises 0.3 m that way (the noise of a water surface on a flat
+    valley) or is level, so the upstream crossing is the lower one or as low. With
+    ``margins`` the data ends inside the raster and the line runs on into nodata, as a
+    river leaves the sheets of an area. The line runs a quarter or three quarters of a
+    cell into the cells it is burned into; with ``gap_cells`` it is two features with a
+    gap between them in the middle, as the Wełna where it enters h07.
+    """
+
+    NROWS, NCOLS, ROW = 30, 120, 15
+    X0, Y0 = 400000.0, 500000.0
+
+    def _scene(self, tmp_path, floor_rise_m, margins, offset, gap_cells=0):
+        rows = np.arange(self.NROWS)[:, None]
+        cols = np.arange(self.NCOLS)[None, :]
+        dem = (
+            50.0
+            + floor_rise_m * cols / (self.NCOLS - 1)
+            + 0.5 * np.abs(rows - self.ROW)
+        ).astype(np.float32)
+        first, last = 0, self.NCOLS - 1
+        if margins:
+            first, last = 10, self.NCOLS - 11
+            dem[:, :first] = NODATA
+            dem[:, last + 1 :] = NODATA
+        y = self.Y0 - (self.ROW + offset) * 5
+        x = [self.X0 + (col + offset) * 5 for col in (0, self.NCOLS - 1)]
+        if gap_cells:
+            middle = self.X0 + (self.NCOLS // 2 + offset) * 5
+            features = [
+                LineString([(x[0], y), (middle, y)]),
+                LineString([(middle + (gap_cells + 1) * 5, y), (x[1], y)]),
+            ]
+        else:
+            features = [LineString([(x[0], y), (x[1], y)])]
+        gpkg = tmp_path / "hydro.gpkg"
+        gpd.GeoDataFrame(
+            {
+                "PRZEBIEG": ["ciek główny"] * len(features),
+                "RODZAJ": ["rzeka"] * len(features),
+            },
+            geometry=features,
+            crs="EPSG:2180",
+        ).to_file(gpkg, layer="OT_SWRS_L", driver="GPKG")
+        return dem, gpkg, first, last
+
+    def _directions(self, dem, gpkg):
+        transform = from_origin(self.X0, self.Y0, 5.0, 5.0)
+        burned, _ = burn_streams_into_dem(dem, transform, gpkg, 2.0, NODATA, "main")
+        smoothed, _ = smooth_streams_monotonic(burned, transform, gpkg, NODATA, "main")
+        _, fdir, acc, _ = process_hydrology_pyflwdir(
+            smoothed, {"nodata_value": NODATA, "transform": transform}
+        )
+        return fdir, acc
+
+    @pytest.mark.parametrize("offset", [0.25, 0.75])
+    @pytest.mark.parametrize("floor_rise_m", [0.3, 0.0])
+    @pytest.mark.parametrize("margins", [True, False])
+    def test_the_river_flows_the_way_it_is_digitized(
+        self, tmp_path, floor_rise_m, margins, offset
+    ):
+        dem, gpkg, first, last = self._scene(tmp_path, floor_rise_m, margins, offset)
+        fdir, acc = self._directions(dem, gpkg)
+        # Every cell of the river drains east, and the river leaves at its east end
+        assert np.all(fdir[self.ROW, first:last] == 1)
+        assert acc[self.ROW, last] >= last - first + 1
+
+    @pytest.mark.parametrize("floor_rise_m", [0.3, 0.0])
+    @pytest.mark.parametrize("margins", [True, False])
+    def test_a_gap_between_two_features_is_bridged(
+        self, tmp_path, floor_rise_m, margins
+    ):
+        dem, gpkg, first, last = self._scene(
+            tmp_path, floor_rise_m, margins, 0.25, gap_cells=3
+        )
+        fdir, acc = self._directions(dem, gpkg)
+        assert np.all(fdir[self.ROW, first:last] == 1)
+        assert acc[self.ROW, last] >= last - first + 1
