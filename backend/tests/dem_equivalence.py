@@ -20,15 +20,20 @@ synthetic_dem builds a deterministic DEM with what makes the processing branch:
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+import fiona
 import numpy as np
 import numpy.typing as npt
+import rasterio
 from rasterio.coords import BoundingBox
+from rasterio.features import shapes
 from rasterio.transform import from_origin
 from scipy import ndimage
+from shapely.geometry import MultiPolygon, shape
 
-from core.hydrology import process_hydrology_pyflwdir
+from core.hydrology import D8_DIRECTIONS, process_hydrology_pyflwdir
 from core.morphometry_raster import (
     _compute_gradients,
     compute_slope_from_gradients,
@@ -312,3 +317,219 @@ def _assert_identical_arrays(
         f"the first at {tuple(int(i) for i in first)}: "
         f"{actual[first]!r} != {expected[first]!r}"
     )
+
+
+@dataclass
+class SplitScene:
+    """A synthetic DEM cut into PGW-like owners, and the run of the whole raster."""
+
+    dem: np.ndarray
+    metadata: dict[str, Any]
+    whole: Hydrology
+    # Owner (1-based) of every cell with DEM data, 0 elsewhere
+    owners: np.ndarray
+    # Cells on or beside a border between owners
+    border: np.ndarray
+    # The DEM as a GeoTIFF
+    dem_path: Path
+
+
+def write_dem_geotiff(path: Path, dem: np.ndarray, metadata: dict[str, Any]) -> Path:
+    """Write a DEM of the tests as a float32 GeoTIFF in EPSG:2180."""
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=dem.shape[0],
+        width=dem.shape[1],
+        count=1,
+        dtype="float32",
+        crs="EPSG:2180",
+        transform=metadata["transform"],
+        nodata=NODATA,
+    ) as dst:
+        dst.write(dem, 1)
+    return path
+
+
+def split_scene(tmp_path: Path, units: int, holes: bool) -> SplitScene:
+    """Cut the synthetic DEM into 2 or 3 owners that straddle its hard features.
+
+    The owners 1 and 2 meet on a wavy seam through the closed basin and the plateau of
+    the DEM; owner 3 (``units == 3``) lies south of row 82. The scene asserts what it
+    exists for: with ``holes``, repaired nodata holes that carry the flow across the
+    seam; a basin that the fill raises on both sides of the seam; hillslope leakage;
+    and D8 crossings in both directions between owners 1 and 2, a cycle of the owner
+    graph in an acyclic flow.
+    """
+    dem, metadata = synthetic_dem(
+        nrows=121, ncols=131, seed=12, nodata_border=False, holes=holes
+    )
+    if holes:
+        seam_col = 72 + round(6 * np.sin(23 / 7))
+        dem[23, seam_col] = NODATA
+    whole = derive_hydrology(dem, metadata)
+    # The baseline fills internal holes for routing and restores DEM nodata afterward;
+    # D8 and accumulation must still traverse those temporarily patched cells.
+    if holes:
+        assert np.any((dem == NODATA) & (whole.fdir > 0))
+        assert whole.fdir[23, seam_col] > 0  # patched routing at the seam
+    owners = np.empty(dem.shape, dtype=np.uint8)
+    for row in range(dem.shape[0]):
+        split = 72 + round(6 * np.sin(row / 7))
+        owners[row, :split] = 1
+        owners[row, split:] = 2
+    if units == 3:
+        owners[82:, :] = 3
+    owners[dem == NODATA] = 0
+    # The closed basin and plateau both straddle owner 1/2, rather than
+    # testing only unrelated slopes away from the shared boundary.
+    assert owners[59, 71] != owners[59, 78]
+    assert owners[48, 69] != owners[48, 75]
+    border = np.zeros(dem.shape, dtype=bool)
+    vertical = owners[:, 1:] != owners[:, :-1]
+    border[:, 1:] |= vertical
+    border[:, :-1] |= vertical
+    horizontal = owners[1:, :] != owners[:-1, :]
+    border[1:, :] |= horizontal
+    border[:-1, :] |= horizontal
+    basin_border = border[55:65, 68:82]
+    filled_basin = whole.filled_dem[55:65, 68:82] > dem[55:65, 68:82]
+    assert np.any(basin_border & filled_basin)
+    assert np.any(border[48:52, 68:76])
+    first, second = np.nonzero(whole.fdir > 0)
+    crosses = []
+    for found_row, found_col in zip(first, second, strict=True):
+        row, col = int(found_row), int(found_col)
+        # Count actual D8 crossings to prove both directions of the quotient cycle.
+        if int(whole.fdir[row, col]) not in D8_DIRECTIONS:
+            continue
+        dr, dc = D8_DIRECTIONS[int(whole.fdir[row, col])]
+        tr, tc = row + dr, col + dc
+        if (
+            0 <= tr < dem.shape[0]
+            and 0 <= tc < dem.shape[1]
+            and owners[row, col] != owners[tr, tc]
+        ):
+            crosses.append(
+                (int(owners[row, col]), int(owners[tr, tc]), int(whole.acc[row, col]))
+            )
+    assert any(area < 40 for _a, _b, area in crosses), "hillslope leakage is exercised"
+    assert (1, 2) in {(a, b) for a, b, _ in crosses}
+    assert (2, 1) in {(a, b) for a, b, _ in crosses}, "unit-graph cycle is exercised"
+    path = write_dem_geotiff(tmp_path / "dem.tif", dem, metadata)
+    return SplitScene(dem, metadata, whole, owners, border, path)
+
+
+def write_pgw_geopackage(
+    path: Path, scene: SplitScene, codes: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Write the owners of a scene as a Kartograf-like PGW GeoPackage.
+
+    The polygons are the cells of each owner, so rasterizing them on the grid of the
+    DEM gives the owners of the scene. The owners but the last are river catchments,
+    the last one is a remaining area (the layers of ``core.unit_ownership``). Returns
+    the codes of the owners.
+    """
+    transform = scene.metadata["transform"]
+    count = int(scene.owners.max())
+    assert len(codes) == count
+    layers: dict[str, list[tuple[str, MultiPolygon]]] = {
+        "zlewnie_jcwp_rzecznych": [],
+        "pozostale_obszary_jcwp": [],
+    }
+    for owner, code in enumerate(codes, start=1):
+        cells = (scene.owners == owner).astype(np.uint8)
+        parts = [
+            shape(geometry)
+            for geometry, value in shapes(cells, mask=cells > 0, transform=transform)
+        ]
+        layer = "pozostale_obszary_jcwp" if owner == count else "zlewnie_jcwp_rzecznych"
+        layers[layer].append((code, MultiPolygon(parts)))
+    for name, items in layers.items():
+        with fiona.open(
+            path,
+            "w",
+            driver="GPKG",
+            layer=name,
+            crs="EPSG:2180",
+            schema={"geometry": "MultiPolygon", "properties": {"MS_KOD": "str"}},
+        ) as sink:
+            for code, geometry in items:
+                sink.write(
+                    {
+                        "geometry": geometry.__geo_interface__,
+                        "properties": {"MS_KOD": code},
+                    }
+                )
+    return codes
+
+
+Network = tuple[dict[int, list[dict[str, Any]]], dict[int, list[dict[str, Any]]]]
+
+
+def assert_same_network(actual: Network, expected: Network) -> None:
+    """Assert two runs gave the same stream network and catchment graph.
+
+    Each network is the stream segments and the sub-catchments (``vectorize_streams``
+    and ``polygonize_subcatchments`` rows) by threshold, as handed to the database.
+
+    The runs agree up to the renumbering of ``segment_idx`` per threshold: a segment
+    is told by its geometry (the coordinates of its cells, unique in a network), the
+    numbering of the actual run must be a one-to-one map of the expected one and dense
+    from 1, and every other column, the sub-catchment of each segment and the
+    downstream link (``downstream_segment_idx``) of each of them must be equal under
+    that map.
+    """
+    actual_segments, actual_catchments = actual
+    expected_segments, expected_catchments = expected
+    assert list(actual_segments) == list(expected_segments)
+    assert list(actual_catchments) == list(expected_catchments)
+    for threshold, wanted in expected_segments.items():
+        found_segments = actual_segments[threshold]
+        where = f"threshold {threshold} m2"
+        assert len(found_segments) == len(wanted), where
+        by_geometry = {
+            tuple(segment["coords"]): i for i, segment in enumerate(found_segments, 1)
+        }
+        assert len(by_geometry) == len(found_segments), f"{where}: a duplicate"
+        renumber: dict[int, int] = {}
+        for old, segment in enumerate(wanted, 1):
+            renumber[old] = by_geometry[tuple(segment["coords"])]
+        assert sorted(renumber.values()) == list(range(1, len(wanted) + 1)), where
+
+        def mapped(index: int | None, renumber: dict[int, int] = renumber) -> Any:
+            """The new number of a segment; None, which drains out of the area."""
+            return None if index is None else renumber[index]
+
+        for old, segment in enumerate(wanted, 1):
+            found = found_segments[renumber[old] - 1]
+            keys = set(segment) - {"downstream_segment_idx", "_outlet_rc"}
+            assert set(found) - {"downstream_segment_idx", "_outlet_rc"} == keys
+            for key in sorted(keys):
+                assert_identical(
+                    found[key], segment[key], f"{where} segment {old} {key}"
+                )
+            assert found["_outlet_rc"] == segment["_outlet_rc"]
+            # Only the thresholds with sub-catchments get links in process_dem
+            if "downstream_segment_idx" in segment:
+                assert found["downstream_segment_idx"] == mapped(
+                    segment["downstream_segment_idx"]
+                ), f"{where} segment {old}: downstream link"
+        expected_sheds = expected_catchments.get(threshold, [])
+        actual_sheds = {
+            c["segment_idx"]: c for c in actual_catchments.get(threshold, [])
+        }
+        assert len(actual_sheds) == len(expected_sheds), where
+        for shed in expected_sheds:
+            old = shed["segment_idx"]
+            found = actual_sheds[renumber[old]]
+            keys = set(shed) - {"segment_idx", "downstream_segment_idx"}
+            assert set(found) - {"segment_idx", "downstream_segment_idx"} == keys
+            for key in sorted(keys):
+                assert_identical(
+                    found[key], shed[key], f"{where} catchment {old} {key}"
+                )
+            assert found["downstream_segment_idx"] == mapped(
+                shed["downstream_segment_idx"]
+            ), f"{where} catchment {old}: downstream link"

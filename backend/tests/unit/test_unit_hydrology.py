@@ -4,13 +4,14 @@ import numpy as np
 import pytest
 import rasterio
 
-from core.hydrology import D8_DIRECTIONS
+from core.hydrology import process_hydrology_pyflwdir
 from core.morphometry_raster import compute_strahler_from_fdir
+from core.unit_flow_paths import UnitFlowPaths
 from core.unit_hydrology import process_unit_hydrology
 from tests.dem_equivalence import (
     NODATA,
     THRESHOLDS_M2,
-    derive_hydrology,
+    split_scene,
     subcatchments,
     synthetic_dem,
 )
@@ -38,72 +39,9 @@ def _equivalent_labels(expected: np.ndarray, actual: np.ndarray) -> None:
 def test_split_hydrology_matches_uncut_dem_with_flat_and_crossings(
     tmp_path, units, holes
 ):
-    dem, metadata = synthetic_dem(
-        nrows=121, ncols=131, seed=12, nodata_border=False, holes=holes
-    )
-    if holes:
-        seam_col = 72 + round(6 * np.sin(23 / 7))
-        dem[23, seam_col] = NODATA
-    whole = derive_hydrology(dem, metadata)
-    # Baseline fills internal holes for routing and restores DEM nodata afterward;
-    # D8 and accumulation must still traverse those temporarily patched cells.
-    if holes:
-        assert np.any((dem == NODATA) & (whole.fdir > 0))
-        assert whole.fdir[23, seam_col] > 0  # patched routing at the seam
-    owners = np.empty(dem.shape, dtype=np.uint8)
-    for row in range(dem.shape[0]):
-        split = 72 + round(6 * np.sin(row / 7))
-        owners[row, :split] = 1
-        owners[row, split:] = 2
-    if units == 3:
-        owners[82:, :] = 3
-    owners[dem == NODATA] = 0
-    # The closed basin and plateau both straddle owner 1/2, rather than
-    # testing only unrelated slopes away from the shared boundary.
-    assert owners[59, 71] != owners[59, 78]
-    assert owners[48, 69] != owners[48, 75]
-    border = np.zeros(dem.shape, dtype=bool)
-    vertical = owners[:, 1:] != owners[:, :-1]
-    border[:, 1:] |= vertical
-    border[:, :-1] |= vertical
-    horizontal = owners[1:, :] != owners[:-1, :]
-    border[1:, :] |= horizontal
-    border[:-1, :] |= horizontal
-    basin_border = border[55:65, 68:82]
-    filled_basin = whole.filled_dem[55:65, 68:82] > dem[55:65, 68:82]
-    assert np.any(basin_border & filled_basin)
-    assert np.any(border[48:52, 68:76])
-    first, second = np.nonzero(whole.fdir > 0)
-    crosses = []
-    for row, col in zip(first, second, strict=True):
-        # Count actual D8 crossings to prove both directions of the quotient cycle.
-        if int(whole.fdir[row, col]) not in D8_DIRECTIONS:
-            continue
-        dr, dc = D8_DIRECTIONS[int(whole.fdir[row, col])]
-        tr, tc = int(row) + dr, int(col) + dc
-        if (0 <= tr < dem.shape[0] and 0 <= tc < dem.shape[1]
-                and owners[row, col] != owners[tr, tc]):
-            crosses.append(
-                (int(owners[row, col]), int(owners[tr, tc]), int(whole.acc[row, col]))
-            )
-    assert any(area < 40 for _a, _b, area in crosses), "hillslope leakage is exercised"
-    assert (1, 2) in {(a, b) for a, b, _ in crosses}
-    assert (2, 1) in {(a, b) for a, b, _ in crosses}, "unit-graph cycle is exercised"
-
-    path = tmp_path / "dem.tif"
-    with rasterio.open(
-        path,
-        "w",
-        driver="GTiff",
-        height=dem.shape[0],
-        width=dem.shape[1],
-        count=1,
-        dtype="float32",
-        crs="EPSG:2180",
-        transform=metadata["transform"],
-        nodata=NODATA,
-    ) as dst:
-        dst.write(dem, 1)
+    scene = split_scene(tmp_path, units, holes)
+    metadata, whole = scene.metadata, scene.whole
+    owners, border, path = scene.owners, scene.border, scene.dem_path
     split_run = process_unit_hydrology(
         path, owners, tmp_path / "run", THRESHOLDS_M2, buffer_m=125
     )
@@ -118,10 +56,27 @@ def test_split_hydrology_matches_uncut_dem_with_flat_and_crossings(
     np.testing.assert_array_equal(
         np.load(tmp_path / "run/raw_fdir.npy"), np.where(raw == 247, 0, raw)
     )
-    # Float32 reduction order can move an outlet path by up to two ULPs.
-    distance_error = np.abs(split_run.flow_dist_m - whole.flow_dist_m)
-    ulp = np.spacing(np.maximum(np.abs(whole.flow_dist_m), np.float32(1)))
-    np.testing.assert_array_less(distance_error, 2.01 * ulp)
+    # Same float32 steps as pyflwdir's stream_distance: the same bits.
+    np.testing.assert_array_equal(split_run.flow_dist_m, whole.flow_dist_m)
+    flow_paths = UnitFlowPaths.from_hydrology(
+        split_run, metadata["transform"], tmp_path / "run/downstream.npy"
+    )
+    np.testing.assert_array_equal(flow_paths.idxs_ds, whole.flw.idxs_ds)
+    starts = np.array([0, 17 * 131 + 34, 50 * 131 + 70], dtype=np.int32)
+    stream_cells = (whole.acc >= 40) & (whole.filled_dem != NODATA)
+    expected_paths, expected_length = whole.flw.path(
+        idxs=starts, mask=stream_cells, unit="m"
+    )
+    actual_paths, actual_length = flow_paths.path(
+        idxs=starts, mask=stream_cells, unit="m"
+    )
+    for actual, expected in zip(actual_paths, expected_paths, strict=True):
+        np.testing.assert_array_equal(actual, expected)
+        actual_xy = flow_paths.xy(actual)
+        expected_xy = whole.flw.xy(expected)
+        for a, b in zip(actual_xy, expected_xy, strict=True):
+            np.testing.assert_allclose(a, b, rtol=0, atol=1e-8)
+    np.testing.assert_allclose(actual_length, expected_length, rtol=0, atol=3e-5)
     for threshold in THRESHOLDS_M2:
         expected_labels, expected_mask, _ = subcatchments(whole, threshold)
         actual_mask = (split_run.acc >= threshold / 25) & (
@@ -143,8 +98,15 @@ def test_rejects_owner_window_that_exceeds_configured_cell_budget(tmp_path):
     owners[dem == NODATA] = 0
     path = tmp_path / "dem.tif"
     with rasterio.open(
-        path, "w", driver="GTiff", height=40, width=48, count=1,
-        dtype="float32", crs="EPSG:2180", transform=metadata["transform"],
+        path,
+        "w",
+        driver="GTiff",
+        height=40,
+        width=48,
+        count=1,
+        dtype="float32",
+        crs="EPSG:2180",
+        transform=metadata["transform"],
         nodata=NODATA,
     ) as dst:
         dst.write(dem, 1)
@@ -152,3 +114,48 @@ def test_rejects_owner_window_that_exceeds_configured_cell_budget(tmp_path):
         process_unit_hydrology(
             path, owners, tmp_path / "run", (1_000,), max_window_cells=100
         )
+
+
+def test_drain_points_of_the_whole_grid_reach_the_windows_that_contain_them(tmp_path):
+    dem, metadata = synthetic_dem(nrows=121, ncols=131, seed=12, holes=False)
+    # The closed basin straddles the seam of owners 1 and 2; a drain point in it,
+    # and one in the flat of owner 2, are outlets in the uncut run.
+    drain_points = [(59, 75), (48, 100)]
+    filled, fdir, acc, _ = process_hydrology_pyflwdir(
+        dem, metadata, drain_points=drain_points
+    )
+    _, plain_fdir, _, _ = process_hydrology_pyflwdir(dem, metadata)
+    assert not np.array_equal(fdir, plain_fdir), "the drain points matter"
+    owners = np.empty(dem.shape, dtype=np.uint8)
+    for row in range(dem.shape[0]):
+        split = 72 + round(6 * np.sin(row / 7))
+        owners[row, :split] = 1
+        owners[row, split:] = 2
+    owners[dem == NODATA] = 0
+    path = tmp_path / "dem.tif"
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=121,
+        width=131,
+        count=1,
+        dtype="float32",
+        crs="EPSG:2180",
+        transform=metadata["transform"],
+        nodata=NODATA,
+    ) as dst:
+        dst.write(dem, 1)
+
+    split_run = process_unit_hydrology(
+        path,
+        owners,
+        tmp_path / "run",
+        THRESHOLDS_M2,
+        buffer_m=125,
+        drain_points=drain_points,
+    )
+
+    np.testing.assert_array_equal(split_run.filled_dem, filled)
+    np.testing.assert_array_equal(split_run.fdir, fdir)
+    np.testing.assert_array_equal(split_run.acc, acc)

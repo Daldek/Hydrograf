@@ -27,7 +27,7 @@ from core.hydrology import (
     process_hydrology_pyflwdir,
 )
 from core.morphometry_raster import _compute_gradients, compute_slope_from_gradients
-from core.stream_extraction import vectorize_streams
+from core.stream_extraction import compute_downstream_links, vectorize_streams
 
 
 class _SeamMismatch(ValueError):
@@ -36,7 +36,12 @@ class _SeamMismatch(ValueError):
 
 @dataclass
 class UnitHydrology:
-    """Completed owned-cell rasters on the common grid, backed by local files."""
+    """Completed owned-cell rasters on the common grid, backed by local files.
+
+    ``halo_m`` is the halo the windows were finally computed with (the D8 seams
+    agreed at it; it grows from the requested buffer on a disagreement) and
+    ``largest_window_cells`` the cells of the largest buffered window.
+    """
 
     filled_dem: np.memmap
     fdir: np.memmap
@@ -44,6 +49,12 @@ class UnitHydrology:
     flow_dist_m: np.memmap
     strahler: dict[int, np.memmap]
     labels: dict[int, np.memmap]
+    slope: np.memmap
+    segments: dict[int, list[dict[str, Any]]]
+    raw_fdir: np.memmap
+    valid: np.memmap
+    halo_m: float
+    largest_window_cells: int
 
 
 def _raster(path: Path, dtype: str, shape: tuple[int, int]) -> np.memmap:
@@ -128,8 +139,10 @@ def _outlet_distance(
         if down < 0:
             result[i] = 0.0
         else:
-            result[i] = result[down] + _cell_distance(
-                i, down, ncols, latlon=False, transform=transform
+            # pyflwdir adds in float32 (NumPy 2 keeps a Python float weak), so the
+            # step is rounded to float32 first: the same bits as stream_distance.
+            result[i] = result[down] + np.float32(
+                _cell_distance(i, down, ncols, latlon=False, transform=transform)
             )
 
 
@@ -193,6 +206,7 @@ def process_unit_hydrology(
     *,
     buffer_m: float = 500.0,
     max_window_cells: int = 80_000_000,
+    drain_points: list[tuple[int, int]] | None = None,
 ) -> UnitHydrology:
     """Run the fill/D8, routing, distance and threshold masks by owner.
 
@@ -200,6 +214,12 @@ def process_unit_hydrology(
     are input only, and the caller must partition exterior inflows too. A seam
     mismatch or an actual cell-level cycle fails rather than publishing a
     numerically incorrect mosaic. No PGW owner-graph topological sort is used.
+
+    ``dem_path`` is the DEM exactly as ``process_hydrology_pyflwdir`` is to see it:
+    streams burnt, buildings raised. Those steps and the classification of lakes
+    look at a whole stream or lake and so cannot run in a window; the caller does
+    them once on the whole DEM. ``drain_points`` are the cells (row, column) of the
+    whole grid that this gives, each used by the windows that contain it.
     """
     if max_window_cells < 1:
         raise ValueError("max_window_cells must be positive")
@@ -219,21 +239,22 @@ def process_unit_hydrology(
         filled = _raster(output_dir / "filled.npy", "float32", shape)
         fdir = _raster(output_dir / "fdir.npy", "int16", shape)
         raw_fdir = _raster(output_dir / "raw_fdir.npy", "int16", shape)
-        slope = _raster(output_dir / "slope.npy", "float32", shape)
+        slope = _raster(output_dir / "slope.npy", "float64", shape)
         seen = _raster(output_dir / "seen.npy", "uint8", shape)
+        active = _raster(output_dir / "active.npy", "bool", shape)
         # One scan of the owner raster, not one full-grid np.nonzero per PGW.
         unit_bounds = []
         for owner, bbox in enumerate(find_objects(owners), start=1):
             if bbox is not None:
                 row, col = bbox
-                unit_bounds.append(
-                    (owner, row.start, row.stop, col.start, col.stop)
-                )
+                unit_bounds.append((owner, row.start, row.stop, col.start, col.stop))
         # An edge outlet of a local halo can change flat tie-breaking even
         # where the filled elevations agree. Redo *all* units on a larger halo,
         # so previously written neighbours are checked under identical rules.
         while True:
             seen[:] = 0
+            active[:] = False
+            largest_window = 0
             try:
                 for owner, min_row, max_row, min_col, max_col in unit_bounds:
                     r0 = max(0, min_row - halo)
@@ -241,6 +262,7 @@ def process_unit_hydrology(
                     c0 = max(0, min_col - halo)
                     c1 = min(ncols, max_col + halo)
                     window_cells = (r1 - r0) * (c1 - c0)
+                    largest_window = max(largest_window, window_cells)
                     if window_cells > max_window_cells:
                         raise MemoryError(
                             f"PGW owner {owner} requires {window_cells:,} DEM cells "
@@ -260,8 +282,15 @@ def process_unit_hydrology(
                         "nodata_value": nodata,
                         "transform": transform,
                     }
+                    local_drains = [
+                        (row - r0, col - c0)
+                        for row, col in drain_points or ()
+                        if r0 <= row < r1 and c0 <= col < c1
+                    ]
                     local_filled, local_fdir, _local_acc, flw = (
-                        process_hydrology_pyflwdir(dem, metadata)
+                        process_hydrology_pyflwdir(
+                            dem, metadata, drain_points=local_drains or None
+                        )
                     )
                     local_raw = flw.to_array(ftype="d8")
                     # The common hole filler temporarily repairs original
@@ -298,8 +327,13 @@ def process_unit_hydrology(
                     raw_fdir[r0:r1, c0:c1][fresh] = local_raw[fresh]
                     slope[r0:r1, c0:c1][fresh] = local_slope[fresh]
                     seen_window[fresh] = 1
+                    active_window = active[r0:r1, c0:c1]
+                    active_window[fresh] = (local_filled[fresh] != nodata) | patched[
+                        fresh
+                    ]
                     del dem, local_filled, local_fdir, local_raw, local_slope
                     del owned, adjacent, patched, old, different, fresh, seen_window
+                    del active_window
             except _SeamMismatch as error:
                 if halo >= max(nrows, ncols):
                     raise ValueError("No consistent D8 at full DEM extent") from error
@@ -322,7 +356,7 @@ def process_unit_hydrology(
             fdir[seen == 0] = 0
             raw_fdir[seen == 0] = 0
         valid = _raster(output_dir / "valid.npy", "bool", shape)
-        valid[:] = seen != 0
+        valid[:] = active
         indegree = _raster(output_dir / "indegree.npy", "uint8", shape)
         indegree[:] = 0
         acc = _raster(output_dir / "acc.npy", "int32", shape)
@@ -334,17 +368,36 @@ def process_unit_hydrology(
             shape=(nrows * ncols,),
         )
         nvalid = _route_cells(
-            fdir.ravel(), valid.ravel(), indegree.ravel(), acc.ravel(),
-            queue, nrows, ncols,
+            fdir.ravel(),
+            valid.ravel(),
+            indegree.ravel(),
+            acc.ravel(),
+            queue,
+            nrows,
+            ncols,
         )
         if nvalid < 0:
             raise ValueError("D8 cycle in global owned-cell flow graph")
         distance = _raster(output_dir / "flow_dist_m.npy", "float32", shape)
         _outlet_distance(
-            raw_fdir.ravel(), valid.ravel(), queue, nvalid,
-            distance.ravel(), nrows, ncols, source.transform,
+            raw_fdir.ravel(),
+            valid.ravel(),
+            queue,
+            nvalid,
+            distance.ravel(),
+            nrows,
+            ncols,
+            source.transform,
         )
+        grid_metadata: dict[str, Any] = {
+            "cellsize": cellsize_m,
+            "xllcorner": source.bounds.left,
+            "yllcorner": source.bounds.bottom,
+            "nodata_value": nodata,
+            "transform": source.transform,
+        }
         results: dict[int, np.memmap] = {}
+        segments_by_threshold: dict[int, list[dict[str, Any]]] = {}
         labels: dict[int, np.memmap] = {}
         for threshold_m2 in sorted(set(thresholds_m2), reverse=True):
             threshold_cells = max(1, int(threshold_m2 / cellsize_m**2))
@@ -353,32 +406,55 @@ def process_unit_hydrology(
             maximum = _raster(output_dir / "max_order.npy", "uint8", shape)
             maximum[:] = 0
             _strahler(
-                raw_fdir.ravel(), valid.ravel(), acc.ravel(), queue, nvalid,
-                order.ravel(), maximum.ravel(), nrows, ncols, threshold_cells,
+                raw_fdir.ravel(),
+                valid.ravel(),
+                acc.ravel(),
+                queue,
+                nvalid,
+                order.ravel(),
+                maximum.ravel(),
+                nrows,
+                ncols,
+                threshold_cells,
             )
             del maximum
             label = _raster(output_dir / f"labels_{threshold_m2}.npy", "int32", shape)
             label[:] = 0
-            vectorize_streams(
+            segments = vectorize_streams(
                 filled,
                 fdir,
                 acc,
                 slope,
                 order,
-                metadata={
-                    "cellsize": cellsize_m,
-                    "xllcorner": source.bounds.left,
-                    "yllcorner": source.bounds.bottom,
-                    "nodata_value": nodata,
-                },
+                metadata=grid_metadata,
                 stream_threshold=threshold_cells,
                 label_raster_out=label,
             )
             _propagate_labels(
-                raw_fdir.ravel(), valid.ravel(), queue, nvalid,
-                label.ravel(), nrows, ncols,
+                raw_fdir.ravel(),
+                valid.ravel(),
+                queue,
+                nvalid,
+                label.ravel(),
+                nrows,
+                ncols,
             )
+            compute_downstream_links(segments, label, fdir, grid_metadata)
+            segments_by_threshold[threshold_m2] = segments
             results[threshold_m2] = order
             labels[threshold_m2] = label
-        del queue, indegree, raw_fdir, slope, seen, valid
-        return UnitHydrology(filled, fdir, acc, distance, results, labels)
+        del queue, indegree, seen, active
+        return UnitHydrology(
+            filled,
+            fdir,
+            acc,
+            distance,
+            results,
+            labels,
+            slope,
+            segments_by_threshold,
+            raw_fdir,
+            valid,
+            halo * cellsize_m,
+            largest_window,
+        )
