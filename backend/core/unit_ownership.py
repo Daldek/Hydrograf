@@ -373,8 +373,15 @@ def load_pgw_owners(
             all_touched=False,
         )
         if area is not None:
+            # Cells within one cell of the area's boundary are not checked: the area
+            # file and the polygons are digitized apart (an Archiwista area is stored
+            # in WGS84), so their outlines differ by less than a cell there; those
+            # cells get the nearest owner below. A gap deeper inside is an error.
+            core = area.buffer(-abs(transform.a))
+            if core.is_empty:
+                core = area
             area_cells = rasterize(
-                [(area, 1)],
+                [(core, 1)],
                 out_shape=cell_shape,
                 transform=transform,
                 dtype="uint8",
