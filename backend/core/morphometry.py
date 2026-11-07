@@ -11,6 +11,39 @@ from typing import Any
 import numpy as np
 
 
+def area_perimeter_indices(
+    area_km2: float,
+    perimeter_km: float,
+) -> dict[str, Any]:
+    """
+    Calculate the shape indices of a watershed that need no length.
+
+    Parameters
+    ----------
+    area_km2 : float
+        Watershed area [km2]
+    perimeter_km : float
+        Watershed perimeter [km]
+
+    Returns
+    -------
+    dict
+        Dictionary with keys, None when the area or the perimeter is not positive:
+        - compactness_coefficient: Gravelius compactness Kc = P / (2*sqrt(pi*A))
+        - circularity_ratio: Miller circularity Rc = 4*pi*A / P^2
+    """
+    if area_km2 <= 0 or perimeter_km <= 0:
+        return {"compactness_coefficient": None, "circularity_ratio": None}
+    return {
+        # Kc — Gravelius compactness coefficient, Kc=1 for circle
+        "compactness_coefficient": round(
+            perimeter_km / (2 * np.sqrt(np.pi * area_km2)), 4
+        ),
+        # Rc — Miller circularity ratio, Rc=1 for circle
+        "circularity_ratio": round(4 * np.pi * area_km2 / (perimeter_km**2), 4),
+    }
+
+
 def calculate_shape_indices(
     area_km2: float,
     perimeter_km: float,
@@ -39,7 +72,7 @@ def calculate_shape_indices(
         - lemniscate_ratio: Chorley lemniscate Cl = 0.5 * L / A
         - mean_width_km: mean width W = A / L [km]
     """
-    result = {}
+    result: dict[str, Any] = {}
 
     if area_km2 <= 0 or perimeter_km <= 0 or length_km <= 0:
         return {
@@ -51,15 +84,7 @@ def calculate_shape_indices(
             "mean_width_km": None,
         }
 
-    # Kc — Gravelius compactness coefficient
-    # Kc = P / (2 * sqrt(pi * A)), Kc=1 for circle
-    result["compactness_coefficient"] = round(
-        perimeter_km / (2 * np.sqrt(np.pi * area_km2)), 4
-    )
-
-    # Rc — Miller circularity ratio
-    # Rc = 4 * pi * A / P^2, Rc=1 for circle
-    result["circularity_ratio"] = round(4 * np.pi * area_km2 / (perimeter_km**2), 4)
+    result.update(area_perimeter_indices(area_km2, perimeter_km))
 
     # Re — Schumm elongation ratio
     # Re = (2/L) * sqrt(A/pi), Re=1 for circle
