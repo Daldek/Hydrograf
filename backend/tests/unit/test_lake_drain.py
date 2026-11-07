@@ -489,7 +489,7 @@ class TestPipelineIntegration:
         drain_points = [(10, 10)]
 
         # We can verify by checking the output — drain point should be NoData
-        filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
+        filled_dem, fdir, acc, flw = process_hydrology_pyflwdir(
             dem, metadata, drain_points=drain_points
         )
         # Drain point must be NoData in final filled_dem
@@ -500,7 +500,7 @@ class TestPipelineIntegration:
         dem, metadata = self._make_small_dem_metadata()
         drain_points = [(5, 5), (15, 15)]
 
-        filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
+        filled_dem, fdir, acc, flw = process_hydrology_pyflwdir(
             dem, metadata, drain_points=drain_points
         )
         assert filled_dem[5, 5] == NODATA
@@ -530,7 +530,7 @@ class TestPipelineIntegration:
         metadata = _make_metadata(dem, Affine(1, 0, 500000.0, 0, -1, 600011.0))
         drain_points = [(5, 5)]
 
-        filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
+        filled_dem, fdir, acc, flw = process_hydrology_pyflwdir(
             dem, metadata, drain_points=drain_points
         )
 
@@ -540,8 +540,12 @@ class TestPipelineIntegration:
         assert fdir[5, 5] == 0
         # Drain point acc should be 0 (NoData cells excluded)
         assert acc[5, 5] == 0
-        # Valid neighbors should have valid flow directions
-        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        # The bowl drains through the one pit beside the drain point: an outlet
+        # (it is not an internal sink, so it keeps fdir=0) that collects all of
+        # the 120 valid cells
+        assert fdir[4, 5] == 0
+        assert acc[4, 5] == 120
+        for dr, dc in [(1, 0), (0, -1), (0, 1)]:
             nr, nc = 5 + dr, 5 + dc
             assert fdir[nr, nc] != 0, f"Neighbor ({nr},{nc}) has invalid fdir=0"
 

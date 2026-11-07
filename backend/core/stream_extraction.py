@@ -16,18 +16,9 @@ from typing import Any
 import numba
 import numpy as np
 
-from core.hydrology import D8_DIRECTIONS
+from core.hydrology import D8_COL_OFFSET, D8_DIRECTIONS, D8_ROW_OFFSET, D8_VALID
 
 logger = logging.getLogger(__name__)
-
-# D8 lookup arrays for numba (dict not supported in njit)
-_DR = np.zeros(256, dtype=np.int32)
-_DC = np.zeros(256, dtype=np.int32)
-_VALID = np.zeros(256, dtype=np.bool_)
-for _d, (_di, _dj) in D8_DIRECTIONS.items():
-    _DR[_d] = _di
-    _DC[_d] = _dj
-    _VALID[_d] = True
 
 
 @numba.njit(cache=True)
@@ -45,7 +36,8 @@ def _count_upstream_and_find_headwaters(
     Returns upstream_count, hw_rows, hw_cols arrays.
     """
     nrows, ncols = fdir.shape
-    upstream_count = np.zeros((nrows, ncols), dtype=np.int32)
+    # At most 8 neighbours drain into a cell
+    upstream_count = np.zeros((nrows, ncols), dtype=np.uint8)
 
     # Pass 1: count upstream stream neighbors
     for i in range(nrows):
@@ -151,14 +143,14 @@ def vectorize_streams(
     nodata_mask = dem == nodata
 
     # Numba-accelerated upstream counting + headwater detection
-    fdir_i16 = fdir.astype(np.int16)
+    fdir_i16 = np.asarray(fdir, dtype=np.int16)
     upstream_count, hw_rows, hw_cols = _count_upstream_and_find_headwaters(
         fdir_i16,
         stream_mask,
         nodata_mask,
-        _DR,
-        _DC,
-        _VALID,
+        D8_ROW_OFFSET,
+        D8_COL_OFFSET,
+        D8_VALID,
     )
 
     logger.info(f"  Found {len(hw_rows)} headwater cells")
@@ -322,7 +314,7 @@ def delineate_subcatchments(
     )
 
     basin_map = flw.basins(idxs=stream_idxs, ids=stream_ids)
-    label_raster[:] = basin_map.astype(np.int32)
+    label_raster[:] = basin_map
 
     total_valid = int(np.sum(dem != nodata))
     total_labeled = int(np.sum(label_raster != 0))
@@ -376,12 +368,7 @@ def polygonize_subcatchments(
     from shapely.geometry import MultiPolygon, shape
     from shapely.ops import unary_union
 
-    from core.zonal_stats import (
-        zonal_bincount,
-        zonal_elevation_histogram,
-        zonal_max,
-        zonal_min,
-    )
+    from core.zonal_stats import zonal_summary
 
     logger.info("Polygonizing sub-catchments...")
 
@@ -421,58 +408,13 @@ def polygonize_subcatchments(
 
     logger.info(f"  Found {len(geom_groups)} unique sub-catchment labels")
 
-    # Pre-compute zonal stats using bincount (O(M) not O(n*M))
-    max_label = int(label_raster.max())
-
-    counts = zonal_bincount(label_raster, max_label=max_label)
-
-    # Elevation: mask nodata before bincount
-    valid_elev = dem != nodata
-    elev_sum = zonal_bincount(
-        label_raster,
-        weights=dem.astype(np.float64),
-        max_label=max_label,
-        valid_mask=valid_elev,
-    )
-    elev_count = zonal_bincount(
-        label_raster,
-        max_label=max_label,
-        valid_mask=valid_elev,
+    # Zonal statistics of all labels with their elevation histograms (for the
+    # hypsometric curve aggregation), in two passes over the raster
+    summary = zonal_summary(
+        label_raster, dem, slope, nodata, flow_dist_m=flow_dist_m, interval_m=1
     )
 
-    # Slope
-    slope_sum = zonal_bincount(
-        label_raster,
-        weights=slope,
-        max_label=max_label,
-    )
-
-    # Elevation min/max (for pre-computed stats)
-    dem_for_min = np.where(valid_elev, dem, np.inf).astype(np.float64)
-    dem_for_max = np.where(valid_elev, dem, -np.inf).astype(np.float64)
-    elev_min = zonal_min(label_raster, dem_for_min, max_label)
-    elev_max = zonal_max(label_raster, dem_for_max, max_label)
-
-    # Hydraulic length: max flow path distance per sub-catchment
-    hydraulic_max = None
-    if flow_dist_m is not None:
-        # Use -inf for cells without flow distance so they don't affect max
-        dist_for_max = np.where(label_raster > 0, flow_dist_m, -np.inf).astype(
-            np.float64
-        )
-        hydraulic_max = zonal_max(label_raster, dist_for_max, max_label)
-        del dist_for_max
-
-    # Elevation histograms (for hypsometric curve aggregation)
-    elev_histograms = zonal_elevation_histogram(
-        label_raster,
-        dem,
-        max_label,
-        nodata,
-        interval_m=1,
-    )
-
-    logger.info("  Zonal statistics computed (single-pass bincount)")
+    logger.info("  Zonal statistics computed")
 
     # Build catchment records
     catchments = []
@@ -488,12 +430,14 @@ def polygonize_subcatchments(
             merged = MultiPolygon([merged])
 
         # Zonal statistics from pre-computed arrays
-        n_cells = int(counts[seg_idx])
+        n_cells = int(summary.count[seg_idx])
         area_km2 = n_cells * cell_area_km2
 
-        n_elev = int(elev_count[seg_idx])
-        mean_elev = float(elev_sum[seg_idx] / n_elev) if n_elev > 0 else None
-        mean_slp = float(slope_sum[seg_idx] / n_cells) if n_cells > 0 else None
+        n_elev = int(summary.elev_count[seg_idx])
+        mean_elev = float(summary.elev_sum_m[seg_idx] / n_elev) if n_elev > 0 else None
+        mean_slp = (
+            float(summary.slope_sum_percent[seg_idx] / n_cells) if n_cells > 0 else None
+        )
 
         # Strahler order and segment-level stats
         strahler_order = None
@@ -507,8 +451,8 @@ def polygonize_subcatchments(
                 stream_length_km = round(seg["length_m"] / 1000, 4)
 
         # Elevation min/max from zonal stats
-        e_min = float(elev_min[seg_idx - 1]) if n_elev > 0 else None
-        e_max = float(elev_max[seg_idx - 1]) if n_elev > 0 else None
+        e_min = float(summary.elev_min_m[seg_idx]) if n_elev > 0 else None
+        e_max = float(summary.elev_max_m[seg_idx]) if n_elev > 0 else None
         # Guard against inf from nodata masking
         if e_min is not None and not np.isfinite(e_min):
             e_min = None
@@ -520,13 +464,13 @@ def polygonize_subcatchments(
 
         # Hydraulic length (max flow path distance to outlet, in km)
         h_length_km = None
-        if hydraulic_max is not None:
-            h_val = float(hydraulic_max[seg_idx - 1])
+        if summary.flow_dist_max_m is not None:
+            h_val = float(summary.flow_dist_max_m[seg_idx])
             if np.isfinite(h_val) and h_val > 0:
                 h_length_km = round(h_val / 1000, 4)
 
         # Elevation histogram
-        histogram = elev_histograms.get(seg_idx)
+        histogram = summary.histograms.get(seg_idx)
 
         catchments.append(
             {

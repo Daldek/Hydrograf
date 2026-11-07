@@ -4,6 +4,15 @@ import numpy as np
 import pyflwdir
 import pytest
 
+from scripts.process_dem import _farthest_cells, _per_label_argmax, _trace_in_labels
+from tests.dem_equivalence import (
+    DEM_CASES,
+    assert_identical,
+    derive_hydrology,
+    subcatchments,
+    synthetic_dem,
+)
+
 
 class TestStreamDistance:
     """Tests for pyflwdir stream_distance computation."""
@@ -423,7 +432,7 @@ class TestRouteLengthsAddUpToTheFlowPath:
             fdir_i16,
             acc,
             np.zeros(fdir.shape),
-            compute_strahler_from_fdir(fdir, acc, meta, threshold_cells),
+            compute_strahler_from_fdir(flw, acc, threshold_cells),
             meta,
             threshold_cells,
             label_raster_out=labels,
@@ -476,6 +485,106 @@ class TestRouteLengthsAddUpToTheFlowPath:
         )
         assert self._route_excess(segments, catchments, 3) == pytest.approx(
             [0.0, 0.0], abs=0.1
+        )
+
+
+def _first_maximum_by_label(labels, values, flat_indices, max_label):
+    """Reference: the first entry of the largest value of each label, label by label
+    (np.argmax takes the first of equal maxima, as the stable sort of the old code)."""
+    best_value = np.full(max_label + 1, -1.0)
+    best_idx = np.full(max_label + 1, -1, dtype=np.intp)
+    for label in np.unique(labels):
+        entries = np.flatnonzero(labels == label)
+        first = entries[np.argmax(values[entries])]
+        best_value[label] = values[first]
+        best_idx[label] = flat_indices[first]
+    return best_value, best_idx
+
+
+@pytest.fixture(scope="module", params=list(DEM_CASES.values()), ids=list(DEM_CASES))
+def network(request):
+    """Hydrology and sub-catchment labels (threshold 1000 m²) of a synthetic DEM."""
+    hydrology = derive_hydrology(*synthetic_dem(**request.param))
+    labels, _, _ = subcatchments(hydrology, 1_000)
+    return hydrology, labels
+
+
+class TestFarthestCellsAndPathsWithinSubcatchments:
+    """The start cells and the flow paths of _enrich_catchments_with_flow_paths.
+
+    The numba argmax per label equals a label-by-label np.argmax, the farthest
+    cells overall and on the boundary equal that argmax over the labelled cells
+    and over the boundary of the old shifted comparisons, and a path traced within
+    its label equals pyflwdir's whole path cut after its first cell outside.
+    """
+
+    def test_argmax_per_label_takes_the_first_of_equal_maxima(self):
+        rng = np.random.default_rng(0)
+        labels = rng.integers(0, 40, 2_000).astype(np.int32)
+        values = rng.integers(0, 6, 2_000).astype(np.float32)
+        flat_indices = rng.permutation(10_000)[:2_000]
+
+        result = _per_label_argmax(labels, values, flat_indices, 45)
+
+        assert_identical(
+            result, _first_maximum_by_label(labels, values, flat_indices, 45)
+        )
+
+    @pytest.mark.parametrize("ties", [True, False], ids=["ties", "distinct"])
+    def test_farthest_cells_overall_and_on_the_boundary(self, network, ties):
+        _, labels = network
+        # Maxima inside the labels, unlike flow distances; equal maxima test the
+        # order, distinct ones reach the cells late in it (bottom of a label)
+        rng = np.random.default_rng(1)
+        if ties:
+            values = rng.integers(0, 30, labels.shape).astype(np.float32)
+        else:
+            values = rng.permutation(labels.size).reshape(labels.shape)
+            values = values.astype(np.float32)
+        top = int(labels.max())
+        boundary = np.zeros(labels.shape, dtype=bool)
+        boundary[1:, :] |= labels[1:, :] != labels[:-1, :]
+        boundary[:-1, :] |= labels[:-1, :] != labels[1:, :]
+        boundary[:, 1:] |= labels[:, 1:] != labels[:, :-1]
+        boundary[:, :-1] |= labels[:, :-1] != labels[:, 1:]
+        boundary[[0, -1], :] = True
+        boundary[:, [0, -1]] = True
+        flat_labels, flat_values = labels.ravel(), values.ravel()
+        cells = np.flatnonzero(flat_labels > 0)
+        edge = np.flatnonzero(boundary.ravel() & (flat_labels > 0))
+
+        best_dist, best_idx, divide_idx = _farthest_cells(labels, values, top)
+
+        expected_dist, expected_idx = _first_maximum_by_label(
+            flat_labels[cells], flat_values[cells], cells, top
+        )
+        _, expected_divide = _first_maximum_by_label(
+            flat_labels[edge], flat_values[edge], edge, top
+        )
+        assert_identical(
+            (best_dist, best_idx, divide_idx),
+            (expected_dist, expected_idx, expected_divide),
+        )
+        assert (divide_idx != best_idx).any()
+
+    def test_paths_end_at_the_first_cell_outside_the_label(self, network):
+        hydrology, labels = network
+        idxs_ds = hydrology.flw.idxs_ds
+        # Every labelled cell starts a path, and a label of cells without a flow
+        # direction (nodata) gives paths that end where they start
+        flat_labels = labels.ravel().copy()
+        flat_labels[np.flatnonzero(idxs_ds < 0)[:5]] = flat_labels.max() + 1
+        starts = np.flatnonzero(flat_labels > 0)
+        whole_paths, _ = hydrology.flw.path(idxs=starts)
+
+        cells, offsets = _trace_in_labels(starts, flat_labels, idxs_ds)
+
+        expected = []
+        for start, path in zip(starts, whole_paths, strict=True):
+            outside = np.flatnonzero(flat_labels[path] != flat_labels[start])
+            expected.append(path[: outside[0] + 1] if outside.size else path)
+        assert_identical(
+            [cells[offsets[k] : offsets[k + 1]] for k in range(starts.size)], expected
         )
 
 

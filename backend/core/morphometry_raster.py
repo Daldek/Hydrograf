@@ -5,6 +5,7 @@ All functions operate on numpy arrays representing raster grids.
 """
 
 import logging
+from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
@@ -53,6 +54,47 @@ def _compute_gradients(
     ) / (8 * cellsize)
 
     return dx, dy
+
+
+def gradient_strips(
+    dem: np.ndarray,
+    cellsize: float,
+    nodata: float,
+    strip_rows: int = 512,
+) -> Iterator[tuple[slice, np.ndarray, np.ndarray]]:
+    """
+    Yield the Sobel gradients of the DEM strip by strip.
+
+    Each strip of ``strip_rows`` rows (the last one may be shorter) is computed
+    with the row of the DEM above it and the one below it, which the 3 x 3 Sobel
+    kernel reads, so its gradients equal those rows of _compute_gradients over the
+    whole DEM bit for bit, with the memory of one strip.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        DEM array
+    cellsize : float
+        Cell size in meters
+    nodata : float
+        NoData value
+    strip_rows : int
+        Rows of a strip (at least 1)
+
+    Yields
+    ------
+    tuple[slice, np.ndarray, np.ndarray]
+        The rows of the strip and its gradients (dx, dy)
+    """
+    if strip_rows < 1:
+        raise ValueError(f"strip_rows must be at least 1, not {strip_rows}")
+    nrows = dem.shape[0]
+    for start in range(0, nrows, strip_rows):
+        stop = min(start + strip_rows, nrows)
+        top = max(start - 1, 0)
+        dx, dy = _compute_gradients(dem[top : min(stop + 1, nrows)], cellsize, nodata)
+        inner = slice(start - top, stop - top)
+        yield slice(start, stop), dx[inner], dy[inner]
 
 
 def compute_slope_from_gradients(
@@ -266,27 +308,27 @@ def compute_strahler_order(
 
 
 def compute_strahler_from_fdir(
-    d8_fdir: np.ndarray,
+    flw: Any,
     acc: np.ndarray,
-    metadata: dict[str, Any],
     stream_threshold: int,
 ) -> np.ndarray:
     """
-    Compute Strahler stream order using pre-computed fdir and acc.
+    Compute Strahler stream order using pre-computed flow directions and acc.
 
     Unlike ``compute_strahler_order()``, this function does NOT recompute
-    hydrology from scratch. It reuses the same ``d8_fdir`` and ``acc``
-    produced by ``process_hydrology_pyflwdir()``, ensuring that Strahler
-    orders are consistent with the vectorized stream network.
+    hydrology from scratch. It reuses the FlwdirRaster and ``acc`` produced
+    by ``process_hydrology_pyflwdir()``, ensuring that Strahler orders are
+    consistent with the vectorized stream network. The orders come from
+    pyflwdir.streams.strahler_order, not from FlwdirRaster.stream_order: that
+    one caches the orders of its first call and ignores the mask of the next
+    one, so the thresholds of a run could not share the FlwdirRaster.
 
     Parameters
     ----------
-    d8_fdir : np.ndarray
-        Original pyflwdir D8 flow direction (uint8, nodata=247, pit=0)
+    flw : pyflwdir.FlwdirRaster
+        Flow directions of the run (process_hydrology_pyflwdir)
     acc : np.ndarray
-        Flow accumulation from the main pipeline (after fix_internal_sinks)
-    metadata : dict
-        Grid metadata with transform or xllcorner/yllcorner/cellsize
+        Flow accumulation from the main pipeline (process_hydrology_pyflwdir)
     stream_threshold : int
         Flow accumulation threshold (in cells) for stream identification
 
@@ -295,25 +337,14 @@ def compute_strahler_from_fdir(
     np.ndarray
         Strahler stream order array (uint8, nodata=0)
     """
-    import pyflwdir
+    from pyflwdir import streams
 
     logger.info("Computing Strahler stream order (from pre-computed fdir)...")
 
-    transform = metadata.get("transform")
-    if transform is None:
-        from rasterio.transform import from_bounds
-
-        xll, yll = metadata["xllcorner"], metadata["yllcorner"]
-        nrows, ncols = d8_fdir.shape
-        cs = metadata["cellsize"]
-        transform = from_bounds(
-            xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows
-        )
-
-    flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
-
     stream_mask = acc >= stream_threshold
-    strahler = flw.stream_order(type="strahler", mask=stream_mask).astype(np.uint8)
+    strahler = streams.strahler_order(
+        flw.idxs_ds, flw.idxs_seq, mask=stream_mask.ravel()
+    ).reshape(acc.shape)
     strahler[~stream_mask] = 0
 
     max_order = int(strahler.max()) if np.any(strahler > 0) else 0
@@ -357,10 +388,9 @@ def compute_twi(
     Returns
     -------
     np.ndarray
-        TWI array (float32, nodata=-9999)
+        TWI array (float32, nodata=-9999); cell by cell, so the rows of a strip
+        of ``acc`` and ``slope`` give those rows of the TWI
     """
-    logger.info("Computing TWI (Topographic Wetness Index)...")
-
     cell_area = cellsize * cellsize
 
     # Upstream area in m2 and specific catchment area (SCA)
@@ -379,9 +409,5 @@ def compute_twi(
     twi_result[valid_mask] = np.log(sca[valid_mask] / tan_slope[valid_mask]).astype(
         np.float32
     )
-
-    valid = twi_result[twi_result > -9999]
-    if len(valid) > 0:
-        logger.info(f"TWI computed (range: {valid.min():.1f} - {valid.max():.1f})")
 
     return twi_result

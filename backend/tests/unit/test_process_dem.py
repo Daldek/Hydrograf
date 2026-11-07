@@ -3,19 +3,39 @@ Unit tests for DEM processing fixes: nodata hole filling, sink fixing,
 and flow accumulation recomputation.
 """
 
-import numpy as np
-import pytest
+from collections import deque
 
+import numpy as np
+import pyflwdir
+import pytest
+import rasterio
+from scipy.ndimage import binary_erosion, generic_filter
+
+from core.hydrology import D8_DIRECTIONS, D8_VALID, _internal_sinks
+from core.morphometry_raster import (
+    _compute_gradients,
+    compute_aspect_from_gradients,
+    gradient_strips,
+)
+from core.raster_io import save_raster_geotiff
 from scripts.process_dem import (
     VALID_D8_SET,
+    _slope_aspect_twi,
     burn_streams_into_dem,
     compute_aspect,
+    compute_strahler_from_fdir,
     compute_strahler_order,
     compute_twi,
     fill_internal_nodata_holes,
     fix_internal_sinks,
     process_hydrology_pyflwdir,
     recompute_flow_accumulation,
+)
+from tests.dem_equivalence import (
+    DEM_CASES,
+    assert_identical,
+    derive_hydrology,
+    synthetic_dem,
 )
 
 NODATA = -9999.0
@@ -314,6 +334,136 @@ class TestFixInternalSinks:
         assert fdir_fixed[2, 2] == 0
         assert diag["total_fixed"] == 0
 
+    def test_pit_next_to_nodata_is_an_outlet(self):
+        """A pit beside nodata is where the area drains out, not a sink."""
+        dem = np.full((5, 5), 50.0)
+        dem[2, 3] = NODATA
+        fdir = np.full((5, 5), 4, dtype=np.int16)
+        fdir[4, :] = 0
+        fdir[2, 2] = 0
+        acc = np.ones((5, 5), dtype=np.int32)
+
+        fdir_fixed, acc_fixed, diag = fix_internal_sinks(fdir, acc, dem, dem, NODATA)
+
+        assert diag["total_fixed"] == 0
+        np.testing.assert_array_equal(fdir_fixed, fdir)
+        np.testing.assert_array_equal(acc_fixed, acc)
+
+    def test_never_drains_into_a_neighbour_that_drains_back(self):
+        """The neighbour of the largest accumulation flows into the sink: skipped."""
+        dem = np.full((5, 5), 50.0)
+        fdir = np.full((5, 5), 1, dtype=np.int16)  # all flow East
+        fdir[4, :] = 0
+        fdir[:, 4] = 0
+        fdir[2, 2] = 0  # internal sink
+        fdir[2, 3] = 16  # East of the sink, flows West into it
+        acc = np.ones((5, 5), dtype=np.int32)
+        acc[2, 3] = 100
+
+        fdir_fixed, _, diag = fix_internal_sinks(fdir, acc, dem, dem, NODATA)
+
+        assert diag["total_fixed"] == 1
+        assert diag["by_strategy"]["max_acc"] == 1
+        assert fdir_fixed[2, 2] not in (0, 1)
+        assert _reaches_a_terminal(fdir_fixed)
+
+    def test_sink_that_every_neighbour_drains_into_stays(self):
+        """A true local minimum has no neighbour to drain to without a cycle."""
+        dem = np.full((3, 3), 50.0)
+        dem[1, 1] = 40.0
+        # Every ring cell flows to the centre: NW, N, NE, W, E, SW, S, SE
+        fdir = np.array([[2, 4, 8], [1, 0, 16], [128, 64, 32]], dtype=np.int16)
+        acc = np.array([[1, 1, 1], [1, 9, 1], [1, 1, 1]], dtype=np.int32)
+
+        fdir_fixed, acc_fixed, diag = fix_internal_sinks(fdir, acc, dem, dem, NODATA)
+
+        assert diag["total_fixed"] == 0
+        np.testing.assert_array_equal(fdir_fixed, fdir)
+        np.testing.assert_array_equal(acc_fixed, acc)
+
+    @pytest.mark.parametrize("seed", range(4))
+    def test_pits_next_to_internal_nodata_give_an_acyclic_network(self, seed):
+        """Every cell reaches a pit and the accumulation adds up to the valid cells.
+
+        The steepest descent among the cells with data leaves a pit at every local
+        minimum: beside the nodata blocks inside the grid (outlets), and among data
+        (sinks that need a direction from the max_acc strategy).
+        """
+        dem, fdir = _random_descent_network(seed)
+        acc = recompute_flow_accumulation(fdir, dem, NODATA)
+        sinks = _internal_sinks(fdir, dem, dem.dtype.type(NODATA), D8_VALID)
+        has_data = dem != NODATA
+        next_to_nodata = ~binary_erosion(
+            has_data, structure=np.ones((3, 3)), border_value=0
+        )
+        outlets = (fdir == 0) & has_data & next_to_nodata
+        assert sinks.size > 5
+        assert np.count_nonzero(outlets) > 5
+
+        fdir_fixed, acc_fixed, diag = fix_internal_sinks(fdir, acc, dem, dem, NODATA)
+
+        assert diag["by_strategy"]["max_acc"] > 0
+        assert diag["total_fixed"] > 0
+        np.testing.assert_array_equal(fdir_fixed[outlets], fdir[outlets])
+        assert _reaches_a_terminal(fdir_fixed)
+        pits = (fdir_fixed == 0) & has_data
+        assert acc_fixed[pits].sum() == np.count_nonzero(has_data)
+
+
+def _next_cells(fdir):
+    """The flat index of the cell each cell drains to (its own if it is a pit)."""
+    nrows, ncols = fdir.shape
+    cells = np.arange(nrows * ncols).reshape(fdir.shape)
+    rows, cols = np.indices(fdir.shape)
+    following = cells.copy()
+    for code, (drow, dcol) in D8_DIRECTIONS.items():
+        target_row, target_col = rows + drow, cols + dcol
+        goes = (
+            (fdir == code)
+            & (target_row >= 0)
+            & (target_row < nrows)
+            & (target_col >= 0)
+            & (target_col < ncols)
+        )
+        following[goes] = target_row[goes] * ncols + target_col[goes]
+    return following.ravel()
+
+
+def _reaches_a_terminal(fdir):
+    """Say whether the flow from every cell ends in a pit (none runs in a cycle)."""
+    following = _next_cells(fdir)
+    reached = following
+    for _ in range(int(np.ceil(np.log2(following.size))) + 1):
+        reached = reached[reached]  # the cell 2, 4, 8 ... steps downstream
+    return bool(np.all(following[reached] == reached))
+
+
+def _random_descent_network(seed):
+    """A random DEM with nodata blocks and the steepest descent among data cells.
+
+    Cells without a lower neighbour with data get no direction (0). The flow
+    follows a strictly falling DEM, so it has no cycle.
+    """
+    rng = np.random.default_rng(seed)
+    dem = rng.uniform(100.0, 200.0, (30, 40))
+    for row, col in rng.integers(4, [26, 36], size=(6, 2)):
+        dem[row : row + 2, col : col + 2] = NODATA
+    nrows, ncols = dem.shape
+    fdir = np.zeros(dem.shape, dtype=np.int16)
+    for row in range(nrows):
+        for col in range(ncols):
+            if dem[row, col] == NODATA:
+                continue
+            best, steepest = 0, 0.0
+            for code, (drow, dcol) in D8_DIRECTIONS.items():
+                r, c = row + drow, col + dcol
+                if 0 <= r < nrows and 0 <= c < ncols and dem[r, c] != NODATA:
+                    slope = (dem[row, col] - dem[r, c]) / np.hypot(drow, dcol)
+                    if slope > steepest:
+                        best, steepest = code, slope
+            fdir[row, col] = best
+    return dem, fdir
+
 
 class TestRecomputeFlowAccumulation:
     """Tests for recompute_flow_accumulation()."""
@@ -394,7 +544,7 @@ class TestProcessHydrologyPyflwdir:
     def test_returns_correct_shapes(self, synthetic_dem_10x10):
         """Output arrays have same shape as input DEM."""
         dem, metadata = synthetic_dem_10x10
-        filled, fdir, acc, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, acc, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         assert filled.shape == dem.shape
         assert fdir.shape == dem.shape
@@ -403,7 +553,7 @@ class TestProcessHydrologyPyflwdir:
     def test_fdir_contains_only_valid_d8(self, synthetic_dem_10x10):
         """All internal valid cells have D8 flow direction from VALID_D8_SET."""
         dem, metadata = synthetic_dem_10x10
-        filled, fdir, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, _, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         edge_mask = np.zeros_like(valid)
@@ -423,7 +573,7 @@ class TestProcessHydrologyPyflwdir:
     def test_acc_positive_for_valid_cells(self, synthetic_dem_10x10):
         """Flow accumulation >= 1 for all valid cells."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, acc, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, acc, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         assert np.all(acc[valid] >= 1)
@@ -431,14 +581,14 @@ class TestProcessHydrologyPyflwdir:
     def test_nodata_preserved(self, synthetic_dem_10x10):
         """Nodata cells in input remain nodata in filled DEM."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, _, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         assert filled[0, 0] == NODATA
 
     def test_depression_filled(self, synthetic_dem_10x10):
         """The depression at (5,5) is filled (elevation raised)."""
         dem, metadata = synthetic_dem_10x10
-        filled, _, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, _, _, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         # Filled DEM should have the depression raised
         assert filled[5, 5] >= dem[5, 5]
@@ -446,7 +596,7 @@ class TestProcessHydrologyPyflwdir:
     def test_no_internal_sinks(self, synthetic_dem_10x10):
         """No internal sinks remain after processing."""
         dem, metadata = synthetic_dem_10x10
-        filled, fdir, _, _d8 = process_hydrology_pyflwdir(dem, metadata)
+        filled, fdir, _, _flw = process_hydrology_pyflwdir(dem, metadata)
 
         valid = filled != NODATA
         edge_mask = np.zeros_like(valid)
@@ -775,6 +925,275 @@ class TestComputeTwi:
         twi = compute_twi(acc, slope, cellsize, nodata_acc=0)
         valid = twi[twi > -9999]
         assert np.all(valid > 0)
+
+
+@pytest.fixture(scope="module", params=list(DEM_CASES.values()), ids=list(DEM_CASES))
+def hydrology(request):
+    """The hydrology of process_dem on a synthetic DEM."""
+    return derive_hydrology(*synthetic_dem(**request.param))
+
+
+def _raster(path):
+    """The data and the profile of a GeoTIFF."""
+    with rasterio.open(path) as src:
+        return src.read(), dict(src.profile)
+
+
+class TestSlopeAspectTwiInStrips:
+    """Strips of rows give the gradients, slope, aspect and TWI of the whole raster.
+
+    Strip heights that divide the rows and that do not, one row per strip, and a
+    nodata row at a strip border; the nodata of the synthetic DEMs lies across
+    many strip borders too.
+    """
+
+    @pytest.mark.parametrize("case", list(DEM_CASES.values()), ids=list(DEM_CASES))
+    @pytest.mark.parametrize("strip_rows", [1, 2, 7, 16, 46, 47, 60])
+    def test_gradients_of_the_strips_equal_those_of_the_whole_dem(
+        self, case, strip_rows
+    ):
+        dem, _ = synthetic_dem(**case)
+        dem[16] = NODATA  # at a border of strips of 1, 2 and 16 rows
+        whole_dx, whole_dy = _compute_gradients(dem, 5.0, NODATA)
+
+        strips = list(gradient_strips(dem, 5.0, NODATA, strip_rows))
+
+        starts = [rows.start for rows, _, _ in strips]
+        assert starts == list(range(0, dem.shape[0], strip_rows))
+        assert_identical(np.concatenate([dx for _, dx, _ in strips]), whole_dx)
+        assert_identical(np.concatenate([dy for _, _, dy in strips]), whole_dy)
+
+    @pytest.mark.parametrize("strip_rows", [1, 7, 512])
+    def test_slope_aspect_and_twi_equal_those_of_the_whole_raster(
+        self, hydrology, tmp_path, strip_rows
+    ):
+        metadata = hydrology.metadata
+        cellsize = metadata["cellsize"]
+        slope_percent = hydrology.slope_percent
+        dx, dy = _compute_gradients(hydrology.filled_dem, cellsize, NODATA)
+        whole = {
+            "slope": (slope_percent, -1.0),
+            "aspect": (compute_aspect_from_gradients(dx, dy), -1.0),
+            "twi": (compute_twi(hydrology.acc, slope_percent, cellsize), -9999.0),
+        }
+        for name, (data, nodata) in whole.items():
+            save_raster_geotiff(data, metadata, tmp_path / f"whole_{name}.tif", nodata)
+        paths = {name: tmp_path / f"{name}.tif" for name in whole}
+
+        slope = _slope_aspect_twi(
+            hydrology.filled_dem, hydrology.acc, metadata, paths, strip_rows
+        )
+
+        assert_identical(slope, slope_percent)
+        for name, path in paths.items():
+            assert_identical(_raster(path), _raster(tmp_path / f"whole_{name}.tif"))
+
+
+class TestOneFlowDirectionRasterForTheRun:
+    """The FlwdirRaster of process_hydrology_pyflwdir serves the whole run.
+
+    Its cells are ordered by sorting; its rasters equal those of pyflwdir's
+    default walk, and the Strahler orders of two thresholds computed one after
+    the other on it equal those of a new FlwdirRaster per threshold (with
+    FlwdirRaster.stream_order the second threshold would get the orders of the
+    first, which it caches).
+    """
+
+    @staticmethod
+    def _walked(hydrology):
+        """A new FlwdirRaster of the run's D8 grid, its cells ordered by walking."""
+        flw = pyflwdir.from_array(
+            hydrology.flw.to_array("d8"),
+            ftype="d8",
+            transform=hydrology.metadata["transform"],
+            latlon=False,
+        )
+        flw.order_cells(method="walk")
+        return flw
+
+    def test_sorted_cells_give_the_rasters_of_walked_cells(self, hydrology):
+        flw, walked = hydrology.flw, self._walked(hydrology)
+
+        assert_identical(
+            flw.upstream_area(unit="cell"), walked.upstream_area(unit="cell")
+        )
+        assert_identical(
+            flw.stream_distance(unit="m"), walked.stream_distance(unit="m")
+        )
+        assert_identical(flw.basins(), walked.basins())
+
+    def test_strahler_of_two_thresholds_on_one_raster(self, hydrology):
+        expected = []
+        for threshold_cells in (10, 40):
+            mask = hydrology.acc >= threshold_cells
+            strahler = self._walked(hydrology).stream_order(mask=mask)
+            strahler = strahler.astype(np.uint8)
+            strahler[~mask] = 0
+            expected.append(strahler)
+
+        actual = [
+            compute_strahler_from_fdir(hydrology.flw, hydrology.acc, threshold_cells)
+            for threshold_cells in (10, 40)
+        ]
+
+        assert_identical(actual, expected)
+        assert actual[0].max() > actual[1].max() > 0
+
+
+def _holes_by_generic_filter(dem, nodata, min_valid_neighbors, max_iterations):
+    """fill_internal_nodata_holes as it was before numba, the reference."""
+    patched = dem.copy()
+    total_filled = 0
+    for _ in range(max_iterations):
+        nodata_mask = patched == nodata
+        if not np.any(nodata_mask):
+            break
+        neighbor_count = generic_filter(
+            (patched != nodata).astype(np.float64),
+            lambda window: float(np.sum(window) - window[4]),
+            size=3,
+            mode="constant",
+            cval=0.0,
+        )
+        fillable = nodata_mask & (neighbor_count >= min_valid_neighbors)
+        if not np.any(fillable):
+            break
+
+        def mean_valid_neighbors(window):
+            neighbors = np.concatenate([window[:4], window[5:]])
+            valid = neighbors[neighbors != nodata]
+            return float(window[4]) if len(valid) == 0 else float(np.mean(valid))
+
+        neighbor_mean = generic_filter(
+            patched, mean_valid_neighbors, size=3, mode="constant", cval=nodata
+        )
+        patched[fillable] = neighbor_mean[fillable]
+        total_filled += int(np.sum(fillable))
+    return patched, total_filled
+
+
+def _accumulation_by_deque(fdir, dem, nodata):
+    """recompute_flow_accumulation as it was before numba, the reference."""
+    nrows, ncols = fdir.shape
+    acc = np.zeros((nrows, ncols), dtype=np.int32)
+    inflow_count = np.zeros((nrows, ncols), dtype=np.int32)
+    valid = dem != nodata
+    acc[valid] = 1
+    for i in range(nrows):
+        for j in range(ncols):
+            if valid[i, j] and fdir[i, j] in D8_DIRECTIONS:
+                di, dj = D8_DIRECTIONS[fdir[i, j]]
+                ni, nj = i + di, j + dj
+                if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
+                    inflow_count[ni, nj] += 1
+    queue = deque(
+        (i, j)
+        for i in range(nrows)
+        for j in range(ncols)
+        if valid[i, j] and inflow_count[i, j] == 0
+    )
+    while queue:
+        i, j = queue.popleft()
+        if fdir[i, j] in D8_DIRECTIONS:
+            di, dj = D8_DIRECTIONS[fdir[i, j]]
+            ni, nj = i + di, j + dj
+            if 0 <= ni < nrows and 0 <= nj < ncols and valid[ni, nj]:
+                acc[ni, nj] += acc[i, j]
+                inflow_count[ni, nj] -= 1
+                if inflow_count[ni, nj] == 0:
+                    queue.append((ni, nj))
+    return acc
+
+
+def _odd_flow_directions(hydrology, seed):
+    """The flow directions and DEM of the run with what the pipeline can meet.
+
+    Codes 0, -1 and 255 on valid cells, new nodata cells inside the network
+    and pairs of cells that drain into each other.
+    """
+    rng = np.random.default_rng(seed)
+    fdir = hydrology.fdir.copy()
+    dem = hydrology.filled_dem.copy()
+    nrows, ncols = fdir.shape
+    picks = rng.choice(np.flatnonzero(dem != NODATA), size=60, replace=False)
+    fdir.ravel()[picks[:10]] = 0
+    fdir.ravel()[picks[10:20]] = -1
+    fdir.ravel()[picks[20:30]] = 255
+    dem.ravel()[picks[30:40]] = NODATA
+    back = {offset: code for code, offset in D8_DIRECTIONS.items()}
+    for cell in picks[40:]:
+        row, col = divmod(int(cell), ncols)
+        if int(fdir[row, col]) in D8_DIRECTIONS:
+            drow, dcol = D8_DIRECTIONS[int(fdir[row, col])]
+            if 0 <= row + drow < nrows and 0 <= col + dcol < ncols:
+                fdir[row + drow, col + dcol] = back[(-drow, -dcol)]
+    return fdir, dem
+
+
+class TestHoleFillingAndAccumulationInNumba:
+    """The numba hole filling and accumulation equal the code before.
+
+    The holes of the synthetic DEMs fill in one to four passes or stay open,
+    lie on the frame of the raster and along its ragged nodata border; float32
+    and float64 DEMs.
+    """
+
+    @pytest.mark.parametrize("case", list(DEM_CASES.values()), ids=list(DEM_CASES))
+    @pytest.mark.parametrize(
+        ("min_valid_neighbors", "max_iterations"),
+        [(5, 3), (5, 10), (3, 2), (8, 1), (0, 2)],
+    )
+    def test_holes_are_filled_as_by_generic_filter(
+        self, case, min_valid_neighbors, max_iterations
+    ):
+        dem, _ = synthetic_dem(**case)
+
+        result = fill_internal_nodata_holes(
+            dem, NODATA, min_valid_neighbors, max_iterations
+        )
+
+        assert_identical(
+            result,
+            _holes_by_generic_filter(dem, NODATA, min_valid_neighbors, max_iterations),
+        )
+
+    def test_means_add_up_as_numpy_does(self):
+        # float64 values of full precision, where the order of the sum shows:
+        # single holes (8 valid neighbours), pairs (7) and holes on the frame (5)
+        rng = np.random.default_rng(5)
+        dem = rng.normal(100.0, 30.0, (40, 40))
+        dem[2:38:3, 2:38:3] = NODATA
+        dem[3:37:6, 4:36:6] = NODATA
+        dem[0, 5:35:4] = NODATA
+
+        result = fill_internal_nodata_holes(dem, NODATA)
+
+        assert_identical(result, _holes_by_generic_filter(dem, NODATA, 5, 3))
+
+    @pytest.mark.parametrize("seed", [0, 1])
+    def test_accumulation_equals_the_queue_of_kahn(self, hydrology, seed):
+        fdir, dem = _odd_flow_directions(hydrology, seed)
+
+        acc = recompute_flow_accumulation(fdir, dem, NODATA)
+
+        assert_identical(acc, _accumulation_by_deque(fdir, dem, NODATA))
+
+    @pytest.mark.parametrize("seed", [0, 1])
+    def test_internal_sinks_are_the_cells_without_direction_among_data(
+        self, hydrology, seed
+    ):
+        fdir, dem = _odd_flow_directions(hydrology, seed)
+        has_data = dem != NODATA
+        # A cell off the frame with data in its whole 3 x 3 window
+        in_data = binary_erosion(has_data, structure=np.ones((3, 3)), border_value=0)
+        no_direction = ~np.isin(fdir, list(VALID_D8_SET))
+
+        sinks = _internal_sinks(fdir, dem, dem.dtype.type(NODATA), D8_VALID)
+
+        assert_identical(sinks, np.flatnonzero(no_direction & in_data))
+        assert sinks.size > 20
+        # Pits next to nodata or on the frame are outlets, not sinks
+        assert sinks.size < np.count_nonzero(no_direction & has_data)
 
 
 class TestComputeStrahlerOrder:

@@ -38,9 +38,11 @@ import argparse
 import logging
 import sys
 import time
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
+import numba
 import numpy as np
 from sqlalchemy import text
 
@@ -63,15 +65,16 @@ from core.hydrology import (
     recompute_flow_accumulation,
 )
 from core.morphometry_raster import (
-    _compute_gradients,
     compute_aspect,
     compute_aspect_from_gradients,
     compute_slope_from_gradients,
     compute_strahler_from_fdir,
     compute_strahler_order,
     compute_twi,
+    gradient_strips,
 )
 from core.raster_io import (
+    GeoTiffWriter,
     downsample_raster,
     read_ascii_grid,
     read_raster,
@@ -145,6 +148,13 @@ INTERMEDIATE_SUFFIXES = {
     "slope": "05_slope",
 }
 
+# Rows of a strip of the slope, aspect and TWI computation (_slope_aspect_twi); a
+# multiple of the 256 rows of the tiles of GeoTiffWriter, which then writes every
+# tile once
+STRIP_ROWS = 512
+# GeoTIFFs of _slope_aspect_twi: name -> nodata (float32)
+_STRIP_RASTER_NODATA = {"slope": -1.0, "aspect": -1.0, "twi": -9999.0}
+
 
 def _get_transform(metadata: dict[str, Any], dem_shape: tuple[int, int]):
     """Retrieve or construct rasterio Affine transform from metadata."""
@@ -159,17 +169,18 @@ def _get_transform(metadata: dict[str, Any], dem_shape: tuple[int, int]):
     return from_bounds(xll, yll, xll + ncols * cs, yll + nrows * cs, ncols, nrows)
 
 
+@numba.njit(cache=True)
 def _per_label_argmax(
     labels: np.ndarray,
     values: np.ndarray,
     flat_indices: np.ndarray,
     max_label: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Find max value and its flat index per label using vectorized reduceat.
+    """Find the max value per label and the flat index of its first entry.
 
     Parameters
     ----------
-    labels : 1-D array of int labels (>0 expected).
+    labels : 1-D array of int labels (0..max_label).
     values : 1-D array of floats to maximize over.
     flat_indices : 1-D array of original flat raster indices corresponding
         to *labels* / *values* entries.
@@ -178,51 +189,141 @@ def _per_label_argmax(
     Returns
     -------
     best_value : array[max_label+1] — max value per label (-1 if absent).
-    best_idx : array[max_label+1] — original flat index of the argmax cell.
+    best_idx : array[max_label+1] — original flat index of the first entry
+        (in the order of the input) with the max value, -1 if absent.
     """
-    order = np.argsort(labels, kind="mergesort")
-    sorted_labels = labels[order]
-    sorted_values = values[order]
-    sorted_orig_idx = flat_indices[order]
-
-    unique_labels, group_starts, group_counts = np.unique(
-        sorted_labels, return_index=True, return_counts=True
-    )
-    group_maxes = np.maximum.reduceat(sorted_values, group_starts)
-
-    group_ids = np.repeat(np.arange(len(unique_labels)), group_counts)
-    is_max = sorted_values == group_maxes[group_ids]
-    max_positions = np.where(is_max)[0]
-    _, first_max = np.unique(group_ids[max_positions], return_index=True)
-    argmax_in_sorted = max_positions[first_max]
-
-    best_value = np.full(max_label + 1, -1.0, dtype=np.float64)
+    best_value = np.full(max_label + 1, -1.0)
     best_idx = np.full(max_label + 1, -1, dtype=np.intp)
-    best_value[unique_labels] = group_maxes
-    best_idx[unique_labels] = sorted_orig_idx[argmax_in_sorted]
+    for k in range(labels.size):
+        label = labels[k]
+        if label < 0 or label > max_label:
+            raise IndexError("label outside 0..max_label")
+        if best_idx[label] < 0 or values[k] > best_value[label]:
+            best_value[label] = values[k]
+            best_idx[label] = flat_indices[k]
     return best_value, best_idx
 
 
-def _clip_and_build_path(
-    path_idxs: np.ndarray,
-    seg_idx: int,
+@numba.njit(cache=True)
+def _farthest_cells(
+    label_raster: np.ndarray,
+    flow_dist_m: np.ndarray,
+    max_label: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Find each label's cell of the largest flow distance, overall and on its boundary.
+
+    One pass over the raster in the order of the flat indices: of equal flow
+    distances the first cell wins, as in _per_label_argmax over the cells in that
+    order. A cell of a label is on its boundary when it lies on the frame of the
+    raster or a 4-neighbour has another label.
+
+    Parameters
+    ----------
+    label_raster : 2-D array of int labels (0 = unassigned).
+    flow_dist_m : 2-D array of the flow distance to the outlet [m].
+    max_label : maximum label value (result arrays sized max_label+1).
+
+    Returns
+    -------
+    best_dist : array[max_label+1] — largest flow distance per label (-1 if absent).
+    best_idx : array[max_label+1] — flat index of its cell (-1 if absent).
+    divide_idx : array[max_label+1] — flat index of the boundary cell with the
+        largest flow distance (-1 if absent).
+    """
+    nrows, ncols = label_raster.shape
+    best_dist = np.full(max_label + 1, -1.0)
+    best_idx = np.full(max_label + 1, -1, dtype=np.intp)
+    divide_dist = np.full(max_label + 1, -1.0)
+    divide_idx = np.full(max_label + 1, -1, dtype=np.intp)
+    for row in range(nrows):
+        for col in range(ncols):
+            label = label_raster[row, col]
+            if label <= 0:
+                continue
+            dist = flow_dist_m[row, col]
+            idx = row * ncols + col
+            if best_idx[label] < 0 or dist > best_dist[label]:
+                best_dist[label] = dist
+                best_idx[label] = idx
+            on_boundary = (
+                row == 0
+                or row == nrows - 1
+                or col == 0
+                or col == ncols - 1
+                or label_raster[row - 1, col] != label
+                or label_raster[row + 1, col] != label
+                or label_raster[row, col - 1] != label
+                or label_raster[row, col + 1] != label
+            )
+            if on_boundary and (divide_idx[label] < 0 or dist > divide_dist[label]):
+                divide_dist[label] = dist
+                divide_idx[label] = idx
+    return best_dist, best_idx, divide_idx
+
+
+@numba.njit(cache=True)
+def _trace_in_labels(
+    starts: np.ndarray,
     flat_labels: np.ndarray,
+    idxs_ds: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Trace flow paths downstream, each only within the label of its start cell.
+
+    A path runs from its start cell along ``idxs_ds`` to a pit, to a cell
+    without a flow direction (-1 in ``idxs_ds``) or to the first cell of another
+    label, which it includes: the path of pyflwdir's FlwdirRaster.path cut after
+    it leaves the label.
+
+    Parameters
+    ----------
+    starts : 1-D array of the flat indices of the start cells.
+    flat_labels : flattened label raster.
+    idxs_ds : flat index of the downstream cell of each cell (FlwdirRaster.idxs_ds).
+
+    Returns
+    -------
+    cells : the paths one after another (flat indices, dtype of ``idxs_ds``).
+    offsets : array[len(starts)+1] — path k is cells[offsets[k]:offsets[k + 1]].
+    """
+    offsets = np.zeros(starts.size + 1, dtype=np.int64)
+    for k in range(starts.size):
+        idx = starts[k]
+        label = flat_labels[idx]
+        length = 1
+        downstream = idxs_ds[idx]
+        while downstream != idx and downstream >= 0:
+            length += 1
+            if flat_labels[downstream] != label:
+                break
+            idx = downstream
+            downstream = idxs_ds[idx]
+        offsets[k + 1] = offsets[k] + length
+    cells = np.empty(offsets[-1], dtype=idxs_ds.dtype)
+    for k in range(starts.size):
+        position = offsets[k]
+        idx = starts[k]
+        cells[position] = idx
+        label = flat_labels[idx]
+        downstream = idxs_ds[idx]
+        while downstream != idx and downstream >= 0:
+            position += 1
+            cells[position] = downstream
+            if flat_labels[downstream] != label:
+                break
+            idx = downstream
+            downstream = idxs_ds[idx]
+    return cells, offsets
+
+
+def _path_wkt(
+    path_idxs: np.ndarray,
     flat_dist: np.ndarray,
-    flw,
+    flw: Any,
     simplify_tol: float,
 ) -> tuple[str | None, float | None]:
-    """Clip flow path to subcatchment; return (simplified WKT, outlet flow dist [m])."""
+    """Return the simplified WKT of a flow path and the flow distance at its end [m]."""
     from shapely.geometry import LineString
 
-    if len(path_idxs) < 2:
-        return None, None
-    path_labels = flat_labels[path_idxs]
-    in_catchment = path_labels == seg_idx
-    if not in_catchment[0]:
-        return None, None
-    out_indices = np.where(~in_catchment)[0]
-    if len(out_indices) > 0:
-        path_idxs = path_idxs[: out_indices[0] + 1]
     if len(path_idxs) < 2:
         return None, None
     outlet_flow_dist_m = float(flat_dist[path_idxs[-1]])
@@ -327,9 +428,9 @@ def _enrich_catchments_with_flow_paths(
     outlet_flow_dist_m, flow_path_head_elev_m, overland_length_m,
     overland_drop_m and stream_head_elev_m.
 
-    Uses batch flw.path() for performance: collects the farthest cell
-    (max flow distance) per sub-catchment, traces all paths in one call,
-    then assigns results back.
+    One pass over the label raster finds the farthest cell (max flow distance)
+    of each sub-catchment, overall and on its boundary; the flow paths from
+    them are traced only as far as the first cell outside the sub-catchment.
 
     Two flow paths are computed per subcatchment:
     - longest_flow_path: from the cell with max flow_dist_m (anywhere)
@@ -365,54 +466,17 @@ def _enrich_catchments_with_flow_paths(
     flat_labels = label_raster.ravel()
     flat_dem = filled_dem.ravel()
 
-    # Phase 1: find cell with max flow distance per sub-catchment
+    # Phase 1: cell with max flow distance per sub-catchment, overall and on the
+    # sub-catchment's boundary (a 4-neighbour with another label, or the frame)
     max_label = int(label_raster.max())
-
-    valid_mask = flat_labels > 0
-    valid_indices = np.where(valid_mask)[0]
-    valid_labels = flat_labels[valid_indices]
-    valid_dists = flat_dist[valid_indices]
-
-    best_dist, best_idx = _per_label_argmax(
-        valid_labels, valid_dists, valid_indices, max_label
+    best_dist, best_idx, divide_best_idx = _farthest_cells(
+        label_raster, flow_dist_m, max_label
     )
-
-    del valid_mask, valid_indices, valid_labels, valid_dists
 
     # Phase 1a: upstream end of the stream segment of each sub-catchment
     stream_head_idx = _stream_head_cells(
         flat_labels, stream_mask.ravel(), flat_dist, max_label
     )
-
-    # Phase 1b: find cell with max flow distance on subcatchment BOUNDARY
-    # A cell is on the boundary if any 4-connected neighbor has a different label
-    nrows, ncols = label_raster.shape
-    is_boundary = np.zeros_like(label_raster, dtype=np.bool_)
-    is_boundary[1:, :] |= label_raster[1:, :] != label_raster[:-1, :]
-    is_boundary[:-1, :] |= label_raster[:-1, :] != label_raster[1:, :]
-    is_boundary[:, 1:] |= label_raster[:, 1:] != label_raster[:, :-1]
-    is_boundary[:, :-1] |= label_raster[:, :-1] != label_raster[:, 1:]
-    # Edge cells of raster are always boundary
-    is_boundary[0, :] = True
-    is_boundary[-1, :] = True
-    is_boundary[:, 0] = True
-    is_boundary[:, -1] = True
-    # Only labeled cells
-    is_boundary &= label_raster > 0
-
-    flat_boundary = is_boundary.ravel()
-    del is_boundary  # free 2D array
-
-    boundary_indices = np.where(flat_boundary)[0]
-    del flat_boundary
-    boundary_labels = flat_labels[boundary_indices]
-    boundary_dists = flat_dist[boundary_indices]
-
-    divide_best_dist, divide_best_idx = _per_label_argmax(
-        boundary_labels, boundary_dists, boundary_indices, max_label
-    )
-
-    del boundary_indices, boundary_labels, boundary_dists
 
     # Build batch arrays: one starting index per catchment (longest + divide)
     catch_order = []  # index into catchments list
@@ -450,7 +514,7 @@ def _enrich_catchments_with_flow_paths(
         else:
             catch["divide_flow_path_wkt"] = None
 
-    del best_idx, best_dist, divide_best_idx, divide_best_dist, stream_head_idx
+    del best_idx, best_dist, divide_best_idx, stream_head_idx
 
     if not start_idxs:
         logger.info("  No flow paths to trace (no valid catchments)")
@@ -469,22 +533,24 @@ def _enrich_catchments_with_flow_paths(
     overland_measured = sum(length is not None for length in lengths)
     del lengths, drops
 
-    # Phase 2: batch trace all paths downstream (longest flow paths)
-    paths, _dists = flw.path(idxs=start_arr, unit="m")
+    # Phase 2: longest flow paths, each traced to the first cell outside its
+    # sub-catchment
+    paths, path_offsets = _trace_in_labels(start_arr, flat_labels, flw.idxs_ds)
 
-    # Phase 2b: batch trace divide flow paths
+    # Phase 2b: divide flow paths
     divide_paths = None
     if divide_start_idxs:
         divide_arr = np.array(divide_start_idxs, dtype=np.intp)
-        divide_paths, _divide_dists = flw.path(idxs=divide_arr, unit="m")
-        del divide_arr, _divide_dists
+        divide_paths, divide_offsets = _trace_in_labels(
+            divide_arr, flat_labels, flw.idxs_ds
+        )
+        del divide_arr
 
-    # Phase 3: clip each path to its sub-catchment and build geometry
+    # Phase 3: geometry of the longest flow paths
     traced = 0
     for i, ci in enumerate(catch_order):
-        seg_idx = catchments[ci]["segment_idx"]
-        wkt, outlet_dist = _clip_and_build_path(
-            paths[i], seg_idx, flat_labels, flat_dist, flw, simplify_tol
+        wkt, outlet_dist = _path_wkt(
+            paths[path_offsets[i] : path_offsets[i + 1]], flat_dist, flw, simplify_tol
         )
         catchments[ci]["longest_flow_path_wkt"] = wkt
         # Jednokomorkowe/bez sciezki: ujscie = najdalsza komorka (dlugosc 0)
@@ -496,13 +562,15 @@ def _enrich_catchments_with_flow_paths(
         if wkt is not None:
             traced += 1
 
-    # Phase 3b: clip divide paths and build geometry
+    # Phase 3b: geometry of the divide flow paths
     divide_traced = 0
     if divide_paths is not None:
         for i, ci in enumerate(divide_catch_order):
-            seg_idx = catchments[ci]["segment_idx"]
-            wkt, _ = _clip_and_build_path(
-                divide_paths[i], seg_idx, flat_labels, flat_dist, flw, simplify_tol
+            wkt, _ = _path_wkt(
+                divide_paths[divide_offsets[i] : divide_offsets[i + 1]],
+                flat_dist,
+                flw,
+                simplify_tol,
             )
             catchments[ci]["divide_flow_path_wkt"] = wkt
             if wkt is not None:
@@ -516,6 +584,89 @@ def _enrich_catchments_with_flow_paths(
     )
 
 
+def _slope_aspect_twi(
+    filled_dem: np.ndarray,
+    acc: np.ndarray,
+    metadata: dict[str, Any],
+    output_paths: dict[str, Path] | None = None,
+    strip_rows: int = STRIP_ROWS,
+) -> np.ndarray:
+    """Compute the slope, aspect and TWI strip by strip; return the slope.
+
+    The Sobel gradients of each strip of ``strip_rows`` rows come from
+    gradient_strips, so the three rasters equal their computation over the whole
+    raster bit for bit, while besides the slope only one strip is in memory. The
+    aspect and the TWI are not kept: with ``output_paths`` their strips are
+    written to GeoTIFF windows, and the ranges of all three are logged.
+
+    Parameters
+    ----------
+    filled_dem : np.ndarray
+        Filled DEM.
+    acc : np.ndarray
+        Flow accumulation [cells] (0 = nodata).
+    metadata : dict
+        Grid metadata (cellsize, nodata_value, transform).
+    output_paths : dict[str, Path], optional
+        GeoTIFFs (float32) of "slope", "aspect" and "twi", nodata in
+        _STRIP_RASTER_NODATA.
+    strip_rows : int
+        Rows of a strip.
+
+    Returns
+    -------
+    np.ndarray
+        Slope [%] (float64).
+    """
+    cellsize = metadata["cellsize"]
+    logger.info("Computing slope, aspect and TWI in strips of %d rows...", strip_rows)
+    slope = np.empty(filled_dem.shape, dtype=np.float64)
+    aspect_min, aspect_max = np.inf, -np.inf
+    twi_min, twi_max = np.inf, -np.inf
+    with ExitStack() as stack:
+        writers = {
+            name: stack.enter_context(
+                GeoTiffWriter(
+                    path,
+                    metadata,
+                    filled_dem.shape,
+                    nodata=_STRIP_RASTER_NODATA[name],
+                    dtype="float32",
+                )
+            )
+            for name, path in (output_paths or {}).items()
+        }
+        for rows, dx, dy in gradient_strips(
+            filled_dem, cellsize, metadata["nodata_value"], strip_rows
+        ):
+            slope[rows] = compute_slope_from_gradients(dx, dy)
+            aspect = compute_aspect_from_gradients(dx, dy)
+            del dx, dy
+            twi = compute_twi(acc[rows], slope[rows], cellsize, nodata_acc=0)
+            valid_aspect = aspect[aspect >= 0]
+            if valid_aspect.size:
+                aspect_min = min(aspect_min, valid_aspect.min())
+                aspect_max = max(aspect_max, valid_aspect.max())
+            valid_twi = twi[twi > -9999]
+            if valid_twi.size:
+                twi_min = min(twi_min, valid_twi.min())
+                twi_max = max(twi_max, valid_twi.max())
+            del valid_aspect, valid_twi
+            for name, strip in (
+                ("slope", slope[rows]),
+                ("aspect", aspect),
+                ("twi", twi),
+            ):
+                if name in writers:
+                    writers[name].write_rows(rows.start, strip)
+    logger.info("Slope computed (range: %.1f%% - %.1f%%)", slope.min(), slope.max())
+    if aspect_min <= aspect_max:
+        logger.info("Aspect computed (range: %.1f° - %.1f°)", aspect_min, aspect_max)
+    if twi_min <= twi_max:
+        logger.info("TWI computed (range: %.1f - %.1f)", twi_min, twi_max)
+    return slope
+
+
 def _process_thresholds(
     threshold_list_m2: list[int],
     *,
@@ -523,7 +674,6 @@ def _process_thresholds(
     fdir: np.ndarray,
     acc: np.ndarray,
     slope: np.ndarray,
-    d8_fdir: np.ndarray,
     flw: Any,
     flow_dist_m: np.ndarray,
     metadata: dict[str, Any],
@@ -538,7 +688,10 @@ def _process_thresholds(
     Parameters
     ----------
     threshold_list_m2 : list[int]
-        Flow accumulation thresholds [m²], ascending.
+        Flow accumulation thresholds [m²]. They are processed from the largest,
+        so that the many results of the smallest one are not held while the
+        others are computed; the results come back in ascending order of the
+        thresholds, the order of the database rows.
     filled_dem : np.ndarray
         Filled DEM, the DEM of the zonal statistics.
     fdir : np.ndarray
@@ -547,8 +700,6 @@ def _process_thresholds(
         Flow accumulation [cells].
     slope : np.ndarray
         Slope [%].
-    d8_fdir : np.ndarray
-        pyflwdir D8 flow directions (uint8) of ``flw``.
     flw : pyflwdir.FlwdirRaster
         Flow directions of the basins and the flow paths.
     flow_dist_m : np.ndarray
@@ -577,7 +728,7 @@ def _process_thresholds(
     cell_area = metadata["cellsize"] * metadata["cellsize"]
     all_stream_segments: dict[int, list[dict[str, Any]]] = {}
     all_catchment_data: dict[int, list[dict[str, Any]]] = {}
-    for threshold_m2 in threshold_list_m2:
+    for threshold_m2 in sorted(threshold_list_m2, reverse=True):
         threshold_cells = max(1, int(threshold_m2 / cell_area))
         logger.info(
             f"--- Vectorizing streams for threshold "
@@ -586,9 +737,7 @@ def _process_thresholds(
 
         strahler_t = strahler_by_cells.get(threshold_cells)
         if strahler_t is None:
-            strahler_t = compute_strahler_from_fdir(
-                d8_fdir, acc, metadata, threshold_cells
-            )
+            strahler_t = compute_strahler_from_fdir(flw, acc, threshold_cells)
             if save_intermediates:
                 save_raster_geotiff(
                     strahler_t,
@@ -656,8 +805,13 @@ def _process_thresholds(
             all_catchment_data[threshold_m2] = catchments
 
         logger.info(f"  Threshold {threshold_m2} m²: {len(segments)} segments")
+        # Free the rasters of this threshold before the next one is computed
+        del label_raster, strahler_t
 
-    return all_stream_segments, all_catchment_data
+    return (
+        {t: all_stream_segments[t] for t in sorted(all_stream_segments)},
+        {t: all_catchment_data[t] for t in sorted(all_catchment_data)},
+    )
 
 
 def _record_threshold_stats(
@@ -782,10 +936,11 @@ def d8_from_saved_flowdir(
 ) -> np.ndarray:
     """Rebuild the pyflwdir D8 grid of a run from its saved rasters.
 
-    The saved flow directions (``_03_flowdir``) are pyflwdir's D8 grid in which
-    fix_internal_sinks gave the internal sinks a direction. Those sinks are pits
-    of pyflwdir's grid, the only cells with a flow distance of 0, so they become
-    pits again; cells outside the DEM become pyflwdir's nodata (247).
+    The saved flow directions (``_03_flowdir``) are pyflwdir's D8 grid; in the
+    rasters of runs before fix_internal_sinks stopped fixing the pits at the
+    edge of the data, it had given those pits a direction. Those pits are the
+    only cells with a flow distance of 0, so they become pits again (a no-op for
+    newer runs); cells outside the DEM become pyflwdir's nodata (247).
 
     Parameters
     ----------
@@ -885,6 +1040,10 @@ def process_dem_from_intermediates(
         transform=_get_transform(metadata, filled_dem.shape),
         latlon=False,
     )
+    # As in process_hydrology_pyflwdir: ordered by sorting, without the upstream
+    # matrix of pyflwdir's default walk
+    flw.order_cells(method="sort")
+    del d8_fdir
     stats: dict[str, Any] = {
         "ncols": metadata["ncols"],
         "nrows": metadata["nrows"],
@@ -898,7 +1057,6 @@ def process_dem_from_intermediates(
         fdir=rasters["fdir"],
         acc=rasters["acc"],
         slope=rasters["slope"],
-        d8_fdir=d8_fdir,
         flw=flw,
         flow_dist_m=rasters["flow_dist_m"],
         metadata=metadata,
@@ -909,7 +1067,7 @@ def process_dem_from_intermediates(
         base_name=input_path.stem,
     )
     _record_threshold_stats(stats, all_stream_segments, all_catchment_data)
-    del rasters, filled_dem, d8_fdir, flw
+    del rasters, filled_dem, flw
 
     if dry_run:
         logger.info("Dry run - skipping database insert")
@@ -1227,16 +1385,16 @@ def process_dem(
 
     # 3-5. Process hydrology using pyflwdir (fill depressions, flow dir, accumulation)
     # Note: Migrated from pysheds to pyflwdir (Deltares) — fewer deps, no temp files
-    filled_dem, fdir, acc, d8_fdir = process_hydrology_pyflwdir(
+    # The FlwdirRaster of the hydrology serves the whole run (stream distance,
+    # Strahler, sub-catchments, flow paths)
+    filled_dem, fdir, acc, flw = process_hydrology_pyflwdir(
         dem, metadata, drain_points=drain_points
     )
     stats["max_accumulation"] = int(acc.max())
-
-    # Build FlwdirRaster once for reuse (subcatchments, potentially strahler)
-    import pyflwdir
-
-    transform = _get_transform(metadata, dem.shape)
-    flw = pyflwdir.from_array(d8_fdir, ftype="d8", transform=transform, latlon=False)
+    # The DEM is not needed after the hydrology (filled_dem from here on), only its
+    # cells, which give the mean slope (drain points are nodata in filled_dem)
+    dem_valid = dem != nodata
+    del dem
 
     if save_intermediates:
         save_raster_geotiff(
@@ -1307,7 +1465,7 @@ def process_dem(
     # 4b. Compute stream distance (flow distance from each cell to outlet)
     logger.info("Computing stream distance to outlet...")
     t_sd = time.time()
-    flow_dist_m = flw.stream_distance(unit="m").reshape(d8_fdir.shape)
+    flow_dist_m = flw.stream_distance(unit="m").reshape(filled_dem.shape)
     logger.info(
         f"Stream distance computed in {time.time() - t_sd:.1f}s "
         f"(max={np.nanmax(flow_dist_m):.0f}m)"
@@ -1321,42 +1479,17 @@ def process_dem(
             dtype="float32",
         )
 
-    # 5. Compute slope and aspect (shared Sobel gradients)
-    logger.info("Computing slope and aspect (shared gradients)...")
-    dx, dy = _compute_gradients(filled_dem, metadata["cellsize"], nodata)
-    slope = compute_slope_from_gradients(dx, dy)
-    logger.info(f"Slope computed (range: {slope.min():.1f}% - {slope.max():.1f}%)")
-    stats["mean_slope"] = float(np.mean(slope[dem != nodata]))
-
+    # 5. Slope, aspect and TWI, strip by strip (shared Sobel gradients)
+    strip_rasters = None
     if save_intermediates:
-        save_raster_geotiff(
-            slope,
-            metadata,
-            output_dir / f"{base_name}_05_slope.tif",
-            nodata=-1,
-            dtype="float32",
-        )
-
-    aspect = compute_aspect_from_gradients(dx, dy)
-    valid_aspect = aspect[aspect >= 0]
-    if len(valid_aspect) > 0:
-        logger.info(
-            f"Aspect computed "
-            f"(range: {valid_aspect.min():.1f}° - "
-            f"{valid_aspect.max():.1f}°)"
-        )
-    del dx, dy  # Free gradient memory
-    del dem  # No longer needed — filled_dem used from here on
-
-    if save_intermediates:
-        save_raster_geotiff(
-            aspect,
-            metadata,
-            output_dir / f"{base_name}_09_aspect.tif",
-            nodata=-1,
-            dtype="float32",
-        )
-    del aspect  # Free — not needed for stream/catchment processing
+        strip_rasters = {
+            "slope": output_dir / f"{base_name}_05_slope.tif",
+            "aspect": output_dir / f"{base_name}_09_aspect.tif",
+            "twi": output_dir / f"{base_name}_08_twi.tif",
+        }
+    slope = _slope_aspect_twi(filled_dem, acc, metadata, strip_rasters)
+    stats["mean_slope"] = float(np.mean(slope[dem_valid]))
+    del dem_valid
 
     # Determine thresholds for multi-density stream networks
     cell_area = metadata["cellsize"] * metadata["cellsize"]
@@ -1371,9 +1504,7 @@ def process_dem(
     lowest_threshold_cells = max(1, int(threshold_list_m2[0] / cell_area))
 
     # 5c. Compute Strahler stream order via pyflwdir (lowest threshold)
-    strahler = compute_strahler_from_fdir(
-        d8_fdir, acc, metadata, lowest_threshold_cells
-    )
+    strahler = compute_strahler_from_fdir(flw, acc, lowest_threshold_cells)
 
     if save_intermediates:
         save_raster_geotiff(
@@ -1383,19 +1514,6 @@ def process_dem(
             nodata=0,
             dtype="uint8",
         )
-
-    # 5d. Compute TWI
-    twi = compute_twi(acc, slope, metadata["cellsize"], nodata_acc=0)
-
-    if save_intermediates:
-        save_raster_geotiff(
-            twi,
-            metadata,
-            output_dir / f"{base_name}_08_twi.tif",
-            nodata=-9999,
-            dtype="float32",
-        )
-    del twi  # Free — not needed for stream/catchment processing
 
     # 6. Create stream mask (lowest threshold)
     stream_mask = (acc >= lowest_threshold_cells).astype(np.uint8)
@@ -1422,7 +1540,6 @@ def process_dem(
             fdir=fdir,
             acc=acc,
             slope=slope,
-            d8_fdir=d8_fdir,
             flw=flw,
             flow_dist_m=flow_dist_m,
             metadata=metadata,
@@ -1435,7 +1552,7 @@ def process_dem(
         _record_threshold_stats(stats, all_stream_segments, all_catchment_data)
 
     # Free large raster arrays no longer needed (~1.7 GB at 54.5M cells)
-    del filled_dem, slope, d8_fdir, acc, strahler, flow_dist_m, flw, fdir
+    del filled_dem, slope, acc, strahler, flow_dist_m, flw, fdir
 
     # 8. Insert into database
     if not dry_run:

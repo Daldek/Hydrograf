@@ -8,6 +8,15 @@ from core.zonal_stats import (
     zonal_elevation_histogram,
     zonal_max,
     zonal_min,
+    zonal_summary,
+)
+from tests.dem_equivalence import (
+    DEM_CASES,
+    NODATA,
+    assert_identical,
+    derive_hydrology,
+    subcatchments,
+    synthetic_dem,
 )
 
 
@@ -136,3 +145,88 @@ class TestZonalElevationHistogram:
         dem = np.array([[100.5, 103.2, 105.8]])
         result = zonal_elevation_histogram(labels, dem, max_label=1, nodata=-9999)
         assert result[1]["base_m"] == 100  # floor(100.5) = 100
+
+
+@pytest.fixture(scope="module", params=list(DEM_CASES.values()), ids=list(DEM_CASES))
+def zones(request):
+    """Sub-catchments of a synthetic DEM with label 0, a missing label (2) and a
+    label whose cells are all nodata (the highest)."""
+    hydrology = derive_hydrology(*synthetic_dem(**request.param))
+    labels, _, _ = subcatchments(hydrology, 1_000)
+    labels[labels == 2] = 0
+    labels.flat[np.flatnonzero(hydrology.filled_dem == NODATA)[:5]] = labels.max() + 1
+    return labels, hydrology
+
+
+class TestZonalSummary:
+    """zonal_summary gives what the bincount and scipy functions give, bit for bit."""
+
+    def test_counts_and_sums_equal_bincount(self, zones):
+        labels, hydrology = zones
+        dem, slope = hydrology.filled_dem, hydrology.slope_percent
+        top = int(labels.max())
+        valid = dem != NODATA
+
+        summary = zonal_summary(labels, dem, slope, NODATA)
+
+        assert summary.count[2] == 0
+        assert summary.elev_count[top] == 0 < summary.count[top]
+        assert_identical(summary.count[1:], zonal_bincount(labels, max_label=top)[1:])
+        assert_identical(
+            summary.elev_count[1:],
+            zonal_bincount(labels, max_label=top, valid_mask=valid)[1:],
+        )
+        assert_identical(
+            summary.elev_sum_m[1:],
+            zonal_bincount(
+                labels,
+                weights=dem.astype(np.float64),
+                max_label=top,
+                valid_mask=valid,
+            )[1:],
+        )
+        assert_identical(
+            summary.slope_sum_percent[1:],
+            zonal_bincount(labels, weights=slope, max_label=top)[1:],
+        )
+        assert summary.flow_dist_max_m is None
+
+    def test_extremes_equal_scipy_where_the_label_has_values(self, zones):
+        labels, hydrology = zones
+        dem, dist = hydrology.filled_dem, hydrology.flow_dist_m
+        top = int(labels.max())
+        valid = dem != NODATA
+
+        summary = zonal_summary(
+            labels, dem, hydrology.slope_percent, NODATA, flow_dist_m=dist
+        )
+        with_elev = summary.elev_count[1:] > 0
+        with_cells = summary.count[1:] > 0
+        elev_min = zonal_min(labels, np.where(valid, dem, np.inf).astype(float), top)
+        elev_max = zonal_max(labels, np.where(valid, dem, -np.inf).astype(float), top)
+        dist_max = zonal_max(
+            labels, np.where(labels > 0, dist, -np.inf).astype(float), top
+        )
+
+        assert_identical(summary.elev_min_m[1:][with_elev], elev_min[with_elev])
+        assert_identical(summary.elev_max_m[1:][with_elev], elev_max[with_elev])
+        assert_identical(summary.flow_dist_max_m[1:][with_cells], dist_max[with_cells])
+        assert (summary.elev_min_m[1:][~with_elev] == np.inf).all()
+        assert (summary.elev_max_m[1:][~with_elev] == -np.inf).all()
+        assert (summary.flow_dist_max_m[1:][~with_cells] == -np.inf).all()
+
+    @pytest.mark.parametrize("interval_m", [1, 3])
+    def test_histograms_equal_zonal_elevation_histogram(self, zones, interval_m):
+        labels, hydrology = zones
+        dem = hydrology.filled_dem
+
+        summary = zonal_summary(
+            labels, dem, hydrology.slope_percent, NODATA, interval_m=interval_m
+        )
+
+        assert_identical(
+            summary.histograms,
+            zonal_elevation_histogram(
+                labels, dem, int(labels.max()), NODATA, interval_m=interval_m
+            ),
+        )

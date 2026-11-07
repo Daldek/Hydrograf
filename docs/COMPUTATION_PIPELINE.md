@@ -37,7 +37,7 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 ### 1.2 Łatanie wewnętrznych luk nodata
 
 **Funkcja:** `fill_internal_nodata_holes()` (linie 296-377)
-- Algorytm: `scipy.ndimage.generic_filter` z oknem 3×3
+- Algorithm: a numba pass per iteration over the 3×3 window of every nodata cell, the neighbour values from the DEM before the pass (results as the earlier `scipy.ndimage.generic_filter`)
 - Warunek: komórka nodata z ≥5 prawidłowymi sąsiadami
 - Wzór: `new_value = mean(valid_neighbors)`
 - Maksymalnie 3 iteracje
@@ -56,17 +56,19 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 - Nodata pyflwdir (247) → int16 (0)
 
 #### Krok 3: Akumulacja spływu (flow accumulation)
-- Metoda: `pyflwdir.FlwdirRaster.upstream_area(unit="cell")`
+- Method: `pyflwdir.FlwdirRaster.upstream_area(unit="cell")` on the one FlwdirRaster of the run, its cells ordered by `order_cells(method="sort")` (pyflwdir's default walk builds a matrix of 7–8 upstream cells per cell)
 - Wzór: `acc[cell] = 1 + Σ(acc[upstream_cells])`
 - Wyjście: int32 array (liczba komórek, nie m²)
 
 #### Krok 4: Naprawa wewnętrznych zlewów (internal sinks)
-- Wykrywanie: `~is_valid_d8 & valid & ~edge_mask`
-- Hierarchia naprawy:
+- Definition: an internal sink is a cell without a D8 direction (0, -1, any other value) whose 8 neighbours all have data (a numba pass, `_internal_sinks`). A pit on the frame of the raster or next to nodata (the border of the data, an internal nodata area, a drain point of a lake) is an **outlet**: `fill_depressions(outlets="edge")` drains the area through such cells, and it leaves no other pit. The old definition (every valid cell off the frame without a direction) took these outlets for sinks, and the `max_acc` strategy pointed each at a neighbour that drains back into it: a pair of cells draining into each other
+- On pyflwdir's output no cell is an internal sink, so nothing is fixed, `fdir` is pyflwdir's grid (the grid of `flw`, of the flow distance, Strahler and the sub-catchments) and `acc` is pyflwdir's `upstream_area`. The step stays a safety net for flow directions from elsewhere
+- Hierarchia naprawy; each strategy looks only at the neighbours whose flow does not come back to the sink (a numba walk down the flow of the neighbour, `_drains_into`, with the fixes made so far), so no fix closes a cycle:
   1. Najstromszy spadek: `slope = (elev[i,j] - elev[neighbor]) / distance`
   2. Maksymalna akumulacja: sąsiad z najwyższym `acc`
   3. Dowolny prawidłowy sąsiad
-- Ponowna kalkulacja akumulacji po naprawach
+  A sink with no such neighbour (every neighbour drains into it) stays a pit
+- Recomputation of the accumulation after the fixes (only when there were any): Kahn's order in numba (`recompute_flow_accumulation`); the cells of a cycle never pass their accumulation on, which no fix creates now. The accumulation is conserved: the sum of the accumulations of the pits (outlets) is the number of the cells of the network
 
 ### 1.4 Nachylenie i ekspozycja
 
@@ -83,7 +85,7 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 
 **Funkcja:** `compute_strahler_from_fdir()` (linie 1271-1329)
 - Maska cieków: `acc >= stream_threshold`
-- Algorytm: `pyflwdir.FlwdirRaster.stream_order(type="strahler", mask=stream_mask)`
+- Algorithm: `pyflwdir.streams.strahler_order(flw.idxs_ds, flw.idxs_seq, mask=stream_mask)` on the FlwdirRaster of the run; `FlwdirRaster.stream_order` caches the orders of its first call and would ignore the mask of the next threshold
 - Komórki niebędące ciekiem: `strahler = 0`
 
 ### 1.6 Wektoryzacja cieków
@@ -662,7 +664,7 @@ CREATE TABLE land_cover (
 |----|----------|--------|
 | 1 | Wypełnianie depresji | Wang & Liu 2006 (pyflwdir) |
 | 2 | Kierunki odpływu | D8 steepest descent |
-| 3 | Akumulacja spływu | Sortowanie topologiczne (Kahn) + BFS |
+| 3 | Akumulacja spływu | `pyflwdir` `upstream_area`; after the fixes of the internal sinks Kahn's topological order in numba |
 | 4 | Rząd Strahlera | Strahler 1952 |
 | 5 | Wektoryzacja cieków | Śledzenie od źródeł do skrzyżowań |
 | 6 | Delimitacja zlewni cząstkowych | pyflwdir.basins() — propagacja upstream (ADR-016) |
