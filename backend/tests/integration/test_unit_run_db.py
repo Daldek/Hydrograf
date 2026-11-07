@@ -176,7 +176,9 @@ def _run_whole(scene: SplitScene, directory: Path) -> None:
     )
 
 
-def _run_units(scene: SplitScene, pgw: Path, directory: Path, **options: Any) -> dict:
+def _run_units(
+    scene: SplitScene, pgw: Path, directory: Path, **options: Any
+) -> dict[str, Any]:
     return single.process_dem(
         scene.dem_path,
         output_dir=directory,

@@ -14,7 +14,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-import psycopg2
+import psycopg2  # type: ignore[import-untyped]
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError

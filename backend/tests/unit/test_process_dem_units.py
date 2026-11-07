@@ -72,7 +72,9 @@ def store(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     ) -> None:
         record.calls.append(("checkpoint_unit", run_id, owner, bbox, files))
 
-    def publish_run(db: Any, run_id: int, segments: Any, catchments: Any) -> dict:
+    def publish_run(
+        db: Any, run_id: int, segments: Any, catchments: Any
+    ) -> dict[str, int]:
         record.calls.append(("publish_run", run_id))
         if record.publish_error is not None:
             raise record.publish_error
@@ -89,7 +91,9 @@ def store(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     return record
 
 
-def _run(scene: SplitScene, pgw: Path, tmp_path: Path, **options: Any) -> dict:
+def _run(
+    scene: SplitScene, pgw: Path, tmp_path: Path, **options: Any
+) -> dict[str, Any]:
     return units.process_dem_units(
         scene.dem_path,
         pgw,
