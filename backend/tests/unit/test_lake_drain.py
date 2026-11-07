@@ -540,8 +540,12 @@ class TestPipelineIntegration:
         assert fdir[5, 5] == 0
         # Drain point acc should be 0 (NoData cells excluded)
         assert acc[5, 5] == 0
-        # Valid neighbors should have valid flow directions
-        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        # The bowl drains through the one pit beside the drain point: an outlet
+        # (it is not an internal sink, so it keeps fdir=0) that collects all of
+        # the 120 valid cells
+        assert fdir[4, 5] == 0
+        assert acc[4, 5] == 120
+        for dr, dc in [(1, 0), (0, -1), (0, 1)]:
             nr, nc = 5 + dr, 5 + dc
             assert fdir[nr, nc] != 0, f"Neighbor ({nr},{nc}) has invalid fdir=0"
 

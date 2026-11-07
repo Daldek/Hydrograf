@@ -328,7 +328,7 @@ def compute_strahler_from_fdir(
     flw : pyflwdir.FlwdirRaster
         Flow directions of the run (process_hydrology_pyflwdir)
     acc : np.ndarray
-        Flow accumulation from the main pipeline (after fix_internal_sinks)
+        Flow accumulation from the main pipeline (process_hydrology_pyflwdir)
     stream_threshold : int
         Flow accumulation threshold (in cells) for stream identification
 

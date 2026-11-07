@@ -119,7 +119,7 @@ def trace_flow_path(
 
     The path ends at the first cell outside ``member``, at a pit or where the
     flow leaves the array. Pits are cells without a D8 direction and the cells
-    with a flow distance of 0, the internal sinks that the saved directions
+    with a flow distance of 0, the pits that the directions saved by earlier runs
     drain but pyflwdir's grid of the distances does not (as
     ``process_dem.d8_from_saved_flowdir``).
 

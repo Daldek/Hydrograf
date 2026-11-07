@@ -9,7 +9,7 @@ import numpy as np
 import pyflwdir
 import pytest
 import rasterio
-from scipy.ndimage import generic_filter
+from scipy.ndimage import binary_erosion, generic_filter
 
 from core.hydrology import D8_DIRECTIONS, D8_VALID, _internal_sinks
 from core.morphometry_raster import (
@@ -333,6 +333,136 @@ class TestFixInternalSinks:
         assert fdir_fixed[2, 1] == -2
         assert fdir_fixed[2, 2] == 0
         assert diag["total_fixed"] == 0
+
+    def test_pit_next_to_nodata_is_an_outlet(self):
+        """A pit beside nodata is where the area drains out, not a sink."""
+        dem = np.full((5, 5), 50.0)
+        dem[2, 3] = NODATA
+        fdir = np.full((5, 5), 4, dtype=np.int16)
+        fdir[4, :] = 0
+        fdir[2, 2] = 0
+        acc = np.ones((5, 5), dtype=np.int32)
+
+        fdir_fixed, acc_fixed, diag = fix_internal_sinks(fdir, acc, dem, dem, NODATA)
+
+        assert diag["total_fixed"] == 0
+        np.testing.assert_array_equal(fdir_fixed, fdir)
+        np.testing.assert_array_equal(acc_fixed, acc)
+
+    def test_never_drains_into_a_neighbour_that_drains_back(self):
+        """The neighbour of the largest accumulation flows into the sink: skipped."""
+        dem = np.full((5, 5), 50.0)
+        fdir = np.full((5, 5), 1, dtype=np.int16)  # all flow East
+        fdir[4, :] = 0
+        fdir[:, 4] = 0
+        fdir[2, 2] = 0  # internal sink
+        fdir[2, 3] = 16  # East of the sink, flows West into it
+        acc = np.ones((5, 5), dtype=np.int32)
+        acc[2, 3] = 100
+
+        fdir_fixed, _, diag = fix_internal_sinks(fdir, acc, dem, dem, NODATA)
+
+        assert diag["total_fixed"] == 1
+        assert diag["by_strategy"]["max_acc"] == 1
+        assert fdir_fixed[2, 2] not in (0, 1)
+        assert _reaches_a_terminal(fdir_fixed)
+
+    def test_sink_that_every_neighbour_drains_into_stays(self):
+        """A true local minimum has no neighbour to drain to without a cycle."""
+        dem = np.full((3, 3), 50.0)
+        dem[1, 1] = 40.0
+        # Every ring cell flows to the centre: NW, N, NE, W, E, SW, S, SE
+        fdir = np.array([[2, 4, 8], [1, 0, 16], [128, 64, 32]], dtype=np.int16)
+        acc = np.array([[1, 1, 1], [1, 9, 1], [1, 1, 1]], dtype=np.int32)
+
+        fdir_fixed, acc_fixed, diag = fix_internal_sinks(fdir, acc, dem, dem, NODATA)
+
+        assert diag["total_fixed"] == 0
+        np.testing.assert_array_equal(fdir_fixed, fdir)
+        np.testing.assert_array_equal(acc_fixed, acc)
+
+    @pytest.mark.parametrize("seed", range(4))
+    def test_pits_next_to_internal_nodata_give_an_acyclic_network(self, seed):
+        """Every cell reaches a pit and the accumulation adds up to the valid cells.
+
+        The steepest descent among the cells with data leaves a pit at every local
+        minimum: beside the nodata blocks inside the grid (outlets), and among data
+        (sinks that need a direction from the max_acc strategy).
+        """
+        dem, fdir = _random_descent_network(seed)
+        acc = recompute_flow_accumulation(fdir, dem, NODATA)
+        sinks = _internal_sinks(fdir, dem, dem.dtype.type(NODATA), D8_VALID)
+        has_data = dem != NODATA
+        next_to_nodata = ~binary_erosion(
+            has_data, structure=np.ones((3, 3)), border_value=0
+        )
+        outlets = (fdir == 0) & has_data & next_to_nodata
+        assert sinks.size > 5
+        assert np.count_nonzero(outlets) > 5
+
+        fdir_fixed, acc_fixed, diag = fix_internal_sinks(fdir, acc, dem, dem, NODATA)
+
+        assert diag["by_strategy"]["max_acc"] > 0
+        assert diag["total_fixed"] > 0
+        np.testing.assert_array_equal(fdir_fixed[outlets], fdir[outlets])
+        assert _reaches_a_terminal(fdir_fixed)
+        pits = (fdir_fixed == 0) & has_data
+        assert acc_fixed[pits].sum() == np.count_nonzero(has_data)
+
+
+def _next_cells(fdir):
+    """The flat index of the cell each cell drains to (its own if it is a pit)."""
+    nrows, ncols = fdir.shape
+    cells = np.arange(nrows * ncols).reshape(fdir.shape)
+    rows, cols = np.indices(fdir.shape)
+    following = cells.copy()
+    for code, (drow, dcol) in D8_DIRECTIONS.items():
+        target_row, target_col = rows + drow, cols + dcol
+        goes = (
+            (fdir == code)
+            & (target_row >= 0)
+            & (target_row < nrows)
+            & (target_col >= 0)
+            & (target_col < ncols)
+        )
+        following[goes] = target_row[goes] * ncols + target_col[goes]
+    return following.ravel()
+
+
+def _reaches_a_terminal(fdir):
+    """Say whether the flow from every cell ends in a pit (none runs in a cycle)."""
+    following = _next_cells(fdir)
+    reached = following
+    for _ in range(int(np.ceil(np.log2(following.size))) + 1):
+        reached = reached[reached]  # the cell 2, 4, 8 ... steps downstream
+    return bool(np.all(following[reached] == reached))
+
+
+def _random_descent_network(seed):
+    """A random DEM with nodata blocks and the steepest descent among data cells.
+
+    Cells without a lower neighbour with data get no direction (0). The flow
+    follows a strictly falling DEM, so it has no cycle.
+    """
+    rng = np.random.default_rng(seed)
+    dem = rng.uniform(100.0, 200.0, (30, 40))
+    for row, col in rng.integers(4, [26, 36], size=(6, 2)):
+        dem[row : row + 2, col : col + 2] = NODATA
+    nrows, ncols = dem.shape
+    fdir = np.zeros(dem.shape, dtype=np.int16)
+    for row in range(nrows):
+        for col in range(ncols):
+            if dem[row, col] == NODATA:
+                continue
+            best, steepest = 0, 0.0
+            for code, (drow, dcol) in D8_DIRECTIONS.items():
+                r, c = row + drow, col + dcol
+                if 0 <= r < nrows and 0 <= c < ncols and dem[r, c] != NODATA:
+                    slope = (dem[row, col] - dem[r, c]) / np.hypot(drow, dcol)
+                    if slope > steepest:
+                        best, steepest = code, slope
+            fdir[row, col] = best
+    return dem, fdir
 
 
 class TestRecomputeFlowAccumulation:
@@ -979,8 +1109,7 @@ def _odd_flow_directions(hydrology, seed):
     """The flow directions and DEM of the run with what the pipeline can meet.
 
     Codes 0, -1 and 255 on valid cells, new nodata cells inside the network
-    and pairs of cells that drain into each other, besides those that
-    fix_internal_sinks made.
+    and pairs of cells that drain into each other.
     """
     rng = np.random.default_rng(seed)
     fdir = hydrology.fdir.copy()
@@ -1002,7 +1131,7 @@ def _odd_flow_directions(hydrology, seed):
 
 
 class TestHoleFillingAndAccumulationInNumba:
-    """The numba hole filling, accumulation and sink mask equal the code before.
+    """The numba hole filling and accumulation equal the code before.
 
     The holes of the synthetic DEMs fill in one to four passes or stay open,
     lie on the frame of the raster and along its ragged nodata border; float32
@@ -1050,16 +1179,21 @@ class TestHoleFillingAndAccumulationInNumba:
         assert_identical(acc, _accumulation_by_deque(fdir, dem, NODATA))
 
     @pytest.mark.parametrize("seed", [0, 1])
-    def test_internal_sinks_equal_those_of_isin(self, hydrology, seed):
+    def test_internal_sinks_are_the_cells_without_direction_among_data(
+        self, hydrology, seed
+    ):
         fdir, dem = _odd_flow_directions(hydrology, seed)
-        inside = np.zeros(fdir.shape, dtype=bool)
-        inside[1:-1, 1:-1] = True
-        expected = ~np.isin(fdir, list(VALID_D8_SET)) & (dem != NODATA) & inside
+        has_data = dem != NODATA
+        # A cell off the frame with data in its whole 3 x 3 window
+        in_data = binary_erosion(has_data, structure=np.ones((3, 3)), border_value=0)
+        no_direction = ~np.isin(fdir, list(VALID_D8_SET))
 
         sinks = _internal_sinks(fdir, dem, dem.dtype.type(NODATA), D8_VALID)
 
-        assert_identical(sinks, np.flatnonzero(expected))
+        assert_identical(sinks, np.flatnonzero(no_direction & in_data))
         assert sinks.size > 20
+        # Pits next to nodata or on the frame are outlets, not sinks
+        assert sinks.size < np.count_nonzero(no_direction & has_data)
 
 
 class TestComputeStrahlerOrder:

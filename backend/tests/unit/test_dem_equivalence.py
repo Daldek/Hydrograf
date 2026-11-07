@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from scipy import ndimage
 
-from core.hydrology import fill_internal_nodata_holes
+from core.hydrology import D8_DIRECTIONS, fill_internal_nodata_holes
 from tests.dem_equivalence import (
     DEM_CASES,
     NODATA,
@@ -50,16 +50,58 @@ def test_holes_take_up_to_four_passes_and_one_stays_open(case):
 
 
 @pytest.mark.parametrize("case", DEM_CASES.values(), ids=DEM_CASES.keys())
-def test_pyflwdir_leaves_internal_sinks_next_to_nodata(case):
-    hydrology = derive_hydrology(*synthetic_dem(**case))
+def test_pyflwdir_pits_off_the_frame_are_outlets_next_to_nodata(case):
+    dem, metadata = synthetic_dem(**case)
+    hydrology = derive_hydrology(dem, metadata)
     shape = hydrology.filled_dem.shape
-    pits = hydrology.flw.idxs_ds == np.arange(hydrology.flw.size)
-    inside = np.zeros(shape, dtype=bool)
-    inside[1:-1, 1:-1] = True
+    pits = (hydrology.flw.idxs_ds == np.arange(hydrology.flw.size)).reshape(shape)
+    has_data = hydrology.filled_dem != NODATA
+    in_data = ndimage.binary_erosion(
+        has_data, structure=np.ones((3, 3)), border_value=0
+    )
+    off_the_frame = np.zeros(shape, dtype=bool)
+    off_the_frame[1:-1, 1:-1] = True
 
-    sinks = pits.reshape(shape) & (hydrology.filled_dem != NODATA) & inside
+    outlets = pits & has_data & off_the_frame
 
-    assert sinks.any()
+    # Next to nodata, so no internal sink: fix_internal_sinks leaves pyflwdir's
+    # network and accumulation as they are
+    assert outlets.any()
+    assert not (outlets & in_data).any()
+    upstream_area = hydrology.flw.upstream_area(unit="cell")
+    expected = np.where(upstream_area == -9999, 0, upstream_area).astype(np.int32)
+    assert_identical(hydrology.acc, expected)
+
+
+@pytest.mark.parametrize("case", DEM_CASES.values(), ids=DEM_CASES.keys())
+def test_flow_is_acyclic_and_the_accumulation_adds_up(case):
+    hydrology = derive_hydrology(*synthetic_dem(**case))
+    nrows, ncols = hydrology.fdir.shape
+    cells = np.arange(hydrology.fdir.size)
+    rows, cols = divmod(cells, ncols)
+    # The cell each cell of the returned flow directions drains to (itself: a pit)
+    downstream = cells.copy()
+    for code, (drow, dcol) in D8_DIRECTIONS.items():
+        goes = (
+            (hydrology.fdir.ravel() == code)
+            & (rows + drow >= 0)
+            & (rows + drow < nrows)
+            & (cols + dcol >= 0)
+            & (cols + dcol < ncols)
+        )
+        downstream[goes] = (rows[goes] + drow) * ncols + cols[goes] + dcol
+    in_network = hydrology.acc.ravel() > 0
+
+    # Every cell reaches a pit: after 2**k steps the flow rests on a pit
+    reached = downstream
+    for _ in range(int(np.ceil(np.log2(cells.size))) + 1):
+        reached = reached[reached]
+    pits = (downstream == cells) & in_network
+
+    assert np.all(downstream[reached] == reached)
+    assert pits.any()
+    # The accumulation of the pits is the area of the network, no cell lost
+    assert hydrology.acc.ravel()[pits].sum() == np.count_nonzero(in_network)
 
 
 NAN_ROW = np.array([1.0, np.nan, -0.0], dtype=np.float32)

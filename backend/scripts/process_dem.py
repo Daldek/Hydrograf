@@ -936,10 +936,11 @@ def d8_from_saved_flowdir(
 ) -> np.ndarray:
     """Rebuild the pyflwdir D8 grid of a run from its saved rasters.
 
-    The saved flow directions (``_03_flowdir``) are pyflwdir's D8 grid in which
-    fix_internal_sinks gave the internal sinks a direction. Those sinks are pits
-    of pyflwdir's grid, the only cells with a flow distance of 0, so they become
-    pits again; cells outside the DEM become pyflwdir's nodata (247).
+    The saved flow directions (``_03_flowdir``) are pyflwdir's D8 grid; in the
+    rasters of runs before fix_internal_sinks stopped fixing the pits at the
+    edge of the data, it had given those pits a direction. Those pits are the
+    only cells with a flow distance of 0, so they become pits again (a no-op for
+    newer runs); cells outside the DEM become pyflwdir's nodata (247).
 
     Parameters
     ----------

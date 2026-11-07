@@ -1205,31 +1205,78 @@ def _internal_sinks(
 ) -> np.ndarray:
     """Return the flat indices of the internal sinks, row by row.
 
-    An internal sink is a valid cell off the frame of the raster whose flow
-    direction is not a D8 code (0, -1, any other value).
+    An internal sink is a cell without a D8 flow direction (0, -1, any other
+    value) whose 3 x 3 window lies in the raster and has data. A pit at the edge
+    of the data, on the frame of the raster or next to nodata, is an outlet:
+    pyflwdir's depression filling (outlets="edge") drains the area through such
+    cells and leaves no other pits.
     """
     nrows, ncols = fdir.shape
     count = 0
     for row in range(1, nrows - 1):
         for col in range(1, ncols - 1):
-            if _is_sink(fdir[row, col], dem[row, col], nodata, d8_valid):
+            if _is_sink(fdir, dem, row, col, nodata, d8_valid):
                 count += 1
     sinks = np.empty(count, dtype=np.int64)
     count = 0
     for row in range(1, nrows - 1):
         for col in range(1, ncols - 1):
-            if _is_sink(fdir[row, col], dem[row, col], nodata, d8_valid):
+            if _is_sink(fdir, dem, row, col, nodata, d8_valid):
                 sinks[count] = row * ncols + col
                 count += 1
     return sinks
 
 
 @numba.njit(cache=True)
-def _is_sink(code: int, elevation: Any, nodata: Any, d8_valid: np.ndarray) -> bool:
-    """Say whether a valid cell has no D8 flow direction."""
-    if elevation == nodata:
+def _is_sink(
+    fdir: np.ndarray,
+    dem: np.ndarray,
+    row: int,
+    col: int,
+    nodata: Any,
+    d8_valid: np.ndarray,
+) -> bool:
+    """Say whether a cell off the frame is an internal sink (_internal_sinks)."""
+    code = fdir[row, col]
+    if 0 <= code <= 255 and d8_valid[code]:
         return False
-    return not (0 <= code <= 255 and d8_valid[code])
+    for r in range(row - 1, row + 2):
+        for c in range(col - 1, col + 2):
+            if dem[r, c] == nodata:
+                return False
+    return True
+
+
+@numba.njit(cache=True)
+def _drains_into(
+    fdir: np.ndarray,
+    dem: np.ndarray,
+    nodata: Any,
+    row: int,
+    col: int,
+    target: int,
+    d8_valid: np.ndarray,
+    d8_row: np.ndarray,
+    d8_col: np.ndarray,
+) -> bool:
+    """Say whether the flow from a cell reaches the cell of flat index ``target``.
+
+    The flow stops at a cell without a D8 direction and where it leaves the
+    raster or its data, as the accumulation does; a path with more steps than
+    the raster has cells runs round a cycle without the target.
+    """
+    nrows, ncols = fdir.shape
+    for _ in range(nrows * ncols):
+        if row * ncols + col == target:
+            return True
+        code = fdir[row, col]
+        if dem[row, col] == nodata or code < 0 or code > 255 or not d8_valid[code]:
+            return False
+        row += d8_row[code]
+        col += d8_col[code]
+        if not (0 <= row < nrows and 0 <= col < ncols):
+            return False
+    return False
 
 
 def fix_internal_sinks(
@@ -1241,14 +1288,17 @@ def fix_internal_sinks(
     max_iterations: int = 3,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     """
-    Naprawia wewnetrzne zlewy po pyflwdir.
+    Give the internal sinks of a flow direction grid a direction.
 
-    Dla kazdej wewnetrznej komorki z fdir=0 (nie na brzegu, nie nodata):
-    1. Steepest descent — najstromiszy spadek do sasiada (z filled_dem)
-    2. Max accumulation — sasiad z najwyzsza akumulacja
-    3. Any valid — dowolny validny sasiad
-
-    Po naprawie rekompozycja flow accumulation.
+    An internal sink (_internal_sinks) is a cell without a D8 direction whose
+    8 neighbours have data; a pit at the edge of the data is an outlet and is
+    left as it is. A sink drains to one of the neighbours whose flow does not
+    come back to it, so no direction closes a cycle, chosen by, in turn:
+    1. steepest descent: the steepest drop to it (filled_dem)
+    2. max accumulation: the largest accumulation
+    3. any valid: the first one
+    A sink without such a neighbour stays. The accumulation is recomputed after
+    the fixes.
 
     Parameters
     ----------
@@ -1257,13 +1307,13 @@ def fix_internal_sinks(
     acc : np.ndarray
         Flow accumulation array
     filled_dem : np.ndarray
-        DEM po depression filling
+        DEM after the depression filling (the slopes of strategy 1)
     dem : np.ndarray
-        Oryginalny filled DEM (for nodata detection)
+        DEM whose cells equal to ``nodata`` have no data
     nodata : float
         NoData value
     max_iterations : int
-        Maksymalna liczba iteracji naprawy
+        Maximum number of passes
 
     Returns
     -------
@@ -1271,7 +1321,7 @@ def fix_internal_sinks(
         (fixed_fdir, recomputed_acc, diagnostics)
         diagnostics: dict with 'total_fixed', 'by_strategy', 'iterations'
     """
-    nrows, ncols = fdir.shape
+    ncols = fdir.shape[1]
     fdir_fixed = fdir.copy()
 
     directions = [1, 2, 4, 8, 16, 32, 64, 128]
@@ -1281,12 +1331,6 @@ def fix_internal_sinks(
     # NumPy compares the DEM with nodata in this type
     nodata_value = np.result_type(dem.dtype, nodata).type(nodata)
 
-    def has_data(row: int, col: int) -> bool:
-        """Say whether a cell lies in the raster and has data."""
-        return bool(
-            0 <= row < nrows and 0 <= col < ncols and dem[row, col] != nodata_value
-        )
-
     diag: dict[str, Any] = {
         "total_fixed": 0,
         "by_strategy": {"steepest": 0, "max_acc": 0, "any_valid": 0},
@@ -1294,8 +1338,8 @@ def fix_internal_sinks(
     }
 
     for iteration in range(max_iterations):
-        # Internal sinks: valid cells off the frame without a D8 direction
-        # (pysheds returned 0 (nodata), -1 (pit/outlet), -2 (unresolved flat))
+        # Cells without a D8 direction away from the edge of the data (pysheds
+        # returned 0 (nodata), -1 (pit/outlet), -2 (unresolved flat))
         sinks = _internal_sinks(fdir_fixed, dem, nodata_value, D8_VALID)
 
         if sinks.size == 0:
@@ -1306,42 +1350,50 @@ def fix_internal_sinks(
 
         for sink in sinks:
             i, j = divmod(int(sink), ncols)
+            # The neighbours (all with data) whose flow does not come back to
+            # the sink, with the fixes made so far
+            candidates = [
+                (d, i + di, j + dj, dist)
+                for d, (di, dj), dist in zip(
+                    directions, offsets, distances, strict=True
+                )
+                if not _drains_into(
+                    fdir_fixed,
+                    dem,
+                    nodata_value,
+                    i + di,
+                    j + dj,
+                    sink,
+                    D8_VALID,
+                    D8_ROW_OFFSET,
+                    D8_COL_OFFSET,
+                )
+            ]
             best_dir = None
             strategy = None
 
             # Strategy 1: steepest descent using filled_dem
             max_slope = 0.0
-            for d, (di, dj), dist in zip(directions, offsets, distances, strict=True):
-                ni, nj = i + di, j + dj
-                if has_data(ni, nj):
-                    slope = (filled_dem[i, j] - filled_dem[ni, nj]) / dist
-                    if slope > max_slope:
-                        max_slope = slope
-                        best_dir = d
-                        strategy = "steepest"
+            for d, ni, nj, dist in candidates:
+                slope = (filled_dem[i, j] - filled_dem[ni, nj]) / dist
+                if slope > max_slope:
+                    max_slope = slope
+                    best_dir = d
+                    strategy = "steepest"
 
             # Strategy 2: max accumulation neighbor
             if best_dir is None:
                 max_acc_val = -1
-                for d, (di, dj), _dist in zip(
-                    directions, offsets, distances, strict=True
-                ):
-                    ni, nj = i + di, j + dj
-                    if has_data(ni, nj) and acc[ni, nj] > max_acc_val:
+                for d, ni, nj, _dist in candidates:
+                    if acc[ni, nj] > max_acc_val:
                         max_acc_val = acc[ni, nj]
                         best_dir = d
                         strategy = "max_acc"
 
             # Strategy 3: any valid neighbor
-            if best_dir is None:
-                for d, (di, dj), _dist in zip(
-                    directions, offsets, distances, strict=True
-                ):
-                    ni, nj = i + di, j + dj
-                    if has_data(ni, nj):
-                        best_dir = d
-                        strategy = "any_valid"
-                        break
+            if best_dir is None and candidates:
+                best_dir = candidates[0][0]
+                strategy = "any_valid"
 
             if best_dir is not None:
                 fdir_fixed[i, j] = best_dir
@@ -1396,10 +1448,12 @@ def process_hydrology_pyflwdir(
         (filled_dem, flow_direction, flow_accumulation, flw)
         - filled_dem: DEM after depression filling (real elevations)
         - flow_direction: D8 flow directions (int16, nodata=0)
-        - flow_accumulation: flow accumulation (after fix_internal_sinks)
-        - flw: pyflwdir.FlwdirRaster of pyflwdir's D8 grid (before
-          fix_internal_sinks), with its cells ordered; the one FlwdirRaster of
-          the run
+        - flow_accumulation: flow accumulation [cells], pyflwdir's upstream
+          area unless fix_internal_sinks recomputed it
+        - flw: pyflwdir.FlwdirRaster of pyflwdir's D8 grid, with its cells
+          ordered; the one FlwdirRaster of the run. It is the grid of
+          flow_direction: fix_internal_sinks finds no sink in it (its pits are
+          outlets at the edge of the data)
     """
     import pyflwdir
     from pyflwdir.dem import fill_depressions as pyflwdir_fill_depressions
@@ -1462,7 +1516,9 @@ def process_hydrology_pyflwdir(
             restore_mask[row, col] = True
     filled_dem[restore_mask] = nodata
 
-    # Safety net: fix internal sinks (if pyflwdir left any)
+    # Safety net: internal sinks, cells without a direction away from the edge
+    # of the data. pyflwdir leaves none: its pits are the outlets of the area,
+    # on the frame of the raster and next to nodata or a drain point
     sinks = _internal_sinks(
         fdir_arr,
         filled_dem,
@@ -1490,7 +1546,7 @@ def process_hydrology_pyflwdir(
             f"any_valid: {diag['by_strategy']['any_valid']})"
         )
     else:
-        logger.info("  All internal cells have valid flow direction")
+        logger.info("  No internal sinks: the pits are outlets at the edge of the data")
 
     logger.info("Hydrology processing complete")
     return filled_dem, fdir_arr, acc_arr, flw

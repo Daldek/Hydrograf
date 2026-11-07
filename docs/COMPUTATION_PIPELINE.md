@@ -61,12 +61,14 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 - Wyjście: int32 array (liczba komórek, nie m²)
 
 #### Krok 4: Naprawa wewnętrznych zlewów (internal sinks)
-- Detection: valid cells off the frame of the raster whose flow direction is not a D8 code (a numba pass, `_internal_sinks`)
-- Hierarchia naprawy:
+- Definition: an internal sink is a cell without a D8 direction (0, -1, any other value) whose 8 neighbours all have data (a numba pass, `_internal_sinks`). A pit on the frame of the raster or next to nodata (the border of the data, an internal nodata area, a drain point of a lake) is an **outlet**: `fill_depressions(outlets="edge")` drains the area through such cells, and it leaves no other pit. The old definition (every valid cell off the frame without a direction) took these outlets for sinks, and the `max_acc` strategy pointed each at a neighbour that drains back into it: a pair of cells draining into each other
+- On pyflwdir's output no cell is an internal sink, so nothing is fixed, `fdir` is pyflwdir's grid (the grid of `flw`, of the flow distance, Strahler and the sub-catchments) and `acc` is pyflwdir's `upstream_area`. The step stays a safety net for flow directions from elsewhere
+- Hierarchia naprawy; each strategy looks only at the neighbours whose flow does not come back to the sink (a numba walk down the flow of the neighbour, `_drains_into`, with the fixes made so far), so no fix closes a cycle:
   1. Najstromszy spadek: `slope = (elev[i,j] - elev[neighbor]) / distance`
   2. Maksymalna akumulacja: sąsiad z najwyższym `acc`
   3. Dowolny prawidłowy sąsiad
-- Recomputation of the accumulation after the fixes: Kahn's order in numba (`recompute_flow_accumulation`); the cells of a cycle never pass their accumulation on
+  A sink with no such neighbour (every neighbour drains into it) stays a pit
+- Recomputation of the accumulation after the fixes (only when there were any): Kahn's order in numba (`recompute_flow_accumulation`); the cells of a cycle never pass their accumulation on, which no fix creates now. The accumulation is conserved: the sum of the accumulations of the pits (outlets) is the number of the cells of the network
 
 ### 1.4 Nachylenie i ekspozycja
 
