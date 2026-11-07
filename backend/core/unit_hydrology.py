@@ -18,7 +18,7 @@ import numpy as np
 import rasterio
 from pyflwdir.gis_utils import distance as _cell_distance
 from rasterio.windows import Window
-from scipy.ndimage import binary_dilation
+from scipy.ndimage import binary_dilation, find_objects
 
 from core.hydrology import (
     D8_COL_OFFSET,
@@ -192,7 +192,7 @@ def process_unit_hydrology(
     thresholds_m2: tuple[int, ...],
     *,
     buffer_m: float = 500.0,
-    max_window_cells: int = 34_000_000,
+    max_window_cells: int = 80_000_000,
 ) -> UnitHydrology:
     """Run the fill/D8, routing, distance and threshold masks by owner.
 
@@ -201,6 +201,8 @@ def process_unit_hydrology(
     mismatch or an actual cell-level cycle fails rather than publishing a
     numerically incorrect mosaic. No PGW owner-graph topological sort is used.
     """
+    if max_window_cells < 1:
+        raise ValueError("max_window_cells must be positive")
     output_dir.mkdir(parents=True, exist_ok=True)
     with rasterio.open(dem_path) as source:
         nrows, ncols = source.shape
@@ -219,18 +221,13 @@ def process_unit_hydrology(
         raw_fdir = _raster(output_dir / "raw_fdir.npy", "int16", shape)
         slope = _raster(output_dir / "slope.npy", "float32", shape)
         seen = _raster(output_dir / "seen.npy", "uint8", shape)
+        # One scan of the owner raster, not one full-grid np.nonzero per PGW.
         unit_bounds = []
-        for owner in sorted(int(i) for i in np.unique(owners) if i > 0):
-            rows, cols = np.nonzero(owners == owner)
-            if rows.size:
+        for owner, bbox in enumerate(find_objects(owners), start=1):
+            if bbox is not None:
+                row, col = bbox
                 unit_bounds.append(
-                    (
-                        owner,
-                        int(rows.min()),
-                        int(rows.max()),
-                        int(cols.min()),
-                        int(cols.max()),
-                    )
+                    (owner, row.start, row.stop, col.start, col.stop)
                 )
         # An edge outlet of a local halo can change flat tie-breaking even
         # where the filled elevations agree. Redo *all* units on a larger halo,
@@ -240,13 +237,16 @@ def process_unit_hydrology(
             try:
                 for owner, min_row, max_row, min_col, max_col in unit_bounds:
                     r0 = max(0, min_row - halo)
-                    r1 = min(nrows, max_row + halo + 1)
+                    r1 = min(nrows, max_row + halo)
                     c0 = max(0, min_col - halo)
-                    c1 = min(ncols, max_col + halo + 1)
-                    if (r1 - r0) * (c1 - c0) > max_window_cells:
+                    c1 = min(ncols, max_col + halo)
+                    window_cells = (r1 - r0) * (c1 - c0)
+                    if window_cells > max_window_cells:
                         raise MemoryError(
-                            f"Owner {owner} needs {(r1-r0)*(c1-c0)} cells at "
-                            f"{halo * cellsize_m:g} m halo; limit {max_window_cells}"
+                            f"PGW owner {owner} requires {window_cells:,} DEM cells "
+                            f"with {halo * cellsize_m:g} m halo, exceeding configured "
+                            f"max_window_cells={max_window_cells:,}; no seam result "
+                            "will be published"
                         )
                     window = Window(c0, r0, c1 - c0, r1 - r0)
                     dem = source.read(1, window=window)
@@ -263,7 +263,11 @@ def process_unit_hydrology(
                     local_filled, local_fdir, _local_acc, flw = (
                         process_hydrology_pyflwdir(dem, metadata)
                     )
-                    local_raw = flw.to_array(ftype="d8").astype(np.int16)
+                    local_raw = flw.to_array(ftype="d8")
+                    # The common hole filler temporarily repairs original
+                    # nodata cells for flow, then restores their DEM nodata.
+                    # Keep their D8 as scratch routing cells, not PGW owners.
+                    patched = (dem == nodata) & (local_raw != 247)
                     local_raw[local_raw == 247] = 0
                     del flw, _local_acc
                     dx, dy = _compute_gradients(local_filled, cellsize_m, nodata)
@@ -271,7 +275,14 @@ def process_unit_hydrology(
                     del dx, dy
                     owned = owners[r0:r1, c0:c1] == owner
                     adjacent = binary_dilation(owned, structure=np.ones((3, 3)))
-                    old = (seen[r0:r1, c0:c1] != 0) & adjacent
+                    if np.any(patched):
+                        # Hole filling makes at most three passes; every repaired
+                        # cell is within three pixels of original valid DEM data.
+                        patched &= binary_dilation(
+                            adjacent, structure=np.ones((3, 3)), iterations=2
+                        )
+                    seen_window = seen[r0:r1, c0:c1]
+                    old = (seen_window != 0) & (adjacent | patched)
                     different = old & (
                         (filled[r0:r1, c0:c1] != local_filled)
                         | (fdir[r0:r1, c0:c1] != local_fdir)
@@ -281,13 +292,14 @@ def process_unit_hydrology(
                             f"Owner {owner} has {np.count_nonzero(different)} "
                             f"fill/D8 disagreements at {halo * cellsize_m:g} m halo"
                         )
-                    filled[r0:r1, c0:c1][owned] = local_filled[owned]
-                    fdir[r0:r1, c0:c1][owned] = local_fdir[owned]
-                    raw_fdir[r0:r1, c0:c1][owned] = local_raw[owned]
-                    slope[r0:r1, c0:c1][owned] = local_slope[owned]
-                    seen[r0:r1, c0:c1][owned] = 1
+                    fresh = owned | (patched & (seen_window == 0))
+                    filled[r0:r1, c0:c1][fresh] = local_filled[fresh]
+                    fdir[r0:r1, c0:c1][fresh] = local_fdir[fresh]
+                    raw_fdir[r0:r1, c0:c1][fresh] = local_raw[fresh]
+                    slope[r0:r1, c0:c1][fresh] = local_slope[fresh]
+                    seen_window[fresh] = 1
                     del dem, local_filled, local_fdir, local_raw, local_slope
-                    del owned, adjacent, old, different
+                    del owned, adjacent, patched, old, different, fresh, seen_window
             except _SeamMismatch as error:
                 if halo >= max(nrows, ncols):
                     raise ValueError("No consistent D8 at full DEM extent") from error
@@ -310,7 +322,7 @@ def process_unit_hydrology(
             fdir[seen == 0] = 0
             raw_fdir[seen == 0] = 0
         valid = _raster(output_dir / "valid.npy", "bool", shape)
-        valid[:] = filled != nodata
+        valid[:] = seen != 0
         indegree = _raster(output_dir / "indegree.npy", "uint8", shape)
         indegree[:] = 0
         acc = _raster(output_dir / "acc.npy", "int32", shape)

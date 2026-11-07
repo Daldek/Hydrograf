@@ -33,12 +33,23 @@ def _equivalent_labels(expected: np.ndarray, actual: np.ndarray) -> None:
     assert len(mappings) == len(np.unique(actual)) - 1
 
 
+@pytest.mark.parametrize("holes", [False, True])
 @pytest.mark.parametrize("units", [2, 3])
-def test_split_hydrology_matches_uncut_dem_with_flat_and_crossings(tmp_path, units):
+def test_split_hydrology_matches_uncut_dem_with_flat_and_crossings(
+    tmp_path, units, holes
+):
     dem, metadata = synthetic_dem(
-        nrows=121, ncols=131, seed=12, nodata_border=False, holes=False
+        nrows=121, ncols=131, seed=12, nodata_border=False, holes=holes
     )
+    if holes:
+        seam_col = 72 + round(6 * np.sin(23 / 7))
+        dem[23, seam_col] = NODATA
     whole = derive_hydrology(dem, metadata)
+    # Baseline fills internal holes for routing and restores DEM nodata afterward;
+    # D8 and accumulation must still traverse those temporarily patched cells.
+    if holes:
+        assert np.any((dem == NODATA) & (whole.fdir > 0))
+        assert whole.fdir[23, seam_col] > 0  # patched routing at the seam
     owners = np.empty(dem.shape, dtype=np.uint8)
     for row in range(dem.shape[0]):
         split = 72 + round(6 * np.sin(row / 7))
@@ -46,6 +57,7 @@ def test_split_hydrology_matches_uncut_dem_with_flat_and_crossings(tmp_path, uni
         owners[row, split:] = 2
     if units == 3:
         owners[82:, :] = 3
+    owners[dem == NODATA] = 0
     # The closed basin and plateau both straddle owner 1/2, rather than
     # testing only unrelated slopes away from the shared boundary.
     assert owners[59, 71] != owners[59, 78]
@@ -106,10 +118,10 @@ def test_split_hydrology_matches_uncut_dem_with_flat_and_crossings(tmp_path, uni
     np.testing.assert_array_equal(
         np.load(tmp_path / "run/raw_fdir.npy"), np.where(raw == 247, 0, raw)
     )
-    # Float32 rounding of a long diagonal differs by at most two ULPs.
-    np.testing.assert_allclose(
-        split_run.flow_dist_m, whole.flow_dist_m, atol=3e-5, rtol=0
-    )
+    # Float32 reduction order can move an outlet path by up to two ULPs.
+    distance_error = np.abs(split_run.flow_dist_m - whole.flow_dist_m)
+    ulp = np.spacing(np.maximum(np.abs(whole.flow_dist_m), np.float32(1)))
+    np.testing.assert_array_less(distance_error, 2.01 * ulp)
     for threshold in THRESHOLDS_M2:
         expected_labels, expected_mask, _ = subcatchments(whole, threshold)
         actual_mask = (split_run.acc >= threshold / 25) & (
@@ -122,3 +134,21 @@ def test_split_hydrology_matches_uncut_dem_with_flat_and_crossings(tmp_path, uni
         )
         np.testing.assert_array_equal(split_run.strahler[threshold], expected_order)
         _equivalent_labels(expected_labels, split_run.labels[threshold])
+
+
+def test_rejects_owner_window_that_exceeds_configured_cell_budget(tmp_path):
+    dem, metadata = synthetic_dem(nrows=40, ncols=48, holes=False)
+    owners = np.ones(dem.shape, dtype=np.uint8)
+    owners[:, 24:] = 2
+    owners[dem == NODATA] = 0
+    path = tmp_path / "dem.tif"
+    with rasterio.open(
+        path, "w", driver="GTiff", height=40, width=48, count=1,
+        dtype="float32", crs="EPSG:2180", transform=metadata["transform"],
+        nodata=NODATA,
+    ) as dst:
+        dst.write(dem, 1)
+    with pytest.raises(MemoryError, match="configured max_window_cells=100"):
+        process_unit_hydrology(
+            path, owners, tmp_path / "run", (1_000,), max_window_cells=100
+        )
