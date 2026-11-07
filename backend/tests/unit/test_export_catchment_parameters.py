@@ -28,6 +28,7 @@ from shapely.ops import unary_union
 
 import core.config
 from api.endpoints.watershed import _build_watershed_response
+from core.active_run import write_active_run
 from core.catchment_graph import CatchmentGraph
 from core.config import Settings
 from core.watershed_service import boundary_to_polygon
@@ -602,6 +603,51 @@ def test_the_export_writes_the_polygons_their_columns_and_units(
     assert dict(zip(units["column_name"], units["unit"], strict=True)) == {
         c.name: c.unit for c in COLUMNS
     }
+
+
+def _vrt_of(tif, vrt):
+    """A VRT of one GeoTIFF, as a unit run writes its mosaics."""
+    with rasterio.open(tif) as source:
+        geo = ", ".join(repr(v) for v in source.transform.to_gdal())
+        nodata = (
+            ""
+            if source.nodata is None
+            else f"<NoDataValue>{source.nodata!r}</NoDataValue>"
+        )
+        gdal_type = {
+            "float32": "Float32",
+            "float64": "Float64",
+            "uint8": "Byte",
+            "int32": "Int32",
+            "uint32": "UInt32",
+            "int16": "Int16",
+        }[source.dtypes[0]]
+        vrt.write_text(
+            f'<VRTDataset rasterXSize="{source.width}" rasterYSize="{source.height}">'
+            f"<SRS>EPSG:2180</SRS><GeoTransform>{geo}</GeoTransform>"
+            f'<VRTRasterBand dataType="{gdal_type}" band="1">{nodata}<SimpleSource>'
+            f'<SourceFilename relativeToVRT="1">{tif.name}</SourceFilename>'
+            "<SourceBand>1</SourceBand></SimpleSource></VRTRasterBand></VRTDataset>"
+        )
+
+
+def test_the_rasters_of_an_active_unit_run_are_read(tmp_path, run, rasters):
+    """A unit run publishes VRT mosaics in its run directory, not dem_mosaic_*.tif."""
+    run_dir = tmp_path / "unit_runs" / "token"
+    run_dir.mkdir(parents=True)
+    for tif in run.directory.glob("dem_mosaic_*.tif"):
+        copy = run_dir / tif.name
+        copy.write_bytes(tif.read_bytes())
+        _vrt_of(copy, run_dir / f"{tif.stem}.vrt")
+    write_active_run(tmp_path, 1, run_dir)
+
+    with open_rasters(tmp_path, THRESHOLD_M2) as opened:
+        assert opened.filled_dem.name.endswith("dem_mosaic_02_filled.vrt")
+        assert opened.labels.name.endswith(
+            f"dem_mosaic_10_subcatchments_{THRESHOLD_M2}.vrt"
+        )
+        np.testing.assert_array_equal(opened.acc.read(1), rasters.acc.read(1))
+        np.testing.assert_array_equal(opened.labels.read(1), rasters.labels.read(1))
 
 
 def test_the_export_does_not_overwrite_a_file(tmp_path, run, db):

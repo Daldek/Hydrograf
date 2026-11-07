@@ -56,6 +56,7 @@ from shapely.geometry.base import BaseGeometry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from core.active_run import active_run_raster
 from core.catchment_graph import contiguous_real_length_km
 from core.config import get_settings
 from core.constants import CRS_PL1992, M2_PER_KM2, M_PER_KM
@@ -439,6 +440,9 @@ class PipelineRasters:
 def open_rasters(dem_dir: Path, threshold_m2: int) -> Iterator[PipelineRasters]:
     """Open the rasters of the pipeline in a directory.
 
+    With an active unit run in ``dem_dir`` (``active_run.json``) its VRT mosaics are
+    read, as the API reads them; otherwise the GeoTIFFs of a single-raster run.
+
     Parameters
     ----------
     dem_dir : Path
@@ -458,11 +462,13 @@ def open_rasters(dem_dir: Path, threshold_m2: int) -> Iterator[PipelineRasters]:
     ValueError
         When the rasters are not on one grid or not in PL-1992.
     """
+    suffixes = dict(INTERMEDIATE_SUFFIXES)
+    suffixes["labels"] = f"10_subcatchments_{threshold_m2}"
+    # The VRT mosaics of an active unit run take precedence, as for the API
     paths = {
-        name: dem_dir / f"dem_mosaic_{suffix}.tif"
-        for name, suffix in INTERMEDIATE_SUFFIXES.items()
+        name: active_run_raster(dem_dir, suffix) or dem_dir / f"dem_mosaic_{suffix}.tif"
+        for name, suffix in suffixes.items()
     }
-    paths["labels"] = dem_dir / f"dem_mosaic_10_subcatchments_{threshold_m2}.tif"
     missing = [str(path) for path in paths.values() if not path.exists()]
     if missing:
         raise FileNotFoundError(
