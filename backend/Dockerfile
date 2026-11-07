@@ -54,6 +54,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgeos-c1t64 \
     libproj25 \
     libgdal36 \
+    gdal-bin \
     libexpat1 \
     libsqlite3-0 \
     zlib1g \
