@@ -217,6 +217,24 @@ def extract_mbtiles_to_pbf(mbtiles_path: Path, output_dir: Path, prefix: str) ->
     return count
 
 
+def _publish_mbtiles(mbtiles_path: Path, output_dir: Path, has_pmtiles: bool) -> None:
+    """Serve a tileset built in a temporary directory from ``output_dir``.
+
+    Extracts its tiles to ``output_dir/<stem>/{z}/{x}/{y}.pbf``, converts it to
+    ``.pmtiles`` when the tool is there, then copies the ``.mbtiles`` beside them
+    (its bounds go into ``tiles_metadata.json``) and deletes the temporary file.
+    A plain copy works on a network share, where SQLite cannot write.
+    """
+    stem = mbtiles_path.stem
+    extract_mbtiles_to_pbf(mbtiles_path, output_dir, stem)
+    if has_pmtiles:
+        convert_to_pmtiles(mbtiles_path, output_dir / f"{stem}.pmtiles")
+    # A journal left by an interrupted write would make a reader roll it back
+    (output_dir / f"{mbtiles_path.name}-journal").unlink(missing_ok=True)
+    shutil.copyfile(mbtiles_path, output_dir / mbtiles_path.name)
+    mbtiles_path.unlink()
+
+
 def mbtiles_bounds(paths: list[Path]) -> list[float] | None:
     """Return the union of the ``bounds`` of .mbtiles files, or None.
 
@@ -370,9 +388,11 @@ def generate_tiles(output_dir: Path, only_thresholds: list[int] | None = None) -
                 )
                 logger.info(f"Exported {n_catch} catchment features")
 
-                # Generate .mbtiles
+                # Generate .mbtiles in the temporary directory: tippecanoe writes
+                # SQLite, which fails on a network share ("database is locked"),
+                # and the output directory may be one
                 th_min_zoom = THRESHOLD_MIN_ZOOM.get(threshold, MIN_ZOOM)
-                streams_mbt = output_dir / f"streams_{threshold}.mbtiles"
+                streams_mbt = tmp / f"streams_{threshold}.mbtiles"
                 if n_streams > 0:
                     run_tippecanoe(
                         streams_json,
@@ -384,7 +404,7 @@ def generate_tiles(output_dir: Path, only_thresholds: list[int] | None = None) -
                 else:
                     logger.warning(f"No streams for threshold {threshold} — skipping")
 
-                catchments_mbt = output_dir / f"catchments_{threshold}.mbtiles"
+                catchments_mbt = tmp / f"catchments_{threshold}.mbtiles"
                 if n_catch > 0:
                     run_tippecanoe(
                         catchments_json,
@@ -396,28 +416,11 @@ def generate_tiles(output_dir: Path, only_thresholds: list[int] | None = None) -
                 else:
                     logger.warning(f"No catchments for threshold {threshold}")
 
-                # Extract to static PBF files for Nginx serving
-                if streams_mbt.exists():
-                    extract_mbtiles_to_pbf(
-                        streams_mbt, output_dir, f"streams_{threshold}"
-                    )
-                if catchments_mbt.exists():
-                    extract_mbtiles_to_pbf(
-                        catchments_mbt, output_dir, f"catchments_{threshold}"
-                    )
-
-                # Convert to PMTiles if available
-                if has_pmtiles:
-                    if streams_mbt.exists():
-                        convert_to_pmtiles(
-                            streams_mbt,
-                            output_dir / f"streams_{threshold}.pmtiles",
-                        )
-                    if catchments_mbt.exists():
-                        convert_to_pmtiles(
-                            catchments_mbt,
-                            output_dir / f"catchments_{threshold}.pmtiles",
-                        )
+                streams_json.unlink(missing_ok=True)
+                catchments_json.unlink(missing_ok=True)
+                for mbtiles in (streams_mbt, catchments_mbt):
+                    if mbtiles.exists():
+                        _publish_mbtiles(mbtiles, output_dir, has_pmtiles)
 
     write_metadata(output_dir, tiled_thresholds(output_dir, db_thresholds))
 
