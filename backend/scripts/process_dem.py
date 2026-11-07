@@ -1199,6 +1199,7 @@ def process_dem(
             output_dir=output_dir,
             burn_streams_path=burn_streams_path,
             burn_depth_m=burn_depth_m,
+            stream_burning=stream_burning,
             smooth_streams=smooth_streams,
             skip_streams_vectorize=skip_streams_vectorize,
             thresholds=thresholds,

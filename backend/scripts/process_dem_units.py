@@ -48,6 +48,7 @@ from core.db_bulk import (
     update_stream_real_flags_all,
 )
 from core.hydrology import (
+    STREAM_BURNING_MODES,
     burn_streams_into_dem,
     classify_endorheic_lakes,
     raise_buildings_in_dem,
@@ -116,6 +117,7 @@ def _prepare_dem(
     building_gpkg: str | None,
     burn_streams_path: Path | None,
     burn_depth_m: float,
+    stream_burning: str,
     smooth_streams: bool,
     waterbody_mode: str,
     waterbody_min_area_m2: float | None,
@@ -147,13 +149,14 @@ def _prepare_dem(
         changed = True
     if burn_streams_path is not None:
         dem, burn_diag = burn_streams_into_dem(
-            dem, transform, burn_streams_path, burn_depth_m, nodata
+            dem, transform, burn_streams_path, burn_depth_m, nodata, stream_burning
         )
         stats["burn_cells"] = burn_diag["cells_burned"]
+        stats["stream_burning"] = stream_burning
         changed = True
         if smooth_streams:
             dem, smooth_diag = smooth_streams_monotonic(
-                dem, transform, burn_streams_path, nodata
+                dem, transform, burn_streams_path, nodata, stream_burning
             )
             stats["smooth_cells"] = smooth_diag["cells_smoothed"]
             stats["smooth_max_correction_m"] = smooth_diag["max_correction_m"]
@@ -324,6 +327,7 @@ def process_dem_units(
     output_dir: Path | None = None,
     burn_streams_path: Path | None = None,
     burn_depth_m: float = 2.0,
+    stream_burning: str = "all",
     smooth_streams: bool = True,
     skip_streams_vectorize: bool = False,
     thresholds: list[int] | None = None,
@@ -386,6 +390,11 @@ def process_dem_units(
         raise ValueError("Stream thresholds must be positive")
     if max_unit_window_cells < 1:
         raise ValueError("max_unit_window_cells must be positive")
+    if stream_burning not in STREAM_BURNING_MODES:
+        raise ValueError(
+            f"stream_burning must be one of {STREAM_BURNING_MODES}, "
+            f"not {stream_burning!r}"
+        )
 
     started = time.time()
     output_dir = Path(output_dir) if output_dir is not None else input_path.parent
@@ -451,6 +460,7 @@ def process_dem_units(
             "max_unit_window_cells": max_unit_window_cells,
             "hydro_resolution_m": stats.get("hydro_resolution_m"),
             "burn_depth_m": burn_depth_m if burn_streams_path else None,
+            "stream_burning": stream_burning if burn_streams_path else None,
             "smooth_streams": smooth_streams if burn_streams_path else None,
             "waterbody_mode": waterbody_mode,
             "waterbody_min_area_m2": waterbody_min_area_m2,
@@ -485,6 +495,7 @@ def process_dem_units(
             building_gpkg=building_gpkg,
             burn_streams_path=burn_streams_path,
             burn_depth_m=burn_depth_m,
+            stream_burning=stream_burning,
             smooth_streams=smooth_streams,
             waterbody_mode=waterbody_mode,
             waterbody_min_area_m2=waterbody_min_area_m2,

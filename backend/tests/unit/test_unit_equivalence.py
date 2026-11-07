@@ -198,14 +198,23 @@ def _hydro_geopackage(path: Path, scene: SplitScene) -> Path:
     gpd.GeoDataFrame({"geometry": lakes}, crs="EPSG:2180").to_file(
         path, layer="OT_PTWP_A", driver="GPKG"
     )
-    gpd.GeoDataFrame({"geometry": [stream]}, crs="EPSG:2180").to_file(
-        path, layer="OT_SWRS_L", driver="GPKG", mode="a"
+    # The valley is a main watercourse and a river; the ditch beside it is neither
+    gpd.GeoDataFrame(
+        {"geometry": [stream], "PRZEBIEG": ["ciek główny"], "RODZAJ": ["rzeka"]},
+        crs="EPSG:2180",
+    ).to_file(path, layer="OT_SWRS_L", driver="GPKG", mode="a")
+    ditch = LineString(
+        [(XLL_M + 105 * 5, YLL_M + 90 * 5), (XLL_M + 125 * 5, YLL_M + 75 * 5)]
+    )
+    gpd.GeoDataFrame({"geometry": [ditch]}, crs="EPSG:2180").to_file(
+        path, layer="OT_SWRM_L", driver="GPKG", mode="a"
     )
     return path
 
 
+@pytest.mark.parametrize("stream_burning", ["all", "main"])
 def test_burning_smoothing_and_lake_drains_are_done_on_the_whole_dem(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, stream_burning
 ):
     scene = split_scene(tmp_path, 3, True)
     database = _fake_database(monkeypatch)
@@ -216,6 +225,7 @@ def test_burning_smoothing_and_lake_drains_are_done_on_the_whole_dem(
         tmp_path,
         database,
         burn_streams_path=hydro,
+        stream_burning=stream_burning,
         waterbody_mode="auto",
     )
 
@@ -224,6 +234,7 @@ def test_burning_smoothing_and_lake_drains_are_done_on_the_whole_dem(
     assert whole_stats["burn_cells"] > 0
     assert whole_stats["smooth_cells"] > 0
     assert whole_stats["drain_points"] == 2
+    assert units_stats["stream_burning"] == stream_burning
     for key in (
         "burn_cells",
         "smooth_cells",
