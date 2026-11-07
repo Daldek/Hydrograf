@@ -18,6 +18,7 @@ from rasterio.transform import from_origin
 
 from utils import raster_utils
 from utils.raster_utils import (
+    align_to_cellsize,
     convert_asc_to_geotiff,
     create_vrt_mosaic,
     get_mosaic_info,
@@ -572,3 +573,76 @@ class TestConvertAscToGeotiff:
 
         with pytest.raises(RuntimeError, match="gdal_translate failed: no driver"):
             convert_asc_to_geotiff(asc)
+
+
+class TestAlignToCellsize:
+    """A 5 m set with 1 m sheets gets a 5 m mosaic on the grid of its 5 m sheets."""
+
+    def test_a_finer_sheet_is_averaged_onto_the_grid_of_the_others(
+        self, tmp_path, gdal
+    ):
+        coarse = write_asc(tmp_path / "a.asc", 500002.5, yll=600002.5, cellsize=5.0)
+        fine = write_asc(tmp_path / "b.asc", 500013.0, yll=600001.0, cellsize=1.0)
+        out = tmp_path / "aligned"
+
+        files = align_to_cellsize([coarse, fine], out, 5.0)
+
+        assert files == [coarse, out / "b_5m.asc"]
+        assert files[1].read_text() == "written by gdalwarp"
+        (cmd,) = gdal.calls
+        assert option(cmd, "-r") == "average"
+        assert option(cmd, "-tr", 2) == ["5.0", "5.0"]
+        assert option(cmd, "-of") == "AAIGrid"
+        # The frame of the 1 m sheet grows outward to whole cells of the 5 m sheets,
+        # whose corners lie 2.5 m off the multiples of 5 m
+        assert option(cmd, "-te", 4) == [
+            "500012.5",
+            "599997.5",
+            "500017.5",
+            "600007.5",
+        ]
+        assert cmd[-2] == str(fine)
+        # No partial file is left behind
+        assert sorted(path.name for path in out.iterdir()) == ["b_5m.asc"]
+
+    def test_an_averaged_sheet_is_used_again(self, tmp_path, gdal):
+        coarse = write_asc(tmp_path / "a.asc", 500002.5, yll=600002.5, cellsize=5.0)
+        fine = write_asc(tmp_path / "b.asc", 500013.0, yll=600001.0, cellsize=1.0)
+
+        first = align_to_cellsize([coarse, fine], tmp_path / "aligned", 5.0)
+        again = align_to_cellsize([coarse, fine], tmp_path / "aligned", 5.0)
+
+        assert again == first
+        assert len(gdal.calls) == 1
+
+    def test_sheets_of_the_cell_size_alone_are_kept_as_they_are(self, tmp_path, gdal):
+        sheets = [
+            write_asc(tmp_path / "a.asc", 500002.5, yll=600002.5, cellsize=5.0),
+            # A header with the centre of the corner cell (xllcenter) on the grid
+            write_asc(
+                tmp_path / "b.asc",
+                500015.0,
+                yll=600012.5,
+                cellsize=5.0,
+                xkey="xllcenter",
+            ),
+        ]
+
+        assert align_to_cellsize(sheets, tmp_path / "aligned", 5.0) == sheets
+        assert gdal.calls == []
+        assert not (tmp_path / "aligned").exists()
+
+    def test_sheets_of_the_cell_size_on_two_grids_are_refused(self, tmp_path, gdal):
+        sheets = [
+            write_asc(tmp_path / "a.asc", 500002.5, yll=600002.5, cellsize=5.0),
+            write_asc(tmp_path / "b.asc", 500010.0, yll=600002.5, cellsize=5.0),
+        ]
+
+        with pytest.raises(ValueError, match="2 different grids"):
+            align_to_cellsize(sheets, tmp_path / "aligned", 5.0)
+
+    def test_a_coarser_sheet_is_refused(self, tmp_path, gdal):
+        sheet = write_asc(tmp_path / "a.asc", 500000.0, cellsize=10.0)
+
+        with pytest.raises(ValueError, match="coarser than the 5 m"):
+            align_to_cellsize([sheet], tmp_path / "aligned", 5.0)

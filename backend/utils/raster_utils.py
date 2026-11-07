@@ -12,6 +12,7 @@ VRT (Virtual Raster) is preferred over physical merge because:
 """
 
 import logging
+import math
 import re
 import subprocess
 import tempfile
@@ -168,6 +169,145 @@ def normalize_crs(
     else:
         logger.info("CRS normalization: all files already in EPSG:2180")
 
+    return result
+
+
+def _sheet_frame(path: Path) -> tuple[float, float, float, float, float]:
+    """Return ``(left, bottom, right, top, cellsize)`` of a sheet in its own CRS."""
+    if path.suffix.lower() == ".asc":
+        header = _read_asc_header(path)
+        cellsize = header["cellsize"]
+        left = header.get("xllcorner", header.get("xllcenter", 0.0) - cellsize / 2)
+        bottom = header.get("yllcorner", header.get("yllcenter", 0.0) - cellsize / 2)
+        return (
+            left,
+            bottom,
+            left + header["ncols"] * cellsize,
+            bottom + header["nrows"] * cellsize,
+            cellsize,
+        )
+    import rasterio
+
+    with rasterio.open(path) as src:
+        if abs(src.res[0] - src.res[1]) > 1e-9 * src.res[0]:
+            raise ValueError(f"{path} has cells that are not square: {src.res}")
+        return (*src.bounds, src.res[0])
+
+
+def align_to_cellsize(
+    input_files: list[Path],
+    output_dir: Path,
+    cellsize_m: float = TARGET_RES_M,
+) -> list[Path]:
+    """Put every sheet on the grid of the sheets of ``cellsize_m``, without a VRT.
+
+    A set of one resolution can hold sheets of a finer one: GUGiK delivers some of
+    the 5 m NMT sheets of 2021 as 1 m grids. ``gdalbuildvrt -resolution highest``
+    then makes the whole mosaic 1 m, and a VRT of any other resolution resamples the
+    odd sheets on every read, where two windows can read one cell differently. So
+    each finer sheet is averaged (``gdalwarp -r average``) to ``cellsize_m`` on the
+    lattice of the sheets that already have it (their corners agree modulo
+    ``cellsize_m``), as an ASC grid in ``output_dir``; the mosaic of the result has
+    the cells of those sheets and reads every source cell for cell.
+
+    Parameters
+    ----------
+    input_files : list[Path]
+        Sheets in EPSG:2180 (after ``normalize_crs``).
+    output_dir : Path
+        Hydrograf's directory for the averaged copies (never the store of the
+        inputs); a copy that exists is used again.
+    cellsize_m : float
+        Cell size of the run [m].
+
+    Returns
+    -------
+    list[Path]
+        The paths for the mosaic, in input order.
+
+    Raises
+    ------
+    ValueError
+        The sheets of ``cellsize_m`` lie on different lattices, or a sheet is
+        coarser than ``cellsize_m``.
+    """
+    tolerance = 1e-6 * cellsize_m
+    frames = {path: _sheet_frame(path) for path in input_files}
+    offsets = {
+        (round(left % cellsize_m, 6), round(top % cellsize_m, 6))
+        for left, _, _, top, cellsize in frames.values()
+        if abs(cellsize - cellsize_m) <= tolerance
+    }
+    if len(offsets) > 1:
+        raise ValueError(
+            f"The {cellsize_m:g} m sheets lie on {len(offsets)} different grids "
+            f"(corner offsets {sorted(offsets)}): no mosaic reads them cell for cell"
+        )
+    offset_x, offset_y = offsets.pop() if offsets else (0.0, 0.0)
+    result: list[Path] = []
+    averaged = 0
+    for path in input_files:
+        left, bottom, right, top, cellsize = frames[path]
+        if abs(cellsize - cellsize_m) <= tolerance:
+            result.append(path)
+            continue
+        if cellsize > cellsize_m:
+            raise ValueError(
+                f"{path.name} has {cellsize:g} m cells, coarser than the "
+                f"{cellsize_m:g} m of the run"
+            )
+        target = output_dir / f"{path.stem}_{cellsize_m:g}m.asc"
+        result.append(target)
+        averaged += 1
+        if target.exists():
+            continue
+        output_dir.mkdir(parents=True, exist_ok=True)
+        # The frame grows outward to whole cells of the lattice.
+        x0 = math.floor((left - offset_x) / cellsize_m) * cellsize_m + offset_x
+        y0 = math.floor((bottom - offset_y) / cellsize_m) * cellsize_m + offset_y
+        x1 = math.ceil((right - offset_x) / cellsize_m) * cellsize_m + offset_x
+        y1 = math.ceil((top - offset_y) / cellsize_m) * cellsize_m + offset_y
+        partial = target.with_name(f".{target.name}.partial")
+        cmd = [
+            "gdalwarp",
+            "-q",
+            "-overwrite",
+            "-s_srs",
+            TARGET_CRS,
+            "-t_srs",
+            TARGET_CRS,
+            "-r",
+            "average",
+            "-tr",
+            repr(cellsize_m),
+            repr(cellsize_m),
+            "-te",
+            *(repr(value) for value in (x0, y0, x1, y1)),
+            "-srcnodata",
+            "-9999",
+            "-dstnodata",
+            "-9999",
+            "-of",
+            "AAIGrid",
+            str(path),
+            str(partial),
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Averaging {path.name} failed: {e.stderr}") from e
+        partial.replace(target)
+        for sidecar in output_dir.glob(f"{partial.name}.*"):
+            sidecar.unlink()
+        partial.with_suffix(".prj").unlink(missing_ok=True)
+    if averaged:
+        logger.info(
+            "Grid alignment: %d of %d sheets averaged to %g m on the grid of the "
+            "others",
+            averaged,
+            len(input_files),
+            cellsize_m,
+        )
     return result
 
 
