@@ -176,6 +176,8 @@ _DEFAULT_CONFIG = {
         "resolution": "5m",
         "thresholds_m2": [10000, 100000, 1000000],
         "burn_depth_m": 2.0,
+        # BDOT10k streams burned into the DEM: "all" or "main" (core.hydrology)
+        "stream_burning": "all",
         "building_raise_m": 5.0,
     },
     "paths": {

@@ -1,0 +1,101 @@
+"""Which BDOT10k streams the stream burning takes (``dem.stream_burning``)."""
+
+import geopandas as gpd
+import numpy as np
+import pytest
+from rasterio.transform import from_origin
+from shapely.geometry import LineString, box
+
+from core.config import load_config
+from core.hydrology import burn_streams_into_dem, smooth_streams_monotonic
+
+NODATA = -9999.0
+NCOLS = 10
+X0, Y0 = 500000.0, 300030.0  # top left corner, 1 m cells, 30 rows
+
+# Every case on its own DEM row: (layer, row, attributes)
+LINES = {
+    "river": ("OT_SWRS_L", 1, ("rzeka", "ciek główny", None)),
+    "mphp_stream": ("OT_SWRS_L", 4, ("strumień, potok lub struga", "ciek główny", "1")),
+    "stream_without_mphp": (
+        "OT_SWRS_L",
+        7,
+        ("strumień, potok lub struga", "ciek główny", "  "),
+    ),
+    "side_arm": ("OT_SWRS_L", 10, ("rzeka", "ramię boczne", "2")),
+    "canal_with_mphp": ("OT_SWKN_L", 13, (None, None, "3")),
+    "canal_without_mphp": ("OT_SWKN_L", 16, (None, None, None)),
+    "ditch": ("OT_SWRM_L", 19, (None, None, "4")),
+}
+LAKE_ROW, LAKE_COL = 26, 2
+MAIN = {"river", "mphp_stream", "canal_with_mphp"}
+
+
+def _y(row: int) -> float:
+    return Y0 - row - 0.5
+
+
+@pytest.fixture()
+def bdot_gpkg(tmp_path):
+    """A BDOT10k hydro GeoPackage with every case of the selection."""
+    path = tmp_path / "hydro.gpkg"
+    for layer in ("OT_SWRS_L", "OT_SWKN_L", "OT_SWRM_L"):
+        rows = [(row, attrs) for lyr, row, attrs in LINES.values() if lyr == layer]
+        columns = {"IDENTYFIKATORMPHP": [a[2] for _, a in rows]}
+        if layer == "OT_SWRS_L":  # the canal and ditch layers have no such columns
+            columns["RODZAJ"] = [a[0] for _, a in rows]
+            columns["PRZEBIEG"] = [a[1] for _, a in rows]
+        geoms = [
+            LineString([(X0 + 0.5, _y(row)), (X0 + NCOLS - 0.5, _y(row))])
+            for row, _ in rows
+        ]
+        gpd.GeoDataFrame(columns, geometry=geoms, crs="EPSG:2180").to_file(
+            path, layer=layer, driver="GPKG"
+        )
+    lake = box(X0 + 1, Y0 - 28, X0 + 4, Y0 - 25)
+    gpd.GeoDataFrame({"NAZWA": ["Jezioro"]}, geometry=[lake], crs="EPSG:2180").to_file(
+        path, layer="OT_PTWP_A", driver="GPKG"
+    )
+    return path
+
+
+def _burned(gpkg, stream_burning):
+    dem = np.full((30, NCOLS), 100.0)
+    transform = from_origin(X0, Y0, 1.0, 1.0)
+    burned, _ = burn_streams_into_dem(
+        dem,
+        transform,
+        gpkg,
+        burn_depth_m=5.0,
+        nodata=NODATA,
+        stream_burning=stream_burning,
+    )
+    lines = {name for name, (_, row, _) in LINES.items() if burned[row, 5] < 100.0}
+    return lines, burned[LAKE_ROW, LAKE_COL] < 100.0
+
+
+class TestStreamBurningSelection:
+    def test_default_burns_every_line_and_the_lake(self, bdot_gpkg):
+        default = load_config("/nonexistent/config.yaml")["dem"]["stream_burning"]
+        lines, lake = _burned(bdot_gpkg, default)
+        assert lines == set(LINES)
+        assert lake
+
+    def test_main_burns_rivers_mphp_streams_and_mphp_canals(self, bdot_gpkg):
+        lines, lake = _burned(bdot_gpkg, "main")
+        assert lines == MAIN
+        assert lake
+
+    def test_main_smooths_only_the_burned_lines(self, bdot_gpkg):
+        dem = np.full((30, NCOLS), 100.0)
+        transform = from_origin(X0, Y0, 1.0, 1.0)
+        _, all_diag = smooth_streams_monotonic(dem, transform, bdot_gpkg, NODATA, "all")
+        _, main_diag = smooth_streams_monotonic(
+            dem, transform, bdot_gpkg, NODATA, "main"
+        )
+        assert all_diag["segments_processed"] == len(LINES)
+        assert main_diag["segments_processed"] == len(MAIN)
+
+    def test_an_unknown_mode_is_refused(self, bdot_gpkg):
+        with pytest.raises(ValueError, match="stream_burning"):
+            _burned(bdot_gpkg, "rivers")

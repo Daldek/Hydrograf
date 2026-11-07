@@ -42,6 +42,13 @@ for _code, (_drow, _dcol) in D8_DIRECTIONS.items():
     D8_ROW_OFFSET[_code] = _drow
     D8_COL_OFFSET[_code] = _dcol
 
+# What the stream burning takes from a BDOT10k GeoPackage (``dem.stream_burning``):
+# "all" burns every line of OT_SWRS_L, OT_SWKN_L and OT_SWRM_L; "main" only the main
+# watercourses (see _select_burned_features). OT_PTWP_A is burned in both.
+STREAM_BURNING_MODES = ("all", "main")
+_MAIN_COURSE = "ciek główny"
+_RIVER = "rzeka"
+
 
 def fill_internal_nodata_holes(
     dem: np.ndarray,
@@ -236,13 +243,60 @@ def raise_buildings_in_dem(
     return dem
 
 
+def _non_empty(gdf: Any, column: str) -> Any:
+    """Boolean Series: the column holds a non-blank text (False if it is missing)."""
+    import pandas as pd
+
+    if column not in gdf.columns:
+        return pd.Series(False, index=gdf.index)
+    values = gdf[column]
+    return values.notna() & (values.astype(str).str.strip() != "")
+
+
+def _equals(gdf: Any, column: str, value: str) -> Any:
+    """Boolean Series: the column, stripped, equals ``value`` (False if missing)."""
+    import pandas as pd
+
+    if column not in gdf.columns:
+        return pd.Series(False, index=gdf.index)
+    return gdf[column].astype("string").str.strip().eq(value).fillna(False)
+
+
+def _select_burned_features(gdf: Any, layer: str | None, stream_burning: str) -> Any:
+    """Keep the features of one layer that ``stream_burning`` burns.
+
+    ``"all"`` keeps everything. ``"main"`` keeps, of the BDOT10k line layers,
+    OT_SWRS_L with ``PRZEBIEG = 'ciek główny'`` that is a river (``RODZAJ =
+    'rzeka'``) or carries an MPHP identifier (``IDENTYFIKATORMPHP``), OT_SWKN_L
+    with an MPHP identifier, and no OT_SWRM_L. Water polygons (PTWP) and layers
+    that are not BDOT10k streams are kept whole.
+    """
+    if stream_burning == "all":
+        return gdf
+    code = (layer or "").upper()
+    if "SWRM" in code:
+        return gdf.iloc[0:0]
+    if "SWRS" in code:
+        keep = _equals(gdf, "PRZEBIEG", _MAIN_COURSE) & (
+            _equals(gdf, "RODZAJ", _RIVER) | _non_empty(gdf, "IDENTYFIKATORMPHP")
+        )
+        return gdf[keep]
+    if "SWKN" in code:
+        return gdf[_non_empty(gdf, "IDENTYFIKATORMPHP")]
+    return gdf
+
+
 def _load_stream_geometries(
-    streams_path: str | Path, transform: Affine, dem_shape: tuple[int, int]
+    streams_path: str | Path,
+    transform: Affine,
+    dem_shape: tuple[int, int],
+    stream_burning: str = "all",
 ) -> list[Any]:
     """Load stream geometries from BDOT10k GeoPackage/Shapefile.
 
-    Reads SWRS/SWKN/SWRM/PTWP layers, reprojects to EPSG:2180,
-    clips to DEM extent, decomposes MultiLineString to LineString.
+    Reads SWRS/SWKN/SWRM/PTWP layers, keeps what ``stream_burning`` selects
+    (``_select_burned_features``), reprojects to EPSG:2180, clips to DEM
+    extent, decomposes MultiLineString to LineString.
 
     Parameters
     ----------
@@ -252,6 +306,8 @@ def _load_stream_geometries(
         Rasterio Affine transform for the DEM grid
     dem_shape : tuple[int, int]
         (nrows, ncols) of the DEM array
+    stream_burning : str
+        ``"all"`` (every line layer) or ``"main"`` (the main watercourses)
 
     Returns
     -------
@@ -261,6 +317,12 @@ def _load_stream_geometries(
     import fiona
     import geopandas as gpd
     from shapely.geometry import LineString, MultiLineString, MultiPolygon, Polygon, box
+
+    if stream_burning not in STREAM_BURNING_MODES:
+        raise ValueError(
+            f"stream_burning must be one of {STREAM_BURNING_MODES}, "
+            f"not {stream_burning!r}"
+        )
 
     streams_path = str(streams_path)
     nrows, ncols = dem_shape
@@ -292,6 +354,7 @@ def _load_stream_geometries(
             gdf = gpd.read_file(streams_path, **kwargs)
         except Exception:
             continue
+        gdf = _select_burned_features(gdf, layer, stream_burning)
         if gdf.empty:
             continue
         if gdf.crs and gdf.crs.to_epsg() != 2180:
@@ -323,6 +386,7 @@ def burn_streams_into_dem(
     streams_path: str | Path,
     burn_depth_m: float = 2.0,
     nodata: float = -9999.0,
+    stream_burning: str = "all",
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Wypalanie ciekow w DEM — obniza DEM wzdluz znanych ciekow.
@@ -342,6 +406,9 @@ def burn_streams_into_dem(
         Depth to burn streams (meters), default 2.0
     nodata : float
         NoData value in DEM
+    stream_burning : str
+        ``"all"`` burns every BDOT10k line layer (SWRS, SWKN, SWRM); ``"main"``
+        only the main watercourses (``_select_burned_features``). PTWP in both.
 
     Returns
     -------
@@ -357,7 +424,7 @@ def burn_streams_into_dem(
     burned = dem.copy()
 
     # 1. Load streams via shared helper
-    geoms = _load_stream_geometries(streams_path, transform, dem.shape)
+    geoms = _load_stream_geometries(streams_path, transform, dem.shape, stream_burning)
     diagnostics["streams_loaded"] = len(geoms)
     diagnostics["streams_in_extent"] = len(geoms)
 
@@ -381,8 +448,11 @@ def burn_streams_into_dem(
     diagnostics["cells_burned"] = int(np.sum(burn_cells))
 
     logger.info(
-        f"Stream burning: {diagnostics['cells_burned']} cells burned "
-        f"(depth={burn_depth_m}m, streams={diagnostics['streams_in_extent']})"
+        "Stream burning (%s): %d cells burned (depth=%sm, streams=%d)",
+        stream_burning,
+        diagnostics["cells_burned"],
+        burn_depth_m,
+        diagnostics["streams_in_extent"],
     )
 
     return burned, diagnostics
@@ -577,6 +647,7 @@ def smooth_streams_monotonic(
     transform: Affine,
     streams_path: str | Path,
     nodata: float = -9999.0,
+    stream_burning: str = "all",
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Enforce monotonically decreasing elevation along stream channels.
 
@@ -595,6 +666,9 @@ def smooth_streams_monotonic(
         Path to GeoPackage/Shapefile with stream line geometries
     nodata : float
         NoData value in DEM
+    stream_burning : str
+        The selection of the burned streams (``burn_streams_into_dem``): the
+        smoothing follows the same lines.
 
     Returns
     -------
@@ -622,7 +696,9 @@ def smooth_streams_monotonic(
     # 1. Load geometries (filter to LineStrings only for smoothing)
     from shapely.geometry import LineString as _LS
 
-    all_geoms = _load_stream_geometries(streams_path, transform, dem.shape)
+    all_geoms = _load_stream_geometries(
+        streams_path, transform, dem.shape, stream_burning
+    )
     geoms = [g for g in all_geoms if isinstance(g, _LS)]
     if not geoms:
         return smoothed, diag

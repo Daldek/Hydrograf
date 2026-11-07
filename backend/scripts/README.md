@@ -104,6 +104,17 @@ cd backend
 
 `--bbox`, `--sheets`, `--boundary-file` and `--project` exclude each other.
 
+**Stream burning** (`dem.stream_burning` of the configuration): step 3 burns the BDOT10k streams
+into the DEM and smooths the DEM along them. `all` (the default) takes every line of `OT_SWRS_L`,
+`OT_SWKN_L` and `OT_SWRM_L`; `main` only the main watercourses: `OT_SWRS_L` with
+`PRZEBIEG = 'ciek główny'` (no side arms) that is a river (`RODZAJ = 'rzeka'`) or carries an MPHP
+identifier (`IDENTYFIKATORMPHP`), `OT_SWKN_L` with an MPHP identifier, no ditches (`OT_SWRM_L`,
+whose networks form loops that falsify the flow directions). The water bodies (`OT_PTWP_A`) are
+burned in both modes; the stream table `bdot_streams`, the map layer of the streams and the
+classification of the lakes always use every layer. Another value is refused
+(`validation_error`, exit 2). The run logs the mode, step 3 reports it after the burned file, and
+the record of a set keeps it.
+
 **From a set** (ADR-067): `--project` and `--set` read a closed set of an Archiwista project
 (`archiwista-project/1`) and download nothing. Before step 1 the bootstrap checks the project file,
 the area file and its SHA-256, that the set is closed (an open set, „w budowie”, is refused), its
@@ -114,7 +125,7 @@ mosaic (unless `--skip-landcover`) and one HSG raster that covers the mosaic (un
 `--skip-hsg`), one version per sheet, county and raster. Steps 2 to 5 read the pinned files (step 2
 reports `N/N arkuszy z zestawu`); steps 6 to 10 do not change. The run logs the set and writes
 `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`: project, set, `pins_sha256`, inputs,
-start, end, status); a run without a set removes the file.
+`stream_burning`, start, end, status); a run without a set removes the file.
 
 **The shared store is read-only:** while `HYDROGRAF_KARTOGRAF_ROOT` is set, `--bbox`, `--sheets` and
 `--boundary-file` are refused (`forbidden`, exit 12), as are `download_dem.py`,
