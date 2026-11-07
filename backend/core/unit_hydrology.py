@@ -30,6 +30,10 @@ from core.morphometry_raster import _compute_gradients, compute_slope_from_gradi
 from core.stream_extraction import vectorize_streams
 
 
+class _SeamMismatch(ValueError):
+    """A local halo has a different fill or D8 from the preceding owner."""
+
+
 @dataclass
 class UnitHydrology:
     """Completed owned-cell rasters on the common grid, backed by local files."""
@@ -215,53 +219,81 @@ def process_unit_hydrology(
         raw_fdir = _raster(output_dir / "raw_fdir.npy", "int16", shape)
         slope = _raster(output_dir / "slope.npy", "float32", shape)
         seen = _raster(output_dir / "seen.npy", "uint8", shape)
-        seen[:] = 0
+        unit_bounds = []
         for owner in sorted(int(i) for i in np.unique(owners) if i > 0):
             rows, cols = np.nonzero(owners == owner)
-            if not rows.size:
-                continue
-            r0 = max(0, int(rows.min()) - halo)
-            r1 = min(nrows, int(rows.max()) + halo + 1)
-            c0 = max(0, int(cols.min()) - halo)
-            c1 = min(ncols, int(cols.max()) + halo + 1)
-            if (r1 - r0) * (c1 - c0) > max_window_cells:
-                raise MemoryError(
-                    f"Owner {owner} exceeds {max_window_cells} buffered cells"
+            if rows.size:
+                unit_bounds.append(
+                    (
+                        owner,
+                        int(rows.min()),
+                        int(rows.max()),
+                        int(cols.min()),
+                        int(cols.max()),
+                    )
                 )
-            window = Window(c0, r0, c1 - c0, r1 - r0)
-            dem = source.read(1, window=window)
-            transform = source.window_transform(window)
-            metadata: dict[str, Any] = {
-                "ncols": c1 - c0,
-                "nrows": r1 - r0,
-                "xllcorner": transform.c,
-                "yllcorner": transform.f + (r1 - r0) * transform.e,
-                "cellsize": cellsize_m,
-                "nodata_value": nodata,
-                "transform": transform,
-            }
-            local_filled, local_fdir, _local_acc, flw = process_hydrology_pyflwdir(
-                dem, metadata
-            )
-            local_raw = flw.to_array(ftype="d8").astype(np.int16)
-            local_raw[local_raw == 247] = 0
-            del flw, _local_acc
-            dx, dy = _compute_gradients(local_filled, cellsize_m, nodata)
-            local_slope = compute_slope_from_gradients(dx, dy)
-            del dx, dy
-            local_owners = owners[r0:r1, c0:c1]
-            owned = local_owners == owner
-            adjacent = binary_dilation(owned, structure=np.ones((3, 3)))
-            old = (seen[r0:r1, c0:c1] != 0) & adjacent
-            if np.any((filled[r0:r1, c0:c1][old] != local_filled[old]) | (
-                fdir[r0:r1, c0:c1][old] != local_fdir[old]
-            )):
-                raise ValueError(f"DEM fill/D8 disagrees across owner {owner} boundary")
-            filled[r0:r1, c0:c1][owned] = local_filled[owned]
-            fdir[r0:r1, c0:c1][owned] = local_fdir[owned]
-            raw_fdir[r0:r1, c0:c1][owned] = local_raw[owned]
-            slope[r0:r1, c0:c1][owned] = local_slope[owned]
-            seen[r0:r1, c0:c1][owned] = 1
+        # An edge outlet of a local halo can change flat tie-breaking even
+        # where the filled elevations agree. Redo *all* units on a larger halo,
+        # so previously written neighbours are checked under identical rules.
+        while True:
+            seen[:] = 0
+            try:
+                for owner, min_row, max_row, min_col, max_col in unit_bounds:
+                    r0 = max(0, min_row - halo)
+                    r1 = min(nrows, max_row + halo + 1)
+                    c0 = max(0, min_col - halo)
+                    c1 = min(ncols, max_col + halo + 1)
+                    if (r1 - r0) * (c1 - c0) > max_window_cells:
+                        raise MemoryError(
+                            f"Owner {owner} needs {(r1-r0)*(c1-c0)} cells at "
+                            f"{halo * cellsize_m:g} m halo; limit {max_window_cells}"
+                        )
+                    window = Window(c0, r0, c1 - c0, r1 - r0)
+                    dem = source.read(1, window=window)
+                    transform = source.window_transform(window)
+                    metadata: dict[str, Any] = {
+                        "ncols": c1 - c0,
+                        "nrows": r1 - r0,
+                        "xllcorner": transform.c,
+                        "yllcorner": transform.f + (r1 - r0) * transform.e,
+                        "cellsize": cellsize_m,
+                        "nodata_value": nodata,
+                        "transform": transform,
+                    }
+                    local_filled, local_fdir, _local_acc, flw = (
+                        process_hydrology_pyflwdir(dem, metadata)
+                    )
+                    local_raw = flw.to_array(ftype="d8").astype(np.int16)
+                    local_raw[local_raw == 247] = 0
+                    del flw, _local_acc
+                    dx, dy = _compute_gradients(local_filled, cellsize_m, nodata)
+                    local_slope = compute_slope_from_gradients(dx, dy)
+                    del dx, dy
+                    owned = owners[r0:r1, c0:c1] == owner
+                    adjacent = binary_dilation(owned, structure=np.ones((3, 3)))
+                    old = (seen[r0:r1, c0:c1] != 0) & adjacent
+                    different = old & (
+                        (filled[r0:r1, c0:c1] != local_filled)
+                        | (fdir[r0:r1, c0:c1] != local_fdir)
+                    )
+                    if np.any(different):
+                        raise _SeamMismatch(
+                            f"Owner {owner} has {np.count_nonzero(different)} "
+                            f"fill/D8 disagreements at {halo * cellsize_m:g} m halo"
+                        )
+                    filled[r0:r1, c0:c1][owned] = local_filled[owned]
+                    fdir[r0:r1, c0:c1][owned] = local_fdir[owned]
+                    raw_fdir[r0:r1, c0:c1][owned] = local_raw[owned]
+                    slope[r0:r1, c0:c1][owned] = local_slope[owned]
+                    seen[r0:r1, c0:c1][owned] = 1
+                    del dem, local_filled, local_fdir, local_raw, local_slope
+                    del owned, adjacent, old, different
+            except _SeamMismatch as error:
+                if halo >= max(nrows, ncols):
+                    raise ValueError("No consistent D8 at full DEM extent") from error
+                halo *= 2
+                continue
+            break
         if np.any(seen == 0):
             # Unowned nodata is permitted, but valid exterior cells cannot be
             # dropped because their upstream flow might enter an owner.
