@@ -1107,6 +1107,10 @@ def process_dem(
     waterbody_min_area_m2: float | None = None,
     building_gpkg: str | None = None,
     sewer_config: dict[str, Any] | None = None,
+    units_path: Path | None = None,
+    units_area_path: Path | None = None,
+    units_area_layer: str | None = None,
+    max_unit_window_cells: int = 80_000_000,
 ) -> dict[str, Any]:
     """
     Process DEM file (ASC, VRT, or GeoTIFF) and extract stream network.
@@ -1155,6 +1159,20 @@ def process_dem(
         FA thresholds in m², one stream network and set of sub-catchments
         each (default: core.constants.PIPELINE_THRESHOLDS_M2). The lowest
         threshold is used for stream_mask and strahler_order.
+    units_path : Path, optional
+        PGW GeoPackage of Kartograf: process the DEM by PGW owners (ADR-071,
+        scripts/process_dem_units.py) instead of as one raster. The results are the
+        same; the memory is bounded by the largest buffered owner. A run that is not
+        a dry run replaces the DEM-derived network (``clear_existing`` is required),
+        and always writes its unit rasters and VRT mosaics (``save_intermediates`` is
+        not needed).
+    units_area_path : Path, optional
+        With ``units_path``: vector file of the analysis area; owners are clipped to it.
+    units_area_layer : str, optional
+        Layer of ``units_area_path`` (default: the first).
+    max_unit_window_cells : int
+        With ``units_path``: the largest buffered owner window [cells]; a larger one
+        fails the run.
 
     Returns
     -------
@@ -1164,7 +1182,37 @@ def process_dem(
         - valid_cells, max_accumulation, mean_slope
         - stream_cells
         - burn_cells (if burn_streams_path provided)
+        - with ``units_path``: run_id, pgw_owners, unit_rasters_dir, unit_dem_vrt
     """
+    if units_path is not None:
+        from scripts.process_dem_units import process_dem_units
+
+        if not dry_run and not clear_existing:
+            raise ValueError(
+                "A run by PGW units replaces the DEM-derived stream network and "
+                "sub-catchments: pass clear_existing (--clear-existing) to confirm"
+            )
+        return process_dem_units(
+            input_path=input_path,
+            units_path=units_path,
+            dry_run=dry_run,
+            output_dir=output_dir,
+            burn_streams_path=burn_streams_path,
+            burn_depth_m=burn_depth_m,
+            smooth_streams=smooth_streams,
+            skip_streams_vectorize=skip_streams_vectorize,
+            thresholds=thresholds,
+            skip_catchments=skip_catchments,
+            hydro_resolution_m=hydro_resolution_m,
+            waterbody_mode=waterbody_mode,
+            waterbody_min_area_m2=waterbody_min_area_m2,
+            building_gpkg=building_gpkg,
+            sewer_config=sewer_config,
+            units_area_path=units_area_path,
+            units_area_layer=units_area_layer,
+            max_unit_window_cells=max_unit_window_cells,
+        )
+
     stats = {}
 
     # Early validation: custom waterbody file must exist
@@ -1647,6 +1695,37 @@ def main():
         help="Output directory for intermediate files (default: same as input)",
     )
     parser.add_argument(
+        "--units",
+        type=Path,
+        metavar="PGW.gpkg",
+        help=(
+            "Process the DEM by the PGW owners of this Kartograf GeoPackage "
+            "(layers zlewnie_jcwp_rzecznych, pozostale_obszary_jcwp; ADR-071): the "
+            "same results with the memory of one buffered owner. Replaces the "
+            "DEM-derived network (needs --clear-existing, unless --dry-run) and writes "
+            "the unit rasters and VRT mosaics to <output-dir>/unit_runs/"
+        ),
+    )
+    parser.add_argument(
+        "--units-area",
+        type=Path,
+        metavar="AREA.gpkg",
+        help="With --units: vector file of the analysis area; owners are clipped to it",
+    )
+    parser.add_argument(
+        "--units-area-layer",
+        type=str,
+        default=None,
+        help="With --units-area: layer name (default: first layer)",
+    )
+    parser.add_argument(
+        "--max-unit-window-cells",
+        type=int,
+        default=80_000_000,
+        metavar="N",
+        help="Buffered PGW DEM cell cap (default: 80000000; fails closed)",
+    )
+    parser.add_argument(
         "--clear-existing",
         action="store_true",
         help="Clear existing stream data before insert (DELETE)",
@@ -1738,6 +1817,17 @@ def main():
     if args.thresholds:
         threshold_list = [int(t.strip()) for t in args.thresholds.split(",")]
 
+    if args.max_unit_window_cells < 1:
+        parser.error("--max-unit-window-cells must be positive")
+    if args.units is not None and args.from_intermediates:
+        parser.error("--units cannot reuse a single-raster --from-intermediates run")
+    if args.units is None and (args.units_area or args.units_area_layer):
+        parser.error("--units-area and --units-area-layer need --units")
+    if args.units is not None and not args.dry_run and not args.clear_existing:
+        parser.error(
+            "--units replaces the DEM-derived network: add --clear-existing "
+            "(or --dry-run to compute only)"
+        )
     if args.from_intermediates:
         if not threshold_list:
             parser.error("--from-intermediates needs --thresholds")
@@ -1799,6 +1889,10 @@ def main():
             hydro_resolution_m=args.hydro_resolution,
             waterbody_mode=args.waterbody_mode,
             waterbody_min_area_m2=args.waterbody_min_area,
+            units_path=args.units,
+            units_area_path=args.units_area,
+            units_area_layer=args.units_area_layer,
+            max_unit_window_cells=args.max_unit_window_cells,
         )
     except FileNotFoundError as e:
         logger.error(str(e))
@@ -1825,6 +1919,11 @@ def main():
             f"drain points: {stats.get('drain_points', 0)}"
         )
     logger.info(f"  Stream cells: {stats['stream_cells']:,}")
+    if "unit_rasters_dir" in stats:
+        logger.info(
+            f"  PGW run {stats['run_id']}: {stats['pgw_owners']} owners, rasters "
+            f"in {stats['unit_rasters_dir']}, peak RSS {stats['peak_rss_mb']:.0f} MB"
+        )
     if "stream_segments" in stats:
         logger.info(f"  Stream segments: {stats['stream_segments']:,}")
     if "stream_thresholds" in stats:

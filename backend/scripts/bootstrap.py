@@ -507,12 +507,18 @@ def step_process_dem(
     sewer_config: dict[str, Any] | None = None,
     bdot10k: dict[str, Path] | None = None,
     stream_burning: str = "all",
+    units_path: Path | None = None,
+    units_area: tuple[Path, str | None] | None = None,
+    max_unit_window_cells: int = 80_000_000,
 ) -> tuple[dict[str, Any], str, tuple[float, float, float, float]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis.
 
     ``bdot10k`` (TERYT to package) are the BDOT10k packages of a set (ADR-067); without
     it the packages of the mosaic's counties are downloaded. ``stream_burning``
-    (``dem.stream_burning`` of the configuration) selects the burned streams.
+    (``dem.stream_burning`` of the configuration) selects the burned streams. With
+    ``units_path`` (the PGW GeoPackage) the mosaic is processed by PGW units
+    (ADR-071), the owners clipped to ``units_area``, the file and the layer of the
+    analysis area.
     """
     sys.path.insert(0, str(BACKEND_DIR))
     from core.constants import PIPELINE_THRESHOLDS_M2
@@ -604,6 +610,10 @@ def step_process_dem(
         waterbody_mode=waterbody_mode,
         waterbody_min_area_m2=waterbody_min_area_m2,
         sewer_config=sewer_config,
+        units_path=units_path,
+        units_area_path=units_area[0] if units_area else None,
+        units_area_layer=units_area[1] if units_area else None,
+        max_unit_window_cells=max_unit_window_cells,
     )
 
     cells = stats.get("valid_cells", 0)
@@ -863,6 +873,24 @@ def step_precipitation(bbox: tuple[float, float, float, float]) -> str:
     return f"{success}/{total} punktow, {records} rekordow"
 
 
+def _saved_raster(nmt_dir: Path, name: str) -> Path | None:
+    """Return the raster ``dem_mosaic_<name>`` that step 3 saved last, or None.
+
+    A run of the whole raster saves it as a GeoTIFF in ``nmt_dir``; a run by PGW units
+    (``--units``) leaves its VRT mosaic in the directory that ``active_run`` points
+    at. When both exist, the one a later run wrote is the one of the database.
+    """
+    saved = [
+        path
+        for path in (
+            nmt_dir / f"dem_mosaic_{name}.tif",
+            nmt_dir / "active_run" / f"dem_mosaic_{name}.vrt",
+        )
+        if path.exists()
+    ]
+    return max(saved, key=lambda path: path.stat().st_mtime, default=None)
+
+
 def step_depressions(output_dir: Path) -> str:
     """Step 7: Generate depressions (blue spots)."""
     sys.path.insert(0, str(BACKEND_DIR))
@@ -874,15 +902,15 @@ def step_depressions(output_dir: Path) -> str:
     )
 
     nmt_dir = output_dir / "nmt"
-    dem_path = nmt_dir / "dem_mosaic_01_dem.tif"
-    filled_path = nmt_dir / "dem_mosaic_02_filled.tif"
+    dem_path = _saved_raster(nmt_dir, "01_dem")
+    filled_path = _saved_raster(nmt_dir, "02_filled")
 
     # Fallback: try VRT for DEM
-    if not dem_path.exists():
+    if dem_path is None:
         dem_path = nmt_dir / "dem_mosaic.vrt"
-    if not filled_path.exists():
+    if filled_path is None:
         raise FileNotFoundError(
-            f"Brak filled DEM: {filled_path}. "
+            f"Brak filled DEM: {nmt_dir / 'dem_mosaic_02_filled.tif'}. "
             "Upewnij sie ze krok 3 ukonczyl sie z save_intermediates=True"
         )
 
@@ -998,8 +1026,8 @@ def step_overlays(output_dir: Path) -> str:
         generated.append("DEM tiles")
 
     # Streams overlay
-    stream_order_path = nmt_dir / "dem_mosaic_07_stream_order.tif"
-    if stream_order_path.exists():
+    stream_order_path = _saved_raster(nmt_dir, "07_stream_order")
+    if stream_order_path is not None:
         streams_overlay(
             input_path=str(stream_order_path),
             output_png=str(data_dir / "streams.png"),
@@ -1100,11 +1128,15 @@ def run_pipeline(
     sewer_config: dict[str, Any] | None = None,
     inputs: SetInputs | None = None,
     stream_burning: str = "all",
+    units_path: Path | None = None,
+    units_area: tuple[Path, str | None] | None = None,
+    max_unit_window_cells: int = 80_000_000,
 ):
     """Run the full 10-step bootstrap pipeline.
 
     With ``inputs``, the checked files of a set of an Archiwista project (ADR-067),
-    steps 2 to 5 read the pinned files and download nothing.
+    steps 2 to 5 read the pinned files and download nothing. With ``units_path``
+    step 3 processes the mosaic by PGW units (``step_process_dem``).
     """
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
@@ -1156,6 +1188,9 @@ def run_pipeline(
                 sewer_config=sewer_config,
                 bdot10k=inputs.counties if inputs is not None else None,
                 stream_burning=stream_burning,
+                units_path=units_path,
+                units_area=units_area,
+                max_unit_window_cells=max_unit_window_cells,
             )
             tracker.done(3, t0, detail)
         except Exception as e:
@@ -1476,6 +1511,23 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--units",
+        type=Path,
+        metavar="PGW.gpkg",
+        help=(
+            "Kartograf PGW GeoPackage: step 3 processes the NMT mosaic by its PGW "
+            "units (ADR-071), the same results with the memory of one buffered unit; "
+            "the units are clipped to the area of --boundary-file or --project"
+        ),
+    )
+    parser.add_argument(
+        "--max-unit-window-cells",
+        type=int,
+        default=80_000_000,
+        metavar="N",
+        help="Largest buffered PGW DEM window in cells (default: 80000000)",
+    )
+    parser.add_argument(
         "--port",
         type=int,
         default=8080,
@@ -1594,6 +1646,10 @@ def main():
     args = parser.parse_args()
     if (args.project is None) != (args.set is None):
         parser.error("--project and --set go together")
+    if args.max_unit_window_cells < 1:
+        parser.error("--max-unit-window-cells must be positive")
+    if args.units is not None and not args.units.is_file():
+        parser.error(f"PGW units GeoPackage does not exist: {args.units}")
     if args.project is None:
         # --bbox, --sheets and --boundary-file download: never into a shared store
         try:
@@ -1731,6 +1787,14 @@ def main():
     else:
         record.unlink(missing_ok=True)
 
+    # The PGW units are the units of the analysis area, where the run has one
+    units_area: tuple[Path, str | None] | None = None
+    if args.units is not None:
+        if inputs is not None:
+            units_area = (inputs.area, None)
+        elif args.boundary_file:
+            units_area = (args.boundary_file, args.boundary_layer)
+
     # Run pipeline
     total_start = time.time()
     tracker = run_pipeline(
@@ -1746,6 +1810,9 @@ def main():
         sewer_config=full_sewer_config,
         inputs=inputs,
         stream_burning=stream_burning,
+        units_path=args.units,
+        units_area=units_area,
+        max_unit_window_cells=args.max_unit_window_cells,
     )
     total_elapsed = time.time() - total_start
 
