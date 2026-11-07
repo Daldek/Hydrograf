@@ -544,13 +544,16 @@ def step_process_dem(
     units_catchments: tuple[Path, str | None, str] | None = None,
     units_resume: bool = True,
     resolution: str = "5m",
+    fill_enclosed_nodata: bool = False,
 ) -> tuple[dict[str, Any], str, tuple[float, float, float, float]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis.
 
     ``bdot10k`` (TERYT to package) are the BDOT10k packages of a set (ADR-067); without
     it the packages of the mosaic's counties are downloaded. ``stream_burning``
-    (``dem.stream_burning`` of the configuration) selects the burned streams. With
-    ``units_path`` (the PGW GeoPackage) the mosaic is processed by PGW units
+    (``dem.stream_burning`` of the configuration) selects the burned streams and
+    ``fill_enclosed_nodata`` (``dem.fill_enclosed_nodata``) interpolates the nodata
+    that the mosaic encloses before the fill. With ``units_path`` (the PGW
+    GeoPackage) the mosaic is processed by PGW units
     (ADR-071), the owners clipped to ``units_area``, the file and the layer of the
     analysis area, and grouped from ``units_catchments`` (file, layer, key field)
     when given; ``units_scratch_dir`` holds the scratch of the run and
@@ -659,11 +662,16 @@ def step_process_dem(
         units_catchments_key=units_catchments[2] if units_catchments else "ID_HYD_10",
         units_scratch_dir=units_scratch_dir,
         units_resume=units_resume,
+        fill_enclosed_nodata=fill_enclosed_nodata,
     )
 
     cells = stats.get("valid_cells", 0)
     streams = stats.get("stream_segments", 0)
     burn_info = f", burn={burn_path.name} ({stream_burning})" if burn_path else ""
+    if fill_enclosed_nodata:
+        burn_info += (
+            f", enclosed nodata filled ({stats.get('enclosed_nodata_cells', 0)} cells)"
+        )
     detail = f"{cells:,} cells, {streams} segments{burn_info}"
 
     return stats, detail, mosaic_bbox_2180
@@ -1174,12 +1182,14 @@ def run_pipeline(
     units_scratch_dir: Path | None = None,
     units_catchments: tuple[Path, str | None, str] | None = None,
     units_resume: bool = True,
+    fill_enclosed_nodata: bool = False,
 ):
     """Run the full 10-step bootstrap pipeline.
 
     With ``inputs``, the checked files of a set of an Archiwista project (ADR-067),
     steps 2 to 5 read the pinned files and download nothing. With ``units_path``
-    step 3 processes the mosaic by PGW units (``step_process_dem``).
+    step 3 processes the mosaic by PGW units (``step_process_dem``), and with
+    ``fill_enclosed_nodata`` it interpolates the nodata the mosaic encloses first.
     """
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
@@ -1237,6 +1247,7 @@ def run_pipeline(
                 units_catchments=units_catchments,
                 units_resume=units_resume,
                 resolution=resolution,
+                fill_enclosed_nodata=fill_enclosed_nodata,
             )
             tracker.done(3, t0, detail)
         except Exception as e:
@@ -1462,18 +1473,21 @@ def write_set_record(
     finished_at: str | None,
     status: str,
     stream_burning: str,
+    fill_enclosed_nodata: bool,
 ) -> None:
     """Write the record of the set a run took its Kartograf data from (ADR-067).
 
     ``<output>/bootstrap_set.json``: the identity of the set (project, set,
     ``closed_at``, ``pins_sha256``, the pins per product), the BDOT10k streams the
-    run burned (``stream_burning``), when the run started and ended, and ``status``
+    run burned (``stream_burning``), whether it filled the nodata the mosaic encloses
+    (``fill_enclosed_nodata``), when the run started and ended, and ``status``
     (``running``, ``ok`` or ``failed``: a step 1 to 3 failed).
     """
     record = {
         "schema": SET_RECORD_SCHEMA,
         **inputs.identity(),
         "stream_burning": stream_burning,
+        "fill_enclosed_nodata": fill_enclosed_nodata,
         "started_at": started_at,
         "finished_at": finished_at,
         "status": status,
@@ -1760,6 +1774,13 @@ def main():
             f"{', '.join(STREAM_BURNING_MODES)}, not {stream_burning!r}"
         )
     logger.info("Stream burning: %s", stream_burning)
+    fill_enclosed_nodata = config["dem"]["fill_enclosed_nodata"]
+    if not isinstance(fill_enclosed_nodata, bool):
+        parser.error(
+            f"dem.fill_enclosed_nodata in {args.config} must be true or false, "
+            f"not {fill_enclosed_nodata!r}"
+        )
+    logger.info("Enclosed nodata filled: %s", fill_enclosed_nodata)
 
     # Resolve output directory
     output_dir = Path(args.output) if args.output else DEFAULT_DATA_DIR
@@ -1871,6 +1892,7 @@ def main():
             finished_at=None,
             status="running",
             stream_burning=stream_burning,
+            fill_enclosed_nodata=fill_enclosed_nodata,
         )
     else:
         record.unlink(missing_ok=True)
@@ -1910,6 +1932,7 @@ def main():
         units_scratch_dir=args.units_scratch_dir,
         units_catchments=units_catchments,
         units_resume=not args.no_resume,
+        fill_enclosed_nodata=fill_enclosed_nodata,
     )
     total_elapsed = time.time() - total_start
 
@@ -1935,6 +1958,7 @@ def main():
             finished_at=_utc_now(),
             status="failed" if critical_failed else "ok",
             stream_burning=stream_burning,
+            fill_enclosed_nodata=fill_enclosed_nodata,
         )
     if critical_failed:
         sys.exit(1)

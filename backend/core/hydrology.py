@@ -1,9 +1,9 @@
 """
 Hydrological processing: depression filling, flow direction, flow accumulation.
 
-Core D8 flow direction constants, internal nodata hole filling,
-stream burning, endorheic lake classification, pyflwdir-based hydrology,
-sink fixing, and flow accumulation recomputation.
+Core D8 flow direction constants, internal nodata hole filling, the interpolation
+of the nodata the data encloses, stream burning, endorheic lake classification,
+pyflwdir-based hydrology, sink fixing, and flow accumulation recomputation.
 """
 
 import logging
@@ -54,6 +54,8 @@ _RIVER = "rzeka"
 # Passes of fill_internal_nodata_holes: a repaired cell lies at most this many cells
 # from a cell of the original DEM data
 HOLE_FILL_PASSES = 3
+# Cells of data read around an enclosed nodata area (interpolate_enclosed_nodata)
+_ENCLOSED_RIM_CELLS = 2
 
 
 def fill_internal_nodata_holes(
@@ -207,6 +209,79 @@ def _mean_as_numpy(values: np.ndarray, n: int) -> float:
         for k in range(n):
             total += values[k]
     return float((0.0 + total) / n)
+
+
+def interpolate_enclosed_nodata(
+    dem: np.ndarray, nodata: float, *, overwrite: bool = False
+) -> tuple[np.ndarray, int]:
+    """Fill every nodata area that the data of a DEM encloses, from the data around it.
+
+    The depression fill takes every cell next to nodata for an outlet (pyflwdir's
+    ``outlets="edge"``, ``fill_depressions_d8``), so a nodata area inside the data,
+    such as a sheet missing from a mosaic, drains the land around it: an endorheic
+    area. ``fill_internal_nodata_holes`` repairs small holes only. Here every nodata
+    area that does not reach the frame of the raster (8-connected, as pyflwdir's
+    neighbours) takes values interpolated from the data around it (GDAL's inverse
+    distance weighting, ``rasterio.fill.fillnodata``); the depression fill then fills
+    it like any ground, and the outlets left lie on the outer edge of the data. The
+    nodata that reaches the frame stays.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        The DEM.
+    nodata : float
+        Its nodata value (NaN too).
+    overwrite : bool
+        Fill ``dem`` itself instead of a copy (the memory of a whole DEM less); the
+        returned DEM is then ``dem``.
+
+    Returns
+    -------
+    tuple
+        (filled_dem, cells_filled): the DEM and the number of nodata cells filled.
+    """
+    from rasterio.fill import fillnodata
+    from scipy import ndimage
+
+    patched = dem if overwrite else dem.copy()
+    valid = ~np.isnan(dem) if np.isnan(nodata) else dem != nodata
+    eight = np.ones((3, 3), dtype=bool)
+    enclosed = ndimage.binary_fill_holes(valid, structure=eight)
+    enclosed &= ~valid
+    rows = np.flatnonzero(enclosed.any(axis=1))
+    if rows.size == 0:
+        return patched, 0
+    cols = np.flatnonzero(enclosed.any(axis=0))
+    # The box of every enclosed area and its rim: labelled there, not on the grid
+    nrows, ncols = dem.shape
+    rim = _ENCLOSED_RIM_CELLS
+    box = np.s_[
+        max(int(rows[0]) - rim, 0) : min(int(rows[-1]) + 1 + rim, nrows),
+        max(int(cols[0]) - rim, 0) : min(int(cols[-1]) + 1 + rim, ncols),
+    ]
+    labels, _ = ndimage.label(enclosed[box], structure=eight)
+    del enclosed
+    patched_box, valid_box = patched[box], valid[box]
+    height, width = labels.shape
+    filled = 0
+    for label, (area_rows, area_cols) in enumerate(
+        ndimage.find_objects(labels), start=1
+    ):
+        window = np.s_[
+            max(area_rows.start - rim, 0) : min(area_rows.stop + rim, height),
+            max(area_cols.start - rim, 0) : min(area_cols.stop + rim, width),
+        ]
+        area = labels[window] == label
+        values = fillnodata(
+            patched_box[window].copy(),
+            mask=valid_box[window].astype(np.uint8),
+            max_search_distance=float(sum(area.shape)),
+            smoothing_iterations=0,
+        )
+        patched_box[window][area] = values[area]
+        filled += int(np.count_nonzero(area))
+    return patched, filled
 
 
 def raise_buildings_in_dem(

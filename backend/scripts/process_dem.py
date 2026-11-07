@@ -61,6 +61,7 @@ from core.hydrology import (
     classify_endorheic_lakes,
     fill_internal_nodata_holes,
     fix_internal_sinks,
+    interpolate_enclosed_nodata,
     process_hydrology_pyflwdir,
     raise_buildings_in_dem,
     recompute_flow_accumulation,
@@ -1134,6 +1135,7 @@ def process_dem(
     units_catchments_key: str = "ID_HYD_10",
     units_scratch_dir: Path | None = None,
     units_resume: bool = True,
+    fill_enclosed_nodata: bool = False,
 ) -> dict[str, Any]:
     """
     Process DEM file (ASC, VRT, or GeoTIFF) and extract stream network.
@@ -1206,6 +1208,14 @@ def process_dem(
     units_resume : bool
         With ``units_path``: resume the latest staging or failed run with the same
         inputs and settings (default) instead of beginning a new one.
+    fill_enclosed_nodata : bool
+        Interpolate every nodata area that the DEM data encloses, such as a sheet
+        missing from the mosaic, before anything else
+        (``core.hydrology.interpolate_enclosed_nodata``): such an area is then
+        ground that the depression fill fills, so no area drains into it and every
+        cell drains to the outer edge of the data. The filled cells hold DEM values
+        from then on (``01_dem`` too). Default False: an enclosed nodata area is an
+        outlet, as pyflwdir takes every cell next to nodata for one.
 
     Returns
     -------
@@ -1215,6 +1225,7 @@ def process_dem(
         - valid_cells, max_accumulation, mean_slope
         - stream_cells
         - burn_cells (if burn_streams_path provided)
+        - enclosed_nodata_cells (with fill_enclosed_nodata)
         - with ``units_path``: run_id, pgw_owners, unit_rasters_dir, unit_dem_vrt,
           resumed_units, stages
     """
@@ -1250,6 +1261,7 @@ def process_dem(
             units_catchments_key=units_catchments_key,
             scratch_dir=units_scratch_dir,
             resume=units_resume,
+            fill_enclosed_nodata=fill_enclosed_nodata,
         )
 
     stats = {}
@@ -1280,6 +1292,10 @@ def process_dem(
     stats["total_cells"] = metadata["ncols"] * metadata["nrows"]
 
     nodata = metadata["nodata_value"]
+    if fill_enclosed_nodata:
+        dem, stats["enclosed_nodata_cells"] = interpolate_enclosed_nodata(
+            dem, nodata, overwrite=True
+        )
     valid_cells = np.sum(dem != nodata)
     stats["valid_cells"] = int(valid_cells)
 
@@ -1313,6 +1329,10 @@ def process_dem(
         stats["hydro_resolution_m"] = hydro_resolution_m
 
         nodata = metadata["nodata_value"]
+        if fill_enclosed_nodata:
+            dem, stats["enclosed_nodata_cells"] = interpolate_enclosed_nodata(
+                dem, nodata, overwrite=True
+            )
         valid_cells = np.sum(dem != nodata)
         stats["valid_cells"] = int(valid_cells)
 

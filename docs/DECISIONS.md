@@ -78,6 +78,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-070](decisions/0070-flow-path-heads-measured-in-preprocessing.md) | Flow path heads, overland segments and channel sources measured in preprocessing | accepted | 2026-11-05 |
 | [ADR-071](decisions/0071-pgw-units-and-boundary-event-routing.md) | PGW ownership with cell-level boundary-event routing, not cycle merging | accepted (design) | 2026-11-06 |
 | [ADR-072](decisions/0072-stream-smoothing-follows-the-digitized-direction.md) | The stream smoothing follows the digitized direction and descends strictly | accepted | 2026-11-07 |
+| [ADR-073](decisions/0073-fill-enclosed-nodata.md) | Nodata that the DEM encloses is interpolated before the fill, on request | proposed | 2026-11-07 |
 | [ADR-074](decisions/0074-land-cover-from-the-bdot10k-partition-and-its-attributes.md) | The land cover is the BDOT10k partition split by its attributes, with the industrial complexes cut out of it | accepted | 2026-11-08 |
 | [ADR-075](decisions/0075-cn-of-soil-cover-complexes.md) | The CN is that of the soil-cover complexes, from Hydrolog's TR-55 table | accepted | 2026-11-08 |
 
