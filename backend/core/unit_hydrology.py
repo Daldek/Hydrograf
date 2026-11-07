@@ -4,14 +4,19 @@ A cycle in the owner graph is not a D8 cycle: the latter is detected explicitly.
 Each owner's filling runs through the same hydrology code as process_dem; only its
 owned cells survive the halo. Global counts and outlet distances are propagated
 on a disk-backed D8 topology, so no entire-area pyflwdir object is created.
+
+The fill and D8 of each owner can be saved as it is computed (``UnitStage``, through
+a ``UnitCheckpoints``) and restored by a later call instead of computed again: the
+resumption of an interrupted run.
 """
 
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numba
 import numpy as np
@@ -32,6 +37,91 @@ from core.stream_extraction import compute_downstream_links, vectorize_streams
 
 class _SeamMismatch(ValueError):
     """A local halo has a different fill or D8 from the preceding owner."""
+
+
+_STAGE_ARRAYS = ("cells", "filled", "fdir", "raw_fdir", "slope", "active")
+
+
+@dataclass(frozen=True)
+class UnitStage:
+    """The fill and D8 one owner wrote: its own cells and the repaired holes it took.
+
+    Attributes
+    ----------
+    row, col : int
+        Grid position of ``cells[0, 0]``.
+    cells : np.ndarray
+        bool, the cells the owner wrote, in the box of them.
+    filled, fdir, raw_fdir, slope, active : np.ndarray
+        The values of those cells in row-major order: filled DEM (float32), D8 with
+        the hole cells as routing cells (int16), pyflwdir D8 (int16), slope
+        (float64) and whether the cell routes flow (bool).
+    """
+
+    row: int
+    col: int
+    cells: np.ndarray
+    filled: np.ndarray
+    fdir: np.ndarray
+    raw_fdir: np.ndarray
+    slope: np.ndarray
+    active: np.ndarray
+
+    def save(self, path: Path) -> None:
+        """Write the stage as an uncompressed ``.npz``, replacing ``path`` at once."""
+        partial = path.with_name(f".{path.name}.partial")
+        with partial.open("wb") as sink:
+            np.savez(
+                sink,
+                origin=np.array([self.row, self.col], dtype=np.int64),
+                **{name: getattr(self, name) for name in _STAGE_ARRAYS},
+            )
+            sink.flush()
+            os.fsync(sink.fileno())
+        os.replace(partial, path)
+
+    @classmethod
+    def load(cls, path: Path) -> UnitStage:
+        """Read a stage written by :meth:`save`."""
+        with np.load(path) as stored:
+            row, col = (int(value) for value in stored["origin"])
+            arrays = {name: stored[name] for name in _STAGE_ARRAYS}
+        cells = int(np.count_nonzero(arrays["cells"]))
+        if (
+            arrays["cells"].ndim != 2
+            or row < 0
+            or col < 0
+            or any(arrays[name].shape != (cells,) for name in _STAGE_ARRAYS[1:])
+        ):
+            raise ValueError(f"{path} is not a consistent unit stage")
+        return cls(row, col, **arrays)
+
+
+class UnitCheckpoints(Protocol):
+    """Where the stages of the owners are saved and restored from.
+
+    ``halo_m`` is the halo of the saved stages to start from (None: the requested
+    buffer). ``restore`` returns the saved stage of an owner (1-based index on the
+    owner raster) computed with ``halo_m``, or None; ``save`` keeps a stage just
+    computed, with the bounds of the owner's cells
+    ``(row_start, row_stop, col_start, col_stop)``.
+    """
+
+    halo_m: float | None
+
+    def restore(self, owner: int, halo_m: float) -> UnitStage | None:
+        """Return the saved stage of the owner at this halo, or None."""
+        ...
+
+    def save(
+        self,
+        owner: int,
+        halo_m: float,
+        bbox: tuple[int, int, int, int],
+        stage: UnitStage,
+    ) -> None:
+        """Keep the stage of the owner computed at this halo."""
+        ...
 
 
 @dataclass
@@ -198,6 +288,50 @@ def _propagate_labels(
                 labels[i] = labels[down]
 
 
+def _unit_stage(
+    row: int,
+    col: int,
+    fresh: np.ndarray,
+    filled: np.ndarray,
+    fdir: np.ndarray,
+    raw_fdir: np.ndarray,
+    slope: np.ndarray,
+    active: np.ndarray,
+) -> UnitStage:
+    """Crop the cells an owner writes (``fresh`` of its window at ``row, col``)."""
+    rows = np.flatnonzero(fresh.any(axis=1))
+    cols = np.flatnonzero(fresh.any(axis=0))
+    top, left = int(rows[0]), int(cols[0])
+    cells = fresh[top : int(rows[-1]) + 1, left : int(cols[-1]) + 1].copy()
+    # Row-major order over the window is row-major order over the crop.
+    return UnitStage(
+        row + top, col + left, cells, filled, fdir, raw_fdir, slope, active
+    )
+
+
+def _apply_stage(
+    stage: UnitStage,
+    filled: np.ndarray,
+    fdir: np.ndarray,
+    raw_fdir: np.ndarray,
+    slope: np.ndarray,
+    seen: np.ndarray,
+    active: np.ndarray,
+) -> None:
+    """Write an owner's cells into the whole-grid rasters."""
+    rows = slice(stage.row, stage.row + stage.cells.shape[0])
+    cols = slice(stage.col, stage.col + stage.cells.shape[1])
+    if rows.stop > filled.shape[0] or cols.stop > filled.shape[1]:
+        raise ValueError("A unit stage reaches beyond the grid")
+    cells = stage.cells
+    filled[rows, cols][cells] = stage.filled
+    fdir[rows, cols][cells] = stage.fdir
+    raw_fdir[rows, cols][cells] = stage.raw_fdir
+    slope[rows, cols][cells] = stage.slope
+    seen[rows, cols][cells] = 1
+    active[rows, cols][cells] = stage.active
+
+
 def process_unit_hydrology(
     dem_path: Path,
     owners: np.ndarray,
@@ -207,6 +341,7 @@ def process_unit_hydrology(
     buffer_m: float = 500.0,
     max_window_cells: int = 80_000_000,
     drain_points: list[tuple[int, int]] | None = None,
+    checkpoints: UnitCheckpoints | None = None,
 ) -> UnitHydrology:
     """Run the fill/D8, routing, distance and threshold masks by owner.
 
@@ -220,6 +355,10 @@ def process_unit_hydrology(
     look at a whole stream or lake and so cannot run in a window; the caller does
     them once on the whole DEM. ``drain_points`` are the cells (row, column) of the
     whole grid that this gives, each used by the windows that contain it.
+
+    With ``checkpoints`` every owner's stage is saved once computed, and an owner
+    whose stage was saved at the halo of the pass is restored instead of computed;
+    the first pass uses the larger of ``buffer_m`` and ``checkpoints.halo_m``.
     """
     if max_window_cells < 1:
         raise ValueError("max_window_cells must be positive")
@@ -236,6 +375,8 @@ def process_unit_hydrology(
         nodata = source.nodata
         cellsize_m = source.transform.a
         halo = math.ceil(buffer_m / cellsize_m)
+        if checkpoints is not None and checkpoints.halo_m is not None:
+            halo = max(halo, round(checkpoints.halo_m / cellsize_m))
         filled = _raster(output_dir / "filled.npy", "float32", shape)
         fdir = _raster(output_dir / "fdir.npy", "int16", shape)
         raw_fdir = _raster(output_dir / "raw_fdir.npy", "int16", shape)
@@ -270,6 +411,16 @@ def process_unit_hydrology(
                             f"max_window_cells={max_window_cells:,}; no seam result "
                             "will be published"
                         )
+                    halo_m = halo * cellsize_m
+                    stage = (
+                        checkpoints.restore(owner, halo_m)
+                        if checkpoints is not None
+                        else None
+                    )
+                    if stage is not None:
+                        _apply_stage(stage, filled, fdir, raw_fdir, slope, seen, active)
+                        del stage
+                        continue
                     window = Window(c0, r0, c1 - c0, r1 - r0)
                     dem = source.read(1, window=window)
                     transform = source.window_transform(window)
@@ -322,18 +473,24 @@ def process_unit_hydrology(
                             f"fill/D8 disagreements at {halo * cellsize_m:g} m halo"
                         )
                     fresh = owned | (patched & (seen_window == 0))
-                    filled[r0:r1, c0:c1][fresh] = local_filled[fresh]
-                    fdir[r0:r1, c0:c1][fresh] = local_fdir[fresh]
-                    raw_fdir[r0:r1, c0:c1][fresh] = local_raw[fresh]
-                    slope[r0:r1, c0:c1][fresh] = local_slope[fresh]
-                    seen_window[fresh] = 1
-                    active_window = active[r0:r1, c0:c1]
-                    active_window[fresh] = (local_filled[fresh] != nodata) | patched[
-                        fresh
-                    ]
+                    stage = _unit_stage(
+                        r0,
+                        c0,
+                        fresh,
+                        local_filled[fresh],
+                        local_fdir[fresh],
+                        local_raw[fresh],
+                        local_slope[fresh],
+                        (local_filled[fresh] != nodata) | patched[fresh],
+                    )
                     del dem, local_filled, local_fdir, local_raw, local_slope
                     del owned, adjacent, patched, old, different, fresh, seen_window
-                    del active_window
+                    _apply_stage(stage, filled, fdir, raw_fdir, slope, seen, active)
+                    if checkpoints is not None:
+                        checkpoints.save(
+                            owner, halo_m, (min_row, max_row, min_col, max_col), stage
+                        )
+                    del stage
             except _SeamMismatch as error:
                 if halo >= max(nrows, ncols):
                     raise ValueError("No consistent D8 at full DEM extent") from error

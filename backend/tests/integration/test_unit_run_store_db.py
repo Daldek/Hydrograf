@@ -3,8 +3,9 @@
 ``publish_run`` deletes ALL DEM-derived streams and ALL sub-catchments, so the tests run
 on a scratch database of their own (``tests.scratch_db``), never on the shared one.
 Covers migration 005 (constraints, the one-active-run index, the downgrade cycle),
-``core.unit_run_store`` (begin, checkpoint, publish all or nothing, fail) and the
-``commit=False`` / ``local=True`` options of ``core.db_bulk`` that the publication uses.
+``core.unit_run_store`` (begin with catchment keys, unit stages, checkpoint, publish
+all or nothing, fail, resume, the run lock) and the ``commit=False`` /
+``local=True`` options of ``core.db_bulk`` that the publication uses.
 """
 
 import hashlib
@@ -26,11 +27,16 @@ from core.unit_run_store import (
     RunNotFoundError,
     RunStateError,
     StagedOutputsError,
+    UnitState,
     UnknownUnitError,
     begin_run,
     checkpoint_unit,
     fail_run,
+    file_problem,
     publish_run,
+    record_unit_stage,
+    resume_run,
+    run_lock,
 )
 from tests.conftest_db import requires_db
 from tests.scratch_db import migrate, scratch_database
@@ -1382,3 +1388,257 @@ def test_bulk_failure_without_commit_rolls_back_with_the_callers_transaction(
 
     assert scalar(engine, "SELECT count(*) FROM stream_network") == 0
     assert _timeout(session) == original
+
+
+# ---------------------------------------------------------------------------
+# Catchment keys, unit stages, resumption and the run lock
+# ---------------------------------------------------------------------------
+
+
+ROUTED = (
+    "status = 'routed', row_start = 0, row_stop = 5, col_start = 0, col_stop = 5, "
+    "outputs = '{\"stage\": {}}', halo_m = 500, routed_at = now()"
+)
+
+
+@pytest.mark.parametrize(
+    ("assignment", "constraint"),
+    [
+        # Routed means bounds, the stage manifest and the halo, all together
+        (
+            ROUTED.replace(", halo_m = 500, routed_at = now()", ""),
+            "chk_processing_units_routed",
+        ),
+        (ROUTED.replace("row_start = 0, ", ""), "chk_processing_units_routed"),
+        (
+            ROUTED.replace("routed_at = now()", "routed_at = NULL"),
+            "chk_processing_units_halo",
+        ),
+        (ROUTED.replace("halo_m = 500", "halo_m = 0"), "chk_processing_units_halo"),
+        (ROUTED + ", completed_at = now()", "chk_processing_units_complete"),
+        # A pending unit has nothing yet
+        ("outputs = '{\"stage\": {}}'", "chk_processing_units_pending"),
+        ("halo_m = 500, routed_at = now()", "chk_processing_units_pending"),
+        ("catchment_keys = '{}'", "chk_processing_units_catchments"),
+        ("catchment_keys = '{\"\"}'", "chk_processing_units_catchments"),
+        ("catchment_keys = ARRAY['1', NULL]", "chk_processing_units_catchments"),
+    ],
+)
+def test_processing_units_rejects_inconsistent_stages(
+    engine, unit_run, assignment, constraint
+):
+    sql = f"UPDATE processing_units SET {assignment} WHERE run_id = :run"
+    assert violated_constraint(engine, sql, run=unit_run) == constraint
+
+
+def test_begin_run_records_the_catchment_keys_of_each_unit(engine, session):
+    keys = {"RW0001": ("183811", "183812"), "RW0002": ("183813",), "LW0003": ("9",)}
+    run_id = begin_run(
+        session,
+        input_fingerprint="fp",
+        source_raster="/data/dem.vrt",
+        pgw_path="/data/pgw.gpkg",
+        config={"halo_m": 500},
+        owner_codes=CODES,
+        catchment_keys=keys,
+    )
+
+    assert rows(
+        engine,
+        "SELECT owner_code, catchment_keys FROM processing_units "
+        "WHERE run_id = :r ORDER BY owner_code",
+        r=run_id,
+    ) == [
+        ("LW0003", ["9"]),
+        ("RW0001", ["183811", "183812"]),
+        ("RW0002", ["183813"]),
+    ]
+
+
+@pytest.mark.parametrize(
+    "keys",
+    [
+        {"RW0001": ("1",), "RW0002": ("2",)},
+        {"RW0001": ("1",), "RW0002": ("2",), "LW0003": ()},
+        {"RW0001": ("1",), "RW0002": (" ",), "LW0003": ("3",)},
+        {"RW0001": "12", "RW0002": ("2",), "LW0003": ("3",)},
+    ],
+)
+def test_begin_run_rejects_catchment_keys_that_do_not_fit_and_writes_nothing(
+    engine, session, keys
+):
+    with pytest.raises(ValueError):
+        begin_run(
+            session,
+            input_fingerprint="fp",
+            source_raster="/data/dem.vrt",
+            pgw_path="/data/pgw.gpkg",
+            config={},
+            owner_codes=CODES,
+            catchment_keys=keys,
+        )
+    assert scalar(engine, "SELECT count(*) FROM processing_runs") == 0
+
+
+def test_a_unit_stage_marks_the_unit_routed_with_its_halo(engine, tmp_path):
+    run_id = begin(engine)
+    stage_file = tmp_path / "RW0001.npz"
+    stage_file.write_bytes(b"stage of RW0001")
+
+    with Session(engine) as db:
+        record_unit_stage(db, run_id, "RW0001", (1, 9, 2, 8), stage_file, 1000.0)
+
+    status, bounds, halo, outputs, routed, completed = rows(
+        engine,
+        "SELECT status, ARRAY[row_start, row_stop, col_start, col_stop], halo_m, "
+        "outputs::text, routed_at IS NOT NULL, completed_at IS NOT NULL "
+        "FROM processing_units WHERE owner_code = 'RW0001'",
+    )[0]
+    assert (status, bounds, halo, routed, completed) == (
+        "routed",
+        [1, 9, 2, 8],
+        1000.0,
+        True,
+        False,
+    )
+    entry = json.loads(outputs)["stage"]
+    assert entry["sha256"] == hashlib.sha256(b"stage of RW0001").hexdigest()
+    assert file_problem(entry) is None
+    stage_file.write_bytes(b"stage of RW0001, changed")
+    assert "size" in file_problem(entry)
+
+
+def test_a_complete_unit_routed_again_is_no_longer_complete(engine, tmp_path):
+    run_id, files = stage(engine, tmp_path)
+    stage_file = tmp_path / "again.npz"
+    stage_file.write_bytes(b"stage")
+
+    with Session(engine) as db:
+        record_unit_stage(db, run_id, "RW0002", (0, 1, 0, 1), stage_file, 500.0)
+
+    assert rows(
+        engine,
+        "SELECT status, completed_at IS NULL FROM processing_units "
+        "WHERE owner_code = 'RW0002'",
+    ) == [("routed", True)]
+    # A routed unit is not complete: the run cannot be published
+    with Session(engine) as db, pytest.raises(IncompleteRunError) as caught:
+        publish_run(db, run_id, *results_for(2, 700000))
+    assert caught.value.pending == ("RW0002",)
+
+
+@pytest.mark.parametrize("halo_m", [0, -5.0, float("nan"), float("inf"), "500"])
+def test_a_unit_stage_needs_a_positive_halo_and_writes_nothing(
+    engine, tmp_path, halo_m
+):
+    run_id = begin(engine)
+    stage_file = tmp_path / "s.npz"
+    stage_file.write_bytes(b"stage")
+    before = snapshot(engine)
+
+    with Session(engine) as db, pytest.raises(ValueError, match="halo_m"):
+        record_unit_stage(db, run_id, "RW0001", (0, 1, 0, 1), stage_file, halo_m)
+    assert snapshot(engine) == before
+
+
+def test_a_unit_stage_of_a_run_that_is_not_staging_or_of_no_unit_is_refused(
+    engine, tmp_path
+):
+    run_id = begin(engine)
+    stage_file = tmp_path / "s.npz"
+    stage_file.write_bytes(b"stage")
+    with Session(engine) as db, pytest.raises(UnknownUnitError):
+        record_unit_stage(db, run_id, "NOPE", (0, 1, 0, 1), stage_file, 500.0)
+    with Session(engine) as db:
+        fail_run(db, run_id, "broken")
+    with Session(engine) as db, pytest.raises(RunStateError):
+        record_unit_stage(db, run_id, "RW0001", (0, 1, 0, 1), stage_file, 500.0)
+
+
+CONFIG = {"thresholds_m2": [1000, 10000], "halo_m": 500}
+
+
+def _begin_with_dir(engine, fingerprint="fp-1", config=CONFIG, run_dir="/runs/a"):
+    with Session(engine) as db:
+        return begin_run(
+            db,
+            input_fingerprint=fingerprint,
+            source_raster="/data/dem.vrt",
+            pgw_path="/data/pgw.gpkg",
+            config={**config, "run_dir": run_dir},
+            owner_codes=CODES,
+        )
+
+
+def test_resume_takes_up_the_latest_staging_run_of_the_same_inputs(engine, tmp_path):
+    _begin_with_dir(engine, run_dir="/runs/older")
+    run_id = _begin_with_dir(engine, run_dir="/runs/newer")
+    _begin_with_dir(engine, fingerprint="fp-other")
+    _begin_with_dir(engine, config={**CONFIG, "halo_m": 1000})
+    stage_file = tmp_path / "RW0001.npz"
+    stage_file.write_bytes(b"stage")
+    with Session(engine) as db:
+        record_unit_stage(db, run_id, "RW0001", (0, 1, 0, 1), stage_file, 500.0)
+
+    with Session(engine) as db:
+        resumed = resume_run(db, input_fingerprint="fp-1", config=CONFIG)
+
+    assert resumed is not None and resumed.run_id == run_id
+    assert resumed.config["run_dir"] == "/runs/newer"
+    assert set(resumed.units) == set(CODES)
+    routed = resumed.units["RW0001"]
+    assert (routed.status, routed.halo_m) == ("routed", 500.0)
+    assert file_problem(routed.outputs["stage"]) is None
+    assert resumed.units["RW0002"] == UnitState("pending", None, None)
+    assert status_of(engine, run_id) == "staging"
+
+
+def test_resume_reopens_a_failed_run_and_never_a_published_one(engine, tmp_path):
+    failed = _begin_with_dir(engine)
+    with Session(engine) as db:
+        fail_run(db, failed, "KeyboardInterrupt: ")
+
+    with Session(engine) as db:
+        resumed = resume_run(db, input_fingerprint="fp-1", config=CONFIG)
+
+    assert resumed is not None and resumed.run_id == failed
+    assert rows(
+        engine,
+        "SELECT status, failed_at, error FROM processing_runs WHERE id = :i",
+        i=failed,
+    ) == [("staging", None, None)]
+
+    # Once published, the run is no longer resumed: a new run begins
+    published, _ = stage(engine, tmp_path, fingerprint="fp-2")
+    with Session(engine) as db:
+        publish_run(db, published, *results_for(2, 700000))
+    with Session(engine) as db:
+        assert resume_run(db, input_fingerprint="fp-2", config=CONFIG) is None
+
+
+def test_resume_without_a_matching_run_changes_nothing(engine):
+    _begin_with_dir(engine)
+    before = snapshot(engine)
+
+    with Session(engine) as db:
+        assert resume_run(db, input_fingerprint="fp-9", config=CONFIG) is None
+    assert snapshot(engine) == before
+
+
+def test_the_run_lock_admits_one_process_at_a_time(engine):
+    run_id = begin(engine)
+    other = create_engine(engine.url)
+    try:
+        with run_lock(engine, run_id):
+            with (
+                pytest.raises(RunStateError, match="another process"),
+                run_lock(other, run_id),
+            ):
+                pass
+            # Another run is not held
+            with run_lock(other, run_id + 1):
+                pass
+        with run_lock(other, run_id):
+            pass
+    finally:
+        other.dispose()

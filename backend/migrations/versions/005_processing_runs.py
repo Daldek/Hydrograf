@@ -5,13 +5,17 @@ input fingerprint and configuration, the run's status and, through the partial
 unique index, the one ``active`` run whose results ``stream_network`` and
 ``stream_catchments`` hold now. A run is ``staging`` while its units are computed,
 ``active`` once all of them are published in one transaction, ``superseded`` when a
-later run replaces it and ``failed`` when it was given up.
+later run replaces it and ``failed`` when it was given up (a staging or failed run
+with the same inputs and settings is resumed).
 
 ``processing_units`` has one row per PGW owner of a run, keyed by
-``(run_id, owner_code)``: ``pending`` until the unit's owned-cell rasters are final,
-then ``complete`` with the unit's bounds on the shared grid (half-open cell indexes)
-and the manifest of its raster files (path, size, SHA-256) that a publication checks
-again.
+``(run_id, owner_code)``, with the keys of the catchments the owner was grouped from
+(``catchment_keys``, NULL when the owner is a PGW polygon): ``pending`` until the
+unit's fill and flow directions are saved, ``routed`` with the halo they were
+computed with and the file that holds them, then ``complete`` once the unit's
+owned-cell rasters are final. A unit that is not pending has its bounds on the
+shared grid (half-open cell indexes) and the manifest of its files (path, size,
+SHA-256), which a resumed run and the publication check again.
 
 Revision ID: 005
 Create Date: 2026-11-07
@@ -71,18 +75,28 @@ def upgrade() -> None:
         CREATE TABLE processing_units (
             run_id INTEGER NOT NULL REFERENCES processing_runs(id) ON DELETE CASCADE,
             owner_code TEXT NOT NULL,
+            catchment_keys TEXT[],
             status VARCHAR(16) NOT NULL DEFAULT 'pending',
             row_start INTEGER,
             row_stop INTEGER,
             col_start INTEGER,
             col_stop INTEGER,
+            halo_m DOUBLE PRECISION,
             outputs JSONB,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            routed_at TIMESTAMPTZ,
             completed_at TIMESTAMPTZ,
             PRIMARY KEY (run_id, owner_code),
             CONSTRAINT chk_processing_units_owner CHECK (owner_code <> ''),
+            CONSTRAINT chk_processing_units_catchments CHECK (
+                catchment_keys IS NULL OR (
+                    cardinality(catchment_keys) > 0
+                    AND array_position(catchment_keys, NULL) IS NULL
+                    AND array_position(catchment_keys, '') IS NULL
+                )
+            ),
             CONSTRAINT chk_processing_units_status CHECK (
-                status IN ('pending', 'complete')
+                status IN ('pending', 'routed', 'complete')
             ),
             CONSTRAINT chk_processing_units_bounds CHECK (
                 row_start >= 0 AND row_stop >= row_start
@@ -91,6 +105,20 @@ def upgrade() -> None:
             CONSTRAINT chk_processing_units_manifest CHECK (
                 outputs IS NULL
                 OR (jsonb_typeof(outputs) = 'object' AND outputs <> '{}'::jsonb)
+            ),
+            CONSTRAINT chk_processing_units_halo CHECK (
+                (halo_m IS NULL) = (routed_at IS NULL)
+                AND (halo_m IS NULL OR halo_m > 0)
+            ),
+            CONSTRAINT chk_processing_units_pending CHECK (
+                status <> 'pending' OR (outputs IS NULL AND halo_m IS NULL)
+            ),
+            CONSTRAINT chk_processing_units_routed CHECK (
+                status <> 'routed' OR (
+                    row_start IS NOT NULL AND row_stop IS NOT NULL
+                    AND col_start IS NOT NULL AND col_stop IS NOT NULL
+                    AND outputs IS NOT NULL AND halo_m IS NOT NULL
+                )
             ),
             CONSTRAINT chk_processing_units_complete CHECK (
                 (status = 'complete') = (

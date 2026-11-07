@@ -7,29 +7,38 @@ A run of ``process_dem --units`` leaves two kinds of rows (migration 005):
   its partial unique index, the one ``active`` run whose results ``stream_network``
   and ``stream_catchments`` hold now.
 * ``processing_units``: one row per PGW owner of the run, keyed by
-  ``(run_id, owner_code)``: ``pending`` until the unit's owned-cell rasters are
-  final, then ``complete`` with the unit's bounds on the shared grid and the manifest
-  of those files (path, size, SHA-256).
+  ``(run_id, owner_code)``, with the keys of the catchments the owner was grouped
+  from: ``pending``, then ``routed`` once the file of the unit's fill and flow
+  directions is saved (:func:`record_unit_stage`, with the halo), then ``complete``
+  once the unit's owned-cell rasters are final (:func:`checkpoint_unit`); a unit
+  that is not pending has its bounds on the shared grid and the manifest of its
+  files (path, size, SHA-256).
 
-Every public function takes a ``Session`` and ends its transaction: it commits when it
-succeeds and rolls back when it raises, so a script may open a ``get_db_session()`` per
-operation. Only :func:`publish_run` touches the published tables. It replaces the
-DEM-derived streams and all sub-catchments and marks the run active in ONE
-transaction: a failure anywhere leaves the previous rows and the previous active run
-as they were.
+A run that stopped (``staging``) or failed is taken up again by :func:`resume_run`
+when the inputs and settings are the same: its routed units need not be computed
+again. :func:`run_lock` keeps a second process off a run.
+
+Every public function that takes a ``Session`` ends its transaction: it commits when
+it succeeds and rolls back when it raises, so a script may open a
+``get_db_session()`` per operation. Only :func:`publish_run` touches the published
+tables. It replaces the DEM-derived streams and all sub-catchments and marks the run
+active in ONE transaction: a failure anywhere leaves the previous rows and the
+previous active run as they were.
 """
 
 import hashlib
 import json
 import logging
+import math
 import numbers
 import os
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from sqlalchemy import text
+from sqlalchemy import Engine, text
 from sqlalchemy.engine import CursorResult, Result
 from sqlalchemy.orm import Session
 
@@ -43,15 +52,21 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "IncompleteRunError",
+    "ResumedRun",
     "RunNotFoundError",
     "RunStateError",
     "StagedOutputsError",
     "UnitRunError",
+    "UnitState",
     "UnknownUnitError",
     "begin_run",
     "checkpoint_unit",
     "fail_run",
+    "file_problem",
     "publish_run",
+    "record_unit_stage",
+    "resume_run",
+    "run_lock",
 ]
 
 # statement_timeout [s] of the publication transaction: the deletes of the previous
@@ -119,6 +134,44 @@ class StagedOutputsError(RunStateError):
         self.problems = problems
 
 
+@dataclass(frozen=True)
+class UnitState:
+    """What a run recorded of one of its units.
+
+    Attributes
+    ----------
+    status : str
+        ``pending``, ``routed`` or ``complete``.
+    halo_m : float or None
+        Halo the unit's fill and flow directions were computed with, once routed.
+    outputs : dict or None
+        Manifest of the unit's files ``{name: {path, sha256, size_bytes}}``.
+    """
+
+    status: str
+    halo_m: float | None
+    outputs: dict[str, dict[str, Any]] | None
+
+
+@dataclass(frozen=True)
+class ResumedRun:
+    """A run taken up again by :func:`resume_run`.
+
+    Attributes
+    ----------
+    run_id : int
+        Its id; the run is in staging again.
+    config : dict
+        Its configuration as recorded by :func:`begin_run`.
+    units : dict[str, UnitState]
+        Its units by owner code.
+    """
+
+    run_id: int
+    config: dict[str, Any]
+    units: dict[str, UnitState]
+
+
 def begin_run(
     db: Session,
     *,
@@ -127,6 +180,7 @@ def begin_run(
     pgw_path: str,
     config: dict[str, Any],
     owner_codes: tuple[str, ...],
+    catchment_keys: Mapping[str, Sequence[str]] | None = None,
 ) -> int:
     """Record a new run in staging with one pending unit per PGW owner.
 
@@ -149,6 +203,9 @@ def begin_run(
         grid, ...). ``os.PathLike`` values are stored as their path.
     owner_codes : tuple[str, ...]
         Permanent codes of the owners (units) of the run; unique and not empty.
+    catchment_keys : Mapping[str, Sequence[str]], optional
+        The keys of the catchments each owner was grouped from: every owner code
+        exactly once, each with at least one non-empty key.
 
     Returns
     -------
@@ -165,6 +222,7 @@ def begin_run(
     pgw = _require_path_text(pgw_path, "pgw_path")
     config_json = _config_json(config)
     codes = _owner_code_list(owner_codes)
+    members = _catchment_key_lists(catchment_keys, codes)
     with _transaction(db):
         run_id = int(
             db.execute(
@@ -184,10 +242,13 @@ def begin_run(
         )
         db.execute(
             text(
-                "INSERT INTO processing_units (run_id, owner_code) "
-                "VALUES (:run_id, :owner_code)"
+                "INSERT INTO processing_units (run_id, owner_code, catchment_keys) "
+                "VALUES (:run_id, :owner_code, :catchment_keys)"
             ),
-            [{"run_id": run_id, "owner_code": code} for code in codes],
+            [
+                {"run_id": run_id, "owner_code": code, "catchment_keys": members[code]}
+                for code in codes
+            ],
         )
     logger.info(f"Run {run_id} staged with {len(codes)} pending units")
     return run_id
@@ -266,6 +327,190 @@ def checkpoint_unit(
         if updated is None:
             raise UnknownUnitError(f"run {run} has no unit {code!r}")
     logger.info(f"Run {run}: unit {code} complete ({len(manifest)} files)")
+
+
+def record_unit_stage(
+    db: Session,
+    run_id: int,
+    owner_code: str,
+    bbox: tuple[int, int, int, int],
+    stage_file: Path,
+    halo_m: float,
+) -> None:
+    """Mark a unit routed: its fill and flow directions are saved in ``stage_file``.
+
+    The file is hashed first, then the unit row is written in one short transaction
+    with the halo the unit was computed with. A routed or complete unit is set back
+    to routed (the unit was computed again, e.g. with a larger halo).
+
+    Parameters
+    ----------
+    db : Session
+        Database session; its transaction is committed.
+    run_id : int
+        Run from :func:`begin_run`; it must be in staging.
+    owner_code : str
+        Owner of the unit; it must be one of the run's ``owner_codes``.
+    bbox : tuple[int, int, int, int]
+        Bounds of the unit's owned cells, as for :func:`checkpoint_unit`.
+    stage_file : Path
+        The saved fill and flow directions of the unit; recorded as ``stage``.
+    halo_m : float
+        Halo of the unit's window [m]; positive and finite.
+
+    Raises
+    ------
+    ValueError, FileNotFoundError, RunNotFoundError, RunStateError, UnknownUnitError
+        As :func:`checkpoint_unit`; ``ValueError`` also for an invalid halo.
+    """
+    run = _require_run_id(run_id)
+    code = _require_text(owner_code, "owner_code")
+    row_start, row_stop, col_start, col_stop = _bbox_bounds(bbox)
+    if not isinstance(halo_m, numbers.Real) or not math.isfinite(halo_m) or halo_m <= 0:
+        raise ValueError(f"halo_m must be a positive number, got {halo_m!r}")
+    manifest = _manifest({"stage": stage_file})
+    with _transaction(db):
+        _require_staging(run, _lock_run(db, run, exclusive=False), "checkpointed")
+        updated = db.execute(
+            text("""
+                UPDATE processing_units
+                SET status = 'routed',
+                    row_start = :row_start, row_stop = :row_stop,
+                    col_start = :col_start, col_stop = :col_stop,
+                    halo_m = :halo_m, outputs = CAST(:outputs AS jsonb),
+                    routed_at = now(), completed_at = NULL
+                WHERE run_id = :run_id AND owner_code = :owner_code
+                RETURNING owner_code
+            """),
+            {
+                "run_id": run,
+                "owner_code": code,
+                "row_start": row_start,
+                "row_stop": row_stop,
+                "col_start": col_start,
+                "col_stop": col_stop,
+                "halo_m": float(halo_m),
+                "outputs": json.dumps(manifest, sort_keys=True),
+            },
+        ).first()
+        if updated is None:
+            raise UnknownUnitError(f"run {run} has no unit {code!r}")
+    logger.info("Run %d: unit %s routed (halo %g m)", run, code, halo_m)
+
+
+def resume_run(
+    db: Session, *, input_fingerprint: str, config: dict[str, Any]
+) -> ResumedRun | None:
+    """Take up the latest staging or failed run with these inputs and settings.
+
+    A run matches when its fingerprint equals ``input_fingerprint`` and its
+    configuration, without the key ``run_dir`` (where the files of the run are),
+    equals ``config``. A failed run is set back to staging (its error is cleared
+    and logged). Nothing else changes: the caller decides which units to keep,
+    after checking their files (:func:`file_problem`).
+
+    Parameters
+    ----------
+    db : Session
+        Database session; its transaction is committed.
+    input_fingerprint : str
+        As for :func:`begin_run`.
+    config : dict
+        As for :func:`begin_run`, without ``run_dir``.
+
+    Returns
+    -------
+    ResumedRun or None
+        The run, or None when no run matches.
+    """
+    fingerprint = _require_text(input_fingerprint, "input_fingerprint")
+    config_json = _config_json(config)
+    with _transaction(db):
+        row = db.execute(
+            text("""
+                SELECT id, status, error, config::text AS config
+                FROM processing_runs
+                WHERE status IN ('staging', 'failed')
+                  AND input_fingerprint = :fingerprint
+                  AND config - 'run_dir' = CAST(:config AS jsonb)
+                ORDER BY id DESC
+                LIMIT 1
+                FOR UPDATE
+            """),
+            {"fingerprint": fingerprint, "config": config_json},
+        ).first()
+        if row is None:
+            return None
+        run = int(row.id)
+        if row.status == "failed":
+            logger.info("Run %d failed (%s); it is resumed", run, row.error)
+            db.execute(
+                text("""
+                    UPDATE processing_runs
+                    SET status = 'staging', failed_at = NULL, error = NULL
+                    WHERE id = :run_id
+                """),
+                {"run_id": run},
+            )
+        units = db.execute(
+            text("""
+                SELECT owner_code, status, halo_m, outputs::text AS outputs
+                FROM processing_units
+                WHERE run_id = :run_id
+            """),
+            {"run_id": run},
+        ).all()
+    return ResumedRun(
+        run,
+        json.loads(row.config),
+        {
+            unit.owner_code: UnitState(
+                unit.status,
+                unit.halo_m,
+                json.loads(unit.outputs) if unit.outputs else None,
+            )
+            for unit in units
+        },
+    )
+
+
+@contextmanager
+def run_lock(engine: Engine, run_id: int) -> Iterator[None]:
+    """Hold the run for this process while the block runs: one process per run.
+
+    A session-level advisory lock on a connection of its own, which holds no
+    transaction open; PostgreSQL releases it when the process dies.
+
+    Raises
+    ------
+    RunStateError
+        Another process holds the run.
+    """
+    run = _require_run_id(run_id)
+    key = {"run_id": run}
+    with engine.connect() as connection:
+        connection = connection.execution_options(isolation_level="AUTOCOMMIT")
+        held = connection.execute(
+            text("SELECT pg_try_advisory_lock(hashtext('processing_runs'), :run_id)"),
+            key,
+        ).scalar_one()
+        if not held:
+            raise RunStateError(f"run {run} is being processed by another process")
+        try:
+            yield
+        finally:
+            connection.execute(
+                text("SELECT pg_advisory_unlock(hashtext('processing_runs'), :run_id)"),
+                key,
+            )
+
+
+def file_problem(entry: Any) -> str | None:
+    """Return what is wrong with the file of a manifest entry, or None if intact.
+
+    The file must exist with the recorded size and SHA-256.
+    """
+    return _file_problem(entry)
 
 
 def publish_run(
@@ -608,6 +853,25 @@ def _owner_code_list(owner_codes: Sequence[str]) -> list[str]:
     if duplicates:
         raise ValueError(f"owner_codes repeat: {', '.join(duplicates)}")
     return codes
+
+
+def _catchment_key_lists(
+    catchment_keys: Mapping[str, Sequence[str]] | None, codes: list[str]
+) -> dict[str, list[str] | None]:
+    """Return the catchment keys of every owner (None for all without grouping)."""
+    if catchment_keys is None:
+        return dict.fromkeys(codes)
+    if not isinstance(catchment_keys, Mapping) or set(catchment_keys) != set(codes):
+        raise ValueError("catchment_keys must name every owner code exactly once")
+    members: dict[str, list[str] | None] = {}
+    for code in codes:
+        keys = catchment_keys[code]
+        if isinstance(keys, str):
+            raise ValueError(f"catchment keys of {code} must be a sequence, not text")
+        members[code] = [_require_text(key, "catchment key") for key in keys]
+        if not members[code]:
+            raise ValueError(f"owner {code} has no catchment keys")
+    return members
 
 
 def _bbox_bounds(bbox: Sequence[int]) -> tuple[int, int, int, int]:

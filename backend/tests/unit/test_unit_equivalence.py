@@ -6,7 +6,8 @@ seam, and D8 crossings both ways between two owners (a cycle of the owner graph 
 acyclic flow). The rows each run hands to the database (stream segments and
 sub-catchments with their downstream links, which is the catchment graph) and the
 rasters each saves (GeoTIFFs of the whole raster, VRT mosaics of the units) must agree,
-up to the numbering of the segments.
+up to the numbering of the segments; so must a run by units that was interrupted
+after some units and resumed.
 """
 
 import contextlib
@@ -21,6 +22,7 @@ import pytest
 import rasterio
 from shapely.geometry import LineString, box
 
+from core.unit_run_store import ResumedRun, UnitState, _manifest
 from scripts import process_dem as single
 from scripts import process_dem_units as units
 from tests.dem_equivalence import (
@@ -53,8 +55,20 @@ def scene(request: pytest.FixtureRequest, tmp_path: Path) -> SplitScene:
 
 
 def _fake_database(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
-    """Catch what each ``process_dem`` hands to the database; touch no database."""
-    rows = SimpleNamespace(single=None, units=None)
+    """Catch what each ``process_dem`` hands to the database; touch no database.
+
+    The run store keeps the stages it is given (``units``) and resumes them for the
+    next call while ``resumable`` is set; ``interrupt_after`` stops a run once that
+    many units are routed.
+    """
+    rows = SimpleNamespace(
+        single=None,
+        units=None,
+        stages={},
+        run_dir=None,
+        resumable=False,
+        interrupt_after=None,
+    )
 
     @contextlib.contextmanager
     def session() -> Any:
@@ -69,11 +83,38 @@ def _fake_database(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         rows.units = (segments, catchments)
         return {"stream_segments_inserted": 0, "catchments_inserted": 0}
 
+    def begin_run(db: Any, **kwargs: Any) -> int:
+        rows.run_dir = kwargs["config"]["run_dir"]
+        rows.stages = {}
+        return 7
+
+    def resume_run(db: Any, *, input_fingerprint: str, config: Any) -> Any:
+        if not rows.resumable:
+            return None
+        return ResumedRun(7, {**config, "run_dir": rows.run_dir}, dict(rows.stages))
+
+    def record_unit_stage(
+        db: Any, run_id: int, code: str, bbox: Any, path: Path, halo_m: float
+    ) -> None:
+        rows.stages[code] = UnitState("routed", halo_m, _manifest({"stage": path}))
+        if (
+            rows.interrupt_after is not None
+            and len(rows.stages) >= rows.interrupt_after
+        ):
+            raise KeyboardInterrupt
+
     monkeypatch.setattr("core.database.get_db_session", session)
     monkeypatch.setattr(single, "_insert_thresholds", insert)
     monkeypatch.setattr(units, "get_db_session", session)
-    monkeypatch.setattr(units, "begin_run", lambda db, **kwargs: 7)
+    monkeypatch.setattr(units, "get_db_engine", MagicMock)
+    monkeypatch.setattr(
+        units, "run_lock", lambda engine, run_id: contextlib.nullcontext()
+    )
+    monkeypatch.setattr(units, "begin_run", begin_run)
+    monkeypatch.setattr(units, "resume_run", resume_run)
+    monkeypatch.setattr(units, "record_unit_stage", record_unit_stage)
     monkeypatch.setattr(units, "checkpoint_unit", lambda *args: None)
+    monkeypatch.setattr(units, "fail_run", lambda *args: None)
     monkeypatch.setattr(units, "publish_run", publish_run)
     # The BDOT10k step after the insert needs a database; the streams are not tested
     monkeypatch.setattr(single, "load_bdot_streams_from_gpkg", lambda path: [])
@@ -171,6 +212,72 @@ def test_run_by_units_equals_run_of_the_whole_raster(scene, tmp_path, monkeypatc
     assert_same_network(database.units, database.single)
     _assert_same_statistics(units_stats, whole_stats)
     _assert_same_rasters(scene, whole_dir, run_dir, not_mosaicked=set())
+
+
+def test_a_resumed_run_equals_the_run_of_the_whole_raster(tmp_path, monkeypatch):
+    scene = split_scene(tmp_path, 3, True)
+    database = _fake_database(monkeypatch)
+    write_pgw_geopackage(tmp_path / "pgw.gpkg", scene, CODES)
+    arguments: dict[str, Any] = {
+        "clear_existing": True,
+        "thresholds": list(THRESHOLDS_M2),
+        "output_dir": tmp_path / "units",
+        "units_path": tmp_path / "pgw.gpkg",
+    }
+    # The run stops once two of the three units are routed
+    database.interrupt_after = 2
+    with pytest.raises(KeyboardInterrupt):
+        single.process_dem(scene.dem_path, **arguments)
+    assert database.units is None
+    assert len(database.stages) == 2
+
+    database.interrupt_after = None
+    database.resumable = True
+    units_stats = single.process_dem(scene.dem_path, **arguments)
+    whole_dir = tmp_path / "whole"
+    whole_dir.mkdir()
+    whole_stats = single.process_dem(
+        scene.dem_path,
+        save_intermediates=True,
+        output_dir=whole_dir,
+        clear_existing=True,
+        thresholds=list(THRESHOLDS_M2),
+    )
+
+    assert units_stats["resumed_units"] == 2
+    assert units_stats["unit_rasters_dir"] == database.run_dir
+    assert_same_network(database.units, database.single)
+    _assert_same_statistics(units_stats, whole_stats)
+    _assert_same_rasters(
+        scene, whole_dir, Path(units_stats["unit_rasters_dir"]), not_mosaicked=set()
+    )
+
+
+def test_a_stage_file_that_changed_is_computed_again(tmp_path, monkeypatch):
+    scene = split_scene(tmp_path, 2, False)
+    database = _fake_database(monkeypatch)
+    write_pgw_geopackage(tmp_path / "pgw.gpkg", scene, CODES[:1] + CODES[-1:])
+    arguments: dict[str, Any] = {
+        "clear_existing": True,
+        "thresholds": list(THRESHOLDS_M2),
+        "output_dir": tmp_path / "units",
+        "units_path": tmp_path / "pgw.gpkg",
+    }
+    database.interrupt_after = 2
+    with pytest.raises(KeyboardInterrupt):
+        single.process_dem(scene.dem_path, **arguments)
+    changed = Path(database.stages["LW0003"].outputs["stage"]["path"])
+    with changed.open("r+b") as stage:
+        stage.seek(-1, 2)
+        last = stage.read(1)
+        stage.seek(-1, 2)
+        stage.write(b"\1" if last == b"\0" else b"\0")
+
+    database.interrupt_after = None
+    database.resumable = True
+    units_stats = single.process_dem(scene.dem_path, **arguments)
+
+    assert units_stats["resumed_units"] == 1
 
 
 def _hydro_geopackage(path: Path, scene: SplitScene) -> Path:
