@@ -9,7 +9,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from scripts.generate_tiles import mbtiles_bounds, write_metadata
+from scripts.generate_tiles import _publish_mbtiles, mbtiles_bounds, write_metadata
 
 
 def _mbtiles(path: Path, bounds: str | None) -> Path:
@@ -50,3 +50,30 @@ def test_metadata_holds_the_bounds_of_streams_and_catchments(tmp_path):
     meta = json.loads(write_metadata(tmp_path, [10000, 100000]).read_text())
 
     assert meta["bounds"] == [15.7, 50.8, 16.2, 51.1]
+
+
+def test_a_tileset_built_elsewhere_is_served_from_the_output_directory(tmp_path):
+    built = tmp_path / "tmp"
+    built.mkdir()
+    mbtiles = _mbtiles(built / "streams_10000.mbtiles", "15.8,50.9,16.2,51.1")
+    conn = sqlite3.connect(mbtiles)
+    conn.execute(
+        "CREATE TABLE tiles (zoom_level INT, tile_column INT, tile_row INT, tile_data)"
+    )
+    conn.execute("INSERT INTO tiles VALUES (8, 140, 170, ?)", (b"tile",))
+    conn.commit()
+    conn.close()
+    output = tmp_path / "tiles"
+    output.mkdir()
+    # What an interrupted write on a network share leaves behind
+    (output / "streams_10000.mbtiles").write_bytes(b"")
+    (output / "streams_10000.mbtiles-journal").write_bytes(b"\0" * 512)
+
+    _publish_mbtiles(mbtiles, output, has_pmtiles=False)
+
+    # MBTiles rows are TMS: y = 2^8 - 1 - 170 = 85
+    assert (output / "streams_10000" / "8" / "140" / "85.pbf").read_bytes() == b"tile"
+    assert not (output / "streams_10000.mbtiles-journal").exists()
+    assert not mbtiles.exists()
+    meta = json.loads(write_metadata(output, [10000]).read_text())
+    assert meta["bounds"] == [15.8, 50.9, 16.2, 51.1]
