@@ -577,8 +577,20 @@ def process_dem_units(
             with get_db_session() as db:
                 stats.update(publish_run(db, run_id, segments, catchments))
             published = True
-            _swap_active_link(output_dir / "active_run", run_dir, run_token)
             logger.info("PGW run %s published as %s", run_id, run_dir)
+            try:
+                _swap_active_link(output_dir / "active_run", run_dir, run_token)
+                stats["active_run_linked"] = True
+            except OSError as error:
+                # The network is published; the link only points the later steps at
+                # the files (a filesystem without symbolic links refuses it).
+                stats["active_run_linked"] = False
+                logger.warning(
+                    "Run %s is published, but active_run could not be linked to %s: %s",
+                    run_id,
+                    run_dir,
+                    error,
+                )
         stats["peak_rss_mb"] = round(_peak_rss_mb(), 1)
         stats["elapsed_s"] = round(time.time() - started, 1)
         report: dict[str, Any] = {

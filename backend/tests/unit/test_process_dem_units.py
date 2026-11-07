@@ -167,6 +167,26 @@ def test_a_published_run_is_the_active_one_and_leaves_no_scratch(
         assert filled.shape == (121, 131)
 
 
+def test_a_published_run_stays_published_when_the_link_cannot_be_made(
+    scene, pgw, tmp_path, store, monkeypatch
+):
+    def refuse(alias, target, token):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(units, "_swap_active_link", refuse)
+
+    stats = _run(scene, pgw, tmp_path)
+
+    names = [call[0] for call in store.calls]
+    assert names[-1] == "publish_run" and "fail_run" not in names
+    assert stats["active_run_linked"] is False
+    run_dir = Path(stats["unit_rasters_dir"])
+    assert (run_dir / "report.json").is_file() and (
+        run_dir / "dem_02_filled.vrt"
+    ).is_file()
+    assert not (run_dir / "scratch").exists()
+
+
 def test_a_dry_run_computes_the_mosaics_and_touches_no_database(
     scene, pgw, tmp_path, store
 ):
