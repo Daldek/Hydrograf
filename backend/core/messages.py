@@ -219,6 +219,22 @@ MESSAGES: Final[dict[str, Message]] = {
         "The watershed preview could not be built.",
         "Nie udało się wyznaczyć podglądu zlewni.",
     ),
+    "precise_window_too_large": Message(
+        "The watershed of this point is too large for the precise mode: its window "
+        "of the rasters has {cells} cells, more than the {max_cells} allowed.",
+        "Zlewnia tego punktu jest za duża dla trybu dokładnego: jej okno rastrów ma "
+        "{cells} komórek, więcej niż dopuszczalne {max_cells}.",
+        "Give threshold_m2 to delineate it from the precomputed sub-catchments.",
+        "Podaj threshold_m2, by wyznaczyć ją ze zlewni cząstkowych.",
+    ),
+    "raster_grids_differ": Message(
+        "The DEM is not on the grid of the flow directions: its transform or its "
+        "shape differs.",
+        "Raster NMT nie leży na siatce kierunków spływu: ma inną transformację albo "
+        "inne wymiary.",
+        "Contact the administrator.",
+        "Skontaktuj się z administratorem.",
+    ),
     "lutz_parameters_missing": Message(
         "The Lutz method needs channel_length_km, length_to_centroid_km and "
         "channel_slope_m_per_m.",

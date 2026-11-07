@@ -25,12 +25,17 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+import rasterio
 from fastapi.testclient import TestClient
+from rasterio.transform import from_origin
 from shapely.geometry import MultiPolygon, Polygon
 
 from api.main import app
 from core.catchment_graph import CatchmentGraph
+from core.config import Settings
 from core.constants import DEFAULT_THRESHOLD_M2
+from core.raster_service import MAX_WINDOW_CELLS
+from utils.geometry import transform_wgs84_to_pl1992
 
 
 @pytest.fixture
@@ -442,6 +447,52 @@ class TestDelineateWatershedEndpoint:
         data = response.json()
         assert data["mode"] == "precomputed"
         assert data["upstream_segment_indices"] is not None
+
+    def test_precise_mode_refuses_a_watershed_too_large_for_its_window(
+        self, client, tmp_path
+    ):
+        """The window of the precomputed watershed of the point, 80 km across,
+        holds more than MAX_WINDOW_CELLS cells of the rasters: 422."""
+        point = transform_wgs84_to_pl1992(52.23, 21.01)
+        x, y = point.x, point.y
+        transform = from_origin(x - 100.0, y + 100.0, 10.0, 10.0)
+        for name, values, nodata in (
+            ("dem_mosaic_03_flowdir.tif", np.zeros((20, 20), np.int16), 0),
+            ("dem_mosaic_01_dem.tif", np.full((20, 20), 100.0, np.float32), -9999.0),
+        ):
+            with rasterio.open(
+                tmp_path / name,
+                "w",
+                driver="GTiff",
+                height=20,
+                width=20,
+                count=1,
+                dtype=values.dtype,
+                crs="EPSG:2180",
+                transform=transform,
+                nodata=nodata,
+            ) as dst:
+                dst.write(values, 1)
+        settings = Settings(dem_dir=str(tmp_path), dem_path="")
+        extent = (x - 40_000.0, y - 40_000.0, x + 40_000.0, y + 40_000.0)
+
+        with (
+            patch(f"{_WS}.get_catchment_graph", return_value=_make_mock_cg()),
+            patch(f"{_WS}.catchments_bounds", return_value=extent),
+            patch("core.raster_service.get_settings", return_value=settings),
+        ):
+            response = client.post(
+                "/api/delineate-watershed",
+                json={"latitude": 52.23, "longitude": 21.01},
+                headers={"Accept-Language": "pl"},
+            )
+
+        assert response.status_code == 422
+        problem = response.json()
+        assert problem["code"] == "unsupported"
+        assert problem["details"]["reason"] == "window_too_large"
+        assert problem["details"]["max_cells"] == MAX_WINDOW_CELLS
+        assert problem["detail"].startswith("Zlewnia tego punktu jest za duża")
 
 
 class TestDelineateWatershedPreview:

@@ -298,6 +298,49 @@ def _merge_simplified_fallback(
     return wkb.loads(bytes(result.geom))
 
 
+def catchments_bounds(
+    segment_idxs: list[int],
+    threshold_m2: int,
+    db: Session,
+) -> tuple[float, float, float, float] | None:
+    """
+    Bounding box of sub-catchments of one threshold.
+
+    Parameters
+    ----------
+    segment_idxs : list[int]
+        Segment indices of the sub-catchments
+    threshold_m2 : int
+        Flow accumulation threshold
+    db : Session
+        Database session
+
+    Returns
+    -------
+    tuple[float, float, float, float] | None
+        (minx, miny, maxx, maxy) in EPSG:2180, or None when none of the
+        sub-catchments has a geometry
+    """
+    if not segment_idxs:
+        return None
+    query = text("""
+        SELECT ST_XMin(extent) AS minx, ST_YMin(extent) AS miny,
+               ST_XMax(extent) AS maxx, ST_YMax(extent) AS maxy
+        FROM (
+            SELECT ST_Extent(geom) AS extent
+            FROM stream_catchments
+            WHERE threshold_m2 = :threshold AND segment_idx = ANY(:idxs)
+        ) AS selected
+    """)
+    result = db.execute(
+        query,
+        {"threshold": threshold_m2, "idxs": segment_idxs},
+    ).fetchone()
+    if result is None or result.minx is None:
+        return None
+    return (result.minx, result.miny, result.maxx, result.maxy)
+
+
 def get_segment_outlet(
     segment_idx: int,
     threshold_m2: int,

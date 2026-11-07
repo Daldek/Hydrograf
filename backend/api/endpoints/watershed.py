@@ -48,6 +48,7 @@ from core.watershed_service import (
     build_land_cover_stats,
     build_morph_dict_from_graph,
     cascade_escalate,
+    catchments_bounds,
     ensure_outlet_within_boundary,
     flow_path_geojson,
     get_catchment_levels_feature_collection,
@@ -453,8 +454,12 @@ def _delineate_precise(
     db: Session,
     include_hypsometric_curve: bool,
 ) -> dict[str, Any]:
-    """Precise mode: BFS at 1000 + raster boundary."""
-    from core.raster_service import get_raster_cache
+    """Precise mode: BFS at the finest threshold + raster boundary.
+
+    The raster delineation reads a window around the watershed of that BFS,
+    which holds the watershed of the point (core.raster_service).
+    """
+    from core.raster_service import delineate_from_point
 
     threshold = DEFAULT_THRESHOLD_M2
 
@@ -475,7 +480,7 @@ def _delineate_precise(
 
     segment_idx = cg.get_segment_idx(clicked_idx)
 
-    # BFS at 1000 (for graph-based network stats)
+    # BFS at the finest threshold (for graph-based network stats)
     upstream_indices = cg.traverse_upstream(clicked_idx)
     upstream_indices_for_stats = upstream_indices
     outlet_idx_for_stats = clicked_idx
@@ -483,9 +488,13 @@ def _delineate_precise(
         upstream_indices_for_stats, outlet_idx=outlet_idx_for_stats
     )
 
-    # Raster delineation for precise boundary
-    rc = get_raster_cache()
-    raster_result = rc.delineate_from_point(point_2180.x, point_2180.y)
+    # Raster delineation for precise boundary, in a window around the
+    # precomputed watershed of the point
+    x, y = point_2180.x, point_2180.y
+    bounds = catchments_bounds(
+        cg.get_segment_indices(upstream_indices, threshold), threshold, db
+    )
+    raster_result = delineate_from_point(x, y, bounds or (x, y, x, y))
 
     # Override area from raster (more precise)
     area_km2 = raster_result["stats"]["area_m2"] / 1_000_000
@@ -565,8 +574,9 @@ def delineate_watershed(
     Two modes:
     - **Precomputed** (threshold_m2 provided): uses pre-computed catchment graph
       and ST_Union boundary. Fast (~0.5-2s).
-    - **Precise** (no threshold): BFS at threshold=1000 + raster-based boundary
-      via pyflwdir. Precise to the exact click point (~2-5s first call).
+    - **Precise** (no threshold): BFS at the finest threshold + raster-based
+      boundary via pyflwdir, precise to the exact click point, in a window of
+      the rasters around the precomputed watershed (422 when it is too large).
     """
     try:
         # ---- Shared: transform + graph ----
