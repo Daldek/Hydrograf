@@ -46,6 +46,7 @@ import numba
 import numpy as np
 from sqlalchemy import text
 
+from core.active_run import clear_active_run
 from core.constants import PIPELINE_THRESHOLDS_M2
 from core.db_bulk import (
     insert_bdot_streams,
@@ -962,6 +963,24 @@ def d8_from_saved_flowdir(
     return d8
 
 
+def _supersede_active_unit_run(db: Any) -> int | None:
+    """Mark the active run by PGW units ``superseded``; return its id, or None.
+
+    A run of the whole raster replaces (or adds to) the network that the active run
+    published. Without migration 005 there is no ``processing_runs`` and nothing to
+    supersede. The caller commits.
+    """
+    if db.execute(text("SELECT to_regclass('processing_runs')")).scalar() is None:
+        return None
+    superseded: int | None = db.execute(
+        text(
+            "UPDATE processing_runs SET status = 'superseded', "
+            "superseded_at = now() WHERE status = 'active' RETURNING id"
+        )
+    ).scalar()
+    return superseded
+
+
 def _thresholds_in_database(db: Any) -> set[int]:
     """Return the thresholds [m²] of the stream networks and sub-catchments."""
     rows = db.execute(
@@ -1107,6 +1126,14 @@ def process_dem(
     waterbody_min_area_m2: float | None = None,
     building_gpkg: str | None = None,
     sewer_config: dict[str, Any] | None = None,
+    units_path: Path | None = None,
+    units_area_path: Path | None = None,
+    units_area_layer: str | None = None,
+    units_catchments_path: Path | None = None,
+    units_catchments_layer: str | None = None,
+    units_catchments_key: str = "ID_HYD_10",
+    units_scratch_dir: Path | None = None,
+    units_resume: bool = True,
 ) -> dict[str, Any]:
     """
     Process DEM file (ASC, VRT, or GeoTIFF) and extract stream network.
@@ -1155,6 +1182,30 @@ def process_dem(
         FA thresholds in m², one stream network and set of sub-catchments
         each (default: core.constants.PIPELINE_THRESHOLDS_M2). The lowest
         threshold is used for stream_mask and strahler_order.
+    units_path : Path, optional
+        PGW GeoPackage of Kartograf: process the DEM by PGW owners (ADR-071,
+        scripts/process_dem_units.py) instead of as one raster. The results are the
+        same; the memory is bounded by the largest buffered owner. A run that is not
+        a dry run replaces the DEM-derived network (``clear_existing`` is required),
+        and always writes its unit rasters and VRT mosaics (``save_intermediates`` is
+        not needed).
+    units_area_path : Path, optional
+        With ``units_path``: vector file of the analysis area; owners are clipped to it.
+    units_area_layer : str, optional
+        Layer of ``units_area_path`` (default: the first).
+    units_catchments_path : Path, optional
+        With ``units_path``: catchments to group into the owners, each to the PGW
+        unit it overlaps most; their keys are recorded with the units.
+    units_catchments_layer : str, optional
+        Layer of ``units_catchments_path`` (default: the first).
+    units_catchments_key : str
+        Field of the unique key of a catchment (default ``ID_HYD_10``).
+    units_scratch_dir : Path, optional
+        With ``units_path``: directory of the run's scratch (the fill of the whole
+        grid and the disk-backed routing rasters) instead of ``output_dir``.
+    units_resume : bool
+        With ``units_path``: resume the latest staging or failed run with the same
+        inputs and settings (default) instead of beginning a new one.
 
     Returns
     -------
@@ -1164,7 +1215,43 @@ def process_dem(
         - valid_cells, max_accumulation, mean_slope
         - stream_cells
         - burn_cells (if burn_streams_path provided)
+        - with ``units_path``: run_id, pgw_owners, unit_rasters_dir, unit_dem_vrt,
+          resumed_units, stages
     """
+    if units_path is not None:
+        from scripts.process_dem_units import process_dem_units
+
+        if not dry_run and not clear_existing:
+            raise ValueError(
+                "A run by PGW units replaces the DEM-derived stream network and "
+                "sub-catchments: pass clear_existing (--clear-existing) to confirm"
+            )
+        return process_dem_units(
+            input_path=input_path,
+            units_path=units_path,
+            dry_run=dry_run,
+            output_dir=output_dir,
+            burn_streams_path=burn_streams_path,
+            burn_depth_m=burn_depth_m,
+            stream_burning=stream_burning,
+            smooth_streams=smooth_streams,
+            skip_streams_vectorize=skip_streams_vectorize,
+            thresholds=thresholds,
+            skip_catchments=skip_catchments,
+            hydro_resolution_m=hydro_resolution_m,
+            waterbody_mode=waterbody_mode,
+            waterbody_min_area_m2=waterbody_min_area_m2,
+            building_gpkg=building_gpkg,
+            sewer_config=sewer_config,
+            units_area_path=units_area_path,
+            units_area_layer=units_area_layer,
+            units_catchments_path=units_catchments_path,
+            units_catchments_layer=units_catchments_layer,
+            units_catchments_key=units_catchments_key,
+            scratch_dir=units_scratch_dir,
+            resume=units_resume,
+        )
+
     stats = {}
 
     # Early validation: custom waterbody file must exist
@@ -1232,7 +1319,9 @@ def process_dem(
     # 1b. Raise buildings (optional) — before stream burning and depression filling
     if building_gpkg is not None:
         transform_for_buildings = _get_transform(metadata, dem.shape)
-        dem = raise_buildings_in_dem(dem, transform_for_buildings, 2180, building_gpkg)
+        dem = raise_buildings_in_dem(
+            dem, transform_for_buildings, 2180, building_gpkg, nodata=nodata
+        )
 
     # 2. Burn streams (optional) — before depression filling
     if burn_streams_path is not None:
@@ -1564,13 +1653,20 @@ def process_dem(
         from core.database import get_db_session
 
         with get_db_session() as db:
+            # The network of the database is no longer the one of a run by PGW
+            # units: that run and its pointer go in the transaction of the delete.
+            superseded = _supersede_active_unit_run(db)
             if clear_existing:
                 logger.info("Clearing existing data...")
                 db.execute(
                     text("DELETE FROM stream_network WHERE source = 'DEM_DERIVED'")
                 )
                 db.execute(text("DELETE FROM stream_catchments"))
-                db.commit()
+            if clear_active_run(output_dir):
+                logger.info("Active run pointer removed from %s", output_dir)
+            db.commit()
+            if superseded is not None:
+                logger.info("PGW run %s superseded by this run", superseded)
 
             _insert_thresholds(db, all_stream_segments, all_catchment_data, stats)
 
@@ -1645,6 +1741,70 @@ def main():
         type=str,
         default=None,
         help="Output directory for intermediate files (default: same as input)",
+    )
+    parser.add_argument(
+        "--units",
+        type=Path,
+        metavar="PGW.gpkg",
+        help=(
+            "Process the DEM by the PGW owners of this Kartograf GeoPackage "
+            "(layers zlewnie_jcwp_rzecznych, pozostale_obszary_jcwp; ADR-071): the "
+            "same results with the memory of one buffered owner. Replaces the "
+            "DEM-derived network (needs --clear-existing, unless --dry-run) and writes "
+            "the unit rasters and VRT mosaics to <output-dir>/unit_runs/"
+        ),
+    )
+    parser.add_argument(
+        "--units-area",
+        type=Path,
+        metavar="AREA.gpkg",
+        help="With --units: vector file of the analysis area; owners are clipped to it",
+    )
+    parser.add_argument(
+        "--units-area-layer",
+        type=str,
+        default=None,
+        help="With --units-area: layer name (default: first layer)",
+    )
+    parser.add_argument(
+        "--units-catchments",
+        type=Path,
+        metavar="CATCHMENTS.gpkg",
+        help=(
+            "With --units: catchments grouped into the owners, each to the PGW unit "
+            "it overlaps most (e.g. the MPHP catchments of the area); their keys are "
+            "recorded with the units"
+        ),
+    )
+    parser.add_argument(
+        "--units-catchments-layer",
+        type=str,
+        default=None,
+        help="With --units-catchments: layer name (default: first layer)",
+    )
+    parser.add_argument(
+        "--units-catchments-key",
+        type=str,
+        default="ID_HYD_10",
+        help="With --units-catchments: field of the unique key (default: ID_HYD_10)",
+    )
+    parser.add_argument(
+        "--units-scratch-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help=(
+            "With --units: the scratch of the run (the fill of the whole grid and "
+            "the routing rasters, removed after a run) in DIR, not --output-dir"
+        ),
+    )
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help=(
+            "With --units: begin a new run even when a stopped or failed run with "
+            "the same inputs and settings could be resumed"
+        ),
     )
     parser.add_argument(
         "--clear-existing",
@@ -1738,6 +1898,27 @@ def main():
     if args.thresholds:
         threshold_list = [int(t.strip()) for t in args.thresholds.split(",")]
 
+    if args.units is not None and args.from_intermediates:
+        parser.error("--units cannot reuse a single-raster --from-intermediates run")
+    if args.units is None and (
+        args.units_area
+        or args.units_area_layer
+        or args.units_catchments
+        or args.units_catchments_layer
+        or args.units_scratch_dir
+        or args.no_resume
+    ):
+        parser.error(
+            "--units-area, --units-catchments and their options, "
+            "--units-scratch-dir and --no-resume need --units"
+        )
+    if args.units_catchments is None and args.units_catchments_layer:
+        parser.error("--units-catchments-layer needs --units-catchments")
+    if args.units is not None and not args.dry_run and not args.clear_existing:
+        parser.error(
+            "--units replaces the DEM-derived network: add --clear-existing "
+            "(or --dry-run to compute only)"
+        )
     if args.from_intermediates:
         if not threshold_list:
             parser.error("--from-intermediates needs --thresholds")
@@ -1799,6 +1980,14 @@ def main():
             hydro_resolution_m=args.hydro_resolution,
             waterbody_mode=args.waterbody_mode,
             waterbody_min_area_m2=args.waterbody_min_area,
+            units_path=args.units,
+            units_area_path=args.units_area,
+            units_area_layer=args.units_area_layer,
+            units_catchments_path=args.units_catchments,
+            units_catchments_layer=args.units_catchments_layer,
+            units_catchments_key=args.units_catchments_key,
+            units_scratch_dir=args.units_scratch_dir,
+            units_resume=not args.no_resume,
         )
     except FileNotFoundError as e:
         logger.error(str(e))
@@ -1825,6 +2014,11 @@ def main():
             f"drain points: {stats.get('drain_points', 0)}"
         )
     logger.info(f"  Stream cells: {stats['stream_cells']:,}")
+    if "unit_rasters_dir" in stats:
+        logger.info(
+            f"  PGW run {stats['run_id']}: {stats['pgw_owners']} owners, rasters "
+            f"in {stats['unit_rasters_dir']}, peak RSS {stats['peak_rss_mb']:.0f} MB"
+        )
     if "stream_segments" in stats:
         logger.info(f"  Stream segments: {stats['stream_segments']:,}")
     if "stream_thresholds" in stats:

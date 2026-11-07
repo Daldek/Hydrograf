@@ -1,12 +1,17 @@
 """
 Generate XYZ tile pyramid from DEM raster for Leaflet L.tileLayer display.
 
-Pipeline:
-  1. Read DEM, compute hillshade in source CRS (metric)
-  2. Reproject DEM + hillshade to EPSG:3857 (Web Mercator)
-  3. Colorize: elevation → hypsometric palette + hillshade blend → RGBA GeoTIFF
+Pipeline (the DEM is read in strips of whole rows, never as a whole):
+  1. Summarize the elevations: extremes and the exact 5th-95th percentile of all
+     valid cells, the colour range (two reads of a float32 DEM)
+  2. Colour the DEM strip by strip in its own CRS: hypsometric palette blended with
+     the hillshade, computed at full resolution → RGBA GeoTIFF on disk
+  3. Reproject it to EPSG:3857 (Web Mercator) with gdalwarp in bounded memory
   4. Tile: gdal2tiles.py --xyz → {z}/{x}/{y}.png
   5. Write metadata JSON (bounds, zoom range, elevation stats)
+
+The temporary GeoTIFFs (compressed, a few hundred MB for 233 M cells) go to a
+temporary directory in ``--work-dir`` (default: the system temporary directory).
 
 Usage:
     python -m scripts.generate_dem_tiles \
@@ -23,12 +28,39 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import rasterio
-from rasterio.warp import Resampling, calculate_default_transform, reproject
+from affine import Affine
+from rasterio.io import DatasetReader
+from rasterio.warp import calculate_default_transform
+from rasterio.windows import Window
 
-from utils.dem_color import build_colormap, compute_hillshade, normalize_elevation
+from utils.dem_color import (
+    HILLSHADE_HALO_ROWS,
+    ElevationSummary,
+    colorize_elevation,
+    read_strips,
+    shade_strip,
+    strip_rows,
+    summarize_elevation,
+    valid_elevation,
+)
+
+BLOCK_PX = 256
+"""Block side of the temporary GeoTIFFs; the coloured strips are whole block rows."""
+
+WARP_MEMORY_MB = 256
+"""Working memory of gdalwarp (``-wm``)."""
+
+GTIFF_OPTIONS = {
+    "TILED": "YES",
+    "COMPRESS": "DEFLATE",
+    "PREDICTOR": "2",
+    "BIGTIFF": "IF_SAFER",
+}
+"""Creation options of the temporary GeoTIFFs."""
 
 
 def generate_tiles(
@@ -41,151 +73,64 @@ def generate_tiles(
     resampling: str = "near",
     processes: int = 4,
     no_hillshade: bool = False,
+    work_dir: str | None = None,
 ) -> None:
     """Generate XYZ tile pyramid from DEM raster."""
     dst_crs = "EPSG:3857"
-
-    with rasterio.open(input_path) as src:
-        src_crs = src.crs or source_crs
-        if src_crs is None:
-            print("Error: raster has no CRS. Use --source-crs.", file=sys.stderr)
-            sys.exit(1)
-
-        dem_raw = src.read(1)
-        nodata = src.nodata
-        src_transform = src.transform
-        src_bounds = src.bounds
-
-        # Compute hillshade in source CRS (metric) before reprojection
-        hillshade_src = None
-        if not no_hillshade:
-            cellsize = abs(src_transform.a)
-            dem_for_hs = dem_raw.astype(np.float64)
-            if nodata is not None:
-                dem_for_hs[dem_raw == nodata] = np.nan
-            hillshade_src = compute_hillshade(dem_for_hs, cellsize)
-            print(f"Hillshade computed (cellsize={cellsize:.2f} m)")
-
-        # Reproject DEM to EPSG:3857 (Web Mercator — required by gdal2tiles)
-        dst_transform, dst_width, dst_height = calculate_default_transform(
-            src_crs, dst_crs, src.width, src.height, *src_bounds
-        )
-
-        dem = np.empty((dst_height, dst_width), dtype=dem_raw.dtype)
-        reproject(
-            source=dem_raw,
-            destination=dem,
-            src_transform=src_transform,
-            src_crs=src_crs,
-            dst_transform=dst_transform,
-            dst_crs=dst_crs,
-            resampling=Resampling.bilinear,
-            src_nodata=nodata,
-            dst_nodata=nodata,
-        )
-
-        # Reproject hillshade
-        hillshade = None
-        if hillshade_src is not None:
-            hillshade = np.zeros((dst_height, dst_width), dtype=np.float64)
-            reproject(
-                source=hillshade_src,
-                destination=hillshade,
-                src_transform=src_transform,
-                src_crs=src_crs,
-                dst_transform=dst_transform,
-                dst_crs=dst_crs,
-                resampling=Resampling.bilinear,
-                src_nodata=np.nan,
-                dst_nodata=0.0,
-            )
-
-    height, width = dem.shape
-    valid = dem != nodata if nodata is not None else np.isfinite(dem)
-
-    valid_data = dem[valid]
-    abs_min = float(np.min(valid_data))
-    abs_max = float(np.max(valid_data))
-    elev_min, elev_max = normalize_elevation(valid_data)
-    elev_range = elev_max - elev_min
-
-    print(
-        f"DEM reprojected to {dst_crs}: {width}x{height}, "
-        f"elevation {abs_min:.1f}–{abs_max:.1f} m "
-        f"(color range p5–p95: {elev_min:.1f}–{elev_max:.1f} m)"
-    )
-
-    # Normalize to 0–255 (values outside percentile window are clamped)
-    normalized = np.zeros_like(dem, dtype=np.float64)
-    if elev_range > 0:
-        normalized[valid] = (dem[valid] - elev_min) / elev_range
-    indices = np.clip((normalized * 255).astype(np.int32), 0, 255)
-
-    cmap = build_colormap()
-    rgba = np.zeros((height, width, 4), dtype=np.uint8)
-    rgba[..., 0] = cmap[indices, 0]
-    rgba[..., 1] = cmap[indices, 1]
-    rgba[..., 2] = cmap[indices, 2]
-    rgba[..., 3] = np.where(valid, 255, 0).astype(np.uint8)
-
-    # Apply hillshade blend: rgb = rgb * (0.3 + 0.7 * hillshade)
-    if hillshade is not None:
-        blend_factor = (0.3 + 0.7 * hillshade).astype(np.float64)
-        for ch in range(3):
-            rgba[..., ch] = np.clip(
-                rgba[..., ch].astype(np.float64) * blend_factor, 0, 255
-            ).astype(np.uint8)
-        print("Hillshade blended with hypsometric ramp")
-
-    # Write RGBA GeoTIFF in EPSG:3857 (temp file for gdal2tiles)
-    with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
-        tmp_tif = tmp.name
-
-    # Bands: R, G, B, A (band-interleaved)
-    with rasterio.open(
-        tmp_tif,
-        "w",
-        driver="GTiff",
-        width=width,
-        height=height,
-        count=4,
-        dtype="uint8",
-        crs=dst_crs,
-        transform=dst_transform,
-    ) as dst:
-        for band_idx in range(4):
-            dst.write(rgba[..., band_idx], band_idx + 1)
-
-    tif_size_mb = Path(tmp_tif).stat().st_size / 1024 / 1024
-    print(f"RGBA GeoTIFF written: {tmp_tif} ({tif_size_mb:.1f} MB)")
-
-    # Run gdal2tiles.py
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        "gdal2tiles.py",
-        "--xyz",
-        f"--zoom={min_zoom}-{max_zoom}",
-        "-r",
-        resampling,
-        f"--processes={processes}",
-        "--exclude",
-        tmp_tif,
-        str(output_path),
-    ]
-    print(f"Running: {' '.join(cmd)}")
+    with tempfile.TemporaryDirectory(prefix="dem_tiles_", dir=work_dir) as tmp:
+        colored = Path(tmp) / "dem_rgba.tif"
+        with rasterio.open(input_path) as src:
+            src_crs = src.crs or source_crs
+            if src_crs is None:
+                print("Error: raster has no CRS. Use --source-crs.", file=sys.stderr)
+                sys.exit(1)
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"gdal2tiles.py failed:\n{result.stderr}", file=sys.stderr)
-        sys.exit(1)
+            summary = summarize_elevation(src)
+            print(
+                f"DEM {src.width}x{src.height}, elevation "
+                f"{summary.elevation_min_m:.1f}–{summary.elevation_max_m:.1f} m "
+                f"(color range p5–p95: {summary.color_min_m:.1f}–"
+                f"{summary.color_max_m:.1f} m)"
+            )
+            # Grid of the DEM in EPSG:3857 at its own resolution (required by
+            # gdal2tiles).
+            dst_transform, width, height = calculate_default_transform(
+                src_crs, dst_crs, src.width, src.height, *src.bounds
+            )
+            _write_colored(src, src_crs, colored, summary, not no_hillshade)
 
-    if result.stdout:
-        print(result.stdout)
+        mercator = Path(tmp) / "dem_rgba_3857.tif"
+        _warp(colored, mercator, dst_crs, dst_transform, width, height)
+        colored.unlink()
+        tif_size_mb = mercator.stat().st_size / 1024 / 1024
+        print(
+            f"RGBA GeoTIFF reprojected to {dst_crs}: {width}x{height} "
+            f"({tif_size_mb:.1f} MB)"
+        )
 
-    # Clean up temp file
-    Path(tmp_tif).unlink(missing_ok=True)
+        cmd = [
+            "gdal2tiles.py",
+            "--xyz",
+            f"--zoom={min_zoom}-{max_zoom}",
+            "-r",
+            resampling,
+            f"--processes={processes}",
+            "--exclude",
+            str(mercator),
+            str(output_path),
+        ]
+        print(f"Running: {' '.join(cmd)}")
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"gdal2tiles.py failed:\n{result.stderr}", file=sys.stderr)
+            sys.exit(1)
+
+        if result.stdout:
+            print(result.stdout)
 
     # Count generated tiles
     tile_count = sum(1 for _ in output_path.rglob("*.png"))
@@ -215,10 +160,10 @@ def generate_tiles(
         ],
         "min_zoom": min_zoom,
         "max_zoom": max_zoom,
-        "elevation_min_m": round(abs_min, 1),
-        "elevation_max_m": round(abs_max, 1),
-        "color_min_m": round(elev_min, 1),
-        "color_max_m": round(elev_max, 1),
+        "elevation_min_m": round(summary.elevation_min_m, 1),
+        "elevation_max_m": round(summary.elevation_max_m, 1),
+        "color_min_m": round(summary.color_min_m, 1),
+        "color_max_m": round(summary.color_max_m, 1),
         "tile_count": tile_count,
         "total_size_mb": round(total_size / 1024 / 1024, 1),
         "generated_at": int(time.time()),
@@ -231,6 +176,99 @@ def generate_tiles(
     print(
         f"WGS84 bounds: [{lat_min:.6f}, {lon_min:.6f}] → [{lat_max:.6f}, {lon_max:.6f}]"
     )
+
+
+def _write_colored(
+    src: DatasetReader,
+    src_crs: Any,
+    path: Path,
+    summary: ElevationSummary,
+    hillshade: bool,
+) -> None:
+    """
+    Write the coloured DEM as an RGBA GeoTIFF on its own grid, strip by strip.
+
+    Parameters
+    ----------
+    src : DatasetReader
+        Open DEM.
+    src_crs : CRS or str
+        CRS of the DEM (its own or the override).
+    path : Path
+        GeoTIFF to write; band 4 is the alpha (opaque on the valid cells).
+    summary : ElevationSummary
+        Colour range of the elevations.
+    hillshade : bool
+        Whether to blend the hillshade into the colours.
+    """
+    cellsize_m = abs(src.transform.a)
+    rows = max(BLOCK_PX, strip_rows(src.width) // BLOCK_PX * BLOCK_PX)
+    halo = HILLSHADE_HALO_ROWS if hillshade else 0
+    profile = {
+        "driver": "GTiff",
+        "width": src.width,
+        "height": src.height,
+        "count": 4,
+        "dtype": "uint8",
+        "crs": src_crs,
+        "transform": src.transform,
+        "photometric": "RGB",
+        "alpha": "YES",
+        "blockxsize": BLOCK_PX,
+        "blockysize": BLOCK_PX,
+        **GTIFF_OPTIONS,
+    }
+    with rasterio.open(path, "w", **profile) as dst:
+        for strip in read_strips(src, rows, halo):
+            valid = valid_elevation(strip.core, src.nodata)
+            shade = shade_strip(strip, src.nodata, cellsize_m) if hillshade else None
+            rgba = colorize_elevation(
+                strip.core, valid, summary.color_min_m, summary.color_max_m, shade
+            )
+            dst.write(
+                np.ascontiguousarray(np.moveaxis(rgba, 2, 0)),
+                window=Window(0, strip.row0, src.width, strip.rows),
+            )
+    if hillshade:
+        print(f"Hillshade computed (cellsize={cellsize_m:.2f} m)")
+        print("Hillshade blended with hypsometric ramp")
+
+
+def _warp(
+    source: Path,
+    target: Path,
+    dst_crs: str,
+    transform: Affine,
+    width: int,
+    height: int,
+) -> None:
+    """Reproject the RGBA GeoTIFF onto the given grid with gdalwarp (bilinear)."""
+    west, north = transform.c, transform.f
+    east = west + width * transform.a
+    south = north + height * transform.e
+    cmd = [
+        "gdalwarp",
+        "-q",
+        "-overwrite",
+        "-t_srs",
+        dst_crs,
+        "-te",
+        *(repr(value) for value in (west, south, east, north)),
+        "-ts",
+        str(width),
+        str(height),
+        "-r",
+        "bilinear",
+        "-wm",
+        str(WARP_MEMORY_MB),
+        *(arg for item in GTIFF_OPTIONS.items() for arg in ("-co", "=".join(item))),
+        str(source),
+        str(target),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"gdalwarp failed:\n{result.stderr}", file=sys.stderr)
+        sys.exit(1)
 
 
 def main() -> None:
@@ -270,6 +308,11 @@ def main() -> None:
         action="store_true",
         help="Disable hillshade blending (default: hillshade enabled)",
     )
+    parser.add_argument(
+        "--work-dir",
+        default=None,
+        help="Directory of the temporary GeoTIFFs (default: system temp directory)",
+    )
     args = parser.parse_args()
 
     if not Path(args.input).exists():
@@ -286,6 +329,7 @@ def main() -> None:
         resampling=args.resampling,
         processes=args.processes,
         no_hillshade=args.no_hillshade,
+        work_dir=args.work_dir,
     )
 
 

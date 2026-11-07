@@ -1,8 +1,15 @@
 """
 Generate a colored PNG overlay from DEM raster for Leaflet display.
 
-Reads a DEM (GeoTIFF/VRT), applies a hypsometric color ramp,
-saves as transparent PNG with WGS84 bounds metadata.
+Reads a DEM (GeoTIFF/VRT), applies a hypsometric color ramp blended with a hillshade,
+saves as transparent PNG of at most ``--max-size`` px with WGS84 bounds metadata.
+
+The DEM is read in strips of whole rows, never as a whole: two reads (of a float32
+DEM) give the extremes and the exact 5th-95th percentile colour range of all valid
+cells, one more averages the elevation and the hillshade (computed at full
+resolution) over square blocks of cells, about twice as fine as the PNG. The blocks
+are reprojected to EPSG:4326 onto the pixels of the PNG and coloured there; the share
+of valid cells sets the alpha.
 
 Usage:
     python -m scripts.generate_dem_overlay --input ../data/e2e_test/dem_mosaic.vrt \
@@ -11,16 +18,35 @@ Usage:
 
 import argparse
 import json
+import math
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import rasterio
+from affine import Affine
 from PIL import Image
-from rasterio.warp import Resampling, calculate_default_transform, reproject
+from rasterio.io import DatasetReader
+from rasterio.warp import Resampling, reproject
 
-from utils.dem_color import build_colormap, compute_hillshade, normalize_elevation
+from utils.dem_color import (
+    HILLSHADE_HALO_ROWS,
+    OverlayGrid,
+    colorize_elevation,
+    overlay_grid,
+    read_strips,
+    reduce_into,
+    reduction_factor,
+    shade_strip,
+    strip_rows,
+    summarize_elevation,
+    valid_elevation,
+)
+
+OVERSAMPLING = 2
+"""Blocks of the reduced DEM per PNG pixel and side, before the reprojection."""
 
 
 def generate_overlay(
@@ -40,118 +66,64 @@ def generate_overlay(
             print("Error: raster has no CRS. Use --source-crs.", file=sys.stderr)
             sys.exit(1)
 
-        dem_raw = src.read(1)
-        nodata = src.nodata
-        src_transform = src.transform
-
-        # Compute hillshade in source CRS (metric) before reprojection
-        hillshade_src = None
-        if not no_hillshade:
-            # Estimate cellsize from transform (metres)
-            cellsize = abs(src_transform.a)
-            # Mask nodata for gradient computation
-            dem_for_hs = dem_raw.astype(np.float64)
-            if nodata is not None:
-                dem_for_hs[dem_raw == nodata] = np.nan
-            hillshade_src = compute_hillshade(dem_for_hs, cellsize)
-            print(f"Hillshade computed (cellsize={cellsize:.2f} m)")
-
-        # Reproject DEM to EPSG:4326 so pixels align with geographic grid
-        dst_transform, dst_width, dst_height = calculate_default_transform(
-            src_crs, dst_crs, src.width, src.height, *src.bounds
+        grid = overlay_grid(
+            src_crs, src.transform, src.width, src.height, max_size, dst_crs
         )
-
-        dem = np.empty((dst_height, dst_width), dtype=dem_raw.dtype)
-        reproject(
-            source=dem_raw,
-            destination=dem,
-            src_transform=src_transform,
-            src_crs=src_crs,
-            dst_transform=dst_transform,
-            dst_crs=dst_crs,
-            resampling=Resampling.bilinear,
-            src_nodata=nodata,
-            dst_nodata=nodata,
-        )
-
-        # Reproject hillshade to EPSG:4326 too
-        hillshade = None
-        if hillshade_src is not None:
-            hillshade = np.zeros((dst_height, dst_width), dtype=np.float64)
-            reproject(
-                source=hillshade_src,
-                destination=hillshade,
-                src_transform=src_transform,
-                src_crs=src_crs,
-                dst_transform=dst_transform,
-                dst_crs=dst_crs,
-                resampling=Resampling.bilinear,
-                src_nodata=np.nan,
-                dst_nodata=0.0,
+        summary = summarize_elevation(src)
+        factor = 1
+        if grid.downsampled:
+            factor = reduction_factor(
+                src.height, src.width, OVERSAMPLING * max(grid.width, grid.height)
             )
+        elevation, hillshade, coverage = _block_means(src, factor, not no_hillshade)
+        if not no_hillshade:
+            print(f"Hillshade computed (cellsize={abs(src.transform.a):.2f} m)")
+        block_transform = src.transform * Affine.scale(factor)
 
-    height, width = dem.shape
+    # Average blocks into the PNG pixels; without shrinking, interpolate as before.
+    resampling = Resampling.average if grid.downsampled else Resampling.bilinear
 
-    # Create mask for valid data
-    valid = dem != nodata if nodata is not None else np.isfinite(dem)
+    def warp(values: np.ndarray) -> np.ndarray:
+        return _warp(values, src_crs, block_transform, grid, dst_crs, resampling)
 
-    # Elevation range — percentile clipping to avoid outlier compression
-    valid_data = dem[valid]
-    abs_min = float(np.min(valid_data))
-    abs_max = float(np.max(valid_data))
-    elev_min, elev_max = normalize_elevation(valid_data)
-    elev_range = elev_max - elev_min
+    dem = warp(elevation)
+    share = np.clip(np.nan_to_num(warp(coverage)), 0.0, 1.0)
+    valid = np.isfinite(dem) & (share > 0)
+    shade = None if hillshade is None else np.nan_to_num(warp(hillshade))
 
     print(
-        f"DEM reprojected to {dst_crs}: {width}x{height}, "
-        f"elevation {abs_min:.1f}–{abs_max:.1f} m "
-        f"(color range p5–p95: {elev_min:.1f}–{elev_max:.1f} m)"
+        f"DEM averaged over blocks of {factor}x{factor} cells and reprojected to "
+        f"{dst_crs}: {grid.width}x{grid.height}, elevation "
+        f"{summary.elevation_min_m:.1f}–{summary.elevation_max_m:.1f} m "
+        f"(color range p5–p95: {summary.color_min_m:.1f}–{summary.color_max_m:.1f} m)"
     )
 
-    # Normalize to 0–255 (values outside percentile window are clamped)
-    normalized = np.zeros_like(dem, dtype=np.float64)
-    if elev_range > 0:
-        normalized[valid] = (dem[valid] - elev_min) / elev_range
-    indices = np.clip((normalized * 255).astype(np.int32), 0, 255)
-
-    # Apply colormap
-    cmap = build_colormap()
-    rgba = np.zeros((height, width, 4), dtype=np.uint8)
-    rgba[..., 0] = cmap[indices, 0]
-    rgba[..., 1] = cmap[indices, 1]
-    rgba[..., 2] = cmap[indices, 2]
-    rgba[..., 3] = np.where(valid, 255, 0).astype(np.uint8)
-
-    # Apply hillshade as multiply blend: rgb = rgb * (0.3 + 0.7 * hillshade)
-    if hillshade is not None:
-        blend_factor = (0.3 + 0.7 * hillshade).astype(np.float64)
-        for ch in range(3):
-            rgba[..., ch] = np.clip(
-                rgba[..., ch].astype(np.float64) * blend_factor, 0, 255
-            ).astype(np.uint8)
+    rgba = colorize_elevation(
+        dem, valid, summary.color_min_m, summary.color_max_m, shade
+    )
+    # The alpha is the share of valid cells, as shrinking the full image gave it.
+    rgba[..., 3] = np.where(valid, np.rint(share * 255), 0).astype(np.uint8)
+    if shade is not None:
         print("Hillshade blended with hypsometric ramp")
 
-    # Save PNG (with optional downsampling)
     img = Image.fromarray(rgba, mode="RGBA")
-    if max_size and (width > max_size or height > max_size):
-        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-        print(f"Downsampled: {width}x{height} → {img.width}x{img.height}")
+    if grid.downsampled:
+        print(
+            f"Downsampled: {grid.full_width}x{grid.full_height} → "
+            f"{img.width}x{img.height}"
+        )
     img.save(output_png, optimize=True)
     file_size = Path(output_png).stat().st_size
     print(f"PNG saved: {output_png} ({file_size / 1024:.0f} KB)")
 
-    # Bounds from reprojected transform (already in EPSG:4326)
-    lon_min = dst_transform.c
-    lat_max = dst_transform.f
-    lon_max = lon_min + dst_width * dst_transform.a
-    lat_min = lat_max + dst_height * dst_transform.e
-
+    bounds = grid.bounds
+    (lat_min, lon_min), (lat_max, lon_max) = bounds
     meta = {
-        "bounds": [[lat_min, lon_min], [lat_max, lon_max]],
-        "elevation_min_m": round(abs_min, 1),
-        "elevation_max_m": round(abs_max, 1),
-        "color_min_m": round(elev_min, 1),
-        "color_max_m": round(elev_max, 1),
+        "bounds": bounds,
+        "elevation_min_m": round(summary.elevation_min_m, 1),
+        "elevation_max_m": round(summary.elevation_max_m, 1),
+        "color_min_m": round(summary.color_min_m, 1),
+        "color_max_m": round(summary.color_max_m, 1),
         "width": img.width,
         "height": img.height,
         "crs_source": str(src_crs),
@@ -164,6 +136,79 @@ def generate_overlay(
     print(
         f"WGS84 bounds: [{lat_min:.6f}, {lon_min:.6f}] → [{lat_max:.6f}, {lon_max:.6f}]"
     )
+
+
+def _block_means(
+    src: DatasetReader, factor: int, hillshade: bool
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray]:
+    """
+    Average the valid cells of a DEM over blocks of ``factor`` x ``factor`` cells.
+
+    Parameters
+    ----------
+    src : DatasetReader
+        Open DEM, read strip by strip.
+    factor : int
+        Side of a block (cells).
+    hillshade : bool
+        Whether to average the hillshade too.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray | None, np.ndarray]
+        Per block (``ceil(height / factor)`` x ``ceil(width / factor)``, float64):
+        the mean elevation and the mean hillshade of its valid cells (NaN without
+        one; no hillshade array without ``hillshade``), and the share of the block
+        that is valid.
+    """
+    shape = (math.ceil(src.height / factor), math.ceil(src.width / factor))
+    elevation_sum = np.zeros(shape)
+    hillshade_sum = np.zeros(shape) if hillshade else None
+    valid_cells = np.zeros(shape)
+    cellsize_m = abs(src.transform.a)
+    halo = HILLSHADE_HALO_ROWS if hillshade else 0
+    for strip in read_strips(src, strip_rows(src.width), halo):
+        valid = valid_elevation(strip.core, src.nodata)
+        elevation = np.where(valid, strip.core, 0).astype(np.float64)
+        reduce_into(elevation_sum, elevation, strip.row0, 0, factor, np.add)
+        reduce_into(
+            valid_cells, valid.astype(np.float64), strip.row0, 0, factor, np.add
+        )
+        if hillshade_sum is not None:
+            shade = shade_strip(strip, src.nodata, cellsize_m)
+            reduce_into(hillshade_sum, shade, strip.row0, 0, factor, np.add)
+
+    covered = valid_cells > 0
+    divisor = np.where(covered, valid_cells, 1.0)
+    mean_elevation = np.where(covered, elevation_sum / divisor, np.nan)
+    mean_hillshade = None
+    if hillshade_sum is not None:
+        mean_hillshade = np.where(covered, hillshade_sum / divisor, np.nan)
+    return mean_elevation, mean_hillshade, valid_cells / factor**2
+
+
+def _warp(
+    values: np.ndarray,
+    src_crs: Any,
+    src_transform: Affine,
+    grid: OverlayGrid,
+    dst_crs: str,
+    resampling: Resampling,
+) -> np.ndarray:
+    """Reproject float blocks (NaN = no data) onto the pixels of the PNG."""
+    warped = np.full((grid.height, grid.width), np.nan)
+    reproject(
+        source=values,
+        destination=warped,
+        src_transform=src_transform,
+        src_crs=src_crs,
+        dst_transform=grid.transform,
+        dst_crs=dst_crs,
+        resampling=resampling,
+        src_nodata=np.nan,
+        dst_nodata=np.nan,
+    )
+    return warped
 
 
 def main() -> None:

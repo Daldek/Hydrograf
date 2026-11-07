@@ -728,6 +728,24 @@ CREATE INDEX idx_feedback_created_at ON feedback USING btree (created_at DESC);
 
 ---
 
+### 3.12 Tables: `processing_runs` and `processing_units` (migration 005, ADR-071)
+
+One row of `processing_runs` per `process_dem --units` run: `status` (`staging`, `active`, `superseded`, `failed`),
+`input_fingerprint` (SHA-256 of the parameters, the text of the input VRTs and the path, size and mtime of the other input
+files), `source_raster`, `pgw_path`, `config` (JSONB: thresholds, halo, window limit, grid, owners, catchment layer and key,
+`run_dir`), `created_at`, `activated_at`, `superseded_at`, `failed_at`, `error` and `published_counts` (JSONB). The partial
+unique index `idx_processing_runs_one_active` allows at most one `active` run: the one whose results `stream_network` and
+`stream_catchments` hold. Check constraints tie each status to its timestamps and counts. A `staging` or `failed` run with the
+same fingerprint and configuration (without `run_dir`) is resumed (a failed one goes back to `staging`); a single-raster
+publication marks the active run `superseded`.
+
+One row of `processing_units` per owner of a run, keyed by `(run_id, owner_code)` (`ON DELETE CASCADE`): `catchment_keys`
+(TEXT[], the keys of the catchments the owner was grouped from, e.g. `ID_HYD_10`; NULL when the owner is a PGW polygon),
+`status` (`pending`; `routed` once the file of its fill and D8 is saved, with `halo_m` and `routed_at`; `complete` with
+`completed_at` once its tiles are written), the bounds of the owner's cells on the shared grid (`row_start`, `row_stop`,
+`col_start`, `col_stop`, half-open cell indexes) and `outputs`, the manifest of its files (`stage` and the rasters: path, size,
+SHA-256) that a resumed run and the publication check again. The published tables themselves are unchanged.
+
 ## 4. Relacje i Constraints
 
 ### 4.1 Klucze Obce (Foreign Keys)
