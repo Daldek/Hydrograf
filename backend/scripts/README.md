@@ -468,6 +468,38 @@ Processing complete!
 
 ---
 
+### `process_dem.py --units`: process the NMT by PGW units
+
+```bash
+cd backend
+# Dry run: the owners, the routing, the mosaics; no database
+uv run python -m scripts.process_dem --input /data/nmt/dem_mosaic.vrt --output-dir /data/nmt \
+    --units pgw.gpkg --units-area area.gpkg --dry-run
+# A run: replaces the DEM-derived stream_network and stream_catchments in one transaction
+uv run python -m scripts.process_dem --input /data/nmt/dem_mosaic.vrt --output-dir /data/nmt \
+    --units pgw.gpkg --units-area area.gpkg --clear-existing
+```
+
+`--units` takes Kartograf's PGW GeoPackage (`pl.pgw.pgw`: the layers `zlewnie_jcwp_rzecznych` and
+`pozostale_obszary_jcwp`, one owner per `MS_KOD`, EPSG:2180). `--units-area` (and `--units-area-layer`)
+is the analysis area: the polygons are clipped to it, and every valid cell of it must be inside one;
+`bootstrap --units` uses the area of `--boundary-file` or `--project`. Cells outside every polygon go to
+their nearest owner; the DEM keeps its grid and its nodata. Each owner is filled with a 500 m halo
+(`--max-unit-window-cells`, default 80,000,000, is the largest window; the halo doubles when the seams of
+two owners disagree), then the routing runs over disk-backed rasters of the whole grid, so the memory of
+the fill is that of the largest owner. Burning and smoothing streams (`dem.stream_burning`), raising
+buildings and the lake classification run once on the whole DEM first. The results are those of the
+whole-raster run: the same rows, and the same rasters on the cells that hold DEM data.
+
+A run writes, under `<output-dir>/unit_runs/<token>/`: `units/<stem>_<raster>_<MS_KOD>.tif` (the cells of
+one owner), `<stem>_<raster>.vrt` (the mosaic of each raster over the whole grid, named like the
+`--save-intermediates` GeoTIFFs) and `report.json` (owners, halo, largest window, peak RSS, counts); the
+routing scratch is removed. It is recorded in `processing_runs` and `processing_units` (migration 005); the
+publication replaces the DEM-derived network and activates the run in one transaction, and
+`<output-dir>/active_run` then points at the run. A failed run is marked `failed` and the database stays as
+it was. Tiles come from the published rows (`generate_tiles.py`, bootstrap step 8) as for any run; there is
+no resume of an interrupted run yet.
+
 ### `backfill_flow_path_heads.py`: fill the flow path heads of existing data
 
 Fills `flow_path_head_elev_m`, `overland_length_m`, `overland_drop_m` and `stream_head_elev_m`

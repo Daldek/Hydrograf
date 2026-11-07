@@ -728,6 +728,19 @@ CREATE INDEX idx_feedback_created_at ON feedback USING btree (created_at DESC);
 
 ---
 
+### 3.12 Tables: `processing_runs` and `processing_units` (migration 005, ADR-071)
+
+One row of `processing_runs` per `process_dem --units` run: `status` (`staging`, `active`, `superseded`, `failed`),
+`input_fingerprint` (SHA-256 of the input files and the parameters), `source_raster`, `pgw_path`, `config` (JSONB: thresholds,
+halo, window limit, grid, owners), `created_at`, `activated_at`, `superseded_at`, `failed_at`, `error` and `published_counts`
+(JSONB). The partial unique index `idx_processing_runs_one_active` allows at most one `active` run: the one whose results
+`stream_network` and `stream_catchments` hold. Check constraints tie each status to its timestamps and counts.
+
+One row of `processing_units` per PGW owner of a run, keyed by `(run_id, owner_code)` (`ON DELETE CASCADE`): `status`
+(`pending`, then `complete`), the bounds of the owner's cells on the shared grid (`row_start`, `row_stop`, `col_start`,
+`col_stop`, half-open cell indexes) and `outputs`, the manifest of its raster files (path, size, SHA-256) that the publication
+checks again. The published tables themselves are unchanged.
+
 ## 4. Relacje i Constraints
 
 ### 4.1 Klucze Obce (Foreign Keys)
