@@ -19,6 +19,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from core import database
+from core.active_run import ACTIVE_RUN_FILE, read_active_run
 from core.catchment_graph import CatchmentGraph
 from scripts import process_dem as single
 from scripts import process_dem_units as units
@@ -240,6 +241,9 @@ def test_a_second_run_replaces_the_network_and_supersedes_the_first(
         )
         segments = connection.execute(text("SELECT count(*) FROM stream_network"))
     assert statuses == {first["run_id"]: "superseded", second["run_id"]: "active"}
+    for stats in (first, second):
+        active = read_active_run(Path(stats["unit_rasters_dir"]).parents[1])
+        assert active is not None and active.run_id == stats["run_id"]
     assert segments.scalar_one() == len(network["streams"]), "replaced, not added to"
 
 
@@ -265,4 +269,41 @@ def test_a_run_that_fails_leaves_the_published_network_as_it_was(
     assert [run.status for run in runs] == ["active", "failed"]
     assert "MemoryError" in runs[1].error
     assert runs[1].pending == 3
-    assert not (tmp_path / "failed" / "active_run").exists()
+    assert not (tmp_path / "failed" / ACTIVE_RUN_FILE).exists()
+
+
+def test_a_whole_raster_run_supersedes_the_unit_run_and_removes_its_pointer(
+    engine, scene, pgw, tmp_path
+):
+    out = tmp_path / "out"
+    by_units = _run_units(scene, pgw, out)
+    active = read_active_run(out)
+    assert active is not None and active.run_id == by_units["run_id"]
+
+    single.process_dem(
+        scene.dem_path,
+        output_dir=out,
+        clear_existing=True,
+        thresholds=list(THRESHOLDS_M2),
+    )
+
+    assert read_active_run(out) is None
+    assert Path(by_units["unit_rasters_dir"]).is_dir(), "the files of the run stay"
+    with engine.connect() as connection:
+        run = connection.execute(
+            text("SELECT id, status, superseded_at FROM processing_runs")
+        ).one()
+        segments = connection.execute(text("SELECT count(*) FROM stream_network"))
+    assert (run.id, run.status) == (by_units["run_id"], "superseded")
+    assert run.superseded_at is not None
+    assert segments.scalar_one() > 0
+
+
+def test_a_schema_without_processing_runs_has_no_run_to_supersede():
+    with scratch_database("004") as url:
+        bound = create_engine(url)
+        try:
+            with Session(bound) as session:
+                assert single._supersede_active_unit_run(session) is None
+        finally:
+            bound.dispose()

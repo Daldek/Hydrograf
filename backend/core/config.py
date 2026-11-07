@@ -14,6 +14,8 @@ from typing import Any
 import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from core.active_run import active_run_raster
+
 logger = logging.getLogger(__name__)
 
 
@@ -68,11 +70,15 @@ class Settings(BaseSettings):
     def resolve_dem_path(self) -> str | None:
         """Find the best available DEM raster, checking candidates in order.
 
-        Priority: DEM_PATH env override → VRT mosaic → raw DEM TIF → filled DEM.
+        Priority: DEM_PATH env override → the active unit run's VRT mosaic
+        (``core.active_run``) → input VRT mosaic → raw DEM TIF → filled DEM.
         Returns None if no DEM found.
         """
         if self.dem_path and os.path.exists(self.dem_path):
             return self.dem_path
+        active = self._active_run_raster("01_dem")
+        if active is not None:
+            return active
         candidates = [
             os.path.join(self.dem_dir, "dem_mosaic.vrt"),
             os.path.join(self.dem_dir, "dem_mosaic_01_dem.tif"),
@@ -85,27 +91,43 @@ class Settings(BaseSettings):
         return None
 
     def resolve_stream_distance_path(self) -> str | None:
-        """Find stream distance raster."""
+        """Find stream distance raster.
+
+        Priority: STREAM_DISTANCE_PATH env override → the active unit run's VRT
+        mosaic → the GeoTIFF of a run of the whole raster.
+        """
         if self.stream_distance_path and os.path.exists(self.stream_distance_path):
             return self.stream_distance_path
-        candidate = os.path.join(self.dem_dir, "dem_mosaic_04b_stream_distance.tif")
-        return candidate if os.path.exists(candidate) else None
+        return self._pipeline_raster("04b_stream_distance")
 
     def resolve_flowdir_path(self) -> str | None:
         """Find flow direction raster (pyflwdir uint8 D8)."""
-        candidate = os.path.join(self.dem_dir, "dem_mosaic_03_flowdir.tif")
-        return candidate if os.path.exists(candidate) else None
+        return self._pipeline_raster("03_flowdir")
 
     def resolve_subcatchment_labels_path(self, threshold_m2: int) -> str | None:
         """Find the sub-catchment label raster of a threshold (int32, segment_idx)."""
-        candidate = os.path.join(
-            self.dem_dir, f"dem_mosaic_10_subcatchments_{threshold_m2}.tif"
-        )
-        return candidate if os.path.exists(candidate) else None
+        return self._pipeline_raster(f"10_subcatchments_{threshold_m2}")
 
     def resolve_slope_path(self) -> str | None:
         """Find slope raster."""
-        candidate = os.path.join(self.dem_dir, "dem_mosaic_05_slope.tif")
+        return self._pipeline_raster("05_slope")
+
+    def _active_run_raster(self, raster: str) -> str | None:
+        """``dem_mosaic_<raster>.vrt`` of the active unit run of DEM_DIR, or None."""
+        mosaic = active_run_raster(self.dem_dir, raster)
+        return str(mosaic) if mosaic is not None else None
+
+    def _pipeline_raster(self, raster: str) -> str | None:
+        """Return a raster of the pipeline in DEM_DIR, or None if it has none.
+
+        The VRT mosaic of the active unit run (``core.active_run``) when DEM_DIR
+        holds a valid pointer and the run has that raster; else the GeoTIFF
+        ``dem_mosaic_<raster>.tif`` of a run of the whole raster.
+        """
+        active = self._active_run_raster(raster)
+        if active is not None:
+            return active
+        candidate = os.path.join(self.dem_dir, f"dem_mosaic_{raster}.tif")
         return candidate if os.path.exists(candidate) else None
 
     # Admin panel API key (empty = auto-generated UUID at startup)
