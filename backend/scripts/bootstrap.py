@@ -955,20 +955,17 @@ def step_depressions(output_dir: Path) -> str:
             "Upewnij sie ze krok 3 ukonczyl sie z save_intermediates=True"
         )
 
-    depressions, depth, meta = compute_depressions(str(dem_path), str(filled_path))
-
-    n_inserted = 0
-    if depressions:
-        with get_db_session() as db:
-            n_inserted = insert_depressions(db, depressions)
+    # The scan computes the depressions tile by tile while they are inserted.
+    scan = compute_depressions(str(dem_path), str(filled_path))
+    with get_db_session() as db:
+        n_inserted = insert_depressions(db, scan)
 
     # Generate overlay PNG
     data_dir = FRONTEND_DIR / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
     generate_overlay(
-        depth,
-        meta,
+        scan.overview,
         str(data_dir / "depressions.png"),
         str(data_dir / "depressions.json"),
     )
@@ -1063,6 +1060,8 @@ def step_overlays(output_dir: Path) -> str:
             min_zoom=8,
             max_zoom=16,
             processes=4,
+            # The temporary GeoTIFFs grow with the DEM: on disk, next to it.
+            work_dir=str(nmt_dir),
         )
         generated.append("DEM tiles")
 
