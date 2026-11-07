@@ -86,41 +86,38 @@ def export_geojson(
     """
     Export PostGIS table to GeoJSON for a given threshold.
 
+    The rows are read with a server-side cursor and written feature by feature,
+    so the memory does not grow with the table (180,431 catchments of 1 ha on the
+    Hydroni area took 6.9 GB as one list of parsed geometries).
+
     Returns number of features exported.
     """
     cols = ", ".join(columns)
     query = (
         f"SELECT {cols}, "
-        f"ST_AsGeoJSON(ST_Transform(geom, 4326))::json AS geometry "
+        f"ST_AsGeoJSON(ST_Transform(geom, 4326)) AS geometry "
         f"FROM {table} "
         f"WHERE threshold_m2 = :threshold AND geom IS NOT NULL"
     )
-
-    rows = db.execute(text(query), {"threshold": threshold}).fetchall()
-
-    features = []
-    for r in rows:
-        props = {}
-        for i, col in enumerate(columns):
-            props[col] = r[i]
-        geom = r[len(columns)]
-        features.append(
-            {
-                "type": "Feature",
-                "geometry": geom,
-                "properties": props,
-            }
-        )
-
-    geojson = {
-        "type": "FeatureCollection",
-        "features": features,
-    }
-
+    rows = db.execute(
+        text(query),
+        {"threshold": threshold},
+        execution_options={"stream_results": True, "yield_per": 2000},
+    )
+    count = 0
     with open(output_path, "w") as f:
-        json.dump(geojson, f)
-
-    return len(features)
+        f.write('{"type": "FeatureCollection", "features": [')
+        for r in rows:
+            props = {col: r[i] for i, col in enumerate(columns)}
+            if count:
+                f.write(", ")
+            f.write(
+                '{"type": "Feature", "geometry": '
+                f'{r[len(columns)]}, "properties": {json.dumps(props)}}}'
+            )
+            count += 1
+        f.write("]}")
+    return count
 
 
 def run_tippecanoe(
