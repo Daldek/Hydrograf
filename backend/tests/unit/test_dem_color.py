@@ -1,9 +1,41 @@
-"""Tests for utils/dem_color.py: colormap builder and hillshade computation."""
+"""Tests for utils/dem_color.py: colormap, hillshade and the windowed helpers."""
 
 import numpy as np
 import pytest
+import rasterio
+from PIL import Image
+from rasterio.transform import from_origin
 
-from utils.dem_color import build_colormap, compute_hillshade, normalize_elevation
+from utils.dem_color import (
+    HILLSHADE_HALO_ROWS,
+    build_colormap,
+    compute_hillshade,
+    normalize_elevation,
+    read_strips,
+    reduce_into,
+    shade_strip,
+    summarize_elevation,
+    thumbnail_size,
+)
+
+NODATA = -9999
+
+
+def _write(path, data):
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=data.shape[0],
+        width=data.shape[1],
+        count=1,
+        dtype=data.dtype,
+        crs="EPSG:2180",
+        transform=from_origin(500000.0, 600000.0, 5.0, 5.0),
+        nodata=NODATA,
+    ) as dst:
+        dst.write(data, 1)
+    return path
 
 
 class TestBuildColormap:
@@ -168,3 +200,90 @@ class TestNormalizeElevation:
         normalized = (1000.0 - lo) / (hi - lo) if hi > lo else 0.0
         # Clamped to 255 after np.clip — value > 1.0 is expected
         assert normalized > 1.0
+
+
+class TestSummarizeElevation:
+    """summarize_elevation() equals normalize_elevation() of all valid cells."""
+
+    @pytest.mark.parametrize("dtype", ["float32", "float64", "int16"])
+    @pytest.mark.parametrize("rows_per_strip", [1, 4, 1000])
+    def test_equals_the_whole_array(self, tmp_path, dtype, rows_per_strip):
+        rng = np.random.default_rng(3)
+        # Negative elevations too: the sort keys of negative floats are reversed.
+        data = rng.normal(20, 40, (23, 17)).astype(dtype)
+        data[rng.random(data.shape) < 0.2] = NODATA
+        if dtype != "int16":
+            data[2, 3] = np.nan
+        valid = data[np.isfinite(data) & (data != NODATA)]
+
+        with rasterio.open(_write(tmp_path / "dem.tif", data)) as src:
+            summary = summarize_elevation(src, rows_per_strip=rows_per_strip)
+
+        assert summary.count == valid.size
+        assert summary.elevation_min_m == float(valid.min())
+        assert summary.elevation_max_m == float(valid.max())
+        assert (summary.color_min_m, summary.color_max_m) == normalize_elevation(valid)
+
+    @pytest.mark.parametrize("values", [[42.5], [7.0] * 30, [3.0, 3.0, 3.0, 9.0]])
+    def test_few_or_equal_values(self, tmp_path, values):
+        data = np.full((5, 8), NODATA, dtype="float32")
+        data.flat[: len(values)] = values
+        valid = np.array(values, dtype="float32")
+
+        with rasterio.open(_write(tmp_path / "dem.tif", data)) as src:
+            summary = summarize_elevation(src, rows_per_strip=2)
+
+        assert (summary.color_min_m, summary.color_max_m) == normalize_elevation(valid)
+
+    def test_no_valid_cell_raises(self, tmp_path):
+        data = np.full((4, 4), NODATA, dtype="float32")
+
+        with (
+            rasterio.open(_write(tmp_path / "dem.tif", data)) as src,
+            pytest.raises(ValueError, match="no valid elevation"),
+        ):
+            summarize_elevation(src)
+
+
+def test_hillshade_of_strips_equals_that_of_the_whole_raster(tmp_path):
+    rows, cols = np.indices((30, 20))
+    data = (50 + 10 * np.sin(rows / 3) + 5 * np.cos(cols / 4)).astype("float32")
+    data[10:13, 5:9] = NODATA
+    data[:, 0] = NODATA
+    whole = data.astype(np.float64)
+    whole[data == NODATA] = np.nan
+    expected = compute_hillshade(whole, 5.0)
+    expected[~np.isfinite(expected)] = 0.0  # next to nodata, as reprojected before
+
+    with rasterio.open(_write(tmp_path / "dem.tif", data)) as src:
+        strips = read_strips(src, 4, HILLSHADE_HALO_ROWS)
+        shaded = np.vstack([shade_strip(strip, src.nodata, 5.0) for strip in strips])
+
+    np.testing.assert_array_equal(shaded, expected)
+
+
+@pytest.mark.parametrize("ufunc", [np.maximum, np.add])
+def test_windows_reduce_to_the_blocks_of_the_whole_raster(ufunc):
+    data = np.random.default_rng(5).integers(0, 100, (23, 31)).astype(np.float64)
+    padded = np.zeros((24, 32))
+    padded[:23, :31] = data
+    expected = ufunc.reduce(ufunc.reduce(padded.reshape(6, 4, 8, 4), axis=3), axis=1)
+
+    blocks = np.zeros((6, 8))
+    for row0 in range(0, 23, 5):  # windows that cut blocks
+        for col0 in range(0, 31, 7):
+            window = data[row0 : row0 + 5, col0 : col0 + 7]
+            reduce_into(blocks, window, row0, col0, 4, ufunc)
+
+    np.testing.assert_array_equal(blocks, expected)
+
+
+@pytest.mark.parametrize(
+    "size",
+    [(2443, 1863), (1863, 2443), (1500, 1500), (1025, 3), (3, 1025), (1024, 1024)],
+)
+def test_thumbnail_size_is_that_of_pil(size):
+    image = Image.new("1", size)
+    image.thumbnail((1024, 1024))
+
+    assert thumbnail_size(*size, 1024) == image.size
