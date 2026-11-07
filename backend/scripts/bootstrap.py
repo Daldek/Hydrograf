@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from core._errors import BY_CODE
+from core.active_run import active_run_raster
 from core.errors import HydrografError, InvalidRequestError
 from utils.kartograf_set import SetInputs, nmt_segment, set_inputs
 from utils.kartograf_store import (
@@ -498,6 +499,36 @@ def step_set_nmt(inputs: SetInputs) -> tuple[list[Path], str]:
     return files, f"{len(files)}/{len(files)} arkuszy z zestawu"
 
 
+def _merged_hydro(packages: list[Path], output_path: Path) -> Path | None:
+    """Merge the hydro layers of the BDOT10k packages, or reuse their earlier merge.
+
+    The merge is kept with the list of its packages (path, size, mtime) beside it
+    and reused while that list is the same: a new merge is a new file, and a run by
+    PGW units is resumed only with the very files it began with.
+    """
+    from scripts.download_landcover import merge_hydro_gpkgs
+
+    sources = []
+    for package in sorted(path.resolve() for path in packages):
+        stat = package.stat()
+        sources.append(
+            {"path": str(package), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+        )
+    record = output_path.with_name(f"{output_path.stem}.sources.json")
+    if output_path.is_file() and record.is_file():
+        try:
+            if json.loads(record.read_text(encoding="utf-8")) == sources:
+                logger.info("Reusing %s: the same BDOT10k packages", output_path)
+                return output_path
+        except ValueError:
+            pass
+    record.unlink(missing_ok=True)
+    merged = merge_hydro_gpkgs(packages, output_path)
+    if merged == output_path:
+        record.write_text(json.dumps(sources, indent=2) + "\n", encoding="utf-8")
+    return merged
+
+
 def step_process_dem(
     downloaded_files: list[Path],
     output_dir: Path,
@@ -510,6 +541,9 @@ def step_process_dem(
     units_path: Path | None = None,
     units_area: tuple[Path, str | None] | None = None,
     max_unit_window_cells: int = 80_000_000,
+    units_catchments: tuple[Path, str | None, str] | None = None,
+    units_resume: bool = True,
+    resolution: str = "5m",
 ) -> tuple[dict[str, Any], str, tuple[float, float, float, float]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis.
 
@@ -518,13 +552,15 @@ def step_process_dem(
     (``dem.stream_burning`` of the configuration) selects the burned streams. With
     ``units_path`` (the PGW GeoPackage) the mosaic is processed by PGW units
     (ADR-071), the owners clipped to ``units_area``, the file and the layer of the
-    analysis area.
+    analysis area, and grouped from ``units_catchments`` (file, layer, key field)
+    when given; ``units_resume`` resumes a stopped run of the same inputs. The
+    mosaic has the cells of the ``resolution`` sheets: finer sheets are averaged
+    onto their grid first (``utils.raster_utils.align_to_cellsize``).
     """
     sys.path.insert(0, str(BACKEND_DIR))
     from core.constants import PIPELINE_THRESHOLDS_M2
-    from scripts.download_landcover import merge_hydro_gpkgs
     from scripts.process_dem import process_dem
-    from utils.raster_utils import create_vrt_mosaic, normalize_crs
+    from utils.raster_utils import align_to_cellsize, create_vrt_mosaic, normalize_crs
 
     nmt_dir = output_dir / "nmt"
     nmt_dir.mkdir(parents=True, exist_ok=True)
@@ -536,9 +572,13 @@ def step_process_dem(
 
     # Reproject PUWG 2000 files to EPSG:2180 before mosaicking
     normalized_files = normalize_crs(nmt_files, nmt_dir / "reprojected")
+    # A 5 m set can hold 1 m sheets: the mosaic keeps the cells of the 5 m sheets
+    aligned_files = align_to_cellsize(
+        normalized_files, nmt_dir / "aligned", float(resolution.removesuffix("m"))
+    )
 
     mosaic_path = create_vrt_mosaic(
-        input_files=normalized_files,
+        input_files=aligned_files,
         output_vrt=nmt_dir / "dem_mosaic.vrt",
         target_crs="EPSG:2180",
     )
@@ -576,7 +616,7 @@ def step_process_dem(
         if bdot_paths:
             hydro_out_dir = output_dir / "hydro"
             hydro_out_dir.mkdir(parents=True, exist_ok=True)
-            burn_path = merge_hydro_gpkgs(
+            burn_path = _merged_hydro(
                 list(bdot_paths.values()), hydro_out_dir / "hydro_merged.gpkg"
             )
     except Exception as e:
@@ -613,7 +653,11 @@ def step_process_dem(
         units_path=units_path,
         units_area_path=units_area[0] if units_area else None,
         units_area_layer=units_area[1] if units_area else None,
+        units_catchments_path=units_catchments[0] if units_catchments else None,
+        units_catchments_layer=units_catchments[1] if units_catchments else None,
+        units_catchments_key=units_catchments[2] if units_catchments else "ID_HYD_10",
         max_unit_window_cells=max_unit_window_cells,
+        units_resume=units_resume,
     )
 
     cells = stats.get("valid_cells", 0)
@@ -874,21 +918,18 @@ def step_precipitation(bbox: tuple[float, float, float, float]) -> str:
 
 
 def _saved_raster(nmt_dir: Path, name: str) -> Path | None:
-    """Return the raster ``dem_mosaic_<name>`` that step 3 saved last, or None.
+    """Return the raster ``dem_mosaic_<name>`` of the network of step 3, or None.
 
-    A run of the whole raster saves it as a GeoTIFF in ``nmt_dir``; a run by PGW units
-    (``--units``) leaves its VRT mosaic in the directory that ``active_run`` points
-    at. When both exist, the one a later run wrote is the one of the database.
+    A run by PGW units (``--units``) leaves its VRT mosaics in the run directory that
+    ``active_run.json`` of ``nmt_dir`` points at (``core.active_run``); a run of the
+    whole raster saves GeoTIFFs in ``nmt_dir`` and removes that pointer. So the run's
+    VRT when the pointer is valid and the run has the raster, else the GeoTIFF.
     """
-    saved = [
-        path
-        for path in (
-            nmt_dir / f"dem_mosaic_{name}.tif",
-            nmt_dir / "active_run" / f"dem_mosaic_{name}.vrt",
-        )
-        if path.exists()
-    ]
-    return max(saved, key=lambda path: path.stat().st_mtime, default=None)
+    mosaic = active_run_raster(nmt_dir, name)
+    if mosaic is not None:
+        return mosaic
+    tif = nmt_dir / f"dem_mosaic_{name}.tif"
+    return tif if tif.exists() else None
 
 
 def step_depressions(output_dir: Path) -> str:
@@ -1131,6 +1172,8 @@ def run_pipeline(
     units_path: Path | None = None,
     units_area: tuple[Path, str | None] | None = None,
     max_unit_window_cells: int = 80_000_000,
+    units_catchments: tuple[Path, str | None, str] | None = None,
+    units_resume: bool = True,
 ):
     """Run the full 10-step bootstrap pipeline.
 
@@ -1191,6 +1234,9 @@ def run_pipeline(
                 units_path=units_path,
                 units_area=units_area,
                 max_unit_window_cells=max_unit_window_cells,
+                units_catchments=units_catchments,
+                units_resume=units_resume,
+                resolution=resolution,
             )
             tracker.done(3, t0, detail)
         except Exception as e:
@@ -1521,11 +1567,41 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--units-catchments",
+        type=Path,
+        metavar="CATCHMENTS.gpkg",
+        help=(
+            "With --units: catchments (e.g. the MPHP catchments of the area) grouped "
+            "into the units, each to the PGW unit it overlaps most; their keys are "
+            "recorded with the units"
+        ),
+    )
+    parser.add_argument(
+        "--units-catchments-layer",
+        type=str,
+        default=None,
+        help="With --units-catchments: layer name (default: first layer)",
+    )
+    parser.add_argument(
+        "--units-catchments-key",
+        type=str,
+        default="ID_HYD_10",
+        help="With --units-catchments: field of the unique key (default: ID_HYD_10)",
+    )
+    parser.add_argument(
         "--max-unit-window-cells",
         type=int,
         default=80_000_000,
         metavar="N",
         help="Largest buffered PGW DEM window in cells (default: 80000000)",
+    )
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help=(
+            "With --units: begin a new run even when a stopped or failed run with "
+            "the same inputs and settings could be resumed"
+        ),
     )
     parser.add_argument(
         "--port",
@@ -1650,6 +1726,12 @@ def main():
         parser.error("--max-unit-window-cells must be positive")
     if args.units is not None and not args.units.is_file():
         parser.error(f"PGW units GeoPackage does not exist: {args.units}")
+    if args.units is None and (args.units_catchments or args.no_resume):
+        parser.error("--units-catchments and --no-resume need --units")
+    if args.units_catchments is not None and not args.units_catchments.is_file():
+        parser.error(f"Catchment file does not exist: {args.units_catchments}")
+    if args.units_catchments is None and args.units_catchments_layer:
+        parser.error("--units-catchments-layer needs --units-catchments")
     if args.project is None:
         # --bbox, --sheets and --boundary-file download: never into a shared store
         try:
@@ -1794,6 +1876,13 @@ def main():
             units_area = (inputs.area, None)
         elif args.boundary_file:
             units_area = (args.boundary_file, args.boundary_layer)
+    units_catchments: tuple[Path, str | None, str] | None = None
+    if args.units_catchments is not None:
+        units_catchments = (
+            args.units_catchments,
+            args.units_catchments_layer,
+            args.units_catchments_key,
+        )
 
     # Run pipeline
     total_start = time.time()
@@ -1813,6 +1902,8 @@ def main():
         units_path=args.units,
         units_area=units_area,
         max_unit_window_cells=args.max_unit_window_cells,
+        units_catchments=units_catchments,
+        units_resume=not args.no_resume,
     )
     total_elapsed = time.time() - total_start
 
