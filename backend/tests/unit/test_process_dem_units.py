@@ -14,6 +14,7 @@ import rasterio
 from rasterio.features import shapes
 from shapely.geometry import MultiPolygon, box, shape
 
+from core import unit_hydrology
 from core.active_run import ACTIVE_RUN_FILE, read_active_run
 from scripts import process_dem as single
 from scripts import process_dem_units as units
@@ -27,11 +28,6 @@ from tests.dem_equivalence import (
 )
 
 CODES = ("RW0001", "RW0002", "LW0003")
-
-
-@pytest.fixture(autouse=True)
-def _windows_smaller_than_the_grid(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(units, "UNIT_BUFFER_M", 125.0)
 
 
 @pytest.fixture
@@ -145,17 +141,15 @@ def test_a_run_records_the_owners_with_cells_and_publishes_after_every_checkpoin
     assert len(begin["input_fingerprint"]) == 64
     config = begin["config"]
     assert config["thresholds_m2"] == list(THRESHOLDS_M2)
-    assert config["halo_m"] == 125.0
     assert config["grid"]["nrows"] == 121 and config["grid"]["ncols"] == 131
     assert config["owners"] == ["LW0003", "RW0001", "RW0002"]
     # The resumable run is looked up by the same inputs and settings
     resume = store.calls[0][1]
     assert resume["input_fingerprint"] == begin["input_fingerprint"]
     assert {**resume["config"], "run_dir": config["run_dir"]} == config
-    # Each unit is routed once, at the halo of the run, with its stage on disk
+    # Each unit is routed once, with its stage on disk
     stages = {call[2]: call for call in store.calls if call[0] == "record_unit_stage"}
     assert set(stages) == {"LW0003", "RW0001", "RW0002"}
-    assert {call[5] for call in stages.values()} == {125.0}
     # Each unit is checkpointed with the bounds of its own cells and its tiles on disk
     checkpoints = {
         call[2]: call for call in store.calls if call[0] == "checkpoint_unit"
@@ -177,9 +171,16 @@ def test_a_run_records_the_owners_with_cells_and_publishes_after_every_checkpoin
     assert stats["run_id"] == 41 and stats["pgw_owners"] == 3
     assert stats["resumed_units"] == 0
     assert stats["stream_segments_inserted"] == 1
-    assert {"ownership", "prepare_dem", "unit_hydrology", "publish"} <= set(
-        stats["stages"]
-    )
+    assert {
+        "ownership",
+        "prepare_dem",
+        "global_fill",
+        "routing",
+        "vectorize_streams",
+        "polygonize_subcatchments",
+        "unit_mosaics",
+        "publish",
+    } <= set(stats["stages"])
 
 
 def test_a_published_run_is_the_active_one_and_leaves_no_scratch(
@@ -209,8 +210,6 @@ def test_a_published_run_is_the_active_one_and_leaves_no_scratch(
         report = json.loads((run_dir / "report.json").read_text())
         assert report["run_id"] == 41
         assert report["owners"] == ["LW0003", "RW0001", "RW0002"]
-        assert report["halo_m"] >= 125.0
-        assert 0 < report["largest_window_cells"] <= 121 * 131
         assert report["peak_rss_mb"] > 0
     with rasterio.open(active.run_dir / "dem_02_filled.vrt") as filled:
         assert filled.shape == (121, 131)
@@ -295,7 +294,6 @@ def test_an_input_that_is_refused_before_the_run_is_recorded_records_nothing(
             "storm-sewer",
         ),
         ({"thresholds": [0]}, "positive"),
-        ({"max_unit_window_cells": 0}, "positive"),
     ],
 )
 def test_options_a_published_run_cannot_honour_are_refused_up_front(
@@ -319,11 +317,38 @@ def test_a_run_by_units_replaces_the_network_only_when_confirmed(
     assert store.calls == []
 
 
-def test_a_window_over_the_cell_limit_fails_the_run(scene, pgw, tmp_path, store):
-    with pytest.raises(MemoryError, match="max_window_cells=1,000"):
-        _run(scene, pgw, tmp_path, max_unit_window_cells=1_000)
+def test_a_fill_that_fails_fails_the_run(scene, pgw, tmp_path, store, monkeypatch):
+    def out_of_memory(*args: Any, **kwargs: Any) -> None:
+        raise MemoryError("the fill of the whole grid")
+
+    monkeypatch.setattr(unit_hydrology, "fill_whole_grid", out_of_memory)
+
+    with pytest.raises(MemoryError, match="the fill of the whole grid"):
+        _run(scene, pgw, tmp_path)
 
     assert [call[0] for call in store.calls] == ["resume_run", "begin_run", "fail_run"]
+
+
+def test_the_scratch_of_a_run_lies_in_the_scratch_directory_until_it_succeeds(
+    scene, pgw, tmp_path, store
+):
+    scratch = tmp_path / "scratch"
+    store.publish_error = RuntimeError("the transaction broke")
+    with pytest.raises(RuntimeError, match="the transaction broke"):
+        _run(scene, pgw, tmp_path, scratch_dir=scratch)
+    # A failed run leaves its scratch, in the scratch directory, not in the run's
+    (failed,) = scratch.iterdir()
+    assert (failed / "routing" / "acc.npy").is_file()
+    assert not list((tmp_path / "out").rglob("*.npy"))
+
+    store.publish_error = None
+    stats = _run(scene, pgw, tmp_path, scratch_dir=scratch)
+
+    assert list(scratch.iterdir()) == [failed]
+    run_dir = Path(stats["unit_rasters_dir"])
+    assert run_dir.parent == tmp_path / "out" / "unit_runs"
+    assert (run_dir / "dem_02_filled.vrt").is_file()
+    assert not (run_dir / "scratch").exists()
 
 
 def _vrt(path: Path, source: str, src: str, dst: str) -> Path:

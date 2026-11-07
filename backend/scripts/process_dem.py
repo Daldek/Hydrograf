@@ -1132,7 +1132,7 @@ def process_dem(
     units_catchments_path: Path | None = None,
     units_catchments_layer: str | None = None,
     units_catchments_key: str = "ID_HYD_10",
-    max_unit_window_cells: int = 80_000_000,
+    units_scratch_dir: Path | None = None,
     units_resume: bool = True,
 ) -> dict[str, Any]:
     """
@@ -1200,9 +1200,9 @@ def process_dem(
         Layer of ``units_catchments_path`` (default: the first).
     units_catchments_key : str
         Field of the unique key of a catchment (default ``ID_HYD_10``).
-    max_unit_window_cells : int
-        With ``units_path``: the largest buffered owner window [cells]; a larger one
-        fails the run.
+    units_scratch_dir : Path, optional
+        With ``units_path``: directory of the run's scratch (the fill of the whole
+        grid and the disk-backed routing rasters) instead of ``output_dir``.
     units_resume : bool
         With ``units_path``: resume the latest staging or failed run with the same
         inputs and settings (default) instead of beginning a new one.
@@ -1248,7 +1248,7 @@ def process_dem(
             units_catchments_path=units_catchments_path,
             units_catchments_layer=units_catchments_layer,
             units_catchments_key=units_catchments_key,
-            max_unit_window_cells=max_unit_window_cells,
+            scratch_dir=units_scratch_dir,
             resume=units_resume,
         )
 
@@ -1789,11 +1789,14 @@ def main():
         help="With --units-catchments: field of the unique key (default: ID_HYD_10)",
     )
     parser.add_argument(
-        "--max-unit-window-cells",
-        type=int,
-        default=80_000_000,
-        metavar="N",
-        help="Buffered PGW DEM cell cap (default: 80000000; fails closed)",
+        "--units-scratch-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help=(
+            "With --units: the scratch of the run (the fill of the whole grid and "
+            "the routing rasters, removed after a run) in DIR, not --output-dir"
+        ),
     )
     parser.add_argument(
         "--no-resume",
@@ -1895,8 +1898,6 @@ def main():
     if args.thresholds:
         threshold_list = [int(t.strip()) for t in args.thresholds.split(",")]
 
-    if args.max_unit_window_cells < 1:
-        parser.error("--max-unit-window-cells must be positive")
     if args.units is not None and args.from_intermediates:
         parser.error("--units cannot reuse a single-raster --from-intermediates run")
     if args.units is None and (
@@ -1904,11 +1905,12 @@ def main():
         or args.units_area_layer
         or args.units_catchments
         or args.units_catchments_layer
+        or args.units_scratch_dir
         or args.no_resume
     ):
         parser.error(
-            "--units-area, --units-catchments and their options and --no-resume "
-            "need --units"
+            "--units-area, --units-catchments and their options, "
+            "--units-scratch-dir and --no-resume need --units"
         )
     if args.units_catchments is None and args.units_catchments_layer:
         parser.error("--units-catchments-layer needs --units-catchments")
@@ -1984,7 +1986,7 @@ def main():
             units_catchments_path=args.units_catchments,
             units_catchments_layer=args.units_catchments_layer,
             units_catchments_key=args.units_catchments_key,
-            max_unit_window_cells=args.max_unit_window_cells,
+            units_scratch_dir=args.units_scratch_dir,
             units_resume=not args.no_resume,
         )
     except FileNotFoundError as e:

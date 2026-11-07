@@ -540,7 +540,7 @@ def step_process_dem(
     stream_burning: str = "all",
     units_path: Path | None = None,
     units_area: tuple[Path, str | None] | None = None,
-    max_unit_window_cells: int = 80_000_000,
+    units_scratch_dir: Path | None = None,
     units_catchments: tuple[Path, str | None, str] | None = None,
     units_resume: bool = True,
     resolution: str = "5m",
@@ -553,7 +553,8 @@ def step_process_dem(
     ``units_path`` (the PGW GeoPackage) the mosaic is processed by PGW units
     (ADR-071), the owners clipped to ``units_area``, the file and the layer of the
     analysis area, and grouped from ``units_catchments`` (file, layer, key field)
-    when given; ``units_resume`` resumes a stopped run of the same inputs. The
+    when given; ``units_scratch_dir`` holds the scratch of the run and
+    ``units_resume`` resumes a stopped run of the same inputs. The
     mosaic has the cells of the ``resolution`` sheets: finer sheets are averaged
     onto their grid first (``utils.raster_utils.align_to_cellsize``).
     """
@@ -656,7 +657,7 @@ def step_process_dem(
         units_catchments_path=units_catchments[0] if units_catchments else None,
         units_catchments_layer=units_catchments[1] if units_catchments else None,
         units_catchments_key=units_catchments[2] if units_catchments else "ID_HYD_10",
-        max_unit_window_cells=max_unit_window_cells,
+        units_scratch_dir=units_scratch_dir,
         units_resume=units_resume,
     )
 
@@ -1170,7 +1171,7 @@ def run_pipeline(
     stream_burning: str = "all",
     units_path: Path | None = None,
     units_area: tuple[Path, str | None] | None = None,
-    max_unit_window_cells: int = 80_000_000,
+    units_scratch_dir: Path | None = None,
     units_catchments: tuple[Path, str | None, str] | None = None,
     units_resume: bool = True,
 ):
@@ -1232,7 +1233,7 @@ def run_pipeline(
                 stream_burning=stream_burning,
                 units_path=units_path,
                 units_area=units_area,
-                max_unit_window_cells=max_unit_window_cells,
+                units_scratch_dir=units_scratch_dir,
                 units_catchments=units_catchments,
                 units_resume=units_resume,
                 resolution=resolution,
@@ -1561,8 +1562,9 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PGW.gpkg",
         help=(
             "Kartograf PGW GeoPackage: step 3 processes the NMT mosaic by its PGW "
-            "units (ADR-071), the same results with the memory of one buffered unit; "
-            "the units are clipped to the area of --boundary-file or --project"
+            "units (ADR-071): one fill of the whole grid, the routing on disk, the "
+            "same results; the units are clipped to the area of --boundary-file or "
+            "--project"
         ),
     )
     parser.add_argument(
@@ -1588,11 +1590,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="With --units-catchments: field of the unique key (default: ID_HYD_10)",
     )
     parser.add_argument(
-        "--max-unit-window-cells",
-        type=int,
-        default=80_000_000,
-        metavar="N",
-        help="Largest buffered PGW DEM window in cells (default: 80000000)",
+        "--units-scratch-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help=(
+            "With --units: the scratch of step 3 (the fill of the whole grid and "
+            "the routing rasters, removed after a run) in DIR"
+        ),
     )
     parser.add_argument(
         "--no-resume",
@@ -1721,12 +1726,14 @@ def main():
     args = parser.parse_args()
     if (args.project is None) != (args.set is None):
         parser.error("--project and --set go together")
-    if args.max_unit_window_cells < 1:
-        parser.error("--max-unit-window-cells must be positive")
     if args.units is not None and not args.units.is_file():
         parser.error(f"PGW units GeoPackage does not exist: {args.units}")
-    if args.units is None and (args.units_catchments or args.no_resume):
-        parser.error("--units-catchments and --no-resume need --units")
+    if args.units is None and (
+        args.units_catchments or args.units_scratch_dir or args.no_resume
+    ):
+        parser.error(
+            "--units-catchments, --units-scratch-dir and --no-resume need --units"
+        )
     if args.units_catchments is not None and not args.units_catchments.is_file():
         parser.error(f"Catchment file does not exist: {args.units_catchments}")
     if args.units_catchments is None and args.units_catchments_layer:
@@ -1900,7 +1907,7 @@ def main():
         stream_burning=stream_burning,
         units_path=args.units,
         units_area=units_area,
-        max_unit_window_cells=args.max_unit_window_cells,
+        units_scratch_dir=args.units_scratch_dir,
         units_catchments=units_catchments,
         units_resume=not args.no_resume,
     )

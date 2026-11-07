@@ -42,9 +42,7 @@ def test_split_hydrology_matches_uncut_dem_with_flat_and_crossings(
     scene = split_scene(tmp_path, units, holes)
     metadata, whole = scene.metadata, scene.whole
     owners, border, path = scene.owners, scene.border, scene.dem_path
-    split_run = process_unit_hydrology(
-        path, owners, tmp_path / "run", THRESHOLDS_M2, buffer_m=125
-    )
+    split_run = process_unit_hydrology(path, owners, tmp_path / "run", THRESHOLDS_M2)
     np.testing.assert_array_equal(split_run.filled_dem, whole.filled_dem)
     np.testing.assert_array_equal(split_run.fdir, whole.fdir)
     np.testing.assert_array_equal(
@@ -91,32 +89,7 @@ def test_split_hydrology_matches_uncut_dem_with_flat_and_crossings(
         _equivalent_labels(expected_labels, split_run.labels[threshold])
 
 
-def test_rejects_owner_window_that_exceeds_configured_cell_budget(tmp_path):
-    dem, metadata = synthetic_dem(nrows=40, ncols=48, holes=False)
-    owners = np.ones(dem.shape, dtype=np.uint8)
-    owners[:, 24:] = 2
-    owners[dem == NODATA] = 0
-    path = tmp_path / "dem.tif"
-    with rasterio.open(
-        path,
-        "w",
-        driver="GTiff",
-        height=40,
-        width=48,
-        count=1,
-        dtype="float32",
-        crs="EPSG:2180",
-        transform=metadata["transform"],
-        nodata=NODATA,
-    ) as dst:
-        dst.write(dem, 1)
-    with pytest.raises(MemoryError, match="configured max_window_cells=100"):
-        process_unit_hydrology(
-            path, owners, tmp_path / "run", (1_000,), max_window_cells=100
-        )
-
-
-def test_drain_points_of_the_whole_grid_reach_the_windows_that_contain_them(tmp_path):
+def test_drain_points_of_the_whole_grid_are_outlets_of_its_fill(tmp_path):
     dem, metadata = synthetic_dem(nrows=121, ncols=131, seed=12, holes=False)
     # The closed basin straddles the seam of owners 1 and 2; a drain point in it,
     # and one in the flat of owner 2, are outlets in the uncut run.
@@ -152,7 +125,6 @@ def test_drain_points_of_the_whole_grid_reach_the_windows_that_contain_them(tmp_
         owners,
         tmp_path / "run",
         THRESHOLDS_M2,
-        buffer_m=125,
         drain_points=drain_points,
     )
 

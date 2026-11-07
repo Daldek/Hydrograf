@@ -1,10 +1,10 @@
 """Opt-in bootstrap of the DEM by PGW units (ADR-071), on the grid of the input DEM.
 
-``process_dem --units`` runs the hydrology of the whole input DEM owner by owner: the
-fill and the D8 directions of each owner with a 500 m halo, then the routing of the
-whole area over disk-backed rasters (``core.unit_hydrology``), so the fill never holds
-more than one buffered owner in memory. The result is the one a run of the whole raster
-gives (``tests/unit/test_unit_equivalence.py``): the same rows of ``stream_network`` and
+``process_dem --units`` fills the depressions of the whole prepared DEM once, as
+``process_dem`` does (pyflwdir's fill and D8), takes every owner's cells from that
+fill, then routes the whole area over disk-backed rasters (``core.unit_hydrology``).
+The result is the one a run of the whole raster gives
+(``tests/unit/test_unit_equivalence.py``): the same rows of ``stream_network`` and
 ``stream_catchments``, and the same rasters on the cells that hold DEM data. An owner
 is a PGW unit, or with ``--units-catchments`` the group of the catchments that lie
 (mostly) in one PGW unit (``core.unit_ownership``).
@@ -14,12 +14,13 @@ The outputs of a run, under ``<output_dir>/unit_runs/<run token>/``:
 * ``units/<stem>_<raster>_<owner code>.tif``: the tiled GeoTIFFs of every owner's own
   cells, one per raster, and ``<stem>_<raster>.vrt``: the VRT mosaic of each raster over
   the whole grid (the names of ``process_dem --save-intermediates``, with ``.vrt``);
-* ``report.json``: what the run did (owners, halo, stages with wall time and peak
-  memory, counts);
-* ``stage/<owner code>.npz``: the fill and D8 of each owner, from which an
+* ``report.json``: what the run did (owners, stages with wall time and peak memory,
+  counts);
+* ``stage/<owner code>.npz``: the fill and D8 of each owner's cells, from which an
   interrupted run is resumed; removed once the run is published;
-* scratch (``<call token>/scratch/``): the disk-backed rasters of the routing,
-  removed once the run succeeded.
+* scratch (``<call token>/scratch/``, or under ``scratch_dir``): the fill of the
+  whole grid and the disk-backed rasters of the routing, removed once the run
+  succeeded.
 
 A run that is not a dry run is recorded in ``processing_runs`` and
 ``processing_units`` (migration 005) and replaces the DEM-derived network in one
@@ -42,6 +43,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
+from functools import partial
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -95,9 +97,10 @@ from scripts.process_dem import (
 
 logger = logging.getLogger(__name__)
 
-# Halo of the buffered windows [m] (ADR-071); it grows on a disagreement of the seams.
-UNIT_BUFFER_M = 500.0
 _STRIP_ROWS = 512
+# Linux: writing 5 resets the peak resident set (VmHWM) of the process
+_CLEAR_REFS = Path("/proc/self/clear_refs")
+_STATUS = Path("/proc/self/status")
 
 
 def _file_dependencies(path: Path) -> list[Path]:
@@ -176,7 +179,7 @@ class _RunCheckpoints:
 
     The units the run already routed (``units``, from ``resume_run``) are restored
     from their files when those are intact (size and SHA-256 as recorded) and were
-    computed with the halo asked for; any other unit is computed again.
+    taken with the halo asked for; any other unit is taken from the fill again.
     """
 
     def __init__(
@@ -190,12 +193,6 @@ class _RunCheckpoints:
         self.codes = codes
         self.stage_dir = stage_dir
         self.units = units
-        halos = [
-            unit.halo_m
-            for unit in units.values()
-            if unit.status != "pending" and unit.halo_m is not None
-        ]
-        self.halo_m: float | None = max(halos) if halos else None
         self.restored: set[str] = set()
         self.stage_files: dict[str, Path] = {}
 
@@ -215,7 +212,7 @@ class _RunCheckpoints:
         entry = unit.outputs["stage"]
         problem = file_problem(entry)
         if problem is not None:
-            logger.warning("Unit %s is computed again: %s", code, problem)
+            logger.warning("Unit %s is taken from the fill again: %s", code, problem)
             return None
         path = Path(entry["path"])
         stage = UnitStage.load(path)
@@ -243,17 +240,23 @@ class _RunCheckpoints:
 
 @contextmanager
 def _stage(stats: dict[str, Any], name: str) -> Iterator[None]:
-    """Record the wall time of a stage and the peak RSS reached by its end."""
+    """Record the wall time of a stage and the peak RSS reached in it.
+
+    On Linux the kernel's peak of the process (VmHWM) is reset as the stage begins,
+    so the peak is the stage's own; elsewhere it is the peak so far. The peak of
+    the run (``peak_rss_mb``) is the largest of them.
+    """
+    _reset_peak_rss()
     started = time.time()
     yield
     elapsed = time.time() - started
+    peak = round(_peak_rss_mb(), 1)
     stats.setdefault("stages", {})[name] = {
         "elapsed_s": round(elapsed, 1),
-        "peak_rss_mb": round(_peak_rss_mb(), 1),
+        "peak_rss_mb": peak,
     }
-    logger.info(
-        "Stage %s: %.1f s, peak RSS so far %.0f MB", name, elapsed, _peak_rss_mb()
-    )
+    stats["peak_rss_mb"] = max(stats.get("peak_rss_mb", 0.0), peak)
+    logger.info("Stage %s: %.1f s, peak RSS %.0f MB", name, elapsed, peak)
 
 
 def _prepare_dem(
@@ -274,12 +277,13 @@ def _prepare_dem(
     The same steps in the same order as ``process_dem``. A stream is smoothed along
     its whole length and a lake is classified by its whole area and outflow, so a
     window of an owner cannot do these; the DEM is held once, as ``process_dem`` holds
-    it, and the result goes to ``scratch`` as a tiled GeoTIFF for the windowed reads.
+    it, and the result goes to ``scratch`` as a tiled GeoTIFF, freed before the fill
+    of the whole grid reads it.
 
     Returns
     -------
     tuple[Path, list[tuple[int, int]] | None]
-        The DEM the owners are processed from (``dem_path`` itself when nothing
+        The DEM the whole grid is filled from (``dem_path`` itself when nothing
         changes it) and the drain points of the whole grid (row, column).
     """
     stats["waterbody_mode"] = waterbody_mode
@@ -441,8 +445,22 @@ def _network_rows(
     return {t: catchments[t] for t in sorted(catchments)}
 
 
+def _reset_peak_rss() -> None:
+    """Begin a new peak of the resident set where Linux allows it."""
+    try:
+        _CLEAR_REFS.write_text("5")
+    except OSError:
+        logger.debug("The peak RSS cannot be reset: stage peaks are cumulative")
+
+
 def _peak_rss_mb() -> float:
-    """Return the peak resident set of this process so far [MB]."""
+    """Return the peak resident set [MB]: since the last reset where Linux has it."""
+    try:
+        for line in _STATUS.read_text().splitlines():
+            if line.startswith("VmHWM:"):
+                return int(line.split()[1]) / 1024
+    except OSError:
+        pass
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
 
 
@@ -469,7 +487,7 @@ def process_dem_units(
     units_catchments_path: Path | None = None,
     units_catchments_layer: str | None = None,
     units_catchments_key: str = DEFAULT_CATCHMENT_KEY,
-    max_unit_window_cells: int = 80_000_000,
+    scratch_dir: Path | None = None,
     resume: bool = True,
 ) -> dict[str, Any]:
     """Process the DEM by PGW units and publish the run, or only compute it.
@@ -477,11 +495,11 @@ def process_dem_units(
     The arguments are those of ``process_dem`` of the same name, plus the PGW
     GeoPackage and its options. A run always writes its unit rasters and VRT mosaics
     (``process_dem --save-intermediates`` is not needed). Without ``dry_run`` the run
-    is recorded, each unit is checkpointed as soon as its fill and flow directions
-    are computed, and the DEM-derived network of the database is replaced by the run
-    in one transaction; any failure before that leaves the database as it was and
-    marks the run failed. A later call with the same inputs and settings resumes
-    that run (``resume``): the units it routed are restored from their files.
+    is recorded, each unit is checkpointed as soon as its cells are taken from the
+    fill of the whole grid, and the DEM-derived network of the database is replaced
+    by the run in one transaction; any failure before that leaves the database as it
+    was and marks the run failed. A later call with the same inputs and settings
+    resumes that run (``resume``): the units it routed are restored from their files.
 
     Parameters
     ----------
@@ -503,8 +521,10 @@ def process_dem_units(
         Layer of ``units_catchments_path`` (default: the first).
     units_catchments_key : str
         Field of the unique key of a catchment (default ``ID_HYD_10``).
-    max_unit_window_cells : int
-        Largest buffered owner window [cells]; a larger one fails the run.
+    scratch_dir : Path, optional
+        Directory for the scratch of the call (the fill of the whole grid and the
+        disk-backed rasters of the routing), instead of the run's directory: another
+        disk when the one of ``output_dir`` cannot hold it.
     resume : bool
         Take up the latest staging or failed run with the same inputs and
         settings instead of beginning a new one.
@@ -543,8 +563,6 @@ def process_dem_units(
     thresholds_m2 = tuple(sorted(set(thresholds or PIPELINE_THRESHOLDS_M2)))
     if any(threshold <= 0 for threshold in thresholds_m2):
         raise ValueError("Stream thresholds must be positive")
-    if max_unit_window_cells < 1:
-        raise ValueError("max_unit_window_cells must be positive")
     if stream_burning not in STREAM_BURNING_MODES:
         raise ValueError(
             f"stream_burning must be one of {STREAM_BURNING_MODES}, "
@@ -556,8 +574,12 @@ def process_dem_units(
     started = time.time()
     output_dir = Path(output_dir) if output_dir is not None else input_path.parent
     # The scratch of this call; a resumed run keeps its files where it began.
-    work_dir = output_dir / "unit_runs" / uuid.uuid4().hex
-    scratch = work_dir / "scratch"
+    token = uuid.uuid4().hex
+    work_dir = output_dir / "unit_runs" / token
+    work_dir.mkdir(parents=True)
+    scratch = (
+        Path(scratch_dir) / token if scratch_dir is not None else work_dir / "scratch"
+    )
     scratch.mkdir(parents=True)
     run_dir = work_dir
     stats: dict[str, Any] = {"run_id": None, "resumed_units": 0}
@@ -621,8 +643,6 @@ def process_dem_units(
             # What the results depend on, besides the input files.
             parameters: dict[str, Any] = {
                 "thresholds_m2": list(thresholds_m2),
-                "halo_m": UNIT_BUFFER_M,
-                "max_unit_window_cells": max_unit_window_cells,
                 "hydro_resolution_m": stats.get("hydro_resolution_m"),
                 "burn_depth_m": burn_depth_m if burn_streams_path else None,
                 "stream_burning": stream_burning if burn_streams_path else None,
@@ -704,25 +724,18 @@ def process_dem_units(
                     waterbody_mode=waterbody_mode,
                     waterbody_min_area_m2=waterbody_min_area_m2,
                 )
-            with _stage(stats, "unit_hydrology"):
-                result = process_unit_hydrology(
-                    working_dem,
-                    owners.cells,
-                    scratch / "routing",
-                    thresholds_m2,
-                    buffer_m=UNIT_BUFFER_M,
-                    max_window_cells=max_unit_window_cells,
-                    drain_points=drain_points,
-                    checkpoints=checkpoints,
-                )
+            result = process_unit_hydrology(
+                working_dem,
+                owners.cells,
+                scratch / "routing",
+                thresholds_m2,
+                drain_points=drain_points,
+                checkpoints=checkpoints,
+                stage=partial(_stage, stats),
+            )
             if checkpoints is not None:
                 stats["resumed_units"] = len(checkpoints.restored)
-            logger.info(
-                "Units routed: halo %g m, largest window %s cells, %d restored",
-                result.halo_m,
-                f"{result.largest_window_cells:,}",
-                stats["resumed_units"],
-            )
+                logger.info("Units restored: %d", stats["resumed_units"])
             with _stage(stats, "statistics"):
                 lowest_cells = max(1, int(thresholds_m2[0] / cellsize**2))
                 mean_slope, stream_cells = _row_statistics(
@@ -733,7 +746,7 @@ def process_dem_units(
                     mean_slope=mean_slope,
                     stream_cells=stream_cells,
                 )
-            with _stage(stats, "network_rows"):
+            with _stage(stats, "polygonize_subcatchments"):
                 flow = UnitFlowPaths.from_hydrology(
                     result, metadata["transform"], scratch / "downstream.npy"
                 )
@@ -817,14 +830,13 @@ def process_dem_units(
                         run_dir,
                         error,
                     )
-            stats["peak_rss_mb"] = round(_peak_rss_mb(), 1)
+            stats["peak_rss_mb"] = max(
+                stats.get("peak_rss_mb", 0.0), round(_peak_rss_mb(), 1)
+            )
             stats["elapsed_s"] = round(time.time() - started, 1)
             report: dict[str, Any] = {
                 "run_id": run_id,
                 "owners": list(active_owners),
-                "halo_m": result.halo_m,
-                "largest_window_cells": result.largest_window_cells,
-                "max_unit_window_cells": max_unit_window_cells,
                 **{
                     key: stats[key]
                     for key in (

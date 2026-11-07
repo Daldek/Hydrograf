@@ -18,11 +18,10 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from core import database
+from core import database, unit_hydrology
 from core.active_run import ACTIVE_RUN_FILE, read_active_run
 from core.catchment_graph import CatchmentGraph
 from scripts import process_dem as single
-from scripts import process_dem_units as units
 from tests.conftest_db import requires_db
 from tests.dem_equivalence import (
     THRESHOLDS_M2,
@@ -65,11 +64,6 @@ def engine() -> Iterator[Engine]:
             database._engine = previous_engine
             database.SessionLocal.configure(bind=previous_bind)
             bound.dispose()
-
-
-@pytest.fixture(autouse=True)
-def _windows_smaller_than_the_grid(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(units, "UNIT_BUFFER_M", 125.0)
 
 
 @pytest.fixture(autouse=True)
@@ -248,13 +242,17 @@ def test_a_second_run_replaces_the_network_and_supersedes_the_first(
 
 
 def test_a_run_that_fails_leaves_the_published_network_as_it_was(
-    engine, scene, pgw, tmp_path
+    engine, scene, pgw, tmp_path, monkeypatch
 ):
     _run_units(scene, pgw, tmp_path / "published")
     network = _snapshot(engine)
 
-    with pytest.raises(MemoryError, match="max_window_cells=1,000"):
-        _run_units(scene, pgw, tmp_path / "failed", max_unit_window_cells=1_000)
+    def out_of_memory(*args: Any, **kwargs: Any) -> None:
+        raise MemoryError("the fill of the whole grid")
+
+    monkeypatch.setattr(unit_hydrology, "fill_whole_grid", out_of_memory)
+    with pytest.raises(MemoryError, match="the fill of the whole grid"):
+        _run_units(scene, pgw, tmp_path / "failed")
 
     assert _snapshot(engine) == network
     with engine.connect() as connection:

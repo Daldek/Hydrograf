@@ -37,14 +37,6 @@ from tests.dem_equivalence import (
 )
 
 CODES = ("RW0001", "RW0002", "LW0003")
-# The halo of the windows [m]: 25 cells, so that a window is smaller than the grid
-HALO_M = 125.0
-
-
-@pytest.fixture(autouse=True)
-def _windows_smaller_than_the_grid(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The 500 m halo of a run would cover the whole synthetic grid."""
-    monkeypatch.setattr(units, "UNIT_BUFFER_M", HALO_M)
 
 
 @pytest.fixture(params=[(2, False), (2, True), (3, False), (3, True)], ids=str)

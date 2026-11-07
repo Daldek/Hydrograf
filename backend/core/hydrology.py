@@ -8,6 +8,7 @@ sink fixing, and flow accumulation recomputation.
 
 import logging
 from collections import defaultdict, deque
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -49,12 +50,18 @@ STREAM_BURNING_MODES = ("all", "main")
 _MAIN_COURSE = "ciek główny"
 _RIVER = "rzeka"
 
+# Passes of fill_internal_nodata_holes: a repaired cell lies at most this many cells
+# from a cell of the original DEM data
+HOLE_FILL_PASSES = 3
+
 
 def fill_internal_nodata_holes(
     dem: np.ndarray,
     nodata: float,
     min_valid_neighbors: int = 5,
-    max_iterations: int = 3,
+    max_iterations: int = HOLE_FILL_PASSES,
+    *,
+    overwrite: bool = False,
 ) -> tuple[np.ndarray, int]:
     """
     Fill internal nodata holes of a DEM.
@@ -77,13 +84,16 @@ def fill_internal_nodata_holes(
         Valid neighbours (of 8) for a nodata cell to be filled
     max_iterations : int
         Maximum number of passes
+    overwrite : bool
+        Repair the holes in ``dem`` itself instead of a copy (the memory of a
+        whole DEM less); the returned DEM is then ``dem``.
 
     Returns
     -------
     tuple
         (patched_dem, total_filled): the filled DEM and the number of cells filled
     """
-    patched = dem.copy()
+    patched = dem if overwrite else dem.copy()
     total_filled = 0
     # NumPy compares the DEM with nodata in this type; the neighbour means
     # compare in float64, the values of scipy's generic_filter
@@ -1500,6 +1510,132 @@ def fix_internal_sinks(
     return fdir_fixed, acc_fixed, diag
 
 
+def fill_depressions_d8(
+    dem: np.ndarray,
+    nodata: float,
+    drain_points: list[tuple[int, int]] | None = None,
+    *,
+    overwrite_dem: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fill the depressions of a DEM and derive pyflwdir's D8 directions.
+
+    The internal nodata holes are repaired first (fill_internal_nodata_holes); the
+    drain points of endorheic lakes then become nodata, which pyflwdir treats as
+    local outlets; pyflwdir fills the depressions (Wang & Liu 2006, outlets at the
+    edge of the data) and gives every cell it routes a D8 direction. The filled DEM
+    gets back the nodata of the DEM and of the drain points; a repaired hole keeps
+    its direction, so it carries flow.
+
+    Parameters
+    ----------
+    dem : np.ndarray
+        Input DEM array.
+    nodata : float
+        NoData value.
+    drain_points : list of (row, col), optional
+        Drain points for endorheic lakes, injected as NoData after the hole
+        filling and before pyflwdir.
+    overwrite_dem : bool
+        Repair the holes in ``dem`` itself, which pyflwdir then fills: no copy of
+        the DEM is made, and ``dem`` must not be used afterwards.
+
+    Returns
+    -------
+    tuple
+        (filled_dem, d8_fdir): the filled DEM (the dtype of ``dem``) and pyflwdir's
+        D8 grid (uint8: 247 where it routes no flow, 0 at its pits, the outlets).
+    """
+    from pyflwdir.dem import fill_depressions as pyflwdir_fill_depressions
+
+    # Original nodata and drain points: nodata again in the filled DEM
+    restore_mask = dem == nodata
+    if drain_points:
+        for row, col in drain_points:
+            restore_mask[row, col] = True
+
+    # Level 1: Fill internal nodata holes before depression filling
+    dem_patched, holes_filled = fill_internal_nodata_holes(
+        dem, nodata, overwrite=overwrite_dem
+    )
+    if holes_filled > 0:
+        logger.info(f"  Filled {holes_filled} internal nodata holes")
+
+    # Inject drain points AFTER hole filling, BEFORE pyflwdir
+    # pyflwdir treats NoData as local outlets → water routes to drain point
+    if drain_points:
+        for row, col in drain_points:
+            dem_patched[row, col] = nodata
+        logger.info(f"  Injected {len(drain_points)} endorheic drain points")
+
+    # Core: depression filling + D8 flow direction (Wang & Liu 2006)
+    # Replaces pysheds fill_pits + fill_depressions + resolve_flats + flowdir
+    logger.info("  Filling depressions and computing D8 flow direction...")
+    filled_dem, d8_fdir = pyflwdir_fill_depressions(
+        dem_patched, nodata=nodata, max_depth=-1.0, outlets="edge"
+    )
+    del dem_patched
+    filled_dem[restore_mask] = nodata
+    return filled_dem, d8_fdir
+
+
+def fix_sinks_of_fill(
+    fdir: np.ndarray,
+    filled_dem: np.ndarray,
+    nodata: float,
+    accumulation: Callable[[], np.ndarray],
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Give the internal sinks of a filled grid a direction (fix_internal_sinks).
+
+    A safety net: pyflwdir's fill leaves no internal sink, its pits are the
+    outlets of the area, on the frame of the raster and next to nodata or a drain
+    point.
+
+    Parameters
+    ----------
+    fdir : np.ndarray
+        D8 flow directions of fill_depressions_d8 (int16, 0 without a direction).
+    filled_dem : np.ndarray
+        Its filled DEM, with nodata restored.
+    nodata : float
+        NoData value.
+    accumulation : callable
+        Gives the accumulation of pyflwdir's D8 grid [cells]; called only when a
+        sink is found.
+
+    Returns
+    -------
+    tuple
+        (fdir, acc): the fixed directions and their recomputed accumulation, or
+        ``fdir`` itself and None when there is no sink.
+    """
+    sinks = _internal_sinks(
+        fdir,
+        filled_dem,
+        np.result_type(filled_dem.dtype, nodata).type(nodata),
+        D8_VALID,
+    )
+    if sinks.size == 0:
+        logger.info("  No internal sinks: the pits are outlets at the edge of the data")
+        return fdir, None
+    # Log breakdown of invalid fdir values
+    unique_vals, counts = np.unique(fdir.ravel()[sinks], return_counts=True)
+    breakdown = ", ".join(
+        f"fdir={v}: {c}" for v, c in zip(unique_vals, counts, strict=True)
+    )
+    logger.info(f"  Invalid fdir breakdown: {breakdown}")
+    logger.info(f"  Found {sinks.size} internal sinks, fixing...")
+    fixed, acc, diag = fix_internal_sinks(
+        fdir, accumulation(), filled_dem, filled_dem, nodata
+    )
+    logger.info(
+        f"  Fixed {diag['total_fixed']} sinks "
+        f"(steepest: {diag['by_strategy']['steepest']}, "
+        f"max_acc: {diag['by_strategy']['max_acc']}, "
+        f"any_valid: {diag['by_strategy']['any_valid']})"
+    )
+    return fixed, acc
+
+
 def process_hydrology_pyflwdir(
     dem: np.ndarray,
     metadata: dict[str, Any],
@@ -1538,31 +1674,11 @@ def process_hydrology_pyflwdir(
           outlets at the edge of the data)
     """
     import pyflwdir
-    from pyflwdir.dem import fill_depressions as pyflwdir_fill_depressions
 
     logger.info("Processing hydrology with pyflwdir (Deltares)...")
 
     nodata = metadata["nodata_value"]
-
-    # Level 1: Fill internal nodata holes before depression filling
-    dem_patched, holes_filled = fill_internal_nodata_holes(dem, nodata)
-    if holes_filled > 0:
-        logger.info(f"  Filled {holes_filled} internal nodata holes")
-
-    # Inject drain points AFTER hole filling, BEFORE pyflwdir
-    # pyflwdir treats NoData as local outlets → water routes to drain point
-    if drain_points:
-        for row, col in drain_points:
-            dem_patched[row, col] = nodata
-        logger.info(f"  Injected {len(drain_points)} endorheic drain points")
-
-    # Core: depression filling + D8 flow direction (Wang & Liu 2006)
-    # Replaces pysheds fill_pits + fill_depressions + resolve_flats + flowdir
-    logger.info("  Filling depressions and computing D8 flow direction...")
-    filled_dem, d8_fdir = pyflwdir_fill_depressions(
-        dem_patched, nodata=nodata, max_depth=-1.0, outlets="edge"
-    )
-    del dem_patched
+    filled_dem, d8_fdir = fill_depressions_d8(dem, nodata, drain_points)
 
     # Convert fdir types:
     # pyflwdir d8_fdir: uint8, nodata=247, pit=0
@@ -1591,44 +1707,11 @@ def process_hydrology_pyflwdir(
     acc_float = flw.upstream_area(unit="cell")
     acc_arr = np.where(acc_float == -9999, 0, acc_float).astype(np.int32)
 
-    # Restore nodata in filled_dem (original nodata + drain points)
-    restore_mask = dem == nodata
-    if drain_points:
-        for row, col in drain_points:
-            restore_mask[row, col] = True
-    filled_dem[restore_mask] = nodata
-
-    # Safety net: internal sinks, cells without a direction away from the edge
-    # of the data. pyflwdir leaves none: its pits are the outlets of the area,
-    # on the frame of the raster and next to nodata or a drain point
-    sinks = _internal_sinks(
-        fdir_arr,
-        filled_dem,
-        np.result_type(filled_dem.dtype, nodata).type(nodata),
-        D8_VALID,
+    fdir_arr, fixed_acc = fix_sinks_of_fill(
+        fdir_arr, filled_dem, nodata, lambda: acc_arr
     )
-    sink_count = sinks.size
-
-    if sink_count > 0:
-        # Log breakdown of invalid fdir values
-        invalid_fdir = fdir_arr.ravel()[sinks]
-        unique_vals, counts = np.unique(invalid_fdir, return_counts=True)
-        breakdown = ", ".join(
-            f"fdir={v}: {c}" for v, c in zip(unique_vals, counts, strict=True)
-        )
-        logger.info(f"  Invalid fdir breakdown: {breakdown}")
-        logger.info(f"  Found {sink_count} internal sinks, fixing...")
-        fdir_arr, acc_arr, diag = fix_internal_sinks(
-            fdir_arr, acc_arr, filled_dem, filled_dem, nodata
-        )
-        logger.info(
-            f"  Fixed {diag['total_fixed']} sinks "
-            f"(steepest: {diag['by_strategy']['steepest']}, "
-            f"max_acc: {diag['by_strategy']['max_acc']}, "
-            f"any_valid: {diag['by_strategy']['any_valid']})"
-        )
-    else:
-        logger.info("  No internal sinks: the pits are outlets at the edge of the data")
+    if fixed_acc is not None:
+        acc_arr = fixed_acc
 
     logger.info("Hydrology processing complete")
     return filled_dem, fdir_arr, acc_arr, flw

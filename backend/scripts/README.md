@@ -479,7 +479,7 @@ uv run python -m scripts.process_dem --input /data/nmt/dem_mosaic.vrt --output-d
 # stream_catchments in one transaction; the same command resumes it after an interruption
 uv run python -m scripts.process_dem --input /data/nmt/dem_mosaic.vrt --output-dir /data/nmt \
     --units pgw.gpkg --units-catchments Obszar_h07.gpkg --units-catchments-layer zlew_h_07 \
-    --clear-existing
+    --units-scratch-dir /mnt/scratch --clear-existing
 ```
 
 `--units` takes Kartograf's PGW GeoPackage (`pl.pgw.pgw`: the layers `zlewnie_jcwp_rzecznych` and
@@ -492,27 +492,29 @@ polygons are clipped to it, and every valid cell of it must be inside one; `boot
 area of `--boundary-file` or `--project`. Cells outside every polygon go to their nearest owner; the DEM
 keeps its grid and its nodata. The input VRT must read its sources cell for cell (a VRT that resamples is
 refused); the bootstrap averages finer sheets (GUGiK delivers some 5 m sheets as 1 m grids) onto the grid
-of the others first, into `<data>/nmt/aligned/`. Each owner is filled with a 500 m halo
-(`--max-unit-window-cells`, default 80,000,000, is the largest window; the halo doubles when the seams of
-two owners disagree, with a warning naming the owner and the first cell), then the routing runs over
-disk-backed rasters of the whole grid, so the memory of the fill is that of the largest owner. Burning and
-smoothing streams (`dem.stream_burning`), raising buildings and the lake classification run once on the
-whole DEM first. The results are those of the whole-raster run: the same rows, and the same rasters on the
-cells that hold DEM data.
+of the others first, into `<data>/nmt/aligned/`. Burning and smoothing streams (`dem.stream_burning`),
+raising buildings and the lake classification run on the whole DEM first; then the depressions of the
+whole prepared grid are filled once, with pyflwdir's fill and D8 as in the whole-raster run (the fill and
+its D8 are written as tiled GeoTIFFs and freed), every owner takes its cells from them, and the
+accumulation, flow distance, Strahler order, streams and labels of the whole grid are computed over
+disk-backed rasters. The results are those of the whole-raster run: the same rows, and the same rasters
+on the cells that hold DEM data. The scratch of a run (the prepared DEM, the fill and the routing rasters)
+is removed after a successful run; `--units-scratch-dir DIR` puts it on another disk than `--output-dir`.
 
 A run writes, under `<output-dir>/unit_runs/<token>/`: `units/<stem>_<raster>_<MS_KOD>.tif` (the cells of
 one owner), `<stem>_<raster>.vrt` (the mosaic of each raster over the whole grid, named like the
-`--save-intermediates` GeoTIFFs), `stage/<MS_KOD>.npz` (the fill and D8 of each owner, removed once the
-run is published) and `report.json` (owners, halo, largest window, wall time and peak RSS of each stage,
-counts); the routing scratch is removed. It is recorded in `processing_runs` and `processing_units`
-(migration 005): each unit is `routed` once its stage file is saved and `complete` once its tiles are
-written; the publication replaces the DEM-derived network and activates the run in one transaction, and
-`<output-dir>/active_run.json` then names the run directory, from which the API reads its rasters (a
-single-raster publication supersedes the run and removes the file). A failed run is marked `failed` and
+`--save-intermediates` GeoTIFFs), `stage/<MS_KOD>.npz` (the fill and D8 of each owner's cells, removed
+once the run is published) and `report.json` (owners, wall time and peak RSS of each stage, counts). It is
+recorded in `processing_runs` and `processing_units` (migration 005): each unit is `routed` once its stage
+file is saved and `complete` once its tiles are written; the publication replaces the DEM-derived network
+and activates the run in one transaction, and `<output-dir>/active_run.json` then names the run
+directory, from which the API reads its rasters (a single-raster publication supersedes the run and
+removes the file). A failed run is marked `failed` and
 the database stays as it was. A later run with the same inputs (the text of the VRTs, the size and mtime
 of the other files) and settings resumes the latest stopped or failed run and restores its routed units
-whose stage files are intact; `--no-resume` begins a new run, and a run held by another process is
-refused. Tiles come from the published rows (`generate_tiles.py`, bootstrap step 8) as for any run.
+whose stage files are intact (the grid is filled again only for a unit that is not); `--no-resume` begins
+a new run, and a run held by another process is refused. Tiles come from the published rows
+(`generate_tiles.py`, bootstrap step 8) as for any run.
 
 ### `backfill_flow_path_heads.py`: fill the flow path heads of existing data
 
