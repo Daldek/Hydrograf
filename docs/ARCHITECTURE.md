@@ -197,6 +197,7 @@ backend/
 │   ├── generate_streams_overlay.py # Streams overlay (PNG)
 │   ├── generate_depressions.py    # Generates depressions (blue spots)
 │   ├── analyze_watershed.py       # Watershed analysis (CLI)
+│   ├── export_catchment_parameters.py # The panel's basic parameters, shape indices and land cover for given polygons (GeoPackage)
 │   ├── download_sewer.py          # Downloads the sewer network (file/WFS/DB/URL, CRS validation, SSRF protection). Returns tuple (points_gdf, lines_gdf | None)
 │   └── clean.py                  # Cleans generated data (rasters, tiles, DB, cache)
 │
