@@ -131,6 +131,20 @@ def test_area_must_be_covered_by_polygons_where_the_dem_has_data(tmp_path):
         load_pgw_owners(dem_path, gpkg, tmp_path / "out", area)
 
 
+def test_an_area_outline_off_by_less_than_a_cell_is_no_gap(tmp_path):
+    dem_path = _dem(tmp_path / "dem.tif")
+    gpkg = _units(tmp_path / "units.gpkg", RIVERS)
+    area = tmp_path / "area.gpkg"
+    # The area reaches 4 m past the polygons (x 90..94): the cells of x 90..95,
+    # centre 92.5, lie in the area but in no polygon.
+    _layer(area, "obszar", [("AREA", box(10, 10, 94, 90))])
+
+    owners = load_pgw_owners(dem_path, gpkg, tmp_path / "out", area)
+
+    assert owners.cells[10, 18] == owners.codes.index("LW10235") + 1
+    assert np.count_nonzero((owners.cells == 0) & owners.valid) == 0
+
+
 def test_a_gap_where_the_dem_has_no_data_is_not_a_gap(tmp_path):
     cells = [(r, c) for r in range(2, 18) for c in range(14, 18)]  # x 70..90
     dem_path = _dem(tmp_path / "dem.tif", nodata_cells=cells)
