@@ -19,12 +19,17 @@ logger = logging.getLogger(__name__)
 
 @contextmanager
 def override_statement_timeout(
-    db_session: Session, timeout_s: int = 0
+    db_session: Session, timeout_s: int = 0, *, local: bool = False
 ) -> Iterator[None]:
     """
     Context manager to override PostgreSQL statement_timeout.
 
-    Uses session-level SET (not LOCAL) because LOCAL resets on commit.
+    Uses session-level SET (not LOCAL) because LOCAL resets on commit; the SET
+    and its restore are committed. With ``local=True`` it is ``SET LOCAL``
+    instead: the timeout holds inside the open transaction only and nothing is
+    committed here, so the block can be part of one all-or-nothing transaction.
+    (After a failed statement the restore is skipped; the caller's rollback
+    drops the setting anyway.)
 
     Parameters
     ----------
@@ -32,6 +37,8 @@ def override_statement_timeout(
         SQLAlchemy database session
     timeout_s : int
         Timeout in seconds (0 = no limit)
+    local : bool
+        ``SET LOCAL`` and no commit (default: session-level SET, committed)
     """
     # SECURITY: SET doesn't support parameterized queries in PostgreSQL,
     # so we validate timeout_s is a non-negative integer before interpolation.
@@ -40,22 +47,25 @@ def override_statement_timeout(
 
     raw_conn = db_session.connection().connection
     cursor: Any = raw_conn.cursor()
+    scope = "SET LOCAL" if local else "SET"
 
     # Save current timeout
     cursor.execute("SHOW statement_timeout")
     original_timeout = cursor.fetchone()[0]
 
-    # Set new timeout (session-level, survives commits)
-    cursor.execute(f"SET statement_timeout = '{timeout_s}s'")
-    raw_conn.commit()
+    # Set new timeout (session-level, survives commits; local: this transaction)
+    cursor.execute(f"{scope} statement_timeout = '{timeout_s}s'")
+    if not local:
+        raw_conn.commit()
 
     try:
         yield
     finally:
         # Restore original timeout (connection may already be closed)
         try:
-            cursor.execute(f"SET statement_timeout = '{original_timeout}'")
-            raw_conn.commit()
+            cursor.execute(f"{scope} statement_timeout = '{original_timeout}'")
+            if not local:
+                raw_conn.commit()
         except Exception:
             pass
 
@@ -64,6 +74,8 @@ def insert_stream_segments(
     db_session: Session,
     segments: list[dict[str, Any]],
     threshold_m2: int = 1000,
+    *,
+    commit: bool = True,
 ) -> int:
     """
     Insert vectorized stream segments into stream_network table.
@@ -78,6 +90,10 @@ def insert_stream_segments(
         List of segment dicts from vectorize_streams()
     threshold_m2 : int
         Flow accumulation threshold in m² used to generate these segments
+    commit : bool
+        Commit the insert (default). ``False`` leaves the transaction open for
+        the caller to commit or roll back, with the timeout set ``SET LOCAL``:
+        the insert then belongs to the caller's all-or-nothing transaction.
 
     Returns
     -------
@@ -93,7 +109,7 @@ def insert_stream_segments(
         f"(threshold={threshold_m2} m²) into stream_network..."
     )
 
-    with override_statement_timeout(db_session, timeout_s=600):
+    with override_statement_timeout(db_session, timeout_s=600, local=not commit):
         raw_conn = db_session.connection().connection
         cursor: Any = raw_conn.cursor()
 
@@ -158,7 +174,8 @@ def insert_stream_segments(
         """)
 
         total: int = cursor.rowcount
-        raw_conn.commit()
+        if commit:
+            raw_conn.commit()
         logger.info(f"  Inserted {total} stream segments")
 
     if total < len(segments):
@@ -174,6 +191,8 @@ def insert_catchments(
     db_session: Session,
     catchments: list[dict[str, Any]],
     threshold_m2: int,
+    *,
+    commit: bool = True,
 ) -> int:
     """
     Insert sub-catchment polygons into stream_catchments table.
@@ -188,6 +207,11 @@ def insert_catchments(
         List of catchment dicts from polygonize_subcatchments()
     threshold_m2 : int
         Flow accumulation threshold in m²
+    commit : bool
+        Commit the insert and the clean-up (default). ``False`` leaves the
+        transaction open for the caller to commit or roll back, with the timeout
+        set ``SET LOCAL``: the work then belongs to the caller's all-or-nothing
+        transaction.
 
     Returns
     -------
@@ -203,7 +227,7 @@ def insert_catchments(
         f"(threshold={threshold_m2} m²) into stream_catchments..."
     )
 
-    with override_statement_timeout(db_session, timeout_s=600):
+    with override_statement_timeout(db_session, timeout_s=600, local=not commit):
         raw_conn = db_session.connection().connection
         cursor: Any = raw_conn.cursor()
 
@@ -315,7 +339,8 @@ def insert_catchments(
         """)
 
         total: int = cursor.rowcount
-        raw_conn.commit()
+        if commit:
+            raw_conn.commit()
         logger.info(f"  Inserted {total} sub-catchments")
 
         # Clean up micro-fragments from raster polygonization.
@@ -338,7 +363,8 @@ def insert_catchments(
             (_min_part_area, threshold_m2),
         )
         cleaned = cursor.rowcount
-        raw_conn.commit()
+        if commit:
+            raw_conn.commit()
         if cleaned:
             logger.info(f"  Cleaned {cleaned} multi-part geometries")
 
