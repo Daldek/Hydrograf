@@ -204,10 +204,13 @@ def raise_buildings_in_dem(
     crs_epsg: int,
     building_gpkg: str | None,
     building_raise_m: float = 5.0,
+    *,
+    nodata: float,
 ) -> np.ndarray:
     """Raise DEM elevation under building footprints.
 
-    Prevents unrealistic flow paths through buildings.
+    Prevents unrealistic flow paths through buildings. Only cells with data are
+    raised: a cell equal to ``nodata`` under a building keeps it.
     """
     if building_gpkg is None:
         return dem
@@ -234,8 +237,11 @@ def raise_buildings_in_dem(
         dtype=np.uint8,
     )
 
-    dem[mask == 1] += building_raise_m
-    cells_raised = int(np.sum(mask == 1))
+    # rasterize burns 1 into a background of 0: the mask is a valid boolean view
+    raised = mask.view(np.bool_)
+    np.logical_and(raised, dem != nodata, out=raised)
+    dem[raised] += building_raise_m
+    cells_raised = int(np.count_nonzero(raised))
     logger.info(
         f"Building raising: {cells_raised} cells raised "
         f"by {building_raise_m}m ({len(geometries)} buildings)"

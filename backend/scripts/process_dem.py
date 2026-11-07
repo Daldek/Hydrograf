@@ -1319,7 +1319,9 @@ def process_dem(
     # 1b. Raise buildings (optional) — before stream burning and depression filling
     if building_gpkg is not None:
         transform_for_buildings = _get_transform(metadata, dem.shape)
-        dem = raise_buildings_in_dem(dem, transform_for_buildings, 2180, building_gpkg)
+        dem = raise_buildings_in_dem(
+            dem, transform_for_buildings, 2180, building_gpkg, nodata=nodata
+        )
 
     # 2. Burn streams (optional) — before depression filling
     if burn_streams_path is not None:

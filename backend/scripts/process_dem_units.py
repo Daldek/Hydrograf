@@ -292,7 +292,7 @@ def _prepare_dem(
     transform = metadata["transform"]
     changed = False
     if building_gpkg is not None:
-        dem = raise_buildings_in_dem(dem, transform, 2180, building_gpkg)
+        dem = raise_buildings_in_dem(dem, transform, 2180, building_gpkg, nodata=nodata)
         changed = True
     if burn_streams_path is not None:
         dem, burn_diag = burn_streams_into_dem(
