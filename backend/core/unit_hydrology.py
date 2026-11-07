@@ -12,6 +12,7 @@ resumption of an interrupted run.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 from dataclasses import dataclass
@@ -33,6 +34,8 @@ from core.hydrology import (
 )
 from core.morphometry_raster import _compute_gradients, compute_slope_from_gradients
 from core.stream_extraction import compute_downstream_links, vectorize_streams
+
+logger = logging.getLogger(__name__)
 
 
 class _SeamMismatch(ValueError):
@@ -468,9 +471,18 @@ def process_unit_hydrology(
                         | (fdir[r0:r1, c0:c1] != local_fdir)
                     )
                     if np.any(different):
+                        row, col = np.argwhere(different)[0]
+                        changed = int(np.count_nonzero(different))
+                        filled_too = int(
+                            np.count_nonzero(
+                                different & (filled[r0:r1, c0:c1] != local_filled)
+                            )
+                        )
                         raise _SeamMismatch(
-                            f"Owner {owner} has {np.count_nonzero(different)} "
-                            f"fill/D8 disagreements at {halo * cellsize_m:g} m halo"
+                            f"Owner {owner} has {changed} fill/D8 disagreements "
+                            f"({filled_too} of the filled DEM) at "
+                            f"{halo * cellsize_m:g} m halo, the first at row "
+                            f"{r0 + int(row)}, column {c0 + int(col)}"
                         )
                     fresh = owned | (patched & (seen_window == 0))
                     stage = _unit_stage(
@@ -494,6 +506,7 @@ def process_unit_hydrology(
             except _SeamMismatch as error:
                 if halo >= max(nrows, ncols):
                     raise ValueError("No consistent D8 at full DEM extent") from error
+                logger.warning("%s; every owner is computed again", error)
                 halo *= 2
                 continue
             break
