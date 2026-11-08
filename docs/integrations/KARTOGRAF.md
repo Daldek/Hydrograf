@@ -688,9 +688,9 @@ Copernicus or ISRIC.
 
 The `PT*` layers (land cover), split by their attributes, and the industrial complexes of
 `OT_KUPG_A` are imported into `land_cover` (`scripts/import_landcover.py`, ADR-074; every source
-with its category in `backend/scripts/README.md`); `cn_calculator.py` maps the PT codes to its
-CN-table categories (`BDOT10K_CATEGORY_MAP`). The `SW*` layers and `PTWP` serve stream burning
-(§12).
+with its category in `backend/scripts/README.md`); the Kartograf CN of `cn_calculator.py` reads
+the PT layers whole and gives each the category of its polygons without the attribute
+(`BDOT10K_CATEGORY_MAP`). The `SW*` layers and `PTWP` serve stream burning (§12).
 
 | Code | Description | Hydrograf category |
 |---|---|---|
@@ -709,7 +709,7 @@ CN-table categories (`BDOT10K_CATEGORY_MAP`). The `SW*` layers and `PTWP` serve 
 ### 11.3 Land cover MVT tiles
 
 `/api/tiles/landcover/{z}/{x}/{y}.pbf` serves the `land_cover` table as Mapbox Vector Tiles
-(`ST_AsMVTGeom`, generated on request). The attributes in a tile are `category`, `cn_value` and
+(`ST_AsMVTGeom`, generated on request). The attributes in a tile are `category` and
 `bdot_class`.
 
 ### 11.4 Import into the database

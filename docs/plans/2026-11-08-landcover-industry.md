@@ -111,5 +111,5 @@ Consequences. In short:
 
 - The other KU complexes, the buildings (OT_BUBD_A) and the wetland overlay (OT_OIMK_A)
   are not used (ADR-074, options); a farm, solar farm or mine keeps its PT cover.
-- `cn_value` goes with ADR-075: the branch merged second drops the column and
-  `CATEGORY_CN`.
+- ✅ `cn_value` goes with ADR-075: the branch merged second drops the column and
+  `CATEGORY_CN`. Done on `integrate/landcover-cn` (2026-11-08): migration 006.

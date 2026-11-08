@@ -39,11 +39,14 @@ bootstrap step 5. Branch `feat/cn-by-soil-group`.
 
 ## Integration with `feat/landcover-industry`
 
-- The branch that merges second drops `land_cover.cn_value`: an Alembic migration, the
+- ✅ The branch that merges second drops `land_cover.cn_value`: an Alembic migration, the
   importer's `CATEGORY_CN` and the INSERT column, the `cn_value` of the INSERTs of
   `tests/integration/test_identify_point_db.py` and `test_land_cover_db.py`, DATA_MODEL.
-- `frontend/js/info-texts.js`: CurveNumber edited `cn` only, LandCover the Nash entries;
-  the second merger re-runs `scripts/bump_asset_versions.py`.
+  Done on `integrate/landcover-cn` (2026-11-08): migration 006; `test_cn_tables.py` fails
+  for a `bdot_class` of the import without a cover of its own or a decision that it
+  takes its category's.
+- ✅ `frontend/js/info-texts.js`: CurveNumber edited `cn` only, LandCover the Nash
+  entries; the second merger re-runs `scripts/bump_asset_versions.py`.
 
 ## Open questions for the author
 

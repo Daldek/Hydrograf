@@ -92,19 +92,6 @@ class LandCoverClass(NamedTuple):
 
 INDUSTRIAL = "zabudowa_przemysłowa"
 
-# CN for AMC II of each category, the value of land_cover.cn_value (DATA_MODEL §3.3).
-# Once no reader uses the column (ADR-075), the column and this table go together.
-CATEGORY_CN: dict[str, int] = {
-    "las": 60,
-    "łąka": 70,
-    "grunt_orny": 78,
-    "zabudowa_mieszkaniowa": 85,
-    INDUSTRIAL: 92,
-    "droga": 98,
-    "woda": 100,
-    "inny": 75,
-}
-
 # Average imperviousness of the urban districts of TR-55 (USDA-SCS 1986, table 2-2a):
 # commercial and business 85%, industrial 72%, residential 1/8 acre 65%, 1/3 acre 30%.
 IMPERVIOUS_COMMERCIAL = 0.85
@@ -210,7 +197,7 @@ _LAYER_NAME = re.compile(r"(?:OT_)?(PT[A-Z]{2}|KUPG)(?:_A)?")
 _READ_COLUMNS = ["RODZAJ", "MATERIALNAWIERZCHNI", "RODZAJELEKTROWNI"]
 
 # The columns of land_cover that the import writes.
-_COLUMNS = "geom, category, cn_value, imperviousness, bdot_class"
+_COLUMNS = "geom, category, imperviousness, bdot_class"
 
 
 def get_database_url() -> str:
@@ -469,7 +456,7 @@ def prepare_records(
     -------
     List[Dict]
         One record per piece of the partition: ``geom_wkb`` (MultiPolygon, EPSG:2180),
-        ``category``, ``cn_value``, ``imperviousness``, ``bdot_class``
+        ``category``, ``imperviousness``, ``bdot_class``
     """
     import shapely
 
@@ -488,7 +475,6 @@ def prepare_records(
                 {
                     "geom_wkb": blob,
                     "category": cls.category,
-                    "cn_value": CATEGORY_CN[cls.category],
                     "imperviousness": cls.imperviousness,
                     "bdot_class": cls.bdot_class,
                 }
@@ -532,11 +518,10 @@ def replace_land_cover(
             p = f"p{j}_"
             values.append(
                 f"(ST_SetSRID(ST_GeomFromWKB(:{p}geom), 2180), :{p}category, "
-                f":{p}cn_value, :{p}imperviousness, :{p}bdot_class)"
+                f":{p}imperviousness, :{p}bdot_class)"
             )
             params[f"{p}geom"] = rec["geom_wkb"]
             params[f"{p}category"] = rec["category"]
-            params[f"{p}cn_value"] = rec["cn_value"]
             params[f"{p}imperviousness"] = rec["imperviousness"]
             params[f"{p}bdot_class"] = rec["bdot_class"]
         conn.execute(

@@ -38,18 +38,16 @@ def _insert(db, sql, **params):
 @pytest.mark.db
 class TestPointQueries:
     def test_land_cover_of_the_smallest_polygon(self, db_session):
-        for wkt, category, cn, bdot in [
-            (_square(X0, Y0, 100), "grunt_orny", 78, "PTTR"),
-            (_square(X0 + 40, Y0 + 40, 20), "woda", 100, "PTWP"),
+        for wkt, category, bdot in [
+            (_square(X0, Y0, 100), "grunt_orny", "PTTR"),
+            (_square(X0 + 40, Y0 + 40, 20), "woda", "PTWP"),
         ]:
             _insert(
                 db_session,
-                "INSERT INTO land_cover (geom, category, cn_value, imperviousness, "
-                "bdot_class) VALUES (ST_GeomFromText(:wkt, 2180), :category, :cn, "
-                "0.1, :bdot)",
+                "INSERT INTO land_cover (geom, category, imperviousness, bdot_class) "
+                "VALUES (ST_GeomFromText(:wkt, 2180), :category, 0.1, :bdot)",
                 wkt=wkt,
                 category=category,
-                cn=cn,
                 bdot=bdot,
             )
 

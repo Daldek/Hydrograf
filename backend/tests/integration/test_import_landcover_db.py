@@ -22,7 +22,6 @@ def _record(geom, category, bdot_class):
     return {
         "geom_wkb": shapely.to_wkb(shapely.MultiPolygon([geom])),
         "category": category,
-        "cn_value": 85,
         "imperviousness": 0.3,
         "bdot_class": bdot_class,
     }
@@ -52,9 +51,9 @@ class TestReplaceLandCover:
         conn.execute(
             text(
                 "INSERT INTO land_cover "
-                "(geom, category, cn_value, imperviousness, bdot_class) VALUES "
+                "(geom, category, imperviousness, bdot_class) VALUES "
                 "(ST_Multi(ST_MakeEnvelope(:x0, :y0, :x1, :y1, 2180)), "
-                "'woda', 100, 1.0, 'PTWP')"
+                "'woda', 1.0, 'PTWP')"
             ),
             {"x0": X0 - 100, "y0": Y0, "x1": X0, "y1": Y0 + 100},
         )

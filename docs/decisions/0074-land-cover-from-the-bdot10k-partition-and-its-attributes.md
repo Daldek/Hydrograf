@@ -165,7 +165,8 @@ Identifying the rows that a new import of a package replaces:
   `--clear-existing` still empties the whole table first.
 - `cn_value` is still written, one value per category (DATA_MODEL §3.3,
   `zabudowa_przemysłowa` 92); the CN of ADR-075 no longer reads it, and the branch merged
-  second drops the column with `CATEGORY_CN`.
+  second drops the column with `CATEGORY_CN`. Done when the two branches were merged
+  (2026-11-08): migration 006 drops the column and the import no longer writes it.
 
 ## Consequences
 

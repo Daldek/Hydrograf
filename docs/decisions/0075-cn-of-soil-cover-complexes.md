@@ -95,7 +95,8 @@ here). It is nearly uniform, so the land cover drives the spatial pattern of the
 7. **`land_cover.cn_value`** is no longer read (panel, hydrograph, identify, tiles,
    export). The import still writes it; the column is dropped by whichever of this branch
    and `feat/landcover-industry` merges second (a migration and the importer's
-   `CATEGORY_CN`), so each branch stays consistent alone.
+   `CATEGORY_CN`), so each branch stays consistent alone. Done at their merge
+   (2026-11-08): migration 006 drops the column.
 
 ## Consequences
 

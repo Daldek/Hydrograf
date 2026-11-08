@@ -256,20 +256,13 @@ class TestBdot10kCategoryMap:
                 f"Category '{category}' (from {bdot_code}) has no TR-55 cover"
             )
 
-    def test_map_has_all_expected_pt_codes(self):
-        """Test map contains all known PT codes from BDOT10k."""
-        expected_codes = {
-            "PTLZ",
-            "PTTR",
-            "PTUT",
-            "PTWP",
-            "PTWZ",
-            "PTRK",
-            "PTZB",
-            "PTKM",
-            "PTPL",
-            "PTGN",
-            "PTNZ",
-            "PTSO",
-        }
-        assert set(BDOT10K_CATEGORY_MAP.keys()) == expected_codes
+    def test_each_layer_has_the_category_the_import_gives_it(self):
+        """The Kartograf path and the land cover import put a layer in one category.
+
+        The import's category of a layer read whole is that of a polygon without
+        the attribute of its kind (``PT_LAYER_CLASSES``).
+        """
+        from scripts.import_landcover import PT_LAYER_CLASSES
+
+        imported = {code: cls.category for code, cls in PT_LAYER_CLASSES.items()}
+        assert imported == BDOT10K_CATEGORY_MAP

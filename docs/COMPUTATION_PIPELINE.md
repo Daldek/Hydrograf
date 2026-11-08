@@ -647,7 +647,6 @@ CREATE TABLE land_cover (
     id SERIAL PRIMARY KEY,
     geom GEOMETRY(MultiPolygon, 2180),
     category TEXT,                    -- 'las', 'łąka', 'grunt_orny', itd.
-    cn_value INTEGER,                 -- 0-100
     imperviousness FLOAT,             -- 0-1
     bdot_class TEXT
 );

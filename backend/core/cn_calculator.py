@@ -187,8 +187,10 @@ def get_hsg_from_soilgrids(bbox: "BBox") -> tuple[str, dict[str, float]]:
     return (dominant_hsg, percents)
 
 
-# Kategorie pokrycia terenu warstw PT* BDOT10k: kategorie tabeli land_cover, ktore
-# import (scripts/import_landcover.py) nadaje warstwie bez atrybutu rodzaju.
+# The land cover category of each PT layer of BDOT10k for the Kartograf path, which
+# reads the layers whole: the category that the land cover import gives a polygon of
+# the layer without the attribute of its kind (``PT_LAYER_CLASSES`` of
+# scripts/import_landcover.py, ADR-074).
 BDOT10K_CATEGORY_MAP: dict[str, str] = {
     "PTLZ": "las",
     "PTTR": "grunt_orny",

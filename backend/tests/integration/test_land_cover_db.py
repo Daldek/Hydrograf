@@ -20,9 +20,9 @@ X0, Y0 = 10_000.0, 10_000.0
 def _land_cover(db, category, bdot_class, geometry):
     db.execute(
         text(
-            "INSERT INTO land_cover (geom, category, cn_value, imperviousness, "
-            "bdot_class) VALUES (ST_Multi(ST_GeomFromText(:wkt, 2180)), :category, 0, "
-            "0.0, :bdot_class)"
+            "INSERT INTO land_cover (geom, category, imperviousness, bdot_class) "
+            "VALUES (ST_Multi(ST_GeomFromText(:wkt, 2180)), :category, 0.0, "
+            ":bdot_class)"
         ),
         {"wkt": geometry.wkt, "category": category, "bdot_class": bdot_class},
     )

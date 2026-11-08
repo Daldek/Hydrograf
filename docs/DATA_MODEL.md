@@ -43,10 +43,10 @@ Ten dokument definiuje kompletny model danych systemu analizy hydrologicznej:
 │ id (PK)             │       │ id (PK)                  │
 │ geom                │       │ geom                     │
 │ duration            │       │ category                 │
-│ probability         │       │ cn_value                 │
-│ precipitation_mm    │       │ imperviousness           │
-│ source              │       │ bdot_class               │
-│ updated_at          │       └─────────────────────────┘
+│ probability         │       │ imperviousness           │
+│ precipitation_mm    │       │ bdot_class               │
+│ source              │       └─────────────────────────┘
+│ updated_at          │
 └─────────────────────┘
                                 ┌─────────────────────────┐
 ┌─────────────────────┐         │     soil_hsg             │
@@ -215,11 +215,9 @@ CREATE TABLE land_cover (
     id SERIAL PRIMARY KEY,
     geom GEOMETRY(MultiPolygon, 2180) NOT NULL,
     category VARCHAR(50) NOT NULL,
-    cn_value INT NOT NULL,
     imperviousness DOUBLE PRECISION,
     bdot_class VARCHAR(20),
 
-    CONSTRAINT valid_cn CHECK (cn_value >= 0 AND cn_value <= 100),
     CONSTRAINT valid_imperviousness CHECK (imperviousness IS NULL OR (imperviousness >= 0 AND imperviousness <= 1)),
     CONSTRAINT valid_category CHECK (category IN (
         'las', 'łąka', 'grunt_orny', 'zabudowa_mieszkaniowa',
@@ -230,47 +228,44 @@ CREATE TABLE land_cover (
 -- Indeksy
 CREATE INDEX idx_land_cover_geom ON land_cover USING GIST(geom);
 CREATE INDEX idx_category ON land_cover(category);
-CREATE INDEX idx_cn_value ON land_cover(cn_value);
 
 -- Komentarze
 COMMENT ON TABLE land_cover IS 'Land cover of BDOT10k, a partition of the area (ADR-074)';
 COMMENT ON COLUMN land_cover.category IS 'Category: las, łąka, grunt_orny, etc.';
-COMMENT ON COLUMN land_cover.cn_value IS 'CN of the category for AMC II (one value per category)';
--- Since ADR-075 nothing reads cn_value: the CN depends on the soil group and is computed
--- per complex (land cover x soil_hsg, core/cn_tables.py). The import still writes it;
--- the column is dropped when both feat/cn-by-soil-group and feat/landcover-industry
--- are merged (migration + the importer's CATEGORY_CN, plan 2026-11-08-cn-by-soil-group).
 COMMENT ON COLUMN land_cover.imperviousness IS 'Imperviousness of the source (0 = pervious, 1 = impervious)';
 COMMENT ON COLUMN land_cover.bdot_class IS 'Source: the BDOT10k layer, with the attribute value that decided the category (PTLZ, PTZB:przem.-skład., KUPG:baza paliw)';
 ```
 
 **Categories and their sources (ADR-074):**
 
-| Category | `cn_value` | Sources (`bdot_class`) | Imperviousness |
-|-----------|-----|----------------|------|
-| `las` | 60 | `PTLZ` | 0.0 |
-| `łąka` | 70 | `PTTR:trawiasta` (grass), `PTUT` (orchards, plantations, nurseries, allotments), `PTRK` (shrubs) | 0.0 |
-| `grunt_orny` | 78 | `PTTR:grunty orne` | 0.1 |
-| `zabudowa_mieszkaniowa` | 85 | `PTZB:jednorodzinna`, `PTZB:pozostała`; `PTZB:wielorodzinna` | 0.30; 0.65 |
-| `zabudowa_przemysłowa` | 92 | `PTZB:przem.-skład.`, `PTNZ:przem.-skład.`, `KUPG:<kind>`; `PTZB:handl.-usług.` | 0.72; 0.85 |
-| `droga` | 98 | `PTKM`, `PTPL:utwardzony` | 0.95 |
-| `woda` | 100 | `PTWP` | 1.0 |
-| `inny` | 75 | `PTNZ:urządzenia`, `PTPL:nieutwardzony`, `PTWZ`, `PTGN`, `PTSO` | 0.2 |
+| Category | Sources (`bdot_class`) | Imperviousness |
+|-----------|----------------|------|
+| `las` | `PTLZ` | 0.0 |
+| `łąka` | `PTTR:trawiasta` (grass), `PTUT` (orchards, plantations, nurseries, allotments), `PTRK` (shrubs) | 0.0 |
+| `grunt_orny` | `PTTR:grunty orne` | 0.1 |
+| `zabudowa_mieszkaniowa` | `PTZB:jednorodzinna`, `PTZB:pozostała`; `PTZB:wielorodzinna` | 0.30; 0.65 |
+| `zabudowa_przemysłowa` | `PTZB:przem.-skład.`, `PTNZ:przem.-skład.`, `KUPG:<kind>`; `PTZB:handl.-usług.` | 0.72; 0.85 |
+| `droga` | `PTKM`, `PTPL:utwardzony` | 0.95 |
+| `woda` | `PTWP` | 1.0 |
+| `inny` | `PTNZ:urządzenia`, `PTPL:nieutwardzony`, `PTWZ`, `PTGN`, `PTSO` | 0.2 |
 
 The urban imperviousness is the average of the TR-55 districts (USDA-SCS 1986, table
 2-2a): residential 1/3 acre 30%, 1/8 acre 65%, industrial 72%, commercial and business
 85%. A plain layer code (`PTZB`, `PTTR`, `PTNZ`, `PTPL`) marks a polygon without the
 attribute or with another value: it takes the layer's first category
 (`zabudowa_mieszkaniowa`, `grunt_orny`, `inny`, `droga`). The `KUPG` kinds are listed in
-`backend/scripts/README.md`.
+`backend/scripts/README.md`. The table holds no CN: the CN of a row is that of its
+soil-cover complex, the TR-55 cover of its category or of its source
+(`core/cn_tables.py`) on its soil group of `soil_hsg` (ADR-075); migration 006 dropped
+the column `cn_value`, one CN per category.
 
 **Przykładowe rekordy:**
 ```sql
-INSERT INTO land_cover (geom, category, cn_value, imperviousness, bdot_class) VALUES
+INSERT INTO land_cover (geom, category, imperviousness, bdot_class) VALUES
 (ST_SetSRID(ST_GeomFromText('MULTIPOLYGON(((500000 600000, 500100 600000, 500100 600100, 500000 600100, 500000 600000)))'), 2180),
- 'las', 60, 0.0, 'PTLZ'),
+ 'las', 0.0, 'PTLZ'),
 (ST_SetSRID(ST_GeomFromText('MULTIPOLYGON(((500100 600000, 500200 600000, 500200 600100, 500100 600100, 500100 600000)))'), 2180),
- 'grunt_orny', 78, 0.1, 'PTTR:grunty orne');
+ 'grunt_orny', 0.1, 'PTTR:grunty orne');
 ```
 
 ---
@@ -799,7 +794,6 @@ CONSTRAINT valid_probability CHECK (probability IN (
 CONSTRAINT positive_precipitation CHECK (precipitation_mm >= 0)
 
 -- land_cover (migracja 002)
-CONSTRAINT valid_cn CHECK (cn_value >= 0 AND cn_value <= 100)
 CONSTRAINT valid_imperviousness CHECK (imperviousness IS NULL OR (imperviousness >= 0 AND imperviousness <= 1))
 CONSTRAINT valid_category CHECK (category IN ('las', 'łąka', 'grunt_orny', 'zabudowa_mieszkaniowa',
     'zabudowa_przemysłowa', 'droga', 'woda', 'inny'))
@@ -877,7 +871,6 @@ CREATE INDEX idx_precipitation_probability ON precipitation_data(probability);
 
 -- land_cover (migracja 002)
 CREATE INDEX idx_category ON land_cover(category);
-CREATE INDEX idx_cn_value ON land_cover(cn_value);
 
 -- stream_network (migracje 002, 005, 006, 014)
 CREATE INDEX idx_stream_name ON stream_network(name);
@@ -1322,11 +1315,6 @@ SELECT geom, duration, probability, COUNT(*)
 FROM precipitation_data
 GROUP BY geom, duration, probability
 HAVING COUNT(*) > 1;
-
--- Sprawdź CN poza zakresem
-SELECT COUNT(*)
-FROM land_cover
-WHERE cn_value < 0 OR cn_value > 100;
 
 -- Sprawdź spójność stream_network ↔ stream_catchments
 SELECT sn.threshold_m2, COUNT(DISTINCT sn.segment_idx) AS streams, COUNT(DISTINCT sc.segment_idx) AS catchments

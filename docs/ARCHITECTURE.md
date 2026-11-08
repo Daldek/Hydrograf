@@ -674,8 +674,8 @@ Sewer data are stored in the tables `sewer_nodes` (nodes: inlets, outlets, junct
 │ id (PK)              SERIAL                                     │
 │ geom                 GEOMETRY(MultiPolygon, 2180)              │
 │ category             VARCHAR(50)  ('las', 'zabudowa', etc)     │
-│ cn_value             INT                                        │
 │ imperviousness       FLOAT        (0.0 - 1.0)                  │
+│ bdot_class           VARCHAR(20)  (source: layer[:kind])        │
 │                                                                 │
 │ Indexes:                                                        │
 │   - idx_landcover_geom (GIST on geom)                          │
@@ -883,12 +883,22 @@ FROM nearest;
 
 #### Compute the CN for a Watershed
 ```sql
-SELECT 
+-- The pieces of the soil-cover complexes (core/land_cover.py, _COMPLEXES_SQL, which
+-- also returns the land cover whole); the CN of a piece is the TR-55 value of its
+-- category or source on its soil group (core/cn_tables.py, ADR-075)
+WITH soils AS (
+    SELECT hsg_group, ST_Intersection(geom, ST_GeomFromGeoJSON($1)) AS geom
+    FROM soil_hsg
+    WHERE ST_Intersects(geom, ST_GeomFromGeoJSON($1))
+)
+SELECT
     lc.category,
-    lc.cn_value,
-    ST_Area(ST_Intersection(lc.geom, ST_GeomFromGeoJSON($1))) as area_m2
-FROM land_cover lc
-WHERE ST_Intersects(lc.geom, ST_GeomFromGeoJSON($1));
+    lc.bdot_class,
+    s.hsg_group,
+    SUM(ST_Area(ST_Intersection(lc.geom, s.geom))) AS area_m2
+FROM soils s
+JOIN land_cover lc ON ST_Intersects(lc.geom, s.geom)
+GROUP BY lc.category, lc.bdot_class, s.hsg_group;
 ```
 
 #### Merge Upstream Catchments (ST_Union)
