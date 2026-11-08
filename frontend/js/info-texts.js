@@ -833,12 +833,12 @@
         nash_urban_pct: {
             title: 'Udział terenów zurbanizowanych w zlewni',
             symbol: 'U',
-            definition: 'Udział terenów zabudowanych i komunikacyjnych w powierzchni zlewni według pokrycia terenu (klasy „zabudowa mieszkaniowa”, „zabudowa przemysłowa” i „droga” – drogi i place; BDOT10k PTZB, PTKM i PTPL), użyty jako $U$ w metodzie Lutza.',
+            definition: 'Udział terenów zabudowanych i komunikacyjnych w powierzchni zlewni według pokrycia terenu (klasy „zabudowa mieszkaniowa”, „zabudowa przemysłowa” i „droga” – drogi i place utwardzone; BDOT10k: zabudowa PTZB, tereny przemysłowo-składowe PTNZ, kompleksy przemysłowe KUPG, tereny komunikacyjne PTKM i place PTPL), użyty jako $U$ w metodzie Lutza.',
             formula: f`U = 100 · \frac{A_{zab} + A_{dr}}{∑ A_j}`,
             variables: [['A_{zab}', 'powierzchnia terenów zabudowanych w zlewni', 'm²'], ['A_{dr}', 'powierzchnia dróg i placów w zlewni', 'm²'], ['A_j', 'powierzchnia j-tej klasy pokrycia terenu w zlewni', 'm²']],
             unit: '%',
             meaning: 'Zabudowa skraca czas do szczytu hydrogramu chwilowego ($t_p ∝ e^{-0,016 U}$; np. o 27% przy 20% terenów zurbanizowanych), więc szczyt jest wcześniejszy i wyższy.\nW Hydrografie $U$ wynika z pokrycia terenu zlewni (z dokładnością do 0,1%) i wchodzi do estymacji Nasha metodą Lutza.',
-            note: 'Drogi i place należą do terenów zurbanizowanych jak w ewidencji gruntów (grunty zabudowane i zurbanizowane obejmują tereny komunikacyjne); grunty nieużytkowane, niezabudowane i składowiska (klasa „inny”) – nie. To inna wielkość niż $U$ regresji urbanizacyjnej (średnia nieprzepuszczalność pokrycia terenu).',
+            note: 'Drogi i place należą do terenów zurbanizowanych jak w ewidencji gruntów (grunty zabudowane i zurbanizowane obejmują tereny komunikacyjne); grunty nieużytkowane, tereny pod urządzeniami technicznymi (np. farmy fotowoltaiczne), place nieutwardzone, wyrobiska i składowiska (klasa „inny”) – nie. To inna wielkość niż $U$ regresji urbanizacyjnej (średnia nieprzepuszczalność pokrycia terenu).',
             sources: 'Lutz 1984 (za KZGW 2017 i Assmann 1999); KZGW 2017; Rozporządzenie EGiB 2021',
         },
         nash_urban_fraction: {
@@ -849,8 +849,8 @@
             variables: [['A_j', 'powierzchnia j-tej klasy pokrycia terenu', 'm²'], ['u_j', 'nieprzepuszczalność tej klasy', '–']],
             unit: '– (w tabeli w %)',
             meaning: 'Udział powierzchni nieprzepuszczalnych skraca reakcję zlewni: przy $U = 0,2$ opóźnienie maleje o ok. 26%, a $k$ o ok. 11% względem zlewni bez uszczelnień – hydrogram szybszy i wyższy.\nW Hydrografie wchodzi tylko do regresji urbanizacyjnej: $t_L ∝ (1 + U)^{-1,66}$, $k ∝ (1 + U)^{-0,62}$.',
-            note: 'Nieprzepuszczalność klas BDOT10k to stałe wartości przypisane klasom w Hydrografie.',
-            sources: 'Sarma i in. 1969; KZGW 2017',
+            note: 'Nieprzepuszczalność to stałe wartości przypisane w Hydrografie źródłom BDOT10k; dla zabudowy są to średnie udziały powierzchni nieprzepuszczalnych dzielnic TR-55: przemysłowej 72%, handlowo-usługowej 85%, mieszkaniowej wielorodzinnej 65% oraz jednorodzinnej i pozostałej 30%.',
+            sources: 'Sarma i in. 1969; KZGW 2017; USDA-SCS 1986 (TR-55)',
         },
         nash_effective_precip_mm: {
             title: 'Opad efektywny w regresji Nasha',
