@@ -233,6 +233,10 @@ CREATE INDEX idx_cn_value ON land_cover(cn_value);
 COMMENT ON TABLE land_cover IS 'Pokrycie terenu z BDOT10k z wartościami CN';
 COMMENT ON COLUMN land_cover.category IS 'Kategoria uproszczona: las, łąka, grunt_orny, etc.';
 COMMENT ON COLUMN land_cover.cn_value IS 'Curve Number (0-100) dla warunków AMC-II';
+-- Since ADR-075 nothing reads cn_value: the CN depends on the soil group and is computed
+-- per complex (land cover x soil_hsg, core/cn_tables.py). The import still writes it;
+-- the column is dropped when both feat/cn-by-soil-group and feat/landcover-industry
+-- are merged (migration + the importer's CATEGORY_CN, plan 2026-11-08-cn-by-soil-group).
 COMMENT ON COLUMN land_cover.imperviousness IS 'Stopień uszczelnienia (0=przepuszczalne, 1=nieprzepuszczalne)';
 COMMENT ON COLUMN land_cover.bdot_class IS 'Oryginalna klasa z BDOT10k (np. PTLZ, PTGN)';
 ```

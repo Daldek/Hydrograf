@@ -287,7 +287,7 @@
             (shown.length ? 'wyniki analiz włączone w panelu „Warstwy”; ' : '') +
             'cieki i wody powierzchniowe — BDOT10k (GUGiK)'));
         els.body.appendChild(section('Teren i gleba', [table(landRows(data))],
-            'pokrycie terenu — BDOT10k (GUGiK), CN — Hydrograf, przeliczenie AMC — Hydrolog; grupy glebowe — SoilGrids (Kartograf); zagłębienia — analiza NMT'));
+            'pokrycie terenu — BDOT10k (GUGiK), CN — tablice TR-55 (Hydrolog) dla klasy pokrycia i grupy glebowej punktu (B, gdy jej brak), przeliczenie AMC — Hydrolog; grupy glebowe — SoilGrids (Kartograf); zagłębienia — analiza NMT'));
         els.body.appendChild(section('Sieć spływu', [table(networkRows(data.subcatchment))],
             'zlewnie cząstkowe i linie spływu z NMT — Hydrograf; ujście sieci to miejsce, w którym woda opuszcza obszar danych Hydrografu (nie musi to być ujście rzeki)'));
     }

@@ -1,40 +1,39 @@
 """
-Unit tests for land cover module.
-
-Tests for CN (Curve Number) calculation from land cover data.
+Unit tests of core.land_cover: the CN of the soil-cover complexes of a watershed
+(ADR-075) and the hierarchy of determine_cn.
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from shapely.geometry import Polygon, box
 
-from core.constants import DEFAULT_CN
 from core.land_cover import (
     VALID_CATEGORIES,
-    calculate_weighted_cn,
     determine_cn,
     get_land_cover_for_boundary,
+    summarize_complexes,
 )
 
+HA = 10_000.0  # m2
 
-class TestDefaultCN:
-    """Tests for DEFAULT_CN constant."""
 
-    def test_default_cn_value(self):
-        """Test default CN is 75 (average condition)."""
-        assert DEFAULT_CN == 75
-
-    def test_default_cn_in_valid_range(self):
-        """Test default CN is in valid SCS-CN range."""
-        assert 0 <= DEFAULT_CN <= 100
+def _row(category, area_ha, hsg=None, bdot_class=None, imperviousness=0.0):
+    """A row of the land cover query: hsg None is the whole land cover."""
+    return SimpleNamespace(
+        category=category,
+        bdot_class=bdot_class,
+        imperviousness=imperviousness,
+        hsg_group=hsg,
+        area_m2=area_ha * HA,
+    )
 
 
 class TestValidCategories:
-    """Tests for VALID_CATEGORIES constant."""
+    """The categories of the constraint of land_cover."""
 
     def test_expected_categories_present(self):
-        """Test all expected categories are defined."""
         expected = {
             "las",
             "łąka",
@@ -47,271 +46,107 @@ class TestValidCategories:
         }
         assert expected == VALID_CATEGORIES
 
-    def test_categories_is_frozenset(self):
-        """Test categories is immutable."""
-        assert isinstance(VALID_CATEGORIES, frozenset)
 
+class TestSummarizeComplexes:
+    """The weighted CN of the complexes, land cover x soil group."""
 
-class TestCalculateWeightedCN:
-    """Tests for calculate_weighted_cn function."""
+    def test_cn_of_known_complexes(self):
+        """Forest 60 ha (40 on A, 20 on B) and arable land 40 ha on B.
 
-    @pytest.fixture
-    def sample_boundary(self):
-        """Create a sample boundary polygon in EPSG:2180."""
-        return box(500000, 600000, 501000, 601000)
-
-    @pytest.fixture
-    def mock_db(self):
-        """Create a mock database session."""
-        return MagicMock()
-
-    def test_returns_default_when_no_land_cover(self, sample_boundary, mock_db):
-        """Test that default CN is returned when no land cover data."""
-        mock_db.execute.return_value.fetchall.return_value = []
-
-        cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
-
-        assert cn == DEFAULT_CN
-        assert stats == {}
-
-    def test_calculates_weighted_cn_correctly(self, sample_boundary, mock_db):
-        """Test weighted CN calculation with multiple categories."""
-        # Mock: 60% forest (CN=60), 40% arable (CN=78)
-        mock_results = [
-            MagicMock(category="las", cn_value=60, total_area_m2=600000),
-            MagicMock(category="grunt_orny", cn_value=78, total_area_m2=400000),
-        ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
-
-        cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
-
-        # Expected: (60*0.6 + 78*0.4) = 36 + 31.2 = 67.2 (one decimal kept)
-        assert cn == pytest.approx(67.2)
-        assert stats["las"] == pytest.approx(60.0, abs=0.1)
-        assert stats["grunt_orny"] == pytest.approx(40.0, abs=0.1)
-
-    def test_single_category_returns_exact_cn(self, sample_boundary, mock_db):
-        """Test with single land cover category."""
-        mock_results = [
-            MagicMock(category="droga", cn_value=98, total_area_m2=100000),
-        ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
-
-        cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
-
-        assert cn == 98
-        assert stats["droga"] == 100.0
-
-    def test_handles_all_categories(self, sample_boundary, mock_db):
-        """Test with all valid categories."""
-        categories_with_cn = [
-            ("las", 60),
-            ("łąka", 70),
-            ("grunt_orny", 78),
-            ("zabudowa_mieszkaniowa", 85),
-            ("zabudowa_przemysłowa", 92),
-            ("droga", 98),
-            ("woda", 100),
-            ("inny", 75),
+        TR-55: woods, good A 30, B 55; small grain, good, B 75.
+        CN = (40*30 + 20*55 + 40*75) / 100 = 53.0
+        """
+        rows = [
+            _row("las", 60),
+            _row("las", 40, "A"),
+            _row("las", 20, "B"),
+            _row("grunt_orny", 40),
+            _row("grunt_orny", 40, "B"),
         ]
 
-        mock_results = [
-            MagicMock(category=cat, cn_value=cn, total_area_m2=125000)
-            for cat, cn in categories_with_cn
+        result = summarize_complexes(rows)
+
+        assert result["weighted_cn"] == 53.0
+        assert result["hsg_assumed_pct"] == 0.0
+        assert result["total_area_m2"] == 100 * HA
+        assert result["categories"] == [
+            {
+                "category": "las",
+                "area_m2": 60 * HA,
+                "percentage": 60.0,
+                "cn_value": 38.3,
+            },
+            {
+                "category": "grunt_orny",
+                "area_m2": 40 * HA,
+                "percentage": 40.0,
+                "cn_value": 75.0,
+            },
         ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
 
-        cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
+    def test_land_cover_without_soil_takes_the_soil_shares_of_the_rest(self):
+        """Arable land of 50 ha has 20 ha outside soil_hsg.
 
-        # Average of all CN values: (60+70+78+85+92+98+100+75)/8 = 82.25 -> 0.1
-        expected_cn = round(
-            sum(c[1] for c in categories_with_cn) / len(categories_with_cn), 1
-        )
-        assert cn == expected_cn
-        assert len(stats) == 8
-
-    def test_cn_clamped_to_valid_range(self, sample_boundary, mock_db):
-        """Test that CN is always in 0-100 range."""
-        mock_results = [
-            MagicMock(category="las", cn_value=60, total_area_m2=1000000),
+        The rest lies on A (forest 50 ha) and B (arable 30 ha): shares 0.625 and
+        0.375, so the 20 ha are 12.5 ha on A (CN 63) and 7.5 ha on B (CN 75).
+        CN = (50*30 + 30*75 + 12.5*63 + 7.5*75) / 100 = 51.0
+        """
+        rows = [
+            _row("las", 50),
+            _row("las", 50, "A"),
+            _row("grunt_orny", 50),
+            _row("grunt_orny", 30, "B"),
         ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
 
-        cn, _ = calculate_weighted_cn(sample_boundary, mock_db)
+        result = summarize_complexes(rows)
 
-        assert 0 <= cn <= 100
+        assert result["weighted_cn"] == 51.0
+        assert result["hsg_assumed_pct"] == 20.0
+        arable = next(c for c in result["categories"] if c["category"] == "grunt_orny")
+        # (30*75 + 12.5*63 + 7.5*75) / 50
+        assert arable["cn_value"] == 72.0
 
-    def test_returns_default_on_database_error(self, sample_boundary, mock_db):
-        """Test that default CN is returned on database error."""
-        mock_db.execute.side_effect = Exception("Database connection failed")
+    def test_watershed_without_soil_groups_takes_group_b(self):
+        rows = [_row("las", 70), _row("droga", 30)]
 
-        cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
+        result = summarize_complexes(rows)
 
-        assert cn == DEFAULT_CN
-        assert stats == {}
+        # (70*55 + 30*98) / 100
+        assert result["weighted_cn"] == pytest.approx(67.9)
+        assert result["hsg_assumed_pct"] == 100.0
 
-    def test_returns_default_for_zero_area(self, sample_boundary, mock_db):
-        """Test that default CN is returned when total area is zero."""
-        mock_results = [
-            MagicMock(category="las", cn_value=60, total_area_m2=0),
+    def test_source_of_a_row_selects_its_cover(self):
+        """Commercial pieces of zabudowa_przemysłowa are TR-55 commercial (B 92)."""
+        rows = [
+            _row("zabudowa_przemysłowa", 10, bdot_class="KUPG:zakład prod."),
+            _row("zabudowa_przemysłowa", 10, "B", bdot_class="KUPG:zakład prod."),
+            _row("zabudowa_przemysłowa", 10, bdot_class="PTZB:handl.-usług."),
+            _row("zabudowa_przemysłowa", 10, "B", bdot_class="PTZB:handl.-usług."),
         ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
 
-        cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
+        result = summarize_complexes(rows)
 
-        assert cn == DEFAULT_CN
-        assert stats == {}
-
-    def test_returns_default_for_invalid_boundary(self, mock_db):
-        """Test that default CN is returned for invalid boundary."""
-        # Create an invalid polygon (self-intersecting)
-        invalid_boundary = Polygon([(0, 0), (1, 1), (1, 0), (0, 1)])
-        assert not invalid_boundary.is_valid
-
-        cn, stats = calculate_weighted_cn(invalid_boundary, mock_db)
-
-        assert cn == DEFAULT_CN
-        assert stats == {}
-
-    def test_aggregates_same_category(self, sample_boundary, mock_db):
-        """Test that same category from different polygons is aggregated."""
-        # Two forest polygons with different CN (shouldn't happen but test handling)
-        mock_results = [
-            MagicMock(category="las", cn_value=60, total_area_m2=500000),
-            MagicMock(category="las", cn_value=65, total_area_m2=500000),
+        assert result["categories"] == [
+            {
+                "category": "zabudowa_przemysłowa",
+                "area_m2": 20 * HA,
+                "percentage": 100.0,
+                "cn_value": 90.0,
+            }
         ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
 
-        cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
+    def test_overlapping_soil_pieces_do_not_exceed_the_land_cover(self):
+        """Pieces summing to more than the land cover are scaled to it."""
+        rows = [_row("las", 10), _row("las", 10, "A"), _row("las", 10, "D")]
 
-        # Weighted: (60*0.5 + 65*0.5) = 62.5 (one decimal kept)
-        assert cn == pytest.approx(62.5)
-        # Stats should aggregate percentages
-        assert stats["las"] == 100.0
+        result = summarize_complexes(rows)
 
-    def test_water_category_cn_100(self, sample_boundary, mock_db):
-        """Test water bodies have CN=100."""
-        mock_results = [
-            MagicMock(category="woda", cn_value=100, total_area_m2=100000),
-        ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
+        assert result["total_area_m2"] == 10 * HA
+        assert result["hsg_assumed_pct"] == 0.0
+        assert result["weighted_cn"] == pytest.approx((30 + 77) / 2, abs=0.05)
 
-        cn, stats = calculate_weighted_cn(sample_boundary, mock_db)
-
-        assert cn == 100
-        assert stats["woda"] == 100.0
-
-
-class TestGetLandCoverForBoundary:
-    """Tests for get_land_cover_for_boundary function."""
-
-    @pytest.fixture
-    def sample_boundary(self):
-        """Create a sample boundary polygon in EPSG:2180."""
-        return box(500000, 600000, 501000, 601000)
-
-    @pytest.fixture
-    def mock_db(self):
-        """Create a mock database session."""
-        return MagicMock()
-
-    def test_returns_none_when_no_data(self, sample_boundary, mock_db):
-        """Test returns None when no land cover data found."""
-        mock_db.execute.return_value.fetchall.return_value = []
-
-        result = get_land_cover_for_boundary(sample_boundary, mock_db)
-
-        assert result is None
-
-    def test_returns_detailed_info(self, sample_boundary, mock_db):
-        """Test returns detailed land cover information."""
-        mock_results = [
-            MagicMock(
-                category="las",
-                cn_value=60,
-                imperviousness=0.0,
-                total_area_m2=600000,
-            ),
-            MagicMock(
-                category="grunt_orny",
-                cn_value=78,
-                imperviousness=0.1,
-                total_area_m2=400000,
-            ),
-        ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
-
-        result = get_land_cover_for_boundary(sample_boundary, mock_db)
-
-        assert result is not None
-        assert "categories" in result
-        assert "total_area_m2" in result
-        assert "weighted_cn" in result
-        assert "weighted_imperviousness" in result
-        assert len(result["categories"]) == 2
-        assert result["weighted_cn"] == pytest.approx(67.2)
-        assert result["total_area_m2"] == 1000000
-
-    def test_returns_none_for_invalid_boundary(self, mock_db):
-        """Test returns None for invalid boundary."""
-        invalid_boundary = Polygon([(0, 0), (1, 1), (1, 0), (0, 1)])
-
-        result = get_land_cover_for_boundary(invalid_boundary, mock_db)
-
-        assert result is None
-
-    def test_returns_none_on_database_error(self, sample_boundary, mock_db):
-        """Test returns None on database error."""
-        mock_db.execute.side_effect = Exception("Connection failed")
-
-        result = get_land_cover_for_boundary(sample_boundary, mock_db)
-
-        assert result is None
-
-    def test_calculates_weighted_imperviousness(self, sample_boundary, mock_db):
-        """Test weighted imperviousness calculation."""
-        # 50% impervious area (droga), 50% pervious (las)
-        mock_results = [
-            MagicMock(
-                category="droga",
-                cn_value=98,
-                imperviousness=0.95,
-                total_area_m2=500000,
-            ),
-            MagicMock(
-                category="las",
-                cn_value=60,
-                imperviousness=0.0,
-                total_area_m2=500000,
-            ),
-        ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
-
-        result = get_land_cover_for_boundary(sample_boundary, mock_db)
-
-        # Expected: (0.95*0.5 + 0.0*0.5) = 0.475
-        assert result["weighted_imperviousness"] == pytest.approx(0.475, abs=0.001)
-
-    def test_handles_none_imperviousness(self, sample_boundary, mock_db):
-        """Test handles None imperviousness values."""
-        mock_results = [
-            MagicMock(
-                category="inny",
-                cn_value=75,
-                imperviousness=None,
-                total_area_m2=1000000,
-            ),
-        ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
-
-        result = get_land_cover_for_boundary(sample_boundary, mock_db)
-
-        assert result is not None
-        assert result["weighted_imperviousness"] == 0.0
-
-    def test_shares_of_forest_and_urbanised_land(self, sample_boundary, mock_db):
-        """Lutz's W is the forest, U the built-up and transport land, to 0.1%."""
-        areas_m2 = {
+    def test_weighted_imperviousness_and_lutz_shares(self):
+        areas_ha = {
             "las": 100,
             "grunt_orny": 89,
             "zabudowa_mieszkaniowa": 20,
@@ -321,128 +156,129 @@ class TestGetLandCoverForBoundary:
             "woda": 20,
             "łąka": 14,
         }
-        mock_db.execute.return_value.fetchall.return_value = [
-            MagicMock(
-                category=category, cn_value=70, imperviousness=0.0, total_area_m2=area
-            )
-            for category, area in areas_m2.items()
+        rows = [
+            _row(category, area, imperviousness=0.95 if category == "droga" else None)
+            for category, area in areas_ha.items()
         ]
 
-        result = get_land_cover_for_boundary(sample_boundary, mock_db)
+        result = summarize_complexes(rows)
 
-        # Of 300 m2: forest 100 (33.33%), built-up 25 and roads 12 (12.33%)
+        # Of 300 ha: forest 100 (33.33%), built-up 25 and roads 12 (12.33%)
         assert (result["forest_pct"], result["urban_pct"]) == (33.3, 12.3)
+        assert result["weighted_imperviousness"] == pytest.approx(
+            12 * 0.95 / 300, abs=1e-3
+        )
+
+    @pytest.mark.parametrize(
+        "rows", [[], [_row("las", 0)], [_row("las", 0), _row("las", 5, "B")]]
+    )
+    def test_no_land_cover_area_is_none(self, rows):
+        assert summarize_complexes(rows) is None
 
 
-class TestDetermineCN:
-    """Tests for determine_cn function (CN hierarchy)."""
+class TestGetLandCoverForBoundary:
+    """The query of the land cover and its soil pieces."""
 
     @pytest.fixture
     def sample_boundary(self):
-        """Create a sample boundary polygon in EPSG:2180."""
+        return box(500000, 600000, 501000, 601000)
+
+    def test_returns_the_summary_of_the_rows(self, sample_boundary):
+        db = MagicMock()
+        db.execute.return_value.fetchall.return_value = [
+            _row("las", 100),
+            _row("las", 100, "B"),
+        ]
+
+        result = get_land_cover_for_boundary(sample_boundary, db)
+
+        assert result["weighted_cn"] == 55.0
+        assert db.execute.call_args.args[1] == {"boundary_wkb": sample_boundary.wkb_hex}
+
+    def test_returns_none_when_no_data(self, sample_boundary):
+        db = MagicMock()
+        db.execute.return_value.fetchall.return_value = []
+
+        assert get_land_cover_for_boundary(sample_boundary, db) is None
+
+    def test_returns_none_for_invalid_boundary(self):
+        db = MagicMock()
+        invalid_boundary = Polygon([(0, 0), (1, 1), (1, 0), (0, 1)])
+
+        assert get_land_cover_for_boundary(invalid_boundary, db) is None
+        db.execute.assert_not_called()
+
+    def test_returns_none_on_database_error(self, sample_boundary):
+        db = MagicMock()
+        db.execute.side_effect = Exception("Connection failed")
+
+        assert get_land_cover_for_boundary(sample_boundary, db) is None
+
+
+class TestDetermineCN:
+    """The hierarchy of the sources of the CN."""
+
+    @pytest.fixture
+    def sample_boundary(self):
         return box(500000, 600000, 501000, 601000)
 
     @pytest.fixture
     def mock_db(self):
-        """Create a mock database session."""
         return MagicMock()
 
     def test_config_cn_has_highest_priority(self, sample_boundary, mock_db):
-        """Test config_cn has highest priority."""
         cn, source, details = determine_cn(
-            boundary=sample_boundary,
-            db=mock_db,
-            config_cn=80,
+            boundary=sample_boundary, db=mock_db, config_cn=80
         )
 
-        assert cn == 80
-        assert source == "config"
-        assert details is None
-        # DB should not be queried
+        assert (cn, source, details) == (80, "config", None)
         mock_db.execute.assert_not_called()
 
-    def test_uses_database_when_no_config(self, sample_boundary, mock_db):
-        """Test uses database land_cover when no config_cn."""
-        mock_results = [
-            MagicMock(category="las", cn_value=60, total_area_m2=1000000),
+    def test_config_cn_zero_is_valid(self, sample_boundary, mock_db):
+        cn, source, _ = determine_cn(boundary=sample_boundary, db=mock_db, config_cn=0)
+
+        assert (cn, source) == (0, "config")
+
+    def test_uses_the_complexes_of_the_database(self, sample_boundary, mock_db):
+        mock_db.execute.return_value.fetchall.return_value = [
+            _row("las", 100),
+            _row("las", 60, "A"),
+            _row("las", 40, "B"),
         ]
-        mock_db.execute.return_value.fetchall.return_value = mock_results
 
         cn, source, details = determine_cn(
-            boundary=sample_boundary,
-            db=mock_db,
-            config_cn=None,
-            use_kartograf=False,
+            boundary=sample_boundary, db=mock_db, use_kartograf=False
         )
 
-        assert cn == 60
-        assert source == "database_land_cover"
-        assert details is not None
-        assert "stats" in details
+        assert (cn, source) == (40.0, "database_land_cover")  # 0.6*30 + 0.4*55
+        assert details == {"stats": {"las": 100.0}, "hsg_assumed_pct": 0.0}
 
-    def test_returns_default_when_no_data(self, sample_boundary, mock_db):
-        """Test returns default CN when no data available."""
+    @pytest.mark.parametrize("default_cn", [75, 80])
+    def test_returns_default_when_no_data(self, sample_boundary, mock_db, default_cn):
         mock_db.execute.return_value.fetchall.return_value = []
 
-        cn, source, details = determine_cn(
+        result = determine_cn(
             boundary=sample_boundary,
             db=mock_db,
-            config_cn=None,
             use_kartograf=False,
-            default_cn=75,
+            default_cn=default_cn,
         )
 
-        assert cn == 75
-        assert source == "default"
-        assert details is None
+        assert result == (default_cn, "default", None)
 
-    def test_custom_default_cn(self, sample_boundary, mock_db):
-        """Test custom default_cn value is used."""
-        mock_db.execute.return_value.fetchall.return_value = []
-
-        cn, source, _ = determine_cn(
-            boundary=sample_boundary,
-            db=mock_db,
-            config_cn=None,
-            use_kartograf=False,
-            default_cn=80,
-        )
-
-        assert cn == 80
-        assert source == "default"
-
-    def test_handles_database_error(self, sample_boundary, mock_db):
-        """Test handles database error gracefully."""
+    def test_database_error_gives_the_default(self, sample_boundary, mock_db):
         mock_db.execute.side_effect = Exception("Connection failed")
 
         cn, source, _ = determine_cn(
-            boundary=sample_boundary,
-            db=mock_db,
-            config_cn=None,
-            use_kartograf=False,
-            default_cn=75,
+            boundary=sample_boundary, db=mock_db, use_kartograf=False, default_cn=75
         )
 
-        assert cn == 75
-        assert source == "default"
-
-    def test_config_cn_zero_is_valid(self, sample_boundary, mock_db):
-        """Test config_cn=0 is treated as valid explicit value."""
-        # CN=0 is technically invalid but should be accepted if explicitly set
-        cn, source, _ = determine_cn(
-            boundary=sample_boundary,
-            db=mock_db,
-            config_cn=0,
-        )
-
-        assert cn == 0
-        assert source == "config"
+        assert (cn, source) == (75, "default")
 
     @patch("core.cn_calculator.calculate_cn_from_kartograf")
     def test_uses_kartograf_when_db_empty(
         self, mock_kartograf, sample_boundary, mock_db, tmp_path
     ):
-        """Test uses Kartograf when database has no data."""
         from core.cn_calculator import CNCalculationResult
 
         mock_db.execute.return_value.fetchall.return_value = []
@@ -451,75 +287,44 @@ class TestDetermineCN:
             method="kartograf_hsg",
             dominant_hsg="B",
             hsg_stats={"B": 100.0},
-            land_cover_stats={"forest": 100.0},
-            cn_details=[{"land_cover": "forest", "cn": 55}],
+            land_cover_stats={"las": 100.0},
+            cn_details=[{"land_cover": "las", "percentage": 100.0, "cn": 55.0}],
         )
 
         cn, source, details = determine_cn(
             boundary=sample_boundary,
             db=mock_db,
-            config_cn=None,
             use_kartograf=True,
             boundary_wgs84=[[17.31, 52.45], [17.32, 52.46]],
             cache_dir=tmp_path,
         )
 
-        assert cn == 72
-        assert source == "kartograf_hsg"
-        assert details is not None
+        assert (cn, source) == (72, "kartograf_hsg")
         assert details["dominant_hsg"] == "B"
 
+    @pytest.mark.parametrize(
+        ("use_kartograf", "boundary_wgs84"),
+        [(False, [[17.31, 52.45], [17.32, 52.46]]), (True, None)],
+    )
     @patch("core.cn_calculator.calculate_cn_from_kartograf")
-    def test_kartograf_skipped_when_disabled(
-        self, mock_kartograf, sample_boundary, mock_db
+    def test_kartograf_skipped_when_disabled_or_without_boundary(
+        self,
+        mock_kartograf,
+        sample_boundary,
+        mock_db,
+        tmp_path,
+        use_kartograf,
+        boundary_wgs84,
     ):
-        """Test Kartograf is skipped when use_kartograf=False."""
         mock_db.execute.return_value.fetchall.return_value = []
 
-        cn, source, _ = determine_cn(
+        _, source, _ = determine_cn(
             boundary=sample_boundary,
             db=mock_db,
-            config_cn=None,
-            use_kartograf=False,
+            use_kartograf=use_kartograf,
+            boundary_wgs84=boundary_wgs84,
+            cache_dir=tmp_path,
         )
 
         assert source == "default"
         mock_kartograf.assert_not_called()
-
-    @patch("core.cn_calculator.calculate_cn_from_kartograf")
-    def test_kartograf_skipped_when_missing_params(
-        self, mock_kartograf, sample_boundary, mock_db
-    ):
-        """Test Kartograf is skipped when boundary_wgs84 or data_dir missing."""
-        mock_db.execute.return_value.fetchall.return_value = []
-
-        # Missing boundary_wgs84
-        cn, source, _ = determine_cn(
-            boundary=sample_boundary,
-            db=mock_db,
-            config_cn=None,
-            use_kartograf=True,
-            boundary_wgs84=None,
-            cache_dir=None,
-        )
-
-        assert source == "default"
-        mock_kartograf.assert_not_called()
-
-    def test_return_types(self, sample_boundary, mock_db):
-        """Test correct return types."""
-        mock_db.execute.return_value.fetchall.return_value = []
-
-        result = determine_cn(
-            boundary=sample_boundary,
-            db=mock_db,
-            config_cn=None,
-            use_kartograf=False,
-        )
-
-        assert isinstance(result, tuple)
-        assert len(result) == 3
-        cn, source, details = result
-        assert isinstance(cn, int)
-        assert isinstance(source, str)
-        assert details is None or isinstance(details, dict)

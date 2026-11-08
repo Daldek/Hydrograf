@@ -443,7 +443,8 @@
      * Render land cover shares as a stacked bar with a class list.
      *
      * @param {string} canvasId - Canvas element ID
-     * @param {Array} categories - Array of { category, percentage, area_m2, cn_value }
+     * @param {Array} categories - Array of { category, percentage, area_m2, cn_value }:
+     *     cn_value is the CN of the class over its soil groups (AMC II)
      */
     function renderLandCoverChart(canvasId, categories) {
         var rows = categories.slice().sort(function (a, b) {
@@ -453,7 +454,7 @@
             return {
                 label: cls ? cls.label : cat.category,
                 color: cls ? cls.color : OTHER_COLOR,
-                extra: cat.cn_value != null ? 'CN ' + cat.cn_value : '',
+                extra: cat.cn_value != null ? 'CN ' + cat.cn_value.toFixed(1) : '',
                 percentage: cat.percentage,
             };
         });
