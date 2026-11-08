@@ -1,8 +1,8 @@
 # ADR-075: The CN is that of the soil-cover complexes, from Hydrolog's TR-55 table
 
 **Date:** 2026-11-08
-**Status:** accepted (by delegation of the author, 2026-11-08; plan
-`docs/plans/2026-11-08-cn-by-soil-group.md`)
+**Status:** accepted (by delegation of the author, 2026-11-08; the open points decided by
+the author 2026-11-08, below; plan `docs/plans/2026-11-08-cn-by-soil-group.md`)
 
 ## Context
 
@@ -60,23 +60,31 @@ here). It is nearly uniform, so the land cover drives the spatial pattern of the
    - `las` → woods, good: Polish forests are not grazed and keep litter and brush (TR-55
      table 2-2c, note 6);
    - `łąka` → meadow, continuous grass mowed for hay (2-2c); brush (PTRK) and orchards
-     (PTUT, woods–grass good) differ by ≤ 2 at B;
+     (PTUT, woods–grass good) differ by ≤ 2 at B. Decided by the author 2026-11-08: PTUT
+     stays `łąka` (ADR-074);
    - `grunt_orny` → small grain, straight row, good (2-2b): cereals are most of the
-     sown area; the condition moves the CN by 1 at B (row crops good would be 78);
+     sown area; the condition moves the CN by 1 at B (row crops good would be 78).
+     Decided by the author 2026-11-08: small grain, straight row, good (CN 75 on B);
    - `zabudowa_mieszkaniowa` → residential 1/3 acre, 30% impervious (2-2a);
      `PTZB:wielorodzinna` → 1/8 acre, 65%. Measured on h07 BDOT10k: roofs (BUBD) cover
      15.7% of PTZB jednorodzinna, 19.4% of pozostała and 20.6% of wielorodzinna; roofs are
      ~30–37% of the impervious cover of residential sites (Schueler 1994), and the minor
      streets lie inside PTZB;
    - `zabudowa_przemysłowa` → industrial, 72% (2-2a); `PTZB:handl.-usług.` → commercial
-     and business, 85% (roofs 31.5% and 25.3% of those kinds);
+     and business, 85% (roofs 31.5% and 25.3% of those kinds). Decided by the author
+     2026-11-08: commercial land stays in `zabudowa_przemysłowa`, told apart by its
+     `bdot_class` (ADR-074);
    - `droga` → paved (2-2a); `woda` → CN 98, "impervious and water surfaces … are always
      assigned a CN of 98" (NEH 630 ch. 9, p. 9-1; Hydrolog's own WATER row is 100, so the
      paved row of Hydrolog, 98, is used);
    - `inny` → open space, fair (2-2a); `PTPL:nieutwardzony` → dirt road incl. right-of-way;
-     `PTWZ` (pits, heaps) → newly graded area, no vegetation.
-   A `bdot_class` override applies only within its category; plain layer codes (today's
-   data) take the category's cover.
+     `PTWZ` (pits, heaps) → newly graded area, no vegetation. Decided by the author
+     2026-11-08: the solar farms stay `inny` (their PTNZ teren pod urządzeniami,
+     `PTNZ:urządzenia`), open space (ADR-074).
+   A `bdot_class` override applies only within its category; a plain layer code (a land
+   cover imported before ADR-074, or a polygon without the attribute of its kind) takes
+   the category's cover. Every `bdot_class` that the import writes has a cover of its own
+   or the category's by decision (`tests/unit/test_cn_tables.py`).
 3. **Land cover outside `soil_hsg`** takes the soil groups of the watershed's land cover
    that lies on `soil_hsg`, in their shares (the best estimate of unknown soil is the soil
    around it, and the mean is kept); with no soil data at all, group B (the fallback of
@@ -127,6 +135,13 @@ of the 223 catchments before and after, today's land cover):
 - The land cover query of the panel takes 0.55 s instead of 0.08 s per h07 catchment
   (max 1.6 s for 63 km²); Hydroni's `land_cover` holds every row twice (a re-import of
   step 4), which doubles the work.
+
+Combined with ADR-074 (the land cover of the 13 packages of h07/2026-2, migration 006,
+the export of the 223 catchments on the rasters and streams of the Hydroni run,
+2026-11-08): CN mean 75.8 → 69.5 (sd 4.9), min / median / max 51.8 / 70.8 / 81.4,
+area-weighted 75.2 → 69.1; every catchment lower, by 3.3 to 20.0 (median 5.6; at most
+15.9 in the 203 catchments of at least 1 km²). AMC I 32–66 (median 52), AMC III 72–91
+(median 85). Soil groups of h07: A 5.3%, B 94.7%; no land cover outside `soil_hsg`.
 
 What would improve the HSG: the least transmissive layer of SoilGrids 0–100 cm (a
 Kartograf request: HSG from several depths); a water-table criterion (D or dual groups for

@@ -51,9 +51,11 @@ bootstrap step 5. Branch `feat/cn-by-soil-group`.
 ## Open questions for the author
 
 1. Arable land as small grain (B 75) or row crops (B 78), both good condition (TR-55
-   table 2-2b)?
+   table 2-2b)? Decided by the author 2026-11-08: small grain, straight row, good (B 75).
 2. Should the drought work get the weighted runoff for given rainfalls besides the
-   composite CN (ADR-075: +21% at 50 mm)?
+   composite CN (ADR-075: +21% at 50 mm)? Decided by the author 2026-11-08: no; the
+   area-weighted composite CN, which the export names for AMC I, II and III (`cn_amc_i`,
+   `cn_amc_ii` = `cn`, `cn_amc_iii`).
 3. Requests to the producers: Kartograf, an HSG from the least transmissive SoilGrids
    layer 0–100 cm; Hydrolog, the missing TR-55 rows (paved roads with open ditches incl.
    right-of-way, residential 1/4 acre, woods–grass) and water at 98 per NEH 630 ch. 9.

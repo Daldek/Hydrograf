@@ -1,8 +1,8 @@
 # ADR-074: The land cover is the BDOT10k partition split by its attributes, with the industrial complexes cut out of it
 
 **Date:** 2026-11-08
-**Status:** accepted (by delegation of the author, 2026-11-08; plan
-`docs/plans/2026-11-08-landcover-industry.md`)
+**Status:** accepted (by delegation of the author, 2026-11-08; the open points decided by
+the author 2026-11-08, below; plan `docs/plans/2026-11-08-landcover-industry.md`)
 
 ## Context
 
@@ -77,7 +77,8 @@ Cover's class 1.2.1 "Industrial or commercial units" groups them; of the TR-55 c
 "Commercial and business" (85% impervious) is the nearest to "Industrial" (72%) and far
 from the residential districts. `bdot_class` keeps it apart, so the CN can use the
 commercial cover. `zabudowa_mieszkaniowa` was the alternative: rejected, a shopping centre
-is not housing in any of the two sources.
+is not housing in any of the two sources. Decided by the author 2026-11-08: commercial
+land stays in `zabudowa_przemysłowa`; `bdot_class` (`PTZB:handl.-usług.`) tells it apart.
 
 Other complexes (KUKO airports, car parks and stations; KUSK parks and summer house
 estates; KUOS, KUOZ, KUZA, KUHO, KUSC, KUMN, KUHU): not used. The partition already shows
@@ -85,7 +86,9 @@ their cover (an airport is mostly grass with paved runways), and TR-55 has no di
 their kind. The other KUPG kinds (farms, solar, wind and water power plants, mines,
 treatment plants, landfills, waterworks, substations) keep the PT cover too; steelworks,
 refineries, metallurgical plants and thermal and nuclear power plants, absent in h07,
-are industry like a combined heat and power plant.
+are industry like a combined heat and power plant. Decided by the author 2026-11-08: the
+solar farms keep their PT cover, `inny` (3.29 of their 3.32 km² in h07 lie on PTNZ teren
+pod urządzeniami technicznymi lub budowlami).
 
 Water under a complex: kept as water. A water surface is neither of the two covers that
 the TR-55 districts combine; the KUPG boundary is approximate (it takes 0.02 km² of ponds
@@ -96,7 +99,8 @@ The other PT layers:
 - PTUT to `łąka`, not `grunt_orny`: TR-55 puts orchards and tree farms among the other
   agricultural lands ("Woods-grass combination", table 2-2c, CN 43/65/76/82 in fair
   condition), close to meadow (30/58/71/78) and pasture, not among the cultivated lands
-  of table 2-2b. Allotment gardens are closer to that than to a field.
+  of table 2-2b. Allotment gardens are closer to that than to a field. Decided by the
+  author 2026-11-08: PTUT stays `łąka`.
 - PTRK stays `łąka`: brush (table 2-2c, 35/56/70/77 fair) is close to meadow.
 - PTWZ to `inny`, with the other bare or disturbed land (PTGN, PTSO).
 - PTPL by its surface: natural ground, gravel and crushed stone to `inny`, the paved

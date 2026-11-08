@@ -111,5 +111,7 @@ Consequences. In short:
 
 - The other KU complexes, the buildings (OT_BUBD_A) and the wetland overlay (OT_OIMK_A)
   are not used (ADR-074, options); a farm, solar farm or mine keeps its PT cover.
+  Decided by the author 2026-11-08: the solar farms stay `inny`, commercial land stays
+  in `zabudowa_przemysłowa` (told apart by `bdot_class`), PTUT stays `łąka`.
 - ✅ `cn_value` goes with ADR-075: the branch merged second drops the column and
   `CATEGORY_CN`. Done on `integrate/landcover-cn` (2026-11-08): migration 006.
