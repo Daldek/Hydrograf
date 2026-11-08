@@ -1,17 +1,22 @@
-"""Tests for scripts/import_landcover.py: DB URL, CRS transform, record preparation."""
+"""Tests for scripts/import_landcover.py: DB URL, CRS, the land cover partition."""
 
+from collections import defaultdict
 from unittest.mock import patch
 
 import geopandas as gpd
 import numpy as np
-from shapely.geometry import MultiPolygon, Polygon
+import pytest
+import shapely
+from shapely.geometry import Polygon, box
 
 from scripts.import_landcover import (
-    BDOT10K_MAPPING,
     get_database_url,
     prepare_records,
+    read_gpkg_layers,
     transform_to_2180,
 )
+
+X0, Y0 = 400_000.0, 500_000.0
 
 
 class TestGetDatabaseUrl:
@@ -81,133 +86,274 @@ class TestTransformTo2180:
         assert result.crs.to_epsg() == 2180
 
 
-class TestPrepareRecords:
-    """Tests for prepare_records()."""
+def _square(x, y, size=100.0):
+    """A square of the synthetic package, offset (x, y) in metres from (X0, Y0)."""
+    return box(X0 + x, Y0 + y, X0 + x + size, Y0 + y + size)
 
-    def _make_gdf(self, n=1, geom_type="Polygon"):
-        """Helper to create a GeoDataFrame with n polygons in EPSG:2180."""
-        polys = []
-        for i in range(n):
-            poly = Polygon(
-                [
-                    (400000 + i * 100, 500000),
-                    (400100 + i * 100, 500000),
-                    (400100 + i * 100, 500100),
-                    (400000 + i * 100, 500100),
-                ]
-            )
-            if geom_type == "MultiPolygon":
-                poly = MultiPolygon([poly])
-            polys.append(poly)
-        return gpd.GeoDataFrame(
-            {"id": list(range(n))},
-            geometry=polys,
-            crs="EPSG:2180",
+
+def _package(path, layers):
+    """Write a GeoPackage: layer name -> list of (attributes, geometry)."""
+    for name, features in layers.items():
+        attributes = [attrs for attrs, _ in features]
+        gdf = gpd.GeoDataFrame(
+            attributes, geometry=[geom for _, geom in features], crs="EPSG:2180"
+        )
+        gdf.to_file(path, layer=name, driver="GPKG")
+    return path
+
+
+def _areas(records):
+    """Area [m²] of the records by (category, bdot_class)."""
+    areas = defaultdict(float)
+    for rec in records:
+        geom = shapely.from_wkb(rec["geom_wkb"])
+        areas[rec["category"], rec["bdot_class"]] += geom.area
+    return dict(areas)
+
+
+def _import(path, layers):
+    return prepare_records(read_gpkg_layers(_package(path, layers)))
+
+
+PLANT = "zakład produkcyjny, usługowy lub remontowy"
+
+
+class TestIndustrialComplexes:
+    """KUPG complexes cut out of the PT partition (ADR-074)."""
+
+    def test_plant_over_housing_takes_exactly_its_overlap(self, tmp_path):
+        """The PTZB part under a plant becomes industrial; the rest of it stays."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTZB_A": [({"RODZAJ": "jednorodzinna"}, _square(0, 0))],
+                "OT_PTTR_A": [({"RODZAJ": "roślinność trawiasta"}, _square(100, 0))],
+                "OT_KUPG_A": [({"RODZAJ": PLANT}, box(X0 + 60, Y0, X0 + 130, Y0 + 50))],
+            },
         )
 
-    def test_returns_list_of_dicts(self):
-        """prepare_records returns a list of dictionaries."""
-        gdf = self._make_gdf(2)
-        layers = {"PTLZ": gdf}
-        records = prepare_records(layers)
-        assert isinstance(records, list)
-        assert all(isinstance(r, dict) for r in records)
+        assert _areas(records) == pytest.approx(
+            {
+                ("zabudowa_mieszkaniowa", "PTZB:jednorodzinna"): 10_000 - 40 * 50,
+                ("łąka", "PTTR:trawiasta"): 10_000 - 30 * 50,
+                ("zabudowa_przemysłowa", "KUPG:zakład prod."): 70 * 50,
+            }
+        )
+        industrial = [r for r in records if r["bdot_class"] == "KUPG:zakład prod."]
+        assert {r["imperviousness"] for r in industrial} == {0.72}
 
-    def test_record_has_required_keys(self):
-        """Each record has geom_wkb, category, cn_value, imperviousness, bdot_class."""
-        gdf = self._make_gdf(1)
-        layers = {"PTLZ": gdf}
-        records = prepare_records(layers)
-        assert len(records) == 1
-        rec = records[0]
-        assert "geom_wkb" in rec
-        assert "category" in rec
-        assert "cn_value" in rec
-        assert "imperviousness" in rec
-        assert "bdot_class" in rec
+    @pytest.mark.parametrize(
+        ("kind", "plant"),
+        [
+            ("elektrownia", "słoneczna"),
+            ("elektrownia", "wiatrowa"),
+            ("kopalnia", None),
+            ("gospodarstwo hodowlane", None),
+        ],
+    )
+    def test_other_complexes_leave_the_land_cover(self, tmp_path, kind, plant):
+        """Solar and wind farms, mines and farms are not industrial land."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTNZ_A": [
+                    (
+                        {"RODZAJ": "teren pod urządzeniami technicznymi lub budowlami"},
+                        _square(0, 0),
+                    )
+                ],
+                "OT_KUPG_A": [
+                    ({"RODZAJ": kind, "RODZAJELEKTROWNI": plant}, _square(-10, -10))
+                ],
+            },
+        )
 
-    def test_ptlz_maps_to_las(self):
-        """PTLZ layer is mapped to 'las' category."""
-        gdf = self._make_gdf(1)
-        layers = {"PTLZ": gdf}
-        records = prepare_records(layers)
-        assert records[0]["category"] == "las"
-        assert records[0]["cn_value"] == 60
+        assert _areas(records) == pytest.approx({("inny", "PTNZ:urządzenia"): 10_000})
 
-    def test_ptwp_maps_to_woda(self):
-        """PTWP layer is mapped to 'woda' category."""
-        gdf = self._make_gdf(1)
-        layers = {"PTWP": gdf}
-        records = prepare_records(layers)
-        assert records[0]["category"] == "woda"
-        assert records[0]["cn_value"] == 100
+    def test_thermal_power_plant_is_industrial(self, tmp_path):
+        """Of the power plants, the kind decides: a thermal one is industrial."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTTR_A": [({"RODZAJ": "uprawa na gruntach ornych"}, _square(0, 0))],
+                "OT_KUPG_A": [
+                    (
+                        {"RODZAJ": "elektrownia", "RODZAJELEKTROWNI": "cieplna"},
+                        _square(0, 0, size=50),
+                    )
+                ],
+            },
+        )
 
-    def test_bdot10k_mapping_completeness(self):
-        """All standard BDOT10k codes have a mapping entry."""
-        expected_codes = [
-            "PTLZ",
-            "PTTR",
-            "PTUT",
-            "PTWP",
-            "PTWZ",
-            "PTRK",
-            "PTZB",
-            "PTKM",
-            "PTPL",
-            "PTGN",
-            "PTNZ",
-            "PTSO",
+        assert _areas(records) == pytest.approx(
+            {
+                ("grunt_orny", "PTTR:grunty orne"): 7_500,
+                ("zabudowa_przemysłowa", "KUPG:el. cieplna"): 2_500,
+            }
+        )
+
+    def test_overlapping_complexes_count_once(self, tmp_path):
+        """Two overlapping complexes take their union once, the first kind first."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTTR_A": [({"RODZAJ": "uprawa na gruntach ornych"}, _square(0, 0))],
+                "OT_KUPG_A": [
+                    ({"RODZAJ": "baza paliw"}, box(X0, Y0, X0 + 60, Y0 + 100)),
+                    ({"RODZAJ": PLANT}, box(X0 + 40, Y0, X0 + 80, Y0 + 100)),
+                ],
+            },
+        )
+
+        assert _areas(records) == pytest.approx(
+            {
+                ("grunt_orny", "PTTR:grunty orne"): 2_000,
+                ("zabudowa_przemysłowa", "KUPG:baza paliw"): 6_000,
+                ("zabudowa_przemysłowa", "KUPG:zakład prod."): 2_000,
+            }
+        )
+
+    def test_industrial_land_and_water_stay_whole(self, tmp_path):
+        """PT polygons that are industrial already, and water, keep their source."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTZB_A": [({"RODZAJ": "przemysłowo-składowa"}, _square(0, 0))],
+                "OT_PTWP_A": [({"RODZAJ": "woda stojąca"}, _square(100, 0))],
+                "OT_KUPG_A": [({"RODZAJ": PLANT}, box(X0, Y0, X0 + 200, Y0 + 100))],
+            },
+        )
+
+        assert _areas(records) == pytest.approx(
+            {
+                ("zabudowa_przemysłowa", "PTZB:przem.-skład."): 10_000,
+                ("woda", "PTWP"): 10_000,
+            }
+        )
+        assert len(records) == 2
+
+    def test_areas_sum_to_the_pt_layers(self, tmp_path):
+        """Complexes over many polygons change categories, never the total area."""
+        pt = [
+            ({"RODZAJ": "jednorodzinna"}, _square(x, y))
+            for x in (0, 100, 200)
+            for y in (0, 100)
         ]
-        for code in expected_codes:
-            assert code in BDOT10K_MAPPING, f"Missing mapping for {code}"
+        complexes = [
+            ({"RODZAJ": PLANT}, shapely.Point(X0 + 150, Y0 + 100).buffer(70)),
+            ({"RODZAJ": "gazownia"}, box(X0 + 250, Y0 - 50, X0 + 400, Y0 + 50)),
+        ]
+        records = _import(
+            tmp_path / "p.gpkg", {"OT_PTZB_A": pt, "OT_KUPG_A": complexes}
+        )
 
-    def test_empty_input_returns_empty(self):
-        """Empty layers dict returns empty records list."""
-        records = prepare_records({})
-        assert records == []
+        areas = _areas(records)
+        assert sum(areas.values()) == pytest.approx(60_000)
+        assert areas["zabudowa_przemysłowa", "KUPG:zakład prod."] == pytest.approx(
+            shapely.Point(X0 + 150, Y0 + 100).buffer(70).area
+        )
+        assert areas["zabudowa_przemysłowa", "KUPG:gazownia"] == pytest.approx(50 * 50)
 
-    def test_multiple_layers(self):
-        """Records from multiple layers are combined."""
-        gdf1 = self._make_gdf(2)
-        gdf2 = self._make_gdf(3)
-        layers = {"PTLZ": gdf1, "PTWP": gdf2}
-        records = prepare_records(layers)
-        assert len(records) == 5
-        categories = {r["category"] for r in records}
-        assert "las" in categories
-        assert "woda" in categories
+
+class TestPtKinds:
+    """The attribute of a PT layer that decides its category."""
+
+    def test_grassland_and_arable_land(self, tmp_path):
+        """PTTR splits into meadow (grass) and arable land by RODZAJ."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTTR_A": [
+                    ({"RODZAJ": "roślinność trawiasta"}, _square(0, 0)),
+                    ({"RODZAJ": "uprawa na gruntach ornych"}, _square(100, 0, 200)),
+                ],
+            },
+        )
+
+        assert _areas(records) == pytest.approx(
+            {
+                ("łąka", "PTTR:trawiasta"): 10_000,
+                ("grunt_orny", "PTTR:grunty orne"): 40_000,
+            }
+        )
+
+    def test_built_up_kinds(self, tmp_path):
+        """PTZB industrial and commercial kinds are industrial, the rest housing."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTZB_A": [
+                    ({"RODZAJ": "wielorodzinna"}, _square(0, 0)),
+                    ({"RODZAJ": "przemysłowo-składowa"}, _square(100, 0)),
+                    ({"RODZAJ": "handlowo-usługowa"}, _square(200, 0)),
+                ],
+            },
+        )
+
+        assert {
+            (r["category"], r["bdot_class"], r["imperviousness"]) for r in records
+        } == {
+            ("zabudowa_mieszkaniowa", "PTZB:wielorodzinna", 0.65),
+            ("zabudowa_przemysłowa", "PTZB:przem.-skład.", 0.72),
+            ("zabudowa_przemysłowa", "PTZB:handl.-usług.", 0.85),
+        }
+
+    def test_unpaved_square_is_not_a_road(self, tmp_path):
+        """PTPL of natural ground is `inny`; asphalt and an unknown surface `droga`."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTPL_A": [
+                    ({"MATERIALNAWIERZCHNI": "grunt naturalny"}, _square(0, 0)),
+                    ({"MATERIALNAWIERZCHNI": "masa bitumiczna"}, _square(100, 0)),
+                    ({"MATERIALNAWIERZCHNI": None}, _square(200, 0)),
+                ],
+            },
+        )
+
+        assert {(r["category"], r["bdot_class"]) for r in records} == {
+            ("inny", "PTPL:nieutwardzony"),
+            ("droga", "PTPL:utwardzony"),
+            ("droga", "PTPL"),
+        }
+
+    def test_layers_without_the_attribute_take_the_layer_default(self, tmp_path):
+        """Old layer names and missing attributes fall back to the layer's category."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "PTZB": [({"id": 1}, _square(0, 0))],
+                "PTTR": [({"id": 1}, _square(100, 0))],
+                "OT_PTXX_A": [({"id": 1}, _square(200, 0))],
+            },
+        )
+
+        assert {(r["category"], r["bdot_class"]) for r in records} == {
+            ("zabudowa_mieszkaniowa", "PTZB"),
+            ("grunt_orny", "PTTR"),
+            ("inny", "PTXX"),
+        }
+
+
+class TestGeometries:
+    """The geometries that reach the partition."""
+
+    def test_self_intersecting_polygon_keeps_its_area(self, tmp_path):
+        """A bow-tie polygon is repaired into both of its triangles."""
+        bow_tie = Polygon(
+            [(X0, Y0), (X0 + 100, Y0 + 100), (X0 + 100, Y0), (X0, Y0 + 100)]
+        )
+        records = _import(tmp_path / "p.gpkg", {"OT_PTLZ_A": [({"id": 1}, bow_tie)]})
+
+        assert _areas(records) == pytest.approx({("las", "PTLZ"): 5_000})
+        assert all(shapely.from_wkb(r["geom_wkb"]).is_valid for r in records)
 
     def test_empty_geometry_skipped(self):
         """Records with empty geometry are skipped."""
-        empty_poly = Polygon()  # empty polygon
-        valid_poly = Polygon(
-            [
-                (400000, 500000),
-                (401000, 500000),
-                (401000, 501000),
-                (400000, 501000),
-            ]
-        )
         gdf = gpd.GeoDataFrame(
-            {"id": [1, 2]},
-            geometry=[valid_poly, empty_poly],
-            crs="EPSG:2180",
+            {"id": [1, 2]}, geometry=[_square(0, 0), Polygon()], crs="EPSG:2180"
         )
-        layers = {"PTLZ": gdf}
-        records = prepare_records(layers)
-        assert len(records) == 1
 
-    def test_bdot_class_recorded(self):
-        """The bdot_class field records the original layer code."""
-        gdf = self._make_gdf(1)
-        layers = {"PTZB": gdf}
-        records = prepare_records(layers)
-        assert records[0]["bdot_class"] == "PTZB"
+        records = prepare_records({"PTLZ": gdf})
 
-    def test_unknown_layer_gets_default(self):
-        """Unknown layer code gets default mapping ('inny', 75, 0.2)."""
-        gdf = self._make_gdf(1)
-        layers = {"PTXX": gdf}
-        records = prepare_records(layers)
-        assert records[0]["category"] == "inny"
-        assert records[0]["cn_value"] == 75
+        assert _areas(records) == pytest.approx({("las", "PTLZ"): 10_000})

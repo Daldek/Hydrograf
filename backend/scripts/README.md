@@ -656,8 +656,13 @@ a county failed. The hydro layers are not selected here: `merge_hydro_gpkgs()` k
 
 ### `import_landcover.py`: import land cover into the database
 
-Imports the `PT*` layers of a BDOT10k GeoPackage into the table `land_cover` with a category, a CN
-value and the imperviousness.
+Imports the land cover of a BDOT10k county package into the table `land_cover` (ADR-074): the
+`PT*` layers, which partition the county, split by their attributes, with the industrial
+complexes of `OT_KUPG_A` cut out of them. Each row gets a category, a CN value, the
+imperviousness and its source in `bdot_class`. The import of a package replaces, in one
+transaction, the rows of its area (those whose interior point and more than half of whose area
+lie in the package), so importing a package again changes nothing and the neighbouring
+counties keep their rows.
 
 ```bash
 cd backend
@@ -669,7 +674,7 @@ cd backend
 # Dry run: show what would be imported
 .venv/bin/python -m scripts.import_landcover --input <package>.gpkg --dry-run
 
-# Delete the existing land cover first
+# Delete the land cover of every county first
 .venv/bin/python -m scripts.import_landcover --input <package>.gpkg --clear-existing
 ```
 
@@ -679,22 +684,38 @@ cd backend
 |---|---|---|
 | `--input`, `-i` | path to the `.gpkg` file (required) | - |
 | `--batch-size` | records per database batch | 1000 |
-| `--clear-existing` | delete the existing `land_cover` data first | off |
-| `--dry-run` | only show what would be imported | off |
+| `--clear-existing` | delete the land cover of every county first | off |
+| `--dry-run` | only show what would be imported (rows and km² per category) | off |
 
-**The BDOT10k mapping to categories and CN:**
+**The BDOT10k sources and their categories:**
 
-| BDOT10k code | Hydrograf category | CN | Imperviousness |
+| Source (`bdot_class`) | Category | CN | Imperviousness |
 |---|---|---|---|
-| PTLZ | `las` | 60 | 0.0 |
-| PTTR, PTUT | `grunt_orny` | 78 | 0.1 |
-| PTWP | `woda` | 100 | 1.0 |
-| PTWZ, PTRK | `łąka` | 70 | 0.0 |
-| PTZB | `zabudowa_mieszkaniowa` | 85 | 0.5 |
-| PTKM, PTPL | `droga` | 98 | 0.95 |
-| PTGN, PTNZ, PTSO | `inny` | 75 | 0.2 |
+| `PTLZ` | `las` | 60 | 0.0 |
+| `PTTR:trawiasta` (`RODZAJ` roślinność trawiasta), `PTUT`, `PTRK` | `łąka` | 70 | 0.0 |
+| `PTTR:grunty orne` (uprawa na gruntach ornych) | `grunt_orny` | 78 | 0.1 |
+| `PTZB:jednorodzinna`, `PTZB:pozostała` | `zabudowa_mieszkaniowa` | 85 | 0.30 |
+| `PTZB:wielorodzinna` | `zabudowa_mieszkaniowa` | 85 | 0.65 |
+| `PTZB:przem.-skład.`, `PTNZ:przem.-skład.` (teren przemysłowo-składowy) | `zabudowa_przemysłowa` | 92 | 0.72 |
+| `PTZB:handl.-usług.` | `zabudowa_przemysłowa` | 92 | 0.85 |
+| `KUPG:<kind>` | `zabudowa_przemysłowa` | 92 | 0.72 |
+| `PTKM`, `PTPL:utwardzony` (`MATERIALNAWIERZCHNI` beton, bruk, kostka, masa bitumiczna, płyty betonowe) | `droga` | 98 | 0.95 |
+| `PTWP` | `woda` | 100 | 1.0 |
+| `PTNZ:urządzenia` (teren pod urządzeniami technicznymi lub budowlami), `PTPL:nieutwardzony` (grunt naturalny, żwir, tłuczeń), `PTWZ`, `PTGN`, `PTSO`, any other `PT*` layer | `inny` | 75 | 0.2 |
 
-Any other `PT*` layer gets the category `inny`, CN 75 and imperviousness 0.2.
+A polygon of PTZB, PTTR, PTNZ or PTPL without its attribute or with another value takes the
+layer's first category under the plain layer code (`PTZB` `zabudowa_mieszkaniowa`, `PTTR`
+`grunt_orny`, `PTNZ` `inny`, `PTPL` `droga`); an unknown value is logged.
+
+The industrial complexes are the `OT_KUPG_A` of the kinds (`RODZAJ`) zakład produkcyjny,
+usługowy lub remontowy (`KUPG:zakład prod.`), baza paliw (`KUPG:baza paliw`), gazownia
+(`KUPG:gazownia`), elektrociepłownia (`KUPG:elektrociepł.`), zakład utylizacji
+(`KUPG:zakład utyliz.`), huta (`KUPG:huta`), rafineria (`KUPG:rafineria`), zakład
+metalurgiczny (`KUPG:zakład metal.`) and the thermal and nuclear power plants (`KUPG:el.
+cieplna`, `KUPG:el. atomowa`). Their area is cut out of every PT polygon but water and the
+industrial land above; overlapping complexes count once. Farms, solar, wind and water power
+plants, mines, sewage treatment plants, landfills, waterworks and substations keep the land
+cover of the PT layers.
 
 ---
 
