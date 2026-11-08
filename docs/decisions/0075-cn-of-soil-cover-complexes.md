@@ -88,7 +88,11 @@ here). It is nearly uniform, so the land cover drives the spatial pattern of the
    approximating NEH 630 ch. 10 table 10-1) of the watershed CN, exactly as the hydrograph
    converts it, so the export equals the "CN użyty" of a hydrograph with that AMC. NEH 630
    ch. 10 (p. 10-6) treats ARC I and III as the dry and wet envelopes of the CN of a
-   watershed; the dry one is the value a drought study needs.
+   watershed; the dry one is the value a drought study needs. Decided by the author
+   2026-11-08: the export names the CN of all three conditions, `cn_amc_i` (dry),
+   `cn_amc_ii` (average, equal to `cn`, which stays for the panel) and `cn_amc_iii` (wet),
+   each explained in the table `<layer>_units`; the method stays the area-weighted
+   composite CN, without a weighting of the runoff (option 4).
 6. **Kartograf path** (`analyze_watershed`): without an overlay the land cover shares and
    the HSG shares of the bbox are taken as independent; the CN is the weighted mean of
    the complexes with the products of the shares as weights.

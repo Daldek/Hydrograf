@@ -449,13 +449,15 @@ CN_i = get_cn(group, TR-55 cover of (category, source))     # Hydrolog, §5.3
 | `inny` | `PTPL:nieutwardzony` | dirt road, including right-of-way (2-2a) | 72 | 82 | 87 | 89 |
 | `inny` | `PTWZ` | newly graded area, no vegetation (2-2a) | 77 | 86 | 91 | 94 |
 
-### 5.4 CN for AMC I and III
+### 5.4 CN for AMC I, II and III
 
 The panel and the CN columns are for AMC II. The hydrograph converts the CN of the
 watershed to the requested AMC with Hydrolog (`SCSCN.adjust_cn_for_amc`, Hawkins et al.
-1985, approximating NEH 630 ch. 10 table 10-1; integer). The export adds `cn_amc_i` and
-`cn_amc_iii`, the same conversion of its `cn` (`core/cn_tables.cn_for_amc`); Hydrolog
-warns for a CN outside 55–95.
+1985, approximating NEH 630 ch. 10 table 10-1; integer). The export names the CN of the
+three conditions: `cn_amc_i` (dry) and `cn_amc_iii` (wet), the same conversion of its `cn`
+(`core/cn_tables.cn_for_amc`), and `cn_amc_ii` (average), equal to `cn`. The conversion is
+of the area-weighted composite CN of the watershed, as in the hydrograph (ADR-075).
+Hydrolog warns for a CN outside 55–95.
 
 ### 5.5 CN from Kartograf (HSG)
 

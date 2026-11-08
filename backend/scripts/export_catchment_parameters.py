@@ -3,9 +3,10 @@ Export the parameters of the watershed panel for the polygons of a GeoPackage.
 
 For every polygon of a layer the script computes what the panel „Zlewnia” shows in
 four sections, „Parametry podstawowe”, „Wskaźniki kształtu”, „Pokrycie terenu” and
-„Grupy glebowe (HSG)”, and the CN of the hydrograph for AMC I and III, with the
-polygon as the boundary of the watershed (no delineation from the NMT), and writes the
-polygons with their key, the fields asked for and these values to a new GeoPackage.
+„Grupy glebowe (HSG)”, and the CN of the watershed for the three antecedent runoff
+conditions, AMC I (dry), II (average) and III (wet), with the polygon as the boundary
+of the watershed (no delineation from the NMT), and writes the polygons with their
+key, the fields asked for and these values to a new GeoPackage.
 The table ``<layer>_units`` of that GeoPackage gives the unit, the section, the row
 of the panel and the source of each column.
 
@@ -281,24 +282,38 @@ COLUMNS: tuple[Column, ...] = (
         "-",
         _BASIC,
         "CN (krzywa odpływu)",
-        "CN for AMC II: area-weighted CN of the soil-cover complexes of the polygon, "
-        "land cover x hydrologic soil group, from the TR-55 table of Hydrolog "
-        "(core.watershed_service.build_land_cover_stats, ADR-075)",
+        "CN for AMC II (average antecedent runoff condition), the value of the panel: "
+        "area-weighted composite CN of the soil-cover complexes of the polygon, land "
+        "cover x hydrologic soil group, from the TR-55 table of Hydrolog "
+        "(core.watershed_service.build_land_cover_stats, ADR-075); equal to cn_amc_ii",
     ),
     Column(
         "cn_amc_i",
         "-",
         _HYDROGRAPH,
         "CN użyty (AMC I)",
-        "CN for AMC I (dry): cn converted by Hydrolog (SCSCN.adjust_cn_for_amc, "
-        "an integer), as the hydrograph converts it",
+        "CN for AMC I (dry antecedent runoff condition): cn_amc_ii converted by "
+        "Hydrolog (SCSCN.adjust_cn_for_amc: Hawkins et al. 1985, "
+        "CN_I = CN / (2.281 - 0.01281 CN), which approximates NEH 630 chapter 10, "
+        "table 10-1), an integer, as the hydrograph converts it",
+    ),
+    Column(
+        "cn_amc_ii",
+        "-",
+        _HYDROGRAPH,
+        "CN użyty (AMC II)",
+        "CN for AMC II (average antecedent runoff condition, the condition of the "
+        "TR-55 tables): equal to cn, the area-weighted composite CN, which the "
+        "hydrograph takes unconverted",
     ),
     Column(
         "cn_amc_iii",
         "-",
         _HYDROGRAPH,
         "CN użyty (AMC III)",
-        "CN for AMC III (wet): cn converted by Hydrolog, as cn_amc_i",
+        "CN for AMC III (wet antecedent runoff condition): cn_amc_ii converted by "
+        "Hydrolog (Hawkins et al. 1985, CN_III = CN / (0.427 + 0.00573 CN), which "
+        "approximates NEH 630 chapter 10, table 10-1), an integer, as cn_amc_i",
     ),
     Column(
         "outlet_latitude_deg",
@@ -950,10 +965,10 @@ def _land_cover_columns(
 ) -> dict[str, Any]:
     """CN, land cover and soil groups of the polygon.
 
-    The CN for AMC II and for AMC I and III (Hydrolog's conversion of the CN for
-    AMC II, as in the hydrograph), the share and the CN of each land cover class,
-    the share of each soil group and the share of the land cover without one. The
-    boundary is simplified as the panel simplifies it.
+    The CN for AMC II, also as ``cn_amc_ii``, and for AMC I and III (Hydrolog's
+    conversion of the CN for AMC II, as in the hydrograph), the share and the CN of
+    each land cover class, the share of each soil group and the share of the land
+    cover without one. The boundary is simplified as the panel simplifies it.
     """
     tolerance = (
         LAND_COVER_SIMPLIFY_M if area_km2 > LAND_COVER_SIMPLIFY_ABOVE_KM2 else None
@@ -962,6 +977,7 @@ def _land_cover_columns(
     result: dict[str, Any] = {
         "cn": None,
         "cn_amc_i": None,
+        "cn_amc_ii": None,
         "cn_amc_iii": None,
         "lc_without_hsg_pct": None,
     }
@@ -973,6 +989,7 @@ def _land_cover_columns(
     if stats is not None:
         result["cn"] = stats.weighted_cn
         result["cn_amc_i"] = cn_for_amc(stats.weighted_cn, AMC.I)
+        result["cn_amc_ii"] = stats.weighted_cn
         result["cn_amc_iii"] = cn_for_amc(stats.weighted_cn, AMC.III)
         result["lc_without_hsg_pct"] = stats.hsg_assumed_pct
         by_category = {c.category: c for c in stats.categories}

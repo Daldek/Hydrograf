@@ -572,8 +572,9 @@ def test_cn_of_the_soil_cover_complexes_and_the_soil_groups(rasters, db):
         round(arable, 1),
         98.0,
     )
-    # Hydrolog's conversion of the CN for AMC II, as the hydrograph converts it
-    assert (row["cn_amc_i"], row["cn_amc_iii"]) == (38, 76)
+    # AMC II is the composite CN; I and III are Hydrolog's conversion of it, as the
+    # hydrograph converts it
+    assert (row["cn_amc_i"], row["cn_amc_ii"], row["cn_amc_iii"]) == (38, 58.1, 76)
     assert [row[f"hsg_{g}_pct"] for g in "abcd"] == [34.9, 65.1, 0.0, 0.0]
     assert row["lc_without_hsg_pct"] == 14.0
 
