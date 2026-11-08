@@ -6,11 +6,10 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 from affine import Affine
-from shapely.geometry import LineString, Polygon
+from shapely.geometry import LineString, MultiLineString, Polygon
 
 from core.hydrology import (
     _add_drain_point,
-    _sample_dem_at_point,
     classify_endorheic_lakes,
     process_hydrology_pyflwdir,
 )
@@ -75,46 +74,33 @@ def _create_test_gpkg(lakes_wkt, streams_wkt, tmp_dir):
     return gpkg_path
 
 
-# ---- Tests for _sample_dem_at_point ----
+# A 20 m x 20 m lake in the middle of the 100 m x 100 m DEM of _make_dem
+_LAKE = Polygon(
+    [
+        (500040, 600060),
+        (500060, 600060),
+        (500060, 600040),
+        (500040, 600040),
+    ]
+)
+# A lake at the west end of the valley of _make_valley_dem
+_VALLEY_LAKE = Polygon(
+    [
+        (500050, 600270),
+        (500070, 600270),
+        (500070, 600250),
+        (500050, 600250),
+    ]
+)
 
 
-class TestSampleDemAtPoint:
-    """Tests for _sample_dem_at_point helper."""
-
-    def test_sample_valid_cell(self):
-        dem = np.array([[100.0, 200.0], [300.0, 400.0]])
-        transform = Affine(1, 0, 0.0, 0, -1, 2.0)
-        # Point (0.5, 1.5) → row=0, col=0
-        result = _sample_dem_at_point(dem, transform, 0.5, 1.5, NODATA)
-        assert result == 100.0
-
-    def test_sample_nodata_searches_neighbors(self):
-        dem = np.array(
-            [
-                [100.0, 200.0, 300.0],
-                [400.0, NODATA, 600.0],
-                [700.0, 800.0, 900.0],
-            ]
-        )
-        transform = Affine(1, 0, 0.0, 0, -1, 3.0)
-        # Point (1.5, 1.5) → row=1, col=1 which is NODATA
-        result = _sample_dem_at_point(dem, transform, 1.5, 1.5, NODATA)
-        assert result is not None
-        # Should find nearest valid neighbor
-        assert result in [100.0, 200.0, 300.0, 400.0, 600.0, 700.0, 800.0, 900.0]
-
-    def test_sample_all_nodata_returns_none(self):
-        dem = np.full((3, 3), NODATA)
-        transform = Affine(1, 0, 0.0, 0, -1, 3.0)
-        result = _sample_dem_at_point(dem, transform, 1.5, 1.5, NODATA)
-        assert result is None
-
-    def test_sample_out_of_bounds_searches_neighbors(self):
-        dem = np.array([[100.0, 200.0], [300.0, 400.0]])
-        transform = Affine(1, 0, 0.0, 0, -1, 2.0)
-        # Point far outside → row/col out of bounds
-        result = _sample_dem_at_point(dem, transform, -10.0, 10.0, NODATA)
-        assert result is None
+def _make_valley_dem(rises_eastward):
+    """A 500 m x 500 m DEM of 5 m cells that rises or falls 2 cm per metre eastwards."""
+    transform = Affine(5.0, 0, 500000.0, 0, -5.0, 600500.0)
+    cols = np.arange(100, dtype=np.float64)
+    slope_m_per_cell = 0.1 if rises_eastward else -0.1
+    row = 150.0 + cols * slope_m_per_cell
+    return np.tile(row, (100, 1)), transform
 
 
 # ---- Tests for classify_endorheic_lakes ----
@@ -146,7 +132,7 @@ class TestClassifyEndorheicLakes:
         assert len(drain_pts) == 1
 
     def test_lake_only_inflows_is_endorheic(self):
-        """Lake with only inflow streams (far_elev > near_elev) → endorheic."""
+        """Lake with only an inflow (the line ends at the lake) → endorheic."""
         dem = _make_dem()
         lake = Polygon(
             [
@@ -156,10 +142,7 @@ class TestClassifyEndorheicLakes:
                 (500040, 600040),
             ]
         )
-        # Stream flowing toward lake: start far and high, end near lake and low
-        # Far point (500020, 600080) → row=20, col=20 → elev ~ 100-2-2=96
-        # Near point (500040, 600060) → row=40, col=40 → elev ~ 100-4-4=92
-        # far_elev (96) > near_elev (92) → inflow
+        # Stream flowing toward lake: it ends at the corner of the lake
         stream = LineString(
             [
                 (500020, 600080),
@@ -176,7 +159,7 @@ class TestClassifyEndorheicLakes:
         assert len(drain_pts) == 1
 
     def test_lake_with_outflow_is_exorheic(self):
-        """Lake with outflow stream (far_elev < near_elev) → exorheic."""
+        """Lake with an outflow (the line starts at the lake) → exorheic."""
         dem = _make_dem()
         lake = Polygon(
             [
@@ -186,10 +169,7 @@ class TestClassifyEndorheicLakes:
                 (500040, 600040),
             ]
         )
-        # Stream flowing away from lake: start near lake and high, end far and low
-        # Near point (500060, 600040) → row=60, col=60 → elev ~ 100-6-6=88
-        # Far point (500080, 600020) → row=80, col=80 → elev ~ 100-8-8=84
-        # far_elev (84) < near_elev (88) → outflow
+        # Stream flowing away from lake: it starts at the corner of the lake
         stream = LineString(
             [
                 (500060, 600040),
@@ -229,31 +209,160 @@ class TestClassifyEndorheicLakes:
         assert diag["endorheic"] == 0
         assert len(drain_pts) == 0
 
-    def test_ambiguous_elevation_treated_as_inflow(self):
-        """Stream with |delta_elev| < 0.1m → treated as inflow → endorheic."""
-        # Flat DEM where elevation difference is negligible
+    def test_inflow_on_a_flat_dem_stays_endorheic(self):
+        """The elevations at the ends of a line decide nothing: an inflow stays one."""
         dem = np.full((100, 100), 100.0, dtype=np.float64)
-        lake = Polygon(
-            [
-                (500040, 600060),
-                (500060, 600060),
-                (500060, 600040),
-                (500040, 600040),
-            ]
-        )
-        stream = LineString(
-            [
-                (500020, 600080),
-                (500040, 600060),
-            ]
-        )
+        stream = LineString([(500020, 600080), (500040, 600060)])
 
         with tempfile.TemporaryDirectory() as tmp:
-            gpkg = _create_test_gpkg([lake], [stream], tmp)
+            gpkg = _create_test_gpkg([_LAKE], [stream], tmp)
             drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
 
         assert diag["endorheic"] == 1
         assert len(drain_pts) == 1
+
+    def test_outflow_without_dem_data_is_exorheic(self):
+        """A lake whose surroundings have no DEM data still has its outflow."""
+        dem = np.full((100, 100), NODATA, dtype=np.float64)
+        stream = LineString([(500060, 600040), (500080, 600020)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_LAKE], [stream], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
+
+        assert diag["exorheic"] == 1
+        assert diag["endorheic"] == 0
+        assert len(drain_pts) == 0
+
+    def test_line_crossing_the_lake_is_exorheic(self):
+        """A lake on a watercourse (the line enters and leaves it) is exorheic."""
+        dem = _make_dem()
+        stream = LineString([(500020, 600080), (500050, 600050), (500080, 600020)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_LAKE], [stream], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
+
+        assert diag["exorheic"] == 1
+        assert diag["endorheic"] == 0
+        assert len(drain_pts) == 0
+
+    def test_line_ending_inside_the_lake_is_an_inflow(self):
+        """A line that runs into the lake and ends in it brings water and takes none."""
+        dem = _make_dem()
+        stream = LineString([(500020, 600080), (500050, 600050)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_LAKE], [stream], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
+
+        assert diag["endorheic"] == 1
+        assert len(drain_pts) == 1
+
+    def test_line_beginning_short_of_the_shore_is_an_outflow(self):
+        """A line that starts within the snap distance of the lake and goes away."""
+        dem = _make_dem()
+        # Starts 10 m east of the lake, in the order of its digitization
+        stream = LineString([(500070, 600050), (500090, 600030)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_LAKE], [stream], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
+
+        assert diag["exorheic"] == 1
+        assert len(drain_pts) == 0
+
+    def test_line_ending_short_of_the_shore_is_an_inflow(self):
+        """The same line the other way round: it ends 10 m short of the lake."""
+        dem = _make_dem()
+        stream = LineString([(500090, 600030), (500070, 600050)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_LAKE], [stream], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
+
+        assert diag["endorheic"] == 1
+        assert len(drain_pts) == 1
+
+    def test_line_passing_by_the_lake_is_not_an_outflow(self):
+        """A watercourse 10 m from the lake that neither touches nor starts at it."""
+        dem = _make_dem()
+        stream = LineString([(500030, 600080), (500030, 600050), (500030, 600020)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_LAKE], [stream], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
+
+        assert diag["endorheic"] == 1
+        assert len(drain_pts) == 1
+
+    def test_ditch_lines_count_too(self):
+        """Every layer of watercourse lines counts, the ditches of OT_SWRM_L as well."""
+        dem = _make_dem()
+        ditch = LineString([(500060, 600040), (500080, 600020)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_LAKE], [], tmp)
+            gpd.GeoDataFrame({"geometry": [ditch]}, crs="EPSG:2180").to_file(
+                gpkg, layer="OT_SWRM_L", driver="GPKG", mode="a"
+            )
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
+
+        assert diag["exorheic"] == 1
+        assert len(drain_pts) == 0
+
+    def test_line_digitized_upstream_follows_the_dem(self):
+        """A line that begins at the lake but climbs 6 m away from it is an inflow."""
+        dem, transform = _make_valley_dem(rises_eastward=True)
+        # Digitized from the lake eastward; the valley floor rises that way
+        stream = LineString([(500070, 600260), (500370, 600260)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_VALLEY_LAKE], [stream], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, transform, gpkg, NODATA)
+
+        assert diag["streams_reversed"] == 1
+        assert diag["endorheic"] == 1
+        assert len(drain_pts) == 1
+
+    def test_line_digitized_downstream_keeps_its_direction(self):
+        """The same line over a valley that falls away from the lake: an outflow."""
+        dem, transform = _make_valley_dem(rises_eastward=False)
+        stream = LineString([(500070, 600260), (500370, 600260)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_VALLEY_LAKE], [stream], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, transform, gpkg, NODATA)
+
+        assert diag["streams_reversed"] == 0
+        assert diag["exorheic"] == 1
+        assert len(drain_pts) == 0
+
+    def test_line_ending_at_the_lake_but_flowing_away_is_an_outflow(self):
+        """Digitized towards the lake over a valley that falls away from it."""
+        dem, transform = _make_valley_dem(rises_eastward=False)
+        stream = LineString([(500370, 600260), (500070, 600260)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_VALLEY_LAKE], [stream], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, transform, gpkg, NODATA)
+
+        assert diag["streams_reversed"] == 1
+        assert diag["exorheic"] == 1
+        assert len(drain_pts) == 0
+
+    def test_multilinestring_feature_is_split_into_its_lines(self):
+        """An inflow and an outflow in one MultiLineString feature: exorheic."""
+        dem = _make_dem()
+        inflow = LineString([(500020, 600080), (500040, 600060)])
+        outflow = LineString([(500060, 600040), (500080, 600020)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_LAKE], [MultiLineString([inflow, outflow])], tmp)
+            drain_pts, diag = classify_endorheic_lakes(dem, TRANSFORM, gpkg, NODATA)
+
+        assert diag["exorheic"] == 1
+        assert len(drain_pts) == 0
 
     def test_empty_gpkg_no_drain_points(self):
         """GeoPackage without OT_PTWP_A layer → empty result."""
