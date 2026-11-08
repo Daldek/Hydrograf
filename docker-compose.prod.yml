@@ -18,7 +18,12 @@ services:
     environment:
       # In production the db reads the password from the Docker secret file.
       # The base compose still requires POSTGRES_PASSWORD in .env because
-      # the api service interpolates it into DATABASE_URL.
+      # the api service interpolates it into DATABASE_URL, and the postgres
+      # entrypoint refuses POSTGRES_PASSWORD and POSTGRES_PASSWORD_FILE together
+      # (a fresh data directory never starts). An empty value counts as unset for
+      # the entrypoint, so the db receives the password from the file alone; the
+      # secret file and POSTGRES_PASSWORD in .env must hold the same password.
+      POSTGRES_PASSWORD: ""
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     secrets:
       - db_password
