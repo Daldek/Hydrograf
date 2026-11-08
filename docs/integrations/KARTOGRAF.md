@@ -686,27 +686,30 @@ Copernicus or ISRIC.
 
 ### 11.2 BDOT10k layers used
 
-The `PT*` layers (land cover) are imported into `land_cover` with a category and a CN
-(`scripts/import_landcover.py`, `BDOT10K_MAPPING`); `cn_calculator.py` maps the same codes to its
-CN-table categories (`BDOT10K_CATEGORY_MAP`). The `SW*` layers and `PTWP` serve stream burning
-(§12).
+The `PT*` layers (land cover), split by their attributes, and the industrial complexes of
+`OT_KUPG_A` are imported into `land_cover` (`scripts/import_landcover.py`, ADR-074; every source
+with its category in `backend/scripts/README.md`); the Kartograf CN of `cn_calculator.py` reads
+the PT layers whole and gives each the category of its polygons without the attribute
+(`BDOT10K_CATEGORY_MAP`). The `SW*` layers and `PTWP` serve stream burning (§12).
 
-| Code | Description | Hydrograf category | CN |
-|---|---|---|---|
-| PTLZ | forests | `las` | 60 |
-| PTTR, PTUT | arable land, permanent crops | `grunt_orny` | 78 |
-| PTWP | surface waters | `woda` | 100 |
-| PTWZ, PTRK | wetlands, shrubs | `łąka` | 70 |
-| PTZB | built-up areas | `zabudowa_mieszkaniowa` | 85 |
-| PTKM, PTPL | roads, squares | `droga` | 98 |
-| PTGN, PTNZ, PTSO | unused, undeveloped land, dumps | `inny` | 75 |
-| BUBD | buildings | (building raising, §13) | - |
-| SWRS, SWKN, SWRM | rivers, canals, drainage ditches | (hydro, stream burning) | - |
+| Code | Description | Hydrograf category |
+|---|---|---|
+| PTLZ | forests | `las` |
+| PTTR | grass / arable land (`RODZAJ`) | `łąka` / `grunt_orny` |
+| PTUT, PTRK | permanent crops, shrubs | `łąka` |
+| PTWP | surface waters | `woda` |
+| PTZB | houses, flats, other buildings / industrial, commercial (`RODZAJ`) | `zabudowa_mieszkaniowa` / `zabudowa_przemysłowa` |
+| PTNZ | industrial yards / technical land (`RODZAJ`) | `zabudowa_przemysłowa` / `inny` |
+| PTKM, PTPL | transport land, squares (unpaved squares: `inny`) | `droga` |
+| PTGN, PTSO, PTWZ | unused land, dumps, pits and spoil heaps | `inny` |
+| KUPG | plants, fuel depots, gasworks, CHP plants, waste treatment (cut out of PT) | `zabudowa_przemysłowa` |
+| BUBD | buildings | (building raising, §13) |
+| SWRS, SWKN, SWRM | rivers, canals, drainage ditches | (hydro, stream burning) |
 
 ### 11.3 Land cover MVT tiles
 
 `/api/tiles/landcover/{z}/{x}/{y}.pbf` serves the `land_cover` table as Mapbox Vector Tiles
-(`ST_AsMVTGeom`, generated on request). The attributes in a tile are `category`, `cn_value` and
+(`ST_AsMVTGeom`, generated on request). The attributes in a tile are `category` and
 `bdot_class`.
 
 ### 11.4 Import into the database

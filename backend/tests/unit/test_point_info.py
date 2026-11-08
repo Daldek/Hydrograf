@@ -86,24 +86,25 @@ class TestSampleRaster:
 
 class TestLandCoverAt:
     @pytest.mark.parametrize(
-        ("cn", "cn_amc_i", "cn_amc_iii"),
-        [(60, 40, 78), (78, 61, 89), (100, 100, 100)],
-        ids=["forest", "arable", "water"],
+        ("category", "bdot_class", "hsg", "cns"),
+        [
+            ("grunt_orny", "PTTR:grunty orne", "A", (43, 63, 80)),
+            ("grunt_orny", "PTTR", None, (57, 75, 88)),
+            ("las", "PTLZ", "B", (35, 55, 74)),
+        ],
+        ids=["arable-on-A", "arable-without-soil-group-B", "forest-on-B"],
     )
-    def test_cn_of_the_three_moisture_classes(self, cn, cn_amc_i, cn_amc_iii):
-        """Hydrolog's conversion of the AMC II value, as for the hydrograph."""
+    def test_cn_of_the_complex_of_the_point(self, category, bdot_class, hsg, cns):
+        """TR-55 CN of the land cover on the point's soil group (B without one),
+        converted to AMC I and III by Hydrolog as for the hydrograph."""
         db = MagicMock()
         db.execute.return_value.fetchone.return_value = SimpleNamespace(
-            category="grunt_orny", cn_value=cn, imperviousness=0.1, bdot_class="PTTR"
+            category=category, imperviousness=0.1, bdot_class=bdot_class
         )
 
-        result = land_cover_at(db, *_centre(0))
+        result = land_cover_at(db, *_centre(0), hsg)
 
-        assert (result["cn_amc_i"], result["cn"], result["cn_amc_iii"]) == (
-            cn_amc_i,
-            cn,
-            cn_amc_iii,
-        )
+        assert (result["cn_amc_i"], result["cn"], result["cn_amc_iii"]) == cns
 
 
 def _square(lon, lat, half):

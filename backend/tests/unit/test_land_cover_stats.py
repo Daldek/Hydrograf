@@ -95,7 +95,7 @@ class TestGetLandCoverStats:
         with bdot10k_counties(Counties(["1465"], geopackages={"1465": gpkg})):
             stats = get_land_cover_stats(AREA, tmp_path / "cache", teryt="1465")
 
-        assert stats == {"forest": 60.0, "arable": 40.0}
+        assert stats == {"las": 60.0, "grunt_orny": 40.0}
 
     def test_counties_of_an_area_count_by_their_area_not_by_file(self, tmp_path):
         west = _write_gpkg(tmp_path / "1401.gpkg", {"OT_PTLZ_A": WEST})
@@ -104,7 +104,7 @@ class TestGetLandCoverStats:
         with bdot10k_counties(counties):
             stats = get_land_cover_stats(AREA, tmp_path / "cache")
 
-        assert stats == {"forest": 60.0, "arable": 40.0}
+        assert stats == {"las": 60.0, "grunt_orny": 40.0}
         assert counties.packages == ["1401", "1465"]
 
     def test_packages_are_versions_of_the_store_of_the_cache(self, tmp_path):
@@ -172,8 +172,8 @@ class TestAnalyzeLandCoverGpkg:
             result = _analyze_land_cover_gpkgs([gpkg_path], bbox)
 
         assert isinstance(result, dict)
-        assert "forest" in result
-        assert "arable" in result
+        assert "las" in result
+        assert "grunt_orny" in result
         total = sum(result.values())
         assert abs(total - 100.0) < 1.0  # Should sum to ~100%
 
@@ -198,7 +198,7 @@ class TestAnalyzeLandCoverGpkg:
         assert result == {}
 
     def test_aggregates_multiple_layers_to_same_category(self):
-        """Test that PTTR and PTUT both map to 'arable' and areas are summed."""
+        """Test that PTKM and PTPL both map to 'droga' and areas are summed."""
         import geopandas as gpd
         from shapely.geometry import box
 
@@ -213,18 +213,17 @@ class TestAnalyzeLandCoverGpkg:
         gpkg_path = Path("/tmp/test_agg.gpkg")
 
         with (
-            patch("fiona.listlayers", return_value=["OT_PTTR_A", "OT_PTUT_A"]),
+            patch("fiona.listlayers", return_value=["OT_PTKM_A", "OT_PTPL_A"]),
             patch(
                 "geopandas.read_file",
-                side_effect=lambda path, layer=None: gdf1 if "PTTR" in layer else gdf2,
+                side_effect=lambda path, layer=None: gdf1 if "PTKM" in layer else gdf2,
             ),
             patch("geopandas.clip", side_effect=lambda gdf, mask: gdf),
         ):
             result = _analyze_land_cover_gpkgs([gpkg_path], bbox)
 
-        # Both PTTR and PTUT map to "arable"
-        assert "arable" in result
-        assert result["arable"] == 100.0
+        # Both PTKM and PTPL map to "droga"
+        assert result == {"droga": 100.0}
 
     def test_skips_empty_geodataframe(self):
         """Test that empty GeoDataFrames are skipped."""
@@ -248,29 +247,22 @@ class TestAnalyzeLandCoverGpkg:
 class TestBdot10kCategoryMap:
     """Tests for BDOT10K_CATEGORY_MAP consistency."""
 
-    def test_all_categories_are_valid_cn_lookup_keys(self):
-        """Test all mapped categories exist in CN_LOOKUP_TABLE."""
-        from core.cn_tables import CN_LOOKUP_TABLE
+    def test_all_categories_have_a_tr55_cover(self):
+        """Every mapped category is a category of land_cover with a TR-55 cover."""
+        from core.cn_tables import COVER_BY_CATEGORY
 
         for bdot_code, category in BDOT10K_CATEGORY_MAP.items():
-            assert category in CN_LOOKUP_TABLE, (
-                f"Category '{category}' (from {bdot_code}) not in CN_LOOKUP_TABLE"
+            assert category in COVER_BY_CATEGORY, (
+                f"Category '{category}' (from {bdot_code}) has no TR-55 cover"
             )
 
-    def test_map_has_all_expected_pt_codes(self):
-        """Test map contains all known PT codes from BDOT10k."""
-        expected_codes = {
-            "PTLZ",
-            "PTTR",
-            "PTUT",
-            "PTWP",
-            "PTWZ",
-            "PTRK",
-            "PTZB",
-            "PTKM",
-            "PTPL",
-            "PTGN",
-            "PTNZ",
-            "PTSO",
-        }
-        assert set(BDOT10K_CATEGORY_MAP.keys()) == expected_codes
+    def test_each_layer_has_the_category_the_import_gives_it(self):
+        """The Kartograf path and the land cover import put a layer in one category.
+
+        The import's category of a layer read whole is that of a polygon without
+        the attribute of its kind (``PT_LAYER_CLASSES``).
+        """
+        from scripts.import_landcover import PT_LAYER_CLASSES
+
+        imported = {code: cls.category for code, cls in PT_LAYER_CLASSES.items()}
+        assert imported == BDOT10K_CATEGORY_MAP

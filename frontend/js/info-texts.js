@@ -259,16 +259,16 @@
         cn: {
             title: 'Parametr CN (krzywa odpływu)',
             symbol: 'CN',
-            definition: 'Bezwymiarowy parametr metody SCS-CN (0–100) opisujący zdolność zlewni do zatrzymania opadu; w literaturze zależy od pokrycia terenu, grupy hydrologicznej gleby (HSG) i uwilgotnienia. Hydrograf liczy go jako średnią ważoną powierzchnią z wartości przypisanych klasom pokrycia terenu BDOT10k (dla przeciętnego uwilgotnienia, AMC II).',
-            formula: f`CN = \frac{∑ A_j CN_j}{∑ A_j}`,
+            definition: 'Bezwymiarowy parametr metody SCS-CN (0–100) opisujący zdolność zlewni do zatrzymania opadu; w literaturze zależy od pokrycia terenu, grupy hydrologicznej gleby (HSG) i uwilgotnienia. Hydrograf liczy go dla przeciętnego uwilgotnienia (AMC II) jako średnią ważoną powierzchnią z CN kompleksów glebowo-roślinnych: części zlewni, w których klasa pokrycia terenu BDOT10k leży na jednej grupie HSG.',
+            formula: f`CN = \frac{∑ A_i CN_i}{∑ A_i}`,
             variables: [
-                ['A_j', 'powierzchnia j-tej klasy pokrycia terenu w zlewni', 'm²'],
-                ['CN_j', 'CN tej klasy', '–'],
+                ['A_i', 'powierzchnia i-tego kompleksu (klasa pokrycia terenu na grupie HSG) w zlewni', 'm²'],
+                ['CN_i', 'CN kompleksu: wartość tablic TR-55 dla typu pokrycia przypisanego klasie i dla grupy HSG', '–'],
             ],
             unit: '–',
             meaning: 'Wyższy CN – mniejsze straty i większy odpływ: CN wyznacza retencję $S$ i straty początkowe $I_a$, a przez nie objętość i kulminację fali; wynik metody SCS-CN jest bardzo wrażliwy na CN.\nW Hydrografie CN wchodzi do strat SCS-CN (po przeliczeniu według wybranego AMC) i do metody Tc NRCS (CN dla AMC II). Współczynnika spływu $C$ metody FAA Hydrograf z CN nie wylicza.',
-            note: 'Wartości CN klas nie zależą od grupy glebowej HSG (rozkład HSG jest pokazywany osobno). Przy dużym zróżnicowaniu CN w zlewni średnia ważona może zaniżać lub zawyżać odpływ. Bez danych o pokryciu terenu hydrogram jest liczony z CN = 75.',
-            sources: 'USDA-SCS 1986 (TR-55); USDA-NRCS 2004 (NEH 630-10); Ponce i Hawkins 1996',
+            note: 'Typy pokrycia TR-55: las – las w dobrym stanie; grunty orne – zboża w rzędach, stan dobry; łąki – łąka koszona; zabudowa mieszkaniowa – działki 1/3 akra (30% powierzchni nieprzepuszczalnych), wielorodzinna – 1/8 akra (65%); zabudowa przemysłowa – tereny przemysłowe (72%), handlowo-usługowa – handlowe (85%); drogi i wody – CN 98; inne – tereny otwarte w średnim stanie, place nieutwardzone – drogi gruntowe, wyrobiska i zwałowiska – grunt odsłonięty. Część pokrycia poza mapą HSG dostaje grupy reszty zlewni w ich udziałach, a gdy w zlewni nie ma żadnej – grupę B. Mapa HSG (SoilGrids 250 m, warstwa 0–5 cm) jest zgrubna. Przy dużym zróżnicowaniu CN w zlewni średnia ważona może zaniżać lub zawyżać odpływ. Bez danych o pokryciu terenu hydrogram jest liczony z CN = 75.',
+            sources: 'USDA-SCS 1986 (TR-55); USDA-NRCS 2004 (NEH 630-9, NEH 630-10); Ponce i Hawkins 1996',
         },
         latitude: {
             title: 'Szerokość geograficzna ujścia',
@@ -833,12 +833,12 @@
         nash_urban_pct: {
             title: 'Udział terenów zurbanizowanych w zlewni',
             symbol: 'U',
-            definition: 'Udział terenów zabudowanych i komunikacyjnych w powierzchni zlewni według pokrycia terenu (klasy „zabudowa mieszkaniowa”, „zabudowa przemysłowa” i „droga” – drogi i place; BDOT10k PTZB, PTKM i PTPL), użyty jako $U$ w metodzie Lutza.',
+            definition: 'Udział terenów zabudowanych i komunikacyjnych w powierzchni zlewni według pokrycia terenu (klasy „zabudowa mieszkaniowa”, „zabudowa przemysłowa” i „droga” – drogi i place utwardzone; BDOT10k: zabudowa PTZB, tereny przemysłowo-składowe PTNZ, kompleksy przemysłowe KUPG, tereny komunikacyjne PTKM i place PTPL), użyty jako $U$ w metodzie Lutza.',
             formula: f`U = 100 · \frac{A_{zab} + A_{dr}}{∑ A_j}`,
             variables: [['A_{zab}', 'powierzchnia terenów zabudowanych w zlewni', 'm²'], ['A_{dr}', 'powierzchnia dróg i placów w zlewni', 'm²'], ['A_j', 'powierzchnia j-tej klasy pokrycia terenu w zlewni', 'm²']],
             unit: '%',
             meaning: 'Zabudowa skraca czas do szczytu hydrogramu chwilowego ($t_p ∝ e^{-0,016 U}$; np. o 27% przy 20% terenów zurbanizowanych), więc szczyt jest wcześniejszy i wyższy.\nW Hydrografie $U$ wynika z pokrycia terenu zlewni (z dokładnością do 0,1%) i wchodzi do estymacji Nasha metodą Lutza.',
-            note: 'Drogi i place należą do terenów zurbanizowanych jak w ewidencji gruntów (grunty zabudowane i zurbanizowane obejmują tereny komunikacyjne); grunty nieużytkowane, niezabudowane i składowiska (klasa „inny”) – nie. To inna wielkość niż $U$ regresji urbanizacyjnej (średnia nieprzepuszczalność pokrycia terenu).',
+            note: 'Drogi i place należą do terenów zurbanizowanych jak w ewidencji gruntów (grunty zabudowane i zurbanizowane obejmują tereny komunikacyjne); grunty nieużytkowane, tereny pod urządzeniami technicznymi (np. farmy fotowoltaiczne), place nieutwardzone, wyrobiska i składowiska (klasa „inny”) – nie. To inna wielkość niż $U$ regresji urbanizacyjnej (średnia nieprzepuszczalność pokrycia terenu).',
             sources: 'Lutz 1984 (za KZGW 2017 i Assmann 1999); KZGW 2017; Rozporządzenie EGiB 2021',
         },
         nash_urban_fraction: {
@@ -849,8 +849,8 @@
             variables: [['A_j', 'powierzchnia j-tej klasy pokrycia terenu', 'm²'], ['u_j', 'nieprzepuszczalność tej klasy', '–']],
             unit: '– (w tabeli w %)',
             meaning: 'Udział powierzchni nieprzepuszczalnych skraca reakcję zlewni: przy $U = 0,2$ opóźnienie maleje o ok. 26%, a $k$ o ok. 11% względem zlewni bez uszczelnień – hydrogram szybszy i wyższy.\nW Hydrografie wchodzi tylko do regresji urbanizacyjnej: $t_L ∝ (1 + U)^{-1,66}$, $k ∝ (1 + U)^{-0,62}$.',
-            note: 'Nieprzepuszczalność klas BDOT10k to stałe wartości przypisane klasom w Hydrografie.',
-            sources: 'Sarma i in. 1969; KZGW 2017',
+            note: 'Nieprzepuszczalność to stałe wartości przypisane w Hydrografie źródłom BDOT10k; dla zabudowy są to średnie udziały powierzchni nieprzepuszczalnych dzielnic TR-55: przemysłowej 72%, handlowo-usługowej 85%, mieszkaniowej wielorodzinnej 65% oraz jednorodzinnej i pozostałej 30%.',
+            sources: 'Sarma i in. 1969; KZGW 2017; USDA-SCS 1986 (TR-55)',
         },
         nash_effective_precip_mm: {
             title: 'Opad efektywny w regresji Nasha',

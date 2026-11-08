@@ -38,31 +38,31 @@ def _insert(db, sql, **params):
 @pytest.mark.db
 class TestPointQueries:
     def test_land_cover_of_the_smallest_polygon(self, db_session):
-        for wkt, category, cn, bdot in [
-            (_square(X0, Y0, 100), "grunt_orny", 78, "PTTR"),
-            (_square(X0 + 40, Y0 + 40, 20), "woda", 100, "PTWP"),
+        for wkt, category, bdot in [
+            (_square(X0, Y0, 100), "grunt_orny", "PTTR"),
+            (_square(X0 + 40, Y0 + 40, 20), "woda", "PTWP"),
         ]:
             _insert(
                 db_session,
-                "INSERT INTO land_cover (geom, category, cn_value, imperviousness, "
-                "bdot_class) VALUES (ST_GeomFromText(:wkt, 2180), :category, :cn, "
-                "0.1, :bdot)",
+                "INSERT INTO land_cover (geom, category, imperviousness, bdot_class) "
+                "VALUES (ST_GeomFromText(:wkt, 2180), :category, 0.1, :bdot)",
                 wkt=wkt,
                 category=category,
-                cn=cn,
                 bdot=bdot,
             )
 
-        assert land_cover_at(db_session, X0 + 50, Y0 + 50) == {
+        # Water surfaces CN 98 (NEH 630, chapter 9), the same on every soil group
+        assert land_cover_at(db_session, X0 + 50, Y0 + 50, None) == {
             "category": "woda",
-            "cn": 100,
-            "cn_amc_i": 100,
-            "cn_amc_iii": 100,
+            "cn": 98,
+            "cn_amc_i": 96,
+            "cn_amc_iii": 99,
             "imperviousness": 0.1,
             "bdot_class": "PTWP",
         }
-        assert land_cover_at(db_session, X0 + 10, Y0 + 10)["category"] == "grunt_orny"
-        assert land_cover_at(db_session, X0 + 500, Y0 + 500) is None
+        arable = land_cover_at(db_session, X0 + 10, Y0 + 10, "C")
+        assert (arable["category"], arable["cn"]) == ("grunt_orny", 83)
+        assert land_cover_at(db_session, X0 + 500, Y0 + 500, "B") is None
 
     def test_soil_group(self, db_session):
         _insert(

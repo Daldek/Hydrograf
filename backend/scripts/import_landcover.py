@@ -1,57 +1,77 @@
 r"""
-Script to import land cover data from GeoPackage into PostgreSQL/PostGIS.
+Import the land cover of a BDOT10k county package into PostgreSQL/PostGIS (ADR-074).
 
-Reads BDOT10k or CORINE land cover data from GeoPackage files and imports
-them into the land_cover table with appropriate CN (Curve Number) values
-for hydrological calculations.
+The land cover is the partition that the BDOT10k layers of the category "pokrycie
+terenu" (``OT_PT*_A``) form: they cover 100% of the county and do not overlap (Dz.U.
+2021 poz. 1412, Zał. 3, rozdz. 5, ust. 1-2). Every PT polygon gets a Hydrograf category
+from its layer and, in four layers, from the attribute that the specification defines
+for it (Zał. 3, rozdz. 5, tables 14, 18, 21 and 24):
 
-BDOT10k layer mapping to Hydrograf categories:
-    PTLZ -> las (forest)
-    PTTR -> grunt_orny (arable land)
-    PTUT -> grunt_orny (permanent crops)
-    PTWP -> woda (water)
-    PTWZ -> łąka (wetlands)
-    PTRK -> łąka (shrubs)
-    PTZB -> zabudowa_mieszkaniowa (buildings)
-    PTKM -> droga (roads)
-    PTPL -> droga (squares)
-    PTGN -> inny (unused land)
-    PTNZ -> inny (undeveloped)
-    PTSO -> inny (dumps)
+    PTZB  RODZAJ jednorodzinna, wielorodzinna,
+          pozostała zabudowa                       -> zabudowa_mieszkaniowa
+          RODZAJ przemysłowo-składowa,
+          handlowo-usługowa                        -> zabudowa_przemysłowa
+    PTTR  RODZAJ uprawa na gruntach ornych         -> grunt_orny
+          RODZAJ roślinność trawiasta              -> łąka
+    PTNZ  RODZAJ teren przemysłowo-składowy        -> zabudowa_przemysłowa
+          RODZAJ teren pod urządzeniami
+          technicznymi lub budowlami               -> inny
+    PTPL  MATERIALNAWIERZCHNI grunt naturalny,
+          żwir, tłuczeń                            -> inny
+          any other surface                        -> droga
+    PTLZ                                           -> las
+    PTRK, PTUT                                     -> łąka
+    PTKM                                           -> droga
+    PTWP                                           -> woda
+    PTGN, PTSO, PTWZ, any other PT layer           -> inny
+
+The industrial complexes of ``OT_KUPG_A`` overlay the partition (Zał. 3, rozdz. 7): a
+production, service or repair plant, a fuel depot, a gasworks, a combined heat and power
+plant, a waste treatment plant, a steelworks, a refinery, a metallurgical plant and a
+thermal or nuclear power plant. Their area is cut out of the PT polygons that it covers,
+except water, and becomes ``zabudowa_przemysłowa``, so the rows are still a partition
+and the areas of the categories sum to the area of the PT layers. Solar, wind and water
+power plants, mines, farms and the other kinds of complex keep the land cover of the PT
+layers.
+
+``bdot_class`` records the source of each row: the layer code, followed after a colon by
+the value of the attribute that decided its category (``PTZB:przem.-skład.``,
+``KUPG:baza paliw``).
+
+An import replaces, in one transaction, the rows of the area of the package (the rows
+whose interior point lies in one of its polygons), so importing a package again leaves
+the table as it was; ``--clear-existing`` deletes the whole table first.
 
 Usage
 -----
     cd backend
-    python -m scripts.import_landcover --help
-    python -m scripts.import_landcover --input ../data/landcover/bdot10k_teryt_1465.gpkg
+    uv run python -m scripts.import_landcover --help
+    uv run python -m scripts.import_landcover \
+        --input ../cache/kartograf/landcover/pl_bdot10k_gpkg/teryt/1465.gpkg
 
 Examples
 --------
-    # Import BDOT10k data
-    python -m scripts.import_landcover \
-        --input ../data/landcover/bdot10k_teryt_1465.gpkg
-
     # Dry run (show what would be imported)
-    python -m scripts.import_landcover \
-        --input ../data/landcover/bdot10k_teryt_1465.gpkg \
-        --dry-run
+    uv run python -m scripts.import_landcover --input <package>.gpkg --dry-run
 
-    # Clear existing data before import
-    python -m scripts.import_landcover \
-        --input ../data/landcover/bdot10k_teryt_1465.gpkg \
-        --clear-existing
+    # Delete the land cover of every county before the import
+    uv run python -m scripts.import_landcover --input <package>.gpkg --clear-existing
 """
 
 import argparse
 import logging
 import os
+import re
 import sys
 import time
+from collections import Counter, defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 if TYPE_CHECKING:
     import geopandas
+    from shapely.geometry.base import BaseGeometry
+    from sqlalchemy.engine import Connection
 
 # Configure logging
 logging.basicConfig(
@@ -62,42 +82,122 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# BDOT10k layer codes (PT* = Pokrycie Terenu)
-BDOT10K_LAYERS = [
-    "PTGN",  # Grunty nieużytkowe (unused land)
-    "PTKM",  # Tereny komunikacyjne (roads, transport)
-    "PTLZ",  # Tereny leśne (forests)
-    "PTNZ",  # Tereny niezabudowane (undeveloped)
-    "PTPL",  # Place (squares)
-    "PTRK",  # Roślinność krzewiasta (shrubs)
-    "PTSO",  # Składowiska (dumps)
-    "PTTR",  # Tereny rolne (arable land)
-    "PTUT",  # Uprawy trwałe (permanent crops)
-    "PTWP",  # Wody powierzchniowe (surface water)
-    "PTWZ",  # Tereny zabagnione (wetlands)
-    "PTZB",  # Tereny zabudowane (buildings)
-]
+class LandCoverClass(NamedTuple):
+    """The land cover of a source: category, ``bdot_class`` and imperviousness (0-1)."""
 
-# Mapping BDOT10k classes to Hydrograf categories with CN values
-# CN values for AMC-II (average antecedent moisture condition)
-BDOT10K_MAPPING: dict[str, tuple[str, int, float]] = {
-    # bdot_class: (category, cn_value, imperviousness)
-    "PTLZ": ("las", 60, 0.0),
-    "PTTR": ("grunt_orny", 78, 0.1),
-    "PTUT": ("grunt_orny", 78, 0.1),
-    "PTWP": ("woda", 100, 1.0),
-    "PTWZ": ("łąka", 70, 0.0),
-    "PTRK": ("łąka", 70, 0.0),
-    "PTZB": ("zabudowa_mieszkaniowa", 85, 0.5),
-    "PTKM": ("droga", 98, 0.95),
-    "PTPL": ("droga", 98, 0.95),
-    "PTGN": ("inny", 75, 0.2),
-    "PTNZ": ("inny", 75, 0.2),
-    "PTSO": ("inny", 75, 0.2),
+    category: str
+    bdot_class: str
+    imperviousness: float
+
+
+INDUSTRIAL = "zabudowa_przemysłowa"
+
+# Average imperviousness of the urban districts of TR-55 (USDA-SCS 1986, table 2-2a):
+# commercial and business 85%, industrial 72%, residential 1/8 acre 65%, 1/3 acre 30%.
+IMPERVIOUS_COMMERCIAL = 0.85
+IMPERVIOUS_INDUSTRIAL = 0.72
+IMPERVIOUS_RESIDENTIAL_DENSE = 0.65
+IMPERVIOUS_RESIDENTIAL = 0.30
+
+# The class of a PT layer without the attribute of PT_KIND_ATTRIBUTES or with a value
+# that PT_KIND_CLASSES does not list; a layer that is not here gets DEFAULT_CATEGORY.
+PT_LAYER_CLASSES: dict[str, LandCoverClass] = {
+    "PTLZ": LandCoverClass("las", "PTLZ", 0.0),
+    "PTTR": LandCoverClass("grunt_orny", "PTTR", 0.1),
+    "PTUT": LandCoverClass("łąka", "PTUT", 0.0),
+    "PTRK": LandCoverClass("łąka", "PTRK", 0.0),
+    "PTWP": LandCoverClass("woda", "PTWP", 1.0),
+    "PTZB": LandCoverClass("zabudowa_mieszkaniowa", "PTZB", IMPERVIOUS_RESIDENTIAL),
+    "PTKM": LandCoverClass("droga", "PTKM", 0.95),
+    "PTPL": LandCoverClass("droga", "PTPL", 0.95),
+    "PTGN": LandCoverClass("inny", "PTGN", 0.2),
+    "PTNZ": LandCoverClass("inny", "PTNZ", 0.2),
+    "PTSO": LandCoverClass("inny", "PTSO", 0.2),
+    "PTWZ": LandCoverClass("inny", "PTWZ", 0.2),
+}
+DEFAULT_CATEGORY = "inny"
+DEFAULT_IMPERVIOUSNESS = 0.2
+
+# The attribute that splits a PT layer, and the class of each of its values.
+PT_KIND_ATTRIBUTES: dict[str, str] = {
+    "PTZB": "RODZAJ",
+    "PTTR": "RODZAJ",
+    "PTNZ": "RODZAJ",
+    "PTPL": "MATERIALNAWIERZCHNI",
+}
+_PAVED = LandCoverClass("droga", "PTPL:utwardzony", 0.95)
+_UNPAVED = LandCoverClass("inny", "PTPL:nieutwardzony", 0.2)
+PT_KIND_CLASSES: dict[tuple[str, str], LandCoverClass] = {
+    ("PTZB", "jednorodzinna"): LandCoverClass(
+        "zabudowa_mieszkaniowa", "PTZB:jednorodzinna", IMPERVIOUS_RESIDENTIAL
+    ),
+    ("PTZB", "wielorodzinna"): LandCoverClass(
+        "zabudowa_mieszkaniowa", "PTZB:wielorodzinna", IMPERVIOUS_RESIDENTIAL_DENSE
+    ),
+    ("PTZB", "pozostała zabudowa"): LandCoverClass(
+        "zabudowa_mieszkaniowa", "PTZB:pozostała", IMPERVIOUS_RESIDENTIAL
+    ),
+    ("PTZB", "przemysłowo-składowa"): LandCoverClass(
+        INDUSTRIAL, "PTZB:przem.-skład.", IMPERVIOUS_INDUSTRIAL
+    ),
+    ("PTZB", "handlowo-usługowa"): LandCoverClass(
+        INDUSTRIAL, "PTZB:handl.-usług.", IMPERVIOUS_COMMERCIAL
+    ),
+    ("PTTR", "uprawa na gruntach ornych"): LandCoverClass(
+        "grunt_orny", "PTTR:grunty orne", 0.1
+    ),
+    ("PTTR", "roślinność trawiasta"): LandCoverClass("łąka", "PTTR:trawiasta", 0.0),
+    ("PTNZ", "teren przemysłowo-składowy"): LandCoverClass(
+        INDUSTRIAL, "PTNZ:przem.-skład.", IMPERVIOUS_INDUSTRIAL
+    ),
+    ("PTNZ", "teren pod urządzeniami technicznymi lub budowlami"): LandCoverClass(
+        "inny", "PTNZ:urządzenia", 0.2
+    ),
+    ("PTPL", "beton"): _PAVED,
+    ("PTPL", "bruk"): _PAVED,
+    ("PTPL", "kostka kamienna"): _PAVED,
+    ("PTPL", "kostka prefabrykowana"): _PAVED,
+    ("PTPL", "masa bitumiczna"): _PAVED,
+    ("PTPL", "płyty betonowe"): _PAVED,
+    ("PTPL", "grunt naturalny"): _UNPAVED,
+    ("PTPL", "żwir"): _UNPAVED,
+    ("PTPL", "tłuczeń"): _UNPAVED,
+    ("PTPL", "inny"): PT_LAYER_CLASSES["PTPL"],
 }
 
-# Default values for unknown classes
-DEFAULT_MAPPING = ("inny", 75, 0.2)
+
+def _industrial(bdot_class: str) -> LandCoverClass:
+    return LandCoverClass(INDUSTRIAL, bdot_class, IMPERVIOUS_INDUSTRIAL)
+
+
+# The kinds (RODZAJ) of OT_KUPG_A that are industrial land, and of "elektrownia" the
+# kinds of power plant (RODZAJELEKTROWNI) that are.
+INDUSTRIAL_COMPLEX_CLASSES: dict[str, LandCoverClass] = {
+    "zakład produkcyjny, usługowy lub remontowy": _industrial("KUPG:zakład prod."),
+    "baza paliw": _industrial("KUPG:baza paliw"),
+    "gazownia": _industrial("KUPG:gazownia"),
+    "elektrociepłownia": _industrial("KUPG:elektrociepł."),
+    "zakład utylizacji": _industrial("KUPG:zakład utyliz."),
+    "huta": _industrial("KUPG:huta"),
+    "rafineria": _industrial("KUPG:rafineria"),
+    "zakład metalurgiczny": _industrial("KUPG:zakład metal."),
+}
+INDUSTRIAL_POWER_PLANT_CLASSES: dict[str, LandCoverClass] = {
+    "cieplna": _industrial("KUPG:el. cieplna"),
+    "atomowa": _industrial("KUPG:el. atomowa"),
+}
+
+# The categories that an industrial complex does not replace: industrial land already,
+# and water, which is neither of the two covers that the TR-55 urban districts combine
+# (impervious area and open space; USDA-SCS 1986, table 2-2a, footnote 2).
+KEPT_UNDER_ZONES = frozenset({INDUSTRIAL, "woda"})
+
+# A layer of the package that the import reads: "OT_PTLZ_A" or "PTLZ", "OT_KUPG_A".
+_LAYER_NAME = re.compile(r"(?:OT_)?(PT[A-Z]{2}|KUPG)(?:_A)?")
+_READ_COLUMNS = ["RODZAJ", "MATERIALNAWIERZCHNI", "RODZAJELEKTROWNI"]
+
+# The columns of land_cover that the import writes.
+_COLUMNS = "geom, category, imperviousness, bdot_class"
 
 
 def get_database_url() -> str:
@@ -122,7 +222,7 @@ def get_database_url() -> str:
 
 def read_gpkg_layers(gpkg_path: Path) -> dict[str, "geopandas.GeoDataFrame"]:
     """
-    Read all land cover layers from a GeoPackage file.
+    Read the PT layers and the industrial complexes of a GeoPackage.
 
     Parameters
     ----------
@@ -132,36 +232,25 @@ def read_gpkg_layers(gpkg_path: Path) -> dict[str, "geopandas.GeoDataFrame"]:
     Returns
     -------
     Dict[str, GeoDataFrame]
-        Dictionary mapping layer names to GeoDataFrames
+        The layers by code ("PTLZ", "KUPG") with the attributes that the import uses
     """
     import fiona
     import geopandas as gpd
 
     layers = {}
-
-    # List available layers
-    available_layers = fiona.listlayers(gpkg_path)
-    logger.info(f"Available layers in GeoPackage: {available_layers}")
-
-    # Read each PT* layer
-    # Layer names may be either "PTLZ" or "OT_PTLZ_A" (BDOT10k convention)
-    for layer_name in available_layers:
-        layer_upper = layer_name.upper()
-
-        # Extract PT code: "OT_PTLZ_A" → "PTLZ", "PTLZ" → "PTLZ"
-        layer_code = layer_upper
-        if layer_upper.startswith("OT_") and "_A" in layer_upper:
-            # Extract middle part: OT_PTLZ_A → PTLZ
-            layer_code = layer_upper.split("_")[1]
-
-        if layer_code in BDOT10K_LAYERS or layer_code.startswith("PT"):
-            try:
-                gdf = gpd.read_file(gpkg_path, layer=layer_name)
-                if len(gdf) > 0:
-                    layers[layer_code] = gdf
-                    logger.info(f"  {layer_code}: {len(gdf)} features")
-            except Exception as e:
-                logger.warning(f"  {layer_code}: failed to read - {e}")
+    for layer_name in fiona.listlayers(gpkg_path):
+        match = _LAYER_NAME.fullmatch(layer_name.upper())
+        if match is None:
+            continue
+        code = match.group(1)
+        try:
+            gdf = gpd.read_file(gpkg_path, layer=layer_name, columns=_READ_COLUMNS)
+        except Exception as e:
+            logger.warning("  %s: failed to read - %s", code, e)
+            continue
+        if len(gdf) > 0:
+            layers[code] = gdf
+            logger.info("  %s: %d features", code, len(gdf))
 
     return layers
 
@@ -189,69 +278,294 @@ def transform_to_2180(gdf: "geopandas.GeoDataFrame") -> "geopandas.GeoDataFrame"
     return gdf
 
 
+def _polygonal(geom: "BaseGeometry | None") -> "BaseGeometry | None":
+    """Return the polygons of a geometry as one MultiPolygon, None if it has none."""
+    from shapely.geometry import MultiPolygon
+
+    if geom is None or geom.is_empty:
+        return None
+    if geom.geom_type == "MultiPolygon":
+        return geom
+    if geom.geom_type == "Polygon":
+        return MultiPolygon([geom])
+    if geom.geom_type == "GeometryCollection":
+        polygons = []
+        for part in geom.geoms:
+            polygonal = _polygonal(part)
+            if polygonal is not None:
+                polygons.extend(polygonal.geoms)
+        return MultiPolygon(polygons) if polygons else None
+    return None
+
+
+def _valid_polygons(gdf: "geopandas.GeoDataFrame", code: str) -> list[Any]:
+    """Return the polygons of a layer as valid MultiPolygons, None without area."""
+    import shapely
+
+    geoms = gdf.geometry.to_numpy()
+    invalid = ~shapely.is_valid(geoms) & ~shapely.is_missing(geoms)
+    if invalid.any():
+        logger.info("  %s: %d invalid geometries made valid", code, invalid.sum())
+        geoms = geoms.copy()
+        geoms[invalid] = shapely.make_valid(geoms[invalid])
+    result = [_polygonal(geom) for geom in geoms]
+    skipped = sum(
+        1
+        for geom, valid in zip(geoms, result, strict=True)
+        if valid is None and geom is not None and not geom.is_empty
+    )
+    if skipped:
+        logger.warning("  %s: %d geometries without area skipped", code, skipped)
+    return result
+
+
+def classify(code: str, gdf: "geopandas.GeoDataFrame") -> list[LandCoverClass]:
+    """Return the land cover class of every polygon of a PT layer."""
+    default = PT_LAYER_CLASSES.get(
+        code, LandCoverClass(DEFAULT_CATEGORY, code, DEFAULT_IMPERVIOUSNESS)
+    )
+    attribute = PT_KIND_ATTRIBUTES.get(code)
+    if attribute is None or attribute not in gdf.columns:
+        return [default] * len(gdf)
+
+    classes = []
+    unknown: Counter[str] = Counter()
+    for value in gdf[attribute]:
+        cls = PT_KIND_CLASSES.get((code, value)) if isinstance(value, str) else None
+        if cls is None:
+            unknown[str(value)] += 1
+            cls = default
+        classes.append(cls)
+    for value, count in unknown.items():
+        logger.warning(
+            "  %s: %s %r not mapped, %d polygons get %s",
+            code,
+            attribute,
+            value,
+            count,
+            default.category,
+        )
+    return classes
+
+
+def industrial_zones(
+    kupg: "geopandas.GeoDataFrame | None",
+) -> tuple[list[Any], list[LandCoverClass]]:
+    """
+    Return the industrial complexes of OT_KUPG_A as disjoint polygons and classes.
+
+    A complex that overlaps an earlier one of the layer keeps only the part outside it,
+    so no area is counted twice.
+    """
+    import shapely
+
+    if kupg is None or kupg.empty:
+        return [], []
+
+    kupg = transform_to_2180(kupg)
+    kinds = kupg["RODZAJ"] if "RODZAJ" in kupg.columns else [None] * len(kupg)
+    plants = (
+        kupg["RODZAJELEKTROWNI"]
+        if "RODZAJELEKTROWNI" in kupg.columns
+        else [None] * len(kupg)
+    )
+    candidates: list[Any] = []
+    classes: list[LandCoverClass] = []
+    for kind, plant, geom in zip(kinds, plants, kupg.geometry.values, strict=True):
+        cls = INDUSTRIAL_COMPLEX_CLASSES.get(kind)
+        if cls is None and kind == "elektrownia":
+            cls = INDUSTRIAL_POWER_PLANT_CLASSES.get(plant)
+        if cls is None or geom is None:
+            continue
+        polygonal = _polygonal(geom if geom.is_valid else shapely.make_valid(geom))
+        if polygonal is not None:
+            candidates.append(polygonal)
+            classes.append(cls)
+
+    tree = shapely.STRtree(candidates)
+    zones, zone_classes = [], []
+    for i, geom in enumerate(candidates):
+        earlier = [j for j in tree.query(geom, predicate="intersects") if j < i]
+        if earlier:
+            geom = _polygonal(
+                shapely.difference(
+                    geom, shapely.union_all([candidates[j] for j in earlier])
+                )
+            )
+        if geom is not None:
+            zones.append(geom)
+            zone_classes.append(classes[i])
+    return zones, zone_classes
+
+
+def partition(
+    geoms: list[Any],
+    classes: list[LandCoverClass],
+    zones: list[Any],
+    zone_classes: list[LandCoverClass],
+) -> list[tuple[Any, LandCoverClass]]:
+    """
+    Cut the industrial zones out of the polygons of a PT layer.
+
+    A polygon whose category the zones replace (any but ``KEPT_UNDER_ZONES``) and that
+    shares area with zones becomes its part outside them, with its class, and one piece
+    per zone, with the class of the zone; any other polygon stays whole. The pieces of
+    a polygon cover it exactly.
+    """
+    import shapely
+
+    hits: dict[int, list[int]] = defaultdict(list)
+    if zones:
+        tree = shapely.STRtree(zones)
+        for i, j in zip(*tree.query(geoms, predicate="intersects"), strict=True):
+            if classes[i].category not in KEPT_UNDER_ZONES:
+                hits[int(i)].append(int(j))
+
+    pieces: list[tuple[Any, LandCoverClass]] = []
+    for i, (geom, cls) in enumerate(zip(geoms, classes, strict=True)):
+        if geom is None:
+            continue
+        inside = []
+        for j in hits.get(i, []):
+            piece = _polygonal(shapely.intersection(geom, zones[j]))
+            if piece is not None:
+                inside.append((j, piece))
+        if not inside:
+            pieces.append((geom, cls))
+            continue
+        cover = shapely.union_all([zones[j] for j, _ in inside])
+        outside = _polygonal(shapely.difference(geom, cover))
+        if outside is not None:
+            pieces.append((outside, cls))
+        pieces.extend((piece, zone_classes[j]) for j, piece in inside)
+    return pieces
+
+
 def prepare_records(
     layers: dict[str, "geopandas.GeoDataFrame"],
 ) -> list[dict[str, Any]]:
     """
-    Prepare database records from GeoDataFrames.
+    Prepare the land cover records of a package (ADR-074).
 
     Parameters
     ----------
     layers : Dict[str, GeoDataFrame]
-        Dictionary mapping layer codes to GeoDataFrames
+        The layers by code (``read_gpkg_layers``): PT layers and ``KUPG``
 
     Returns
     -------
     List[Dict]
-        List of records ready for database insertion
+        One record per piece of the partition: ``geom_wkb`` (MultiPolygon, EPSG:2180),
+        ``category``, ``imperviousness``, ``bdot_class``
     """
-    from shapely import wkb
+    import shapely
 
+    zones, zone_classes = industrial_zones(layers.get("KUPG"))
     records = []
-
-    for layer_code, gdf in layers.items():
-        # Get mapping for this layer
-        category, cn_value, imperviousness = BDOT10K_MAPPING.get(
-            layer_code, DEFAULT_MAPPING
-        )
-
-        # Transform to EPSG:2180
+    for code, gdf in layers.items():
+        if code == "KUPG":
+            continue
         gdf = transform_to_2180(gdf)
-
-        for _idx, row in gdf.iterrows():
-            geom = row.geometry
-
-            # Skip invalid geometries
-            if geom is None or geom.is_empty:
-                continue
-
-            # Ensure MultiPolygon type
-            if geom.geom_type == "Polygon":
-                from shapely.geometry import MultiPolygon
-
-                geom = MultiPolygon([geom])
-            elif geom.geom_type != "MultiPolygon":
-                logger.warning(f"Skipping non-polygon geometry: {geom.geom_type}")
-                continue
-
-            # Validate geometry
-            if not geom.is_valid:
-                geom = geom.buffer(0)  # Fix invalid geometry
-                if not geom.is_valid:
-                    logger.warning(f"Skipping invalid geometry in {layer_code}")
-                    continue
-
+        pieces = partition(
+            _valid_polygons(gdf, code), classify(code, gdf), zones, zone_classes
+        )
+        blobs = shapely.to_wkb([geom for geom, _ in pieces])
+        for blob, (_, cls) in zip(blobs, pieces, strict=True):
             records.append(
                 {
-                    "geom_wkb": wkb.dumps(geom, include_srid=False),
-                    "category": category,
-                    "cn_value": cn_value,
-                    "imperviousness": imperviousness,
-                    "bdot_class": layer_code,
+                    "geom_wkb": blob,
+                    "category": cls.category,
+                    "imperviousness": cls.imperviousness,
+                    "bdot_class": cls.bdot_class,
                 }
             )
 
     return records
+
+
+def replace_land_cover(
+    conn: "Connection",
+    records: list[dict[str, Any]],
+    batch_size: int = 1000,
+) -> tuple[int, int]:
+    """
+    Replace the land cover of the area of the records, in the caller's transaction.
+
+    A row is replaced when its interior point and more than half of its area lie in the
+    records: the rows of the same county from an earlier import, whatever their mapping,
+    and no row of a neighbouring county, whose package may overlap this one by a sliver
+    along the border. A row that a record repeats exactly is replaced without computing
+    its area.
+
+    Returns
+    -------
+    Tuple[int, int]
+        The rows inserted and the rows replaced (deleted)
+    """
+    from sqlalchemy import text
+
+    conn.execute(
+        text(
+            f"CREATE TEMPORARY TABLE land_cover_import AS "
+            f"SELECT {_COLUMNS} FROM land_cover WITH NO DATA"
+        )
+    )
+    for i in range(0, len(records), batch_size):
+        batch = records[i : i + batch_size]
+        values = []
+        params: dict[str, Any] = {}
+        for j, rec in enumerate(batch):
+            p = f"p{j}_"
+            values.append(
+                f"(ST_SetSRID(ST_GeomFromWKB(:{p}geom), 2180), :{p}category, "
+                f":{p}imperviousness, :{p}bdot_class)"
+            )
+            params[f"{p}geom"] = rec["geom_wkb"]
+            params[f"{p}category"] = rec["category"]
+            params[f"{p}imperviousness"] = rec["imperviousness"]
+            params[f"{p}bdot_class"] = rec["bdot_class"]
+        conn.execute(
+            text(
+                f"INSERT INTO land_cover_import ({_COLUMNS}) VALUES {', '.join(values)}"
+            ),
+            params,
+        )
+        logger.info("  Prepared %d/%d records", i + len(batch), len(records))
+
+    conn.execute(text("CREATE INDEX ON land_cover_import USING GIST (geom)"))
+    conn.execute(text("ANALYZE land_cover_import"))
+    replaced = conn.execute(
+        text("""
+            DELETE FROM land_cover AS lc
+            WHERE lc.geom && (
+                SELECT ST_SetSRID(ST_Extent(geom)::geometry, 2180)
+                FROM land_cover_import
+            )
+            AND EXISTS (
+                SELECT 1 FROM land_cover_import AS n
+                WHERE ST_Intersects(n.geom, ST_PointOnSurface(lc.geom))
+            )
+            AND (
+                EXISTS (
+                    SELECT 1 FROM land_cover_import AS n
+                    WHERE n.geom ~= lc.geom AND n.geom = lc.geom
+                )
+                OR (
+                    SELECT SUM(ST_Area(ST_Intersection(lc.geom, n.geom)))
+                    FROM land_cover_import AS n
+                    WHERE n.geom && lc.geom AND ST_Relate(n.geom, lc.geom, 'T********')
+                ) > 0.5 * ST_Area(lc.geom)
+            )
+        """)
+    ).rowcount
+    inserted = conn.execute(
+        text(
+            f"INSERT INTO land_cover ({_COLUMNS}) "
+            f"SELECT {_COLUMNS} FROM land_cover_import"
+        )
+    ).rowcount
+    conn.execute(text("DROP TABLE land_cover_import"))
+    return inserted, replaced
 
 
 def import_to_database(
@@ -259,9 +573,9 @@ def import_to_database(
     database_url: str,
     batch_size: int = 1000,
     clear_existing: bool = False,
-) -> int:
+) -> tuple[int, int]:
     """
-    Import records into the land_cover table.
+    Import the records of a package into the land_cover table in one transaction.
 
     Parameters
     ----------
@@ -272,60 +586,24 @@ def import_to_database(
     batch_size : int
         Number of records per batch
     clear_existing : bool
-        If True, clear existing data before import
+        If True, delete the land cover of every county before the import
 
     Returns
     -------
-    int
-        Number of records inserted
+    Tuple[int, int]
+        The rows inserted and the rows of the area of the package that they replaced
     """
     from sqlalchemy import create_engine, text
 
     engine = create_engine(database_url)
-
-    with engine.connect() as conn:
-        # Clear existing data if requested
-        if clear_existing:
-            logger.info("Clearing existing land_cover data...")
-            conn.execute(text("TRUNCATE TABLE land_cover RESTART IDENTITY CASCADE"))
-            conn.commit()
-
-        # Insert records in batches
-        inserted = 0
-
-        for i in range(0, len(records), batch_size):
-            batch = records[i : i + batch_size]
-
-            # Build INSERT statement
-            values = []
-            params = {}
-
-            for j, rec in enumerate(batch):
-                param_prefix = f"p{j}_"
-                values.append(
-                    f"(ST_SetSRID(ST_GeomFromWKB(:{param_prefix}geom), 2180), "
-                    f":{param_prefix}category, :{param_prefix}cn_value, "
-                    f":{param_prefix}imperviousness, :{param_prefix}bdot_class)"
-                )
-                params[f"{param_prefix}geom"] = rec["geom_wkb"]
-                params[f"{param_prefix}category"] = rec["category"]
-                params[f"{param_prefix}cn_value"] = rec["cn_value"]
-                params[f"{param_prefix}imperviousness"] = rec["imperviousness"]
-                params[f"{param_prefix}bdot_class"] = rec["bdot_class"]
-
-            sql = f"""
-                INSERT INTO land_cover
-                    (geom, category, cn_value, imperviousness, bdot_class)
-                VALUES {", ".join(values)}
-            """
-
-            conn.execute(text(sql), params)
-            conn.commit()
-
-            inserted += len(batch)
-            logger.info(f"  Inserted {inserted}/{len(records)} records")
-
-    return inserted
+    try:
+        with engine.begin() as conn:
+            if clear_existing:
+                logger.info("Clearing existing land_cover data...")
+                conn.execute(text("TRUNCATE TABLE land_cover RESTART IDENTITY CASCADE"))
+            return replace_land_cover(conn, records, batch_size)
+    finally:
+        engine.dispose()
 
 
 def import_landcover(
@@ -349,7 +627,7 @@ def import_landcover(
     dry_run : bool
         If True, only show what would be done
     clear_existing : bool
-        If True, clear existing data before import
+        If True, delete the land cover of every county before the import
 
     Returns
     -------
@@ -361,17 +639,18 @@ def import_landcover(
         "features_total": 0,
         "records_prepared": 0,
         "records_inserted": 0,
+        "records_replaced": 0,
     }
 
     # Read GeoPackage layers
-    logger.info(f"Reading GeoPackage: {input_path}")
+    logger.info("Reading GeoPackage: %s", input_path)
     layers = read_gpkg_layers(input_path)
 
     stats["layers_read"] = len(layers)
     stats["features_total"] = sum(len(gdf) for gdf in layers.values())
 
     logger.info(
-        f"Read {stats['layers_read']} layers, {stats['features_total']} features"
+        "Read %d layers, %d features", stats["layers_read"], stats["features_total"]
     )
 
     if stats["features_total"] == 0:
@@ -383,15 +662,18 @@ def import_landcover(
     records = prepare_records(layers)
     stats["records_prepared"] = len(records)
 
-    logger.info(f"Prepared {len(records)} records")
+    logger.info("Prepared %d records", len(records))
 
-    # Show category distribution
-    from collections import Counter
+    from shapely import area, from_wkb
 
-    categories = Counter(r["category"] for r in records)
+    areas = area(from_wkb([r["geom_wkb"] for r in records]))
+    by_category: dict[str, list[float]] = defaultdict(lambda: [0, 0.0])
+    for rec, area_m2 in zip(records, areas, strict=True):
+        by_category[rec["category"]][0] += 1
+        by_category[rec["category"]][1] += area_m2
     logger.info("Category distribution:")
-    for cat, count in sorted(categories.items()):
-        logger.info(f"  {cat}: {count}")
+    for cat, (count, area_m2) in sorted(by_category.items()):
+        logger.info("  %s: %d records, %.3f km2", cat, count, area_m2 / 1e6)
 
     if dry_run:
         logger.info("DRY RUN - no data will be imported")
@@ -402,7 +684,7 @@ def import_landcover(
         database_url = get_database_url()
 
     logger.info("Importing to database...")
-    stats["records_inserted"] = import_to_database(
+    stats["records_inserted"], stats["records_replaced"] = import_to_database(
         records=records,
         database_url=database_url,
         batch_size=batch_size,
@@ -439,7 +721,7 @@ def main():
     parser.add_argument(
         "--clear-existing",
         action="store_true",
-        help="Clear existing land_cover data before import",
+        help="Delete the land cover of every county before the import",
     )
     parser.add_argument(
         "--dry-run",
@@ -493,6 +775,7 @@ def main():
     logger.info(f"  Features total: {stats['features_total']}")
     logger.info(f"  Records prepared: {stats['records_prepared']}")
     logger.info(f"  Records inserted: {stats['records_inserted']}")
+    logger.info(f"  Records replaced: {stats['records_replaced']}")
     logger.info(f"  Time elapsed: {elapsed:.1f}s")
     logger.info("=" * 60)
 

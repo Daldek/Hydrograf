@@ -552,21 +552,24 @@ tiles.
 ### `export_catchment_parameters.py`: the parameters of the panel for given polygons
 
 Computes, for every polygon of a layer, what the panel „Zlewnia” shows in „Parametry
-podstawowe”, „Wskaźniki kształtu” and „Pokrycie terenu”, with the polygon as the boundary of
-the watershed (no delineation from the NMT), and writes the polygons with their key, the fields
-asked for and these values to a new GeoPackage. It reads the rasters that the pipeline saved in
-`DEM_DIR` (`dem_mosaic_02_filled`, `_03_flowdir`, `_04_flowacc`, `_04b_stream_distance`,
-`_05_slope` and `_10_subcatchments_<threshold>`) and the database (`land_cover`, the BDOT10k flags
-and lengths of `stream_network` and `stream_catchments`), only reading both. The values come from
-the code behind the panel: the zonal statistics of the sub-catchments over the cells whose centre
-lies in the polygon, the flow paths of `core.divide_flow_path`, the overland segment of
-`process_dem`, the BDOT10k part of the main channel of `core.catchment_graph`, the shape indices
-of `core.morphometry` and the land cover of `core.watershed_service`. The outlet is the cell of
-the largest flow accumulation in the polygon; the flow paths start in the part of the polygon
-that drains to it; the main channel goes up the stream network of the threshold from it, at each
-confluence into the branch of the larger accumulation, to its source or to where it flows in from
-outside the polygon. The length and the mean width of the watershed and the shape indices computed
-from them (elongation, form factor, lemniscate) are left out.
+podstawowe”, „Wskaźniki kształtu”, „Pokrycie terenu” and „Grupy glebowe (HSG)”, and the CN of
+the watershed for the antecedent runoff conditions AMC I, II and III, with the polygon as the
+boundary of the watershed (no delineation from the NMT), and writes the polygons with their key,
+the fields asked for and these values to a new GeoPackage. It reads the rasters that the
+pipeline saved in `DEM_DIR` (`dem_mosaic_02_filled`, `_03_flowdir`, `_04_flowacc`,
+`_04b_stream_distance`, `_05_slope` and `_10_subcatchments_<threshold>`) and the database
+(`land_cover`, `soil_hsg`, the BDOT10k flags and lengths of `stream_network` and
+`stream_catchments`), only reading both. The values come from the code behind the panel: the
+zonal statistics of the sub-catchments over the cells whose centre lies in the polygon, the flow
+paths of `core.divide_flow_path`, the overland segment of `process_dem`, the BDOT10k part of the
+main channel of `core.catchment_graph`, the shape indices of `core.morphometry` and the land
+cover, the CN of its soil-cover complexes (ADR-075) and the soil groups of
+`core.watershed_service`. The outlet is the cell of the largest flow accumulation in the
+polygon; the flow paths start in the part of the polygon that drains to it; the main channel
+goes up the stream network of the threshold from it, at each confluence into the branch of the
+larger accumulation, to its source or to where it flows in from outside the polygon. The length
+and the mean width of the watershed and the shape indices computed from them (elongation, form
+factor, lemniscate) are left out.
 
 ```bash
 cd backend
@@ -595,9 +598,11 @@ the source of each; the layer's metadata the threshold, the raster directory and
 | Section | Columns |
 |---|---|
 | Parametry podstawowe | `area_km2`, `perimeter_km`, `elevation_min_m`, `elevation_max_m`, `elevation_mean_m`, `mean_slope_m_per_m`, `channel_length_km`, `real_channel_length_km`, `channel_slope_m_per_m`, `flow_path_length_km`, `flow_path_slope_m_per_m`, `overland_length_km`, `overland_slope_m_per_m`, `divide_flow_path_km`, `cn`, `outlet_latitude_deg`, `outlet_longitude_deg`, `outlet_elevation_m` |
+| Hydrogram | `cn_amc_i`, `cn_amc_ii`, `cn_amc_iii`: the CN of the watershed for AMC I (dry), II (average, equal to `cn`) and III (wet); I and III are Hydrolog's conversion of II (Hawkins et al. 1985, which approximates NEH 630 ch. 10, table 10-1; integers), as the hydrograph converts it. The CN is the area-weighted composite CN, not a weighting of the runoff |
 | Wskaźniki kształtu | `compactness_coefficient`, `circularity_ratio` |
-| Pokrycie terenu | `lc_<class>_pct` and `lc_<class>_cn` of `grunt_orny`, `las`, `laka`, `zabudowa_mieszkaniowa`, `zabudowa_przemyslowa`, `droga`, `woda`, `inny` |
-| Kontrola | `polygon_area_km2` (of the geometry), `outlet_upstream_area_km2` (the NMT watershed of the outlet), `polygon_to_upstream_area_ratio` (about 1 for a polygon that is that watershed, less with inflow from outside), `cell_count`, `quality_flag` (`under_100_cells`, `partly_outside_nmt`, `outside_nmt`) |
+| Pokrycie terenu | `lc_<class>_pct` and `lc_<class>_cn` (AMC II, over the soil-cover complexes of the class) of `grunt_orny`, `las`, `laka`, `zabudowa_mieszkaniowa`, `zabudowa_przemyslowa`, `droga`, `woda`, `inny` |
+| Grupy glebowe (HSG) | `hsg_a_pct`, `hsg_b_pct`, `hsg_c_pct`, `hsg_d_pct` (of the area of the polygon with soil groups) |
+| Kontrola | `lc_without_hsg_pct` (the land cover outside the soil groups, which takes the groups of the rest of the polygon, ADR-075), `polygon_area_km2` (of the geometry), `outlet_upstream_area_km2` (the NMT watershed of the outlet), `polygon_to_upstream_area_ratio` (about 1 for a polygon that is that watershed, less with inflow from outside), `cell_count`, `quality_flag` (`under_100_cells`, `partly_outside_nmt`, `outside_nmt`) |
 
 Slopes are in m/m like the API (the panel shows them times 100 in %). For the boundary of a
 watershed of the panel the values are those of the panel, with these differences: the mean
@@ -656,8 +661,13 @@ a county failed. The hydro layers are not selected here: `merge_hydro_gpkgs()` k
 
 ### `import_landcover.py`: import land cover into the database
 
-Imports the `PT*` layers of a BDOT10k GeoPackage into the table `land_cover` with a category, a CN
-value and the imperviousness.
+Imports the land cover of a BDOT10k county package into the table `land_cover` (ADR-074): the
+`PT*` layers, which partition the county, split by their attributes, with the industrial
+complexes of `OT_KUPG_A` cut out of them. Each row gets a category, a CN value, the
+imperviousness and its source in `bdot_class`. The import of a package replaces, in one
+transaction, the rows of its area (those whose interior point and more than half of whose area
+lie in the package), so importing a package again changes nothing and the neighbouring
+counties keep their rows.
 
 ```bash
 cd backend
@@ -669,7 +679,7 @@ cd backend
 # Dry run: show what would be imported
 .venv/bin/python -m scripts.import_landcover --input <package>.gpkg --dry-run
 
-# Delete the existing land cover first
+# Delete the land cover of every county first
 .venv/bin/python -m scripts.import_landcover --input <package>.gpkg --clear-existing
 ```
 
@@ -679,22 +689,38 @@ cd backend
 |---|---|---|
 | `--input`, `-i` | path to the `.gpkg` file (required) | - |
 | `--batch-size` | records per database batch | 1000 |
-| `--clear-existing` | delete the existing `land_cover` data first | off |
-| `--dry-run` | only show what would be imported | off |
+| `--clear-existing` | delete the land cover of every county first | off |
+| `--dry-run` | only show what would be imported (rows and km² per category) | off |
 
-**The BDOT10k mapping to categories and CN:**
+**The BDOT10k sources and their categories:**
 
-| BDOT10k code | Hydrograf category | CN | Imperviousness |
+| Source (`bdot_class`) | Category | CN | Imperviousness |
 |---|---|---|---|
-| PTLZ | `las` | 60 | 0.0 |
-| PTTR, PTUT | `grunt_orny` | 78 | 0.1 |
-| PTWP | `woda` | 100 | 1.0 |
-| PTWZ, PTRK | `łąka` | 70 | 0.0 |
-| PTZB | `zabudowa_mieszkaniowa` | 85 | 0.5 |
-| PTKM, PTPL | `droga` | 98 | 0.95 |
-| PTGN, PTNZ, PTSO | `inny` | 75 | 0.2 |
+| `PTLZ` | `las` | 60 | 0.0 |
+| `PTTR:trawiasta` (`RODZAJ` roślinność trawiasta), `PTUT`, `PTRK` | `łąka` | 70 | 0.0 |
+| `PTTR:grunty orne` (uprawa na gruntach ornych) | `grunt_orny` | 78 | 0.1 |
+| `PTZB:jednorodzinna`, `PTZB:pozostała` | `zabudowa_mieszkaniowa` | 85 | 0.30 |
+| `PTZB:wielorodzinna` | `zabudowa_mieszkaniowa` | 85 | 0.65 |
+| `PTZB:przem.-skład.`, `PTNZ:przem.-skład.` (teren przemysłowo-składowy) | `zabudowa_przemysłowa` | 92 | 0.72 |
+| `PTZB:handl.-usług.` | `zabudowa_przemysłowa` | 92 | 0.85 |
+| `KUPG:<kind>` | `zabudowa_przemysłowa` | 92 | 0.72 |
+| `PTKM`, `PTPL:utwardzony` (`MATERIALNAWIERZCHNI` beton, bruk, kostka, masa bitumiczna, płyty betonowe) | `droga` | 98 | 0.95 |
+| `PTWP` | `woda` | 100 | 1.0 |
+| `PTNZ:urządzenia` (teren pod urządzeniami technicznymi lub budowlami), `PTPL:nieutwardzony` (grunt naturalny, żwir, tłuczeń), `PTWZ`, `PTGN`, `PTSO`, any other `PT*` layer | `inny` | 75 | 0.2 |
 
-Any other `PT*` layer gets the category `inny`, CN 75 and imperviousness 0.2.
+A polygon of PTZB, PTTR, PTNZ or PTPL without its attribute or with another value takes the
+layer's first category under the plain layer code (`PTZB` `zabudowa_mieszkaniowa`, `PTTR`
+`grunt_orny`, `PTNZ` `inny`, `PTPL` `droga`); an unknown value is logged.
+
+The industrial complexes are the `OT_KUPG_A` of the kinds (`RODZAJ`) zakład produkcyjny,
+usługowy lub remontowy (`KUPG:zakład prod.`), baza paliw (`KUPG:baza paliw`), gazownia
+(`KUPG:gazownia`), elektrociepłownia (`KUPG:elektrociepł.`), zakład utylizacji
+(`KUPG:zakład utyliz.`), huta (`KUPG:huta`), rafineria (`KUPG:rafineria`), zakład
+metalurgiczny (`KUPG:zakład metal.`) and the thermal and nuclear power plants (`KUPG:el.
+cieplna`, `KUPG:el. atomowa`). Their area is cut out of every PT polygon but water and the
+industrial land above; overlapping complexes count once. Farms, solar, wind and water power
+plants, mines, sewage treatment plants, landfills, waterworks and substations keep the land
+cover of the PT layers.
 
 ---
 
