@@ -85,9 +85,20 @@ PANEL_FIELDS = (
 # Synthetic land cover: forest in the west, arable land in the east, a pond between
 _POND = box(X0 + 400, Y1 - 600, X0 + 600, Y1 - 400)
 LAND_COVER = (
-    ("las", 60, 0.0, box(X0, Y1 - 1000, X0 + 500, Y1).difference(_POND)),
-    ("grunt_orny", 78, 0.1, box(X0 + 500, Y1 - 1000, X0 + 1000, Y1).difference(_POND)),
-    ("woda", 100, 1.0, _POND),
+    ("las", "PTLZ", 0.0, box(X0, Y1 - 1000, X0 + 500, Y1).difference(_POND)),
+    (
+        "grunt_orny",
+        "PTTR:grunty orne",
+        0.1,
+        box(X0 + 500, Y1 - 1000, X0 + 1000, Y1).difference(_POND),
+    ),
+    ("woda", "PTWP", 1.0, _POND),
+)
+# Synthetic soil groups: A in the west, B in the rest but a strip in the north-east
+# without a soil group
+SOILS = (
+    ("A", box(X0, Y1 - 1000, X0 + 300, Y1)),
+    ("B", box(X0 + 300, Y1 - 1000, X0 + 1000, Y1 - 200)),
 )
 
 
@@ -236,17 +247,37 @@ class FakeDatabase:
         sql = str(statement)
         if "FROM land_cover lc" in sql:
             boundary = wkb.loads(bytes.fromhex(params["boundary_wkb"]))
-            rows = [
-                SimpleNamespace(
-                    category=category,
-                    cn_value=cn,
-                    imperviousness=imperviousness,
-                    total_area_m2=geometry.intersection(boundary).area,
+            rows = []
+            for category, bdot_class, imperviousness, geometry in LAND_COVER:
+                inside = geometry.intersection(boundary)
+                if inside.is_empty:
+                    continue
+                pieces = [(None, inside)] + [
+                    (group, inside.intersection(soil)) for group, soil in SOILS
+                ]
+                rows.extend(
+                    SimpleNamespace(
+                        category=category,
+                        bdot_class=bdot_class,
+                        imperviousness=imperviousness,
+                        hsg_group=group,
+                        area_m2=piece.area,
+                    )
+                    for group, piece in pieces
+                    if not piece.is_empty
                 )
-                for category, cn, imperviousness, geometry in LAND_COVER
-                if geometry.intersects(boundary)
-            ]
-            return self._result(sorted(rows, key=lambda r: -r.total_area_m2))
+            return self._result(rows)
+        if "FROM soil_hsg sh" in sql:
+            boundary = wkb.loads(bytes.fromhex(params["boundary_wkb"]))
+            areas = {g: s.intersection(boundary).area for g, s in SOILS}
+            total = sum(areas.values())
+            return self._result(
+                SimpleNamespace(
+                    hsg_group=g, total_area_m2=a, percentage=a / total * 100
+                )
+                for g, a in sorted(areas.items(), key=lambda item: -item[1])
+                if a > 0
+            )
         if "is_real_stream" in sql and "ANY" in sql:
             return self._result(
                 SimpleNamespace(
@@ -509,7 +540,7 @@ def test_a_polygon_without_a_cell_centre_has_only_its_area_and_land_cover(raster
     assert row["cell_count"] == 0
     assert row["quality_flag"] == "under_100_cells"
     assert row["lc_las_pct"] == 100.0
-    assert row["cn"] == 60.0
+    assert row["cn"] == 55.0  # woods, good, on soil group B
     assert row["polygon_area_km2"] == 0.0
     from_rasters = [
         c.name
@@ -518,6 +549,43 @@ def test_a_polygon_without_a_cell_centre_has_only_its_area_and_land_cover(raster
         and c.name not in ("perimeter_km", "cn")
     ] + ["outlet_upstream_area_km2", "polygon_to_upstream_area_ratio"]
     assert {name: row[name] for name in from_rasters} == dict.fromkeys(from_rasters)
+
+
+def test_cn_of_the_soil_cover_complexes_and_the_soil_groups(rasters, db):
+    """The whole domain: forest and arable land on A and B, a strip without soil.
+
+    Land cover on a soil group [m²]: forest 300 000 on A and 140 000 on B, arable land
+    380 000 on B, the pond 40 000 on B; without one: forest 40 000 and arable land
+    100 000 (14%), which take the shares of the rest, A 300/860 and B 560/860.
+    """
+    domain = box(X0, Y1 - 1000, X0 + 1000, Y1)
+    a, b = 300 / 860, 560 / 860
+    forest = ((300_000 + 40_000 * a) * 30 + (140_000 + 40_000 * b) * 55) / 480_000
+    arable = (100_000 * a * 63 + (380_000 + 100_000 * b) * 75) / 480_000
+    cn = (forest * 480_000 + arable * 480_000 + 98 * 40_000) / 1_000_000
+
+    row = polygon_parameters(domain, rasters, db)
+
+    assert row["cn"] == round(cn, 1) == 58.1
+    assert (row["lc_las_cn"], row["lc_grunt_orny_cn"], row["lc_woda_cn"]) == (
+        round(forest, 1),
+        round(arable, 1),
+        98.0,
+    )
+    # Hydrolog's conversion of the CN for AMC II, as the hydrograph converts it
+    assert (row["cn_amc_i"], row["cn_amc_iii"]) == (38, 76)
+    assert [row[f"hsg_{g}_pct"] for g in "abcd"] == [34.9, 65.1, 0.0, 0.0]
+    assert row["lc_without_hsg_pct"] == 14.0
+
+
+def test_a_polygon_without_soil_groups_takes_group_b(rasters, db):
+    strip = box(X0 + 600, Y1 - 150, X0 + 900, Y1 - 50)  # arable land, no soil group
+
+    row = polygon_parameters(strip, rasters, db)
+
+    assert row["cn"] == 75.0  # small grain, good, on B
+    assert row["lc_without_hsg_pct"] == 100.0
+    assert [row[f"hsg_{g}_pct"] for g in "abcd"] == [None] * 4
 
 
 def _write_layer(path, frame):

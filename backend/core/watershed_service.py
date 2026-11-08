@@ -1219,6 +1219,9 @@ def build_land_cover_stats(
 ) -> LandCoverStats | None:
     """Build LandCoverStats from boundary polygon.
 
+    The CN is that of the soil-cover complexes, land cover x soil group
+    (core.land_cover.get_land_cover_for_boundary, ADR-075).
+
     Parameters
     ----------
     boundary : Polygon | MultiPolygon
@@ -1258,6 +1261,7 @@ def build_land_cover_stats(
             weighted_imperviousness=lc_data["weighted_imperviousness"],
             forest_pct=lc_data["forest_pct"],
             urban_pct=lc_data["urban_pct"],
+            hsg_assumed_pct=lc_data["hsg_assumed_pct"],
         )
     except Exception as e:
         logger.debug(f"Land cover stats not available: {e}")

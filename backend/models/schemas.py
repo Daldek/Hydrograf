@@ -147,7 +147,15 @@ class MorphometricParameters(BaseModel):
             "outlet upstream [km]"
         ),
     )
-    cn: float | None = Field(None, ge=0, le=100, description="SCS Curve Number")
+    cn: float | None = Field(
+        None,
+        ge=0,
+        le=100,
+        description=(
+            "SCS Curve Number for AMC II: area-weighted over the soil-cover complexes "
+            "(land cover x hydrologic soil group)"
+        ),
+    )
     imperviousness: float | None = Field(
         None, ge=0, le=1, description="Weighted imperviousness fraction [0-1]"
     )
@@ -280,7 +288,15 @@ class LandCoverCategory(BaseModel):
     category: str = Field(..., description="Land cover category name")
     percentage: float = Field(..., ge=0, le=100, description="Area percentage [%]")
     area_m2: float = Field(..., ge=0, description="Area [m2]")
-    cn_value: int = Field(..., ge=0, le=100, description="CN value for category")
+    cn_value: float = Field(
+        ...,
+        ge=0,
+        le=100,
+        description=(
+            "CN of the category for AMC II: area-weighted over its soil-cover "
+            "complexes, its pieces on each hydrologic soil group (to 0.1)"
+        ),
+    )
 
 
 class LandCoverStats(BaseModel):
@@ -290,7 +306,13 @@ class LandCoverStats(BaseModel):
         ..., description="Per-category statistics"
     )
     weighted_cn: float = Field(
-        ..., ge=0, le=100, description="Area-weighted CN (rounded to 0.1)"
+        ...,
+        ge=0,
+        le=100,
+        description=(
+            "CN of the watershed for AMC II: area-weighted CN of the soil-cover "
+            "complexes, land cover x hydrologic soil group (TR-55; to 0.1)"
+        ),
     )
     weighted_imperviousness: float = Field(
         ..., ge=0, le=1, description="Area-weighted imperviousness fraction"
@@ -303,6 +325,15 @@ class LandCoverStats(BaseModel):
         ge=0,
         le=100,
         description="Share of urbanised (built-up and transport) land [%] (Lutz's U)",
+    )
+    hsg_assumed_pct: float = Field(
+        ...,
+        ge=0,
+        le=100,
+        description=(
+            "Share of the land cover outside the soil groups [%]: its soil groups "
+            "follow the shares of the rest of the watershed, group B without any"
+        ),
     )
 
 
@@ -1086,10 +1117,15 @@ class PointLandCover(BaseModel):
     category: str = Field(
         ..., description="Land cover category, as in land_cover_stats"
     )
-    bdot_class: str | None = Field(None, description="BDOT10k layer, e.g. PTLZ")
+    bdot_class: str | None = Field(
+        None, description="Source of the row: BDOT10k layer, e.g. PTLZ or PTZB:..."
+    )
     cn: int = Field(
         ...,
-        description="CN of the category for AMC II (average), as in the catchment CN",
+        description=(
+            "CN for AMC II (average) of the category on the soil group of the point "
+            "(group B without one), as in the catchment CN"
+        ),
     )
     cn_amc_i: int = Field(
         ..., description="CN for AMC I (dry), converted from cn by Hydrolog"

@@ -374,70 +374,105 @@ and `total_mm` (ADR-069).
 
 ## Faza 5: Krzywa CN
 
-**Moduły:** `backend/core/land_cover.py`, `cn_calculator.py`, `cn_tables.py`
-**Tabele:** `land_cover`, `soil_hsg` (migracja 016 — grupy glebowe HSG)
+**Modules:** `backend/core/land_cover.py` (the CN of a watershed), `core/cn_tables.py`
+(the TR-55 cover of each land cover category; the numbers are Hydrolog's table),
+`core/cn_calculator.py` (the Kartograf path of `scripts/analyze_watershed.py`)
+**Tables:** `land_cover`, `soil_hsg`
 
-### 5.1 Hierarchia wyznaczania CN
+The CN is that of the hydrologic soil-cover complexes (USDA-NRCS 2004, NEH 630 chapter 9;
+ADR-075): a complex is a land cover on a hydrologic soil group (HSG), and its CN for
+AMC II is the TR-55 value of the cover it stands for on that group (USDA-SCS 1986,
+tables 2-2a to 2-2c), read from Hydrolog (`hydrolog.runoff.get_cn`).
 
-**Funkcja:** `determine_cn()` (`core/land_cover.py`)
+### 5.1 Hierarchy of the sources of the CN
 
-| Priorytet | Źródło | Warunek |
-|-----------|--------|---------|
-| 1 | Konfiguracja (explicit CN) | `config_cn is not None` |
-| 2 | Baza danych (land_cover table) | Istnieją dane pokrycia terenu |
-| 3 | Kartograf (HSG + Land Cover) | `use_kartograf=True`, `boundary_wgs84` and `cache_dir` given, Kartograf importable (`calculate_cn_from_kartograf()` returns a result) |
-| 4 | Wartość domyślna | `default_cn = 75` |
+**Function:** `determine_cn()` (`core/land_cover.py`), used by `scripts/analyze_watershed.py`
 
-### 5.2 CN z pokrycia terenu w bazie
+| Priority | Source | Condition |
+|----------|--------|-----------|
+| 1 | Configuration (explicit CN) | `config_cn is not None` |
+| 2 | Database (`land_cover` with `soil_hsg`, §5.2) | the watershed has land cover |
+| 3 | Kartograf (HSG + land cover, §5.5) | `use_kartograf=True`, `boundary_wgs84` and `cache_dir` given, Kartograf importable (`calculate_cn_from_kartograf()` returns a result) |
+| 4 | Default | `default_cn = 75` |
 
-**Funkcja:** `calculate_weighted_cn()` (land_cover.py, linie 39-151)
+The panel (`land_cover_stats.weighted_cn`, `morphometry.cn`), the hydrograph, the
+export of catchment parameters and source 2 all take the CN of §5.2; without land cover
+the hydrograph uses `DEFAULT_CN = 75` (`core/constants.py`).
 
-```sql
-WITH watershed AS (
-    SELECT ST_SetSRID(ST_GeomFromWKB(decode(:wkb, 'hex')), 2180) AS geom
-),
-intersections AS (
-    SELECT lc.category, lc.cn_value,
-           ST_Area(ST_Intersection(lc.geom, w.geom)) AS intersection_area_m2
-    FROM land_cover lc CROSS JOIN watershed w
-    WHERE ST_Intersects(lc.geom, w.geom)
-)
-SELECT category, cn_value, SUM(intersection_area_m2) AS total_area_m2
-FROM intersections GROUP BY category, cn_value ORDER BY total_area_m2 DESC
+### 5.2 CN of the soil-cover complexes of a watershed
+
+**Function:** `get_land_cover_for_boundary()` (`core/land_cover.py`, SQL `_COMPLEXES_SQL`;
+the arithmetic in `summarize_complexes()`)
+
+One query returns the land cover of the watershed twice: whole, by category, source
+(`bdot_class`) and imperviousness (`ST_Area(ST_Intersection(lc.geom, w.geom))`), and in
+its pieces on each soil group. For the pieces the soil polygons are clipped to the
+watershed and subdivided (`ST_Subdivide(…, 256)`), then joined to `land_cover` through
+its spatial index, so no land cover row is intersected with a large soil polygon.
+
+```
+CN = round( Σ A_i · CN_i / Σ A_i , 1 )     # i: complex (category, source, soil group)
+CN_i = get_cn(group, TR-55 cover of (category, source))     # Hydrolog, §5.3
 ```
 
-**Wzór:**
-```
-CN = round(Σ(cn_value[i] × area[i]) / Σ(area[i]), 1)    # jedno miejsce po przecinku
-CN = clamp(CN, 0, 100)
-```
+- **Land cover outside `soil_hsg`** (an area without soil data, slivers left by the
+  polygonization of the HSG raster): its soil groups follow the shares of the groups of
+  the land cover of the watershed that lies on `soil_hsg`; with no soil data in the
+  watershed it is group B (`DEFAULT_HSG`, the fallback of §5.5). The share of such land
+  cover is `hsg_assumed_pct` (panel) and `lc_without_hsg_pct` (export).
+- Soil pieces that sum to more than their land cover (overlapping soil polygons) are
+  scaled to it.
+- The CN of a category (`land_cover_stats.categories[].cn_value`, the export's
+  `lc_<class>_cn`) is the area-weighted CN of its complexes, to 0.1. The weighted means
+  are Hydrolog's `calculate_weighted_cn`.
+- The weighted CN, not the weighted runoff, is the method (NEH 630 ch. 10, p. 10-10:
+  WinTR-55 and WinTR-20 use it); the difference is in ADR-075.
 
-### 5.3 CN z Kartografa (HSG)
+### 5.3 TR-55 covers of the land cover categories
 
-**Funkcja:** `calculate_cn_from_kartograf(boundary_wgs84, cache_dir, use_default_land_cover=True, teryt=None)` (`core/cn_calculator.py`); only `scripts/analyze_watershed.py` calls it, through `determine_cn()`.
+**File:** `core/cn_tables.py` (`COVER_BY_CATEGORY`, `COVER_BY_SOURCE`). A source of
+`COVER_BY_SOURCE` overrides the cover of its category; plain layer codes (`PTZB`,
+`PTTR`, the data imported before the land cover split) take the category's cover.
+
+| Category | Source (`bdot_class`) | TR-55 cover (table) | A | B | C | D |
+|---|---|---|---|---|---|---|
+| `las` | any | woods, good (2-2c) | 30 | 55 | 70 | 77 |
+| `łąka` | any | meadow (2-2c) | 30 | 58 | 71 | 78 |
+| `grunt_orny` | any | small grain, straight row, good (2-2b) | 63 | 75 | 83 | 87 |
+| `zabudowa_mieszkaniowa` | any | residential, 1/3 acre, 30% impervious (2-2a) | 57 | 72 | 81 | 86 |
+| `zabudowa_mieszkaniowa` | `PTZB:wielorodzinna` | residential, 1/8 acre, 65% impervious (2-2a) | 77 | 85 | 90 | 92 |
+| `zabudowa_przemysłowa` | any | industrial, 72% impervious (2-2a) | 81 | 88 | 91 | 93 |
+| `zabudowa_przemysłowa` | `PTZB:handl.-usług.` | commercial and business, 85% impervious (2-2a) | 89 | 92 | 94 | 95 |
+| `droga` | any | paved (2-2a) | 98 | 98 | 98 | 98 |
+| `woda` | any | water surfaces: CN 98 (NEH 630 ch. 9, p. 9-1) | 98 | 98 | 98 | 98 |
+| `inny` | any | open space, fair (2-2a) | 49 | 69 | 79 | 84 |
+| `inny` | `PTPL:nieutwardzony` | dirt road, including right-of-way (2-2a) | 72 | 82 | 87 | 89 |
+| `inny` | `PTWZ` | newly graded area, no vegetation (2-2a) | 77 | 86 | 91 | 94 |
+
+### 5.4 CN for AMC I and III
+
+The panel and the CN columns are for AMC II. The hydrograph converts the CN of the
+watershed to the requested AMC with Hydrolog (`SCSCN.adjust_cn_for_amc`, Hawkins et al.
+1985, approximating NEH 630 ch. 10 table 10-1; integer). The export adds `cn_amc_i` and
+`cn_amc_iii`, the same conversion of its `cn` (`core/cn_tables.cn_for_amc`); Hydrolog
+warns for a CN outside 55–95.
+
+### 5.5 CN from Kartograf (HSG)
+
+**Function:** `calculate_cn_from_kartograf(boundary_wgs84, cache_dir, use_default_land_cover=True, teryt=None)` (`core/cn_calculator.py`); only `scripts/analyze_watershed.py` calls it, through `determine_cn()`.
 
 1. The boundary of the watershed is converted to a `BBox` in EPSG:2180 with a buffer of 100 m (`convert_boundary_to_bbox`).
-2. The HSG of the area (`get_hsg_from_soilgrids`): `kartograf.calculate_hsg(output_dir=<temporary directory>, bbox=, depth="0-5cm", cache=False)` downloads the SoilGrids clay, sand and silt rasters, classifies the USDA texture of each cell into the groups A-D and writes the HSG raster as a plain file that exists only for this call; `kartograf.hsg_statistics` counts the cells per group. The dominant group is the one with the largest share of the cells that have data. A failure of Kartograf (`KartografError`) or an area without data gives the group B.
-3. The land cover (`get_land_cover_stats`): `download_bdot10k` takes the BDOT10k package of every county that the bbox intersects from the Kartograf store `<cache_dir>/kartograf` (a package that is already local is used without a request); the area of every `PT*` layer clipped to the bbox gives the shares in percent per category, each county by its part in the bbox. Without data the default land cover is used when `use_default_land_cover` is true.
-4. The CN of each category and the dominant group comes from `CN_LOOKUP_TABLE`.
-5. The weighted mean: `CN = Σ(cn[i] × percentage[i] / 100)`.
+2. The HSG of the area (`get_hsg_from_soilgrids`): `kartograf.calculate_hsg(output_dir=<temporary directory>, bbox=, depth="0-5cm", cache=False)` downloads the SoilGrids clay, sand and silt rasters, classifies the USDA texture of each cell into the groups A-D and writes the HSG raster as a plain file that exists only for this call; `kartograf.hsg_statistics` counts the cells per group. A failure of Kartograf (`KartografError`) or an area without data gives the group B.
+3. The land cover (`get_land_cover_stats`): `download_bdot10k` takes the BDOT10k package of every county that the bbox intersects from the Kartograf store `<cache_dir>/kartograf` (a package that is already local is used without a request); the area of every `PT*` layer clipped to the bbox gives the shares in percent per category of `land_cover` (`BDOT10K_CATEGORY_MAP`, the category the import gives a layer without its kind), each county by its part in the bbox. Without data the default land cover is used when `use_default_land_cover` is true.
+4. Without an overlay of the two, every category is taken to lie on the soil groups in their shares of the bbox: the CN is the weighted mean of the complexes category × group with the products of the two shares as weights (`weighted_cn_of_shares`).
 
 > **Note (ADR-061):** `HSGCalculator` and `LandCoverManager` are no longer public in Kartograf, and `check_hsg_cache` and `HsgCacheStaleError` of `scripts/bootstrap.py` are gone together with `soil_hsg/hsg_poland.tif`. The HSG raster of the bootstrap (the `soil_hsg` table) is a version of the Kartograf store (`hsg/`): its sidecar records the Kartograf version and the source rasters with their hashes. The raster of this function is not kept, and `hsg_statistics` of a file without a sidecar counts the whole raster, so the cells at the edge of the bbox count in full, as in Kartograf 0.7.0 (ADR-061, erratum of 2026-10-25).
 
-### 5.4 Tabele CN
+### 5.6 CN at a point
 
-**Plik:** `cn_tables.py` (linie 32-84)
-
-| Kategoria pokrycia | HSG A | HSG B | HSG C | HSG D |
-|---------------------|-------|-------|-------|-------|
-| Las / forest | 30 | 55 | 70 | 77 |
-| Łąka / meadow | 30 | 58 | 71 | 78 |
-| Grunt orny / arable | 72 | 81 | 88 | 91 |
-| Zabudowa mieszk. | 77 | 85 | 90 | 92 |
-| Zabudowa przem. | 89 | 92 | 94 | 95 |
-| Droga | 98 | 98 | 98 | 98 |
-| Woda | 100 | 100 | 100 | 100 |
-| Inne / other | 60 | 70 | 80 | 85 |
+`GET /api/identify-point` (`core/point_info.land_cover_at`) gives the CN of the complex
+of the land cover polygon and the soil group at the point (group B where `soil_hsg` has
+none), converted to AMC I and III as for the hydrograph.
 
 ---
 

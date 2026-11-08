@@ -2,11 +2,12 @@
 Export the parameters of the watershed panel for the polygons of a GeoPackage.
 
 For every polygon of a layer the script computes what the panel „Zlewnia” shows in
-three sections, „Parametry podstawowe”, „Wskaźniki kształtu” and „Pokrycie terenu”,
-with the polygon as the boundary of the watershed (no delineation from the NMT), and
-writes the polygons with their key, the fields asked for and these values to a new
-GeoPackage. The table ``<layer>_units`` of that GeoPackage gives the unit, the
-section, the row of the panel and the source of each column.
+four sections, „Parametry podstawowe”, „Wskaźniki kształtu”, „Pokrycie terenu” and
+„Grupy glebowe (HSG)”, and the CN of the hydrograph for AMC I and III, with the
+polygon as the boundary of the watershed (no delineation from the NMT), and writes the
+polygons with their key, the fields asked for and these values to a new GeoPackage.
+The table ``<layer>_units`` of that GeoPackage gives the unit, the section, the row
+of the panel and the source of each column.
 
 The values come from the code behind the panel, on the rasters that the pipeline
 saved in DEM_DIR (``dem_mosaic_02_filled``, ``_03_flowdir``, ``_04_flowacc``,
@@ -14,14 +15,15 @@ saved in DEM_DIR (``dem_mosaic_02_filled``, ``_03_flowdir``, ``_04_flowacc``,
 on the database: the zonal statistics of the sub-catchments (core.zonal_stats) over
 the cells whose centre lies in the polygon, the flow paths of core.divide_flow_path,
 the overland segment of process_dem, the BDOT10k part of the main channel of
-core.catchment_graph, the shape indices of core.morphometry and the land cover of
-core.watershed_service. What needs an outlet takes the cell of the largest flow
-accumulation in the polygon, and the flow paths start in the part of the polygon
-that drains to it. The main channel runs up the stream network of the threshold
-from the outlet, at each confluence into the branch of the larger accumulation, as
-CatchmentGraph.trace_main_channel does, to its source or to where it flows in from
-outside the polygon. The length and the mean width of the watershed and the shape
-indices computed from them (elongation, form factor, lemniscate) are left out.
+core.catchment_graph, the shape indices of core.morphometry and the land cover, the CN
+of its soil-cover complexes and the soil groups of core.watershed_service. What needs
+an outlet takes the cell of the largest flow accumulation in the polygon, and the flow
+paths start in the part of the polygon that drains to it. The main channel runs up
+the stream network of the threshold from the outlet, at each confluence into the
+branch of the larger accumulation, as CatchmentGraph.trace_main_channel does, to its
+source or to where it flows in from outside the polygon. The length and the mean
+width of the watershed and the shape indices computed from them (elongation, form
+factor, lemniscate) are left out.
 
 Usage
 -----
@@ -49,6 +51,7 @@ import numpy as np
 import pandas as pd
 import pyflwdir
 import rasterio
+from hydrolog.runoff import AMC
 from pyproj import CRS
 from rasterio.features import geometry_mask
 from rasterio.transform import Affine
@@ -58,6 +61,7 @@ from sqlalchemy.orm import Session
 
 from core.active_run import active_run_raster
 from core.catchment_graph import contiguous_real_length_km
+from core.cn_tables import cn_for_amc
 from core.config import get_settings
 from core.constants import CRS_PL1992, M2_PER_KM2, M_PER_KM
 from core.database import get_db_session
@@ -66,7 +70,7 @@ from core.hydrology import D8_DIRECTIONS
 from core.morphometry import area_perimeter_indices
 from core.raster_io import cells_window, read_window
 from core.version import get_version
-from core.watershed_service import build_land_cover_stats
+from core.watershed_service import build_hsg_stats, build_land_cover_stats
 from core.zonal_stats import zonal_summary
 from scripts.process_dem import (
     INTERMEDIATE_SUFFIXES,
@@ -99,11 +103,20 @@ LAND_COVER_CLASSES = (
     ("woda", "woda", "Wody"),
     ("inny", "inny", "Inne"),
 )
+# Hydrologic soil groups and their labels in the panel (js/charts.js)
+HSG_CLASSES = (
+    ("A", "A: przepuszczalne"),
+    ("B", "B: średnio przepuszczalne"),
+    ("C", "C: słabo przepuszczalne"),
+    ("D", "D: nieprzepuszczalne"),
+)
 DEFAULT_OUTPUT_LAYER = "catchment_parameters"
 
 _BASIC = "Parametry podstawowe"
 _SHAPE = "Wskaźniki kształtu"
 _LAND_COVER = "Pokrycie terenu"
+_HSG = "Grupy glebowe (HSG)"
+_HYDROGRAPH = "Hydrogram"
 _CONTROL = "Kontrola"
 
 # The flag and the lengths of segments that the catchment graph loads: the smoothed
@@ -268,8 +281,24 @@ COLUMNS: tuple[Column, ...] = (
         "-",
         _BASIC,
         "CN (krzywa odpływu)",
-        "Area-weighted CN of the land cover in the polygon "
-        "(core.watershed_service.build_land_cover_stats)",
+        "CN for AMC II: area-weighted CN of the soil-cover complexes of the polygon, "
+        "land cover x hydrologic soil group, from the TR-55 table of Hydrolog "
+        "(core.watershed_service.build_land_cover_stats, ADR-075)",
+    ),
+    Column(
+        "cn_amc_i",
+        "-",
+        _HYDROGRAPH,
+        "CN użyty (AMC I)",
+        "CN for AMC I (dry): cn converted by Hydrolog (SCSCN.adjust_cn_for_amc, "
+        "an integer), as the hydrograph converts it",
+    ),
+    Column(
+        "cn_amc_iii",
+        "-",
+        _HYDROGRAPH,
+        "CN użyty (AMC III)",
+        "CN for AMC III (wet): cn converted by Hydrolog, as cn_amc_i",
     ),
     Column(
         "outlet_latitude_deg",
@@ -328,9 +357,31 @@ COLUMNS: tuple[Column, ...] = (
                 "-",
                 _LAND_COVER,
                 f"{label}: CN",
-                f"CN of „{category}”, area-weighted over its rows; empty when absent",
+                f"CN (AMC II) of „{category}”, area-weighted over its soil-cover "
+                "complexes (its pieces on each soil group); empty when absent",
             ),
         )
+    ),
+    *(
+        Column(
+            f"hsg_{group.lower()}_pct",
+            "%",
+            _HSG,
+            label,
+            f"Share of the soil group {group} in the polygon, of its area with soil "
+            "groups (core.watershed_service.build_hsg_stats); 0 when absent, empty "
+            "without soil groups",
+        )
+        for group, label in HSG_CLASSES
+    ),
+    Column(
+        "lc_without_hsg_pct",
+        "%",
+        _CONTROL,
+        "",
+        "Share of the land cover of the polygon outside the soil groups: its soil "
+        "groups follow the shares of the rest of the polygon (group B without any, "
+        "ADR-075)",
     ),
     Column(
         "polygon_area_km2",
@@ -897,28 +948,44 @@ def _channel_columns(
 def _land_cover_columns(
     geometry: BaseGeometry, area_km2: float, db: Session
 ) -> dict[str, Any]:
-    """CN and the share and CN of each land cover class of the polygon."""
+    """CN, land cover and soil groups of the polygon.
+
+    The CN for AMC II and for AMC I and III (Hydrolog's conversion of the CN for
+    AMC II, as in the hydrograph), the share and the CN of each land cover class,
+    the share of each soil group and the share of the land cover without one. The
+    boundary is simplified as the panel simplifies it.
+    """
     tolerance = (
         LAND_COVER_SIMPLIFY_M if area_km2 > LAND_COVER_SIMPLIFY_ABOVE_KM2 else None
     )
     stats = build_land_cover_stats(geometry, db, simplify_tolerance=tolerance)
-    result: dict[str, Any] = {"cn": None}
+    result: dict[str, Any] = {
+        "cn": None,
+        "cn_amc_i": None,
+        "cn_amc_iii": None,
+        "lc_without_hsg_pct": None,
+    }
     for _, stem, _ in LAND_COVER_CLASSES:
         result[f"lc_{stem}_pct"] = None
         result[f"lc_{stem}_cn"] = None
-    if stats is None:
-        return result
-    result["cn"] = stats.weighted_cn
-    for category, stem, _ in LAND_COVER_CLASSES:
-        rows = [c for c in stats.categories if c.category == category]
-        result[f"lc_{stem}_pct"] = round(sum(c.percentage for c in rows), 1)
-        area_m2 = sum(c.area_m2 for c in rows)
-        if rows and area_m2 > 0:
-            result[f"lc_{stem}_cn"] = round(
-                sum(c.cn_value * c.area_m2 for c in rows) / area_m2, 1
-            )
-        elif rows:
-            result[f"lc_{stem}_cn"] = float(rows[0].cn_value)
+    for group, _ in HSG_CLASSES:
+        result[f"hsg_{group.lower()}_pct"] = None
+    if stats is not None:
+        result["cn"] = stats.weighted_cn
+        result["cn_amc_i"] = cn_for_amc(stats.weighted_cn, AMC.I)
+        result["cn_amc_iii"] = cn_for_amc(stats.weighted_cn, AMC.III)
+        result["lc_without_hsg_pct"] = stats.hsg_assumed_pct
+        by_category = {c.category: c for c in stats.categories}
+        for category, stem, _ in LAND_COVER_CLASSES:
+            entry = by_category.get(category)
+            result[f"lc_{stem}_pct"] = 0.0 if entry is None else entry.percentage
+            result[f"lc_{stem}_cn"] = None if entry is None else entry.cn_value
+    query_boundary = geometry if tolerance is None else geometry.simplify(tolerance)
+    soils = build_hsg_stats(query_boundary, db)
+    if soils is not None:
+        by_group = {c.group: c.percentage for c in soils.categories}
+        for group, _ in HSG_CLASSES:
+            result[f"hsg_{group.lower()}_pct"] = round(by_group.get(group, 0.0), 1)
     return result
 
 

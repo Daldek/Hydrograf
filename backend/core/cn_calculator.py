@@ -5,7 +5,10 @@ Integruje:
 - calculate_hsg + hsg_statistics (SoilGrids) - grupy hydrologiczne gleby
 - download_landcover (BDOT10k) - pokrycie terenu
 
-Oblicza CN na podstawie kombinacji HSG i pokrycia terenu.
+Oblicza CN jako srednia wazona CN kompleksow glebowo-roslinnych (ADR-075): kazda
+kategoria pokrycia na kazdej grupie HSG w ich udzialach w bbox. Bez nakladania warstw
+(raster HSG i paczki BDOT10k sa czytane osobno) pokrycie i gleba sa traktowane jako
+niezalezne; CN kompleksu to wartosc TR-55 Hydrologa (``core/cn_tables.py``).
 
 The two sources are used differently (ADR-061). The HSG raster of one analysis is read
 once and not kept: Kartograf writes it as a plain file into a temporary directory. The
@@ -21,15 +24,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from hydrolog.runoff import calculate_weighted_cn
+
+from core.cn_tables import HSG_GROUPS, complex_cn
+from core.constants import DEFAULT_CN
 from utils.kartograf_store import HSG_DEPTH, describe_error, download_bdot10k
 
 if TYPE_CHECKING:
     from kartograf import BBox
 
 logger = logging.getLogger(__name__)
-
-# Hydrologic soil groups of the USDA (keys of ``hsg_statistics``, besides ``nodata``)
-HSG_GROUPS = ("A", "B", "C", "D")
 
 
 @dataclass
@@ -40,7 +44,8 @@ class CNCalculationResult:
     Attributes
     ----------
     cn : float
-        Obliczona wartosc CN (0-100, zaokraglona do 0.1)
+        Obliczona wartosc CN (0-100, zaokraglona do 0.1): srednia wazona CN
+        kompleksow (kategoria x grupa HSG w ich udzialach)
     method : str
         Metoda obliczenia ('kartograf_hsg', 'fallback', etc.)
     dominant_hsg : str
@@ -182,22 +187,21 @@ def get_hsg_from_soilgrids(bbox: "BBox") -> tuple[str, dict[str, float]]:
     return (dominant_hsg, percents)
 
 
-# Mapowanie kodow BDOT10k na kategorie pokrycia terenu.
-# Zgodne z BDOT10K_MAPPING w scripts/import_landcover.py,
-# ale z kluczami uzywanymi w CN_LOOKUP_TABLE (nazwy angielskie).
+# Kategorie pokrycia terenu warstw PT* BDOT10k: kategorie tabeli land_cover, ktore
+# import (scripts/import_landcover.py) nadaje warstwie bez atrybutu rodzaju.
 BDOT10K_CATEGORY_MAP: dict[str, str] = {
-    "PTLZ": "forest",
-    "PTTR": "arable",
-    "PTUT": "arable",
-    "PTWP": "water",
-    "PTWZ": "meadow",
-    "PTRK": "meadow",
-    "PTZB": "urban_residential",
-    "PTKM": "road",
-    "PTPL": "road",
-    "PTGN": "other",
-    "PTNZ": "other",
-    "PTSO": "other",
+    "PTLZ": "las",
+    "PTTR": "grunt_orny",
+    "PTUT": "łąka",
+    "PTWP": "woda",
+    "PTWZ": "inny",
+    "PTRK": "łąka",
+    "PTZB": "zabudowa_mieszkaniowa",
+    "PTKM": "droga",
+    "PTPL": "droga",
+    "PTGN": "inny",
+    "PTNZ": "inny",
+    "PTSO": "inny",
 }
 
 
@@ -406,11 +410,59 @@ def get_default_land_cover_stats() -> dict[str, float]:
         Domyslne statystyki {kategoria: procent}
     """
     return {
-        "arable": 50.0,
-        "meadow": 25.0,
-        "forest": 15.0,
-        "urban_residential": 10.0,
+        "grunt_orny": 50.0,
+        "łąka": 25.0,
+        "las": 15.0,
+        "zabudowa_mieszkaniowa": 10.0,
     }
+
+
+def weighted_cn_of_shares(
+    land_cover_stats: dict[str, float], hsg_stats: dict[str, float]
+) -> tuple[float, list[dict[str, Any]]]:
+    """
+    CN of an area from the shares of its land cover and of its soil groups.
+
+    Without an overlay of the two, every category is taken to lie on the soil
+    groups in their shares of the area: the CN is the area-weighted mean of the CN of
+    the complexes category x group (``complex_cn``), the weights the products of
+    the two shares (Hydrolog's ``calculate_weighted_cn``).
+
+    Parameters
+    ----------
+    land_cover_stats : dict[str, float]
+        Share of each land cover category [%] (categories of ``land_cover``).
+    hsg_stats : dict[str, float]
+        Share of each soil group A-D [%]; a group may be missing or 0.
+
+    Returns
+    -------
+    tuple[float, list[dict]]
+        The CN to 0.1 (``DEFAULT_CN`` without land cover or soil groups) and, for
+        every category, ``land_cover``, ``percentage`` and ``cn`` (its CN over the
+        soil groups, to 0.1).
+    """
+    groups = {g: hsg_stats.get(g, 0.0) for g in HSG_GROUPS}
+    groups = {g: share for g, share in groups.items() if share > 0}
+    categories = {c: share for c, share in land_cover_stats.items() if share > 0}
+    if not groups or not categories:
+        return (float(DEFAULT_CN), [])
+    details = []
+    pairs: list[tuple[int, float]] = []
+    for category, percentage in categories.items():
+        category_pairs = [
+            (complex_cn(category, None, group), percentage * share)
+            for group, share in groups.items()
+        ]
+        pairs.extend(category_pairs)
+        details.append(
+            {
+                "land_cover": category,
+                "percentage": percentage,
+                "cn": round(calculate_weighted_cn(category_pairs), 1),
+            }
+        )
+    return (round(calculate_weighted_cn(pairs), 1), details)
 
 
 def calculate_cn_from_kartograf(
@@ -479,25 +531,8 @@ def calculate_cn_from_kartograf(
             land_cover_stats = get_default_land_cover_stats()
             logger.warning("Uzyto szacunkowego pokrycia terenu")
 
-        # 4. Oblicz wazony CN
-        from core.cn_tables import (
-            calculate_weighted_cn_from_stats,
-            lookup_cn,
-        )
-
-        cn_details = []
-        for land_cover, percentage in land_cover_stats.items():
-            cn = lookup_cn(land_cover, dominant_hsg)
-            cn_details.append(
-                {
-                    "land_cover": land_cover,
-                    "percentage": percentage,
-                    "hsg": dominant_hsg,
-                    "cn": cn,
-                }
-            )
-
-        final_cn = calculate_weighted_cn_from_stats(land_cover_stats, dominant_hsg)
+        # 4. Oblicz wazony CN kompleksow (kategoria x grupa HSG)
+        final_cn, cn_details = weighted_cn_of_shares(land_cover_stats, hsg_stats)
 
         logger.info(f"Obliczone CN: {final_cn}")
         logger.info(f"Szczegoly: {cn_details}")

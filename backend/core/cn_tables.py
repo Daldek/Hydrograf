@@ -1,181 +1,213 @@
 """
-Tabele CN (Curve Number) dla metody SCS-CN.
+Curve numbers of the hydrologic soil-cover complexes of the land cover (ADR-075).
 
-Zawiera:
-- CN_LOOKUP_TABLE: mapowanie pokrycie terenu -> {HSG: CN}
-- Funkcje lookup dla pojedynczych kategorii
-- Mapowania pomiedzy roznymi klasyfikacjami (BDOT10k, CORINE, nazwy ogolne)
+A hydrologic soil-cover complex is a land cover on a hydrologic soil group (HSG); its
+curve number (CN) for the average antecedent runoff condition (AMC II) comes from the
+tables of TR-55 (USDA-NRCS, NEH Part 630, chapter 9). Here a land cover is a category
+of the table ``land_cover`` with the source of its row (``bdot_class``) and a soil
+group is one of ``soil_hsg``. The numbers are Hydrolog's TR-55 table
+(:func:`hydrolog.runoff.get_cn`), the single source of the CN; this module says only
+which TR-55 cover each category stands for and gives Hydrolog's conversion to AMC I
+and III.
 
-Zrodlo wartosci: SCS TR-55 (1986), dostosowane do warunkow polskich.
+Sources:
+
+- USDA-SCS (1986). Urban Hydrology for Small Watersheds, TR-55, 2nd ed., tables 2-2a
+  (urban areas), 2-2b (cultivated agricultural lands) and 2-2c (other agricultural
+  lands).
+- USDA-NRCS (2004). NEH Part 630, chapter 9 (hydrologic soil-cover complexes;
+  "impervious and water surfaces ... are always assigned a CN of 98", p. 9-1) and
+  chapter 10 (the weighted CN of a watershed of several complexes; the antecedent
+  runoff condition).
 """
 
-import logging
+from dataclasses import dataclass
+from typing import Final
 
-logger = logging.getLogger(__name__)
+from hydrolog.runoff import AMC, SCSCN, HydrologicCondition, LandCover, get_cn
 
-# ===========================================================================
-# STALE
-# ===========================================================================
+# The soil groups of soil_hsg, from the most to the least permeable
+HSG_GROUPS: Final = ("A", "B", "C", "D")
 
-# Domyslna wartosc CN gdy brak danych (srednie warunki)
-DEFAULT_CN = 75
+# The soil group assumed for a land cover outside soil_hsg when the watershed has no
+# soil data at all (with some, the soil groups of the rest of the watershed apply:
+# ADR-075); the same fallback as the HSG of the Kartograf CN (core/cn_calculator.py)
+DEFAULT_HSG: Final = "B"
 
-# Prawidlowe grupy hydrologiczne gleby (HSG)
-VALID_HSG = frozenset(["A", "B", "C", "D"])
 
-# ===========================================================================
-# TABELA CN
-# ===========================================================================
+@dataclass(frozen=True)
+class Tr55Cover:
+    """A cover of the TR-55 tables, as Hydrolog names it.
 
-# Standard SCS CN lookup table: land_cover -> {HSG: CN}
-# Klucze: BDOT10k (PTLZ, PTZB, ...), CORINE (11, 12, ...), nazwy ogolne
-CN_LOOKUP_TABLE: dict[str, dict[str, int]] = {
-    # === Lasy i tereny lesne ===
-    "forest": {"A": 30, "B": 55, "C": 70, "D": 77},
-    "las": {"A": 30, "B": 55, "C": 70, "D": 77},
-    "PTLZ": {"A": 30, "B": 55, "C": 70, "D": 77},  # BDOT10k: lasy i zagajniki
-    # === Laki i pastwiska ===
-    "meadow": {"A": 30, "B": 58, "C": 71, "D": 78},
-    "łąka": {"A": 30, "B": 58, "C": 71, "D": 78},
-    "PTZB": {"A": 30, "B": 58, "C": 71, "D": 78},  # BDOT10k: zakrzewienia
-    # === Grunty orne ===
-    "arable": {"A": 72, "B": 81, "C": 88, "D": 91},
-    "grunt_orny": {"A": 72, "B": 81, "C": 88, "D": 91},
-    "PTUT": {"A": 72, "B": 81, "C": 88, "D": 91},  # BDOT10k: uprawy trwale
-    "PTRK": {"A": 72, "B": 81, "C": 88, "D": 91},  # BDOT10k: roslinnosc krzewiasta
-    # === Zabudowa mieszkaniowa ===
-    "urban_residential": {"A": 77, "B": 85, "C": 90, "D": 92},
-    "zabudowa_mieszkaniowa": {"A": 77, "B": 85, "C": 90, "D": 92},
-    "BUBD": {"A": 77, "B": 85, "C": 90, "D": 92},  # BDOT10k: budynki
-    # === Zabudowa przemyslowa ===
-    "urban_commercial": {"A": 89, "B": 92, "C": 94, "D": 95},
-    "zabudowa_przemysłowa": {"A": 89, "B": 92, "C": 94, "D": 95},
-    "BUIN": {"A": 89, "B": 92, "C": 94, "D": 95},  # BDOT10k: budynki przemyslowe
-    # === Drogi ===
-    "road": {"A": 98, "B": 98, "C": 98, "D": 98},
-    "droga": {"A": 98, "B": 98, "C": 98, "D": 98},
-    "SKDR": {"A": 98, "B": 98, "C": 98, "D": 98},  # BDOT10k: drogi
-    "SKJZ": {"A": 98, "B": 98, "C": 98, "D": 98},  # BDOT10k: jezdnie
-    # === Wody ===
-    "water": {"A": 100, "B": 100, "C": 100, "D": 100},
-    "woda": {"A": 100, "B": 100, "C": 100, "D": 100},
-    "PTWP": {"A": 100, "B": 100, "C": 100, "D": 100},  # BDOT10k: wody
-    "SWRS": {"A": 100, "B": 100, "C": 100, "D": 100},  # BDOT10k: rzeki
-    # === CORINE klasy (2-cyfrowe) ===
-    "11": {"A": 89, "B": 92, "C": 94, "D": 95},  # Urban fabric
-    "12": {"A": 89, "B": 92, "C": 94, "D": 95},  # Industrial
-    "13": {"A": 98, "B": 98, "C": 98, "D": 98},  # Mines/dumps
-    "14": {"A": 49, "B": 69, "C": 79, "D": 84},  # Artificial green
-    "21": {"A": 72, "B": 81, "C": 88, "D": 91},  # Arable land
-    "22": {"A": 72, "B": 81, "C": 88, "D": 91},  # Permanent crops
-    "23": {"A": 39, "B": 61, "C": 74, "D": 80},  # Pastures
-    "24": {"A": 62, "B": 71, "C": 78, "D": 81},  # Heterogeneous agri
-    "31": {"A": 30, "B": 55, "C": 70, "D": 77},  # Forests
-    "32": {"A": 30, "B": 58, "C": 71, "D": 78},  # Shrub/herbaceous
-    "33": {"A": 77, "B": 86, "C": 91, "D": 94},  # Open spaces
-    "41": {"A": 100, "B": 100, "C": 100, "D": 100},  # Inland wetlands
-    "42": {"A": 100, "B": 100, "C": 100, "D": 100},  # Coastal wetlands
-    "51": {"A": 100, "B": 100, "C": 100, "D": 100},  # Inland waters
-    "52": {"A": 100, "B": 100, "C": 100, "D": 100},  # Marine waters
-    # === Domyslne ===
-    "other": {"A": 60, "B": 70, "C": 80, "D": 85},
-    "inny": {"A": 60, "B": 70, "C": 80, "D": 85},
-    "unknown": {"A": 60, "B": 70, "C": 80, "D": 85},
+    Attributes
+    ----------
+    land_cover : LandCover
+        The cover type of Hydrolog's table.
+    condition : HydrologicCondition | None
+        The hydrologic condition; None for a cover the table gives without one.
+    row : str
+        The row of TR-55 (or NEH 630) that the numbers are.
+    """
+
+    land_cover: LandCover
+    condition: HydrologicCondition | None
+    row: str
+
+
+# The TR-55 cover of each land cover category (the categories of the constraint of
+# land_cover). The reasons are in ADR-075.
+COVER_BY_CATEGORY: Final[dict[str, Tr55Cover]] = {
+    "las": Tr55Cover(
+        LandCover.FOREST,
+        HydrologicCondition.GOOD,
+        "Woods, good: protected from grazing, litter and brush cover the soil "
+        "(TR-55 table 2-2c)",
+    ),
+    "łąka": Tr55Cover(
+        LandCover.MEADOW,
+        None,
+        "Meadow: continuous grass, protected from grazing and generally mowed for hay "
+        "(TR-55 table 2-2c)",
+    ),
+    "grunt_orny": Tr55Cover(
+        LandCover.SMALL_GRAIN,
+        HydrologicCondition.GOOD,
+        "Small grain, straight row, good (TR-55 table 2-2b)",
+    ),
+    "zabudowa_mieszkaniowa": Tr55Cover(
+        LandCover.RESIDENTIAL_MEDIUM,
+        None,
+        "Residential districts, 1/3 acre lots, 30% impervious (TR-55 table 2-2a)",
+    ),
+    "zabudowa_przemysłowa": Tr55Cover(
+        LandCover.INDUSTRIAL,
+        None,
+        "Urban districts: industrial, 72% impervious (TR-55 table 2-2a)",
+    ),
+    "droga": Tr55Cover(
+        LandCover.PAVED,
+        None,
+        "Impervious areas: paved parking lots, roofs, driveways; paved streets and "
+        "roads (TR-55 table 2-2a)",
+    ),
+    "woda": Tr55Cover(
+        LandCover.PAVED,
+        None,
+        "Water surfaces: CN 98, as impervious areas (NEH 630, chapter 9, p. 9-1)",
+    ),
+    "inny": Tr55Cover(
+        LandCover.OPEN_SPACE,
+        HydrologicCondition.FAIR,
+        "Open space, fair condition: grass cover 50 to 75% (TR-55 table 2-2a)",
+    ),
+}
+
+# Sources (bdot_class) of a category that a TR-55 cover describes better than the cover
+# of the category: (category, bdot_class) -> cover. bdot_class is the source of the row
+# as the land cover import writes it ("<layer>:<kind>" for a split layer).
+COVER_BY_SOURCE: Final[dict[tuple[str, str], Tr55Cover]] = {
+    ("zabudowa_mieszkaniowa", "PTZB:wielorodzinna"): Tr55Cover(
+        LandCover.RESIDENTIAL_HIGH,
+        None,
+        "Residential districts, 1/8 acre or less (town houses), 65% impervious "
+        "(TR-55 table 2-2a)",
+    ),
+    ("zabudowa_przemysłowa", "PTZB:handl.-usług."): Tr55Cover(
+        LandCover.COMMERCIAL,
+        None,
+        "Urban districts: commercial and business, 85% impervious (TR-55 table 2-2a)",
+    ),
+    ("inny", "PTPL:nieutwardzony"): Tr55Cover(
+        LandCover.DIRT,
+        None,
+        "Streets and roads: dirt, including right-of-way (TR-55 table 2-2a)",
+    ),
+    ("inny", "PTWZ"): Tr55Cover(
+        LandCover.FALLOW,
+        None,
+        "Newly graded areas, no vegetation (TR-55 table 2-2a); the same numbers as "
+        "fallow, bare soil (table 2-2b)",
+    ),
 }
 
 
-# ===========================================================================
-# FUNKCJE
-# ===========================================================================
-
-
-def lookup_cn(
-    land_cover: str,
-    hsg: str,
-    default_hsg: str = "B",
-) -> int:
-    """
-    Pobierz wartosc CN dla pokrycia terenu i grupy HSG.
+def cover_for(category: str, bdot_class: str | None) -> Tr55Cover:
+    """Return the TR-55 cover of a land cover row.
 
     Parameters
     ----------
-    land_cover : str
-        Kategoria pokrycia terenu (BDOT10k, CORINE lub nazwa ogolna)
+    category : str
+        Category of the row (one of ``COVER_BY_CATEGORY``).
+    bdot_class : str | None
+        Source of the row (``land_cover.bdot_class``).
+
+    Returns
+    -------
+    Tr55Cover
+        The cover of the source when ``COVER_BY_SOURCE`` has it, else the cover of the
+        category.
+
+    Raises
+    ------
+    KeyError
+        For a category outside ``COVER_BY_CATEGORY`` (the constraint of land_cover
+        admits no other).
+    """
+    if bdot_class is not None:
+        cover = COVER_BY_SOURCE.get((category, bdot_class))
+        if cover is not None:
+            return cover
+    return COVER_BY_CATEGORY[category]
+
+
+def complex_cn(category: str, bdot_class: str | None, hsg: str) -> int:
+    """CN (AMC II) of a land cover row on a soil group, from Hydrolog's TR-55 table.
+
+    Parameters
+    ----------
+    category : str
+        Category of the row.
+    bdot_class : str | None
+        Source of the row (``land_cover.bdot_class``).
     hsg : str
-        Grupa hydrologiczna gleby: 'A', 'B', 'C', lub 'D'
-    default_hsg : str, optional
-        Domyslna grupa HSG gdy `hsg` nieprawidlowa, domyslnie 'B'
+        Hydrologic soil group, "A" to "D".
 
     Returns
     -------
     int
-        Wartosc CN w zakresie 0-100
+        Curve number, 30-98.
 
     Examples
     --------
-    >>> lookup_cn("forest", "B")
+    >>> complex_cn("las", "PTLZ", "B")
     55
-    >>> lookup_cn("PTLZ", "C")
-    70
-    >>> lookup_cn("unknown_category", "A")
-    60
+    >>> complex_cn("zabudowa_przemysłowa", "PTZB:handl.-usług.", "B")
+    92
     """
-    # Normalizuj HSG
-    hsg_upper = hsg.upper() if hsg else default_hsg
-    if hsg_upper not in VALID_HSG:
-        logger.warning(f"Nieprawidlowa HSG '{hsg}', uzyto '{default_hsg}'")
-        hsg_upper = default_hsg
-
-    # Znajdz CN dla pokrycia
-    cn_values = CN_LOOKUP_TABLE.get(land_cover, CN_LOOKUP_TABLE["other"])
-    cn = cn_values.get(hsg_upper, cn_values.get("B", DEFAULT_CN))
-
-    return cn
+    cover = cover_for(category, bdot_class)
+    return get_cn(hsg, cover.land_cover, cover.condition)
 
 
-def calculate_weighted_cn_from_stats(
-    land_cover_stats: dict[str, float],
-    dominant_hsg: str,
-) -> float:
-    """
-    Oblicz wazony CN na podstawie statystyk pokrycia terenu.
+def cn_for_amc(cn: float, amc: AMC) -> int:
+    """CN of a watershed for an antecedent runoff condition, by Hydrolog's conversion.
+
+    The conversion of the hydrograph (``SCSCN.adjust_cn_for_amc``: Hawkins et al.
+    1985, approximating NEH 630 chapter 10, table 10-1), applied to the CN of the
+    watershed for AMC II as the hydrograph applies it; Hydrolog rounds the result to an
+    integer and warns (``OutsideTypicalRange``) for a CN outside 55-95.
 
     Parameters
     ----------
-    land_cover_stats : Dict[str, float]
-        Slownik {kategoria: procent_powierzchni}
-    dominant_hsg : str
-        Dominujaca grupa hydrologiczna gleby
+    cn : float
+        CN of the watershed for AMC II (1-100), e.g. the area-weighted CN.
+    amc : AMC
+        The antecedent runoff condition.
 
     Returns
     -------
-    float
-        Wazony CN (0-100), zaokraglony do 0.1
-
-    Examples
-    --------
-    >>> stats = {"forest": 60.0, "arable": 40.0}
-    >>> calculate_weighted_cn_from_stats(stats, "B")
-    65.4
+    int
+        CN for ``amc``.
     """
-    if not land_cover_stats:
-        logger.warning("Brak statystyk pokrycia, zwracam DEFAULT_CN")
-        return DEFAULT_CN
-
-    weighted_cn = 0.0
-    total_percent = 0.0
-
-    for land_cover, percentage in land_cover_stats.items():
-        cn = lookup_cn(land_cover, dominant_hsg)
-        weighted_cn += cn * (percentage / 100)
-        total_percent += percentage
-
-    if total_percent <= 0:
-        return DEFAULT_CN
-
-    # Normalizacja jesli procenty nie sumuja sie do 100
-    if abs(total_percent - 100) > 0.1:
-        weighted_cn = weighted_cn * (100 / total_percent)
-
-    final_cn = round(weighted_cn, 1)
-    return max(0, min(100, final_cn))
+    # Hydrolog annotates the CN as int; its formulas take the weighted CN of a
+    # watershed, as the hydrograph passes it (api/endpoints/hydrograph.py).
+    return SCSCN(cn=cn).adjust_cn_for_amc(amc)  # type: ignore[arg-type]

@@ -7,8 +7,8 @@ source has nothing there. The terrain comes from the rasters of the preprocessin
 depressions, the BDOT10k streams and the precomputed sub-catchments from PostGIS;
 the main channel at the sub-catchment's segment and the distance to the outlet of
 the network from the in-memory ``CatchmentGraph``. The CN of the land cover is the
-AMC II value of the catchment CN, converted to AMC I and III by Hydrolog as for
-the hydrograph.
+AMC II value of its soil-cover complex, as in the catchment CN (ADR-075), converted
+to AMC I and III by Hydrolog as for the hydrograph.
 
 The BDOT10k water bodies (``OT_PTWP_A``: lakes, ponds and wide rivers drawn as
 polygons) are not in the database: the bootstrap writes them only to
@@ -34,6 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import CatchmentGraph
+from core.cn_tables import DEFAULT_HSG, complex_cn
 
 logger = logging.getLogger(__name__)
 
@@ -77,23 +78,35 @@ def sample_raster(path: str, x: float, y: float) -> float | None:
     return value
 
 
-def land_cover_at(db: Session, x: float, y: float) -> dict[str, Any] | None:
+def land_cover_at(
+    db: Session, x: float, y: float, hsg: str | None
+) -> dict[str, Any] | None:
     """Land cover polygon containing the point (the smallest where they overlap).
 
-    The CN of the category is the AMC II value the catchment CN averages
-    (``core/land_cover.py``), independent of the soil group; Hydrolog converts it
-    to AMC I and III with the conversion the hydrograph uses.
+    The CN is that of the complex of the land cover and the soil group of the point
+    (``core/cn_tables.py``), the AMC II value the catchment CN averages, with group
+    ``DEFAULT_HSG`` where the point has none; Hydrolog converts it to AMC I and III
+    with the conversion the hydrograph uses.
+
+    Parameters
+    ----------
+    db : Session
+        Database session.
+    x, y : float
+        The point, EPSG:2180.
+    hsg : str | None
+        Hydrologic soil group of the point (``soil_group_at``).
 
     Returns
     -------
     dict | None
         ``category``, ``cn`` (AMC II), ``cn_amc_i`` and ``cn_amc_iii``,
-        ``imperviousness`` (0–1 or None) and ``bdot_class`` (BDOT10k layer code
+        ``imperviousness`` (0–1 or None) and ``bdot_class`` (the source of the row
         or None)
     """
     row = db.execute(
         text("""
-            SELECT category, cn_value, imperviousness, bdot_class
+            SELECT category, imperviousness, bdot_class
             FROM land_cover
             WHERE ST_Contains(geom, ST_SetSRID(ST_Point(:x, :y), 2180))
             ORDER BY ST_Area(geom)
@@ -103,7 +116,7 @@ def land_cover_at(db: Session, x: float, y: float) -> dict[str, Any] | None:
     ).fetchone()
     if row is None:
         return None
-    cn = int(row.cn_value)
+    cn = complex_cn(row.category, row.bdot_class, hsg or DEFAULT_HSG)
     scs = SCSCN(cn=cn)
     return {
         "category": row.category,

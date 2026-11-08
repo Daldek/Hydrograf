@@ -129,7 +129,8 @@ def identify_point(
         water_body = water_body_at(
             settings.frontend_data_dir, request.longitude, request.latitude
         )
-        land_cover = land_cover_at(db, x, y)
+        soil_hsg = soil_group_at(db, x, y)
+        land_cover = land_cover_at(db, x, y, soil_hsg)
         depression = depression_at(db, x, y)
         subcatchment = subcatchment_at(db, x, y, threshold)
         if subcatchment is not None:
@@ -162,7 +163,7 @@ def identify_point(
             stream=None if stream is None else PointStream(**stream),
             water_body=None if water_body is None else PointWaterBody(**water_body),
             land_cover=None if land_cover is None else PointLandCover(**land_cover),
-            soil_hsg=soil_group_at(db, x, y),
+            soil_hsg=soil_hsg,
             depression=None if depression is None else PointDepression(**depression),
             subcatchment=(
                 None

@@ -236,6 +236,10 @@ CREATE INDEX idx_cn_value ON land_cover(cn_value);
 COMMENT ON TABLE land_cover IS 'Land cover of BDOT10k, a partition of the area (ADR-074)';
 COMMENT ON COLUMN land_cover.category IS 'Category: las, łąka, grunt_orny, etc.';
 COMMENT ON COLUMN land_cover.cn_value IS 'CN of the category for AMC II (one value per category)';
+-- Since ADR-075 nothing reads cn_value: the CN depends on the soil group and is computed
+-- per complex (land cover x soil_hsg, core/cn_tables.py). The import still writes it;
+-- the column is dropped when both feat/cn-by-soil-group and feat/landcover-industry
+-- are merged (migration + the importer's CATEGORY_CN, plan 2026-11-08-cn-by-soil-group).
 COMMENT ON COLUMN land_cover.imperviousness IS 'Imperviousness of the source (0 = pervious, 1 = impervious)';
 COMMENT ON COLUMN land_cover.bdot_class IS 'Source: the BDOT10k layer, with the attribute value that decided the category (PTLZ, PTZB:przem.-skład., KUPG:baza paliw)';
 ```

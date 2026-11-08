@@ -199,7 +199,6 @@ def get_landcover_tile(
                     4096, 64, true
                 ) AS geom,
                 lc.category,
-                lc.cn_value,
                 lc.bdot_class
             FROM land_cover lc
             WHERE lc.geom IS NOT NULL
