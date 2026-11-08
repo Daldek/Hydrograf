@@ -932,55 +932,60 @@ def smooth_streams_monotonic(
     return smoothed, diag
 
 
-def _sample_dem_at_point(
-    dem: np.ndarray,
-    transform: Affine,
-    x: float,
-    y: float,
-    nodata: float,
-    search_radius: int = 3,
-) -> float | None:
+# A watercourse line within LAKE_SNAP_M of a water body belongs to it: BDOT10k lines
+# often stop short of the shore (on the Hydroni area the median gap of the lines near a
+# lake is 9 m, the 90th percentile 17 m), and water bodies within LAKE_SNAP_M of each
+# other (reeds, marshes) are classified as one
+LAKE_SNAP_M = 20.0
+# Floating-point slack of the length of a line beyond its contact with a lake [m]
+_LAKE_CONTACT_EPS_M = 1e-6
+
+
+def _flow_leaves_lake(line: BaseGeometry, lake: BaseGeometry) -> bool:
+    """Say whether the flow of a line, in the order of its vertices, leaves a lake.
+
+    The flow of the line starts at the lake where the two meet: after the last point
+    they have in common (a line that crosses the lake passes through it), or at the
+    first vertex of a line that does not reach the lake but begins within
+    ``LAKE_SNAP_M`` of it. The flow leaves the lake when the line has a part beyond that
+    point. A line that ends in the lake, at its shore or within ``LAKE_SNAP_M`` short
+    of it brings water in; so does a line that merely passes within ``LAKE_SNAP_M``
+    without touching and without beginning there.
     """
-    Sample DEM elevation at a geographic point.
+    import shapely
+    from shapely.geometry import Point
 
-    Parameters
-    ----------
-    dem : np.ndarray
-        DEM array
-    transform : Affine
-        Rasterio Affine transform
-    x, y : float
-        Coordinates in DEM CRS (e.g. EPSG:2180)
-    nodata : float
-        NoData value
-    search_radius : int
-        Search radius (in cells) when the exact cell is NoData
+    hit = line.intersection(lake)
+    if not hit.is_empty:
+        points = shapely.points(shapely.get_coordinates(hit))
+        reach_m = float(shapely.line_locate_point(line, points).max())
+    elif lake.distance(Point(line.coords[0])) <= LAKE_SNAP_M:
+        reach_m = 0.0
+    else:
+        return False
+    return bool(line.length - reach_m > _LAKE_CONTACT_EPS_M)
 
-    Returns
-    -------
-    float or None
-        Elevation value, or None if no valid cell found within search radius.
+
+def _in_flow_order(
+    line: BaseGeometry, dem: np.ndarray, transform: Affine, nodata: float
+) -> tuple[BaseGeometry, bool]:
+    """Return a stream line in the order of its flow, and whether it was reversed.
+
+    BDOT10k digitizes a watercourse downstream, so a line keeps its vertex order unless
+    the DEM along it rises that way (``_rises_downstream``): the rule of the stream
+    smoothing (ADR-072), which gives the burned line that direction of flow.
     """
-    inv_transform = ~transform
-    col_f, row_f = inv_transform * (x, y)
-    row, col = int(row_f), int(col_f)
-    nrows, ncols = dem.shape
+    from shapely.geometry import LineString
 
-    if 0 <= row < nrows and 0 <= col < ncols and dem[row, col] != nodata:
-        return float(dem[row, col])
-
-    # Search neighbors in expanding square
-    best_val = None
-    best_dist_sq = float("inf")
-    for dr in range(-search_radius, search_radius + 1):
-        for dc in range(-search_radius, search_radius + 1):
-            nr, nc = row + dr, col + dc
-            if 0 <= nr < nrows and 0 <= nc < ncols and dem[nr, nc] != nodata:
-                dist_sq = dr * dr + dc * dc
-                if dist_sq < best_dist_sq:
-                    best_dist_sq = dist_sq
-                    best_val = float(dem[nr, nc])
-    return best_val
+    cells = _rasterize_line_ordered(line, transform, shape=dem.shape)
+    if len(cells) < 2:
+        return line, False
+    rows = np.array([row for row, _ in cells], dtype=np.intp)
+    cols = np.array([col for _, col in cells], dtype=np.intp)
+    values = dem[rows, cols]
+    if _rises_downstream(values[values != nodata], abs(transform.a)):
+        return LineString(list(line.coords)[::-1]), True
+    return line, False
 
 
 def classify_endorheic_lakes(
@@ -995,9 +1000,23 @@ def classify_endorheic_lakes(
     Classify water bodies and return drain points for endorheic lakes.
 
     Reads water body polygons (OT_PTWP_A) and stream lines (OT_SWRS_L,
-    OT_SWKN_L, OT_SWRM_L) from a BDOT10k GeoPackage. For each water body,
-    determines if it is endorheic (no outflow) or exorheic (has outflow)
-    based on touching streams and DEM elevation analysis.
+    OT_SWKN_L, OT_SWRM_L) from a BDOT10k GeoPackage. A water body is exorheic
+    (przepływowy) when any watercourse line leaves it, and endorheic (bezodpływowy)
+    otherwise: every line of the three layers counts, whatever its kind or name.
+
+    A line leaves a water body when its flow starts at it and goes on outside it
+    (``_flow_leaves_lake``): the line has a part beyond its last contact with the
+    water body, so a line that starts at the shore, begins within ``LAKE_SNAP_M`` of
+    it, or crosses it leaves it; a line that ends at it or in it is an inflow. The
+    flow of a line goes the way BDOT10k digitizes it (a watercourse is digitized
+    downstream) unless the DEM along it rises that way by more than 2 m on at least
+    200 m, a line digitized upstream (``_in_flow_order``, the rule of ADR-072): the
+    DEM is read along the lines near water bodies only, and the DEM of the pipeline
+    has the burned and smoothed streams. The DEM never decides anything else, and a
+    line's elevations at its ends are not compared.
+
+    Water bodies within ``LAKE_SNAP_M`` of each other form one cluster that is
+    classified as a whole: an outflow of any of them makes all of them exorheic.
 
     Parameters
     ----------
@@ -1020,10 +1039,12 @@ def classify_endorheic_lakes(
     tuple
         (drain_points, diagnostics) where:
         - drain_points: list of (row, col) for each endorheic lake
-        - diagnostics: dict with classification stats
+        - diagnostics: dict with classification stats (``streams_analyzed``: the lines
+          near water bodies that were examined, ``streams_reversed``: those taken
+          against their digitized direction)
     """
     import geopandas as gpd
-    from shapely.geometry import Point, box
+    from shapely.geometry import box
 
     gpkg_path = Path(gpkg_path)
     diagnostics = {
@@ -1032,7 +1053,7 @@ def classify_endorheic_lakes(
         "exorheic": 0,
         "clusters": 0,
         "streams_analyzed": 0,
-        "undetermined": 0,
+        "streams_reversed": 0,
         "filtered_by_area": 0,
     }
     drain_points: list[tuple[int, int]] = []
@@ -1151,15 +1172,18 @@ def classify_endorheic_lakes(
             streams = streams.set_crs(stream_gdfs[0].crs)
     else:
         streams = gpd.GeoDataFrame(geometry=[], crs="EPSG:2180")
+    # One row per LineString, with the vertex order of BDOT10k
+    streams = streams[streams.geometry.notna() & ~streams.geometry.is_empty]
+    streams = streams.explode(index_parts=False, ignore_index=True)
+    streams = streams[streams.geom_type == "LineString"].reset_index(drop=True)
 
     # 3. Cluster touching lakes (buffer → merge → explode)
     #    Bridges gaps through reeds/marshes so connected water bodies
     #    are classified as a single unit.
     from shapely.ops import unary_union
 
-    CLUSTER_BUFFER_M = 20
     lake_geoms = [g for g in lakes.geometry if g is not None and not g.is_empty]
-    buffered = unary_union([g.buffer(CLUSTER_BUFFER_M) for g in lake_geoms])
+    buffered = unary_union([g.buffer(LAKE_SNAP_M) for g in lake_geoms])
 
     # Explode multipolygon into individual clusters
     if buffered.geom_type == "MultiPolygon":
@@ -1183,66 +1207,34 @@ def classify_endorheic_lakes(
     diagnostics["clusters"] = len(cluster_lakes)
     logger.info(
         f"  {len(lake_geoms)} lakes grouped into "
-        f"{len(cluster_lakes)} clusters (buffer={CLUSTER_BUFFER_M}m)"
+        f"{len(cluster_lakes)} clusters (buffer={LAKE_SNAP_M}m)"
     )
 
-    # 4. Classify each cluster
+    # 4. Classify each cluster: exorheic when the flow of any line near it leaves it
+    line_geoms = streams.geometry.values
+    in_flow_order: dict[int, BaseGeometry] = {}
     for _ci, members in cluster_lakes.items():
         # Union of all lake geometries in this cluster
         cluster_geom = unary_union(members) if len(members) > 1 else members[0]
 
-        # Find touching streams (20m buffer for snapping tolerance)
-        if streams.empty:
-            touching = streams.iloc[0:0]
-        else:
-            touching = streams[
-                streams.intersects(cluster_geom.buffer(CLUSTER_BUFFER_M))
-            ]
-
-        if touching.empty:
-            # No streams at all → endorheic
-            diagnostics["endorheic"] += len(members)
-            for lake_geom in members:
-                _add_drain_point(dem, transform, lake_geom, nodata, drain_points)
-            continue
-
-        # Analyze each touching stream for inflow/outflow
-        has_outflow = False
-        diagnostics["streams_analyzed"] += len(touching)
-
-        for _s_idx, stream_row in touching.iterrows():
-            stream_geom = stream_row.geometry
-            if stream_geom is None or stream_geom.is_empty:
-                continue
-
-            coords = list(stream_geom.coords)
-            if len(coords) < 2:
-                continue
-
-            start_pt = Point(coords[0])
-            end_pt = Point(coords[-1])
-
-            start_dist = cluster_geom.distance(start_pt)
-            end_dist = cluster_geom.distance(end_pt)
-
-            if start_dist <= end_dist:
-                near_pt = start_pt
-                far_pt = end_pt
-            else:
-                near_pt = end_pt
-                far_pt = start_pt
-
-            near_elev = _sample_dem_at_point(
-                dem, transform, near_pt.x, near_pt.y, nodata
+        near = (
+            streams.sindex.query(
+                cluster_geom.buffer(LAKE_SNAP_M), predicate="intersects"
             )
-            far_elev = _sample_dem_at_point(dem, transform, far_pt.x, far_pt.y, nodata)
+            if len(line_geoms)
+            else []
+        )
 
-            if near_elev is None or far_elev is None:
-                diagnostics["undetermined"] += 1
-                continue  # treat as inflow (conservative)
-
-            if far_elev < near_elev - 0.1:
-                # Far end is lower → outflow (water flows away)
+        has_outflow = False
+        for line_idx in near:
+            line_idx = int(line_idx)
+            if line_idx not in in_flow_order:
+                diagnostics["streams_analyzed"] += 1
+                in_flow_order[line_idx], was_reversed = _in_flow_order(
+                    line_geoms[line_idx], dem, transform, nodata
+                )
+                diagnostics["streams_reversed"] += was_reversed
+            if _flow_leaves_lake(in_flow_order[line_idx], cluster_geom):
                 has_outflow = True
                 break
 
