@@ -7,7 +7,8 @@ sink fixing, and flow accumulation recomputation.
 """
 
 import logging
-from collections import defaultdict, deque
+import math
+from collections import Counter, defaultdict, deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -500,6 +501,12 @@ def _bresenham(r0: int, c0: int, r1: int, c1: int) -> list[tuple[int, int]]:
     return cells
 
 
+def _cell_of(transform: Affine, x: float, y: float) -> tuple[int, int]:
+    """Return the (row, col) of the raster cell that contains a point."""
+    col, row = ~transform * (x, y)
+    return math.floor(row), math.floor(col)
+
+
 def _rasterize_line_ordered(
     line: BaseGeometry,
     transform: Affine,
@@ -507,8 +514,9 @@ def _rasterize_line_ordered(
 ) -> list[tuple[int, int]]:
     """Rasterize a LineString to an ordered sequence of (row, col) cells.
 
-    Uses Bresenham between consecutive vertices. Deduplicates cells
-    at segment junctions. Optionally clips to raster shape.
+    Uses Bresenham between the cells that contain consecutive vertices, the cells
+    the stream burning lowers (ADR-072). Deduplicates cells at segment junctions.
+    Optionally clips to raster shape.
 
     Extension vs spec: added optional ``shape`` for bounds clipping.
     """
@@ -518,12 +526,8 @@ def _rasterize_line_ordered(
 
     cells: list[tuple[int, int]] = []
     for i in range(len(coords) - 1):
-        x0, y0 = coords[i][:2]
-        x1, y1 = coords[i + 1][:2]
-        col0, row0 = ~transform * (x0, y0)
-        col1, row1 = ~transform * (x1, y1)
-        r0, c0 = int(round(row0)), int(round(col0))
-        r1, c1 = int(round(row1)), int(round(col1))
+        r0, c0 = _cell_of(transform, *coords[i][:2])
+        r1, c1 = _cell_of(transform, *coords[i + 1][:2])
         segment = _bresenham(r0, c0, r1, c1)
         if cells and segment and segment[0] == cells[-1]:
             segment = segment[1:]
@@ -536,126 +540,239 @@ def _rasterize_line_ordered(
     return cells
 
 
-def _build_stream_network_graph(
+# The smoothing takes a stream line the way it is digitized (BDOT10k digitizes a
+# watercourse downstream) unless the DEM along it rises that way by more than
+# REVERSED_LINE_RISE_M between the lowest cells of its first and last quarter, which
+# is a line digitized upstream; only on a profile of at least
+# REVERSED_LINE_MIN_LENGTH_M, whose quarters are longer than an embankment (ADR-072)
+REVERSED_LINE_RISE_M = 2.0
+REVERSED_LINE_MIN_LENGTH_M = 200.0
+# A line that ends inside the data where no line goes on continues into the nearest
+# line that begins where no line ends, within LINE_GAP_M: two features of one
+# watercourse digitized apart (ADR-072)
+LINE_GAP_M = 50.0
+
+
+def _line_nodes(
     geometries: list[Any],
-    dem: np.ndarray,
     transform: Affine,
     snap_tolerance_px: int = 1,
-) -> tuple[dict[int, list[tuple[int, int]]], dict[int, tuple[int, int]], list[int]]:
-    """Build a topology graph from stream LineString geometries.
+) -> tuple[dict[int, tuple[int, int]], dict[int, tuple[int, int]]]:
+    """Give the ends of the stream lines the nodes of their network.
 
-    Endpoints are snapped to raster pixels. Nodes within snap_tolerance_px
-    of each other are merged.
+    Each end is snapped to the raster cell that contains it, the first or last cell of
+    the line (``_rasterize_line_ordered``); an end within ``snap_tolerance_px`` cells
+    (in rows and in columns) of a node already made joins that node, the first one
+    made; the ends are taken line by line, the first point of a line before its last.
 
     Returns
     -------
-    graph : dict
-        {node_id: [(neighbor_node_id, segment_index), ...]}
-    seg_nodes : dict
-        {segment_index: (start_node, end_node)}; start corresponds to
-        geometry coords[0], end to coords[-1].
-    outlets : list
-        Outlet node IDs (one per connected component).
+    tuple
+        ({line index: (node of its first point, node of its last point)}, the first
+        point being where the line begins as digitized; {node: (row, col) of its cell})
     """
-    nrows, ncols = dem.shape
+    node_of_cell: dict[tuple[int, int], int] = {}
 
-    endpoints = []
+    def node(x: float, y: float) -> int:
+        cell = _cell_of(transform, x, y)
+        for (node_row, node_col), node_id in node_of_cell.items():
+            if (
+                abs(node_row - cell[0]) <= snap_tolerance_px
+                and abs(node_col - cell[1]) <= snap_tolerance_px
+            ):
+                return node_id
+        node_of_cell[cell] = len(node_of_cell)
+        return node_of_cell[cell]
+
+    ends: dict[int, tuple[int, int]] = {}
     for idx, geom in enumerate(geometries):
         coords = list(geom.coords)
         if len(coords) < 2:
             continue
-        for pt, is_start in [(coords[0], True), (coords[-1], False)]:
-            x, y = pt[:2]
-            col, row = ~transform * (x, y)
-            r, c = int(round(row)), int(round(col))
-            endpoints.append((r, c, idx, is_start))
+        first = node(*coords[0][:2])
+        ends[idx] = (first, node(*coords[-1][:2]))
+    return ends, {node_id: cell for cell, node_id in node_of_cell.items()}
 
-    node_for_point: dict[tuple[int, int], int] = {}
-    next_node_id = 0
 
-    def get_or_create_node(r: int, c: int) -> int:
-        nonlocal next_node_id
-        for (nr, nc), nid in node_for_point.items():
-            if abs(nr - r) <= snap_tolerance_px and abs(nc - c) <= snap_tolerance_px:
-                return nid
-        node_for_point[(r, c)] = next_node_id
-        next_node_id += 1
-        return next_node_id - 1
+def _gap_joins(
+    ends: dict[int, tuple[int, int]],
+    node_cells: dict[int, tuple[int, int]],
+    dem: np.ndarray,
+    nodata: float,
+    cellsize_m: float,
+) -> list[tuple[int, int]]:
+    """Find the gaps between the features of a watercourse that the smoothing bridges.
 
-    seg_nodes: dict[int, tuple[int | None, int | None]] = {}
-    for r, c, idx, is_start in endpoints:
-        nid = get_or_create_node(r, c)
-        if idx not in seg_nodes:
-            seg_nodes[idx] = (None, None)
-        if is_start:
-            seg_nodes[idx] = (nid, seg_nodes[idx][1])
-        else:
-            seg_nodes[idx] = (seg_nodes[idx][0], nid)
+    A dead end is a node where lines end and none begins, on a cell with data: the
+    line stops inside the data, and its descent would end in a pit that the fill
+    raises until it spills, maybe out at the upstream crossing of the river. An open
+    start is a node where lines begin and none ends. Each dead end is joined to the
+    nearest open start within LINE_GAP_M (between their cells) whose lines do not lead
+    back to it, the joins made before included; a stream that ends in the data without
+    one stays a dead end.
 
-    graph: dict[int, list[tuple[int, int]]] = defaultdict(list)
-    for idx, (n_start, n_end) in seg_nodes.items():
-        if n_start is None or n_end is None or n_start == n_end:
-            continue
-        graph[n_start].append((n_end, idx))
-        graph[n_end].append((n_start, idx))
+    Returns
+    -------
+    list
+        (dead end, open start) pairs, by dead end.
+    """
+    downstream: dict[int, list[int]] = defaultdict(list)
+    incoming: Counter[int] = Counter()
+    for first, last in ends.values():
+        if first != last:
+            downstream[first].append(last)
+            incoming[last] += 1
+    starts = sorted(node for node in downstream if not incoming[node])
+    if not starts:
+        return []
+    start_cells = np.array([node_cells[node] for node in starts], dtype=np.float64)
 
-    for nid in range(next_node_id):
-        if nid not in graph:
-            graph[nid] = []
-
-    node_coords = {nid: (r, c) for (r, c), nid in node_for_point.items()}
-    outlets = []
-    visited: set[int] = set()
-
-    def _clamp_elev(n: int) -> float:
-        if n not in node_coords:
-            return float("inf")
-        r, c = node_coords[n]
-        r = max(0, min(r, nrows - 1))
-        c = max(0, min(c, ncols - 1))
-        return float(dem[r, c])
-
-    for start_nid in range(next_node_id):
-        if start_nid in visited:
-            continue
-        component: list[int] = []
-        queue = deque([start_nid])
-        visited.add(start_nid)
+    def leads_to(source: int, target: int) -> bool:
+        seen = {source}
+        queue = deque([source])
         while queue:
-            nid = queue.popleft()
-            component.append(nid)
-            for neighbor, _ in graph[nid]:
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append(neighbor)
+            node = queue.popleft()
+            if node == target:
+                return True
+            for below in downstream[node]:
+                if below not in seen:
+                    seen.add(below)
+                    queue.append(below)
+        return False
 
-        degree_one = [n for n in component if len(graph[n]) == 1]
-        if not degree_one:
-            degree_one = component
+    nrows, ncols = dem.shape
+    joins = []
+    for node in sorted(node for node in incoming if not downstream[node]):
+        row, col = node_cells[node]
+        if not (0 <= row < nrows and 0 <= col < ncols) or dem[row, col] == nodata:
+            continue
+        gaps_m = np.hypot(start_cells[:, 0] - row, start_cells[:, 1] - col) * cellsize_m
+        for nearest in np.argsort(gaps_m, kind="stable"):
+            if gaps_m[nearest] > LINE_GAP_M:
+                break
+            start = starts[nearest]
+            if not leads_to(start, node):
+                joins.append((node, start))
+                downstream[node].append(start)
+                break
+    return joins
 
-        edge_nodes = [
-            n
-            for n in degree_one
-            if n in node_coords
-            and (
-                node_coords[n][0] <= 0
-                or node_coords[n][0] >= nrows - 1
-                or node_coords[n][1] <= 0
-                or node_coords[n][1] >= ncols - 1
-            )
-        ]
 
-        candidates = edge_nodes if edge_nodes else degree_one
-        outlets.append(min(candidates, key=_clamp_elev))
+def _rises_downstream(values: np.ndarray, cellsize_m: float) -> bool:
+    """Say whether the DEM along a stream line rises the way it is digitized.
 
-    # Filter out incomplete segment mappings
-    seg_nodes_clean: dict[int, tuple[int, int]] = {
-        idx: (s, e)
-        for idx, (s, e) in seg_nodes.items()
-        if s is not None and e is not None
-    }
+    ``values`` are the DEM values of the line's cells with data, in the order the line
+    is digitized. The lowest value of its last quarter must exceed the lowest of its
+    first quarter by more than REVERSED_LINE_RISE_M, on a profile of at least
+    REVERSED_LINE_MIN_LENGTH_M: a bridge or an embankment inside a quarter does not
+    count, and a water surface on a flat valley rises by far less.
+    """
+    if values.size < 2 or values.size * cellsize_m < REVERSED_LINE_MIN_LENGTH_M:
+        return False
+    quarter = max(values.size // 4, 1)
+    rise_m = float(values[-quarter:].min()) - float(values[:quarter].min())
+    return rise_m > REVERSED_LINE_RISE_M
 
-    return dict(graph), seg_nodes_clean, outlets
+
+def _flow_order(ends: dict[int, tuple[int, int]]) -> tuple[list[int], int]:
+    """Order the stream lines so each comes after every line ending at its first node.
+
+    Kahn's algorithm over the nodes: a node is taken once every line ending at it is
+    ordered, then the lines beginning at it, by index. A directed cycle has no such
+    order: when no node can be taken, the first node of the lowest-numbered line left
+    is taken as it is. A line that ends where it begins is left out.
+
+    Returns
+    -------
+    tuple
+        (the indices of the lines in that order, the number of lines ordered before a
+        line ending at their first node because of a cycle)
+    """
+    lines = sorted(line for line, (first, last) in ends.items() if first != last)
+    outgoing: dict[int, list[int]] = defaultdict(list)
+    waiting: dict[int, int] = defaultdict(int)
+    for line in lines:
+        first, last = ends[line]
+        outgoing[first].append(line)
+        waiting[last] += 1
+    order: list[int] = []
+    ordered: set[int] = set()
+    ready = deque(node for node in sorted(outgoing) if waiting[node] == 0)
+
+    def take(node: int) -> int:
+        taken = 0
+        for line in outgoing[node]:
+            if line in ordered:
+                continue
+            ordered.add(line)
+            order.append(line)
+            taken += 1
+            last = ends[line][1]
+            waiting[last] -= 1
+            if waiting[last] == 0:
+                ready.append(last)
+        return taken
+
+    out_of_order = 0
+    next_line = 0
+    while len(order) < len(lines):
+        if ready:
+            take(ready.popleft())
+            continue
+        while lines[next_line] in ordered:
+            next_line += 1
+        out_of_order += take(ends[lines[next_line]][0])
+    return order, out_of_order
+
+
+@numba.njit(cache=True)
+def _descend_strictly(
+    dem: np.ndarray,
+    rows: np.ndarray,
+    cols: np.ndarray,
+    nodata: float,
+    start: float,
+) -> tuple[float, int, int, float, float]:
+    """Lower the cells of a stream line so each lies strictly below the one before it.
+
+    The cells are in the order of the flow and ``start`` is the value the line must
+    begin below (+inf at a source). A cell higher than the lowest value before it (an
+    obstruction: a bridge, an embankment) is cut to just below the cell before it;
+    any other cell not below the cell before it is lowered by one float32 step, the
+    resolution at which pyflwdir's depression fill orders the cells, so the profile
+    has no flat. Cells without data are passed over.
+
+    Returns
+    -------
+    tuple
+        (the value of the last cell with data, or ``start`` without one; the cells
+        cut; the cells lowered by a step; the largest cut [m]; the sum of the cuts [m])
+    """
+    running = start
+    lowest = start
+    cut = 0
+    stepped = 0
+    largest = 0.0
+    total = 0.0
+    for i in range(rows.size):
+        value = dem[rows[i], cols[i]]
+        if value == nodata:
+            continue
+        below = np.nextafter(np.float32(running), np.float32(-np.inf))
+        if value > below:
+            if value > lowest:
+                cut += 1
+                correction = value - below
+                total += correction
+                if correction > largest:
+                    largest = correction
+            else:
+                stepped += 1
+            dem[rows[i], cols[i]] = below
+        if value < lowest:
+            lowest = value
+        running = dem[rows[i], cols[i]]
+    return running, cut, stepped, largest, total
 
 
 def smooth_streams_monotonic(
@@ -665,12 +782,25 @@ def smooth_streams_monotonic(
     nodata: float = -9999.0,
     stream_burning: str = "all",
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    """Enforce monotonically decreasing elevation along stream channels.
+    """Make every burned stream line descend strictly in the direction of its flow.
 
-    Loads stream geometries, builds a topology graph, and applies a
-    running-minimum downstream pass from sources to outlets. At
-    confluences the minimum of all tributary last-elevations is used
-    as the running value for the downstream segment.
+    The direction of a line is the one it is digitized in: BDOT10k digitizes a
+    watercourse downstream. A line along which the DEM rises that way by more than
+    REVERSED_LINE_RISE_M was digitized upstream and is taken the other way
+    (``_rises_downstream``). No outlet is chosen from the DEM: a river that crosses the
+    edge of the data leaves it at its downstream crossing, whichever of its two
+    crossings is lower (ADR-072).
+
+    The lines are taken in the order of the flow (``_flow_order``). A line begins
+    below the lowest value the lines ending at its first node reached, and every cell
+    of it with data ends strictly below the cell before it: a cell above is cut (a
+    bridge, an embankment), a cell as high is lowered by one float32 step. A flat
+    valley thus falls towards the downstream end by steps of micrometres, and the
+    depression fill, which drains a flat towards whichever of its outlets it reaches
+    first, cannot send it out of the data at the upstream crossing. A gap of up to
+    LINE_GAP_M between two features of a watercourse is bridged by a straight run of
+    cells that descends the same way (``_gap_joins``), so the descent does not end in
+    a pit.
 
     Parameters
     ----------
@@ -690,163 +820,115 @@ def smooth_streams_monotonic(
     -------
     tuple
         (smoothed_dem, diagnostics) where diagnostics contains:
-        - segments_processed: int
-        - segments_skipped: int
-        - cells_smoothed: int
-        - cells_unchanged: int
-        - max_correction_m: float
-        - mean_correction_m: float
-        - disconnected_components: int
+        - segments_processed: lines with at least two cells in the DEM
+        - segments_skipped: lines with fewer, or ending where they begin
+        - segments_reversed: lines taken against their digitized direction
+        - segments_out_of_order: lines of a directed cycle, taken before a line
+          ending at their first node
+        - gaps_bridged: gaps between features bridged
+        - cells_smoothed: cells cut to below the cell before them
+        - cells_stepped: cells as high as the cell before them, lowered by a step
+        - cells_unchanged: the other cells of the lines with data
+        - max_correction_m, mean_correction_m: of the cut cells
     """
+    from shapely.geometry import LineString
+
     smoothed = dem.copy()
-    diag = {
+    diag: dict[str, Any] = {
         "segments_processed": 0,
         "segments_skipped": 0,
+        "segments_reversed": 0,
+        "segments_out_of_order": 0,
+        "gaps_bridged": 0,
         "cells_smoothed": 0,
+        "cells_stepped": 0,
         "cells_unchanged": 0,
         "max_correction_m": 0.0,
         "mean_correction_m": 0.0,
-        "disconnected_components": 0,
     }
-
-    # 1. Load geometries (filter to LineStrings only for smoothing)
-    from shapely.geometry import LineString as _LS
-
-    all_geoms = _load_stream_geometries(
-        streams_path, transform, dem.shape, stream_burning
-    )
-    geoms = [g for g in all_geoms if isinstance(g, _LS)]
+    geoms = [
+        geom
+        for geom in _load_stream_geometries(
+            streams_path, transform, dem.shape, stream_burning
+        )
+        if isinstance(geom, LineString)
+    ]
     if not geoms:
         return smoothed, diag
 
-    # 2. Rasterize each segment
-    seg_cells: dict[int, list[tuple[int, int]]] = {}
-    valid_geoms = []
-    for idx, geom in enumerate(geoms):
-        cells = _rasterize_line_ordered(geom, transform, shape=dem.shape)
-        if len(cells) < 2:
+    # The cells of each line in the direction of its flow, the nodes it joins
+    ends, node_cells = _line_nodes(geoms, transform)
+    cellsize_m = abs(transform.a)
+    cells_of: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    for line, (first, last) in ends.items():
+        cells = _rasterize_line_ordered(geoms[line], transform, shape=dem.shape)
+        if len(cells) < 2 or first == last:
             diag["segments_skipped"] += 1
-            continue
-        seg_cells[idx] = cells
-        valid_geoms.append((idx, geom))
+            cells = []
+        else:
+            diag["segments_processed"] += 1
+        rows = np.array([row for row, _ in cells], dtype=np.intp)
+        cols = np.array([col for _, col in cells], dtype=np.intp)
+        values = dem[rows, cols]
+        if _rises_downstream(values[values != nodata], cellsize_m):
+            rows, cols = rows[::-1].copy(), cols[::-1].copy()
+            ends[line] = (last, first)
+            diag["segments_reversed"] += 1
+        cells_of[line] = (rows, cols)
+    # The bridges of the gaps, as lines numbered after the real ones
+    nrows, ncols = dem.shape
+    for bridge, (dead_end, start) in enumerate(
+        _gap_joins(ends, node_cells, dem, nodata, cellsize_m), start=len(geoms)
+    ):
+        cells = [
+            (row, col)
+            for row, col in _bresenham(*node_cells[dead_end], *node_cells[start])
+            if 0 <= row < nrows and 0 <= col < ncols
+        ]
+        ends[bridge] = (dead_end, start)
+        cells_of[bridge] = (
+            np.array([row for row, _ in cells], dtype=np.intp),
+            np.array([col for _, col in cells], dtype=np.intp),
+        )
+        diag["gaps_bridged"] += 1
 
-    if not valid_geoms:
-        diag["segments_skipped"] = len(geoms)
-        return smoothed, diag
-
-    # Build geometry list preserving original indices for graph building
-    geom_list_for_graph = [None] * len(geoms)
-    for idx, geom in valid_geoms:
-        geom_list_for_graph[idx] = geom
-
-    # 3. Build topology graph
-    graph, seg_nodes, outlets = _build_stream_network_graph(geoms, smoothed, transform)
-    diag["disconnected_components"] = len(outlets)
-
-    # 4. Process each connected component
-    corrections: list[float] = []
-    processed_segs: set[int] = set()
-
-    for outlet in outlets:
-        # BFS from outlet to build traversal order + position lookup
-        bfs_order: list[int] = []
-        bfs_pos: dict[int, int] = {}
-        bfs_queue = deque([outlet])
-        bfs_pos[outlet] = 0
-        pos_counter = 0
-        while bfs_queue:
-            nid = bfs_queue.popleft()
-            bfs_order.append(nid)
-            for neighbor, _seg_idx in graph.get(nid, []):
-                if neighbor not in bfs_pos:
-                    pos_counter += 1
-                    bfs_pos[neighbor] = pos_counter
-                    bfs_queue.append(neighbor)
-
-        # node_last_elev: track last elevation written at each node
-        # (minimum across all incoming tributaries)
-        node_last_elev: dict[int, float] = {}
-
-        # Process in reverse BFS order (sources first → outlet last)
-        for nid in reversed(bfs_order):
-            nid_pos = bfs_pos[nid]
-            for neighbor, seg_idx in graph.get(nid, []):
-                if seg_idx not in seg_cells:
-                    continue
-                if seg_idx in processed_segs:
-                    continue
-                neighbor_pos = bfs_pos.get(neighbor)
-                if neighbor_pos is None:
-                    continue
-                # Only process when nid is upstream (farther from outlet)
-                if neighbor_pos >= nid_pos:
-                    continue
-
-                processed_segs.add(seg_idx)
-                diag["segments_processed"] += 1
-
-                cells = list(seg_cells[seg_idx])
-
-                # Direction: seg_nodes[seg_idx][0] corresponds to
-                # geometry coords[0]. If that node is not nid, reverse.
-                if seg_idx in seg_nodes:
-                    geom_start_node, _geom_end_node = seg_nodes[seg_idx]
-                    if geom_start_node != nid:
-                        cells = list(reversed(cells))
-
-                # Initialize running minimum
-                running_val = float("inf")
-                # At confluence: use min of tributary last-elevations
-                if nid in node_last_elev:
-                    running_val = min(running_val, node_last_elev[nid])
-
-                # Running-minimum downstream pass
-                for r, c in cells:
-                    val = float(smoothed[r, c])
-                    if nodata != -9999.0 and val == nodata:
-                        # Skip nodata cells
-                        continue
-                    if val == nodata:
-                        continue
-                    new_val = min(val, running_val)
-                    if new_val < val:
-                        correction = val - new_val
-                        corrections.append(correction)
-                        smoothed[r, c] = new_val
-                        diag["cells_smoothed"] += 1
-                    else:
-                        diag["cells_unchanged"] += 1
-                    running_val = new_val
-
-                # Store last elevation at downstream node
-                last_cell = cells[-1] if cells else None
-                if last_cell is not None:
-                    last_r, last_c = last_cell
-                    last_val = float(smoothed[last_r, last_c])
-                    if last_val != nodata:
-                        if neighbor in node_last_elev:
-                            node_last_elev[neighbor] = min(
-                                node_last_elev[neighbor], last_val
-                            )
-                        else:
-                            node_last_elev[neighbor] = last_val
-
-    # Count segments that were in seg_cells but not processed
-    unprocessed = set(seg_cells.keys()) - processed_segs
-    diag["segments_skipped"] += len(unprocessed)
-
-    # Compute correction statistics
-    if corrections:
-        diag["max_correction_m"] = max(corrections)
-        diag["mean_correction_m"] = sum(corrections) / len(corrections)
+    order, diag["segments_out_of_order"] = _flow_order(ends)
+    node_value: dict[int, float] = {}
+    corrections_m = 0.0
+    valid_cells = 0
+    for line in order:
+        first, last = ends[line]
+        rows, cols = cells_of[line]
+        if rows.size:
+            valid_cells += int(np.count_nonzero(smoothed[rows, cols] != nodata))
+        end_value, cut, stepped, largest, total = _descend_strictly(
+            smoothed, rows, cols, nodata, node_value.get(first, np.inf)
+        )
+        if end_value < node_value.get(last, np.inf):
+            node_value[last] = end_value
+        diag["cells_smoothed"] += cut
+        diag["cells_stepped"] += stepped
+        diag["max_correction_m"] = max(diag["max_correction_m"], largest)
+        corrections_m += total
+    diag["cells_unchanged"] = (
+        valid_cells - diag["cells_smoothed"] - diag["cells_stepped"]
+    )
+    if diag["cells_smoothed"]:
+        diag["mean_correction_m"] = corrections_m / diag["cells_smoothed"]
 
     logger.info(
-        f"Monotonic smoothing: {diag['segments_processed']} segments, "
-        f"{diag['cells_smoothed']} cells corrected, "
-        f"max={diag['max_correction_m']:.2f}m, "
-        f"mean={diag['mean_correction_m']:.2f}m"
+        "Monotonic smoothing: %d segments (%d against their digitized direction, "
+        "%d out of the flow order, %d gaps bridged), %d cells cut, %d lowered by a "
+        "step, max=%.2fm, mean=%.2fm",
+        diag["segments_processed"],
+        diag["segments_reversed"],
+        diag["segments_out_of_order"],
+        diag["gaps_bridged"],
+        diag["cells_smoothed"],
+        diag["cells_stepped"],
+        diag["max_correction_m"],
+        diag["mean_correction_m"],
     )
-
     return smoothed, diag
 
 

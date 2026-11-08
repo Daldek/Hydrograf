@@ -774,7 +774,8 @@ HYDRO_LAYER_PREFIXES = ("SWRS", "SWKN", "SWRM", "PTWP")
 ### 12.3 Use in Hydrograf
 
 - **Stream burning**: the streams are burned into the NMT for better flow directions
-  (`core/hydrology.py: burn_streams_into_dem()`), then smoothed monotonically (ADR-041).
+  (`core/hydrology.py: burn_streams_into_dem()`), then smoothed monotonically in the direction
+  the lines are digitized in, which BDOT10k gives downstream (ADR-041, ADR-072).
 - **Validation of the stream network**: the generated network is compared with the BDOT10k streams
   (`is_real_stream`, table `bdot_streams`, ADR-044).
 - **Supplementary information**: the names and the classification (river, canal, ditch).

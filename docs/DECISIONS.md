@@ -51,7 +51,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-038](#adr-038-hsg-poland-wide-cache--cleanup-extension) | Poland-wide HSG cache and the cleanup extension | accepted | 2026-03-02 |
 | [ADR-039](#adr-039-uproszczenie-selekcji-zlewni-do-czystego-st_contains) | Simplifying catchment selection to plain ST_Contains | accepted | 2026-03-05 |
 | [ADR-040](#adr-040-vector-boundary-file-support) | Vector boundary file support | accepted | 2026-03-09 |
-| [ADR-041](#adr-041-monotoniczne-wygładzanie-cieków) | Monotonic stream smoothing | accepted | 2026-03-18 |
+| [ADR-041](#adr-041-monotoniczne-wygładzanie-cieków) | Monotonic stream smoothing | amended by ADR-072 | 2026-03-18 |
 | [ADR-042](#adr-042-optymalizacja-wydajnosci-select-stream-dla-duzych-zlewni) | Performance of select-stream for large catchments | accepted | 2026-03-17 |
 | [ADR-044](#adr-044-bdot10k-stream-matching-w-preprocessingu) | BDOT10k stream matching in the preprocessing | accepted | 2026-03-23 |
 | [ADR-045](#adr-045-wfs-prg-zamiast-grid-sampling-wms-dla-teryt-discovery) | WFS PRG instead of WMS grid sampling for TERYT discovery | accepted | 2026-03-24 |
@@ -77,6 +77,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-069](decisions/0069-pmaxtp-watershed-mean-by-thiessen-polygons.md) | The PMAXTP design depth is the watershed mean by Thiessen polygons; an optional areal reduction factor of the user | accepted | 2026-11-05 |
 | [ADR-070](decisions/0070-flow-path-heads-measured-in-preprocessing.md) | Flow path heads, overland segments and channel sources measured in preprocessing | accepted | 2026-11-05 |
 | [ADR-071](decisions/0071-pgw-units-and-boundary-event-routing.md) | PGW ownership with cell-level boundary-event routing, not cycle merging | accepted (design) | 2026-11-06 |
+| [ADR-072](decisions/0072-stream-smoothing-follows-the-digitized-direction.md) | The stream smoothing follows the digitized direction and descends strictly | accepted | 2026-11-07 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were
@@ -980,6 +981,12 @@ Dodatkowo: `verify_graph()` w `CatchmentGraph` — diagnostyka spojnosci grafu p
 ---
 
 ## ADR-041: Monotoniczne wygładzanie cieków
+
+> **Amended by ADR-072 (2026-11-07):** the smoothing no longer chooses an outlet per
+> network from the DEM. Each line is taken in its digitized direction (the other way where
+> the DEM rises along it by more than 2 m), the lines in the order of the flow, and every
+> cell ends strictly below the cell before it; the cells are those that contain the
+> vertices of the line.
 
 **Data:** 2026-03-18
 **Status:** Przyjeta
