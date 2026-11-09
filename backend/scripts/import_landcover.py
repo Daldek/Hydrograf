@@ -34,9 +34,23 @@ and the areas of the categories sum to the area of the PT layers. Solar, wind an
 power plants, mines, farms and the other kinds of complex keep the land cover of the PT
 layers.
 
+The sports and recreation complexes of ``OT_KUSK_A`` (a sports and recreation complex, a
+park or square, a botanical or zoological garden) and the airports and landing fields of
+``OT_KUKO_A`` tell what their grass is: a lawn, the open space of TR-55, not a meadow
+mowed for hay (ADR-078). Their area is cut out of the ``łąka`` polygons and pieces of
+the partition, after the industrial complexes, and becomes ``inny``; the forest, the
+fields, the water, the paved surfaces and the buildings in them keep their category.
+Summer house estates, stations, car parks and the complexes of the other KU layers keep
+the land cover of the PT layers.
+
+The wetlands of ``OT_OIMK_A`` ("mokradło") are not land cover: a wet soil is the matter
+of the soil group. ``read_wetlands`` reads them and ``soils_with_wetlands`` makes the
+soil under them hydrologic soil group D; bootstrap step 5 applies them to ``soil_hsg``
+(ADR-078).
+
 ``bdot_class`` records the source of each row: the layer code, followed after a colon by
 the value of the attribute that decided its category (``PTZB:przem.-skład.``,
-``KUPG:baza paliw``).
+``KUPG:baza paliw``, ``KUSK:park``).
 
 An import replaces, in one transaction, the rows of the area of the package (the rows
 whose interior point lies in one of its polygons), so importing a package again leaves
@@ -65,6 +79,7 @@ import re
 import sys
 import time
 from collections import Counter, defaultdict
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -192,9 +207,48 @@ INDUSTRIAL_POWER_PLANT_CLASSES: dict[str, LandCoverClass] = {
 # (impervious area and open space; USDA-SCS 1986, table 2-2a, footnote 2).
 KEPT_UNDER_ZONES = frozenset({INDUSTRIAL, "woda"})
 
+# The category of the open space of the complexes below: `inny`, whose TR-55 cover is
+# open space (ADR-075). Lawns are pervious.
+OPEN_SPACE = "inny"
+
+
+def _open_space(bdot_class: str) -> LandCoverClass:
+    return LandCoverClass(OPEN_SPACE, bdot_class, 0.0)
+
+
+# The complexes, by layer and kind (RODZAJ), whose grass is a lawn, the open space of
+# TR-55 ("lawns, parks, golf courses, cemeteries, etc.", USDA-SCS 1986, table 2-2a): the
+# sports and recreation complexes of OT_KUSK_A but the summer house estates, which are
+# built-up land, and of the transport complexes of OT_KUKO_A the airports and landing
+# fields; the others are paved (ADR-078).
+OPEN_SPACE_COMPLEX_CLASSES: dict[tuple[str, str], LandCoverClass] = {
+    ("KUKO", "lotnisko lub lądowisko"): _open_space("KUKO:lotnisko"),
+    ("KUSK", "kompleks sportowo-rekreacyjny"): _open_space("KUSK:kompl. sport."),
+    ("KUSK", "park lub skwer"): _open_space("KUSK:park"),
+    ("KUSK", "ogród botaniczny"): _open_space("KUSK:ogród botan."),
+    ("KUSK", "ogród zoologiczny"): _open_space("KUSK:ogród zoolog."),
+}
+
+# The category that an open-space complex replaces: the grass of the partition (PTTR
+# roślinność trawiasta, and PTRK and PTUT, which ADR-074 counts with it). The open space
+# of TR-55 is grass, its CN "equivalent to those of pasture"; forest, fields, water,
+# paved surfaces and buildings keep the covers of their own, and a park of trees and
+# lawns is the composite of woods and open space (table 2-2a, footnote 3).
+REPLACED_BY_OPEN_SPACE = frozenset({"łąka"})
+
+# The layers of complexes that overlay the partition.
+COMPLEX_LAYERS = frozenset({"KUPG", "KUKO", "KUSK"})
+
 # A layer of the package that the import reads: "OT_PTLZ_A" or "PTLZ", "OT_KUPG_A".
-_LAYER_NAME = re.compile(r"(?:OT_)?(PT[A-Z]{2}|KUPG)(?:_A)?")
+_LAYER_NAME = re.compile(r"(?:OT_)?(PT[A-Z]{2}|KUPG|KUKO|KUSK)(?:_A)?")
 _READ_COLUMNS = ["RODZAJ", "MATERIALNAWIERZCHNI", "RODZAJELEKTROWNI"]
+
+# The wetland layer of a package, "OT_OIMK_A" or "OIMK", and the hydrologic soil group
+# of the soil under a wetland: an undrained wet soil, with its water table near the
+# surface, is group D (USDA-NRCS 2009, NEH 630, chapter 7: the second letter of a dual
+# group A/D, B/D or C/D is the undrained condition; ADR-078).
+_WETLAND_LAYER = re.compile(r"(?:OT_)?OIMK(?:_A)?")
+WETLAND_HSG = "D"
 
 # The columns of land_cover that the import writes.
 _COLUMNS = "geom, category, imperviousness, bdot_class"
@@ -222,7 +276,7 @@ def get_database_url() -> str:
 
 def read_gpkg_layers(gpkg_path: Path) -> dict[str, "geopandas.GeoDataFrame"]:
     """
-    Read the PT layers and the industrial complexes of a GeoPackage.
+    Read the PT layers and the complexes (``COMPLEX_LAYERS``) of a GeoPackage.
 
     Parameters
     ----------
@@ -232,7 +286,8 @@ def read_gpkg_layers(gpkg_path: Path) -> dict[str, "geopandas.GeoDataFrame"]:
     Returns
     -------
     Dict[str, GeoDataFrame]
-        The layers by code ("PTLZ", "KUPG") with the attributes that the import uses
+        The layers by code ("PTLZ", "KUPG", "KUSK") with the attributes that the
+        import uses
     """
     import fiona
     import geopandas as gpd
@@ -348,33 +403,20 @@ def classify(code: str, gdf: "geopandas.GeoDataFrame") -> list[LandCoverClass]:
     return classes
 
 
-def industrial_zones(
-    kupg: "geopandas.GeoDataFrame | None",
+def _disjoint(
+    complexes: Iterable[tuple[LandCoverClass | None, "BaseGeometry | None"]],
 ) -> tuple[list[Any], list[LandCoverClass]]:
     """
-    Return the industrial complexes of OT_KUPG_A as disjoint polygons and classes.
+    Return the complexes that have a class as disjoint polygons, with their classes.
 
-    A complex that overlaps an earlier one of the layer keeps only the part outside it,
-    so no area is counted twice.
+    A complex that overlaps an earlier one keeps only the part outside it, so no area is
+    counted twice.
     """
     import shapely
 
-    if kupg is None or kupg.empty:
-        return [], []
-
-    kupg = transform_to_2180(kupg)
-    kinds = kupg["RODZAJ"] if "RODZAJ" in kupg.columns else [None] * len(kupg)
-    plants = (
-        kupg["RODZAJELEKTROWNI"]
-        if "RODZAJELEKTROWNI" in kupg.columns
-        else [None] * len(kupg)
-    )
     candidates: list[Any] = []
     classes: list[LandCoverClass] = []
-    for kind, plant, geom in zip(kinds, plants, kupg.geometry.values, strict=True):
-        cls = INDUSTRIAL_COMPLEX_CLASSES.get(kind)
-        if cls is None and kind == "elektrownia":
-            cls = INDUSTRIAL_POWER_PLANT_CLASSES.get(plant)
+    for cls, geom in complexes:
         if cls is None or geom is None:
             continue
         polygonal = _polygonal(geom if geom.is_valid else shapely.make_valid(geom))
@@ -398,19 +440,72 @@ def industrial_zones(
     return zones, zone_classes
 
 
+def industrial_zones(
+    kupg: "geopandas.GeoDataFrame | None",
+) -> tuple[list[Any], list[LandCoverClass]]:
+    """
+    Return the industrial complexes of OT_KUPG_A as disjoint polygons and classes.
+
+    A complex that overlaps an earlier one of the layer keeps only the part outside it,
+    so no area is counted twice.
+    """
+    if kupg is None or kupg.empty:
+        return [], []
+
+    kupg = transform_to_2180(kupg)
+    kinds = kupg["RODZAJ"] if "RODZAJ" in kupg.columns else [None] * len(kupg)
+    plants = (
+        kupg["RODZAJELEKTROWNI"]
+        if "RODZAJELEKTROWNI" in kupg.columns
+        else [None] * len(kupg)
+    )
+    complexes: list[tuple[LandCoverClass | None, Any]] = []
+    for kind, plant, geom in zip(kinds, plants, kupg.geometry.values, strict=True):
+        cls = INDUSTRIAL_COMPLEX_CLASSES.get(kind)
+        if cls is None and kind == "elektrownia":
+            cls = INDUSTRIAL_POWER_PLANT_CLASSES.get(plant)
+        complexes.append((cls, geom))
+    return _disjoint(complexes)
+
+
+def open_space_zones(
+    layers: dict[str, "geopandas.GeoDataFrame"],
+) -> tuple[list[Any], list[LandCoverClass]]:
+    """
+    Return the complexes whose grass is open space as disjoint polygons and classes.
+
+    The complexes are the kinds of ``OPEN_SPACE_COMPLEX_CLASSES`` in the layers KUKO
+    and KUSK, in this order (ADR-078); one that overlaps an earlier one keeps only the
+    part outside it.
+    """
+    complexes: list[tuple[LandCoverClass | None, Any]] = []
+    for code in ("KUKO", "KUSK"):
+        gdf = layers.get(code)
+        if gdf is None or gdf.empty:
+            continue
+        gdf = transform_to_2180(gdf)
+        kinds = gdf["RODZAJ"] if "RODZAJ" in gdf.columns else [None] * len(gdf)
+        complexes.extend(
+            (OPEN_SPACE_COMPLEX_CLASSES.get((code, kind)), geom)
+            for kind, geom in zip(kinds, gdf.geometry.values, strict=True)
+        )
+    return _disjoint(complexes)
+
+
 def partition(
     geoms: list[Any],
     classes: list[LandCoverClass],
     zones: list[Any],
     zone_classes: list[LandCoverClass],
+    replaced: Callable[[str], bool],
 ) -> list[tuple[Any, LandCoverClass]]:
     """
-    Cut the industrial zones out of the polygons of a PT layer.
+    Cut the zones of complexes out of the polygons of the partition.
 
-    A polygon whose category the zones replace (any but ``KEPT_UNDER_ZONES``) and that
-    shares area with zones becomes its part outside them, with its class, and one piece
-    per zone, with the class of the zone; any other polygon stays whole. The pieces of
-    a polygon cover it exactly.
+    A polygon whose category the zones replace (``replaced(category)``) and that shares
+    area with zones becomes its part outside them, with its class, and one piece per
+    zone, with the class of the zone; any other polygon stays whole. The pieces of a
+    polygon cover it exactly.
     """
     import shapely
 
@@ -418,7 +513,7 @@ def partition(
     if zones:
         tree = shapely.STRtree(zones)
         for i, j in zip(*tree.query(geoms, predicate="intersects"), strict=True):
-            if classes[i].category not in KEPT_UNDER_ZONES:
+            if replaced(classes[i].category):
                 hits[int(i)].append(int(j))
 
     pieces: list[tuple[Any, LandCoverClass]] = []
@@ -445,12 +540,16 @@ def prepare_records(
     layers: dict[str, "geopandas.GeoDataFrame"],
 ) -> list[dict[str, Any]]:
     """
-    Prepare the land cover records of a package (ADR-074).
+    Prepare the land cover records of a package (ADR-074, ADR-078).
+
+    The industrial complexes are cut out of the PT polygons first (all but water and
+    industrial land), then the open-space complexes out of the grass that is left.
 
     Parameters
     ----------
     layers : Dict[str, GeoDataFrame]
-        The layers by code (``read_gpkg_layers``): PT layers and ``KUPG``
+        The layers by code (``read_gpkg_layers``): PT layers and the complexes
+        ``COMPLEX_LAYERS``
 
     Returns
     -------
@@ -460,14 +559,26 @@ def prepare_records(
     """
     import shapely
 
-    zones, zone_classes = industrial_zones(layers.get("KUPG"))
+    industry, industry_classes = industrial_zones(layers.get("KUPG"))
+    open_space, open_space_classes = open_space_zones(layers)
     records = []
     for code, gdf in layers.items():
-        if code == "KUPG":
+        if code in COMPLEX_LAYERS:
             continue
         gdf = transform_to_2180(gdf)
         pieces = partition(
-            _valid_polygons(gdf, code), classify(code, gdf), zones, zone_classes
+            _valid_polygons(gdf, code),
+            classify(code, gdf),
+            industry,
+            industry_classes,
+            lambda category: category not in KEPT_UNDER_ZONES,
+        )
+        pieces = partition(
+            [geom for geom, _ in pieces],
+            [cls for _, cls in pieces],
+            open_space,
+            open_space_classes,
+            lambda category: category in REPLACED_BY_OPEN_SPACE,
         )
         blobs = shapely.to_wkb([geom for geom, _ in pieces])
         for blob, (_, cls) in zip(blobs, pieces, strict=True):
@@ -481,6 +592,84 @@ def prepare_records(
             )
 
     return records
+
+
+def read_wetlands(gpkg_path: Path) -> list[Any]:
+    """
+    Read the wetlands of a BDOT10k package (OT_OIMK_A, "mokradło"; ADR-078).
+
+    Every kind counts (bagno, teren podmokły): the layer marks wet land, whatever the
+    land cover of the partition under it.
+
+    Parameters
+    ----------
+    gpkg_path : Path
+        Path to the GeoPackage file
+
+    Returns
+    -------
+    List[MultiPolygon]
+        The valid wetland polygons in EPSG:2180; none for a package without the layer
+    """
+    import fiona
+    import geopandas as gpd
+
+    wetlands: list[Any] = []
+    for layer_name in fiona.listlayers(gpkg_path):
+        if _WETLAND_LAYER.fullmatch(layer_name.upper()) is None:
+            continue
+        gdf = gpd.read_file(gpkg_path, layer=layer_name, columns=[])
+        if gdf.empty:
+            continue
+        polygons = _valid_polygons(transform_to_2180(gdf), "OIMK")
+        wetlands.extend(geom for geom in polygons if geom is not None)
+    return wetlands
+
+
+def soils_with_wetlands(
+    soils: list[tuple[Any, str]],
+    wetlands: list[Any],
+) -> list[tuple[Any, str]]:
+    """
+    Make the soil under the wetlands hydrologic soil group D (ADR-078).
+
+    Parameters
+    ----------
+    soils : List[Tuple[geometry, str]]
+        The polygons of the soil groups ("A" to "D") in EPSG:2180, not overlapping
+    wetlands : List[geometry]
+        Wetland polygons in EPSG:2180 (``read_wetlands``); they may overlap
+
+    Returns
+    -------
+    List[Tuple[geometry, str]]
+        A soil polygon that shares area with wetlands becomes its part outside them,
+        with its group, and its part inside them, group ``WETLAND_HSG``
+        (MultiPolygons); any other polygon stays whole. The pieces of a polygon cover
+        it exactly, so the polygons still do not overlap.
+    """
+    import shapely
+
+    if not wetlands:
+        return list(soils)
+
+    tree = shapely.STRtree(wetlands)
+    pieces: list[tuple[Any, str]] = []
+    for geom, group in soils:
+        hits = tree.query(geom, predicate="intersects")
+        if group == WETLAND_HSG or len(hits) == 0:
+            pieces.append((geom, group))
+            continue
+        wet = shapely.union_all([wetlands[i] for i in hits])
+        inside = _polygonal(shapely.intersection(geom, wet))
+        if inside is None:
+            pieces.append((geom, group))
+            continue
+        outside = _polygonal(shapely.difference(geom, wet))
+        if outside is not None:
+            pieces.append((outside, group))
+        pieces.append((inside, WETLAND_HSG))
+    return pieces
 
 
 def replace_land_cover(

@@ -13,6 +13,8 @@ from scripts.import_landcover import (
     get_database_url,
     prepare_records,
     read_gpkg_layers,
+    read_wetlands,
+    soils_with_wetlands,
     transform_to_2180,
 )
 
@@ -255,6 +257,112 @@ class TestIndustrialComplexes:
         assert areas["zabudowa_przemysłowa", "KUPG:gazownia"] == pytest.approx(50 * 50)
 
 
+GRASS = {"RODZAJ": "roślinność trawiasta"}
+
+
+class TestOpenSpaceComplexes:
+    """The grass of sports and recreation complexes and airports is open space."""
+
+    @pytest.mark.parametrize(
+        ("layer", "kind", "bdot_class"),
+        [
+            ("OT_KUSK_A", "park lub skwer", "KUSK:park"),
+            ("OT_KUSK_A", "kompleks sportowo-rekreacyjny", "KUSK:kompl. sport."),
+            ("OT_KUKO_A", "lotnisko lub lądowisko", "KUKO:lotnisko"),
+        ],
+    )
+    def test_only_the_grass_inside_becomes_open_space(
+        self, tmp_path, layer, kind, bdot_class
+    ):
+        """Forest, fields, paved surfaces and buildings in the complex keep theirs."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTTR_A": [
+                    (GRASS, _square(0, 0)),
+                    ({"RODZAJ": "uprawa na gruntach ornych"}, _square(100, 0)),
+                ],
+                "OT_PTLZ_A": [({"id": 1}, _square(200, 0))],
+                "OT_PTKM_A": [({"id": 1}, _square(300, 0))],
+                "OT_PTZB_A": [({"RODZAJ": "jednorodzinna"}, _square(400, 0))],
+                layer: [({"RODZAJ": kind}, box(X0 + 50, Y0, X0 + 500, Y0 + 50))],
+            },
+        )
+
+        assert _areas(records) == pytest.approx(
+            {
+                ("łąka", "PTTR:trawiasta"): 7_500,
+                ("inny", bdot_class): 2_500,
+                ("grunt_orny", "PTTR:grunty orne"): 10_000,
+                ("las", "PTLZ"): 10_000,
+                ("droga", "PTKM"): 10_000,
+                ("zabudowa_mieszkaniowa", "PTZB:jednorodzinna"): 10_000,
+            }
+        )
+        lawn = [r for r in records if r["bdot_class"] == bdot_class]
+        assert {r["imperviousness"] for r in lawn} == {0.0}
+
+    @pytest.mark.parametrize(
+        ("layer", "kind"),
+        [
+            ("OT_KUSK_A", "zespół domów letniskowych"),
+            ("OT_KUKO_A", "parking"),
+            ("OT_KUKO_A", "stacja kolejowa"),
+        ],
+    )
+    def test_other_complexes_leave_the_grass(self, tmp_path, layer, kind):
+        """Summer house estates and paved transport complexes keep the PT cover."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTTR_A": [(GRASS, _square(0, 0))],
+                layer: [({"RODZAJ": kind}, _square(-10, -10))],
+            },
+        )
+
+        assert _areas(records) == pytest.approx({("łąka", "PTTR:trawiasta"): 10_000})
+
+    def test_an_industrial_complex_takes_its_part_first(self, tmp_path):
+        """Where a plant and a park overlap, the land is industrial."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTTR_A": [(GRASS, _square(0, 0))],
+                "OT_KUPG_A": [({"RODZAJ": PLANT}, box(X0, Y0, X0 + 30, Y0 + 100))],
+                "OT_KUSK_A": [({"RODZAJ": "park lub skwer"}, _square(0, 0))],
+            },
+        )
+
+        assert _areas(records) == pytest.approx(
+            {
+                ("zabudowa_przemysłowa", "KUPG:zakład prod."): 3_000,
+                ("inny", "KUSK:park"): 7_000,
+            }
+        )
+
+    def test_overlapping_complexes_count_once(self, tmp_path):
+        """An airport and a park that overlap take their union once, airport first."""
+        records = _import(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTTR_A": [(GRASS, _square(0, 0))],
+                "OT_KUSK_A": [
+                    ({"RODZAJ": "park lub skwer"}, box(X0 + 40, Y0, X0 + 100, Y0 + 100))
+                ],
+                "OT_KUKO_A": [
+                    (
+                        {"RODZAJ": "lotnisko lub lądowisko"},
+                        box(X0, Y0, X0 + 60, Y0 + 100),
+                    )
+                ],
+            },
+        )
+
+        assert _areas(records) == pytest.approx(
+            {("inny", "KUKO:lotnisko"): 6_000, ("inny", "KUSK:park"): 4_000}
+        )
+
+
 class TestPtKinds:
     """The attribute of a PT layer that decides its category."""
 
@@ -357,3 +465,56 @@ class TestGeometries:
         records = prepare_records({"PTLZ": gdf})
 
         assert _areas(records) == pytest.approx({("las", "PTLZ"): 10_000})
+
+
+def _groups(soils):
+    """Area [m²] of the soil polygons by group."""
+    areas = defaultdict(float)
+    for geom, group in soils:
+        areas[group] += geom.area
+    return dict(areas)
+
+
+class TestWetlands:
+    """The soil under the wetlands of OT_OIMK_A is group D (ADR-078)."""
+
+    def test_every_kind_of_wetland_is_read(self, tmp_path):
+        path = _package(
+            tmp_path / "p.gpkg",
+            {
+                "OT_PTTR_A": [(GRASS, _square(0, 0, 300))],
+                "OT_OIMK_A": [
+                    ({"RODZAJ": "teren podmokły"}, _square(0, 0)),
+                    ({"RODZAJ": "bagno"}, _square(100, 0)),
+                ],
+            },
+        )
+
+        wetlands = read_wetlands(path)
+
+        assert sorted(geom.area for geom in wetlands) == pytest.approx([1e4, 1e4])
+        dry = _package(tmp_path / "q.gpkg", {"OT_PTTR_A": [(GRASS, _square(0, 0))]})
+        assert read_wetlands(dry) == []
+
+    def test_the_soil_under_wetlands_becomes_group_d(self):
+        """Each soil polygon splits at the wetlands; overlapping wetlands count once."""
+        soils = [(_square(0, 0), "A"), (_square(100, 0), "B")]
+        wetlands = [
+            box(X0 + 50, Y0 + 25, X0 + 150, Y0 + 75),
+            box(X0 + 60, Y0, X0 + 140, Y0 + 50),
+        ]
+
+        pieces = soils_with_wetlands(soils, wetlands)
+
+        assert _groups(pieces) == pytest.approx({"A": 6_500, "B": 6_500, "D": 7_000})
+        assert shapely.union_all([geom for geom, _ in pieces]).area == pytest.approx(
+            20_000
+        )
+
+    def test_a_wetland_beside_the_soil_changes_nothing(self):
+        """A wetland that only touches a soil polygon leaves it whole."""
+        soils = [(_square(0, 0), "B")]
+
+        pieces = soils_with_wetlands(soils, [_square(100, 0)])
+
+        assert pieces == soils

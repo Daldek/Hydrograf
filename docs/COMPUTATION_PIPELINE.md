@@ -382,7 +382,10 @@ and `total_mm` (ADR-069).
 The CN is that of the hydrologic soil-cover complexes (USDA-NRCS 2004, NEH 630 chapter 9;
 ADR-075): a complex is a land cover on a hydrologic soil group (HSG), and its CN for
 AMC II is the TR-55 value of the cover it stands for on that group (USDA-SCS 1986,
-tables 2-2a to 2-2c), read from Hydrolog (`hydrolog.runoff.get_cn`).
+tables 2-2a to 2-2c), read from Hydrolog (`hydrolog.runoff.get_cn`). The soil groups of
+`soil_hsg` are those of the SoilGrids texture (bootstrap step 5), and D under the
+wetlands of BDOT10k (`OT_OIMK_A`): an undrained wet soil is group D (NEH 630 chapter 7;
+ADR-078).
 
 ### 5.1 Hierarchy of the sources of the CN
 
@@ -448,6 +451,7 @@ CN_i = get_cn(group, TR-55 cover of (category, source))     # Hydrolog, §5.3
 | `inny` | any | open space, fair (2-2a) | 49 | 69 | 79 | 84 |
 | `inny` | `PTPL:nieutwardzony` | dirt road, including right-of-way (2-2a) | 72 | 82 | 87 | 89 |
 | `inny` | `PTWZ` | newly graded area, no vegetation (2-2a) | 77 | 86 | 91 | 94 |
+| `inny` | `KUSK:<kind>`, `KUKO:lotnisko` | open space, good: the lawns of parks, sports grounds and airports (2-2a; ADR-078) | 39 | 61 | 74 | 80 |
 
 ### 5.4 CN for AMC I, II and III
 
