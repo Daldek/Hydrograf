@@ -23,13 +23,17 @@ The verdict ``werdykt`` weighs the evidence. Independent of it, the mouth test
 meets its receiver, a line whose MPHP identifier is a proper prefix of its own.
 ``kategoria`` sets apart the reversed lines that are doubtful: artificial connectors
 through lakes (``CECHAGEOMETRII = 'sztuczny łącznik'``, where the DEM is a water
-surface) and networks detached from the main watercourses.
+surface) and networks detached from the main watercourses. ``regula`` and
+``odwraca`` are what the smoothing of the pipeline does with a burned line
+(``core.hydrology._line_directions``): the rule that decides its direction and
+whether it reverses it, computed on the burned lines alone.
 
 The new GeoPackage ``--out`` gets three layers: ``odcinki`` (the lines, with the
-evidence, the verdict, ``test_ujscia`` and ``kategoria``), ``wezly`` (the nodes, their
-kinds as digitized and after the lines with the verdict ``odwrocony`` are reversed)
-and ``cieki`` (the watercourses, drawn downstream). The names of the layers, the
-columns and their values are Polish, as the review map of the author reads them.
+evidence, the verdict, ``test_ujscia``, ``kategoria``, ``regula`` and ``odwraca``),
+``wezly`` (the nodes, their kinds as digitized and after the lines with the verdict
+``odwrocony`` are reversed) and ``cieki`` (the watercourses, drawn downstream). The
+names of the layers, the columns and their values are Polish, as the review map of
+the author reads them.
 
 Usage
 -----
@@ -65,10 +69,13 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import substring
 
 from core.hydrology import (
+    CONNECTOR,
     LAKE_SNAP_M,
     REVERSED_LINE_MIN_LENGTH_M,
     REVERSED_LINE_RISE_M,
     STREAM_BURNING_MODES,
+    WATERCOURSE_RISE_M,
+    _line_directions,
     _select_burned_features,
 )
 
@@ -87,8 +94,13 @@ ATTRIBUTES = (
     "POLOZENIE",
     "CECHAGEOMETRII",
 )
-# CECHAGEOMETRII of an artificial connector, a line drawn through a lake
-CONNECTOR = "sztuczny łącznik"
+# The rules of the smoothing (``_line_directions``) by their Polish names
+RULES = {
+    "mouth": "ujscie",
+    "watercourse": "nmt_cieku",
+    "rise": "nmt_odcinka",
+    "digitized": "digitalizacja",
+}
 # The field of the MPHP code of a catchment (MPHP10)
 CATCHMENT_CODE = "ID_HYD_10"
 # Ends of lines this close are one node; an end this close to the middle of another
@@ -104,8 +116,8 @@ EDGE_M = 25.0
 WATER_M = LAKE_SNAP_M
 # A rise of more than RISE_STRONG_M the way a line is digitized: ADR-072 reverses it
 RISE_STRONG_M = REVERSED_LINE_RISE_M
-# A rise or fall within RISE_WEAK_M is flat
-RISE_WEAK_M = 0.5
+# A rise or fall within RISE_WEAK_M is flat (rule 2 of the smoothing)
+RISE_WEAK_M = WATERCOURSE_RISE_M
 # A shorter line or watercourse has no DEM class
 MIN_LENGTH_M = REVERSED_LINE_MIN_LENGTH_M
 # The catchment of a line's end is read this far inside the line
@@ -898,6 +910,57 @@ def mouth_test(
     return result
 
 
+def smoothing_directions(
+    geoms: np.ndarray,
+    burned: np.ndarray,
+    profiles: Profiles,
+    lengths_m: np.ndarray,
+    mphp: np.ndarray,
+    names: np.ndarray,
+    connector: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Orient the burned lines as the smoothing does (ADR-077).
+
+    ``core.hydrology._line_directions`` on the burned lines alone: their ends joined by
+    ``join_ends``, the DEM along each its samples with data (``sample_profiles``), at
+    most STEP_M apart.
+
+    Returns
+    -------
+    tuple
+        (for each line the rule that decides its direction by its Polish name
+        (``RULES``), None for a line not burned or closed; whether the rule reverses
+        it; whether it lies in a block that the guard of rule 2 keeps)
+    """
+    n = len(geoms)
+    rule = np.full(n, None, dtype=object)
+    reverses = np.zeros(n, dtype=bool)
+    kept = np.zeros(n, dtype=bool)
+    index = np.flatnonzero(burned)
+    if not index.size:
+        return rule, reverses, kept
+    u, v, _ = join_ends(geoms[index])
+    values = {}
+    for k, line in enumerate(index.tolist()):
+        samples = profiles.of(line)
+        values[k] = samples[~np.isnan(samples)]
+    directions, blocks = _line_directions(
+        dict(enumerate(zip(u.tolist(), v.tolist(), strict=True))),
+        values,
+        dict(enumerate(lengths_m[index].tolist())),
+        mphp[index].tolist(),
+        names[index].tolist(),
+        connector[index].tolist(),
+        STEP_M,
+    )
+    for k, (reversed_line, name) in directions.items():
+        rule[index[k]] = RULES[name]
+        reverses[index[k]] = reversed_line
+    for block in blocks:
+        kept[index[block]] = True
+    return rule, reverses, kept
+
+
 def strahler_orders(
     a: np.ndarray, b: np.ndarray, use: np.ndarray, n_nodes: int
 ) -> np.ndarray:
@@ -1041,10 +1104,14 @@ def analyze(
     verdict, against, along = verdicts(dem_class, run >= 0, catchment, versus, weight)
     mouth = mouth_test(u, v, mphp, lengths, closed)
     burned = main if burning == "main" else np.ones(n, dtype=bool)
-    adr072 = (
-        burned
-        & (lengths >= MIN_LENGTH_M)
-        & (np.nan_to_num(relief.rise_m) > RISE_STRONG_M)
+    rule, reverses, kept = smoothing_directions(
+        geoms,
+        burned,
+        profiles,
+        lengths,
+        mphp,
+        lines["NAZWA"].to_numpy(dtype=object),
+        connector,
     )
 
     # The network with the lines of the verdict odwrocony reversed
@@ -1083,7 +1150,9 @@ def analyze(
     lines["dowody_odwr"], lines["dowody_zgod"] = against, along
     lines["werdykt"] = verdict
     lines["wypalany"] = burned
-    lines["hydrograf_odwraca"] = adr072
+    lines["regula"] = rule
+    lines["odwraca"] = reverses
+    lines["blok_zachowany"] = kept
     lines["odwrocic"] = flip
     lines["poprz_po_korekcie"] = [_ids(ending_after.get(int(x), [])) for x in a]
     lines["nast_po_korekcie"] = [_ids(beginning_after.get(int(x), [])) for x in b]
@@ -1193,17 +1262,28 @@ def summarize(lines: gpd.GeoDataFrame) -> dict[str, Any]:
 
     reversed_line = burned & (category == "odwrocony")
     mouth_reverses = burned & (mouth == "odwrocony") & (verdict != "odwrocony")
+    rule = lines["regula"].to_numpy(dtype=object)
+    reverses = lines["odwraca"].to_numpy(dtype=bool)
     return {
         "burned": count(burned),
         "reversed": {
             name: count(burned & (category == name)) for name in REVERSED_CATEGORIES
         },
-        "adr072_reverses": count(
-            burned & lines["hydrograf_odwraca"].to_numpy(dtype=bool)
+        "rules": {
+            name: {
+                "decides": count(burned & (rule == name)),
+                "reverses": count(burned & reverses & (rule == name)),
+            }
+            for name in RULES.values()
+        },
+        "rules_reverse": count(burned & reverses),
+        "rules_reverse_reversed": count(reversed_line & reverses),
+        "rules_reverse_others": count(burned & reverses & (category != "odwrocony")),
+        "rules_against_mouth_test": count(
+            burned
+            & (((mouth == "odwrocony") & ~reverses) | ((mouth == "zgodny") & reverses))
         ),
-        "adr072_among_reversed": count(
-            reversed_line & lines["hydrograf_odwraca"].to_numpy(dtype=bool)
-        ),
+        "rules_kept_by_fall": count(lines["blok_zachowany"].to_numpy(dtype=bool)),
         "mouth_checked": count(burned & checked),
         "reversed_mouth_confirms": count(reversed_line & (mouth == "odwrocony")),
         "reversed_mouth_contradicts": count(reversed_line & (mouth == "zgodny")),

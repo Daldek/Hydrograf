@@ -636,7 +636,10 @@ its watercourse (the lines of one MPHP identifier, else of one name, joined wher
 them meet), whose downstream end the DEM along the whole watercourse decides (more than 0.5 m),
 else the digitized majority. The verdict weighs the evidence; the mouth test, independent of
 it, orients the lines of an MPHP watercourse towards the node where it meets its receiver (a
-line whose identifier is a proper prefix of its own).
+line whose identifier is a proper prefix of its own). Beside them it runs the rules of the
+smoothing of the pipeline (`core.hydrology._line_directions`, ADR-077) on the burned lines
+alone (their ends joined within 0.5 m, the DEM every 5 m), and says which rule decides each
+burned line and whether it reverses it.
 
 ```bash
 cd backend
@@ -658,14 +661,17 @@ The output has three layers with Polish names and columns, as the review map rea
 
 | Layer | Content |
 |---|---|
-| `odcinki` | the lines (pieces) with the BDOT10k attributes, `glowny` (a main watercourse, the selection of `main`), `wypalany` (burned with `--burning`), the nodes and kinds at both ends, the DEM along the line (`przyrost_m`, `spadek_m_km`, `nmt`), the catchment order (`mphp`), the run (`ciag_konfliktu`), the watercourse (`ciek`, `odcinek_cieku`, `wzgledem_cieku`, `styk_od`, `styk_do`), the evidence (`dowody_odwr`, `dowody_zgod`), the verdict `werdykt` (`odwrocony`, `podejrzany`, `sprzeczny`, `zgodny`, `nieustalony`), `hydrograf_odwraca` (the per-line rule of ADR-072 on the burned lines), `test_ujscia` (`zgodny`, `odwrocony` or empty when the mouth cannot tell) and `kategoria`: the verdict, with the reversed lines split into `odwrocony`, `odwrocony_lacznik` (an artificial connector through a lake, where the DEM is a water surface) and `odwrocony_siec_oderwana` (a network without a main watercourse), the two doubtful cases |
+| `odcinki` | the lines (pieces) with the BDOT10k attributes, `glowny` (a main watercourse, the selection of `main`), `wypalany` (burned with `--burning`), the nodes and kinds at both ends, the DEM along the line (`przyrost_m`, `spadek_m_km`, `nmt`), the catchment order (`mphp`), the run (`ciag_konfliktu`), the watercourse (`ciek`, `odcinek_cieku`, `wzgledem_cieku`, `styk_od`, `styk_do`), the evidence (`dowody_odwr`, `dowody_zgod`), the verdict `werdykt` (`odwrocony`, `podejrzany`, `sprzeczny`, `zgodny`, `nieustalony`), the rules of the smoothing on the burned lines (`regula`: `ujscie` the mouth, `nmt_cieku` the DEM of the watercourse, `nmt_odcinka` the DEM of the line, `digitalizacja` the digitized direction, empty for a line not burned or closed; `odwraca`: the rule reverses it; `blok_zachowany`: a block digitized against its watercourse that the guard of rule 2 keeps, its own DEM falling more than 2 m the way it is digitized), `test_ujscia` (`zgodny`, `odwrocony` or empty when the mouth cannot tell) and `kategoria`: the verdict, with the reversed lines split into `odwrocony`, `odwrocony_lacznik` (an artificial connector through a lake, where the DEM is a water surface) and `odwrocony_siec_oderwana` (a network without a main watercourse), the two doubtful cases |
 | `wezly` | the nodes: lines ending and beginning there and the kind (`zrodlo`, `zbieg`, `rozwidlenie`, `same_poczatki`, `same_konce`, `krawedz` and others), as digitized and after the lines of the verdict `odwrocony` are reversed |
 | `cieki` | the watercourses drawn downstream: their lines, length, rise, what decided the direction (`nmt`, `wiekszosc`), the lines against it and the watercourse they flow into |
 
-The log ends with the counts over the burned lines: the reversed lines by category, those of
-ADR-072, the lines the mouth test checks, confirms and contradicts, and the lines the mouth says
-are digitized upstream while the verdict does not. On the Hydroni area h07 (20,279 lines,
-`main`) a run takes about 50 s and peaks at 2.2 GB (the DEM of the area and 1 km around it).
+The log ends with the counts over the burned lines: the reversed lines by category, the lines
+each rule of the smoothing decides and reverses, the reversed lines of the verdict the rules
+reverse and the other lines they reverse, the lines whose `odwraca` the mouth test contradicts
+and those the guard keeps, the lines the mouth test checks, confirms and contradicts, and the
+lines the mouth says are digitized upstream while the verdict does not. On the Hydroni area h07
+(20,279 lines, `main`) a run takes about 55 s and peaks at 2.2 GB (the DEM of the area and
+1 km around it).
 
 ---
 

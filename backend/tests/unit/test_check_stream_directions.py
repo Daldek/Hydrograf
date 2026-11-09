@@ -240,9 +240,11 @@ class TestAnalyze:
             "-",
             "-",
         ]
-        # ADR-072 keeps it: its DEM rises 1.1 m, under 2 m
+        # ADR-072 kept it: its DEM rises 1.1 m, under 2 m; the smoothing reverses it
+        # towards the mouth of its watercourse (ADR-077)
         assert lines["nmt"].tolist()[1] == "w_gore_slabo"
-        assert not lines["hydrograf_odwraca"].any()
+        assert lines["regula"].tolist() == ["ujscie"] * 3 + ["digitalizacja"] * 2
+        assert lines["odwraca"].tolist() == [False, True, False, False, False]
         kcynka = courses[courses["ciek"] == "M:18852"].iloc[0]
         assert kcynka["kierunek_z"] == "nmt"
         assert kcynka["odwrocone_odcinki"] == 1
@@ -255,6 +257,15 @@ class TestAnalyze:
     def test_a_reversed_connector_is_doubtful(self):
         lines, _, _ = _analyze(_raw(connector_middle=True))
         assert lines["kategoria"].tolist()[1] == "odwrocony_lacznik"
+
+    def test_the_smoothing_orients_the_burned_lines_alone(self):
+        """The receiver is not burned: no mouth; the DEM of the watercourse decides."""
+        raw = _raw()
+        raw.loc[3:, "glowny"] = False
+        lines, _, _ = _analyze(raw)
+        assert lines["regula"].fillna("-").tolist() == ["nmt_cieku"] * 3 + ["-"] * 2
+        assert lines["odwraca"].tolist() == [False, True, False, False, False]
+        assert not lines["blok_zachowany"].any()
 
 
 def test_an_existing_output_is_refused(tmp_path):
