@@ -43,10 +43,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NoReturn
 
+from shapely.geometry import box
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import unary_union
+
 from core._errors import BY_CODE
 from core.active_run import active_run_raster
 from core.errors import HydrografError, InvalidRequestError
-from utils.kartograf_set import SetInputs, nmt_segment, set_inputs
+from scripts.write_instance_info import (
+    build_instance_info,
+    resolution_m,
+    write_instance_info,
+)
+from utils.kartograf_set import SHEET_SCALE, SetInputs, nmt_segment, set_inputs
 from utils.kartograf_store import (
     HSG_DEPTH,
     SHEET_SYSTEM,
@@ -58,6 +67,7 @@ from utils.kartograf_store import (
     refuse_shared_store,
     store_dir,
 )
+from utils.nmt_coverage import area_2180, check_nmt_coverage, sheet_frame
 
 logging.basicConfig(
     level=logging.INFO,
@@ -79,6 +89,12 @@ DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
 # come from.
 SET_RECORD_NAME = "bootstrap_set.json"
 SET_RECORD_SCHEMA = "hydrograf-bootstrap-set/1"
+
+# The map layer of the soil groups (frontend/data/soil_hsg.geojson) simplifies the
+# polygons by 5 m and writes 6 decimal digits (about 0.1 m): the wetlands (ADR-078)
+# bring the outlines of BDOT10k into soil_hsg, which made the layer of h07 14.7 MB
+# instead of 0.3 MB. The table keeps the exact polygons.
+HSG_MAP_TOLERANCE_M = 5.0
 
 # Status symbols
 SYM_DONE = "\u2713"  # checkmark
@@ -544,13 +560,16 @@ def step_process_dem(
     units_catchments: tuple[Path, str | None, str] | None = None,
     units_resume: bool = True,
     resolution: str = "5m",
+    fill_enclosed_nodata: bool = False,
 ) -> tuple[dict[str, Any], str, tuple[float, float, float, float]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis.
 
     ``bdot10k`` (TERYT to package) are the BDOT10k packages of a set (ADR-067); without
     it the packages of the mosaic's counties are downloaded. ``stream_burning``
-    (``dem.stream_burning`` of the configuration) selects the burned streams. With
-    ``units_path`` (the PGW GeoPackage) the mosaic is processed by PGW units
+    (``dem.stream_burning`` of the configuration) selects the burned streams and
+    ``fill_enclosed_nodata`` (``dem.fill_enclosed_nodata``) interpolates the nodata
+    that the mosaic encloses before the fill. With ``units_path`` (the PGW
+    GeoPackage) the mosaic is processed by PGW units
     (ADR-071), the owners clipped to ``units_area``, the file and the layer of the
     analysis area, and grouped from ``units_catchments`` (file, layer, key field)
     when given; ``units_scratch_dir`` holds the scratch of the run and
@@ -659,14 +678,40 @@ def step_process_dem(
         units_catchments_key=units_catchments[2] if units_catchments else "ID_HYD_10",
         units_scratch_dir=units_scratch_dir,
         units_resume=units_resume,
+        fill_enclosed_nodata=fill_enclosed_nodata,
     )
 
     cells = stats.get("valid_cells", 0)
     streams = stats.get("stream_segments", 0)
     burn_info = f", burn={burn_path.name} ({stream_burning})" if burn_path else ""
+    if fill_enclosed_nodata:
+        burn_info += (
+            f", enclosed nodata filled ({stats.get('enclosed_nodata_cells', 0)} cells)"
+        )
     detail = f"{cells:,} cells, {streams} segments{burn_info}"
 
     return stats, detail, mosaic_bbox_2180
+
+
+def _bdot10k_packages(
+    sheets: list[str],
+    cache_dir: Path,
+    mosaic_bbox_2180: tuple[float, float, float, float] | None,
+    bdot10k: dict[str, Path] | None,
+) -> dict[str, Path]:
+    """Return the BDOT10k packages of the area by TERYT (steps 4 and 5).
+
+    ``bdot10k`` (TERYT to package) are the packages of a set (ADR-067), used without a
+    download. Otherwise the counties of the area (the mosaic of step 3, else the
+    sheets) come from Kartograf with their packages: a package that step 3 stored is
+    local and not requested again, one that failed there is tried again.
+    """
+    from kartograf import BBox
+
+    if bdot10k is not None:
+        return bdot10k
+    bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
+    return download_bdot10k(cache_dir, bbox=BBox(*bbox_2180, crs="EPSG:2180"))
 
 
 def step_landcover(
@@ -678,22 +723,13 @@ def step_landcover(
 ) -> str:
     """Step 4: Download and import land cover data (per county).
 
-    The counties of the area (the mosaic of step 3, else the sheets) come from
-    Kartograf with their packages: a package that step 3 stored is local and not
-    requested again, one that failed there is tried again here. ``bdot10k`` (TERYT to
-    package) are the packages of a set (ADR-067), imported without a download.
+    The packages are those of ``_bdot10k_packages``: of a set (``bdot10k``), else of
+    the counties of the area.
     """
     sys.path.insert(0, str(BACKEND_DIR))
-    from kartograf import BBox
-
     from scripts.import_landcover import import_landcover
 
-    if bdot10k is not None:
-        bdot_paths = bdot10k
-    else:
-        bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
-        bdot_paths = download_bdot10k(cache_dir, bbox=BBox(*bbox_2180, crs="EPSG:2180"))
-
+    bdot_paths = _bdot10k_packages(sheets, cache_dir, mosaic_bbox_2180, bdot10k)
     if not bdot_paths:
         logger.warning("Nie znaleziono powiatów dla podanego obszaru")
         return "0 obiektów, 0 powiatów"
@@ -718,6 +754,7 @@ def step_soil_hsg(
     cache_dir: Path,
     mosaic_bbox_2180: tuple[float, float, float, float] | None = None,
     hsg_raster: Path | None = None,
+    bdot10k: dict[str, Path] | None = None,
 ) -> str:
     """Step 5: Download HSG data from SoilGrids and import to DB.
 
@@ -726,6 +763,8 @@ def step_soil_hsg(
     sand and silt once, computes the raster from them, and a second run uses it again
     without a request. ``hsg_raster`` is the raster of a set (ADR-067), used without a
     request. Processing: clip to project bbox -> warp to EPSG:2180 -> polygonize ->
+    the soil under the wetlands (OT_OIMK_A) of the BDOT10k packages of the area
+    (``_bdot10k_packages``, the packages of step 4) becomes group D (ADR-078) ->
     import.
     """
     import numpy as np
@@ -820,8 +859,7 @@ def step_soil_hsg(
         )
 
     # --- 4. Polygonize ---
-    records = []
-
+    soils = []
     for geom_dict, value in shapes(dst_data, transform=dst_transform):
         value = int(value)
         if value not in hsg_map:
@@ -831,20 +869,22 @@ def step_soil_hsg(
             continue
         if geom.area < 50:  # Skip micro-fragments (<50 m²)
             continue
-        if geom.geom_type == "Polygon":
-            geom = MultiPolygon([geom])
-        records.append(
-            {
-                "geom": geom.wkt,
-                "hsg_group": hsg_map[value],
-                "area_m2": geom.area,
-            }
-        )
+        soils.append((geom, hsg_map[value]))
 
-    if not records:
+    if not soils:
         return "brak danych HSG"
 
-    # --- 5. Bbox-scoped DB import ---
+    # --- 5. The soil under the wetlands is group D (ADR-078) ---
+    soils, wetlands_detail = _soils_with_wetlands(
+        soils, sheets, cache_dir, mosaic_bbox_2180, bdot10k
+    )
+    records = []
+    for geom, group in soils:
+        if geom.geom_type == "Polygon":
+            geom = MultiPolygon([geom])
+        records.append({"geom": geom.wkt, "hsg_group": group, "area_m2": geom.area})
+
+    # --- 6. Bbox-scoped DB import ---
     engine = get_engine()
     from sqlalchemy import text
 
@@ -865,7 +905,7 @@ def step_soil_hsg(
         )
         conn.commit()
 
-    # --- 6. Export GeoJSON for frontend ---
+    # --- 7. Export GeoJSON for frontend ---
     try:
         import json
 
@@ -873,10 +913,11 @@ def step_soil_hsg(
         with engine.connect() as conn2:
             result = conn2.execute(
                 text(
-                    "SELECT hsg_group, "
-                    "ST_AsGeoJSON(ST_Transform(geom, 4326)) "
+                    "SELECT hsg_group, ST_AsGeoJSON(ST_Transform("
+                    "ST_SimplifyPreserveTopology(geom, :tolerance), 4326), 6) "
                     "AS geojson, area_m2 FROM soil_hsg"
-                )
+                ),
+                {"tolerance": HSG_MAP_TOLERANCE_M},
             ).fetchall()
             for row in result:
                 rows.append(
@@ -903,7 +944,55 @@ def step_soil_hsg(
         g = r["hsg_group"]
         groups[g] = groups.get(g, 0) + 1
     summary = ", ".join(f"{g}: {c}" for g, c in sorted(groups.items()))
-    return f"{len(records)} poligonów ({summary})"
+    return f"{len(records)} poligonów ({summary}), {wetlands_detail}"
+
+
+def _soils_with_wetlands(
+    soils: list[tuple[Any, str]],
+    sheets: list[str],
+    cache_dir: Path,
+    mosaic_bbox_2180: tuple[float, float, float, float] | None,
+    bdot10k: dict[str, Path] | None,
+) -> tuple[list[tuple[Any, str]], str]:
+    """Make the soil under the wetlands of the area's packages group D (ADR-078).
+
+    The wetlands are those of the BDOT10k packages of step 4 (``_bdot10k_packages``).
+    Returns the soil polygons and the detail of step 5: the area made group D, or that
+    no package was found, and then the soil groups of the raster stay.
+    """
+    from scripts.import_landcover import (
+        WETLAND_HSG,
+        read_wetlands,
+        soils_with_wetlands,
+    )
+
+    try:
+        packages = _bdot10k_packages(sheets, cache_dir, mosaic_bbox_2180, bdot10k)
+    except Exception as e:
+        logger.warning("HSG: no BDOT10k packages for the wetlands: %s", e)
+        packages = {}
+    if not packages:
+        return soils, "bez mokradeł (brak paczek BDOT10k)"
+
+    wetlands = []
+    for teryt, gpkg in sorted(packages.items()):
+        try:
+            wetlands.extend(read_wetlands(gpkg))
+        except Exception as e:
+            logger.warning("HSG: the wetlands of TERYT %s not read: %s", teryt, e)
+    pieces = soils_with_wetlands(soils, wetlands)
+    wet_km2 = (
+        sum(geom.area for geom, group in pieces if group == WETLAND_HSG)
+        - sum(geom.area for geom, group in soils if group == WETLAND_HSG)
+    ) / 1e6
+    logger.info(
+        "HSG: %d wetlands of %d packages, %.2f km2 of soil made group %s",
+        len(wetlands),
+        len(packages),
+        wet_km2,
+        WETLAND_HSG,
+    )
+    return pieces, f"mokradła {wet_km2:.2f} km² → {WETLAND_HSG}"
 
 
 def step_precipitation(bbox: tuple[float, float, float, float]) -> str:
@@ -1174,12 +1263,20 @@ def run_pipeline(
     units_scratch_dir: Path | None = None,
     units_catchments: tuple[Path, str | None, str] | None = None,
     units_resume: bool = True,
+    fill_enclosed_nodata: bool = False,
+    coverage_area: BaseGeometry | None = None,
+    scale: str = "1:10000",
+    allow_uncovered: bool = False,
 ):
     """Run the full 10-step bootstrap pipeline.
 
     With ``inputs``, the checked files of a set of an Archiwista project (ADR-067),
     steps 2 to 5 read the pinned files and download nothing. With ``units_path``
-    step 3 processes the mosaic by PGW units (``step_process_dem``).
+    step 3 processes the mosaic by PGW units (``step_process_dem``), and with
+    ``fill_enclosed_nodata`` it interpolates the nodata the mosaic encloses first.
+    With ``coverage_area`` (EPSG:2180) step 3 first refuses sheets that leave part
+    of it, or a hole of their mosaic, uncovered (ADR-076; ``allow_uncovered``: a
+    warning); a run from a set is checked before step 1.
     """
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
@@ -1222,6 +1319,15 @@ def run_pipeline(
     if not tracker.is_skipped(3):
         t0 = tracker.start(3)
         try:
+            if coverage_area is not None:
+                # The sheets step 2 gave: a sheet without data is not among them
+                check_nmt_coverage(
+                    coverage_area,
+                    [path.stem for path in downloaded_files],
+                    scale=scale,
+                    resolution=resolution,
+                    allow_uncovered=allow_uncovered,
+                )
             _, detail, mosaic_bbox = step_process_dem(
                 downloaded_files,
                 output_dir,
@@ -1237,6 +1343,7 @@ def run_pipeline(
                 units_catchments=units_catchments,
                 units_resume=units_resume,
                 resolution=resolution,
+                fill_enclosed_nodata=fill_enclosed_nodata,
             )
             tracker.done(3, t0, detail)
         except Exception as e:
@@ -1270,6 +1377,7 @@ def run_pipeline(
                 cache_dir,
                 mosaic_bbox_2180=mosaic_bbox,
                 hsg_raster=inputs.hsg if inputs is not None else None,
+                bdot10k=inputs.counties if inputs is not None else None,
             )
             tracker.done(5, t0, detail)
         except Exception as e:
@@ -1352,7 +1460,8 @@ def dry_run(
         "stream_network, stream_catchments (ZAWSZE od zera)",
         f"Pokrycie terenu: BDOT10k per powiat (z {len(sheets)} arkuszy), "
         f"magazyn {store_dir(cache_dir)}",
-        "Dane glebowe HSG: SoilGrids przez Kartograf (calculate_hsg)",
+        "Dane glebowe HSG: SoilGrids przez Kartograf (calculate_hsg), "
+        "pod mokradłami BDOT10k grupa D",
         f"Opady IMGW: grid 2km w bbox "
         f"{min_lon:.3f},{min_lat:.3f},"
         f"{max_lon:.3f},{max_lat:.3f}",
@@ -1404,7 +1513,8 @@ def _set_steps(inputs: SetInputs) -> list[str]:
         "Przetwarzanie NMT: mozaika VRT z wersji zestawu, "
         "stream_network, stream_catchments (ZAWSZE od zera)",
         f"Pokrycie terenu: BDOT10k z zestawu, {which}: {counties}",
-        f"Dane glebowe HSG: raster z zestawu {hsg}",
+        f"Dane glebowe HSG: raster z zestawu {hsg}, "
+        "pod mokradłami paczek zestawu grupa D",
     ]
 
 
@@ -1462,18 +1572,21 @@ def write_set_record(
     finished_at: str | None,
     status: str,
     stream_burning: str,
+    fill_enclosed_nodata: bool,
 ) -> None:
     """Write the record of the set a run took its Kartograf data from (ADR-067).
 
     ``<output>/bootstrap_set.json``: the identity of the set (project, set,
     ``closed_at``, ``pins_sha256``, the pins per product), the BDOT10k streams the
-    run burned (``stream_burning``), when the run started and ended, and ``status``
+    run burned (``stream_burning``), whether it filled the nodata the mosaic encloses
+    (``fill_enclosed_nodata``), when the run started and ended, and ``status``
     (``running``, ``ok`` or ``failed``: a step 1 to 3 failed).
     """
     record = {
         "schema": SET_RECORD_SCHEMA,
         **inputs.identity(),
         "stream_burning": stream_burning,
+        "fill_enclosed_nodata": fill_enclosed_nodata,
         "started_at": started_at,
         "finished_at": finished_at,
         "status": status,
@@ -1542,6 +1655,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Layer name for GPKG files (default: first layer)",
     )
     parser.add_argument(
+        "--area-name",
+        default=None,
+        help="Name of the data area on the welcome screen (instance.json); default "
+        "the Archiwista project's name, else the boundary file's stem",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         default=None,
@@ -1605,6 +1724,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "With --units: begin a new run even when a stopped or failed run with "
             "the same inputs and settings could be resumed"
+        ),
+    )
+    parser.add_argument(
+        "--allow-uncovered",
+        action="store_true",
+        help=(
+            "Warn instead of refusing when the NMT sheets leave part of the area, or "
+            "a hole inside their mosaic, without data (ADR-076); with "
+            "dem.fill_enclosed_nodata the enclosed holes are interpolated (ADR-073)"
         ),
     )
     parser.add_argument(
@@ -1760,6 +1888,13 @@ def main():
             f"{', '.join(STREAM_BURNING_MODES)}, not {stream_burning!r}"
         )
     logger.info("Stream burning: %s", stream_burning)
+    fill_enclosed_nodata = config["dem"]["fill_enclosed_nodata"]
+    if not isinstance(fill_enclosed_nodata, bool):
+        parser.error(
+            f"dem.fill_enclosed_nodata in {args.config} must be true or false, "
+            f"not {fill_enclosed_nodata!r}"
+        )
+    logger.info("Enclosed nodata filled: %s", fill_enclosed_nodata)
 
     # Resolve output directory
     output_dir = Path(args.output) if args.output else DEFAULT_DATA_DIR
@@ -1793,7 +1928,11 @@ def main():
     if args.skip_serve:
         skips.add(10)
 
+    from core.boundary import load_boundary
+
     inputs: SetInputs | None = None
+    # The area the NMT mosaic must cover, checked after step 2 (ADR-076)
+    coverage_area: BaseGeometry | None = None
     if args.project is not None:
         # Every check of ADR-067 before step 1: the project, the set, every pin
         try:
@@ -1804,6 +1943,14 @@ def main():
                 cache_dir=cache_dir,
                 landcover=4 not in skips,
                 hsg=5 not in skips,
+            )
+            # ADR-076: the sheets of the set cover the area and enclose no hole
+            check_nmt_coverage(
+                area_2180(load_boundary(inputs.area)),
+                inputs.sheets,
+                scale=SHEET_SCALE,
+                resolution=args.resolution,
+                allow_uncovered=args.allow_uncovered,
             )
         except HydrografError as error:
             fail(error)
@@ -1832,6 +1979,15 @@ def main():
         if not sheets:
             logger.error("Nie znaleziono arkuszy dla podanego obszaru")
             sys.exit(1)
+
+        if args.boundary_file:
+            coverage_area = area_2180(
+                load_boundary(args.boundary_file, args.boundary_layer)
+            )
+        elif args.sheets:
+            coverage_area = unary_union([sheet_frame(sheet) for sheet in sheets])
+        else:
+            coverage_area = area_2180(box(*bbox))
 
     # Print header
     print_header(
@@ -1871,6 +2027,7 @@ def main():
             finished_at=None,
             status="running",
             stream_burning=stream_burning,
+            fill_enclosed_nodata=fill_enclosed_nodata,
         )
     else:
         record.unlink(missing_ok=True)
@@ -1910,6 +2067,10 @@ def main():
         units_scratch_dir=args.units_scratch_dir,
         units_catchments=units_catchments,
         units_resume=not args.no_resume,
+        fill_enclosed_nodata=fill_enclosed_nodata,
+        coverage_area=coverage_area,
+        scale=args.scale,
+        allow_uncovered=args.allow_uncovered,
     )
     total_elapsed = time.time() - total_start
 
@@ -1935,9 +2096,35 @@ def main():
             finished_at=_utc_now(),
             status="failed" if critical_failed else "ok",
             stream_burning=stream_burning,
+            fill_enclosed_nodata=fill_enclosed_nodata,
         )
     if critical_failed:
         sys.exit(1)
+    write_instance(args, inputs)
+
+
+def write_instance(args: argparse.Namespace, inputs: SetInputs | None) -> None:
+    """Write ``frontend/data/instance.json`` after a run whose steps 1 to 3 passed.
+
+    The area is the set's project area, else ``--boundary-file``; a run by ``--bbox``
+    or ``--sheets`` has no boundary, so no area in km². The file only describes the
+    instance to users: a failure to write it is a warning, not a failed run.
+    """
+    boundary = inputs.area if inputs is not None else args.boundary_file
+    try:
+        info = build_instance_info(
+            generated_at=_utc_now(),
+            area_name=args.area_name,
+            boundary=boundary,
+            boundary_layer=None if inputs is not None else args.boundary_layer,
+            set_identity=inputs.identity() if inputs is not None else None,
+            nmt_resolution_m=resolution_m(args.resolution),
+        )
+        path = write_instance_info(FRONTEND_DIR / "data", info)
+    except (OSError, ValueError) as e:
+        logger.warning(f"instance.json not written: {e}")
+        return
+    logger.info(f"Opis instancji: {path}")
 
 
 if __name__ == "__main__":

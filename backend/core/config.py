@@ -200,6 +200,9 @@ _DEFAULT_CONFIG = {
         "burn_depth_m": 2.0,
         # BDOT10k streams burned into the DEM: "all" or "main" (core.hydrology)
         "stream_burning": "all",
+        # Interpolate the nodata the DEM data encloses before the fill, so that it
+        # drains nothing (core.hydrology.interpolate_enclosed_nodata)
+        "fill_enclosed_nodata": False,
         "building_raise_m": 5.0,
     },
     "paths": {

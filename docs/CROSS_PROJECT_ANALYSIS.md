@@ -45,7 +45,7 @@ The three producers are pinned by the commits of the release set of Nogat (candi
 # [tool.uv.sources]
 obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "1ee54573453473392f21e2c8bb34f76e4976e03f" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "9deaa314c88f89ea2d9308481e0c0b04751fc792" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1ffcd6b6badcd75e7ace9f2d59d4640830e176ff" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "4fad769539105815e81b53bedcdbfdcdebe07a50" }
 ```
 
 ---

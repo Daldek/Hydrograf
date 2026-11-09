@@ -1,6 +1,6 @@
 # Procedura obliczeniowa — Hydrograf
 
-> Wersja: 1.4 | Data: 2026-10-25
+> Wersja: 1.5 | Data: 2026-11-10
 
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
@@ -41,6 +41,19 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 - Warunek: komórka nodata z ≥5 prawidłowymi sąsiadami
 - Wzór: `new_value = mean(valid_neighbors)`
 - Maksymalnie 3 iteracje
+
+### 1.2a Burning and smoothing the streams, endorheic lakes
+
+**Functions:** `burn_streams_into_dem()`, `smooth_streams_monotonic()`, `classify_endorheic_lakes()` (`core/hydrology.py`; with `--burn-streams`)
+- Burning: the BDOT10k lines of `dem.stream_burning` (`all`: OT_SWRS_L, OT_SWKN_L, OT_SWRM_L; `main`: the main watercourses) and the water bodies (OT_PTWP_A) are lowered by `burn_depth_m` (2 m).
+- Direction of a burned line (ADR-077, `_line_directions`), on the burned DEM; the first rule that decides it:
+  1. the mouth: along the lines of its MPHP watercourse K, towards the nearest node where a line whose MPHP identifier is a proper prefix of K (its receiver) begins or ends;
+  2. the DEM of the whole watercourse (the lines of one MPHP identifier, else of one name, joined where exactly two of them meet), for a watercourse digitized both ways: when the DEM along it, without its artificial connectors, rises or falls by more than 0.5 m between the lowest values of its first and last quarter, its lower end is downstream and every block (run of lines digitized the same way) digitized the other way is reversed, unless the DEM along the block falls more than 2 m the way it is digitized (the guard);
+  3. the DEM of the line (ADR-072): reversed when the DEM rises along it by more than 2 m over at least 200 m;
+  4. the digitized direction.
+  An artificial connector through a lake (`CECHAGEOMETRII = 'sztuczny łącznik'`) never takes its direction from the DEM along it.
+- Smoothing (ADR-072): the lines in the order of the flow, each beginning below the lowest value reached at its first node and descending strictly (a higher cell is cut, an equal one lowered by one float32 step); gaps up to 50 m between two features of a watercourse are bridged. The diagnostics count the reversed lines by rule (`segments_reversed_by_mouth`, `_by_watercourse`, `_by_rise`) and the blocks kept by the guard.
+- Endorheic lakes (`--waterbody-mode auto`): a water body that any watercourse line of the three layers leaves is exorheic, else endorheic and gets a drain point. A burned line flows the way the smoothing takes it (`flow_lines`, the one source of the directions); any other line the way it is digitized unless the DEM along it rises by more than 2 m on at least 200 m.
 
 ### 1.3 Przetwarzanie hydrologiczne
 
@@ -382,7 +395,10 @@ and `total_mm` (ADR-069).
 The CN is that of the hydrologic soil-cover complexes (USDA-NRCS 2004, NEH 630 chapter 9;
 ADR-075): a complex is a land cover on a hydrologic soil group (HSG), and its CN for
 AMC II is the TR-55 value of the cover it stands for on that group (USDA-SCS 1986,
-tables 2-2a to 2-2c), read from Hydrolog (`hydrolog.runoff.get_cn`).
+tables 2-2a to 2-2c), read from Hydrolog (`hydrolog.runoff.get_cn`). The soil groups of
+`soil_hsg` are those of the SoilGrids texture (bootstrap step 5), and D under the
+wetlands of BDOT10k (`OT_OIMK_A`): an undrained wet soil is group D (NEH 630 chapter 7;
+ADR-078).
 
 ### 5.1 Hierarchy of the sources of the CN
 
@@ -448,6 +464,7 @@ CN_i = get_cn(group, TR-55 cover of (category, source))     # Hydrolog, §5.3
 | `inny` | any | open space, fair (2-2a) | 49 | 69 | 79 | 84 |
 | `inny` | `PTPL:nieutwardzony` | dirt road, including right-of-way (2-2a) | 72 | 82 | 87 | 89 |
 | `inny` | `PTWZ` | newly graded area, no vegetation (2-2a) | 77 | 86 | 91 | 94 |
+| `inny` | `KUSK:<kind>`, `KUKO:lotnisko` | open space, good: the lawns of parks, sports grounds and airports (2-2a; ADR-078) | 39 | 61 | 74 | 80 |
 
 ### 5.4 CN for AMC I, II and III
 
@@ -457,7 +474,11 @@ watershed to the requested AMC with Hydrolog (`SCSCN.adjust_cn_for_amc`, Hawkins
 three conditions: `cn_amc_i` (dry) and `cn_amc_iii` (wet), the same conversion of its `cn`
 (`core/cn_tables.cn_for_amc`), and `cn_amc_ii` (average), equal to `cn`. The conversion is
 of the area-weighted composite CN of the watershed, as in the hydrograph (ADR-075).
-Hydrolog warns for a CN outside 55–95.
+Hydrolog warns for a CN outside 55–95. As a control of the composite CN the export adds
+the SCS-CN runoff depth of `cn` (`q_cn_mm_p25`, `q_cn_mm_p50`) and the area-weighted runoff
+depth of the complexes, each from its own CN (`q_weighted_mm_p25`, `q_weighted_mm_p50`;
+NEH 630 ch. 10, p. 10-10), for P = 25 and 50 mm, AMC II, Ia = 0.2 S
+(`core/cn_tables.runoff_mm`, `weighted_runoff_mm`; ADR-075, amendment of 2026-11-09).
 
 ### 5.5 CN from Kartograf (HSG)
 

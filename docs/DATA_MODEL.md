@@ -206,8 +206,10 @@ INSERT INTO precipitation_data (geom, duration, probability, precipitation_mm, s
 
 **Description:** the land cover of the BDOT10k county packages, a partition of the area
 (the rows do not overlap and cover every imported county): the PT layers split by their
-attributes, with the industrial complexes of `OT_KUPG_A` cut out of them (ADR-074,
-`scripts/import_landcover.py`). An import replaces the rows of its package's area.
+attributes, with the industrial complexes of `OT_KUPG_A` cut out of them (ADR-074) and
+then the lawns of the sports and recreation complexes and airports (`OT_KUSK_A`,
+`OT_KUKO_A`) cut out of their grass (ADR-078; `scripts/import_landcover.py`). An import
+replaces the rows of its package's area.
 
 **Schemat SQL:**
 ```sql
@@ -233,10 +235,10 @@ CREATE INDEX idx_category ON land_cover(category);
 COMMENT ON TABLE land_cover IS 'Land cover of BDOT10k, a partition of the area (ADR-074)';
 COMMENT ON COLUMN land_cover.category IS 'Category: las, łąka, grunt_orny, etc.';
 COMMENT ON COLUMN land_cover.imperviousness IS 'Imperviousness of the source (0 = pervious, 1 = impervious)';
-COMMENT ON COLUMN land_cover.bdot_class IS 'Source: the BDOT10k layer, with the attribute value that decided the category (PTLZ, PTZB:przem.-skład., KUPG:baza paliw)';
+COMMENT ON COLUMN land_cover.bdot_class IS 'Source: the BDOT10k layer, with the attribute value that decided the category (PTLZ, PTZB:przem.-skład., KUPG:baza paliw, KUSK:park)';
 ```
 
-**Categories and their sources (ADR-074):**
+**Categories and their sources (ADR-074, ADR-078):**
 
 | Category | Sources (`bdot_class`) | Imperviousness |
 |-----------|----------------|------|
@@ -247,15 +249,15 @@ COMMENT ON COLUMN land_cover.bdot_class IS 'Source: the BDOT10k layer, with the 
 | `zabudowa_przemysłowa` | `PTZB:przem.-skład.`, `PTNZ:przem.-skład.`, `KUPG:<kind>`; `PTZB:handl.-usług.` | 0.72; 0.85 |
 | `droga` | `PTKM`, `PTPL:utwardzony` | 0.95 |
 | `woda` | `PTWP` | 1.0 |
-| `inny` | `PTNZ:urządzenia`, `PTPL:nieutwardzony`, `PTWZ`, `PTGN`, `PTSO` | 0.2 |
+| `inny` | `PTNZ:urządzenia`, `PTPL:nieutwardzony`, `PTWZ`, `PTGN`, `PTSO`; `KUSK:<kind>`, `KUKO:lotnisko` (the lawns of parks, sports grounds and airports) | 0.2; 0.0 |
 
 The urban imperviousness is the average of the TR-55 districts (USDA-SCS 1986, table
 2-2a): residential 1/3 acre 30%, 1/8 acre 65%, industrial 72%, commercial and business
 85%. A plain layer code (`PTZB`, `PTTR`, `PTNZ`, `PTPL`) marks a polygon without the
 attribute or with another value: it takes the layer's first category
-(`zabudowa_mieszkaniowa`, `grunt_orny`, `inny`, `droga`). The `KUPG` kinds are listed in
-`backend/scripts/README.md`. The table holds no CN: the CN of a row is that of its
-soil-cover complex, the TR-55 cover of its category or of its source
+(`zabudowa_mieszkaniowa`, `grunt_orny`, `inny`, `droga`). The `KUPG`, `KUSK` and `KUKO`
+kinds are listed in `backend/scripts/README.md`. The table holds no CN: the CN of a row
+is that of its soil-cover complex, the TR-55 cover of its category or of its source
 (`core/cn_tables.py`) on its soil group of `soil_hsg` (ADR-075); migration 006 dropped
 the column `cn_value`, one CN per category.
 
@@ -477,7 +479,9 @@ CREATE INDEX idx_depressions_max_depth ON depressions(max_depth_m); -- migracja 
 
 ### 3.7 Tabela: `soil_hsg`
 
-**Opis:** Grupy glebowe HSG (Hydrologic Soil Group) — poligony z klasyfikacją A/B/C/D (migracja 016).
+**Description:** the hydrologic soil groups (HSG): the HSG raster of Kartograf
+(SoilGrids) polygonized by bootstrap step 5, with the soil under the wetlands of BDOT10k
+(`OT_OIMK_A`) as group D (ADR-078). The polygons do not overlap.
 
 **Schemat SQL:**
 ```sql

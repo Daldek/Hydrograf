@@ -1,8 +1,18 @@
 # ADR-075: The CN is that of the soil-cover complexes, from Hydrolog's TR-55 table
 
+> **Amended by ADR-078 (2026-11-10):** `soil_hsg` has group D under the wetlands of
+> BDOT10k (`OT_OIMK_A`), the water-table criterion that the consequences below ask for,
+> for the wet land that BDOT10k maps; and the lawns of the sports and recreation
+> complexes and airports (`inny` with `KUSK:<kind>` or `KUKO:lotnisko`) take TR-55 open
+> space in good condition (39/61/74/80). On h07 the area-weighted CN rises by 0.3
+> (median catchment +0.18, at most +2.96 in a catchment of at least 1 km²), nearly all
+> of it by the wetlands.
+
 **Date:** 2026-11-08
 **Status:** accepted (by delegation of the author, 2026-11-08; the open points decided by
-the author 2026-11-08, below; plan `docs/plans/2026-11-08-cn-by-soil-group.md`)
+the author 2026-11-08, below; plan `docs/plans/2026-11-08-cn-by-soil-group.md`); amended
+2026-11-09: `woda` takes Hydrolog's water row and PTKM the paved road with open ditches,
+and control columns of the weighted runoff in the export (Amendments below)
 
 ## Context
 
@@ -76,7 +86,8 @@ here). It is nearly uniform, so the land cover drives the spatial pattern of the
      `bdot_class` (ADR-074);
    - `droga` → paved (2-2a); `woda` → CN 98, "impervious and water surfaces … are always
      assigned a CN of 98" (NEH 630 ch. 9, p. 9-1; Hydrolog's own WATER row is 100, so the
-     paved row of Hydrolog, 98, is used);
+     paved row of Hydrolog, 98, is used). Amended 2026-11-09: `woda` takes Hydrolog's
+     water row (now 98) and PTKM the paved road with open ditches (Amendment below);
    - `inny` → open space, fair (2-2a); `PTPL:nieutwardzony` → dirt road incl. right-of-way;
      `PTWZ` (pits, heaps) → newly graded area, no vegetation. Decided by the author
      2026-11-08: the solar farms stay `inny` (their PTNZ teren pod urządzeniami,
@@ -90,7 +101,8 @@ here). It is nearly uniform, so the land cover drives the spatial pattern of the
    around it, and the mean is kept); with no soil data at all, group B (the fallback of
    the Kartograf HSG). The share is reported (`hsg_assumed_pct`, `lc_without_hsg_pct`).
 4. **Composite CN only** in the panel and the export; the weighted runoff is not reported
-   (option 4). Its size on h07 is below.
+   (option 4). Its size on h07 is below. *Amended 2026-11-09:* the export reports it as
+   control columns beside the composite CN (Amendment below).
 5. **AMC.** The panel and the CN columns stay AMC II. The export adds `cn_amc_i` and
    `cn_amc_iii`: Hydrolog's conversion (`SCSCN.adjust_cn_for_amc`, Hawkins et al. 1985,
    approximating NEH 630 ch. 10 table 10-1) of the watershed CN, exactly as the hydrograph
@@ -150,3 +162,40 @@ source than SoilGrids 250 m. Missing TR-55 rows in Hydrolog (a Hydrolog request)
 roads with open ditches including right-of-way (83/89/92/93, the row PTKM describes: it is
 the right-of-way with ditches and rail beds, 17 km² in h07, ≤ 0.1 CN on average),
 residential 1/4 acre (38%), woods–grass combination, and water at 98.
+
+## Amendment 2026-11-09: the rows Hydrolog added
+
+Hydrolog `develop` @ `4fad769` adds the missing TR-55 rows (Hydrograf's request above):
+water at 98 for every group (it was 100), paved roads with open ditches including
+right-of-way (83/89/92/93), residential 1/4 acre (61/75/83/87) and woods–grass
+combination poor/fair/good. Hydrograf pins that commit, and `core/cn_tables.py` moves two
+mappings:
+
+- `woda` → Hydrolog's water row (98) instead of the paved row used as a workaround; the
+  CN does not change.
+- `("droga", "PTKM")` → paved road with open ditches including right-of-way (A 83, B 89,
+  C 92, D 93; was paved, 98): PTKM is the strip of roads and railways with their verges,
+  ditches and rail beds. `droga` on `PTPL:utwardzony` and plain `PTPL` stays paved (98).
+  The CN of a watershed falls by 9 × its PTKM share on group B (17 km² of PTKM in h07,
+  ≤ 0.1 CN on average by the estimate above; not measured again). The land cover of a
+  database needs no new import: the cover is chosen from the `bdot_class` of each row.
+  The Kartograf path (decision 6) has no `bdot_class` and keeps paved for all `droga`.
+
+PTUT stays `łąka` (meadow) by the author's decision of 2026-11-08 (decision 2): the
+woods–grass row does not reopen it. Residential 1/4 acre is not used: the residential
+mappings stay as decided.
+
+## Amendment (2026-11-09): control columns of the weighted runoff
+
+The author keeps the composite area-weighted CN (option 3) in the panel, the hydrograph
+and the export, and asked for control columns instead of a switch of the method
+(option 4). The export (`scripts/export_catchment_parameters.py`) adds, for P = 25 mm and
+50 mm and AMC II, `q_cn_mm_p25`, `q_cn_mm_p50` (the SCS-CN runoff depth of the composite
+CN) and `q_weighted_mm_p25`, `q_weighted_mm_p50` (the area-weighted mean of the runoff
+depths of the soil-cover complexes, each from its own CN: the method of weighted Q, NEH 630
+ch. 10, p. 10-10), both by Hydrolog's SCS-CN equation with Ia = 0.2 S
+(`core.cn_tables.runoff_mm`, `weighted_runoff_mm`), in mm to 0.01, section „Kontrola” of
+`<layer>_units`. `summarize_complexes` (`core/land_cover.py`) returns the complexes as
+(CN, area) for this. The difference of the two columns is the error of the composite CN
+for that storm: on h07 0.95 mm at 25 mm and 1.7 mm at 50 mm (Consequences). The panel and
+the API do not change.

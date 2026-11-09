@@ -1,4 +1,4 @@
-"""Tests for the monotonic stream smoothing (ADR-041, ADR-072)."""
+"""Tests for the monotonic stream smoothing (ADR-041, ADR-072, ADR-077)."""
 
 from unittest.mock import patch
 
@@ -9,7 +9,9 @@ from rasterio.transform import from_bounds, from_origin
 from shapely.geometry import LineString
 
 from core.hydrology import (
+    CONNECTOR,
     _bresenham,
+    _line_directions,
     _line_nodes,
     _rasterize_line_ordered,
     burn_streams_into_dem,
@@ -18,6 +20,43 @@ from core.hydrology import (
 )
 
 NODATA = -9999.0
+
+
+def _features(lines, mphp=None, names=None, connectors=None):
+    """Return the frame of ``_load_stream_features``: lines with their attributes.
+
+    The attributes are blank unless given, line by line; ``connectors`` marks the
+    artificial connectors.
+    """
+    blank = [""] * len(lines)
+    return gpd.GeoDataFrame(
+        {
+            "IDENTYFIKATORMPHP": mphp or blank,
+            "NAZWA": names or blank,
+            "CECHAGEOMETRII": [CONNECTOR if flag else "" for flag in connectors]
+            if connectors
+            else blank,
+        },
+        geometry=list(lines),
+        crs="EPSG:2180",
+    )
+
+
+def _smooth(dem, transform, lines, nodata=NODATA, **attributes):
+    """Smooth a copy of ``dem`` along ``lines``: (DEM, flow lines, diagnostics)."""
+    with patch(
+        "core.hydrology._load_stream_features",
+        return_value=_features(lines, **attributes),
+    ):
+        return smooth_streams_monotonic(
+            dem.copy(), transform, "dummy.gpkg", nodata=nodata
+        )
+
+
+def _sloped_dem(nrows=20, ncols=20):
+    """Elevation decreases with row (top=high, bottom=low), 5 m a row."""
+    rows = np.arange(nrows, dtype=np.float32)[:, None]
+    return np.repeat(200.0 - rows * 5.0, ncols, axis=1).astype(np.float32)
 
 
 class TestBresenham:
@@ -108,23 +147,13 @@ class TestSmoothStreamsMonotonic:
     Covers spec test cases #1-#7, #11-#13 (ADR-041) and the direction of ADR-072.
     """
 
-    def _make_sloped_dem(self, nrows=20, ncols=20):
-        """Elevation decreases with row (top=high, bottom=low)."""
-        dem = np.zeros((nrows, ncols), dtype=np.float32)
-        for r in range(nrows):
-            for c in range(ncols):
-                dem[r, c] = 200.0 - r * 5.0
-        return dem
-
     # Spec #1: bridge obstacle
     def test_bridge_obstacle_corrected(self):
-        dem = self._make_sloped_dem()
+        dem = _sloped_dem()
         transform = from_bounds(0, 0, 20, 20, 20, 20)
         dem[10, 5] = 200.0  # bridge bump
         line = LineString([(5, 18), (5, 2)])
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [line]
-            result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+        result, _, diag = _smooth(dem, transform, [line])
         assert result[10, 5] <= result[9, 5]
         assert diag["cells_smoothed"] > 0
 
@@ -134,9 +163,7 @@ class TestSmoothStreamsMonotonic:
         dem = np.full((20, 20), 100.0, dtype=np.float32)
         transform = from_bounds(0, 0, 20, 20, 20, 20)
         line = LineString([(5, 18), (5, 2)])  # rows 2 to 18
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [line]
-            result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+        result, _, diag = _smooth(dem, transform, [line])
         profile = result[2:19, 5]
         assert profile[0] == 100.0
         assert np.all(np.diff(profile) < 0)
@@ -145,27 +172,23 @@ class TestSmoothStreamsMonotonic:
 
     # Spec #3: already monotonic
     def test_already_monotonic_unchanged(self):
-        dem = self._make_sloped_dem()
+        dem = _sloped_dem()
         transform = from_bounds(0, 0, 20, 20, 20, 20)
         line = LineString([(5, 18), (5, 2)])
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [line]
-            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+        _, _, diag = _smooth(dem, transform, [line])
         assert diag["cells_smoothed"] == 0
 
     # Spec #4: confluence
     def test_a_line_starts_below_the_lines_ending_at_its_start(self):
         """The main stem, listed before its tributaries, starts below the lower one."""
-        dem = self._make_sloped_dem()
+        dem = _sloped_dem()
         transform = from_bounds(0, 0, 20, 20, 20, 20)
         main = LineString([(10, 10), (10, 2)])  # rows 10 to 18
         trib_a = LineString([(8, 18), (10, 10)])
         trib_b = LineString([(12, 18), (10, 10)])
         for cell in _rasterize_line_ordered(trib_b, transform)[1:-1]:
             dem[cell] = 120.0  # a hollow along trib_b, below the junction (150 m)
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [main, trib_a, trib_b]
-            result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+        result, _, diag = _smooth(dem, transform, [main, trib_a, trib_b])
         assert diag["segments_processed"] == 3
         main_profile = result[10:19, 10]
         assert main_profile[0] < 120.0
@@ -180,48 +203,39 @@ class TestSmoothStreamsMonotonic:
         transform = from_bounds(0, 0, 200, 400, 20, 40)  # 10 m cells, 5% slope
         dem[20, 5] = 200.0  # a bridge, 10 m above the cell below it
         line = LineString([(52, 17), (52, 383)])  # from row 38 up to row 2
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [line]
-            result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
-        assert diag["segments_reversed"] == 1
+        result, flow_lines, diag = _smooth(dem, transform, [line])
+        assert diag["segments_reversed"] == diag["segments_reversed_by_rise"] == 1
+        assert list(flow_lines[0].coords) == list(line.coords)[::-1]
         np.testing.assert_array_equal(result[2:20, 5], dem[2:20, 5])
         assert result[20, 5] < result[19, 5]
         np.testing.assert_array_equal(result[21:39, 5], dem[21:39, 5])
 
     # Spec #6: MultiLineString decomposition
     def test_multilinestring_decomposed(self):
-        dem = self._make_sloped_dem()
+        dem = _sloped_dem()
         transform = from_bounds(0, 0, 20, 20, 20, 20)
         part_a = LineString([(5, 18), (5, 10)])
         part_b = LineString([(5, 10), (5, 2)])
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [part_a, part_b]
-            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+        _, _, diag = _smooth(dem, transform, [part_a, part_b])
         assert diag["segments_processed"] == 2
 
     # Spec #7: NoData cells
     def test_nodata_cells_skipped(self):
-        dem = self._make_sloped_dem()
+        dem = _sloped_dem()
         transform = from_bounds(0, 0, 20, 20, 20, 20)
         nodata = -9999.0
         dem[10, 5] = nodata
         line = LineString([(5, 18), (5, 2)])
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [line]
-            result, _ = smooth_streams_monotonic(
-                dem.copy(), transform, "dummy.gpkg", nodata=nodata
-            )
+        result, _, _ = _smooth(dem, transform, [line], nodata=nodata)
         assert result[10, 5] == nodata
 
     def test_a_loop_is_taken_from_its_first_line(self):
         """A directed cycle has no flow order; each of its lines is smoothed once."""
-        dem = self._make_sloped_dem()
+        dem = _sloped_dem()
         transform = from_bounds(0, 0, 20, 20, 20, 20)
         down = LineString([(5, 18), (5, 2)])
         back = LineString([(5, 2), (15, 2), (15, 18), (5, 18)])
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [down, back]
-            result, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+        result, _, diag = _smooth(dem, transform, [down, back])
         assert diag["segments_processed"] == 2
         assert diag["segments_out_of_order"] == 1
         back_profile = [
@@ -231,34 +245,28 @@ class TestSmoothStreamsMonotonic:
 
     # Spec #11: overlapping geometries
     def test_overlapping_geometries_min_wins(self):
-        dem = self._make_sloped_dem()
+        dem = _sloped_dem()
         transform = from_bounds(0, 0, 20, 20, 20, 20)
         dem[10, 5] = 200.0
         line_a = LineString([(5, 18), (5, 2)])
         line_b = LineString([(5, 18), (5, 2)])
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [line_a, line_b]
-            result, _ = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+        result, _, _ = _smooth(dem, transform, [line_a, line_b])
         assert result[10, 5] <= result[9, 5]
 
     # Spec #12: short segment
     def test_short_segment_handled(self):
-        dem = self._make_sloped_dem()
+        dem = _sloped_dem()
         transform = from_bounds(0, 0, 20, 20, 20, 20)
         short = LineString([(5.1, 10.1), (5.4, 10.4)])
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [short]
-            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+        _, _, diag = _smooth(dem, transform, [short])
         assert diag["segments_processed"] + diag["segments_skipped"] == 1
 
     # Spec #13: segment outside DEM
     def test_segment_outside_dem_skipped(self):
-        dem = self._make_sloped_dem(10, 10)
+        dem = _sloped_dem(10, 10)
         transform = from_bounds(0, 0, 10, 10, 10, 10)
         line = LineString([(50, 50), (60, 60)])
-        with patch("core.hydrology._load_stream_geometries") as mock_load:
-            mock_load.return_value = [line]
-            _, diag = smooth_streams_monotonic(dem.copy(), transform, "dummy.gpkg")
+        _, _, diag = _smooth(dem, transform, [line])
         assert diag["segments_skipped"] >= 1
         assert diag["segments_processed"] == 0
 
@@ -315,7 +323,9 @@ class TestRiverCrossingTheEdgeOfTheData:
     def _directions(self, dem, gpkg):
         transform = from_origin(self.X0, self.Y0, 5.0, 5.0)
         burned, _ = burn_streams_into_dem(dem, transform, gpkg, 2.0, NODATA, "main")
-        smoothed, _ = smooth_streams_monotonic(burned, transform, gpkg, NODATA, "main")
+        smoothed, _, _ = smooth_streams_monotonic(
+            burned, transform, gpkg, NODATA, "main"
+        )
         _, fdir, acc, _ = process_hydrology_pyflwdir(
             smoothed, {"nodata_value": NODATA, "transform": transform}
         )
@@ -344,3 +354,180 @@ class TestRiverCrossingTheEdgeOfTheData:
         fdir, acc = self._directions(dem, gpkg)
         assert np.all(fdir[self.ROW, first:last] == 1)
         assert acc[self.ROW, last] >= last - first + 1
+
+
+# A 5 m grid; the lines of the next tests run along its row ROW
+TRANSFORM_5M = from_origin(0.0, 0.0, 5.0, 5.0)
+ROW = 5
+
+
+def _along_row(first_col, last_col):
+    """Return a line along ROW from the centre of one column to that of another."""
+    y = -(ROW + 0.5) * 5.0
+    return LineString([((first_col + 0.5) * 5.0, y), ((last_col + 0.5) * 5.0, y)])
+
+
+def _valley(floor):
+    """Return the DEM of a valley along ROW, its floor one value per column."""
+    sides = 0.5 * np.abs(np.arange(2 * ROW + 1) - ROW)[:, None]
+    return (np.asarray(floor)[None, :] + sides).astype(np.float32)
+
+
+class TestTheDirectionOfALine:
+    """The smoothing takes each burned line the way the rules of ADR-077 give."""
+
+    def test_a_block_digitized_upstream_flows_down_its_watercourse(self):
+        """The middle line of three rises 0.8 m on 105 m the way it is digitized.
+
+        ADR-072 kept it; the DEM along the whole watercourse falls 2.5 m the other way.
+        """
+        dem = _valley(52.5 - 2.5 * np.arange(64) / 63)
+        lines = [_along_row(0, 20), _along_row(40, 20), _along_row(40, 63)]
+        result, _, diag = _smooth(dem, TRANSFORM_5M, lines, names=["Struga"] * 3)
+        assert diag["segments_reversed"] == 1
+        assert diag["segments_reversed_by_watercourse"] == 1
+        assert np.all(np.diff(result[ROW]) < 0)
+
+    def test_a_connector_through_a_flat_lake_flows_the_way_of_its_watercourse(self):
+        floor = np.concatenate(
+            [np.linspace(52.5, 51.5, 21), np.full(19, 51.5), np.linspace(51.5, 50, 24)]
+        )
+        lines = [_along_row(0, 20), _along_row(40, 20), _along_row(40, 63)]
+        result, _, diag = _smooth(
+            _valley(floor),
+            TRANSFORM_5M,
+            lines,
+            names=["Struga"] * 3,
+            connectors=[False, True, False],
+        )
+        assert diag["connectors"] == 1
+        assert diag["segments_reversed"] == 1
+        assert diag["segments_reversed_by_watercourse"] == 1
+        assert np.all(np.diff(result[ROW]) < 0)
+
+    def test_the_dem_along_a_connector_does_not_reverse_it(self):
+        """A lake surface read 3 m higher on 255 m the way it is digitized.
+
+        ADR-072 reversed it; it is digitized the way of its watercourse.
+        """
+        floor = np.concatenate(
+            [
+                np.linspace(53.0, 52.0, 21),
+                np.linspace(52.0, 55.0, 51)[1:],
+                np.linspace(55.0, 54.0, 30)[1:],
+            ]
+        )
+        lines = [_along_row(0, 20), _along_row(20, 70), _along_row(70, 99)]
+        _, _, diag = _smooth(
+            _valley(floor),
+            TRANSFORM_5M,
+            lines,
+            names=["Struga"] * 3,
+            connectors=[False, True, False],
+        )
+        assert diag["segments_reversed"] == 0
+
+    @pytest.mark.parametrize(
+        ("receiver", "reversed_lines"), [("188", 1), ("189", 0), ("188521", 0)]
+    )
+    def test_a_flat_watercourse_flows_to_its_mouth(self, receiver, reversed_lines):
+        """18852 in two lines; the one at the end of a line of ``receiver`` leaves it.
+
+        Only a receiver, whose identifier is a proper prefix of 18852, is a mouth.
+        """
+        lines = [_along_row(0, 20), _along_row(20, 40), _along_row(60, 40)]
+        _, _, diag = _smooth(
+            _valley(np.full(61, 100.0)),
+            TRANSFORM_5M,
+            lines,
+            mphp=[receiver, "18852", "18852"],
+        )
+        assert diag["segments_reversed_by_mouth"] == reversed_lines
+        assert diag["segments_reversed"] == reversed_lines
+
+    def test_a_network_digitized_downstream_is_smoothed_as_without_attributes(self):
+        transform = from_bounds(0, 0, 20, 20, 20, 20)
+        lines = [
+            LineString([(10, 18), (10, 10)]),
+            LineString([(10, 10), (10, 2)]),
+            LineString([(4, 18), (7, 14)]),
+            LineString([(7, 14), (10, 10)]),
+        ]
+        attributed, _, diag = _smooth(
+            _sloped_dem(),
+            transform,
+            lines,
+            mphp=["188", "188", "18852", "18852"],
+            names=["Noteć", "Noteć", "Kcynka", "Kcynka"],
+        )
+        blank, _, _ = _smooth(_sloped_dem(), transform, lines)
+        assert diag["segments_by_mouth"] == 2
+        assert diag["segments_reversed"] == 0
+        np.testing.assert_array_equal(attributed, blank)
+
+    def test_a_block_falling_from_a_divide_keeps_its_direction(self):
+        """The guard: the watercourse falls 7 m east, its block off a divide 4 m west.
+
+        Reversed, the block would be cut up to 4 m deep across the divide.
+        """
+        floor = np.concatenate(
+            [np.linspace(107.0, 111.0, 51), np.linspace(111.0, 100.0, 50)[1:]]
+        )
+        lines = [_along_row(50, 0), _along_row(50, 99)]
+        _, _, diag = _smooth(_valley(floor), TRANSFORM_5M, lines, names=["Struga"] * 2)
+        assert diag["blocks_kept_by_fall"] == 1
+        assert diag["segments_reversed"] == 0
+
+
+class TestLineDirections:
+    """``_line_directions`` on networks of nodes, lengths and DEM values 5 m apart."""
+
+    @staticmethod
+    def _directions(ends, values=None, lengths=None, mphp=None, names=None):
+        flat = np.full(40, 100.0)
+        blank = [""] * len(ends)
+        return _line_directions(
+            ends,
+            {line: (values or {}).get(line, flat) for line in ends},
+            lengths or dict.fromkeys(ends, 100.0),
+            mphp or blank,
+            names or blank,
+            [False] * len(ends),
+            5.0,
+        )
+
+    def test_the_mouth_comes_before_the_dem_of_the_watercourse(self):
+        """18852 runs 1 -> 2 <- 3 from its receiver at node 1, its DEM falling to 3."""
+        ends = {0: (0, 1), 1: (1, 2), 2: (3, 2)}
+        values = {1: np.linspace(110.0, 105.0, 30), 2: np.linspace(100.0, 105.0, 30)}
+        directions, _ = self._directions(
+            ends, values, {0: 100.0, 1: 150.0, 2: 150.0}, ["188", "18852", "18852"]
+        )
+        assert directions[1] == (True, "mouth")
+        assert directions[2] == (False, "mouth")
+
+    def test_with_two_mouths_each_line_flows_to_the_nearer(self):
+        """A side arm of 188 leaves it at node 1 and returns at node 4."""
+        ends = {0: (0, 1), 1: (1, 2), 2: (2, 3), 3: (3, 4), 4: (4, 5)}
+        lengths = {0: 100.0, 1: 100.0, 2: 200.0, 3: 400.0, 4: 100.0}
+        mphp = ["188", "18852", "18852", "18852", "188"]
+        directions, _ = self._directions(ends, lengths=lengths, mphp=mphp)
+        assert directions[1] == (True, "mouth")
+        assert directions[2] == (True, "mouth")
+        assert directions[3] == (False, "mouth")
+
+    def test_a_line_as_far_from_the_mouth_at_both_ends_goes_to_the_other_rules(self):
+        """The middle line of the side arm; the DEM rises 3 m along it."""
+        ends = {0: (0, 1), 1: (1, 2), 2: (2, 3), 3: (3, 4), 4: (4, 5)}
+        lengths = {0: 100.0, 1: 100.0, 2: 250.0, 3: 100.0, 4: 100.0}
+        mphp = ["188", "18852", "18852", "18852", "188"]
+        values = {2: np.linspace(100.0, 103.0, 50)}
+        directions, _ = self._directions(ends, values, lengths, mphp)
+        assert directions[2] == (True, "rise")
+
+    def test_a_loop_of_one_watercourse_is_walked_once(self):
+        """Three lines of a canal round an island, digitized both ways, on a flat."""
+        ends = {0: (1, 2), 1: (3, 2), 2: (3, 1)}
+        directions, kept = self._directions(ends, names=["Kanał"] * 3)
+        assert directions == dict.fromkeys(ends, (False, "digitized"))
+        assert kept == []

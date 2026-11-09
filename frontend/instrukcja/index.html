@@ -161,7 +161,7 @@
     <div class="step"><span class="number">02</span><strong>Wskaż miejsce</strong><p>Na pasku nad mapą wybierz „Wybierz zlewnię” i kliknij przy niebieskiej linii — w miejscu, dla którego chcesz poznać zlewnię.</p></div>
     <div class="step"><span class="number">03</span><strong>Przeczytaj wynik</strong><p>Na mapie pojawi się granica zlewni, a w panelu „Zlewnia” — powierzchnia, wysokości, pokrycie terenu, a niżej deszcz i odpływ.</p></div>
   </div>
-  <p class="hint"><strong>Gdzie są dane?</strong> Na razie tylko w zlewni Kaczawy — od źródeł w Górach Kaczawskich do Legnicy (ok.&nbsp;790&nbsp;km²), m.in. okolice Złotoryi i Świerzawy. Mapa po otwarciu sama pokazuje ten obszar; poza nim Hydrograf nie wyznaczy zlewni.</p>
+  <p class="hint"><strong>Gdzie są dane?</strong> Tylko w obszarze tej instancji Hydrografu<span data-instance-area></span>. Mapa po otwarciu sama pokazuje ten obszar; poza nim Hydrograf nie wyznaczy zlewni.</p>
   <p class="hint">Szczegóły każdej funkcji — od slajdu 7. Coś nie działa albo masz pomysł? Przycisk „Zgłoś uwagę” na górnym pasku.</p>
   <div class="footer"><span>NA START · TRZY KROKI · OBSZAR DANYCH</span><span>06 / 31</span></div>
 </section>
@@ -169,7 +169,7 @@
   <p class="kicker">01 · Zanim zaczniesz</p>
   <h2>Obszar danych i status wyników</h2>
   <div class="grid three">
-    <div class="card"><span class="label">Obszar danych</span><p>Dane obejmują tylko zlewnię Kaczawy powyżej punktu 51,222825°&nbsp;N, 16,179380°&nbsp;E (ok.&nbsp;790&nbsp;km²). Po otwarciu mapa sama pokazuje ten obszar, a warstwy kończą się na jego granicy.</p></div>
+    <div class="card"><span class="label">Obszar danych</span><p>Dane obejmują tylko obszar tej instancji Hydrografu<span data-instance-area></span>. Po otwarciu mapa sama pokazuje ten obszar, a warstwy kończą się na jego granicy.</p></div>
     <div class="card"><span class="label">Poza obszarem</span><p>Kliknięcie w trybie „Wybierz zlewnię” poza liniami spływu kończy się komunikatem „Nie znaleziono zlewni cząstkowej w tym punkcie. Kliknij w obszarze pokrytym liniami spływu.” Profil przecinający granicę danych może pokazać 0&nbsp;m na odcinku bez danych; profil całkiem poza nimi może zwrócić błąd.</p></div>
     <div class="card"><span class="label">Status wyników</span><p>To wersja rozwojowa: wartości i funkcje mogą się zmieniać. Hietogram i hydrogram powstają tylko dla zlewni do 250&nbsp;km². Mapa głębokości wody SFINCS to wynik wstępny, do podmiany.</p></div>
   </div>
@@ -562,5 +562,6 @@
 </main>
 </div>
 <script defer src="../js/theme-switch.js?v=b1e53f98a8"></script>
+<script defer src="../js/instance.js?v=04b557b531"></script>
 </body>
 </html>

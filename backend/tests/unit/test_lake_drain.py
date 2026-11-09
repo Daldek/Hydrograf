@@ -12,6 +12,7 @@ from core.hydrology import (
     _add_drain_point,
     classify_endorheic_lakes,
     process_hydrology_pyflwdir,
+    smooth_streams_monotonic,
 )
 
 # Common test fixtures
@@ -348,6 +349,61 @@ class TestClassifyEndorheicLakes:
             drain_pts, diag = classify_endorheic_lakes(dem, transform, gpkg, NODATA)
 
         assert diag["streams_reversed"] == 1
+        assert diag["exorheic"] == 1
+        assert len(drain_pts) == 0
+
+    def test_a_burned_line_flows_the_way_the_smoothing_took_it(self):
+        """Its own DEM falls away from the lake; the smoothing took it the other way."""
+        dem, transform = _make_valley_dem(rises_eastward=False)
+        stream = LineString([(500070, 600260), (500370, 600260)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([_VALLEY_LAKE], [stream], tmp)
+            drain_pts, diag = classify_endorheic_lakes(
+                dem, transform, gpkg, NODATA, flow_lines=[stream.reverse()]
+            )
+
+        assert diag["streams_burned"] == 1
+        assert diag["streams_reversed"] == 1
+        assert diag["endorheic"] == 1
+        assert len(drain_pts) == 1
+
+    def test_the_lakes_take_the_directions_of_the_smoothing(self):
+        """A watercourse through a lake whose outflow is digitized towards the lake.
+
+        The DEM along the watercourse falls 1.5 m east; along the outflow it rises
+        0.7 m the way the line is digitized, which the rule of a line on its own keeps.
+        The smoothing reverses the outflow (ADR-077), and so do the lakes.
+        """
+        transform = Affine(5.0, 0, 500000.0, 0, -5.0, 600500.0)
+        dem = np.tile(150.0 - 0.015 * np.arange(100), (100, 1)).astype(np.float32)
+        lake = Polygon(
+            [(500200, 600280), (500260, 600280), (500260, 600240), (500200, 600240)]
+        )
+        y = 600257.5
+        inflow = LineString([(500002.5, y), (500200, y)])
+        connector = LineString([(500200, y), (500260, y)])
+        outflow = LineString([(500497.5, y), (500260, y)])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gpkg = _create_test_gpkg([lake], [], tmp)
+            gpd.GeoDataFrame(
+                {
+                    "NAZWA": ["Struga"] * 3,
+                    "CECHAGEOMETRII": ["", "sztuczny łącznik", ""],
+                },
+                geometry=[inflow, connector, outflow],
+                crs="EPSG:2180",
+            ).to_file(gpkg, layer="OT_SWRS_L", driver="GPKG", mode="a")
+            smoothed, flow_lines, smooth_diag = smooth_streams_monotonic(
+                dem, transform, gpkg, NODATA
+            )
+            drain_pts, diag = classify_endorheic_lakes(
+                smoothed, transform, gpkg, NODATA, flow_lines=flow_lines
+            )
+
+        assert smooth_diag["segments_reversed_by_watercourse"] == 1
+        assert diag["streams_burned"] == diag["streams_analyzed"] > 0
         assert diag["exorheic"] == 1
         assert len(drain_pts) == 0
 

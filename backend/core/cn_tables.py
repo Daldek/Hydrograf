@@ -8,7 +8,7 @@ of the table ``land_cover`` with the source of its row (``bdot_class``) and a so
 group is one of ``soil_hsg``. The numbers are Hydrolog's TR-55 table
 (:func:`hydrolog.runoff.get_cn`), the single source of the CN; this module says only
 which TR-55 cover each category stands for and gives Hydrolog's conversion to AMC I
-and III.
+and III and its runoff depth of a storm.
 
 Sources:
 
@@ -17,10 +17,11 @@ Sources:
   lands).
 - USDA-NRCS (2004). NEH Part 630, chapter 9 (hydrologic soil-cover complexes;
   "impervious and water surfaces ... are always assigned a CN of 98", p. 9-1) and
-  chapter 10 (the weighted CN of a watershed of several complexes; the antecedent
-  runoff condition).
+  chapter 10 (the weighted CN of a watershed of several complexes and the weighted
+  runoff, p. 10-10; the antecedent runoff condition).
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final
 
@@ -91,7 +92,7 @@ COVER_BY_CATEGORY: Final[dict[str, Tr55Cover]] = {
         "roads (TR-55 table 2-2a)",
     ),
     "woda": Tr55Cover(
-        LandCover.PAVED,
+        LandCover.WATER,
         None,
         "Water surfaces: CN 98, as impervious areas (NEH 630, chapter 9, p. 9-1)",
     ),
@@ -101,6 +102,16 @@ COVER_BY_CATEGORY: Final[dict[str, Tr55Cover]] = {
         "Open space, fair condition: grass cover 50 to 75% (TR-55 table 2-2a)",
     ),
 }
+
+# The lawns of the sports and recreation complexes, parks, gardens and airfields
+# (ADR-078): mown grass, cover above 75%, the condition in which TR-55 counts the
+# pervious land of its urban districts (table 2-2a, footnote 2)
+_LAWN: Final = Tr55Cover(
+    LandCover.OPEN_SPACE,
+    HydrologicCondition.GOOD,
+    "Open space (lawns, parks, golf courses), good condition: grass cover above 75% "
+    "(TR-55 table 2-2a)",
+)
 
 # Sources (bdot_class) of a category that a TR-55 cover describes better than the cover
 # of the category: (category, bdot_class) -> cover. bdot_class is the source of the row
@@ -117,6 +128,12 @@ COVER_BY_SOURCE: Final[dict[tuple[str, str], Tr55Cover]] = {
         None,
         "Urban districts: commercial and business, 85% impervious (TR-55 table 2-2a)",
     ),
+    ("droga", "PTKM"): Tr55Cover(
+        LandCover.PAVED_ROAD_OPEN_DITCHES,
+        None,
+        "Streets and roads: paved; open ditches (including right-of-way) "
+        "(TR-55 table 2-2a)",
+    ),
     ("inny", "PTPL:nieutwardzony"): Tr55Cover(
         LandCover.DIRT,
         None,
@@ -128,6 +145,11 @@ COVER_BY_SOURCE: Final[dict[tuple[str, str], Tr55Cover]] = {
         "Newly graded areas, no vegetation (TR-55 table 2-2a); the same numbers as "
         "fallow, bare soil (table 2-2b)",
     ),
+    ("inny", "KUKO:lotnisko"): _LAWN,
+    ("inny", "KUSK:kompl. sport."): _LAWN,
+    ("inny", "KUSK:park"): _LAWN,
+    ("inny", "KUSK:ogród botan."): _LAWN,
+    ("inny", "KUSK:ogród zoolog."): _LAWN,
 }
 
 
@@ -211,3 +233,55 @@ def cn_for_amc(cn: float, amc: AMC) -> int:
     # Hydrolog annotates the CN as int; its formulas take the weighted CN of a
     # watershed, as the hydrograph passes it (api/endpoints/hydrograph.py).
     return SCSCN(cn=cn).adjust_cn_for_amc(amc)  # type: ignore[arg-type]
+
+
+def runoff_mm(cn: float, precipitation_mm: float) -> float:
+    """Direct runoff depth Q of a storm for AMC II, by Hydrolog's SCS-CN equation.
+
+    ``SCSCN.effective_precipitation``: Q = (P - Ia)^2 / (P - Ia + S) for P > Ia, else
+    0, with S = 25400 / CN - 254 and Ia = 0.2 S (NEH 630 chapter 10).
+
+    Parameters
+    ----------
+    cn : float
+        CN for AMC II (1-100), of a complex or the composite CN of a watershed.
+    precipitation_mm : float
+        Storm depth P [mm].
+
+    Returns
+    -------
+    float
+        Runoff depth Q [mm].
+    """
+    # Hydrolog annotates the CN as int; its equation takes the weighted CN of a
+    # watershed, as the hydrograph passes it (api/endpoints/hydrograph.py).
+    scs = SCSCN(cn=cn)  # type: ignore[arg-type]
+    return scs.effective_precipitation(precipitation_mm, AMC.II).total_effective_mm
+
+
+def weighted_runoff_mm(
+    complexes: Iterable[tuple[float, float]], precipitation_mm: float
+) -> float:
+    """Area-weighted runoff depth of soil-cover complexes, each with its own CN.
+
+    The method of weighted Q of NEH 630 chapter 10 (p. 10-10): the runoff of each
+    complex from its CN, weighted by its area, sum(A_i Q(CN_i)) / sum(A_i). It
+    exceeds the runoff of the area-weighted CN (``runoff_mm`` of the composite CN)
+    where the CN of the complexes differ, most for small storms; equal CN give equal
+    runoff.
+
+    Parameters
+    ----------
+    complexes : Iterable[tuple[float, float]]
+        (CN for AMC II, area) of each complex; the area in any unit, total > 0.
+    precipitation_mm : float
+        Storm depth P [mm].
+
+    Returns
+    -------
+    float
+        Runoff depth Q [mm].
+    """
+    pairs = list(complexes)
+    area = sum(a for _, a in pairs)
+    return sum(runoff_mm(cn, precipitation_mm) * a for cn, a in pairs) / area

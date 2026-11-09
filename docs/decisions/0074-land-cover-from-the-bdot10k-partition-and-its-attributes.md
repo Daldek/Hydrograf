@@ -1,5 +1,14 @@
 # ADR-074: The land cover is the BDOT10k partition split by its attributes, with the industrial complexes cut out of it
 
+> **Amended by ADR-078 (2026-11-10):** the wetland overlay `OT_OIMK_A` is used, in the
+> soil: bootstrap step 5 makes the soil under it hydrologic soil group D, and the land
+> cover under it keeps its category. The sports and recreation complexes of `OT_KUSK_A`
+> (kompleks sportowo-rekreacyjny, park lub skwer, ogród botaniczny, ogród zoologiczny)
+> and the airports and landing fields of `OT_KUKO_A` are cut out of the grass (`łąka`)
+> of the partition after the industrial complexes; their pieces become `inny`
+> (`KUSK:<kind>`, `KUKO:lotnisko`, imperviousness 0.0), the lawns of TR-55's open space.
+> Summer house estates and the other complexes keep the PT cover.
+
 **Date:** 2026-11-08
 **Status:** accepted (by delegation of the author, 2026-11-08; the open points decided by
 the author 2026-11-08, below; plan `docs/plans/2026-11-08-landcover-industry.md`)

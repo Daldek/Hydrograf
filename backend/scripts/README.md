@@ -30,7 +30,7 @@ leave in PostGIS, in `frontend/data/` and in `frontend/tiles/` (ADR-021, ADR-022
 | `cache/kartograf_meta.db` | the Kartograf metadata cache (SQLite; a local disk, not a network share) |
 | `data/nmt/` | the VRT mosaic `dem_mosaic.vrt` (and `reprojected/`), the intermediate rasters `dem_mosaic_*` |
 | `data/hydro/` | `hydro_merged.gpkg`: the BDOT10k hydro layers of the area, for stream burning |
-| `frontend/data/` | overlays (PNG, JSON), the DEM tile pyramid, GeoJSON exports |
+| `frontend/data/` | overlays (PNG, JSON), the DEM tile pyramid, GeoJSON exports, `instance.json` (the area of the instance for the welcome screen) |
 | `frontend/tiles/` | MVT tiles |
 
 `data/` and `cache/` are ignored by Git. The store needs a file system with hard links (not FAT,
@@ -50,7 +50,7 @@ continues when one fails.
 | 2 | downloads the NMT sheets of the area into the Kartograf store (`download_dem.download_sheets`); from a set: the pinned sheets, nothing downloaded | - |
 | 3 | processes the DEM: the VRT mosaic of the sheets of step 2, the BDOT10k hydro layers for stream burning, `process_dem` (`stream_network`, `stream_catchments`) | - |
 | 4 | downloads the BDOT10k packages of the counties of the mosaic and imports them into `land_cover`; from a set: the pinned packages | `--skip-landcover` |
-| 5 | HSG: the raster of Poland (a version of the store), clipped to the mosaic, polygonized into `soil_hsg`; from a set: the pinned raster | `--skip-hsg` |
+| 5 | HSG: the raster of Poland (a version of the store), clipped to the mosaic, polygonized into `soil_hsg`, the soil under the wetlands (`OT_OIMK_A`) of the BDOT10k packages of step 4 group D (ADR-078); from a set: the pinned raster and packages. The map layer `frontend/data/soil_hsg.geojson` is simplified by 5 m | `--skip-hsg` |
 | 6 | IMGW precipitation (PMAXTP) on a 2 km grid into `precipitation_data` | `--skip-precipitation` |
 | 7 | depressions (blue spots) from the filled DEM | `--skip-depressions` |
 | 8 | MVT tiles (`tippecanoe`) | `--skip-tiles` |
@@ -96,11 +96,13 @@ cd backend
 | `--boundary-layer` | layer name of a GPKG boundary file | the first layer |
 | `--scale` | sheet scale in Kartograf's labels (`1:10000`, `1:25000`, `1:50000`, `1:100000`) | `1:10000` |
 | `--resolution` | NMT resolution: `1m` (high, slow) or `5m` | `5m` |
+| `--area-name` | the name of the data area on the welcome screen and in the guide (`instance.json`) | the Archiwista project's name, else the boundary file's stem |
 | `--output` | output directory | `../data/` |
 | `--cache-dir` | directory of the cached downloads: the Kartograf store is `<cache-dir>/kartograf` | `paths.cache_dir` of the configuration (`cache/` in the repository root) |
 | `--config` | YAML configuration file | `config.yaml` |
 | `--port` | HTTP port of the server | 8080 |
 | `--dry-run` | only show what would be done; with `--project`, after every check of the set | off |
+| `--allow-uncovered` | warn instead of refusing when the NMT sheets leave part of the area, or a hole inside their mosaic, without data (ADR-076) | off |
 
 `--bbox`, `--sheets`, `--boundary-file` and `--project` exclude each other.
 
@@ -115,6 +117,35 @@ classification of the lakes always use every layer. Another value is refused
 (`validation_error`, exit 2). The run logs the mode, step 3 reports it after the burned file, and
 the record of a set keeps it.
 
+**Enclosed nodata** (`dem.fill_enclosed_nodata` of the configuration, default `false`): pyflwdir's
+depression fill takes every cell next to nodata for an outlet, so a nodata area that the DEM data
+encloses (a sheet missing from the mosaic; the repair of small holes, `fill_internal_nodata_holes`,
+fills at most three cells in from their edge) drains the land around it: an endorheic area, whose
+streams and sub-catchments have no downstream link. With `true` step 3 interpolates every nodata area
+that does not reach the frame of the raster (8-connected) from the data around it (GDAL's inverse
+distance weighting, `core.hydrology.interpolate_enclosed_nodata`) before anything else, so the fill
+fills it like any ground and every cell drains to the outer edge of the data. The filled cells are DEM
+cells of the run from then on: owned by a unit, routed and published in every raster, `01_dem`
+included, and the depressions of step 7 count them. A value that is not `true` or `false` is refused
+(`validation_error`, exit 2). The run logs the setting, step 3 reports the filled cells, a run by
+units records it in its settings and the record of a set keeps it.
+
+**Coverage of the area** (ADR-076): the sheets of the mosaic must cover the area and enclose no
+hole. The frames of the sheets (their meridians and parallels projected to EPSG:2180) are unioned;
+what lies outside them, of the area (the outline of `--project`, `--boundary-file` or `--bbox`, the
+frames of `--sheets`) or of a hole that the frames enclose, is uncovered, parts narrower than three
+cells of `--resolution` left out. An uncovered part is refused (`no_data`, exit 14) with its km² and
+the sheets of the grid (`--scale`) that overlap it, for example:
+
+```text
+BŁĄD: Arkusze NMT zostawiają bez danych 9.751 km² obszaru lub wnętrza ich mozaiki; brakujące arkusze (2): N-33-118-B-a-4-2, N-33-120-D-a-3-3.
+```
+
+A set is checked before step 1, with its other checks; a download run at the start of step 3, on
+the sheets that step 2 got (a sheet without data at GUGiK is not among them). `--allow-uncovered`
+logs the same text as a warning and goes on: with `dem.fill_enclosed_nodata: true` the holes that
+do not reach the frame of the raster are interpolated, the rest stays nodata.
+
 **From a set** (ADR-067): `--project` and `--set` read a closed set of an Archiwista project
 (`archiwista-project/1`) and download nothing. Before step 1 the bootstrap checks the project file,
 the area file and its SHA-256, that the set is closed (an open set, „w budowie”, is refused), its
@@ -125,7 +156,12 @@ mosaic (unless `--skip-landcover`) and one HSG raster that covers the mosaic (un
 `--skip-hsg`), one version per sheet, county and raster. Steps 2 to 5 read the pinned files (step 2
 reports `N/N arkuszy z zestawu`); steps 6 to 10 do not change. The run logs the set and writes
 `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`: project, set, `pins_sha256`, inputs,
-`stream_burning`, start, end, status); a run without a set removes the file.
+`stream_burning`, `fill_enclosed_nodata`, start, end, status); a run without a set removes the file.
+
+**The description of the instance:** after a run whose steps 1 to 3 passed the bootstrap writes
+`frontend/data/instance.json` (see [`write_instance_info.py`](#write_instance_infopy-the-description-of-the-instance)),
+which the welcome screen and the guide read to name the data area. A failure to write it is a
+warning; the run does not fail.
 
 **The shared store is read-only:** while `HYDROGRAF_KARTOGRAF_ROOT` is set, `--bbox`, `--sheets` and
 `--boundary-file` are refused (`forbidden`, exit 12), as are `download_dem.py`,
@@ -143,7 +179,7 @@ line of standard error, the error document `hydrograf-error/1`; the exit code is
 | 8 | `store_unavailable` | no store, or not a marked Kartograf store |
 | 9 | `io_error` | the project file or a pinned file cannot be read (the ACL) |
 | 12 | `forbidden` | `--bbox`, `--sheets` or `--boundary-file` while `HYDROGRAF_KARTOGRAF_ROOT` is set |
-| 14 | `no_data` | sheets, counties or the HSG raster missing from the set |
+| 14 | `no_data` | sheets, counties or the HSG raster missing from the set; the NMT sheets leave part of the area, or a hole inside their mosaic, without data |
 | 15 | `unsupported` | a project schema other than `archiwista-project/1` |
 
 The hint names the Archiwista action that fixes the set: „Zamknij zestaw”, „Weryfikuj”,
@@ -206,7 +242,7 @@ cd backend
 | `rasters` | the NMT rasters (`*.tif`, `*.vrt` in `data/nmt/`) |
 | `hydro` | the merged BDOT10k hydro data (`data/hydro/`) |
 | `boundary` | the boundary files of the area (`data/boundary/`) |
-| `overlays` | PNG and JSON overlays and the DEM tile pyramid (`frontend/data/`) |
+| `overlays` | PNG and JSON overlays (also `instance.json`) and the DEM tile pyramid (`frontend/data/`) |
 | `geojson` | the GeoJSON exports (`frontend/data/*.geojson`) |
 | `tiles` | MVT tiles and mbtiles (`frontend/tiles/`) |
 | `db` | truncates the tables `stream_network`, `stream_catchments`, `bdot_streams`, `depressions`, `land_cover`, `precipitation_data`, `soil_hsg`, `sewer_nodes` and `sewer_network` |
@@ -222,6 +258,52 @@ cd backend
 .venv/bin/python -m scripts.clean --include-db -y
 .venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
 ```
+
+---
+
+### `write_instance_info.py`: the description of the instance
+
+Writes `frontend/data/instance.json`, which the welcome screen (`js/welcome.js`) and the guide
+`/instrukcja/` (`js/instance.js`) read to name the data area of the instance. The bootstrap writes
+it at the end of a run; this script (re)writes it for data that already exist, without a run.
+Without the file the front end shows a neutral text („Obszar danych: ten, który mapa pokazuje po
+otwarciu”).
+
+```bash
+# Inside the API container of the instance (/data and /frontend/data are its mounts)
+docker exec hydro_api python -m scripts.write_instance_info \
+    --area-name "zlewnia Kaczawy do Legnicy" \
+    --boundary-file /data/boundary/zlewnia_kaczawy_790km2_przyciecie.gpkg
+
+# An instance bootstrapped from a set: the area is the project's, checked by its SHA-256
+docker exec hydroni_api python -m scripts.write_instance_info --area-name "obszar h_07"
+```
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--area-name` | the name of the area shown to users (Polish) | the project's name of `bootstrap_set.json`, else the boundary file's stem |
+| `--boundary-file` | the boundary whose area (km², EPSG:2180) is given | the area file of the set's project |
+| `--boundary-layer` | its layer, for a multi-layer file | the first layer |
+| `--resolution` | NMT resolution, `1m` or `5m` | the set's NMT segment, else the cell of `nmt/dem_mosaic.tif` (or `.vrt`) |
+| `--data-dir` | the bootstrap's output directory (`bootstrap_set.json`, `nmt/`) | `../data/` (`/data` in the container) |
+| `--frontend-data` | the directory nginx serves as `/data/` | `../frontend/data/` (`/frontend/data` in the container) |
+
+The file (`hydrograf-instance/1`) is public, so it carries no server path:
+
+```json
+{"schema": "hydrograf-instance/1",
+ "area": {"name": "zlewnia Kaczawy do Legnicy", "area_km2": 790.6,
+          "boundary": "zlewnia_kaczawy_790km2_przyciecie.gpkg"},
+ "counties": null,
+ "nmt": {"resolution_m": 5.0, "segment": null},
+ "set": null,
+ "generated_at": "2026-11-09T22:18:39Z"}
+```
+
+`counties` are the TERYT codes of the BDOT10k packages of the set, `nmt.segment` its NMT segment
+of the Kartograf store and `set` its project, name and `closed_at`; all three are null for data
+not made from a set. `area.name` and `area.area_km2` are null when nothing gives them (a run by
+`--bbox` or `--sheets` without `--area-name`).
 
 ---
 
@@ -329,12 +411,18 @@ the stream network and the sub-catchments into `stream_network` and `stream_catc
    `building_gpkg`, but no script passes it, so the stage does not run in the pipeline (what the
    wiring needs: `docs/BACKLOG.md`, Bugs and diagnoses).
 3. Burn the streams into the DEM (`--burn-streams`, optional), then smooth them monotonically: each
-   line descends strictly in the direction BDOT10k digitizes it (the other way where the DEM rises
-   along it by more than 2 m), the lines in the order of the flow, which corrects bridges and
-   embankments and keeps a river that crosses the edge of the data flowing out downstream
-   (ADR-041, ADR-072; `--no-smooth-streams` switches it off).
-4. Classify the endorheic lakes and their drain points (`--waterbody-mode`); burn the storm-sewer
-   inlets and route the flow accumulation through the sewer graph (optional, ADR-051).
+   line descends strictly in the direction of its flow, the lines in the order of the flow, which
+   corrects bridges and embankments and keeps a river that crosses the edge of the data flowing out
+   downstream (ADR-041, ADR-072; `--no-smooth-streams` switches it off). The direction of a line is
+   the first of: towards the mouth of its MPHP watercourse, where it meets a line of its receiver;
+   down the DEM of its whole watercourse, for a block of lines digitized against the rest of it
+   (unless the DEM of the block falls more than 2 m the way it is digitized); the other way where
+   the DEM along the line rises by more than 2 m; the way BDOT10k digitizes it (ADR-077). An
+   artificial connector through a lake never takes its direction from the DEM along it.
+4. Classify the endorheic lakes and their drain points (`--waterbody-mode`): a lake that a
+   watercourse line leaves is exorheic, a burned line flowing the way the smoothing takes it and
+   any other line the way it is digitized, unless the DEM along it rises by more than 2 m; burn the
+   storm-sewer inlets and route the flow accumulation through the sewer graph (optional, ADR-051).
 5. Fill the depressions, compute the D8 flow direction and the flow accumulation.
 6. Compute the distance along the flow to the outlet, the slope and the aspect (Sobel), the Strahler
    order and the TWI.
@@ -494,14 +582,16 @@ polygons are clipped to it, and every valid cell of it must be inside one; `boot
 area of `--boundary-file` or `--project`. Cells outside every polygon go to their nearest owner; the DEM
 keeps its grid and its nodata. The input VRT must read its sources cell for cell (a VRT that resamples is
 refused); the bootstrap averages finer sheets (GUGiK delivers some 5 m sheets as 1 m grids) onto the grid
-of the others first, into `<data>/nmt/aligned/`. Burning and smoothing streams (`dem.stream_burning`),
-raising buildings and the lake classification run on the whole DEM first; then the depressions of the
-whole prepared grid are filled once, with pyflwdir's fill and D8 as in the whole-raster run (the fill and
-its D8 are written as tiled GeoTIFFs and freed), every owner takes its cells from them, and the
-accumulation, flow distance, Strahler order, streams and labels of the whole grid are computed over
-disk-backed rasters. The results are those of the whole-raster run: the same rows, and the same rasters
-on the cells that hold DEM data. The scratch of a run (the prepared DEM, the fill and the routing rasters)
-is removed after a successful run; `--units-scratch-dir DIR` puts it on another disk than `--output-dir`.
+of the others first, into `<data>/nmt/aligned/`. With `dem.fill_enclosed_nodata` the enclosed nodata is
+interpolated before the owners are drawn, so its cells have an owner too. Burning and smoothing streams
+(`dem.stream_burning`), raising buildings and the lake classification run on the whole DEM first; then
+the depressions of the whole prepared grid are filled once, with pyflwdir's fill and D8 as in the
+whole-raster run (the fill and its D8 are written as tiled GeoTIFFs and freed), every owner takes its
+cells from them, and the accumulation, flow distance, Strahler order, streams and labels of the whole
+grid are computed over disk-backed rasters. The results are those of the whole-raster run: the same
+rows, and the same rasters on the cells that hold DEM data. The scratch of a run (the prepared DEM, the
+fill and the routing rasters, and the DEM with its enclosed nodata filled) is removed after a successful
+run; `--units-scratch-dir DIR` puts it on another disk than `--output-dir`.
 
 A run writes, under `<output-dir>/unit_runs/<token>/`: `units/<stem>_<raster>_<MS_KOD>.tif` (the cells of
 one owner), `<stem>_<raster>.vrt` (the mosaic of each raster over the whole grid, named like the
@@ -552,8 +642,9 @@ tiles.
 ### `export_catchment_parameters.py`: the parameters of the panel for given polygons
 
 Computes, for every polygon of a layer, what the panel „Zlewnia” shows in „Parametry
-podstawowe”, „Wskaźniki kształtu”, „Pokrycie terenu” and „Grupy glebowe (HSG)”, and the CN of
-the watershed for the antecedent runoff conditions AMC I, II and III, with the polygon as the
+podstawowe”, „Wskaźniki kształtu”, „Pokrycie terenu” and „Grupy glebowe (HSG)”, the CN of the
+watershed for the antecedent runoff conditions AMC I, II and III and, as a control, the runoff of
+that CN against the weighted runoff of the soil-cover complexes, with the polygon as the
 boundary of the watershed (no delineation from the NMT), and writes the polygons with their key,
 the fields asked for and these values to a new GeoPackage. It reads the rasters that the
 pipeline saved in `DEM_DIR` (`dem_mosaic_02_filled`, `_03_flowdir`, `_04_flowacc`,
@@ -602,7 +693,15 @@ the source of each; the layer's metadata the threshold, the raster directory and
 | Wskaźniki kształtu | `compactness_coefficient`, `circularity_ratio` |
 | Pokrycie terenu | `lc_<class>_pct` and `lc_<class>_cn` (AMC II, over the soil-cover complexes of the class) of `grunt_orny`, `las`, `laka`, `zabudowa_mieszkaniowa`, `zabudowa_przemyslowa`, `droga`, `woda`, `inny` |
 | Grupy glebowe (HSG) | `hsg_a_pct`, `hsg_b_pct`, `hsg_c_pct`, `hsg_d_pct` (of the area of the polygon with soil groups) |
-| Kontrola | `lc_without_hsg_pct` (the land cover outside the soil groups, which takes the groups of the rest of the polygon, ADR-075), `polygon_area_km2` (of the geometry), `outlet_upstream_area_km2` (the NMT watershed of the outlet), `polygon_to_upstream_area_ratio` (about 1 for a polygon that is that watershed, less with inflow from outside), `cell_count`, `quality_flag` (`under_100_cells`, `partly_outside_nmt`, `outside_nmt`) |
+| Kontrola | `lc_without_hsg_pct` (the land cover outside the soil groups, which takes the groups of the rest of the polygon, ADR-075), `q_cn_mm_p25`, `q_weighted_mm_p25`, `q_cn_mm_p50`, `q_weighted_mm_p50` (below), `polygon_area_km2` (of the geometry), `outlet_upstream_area_km2` (the NMT watershed of the outlet), `polygon_to_upstream_area_ratio` (about 1 for a polygon that is that watershed, less with inflow from outside), `cell_count`, `quality_flag` (`under_100_cells`, `partly_outside_nmt`, `outside_nmt`) |
+
+The runoff columns check the composite CN (ADR-075, amendment of 2026-11-09). For a storm of
+P = 25 mm and 50 mm, AMC II, `q_cn_mm_p<P>` is the SCS-CN runoff depth of `cn` and
+`q_weighted_mm_p<P>` the area-weighted mean of the runoff depths of the soil-cover complexes, each
+from its own CN (the method of weighted Q, NEH 630 ch. 10, p. 10-10); both by Hydrolog's SCS-CN
+equation (Ia = 0.2 S), in mm to 0.01. Their difference is the error of the composite CN for that
+storm: large in relative terms for small storms and a wide spread of the CN in the polygon (on h07
+0.40 against 1.35 mm at 25 mm). The hydrograph and the panel keep the composite CN.
 
 Slopes are in m/m like the API (the panel shows them times 100 in %). For the boundary of a
 watershed of the panel the values are those of the panel, with these differences: the mean
@@ -613,6 +712,105 @@ perimeter is that of the given polygon (the panel's includes the rings of the mi
 merged boundary) and the land cover counts every part of a multipart polygon (the panel takes its
 largest part). A polygon with cells without NMT data is computed over the cells with data. On the
 production rasters a polygon of 33 km² takes about 1 s and the run peaks at about 1.3 GB.
+
+---
+
+### `diagnose_catchment_exits.py`: where the NMT flow leaves given polygons
+
+A diagnosis of `polygon_to_upstream_area_ratio` of the export above: a polygon that is the NMT
+watershed of its outlet drains through that one cell, a ratio above 1 means that part of it drains
+elsewhere. For every polygon the script takes the cells whose D8 flow leaves it, groups the
+connected ones with the same destination (a polygon of the layer, a cell of no polygon, a cell
+without NMT data, a pit) into exits and accumulates the flow within the polygon only, so each exit
+gets the area of the polygon that leaves through it (the areas of the exits add up to the polygon;
+inflow from outside is not counted). The exit that holds the outlet of the export (the cell of the
+largest flow accumulation) is marked. It reads the flow directions, the accumulation, the filled
+DEM and the slope as the export does (`open_rasters`: the VRT mosaics of an active unit run,
+otherwise the GeoTIFFs of `DEM_DIR`), only in the window of each polygon, and needs no database.
+
+```bash
+cd backend
+.venv/bin/python -m scripts.diagnose_catchment_exits --input zlewnie.gpkg --layer zlew_h_07 \
+    --key ID_HYD_10 --ids 1863141,1883617 --output wyjscia_zlewni.gpkg
+```
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--input`, `--layer`, `--key` | the polygons, as for the export; every polygon of the layer can receive the flow | required, the only layer, required |
+| `--ids` | the keys to diagnose, comma separated | every polygon |
+| `--output` | the new GeoPackage; an existing file is refused. It is written locally and copied, so it may be on a network share | required |
+| `--csv` | the new CSV of the summary | `--output` with `.csv` |
+| `--min-exit-km2` | the smallest exit that gets its area and counts in `exit_count_over_min` and `receivers` | `0.01` |
+| `--dem-dir` | the directory of the rasters | `DEM_DIR` |
+
+The GeoPackage has three layers. `catchment_exits`, a point per exit at its cell of the largest
+accumulation within the polygon: `exit_id` (1 the largest), `kind` (`outflow`, `nodata`, `pit`),
+`destination` (the key of the receiving polygon, `outside_layer`, `nodata` or `pit`),
+`is_export_outlet`, `reenters_polygon` (the flow comes back into the polygon within its window),
+`area_km2` and `share_of_polygon` (the part of the polygon that leaves there), `boundary_cells`,
+`mean_slope_percent` of that part, `nmt_upstream_area_km2` (the accumulation of the point's cell,
+with any inflow; an exit of several cells may drain more than its point) and `elevation_m`.
+`catchment_exit_areas`, the part of the polygon that drains to
+each exit of at least `--min-exit-km2`. `catchment_exit_summary` (also the CSV), a row per polygon:
+`polygon_area_km2`, `cell_area_km2`, `outlet_upstream_area_km2` and
+`polygon_to_upstream_area_ratio` (as the export), `exit_count`, `exit_count_over_min`,
+`outlet_exit_km2` and `outlet_destination`, `other_exits_km2` (of which `reentering_km2`, `pit_km2`,
+`nodata_km2`), `largest_other_exit_km2` and `largest_other_exit_to`, and `receivers` (the area that
+leaves to each destination, `key: km²; ...`, the largest first). The 12 polygons of Hydroni
+(5 to 30 km², 5 m cells) take about 20 s.
+
+---
+
+### `check_stream_directions.py`: the flow directions of the BDOT10k lines (a diagnostic)
+
+Finds the BDOT10k watercourse lines of an area that are digitized upstream, for a review on a
+map; outside the pipeline, which it changes in nothing (ADR-077). It reads the lines of
+`OT_SWRS_L`, `OT_SWKN_L` and `OT_SWRM_L` within 1 km of the area, splits a line where an end of
+another line lies on its middle and joins the ends within 0.5 m into nodes. For each line it
+gathers the evidence that it is digitized upstream: the DEM every 5 m along it (the lowest value
+of its last quarter against the lowest of its first, as the smoothing reads it), the order of
+the MPHP catchment codes of its river at its ends (with `--catchments`), a run of lines from a
+node where only lines begin to one where only lines end, and its direction against the rest of
+its watercourse (the lines of one MPHP identifier, else of one name, joined where exactly two of
+them meet), whose downstream end the DEM along the whole watercourse decides (more than 0.5 m),
+else the digitized majority. The verdict weighs the evidence; the mouth test, independent of
+it, orients the lines of an MPHP watercourse towards the node where it meets its receiver (a
+line whose identifier is a proper prefix of its own). Beside them it runs the rules of the
+smoothing of the pipeline (`core.hydrology._line_directions`, ADR-077) on the burned lines
+alone (their ends joined within 0.5 m, the DEM every 5 m), and says which rule decides each
+burned line and whether it reverses it.
+
+```bash
+cd backend
+.venv/bin/python -m scripts.check_stream_directions --hydro ../data/hydro/hydro_merged.gpkg \
+    --dem ../data/nmt/dem_mosaic.vrt --area obszar.gpkg:Zlewnie \
+    --catchments zlewnie.gpkg:zlew_h_07 --burning main --out /tmp/kierunki.gpkg
+```
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--hydro` | the BDOT10k GeoPackage with `OT_SWRS_L`, `OT_SWKN_L`, `OT_SWRM_L` and `OT_PTWP_A` (`hydro_merged.gpkg`), in EPSG:2180 | required |
+| `--dem` | the DEM in EPSG:2180 (a VRT mosaic or a GeoTIFF) | required |
+| `--area` | the area, `GPKG[:layer]` (without a layer, the only one of the file) | required |
+| `--catchments` | the MPHP catchments with `ID_HYD_10`, `GPKG[:layer]` | none (no catchment evidence) |
+| `--burning` | the lines the pipeline burns, as `dem.stream_burning`: `main` or `all` | `all` |
+| `--out` | the new GeoPackage; an existing file is refused. SQLite: a local disk, not a share | required |
+
+The output has three layers with Polish names and columns, as the review map reads them:
+
+| Layer | Content |
+|---|---|
+| `odcinki` | the lines (pieces) with the BDOT10k attributes, `glowny` (a main watercourse, the selection of `main`), `wypalany` (burned with `--burning`), the nodes and kinds at both ends, the DEM along the line (`przyrost_m`, `spadek_m_km`, `nmt`), the catchment order (`mphp`), the run (`ciag_konfliktu`), the watercourse (`ciek`, `odcinek_cieku`, `wzgledem_cieku`, `styk_od`, `styk_do`), the evidence (`dowody_odwr`, `dowody_zgod`), the verdict `werdykt` (`odwrocony`, `podejrzany`, `sprzeczny`, `zgodny`, `nieustalony`), the rules of the smoothing on the burned lines (`regula`: `ujscie` the mouth, `nmt_cieku` the DEM of the watercourse, `nmt_odcinka` the DEM of the line, `digitalizacja` the digitized direction, empty for a line not burned or closed; `odwraca`: the rule reverses it; `blok_zachowany`: a block digitized against its watercourse that the guard of rule 2 keeps, its own DEM falling more than 2 m the way it is digitized), `test_ujscia` (`zgodny`, `odwrocony` or empty when the mouth cannot tell) and `kategoria`: the verdict, with the reversed lines split into `odwrocony`, `odwrocony_lacznik` (an artificial connector through a lake, where the DEM is a water surface) and `odwrocony_siec_oderwana` (a network without a main watercourse), the two doubtful cases |
+| `wezly` | the nodes: lines ending and beginning there and the kind (`zrodlo`, `zbieg`, `rozwidlenie`, `same_poczatki`, `same_konce`, `krawedz` and others), as digitized and after the lines of the verdict `odwrocony` are reversed |
+| `cieki` | the watercourses drawn downstream: their lines, length, rise, what decided the direction (`nmt`, `wiekszosc`), the lines against it and the watercourse they flow into |
+
+The log ends with the counts over the burned lines: the reversed lines by category, the lines
+each rule of the smoothing decides and reverses, the reversed lines of the verdict the rules
+reverse and the other lines they reverse, the lines whose `odwraca` the mouth test contradicts
+and those the guard keeps, the lines the mouth test checks, confirms and contradicts, and the
+lines the mouth says are digitized upstream while the verdict does not. On the Hydroni area h07
+(20,279 lines, `main`) a run takes about 55 s and peaks at 2.2 GB (the DEM of the area and
+1 km around it).
 
 ---
 
@@ -661,13 +859,15 @@ a county failed. The hydro layers are not selected here: `merge_hydro_gpkgs()` k
 
 ### `import_landcover.py`: import land cover into the database
 
-Imports the land cover of a BDOT10k county package into the table `land_cover` (ADR-074): the
-`PT*` layers, which partition the county, split by their attributes, with the industrial
-complexes of `OT_KUPG_A` cut out of them. Each row gets a category, a CN value, the
-imperviousness and its source in `bdot_class`. The import of a package replaces, in one
-transaction, the rows of its area (those whose interior point and more than half of whose area
-lie in the package), so importing a package again changes nothing and the neighbouring
-counties keep their rows.
+Imports the land cover of a BDOT10k county package into the table `land_cover` (ADR-074,
+ADR-078): the `PT*` layers, which partition the county, split by their attributes, with the
+industrial complexes of `OT_KUPG_A` cut out of them, then the lawns of the sports and
+recreation complexes (`OT_KUSK_A`) and of the airports (`OT_KUKO_A`) cut out of their grass.
+Each row gets a category, the imperviousness and its source in `bdot_class`; its CN is that of
+its soil-cover complex (ADR-075). The import of a package replaces, in one transaction, the
+rows of its area (those whose interior point and more than half of whose area lie in the
+package), so importing a package again changes nothing and the neighbouring counties keep
+their rows.
 
 ```bash
 cd backend
@@ -694,19 +894,20 @@ cd backend
 
 **The BDOT10k sources and their categories:**
 
-| Source (`bdot_class`) | Category | CN | Imperviousness |
-|---|---|---|---|
-| `PTLZ` | `las` | 60 | 0.0 |
-| `PTTR:trawiasta` (`RODZAJ` roślinność trawiasta), `PTUT`, `PTRK` | `łąka` | 70 | 0.0 |
-| `PTTR:grunty orne` (uprawa na gruntach ornych) | `grunt_orny` | 78 | 0.1 |
-| `PTZB:jednorodzinna`, `PTZB:pozostała` | `zabudowa_mieszkaniowa` | 85 | 0.30 |
-| `PTZB:wielorodzinna` | `zabudowa_mieszkaniowa` | 85 | 0.65 |
-| `PTZB:przem.-skład.`, `PTNZ:przem.-skład.` (teren przemysłowo-składowy) | `zabudowa_przemysłowa` | 92 | 0.72 |
-| `PTZB:handl.-usług.` | `zabudowa_przemysłowa` | 92 | 0.85 |
-| `KUPG:<kind>` | `zabudowa_przemysłowa` | 92 | 0.72 |
-| `PTKM`, `PTPL:utwardzony` (`MATERIALNAWIERZCHNI` beton, bruk, kostka, masa bitumiczna, płyty betonowe) | `droga` | 98 | 0.95 |
-| `PTWP` | `woda` | 100 | 1.0 |
-| `PTNZ:urządzenia` (teren pod urządzeniami technicznymi lub budowlami), `PTPL:nieutwardzony` (grunt naturalny, żwir, tłuczeń), `PTWZ`, `PTGN`, `PTSO`, any other `PT*` layer | `inny` | 75 | 0.2 |
+| Source (`bdot_class`) | Category | Imperviousness |
+|---|---|---|
+| `PTLZ` | `las` | 0.0 |
+| `PTTR:trawiasta` (`RODZAJ` roślinność trawiasta), `PTUT`, `PTRK` | `łąka` | 0.0 |
+| `PTTR:grunty orne` (uprawa na gruntach ornych) | `grunt_orny` | 0.1 |
+| `PTZB:jednorodzinna`, `PTZB:pozostała` | `zabudowa_mieszkaniowa` | 0.30 |
+| `PTZB:wielorodzinna` | `zabudowa_mieszkaniowa` | 0.65 |
+| `PTZB:przem.-skład.`, `PTNZ:przem.-skład.` (teren przemysłowo-składowy) | `zabudowa_przemysłowa` | 0.72 |
+| `PTZB:handl.-usług.` | `zabudowa_przemysłowa` | 0.85 |
+| `KUPG:<kind>` | `zabudowa_przemysłowa` | 0.72 |
+| `PTKM`, `PTPL:utwardzony` (`MATERIALNAWIERZCHNI` beton, bruk, kostka, masa bitumiczna, płyty betonowe) | `droga` | 0.95 |
+| `PTWP` | `woda` | 1.0 |
+| `PTNZ:urządzenia` (teren pod urządzeniami technicznymi lub budowlami), `PTPL:nieutwardzony` (grunt naturalny, żwir, tłuczeń), `PTWZ`, `PTGN`, `PTSO`, any other `PT*` layer | `inny` | 0.2 |
+| `KUSK:<kind>`, `KUKO:lotnisko` (the lawns of the open-space complexes) | `inny` | 0.0 |
 
 A polygon of PTZB, PTTR, PTNZ or PTPL without its attribute or with another value takes the
 layer's first category under the plain layer code (`PTZB` `zabudowa_mieszkaniowa`, `PTTR`
@@ -721,6 +922,19 @@ cieplna`, `KUPG:el. atomowa`). Their area is cut out of every PT polygon but wat
 industrial land above; overlapping complexes count once. Farms, solar, wind and water power
 plants, mines, sewage treatment plants, landfills, waterworks and substations keep the land
 cover of the PT layers.
+
+The open-space complexes are the `OT_KUSK_A` of the kinds kompleks sportowo-rekreacyjny
+(`KUSK:kompl. sport.`), park lub skwer (`KUSK:park`), ogród botaniczny (`KUSK:ogród botan.`)
+and ogród zoologiczny (`KUSK:ogród zoolog.`), and the `OT_KUKO_A` lotnisko lub lądowisko
+(`KUKO:lotnisko`). Their area is cut out of the grass (`łąka`) that the industrial complexes
+leave and becomes `inny`, which the CN takes as TR-55 open space in good condition (lawns);
+the forest, fields, water, paved surfaces and buildings in them keep their category, and
+overlapping complexes count once, the airports first. Summer house estates (zespół domów
+letniskowych), stations, car parks, petrol stations and the other KU layers keep the land
+cover of the PT layers.
+
+The wetlands of `OT_OIMK_A` are not land cover: step 5 of the bootstrap makes the soil under
+them group D (ADR-078).
 
 ---
 

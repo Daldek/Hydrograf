@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-11-05 (Hydrolog `1ffcd6b` of `develop`, the official inputs of tc; was `2eb8bd0`)
+**Ostatnia aktualizacja:** 2026-11-09 (Hydrolog `4fad769` of `develop`, the TR-55 rows of Hydrograf's covers and water at CN 98; was `1ffcd6b`)
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -282,7 +282,7 @@ from hydrolog.runoff import SCSCN, HydrographGenerator, SCSUnitHydrograph
 
 | Plik | Zmiana | Status |
 |------|--------|--------|
-| `backend/pyproject.toml` | + hydrolog (commit `1ffcd6b`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
+| `backend/pyproject.toml` | + hydrolog (commit `4fad769`, 1.0.0.dev0; was v0.6.3, ADR-060) | ✅ |
 | `backend/core/morphometry.py` | `calculate_shape_indices` (wskaźniki kształtu) | ✅ |
 | `backend/core/morphometry_raster.py` | Obliczenia rastrowe (slope, aspect, TWI, Strahler) | ✅ |
 | `backend/core/catchment_graph.py` | In-memory graf, BFS, trace_main_channel | ✅ |
@@ -486,10 +486,10 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 ## Repozytorium Hydrologa
 
 - **GitHub:** https://github.com/Daldek/Hydrolog.git
-- **Branch:** `feature/routing-schematic` (the head of the stack `chore/nogat-2.1` and `feature/routing-*`; on GitHub)
-- **Wersja:** 1.0.0.dev0, commit `1ffcd6b6badcd75e7ace9f2d59d4640830e176ff` (`develop` with the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`)
+- **Branch:** `develop` (on GitHub)
+- **Wersja:** 1.0.0.dev0, commit `4fad769539105815e81b53bedcdbfdcdebe07a50` (`develop` with the TR-55 rows that `core/cn_tables.py` uses: water at 98, paved roads with open ditches, residential 1/4 acre, woods–grass; ADR-075 amendment 2026-11-09). Against the previous pin `1ffcd6b` only `runoff/cn_lookup.py` changes the results of the modules Hydrograf calls
 - **Dokumentacja:** `docs/INTEGRATION.md`
-- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "1ffcd6b6badcd75e7ace9f2d59d4640830e176ff" }`), instalowana przez `uv sync --locked`; the commit is on GitHub, so every machine resolves it; the release replaces it with a tag (REL-5.3)
+- **Instalacja:** zaleznosc w `backend/pyproject.toml` (`[tool.uv.sources]`: `hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "4fad769539105815e81b53bedcdbfdcdebe07a50" }`), instalowana przez `uv sync --locked`; the commit is on GitHub, so every machine resolves it; the release replaces it with a tag (REL-5.3)
 
 ---
 

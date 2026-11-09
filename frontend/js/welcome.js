@@ -1,6 +1,8 @@
 /**
  * Hydrograf Welcome — a short factual introduction (scope, methods, data area)
  * shown on the first visit and from the "Instrukcja" item of the navigation rail.
+ * The data area comes from /data/instance.json (Hydrograf.instance); without it the
+ * paragraph keeps the neutral text of index.html.
  */
 (function () {
     'use strict';
@@ -36,6 +38,15 @@
         if (els.dialog.open) els.dialog.close();
     }
 
+    // "Obszar danych: <area>; <NMT, set>. <results caveat>" when the instance has a name
+    function renderArea(info) {
+        var area = Hydrograf.instance.areaLabel(info);
+        if (!area) return;
+        var sources = Hydrograf.instance.sourcesLabel(info);
+        els.area.textContent = 'Obszar danych: ' + area + (sources ? '; ' + sources : '') +
+            '. Wyniki są szacunkami do analiz wstępnych, nie prognozą hydrologiczną.';
+    }
+
     function init() {
         var dialog = document.getElementById('welcome-modal');
         if (!dialog || typeof dialog.showModal !== 'function') return;
@@ -44,7 +55,10 @@
             dialog: dialog,
             hide: document.getElementById('welcome-hide'),
             mapBtn: document.getElementById('welcome-map'),
+            area: document.getElementById('welcome-area'),
         };
+
+        if (Hydrograf.instance && els.area) Hydrograf.instance.load().then(renderArea);
 
         document.getElementById('welcome-close').addEventListener('click', closeModal);
         els.mapBtn.addEventListener('click', closeModal);

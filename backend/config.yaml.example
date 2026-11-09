@@ -21,6 +21,12 @@ dem:
   # Water bodies (OT_PTWP_A) are burned in both; bdot_streams and the lake
   # classification always use every layer.
   stream_burning: all
+  # Nodata areas that the DEM data encloses (a sheet missing from the mosaic):
+  #   false - an outlet: the depression fill drains the land around them into them
+  #           (endorheic areas)
+  #   true  - interpolated from the data around them before the fill: only the outer
+  #           edge of the data drains the area; the DEM (01_dem) holds the values
+  fill_enclosed_nodata: false
   building_raise_m: 5.0      # DEM raise under buildings (0 = disabled)
 
 # Paths (relative to project root)

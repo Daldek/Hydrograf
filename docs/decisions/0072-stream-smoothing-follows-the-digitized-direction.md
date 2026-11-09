@@ -1,5 +1,12 @@
 # ADR-072: The stream smoothing follows the digitized direction and descends strictly
 
+> **Amended by ADR-077 (2026-11-09):** the direction of a burned line comes first from the
+> mouth of its MPHP watercourse, then from the DEM along its whole watercourse for the
+> blocks of lines digitized against the rest of it (a block whose own DEM falls by more
+> than 2 m the way it is digitized keeps it); the per-line rule of this ADR decides only
+> the lines that neither decides. An artificial connector never takes its direction from
+> the DEM along it.
+
 **Date:** 2026-11-07
 **Status:** accepted (by delegation of the author, 2026-11-07; plan
 `docs/plans/2026-11-07-crossing-river-direction.md`); amends ADR-041
