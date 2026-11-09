@@ -46,6 +46,11 @@ from typing import Any, NoReturn
 from core._errors import BY_CODE
 from core.active_run import active_run_raster
 from core.errors import HydrografError, InvalidRequestError
+from scripts.write_instance_info import (
+    build_instance_info,
+    resolution_m,
+    write_instance_info,
+)
 from utils.kartograf_set import SetInputs, nmt_segment, set_inputs
 from utils.kartograf_store import (
     HSG_DEPTH,
@@ -1542,6 +1547,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Layer name for GPKG files (default: first layer)",
     )
     parser.add_argument(
+        "--area-name",
+        default=None,
+        help="Name of the data area on the welcome screen (instance.json); default "
+        "the Archiwista project's name, else the boundary file's stem",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         default=None,
@@ -1938,6 +1949,31 @@ def main():
         )
     if critical_failed:
         sys.exit(1)
+    write_instance(args, inputs)
+
+
+def write_instance(args: argparse.Namespace, inputs: SetInputs | None) -> None:
+    """Write ``frontend/data/instance.json`` after a run whose steps 1 to 3 passed.
+
+    The area is the set's project area, else ``--boundary-file``; a run by ``--bbox``
+    or ``--sheets`` has no boundary, so no area in km². The file only describes the
+    instance to users: a failure to write it is a warning, not a failed run.
+    """
+    boundary = inputs.area if inputs is not None else args.boundary_file
+    try:
+        info = build_instance_info(
+            generated_at=_utc_now(),
+            area_name=args.area_name,
+            boundary=boundary,
+            boundary_layer=None if inputs is not None else args.boundary_layer,
+            set_identity=inputs.identity() if inputs is not None else None,
+            nmt_resolution_m=resolution_m(args.resolution),
+        )
+        path = write_instance_info(FRONTEND_DIR / "data", info)
+    except (OSError, ValueError) as e:
+        logger.warning(f"instance.json not written: {e}")
+        return
+    logger.info(f"Opis instancji: {path}")
 
 
 if __name__ == "__main__":

@@ -199,6 +199,7 @@ backend/
 │   ├── analyze_watershed.py       # Watershed analysis (CLI)
 │   ├── export_catchment_parameters.py # The panel's basic parameters, shape indices and land cover for given polygons (GeoPackage)
 │   ├── download_sewer.py          # Downloads the sewer network (file/WFS/DB/URL, CRS validation, SSRF protection). Returns tuple (points_gdf, lines_gdf | None)
+│   ├── write_instance_info.py     # frontend/data/instance.json (hydrograf-instance/1): the area of the instance for the welcome screen and the guide
 │   └── clean.py                  # Cleans generated data (rasters, tiles, DB, cache)
 │
 ├── migrations/
@@ -998,6 +999,7 @@ frontend/
     ├── identify.js           # Mode „Identyfikuj”: marker and point card (GET /api/identify-point)
     ├── diagnostics.js        # Session event log (ADR-053)
     ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>)
+    ├── instance.js           # The area of the instance from /data/instance.json (also on /instrukcja: [data-instance-area])
     ├── welcome.js            # Welcome dialog (native <dialog>): first visit and the „Instrukcja” item of the rail on the main page
     ├── app.js                # Orchestrator: init, work modes, click routing, Zlewnia panel
     └── admin/
@@ -1009,7 +1011,7 @@ frontend/
         └── admin-app.js      # Admin panel orchestrator
 ```
 
-`js/` holds 25 modules on `window.Hydrograf` (IIFE), 19 for the main page and 6 in `admin/`; `theme-init.js` and `theme-switch.js` stay outside the namespace. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
+`js/` holds 26 modules on `window.Hydrograf` (IIFE), 20 for the main page and 6 in `admin/`; `theme-init.js` and `theme-switch.js` stay outside the namespace. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
 
 The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the pattern is in Nogat's `design/`, the mockup in `design/mockups/hydrograf/`. Colours, fonts, radii and shadows only through the variables of `css/tokens.css`; a change of the palette is made in Nogat and ends with copying the file again.
 
@@ -1022,7 +1024,7 @@ The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the 
 The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 
 - **Top bar** — the mark `img/hydrograf.svg`, the button „Zgłoś uwagę” and the theme switch Auto/Jasny/Ciemny (`data-theme` on `<html>`, the choice in `localStorage` `nogat-theme`; `theme-init.js` sets it before the first paint, so the light theme does not flash). The service status („Usługi działają”) is only in the top bar of `/admin` (`admin-app.js`: `GET /health` when the page opens, then the dashboard refresh).
-- **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two plain-language paragraphs (what Hydrograf is, that the results are estimates and not a flood forecast, the area of the data) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`).
+- **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two plain-language paragraphs (what Hydrograf is, that the results are estimates and not a flood forecast, the area of the data) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`). The area of the data comes from `/data/instance.json` (`instance.js`; `frontend/data/instance.json`, served by `location ^~ /data/`, written by the bootstrap or `scripts/write_instance_info.py`): „Obszar danych: <area.name> (ok. <area_km2> km²); NMT <nmt.resolution_m> m, zestaw danych „<set.name>” (zamknięty <set.closed_at>)”. Without the file (404) or with another schema the paragraph keeps the neutral text of `index.html`; the guide `/instrukcja/` appends the area to its two sentences about the data area the same way.
 - **Navigation rail** — Mapa, Instrukcja (`/instrukcja/`, the same tab) and Logowanie (`/admin`), on every page (a bottom bar on phones); on the main page „Instrukcja” opens the welcome dialog again (a click with Ctrl/Shift or the middle button still opens the guide). The terrain profile is a mode of the map bar.
 - **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
 - **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `GET /api/identify-point`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones). The cursor coordinates (`coords.js`) sit in the bottom left corner, under the legends, in the system chosen there (WGS84, PL-1992 or PL-2000, kept in localStorage); screens without a hovering pointer do not show them.

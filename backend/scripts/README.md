@@ -30,7 +30,7 @@ leave in PostGIS, in `frontend/data/` and in `frontend/tiles/` (ADR-021, ADR-022
 | `cache/kartograf_meta.db` | the Kartograf metadata cache (SQLite; a local disk, not a network share) |
 | `data/nmt/` | the VRT mosaic `dem_mosaic.vrt` (and `reprojected/`), the intermediate rasters `dem_mosaic_*` |
 | `data/hydro/` | `hydro_merged.gpkg`: the BDOT10k hydro layers of the area, for stream burning |
-| `frontend/data/` | overlays (PNG, JSON), the DEM tile pyramid, GeoJSON exports |
+| `frontend/data/` | overlays (PNG, JSON), the DEM tile pyramid, GeoJSON exports, `instance.json` (the area of the instance for the welcome screen) |
 | `frontend/tiles/` | MVT tiles |
 
 `data/` and `cache/` are ignored by Git. The store needs a file system with hard links (not FAT,
@@ -96,6 +96,7 @@ cd backend
 | `--boundary-layer` | layer name of a GPKG boundary file | the first layer |
 | `--scale` | sheet scale in Kartograf's labels (`1:10000`, `1:25000`, `1:50000`, `1:100000`) | `1:10000` |
 | `--resolution` | NMT resolution: `1m` (high, slow) or `5m` | `5m` |
+| `--area-name` | the name of the data area on the welcome screen and in the guide (`instance.json`) | the Archiwista project's name, else the boundary file's stem |
 | `--output` | output directory | `../data/` |
 | `--cache-dir` | directory of the cached downloads: the Kartograf store is `<cache-dir>/kartograf` | `paths.cache_dir` of the configuration (`cache/` in the repository root) |
 | `--config` | YAML configuration file | `config.yaml` |
@@ -126,6 +127,11 @@ mosaic (unless `--skip-landcover`) and one HSG raster that covers the mosaic (un
 reports `N/N arkuszy z zestawu`); steps 6 to 10 do not change. The run logs the set and writes
 `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`: project, set, `pins_sha256`, inputs,
 `stream_burning`, start, end, status); a run without a set removes the file.
+
+**The description of the instance:** after a run whose steps 1 to 3 passed the bootstrap writes
+`frontend/data/instance.json` (see [`write_instance_info.py`](#write_instance_infopy-the-description-of-the-instance)),
+which the welcome screen and the guide read to name the data area. A failure to write it is a
+warning; the run does not fail.
 
 **The shared store is read-only:** while `HYDROGRAF_KARTOGRAF_ROOT` is set, `--bbox`, `--sheets` and
 `--boundary-file` are refused (`forbidden`, exit 12), as are `download_dem.py`,
@@ -206,7 +212,7 @@ cd backend
 | `rasters` | the NMT rasters (`*.tif`, `*.vrt` in `data/nmt/`) |
 | `hydro` | the merged BDOT10k hydro data (`data/hydro/`) |
 | `boundary` | the boundary files of the area (`data/boundary/`) |
-| `overlays` | PNG and JSON overlays and the DEM tile pyramid (`frontend/data/`) |
+| `overlays` | PNG and JSON overlays (also `instance.json`) and the DEM tile pyramid (`frontend/data/`) |
 | `geojson` | the GeoJSON exports (`frontend/data/*.geojson`) |
 | `tiles` | MVT tiles and mbtiles (`frontend/tiles/`) |
 | `db` | truncates the tables `stream_network`, `stream_catchments`, `bdot_streams`, `depressions`, `land_cover`, `precipitation_data`, `soil_hsg`, `sewer_nodes` and `sewer_network` |
@@ -222,6 +228,52 @@ cd backend
 .venv/bin/python -m scripts.clean --include-db -y
 .venv/bin/python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
 ```
+
+---
+
+### `write_instance_info.py`: the description of the instance
+
+Writes `frontend/data/instance.json`, which the welcome screen (`js/welcome.js`) and the guide
+`/instrukcja/` (`js/instance.js`) read to name the data area of the instance. The bootstrap writes
+it at the end of a run; this script (re)writes it for data that already exist, without a run.
+Without the file the front end shows a neutral text („Obszar danych: ten, który mapa pokazuje po
+otwarciu”).
+
+```bash
+# Inside the API container of the instance (/data and /frontend/data are its mounts)
+docker exec hydro_api python -m scripts.write_instance_info \
+    --area-name "zlewnia Kaczawy do Legnicy" \
+    --boundary-file /data/boundary/zlewnia_kaczawy_790km2_przyciecie.gpkg
+
+# An instance bootstrapped from a set: the area is the project's, checked by its SHA-256
+docker exec hydroni_api python -m scripts.write_instance_info --area-name "obszar h_07"
+```
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--area-name` | the name of the area shown to users (Polish) | the project's name of `bootstrap_set.json`, else the boundary file's stem |
+| `--boundary-file` | the boundary whose area (km², EPSG:2180) is given | the area file of the set's project |
+| `--boundary-layer` | its layer, for a multi-layer file | the first layer |
+| `--resolution` | NMT resolution, `1m` or `5m` | the set's NMT segment, else the cell of `nmt/dem_mosaic.tif` (or `.vrt`) |
+| `--data-dir` | the bootstrap's output directory (`bootstrap_set.json`, `nmt/`) | `../data/` (`/data` in the container) |
+| `--frontend-data` | the directory nginx serves as `/data/` | `../frontend/data/` (`/frontend/data` in the container) |
+
+The file (`hydrograf-instance/1`) is public, so it carries no server path:
+
+```json
+{"schema": "hydrograf-instance/1",
+ "area": {"name": "zlewnia Kaczawy do Legnicy", "area_km2": 790.6,
+          "boundary": "zlewnia_kaczawy_790km2_przyciecie.gpkg"},
+ "counties": null,
+ "nmt": {"resolution_m": 5.0, "segment": null},
+ "set": null,
+ "generated_at": "2026-11-09T22:18:39Z"}
+```
+
+`counties` are the TERYT codes of the BDOT10k packages of the set, `nmt.segment` its NMT segment
+of the Kartograf store and `set` its project, name and `closed_at`; all three are null for data
+not made from a set. `area.name` and `area.area_km2` are null when nothing gives them (a run by
+`--bbox` or `--sheets` without `--area-name`).
 
 ---
 
