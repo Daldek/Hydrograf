@@ -8,7 +8,7 @@ of the table ``land_cover`` with the source of its row (``bdot_class``) and a so
 group is one of ``soil_hsg``. The numbers are Hydrolog's TR-55 table
 (:func:`hydrolog.runoff.get_cn`), the single source of the CN; this module says only
 which TR-55 cover each category stands for and gives Hydrolog's conversion to AMC I
-and III.
+and III and its runoff depth of a storm.
 
 Sources:
 
@@ -17,10 +17,11 @@ Sources:
   lands).
 - USDA-NRCS (2004). NEH Part 630, chapter 9 (hydrologic soil-cover complexes;
   "impervious and water surfaces ... are always assigned a CN of 98", p. 9-1) and
-  chapter 10 (the weighted CN of a watershed of several complexes; the antecedent
-  runoff condition).
+  chapter 10 (the weighted CN of a watershed of several complexes and the weighted
+  runoff, p. 10-10; the antecedent runoff condition).
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final
 
@@ -217,3 +218,55 @@ def cn_for_amc(cn: float, amc: AMC) -> int:
     # Hydrolog annotates the CN as int; its formulas take the weighted CN of a
     # watershed, as the hydrograph passes it (api/endpoints/hydrograph.py).
     return SCSCN(cn=cn).adjust_cn_for_amc(amc)  # type: ignore[arg-type]
+
+
+def runoff_mm(cn: float, precipitation_mm: float) -> float:
+    """Direct runoff depth Q of a storm for AMC II, by Hydrolog's SCS-CN equation.
+
+    ``SCSCN.effective_precipitation``: Q = (P - Ia)^2 / (P - Ia + S) for P > Ia, else
+    0, with S = 25400 / CN - 254 and Ia = 0.2 S (NEH 630 chapter 10).
+
+    Parameters
+    ----------
+    cn : float
+        CN for AMC II (1-100), of a complex or the composite CN of a watershed.
+    precipitation_mm : float
+        Storm depth P [mm].
+
+    Returns
+    -------
+    float
+        Runoff depth Q [mm].
+    """
+    # Hydrolog annotates the CN as int; its equation takes the weighted CN of a
+    # watershed, as the hydrograph passes it (api/endpoints/hydrograph.py).
+    scs = SCSCN(cn=cn)  # type: ignore[arg-type]
+    return scs.effective_precipitation(precipitation_mm, AMC.II).total_effective_mm
+
+
+def weighted_runoff_mm(
+    complexes: Iterable[tuple[float, float]], precipitation_mm: float
+) -> float:
+    """Area-weighted runoff depth of soil-cover complexes, each with its own CN.
+
+    The method of weighted Q of NEH 630 chapter 10 (p. 10-10): the runoff of each
+    complex from its CN, weighted by its area, sum(A_i Q(CN_i)) / sum(A_i). It
+    exceeds the runoff of the area-weighted CN (``runoff_mm`` of the composite CN)
+    where the CN of the complexes differ, most for small storms; equal CN give equal
+    runoff.
+
+    Parameters
+    ----------
+    complexes : Iterable[tuple[float, float]]
+        (CN for AMC II, area) of each complex; the area in any unit, total > 0.
+    precipitation_mm : float
+        Storm depth P [mm].
+
+    Returns
+    -------
+    float
+        Runoff depth Q [mm].
+    """
+    pairs = list(complexes)
+    area = sum(a for _, a in pairs)
+    return sum(runoff_mm(cn, precipitation_mm) * a for cn, a in pairs) / area

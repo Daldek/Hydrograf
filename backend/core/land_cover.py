@@ -109,8 +109,8 @@ def get_land_cover_for_boundary(
     dict | None
         ``summarize_complexes`` of the land cover in the boundary: ``categories``,
         ``total_area_m2``, ``weighted_cn``, ``weighted_imperviousness``, ``forest_pct``,
-        ``urban_pct`` and ``hsg_assumed_pct``; None for an invalid boundary, a database
-        error or a watershed without land cover.
+        ``urban_pct``, ``hsg_assumed_pct`` and ``complexes``; None for an invalid
+        boundary, a database error or a watershed without land cover.
     """
     if not boundary.is_valid:
         return None
@@ -153,6 +153,8 @@ def summarize_complexes(rows: Iterable[Any]) -> dict[str, Any] | None:
           ``URBAN_CATEGORIES``), to 0.1
         - hsg_assumed_pct: share of the land cover outside ``soil_hsg``, whose soil
           group was assumed [%], to 0.1
+        - complexes: the soil-cover complexes of the watershed as (CN, area [m2]),
+          one pair per CN, by ascending CN; their weighted mean is ``weighted_cn``
 
         None when the land cover has no area.
     """
@@ -218,6 +220,9 @@ def summarize_complexes(rows: Iterable[Any]) -> dict[str, Any] | None:
         )
     ]
     all_pairs = [pair for cat_pairs in pairs.values() for pair in cat_pairs]
+    area_by_cn: dict[int, float] = {}
+    for cn, area in all_pairs:
+        area_by_cn[cn] = area_by_cn.get(cn, 0.0) + area
     imperviousness = (
         sum((key[2] or 0.0) * area for key, area in totals.items()) / total_area
     )
@@ -230,6 +235,7 @@ def summarize_complexes(rows: Iterable[Any]) -> dict[str, Any] | None:
         "forest_pct": _share_pct(category_area, FOREST_CATEGORIES, total_area),
         "urban_pct": _share_pct(category_area, URBAN_CATEGORIES, total_area),
         "hsg_assumed_pct": round(assumed_area / total_area * 100, 1),
+        "complexes": sorted(area_by_cn.items()),
     }
 
 

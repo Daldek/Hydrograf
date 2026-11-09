@@ -3,8 +3,8 @@
 **Date:** 2026-11-08
 **Status:** accepted (by delegation of the author, 2026-11-08; the open points decided by
 the author 2026-11-08, below; plan `docs/plans/2026-11-08-cn-by-soil-group.md`); amended
-2026-11-09: `woda` takes Hydrolog's water row and PTKM the paved road with open ditches
-(Amendment below)
+2026-11-09: `woda` takes Hydrolog's water row and PTKM the paved road with open ditches,
+and control columns of the weighted runoff in the export (Amendments below)
 
 ## Context
 
@@ -93,7 +93,8 @@ here). It is nearly uniform, so the land cover drives the spatial pattern of the
    around it, and the mean is kept); with no soil data at all, group B (the fallback of
    the Kartograf HSG). The share is reported (`hsg_assumed_pct`, `lc_without_hsg_pct`).
 4. **Composite CN only** in the panel and the export; the weighted runoff is not reported
-   (option 4). Its size on h07 is below.
+   (option 4). Its size on h07 is below. *Amended 2026-11-09:* the export reports it as
+   control columns beside the composite CN (Amendment below).
 5. **AMC.** The panel and the CN columns stay AMC II. The export adds `cn_amc_i` and
    `cn_amc_iii`: Hydrolog's conversion (`SCSCN.adjust_cn_for_amc`, Hawkins et al. 1985,
    approximating NEH 630 ch. 10 table 10-1) of the watershed CN, exactly as the hydrograph
@@ -175,3 +176,18 @@ mappings:
 PTUT stays `łąka` (meadow) by the author's decision of 2026-11-08 (decision 2): the
 woods–grass row does not reopen it. Residential 1/4 acre is not used: the residential
 mappings stay as decided.
+
+## Amendment (2026-11-09): control columns of the weighted runoff
+
+The author keeps the composite area-weighted CN (option 3) in the panel, the hydrograph
+and the export, and asked for control columns instead of a switch of the method
+(option 4). The export (`scripts/export_catchment_parameters.py`) adds, for P = 25 mm and
+50 mm and AMC II, `q_cn_mm_p25`, `q_cn_mm_p50` (the SCS-CN runoff depth of the composite
+CN) and `q_weighted_mm_p25`, `q_weighted_mm_p50` (the area-weighted mean of the runoff
+depths of the soil-cover complexes, each from its own CN: the method of weighted Q, NEH 630
+ch. 10, p. 10-10), both by Hydrolog's SCS-CN equation with Ia = 0.2 S
+(`core.cn_tables.runoff_mm`, `weighted_runoff_mm`), in mm to 0.01, section „Kontrola” of
+`<layer>_units`. `summarize_complexes` (`core/land_cover.py`) returns the complexes as
+(CN, area) for this. The difference of the two columns is the error of the composite CN
+for that storm: on h07 0.95 mm at 25 mm and 1.7 mm at 50 mm (Consequences). The panel and
+the API do not change.

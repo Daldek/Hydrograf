@@ -3,10 +3,11 @@ Export the parameters of the watershed panel for the polygons of a GeoPackage.
 
 For every polygon of a layer the script computes what the panel „Zlewnia” shows in
 four sections, „Parametry podstawowe”, „Wskaźniki kształtu”, „Pokrycie terenu” and
-„Grupy glebowe (HSG)”, and the CN of the watershed for the three antecedent runoff
-conditions, AMC I (dry), II (average) and III (wet), with the polygon as the boundary
-of the watershed (no delineation from the NMT), and writes the polygons with their
-key, the fields asked for and these values to a new GeoPackage.
+„Grupy glebowe (HSG)”, the CN of the watershed for the three antecedent runoff
+conditions, AMC I (dry), II (average) and III (wet), and as a control the runoff of
+the composite CN against the weighted runoff of the soil-cover complexes, with the
+polygon as the boundary of the watershed (no delineation from the NMT), and writes the
+polygons with their key, the fields asked for and these values to a new GeoPackage.
 The table ``<layer>_units`` of that GeoPackage gives the unit, the section, the row
 of the panel and the source of each column.
 
@@ -62,16 +63,17 @@ from sqlalchemy.orm import Session
 
 from core.active_run import active_run_raster
 from core.catchment_graph import contiguous_real_length_km
-from core.cn_tables import cn_for_amc
+from core.cn_tables import cn_for_amc, runoff_mm, weighted_runoff_mm
 from core.config import get_settings
 from core.constants import CRS_PL1992, M2_PER_KM2, M_PER_KM
 from core.database import get_db_session
 from core.divide_flow_path import trace_flow_path, watershed_flow_paths
 from core.hydrology import D8_DIRECTIONS
+from core.land_cover import get_land_cover_for_boundary
 from core.morphometry import area_perimeter_indices
 from core.raster_io import cells_window, read_window
 from core.version import get_version
-from core.watershed_service import build_hsg_stats, build_land_cover_stats
+from core.watershed_service import build_hsg_stats
 from core.zonal_stats import zonal_summary
 from scripts.process_dem import (
     INTERMEDIATE_SUFFIXES,
@@ -92,6 +94,9 @@ MIN_CELLS = 100
 # boundary simplified by 20 m (api.endpoints.watershed._build_watershed_response)
 LAND_COVER_SIMPLIFY_ABOVE_KM2 = 5.0
 LAND_COVER_SIMPLIFY_M = 20.0
+# Storm depths P [mm] of the control columns of the runoff (ADR-075): the runoff of the
+# composite CN against the area-weighted runoff of the soil-cover complexes, AMC II
+CONTROL_STORMS_MM = (25, 50)
 # Land cover categories of the database, in the order of the panel: the category,
 # the stem of its columns and its label in the panel
 LAND_COVER_CLASSES = (
@@ -144,7 +149,7 @@ class Column:
     section : str
         Section of the panel „Zlewnia”, or „Kontrola” for a control column.
     panel_label : str
-        Row of the panel ("" for a control column).
+        Row of the panel; for a control column a Polish label or "".
     description : str
         What the value is and the code of Hydrograf it comes from.
     dtype : str
@@ -285,7 +290,7 @@ COLUMNS: tuple[Column, ...] = (
         "CN for AMC II (average antecedent runoff condition), the value of the panel: "
         "area-weighted composite CN of the soil-cover complexes of the polygon, land "
         "cover x hydrologic soil group, from the TR-55 table of Hydrolog "
-        "(core.watershed_service.build_land_cover_stats, ADR-075); equal to cn_amc_ii",
+        "(core.land_cover.get_land_cover_for_boundary, ADR-075); equal to cn_amc_ii",
     ),
     Column(
         "cn_amc_i",
@@ -365,7 +370,8 @@ COLUMNS: tuple[Column, ...] = (
                 _LAND_COVER,
                 label,
                 f"Share of „{category}” in the land cover of the polygon "
-                "(build_land_cover_stats); 0 when absent, empty without land cover",
+                "(get_land_cover_for_boundary); 0 when absent, empty without land "
+                "cover",
             ),
             Column(
                 f"lc_{stem}_cn",
@@ -397,6 +403,36 @@ COLUMNS: tuple[Column, ...] = (
         "Share of the land cover of the polygon outside the soil groups: its soil "
         "groups follow the shares of the rest of the polygon (group B without any, "
         "ADR-075)",
+    ),
+    *(
+        column
+        for p in CONTROL_STORMS_MM
+        for column in (
+            Column(
+                f"q_cn_mm_p{p}",
+                "mm",
+                _CONTROL,
+                f"Opad efektywny z CN zlewni (P = {p} mm)",
+                f"Runoff depth Q of a storm of P = {p} mm, AMC II, from the composite "
+                "CN (cn_amc_ii) by Hydrolog's SCS-CN equation of NEH 630 chapter 10 "
+                "(SCSCN.effective_precipitation, Ia = 0.2 S; "
+                "core.cn_tables.runoff_mm), as the hydrograph computes the runoff; to "
+                "0.01 mm, empty without land cover",
+            ),
+            Column(
+                f"q_weighted_mm_p{p}",
+                "mm",
+                _CONTROL,
+                f"Opad efektywny ważony po kompleksach (P = {p} mm)",
+                "Area-weighted runoff depth of the soil-cover complexes of the polygon "
+                f"for P = {p} mm, AMC II: the Q of each complex from its own CN by the "
+                "same equation (core.cn_tables.weighted_runoff_mm), the method of "
+                "weighted Q of USDA-NRCS NEH 630 chapter 10, p. 10-10. Its difference "
+                f"from q_cn_mm_p{p} is the error of the composite CN for that storm, "
+                "largest for small storms and a wide spread of the CN (ADR-075); to "
+                "0.01 mm, empty without land cover",
+            ),
+        )
     ),
     Column(
         "polygon_area_km2",
@@ -963,17 +999,20 @@ def _channel_columns(
 def _land_cover_columns(
     geometry: BaseGeometry, area_km2: float, db: Session
 ) -> dict[str, Any]:
-    """CN, land cover and soil groups of the polygon.
+    """CN, land cover, soil groups and control runoff of the polygon.
 
     The CN for AMC II, also as ``cn_amc_ii``, and for AMC I and III (Hydrolog's
     conversion of the CN for AMC II, as in the hydrograph), the share and the CN of
-    each land cover class, the share of each soil group and the share of the land
-    cover without one. The boundary is simplified as the panel simplifies it.
+    each land cover class, the share of each soil group, the share of the land cover
+    without one and, for each storm of ``CONTROL_STORMS_MM``, the runoff of the CN for
+    AMC II and the area-weighted runoff of the soil-cover complexes (ADR-075). The
+    boundary is simplified as the panel simplifies it.
     """
     tolerance = (
         LAND_COVER_SIMPLIFY_M if area_km2 > LAND_COVER_SIMPLIFY_ABOVE_KM2 else None
     )
-    stats = build_land_cover_stats(geometry, db, simplify_tolerance=tolerance)
+    query_boundary = geometry if tolerance is None else geometry.simplify(tolerance)
+    stats = get_land_cover_for_boundary(query_boundary, db)
     result: dict[str, Any] = {
         "cn": None,
         "cn_amc_i": None,
@@ -986,18 +1025,26 @@ def _land_cover_columns(
         result[f"lc_{stem}_cn"] = None
     for group, _ in HSG_CLASSES:
         result[f"hsg_{group.lower()}_pct"] = None
+    for p in CONTROL_STORMS_MM:
+        result[f"q_cn_mm_p{p}"] = None
+        result[f"q_weighted_mm_p{p}"] = None
     if stats is not None:
-        result["cn"] = stats.weighted_cn
-        result["cn_amc_i"] = cn_for_amc(stats.weighted_cn, AMC.I)
-        result["cn_amc_ii"] = stats.weighted_cn
-        result["cn_amc_iii"] = cn_for_amc(stats.weighted_cn, AMC.III)
-        result["lc_without_hsg_pct"] = stats.hsg_assumed_pct
-        by_category = {c.category: c for c in stats.categories}
+        cn = stats["weighted_cn"]
+        result["cn"] = cn
+        result["cn_amc_i"] = cn_for_amc(cn, AMC.I)
+        result["cn_amc_ii"] = cn
+        result["cn_amc_iii"] = cn_for_amc(cn, AMC.III)
+        result["lc_without_hsg_pct"] = stats["hsg_assumed_pct"]
+        by_category = {c["category"]: c for c in stats["categories"]}
         for category, stem, _ in LAND_COVER_CLASSES:
             entry = by_category.get(category)
-            result[f"lc_{stem}_pct"] = 0.0 if entry is None else entry.percentage
-            result[f"lc_{stem}_cn"] = None if entry is None else entry.cn_value
-    query_boundary = geometry if tolerance is None else geometry.simplify(tolerance)
+            result[f"lc_{stem}_pct"] = 0.0 if entry is None else entry["percentage"]
+            result[f"lc_{stem}_cn"] = None if entry is None else entry["cn_value"]
+        for p in CONTROL_STORMS_MM:
+            result[f"q_cn_mm_p{p}"] = round(runoff_mm(cn, p), 2)
+            result[f"q_weighted_mm_p{p}"] = round(
+                weighted_runoff_mm(stats["complexes"], p), 2
+            )
     soils = build_hsg_stats(query_boundary, db)
     if soils is not None:
         by_group = {c.group: c.percentage for c in soils.categories}

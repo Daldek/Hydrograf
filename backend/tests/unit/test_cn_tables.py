@@ -1,10 +1,18 @@
-"""Unit tests of core.cn_tables: the TR-55 covers of the land cover (ADR-075)."""
+"""Unit tests of core.cn_tables: the TR-55 covers of the land cover and the runoff
+of the soil-cover complexes (ADR-075)."""
 
 from itertools import chain
 
 import pytest
 
-from core.cn_tables import COVER_BY_SOURCE, HSG_GROUPS, complex_cn, cover_for
+from core.cn_tables import (
+    COVER_BY_SOURCE,
+    HSG_GROUPS,
+    complex_cn,
+    cover_for,
+    runoff_mm,
+    weighted_runoff_mm,
+)
 from core.land_cover import VALID_CATEGORIES
 from scripts.import_landcover import (
     INDUSTRIAL_COMPLEX_CLASSES,
@@ -129,3 +137,39 @@ def test_a_source_without_its_own_cover_takes_the_cover_of_the_category(bdot_cla
 def test_a_category_outside_the_constraint_is_an_error():
     with pytest.raises(KeyError):
         complex_cn("forest", None, "B")
+
+
+def _scs_runoff_mm(cn, precipitation_mm):
+    """Q of the SCS-CN equation, Ia = 0.2 S (NEH 630 ch. 10), in mm."""
+    s = 25400 / cn - 254
+    ia = 0.2 * s
+    if precipitation_mm <= ia:
+        return 0.0
+    return (precipitation_mm - ia) ** 2 / (precipitation_mm - ia + s)
+
+
+def test_complexes_of_very_different_cn_run_off_more_than_their_composite_cn():
+    """Forest on A (30) and pavement (98), equal areas, P = 25 mm (NEH 630 p. 10-10).
+
+    The composite CN 64 holds back Ia = 28.6 mm, more than the storm: no runoff; the
+    pavement alone gives 19.7 mm over its half of the watershed.
+    """
+    complexes = [(30, 1.0), (98, 1.0)]
+
+    weighted = weighted_runoff_mm(complexes, 25.0)
+    composite = runoff_mm(64.0, 25.0)
+
+    assert composite == 0.0
+    assert weighted == pytest.approx(_scs_runoff_mm(98, 25.0) / 2)
+    assert weighted == pytest.approx(9.85, abs=0.01)
+    assert weighted > composite
+
+
+def test_complexes_of_equal_cn_run_off_as_their_composite_cn():
+    complexes = [(75, 3.0), (75, 7.0)]
+
+    weighted = weighted_runoff_mm(complexes, 25.0)
+
+    assert weighted == pytest.approx(runoff_mm(75.0, 25.0))
+    assert weighted == pytest.approx(_scs_runoff_mm(75, 25.0))
+    assert weighted == pytest.approx(0.70, abs=0.01)
