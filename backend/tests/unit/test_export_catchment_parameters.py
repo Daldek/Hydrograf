@@ -577,6 +577,28 @@ def test_cn_of_the_soil_cover_complexes_and_the_soil_groups(rasters, db):
     assert (row["cn_amc_i"], row["cn_amc_ii"], row["cn_amc_iii"]) == (38, 58.1, 76)
     assert [row[f"hsg_{g}_pct"] for g in "abcd"] == [34.9, 65.1, 0.0, 0.0]
     assert row["lc_without_hsg_pct"] == 14.0
+    # Control runoff: the composite CN against the complexes, each with its own CN
+    complexes = [
+        (30, 300_000 + 40_000 * a),
+        (55, 140_000 + 40_000 * b),
+        (63, 100_000 * a),
+        (75, 380_000 + 100_000 * b),
+        (98, 40_000),
+    ]
+    for p in (25, 50):
+        weighted = sum(_scs_runoff_mm(cn, p) * area for cn, area in complexes) / 1e6
+        assert row[f"q_cn_mm_p{p}"] == round(_scs_runoff_mm(58.1, p), 2)
+        assert row[f"q_weighted_mm_p{p}"] == round(weighted, 2)
+        assert row[f"q_weighted_mm_p{p}"] > row[f"q_cn_mm_p{p}"]
+
+
+def _scs_runoff_mm(cn, precipitation_mm):
+    """Q of the SCS-CN equation, Ia = 0.2 S (NEH 630 ch. 10), in mm."""
+    s = 25400 / cn - 254
+    ia = 0.2 * s
+    if precipitation_mm <= ia:
+        return 0.0
+    return (precipitation_mm - ia) ** 2 / (precipitation_mm - ia + s)
 
 
 def test_a_polygon_without_soil_groups_takes_group_b(rasters, db):

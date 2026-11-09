@@ -552,8 +552,9 @@ tiles.
 ### `export_catchment_parameters.py`: the parameters of the panel for given polygons
 
 Computes, for every polygon of a layer, what the panel „Zlewnia” shows in „Parametry
-podstawowe”, „Wskaźniki kształtu”, „Pokrycie terenu” and „Grupy glebowe (HSG)”, and the CN of
-the watershed for the antecedent runoff conditions AMC I, II and III, with the polygon as the
+podstawowe”, „Wskaźniki kształtu”, „Pokrycie terenu” and „Grupy glebowe (HSG)”, the CN of the
+watershed for the antecedent runoff conditions AMC I, II and III and, as a control, the runoff of
+that CN against the weighted runoff of the soil-cover complexes, with the polygon as the
 boundary of the watershed (no delineation from the NMT), and writes the polygons with their key,
 the fields asked for and these values to a new GeoPackage. It reads the rasters that the
 pipeline saved in `DEM_DIR` (`dem_mosaic_02_filled`, `_03_flowdir`, `_04_flowacc`,
@@ -602,7 +603,15 @@ the source of each; the layer's metadata the threshold, the raster directory and
 | Wskaźniki kształtu | `compactness_coefficient`, `circularity_ratio` |
 | Pokrycie terenu | `lc_<class>_pct` and `lc_<class>_cn` (AMC II, over the soil-cover complexes of the class) of `grunt_orny`, `las`, `laka`, `zabudowa_mieszkaniowa`, `zabudowa_przemyslowa`, `droga`, `woda`, `inny` |
 | Grupy glebowe (HSG) | `hsg_a_pct`, `hsg_b_pct`, `hsg_c_pct`, `hsg_d_pct` (of the area of the polygon with soil groups) |
-| Kontrola | `lc_without_hsg_pct` (the land cover outside the soil groups, which takes the groups of the rest of the polygon, ADR-075), `polygon_area_km2` (of the geometry), `outlet_upstream_area_km2` (the NMT watershed of the outlet), `polygon_to_upstream_area_ratio` (about 1 for a polygon that is that watershed, less with inflow from outside), `cell_count`, `quality_flag` (`under_100_cells`, `partly_outside_nmt`, `outside_nmt`) |
+| Kontrola | `lc_without_hsg_pct` (the land cover outside the soil groups, which takes the groups of the rest of the polygon, ADR-075), `q_cn_mm_p25`, `q_weighted_mm_p25`, `q_cn_mm_p50`, `q_weighted_mm_p50` (below), `polygon_area_km2` (of the geometry), `outlet_upstream_area_km2` (the NMT watershed of the outlet), `polygon_to_upstream_area_ratio` (about 1 for a polygon that is that watershed, less with inflow from outside), `cell_count`, `quality_flag` (`under_100_cells`, `partly_outside_nmt`, `outside_nmt`) |
+
+The runoff columns check the composite CN (ADR-075, amendment of 2026-11-09). For a storm of
+P = 25 mm and 50 mm, AMC II, `q_cn_mm_p<P>` is the SCS-CN runoff depth of `cn` and
+`q_weighted_mm_p<P>` the area-weighted mean of the runoff depths of the soil-cover complexes, each
+from its own CN (the method of weighted Q, NEH 630 ch. 10, p. 10-10); both by Hydrolog's SCS-CN
+equation (Ia = 0.2 S), in mm to 0.01. Their difference is the error of the composite CN for that
+storm: large in relative terms for small storms and a wide spread of the CN in the polygon (on h07
+0.40 against 1.35 mm at 25 mm). The hydrograph and the panel keep the composite CN.
 
 Slopes are in m/m like the API (the panel shows them times 100 in %). For the boundary of a
 watershed of the panel the values are those of the panel, with these differences: the mean

@@ -457,7 +457,11 @@ watershed to the requested AMC with Hydrolog (`SCSCN.adjust_cn_for_amc`, Hawkins
 three conditions: `cn_amc_i` (dry) and `cn_amc_iii` (wet), the same conversion of its `cn`
 (`core/cn_tables.cn_for_amc`), and `cn_amc_ii` (average), equal to `cn`. The conversion is
 of the area-weighted composite CN of the watershed, as in the hydrograph (ADR-075).
-Hydrolog warns for a CN outside 55–95.
+Hydrolog warns for a CN outside 55–95. As a control of the composite CN the export adds
+the SCS-CN runoff depth of `cn` (`q_cn_mm_p25`, `q_cn_mm_p50`) and the area-weighted runoff
+depth of the complexes, each from its own CN (`q_weighted_mm_p25`, `q_weighted_mm_p50`;
+NEH 630 ch. 10, p. 10-10), for P = 25 and 50 mm, AMC II, Ia = 0.2 S
+(`core/cn_tables.runoff_mm`, `weighted_runoff_mm`; ADR-075, amendment of 2026-11-09).
 
 ### 5.5 CN from Kartograf (HSG)
 
