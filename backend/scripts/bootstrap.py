@@ -90,6 +90,12 @@ DEFAULT_CACHE_DIR = PROJECT_ROOT / "cache"
 SET_RECORD_NAME = "bootstrap_set.json"
 SET_RECORD_SCHEMA = "hydrograf-bootstrap-set/1"
 
+# The map layer of the soil groups (frontend/data/soil_hsg.geojson) simplifies the
+# polygons by 5 m and writes 6 decimal digits (about 0.1 m): the wetlands (ADR-078)
+# bring the outlines of BDOT10k into soil_hsg, which made the layer of h07 14.7 MB
+# instead of 0.3 MB. The table keeps the exact polygons.
+HSG_MAP_TOLERANCE_M = 5.0
+
 # Status symbols
 SYM_DONE = "\u2713"  # checkmark
 SYM_ACTIVE = "\u25cf"  # bullet
@@ -687,6 +693,27 @@ def step_process_dem(
     return stats, detail, mosaic_bbox_2180
 
 
+def _bdot10k_packages(
+    sheets: list[str],
+    cache_dir: Path,
+    mosaic_bbox_2180: tuple[float, float, float, float] | None,
+    bdot10k: dict[str, Path] | None,
+) -> dict[str, Path]:
+    """Return the BDOT10k packages of the area by TERYT (steps 4 and 5).
+
+    ``bdot10k`` (TERYT to package) are the packages of a set (ADR-067), used without a
+    download. Otherwise the counties of the area (the mosaic of step 3, else the
+    sheets) come from Kartograf with their packages: a package that step 3 stored is
+    local and not requested again, one that failed there is tried again.
+    """
+    from kartograf import BBox
+
+    if bdot10k is not None:
+        return bdot10k
+    bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
+    return download_bdot10k(cache_dir, bbox=BBox(*bbox_2180, crs="EPSG:2180"))
+
+
 def step_landcover(
     sheets: list[str],
     output_dir: Path,
@@ -696,22 +723,13 @@ def step_landcover(
 ) -> str:
     """Step 4: Download and import land cover data (per county).
 
-    The counties of the area (the mosaic of step 3, else the sheets) come from
-    Kartograf with their packages: a package that step 3 stored is local and not
-    requested again, one that failed there is tried again here. ``bdot10k`` (TERYT to
-    package) are the packages of a set (ADR-067), imported without a download.
+    The packages are those of ``_bdot10k_packages``: of a set (``bdot10k``), else of
+    the counties of the area.
     """
     sys.path.insert(0, str(BACKEND_DIR))
-    from kartograf import BBox
-
     from scripts.import_landcover import import_landcover
 
-    if bdot10k is not None:
-        bdot_paths = bdot10k
-    else:
-        bbox_2180 = mosaic_bbox_2180 or sheets_to_bbox_2180(sheets)
-        bdot_paths = download_bdot10k(cache_dir, bbox=BBox(*bbox_2180, crs="EPSG:2180"))
-
+    bdot_paths = _bdot10k_packages(sheets, cache_dir, mosaic_bbox_2180, bdot10k)
     if not bdot_paths:
         logger.warning("Nie znaleziono powiatów dla podanego obszaru")
         return "0 obiektów, 0 powiatów"
@@ -736,6 +754,7 @@ def step_soil_hsg(
     cache_dir: Path,
     mosaic_bbox_2180: tuple[float, float, float, float] | None = None,
     hsg_raster: Path | None = None,
+    bdot10k: dict[str, Path] | None = None,
 ) -> str:
     """Step 5: Download HSG data from SoilGrids and import to DB.
 
@@ -744,6 +763,8 @@ def step_soil_hsg(
     sand and silt once, computes the raster from them, and a second run uses it again
     without a request. ``hsg_raster`` is the raster of a set (ADR-067), used without a
     request. Processing: clip to project bbox -> warp to EPSG:2180 -> polygonize ->
+    the soil under the wetlands (OT_OIMK_A) of the BDOT10k packages of the area
+    (``_bdot10k_packages``, the packages of step 4) becomes group D (ADR-078) ->
     import.
     """
     import numpy as np
@@ -838,8 +859,7 @@ def step_soil_hsg(
         )
 
     # --- 4. Polygonize ---
-    records = []
-
+    soils = []
     for geom_dict, value in shapes(dst_data, transform=dst_transform):
         value = int(value)
         if value not in hsg_map:
@@ -849,20 +869,22 @@ def step_soil_hsg(
             continue
         if geom.area < 50:  # Skip micro-fragments (<50 m²)
             continue
-        if geom.geom_type == "Polygon":
-            geom = MultiPolygon([geom])
-        records.append(
-            {
-                "geom": geom.wkt,
-                "hsg_group": hsg_map[value],
-                "area_m2": geom.area,
-            }
-        )
+        soils.append((geom, hsg_map[value]))
 
-    if not records:
+    if not soils:
         return "brak danych HSG"
 
-    # --- 5. Bbox-scoped DB import ---
+    # --- 5. The soil under the wetlands is group D (ADR-078) ---
+    soils, wetlands_detail = _soils_with_wetlands(
+        soils, sheets, cache_dir, mosaic_bbox_2180, bdot10k
+    )
+    records = []
+    for geom, group in soils:
+        if geom.geom_type == "Polygon":
+            geom = MultiPolygon([geom])
+        records.append({"geom": geom.wkt, "hsg_group": group, "area_m2": geom.area})
+
+    # --- 6. Bbox-scoped DB import ---
     engine = get_engine()
     from sqlalchemy import text
 
@@ -883,7 +905,7 @@ def step_soil_hsg(
         )
         conn.commit()
 
-    # --- 6. Export GeoJSON for frontend ---
+    # --- 7. Export GeoJSON for frontend ---
     try:
         import json
 
@@ -891,10 +913,11 @@ def step_soil_hsg(
         with engine.connect() as conn2:
             result = conn2.execute(
                 text(
-                    "SELECT hsg_group, "
-                    "ST_AsGeoJSON(ST_Transform(geom, 4326)) "
+                    "SELECT hsg_group, ST_AsGeoJSON(ST_Transform("
+                    "ST_SimplifyPreserveTopology(geom, :tolerance), 4326), 6) "
                     "AS geojson, area_m2 FROM soil_hsg"
-                )
+                ),
+                {"tolerance": HSG_MAP_TOLERANCE_M},
             ).fetchall()
             for row in result:
                 rows.append(
@@ -921,7 +944,55 @@ def step_soil_hsg(
         g = r["hsg_group"]
         groups[g] = groups.get(g, 0) + 1
     summary = ", ".join(f"{g}: {c}" for g, c in sorted(groups.items()))
-    return f"{len(records)} poligonów ({summary})"
+    return f"{len(records)} poligonów ({summary}), {wetlands_detail}"
+
+
+def _soils_with_wetlands(
+    soils: list[tuple[Any, str]],
+    sheets: list[str],
+    cache_dir: Path,
+    mosaic_bbox_2180: tuple[float, float, float, float] | None,
+    bdot10k: dict[str, Path] | None,
+) -> tuple[list[tuple[Any, str]], str]:
+    """Make the soil under the wetlands of the area's packages group D (ADR-078).
+
+    The wetlands are those of the BDOT10k packages of step 4 (``_bdot10k_packages``).
+    Returns the soil polygons and the detail of step 5: the area made group D, or that
+    no package was found, and then the soil groups of the raster stay.
+    """
+    from scripts.import_landcover import (
+        WETLAND_HSG,
+        read_wetlands,
+        soils_with_wetlands,
+    )
+
+    try:
+        packages = _bdot10k_packages(sheets, cache_dir, mosaic_bbox_2180, bdot10k)
+    except Exception as e:
+        logger.warning("HSG: no BDOT10k packages for the wetlands: %s", e)
+        packages = {}
+    if not packages:
+        return soils, "bez mokradeł (brak paczek BDOT10k)"
+
+    wetlands = []
+    for teryt, gpkg in sorted(packages.items()):
+        try:
+            wetlands.extend(read_wetlands(gpkg))
+        except Exception as e:
+            logger.warning("HSG: the wetlands of TERYT %s not read: %s", teryt, e)
+    pieces = soils_with_wetlands(soils, wetlands)
+    wet_km2 = (
+        sum(geom.area for geom, group in pieces if group == WETLAND_HSG)
+        - sum(geom.area for geom, group in soils if group == WETLAND_HSG)
+    ) / 1e6
+    logger.info(
+        "HSG: %d wetlands of %d packages, %.2f km2 of soil made group %s",
+        len(wetlands),
+        len(packages),
+        wet_km2,
+        WETLAND_HSG,
+    )
+    return pieces, f"mokradła {wet_km2:.2f} km² → {WETLAND_HSG}"
 
 
 def step_precipitation(bbox: tuple[float, float, float, float]) -> str:
@@ -1306,6 +1377,7 @@ def run_pipeline(
                 cache_dir,
                 mosaic_bbox_2180=mosaic_bbox,
                 hsg_raster=inputs.hsg if inputs is not None else None,
+                bdot10k=inputs.counties if inputs is not None else None,
             )
             tracker.done(5, t0, detail)
         except Exception as e:
@@ -1388,7 +1460,8 @@ def dry_run(
         "stream_network, stream_catchments (ZAWSZE od zera)",
         f"Pokrycie terenu: BDOT10k per powiat (z {len(sheets)} arkuszy), "
         f"magazyn {store_dir(cache_dir)}",
-        "Dane glebowe HSG: SoilGrids przez Kartograf (calculate_hsg)",
+        "Dane glebowe HSG: SoilGrids przez Kartograf (calculate_hsg), "
+        "pod mokradłami BDOT10k grupa D",
         f"Opady IMGW: grid 2km w bbox "
         f"{min_lon:.3f},{min_lat:.3f},"
         f"{max_lon:.3f},{max_lat:.3f}",
@@ -1440,7 +1513,8 @@ def _set_steps(inputs: SetInputs) -> list[str]:
         "Przetwarzanie NMT: mozaika VRT z wersji zestawu, "
         "stream_network, stream_catchments (ZAWSZE od zera)",
         f"Pokrycie terenu: BDOT10k z zestawu, {which}: {counties}",
-        f"Dane glebowe HSG: raster z zestawu {hsg}",
+        f"Dane glebowe HSG: raster z zestawu {hsg}, "
+        "pod mokradłami paczek zestawu grupa D",
     ]
 
 

@@ -1,5 +1,13 @@
 # ADR-075: The CN is that of the soil-cover complexes, from Hydrolog's TR-55 table
 
+> **Amended by ADR-078 (2026-11-10):** `soil_hsg` has group D under the wetlands of
+> BDOT10k (`OT_OIMK_A`), the water-table criterion that the consequences below ask for,
+> for the wet land that BDOT10k maps; and the lawns of the sports and recreation
+> complexes and airports (`inny` with `KUSK:<kind>` or `KUKO:lotnisko`) take TR-55 open
+> space in good condition (39/61/74/80). On h07 the area-weighted CN rises by 0.3
+> (median catchment +0.18, at most +2.96 in a catchment of at least 1 km²), nearly all
+> of it by the wetlands.
+
 **Date:** 2026-11-08
 **Status:** accepted (by delegation of the author, 2026-11-08; the open points decided by
 the author 2026-11-08, below; plan `docs/plans/2026-11-08-cn-by-soil-group.md`); amended

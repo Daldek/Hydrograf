@@ -103,6 +103,16 @@ COVER_BY_CATEGORY: Final[dict[str, Tr55Cover]] = {
     ),
 }
 
+# The lawns of the sports and recreation complexes, parks, gardens and airfields
+# (ADR-078): mown grass, cover above 75%, the condition in which TR-55 counts the
+# pervious land of its urban districts (table 2-2a, footnote 2)
+_LAWN: Final = Tr55Cover(
+    LandCover.OPEN_SPACE,
+    HydrologicCondition.GOOD,
+    "Open space (lawns, parks, golf courses), good condition: grass cover above 75% "
+    "(TR-55 table 2-2a)",
+)
+
 # Sources (bdot_class) of a category that a TR-55 cover describes better than the cover
 # of the category: (category, bdot_class) -> cover. bdot_class is the source of the row
 # as the land cover import writes it ("<layer>:<kind>" for a split layer).
@@ -135,6 +145,11 @@ COVER_BY_SOURCE: Final[dict[tuple[str, str], Tr55Cover]] = {
         "Newly graded areas, no vegetation (TR-55 table 2-2a); the same numbers as "
         "fallow, bare soil (table 2-2b)",
     ),
+    ("inny", "KUKO:lotnisko"): _LAWN,
+    ("inny", "KUSK:kompl. sport."): _LAWN,
+    ("inny", "KUSK:park"): _LAWN,
+    ("inny", "KUSK:ogród botan."): _LAWN,
+    ("inny", "KUSK:ogród zoolog."): _LAWN,
 }
 
 

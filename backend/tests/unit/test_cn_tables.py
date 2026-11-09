@@ -17,6 +17,7 @@ from core.land_cover import VALID_CATEGORIES
 from scripts.import_landcover import (
     INDUSTRIAL_COMPLEX_CLASSES,
     INDUSTRIAL_POWER_PLANT_CLASSES,
+    OPEN_SPACE_COMPLEX_CLASSES,
     PT_KIND_CLASSES,
     PT_LAYER_CLASSES,
 )
@@ -30,6 +31,7 @@ IMPORTED_SOURCES = {
         PT_KIND_CLASSES.values(),
         INDUSTRIAL_COMPLEX_CLASSES.values(),
         INDUSTRIAL_POWER_PLANT_CLASSES.values(),
+        OPEN_SPACE_COMPLEX_CLASSES.values(),
     )
 }
 
@@ -113,6 +115,8 @@ def test_every_category_of_the_table_has_a_cn_on_every_soil_group(category):
         ("inny", "PTNZ:urządzenia", (49, 69, 79, 84)),
         ("inny", "PTPL:nieutwardzony", (72, 82, 87, 89)),
         ("inny", "PTWZ", (77, 86, 91, 94)),
+        # Open space, good: the lawns of parks, sports grounds and airfields (ADR-078)
+        ("inny", "KUSK:park", (39, 61, 74, 80)),
     ],
 )
 def test_cn_is_the_tr55_row_of_the_cover_of_the_source(category, bdot_class, expected):

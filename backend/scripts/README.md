@@ -50,7 +50,7 @@ continues when one fails.
 | 2 | downloads the NMT sheets of the area into the Kartograf store (`download_dem.download_sheets`); from a set: the pinned sheets, nothing downloaded | - |
 | 3 | processes the DEM: the VRT mosaic of the sheets of step 2, the BDOT10k hydro layers for stream burning, `process_dem` (`stream_network`, `stream_catchments`) | - |
 | 4 | downloads the BDOT10k packages of the counties of the mosaic and imports them into `land_cover`; from a set: the pinned packages | `--skip-landcover` |
-| 5 | HSG: the raster of Poland (a version of the store), clipped to the mosaic, polygonized into `soil_hsg`; from a set: the pinned raster | `--skip-hsg` |
+| 5 | HSG: the raster of Poland (a version of the store), clipped to the mosaic, polygonized into `soil_hsg`, the soil under the wetlands (`OT_OIMK_A`) of the BDOT10k packages of step 4 group D (ADR-078); from a set: the pinned raster and packages. The map layer `frontend/data/soil_hsg.geojson` is simplified by 5 m | `--skip-hsg` |
 | 6 | IMGW precipitation (PMAXTP) on a 2 km grid into `precipitation_data` | `--skip-precipitation` |
 | 7 | depressions (blue spots) from the filled DEM | `--skip-depressions` |
 | 8 | MVT tiles (`tippecanoe`) | `--skip-tiles` |
@@ -800,13 +800,15 @@ a county failed. The hydro layers are not selected here: `merge_hydro_gpkgs()` k
 
 ### `import_landcover.py`: import land cover into the database
 
-Imports the land cover of a BDOT10k county package into the table `land_cover` (ADR-074): the
-`PT*` layers, which partition the county, split by their attributes, with the industrial
-complexes of `OT_KUPG_A` cut out of them. Each row gets a category, a CN value, the
-imperviousness and its source in `bdot_class`. The import of a package replaces, in one
-transaction, the rows of its area (those whose interior point and more than half of whose area
-lie in the package), so importing a package again changes nothing and the neighbouring
-counties keep their rows.
+Imports the land cover of a BDOT10k county package into the table `land_cover` (ADR-074,
+ADR-078): the `PT*` layers, which partition the county, split by their attributes, with the
+industrial complexes of `OT_KUPG_A` cut out of them, then the lawns of the sports and
+recreation complexes (`OT_KUSK_A`) and of the airports (`OT_KUKO_A`) cut out of their grass.
+Each row gets a category, the imperviousness and its source in `bdot_class`; its CN is that of
+its soil-cover complex (ADR-075). The import of a package replaces, in one transaction, the
+rows of its area (those whose interior point and more than half of whose area lie in the
+package), so importing a package again changes nothing and the neighbouring counties keep
+their rows.
 
 ```bash
 cd backend
@@ -833,19 +835,20 @@ cd backend
 
 **The BDOT10k sources and their categories:**
 
-| Source (`bdot_class`) | Category | CN | Imperviousness |
-|---|---|---|---|
-| `PTLZ` | `las` | 60 | 0.0 |
-| `PTTR:trawiasta` (`RODZAJ` roślinność trawiasta), `PTUT`, `PTRK` | `łąka` | 70 | 0.0 |
-| `PTTR:grunty orne` (uprawa na gruntach ornych) | `grunt_orny` | 78 | 0.1 |
-| `PTZB:jednorodzinna`, `PTZB:pozostała` | `zabudowa_mieszkaniowa` | 85 | 0.30 |
-| `PTZB:wielorodzinna` | `zabudowa_mieszkaniowa` | 85 | 0.65 |
-| `PTZB:przem.-skład.`, `PTNZ:przem.-skład.` (teren przemysłowo-składowy) | `zabudowa_przemysłowa` | 92 | 0.72 |
-| `PTZB:handl.-usług.` | `zabudowa_przemysłowa` | 92 | 0.85 |
-| `KUPG:<kind>` | `zabudowa_przemysłowa` | 92 | 0.72 |
-| `PTKM`, `PTPL:utwardzony` (`MATERIALNAWIERZCHNI` beton, bruk, kostka, masa bitumiczna, płyty betonowe) | `droga` | 98 | 0.95 |
-| `PTWP` | `woda` | 100 | 1.0 |
-| `PTNZ:urządzenia` (teren pod urządzeniami technicznymi lub budowlami), `PTPL:nieutwardzony` (grunt naturalny, żwir, tłuczeń), `PTWZ`, `PTGN`, `PTSO`, any other `PT*` layer | `inny` | 75 | 0.2 |
+| Source (`bdot_class`) | Category | Imperviousness |
+|---|---|---|
+| `PTLZ` | `las` | 0.0 |
+| `PTTR:trawiasta` (`RODZAJ` roślinność trawiasta), `PTUT`, `PTRK` | `łąka` | 0.0 |
+| `PTTR:grunty orne` (uprawa na gruntach ornych) | `grunt_orny` | 0.1 |
+| `PTZB:jednorodzinna`, `PTZB:pozostała` | `zabudowa_mieszkaniowa` | 0.30 |
+| `PTZB:wielorodzinna` | `zabudowa_mieszkaniowa` | 0.65 |
+| `PTZB:przem.-skład.`, `PTNZ:przem.-skład.` (teren przemysłowo-składowy) | `zabudowa_przemysłowa` | 0.72 |
+| `PTZB:handl.-usług.` | `zabudowa_przemysłowa` | 0.85 |
+| `KUPG:<kind>` | `zabudowa_przemysłowa` | 0.72 |
+| `PTKM`, `PTPL:utwardzony` (`MATERIALNAWIERZCHNI` beton, bruk, kostka, masa bitumiczna, płyty betonowe) | `droga` | 0.95 |
+| `PTWP` | `woda` | 1.0 |
+| `PTNZ:urządzenia` (teren pod urządzeniami technicznymi lub budowlami), `PTPL:nieutwardzony` (grunt naturalny, żwir, tłuczeń), `PTWZ`, `PTGN`, `PTSO`, any other `PT*` layer | `inny` | 0.2 |
+| `KUSK:<kind>`, `KUKO:lotnisko` (the lawns of the open-space complexes) | `inny` | 0.0 |
 
 A polygon of PTZB, PTTR, PTNZ or PTPL without its attribute or with another value takes the
 layer's first category under the plain layer code (`PTZB` `zabudowa_mieszkaniowa`, `PTTR`
@@ -860,6 +863,19 @@ cieplna`, `KUPG:el. atomowa`). Their area is cut out of every PT polygon but wat
 industrial land above; overlapping complexes count once. Farms, solar, wind and water power
 plants, mines, sewage treatment plants, landfills, waterworks and substations keep the land
 cover of the PT layers.
+
+The open-space complexes are the `OT_KUSK_A` of the kinds kompleks sportowo-rekreacyjny
+(`KUSK:kompl. sport.`), park lub skwer (`KUSK:park`), ogród botaniczny (`KUSK:ogród botan.`)
+and ogród zoologiczny (`KUSK:ogród zoolog.`), and the `OT_KUKO_A` lotnisko lub lądowisko
+(`KUKO:lotnisko`). Their area is cut out of the grass (`łąka`) that the industrial complexes
+leave and becomes `inny`, which the CN takes as TR-55 open space in good condition (lawns);
+the forest, fields, water, paved surfaces and buildings in them keep their category, and
+overlapping complexes count once, the airports first. Summer house estates (zespół domów
+letniskowych), stations, car parks, petrol stations and the other KU layers keep the land
+cover of the PT layers.
+
+The wetlands of `OT_OIMK_A` are not land cover: step 5 of the bootstrap makes the soil under
+them group D (ADR-078).
 
 ---
 
