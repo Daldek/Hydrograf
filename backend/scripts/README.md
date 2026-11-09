@@ -411,12 +411,18 @@ the stream network and the sub-catchments into `stream_network` and `stream_catc
    `building_gpkg`, but no script passes it, so the stage does not run in the pipeline (what the
    wiring needs: `docs/BACKLOG.md`, Bugs and diagnoses).
 3. Burn the streams into the DEM (`--burn-streams`, optional), then smooth them monotonically: each
-   line descends strictly in the direction BDOT10k digitizes it (the other way where the DEM rises
-   along it by more than 2 m), the lines in the order of the flow, which corrects bridges and
-   embankments and keeps a river that crosses the edge of the data flowing out downstream
-   (ADR-041, ADR-072; `--no-smooth-streams` switches it off).
-4. Classify the endorheic lakes and their drain points (`--waterbody-mode`); burn the storm-sewer
-   inlets and route the flow accumulation through the sewer graph (optional, ADR-051).
+   line descends strictly in the direction of its flow, the lines in the order of the flow, which
+   corrects bridges and embankments and keeps a river that crosses the edge of the data flowing out
+   downstream (ADR-041, ADR-072; `--no-smooth-streams` switches it off). The direction of a line is
+   the first of: towards the mouth of its MPHP watercourse, where it meets a line of its receiver;
+   down the DEM of its whole watercourse, for a block of lines digitized against the rest of it
+   (unless the DEM of the block falls more than 2 m the way it is digitized); the other way where
+   the DEM along the line rises by more than 2 m; the way BDOT10k digitizes it (ADR-077). An
+   artificial connector through a lake never takes its direction from the DEM along it.
+4. Classify the endorheic lakes and their drain points (`--waterbody-mode`): a lake that a
+   watercourse line leaves is exorheic, a burned line flowing the way the smoothing takes it and
+   any other line the way it is digitized, unless the DEM along it rises by more than 2 m; burn the
+   storm-sewer inlets and route the flow accumulation through the sewer graph (optional, ADR-051).
 5. Fill the depressions, compute the D8 flow direction and the flow accumulation.
 6. Compute the distance along the flow to the outlet, the slope and the aspect (Sobel), the Strahler
    order and the TWI.
@@ -752,6 +758,59 @@ each exit of at least `--min-exit-km2`. `catchment_exit_summary` (also the CSV),
 `nodata_km2`), `largest_other_exit_km2` and `largest_other_exit_to`, and `receivers` (the area that
 leaves to each destination, `key: km²; ...`, the largest first). The 12 polygons of Hydroni
 (5 to 30 km², 5 m cells) take about 20 s.
+
+---
+
+### `check_stream_directions.py`: the flow directions of the BDOT10k lines (a diagnostic)
+
+Finds the BDOT10k watercourse lines of an area that are digitized upstream, for a review on a
+map; outside the pipeline, which it changes in nothing (ADR-077). It reads the lines of
+`OT_SWRS_L`, `OT_SWKN_L` and `OT_SWRM_L` within 1 km of the area, splits a line where an end of
+another line lies on its middle and joins the ends within 0.5 m into nodes. For each line it
+gathers the evidence that it is digitized upstream: the DEM every 5 m along it (the lowest value
+of its last quarter against the lowest of its first, as the smoothing reads it), the order of
+the MPHP catchment codes of its river at its ends (with `--catchments`), a run of lines from a
+node where only lines begin to one where only lines end, and its direction against the rest of
+its watercourse (the lines of one MPHP identifier, else of one name, joined where exactly two of
+them meet), whose downstream end the DEM along the whole watercourse decides (more than 0.5 m),
+else the digitized majority. The verdict weighs the evidence; the mouth test, independent of
+it, orients the lines of an MPHP watercourse towards the node where it meets its receiver (a
+line whose identifier is a proper prefix of its own). Beside them it runs the rules of the
+smoothing of the pipeline (`core.hydrology._line_directions`, ADR-077) on the burned lines
+alone (their ends joined within 0.5 m, the DEM every 5 m), and says which rule decides each
+burned line and whether it reverses it.
+
+```bash
+cd backend
+.venv/bin/python -m scripts.check_stream_directions --hydro ../data/hydro/hydro_merged.gpkg \
+    --dem ../data/nmt/dem_mosaic.vrt --area obszar.gpkg:Zlewnie \
+    --catchments zlewnie.gpkg:zlew_h_07 --burning main --out /tmp/kierunki.gpkg
+```
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--hydro` | the BDOT10k GeoPackage with `OT_SWRS_L`, `OT_SWKN_L`, `OT_SWRM_L` and `OT_PTWP_A` (`hydro_merged.gpkg`), in EPSG:2180 | required |
+| `--dem` | the DEM in EPSG:2180 (a VRT mosaic or a GeoTIFF) | required |
+| `--area` | the area, `GPKG[:layer]` (without a layer, the only one of the file) | required |
+| `--catchments` | the MPHP catchments with `ID_HYD_10`, `GPKG[:layer]` | none (no catchment evidence) |
+| `--burning` | the lines the pipeline burns, as `dem.stream_burning`: `main` or `all` | `all` |
+| `--out` | the new GeoPackage; an existing file is refused. SQLite: a local disk, not a share | required |
+
+The output has three layers with Polish names and columns, as the review map reads them:
+
+| Layer | Content |
+|---|---|
+| `odcinki` | the lines (pieces) with the BDOT10k attributes, `glowny` (a main watercourse, the selection of `main`), `wypalany` (burned with `--burning`), the nodes and kinds at both ends, the DEM along the line (`przyrost_m`, `spadek_m_km`, `nmt`), the catchment order (`mphp`), the run (`ciag_konfliktu`), the watercourse (`ciek`, `odcinek_cieku`, `wzgledem_cieku`, `styk_od`, `styk_do`), the evidence (`dowody_odwr`, `dowody_zgod`), the verdict `werdykt` (`odwrocony`, `podejrzany`, `sprzeczny`, `zgodny`, `nieustalony`), the rules of the smoothing on the burned lines (`regula`: `ujscie` the mouth, `nmt_cieku` the DEM of the watercourse, `nmt_odcinka` the DEM of the line, `digitalizacja` the digitized direction, empty for a line not burned or closed; `odwraca`: the rule reverses it; `blok_zachowany`: a block digitized against its watercourse that the guard of rule 2 keeps, its own DEM falling more than 2 m the way it is digitized), `test_ujscia` (`zgodny`, `odwrocony` or empty when the mouth cannot tell) and `kategoria`: the verdict, with the reversed lines split into `odwrocony`, `odwrocony_lacznik` (an artificial connector through a lake, where the DEM is a water surface) and `odwrocony_siec_oderwana` (a network without a main watercourse), the two doubtful cases |
+| `wezly` | the nodes: lines ending and beginning there and the kind (`zrodlo`, `zbieg`, `rozwidlenie`, `same_poczatki`, `same_konce`, `krawedz` and others), as digitized and after the lines of the verdict `odwrocony` are reversed |
+| `cieki` | the watercourses drawn downstream: their lines, length, rise, what decided the direction (`nmt`, `wiekszosc`), the lines against it and the watercourse they flow into |
+
+The log ends with the counts over the burned lines: the reversed lines by category, the lines
+each rule of the smoothing decides and reverses, the reversed lines of the verdict the rules
+reverse and the other lines they reverse, the lines whose `odwraca` the mouth test contradicts
+and those the guard keeps, the lines the mouth test checks, confirms and contradicts, and the
+lines the mouth says are digitized upstream while the verdict does not. On the Hydroni area h07
+(20,279 lines, `main`) a run takes about 55 s and peaks at 2.2 GB (the DEM of the area and
+1 km around it).
 
 ---
 
