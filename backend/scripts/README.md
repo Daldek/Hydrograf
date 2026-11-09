@@ -616,6 +616,53 @@ production rasters a polygon of 33 km² takes about 1 s and the run peaks at abo
 
 ---
 
+### `check_stream_directions.py`: the flow directions of the BDOT10k lines (a diagnostic)
+
+Finds the BDOT10k watercourse lines of an area that are digitized upstream, for a review on a
+map; outside the pipeline, which it changes in nothing (ADR-077). It reads the lines of
+`OT_SWRS_L`, `OT_SWKN_L` and `OT_SWRM_L` within 1 km of the area, splits a line where an end of
+another line lies on its middle and joins the ends within 0.5 m into nodes. For each line it
+gathers the evidence that it is digitized upstream: the DEM every 5 m along it (the lowest value
+of its last quarter against the lowest of its first, as the smoothing reads it), the order of
+the MPHP catchment codes of its river at its ends (with `--catchments`), a run of lines from a
+node where only lines begin to one where only lines end, and its direction against the rest of
+its watercourse (the lines of one MPHP identifier, else of one name, joined where exactly two of
+them meet), whose downstream end the DEM along the whole watercourse decides (more than 0.5 m),
+else the digitized majority. The verdict weighs the evidence; the mouth test, independent of
+it, orients the lines of an MPHP watercourse towards the node where it meets its receiver (a
+line whose identifier is a proper prefix of its own).
+
+```bash
+cd backend
+.venv/bin/python -m scripts.check_stream_directions --hydro ../data/hydro/hydro_merged.gpkg \
+    --dem ../data/nmt/dem_mosaic.vrt --area obszar.gpkg:Zlewnie \
+    --catchments zlewnie.gpkg:zlew_h_07 --burning main --out /tmp/kierunki.gpkg
+```
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--hydro` | the BDOT10k GeoPackage with `OT_SWRS_L`, `OT_SWKN_L`, `OT_SWRM_L` and `OT_PTWP_A` (`hydro_merged.gpkg`), in EPSG:2180 | required |
+| `--dem` | the DEM in EPSG:2180 (a VRT mosaic or a GeoTIFF) | required |
+| `--area` | the area, `GPKG[:layer]` (without a layer, the only one of the file) | required |
+| `--catchments` | the MPHP catchments with `ID_HYD_10`, `GPKG[:layer]` | none (no catchment evidence) |
+| `--burning` | the lines the pipeline burns, as `dem.stream_burning`: `main` or `all` | `all` |
+| `--out` | the new GeoPackage; an existing file is refused. SQLite: a local disk, not a share | required |
+
+The output has three layers with Polish names and columns, as the review map reads them:
+
+| Layer | Content |
+|---|---|
+| `odcinki` | the lines (pieces) with the BDOT10k attributes, `glowny` (a main watercourse, the selection of `main`), `wypalany` (burned with `--burning`), the nodes and kinds at both ends, the DEM along the line (`przyrost_m`, `spadek_m_km`, `nmt`), the catchment order (`mphp`), the run (`ciag_konfliktu`), the watercourse (`ciek`, `odcinek_cieku`, `wzgledem_cieku`, `styk_od`, `styk_do`), the evidence (`dowody_odwr`, `dowody_zgod`), the verdict `werdykt` (`odwrocony`, `podejrzany`, `sprzeczny`, `zgodny`, `nieustalony`), `hydrograf_odwraca` (the per-line rule of ADR-072 on the burned lines), `test_ujscia` (`zgodny`, `odwrocony` or empty when the mouth cannot tell) and `kategoria`: the verdict, with the reversed lines split into `odwrocony`, `odwrocony_lacznik` (an artificial connector through a lake, where the DEM is a water surface) and `odwrocony_siec_oderwana` (a network without a main watercourse), the two doubtful cases |
+| `wezly` | the nodes: lines ending and beginning there and the kind (`zrodlo`, `zbieg`, `rozwidlenie`, `same_poczatki`, `same_konce`, `krawedz` and others), as digitized and after the lines of the verdict `odwrocony` are reversed |
+| `cieki` | the watercourses drawn downstream: their lines, length, rise, what decided the direction (`nmt`, `wiekszosc`), the lines against it and the watercourse they flow into |
+
+The log ends with the counts over the burned lines: the reversed lines by category, those of
+ADR-072, the lines the mouth test checks, confirms and contradicts, and the lines the mouth says
+are digitized upstream while the verdict does not. On the Hydroni area h07 (20,279 lines,
+`main`) a run takes about 50 s and peaks at 2.2 GB (the DEM of the area and 1 km around it).
+
+---
+
 ### `download_landcover.py`: download land cover
 
 Downloads land cover through Kartograf into its store: BDOT10k (GUGiK; the whole package of a county,
