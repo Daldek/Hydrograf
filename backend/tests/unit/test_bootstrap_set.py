@@ -436,6 +436,21 @@ class TestRefusals:
         assert run.code == 3
         assert run.document["details"]["reason"] == "project_file_missing"
 
+    def test_a_fill_setting_that_is_not_true_or_false(
+        self, project, bootstrap, tmp_path
+    ):
+        # A quoted "false" is a string, and a string is true
+        config = tmp_path / "config.yaml"
+        config.write_text('dem:\n  fill_enclosed_nodata: "false"\n', encoding="utf-8")
+
+        run = bootstrap(
+            "--project", str(project.write()), "--set", SET, "--config", str(config)
+        )
+
+        assert run.code == 2
+        assert run.document["details"]["reason"] == "invalid_arguments"
+        assert "dem.fill_enclosed_nodata" in run.err
+
     def test_the_missing_sheets_are_named(self, project, bootstrap):
         project.drop(f"{NMT}N-33/130/D/d/1/2/")
 

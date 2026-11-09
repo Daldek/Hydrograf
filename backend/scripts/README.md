@@ -102,6 +102,7 @@ cd backend
 | `--config` | YAML configuration file | `config.yaml` |
 | `--port` | HTTP port of the server | 8080 |
 | `--dry-run` | only show what would be done; with `--project`, after every check of the set | off |
+| `--allow-uncovered` | warn instead of refusing when the NMT sheets leave part of the area, or a hole inside their mosaic, without data (ADR-076) | off |
 
 `--bbox`, `--sheets`, `--boundary-file` and `--project` exclude each other.
 
@@ -116,6 +117,35 @@ classification of the lakes always use every layer. Another value is refused
 (`validation_error`, exit 2). The run logs the mode, step 3 reports it after the burned file, and
 the record of a set keeps it.
 
+**Enclosed nodata** (`dem.fill_enclosed_nodata` of the configuration, default `false`): pyflwdir's
+depression fill takes every cell next to nodata for an outlet, so a nodata area that the DEM data
+encloses (a sheet missing from the mosaic; the repair of small holes, `fill_internal_nodata_holes`,
+fills at most three cells in from their edge) drains the land around it: an endorheic area, whose
+streams and sub-catchments have no downstream link. With `true` step 3 interpolates every nodata area
+that does not reach the frame of the raster (8-connected) from the data around it (GDAL's inverse
+distance weighting, `core.hydrology.interpolate_enclosed_nodata`) before anything else, so the fill
+fills it like any ground and every cell drains to the outer edge of the data. The filled cells are DEM
+cells of the run from then on: owned by a unit, routed and published in every raster, `01_dem`
+included, and the depressions of step 7 count them. A value that is not `true` or `false` is refused
+(`validation_error`, exit 2). The run logs the setting, step 3 reports the filled cells, a run by
+units records it in its settings and the record of a set keeps it.
+
+**Coverage of the area** (ADR-076): the sheets of the mosaic must cover the area and enclose no
+hole. The frames of the sheets (their meridians and parallels projected to EPSG:2180) are unioned;
+what lies outside them, of the area (the outline of `--project`, `--boundary-file` or `--bbox`, the
+frames of `--sheets`) or of a hole that the frames enclose, is uncovered, parts narrower than three
+cells of `--resolution` left out. An uncovered part is refused (`no_data`, exit 14) with its km² and
+the sheets of the grid (`--scale`) that overlap it, for example:
+
+```text
+BŁĄD: Arkusze NMT zostawiają bez danych 9.751 km² obszaru lub wnętrza ich mozaiki; brakujące arkusze (2): N-33-118-B-a-4-2, N-33-120-D-a-3-3.
+```
+
+A set is checked before step 1, with its other checks; a download run at the start of step 3, on
+the sheets that step 2 got (a sheet without data at GUGiK is not among them). `--allow-uncovered`
+logs the same text as a warning and goes on: with `dem.fill_enclosed_nodata: true` the holes that
+do not reach the frame of the raster are interpolated, the rest stays nodata.
+
 **From a set** (ADR-067): `--project` and `--set` read a closed set of an Archiwista project
 (`archiwista-project/1`) and download nothing. Before step 1 the bootstrap checks the project file,
 the area file and its SHA-256, that the set is closed (an open set, „w budowie”, is refused), its
@@ -126,7 +156,7 @@ mosaic (unless `--skip-landcover`) and one HSG raster that covers the mosaic (un
 `--skip-hsg`), one version per sheet, county and raster. Steps 2 to 5 read the pinned files (step 2
 reports `N/N arkuszy z zestawu`); steps 6 to 10 do not change. The run logs the set and writes
 `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`: project, set, `pins_sha256`, inputs,
-`stream_burning`, start, end, status); a run without a set removes the file.
+`stream_burning`, `fill_enclosed_nodata`, start, end, status); a run without a set removes the file.
 
 **The description of the instance:** after a run whose steps 1 to 3 passed the bootstrap writes
 `frontend/data/instance.json` (see [`write_instance_info.py`](#write_instance_infopy-the-description-of-the-instance)),
@@ -149,7 +179,7 @@ line of standard error, the error document `hydrograf-error/1`; the exit code is
 | 8 | `store_unavailable` | no store, or not a marked Kartograf store |
 | 9 | `io_error` | the project file or a pinned file cannot be read (the ACL) |
 | 12 | `forbidden` | `--bbox`, `--sheets` or `--boundary-file` while `HYDROGRAF_KARTOGRAF_ROOT` is set |
-| 14 | `no_data` | sheets, counties or the HSG raster missing from the set |
+| 14 | `no_data` | sheets, counties or the HSG raster missing from the set; the NMT sheets leave part of the area, or a hole inside their mosaic, without data |
 | 15 | `unsupported` | a project schema other than `archiwista-project/1` |
 
 The hint names the Archiwista action that fixes the set: „Zamknij zestaw”, „Weryfikuj”,
@@ -546,14 +576,16 @@ polygons are clipped to it, and every valid cell of it must be inside one; `boot
 area of `--boundary-file` or `--project`. Cells outside every polygon go to their nearest owner; the DEM
 keeps its grid and its nodata. The input VRT must read its sources cell for cell (a VRT that resamples is
 refused); the bootstrap averages finer sheets (GUGiK delivers some 5 m sheets as 1 m grids) onto the grid
-of the others first, into `<data>/nmt/aligned/`. Burning and smoothing streams (`dem.stream_burning`),
-raising buildings and the lake classification run on the whole DEM first; then the depressions of the
-whole prepared grid are filled once, with pyflwdir's fill and D8 as in the whole-raster run (the fill and
-its D8 are written as tiled GeoTIFFs and freed), every owner takes its cells from them, and the
-accumulation, flow distance, Strahler order, streams and labels of the whole grid are computed over
-disk-backed rasters. The results are those of the whole-raster run: the same rows, and the same rasters
-on the cells that hold DEM data. The scratch of a run (the prepared DEM, the fill and the routing rasters)
-is removed after a successful run; `--units-scratch-dir DIR` puts it on another disk than `--output-dir`.
+of the others first, into `<data>/nmt/aligned/`. With `dem.fill_enclosed_nodata` the enclosed nodata is
+interpolated before the owners are drawn, so its cells have an owner too. Burning and smoothing streams
+(`dem.stream_burning`), raising buildings and the lake classification run on the whole DEM first; then
+the depressions of the whole prepared grid are filled once, with pyflwdir's fill and D8 as in the
+whole-raster run (the fill and its D8 are written as tiled GeoTIFFs and freed), every owner takes its
+cells from them, and the accumulation, flow distance, Strahler order, streams and labels of the whole
+grid are computed over disk-backed rasters. The results are those of the whole-raster run: the same
+rows, and the same rasters on the cells that hold DEM data. The scratch of a run (the prepared DEM, the
+fill and the routing rasters, and the DEM with its enclosed nodata filled) is removed after a successful
+run; `--units-scratch-dir DIR` puts it on another disk than `--output-dir`.
 
 A run writes, under `<output-dir>/unit_runs/<token>/`: `units/<stem>_<raster>_<MS_KOD>.tif` (the cells of
 one owner), `<stem>_<raster>.vrt` (the mosaic of each raster over the whole grid, named like the

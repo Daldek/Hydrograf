@@ -19,6 +19,7 @@ from core.active_run import ACTIVE_RUN_FILE, read_active_run
 from scripts import process_dem as single
 from scripts import process_dem_units as units
 from tests.dem_equivalence import (
+    NODATA,
     THRESHOLDS_M2,
     XLL_M,
     YLL_M,
@@ -327,6 +328,43 @@ def test_a_fill_that_fails_fails_the_run(scene, pgw, tmp_path, store, monkeypatc
         _run(scene, pgw, tmp_path)
 
     assert [call[0] for call in store.calls] == ["resume_run", "begin_run", "fail_run"]
+
+
+def _pits_off_the_frame(run_dir: Path) -> int:
+    """The routed cells of a published run without a D8 direction, off the frame."""
+    with (
+        rasterio.open(run_dir / "dem_03_flowdir.vrt") as fdir,
+        rasterio.open(run_dir / "dem_04_flowacc.vrt") as acc,
+    ):
+        pits = (acc.read(1) > 0) & (fdir.read(1) == 0)
+    return int(np.count_nonzero(pits[1:-1, 1:-1]))
+
+
+def test_with_the_enclosed_nodata_filled_only_the_frame_drains_the_dem(tmp_path, store):
+    scene = split_scene(tmp_path, 3, True)
+    pgw = tmp_path / "pgw.gpkg"
+    write_pgw_geopackage(pgw, scene, CODES)
+    default = _run(scene, pgw, tmp_path)
+    # The premise: the holes that the repair leaves drain the land around them
+    assert _pits_off_the_frame(Path(default["unit_rasters_dir"])) > 0
+
+    filled = _run(scene, pgw, tmp_path, fill_enclosed_nodata=True)
+
+    run_dir = Path(filled["unit_rasters_dir"])
+    assert _pits_off_the_frame(run_dir) == 0
+    # The enclosed holes are DEM cells of the run now; the hole cell on the north
+    # edge of the scene reaches the frame: the outside, which stays nodata
+    outside = scene.dem == NODATA
+    outside[1:-1, 1:-1] = False
+    assert np.count_nonzero(outside) == 1
+    holes = (scene.dem == NODATA) & ~outside
+    assert filled["enclosed_nodata_cells"] == np.count_nonzero(holes)
+    with rasterio.open(run_dir / "dem_01_dem.vrt") as dem:
+        np.testing.assert_array_equal(dem.read(1) == dem.nodata, outside)
+    # The setting is one of the run's, and the default runs keep their settings
+    first, second = (call[1] for call in store.calls if call[0] == "begin_run")
+    assert "fill_enclosed_nodata" not in first["config"]
+    assert second["config"]["fill_enclosed_nodata"] is True
 
 
 def test_the_scratch_of_a_run_lies_in_the_scratch_directory_until_it_succeeds(

@@ -168,15 +168,23 @@ def _assert_same_statistics(units_stats: dict[str, Any], whole_stats: dict[str, 
 
 
 def _assert_same_rasters(
-    scene: SplitScene, whole_dir: Path, run_dir: Path, not_mosaicked: set[str]
+    scene: SplitScene,
+    whole_dir: Path,
+    run_dir: Path,
+    not_mosaicked: set[str],
+    valid: np.ndarray | None = None,
 ) -> None:
-    """Every raster of the whole run is a VRT of the unit tiles on its cells."""
+    """Every raster of the whole run is a VRT of the unit tiles on its cells.
+
+    ``valid``: the cells of the DEM of both runs (default: the data of the scene).
+    """
     saved = {path.stem: path for path in whole_dir.glob("dem_*.tif")}
     mosaics = {path.stem: path for path in run_dir.glob("dem_*.vrt")}
     assert set(saved) - set(mosaics) == not_mosaicked
     assert set(mosaics) <= set(saved)
     assert "dem_10_subcatchments_5000" in mosaics
-    valid = scene.dem != NODATA
+    if valid is None:
+        valid = scene.dem != NODATA
     for name, mosaic in mosaics.items():
         with rasterio.open(saved[name]) as expected, rasterio.open(mosaic) as actual:
             assert actual.shape == expected.shape
@@ -351,3 +359,26 @@ def test_burning_smoothing_and_lake_drains_are_done_on_the_whole_dem(
         # the intermediate DEMs of the whole run, which the units keep as scratch
         not_mosaicked={"dem_02a_burned", "dem_02b_smoothed"},
     )
+
+
+def test_filling_the_enclosed_nodata_is_done_on_the_whole_dem(tmp_path, monkeypatch):
+    scene = split_scene(tmp_path, 3, True)
+    database = _fake_database(monkeypatch)
+
+    whole_stats, units_stats, whole_dir, run_dir = _both_runs(
+        scene, tmp_path, database, fill_enclosed_nodata=True
+    )
+
+    # The premise: both runs fill the holes the scene encloses; its hole cell on the
+    # north edge reaches the frame and stays nodata
+    outside = scene.dem == NODATA
+    outside[1:-1, 1:-1] = False
+    holes = int(np.count_nonzero(scene.dem == NODATA) - np.count_nonzero(outside))
+    assert holes > 0
+    assert whole_stats["enclosed_nodata_cells"] == holes
+    assert units_stats["enclosed_nodata_cells"] == holes
+    assert units_stats["valid_cells"] == scene.dem.size - np.count_nonzero(outside)
+    assert_same_network(database.units, database.single)
+    _assert_same_statistics(units_stats, whole_stats)
+    # Every cell of the filled DEM is compared, the filled holes too
+    _assert_same_rasters(scene, whole_dir, run_dir, not_mosaicked=set(), valid=~outside)

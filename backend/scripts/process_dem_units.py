@@ -19,8 +19,9 @@ The outputs of a run, under ``<output_dir>/unit_runs/<run token>/``:
 * ``stage/<owner code>.npz``: the fill and D8 of each owner's cells, from which an
   interrupted run is resumed; removed once the run is published;
 * scratch (``<call token>/scratch/``, or under ``scratch_dir``): the fill of the
-  whole grid and the disk-backed rasters of the routing, removed once the run
-  succeeded.
+  whole grid, the disk-backed rasters of the routing and, with
+  ``fill_enclosed_nodata``, the DEM whose enclosed nodata is interpolated (the DEM of
+  the run from then on, ``01_dem`` too), removed once the run succeeded.
 
 A run that is not a dry run is recorded in ``processing_runs`` and
 ``processing_units`` (migration 005) and replaces the DEM-derived network in one
@@ -64,6 +65,7 @@ from core.hydrology import (
     STREAM_BURNING_MODES,
     burn_streams_into_dem,
     classify_endorheic_lakes,
+    interpolate_enclosed_nodata,
     raise_buildings_in_dem,
     smooth_streams_monotonic,
 )
@@ -257,6 +259,26 @@ def _stage(stats: dict[str, Any], name: str) -> Iterator[None]:
     }
     stats["peak_rss_mb"] = max(stats.get("peak_rss_mb", 0.0), peak)
     logger.info("Stage %s: %.1f s, peak RSS %.0f MB", name, elapsed, peak)
+
+
+def _fill_enclosed_nodata(dem_path: Path, scratch: Path, stats: dict[str, Any]) -> Path:
+    """Write the DEM with the nodata it encloses filled to ``scratch``; return it.
+
+    ``core.hydrology.interpolate_enclosed_nodata`` on the whole grid. The filled cells
+    are DEM cells from then on: owned, routed and published like the others (the
+    ``01_dem`` mosaic holds their values), so the only outlets of the fill lie on the
+    outer edge of the data. ``dem_path`` itself when the DEM encloses no nodata.
+    """
+    dem, metadata = read_raster(dem_path)
+    nodata = metadata["nodata_value"]
+    dem, filled = interpolate_enclosed_nodata(dem, nodata, overwrite=True)
+    stats["enclosed_nodata_cells"] = filled
+    if not filled:
+        return dem_path
+    logger.info("Interpolated %d cells of nodata enclosed by the DEM", filled)
+    path = scratch / "enclosed_filled.tif"
+    save_raster_geotiff(dem, metadata, path, nodata=nodata, dtype=str(dem.dtype))
+    return path
 
 
 def _prepare_dem(
@@ -489,6 +511,7 @@ def process_dem_units(
     units_catchments_key: str = DEFAULT_CATCHMENT_KEY,
     scratch_dir: Path | None = None,
     resume: bool = True,
+    fill_enclosed_nodata: bool = False,
 ) -> dict[str, Any]:
     """Process the DEM by PGW units and publish the run, or only compute it.
 
@@ -598,6 +621,8 @@ def process_dem_units(
                                 hydro_resolution_m,
                             )
                             stats["hydro_resolution_m"] = hydro_resolution_m
+                if fill_enclosed_nodata:
+                    grid_dem = _fill_enclosed_nodata(grid_dem, scratch, stats)
                 owners = load_pgw_owners(
                     grid_dem,
                     units_path,
@@ -658,6 +683,9 @@ def process_dem_units(
                 "grid": grid,
                 "owners": list(active_owners),
             }
+            # Only a setting that is on, so the runs of the default resume as before
+            if fill_enclosed_nodata:
+                parameters["fill_enclosed_nodata"] = True
             checkpoints: _RunCheckpoints | None = None
             if not dry_run:
                 source_paths = [input_path, units_path]

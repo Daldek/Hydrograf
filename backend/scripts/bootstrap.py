@@ -43,6 +43,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NoReturn
 
+from shapely.geometry import box
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import unary_union
+
 from core._errors import BY_CODE
 from core.active_run import active_run_raster
 from core.errors import HydrografError, InvalidRequestError
@@ -51,7 +55,7 @@ from scripts.write_instance_info import (
     resolution_m,
     write_instance_info,
 )
-from utils.kartograf_set import SetInputs, nmt_segment, set_inputs
+from utils.kartograf_set import SHEET_SCALE, SetInputs, nmt_segment, set_inputs
 from utils.kartograf_store import (
     HSG_DEPTH,
     SHEET_SYSTEM,
@@ -63,6 +67,7 @@ from utils.kartograf_store import (
     refuse_shared_store,
     store_dir,
 )
+from utils.nmt_coverage import area_2180, check_nmt_coverage, sheet_frame
 
 logging.basicConfig(
     level=logging.INFO,
@@ -549,13 +554,16 @@ def step_process_dem(
     units_catchments: tuple[Path, str | None, str] | None = None,
     units_resume: bool = True,
     resolution: str = "5m",
+    fill_enclosed_nodata: bool = False,
 ) -> tuple[dict[str, Any], str, tuple[float, float, float, float]]:
     """Step 3: Process DEM — mosaic VRT + stream burning + hydrological analysis.
 
     ``bdot10k`` (TERYT to package) are the BDOT10k packages of a set (ADR-067); without
     it the packages of the mosaic's counties are downloaded. ``stream_burning``
-    (``dem.stream_burning`` of the configuration) selects the burned streams. With
-    ``units_path`` (the PGW GeoPackage) the mosaic is processed by PGW units
+    (``dem.stream_burning`` of the configuration) selects the burned streams and
+    ``fill_enclosed_nodata`` (``dem.fill_enclosed_nodata``) interpolates the nodata
+    that the mosaic encloses before the fill. With ``units_path`` (the PGW
+    GeoPackage) the mosaic is processed by PGW units
     (ADR-071), the owners clipped to ``units_area``, the file and the layer of the
     analysis area, and grouped from ``units_catchments`` (file, layer, key field)
     when given; ``units_scratch_dir`` holds the scratch of the run and
@@ -664,11 +672,16 @@ def step_process_dem(
         units_catchments_key=units_catchments[2] if units_catchments else "ID_HYD_10",
         units_scratch_dir=units_scratch_dir,
         units_resume=units_resume,
+        fill_enclosed_nodata=fill_enclosed_nodata,
     )
 
     cells = stats.get("valid_cells", 0)
     streams = stats.get("stream_segments", 0)
     burn_info = f", burn={burn_path.name} ({stream_burning})" if burn_path else ""
+    if fill_enclosed_nodata:
+        burn_info += (
+            f", enclosed nodata filled ({stats.get('enclosed_nodata_cells', 0)} cells)"
+        )
     detail = f"{cells:,} cells, {streams} segments{burn_info}"
 
     return stats, detail, mosaic_bbox_2180
@@ -1179,12 +1192,20 @@ def run_pipeline(
     units_scratch_dir: Path | None = None,
     units_catchments: tuple[Path, str | None, str] | None = None,
     units_resume: bool = True,
+    fill_enclosed_nodata: bool = False,
+    coverage_area: BaseGeometry | None = None,
+    scale: str = "1:10000",
+    allow_uncovered: bool = False,
 ):
     """Run the full 10-step bootstrap pipeline.
 
     With ``inputs``, the checked files of a set of an Archiwista project (ADR-067),
     steps 2 to 5 read the pinned files and download nothing. With ``units_path``
-    step 3 processes the mosaic by PGW units (``step_process_dem``).
+    step 3 processes the mosaic by PGW units (``step_process_dem``), and with
+    ``fill_enclosed_nodata`` it interpolates the nodata the mosaic encloses first.
+    With ``coverage_area`` (EPSG:2180) step 3 first refuses sheets that leave part
+    of it, or a hole of their mosaic, uncovered (ADR-076; ``allow_uncovered``: a
+    warning); a run from a set is checked before step 1.
     """
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
@@ -1227,6 +1248,15 @@ def run_pipeline(
     if not tracker.is_skipped(3):
         t0 = tracker.start(3)
         try:
+            if coverage_area is not None:
+                # The sheets step 2 gave: a sheet without data is not among them
+                check_nmt_coverage(
+                    coverage_area,
+                    [path.stem for path in downloaded_files],
+                    scale=scale,
+                    resolution=resolution,
+                    allow_uncovered=allow_uncovered,
+                )
             _, detail, mosaic_bbox = step_process_dem(
                 downloaded_files,
                 output_dir,
@@ -1242,6 +1272,7 @@ def run_pipeline(
                 units_catchments=units_catchments,
                 units_resume=units_resume,
                 resolution=resolution,
+                fill_enclosed_nodata=fill_enclosed_nodata,
             )
             tracker.done(3, t0, detail)
         except Exception as e:
@@ -1467,18 +1498,21 @@ def write_set_record(
     finished_at: str | None,
     status: str,
     stream_burning: str,
+    fill_enclosed_nodata: bool,
 ) -> None:
     """Write the record of the set a run took its Kartograf data from (ADR-067).
 
     ``<output>/bootstrap_set.json``: the identity of the set (project, set,
     ``closed_at``, ``pins_sha256``, the pins per product), the BDOT10k streams the
-    run burned (``stream_burning``), when the run started and ended, and ``status``
+    run burned (``stream_burning``), whether it filled the nodata the mosaic encloses
+    (``fill_enclosed_nodata``), when the run started and ended, and ``status``
     (``running``, ``ok`` or ``failed``: a step 1 to 3 failed).
     """
     record = {
         "schema": SET_RECORD_SCHEMA,
         **inputs.identity(),
         "stream_burning": stream_burning,
+        "fill_enclosed_nodata": fill_enclosed_nodata,
         "started_at": started_at,
         "finished_at": finished_at,
         "status": status,
@@ -1616,6 +1650,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "With --units: begin a new run even when a stopped or failed run with "
             "the same inputs and settings could be resumed"
+        ),
+    )
+    parser.add_argument(
+        "--allow-uncovered",
+        action="store_true",
+        help=(
+            "Warn instead of refusing when the NMT sheets leave part of the area, or "
+            "a hole inside their mosaic, without data (ADR-076); with "
+            "dem.fill_enclosed_nodata the enclosed holes are interpolated (ADR-073)"
         ),
     )
     parser.add_argument(
@@ -1771,6 +1814,13 @@ def main():
             f"{', '.join(STREAM_BURNING_MODES)}, not {stream_burning!r}"
         )
     logger.info("Stream burning: %s", stream_burning)
+    fill_enclosed_nodata = config["dem"]["fill_enclosed_nodata"]
+    if not isinstance(fill_enclosed_nodata, bool):
+        parser.error(
+            f"dem.fill_enclosed_nodata in {args.config} must be true or false, "
+            f"not {fill_enclosed_nodata!r}"
+        )
+    logger.info("Enclosed nodata filled: %s", fill_enclosed_nodata)
 
     # Resolve output directory
     output_dir = Path(args.output) if args.output else DEFAULT_DATA_DIR
@@ -1804,7 +1854,11 @@ def main():
     if args.skip_serve:
         skips.add(10)
 
+    from core.boundary import load_boundary
+
     inputs: SetInputs | None = None
+    # The area the NMT mosaic must cover, checked after step 2 (ADR-076)
+    coverage_area: BaseGeometry | None = None
     if args.project is not None:
         # Every check of ADR-067 before step 1: the project, the set, every pin
         try:
@@ -1815,6 +1869,14 @@ def main():
                 cache_dir=cache_dir,
                 landcover=4 not in skips,
                 hsg=5 not in skips,
+            )
+            # ADR-076: the sheets of the set cover the area and enclose no hole
+            check_nmt_coverage(
+                area_2180(load_boundary(inputs.area)),
+                inputs.sheets,
+                scale=SHEET_SCALE,
+                resolution=args.resolution,
+                allow_uncovered=args.allow_uncovered,
             )
         except HydrografError as error:
             fail(error)
@@ -1843,6 +1905,15 @@ def main():
         if not sheets:
             logger.error("Nie znaleziono arkuszy dla podanego obszaru")
             sys.exit(1)
+
+        if args.boundary_file:
+            coverage_area = area_2180(
+                load_boundary(args.boundary_file, args.boundary_layer)
+            )
+        elif args.sheets:
+            coverage_area = unary_union([sheet_frame(sheet) for sheet in sheets])
+        else:
+            coverage_area = area_2180(box(*bbox))
 
     # Print header
     print_header(
@@ -1882,6 +1953,7 @@ def main():
             finished_at=None,
             status="running",
             stream_burning=stream_burning,
+            fill_enclosed_nodata=fill_enclosed_nodata,
         )
     else:
         record.unlink(missing_ok=True)
@@ -1921,6 +1993,10 @@ def main():
         units_scratch_dir=args.units_scratch_dir,
         units_catchments=units_catchments,
         units_resume=not args.no_resume,
+        fill_enclosed_nodata=fill_enclosed_nodata,
+        coverage_area=coverage_area,
+        scale=args.scale,
+        allow_uncovered=args.allow_uncovered,
     )
     total_elapsed = time.time() - total_start
 
@@ -1946,6 +2022,7 @@ def main():
             finished_at=_utc_now(),
             status="failed" if critical_failed else "ok",
             stream_burning=stream_burning,
+            fill_enclosed_nodata=fill_enclosed_nodata,
         )
     if critical_failed:
         sys.exit(1)

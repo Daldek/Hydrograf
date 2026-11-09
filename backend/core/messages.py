@@ -494,6 +494,18 @@ MESSAGES: Final[dict[str, Message]] = {
         "W Archiwiście: „Otwórz do edycji”, dodaj polecenie soil hsg o prostokącie "
         "pokrywającym mozaikę, potem „Zamknij zestaw”.",
     ),
+    "nmt_coverage_gap": Message(
+        "The NMT sheets leave {area_km2} km² of the area, or of the inside of their "
+        "mosaic, without data; missing sheets ({count}): {sheets}.",
+        "Arkusze NMT zostawiają bez danych {area_km2} km² obszaru lub wnętrza ich "
+        "mozaiki; brakujące arkusze ({count}): {sheets}.",
+        "Add the missing sheets (in Archiwista: „Otwórz do edycji”, an elevation "
+        "download over them, „Zamknij zestaw”), or run with --allow-uncovered "
+        "(ADR-076).",
+        "Dodaj brakujące arkusze (w Archiwiście: „Otwórz do edycji”, polecenie "
+        "elevation download na nich, „Zamknij zestaw”) albo uruchom z "
+        "--allow-uncovered (ADR-076).",
+    ),
     "set_unit_ambiguous": Message(
         "Units with more than one version in the set {name} ({count}): {units}.",
         "Jednostki z więcej niż jedną wersją w zestawie {name} ({count}): {units}.",
