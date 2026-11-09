@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import geopandas as gpd
 import pytest
@@ -25,7 +26,7 @@ def _boundary(path: Path) -> Path:
     return path
 
 
-def _identity(project: Path | str = "/srv/projects/h07") -> dict:
+def _identity(project: Path | str = "/srv/projects/h07") -> dict[str, Any]:
     """The identity of a set as SetInputs.identity() gives it and the record keeps."""
     return {
         "project": {"path": str(project), "name": "h07", "area_sha256": "0" * 64},
