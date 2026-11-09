@@ -1324,6 +1324,7 @@ def process_dem(
         )
 
     # 2. Burn streams (optional) — before depression filling
+    flow_lines = None
     if burn_streams_path is not None:
         transform = _get_transform(metadata, dem.shape)
         dem, burn_diag = burn_streams_into_dem(
@@ -1340,11 +1341,12 @@ def process_dem(
                 dtype="float32",
             )
 
-        # Step 3b: Monotonic stream smoothing
+        # Step 3b: Monotonic stream smoothing; the lake classification takes the
+        # directions of its lines (ADR-077)
         if smooth_streams:
             from core.hydrology import smooth_streams_monotonic
 
-            dem, smooth_diag = smooth_streams_monotonic(
+            dem, flow_lines, smooth_diag = smooth_streams_monotonic(
                 dem, transform, burn_streams_path, nodata, stream_burning
             )
             stats["smooth_cells"] = smooth_diag["cells_smoothed"]
@@ -1379,6 +1381,7 @@ def process_dem(
             burn_streams_path,
             nodata,
             min_area_m2=waterbody_min_area_m2,
+            flow_lines=flow_lines,
         )
         stats["endorheic_lakes"] = drain_diag["endorheic"]
         stats["drain_points"] = len(drain_points)

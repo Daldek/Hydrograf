@@ -85,8 +85,10 @@ orient it by the topology of its watercourse (rule 2 reads the DEM of the other 
 rule 3 does not apply to it, and otherwise it keeps its digitized direction.
 
 Unchanged: the order of the flow, the strict descent and the bridging of gaps of ADR-072,
-the burning, and the classification of the lakes (`_in_flow_order` keeps the per-line rule
-of ADR-072 for every line of the three layers). The diagnostic stays outside the pipeline.
+and the burning. The classification of the lakes takes each burned line in the direction
+the smoothing gives it, one source of the directions (the coordinator's decision on the
+open point of the plan, 2026-11-09); a line that is not burned keeps the per-line rule of
+ADR-072 there. The diagnostic stays outside the pipeline.
 
 ## Consequences
 
@@ -128,9 +130,15 @@ of ADR-072 for every line of the three layers). The diagnostic stays outside the
 - Networks detached from the main watercourses are oriented by the same rules where they
   are burned (`all`): the diagnostic sets their reversed lines apart
   (`odwrocony_siec_oderwana`) for review.
-- The classification of the lakes may take a burned line the other way than the
-  smoothing: it reverses a line only by its own rise of more than 2 m, read on the
-  smoothed DEM. Open in the plan.
+- The classification of the lakes and the smoothing agree on every burned line:
+  `smooth_streams_monotonic` returns the burned lines in the direction of their flow and
+  `classify_endorheic_lakes` takes them (`flow_lines`, matched by their geometry). Before,
+  it read the per-line rule of ADR-072 on the smoothed DEM, along which a line that the
+  first two rules reverse rises the way it is digitized by less than 2 m: it was taken as
+  digitized, an outflow of a lake as an inflow or the other way round. The lines that are
+  not burned (with `main` the ditches, the side arms, and the streams and canals without
+  an MPHP identifier) keep the per-line rule; with the smoothing switched off
+  (`--no-smooth-streams`) every line does.
 - The smoothing reports which rule reversed how many lines (the plan lists the keys).
   The Hydroni area must be processed again for the published run to follow. On the
   production Kaczawa the verdict finds 0.6 km beyond ADR-072; the rules of this ADR were

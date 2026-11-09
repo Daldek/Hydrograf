@@ -329,12 +329,18 @@ the stream network and the sub-catchments into `stream_network` and `stream_catc
    `building_gpkg`, but no script passes it, so the stage does not run in the pipeline (what the
    wiring needs: `docs/BACKLOG.md`, Bugs and diagnoses).
 3. Burn the streams into the DEM (`--burn-streams`, optional), then smooth them monotonically: each
-   line descends strictly in the direction BDOT10k digitizes it (the other way where the DEM rises
-   along it by more than 2 m), the lines in the order of the flow, which corrects bridges and
-   embankments and keeps a river that crosses the edge of the data flowing out downstream
-   (ADR-041, ADR-072; `--no-smooth-streams` switches it off).
-4. Classify the endorheic lakes and their drain points (`--waterbody-mode`); burn the storm-sewer
-   inlets and route the flow accumulation through the sewer graph (optional, ADR-051).
+   line descends strictly in the direction of its flow, the lines in the order of the flow, which
+   corrects bridges and embankments and keeps a river that crosses the edge of the data flowing out
+   downstream (ADR-041, ADR-072; `--no-smooth-streams` switches it off). The direction of a line is
+   the first of: towards the mouth of its MPHP watercourse, where it meets a line of its receiver;
+   down the DEM of its whole watercourse, for a block of lines digitized against the rest of it
+   (unless the DEM of the block falls more than 2 m the way it is digitized); the other way where
+   the DEM along the line rises by more than 2 m; the way BDOT10k digitizes it (ADR-077). An
+   artificial connector through a lake never takes its direction from the DEM along it.
+4. Classify the endorheic lakes and their drain points (`--waterbody-mode`): a lake that a
+   watercourse line leaves is exorheic, a burned line flowing the way the smoothing takes it and
+   any other line the way it is digitized, unless the DEM along it rises by more than 2 m; burn the
+   storm-sewer inlets and route the flow accumulation through the sewer graph (optional, ADR-051).
 5. Fill the depressions, compute the D8 flow direction and the flow accumulation.
 6. Compute the distance along the flow to the outlet, the slope and the aspect (Sobel), the Strahler
    order and the TWI.

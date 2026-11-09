@@ -4,10 +4,15 @@ import geopandas as gpd
 import numpy as np
 import pytest
 from rasterio.transform import from_origin
-from shapely.geometry import LineString, box
+from shapely.geometry import LineString, MultiLineString, box
 
 from core.config import load_config
-from core.hydrology import burn_streams_into_dem, smooth_streams_monotonic
+from core.hydrology import (
+    STREAM_ATTRIBUTES,
+    _load_stream_features,
+    burn_streams_into_dem,
+    smooth_streams_monotonic,
+)
 
 NODATA = -9999.0
 NCOLS = 10
@@ -89,8 +94,10 @@ class TestStreamBurningSelection:
     def test_main_smooths_only_the_burned_lines(self, bdot_gpkg):
         dem = np.full((30, NCOLS), 100.0)
         transform = from_origin(X0, Y0, 1.0, 1.0)
-        _, all_diag = smooth_streams_monotonic(dem, transform, bdot_gpkg, NODATA, "all")
-        _, main_diag = smooth_streams_monotonic(
+        _, _, all_diag = smooth_streams_monotonic(
+            dem, transform, bdot_gpkg, NODATA, "all"
+        )
+        _, _, main_diag = smooth_streams_monotonic(
             dem, transform, bdot_gpkg, NODATA, "main"
         )
         assert all_diag["segments_processed"] == len(LINES)
@@ -99,3 +106,55 @@ class TestStreamBurningSelection:
     def test_an_unknown_mode_is_refused(self, bdot_gpkg):
         with pytest.raises(ValueError, match="stream_burning"):
             _burned(bdot_gpkg, "rivers")
+
+
+class TestTheBurnedFeatures:
+    """The burned features with the attributes that orient a line (ADR-077)."""
+
+    def test_the_attributes_come_stripped_and_blank_where_missing(self, bdot_gpkg):
+        transform = from_origin(X0, Y0, 1.0, 1.0)
+        features = _load_stream_features(bdot_gpkg, transform, (30, NCOLS), "all")
+        assert list(features.columns) == [*STREAM_ATTRIBUTES, "geometry"]
+        assert features.crs.to_epsg() == 2180
+        lines = features[features.geom_type == "LineString"]
+        rows = [int(Y0 - geom.coords[0][1]) for geom in lines.geometry]
+        assert dict(zip(rows, lines["IDENTYFIKATORMPHP"], strict=True)) == {
+            row: (attributes[2] or "").strip() for _, row, attributes in LINES.values()
+        }
+        # The line layers have no NAZWA or CECHAGEOMETRII; the lake has a name
+        assert set(lines["NAZWA"]) == set(lines["CECHAGEOMETRII"]) == {""}
+        lakes = features[features.geom_type == "Polygon"]
+        assert list(lakes["NAZWA"]) == ["Jezioro"]
+
+    def test_the_parts_of_a_multiline_keep_the_attributes_of_their_feature(
+        self, tmp_path
+    ):
+        path = tmp_path / "multi.gpkg"
+        parts = [
+            LineString([(X0 + 0.5, _y(2)), (X0 + 4.5, _y(2))]),
+            LineString([(X0 + 5.5, _y(2)), (X0 + 9.5, _y(2))]),
+        ]
+        gpd.GeoDataFrame(
+            {
+                "IDENTYFIKATORMPHP": [" 18852 "],
+                "NAZWA": ["Kcynka "],
+                "CECHAGEOMETRII": ["sztuczny łącznik"],
+            },
+            geometry=[MultiLineString(parts)],
+            crs="EPSG:2180",
+        ).to_file(path, layer="OT_SWRS_L", driver="GPKG")
+        transform = from_origin(X0, Y0, 1.0, 1.0)
+        features = _load_stream_features(path, transform, (30, NCOLS))
+        assert [list(geom.coords) for geom in features.geometry] == [
+            list(part.coords) for part in parts
+        ]
+        assert (
+            features[list(STREAM_ATTRIBUTES)].values.tolist()
+            == [["18852", "Kcynka", "sztuczny łącznik"]] * 2
+        )
+
+    def test_nothing_in_the_extent_gives_an_empty_frame(self, bdot_gpkg):
+        transform = from_origin(0.0, 10.0, 1.0, 1.0)
+        features = _load_stream_features(bdot_gpkg, transform, (10, 10), "all")
+        assert features.empty
+        assert list(features.columns) == [*STREAM_ATTRIBUTES, "geometry"]

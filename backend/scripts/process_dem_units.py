@@ -295,6 +295,7 @@ def _prepare_dem(
     nodata = metadata["nodata_value"]
     transform = metadata["transform"]
     changed = False
+    flow_lines = None
     if building_gpkg is not None:
         dem = raise_buildings_in_dem(dem, transform, 2180, building_gpkg, nodata=nodata)
         changed = True
@@ -306,7 +307,7 @@ def _prepare_dem(
         stats["stream_burning"] = stream_burning
         changed = True
         if smooth_streams:
-            dem, smooth_diag = smooth_streams_monotonic(
+            dem, flow_lines, smooth_diag = smooth_streams_monotonic(
                 dem, transform, burn_streams_path, nodata, stream_burning
             )
             stats["smooth_cells"] = smooth_diag["cells_smoothed"]
@@ -319,6 +320,7 @@ def _prepare_dem(
             burn_streams_path,
             nodata,
             min_area_m2=waterbody_min_area_m2,
+            flow_lines=flow_lines,
         )
     elif waterbody_mode not in ("auto", "none"):
         waterbody_path = Path(waterbody_mode)

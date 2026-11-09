@@ -102,7 +102,7 @@ def _line_directions(
     names: Sequence[str],
     connector: Sequence[bool],
     spacing_m: float,
-) -> dict[int, tuple[bool, str]]: ...
+) -> tuple[dict[int, tuple[bool, str]], list[list[int]]]: ...
 ```
 
 Pure (no raster), so the diagnostic can call it with its own nodes and samples.
@@ -111,8 +111,9 @@ Pure (no raster), so the diagnostic can call it with its own nodes and samples.
 order (what `_rises_downstream` reads today); `lengths_m`: the length of each geometry;
 `mphp`, `names`, `connector` by line index; `spacing_m`: the cell size. Returns, for every
 line of `ends` whose two nodes differ, `(reversed, rule)` with rule `"mouth"`,
-`"watercourse"`, `"rise"` or `"digitized"`. The lines whose two nodes are one are not
-returned (the smoothing skips them).
+`"watercourse"`, `"rise"` or `"digitized"`, and the blocks kept by the guard of rule 2,
+each as its lines (the smoothing counts them, the diagnostic marks their lines). The lines
+whose two nodes are one are not returned (the smoothing skips them).
 
 Helper: `_quarter_rise(values, spacing_m) -> float | None`: `None` when
 `values.size < 2` or `values.size * spacing_m < REVERSED_LINE_MIN_LENGTH_M`, else the
@@ -134,8 +135,8 @@ bool]`, `lines` the sorted lines whose nodes differ):
    A line not reached, or with its nodes as far, is not.
 
 **Rule 2, the DEM of the watercourse** (`_watercourse_directions(lines, ends, mphp,
-names, values, connector, spacing_m) -> tuple[dict[int, bool], int]`, the second item
-the blocks kept by the guard):
+names, values, connector, spacing_m) -> tuple[dict[int, bool], list[list[int]]]`, the
+second item the blocks kept by the guard, each as its lines):
 
 1. The key of a line: `M:<mphp>`, else `N:<name>`, else none (no rule 2).
 2. A node joins two lines of one key when exactly two lines of that key have an end at
@@ -169,14 +170,25 @@ decision whatever rule 2 says of its chain.
 2. `ends, node_cells = _line_nodes(geoms, transform)` as today. The first loop computes
    the cells of every line in the digitized order and `values[line] = vals[vals !=
    nodata]`, without reversing anything.
-3. `directions = _line_directions(ends, values, {line: geoms[line].length for line in
-   ends}, mphp, names, connector, cellsize_m)`; each reversed line gets its cells reversed
-   and `ends[line] = (last, first)`. Then the bridges of the gaps, the flow order and the
-   strict descent as today.
+3. `directions, kept = _line_directions(ends, values, {line: geoms[line].length for line
+   in ends}, mphp, names, connector, cellsize_m)`; each reversed line gets its cells
+   reversed and `ends[line] = (last, first)`. Then the bridges of the gaps, the flow order
+   and the strict descent as today.
+4. It returns `(smoothed, flow_lines, diag)`: `flow_lines` are the burned LineStrings in
+   their order, each in the direction of its flow (reversed where a rule reverses it).
 
 The lines are the burned ones of `stream_burning`: with `main` a mouth is found only where
 the receiver is burned, which the selection guarantees for the MPHP watercourses and the
-rivers. `classify_endorheic_lakes` and `_in_flow_order` are not changed.
+rivers.
+
+The classification of the lakes takes the burned lines in those directions (the open
+point, decided by the coordinator on 2026-11-09): `classify_endorheic_lakes(...,
+flow_lines=None)` looks each of its lines up among `flow_lines` by the normalized geometry
+(`shapely.normalize(line).wkb`; both read the same file the same way) and takes the
+direction of the burned line it finds; any other line keeps `_in_flow_order`, the
+per-line rule of ADR-072 on the DEM it is given. `process_dem` and `process_dem_units`
+pass the lines of the smoothing; without the smoothing (`--no-smooth-streams`) every line
+keeps `_in_flow_order`.
 
 ### 4. Diagnostics of the smoothing
 
@@ -185,7 +197,8 @@ rule). New: `segments_by_mouth`, `segments_by_watercourse` (lines decided by rul
 2, reversed or not); `segments_reversed_by_mouth`, `segments_reversed_by_watercourse`,
 `segments_reversed_by_rise` (their sum is `segments_reversed`); `blocks_kept_by_fall`
 (the guard); `connectors` (artificial connectors among the lines). The log line of the
-smoothing names the reversals by rule.
+smoothing names the reversals by rule. The classification of the lakes adds
+`streams_burned` (the lines near the lakes that take the direction of `flow_lines`).
 
 ## Tests to write
 
@@ -217,6 +230,10 @@ In `tests/unit/test_monotonic_smoothing.py`, through a helper that builds the fr
    attributes, `''` for OT_SWRM_L, the parts of a MultiLineString with the attributes of
    their feature; `test_stream_burning.py`, `test_lake_drain.py` and
    `test_unit_equivalence.py` pass unchanged.
+8. **The lakes take the directions of the smoothing** (`tests/unit/test_lake_drain.py`):
+   a burned line given in `flow_lines` flows that way whatever its own DEM says; a
+   watercourse through a lake whose outflow is digitized towards the lake, rising 0.7 m
+   along it, is smoothed out of the lake by rule 2 and the lake is exorheic.
 
 ## Acceptance on h07
 
@@ -250,10 +267,11 @@ In `tests/unit/test_monotonic_smoothing.py`, through a helper that builds the fr
 
 ## Open
 
-- The classification of the lakes (`_in_flow_order`) reads every line of the three layers
-  with the per-line rule of ADR-072 on the smoothed DEM, so it may take a burned line that
-  rules 1–2 reversed its digitized way. Unify (the classification takes the burned lines'
-  directions from `_line_directions`)? The author's decision.
+- ~~The classification of the lakes (`_in_flow_order`) reads every line of the three
+  layers with the per-line rule of ADR-072 on the smoothed DEM, so it may take a burned
+  line that rules 1–2 reversed its digitized way.~~ Decided by the coordinator on
+  2026-11-09: one source of the directions, the classification takes the burned lines
+  from the smoothing (above, and ADR-077, Consequences).
 - A tributary ending on the middle of its receiver gets no mouth; a side arm with two
   contacts with its receiver is split between them (none on h07).
 - The networks detached from the main watercourses are burned with `all` and follow the

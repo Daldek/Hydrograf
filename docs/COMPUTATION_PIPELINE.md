@@ -1,6 +1,6 @@
 # Procedura obliczeniowa — Hydrograf
 
-> Wersja: 1.4 | Data: 2026-10-25
+> Wersja: 1.5 | Data: 2026-11-10
 
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
@@ -41,6 +41,19 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 - Warunek: komórka nodata z ≥5 prawidłowymi sąsiadami
 - Wzór: `new_value = mean(valid_neighbors)`
 - Maksymalnie 3 iteracje
+
+### 1.2a Burning and smoothing the streams, endorheic lakes
+
+**Functions:** `burn_streams_into_dem()`, `smooth_streams_monotonic()`, `classify_endorheic_lakes()` (`core/hydrology.py`; with `--burn-streams`)
+- Burning: the BDOT10k lines of `dem.stream_burning` (`all`: OT_SWRS_L, OT_SWKN_L, OT_SWRM_L; `main`: the main watercourses) and the water bodies (OT_PTWP_A) are lowered by `burn_depth_m` (2 m).
+- Direction of a burned line (ADR-077, `_line_directions`), on the burned DEM; the first rule that decides it:
+  1. the mouth: along the lines of its MPHP watercourse K, towards the nearest node where a line whose MPHP identifier is a proper prefix of K (its receiver) begins or ends;
+  2. the DEM of the whole watercourse (the lines of one MPHP identifier, else of one name, joined where exactly two of them meet), for a watercourse digitized both ways: when the DEM along it, without its artificial connectors, rises or falls by more than 0.5 m between the lowest values of its first and last quarter, its lower end is downstream and every block (run of lines digitized the same way) digitized the other way is reversed, unless the DEM along the block falls more than 2 m the way it is digitized (the guard);
+  3. the DEM of the line (ADR-072): reversed when the DEM rises along it by more than 2 m over at least 200 m;
+  4. the digitized direction.
+  An artificial connector through a lake (`CECHAGEOMETRII = 'sztuczny łącznik'`) never takes its direction from the DEM along it.
+- Smoothing (ADR-072): the lines in the order of the flow, each beginning below the lowest value reached at its first node and descending strictly (a higher cell is cut, an equal one lowered by one float32 step); gaps up to 50 m between two features of a watercourse are bridged. The diagnostics count the reversed lines by rule (`segments_reversed_by_mouth`, `_by_watercourse`, `_by_rise`) and the blocks kept by the guard.
+- Endorheic lakes (`--waterbody-mode auto`): a water body that any watercourse line of the three layers leaves is exorheic, else endorheic and gets a drain point. A burned line flows the way the smoothing takes it (`flow_lines`, the one source of the directions); any other line the way it is digitized unless the DEM along it rises by more than 2 m on at least 200 m.
 
 ### 1.3 Przetwarzanie hydrologiczne
 

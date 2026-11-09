@@ -6,10 +6,12 @@ stream burning, endorheic lake classification, pyflwdir-based hydrology,
 sink fixing, and flow accumulation recomputation.
 """
 
+import heapq
 import logging
 import math
 from collections import Counter, defaultdict, deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from itertools import groupby
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +52,8 @@ for _code, (_drow, _dcol) in D8_DIRECTIONS.items():
 STREAM_BURNING_MODES = ("all", "main")
 _MAIN_COURSE = "ciek główny"
 _RIVER = "rzeka"
+# The attributes of a burned feature that the direction of a line reads (ADR-077)
+STREAM_ATTRIBUTES = ("IDENTYFIKATORMPHP", "NAZWA", "CECHAGEOMETRII")
 
 # Passes of fill_internal_nodata_holes: a repaired cell lies at most this many cells
 # from a cell of the original DEM data
@@ -279,6 +283,13 @@ def _equals(gdf: Any, column: str, value: str) -> Any:
     return gdf[column].astype("string").str.strip().eq(value).fillna(False)
 
 
+def _stripped(gdf: Any, column: str) -> list[str]:
+    """Return the column as stripped text, '' where the value or column is missing."""
+    if column not in gdf.columns:
+        return [""] * len(gdf)
+    return list(gdf[column].fillna("").astype(str).str.strip())
+
+
 def _select_burned_features(gdf: Any, layer: str | None, stream_burning: str) -> Any:
     """Keep the features of one layer that ``stream_burning`` burns.
 
@@ -303,17 +314,19 @@ def _select_burned_features(gdf: Any, layer: str | None, stream_burning: str) ->
     return gdf
 
 
-def _load_stream_geometries(
+def _load_stream_features(
     streams_path: str | Path,
     transform: Affine,
     dem_shape: tuple[int, int],
     stream_burning: str = "all",
-) -> list[Any]:
-    """Load stream geometries from BDOT10k GeoPackage/Shapefile.
+) -> Any:
+    """Load the burned features of a BDOT10k GeoPackage/Shapefile with their attributes.
 
-    Reads SWRS/SWKN/SWRM/PTWP layers, keeps what ``stream_burning`` selects
-    (``_select_burned_features``), reprojects to EPSG:2180, clips to DEM
-    extent, decomposes MultiLineString to LineString.
+    Reads the SWRS/SWKN/SWRM/PTWP layers (the first layer when none is), keeps what
+    ``stream_burning`` selects (``_select_burned_features``), reprojects to EPSG:2180
+    and keeps the features that reach into the DEM extent: layer by layer, feature by
+    feature, part by part. A (Multi)LineString gives a row per part of two or more
+    points, a polygon or any other geometry one row as it is.
 
     Parameters
     ----------
@@ -328,12 +341,15 @@ def _load_stream_geometries(
 
     Returns
     -------
-    list[LineString]
-        List of LineString geometries within DEM extent
+    gpd.GeoDataFrame
+        ``geometry`` and the ``STREAM_ATTRIBUTES`` of each row's feature as stripped
+        text ('' where the value or the column is missing; OT_SWRM_L has neither
+        ``IDENTYFIKATORMPHP`` nor ``CECHAGEOMETRII``), in EPSG:2180; empty with these
+        columns when nothing is selected.
     """
     import fiona
     import geopandas as gpd
-    from shapely.geometry import LineString, MultiLineString, MultiPolygon, Polygon, box
+    from shapely.geometry import LineString, MultiLineString, box
 
     if stream_burning not in STREAM_BURNING_MODES:
         raise ValueError(
@@ -364,7 +380,8 @@ def _load_stream_geometries(
     if not target_layers:
         target_layers = layers[:1] if layers else []
 
-    all_geoms = []
+    geoms: list[Any] = []
+    attributes: dict[str, list[str]] = {column: [] for column in STREAM_ATTRIBUTES}
     for layer in target_layers:
         try:
             kwargs = {"layer": layer} if layer else {}
@@ -377,24 +394,41 @@ def _load_stream_geometries(
         if gdf.crs and gdf.crs.to_epsg() != 2180:
             gdf = gdf.to_crs(epsg=2180)
         gdf = gdf[gdf.geometry.intersects(dem_bounds)]
-        for geom in gdf.geometry:
+        texts = [_stripped(gdf, column) for column in STREAM_ATTRIBUTES]
+        for geom, *values in zip(gdf.geometry, *texts, strict=True):
             if geom is None or geom.is_empty:
                 continue
             if isinstance(geom, MultiLineString):
-                for part in geom.geoms:
-                    if not part.is_empty and len(list(part.coords)) >= 2:
-                        all_geoms.append(part)
-            elif isinstance(geom, (Polygon, MultiPolygon)):
-                # Include polygon geometries as-is (for burn rasterization)
-                all_geoms.append(geom)
+                parts = [
+                    part
+                    for part in geom.geoms
+                    if not part.is_empty and len(part.coords) >= 2
+                ]
             elif isinstance(geom, LineString):
-                if len(list(geom.coords)) >= 2:
-                    all_geoms.append(geom)
+                parts = [geom] if len(geom.coords) >= 2 else []
             else:
-                # Other geometry types — include if valid
-                all_geoms.append(geom)
+                # Polygons (burned as areas) and any other geometry, as they are
+                parts = [geom]
+            for part in parts:
+                geoms.append(part)
+                for column, value in zip(STREAM_ATTRIBUTES, values, strict=True):
+                    attributes[column].append(value)
 
-    return all_geoms
+    return gpd.GeoDataFrame(attributes, geometry=geoms, crs="EPSG:2180")
+
+
+def _load_stream_geometries(
+    streams_path: str | Path,
+    transform: Affine,
+    dem_shape: tuple[int, int],
+    stream_burning: str = "all",
+) -> list[Any]:
+    """Return the geometries of ``_load_stream_features``, in their order."""
+    return list(
+        _load_stream_features(
+            streams_path, transform, dem_shape, stream_burning
+        ).geometry
+    )
 
 
 def burn_streams_into_dem(
@@ -540,13 +574,21 @@ def _rasterize_line_ordered(
     return cells
 
 
-# The smoothing takes a stream line the way it is digitized (BDOT10k digitizes a
-# watercourse downstream) unless the DEM along it rises that way by more than
-# REVERSED_LINE_RISE_M between the lowest cells of its first and last quarter, which
-# is a line digitized upstream; only on a profile of at least
-# REVERSED_LINE_MIN_LENGTH_M, whose quarters are longer than an embankment (ADR-072)
+# The direction of a burned line is the first that these rules give (ADR-077): towards
+# the mouth of its MPHP watercourse; down the DEM of its whole watercourse where that
+# watercourse is digitized both ways, when the DEM along it rises or falls by more
+# than WATERCOURSE_RISE_M between the lowest cells of its first and last quarter;
+# against its digitizing when the DEM along the line itself rises that way by more
+# than REVERSED_LINE_RISE_M (ADR-072); else the way it is digitized (BDOT10k
+# digitizes a watercourse downstream). A profile shorter than
+# REVERSED_LINE_MIN_LENGTH_M, whose quarters are no longer than an embankment, rises
+# by nothing
 REVERSED_LINE_RISE_M = 2.0
 REVERSED_LINE_MIN_LENGTH_M = 200.0
+WATERCOURSE_RISE_M = 0.5
+# CECHAGEOMETRII of an artificial connector, a line drawn through a lake: the DEM
+# along it is a water surface and never gives its direction
+CONNECTOR = "sztuczny łącznik"
 # A line that ends inside the data where no line goes on continues into the nearest
 # line that begins where no line ends, within LINE_GAP_M: two features of one
 # watercourse digitized apart (ADR-072)
@@ -658,20 +700,299 @@ def _gap_joins(
     return joins
 
 
+def _quarter_rise(values: np.ndarray, spacing_m: float) -> float | None:
+    """Return how much a DEM profile rises from its first to its last quarter.
+
+    ``values`` are DEM values ``spacing_m`` apart. The rise is the lowest value of the
+    last quarter less the lowest of the first (a quarter has at least one value), so
+    a bridge or an embankment inside a quarter does not count. None for fewer than
+    two values or a profile shorter than REVERSED_LINE_MIN_LENGTH_M.
+    """
+    if values.size < 2 or values.size * spacing_m < REVERSED_LINE_MIN_LENGTH_M:
+        return None
+    quarter = max(values.size // 4, 1)
+    return float(values[-quarter:].min()) - float(values[:quarter].min())
+
+
 def _rises_downstream(values: np.ndarray, cellsize_m: float) -> bool:
     """Say whether the DEM along a stream line rises the way it is digitized.
 
     ``values`` are the DEM values of the line's cells with data, in the order the line
-    is digitized. The lowest value of its last quarter must exceed the lowest of its
-    first quarter by more than REVERSED_LINE_RISE_M, on a profile of at least
-    REVERSED_LINE_MIN_LENGTH_M: a bridge or an embankment inside a quarter does not
-    count, and a water surface on a flat valley rises by far less.
+    is digitized; they rise by more than REVERSED_LINE_RISE_M between the quarters
+    (``_quarter_rise``), which a water surface on a flat valley does not (ADR-072).
     """
-    if values.size < 2 or values.size * cellsize_m < REVERSED_LINE_MIN_LENGTH_M:
-        return False
-    quarter = max(values.size // 4, 1)
-    rise_m = float(values[-quarter:].min()) - float(values[:quarter].min())
-    return rise_m > REVERSED_LINE_RISE_M
+    rise_m = _quarter_rise(values, cellsize_m)
+    return rise_m is not None and rise_m > REVERSED_LINE_RISE_M
+
+
+def _mouth_directions(
+    lines: Sequence[int],
+    ends: dict[int, tuple[int, int]],
+    mphp: Sequence[str],
+    lengths_m: dict[int, float],
+) -> dict[int, bool]:
+    """Orient the lines of each MPHP watercourse towards its mouth (ADR-077, rule 1).
+
+    The watercourse of the MPHP identifier K meets its receiver at a node of K's lines
+    where a line of ``ends`` whose identifier is a proper prefix of K begins or ends
+    (a tributary, whose identifier K is a prefix of, is no receiver). Along K's lines,
+    by their lengths, a line flows from its node farther from such a node, the
+    nearest one, to its nearer node.
+
+    Parameters
+    ----------
+    lines : sequence of int
+        The lines to orient: those of ``ends`` whose two nodes differ.
+    ends : dict
+        {line: (node of its first point, node of its last point)} of every line, as
+        digitized.
+    mphp : sequence of str
+        The MPHP identifier of each line, '' without one.
+    lengths_m : dict
+        The length of each line.
+
+    Returns
+    -------
+    dict
+        {line: whether it is digitized away from the mouth} for each line of an MPHP
+        watercourse whose two nodes are reached from its mouth at different distances.
+    """
+    codes_at: dict[int, set[str]] = defaultdict(set)
+    for line, (first, last) in ends.items():
+        if mphp[line]:
+            codes_at[first].add(mphp[line])
+            codes_at[last].add(mphp[line])
+    members: dict[str, list[int]] = defaultdict(list)
+    for line in lines:
+        if mphp[line]:
+            members[mphp[line]].append(line)
+    decided: dict[int, bool] = {}
+    for code, own in members.items():
+        neighbours: dict[int, list[tuple[int, float]]] = defaultdict(list)
+        for line in own:
+            first, last = ends[line]
+            neighbours[first].append((last, lengths_m[line]))
+            neighbours[last].append((first, lengths_m[line]))
+        mouths = [
+            node
+            for node in neighbours
+            if any(other != code and code.startswith(other) for other in codes_at[node])
+        ]
+        # Dijkstra from all the mouths at once
+        distance = dict.fromkeys(mouths, 0.0)
+        heap = [(0.0, node) for node in mouths]
+        heapq.heapify(heap)
+        while heap:
+            reached, node = heapq.heappop(heap)
+            if reached > distance[node]:
+                continue
+            for other, length in neighbours[node]:
+                if reached + length < distance.get(other, math.inf):
+                    distance[other] = reached + length
+                    heapq.heappush(heap, (reached + length, other))
+        for line in own:
+            first, last = ends[line]
+            if (
+                first in distance
+                and last in distance
+                and distance[first] != distance[last]
+            ):
+                decided[line] = distance[first] < distance[last]
+    return decided
+
+
+def _watercourse_chains(
+    lines: Sequence[int],
+    ends: dict[int, tuple[int, int]],
+    keys: dict[int, str],
+) -> list[list[tuple[int, bool]]]:
+    """Join the lines of each watercourse end to end.
+
+    A node joins two lines of one key (their watercourse) when exactly two lines of
+    that key have an end at it. Each chain is walked once, from its first line in the
+    order of ``lines``: back through the joins to a free end (or round a loop until a
+    line repeats), then forward to the other free end.
+
+    Returns
+    -------
+    list
+        The chains, each as (line, whether it is digitized the way of the walk) in the
+        order of the walk. A line with the key '' is in none.
+    """
+    at_node: dict[tuple[int, str], list[int]] = defaultdict(list)
+    for line in lines:
+        if keys[line]:
+            first, last = ends[line]
+            at_node[(first, keys[line])].append(line)
+            at_node[(last, keys[line])].append(line)
+    goes_on: dict[int, dict[int, int]] = defaultdict(dict)
+    for (node, _), members in at_node.items():
+        if len(members) == 2:
+            one, other = members
+            goes_on[one][node] = other
+            goes_on[other][node] = one
+
+    def far_node(line: int, node: int) -> int:
+        first, last = ends[line]
+        return last if first == node else first
+
+    walked: set[int] = set()
+    chains = []
+    for start in lines:
+        if start in walked or not keys[start]:
+            continue
+        line, entry, seen = start, ends[start][0], {start}
+        while entry in goes_on[line] and goes_on[line][entry] not in seen:
+            line = goes_on[line][entry]
+            seen.add(line)
+            entry = far_node(line, entry)
+        chain = []
+        node = entry
+        while True:
+            walked.add(line)
+            chain.append((line, ends[line][0] == node))
+            node = far_node(line, node)
+            following = goes_on[line].get(node)
+            if following is None or following in walked:
+                break
+            line = following
+        chains.append(chain)
+    return chains
+
+
+def _profile_of_walk(
+    run: Sequence[tuple[int, bool]],
+    values: dict[int, np.ndarray],
+    connector: Sequence[bool],
+) -> np.ndarray:
+    """Return the DEM along lines in the order of a walk, without the connectors.
+
+    ``run`` holds (line, whether it is digitized the way of the walk).
+    """
+    parts = [
+        values[line] if forward else values[line][::-1]
+        for line, forward in run
+        if not connector[line]
+    ]
+    return np.concatenate(parts) if parts else np.empty(0)
+
+
+def _watercourse_directions(
+    lines: Sequence[int],
+    ends: dict[int, tuple[int, int]],
+    mphp: Sequence[str],
+    names: Sequence[str],
+    values: dict[int, np.ndarray],
+    connector: Sequence[bool],
+    spacing_m: float,
+) -> tuple[dict[int, bool], list[list[int]]]:
+    """Orient the lines of watercourses digitized both ways (ADR-077, rule 2).
+
+    A watercourse is the lines of one MPHP identifier, else of one name, joined end to
+    end (``_watercourse_chains``); one whose lines are all digitized the same way is
+    not decided. The DEM along the whole chain, in the order of the walk and without
+    its artificial connectors, decides when it rises or falls by more than
+    WATERCOURSE_RISE_M between the quarters (``_quarter_rise``): its lower end is
+    downstream. A block, a run of lines of the walk digitized the same way, digitized
+    downstream keeps its direction; one digitized upstream is reversed, unless the DEM
+    along its own lines (without connectors, the way they are digitized) falls by more
+    than REVERSED_LINE_RISE_M: then the block is not decided (the guard), as the DEM
+    along a line overrides its digitizing by that much (ADR-072). A connector takes the
+    decision of its block.
+
+    Returns
+    -------
+    tuple
+        ({line: whether it is reversed} of the lines decided; the blocks kept by the
+        guard, each as its lines)
+    """
+    keys: dict[int, str] = {}
+    for line in lines:
+        if mphp[line]:
+            keys[line] = f"M:{mphp[line]}"
+        elif names[line]:
+            keys[line] = f"N:{names[line]}"
+        else:
+            keys[line] = ""
+    decided: dict[int, bool] = {}
+    kept: list[list[int]] = []
+    for chain in _watercourse_chains(lines, ends, keys):
+        if len({forward for _, forward in chain}) < 2:
+            continue
+        rise_m = _quarter_rise(_profile_of_walk(chain, values, connector), spacing_m)
+        if rise_m is None or abs(rise_m) <= WATERCOURSE_RISE_M:
+            continue
+        walk_downstream = rise_m < 0
+        for forward, run in groupby(chain, key=lambda item: item[1]):
+            block = list(run)
+            if forward == walk_downstream:
+                decided.update((line, False) for line, _ in block)
+                continue
+            walked = _profile_of_walk(block, values, connector)
+            fall_m = _quarter_rise(walked if forward else walked[::-1], spacing_m)
+            if fall_m is not None and fall_m < -REVERSED_LINE_RISE_M:
+                kept.append([line for line, _ in block])
+                continue
+            decided.update((line, True) for line, _ in block)
+    return decided, kept
+
+
+def _line_directions(
+    ends: dict[int, tuple[int, int]],
+    values: dict[int, np.ndarray],
+    lengths_m: dict[int, float],
+    mphp: Sequence[str],
+    names: Sequence[str],
+    connector: Sequence[bool],
+    spacing_m: float,
+) -> tuple[dict[int, tuple[bool, str]], list[list[int]]]:
+    """Decide the direction of each stream line by the rules of ADR-077.
+
+    The first rule that decides a line gives its direction: ``"mouth"``, towards the
+    mouth of its MPHP watercourse (``_mouth_directions``); ``"watercourse"``, down the
+    DEM of its whole watercourse (``_watercourse_directions``); ``"rise"``, reversed
+    when the DEM along it rises the way it is digitized by more than
+    REVERSED_LINE_RISE_M (``_rises_downstream``, ADR-072), which never reverses an
+    artificial connector; ``"digitized"``, the way it is digitized. Pure: the
+    network, the attributes and the DEM values come in.
+
+    Parameters
+    ----------
+    ends : dict
+        {line: (node of its first point, node of its last point)}, as digitized.
+    values : dict
+        The DEM values of the cells of each line with data, in the digitized order.
+    lengths_m : dict
+        The length of each line.
+    mphp, names : sequence of str
+        The MPHP identifier and the name of each line, '' without one.
+    connector : sequence of bool
+        Whether each line is an artificial connector (``CONNECTOR``).
+    spacing_m : float
+        The distance between two values of a line (the cell size).
+
+    Returns
+    -------
+    tuple
+        ({line: (whether it is reversed, the rule)} for every line of ``ends`` whose
+        two nodes differ; the blocks kept by the guard of rule 2, each as its lines)
+    """
+    lines = sorted(line for line, (first, last) in ends.items() if first != last)
+    by_mouth = _mouth_directions(lines, ends, mphp, lengths_m)
+    by_watercourse, kept = _watercourse_directions(
+        lines, ends, mphp, names, values, connector, spacing_m
+    )
+    directions: dict[int, tuple[bool, str]] = {}
+    for line in lines:
+        if line in by_mouth:
+            directions[line] = (by_mouth[line], "mouth")
+        elif line in by_watercourse:
+            directions[line] = (by_watercourse[line], "watercourse")
+        elif not connector[line] and _rises_downstream(values[line], spacing_m):
+            directions[line] = (True, "rise")
+        else:
+            directions[line] = (False, "digitized")
+    return directions, kept
 
 
 def _flow_order(ends: dict[int, tuple[int, int]]) -> tuple[list[int], int]:
@@ -781,15 +1102,18 @@ def smooth_streams_monotonic(
     streams_path: str | Path,
     nodata: float = -9999.0,
     stream_burning: str = "all",
-) -> tuple[np.ndarray, dict[str, Any]]:
+) -> tuple[np.ndarray, list[BaseGeometry], dict[str, Any]]:
     """Make every burned stream line descend strictly in the direction of its flow.
 
-    The direction of a line is the one it is digitized in: BDOT10k digitizes a
-    watercourse downstream. A line along which the DEM rises that way by more than
-    REVERSED_LINE_RISE_M was digitized upstream and is taken the other way
-    (``_rises_downstream``). No outlet is chosen from the DEM: a river that crosses the
-    edge of the data leaves it at its downstream crossing, whichever of its two
-    crossings is lower (ADR-072).
+    The direction of a line is the first that the rules of ADR-077 give
+    (``_line_directions``), on the DEM as it comes in: towards the mouth of its MPHP
+    watercourse; down the DEM of its whole watercourse where the watercourse is
+    digitized both ways; against its digitizing where the DEM along the line rises
+    that way by more than REVERSED_LINE_RISE_M (ADR-072); else the way it is digitized
+    (BDOT10k digitizes a watercourse downstream). An artificial connector through a
+    lake never takes its direction from the DEM along it. No outlet is chosen from the
+    DEM: a river that crosses the edge of the data leaves it at its downstream
+    crossing, whichever of its two crossings is lower (ADR-072).
 
     The lines are taken in the order of the flow (``_flow_order``). A line begins
     below the lowest value the lines ending at its first node reached, and every cell
@@ -819,10 +1143,22 @@ def smooth_streams_monotonic(
     Returns
     -------
     tuple
-        (smoothed_dem, diagnostics) where diagnostics contains:
+        (smoothed_dem, flow_lines, diagnostics): ``flow_lines`` are the burned
+        LineStrings in their order, each in the direction of its flow (reversed where
+        a rule reverses it), the directions the classification of the lakes takes
+        (``classify_endorheic_lakes``). The diagnostics:
         - segments_processed: lines with at least two cells in the DEM
         - segments_skipped: lines with fewer, or ending where they begin
         - segments_reversed: lines taken against their digitized direction
+        - segments_by_mouth, segments_by_watercourse: lines whose direction rules 1
+          (the mouth) and 2 (the DEM of the watercourse) decide, reversed or not
+        - segments_reversed_by_mouth, segments_reversed_by_watercourse,
+          segments_reversed_by_rise: the reversed lines by rule (rule 3 is the rise
+          along the line); their sum is segments_reversed
+        - blocks_kept_by_fall: blocks digitized against their watercourse that rule 2
+          leaves, as their own DEM falls by more than REVERSED_LINE_RISE_M the way
+          they are digitized
+        - connectors: artificial connectors among the lines
         - segments_out_of_order: lines of a directed cycle, taken before a line
           ending at their first node
         - gaps_bridged: gaps between features bridged
@@ -831,13 +1167,20 @@ def smooth_streams_monotonic(
         - cells_unchanged: the other cells of the lines with data
         - max_correction_m, mean_correction_m: of the cut cells
     """
-    from shapely.geometry import LineString
+    from shapely import reverse
 
     smoothed = dem.copy()
     diag: dict[str, Any] = {
         "segments_processed": 0,
         "segments_skipped": 0,
         "segments_reversed": 0,
+        "segments_by_mouth": 0,
+        "segments_by_watercourse": 0,
+        "segments_reversed_by_mouth": 0,
+        "segments_reversed_by_watercourse": 0,
+        "segments_reversed_by_rise": 0,
+        "blocks_kept_by_fall": 0,
+        "connectors": 0,
         "segments_out_of_order": 0,
         "gaps_bridged": 0,
         "cells_smoothed": 0,
@@ -846,20 +1189,21 @@ def smooth_streams_monotonic(
         "max_correction_m": 0.0,
         "mean_correction_m": 0.0,
     }
-    geoms = [
-        geom
-        for geom in _load_stream_geometries(
-            streams_path, transform, dem.shape, stream_burning
-        )
-        if isinstance(geom, LineString)
-    ]
+    features = _load_stream_features(streams_path, transform, dem.shape, stream_burning)
+    features = features[features.geom_type == "LineString"]
+    geoms = list(features.geometry)
     if not geoms:
-        return smoothed, diag
+        return smoothed, [], diag
+    mphp = list(features["IDENTYFIKATORMPHP"])
+    names = list(features["NAZWA"])
+    connector = [value == CONNECTOR for value in features["CECHAGEOMETRII"]]
+    diag["connectors"] = sum(connector)
 
-    # The cells of each line in the direction of its flow, the nodes it joins
+    # The cells of each line as digitized, the nodes it joins, the DEM along it
     ends, node_cells = _line_nodes(geoms, transform)
     cellsize_m = abs(transform.a)
     cells_of: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    values: dict[int, np.ndarray] = {}
     for line, (first, last) in ends.items():
         cells = _rasterize_line_ordered(geoms[line], transform, shape=dem.shape)
         if len(cells) < 2 or first == last:
@@ -869,12 +1213,33 @@ def smooth_streams_monotonic(
             diag["segments_processed"] += 1
         rows = np.array([row for row, _ in cells], dtype=np.intp)
         cols = np.array([col for _, col in cells], dtype=np.intp)
-        values = dem[rows, cols]
-        if _rises_downstream(values[values != nodata], cellsize_m):
-            rows, cols = rows[::-1].copy(), cols[::-1].copy()
-            ends[line] = (last, first)
-            diag["segments_reversed"] += 1
+        line_values = dem[rows, cols]
+        values[line] = line_values[line_values != nodata]
         cells_of[line] = (rows, cols)
+    # The direction of each line: a reversed one is taken the other way
+    directions, kept = _line_directions(
+        ends,
+        values,
+        {line: geoms[line].length for line in ends},
+        mphp,
+        names,
+        connector,
+        cellsize_m,
+    )
+    diag["blocks_kept_by_fall"] = len(kept)
+    flow_lines = list(geoms)
+    for line, (reversed_line, rule) in directions.items():
+        if rule in ("mouth", "watercourse"):
+            diag[f"segments_by_{rule}"] += 1
+        if not reversed_line:
+            continue
+        rows, cols = cells_of[line]
+        cells_of[line] = (rows[::-1].copy(), cols[::-1].copy())
+        first, last = ends[line]
+        ends[line] = (last, first)
+        flow_lines[line] = reverse(geoms[line])
+        diag["segments_reversed"] += 1
+        diag[f"segments_reversed_by_{rule}"] += 1
     # The bridges of the gaps, as lines numbered after the real ones
     nrows, ncols = dem.shape
     for bridge, (dead_end, start) in enumerate(
@@ -917,11 +1282,16 @@ def smooth_streams_monotonic(
         diag["mean_correction_m"] = corrections_m / diag["cells_smoothed"]
 
     logger.info(
-        "Monotonic smoothing: %d segments (%d against their digitized direction, "
-        "%d out of the flow order, %d gaps bridged), %d cells cut, %d lowered by a "
-        "step, max=%.2fm, mean=%.2fm",
+        "Monotonic smoothing: %d segments (%d against their digitized direction: %d "
+        "to the mouth, %d down their watercourse, %d by their own rise; %d blocks kept "
+        "by their fall; %d out of the flow order, %d gaps bridged), %d cells cut, %d "
+        "lowered by a step, max=%.2fm, mean=%.2fm",
         diag["segments_processed"],
         diag["segments_reversed"],
+        diag["segments_reversed_by_mouth"],
+        diag["segments_reversed_by_watercourse"],
+        diag["segments_reversed_by_rise"],
+        diag["blocks_kept_by_fall"],
         diag["segments_out_of_order"],
         diag["gaps_bridged"],
         diag["cells_smoothed"],
@@ -929,7 +1299,7 @@ def smooth_streams_monotonic(
         diag["max_correction_m"],
         diag["mean_correction_m"],
     )
-    return smoothed, diag
+    return smoothed, flow_lines, diag
 
 
 # A watercourse line within LAKE_SNAP_M of a water body belongs to it: BDOT10k lines
@@ -972,8 +1342,9 @@ def _in_flow_order(
     """Return a stream line in the order of its flow, and whether it was reversed.
 
     BDOT10k digitizes a watercourse downstream, so a line keeps its vertex order unless
-    the DEM along it rises that way (``_rises_downstream``): the rule of the stream
-    smoothing (ADR-072), which gives the burned line that direction of flow.
+    the DEM along it rises that way (``_rises_downstream``): the rule of a line on its
+    own (ADR-072, rule 3 of ADR-077), for a line whose direction the smoothing did not
+    decide.
     """
     from shapely.geometry import LineString
 
@@ -995,6 +1366,7 @@ def classify_endorheic_lakes(
     nodata: float,
     min_area_m2: float | None = None,
     waterbody_path: str | Path | None = None,
+    flow_lines: Sequence[BaseGeometry] | None = None,
 ) -> tuple[list[tuple[int, int]], dict[str, Any]]:
     """
     Classify water bodies and return drain points for endorheic lakes.
@@ -1007,13 +1379,14 @@ def classify_endorheic_lakes(
     A line leaves a water body when its flow starts at it and goes on outside it
     (``_flow_leaves_lake``): the line has a part beyond its last contact with the
     water body, so a line that starts at the shore, begins within ``LAKE_SNAP_M`` of
-    it, or crosses it leaves it; a line that ends at it or in it is an inflow. The
-    flow of a line goes the way BDOT10k digitizes it (a watercourse is digitized
-    downstream) unless the DEM along it rises that way by more than 2 m on at least
-    200 m, a line digitized upstream (``_in_flow_order``, the rule of ADR-072): the
-    DEM is read along the lines near water bodies only, and the DEM of the pipeline
-    has the burned and smoothed streams. The DEM never decides anything else, and a
-    line's elevations at its ends are not compared.
+    it, or crosses it leaves it; a line that ends at it or in it is an inflow. A
+    burned line flows the way the smoothing takes it (``flow_lines``, the rules of
+    ADR-077), so the lakes and the smoothed DEM agree on its direction. Any other line
+    flows the way BDOT10k digitizes it (a watercourse is digitized downstream) unless
+    the DEM along it rises that way by more than 2 m on at least 200 m, a line
+    digitized upstream (``_in_flow_order``, the rule of a line on its own, ADR-072):
+    the DEM is read along those lines near water bodies only. The DEM never decides
+    anything else, and a line's elevations at its ends are not compared.
 
     Water bodies within ``LAKE_SNAP_M`` of each other form one cluster that is
     classified as a whole: an outflow of any of them makes all of them exorheic.
@@ -1033,6 +1406,10 @@ def classify_endorheic_lakes(
     waterbody_path : str or Path, optional
         Custom path to water body file (.gpkg/.shp). All bodies from this
         file are treated as endorheic (no stream-based classification).
+    flow_lines : sequence of LineString, optional
+        The burned lines in the direction of their flow, as
+        ``smooth_streams_monotonic`` returns them: a line of the three layers with
+        the geometry of one of them, either way, flows that way.
 
     Returns
     -------
@@ -1040,10 +1417,12 @@ def classify_endorheic_lakes(
         (drain_points, diagnostics) where:
         - drain_points: list of (row, col) for each endorheic lake
         - diagnostics: dict with classification stats (``streams_analyzed``: the lines
-          near water bodies that were examined, ``streams_reversed``: those taken
+          near water bodies that were examined, ``streams_burned``: those of them that
+          take the direction of ``flow_lines``, ``streams_reversed``: those taken
           against their digitized direction)
     """
     import geopandas as gpd
+    import shapely
     from shapely.geometry import box
 
     gpkg_path = Path(gpkg_path)
@@ -1053,6 +1432,7 @@ def classify_endorheic_lakes(
         "exorheic": 0,
         "clusters": 0,
         "streams_analyzed": 0,
+        "streams_burned": 0,
         "streams_reversed": 0,
         "filtered_by_area": 0,
     }
@@ -1210,8 +1590,10 @@ def classify_endorheic_lakes(
         f"{len(cluster_lakes)} clusters (buffer={LAKE_SNAP_M}m)"
     )
 
-    # 4. Classify each cluster: exorheic when the flow of any line near it leaves it
+    # 4. Classify each cluster: exorheic when the flow of any line near it leaves it.
+    #    A burned line flows as the smoothing took it, found by its geometry
     line_geoms = streams.geometry.values
+    flow_of = {shapely.normalize(line).wkb: line for line in (flow_lines or [])}
     in_flow_order: dict[int, BaseGeometry] = {}
     for _ci, members in cluster_lakes.items():
         # Union of all lake geometries in this cluster
@@ -1230,9 +1612,14 @@ def classify_endorheic_lakes(
             line_idx = int(line_idx)
             if line_idx not in in_flow_order:
                 diagnostics["streams_analyzed"] += 1
-                in_flow_order[line_idx], was_reversed = _in_flow_order(
-                    line_geoms[line_idx], dem, transform, nodata
-                )
+                line = line_geoms[line_idx]
+                flow = flow_of.get(shapely.normalize(line).wkb)
+                if flow is None:
+                    flow, was_reversed = _in_flow_order(line, dem, transform, nodata)
+                else:
+                    diagnostics["streams_burned"] += 1
+                    was_reversed = not flow.equals_exact(line, 0.0)
+                in_flow_order[line_idx] = flow
                 diagnostics["streams_reversed"] += was_reversed
             if _flow_leaves_lake(in_flow_order[line_idx], cluster_geom):
                 has_outflow = True
@@ -1250,7 +1637,8 @@ def classify_endorheic_lakes(
         f"{diagnostics['endorheic']} endorheic, "
         f"{diagnostics['exorheic']} exorheic, "
         f"{diagnostics['clusters']} clusters, "
-        f"{diagnostics['streams_analyzed']} streams analyzed"
+        f"{diagnostics['streams_analyzed']} streams analyzed "
+        f"({diagnostics['streams_burned']} burned)"
     )
 
     return drain_points, diagnostics
