@@ -709,6 +709,52 @@ production rasters a polygon of 33 km² takes about 1 s and the run peaks at abo
 
 ---
 
+### `diagnose_catchment_exits.py`: where the NMT flow leaves given polygons
+
+A diagnosis of `polygon_to_upstream_area_ratio` of the export above: a polygon that is the NMT
+watershed of its outlet drains through that one cell, a ratio above 1 means that part of it drains
+elsewhere. For every polygon the script takes the cells whose D8 flow leaves it, groups the
+connected ones with the same destination (a polygon of the layer, a cell of no polygon, a cell
+without NMT data, a pit) into exits and accumulates the flow within the polygon only, so each exit
+gets the area of the polygon that leaves through it (the areas of the exits add up to the polygon;
+inflow from outside is not counted). The exit that holds the outlet of the export (the cell of the
+largest flow accumulation) is marked. It reads the flow directions, the accumulation, the filled
+DEM and the slope as the export does (`open_rasters`: the VRT mosaics of an active unit run,
+otherwise the GeoTIFFs of `DEM_DIR`), only in the window of each polygon, and needs no database.
+
+```bash
+cd backend
+.venv/bin/python -m scripts.diagnose_catchment_exits --input zlewnie.gpkg --layer zlew_h_07 \
+    --key ID_HYD_10 --ids 1863141,1883617 --output wyjscia_zlewni.gpkg
+```
+
+| Parameter | Description | Default |
+|---|---|---|
+| `--input`, `--layer`, `--key` | the polygons, as for the export; every polygon of the layer can receive the flow | required, the only layer, required |
+| `--ids` | the keys to diagnose, comma separated | every polygon |
+| `--output` | the new GeoPackage; an existing file is refused. It is written locally and copied, so it may be on a network share | required |
+| `--csv` | the new CSV of the summary | `--output` with `.csv` |
+| `--min-exit-km2` | the smallest exit that gets its area and counts in `exit_count_over_min` and `receivers` | `0.01` |
+| `--dem-dir` | the directory of the rasters | `DEM_DIR` |
+
+The GeoPackage has three layers. `catchment_exits`, a point per exit at its cell of the largest
+accumulation within the polygon: `exit_id` (1 the largest), `kind` (`outflow`, `nodata`, `pit`),
+`destination` (the key of the receiving polygon, `outside_layer`, `nodata` or `pit`),
+`is_export_outlet`, `reenters_polygon` (the flow comes back into the polygon within its window),
+`area_km2` and `share_of_polygon` (the part of the polygon that leaves there), `boundary_cells`,
+`mean_slope_percent` of that part, `nmt_upstream_area_km2` (the accumulation of the point's cell,
+with any inflow; an exit of several cells may drain more than its point) and `elevation_m`.
+`catchment_exit_areas`, the part of the polygon that drains to
+each exit of at least `--min-exit-km2`. `catchment_exit_summary` (also the CSV), a row per polygon:
+`polygon_area_km2`, `cell_area_km2`, `outlet_upstream_area_km2` and
+`polygon_to_upstream_area_ratio` (as the export), `exit_count`, `exit_count_over_min`,
+`outlet_exit_km2` and `outlet_destination`, `other_exits_km2` (of which `reentering_km2`, `pit_km2`,
+`nodata_km2`), `largest_other_exit_km2` and `largest_other_exit_to`, and `receivers` (the area that
+leaves to each destination, `key: km²; ...`, the largest first). The 12 polygons of Hydroni
+(5 to 30 km², 5 m cells) take about 20 s.
+
+---
+
 ### `download_landcover.py`: download land cover
 
 Downloads land cover through Kartograf into its store: BDOT10k (GUGiK; the whole package of a county,
