@@ -43,10 +43,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NoReturn
 
+from shapely.geometry import box
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import unary_union
+
 from core._errors import BY_CODE
 from core.active_run import active_run_raster
 from core.errors import HydrografError, InvalidRequestError
-from utils.kartograf_set import SetInputs, nmt_segment, set_inputs
+from utils.kartograf_set import SHEET_SCALE, SetInputs, nmt_segment, set_inputs
 from utils.kartograf_store import (
     HSG_DEPTH,
     SHEET_SYSTEM,
@@ -58,6 +62,7 @@ from utils.kartograf_store import (
     refuse_shared_store,
     store_dir,
 )
+from utils.nmt_coverage import area_2180, check_nmt_coverage, sheet_frame
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1183,6 +1188,9 @@ def run_pipeline(
     units_catchments: tuple[Path, str | None, str] | None = None,
     units_resume: bool = True,
     fill_enclosed_nodata: bool = False,
+    coverage_area: BaseGeometry | None = None,
+    scale: str = "1:10000",
+    allow_uncovered: bool = False,
 ):
     """Run the full 10-step bootstrap pipeline.
 
@@ -1190,6 +1198,9 @@ def run_pipeline(
     steps 2 to 5 read the pinned files and download nothing. With ``units_path``
     step 3 processes the mosaic by PGW units (``step_process_dem``), and with
     ``fill_enclosed_nodata`` it interpolates the nodata the mosaic encloses first.
+    With ``coverage_area`` (EPSG:2180) step 3 first refuses sheets that leave part
+    of it, or a hole of their mosaic, uncovered (ADR-076; ``allow_uncovered``: a
+    warning); a run from a set is checked before step 1.
     """
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
@@ -1232,6 +1243,15 @@ def run_pipeline(
     if not tracker.is_skipped(3):
         t0 = tracker.start(3)
         try:
+            if coverage_area is not None:
+                # The sheets step 2 gave: a sheet without data is not among them
+                check_nmt_coverage(
+                    coverage_area,
+                    [path.stem for path in downloaded_files],
+                    scale=scale,
+                    resolution=resolution,
+                    allow_uncovered=allow_uncovered,
+                )
             _, detail, mosaic_bbox = step_process_dem(
                 downloaded_files,
                 output_dir,
@@ -1622,6 +1642,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--allow-uncovered",
+        action="store_true",
+        help=(
+            "Warn instead of refusing when the NMT sheets leave part of the area, or "
+            "a hole inside their mosaic, without data (ADR-076); with "
+            "dem.fill_enclosed_nodata the enclosed holes are interpolated (ADR-073)"
+        ),
+    )
+    parser.add_argument(
         "--port",
         type=int,
         default=8080,
@@ -1814,7 +1843,11 @@ def main():
     if args.skip_serve:
         skips.add(10)
 
+    from core.boundary import load_boundary
+
     inputs: SetInputs | None = None
+    # The area the NMT mosaic must cover, checked after step 2 (ADR-076)
+    coverage_area: BaseGeometry | None = None
     if args.project is not None:
         # Every check of ADR-067 before step 1: the project, the set, every pin
         try:
@@ -1825,6 +1858,14 @@ def main():
                 cache_dir=cache_dir,
                 landcover=4 not in skips,
                 hsg=5 not in skips,
+            )
+            # ADR-076: the sheets of the set cover the area and enclose no hole
+            check_nmt_coverage(
+                area_2180(load_boundary(inputs.area)),
+                inputs.sheets,
+                scale=SHEET_SCALE,
+                resolution=args.resolution,
+                allow_uncovered=args.allow_uncovered,
             )
         except HydrografError as error:
             fail(error)
@@ -1853,6 +1894,15 @@ def main():
         if not sheets:
             logger.error("Nie znaleziono arkuszy dla podanego obszaru")
             sys.exit(1)
+
+        if args.boundary_file:
+            coverage_area = area_2180(
+                load_boundary(args.boundary_file, args.boundary_layer)
+            )
+        elif args.sheets:
+            coverage_area = unary_union([sheet_frame(sheet) for sheet in sheets])
+        else:
+            coverage_area = area_2180(box(*bbox))
 
     # Print header
     print_header(
@@ -1933,6 +1983,9 @@ def main():
         units_catchments=units_catchments,
         units_resume=not args.no_resume,
         fill_enclosed_nodata=fill_enclosed_nodata,
+        coverage_area=coverage_area,
+        scale=args.scale,
+        allow_uncovered=args.allow_uncovered,
     )
     total_elapsed = time.time() - total_start
 

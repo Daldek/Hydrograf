@@ -101,6 +101,7 @@ cd backend
 | `--config` | YAML configuration file | `config.yaml` |
 | `--port` | HTTP port of the server | 8080 |
 | `--dry-run` | only show what would be done; with `--project`, after every check of the set | off |
+| `--allow-uncovered` | warn instead of refusing when the NMT sheets leave part of the area, or a hole inside their mosaic, without data (ADR-076) | off |
 
 `--bbox`, `--sheets`, `--boundary-file` and `--project` exclude each other.
 
@@ -127,6 +128,22 @@ cells of the run from then on: owned by a unit, routed and published in every ra
 included, and the depressions of step 7 count them. A value that is not `true` or `false` is refused
 (`validation_error`, exit 2). The run logs the setting, step 3 reports the filled cells, a run by
 units records it in its settings and the record of a set keeps it.
+
+**Coverage of the area** (ADR-076): the sheets of the mosaic must cover the area and enclose no
+hole. The frames of the sheets (their meridians and parallels projected to EPSG:2180) are unioned;
+what lies outside them, of the area (the outline of `--project`, `--boundary-file` or `--bbox`, the
+frames of `--sheets`) or of a hole that the frames enclose, is uncovered, parts narrower than three
+cells of `--resolution` left out. An uncovered part is refused (`no_data`, exit 14) with its km² and
+the sheets of the grid (`--scale`) that overlap it, for example:
+
+```text
+BŁĄD: Arkusze NMT zostawiają bez danych 9.751 km² obszaru lub wnętrza ich mozaiki; brakujące arkusze (2): N-33-118-B-a-4-2, N-33-120-D-a-3-3.
+```
+
+A set is checked before step 1, with its other checks; a download run at the start of step 3, on
+the sheets that step 2 got (a sheet without data at GUGiK is not among them). `--allow-uncovered`
+logs the same text as a warning and goes on: with `dem.fill_enclosed_nodata: true` the holes that
+do not reach the frame of the raster are interpolated, the rest stays nodata.
 
 **From a set** (ADR-067): `--project` and `--set` read a closed set of an Archiwista project
 (`archiwista-project/1`) and download nothing. Before step 1 the bootstrap checks the project file,
@@ -156,7 +173,7 @@ line of standard error, the error document `hydrograf-error/1`; the exit code is
 | 8 | `store_unavailable` | no store, or not a marked Kartograf store |
 | 9 | `io_error` | the project file or a pinned file cannot be read (the ACL) |
 | 12 | `forbidden` | `--bbox`, `--sheets` or `--boundary-file` while `HYDROGRAF_KARTOGRAF_ROOT` is set |
-| 14 | `no_data` | sheets, counties or the HSG raster missing from the set |
+| 14 | `no_data` | sheets, counties or the HSG raster missing from the set; the NMT sheets leave part of the area, or a hole inside their mosaic, without data |
 | 15 | `unsupported` | a project schema other than `archiwista-project/1` |
 
 The hint names the Archiwista action that fixes the set: „Zamknij zestaw”, „Weryfikuj”,

@@ -62,3 +62,8 @@ only when on, so the runs of the default keep their fingerprint and resume as be
   step 7 there.
 - A run of the same set with and without the setting differs only around the gaps; the alternative
   Hydroni data (`hydroni-alt`) is such a run.
+- The bootstrap refuses sheets that leave the area, or a hole that their mosaic encloses, uncovered
+  (ADR-076), so a missing sheet is named before the mosaic is built instead of drained into; the
+  setting fills the holes that remain, those of sheets the run allows with `--allow-uncovered` and
+  the nodata inside the sheets, which ADR-076 does not see. A gap on the frame of the area is no
+  enclosed nodata and stays.

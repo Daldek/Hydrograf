@@ -81,6 +81,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-073](decisions/0073-fill-enclosed-nodata.md) | Nodata that the DEM encloses is interpolated before the fill, on request | accepted | 2026-11-07 |
 | [ADR-074](decisions/0074-land-cover-from-the-bdot10k-partition-and-its-attributes.md) | The land cover is the BDOT10k partition split by its attributes, with the industrial complexes cut out of it | accepted | 2026-11-08 |
 | [ADR-075](decisions/0075-cn-of-soil-cover-complexes.md) | The CN is that of the soil-cover complexes, from Hydrolog's TR-55 table | accepted | 2026-11-08 |
+| [ADR-076](decisions/0076-bootstrap-refuses-nmt-sheets-that-leave-the-area-uncovered.md) | The bootstrap refuses NMT sheets that leave the area, or a hole of their mosaic, uncovered | accepted | 2026-11-09 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were
