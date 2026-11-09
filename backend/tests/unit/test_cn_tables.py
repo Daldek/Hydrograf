@@ -51,7 +51,6 @@ SOURCES_WITH_THE_CATEGORY_COVER = {
     ("zabudowa_przemysłowa", "KUPG:zakład metal."),
     ("zabudowa_przemysłowa", "KUPG:el. cieplna"),
     ("zabudowa_przemysłowa", "KUPG:el. atomowa"),
-    ("droga", "PTKM"),
     ("droga", "PTPL:utwardzony"),
     ("droga", "PTPL"),
     ("woda", "PTWP"),
@@ -97,8 +96,10 @@ def test_every_category_of_the_table_has_a_cn_on_every_soil_group(category):
         ("zabudowa_mieszkaniowa", "PTZB:wielorodzinna", (77, 85, 90, 92)),
         ("zabudowa_przemysłowa", "KUPG:zakład prod.", (81, 88, 91, 93)),
         ("zabudowa_przemysłowa", "PTZB:handl.-usług.", (89, 92, 94, 95)),
-        # Paved areas (TR-55 table 2-2a) and water surfaces (NEH 630 ch. 9, p. 9-1)
-        ("droga", "PTKM", (98, 98, 98, 98)),
+        # TR-55 table 2-2a: paved; paved road with open ditches incl. right-of-way
+        ("droga", "PTPL:utwardzony", (98, 98, 98, 98)),
+        ("droga", "PTKM", (83, 89, 92, 93)),
+        # Water surfaces (NEH 630 ch. 9, p. 9-1)
         ("woda", "PTWP", (98, 98, 98, 98)),
         # Open space, fair; dirt; newly graded areas (TR-55 table 2-2a)
         ("inny", "PTNZ:urządzenia", (49, 69, 79, 84)),

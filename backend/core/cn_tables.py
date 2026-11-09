@@ -91,7 +91,7 @@ COVER_BY_CATEGORY: Final[dict[str, Tr55Cover]] = {
         "roads (TR-55 table 2-2a)",
     ),
     "woda": Tr55Cover(
-        LandCover.PAVED,
+        LandCover.WATER,
         None,
         "Water surfaces: CN 98, as impervious areas (NEH 630, chapter 9, p. 9-1)",
     ),
@@ -116,6 +116,12 @@ COVER_BY_SOURCE: Final[dict[tuple[str, str], Tr55Cover]] = {
         LandCover.COMMERCIAL,
         None,
         "Urban districts: commercial and business, 85% impervious (TR-55 table 2-2a)",
+    ),
+    ("droga", "PTKM"): Tr55Cover(
+        LandCover.PAVED_ROAD_OPEN_DITCHES,
+        None,
+        "Streets and roads: paved; open ditches (including right-of-way) "
+        "(TR-55 table 2-2a)",
     ),
     ("inny", "PTPL:nieutwardzony"): Tr55Cover(
         LandCover.DIRT,
