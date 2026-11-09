@@ -1,7 +1,8 @@
 # ADR-073: Nodata that the DEM encloses is interpolated before the fill, on request
 
 **Date:** 2026-11-07
-**Status:** proposed (opt-in `dem.fill_enclosed_nodata`, default `false`); awaits the author
+**Status:** accepted (the author, 2026-11-09: opt-in `dem.fill_enclosed_nodata`, the default `false`
+unchanged)
 
 ## Context
 
