@@ -196,6 +196,12 @@ def boundary_to_bbox_2180(
     return tuple(gdf_2180.total_bounds)
 
 
+def boundary_area_km2(geom: BaseGeometry) -> float:
+    """Return the area in km² of a WGS84 geometry, measured in EPSG:2180."""
+    gdf = gpd.GeoDataFrame(geometry=[geom], crs="EPSG:4326")
+    return float(gdf.to_crs("EPSG:2180").geometry.area.iloc[0]) / 1_000_000
+
+
 def validate_boundary_file(file_path: Path) -> dict[str, Any]:
     """Validate boundary file and return metadata.
 
@@ -252,10 +258,7 @@ def validate_boundary_file(file_path: Path) -> dict[str, Any]:
         geom = load_boundary(file_path)
         bbox_wgs84 = boundary_to_bbox_wgs84(geom)
 
-        # Calculate area in km2 using EPSG:2180
-        gdf = gpd.GeoDataFrame(geometry=[geom], crs="EPSG:4326")
-        gdf_2180 = gdf.to_crs("EPSG:2180")
-        area_km2 = gdf_2180.geometry.area.iloc[0] / 1_000_000
+        area_km2 = boundary_area_km2(geom)
 
         # Read original CRS and feature count
         gdf_orig = gpd.read_file(actual_path)
