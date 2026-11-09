@@ -229,7 +229,7 @@ In `tests/unit/test_monotonic_smoothing.py`, through a helper that builds the fr
 7. `_load_stream_features` on the GeoPackage of `test_stream_burning.py`: stripped
    attributes, `''` for OT_SWRM_L, the parts of a MultiLineString with the attributes of
    their feature; `test_stream_burning.py`, `test_lake_drain.py` and
-   `test_unit_equivalence.py` pass unchanged.
+   `test_unit_equivalence.py` pass (the callers of the smoothing take its `flow_lines`).
 8. **The lakes take the directions of the smoothing** (`tests/unit/test_lake_drain.py`):
    a burned line given in `flow_lines` flows that way whatever its own DEM says; a
    watercourse through a lake whose outflow is digitized towards the lake, rising 0.7 m
@@ -253,16 +253,73 @@ In `tests/unit/test_monotonic_smoothing.py`, through a helper that builds the fr
    of the table.
 4. The full Hydroni area again: scheduled by the coordinator, not in this branch.
 
+## Results (2026-11-10)
+
+**Tests.** The tests above (12 in `test_monotonic_smoothing.py`, 3 in
+`test_stream_burning.py`, 2 in `test_lake_drain.py`, 1 in
+`test_check_stream_directions.py`) and the tests of the smoothing, the burning, the lakes,
+the unit equivalence, `process_dem` and its units pass (310). With the per-line rule of
+ADR-072 put back in place of `_line_directions`, the block, the two connectors, the mouth
+and the lakes fail. With the smoothing's directions, the lake of the end-to-end test is
+exorheic; read by the per-line rule on the smoothed DEM it was endorheic.
+
+**The diagnostic on h07** (`--burning main`, the catchments of `Obszar_h07.gpkg`, 53 s):
+the table above line for line, but the digitized direction decides 1,036 lines
+(383.2 km): the other is a closed piece of 0.07 m (line 892, MPHP 188522), which no rule
+orients. The rules reverse 96 lines (53.7 km): 69 of the 70 of the verdict (40.3 km) and
+27 more (13.4 km). No burned line where `test_ujscia` and `odwraca` disagree; the guard
+keeps line 7547 only (MPHP 186656, 1.63 km); none of the 25 lines of the Noteć (18.2 km)
+is reversed. The summary also gives the lines the guard keeps (`blok_zachowany`).
+
+**The smoothing on the whole grid** (`dem_mosaic.vrt`, 16,302 × 14,302 cells, the burning
+and the smoothing of step 3 with `main`; 47 s, peak 2.9 GB): 3,292 burned lines
+(2,224.4 km); the mouth decides 2,405 of them and reverses 58 (54.7 km), the DEM of the
+watercourse decides 190 and reverses 15 (20.6 km), the DEM of the line decides none, the
+digitized direction 610; the guard keeps one block, the line of 1,631 m of MPHP 186656. Of
+the lines within 1 km of h07 (2,154, 1,444.2 km; whole features joined by cells, not the
+pieces of the diagnostic, so fewer and longer lines): 61 reversed (55.7 km; the reference:
+96 pieces, 53.7 km), by the mouth 52 (46.4 km; 73, 44.2 km, and 46.1 km with ends joined
+within 7.5 m), by the DEM of the watercourse 9 (9.3 km; 23, 9.6 km), none of the Noteć.
+Beyond 1 km of h07, 6 lines of the Noteć without DEM data, digitized east, are reversed
+with their chain: they flow west.
+
+**Windows** of `dem_mosaic.vrt` (`gdal_translate -of VRT`), `process_dem` as a dry run with
+`main` burning, the smoothing, no lakes, no catchments and one threshold, this branch
+against its base `87033b5` (ADR-072); scratch in `/tmp`, 25–49 s and 0.9–1.5 GB a run. A D8
+sample is a cell of a line, but the two at each end, in the direction of its flow by these
+rules: with the flow when its D8 vector points along the line (the cell two ahead less
+the cell two behind), against when back. The steps are between consecutive cells of the
+line in the smoothed DEM; filled are the cells the depression fill raised.
+
+| Window (EPSG:2180, km); D8 cells changed | Lines | ADR-072 | ADR-077 |
+|---|---|---|---|
+| Kcynka, x 382–398, y 562–575; 27 of 8.3 M | the 4 lines of the Kcynka (18852) reversed, 7.3 km | D8 1,375 with / 0 against; 1,044 steps down / 343 up; 341 cells filled (≤ 0.22 m) | D8 1,375 / 0; 1,386 down / 1 up; none filled |
+| Noteć, x 372.0–422.1, y 575.0–588.2; 0 of 26.5 M | the Noteć (188), 70 lines, 65.5 km, mostly outside the data | D8 3,001 / 0 | D8 3,001 / 0 |
+| x 396–410, y 530–543; 10,142 of 7.3 M | the Mielneńska Struga (186176912), 11 lines reversed by the mouth, 5.5 km | D8 598 / 363; 175 down / 824 up; 754 filled (≤ 5.0 m) | D8 966 / 0; 999 down / 0 up; none filled |
+| same | the Sipiórka (18617652), 1 line reversed by the mouth, 3.1 km | D8 559 / 0; 0 down / 562 up; 560 filled (≤ 2.09 m) | D8 559 / 0; 562 down / 0 up; none filled |
+| x 376–386, y 517–529; 703 of 4.8 M | the Kanał Wrończyński (186658), 9 lines reversed by the mouth, 4.4 km | D8 735 / 3; 0 down / 765 up; 773 filled (≤ 1.94 m) | D8 738 / 0; 765 down / 0 up; none filled |
+
+In the Kcynka window the D8 along the reversed lines already ran downstream with ADR-072:
+its smoothing cut the 4 lines that only ADR-077 reverses (3.5 km) the other way (0 steps
+down, 617 up), and the depression fill raised 617 of their 621 cells, by up to 2.13 m,
+and drained them out. Now they descend the way they flow and the fill leaves the Kcynka
+alone; a line of 188522 (1.7 km) lies in a basin the fill raises in both runs. The Noteć
+window is unchanged; its 2 lines of the Noteć that the rules reverse lie outside the
+data. Where the D8 changes, along the Mielneńska Struga and the Kanał Wrończyński, every
+sample now runs to the mouth.
+
 ## Steps
 
 1. ✅ ADR-077, its line in `docs/DECISIONS.md`, the amendment note of ADR-072.
 2. ✅ `scripts/check_stream_directions.py`, its tests, `backend/scripts/README.md`
    (`8252a5e`).
-3. `core/hydrology.py`: `_load_stream_features`, `_quarter_rise`, `_mouth_directions`,
-   `_watercourse_directions`, `_line_directions`, the wiring and the diagnostics.
-4. The tests above.
-5. The columns `regula` and `odwraca` of the diagnostic; its README entry.
-6. Acceptance 2 and 3; `docs/CHANGELOG.md` (the smoothing changes the published flow),
+3. ✅ `core/hydrology.py`: `_load_stream_features`, `_quarter_rise`, `_mouth_directions`,
+   `_watercourse_directions`, `_line_directions`, the wiring and the diagnostics; the
+   lakes take the directions of the smoothing (`55ef7e8`).
+4. ✅ The tests above (`55ef7e8`, `ffcf53b`).
+5. ✅ The columns `regula`, `odwraca` and `blok_zachowany` of the diagnostic; its README
+   entry (`ffcf53b`).
+6. ✅ Acceptance 2 and 3 (above); `docs/CHANGELOG.md`, `docs/COMPUTATION_PIPELINE.md`,
    `docs/PROGRESS.md`.
 
 ## Open
