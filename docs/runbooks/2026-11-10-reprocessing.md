@@ -710,6 +710,10 @@ run python - < "$STG/flowacc.py" | tee "$STG/flowacc-after.txt"
 python3 "$STG/probe.py" http://127.0.0.1:8083 | tee "$STG/probe-staging.txt"
 ```
 
+`flowacc.py` prints the largest cell within five cells of production's outlet: on the run of
+2026-11-10 that is the junction just below the outlet (32,557,269 cells = 813.93 km²), so §5
+takes the outlet from the line `outlet …` of `$STG/cut.log` (31,680,357 cells = 792.009 km²).
+
 In a browser on `http://127.0.0.1:8083`: the welcome dialog names „zlewnia Kaczawy (ok. 791
 km²)”; the layers of land cover, soil groups, streams, sub-catchments of the four thresholds
 and depressions end at the boundary; „Identyfikuj” on a nameless stream says „bez nazwy”; a
