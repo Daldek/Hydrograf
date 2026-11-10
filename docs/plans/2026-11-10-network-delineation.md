@@ -698,13 +698,16 @@ and database: the Kamiennik (A at 51.01538° N, 15.890496° E, its three largest
 their mouths and a gauge) gives 37.223575 km² in 8 elements, B5 to the cell, a valid coverage of
 5,259 vertices, reach slopes of 7.0–9.5 ‰ from the NMT and BDOT10k check lengths 4–6 % shorter
 than the reaches, in 1.8 s after the graph is loaded (548 MB peak). The Kaczawa node (A at
-51.128° N, 15.909° E, 238.7 km², with the Kamiennik and the three largest tributaries) is refused
-by B5: production's database holds 108 of its 41,515 units of 1 ha otherwise than the label raster
-`10_subcatchments_10000` (70 of them, 1.6 km², where the current rasters have no NMT data), so the
-elements hold 9,548,941 cells and the graph 9,613,121; the network is refused (500
-`network_area_mismatch`) until the rasters and the database come from one run. With the check
-bypassed in a throwaway script the same network takes 6.1 s for a window of 5,324 × 3,482 cells,
-1.30 GB peak (0.94 GB with `GDAL_CACHEMAX=64`).
+51.128° N, 15.909° E, 240.3 km², with the Kamiennik and the three largest tributaries) was
+refused by B5: production's database held 108 of its 41,515 units of 1 ha otherwise than the
+label raster `10_subcatchments_10000`, so the elements held 9,548,941 cells and the graph
+9,613,121 (500 `network_area_mismatch`). Both came from one run, cut two ways: the rows by flow
+topology, the rasters by the boundary polygon, the divide of the run of 2026-10-30, so 64,321
+cells of the kept units (70 units whole, 38 in part) had no raster data and 6,540 cells of the
+rasters kept the labels of 31 deleted units. Production's rasters were re-cut to the units of
+the database on 2026-11-10 (runbook 2026-11-10, §11): since then every unit equals its labels
+at the four thresholds. With the check bypassed in a throwaway script the same network took
+6.1 s for a window of 5,324 × 3,482 cells, 1.30 GB peak (0.94 GB with `GDAL_CACHEMAX=64`).
 
 **S3** (`feat/network-delineation-api`): `POST /api/delineate-network` (`api/endpoints/network.py`,
 the models in `models/schemas.py`) runs `delineate_network` under a `threading.Lock` of the worker

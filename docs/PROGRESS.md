@@ -28,9 +28,9 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 
 - **Code:** checkout `~/workspace/Hydrograf`, local `develop` at `894810c` (0.5.0.dev0) since 2026-11-10 05:00 CET. The default compose project (`hydro_db`, `hydro_api`, `hydro_nginx`) with the development override: the code is mounted from the checkout and served with `--reload`, so an edit there reaches the live API, and the files must be readable by uid 999 (check out under `umask 022`). `docker/nginx.conf` is mounted as one file: restart `hydro_nginx` after a checkout rewrites it. Image `hydrograf-api:latest`; `.env` names `HYDROGRAF_PUBLIC_HOST=hydrograf-test.debever.pl` and the private Kartograf store (no `HYDROGRAF_KARTOGRAF_ROOT`).
 - **Access:** `127.0.0.1:8080`; public `https://hydrograf-test.debever.pl` through a Cloudflare Tunnel. Give testers the `https://` address: the HTTP redirect is a 301, which can turn a POST into a GET.
-- **Data:** the Kaczawa above the node 51.222825 N 16.179380 E, boundary `data/boundary/zlewnia_kaczawy_790km2_przyciecie.gpkg` (790.564 km²; `instance.json` says 790.6), reprocessed on 2026-11-10 by [the runbook](runbooks/2026-11-10-reprocessing.md) (its §11 is the log): alembic `006`; 41,515 / 4,548 / 496 / 49 segments at 1 ha / 10 ha / 1 km² / 10 km², one outlet each; the basin of the tables is 792.009 km² (the DEM run from before the cut keeps 1.61 km² beyond the boundary); a graph of 46,608 nodes; the land cover of the BDOT10k packages 0205, 0206, 0207, 0209, 0219, 0221, 0226 and 0262; soil B 99.50 / C 0.14 / D 0.36 %; 134,352 PMAXTP points; the SFINCS result `sfincs-kamiennik-24h-p1` under „Wyniki analiz”. The cache has the Kartograf 0.7.0 layout (`cache/bdot10k/`, `cache/soil_hsg/hsg_poland.tif`, no `cache/kartograf/`): a reprocessing passes the packages and the HSG raster explicitly and downloads nothing (runbook §0).
+- **Data:** the Kaczawa above the node 51.222825 N 16.179380 E, boundary `data/boundary/zlewnia_kaczawy_790km2_przyciecie.gpkg` (790.564 km²; `instance.json` says 790.6), reprocessed on 2026-11-10 by [the runbook](runbooks/2026-11-10-reprocessing.md) (its §11 is the log): alembic `006`; 41,515 / 4,548 / 496 / 49 segments at 1 ha / 10 ha / 1 km² / 10 km², one outlet each; the tables and the rasters of `data/nmt` hold the same basin of 792.009 km² (31,680,357 cells; the rasters were re-cut to the sub-catchments of the tables on 2026-11-10 at 23:53 CET with 14 s of downtime, so every sub-catchment equals its label raster at the four thresholds): 1.608 km² of it lie beyond the boundary (98.4 % of the 1.604 km² block at 50.901 N 15.959 E in the aPGW catchment of the Kaczawa, RW60000613839), and 0.164 km² inside the boundary drain elsewhere and have no raster data; a graph of 46,608 nodes; the land cover of the BDOT10k packages 0205, 0206, 0207, 0209, 0219, 0221, 0226 and 0262; soil B 99.50 / C 0.14 / D 0.36 %; land cover, soil groups, `bdot_streams`, the overlays, the depressions and the DEM tiles end at the boundary; 134,352 PMAXTP points; the SFINCS result `sfincs-kamiennik-24h-p1` under „Wyniki analiz”. The cache has the Kartograf 0.7.0 layout (`cache/bdot10k/`, `cache/soil_hsg/hsg_poland.tif`, no `cache/kartograf/`): a reprocessing passes the packages and the HSG raster explicitly and downloads nothing (runbook §0).
 - **Rules:** run a bootstrap or a DEM run only in a one-off container (`docker compose run --rm --no-deps api ...`), never by `exec` in `hydro_api` (an OOM there takes the API down); `docker builder prune -f` before an image build while Docker's data root is on `/`.
-- **Backup and rollback:** `/data/nmt/hydrograf-backup-2026-11-10/` (`hydro_db.dump` at alembic `004` with `SHA256SUMS`, `frontend_data.tar.zst`, `frontend-data-pre/`, `env`, `git-head.txt` `94d7523`, `new-head.txt` `894810c`, `tiles_metadata.json`, `switch-2026-11-10.log`, `staging-logs.tar.zst`) and the image `hydrograf-api:pre-2026-11-10`. The quick rollback of the runbook's §8 no longer exists (its §9 removed the old database, rasters and tiles): a rollback restores the dump into a new database, checks out `94d7523` with the old image and builds the rasters and tiles of 2026-11-05 again; no backup holds them, while `/data/nmt/hydrograf-v050/precut` and `/data/nmt/hydrograf-backup-2026-11-01/` hold those from before the cut of 2026-11-01. The older backups in `/data/nmt/` (2026-11-01, the state before the cut and the source of the runbook's §4.9; 2026-11-02; 2026-11-04-handoff, -pinset, -std10; 2026-11-05-lutz, -v050; the feedback backup of 2026-11-03) stay; their images are gone.
+- **Backup and rollback:** `/data/nmt/hydrograf-backup-2026-11-10/` (`hydro_db.dump` at alembic `004` with `SHA256SUMS`, `frontend_data.tar.zst`, `frontend-data-pre/`, `env`, `git-head.txt` `94d7523`, `new-head.txt` `894810c`, `tiles_metadata.json`, `switch-2026-11-10.log`, `staging-logs.tar.zst`) and the image `hydrograf-api:pre-2026-11-10`. `data/nmt.pre-recut` holds the rasters of 2026-11-10 04:37 cut to the boundary: the re-cut is undone by stopping the API, reversing its two renames and starting it (runbook §11). The quick rollback of the runbook's §8 no longer exists (its §9 removed the old database, rasters and tiles): a rollback restores the dump into a new database, checks out `94d7523` with the old image and builds the rasters and tiles of 2026-11-05 again; no backup holds them, while `/data/nmt/hydrograf-v050/precut` and `/data/nmt/hydrograf-backup-2026-11-01/` hold those from before the cut of 2026-11-01. The older backups in `/data/nmt/` (2026-11-01, the state before the cut and the source of the runbook's §4.9; 2026-11-02; 2026-11-04-handoff, -pinset, -std10; 2026-11-05-lutz, -v050; the feedback backup of 2026-11-03) stay; their images are gone.
 
 ### Hydroni instance
 
@@ -60,7 +60,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    - A large precomputed delineation still takes tens of seconds: the Wełna at 1 km² (500 km²,
      Hydroni) took 51.4 s: the merge 16.9 s (the union 6.0 s and the boundary smoothing of ADR-032
      9.9 s: a ±2 m buffer, three Chaikin iterations up to 128k vertices, `buffer(0)`; a faster
-     smoothing changes the shape, Open questions 3), the land cover query 7.7 s (10.1 s before
+     smoothing changes the shape, Open questions 2), the land cover query 7.7 s (10.1 s before
      `07112ce`), the flow paths 12.9 s (raster reads from the NAS 6.1 s; `np.isin` 2.4 s, about 2 s
      less with a lookup table) and the Thiessen weighting 3.2 s (about 2.5 s less with a prepared
      geometry); a batched union is 1 s slower than `ST_UnaryUnion`.
@@ -145,20 +145,32 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      D10; Kartograf's to fix).
 10. **Network delineation at control points** (the author's decisions B1–B7 of 2026-11-10,
     [the plan](plans/2026-11-10-network-delineation.md), ADR-080): `POST /api/delineate-network`,
-    the map mode „Sieć zlewni” and one hand-off of the whole network to Hydrolog's Sieć. S1 and S2
-    are in `develop` (`30e7295`): `core/cell_parameters.py` (the cell measures of the export and
-    the overland segment of `process_dem`, a numba walk along the D8 directions),
-    `core/network_tree.py` (the tree on the graph) and `core/network_delineation.py` (snapping,
-    window, element raster, B5, measures, coverage, reaches), the plan's tests 1–14; production's
-    database and label raster of 1 ha disagree on 108 units (the plan's Results), so B5 refuses
-    the Kaczawa networks of S5 until both come from one run. S3 (`feat/network-delineation-api`,
-    pushed, not merged): the endpoint, its lock per worker, `build_network_handoff` with Nogat's
-    `node_provenance` (envelope `8848c26`), Hydrolog `930915d` of Nogat's release set
-    candidate-3, `GDAL_CACHEMAX=64` for the API, the plan's tests 15–21. Next: S4 (the front end,
-    on S3's branch), then S5 (the smoke on production's data); S3 and S4 merge after S5, and
-    Nogat adds the registry edge of its D10 when S3 is in `develop`. No release is cut for this
-    work now; networks above 60 M cells stay refused.
-11. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
+    the map mode „Sieć zlewni” and one hand-off of the whole network to Hydrolog's Sieć. S1
+    (`refactor/cell-parameters`, merged with `ca5a0bb`): the cell measures of the export and the
+    overland segment of `process_dem` are in `core/cell_parameters.py`, the overland segment a
+    numba walk along the D8 directions instead of pyflwdir's `path`. S2
+    (`feat/network-delineation-core`, merged with `30e7295`): `core/network_tree.py` (the tree on
+    the graph) and `core/network_delineation.py` (snapping, window, element raster, B5, measures,
+    coverage, reaches) with the plan's tests 1–14. Production's database and label rasters
+    disagreed on 108 units of 1 ha (the plan's Results) until the re-cut of 2026-11-10 23:53
+    (Production, Data); since then every unit equals its labels, so B5 no longer refuses the
+    Kaczawa networks of S5 for that (checked unit by unit; the S2 smoke was not run again). S3
+    (`feat/network-delineation-api`, pushed, not merged): the endpoint, its lock per worker,
+    `build_network_handoff` with Nogat's `node_provenance` (envelope `8848c26`), Hydrolog
+    `930915d` of Nogat's release set candidate-3, `GDAL_CACHEMAX=64` for the API, the plan's
+    tests 15–21. Next: S4 (the front end, on S3's branch), then S5 (the smoke on production's
+    data); S3 and S4 merge after S5, and Nogat adds the registry edge of its D10 when S3 is in
+    `develop`. No release is cut for this work now; networks above 60 M cells stay refused.
+11. **Production, at its next rebuild: land cover and soil groups beyond the boundary.** The basin
+    of the tables and rasters (792.009 km²) holds 1.608 km² beyond the boundary, among them the
+    block of 1.604 km² at 50.901 N 15.959 E, which has no `land_cover` or `soil_hsg` (cut to the
+    boundary by the runbook's `clip.py`): its watersheds get their CN from the rest of their
+    area. A further 4.3 km² of the aPGW catchment RW60000613839 „Kaczawa do Nysy Szalonej” lie
+    outside the boundary (largest part 2.32 km² at 51.1507 N 15.8809 E), and the DEM run does not
+    route them into the Kaczawa either. At the next rebuild: take the boundary from the run's own
+    sub-catchments (or the aPGW catchments) and clip the land cover, the soil groups,
+    `bdot_streams` and the presented layers to it.
+12. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
     surface (three unauthenticated DoS paths first), the „brak danych” of the hyetograph that a
     tester reported, `--thresholds` of the bootstrap, building raising (ADR-033), the read
     endpoints of v0.5.x, clipping the presented data to the boundary, the GPT items B6–B15, the
@@ -169,21 +181,18 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 
 1. D5: the HSG fallback „B” where SoilGrids has no data, and step 5 as non-critical (a failed
    step 5 still ends the bootstrap with exit 0); BACKLOG.
-2. Production: the basin of the tables is 792.009 km² while the boundary is 790.564 km² (1.61 km²
-   of the basin lies beyond it, from the DEM run before the cut): keep it, or cut the tables to the
-   boundary?
-3. A faster boundary smoothing (ADR-032) for large watersheds changes the shape of the boundary:
+2. A faster boundary smoothing (ADR-032) for large watersheds changes the shape of the boundary:
    worth it for the 9.9 s of a 500 km² watershed?
-4. The text of `docs/CLA.md` and how the CLA is signed (`CONTRIBUTING.md` and the pull request
+3. The text of `docs/CLA.md` and how the CLA is signed (`CONTRIBUTING.md` and the pull request
    template name the file; DEV-16.2).
-5. D12 of step H1: a set's pins of producers other than Kartograf (Obserwator) are skipped
+4. D12 of step H1: a set's pins of producers other than Kartograf (Obserwator) are skipped
    (`utils/kartograf_set.py`): keep that once sets have several producers?
-6. Show the record of the set (`bootstrap_set.json`) in the admin panel?
-7. The row names „Wskaźnik rzeźby” (ΔH/√A is rather the catchment slope or Melton's index) and
+5. Show the record of the set (`bootstrap_set.json`) in the admin panel?
+6. The row names „Wskaźnik rzeźby” (ΔH/√A is rather the catchment slope or Melton's index) and
    „Liczba chropowatości” (no Polish source for the name; INFO_TEXTS_SOURCES).
-8. `null` instead of 0.0 in `elevations_m` of `POST /api/terrain-profile` inside DEM gaps (a
+7. `null` instead of 0.0 in `elevations_m` of `POST /api/terrain-profile` inside DEM gaps (a
    breaking change; B5 in BACKLOG).
-9. Building raising (ADR-033) in the pipeline (BACKLOG: to be decided by the author).
-10. Delete `/data/nmt/pilot_opolskie/` (45 MB, the pilot of 2026-09 with sheets outside Opolskie)?
-11. The ADR on NMT sheet versions (BACKLOG), partly answered by the versions of the Kartograf store
-    (ADR-061).
+8. Building raising (ADR-033) in the pipeline (BACKLOG: to be decided by the author).
+9. Delete `/data/nmt/pilot_opolskie/` (45 MB, the pilot of 2026-09 with sheets outside Opolskie)?
+10. The ADR on NMT sheet versions (BACKLOG), partly answered by the versions of the Kartograf
+    store (ADR-061).
