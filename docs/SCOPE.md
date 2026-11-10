@@ -409,7 +409,7 @@ This document defines precisely:
 
 #### 3.1.4 Precipitation Data
 
-**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at commit `1ee5457`, package `obserwator`)
+**Source:** IMGW - the Pmax_PT atlas through Obserwator (IMGWTools until its v3.0.0; pinned at commit `f9f4ee7`, package `obserwator`)
 **Format:** Points of a regular grid, not meteorological stations: one request to IMGW per point
 **Spatial extent:** The grid points within the bbox of the analysis, 2 km apart (`--spacing` of `scripts/preprocess_precipitation.py`, bootstrap step 6 uses 2.0)
 **Parameters:**
@@ -519,9 +519,9 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 1.0.0.dev0 (commit `1ffcd6b` of `develop`, with the official inputs of tc; hydrological calculations)
-- Kartograf 0.8.0.dev0 (commit `9deaa31` of `develop`, the release set of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
-- Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `1ee5457`, package `obserwator`; design precipitation from IMGW)
+- Hydrolog 1.0.0.dev0 (commit `759d7ef` of `develop`, the release set candidate-2 of Nogat, with the official inputs of tc; hydrological calculations)
+- Kartograf 0.8.0.dev0 (commit `d0990c8` of `develop`, the release set candidate-2 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
+- Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `f9f4ee7`, the release set candidate-2 of Nogat, package `obserwator`; design precipitation from IMGW)
 
 #### Frontend
 **Languages:** HTML5, CSS3, JavaScript (ES6+) — Vanilla JS, no framework
@@ -957,6 +957,7 @@ PHASE 3: Hydrograph generation
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.11 (2026-11-10): the producers follow the release set candidate-2 of Nogat (`587c909`): Kartograf `d0990c8`, Obserwator `f9f4ee7`, Hydrolog `759d7ef`
 - 1.10 (2026-11-05): Hydrolog moves to `1ffcd6b` of `develop` (the official inputs of tc); Hydrograf computes tc only with Hydrolog
 - 1.9 (2026-11-04): Obserwator moves to `1ee5457` of the release set (3.0.0.dev0)
 - 1.8 (2026-11-03): the producers follow the release set of Nogat (Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`); the package `imgwtools` becomes `obserwator`

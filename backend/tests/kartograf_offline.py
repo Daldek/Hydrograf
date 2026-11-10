@@ -39,16 +39,17 @@ NMT_URL = (
 )
 
 
-def asc(sheet: str, seed: int = 0) -> bytes:
-    """Build a 2 x 2 ESRI ASCII grid of the frame of ``sheet`` (PL-1992).
+def asc(sheet: str, seed: int = 0, cell_m: float = 5.0) -> bytes:
+    """Build a 2 x 2 ESRI ASCII grid at the lower left corner of ``sheet`` (PL-1992).
 
-    The four values follow ``seed``, so that two flights have different content.
+    The cells are ``cell_m`` wide, the resolution of the index record, which Kartograf
+    checks against the grid. The four values follow ``seed``, so that two flights have
+    different content.
     """
     frame = kartograf.SheetParser(sheet).get_bbox()
-    cell = min(frame.max_x - frame.min_x, frame.max_y - frame.min_y) / 2
     return (
         f"ncols 2\nnrows 2\nxllcorner {frame.min_x}\nyllcorner {frame.min_y}\n"
-        f"cellsize {cell}\nnodata_value -9999\n"
+        f"cellsize {cell_m}\nnodata_value -9999\n"
         f"{seed} {seed + 1}\n{seed + 2} {seed + 3}\n"
     ).encode()
 
@@ -121,7 +122,8 @@ class GugikIndex:
             self.downloaded.append(record.url)
         path.parent.mkdir(parents=True, exist_ok=True)
         name = record.url.rsplit("/", 1)[-1]
-        path.write_bytes(asc(record.sheet, int(name.split("_")[0])))
+        seed = int(name.split("_")[0])
+        path.write_bytes(asc(record.sheet, seed, record.resolution_m or 5.0))
         return path
 
     def length(self, record: SkorowidzRecord) -> int | None:
