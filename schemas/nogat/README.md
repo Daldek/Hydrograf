@@ -13,11 +13,12 @@ Verbatim copies (ERR-3, AGI-4.1) of the files below, from the standard 2.1 of th
   reports REST errors as `application/problem+json` and uses only the registry (see the
   deviations AGI-4.1 and AGI-4.2 in `CLAUDE.md`).
 
-And, outside the standard, from commit `8727f6e` of Nogat (item 6 of Nogat's
-`docs/plans/2026-11-01-nogat-gui-platform.md`; its example carries the flow path fields of
-the official tc inputs; SHA-256
-`15c82f6a9e0107ddf1c6846f8053d7da9991c1e91679f93d5da4a2fadf6fd6e4`, the copy Hydrolog
-reads):
+And, outside the standard, from commit `8848c26` of Nogat (item 6 of Nogat's
+`docs/plans/2026-11-01-nogat-gui-platform.md`, with the optional `node_provenance` of step 1
+of its `docs/plans/2026-11-10-node-provenance-in-handoff.md`: the origin of each node of a
+network; SHA-256 `84c6856d1148acdc08bf79600c8cdab03674e81fe1f30eb7abeb66629b5742ed`.
+Hydrolog reads the copy of `8727f6e` until its own step 3, which takes the same documents,
+`node_provenance` as an unknown field):
 
 - `handoff-1.schema.json` (Nogat `schemas/exchange/handoff-1.schema.json`): the envelope
   `nogat-handoff/1` of data handed between the GUIs of the ecosystem. The API writes the
