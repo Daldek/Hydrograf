@@ -163,7 +163,7 @@ roads with open ditches including right-of-way (83/89/92/93, the row PTKM descri
 the right-of-way with ditches and rail beds, 17 km² in h07, ≤ 0.1 CN on average),
 residential 1/4 acre (38%), woods–grass combination, and water at 98.
 
-## Amendment 2026-11-09: the rows Hydrolog added
+## Amendment (2026-11-09): the rows Hydrolog added
 
 Hydrolog `develop` @ `4fad769` adds the missing TR-55 rows (Hydrograf's request above):
 water at 98 for every group (it was 100), paved roads with open ditches including
