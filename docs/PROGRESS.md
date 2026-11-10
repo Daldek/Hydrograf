@@ -62,6 +62,7 @@
 4. Merge `develop` → `main`; tag `v0.5.0` stawia autor.
 5. Po wydaniu: S5 (bootstrap z zestawu Archiwisty), dane Dockera z `/` na `/data` ([BACKLOG.md](BACKLOG.md)).
 6. ✅ (2026-11-03, `feature/pin-set`) Piny za zestawem wydania Nogata (candidate-1, plan Nogata `docs/plans/2026-11-03-one-pin-set.md`, D5 dopuszcza to w zamrożeniu jako zmianę API producenta): Kartograf `9deaa31`, Obserwator `ea158dc` (dystrybucja `obserwator` zamiast IMGWTools `71bae77`), Hydrolog `2eb8bd0`; importy `obserwator.fetch_pmaxtp` i `ObserwatorConnectionError`, `ObserwatorDataError`, `ObserwatorValidationError` zamiast `IMGW*Error`. Własne ustawienia `IMGW_GRID_SPACING_KM` i `IMGW_RATE_LIMIT_DELAY_S` nazywają dostawcę i zostają. Produkcja ma obraz ze starymi pinami do przebudowy przez autora.
+7. (2026-11-10, `chore/pins-candidate-2`, pushed, not merged) Pins follow Nogat's release set candidate-2 (Nogat `587c909`): Kartograf `d0990c8` (was `9deaa31`), Obserwator `f9f4ee7` (was `1ee5457`), Hydrolog `759d7ef` (was `4fad769`); the calls of Hydrograf unchanged; the offline GUGiK stub of the tests writes grids of the record's cell size, which Kartograf now checks (`ResolutionMismatchError`). No deployment: production keeps its image until the author merges and rebuilds.
 
 ## Status projektu
 

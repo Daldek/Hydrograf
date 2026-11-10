@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
 │  │  Obserwator   │   │   Kartograf   │   │   Hydrolog    │              │
-│  │  1ee5457      │   │   9deaa31     │   │   1ffcd6b     │              │
+│  │  f9f4ee7      │   │   d0990c8     │   │   759d7ef     │              │
 │  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
 │  └───────────────┘   └───────────────┘   └───────────────┘              │
 │                                                                         │
@@ -30,22 +30,22 @@
 
 | Project | Depends on | Type of dependency | Version |
 |---------|-----------|--------------------|---------|
-| **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit 1ee5457 (3.0.0.dev0) |
-| **Hydrograf** | Kartograf | direct (pyproject.toml) | commit 9deaa31 (0.8.0.dev0) |
-| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 1ffcd6b (1.0.0.dev0) |
+| **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit f9f4ee7 (3.0.0.dev0) |
+| **Hydrograf** | Kartograf | direct (pyproject.toml) | commit d0990c8 (0.8.0.dev0) |
+| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 759d7ef (1.0.0.dev0) |
 | **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
 
 **Note:** Hydrolog no longer depends on IMGWTools (removed in v0.5.2).
 
 ### Installing the dependencies (`backend/pyproject.toml`, versions in `backend/uv.lock`)
 
-The three producers are pinned by the commits of the release set of Nogat (candidate-1: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag:
+The three producers are pinned by the commits of the release set of Nogat (candidate-2, Nogat `587c909`: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag:
 
 ```toml
 # [tool.uv.sources]
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "1ee54573453473392f21e2c8bb34f76e4976e03f" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "9deaa314c88f89ea2d9308481e0c0b04751fc792" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "4fad769539105815e81b53bedcdbfdcdebe07a50" }
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "f9f4ee7927ba520d3e82d3e289872090ae24e2ec" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "d0990c89da88e73b9081fe33a151ba9d27b4f820" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "759d7ef0e99b654c4aff172d69439a6d8df42db2" }
 ```
 
 ---
