@@ -9,8 +9,10 @@ reference systems.
 import math
 from typing import Any
 
+import shapely
 from pyproj import Transformer
 from shapely.geometry import Point, Polygon, mapping
+from shapely.geometry.base import BaseGeometry
 
 # PL-2000 zone -> EPSG code; zone n has its central meridian at 3n °E
 PL2000_EPSG_BY_ZONE = {5: 2176, 6: 2177, 7: 2178, 8: 2179}
@@ -202,6 +204,24 @@ def transform_polygon_pl1992_to_wgs84(polygon: Polygon) -> Polygon:
     interiors = [transform_coords(ring.coords) for ring in polygon.interiors]
 
     return Polygon(exterior, interiors)
+
+
+def transform_geometry_pl1992_to_wgs84(geometry: BaseGeometry) -> BaseGeometry:
+    """
+    Transform any Shapely geometry from PL-1992 to WGS84 (longitude, latitude).
+
+    Parameters
+    ----------
+    geometry : BaseGeometry
+        Geometry in EPSG:2180 (PL-1992): a point, line, polygon or multipart one
+
+    Returns
+    -------
+    BaseGeometry
+        The same geometry in EPSG:4326 (WGS84)
+    """
+    transformer = _get_transformer_pl1992_to_wgs84()
+    return shapely.transform(geometry, transformer.transform, interleaved=False)
 
 
 def transform_polygon_wgs84_to_pl1992(polygon: Polygon) -> Polygon:

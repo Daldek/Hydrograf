@@ -125,6 +125,17 @@ class TestCatchmentGraphTraversal:
         indices = small_graph.traverse_upstream(0)
         assert set(indices) == {0}
 
+    def test_upstream_tree_gives_each_node_the_node_below_it(self, small_graph):
+        """Each node after the node it drains into; -1 below the start."""
+        order, below = small_graph.upstream_tree(3)
+        nodes = order.tolist()
+        below_of = dict(zip(nodes, below.tolist(), strict=True))
+        assert nodes[0] == 3
+        assert sorted(nodes) == sorted(small_graph.traverse_upstream(3).tolist())
+        assert below_of == {3: -1, 2: 3, 0: 2, 1: 2}
+        position = {node: i for i, node in enumerate(nodes)}
+        assert all(position[b] < position[n] for n, b in below_of.items() if b >= 0)
+
     def test_traverse_not_loaded_raises(self):
         """Traversal on unloaded graph should raise RuntimeError."""
         cg = CatchmentGraph()

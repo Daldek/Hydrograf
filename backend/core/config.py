@@ -99,26 +99,26 @@ class Settings(BaseSettings):
         """
         if self.stream_distance_path and os.path.exists(self.stream_distance_path):
             return self.stream_distance_path
-        return self._pipeline_raster("04b_stream_distance")
+        return self.resolve_pipeline_raster("04b_stream_distance")
 
     def resolve_flowdir_path(self) -> str | None:
         """Find flow direction raster (pyflwdir uint8 D8)."""
-        return self._pipeline_raster("03_flowdir")
+        return self.resolve_pipeline_raster("03_flowdir")
 
     def resolve_subcatchment_labels_path(self, threshold_m2: int) -> str | None:
         """Find the sub-catchment label raster of a threshold (int32, segment_idx)."""
-        return self._pipeline_raster(f"10_subcatchments_{threshold_m2}")
+        return self.resolve_pipeline_raster(f"10_subcatchments_{threshold_m2}")
 
     def resolve_slope_path(self) -> str | None:
         """Find slope raster."""
-        return self._pipeline_raster("05_slope")
+        return self.resolve_pipeline_raster("05_slope")
 
     def _active_run_raster(self, raster: str) -> str | None:
         """``dem_mosaic_<raster>.vrt`` of the active unit run of DEM_DIR, or None."""
         mosaic = active_run_raster(self.dem_dir, raster)
         return str(mosaic) if mosaic is not None else None
 
-    def _pipeline_raster(self, raster: str) -> str | None:
+    def resolve_pipeline_raster(self, raster: str) -> str | None:
         """Return a raster of the pipeline in DEM_DIR, or None if it has none.
 
         The VRT mosaic of the active unit run (``core.active_run``) when DEM_DIR

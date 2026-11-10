@@ -10,26 +10,20 @@ of both is a fake: synthetic land cover, BDOT10k flags and the ends of the strea
 segments.
 """
 
-from contextlib import contextmanager
 from itertools import combinations
-from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import geopandas as gpd
 import numpy as np
 import pytest
 import rasterio
 from pyproj import CRS
-from rasterio.transform import from_origin
-from scipy import sparse
-from shapely import wkb, wkt
+from shapely import wkt
 from shapely.geometry import MultiPolygon, box
 from shapely.ops import unary_union
 
 import core.config
 from api.endpoints.watershed import _build_watershed_response
 from core.active_run import write_active_run
-from core.catchment_graph import CatchmentGraph
 from core.cell_parameters import main_channel
 from core.config import Settings
 from core.watershed_service import boundary_to_polygon
@@ -42,7 +36,15 @@ from scripts.export_catchment_parameters import (
     read_polygon_cells,
     read_polygons,
 )
-from scripts.process_dem import process_dem
+from tests.fixtures.pipeline_run import (
+    PANEL_FIELDS,
+    PANEL_TOLERANCES,
+    FakeDatabase,
+    catchment_graph,
+    land_cover_layout,
+    run_pipeline,
+    soil_layout,
+)
 from utils.geometry import transform_wgs84_to_pl1992
 
 CELLS = 100
@@ -59,63 +61,16 @@ ESRI_102173 = (
     'PARAMETER["false_easting",500000],PARAMETER["false_northing",-5300000],'
     'UNIT["metre",1],AUTHORITY["ESRI","102173"]]'
 )
-# The panel's values that the graph aggregates from sub-catchment values rounded
-# to 0.01 (mean elevation [m], mean slope [%]), and the outlet, which the panel
-# takes at the end of the outlet's stream segment snapped to the boundary
-TOLERANCES = {"elevation_mean_m": 0.01, "mean_slope_m_per_m": 0.00005}
-PANEL_FIELDS = (
-    "area_km2",
-    "perimeter_km",
-    "elevation_min_m",
-    "elevation_max_m",
-    "elevation_mean_m",
-    "mean_slope_m_per_m",
-    "channel_length_km",
-    "real_channel_length_km",
-    "channel_slope_m_per_m",
-    "flow_path_length_km",
-    "flow_path_slope_m_per_m",
-    "overland_length_km",
-    "overland_slope_m_per_m",
-    "divide_flow_path_km",
-    "cn",
-    "compactness_coefficient",
-    "circularity_ratio",
-)
 # Synthetic land cover: forest in the west, arable land in the east, a pond between
-_POND = box(X0 + 400, Y1 - 600, X0 + 600, Y1 - 400)
-LAND_COVER = (
-    ("las", "PTLZ", 0.0, box(X0, Y1 - 1000, X0 + 500, Y1).difference(_POND)),
-    (
-        "grunt_orny",
-        "PTTR:grunty orne",
-        0.1,
-        box(X0 + 500, Y1 - 1000, X0 + 1000, Y1).difference(_POND),
-    ),
-    ("woda", "PTWP", 1.0, _POND),
-)
+LAND_COVER = land_cover_layout(X0, Y1, CELLS * CELL_M, CELLS * CELL_M)
 # Synthetic soil groups: A in the west, B in the rest but a strip in the north-east
 # without a soil group
-SOILS = (
-    ("A", box(X0, Y1 - 1000, X0 + 300, Y1)),
-    ("B", box(X0 + 300, Y1 - 1000, X0 + 1000, Y1 - 200)),
-)
-
-
-def is_real(segment_idx):
-    """BDOT10k flag of a segment: two of every three, so channels have gaps."""
-    return segment_idx % 3 != 2
-
-
-def line_length_m(segment):
-    """length_m of stream_network: its smoothed line, shorter than its cells' path."""
-    return round(0.95 * segment["length_m"], 1)
+SOILS = soil_layout(X0, Y1, CELLS * CELL_M, CELLS * CELL_M)
 
 
 @pytest.fixture(scope="module")
 def run(tmp_path_factory):
     """Rasters of process_dem in a directory, its segments and sub-catchments."""
-    directory = tmp_path_factory.mktemp("nmt")
     y, x = np.mgrid[0:CELLS, 0:CELLS]
     dem = (
         100.0
@@ -124,184 +79,25 @@ def run(tmp_path_factory):
         + 2.0 * np.sin(x / 4.0) * np.cos(y / 5.0)
         + 12.0 * np.exp(-((x - 50) ** 2 + (y - 15) ** 2) / 40.0)
     ).astype("float32")
-    dem_path = directory / "dem_mosaic.tif"
-    with rasterio.open(
-        dem_path,
-        "w",
-        driver="GTiff",
-        height=CELLS,
-        width=CELLS,
-        count=1,
-        dtype="float32",
-        crs="EPSG:2180",
-        transform=from_origin(X0, Y1, CELL_M, CELL_M),
-        nodata=-9999.0,
-    ) as dst:
-        dst.write(dem, 1)
-
-    rows = {}
-
-    @contextmanager
-    def session():
-        yield MagicMock()
-
-    def insert_segments(db, segments, threshold_m2, **_):
-        rows[("segments", threshold_m2)] = segments
-        return len(segments)
-
-    def insert_catchments(db, catchments, threshold_m2, **_):
-        rows[("catchments", threshold_m2)] = catchments
-        return len(catchments)
-
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr("core.database.get_db_session", session)
-        patch.setattr("scripts.process_dem.insert_stream_segments", insert_segments)
-        patch.setattr("scripts.process_dem.insert_catchments", insert_catchments)
-        patch.setattr(
-            "scripts.process_dem.update_stream_real_flags_all", lambda db, t: {}
-        )
-        process_dem(
-            dem_path,
-            save_intermediates=True,
-            output_dir=directory,
-            thresholds=[1000, THRESHOLD_M2],
-        )
-    return SimpleNamespace(
-        directory=directory,
-        segments=rows[("segments", THRESHOLD_M2)],
-        catchments=sorted(
-            rows[("catchments", THRESHOLD_M2)], key=lambda c: c["segment_idx"]
-        ),
+    return run_pipeline(
+        tmp_path_factory.mktemp("nmt"),
+        dem,
+        cell_m=CELL_M,
+        x0=X0,
+        y1=Y1,
+        thresholds=[1000, THRESHOLD_M2],
     )
 
 
 @pytest.fixture(scope="module")
 def graph(run):
     """The catchment graph of the threshold, as CatchmentGraph.load builds it."""
-    catchments = run.catchments
-    n = len(catchments)
-
-    def column(key, dtype=np.float32):
-        values = [np.nan if c.get(key) is None else c[key] for c in catchments]
-        return np.array(values, dtype=dtype)
-
-    def segment(c):
-        return run.segments[c["segment_idx"] - 1]
-
-    cg = CatchmentGraph()
-    cg._n = n
-    cg._segment_idx = np.array([c["segment_idx"] for c in catchments], np.int32)
-    cg._threshold_m2 = np.full(n, THRESHOLD_M2, np.int32)
-    cg._area_km2 = column("area_km2")
-    cg._elev_min = column("elevation_min_m")
-    cg._elev_max = column("elevation_max_m")
-    cg._elev_mean = column("mean_elevation_m")
-    cg._slope_mean = column("mean_slope_percent")
-    cg._stream_length_km = column("stream_length_km")
-    cg._hydraulic_length_km = column("hydraulic_length_km")
-    cg._strahler = np.array([c["strahler_order"] or 0 for c in catchments], np.int8)
-    cg._max_flow_dist_m = np.nan_to_num(column("max_flow_dist_m", np.float64))
-    cg._outlet_flow_dist_m = column("outlet_flow_dist_m", np.float64)
-    cg._flow_path_head_elev_m = column("flow_path_head_elev_m")
-    cg._overland_length_m = column("overland_length_m")
-    cg._overland_drop_m = column("overland_drop_m")
-    cg._stream_head_elev_m = column("stream_head_elev_m")
-    cg._histograms = [c["elev_histogram"] for c in catchments]
-    cg._is_real_stream = np.array([is_real(c["segment_idx"]) for c in catchments])
-    cg._segment_length_km = np.array(
-        [line_length_m(segment(c)) / 1000.0 for c in catchments]
-    )
-    cg._upstream_area_km2 = np.array(
-        [segment(c)["upstream_area_km2"] for c in catchments]
-    )
-    cg._lookup = {(THRESHOLD_M2, c["segment_idx"]): i for i, c in enumerate(catchments)}
-    links = [
-        (i, cg._lookup[(THRESHOLD_M2, c["downstream_segment_idx"])])
-        for i, c in enumerate(catchments)
-        if c.get("downstream_segment_idx") is not None
-    ]
-    upstream, downstream = zip(*links, strict=True)
-    cg._upstream_adj = sparse.csr_matrix(
-        (np.ones(len(links), np.int8), (downstream, upstream)), shape=(n, n)
-    )
-    cg._loaded = True
-    return cg
-
-
-class FakeDatabase:
-    """Answers the queries of the panel and of the export from synthetic data."""
-
-    def __init__(self, run):
-        self.segments = run.segments
-        self.catchments = {c["segment_idx"]: c for c in run.catchments}
-
-    @staticmethod
-    def _result(rows=(), row=None, scalar=None):
-        return SimpleNamespace(
-            fetchall=lambda: list(rows),
-            fetchone=lambda: row,
-            scalar=lambda: scalar,
-        )
-
-    def execute(self, statement, params=None):
-        sql = str(statement)
-        # The land cover query clips the soils too, so it is recognised first and by
-        # its table alone, however it joins land_cover to the watershed.
-        if "land_cover lc" in sql:
-            boundary = wkb.loads(bytes.fromhex(params["boundary_wkb"]))
-            rows = []
-            for category, bdot_class, imperviousness, geometry in LAND_COVER:
-                inside = geometry.intersection(boundary)
-                if inside.is_empty:
-                    continue
-                pieces = [(None, inside)] + [
-                    (group, inside.intersection(soil)) for group, soil in SOILS
-                ]
-                rows.extend(
-                    SimpleNamespace(
-                        category=category,
-                        bdot_class=bdot_class,
-                        imperviousness=imperviousness,
-                        hsg_group=group,
-                        area_m2=piece.area,
-                    )
-                    for group, piece in pieces
-                    if not piece.is_empty
-                )
-            return self._result(rows)
-        if "FROM soil_hsg sh" in sql:
-            boundary = wkb.loads(bytes.fromhex(params["boundary_wkb"]))
-            areas = {g: s.intersection(boundary).area for g, s in SOILS}
-            total = sum(areas.values())
-            return self._result(
-                SimpleNamespace(
-                    hsg_group=g, total_area_m2=a, percentage=a / total * 100
-                )
-                for g, a in sorted(areas.items(), key=lambda item: -item[1])
-                if a > 0
-            )
-        if "is_real_stream" in sql and "ANY" in sql:
-            return self._result(
-                SimpleNamespace(
-                    segment_idx=i,
-                    is_real=is_real(i),
-                    line_length_m=line_length_m(self.segments[i - 1]),
-                    stream_length_km=self.catchments[i]["stream_length_km"],
-                )
-                for i in params["idxs"]
-                if i in self.catchments
-            )
-        if "ST_EndPoint(geom)" in sql:
-            x, y = self.segments[params["seg_idx"] - 1]["coords"][-1]
-            return self._result(row=SimpleNamespace(x=x, y=y))
-        if "EXISTS" in sql:
-            return self._result(scalar=True)
-        return self._result()
+    return catchment_graph(run, THRESHOLD_M2)
 
 
 @pytest.fixture
 def db(run):
-    return FakeDatabase(run)
+    return FakeDatabase(run, THRESHOLD_M2, land_cover=LAND_COVER, soils=SOILS)
 
 
 @pytest.fixture
@@ -317,7 +113,11 @@ def boundary_of(run, cg, outlet_idx):
     """Union of the cells of the sub-catchments upstream of a node."""
     labels = set(cg.get_segment_indices(cg.traverse_upstream(outlet_idx), THRESHOLD_M2))
     union = unary_union(
-        [wkt.loads(c["wkt"]) for c in run.catchments if c["segment_idx"] in labels]
+        [
+            wkt.loads(c["wkt"])
+            for c in run.catchments[THRESHOLD_M2]
+            if c["segment_idx"] in labels
+        ]
     )
     return MultiPolygon([union]) if union.geom_type == "Polygon" else union
 
@@ -370,7 +170,7 @@ def test_a_delineated_watershed_gets_the_values_of_the_panel(
             if want is None or got is None:
                 same = want is got
             else:
-                same = abs(want - got) <= TOLERANCES.get(field, 1e-9)
+                same = abs(want - got) <= PANEL_TOLERANCES.get(field, 1e-9)
             if not same:
                 differences.append((outlet_idx, field, want, got))
         if row["outlet_elevation_m"] != panel.outlet.elevation_m:
