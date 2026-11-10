@@ -669,6 +669,43 @@ units has only the int32 memmap of `UnitFlowPaths`, whose `path` this replaced a
 removed. `tests/unit/test_cell_parameters.py` finds the walk equal to pyflwdir's `path` for every
 cell of the synthetic DEMs, along both.
 
+**S2** (`feat/network-delineation-core`): `core/network_tree.py` builds the tree on the graph
+(D3–D5, D15) from the snapped points (`ControlPoint`: the cell, its unit and flow distance,
+whether another unit drains into it, whether it is its unit's outlet cell, and its path down as far
+as the mouth rule looks); `core/network_delineation.py` snaps (D2), opens the six rasters and the
+NMT through `Settings` (`resolve_pipeline_raster`, now public), finds the window (D7: grown while
+a label of A's catchment lies on a side, refused above 60 M cells before it is read), builds the
+element raster and its splits (D6), checks B5 (D11), measures every element into a
+`WatershedResponse` (D8), vectorizes the coverage (D9: rings noded in cell units, then
+`coverage_simplify` at 5 m) and measures the reaches (D10); `CatchmentGraph.upstream_tree` is new.
+Decided in S2, beyond the text of the plan: (1) points whose paths enter their parent's trunk
+through one unit (gauges on two branches of a tributary without a point at its mouth) meet at the
+confluence where their paths merge, a junction (B1), joined by an edge to their junction on the
+trunk; else their edges would overlap. The mouth rule stays relative to the parent's trunk, so two
+such points within 50 m of it coincide (test 6); (2) a junction on the cell of a control point (a
+point at a confluence) is that point, whose trunk is then a headwater ending at it (D5); (3) an
+element's main channel goes up its own stream cells only (D8: as `trace_main_channel` goes up its
+units), so test 11 holds for the przyrzecza too; (4) the message IDs of the errors the core raises
+(`network_point_off_stream`, `network_point_outside`, `network_points_coincide`,
+`network_window_too_large`, `network_rasters_missing`, `network_area_mismatch`) are in
+`core/messages.py` already; S3 adds `network_delineation_busy` and `network_delineation_failed`;
+(5) `morphometry.area_km2` keeps the panel's 4 decimals, and each element carries its area exact
+to the cell (6 decimals) for the hand-off. Tests 1–14 in `tests/unit/test_network_tree.py` and
+`tests/unit/test_network_delineation.py`, on a synthetic graph and on `river_network_dem` of
+`tests/fixtures/pipeline_run.py` (the export's process_dem fixture, now shared), plus the growth
+and the cap of the window and the errors of the rasters. Smoke, read only, on production's rasters
+and database: the Kamiennik (A at 51.01538° N, 15.890496° E, its three largest tributaries at
+their mouths and a gauge) gives 37.223575 km² in 8 elements, B5 to the cell, a valid coverage of
+5,259 vertices, reach slopes of 7.0–9.5 ‰ from the NMT and BDOT10k check lengths 4–6 % shorter
+than the reaches, in 1.8 s after the graph is loaded (548 MB peak). The Kaczawa node (A at
+51.128° N, 15.909° E, 238.7 km², with the Kamiennik and the three largest tributaries) is refused
+by B5: production's database holds 108 of its 41,515 units of 1 ha otherwise than the label raster
+`10_subcatchments_10000` (70 of them, 1.6 km², where the current rasters have no NMT data), so the
+elements hold 9,548,941 cells and the graph 9,613,121; the network is refused (500
+`network_area_mismatch`) until the rasters and the database come from one run. With the check
+bypassed in a throwaway script the same network takes 6.1 s for a window of 5,324 × 3,482 cells,
+1.30 GB peak (0.94 GB with `GDAL_CACHEMAX=64`).
+
 ## Not in this plan
 
 - Routing, the reach sections and a hydrograph of the network or of an element in Hydrograf:
