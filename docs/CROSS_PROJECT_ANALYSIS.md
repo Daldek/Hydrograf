@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-11-05 (Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-10 (the pins follow the release set candidate-2 of Nogat, `587c909`: Obserwator `f9f4ee7`, Kartograf `d0990c8`, Hydrolog `759d7ef`; production and Hydroni still run `894810c` with Obserwator `1ee5457`, Kartograf `9deaa31` and Hydrolog `4fad769`, the `develop` of 2026-11-09 with the TR-55 rows of ADR-075's amendment; the branch table names Obserwator; 2026-11-05: Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
 **Projects:** Hydrograf, Hydrolog, Kartograf, Obserwator (IMGWTools until its v3.0.0)
 
@@ -57,11 +57,9 @@ hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "759d7ef0e99b
 | Hydrograf | `develop` | main | ✅ OK |
 | Hydrolog | `develop` | main | ✅ OK |
 | Kartograf | `develop` | main | ✅ OK |
-| IMGWTools | `master` | slave (=master) | ✅ OK |
+| Obserwator (IMGWTools until its v3.0.0) | `develop` | main | ✅ OK |
 
-**Note:** IMGWTools uses `master/slave` instead of `main/develop`.
-
-**Pinned branches:** the pins point at topic branches, not at the working branches: Kartograf `feature/archiwista-projects` (the commit Archiwista pins), Obserwator `feature/data-output` (then IMGWTools), Hydrolog `feature/routing-schematic`. All three commits are on GitHub (ADR-060).
+**Pinned branches:** the three pins are commits of the `develop` branches of the producers, all on GitHub (ADR-060).
 
 ---
 

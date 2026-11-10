@@ -1,5 +1,9 @@
 # Runbook: production (Kaczawa) on the integrated code of 2026-11-10
 
+**Status:** executed on 2026-11-10 (the author's decision of 2026-11-09): staging 01:25–04:47 CET,
+the switch of §6 on `894810c` instead of the `545f109` of §4.1 with 25 s of downtime at 05:00 CET,
+§7 and §9 done; the log is §11.
+
 For the coordinator and the author, on the production host, with the system Docker daemon. It
 moves production (`~/workspace/Hydrograf`, local `develop` at `94d7523`, alembic `004`) onto the
 new `develop` (the integration `integrate/2026-11-09`, head `e14910f`) and processes the
@@ -15,7 +19,7 @@ section 6 does, only with the author's decision, at a quiet hour.
 
 | Change since `94d7523` | On production | Needs |
 |---|---|---|
-| Sink fixing never creates flow cycles (`3b968d0`) | the saved run has the cycles of the old fix (PROGRESS: 2,335 on the production raster, outlets understated by about 1,047 km² in total) | full `process_dem` |
+| Sink fixing never creates flow cycles (`3b968d0`) | the saved run has the cycles of the old fix (the PROGRESS before 2026-11-10, `git show 39849f0:docs/PROGRESS.md`: 2,335 on the production raster, outlets understated by about 1,047 km² in total) | full `process_dem` |
 | ADR-071, processing by PGW units | not used: production stays one raster | migration 005 (two empty tables) |
 | ADR-072/077, the burned lines flow the way of their watercourse | about 110 km of lines, mostly `OT_SWRM_L`, digitized against the DEM (table in §1) | full `process_dem` (smoothing is on by default) |
 | ADR-073, enclosed nodata filled | off: `dem.fill_enclosed_nodata` defaults to `false` and `process_dem` never sets it | nothing |
@@ -42,7 +46,7 @@ whose land cover meets the boundary are 0205, 0206, 0207, 0209, 0219, 0221, 0226
 (checked against the boundary layer by layer); the HSG raster is
 `cache/soil_hsg/hsg_poland.tif` (SoilGrids 0–5 cm, 2026-10-18), the one production uses.
 
-How production was cut on 2026-11-01 (`docs/PROGRESS.md`, the session of that day, the
+How production was cut on 2026-11-01 (`git show 39849f0:docs/PROGRESS.md`, the session of that day, the
 script outside the repository `~/scratch/hydrograf-clip/clip_hydrograf.py` and its logs): the
 boundary is the exterior ring of the union of the sub-catchments of the threshold 100000
 upstream of segment 159, which ends at the node 51.222825 N 16.179380 E; a MultiPolygon of

@@ -111,7 +111,7 @@ Summary of the key ADRs:
 | ADR-037 | Separation of cache and data + Kartograf v0.5.0 | Separate directories for the cache and for generated data; the cache of the downloads is the Kartograf store `cache/kartograf/` since ADR-061 |
 | ADR-038 | HSG Poland-wide cache | A Poland-wide HSG cache: no need to download it per area; the raster is a version of the Kartograf store (`hsg/`) since ADR-061 |
 | ADR-040 | Vector boundary file support | GPKG/GeoJSON/SHP as area boundaries (instead of a bbox only) |
-| ADR-041 | Monotonic stream smoothing | Keep the elevation monotonic after the stream lines are smoothed |
+| ADR-041 | Monotonic stream smoothing | Keep the elevation monotonic after the stream lines are smoothed; the direction of the lines amended by ADR-072 and ADR-077 (§2.5) |
 | ADR-042 | delineate-watershed performance optimisation | Cascaded merge threshold, batched ST_Union, graph cache |
 | ADR-044 | BDOT10k stream matching | Match the DEM streams to the BDOT10k reference streams (is_real_stream) |
 | ADR-045 | WFS PRG instead of WMS grid sampling | TERYT discovery from the WFS PRG: faster and more accurate than the WMS grid; replaced by Kartograf, which finds the counties of an area itself (ADR-061) |
@@ -197,13 +197,15 @@ backend/
 │   ├── generate_streams_overlay.py # Streams overlay (PNG)
 │   ├── generate_depressions.py    # Generates depressions (blue spots)
 │   ├── analyze_watershed.py       # Watershed analysis (CLI)
+│   ├── check_stream_directions.py # Diagnostic of the flow direction of the burned BDOT10k lines by the rules of ADR-077 (GeoPackage); does not change the pipeline
+│   ├── diagnose_catchment_exits.py # Where the NMT D8 flow leaves given polygons: exits with destination, area, share (GeoPackage)
 │   ├── export_catchment_parameters.py # The panel's basic parameters, shape indices and land cover for given polygons (GeoPackage)
 │   ├── download_sewer.py          # Downloads the sewer network (file/WFS/DB/URL, CRS validation, SSRF protection). Returns tuple (points_gdf, lines_gdf | None)
 │   ├── write_instance_info.py     # frontend/data/instance.json (hydrograf-instance/1): the area of the instance for the welcome screen and the guide
 │   └── clean.py                  # Cleans generated data (rasters, tiles, DB, cache)
 │
 ├── migrations/
-│   └── versions/                  # 1 migration (squashed initial schema)
+│   └── versions/                  # 001–006: 001 the squashed initial schema, 006 drops land_cover.cn_value (ADR-075)
 │
 ├── utils/
 │   ├── __init__.py
@@ -211,6 +213,7 @@ backend/
 │   ├── geometry.py                # Geometric operations, CRS transforms
 │   ├── kartograf_store.py         # Where Kartograf writes (store, metadata cache), describe_error(), download_bdot10k() (ADR-061)
 │   ├── raster_utils.py            # Raster tools (resample, polygonize)
+│   ├── nmt_coverage.py            # NMT sheets that leave the area or a hole of their mosaic uncovered (ADR-076)
 │   └── sheet_lookup.py            # NMT sheet lookup, thin wrapper over kartograf.find_sheets_for_bbox (ADR-057)
 │
 ├── tests/
@@ -595,15 +598,14 @@ def point_depth(point, duration, probability, db) -> DesignDepth | None:
 
 **Main functions:**
 ```python
-def calculate_cn(boundary: GeoJSON) -> Dict:
-    """
-    Returns:
-    {
-        'cn': 72.4,
-        'land_cover_percent': {'las': 35.2, 'pola': 42.1, ...}
-    }
-    """
-    pass
+def get_land_cover_for_boundary(boundary: Polygon | MultiPolygon, db: Session) -> dict | None:
+    """The land cover of the watershed and the area-weighted CN of its soil-cover
+    complexes (ADR-075): categories, total_area_m2, weighted_cn, weighted_imperviousness,
+    forest_pct, urban_pct, hsg_assumed_pct, complexes; None without land cover."""
+
+def determine_cn(boundary, db, config_cn=None, default_cn=75, use_kartograf=True,
+                 boundary_wgs84=None, cache_dir=None, teryt=None) -> tuple[float, str, dict | None]:
+    """CN by the hierarchy configuration → database → Kartograf → default (scripts/analyze_watershed.py)."""
 ```
 
 ---
@@ -625,8 +627,8 @@ Matching of the streams derived from the DEM to the reference streams of BDOT10k
 #### Divide flow path (ADR-048)
 Determination of the flow path from the watershed divide (the longest path from the watershed boundary to the outlet). It complements the longest flow path as an additional morphometric parameter. The geometries of both paths are stored per sub-catchment in `stream_catchments` (columns `longest_flow_path_geom`, `divide_flow_path_geom`). For a delineated watershed, `core/divide_flow_path.py` reads the cells of the watershed itself (cells of its sub-catchments in `dem_mosaic_10_subcatchments_<threshold>.tif`) once and draws both paths from them: the longest flow path starts at the cell farthest along the flow (`dem_mosaic_04b_stream_distance.tif`), the divide flow path at the farthest boundary cell (a 4-neighbour outside); both follow `dem_mosaic_03_flowdir.tif` to the outlet, so the drawn longest flow path has the length of `flow_path_length_km` (D8 steps of 5 m or 5√2 m), and the divide flow path, with the same baseline, is never longer. The lines join the cell centres where the direction changes, as `stream_network` joins them, so they lie on the streams they follow. Neither `longest_flow_path_geom` nor `divide_flow_path_geom` is read for a watershed; without the rasters the response has no flow path lines.
 
-#### Monotonic stream smoothing (ADR-041)
-Keeping the longitudinal profile of the streams monotonic after the geometry is smoothed. It removes artefacts where the smoothed stream line had local elevation "jumps" against the flow direction.
+#### Monotonic stream smoothing (ADR-041, ADR-072, ADR-077)
+The DEM along every burned BDOT10k line descends strictly in the direction of its flow (`smooth_streams_monotonic`, `core/hydrology.py`). The direction of a line is the first of: towards the mouth of its MPHP watercourse; down the DEM of its whole watercourse for the blocks of lines digitized against the rest of it (a block whose own DEM falls more than 2 m the way it is digitized keeps it); the digitized direction, reversed only where the DEM rises along the line by more than 2 m over at least 200 m (ADR-072). An artificial connector never takes its direction from the DEM along it. `classify_endorheic_lakes` takes the burned lines in the directions the smoothing returns. The diagnostic `scripts/check_stream_directions.py` writes for each line the rule that decides it and whether it is reversed (`regula`, `odwraca`, `blok_zachowany`) to a GeoPackage, without changing the pipeline.
 
 #### Storm-sewer network integration (ADR-051, ADR-052)
 Inclusion of the storm-sewer network in the hydrological model. The network topology is defined explicitly by the user (it is not detected by heuristics). Two input formats: Format A (points with `downstream_id`) and Format B (points + lines with `from_node`/`to_node`). 4 node roles: inlet, outlet, junction, storage (compatible with SWMM/HEC-RAS).
@@ -1029,9 +1031,9 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 - **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
 - **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `GET /api/identify-point`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones). The cursor coordinates (`coords.js`) sit in the bottom left corner, under the legends, in the system chosen there (WGS84, PL-1992 or PL-2000, kept in localStorage); screens without a hovering pointer do not show them.
 - **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph. The × of its head hides the panel and keeps the result on the map (the button „Zlewnia” of the map bar brings it back); the button with the bin („Wyczyść wynik”, disabled while the panel shows only its instruction) clears the result. Esc once hides the panel, twice clears the result.
-- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 65 entries of `info-texts.js` keyed by an API field or a form control id (the other 11 belong to the options of the UH model, Tc method and Nash estimation selects) hold: a description, a formula (built as MathML through the DOM, without libraries), the list „gdzie:” of the variables with their units, the unit of the result, a separate block „Znaczenie dla analizy”, the range of applicability and a note. The texts rest on Hydrolog and the backend (e.g. the hydrograph limit of 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice. The API returns no applicability warnings, so the GUI shows none.
+- **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 70 entries of `info-texts.js` keyed by an API field or a form control id (the other 11 belong to the options of the UH model, Tc method and Nash estimation selects) hold: a description, a formula (built as MathML through the DOM, without libraries), the list „gdzie:” of the variables with their units, the unit of the result, a separate block „Znaczenie dla analizy”, the range of applicability and a note. The texts rest on Hydrolog and the backend (e.g. the hydrograph limit of 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice. The API returns no applicability warnings, so the GUI shows none.
 - **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.
-- **Hydrograph form** — a grid of two columns: „Model UH” | „Metoda Tc”, for Nash „Model UH” | „Estymacja Nash”; the applicability notes in even rows. Before a request `hydrograph.js` checks the number fields in use against the limits of the API (α, β in (0, 20]; C in [0, 1], empty = from CN; N (opór) in [0.02, 0.8]; L in (0, 5], required by FAA and Kerby, estimated by Kerby-Kirpich when empty; Ct > 0; Cp in (0, 1]); an empty or zero field is an error, never replaced by a default. The message stands under the field (also a server `errors[]` message, placed by its JSON Pointer), the sections Hietogram and Hydrogram name the fields to fix, and the charts and tables of the earlier calculation are hidden until the form is valid again (also while the own rainfall series or the advanced mode is invalid).
+- **Hydrograph form** — a grid of two columns: „Model UH” | „Metoda Tc”, for Nash „Model UH” | „Estymacja Nash”; the applicability notes in even rows. Before a request `hydrograph.js` checks the number fields in use against the limits of the API (α, β in (0, 20]; C (spływ) in (0, 1], required by FAA and never derived from the CN; N (opór) in [0.02, 0.8], required by Kerby and Kerby–Kirpich; Ct > 0; Cp in (0, 1]); an empty or zero field is an error, never replaced by a default. The message stands under the field (also a server `errors[]` message, placed by its JSON Pointer), the sections Hietogram and Hydrogram name the fields to fix, and the charts and tables of the earlier calculation are hidden until the form is valid again (also while the own rainfall series or the advanced mode is invalid).
 - **Advanced mode** — `advanced.js` lets the user change the morphometry sent to `POST /api/generate-hydrograph` (the fast path `morphometry`): area, perimeter, length, elevations, mean slope, stream length and slope, `length_to_centroid_km`, CN. Precision of the fields: area 0.01 km², lengths and Lc 0.01 km, elevations 0.1 m, slopes 0.01 %, CN 0.1 (1–100); the area at most `area_limit_km2` of `GET /api/scenarios` (250 km², the API refuses more as it does for a delineated catchment). Changed fields are marked; one field or all of them can be restored („Przywróć dane z Hydrografa”); validation errors block the request; the result carries the message „Obliczono na zmienionych danych wejściowych”. Rainfall and AMC are set in the Hietogram section. Some catchments have `length_to_centroid_km = 0`: Snyder fails until the user gives Lc.
 - **CN** — the API returns the CN of the catchment (`morphometry.cn`, `land_cover_stats.weighted_cn`) to 0.1; the panel shows it with one decimal place.
 - **Sewer layer** — the entry „Kanalizacja deszczowa” of the „Warstwy” panel appears only when `GET /api/layers` returns `sewer: true`; without data no `/api/tiles/sewer` tiles are requested.
@@ -1736,7 +1738,7 @@ async def health_check(db = Depends(get_db)):
 - Pre-computed stats in `stream_catchments` (zero raster operations at runtime)
 - Cascaded merge threshold for large watersheds (>300 segments) — ADR-042
 
-**Current benchmark results:** see `docs/PROGRESS.md`
+**Benchmark results:** see `docs/BENCHMARK_QUERIES.md` (the PostGIS queries, ADR-039) and the timings in the CHANGELOG entries.
 
 ---
 

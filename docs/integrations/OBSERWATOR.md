@@ -1,7 +1,7 @@
 # Integracja z Obserwatorem
 
 **Wersja:** 1.3
-**Data:** 2026-11-04 (Hydrograf pins Obserwator `1ee5457`, 3.0.0.dev0, the release set of Nogat, and imports the package `obserwator`)
+**Data:** 2026-11-10 (Hydrograf pins Obserwator `f9f4ee7`, 3.0.0.dev0, the release set candidate-2 of Nogat (was `1ee5457`, which production and Hydroni still run), and imports the package `obserwator`)
 **Status:** Aktywna
 
 ---
@@ -298,4 +298,4 @@ obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "f9f4ee79
 ---
 
 **Wersja dokumentu:** 1.3
-**Ostatnia aktualizacja:** 2026-11-04
+**Ostatnia aktualizacja:** 2026-11-10

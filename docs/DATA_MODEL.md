@@ -287,7 +287,7 @@ CREATE TABLE stream_network (
     source VARCHAR(50) DEFAULT 'MPHP',
     upstream_area_km2 DOUBLE PRECISION,                        -- migracja 003
     mean_slope_percent DOUBLE PRECISION,                       -- migracja 003
-    threshold_m2 INT NOT NULL,                        -- migracja 005/017 (aktywne progi: 1000, 10000, 100000; próg 100 usunięty, migracja 017)
+    threshold_m2 INT NOT NULL,                        -- migracja 005/017 (active thresholds since 2026-11-05: 10000, 100000, 1000000, 10000000; PIPELINE_THRESHOLDS_M2)
     segment_idx INTEGER,                            -- migracja 014 (ADR-026)
     is_real_stream BOOLEAN,                         -- migracja 021 (ADR-044)
     is_sewer_augmented BOOLEAN DEFAULT FALSE,       -- migracja 025 (ADR-051)
@@ -338,7 +338,7 @@ COMMENT ON COLUMN stream_network.strahler_order IS 'Rząd Strahlera (hierarchia 
 | `source` | VARCHAR(50) | YES | 'MPHP' | Zrodlo danych ('MPHP' lub 'DEM_DERIVED') |
 | `upstream_area_km2` | DOUBLE PRECISION | YES | NULL | Powierzchnia zlewni na koncu segmentu [km2] (migracja 003) |
 | `mean_slope_percent` | DOUBLE PRECISION | YES | NULL | Sredni spadek wzdluz segmentu [%] (migracja 003) |
-| `threshold_m2` | INT | NO | - | Prog akumulacji przeplywu [m2] (migracja 005/017). Aktywne progi: 1000, 10000, 100000 (próg 100 usunięty, migracja 017) |
+| `threshold_m2` | INT | NO | - | Prog akumulacji przeplywu [m2] (migracja 005/017). Active thresholds since 2026-11-05: 10000, 100000, 1000000, 10000000 (`core/constants.py` `PIPELINE_THRESHOLDS_M2`) |
 | `segment_idx` | INTEGER | YES | NULL | Indeks segmentu spojny z `stream_catchments.segment_idx` (migracja 014, ADR-026) |
 | `is_real_stream` | BOOLEAN | YES | NULL | Czy segment pokrywa sie z ciekiem BDOT10k (spatial matching, bufor 15m, overlap >= 50%). NULL = nie matchowano, false = splywy algorytmiczne, true = ciek rzeczywisty (migracja 021, ADR-044) |
 | `is_sewer_augmented` | BOOLEAN | YES | FALSE | Czy flow accumulation segmentu zostala zmodyfikowana przez siec kanalizacyjna (migracja 025, ADR-051) |
@@ -1208,39 +1208,19 @@ migrations/
 ├── alembic.ini
 ├── env.py
 └── versions/
-    ├── 001_create_precipitation_data.py
-    ├── 002_create_core_tables.py
-    ├── 003_extend_stream_network.py
-    ├── 004_create_depressions_table.py
-    ├── 005_add_threshold_to_stream_network.py
-    ├── 006_add_upstream_area_index.py
-    ├── 007_create_stream_catchments.py
-    ├── 008_add_depressions_filter_indexes.py
-    ├── 009_add_stream_source_partial_index.py
-    ├── 010_fix_stream_unique_constraint.py
-    ├── 011_add_tile_spatial_indexes.py
-    ├── 012_extend_stream_catchments.py
-    ├── 013_add_stream_partial_index.py
-    ├── 014_add_segment_idx_to_stream_network.py
-    ├── 015_drop_flow_network.py
-    ├── 016_create_soil_hsg.py
-    ├── 017_remove_threshold_100.py
-    ├── 018_composite_index_threshold_segment.py
-    ├── 019_update_duration_check_pmaxtp.py
-    ├── 020_full_pmaxtp_range.py                    # probability INT→FLOAT, rozszerzone zakresy duration/probability
-    ├── 021_add_bdot_streams.py                     # tabela bdot_streams + is_real_stream kolumna w stream_network
-    ├── 022_add_hydraulic_length.py                 # hydraulic_length_km w stream_catchments
-    ├── 023_add_flow_path_columns.py                # max_flow_dist_m, longest_flow_path_geom
-    ├── 024_add_divide_flow_path.py                 # divide_flow_path_geom w stream_catchments
-    ├── 025_create_sewer_tables.py                  # sewer_nodes, sewer_network, is_sewer_augmented (ADR-051)
-    ├── 026_widen_sewer_source_column.py            # poszerzenie kolumny source w sewer_network
-    ├── 027_sewer_node_type_storage.py              # CHECK constraint node_type: isolated -> storage (ADR-052)
-    └── d7af925de530_merge_migration.py             # merge: bdot + flow path
+    ├── 001_initial_schema.py                       # the schema squashed from the 28 earlier migrations (001–027 + merge d7af925de530)
+    ├── 002_feedback.py                             # feedback (the testers' reports)
+    ├── 003_outlet_flow_dist.py                     # outlet_flow_dist_m (ADR-054)
+    ├── 004_flow_path_heads.py                      # flow path heads and overland segments (ADR-070)
+    ├── 005_processing_runs.py                      # processing_runs, processing_units (ADR-071)
+    └── 006_drop_land_cover_cn_value.py             # drops land_cover.cn_value, valid_cn and idx_cn_value (ADR-075)
 ```
 
-**Przykład migracji (021 — bdot_streams + is_real_stream):**
+The migration numbers of the schema written before the squash (e.g. 003, 005 and 006 of `stream_network`, 014, 017, 021, 025) are the old migrations, now part of `001_initial_schema.py`; the numbers given with ADR-054 (003), ADR-070 (004), ADR-071 (005) and ADR-075 (006) are the files above.
+
+**Przykład migracji (021 — bdot_streams + is_real_stream; before the squash, now part of `001_initial_schema.py`):**
 ```python
-# migrations/versions/021_add_bdot_streams.py
+# migrations/versions/021_add_bdot_streams.py (removed by the squash)
 from alembic import op
 import sqlalchemy as sa
 import geoalchemy2
@@ -1360,16 +1340,16 @@ gdf.to_file('lasy.geojson', driver='GeoJSON')
 
 ### 12.1 Kluczowe Punkty
 
-- **8 tabel:** precipitation_data, land_cover, stream_network, stream_catchments, depressions, soil_hsg, sewer_nodes, sewer_network (flow_network usunieta -- ADR-028)
-- **20 migracji Alembic** (001-025, z lukami)
+- **12 tables:** precipitation_data, land_cover, stream_network, stream_catchments, depressions, soil_hsg, bdot_streams, sewer_nodes, sewer_network (migration 001), feedback (002), processing_runs and processing_units (005); flow_network was dropped (ADR-028)
+- **6 Alembic migrations** (001–006; 001 is the squashed initial schema)
 - **Uklad wspolrzednych:** EPSG:2180 (PL-1992)
 - **Indeksy przestrzenne (GIST)** dla wszystkich geometrii + partial indexes per threshold
 - **Walidacja** przez CHECK constraints
-- **Aktywne progi stream_network:** 1000, 10000, 100000 (prog 100 usuniety -- ADR-030, migracja 017)
+- **Active stream_network thresholds:** 10000, 100000, 1000000, 10000000 m² since 2026-11-05 (`PIPELINE_THRESHOLDS_M2`; threshold 100 removed -- ADR-030)
 
 ### 12.2 Najważniejsze Constraints
 
-✅ **Walidacja wartości:** CN [0..100], precipitation_mm >= 0
+✅ **Walidacja wartości:** imperviousness [0..1], precipitation_mm >= 0 (the CN check `valid_cn` went with `land_cover.cn_value`, migration 006)
 ✅ **Unique scenarios:** (geom, duration, probability) w precipitation_data
 ✅ **Unique streams:** (COALESCE(name, ''), threshold_m2, geohash) w stream_network
 ✅ **Spójność grafu:** downstream_segment_idx w stream_catchments → segment_idx

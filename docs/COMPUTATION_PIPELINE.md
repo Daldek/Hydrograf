@@ -41,6 +41,7 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 - Warunek: komórka nodata z ≥5 prawidłowymi sąsiadami
 - Wzór: `new_value = mean(valid_neighbors)`
 - Maksymalnie 3 iteracje
+- Enclosed nodata (ADR-073, opt-in: `dem.fill_enclosed_nodata` of `config.yaml`, default `false`): with `true` every nodata area that does not reach the frame of the raster (a sheet missing from the mosaic) is first interpolated from the data around it (GDAL's inverse distance weighting, `interpolate_enclosed_nodata()`), so the depression fill fills it like ground and every cell drains to the outer edge of the data; with `false` such an area stays nodata and is an outlet of the fill (Krok 4)
 
 ### 1.2a Burning and smoothing the streams, endorheic lakes
 
@@ -421,10 +422,11 @@ the hydrograph uses `DEFAULT_CN = 75` (`core/constants.py`).
 the arithmetic in `summarize_complexes()`)
 
 One query returns the land cover of the watershed twice: whole, by category, source
-(`bdot_class`) and imperviousness (`ST_Area(ST_Intersection(lc.geom, w.geom))`), and in
+(`bdot_class`) and imperviousness (`ST_Area(ST_Intersection(lc.geom, w.geom))`, `w` the
+pieces of the watershed of at most 256 vertices, `ST_Subdivide(…, 256)`), and in
 its pieces on each soil group. For the pieces the soil polygons are clipped to the
-watershed and subdivided (`ST_Subdivide(…, 256)`), then joined to `land_cover` through
-its spatial index, so no land cover row is intersected with a large soil polygon.
+watershed and subdivided the same way, then joined to `land_cover` through its spatial
+index, so no land cover row is intersected with the whole boundary or a large soil polygon.
 
 ```
 CN = round( Σ A_i · CN_i / Σ A_i , 1 )     # i: complex (category, source, soil group)
@@ -460,7 +462,8 @@ CN_i = get_cn(group, TR-55 cover of (category, source))     # Hydrolog, §5.3
 | `zabudowa_przemysłowa` | any | industrial, 72% impervious (2-2a) | 81 | 88 | 91 | 93 |
 | `zabudowa_przemysłowa` | `PTZB:handl.-usług.` | commercial and business, 85% impervious (2-2a) | 89 | 92 | 94 | 95 |
 | `droga` | any | paved (2-2a) | 98 | 98 | 98 | 98 |
-| `woda` | any | water surfaces: CN 98 (NEH 630 ch. 9, p. 9-1) | 98 | 98 | 98 | 98 |
+| `droga` | `PTKM` | paved road; open ditches, including right-of-way (2-2a; ADR-075, amendment of 2026-11-09) | 83 | 89 | 92 | 93 |
+| `woda` | any | water surfaces (Hydrolog's water row; NEH 630 ch. 9, p. 9-1) | 98 | 98 | 98 | 98 |
 | `inny` | any | open space, fair (2-2a) | 49 | 69 | 79 | 84 |
 | `inny` | `PTPL:nieutwardzony` | dirt road, including right-of-way (2-2a) | 72 | 82 | 87 | 89 |
 | `inny` | `PTWZ` | newly graded area, no vegetation (2-2a) | 77 | 86 | 91 | 94 |

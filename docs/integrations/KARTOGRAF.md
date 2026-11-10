@@ -1,8 +1,8 @@
 # Kartograf integration
 
-**Version:** 7.4
-**Date:** 2026-11-03
-**Status:** Active (Kartograf 0.8.0.dev0, head `9deaa31`; ADR-061, ADR-066, ADR-067)
+**Version:** 7.5
+**Date:** 2026-11-10
+**Status:** Active (Kartograf 0.8.0.dev0, pinned commit `d0990c8`, the release set candidate-2 of Nogat; production and Hydroni run `9deaa31` until their next image; ADR-061, ADR-066, ADR-067)
 
 ---
 
@@ -355,7 +355,7 @@ cover, HSG, precipitation, depressions, MVT tiles, overlays, server). Steps 1-3 
 | 2 NMT | `download_sheets(sheets, private_store_dir(cache_dir), <cache>/kartograf_meta.db, resolution=--resolution)` | the step fails, the exit code is 1 |
 | 3 DEM | the VRT mosaic is built **from the paths that step 2 returned** (never from a directory scan: the store keeps every version under `versions/`); then `download_bdot10k` for the extent of the mosaic and `merge_hydro_gpkgs` for stream burning | a failed hydro download only logs a warning: no burning |
 | 4 land cover | `download_bdot10k(cache_dir, bbox=mosaic)`: the packages that step 3 stored are local and are not requested again; each is imported by `import_landcover` | the step fails, `describe_error` gives the code and the hint; the pipeline continues |
-| 5 HSG | `calculate_hsg(root=, bbox=<Poland>, depth="0-5cm", cache=)` into the private store: the raster of Poland is a version of the store; then clip to the mosaic, warp to EPSG:2180 at 250 m, nearest-neighbour fill, polygonize and import into `soil_hsg` (a DELETE limited to the bbox first) | a `KartografError` ends the step as "skipped" with its code; any other error fails it; the pipeline continues |
+| 5 HSG | `calculate_hsg(root=, bbox=<Poland>, depth="0-5cm", cache=)` into the private store: the raster of Poland is a version of the store; then clip to the mosaic, warp to EPSG:2180 at 250 m, nearest-neighbour fill, polygonize, make the soil under the wetlands (`OT_OIMK_A`) of the BDOT10k packages of step 4 group D (ADR-078) and import into `soil_hsg` (a DELETE limited to the bbox first). The pinned Kartograf has `--depth-rule least-permeable` (`calculate_hsg(depth_rule=)`, the least permeable layer of 0-100 cm; since `e49eaad0`, not in `9deaa31`), which Hydrograf does not use yet | a `KartografError` ends the step as "skipped" with its code; any other error fails it; the pipeline continues |
 | set: before step 1 | `--project`, `--set`: the checks of `utils/kartograf_set.set_inputs` (below) | a refusal of ADR-067: the error document as the last line of standard error, the registry's exit code |
 | set: 2 NMT | nothing is downloaded: every pinned sheet of `nmt/pl_1992_<--resolution>_evrf2007/versions/`, by its version path; reports `N/N arkuszy z zestawu` | - |
 | set: 3 DEM | the mosaic of the pinned sheets; the streams of the pinned BDOT10k packages for burning | as above |
@@ -363,7 +363,7 @@ cover, HSG, precipitation, depressions, MVT tiles, overlays, server). Steps 1-3 
 | set: 5 HSG | the pinned HSG raster, clipped to the mosaic and processed as above | as above |
 
 The exit code is 1 when one of steps 1-3 failed. Whether a failed step 5 should stop the
-bootstrap and whether the HSG fallback "B" is right are open (PROGRESS, Open questions 1).
+bootstrap and whether the HSG fallback "B" is right are open (PROGRESS, Open questions 2).
 
 **Bootstrap from a set (ADR-067).** `python -m scripts.bootstrap --project PATH --set NAME`
 (`PATH` is the project's directory or its `archiwista-project.json`) takes every Kartograf input
@@ -472,7 +472,7 @@ The official PUWG-1992 nomenclature (sheet code, sheet size):
 | `N-34-131-C-c-1` (6) | `"1:25000"` | **1:10 000** |
 | `N-34-131-C-c-1-1` (7) | `"1:10000"` | **1:5 000** |
 
-Checked on the pinned head: `SheetParser("N-34-131").scale == "1:200000"` and
+Checked on the pinned commit: `SheetParser("N-34-131").scale == "1:200000"` and
 `SheetParser("N-34-131-C-c-1-1").scale == "1:10000"`. So `target_scale="1:10000"`, which Hydrograf
 uses by default (`sheet_lookup.py`, `download_dem --scale 1:10000`), returns 7-component codes,
 officially 1:5000 sheets: the grid of the NMT files of GUGiK OpenData.
@@ -686,9 +686,12 @@ Copernicus or ISRIC.
 
 ### 11.2 BDOT10k layers used
 
-The `PT*` layers (land cover), split by their attributes, and the industrial complexes of
-`OT_KUPG_A` are imported into `land_cover` (`scripts/import_landcover.py`, ADR-074; every source
-with its category in `backend/scripts/README.md`); the Kartograf CN of `cn_calculator.py` reads
+The `PT*` layers (land cover), split by their attributes, the industrial complexes of
+`OT_KUPG_A` and, cut out of the grass after them, the sports and recreation complexes of
+`OT_KUSK_A` and the airports of `OT_KUKO_A` are imported into `land_cover`
+(`scripts/import_landcover.py`, ADR-074, ADR-078; every source with its category in
+`backend/scripts/README.md`); the wetlands of `OT_OIMK_A` make the soil under them group D in
+bootstrap step 5 (ADR-078). The Kartograf CN of `cn_calculator.py` reads
 the PT layers whole and gives each the category of its polygons without the attribute
 (`BDOT10K_CATEGORY_MAP`). The `SW*` layers and `PTWP` serve stream burning (§12).
 
@@ -703,6 +706,8 @@ the PT layers whole and gives each the category of its polygons without the attr
 | PTKM, PTPL | transport land, squares (unpaved squares: `inny`) | `droga` |
 | PTGN, PTSO, PTWZ | unused land, dumps, pits and spoil heaps | `inny` |
 | KUPG | plants, fuel depots, gasworks, CHP plants, waste treatment (cut out of PT) | `zabudowa_przemysłowa` |
+| KUSK, KUKO | sports and recreation complexes, parks, botanical and zoological gardens, airports (cut out of the grass) | `inny` |
+| OIMK | wetlands | (soil group D, bootstrap step 5) |
 | BUBD | buildings | (building raising, §13) |
 | SWRS, SWKN, SWRM | rivers, canals, drainage ditches | (hydro, stream burning) |
 
@@ -778,7 +783,9 @@ HYDRO_LAYER_PREFIXES = ("SWRS", "SWKN", "SWRM", "PTWP")
 
 - **Stream burning**: the streams are burned into the NMT for better flow directions
   (`core/hydrology.py: burn_streams_into_dem()`), then smoothed monotonically in the direction
-  the lines are digitized in, which BDOT10k gives downstream (ADR-041, ADR-072).
+  of flow of each line: towards the mouth of its MPHP watercourse, else down the DEM of its whole
+  watercourse, else the way it is digitized unless the DEM along it rises by more than 2 m
+  (ADR-041, ADR-072, ADR-077).
 - **Validation of the stream network**: the generated network is compared with the BDOT10k streams
   (`is_real_stream`, table `bdot_streams`, ADR-044).
 - **Supplementary information**: the names and the classification (river, canal, ditch).
@@ -901,6 +908,6 @@ Other formats (GeoJSON) of `bootstrap --boundary-file` fall back to the bbox of 
 
 ---
 
-**Document version:** 7.4
-**Last update:** 2026-11-03: the pin follows the release set of Nogat (candidate-1): the head `9deaa31` of `develop` (0.8.0.dev0; was `eab8612`); the signatures of the functions Hydrograf calls did not change.
-**History:** 7.3 (2026-11-02): Archiwista's sets as the only Kartograf input of the shared store (ADR-067): `bootstrap --project --set` with its checks and refusals, `utils/archiwista_project.py` and `utils/kartograf_set.py` (§4.5), every download refused while `HYDROGRAF_KARTOGRAF_ROOT` is set (`refuse_shared_store`, `private_store_dir`), read-only ACL, no concurrency rule; `writes_in_progress` and the guard of step 2 removed (§3.7, §4.1). 7.2 (2026-11-02): the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9). 7.1 (2026-11-02): the pin of the head `eab8612` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `c655639`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).
+**Document version:** 7.5
+**Last update:** 2026-11-10: the pin follows the release set candidate-2 of Nogat: the head `d0990c8` of `develop` (0.8.0.dev0; was `9deaa31`, which production and Hydroni still run); bootstrap step 5 makes the soil under the wetlands group D, the land cover takes the KUSK and KUKO complexes (ADR-078), the smoothing follows ADR-077; Kartograf's `--depth-rule least-permeable` (in the pin since `e49eaad0`) is not used yet.
+**History:** 7.4 (2026-11-03): the pin follows the release set of Nogat (candidate-1): the head `9deaa31` of `develop` (0.8.0.dev0; was `eab8612`); the signatures of the functions Hydrograf calls did not change. 7.3 (2026-11-02): Archiwista's sets as the only Kartograf input of the shared store (ADR-067): `bootstrap --project --set` with its checks and refusals, `utils/archiwista_project.py` and `utils/kartograf_set.py` (§4.5), every download refused while `HYDROGRAF_KARTOGRAF_ROOT` is set (`refuse_shared_store`, `private_store_dir`), read-only ACL, no concurrency rule; `writes_in_progress` and the guard of step 2 removed (§3.7, §4.1). 7.2 (2026-11-02): the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9). 7.1 (2026-11-02): the pin of the head `eab8612` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `c655639`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).

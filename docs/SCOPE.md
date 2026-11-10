@@ -1,8 +1,8 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.8
-**Date:** 2026-11-03
+**Version:** 1.12
+**Date:** 2026-11-10
 **Status:** Approved
 
 ---
@@ -354,7 +354,7 @@ This document defines precisely:
 - Computing flow directions (D8)
 - Computing flow accumulation
 - Computing the slope
-- Vectorization of the streams (FA thresholds: 1000, 10000, 100000 m²) → PostGIS `stream_network`
+- Vectorization of the streams (FA thresholds since 2026-11-05: 10 000, 100 000, 1 000 000 and 10 000 000 m²) → PostGIS `stream_network`
 - Vectorization of the sub-catchments → PostGIS `stream_catchments`
 - Building the in-memory graph (CatchmentGraph, ~44k nodes, ~0.5 MB)
 - Generating overlays: DEM hillshade (PNG + XYZ pyramid), streams overlay
@@ -368,25 +368,24 @@ This document defines precisely:
 **Extent:** The districts that cover the bbox
 **Update:** Once a quarter (or on request)
 
-**Categories (8):**
-- Surface waters
-- Lawns, parks
-- Roads and car parks
-- Industrial/service buildings
-- Residential buildings
-- Arable land
-- Meadows and pastures
-- Forests
+**Categories (8, `land_cover.category`):**
+- `woda`: surface waters
+- `droga`: roads, railways and paved yards
+- `zabudowa_przemysłowa`: industrial, storage and commercial land
+- `zabudowa_mieszkaniowa`: residential land
+- `grunt_orny`: arable land
+- `łąka`: meadows, pastures and grassland
+- `las`: forests
+- `inny`: other land, among it the lawns of parks, sports grounds and airports (ADR-078)
 
 **Preprocessing:**
-- Import into PostGIS (table `land_cover`, ~112k objects)
-- Mapping of the BDOT10k classes to the CN categories (`cn_tables.py`)
-- Assigning a CN value to each category with the HSG taken into account
+- Import into PostGIS (table `land_cover`, ~112k objects): the PT layers split by their attributes, the industrial complexes, then the sports and recreation complexes and airports cut out of the grass (ADR-074, ADR-078); each row keeps its source in `bdot_class`
+- No CN is stored (migration 006): the CN of every piece where a land cover row lies on a soil group is the TR-55 value of Hydrolog's table for the cover of its category and source, computed at query time (`core/cn_tables.py`, ADR-075)
 - Serving as MVT (`/api/tiles/landcover/`)
 
 #### 3.1.3 Stream Network
 
-**Source:** Generated automatically from the DEM (flow accumulation thresholds: 1000, 10000, 100000 m²)
+**Source:** Generated automatically from the DEM (flow accumulation thresholds since 2026-11-05: 10 000, 100 000, 1 000 000 and 10 000 000 m²)
 **Format:** PostGIS (table `stream_network`)
 **Attributes:**
 - Strahler order
@@ -434,7 +433,7 @@ This document defines precisely:
 **Preprocessing:**
 - Clipping to the DEM mosaic and warping to EPSG:2180 (250 m cells)
 - Nearest-neighbour fill of the missing pixels (distance_transform_edt)
-- Polygonization → import into PostGIS (~197 polygons)
+- Polygonization; the soil under the wetlands of the BDOT10k packages (`OT_OIMK_A`) becomes group D (ADR-078) → import into PostGIS (~197 polygons)
 
 ---
 
@@ -950,13 +949,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.7
-**Date of the last update:** 2026-11-04
+**Document version:** 1.12
+**Date of the last update:** 2026-11-10
 **Current version:** v0.4.0 (CP4 finished, 899 tests, 19 endpoints, 49 ADRs)
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.12 (2026-11-10): the accumulation thresholds of 2026-11-05, the land cover categories of the code with no stored CN (ADR-074, ADR-075, migration 006), the lawns of KUSK/KUKO in `inny` and the soil under the wetlands as group D (ADR-078)
 - 1.11 (2026-11-10): the producers follow the release set candidate-2 of Nogat (`587c909`): Kartograf `d0990c8`, Obserwator `f9f4ee7`, Hydrolog `759d7ef`
 - 1.10 (2026-11-05): Hydrolog moves to `1ffcd6b` of `develop` (the official inputs of tc); Hydrograf computes tc only with Hydrolog
 - 1.9 (2026-11-04): Obserwator moves to `1ee5457` of the release set (3.0.0.dev0)

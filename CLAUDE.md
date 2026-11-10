@@ -197,5 +197,3 @@ heads, which follow the standard 2.1 (ADR-060, ADR-061).
   and the operations document `400`, the problems of their route and `500`.
 - AGI-6.3: the 429 of the nginx rate limits and the gateway errors of nginx are not problem
   documents, and the application sends no `rate_limited`.
-- AGI-6.4: the interface sends `Accept-Language: pl` except `admin-sewer.js`, which still
-  gets English texts.

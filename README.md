@@ -83,7 +83,8 @@ uv run python -m scripts.bootstrap --bbox "20.8,52.1,21.2,52.4"
 ```
 
 The pipeline downloads the DEM from GUGiK, land cover from BDOT10k, soil data from
-SoilGrids and precipitation from IMGW. The
+SoilGrids and precipitation from IMGW, and writes `frontend/data/instance.json`, from which
+the welcome dialog and the guide name the data area (`--area-name`). The
 [scripts README](https://github.com/Daldek/Hydrograf/blob/main/backend/scripts/README.md)
 describes every script.
 
@@ -127,9 +128,11 @@ Every variable is listed in
 `CORS_ORIGINS`, `DEM_DIR`, `DEM_PATH`, `STREAM_DISTANCE_PATH`, `FRONTEND_DATA_DIR` for the
 manifest of the analysis results), the admin key
 (`ADMIN_API_KEY` or `ADMIN_API_KEY_FILE`), the IMGW preprocessing (`IMGW_GRID_SPACING_KM`,
-`IMGW_RATE_LIMIT_DELAY_S`) and Docker Compose (`HYDROGRAF_PORT`, `SERVER_NAME`,
-`SECRETS_DIR`, and the names and host paths of an instance: `HYDROGRAF_CONTAINER_PREFIX`,
-`HYDROGRAF_*_PATH`). Secrets are read from the environment only and `.env` is not committed.
+`IMGW_RATE_LIMIT_DELAY_S`), the shared Kartograf store (`HYDROGRAF_KARTOGRAF_ROOT`, read only
+through a closed set of an Archiwista project, `bootstrap --project --set`) and Docker Compose
+(`HYDROGRAF_PORT`, `SERVER_NAME`, `SECRETS_DIR`, and the names and host paths of an instance:
+`HYDROGRAF_CONTAINER_PREFIX`, `HYDROGRAF_*_PATH`). Secrets are read from the environment only
+and `.env` is not committed.
 
 ### Service logs
 
@@ -166,10 +169,11 @@ part of this Compose project and is not covered by this rotation.
 
 | Task | Route (prefix `/api`) | Data source |
 |---|---|---|
-| Delineate a watershed and compute its parameters | `POST /delineate-watershed` | DEM and BDOT10k (GUGiK), CORINE, SoilGrids |
+| Delineate a watershed and compute its parameters | `POST /delineate-watershed` | DEM and BDOT10k (GUGiK), SoilGrids |
 | Preview of the sub-catchments of a delineation, for the animation of the interface | `POST /delineate-watershed/preview` | preprocessed data |
 | Design hydrograph and water balance, with AMC I to III and your own rainfall series | `POST /generate-hydrograph`, `GET /scenarios` | PMAXTP (IMGW-PIB) or your own series |
 | Terrain profile along a line, with the water levels of the analysis results | `POST /terrain-profile` | DEM (GUGiK), analysis results (`frontend/data/results/`) |
+| Everything known at one point of the map: coordinates, terrain, stream, land cover with its CN, soil group, sub-catchment, water of the analysis results | `GET /identify-point` | preprocessed data, analysis results |
 | Optional layers that hold data (storm sewer) | `GET /layers` | database |
 | Vector tiles of streams, catchments, land cover, sewer network | `GET /tiles/{layer}/{z}/{x}/{y}.pbf`, `GET /tiles/thresholds` | preprocessed data |
 | Closed depressions of the terrain | `GET /depressions` | DEM (GUGiK) |

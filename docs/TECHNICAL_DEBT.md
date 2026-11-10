@@ -43,9 +43,14 @@ The constants `CRS_PL1992` and `CRS_WGS84` exist in `core/constants.py`, but the
 
 ---
 
-## Hardcoded Secrets (S5.3)
+## Hardcoded Secrets (S5.3) — DONE
 
-### S5.3a - Default password in config.py — STILL OPEN
+Both items were fixed on 2026-03-02 (`7451ef9`, `ec2039c`): `Settings.postgres_password` defaults to
+an empty string and warns when it is empty, the `password` of `_DEFAULT_CONFIG` is empty, and
+`migrations/env.py` falls back to a local URL without a password with a warning. The text below is the
+finding of that time.
+
+### S5.3a - Default password in config.py — DONE
 
 ```python
 # backend/core/config.py:38
@@ -62,7 +67,7 @@ postgres_password: str = "hydro_password"
 - Require the environment variable `POSTGRES_PASSWORD`
 - In `_DEFAULT_CONFIG` use a placeholder or `os.getenv()`
 
-### S5.3b - Connection string in migrations/env.py — STILL OPEN
+### S5.3b - Connection string in migrations/env.py — DONE
 
 ```python
 # backend/migrations/env.py:27
