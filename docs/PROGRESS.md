@@ -65,10 +65,10 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      less with a lookup table) and the Thiessen weighting 3.2 s (about 2.5 s less with a prepared
      geometry); a batched union is 1 s slower than `ST_UnaryUnion`.
 3. **HSG from the least permeable layer of 0–100 cm** (the author's decision of 2026-11-10,
-   ADR-079; branch `feat/hsg-profile`, not merged): `soil.hsg_depth_rule`, `least-permeable` by
+   ADR-079; merged into `develop` with `b38b657`): `soil.hsg_depth_rule`, `least-permeable` by
    default (Kartograf's `calculate_hsg(depth_rule="least-permeable")`), `topsoil` the 0–5 cm
-   layer of before. After the merge each instance needs step 5 again, and the soil groups and
-   the CN are to be measured and written into ADR-079 (Consequences):
+   layer of before. Each instance needs step 5 again; the soil groups and the CN it gives are
+   to be measured and written into ADR-079 (Consequences):
    - Hydroni: set h07/2026-3 holds only the 0–5 cm raster and is refused (checked read-only on
      2026-11-10: exit 14, `set_hsg_missing`, with the hint
      `kartograf soil hsg --depth-rule least-permeable --bbox 350581,506697,422093,588208`). Set
@@ -77,7 +77,9 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      the cells): `~/data/hydrograf-hydroni/bootstrap.sh` takes `--set 2026-4` once this branch
      runs there (meanwhile `soil.hsg_depth_rule: topsoil` runs 2026-3 as before).
    - Production (private store): its next step 5 fetches the 15 SoilGrids rasters of Poland and
-     computes the raster of the rule.
+     computes the raster of the rule. Measured read-only before it (ADR-079): B → C 69.3 km²
+     (8.8 %) of the boundary, CN of the whole area 67.0 → 67.8 and of Kamiennik 61.2 unchanged
+     (estimates from a replay of step 5); not applied yet.
 4. **Hydroni, for the author's review:** catchment 1883617 and the 11 catchments whose
    polygon/NMT area ratio is above 1.2 (183816, 1863141, 186352, 1863561, 1865212, 186536, 18654,
    1866532, 1883613, 1883684, 188524), with `scripts/diagnose_catchment_exits.py`. The 20 sheets

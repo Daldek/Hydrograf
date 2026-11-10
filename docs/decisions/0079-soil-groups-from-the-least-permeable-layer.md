@@ -106,8 +106,17 @@ How a run takes the rule:
   average against all-B, almost all of it by group A, so the CN of h07 should rise by about
   that much, most in the catchments with much A (up to 9.5), and a little more by the 1.6 % of
   C.
-- Kaczawa (production, private store; topsoil B 99.50 %, C 0.14 %, D 0.36 %): to be measured
-  at its next step 5.
+- Kaczawa (production, private store), measured read-only on 2026-11-10 over the boundary
+  (790.564 km²): the raster of the rule moves 69.3 km² (8.8 %) from B to C (B → C 69.256 km²,
+  C → B 0.063 km², no A and no D), so the soil groups go from B 99.50 %, C 0.14 %, D 0.36 % to
+  B 90.77 %, C 8.88 %, D 0.36 % (the wetlands stay D). *[Estimate:]* the CN of the whole area
+  rises from 67.0 to 67.8; that of Kamiennik (135.32 km², 0.18 km² of new C) stays 61.2.
+  Method: step 5 replayed (warp to the 250 m grid of the mosaic, nearest-neighbour fill,
+  polygons, production's wetland polygon as D) on production's 0–5 cm raster and on the
+  rule's raster of the box `275000,335000,314000,378000` fetched into a temporary store, then
+  the complexes query of `core/land_cover.py` over production's `land_cover`; the replay of the
+  0–5 cm raster gives production's `soil_hsg` and its CN (67.0, 61.2) exactly. Production
+  takes the new groups at its next step 5; not applied yet.
 - Every instance needs step 5 again for the new groups, and the CN follows them at query time
   (ADR-075). Hydroni's bootstrap from h07/2026-3, whose only HSG raster is that of 0–5 cm, is
   refused; set h07/2026-4 (closed 2026-11-10, 728 pins) is 2026-3 with the raster of the rule
