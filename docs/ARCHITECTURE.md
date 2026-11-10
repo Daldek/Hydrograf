@@ -147,6 +147,7 @@ backend/
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
 │       ├── identify.py            # GET /identify-point (core/point_info.py)
+│       ├── network.py             # POST /delineate-network (ADR-080): the network at control points and its hand-off, one network at a time per worker
 │       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, GET /layers
 │       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes), POST /delineate-watershed/preview
 │
@@ -161,6 +162,7 @@ backend/
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
+│   ├── handoff.py                 # The hand-off nogat-handoff/1 to Hydrolog's GUI: build_handoff (a watershed, ADR-068), build_network_handoff (a network, ADR-080)
 │   ├── hydrology.py               # Hydrology: fill, fdir, acc, burning, building raising (ADR-033)
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
 │   ├── morphometry.py             # Shape indices (calculate_shape_indices)
@@ -320,6 +322,61 @@ Errors (application/problem+json):
 ```
 
 A preview for the animation of the GUI, before `POST /api/delineate-watershed` merges the boundary. The selection of the sub-catchments is shared with the precomputed mode (`_select_precomputed`: the minimum threshold `DEFAULT_THRESHOLD_M2`, the sub-catchment at the point, BFS, the cascade above 300 segments), so the preview covers the same area as the result. `depth` is the number of links upstream from the outlet sub-catchment (`CatchmentGraph.upstream_segments_by_depth`); each depth is one MultiPolygon collected by `ST_Collect` (no union), the polygons are simplified by `ST_Simplify` with a tolerance of √A / 500 m (about one pixel once the map fits the catchment, at least 1 m), and the coordinates have 5 decimal places. At most 5000 sub-catchments, the nearest to the outlet. Time (review instance): 52 km², 25 ms against 4.6 s of the full delineation; 778 km² (4418 sub-catchments, 147 depths), 0.15–0.24 s against 88 s.
+
+#### 2.2.2b Delineate Network (ADR-080)
+```
+POST /api/delineate-network
+Content-Type: application/json
+
+Request:
+{
+  "outlet": {"id": "A", "latitude": 51.128, "longitude": 15.909, "name": "Kaczawa"},  // the closing section A; id "A" by default
+  "points": [                  // 1–30 control points above A: tributaries at their mouths, gauges
+    {"id": "P1", "latitude": 51.01538, "longitude": 15.890496, "name": "Kamiennik"},
+    {"id": "P2", "latitude": 51.0712, "longitude": 15.8021}
+  ],
+  "threshold_m2": 100000       // the stream network the points snap to (the streams of the map), ≥ 10000
+}
+
+Response: 200 OK
+{
+  "threshold_m2": 100000,
+  "unit_threshold_m2": 10000,  // the sub-catchments the elements are made of
+  "area_km2": 238.712375,      // A's catchment, exact to the cell
+  "area_check": {"watershed_km2": 238.712375, "elements_km2": 238.712375},
+  "boundary_geojson": {"type": "Feature", ...},   // A's boundary (WGS84)
+  "points": [                  // A, then the points in the order of the request
+    {"id": "P1", "name": "Kamiennik", "latitude": 51.0155, "longitude": 15.88991,
+     "snap_distance_m": 4.0, "at_mouth": true, "node": "Z2"}, ...
+  ],
+  "subcatchments": [           // Z1, Z2, … in the order of the hand-off
+    {"id": "Z1", "kind": "headwater", "to": "J1", "point": null, "reach": null,
+     "watershed": {...}}       // a WatershedResponse, as for a delineated watershed
+  ],
+  "reaches": [
+    {"id": "R1", "from": "J1", "to": "J2", "length_km": 5.0712, "slope_m_per_m": 0.00981,
+     "slope_method": "nmt", "upstream_elevation_m": 281.4, "downstream_elevation_m": 231.66,
+     "vector_length_km": 4.87, "geojson": {"type": "Feature", ...}}
+  ],
+  "junctions": [
+    {"id": "J1", "kind": "confluence", "point": null, "latitude": 51.0157,
+     "longitude": 15.8901, "inflows": ["Z1", "Z2"]}
+  ],
+  "notices": [{"code": "reach_slope_minimum", "ids": ["R3"]}],
+  "handoff": {"schema": "nogat-handoff/1", ...}   // the network for Hydrolog's „Sieć i trasowanie”
+}
+
+Errors (application/problem+json; details.point_id or details.point_ids name the point):
+- 400 validation_error: coordinates, no point or more than 30, an id not ^[A-Za-z0-9][A-Za-z0-9_-]{0,15}$, two ids equal without regard to case, a name with control characters, threshold_m2 below 10000 (reason invalid_request, errors[].pointer); a point that does not drain to A (network_point_outside); points, or a point and A, on one stream cell (network_points_coincide)
+- 404 not_found (network_point_off_stream): no stream cell of threshold_m2 within 100 m of a point, or a point off the rasters
+- 422 unsupported (network_window_too_large): the window of A's catchment holds more than 60 million cells (details cells, max_cells)
+- 503 store_unavailable: the catchment graph is not loaded (catchment_graph_unavailable); a raster missing (network_rasters_missing) or not on the grid of the others (raster_grids_differ); another network of this worker still running after 15 s (network_delineation_busy, details.wait_s)
+- 500 internal_error: the elements do not add up to A's catchment (network_area_mismatch); any other failure (network_delineation_failed)
+```
+
+The network of a closing section A and the control points above it (plan `docs/plans/2026-11-10-network-delineation.md`; `api/endpoints/network.py`, `core/network_tree.py`, `core/network_delineation.py`, §2.4.10). Each point, A included, snaps to the nearest stream cell of `threshold_m2` within 100 m; a point at most 50 m above its tributary's mouth moves to the mouth (`at_mouth`). `points[].node` is a point's subcatchment when no point lies above it, else its junction. `subcatchments[].kind` is `headwater`, `tributary` or `intermediate` (the przyrzecze of the reach `reach`); `reaches[].from` is the JSON name of the field `from_node`, and `slope_method` is `minimum` where the NMT does not fall between the ends of a reach (0.0001); `junctions[].kind` is `confluence`, `point` or `outlet` (A's, which flows into `OUT`). `notices` lists `over_scs_cn_limit` (the subcatchments whose `hydrograph_available` is false, above 250 km²) and `reach_slope_minimum` (the reaches of the minimum slope), each only when it has ids; the front end words them. `handoff` is one `nogat-handoff/1` with `node_provenance` around one `hydrolog-network/1` (`build_network_handoff`, `docs/integrations/HYDROLOG.md`).
+
+A network reads the saved rasters of A's whole catchment (up to about 1.4 GB at the cap of 60 M cells), so each worker process delineates one network at a time: the route holds a `threading.Lock` of its process, and a request waits for it at most `NETWORK_LOCK_WAIT_S` (15 s), then gets 503 `network_delineation_busy`. With production's two workers at most two networks run at once. The route registers the problems 404, 422 and 503 of the watershed routes besides 400 and 500; any exception that is not a `HydrografError` is logged and becomes 500 `network_delineation_failed`.
 
 #### 2.2.3 Generate Hydrograph
 ```
@@ -610,6 +667,14 @@ def determine_cn(boundary, db, config_cn=None, default_cn=75, use_kartograf=True
                  boundary_wgs84=None, cache_dir=None, teryt=None) -> tuple[float, str, dict | None]:
     """CN by the hierarchy configuration → database → Kartograf → default (scripts/analyze_watershed.py)."""
 ```
+
+#### 2.4.10 Network delineation: `core/network_tree.py`, `core/network_delineation.py`, `core/handoff.py` (ADR-080)
+**Responsibilities:**
+- `core/network_tree.py` (pure, on the catchment graph): the parent of each control point, the trunk of each control point by `trace_main_channel` (ADR-046), the junctions, the mouth rule, the element of every unit of A's catchment (`CatchmentGraph.upstream_tree`), the units split by points, the ids `Z…`, `R…`, `J…`, `OUT` in the order of the hand-off; a `Junction` carries its `inflows` and the `tributaries`, the control points of the branches that join it from the side
+- `core/network_delineation.py` (`delineate_network(cg, db, outlet, points, threshold_m2, settings=None) -> Network`): snapping in a window of 100 m, one window of the six saved rasters over A's catchment (at most 60 M cells), the element raster with the split units (pyflwdir basins), the area check in cells (B5), the measures of every element from its cells (`core/cell_parameters.py`, a `WatershedResponse` each), the boundaries as one coverage simplified at 5 m, the reaches (length from the flow distances, slope from the NMT, the BDOT10k check length from `bdot_streams`)
+- `core/handoff.py`: `build_handoff` writes the hand-off of a watershed (ADR-068), `build_network_handoff(network, names, created_at=None)` that of a network: one `nogat-handoff/1` with `node_provenance` around one `hydrolog-network/1`, no rainfall, time step, result or reach sections (`docs/integrations/HYDROLOG.md`)
+
+The steps and their reasons: `docs/COMPUTATION_PIPELINE.md` (Phase 7) and the plan `docs/plans/2026-11-10-network-delineation.md` (D1–D15).
 
 ---
 
@@ -1270,6 +1335,9 @@ services:
       DEM_DIR: ${DEM_DIR:-/data/nmt}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
+      # GDAL's block cache [MB]: a network reads up to 1.4 GB of rasters once
+      # (ADR-080), which the default cache (5 % of the RAM) would keep a second time
+      GDAL_CACHEMAX: "64"
     depends_on:
       db:
         condition: service_healthy
@@ -1964,11 +2032,12 @@ jobs:
 
 ---
 
-**Document version:** 2.10
-**Date of the last update:** 2026-11-03
+**Document version:** 2.11
+**Date of the last update:** 2026-11-10
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.11 (2026-11-10): network delineation at control points (ADR-080, plan `2026-11-10-network-delineation`): §2.1 `api/endpoints/network.py` and `core/handoff.py` in the module map; §2.2.2b `POST /api/delineate-network` (request, response, errors, one network at a time per worker); §2.4.10 `core/network_tree.py`, `core/network_delineation.py` and `build_network_handoff` of `core/handoff.py`; §5.1 `GDAL_CACHEMAX: "64"` in the environment of the API
 - 2.10 (2026-11-03): §2.2.1 and §7.3 — `/health` reports Hydrograf's version from `core/version.py` (it was a constant `1.0.0`), as does the admin dashboard
 - 2.9 (2026-11-02): §2.2.8 — the admin endpoints address resources: `DELETE /api/admin/sewer` (was `DELETE /api/admin/sewer/delete`), `PUT /api/admin/sewer/config` (was `POST`), `PATCH /api/admin/feedback/{id}` with `{"is_read": bool}` (was `POST /api/admin/feedback/{id}/read`); the feedback endpoints are listed; CORS allows `PUT` and `PATCH`
 - 2.8 (2026-11-02): fixes from the testers' feedback (`feature/store-ui`): §4.1 and §4.2 — wheel zoom without the tail of a gesture or late input, (i) explanations open on a click only, the flow accumulation threshold in ha/km², the rail Mapa · Instrukcja · Logowanie on every page, the service status only in `/admin`
