@@ -639,7 +639,9 @@ The front end has no test runner (ADR-068): it is checked in a browser in S5;
 ## Stages
 
 Each later branch starts from the previous one; merged into `develop` with a merge commit when
-its gate passes and the coordinator schedules it (relative to the release v0.5.0, PROGRESS).
+its gate passes and the coordinator schedules it. No release is cut for this work now (the
+coordinator, 2026-11-10: the author has not settled the versions, and no tag is set): S1 and S2
+merge when green, S3 and S4 merge into `develop` in the usual way after S5.
 
 | Stage | Branch | Content | Needs | Merged |
 |---|---|---|---|---|
@@ -661,6 +663,8 @@ None yet.
 
 - Routing, the reach sections and a hydrograph of the network or of an element in Hydrograf:
   Hydrolog's (SCOPE keeps routing out).
-- A network whose window exceeds 60 M cells is refused, not computed on coarser units.
+- A network whose window exceeds 60 M cells is refused, not computed on coarser units (the
+  coordinator, 2026-11-10). A stage that delineates such a network on coarser units is later
+  work, not part of S1–S5.
 - Positions of the nodes (Sieć lays the network out); `nash_estimation` in the runoff
   (Hydrolog's A5, optional for producers); a network handed back from Hydrolog.
