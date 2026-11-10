@@ -30,13 +30,13 @@ import core.config
 from api.endpoints.watershed import _build_watershed_response
 from core.active_run import write_active_run
 from core.catchment_graph import CatchmentGraph
+from core.cell_parameters import main_channel
 from core.config import Settings
 from core.watershed_service import boundary_to_polygon
 from scripts.export_catchment_parameters import (
     COLUMN_NAMES,
     COLUMNS,
     export,
-    main_channel,
     open_rasters,
     polygon_parameters,
     read_polygon_cells,

@@ -49,19 +49,17 @@ from shapely.geometry import Point, box, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
+from core.cell_parameters import PipelineRasters, d8_from_saved_flowdir, outlet_cell
 from core.config import get_settings
 from core.constants import CRS_PL1992, M2_PER_KM2
 from core.hydrology import D8_COL_OFFSET, D8_ROW_OFFSET, D8_VALID
 from core.version import get_version
 from scripts.export_catchment_parameters import (
     PANEL_THRESHOLD_M2,
-    PipelineRasters,
-    _outlet,
     open_rasters,
     read_polygon_cells,
     read_polygons,
 )
-from scripts.process_dem import d8_from_saved_flowdir
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -285,7 +283,7 @@ def diagnose_polygon(
     }
     if not member_cells:
         return [], [], summary
-    outlet = _outlet(cells)
+    outlet = outlet_cell(cells)
     d8 = d8_from_saved_flowdir(cells.fdir, cells.flow_dist, cells.valid)
     receivers = _receivers(polygons, d8.shape, cells.transform)
     exits, drained = polygon_exits(d8, cells.member, receivers, outlet)

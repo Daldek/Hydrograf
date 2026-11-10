@@ -657,7 +657,17 @@ Deploying is the coordinator's: a new image, no migration and no data change. Af
 
 ## Results
 
-None yet.
+**S1** (`refactor/cell-parameters`): `core/cell_parameters.py` holds `INTERMEDIATE_SUFFIXES`,
+`d8_from_saved_flowdir`, `PipelineRasters`, the window (`CellWindow`, `read_cell_window`: the six
+rasters and `member`, the cells measured), `terrain`, `outlet_cell`, `baseline_m`,
+`flow_path_parameters`, `overland_segments`, `main_channel` and `channel_parameters`; the export
+keeps the polygon (`PolygonCells`, its mask and the pyflwdir basin of its outlet). The walk of
+`overland_segments` follows either a D8 grid (the saved rasters: the export, the backfill, the
+network) or the downstream indices of a run (`idxs_ds`): `process_dem` keeps measuring on the
+directions of its run, which differ from the saved grid at cells without NMT data, and a run by
+units has only the int32 memmap of `UnitFlowPaths`, whose `path` this replaced and which is
+removed. `tests/unit/test_cell_parameters.py` finds the walk equal to pyflwdir's `path` for every
+cell of the synthetic DEMs, along both.
 
 ## Not in this plan
 

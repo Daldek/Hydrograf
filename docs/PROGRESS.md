@@ -146,9 +146,12 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 10. **Network delineation at control points** (the author's decisions B1–B7 of 2026-11-10,
     [the plan](plans/2026-11-10-network-delineation.md), ADR-080): `POST /api/delineate-network`,
     the map mode „Sieć zlewni” and one hand-off of the whole network to Hydrolog's Sieć. S1
-    (`refactor/cell-parameters`) and S2 (`feat/network-delineation-core`) can start; S3 waits
-    for Nogat's `node_provenance` (Nogat plan `2026-11-10-node-provenance-in-handoff`, step 1)
-    and a Nogat release set with Hydrolog's W1–W2.
+    (`refactor/cell-parameters`, not merged): the cell measures of the export and the overland
+    segment of `process_dem` are in `core/cell_parameters.py`, the overland segment a numba walk
+    along the D8 directions instead of pyflwdir's `path`. S2 (`feat/network-delineation-core`)
+    starts from it; S3 waits for Nogat's `node_provenance` (Nogat plan
+    `2026-11-10-node-provenance-in-handoff`, step 1) and a Nogat release set with Hydrolog's
+    W1–W2. No release is cut for this work now; networks above 60 M cells stay refused.
 11. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
     surface (three unauthenticated DoS paths first), the „brak danych” of the hyetograph that a
     tester reported, `--thresholds` of the bootstrap, building raising (ADR-033), the read

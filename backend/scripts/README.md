@@ -699,11 +699,12 @@ the fields asked for and these values to a new GeoPackage. It reads the rasters 
 pipeline saved in `DEM_DIR` (`dem_mosaic_02_filled`, `_03_flowdir`, `_04_flowacc`,
 `_04b_stream_distance`, `_05_slope` and `_10_subcatchments_<threshold>`) and the database
 (`land_cover`, `soil_hsg`, the BDOT10k flags and lengths of `stream_network` and
-`stream_catchments`), only reading both. The values come from the code behind the panel: the
+`stream_catchments`), only reading both. The values come from the code behind the panel, the
+measures of `core.cell_parameters` (which `process_dem` shares for the overland segments): the
 zonal statistics of the sub-catchments over the cells whose centre lies in the polygon, the flow
-paths of `core.divide_flow_path`, the overland segment of `process_dem`, the BDOT10k part of the
-main channel of `core.catchment_graph`, the shape indices of `core.morphometry` and the land
-cover, the CN of its soil-cover complexes (ADR-075) and the soil groups of
+paths of `core.divide_flow_path`, the overland segment along the D8 directions, the BDOT10k part
+of the main channel of `core.catchment_graph`, the shape indices of `core.morphometry` and the
+land cover, the CN of its soil-cover complexes (ADR-075) and the soil groups of
 `core.watershed_service`. The outlet is the cell of the largest flow accumulation in the
 polygon; the flow paths start in the part of the polygon that drains to it; the main channel
 goes up the stream network of the threshold from it, at each confluence into the branch of the

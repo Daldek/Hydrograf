@@ -16,8 +16,8 @@ saved in DEM_DIR (``dem_mosaic_02_filled``, ``_03_flowdir``, ``_04_flowacc``,
 ``_04b_stream_distance``, ``_05_slope`` and ``_10_subcatchments_<threshold>``) and
 on the database: the zonal statistics of the sub-catchments (core.zonal_stats) over
 the cells whose centre lies in the polygon, the flow paths of core.divide_flow_path,
-the overland segment of process_dem, the BDOT10k part of the main channel of
-core.catchment_graph, the shape indices of core.morphometry and the land cover, the CN
+the overland segment and the BDOT10k part of the main channel of
+core.cell_parameters, the shape indices of core.morphometry and the land cover, the CN
 of its soil-cover complexes and the soil groups of core.watershed_service. What needs
 an outlet takes the cell of the largest flow accumulation in the polygon, and the flow
 paths start in the part of the polygon that drains to it. The main channel runs up
@@ -37,13 +37,12 @@ Usage
 
 import argparse
 import logging
-import math
 import sys
 import time
 import warnings
 from collections.abc import Iterator, Sequence
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -56,30 +55,30 @@ import rasterio
 from hydrolog.runoff import AMC
 from pyproj import CRS
 from rasterio.features import geometry_mask
-from rasterio.transform import Affine
 from shapely.geometry.base import BaseGeometry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.active_run import active_run_raster
-from core.catchment_graph import contiguous_real_length_km
+from core.cell_parameters import (
+    INTERMEDIATE_SUFFIXES,
+    CellWindow,
+    PipelineRasters,
+    channel_parameters,
+    d8_from_saved_flowdir,
+    flow_path_parameters,
+    outlet_cell,
+    read_cell_window,
+    terrain,
+)
 from core.cn_tables import cn_for_amc, runoff_mm, weighted_runoff_mm
 from core.config import get_settings
 from core.constants import CRS_PL1992, M2_PER_KM2, M_PER_KM
 from core.database import get_db_session
-from core.divide_flow_path import trace_flow_path, watershed_flow_paths
-from core.hydrology import D8_DIRECTIONS
 from core.land_cover import get_land_cover_for_boundary
 from core.morphometry import area_perimeter_indices
-from core.raster_io import cells_window, read_window
 from core.version import get_version
 from core.watershed_service import build_hsg_stats
-from core.zonal_stats import zonal_summary
-from scripts.process_dem import (
-    INTERMEDIATE_SUFFIXES,
-    _overland_segments,
-    d8_from_saved_flowdir,
-)
 from utils.geometry import transform_pl1992_to_wgs84
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -124,16 +123,6 @@ _LAND_COVER = "Pokrycie terenu"
 _HSG = "Grupy glebowe (HSG)"
 _HYDROGRAPH = "Hydrogram"
 _CONTROL = "Kontrola"
-
-# The flag and the lengths of segments that the catchment graph loads: the smoothed
-# line of stream_network (_segment_length_km) and the cells (_stream_length_km)
-_STREAM_SEGMENTS = text(
-    "SELECT sn.segment_idx, COALESCE(sn.is_real_stream, false) AS is_real, "
-    "COALESCE(sn.length_m, 0) AS line_length_m, sc.stream_length_km "
-    "FROM stream_network sn LEFT JOIN stream_catchments sc "
-    "ON sc.threshold_m2 = sn.threshold_m2 AND sc.segment_idx = sn.segment_idx "
-    "WHERE sn.threshold_m2 = :threshold AND sn.segment_idx = ANY(:idxs)"
-)
 
 
 @dataclass(frozen=True)
@@ -264,7 +253,7 @@ COLUMNS: tuple[Column, ...] = (
         _BASIC,
         "Spływ powierzchniowy – długość",
         "Longest flow path from its head to the first cell of the DEM stream "
-        "network of the threshold (process_dem._overland_segments)",
+        "network of the threshold (core.cell_parameters.overland_segments)",
     ),
     Column(
         "overland_slope_m_per_m",
@@ -506,38 +495,6 @@ def is_pl1992(crs: CRS) -> bool:
         return bool(crs.is_projected and crs.to_proj4() == target.to_proj4())
 
 
-@dataclass(frozen=True)
-class PipelineRasters:
-    """Rasters that a run of process_dem saved, open on one grid.
-
-    Attributes
-    ----------
-    filled_dem, slope, acc, fdir, flow_dist, labels : rasterio.DatasetReader
-        ``dem_mosaic_02_filled``, ``_05_slope``, ``_04_flowacc``, ``_03_flowdir``,
-        ``_04b_stream_distance`` and ``_10_subcatchments_<threshold_m2>``.
-    threshold_m2 : int
-        Flow accumulation threshold of the stream network [m²].
-    """
-
-    filled_dem: Any
-    slope: Any
-    acc: Any
-    fdir: Any
-    flow_dist: Any
-    labels: Any
-    threshold_m2: int
-
-    @property
-    def cellsize_m(self) -> float:
-        """Side of a cell [m]."""
-        return float(abs(self.filled_dem.transform.a))
-
-    @property
-    def threshold_cells(self) -> int:
-        """The threshold in cells, as process_dem counts it."""
-        return max(1, int(self.threshold_m2 / self.cellsize_m**2))
-
-
 @contextmanager
 def open_rasters(dem_dir: Path, threshold_m2: int) -> Iterator[PipelineRasters]:
     """Open the rasters of the pipeline in a directory.
@@ -601,46 +558,24 @@ def open_rasters(dem_dir: Path, threshold_m2: int) -> Iterator[PipelineRasters]:
 
 
 @dataclass(frozen=True)
-class PolygonCells:
+class PolygonCells(CellWindow):
     """The rasters in a window around a polygon, and the cells of the polygon.
+
+    ``member`` is ``inside & valid``: the cells of the polygon.
 
     Attributes
     ----------
-    dem, slope, acc, fdir, flow_dist, labels : np.ndarray
-        The window of each raster; cells beyond a raster hold its nodata.
-    dem_nodata, flow_dist_nodata : float | None
-        Nodata of the filled DEM and of the flow distances.
-    transform : Affine
-        Transform of the window.
-    valid : np.ndarray
-        Cells with NMT data.
     inside : np.ndarray
         Cells whose centre lies in the polygon.
-    member : np.ndarray
-        ``inside & valid``: the cells of the polygon.
     """
 
-    dem: np.ndarray
-    slope: np.ndarray
-    acc: np.ndarray
-    fdir: np.ndarray
-    flow_dist: np.ndarray
-    labels: np.ndarray
-    dem_nodata: float | None
-    flow_dist_nodata: float | None
-    transform: Affine
-    valid: np.ndarray
     inside: np.ndarray
-    member: np.ndarray
 
 
 def read_polygon_cells(
     geometry: BaseGeometry, rasters: PipelineRasters
 ) -> PolygonCells:
     """Read the rasters around a polygon: its bounding box and one cell more.
-
-    The cell below the outlet and the cells next to the boundary are in the window,
-    as the flow paths and the main channel need them.
 
     Parameters
     ----------
@@ -654,31 +589,16 @@ def read_polygon_cells(
     PolygonCells
         The windows and the cells of the polygon.
     """
-    window = cells_window(rasters.filled_dem.transform, geometry.bounds)
-    dem = read_window(rasters.filled_dem, window)
-    flow_dist = read_window(rasters.flow_dist, window)
+    window = read_cell_window(rasters, geometry.bounds)
     inside = geometry_mask(
-        [geometry], out_shape=dem.data.shape, transform=dem.transform, invert=True
+        [geometry],
+        out_shape=window.valid.shape,
+        transform=window.transform,
+        invert=True,
     )
-    valid = (
-        np.ones(dem.data.shape, dtype=bool)
-        if dem.nodata is None
-        else dem.data != dem.nodata
-    )
-    return PolygonCells(
-        dem=dem.data,
-        slope=read_window(rasters.slope, window).data,
-        acc=read_window(rasters.acc, window).data,
-        fdir=read_window(rasters.fdir, window).data,
-        flow_dist=flow_dist.data,
-        labels=read_window(rasters.labels, window).data,
-        dem_nodata=dem.nodata,
-        flow_dist_nodata=flow_dist.nodata,
-        transform=dem.transform,
-        valid=valid,
-        inside=inside,
-        member=inside & valid,
-    )
+    arrays = {field.name: getattr(window, field.name) for field in fields(window)}
+    arrays["member"] = inside & window.valid
+    return PolygonCells(**arrays, inside=inside)
 
 
 def polygon_parameters(
@@ -721,48 +641,15 @@ def polygon_parameters(
 
     area_km2 = polygon_area_km2
     if cell_count:
-        terrain, area_km2 = _terrain(cells, rasters.cellsize_m)
-        row.update(terrain)
+        terrain_row, area_km2 = terrain(cells, rasters.cellsize_m)
+        row.update(terrain_row)
         row.update(area_perimeter_indices(area_km2, row["perimeter_km"]))
-        outlet = _outlet(cells)
+        outlet = outlet_cell(cells)
         row.update(_outlet_columns(cells, outlet, rasters.cellsize_m, polygon_area_km2))
         row.update(_flow_path_columns(cells, outlet, rasters))
-        row.update(_channel_columns(cells, outlet, rasters, db))
+        row.update(channel_parameters(cells, outlet, rasters, db))
     row.update(_land_cover_columns(geometry, area_km2, db))
     return row
-
-
-def _terrain(cells: PolygonCells, cellsize_m: float) -> tuple[dict[str, Any], float]:
-    """Area, elevations and mean slope of the cells, and the area for the indices.
-
-    The statistics of process_dem's sub-catchments (polygonize_subcatchments), with
-    the polygon as the only label.
-    """
-    summary = zonal_summary(
-        cells.member.astype(np.int32),
-        cells.dem,
-        cells.slope,
-        cells.dem_nodata if cells.dem_nodata is not None else np.nan,
-    )
-    count = int(summary.count[1])
-    elev_count = int(summary.elev_count[1])
-    area_km2 = round(count * (cellsize_m * cellsize_m / M2_PER_KM2), 6)
-    return {
-        "area_km2": round(area_km2, 4),
-        "elevation_min_m": round(float(summary.elev_min_m[1]), 2),
-        "elevation_max_m": round(float(summary.elev_max_m[1]), 2),
-        "elevation_mean_m": round(float(summary.elev_sum_m[1] / elev_count), 2),
-        "mean_slope_m_per_m": round(
-            float(summary.slope_sum_percent[1] / count) / 100.0, 6
-        ),
-    }, area_km2
-
-
-def _outlet(cells: PolygonCells) -> tuple[int, int]:
-    """Cell of the polygon with the largest flow accumulation (the first of equal)."""
-    flat = int(np.argmax(np.where(cells.member, cells.acc, -1)))
-    row, col = np.unravel_index(flat, cells.member.shape)
-    return int(row), int(col)
 
 
 def _outlet_columns(
@@ -786,214 +673,20 @@ def _outlet_columns(
     }
 
 
-def _baseline_m(
-    cells: PolygonCells, outlet: tuple[int, int], member: np.ndarray
-) -> float:
-    """Flow distance at the outlet of the polygon [m].
-
-    The catchment graph measures a watershed from the first cell below its
-    outlet cell (the end of the outlet sub-catchment's longest flow path), from
-    the outlet cell itself where the flow ends there (a pit, the edge of the data).
-    """
-    end = trace_flow_path(outlet, member, cells.fdir, cells.flow_dist)[-1]
-    if (
-        end != outlet
-        and cells.valid[end]
-        and cells.flow_dist[end] != cells.flow_dist_nodata
-    ):
-        return float(cells.flow_dist[end])
-    return float(cells.flow_dist[outlet])
-
-
 def _flow_path_columns(
     cells: PolygonCells, outlet: tuple[int, int], rasters: PipelineRasters
 ) -> dict[str, Any]:
     """Longest flow path, its slope and overland segment, and the divide path.
 
-    The flow paths start in the part of the polygon that drains to the outlet.
+    The flow paths start in the part of the polygon that drains to the outlet:
+    the cells of the polygon in the pyflwdir basin of the outlet.
     """
     d8 = d8_from_saved_flowdir(cells.fdir, cells.flow_dist, cells.valid)
     d8[outlet] = 0  # the pit that the basin of the outlet and the paths end in
     flw = pyflwdir.from_array(d8, ftype="d8", transform=cells.transform, latlon=False)
     basin = flw.basins(idxs=np.array([np.ravel_multi_index(outlet, d8.shape)]))
-    drained = cells.member & (basin > 0)
-    paths = watershed_flow_paths(
-        drained,
-        cells.flow_dist,
-        cells.fdir,
-        cells.flow_dist_nodata,
-        _baseline_m(cells, outlet, drained),
-        cells.transform,
-    )
-    result: dict[str, Any] = {
-        "flow_path_length_km": None,
-        "flow_path_slope_m_per_m": None,
-        "overland_length_km": None,
-        "overland_slope_m_per_m": None,
-        "divide_flow_path_km": (
-            paths.divide.length_km if paths.divide is not None else None
-        ),
-    }
-    if paths.longest is None:
-        return result
-    length_km = paths.longest.length_km
-    result["flow_path_length_km"] = length_km
-    col, row = ~cells.transform * paths.longest.coords_2180[0]
-    head = (math.floor(row), math.floor(col))
-    slope = (_elevation(cells, head) - _elevation(cells, outlet)) / (length_km * 1000)
-    if slope > 0:
-        result["flow_path_slope_m_per_m"] = round(slope, 6)
-    stream = (cells.acc >= rasters.threshold_cells) & cells.valid
-    lengths, drops = _overland_segments(
-        np.array([np.ravel_multi_index(head, d8.shape)], dtype=np.intp),
-        flw,
-        stream,
-        cells.dem.ravel(),
-    )
-    overland_m, drop_m = lengths[0], drops[0]
-    if overland_m is not None and overland_m > 0:
-        result["overland_length_km"] = round(overland_m / M_PER_KM, 4)
-        if drop_m is not None and drop_m > 0:
-            result["overland_slope_m_per_m"] = round(drop_m / overland_m, 6)
-    return result
-
-
-def _elevation(cells: PolygonCells, cell: tuple[int, int]) -> float:
-    """Return the filled DEM at a cell, to the 0.01 m of the sub-catchment stats."""
-    return round(float(cells.dem[cell]), 2)
-
-
-def _downstream(cells: PolygonCells, cell: tuple[int, int]) -> tuple[int, int] | None:
-    """Cell that a cell drains into, None at a pit or beyond the data."""
-    offset = D8_DIRECTIONS.get(int(cells.fdir[cell]))
-    if offset is None:
-        return None
-    row, col = cell[0] + offset[0], cell[1] + offset[1]
-    nrows, ncols = cells.valid.shape
-    if not (0 <= row < nrows and 0 <= col < ncols) or not cells.valid[row, col]:
-        return None
-    return row, col
-
-
-def main_channel(
-    cells: PolygonCells, outlet: tuple[int, int], stream: np.ndarray
-) -> list[tuple[int, int]]:
-    """Cells of the main channel of the polygon, from the outlet up.
-
-    From each cell the channel goes up into the stream cell that drains into it
-    with the largest flow accumulation: at a confluence the branch of the larger
-    upstream area, as CatchmentGraph.trace_main_channel chooses among the
-    sub-catchments. It follows the stream network out of the polygon and back
-    (a stream along a boundary that does not follow the NMT) and ends at its last
-    cell in the polygon: its source, or where it flows in from outside.
-
-    Parameters
-    ----------
-    cells : PolygonCells
-        The polygon.
-    outlet : tuple[int, int]
-        Outlet cell.
-    stream : np.ndarray
-        Cells of the stream network of the threshold.
-
-    Returns
-    -------
-    list[tuple[int, int]]
-        The cells, outlet first; empty when the outlet is not a stream cell.
-    """
-    if not stream[outlet]:
-        return []
-    nrows, ncols = stream.shape
-    path = [outlet]
-    row, col = outlet
-    for _ in range(int(np.count_nonzero(stream))):
-        best: tuple[int, int] | None = None
-        for code, (drow, dcol) in D8_DIRECTIONS.items():
-            r, c = row - drow, col - dcol
-            if (
-                0 <= r < nrows
-                and 0 <= c < ncols
-                and cells.fdir[r, c] == code
-                and stream[r, c]
-                and (best is None or cells.acc[r, c] > cells.acc[best])
-            ):
-                best = (r, c)
-        if best is None:
-            break
-        path.append(best)
-        row, col = best
-    last = max(i for i, cell in enumerate(path) if cells.member[cell])
-    return path[: last + 1]
-
-
-def _channel_columns(
-    cells: PolygonCells,
-    outlet: tuple[int, int],
-    rasters: PipelineRasters,
-    db: Session,
-) -> dict[str, Any]:
-    """Length, BDOT10k length and slope of the main channel.
-
-    A segment of the stream network has the length from each of its cells to the
-    next one, the last to the first cell of the segment below it, rounded to
-    0.1 m (stream_extraction.vectorize_streams) and kept in km to 4 decimals in
-    stream_catchments; the segment of a cell is its label. A segment that the
-    channel follows in part counts that part. The BDOT10k length takes each
-    segment along its smoothed line of stream_network, as the catchment graph
-    does, a part of a segment in proportion.
-    """
-    result: dict[str, Any] = {
-        "channel_length_km": None,
-        "real_channel_length_km": None,
-        "channel_slope_m_per_m": None,
-    }
-    stream = (cells.acc >= rasters.threshold_cells) & cells.valid
-    path = main_channel(cells, outlet, stream)
-    segment_idxs: list[int] = []  # from the outlet up
-    raw_lengths_m: list[float] = []
-    for i, cell in enumerate(path):
-        below = path[i - 1] if i else _downstream(cells, outlet)
-        step_m = 0.0
-        if below is not None:
-            diagonal = below[0] != cell[0] and below[1] != cell[1]
-            step_m = rasters.cellsize_m * (math.sqrt(2.0) if diagonal else 1.0)
-        label = int(cells.labels[cell])
-        if segment_idxs and segment_idxs[-1] == label:
-            raw_lengths_m[-1] += step_m
-        else:
-            segment_idxs.append(label)
-            raw_lengths_m.append(step_m)
-    lengths_m = [round(length, 1) for length in raw_lengths_m]
-    length_km = sum(round(length / M_PER_KM, 4) for length in lengths_m)
-    if length_km <= 0:
-        return result
-    result["channel_length_km"] = round(length_km, 4)
-    drop_m = _elevation(cells, path[-1]) - _elevation(cells, outlet)
-    slope = drop_m / (length_km * 1000)
-    if slope > 0:
-        result["channel_slope_m_per_m"] = round(slope, 6)
-    segments = {
-        int(r.segment_idx): r
-        for r in db.execute(
-            _STREAM_SEGMENTS,
-            {"threshold": rasters.threshold_m2, "idxs": segment_idxs},
-        ).fetchall()
-    }
-    real: list[bool] = []
-    line_lengths_km: list[float] = []
-    for idx, length_m in zip(segment_idxs, lengths_m, strict=True):
-        segment = segments.get(idx)
-        real.append(segment is not None and bool(segment.is_real))
-        line_km = length_m / M_PER_KM
-        if segment is not None and segment.stream_length_km:
-            line_km *= (segment.line_length_m or 0.0) / (
-                segment.stream_length_km * M_PER_KM
-            )
-        line_lengths_km.append(line_km)
-    result["real_channel_length_km"] = round(
-        contiguous_real_length_km(real, line_lengths_km), 4
-    )
-    return result
+    drained = replace(cells, member=cells.member & (basin > 0))
+    return flow_path_parameters(drained, d8, outlet, rasters.threshold_cells)
 
 
 def _land_cover_columns(
