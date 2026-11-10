@@ -706,6 +706,38 @@ elements hold 9,548,941 cells and the graph 9,613,121; the network is refused (5
 bypassed in a throwaway script the same network takes 6.1 s for a window of 5,324 × 3,482 cells,
 1.30 GB peak (0.94 GB with `GDAL_CACHEMAX=64`).
 
+**S3** (`feat/network-delineation-api`): `POST /api/delineate-network` (`api/endpoints/network.py`,
+the models in `models/schemas.py`) runs `delineate_network` under a `threading.Lock` of the worker
+(D13: a request waits 15 s, then 503 `network_delineation_busy` with `details.wait_s`; a failure
+that is not a Hydrograf error is 500 `network_delineation_failed`) and answers as the section API
+gives it; `core/handoff.py::build_network_handoff` writes the hand-off of D14 in the order of D15.
+The envelope is the copy of Nogat `8848c26` (SHA-256 `84c6856d…42ed`), Hydrolog is pinned at
+`930915d` of Nogat's release set candidate-3 (`b0ac85b`), which has the `description` of a node.
+Decided in S3, beyond the text of the plan: (1) the subject puts the count in parentheses,
+„Kaczawa, sieć (3 zlewnie)”: „sieć 3 zlewnie” is not Polish, and the subject names the hand-off's
+file (S4), where a colon is not allowed; (2) a confluence's description names the points of the
+branches that join it from the side (`Junction.tributaries` of `core/network_tree.py`), not a gauge
+on the trunk above it; (3) `at_mouth` is in a subcatchment's origin only when true, the NMT at an
+end of a reach only where it has data; (4) the network's `description` gives the counts
+of its subcatchments, reaches and junctions and says that the rainfall and the sections are given
+in Hydrolog; the names of the points refuse control characters (400), and a description above 500
+characters (a confluence of many named points) is cut there; (5) the API's environment caps
+GDAL's block cache at 64 MB (`GDAL_CACHEMAX` in `docker-compose.yml`), so a network does not keep
+the rasters it read a second time (S2's measure above), within D13's two networks in 8 GB. Tests
+15–18 in `tests/unit/test_network_endpoint.py` and `tests/contract/test_openapi.py`: the hand-off
+validates against the copied envelope and Hydrolog's `hydrolog-network/1`; Hydrolog's
+`read_network` reads its payload once a rainfall and a section of every reach are added (what the
+person gives in Sieć), and `route_schematic` with `structure_only` lays it out as it is handed off;
+the problems of D12 in both languages; a request waits for the lock, then gets 503. Tests 19–21 in
+`tests/integration/test_network_delineation_db.py`, on a scratch PostGIS with the land cover, the
+soil groups and BDOT10k lines inserted: the elements' land cover sums to A's within 0.1 %; a reach
+along a straight BDOT10k line gets 0.36 km as its check length, the line between its ends and its
+36 cells; a reach across a gap of 60 m in the lines gets none. On the synthetic DEM, A at the outlet
+with three tributary mouths and a gauge clicked 20 m beside the main river give 8 subcatchments, 4
+reaches and 5 junctions, B5 to the cell (3.74 km²), in 0.14 s; Hydrolog's command line
+(`hydrolog route schematic --structure-only`) lays out its payload. Not measured in S3: production's
+networks (S5).
+
 ## Not in this plan
 
 - Routing, the reach sections and a hydrograph of the network or of an element in Hydrograf:

@@ -145,17 +145,19 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      D10; Kartograf's to fix).
 10. **Network delineation at control points** (the author's decisions B1–B7 of 2026-11-10,
     [the plan](plans/2026-11-10-network-delineation.md), ADR-080): `POST /api/delineate-network`,
-    the map mode „Sieć zlewni” and one hand-off of the whole network to Hydrolog's Sieć. S1
-    (`refactor/cell-parameters`, not merged): the cell measures of the export and the overland
-    segment of `process_dem` are in `core/cell_parameters.py`, the overland segment a numba walk
-    along the D8 directions instead of pyflwdir's `path`. S2 (`feat/network-delineation-core`,
-    not merged): `core/network_tree.py` (the tree on the graph) and `core/network_delineation.py`
-    (snapping, window, element raster, B5, measures, coverage, reaches) with the plan's tests
-    1–14; production's database and label raster of 1 ha disagree on 108 units (the plan's
-    Results), so B5 refuses the Kaczawa networks of S5 until both come from one run. S3 waits for
-    Nogat's `node_provenance` (Nogat plan `2026-11-10-node-provenance-in-handoff`, step 1) and a
-    Nogat release set with Hydrolog's W1–W2. No release is cut for this work now; networks above
-    60 M cells stay refused.
+    the map mode „Sieć zlewni” and one hand-off of the whole network to Hydrolog's Sieć. S1 and S2
+    are in `develop` (`30e7295`): `core/cell_parameters.py` (the cell measures of the export and
+    the overland segment of `process_dem`, a numba walk along the D8 directions),
+    `core/network_tree.py` (the tree on the graph) and `core/network_delineation.py` (snapping,
+    window, element raster, B5, measures, coverage, reaches), the plan's tests 1–14; production's
+    database and label raster of 1 ha disagree on 108 units (the plan's Results), so B5 refuses
+    the Kaczawa networks of S5 until both come from one run. S3 (`feat/network-delineation-api`,
+    pushed, not merged): the endpoint, its lock per worker, `build_network_handoff` with Nogat's
+    `node_provenance` (envelope `8848c26`), Hydrolog `930915d` of Nogat's release set
+    candidate-3, `GDAL_CACHEMAX=64` for the API, the plan's tests 15–21. Next: S4 (the front end,
+    on S3's branch), then S5 (the smoke on production's data); S3 and S4 merge after S5, and
+    Nogat adds the registry edge of its D10 when S3 is in `develop`. No release is cut for this
+    work now; networks above 60 M cells stay refused.
 11. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
     surface (three unauthenticated DoS paths first), the „brak danych” of the hyetograph that a
     tester reported, `--thresholds` of the bootstrap, building raising (ADR-033), the read
