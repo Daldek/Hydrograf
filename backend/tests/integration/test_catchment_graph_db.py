@@ -6,6 +6,7 @@ at the next request. The tests commit and truncate, so they use a private databa
 """
 
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -40,7 +41,7 @@ def _no_network(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
         connection.execute(text("TRUNCATE stream_network, stream_catchments CASCADE"))
 
 
-def _commit(engine: Engine, *statements: tuple[str, dict]) -> None:
+def _commit(engine: Engine, *statements: tuple[str, dict[str, Any]]) -> None:
     """Commit the statements in one transaction and flush its statistics.
 
     A backend adds the counts of its transactions when it goes idle, at most once
@@ -74,7 +75,7 @@ def _publish(engine: Engine, areas_km2: list[float]) -> None:
     Segment 1 drains into 2 and so on; the last one is the outlet. The streams
     are not matched to BDOT10k yet.
     """
-    statements: list[tuple[str, dict]] = [
+    statements: list[tuple[str, dict[str, Any]]] = [
         ("DELETE FROM stream_network", {}),
         ("DELETE FROM stream_catchments", {}),
     ]
@@ -96,8 +97,9 @@ def _graph(engine: Engine) -> CatchmentGraph | None:
         return loaded_catchment_graph(db)
 
 
-def _watershed(graph: CatchmentGraph, outlet_segment: int) -> dict:
+def _watershed(graph: CatchmentGraph, outlet_segment: int) -> dict[str, Any]:
     outlet = graph.lookup_by_segment_idx(THRESHOLD_M2, outlet_segment)
+    assert outlet is not None
     return graph.aggregate_stats(graph.traverse_upstream(outlet), outlet_idx=outlet)
 
 
