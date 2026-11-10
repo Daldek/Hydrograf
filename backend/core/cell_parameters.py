@@ -2,16 +2,17 @@
 Parameters of a watershed measured from its cells on the saved rasters of the pipeline.
 
 The rasters that a run of process_dem saved (INTERMEDIATE_SUFFIXES and the labels of
-the sub-catchments) are read in a window (read_cell_window); the measures take the
-window and the mask of the cells measured (CellWindow.member) and give what the panel
-„Zlewnia” shows: the area, elevations and mean slope of process_dem's sub-catchment
-statistics (terrain), the longest flow path, its slope and overland segment and the
-flow path from the divide (flow_path_parameters), and the main channel with its
-BDOT10k part and slope (main_channel, channel_parameters). The export of catchment
-parameters (scripts/export_catchment_parameters.py) measures a polygon with them;
-process_dem and the backfill of the flow path heads measure the overland segments of
-the sub-catchments with overland_segments, a walk along the D8 directions that needs
-no pyflwdir object.
+the sub-catchments) are read in a window (read_cell_window, read_cells); the measures
+take the window and the mask of the cells measured (CellWindow.member) and give what
+the panel „Zlewnia” shows: the area, elevations and mean slope of process_dem's
+sub-catchment statistics (terrain, terrain_of), the longest flow path, its slope and
+overland segment and the flow path from the divide (flow_path_parameters), and the
+main channel with its BDOT10k part and slope (main_channel, channel_measures,
+channel_parameters). The export of catchment parameters
+(scripts/export_catchment_parameters.py) measures a polygon with them and the network
+delineation (core.network_delineation) each of its elements; process_dem and the
+backfill of the flow path heads measure the overland segments of the sub-catchments
+with overland_segments, a walk along the D8 directions that needs no pyflwdir object.
 """
 
 import math
@@ -21,15 +22,20 @@ from typing import Any
 import numba
 import numpy as np
 from rasterio.transform import Affine
+from rasterio.windows import Window
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import contiguous_real_length_km
 from core.constants import M2_PER_KM2, M_PER_KM
-from core.divide_flow_path import trace_flow_path, watershed_flow_paths
+from core.divide_flow_path import (
+    WatershedFlowPaths,
+    trace_flow_path,
+    watershed_flow_paths,
+)
 from core.hydrology import D8_COL_OFFSET, D8_DIRECTIONS, D8_ROW_OFFSET, D8_VALID
 from core.raster_io import cells_window, read_window
-from core.zonal_stats import zonal_summary
+from core.zonal_stats import ZonalSummary, zonal_summary
 
 # Hydrology rasters saved with save_intermediates that later runs read again
 # (process_dem.load_hydrology_intermediates): name -> file suffix after the DEM's stem
@@ -172,7 +178,24 @@ def read_cell_window(
     CellWindow
         The windows; ``member`` holds every cell with NMT data.
     """
-    window = cells_window(rasters.filled_dem.transform, bounds)
+    return read_cells(rasters, cells_window(rasters.filled_dem.transform, bounds))
+
+
+def read_cells(rasters: PipelineRasters, window: Window) -> CellWindow:
+    """Read the rasters in a window of whole cells (it may reach beyond them).
+
+    Parameters
+    ----------
+    rasters : PipelineRasters
+        Open rasters.
+    window : Window
+        Rows and columns of the rasters.
+
+    Returns
+    -------
+    CellWindow
+        The windows; ``member`` holds every cell with NMT data.
+    """
     dem = read_window(rasters.filled_dem, window)
     flow_dist = read_window(rasters.flow_dist, window)
     valid = (
@@ -207,16 +230,41 @@ def terrain(cells: CellWindow, cellsize_m: float) -> tuple[dict[str, Any], float
         cells.slope,
         cells.dem_nodata if cells.dem_nodata is not None else np.nan,
     )
-    count = int(summary.count[1])
-    elev_count = int(summary.elev_count[1])
+    return terrain_of(summary, 1, cellsize_m)
+
+
+def terrain_of(
+    summary: ZonalSummary, label: int, cellsize_m: float
+) -> tuple[dict[str, Any], float]:
+    """Area, elevations and mean slope of one label of a zonal summary.
+
+    Parameters
+    ----------
+    summary : ZonalSummary
+        Statistics of the labels of the cells measured (``zonal_summary`` of the
+        filled DEM and the slope).
+    label : int
+        The label.
+    cellsize_m : float
+        Side of a cell [m].
+
+    Returns
+    -------
+    tuple[dict[str, Any], float]
+        ``area_km2`` (to 4 decimals), ``elevation_min_m``, ``elevation_max_m``,
+        ``elevation_mean_m`` and ``mean_slope_m_per_m``; and the area exact to the
+        cell [km², 6 decimals].
+    """
+    count = int(summary.count[label])
+    elev_count = int(summary.elev_count[label])
     area_km2 = round(count * (cellsize_m * cellsize_m / M2_PER_KM2), 6)
     return {
         "area_km2": round(area_km2, 4),
-        "elevation_min_m": round(float(summary.elev_min_m[1]), 2),
-        "elevation_max_m": round(float(summary.elev_max_m[1]), 2),
-        "elevation_mean_m": round(float(summary.elev_sum_m[1] / elev_count), 2),
+        "elevation_min_m": round(float(summary.elev_min_m[label]), 2),
+        "elevation_max_m": round(float(summary.elev_max_m[label]), 2),
+        "elevation_mean_m": round(float(summary.elev_sum_m[label] / elev_count), 2),
         "mean_slope_m_per_m": round(
-            float(summary.slope_sum_percent[1] / count) / 100.0, 6
+            float(summary.slope_sum_percent[label] / count) / 100.0, 6
         ),
     }, area_km2
 
@@ -247,7 +295,7 @@ def baseline_m(cells: CellWindow, outlet: tuple[int, int]) -> float:
 
 def flow_path_parameters(
     cells: CellWindow, d8: np.ndarray, outlet: tuple[int, int], threshold_cells: int
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], WatershedFlowPaths]:
     """Longest flow path, its slope and overland segment, and the divide path.
 
     Parameters
@@ -265,10 +313,11 @@ def flow_path_parameters(
 
     Returns
     -------
-    dict[str, Any]
+    tuple[dict[str, Any], WatershedFlowPaths]
         ``flow_path_length_km``, ``flow_path_slope_m_per_m``,
         ``overland_length_km``, ``overland_slope_m_per_m`` and
-        ``divide_flow_path_km``; None where they cannot be measured.
+        ``divide_flow_path_km``, None where they cannot be measured; and the lines
+        of the longest flow path and of the divide path.
     """
     paths = watershed_flow_paths(
         cells.member,
@@ -288,7 +337,7 @@ def flow_path_parameters(
         ),
     }
     if paths.longest is None:
-        return result
+        return result, paths
     length_km = paths.longest.length_km
     result["flow_path_length_km"] = length_km
     col, row = ~cells.transform * paths.longest.coords_2180[0]
@@ -309,7 +358,7 @@ def flow_path_parameters(
         result["overland_length_km"] = round(overland_m / M_PER_KM, 4)
         if drop_m is not None and drop_m > 0:
             result["overland_slope_m_per_m"] = round(drop_m / overland_m, 6)
-    return result
+    return result, paths
 
 
 def overland_segments(
@@ -531,7 +580,24 @@ def channel_parameters(
     rasters: PipelineRasters,
     db: Session,
 ) -> dict[str, Any]:
-    """Length, BDOT10k length and slope of the main channel.
+    """Length, BDOT10k length and slope of the main channel (main_channel).
+
+    Returns
+    -------
+    dict[str, Any]
+        As channel_measures.
+    """
+    stream = (cells.acc >= rasters.threshold_cells) & cells.valid
+    return channel_measures(cells, main_channel(cells, outlet, stream), rasters, db)
+
+
+def channel_measures(
+    cells: CellWindow,
+    path: list[tuple[int, int]],
+    rasters: PipelineRasters,
+    db: Session,
+) -> dict[str, Any]:
+    """Length, BDOT10k length and slope of a main channel.
 
     A segment of the stream network has the length from each of its cells to the
     next one, the last to the first cell of the segment below it, rounded to
@@ -540,6 +606,17 @@ def channel_parameters(
     channel follows in part counts that part. The BDOT10k length takes each
     segment along its smoothed line of stream_network, as the catchment graph
     does, a part of a segment in proportion.
+
+    Parameters
+    ----------
+    cells : CellWindow
+        The window.
+    path : list[tuple[int, int]]
+        Cells of the channel, its outlet first (main_channel).
+    rasters : PipelineRasters
+        Open rasters: the threshold of the labels and the cell size.
+    db : Session
+        Database session (the BDOT10k flags of ``stream_network``).
 
     Returns
     -------
@@ -552,8 +629,9 @@ def channel_parameters(
         "real_channel_length_km": None,
         "channel_slope_m_per_m": None,
     }
-    stream = (cells.acc >= rasters.threshold_cells) & cells.valid
-    path = main_channel(cells, outlet, stream)
+    if not path:
+        return result
+    outlet = path[0]
     segment_idxs: list[int] = []  # from the outlet up
     raw_lengths_m: list[float] = []
     for i, cell in enumerate(path):

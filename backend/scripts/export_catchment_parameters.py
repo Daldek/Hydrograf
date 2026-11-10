@@ -686,7 +686,8 @@ def _flow_path_columns(
     flw = pyflwdir.from_array(d8, ftype="d8", transform=cells.transform, latlon=False)
     basin = flw.basins(idxs=np.array([np.ravel_multi_index(outlet, d8.shape)]))
     drained = replace(cells, member=cells.member & (basin > 0))
-    return flow_path_parameters(drained, d8, outlet, rasters.threshold_cells)
+    values, _ = flow_path_parameters(drained, d8, outlet, rasters.threshold_cells)
+    return values
 
 
 def _land_cover_columns(
