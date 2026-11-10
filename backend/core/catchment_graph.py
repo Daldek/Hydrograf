@@ -537,6 +537,21 @@ class CatchmentGraph:
             return float("nan")
         return float(self._outlet_flow_dist_m[internal_idx])
 
+    def get_upstream_area_km2(self, internal_idx: int) -> float:
+        """Upstream area [km²] at the end of the node's segment (NaN if not loaded)."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        if self._upstream_area_km2 is None:
+            return float("nan")
+        return float(self._upstream_area_km2[internal_idx])
+
+    def get_area_km2(self, indices: np.ndarray) -> np.ndarray:
+        """Area [km²] of each node of ``indices``, as loaded (float32)."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        areas: np.ndarray = self._area_km2[indices]
+        return areas
+
     def thresholds_m2(self) -> list[int]:
         """Flow accumulation thresholds [m²] of the graph's nodes, ascending."""
         if not self._loaded:
@@ -623,6 +638,35 @@ class CatchmentGraph:
             return_predecessors=False,
         )
         return order
+
+    def upstream_tree(self, start_idx: int) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Nodes upstream of a node, as traverse_upstream orders them, with the node below.
+
+        Parameters
+        ----------
+        start_idx : int
+            Internal index of the starting node
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            The internal indices of ``traverse_upstream(start_idx)``, start_idx
+            first and every node after the node it drains into, and for each the
+            internal index of the node it drains into: -1 for start_idx
+        """
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+
+        order, predecessors = breadth_first_order(
+            self._upstream_adj,
+            start_idx,
+            directed=True,
+            return_predecessors=True,
+        )
+        below = predecessors[order]
+        below[0] = -1
+        return order, below
 
     def upstream_segments_by_depth(
         self,
@@ -1031,66 +1075,84 @@ class CatchmentGraph:
             List of {"relative_height": float, "relative_area": float} dicts.
             Empty list if no histograms available.
         """
-        # Collect valid histograms
-        histograms = []
-        for idx in indices:
-            h = self._histograms[idx]
-            if h is not None and "counts" in h and len(h["counts"]) > 0:
-                histograms.append(h)
-
-        if not histograms:
-            return []
-
-        # Merge histograms on absolute elevation axis
-        interval_m = histograms[0].get("interval_m", 1)
-        global_min = min(h["base_m"] for h in histograms)
-        global_max = max(
-            h["base_m"] + len(h["counts"]) * interval_m for h in histograms
+        histograms = [self._histograms[idx] for idx in indices]
+        return hypsometric_curve(
+            [h for h in histograms if h is not None], n_points=n_points
         )
-        n_bins = max(1, (global_max - global_min) // interval_m)
-        merged = np.zeros(n_bins, dtype=np.int64)
 
-        for h in histograms:
-            offset = (h["base_m"] - global_min) // interval_m
-            counts = h["counts"]
-            end = offset + len(counts)
-            if end <= n_bins:
-                merged[offset:end] += counts
-            else:
-                merged[offset:n_bins] += counts[: n_bins - offset]
 
-        total_cells = int(merged.sum())
-        if total_cells == 0:
-            return []
+def hypsometric_curve(
+    histograms: Iterable[dict[str, Any]], n_points: int = 20
+) -> list[dict[str, Any]]:
+    """Merge elevation histograms and produce a normalized hypsometric curve.
 
-        # Normalize to hypsometric curve
-        cumulative = np.cumsum(merged[::-1])[::-1]  # area above each elevation
-        elevations = np.arange(n_bins) * interval_m + global_min
+    Parameters
+    ----------
+    histograms : Iterable[dict[str, Any]]
+        Histograms of absolute elevation bins: ``base_m``, ``interval_m`` and
+        ``counts`` (``zonal_elevation_histogram``).
+    n_points : int
+        Number of intervals of the curve (default: 20).
 
-        h_range = float(elevations[-1] - elevations[0])
-        if h_range <= 0:
-            return [
-                {"relative_height": 0.0, "relative_area": 1.0},
-                {"relative_height": 1.0, "relative_area": 0.0},
-            ]
+    Returns
+    -------
+    list[dict]
+        List of {"relative_height": float, "relative_area": float} dicts.
+        Empty list if no histograms available.
+    """
+    # Collect valid histograms
+    valid = [h for h in histograms if "counts" in h and len(h["counts"]) > 0]
+    if not valid:
+        return []
 
-        # Sample at n_points evenly spaced relative heights
-        curve = []
-        for i in range(n_points + 1):
-            rh = i / n_points  # relative height 0..1
-            elev_threshold = elevations[0] + rh * h_range
-            # Find cumulative area above this elevation
-            bin_idx = int((elev_threshold - global_min) / interval_m)
-            bin_idx = max(0, min(bin_idx, n_bins - 1))
-            ra = float(cumulative[bin_idx]) / total_cells
-            curve.append(
-                {
-                    "relative_height": round(rh, 4),
-                    "relative_area": round(ra, 4),
-                }
-            )
+    # Merge histograms on absolute elevation axis
+    interval_m = valid[0].get("interval_m", 1)
+    global_min = min(h["base_m"] for h in valid)
+    global_max = max(h["base_m"] + len(h["counts"]) * interval_m for h in valid)
+    n_bins = max(1, (global_max - global_min) // interval_m)
+    merged = np.zeros(n_bins, dtype=np.int64)
 
-        return curve
+    for h in valid:
+        offset = (h["base_m"] - global_min) // interval_m
+        counts = h["counts"]
+        end = offset + len(counts)
+        if end <= n_bins:
+            merged[offset:end] += counts
+        else:
+            merged[offset:n_bins] += counts[: n_bins - offset]
+
+    total_cells = int(merged.sum())
+    if total_cells == 0:
+        return []
+
+    # Normalize to hypsometric curve
+    cumulative = np.cumsum(merged[::-1])[::-1]  # area above each elevation
+    elevations = np.arange(n_bins) * interval_m + global_min
+
+    h_range = float(elevations[-1] - elevations[0])
+    if h_range <= 0:
+        return [
+            {"relative_height": 0.0, "relative_area": 1.0},
+            {"relative_height": 1.0, "relative_area": 0.0},
+        ]
+
+    # Sample at n_points evenly spaced relative heights
+    curve = []
+    for i in range(n_points + 1):
+        rh = i / n_points  # relative height 0..1
+        elev_threshold = elevations[0] + rh * h_range
+        # Find cumulative area above this elevation
+        bin_idx = int((elev_threshold - global_min) / interval_m)
+        bin_idx = max(0, min(bin_idx, n_bins - 1))
+        ra = float(cumulative[bin_idx]) / total_cells
+        curve.append(
+            {
+                "relative_height": round(rh, 4),
+                "relative_area": round(ra, 4),
+            }
+        )
+
+    return curve
 
 
 # Global singleton: the graph requests use. loaded_catchment_graph replaces it

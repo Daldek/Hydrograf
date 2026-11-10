@@ -235,6 +235,19 @@ MESSAGES: Final[dict[str, Message]] = {
         "Contact the administrator.",
         "Skontaktuj się z administratorem.",
     ),
+    # --- Network delineation (ADR-080) ---
+    "network_point_outside": Message(
+        "Point {point_id} does not drain to the closing section {outlet_id}.",
+        "Punkt {point_id} nie odwadnia się do przekroju zamykającego {outlet_id}.",
+        "Move the point onto a stream above the closing section.",
+        "Przesuń punkt na ciek powyżej przekroju zamykającego.",
+    ),
+    "network_points_coincide": Message(
+        "Points {point_ids} fall on the same stream cell.",
+        "Punkty {point_ids} trafiają w tę samą komórkę cieku.",
+        "Move one of them.",
+        "Przesuń jeden z nich.",
+    ),
     "lutz_parameters_missing": Message(
         "The Lutz method needs channel_length_km, length_to_centroid_km and "
         "channel_slope_m_per_m.",
