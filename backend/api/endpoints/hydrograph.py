@@ -32,7 +32,7 @@ from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
 from api.errors import problem_responses
-from core.catchment_graph import get_catchment_graph
+from core.catchment_graph import loaded_catchment_graph
 from core.constants import DEFAULT_CN, DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.errors import (
@@ -153,8 +153,8 @@ def _compute_watershed(
     Returns (morph_dict, cn, area_km2, watershed_response, pmaxtp_cells): the cells
     weigh the PMAXTP grid over the watershed (ADR-069).
     """
-    cg = get_catchment_graph()
-    if not cg.ensure_loaded(db):
+    cg = loaded_catchment_graph(db)
+    if cg is None:
         raise StoreUnavailableError(
             "catchment_graph_unavailable", reason="catchment_graph_unavailable"
         )

@@ -165,7 +165,7 @@ Wszystkie inserty używają tego samego wzorca **COPY przez tabelę tymczasową*
 ## Faza 1b: Graf zlewni cząstkowych (startup API)
 
 **Moduł:** `backend/core/catchment_graph.py` (ADR-021)
-**Ładowanie:** automatycznie przy starcie serwera API (jednorazowo)
+**Loading:** at the start of the API, and by each worker again at its first request after the network in the database changed (`loaded_catchment_graph()` compares `network_version()`, the write counters of `stream_catchments` and `stream_network`; a run published from the command line needs no restart of the API)
 
 ### Kontekst
 
@@ -235,7 +235,7 @@ Dane z preprocessingu (Faza 1) — tabela `stream_catchments` (~44k wierszy) —
 
 ### 2.3 Granica zlewni
 
-**Funkcja:** `watershed_service.merge_catchment_boundaries()` — łączenie granic zlewni cząstkowych (`ST_UnaryUnion`: bezpośrednio, partiami lub z grubszym progiem), potem `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` (ADR-032). Dla dużych zlewni `cascade_escalate()` podnosi próg.
+**Funkcja:** `watershed_service.merge_catchment_boundaries()` — łączenie granic zlewni cząstkowych (`ST_UnaryUnion`: bezpośrednio, partiami lub z grubszym progiem), potem `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` (ADR-032). Above 300 sub-catchments `cascade_escalate()` merges at the first coarser threshold of the graph whose BFS selects at most 300 (10000 → 100000 → 1000000 → 10000000 m²), else at the coarsest.
 
 ### 2.4 Powierzchnia
 

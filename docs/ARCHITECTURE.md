@@ -153,7 +153,7 @@ backend/
 ├── core/
 │   ├── __init__.py
 │   ├── analysis_results.py        # Manifest of the analysis results (frontend/data/results/index.json): water level along the terrain profile
-│   ├── catchment_graph.py         # In-memory sub-catchment graph (~87-285k nodes, scipy CSR + BFS, invalidate())
+│   ├── catchment_graph.py         # In-memory sub-catchment graph (~87-285k nodes, scipy CSR + BFS), reloaded when the network in the database changes
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
 │   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049)
@@ -467,7 +467,7 @@ User → Frontend → API → Core Logic → Database → Core Logic → API →
 3. **Core Logic** (`watershed_service.py` + `catchment_graph.py`):
    - `find_stream_catchment_at_point(x, y, threshold)` → snap-to-stream via `ST_ClosestPoint` on `stream_network`
    - `CatchmentGraph.traverse_upstream()` → BFS over the graph of sub-catchments
-   - Cascaded merge threshold: if there are more than 500 segments, cascade to a coarser threshold (1000→10000→100000)
+   - Cascaded merge threshold: above 300 segments (`_MAX_MERGE`) the merge takes the first coarser threshold of the graph whose BFS selects at most 300 (10000 → 100000 → 1000000 → 10000000 m²), else the coarsest
    - `merge_catchment_boundaries()` → ST_UnaryUnion of the pre-computed polygons in PostGIS
    - `map_boundary_to_display_segments()` → mapping to the threshold displayed for the MVT tiles
    - Aggregation of the pre-computed stats from numpy arrays (zero raster operations)
@@ -514,7 +514,7 @@ merge) is in `core/watershed_service.py` and `core/catchment_graph.py`; the API 
 
 #### 2.4.2 `core/catchment_graph.py`
 
-Singleton in-memory graph of sub-catchments based on numpy arrays and a scipy sparse CSR matrix (~87-285k nodes depending on the area, ~0.5 MB of RAM). Loaded lazily from the database on first use and invalidated after cleanup or the pipeline by `invalidate()`.
+Singleton in-memory graph of sub-catchments based on numpy arrays and a scipy sparse CSR matrix (~87-285k nodes depending on the area, ~0.5 MB of RAM). Loaded at the start of the API and again when the network in the database changes: every request takes it from `loaded_catchment_graph()`, which reads `network_version()` (the file nodes and the write counters of `stream_catchments` and `stream_network` in PostgreSQL's cumulative statistics, under a millisecond) and, when the version differs from that of the current graph (a published run, a run of the whole raster, the BDOT10k matching after it, a clean-up), loads a new graph and makes it the current one. Each API worker reloads at its first request after the change, seconds after the writer's commit; a request keeps the graph it started with, and the requests that find the change wait for one load (about 20 s for the 201,195 nodes of Hydroni).
 
 **Key concepts:**
 - **BFS traversal** — `traverse_upstream` to delineate the watershed
@@ -530,7 +530,7 @@ Details: `core/catchment_graph.py`
 Delineation logic shared by two endpoints (watershed, hydrograph). It avoids expensive raster operations at runtime: all work is based on CatchmentGraph and pre-computed stats.
 
 **Key responsibilities:**
-- **Merge catchment boundaries** — 3 strategies: direct (small watersheds), batched ST_UnaryUnion, fallback to a coarser threshold. Cascade threshold escalation for large watersheds (>500 segments: 1000 → 10000 → 100000)
+- **Merge catchment boundaries** — 3 strategies: direct (small watersheds), batched ST_UnaryUnion, fallback to a coarser snap grid. Cascade threshold escalation for large watersheds (`cascade_escalate`): above 300 segments, the first coarser threshold of the graph with at most 300, else the coarsest
 - **Boundary smoothing** — `ST_SimplifyPreserveTopology(5.0)` + `ST_ChaikinSmoothing(3)` (ADR-032)
 - **Main channel FeatureCollection** — geometry of the main channel with the `is_real_stream` flag per segment (ADR-044)
 - **Flow path GeoJSON** — longest flow path + divide flow path (ADR-048) as geometries to display
@@ -1734,7 +1734,7 @@ async def health_check(db = Depends(get_db)):
 **Runtime API:**
 - CatchmentGraph BFS in memory (milliseconds) instead of a recursive CTE on flow_network (seconds) — ADR-021, ADR-022
 - Pre-computed stats in `stream_catchments` (zero raster operations at runtime)
-- Cascaded merge threshold for large watersheds (>500 segments) — ADR-042
+- Cascaded merge threshold for large watersheds (>300 segments) — ADR-042
 
 **Current benchmark results:** see `docs/PROGRESS.md`
 

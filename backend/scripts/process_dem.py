@@ -1106,7 +1106,17 @@ def process_dem_from_intermediates(
                 )
         else:
             logger.warning("No BDOT10k streams in the database: no stream matching")
+    _log_api_reload_hint()
     return stats
+
+
+def _log_api_reload_hint() -> None:
+    """Tell the operator how a running API takes the network just written."""
+    logger.info(
+        "The stream network in the database changed: the API reloads its catchment "
+        "graph at its next request. An API that still answers from the previous "
+        "network predates that reload: restart it (docker compose restart api)."
+    )
 
 
 def process_dem(
@@ -1237,7 +1247,7 @@ def process_dem(
                 "A run by PGW units replaces the DEM-derived stream network and "
                 "sub-catchments: pass clear_existing (--clear-existing) to confirm"
             )
-        return process_dem_units(
+        units_stats = process_dem_units(
             input_path=input_path,
             units_path=units_path,
             dry_run=dry_run,
@@ -1263,6 +1273,9 @@ def process_dem(
             resume=units_resume,
             fill_enclosed_nodata=fill_enclosed_nodata,
         )
+        if not dry_run:
+            _log_api_reload_hint()
+        return units_stats
 
     stats = {}
 
@@ -1727,6 +1740,7 @@ def process_dem(
                     ),
                 )
                 stats["sewer_records_inserted"] = sewer_count
+        _log_api_reload_hint()
     else:
         logger.info("Dry run - skipping database insert")
 

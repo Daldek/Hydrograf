@@ -1167,10 +1167,13 @@ def cascade_escalate(
     max_merge: int,
     db: Session,
 ) -> tuple[list[int], int, np.ndarray, int, dict[str, Any], float] | None:
-    """Escalate to coarser threshold if segment count exceeds max_merge.
+    """Escalate to a coarser threshold if the segment count exceeds max_merge.
 
-    Iterates through thresholds [1000, 10000, 100000] and re-runs BFS
-    at the first threshold where the segment count is acceptable.
+    Tries the thresholds of the graph above ``base_threshold`` from the finest
+    and re-runs the BFS from the sub-catchment at the point at the first one
+    whose BFS selects at most ``max_merge`` segments. When none does, the
+    coarsest threshold with a sub-catchment at the point is taken: it merges
+    the fewest segments.
 
     Parameters
     ----------
@@ -1191,12 +1194,14 @@ def cascade_escalate(
     -------
     tuple | None
         (merge_idxs, merge_threshold, upstream_indices, outlet_idx, stats, area_km2)
-        or None if no escalation needed (segment count <= max_merge).
+        or None if no escalation is needed (segment count <= max_merge) or no
+        coarser threshold has a sub-catchment at the point.
     """
     if len(base_segment_idxs) <= max_merge:
         return None
 
-    for t in [1000, 10000, 100000]:
+    selected: tuple[list[int], int, np.ndarray, int] | None = None
+    for t in cg.thresholds_m2():
         if t <= base_threshold:
             continue
         try:
@@ -1205,11 +1210,15 @@ def cascade_escalate(
             continue
         t_up = cg.traverse_upstream(t_node)
         t_segs = cg.get_segment_indices(t_up, t)
-        if len(t_segs) <= max_merge or t == 100000:
-            stats = cg.aggregate_stats(t_up, outlet_idx=t_node)
-            return (t_segs, t, t_up, t_node, stats, stats["area_km2"])
+        selected = (t_segs, t, t_up, t_node)
+        if len(t_segs) <= max_merge:
+            break
 
-    return None
+    if selected is None:
+        return None
+    t_segs, t, t_up, t_node = selected
+    stats = cg.aggregate_stats(t_up, outlet_idx=t_node)
+    return (t_segs, t, t_up, t_node, stats, stats["area_km2"])
 
 
 def build_land_cover_stats(
