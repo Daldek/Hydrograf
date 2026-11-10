@@ -446,9 +446,11 @@ if (DST / "dem_mosaic.tif").exists():
         raise SystemExit("stop: the run did not read the DEM of 2026-11-01")
 
 with rasterio.open(DST / "dem_mosaic_04_flowacc.tif") as src:
-    acc = src.read(1)
-    r, c = np.unravel_index(np.argmax(acc), acc.shape)
     cell_km2 = abs(src.res[0] * src.res[1]) / 1e6
+    acc = src.read(1)
+    # the main stem above any junction at the edge: largest accumulation of the boundary + STOP_KM2
+    limit = int(inside.sum()) + STOP_KM2 / cell_km2
+    r, c = np.unravel_index(np.argmax(np.where(inside & (acc <= limit), acc, 0)), acc.shape)
     lon, lat = Transformer.from_crs(2180, 4326, always_xy=True).transform(*src.xy(r, c))
 basin = int(acc[r, c])
 print(f"outlet {lat:.6f} N {lon:.6f} E: {basin:,} cells = {basin * cell_km2:.3f} km2 "
@@ -644,12 +646,18 @@ one-off container.
 time runp python - < "$STG/cut.py" 2>&1 | tee "$STG/cut.log"
 ```
 
-Expected: twenty lines `dem_mosaic_….tif: 7894x8405 -> 7194x8143, inside 31622576 cells`;
-`dem_mosaic_01_dem.tif equals the cut DEM: True`; the outlet at about 51.2229 N 16.1795 E with
-about 31.62 M cells (790.57 km²; 2026-10-30: 31,622,632); for each threshold its outlet
-segment, a downstream segment of about 812.3 km² (a tributary of 21.7 km² joins at the node),
-the kept segments with about 790.57 km², a few boundary cells draining elsewhere and a few
-dozen basin cells beyond the boundary (2026-11-01: 5 and 61); `dangling links 0`;
+Expected: nineteen lines `dem_mosaic_….tif: 7894x8405 -> 7194x8143, inside 31622576 cells`
+(the run's `dem_mosaic_01_dem` to `_10_subcatchments_*`; its input `dem_mosaic.tif` is not
+cut); `dem_mosaic_01_dem.tif equals the cut DEM: True`; the outlet at about 51.2228 N
+16.1794 E with about 31.68 M cells (792.0 km²; 2026-10-30: 31,622,632 = 790.566 km²). The
+outlet is the inside cell with the largest accumulation not above the boundary's cells plus
+2 km², the Kaczawa above the node: a tributary of 21.9 km² joins at the edge of the boundary,
+and on the run of 2026-11-10 its junction lies on the boundary's cell of largest
+accumulation (813.96 km²; 2026-10-30: two cells further down). For each threshold its outlet
+segment, a downstream segment of about 814 km², the kept segments with about 792.0 km²
+(within 2 km² of 790.564), a few thousand boundary cells draining elsewhere and a few
+dozen thousand basin cells beyond the boundary (2026-11-01: 5 and 61; dry run on 2026-11-10:
+6,540 and 64,321); `dangling links 0`;
 `bdot_streams: 3812 lines of the cut hydro_merged.gpkg`. About 2 min [INFERENCE: 29 s for
 six rasters in §1]. `cut.py` stops with `stop: …` before it writes the database when a raster
 in `$STG/data/nmt` did not come from the run, `01_dem` is not the cut DEM, the outlet has no
@@ -715,11 +723,11 @@ are the coordinator's judgement, not measurements.
 | Check | Production now (§4.4) | Expected on staging | Stop when |
 |---|---|---|---|
 | alembic | `004` | `006` | other |
-| Outlet accumulation (`flowacc`) | 31,622,632 cells, 790.566 km² | the basin of the outlet in the run before the cut, which `cut.py` prints: about the 31,622,632 cells of production [INFERENCE: the new directions move few cells across the divide] | < 788 km² |
-| `max_upstream_km2` per threshold | 790.566 | equal to the outlet accumulation | < 788 km² |
+| Outlet accumulation (`flowacc`) | 31,622,632 cells, 790.566 km² | the basin of the outlet in the run before the cut, which `cut.py` prints: about 31.68 M cells, 792.0 km² (dry run on 2026-11-10: 31,680,357 = 792.009 km²) | < 788 km² |
+| `max_upstream_km2` per threshold | 790.566 | equal to the outlet accumulation, about 792.0 | < 788 km² |
 | Segments per threshold 10000 / 100000 / 1 km² / 10 km² | 41,277 / 4,492 / 479 / 49 | changed only where the burned lines turn (≈ 130 km on the raster, §1) [INFERENCE: within a few %] | a change > 10 % |
 | Outlets per threshold | 1 | 1 (`cut.py` keeps the catchment of the outlet and removes its downstream link) | other than 1; the Kaczawa outlet loses > 2 km² against production |
-| Sum of `area_km2` per threshold | 790.566 / 790.566 / 790.564 / 790.564 | equal to the outlet accumulation at every threshold (each covers the whole basin) | < 788 |
+| Sum of `area_km2` per threshold | 790.566 / 790.566 / 790.564 / 790.564 | equal to the outlet accumulation at every threshold (each covers the whole basin), about 792.0 | < 788 |
 | `real` streams at 1 km² / 10 km² | 437 / 49 | similar | a drop > 10 % |
 | Smoothing (log of §4.9) | – | ≈ 230 lines reversed, ~130 km, a few by the mouth and down the watercourse, the rest by their own rise (§1, the whole raster) | none reversed |
 | Land cover shares | `grunt_orny` 62.66, `las` 30.74, `łąka` 0.61 % … (§1) | `grunt_orny` 48.56, `las` 30.74, `łąka` 14.07, `zabudowa_przemysłowa` 0.76 % … (§1), total 790.564 km² | any share off by > 0.05 pp |
@@ -866,7 +874,7 @@ git -C "$PROD" worktree remove "$WT" && rm -rf "$STG"
 | §4.6 land cover | ~1 min | 51 s measured |
 | §4.7 soil | < 1 min | 3 s measured, plus the container start |
 | §4.8 clip | ~5 min | 4.4 min measured |
-| §4.9 DEM before the cut, cut | ~12 min, ≤ 4 GB | extraction 2 s; the run on the cut DEM took 7 min on 2026-11-10 (58.6 M cells), this raster has 66.3 M [INFERENCE: ~10 min]; `cut.py` 29 s for six rasters (§1), here twenty [INFERENCE: ~2 min] |
+| §4.9 DEM before the cut, cut | ~12 min, ≤ 4 GB | extraction 2 s; the run on the cut DEM took 7 min on 2026-11-10 (58.6 M cells), this raster has 66.3 M [INFERENCE: ~10 min]; `cut.py` 29 s for six rasters (§1), here nineteen [INFERENCE: ~2 min] |
 | §4.10 depressions, overlay | ~1 min | 42 s and 10 s on the staging run of 2026-11-10 |
 | §4.11 tiles | ~8 min, 2.7 GB | runbook v0.5.0 |
 | §4.12–4.13 | ~5 min | |
