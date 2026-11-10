@@ -28,7 +28,12 @@ from hydrolog.runoff import calculate_weighted_cn
 
 from core.cn_tables import HSG_GROUPS, complex_cn
 from core.constants import DEFAULT_CN
-from utils.kartograf_store import HSG_DEPTH, describe_error, download_bdot10k
+from utils.kartograf_store import (
+    DEFAULT_HSG_DEPTH_RULE,
+    HSG_DEPTH_RULES,
+    describe_error,
+    download_bdot10k,
+)
 
 if TYPE_CHECKING:
     from kartograf import BBox
@@ -145,7 +150,9 @@ def get_hsg_from_soilgrids(bbox: "BBox") -> tuple[str, dict[str, float]]:
     The HSG raster of the area exists only for this call: Kartograf writes it as a
     plain file into a temporary directory (``output_dir``), fetches the SoilGrids
     inputs into its own staging directory, and nothing stays in the Kartograf store
-    (ADR-061). ``hsg_statistics`` of a raster without a sidecar counts the whole
+    (ADR-061). Its layers are those of Hydrograf's default ``soil.hsg_depth_rule``
+    (ADR-079: the least permeable layer of 0-100 cm); this path reads no
+    configuration. ``hsg_statistics`` of a raster without a sidecar counts the whole
     raster, the cells at the edge of the bbox in full, as in 0.7.0 (ADR-061, erratum
     of 2026-10-25). A failure of Kartograf or an area without data gives group B.
 
@@ -162,10 +169,15 @@ def get_hsg_from_soilgrids(bbox: "BBox") -> tuple[str, dict[str, float]]:
     """
     from kartograf import KartografError, calculate_hsg, hsg_statistics
 
+    layers = HSG_DEPTH_RULES[DEFAULT_HSG_DEPTH_RULE]
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
             report = calculate_hsg(
-                output_dir=tmpdir, bbox=bbox, depth=HSG_DEPTH, cache=False
+                output_dir=tmpdir,
+                bbox=bbox,
+                depth=layers.depth,
+                depth_rule=layers.depth_rule,
+                cache=False,
             )
             if not report.files:
                 reasons = "; ".join(f"{f.unit}: {f.error}" for f in report.failed)

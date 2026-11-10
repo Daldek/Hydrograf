@@ -11,13 +11,17 @@ checked (``utils.archiwista_project``), and the set must hold what the run needs
 - the BDOT10k packages (``landcover/pl_bdot10k_gpkg``) of the counties that the county
   register (PRG) names for the box of the mosaic, the rule of steps 3 and 4, unless the
   land cover is skipped (then step 3 burns the streams of the packages the set has);
-- one HSG raster (``hsg/global_soilgrids_0-5cm_mean``) whose requested box, as its
-  sidecar records it, covers the box of the mosaic, unless the HSG is skipped.
+- one HSG raster of the segment of ``soil.hsg_depth_rule`` (ADR-079; by default
+  ``hsg/global_soilgrids_0-100cm_least-permeable_mean``) whose requested box, as its
+  sidecar records it, covers the box of the mosaic, unless the HSG is skipped. An HSG
+  raster of another rule is never taken instead: without the one of the rule the set
+  is refused, with the Kartograf command that computes it.
 
 A unit (a sheet, a county, a raster) has one version in the set. The other Kartograf
-pins (the SoilGrids inputs of the HSG raster) are checked and not used; the pins of
-other producers are neither. A unit is the stem of its version's file name, which
-Kartograf's layout makes the sheet code, the TERYT code or the box of the request.
+pins (the SoilGrids inputs of the HSG raster, an HSG raster of another rule) are
+checked and not used; the pins of other producers are neither. A unit is the stem of
+its version's file name, which Kartograf's layout makes the sheet code, the TERYT code
+or the box of the request.
 """
 
 import logging
@@ -45,7 +49,8 @@ from utils.archiwista_project import (
     verify_pins,
 )
 from utils.kartograf_store import (
-    HSG_DEPTH,
+    DEFAULT_HSG_DEPTH_RULE,
+    HSG_DEPTH_RULES,
     SHEET_SYSTEM,
     describe_error,
     open_metadata_cache,
@@ -56,7 +61,6 @@ logger = logging.getLogger(__name__)
 # The scale of the GUGiK sheets, the one Archiwista's call selects by.
 SHEET_SCALE = "1:10000"
 BDOT10K_SEGMENT = "landcover/pl_bdot10k_gpkg"
-HSG_SEGMENT = f"hsg/global_soilgrids_{HSG_DEPTH}_mean"
 
 type Box = tuple[float, float, float, float]
 
@@ -99,7 +103,7 @@ class SetInputs:
         Whether PRG named the counties of the mosaic (False: the land cover is
         skipped).
     hsg : Path or None
-        The pinned HSG raster, None when the HSG is skipped.
+        The pinned HSG raster of the rule, None when the HSG is skipped.
     unused : tuple[str, ...]
         Versions of the set's Kartograf pins that the run does not read.
     foreign : int
@@ -166,6 +170,7 @@ def set_inputs(
     cache_dir: Path,
     landcover: bool = True,
     hsg: bool = True,
+    hsg_depth_rule: str = DEFAULT_HSG_DEPTH_RULE,
 ) -> SetInputs:
     """Read a set of an Archiwista project and check everything a bootstrap needs.
 
@@ -190,6 +195,9 @@ def set_inputs(
         is skipped).
     hsg : bool
         Require an HSG raster that covers the mosaic (False: the HSG is skipped).
+    hsg_depth_rule : str
+        ``soil.hsg_depth_rule``, a key of ``HSG_DEPTH_RULES``: the store segment of
+        the HSG raster.
 
     Raises
     ------
@@ -207,9 +215,10 @@ def set_inputs(
     pins = [pin for pin in pin_set.pins if pin.producer == KARTOGRAF]
     verify_pins(root, pins, pin_set.name)
 
+    layers = HSG_DEPTH_RULES[hsg_depth_rule]
     by_segment = {
         segment: _units(pins, segment)
-        for segment in (nmt_segment(resolution), BDOT10K_SEGMENT, HSG_SEGMENT)
+        for segment in (nmt_segment(resolution), BDOT10K_SEGMENT, layers.segment)
     }
     ambiguous = sorted(
         unit
@@ -265,7 +274,9 @@ def set_inputs(
                 "set_hsg_missing",
                 reason="set_hsg_missing",
                 name=pin_set.name,
-                depth=HSG_DEPTH,
+                depth_rule=hsg_depth_rule,
+                segment=layers.segment,
+                command=layers.command(mosaic),
                 rasters=sorted(rasters),
             )
         if len(covering) > 1:

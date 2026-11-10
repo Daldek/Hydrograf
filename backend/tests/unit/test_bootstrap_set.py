@@ -3,10 +3,11 @@
 A store written offline by Kartograf's own writers holds three NMT sheets (the two
 that the area covers and one beside them, plus a second version of one of them), the
 BDOT10k packages of two counties and two HSG rasters, one covering the mosaic and one
-inside it, with their SoilGrids inputs. Each test writes an ``archiwista-project/1``
-file that pins versions of that store as Archiwista does and runs the bootstrap with
-``--dry-run``: every check runs, nothing is processed, and a refusal ends with the
-error document as the last line of standard error.
+inside it, each by both rules of ``soil.hsg_depth_rule`` (ADR-079), with their
+SoilGrids inputs. Each test writes an ``archiwista-project/1`` file that pins versions
+of that store as Archiwista does and runs the bootstrap with ``--dry-run``: every
+check runs, nothing is processed, and a refusal ends with the error document as the
+last line of standard error.
 """
 
 import hashlib
@@ -36,6 +37,7 @@ from tests.kartograf_offline import (
 from tests.kartograf_offline import offline as offline  # noqa: F401
 from utils.archiwista_project import Pin, pins_digest
 from utils.kartograf_set import set_inputs
+from utils.kartograf_store import DEFAULT_HSG_DEPTH_RULE, HSG_DEPTH_RULES
 
 # The area overlaps these two sheets; the third lies beside them, below the first.
 AREA_SHEETS = ["N-33-130-D-d-1-1", "N-33-130-D-d-1-2"]
@@ -53,6 +55,9 @@ COUNTIES = ["0205", "0226"]
 # and inside it
 HSG_BOX = (350000, 500000, 365000, 510000)
 SMALL_HSG_BOX = (356000, 504000, 358000, 506000)
+# The SoilGrids layers of the rules: least-permeable reads the profile, topsoil 0-5 cm
+PROFILE = ("0-5cm", "5-15cm", "15-30cm", "30-60cm", "60-100cm")
+TOPSOIL = ("0-5cm",)
 SET = "Hydrograf 2020"
 NMT = "nmt/pl_1992_5m_evrf2007/versions/"
 
@@ -67,10 +72,27 @@ class Store:
     def version(self, stem: str, index: int = 0) -> str:
         return sorted(self.versions[stem])[index]
 
-    def hsg(self, box: tuple[int, int, int, int]) -> str:
+    def hsg(
+        self, box: tuple[int, int, int, int], rule: str = DEFAULT_HSG_DEPTH_RULE
+    ) -> str:
+        """Return the HSG raster of ``box`` that the rule ``rule`` computed."""
+        segment = HSG_DEPTH_RULES[rule].segment
         stem = "_".join(map(str, box))
-        (version,) = (v for v in self.versions[stem] if v.startswith("hsg/"))
+        (version,) = (
+            v for v in self.versions[stem] if v.startswith(f"{segment}/versions/")
+        )
         return version
+
+    def soil(
+        self, box: tuple[int, int, int, int], depths: tuple[str, ...]
+    ) -> list[str]:
+        """Return the SoilGrids inputs of ``box`` at ``depths``."""
+        stem = "_".join(map(str, box))
+        return sorted(
+            v
+            for v in self.versions[stem]
+            if v.startswith("soil/") and v.split("/")[1].rsplit("_", 2)[1] in depths
+        )
 
     def pin(self, version: str) -> dict[str, Any]:
         """Return the pin of a version as Archiwista writes it."""
@@ -113,9 +135,14 @@ def store(tmp_path_factory: pytest.TempPathFactory) -> Store:
             )
         with soil_rasters(SoilRasters()):
             for box in (HSG_BOX, SMALL_HSG_BOX):
-                kartograf.calculate_hsg(
-                    root=root, bbox=_box(box), depth="0-5cm", cache=False
-                )
+                for layers in HSG_DEPTH_RULES.values():
+                    kartograf.calculate_hsg(
+                        root=root,
+                        bbox=_box(box),
+                        depth=layers.depth,
+                        depth_rule=layers.depth_rule,
+                        cache=False,
+                    )
     versions: dict[str, list[str]] = {}
     for path in root.glob("*/*/versions/**/*"):
         if path.is_file() and not path.name.endswith(".meta.json"):
@@ -141,8 +168,9 @@ class Project:
         )
         pins = [store.version(sheet) for sheet in [*AREA_SHEETS, EXTRA_SHEET]]
         pins += [store.version(teryt) for teryt in COUNTIES]
-        # the HSG raster around the mosaic and its three SoilGrids inputs
-        pins += sorted(store.versions["_".join(map(str, HSG_BOX))])
+        # the HSG raster around the mosaic of the default rule and its 15 SoilGrids
+        # inputs (clay, sand and silt of the five layers of 0-100 cm)
+        pins += [store.hsg(HSG_BOX), *store.soil(HSG_BOX, PROFILE)]
         self.document: dict[str, Any] = {
             "schema": "archiwista-project/1",
             "name": "Kaczawa",
@@ -281,7 +309,7 @@ class TestClosedSet:
             teryt: store.root / store.version(teryt) for teryt in COUNTIES
         }
         assert inputs.hsg == store.root / store.hsg(HSG_BOX)
-        assert len(inputs.unused) == 3  # the SoilGrids inputs of the HSG raster
+        assert len(inputs.unused) == 15  # the SoilGrids inputs of the HSG raster
         identity = inputs.identity()["set"]
         assert identity["closed_at"] is None
         assert identity["pins_sha256"] == pins_digest(inputs.pin_set.pins)
@@ -370,6 +398,15 @@ def _small_hsg_only(project: Project) -> None:
     project.group["pins"].append(project.store.pin(project.store.hsg(SMALL_HSG_BOX)))
 
 
+def _topsoil_only(project: Project) -> None:
+    """The set of before ADR-079: the HSG raster of 0-5 cm and its inputs."""
+    store = project.store
+    project.drop("hsg/")
+    project.drop("soil/")
+    for version in (store.hsg(HSG_BOX, "topsoil"), *store.soil(HSG_BOX, TOPSOIL)):
+        project.group["pins"].append(store.pin(version))
+
+
 MISSING_VERSION = f"{NMT}N-33/130/D/d/1/1/2019-01-01_1_00000000/N-33-130-D-d-1-1.asc"
 REFUSALS = {
     "a newer schema": (_schema, "unsupported", "project_schema_unsupported", 15),
@@ -406,6 +443,12 @@ REFUSALS = {
     "two versions of a sheet": (_second_version, "conflict", "set_unit_ambiguous", 4),
     "an HSG raster inside the mosaic": (
         _small_hsg_only,
+        "no_data",
+        "set_hsg_missing",
+        14,
+    ),
+    "only the HSG raster of another rule": (
+        _topsoil_only,
         "no_data",
         "set_hsg_missing",
         14,
@@ -450,6 +493,18 @@ class TestRefusals:
         assert run.code == 2
         assert run.document["details"]["reason"] == "invalid_arguments"
         assert "dem.fill_enclosed_nodata" in run.err
+
+    def test_a_soil_group_rule_that_is_not_known(self, project, bootstrap, tmp_path):
+        config = tmp_path / "config.yaml"
+        config.write_text("soil:\n  hsg_depth_rule: 0-5cm\n", encoding="utf-8")
+
+        run = bootstrap(
+            "--project", str(project.write()), "--set", SET, "--config", str(config)
+        )
+
+        assert run.code == 2
+        assert run.document["details"]["reason"] == "invalid_arguments"
+        assert "soil.hsg_depth_rule" in run.err
 
     def test_the_missing_sheets_are_named(self, project, bootstrap):
         project.drop(f"{NMT}N-33/130/D/d/1/2/")
@@ -515,6 +570,80 @@ class TestRefusals:
 
         assert run.code == 9
         assert run.document["details"]["reason"] == "pin_unreadable"
+
+
+@pytest.mark.usefixtures("offline")
+class TestSoilGroupRule:
+    """``soil.hsg_depth_rule`` names the HSG raster that a set gives (ADR-079)."""
+
+    @pytest.mark.parametrize("rule", [None, "least-permeable", "topsoil"])
+    def test_the_raster_of_the_rule_is_taken_from_a_set_with_both(
+        self, project, bootstrap, tmp_path, rule
+    ):
+        store = project.store
+        project.group["pins"].append(store.pin(store.hsg(HSG_BOX, "topsoil")))
+        config = tmp_path / "config.yaml"  # no file: the defaults
+        if rule is not None:
+            config.write_text(f"soil:\n  hsg_depth_rule: {rule}\n", encoding="utf-8")
+
+        run = bootstrap(
+            "--project", str(project.write()), "--set", SET, "--config", str(config)
+        )
+
+        assert run.code == 0, run.err
+        raster = store.hsg(HSG_BOX, rule or "least-permeable")
+        assert f"Dane glebowe HSG: raster z zestawu {raster}," in run.out
+
+    def test_a_set_without_the_raster_of_the_rule_names_the_command_that_makes_it(
+        self, project, bootstrap, tmp_path
+    ):
+        """No fallback to the raster of 0-5 cm: the refusal's command fixes the set."""
+        root = tmp_path / "store"
+        shutil.copytree(project.store.root, root)
+        project.document["stores"] = [{"producer": "kartograf", "root": str(root)}]
+        _topsoil_only(project)
+
+        refused = bootstrap("--project", str(project.write()), "--set", SET)
+
+        segment = "hsg/global_soilgrids_0-100cm_least-permeable_mean"
+        details = refused.document["details"]
+        assert (refused.code, details["reason"]) == (14, "set_hsg_missing")
+        assert (details["segment"], details["depth_rule"]) == (
+            segment,
+            "least-permeable",
+        )
+        assert segment in refused.document["message"]
+        command = details["command"]
+        assert command in refused.document["hint"]
+        assert command in refused.err  # the Polish hint for a person
+        options = command.split()
+        assert options[:5] == [
+            "kartograf",
+            "soil",
+            "hsg",
+            "--depth-rule",
+            "least-permeable",
+        ]
+        assert options[5] == "--bbox"
+
+        # The command's box through Kartograf into the project's store, then pinned:
+        # the raster the run takes
+        corners = [float(value) for value in options[6].split(",")]
+        with soil_rasters(SoilRasters()):
+            report = kartograf.calculate_hsg(
+                root=root,
+                bbox=kartograf.BBox(*corners, crs="EPSG:2180"),
+                depth_rule="least-permeable",
+                cache=False,
+            )
+        version = report.files[0].file.version_path.relative_to(root).as_posix()
+        project.group["pins"].append(Store(root, {}).pin(version))
+
+        run = bootstrap("--project", str(project.write()), "--set", SET)
+
+        assert run.code == 0, run.err
+        assert version.startswith(f"{segment}/versions/")
+        assert f"Dane glebowe HSG: raster z zestawu {version}," in run.out
 
 
 @pytest.mark.usefixtures("offline")

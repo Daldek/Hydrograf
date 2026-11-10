@@ -57,7 +57,8 @@ from scripts.write_instance_info import (
 )
 from utils.kartograf_set import SHEET_SCALE, SetInputs, nmt_segment, set_inputs
 from utils.kartograf_store import (
-    HSG_DEPTH,
+    DEFAULT_HSG_DEPTH_RULE,
+    HSG_DEPTH_RULES,
     SHEET_SYSTEM,
     describe_error,
     download_bdot10k,
@@ -755,17 +756,20 @@ def step_soil_hsg(
     mosaic_bbox_2180: tuple[float, float, float, float] | None = None,
     hsg_raster: Path | None = None,
     bdot10k: dict[str, Path] | None = None,
+    hsg_depth_rule: str = DEFAULT_HSG_DEPTH_RULE,
 ) -> str:
     """Step 5: Download HSG data from SoilGrids and import to DB.
 
     The HSG raster of Poland is a version of the private Kartograf store of the
     pipeline (``cache_dir/kartograf``, ADR-061): Kartograf fetches the SoilGrids clay,
-    sand and silt once, computes the raster from them, and a second run uses it again
-    without a request. ``hsg_raster`` is the raster of a set (ADR-067), used without a
-    request. Processing: clip to project bbox -> warp to EPSG:2180 -> polygonize ->
-    the soil under the wetlands (OT_OIMK_A) of the BDOT10k packages of the area
-    (``_bdot10k_packages``, the packages of step 4) becomes group D (ADR-078) ->
-    import.
+    sand and silt of the layers of ``hsg_depth_rule`` (``soil.hsg_depth_rule``,
+    ADR-079: by default the five layers of 0-100 cm, of which the least permeable
+    gives the group) once, computes the raster from them, and a second run uses it
+    again without a request. ``hsg_raster`` is the raster of a set (ADR-067), which
+    ``set_inputs`` chose by the same rule, used without a request. Processing: clip to
+    project bbox -> warp to EPSG:2180 -> polygonize -> the soil under the wetlands
+    (OT_OIMK_A) of the BDOT10k packages of the area (``_bdot10k_packages``, the
+    packages of step 4) becomes group D (ADR-078) -> import.
     """
     import numpy as np
     import rasterio
@@ -782,8 +786,9 @@ def step_soil_hsg(
         hsg_path = hsg_raster
     else:
         # --- 1. Poland-wide HSG raster (one-time: a local version is used again) ---
+        layers = HSG_DEPTH_RULES[hsg_depth_rule]
         logger.info(
-            "HSG: Poland-wide raster from SoilGrids (a local version is reused)..."
+            "HSG: the raster of Poland, %s (a local version is reused)", layers.segment
         )
         # Poland bbox in EPSG:2180 (PL-1992)
         bbox_poland = BBox(
@@ -797,7 +802,8 @@ def step_soil_hsg(
             report = calculate_hsg(
                 root=private_store_dir(cache_dir),
                 bbox=bbox_poland,
-                depth=HSG_DEPTH,
+                depth=layers.depth,
+                depth_rule=layers.depth_rule,
                 cache=open_metadata_cache(cache_dir),
             )
         except KartografError as e:
@@ -1267,6 +1273,7 @@ def run_pipeline(
     coverage_area: BaseGeometry | None = None,
     scale: str = "1:10000",
     allow_uncovered: bool = False,
+    hsg_depth_rule: str = DEFAULT_HSG_DEPTH_RULE,
 ):
     """Run the full 10-step bootstrap pipeline.
 
@@ -1276,7 +1283,8 @@ def run_pipeline(
     ``fill_enclosed_nodata`` it interpolates the nodata the mosaic encloses first.
     With ``coverage_area`` (EPSG:2180) step 3 first refuses sheets that leave part
     of it, or a hole of their mosaic, uncovered (ADR-076; ``allow_uncovered``: a
-    warning); a run from a set is checked before step 1.
+    warning); a run from a set is checked before step 1. Step 5 downloads the HSG
+    raster of ``hsg_depth_rule`` (ADR-079); a set's raster has that rule already.
     """
     tracker = StepTracker(TOTAL_STEPS, skips)
     downloaded_files: list[Path] = []
@@ -1378,6 +1386,7 @@ def run_pipeline(
                 mosaic_bbox_2180=mosaic_bbox,
                 hsg_raster=inputs.hsg if inputs is not None else None,
                 bdot10k=inputs.counties if inputs is not None else None,
+                hsg_depth_rule=hsg_depth_rule,
             )
             tracker.done(5, t0, detail)
         except Exception as e:
@@ -1445,6 +1454,7 @@ def dry_run(
     port: int,
     skips: set[int],
     inputs: SetInputs | None = None,
+    hsg_depth_rule: str = DEFAULT_HSG_DEPTH_RULE,
 ):
     """Show what would be done without executing (with a set: after every check)."""
     min_lon, min_lat, max_lon, max_lat = bbox
@@ -1460,7 +1470,8 @@ def dry_run(
         "stream_network, stream_catchments (ZAWSZE od zera)",
         f"Pokrycie terenu: BDOT10k per powiat (z {len(sheets)} arkuszy), "
         f"magazyn {store_dir(cache_dir)}",
-        "Dane glebowe HSG: SoilGrids przez Kartograf (calculate_hsg), "
+        f"Dane glebowe HSG: SoilGrids przez Kartograf (calculate_hsg, "
+        f"{hsg_depth_rule}: {HSG_DEPTH_RULES[hsg_depth_rule].segment}), "
         "pod mokradłami BDOT10k grupa D",
         f"Opady IMGW: grid 2km w bbox "
         f"{min_lon:.3f},{min_lat:.3f},"
@@ -1573,20 +1584,24 @@ def write_set_record(
     status: str,
     stream_burning: str,
     fill_enclosed_nodata: bool,
+    hsg_depth_rule: str | None,
 ) -> None:
     """Write the record of the set a run took its Kartograf data from (ADR-067).
 
     ``<output>/bootstrap_set.json``: the identity of the set (project, set,
     ``closed_at``, ``pins_sha256``, the pins per product), the BDOT10k streams the
     run burned (``stream_burning``), whether it filled the nodata the mosaic encloses
-    (``fill_enclosed_nodata``), when the run started and ended, and ``status``
-    (``running``, ``ok`` or ``failed``: a step 1 to 3 failed).
+    (``fill_enclosed_nodata``), the rule of the soil groups of step 5
+    (``hsg_depth_rule``, ADR-079; None when step 5 is skipped), when the run started
+    and ended, and ``status`` (``running``, ``ok`` or ``failed``: a step 1 to 3
+    failed).
     """
     record = {
         "schema": SET_RECORD_SCHEMA,
         **inputs.identity(),
         "stream_burning": stream_burning,
         "fill_enclosed_nodata": fill_enclosed_nodata,
+        "hsg_depth_rule": hsg_depth_rule,
         "started_at": started_at,
         "finished_at": finished_at,
         "status": status,
@@ -1895,6 +1910,13 @@ def main():
             f"not {fill_enclosed_nodata!r}"
         )
     logger.info("Enclosed nodata filled: %s", fill_enclosed_nodata)
+    hsg_depth_rule = config["soil"]["hsg_depth_rule"]
+    if not isinstance(hsg_depth_rule, str) or hsg_depth_rule not in HSG_DEPTH_RULES:
+        parser.error(
+            f"soil.hsg_depth_rule in {args.config} must be one of "
+            f"{', '.join(HSG_DEPTH_RULES)}, not {hsg_depth_rule!r}"
+        )
+    logger.info("Soil groups (HSG): %s", hsg_depth_rule)
 
     # Resolve output directory
     output_dir = Path(args.output) if args.output else DEFAULT_DATA_DIR
@@ -1943,6 +1965,7 @@ def main():
                 cache_dir=cache_dir,
                 landcover=4 not in skips,
                 hsg=5 not in skips,
+                hsg_depth_rule=hsg_depth_rule,
             )
             # ADR-076: the sheets of the set cover the area and enclose no hole
             check_nmt_coverage(
@@ -1999,7 +2022,16 @@ def main():
     )
 
     if args.dry_run:
-        dry_run(sheets, bbox, output_dir, cache_dir, args.port, skips, inputs=inputs)
+        dry_run(
+            sheets,
+            bbox,
+            output_dir,
+            cache_dir,
+            args.port,
+            skips,
+            inputs=inputs,
+            hsg_depth_rule=hsg_depth_rule,
+        )
         return
 
     # Build sewer config: CLI flags override config.yaml
@@ -2016,9 +2048,10 @@ def main():
     full_sewer_config = {"sewer": sewer_config} if sewer_config.get("enabled") else None
 
     # The record of the set ties the data of this run to it; a run without a set
-    # leaves none (ADR-067)
+    # leaves none (ADR-067). The soil groups have a rule only when step 5 runs.
     record = output_dir / SET_RECORD_NAME
     started_at = _utc_now()
+    soil_rule = None if 5 in skips else hsg_depth_rule
     if inputs is not None:
         write_set_record(
             record,
@@ -2028,6 +2061,7 @@ def main():
             status="running",
             stream_burning=stream_burning,
             fill_enclosed_nodata=fill_enclosed_nodata,
+            hsg_depth_rule=soil_rule,
         )
     else:
         record.unlink(missing_ok=True)
@@ -2071,6 +2105,7 @@ def main():
         coverage_area=coverage_area,
         scale=args.scale,
         allow_uncovered=args.allow_uncovered,
+        hsg_depth_rule=hsg_depth_rule,
     )
     total_elapsed = time.time() - total_start
 
@@ -2097,18 +2132,22 @@ def main():
             status="failed" if critical_failed else "ok",
             stream_burning=stream_burning,
             fill_enclosed_nodata=fill_enclosed_nodata,
+            hsg_depth_rule=soil_rule,
         )
     if critical_failed:
         sys.exit(1)
-    write_instance(args, inputs)
+    write_instance(args, inputs, soil_rule)
 
 
-def write_instance(args: argparse.Namespace, inputs: SetInputs | None) -> None:
+def write_instance(
+    args: argparse.Namespace, inputs: SetInputs | None, hsg_depth_rule: str | None
+) -> None:
     """Write ``frontend/data/instance.json`` after a run whose steps 1 to 3 passed.
 
     The area is the set's project area, else ``--boundary-file``; a run by ``--bbox``
-    or ``--sheets`` has no boundary, so no area in km². The file only describes the
-    instance to users: a failure to write it is a warning, not a failed run.
+    or ``--sheets`` has no boundary, so no area in km². ``hsg_depth_rule`` is the rule
+    of the soil groups of step 5 (None: the step was skipped). The file only describes
+    the instance to users: a failure to write it is a warning, not a failed run.
     """
     boundary = inputs.area if inputs is not None else args.boundary_file
     try:
@@ -2119,6 +2158,7 @@ def write_instance(args: argparse.Namespace, inputs: SetInputs | None) -> None:
             boundary_layer=None if inputs is not None else args.boundary_layer,
             set_identity=inputs.identity() if inputs is not None else None,
             nmt_resolution_m=resolution_m(args.resolution),
+            hsg_depth_rule=hsg_depth_rule,
         )
         path = write_instance_info(FRONTEND_DIR / "data", info)
     except (OSError, ValueError) as e:

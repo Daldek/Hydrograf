@@ -14,7 +14,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | API (FastAPI + PostGIS) | done | Routes in ARCHITECTURE §2.2; errors are `application/problem+json` with the codes of the Nogat registry and texts by `Accept-Language` (ADR-059). Delineation precomputed on the in-memory catchment graph (ADR-021, ADR-050), escalated over the thresholds of the graph above 300 sub-catchments, and precise; every worker reloads the graph when the network in the database changes (`07112ce`). „Identyfikuj” (`GET /api/identify-point`), terrain profile with the water of the analysis results, MVT tiles, admin routes. |
 | Hydrographs | done | SCS-CN (AMC I–III, own rainfall series), SCS, Snyder and Nash (Lutz, urban regression) unit hydrographs of Hydrolog; tc only from Hydrolog on the inputs each method defines (C and N from the user); the hand-off to Hydrolog (ADR-068); PMAXTP design depth as the Thiessen mean of the watershed (ADR-069); limit 250 km². |
 | DEM preprocessing | done | pyflwdir on one raster or by PGW units (ADR-071, opt-in `--units`, one fill of the whole grid); F1–F7 memory fixes (`652eec6`); stream burning with the directions of ADR-077; enclosed nodata filled on request (ADR-073); the bootstrap refuses NMT sheets that leave the area uncovered (ADR-076); thresholds 10 000, 100 000, 1 000 000 and 10 000 000 m²; flow path heads and channel sources measured (ADR-070). |
-| Land cover, soils, CN | done | Land cover from the BDOT10k partition by its attributes (ADR-074), the soil under the wetlands is group D and the lawns of KUSK/KUKO are open space (ADR-078); the CN is that of the soil-cover complexes from Hydrolog's TR-55 table, computed at query time (ADR-075 and its amendments of 2026-11-09; migration 006 dropped `land_cover.cn_value`). The export of catchment parameters gives CN AMC I/II/III and the control columns of the weighted runoff. |
+| Land cover, soils, CN | done | Land cover from the BDOT10k partition by its attributes (ADR-074), the soil under the wetlands is group D and the lawns of KUSK/KUKO are open space (ADR-078); the soil groups of the least permeable SoilGrids layer of 0–100 cm by default, `soil.hsg_depth_rule` (ADR-079, `feat/hsg-profile`, not merged; the instances keep the 0–5 cm groups until step 5 runs again); the CN is that of the soil-cover complexes from Hydrolog's TR-55 table, computed at query time (ADR-075 and its amendments of 2026-11-09; migration 006 dropped `land_cover.cn_value`). The export of catchment parameters gives CN AMC I/II/III and the control columns of the weighted runoff. |
 | Producers | done | `develop` pins Nogat's release set candidate-2: Kartograf `d0990c8`, Obserwator `f9f4ee7`, Hydrolog `759d7ef` (`01ab00a`, not deployed); production and Hydroni run Kartograf `9deaa31`, Obserwator `1ee5457`, Hydrolog `4fad769`. A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
 | Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj, the welcome text and the guide (31 slides) name the data area from `frontend/data/instance.json`, the results of external analyses from `frontend/data/results/index.json` (SFINCS), the MZP overlay, `?v=` asset versions. |
 | Admin panel | done | `/admin`: dashboard, bootstrap, resources, cleanup, storm sewer, feedback (ADR-034, ADR-051). |
@@ -60,14 +60,23 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    - A large precomputed delineation still takes tens of seconds: the Wełna at 1 km² (500 km²,
      Hydroni) took 51.4 s: the merge 16.9 s (the union 6.0 s and the boundary smoothing of ADR-032
      9.9 s: a ±2 m buffer, three Chaikin iterations up to 128k vertices, `buffer(0)`; a faster
-     smoothing changes the shape, Open questions 4), the land cover query 7.7 s (10.1 s before
+     smoothing changes the shape, Open questions 3), the land cover query 7.7 s (10.1 s before
      `07112ce`), the flow paths 12.9 s (raster reads from the NAS 6.1 s; `np.isin` 2.4 s, about 2 s
      less with a lookup table) and the Thiessen weighting 3.2 s (about 2.5 s less with a prepared
      geometry); a batched union is 1 s slower than `ST_UnaryUnion`.
-3. **HSG from the least permeable layer of 0–100 cm:** the pinned Kartograf has
-   `calculate_hsg(depth_rule="least-permeable")` (Kartograf ADR-061, since `e49eaad0`); bootstrap
-   step 5 still asks for `depth="0-5cm"`. Using it is the author's call (Open questions 1) and
-   needs step 5 again on each instance.
+3. **HSG from the least permeable layer of 0–100 cm** (the author's decision of 2026-11-10,
+   ADR-079; branch `feat/hsg-profile`, not merged): `soil.hsg_depth_rule`, `least-permeable` by
+   default (Kartograf's `calculate_hsg(depth_rule="least-permeable")`), `topsoil` the 0–5 cm
+   layer of before. After the merge each instance needs step 5 again, and the soil groups and
+   the CN are to be measured and written into ADR-079 (Consequences):
+   - Hydroni: set h07/2026-3 holds only the 0–5 cm raster and is refused (checked read-only on
+     2026-11-10: exit 14, `set_hsg_missing`, with the hint
+     `kartograf soil hsg --depth-rule least-permeable --bbox 350581,506697,422093,588208`). The
+     open set h07/2026-4 holds a `least-permeable` raster of `67000 -71000 960000 914000`: close
+     a set with it and the pins of 2026-3, then bootstrap from that set (meanwhile
+     `soil.hsg_depth_rule: topsoil` runs 2026-3 as before).
+   - Production (private store): its next step 5 fetches the 15 SoilGrids rasters of Poland and
+     computes the raster of the rule.
 4. **Hydroni, for the author's review:** catchment 1883617 and the 11 catchments whose
    polygon/NMT area ratio is above 1.2 (183816, 1863141, 186352, 1863561, 1865212, 186536, 18654,
    1866532, 1883613, 1883684, 188524), with `scripts/diagnose_catchment_exits.py`. The 20 sheets
@@ -140,26 +149,23 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 
 ## Open questions
 
-1. HSG from the least permeable layer of 0–100 cm instead of 0–5 cm (Kartograf `depth_rule`; on
-   h07 B 98.5 / C 1.5 %), and whether loam, silt loam and silt are group C (open in Kartograf
-   ADR-061).
-2. D5: the HSG fallback „B” where SoilGrids has no data, and step 5 as non-critical (a failed
+1. D5: the HSG fallback „B” where SoilGrids has no data, and step 5 as non-critical (a failed
    step 5 still ends the bootstrap with exit 0); BACKLOG.
-3. Production: the basin of the tables is 792.009 km² while the boundary is 790.564 km² (1.61 km²
+2. Production: the basin of the tables is 792.009 km² while the boundary is 790.564 km² (1.61 km²
    of the basin lies beyond it, from the DEM run before the cut): keep it, or cut the tables to the
    boundary?
-4. A faster boundary smoothing (ADR-032) for large watersheds changes the shape of the boundary:
+3. A faster boundary smoothing (ADR-032) for large watersheds changes the shape of the boundary:
    worth it for the 9.9 s of a 500 km² watershed?
-5. The text of `docs/CLA.md` and how the CLA is signed (`CONTRIBUTING.md` and the pull request
+4. The text of `docs/CLA.md` and how the CLA is signed (`CONTRIBUTING.md` and the pull request
    template name the file; DEV-16.2).
-6. D12 of step H1: a set's pins of producers other than Kartograf (Obserwator) are skipped
+5. D12 of step H1: a set's pins of producers other than Kartograf (Obserwator) are skipped
    (`utils/kartograf_set.py`): keep that once sets have several producers?
-7. Show the record of the set (`bootstrap_set.json`) in the admin panel?
-8. The row names „Wskaźnik rzeźby” (ΔH/√A is rather the catchment slope or Melton's index) and
+6. Show the record of the set (`bootstrap_set.json`) in the admin panel?
+7. The row names „Wskaźnik rzeźby” (ΔH/√A is rather the catchment slope or Melton's index) and
    „Liczba chropowatości” (no Polish source for the name; INFO_TEXTS_SOURCES).
-9. `null` instead of 0.0 in `elevations_m` of `POST /api/terrain-profile` inside DEM gaps (a
+8. `null` instead of 0.0 in `elevations_m` of `POST /api/terrain-profile` inside DEM gaps (a
    breaking change; B5 in BACKLOG).
-10. Building raising (ADR-033) in the pipeline (BACKLOG: to be decided by the author).
-11. Delete `/data/nmt/pilot_opolskie/` (45 MB, the pilot of 2026-09 with sheets outside Opolskie)?
-12. The ADR on NMT sheet versions (BACKLOG), partly answered by the versions of the Kartograf store
+9. Building raising (ADR-033) in the pipeline (BACKLOG: to be decided by the author).
+10. Delete `/data/nmt/pilot_opolskie/` (45 MB, the pilot of 2026-09 with sheets outside Opolskie)?
+11. The ADR on NMT sheet versions (BACKLOG), partly answered by the versions of the Kartograf store
     (ADR-061).

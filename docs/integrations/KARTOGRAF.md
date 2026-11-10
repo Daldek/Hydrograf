@@ -1,6 +1,6 @@
 # Kartograf integration
 
-**Version:** 7.5
+**Version:** 7.6
 **Date:** 2026-11-10
 **Status:** Active (Kartograf 0.8.0.dev0, pinned commit `d0990c8`, the release set candidate-2 of Nogat; production and Hydroni run `9deaa31` until their next image; ADR-061, ADR-066, ADR-067)
 
@@ -21,7 +21,7 @@ What Hydrograf takes from it:
 |---|---|---|
 | NMT (DEM), 5 m (or 1 m), EVRF2007, ESRI ASCII Grid | GUGiK OpenData | bootstrap step 2, `download_dem`, `prepare_area`, `analyze_watershed --download` |
 | BDOT10k: one GeoPackage package per county (*powiat*), every layer | GUGiK | bootstrap steps 3 and 4, `download_landcover`, `prepare_area`, the CN calculation |
-| HSG raster (hydrologic soil groups): Kartograf classifies the USDA texture of the SoilGrids clay, sand and silt rasters at 0-5 cm | ISRIC SoilGrids | bootstrap step 5, the CN calculation |
+| HSG raster (hydrologic soil groups): Kartograf classifies the USDA texture of the SoilGrids clay, sand and silt rasters of the five layers of 0-100 cm and gives each cell the group of its least permeable layer (`soil.hsg_depth_rule`, ADR-079; `topsoil`: the 0-5 cm layer) | ISRIC SoilGrids | bootstrap step 5, the CN calculation |
 | CORINE Land Cover (raster, 44 classes) | Copernicus | only `download_landcover --provider corine`; nothing in the pipeline reads it |
 | Sheet codes and their frames | the PL-1992 sheet system | `utils/sheet_lookup.py`, bootstrap, `download_dem` |
 
@@ -70,7 +70,7 @@ scripts/bootstrap.py   (10 steps; steps 2-5 use Kartograf)
     ├─ step 3  utils/kartograf_store.py ....... download_landcover(product="bdot10k", root=)
     │          (the hydro layers of the counties of the mosaic, for stream burning)
     ├─ step 4  utils/kartograf_store.py ....... the same packages, imported into land_cover
-    └─ step 5  calculate_hsg(root=, bbox=Poland, depth="0-5cm")
+    └─ step 5  calculate_hsg(root=, bbox=Poland, depth_rule="least-permeable")
                           │
                           ▼
         Kartograf store  <cache_dir>/kartograf/            metadata cache  <cache_dir>/kartograf_meta.db
@@ -105,8 +105,8 @@ Hydrograf passes `root=` or `output_dir=` and `cache=` explicitly** and none rel
 |---|---|---|
 | NMT sheets (`download_dem.download_sheets`: bootstrap step 2, `analyze_watershed --download`, `prepare_area`, the `download_dem` script) | store, `DownloadManager(provider, root=)` | a re-run skips the local sheets; the newest flight is used also when it is partial (border and coast sheets); the standard path is stable |
 | BDOT10k packages (bootstrap steps 3 and 4, `prepare_area`, the land cover of the CN calculation, the `download_landcover` script) | store, `download_landcover(product="bdot10k", root=)` | a county is 100 MB or more and is reused by the pipeline and by the CN calculation |
-| HSG raster of Poland (bootstrap step 5) | store, `calculate_hsg(root=, bbox=, depth="0-5cm")` | fetched once, `reused` after |
-| HSG raster of one analysis (`get_hsg_from_soilgrids`) | plain files, `calculate_hsg(output_dir=<temporary directory>, cache=False)` | used once; the inputs go to Kartograf's staging directory and nothing stays |
+| HSG raster of Poland (bootstrap step 5) | store, `calculate_hsg(root=, bbox=, depth_rule="least-permeable")` (`soil.hsg_depth_rule`, ADR-079; `topsoil`: `depth="0-5cm"`) | fetched once, `reused` after |
+| HSG raster of one analysis (`get_hsg_from_soilgrids`) | plain files, `calculate_hsg(output_dir=<temporary directory>, depth_rule="least-permeable", cache=False)` | used once; the inputs go to Kartograf's staging directory and nothing stays |
 | `prepare_area` | its own store `<output>/kartograf` | a stand-alone script with a working directory |
 
 The store of the pipeline is `<cache_dir>/kartograf` (`paths.cache_dir`, default `cache/`;
@@ -136,11 +136,11 @@ Measured on the pinned Kartograf with the offline stubs of the tests:
 ├── landcover/pl_bdot10k_gpkg/
 │   ├── teryt/1465.gpkg                                  the package of a county (+ .meta.json)
 │   └── versions/teryt/2026-10-25_c7dda0dc/1465.gpkg     (+ .meta.json)
-├── hsg/global_soilgrids_0-5cm_mean/
+├── hsg/global_soilgrids_0-100cm_least-permeable_mean/   (soil.hsg_depth_rule topsoil: hsg/global_soilgrids_0-5cm_mean/)
 │   ├── bbox/<minx>_<miny>_<maxx>_<maxy>.tif             the HSG raster of a bbox (+ .meta.json)
 │   └── versions/bbox/2.0_c12e8726/…
-└── soil/global_soilgrids_{clay,sand,silt}_0-5cm_mean/   the SoilGrids inputs of the HSG raster
-    └── bbox/…  and  versions/bbox/…
+└── soil/global_soilgrids_{clay,sand,silt}_{0-5cm,5-15cm,15-30cm,30-60cm,60-100cm}_mean/
+    └── bbox/…  and  versions/bbox/…                     the SoilGrids inputs of the HSG raster
 <cache_dir>/kartograf_meta.db  (+ -wal, -shm)  the metadata cache, beside the store
 ```
 
@@ -163,7 +163,9 @@ of one flight share one inode. The sidecar holds, among others: `dataset`
 - BDOT10k: `extra.source` (URL, `teryt`, `format`), `extra.http` and `extra.version.label`, which is
   the download date (BDOT10k publishes no version of its data).
 - HSG: `extra.derived == "hsg"`, `depth`, `stat`, `classes` (`1=A, 2=B, 3=C, 4=D`), the
-  `source_files` with their `sha256` and `extra.version.label` (the SoilGrids edition).
+  `source_files` with their `sha256` and `extra.version.label` (the SoilGrids edition); a raster
+  of the rule `least-permeable` has `depth` `0-100cm`, `depth_rule`, `depths` (the five layers),
+  `ksat` and the `depth` of every source file.
 
 A version is written once; a second run answers `local` and transfers nothing, `update="force"`
 (`--no-skip-existing`) fetches again and answers `unchanged` when the content is the same or writes a
@@ -257,7 +259,7 @@ a script that needs only a path does not load it.
 | `metadata_cache_path(cache_dir)` | `<cache_dir>/kartograf_meta.db` |
 | `open_metadata_cache(cache_dir)` | opens the `MetadataCache` (creates the directory; logs when SQLite disables it) |
 | `SHEET_SYSTEM = "1992"` | the sheet grid of Hydrograf, PL-1992 (EPSG:2180); the find functions of Kartograf require it |
-| `HSG_DEPTH = "0-5cm"` | the depth of the SoilGrids layers of the HSG |
+| `HSG_DEPTH_RULES`, `DEFAULT_HSG_DEPTH_RULE` | the rules of `soil.hsg_depth_rule` (ADR-079): each an `HsgLayers` with the arguments of `calculate_hsg` (`depth` or `depth_rule`, the other `None`) and the store segment of its raster; `least-permeable` (the default) `depth_rule="least-permeable"`, `hsg/global_soilgrids_0-100cm_least-permeable_mean`; `topsoil` `depth="0-5cm"`, `hsg/global_soilgrids_0-5cm_mean`. `HsgLayers.command(box)` is the `kartograf soil hsg` command of the raster over a box (EPSG:2180, rounded outwards to whole metres) |
 | `describe_error(error)` | the text of a failure for a log line: `<message> [<code>] <hint>` for a `KartografError` and for a `HydrografError` |
 | `download_bdot10k(cache_dir, teryt=, bbox=)` | the packages of one county or of every county that a bbox intersects, in the private store, as `{teryt: path}`; a failed county is logged and left out; an area without counties gives `{}`; refuses while a shared store is set |
 
@@ -355,15 +357,15 @@ cover, HSG, precipitation, depressions, MVT tiles, overlays, server). Steps 1-3 
 | 2 NMT | `download_sheets(sheets, private_store_dir(cache_dir), <cache>/kartograf_meta.db, resolution=--resolution)` | the step fails, the exit code is 1 |
 | 3 DEM | the VRT mosaic is built **from the paths that step 2 returned** (never from a directory scan: the store keeps every version under `versions/`); then `download_bdot10k` for the extent of the mosaic and `merge_hydro_gpkgs` for stream burning | a failed hydro download only logs a warning: no burning |
 | 4 land cover | `download_bdot10k(cache_dir, bbox=mosaic)`: the packages that step 3 stored are local and are not requested again; each is imported by `import_landcover` | the step fails, `describe_error` gives the code and the hint; the pipeline continues |
-| 5 HSG | `calculate_hsg(root=, bbox=<Poland>, depth="0-5cm", cache=)` into the private store: the raster of Poland is a version of the store; then clip to the mosaic, warp to EPSG:2180 at 250 m, nearest-neighbour fill, polygonize, make the soil under the wetlands (`OT_OIMK_A`) of the BDOT10k packages of step 4 group D (ADR-078) and import into `soil_hsg` (a DELETE limited to the bbox first). The pinned Kartograf has `--depth-rule least-permeable` (`calculate_hsg(depth_rule=)`, the least permeable layer of 0-100 cm; since `e49eaad0`, not in `9deaa31`), which Hydrograf does not use yet | a `KartografError` ends the step as "skipped" with its code; any other error fails it; the pipeline continues |
+| 5 HSG | `calculate_hsg(root=, bbox=<Poland>, depth_rule="least-permeable", cache=)` into the private store (the arguments of `soil.hsg_depth_rule`, ADR-079; `topsoil`: `depth="0-5cm"`): the raster of Poland is a version of the store; then clip to the mosaic, warp to EPSG:2180 at 250 m, nearest-neighbour fill, polygonize, make the soil under the wetlands (`OT_OIMK_A`) of the BDOT10k packages of step 4 group D (ADR-078) and import into `soil_hsg` (a DELETE limited to the bbox first) | a `KartografError` ends the step as "skipped" with its code; any other error fails it; the pipeline continues |
 | set: before step 1 | `--project`, `--set`: the checks of `utils/kartograf_set.set_inputs` (below) | a refusal of ADR-067: the error document as the last line of standard error, the registry's exit code |
 | set: 2 NMT | nothing is downloaded: every pinned sheet of `nmt/pl_1992_<--resolution>_evrf2007/versions/`, by its version path; reports `N/N arkuszy z zestawu` | - |
 | set: 3 DEM | the mosaic of the pinned sheets; the streams of the pinned BDOT10k packages for burning | as above |
 | set: 4 land cover | the pinned BDOT10k packages, imported by `import_landcover` | as above |
-| set: 5 HSG | the pinned HSG raster, clipped to the mosaic and processed as above | as above |
+| set: 5 HSG | the pinned HSG raster of the rule, clipped to the mosaic and processed as above | as above |
 
 The exit code is 1 when one of steps 1-3 failed. Whether a failed step 5 should stop the
-bootstrap and whether the HSG fallback "B" is right are open (PROGRESS, Open questions 2).
+bootstrap and whether the HSG fallback "B" is right are open (PROGRESS, Open questions 1).
 
 **Bootstrap from a set (ADR-067).** `python -m scripts.bootstrap --project PATH --set NAME`
 (`PATH` is the project's directory or its `archiwista-project.json`) takes every Kartograf input
@@ -375,7 +377,7 @@ box of the area). Two modules read the set:
 | Module | Contents |
 |---|---|
 | `utils/archiwista_project.py` | the reader of `archiwista-project/1`: `read_project` (the directory or the file), `read_set` (a closed set by its name, NFC, trimmed, case-folded; `state` absent or `closed`), `pins_digest` (`pins_sha256`: SHA-256 of the sorted lines `<producer>\t<version>\t<sha256>\n`), `project_area` (the area file with its SHA-256), `kartograf_root` (the project's store, absolute or relative to the project; Kartograf's `store_state` must be `marked`, and the same directory as `HYDROGRAF_KARTOGRAF_ROOT` when that is set), `verify_pins` (every pin read whole, size and SHA-256) |
-| `utils/kartograf_set.py` | `set_inputs(...) -> SetInputs`: the pins by product (the segment of the version: NMT, BDOT10k, HSG; other Kartograf pins verified, not used; pins of other producers not read), one version per unit (the file's stem); the requirements: the sheets of the area (`find_sheets_for_geometry(<area>, "1:10000", sheet_system="1992")`) among the NMT pins, the counties that `Bdot10kProvider(cache=).teryts_for_area` names for the box of the pinned sheets' frames (`SheetParser`) among the BDOT10k pins, exactly one HSG pin whose requested box (`read_sidecar(...).request`, `transform_bbox` to EPSG:2180) covers the mosaic; `SetInputs.identity()`, what the log line `Bootstrap from a set: {json}` and `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`) record |
+| `utils/kartograf_set.py` | `set_inputs(...) -> SetInputs`: the pins by product (the segment of the version: NMT, BDOT10k, HSG of `soil.hsg_depth_rule`; other Kartograf pins, an HSG raster of the other rule too, verified, not used; pins of other producers not read), one version per unit (the file's stem); the requirements: the sheets of the area (`find_sheets_for_geometry(<area>, "1:10000", sheet_system="1992")`) among the NMT pins, the counties that `Bdot10kProvider(cache=).teryts_for_area` names for the box of the pinned sheets' frames (`SheetParser`) among the BDOT10k pins, exactly one HSG pin of the rule's segment whose requested box (`read_sidecar(...).request`, `transform_bbox` to EPSG:2180) covers the mosaic, else `set_hsg_missing` with the segment and the `kartograf soil hsg` command over the box of the mosaic (ADR-079); `SetInputs.identity()`, what the log line `Bootstrap from a set: {json}` and `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`) record |
 
 ### 4.6 `scripts/prepare_area.py`
 
@@ -396,7 +398,7 @@ source, after an explicit CN and the `land_cover` table, when `use_kartograf` is
 |---|---|
 | `check_kartograf_available()` | whether `BBox`, `calculate_hsg`, `download_landcover` and `hsg_statistics` import |
 | `convert_boundary_to_bbox(boundary_wgs84, buffer_m=100)` | the boundary of the watershed (WGS84) as a `BBox` in EPSG:2180 |
-| `get_hsg_from_soilgrids(bbox)` | `calculate_hsg(output_dir=<temporary directory>, bbox=, depth="0-5cm", cache=False)` and `hsg_statistics` of the file; the dominant group and the shares of A-D. A Kartograf failure or an area without data gives group B |
+| `get_hsg_from_soilgrids(bbox)` | `calculate_hsg(output_dir=<temporary directory>, bbox=, depth_rule="least-permeable", cache=False)` (the default rule; this path reads no configuration) and `hsg_statistics` of the file; the dominant group and the shares of A-D. A Kartograf failure or an area without data gives group B |
 | `get_land_cover_stats(bbox, cache_dir, teryt=None)` | the BDOT10k packages of the store (`download_bdot10k`), the area of every PT layer clipped to the bbox, in percent per category; every county the bbox intersects counts, each by its part in the bbox. A `KartografError` of the download gives `{}` with a warning; any other error of the download reaches `calculate_cn_from_kartograf`, which logs it as an error and returns `None`; a package that cannot be read counts as no data (warning) |
 | `calculate_cn_from_kartograf(boundary_wgs84, cache_dir, use_default_land_cover=True, teryt=None)` | the weighted CN |
 
@@ -834,22 +836,27 @@ the wiring needs, and why it is not done, is in [BACKLOG.md](../BACKLOG.md) (Bug
 
 ### 14.1 Overview
 
-`calculate_hsg()` of Kartograf downloads the SoilGrids rasters (clay, sand and silt, depth 0-5 cm,
-mean), computes the USDA texture class of each cell and classifies it into a hydrologic soil group
-(`uint8`: 0 no data, 1-4 are A-D). The inputs are versions of the store (`soil/`), the result is a
-version of `hsg/`. `hsg_statistics()` counts the cells per group.
+`calculate_hsg()` of Kartograf downloads the SoilGrids rasters (clay, sand and silt, mean) of one
+depth or, with `depth_rule="least-permeable"` (Kartograf's ADR-061), of the five layers of
+0-100 cm, computes the USDA texture class of each cell and classifies it into a hydrologic soil
+group (`uint8`: 0 no data, 1-4 are A-D); with the rule every cell takes the group of its layer
+with the lowest class Ksat of Rawls et al. (1982). The inputs are versions of the store (`soil/`),
+the result is a version of `hsg/`. `hsg_statistics()` counts the cells per group. Hydrograf asks
+for the rule of `soil.hsg_depth_rule` (ADR-079): `least-permeable` by default, `topsoil` the
+0-5 cm layer.
 
 ### 14.2 Use in Hydrograf
 
 Two integration points:
 
-1. **Bootstrap step 5**: on the private path the raster of Poland (EPSG:2180 bbox
+1. **Bootstrap step 5**: on the private path the raster of Poland of the rule (EPSG:2180 bbox
    `167000 29000 860000 814000`) is fetched once into the store, `reused` after; from a set, the
-   pinned HSG raster whose requested box covers the mosaic (ADR-067; the Kaczawa set: Poland's
-   box plus 100 km, `67000 -71000 960000 914000`). The step clips it to the mosaic, warps it to
-   EPSG:2180 at 250 m, fills the missing pixels with the nearest neighbour, polygonizes it (the
-   fragments under 50 m² are dropped) and imports it into `soil_hsg`, replacing the polygons of the
-   bbox. It also writes `soil_hsg.geojson` for the front end.
+   pinned HSG raster of the rule's segment whose requested box covers the mosaic (ADR-067,
+   ADR-079; the Kaczawa set: Poland's box plus 100 km, `67000 -71000 960000 914000`). The step
+   clips it to the mosaic, warps it to EPSG:2180 at 250 m, fills the missing pixels with the
+   nearest neighbour, polygonizes it (the fragments under 50 m² are dropped), makes the soil
+   under the wetlands group D (ADR-078) and imports it into `soil_hsg`, replacing the polygons
+   of the bbox. It also writes `soil_hsg.geojson` for the front end.
 2. **`cn_calculator.py`**: the CN on demand for one watershed, with a plain raster in a temporary
    directory (§4.7).
 
@@ -908,6 +915,6 @@ Other formats (GeoJSON) of `bootstrap --boundary-file` fall back to the bbox of 
 
 ---
 
-**Document version:** 7.5
-**Last update:** 2026-11-10: the pin follows the release set candidate-2 of Nogat: the head `d0990c8` of `develop` (0.8.0.dev0; was `9deaa31`, which production and Hydroni still run); bootstrap step 5 makes the soil under the wetlands group D, the land cover takes the KUSK and KUKO complexes (ADR-078), the smoothing follows ADR-077; Kartograf's `--depth-rule least-permeable` (in the pin since `e49eaad0`) is not used yet.
-**History:** 7.4 (2026-11-03): the pin follows the release set of Nogat (candidate-1): the head `9deaa31` of `develop` (0.8.0.dev0; was `eab8612`); the signatures of the functions Hydrograf calls did not change. 7.3 (2026-11-02): Archiwista's sets as the only Kartograf input of the shared store (ADR-067): `bootstrap --project --set` with its checks and refusals, `utils/archiwista_project.py` and `utils/kartograf_set.py` (§4.5), every download refused while `HYDROGRAF_KARTOGRAF_ROOT` is set (`refuse_shared_store`, `private_store_dir`), read-only ACL, no concurrency rule; `writes_in_progress` and the guard of step 2 removed (§3.7, §4.1). 7.2 (2026-11-02): the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9). 7.1 (2026-11-02): the pin of the head `eab8612` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `c655639`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).
+**Document version:** 7.6
+**Last update:** 2026-11-10: the soil groups are those of the least permeable SoilGrids layer of 0-100 cm, Kartograf's `calculate_hsg(depth_rule="least-permeable")`, by default (`soil.hsg_depth_rule`, ADR-079): step 5 of the private store, the pin of a set (refused with the `kartograf soil hsg` command when the set lacks the raster of the rule) and the CN on demand (§1, §2, §3, §4.1, §4.5, §4.7, §14).
+**History:** 7.5 (2026-11-10): the pin follows the release set candidate-2 of Nogat: the head `d0990c8` of `develop` (0.8.0.dev0; was `9deaa31`, which production and Hydroni still run); bootstrap step 5 makes the soil under the wetlands group D, the land cover takes the KUSK and KUKO complexes (ADR-078), the smoothing follows ADR-077; Kartograf's `--depth-rule least-permeable` (in the pin since `e49eaad0`) is not used yet. 7.4 (2026-11-03): the pin follows the release set of Nogat (candidate-1): the head `9deaa31` of `develop` (0.8.0.dev0; was `eab8612`); the signatures of the functions Hydrograf calls did not change. 7.3 (2026-11-02): Archiwista's sets as the only Kartograf input of the shared store (ADR-067): `bootstrap --project --set` with its checks and refusals, `utils/archiwista_project.py` and `utils/kartograf_set.py` (§4.5), every download refused while `HYDROGRAF_KARTOGRAF_ROOT` is set (`refuse_shared_store`, `private_store_dir`), read-only ACL, no concurrency rule; `writes_in_progress` and the guard of step 2 removed (§3.7, §4.1). 7.2 (2026-11-02): the store shared with Archiwista (ADR-066): `HYDROGRAF_KARTOGRAF_ROOT`, the ACL of the store, the concurrency rule and the guard of step 2 (§3.7); the cache clean leaves a shared store whole; `normalize_crs` writes nothing next to the sheets and `create_vrt_mosaic(target_crs=)` assigns the CRS (§4.9). 7.1 (2026-11-02): the pin of the head `eab8612` (`feature/archiwista-projects`, the commit Archiwista pins): `find_sheets_for_geometry` selects the sheets that the features of a geometry file meet, not every sheet of their envelopes; the signatures of the functions Hydrograf calls did not change (ADR-061, erratum). 7.0 (2026-10-25): Kartograf 0.8.0 (ADR-061): the store `cache/kartograf/` (marker, versions, sidecars, hard links), `download_landcover`, `calculate_hsg` and `hsg_statistics` instead of `LandCoverManager` and `HSGCalculator`, `KartografError` codes, the pin of the head `c655639`; the document is in English. 6.0 (2026-10-08): Kartograf 0.7.0 (campaigns, `MetadataCache`, loud download errors, the `cache/nmt/...` layout).

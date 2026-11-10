@@ -480,8 +480,9 @@ CREATE INDEX idx_depressions_max_depth ON depressions(max_depth_m); -- migracja 
 ### 3.7 Tabela: `soil_hsg`
 
 **Description:** the hydrologic soil groups (HSG): the HSG raster of Kartograf
-(SoilGrids) polygonized by bootstrap step 5, with the soil under the wetlands of BDOT10k
-(`OT_OIMK_A`) as group D (ADR-078). The polygons do not overlap.
+(SoilGrids; by default the group of the least permeable layer of 0–100 cm,
+`soil.hsg_depth_rule`, ADR-079) polygonized by bootstrap step 5, with the soil under the
+wetlands of BDOT10k (`OT_OIMK_A`) as group D (ADR-078). The polygons do not overlap.
 
 **Schemat SQL:**
 ```sql

@@ -21,9 +21,11 @@ does not import Kartograf.
 """
 
 import logging
+import math
 import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from core.errors import ForbiddenError, HydrografError
 
@@ -42,8 +44,58 @@ STORE_ROOT_ENV = "HYDROGRAF_KARTOGRAF_ROOT"
 METADATA_CACHE_NAME = "kartograf_meta.db"
 # The sheet grid of Hydrograf: PL-1992 (EPSG:2180), the one GUGiK publishes the NMT in.
 SHEET_SYSTEM = "1992"
-# Depth of the SoilGrids layers of the hydrologic soil groups (HSG) of Hydrograf.
-HSG_DEPTH = "0-5cm"
+
+
+@dataclass(frozen=True)
+class HsgLayers:
+    """The SoilGrids layers of the hydrologic soil groups (HSG) of one rule.
+
+    A rule is a value of ``soil.hsg_depth_rule`` in the configuration (ADR-079).
+    Kartograf's ``calculate_hsg`` takes exactly one of ``depth`` (one layer) and
+    ``depth_rule`` (a rule over the soil profile), so the other is None; ``segment``
+    is the store segment of the raster that Kartograf computes from the layers.
+    """
+
+    depth: str | None
+    depth_rule: str | None
+    segment: str
+
+    def command(self, box: tuple[float, float, float, float]) -> str:
+        """Return the Kartograf command that computes this raster over ``box``.
+
+        ``box`` is in EPSG:2180, the default CRS of ``--bbox``; it is rounded outwards
+        to whole metres, so the box that the raster records as requested covers it.
+        """
+        layers = (
+            f"--depth-rule {self.depth_rule}"
+            if self.depth_rule is not None
+            else f"--depth {self.depth}"
+        )
+        min_x, min_y, max_x, max_y = box
+        corners = (
+            math.floor(min_x),
+            math.floor(min_y),
+            math.ceil(max_x),
+            math.ceil(max_y),
+        )
+        return f"kartograf soil hsg {layers} --bbox {','.join(map(str, corners))}"
+
+
+# The rules of soil.hsg_depth_rule (ADR-079). "least-permeable", the default: per cell
+# the group of the least permeable SoilGrids layer of 0-100 cm (Kartograf's ADR-061;
+# NEH 630 ch. 7 takes the layer that limits the infiltration). "topsoil": the group of
+# the 0-5 cm layer, the rule of Hydrograf before ADR-079.
+HSG_DEPTH_RULES: Final[dict[str, HsgLayers]] = {
+    "least-permeable": HsgLayers(
+        depth=None,
+        depth_rule="least-permeable",
+        segment="hsg/global_soilgrids_0-100cm_least-permeable_mean",
+    ),
+    "topsoil": HsgLayers(
+        depth="0-5cm", depth_rule=None, segment="hsg/global_soilgrids_0-5cm_mean"
+    ),
+}
+DEFAULT_HSG_DEPTH_RULE: Final = "least-permeable"
 
 
 def shared_store_root() -> Path | None:

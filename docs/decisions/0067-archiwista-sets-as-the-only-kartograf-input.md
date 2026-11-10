@@ -1,5 +1,11 @@
 # ADR-067: Archiwista's sets as the only Kartograf input of the shared store
 
+> **Amended by ADR-079 (2026-11-10):** the HSG pin of decision 3 is a version of the segment
+> of `soil.hsg_depth_rule`, by default `hsg/global_soilgrids_0-100cm_least-permeable_mean/`
+> (`topsoil`: `hsg/global_soilgrids_0-5cm_mean/`). A set without a raster of that segment that
+> covers the mosaic is refused (`set_hsg_missing`), whatever HSG raster of another rule it
+> holds; the hint names the Kartograf command that computes the raster.
+
 **Date:** 2026-11-02
 **Status:** accepted
 **Supersedes in part:** ADR-066 (decisions 2 and 4)

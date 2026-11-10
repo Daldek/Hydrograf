@@ -1,4 +1,4 @@
-"""instance.json: the area, set and NMT of an instance, from a run or from its data."""
+"""instance.json: the area, set, NMT and soil groups of an instance, from its run."""
 
 import hashlib
 import json
@@ -60,7 +60,10 @@ def boundary(tmp_path: Path) -> Path:
 
 def test_a_run_from_a_set_names_the_project_its_counties_and_its_nmt(boundary):
     info = build_instance_info(
-        generated_at=NOW, boundary=boundary, set_identity=_identity()
+        generated_at=NOW,
+        boundary=boundary,
+        set_identity=_identity(),
+        hsg_depth_rule="least-permeable",
     )
 
     assert info == {
@@ -68,6 +71,10 @@ def test_a_run_from_a_set_names_the_project_its_counties_and_its_nmt(boundary):
         "area": {"name": "h07", "area_km2": 6.0, "boundary": "zlewnia_testowa.gpkg"},
         "counties": ["0403", "3001", "3002"],
         "nmt": {"resolution_m": 5.0, "segment": "nmt/pl_1992_5m_evrf2007"},
+        "hsg": {
+            "depth_rule": "least-permeable",
+            "segment": "hsg/global_soilgrids_0-100cm_least-permeable_mean",
+        },
         "set": {
             "project": "h07",
             "name": "2026-2",
@@ -105,6 +112,7 @@ def test_without_a_set_the_name_is_the_boundary_stem_and_nothing_is_credited(
     assert info["counties"] is None
     assert info["set"] is None
     assert info["nmt"] == {"resolution_m": 5.0, "segment": None}
+    assert info["hsg"] is None  # nothing says which rule made the soil groups
 
 
 def test_a_run_by_bbox_has_no_area():
@@ -133,7 +141,11 @@ def test_the_cli_takes_the_area_of_the_project_the_set_record_names(tmp_path):
     )
     data = tmp_path / "data"
     data.mkdir()
-    record = {"schema": "hydrograf-bootstrap-set/1", **_identity(project)}
+    record = {
+        "schema": "hydrograf-bootstrap-set/1",
+        **_identity(project),
+        "hsg_depth_rule": "topsoil",
+    }
     (data / "bootstrap_set.json").write_text(json.dumps(record))
     frontend_data = tmp_path / "frontend-data"
 
@@ -143,6 +155,10 @@ def test_the_cli_takes_the_area_of_the_project_the_set_record_names(tmp_path):
     assert info["area"] == {"name": "h07", "area_km2": 6.0, "boundary": "area.gpkg"}
     assert info["set"]["name"] == "2026-2"
     assert info["nmt"]["resolution_m"] == 5.0
+    assert info["hsg"] == {
+        "depth_rule": "topsoil",
+        "segment": "hsg/global_soilgrids_0-5cm_mean",
+    }
     assert not list(frontend_data.glob(".*.tmp"))
 
 
@@ -175,6 +191,8 @@ def test_the_cli_without_a_set_reads_the_resolution_of_the_saved_dem(
             "zlewnia Kaczawy do Legnicy",
             "--boundary-file",
             str(boundary),
+            "--hsg-depth-rule",
+            "least-permeable",
             "--data-dir",
             str(tmp_path / "data"),
             "--frontend-data",
@@ -185,6 +203,7 @@ def test_the_cli_without_a_set_reads_the_resolution_of_the_saved_dem(
     info = json.loads((frontend_data / "instance.json").read_text(encoding="utf-8"))
     assert info["area"]["name"] == "zlewnia Kaczawy do Legnicy"
     assert info["nmt"]["resolution_m"] == 5.0
+    assert info["hsg"]["depth_rule"] == "least-permeable"
     assert info["set"] is None
 
 
@@ -205,15 +224,16 @@ def test_the_bootstrap_writes_its_run_and_only_warns_on_a_bad_boundary(
     )
     written = tmp_path / "frontend" / "data" / "instance.json"
 
-    bootstrap.write_instance(args, None)
+    bootstrap.write_instance(args, None, "topsoil")
 
     info = json.loads(written.read_text(encoding="utf-8"))
     assert info["area"]["name"] == "zlewnia_testowa"
     assert info["nmt"]["resolution_m"] == 1.0
+    assert info["hsg"]["segment"] == "hsg/global_soilgrids_0-5cm_mean"
 
     written.unlink()
     args.boundary_file = tmp_path / "missing.gpkg"
-    bootstrap.write_instance(args, None)
+    bootstrap.write_instance(args, None, "topsoil")
 
     assert not written.exists()
     assert "instance.json not written" in caplog.text

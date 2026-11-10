@@ -8,6 +8,13 @@
 > (median catchment +0.18, at most +2.96 in a catchment of at least 1 km²), nearly all
 > of it by the wetlands.
 
+> **Amended by ADR-079 (2026-11-10):** the soil groups of `soil_hsg` are those of the least
+> permeable SoilGrids layer of 0–100 cm (Kartograf's `calculate_hsg(depth_rule=
+> "least-permeable")`), not of the 0–5 cm layer of "The HSG data" below, the improvement
+> that the consequences name first; `soil.hsg_depth_rule: topsoil` keeps 0–5 cm. On h07 the
+> groups of the raster go from B 95.1 %, A 4.8 % to B 98.5 %, C 1.5 %; the wetlands stay D
+> after them (ADR-078).
+
 **Date:** 2026-11-08
 **Status:** accepted (by delegation of the author, 2026-11-08; the open points decided by
 the author 2026-11-08, below; plan `docs/plans/2026-11-08-cn-by-soil-group.md`); amended

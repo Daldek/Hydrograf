@@ -397,9 +397,13 @@ The CN is that of the hydrologic soil-cover complexes (USDA-NRCS 2004, NEH 630 c
 ADR-075): a complex is a land cover on a hydrologic soil group (HSG), and its CN for
 AMC II is the TR-55 value of the cover it stands for on that group (USDA-SCS 1986,
 tables 2-2a to 2-2c), read from Hydrolog (`hydrolog.runoff.get_cn`). The soil groups of
-`soil_hsg` are those of the SoilGrids texture (bootstrap step 5), and D under the
-wetlands of BDOT10k (`OT_OIMK_A`): an undrained wet soil is group D (NEH 630 chapter 7;
-ADR-078).
+`soil_hsg` (bootstrap step 5) are those of the SoilGrids texture of the least permeable
+layer of 0–100 cm: Kartograf's `calculate_hsg(depth_rule="least-permeable")` classifies the
+clay, sand and silt of the layers 0–5, 5–15, 15–30, 30–60 and 60–100 cm and takes in every
+cell the layer with the lowest Ksat (Rawls et al. 1982), the layer that limits infiltration
+in NEH 630 chapter 7 (ADR-079; `soil.hsg_depth_rule: topsoil` takes the 0–5 cm layer). Under
+the wetlands of BDOT10k (`OT_OIMK_A`) the soil is group D after that: an undrained wet soil
+is group D (NEH 630 chapter 7; ADR-078).
 
 ### 5.1 Hierarchy of the sources of the CN
 
@@ -488,7 +492,7 @@ NEH 630 ch. 10, p. 10-10), for P = 25 and 50 mm, AMC II, Ia = 0.2 S
 **Function:** `calculate_cn_from_kartograf(boundary_wgs84, cache_dir, use_default_land_cover=True, teryt=None)` (`core/cn_calculator.py`); only `scripts/analyze_watershed.py` calls it, through `determine_cn()`.
 
 1. The boundary of the watershed is converted to a `BBox` in EPSG:2180 with a buffer of 100 m (`convert_boundary_to_bbox`).
-2. The HSG of the area (`get_hsg_from_soilgrids`): `kartograf.calculate_hsg(output_dir=<temporary directory>, bbox=, depth="0-5cm", cache=False)` downloads the SoilGrids clay, sand and silt rasters, classifies the USDA texture of each cell into the groups A-D and writes the HSG raster as a plain file that exists only for this call; `kartograf.hsg_statistics` counts the cells per group. A failure of Kartograf (`KartografError`) or an area without data gives the group B.
+2. The HSG of the area (`get_hsg_from_soilgrids`): `kartograf.calculate_hsg(output_dir=<temporary directory>, bbox=, depth_rule="least-permeable", cache=False)` (the default rule of ADR-079; this path reads no `config.yaml`) downloads the SoilGrids clay, sand and silt rasters of the five layers of 0–100 cm, classifies the USDA texture of each layer and gives each cell the group of its least permeable layer, and writes the HSG raster as a plain file that exists only for this call; `kartograf.hsg_statistics` counts the cells per group. A failure of Kartograf (`KartografError`) or an area without data gives the group B.
 3. The land cover (`get_land_cover_stats`): `download_bdot10k` takes the BDOT10k package of every county that the bbox intersects from the Kartograf store `<cache_dir>/kartograf` (a package that is already local is used without a request); the area of every `PT*` layer clipped to the bbox gives the shares in percent per category of `land_cover` (`BDOT10K_CATEGORY_MAP`, the category the import gives a layer without its kind), each county by its part in the bbox. Without data the default land cover is used when `use_default_land_cover` is true.
 4. Without an overlay of the two, every category is taken to lie on the soil groups in their shares of the bbox: the CN is the weighted mean of the complexes category × group with the products of the two shares as weights (`weighted_cn_of_shares`).
 

@@ -233,17 +233,22 @@ SANDY = {"clay": 100.0, "sand": 850.0, "silt": 50.0}
 
 
 class SoilRasters:
-    """The stubbed SoilGrids service: one raster per property for any bbox.
+    """The stubbed SoilGrids service: one raster per property and layer for any bbox.
 
-    ``values[property]`` is the value (g/kg) of every cell, or an exception to raise;
-    ``cells`` is the number of cells along a side of a raster. ``downloads`` lists the
-    properties transferred.
+    ``values[property]`` is the value (g/kg) of every cell of every layer, or an
+    exception to raise; ``layers[depth]`` replaces ``values`` for one layer (``0-5cm``
+    to ``100-200cm``); ``cells`` is the number of cells along a side of a raster.
+    ``downloads`` lists the rasters transferred as ``<property> <depth>``.
     """
 
     def __init__(
-        self, values: Mapping[str, float | Exception] | None = None, cells: int = 4
+        self,
+        values: Mapping[str, float | Exception] | None = None,
+        cells: int = 4,
+        layers: Mapping[str, Mapping[str, float | Exception]] | None = None,
     ) -> None:
         self.values: dict[str, float | Exception] = dict(values or LOAM)
+        self.layers = {depth: dict(layer) for depth, layer in (layers or {}).items()}
         self.cells = cells
         self.downloads: list[str] = []
 
@@ -258,11 +263,12 @@ class SoilRasters:
         timeout: int = 120,
         *,
         property: str,
+        depth: str,
         **kwargs: Any,
     ) -> Path:
         """Write the raster of ``bbox`` for ``property`` in EPSG:4326, like WCS does."""
-        self.downloads.append(property)
-        value = self.values[property]
+        self.downloads.append(f"{property} {depth}")
+        value = self.layers.get(depth, self.values)[property]
         if isinstance(value, Exception):
             raise value
         west, south, east, north = _lon_lat(bbox)

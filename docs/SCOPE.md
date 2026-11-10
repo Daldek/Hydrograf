@@ -1,7 +1,7 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.12
+**Version:** 1.13
 **Date:** 2026-11-10
 **Status:** Approved
 
@@ -427,7 +427,7 @@ This document defines precisely:
 
 #### 3.1.5 Soil Data (HSG)
 
-**Source:** ISRIC SoilGrids (clay, sand and silt at 0-5 cm) through Kartograf 0.8.0, which classifies the USDA texture into hydrologic soil groups
+**Source:** ISRIC SoilGrids (clay, sand and silt of the layers of 0-100 cm) through Kartograf 0.8.0, which classifies the USDA texture of each layer and gives each cell the hydrologic soil group of its least permeable layer (ADR-079; `soil.hsg_depth_rule: topsoil` takes the 0-5 cm layer)
 **Format:** GeoTIFF (the HSG raster of Poland, a version of the Kartograf store) → polygons → PostGIS (table `soil_hsg`)
 **Attributes:** Hydrologic Soil Group (A/B/C/D)
 **Preprocessing:**
@@ -949,13 +949,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.12
+**Document version:** 1.13
 **Date of the last update:** 2026-11-10
 **Current version:** v0.4.0 (CP4 finished, 899 tests, 19 endpoints, 49 ADRs)
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.13 (2026-11-10): the soil groups of the least permeable SoilGrids layer of 0-100 cm (3.1.5; ADR-079)
 - 1.12 (2026-11-10): the accumulation thresholds of 2026-11-05, the land cover categories of the code with no stored CN (ADR-074, ADR-075, migration 006), the lawns of KUSK/KUKO in `inny` and the soil under the wetlands as group D (ADR-078)
 - 1.11 (2026-11-10): the producers follow the release set candidate-2 of Nogat (`587c909`): Kartograf `d0990c8`, Obserwator `f9f4ee7`, Hydrolog `759d7ef`
 - 1.10 (2026-11-05): Hydrolog moves to `1ffcd6b` of `develop` (the official inputs of tc); Hydrograf computes tc only with Hydrolog

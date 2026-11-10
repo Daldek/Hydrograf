@@ -487,12 +487,14 @@ MESSAGES: Final[dict[str, Message]] = {
         "obszarze projektu, potem „Zamknij zestaw”.",
     ),
     "set_hsg_missing": Message(
-        "The set {name} has no HSG raster ({depth}) that covers the NMT mosaic.",
-        "Zestaw {name} nie ma rastra HSG ({depth}) pokrywającego mozaikę NMT.",
-        "In Archiwista: „Otwórz do edycji”, add a soil hsg call whose box covers the "
-        "mosaic, then „Zamknij zestaw”.",
-        "W Archiwiście: „Otwórz do edycji”, dodaj polecenie soil hsg o prostokącie "
-        "pokrywającym mozaikę, potem „Zamknij zestaw”.",
+        "The set {name} has no HSG raster of {segment} (soil.hsg_depth_rule "
+        "{depth_rule}) that covers the NMT mosaic.",
+        "Zestaw {name} nie ma rastra HSG z {segment} (soil.hsg_depth_rule "
+        "{depth_rule}) pokrywającego mozaikę NMT.",
+        "In Archiwista: „Otwórz do edycji”, add the call {command}, then „Zamknij "
+        "zestaw”.",
+        "W Archiwiście: „Otwórz do edycji”, dodaj polecenie {command}, potem "
+        "„Zamknij zestaw”.",
     ),
     "nmt_coverage_gap": Message(
         "The NMT sheets leave {area_km2} km² of the area, or of the inside of their "

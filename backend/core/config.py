@@ -15,6 +15,7 @@ import yaml
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.active_run import active_run_raster
+from utils.kartograf_store import DEFAULT_HSG_DEPTH_RULE
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,12 @@ _DEFAULT_CONFIG = {
         # drains nothing (core.hydrology.interpolate_enclosed_nodata)
         "fill_enclosed_nodata": False,
         "building_raise_m": 5.0,
+    },
+    "soil": {
+        # The SoilGrids layers of the soil groups of bootstrap step 5 (ADR-079):
+        # "least-permeable" (the least permeable layer of 0-100 cm) or "topsoil" (the
+        # 0-5 cm layer); utils.kartograf_store.HSG_DEPTH_RULES
+        "hsg_depth_rule": DEFAULT_HSG_DEPTH_RULE,
     },
     "paths": {
         "output_dir": "output",

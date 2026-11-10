@@ -18,6 +18,9 @@ the boundary's file name.
 - ``counties``: the TERYT codes of the BDOT10k packages of the set, null when unknown;
 - ``nmt``: the NMT resolution (``--resolution``, else the set's NMT segment, else the
   cell of the saved DEM mosaic) and the set's segment;
+- ``hsg``: the rule of the soil groups (``soil.hsg_depth_rule``, ADR-079) and the
+  store segment of its raster: ``--hsg-depth-rule``, else the rule of the set record;
+  null when unknown (a run that skipped step 5, data without a record);
 - ``set``: project, name and ``closed_at`` of the set, null for a run without a set;
 - ``generated_at``: when the file was written (UTC).
 """
@@ -31,6 +34,8 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from utils.kartograf_store import HSG_DEPTH_RULES
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +64,7 @@ def build_instance_info(
     boundary_layer: str | None = None,
     set_identity: dict[str, Any] | None = None,
     nmt_resolution_m: float | None = None,
+    hsg_depth_rule: str | None = None,
 ) -> dict[str, Any]:
     """Build the document ``hydrograf-instance/1``.
 
@@ -77,6 +83,9 @@ def build_instance_info(
         record ``bootstrap_set.json``.
     nmt_resolution_m : float, optional
         The NMT resolution; default the one of the set's NMT segment.
+    hsg_depth_rule : str, optional
+        The rule of the soil groups of the data, a key of ``HSG_DEPTH_RULES``; default
+        the one the set record keeps (``hsg_depth_rule``), else unknown.
     """
     identity = set_identity or {}
     project = identity.get("project") or {}
@@ -92,6 +101,8 @@ def build_instance_info(
 
         area_km2 = round(boundary_area_km2(load_boundary(boundary, boundary_layer)), 1)
     counties = (identity.get("inputs") or {}).get("bdot10k")
+    if hsg_depth_rule is None:
+        hsg_depth_rule = identity.get("hsg_depth_rule")
     return {
         "schema": INSTANCE_INFO_SCHEMA,
         "area": {
@@ -101,6 +112,14 @@ def build_instance_info(
         },
         "counties": sorted(counties) if counties is not None else None,
         "nmt": {"resolution_m": nmt_resolution_m, "segment": segment},
+        "hsg": (
+            {
+                "depth_rule": hsg_depth_rule,
+                "segment": HSG_DEPTH_RULES[hsg_depth_rule].segment,
+            }
+            if hsg_depth_rule is not None
+            else None
+        ),
         "set": (
             {
                 "project": project.get("name"),
@@ -175,6 +194,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="NMT resolution (default: from the set, else the saved DEM mosaic)",
     )
     parser.add_argument(
+        "--hsg-depth-rule",
+        choices=list(HSG_DEPTH_RULES),
+        help="Rule of the soil groups of the data, soil.hsg_depth_rule of their run "
+        "(default: from the set record, else unknown)",
+    )
+    parser.add_argument(
         "--data-dir",
         type=Path,
         default=DEFAULT_DATA_DIR,
@@ -215,6 +240,7 @@ def main(argv: list[str] | None = None) -> None:
         boundary_layer=args.boundary_layer if args.boundary_file else None,
         set_identity=record,
         nmt_resolution_m=nmt_resolution,
+        hsg_depth_rule=args.hsg_depth_rule,
     )
     path = write_instance_info(args.frontend_data, info)
     logger.info("Written %s: %s", path, json.dumps(info["area"], ensure_ascii=False))

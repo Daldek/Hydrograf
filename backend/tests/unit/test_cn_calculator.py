@@ -416,6 +416,15 @@ class TestGetHsgFromSoilgrids:
         assert dominant == "A"
         assert stats["A"] == pytest.approx(100.0)
 
+    def test_the_group_is_that_of_the_least_permeable_layer(self):
+        """Loamy sand (A) over loam at 60-100 cm (B) is B, not A (ADR-079)."""
+        soil = SoilRasters(SANDY, layers={"60-100cm": LOAM})
+        with soil_rasters(soil):
+            dominant, stats = get_hsg_from_soilgrids(self.BBOX)
+
+        assert dominant == "B"
+        assert stats == {"A": 0.0, "B": 100.0, "C": 0.0, "D": 0.0}
+
     def test_all_nodata_uses_the_default_group_not_group_a(self):
         empty = {"clay": 0.0, "sand": 0.0, "silt": 0.0}
         with soil_rasters(SoilRasters(empty)):

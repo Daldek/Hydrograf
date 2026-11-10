@@ -211,7 +211,7 @@ backend/
 │   ├── __init__.py
 │   ├── dem_color.py               # DEM color palette, hillshade blending
 │   ├── geometry.py                # Geometric operations, CRS transforms
-│   ├── kartograf_store.py         # Where Kartograf writes (store, metadata cache), describe_error(), download_bdot10k() (ADR-061)
+│   ├── kartograf_store.py         # Where Kartograf writes (store, metadata cache), describe_error(), download_bdot10k() (ADR-061), the HSG rules of soil.hsg_depth_rule (ADR-079)
 │   ├── raster_utils.py            # Raster tools (resample, polygonize)
 │   ├── nmt_coverage.py            # NMT sheets that leave the area or a hole of their mosaic uncovered (ADR-076)
 │   └── sheet_lookup.py            # NMT sheet lookup, thin wrapper over kartograf.find_sheets_for_bbox (ADR-057)

@@ -16,7 +16,8 @@ leave in PostGIS, in `frontend/data/` and in `frontend/tiles/` (ADR-021, ADR-022
   - BDOT10k: one GeoPackage package per county (*powiat*) from GUGiK, every layer; the land cover
     (`PT*` layers) and the hydrography (SWRS rivers, SWKN canals, SWRM ditches, PTWP waters) are
     taken from it
-  - HSG: hydrologic soil groups, computed by Kartograf from SoilGrids
+  - HSG: hydrologic soil groups, computed by Kartograf from SoilGrids: by default the group of
+    the least permeable layer of 0–100 cm (`soil.hsg_depth_rule`, ADR-079)
   - CORINE: the European land cover classification from Copernicus (downloaded by
     `download_landcover.py`, not used by the pipeline)
 - GDAL (`gdalbuildvrt`, `gdalwarp`) for the VRT mosaic; `tippecanoe` for the MVT tiles (optional:
@@ -50,7 +51,7 @@ continues when one fails.
 | 2 | downloads the NMT sheets of the area into the Kartograf store (`download_dem.download_sheets`); from a set: the pinned sheets, nothing downloaded | - |
 | 3 | processes the DEM: the VRT mosaic of the sheets of step 2, the BDOT10k hydro layers for stream burning, `process_dem` (`stream_network`, `stream_catchments`) | - |
 | 4 | downloads the BDOT10k packages of the counties of the mosaic and imports them into `land_cover`; from a set: the pinned packages | `--skip-landcover` |
-| 5 | HSG: the raster of Poland (a version of the store), clipped to the mosaic, polygonized into `soil_hsg`, the soil under the wetlands (`OT_OIMK_A`) of the BDOT10k packages of step 4 group D (ADR-078); from a set: the pinned raster and packages. The map layer `frontend/data/soil_hsg.geojson` is simplified by 5 m | `--skip-hsg` |
+| 5 | HSG: the raster of Poland of `soil.hsg_depth_rule` (a version of the store), clipped to the mosaic, polygonized into `soil_hsg`, the soil under the wetlands (`OT_OIMK_A`) of the BDOT10k packages of step 4 group D (ADR-078); from a set: the pinned raster of the rule and the pinned packages. The map layer `frontend/data/soil_hsg.geojson` is simplified by 5 m | `--skip-hsg` |
 | 6 | IMGW precipitation (PMAXTP) on a 2 km grid into `precipitation_data` | `--skip-precipitation` |
 | 7 | depressions (blue spots) from the filled DEM | `--skip-depressions` |
 | 8 | MVT tiles (`tippecanoe`) | `--skip-tiles` |
@@ -134,6 +135,21 @@ included, and the depressions of step 7 count them. A value that is not `true` o
 (`validation_error`, exit 2). The run logs the setting, step 3 reports the filled cells, a run by
 units records it in its settings and the record of a set keeps it.
 
+**Soil groups** (`soil.hsg_depth_rule` of the configuration, ADR-079): which SoilGrids layers give
+the hydrologic soil groups of step 5, computed by Kartograf (`calculate_hsg`):
+
+| Value | Kartograf | Store segment of the raster |
+|---|---|---|
+| `least-permeable` (the default) | `--depth-rule least-permeable`: the clay, sand and silt of the five layers of 0–100 cm; in every cell the group of the layer with the lowest Ksat (Kartograf's ADR-061) | `hsg/global_soilgrids_0-100cm_least-permeable_mean` |
+| `topsoil` | `--depth 0-5cm`: the 0–5 cm layer, the rule before ADR-079 | `hsg/global_soilgrids_0-5cm_mean` |
+
+Another value is refused (`validation_error`, exit 2). Without a set step 5 computes the raster of
+Poland of the rule once in `<cache-dir>/kartograf` (the profile: 15 SoilGrids rasters instead of
+3) and reuses it after. A set must hold the raster of the rule's segment; a raster of the other
+rule is never taken instead. The wetlands are group D after the raster either way. The run logs the
+rule, `--dry-run` names it with its segment, the record of a set keeps it (`hsg_depth_rule`, null
+with `--skip-hsg`), and so does `instance.json` (`hsg`).
+
 **Coverage of the area** (ADR-076): the sheets of the mosaic must cover the area and enclose no
 hole. The frames of the sheets (their meridians and parallels projected to EPSG:2180) are unioned;
 what lies outside them, of the area (the outline of `--project`, `--boundary-file` or `--bbox`, the
@@ -156,11 +172,25 @@ the area file and its SHA-256, that the set is closed (an open set, „w budowie
 recorded `pins_sha256`, the project's Kartograf store (the same directory as
 `HYDROGRAF_KARTOGRAF_ROOT` when that is set) and every Kartograf pin by size and SHA-256; then that
 the set holds the NMT sheets of the project's area, the BDOT10k packages of the counties of the
-mosaic (unless `--skip-landcover`) and one HSG raster that covers the mosaic (unless
-`--skip-hsg`), one version per sheet, county and raster. Steps 2 to 5 read the pinned files (step 2
-reports `N/N arkuszy z zestawu`); steps 6 to 10 do not change. The run logs the set and writes
-`<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`: project, set, `pins_sha256`, inputs,
-`stream_burning`, `fill_enclosed_nodata`, start, end, status); a run without a set removes the file.
+mosaic (unless `--skip-landcover`) and one HSG raster of the segment of `soil.hsg_depth_rule` that
+covers the mosaic (unless `--skip-hsg`), one version per sheet, county and raster. Steps 2 to 5
+read the pinned files (step 2 reports `N/N arkuszy z zestawu`); steps 6 to 10 do not change. The
+run logs the set and writes `<output>/bootstrap_set.json` (`hydrograf-bootstrap-set/1`: project,
+set, `pins_sha256`, inputs, `stream_burning`, `fill_enclosed_nodata`, `hsg_depth_rule`, start, end,
+status); a run without a set removes the file.
+
+A set without the HSG raster of the rule, for example one made before ADR-079 with the raster of
+0–5 cm only, is refused with the segment and the Kartograf command over the box of the mosaic
+(EPSG:2180, rounded outwards to whole metres), for an Archiwista call:
+
+```text
+BŁĄD: Zestaw 2026-3 nie ma rastra HSG z hsg/global_soilgrids_0-100cm_least-permeable_mean (soil.hsg_depth_rule least-permeable) pokrywającego mozaikę NMT.
+Wskazówka: W Archiwiście: „Otwórz do edycji”, dodaj polecenie kartograf soil hsg --depth-rule least-permeable --bbox 350581,506697,422093,588208, potem „Zamknij zestaw”.
+```
+
+Any box that covers the mosaic will do: a raster of Poland's box (`167000,29000,860000,814000`, the
+box of the private store) serves every project of the store. `soil.hsg_depth_rule: topsoil` runs
+such a set with its raster of 0–5 cm.
 
 **The description of the instance:** after a run whose steps 1 to 3 passed the bootstrap writes
 `frontend/data/instance.json` (see [`write_instance_info.py`](#write_instance_infopy-the-description-of-the-instance)),
@@ -183,7 +213,7 @@ line of standard error, the error document `hydrograf-error/1`; the exit code is
 | 8 | `store_unavailable` | no store, or not a marked Kartograf store |
 | 9 | `io_error` | the project file or a pinned file cannot be read (the ACL) |
 | 12 | `forbidden` | `--bbox`, `--sheets` or `--boundary-file` while `HYDROGRAF_KARTOGRAF_ROOT` is set |
-| 14 | `no_data` | sheets, counties or the HSG raster missing from the set; the NMT sheets leave part of the area, or a hole inside their mosaic, without data |
+| 14 | `no_data` | sheets, counties or the HSG raster of `soil.hsg_depth_rule` missing from the set; the NMT sheets leave part of the area, or a hole inside their mosaic, without data |
 | 15 | `unsupported` | a project schema other than `archiwista-project/1` |
 
 The hint names the Archiwista action that fixes the set: „Zamknij zestaw”, „Weryfikuj”,
@@ -277,9 +307,11 @@ otwarciu”).
 # Inside the API container of the instance (/data and /frontend/data are its mounts)
 docker exec hydro_api python -m scripts.write_instance_info \
     --area-name "zlewnia Kaczawy do Legnicy" \
-    --boundary-file /data/boundary/zlewnia_kaczawy_790km2_przyciecie.gpkg
+    --boundary-file /data/boundary/zlewnia_kaczawy_790km2_przyciecie.gpkg \
+    --hsg-depth-rule least-permeable
 
-# An instance bootstrapped from a set: the area is the project's, checked by its SHA-256
+# An instance bootstrapped from a set: the area is the project's (checked by its SHA-256), the
+# soil rule the one bootstrap_set.json records
 docker exec hydroni_api python -m scripts.write_instance_info --area-name "obszar h_07"
 ```
 
@@ -289,6 +321,7 @@ docker exec hydroni_api python -m scripts.write_instance_info --area-name "obsza
 | `--boundary-file` | the boundary whose area (km², EPSG:2180) is given | the area file of the set's project |
 | `--boundary-layer` | its layer, for a multi-layer file | the first layer |
 | `--resolution` | NMT resolution, `1m` or `5m` | the set's NMT segment, else the cell of `nmt/dem_mosaic.tif` (or `.vrt`) |
+| `--hsg-depth-rule` | the rule of the soil groups of the data, `soil.hsg_depth_rule` of their run: `least-permeable` or `topsoil` | the rule that `bootstrap_set.json` records, else unknown |
 | `--data-dir` | the bootstrap's output directory (`bootstrap_set.json`, `nmt/`) | `../data/` (`/data` in the container) |
 | `--frontend-data` | the directory nginx serves as `/data/` | `../frontend/data/` (`/frontend/data` in the container) |
 
@@ -300,14 +333,18 @@ The file (`hydrograf-instance/1`) is public, so it carries no server path:
           "boundary": "zlewnia_kaczawy_790km2_przyciecie.gpkg"},
  "counties": null,
  "nmt": {"resolution_m": 5.0, "segment": null},
+ "hsg": {"depth_rule": "least-permeable",
+         "segment": "hsg/global_soilgrids_0-100cm_least-permeable_mean"},
  "set": null,
  "generated_at": "2026-11-09T22:18:39Z"}
 ```
 
 `counties` are the TERYT codes of the BDOT10k packages of the set, `nmt.segment` its NMT segment
 of the Kartograf store and `set` its project, name and `closed_at`; all three are null for data
-not made from a set. `area.name` and `area.area_km2` are null when nothing gives them (a run by
-`--bbox` or `--sheets` without `--area-name`).
+not made from a set. `hsg` is the rule of the soil groups (ADR-079) and the store segment of its
+raster; it is null when nothing names the rule (a run with `--skip-hsg`, data without a record and
+without `--hsg-depth-rule`). `area.name` and `area.area_km2` are null when nothing gives them (a
+run by `--bbox` or `--sheets` without `--area-name`).
 
 ---
 

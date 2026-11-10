@@ -72,7 +72,7 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-062](decisions/0062-keep-affine-below-3-until-pyflwdir-release.md) | Keep affine below 3 until pyflwdir releases its fix | accepted | 2026-10-25 |
 | [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and Archiwista's shell instead of glassmorphism panels | accepted | 2026-11-01 |
 | [ADR-066](decisions/0066-kartograf-store-shared-with-archiwista.md) | The Kartograf store shared with Archiwista | superseded in part by ADR-067 | 2026-11-02 |
-| [ADR-067](decisions/0067-archiwista-sets-as-the-only-kartograf-input.md) | Archiwista's sets as the only Kartograf input of the shared store | accepted | 2026-11-02 |
+| [ADR-067](decisions/0067-archiwista-sets-as-the-only-kartograf-input.md) | Archiwista's sets as the only Kartograf input of the shared store | amended by ADR-079 | 2026-11-02 |
 | [ADR-068](decisions/0068-handoff-to-hydrolog-built-by-the-api.md) | The hand-off to Hydrolog is built by the API | accepted | 2026-11-04 |
 | [ADR-069](decisions/0069-pmaxtp-watershed-mean-by-thiessen-polygons.md) | The PMAXTP design depth is the watershed mean by Thiessen polygons; an optional areal reduction factor of the user | accepted | 2026-11-05 |
 | [ADR-070](decisions/0070-flow-path-heads-measured-in-preprocessing.md) | Flow path heads, overland segments and channel sources measured in preprocessing | accepted | 2026-11-05 |
@@ -80,10 +80,11 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-072](decisions/0072-stream-smoothing-follows-the-digitized-direction.md) | The stream smoothing follows the digitized direction and descends strictly | amended by ADR-077 | 2026-11-07 |
 | [ADR-073](decisions/0073-fill-enclosed-nodata.md) | Nodata that the DEM encloses is interpolated before the fill, on request | accepted | 2026-11-07 |
 | [ADR-074](decisions/0074-land-cover-from-the-bdot10k-partition-and-its-attributes.md) | The land cover is the BDOT10k partition split by its attributes, with the industrial complexes cut out of it | amended by ADR-078 | 2026-11-08 |
-| [ADR-075](decisions/0075-cn-of-soil-cover-complexes.md) | The CN is that of the soil-cover complexes, from Hydrolog's TR-55 table | amended 2026-11-09, amended by ADR-078 | 2026-11-08 |
+| [ADR-075](decisions/0075-cn-of-soil-cover-complexes.md) | The CN is that of the soil-cover complexes, from Hydrolog's TR-55 table | amended 2026-11-09, amended by ADR-078 and ADR-079 | 2026-11-08 |
 | [ADR-076](decisions/0076-bootstrap-refuses-nmt-sheets-that-leave-the-area-uncovered.md) | The bootstrap refuses NMT sheets that leave the area, or a hole of their mosaic, uncovered | accepted | 2026-11-09 |
 | [ADR-077](decisions/0077-burned-lines-flow-the-way-of-their-watercourse.md) | A burned line flows the way of its watercourse: to its mouth, else down the DEM of the whole watercourse | accepted | 2026-11-09 |
 | [ADR-078](decisions/0078-wetlands-are-soil-group-d-and-lawns-are-open-space.md) | Wetlands are hydrologic soil group D; the grass of sports and recreation complexes and airports is open space | accepted | 2026-11-10 |
+| [ADR-079](decisions/0079-soil-groups-from-the-least-permeable-layer.md) | The soil groups are those of the least permeable SoilGrids layer of 0–100 cm | accepted | 2026-11-10 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were

@@ -29,6 +29,16 @@ dem:
   fill_enclosed_nodata: false
   building_raise_m: 5.0      # DEM raise under buildings (0 = disabled)
 
+# Soil groups (bootstrap step 5)
+soil:
+  # The SoilGrids layers whose hydrologic soil groups (HSG) Kartograf computes (ADR-079):
+  #   least-permeable - per cell the group of the least permeable layer of 0-100 cm
+  #                     (store segment hsg/global_soilgrids_0-100cm_least-permeable_mean)
+  #   topsoil         - the group of the 0-5 cm layer, the rule before ADR-079
+  #                     (hsg/global_soilgrids_0-5cm_mean)
+  # A run from a set needs the HSG raster of this segment among its pins.
+  hsg_depth_rule: least-permeable
+
 # Paths (relative to project root)
 paths:
   output_dir: "output"
