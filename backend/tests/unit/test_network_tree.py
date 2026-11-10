@@ -236,6 +236,13 @@ def test_points_at_three_mouths_make_a_junction_at_each_confluence(river):
     assert j["J2"].inflows == ("R1", "Z3", "Z4")
     assert j["J3"].inflows == ("R2", "Z5", "Z6")
     assert j["J4"].inflows == ("R3", "Z7")
+    # Each confluence names the point of the tributary joining it; A's has none
+    assert [j[i].tributaries for i in ("J1", "J2", "J3", "J4")] == [
+        ("P3",),
+        ("P2",),
+        ("P1",),
+        (),
+    ]
     assert [(r.from_node, r.to) for r in tree.reaches] == [
         ("J1", "J2"),
         ("J2", "J3"),
@@ -333,6 +340,9 @@ def test_a_gauge_between_two_junctions_splits_the_reach(river):
     assert len(into_gauge) == len(out_of_gauge) == 1
     assert river.name(into_gauge[0].upper.unit) == "M4"
     assert river.name(reaches[out_of_gauge[0].id].lower.unit) == "M2"
+    # The gauge comes along the trunk: only P1 joins the confluence below it
+    assert by_id(tree.junctions)[out_of_gauge[0].to].tributaries == ("P1",)
+    assert gauge.tributaries == ()
     elements = unit_elements(river, tree)
     assert [where for where, _ in elements["M3"]] == [3500.0, "outlet"]
 
@@ -495,6 +505,9 @@ def test_points_on_two_branches_of_a_tributary_meet_where_their_paths_merge(rive
     z = by_id(tree.subcatchments)
     assert z[reaches[first].from_node].point == "P1"
     assert z[reaches[second].from_node].point == "P2"
+    # Both points join the merge from the side, and through it the trunk's confluence
+    assert merge[0].tributaries == ("P1", "P2")
+    assert j[down.to].tributaries == ("P1", "P2")
     elements = unit_elements(river, tree)
     assert elements["T2b"] == elements["T2a"] == reaches[down.id].intermediate
     assert elements["Sa"] == reaches[second].intermediate

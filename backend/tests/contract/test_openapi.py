@@ -58,3 +58,11 @@ def test_operations_with_a_body_or_parameters_document_400():
     for path, method, operation in OPERATIONS:
         if operation.get("requestBody") or operation.get("parameters"):
             assert "400" in operation["responses"], f"{method} {path}"
+
+
+def test_delineate_network_documents_the_problems_of_its_route():
+    (operation,) = [
+        op for _, _, op in OPERATIONS if op["operationId"] == "delineate_network"
+    ]
+
+    assert {"400", "404", "422", "500", "503"} <= set(operation["responses"])

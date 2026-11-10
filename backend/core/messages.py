@@ -276,6 +276,16 @@ MESSAGES: Final[dict[str, Message]] = {
         "Elementy sieci nie sumują się do zlewni przekroju zamykającego: "
         "{elements_cells} komórek wobec {watershed_cells}.",
     ),
+    "network_delineation_busy": Message(
+        "Another network is being delineated: this request waited {wait_s:g} s.",
+        "Trwa wyznaczanie innej sieci: to żądanie czekało {wait_s:g} s.",
+        "Try again in a moment.",
+        "Spróbuj ponownie za chwilę.",
+    ),
+    "network_delineation_failed": Message(
+        "The network could not be delineated.",
+        "Nie udało się wyznaczyć sieci.",
+    ),
     "lutz_parameters_missing": Message(
         "The Lutz method needs channel_length_km, length_to_centroid_km and "
         "channel_slope_m_per_m.",

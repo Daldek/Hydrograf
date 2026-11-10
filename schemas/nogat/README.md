@@ -22,8 +22,9 @@ Hydrolog reads the copy of `8727f6e` until its own step 3, which takes the same 
 
 - `handoff-1.schema.json` (Nogat `schemas/exchange/handoff-1.schema.json`): the envelope
   `nogat-handoff/1` of data handed between the GUIs of the ecosystem. The API writes the
-  hand-off of a watershed to Hydrolog with the payload `hydrolog-network/1`
-  (`backend/core/handoff.py`, ADR-068); `backend/tests/unit/test_handoff.py` validates
-  it against this copy.
+  hand-off of a watershed (ADR-068) and of a network (`POST /api/delineate-network`,
+  ADR-080, with `node_provenance`) to Hydrolog with the payload `hydrolog-network/1`
+  (`backend/core/handoff.py`); `backend/tests/unit/test_handoff.py` and
+  `backend/tests/unit/test_network_endpoint.py` validate them against this copy.
 
 Do not edit these files; copy them again when the standard changes.

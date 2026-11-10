@@ -202,6 +202,10 @@ class Junction:
     inflows : tuple[str, ...]
         The nodes it receives: the trunk's first, then the branches in descending
         order of the accumulation of their last cell.
+    tributaries : tuple[str, ...]
+        The control points of the branches that join it from the side, not along a
+        trunk, in the order of ``inflows``: on each branch the nearest point above,
+        or the points that meet below it on that branch (B1).
     """
 
     id: str
@@ -209,6 +213,7 @@ class Junction:
     point: str | None
     place: Place | UnitHead
     inflows: tuple[str, ...]
+    tributaries: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -841,7 +846,10 @@ def _connect(junction_nodes: list[_Node]) -> tuple[list[Reach], list[Junction]]:
     junctions = []
     for node in junction_nodes:
         inflows: list[str] = []
+        tributaries: list[str] = []
         for branch in sorted(node.branches, key=_branch_key):
+            if not branch.trunk:
+                tributaries.extend(_points_up(_upper_node(branch)))
             if branch.edge is not None:
                 edge = branch.edge
                 if not edge.upper.branches:
@@ -879,9 +887,29 @@ def _connect(junction_nodes: list[_Node]) -> tuple[list[Reach], list[Junction]]:
                 point=node.point,
                 place=node.place,
                 inflows=tuple(inflows),
+                tributaries=tuple(tributaries),
             )
         )
     return reaches, junctions
+
+
+def _upper_node(branch: _Branch) -> _Node:
+    """Return the node a branch that is not a headwater comes from."""
+    upper = branch.edge.upper if branch.edge is not None else branch.mouth
+    assert upper is not None
+    return upper
+
+
+def _points_up(node: _Node) -> list[str]:
+    """List the nearest control points from a node up: itself, or its branches'."""
+    if node.point is not None:
+        return [node.point]
+    return [
+        point
+        for branch in sorted(node.branches, key=_branch_key)
+        if branch.headwater is None
+        for point in _points_up(_upper_node(branch))
+    ]
 
 
 def _unit_elements(
