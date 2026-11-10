@@ -236,6 +236,14 @@ MESSAGES: Final[dict[str, Message]] = {
         "Skontaktuj się z administratorem.",
     ),
     # --- Network delineation (ADR-080) ---
+    "network_point_off_stream": Message(
+        "Point {point_id} lies more than {snap_m:g} m from a stream of the "
+        "{threshold_m2} m² network.",
+        "Punkt {point_id} leży dalej niż {snap_m:g} m od cieku sieci "
+        "{threshold_m2} m².",
+        "Place the point on a stream drawn on the map.",
+        "Postaw punkt na cieku narysowanym na mapie.",
+    ),
     "network_point_outside": Message(
         "Point {point_id} does not drain to the closing section {outlet_id}.",
         "Punkt {point_id} nie odwadnia się do przekroju zamykającego {outlet_id}.",
@@ -247,6 +255,26 @@ MESSAGES: Final[dict[str, Message]] = {
         "Punkty {point_ids} trafiają w tę samą komórkę cieku.",
         "Move one of them.",
         "Przesuń jeden z nich.",
+    ),
+    "network_window_too_large": Message(
+        "The catchment of the closing section is too large for a network: its "
+        "window of the rasters has {cells} cells, more than the {max_cells} allowed.",
+        "Zlewnia przekroju zamykającego jest za duża dla sieci: jej okno rastrów ma "
+        "{cells} komórek, więcej niż dopuszczalne {max_cells}.",
+        "Choose a closing section that drains a smaller catchment.",
+        "Wybierz przekrój zamykający, który odwadnia mniejszą zlewnię.",
+    ),
+    "network_rasters_missing": Message(
+        "Rasters of the network delineation are missing: {rasters}.",
+        "Brakuje rastrów do wyznaczenia sieci: {rasters}.",
+        "Contact the administrator.",
+        "Skontaktuj się z administratorem.",
+    ),
+    "network_area_mismatch": Message(
+        "The elements of the network do not add up to the catchment of the closing "
+        "section: {elements_cells} cells against {watershed_cells}.",
+        "Elementy sieci nie sumują się do zlewni przekroju zamykającego: "
+        "{elements_cells} komórek wobec {watershed_cells}.",
     ),
     "lutz_parameters_missing": Message(
         "The Lutz method needs channel_length_km, length_to_centroid_km and "

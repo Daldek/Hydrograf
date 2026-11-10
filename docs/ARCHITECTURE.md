@@ -165,6 +165,8 @@ backend/
 │   ├── land_cover.py              # Land cover analysis, determine_cn()
 │   ├── morphometry.py             # Shape indices (calculate_shape_indices)
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
+│   ├── network_delineation.py     # Network at control points on the rasters (ADR-080): snapping, the window of A's catchment, the element raster and its splits, the area check, the measures of the elements, their coverage, the reaches
+│   ├── network_tree.py            # Network at control points on the catchment graph (ADR-080): parents, trunks, junctions, elements of the units, ids in the order of the hand-off
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF); cells_window + read_window: a window around a query (the API)
 │   ├── raster_service.py          # Precise-mode delineation (pyflwdir) in a window of the flow directions and the DEM
