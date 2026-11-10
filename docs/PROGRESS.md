@@ -143,7 +143,13 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    - Kartograf keeps the mode of a temporary file on the files it moves from `/tmp` (RCN
      `_unpack_checked_layers`, WFS `_fetch_features`), so other uids cannot read them (Nogat plan
      D10; Kartograf's to fix).
-10. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
+10. **Network delineation at control points** (the author's decisions B1–B7 of 2026-11-10,
+    [the plan](plans/2026-11-10-network-delineation.md), ADR-080): `POST /api/delineate-network`,
+    the map mode „Sieć zlewni” and one hand-off of the whole network to Hydrolog's Sieć. S1
+    (`refactor/cell-parameters`) and S2 (`feat/network-delineation-core`) can start; S3 waits
+    for Nogat's `node_provenance` (Nogat plan `2026-11-10-node-provenance-in-handoff`, step 1)
+    and a Nogat release set with Hydrolog's W1–W2.
+11. **Unscheduled:** the rest is in [BACKLOG.md](BACKLOG.md): the hardening of the public attack
     surface (three unauthenticated DoS paths first), the „brak danych” of the hyetograph that a
     tester reported, `--thresholds` of the bootstrap, building raising (ADR-033), the read
     endpoints of v0.5.x, clipping the presented data to the boundary, the GPT items B6–B15, the
