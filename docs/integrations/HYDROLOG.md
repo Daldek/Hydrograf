@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-11-09 (Hydrolog `4fad769` of `develop`, the TR-55 rows of Hydrograf's covers and water at CN 98; was `1ffcd6b`)
+**Ostatnia aktualizacja:** 2026-11-10 (Hydrolog `759d7ef` of `develop`, the release set candidate-2 of Nogat; was `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production and Hydroni still run)
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -493,4 +493,4 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 ---
 
-**Ostatnia aktualizacja:** 2026-10-25
+**Ostatnia aktualizacja:** 2026-11-10
