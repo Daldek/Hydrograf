@@ -1061,7 +1061,7 @@ frontend/
     ├── custom-rain.js        # Own rainfall series: table of steps, paste, CSV import, copy of the hietogram
     ├── rain-export.js        # Export of the hietogram (CSV, JSON) and of its PMAXTP points with weights (GeoJSON)
     ├── info.js               # (i) explanations: markers, shared panel, MathML formulas; opened by a click, a tap, Enter or Space, closed by the same (i), Esc or a click outside
-    ├── info-texts.js         # 76 explanations (formula, variables, unit, meaning) keyed by an API field or a control id
+    ├── info-texts.js         # 87 explanations (formula, variables, unit, meaning) keyed by an API field, a control id or a kind of the network's elements
     ├── advanced.js           # Advanced mode: editing of the morphometry for POST /api/generate-hydrograph
     ├── depressions.js        # Depressions (blue spots) overlay
     ├── sewer.js              # Storm-sewer layer (MVT overlay; only when GET /api/layers reports data)
