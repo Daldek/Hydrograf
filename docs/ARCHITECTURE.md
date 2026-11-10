@@ -1738,7 +1738,7 @@ async def health_check(db = Depends(get_db)):
 - Pre-computed stats in `stream_catchments` (zero raster operations at runtime)
 - Cascaded merge threshold for large watersheds (>300 segments) — ADR-042
 
-**Current benchmark results:** see `docs/PROGRESS.md`
+**Benchmark results:** see `docs/BENCHMARK_QUERIES.md` (the PostGIS queries, ADR-039) and the timings in the CHANGELOG entries.
 
 ---
 

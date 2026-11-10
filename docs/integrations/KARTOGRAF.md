@@ -363,7 +363,7 @@ cover, HSG, precipitation, depressions, MVT tiles, overlays, server). Steps 1-3 
 | set: 5 HSG | the pinned HSG raster, clipped to the mosaic and processed as above | as above |
 
 The exit code is 1 when one of steps 1-3 failed. Whether a failed step 5 should stop the
-bootstrap and whether the HSG fallback "B" is right are open (PROGRESS, Open questions 1).
+bootstrap and whether the HSG fallback "B" is right are open (PROGRESS, Open questions 2).
 
 **Bootstrap from a set (ADR-067).** `python -m scripts.bootstrap --project PATH --set NAME`
 (`PATH` is the project's directory or its `archiwista-project.json`) takes every Kartograf input
