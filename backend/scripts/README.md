@@ -99,6 +99,10 @@ cd backend
 | `--area-name` | the name of the data area on the welcome screen and in the guide (`instance.json`) | the Archiwista project's name, else the boundary file's stem |
 | `--output` | output directory | `../data/` |
 | `--cache-dir` | directory of the cached downloads: the Kartograf store is `<cache-dir>/kartograf` | `paths.cache_dir` of the configuration (`cache/` in the repository root) |
+| `--units` | Kartograf's PGW GeoPackage: step 3 processes the mosaic by its PGW units (ADR-071), clipped to the area of `--boundary-file` or `--project`; see [`process_dem.py --units`](#process_dempy---units-process-the-nmt-by-pgw-units) | off |
+| `--units-catchments`, `--units-catchments-layer`, `--units-catchments-key` | with `--units`: catchments grouped into the units, their layer and their key field | -, the first layer, `ID_HYD_10` |
+| `--units-scratch-dir` | with `--units`: the directory of the scratch of step 3 | - |
+| `--no-resume` | with `--units`: begin a new run instead of resuming a stopped or failed one | off |
 | `--config` | YAML configuration file | `config.yaml` |
 | `--port` | HTTP port of the server | 8080 |
 | `--dry-run` | only show what would be done; with `--project`, after every check of the set | off |
@@ -417,11 +421,13 @@ the stream network and the sub-catchments into `stream_network` and `stream_catc
    the first of: towards the mouth of its MPHP watercourse, where it meets a line of its receiver;
    down the DEM of its whole watercourse, for a block of lines digitized against the rest of it
    (unless the DEM of the block falls more than 2 m the way it is digitized); the other way where
-   the DEM along the line rises by more than 2 m; the way BDOT10k digitizes it (ADR-077). An
-   artificial connector through a lake never takes its direction from the DEM along it.
+   the DEM along the line rises by more than 2 m (a line of at least 200 m); the way BDOT10k
+   digitizes it (ADR-077). An artificial connector through a lake never takes its direction from
+   the DEM along it.
 4. Classify the endorheic lakes and their drain points (`--waterbody-mode`): a lake that a
    watercourse line leaves is exorheic, a burned line flowing the way the smoothing takes it and
-   any other line the way it is digitized, unless the DEM along it rises by more than 2 m; burn the
+   any other line the way it is digitized, unless the DEM along it rises by more than 2 m on at
+   least 200 m (ADR-072); burn the
    storm-sewer inlets and route the flow accumulation through the sewer graph (optional, ADR-051).
 5. Fill the depressions, compute the D8 flow direction and the flow accumulation.
 6. Compute the distance along the flow to the outlet, the slope and the aspect (Sobel), the Strahler
@@ -434,7 +440,9 @@ the stream network and the sub-catchments into `stream_network` and `stream_catc
    filled DEM (ADR-070); what cannot be measured stays empty.
 8. Insert the result into PostGIS (COPY) with the matching of the streams against BDOT10k when
    `--burn-streams` is given (ADR-044); `--clear-existing` first deletes the DEM-derived streams and
-   the sub-catchments.
+   the sub-catchments. After the insert the run logs that a running API loads the new network at
+   its next request (it compares the network on every request that uses the catchment graph; an
+   API that still answers from the previous network predates that: `docker compose restart api`).
 
 `--from-intermediates` skips stages 1–6: it reads the rasters that an earlier run saved with
 `--save-intermediates` (`*_02_filled`, `*_03_flowdir`, `*_04_flowacc`, `*_04b_stream_distance`,
@@ -481,6 +489,10 @@ cd backend
 | `--hydro-resolution` | - | downsample the DEM to this resolution in m before the hydrology; saves memory on large rasters | - |
 | `--waterbody-mode` | - | `auto`, `none` or a path to a file | `none` |
 | `--waterbody-min-area` | - | the smallest water body in m² | - |
+
+The settings `dem.stream_burning` and `dem.fill_enclosed_nodata` of the configuration reach
+`process_dem()` from the bootstrap only: the command line burns every line (`all`) and
+interpolates no enclosed nodata.
 
 **Intermediate files (GeoTIFF):**
 
@@ -863,8 +875,10 @@ Imports the land cover of a BDOT10k county package into the table `land_cover` (
 ADR-078): the `PT*` layers, which partition the county, split by their attributes, with the
 industrial complexes of `OT_KUPG_A` cut out of them, then the lawns of the sports and
 recreation complexes (`OT_KUSK_A`) and of the airports (`OT_KUKO_A`) cut out of their grass.
-Each row gets a category, the imperviousness and its source in `bdot_class`; its CN is that of
-its soil-cover complex (ADR-075). The import of a package replaces, in one transaction, the
+Each row gets a category, the imperviousness and its source in `bdot_class`; no CN is stored
+(migration 006): the CN of the soil-cover complex follows from the category, `bdot_class` and the
+soil group of `soil_hsg` at query time (`core/cn_tables.py`; ADR-075 with its amendment of
+2026-11-09, ADR-078). The import of a package replaces, in one transaction, the
 rows of its area (those whose interior point and more than half of whose area lie in the
 package), so importing a package again changes nothing and the neighbouring counties keep
 their rows.
