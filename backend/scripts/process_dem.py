@@ -47,6 +47,11 @@ import numpy as np
 from sqlalchemy import text
 
 from core.active_run import clear_active_run
+from core.cell_parameters import (
+    INTERMEDIATE_SUFFIXES,
+    d8_from_saved_flowdir,
+    overland_segments,
+)
 from core.constants import PIPELINE_THRESHOLDS_M2
 from core.db_bulk import (
     insert_bdot_streams,
@@ -109,7 +114,6 @@ __all__ = [
     "compute_strahler_from_fdir",
     "compute_strahler_order",
     "compute_twi",
-    "d8_from_saved_flowdir",
     "delineate_subcatchments",
     "fill_internal_nodata_holes",
     "fix_internal_sinks",
@@ -139,16 +143,6 @@ logger = logging.getLogger(__name__)
 
 # Catchments only for thresholds >= 1000 m² (ADR-026)
 MIN_CATCHMENT_THRESHOLD_M2 = 1000
-
-# Hydrology rasters saved with save_intermediates that later runs read again
-# (load_hydrology_intermediates): name -> file suffix after the DEM's stem
-INTERMEDIATE_SUFFIXES = {
-    "filled_dem": "02_filled",
-    "fdir": "03_flowdir",
-    "acc": "04_flowacc",
-    "flow_dist_m": "04b_stream_distance",
-    "slope": "05_slope",
-}
 
 # Rows of a strip of the slope, aspect and TWI computation (_slope_aspect_twi); a
 # multiple of the 256 rows of the tiles of GeoTiffWriter, which then writes every
@@ -372,49 +366,6 @@ def _stream_head_cells(
     return head_idx
 
 
-def _overland_segments(
-    head_idxs: np.ndarray,
-    flw: Any,
-    stream_mask: np.ndarray,
-    flat_dem: np.ndarray,
-) -> tuple[list[float | None], list[float | None]]:
-    """Measure the overland segment of flow paths, from their heads to the streams.
-
-    The segment runs along the flow directions from a head cell to the first
-    cell of the stream mask. It is not measurable (None) when the head is a
-    stream cell or the path ends in a pit before it reaches a stream.
-
-    Parameters
-    ----------
-    head_idxs : np.ndarray
-        Flat indices of the head cells.
-    flw : pyflwdir.FlwdirRaster
-        Flow directions.
-    stream_mask : np.ndarray
-        2-D stream mask of the threshold (bool).
-    flat_dem : np.ndarray
-        Flattened filled DEM.
-
-    Returns
-    -------
-    tuple[list[float | None], list[float | None]]
-        Length [m] and drop [m] of the segment of each head.
-    """
-    paths, dists = flw.path(idxs=head_idxs, mask=stream_mask, unit="m")
-    stream_flat = stream_mask.ravel()
-    lengths: list[float | None] = []
-    drops: list[float | None] = []
-    for head, path, dist in zip(head_idxs, paths, dists, strict=True):
-        end = path[-1]
-        if len(path) < 2 or not stream_flat[end]:
-            lengths.append(None)
-            drops.append(None)
-            continue
-        lengths.append(round(float(dist), 1))
-        drops.append(round(float(flat_dem[head]) - float(flat_dem[end]), 2))
-    return lengths, drops
-
-
 def _enrich_catchments_with_flow_paths(
     catchments: list[dict[str, Any]],
     label_raster: np.ndarray,
@@ -525,7 +476,9 @@ def _enrich_catchments_with_flow_paths(
     start_arr = np.array(start_idxs, dtype=np.intp)
 
     # Phase 2a: head of each longest flow path and its overland segment
-    lengths, drops = _overland_segments(start_arr, flw, stream_mask, flat_dem)
+    lengths, drops = overland_segments(
+        start_arr, stream_mask, flat_dem, flw.transform, idxs_ds=flw.idxs_ds
+    )
     for i, ci in enumerate(catch_order):
         catchments[ci]["flow_path_head_elev_m"] = round(
             float(flat_dem[start_arr[i]]), 2
@@ -929,39 +882,6 @@ def load_hydrology_intermediates(
             raise ValueError(f"{path} is not on the grid of {paths[names[0]]}")
         rasters[name] = data
     return rasters, metadata
-
-
-def d8_from_saved_flowdir(
-    fdir: np.ndarray,
-    flow_dist_m: np.ndarray,
-    valid: np.ndarray,
-) -> np.ndarray:
-    """Rebuild the pyflwdir D8 grid of a run from its saved rasters.
-
-    The saved flow directions (``_03_flowdir``) are pyflwdir's D8 grid; in the
-    rasters of runs before fix_internal_sinks stopped fixing the pits at the
-    edge of the data, it had given those pits a direction. Those pits are the
-    only cells with a flow distance of 0, so they become pits again (a no-op for
-    newer runs); cells outside the DEM become pyflwdir's nodata (247).
-
-    Parameters
-    ----------
-    fdir : np.ndarray
-        Saved D8 flow directions (int16, 0 = none).
-    flow_dist_m : np.ndarray
-        Saved flow distance to the outlet [m].
-    valid : np.ndarray
-        Cells of the DEM (bool).
-
-    Returns
-    -------
-    np.ndarray
-        pyflwdir D8 flow directions (uint8).
-    """
-    d8 = fdir.astype(np.uint8)
-    d8[valid & (flow_dist_m == 0)] = 0
-    d8[~valid] = 247
-    return d8
 
 
 def _supersede_active_unit_run(db: Any) -> int | None:

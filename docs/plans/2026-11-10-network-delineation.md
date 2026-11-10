@@ -639,7 +639,9 @@ The front end has no test runner (ADR-068): it is checked in a browser in S5;
 ## Stages
 
 Each later branch starts from the previous one; merged into `develop` with a merge commit when
-its gate passes and the coordinator schedules it (relative to the release v0.5.0, PROGRESS).
+its gate passes and the coordinator schedules it. No release is cut for this work now (the
+coordinator, 2026-11-10: the author has not settled the versions, and no tag is set): S1 and S2
+merge when green, S3 and S4 merge into `develop` in the usual way after S5.
 
 | Stage | Branch | Content | Needs | Merged |
 |---|---|---|---|---|
@@ -655,12 +657,24 @@ Deploying is the coordinator's: a new image, no migration and no data change. Af
 
 ## Results
 
-None yet.
+**S1** (`refactor/cell-parameters`): `core/cell_parameters.py` holds `INTERMEDIATE_SUFFIXES`,
+`d8_from_saved_flowdir`, `PipelineRasters`, the window (`CellWindow`, `read_cell_window`: the six
+rasters and `member`, the cells measured), `terrain`, `outlet_cell`, `baseline_m`,
+`flow_path_parameters`, `overland_segments`, `main_channel` and `channel_parameters`; the export
+keeps the polygon (`PolygonCells`, its mask and the pyflwdir basin of its outlet). The walk of
+`overland_segments` follows either a D8 grid (the saved rasters: the export, the backfill, the
+network) or the downstream indices of a run (`idxs_ds`): `process_dem` keeps measuring on the
+directions of its run, which differ from the saved grid at cells without NMT data, and a run by
+units has only the int32 memmap of `UnitFlowPaths`, whose `path` this replaced and which is
+removed. `tests/unit/test_cell_parameters.py` finds the walk equal to pyflwdir's `path` for every
+cell of the synthetic DEMs, along both.
 
 ## Not in this plan
 
 - Routing, the reach sections and a hydrograph of the network or of an element in Hydrograf:
   Hydrolog's (SCOPE keeps routing out).
-- A network whose window exceeds 60 M cells is refused, not computed on coarser units.
+- A network whose window exceeds 60 M cells is refused, not computed on coarser units (the
+  coordinator, 2026-11-10). A stage that delineates such a network on coarser units is later
+  work, not part of S1–S5.
 - Positions of the nodes (Sieć lays the network out); `nash_estimation` in the runoff
   (Hydrolog's A5, optional for producers); a network handed back from Hydrolog.

@@ -14,16 +14,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
-import pyflwdir
 import pytest
 import rasterio
 from rasterio.transform import from_origin
 from shapely import wkt
 
+from core.cell_parameters import d8_from_saved_flowdir
 from scripts.backfill_flow_path_heads import backfill_threshold
 from scripts.process_dem import (
-    _get_transform,
-    d8_from_saved_flowdir,
     load_hydrology_intermediates,
     process_dem,
     process_dem_from_intermediates,
@@ -153,10 +151,7 @@ def saved_hydrology(dem_path):
         rasters["flow_dist_m"],
         rasters["filled_dem"] != metadata["nodata_value"],
     )
-    flw = pyflwdir.from_array(
-        d8, ftype="d8", transform=_get_transform(metadata, d8.shape), latlon=False
-    )
-    return rasters, metadata, flw
+    return rasters, metadata, d8
 
 
 @pytest.mark.parametrize("threshold_m2", THRESHOLDS_M2)
@@ -165,7 +160,7 @@ def test_backfill_gives_the_values_of_the_run(dem_path, full_run, threshold_m2):
     run = catchments[threshold_m2]
     assert len(run) > 1
     assert any(c["overland_length_m"] for c in run)  # the run measured something
-    rasters, metadata, flw = saved_hydrology(dem_path)
+    rasters, metadata, d8 = saved_hydrology(dem_path)
     db = FakeDatabase(database_rows(run))
 
     counts = backfill_threshold(
@@ -174,7 +169,7 @@ def test_backfill_gives_the_values_of_the_run(dem_path, full_run, threshold_m2):
         dem_path.parent / f"dem_10_subcatchments_{threshold_m2}.tif",
         rasters,
         metadata,
-        flw,
+        d8,
         dry_run=False,
     )
 
@@ -192,7 +187,7 @@ def test_backfill_gives_the_values_of_the_run(dem_path, full_run, threshold_m2):
 
 def test_backfill_refuses_rasters_that_do_not_match_the_rows(dem_path, full_run):
     _, catchments = full_run
-    rasters, metadata, flw = saved_hydrology(dem_path)
+    rasters, metadata, d8 = saved_hydrology(dem_path)
     db = FakeDatabase(database_rows(catchments[1000], max_flow_dist_shift_m=5.0))
 
     with pytest.raises(RuntimeError, match="do not match the rasters"):
@@ -202,7 +197,7 @@ def test_backfill_refuses_rasters_that_do_not_match_the_rows(dem_path, full_run)
             dem_path.parent / "dem_10_subcatchments_1000.tif",
             rasters,
             metadata,
-            flw,
+            d8,
             dry_run=False,
         )
 

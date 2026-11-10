@@ -30,15 +30,14 @@ from typing import Any
 import numpy as np
 from sqlalchemy import text
 
+from core.cell_parameters import d8_from_saved_flowdir, overland_segments
 from core.database import get_db_session
 from core.db_bulk import override_statement_timeout
 from core.raster_io import read_raster
 from scripts.process_dem import (
     _get_transform,
-    _overland_segments,
     _per_label_argmax,
     _stream_head_cells,
-    d8_from_saved_flowdir,
     load_hydrology_intermediates,
 )
 
@@ -110,7 +109,7 @@ def backfill_threshold(
     label_path: Path,
     rasters: dict[str, np.ndarray],
     metadata: dict[str, Any],
-    flw: Any,
+    d8: np.ndarray,
     dry_run: bool,
 ) -> dict[str, int]:
     """Fill the four columns of the sub-catchments of one threshold.
@@ -176,7 +175,13 @@ def backfill_threshold(
     cells = max(1, int(threshold_m2 / cell_area))
     stream_mask = (rasters["acc"] >= cells) & (filled_dem != metadata["nodata_value"])
     measured = heads >= 0
-    lengths, drops = _overland_segments(heads[measured], flw, stream_mask, flat_dem)
+    lengths, drops = overland_segments(
+        heads[measured],
+        stream_mask,
+        flat_dem,
+        _get_transform(metadata, filled_dem.shape),
+        d8=d8,
+    )
     stream_heads = _stream_head_cells(
         flat_labels, stream_mask.ravel(), flat_dist, int(labels.max())
     )
@@ -241,8 +246,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    import pyflwdir
-
     input_path = Path(args.input)
     directory = Path(args.output_dir) if args.output_dir else input_path.parent
     t0 = time.time()
@@ -283,13 +286,6 @@ def main() -> None:
             rasters["flow_dist_m"],
             rasters["filled_dem"] != metadata["nodata_value"],
         )
-        flw = pyflwdir.from_array(
-            d8,
-            ftype="d8",
-            transform=_get_transform(metadata, d8.shape),
-            latlon=False,
-        )
-        del d8
 
         for threshold_m2 in thresholds:
             try:
@@ -299,7 +295,7 @@ def main() -> None:
                     label_paths[threshold_m2],
                     rasters,
                     metadata,
-                    flw,
+                    d8,
                     args.dry_run,
                 )
             except RuntimeError as e:
