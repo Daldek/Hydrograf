@@ -159,7 +159,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    „Liczba chropowatości” (no Polish source for the name; INFO_TEXTS_SOURCES).
 9. `null` instead of 0.0 in `elevations_m` of `POST /api/terrain-profile` inside DEM gaps (a
    breaking change; B5 in BACKLOG).
-10. Building raising (ADR-033) in the pipeline: BACKLOG, „to be decided”.
+10. Building raising (ADR-033) in the pipeline (BACKLOG: to be decided by the author).
 11. Delete `/data/nmt/pilot_opolskie/` (45 MB, the pilot of 2026-09 with sheets outside Opolskie)?
 12. The ADR on NMT sheet versions (BACKLOG), partly answered by the versions of the Kartograf store
     (ADR-061).
