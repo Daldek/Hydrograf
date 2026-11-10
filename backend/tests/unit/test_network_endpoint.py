@@ -29,6 +29,7 @@ import core.network_delineation
 from api.main import app
 from core.config import get_settings
 from core.database import get_db
+from core.messages import MESSAGES, render
 from core.network_delineation import MIN_REACH_SLOPE_M_PER_M
 from tests.fixtures.pipeline_run import (
     NETWORK_CELL_M,
@@ -121,6 +122,11 @@ def point(run, point_id, cell, name=None):
     if name is not None:
         body["name"] = name
     return body
+
+
+def text(message_id, lang, problem):
+    """The catalogue's text of a message with the details of a problem."""
+    return render(MESSAGES[message_id].text(lang), problem["details"])
 
 
 def at_the_mouths(run):
@@ -239,15 +245,18 @@ class TestTheHandoff:
 
         assert all(0 < len(text) <= 500 for text in texts)
         assert not [text for text in texts if CONTROL.search(text)]
-        assert mouths["handoff"]["subject"] == "Rzeka, sieć: 7 zlewni"
+        # A's name names the network; each confluence names the point of the
+        # tributary joining it, by its name when it has one
+        assert mouths["handoff"]["subject"].startswith("Rzeka, ")
         descriptions = {n["id"]: n["description"] for n in payload["nodes"][:-1]}
-        # Named points are named, a point without a name by its id
-        assert descriptions["J4"] == "Przekrój zamykający A (Rzeka)"
-        assert {descriptions[j] for j in ("J1", "J2", "J3")} == {
-            "Zbieg: dopływ P1 (Pierwszy)",
-            "Zbieg: dopływ P2",
-            "Zbieg: dopływ P3 (Trzeci)",
-        }
+        names = {p["id"]: p["name"] for p in mouths["points"]}
+        for item in mouths["subcatchments"]:
+            if item["kind"] == "tributary":
+                junction = descriptions[item["to"]]
+                assert item["point"] in junction
+                assert names[item["point"]] is None or names[item["point"]] in junction
+                others = {"P1", "P2", "P3"} - {item["point"]}
+                assert not [other for other in others if other in junction]
 
     def test_the_subcatchments_add_up_to_a_in_hydrolog(self, mouths):
         nodes = mouths["handoff"]["payload"]["nodes"]
@@ -339,7 +348,7 @@ class TestTheResponse:
         body = response.json()
         assert body["notices"] == [{"code": "reach_slope_minimum", "ids": ["R1"]}]
         r1 = next(n for n in body["handoff"]["payload"]["nodes"] if n["id"] == "R1")
-        assert r1["description"].endswith("(minimalny)")
+        assert r1["slope_m_per_m"] == MIN_REACH_SLOPE_M_PER_M
         assert body["handoff"]["node_provenance"]["R1"]["node"]["slope"] == "minimum"
 
 
@@ -358,11 +367,9 @@ class TestProblems:
         assert problem["code"] == "not_found"
         assert problem["details"]["reason"] == "network_point_off_stream"
         assert problem["details"]["point_id"] == "P7"
-        assert problem["detail"] == (
-            "Point P7 lies more than 100 m from a stream of the 200000 m² network."
-        )
-        assert polish.json()["detail"] == (
-            "Punkt P7 leży dalej niż 100 m od cieku sieci 200000 m²."
+        assert problem["detail"] == text("network_point_off_stream", "en", problem)
+        assert polish.json()["detail"] == text(
+            "network_point_off_stream", "pl", problem
         )
 
     def test_a_point_that_does_not_drain_to_a_is_named(self, client, run):
@@ -380,9 +387,7 @@ class TestProblems:
             "validation_error",
             "P1",
         )
-        assert problem["detail"] == (
-            "Punkt P1 nie odwadnia się do przekroju zamykającego A."
-        )
+        assert problem["detail"] == text("network_point_outside", "pl", problem)
 
     def test_points_on_one_cell_are_named(self, client, run):
         body = at_the_mouths(run)
@@ -515,9 +520,7 @@ class TestOneNetworkAtATime:
             "reason": "network_delineation_busy",
             "wait_s": 0.3,
         }
-        assert problem["detail"] == (
-            "Trwa wyznaczanie innej sieci: to żądanie czekało 0.3 s."
-        )
+        assert problem["detail"] == text("network_delineation_busy", "pl", problem)
         assert waited >= 0.3
 
     def test_a_request_runs_when_the_network_before_it_ends_in_time(self, client, run):

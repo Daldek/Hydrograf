@@ -516,8 +516,10 @@ def build_network_handoff(
     name = names.get(outlet.point_id) or watershed_name(
         outlet.latitude, outlet.longitude
     )
+    # „Kaczawa, sieć (3 zlewnie)”: the count in parentheses reads as Polish, and the
+    # subject names the hand-off's file, where a colon is not allowed
     subject = (
-        f"{name}, sieć: {_count(len(subcatchments), 'zlewnia', 'zlewnie', 'zlewni')}"
+        f"{name}, sieć ({_count(len(subcatchments), 'zlewnia', 'zlewnie', 'zlewni')})"
     )
     nodes: list[dict[str, Any]] = []
     node_provenance: dict[str, dict[str, Any]] = {}
