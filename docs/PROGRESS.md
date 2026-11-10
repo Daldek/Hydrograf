@@ -71,10 +71,11 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
    the CN are to be measured and written into ADR-079 (Consequences):
    - Hydroni: set h07/2026-3 holds only the 0–5 cm raster and is refused (checked read-only on
      2026-11-10: exit 14, `set_hsg_missing`, with the hint
-     `kartograf soil hsg --depth-rule least-permeable --bbox 350581,506697,422093,588208`). The
-     open set h07/2026-4 holds a `least-permeable` raster of `67000 -71000 960000 914000`: close
-     a set with it and the pins of 2026-3, then bootstrap from that set (meanwhile
-     `soil.hsg_depth_rule: topsoil` runs 2026-3 as before).
+     `kartograf soil hsg --depth-rule least-permeable --bbox 350581,506697,422093,588208`). Set
+     h07/2026-4 (closed 2026-11-10, 728 pins) is 2026-3 with the `least-permeable` raster of
+     `67000 -71000 960000 914000` instead of the 0–5 cm one (over h07 B 98.39 %, C 1.61 % of
+     the cells): `~/data/hydrograf-hydroni/bootstrap.sh` takes `--set 2026-4` once this branch
+     runs there (meanwhile `soil.hsg_depth_rule: topsoil` runs 2026-3 as before).
    - Production (private store): its next step 5 fetches the 15 SoilGrids rasters of Poland and
      computes the raster of the rule.
 4. **Hydroni, for the author's review:** catchment 1883617 and the 11 catchments whose

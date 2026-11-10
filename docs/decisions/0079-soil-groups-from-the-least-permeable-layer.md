@@ -97,18 +97,24 @@ How a run takes the rule:
 
 - h07 (SoilGrids 2.0, the raster of set h07/2026-2 as ADR-075 measured it): the groups of the
   raster go from B 95.1 %, A 4.8 % (C 7 km²) to B 98.5 %, C 1.5 % of the area: the loamy sand
-  of the surface becomes B, the sandy clay loam at 60–100 cm C; the wetlands make their
-  39.55 km² of h07 group D as before. `soil_hsg` and the CN of the catchments change at the
-  next step 5 of Hydroni, where they are to be measured. *[Inference, not measured:]* ADR-075
-  found that the groups of h07 lowered the CN by 0.7 on average against all-B, almost all of
-  it by group A, so the CN of h07 should rise by about that much, most in the catchments with
-  much A (up to 9.5), and a little more by the 1.5 % of C.
+  of the surface becomes B, the sandy clay loam at 60–100 cm C. Measured on the raster that
+  set h07/2026-4 pins (2026-11-10, below), over the 69,719 cells of h07: A 5.33 % → 0,
+  B 94.67 % → 98.39 %, C 0 → 1.61 %; every cell of A becomes B and 1.61 % of the cells of B
+  become C. The wetlands make their 39.55 km² of h07 group D as before. `soil_hsg` and the CN
+  of the catchments change at the next step 5 of Hydroni, where they are to be measured.
+  *[Inference, not measured:]* ADR-075 found that the groups of h07 lowered the CN by 0.7 on
+  average against all-B, almost all of it by group A, so the CN of h07 should rise by about
+  that much, most in the catchments with much A (up to 9.5), and a little more by the 1.6 % of
+  C.
 - Kaczawa (production, private store; topsoil B 99.50 %, C 0.14 %, D 0.36 %): to be measured
   at its next step 5.
 - Every instance needs step 5 again for the new groups, and the CN follows them at query time
   (ADR-075). Hydroni's bootstrap from h07/2026-3, whose only HSG raster is that of 0–5 cm, is
-  refused until a set adds the raster of the rule; the Archiwista that makes it needs a
-  Kartograf with `depth_rule` (`d0990c8`, Nogat's release set candidate-2).
+  refused; set h07/2026-4 (closed 2026-11-10, 728 pins) is 2026-3 with the raster of the rule
+  of `67000 -71000 960000 914000` instead of the 0–5 cm one, computed by
+  `kartograf soil hsg --depth-rule least-permeable --bbox 67000,-71000,960000,914000` into the
+  Hydroni store, so the bootstrap of Hydroni takes `--set 2026-4`. The Archiwista that makes
+  such a set needs a Kartograf with `depth_rule` (`d0990c8`, Nogat's release set candidate-2).
 - The first step 5 of the private store fetches the 12 SoilGrids rasters of Poland that the
   0–5 cm raster did not need (15 instead of 3; Kartograf's ADR-061); later runs reuse them.
   The CN on demand of `analyze_watershed` fetches 15 rasters of its bbox instead of 3 and keeps
