@@ -118,7 +118,7 @@ def _patch_all(cg=None, segment=None, boundary=None, morph=None):
         morph = _make_morph_dict()
 
     return [
-        patch(f"{_WS}.get_catchment_graph", return_value=cg),
+        patch(f"{_WS}.loaded_catchment_graph", return_value=cg),
         patch(f"{_WS}.get_stream_info_by_segment_idx", return_value=segment),
         patch(f"{_WS}.merge_catchment_boundaries", return_value=boundary),
         patch(
@@ -252,7 +252,7 @@ class TestPrecomputedDelineation:
         )
 
         patches = [
-            patch(f"{_WS}.get_catchment_graph", return_value=cg),
+            patch(f"{_WS}.loaded_catchment_graph", return_value=cg),
         ]
 
         with contextlib.ExitStack() as stack:
@@ -273,12 +273,8 @@ class TestPrecomputedDelineation:
         assert response.json()["details"]["reason"] == "no_catchment_at_point"
 
     def test_graph_not_loaded_returns_503(self, client):
-        """Test that unloaded graph returns 503."""
-        cg = MagicMock(spec=CatchmentGraph)
-        cg.loaded = False
-        cg.ensure_loaded.return_value = False
-
-        with patch(f"{_WS}.get_catchment_graph", return_value=cg):
+        """No catchment graph (empty tables or a failed load) returns 503."""
+        with patch(f"{_WS}.loaded_catchment_graph", return_value=None):
             response = client.post(
                 "/api/delineate-watershed",
                 json={

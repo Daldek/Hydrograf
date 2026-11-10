@@ -51,11 +51,16 @@ URBAN_CATEGORIES: Final = frozenset(
 )
 
 # The land cover of a watershed, once whole (hsg_group NULL) and once in its pieces on
-# each soil group. The soil polygons are clipped to the watershed and subdivided first,
-# so the pieces come from the index of land_cover and small soil geometries.
+# each soil group. The watershed and the soil polygons clipped to it are subdivided
+# first, so each land cover polygon is cut by pieces of at most 256 vertices instead
+# of the whole boundary (the 500 km² of the Wełna: 7.7 s instead of 10.1 s), and the
+# pieces come from the index of land_cover.
 _COMPLEXES_SQL = text("""
     WITH watershed AS (
         SELECT ST_SetSRID(ST_GeomFromWKB(decode(:boundary_wkb, 'hex')), 2180) AS geom
+    ),
+    watershed_parts AS (
+        SELECT ST_Subdivide(geom, 256) AS geom FROM watershed
     ),
     soils AS (
         SELECT
@@ -73,9 +78,8 @@ _COMPLEXES_SQL = text("""
         lc.imperviousness,
         NULL::varchar AS hsg_group,
         SUM(ST_Area(ST_Intersection(lc.geom, w.geom))) AS area_m2
-    FROM land_cover lc
-    CROSS JOIN watershed w
-    WHERE ST_Intersects(lc.geom, w.geom)
+    FROM watershed_parts w
+    JOIN land_cover lc ON ST_Intersects(lc.geom, w.geom)
     GROUP BY lc.category, lc.bdot_class, lc.imperviousness
     UNION ALL
     SELECT

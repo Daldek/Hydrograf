@@ -19,7 +19,6 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from core.analysis_results import sample_water_levels
-from core.catchment_graph import get_catchment_graph
 from core.config import get_settings
 from core.constants import DEFAULT_THRESHOLD_M2
 from core.database import get_db
@@ -134,11 +133,10 @@ def identify_point(
         depression = depression_at(db, x, y)
         subcatchment = subcatchment_at(db, x, y, threshold)
         if subcatchment is not None:
-            graph = get_catchment_graph()
             segment_idx = subcatchment["segment_idx"]
             subcatchment = {
                 **subcatchment,
-                **main_channel_at(graph, db, threshold, segment_idx),
+                **main_channel_at(db, threshold, segment_idx),
             }
         zone, easting_2000, northing_2000 = transform_wgs84_to_pl2000(
             request.latitude, request.longitude

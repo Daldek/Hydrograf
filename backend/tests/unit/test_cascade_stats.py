@@ -42,13 +42,14 @@ def _make_mock_cg_with_cascade():
     """
     Create a mock CatchmentGraph that triggers cascade escalation.
 
-    Setup:
-    - Fine threshold (1000): BFS returns 600 segments (>300 limit)
-    - Coarse threshold (10000): BFS returns 50 segments (<=300 limit)
+    Setup (the request's threshold 1000 is raised to the floor 10000):
+    - Fine threshold (10000): BFS returns 600 segments (>300 limit)
+    - Coarse threshold (100000): BFS returns 50 segments (<=300 limit)
     - aggregate_stats returns different values for fine vs coarse indices
     """
     cg = MagicMock()
     cg.loaded = True
+    cg.thresholds_m2.return_value = [10000, 100000, 1000000, 10000000]
 
     # Fine threshold upstream indices (600 items -> triggers cascade)
     fine_upstream = np.arange(600, dtype=np.int32)
@@ -194,7 +195,7 @@ class TestPrecomputedCascadeStats:
 
         with (
             patch(
-                "api.endpoints.watershed.get_catchment_graph",
+                "api.endpoints.watershed.loaded_catchment_graph",
                 return_value=cg,
             ),
             patch(
@@ -330,7 +331,7 @@ class TestPrecomputedCascadeStats:
 
         with (
             patch(
-                "api.endpoints.watershed.get_catchment_graph",
+                "api.endpoints.watershed.loaded_catchment_graph",
                 return_value=cg,
             ),
             patch(
@@ -418,7 +419,7 @@ class TestPrecomputedCascadeStats:
 
         with (
             patch(
-                "api.endpoints.watershed.get_catchment_graph",
+                "api.endpoints.watershed.loaded_catchment_graph",
                 return_value=cg,
             ),
             patch(
@@ -501,6 +502,7 @@ class TestWatershedCascadeStats:
         """
         cg = MagicMock()
         cg.loaded = True
+        cg.thresholds_m2.return_value = [10000, 100000, 1000000, 10000000]
 
         # Fine threshold: 600 upstream indices (triggers cascade)
         fine_upstream = np.arange(600, dtype=np.int32)
@@ -539,7 +541,7 @@ class TestWatershedCascadeStats:
 
         with (
             patch(
-                "api.endpoints.watershed.get_catchment_graph",
+                "api.endpoints.watershed.loaded_catchment_graph",
                 return_value=cg,
             ),
             patch(

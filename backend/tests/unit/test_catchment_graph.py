@@ -1,12 +1,20 @@
 """Unit tests for core.catchment_graph module."""
 
+import threading
+import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 from scipy import sparse
 
-from core.catchment_graph import CatchmentGraph
+import core.catchment_graph as cg_module
+from core.catchment_graph import (
+    CatchmentGraph,
+    get_catchment_graph,
+    loaded_catchment_graph,
+)
 
 
 @pytest.fixture
@@ -720,10 +728,6 @@ class TestGetCatchmentGraphThreadSafety:
 
     def test_returns_same_instance(self):
         """Concurrent calls return the same CatchmentGraph instance."""
-        import threading
-
-        import core.catchment_graph as cg_module
-
         cg_module._catchment_graph = None
         instances = []
 
@@ -740,14 +744,80 @@ class TestGetCatchmentGraphThreadSafety:
         assert all(inst is instances[0] for inst in instances)
         cg_module._catchment_graph = None
 
-    def test_lock_exists(self):
-        """Module-level lock exists for singleton protection."""
-        import threading
 
-        from core.catchment_graph import _catchment_graph_lock
+class TestLoadedCatchmentGraph:
+    """A new graph once the network in the database changed (network_version)."""
 
-        # threading.Lock is a function before Python 3.13, so compare with its type.
-        assert isinstance(_catchment_graph_lock, type(threading.Lock()))
+    @pytest.fixture
+    def network(self, monkeypatch):
+        """The version the database reports and the loads of CatchmentGraph.load."""
+        state = SimpleNamespace(
+            version=(1, 10, 2, 20), loads=[], fail=False, empty=False, delay_s=0.0
+        )
+
+        def load(graph, db):
+            time.sleep(state.delay_s)
+            if state.fail:
+                raise RuntimeError("stream_catchments changed during the load")
+            state.loads.append(graph)
+            graph._loaded = not state.empty
+
+        monkeypatch.setattr(cg_module, "_catchment_graph", None)
+        monkeypatch.setattr(cg_module, "network_version", lambda db: state.version)
+        monkeypatch.setattr(CatchmentGraph, "load", load)
+        return state
+
+    def test_unchanged_network_keeps_the_graph(self, network):
+        first = loaded_catchment_graph(MagicMock())
+
+        assert loaded_catchment_graph(MagicMock()) is first
+        assert network.loads == [first]
+
+    def test_changed_network_loads_a_new_graph(self, network):
+        old = loaded_catchment_graph(MagicMock())
+        network.version = (1, 99, 2, 20)  # a run published new sub-catchments
+
+        new = loaded_catchment_graph(MagicMock())
+
+        assert new is not old
+        assert new.loaded and new.network_version == (1, 99, 2, 20)
+        assert get_catchment_graph() is new
+        # A request that took the old graph keeps it whole
+        assert old.loaded
+
+    def test_failed_load_drops_the_previous_graph_and_retries(self, network):
+        loaded_catchment_graph(MagicMock())
+        network.version = (3, 0, 4, 0)
+        network.fail = True
+
+        assert loaded_catchment_graph(MagicMock()) is None
+        assert not get_catchment_graph().loaded
+
+        network.fail = False
+        assert loaded_catchment_graph(MagicMock()).network_version == (3, 0, 4, 0)
+
+    def test_empty_network_has_no_graph(self, network):
+        network.empty = True
+
+        assert loaded_catchment_graph(MagicMock()) is None
+
+    def test_concurrent_requests_wait_for_one_load(self, network):
+        network.delay_s = 0.1
+        start = threading.Barrier(8)
+        graphs = []
+
+        def request():
+            start.wait()
+            graphs.append(loaded_catchment_graph(MagicMock()))
+
+        threads = [threading.Thread(target=request) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert len(network.loads) == 1
+        assert graphs == [network.loads[0]] * 8
 
 
 class TestGetSegmentIdx:

@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import QueuePool
 
 from api.dependencies.admin_auth import verify_admin_key
-from core.catchment_graph import get_catchment_graph
+from core.catchment_graph import get_catchment_graph, loaded_catchment_graph
 from core.database import get_db, get_db_engine
 from core.errors import (
     ConflictError,
@@ -350,15 +350,6 @@ def cleanup_execute(
         except Exception as e:
             results.append({"key": target_key, "status": "error", "detail": str(e)})
 
-    # Invalidate CatchmentGraph after any cleanup that touches DB tables,
-    # so the next API call reloads fresh data instead of using stale mappings.
-    if any(
-        "db" in _CLEANUP_COMPONENTS[t]["components"]
-        for t in request.targets
-        if t in _CLEANUP_COMPONENTS
-    ):
-        get_catchment_graph().invalidate()
-
     return CleanupResponse(results=results)
 
 
@@ -487,18 +478,18 @@ def _read_process_output(process: subprocess.Popen[str], state: dict[str, Any]) 
         state["process"] = None
         if process.returncode == 0:
             state["status"] = "completed"
-            # Reload CatchmentGraph so API uses fresh data.
-            # Retries handle transient pool exhaustion from concurrent
-            # admin-panel polling while bootstrap is winding down.
-            cg = get_catchment_graph()
-            cg.invalidate()
+            # Load the new network into the catchment graph now rather than at
+            # the next request (requests reload it themselves once the network
+            # in the database changed). Retries handle transient pool exhaustion
+            # from concurrent admin-panel polling while bootstrap is winding down.
             from core.database import get_db_session
 
             backoffs_s = (1, 5, 15)
             for attempt, wait_s in enumerate(backoffs_s, start=1):
                 try:
                     with get_db_session() as db:
-                        cg.load(db)
+                        if loaded_catchment_graph(db) is None:
+                            raise RuntimeError("catchment graph not loaded")
                     state["log_lines"].append("[INFO] CatchmentGraph reloaded")
                     logger.info("CatchmentGraph reloaded after bootstrap")
                     break

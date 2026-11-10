@@ -23,7 +23,7 @@ from shapely.geometry.base import BaseGeometry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from core.catchment_graph import CatchmentGraph, get_catchment_graph
+from core.catchment_graph import CatchmentGraph, loaded_catchment_graph
 from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
 from core.database import get_db
 from core.divide_flow_path import NO_FLOW_PATHS
@@ -254,7 +254,7 @@ class _Selection:
 
 
 def _loaded_catchment_graph(db: Session) -> CatchmentGraph:
-    """Return the in-memory catchment graph, loading it on first use.
+    """Return the catchment graph of the network in the database.
 
     Parameters
     ----------
@@ -264,15 +264,16 @@ def _loaded_catchment_graph(db: Session) -> CatchmentGraph:
     Returns
     -------
     CatchmentGraph
-        The loaded graph.
+        The loaded graph (``loaded_catchment_graph``: reloaded first when the
+        network in the database changed).
 
     Raises
     ------
     StoreUnavailableError
         ``store_unavailable`` (503) when the graph cannot be loaded.
     """
-    cg = get_catchment_graph()
-    if not cg.ensure_loaded(db):
+    cg = loaded_catchment_graph(db)
+    if cg is None:
         raise StoreUnavailableError(
             "catchment_graph_unavailable", reason="catchment_graph_unavailable"
         )
@@ -434,8 +435,12 @@ def _delineate_precomputed(
     )
 
     logger.info(
-        f"Precomputed delineation: {selection.area_km2:.2f} km2, "
-        f"{len(selection.bfs_segment_idxs)} segments"
+        "Precomputed delineation: %.2f km2, %d segments at %d m2, %d merged at %d m2",
+        selection.area_km2,
+        len(selection.bfs_segment_idxs),
+        threshold,
+        len(selection.merge_idxs),
+        selection.merge_threshold,
     )
 
     return {

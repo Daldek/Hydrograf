@@ -245,7 +245,9 @@ class FakeDatabase:
 
     def execute(self, statement, params=None):
         sql = str(statement)
-        if "FROM land_cover lc" in sql:
+        # The land cover query clips the soils too, so it is recognised first and by
+        # its table alone, however it joins land_cover to the watershed.
+        if "land_cover lc" in sql:
             boundary = wkb.loads(bytes.fromhex(params["boundary_wkb"]))
             rows = []
             for category, bdot_class, imperviousness, geometry in LAND_COVER:

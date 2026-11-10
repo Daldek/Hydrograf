@@ -2,7 +2,7 @@
 Integration tests for hydrograph generation endpoint.
 
 Tests the CatchmentGraph-based hydrograph endpoint by mocking:
-- get_catchment_graph() -> CatchmentGraph with traverse/aggregate
+- loaded_catchment_graph() -> CatchmentGraph with traverse/aggregate
 - get_stream_info_by_segment_idx() -> stream segment dict
 - merge_catchment_boundaries() -> MultiPolygon boundary
 - get_segment_outlet() -> outlet coordinates
@@ -168,7 +168,7 @@ def _patch_happy_path(cn: int = 75):
     segment = _make_segment_dict()
 
     patches = {
-        "cg": patch(f"{_HG}.get_catchment_graph", return_value=mock_cg),
+        "cg": patch(f"{_HG}.loaded_catchment_graph", return_value=mock_cg),
         "seg": patch(f"{_HG}.get_stream_info_by_segment_idx", return_value=segment),
         "merge": patch(f"{_HG}.merge_catchment_boundaries", return_value=boundary),
         "outlet": patch(
@@ -430,7 +430,7 @@ class TestGenerateHydrographEndpoint:
         )
 
         try:
-            with patch(f"{_HG}.get_catchment_graph", return_value=mock_cg):
+            with patch(f"{_HG}.loaded_catchment_graph", return_value=mock_cg):
                 response = self._post(
                     client,
                     {
@@ -468,7 +468,7 @@ class TestGenerateHydrographEndpoint:
 
         try:
             with (
-                patch(f"{_HG}.get_catchment_graph", return_value=mock_cg),
+                patch(f"{_HG}.loaded_catchment_graph", return_value=mock_cg),
                 patch(f"{_HG}.get_stream_info_by_segment_idx", return_value=segment),
             ):
                 response = self._post(client)

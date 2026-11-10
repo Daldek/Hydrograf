@@ -33,7 +33,7 @@ from api.errors import (
     operation_id,
     problem_responses,
 )
-from core.catchment_graph import get_catchment_graph
+from core.catchment_graph import loaded_catchment_graph
 from core.config import get_settings
 from core.database import get_db_session
 from core.version import get_version
@@ -76,11 +76,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan handler — loads in-memory catchment graph."""
     logger.info("Starting Hydrograf API...")
 
-    # Load catchment graph (~8 MB, ~100ms)
-    cg = get_catchment_graph()
+    # Load the catchment graph now rather than at the first request; requests
+    # load it again when the network in the database changes
     try:
         with get_db_session() as db:
-            cg.load(db)
+            if loaded_catchment_graph(db) is None:
+                logger.warning("Catchment graph not loaded at startup")
     except Exception as e:
         logger.warning(f"Catchment graph loading failed: {e}")
 

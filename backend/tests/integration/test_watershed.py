@@ -165,7 +165,7 @@ class TestDelineateWatershedEndpoint:
             morph = _make_morph_dict()
 
         return [
-            patch(f"{_WS}.get_catchment_graph", return_value=cg),
+            patch(f"{_WS}.loaded_catchment_graph", return_value=cg),
             patch(f"{_WS}.get_stream_info_by_segment_idx", return_value=segment),
             patch(f"{_WS}.merge_catchment_boundaries", return_value=boundary),
             patch(
@@ -274,7 +274,7 @@ class TestDelineateWatershedEndpoint:
         )
 
         patches = [
-            patch(f"{_WS}.get_catchment_graph", return_value=cg),
+            patch(f"{_WS}.loaded_catchment_graph", return_value=cg),
         ]
 
         with contextlib.ExitStack() as stack:
@@ -477,7 +477,7 @@ class TestDelineateWatershedEndpoint:
         extent = (x - 40_000.0, y - 40_000.0, x + 40_000.0, y + 40_000.0)
 
         with (
-            patch(f"{_WS}.get_catchment_graph", return_value=_make_mock_cg()),
+            patch(f"{_WS}.loaded_catchment_graph", return_value=_make_mock_cg()),
             patch(f"{_WS}.catchments_bounds", return_value=extent),
             patch("core.raster_service.get_settings", return_value=settings),
         ):
@@ -509,7 +509,7 @@ class TestDelineateWatershedPreview:
     def _post(self, client, cg, threshold_m2=10000, escalation=None):
         """POST a preview with the graph, cascade and geometry query mocked."""
         with contextlib.ExitStack() as stack:
-            stack.enter_context(patch(f"{_WS}.get_catchment_graph", return_value=cg))
+            stack.enter_context(patch(f"{_WS}.loaded_catchment_graph", return_value=cg))
             stack.enter_context(
                 patch(f"{_WS}.cascade_escalate", return_value=escalation)
             )
@@ -610,11 +610,8 @@ class TestDelineateWatershedPreview:
         levels.assert_not_called()
 
     def test_graph_not_loaded_returns_503(self, client):
-        """Unloaded catchment graph returns 503."""
-        cg = _make_mock_cg()
-        cg.ensure_loaded.return_value = False
-
-        response, _ = self._post(client, cg)
+        """No catchment graph (empty tables or a failed load) returns 503."""
+        response, _ = self._post(client, None)
 
         assert response.status_code == 503
         assert response.json()["code"] == "store_unavailable"

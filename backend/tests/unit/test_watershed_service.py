@@ -8,17 +8,21 @@ and shape index computation.
 """
 
 import math
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from scipy import sparse
 from shapely import wkb
 from shapely.geometry import MultiPolygon, Polygon
 
+from core.catchment_graph import CatchmentGraph
 from core.morphometry import calculate_shape_indices
 from core.watershed_service import (
     boundary_to_polygon,
     build_morph_dict_from_graph,
+    cascade_escalate,
     compute_watershed_length,
     ensure_outlet_within_boundary,
     get_main_stream_geojson,
@@ -750,3 +754,139 @@ class TestEnsureOutletWithinBoundary:
         x, y = ensure_outlet_within_boundary(150.0, 50.0, multi)
         assert abs(x - 100.0) < 0.01
         assert abs(y - 50.0) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# cascade_escalate
+# ---------------------------------------------------------------------------
+
+# The thresholds of the pipeline, core.constants.PIPELINE_THRESHOLDS_M2
+PIPELINE_COUNTS = {10_000: 12, 100_000: 6, 1_000_000: 3, 10_000_000: 1}
+
+
+def _chains(counts):
+    """One watershed of 12 km², split at each threshold into a chain.
+
+    At threshold t segment 1 drains into 2 and so on to segment counts[t], the
+    sub-catchment at the click, so the BFS from it selects counts[t] segments.
+    """
+    thresholds, segments, rows, cols = [], [], [], []
+    for threshold, count in counts.items():
+        first = len(segments)
+        for segment in range(1, count + 1):
+            thresholds.append(threshold)
+            segments.append(segment)
+            if segment < count:
+                # adj[downstream, upstream] = 1
+                rows.append(first + segment)
+                cols.append(first + segment - 1)
+    n = len(segments)
+    cg = CatchmentGraph()
+    cg._n = n
+    cg._loaded = True
+    cg._segment_idx = np.array(segments, dtype=np.int32)
+    cg._threshold_m2 = np.array(thresholds, dtype=np.int32)
+    cg._lookup = {
+        key: i for i, key in enumerate(zip(thresholds, segments, strict=True))
+    }
+    cg._area_km2 = np.array([12.0 / counts[t] for t in thresholds], dtype=np.float32)
+    for name in (
+        "_elev_min",
+        "_elev_max",
+        "_elev_mean",
+        "_slope_mean",
+        "_stream_length_km",
+        "_flow_path_head_elev_m",
+        "_overland_length_m",
+        "_overland_drop_m",
+    ):
+        setattr(cg, name, np.full(n, np.nan, dtype=np.float32))
+    cg._strahler = np.ones(n, dtype=np.int8)
+    cg._max_flow_dist_m = np.zeros(n)
+    cg._outlet_flow_dist_m = np.zeros(n)
+    cg._upstream_adj = sparse.csr_matrix(
+        (np.ones(len(rows), dtype=np.int8), (rows, cols)), shape=(n, n)
+    )
+    return cg
+
+
+def _session_at_click(counts):
+    """Session whose point query finds the outlet segment of each threshold."""
+
+    def execute(query, params):
+        result = MagicMock()
+        count = counts.get(params["threshold"])
+        result.fetchone.return_value = (
+            None if count is None else SimpleNamespace(segment_idx=count)
+        )
+        return result
+
+    db = MagicMock()
+    db.execute.side_effect = execute
+    return db
+
+
+def _escalate(cg, base_threshold, max_merge, at_click=PIPELINE_COUNTS):
+    base = list(range(1, PIPELINE_COUNTS[base_threshold] + 1))
+    return cascade_escalate(
+        cg, 0.0, 0.0, base_threshold, base, max_merge, _session_at_click(at_click)
+    )
+
+
+class TestCascadeEscalate:
+    """The cascade over the thresholds of the graph (PIPELINE_THRESHOLDS_M2)."""
+
+    def test_threshold_of_0_1_km2_escalates_to_1_km2(self):
+        """Above the cap at 100 000 m² the merge takes the next threshold.
+
+        The regression of the Wełna: the cascade tried only 1000, 10 000 and
+        100 000 m², so a request at 100 000 m² merged its 2752 segments.
+        """
+        cg = _chains(PIPELINE_COUNTS)
+
+        idxs, threshold, upstream, outlet, stats, area_km2 = _escalate(
+            cg, 100_000, max_merge=3
+        )
+
+        assert threshold == 1_000_000
+        assert sorted(idxs) == [1, 2, 3]
+        assert outlet == cg.lookup_by_segment_idx(1_000_000, 3)
+        assert sorted(upstream.tolist()) == sorted(
+            cg.lookup_by_segment_idx(1_000_000, s) for s in (1, 2, 3)
+        )
+        assert area_km2 == pytest.approx(12.0)
+        assert stats["area_km2"] == area_km2
+
+    def test_skips_coarser_thresholds_still_above_the_cap(self):
+        """From 10 000 m² past 100 000 and 1 000 000 m² (6 and 3 segments)."""
+        cg = _chains(PIPELINE_COUNTS)
+
+        idxs, threshold, *_ = _escalate(cg, 10_000, max_merge=2)
+
+        assert (threshold, idxs) == (10_000_000, [1])
+
+    def test_coarsest_threshold_when_every_one_is_above_the_cap(self):
+        cg = _chains({10_000: 12, 100_000: 6, 1_000_000: 3})
+
+        idxs, threshold, *_ = _escalate(cg, 10_000, max_merge=2)
+
+        assert (threshold, sorted(idxs)) == (1_000_000, [1, 2, 3])
+
+    def test_threshold_without_a_subcatchment_at_the_point_is_skipped(self):
+        cg = _chains(PIPELINE_COUNTS)
+        at_click = {t: c for t, c in PIPELINE_COUNTS.items() if t != 1_000_000}
+
+        idxs, threshold, *_ = _escalate(cg, 100_000, max_merge=3, at_click=at_click)
+
+        assert (threshold, idxs) == (10_000_000, [1])
+
+    def test_no_escalation_at_the_cap(self):
+        cg = _chains(PIPELINE_COUNTS)
+
+        assert _escalate(cg, 100_000, max_merge=6) is None
+
+    def test_no_escalation_without_a_coarser_subcatchment(self):
+        cg = _chains(PIPELINE_COUNTS)
+        at_click = {10_000: 12, 100_000: 6}
+
+        assert _escalate(cg, 100_000, max_merge=3, at_click=at_click) is None

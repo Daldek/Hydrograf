@@ -270,7 +270,7 @@ class TestIdentifyPoint:
         assert response.json()["subcatchment"]["threshold_m2"] == used
         assert database["subcatchment_at"].call_args.args[3] == used
         # The main channel is read on the same network
-        assert database["main_channel_at"].call_args.args[2:] == (
+        assert database["main_channel_at"].call_args.args[1:] == (
             used,
             SUBCATCHMENT["segment_idx"],
         )

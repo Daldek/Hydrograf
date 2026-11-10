@@ -1,9 +1,10 @@
 """
 In-memory graph of sub-catchments for fast upstream traversal.
 
-Loads ~11k sub-catchment nodes from PostGIS into numpy arrays and a
-scipy sparse matrix at API startup. Enables BFS traversal + stat
-aggregation in ~5-50ms.
+Loads the sub-catchment nodes from PostGIS into numpy arrays and a scipy
+sparse matrix at API startup, and again when the network in the database
+changes (loaded_catchment_graph, network_version). Enables BFS traversal +
+stat aggregation in ~5-50ms.
 
 Memory usage: ~0.5 MB RAM.
 """
@@ -121,7 +122,9 @@ class CatchmentGraph:
 
     def __init__(self) -> None:
         self._loaded = False
-        self._load_lock = threading.Lock()
+        # network_version() of the database when the graph was loaded
+        # (set by loaded_catchment_graph)
+        self.network_version: tuple[int | None, ...] | None = None
         self._n = 0
 
         # Per-node numpy arrays (indexed 0..n-1); empty until load()
@@ -169,69 +172,13 @@ class CatchmentGraph:
         """Whether the graph has been loaded from the database."""
         return self._loaded
 
-    def ensure_loaded(self, db: Session) -> bool:
-        """Idempotently load the graph if not already loaded.
-
-        Safe under concurrent calls — the load lock serializes attempts so
-        only the first caller does work; the rest wait and see the loaded
-        state. Returns True on success, False if the underlying data is
-        unavailable (e.g. stream_catchments empty) or the load raised.
-        """
-        if self._loaded:
-            return True
-        with self._load_lock:
-            if self._loaded:
-                return True
-            try:
-                self.load(db)
-            except Exception:
-                logger.exception("CatchmentGraph load failed in ensure_loaded")
-                return False
-            return self._loaded
-
-    def invalidate(self) -> None:
-        """Mark graph as unloaded so next load() re-reads from DB.
-
-        Call after data changes (cleanup, pipeline re-run) to ensure
-        the in-memory graph matches the current database state.
-        Releases numpy arrays to free memory immediately.
-        """
-        self._loaded = False
-        self._n = 0
-        self._lookup.clear()
-
-        # Release numpy arrays to free memory
-        self._segment_idx = _EMPTY
-        self._threshold_m2 = _EMPTY
-        self._area_km2 = _EMPTY
-        self._elev_min = _EMPTY
-        self._elev_max = _EMPTY
-        self._elev_mean = _EMPTY
-        self._slope_mean = _EMPTY
-        self._strahler = _EMPTY
-        self._stream_length_km = _EMPTY
-        self._hydraulic_length_km = _EMPTY
-        self._max_flow_dist_m = _EMPTY
-        self._outlet_flow_dist_m = None
-        self._flow_path_head_elev_m = _EMPTY
-        self._overland_length_m = _EMPTY
-        self._overland_drop_m = _EMPTY
-        self._stream_head_elev_m = _EMPTY
-        self._is_real_stream = None
-        self._segment_length_km = None
-        self._upstream_area_km2 = None
-        self._histograms = []
-        self._upstream_adj = sparse.csr_matrix((0, 0))
-
-        logger.info("CatchmentGraph invalidated — will reload on next access")
-
     def load(self, db: Session) -> None:
         """
         Load sub-catchment graph from database into memory.
 
         Reads all rows from stream_catchments, builds numpy arrays
-        and sparse upstream adjacency matrix.  Can be called again
-        after invalidate() to reload fresh data.
+        and sparse upstream adjacency matrix. A graph is loaded once:
+        loaded_catchment_graph loads a new one when the network changes.
         """
         if self._loaded:
             return
@@ -356,6 +303,12 @@ class CatchmentGraph:
                     i += 1
         finally:
             cursor.close()
+        if i != n:
+            # A publication committed between the count and the read
+            raise RuntimeError(
+                f"stream_catchments changed during the load: {n:,} rows counted, "
+                f"{i:,} read"
+            )
 
         # Load is_real_stream, per-segment length and upstream_area from stream_network
         self._is_real_stream = np.zeros(n, dtype=np.bool_)
@@ -584,6 +537,12 @@ class CatchmentGraph:
             return float("nan")
         return float(self._outlet_flow_dist_m[internal_idx])
 
+    def thresholds_m2(self) -> list[int]:
+        """Flow accumulation thresholds [m²] of the graph's nodes, ascending."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        return [int(t) for t in np.unique(self._threshold_m2)]
+
     def verify_graph(self, db: Session | None = None) -> dict[str, Any]:
         """Verify graph integrity. Returns diagnostic dict."""
         if not self._loaded:
@@ -591,6 +550,8 @@ class CatchmentGraph:
 
         thresholds = np.unique(self._threshold_m2)
         report: dict[str, Any] = {"thresholds": {}, "total_nodes": self._n}
+        # Upstream neighbours of each node: the stored entries of its CSR row
+        upstream_counts = np.diff(self._upstream_adj.indptr)
 
         for t in thresholds:
             t = int(t)
@@ -599,9 +560,7 @@ class CatchmentGraph:
             n_nodes = len(indices)
 
             # Count edges (nodes with at least one upstream neighbor)
-            n_with_upstream = sum(
-                1 for idx in indices if self._upstream_adj[idx].nnz > 0
-            )
+            n_with_upstream = int(np.count_nonzero(upstream_counts[indices]))
             # Count outlets (nodes with no downstream = no node points to them)
             col_sums = self._upstream_adj[:, indices].sum(axis=0).A1
             n_outlets = int(np.sum(col_sums == 0))
@@ -1134,16 +1093,112 @@ class CatchmentGraph:
         return curve
 
 
-# Global singleton
+# Global singleton: the graph requests use. loaded_catchment_graph replaces it
+# with a newly loaded graph when the network in the database changes.
 _catchment_graph: CatchmentGraph | None = None
 _catchment_graph_lock = threading.Lock()
+# One load at a time: the requests that find the network changed wait for it
+_reload_lock = threading.Lock()
+
+# (file node, writes) of the two tables the graph is loaded from; NULLs for a
+# table that does not exist
+_NETWORK_VERSION_SQL = text("""
+    SELECT pg_relation_filenode(t.oid) AS filenode,
+           pg_stat_get_tuples_inserted(t.oid) + pg_stat_get_tuples_updated(t.oid)
+               + pg_stat_get_tuples_deleted(t.oid) AS writes
+    FROM (VALUES (1, to_regclass('stream_catchments')),
+                 (2, to_regclass('stream_network'))) AS t(n, oid)
+    ORDER BY t.n
+""")
 
 
 def get_catchment_graph() -> CatchmentGraph:
-    """Get or create the global CatchmentGraph instance (thread-safe)."""
+    """Get or create the global CatchmentGraph instance (thread-safe).
+
+    The graph of the last load, which may not be loaded; requests take theirs
+    from :func:`loaded_catchment_graph`.
+    """
     global _catchment_graph
     if _catchment_graph is None:
         with _catchment_graph_lock:
             if _catchment_graph is None:
                 _catchment_graph = CatchmentGraph()
     return _catchment_graph
+
+
+def network_version(db: Session) -> tuple[int | None, ...]:
+    """Return the version of the stream network in the database, cheap to read.
+
+    The file nodes and the write counters of ``stream_catchments`` and
+    ``stream_network`` in PostgreSQL's cumulative statistics. Every row that a
+    publication of a run, the BDOT10k stream matching after it, a backfill or a
+    manual change inserts, updates or deletes adds to the counters, and TRUNCATE
+    gives a table a new file node. The writer's backend adds a transaction's
+    counts after the transaction ends: when it goes idle, but at most once a
+    second (otherwise ten seconds later), or when it disconnects. So a new
+    version never comes before the rows it counts are committed, and comes
+    seconds after. A reset of the statistics or a write that is rolled back
+    changes the version without changing the network: one needless reload.
+
+    Parameters
+    ----------
+    db : Session
+        Database session. PostgreSQL keeps the statistics a transaction read first
+        until it ends, so a session reads a new version in a new transaction.
+
+    Returns
+    -------
+    tuple[int | None, ...]
+        File node and writes of ``stream_catchments``, then of ``stream_network``;
+        None for a table that does not exist.
+    """
+    rows = db.execute(_NETWORK_VERSION_SQL).fetchall()
+    return tuple(value for row in rows for value in (row.filenode, row.writes))
+
+
+def loaded_catchment_graph(db: Session) -> CatchmentGraph | None:
+    """Return the graph of the network that the database holds now, or None.
+
+    Reads :func:`network_version` and, when it differs from the version the
+    current graph was loaded at (a run was published, the whole raster processed
+    again, the tables cleaned), loads a new graph and makes it the current one.
+    Each API worker does so at its first request after the change. A request
+    keeps the graph it got until it ends, so a reload never changes the graph
+    under it; the requests that find the network changed wait for one load.
+
+    Parameters
+    ----------
+    db : Session
+        Database session the version is read and the graph loaded from.
+
+    Returns
+    -------
+    CatchmentGraph | None
+        The loaded graph; None when ``stream_catchments`` is empty or the load
+        failed (logged; the next call loads again).
+    """
+    global _catchment_graph
+    version = network_version(db)
+    graph = get_catchment_graph()
+    if graph.loaded and graph.network_version == version:
+        return graph
+    with _reload_lock:
+        graph = get_catchment_graph()
+        if graph.loaded and graph.network_version == version:
+            return graph
+        if graph.loaded:
+            logger.info(
+                "Network in the database changed (version %s, was %s): "
+                "reloading the catchment graph",
+                version,
+                graph.network_version,
+            )
+        fresh = CatchmentGraph()
+        try:
+            fresh.load(db)
+        except Exception:
+            logger.exception("Catchment graph load failed")
+            fresh = CatchmentGraph()
+        fresh.network_version = version
+        _catchment_graph = fresh
+    return fresh if fresh.loaded else None

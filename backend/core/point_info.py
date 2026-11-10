@@ -33,7 +33,7 @@ from shapely.geometry.base import BaseGeometry
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from core.catchment_graph import CatchmentGraph
+from core.catchment_graph import loaded_catchment_graph
 from core.cn_tables import DEFAULT_HSG, complex_cn
 
 logger = logging.getLogger(__name__)
@@ -255,7 +255,7 @@ def subcatchment_at(
 
 
 def main_channel_at(
-    cg: CatchmentGraph, db: Session, threshold_m2: int, segment_idx: int
+    db: Session, threshold_m2: int, segment_idx: int
 ) -> dict[str, float | None]:
     """Read the main channel at a segment's end and the distance to the outlet.
 
@@ -270,10 +270,8 @@ def main_channel_at(
 
     Parameters
     ----------
-    cg : CatchmentGraph
-        The graph (``get_catchment_graph()``); loaded here if it is not yet
     db : Session
-        Database session the graph is loaded from
+        Database session the graph is loaded from (``loaded_catchment_graph``)
     threshold_m2, segment_idx : int
         Network and segment of the sub-catchment (``subcatchment_at``)
 
@@ -284,7 +282,8 @@ def main_channel_at(
         cannot be loaded or lacks the segment (and the distance without the flow
         distances)
     """
-    if not cg.ensure_loaded(db):
+    cg = loaded_catchment_graph(db)
+    if cg is None:
         return {"channel_length_km": None, "distance_to_outlet_km": None}
     idx = cg.lookup_by_segment_idx(threshold_m2, segment_idx)
     if idx is None:

@@ -7,7 +7,7 @@ import json
 import logging
 import os
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -249,7 +249,8 @@ class TestMainChannelAt:
     def test_main_channel_and_distance_to_the_network_outlet(
         self, segment, channel_km, outlet_km
     ):
-        result = main_channel_at(_network(), MagicMock(), 10000, segment)
+        with patch("core.point_info.loaded_catchment_graph", return_value=_network()):
+            result = main_channel_at(MagicMock(), 10000, segment)
 
         assert result == pytest.approx(
             {"channel_length_km": channel_km, "distance_to_outlet_km": outlet_km}
@@ -259,16 +260,20 @@ class TestMainChannelAt:
         cg = _network()
         cg._outlet_flow_dist_m = None
 
-        assert main_channel_at(cg, MagicMock(), 10000, 13) == {
+        with patch("core.point_info.loaded_catchment_graph", return_value=cg):
+            result = main_channel_at(MagicMock(), 10000, 13)
+
+        assert result == {
             "channel_length_km": pytest.approx(5.0),
             "distance_to_outlet_km": None,
         }
 
     def test_nothing_without_the_graph_or_the_segment(self):
-        db = MagicMock()
-        # stream_catchments is empty: the graph cannot be loaded
-        db.execute.return_value.fetchone.return_value = (0,)
         nothing = {"channel_length_km": None, "distance_to_outlet_km": None}
 
-        assert main_channel_at(CatchmentGraph(), db, 10000, 13) == nothing
-        assert main_channel_at(_network(), db, 100000, 13) == nothing
+        # No graph: stream_catchments is empty or the load failed
+        with patch("core.point_info.loaded_catchment_graph", return_value=None):
+            assert main_channel_at(MagicMock(), 10000, 13) == nothing
+        # The segment is not in the graph's network of that threshold
+        with patch("core.point_info.loaded_catchment_graph", return_value=_network()):
+            assert main_channel_at(MagicMock(), 100000, 13) == nothing
