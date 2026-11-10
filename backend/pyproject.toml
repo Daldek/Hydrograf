@@ -98,13 +98,12 @@ Repository = "https://github.com/Daldek/Hydrograf"
 package = false
 
 [tool.uv.sources]
-# The release set of Nogat (candidate-1, its plan `2026-11-03-one-pin-set.md`): the
-# heads of `develop` of Kartograf (0.8.0.dev0), Obserwator (3.0.0; the repository is
-# still `IMGWTools`) and Hydrolog (1.0.0.dev0, with the official inputs of tc, Nogat
-# plan `2026-11-05-official-tc-inputs.md`). All three commits are on GitHub.
-obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "1ee54573453473392f21e2c8bb34f76e4976e03f" }
-kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "9deaa314c88f89ea2d9308481e0c0b04751fc792" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "4fad769539105815e81b53bedcdbfdcdebe07a50" }
+# The release set of Nogat (candidate-2, Nogat `587c909`): the heads of `develop` of
+# Kartograf (0.8.0.dev0), Obserwator (3.0.0.dev0) and Hydrolog (1.0.0.dev0). All three
+# commits are on GitHub.
+obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "f9f4ee7927ba520d3e82d3e289872090ae24e2ec" }
+kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "d0990c89da88e73b9081fe33a151ba9d27b4f820" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "759d7ef0e99b654c4aff172d69439a6d8df42db2" }
 
 [tool.ruff]
 target-version = "py312"

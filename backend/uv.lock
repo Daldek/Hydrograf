@@ -1058,12 +1058,12 @@ requires-dist = [
     { name = "geoalchemy2", specifier = ">=0.14.3" },
     { name = "geojson", specifier = ">=3.1.0" },
     { name = "geopandas", specifier = ">=0.14.2" },
-    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=4fad769539105815e81b53bedcdbfdcdebe07a50" },
-    { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=9deaa314c88f89ea2d9308481e0c0b04751fc792" },
+    { name = "hydrolog", git = "https://github.com/Daldek/Hydrolog.git?rev=759d7ef0e99b654c4aff172d69439a6d8df42db2" },
+    { name = "kartograf", git = "https://github.com/Daldek/Kartograf.git?rev=d0990c89da88e73b9081fe33a151ba9d27b4f820" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.8" },
     { name = "numba", specifier = ">=0.58" },
     { name = "numpy", specifier = ">=1.26.3" },
-    { name = "obserwator", git = "https://github.com/Daldek/Obserwator.git?rev=1ee54573453473392f21e2c8bb34f76e4976e03f" },
+    { name = "obserwator", git = "https://github.com/Daldek/Obserwator.git?rev=f9f4ee7927ba520d3e82d3e289872090ae24e2ec" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "psutil", specifier = ">=5.9" },
@@ -1100,7 +1100,7 @@ dev = [
 [[package]]
 name = "hydrolog"
 version = "1.0.0.dev0"
-source = { git = "https://github.com/Daldek/Hydrolog.git?rev=4fad769539105815e81b53bedcdbfdcdebe07a50#4fad769539105815e81b53bedcdbfdcdebe07a50" }
+source = { git = "https://github.com/Daldek/Hydrolog.git?rev=759d7ef0e99b654c4aff172d69439a6d8df42db2#759d7ef0e99b654c4aff172d69439a6d8df42db2" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
@@ -1155,7 +1155,7 @@ wheels = [
 [[package]]
 name = "kartograf"
 version = "0.8.0.dev0"
-source = { git = "https://github.com/Daldek/Kartograf.git?rev=9deaa314c88f89ea2d9308481e0c0b04751fc792#9deaa314c88f89ea2d9308481e0c0b04751fc792" }
+source = { git = "https://github.com/Daldek/Kartograf.git?rev=d0990c89da88e73b9081fe33a151ba9d27b4f820#d0990c89da88e73b9081fe33a151ba9d27b4f820" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
@@ -1774,7 +1774,7 @@ wheels = [
 [[package]]
 name = "obserwator"
 version = "3.0.0.dev0"
-source = { git = "https://github.com/Daldek/Obserwator.git?rev=1ee54573453473392f21e2c8bb34f76e4976e03f#1ee54573453473392f21e2c8bb34f76e4976e03f" }
+source = { git = "https://github.com/Daldek/Obserwator.git?rev=f9f4ee7927ba520d3e82d3e289872090ae24e2ec#f9f4ee7927ba520d3e82d3e289872090ae24e2ec" }
 dependencies = [
     { name = "httpx" },
     { name = "platformdirs" },
