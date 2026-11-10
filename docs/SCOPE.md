@@ -1,7 +1,7 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.13
+**Version:** 1.14
 **Date:** 2026-11-10
 **Status:** Approved
 
@@ -518,7 +518,7 @@ This document defines precisely:
 - psutil (resource monitoring — admin panel)
 - Alembic (database migrations)
 **Own libraries:**
-- Hydrolog 1.0.0.dev0 (commit `759d7ef` of `develop`, the release set candidate-2 of Nogat, with the official inputs of tc; hydrological calculations)
+- Hydrolog 1.0.0.dev0 (commit `930915d` of `develop`, the release set candidate-3 of Nogat, with the official inputs of tc; hydrological calculations)
 - Kartograf 0.8.0.dev0 (commit `d0990c8` of `develop`, the release set candidate-2 of Nogat; it selects the sheets by the features of `--geometry`; downloading the DEM, land cover, HSG, BDOT10k)
 - Obserwator 3.0.0.dev0 (IMGWTools until its v3.0.0; commit `f9f4ee7`, the release set candidate-2 of Nogat, package `obserwator`; design precipitation from IMGW)
 
@@ -949,13 +949,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.13
+**Document version:** 1.14
 **Date of the last update:** 2026-11-10
 **Current version:** v0.4.0 (CP4 finished, 899 tests, 19 endpoints, 49 ADRs)
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.14 (2026-11-10): Hydrolog follows the release set candidate-3 of Nogat (`b0ac85b`): `930915d`
 - 1.13 (2026-11-10): the soil groups of the least permeable SoilGrids layer of 0-100 cm (3.1.5; ADR-079)
 - 1.12 (2026-11-10): the accumulation thresholds of 2026-11-05, the land cover categories of the code with no stored CN (ADR-074, ADR-075, migration 006), the lawns of KUSK/KUKO in `inny` and the soil under the wetlands as group D (ADR-078)
 - 1.11 (2026-11-10): the producers follow the release set candidate-2 of Nogat (`587c909`): Kartograf `d0990c8`, Obserwator `f9f4ee7`, Hydrolog `759d7ef`
