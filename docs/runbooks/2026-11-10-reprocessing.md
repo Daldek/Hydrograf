@@ -888,3 +888,54 @@ git -C "$PROD" worktree remove "$WT" && rm -rf "$STG"
 
 Staging from §4.1 to §5 takes about 1.5–2 h; production is unavailable only for the downtime
 of §6.
+
+## 11. Log of the run (2026-11-10)
+
+Times are CET. Staging: §3 at 01:25, §4.1–§4.8 by 01:34; §4.9 first ran on the cut DEM and
+§5 failed on row 5 (the outlet lost 2.408 km²), so it ran again on the inputs from before the
+cut (`bfdaec2`): `process_dem` 445 s, the smoothing turned 230 lines against their digitized
+direction (5 to the mouth, 4 down their watercourse, 221 by their own rise); `cut.py` stopped
+once on the junction cell (813.957 km²; the outlet pick was fixed in `0ac44f8`) and then cut
+in 76 s to 792.009 km²; §4.10–§4.13 were done by 04:47, and all 18 rows of §5 held (`a84fa44`).
+The author decided on 2026-11-09.
+
+The switch ran `894810c`, not the `545f109` of §4.1 (the coordinator's decision).
+`origin/develop` is `545f109` plus `fix/delineation-escalation`: the precomputed delineation
+escalates over the thresholds of the graph, and the API reloads its graph when the network
+changes. Only the runtime changes, not the data or the schema. `git merge-base --is-ancestor
+545f109 894810c` held (so did `e14910f` and `94d7523`), and `$BK/new-head.txt` now holds
+`894810c0209855aae87dcb671ff20f611f35faea`. Before §6 the staging worktree moved to `894810c`
+(`git checkout --detach`, `dcs up -d --no-deps --force-recreate api`): graph of 46,608 nodes,
+four thresholds with 1 outlet each, and the probe equal to `probe-staging.txt`. So §7
+compares production with staging on the same code.
+
+- §6 preparation, 04:56:38–04:58. Staging dump 113.8 MB, restored into `hydro_db_1110` in
+  30 s with rc 0; `compare.sql` there equals `compare-after.txt`. `diff -rq` listed
+  `depressions.png`, `streams.png`, `soil_hsg.geojson` and `instance.json` only.
+  `depressions.json` and `streams.json` are the same on both sides (same bounds, 82.17 m,
+  order 8), and nothing else changed in production.
+- Downtime **05:00:08–05:00:33 CET, 25 s**. The block of §6 ran as written, from a script that
+  checked the precondition of every write (`$BK/switch-2026-11-10.log`), under `umask 022`:
+  the shell had `077`, with which `cp` would have written the overlays and `instance.json` as
+  600, which nginx cannot read. Feedback 30 (max id 40, sequence 40) and sewer 0/0 were copied;
+  the build took 11 s from the cache; the API was healthy 7 s after its start; nginx was
+  recreated.
+- §7, 05:00:49–05:10. Alembic `006`. `compare.sql` equals staging, the feedback row too (no
+  feedback came in after §3). API log as on staging, with no `missing` and no `duplicate`. The
+  probe equals staging (Kamiennik 135.3205 km², CN 61.2, `hsg_assumed_pct` 0.0; Qmax 0.015 m³/s
+  at CN 73.4). `/health` returns 200 on 127.0.0.1:8080 and on the public host (`0.5.0.dev0`,
+  the same string as `94d7523`). The admin route without a key returns 401. The checkout is
+  at `894810c`; `git status` showed `?? .claude/` and `?? frontend/tiles.pre-2026-11-10/`
+  (not ignored, removed by §9). Tiles of the four thresholds return 200 locally and on the
+  public host (Cloudflare `BYPASS`/`DYNAMIC`, new `Last-Modified`).
+- Browser on the public host: the welcome dialog names „zlewnia Kaczawy (ok. 791 km²)”;
+  soil groups, land cover, depressions and flow lines end at the boundary; „Identyfikuj” at
+  51.090606 N 16.020697 E shows „bez nazwy (rzeka)”; „Wybierz zlewnię” at Kamiennik gives
+  137.03 km² (outlet 51.01917 N 15.88497 E), CN 61.2 and 8 land cover classes; the design
+  hydrograph (24 h, p = 1 %, SCS) gives Qmax 151.31 m³/s; the SFINCS result loads under
+  „Wyniki analiz”; no JavaScript errors.
+- §9, 05:10–05:11, as written, with one exception: `frontend/tiles.pre-2026-11-10` has 5,917
+  directories of uid 999 with mode 755, which `rm -rf` cannot empty as the host user. They
+  were emptied in a one-off container as uid 999 (`docker run --rm --user 999:999 -v
+  …:/old nginx:alpine`), then removed with `rmdir`. The logs and helper files of `$STG`
+  (no data, no `stg.env`) are kept in `$BK/staging-logs.tar.zst`.
