@@ -4,7 +4,8 @@ For the coordinator and the author, on the production host, with the system Dock
 moves production (`~/workspace/Hydrograf`, local `develop` at `94d7523`, alembic `004`) onto the
 new `develop` (the integration `integrate/2026-11-09`, head `e14910f`) and processes the
 Kaczawa data again: land cover from the BDOT10k attributes, soil group D under the wetlands,
-one full DEM run with the new directions of the burned lines, new tiles. Everything is done
+one full DEM run with the new directions of the burned lines on the data from before the cut
+of 2026-11-01, cut to the boundary afterwards as production was, new tiles. Everything is done
 first on a **staging copy** (its own compose project, ports, volume and directories); the
 switch then swaps the database (by renaming, inside `hydro_db`) and the data directories (by
 renaming) and fast-forwards the checkout. **Nothing in sections 2–5 writes to production**;
@@ -23,13 +24,17 @@ section 6 does, only with the author's decision, at a quiet hour.
 | ADR-076, bootstrap refuses uncovered NMT sheets | only bootstrap step 1, which is not run | nothing |
 | ADR-078, wetlands (`OT_OIMK_A`) are group D, KU lawns are `inny` | 2.836 km² of soil becomes D inside the boundary | soil step (bootstrap step 5) with the packages; land cover re-import |
 | `instance.json` (welcome dialog names the area) | file missing | `write_instance_info` |
-| `bdot_streams` names `'nan'` | 3,436 of 3,812 rows | none: `process_dem` reloads `bdot_streams` from `hydro_merged.gpkg` with the fixed loader (no `UPDATE`) |
+| `bdot_streams` names `'nan'` | 3,436 of 3,812 rows | none: `cut.py` (§4.9) loads `bdot_streams` again from the cut `hydro_merged.gpkg` with the fixed loader (no `UPDATE`) |
 | Stream burning | production has no `config.yaml`, so `dem.stream_burning` is the default `all`; the `process_dem` CLI burns `all` as well | nothing |
 
-Inputs of production, all reused as they are: `data/nmt/dem_mosaic.tif` (the DEM cut on
+Inputs of production, reused as they are: `data/nmt/dem_mosaic.tif` (the DEM cut on
 2026-11-01 to the boundary: 7,194 × 8,143 = 58.6 M cells, 31,622,576 valid, 5 m),
 `data/hydro/hydro_merged.gpkg` (cut on 2026-11-01: 796 `OT_SWRS_L` + 3,016 `OT_SWRM_L` lines,
 with `IDENTYFIKATORMPHP`), `data/boundary/zlewnia_kaczawy_790km2_przyciecie.gpkg` (790.564 km²).
+The DEM run of §4.9 reads instead the inputs of production's run of 2026-10-30, from before
+the cut, out of the backup `/data/nmt/hydrograf-backup-2026-11-01/data.tar.zst`:
+`data/nmt/dem_mosaic.tif` (7,894 × 8,405 = 66.3 M cells, 42,058,347 valid) and
+`data/hydro/hydro_merged.gpkg` (30,105 lines of `OT_SWRS_L`, `OT_SWKN_L` and `OT_SWRM_L`).
 The cache of production has the Kartograf 0.7.0 layout (`cache/bdot10k/`, `cache/soil_hsg/`;
 there is no `cache/kartograf/` store), which the new code does not look up: the runbook passes
 the packages and the HSG raster explicitly, so **nothing is downloaded**. The BDOT10k packages
@@ -37,12 +42,29 @@ whose land cover meets the boundary are 0205, 0206, 0207, 0209, 0219, 0221, 0226
 (checked against the boundary layer by layer); the HSG raster is
 `cache/soil_hsg/hsg_poland.tif` (SoilGrids 0–5 cm, 2026-10-18), the one production uses.
 
+How production was cut on 2026-11-01 (`docs/PROGRESS.md`, the session of that day, the
+script outside the repository `~/scratch/hydrograf-clip/clip_hydrograf.py` and its logs): the
+boundary is the exterior ring of the union of the sub-catchments of the threshold 100000
+upstream of segment 159, which ends at the node 51.222825 N 16.179380 E; a MultiPolygon of
+two parts kept in the table `_clip_boundary` and exported to the boundary file. The script
+ran in one-off containers of the API in phases. `rasters` cut all 16 rasters of `data/nmt` to
+the window of the boundary, nodata outside (`geometry_mask`, cell centres), into
+`data/nmt_clip`, renamed into place. `db` kept in `stream_catchments` and `stream_network` the
+sub-catchments upstream of segments 159 (100000) and 870 (10000), cut `land_cover`,
+`soil_hsg` and `bdot_streams` geometrically, kept the `precipitation_data` within 3.5 km of
+the boundary and computed `depressions` again from the cut rasters. `vectors` cut
+`hydro_merged.gpkg` and `sewer_network.gpkg`; `frontend` built the overlays, the BDOT10k
+GeoJSON files and the tiles again. The downstream link of the two outlets was then set to
+NULL with `psql`. A first pass that day went to the node 51.229046 N 16.198853 E (813.17 km²)
+and was cut again. The thresholds of 1 and 10 km² came on 2026-11-05 from the cut rasters
+(`--from-intermediates`, runbook v0.5.0 §5).
+
 ## 1. What was measured (2026-11-10)
 
 Read only on the production files, and on a throwaway PostGIS 16-3.4 with the dump
 `/data/nmt/hydrograf-backup-2026-11-05-v050/hydro_db.dump` (the production database before the
 v0.5.0 run: alembic 003, thresholds 10000 and 100000), with the code of `e14910f` from a virtual
-environment on the host. The DEM run was not repeated (section 4.9 gives the estimate).
+environment on the host. The DEM run itself was not repeated (§4.9 gives the estimate).
 
 | Step | Time | Result |
 |---|---|---|
@@ -73,13 +95,28 @@ the old one, so the DEM run of §4.9 can move them a little):
   **Qmax 0.015 m³/s** (production recorded 0.028 on 2026-11-04 with `9e50785`; the baseline
   of §4.4 takes it again on `94d7523`).
 - Outlet accumulation, production raster `dem_mosaic_04_flowacc.tif` near 51.222825 N
-  16.179380 E: 31,622,632 cells = 790.566 km² (from the run before the cut: 56 cells more than
-  the valid cells of the cut DEM).
+  16.179380 E: 31,622,632 cells = 790.566 km² (the basin in the run before the cut: 61 of its
+  cells lie beyond the boundary and 5 cells of the boundary drain elsewhere, so it has 56 cells
+  more than the cut DEM has valid ones).
 - Directions (`scripts.check_stream_directions --burning all` on the production inputs, 11 s):
   of 4,494 burned pieces (1,552 km), the rules of the smoothing reverse **211 pieces, 111.2 km**:
   7 (4.5 km) towards the MPHP mouth, 0 down their watercourse, 204 (106.7 km) by their own rise;
   957 pieces are decided by the mouth rule. The smoothing of `process_dem` counts whole lines,
   so its numbers are of the same order, not equal.
+- The run before the cut (§4.9), read only on the backup of 2026-11-01: its DEM covers the
+  boundary (all 31,622,576 cells have data; the nearest nodata lies 56 m from the boundary, on
+  the divide at 50.896 N 16.032 E), and cut as on 2026-11-01 it equals production's
+  `dem_mosaic.tif` bit for bit. At the node a tributary of 21.73 km² joins the Kaczawa, so the
+  outlet segment ends there at all four thresholds. Over the footprint of that DEM
+  `check_stream_directions --burning all` reverses 250 of 6,917 burned pieces, 133.9 km: 8
+  (5.7 km) to the mouth, 2 (0.4 km) down their watercourse, 240 (127.8 km) by their own rise.
+- `cut.py` (§4.2) on the rasters of the run of 2026-10-30 (`/data/nmt/hydrograf-v050/precut`)
+  and the database of the backup of 2026-11-01, restored into a throwaway database, in 29 s:
+  it finds the outlet segments 870 (10000) and 159 (100000) of that cut, keeps 41,277 and
+  4,492 sub-catchments of 790.566 km² each, deletes 15,080 rows of `stream_catchments` and
+  15,011 of `stream_network` (13,733 + 1,347 and 13,664 + 1,347 in the two passes of
+  2026-11-01), counts 61 basin cells beyond the boundary and 5 boundary cells draining
+  elsewhere, and writes the six rasters exactly as production has them.
 
 ## 2. Before
 
@@ -90,9 +127,10 @@ the old one, so the DEM run of §4.9 can move them a little):
   `git -C ~/workspace/Hydrograf status --short` shows only `?? .claude/`, alembic `004`
   (`docker exec hydro_db psql -U hydro_user -d hydro_db -tAc "SELECT version_num FROM
   alembic_version"`).
-- Space: `df -h / /data`. `/` needs about 15 GB (staging copies 2 GB, new tiles 2.7 GB, the
-  staging image 2 GB, the staging volume and the second database inside `hydro_db` about 2 GB
-  each, the old `data/nmt` and `frontend/tiles` kept until §9). `/data` needs 0.3 GB.
+- Space: `df -h / /data`. `/` needs about 17 GB (staging copies 2 GB, the inputs and rasters
+  of the DEM run before the cut 1.6 GB, new tiles 2.7 GB, the staging image 2 GB, the staging
+  volume and the second database inside `hydro_db` about 2 GB each, the old `data/nmt` and
+  `frontend/tiles` kept until §9). `/data` needs 0.3 GB.
 - Memory: `free -g` shows at least 7 GB available before §4.9 (the DEM run in a one-off
   container with the 8G limit of the `api` service, never in a running API). Do not run it
   together with the gate or another DEM run; the Hydroni instance may stay up.
@@ -170,7 +208,7 @@ chmod -R a+rwX "$STG/data" "$STG/frontend-data" "$STG/frontend-tiles" "$STG/cach
 ```
 
 The staging cache holds only the 8 packages (0.8 GB) and the HSG raster, so no step can reach
-the production cache or the network. Five helper files, written once:
+the production cache or the network. Six helper files, written once:
 
 ```bash
 cat > "$STG/compare.sql" <<'EOF'
@@ -324,11 +362,161 @@ with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as c:
     for table in ("land_cover", "soil_hsg"):
         c.execute(sa.text(f"VACUUM ANALYZE {table}"))
 EOF
+
+cat > "$STG/cut.py" <<'EOF'
+"""Cut the run of §4.9 to the boundary, the way clip_hydrograf.py cut production on 2026-11-01.
+
+Rasters of /precut/out -> /data/nmt (window of the boundary, nodata outside); stream_network
+and stream_catchments keep the sub-catchments upstream of the Kaczawa outlet, whose downstream
+link goes; bdot_streams is loaded again from the cut hydro_merged.gpkg. Stops before writing
+the database when the outlet is not found or its catchment is more than 2 km2 off the boundary.
+"""
+
+import os
+import time
+from pathlib import Path
+
+import geopandas as gpd
+import numpy as np
+import rasterio
+import sqlalchemy as sa
+from pyproj import Transformer
+from rasterio.features import geometry_mask
+from rasterio.windows import Window
+from sqlalchemy.orm import Session
+
+from core.db_bulk import insert_bdot_streams, load_bdot_streams_from_gpkg
+
+SRC, DST = Path("/precut/out"), Path("/data/nmt")
+BOUNDARY_KM2, STOP_KM2 = 790.564, 2.0
+CLOSURE = sa.text("""
+    INSERT INTO keep
+    WITH RECURSIVE u(seg) AS (
+      SELECT :s UNION
+      SELECT sc.segment_idx FROM stream_catchments sc JOIN u
+        ON sc.threshold_m2 = :t AND sc.downstream_segment_idx = u.seg)
+    SELECT :t, seg FROM u""")
+OUTLET = sa.text("""
+    SELECT (SELECT max(upstream_area_km2) FROM stream_network n
+            WHERE n.threshold_m2 = :t AND n.segment_idx = :s),
+           c.downstream_segment_idx,
+           (SELECT max(upstream_area_km2) FROM stream_network n
+            WHERE n.threshold_m2 = :t AND n.segment_idx = c.downstream_segment_idx)
+    FROM stream_catchments c WHERE c.threshold_m2 = :t AND c.segment_idx = :s""")
+AREA = sa.text("SELECT sum(area_km2) FROM stream_catchments sc JOIN keep k "
+               "ON k.t = sc.threshold_m2 AND k.seg = sc.segment_idx WHERE k.t = :t")
+
+
+def km2(v):
+    return "?" if v is None else f"{v:.3f}"
+
+
+start = time.time()
+boundary = gpd.read_file("/data/boundary/zlewnia_kaczawy_790km2_przyciecie.gpkg")
+poly = boundary.to_crs(2180).union_all()
+names = sorted(p.name for p in SRC.glob("dem_mosaic_*.tif"))
+stale = sorted(p.name for p in DST.glob("dem_mosaic_*.tif") if p.name not in names)
+if not names or stale:
+    raise SystemExit(f"stop: {len(names)} rasters in {SRC}; in {DST} not from this run: {stale}")
+for name in names:
+    with rasterio.open(SRC / name) as src:
+        minx, miny, maxx, maxy = poly.bounds
+        col0, row0 = (int(np.floor(v)) for v in ~src.transform * (minx, maxy))
+        col1, row1 = (int(np.ceil(v)) for v in ~src.transform * (maxx, miny))
+        col0, row0 = max(col0, 0), max(row0, 0)
+        col1, row1 = min(col1, src.width), min(row1, src.height)
+        win = Window(col0, row0, col1 - col0, row1 - row0)
+        data = src.read(1, window=win)
+        transform = src.window_transform(win)
+        outside = geometry_mask([poly], out_shape=data.shape, transform=transform)
+        data[outside] = src.nodata
+        profile = src.profile | {"width": data.shape[1], "height": data.shape[0],
+                                 "transform": transform}
+        size = f"{src.width}x{src.height}"
+    with rasterio.open(DST / name, "w", **profile) as dst:
+        dst.write(data, 1)
+    print(f"{name}: {size} -> {data.shape[1]}x{data.shape[0]}, "
+          f"inside {int((~outside).sum())} cells", flush=True)
+inside = ~outside
+if (DST / "dem_mosaic.tif").exists():
+    with rasterio.open(DST / "dem_mosaic.tif") as a, rasterio.open(DST / "dem_mosaic_01_dem.tif") as b:
+        same = a.transform == b.transform and np.array_equal(a.read(1), b.read(1))
+    print(f"dem_mosaic_01_dem.tif equals the cut DEM: {same}")
+    if not same:
+        raise SystemExit("stop: the run did not read the DEM of 2026-11-01")
+
+with rasterio.open(DST / "dem_mosaic_04_flowacc.tif") as src:
+    acc = src.read(1)
+    r, c = np.unravel_index(np.argmax(acc), acc.shape)
+    cell_km2 = abs(src.res[0] * src.res[1]) / 1e6
+    lon, lat = Transformer.from_crs(2180, 4326, always_xy=True).transform(*src.xy(r, c))
+basin = int(acc[r, c])
+print(f"outlet {lat:.6f} N {lon:.6f} E: {basin:,} cells = {basin * cell_km2:.3f} km2 "
+      f"(boundary {int(inside.sum()):,} cells)", flush=True)
+del acc
+
+engine = sa.create_engine(os.environ["DATABASE_URL"])
+with engine.begin() as con:
+    con.execute(sa.text("SET LOCAL statement_timeout = 0"))
+    con.execute(sa.text("CREATE TEMP TABLE keep (t int, seg int) ON COMMIT DROP"))
+    outlets = {}
+    for t in con.execute(sa.text("SELECT DISTINCT threshold_m2 FROM stream_catchments "
+                                 "ORDER BY 1")).scalars().all():
+        with rasterio.open(DST / f"dem_mosaic_10_subcatchments_{t}.tif") as src:
+            labels = src.read(1)
+        seg = outlets[t] = int(labels[r, c])
+        row = con.execute(OUTLET, {"t": t, "s": seg}).one_or_none() if seg > 0 else None
+        if row is None:
+            raise SystemExit(f"stop: no sub-catchment of {t} at the outlet (label {seg})")
+        seg_up, ds, ds_up = row
+        con.execute(CLOSURE, {"t": t, "s": seg})
+        kept = np.array(con.execute(sa.text("SELECT seg FROM keep WHERE t = :t"),
+                                    {"t": t}).scalars().all())
+        area = con.execute(AREA, {"t": t}).scalar()
+        drained = int(np.isin(labels[inside], kept).sum())
+        print(f"threshold {t}: outlet segment {seg} ({km2(seg_up)} km2), downstream {ds} "
+              f"({km2(ds_up)} km2); keep {len(kept)} segments, {km2(area)} km2; boundary cells "
+              f"draining elsewhere {int(inside.sum()) - drained}, basin cells beyond the "
+              f"boundary {basin - drained}", flush=True)
+        if abs(area - BOUNDARY_KM2) > STOP_KM2:
+            raise SystemExit(f"stop: the catchment of {t} is {km2(area)} km2, "
+                             f"not {BOUNDARY_KM2} ± {STOP_KM2}")
+    con.execute(sa.text("CREATE INDEX ON keep (t, seg)"))
+    n = con.execute(sa.text("DELETE FROM stream_catchments sc WHERE NOT EXISTS (SELECT 1 FROM keep "
+                            "k WHERE k.t = sc.threshold_m2 AND k.seg = sc.segment_idx)")).rowcount
+    m = con.execute(sa.text("DELETE FROM stream_network sn WHERE NOT EXISTS (SELECT 1 FROM keep "
+                            "k WHERE k.t = sn.threshold_m2 AND k.seg = sn.segment_idx)")).rowcount
+    for t, seg in outlets.items():
+        con.execute(sa.text("UPDATE stream_catchments SET downstream_segment_idx = NULL "
+                            "WHERE threshold_m2 = :t AND segment_idx = :s"), {"t": t, "s": seg})
+    dangling = con.execute(sa.text(
+        "SELECT count(*) FROM stream_catchments c WHERE downstream_segment_idx IS NOT NULL "
+        "AND NOT EXISTS (SELECT 1 FROM stream_catchments d WHERE d.threshold_m2 = c.threshold_m2 "
+        "AND d.segment_idx = c.downstream_segment_idx)")).scalar()
+    print(f"stream_catchments deleted {n}, stream_network deleted {m}, outlets {outlets}, "
+          f"dangling links {dangling}")
+    if dangling:
+        raise SystemExit("stop: links to deleted sub-catchments")
+with Session(engine) as db:
+    n = insert_bdot_streams(db, load_bdot_streams_from_gpkg("/data/hydro/hydro_merged.gpkg"))
+print(f"bdot_streams: {n} lines of the cut hydro_merged.gpkg")
+with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as con:
+    for table in ("stream_catchments", "stream_network", "bdot_streams"):
+        con.execute(sa.text(f"VACUUM ANALYZE {table}"))
+print(f"done in {time.time() - start:.0f} s")
+EOF
 ```
 
 `clip.py` repeats the cut of 2026-11-01 (the out-of-repo `clip_hydrograf.py`, phase `db`) for
 the two tables the re-import fills beyond the boundary, so the land cover map layer (served
 from PostGIS) still ends at the boundary.
+
+`cut.py` repeats, for the run of §4.9, the phases `rasters` and `db` of that script: every
+raster the run wrote goes cut into `$STG/data/nmt`; the outlet is the cell of the largest
+accumulation inside the boundary and its segment at each threshold is the label there; the
+sub-catchments upstream of it stay, the rest of `stream_catchments` and `stream_network` goes,
+and the outlet loses its downstream link, as on 2026-11-01. `land_cover` and `soil_hsg` are
+cut by `clip.py`; `precipitation_data` was cut on 2026-11-01 and the run does not touch it.
 
 ### 4.3 Image and the copy of the database
 
@@ -407,29 +595,67 @@ run python - < "$STG/clip.py" 2>&1 | tee "$STG/clip.log"
 Expected: `land_cover: 66497 outside deleted, 519 clipped, 0 empty dropped`, `soil_hsg: 8 outside
 deleted, 3 clipped, 0 empty dropped`, `soil_hsg.geojson: 9 features`.
 
-### 4.9 The DEM, one raster, burned and smoothed
+### 4.9 The DEM before the cut, burned and smoothed, then the cut
+
+Production was built in two steps: the run of 2026-10-30 on the whole raster of the area and
+the cut of 2026-11-01 (§0). A run on the cut DEM loses area along the boundary: the fill takes
+every cell beside the nodata of the cut for an outlet, so hollows and flats on the divide drain
+over the cut edge (the staging run of 2026-11-10 on the cut DEM lost 2.41 km² of the Kaczawa
+outlet to 783 such exits). So the run reads the DEM and BDOT10k from before the cut, and
+`cut.py` (§4.2) then cuts its rasters and rows as on 2026-11-01.
 
 ```bash
-time run python -m scripts.process_dem --input /data/nmt/dem_mosaic.tif --output-dir /data/nmt \
-  --save-intermediates --clear-existing --burn-streams /data/hydro/hydro_merged.gpkg \
+B1=/data/nmt/hydrograf-backup-2026-11-01
+(cd "$B1" && grep ' data.tar.zst$' SHA256SUMS | sha256sum -c -)
+mkdir -p "$STG/precut/in" "$STG/precut/out"
+zstd -dc "$B1/data.tar.zst" | tar -xf - -C "$STG/precut/in" --strip-components=2 \
+  data/nmt/dem_mosaic.tif data/hydro/hydro_merged.gpkg
+chmod 755 "$STG/precut" "$STG/precut/in" && chmod 644 "$STG/precut/in"/* && chmod 777 "$STG/precut/out"
+runp() { dcs run --rm --no-deps -T -v "$STG/precut/in:/precut/in:ro" \
+           -v "$STG/precut/out:/precut/out" api "$@"; }
+time runp python -m scripts.process_dem --input /precut/in/dem_mosaic.tif --output-dir /precut/out \
+  --save-intermediates --clear-existing --burn-streams /precut/in/hydro_merged.gpkg \
   2>&1 | tee "$STG/process_dem.log"
-grep -E "Monotonic smoothing|Max accumulation|Inserted .* BDOT|Stream matching|Threshold .* segments" \
+grep -E "Read raster|Monotonic smoothing|Inserted .* BDOT|Stream matching|Threshold .* segments" \
   "$STG/process_dem.log"
 ```
 
-The defaults are those of production's run of 2026-10-30: depth 2 m, smoothing on, burning
-`all`, the four thresholds, `--waterbody-mode none`, no enclosed-nodata fill, no units. It
-rewrites the rasters it saves in `$STG/data/nmt` (`dem_mosaic_01_dem` to
-`_10_subcatchments_*`), `stream_network`, `stream_catchments` (with the flow path heads,
-ADR-070) and `bdot_streams` (3,812 lines, names
-`NULL` where BDOT10k has none). Expected log: `Monotonic smoothing: … (N against their
-digitized direction: a to the mouth, 0 down their watercourse, b by their own rise; …)` with N
-of the order of 200 and most of them by their own rise (§1); `Inserted 3812 BDOT stream
-features`.
+`data.tar.zst: OK`; the two files have 124,182,733 and 27,328,512 bytes (sha256 `381eb9c0…`
+and `4aaec8e3…`) and lie in `$STG/precut`, outside `$STG/data`, so §6 does not move them. The
+defaults are those of the run of 2026-10-30: depth 2 m, smoothing on, burning `all`,
+`--waterbody-mode none`, no enclosed-nodata fill, no units; the new code adds the thresholds
+of 1 and 10 km², which production took on 2026-11-05 from the cut rasters. The run writes its
+rasters (`dem_mosaic_01_dem` to `_10_subcatchments_*`) into `$STG/precut/out` and replaces
+`stream_network`, `stream_catchments` (with the flow path heads, ADR-070, traced before the
+cut as the backfill of v0.5.0 did) and `bdot_streams` (all 30,105 lines, matched against the
+segments for `is_real_stream` as on 2026-10-30). Expected log: `Read raster: 8405x7894
+cells`; `Monotonic smoothing: … (N against their digitized direction: a to the mouth, b down
+their watercourse, c by their own rise; …)` with N of the order of 230, a and b a few and most
+by their own rise [INFERENCE: §1 gives 250 pieces, 133.9 km, over this raster; on the cut DEM
+the run reversed 194 lines against 211 pieces]; `Inserted 30105 BDOT stream features`; the
+segments of the whole raster (2026-10-30: 54,966 at 10000 m² and 5,883 at 100000 m²).
 
-Estimate: 40–50 min and at most 6 GB (runbook v0.5.0 §10 for this raster of 58.6 M cells,
-measured before the memory fixes F1–F7, which are merged since and lower the peak). Watch it
-with `docker stats` in a second shell; an OOM kills only the one-off container.
+Estimate: about 10 min and at most 4 GB [INFERENCE: the run on the cut DEM of 58.6 M cells
+took 7 min on 2026-11-10; this raster has 66.3 M, 42 M of them valid; after F1–F7 the peak is
+about 50 B per cell]. Watch it with `docker stats` in a second shell; an OOM kills only the
+one-off container.
+
+```bash
+time runp python - < "$STG/cut.py" 2>&1 | tee "$STG/cut.log"
+```
+
+Expected: twenty lines `dem_mosaic_….tif: 7894x8405 -> 7194x8143, inside 31622576 cells`;
+`dem_mosaic_01_dem.tif equals the cut DEM: True`; the outlet at about 51.2229 N 16.1795 E with
+about 31.62 M cells (790.57 km²; 2026-10-30: 31,622,632); for each threshold its outlet
+segment, a downstream segment of about 812.3 km² (a tributary of 21.7 km² joins at the node),
+the kept segments with about 790.57 km², a few boundary cells draining elsewhere and a few
+dozen basin cells beyond the boundary (2026-11-01: 5 and 61); `dangling links 0`;
+`bdot_streams: 3812 lines of the cut hydro_merged.gpkg`. About 2 min [INFERENCE: 29 s for
+six rasters in §1]. `cut.py` stops with `stop: …` before it writes the database when a raster
+in `$STG/data/nmt` did not come from the run, `01_dem` is not the cut DEM, the outlet has no
+sub-catchment or the catchment of a threshold is more than 2 km² off the boundary: then stop
+and ask the author. Run again, it gives the same result; a new `process_dem` starts the step
+afresh.
 
 ### 4.10 Depressions and the streams overlay
 
@@ -442,7 +668,8 @@ run python -m scripts.generate_streams_overlay --input /data/nmt/dem_mosaic_07_s
   --output /frontend/data/streams.png --meta /frontend/data/streams.json --source-crs EPSG:2180
 ```
 
-The DEM itself does not change, so `dem.png`, `dem_tiles/` and the BDOT10k GeoJSON files stay.
+Both read the rasters cut in §4.9, as the depressions of 2026-11-01 did. The DEM itself does
+not change, so `dem.png`, `dem_tiles/` and the BDOT10k GeoJSON files stay.
 
 ### 4.11 Tiles
 
@@ -488,20 +715,20 @@ are the coordinator's judgement, not measurements.
 | Check | Production now (§4.4) | Expected on staging | Stop when |
 |---|---|---|---|
 | alembic | `004` | `006` | other |
-| Outlet accumulation (`flowacc`) | 31,622,632 cells, 790.566 km² | at most the 31,622,576 valid cells; less by the cells of the boundary that now drain out of the cut DEM [INFERENCE: a few km² at most] | < 788 km² |
+| Outlet accumulation (`flowacc`) | 31,622,632 cells, 790.566 km² | the basin of the outlet in the run before the cut, which `cut.py` prints: about the 31,622,632 cells of production [INFERENCE: the new directions move few cells across the divide] | < 788 km² |
 | `max_upstream_km2` per threshold | 790.566 | equal to the outlet accumulation | < 788 km² |
-| Segments per threshold 10000 / 100000 / 1 km² / 10 km² | 41,277 / 4,492 / 479 / 49 | changed only where the burned lines turn (≈ 110 km) and along the boundary [INFERENCE: within a few %] | a change > 10 % |
-| Outlets per threshold | 1 | 1, or a few small ones on the boundary | the Kaczawa outlet loses > 2 km² |
-| Sum of `area_km2` per threshold | 790.566 / 790.566 / 790.564 / 790.564 | ≤ 790.566 | < 788 |
+| Segments per threshold 10000 / 100000 / 1 km² / 10 km² | 41,277 / 4,492 / 479 / 49 | changed only where the burned lines turn (≈ 130 km on the raster, §1) [INFERENCE: within a few %] | a change > 10 % |
+| Outlets per threshold | 1 | 1 (`cut.py` keeps the catchment of the outlet and removes its downstream link) | other than 1; the Kaczawa outlet loses > 2 km² against production |
+| Sum of `area_km2` per threshold | 790.566 / 790.566 / 790.564 / 790.564 | equal to the outlet accumulation at every threshold (each covers the whole basin) | < 788 |
 | `real` streams at 1 km² / 10 km² | 437 / 49 | similar | a drop > 10 % |
-| Smoothing (log of §4.9) | – | ≈ 200 lines reversed, ~100 km, few by the mouth, 0 down the watercourse | none reversed |
+| Smoothing (log of §4.9) | – | ≈ 230 lines reversed, ~130 km, a few by the mouth and down the watercourse, the rest by their own rise (§1, the whole raster) | none reversed |
 | Land cover shares | `grunt_orny` 62.66, `las` 30.74, `łąka` 0.61 % … (§1) | `grunt_orny` 48.56, `las` 30.74, `łąka` 14.07, `zabudowa_przemysłowa` 0.76 % … (§1), total 790.564 km² | any share off by > 0.05 pp |
 | Soil groups | B 99.87, C 0.13 % | B 99.50, C 0.14, D 0.36 % | D ≠ 2.836 km² ± 0.01 |
 | Kamiennik 51.01678 N 15.88921 E, area | 134.97 km² | 134.97 ± 1 % | > 1 % |
 | Kamiennik CN | 69.6 | 61.2 (± a few tenths from the new network) | outside 60.5–62.0 |
 | Kamiennik `hsg_assumed_pct` | – (new field) | 0.0 | > 0 |
 | Qmax 50.861 N 16.144 E, 1 h, p = 10 % | the probe of §4.4 (0.028 on 2026-11-04) | lower (0.015 on the copy, CN 73.4) | higher than production |
-| `bdot_streams` | 3,812, 3,436 `'nan'` | 3,812, 0 `'nan'` | any `'nan'` |
+| `bdot_streams` | 3,812, 3,436 `'nan'` | 3,812, 0 `'nan'` (`cut.py`) | any `'nan'` |
 | Depressions | 214,907 | of the same order (the filled DEM changes with the burning) | 0, or an order of magnitude off |
 | API log | four thresholds, 1 outlet each | four thresholds; no `missing flow_path_head_elev_m`, no `missing outlet_flow_dist_m`, no `duplicate segment_idx` | any of them |
 | `feedback`, sewer, precipitation | counts of §4.4 | equal | different |
@@ -639,8 +866,8 @@ git -C "$PROD" worktree remove "$WT" && rm -rf "$STG"
 | §4.6 land cover | ~1 min | 51 s measured |
 | §4.7 soil | < 1 min | 3 s measured, plus the container start |
 | §4.8 clip | ~5 min | 4.4 min measured |
-| §4.9 DEM | 40–50 min, ≤ 6 GB | estimate of runbook v0.5.0 §10 (before F1–F7) |
-| §4.10 depressions, overlay | ~2 min | not measured |
+| §4.9 DEM before the cut, cut | ~12 min, ≤ 4 GB | extraction 2 s; the run on the cut DEM took 7 min on 2026-11-10 (58.6 M cells), this raster has 66.3 M [INFERENCE: ~10 min]; `cut.py` 29 s for six rasters (§1), here twenty [INFERENCE: ~2 min] |
+| §4.10 depressions, overlay | ~1 min | 42 s and 10 s on the staging run of 2026-11-10 |
 | §4.11 tiles | ~8 min, 2.7 GB | runbook v0.5.0 |
 | §4.12–4.13 | ~5 min | |
 | §5 comparison | 15–30 min | |
