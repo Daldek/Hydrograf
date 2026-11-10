@@ -824,6 +824,8 @@
     // each with a swatch in the style of its layer.
 
     var watershedLegend = null;
+    // The mode „Sieć zlewni” takes the watershed off the map (setWatershedShown)
+    var watershedHidden = false;
 
     function escapeAttr(value) {
         return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
@@ -888,7 +890,7 @@
     /** Show, update or remove the watershed legend after a change of its layers or the theme. */
     function updateWatershedLegend() {
         if (!map) return;
-        var rows = watershedLegendRows();
+        var rows = watershedHidden ? [] : watershedLegendRows();
         if (!rows.length) {
             if (watershedLegend) {
                 map.removeControl(watershedLegend);
@@ -907,6 +909,24 @@
             rows.map(function (row) {
                 return '<div class="legend-item">' + row[0] + '<span>' + row[1] + '</span></div>';
             }).join('');
+    }
+
+    /**
+     * Take the watershed of „Wybierz zlewnię” off the map, or put it back, without
+     * clearing it: the mode „Sieć zlewni” shows its network alone (js/network.js).
+     * @param {boolean} shown
+     */
+    function setWatershedShown(shown) {
+        if (!map) return;
+        watershedHidden = !shown;
+        [selectionBoundaryLayer, watershedLayer, outletMarker, mainChannelLayer,
+         longestFlowPathLayer, divideFlowPathLayer].forEach(function (layer) {
+            if (!layer) return;
+            if (shown && !map.hasLayer(layer)) layer.addTo(map);
+            if (!shown && map.hasLayer(layer)) map.removeLayer(layer);
+        });
+        if (shown && divideFlowPathLayer) divideFlowPathLayer.bringToFront();
+        updateWatershedLegend();
     }
 
     // ===== Profile line styles =====
@@ -1352,6 +1372,8 @@
         token: token,
         mix: mix,
         onThemeChange: onThemeChange,
+        // Legend swatch in the style of a Leaflet path (the network's legend, js/network.js)
+        pathSwatch: pathSwatch,
         getDemLayer: getDemLayer,
         getDemBounds: getDemBounds,
         getDataBounds: getDataBounds,
@@ -1371,6 +1393,7 @@
         clearWatershed: clearWatershed,
         showMainChannel: showMainChannel,
         clearMainChannel: clearMainChannel,
+        setWatershedShown: setWatershedShown,
         setLoadingCursor: setLoadingCursor,
         invalidateSize: invalidateSize,
         // Drawing

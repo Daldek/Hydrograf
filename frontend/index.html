@@ -26,7 +26,7 @@
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
     <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
-    <link rel="stylesheet" href="css/app.css?v=9a051882a1">
+    <link rel="stylesheet" href="css/app.css?v=61d9bb95d3">
 </head>
 <body>
 <div class="shell">
@@ -110,6 +110,7 @@
                     <div class="seg" id="mode-toolbar" role="radiogroup" aria-label="Tryb pracy">
                         <button type="button" id="mode-browse" role="radio" aria-checked="true" class="on">Przeglądanie</button>
                         <button type="button" id="mode-select" role="radio" aria-checked="false">Wybierz zlewnię</button>
+                        <button type="button" id="mode-network" role="radio" aria-checked="false">Sieć zlewni</button>
                         <button type="button" id="mode-profile" role="radio" aria-checked="false">Profil terenu</button>
                         <button type="button" id="mode-identify" role="radio" aria-checked="false">Identyfikuj</button>
                     </div>
@@ -179,10 +180,44 @@
                     <!-- Instruction -->
                     <p id="panel-instruction" class="muted">Wybierz tryb „Wybierz zlewnię” i kliknij na mapie w pobliżu linii spływu, aby wyznaczyć zlewnię.</p>
 
+                    <!-- Network of the mode „Sieć zlewni” (js/network.js) -->
+                    <section class="network" id="network" aria-label="Sieć zlewni" hidden>
+                        <p class="network-intro">Kliknij przekrój zamykający A na cieku, potem punkty powyżej niego: dopływy przy ujściach i wodowskazy (najwyżej 30). Znaczniki przeciągniesz myszą lub palcem.</p>
+                        <p class="network-snap" id="network-snap"></p>
+                        <ol class="network-points" id="network-points" aria-label="Punkty sieci"></ol>
+                        <div class="network-actions">
+                            <button class="btn sm primary" type="button" id="network-run" disabled>Wyznacz sieć</button>
+                            <button class="btn sm" type="button" id="network-clear" disabled>Wyczyść</button>
+                        </div>
+                        <p class="notice warn d-none" id="network-outdated" role="status">
+                            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5v.01"/></svg>
+                            <span>Punkty zmieniły się po wyznaczeniu sieci: wynik poniżej jest nieaktualny. Wyznacz sieć ponownie.</span>
+                        </p>
+                        <div class="network-result d-none" id="network-result">
+                            <div class="summary" id="network-summary"></div>
+                            <p class="notice" id="network-check"></p>
+                            <div id="network-notices"></div>
+                            <ul class="network-kinds" id="network-kinds" aria-label="Rodzaje elementów"></ul>
+                            <table class="network-tree">
+                                <caption>Drzewo sieci od przekroju zamykającego A w górę</caption>
+                                <thead><tr><th scope="col">Element</th><th scope="col" colspan="2">Powierzchnia, długość</th><th scope="col" colspan="2">CN, spadek</th></tr></thead>
+                                <tbody id="network-tree"></tbody>
+                            </table>
+                            <div class="network-selection" id="network-selection" hidden>
+                                <div class="network-selection-head">
+                                    <h3 id="network-selection-title"></h3>
+                                    <button class="btn sm ghost" type="button" id="network-deselect">Odznacz</button>
+                                </div>
+                                <p class="network-selection-kind" id="network-selection-kind"></p>
+                                <table class="params"><tbody id="network-reach"></tbody></table>
+                            </div>
+                        </div>
+                    </section>
+
                     <!-- Loading spinner -->
                     <div id="panel-loading" class="loading d-none" role="status">
                         <span class="spinner" aria-hidden="true"></span>
-                        <span>Wyznaczanie zlewni…</span>
+                        <span id="panel-loading-text">Wyznaczanie zlewni…</span>
                     </div>
 
                     <!-- Error -->
@@ -468,32 +503,32 @@
                                 </div>
                             </details>
                         </div>
-
-                        <!-- Hand-off of the watershed to Hydrolog (js/handoff.js) -->
-                        <section class="handoff" id="handoff" aria-labelledby="handoff-title" hidden>
-                            <div class="handoff-head">
-                                <h3 id="handoff-title">Przekazanie do Hydrologa</h3>
-                                <span class="meta">nogat-handoff/1</span>
-                            </div>
-                            <p class="handoff-note" id="handoff-note"></p>
-                            <div class="handoff-actions">
-                                <button class="btn sm" type="button" id="handoff-copy" title="Skopiuj przekazanie nogat-handoff/1 do schowka; w Hydrologu: „Wczytaj z Hydrografa” → „Wklej ze schowka”" disabled>
-                                    <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>
-                                    Kopiuj do Hydrologa
-                                </button>
-                                <button class="btn sm" type="button" id="handoff-file" title="Pobierz przekazanie jako plik &lt;nazwa&gt;.handoff.json; w Hydrologu: „Wczytaj z Hydrografa” → „Plik przekazania…”" disabled>
-                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
-                                    Plik przekazania
-                                </button>
-                            </div>
-                            <p class="handoff-status" id="handoff-status" role="status"></p>
-                            <div class="handoff-fallback d-none" id="handoff-fallback">
-                                <label for="handoff-text">Przeglądarka nie dała dostępu do schowka. Tekst przekazania jest zaznaczony: skopiuj go (Ctrl+C) i wklej w Hydrologu („Wczytaj z Hydrografa” → „Wklej ze schowka”).</label>
-                                <textarea id="handoff-text" rows="6" readonly spellcheck="false"></textarea>
-                                <button class="btn sm ghost" type="button" id="handoff-fallback-close">Zamknij</button>
-                            </div>
-                        </section>
                     </div>
+
+                    <!-- Hand-off to Hydrolog of the watershed or of the network (js/handoff.js) -->
+                    <section class="handoff" id="handoff" aria-labelledby="handoff-title" hidden>
+                        <div class="handoff-head">
+                            <h3 id="handoff-title">Przekazanie do Hydrologa</h3>
+                            <span class="meta">nogat-handoff/1</span>
+                        </div>
+                        <p class="handoff-note" id="handoff-note"></p>
+                        <div class="handoff-actions">
+                            <button class="btn sm" type="button" id="handoff-copy" title="Skopiuj przekazanie nogat-handoff/1 do schowka; w Hydrologu: „Wczytaj z Hydrografa” → „Wklej ze schowka”" disabled>
+                                <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>
+                                Kopiuj do Hydrologa
+                            </button>
+                            <button class="btn sm" type="button" id="handoff-file" title="Pobierz przekazanie jako plik &lt;nazwa&gt;.handoff.json; w Hydrologu: „Wczytaj z Hydrografa” → „Plik przekazania…”" disabled>
+                                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
+                                Plik przekazania
+                            </button>
+                        </div>
+                        <p class="handoff-status" id="handoff-status" role="status"></p>
+                        <div class="handoff-fallback d-none" id="handoff-fallback">
+                            <label for="handoff-text">Przeglądarka nie dała dostępu do schowka. Tekst przekazania jest zaznaczony: skopiuj go (Ctrl+C) i wklej w Hydrologu („Wczytaj z Hydrografa” → „Wklej ze schowka”).</label>
+                            <textarea id="handoff-text" rows="6" readonly spellcheck="false"></textarea>
+                            <button class="btn sm ghost" type="button" id="handoff-fallback-close">Zamknij</button>
+                        </div>
+                    </section>
                 </div>
             </aside>
         </div>
@@ -584,9 +619,9 @@
 
 <!-- Application modules -->
 <script defer src="js/diagnostics.js?v=490048c9c6"></script>
-<script defer src="js/api.js?v=ead547e0a8"></script>
+<script defer src="js/api.js?v=a48ff730dc"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
-<script defer src="js/map.js?v=4bec4a7f03"></script>
+<script defer src="js/map.js?v=a8f218c0ab"></script>
 <script defer src="js/coords.js?v=38cf3b9025"></script>
 <script defer src="js/charts.js?v=9cf3876f81"></script>
 <script defer src="js/layers.js?v=e7ffddf7e5"></script>
@@ -604,7 +639,8 @@
 <script defer src="js/instance.js?v=04b557b531"></script>
 <script defer src="js/welcome.js?v=79a0c2304e"></script>
 <script defer src="js/identify.js?v=b89f4b64cf"></script>
-<script defer src="js/handoff.js?v=a933b0e690"></script>
-<script defer src="js/app.js?v=4f95033c75"></script>
+<script defer src="js/handoff.js?v=3ec8ccc46b"></script>
+<script defer src="js/network.js?v=84e42db72a"></script>
+<script defer src="js/app.js?v=89e0a7c43a"></script>
 </body>
 </html>

@@ -10,11 +10,36 @@
 
     var state = {
         currentWatershed: null,
+        // A selection that found a stream but no watershed (displayStreamInfo)
+        currentStream: null,
         clickLat: null,
         clickLng: null,
         clickMode: 'browse',
         // Number of the latest watershed selection; answers to older ones are dropped
         selection: 0,
+        // What the panel and the map serve: 'watershed' (every mode but „Sieć zlewni”)
+        // or 'network' (js/network.js)
+        view: 'watershed',
+        // The parameter sections show the watershed (false after a network element)
+        sectionsShowWatershed: true,
+    };
+
+    // The state of each view of the panel: its loading, its error and whether the
+    // bin of the panel head has something to clear
+    var views = {
+        watershed: { loading: false, error: '', clearable: false },
+        network: { loading: false, error: '', clearable: false },
+    };
+
+    var VIEW_TEXTS = {
+        watershed: {
+            title: 'Zlewnia', sheet: 'Zlewnia', loading: 'Wyznaczanie zlewni…',
+            clear: 'Wyczyść wynik zlewni', close: 'Schowaj panel zlewni (wynik zostaje)',
+        },
+        network: {
+            title: 'Sieć zlewni', sheet: 'Sieć', loading: 'Wyznaczanie sieci…',
+            clear: 'Wyczyść punkty i sieć', close: 'Schowaj panel sieci (punkty i wynik zostają)',
+        },
     };
 
     var _clickDebounceTimer = null;
@@ -129,10 +154,11 @@
     }
 
     /**
-     * Display watershed parameters in the floating panel.
+     * Fill the parameter sections and the key figures with a watershed: the
+     * delineated one, or an element of the network (js/network.js).
+     * @param {Object} w - a WatershedResponse
      */
-    function displayParameters(data) {
-        var w = data.watershed;
+    function renderParameters(w) {
         var m = w.morphometry || {};
         var o = w.outlet;
 
@@ -220,7 +246,7 @@
             Hydrograf.charts.destroyChart('chart-hypsometric');
         }
 
-        // Section header figures, key figures row and page context
+        // Section header figures and key figures row
         var lcCount = w.land_cover_stats && w.land_cover_stats.categories ? w.land_cover_stats.categories.length : 0;
         var hsgCount = w.hsg_stats && w.hsg_stats.categories ? w.hsg_stats.categories.length : 0;
         setMeta('acc-basic', String(els.paramsBasic.rows.length));
@@ -230,13 +256,16 @@
         setMeta('acc-landcover', lcCount ? lcCount + ' ' + plural(lcCount, 'klasa', 'klasy', 'klas') : '');
         setMeta('acc-hsg', hsgCount ? hsgCount + ' ' + plural(hsgCount, 'grupa', 'grupy', 'grup') : '');
         renderSummary(m);
-        setContext(
-            m.area_km2 != null ? 'Zlewnia ' + formatValue(m.area_km2, 'km²', 2) : 'Zlewnia',
-            'ujście ' + formatValue(o.latitude, '°N', 5) + ', ' + formatValue(o.longitude, '°E', 5)
-        );
+    }
 
-        // Hydrograph section — show conditionally based on API response
-        els.hydrographInfo.innerHTML = '';
+    /**
+     * Display the delineated watershed in the panel: its parameters and the page
+     * context („Zlewnia … km²”, its outlet).
+     */
+    function displayParameters(data) {
+        renderParameters(data.watershed);
+        state.sectionsShowWatershed = true;
+        displayParametersContext(data);
     }
 
     // ======== Results panel (right column / phone sheet, see shell.js) ========
@@ -249,38 +278,46 @@
         Hydrograf.shell.close('right');
     }
 
+    /** Show the loading state, the error and the bin of the view the panel serves. */
+    function renderStatus() {
+        var v = views[state.view];
+        Hydrograf.map.setLoadingCursor(v.loading);
+        els.loading.classList.toggle('d-none', !v.loading);
+        els.error.classList.toggle('d-none', !v.error);
+        els.errorMessage.textContent = v.error;
+        els.clear.disabled = !v.clearable;
+    }
+
     /**
      * The panel shows its instruction (nothing to clear) or a selection: its
      * loading state, error or result, which the clear button removes.
      */
     function setInstruction(shown) {
         els.instruction.classList.toggle('d-none', !shown);
-        els.clear.disabled = shown;
+        views.watershed.clearable = !shown;
+        if (state.view === 'watershed') renderStatus();
     }
 
     function setLoading(loading) {
-        Hydrograf.map.setLoadingCursor(loading);
-
+        views.watershed.loading = loading;
         if (loading) {
+            views.watershed.error = '';
             showPanel();
             setInstruction(false);
-            els.loading.classList.remove('d-none');
-            els.error.classList.add('d-none');
             els.results.classList.add('d-none');
-        } else {
-            els.loading.classList.add('d-none');
         }
+        if (state.view === 'watershed') renderStatus();
     }
 
     function showError(msg) {
+        views.watershed.error = msg;
         showPanel();
         setInstruction(false);
-        els.error.classList.remove('d-none');
-        els.errorMessage.textContent = msg;
     }
 
     function hideError() {
-        els.error.classList.add('d-none');
+        views.watershed.error = '';
+        if (state.view === 'watershed') renderStatus();
     }
 
     /**
@@ -299,9 +336,14 @@
     /**
      * Clear the selection: the result, the error and the map overlays, then
      * close the panel. Used by the clear button and a double Escape; the ×
-     * of the panel only hides it, so the result stays.
+     * of the panel only hides it, so the result stays. In „Sieć zlewni” the
+     * bin removes the points and the network instead (js/network.js).
      */
     function closeResults() {
+        if (state.view === 'network') {
+            if (Hydrograf.network) Hydrograf.network.clear();
+            return;
+        }
         cancelSelection();
         setLoading(false);
         Hydrograf.map.clearWatershed();
@@ -311,12 +353,105 @@
         if (autoInfo) autoInfo.classList.add('d-none');
         if (Hydrograf.profile) Hydrograf.profile.hideProfilePanel();
         state.currentWatershed = null;
+        state.currentStream = null;
         if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
         els.results.classList.add('d-none');
-        els.error.classList.add('d-none');
+        views.watershed.error = '';
         setInstruction(true);
         setContext('', '');
         hidePanel();
+    }
+
+    /**
+     * Switch what the panel and the map serve: the network in „Sieć zlewni”, the
+     * watershed in the other modes. Each view keeps its loading state, error and
+     * result; the sections of the parameters return to the watershed when an
+     * element of the network had them.
+     * @param {'watershed'|'network'} view
+     */
+    function setView(view) {
+        if (view === state.view) return;
+        if (view === 'network') {
+            // A pending selection would fill the sections the network now uses
+            cancelSelection();
+            if (views.watershed.loading) {
+                views.watershed.loading = false;
+                if (!state.currentWatershed) setInstruction(true);
+            }
+        }
+        state.view = view;
+        var texts = VIEW_TEXTS[view];
+        els.panel.dataset.view = view;
+        els.title.textContent = texts.title;
+        els.openResults.textContent = texts.sheet;
+        els.loadingText.textContent = texts.loading;
+        els.clear.setAttribute('aria-label', texts.clear);
+        els.clear.title = texts.clear;
+        els.close.setAttribute('aria-label', texts.close);
+        Hydrograf.map.setWatershedShown(view === 'watershed');
+        if (Hydrograf.handoff) Hydrograf.handoff.showView(view);
+        if (view === 'network') {
+            if (Hydrograf.network) Hydrograf.network.enter();
+        } else {
+            if (Hydrograf.network) Hydrograf.network.leave();
+            showElementParameters(null);
+            restoreWatershedSections();
+        }
+        renderStatus();
+    }
+
+    /** The sections and the context of the watershed again, after the network had them. */
+    function restoreWatershedSections() {
+        var data = state.currentWatershed;
+        if (data) {
+            if (!state.sectionsShowWatershed) displayParameters(data);
+            else displayParametersContext(data);
+        } else if (state.currentStream) {
+            displayStreamInfo(state.currentStream);
+        } else {
+            setContext('', '');
+        }
+    }
+
+    /** The context of the delineated watershed in the top bar and the panel head. */
+    function displayParametersContext(data) {
+        var m = data.watershed.morphometry || {};
+        var o = data.watershed.outlet;
+        setContext(
+            m.area_km2 != null ? 'Zlewnia ' + formatValue(m.area_km2, 'km²', 2) : 'Zlewnia',
+            'ujście ' + formatValue(o.latitude, '°N', 5) + ', ' + formatValue(o.longitude, '°E', 5)
+        );
+    }
+
+    /**
+     * The network's loading state, error and bin (js/network.js): `status` holds the
+     * fields that change. Loading or an error opens the panel.
+     * @param {{loading?: boolean, error?: string, clearable?: boolean}} status
+     */
+    function setNetworkStatus(status) {
+        var v = views.network;
+        if (status.loading !== undefined) v.loading = status.loading;
+        if (status.error !== undefined) v.error = status.error || '';
+        if (status.clearable !== undefined) v.clearable = status.clearable;
+        if (state.view !== 'network') return;
+        if (status.loading || status.error) showPanel();
+        renderStatus();
+    }
+
+    /**
+     * The parameters of an element of the network in the sections of „Wybierz
+     * zlewnię” (without the hietogram and the hydrograph, which the network view
+     * hides); null hides the sections.
+     * @param {Object|null} watershed - the element's WatershedResponse
+     */
+    function showElementParameters(watershed) {
+        if (watershed) {
+            renderParameters(watershed);
+            state.sectionsShowWatershed = false;
+            els.panel.dataset.element = '';
+        } else {
+            delete els.panel.dataset.element;
+        }
     }
 
     /**
@@ -347,9 +482,19 @@
         // Check drawing mode
         if (Hydrograf.map.isDrawing && Hydrograf.map.isDrawing()) return;
 
-        if (lat < BOUNDS.latMin || lat > BOUNDS.latMax ||
-            lng < BOUNDS.lngMin || lng > BOUNDS.lngMax) {
-            showError('Kliknij w granicach Polski (49–55°N, 14–24.2°E).');
+        var inPoland = lat >= BOUNDS.latMin && lat <= BOUNDS.latMax &&
+            lng >= BOUNDS.lngMin && lng <= BOUNDS.lngMax;
+        var outside = 'Kliknij w granicach Polski (49–55°N, 14–24.2°E).';
+
+        // Network mode — the click places A or the next point (js/network.js)
+        if (state.clickMode === 'network') {
+            if (!inPoland) setNetworkStatus({ error: outside });
+            else if (Hydrograf.network) Hydrograf.network.addPoint(lat, lng);
+            return;
+        }
+
+        if (!inPoland) {
+            showError(outside);
             return;
         }
 
@@ -372,6 +517,7 @@
         hideError();
         setLoading(true);
         state.currentWatershed = null;
+        state.currentStream = null;
         if (Hydrograf.handoff) Hydrograf.handoff.showWatershed(null);
 
         // Clear previous watershed display
@@ -430,12 +576,15 @@
                     Hydrograf.map.showMainChannel(data.watershed.main_stream_geojson);
                 }
 
+                // The hydrograph metadata of the previous watershed goes with it
+                els.hydrographInfo.innerHTML = '';
                 displayParameters(data);
 
                 // Show flow path overlays on map
                 Hydrograf.map.showLongestFlowPath(data.watershed.longest_flow_path_geojson);
                 Hydrograf.map.showDivideFlowPath(data.watershed.divide_flow_path_geojson);
             } else if (data.stream) {
+                state.currentStream = data.stream;
                 displayStreamInfo(data.stream);
             }
 
@@ -477,6 +626,7 @@
      * Display selected stream info in the results panel.
      */
     function displayStreamInfo(stream) {
+        state.sectionsShowWatershed = true;
         fillTable(els.paramsBasic, [
             ['Segment', String(stream.segment_idx)],
             ['Rząd Strahlera', stream.strahler_order != null ? String(stream.strahler_order) : '—'],
@@ -504,12 +654,13 @@
     var MODE_HINTS = {
         browse: 'Przesuwaj i przybliżaj mapę',
         select: 'Kliknij na mapie w pobliżu cieku',
+        network: 'Kliknij przekrój zamykający A na cieku, potem punkty: dopływy przy ujściach i wodowskazy.',
         profile: 'Kliknij na mapie, aby zacząć rysować profil',
         identify: 'Kliknij na mapie, aby odczytać dane o punkcie',
     };
 
     /**
-     * Switch click mode between 'browse', 'select', 'profile' and 'identify'.
+     * Switch click mode between 'browse', 'select', 'network', 'profile' and 'identify'.
      */
     function setClickMode(mode) {
         state.clickMode = mode;
@@ -518,7 +669,7 @@
         }
 
         // Segmented control (radio group with roving tabindex)
-        ['browse', 'select', 'profile', 'identify'].forEach(function (m) {
+        ['browse', 'select', 'network', 'profile', 'identify'].forEach(function (m) {
             var btn = document.getElementById('mode-' + m);
             var on = m === mode;
             btn.classList.toggle('on', on);
@@ -538,12 +689,15 @@
             Hydrograf.identify.close();
         }
 
-        // Panels: browsing frees the map, selecting shows the results column,
-        // profile and identify modes on phones drop any sheet that would cover
-        // the profile drawer or the point card.
+        // The panel and the map serve the network in its mode, the watershed in the others
+        setView(mode === 'network' ? 'network' : 'watershed');
+
+        // Panels: browsing frees the map, selecting a watershed or a network shows
+        // the results column, profile and identify modes on phones drop any sheet
+        // that would cover the profile drawer or the point card.
         if (mode === 'browse') {
             Hydrograf.shell.close('right');
-        } else if (mode === 'select') {
+        } else if (mode === 'select' || mode === 'network') {
             if (!Hydrograf.shell.isPhone()) Hydrograf.shell.open('right');
         } else if (Hydrograf.shell.isPhone()) {
             Hydrograf.shell.close('left');
@@ -586,9 +740,15 @@
             crumbSep: document.getElementById('crumb-sep'),
             resultsSub: document.getElementById('results-sub'),
             clear: document.getElementById('results-clear'),
+            close: document.getElementById('results-close'),
             hint: document.getElementById('map-hint-text'),
             mapWrap: document.getElementById('map-wrap'),
+            panel: document.getElementById('results-panel'),
+            title: document.getElementById('results-title'),
+            openResults: document.getElementById('open-results'),
+            loadingText: document.getElementById('panel-loading-text'),
         };
+        els.panel.dataset.view = state.view;
 
         // Mode toolbar and rail
         document.getElementById('mode-browse').addEventListener('click', function () {
@@ -596,6 +756,9 @@
         });
         document.getElementById('mode-select').addEventListener('click', function () {
             setClickMode('select');
+        });
+        document.getElementById('mode-network').addEventListener('click', function () {
+            setClickMode('network');
         });
         document.getElementById('mode-profile').addEventListener('click', enterProfileMode);
         document.getElementById('mode-identify').addEventListener('click', function () {
@@ -608,11 +771,12 @@
 
         // Panel controls: × hides the panel (the result stays on the map and
         // the "Zlewnia" button brings it back), the clear button removes it
-        document.getElementById('results-close').addEventListener('click', hidePanel);
+        els.close.addEventListener('click', hidePanel);
         els.clear.addEventListener('click', closeResults);
 
         // Escape: cancel drawing first, then close the point card, then
-        // single = hide panel, double = clear result (like the clear button)
+        // single = hide panel, double = clear result (like the clear button);
+        // in „Sieć zlewni” it only hides the panel: the points stay
         var _escTimer = null;
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
@@ -629,6 +793,11 @@
             // An open point card closes next (identify mode stays on)
             if (Hydrograf.identify && Hydrograf.identify.isOpen()) {
                 Hydrograf.identify.close();
+                return;
+            }
+
+            if (state.view === 'network') {
+                hidePanel();
                 return;
             }
 
@@ -676,6 +845,11 @@
             Hydrograf.identify.init();
         }
 
+        // Init the mode „Sieć zlewni” (its points, network and panel section)
+        if (Hydrograf.network) {
+            Hydrograf.network.init();
+        }
+
         // Init hydrograph module
         if (Hydrograf.hydrograph) {
             Hydrograf.hydrograph.init();
@@ -710,5 +884,9 @@
         getClickCoords: function () { return { lat: state.clickLat, lng: state.clickLng }; },
         getClickMode: function () { return state.clickMode; },
         showPanel: showPanel,
+        // The panel in the view of „Sieć zlewni” (js/network.js)
+        setContext: setContext,
+        setNetworkStatus: setNetworkStatus,
+        showElementParameters: showElementParameters,
     };
 })();
