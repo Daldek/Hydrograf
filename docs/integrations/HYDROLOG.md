@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-11-11 (Hydroni and kaczawa2 run `930915d` with `develop` `a46adb4`; the names of the network hand-off after the two kinds of ADR-080, and Hydrolog's `3aab136`; 2026-11-10: the hand-off of a network, ADR-080; Hydrolog `930915d` of `develop`, the release set candidate-3 of Nogat; was `759d7ef` of candidate-2, before it `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production still runs)
+**Ostatnia aktualizacja:** 2026-11-11 (the network hand-off with every control point a node, `J…` at a confluence and `P…` elsewhere, numbered from the closing section upward, the outlet `O` and the names and `node_provenance` of plan `2026-11-11-network-nodes`; Hydroni and kaczawa2 run `930915d` with `develop` `a46adb4`; the names of the network hand-off after the two kinds of ADR-080, and Hydrolog's `3aab136`; 2026-11-10: the hand-off of a network, ADR-080; Hydrolog `930915d` of `develop`, the release set candidate-3 of Nogat; was `759d7ef` of candidate-2, before it `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production still runs)
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -144,25 +144,37 @@ gives Hydrograf's n and K; `runoff` keeps them for the recomputation.
 
 `POST /api/delineate-network` returns in `handoff` one `nogat-handoff/1` around one
 `hydrolog-network/1` holding the whole network, for Hydrolog's „Sieć i trasowanie”
-(`build_network_handoff` in `backend/core/handoff.py`; plan
-`docs/plans/2026-11-10-network-delineation.md`, D14 and D15). The envelope is the copy of
+(`build_network_handoff` in `backend/core/handoff.py`; plans
+`docs/plans/2026-11-10-network-delineation.md`, D14 and D15, and
+`docs/plans/2026-11-11-network-nodes.md`, N1, N7 and N8). The envelope is the copy of
 Nogat `8848c26` with the optional `node_provenance` (`schemas/nogat/README.md`).
 
+Every control point is a node of the network, the closing section included: `J<n>` at a
+confluence (a point drawn to one within 50 m, or a junction the network makes) and `P<n>`
+elsewhere. The ids are the network's, numbered by a walk from the closing section upward,
+each kind on its own (the closing section is `J1` or `P1`); the request's ids are only the
+client's handles and never reach the hand-off.
+
 - **Envelope:** `schema`, `created_at`, `producer` (`hydrograf` and its version),
-  `subject` = A's `name`, else `watershed_name` of A's place, then „, sieć” and the number
-  of subcatchments in parentheses („Kaczawa, sieć (3 zlewnie)”, „…, sieć (5 zlewni)”);
-  `provenance.watershed` = `{source: "hydrograf", point: <A's id>, latitude, longitude,
-  threshold_m2}`, A's snapped place and the network the points snapped to.
-- **Payload:** `name` (= `subject`), `description` (the counts of subcatchments, reaches
-  and junctions, and that the rainfall and the reach sections are given in Hydrolog) and
-  `nodes`. Each node comes after every node it receives: a walk from A, at each node the
-  trunk first, then the branches by accumulation; for one tributary at its mouth `Z1`
-  (headwater), `Z2` (tributary), `J1`, `R1`, `Z3` (its przyrzecze), `J2` (at A), `OUT`,
-  the order of Nogat's example.
+  `subject` = the closing section's `name`, else `watershed_name` of its place, then „, sieć”
+  and the number of subcatchments in parentheses („Kaczawa, sieć (3 zlewnie)”, „…, sieć
+  (5 zlewni)”); `provenance.watershed` = `{source: "hydrograf", point: <the closing
+  section's node id, J1 or P1>, latitude, longitude, threshold_m2}`, its snapped place and
+  the network the points snapped to.
+- **Payload:** `name` (= `subject`), `description` („Sieć zlewni do przekroju zamykającego
+  J1 (Kaczawa), wyznaczona w Hydrografie: …”: the counts of subcatchments, reaches and
+  junctions, and that the rainfall and the reach sections are given in Hydrolog) and
+  `nodes`. Each node comes after every node it receives: at each node the trunk (the main
+  river, the larger upstream area) first, then the branches by accumulation. For the closing
+  section alone at a confluence: `Z1` (headwater, the main river), `Z2` (headwater), `J1`,
+  `O`. For the closing section mid-river with a point up a tributary: the main river's
+  headwater above the tributary's mouth, the headwater above the point, the point's `P2`,
+  `R2` and its przyrzecze, `J1` (the mouth, a junction of the network), `R1` and its
+  przyrzecze, `P1` (the closing section), `O`.
 - **Subcatchment** (`Z…`): `watershed` in the keys of `WatershedParameters`
   (`watershed_parameters` of its morphometry), with `area_km2` exact to the cell
-  (6 decimals), so the subcatchments sum to A in Hydrolog too; `runoff`
-  `{"model": "curve-number"}` with Hydrolog's defaults.
+  (6 decimals), so the subcatchments sum to the closing section's catchment in Hydrolog too;
+  `runoff` `{"model": "curve-number"}` with Hydrolog's defaults.
 - **Reach** (`R…`): `method` `muskingum-cunge`, `from` (one node), `length_km` (the
   difference of the flow distances of its ends), `slope_m_per_m` (the NMT at its ends);
   no section. A reach whose NMT does not fall (slope 0.0001, „minimum”) is `method`
@@ -171,33 +183,35 @@ Nogat `8848c26` with the optional `node_provenance` (`schemas/nogat/README.md`).
   (`unstable_timestep`). Hydrolog's `develop` since `3aab136` (its ADR-0026) routes a reach
   that Muskingum-Cunge cannot grid as linear reservoirs with the warning
   `diffusion_dominated` instead; the pin `930915d` predates it.
-- **Junction** (`J…`): `from`, its inflows, the trunk first. **Outlet** `OUT`: `from` A's
-  junction.
+- **Junction** (`J…` and `P…`, one per node): `from`, its inflows, the trunk first.
+  **Outlet** `O` (was `OUT`): `from` the closing section's node. Hydrolog finds the outlet by
+  its type and labels the nodes by their ids, so its canvas shows `J…`, `P…` and `O`.
 - **Descriptions** (Polish, at most 500 characters; control characters but the line feed
-  become spaces): a headwater is named as a tributary (ADR-080, amended 2026-11-11: two
-  kinds for the person), „Dopływ do punktu P1 (name)”, at its mouth „Dopływ do ujścia przy
-  P1 (name)”, without a point „Dopływ powyżej J1” or, at A's junction, „Dopływ do przekroju
-  A (name)”; przyrzecze „Przyrzecze odcinka R1”, each followed by its area; reach „Odcinek od
+  become spaces): a headwater „Dopływ do J4 (ciek główny)” (the main river into a node),
+  „Dopływ do J4” (another branch) or „Dopływ do P3” (above a `P`), by the node's id only (the
+  name of the node's point is the node's own description); przyrzecze „Przyrzecze odcinka R4”,
+  each followed by its area; reach „Odcinek od
   J1 do J2: 5,07 km, spadek 0,98 ‰ (NMT)” or „(minimalny)”, a lag followed by „Opóźnienie
-  2 min (długość przy 0,5 m/s) zamiast Muskingum-Cunge, …”; junction „Zbieg: dopływ P1
-  (name), …” (the point at the top of its trunk, whose subcatchment the trunk brings directly
-  or by its reach, then the points of the branches that join it from the side,
-  `Junction.tributaries`), „Punkt P3 (name)” or „Przekrój zamykający A (name)”.
+  2 min (długość przy 0,5 m/s) zamiast Muskingum-Cunge, …”; a node „Zbieg: Paszówka” (a point
+  drawn to a confluence; „Zbieg” without a name or made by the network), „Punkt: Nysa Mała”
+  (a `P`; „Punkt” without a name) or „Przekrój zamykający: Kaczawa” (the closing section, at a
+  confluence or not; „Przekrój zamykający” without a name).
 
 `node_provenance` has an entry for every subcatchment, reach and junction and none for
-`OUT`; `source` is `"hydrograf"` in each:
+`O`; `source` is `"hydrograf"` in each. Hydrolog's GUI reads `element`, `point` and `reach`
+(`handoff/mapping.js`) and ignores the other keys:
 
 | Node | Input | Origin parameters |
 |---|---|---|
-| subcatchment | `watershed` | `element` (`headwater`, `tributary`, `intermediate`), `point` (the id of the point it ends at, if any), `reach` (of a przyrzecze), `at_mouth` (only when true: the point moved to the junction below it, its tributary's mouth or the confluence below a gauge), `latitude`, `longitude` (its outlet) |
+| subcatchment | `watershed` | `element` (`headwater`, `intermediate`), `point` (when it enters the node of a person's point: that node's id, which Hydrolog shows for a headwater as „dopływ do punktu J4”), `reach` (of a przyrzecze), `latitude`, `longitude` (its outlet) |
 | reach | `node` | `element` `"reach"`, `length` `"flow_distance"`, `slope` `"nmt"` or `"minimum"`, `upstream_elevation_m` and `downstream_elevation_m` (the NMT at its ends, when known), `vector_length_km` with `vector_source` `"bdot10k"` (when the reach has a BDOT10k check length); a lag (slope `"minimum"`) also `length_km`, `slope_m_per_m`, `method` `"lag"`, `method_reason` `"flat"` and `lag_celerity_m_per_s` 0.5 |
-| junction | `node` | `element` (`confluence`, `point`, `outlet` for A's), `point` (its point's id, if any), `latitude`, `longitude` |
+| junction | `node` | `element` (`confluence` for one the network made, `point` for a person's point, `J` or `P`, `outlet` for the closing section), `name` (its point's, when it has one), `at_node` (only when true: the point was drawn to the node), `latitude`, `longitude` |
 
 The hand-off carries no `rainfall`, `timestep_min`, `result`, reach section or `position`.
 In Sieć the person sets the rainfall of the network (step „Sieć”) and gives each
 Muskingum-Cunge reach its section (Manning's n, width) before the network is routed; Sieć
 lays the network out from its structure. The hand-offs of `delineate-watershed` and
-`generate-hydrograph` do not change.
+`generate-hydrograph` do not change: one subcatchment `Z1` into the outlet `OUT`.
 
 The pin: Hydrolog `930915d` (Nogat's release set candidate-3, `b0ac85b`) has the
 `description` (and `position`) of every node in `hydrolog-network/1`, which a network's
@@ -565,4 +579,4 @@ curl -X POST http://localhost:8000/api/generate-hydrograph \
 
 ---
 
-**Ostatnia aktualizacja:** 2026-11-10
+**Ostatnia aktualizacja:** 2026-11-11

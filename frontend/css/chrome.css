@@ -27,6 +27,11 @@
 .crumbs .sep { color: var(--line-2); }
 .crumbs strong { color: var(--text); font-weight: var(--weight-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top-actions { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); flex: none; }
+.top-actions .guide-link svg {
+    width: 16px; height: 16px; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round;
+}
 
 /* Segmented control (theme switch; map mode toolbar) */
 .seg {

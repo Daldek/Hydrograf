@@ -1,26 +1,31 @@
 /**
- * Hydrograf mode „Sieć zlewni” (ADR-080, ADR-081; plan docs/plans/2026-11-10-network-delineation.md).
+ * Hydrograf „Sieć zlewni”, an option of the mode „Wybierz zlewnię” (ADR-080, ADR-081;
+ * plans docs/plans/2026-11-10-network-delineation.md and docs/plans/2026-11-11-network-nodes.md).
  *
- * The first click of the mode places the closing section A, the next ones the points
- * P1, P2, … above it (tributaries at their mouths, gauges): numbered markers that drag
- * (also by touch), listed in the panel with a name field and „Usuń”. The network comes
- * in two stages:
+ * The first click of the option places the closing section, the next ones the control
+ * points above it (tributaries at their mouths, gauges): markers that drag (also by
+ * touch), listed in the panel with a name field and „Usuń”. Every point is a node of
+ * the network, named by where it lies (N1): `J` at a confluence, `P` elsewhere. A
+ * marker shows its node's id from the latest answer; one not answered yet the first
+ * free `P<n>` among the ids shown. That id is its handle in the next request, so a
+ * problem names a point as the map does. The network comes in two stages:
  *
  * - The preview. A short pause after every change of the points or of the threshold of
  *   the streams on the map, POST /api/delineate-network/preview answers in a fraction
- *   of a second: every marker moves to the stream cell it snapped to („przy ujściu” on
- *   a point moved to the junction below it) and the network is drawn: the elements
- *   filled by kind (dopływ, przyrzecze; a headwater shows as a dopływ) with their ids,
+ *   of a second: every marker moves to the stream cell it snapped to („w węźle sieci”
+ *   on a point drawn to a confluence within 50 m) and takes its node's id, and the
+ *   network is drawn: the elements filled by kind (dopływ, przyrzecze) with their ids,
  *   dashed where the outline follows a whole unit that the characteristics split (the
- *   point inside it is marked), the reaches as lines with theirs and the junctions as
- *   dots. The panel lists the tree from A upward with the area of every element, A's
- *   whole area in the row of its closing section, and the length of every reach. An
- *   error (a point outside A, off the streams, two points on one cell) marks the points
- *   it names at once. Names do not change the preview.
+ *   point inside it is marked), the reaches as lines with theirs and the nodes as dots.
+ *   The closing section alone is a network. The panel lists the tree from the closing
+ *   section upward with the area of every element, the whole area in the row of the
+ *   closing section, and the length of every reach. An error (a point outside the
+ *   catchment, off the streams, two points on one node) marks the points it names at
+ *   once. Names do not change the preview.
  * - The characteristics. „Oblicz charakterystyki” sends the points to POST
- *   /api/delineate-network: A's boundary (outlined as „Zlewnia A (całość)”), the
- *   parameters of every element, the slopes of the reaches, the check of B5 and the
- *   hand-off of the network (js/handoff.js).
+ *   /api/delineate-network: the boundary of the whole catchment (outlined as „Zlewnia
+ *   (całość)”), the parameters of every element, the slopes of the reaches, the check
+ *   of B5 and the hand-off of the network (js/handoff.js).
  *   They show while they answer the places of the points; after a point is added,
  *   removed or moved, or the threshold changes, the map and the panel go back to the
  *   preview of the new points. A notice says the characteristics are outdated and the
@@ -31,7 +36,7 @@
  * the characteristics its parameters show (an element's in the sections of „Wybierz
  * zlewnię”, js/app.js, a reach's in a table of its own), in the preview a short summary.
  * Clicks on the map always place points, so a gauge can be placed on a drawn reach.
- * Leaving the mode takes the network off the map and „Wyczyść” removes the points, the
+ * Leaving the option takes the network off the map and „Wyczyść” removes the points, the
  * preview and the characteristics.
  */
 (function () {
@@ -47,15 +52,13 @@
     // The pause after a change of the points before their preview is asked for [ms]
     var PREVIEW_DELAY_MS = 300;
 
-    // Two kinds for the person: which branch of a confluence goes on as the headwater follows the
-    // larger upstream area, not the river a person knows, and changes nothing in the computation, so
-    // the kind `headwater` of the API shows as a dopływ (the author's decision of 2026-11-11).
-    var KIND_LABELS = { tributary: 'Dopływ', intermediate: 'Przyrzecze' };
-    var KIND_INFO = { tributary: 'network-tributary', intermediate: 'network-intermediate' };
-    var KIND_TOKENS = { tributary: '--warn', intermediate: '--tool-hydraulik' };
-    var KINDS = ['tributary', 'intermediate'];
-    var WHOLE_A = 'Zlewnia A (całość)';
-    var JUNCTION_LABELS = { confluence: 'Zbieg cieków', point: 'Punkt', outlet: 'Przekrój zamykający' };
+    // Two kinds of elements (plan 2026-11-11-network-nodes, N7): the kind `headwater` of the
+    // API, the river above a node it enters without a reach, shows as a dopływ.
+    var KIND_LABELS = { headwater: 'Dopływ', intermediate: 'Przyrzecze' };
+    var KIND_INFO = { headwater: 'network-headwater', intermediate: 'network-intermediate' };
+    var KIND_TOKENS = { headwater: '--warn', intermediate: '--tool-hydraulik' };
+    var KINDS = ['headwater', 'intermediate'];
+    var WHOLE = 'Zlewnia (całość)';
     var EXACT_LATER = 'granica dokładna po obliczeniu charakterystyk';
     var OUTDATED_PLACES = 'Charakterystyki są nieaktualne: punkty zmieniły się po ich obliczeniu, poniżej ' +
         'podgląd sieci. Oblicz charakterystyki ponownie, aby przekazać sieć do Hydrologa.';
@@ -63,9 +66,9 @@
         'aby przekazać sieć do Hydrologa z nowymi nazwami.';
 
     var state = {
-        active: false,      // the mode is on
-        outlet: null,       // A: { id, lat, lng, name, marker, snap, row }
-        points: [],         // P1, P2, …: the same, in the order of their numbers
+        active: false,      // the option is on
+        outlet: null,       // the closing section: { id, lat, lng, name, marker, snap, row }
+        points: [],         // the points above it: the same, in the order of their ids (byId)
         result: null,       // the characteristics (POST /api/delineate-network)
         resultKey: '',      // the request they answer, with the snapped places and the names
         resultPlaces: '',   // the places they answer, snapped, without the names
@@ -77,7 +80,7 @@
         previewPending: false,  // the preview of the current points is due or on its way
         previewError: null, // { key, status } of the preview that failed, for the places it was asked for
         error: '',          // the text of the error under the buttons
-        bad: {},            // ids of the points the last error names
+        bad: {},            // ids (handles) of the points the last error names
         selected: null,     // id of the selected element or reach
     };
 
@@ -129,13 +132,25 @@
     /** A point's id with its name: „P1 (Kamiennik)”. */
     function pointLabel(id) {
         var p = findPoint(id);
-        return p && p.name ? id + ' (' + p.name + ')' : id;
+        var name = p ? cleanName(p.name) : null;
+        return name ? id + ' (' + name + ')' : id;
     }
 
-    /** The lowest free P-number, so the ids stay P1…Pn after removals. */
+    /**
+     * The order of the ids of the points, the panel's and the requests': the `J`s, then
+     * the `P`s, each by its number.
+     */
+    function byId(a, b) {
+        var ka = a.id.charAt(0);
+        var kb = b.id.charAt(0);
+        if (ka !== kb) return ka < kb ? -1 : 1;
+        return Number(a.id.slice(1)) - Number(b.id.slice(1));
+    }
+
+    /** The id of a point no answer has named yet: the lowest `P<n>` that no marker shows. */
     function nextPointId() {
         var used = {};
-        state.points.forEach(function (p) { used[p.id] = true; });
+        allPoints().forEach(function (p) { used[p.id] = true; });
         for (var n = 1; ; n++) {
             if (!used['P' + n]) return 'P' + n;
         }
@@ -182,24 +197,29 @@
         return state.outlet ? JSON.stringify(requestBody()) : '';
     }
 
-    /** The request of the preview; '' while there is nothing to preview (A and a point at least). */
+    /** The request of the preview; '' while there is nothing to preview (no closing section). */
     function previewKey() {
-        return state.outlet && state.points.length ? JSON.stringify(previewBody()) : '';
+        return state.outlet ? JSON.stringify(previewBody()) : '';
     }
 
     /**
      * The key of the request an answer answers: its points at the places they snapped
-     * to. The markers move there, and these places snap to themselves, so the answer
-     * goes on answering the points until they or the threshold change.
+     * to, each by the id of its node, in the order of those ids. The markers move there
+     * and take those ids (moveToSnapped), and these places snap to themselves, so the
+     * answer goes on answering the points until they or the threshold change.
      */
     function answerKey(body, data) {
         var snapped = {};
         data.points.forEach(function (sp) { snapped[sp.id] = sp; });
         function at(bp) {
             var sp = snapped[bp.id];
-            return sp ? Object.assign({}, bp, { latitude: sp.latitude, longitude: sp.longitude }) : bp;
+            return sp ? Object.assign({}, bp, { id: sp.node, latitude: sp.latitude, longitude: sp.longitude }) : bp;
         }
-        return JSON.stringify({ outlet: at(body.outlet), points: body.points.map(at), threshold_m2: body.threshold_m2 });
+        return JSON.stringify({
+            outlet: at(body.outlet),
+            points: body.points.map(at).sort(byId),
+            threshold_m2: body.threshold_m2,
+        });
     }
 
     /** The characteristics no longer answer the points: their places, their names or the threshold changed. */
@@ -219,7 +239,7 @@
     }
 
     function canRun() {
-        return !state.loading && !!state.outlet && state.points.length > 0 && !compositionError();
+        return !state.loading && !!state.outlet && !compositionError();
     }
 
     /**
@@ -241,7 +261,7 @@
     function previewPoint(p) {
         var d = display();
         if (!d || d.full) return null;
-        return d.data.points.filter(function (sp) { return sp.id === p.id; })[0] || null;
+        return d.data.points.filter(function (sp) { return sp.node === p.id; })[0] || null;
     }
 
     /**
@@ -258,7 +278,7 @@
     function markerTitle(p) {
         var role = p === state.outlet ? 'przekrój zamykający' : 'punkt sieci';
         var text = pointLabel(p.id) + ' – ' + role;
-        if (p.snap && p.snap.at_mouth) text += ', przy ujściu dopływu';
+        if (p.snap && p.snap.at_node) text += ', w węźle sieci';
         if (insideUnit(p)) text += ', ' + EXACT_LATER;
         return text;
     }
@@ -267,21 +287,24 @@
         var classes = ['net-marker'];
         if (p === state.outlet) classes.push('is-outlet');
         if (state.bad[p.id]) classes.push('is-bad');
-        if (p.snap && p.snap.at_mouth) classes.push('at-mouth');
+        if (p.snap && p.snap.at_node) classes.push('at-node');
         if (insideUnit(p)) classes.push('inside-unit');
         return L.divIcon({
             className: classes.join(' '),
+            // The ids are the client's own `P<n>` or the network's `J<n>`/`P<n>`, never typed text
             html: '<span>' + p.id + '</span>',
             iconSize: [28, 28],
             iconAnchor: [14, 14],
         });
     }
 
-    /** A new icon only when its marks change: replacing it ends a drag under way. */
+    /** A new icon only when its marks or its id change: replacing it ends a drag under way. */
     function refreshMarker(p) {
         var icon = markerIcon(p);
-        if (icon.options.className !== p.iconClass) {
-            p.iconClass = icon.options.className;
+        var key = icon.options.className + ' ' + p.id;
+        if (key !== p.iconKey) {
+            p.iconKey = key;
+            p.marker.options.alt = p.id;
             p.marker.setIcon(icon);
         }
         var node = p.marker.getElement();
@@ -290,7 +313,7 @@
 
     function addMarker(p) {
         var icon = markerIcon(p);
-        p.iconClass = icon.options.className;
+        p.iconKey = icon.options.className + ' ' + p.id;
         p.marker = L.marker([p.lat, p.lng], {
             icon: icon,
             draggable: !state.loading,
@@ -318,54 +341,66 @@
         });
     }
 
+    /** The points by the ids they carry now, the handles of a request built from them. */
+    function handles() {
+        var of = {};
+        allPoints().forEach(function (p) { of[p.id] = p; });
+        return of;
+    }
+
     /**
-     * Every point of an answer moves to the cell it snapped to. A point that snapped to
-     * its own place (the request carried where it snapped before) keeps the distance
-     * from where it was placed.
+     * Every point of an answer moves to the cell it snapped to and takes the id of its
+     * node (N1, N8), its handle in the next request: the map, the panel and the hand-off
+     * name it alike. The answer names the points by the handles `sent` with its request
+     * (handles()), which an answer that came first may have renamed since. A point
+     * that snapped to its own place (the request carried where it snapped before) keeps
+     * the distance from where it was placed.
      */
-    function moveToSnapped(data) {
+    function moveToSnapped(data, sent) {
         data.points.forEach(function (sp) {
-            var p = findPoint(sp.id);
-            if (!p) return;
+            var p = sent[sp.id];
+            if (!p || allPoints().indexOf(p) < 0) return;
             var kept = p.snap && sp.latitude === p.lat && sp.longitude === p.lng;
             p.snap = kept ? Object.assign({}, sp, { snap_distance_m: p.snap.snap_distance_m }) : sp;
+            p.id = sp.node;
             p.lat = sp.latitude;
             p.lng = sp.longitude;
             p.marker.setLatLng([p.lat, p.lng]);
         });
+        state.points.sort(byId);
     }
 
     // ===== Editing the points =====
 
     /**
-     * A click of the mode: A first, then P1, P2, …; at most MAX_POINTS points
-     * besides A. Nothing changes while the characteristics are computed.
+     * A click of the option: the closing section first, then the points; at most
+     * MAX_POINTS points besides the closing section. A new point shows the first free
+     * `P<n>` until an answer names its node. Nothing changes while the characteristics
+     * are computed.
      */
     function addPoint(lat, lng) {
         if (state.loading) return;
         var p;
         if (!state.outlet) {
-            p = state.outlet = { id: 'A', lat: lat, lng: lng, name: '', snap: null };
+            p = state.outlet = { id: nextPointId(), lat: lat, lng: lng, name: '', snap: null };
         } else if (state.points.length >= MAX_POINTS) {
-            state.error = 'Sieć ma już ' + MAX_POINTS + ' punktów powyżej A, najwięcej, ile przyjmuje Hydrograf. ' +
-                'Usuń punkt, aby dodać nowy.';
+            state.error = 'Sieć ma już ' + MAX_POINTS + ' punktów powyżej przekroju zamykającego, najwięcej, ' +
+                'ile przyjmuje Hydrograf. Usuń punkt, aby dodać nowy.';
             renderState();
             Hydrograf.app.showPanel();
             return;
         } else {
             p = { id: nextPointId(), lat: lat, lng: lng, name: '', snap: null };
             state.points.push(p);
-            state.points.sort(function (a, b) { return Number(a.id.slice(1)) - Number(b.id.slice(1)); });
+            state.points.sort(byId);
         }
         addMarker(p);
         buildPoints();
         changed(p);
     }
 
-    function removePoint(id) {
+    function removePoint(p) {
         if (state.loading) return;
-        var p = findPoint(id);
-        if (!p) return;
         markers.removeLayer(p.marker);
         if (p === state.outlet) state.outlet = null;
         else state.points = state.points.filter(function (q) { return q !== p; });
@@ -373,8 +408,8 @@
         changed(p);
     }
 
-    /** „Przesuń do zbiegu”: the point goes to the cell above its confluence, where the mouth rule takes it. */
-    function moveToMouth(id, place) {
+    /** „Przesuń do zbiegu”: the point goes to the cell above its confluence, which draws it into the confluence (N3). */
+    function moveToConfluence(id, place) {
         var p = findPoint(id);
         if (!p || state.loading) return;
         p.lat = place.latitude;
@@ -432,13 +467,14 @@
     function requestPreview() {
         previewTimer = null;
         var body = previewBody();
+        var sent = handles();
         var key = JSON.stringify(body);
         var request = ++state.previewRequest;
         var abort = new AbortController();
         previewAbort = abort;
         Hydrograf.api.previewNetwork(body, abort.signal).then(function (data) {
             if (request !== state.previewRequest) return;
-            moveToSnapped(data);
+            moveToSnapped(data, sent);
             state.preview = data;
             state.previewKey = answerKey(body, data);
             state.bad = {};
@@ -451,7 +487,7 @@
             state.previewError = { key: key, status: err.status || 0 };
             state.error = err.message;
             state.bad = {};
-            markBadPoints(err.problem);
+            markBadPoints(err.problem, sent);
         }).then(function () {
             if (request !== state.previewRequest) return;
             previewAbort = null;
@@ -466,6 +502,7 @@
         if (!canRun()) return;
         var body = requestBody();
         var places = previewBody();
+        var sent = handles();
         var request = ++state.request;
         state.result = null;
         state.resultKey = '';
@@ -479,14 +516,14 @@
 
         Hydrograf.api.delineateNetwork(body).then(function (data) {
             if (request !== state.request) return;
-            moveToSnapped(data);
+            moveToSnapped(data, sent);
             state.result = data;
             state.resultKey = answerKey(body, data);
             state.resultPlaces = answerKey(places, data);
         }).catch(function (err) {
             if (request !== state.request) return;
             state.error = err.message;
-            markBadPoints(err.problem);
+            markBadPoints(err.problem, sent);
             Hydrograf.app.showPanel();
         }).then(function () {
             if (request !== state.request) return;
@@ -502,13 +539,14 @@
         });
     }
 
-    /** Mark the points a problem document names (`details.point_id`, `details.point_ids`). */
-    function markBadPoints(problem) {
+    /** Mark the points a problem document names by their handles (`details.point_id`, `details.point_ids`). */
+    function markBadPoints(problem, sent) {
         var details = problem && problem.details;
         if (!details) return;
         var ids = [].concat(details.point_ids || [], details.point_id || []);
         ids.forEach(function (id) {
-            if (findPoint(id)) state.bad[id] = true;
+            var p = sent[id];
+            if (p && allPoints().indexOf(p) >= 0) state.bad[p.id] = true;
         });
     }
 
@@ -535,12 +573,9 @@
 
     // ===== Map layers of the network =====
 
-    /** The kind an element shows as: a headwater is a dopływ (KIND_LABELS). */
-    function shownKind(kind) { return kind === 'headwater' ? 'tributary' : kind; }
-
     function kindColor(kind) { return token(KIND_TOKENS[kind]); }
 
-    /** A's whole catchment: a heavier outline than any element's, in Hydrograf's colour. */
+    /** The whole catchment: a heavier outline than any element's, in Hydrograf's colour. */
     function boundaryStyle() {
         return { color: token('--tool-hydrograf'), weight: 4, opacity: 1, fill: false };
     }
@@ -670,7 +705,7 @@
             // An element of a part of a split unit whose polygon went to its neighbour: no outline, no label
             if (!boundary || !boundary.geometry) return;
             var approximate = !full && !!s.outline_approximate;
-            var kind = shownKind(s.kind);
+            var kind = s.kind;
             var layer = L.geoJSON(boundary, {
                 style: function () { return elementStyle(kind, false, approximate); },
                 interactive: false,
@@ -691,7 +726,7 @@
         data.junctions.forEach(function (j) {
             var dot = L.circleMarker([j.latitude, j.longitude], junctionStyle());
             // A DOM node: the names the person typed never become HTML
-            dot.bindTooltip(el('span', null, j.id + ': ' + junctionText(j)), { direction: 'top' });
+            dot.bindTooltip(el('span', null, j.id + ' · ' + junctionText(j)), { direction: 'top' });
             drawn.junctions.push(dot);
             drawn.group.addLayer(dot);
         });
@@ -759,10 +794,10 @@
         var rows = [];
         if (drawn.boundary) {
             rows.push([Hydrograf.map.pathSwatch(Object.assign({ fillColor: 'none', fillOpacity: 0 },
-                boundaryStyle()), 'area'), WHOLE_A]);
+                boundaryStyle()), 'area'), WHOLE]);
         }
         KINDS.forEach(function (kind) {
-            if (data.subcatchments.some(function (s) { return shownKind(s.kind) === kind; })) {
+            if (data.subcatchments.some(function (s) { return s.kind === kind; })) {
                 rows.push([Hydrograf.map.pathSwatch(elementStyle(kind, false, false), 'area'), KIND_LABELS[kind]]);
             }
         });
@@ -796,31 +831,32 @@
 
     // ===== Texts of the elements =====
 
-    function atMouth(pointId) {
-        var p = findPoint(pointId);
-        return !!(p && p.snap && p.snap.at_mouth);
-    }
-
     /**
-     * A headwater is named as a dopływ, as in the hand-off (backend/core/handoff.py);
-     * one without a point names the junction it enters, A's as the closing section.
+     * An element as the hand-off names it (backend/core/handoff.py, N7): a headwater by
+     * the id of the node it enters, the main river of a confluence (its first inflow)
+     * as such: „Dopływ do J4 (ciek główny)”; the name of the node's point is the node's.
      */
     function elementText(s, data) {
         if (s.kind === 'intermediate') return 'Przyrzecze odcinka ' + s.reach;
-        if (!s.point) {
-            var into = data.junctions.filter(function (j) { return j.id === s.to; })[0];
-            return into && into.kind === 'outlet' ? 'Dopływ do przekroju ' + pointLabel(into.point) : 'Dopływ powyżej ' + s.to;
-        }
-        return (atMouth(s.point) ? 'Dopływ do ujścia przy ' : 'Dopływ do punktu ') + pointLabel(s.point);
+        var into = data.junctions.filter(function (j) { return j.id === s.to; })[0];
+        var main = s.to.charAt(0) === 'J' && !!into && into.inflows[0] === s.id;
+        return 'Dopływ do ' + s.to + (main ? ' (ciek główny)' : '');
     }
 
     function reachText(r) {
         return 'Odcinek ' + r.from + ' → ' + r.to;
     }
 
+    /**
+     * What a node is, by where it lies, and the name of its point (N7): „Zbieg: Paszówka”,
+     * „Zbieg”, „Punkt: Nysa Mała”, „Przekrój zamykający: Kaczawa”. A point's name is the
+     * one in the panel, as the elements' texts give it.
+     */
     function junctionText(j) {
-        var text = JUNCTION_LABELS[j.kind];
-        return j.point ? text + ' ' + pointLabel(j.point) : text;
+        var text = j.kind === 'outlet' ? 'Przekrój zamykający' : j.id.charAt(0) === 'J' ? 'Zbieg' : 'Punkt';
+        var p = j.kind === 'confluence' ? null : findPoint(j.id);
+        var name = p ? cleanName(p.name) : j.name;
+        return name ? text + ': ' + name : text;
     }
 
     function slopeText(r) {
@@ -910,34 +946,37 @@
 
     function pointMeta(p) {
         if (!p.snap) return '';
-        if (p.snap.at_mouth) return 'przy ujściu dopływu';
+        if (p.snap.at_node) return 'w węźle sieci';
         return p.snap.snap_distance_m >= 1
             ? 'na cieku, ' + Math.round(p.snap.snap_distance_m) + ' m od kliknięcia'
             : 'na cieku';
     }
 
-    /** The rows of the points, built when points come or go; updatePoints() fills what changes. */
+    /**
+     * The rows of the points, built when points come or go: the closing section first,
+     * then the points by their ids. updatePoints() fills what changes, the ids included.
+     */
     function buildPoints() {
         var list = els.points;
         list.textContent = '';
         var points = allPoints();
         if (!points.length) {
-            list.appendChild(el('li', 'network-empty', 'Brak punktów: kliknij na mapie przekrój zamykający A.'));
+            list.appendChild(el('li', 'network-empty', 'Brak punktów: kliknij na mapie przekrój zamykający.'));
             return;
         }
         if (!state.outlet) {
-            list.appendChild(el('li', 'network-empty', 'Brak przekroju zamykającego A: kliknij go na mapie.'));
+            list.appendChild(el('li', 'network-empty', 'Brak przekroju zamykającego: kliknij go na mapie.'));
         }
         points.forEach(function (p) {
             var li = el('li');
-            li.appendChild(el('span', 'net-badge', p.id));
+            var badge = el('span', 'net-badge');
+            li.appendChild(badge);
             var body = el('div', 'net-point-body');
             var input = el('input');
             input.type = 'text';
             input.maxLength = NAME_MAX;
             input.value = p.name;
             input.placeholder = p === state.outlet ? 'Przekrój zamykający: nazwa (opcjonalnie)' : 'Nazwa (opcjonalnie)';
-            input.setAttribute('aria-label', 'Nazwa punktu ' + p.id);
             // A name changes no preview, only the characteristics, whose hand-off it names
             input.addEventListener('input', function () {
                 p.name = input.value;
@@ -951,19 +990,26 @@
             li.appendChild(body);
             var remove = el('button', 'btn sm ghost', 'Usuń');
             remove.type = 'button';
-            remove.setAttribute('aria-label', 'Usuń punkt ' + p.id);
-            remove.addEventListener('click', function () { removePoint(p.id); });
+            remove.addEventListener('click', function () { removePoint(p); });
             li.appendChild(remove);
-            p.row = { li: li, input: input, meta: meta, approx: approx, remove: remove };
+            p.row = { li: li, badge: badge, input: input, meta: meta, approx: approx, remove: remove };
             list.appendChild(li);
         });
         updatePoints();
     }
 
-    /** What the rows of the points show of the answers: the error mark, where they snapped, the busy state. */
+    /**
+     * What the rows of the points show of the answers: the id, the error mark, where they
+     * snapped, the busy state. An answer that renames the points reorders their rows,
+     * keeping the focus of a name being typed.
+     */
     function updatePoints() {
-        allPoints().forEach(function (p) {
+        var points = allPoints();
+        points.forEach(function (p) {
             if (!p.row) return;
+            p.row.badge.textContent = p.id;
+            p.row.input.setAttribute('aria-label', 'Nazwa punktu ' + p.id);
+            p.row.remove.setAttribute('aria-label', 'Usuń punkt ' + p.id);
             p.row.li.className = 'net-point' + (p === state.outlet ? ' is-outlet' : '') +
                 (state.bad[p.id] ? ' is-bad' : '');
             p.row.meta.textContent = pointMeta(p);
@@ -972,6 +1018,12 @@
             p.row.input.disabled = state.loading;
             p.row.remove.disabled = state.loading;
         });
+        var rows = Array.prototype.slice.call(els.points.querySelectorAll('li.net-point'));
+        var ordered = points.every(function (p, i) { return p.row && rows[i] === p.row.li; });
+        if (ordered) return;
+        var focused = document.activeElement;
+        points.forEach(function (p) { if (p.row) els.points.appendChild(p.row.li); });
+        if (focused && focused !== document.activeElement && els.points.contains(focused)) focused.focus();
     }
 
     /** The parts that follow the points: buttons, error, preview status, outdated notice, hand-off, context. */
@@ -995,14 +1047,13 @@
         if (!state.active) return;
         var d = display();
         if (d) {
-            var a = d.data.points[0];
+            var outlet = d.data.points[0];
             Hydrograf.app.setContext('Sieć zlewni ' + fixed(d.data.area_km2, 2) + ' km²',
-                'A ' + fixed(a.latitude, 5) + ' °N, ' + fixed(a.longitude, 5) + ' °E');
+                outlet.node + ' ' + fixed(outlet.latitude, 5) + ' °N, ' + fixed(outlet.longitude, 5) + ' °E');
         } else {
             var n = state.points.length;
-            Hydrograf.app.setContext('Sieć zlewni', state.outlet
-                ? 'A i ' + n + ' ' + plural(n, 'punkt', 'punkty', 'punktów')
-                : '');
+            var text = n ? 'Przekrój zamykający i ' + n + ' ' + plural(n, 'punkt', 'punkty', 'punktów') : 'Przekrój zamykający';
+            Hydrograf.app.setContext('Sieć zlewni', state.outlet ? text : '');
         }
     }
 
@@ -1026,16 +1077,21 @@
 
     /**
      * A reach shorter than 200 m or flat (D10a), which Muskingum-Cunge may not route at
-     * any usable time step: where it lies and what to do. A point above a confluence
-     * gets the button that moves it to the mouth, where it enters the confluence
-     * without the reach; a flat reach is a lag in the hand-off.
+     * any usable time step: where it lies and what to do. A point above a confluence the
+     * network made gets the button that moves it into the confluence (N3), which then
+     * splits there without the reach; a flat reach is a lag in the hand-off. The notice
+     * names its upper point by the handle of the request, the point by its node now.
      */
     function reachNotice(data, id, r) {
         var reach = data.reaches.filter(function (x) { return x.id === id; })[0];
         var lower = data.junctions.filter(function (j) { return j.id === r.lower; })[0];
+        var upperPoint = r.upper_point
+            ? (data.points.filter(function (sp) { return sp.id === r.upper_point; })[0] || { node: r.upper_point }).node
+            : null;
         var length = Math.round(r.length_m) + ' m';
-        var upper = r.upper_point ? 'punkt ' + r.upper_point : 'zbieg ' + (reach ? reach.from : '');
-        var below = !lower || lower.kind === 'confluence' ? 'zbiegiem' : 'punktem ' + lower.point;
+        var upper = upperPoint ? 'punkt ' + upperPoint : 'zbieg ' + (reach ? reach.from : '');
+        var below = (!lower || lower.kind === 'confluence' ? 'zbiegiem '
+            : lower.kind === 'outlet' ? 'przekrojem zamykającym ' : 'punktem ') + r.lower;
         var text = 'Odcinek ' + id + ' ma ' + length + (r.slope_minimum ? ' (spadek minimalny)' : '') +
             ': ' + upper + ' leży ' + length + ' nad ' + below + '. ';
         if (r.lag_min) {
@@ -1051,12 +1107,11 @@
                 : 'Jeśli Hydrolog nie przeliczy go metodą Muskingum-Cunge, użyj tam opóźnienia.';
         }
         var box = notice('warn has-action', text);
-        if (r.move_to && r.upper_point) {
-            var pointId = r.upper_point;
-            var move = el('button', 'btn sm', 'Przesuń ' + pointId + ' do zbiegu');
+        if (r.move_to && upperPoint) {
+            var move = el('button', 'btn sm', 'Przesuń ' + upperPoint + ' do zbiegu');
             move.type = 'button';
             move.disabled = state.loading;
-            move.addEventListener('click', function () { moveToMouth(pointId, r.move_to); });
+            move.addEventListener('click', function () { moveToConfluence(upperPoint, r.move_to); });
             box.appendChild(move);
         }
         return box;
@@ -1072,15 +1127,15 @@
 
         els.stage.hidden = d.full;
         els.summary.textContent = '';
-        els.summary.appendChild(kpi('Zlewnia A', fixed(data.area_km2, 2), 'km²'));
+        els.summary.appendChild(kpi('Cała zlewnia', fixed(data.area_km2, 2), 'km²'));
         els.summary.appendChild(kpi('Zlewnie', String(data.subcatchments.length)));
         els.summary.appendChild(kpi('Odcinki', String(data.reaches.length)));
         els.summary.appendChild(kpi('Węzły', String(data.junctions.length)));
 
         els.check.hidden = !d.full;
         if (d.full) {
-            els.check.textContent = 'Suma elementów = zlewnia A: elementy ' +
-                fixed(data.area_check.elements_km2, 6) + ' km², zlewnia A ' +
+            els.check.textContent = 'Suma elementów = zlewnia przekroju zamykającego: elementy ' +
+                fixed(data.area_check.elements_km2, 6) + ' km², zlewnia ' +
                 fixed(data.area_check.watershed_km2, 6) + ' km².';
         }
 
@@ -1097,7 +1152,7 @@
 
         els.kinds.textContent = '';
         KINDS.forEach(function (kind) {
-            if (!data.subcatchments.some(function (s) { return shownKind(s.kind) === kind; })) return;
+            if (!data.subcatchments.some(function (s) { return s.kind === kind; })) return;
             var item = el('li', 'net-kind-item');
             item.appendChild(el('span', 'net-swatch ' + kind));
             var label = el('span', null, KIND_LABELS[kind]);
@@ -1109,32 +1164,72 @@
         renderTree(d);
     }
 
-    // ===== The tree, from A upward =====
+    // ===== The tree, from the closing section upward =====
 
     /**
-     * The rows of the tree: at a junction the branches joining from the side come
-     * first, one step in, then the trunk goes on at the same depth, so the main river
-     * reads down the list from A to its top.
+     * The rows of the tree, from the closing section upward. The inflows of a node form
+     * its branches: a reach with its przyrzecze and the node above it, a dopływ, or a
+     * node entered without a reach. Each branch reads the same way, przyrzecze, reach,
+     * then the node above it with everything that node receives, so one branch is
+     * listed whole before the next. At a node the branches joining from the side come
+     * first, one step in, then the trunk (the branch of the node's first inflow, the
+     * main river) goes on at the same depth. A node entered without a reach carries the
+     * node it enters (`into`).
      */
     function treeRows(data) {
-        var byId = {};
-        data.subcatchments.forEach(function (s) { byId[s.id] = { type: 'element', item: s }; });
-        data.reaches.forEach(function (r) { byId[r.id] = { type: 'reach', item: r }; });
-        data.junctions.forEach(function (j) { byId[j.id] = { type: 'junction', item: j }; });
+        var items = {};
+        data.subcatchments.forEach(function (s) { items[s.id] = { type: 'element', item: s }; });
+        data.reaches.forEach(function (r) { items[r.id] = { type: 'reach', item: r }; });
+        data.junctions.forEach(function (j) { items[j.id] = { type: 'junction', item: j }; });
+        // The przyrzecze of each reach, which enters the reach's lower node beside it
+        var przyrzecze = {};
+        data.subcatchments.forEach(function (s) {
+            if (s.kind === 'intermediate' && s.reach) przyrzecze[s.reach] = s.id;
+        });
         var rows = [];
-        function walk(id, depth) {
-            var node = byId[id];
-            if (!node) return;
-            rows.push({ id: id, type: node.type, item: node.item, depth: depth });
-            if (node.type === 'junction') {
-                node.item.inflows.slice(1).forEach(function (branch) { walk(branch, depth + 1); });
-                if (node.item.inflows.length) walk(node.item.inflows[0], depth);
-            } else if (node.type === 'reach') {
-                walk(node.item.from, depth);
+        function row(id, depth, into) {
+            rows.push({ id: id, type: items[id].type, item: items[id].item, depth: depth, into: into || null });
+        }
+        function branch(id, depth, node) {
+            var it = items[id];
+            if (!it) return;
+            if (it.type === 'reach') {
+                if (przyrzecze[id]) row(przyrzecze[id], depth);
+                row(id, depth);
+                walk(it.item.from, depth, null);
+            } else if (it.type === 'junction') {
+                walk(id, depth, node);
+            } else {
+                row(id, depth);
             }
         }
+        function walk(id, depth, into) {
+            var it = items[id];
+            if (!it) return;
+            if (it.type !== 'junction') {
+                branch(id, depth, null);
+                return;
+            }
+            row(id, depth, into);
+            // A przyrzecze goes with its reach, not as a branch of its own
+            var inflows = it.item.inflows.filter(function (inflow) {
+                var s = items[inflow];
+                return !(s && s.type === 'element' && s.item.kind === 'intermediate' && s.item.reach && items[s.item.reach]);
+            });
+            if (!inflows.length) return;
+            var trunk = inflows.indexOf(it.item.inflows[0]) >= 0 ? it.item.inflows[0] : trunkOf(it.item.inflows[0], inflows);
+            inflows.forEach(function (inflow) {
+                if (inflow !== trunk) branch(inflow, depth + 1, id);
+            });
+            branch(trunk, depth, id);
+        }
+        // A node's first inflow is a przyrzecze only beside its reach: the reach is the trunk
+        function trunkOf(first, inflows) {
+            var s = items[first];
+            return s && s.item.reach && inflows.indexOf(s.item.reach) >= 0 ? s.item.reach : inflows[0];
+        }
         var outlet = data.junctions.filter(function (j) { return j.kind === 'outlet'; })[0];
-        if (outlet) walk(outlet.id, 0);
+        if (outlet) walk(outlet.id, 0, null);
         return rows;
     }
 
@@ -1153,16 +1248,18 @@
             var th = el('th');
             th.scope = 'row';
             th.style.setProperty('--depth', String(row.depth));
-            var kind = row.type === 'element' ? shownKind(row.item.kind) : row.type;
+            var kind = row.type === 'element' ? row.item.kind : row.type;
             var id = el('span', 'net-id ' + kind, row.id);
             if (row.type === 'junction') {
                 th.appendChild(id);
-                th.appendChild(document.createTextNode(' ' + junctionText(row.item)));
+                // A node entered without a reach: „J4 → J1”
+                var into = row.into ? ' → ' + row.into + ' ·' : '';
+                th.appendChild(document.createTextNode(into + ' ' + junctionText(row.item)));
                 tr.appendChild(th);
-                // The closing section's row carries A's whole catchment
+                // The closing section's row carries the whole catchment
                 if (row.item.kind === 'outlet') {
                     valueCells(tr, fixed(d.data.area_km2, 2), 'km²');
-                    tr.title = WHOLE_A + ': ' + fixed(d.data.area_km2, 2) + ' km²';
+                    tr.title = WHOLE + ': ' + fixed(d.data.area_km2, 2) + ' km²';
                 } else {
                     valueCells(tr, '', '');
                 }
@@ -1226,10 +1323,9 @@
         els.reach.textContent = '';
         if (element) {
             els.selectionTitle.textContent = element.id + ' · ' + elementText(element, d.data);
-            var shown = shownKind(element.kind);
-            var kind = el('span', 'net-kind ' + shown, KIND_LABELS[shown]);
+            var kind = el('span', 'net-kind ' + element.kind, KIND_LABELS[element.kind]);
             els.selectionKind.appendChild(kind);
-            Hydrograf.info.attach(kind, KIND_INFO[shown]);
+            Hydrograf.info.attach(kind, KIND_INFO[element.kind]);
             var text = ' · ' + fixed(elementArea(element), 2) + ' km²';
             if (d.full) {
                 text += ' · CN ' + fixed((element.watershed.morphometry || {}).cn, 1) + ' · do ' + element.to +
@@ -1274,7 +1370,7 @@
         if (state.selected) select(state.selected);
     }
 
-    /** Leaving the mode: its layers leave the map and its section the panel; nothing is lost. */
+    /** Leaving the option: its layers leave the map and its section the panel; nothing is lost. */
     function leave() {
         state.active = false;
         els.section.hidden = true;

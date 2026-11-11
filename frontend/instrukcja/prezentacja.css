@@ -1,0 +1,303 @@
+/*
+ * Standalone Hydrograf presentation: 16:9 slides (docs/Hydrograf-prezentacja.html).
+ * Colours, fonts and radii come from tokens.css. The app's scrolling user guide has
+ * its own stylesheet; the presentation retains its independent slide layout.
+ */
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--line-height);
+}
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* The scrolling deck; slides size against it */
+.deck {
+    container: deck / size;
+    padding: var(--space-6) 0;
+}
+/* Standalone copy: no shell, the deck itself scrolls */
+@media screen { .standalone .deck { height: 100%; overflow-y: auto; } }
+
+.slide {
+    --slide-w: min(100cqw - var(--space-12), (100cqh - var(--space-12)) * 16 / 9);
+    container-type: inline-size;
+    width: var(--slide-w);
+    height: calc(var(--slide-w) * 9 / 16);
+    margin: 0 auto var(--space-6);
+    /* Padding from the slide width (a % would follow the deck width) */
+    padding: calc(var(--slide-w) * 0.042) calc(var(--slide-w) * 0.056) calc(var(--slide-w) * 0.054);
+    position: relative;
+    overflow: hidden;
+    display: flex; flex-direction: column; gap: 2.4%;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    scroll-margin-top: var(--space-6);
+}
+.slide::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1.15%;
+    background: linear-gradient(90deg, var(--tool-hydrograf) 0 74%, var(--accent-green) 74%);
+}
+.slide h1, .slide h2, .slide h3, .slide p { margin: 0; }
+.slide h1 { font-size: clamp(30px, 5.5cqw, 84px); letter-spacing: -0.045em; line-height: 1.05; color: var(--tool-hydrograf); }
+.slide h2 { font-size: clamp(22px, 3.1cqw, 50px); letter-spacing: -0.03em; line-height: 1.12; color: var(--text); }
+.slide sub { font-size: 0.72em; line-height: 0; }
+
+.kicker {
+    margin: 0;
+    font-size: clamp(11px, 1.35cqw, 22px); letter-spacing: 0.13em; text-transform: uppercase;
+    font-weight: var(--weight-bold); color: var(--tool-hydrograf);
+}
+.lead { max-width: 83%; font-size: clamp(15px, 2.1cqw, 32px); line-height: 1.35; color: var(--text); }
+.minor { color: var(--text-2); font-size: clamp(12px, 1.3cqw, 20px); line-height: 1.3; }
+.rule { width: 12%; height: 1%; border-radius: var(--radius-pill); background: var(--accent-green); }
+.footer {
+    position: absolute; left: 5.6%; right: 5.6%; bottom: 2.6%;
+    display: flex; justify-content: space-between; align-items: center; gap: 2cqw;
+    color: var(--text-3); font-size: clamp(10px, 1cqw, 16px); font-weight: var(--weight-bold); letter-spacing: 0.035em;
+}
+
+/* Cover slide: mark, tool name, development status */
+.cover { gap: 3%; }
+.cover::after {
+    content: ""; position: absolute; width: 48%; aspect-ratio: 1; right: -14%; bottom: -50%;
+    border: 2.5cqw solid var(--surface-2); border-radius: 50%; pointer-events: none;
+}
+.cover-title { display: flex; align-items: center; gap: 2.2cqw; }
+.cover-mark { width: clamp(40px, 6.5cqw, 100px); height: auto; flex: none; }
+.cover .lead { color: var(--text-2); }
+.cover .minor { max-width: 80%; }
+.dev {
+    display: inline-block; align-self: flex-start;
+    padding: 0.45em 0.9em;
+    border: 3px solid var(--warn); border-radius: var(--radius-pill);
+    background: var(--warn-bg); color: var(--warn-ink);
+    font-size: clamp(16px, 2.35cqw, 36px); font-weight: var(--weight-bold); letter-spacing: 0.035em;
+}
+
+/* Layouts */
+.grid { display: grid; gap: 1.6cqw; flex: 1; min-height: 0; }
+.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid.rows { grid-template-rows: repeat(2, minmax(0, 1fr)); }
+/* Screenshot beside text: the image fills the row height at its own proportions */
+.split { display: flex; gap: 2.2cqw; flex: 1; min-height: 0; }
+.stack, .steps-list { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1.1cqw; }
+/* Text in two columns (lists, map symbols) */
+.cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.6cqw; flex: 1; min-height: 0; }
+.col { display: flex; flex-direction: column; gap: 1.1cqw; min-width: 0; min-height: 0; }
+.col .card { flex: 1 1 auto; justify-content: center; }
+
+.card {
+    display: flex; flex-direction: column; gap: 0.5cqw;
+    padding: 1.2cqw 1.7cqw;
+    background: var(--surface-2);
+    border-left: 6px solid var(--tool-hydrograf);
+    border-radius: var(--radius-lg);
+}
+.card p, .step p { font-size: clamp(11px, 1.5cqw, 23px); line-height: 1.36; color: var(--text); }
+.grid .card { justify-content: center; }
+.grid .card p, .grid .step p { font-size: clamp(11px, 1.6cqw, 25px); }
+#tryby .grid .card p { line-height: 1.22; }
+.stack .card { flex: 1 1 auto; min-height: 0; justify-content: center; padding: 0.9cqw 1.7cqw; }
+.slide .label {
+    font-size: clamp(10px, 1.2cqw, 19px); font-weight: var(--weight-bold); line-height: 1.25;
+    color: var(--tool-hydrograf); text-transform: uppercase; letter-spacing: 0.08em;
+}
+.hint {
+    padding: 0.85cqw 1.7cqw;
+    font-size: clamp(11px, 1.38cqw, 21px); line-height: 1.32;
+    background: var(--info-bg); color: var(--text);
+    border-left: 5px solid var(--info);
+    border-radius: var(--radius-lg);
+}
+.hint.warn { background: var(--warn-bg); border-left-color: var(--warn); }
+.hint.warn strong { color: var(--warn-ink); }
+.slide code, .slide kbd {
+    padding: 0 0.3em;
+    font-family: var(--font-mono); font-size: 0.88em;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-xs);
+}
+.slide kbd { border-color: var(--line-2); border-bottom-width: 2px; white-space: nowrap; }
+
+/* Screenshots */
+.app-shot {
+    display: block; min-height: 0;
+    object-fit: contain;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+}
+/* Portrait panel shots: full row height */
+.fit-shot { flex: none; height: 100%; width: auto; max-width: 64%; }
+/* Landscape screen shots: half the slide, as tall as their proportions allow */
+.wide-shot { flex: none; align-self: flex-start; width: 53%; height: auto; max-height: 100%; }
+/* Left part of a wide shot (panel and legend), larger */
+.crop-left { width: 42%; aspect-ratio: 1; object-fit: cover; object-position: left center; }
+.strip-shot { flex: none; align-self: center; width: 50%; height: auto; }
+
+/* Numbered steps */
+.number { color: var(--tool-hydrograf); font-weight: var(--weight-bold); font-size: clamp(20px, 2.8cqw, 44px); line-height: 1; }
+.step {
+    display: flex; flex-direction: column; gap: 0.7cqw;
+    padding: 1.5cqw 1.7cqw;
+    background: var(--surface-2);
+    border-top: 7px solid var(--accent-green);
+    border-radius: var(--radius-lg);
+}
+.step strong { color: var(--text); font-size: clamp(13px, 1.75cqw, 27px); line-height: 1.15; }
+.steps-list .step {
+    flex: 1; min-height: 0;
+    display: grid; grid-template-columns: 3.4cqw 1fr; grid-template-rows: auto auto; gap: 0.35cqw 1.4cqw;
+    align-content: center;
+    padding: 0.8cqw 1.7cqw;
+    border-top-width: 4px;
+}
+.steps-list .number { grid-row: 1 / 3; font-size: clamp(18px, 2.3cqw, 36px); }
+.steps-list .step strong { font-size: clamp(12px, 1.6cqw, 25px); }
+.steps-list .step p { font-size: clamp(11px, 1.4cqw, 21px); line-height: 1.32; }
+
+/* Table of contents */
+.toc { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 1.1cqw; flex: 1; min-height: 0; }
+.toc a {
+    display: flex; flex-direction: column; justify-content: center; gap: 0.3cqw;
+    padding: 0.8cqw 1.5cqw;
+    background: var(--surface-2);
+    border-left: 6px solid var(--tool-hydrograf);
+    border-radius: var(--radius-lg);
+    color: var(--text-2); text-decoration: none;
+    font-size: clamp(11px, 1.3cqw, 20px); line-height: 1.3;
+}
+.toc a:hover { background: var(--accent-soft); }
+.toc-head { display: flex; align-items: baseline; gap: 0.8cqw; }
+.toc-num { color: var(--tool-hydrograf); font-weight: var(--weight-bold); font-size: clamp(14px, 1.9cqw, 30px); }
+.toc strong { color: var(--text); font-size: clamp(13px, 1.75cqw, 27px); line-height: 1.2; }
+.toc-pages { color: var(--text-3); font-weight: var(--weight-bold); font-size: clamp(10px, 1.05cqw, 16px); letter-spacing: 0.06em; text-transform: uppercase; }
+/* Plain-language start: a full-width entry above the chapters */
+.toc a.toc-start { grid-column: 1 / -1; border-left-color: var(--accent-green); background: var(--accent-soft); }
+.toc-start .toc-num { font-size: clamp(12px, 1.5cqw, 24px); }
+
+/* Term and description lists */
+.defs { margin: 0; display: flex; flex-direction: column; }
+.defs > div {
+    display: grid; grid-template-columns: minmax(0, 36%) minmax(0, 1fr); gap: 1.2cqw;
+    padding: 0.75cqw 0;
+    border-bottom: 1px solid var(--line);
+}
+.defs > div:last-child { border-bottom: 0; }
+.defs dt { font-weight: var(--weight-bold); color: var(--text); }
+.defs dd { margin: 0; color: var(--text-2); }
+.defs dt, .defs dd { font-size: clamp(11px, 1.45cqw, 22px); line-height: 1.3; }
+/* Long lists (slide 17): narrower term column and rows so the list clears the note */
+.defs-tight > div { grid-template-columns: minmax(0, 28%) minmax(0, 1fr); padding: 0.5cqw 0; }
+
+/* Map symbols: the same tokens the map draws with */
+.symbols { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; justify-content: space-around; gap: 1.4cqw; flex: 1; }
+.symbols li {
+    display: grid; grid-template-columns: 4.4cqw minmax(0, 1fr); gap: 1.4cqw; align-items: center;
+    color: var(--text-2); font-size: clamp(11px, 1.5cqw, 23px); line-height: 1.3;
+}
+.symbols strong { color: var(--text); }
+.sym { display: block; justify-self: center; }
+.sym-area {
+    width: 3.4cqw; height: 2.3cqw;
+    border: 2px solid var(--tool-hydrograf); border-radius: 3px;
+    background: color-mix(in srgb, var(--tool-hydrograf) 14%, transparent);
+}
+.sym-ring { width: 1.6cqw; height: 1.6cqw; border: 3px solid var(--tool-hydrograf); border-radius: 50%; background: var(--surface); }
+.sym-pair { width: 3.6cqw; display: flex; flex-direction: column; gap: 0.6cqw; }
+.sym-line { display: block; border-top: 3px solid var(--info); }
+.sym-line.faint { border-top-width: 2px; opacity: 0.45; }
+/* As the map: long dashes (12 on, 8 off) and round dots 8 apart */
+.sym-dash { width: 3.6cqw; height: 3px; background: repeating-linear-gradient(90deg, var(--warn) 0 12px, transparent 12px 20px); }
+.sym-dot { width: 3.6cqw; height: 4px; background: radial-gradient(circle, var(--warn) 1.6px, transparent 2.2px) 0 0 / 8px 4px repeat-x; }
+
+/* Side-by-side comparison */
+.compare { width: 100%; border-collapse: collapse; font-size: clamp(11px, 1.45cqw, 22px); line-height: 1.32; }
+.compare th, .compare td { padding: 1cqw 1.3cqw; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+.compare thead th {
+    color: var(--tool-hydrograf); border-bottom: 2px solid var(--tool-hydrograf);
+    font-size: clamp(10px, 1.12cqw, 18px); text-transform: uppercase; letter-spacing: 0.07em;
+}
+.compare tbody th { width: 17%; color: var(--text); }
+.compare td { color: var(--text-2); }
+.compare tbody tr:nth-child(odd) { background: var(--surface-2); }
+
+/* ---------- Phone: less room around the slides ---------- */
+@media screen and (max-width: 860px) {
+    .deck { padding: var(--space-2) 0; }
+}
+
+/* ---------- Deck too small for a 16:9 slide: slides become a readable column ---------- */
+@container deck (max-width: 948px) or (max-height: 554px) {
+    .slide {
+        width: min(100% - var(--space-4), 640px); height: auto;
+        margin: 0 auto var(--space-4);
+        padding: var(--space-6) 20px; gap: var(--space-4);
+        border-radius: var(--radius-md);
+    }
+    .slide::before { height: 5px; }
+    .slide h1 { font-size: 34px; }
+    .slide h2 { font-size: 25px; }
+    .kicker, .slide .label, .compare thead th { font-size: 12px; }
+    .lead { font-size: 18px; max-width: none; }
+    .minor { font-size: 14px; }
+    .cover .minor { max-width: none; }
+    .dev { font-size: 18px; }
+    .grid, .split, .cols, .toc { display: flex; flex-direction: column; flex: none; gap: var(--space-3); }
+    .card, .step, .stack .card, .steps-list .step, .toc a {
+        flex: none; padding: var(--space-4); gap: 6px;
+        border-left-width: 3px; border-top-width: 3px; border-radius: var(--radius-md);
+    }
+    .card p, .step p, .grid .card p, .grid .step p, .steps-list .step p, .hint, .toc a,
+    .defs dt, .defs dd, .symbols li, .compare { font-size: var(--text-site); }
+    .step strong, .steps-list .step strong, .toc strong { font-size: 17px; }
+    .number { font-size: 26px; }
+    .steps-list .number, .toc-num { font-size: 22px; }
+    .toc-pages { font-size: 11px; }
+    .hint { padding: var(--space-3) var(--space-4); }
+    .rule { height: 5px; }
+    .app-shot, .fit-shot, .wide-shot, .strip-shot { width: 100%; max-width: 100%; height: auto; max-height: none; flex: none; align-self: stretch; }
+    .crop-left { aspect-ratio: auto; object-fit: contain; }
+    .stack, .steps-list, .col { gap: var(--space-3); }
+    .steps-list .step { grid-template-columns: 32px 1fr; column-gap: 10px; row-gap: var(--space-1); }
+    .defs > div { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: var(--space-2) 0; }
+    .symbols { gap: var(--space-3); }
+    .symbols li { grid-template-columns: 44px minmax(0, 1fr); gap: var(--space-3); }
+    .sym-area { width: 34px; height: 24px; }
+    .sym-ring { width: 16px; height: 16px; }
+    .sym-pair, .sym-dash, .sym-dot { width: 40px; }
+    .sym-pair { gap: 6px; }
+    .compare thead { display: none; }
+    .compare, .compare tbody, .compare tr, .compare th, .compare td, .compare tbody th { display: block; width: auto; }
+    .compare tr { padding: var(--space-2) 0; border-bottom: 1px solid var(--line); }
+    .compare tbody tr:nth-child(odd) { background: transparent; }
+    .compare th, .compare td { padding: var(--space-1) 0; border: 0; }
+    .compare td::before { content: attr(data-label) ": "; color: var(--tool-hydrograf); font-weight: var(--weight-bold); }
+    .footer { position: static; margin-top: var(--space-2); gap: var(--space-3); font-size: var(--text-xs); }
+}
+
+/* ---------- Print: one slide per page, no shell ---------- */
+@page { size: 13.333in 7.5in; margin: 0; }
+@media print {
+    html, body { height: auto; overflow: visible; }
+    .shell { display: block; height: auto; }
+    .topbar, .rail { display: none; }
+    .deck { container-type: normal; overflow: visible; padding: 0; }
+    .slide {
+        --slide-w: 13.333in;
+        width: var(--slide-w); height: 7.5in; margin: 0;
+        border: 0; border-radius: 0; box-shadow: none;
+        break-after: page; page-break-after: always;
+    }
+    .slide:last-of-type { break-after: auto; page-break-after: auto; }
+}

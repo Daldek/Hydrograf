@@ -2,16 +2,16 @@
 Network delineation endpoints (ADR-080, ADR-081).
 
 POST /api/delineate-network delineates the network of subcatchments, reaches and
-junctions of a closing section A and the control points above it
+nodes of a closing section and the control points above it
 (``core.network_delineation``) and hands it to Hydrolog as one ``nogat-handoff/1``
-(``core.handoff.build_network_handoff``). A network reads the saved rasters of A's
-whole catchment, so each worker delineates one network at a time: a request waits for
-the one before it at most NETWORK_LOCK_WAIT_S, then gets 503 (D13).
+(``core.handoff.build_network_handoff``). A network reads the saved rasters of the
+closing section's whole catchment, so each worker delineates one network at a time: a
+request waits for the one before it at most NETWORK_LOCK_WAIT_S, then gets 503 (D13).
 
 POST /api/delineate-network/preview composes the same network on the catchment graph
 while the person places the points (``core.network_preview``): the same ids, the areas
 and the reach lengths of the full run, the outlines of the sub-catchment polygons. It
-reads no window of A's catchment and takes no lock.
+reads no window of the closing section's catchment and takes no lock.
 """
 
 import logging
@@ -29,6 +29,7 @@ from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2, M_PE
 from core.database import get_db
 from core.errors import HydrografError, InternalError, StoreUnavailableError
 from core.handoff import build_network_handoff, flat_reach_lag_min
+from core.network_tree import Junction
 from models.schemas import (
     DelineateNetworkPreviewResponse,
     DelineateNetworkRequest,
@@ -67,16 +68,17 @@ def delineate_network(
 ) -> DelineateNetworkResponse:
     """Delineate the network of a closing section and the points above it.
 
-    Every point, A included, snaps to the nearest stream cell of `threshold_m2` within
-    100 m; a point at most 50 m above a junction, where its path meets another branch
-    of the network (its tributary's mouth), moves to the junction. The flow paths of
-    the points form a tree on the main river of each point: its subcatchments
-    (headwaters, tributaries and the przyrzecze of each reach) are made
-    of the 1 ha sub-catchments, split where a point lies inside one, and add up to
-    A's catchment; each gets the parameters of a delineated watershed, each reach the
-    difference of the flow distances of its ends as its length and the NMT at its
-    ends for its slope. One network at a time per worker: a request waits 15 s for
-    the one before it.
+    Every point, the closing section included, snaps to the nearest stream cell of
+    `threshold_m2` within 100 m, and a point at most 50 m from a node of that network
+    along the stream (a confluence of its streams) moves to the node. Every point is
+    a node of the network, J at a confluence and P elsewhere: a point at a confluence
+    receives every stream that joins there, a point elsewhere splits its river. The
+    subcatchments (the rivers that enter a node with no reach, and the przyrzecze of
+    each reach) are made of the 1 ha sub-catchments, split where a point lies inside
+    one away from a node, and add up to the closing section's catchment; each gets the
+    parameters of a delineated watershed, each reach the difference of the flow
+    distances of its ends as its length and the NMT at its ends for its slope. One
+    network at a time per worker: a request waits 15 s for the one before it.
     """
     if not _network_lock.acquire(timeout=NETWORK_LOCK_WAIT_S):
         raise StoreUnavailableError(
@@ -122,13 +124,14 @@ def delineate_network_preview(
 ) -> DelineateNetworkPreviewResponse:
     """Compose the network of a closing section and its points, without measuring it.
 
-    The points snap and the tree is built as for `POST /api/delineate-network`, so the
-    ids of the subcatchments, reaches and junctions, the places of the points and the
-    errors of the composition are the same; each subcatchment gets its area (exact to
-    the cell) and an outline from the 1 ha sub-catchments (approximate where a point
-    splits one: the characteristics split it by the raster), each reach the difference
-    of the flow distances of its ends. No window of A's catchment is read and no lock
-    taken: a fraction of a second for any network of the data.
+    The points snap and move to the nodes, and the tree is built, as for
+    `POST /api/delineate-network`, so the ids of the nodes, subcatchments and reaches,
+    the places of the points and the errors of the composition are the same; each
+    subcatchment gets its area (exact to the cell) and an outline from the 1 ha
+    sub-catchments (approximate where a point away from a node splits one: the
+    characteristics split it by the raster), each reach the difference of the flow
+    distances of its ends. No window of the closing section's catchment is read and
+    no lock taken: a fraction of a second for any network of the data.
     """
     try:
         cg = loaded_catchment_graph(db)
@@ -201,7 +204,7 @@ def _response(
                 latitude=point.latitude,
                 longitude=point.longitude,
                 snap_distance_m=point.snap_distance_m,
-                at_mouth=point.at_mouth,
+                at_node=point.at_node,
                 node=point.node,
             )
             for point in network.points
@@ -239,14 +242,7 @@ def _response(
             for item in network.reaches
         ],
         junctions=[
-            NetworkJunctionInfo(
-                id=item.junction.id,
-                kind=item.junction.kind,
-                point=item.junction.point,
-                latitude=item.latitude,
-                longitude=item.longitude,
-                inflows=list(item.junction.inflows),
-            )
+            _junction_info(item.junction, item.latitude, item.longitude, names)
             for item in network.junctions
         ],
         notices=notices,
@@ -274,7 +270,7 @@ def _preview_response(
                 latitude=item.point.latitude,
                 longitude=item.point.longitude,
                 snap_distance_m=item.point.snap_distance_m,
-                at_mouth=item.point.at_mouth,
+                at_node=item.point.at_node,
                 node=item.point.node,
                 inside_unit=item.inside_unit,
             )
@@ -320,14 +316,7 @@ def _preview_response(
             for item in preview.reaches
         ],
         junctions=[
-            NetworkJunctionInfo(
-                id=item.junction.id,
-                kind=item.junction.kind,
-                point=item.junction.point,
-                latitude=item.latitude,
-                longitude=item.longitude,
-                inflows=list(item.junction.inflows),
-            )
+            _junction_info(item.junction, item.latitude, item.longitude, names)
             for item in preview.junctions
         ],
         notices=(
@@ -336,6 +325,21 @@ def _preview_response(
             else []
         )
         + _reach_notices(preview.reach_notices),
+    )
+
+
+def _junction_info(
+    junction: Junction, latitude: float, longitude: float, names: dict[str, str]
+) -> NetworkJunctionInfo:
+    """Describe a node of a network, with the name of its point."""
+    return NetworkJunctionInfo(
+        id=junction.id,
+        kind=junction.kind,
+        point=junction.point,
+        name=names.get(junction.point) if junction.point is not None else None,
+        latitude=latitude,
+        longitude=longitude,
+        inflows=list(junction.inflows),
     )
 
 

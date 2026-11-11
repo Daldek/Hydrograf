@@ -695,7 +695,10 @@ def _compute_lc_along_channel(
     """Compute Lc along the main channel (Snyder method).
 
     Queries stream geometries from DB, merges into a LineString, and
-    projects the watershed centroid onto it to get along-channel distance.
+    projects the watershed centroid onto it to get the distance along the
+    channel from the outlet. The stored stream lines run from their upstream
+    end, so the distance is measured from the end of the merged line that
+    lies nearer the outlet.
 
     Returns Lc in km, or None on failure.
     """
@@ -735,8 +738,13 @@ def _compute_lc_along_channel(
         if merged.geom_type != "LineString" or merged.is_empty:
             return None
 
-        # Project centroid onto the merged channel
+        # Project centroid onto the merged channel, from its outlet end
         lc_m = merged.project(centroid)
+        outlet = Point(outlet_x, outlet_y)
+        if Point(merged.coords[-1]).distance(outlet) < Point(merged.coords[0]).distance(
+            outlet
+        ):
+            lc_m = merged.length - lc_m
         return float(round(lc_m / 1000, 4))
 
     except Exception as e:
@@ -928,9 +936,16 @@ def build_morph_dict_from_graph(
     elev_min = stats.get("elevation_min_m")
     elev_max = stats.get("elevation_max_m")
 
-    # Channel length and slope from main channel trace (not total network)
+    # Channel length and slope from main channel trace (not total network), from
+    # the outlet node of ``upstream_indices``: after an escalation to a coarser
+    # threshold (cascade_escalate) ``segment_idx`` is the clicked segment of the
+    # request's threshold, which is no node of ``threshold_m2``
     main_channel_nodes = []
-    outlet_internal_idx = cg.lookup_by_segment_idx(threshold_m2, segment_idx)
+    outlet_internal_idx = (
+        outlet_idx
+        if outlet_idx is not None
+        else cg.lookup_by_segment_idx(threshold_m2, segment_idx)
+    )
     if outlet_internal_idx is not None:
         main_ch = cg.trace_main_channel(outlet_internal_idx, upstream_indices)
         channel_length_km = main_ch.get("main_channel_length_km")

@@ -1,6 +1,6 @@
 /**
  * Hydrograf Welcome — a short factual introduction (scope, methods, data area)
- * shown on the first visit and from the "Instrukcja" item of the navigation rail.
+ * shown on the first visit and from the top-bar guide button.
  * The data area comes from /data/instance.json (Hydrograf.instance); without it the
  * paragraph keeps the neutral text of index.html.
  */
@@ -72,8 +72,8 @@
             saveHidden(els.hide.checked);
         });
 
-        // The rail's guide link opens the introduction; modified clicks keep the plain link
-        var guideLink = document.getElementById('rail-guide');
+        // A plain click opens the introduction; modified clicks follow the guide link
+        var guideLink = document.getElementById('top-guide');
         if (guideLink) {
             guideLink.addEventListener('click', function (e) {
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;

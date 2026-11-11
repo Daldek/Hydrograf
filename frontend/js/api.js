@@ -264,7 +264,7 @@
 
     /**
      * Network of subcatchments, reaches and junctions at a closing section and
-     * the points above it (mode „Sieć zlewni”, POST /api/delineate-network).
+     * the points above it („Wybierz zlewnię” → „Sieć zlewni”, POST /api/delineate-network).
      *
      * @param {Object} body - { outlet: { id, latitude, longitude, name? },
      *     points: [{ id, latitude, longitude, name? }], threshold_m2 }
@@ -283,7 +283,7 @@
     }
 
     /**
-     * Preview of the network of the same request (mode „Sieć zlewni”, POST
+     * Preview of the network of the same request („Wybierz zlewnię” → „Sieć zlewni”, POST
      * /api/delineate-network/preview): the snapped points, the tree with the area of
      * every element and the length of every reach, the outlines of the elements; no
      * parameters, no hand-off.

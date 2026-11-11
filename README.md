@@ -17,8 +17,9 @@ Hydrograf is a web application for watershed delineation and design hydrographs 
   flood depths from Hydraulik) on an interactive map, and cut a terrain profile along a line
   with the water level of the results you show.
 - Work in a map interface in the Nogat visual identity: light and dark theme, a phone
-  layout, (i) explanations with formulas next to the results, a welcome dialog and a user
-  guide at `/instrukcja/`.
+  layout, (i) explanations with formulas next to the results, and a welcome dialog. The
+  "Instrukcja" button in the top bar opens that dialog and links to the scrolling guide
+  at `/instrukcja/`.
 - Run your own instance, for a municipality or a consultancy: the data stay in your
   PostGIS database.
 
@@ -46,9 +47,10 @@ docker compose up -d      # PostGIS, API and web server
 ```
 
 The map is at `http://localhost:8080` (the port is `HYDROGRAF_PORT`), the admin panel at
-`/admin` (it asks for the admin key), the user guide at `/instrukcja/` (on the test server
-https://hydrograf-test.debever.pl/instrukcja), the API under `/api` and the health check at
-`/health`. The web server listens on the loopback interface only
+`/admin` (it asks for the admin key), and the scrolling user guide at `/instrukcja/`
+(on the test server: https://hydrograf-test.debever.pl/instrukcja). The guide is linked
+from the map's top-bar "Instrukcja" button via the welcome dialog. The API is under
+`/api` and the health check at `/health`. The web server listens on the loopback interface only
 (`127.0.0.1:${HYDROGRAF_PORT:-8080}`); the test server is reached through a Cloudflare
 Tunnel. In development `docker-compose.override.yml` is loaded automatically (hot
 reload, the code mounted from `./backend`); production runs
@@ -267,9 +269,10 @@ the attribution texts. Downloaded and derived data are written to `data/` and `c
   [Obserwator](https://github.com/Daldek/Hydrograf/blob/main/docs/integrations/OBSERWATOR.md)
 - [Current state and next steps](https://github.com/Daldek/Hydrograf/blob/main/docs/PROGRESS.md)
   and [backlog](https://github.com/Daldek/Hydrograf/blob/main/docs/BACKLOG.md)
-- For users: the guide at `/instrukcja/` of a running instance (`frontend/instrukcja/`) and
-  the [presentation](https://github.com/Daldek/Hydrograf/blob/main/docs/Hydrograf-prezentacja.html)
-  (also as PDF)
+- For users: the scrolling guide at `/instrukcja/` of a running instance
+  (`frontend/instrukcja/`) and the separate
+  [slide presentation](https://github.com/Daldek/Hydrograf/blob/main/docs/Hydrograf-prezentacja.html)
+  (also as PDF; the PDF is not regenerated for guide edits).
 
 ## Development
 

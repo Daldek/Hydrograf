@@ -824,7 +824,7 @@
     // each with a swatch in the style of its layer.
 
     var watershedLegend = null;
-    // The mode „Sieć zlewni” takes the watershed off the map (setWatershedShown)
+    // The option „Sieć zlewni” takes the watershed off the map (setWatershedShown)
     var watershedHidden = false;
 
     function escapeAttr(value) {
@@ -912,8 +912,8 @@
     }
 
     /**
-     * Take the watershed of „Wybierz zlewnię” off the map, or put it back, without
-     * clearing it: the mode „Sieć zlewni” shows its network alone (js/network.js).
+     * Take the watershed of „Jedna zlewnia” off the map, or put it back, without
+     * clearing it: the option „Sieć zlewni” shows its network alone (js/network.js).
      * @param {boolean} shown
      */
     function setWatershedShown(shown) {

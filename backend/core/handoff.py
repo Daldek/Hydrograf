@@ -12,9 +12,11 @@ The values are the computation's own, never rounded, so the same version of Hydr
 gives the same result; the provenance names where the inputs came from.
 
 A network of POST /api/delineate-network (``build_network_handoff``) is its
-subcatchments, reaches, junctions and outlet in one payload, without rainfall, time
+subcatchments, reaches, nodes and outlet ``O`` in one payload, without rainfall, time
 step, result and the sections of the reaches, which the person gives in Hydrolog's
-„Sieć i trasowanie”; ``node_provenance`` gives the origin of every node but the outlet.
+„Sieć i trasowanie”; its nodes are junctions named by where they lie, ``J`` at a
+confluence and ``P`` elsewhere, never by the ids of the request, and
+``node_provenance`` gives the origin of every node but the outlet.
 """
 
 import re
@@ -34,6 +36,7 @@ if TYPE_CHECKING:
         NetworkReach,
         NetworkSubcatchment,
     )
+    from core.network_tree import Junction
 
 HANDOFF_SCHEMA: Final = "nogat-handoff/1"
 PAYLOAD_SCHEMA: Final = "hydrolog-network/1"
@@ -492,14 +495,15 @@ def build_network_handoff(
     names: Mapping[str, str],
     created_at: datetime | None = None,
 ) -> dict[str, Any]:
-    """Return the hand-off ``nogat-handoff/1`` of a network (ADR-080, D14).
+    """Return the hand-off ``nogat-handoff/1`` of a network (ADR-080, D14, N7).
 
     Parameters
     ----------
     network : Network
         The delineated network (``core.network_delineation.delineate_network``).
     names : Mapping[str, str]
-        The names of the points that have one, by the id of the point.
+        The names of the points that have one, by the id of the point in the
+        request; those ids, the client's handles, stay out of the hand-off (N1).
     created_at : datetime, optional
         When the hand-off is written (now).
 
@@ -511,19 +515,18 @@ def build_network_handoff(
         of each; subcatchments with the ``watershed`` of their morphometry (the area
         exact to the cell) and the ``curve-number`` runoff with Hydrolog's defaults,
         Muskingum-Cunge reaches with a length and a slope and no section (a reach of
-        the minimum slope a lag of FLAT_REACH_CELERITY_M_PER_S), junctions
-        and the outlet ``OUT``; no rainfall, time step or result. ``provenance``
-        names A's snapped place, ``node_provenance`` the origin of every
-        subcatchment, reach and junction.
+        the minimum slope a lag of FLAT_REACH_CELERITY_M_PER_S), a junction for every
+        node (``J`` at a confluence, ``P`` elsewhere) and the outlet ``O``; no
+        rainfall, time step or result. ``provenance`` names the closing section's
+        node and place, ``node_provenance`` the origin of every subcatchment, reach
+        and node.
     """
     moment = created_at or datetime.now(UTC)
     outlet = network.points[0]
     subcatchments = {item.subcatchment.id: item for item in network.subcatchments}
     reaches = {item.reach.id: item for item in network.reaches}
     junctions = {item.junction.id: item for item in network.junctions}
-    (outlet_junction,) = [
-        item.junction.id for item in network.junctions if item.junction.kind == "outlet"
-    ]
+    at_node = {point.point_id for point in network.points if point.at_node}
     name = names.get(outlet.point_id) or watershed_name(
         outlet.latitude, outlet.longitude
     )
@@ -536,11 +539,7 @@ def build_network_handoff(
     node_provenance: dict[str, dict[str, Any]] = {}
     for node_id in network.order:
         if node_id in subcatchments:
-            nodes.append(
-                _subcatchment_node(
-                    subcatchments[node_id], names, junctions[outlet_junction]
-                )
-            )
+            nodes.append(_subcatchment_node(subcatchments[node_id], junctions, at_node))
             node_provenance[node_id] = {
                 "watershed": _subcatchment_origin(subcatchments[node_id])
             }
@@ -548,15 +547,17 @@ def build_network_handoff(
             nodes.append(_reach_node(reaches[node_id]))
             node_provenance[node_id] = {"node": _reach_origin(reaches[node_id])}
         elif node_id in junctions:
-            nodes.append(
-                _junction_node(junctions[node_id], names, subcatchments, reaches)
-            )
-            node_provenance[node_id] = {"node": _junction_origin(junctions[node_id])}
+            nodes.append(_junction_node(junctions[node_id], names, at_node))
+            node_provenance[node_id] = {
+                "node": _junction_origin(junctions[node_id], names, at_node)
+            }
         else:
-            nodes.append({"id": node_id, "type": "outlet", "from": [outlet_junction]})
+            nodes.append({"id": node_id, "type": "outlet", "from": [outlet.node]})
+    closing = outlet.node
+    if outlet.point_id in names:
+        closing = f"{closing} ({names[outlet.point_id]})"
     description = (
-        "Sieć zlewni do przekroju zamykającego "
-        f"{_point_label(outlet.point_id, names)}, wyznaczona w Hydrografie: "
+        f"Sieć zlewni do przekroju zamykającego {closing}, wyznaczona w Hydrografie: "
         f"{_count(len(subcatchments), 'zlewnia', 'zlewnie', 'zlewni')}, "
         f"{_count(len(reaches), 'odcinek', 'odcinki', 'odcinków')}, "
         f"{_count(len(junctions), 'węzeł', 'węzły', 'węzłów')}. Opad sieci i przekroje "
@@ -570,7 +571,7 @@ def build_network_handoff(
         "provenance": {
             "watershed": {
                 "source": PRODUCER,
-                "point": outlet.point_id,
+                "point": outlet.node,
                 "latitude": outlet.latitude,
                 "longitude": outlet.longitude,
                 "threshold_m2": network.threshold_m2,
@@ -588,17 +589,17 @@ def build_network_handoff(
 
 def _subcatchment_node(
     element: "NetworkSubcatchment",
-    names: Mapping[str, str],
-    outlet: "NetworkJunction",
+    junctions: Mapping[str, "NetworkJunction"],
+    at_node: set[str],
 ) -> dict[str, Any]:
     """Return a subcatchment of the payload: its watershed, the runoff and a text."""
     morphometry = element.watershed.morphometry
-    title = _element_title(element, names, outlet)
+    title = _element_title(element, junctions, at_node)
     watershed = watershed_parameters(
         morphometry.model_dump(exclude_none=True) if morphometry is not None else {},
         title,
     )
-    # Exact to the cell, so the subcatchments add up to A in Hydrolog too
+    # Exact to the cell, so the subcatchments add up to the closing section in Hydrolog
     watershed["area_km2"] = element.area_km2
     return {
         "id": element.subcatchment.id,
@@ -611,39 +612,38 @@ def _subcatchment_node(
 
 def _element_title(
     element: "NetworkSubcatchment",
-    names: Mapping[str, str],
-    outlet: "NetworkJunction",
+    junctions: Mapping[str, "NetworkJunction"],
+    at_node: set[str],
 ) -> str:
-    """Say what an element is, in Polish: „Dopływ do ujścia przy P1 (Kamiennik)”.
+    """Say what an element is, in Polish: „Dopływ do J4 (ciek główny)” (N7).
 
-    A headwater is named as a tributary: which branch of a confluence goes on as the
-    main river follows the larger upstream area, not the river a person knows, and it
-    changes nothing in the computation. One without a point names the junction it
-    enters, A's (``outlet``) as the closing section: „Dopływ do przekroju A”.
+    A headwater is a dopływ of the node it enters, named by the node's id only: the
+    name of the node's point belongs to the node („Zbieg: Paszówka”), not to one of
+    its branches. At a confluence the main river's, the node's first inflow, says
+    so: which branch is the main river follows the larger upstream area and changes
+    nothing in the computation. A przyrzecze is its reach's.
     """
     item = element.subcatchment
     if item.kind == "intermediate":
         return f"Przyrzecze odcinka {item.reach}"
-    if item.point is None and item.to == outlet.junction.id:
-        return f"Dopływ do przekroju {_point_label(outlet.junction.point or '', names)}"
-    if item.point is None:
-        return f"Dopływ powyżej {item.to}"
-    point = _point_label(item.point, names)
-    if item.at_mouth:
-        return f"Dopływ do ujścia przy {point}"
-    return f"Dopływ do punktu {point}"
+    title = f"Dopływ do {item.to}"
+    node = junctions[item.to].junction
+    main = _at_confluence(node, at_node) and node.inflows[0] == item.id
+    return f"{title} (ciek główny)" if main else title
 
 
 def _subcatchment_origin(element: "NetworkSubcatchment") -> dict[str, Any]:
-    """Where a subcatchment comes from: its kind, its point and reach, its outlet."""
+    """Where a subcatchment comes from: its kind, its node or reach, its outlet.
+
+    ``point`` is the node of a point of the request that it enters, which Hydrolog
+    shows as „dopływ do punktu J4”; a przyrzecze names its reach.
+    """
     item = element.subcatchment
     origin: dict[str, Any] = {"source": PRODUCER, "element": item.kind}
     if item.point is not None:
-        origin["point"] = item.point
+        origin["point"] = item.to
     if item.reach is not None:
         origin["reach"] = item.reach
-    if item.at_mouth:
-        origin["at_mouth"] = True
     origin["latitude"] = element.watershed.outlet.latitude
     origin["longitude"] = element.watershed.outlet.longitude
     return origin
@@ -716,28 +716,24 @@ def _reach_origin(item: "NetworkReach") -> dict[str, Any]:
 
 
 def _junction_node(
-    item: "NetworkJunction",
-    names: Mapping[str, str],
-    subcatchments: Mapping[str, "NetworkSubcatchment"],
-    reaches: Mapping[str, "NetworkReach"],
+    item: "NetworkJunction", names: Mapping[str, str], at_node: set[str]
 ) -> dict[str, Any]:
-    """Return a junction of the payload: its inflows and a text.
+    """Return a node of the payload, a junction: its inflows and a text (N7).
 
-    A confluence names the point at the top of its trunk, whose subcatchment the trunk
-    brings directly or by its reach, and the points of the branches that enter it from
-    the side: each is a tributary to the person (_element_title).
+    The text says what the node is, with the name of its point: „Przekrój
+    zamykający: Kaczawa”, „Zbieg: Paszówka” at a confluence (also one the network
+    makes, without a name), „Punkt: Nysa Mała” elsewhere.
     """
     junction = item.junction
     if junction.kind == "outlet":
-        text = f"Przekrój zamykający {_point_label(junction.point or '', names)}"
-    elif junction.kind == "point":
-        text = f"Punkt {_point_label(junction.point or '', names)}"
+        text = "Przekrój zamykający"
+    elif _at_confluence(junction, at_node):
+        text = "Zbieg"
     else:
-        top = _trunk_top_point(junction.inflows[0], subcatchments, reaches)
-        text = "Zbieg: " + ", ".join(
-            f"dopływ {_point_label(point, names)}"
-            for point in [*([top] if top is not None else []), *junction.tributaries]
-        )
+        text = "Punkt"
+    name = _point_name(junction.point, names)
+    if name is not None:
+        text = f"{text}: {name}"
     return {
         "id": junction.id,
         "type": "junction",
@@ -746,41 +742,37 @@ def _junction_node(
     }
 
 
-def _trunk_top_point(
-    node: str,
-    subcatchments: Mapping[str, "NetworkSubcatchment"],
-    reaches: Mapping[str, "NetworkReach"],
-) -> str | None:
-    """Return the point whose subcatchment a junction's trunk brings, or None.
+def _junction_origin(
+    item: "NetworkJunction", names: Mapping[str, str], at_node: set[str]
+) -> dict[str, Any]:
+    """Where a node comes from: its kind, its point's name, whether N3 moved it there.
 
-    ``node`` is the junction's first inflow, the trunk's. It brings a point's
-    subcatchment, directly or by its reach, when the point is the uppermost node of
-    the trunk with no point above it: the headwater of its parent's trunk, or a
-    tributary on the main river of a branch without a point at its mouth.
+    ``at_node`` is written for a point of the request at a node of the network, where
+    N3 drew it; neither it nor ``name`` is read by Hydrolog.
     """
-    if node in reaches:
-        node = reaches[node].reach.from_node
-    element = subcatchments.get(node)
-    if element is None or element.subcatchment.kind == "intermediate":
-        return None
-    return element.subcatchment.point
-
-
-def _junction_origin(item: "NetworkJunction") -> dict[str, Any]:
-    """Where a junction comes from: its kind, its point and its place."""
     junction = item.junction
     origin: dict[str, Any] = {"source": PRODUCER, "element": junction.kind}
-    if junction.point is not None:
-        origin["point"] = junction.point
+    name = _point_name(junction.point, names)
+    if name is not None:
+        origin["name"] = name
+    if junction.point in at_node:
+        origin["at_node"] = True
     origin["latitude"] = item.latitude
     origin["longitude"] = item.longitude
     return origin
 
 
-def _point_label(point_id: str, names: Mapping[str, str]) -> str:
-    """Name a point by its id and, when it has one, its name: „P1 (Kamiennik)”."""
-    name = names.get(point_id)
-    return f"{point_id} ({name})" if name else point_id
+def _at_confluence(junction: "Junction", at_node: set[str]) -> bool:
+    """Whether a node lies at a confluence of the network, a ``J`` (N1).
+
+    A confluence the network makes, or a point of the request at a node.
+    """
+    return junction.kind == "confluence" or junction.point in at_node
+
+
+def _point_name(point: str | None, names: Mapping[str, str]) -> str | None:
+    """Return the name of a point of the request, None without one."""
+    return names.get(point) if point is not None else None
 
 
 def _decimal(value: float, decimals: int) -> str:

@@ -4,7 +4,8 @@
 **Status:** accepted (the author's decisions B1 to B7 of 2026-11-10; the details by delegation);
 amended 2026-11-11 (the mouth rule at every junction; the preview of ADR-081; short and flat
 reaches, D10a; two kinds of subcatchment for the person; the trunk of a branch; a node at a
-confluence)
+confluence; every control point a node, named by where it lies); noted 2026-11-11 (the network
+an option of „Wybierz zlewnię”)
 
 > **Amended 2026-11-11 (the coordinator, after the smoke S5):** the mouth rule of decision 2
 > applies wherever the paths of two control points merge, at every junction, not only where a
@@ -90,6 +91,41 @@ confluence)
 > (430.72 km²) and Z2 „Dopływ do przekroju A” (316.55 km², the Kaczawa with A's own 14 cells), both
 > entering J1 = A, no reach. The tree tests check on every network they build that each such river
 > enters its junction alone. The plan's D3 and D5 record the rule.
+
+> **Amended 2026-11-11 (the author, after the kaczawa2 network of A at the confluence of the Nysa
+> Szalona and the Kaczawa with P1 7 m above A; plan `docs/plans/2026-11-11-network-nodes.md`, N1 to
+> N8):** every control point is a node of the network, the closing section included, and a node's
+> id says where it lies, not who placed it. A node of the network is a stream cell of the request's
+> `threshold_m2` into which two or more such streams drain. After its snapping every control point
+> moves to the nearest node along the stream within 50 m of flow distance, below it or above it
+> (the head cell of its own unit), the nearer on both and the lower on a tie (`at_node`, which
+> replaces `at_mouth`); this supersedes the mouth rule of decision 2 and its amendments above. A
+> point at a node is that confluence, `J<n>`: every branch that joins there enters it, the main
+> river first, a branch without a point as a headwater with no reach, a branch with points through
+> its lowest node and a reach. A point elsewhere is `P<n>` and splits its river: the element above
+> it enters it, and it enters the next node down by a reach with its przyrzecze. A junction the
+> network makes where a point's path enters a trunk is a `J` too. The closing section alone is a
+> network (`points` may be empty): one headwater per branch into its `J`, or one into its `P`. At
+> a point at a node each branch's element ends at the outlet cell of its unit above the node, and
+> the node's own cell and side cells belong to the element below it, so no unit is split by such a
+> point; for the closing section at a node they lie outside the network, and B5 compares the
+> elements with the sum of its branches (the cells of A at a confluence given to its largest
+> branch, amended above, are superseded). Two points drawn to one node are refused
+> (`network_points_coincide`, with a text saying that one point at a node already splits the
+> catchment). The kind `tributary` goes: a subcatchment is a `headwater` („Dopływ”) or an
+> `intermediate` („Przyrzecze”). The ids are the network's, numbered by a walk from the closing
+> section upward (`J1` or `P1`), each kind on its own; the request's ids are the client's handles,
+> `NetworkOutlet.id` has no default `A` and is required, and no handle reaches the hand-off, whose
+> outlet is `O` (was `OUT`). On the author's network P1 is refused beside A; without it the closing
+> section is `J1`, which the Nysa Szalona and the Kaczawa enter. The plan records the rules and
+> amends D3, D4, D5, D11, D12, D14 and D15 of the plan `2026-11-10-network-delineation.md`.
+
+> **Noted 2026-11-11 (the author):** „Sieć zlewni” is no longer a mode of its own on the mode bar
+> but an option of the mode „Wybierz zlewnię”: while that mode is on, the radio group „Co
+> wyznaczyć” over the map chooses „Jedna zlewnia” (the default) or „Sieć zlewni”, and the mode
+> returns to the option chosen last in the page. The delineation, the preview of ADR-081, the
+> panel and the hand-off do not change; where this ADR and ADR-081 say „the mode „Sieć zlewni””
+> or „the map mode”, read this option.
 
 ## Context
 
@@ -199,13 +235,19 @@ Option C of 1 and 3 and the options in bold of 2 and 4 to 7:
    network, above). Every junction, every control point with points above it and A are
    junctions of the network; A's flows into the outlet (*amended 2026-11-11:* a river without a
    point that joins at a junction's cell enters it as a subcatchment of its own, above).
+   (*Amended 2026-11-11, N1 to N4, N7, N8:* every control point is a node, drawn to a node of the
+   network within 50 m below or above it; a node at a confluence is `J<n>`, any other `P<n>`; no
+   subcatchment is a tributary; the ids are numbered from the closing section upward, and the
+   closing section's node flows into the outlet `O`, above.)
 3. **Cells.** An element holds the cells whose first element outlet downstream is its own: a
    control point's cell for the element that reaches it along its trunk (*amended 2026-11-11:*
    or, when the trunk enters it at its mouth, the largest branch beside the trunk that ends in a
    river or a przyrzecze, above), the outlet cell of the unit above a junction for an element
    that reaches the junction on a branch. A unit with a point inside is split by pyflwdir basins
    with an outlet at each of its points and at its outlet cell; any number of points per unit,
-   two points on one cell refused.
+   two points on one cell refused (*amended 2026-11-11, N5:* a point at a node takes the place of
+   the confluence, its own cell and side cells go to the element below it, and the closing
+   section at a node leaves them out of the network, above).
 4. **One window** of the six saved rasters over A's catchment, at most 60 M cells; the element
    raster from the labels through a table unit → element. No flow directions are computed.
 5. **Measures.** Every element from its cells with the export's measures, moved into
@@ -217,7 +259,8 @@ Option C of 1 and 3 and the options in bold of 2 and 4 to 7:
    at the ends, 0.0001 where it is not positive; the BDOT10k check length by sampling; no
    section.
 7. **B5** is compared in cells against the graph's units of A's catchment; a difference is a
-   defect (500).
+   defect (500) (*amended 2026-11-11, N5:* for the closing section at a node, against the sum of
+   its branches, above).
 8. **The hand-off** is one `nogat-handoff/1` around one `hydrolog-network/1` of subcatchments
    (the `curve-number` runoff with Hydrolog's defaults), Muskingum–Cunge reaches without a
    section, junctions and the outlet; no rainfall, time step or result; `node_provenance` for

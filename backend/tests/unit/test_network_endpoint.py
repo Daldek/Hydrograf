@@ -63,10 +63,14 @@ NETWORK = Draft202012Validator(
     )
 )
 URL = "/api/delineate-network"
-OUTLET = (219, 85)  # A: the outlet cell of the grid, on the main river
+OUTLET = (219, 85)  # the outlet cell of the grid, on the main river
 # The last cell of each tributary above its confluence with the main river, (row,
-# column): a click there moves to the mouth (D3)
+# column): a click there moves to the confluence, a node of the network (N3)
 T3_MOUTH, T2_MOUTH, T1_MOUTH = (75, 86), (123, 86), (159, 84)
+# The confluence of T1 and the main river, the cell below their last cells
+AT_T1 = (160, 85)
+# Points away from the nodes: up T2, on the main river between T1 and T2
+UP_T2, MAIN_ABOVE_T1 = (123, 110), (140, 85)
 # What a description of Hydrolog refuses: a control character but line feed
 CONTROL = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f]")
 
@@ -142,12 +146,58 @@ def at_the_mouths(run):
     }
 
 
+def network_of(run, outlet, *points):
+    """A request of the closing section and points given as (id, cell, name)."""
+    return {
+        "outlet": point(run, *outlet),
+        "points": [point(run, *item) for item in points],
+        "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
+    }
+
+
+def structure(body):
+    """The tree of a response: what the ids name and how the nodes join."""
+    return {
+        "points": [(p["id"], p["node"], p["at_node"]) for p in body["points"]],
+        "subcatchments": [
+            (s["id"], s["kind"], s["to"], s["point"], s["reach"])
+            for s in body["subcatchments"]
+        ],
+        "reaches": [(r["id"], r["from"], r["to"]) for r in body["reaches"]],
+        "junctions": [
+            (j["id"], j["kind"], j["point"], j["inflows"]) for j in body["junctions"]
+        ],
+    }
+
+
 @pytest.fixture
 def mouths(client, run):
     response = client.post(URL, json=at_the_mouths(run))
     assert response.status_code == 200, response.text
     body: dict[str, Any] = response.json()
     return body
+
+
+def read_with_rainfall_and_sections(payload):
+    """Hydrolog's network once the person gives its rainfall and reach sections."""
+    completed = {
+        **payload,
+        "rainfall": {
+            "kind": "design",
+            "hietogram_type": "beta",
+            "total_mm": 50.0,
+            "duration_min": 120.0,
+            "alpha": 2.0,
+            "beta": 5.0,
+        },
+    }
+
+    def section(node_id, kind, entry):
+        if kind == "reach":
+            return {**entry, "manning_n": 0.035, "bottom_width_m": 4.0}
+        return entry
+
+    return read_network(completed, prepare=section)
 
 
 class TestTheHandoff:
@@ -164,57 +214,76 @@ class TestTheHandoff:
         nodes = handoff["payload"]["nodes"]
         origins = handoff["node_provenance"]
 
-        assert set(origins) == {n["id"] for n in nodes} - {"OUT"}
+        assert set(origins) == {n["id"] for n in nodes} - {"O"}
         for node in nodes:
             if node["type"] == "subcatchment":
                 origin = origins[node["id"]]["watershed"]
-                assert origin["element"] in {"headwater", "tributary", "intermediate"}
+                assert origin["element"] in {"headwater", "intermediate"}
             elif node["type"] in {"reach", "junction"}:
                 origin = origins[node["id"]]["node"]
             else:
                 continue
             assert origin["source"] == "hydrograf"
-        # A's snapped place is the origin of the whole network
-        a = mouths["points"][0]
+        # The closing section's node and place are the origin of the whole network
+        closing = mouths["points"][0]
         assert handoff["provenance"]["watershed"] == {
             "source": "hydrograf",
-            "point": "A",
-            "latitude": a["latitude"],
-            "longitude": a["longitude"],
+            "point": "P1",
+            "latitude": closing["latitude"],
+            "longitude": closing["longitude"],
             "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
         }
 
-    def test_the_origins_name_the_points_mouths_and_measures(self, mouths):
-        origins = mouths["handoff"]["node_provenance"]
-        by_id = {s["id"]: s for s in mouths["subcatchments"]}
-        tributaries = {
-            s["point"]: origins[s["id"]]["watershed"]
-            for s in mouths["subcatchments"]
-            if s["kind"] == "tributary"
-        }
+    def test_the_origins_name_the_nodes_and_the_measures(self, mouths):
+        handoff = mouths["handoff"]
+        origins = handoff["node_provenance"]
+        junctions = {j["id"]: j for j in mouths["junctions"]}
 
-        assert set(tributaries) == {"P1", "P2", "P3"}
-        for point_id, origin in tributaries.items():
-            assert origin["at_mouth"] is True
-            assert origin["point"] == point_id
+        # N7: no tributary, no mouth; the ids of the request stay out (N1)
+        assert '"tributary"' not in json.dumps(handoff)
+        assert "at_mouth" not in json.dumps(handoff)
+        for item in mouths["subcatchments"]:
+            origin = origins[item["id"]]["watershed"]
+            assert origin["element"] == item["kind"]
+            assert origin.get("reach") == item["reach"]
+            # The node of a point of the request it enters, which Hydrolog shows as
+            # „dopływ do punktu J3”; a przyrzecze names its reach
+            entered = junctions[item["to"]]
+            assert origin.get("point") == (item["to"] if entered["point"] else None)
+        node_origins = {node: origins[node]["node"] for node in junctions}
+        assert node_origins == {
+            "P1": {
+                "source": "hydrograf",
+                "element": "outlet",
+                "name": "Rzeka",
+                "latitude": junctions["P1"]["latitude"],
+                "longitude": junctions["P1"]["longitude"],
+            },
+            **{
+                node: {
+                    "source": "hydrograf",
+                    "element": "point",
+                    **({"name": name} if name else {}),
+                    "at_node": True,
+                    "latitude": junctions[node]["latitude"],
+                    "longitude": junctions[node]["longitude"],
+                }
+                for node, name in (("J1", "Pierwszy"), ("J2", None), ("J3", "Trzeci"))
+            },
+        }
         for reach in mouths["reaches"]:
             origin = origins[reach["id"]]["node"]
             assert origin["length"] == "flow_distance"
             assert origin["slope"] == reach["slope_method"]
             assert origin["upstream_elevation_m"] == reach["upstream_elevation_m"]
-            przyrzecze = next(s for s in by_id.values() if s["reach"] == reach["id"])
-            assert origins[przyrzecze["id"]]["watershed"]["reach"] == reach["id"]
-        outlet = next(j for j in mouths["junctions"] if j["kind"] == "outlet")
-        assert origins[outlet["id"]]["node"]["element"] == "outlet"
-        assert origins[outlet["id"]]["node"]["point"] == "A"
 
     def test_each_node_follows_the_nodes_it_receives(self, mouths):
         nodes = mouths["handoff"]["payload"]["nodes"]
 
-        # The order of D15 for three tributaries at their mouths
+        # The order of D15 with the ids of N8 for three tributaries at their mouths
         assert [n["id"] for n in nodes] == [
-            *("Z1", "Z2", "J1", "R1", "Z3", "Z4", "J2", "R2", "Z5", "Z6", "J3"),
-            *("R3", "Z7", "J4", "OUT"),
+            *("Z4", "Z5", "J3", "R3", "Z3", "Z6", "J2", "R2", "Z2", "Z7", "J1"),
+            *("R1", "Z1", "P1", "O"),
         ]
         seen: set[str] = set()
         for node in nodes:
@@ -223,7 +292,7 @@ class TestTheHandoff:
         for node in nodes:
             if node["type"] in {"reach", "outlet"}:
                 assert len(node["from"]) == 1, node["id"]
-        assert nodes[-1] == {"id": "OUT", "type": "outlet", "from": ["J4"]}
+        assert nodes[-1] == {"id": "O", "type": "outlet", "from": ["P1"]}
 
     def test_it_carries_no_rainfall_time_step_result_or_section(self, mouths):
         handoff = mouths["handoff"]
@@ -245,20 +314,14 @@ class TestTheHandoff:
 
         assert all(0 < len(text) <= 500 for text in texts)
         assert not [text for text in texts if CONTROL.search(text)]
-        # A's name names the network; each confluence names the point of the
-        # tributary joining it, by its name when it has one
-        assert mouths["handoff"]["subject"].startswith("Rzeka, ")
-        descriptions = {n["id"]: n["description"] for n in payload["nodes"][:-1]}
-        names = {p["id"]: p["name"] for p in mouths["points"]}
-        for item in mouths["subcatchments"]:
-            if item["kind"] == "tributary":
-                junction = descriptions[item["to"]]
-                assert item["point"] in junction
-                assert names[item["point"]] is None or names[item["point"]] in junction
-                others = {"P1", "P2", "P3"} - {item["point"]}
-                assert not [other for other in others if other in junction]
+        # The closing section's name names the network, its node the description
+        assert mouths["handoff"]["subject"] == "Rzeka, sieć (7 zlewni)"
+        assert payload["description"].startswith(
+            "Sieć zlewni do przekroju zamykającego P1 (Rzeka), wyznaczona w "
+            "Hydrografie: 7 zlewni, 3 odcinki, 4 węzły."
+        )
 
-    def test_the_subcatchments_add_up_to_a_in_hydrolog(self, mouths):
+    def test_the_subcatchments_add_up_to_the_closing_section_in_hydrolog(self, mouths):
         nodes = mouths["handoff"]["payload"]["nodes"]
         areas = [
             n["watershed"]["area_km2"] for n in nodes if n["type"] == "subcatchment"
@@ -276,24 +339,8 @@ class TestTheHandoff:
         self, mouths
     ):
         payload = mouths["handoff"]["payload"]
-        completed = {
-            **payload,
-            "rainfall": {
-                "kind": "design",
-                "hietogram_type": "beta",
-                "total_mm": 50.0,
-                "duration_min": 120.0,
-                "alpha": 2.0,
-                "beta": 5.0,
-            },
-        }
 
-        def section(node_id, kind, entry):
-            if kind == "reach":
-                return {**entry, "manning_n": 0.035, "bottom_width_m": 4.0}
-            return entry
-
-        network = read_network(completed, prepare=section)
+        network = read_with_rainfall_and_sections(payload)
 
         assert {node.id for node in network.nodes} == {
             n["id"] for n in payload["nodes"]
@@ -305,183 +352,146 @@ class TestTheHandoff:
         drawn = route_schematic(network=payload, structure_only=True).result.to_dict()
 
         assert drawn["structure_only"] is True
-        assert drawn["outlet"] == "OUT"
+        assert drawn["outlet"] == "O"
         assert {n["id"] for n in drawn["nodes"]} == {n["id"] for n in payload["nodes"]}
+
+    @pytest.mark.parametrize(
+        ("cell", "nodes"),
+        [(OUTLET, ["Z1", "P1", "O"]), (AT_T1, ["Z1", "Z2", "J1", "O"])],
+        ids=["away from a node", "at a confluence"],
+    )
+    def test_the_closing_section_alone_is_a_network_hydrolog_reads(
+        self, client, run, cell, nodes
+    ):
+        # The plan's cases 1 and 2: a node of one inflow or of two
+        response = client.post(URL, json=network_of(run, ("A", cell, "Rzeka")))
+
+        assert response.status_code == 200, response.text
+        handoff = response.json()["handoff"]
+        payload = handoff["payload"]
+        assert [e.message for e in ENVELOPE.iter_errors(handoff)] == []
+        assert [e.message for e in NETWORK.iter_errors(payload)] == []
+        assert [n["id"] for n in payload["nodes"]] == nodes
+        network = read_with_rainfall_and_sections(payload)
+        assert {node.id for node in network.nodes} == set(nodes)
+        drawn = route_schematic(network=payload, structure_only=True).result.to_dict()
+        assert drawn["outlet"] == "O"
 
 
 class TestTheResponse:
-    def test_the_elements_add_up_to_a_and_name_their_points(self, mouths):
+    def test_the_elements_add_up_and_the_points_carry_their_nodes(self, mouths):
         assert mouths["area_check"] == {
             "watershed_km2": mouths["area_km2"],
             "elements_km2": mouths["area_km2"],
         }
         assert mouths["boundary_geojson"]["geometry"]["type"] == "MultiPolygon"
-        assert [(p["id"], p["name"], p["at_mouth"]) for p in mouths["points"]] == [
-            ("A", "Rzeka", False),
-            ("P1", "Pierwszy", True),
-            ("P2", None, True),
-            ("P3", "Trzeci", True),
+        assert [
+            (p["id"], p["name"], p["at_node"], p["node"]) for p in mouths["points"]
+        ] == [
+            ("A", "Rzeka", False, "P1"),
+            ("P1", "Pierwszy", True, "J1"),
+            ("P2", None, True, "J2"),
+            ("P3", "Trzeci", True, "J3"),
+        ]
+        assert [
+            (j["id"], j["kind"], j["point"], j["name"]) for j in mouths["junctions"]
+        ] == [
+            ("P1", "outlet", "A", "Rzeka"),
+            ("J1", "point", "P1", "Pierwszy"),
+            ("J2", "point", "P2", None),
+            ("J3", "point", "P3", "Trzeci"),
         ]
         reach = mouths["reaches"][0]
-        assert reach["from"] == "J1" and reach["to"] == "J2"
+        assert reach["from"] == "J1" and reach["to"] == "P1"
         assert reach["geojson"]["geometry"]["type"] == "LineString"
         assert mouths["notices"] == []
 
 
-# A gauge on the main river above T3's confluence, on A's trunk with no point above
-# it, so its subcatchment is the headwater: 20 m above, the mouth rule moves it to the
-# confluence (D3); 100 m above, it keeps its place and a reach runs to the confluence
-GAUGE_AT_T3, GAUGE_ABOVE_T3 = (73, 85), (65, 85)
-# T1's main river is the arm from the north (0.80 km² at the corner, T1a 0.32 km²): a
-# gauge on it, and a point on T1a 30 m above the corner, which moves to its mouth
-T1_NORTH, T1A_MOUTH = (120, 49), (159, 47)
+# The names of the elements and nodes (N7): every subcatchment's and node's, by id
+NAMES = {
+    "at the mouths": (
+        at_the_mouths,
+        {
+            "Z1": "Przyrzecze odcinka R1",
+            "Z2": "Przyrzecze odcinka R2",
+            "Z3": "Przyrzecze odcinka R3",
+            "Z4": "Dopływ do J3 (ciek główny)",
+            "Z5": "Dopływ do J3",
+            "Z6": "Dopływ do J2",
+            "Z7": "Dopływ do J1",
+            "P1": "Przekrój zamykający: Rzeka",
+            "J1": "Zbieg: Pierwszy",
+            "J2": "Zbieg",
+            "J3": "Zbieg: Trzeci",
+        },
+    ),
+    # The plan's case 4 with a name: a P above a J the network makes
+    "a point up a tributary": (
+        lambda run: network_of(run, ("A", OUTLET, "Rzeka"), ("P1", UP_T2, "Nysa Mała")),
+        {
+            "Z1": "Przyrzecze odcinka R1",
+            "Z2": "Dopływ do J1 (ciek główny)",
+            "Z3": "Przyrzecze odcinka R2",
+            "Z4": "Dopływ do P2",
+            "P1": "Przekrój zamykający: Rzeka",
+            "J1": "Zbieg",
+            "P2": "Punkt: Nysa Mała",
+        },
+    ),
+    # The closing section alone at a confluence, without a name
+    "the closing section at a confluence": (
+        lambda run: network_of(run, ("A", AT_T1)),
+        {
+            "Z1": "Dopływ do J1 (ciek główny)",
+            "Z2": "Dopływ do J1",
+            "J1": "Przekrój zamykający",
+        },
+    ),
+}
 
 
-class TestTheHeadwaterIsHandedOffAsATributary:
-    """The author's decision of 2026-11-11: two kinds for the person, the contract kept.
+class TestTheNames:
+    """N7: a dopływ of the node it enters and a przyrzecze; nodes by what they are."""
 
-    Which branch of a confluence goes on as the main river follows the larger upstream
-    area, so the hand-off names a headwater as a tributary; its kind stays `headwater`.
-    """
-
-    def test_the_headwater_above_the_uppermost_junction_is_a_tributary_above_it(
-        self, mouths
-    ):
-        nodes = {n["id"]: n for n in mouths["handoff"]["payload"]["nodes"]}
-        (headwater,) = [s for s in mouths["subcatchments"] if s["kind"] == "headwater"]
-
-        assert headwater["point"] is None
-        name = f"Dopływ powyżej {headwater['to']}"
-        assert nodes[headwater["id"]]["watershed"]["name"] == name
-        assert nodes[headwater["id"]]["description"].startswith(f"{name}: ")
-
-    @pytest.mark.parametrize(
-        ("cell", "name"),
-        [
-            (GAUGE_AT_T3, "Dopływ do ujścia przy G (Wodowskaz)"),
-            (GAUGE_ABOVE_T3, "Dopływ do punktu G (Wodowskaz)"),
-        ],
-        ids=["at-the-confluence", "a-reach-above-it"],
-    )
-    def test_a_headwater_and_a_tributary_at_one_confluence_are_both_tributaries(
-        self, client, run, cell, name
-    ):
-        body = {
-            "outlet": point(run, "A", OUTLET, "Rzeka"),
-            "points": [
-                point(run, "G", cell, "Wodowskaz"),
-                point(run, "P3", T3_MOUTH, "Trzeci"),
-            ],
-            "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
-        }
-
-        response = client.post(URL, json=body)
-
-        assert response.status_code == 200, response.text
-        network = response.json()
-        by_point = {s["point"]: s for s in network["subcatchments"] if s["point"]}
-        gauge, tributary = by_point["G"], by_point["P3"]
-        assert (gauge["kind"], tributary["kind"]) == ("headwater", "tributary")
-        handoff = network["handoff"]
-        nodes = {n["id"]: n for n in handoff["payload"]["nodes"]}
-        assert nodes[gauge["id"]]["watershed"]["name"] == name
-        assert nodes[tributary["id"]]["watershed"]["name"] == (
-            "Dopływ do ujścia przy P3 (Trzeci)"
-        )
-        assert nodes[tributary["to"]]["description"] == (
-            "Zbieg: dopływ G (Wodowskaz), dopływ P3 (Trzeci)"
-        )
-        origins = handoff["node_provenance"]
-        assert origins[gauge["id"]]["watershed"]["element"] == "headwater"
-        assert origins[tributary["id"]]["watershed"]["element"] == "tributary"
-
-    def test_a_gauge_on_the_main_river_of_a_branch_is_named_at_its_confluence(
-        self, client, run
-    ):
-        # No point at T1's mouth: G lies on T1's main river, the arm from the north,
-        # and P1 at the mouth of T1a, which joins it at the corner; G is off A's
-        # trunk, so its subcatchment is a tributary, and its reach brings it there
-        body = {
-            "outlet": point(run, "A", OUTLET, "Rzeka"),
-            "points": [
-                point(run, "G", T1_NORTH, "Wodowskaz"),
-                point(run, "P1", T1A_MOUTH, "Pierwszy"),
-            ],
-            "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
-        }
-
-        response = client.post(URL, json=body)
+    @pytest.mark.parametrize(("body", "names"), NAMES.values(), ids=NAMES.keys())
+    def test_each_element_and_node_says_what_it_is(self, client, run, body, names):
+        response = client.post(URL, json=body(run))
 
         assert response.status_code == 200, response.text
-        network = response.json()
-        by_point = {s["point"]: s for s in network["subcatchments"] if s["point"]}
-        gauge, tributary = by_point["G"], by_point["P1"]
-        assert (gauge["kind"], tributary["kind"]) == ("tributary", "tributary")
-        nodes = {n["id"]: n for n in network["handoff"]["payload"]["nodes"]}
-        assert nodes[tributary["to"]]["from"][0] == gauge["to"]
-        assert nodes[tributary["to"]]["description"] == (
-            "Zbieg: dopływ G (Wodowskaz), dopływ P1 (Pierwszy)"
-        )
+        nodes = {n["id"]: n for n in response.json()["handoff"]["payload"]["nodes"]}
+        found = {}
+        for node_id, node in nodes.items():
+            if node["type"] == "subcatchment":
+                found[node_id] = node["watershed"]["name"]
+                assert node["description"].startswith(f"{node['watershed']['name']}: ")
+            elif node["type"] == "junction":
+                found[node_id] = node["description"]
+        assert found == names
 
-
-# The confluence of T1 and the main river, the cell below their last cells, and a
-# gauge on the main river 30 m above it
-AT_T1, ABOVE_T1 = (160, 85), (157, 85)
-
-
-class TestARiverWithoutAPointAtAJunction:
-    """The coordinator's decision of 2026-11-11 after the author's report on kaczawa2.
-
-    A at the confluence of the Nysa Szalona and the Kaczawa, P1 7 m above A on the
-    Nysa Szalona: P1 moves to its mouth and the Kaczawa, with no point, enters A as a
-    dopływ of its own, not in the przyrzecze of a reach of 7 m.
-    """
-
-    def test_a_river_joining_at_a_is_a_tributary_to_the_closing_section(
+    def test_a_closing_section_without_a_name_names_the_network_by_its_place(
         self, client, run
     ):
-        body = {
-            "outlet": point(run, "A", AT_T1, "Rzeka"),
-            "points": [point(run, "G", ABOVE_T1, "Wodowskaz")],
-            "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
-        }
+        response = client.post(URL, json=network_of(run, ("A", AT_T1)))
 
-        response = client.post(URL, json=body)
-
-        assert response.status_code == 200, response.text
-        network = response.json()
-        assert network["reaches"] == []
-        gauge, river = network["subcatchments"]
-        assert (gauge["point"], gauge["kind"]) == ("G", "headwater")
-        assert (river["point"], river["kind"]) == (None, "headwater")
-        assert [(p["id"], p["at_mouth"]) for p in network["points"]] == [
-            ("A", False),
-            ("G", True),
-        ]
-        handoff = network["handoff"]
-        assert [e.message for e in NETWORK.iter_errors(handoff["payload"])] == []
-        nodes = {n["id"]: n for n in handoff["payload"]["nodes"]}
-        assert nodes[gauge["id"]]["watershed"]["name"] == (
-            "Dopływ do ujścia przy G (Wodowskaz)"
+        handoff = response.json()["handoff"]
+        assert re.fullmatch(
+            r"Zlewnia \d+,\d{5}° N, \d+,\d{5}° E, sieć \(2 zlewnie\)",
+            handoff["subject"],
         )
-        assert nodes[river["id"]]["watershed"]["name"] == (
-            "Dopływ do przekroju A (Rzeka)"
+        assert handoff["payload"]["description"].startswith(
+            "Sieć zlewni do przekroju zamykającego J1, wyznaczona w Hydrografie: "
+            "2 zlewnie, 0 odcinków, 1 węzeł."
         )
-        assert nodes[river["to"]]["from"] == [gauge["id"], river["id"]]
-        assert nodes[river["to"]]["description"] == "Przekrój zamykający A (Rzeka)"
 
-    def test_a_river_joining_at_a_gauge_is_a_tributary_above_its_junction(
-        self, client, run
-    ):
-        # G at the confluence of T1, Q 200 m above it on the main river
-        body = {
-            "outlet": point(run, "A", OUTLET, "Rzeka"),
-            "points": [
-                point(run, "G", AT_T1, "Wodowskaz"),
-                point(run, "Q", (140, 85)),
-            ],
-            "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
-        }
+    def test_a_river_joining_at_a_gauge_is_a_headwater_of_its_node(self, client, run):
+        # G at the confluence of T1 and the main river, Q 200 m above it on the main
+        # river: T1, with no point, enters G's node as a headwater of its own
+        body = network_of(
+            run,
+            ("A", OUTLET, "Rzeka"),
+            ("G", AT_T1, "Wodowskaz"),
+            ("Q", MAIN_ABOVE_T1),
+        )
 
         response = client.post(URL, json=body)
 
@@ -491,17 +501,16 @@ class TestARiverWithoutAPointAtAJunction:
         (river,) = [
             s
             for s in network["subcatchments"]
-            if s["kind"] == "headwater" and s["point"] is None
+            if s["to"] == gauge["id"] and s["kind"] == "headwater"
         ]
         assert gauge["inflows"][-1] == river["id"]
         nodes = {n["id"]: n for n in network["handoff"]["payload"]["nodes"]}
-        assert nodes[river["id"]]["watershed"]["name"] == (
-            f"Dopływ powyżej {gauge['id']}"
-        )
+        assert nodes[river["id"]]["watershed"]["name"] == f"Dopływ do {gauge['id']}"
+        assert nodes[gauge["id"]]["description"] == "Zbieg: Wodowskaz"
 
 
-# A point on T2 ten cells (100 m) above its mouth: beyond the mouth rule's 50 m, so
-# its subcatchment reaches the confluence by a reach of some 100 m
+# A point on T2 ten cells (100 m) above its mouth: beyond 50 m, so it reaches the
+# confluence by a reach of some 100 m
 T2_ABOVE_THE_MOUTH = (123, 96)
 
 
@@ -538,7 +547,7 @@ def reach_notices(body):
 class TestShortAndFlatReaches:
     """D10a: a reach shorter than 200 m or of the minimum slope is a notice."""
 
-    def test_a_point_100_m_above_a_confluence_gets_its_move_to_the_mouth(
+    def test_a_point_100_m_above_a_confluence_gets_its_move_to_the_node(
         self, client, run
     ):
         response = client.post(URL, json=above_a_confluence(run))
@@ -546,7 +555,7 @@ class TestShortAndFlatReaches:
         assert response.status_code == 200, response.text
         body = response.json()
         p2 = next(p for p in body["points"] if p["id"] == "P2")
-        assert p2["at_mouth"] is False
+        assert (p2["at_node"], p2["node"]) == (False, "P2")
         reach = next(r for r in body["reaches"] if r["from"] == p2["node"])
         junction = next(j for j in body["junctions"] if j["id"] == reach["to"])
         assert junction["kind"] == "confluence"
@@ -557,13 +566,11 @@ class TestShortAndFlatReaches:
         assert notice["lower"] == junction["id"]
         assert notice["slope_minimum"] is False
         assert notice["lag_min"] is None
-        # The cell above the confluence on T2, one cell from the junction's
+        # The cell above the confluence on T2, one cell from the node's
         assert notice["move_to"] is not None
         assert run_cell(notice["move_to"]) == T2_MOUTH
 
-    def test_the_point_moved_there_enters_the_confluence_without_a_reach(
-        self, client, run
-    ):
+    def test_the_point_moved_there_is_the_confluence(self, client, run):
         first = client.post(URL, json=above_a_confluence(run)).json()
         reach_id = next(
             r for r in first["reaches"] if r["from"] == first["points"][2]["node"]
@@ -577,43 +584,46 @@ class TestShortAndFlatReaches:
         assert response.status_code == 200, response.text
         moved = response.json()
         p2 = next(p for p in moved["points"] if p["id"] == "P2")
-        assert p2["at_mouth"] is True
-        assert not [r for r in moved["reaches"] if r["from"] == p2["node"]]
+        assert p2["at_node"] is True
         assert reach_notices(moved) == {}
+        # T2 enters P2's node with no reach: the network of the points at the mouths
+        mouths = client.post(URL, json=at_the_mouths(run)).json()
+        assert structure(moved) == structure(mouths)
 
     def test_a_flat_reach_is_a_notice_and_a_lag_in_the_handoff(
         self, client, run, monkeypatch
     ):
-        monkeypatch.setattr(core.network_delineation, "_measure_reach", flat("R1"))
+        monkeypatch.setattr(core.network_delineation, "_measure_reach", flat("R2"))
 
         response = client.post(URL, json=at_the_mouths(run))
 
         assert response.status_code == 200, response.text
         body = response.json()
-        r1 = next(r for r in body["reaches"] if r["id"] == "R1")
-        lag_min = max(1, round(r1["length_km"] * 1000 / 0.5 / 60))
-        # R1 runs from confluence J1 to confluence J2: no point to move
+        r2 = next(r for r in body["reaches"] if r["id"] == "R2")
+        lag_min = max(1, round(r2["length_km"] * 1000 / 0.5 / 60))
+        # R2 runs from P2's node down to P1's: no confluence the network makes to
+        # move P2 to
         assert reach_notices(body) == {
-            "R1": {
-                "length_m": pytest.approx(r1["length_km"] * 1000),
+            "R2": {
+                "length_m": pytest.approx(r2["length_km"] * 1000),
                 "slope_minimum": True,
-                "upper_point": None,
-                "lower": "J2",
+                "upper_point": "P2",
+                "lower": "J1",
                 "move_to": None,
                 "lag_min": lag_min,
             }
         }
         handoff = body["handoff"]
-        node = next(n for n in handoff["payload"]["nodes"] if n["id"] == "R1")
+        node = next(n for n in handoff["payload"]["nodes"] if n["id"] == "R2")
         assert node["method"] == "lag"
         assert node["lag_min"] == lag_min
-        assert node["from"] == ["J1"]
+        assert node["from"] == ["J2"]
         assert "Opóźnienie" in node["description"]
-        origin = handoff["node_provenance"]["R1"]["node"]
+        origin = handoff["node_provenance"]["R2"]["node"]
         assert origin["slope"] == "minimum"
         assert origin["method"] == "lag"
         assert origin["method_reason"] == "flat"
-        assert origin["length_km"] == r1["length_km"]
+        assert origin["length_km"] == r2["length_km"]
         assert [e.message for e in ENVELOPE.iter_errors(handoff)] == []
         assert [e.message for e in NETWORK.iter_errors(handoff["payload"])] == []
 
@@ -642,7 +652,7 @@ class TestShortAndFlatReaches:
         routed = route_network(network=completed).result.to_dict()
 
         peaks = {n["id"]: n["peak_m3s"] for n in routed["nodes"]}
-        assert peaks["OUT"] > 0
+        assert peaks["O"] > 0
         assert peaks["R1"] == pytest.approx(peaks["J1"], rel=0.05)
 
 
@@ -675,12 +685,10 @@ class TestProblems:
             "network_point_off_stream", "pl", problem
         )
 
-    def test_a_point_that_does_not_drain_to_a_is_named(self, client, run):
-        body = {
-            "outlet": point(run, "A", T2_MOUTH),
-            "points": [point(run, "P1", T3_MOUTH)],
-            "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
-        }
+    def test_a_point_that_does_not_drain_to_the_closing_section_is_named(
+        self, client, run
+    ):
+        body = network_of(run, ("A", UP_T2), ("P1", T3_MOUTH))
 
         response = client.post(URL, json=body, headers={"Accept-Language": "pl"})
 
@@ -702,6 +710,31 @@ class TestProblems:
         assert response.status_code == 400
         assert response.json()["details"]["reason"] == "network_points_coincide"
         assert response.json()["details"]["point_ids"] == ["P4", "P5"]
+
+    def test_a_point_beside_a_closing_section_at_a_confluence_is_refused(
+        self, client, run
+    ):
+        # The plan's case 9 (N6): the point 10 m above A moves to A's node, which
+        # already divides the catchment into the rivers that join there
+        body = network_of(run, ("A", AT_T1), ("P1", (159, 85)))
+
+        english = client.post(URL, json=body)
+        polish = client.post(URL, json=body, headers={"Accept-Language": "pl"})
+
+        assert english.status_code == polish.status_code == 400
+        problem = polish.json()
+        assert problem["details"] == {
+            "reason": "network_points_coincide",
+            "point_ids": ["A", "P1"],
+        }
+        assert f"{problem['detail']} {problem['hint']}" == (
+            "Punkty A, P1 trafiają w ten sam węzeł sieci: jeden punkt w węźle już "
+            "dzieli zlewnię na cieki, które się w nim łączą. Usuń jeden z nich albo "
+            "przesuń go dalej niż 50 m od węzła."
+        )
+        assert english.json()["detail"] == text(
+            "network_points_coincide", "en", problem
+        )
 
     def test_a_window_above_the_cap_is_unsupported(self, client, run, monkeypatch):
         monkeypatch.setattr(core.network_delineation, "NETWORK_MAX_WINDOW_CELLS", 1000)
@@ -734,7 +767,7 @@ class TestProblems:
         ("change", "pointer"),
         [
             (lambda b: b["points"][0].update(id="a"), "/body/points"),
-            (lambda b: b["points"].clear(), "/body/points"),
+            (lambda b: b["outlet"].pop("id"), "/body/outlet/id"),
             (lambda b: b.update(points=b["points"] * 11), "/body/points"),
             (lambda b: b["points"][0].update(id="P 1"), "/body/points/0/id"),
             (lambda b: b["points"][0].update(id="P" * 17), "/body/points/0/id"),
@@ -748,7 +781,7 @@ class TestProblems:
         ],
         ids=[
             "ids equal without regard to case",
-            "no point",
+            "the closing section without an id",
             "more than 30 points",
             "an id with a space",
             "an id of 17 characters",
@@ -770,9 +803,8 @@ class TestProblems:
         assert response.json()["details"]["reason"] == "invalid_request"
         assert pointer in response.json()["details"]["fields"]
 
-    def test_the_outlet_id_defaults_to_a_and_counts_among_the_ids(self, client, run):
+    def test_the_id_of_the_closing_section_counts_among_the_ids(self, client, run):
         body = at_the_mouths(run)
-        del body["outlet"]["id"]
         body["points"][0]["id"] = "a"
 
         response = client.post(URL, json=body)

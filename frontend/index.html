@@ -25,8 +25,8 @@
 
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
-    <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
-    <link rel="stylesheet" href="css/app.css?v=68bf02f1c0">
+    <link rel="stylesheet" href="css/chrome.css?v=46a0b28957">
+    <link rel="stylesheet" href="css/app.css?v=5ec5d5cbb6">
 </head>
 <body>
 <div class="shell">
@@ -46,6 +46,10 @@
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v10H8.5L5 17v-3H3z"/></svg>
                 <span class="label">Zgłoś uwagę</span>
             </button>
+            <a class="btn ghost" href="/instrukcja/" id="top-guide" aria-label="Instrukcja" title="Instrukcja" aria-haspopup="dialog" aria-controls="welcome-modal">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5z"/><path d="M4 16.5V4.5M7.5 6.5h5"/></svg>
+                <span class="label">Instrukcja</span>
+            </a>
             <div class="seg" role="group" aria-label="Motyw">
                 <button type="button" id="theme-auto" aria-pressed="true" title="Motyw systemowy">
                     <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor"/></svg>
@@ -68,10 +72,6 @@
         <a class="rail-item active" href="#" aria-current="page" id="rail-map">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>
             Mapa
-        </a>
-        <a class="rail-item" href="/instrukcja/" id="rail-guide" aria-haspopup="dialog" aria-controls="welcome-modal">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.5h5.5A3.5 3.5 0 0 1 12 8v12a2.5 2.5 0 0 0-2.5-2.5H3z"/><path d="M21 4.5h-5.5A3.5 3.5 0 0 0 12 8v12a2.5 2.5 0 0 1 2.5-2.5H21z"/></svg>
-            Instrukcja
         </a>
         <a class="rail-item" href="/admin">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>
@@ -110,7 +110,6 @@
                     <div class="seg" id="mode-toolbar" role="radiogroup" aria-label="Tryb pracy">
                         <button type="button" id="mode-browse" role="radio" aria-checked="true" class="on">Przeglądanie</button>
                         <button type="button" id="mode-select" role="radio" aria-checked="false">Wybierz zlewnię</button>
-                        <button type="button" id="mode-network" role="radio" aria-checked="false">Sieć zlewni</button>
                         <button type="button" id="mode-profile" role="radio" aria-checked="false">Profil terenu</button>
                         <button type="button" id="mode-identify" role="radio" aria-checked="false">Identyfikuj</button>
                     </div>
@@ -126,7 +125,13 @@
 
                 <div class="map-wrap" id="map-wrap" data-mode="browse">
                     <div id="map"></div>
-                    <div class="draw-tools" id="draw-tools" role="toolbar" aria-label="Rysowanie profilu terenu" hidden>
+                    <div class="map-tools" id="select-tools" hidden>
+                        <div class="seg full" id="select-target" role="radiogroup" aria-label="Co wyznaczyć">
+                            <button type="button" id="select-watershed" role="radio" aria-checked="true" class="on">Jedna zlewnia</button>
+                            <button type="button" id="select-network" role="radio" aria-checked="false">Sieć zlewni</button>
+                        </div>
+                    </div>
+                    <div class="map-tools" id="draw-tools" role="toolbar" aria-label="Rysowanie profilu terenu" hidden>
                         <span class="draw-count" id="draw-count" aria-live="polite"></span>
                         <button class="btn sm" type="button" id="draw-undo">Cofnij</button>
                         <button class="btn sm primary" type="button" id="draw-finish" title="Narysuj profil terenu wzdłuż wskazanej linii">Rysuj profil</button>
@@ -178,11 +183,11 @@
                 </div>
                 <div class="view-panel-body" id="results-body">
                     <!-- Instruction -->
-                    <p id="panel-instruction" class="muted">Wybierz tryb „Wybierz zlewnię” i kliknij na mapie w pobliżu linii spływu, aby wyznaczyć zlewnię.</p>
+                    <p id="panel-instruction" class="muted">Wybierz tryb „Wybierz zlewnię” i kliknij na mapie w pobliżu linii spływu, aby wyznaczyć zlewnię. Sieć zlewni powyżej kilku punktów wyznaczysz w tym samym trybie, wybierając nad mapą „Sieć zlewni”.</p>
 
-                    <!-- Network of the mode „Sieć zlewni” (js/network.js) -->
+                    <!-- Network of „Wybierz zlewnię” → „Sieć zlewni” (js/network.js) -->
                     <section class="network" id="network" aria-label="Sieć zlewni" hidden>
-                        <p class="network-intro">Kliknij przekrój zamykający A na cieku, potem punkty powyżej niego: dopływy przy ujściach i wodowskazy (najwyżej 30). Znaczniki przeciągniesz myszą lub palcem. Po każdej zmianie punktów mapa pokazuje podgląd sieci; „Oblicz charakterystyki” poda CN, spadki i parametry zlewni oraz przekazanie do Hydrologa.</p>
+                        <p class="network-intro">Kliknij przekrój zamykający na cieku, potem punkty powyżej niego (najwyżej 30): ujścia dopływów i wodowskazy. Punkt do 50 m od zbiegu cieków przechodzi do zbiegu i jest węzłem J, który dzieli zlewnię na cieki łączące się w nim – także przekrój zamykający, więc drugi punkt w tym zbiegu nie jest potrzebny; punkt poza zbiegiem jest węzłem P. Znaczniki przeciągniesz myszą lub palcem. Po każdej zmianie punktów mapa pokazuje podgląd sieci, a znaczniki – identyfikatory swoich węzłów; „Oblicz charakterystyki” poda CN, spadki i parametry zlewni oraz przekazanie do Hydrologa.</p>
                         <p class="network-snap" id="network-snap"></p>
                         <ol class="network-points" id="network-points" aria-label="Punkty sieci"></ol>
                         <div class="network-actions">
@@ -205,7 +210,7 @@
                             <div id="network-notices"></div>
                             <ul class="network-kinds" id="network-kinds" aria-label="Rodzaje elementów"></ul>
                             <table class="network-tree">
-                                <caption>Drzewo sieci od przekroju zamykającego A w górę</caption>
+                                <caption>Drzewo sieci od przekroju zamykającego w górę</caption>
                                 <thead><tr><th scope="col">Element</th><th scope="col" colspan="2">Powierzchnia, długość</th><th scope="col" colspan="2">CN, spadek</th></tr></thead>
                                 <tbody id="network-tree"></tbody>
                             </table>
@@ -576,7 +581,7 @@
     </div>
 </dialog>
 
-<!-- Welcome dialog: on the first visit and from the Instrukcja item of the rail -->
+<!-- Welcome dialog: on the first visit and from the top-bar guide button -->
 <dialog class="modal welcome" id="welcome-modal" aria-labelledby="welcome-title" aria-describedby="welcome-text">
     <div class="panel-head">
         <h2 id="welcome-title">Witaj w Hydrografie</h2>
@@ -625,14 +630,14 @@
 
 <!-- Application modules -->
 <script defer src="js/diagnostics.js?v=490048c9c6"></script>
-<script defer src="js/api.js?v=b02c04e187"></script>
+<script defer src="js/api.js?v=83b893658e"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
-<script defer src="js/map.js?v=a8f218c0ab"></script>
+<script defer src="js/map.js?v=71de73a7b9"></script>
 <script defer src="js/coords.js?v=38cf3b9025"></script>
 <script defer src="js/charts.js?v=9cf3876f81"></script>
 <script defer src="js/layers.js?v=e7ffddf7e5"></script>
 <script defer src="js/profile.js?v=adf70f4108"></script>
-<script defer src="js/info-texts.js?v=e775809efd"></script>
+<script defer src="js/info-texts.js?v=5733dc44eb"></script>
 <script defer src="js/info.js?v=778110a063"></script>
 <script defer src="js/hydrograph.js?v=fe04bea933"></script>
 <script defer src="js/rain-export.js?v=83c1ad12e6"></script>
@@ -643,10 +648,10 @@
 <script defer src="js/results.js?v=73398284b4"></script>
 <script defer src="js/feedback.js?v=8ce70a740a"></script>
 <script defer src="js/instance.js?v=04b557b531"></script>
-<script defer src="js/welcome.js?v=79a0c2304e"></script>
+<script defer src="js/welcome.js?v=54f8061114"></script>
 <script defer src="js/identify.js?v=b89f4b64cf"></script>
-<script defer src="js/handoff.js?v=1c553fc17c"></script>
-<script defer src="js/network.js?v=41f91fa60a"></script>
-<script defer src="js/app.js?v=0105ed1d8a"></script>
+<script defer src="js/handoff.js?v=29fad1831b"></script>
+<script defer src="js/network.js?v=dda978abcf"></script>
+<script defer src="js/app.js?v=ec237cd623"></script>
 </body>
 </html>

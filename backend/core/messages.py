@@ -251,10 +251,12 @@ MESSAGES: Final[dict[str, Message]] = {
         "Przesuń punkt na ciek powyżej przekroju zamykającego.",
     ),
     "network_points_coincide": Message(
-        "Points {point_ids} fall on the same stream cell.",
-        "Punkty {point_ids} trafiają w tę samą komórkę cieku.",
-        "Move one of them.",
-        "Przesuń jeden z nich.",
+        "Points {point_ids} fall on the same node of the network: one point at a "
+        "node already divides the catchment into the streams that join there.",
+        "Punkty {point_ids} trafiają w ten sam węzeł sieci: jeden punkt w węźle już "
+        "dzieli zlewnię na cieki, które się w nim łączą.",
+        "Remove one of them or move it more than 50 m from the node.",
+        "Usuń jeden z nich albo przesuń go dalej niż 50 m od węzła.",
     ),
     "network_window_too_large": Message(
         "The catchment of the closing section is too large for a network: its "
