@@ -15,19 +15,19 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | Hydrographs | done | SCS-CN (AMC I–III, own rainfall series), SCS, Snyder and Nash (Lutz, urban regression) unit hydrographs of Hydrolog; tc only from Hydrolog on the inputs each method defines (C and N from the user); the hand-off to Hydrolog (ADR-068); PMAXTP design depth as the Thiessen mean of the watershed (ADR-069); limit 250 km². |
 | DEM preprocessing | done | pyflwdir on one raster or by PGW units (ADR-071, opt-in `--units`, one fill of the whole grid); F1–F7 memory fixes (`652eec6`); stream burning with the directions of ADR-077; enclosed nodata filled on request (ADR-073); the bootstrap refuses NMT sheets that leave the area uncovered (ADR-076); thresholds 10 000, 100 000, 1 000 000 and 10 000 000 m²; flow path heads and channel sources measured (ADR-070). |
 | Land cover, soils, CN | done | Land cover from the BDOT10k partition by its attributes (ADR-074), the soil under the wetlands is group D and the lawns of KUSK/KUKO are open space (ADR-078); the soil groups of the least permeable SoilGrids layer of 0–100 cm by default, `soil.hsg_depth_rule` (ADR-079, in `develop` since `b38b657`; Hydroni's run 4 and kaczawa2 have them, production keeps the 0–5 cm groups until its rebuild); the CN is that of the soil-cover complexes from Hydrolog's TR-55 table, computed at query time (ADR-075 and its amendments of 2026-11-09; migration 006 dropped `land_cover.cn_value`). The export of catchment parameters gives CN AMC I/II/III and the control columns of the weighted runoff. |
-| Producers | done | `develop` pins Nogat's release set candidate-3: Hydrolog `930915d`; Kartograf `d0990c8`, Obserwator `f9f4ee7` as in candidate-2. Hydroni and kaczawa2 run them (`a46adb4`, 2026-11-11); production runs Kartograf `9deaa31`, Obserwator `1ee5457`, Hydrolog `4fad769`. The network hand-offs go to Hydrolog's GUI (`127.0.0.1:8070`, its `develop` `3aab136`, which routes a reach that Muskingum-Cunge cannot grid as linear reservoirs with the warning `diffusion_dominated`, Hydrolog ADR-0026). A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
+| Producers | done | `develop` pins Nogat's release set candidate-3: Hydrolog `930915d`; Kartograf `d0990c8`, Obserwator `f9f4ee7` as in candidate-2. Production (since its update of 2026-11-11), Hydroni and kaczawa2 run them. The network hand-offs go to Hydrolog's GUI (`127.0.0.1:8070`, its `develop` `3aab136`, which routes a reach that Muskingum-Cunge cannot grid as linear reservoirs with the warning `diffusion_dominated`, Hydrolog ADR-0026). A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
 | Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię (options „Jedna zlewnia” and „Sieć zlewni” over the map) / Profil terenu / Identyfikuj. The top-bar „Instrukcja” button opens the welcome dialog; the user guide is a scrolling page with a TOC and chapters, while `docs/Hydrograf-prezentacja.html` remains a slide deck. The welcome text and guide name the data area from `frontend/data/instance.json`; external analyses come from `frontend/data/results/index.json` (SFINCS), alongside the MZP overlay and `?v=` asset versions. |
-| Network delineation | done | `POST /api/delineate-network` and its preview on the catchment graph `POST /api/delineate-network/preview`, the mode „Sieć zlewni” in two stages (the preview after every change of the points, then „Oblicz charakterystyki”) and one hand-off of the network to Hydrolog's Sieć (ADR-080, amended six times on 2026-11-11; ADR-081); the plans `2026-11-10-network-delineation` and `2026-11-11-network-preview` are closed (their Results). In `develop` since `824bebd` (`97498bb` the preview, `a46adb4` the last amendment); networks above 60 M cells stay refused. Open methodology: Next 10. |
+| Network delineation | done | `POST /api/delineate-network` and its preview on the catchment graph `POST /api/delineate-network/preview`, the option „Sieć zlewni” of „Wybierz zlewnię” in two stages (the preview after every change of the points, then „Oblicz charakterystyki”) and one hand-off of the network to Hydrolog's Sieć (ADR-080, amended on 2026-11-11 by the plan `2026-11-11-network-nodes`: every point is a node, `J` at a confluence it is drawn to within 50 m up or down, `P` elsewhere, numbered from the closing section up, the outlet `O`; ADR-081); the plans `2026-11-10-network-delineation`, `2026-11-11-network-preview` and `2026-11-11-network-nodes` are done. Merged into `develop` with `feat/network-nodes` on 2026-11-11; networks above 60 M cells stay refused. Open methodology: Next 10. |
 | Admin panel | done | `/admin`: dashboard, bootstrap, resources, cleanup, storm sewer, feedback (ADR-034, ADR-051). |
 | Storm sewer | done | ADR-051, ADR-052; no data source yet (BACKLOG). |
-| Tests and gate | done | `scripts/gate.sh` on `864f69d` (the tree of `a46adb4`): 2,155 passed, 170 deselected, coverage 87.09 % (floor 80); `db` tests on `b5e1154`: 158 passed, 1 skipped. CI in `.github/workflows/ci.yml`. |
+| Tests and gate | done | `scripts/gate.sh` on the head of `feat/network-nodes` (2026-11-11): 2,225 passed, 170 deselected, coverage above the floor of 80 %; `db` tests on `b5e1154`: 158 passed, 1 skipped (the integration test of the network endpoint was updated for the plan `2026-11-11-network-nodes` and not run against PostGIS since). CI in `.github/workflows/ci.yml`. |
 | Documentation | in progress | Nogat standard 2.1 in English; the documents still in Polish are listed in Next 7. |
 | Release v0.5.0 | in progress | `develop` carries 0.5.0.dev0, `main` v0.4.0 (2026-03-03). The next release is v0.5.0 (the author, 2026-11-03); the author extends the candidate and sets the tag himself (2026-11-05). |
 | Hydraulik integration | blocked | Paused by the author until Hydraulik works well enough (BACKLOG). |
 
 ### Production
 
-- **Code:** checkout `~/workspace/Hydrograf`, local `develop` at `894810c` (0.5.0.dev0) since 2026-11-10 05:00 CET; not redeployed since (`develop` is at `a46adb4`: Next 1). The default compose project (`hydro_db`, `hydro_api`, `hydro_nginx`) with the development override: the code is mounted from the checkout and served with `--reload`, so an edit there reaches the live API, and the files must be readable by uid 999 (check out under `umask 022`). `docker/nginx.conf` is mounted as one file: restart `hydro_nginx` after a checkout rewrites it. Image `hydrograf-api:latest`; `.env` names `HYDROGRAF_PUBLIC_HOST=hydrograf-test.debever.pl` and the private Kartograf store (no `HYDROGRAF_KARTOGRAF_ROOT`).
+- **Code:** checkout `~/workspace/Hydrograf`, local `develop` (0.5.0.dev0) fast-forwarded on 2026-11-11 to the merge of `feat/network-nodes` at the author's request, with a new image for `GDAL_CACHEMAX=64` (Next 1; before it `894810c` since 2026-11-10 05:00 CET). The default compose project (`hydro_db`, `hydro_api`, `hydro_nginx`) with the development override: the code is mounted from the checkout and served with `--reload`, so an edit there reaches the live API, and the files must be readable by uid 999 (check out under `umask 022`). `docker/nginx.conf` is mounted as one file: restart `hydro_nginx` after a checkout rewrites it. Image `hydrograf-api:latest`; `.env` names `HYDROGRAF_PUBLIC_HOST=hydrograf-test.debever.pl` and the private Kartograf store (no `HYDROGRAF_KARTOGRAF_ROOT`).
 - **Access:** `127.0.0.1:8080`; public `https://hydrograf-test.debever.pl` through a Cloudflare Tunnel. Give testers the `https://` address: the HTTP redirect is a 301, which can turn a POST into a GET.
 - **Data:** the Kaczawa above the node 51.222825 N 16.179380 E, boundary `data/boundary/zlewnia_kaczawy_790km2_przyciecie.gpkg` (790.564 km²; `instance.json` says 790.6), reprocessed on 2026-11-10 by [the runbook](runbooks/2026-11-10-reprocessing.md) (its §11 is the log): alembic `006`; 41,515 / 4,548 / 496 / 49 segments at 1 ha / 10 ha / 1 km² / 10 km², one outlet each; the tables and the rasters of `data/nmt` hold the same basin of 792.009 km² (31,680,357 cells; the rasters were re-cut to the sub-catchments of the tables on 2026-11-10 at 23:53 CET with 14 s of downtime, so every sub-catchment equals its label raster at the four thresholds): 1.608 km² of it lie beyond the boundary (98.4 % of the 1.604 km² block at 50.901 N 15.959 E in the aPGW catchment of the Kaczawa, RW60000613839), and 0.164 km² inside the boundary drain elsewhere and have no raster data; a graph of 46,608 nodes; the land cover of the BDOT10k packages 0205, 0206, 0207, 0209, 0219, 0221, 0226 and 0262; soil B 99.50 / C 0.14 / D 0.36 %; land cover, soil groups, `bdot_streams`, the overlays, the depressions and the DEM tiles end at the boundary; 134,352 PMAXTP points; the SFINCS result `sfincs-kamiennik-24h-p1` under „Wyniki analiz”. The cache has the Kartograf 0.7.0 layout (`cache/bdot10k/`, `cache/soil_hsg/hsg_poland.tif`, no `cache/kartograf/`): a reprocessing passes the packages and the HSG raster explicitly and downloads nothing (runbook §0).
 - **Rules:** run a bootstrap or a DEM run only in a one-off container (`docker compose run --rm --no-deps api ...`), never by `exec` in `hydro_api` (an OOM there takes the API down); `docker builder prune -f` before an image build while Docker's data root is on `/`.
@@ -42,7 +42,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 
 ### kaczawa2 instance
 
-- **What and where:** a review copy of the Kaczawa built from `develop` on 2026-11-11, which the author reviews before production is rebuilt (Next 1); it only reads production. Worktree `~/workspace/Hydrograf-kaczawa2` detached at `a46adb4` (image `kaczawa2-api` rebuilt from it at 18:09), compose project `kaczawa2` (`kaczawa2_db`, `kaczawa2_api`, `kaczawa2_nginx`) run by `~/data/hydrograf-kaczawa2/dc`; `127.0.0.1:8082`, no public host. The database volume holds `hydro_db` (the instance) and `hydro_db_prod` (production's database as dumped on 2026-11-11 03:04, frozen, only for the comparisons).
+- **What and where:** a review copy of the Kaczawa built from `develop` on 2026-11-11, which the author reviews before production's data are rebuilt (Next 1); it only reads production. Worktree `~/workspace/Hydrograf-kaczawa2` detached at the head of `feat/network-nodes` (its README's `Code:` line names the commit; image `kaczawa2-api` rebuilt from it), compose project `kaczawa2` (`kaczawa2_db`, `kaczawa2_api`, `kaczawa2_nginx`) run by `~/data/hydrograf-kaczawa2/dc`; `127.0.0.1:8082`, no public host. The database volume holds `hydro_db` (the instance) and `hydro_db_prod` (production's database as dumped on 2026-11-11 03:04, frozen, only for the comparisons).
 - **Procedure:** outside the repository, in `~/data/hydrograf-kaczawa2/README` (steps K0–K13 with their times and dependencies, their helper scripts in `scripts/`, one log per step in `logs/`): the [runbook of 2026-11-10](runbooks/2026-11-10-reprocessing.md) as of `c5e0bb8` on production's inputs from before the cut, with the boundary taken from the run (Next 11). Data built on `c5e0bb8`; no later merge changes a data step.
 - **Data:** the DEM part equals production bit for bit (41,515 / 4,548 / 496 / 49 units, 792.009 km², graph of 46,608 nodes); by design the boundary is the union of the kept units, the land cover and soil groups cover all of it, and the soil groups are those of ADR-079 (B 90.78 / C 8.86 / D 0.36 %): the Kaczawa at its outlet has CN 67.8 (production 67.0), Kamiennik 61.2 as production.
 
@@ -55,15 +55,16 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 
 ## Next
 
-1. **Production: rebuilt after the author's review of kaczawa2.** Production runs `894810c` with
-   the rasters re-cut on 2026-11-10 at 23:53 (rollback `data/nmt.pre-recut`, runbook §11);
-   Hydroni and kaczawa2 run `a46adb4`. The author reviews kaczawa2 first; then production is
-   rebuilt the way kaczawa2 was, or switched to kaczawa2's data, as the author decides (the
-   boundary from the run, Next 11; the soil groups of ADR-079, Next 3). The code since `894810c`
-   needs a new image and the `GDAL_CACHEMAX=64` of `docker-compose.yml`, no migration. Public
-   access to kaczawa2 (a Cloudflare host or an SSH tunnel) is the author's call. The Hydroni
-   README `~/data/hydrograf-hydroni/README` still asks for `./dc restart api` after a bootstrap
-   (step 2): since `894810c` the API reloads its graph by itself.
+1. **Production's data: rebuilt after the author's review of kaczawa2.** Production runs the code
+   of `develop` with `feat/network-nodes` since 2026-11-11 (the author's request: a new image
+   with `GDAL_CACHEMAX=64`, no migration) on its own data: the rasters re-cut on 2026-11-10 at
+   23:53 (rollback `data/nmt.pre-recut`, runbook §11), its boundary of 790.564 km² and the soil
+   groups of 0–5 cm. Rebuilding its data the way kaczawa2's were, or switching to kaczawa2's
+   data, is the author's call (the boundary from the run, Next 11; the soil groups of ADR-079,
+   Next 3). Public access to kaczawa2 (a Cloudflare host or an SSH tunnel) is the author's call.
+   The Hydroni README `~/data/hydrograf-hydroni/README` still asks for `./dc restart api` after
+   a bootstrap (step 2): since `894810c` the API reloads its graph by itself; Hydroni still runs
+   `a46adb4`.
 2. **Leftovers of the delineation fix** (`07112ce`, 2026-11-10):
    - `POST /api/generate-hydrograph` without `morphometry` merges the sub-catchments at
      10 000 m² with no cascade, up to the 250 km² limit (`api/endpoints/hydrograph.py`); the GUI
@@ -145,20 +146,17 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
      D10; Kartograf's to fix).
    - `docs/Hydrograf-prezentacja.pdf` predates chapter 06 „Sieć zlewni” (printed 2026-11-05);
      its HTML twin has the chapter, the PDF was not printed again.
-10. **Network methodology, open** (ADR-080; recorded for the author, who said on 2026-11-11 „na
-    razie nic nie rób”: nothing is started). Each with its proposal:
-    1. A large tributary without a point that joins a reach between its ends stays in the
-       reach's przyrzecze and reaches the junction below without routing (a river becomes a
-       subcatchment of its own only at a junction's cell, D5). Proposed: a notice that names it
-       and suggests a point at its mouth.
+10. **Network methodology, open** (ADR-080). Each with its proposal:
+    1. *Closed by the author on 2026-11-11:* a large tributary without a point that joins a
+       reach between its ends stays in the reach's przyrzecze (plan `2026-11-11-network-nodes`).
     2. A reach's length from the D8 flow distances is longer than the BDOT10k lines: the check
        lengths of the plan's Results are 4–7.1 % shorter (S2, S5), which lengthens the travel
        time as much. Proposed: the BDOT10k length where the lines run continuously along the reach.
     3. A reach's slope from the NMT at its two end cells is noisy on short or flat reaches.
        Proposed: a fit along the channel's profile.
-    4. The mouth tolerance of 50 m (`MOUTH_TOLERANCE_M`) is arbitrary: a reach of 50–200 m gets
-       only the notice `reach_short_or_flat` and „Przesuń P… do zbiegu”, and the button only for
-       a reach into a confluence junction, not into a control point at a confluence.
+    4. The tolerance of 50 m (`MOUTH_TOLERANCE_M`) by which a point is drawn to a node, now up
+       and down (plan `2026-11-11-network-nodes`, N3), is a click's accuracy, not a measure: at
+       10 ha a gully's mouth within 50 m makes the point a node with the gully as an element.
     5. An element above 250 km² is beyond the validity of SCS-CN and gets the notice
        `over_scs_cn_limit` only; the network is not refused.
 11. **The boundary and the cells beyond it.** Production's tables and rasters (792.009 km²) hold
