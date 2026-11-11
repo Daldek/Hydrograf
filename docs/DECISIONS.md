@@ -85,7 +85,8 @@ and never rewrite the decision. An amendment is noted at the top of the amended 
 | [ADR-077](decisions/0077-burned-lines-flow-the-way-of-their-watercourse.md) | A burned line flows the way of its watercourse: to its mouth, else down the DEM of the whole watercourse | accepted | 2026-11-09 |
 | [ADR-078](decisions/0078-wetlands-are-soil-group-d-and-lawns-are-open-space.md) | Wetlands are hydrologic soil group D; the grass of sports and recreation complexes and airports is open space | accepted | 2026-11-10 |
 | [ADR-079](decisions/0079-soil-groups-from-the-least-permeable-layer.md) | The soil groups are those of the least permeable SoilGrids layer of 0–100 cm | accepted | 2026-11-10 |
-| [ADR-080](decisions/0080-network-delineation-at-control-points.md) | A network of subcatchments, reaches and junctions delineated at control points | accepted, amended 2026-11-11 | 2026-11-10 |
+| [ADR-080](decisions/0080-network-delineation-at-control-points.md) | A network of subcatchments, reaches and junctions delineated at control points | accepted, amended 2026-11-11 (twice) | 2026-11-10 |
+| [ADR-081](decisions/0081-network-preview-on-the-catchment-graph.md) | The network composed on the catchment graph, its characteristics on confirmation | accepted | 2026-11-11 |
 
 ADR-043 was never written (the number was skipped). ADR-055 and ADR-056 (the traffic
 dashboard behind Basic Auth, then limited to the local network, both 2026-08-07) were

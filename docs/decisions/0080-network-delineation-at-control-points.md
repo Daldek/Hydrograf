@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-10
 **Status:** accepted (the author's decisions B1 to B7 of 2026-11-10; the details by delegation);
-amended 2026-11-11 (the mouth rule at every junction)
+amended 2026-11-11 (the mouth rule at every junction; the preview of ADR-081)
 
 > **Amended 2026-11-11 (the coordinator, after the smoke S5):** the mouth rule of decision 2
 > applies wherever the paths of two control points merge, at every junction, not only where a
@@ -12,6 +12,13 @@ amended 2026-11-11 (the mouth rule at every junction)
 > directly; two points moved to one cell are refused. S5's network 2 had a reach of 34 m and a
 > przyrzecze of 0.0004 km² where a point near its tributary's mouth met a gauge's path off A's
 > trunk. The plan's D3 records the rule.
+
+> **Amended 2026-11-11 (the author, ADR-081):** the map mode composes the network in a preview
+> on the catchment graph (`POST /api/delineate-network/preview`: the snapping, the tree and the
+> ids of this ADR, the areas and reach lengths of the units, outlines of their polygons) after
+> every change of the points, and runs this delineation on „Oblicz charakterystyki” (formerly
+> „Wyznacz sieć”); only its result gives the parameters and the hand-off (decision 8), and a
+> change of the points makes it stale.
 
 ## Context
 
