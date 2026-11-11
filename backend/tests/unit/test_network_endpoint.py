@@ -328,6 +328,65 @@ class TestTheResponse:
         assert mouths["notices"] == []
 
 
+# A gauge on the main river 20 m above T3's confluence: on A's trunk with no point
+# above it, its subcatchment is the headwater, moved to the confluence (D3)
+GAUGE_ABOVE_T3 = (73, 85)
+
+
+class TestTheHeadwaterIsHandedOffAsATributary:
+    """The author's decision of 2026-11-11: two kinds for the person, the contract kept.
+
+    Which branch of a confluence goes on as the main river follows the larger upstream
+    area, so the hand-off names a headwater as a tributary; its kind stays `headwater`.
+    """
+
+    def test_the_headwater_above_the_uppermost_junction_is_a_tributary_above_it(
+        self, mouths
+    ):
+        nodes = {n["id"]: n for n in mouths["handoff"]["payload"]["nodes"]}
+        (headwater,) = [s for s in mouths["subcatchments"] if s["kind"] == "headwater"]
+
+        assert headwater["point"] is None
+        name = f"Dopływ powyżej {headwater['to']}"
+        assert nodes[headwater["id"]]["watershed"]["name"] == name
+        assert nodes[headwater["id"]]["description"].startswith(f"{name}: ")
+
+    def test_a_headwater_and_a_tributary_at_one_confluence_are_both_tributaries(
+        self, client, run
+    ):
+        body = {
+            "outlet": point(run, "A", OUTLET, "Rzeka"),
+            "points": [
+                point(run, "G", GAUGE_ABOVE_T3, "Wodowskaz"),
+                point(run, "P3", T3_MOUTH, "Trzeci"),
+            ],
+            "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
+        }
+
+        response = client.post(URL, json=body)
+
+        assert response.status_code == 200, response.text
+        network = response.json()
+        by_point = {s["point"]: s for s in network["subcatchments"] if s["point"]}
+        gauge, tributary = by_point["G"], by_point["P3"]
+        assert (gauge["kind"], tributary["kind"]) == ("headwater", "tributary")
+        assert gauge["to"] == tributary["to"]
+        handoff = network["handoff"]
+        nodes = {n["id"]: n for n in handoff["payload"]["nodes"]}
+        assert nodes[gauge["id"]]["watershed"]["name"] == (
+            "Dopływ do ujścia przy G (Wodowskaz)"
+        )
+        assert nodes[tributary["id"]]["watershed"]["name"] == (
+            "Dopływ do ujścia przy P3 (Trzeci)"
+        )
+        assert nodes[gauge["to"]]["description"] == (
+            "Zbieg: dopływ G (Wodowskaz), dopływ P3 (Trzeci)"
+        )
+        origins = handoff["node_provenance"]
+        assert origins[gauge["id"]]["watershed"]["element"] == "headwater"
+        assert origins[tributary["id"]]["watershed"]["element"] == "tributary"
+
+
 # A point on T2 ten cells (100 m) above its mouth: beyond the mouth rule's 50 m, so
 # its subcatchment reaches the confluence by a reach of some 100 m
 T2_ABOVE_THE_MOUTH = (123, 96)

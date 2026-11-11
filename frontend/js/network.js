@@ -10,15 +10,17 @@
  *   the streams on the map, POST /api/delineate-network/preview answers in a fraction
  *   of a second: every marker moves to the stream cell it snapped to („przy ujściu” on
  *   a point moved to the junction below it) and the network is drawn: the elements
- *   filled by kind (zlewnia górna, dopływ, przyrzecze) with their ids, dashed where the
- *   outline follows a whole unit that the characteristics split (the point inside it is
- *   marked), the reaches as lines with theirs and the junctions as dots. The panel lists
- *   the tree from A upward with the area of every element and the length of every
- *   reach. An error (a point outside A, off the streams, two points on one cell) marks
- *   the points it names at once. Names do not change the preview.
+ *   filled by kind (dopływ, przyrzecze; a headwater shows as a dopływ) with their ids,
+ *   dashed where the outline follows a whole unit that the characteristics split (the
+ *   point inside it is marked), the reaches as lines with theirs and the junctions as
+ *   dots. The panel lists the tree from A upward with the area of every element, A's
+ *   whole area in the row of its closing section, and the length of every reach. An
+ *   error (a point outside A, off the streams, two points on one cell) marks the points
+ *   it names at once. Names do not change the preview.
  * - The characteristics. „Oblicz charakterystyki” sends the points to POST
- *   /api/delineate-network: A's boundary, the parameters of every element, the slopes
- *   of the reaches, the check of B5 and the hand-off of the network (js/handoff.js).
+ *   /api/delineate-network: A's boundary (outlined as „Zlewnia A (całość)”), the
+ *   parameters of every element, the slopes of the reaches, the check of B5 and the
+ *   hand-off of the network (js/handoff.js).
  *   They show while they answer the places of the points; after a point is added,
  *   removed or moved, or the threshold changes, the map and the panel go back to the
  *   preview of the new points. A notice says the characteristics are outdated and the
@@ -45,12 +47,14 @@
     // The pause after a change of the points before their preview is asked for [ms]
     var PREVIEW_DELAY_MS = 300;
 
-    var KIND_LABELS = { headwater: 'Zlewnia górna', tributary: 'Dopływ', intermediate: 'Przyrzecze' };
-    var KIND_INFO = {
-        headwater: 'network-headwater', tributary: 'network-tributary', intermediate: 'network-intermediate',
-    };
-    var KIND_TOKENS = { headwater: '--accent-green', tributary: '--warn', intermediate: '--tool-hydraulik' };
-    var KINDS = ['headwater', 'tributary', 'intermediate'];
+    // Two kinds for the person: which branch of a confluence goes on as the headwater follows the
+    // larger upstream area, not the river a person knows, and changes nothing in the computation, so
+    // the kind `headwater` of the API shows as a dopływ (the author's decision of 2026-11-11).
+    var KIND_LABELS = { tributary: 'Dopływ', intermediate: 'Przyrzecze' };
+    var KIND_INFO = { tributary: 'network-tributary', intermediate: 'network-intermediate' };
+    var KIND_TOKENS = { tributary: '--warn', intermediate: '--tool-hydraulik' };
+    var KINDS = ['tributary', 'intermediate'];
+    var WHOLE_A = 'Zlewnia A (całość)';
     var JUNCTION_LABELS = { confluence: 'Zbieg cieków', point: 'Punkt', outlet: 'Przekrój zamykający' };
     var EXACT_LATER = 'granica dokładna po obliczeniu charakterystyk';
     var OUTDATED_PLACES = 'Charakterystyki są nieaktualne: punkty zmieniły się po ich obliczeniu, poniżej ' +
@@ -531,10 +535,14 @@
 
     // ===== Map layers of the network =====
 
+    /** The kind an element shows as: a headwater is a dopływ (KIND_LABELS). */
+    function shownKind(kind) { return kind === 'headwater' ? 'tributary' : kind; }
+
     function kindColor(kind) { return token(KIND_TOKENS[kind]); }
 
+    /** A's whole catchment: a heavier outline than any element's, in Hydrograf's colour. */
     function boundaryStyle() {
-        return { color: token('--tool-hydrograf'), weight: 2.5, opacity: 1, fill: false };
+        return { color: token('--tool-hydrograf'), weight: 4, opacity: 1, fill: false };
     }
 
     /** An element filled by its kind; dashed where its outline is approximate (preview). */
@@ -662,14 +670,15 @@
             // An element of a part of a split unit whose polygon went to its neighbour: no outline, no label
             if (!boundary || !boundary.geometry) return;
             var approximate = !full && !!s.outline_approximate;
+            var kind = shownKind(s.kind);
             var layer = L.geoJSON(boundary, {
-                style: function () { return elementStyle(s.kind, false, approximate); },
+                style: function () { return elementStyle(kind, false, approximate); },
                 interactive: false,
             });
-            drawn.elements[s.id] = { layer: layer, kind: s.kind, approximate: approximate };
+            drawn.elements[s.id] = { layer: layer, kind: kind, approximate: approximate };
             drawn.group.addLayer(layer);
             var at = labelPoint(boundary.geometry);
-            if (at) addLabel(s.id, s.kind, at, s.id + ': ' + elementText(s));
+            if (at) addLabel(s.id, kind, at, s.id + ': ' + elementText(s));
         });
         if (drawn.boundary) drawn.group.addLayer(drawn.boundary);
         data.reaches.forEach(function (r) {
@@ -750,10 +759,10 @@
         var rows = [];
         if (drawn.boundary) {
             rows.push([Hydrograf.map.pathSwatch(Object.assign({ fillColor: 'none', fillOpacity: 0 },
-                boundaryStyle()), 'area'), 'Granica zlewni A']);
+                boundaryStyle()), 'area'), WHOLE_A]);
         }
         KINDS.forEach(function (kind) {
-            if (data.subcatchments.some(function (s) { return s.kind === kind; })) {
+            if (data.subcatchments.some(function (s) { return shownKind(s.kind) === kind; })) {
                 rows.push([Hydrograf.map.pathSwatch(elementStyle(kind, false, false), 'area'), KIND_LABELS[kind]]);
             }
         });
@@ -792,14 +801,11 @@
         return !!(p && p.snap && p.snap.at_mouth);
     }
 
+    /** A headwater is named as a dopływ, as in the hand-off (backend/core/handoff.py). */
     function elementText(s) {
-        if (s.kind === 'headwater') {
-            return s.point ? 'Zlewnia górna do punktu ' + pointLabel(s.point) : 'Zlewnia górna powyżej ' + s.to;
-        }
-        if (s.kind === 'tributary') {
-            return (atMouth(s.point) ? 'Dopływ do ujścia przy ' : 'Dopływ do punktu ') + pointLabel(s.point);
-        }
-        return 'Przyrzecze odcinka ' + s.reach;
+        if (s.kind === 'intermediate') return 'Przyrzecze odcinka ' + s.reach;
+        if (!s.point) return 'Dopływ powyżej ' + s.to;
+        return (atMouth(s.point) ? 'Dopływ do ujścia przy ' : 'Dopływ do punktu ') + pointLabel(s.point);
     }
 
     function reachText(r) {
@@ -1085,7 +1091,7 @@
 
         els.kinds.textContent = '';
         KINDS.forEach(function (kind) {
-            if (!data.subcatchments.some(function (s) { return s.kind === kind; })) return;
+            if (!data.subcatchments.some(function (s) { return shownKind(s.kind) === kind; })) return;
             var item = el('li', 'net-kind-item');
             item.appendChild(el('span', 'net-swatch ' + kind));
             var label = el('span', null, KIND_LABELS[kind]);
@@ -1102,7 +1108,7 @@
     /**
      * The rows of the tree: at a junction the branches joining from the side come
      * first, one step in, then the trunk goes on at the same depth, so the main river
-     * reads down the list from A to its headwater.
+     * reads down the list from A to its top.
      */
     function treeRows(data) {
         var byId = {};
@@ -1141,16 +1147,20 @@
             var th = el('th');
             th.scope = 'row';
             th.style.setProperty('--depth', String(row.depth));
-            var kind = row.type === 'element' ? row.item.kind : row.type;
+            var kind = row.type === 'element' ? shownKind(row.item.kind) : row.type;
             var id = el('span', 'net-id ' + kind, row.id);
             if (row.type === 'junction') {
                 th.appendChild(id);
                 th.appendChild(document.createTextNode(' ' + junctionText(row.item)));
                 tr.appendChild(th);
-                tr.appendChild(el('td', null, ''));
-                tr.appendChild(el('td', 'u', ''));
-                tr.appendChild(el('td', null, ''));
-                tr.appendChild(el('td', 'u', ''));
+                // The closing section's row carries A's whole catchment
+                if (row.item.kind === 'outlet') {
+                    valueCells(tr, fixed(d.data.area_km2, 2), 'km²');
+                    tr.title = WHOLE_A + ': ' + fixed(d.data.area_km2, 2) + ' km²';
+                } else {
+                    valueCells(tr, '', '');
+                }
+                valueCells(tr, '', '');
             } else {
                 var btn = el('button', 'net-row-btn');
                 btn.type = 'button';
@@ -1210,9 +1220,10 @@
         els.reach.textContent = '';
         if (element) {
             els.selectionTitle.textContent = element.id + ' · ' + elementText(element);
-            var kind = el('span', 'net-kind ' + element.kind, KIND_LABELS[element.kind]);
+            var shown = shownKind(element.kind);
+            var kind = el('span', 'net-kind ' + shown, KIND_LABELS[shown]);
             els.selectionKind.appendChild(kind);
-            Hydrograf.info.attach(kind, KIND_INFO[element.kind]);
+            Hydrograf.info.attach(kind, KIND_INFO[shown]);
             var text = ' · ' + fixed(elementArea(element), 2) + ' km²';
             if (d.full) {
                 text += ' · CN ' + fixed((element.watershed.morphometry || {}).cn, 1) + ' · do ' + element.to +
