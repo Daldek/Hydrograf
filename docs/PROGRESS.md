@@ -16,7 +16,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | DEM preprocessing | done | pyflwdir on one raster or by PGW units (ADR-071, opt-in `--units`, one fill of the whole grid); F1–F7 memory fixes (`652eec6`); stream burning with the directions of ADR-077; enclosed nodata filled on request (ADR-073); the bootstrap refuses NMT sheets that leave the area uncovered (ADR-076); thresholds 10 000, 100 000, 1 000 000 and 10 000 000 m²; flow path heads and channel sources measured (ADR-070). |
 | Land cover, soils, CN | done | Land cover from the BDOT10k partition by its attributes (ADR-074), the soil under the wetlands is group D and the lawns of KUSK/KUKO are open space (ADR-078); the soil groups of the least permeable SoilGrids layer of 0–100 cm by default, `soil.hsg_depth_rule` (ADR-079, in `develop` since `b38b657`; Hydroni's run 4 has them, production keeps the 0–5 cm groups until its step 5 runs again); the CN is that of the soil-cover complexes from Hydrolog's TR-55 table, computed at query time (ADR-075 and its amendments of 2026-11-09; migration 006 dropped `land_cover.cn_value`). The export of catchment parameters gives CN AMC I/II/III and the control columns of the weighted runoff. |
 | Producers | done | `develop` pins Nogat's release set candidate-3: Hydrolog `930915d`; Kartograf `d0990c8`, Obserwator `f9f4ee7` as in candidate-2. Hydroni runs them (`824bebd`, 2026-11-11); production runs Kartograf `9deaa31`, Obserwator `1ee5457`, Hydrolog `4fad769`. A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
-| Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię / Sieć zlewni / Profil terenu / Identyfikuj („Sieć zlewni” since `824bebd`: Next 10), the welcome text and the guide (33 slides) name the data area from `frontend/data/instance.json`, the results of external analyses from `frontend/data/results/index.json` (SFINCS), the MZP overlay, `?v=` asset versions. |
+| Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię / Sieć zlewni / Profil terenu / Identyfikuj („Sieć zlewni” since `824bebd`, its preview of the points and „Oblicz charakterystyki” on `feat/network-preview`: Next 10), the welcome text and the guide (33 slides) name the data area from `frontend/data/instance.json`, the results of external analyses from `frontend/data/results/index.json` (SFINCS), the MZP overlay, `?v=` asset versions. |
 | Admin panel | done | `/admin`: dashboard, bootstrap, resources, cleanup, storm sewer, feedback (ADR-034, ADR-051). |
 | Storm sewer | done | ADR-051, ADR-052; no data source yet (BACKLOG). |
 | Tests and gate | done | `scripts/gate.sh` on `7dc958d` (the tree of `824bebd`): 2,088 passed, 166 deselected, coverage 86.65 % (floor 80); `db` tests on `b5e1154`: 158 passed, 1 skipped. CI in `.github/workflows/ci.yml`. |
@@ -171,7 +171,13 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     2026-11-11, where a network of 250.39 km² passed B5 with 4 subcatchments, 2 reaches and 2
     junctions in 16.6 s warm; production is not redeployed (Next 1). Nogat added the registry
     edge of its D10 (its step 4, `fa56e90`). No release is cut for this work now; networks above
-    60 M cells stay refused.
+    60 M cells stay refused. **The network preview** (ADR-081,
+    [its plan](plans/2026-11-11-network-preview.md), branch `feat/network-preview` from `c5e0bb8`):
+    `POST /api/delineate-network/preview` on the catchment graph (`99f770c`; 0.08 s, 0.18 s and
+    0.37 s on production's three networks, equal to the full run in the tree, places, areas and
+    lengths) and the mode in two stages, the preview after every change of the points and
+    „Oblicz charakterystyki” (`b6f3fa6`), the plan's Results. Next: the gate on the branch, then
+    merge `feat/network-preview` into `develop`.
 11. **Production, at its next rebuild: land cover and soil groups beyond the boundary.** The basin
     of the tables and rasters (792.009 km²) holds 1.608 km² beyond the boundary, among them the
     block of 1.604 km² at 50.901 N 15.959 E, which has no `land_cover` or `soil_hsg` (cut to the

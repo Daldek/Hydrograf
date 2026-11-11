@@ -112,7 +112,30 @@ the front end. Merged when the author or the coordinator schedules it, after the
 
 ## Results
 
-Filled in when the branch is done.
+**The route** (`99f770c`, P1 to P5): `core/network_preview.py`, `POST /api/delineate-network/preview`,
+`CatchmentGraph.coarser_at_outlets`, `Place.accumulation_cells`; `trace_main_channel` slices the
+arrays of the graph instead of indexing the matrix (the same main channel, about nine times
+faster). Tests: unit and contract with the 14 affected files, 369 passed; `db` 11 passed on a
+throwaway PostGIS. Production, read only, for the three networks of the network plan (the
+Kamiennik, the Kaczawa node, the whole area of 792 km²): the preview equals the full run in the
+order, ids, kinds and inflows, the places of the points and junctions, the snapping and
+`at_mouth`, the areas and the reach lengths; its outlines overlap the full run's elements with an
+intersection over union of 0.93 to 0.999. Over HTTP, warm: 0.076 s, 0.18 s and 0.37 s (at most
+0.42 to 0.49 s), 74, 198 and 407 KiB (the full run: 3 s, 6.5 s, 17 s).
+
+**The front end** (`b6f3fa6`, P6), checked in a browser (1544 × 1055 and an iPhone 13) against
+that API: a preview settles 0.42 to 0.44 s after a click (300 ms of pause and 0.1 to 0.2 s of
+request); two clicks 120 ms apart send one request; a change while a request is on its way aborts
+it and its answer is dropped; names send no request; preview and characteristics of the same
+snapped points agree in the ids, kinds, places, junctions, areas (4 decimals) and lengths.
+Decided beyond the text of P6: (1) a preview error shows under the buttons, not in the panel's
+error box, so a bad tap on a phone does not open the sheet over the map; (2) while a preview is on
+its way, or when it failed, the network drawn before stays, faded, so the map keeps its context;
+(3) the names are not sent with the preview at all; (4) an element without an outline (its polygon
+went to its neighbour) has no label on the map and is selected from the tree; (5) a renamed point
+keeps the characteristics on the map and in the panel (it is not a change of the points, ADR-081
+decision 1) and disables only the hand-off, which carries the names, with a notice of its own. The
+guide's slides 27 and 28, the presentation twin and the picture of the mode show the two stages.
 
 ## Not in this plan
 
