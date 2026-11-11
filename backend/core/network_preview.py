@@ -562,16 +562,19 @@ def _stream_lines(
 def _reach_units(index: UnitIndex, reach: Reach) -> list[int]:
     """Return the units a reach runs through, from its upper end down.
 
-    Down to the unit of its lower end when that is a control point, else (a
-    junction at the head of a unit) to the unit above it on the reach's branch.
+    Down to the unit of its lower end when that is a control point inside it, else
+    (a junction at the head of a unit, or a control point on that head cell, A at a
+    confluence) to the unit above it on the reach's branch, whose stream line ends
+    at the head cell.
     """
     units = index.tree.units
     last = reach.lower.unit
+    at_head = isinstance(reach.lower, UnitHead) or reach.lower.at_head
     position = index.position(reach.upper.unit)
     found = []
     while True:
         unit = int(units[position])
-        if unit == last and isinstance(reach.lower, UnitHead):
+        if unit == last and at_head:
             break
         found.append(unit)
         if unit == last:

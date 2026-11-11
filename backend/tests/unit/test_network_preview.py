@@ -291,8 +291,16 @@ class TestTheOutlines:
             run.catchments[NETWORK_UNIT_THRESHOLD_M2]
         )
 
-    def test_reaches_follow_the_streams_between_their_ends(self, client, run):
-        outlet, points = NETWORKS["a gauge and two points in one unit"]
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "a gauge and two points in one unit",
+            # A's cell heads its unit: P1's reach comes down T1 into it
+            "A at a confluence and a point up the other branch",
+        ],
+    )
+    def test_reaches_follow_the_streams_between_their_ends(self, client, run, name):
+        outlet, points = NETWORKS[name]
         full, preview = full_and_preview(client, request(run, outlet, **points))
         theirs = {r["id"]: to_2180(r["geojson"]["geometry"]) for r in full["reaches"]}
 
