@@ -188,7 +188,14 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     J1”, „Dopływ do punktu P2”), A only as a whole (the outline „Zlewnia A (całość)” and the area
     in its closing section's row); the kind `headwater` of the API stays. The guide's picture of
     the mode was taken again; `docs/Hydrograf-prezentacja.pdf` still predates chapter 06 (printed
-    2026-11-05) and was not printed again.
+    2026-11-05) and was not printed again. **The trunk of a branch** (the author's report on
+    kaczawa2, ADR-080 and the plan's D4 amended, branch `fix/network-tree-trunk`): points on the
+    tributaries of a river without a point at its mouth met only where their paths merged, so the
+    upper Kaczawa (50.94 km²) was the przyrzecze of a reach from P8, 5 m above the Bukowica's
+    mouth; such a branch now has a trunk of its own (the larger upstream area), the upper Kaczawa
+    is the headwater of a junction at the Bukowica's mouth, and every reach runs down a main
+    river (`test_network_tree.py` checks it on every network). The tree never depended on the
+    order of the points. Deployed to kaczawa2 and Hydroni with its merge.
 11. **Production, at its next rebuild: land cover and soil groups beyond the boundary.** The basin
     of the tables and rasters (792.009 km²) holds 1.608 km² beyond the boundary, among them the
     block of 1.604 km² at 50.901 N 15.959 E, which has no `land_cover` or `soil_hsg` (cut to the

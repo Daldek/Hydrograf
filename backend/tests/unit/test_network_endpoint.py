@@ -332,6 +332,9 @@ class TestTheResponse:
 # it, so its subcatchment is the headwater: 20 m above, the mouth rule moves it to the
 # confluence (D3); 100 m above, it keeps its place and a reach runs to the confluence
 GAUGE_AT_T3, GAUGE_ABOVE_T3 = (73, 85), (65, 85)
+# T1's main river is the arm from the north (0.80 km² at the corner, T1a 0.32 km²): a
+# gauge on it, and a point on T1a 30 m above the corner, which moves to its mouth
+T1_NORTH, T1A_MOUTH = (120, 49), (159, 47)
 
 
 class TestTheHeadwaterIsHandedOffAsATributary:
@@ -391,6 +394,34 @@ class TestTheHeadwaterIsHandedOffAsATributary:
         origins = handoff["node_provenance"]
         assert origins[gauge["id"]]["watershed"]["element"] == "headwater"
         assert origins[tributary["id"]]["watershed"]["element"] == "tributary"
+
+    def test_a_gauge_on_the_main_river_of_a_branch_is_named_at_its_confluence(
+        self, client, run
+    ):
+        # No point at T1's mouth: G lies on T1's main river, the arm from the north,
+        # and P1 at the mouth of T1a, which joins it at the corner; G is off A's
+        # trunk, so its subcatchment is a tributary, and its reach brings it there
+        body = {
+            "outlet": point(run, "A", OUTLET, "Rzeka"),
+            "points": [
+                point(run, "G", T1_NORTH, "Wodowskaz"),
+                point(run, "P1", T1A_MOUTH, "Pierwszy"),
+            ],
+            "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
+        }
+
+        response = client.post(URL, json=body)
+
+        assert response.status_code == 200, response.text
+        network = response.json()
+        by_point = {s["point"]: s for s in network["subcatchments"] if s["point"]}
+        gauge, tributary = by_point["G"], by_point["P1"]
+        assert (gauge["kind"], tributary["kind"]) == ("tributary", "tributary")
+        nodes = {n["id"]: n for n in network["handoff"]["payload"]["nodes"]}
+        assert nodes[tributary["to"]]["from"][0] == gauge["to"]
+        assert nodes[tributary["to"]]["description"] == (
+            "Zbieg: dopływ G (Wodowskaz), dopływ P1 (Pierwszy)"
+        )
 
 
 # A point on T2 ten cells (100 m) above its mouth: beyond the mouth rule's 50 m, so

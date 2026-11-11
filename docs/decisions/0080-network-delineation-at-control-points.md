@@ -3,7 +3,7 @@
 **Date:** 2026-11-10
 **Status:** accepted (the author's decisions B1 to B7 of 2026-11-10; the details by delegation);
 amended 2026-11-11 (the mouth rule at every junction; the preview of ADR-081; short and flat
-reaches, D10a; two kinds of subcatchment for the person)
+reaches, D10a; two kinds of subcatchment for the person; the trunk of a branch)
 
 > **Amended 2026-11-11 (the coordinator, after the smoke S5):** the mouth rule of decision 2
 > applies wherever the paths of two control points merge, at every junction, not only where a
@@ -44,6 +44,29 @@ reaches, D10a; two kinds of subcatchment for the person)
 > „Dopływ powyżej J1”), and a confluence's description names its point too. A's catchment is
 > marked only as a whole, its outline „Zlewnia A (całość)” and the area in the tree's row of its
 > closing section. The kind `headwater` of the API and of `node_provenance` stays.
+
+> **Amended 2026-11-11 (the coordinator, after the author's report on kaczawa2, „Z12 zostało
+> oznaczone jako przyrzecze”):** the points whose paths enter a trunk through one unit form a
+> branch, and the branch has a trunk of its own: its main river from that unit up, by the rule of
+> every trunk (`trace_main_channel`, the larger upstream area at every confluence, ADR-046). Each
+> point of the branch joins that trunk as a point joins its parent's trunk, at itself or at the
+> confluence where its path enters it, and the points whose paths enter it through one unit form a
+> branch of the branch. Before, such points met only where their paths merged (the plan's S2,
+> decision 1: option A of decision 1 inside a branch), so the main river of a branch without a
+> point at its mouth fell into the przyrzecze of its first reach, against B2. On the author's
+> network (A at the confluence of the Nysa Szalona and the Kaczawa, nine points; the Kaczawa,
+> 316.5 km² there, is the smaller branch, so it enters A's junction with no point at its mouth),
+> P8 lay 5 m above the mouth of the Bukowica (19.58 km²) into the Kaczawa (50.94 km² above it),
+> and its path met another point's only 1.84 km lower, at the mouth of the Świerzawa (P4): the
+> reach R6 ran from P8 to that confluence with a przyrzecze of 52.29 km², the upper Kaczawa in
+> it. Now the upper Kaczawa is the headwater of a junction at the Bukowica's mouth, which P8
+> enters at its mouth (D3), and the reach from there runs down the Kaczawa to the Świerzawa's
+> mouth with a przyrzecze of 1.36 km². Every reach runs down a main river: a river that joins it
+> inside its przyrzecze drains no more than the river the reach brings to that confluence. The
+> rule of the trunks is unchanged (it already took the larger upstream area), and the tree did
+> not depend on the order of the points, before or after. A point with no point above it at the
+> top of a branch's trunk is a tributary (it lies off its parent's trunk), and a confluence of the
+> hand-off names it as it names the point of a headwater. The plan's D4 records the rule.
 
 ## Context
 
@@ -142,14 +165,15 @@ Option C of 1 and 3 and the options in bold of 2 and 4 to 7:
 2. **The tree.** A point's parent is the first control point on its flow path downstream (A at
    the latest). The trunk of a control point is its main river (ADR-046). A point joins its
    parent's trunk at itself when it lies on it, else at the confluence where its path enters it,
-   a unit boundary. The nodes of a trunk bound its edges, and every edge is a reach with its
-   przyrzecze; the trunk above its uppermost junction is a headwater subcatchment; a point with
-   no point above it is a subcatchment (a tributary, or the headwater when it lies on its
-   parent's trunk); a point off its parent's trunk at most 50 m above its junction is taken at
-   its mouth and enters the junction directly (*amended 2026-11-11:* any point at most 50 m above
-   a junction where its path meets another branch of the network, above). Every junction, every
-   control point with points above it and A are junctions of the network; A's flows into the
-   outlet.
+   a unit boundary (*amended 2026-11-11:* the points whose paths enter it through one unit form a
+   branch, which has a trunk of its own that they join in the same way, above). The nodes of a
+   trunk bound its edges, and every edge is a reach with its przyrzecze; the trunk above its
+   uppermost junction is a headwater subcatchment; a point with no point above it is a
+   subcatchment (a tributary, or the headwater when it lies on its parent's trunk); a point off
+   its parent's trunk at most 50 m above its junction is taken at its mouth and enters the
+   junction directly (*amended 2026-11-11:* any point at most 50 m above a junction where its
+   path meets another branch of the network, above). Every junction, every control point with
+   points above it and A are junctions of the network; A's flows into the outlet.
 3. **Cells.** An element holds the cells whose first element outlet downstream is its own: a
    control point's cell for the element that reaches it along its trunk, the outlet cell of the
    unit above a junction for an element that reaches the junction on a branch. A unit with a

@@ -156,6 +156,20 @@ mouths and the same layout nested for points above points (a gauge on a tributar
 on its own tributaries). Every confluence as a junction would make hundreds of elements at
 1 ha. ADR-080, option 1.
 
+*Amended 2026-11-11 (the coordinator, after the author's report on kaczawa2):* the points q whose
+paths enter p's trunk through one unit u (a branch without a point at its mouth) form a branch
+whose trunk is the main river from u up (`trace_main_channel`, as for a control point): each
+joins it as in 2 (at itself, at most one of them, or at the confluence where its path enters it),
+its nodes and edges are as in 3 and 4, its lowest node enters J(q) by an edge through u (or at
+its mouth, D3), and the points whose paths enter it through one unit form a branch of the branch
+in the same way. The junctions of the mouth rule (D3) include these confluences. S2's decision 1
+(the points of a branch meet only where their paths merge) is superseded: it is option A of
+ADR-080's decision 1 inside a branch, and with points on the tributaries of a branch the main
+river of the branch above the uppermost of them fell into the przyrzecze of the first reach
+(Results, after the author's report). Now every reach runs down a main river: a river that joins
+it inside its przyrzecze drains no more than the river the reach brings to that confluence
+(`tests/unit/test_network_tree.py` checks it on every network it builds).
+
 ### D5. The cells of each element
 
 Every element ends at one outlet cell and holds the cells whose first element outlet downstream
@@ -710,8 +724,9 @@ element raster and its splits (D6), checks B5 (D11), measures every element into
 Decided in S2, beyond the text of the plan: (1) points whose paths enter their parent's trunk
 through one unit (gauges on two branches of a tributary without a point at its mouth) meet at the
 confluence where their paths merge, a junction (B1), joined by an edge to their junction on the
-trunk; else their edges would overlap. The mouth rule stays relative to the parent's trunk, so two
-such points within 50 m of it coincide (test 6); (2) a junction on the cell of a control point (a
+trunk; else their edges would overlap (*superseded 2026-11-11*: the branch has a trunk of its own,
+D4 amended). The mouth rule stays relative to the parent's trunk, so two such points within 50 m
+of it coincide (test 6); (2) a junction on the cell of a control point (a
 point at a confluence) is that point, whose trunk is then a headwater ending at it (D5); (3) an
 element's main channel goes up its own stream cells only (D8: as `trace_main_channel` goes up its
 units), so test 11 holds for the przyrzecza too; (4) the message IDs of the errors the core raises
@@ -887,6 +902,24 @@ still runs `894810c` with the rasters re-cut on 2026-11-10 at 23:53 CET, and its
 waits for the author's decision. Nogat added the registry edge of its D10 the same day (its
 step 4, `fa56e90`: Hydrograf → Hydrolog by `file` with `hydrolog-network/1`, and the route of
 `POST /api/delineate-network`), which closes its plan of `node_provenance`.
+
+**After the author's report on kaczawa2** (2026-11-11, `fix/network-tree-trunk`, D4 amended):
+the network of A at the confluence of the Nysa Szalona and the Kaczawa (51.15636° N, 16.07643° E,
+747.27 km²) with nine points, threshold 10 ha. A's trunk runs up the Nysa Szalona (430.72 km² at
+P1, the Kaczawa 316.55 km²), so the Kaczawa's four points, all on its tributaries (P2 Wilcza, P3
+Kamiennik, P4 Świerzawa, P8 Bukowica), entered A's junction as one branch without a point at its
+mouth. P8 snapped to the outlet cell of its unit, 5 m above the mouth of the Bukowica (19.58 km²)
+into the Kaczawa (50.94 km² above the mouth), and its path met another point's only at the mouth
+of the Świerzawa, 1.84 km lower: R6 ran from P8 to there, its przyrzecze Z12 of 52.29 km²
+holding the upper Kaczawa. Now the branch's trunk is the Kaczawa: a junction at the Bukowica's
+mouth receives the headwater of 50.94 km² and P8 at its mouth (D3), R6 runs 1.84 km down the
+Kaczawa to the Świerzawa's mouth with a przyrzecze of 1.36 km², and the confluences below (P4,
+P3, P2) are as they were; 19 subcatchments, 9 reaches and 10 junctions (18, 9 and 9 before), B5
+to the cell (747.265675 km²), the preview equal to the full run (ids, kinds, areas, reach
+lengths). The same points in 10 random orders and reversed gave the tree of the request's order
+both before and after: the order of the points was not the cause. No przyrzecze of the network
+holds a river larger than the one its reach brings to it (the largest such river: 28.75 km² into
+R1, which brings 123.86 km² there).
 
 ## Not in this plan
 

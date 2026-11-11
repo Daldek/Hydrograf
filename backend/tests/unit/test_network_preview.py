@@ -149,6 +149,13 @@ NETWORKS = {
         OUTLET,
         {"P1": T1_MOUTH, "P2": (123, 96), "P3": T3_MOUTH},
     ),
+    # No point at T1's mouth: P1 30 m above the mouth of T1a into T1's main river,
+    # whose arm from the north is a headwater, as the upper Kaczawa of the author's
+    # network of 2026-11-11
+    "a point at the mouth of a tributary's tributary": (
+        OUTLET,
+        {"P1": (159, 47), "P2": T2_MOUTH, "P3": T3_MOUTH},
+    ),
 }
 
 
