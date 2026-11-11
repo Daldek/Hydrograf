@@ -6,7 +6,7 @@
  * (also by touch), listed in the panel with a name field and „Usuń”. „Wyznacz sieć”
  * sends them, with the threshold of the streams on the map, to POST
  * /api/delineate-network. The answer moves every marker to the stream cell it snapped
- * to („przy ujściu” on a point moved to its tributary's mouth) and draws the network:
+ * to („przy ujściu” on a point moved to the junction below it) and draws the network:
  * the elements filled by kind (zlewnia górna, dopływ, przyrzecze) with their ids, the
  * reaches as lines with theirs, the junctions as dots and A's boundary. The panel lists
  * the tree from A upward, the check of B5 and the notices; a row of the tree or the

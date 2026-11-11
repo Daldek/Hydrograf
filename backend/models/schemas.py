@@ -616,7 +616,10 @@ class NetworkPointInfo(BaseModel):
     )
     at_mouth: bool = Field(
         ...,
-        description="Moved to the mouth of its tributary: it lay at most 50 m above it",
+        description=(
+            "Moved to the junction below it, where its path meets another branch of "
+            "the network: it lay at most 50 m above it"
+        ),
     )
     node: str = Field(
         ...,

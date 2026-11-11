@@ -181,7 +181,7 @@ Nogat `8848c26` with the optional `node_provenance` (`schemas/nogat/README.md`).
 
 | Node | Input | Origin parameters |
 |---|---|---|
-| subcatchment | `watershed` | `element` (`headwater`, `tributary`, `intermediate`), `point` (the id of the point it ends at, if any), `reach` (of a przyrzecze), `at_mouth` (only when true: the point moved to its mouth), `latitude`, `longitude` (its outlet) |
+| subcatchment | `watershed` | `element` (`headwater`, `tributary`, `intermediate`), `point` (the id of the point it ends at, if any), `reach` (of a przyrzecze), `at_mouth` (only when true: the point moved to the junction below it, its tributary's mouth or the confluence below a gauge), `latitude`, `longitude` (its outlet) |
 | reach | `node` | `element` `"reach"`, `length` `"flow_distance"`, `slope` `"nmt"` or `"minimum"`, `upstream_elevation_m` and `downstream_elevation_m` (the NMT at its ends, when known), `vector_length_km` with `vector_source` `"bdot10k"` (when the reach has a BDOT10k check length) |
 | junction | `node` | `element` (`confluence`, `point`, `outlet` for A's), `point` (its point's id, if any), `latitude`, `longitude` |
 

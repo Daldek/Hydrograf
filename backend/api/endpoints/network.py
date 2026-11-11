@@ -52,9 +52,10 @@ def delineate_network(
     """Delineate the network of a closing section and the points above it.
 
     Every point, A included, snaps to the nearest stream cell of `threshold_m2` within
-    100 m; a point at most 50 m above its tributary's mouth moves to the mouth. The
-    flow paths of the points form a tree on the main river of each point: its
-    subcatchments (headwaters, tributaries and the przyrzecze of each reach) are made
+    100 m; a point at most 50 m above a junction, where its path meets another branch
+    of the network (its tributary's mouth), moves to the junction. The flow paths of
+    the points form a tree on the main river of each point: its subcatchments
+    (headwaters, tributaries and the przyrzecze of each reach) are made
     of the 1 ha sub-catchments, split where a point lies inside one, and add up to
     A's catchment; each gets the parameters of a delineated watershed, each reach the
     difference of the flow distances of its ends as its length and the NMT at its

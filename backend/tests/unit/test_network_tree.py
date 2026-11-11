@@ -50,12 +50,13 @@ UNITS = {
 class River:
     """The synthetic graph and the cells of its segments."""
 
-    def __init__(self, lengths_m=None):
-        lengths = {name: length for name, (_, _, length) in UNITS.items()}
+    def __init__(self, lengths_m=None, extra_units=None):
+        units = {**UNITS, **(extra_units or {})}
+        lengths = {name: length for name, (_, _, length) in units.items()}
         lengths.update(lengths_m or {})
-        self.names = list(UNITS)
+        self.names = list(units)
         self.index = {name: i for i, name in enumerate(self.names)}
-        self.below = {name: below for name, (below, _, _) in UNITS.items()}
+        self.below = {name: below for name, (below, _, _) in units.items()}
         # Flow distance at the cell below the outlet of each unit, and at its head
         self.outlet_fd = {}
         self.head_fd = {}
@@ -69,17 +70,17 @@ class River:
         }
         area = {}
         for name in reversed(self.names):  # every unit before the one below it
-            area[name] = UNITS[name][1] + sum(area[n] for n in self.upstream[name])
-        self.graph = self._graph(area, lengths)
+            area[name] = units[name][1] + sum(area[n] for n in self.upstream[name])
+        self.graph = self._graph(units, area, lengths)
 
-    def _graph(self, upstream_area, lengths):
+    def _graph(self, units, upstream_area, lengths):
         n = len(self.names)
         cg = CatchmentGraph()
         cg._n = n
         cg._loaded = True
         cg._segment_idx = np.arange(1, n + 1, dtype=np.int32)
         cg._threshold_m2 = np.full(n, 10_000, dtype=np.int32)
-        cg._area_km2 = np.array([UNITS[m][1] for m in self.names], dtype=np.float32)
+        cg._area_km2 = np.array([units[m][1] for m in self.names], dtype=np.float32)
         cg._upstream_area_km2 = np.array([upstream_area[m] for m in self.names])
         cg._outlet_flow_dist_m = np.array([self.outlet_fd[m] for m in self.names])
         cg._stream_length_km = np.array(
@@ -486,6 +487,24 @@ def test_two_points_moved_to_one_mouth_are_refused():
     assert raised.value.details["point_ids"] == ["P1", "P2"]
 
 
+def test_two_points_moved_to_one_merge_of_paths_are_refused():
+    # A third branch, U, joins T2a 10 m below the fork of T2 (T2b): P1 and P2 lie at
+    # most 50 m above that merge of their paths with Q's, so both move to the outlet
+    # cell of T2b, past the fork
+    river = River({"T2b": 10.0}, extra_units={"U": ("T2a", 1.0, 500.0)})
+    with pytest.raises(InvalidRequestError) as raised:
+        build(
+            river,
+            river.point("A", "M0", 500),
+            river.point("P1", "T2c", 5535),
+            river.point("P2", "Sa", 5540),
+            river.point("Q", "U", 5900),
+        )
+
+    assert raised.value.message_id == "network_points_coincide"
+    assert raised.value.details["point_ids"] == ["P1", "P2"]
+
+
 def test_points_on_two_branches_of_a_tributary_meet_where_their_paths_merge(river):
     tree = build(
         river,
@@ -517,6 +536,32 @@ def test_points_on_two_branches_of_a_tributary_meet_where_their_paths_merge(rive
     ]
 
 
+def test_a_point_at_most_50_m_above_the_merge_of_its_path_enters_it(river):
+    # P2 lies 30 m above the fork of T2 where its path merges with P1's, far above
+    # their junction on A's trunk: its tributary enters the fork with no reach
+    tree = build(
+        river,
+        river.point("A", "M0", 500),
+        river.point("P1", "T2c", 6500),
+        river.point("P2", "Sa", 6030),
+    )
+
+    (p2,) = [p for p in tree.points if p.point_id == "P2"]
+    assert p2.at_mouth
+    assert p2.place == river.place("Sa", 6005)
+    (merge,) = [j for j in tree.junctions if river.name(j.place.unit) == "T2b"]
+    z = {s.point: s for s in tree.subcatchments if s.point is not None}
+    assert (z["P2"].kind, z["P2"].to) == ("tributary", merge.id)
+    assert [r for r in tree.reaches if r.from_node == z["P2"].id] == []
+    # P1's reach and its przyrzecze first (the larger branch), then P2's tributary
+    reach, _, tributary = merge.inflows
+    assert by_id(tree.reaches)[reach].from_node == z["P1"].id
+    assert tributary == z["P2"].id
+    assert merge.tributaries == ("P1", "P2")
+    elements = unit_elements(river, tree)
+    assert elements["Sa"] == elements["Sb"] == z["P2"].id
+
+
 def test_a_tributary_entering_at_the_cell_of_a_enters_its_junction(river):
     outlet = river.point("A", "M2", 3000)
     assert outlet.place.at_head
@@ -535,21 +580,56 @@ def test_a_tributary_entering_at_the_cell_of_a_enters_its_junction(river):
     assert tree.order == ("Z1", "Z2", "R1", "Z3", "J1", "OUT")
 
 
-def test_a_gauge_at_the_outlet_cell_above_a_junction_has_a_reach_without_przyrzecze(
-    river,
-):
+@pytest.mark.parametrize("fd", [3005, 3040, 3060])
+def test_a_gauge_at_most_50_m_above_a_confluence_enters_it(river, fd):
+    # P1's path enters A's trunk at the head of M2 (3000 m); the gauge on M3 above it
     tree = build(
         river,
         river.point("A", "M0", 500),
-        river.point("P1", "T1a", 3020),
-        river.point("G", "M3", 3005),
+        river.point("P1", "T1a", 3200),
+        river.point("G", "M3", fd),
     )
 
+    (g,) = [p for p in tree.points if p.point_id == "G"]
+    (gauge,) = [s for s in tree.subcatchments if s.point == "G"]
+    (confluence,) = [j for j in tree.junctions if j.kind == "confluence"]
+    from_gauge = [r for r in tree.reaches if r.from_node == gauge.id]
+    if fd - 3000 <= MOUTH_TOLERANCE_M:
+        # At the outlet cell of M3, its headwater enters the confluence directly
+        assert g.at_mouth
+        assert g.place == river.place("M3", 3005)
+        assert from_gauge == []
+        assert (gauge.kind, gauge.to) == ("headwater", confluence.id)
+        assert confluence.inflows[0] == gauge.id
+        assert river.index["M3"] not in {s.unit for s in tree.splits}
+    else:
+        assert not g.at_mouth
+        assert g.place == river.place("M3", fd)
+        (reach,) = from_gauge
+        assert confluence.inflows[0] == reach.id
+    # The gauge comes along the trunk, P1 from the side
+    assert confluence.tributaries == ("P1",)
+
+
+def test_a_point_30_m_above_the_point_below_it_on_one_river_keeps_its_place(river):
+    # No confluence lies between them: the reach from G carries P's own cells (D5)
+    tree = build(
+        river,
+        river.point("A", "M0", 500),
+        river.point("P", "M3", 3500),
+        river.point("G", "M3", 3530),
+    )
+
+    (g,) = [p for p in tree.points if p.point_id == "G"]
+    assert not g.at_mouth
     (gauge,) = [s for s in tree.subcatchments if s.point == "G"]
     (reach,) = [r for r in tree.reaches if r.from_node == gauge.id]
-    assert reach.intermediate is None
-    assert by_id(tree.junctions)[reach.to].inflows[:1] == (reach.id,)
-    assert river.index["M3"] not in {s.unit for s in tree.splits}
+    (p,) = [j for j in tree.junctions if j.point == "P"]
+    assert reach.to == p.id
+    assert (reach.upper, reach.lower) == (
+        river.place("M3", 3530),
+        river.place("M3", 3500),
+    )
 
 
 def test_the_same_points_in_another_order_give_the_same_network(river):
