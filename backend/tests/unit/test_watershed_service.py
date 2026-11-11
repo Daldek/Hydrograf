@@ -890,3 +890,30 @@ class TestCascadeEscalate:
         at_click = {10_000: 12, 100_000: 6}
 
         assert _escalate(cg, 100_000, max_merge=3, at_click=at_click) is None
+
+    def test_the_main_channel_of_an_escalated_merge_starts_at_its_outlet(self):
+        """The main channel of a merge on a coarser threshold is traced from its outlet.
+
+        The regression of the Kaczawa at the Nysa Szalona (747.92 km², escalated
+        from 100 000 m² to 10 km² on 2026-11-11): the morphometry looked up the
+        clicked segment of the request's threshold in the coarser one, found no
+        node and left the main channel out of the map and of the parameters.
+        """
+        cg = _chains(PIPELINE_COUNTS)
+        # The click lies in segment 6 at 100 000 m²; 10 km² has segment 1 only
+        _, threshold, upstream, outlet, *_ = _escalate(cg, 100_000, max_merge=1)
+        assert threshold == 10_000_000
+        assert cg.lookup_by_segment_idx(threshold, 6) is None
+
+        result = build_morph_dict_from_graph(
+            cg=cg,
+            upstream_indices=upstream,
+            boundary_2180=Polygon([(0, 0), (100, 0), (100, 100), (0, 100)]),
+            outlet_x=50.0,
+            outlet_y=0.0,
+            segment_idx=6,
+            threshold_m2=threshold,
+            outlet_idx=outlet,
+        )
+
+        assert result["_main_channel_nodes"] == [outlet]

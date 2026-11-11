@@ -928,9 +928,16 @@ def build_morph_dict_from_graph(
     elev_min = stats.get("elevation_min_m")
     elev_max = stats.get("elevation_max_m")
 
-    # Channel length and slope from main channel trace (not total network)
+    # Channel length and slope from main channel trace (not total network), from
+    # the outlet node of ``upstream_indices``: after an escalation to a coarser
+    # threshold (cascade_escalate) ``segment_idx`` is the clicked segment of the
+    # request's threshold, which is no node of ``threshold_m2``
     main_channel_nodes = []
-    outlet_internal_idx = cg.lookup_by_segment_idx(threshold_m2, segment_idx)
+    outlet_internal_idx = (
+        outlet_idx
+        if outlet_idx is not None
+        else cg.lookup_by_segment_idx(threshold_m2, segment_idx)
+    )
     if outlet_internal_idx is not None:
         main_ch = cg.trace_main_channel(outlet_internal_idx, upstream_indices)
         channel_length_km = main_ch.get("main_channel_length_km")

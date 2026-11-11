@@ -170,7 +170,10 @@ def _build_watershed_response(
         db,
     )
     if main_stream_geojson is None:
-        main_stream_geojson = get_main_stream_geojson(segment_idx, merge_threshold, db)
+        # The outlet segment of the merged threshold, not the clicked one
+        main_stream_geojson = get_main_stream_geojson(
+            cg.get_segment_idx(outlet_idx_for_stats), merge_threshold, db
+        )
 
     # Hydrograph
     hydrograph_available = area_km2 <= HYDROGRAPH_AREA_LIMIT_KM2
