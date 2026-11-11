@@ -642,11 +642,14 @@ class NetworkSubcatchmentInfo(BaseModel):
     id: str = Field(..., description="Z1, Z2, … in the order of the hand-off")
     kind: Literal["headwater", "tributary", "intermediate"] = Field(
         ...,
-        description="headwater (the main river above its first node), tributary (a "
-        "point's catchment) or intermediate (the przyrzecze of a reach)",
+        description="headwater (the main river above its first node, or a river "
+        "without a point that joins a junction), tributary (a point's catchment) or "
+        "intermediate (the przyrzecze of a reach)",
     )
     to: str = Field(..., description="The node it flows into")
-    point: str | None = Field(None, description="Id of the point it ends at")
+    point: str | None = Field(
+        None, description="Id of the point it ends at; none for a river without one"
+    )
     reach: str | None = Field(None, description="The reach of a przyrzecze")
     watershed: WatershedResponse = Field(
         ..., description="Its boundary, outlet and parameters, as for a watershed"
@@ -800,11 +803,14 @@ class NetworkPreviewSubcatchmentInfo(BaseModel):
     id: str = Field(..., description="Z1, Z2, … as the characteristics name it")
     kind: Literal["headwater", "tributary", "intermediate"] = Field(
         ...,
-        description="headwater (the main river above its first node), tributary (a "
-        "point's catchment) or intermediate (the przyrzecze of a reach)",
+        description="headwater (the main river above its first node, or a river "
+        "without a point that joins a junction), tributary (a point's catchment) or "
+        "intermediate (the przyrzecze of a reach)",
     )
     to: str = Field(..., description="The node it flows into")
-    point: str | None = Field(None, description="Id of the point it ends at")
+    point: str | None = Field(
+        None, description="Id of the point it ends at; none for a river without one"
+    )
     reach: str | None = Field(None, description="The reach of a przyrzecze")
     area_km2: float = Field(
         ...,

@@ -424,6 +424,82 @@ class TestTheHeadwaterIsHandedOffAsATributary:
         )
 
 
+# The confluence of T1 and the main river, the cell below their last cells, and a
+# gauge on the main river 30 m above it
+AT_T1, ABOVE_T1 = (160, 85), (157, 85)
+
+
+class TestARiverWithoutAPointAtAJunction:
+    """The coordinator's decision of 2026-11-11 after the author's report on kaczawa2.
+
+    A at the confluence of the Nysa Szalona and the Kaczawa, P1 7 m above A on the
+    Nysa Szalona: P1 moves to its mouth and the Kaczawa, with no point, enters A as a
+    dopływ of its own, not in the przyrzecze of a reach of 7 m.
+    """
+
+    def test_a_river_joining_at_a_is_a_tributary_to_the_closing_section(
+        self, client, run
+    ):
+        body = {
+            "outlet": point(run, "A", AT_T1, "Rzeka"),
+            "points": [point(run, "G", ABOVE_T1, "Wodowskaz")],
+            "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
+        }
+
+        response = client.post(URL, json=body)
+
+        assert response.status_code == 200, response.text
+        network = response.json()
+        assert network["reaches"] == []
+        gauge, river = network["subcatchments"]
+        assert (gauge["point"], gauge["kind"]) == ("G", "headwater")
+        assert (river["point"], river["kind"]) == (None, "headwater")
+        assert [(p["id"], p["at_mouth"]) for p in network["points"]] == [
+            ("A", False),
+            ("G", True),
+        ]
+        handoff = network["handoff"]
+        assert [e.message for e in NETWORK.iter_errors(handoff["payload"])] == []
+        nodes = {n["id"]: n for n in handoff["payload"]["nodes"]}
+        assert nodes[gauge["id"]]["watershed"]["name"] == (
+            "Dopływ do ujścia przy G (Wodowskaz)"
+        )
+        assert nodes[river["id"]]["watershed"]["name"] == (
+            "Dopływ do przekroju A (Rzeka)"
+        )
+        assert nodes[river["to"]]["from"] == [gauge["id"], river["id"]]
+        assert nodes[river["to"]]["description"] == "Przekrój zamykający A (Rzeka)"
+
+    def test_a_river_joining_at_a_gauge_is_a_tributary_above_its_junction(
+        self, client, run
+    ):
+        # G at the confluence of T1, Q 200 m above it on the main river
+        body = {
+            "outlet": point(run, "A", OUTLET, "Rzeka"),
+            "points": [
+                point(run, "G", AT_T1, "Wodowskaz"),
+                point(run, "Q", (140, 85)),
+            ],
+            "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
+        }
+
+        response = client.post(URL, json=body)
+
+        assert response.status_code == 200, response.text
+        network = response.json()
+        (gauge,) = [j for j in network["junctions"] if j["point"] == "G"]
+        (river,) = [
+            s
+            for s in network["subcatchments"]
+            if s["kind"] == "headwater" and s["point"] is None
+        ]
+        assert gauge["inflows"][-1] == river["id"]
+        nodes = {n["id"]: n for n in network["handoff"]["payload"]["nodes"]}
+        assert nodes[river["id"]]["watershed"]["name"] == (
+            f"Dopływ powyżej {gauge['id']}"
+        )
+
+
 # A point on T2 ten cells (100 m) above its mouth: beyond the mouth rule's 50 m, so
 # its subcatchment reaches the confluence by a reach of some 100 m
 T2_ABOVE_THE_MOUTH = (123, 96)

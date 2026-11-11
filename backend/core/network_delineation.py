@@ -371,7 +371,7 @@ def delineate_network(
         snapped = [
             snap_point(rasters, cg, click, threshold_m2) for click in (outlet, *points)
         ]
-        tree = build_network_tree(cg, snapped[0], snapped[1:])
+        tree = build_network_tree(cg, snapped[0], snapped[1:], threshold_m2)
         logger.info(
             "Network: %d points snapped, %d units, %d elements in %.2f s",
             len(snapped),

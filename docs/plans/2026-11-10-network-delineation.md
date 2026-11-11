@@ -130,6 +130,17 @@ network 2 had a reach of 34 m and a przyrzecze of 0.0004 km² where a point 34 m
 of its tributary met the path of a gauge on the Kaczawa, off A's trunk; a gauge clicked a few
 metres above a confluence gave the same.
 
+*Amended 2026-11-11 again (the coordinator, after the author's report on kaczawa2: A at the
+confluence of the Nysa Szalona and the Kaczawa, P1 7.1 m above A on the Nysa Szalona, gave a
+reach of 7.1 m whose przyrzecze held the whole Kaczawa):* a point at most 50 m above a node whose
+cell is a confluence of the network (A, a control point with points above it, any junction)
+moves to the outlet cell of the last unit above that confluence on its own branch (`at_mouth`)
+and enters the node directly, as a tributary does, also when no other point's path enters
+there: no reach is made. A control point's cell is such a confluence when a branch of points or
+a river of the request's network (D5, amended) joins its trunk there; a gauge on the trunk then
+takes the parent's cell as a junction of the mouth rule. Two points within 50 m on one river,
+with no such confluence at the lower one, keep their places and the reach (D5).
+
 ### D4. The tree: each control point's trunk takes the junctions of the points above it
 
 1. The parent of a point is the first control point on its flow path downstream: the nearest
@@ -192,6 +203,22 @@ catchment from A upward (`CatchmentGraph.upstream_tree`, new: the order of
 neighbouring cells) is left out. Why: these are the boundaries the units have, except at
 control points; every cell of A's catchment gets one element; no element is open downstream,
 so the flow paths of a przyrzecze stay inside it (B4).
+
+*Amended 2026-11-11 (the coordinator, after the author's report on kaczawa2, with D3):* a
+river of the request's network, a unit whose upstream area reaches `threshold_m2`, that joins
+at the cell of a junction (a confluence, or a control point with points above it at the head of
+its unit) beside the trunk and the branches of points is a subcatchment of its own (kind
+`headwater`, no point; „Dopływ do przekroju A” at A's junction, „Dopływ powyżej J…” at another)
+that ends at the outlet cell of that unit and enters the junction, not a part of the przyrzecze
+of the edge into a control point's cell or of the edge below a confluence. A smaller stream
+stays where the bullets above put it. When a control point's trunk enters it at its mouth (D3),
+no przyrzecze ends at its cell: its own cells (the cell, those draining into it from the side and
+the smaller streams joining there) go to the largest branch beside the trunk that ends in a
+river or in the przyrzecze of an edge, which then ends at the point's cell (a przyrzecze names
+the point, a river does not); without one they are an element of their own, a headwater without
+a point that enters the junction. Every reach still runs down a main river, and no przyrzecze
+holds a river that joins at a junction (`tests/unit/test_network_tree.py` checks both on every
+network it builds).
 
 ### D6. A unit with a control point inside is split by pyflwdir (B3)
 
@@ -920,6 +947,24 @@ lengths). The same points in 10 random orders and reversed gave the tree of the 
 both before and after: the order of the points was not the cause. No przyrzecze of the network
 holds a river larger than the one its reach brings to it (the largest such river: 28.75 km² into
 R1, which brings 123.86 km² there).
+
+**A node at a confluence** (2026-11-11, `fix/network-node-confluence`, D3 and D5 amended): the
+author's network of A at the confluence of the Nysa Szalona and the Kaczawa with one point, P1,
+7.1 m above A on the Nysa Szalona (51.15631° N, 16.07636° E), threshold 10 ha. A lies at the
+head cell of its unit, where the Nysa Szalona (430.72 km², A's trunk) and the Kaczawa
+(316.545 km²) meet, and P1 at the outlet cell of the Nysa Szalona's unit. The mouth rule left P1
+in place, since no other point's path entered A's cell: R1 ran 7.1 m from P1 to A, and its
+przyrzecze Z2 („Przyrzecze odcinka R1”, 316.55 km²) held the whole Kaczawa and A's own 14 cells
+(0.00035 km²). Now P1 enters A at its mouth (Z1 „Dopływ do ujścia przy P1”, 430.72 km²) and the
+Kaczawa is Z2 „Dopływ do przekroju A” (316.5455 km² with A's own cells): J1 = A receives Z1 and
+Z2, no reach; B5 to the cell (747.265675 km²), the preview equal to the full run. In the network
+of nine points of the report above, P1 has points above it (its junction J5): its reach R5 of
+7.1 m to A and that reach's przyrzecze Z10 of 0.0003 km² are gone the same way, J5 enters A's
+junction at its mouth and A's own cells join the przyrzecze of the Kaczawa's reach into A
+(103.1775 → 103.1779 km²); 18 subcatchments, 8 reaches and 10 junctions (19, 9 and 10 before),
+the other elements as they were. Two units enter the cell of every junction of both networks,
+so the only river of D5 is the Kaczawa at A in the network of one point; the same points in 10
+random orders and reversed gave the same trees.
 
 ## Not in this plan
 

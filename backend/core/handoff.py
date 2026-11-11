@@ -536,7 +536,11 @@ def build_network_handoff(
     node_provenance: dict[str, dict[str, Any]] = {}
     for node_id in network.order:
         if node_id in subcatchments:
-            nodes.append(_subcatchment_node(subcatchments[node_id], names))
+            nodes.append(
+                _subcatchment_node(
+                    subcatchments[node_id], names, junctions[outlet_junction]
+                )
+            )
             node_provenance[node_id] = {
                 "watershed": _subcatchment_origin(subcatchments[node_id])
             }
@@ -583,11 +587,13 @@ def build_network_handoff(
 
 
 def _subcatchment_node(
-    element: "NetworkSubcatchment", names: Mapping[str, str]
+    element: "NetworkSubcatchment",
+    names: Mapping[str, str],
+    outlet: "NetworkJunction",
 ) -> dict[str, Any]:
     """Return a subcatchment of the payload: its watershed, the runoff and a text."""
     morphometry = element.watershed.morphometry
-    title = _element_title(element, names)
+    title = _element_title(element, names, outlet)
     watershed = watershed_parameters(
         morphometry.model_dump(exclude_none=True) if morphometry is not None else {},
         title,
@@ -603,16 +609,23 @@ def _subcatchment_node(
     }
 
 
-def _element_title(element: "NetworkSubcatchment", names: Mapping[str, str]) -> str:
+def _element_title(
+    element: "NetworkSubcatchment",
+    names: Mapping[str, str],
+    outlet: "NetworkJunction",
+) -> str:
     """Say what an element is, in Polish: „Dopływ do ujścia przy P1 (Kamiennik)”.
 
     A headwater is named as a tributary: which branch of a confluence goes on as the
     main river follows the larger upstream area, not the river a person knows, and it
-    changes nothing in the computation.
+    changes nothing in the computation. One without a point names the junction it
+    enters, A's (``outlet``) as the closing section: „Dopływ do przekroju A”.
     """
     item = element.subcatchment
     if item.kind == "intermediate":
         return f"Przyrzecze odcinka {item.reach}"
+    if item.point is None and item.to == outlet.junction.id:
+        return f"Dopływ do przekroju {_point_label(outlet.junction.point or '', names)}"
     if item.point is None:
         return f"Dopływ powyżej {item.to}"
     point = _point_label(item.point, names)

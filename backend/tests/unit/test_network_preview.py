@@ -46,6 +46,9 @@ OUTLET = (219, 85)  # A: the outlet cell of the grid, on the main river
 # The last cell of each tributary above its confluence with the main river (row,
 # column): a click there moves to the mouth
 T3_MOUTH, T2_MOUTH, T1_MOUTH = (75, 86), (123, 86), (159, 84)
+# A at the confluence of T1 and the main river, the cell below their last cells (T1's
+# T1_MOUTH, the main river's 10 m above A), and a gauge 30 m above A on the main river
+A_AT_T1, GAUGE_ABOVE_A = (160, 85), (157, 85)
 _TO_2180 = Transformer.from_crs("EPSG:4326", "EPSG:2180", always_xy=True)
 
 
@@ -155,6 +158,25 @@ NETWORKS = {
     "a point at the mouth of a tributary's tributary": (
         OUTLET,
         {"P1": (159, 47), "P2": T2_MOUTH, "P3": T3_MOUTH},
+    ),
+    # The author's network of 2026-11-11 (A at the confluence of the Nysa Szalona and
+    # the Kaczawa, P1 7 m above it): the gauge moves to the mouth of the main river
+    # and enters A with no reach, bringing P2's confluence; T1, with no point, enters
+    # A as a dopływ of its own that holds A's own cells, which splits A's unit
+    "A at a confluence and a gauge 30 m above it": (
+        A_AT_T1,
+        {"G": GAUGE_ABOVE_A, "P2": T2_MOUTH},
+    ),
+    # A point up T1 instead: its reach's przyrzecze ends at A's cell and holds A's
+    # own cells
+    "A at a confluence and a point up the other branch": (
+        A_AT_T1,
+        {"G": GAUGE_ABOVE_A, "P1": (159, 70)},
+    ),
+    # Both branches at their mouths: A's own cells are an element of their own
+    "A at a confluence and both branches at their mouths": (
+        A_AT_T1,
+        {"G": GAUGE_ABOVE_A, "P1": T1_MOUTH},
     ),
 }
 

@@ -267,7 +267,7 @@ def preview_network(
         ]
         transform = rasters.filled_dem.transform
         cellsize_m = rasters.cellsize_m
-        tree = build_network_tree(cg, snapped[0], snapped[1:])
+        tree = build_network_tree(cg, snapped[0], snapped[1:], threshold_m2)
         index = UnitIndex(tree)
         reach_units = {reach.id: _reach_units(index, reach) for reach in tree.reaches}
         vertices = _stream_lines(
