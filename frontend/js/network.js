@@ -369,6 +369,16 @@
         changed(p);
     }
 
+    /** „Przesuń do zbiegu”: the point goes to the cell above its confluence, where the mouth rule takes it. */
+    function moveToMouth(id, place) {
+        var p = findPoint(id);
+        if (!p || state.loading) return;
+        p.lat = place.latitude;
+        p.lng = place.longitude;
+        p.marker.setLatLng([p.lat, p.lng]);
+        changed(p);
+    }
+
     /**
      * The points or the threshold changed: the error that named the old ones goes, the
      * moved point is no longer where it snapped, the preview of the new points is asked
@@ -1002,6 +1012,44 @@
         return p;
     }
 
+    /**
+     * A reach shorter than 200 m or flat (D10a), which Muskingum-Cunge may not route at
+     * any usable time step: where it lies and what to do. A point above a confluence
+     * gets the button that moves it to the mouth, where it enters the confluence
+     * without the reach; a flat reach is a lag in the hand-off.
+     */
+    function reachNotice(data, id, r) {
+        var reach = data.reaches.filter(function (x) { return x.id === id; })[0];
+        var lower = data.junctions.filter(function (j) { return j.id === r.lower; })[0];
+        var length = Math.round(r.length_m) + ' m';
+        var upper = r.upper_point ? 'punkt ' + r.upper_point : 'zbieg ' + (reach ? reach.from : '');
+        var below = !lower || lower.kind === 'confluence' ? 'zbiegiem' : 'punktem ' + lower.point;
+        var text = 'Odcinek ' + id + ' ma ' + length + (r.slope_minimum ? ' (spadek minimalny)' : '') +
+            ': ' + upper + ' leży ' + length + ' nad ' + below + '. ';
+        if (r.lag_min) {
+            var lag = 'opóźnienie ' + r.lag_min + ' min';
+            text += r.move_to
+                ? 'Przesuń go do zbiegu albo zostaw ' + lag + ', które Hydrograf zapisuje w przekazaniu zamiast ' +
+                    'Muskingum-Cunge (ten nie trasuje odcinka bez spadku).'
+                : 'Hydrograf zapisuje go w przekazaniu jako ' + lag + ' zamiast Muskingum-Cunge, który nie ' +
+                    'trasuje odcinka bez spadku.';
+        } else {
+            text += r.move_to
+                ? 'Przesuń go do zbiegu albo w Hydrologu użyj opóźnienia.'
+                : 'Jeśli Hydrolog nie przeliczy go metodą Muskingum-Cunge, użyj tam opóźnienia.';
+        }
+        var box = notice('warn has-action', text);
+        if (r.move_to && r.upper_point) {
+            var pointId = r.upper_point;
+            var move = el('button', 'btn sm', 'Przesuń ' + pointId + ' do zbiegu');
+            move.type = 'button';
+            move.disabled = state.loading;
+            move.addEventListener('click', function () { moveToMouth(pointId, r.move_to); });
+            box.appendChild(move);
+        }
+        return box;
+    }
+
     /** The network shown in the panel; hidden while the characteristics are computed (their spinner shows). */
     function renderResult(d) {
         els.result.classList.toggle('d-none', !d || state.loading);
@@ -1030,9 +1078,8 @@
             if (n.code === 'over_scs_cn_limit') {
                 els.notices.appendChild(notice('warn', 'Zlewnie powyżej 250 km², granicy stosowalności ' +
                     'metody SCS-CN: ' + ids + '.'));
-            } else if (n.code === 'reach_slope_minimum') {
-                els.notices.appendChild(notice('warn', 'Spadek minimalny 0,1 ‰, bo NMT nie opada między ' +
-                    'końcami odcinka: ' + ids + '.'));
+            } else if (n.code === 'reach_short_or_flat') {
+                els.notices.appendChild(reachNotice(data, n.ids[0], n.reach));
             }
         });
 

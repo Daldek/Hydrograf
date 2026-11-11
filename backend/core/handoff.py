@@ -474,7 +474,17 @@ REACH_LENGTH_METHOD: Final = "flow_distance"
 REACH_VECTOR_SOURCE: Final = "bdot10k"
 # A reach without a section is routed by Muskingum-Cunge once the person gives one
 REACH_METHOD: Final = "muskingum-cunge"
+# A reach of the minimum slope is a lag instead (ADR-080, D10a): Muskingum-Cunge
+# finds no division of a flat reach that keeps its weights non-negative. The wave
+# travels it at this celerity [m/s]
+FLAT_REACH_METHOD: Final = "lag"
+FLAT_REACH_CELERITY_M_PER_S: Final = 0.5
 _SLOPE_WORDS: Final = {"nmt": "NMT", "minimum": "minimalny"}
+
+
+def flat_reach_lag_min(length_km: float) -> int:
+    """Return the lag of a flat reach: its length at 0.5 m/s, 1 min at least."""
+    return max(1, round(length_km * 1000 / FLAT_REACH_CELERITY_M_PER_S / 60))
 
 
 def build_network_handoff(
@@ -500,7 +510,8 @@ def build_network_handoff(
         of the network (each after the nodes it receives) and a Polish description
         of each; subcatchments with the ``watershed`` of their morphometry (the area
         exact to the cell) and the ``curve-number`` runoff with Hydrolog's defaults,
-        Muskingum-Cunge reaches with a length and a slope and no section, junctions
+        Muskingum-Cunge reaches with a length and a slope and no section (a reach of
+        the minimum slope a lag of FLAT_REACH_CELERITY_M_PER_S), junctions
         and the outlet ``OUT``; no rainfall, time step or result. ``provenance``
         names A's snapped place, ``node_provenance`` the origin of every
         subcatchment, reach and junction.
@@ -621,8 +632,32 @@ def _subcatchment_origin(element: "NetworkSubcatchment") -> dict[str, Any]:
 
 
 def _reach_node(item: "NetworkReach") -> dict[str, Any]:
-    """Return a reach of the payload: its length and slope, no section, a text."""
+    """Return a reach of the payload: its length and slope, no section, a text.
+
+    A reach of the minimum slope is a lag of its length at
+    FLAT_REACH_CELERITY_M_PER_S: Muskingum-Cunge cannot route a flat reach.
+    """
     reach = item.reach
+    text = (
+        f"Odcinek od {reach.from_node} do {reach.to}: "
+        f"{_decimal(item.length_km, 2)} km, spadek "
+        f"{_decimal(item.slope_m_per_m * 1000, 2)} ‰ "
+        f"({_SLOPE_WORDS[item.slope_method]})"
+    )
+    if item.slope_method == "minimum":
+        lag_min = flat_reach_lag_min(item.length_km)
+        return {
+            "id": reach.id,
+            "type": "reach",
+            "method": FLAT_REACH_METHOD,
+            "from": [reach.from_node],
+            "lag_min": lag_min,
+            "description": _description(
+                f"{text}. Opóźnienie {lag_min} min (długość przy "
+                f"{_decimal(FLAT_REACH_CELERITY_M_PER_S, 1)} m/s) zamiast "
+                "Muskingum-Cunge, który nie trasuje odcinka bez spadku"
+            ),
+        }
     return {
         "id": reach.id,
         "type": "reach",
@@ -630,23 +665,28 @@ def _reach_node(item: "NetworkReach") -> dict[str, Any]:
         "from": [reach.from_node],
         "length_km": item.length_km,
         "slope_m_per_m": item.slope_m_per_m,
-        "description": _description(
-            f"Odcinek od {reach.from_node} do {reach.to}: "
-            f"{_decimal(item.length_km, 2)} km, spadek "
-            f"{_decimal(item.slope_m_per_m * 1000, 2)} ‰ "
-            f"({_SLOPE_WORDS[item.slope_method]})"
-        ),
+        "description": _description(text),
     }
 
 
 def _reach_origin(item: "NetworkReach") -> dict[str, Any]:
-    """Where a reach's length and slope come from, with the NMT and the check length."""
+    """Where a reach's length and slope come from, with the NMT and the check length.
+
+    A reach of the minimum slope says why it is a lag (``method_reason`` ``flat``)
+    and at what celerity.
+    """
     origin: dict[str, Any] = {
         "source": PRODUCER,
         "element": "reach",
         "length": REACH_LENGTH_METHOD,
         "slope": item.slope_method,
     }
+    if item.slope_method == "minimum":
+        origin["length_km"] = item.length_km
+        origin["slope_m_per_m"] = item.slope_m_per_m
+        origin["method"] = FLAT_REACH_METHOD
+        origin["method_reason"] = "flat"
+        origin["lag_celerity_m_per_s"] = FLAT_REACH_CELERITY_M_PER_S
     if item.upstream_elevation_m is not None:
         origin["upstream_elevation_m"] = item.upstream_elevation_m
     if item.downstream_elevation_m is not None:

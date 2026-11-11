@@ -330,6 +330,7 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 }
 .notice.warn { background: var(--warn-bg); color: var(--warn-ink); }
 .notice.bad { background: var(--bad-bg); color: var(--bad-ink); }
+.notice.has-action { flex-direction: column; }
 .notice svg { width: 15px; height: 15px; flex: none; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 
 .steps { display: grid; gap: var(--space-2); counter-reset: step; }

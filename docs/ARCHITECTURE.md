@@ -363,7 +363,12 @@ Response: 200 OK
     {"id": "J1", "kind": "confluence", "point": null, "latitude": 51.0157,
      "longitude": 15.8901, "inflows": ["Z1", "Z2"]}
   ],
-  "notices": [{"code": "reach_slope_minimum", "ids": ["R3"]}],
+  "notices": [                // one per reach shorter than 200 m or of the minimum slope (D10a)
+    {"code": "reach_short_or_flat", "ids": ["R1"], "reach": {"length_m": 50.4,
+     "slope_minimum": true, "upper_point": "P2", "lower": "J1",
+     "move_to": {"latitude": 50.9197045, "longitude": 15.9542906},  // the cell above J1 on P2's branch
+     "lag_min": 2}}           // the lag the hand-off writes for a flat reach; null otherwise
+  ],
   "handoff": {"schema": "nogat-handoff/1", ...}   // the network for Hydrolog's „Sieć i trasowanie”
 }
 
@@ -375,7 +380,7 @@ Errors (application/problem+json; details.point_id or details.point_ids name the
 - 500 internal_error: the elements do not add up to A's catchment (network_area_mismatch); any other failure (network_delineation_failed)
 ```
 
-The network of a closing section A and the control points above it (plan `docs/plans/2026-11-10-network-delineation.md`; `api/endpoints/network.py`, `core/network_tree.py`, `core/network_delineation.py`, §2.4.10). Each point, A included, snaps to the nearest stream cell of `threshold_m2` within 100 m; a point at most 50 m above a junction where its path meets another branch of the network (its tributary's mouth, the merge of its path with another point's, the confluence below a gauge) moves to that junction (`at_mouth`). `points[].node` is a point's subcatchment when no point lies above it, else its junction. `subcatchments[].kind` is `headwater`, `tributary` or `intermediate` (the przyrzecze of the reach `reach`); `reaches[].from` is the JSON name of the field `from_node`, and `slope_method` is `minimum` where the NMT does not fall between the ends of a reach (0.0001); `junctions[].kind` is `confluence`, `point` or `outlet` (A's, which flows into `OUT`). `notices` lists `over_scs_cn_limit` (the subcatchments whose `hydrograph_available` is false, above 250 km²) and `reach_slope_minimum` (the reaches of the minimum slope), each only when it has ids; the front end words them. `handoff` is one `nogat-handoff/1` with `node_provenance` around one `hydrolog-network/1` (`build_network_handoff`, `docs/integrations/HYDROLOG.md`).
+The network of a closing section A and the control points above it (plan `docs/plans/2026-11-10-network-delineation.md`; `api/endpoints/network.py`, `core/network_tree.py`, `core/network_delineation.py`, §2.4.10). Each point, A included, snaps to the nearest stream cell of `threshold_m2` within 100 m; a point at most 50 m above a junction where its path meets another branch of the network (its tributary's mouth, the merge of its path with another point's, the confluence below a gauge) moves to that junction (`at_mouth`). `points[].node` is a point's subcatchment when no point lies above it, else its junction. `subcatchments[].kind` is `headwater`, `tributary` or `intermediate` (the przyrzecze of the reach `reach`); `reaches[].from` is the JSON name of the field `from_node`, and `slope_method` is `minimum` where the NMT does not fall between the ends of a reach (0.0001); `junctions[].kind` is `confluence`, `point` or `outlet` (A's, which flows into `OUT`). `notices` lists `over_scs_cn_limit` (the subcatchments whose `hydrograph_available` is false, above 250 km²) (each only when it has ids) and one `reach_short_or_flat` for every reach shorter than 200 m (`SHORT_REACH_M`) or of the minimum slope (ADR-080 D10a): its length, whether it is flat, the point at its upper end, the junction below, `move_to` (from a point into a confluence: the outlet cell above the confluence on the reach's branch, where the mouth rule takes the point; the map mode's „Przesuń P… do zbiegu”) and `lag_min`, the lag of a flat reach; the front end words them. A reach of the minimum slope is a `lag` reach of `lag_min` = max(1, round(length / 0.5 m/s / 60)) in the hand-off, with `method_reason: "flat"` and its length and slope in `node_provenance`: Hydrolog's Muskingum-Cunge cannot route a flat reach. `handoff` is one `nogat-handoff/1` with `node_provenance` around one `hydrolog-network/1` (`build_network_handoff`, `docs/integrations/HYDROLOG.md`).
 
 A network reads the saved rasters of A's whole catchment and holds at most 21 bytes a cell of them (the slope only for the statistics of the elements, the labels only until the element raster: about 1.3 GB at the cap of 60 M cells; production's whole grid of 58.6 M cells peaks at 1.77 GB with the interpreter), so each worker process delineates one network at a time: the route holds a `threading.Lock` of its process, and a request waits for it at most `NETWORK_LOCK_WAIT_S` (15 s), then gets 503 `network_delineation_busy`. With production's two workers at most two networks run at once. The router registers the problems 404 and 503 of the watershed routes and the route its 422, besides 400 and 500; any exception that is not a `HydrografError` is logged and becomes 500 `network_delineation_failed`.
 
@@ -405,7 +410,7 @@ Response: 200 OK
     {"id": "R1", "from": "J1", "to": "J2", "length_km": 1.2969, "geojson": {"type": "Feature", ...}}
   ],
   "junctions": [...],          // as the full run's
-  "notices": [{"code": "over_scs_cn_limit", "ids": ["Z1"]}]
+  "notices": [{"code": "over_scs_cn_limit", "ids": ["Z1"], "reach": null}]   // and the full run's reach_short_or_flat
 }
 
 Errors: those of POST /api/delineate-network but 422 and network_delineation_busy (no window,
