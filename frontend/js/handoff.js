@@ -120,7 +120,7 @@
             els.note.textContent = contents(doc);
         } else {
             els.note.textContent = _view === 'network' && _network
-                ? 'Punkty zmieniły się po wyznaczeniu sieci: wyznacz ją ponownie, by ją przekazać.'
+                ? 'Punkty lub ich nazwy zmieniły się po obliczeniu charakterystyk: oblicz je ponownie, by przekazać sieć.'
                 : '';
         }
         setStatus('');
@@ -205,8 +205,8 @@
 
     /**
      * The network of „Sieć zlewni” (js/network.js): its hand-off, null when there is
-     * none; `stale` when the points changed after it was delineated, so it is not
-     * handed off.
+     * none; `stale` when the points or their names changed after it was computed, so it
+     * is not handed off.
      */
     function showNetwork(handoff, stale) {
         _network = handoff || null;

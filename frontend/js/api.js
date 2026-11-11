@@ -283,6 +283,29 @@
     }
 
     /**
+     * Preview of the network of the same request (mode „Sieć zlewni”, POST
+     * /api/delineate-network/preview): the snapped points, the tree with the area of
+     * every element and the length of every reach, the outlines of the elements; no
+     * parameters, no hand-off.
+     *
+     * @param {Object} body - as for delineateNetwork
+     * @param {AbortSignal} [signal] - aborts the request
+     * @returns {Promise<Object>} { threshold_m2, unit_threshold_m2, area_km2, points,
+     *     subcatchments, reaches, junctions, notices }
+     */
+    async function previewNetwork(body, signal) {
+        const response = await apiFetch('/api/delineate-network/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: signal,
+        });
+
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
+    /**
      * What Hydrograf knows at a point (mode "Identyfikuj").
      *
      * @param {number} lat - Latitude (WGS84)
@@ -335,6 +358,7 @@
         delineateWatershed: delineateWatershed,
         previewWatershed: previewWatershed,
         delineateNetwork: delineateNetwork,
+        previewNetwork: previewNetwork,
         identifyPoint: identifyPoint,
         submitFeedback: submitFeedback,
     };
