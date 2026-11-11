@@ -742,7 +742,7 @@ def _headwater_point(
     subcatchments: Mapping[str, "NetworkSubcatchment"],
     reaches: Mapping[str, "NetworkReach"],
 ) -> str | None:
-    """The point of a headwater an inflow of a junction brings, itself or by its reach."""
+    """Return the point of a headwater an inflow of a junction brings, or None."""
     if node in reaches:
         node = reaches[node].reach.from_node
     element = subcatchments.get(node)
