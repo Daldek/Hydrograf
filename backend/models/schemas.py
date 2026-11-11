@@ -532,7 +532,9 @@ class NetworkPoint(BaseModel):
     id: str = Field(
         ...,
         pattern=NETWORK_POINT_ID_PATTERN,
-        description="Id of the point, unique in the request without regard to case",
+        description="The client's handle of the point, unique in the request without "
+        "regard to case: it names the point in the response and in the problems, "
+        "never a node of the network",
         examples=["P1"],
     )
     latitude: float = Field(
@@ -546,33 +548,22 @@ class NetworkPoint(BaseModel):
         min_length=1,
         max_length=100,
         pattern=_NETWORK_NAME_PATTERN,
-        description="Name of the point, which names its elements and nodes in the "
-        "hand-off; no control characters",
+        description="Name of the point, which names its node and the elements that "
+        "enter it in the hand-off; no control characters",
         examples=["Kamiennik"],
-    )
-
-
-class NetworkOutlet(NetworkPoint):
-    """The closing section A of a network."""
-
-    id: str = Field(
-        "A",
-        pattern=NETWORK_POINT_ID_PATTERN,
-        description="Id of the closing section, unique in the request without regard "
-        "to case",
-        examples=["A"],
     )
 
 
 class DelineateNetworkRequest(BaseModel):
     """A closing section and the points above it whose network is delineated."""
 
-    outlet: NetworkOutlet = Field(..., description="The closing section A")
+    outlet: NetworkPoint = Field(..., description="The closing section")
     points: list[NetworkPoint] = Field(
         ...,
-        min_length=1,
+        min_length=0,
         max_length=NETWORK_MAX_POINTS,
-        description="Control points above A: tributaries at their mouths, gauges",
+        description="Control points above the closing section: tributaries at their "
+        "mouths, gauges; none for the closing section alone",
     )
     threshold_m2: int = Field(
         ...,
@@ -587,9 +578,9 @@ class DelineateNetworkRequest(BaseModel):
     def ids_unique(
         cls, v: list[NetworkPoint], info: ValidationInfo
     ) -> list[NetworkPoint]:
-        """Accept ids that differ from each other and from A's, case ignored."""
+        """Accept ids that differ from each other and the outlet's, case ignored."""
         outlet = info.data.get("outlet")
-        ids = [outlet.id] if isinstance(outlet, NetworkOutlet) else []
+        ids = [outlet.id] if isinstance(outlet, NetworkPoint) else []
         seen: set[str] = set()
         repeated: list[str] = []
         for point_id in [*ids, *(point.id for point in v)]:
@@ -605,7 +596,7 @@ class DelineateNetworkRequest(BaseModel):
 
 
 class NetworkPointInfo(BaseModel):
-    """A control point where it snapped and its node."""
+    """A control point where it lies and its node."""
 
     id: str = Field(..., description="Id of the point in the request")
     name: str | None = Field(None, description="Name of the point in the request")
@@ -614,24 +605,26 @@ class NetworkPointInfo(BaseModel):
     snap_distance_m: float = Field(
         ..., ge=0, description="Distance from the click to that centre [m]"
     )
-    at_mouth: bool = Field(
+    at_node: bool = Field(
         ...,
         description=(
-            "Moved to the junction below it, where its path meets another branch of "
-            "the network: it lay at most 50 m above it"
+            "It lies at a node of the network, a confluence of its streams: a point "
+            "at most 50 m from one along the stream moves there"
         ),
     )
     node: str = Field(
         ...,
-        description="Its subcatchment when no point lies above it, else its junction",
+        description="Its node: J1, J2, … at a confluence, P1, P2, … elsewhere",
     )
 
 
 class NetworkAreaCheck(BaseModel):
-    """The two counts of A's catchment that must agree (B5)."""
+    """The two counts of the closing section's catchment that must agree (B5)."""
 
     watershed_km2: float = Field(
-        ..., description="A's catchment from the units of the graph [km2]"
+        ...,
+        description="The catchment from the units of the graph, less what lies "
+        "outside the network [km2]",
     )
     elements_km2: float = Field(..., description="The cells of the elements [km2]")
 
@@ -640,15 +633,16 @@ class NetworkSubcatchmentInfo(BaseModel):
     """A subcatchment of a network with the parameters of a delineated watershed."""
 
     id: str = Field(..., description="Z1, Z2, … in the order of the hand-off")
-    kind: Literal["headwater", "tributary", "intermediate"] = Field(
+    kind: Literal["headwater", "intermediate"] = Field(
         ...,
-        description="headwater (the main river above its first node, or a river "
-        "without a point that joins a junction), tributary (a point's catchment) or "
+        description="headwater (a river that enters its node with no reach) or "
         "intermediate (the przyrzecze of a reach)",
     )
     to: str = Field(..., description="The node it flows into")
     point: str | None = Field(
-        None, description="Id of the point it ends at; none for a river without one"
+        None,
+        description="Id in the request of the point at the node it flows into; none "
+        "at a confluence the network makes",
     )
     reach: str | None = Field(None, description="The reach of a przyrzecze")
     watershed: WatershedResponse = Field(
@@ -663,7 +657,7 @@ class NetworkReachInfo(BaseModel):
 
     id: str = Field(..., description="R1, R2, … in the order of the hand-off")
     from_node: str = Field(..., alias="from", description="The node it receives")
-    to: str = Field(..., description="The junction it flows into")
+    to: str = Field(..., description="The node it flows into")
     length_km: float = Field(
         ..., gt=0, description="Flow distance of its upper end less its lower end's"
     )
@@ -691,14 +685,20 @@ class NetworkReachInfo(BaseModel):
 
 
 class NetworkJunctionInfo(BaseModel):
-    """A junction of a network."""
+    """A node of a network: a point of the request or a confluence."""
 
-    id: str = Field(..., description="J1, J2, … in the order of the hand-off")
+    id: str = Field(
+        ...,
+        description="J1, J2, … at a confluence, P1, P2, … elsewhere, numbered from "
+        "the closing section up",
+    )
     kind: Literal["confluence", "point", "outlet"] = Field(
         ...,
-        description="confluence, point (a point with points above it) or outlet (A's)",
+        description="confluence (made by the network where a branch of points joins), "
+        "point (a point of the request) or outlet (the closing section's)",
     )
-    point: str | None = Field(None, description="Id of its point")
+    point: str | None = Field(None, description="Id in the request of its point")
+    name: str | None = Field(None, description="Name of its point in the request")
     latitude: float = Field(..., description="Centre of its cell, WGS84 [°]")
     longitude: float = Field(..., description="Centre of its cell, WGS84 [°]")
     inflows: list[str] = Field(
@@ -721,14 +721,16 @@ class NetworkReachNotice(BaseModel):
         ..., description="Its NMT does not fall: its slope is the minimum, 0.0001"
     )
     upper_point: str | None = Field(
-        None, description="The point at its upper end; null at a confluence"
+        None,
+        description="Id in the request of the point at its upper node; null at a "
+        "confluence the network makes",
     )
-    lower: str = Field(..., description="The junction it flows into")
+    lower: str = Field(..., description="The node it flows into")
     move_to: NetworkPlace | None = Field(
         None,
-        description="The centre of the cell above that junction on the reach's "
-        "branch: the upper point placed there is at the mouth and enters the "
-        "junction directly, with no reach. Only from a point into a confluence",
+        description="The centre of the cell above that node on the reach's branch: "
+        "the upper point placed there moves to the node and is the confluence, with "
+        "no reach. Only from a point into a confluence the network makes",
     )
     lag_min: int | None = Field(
         None,
@@ -760,13 +762,16 @@ class DelineateNetworkResponse(BaseModel):
     unit_threshold_m2: int = Field(
         ..., description="The sub-catchments the elements are made of [m2]"
     )
-    area_km2: float = Field(..., description="A's catchment, exact to the cell [km2]")
+    area_km2: float = Field(
+        ..., description="The closing section's catchment, exact to the cell [km2]"
+    )
     area_check: NetworkAreaCheck = Field(..., description="The check of B5")
     boundary_geojson: dict[str, Any] = Field(
-        ..., description="A's boundary as a GeoJSON Feature (WGS84)"
+        ..., description="The closing section's boundary as a GeoJSON Feature (WGS84)"
     )
     points: list[NetworkPointInfo] = Field(
-        ..., description="A, then the points in the order of the request"
+        ...,
+        description="The closing section, then the points in the order of the request",
     )
     subcatchments: list[NetworkSubcatchmentInfo] = Field(...)
     reaches: list[NetworkReachInfo] = Field(...)
@@ -801,15 +806,16 @@ class NetworkPreviewSubcatchmentInfo(BaseModel):
     """A subcatchment of a previewed network: its place in the tree and its area."""
 
     id: str = Field(..., description="Z1, Z2, … as the characteristics name it")
-    kind: Literal["headwater", "tributary", "intermediate"] = Field(
+    kind: Literal["headwater", "intermediate"] = Field(
         ...,
-        description="headwater (the main river above its first node, or a river "
-        "without a point that joins a junction), tributary (a point's catchment) or "
+        description="headwater (a river that enters its node with no reach) or "
         "intermediate (the przyrzecze of a reach)",
     )
     to: str = Field(..., description="The node it flows into")
     point: str | None = Field(
-        None, description="Id of the point it ends at; none for a river without one"
+        None,
+        description="Id in the request of the point at the node it flows into; none "
+        "at a confluence the network makes",
     )
     reach: str | None = Field(None, description="The reach of a przyrzecze")
     area_km2: float = Field(
@@ -836,7 +842,7 @@ class NetworkPreviewReachInfo(BaseModel):
 
     id: str = Field(..., description="R1, R2, … as the characteristics name it")
     from_node: str = Field(..., alias="from", description="The node it receives")
-    to: str = Field(..., description="The junction it flows into")
+    to: str = Field(..., description="The node it flows into")
     length_km: float | None = Field(
         None,
         description="Flow distance of its upper end less its lower end's, as the "
@@ -856,9 +862,12 @@ class DelineateNetworkPreviewResponse(BaseModel):
     unit_threshold_m2: int = Field(
         ..., description="The sub-catchments the elements are made of [m2]"
     )
-    area_km2: float = Field(..., description="A's catchment, exact to the cell [km2]")
+    area_km2: float = Field(
+        ..., description="The closing section's catchment, exact to the cell [km2]"
+    )
     points: list[NetworkPreviewPointInfo] = Field(
-        ..., description="A, then the points in the order of the request"
+        ...,
+        description="The closing section, then the points in the order of the request",
     )
     subcatchments: list[NetworkPreviewSubcatchmentInfo] = Field(...)
     reaches: list[NetworkPreviewReachInfo] = Field(...)

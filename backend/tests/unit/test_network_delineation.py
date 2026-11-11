@@ -165,8 +165,12 @@ class TestSnapping:
         label = int(saved["labels"][100, 85])
         assert point.place.unit == graph.lookup_by_segment_idx(UNITS, label)
         assert point.place.flow_dist_m == float(saved["04b_stream_distance"][100, 85])
-        # Its path runs down the main river as far as the mouth rule looks
+        # Its path runs down the main river as far as N3 looks, and its cells up the
+        # main river as far as the head cell of its unit, where a hollow joins
         assert [p.cell for p in point.path] == [(101 + i, 85) for i in range(5)]
+        assert [p.cell for p in point.upstream] == [(99 - i, 85) for i in range(4)]
+        assert [p.at_head for p in point.upstream] == [False, False, False, True]
+        assert {p.unit for p in point.upstream} == {point.place.unit}
 
     def test_on_a_tie_the_larger_accumulation_wins(self, run, graph, settings, saved):
         # The corner of four cells: the main river above and below its confluence
@@ -275,6 +279,32 @@ class TestTheElementsAddUpToA:
         assert details["watershed_cells"] - details["elements_cells"] > 0
         assert raised.value.http_status == 500
 
+    def test_a_closing_section_at_a_node_leaves_its_unit_outside(
+        self, run, graph, db, settings, saved
+    ):
+        # A at the confluence of T1 and the main river: each branch ends at the
+        # outlet cell of its unit above A, and A's own unit, its cell and the main
+        # river below it, lies outside, so the check adds up the branches (N5, D11)
+        tree, grid, elements, outside = elements_of(
+            graph, db, settings, click(run, "A", (160, 85))
+        )
+
+        assert [(p.node, p.at_node) for p in tree.points] == [("J1", True)]
+        assert (outside, tree.splits, int(tree.unit_elements[0])) == (0, (), 0)
+        window = (slice(grid.row0, None), slice(grid.col0, None))
+        labels = saved["labels"][window][: elements.shape[0], : elements.shape[1]]
+        assert not elements[labels == saved["labels"][160, 85]].any()
+        for element in tree.subcatchments:
+            cells = np.count_nonzero(elements == element.number)
+            assert cells * CELL_KM2 == pytest.approx(
+                graph.get_upstream_area_km2(element.outlet.unit), abs=1e-6
+            )
+        watershed_km2, elements_km2 = area_check(
+            graph, tree, elements, outside, NETWORK_CELL_M
+        )
+        assert watershed_km2 == elements_km2
+        assert elements_km2 == round(np.count_nonzero(elements) * CELL_KM2, 6)
+
 
 @pytest.fixture
 def mouths(run, graph, db, settings):
@@ -290,7 +320,7 @@ def test_every_element_of_whole_units_has_the_parameters_of_the_panel(
 ):
     tree, grid, elements, network = mouths
     assert tree.splits == ()
-    assert {p.point_id: p.at_mouth for p in network.points} == {
+    assert {p.point_id: p.at_node for p in network.points} == {
         "A": False,
         "P1": True,
         "P2": True,
@@ -351,7 +381,7 @@ def test_every_element_of_whole_units_has_the_parameters_of_the_panel(
 
     assert differences == []
     kinds = {e.subcatchment.kind for e in network.subcatchments}
-    assert kinds == {"headwater", "tributary", "intermediate"}
+    assert kinds == {"headwater", "intermediate"}
 
 
 def test_a_przyrzecze_is_measured_within_it_and_its_channel_runs_up_its_reach(
@@ -383,7 +413,8 @@ def test_a_przyrzecze_is_measured_within_it_and_its_channel_runs_up_its_reach(
         expected_km = (float(local_fd[head]) - float(local_fd[end])) / 1000
         morphometry = element.watershed.morphometry
         assert morphometry.flow_path_length_km == pytest.approx(expected_km, abs=1e-4)
-        # Its channel is its reach, less the cell of a point at the reach's upper end
+        # Its channel is its reach, less the cell of its lower node when it ends at
+        # the outlet cell above a node (N5)
         reach = reaches[element.subcatchment.reach]
         assert morphometry.channel_length_km == pytest.approx(
             reach.length_km, abs=NETWORK_CELL_M * 2**0.5 / 1000 + 1e-4
@@ -406,15 +437,18 @@ def test_a_reach_is_as_long_as_the_fall_of_the_flow_distance(graph, saved, mouth
             drop_m / (reach.length_km * 1000), abs=1e-6
         )
         assert reach.upstream_elevation_m == round(float(nmt[upper]), 2)
-    # The flow distance of the graph at a confluence is the raster's at its cell
-    confluences = [j for j in tree.junctions if j.kind == "confluence"]
-    assert len(confluences) == 3
-    for junction in confluences:
-        cell = grid.cell_of(junction.place)
-        raster_fd = float(flow_dist[grid.row0 + cell[0], grid.col0 + cell[1]])
-        assert graph.get_outlet_flow_dist_m(junction.place.above) == pytest.approx(
-            raster_fd, abs=0.01
-        )
+    # The flow distance of the graph at a node is the raster's at its cell: the three
+    # points lie at the confluences, the head cells of their units
+    nodes = [j for j in tree.junctions if j.id.startswith("J")]
+    assert len(nodes) == 3
+    for node in nodes:
+        raster_fd = float(flow_dist[node.place.cell])
+        above = tree.units[tree.below == node.place.unit].tolist()
+        assert len(above) == 2
+        for unit in above:
+            assert graph.get_outlet_flow_dist_m(unit) == pytest.approx(
+                raster_fd, abs=0.01
+            )
 
 
 def test_a_reach_whose_nmt_does_not_fall_gets_the_minimum_slope(
@@ -492,30 +526,35 @@ def test_a_split_unit_gives_the_elements_their_parts(run, graph, db, settings):
     assert Point(run.cell_centre_xy(100, 85)).within(headwater.boundary_2180.buffer(5))
 
 
-def test_a_tributary_without_a_point_at_its_mouth_has_a_headwater_on_its_main_river(
+def test_a_point_at_the_mouth_of_a_tributarys_tributary_is_that_confluence(
     run, graph, db, settings
 ):
     # No point at T1's mouth: P1 30 m above the corner where T1a joins T1's main river,
     # the arm from the north (0.80 km² there, T1a 0.32 km²), as on the author's
-    # Kaczawa of 2026-11-11. The arm is the corner's headwater, not a part of the
-    # przyrzecze of a reach from P1 down to the main river
+    # Kaczawa of 2026-11-11. P1 moves to the corner and receives both, the arm as its
+    # main river; its reach runs down T1 to the node the network makes at T1's mouth
     tree, grid, elements, _ = elements_of(
         graph, db, settings, click(run, "A", OUTLET), click(run, "P1", (159, 47))
     )
 
+    (p1,) = [p for p in tree.points if p.point_id == "P1"]
+    assert (p1.at_node, p1.place.cell) == (True, (159, 50))
     z = {s.id: s for s in tree.subcatchments}
-    (p1,) = [s for s in tree.subcatchments if s.point == "P1"]
-    assert (p1.kind, p1.at_mouth) == ("tributary", True)
-    (corner,) = [j for j in tree.junctions if j.id == p1.to]
-    headwater = z[corner.inflows[0]]
-    assert (headwater.kind, headwater.point) == ("headwater", None)
-    assert corner.inflows == (headwater.id, p1.id)
+    (corner,) = [j for j in tree.junctions if j.id == p1.node]
+    assert (corner.id, corner.kind) == ("J2", "point")
+    arm, t1a = (z[i] for i in corner.inflows)
+    assert [(s.kind, s.point, s.to) for s in (arm, t1a)] == [
+        ("headwater", "P1", "J2"),
+        ("headwater", "P1", "J2"),
+    ]
     (reach,) = [r for r in tree.reaches if r.from_node == corner.id]
-    # The north arm, T1a above P1 and T1 below the corner
+    mouth = next(j for j in tree.junctions if j.id == reach.to)
+    assert (mouth.id, mouth.kind) == ("J1", "confluence")
+    # The north arm, T1a and T1 below the corner
     cells = ((100, 49), (159, 40), (159, 70))
     assert [elements[grid.local(cell)] for cell in cells] == [
-        headwater.number,
-        p1.number,
+        arm.number,
+        t1a.number,
         z[reach.intermediate].number,
     ]
 

@@ -5,8 +5,9 @@ process_dem runs over the main river with three tributaries of the network tests
 the 20 ha the points snap to; the catchment graph holds both, and a fake database
 answers the queries of the measures and of the preview (the polygons of the
 sub-catchments united by element, their stream lines). The preview must name every
-element, reach and junction as the full run does, give the same areas and reach
-lengths, and draw outlines that follow the elements of the full run.
+element, reach and node as the full run does, give the same areas and reach lengths,
+and draw outlines that follow the elements of the full run. The cases of the plan
+``2026-11-11-network-nodes.md`` run as networks of both.
 """
 
 from typing import Any
@@ -16,7 +17,7 @@ import pytest
 import shapely
 from fastapi.testclient import TestClient
 from pyproj import Transformer
-from shapely.geometry import shape
+from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
 
 import api.endpoints.network
@@ -38,17 +39,21 @@ from tests.fixtures.pipeline_run import (
     run_pipeline,
     soil_layout,
 )
-from utils.geometry import transform_pl1992_to_wgs84
+from utils.geometry import transform_pl1992_to_wgs84, transform_wgs84_to_pl1992
 
 FULL = "/api/delineate-network"
 PREVIEW = "/api/delineate-network/preview"
-OUTLET = (219, 85)  # A: the outlet cell of the grid, on the main river
+OUTLET = (219, 85)  # the outlet cell of the grid, on the main river
 # The last cell of each tributary above its confluence with the main river (row,
-# column): a click there moves to the mouth
+# column): a click there moves to the confluence, a node of the network (N3)
 T3_MOUTH, T2_MOUTH, T1_MOUTH = (75, 86), (123, 86), (159, 84)
-# A at the confluence of T1 and the main river, the cell below their last cells (T1's
-# T1_MOUTH, the main river's 10 m above A), and a gauge 30 m above A on the main river
-A_AT_T1, GAUGE_ABOVE_A = (160, 85), (157, 85)
+# The confluence of T1 and the main river, the cell below their last cells, and the
+# main river 30 m above and 30 m below it
+AT_T1, ABOVE_T1, BELOW_T1 = (160, 85), (157, 85), (163, 85)
+# Points away from the nodes: on the main river below T1 and between T1 and T2, up T2,
+# up T1a (the tributary of T1)
+MAIN_BELOW_T1, MAIN_ABOVE_T1 = (190, 85), (140, 85)
+UP_T2, UP_T1A = (123, 110), (159, 20)
 _TO_2180 = Transformer.from_crs("EPSG:4326", "EPSG:2180", always_xy=True)
 
 
@@ -123,7 +128,7 @@ def point(run, point_id, cell, name=None):
 
 
 def request(run, outlet, **points):
-    """A request of A at a cell and the points at theirs."""
+    """A request of the closing section A at a cell and the points at theirs."""
     return {
         "outlet": point(run, "A", outlet, "Rzeka"),
         "points": [point(run, point_id, cell) for point_id, cell in points.items()],
@@ -131,52 +136,49 @@ def request(run, outlet, **points):
     }
 
 
+# The plan's cases (by their numbers) and the networks of the outlines and notices
 NETWORKS = {
-    # Whole units only: every point moves to its mouth
+    "1 the closing section alone at a confluence": (AT_T1, {}),
+    "2 the closing section alone": (OUTLET, {}),
+    "3 a point on the main river": (OUTLET, {"P1": MAIN_BELOW_T1}),
+    "4 a point up a tributary": (OUTLET, {"P1": UP_T2}),
+    "5 a point 30 m above a confluence": (OUTLET, {"P1": ABOVE_T1}),
+    "6 a point 30 m below a confluence": (OUTLET, {"P1": BELOW_T1}),
+    "7 the closing section 30 m above a confluence": (ABOVE_T1, {}),
+    "7 the closing section 30 m below a confluence": (BELOW_T1, {}),
+    "8 a point on a tributary of a tributary": (OUTLET, {"P1": UP_T1A}),
+    "11 a tributary that joins a reach": (OUTLET, {"P1": MAIN_ABOVE_T1}),
+    # Every point at a confluence: whole units only
     "at the mouths": (OUTLET, {"P1": T1_MOUTH, "P2": T2_MOUTH, "P3": T3_MOUTH}),
-    # A gauge between two junctions, and two points in one unit of the main river,
-    # which the full run splits into three parts
+    # A gauge between two nodes, and two points in one unit of the main river, which
+    # the full run splits into three parts
     "a gauge and two points in one unit": (
         OUTLET,
-        {"P1": T1_MOUTH, "G": (140, 85), "P2": (99, 85), "P3": (102, 85)},
+        {"P1": T1_MOUTH, "G": MAIN_ABOVE_T1, "P2": (99, 85), "P3": (102, 85)},
     ),
-    # A inside its unit (its part below A lies outside the network), a point up a
-    # tributary with a reach to its mouth
-    "A inside its unit and a point up a tributary": (
-        (190, 85),
-        {"P1": (123, 110), "P2": T3_MOUTH},
+    # The closing section inside its unit (its part below lies outside the network)
+    "the closing section inside its unit": (
+        MAIN_BELOW_T1,
+        {"P1": UP_T2, "P2": T3_MOUTH},
     ),
-    # A point 100 m up a tributary, beyond the mouth rule: a short reach to the
-    # confluence, with the move of the point to its mouth
+    # A point 100 m up a tributary, beyond 50 m: a short reach to the confluence, with
+    # the move of the point there
     "a point 100 m above its confluence": (
         OUTLET,
         {"P1": T1_MOUTH, "P2": (123, 96), "P3": T3_MOUTH},
     ),
-    # No point at T1's mouth: P1 30 m above the mouth of T1a into T1's main river,
-    # whose arm from the north is a headwater, as the upper Kaczawa of the author's
-    # network of 2026-11-11
+    # P1 30 m above the mouth of T1a into T1's main river, as at the Bukowica of the
+    # author's network of 2026-11-11: P1 is that confluence, whose main river, the arm
+    # from the north, is a headwater
     "a point at the mouth of a tributary's tributary": (
         OUTLET,
         {"P1": (159, 47), "P2": T2_MOUTH, "P3": T3_MOUTH},
     ),
-    # The author's network of 2026-11-11 (A at the confluence of the Nysa Szalona and
-    # the Kaczawa, P1 7 m above it): the gauge moves to the mouth of the main river
-    # and enters A with no reach, bringing P2's confluence; T1, with no point, enters
-    # A as a dopływ of its own that holds A's own cells, which splits A's unit
-    "A at a confluence and a gauge 30 m above it": (
-        A_AT_T1,
-        {"G": GAUGE_ABOVE_A, "P2": T2_MOUTH},
-    ),
-    # A point up T1 instead: its reach's przyrzecze ends at A's cell and holds A's
-    # own cells
-    "A at a confluence and a point up the other branch": (
-        A_AT_T1,
-        {"G": GAUGE_ABOVE_A, "P1": (159, 70)},
-    ),
-    # Both branches at their mouths: A's own cells are an element of their own
-    "A at a confluence and both branches at their mouths": (
-        A_AT_T1,
-        {"G": GAUGE_ABOVE_A, "P1": T1_MOUTH},
+    # The closing section at a confluence, the author's A of 2026-11-11: T1 by the
+    # reach from a point up it, the main river a headwater
+    "the closing section at a confluence and a point up a branch": (
+        AT_T1,
+        {"P1": (159, 70)},
     ),
 }
 
@@ -192,14 +194,15 @@ def full_and_preview(client, body):
 def structure(body):
     """The tree of a response: what the ids name and how the nodes join."""
     return {
-        "points": [(p["id"], p["node"], p["at_mouth"]) for p in body["points"]],
+        "points": [(p["id"], p["node"], p["at_node"]) for p in body["points"]],
         "subcatchments": [
             (s["id"], s["kind"], s["to"], s["point"], s["reach"])
             for s in body["subcatchments"]
         ],
         "reaches": [(r["id"], r["from"], r["to"]) for r in body["reaches"]],
         "junctions": [
-            (j["id"], j["kind"], j["point"], j["inflows"]) for j in body["junctions"]
+            (j["id"], j["kind"], j["point"], j["name"], j["inflows"])
+            for j in body["junctions"]
         ],
     }
 
@@ -223,16 +226,25 @@ def to_2180(geometry: dict[str, Any]) -> BaseGeometry:
     return shapely.transform(shape(geometry), project)
 
 
+def run_cell(place):
+    """The cell of the grid that a place of a response lies in, (row, column)."""
+    xy = transform_wgs84_to_pl1992(place["latitude"], place["longitude"])
+    return (
+        int((NETWORK_Y1 - xy.y) // NETWORK_CELL_M),
+        int((xy.x - NETWORK_X0) // NETWORK_CELL_M),
+    )
+
+
 @pytest.mark.parametrize("network", NETWORKS.values(), ids=NETWORKS.keys())
 class TestThePreviewIsTheNetworkOfTheFullRun:
-    def test_it_names_the_elements_reaches_and_junctions_as_the_full_run(
+    def test_it_names_the_elements_reaches_and_nodes_as_the_full_run(
         self, client, run, network
     ):
         full, preview = full_and_preview(client, request(run, network[0], **network[1]))
 
         assert structure(preview) == structure(full)
 
-    def test_its_points_and_junctions_lie_where_the_full_run_puts_them(
+    def test_its_points_and_nodes_lie_where_the_full_run_puts_them(
         self, client, run, network
     ):
         full, preview = full_and_preview(client, request(run, network[0], **network[1]))
@@ -267,6 +279,209 @@ class TestThePreviewIsTheNetworkOfTheFullRun:
         assert preview["notices"] == full["notices"]
 
 
+# The networks of the cases: the closing section A (named Rzeka) and P1 without a name
+CS_ALONE_AT_A_NODE = {
+    "points": [("A", "J1", True)],
+    "subcatchments": [
+        ("Z1", "headwater", "J1", "A", None),
+        ("Z2", "headwater", "J1", "A", None),
+    ],
+    "reaches": [],
+    "junctions": [("J1", "outlet", "A", "Rzeka", ["Z1", "Z2"])],
+}
+A_POINT_AT_A_NODE = {
+    "points": [("A", "P1", False), ("P1", "J1", True)],
+    "subcatchments": [
+        ("Z1", "intermediate", "P1", "A", "R1"),
+        ("Z2", "headwater", "J1", "P1", None),
+        ("Z3", "headwater", "J1", "P1", None),
+    ],
+    "reaches": [("R1", "J1", "P1")],
+    "junctions": [
+        ("P1", "outlet", "A", "Rzeka", ["R1", "Z1"]),
+        ("J1", "point", "P1", None, ["Z2", "Z3"]),
+    ],
+}
+A_POINT_ON_THE_RIVER = {
+    "points": [("A", "P1", False), ("P1", "P2", False)],
+    "subcatchments": [
+        ("Z1", "intermediate", "P1", "A", "R1"),
+        ("Z2", "headwater", "P2", "P1", None),
+    ],
+    "reaches": [("R1", "P2", "P1")],
+    "junctions": [
+        ("P1", "outlet", "A", "Rzeka", ["R1", "Z1"]),
+        ("P2", "point", "P1", None, ["Z2"]),
+    ],
+}
+CASES = {
+    "1": (AT_T1, {}, CS_ALONE_AT_A_NODE),
+    "2": (
+        OUTLET,
+        {},
+        {
+            "points": [("A", "P1", False)],
+            "subcatchments": [("Z1", "headwater", "P1", "A", None)],
+            "reaches": [],
+            "junctions": [("P1", "outlet", "A", "Rzeka", ["Z1"])],
+        },
+    ),
+    "3": (OUTLET, {"P1": MAIN_BELOW_T1}, A_POINT_ON_THE_RIVER),
+    # The plan's case 4: headwater -> P2 -> R2 -> J1 at the tributary's mouth, the
+    # main river above J1 a headwater, J1 -> R1 -> P1
+    "4": (
+        OUTLET,
+        {"P1": UP_T2},
+        {
+            "points": [("A", "P1", False), ("P1", "P2", False)],
+            "subcatchments": [
+                ("Z1", "intermediate", "P1", "A", "R1"),
+                ("Z2", "headwater", "J1", None, None),
+                ("Z3", "intermediate", "J1", None, "R2"),
+                ("Z4", "headwater", "P2", "P1", None),
+            ],
+            "reaches": [("R1", "J1", "P1"), ("R2", "P2", "J1")],
+            "junctions": [
+                ("P1", "outlet", "A", "Rzeka", ["R1", "Z1"]),
+                ("J1", "confluence", None, None, ["Z2", "R2", "Z3"]),
+                ("P2", "point", "P1", None, ["Z4"]),
+            ],
+        },
+    ),
+    "5": (OUTLET, {"P1": ABOVE_T1}, A_POINT_AT_A_NODE),
+    "6": (OUTLET, {"P1": BELOW_T1}, A_POINT_AT_A_NODE),
+    "7 above": (ABOVE_T1, {}, CS_ALONE_AT_A_NODE),
+    "7 below": (BELOW_T1, {}, CS_ALONE_AT_A_NODE),
+    # The cascade of 4: P1 on T1a joins T1's main river at a node the network makes,
+    # and T1 joins the main river at another
+    "8": (
+        OUTLET,
+        {"P1": UP_T1A},
+        {
+            "points": [("A", "P1", False), ("P1", "P2", False)],
+            "subcatchments": [
+                ("Z1", "intermediate", "P1", "A", "R1"),
+                ("Z2", "headwater", "J1", None, None),
+                ("Z3", "intermediate", "J1", None, "R2"),
+                ("Z4", "headwater", "J2", None, None),
+                ("Z5", "intermediate", "J2", None, "R3"),
+                ("Z6", "headwater", "P2", "P1", None),
+            ],
+            "reaches": [("R1", "J1", "P1"), ("R2", "J2", "J1"), ("R3", "P2", "J2")],
+            "junctions": [
+                ("P1", "outlet", "A", "Rzeka", ["R1", "Z1"]),
+                ("J1", "confluence", None, None, ["Z2", "R2", "Z3"]),
+                ("J2", "confluence", None, None, ["Z4", "R3", "Z5"]),
+                ("P2", "point", "P1", None, ["Z6"]),
+            ],
+        },
+    ),
+    "11": (OUTLET, {"P1": MAIN_ABOVE_T1}, A_POINT_ON_THE_RIVER),
+}
+
+
+class TestTheCasesOfThePlan:
+    @pytest.mark.parametrize("case", CASES.values(), ids=CASES.keys())
+    def test_each_gives_its_network(self, client, run, case):
+        outlet, points, network = case
+
+        preview = client.post(PREVIEW, json=request(run, outlet, **points))
+
+        assert preview.status_code == 200, preview.text
+        assert structure(preview.json()) == network
+
+    @pytest.mark.parametrize(
+        ("outlet", "points"),
+        [
+            (AT_T1, {}),
+            (ABOVE_T1, {}),
+            (BELOW_T1, {}),
+            (OUTLET, {"P1": ABOVE_T1}),
+            (OUTLET, {"P1": BELOW_T1}),
+        ],
+        ids=["at", "30 m above", "30 m below", "a point above", "a point below"],
+    )
+    def test_a_point_within_50_m_of_a_confluence_lies_at_it(
+        self, client, run, outlet, points
+    ):
+        preview = client.post(PREVIEW, json=request(run, outlet, **points)).json()
+
+        (at_node,) = [p for p in preview["points"] if p["at_node"]]
+        assert run_cell(at_node) == AT_T1
+        node = next(j for j in preview["junctions"] if j["id"] == at_node["node"])
+        assert run_cell(node) == AT_T1
+
+    def test_a_closing_section_at_a_node_holds_the_branches_alone(self, client, run):
+        # N5: its own cell and the rest of its unit lie outside; the branches are
+        # the headwaters that enter the point at that node above the closing section
+        full, preview = full_and_preview(client, request(run, AT_T1))
+        _, above = full_and_preview(client, request(run, OUTLET, P1=ABOVE_T1))
+
+        areas = {s["id"]: s["area_km2"] for s in above["subcatchments"]}
+        assert preview["area_km2"] == pytest.approx(areas["Z2"] + areas["Z3"])
+        assert full["area_check"] == {
+            "watershed_km2": preview["area_km2"],
+            "elements_km2": preview["area_km2"],
+        }
+
+    def test_a_tributary_that_joins_a_reach_stays_in_its_przyrzecze(self, client, run):
+        full, preview = full_and_preview(client, request(run, OUTLET, P1=MAIN_ABOVE_T1))
+
+        przyrzecze = next(s for s in full["subcatchments"] if s["id"] == "Z1")
+        outline = to_2180(przyrzecze["watershed"]["boundary_geojson"]["geometry"])
+        # T1 and T1a, which join the reach between its ends
+        for cell in ((100, 49), (159, 30), (159, 70)):
+            assert outline.contains(Point(run.cell_centre_xy(*cell))), cell
+        assert [j["id"] for j in preview["junctions"]] == ["P1", "P2"]
+
+    def test_the_ids_of_the_request_name_no_node(self, client, run):
+        # The plan's case 10
+        cells = (OUTLET, T1_MOUTH, UP_T2, UP_T1A)
+
+        def network(handles):
+            body = {
+                "outlet": point(run, handles[0], cells[0]),
+                "points": [
+                    point(run, handle, cell)
+                    for handle, cell in zip(handles[1:], cells[1:], strict=True)
+                ],
+                "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
+            }
+            response = client.post(PREVIEW, json=body)
+            assert response.status_code == 200, response.text
+            canonical = dict(zip(handles, ("A", "P1", "P2", "P3"), strict=True))
+            canonical[None] = None
+            tree = structure(response.json())
+            return {
+                "points": [(canonical[h], *rest) for h, *rest in tree["points"]],
+                "subcatchments": [
+                    (z, kind, to, canonical[p], reach)
+                    for z, kind, to, p, reach in tree["subcatchments"]
+                ],
+                "reaches": tree["reaches"],
+                "junctions": [
+                    (j, kind, canonical[p], name, inflows)
+                    for j, kind, p, name, inflows in tree["junctions"]
+                ],
+            }
+
+        assert network(("x", "J1", "Z3", "O")) == network(("A", "P1", "P2", "P3"))
+
+    def test_the_same_points_in_another_order_give_the_same_ids(self, client, run):
+        # The plan's case 12
+        points = {"P1": UP_T2, "P2": UP_T1A, "P3": MAIN_BELOW_T1, "P4": T3_MOUTH}
+
+        def network(order):
+            body = request(run, OUTLET, **{key: points[key] for key in order})
+            tree = structure(client.post(PREVIEW, json=body).json())
+            tree["points"].sort()
+            return tree
+
+        first = network(["P1", "P2", "P3", "P4"])
+        assert network(["P4", "P3", "P2", "P1"]) == first
+        assert network(["P3", "P1", "P4", "P2"]) == first
+
+
 class TestTheOutlines:
     def test_they_follow_the_elements_of_the_full_run_from_coarser_units(
         self, client, run, db
@@ -295,8 +510,9 @@ class TestTheOutlines:
         "name",
         [
             "a gauge and two points in one unit",
-            # A's cell heads its unit: P1's reach comes down T1 into it
-            "A at a confluence and a point up the other branch",
+            # The closing section's cell heads its unit: P1's reach comes down T1
+            # into it
+            "the closing section at a confluence and a point up a branch",
         ],
     )
     def test_reaches_follow_the_streams_between_their_ends(self, client, run, name):
@@ -334,11 +550,18 @@ class TestPointsInsideUnits:
             "P2": True,
             "P3": True,
         }
+        nodes = {p["id"]: p["node"] for p in preview["points"]}
         approximate = {
-            s["point"] for s in preview["subcatchments"] if s["outline_approximate"]
+            s["to"] for s in preview["subcatchments"] if s["outline_approximate"]
         }
-        assert {"G", "P2", "P3"} <= approximate
-        assert "P1" not in approximate
+        assert {nodes["G"], nodes["P2"], nodes["P3"]} <= approximate
+        # T1, entering P1's node at its confluence, is whole units
+        (t1,) = [
+            s
+            for s in preview["subcatchments"]
+            if s["to"] == nodes["P1"] and s["kind"] == "headwater"
+        ]
+        assert not t1["outline_approximate"]
 
 
 class TestComposition:
@@ -346,13 +569,15 @@ class TestComposition:
         ("outlet", "points"),
         [
             (OUTLET, {"P1": T1_MOUTH, "P7": (30, 5)}),
-            (T2_MOUTH, {"P1": T3_MOUTH}),
+            (UP_T2, {"P1": T3_MOUTH}),
             (OUTLET, {"P1": T1_MOUTH, "P4": (100, 85), "P5": (100, 85)}),
+            (AT_T1, {"P1": (159, 85)}),
         ],
         ids=[
             "a point off the streams",
             "a point that does not drain to A",
             "points on one cell",
+            "a point beside the closing section at a confluence",
         ],
     )
     def test_its_errors_are_those_of_the_full_run(self, client, run, outlet, points):
@@ -368,6 +593,27 @@ class TestComposition:
             theirs["code"],
             theirs["details"],
             theirs["detail"],
+        )
+
+    def test_a_point_beside_a_closing_section_at_a_confluence_is_refused(
+        self, client, run
+    ):
+        # The plan's case 9: the point 10 m above the closing section moves to its
+        # node, which already divides the catchment (N6)
+        body = request(run, AT_T1, P1=(159, 85))
+
+        response = client.post(PREVIEW, json=body, headers={"Accept-Language": "pl"})
+
+        assert response.status_code == 400
+        problem = response.json()
+        assert problem["details"] == {
+            "reason": "network_points_coincide",
+            "point_ids": ["A", "P1"],
+        }
+        assert f"{problem['detail']} {problem['hint']}" == (
+            "Punkty A, P1 trafiają w ten sam węzeł sieci: jeden punkt w węźle już "
+            "dzieli zlewnię na cieki, które się w nim łączą. Usuń jeden z nich albo "
+            "przesuń go dalej niż 50 m od węzła."
         )
 
     def test_an_element_above_the_limit_of_scs_cn_is_a_notice(

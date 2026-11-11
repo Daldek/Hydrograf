@@ -72,9 +72,9 @@ NETWORK = Draft202012Validator(
 )
 URL = "/api/delineate-network"
 PREVIEW_URL = "/api/delineate-network/preview"
-OUTLET = (219, 85)  # A: the outlet cell of the grid, on the main river
+OUTLET = (219, 85)  # the closing section A: the outlet cell of the grid, on the river
 # The last cell of each tributary above its confluence with the main river, (row,
-# column): a click there moves to the mouth (D3)
+# column): a click there moves to the confluence, a node of the network (N3)
 T3_MOUTH, T2_MOUTH, T1_MOUTH = (75, 86), (123, 86), (159, 84)
 MAIN_RIVER_COL = 85
 # BDOT10k lines along the main river, (first row, last row) of the cell centres they
@@ -259,7 +259,7 @@ MOUTHS = {
     ],
     "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
 }
-# A gauge between two junctions and a point up a tributary, inside their units
+# A gauge between two nodes and a point up a tributary, inside their units
 INSIDE_UNITS = {
     "outlet": point("A", OUTLET),
     "points": [
@@ -366,10 +366,9 @@ class TestTheMeasuresOverPostgis:
 
 
 def _reach_from(mouths: dict[str, Any], point_id: str) -> dict[str, Any]:
-    """The reach that leaves the junction where the tributary of a point enters."""
-    tributary = next(s["id"] for s in mouths["subcatchments"] if s["point"] == point_id)
-    junction = next(j["id"] for j in mouths["junctions"] if tributary in j["inflows"])
-    return next(r for r in mouths["reaches"] if r["from"] == junction)
+    """The reach that leaves the node of a point, at its tributary's mouth."""
+    node = next(p["node"] for p in mouths["points"] if p["id"] == point_id)
+    return next(r for r in mouths["reaches"] if r["from"] == node)
 
 
 class TestTheBdotCheckLength:
@@ -422,14 +421,14 @@ class TestTheHandoff:
 
         assert set(handoff["node_provenance"]) <= {n["id"] for n in nodes}
         assert set(handoff["node_provenance"]) == set(elements)
-        assert "OUT" in {n["id"] for n in nodes}
-        assert "OUT" not in handoff["node_provenance"]
+        assert "O" in {n["id"] for n in nodes}
+        assert "O" not in handoff["node_provenance"]
 
 
 def _structure(body: dict[str, Any]) -> dict[str, Any]:
     """The tree of a response: what the ids name and how the nodes join."""
     return {
-        "points": [(p["id"], p["node"], p["at_mouth"]) for p in body["points"]],
+        "points": [(p["id"], p["node"], p["at_node"]) for p in body["points"]],
         "subcatchments": [
             (s["id"], s["kind"], s["to"], s["point"], s["reach"])
             for s in body["subcatchments"]

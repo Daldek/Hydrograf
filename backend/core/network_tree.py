@@ -1,64 +1,62 @@
 """
 The tree of a network delineated at control points, built on the catchment graph.
 
-ADR-080 and the plan ``docs/plans/2026-11-10-network-delineation.md`` (D3 to D5, D15).
-The control points, the closing section A and the points of the request, each snapped
-to a stream cell (``core.network_delineation``), form a tree along their flow paths:
+ADR-080 and the plans ``docs/plans/2026-11-10-network-delineation.md`` (D4, D5, D15)
+and ``docs/plans/2026-11-11-network-nodes.md`` (N1 to N8). The control points, the
+closing section and the points of the request, each snapped to a stream cell
+(``core.network_delineation``), form a tree along their flow paths:
 
+- a node of the network is a confluence of its rivers: the head cell of a unit at
+  which two or more units end whose upstream area reaches ``threshold_m2``, the
+  network the points snapped to (N2);
+- every control point, the closing section included, moves to the nearest node along
+  the stream within MOUTH_TOLERANCE_M: the first node on its flow path below it, or
+  the head cell of its own unit above it, the nearer by flow distance and the lower
+  on a tie (N3). Every control point is a node of the tree, a ``J`` at a confluence
+  and a ``P`` elsewhere (N1, N4);
 - the parent of a point is the first control point on its flow path downstream: the
   nearest below it in its own unit, else the uppermost in the first unit below that
-  holds one, A at the latest;
+  holds one, the closing section at the latest;
 - the trunk of a control point is its main river: from its cell up its unit's
   segment, then up the units ``CatchmentGraph.trace_main_channel`` chooses (ADR-046);
 - a point joins its parent's trunk at itself when its unit is on the trunk (a gauge on
   the main river), else at the head cell of the trunk unit its path enters, a
-  confluence: its junction;
+  confluence: a ``J`` the network makes (D4);
 - the points whose paths enter a trunk through the same unit form a branch, and a
   branch has a trunk of its own: the main river from that unit up, by the same rule.
   Each point of a branch joins the branch's trunk as a point joins its parent's trunk,
-  at itself or at the confluence where its path enters it, and the points whose paths
-  enter the branch's trunk through one unit form a branch of the branch (B1). So every
-  edge runs along a main river, and the main river of a branch without a point at its
-  mouth is a headwater above its uppermost junction, not a part of a przyrzecze (B2);
-- the nodes of a trunk are its junctions and the point it carries; its edges run
+  and the points whose paths enter the branch's trunk through one unit form a branch
+  of the branch (B1). So every reach runs down a main river, and the main river of a
+  branch is a headwater above its uppermost node, not a part of a przyrzecze (B2);
+- the nodes of a trunk are its confluences and the point it carries; its edges run
   between consecutive nodes and from the lowest node to the control point, or to the
-  junction the branch enters. Every edge is a reach with its intermediate catchment
-  (przyrzecze); the trunk above its uppermost node, when that node is a junction, is a
-  headwater subcatchment (ending at the control point when no node lies on its trunk);
-  a point with no point above it is a subcatchment, a tributary when it lies off its
-  parent's trunk, the headwater when on it;
-- a point at most MOUTH_TOLERANCE_M above a junction along the flow, where its path
-  meets another branch of the network, moves to the outlet cell of the last unit
-  above that junction on its branch (D3): its subcatchment, or its junction, enters
-  the junction directly. A point off its parent's trunk takes the lowest such junction
-  on its way to the trunk (its junction on the trunk, or a confluence where its path
-  enters the trunk of a branch), a point on the trunk the first confluence below it
-  where a point's path enters the trunk, or its parent's cell when that is a
-  confluence of the network (a branch of points or a river joins the trunk there); a
-  point whose path runs down the trunk into its parent without such a confluence
-  keeps its place;
-- a river of the network the points snapped to (its upstream area reaches
-  ``threshold_m2``) that joins at the cell of a junction beside the trunk and the
-  branches of points is a headwater subcatchment of its own entering the junction,
-  not a part of a przyrzecze; a smaller one stays in the element its cells drain to.
+  confluence the branch enters. Every edge is a reach with its intermediate catchment
+  (przyrzecze); the trunk above its uppermost node is a headwater when that node is a
+  confluence the network makes;
+- a ``P`` receives its trunk alone: a headwater, or the reach from the lowest node
+  above it; a ``J`` receives every branch that joins at its cell, the trunk first: a
+  branch of points by the reach from its lowest node, a river without a point as a
+  headwater of its own (N4). A river that joins a reach between its ends stays in its
+  przyrzecze.
 
 The elements are made of the units of the graph (``DEFAULT_THRESHOLD_M2``): every
-element ends at one outlet cell, a control point's cell or the outlet cell of the unit
-above a junction on its branch, and holds the cells whose first element outlet
-downstream is its own (D5). A control point's cell ends the element that reaches it
-along its trunk; when the trunk enters it at its mouth, its own cells go to the largest
-branch beside the trunk that ends in a river or in the przyrzecze of an edge, which
-then ends at its cell, else they are an element of their own. A unit belongs to the
-element of the first element outlet on its segment from its head, else to the element
-its unit below receives at its head; a unit with a control point not at its outlet
-cell is split by the raster (``core.network_delineation``, D6). Nothing here reads a
-raster: the cells of the control points and of their paths come from their snapping.
+element ends at one outlet cell and holds the cells whose first element outlet
+downstream is its own (D5). An element that reaches a ``P`` ends at its cell; one that
+reaches a ``J`` ends at the outlet cell of its unit above the node, so the node's own
+cell and the cells that drain into it from the side belong to the element below it
+(N5). The part of the closing section's unit below it lies outside the network; when
+the closing section is a ``J``, all of its unit and the streams below the threshold
+that join at its cell lie outside. A unit belongs to the element of the first element
+outlet on its segment from its head, else to the element its unit below receives at
+its head; a unit with a ``P`` inside, not at its outlet cell, is split by the raster
+(``core.network_delineation``, D6). Nothing here reads a raster: the cells of the
+control points and of their paths come from their snapping.
 """
 
 import math
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from itertools import pairwise
 from typing import Literal
 
@@ -68,13 +66,13 @@ from core.catchment_graph import CatchmentGraph
 from core.constants import M2_PER_KM2
 from core.errors import InvalidRequestError
 
-# A point at most this far above a junction of the network along the flow is taken
-# at that junction (D3) [m]
+# A control point moves to the nearest node of the network at most this far along the
+# stream, below or above it (N3) [m]
 MOUTH_TOLERANCE_M = 50.0
-# The id of the outlet of the network, into which A's junction flows
-OUTLET_ID = "OUT"
+# The id of the outlet of the network, into which the closing section's node flows
+OUTLET_ID = "O"
 
-type ElementKind = Literal["headwater", "tributary", "intermediate"]
+type ElementKind = Literal["headwater", "intermediate"]
 type JunctionKind = Literal["confluence", "point", "outlet"]
 
 
@@ -116,18 +114,24 @@ class ControlPoint:
     Attributes
     ----------
     point_id : str
-        Its id in the request.
+        Its id in the request: the client's handle of the point, which no id of the
+        network takes (N1).
     place : Place
         Its cell.
     path : tuple[Place, ...]
-        The cells below ``place`` along the flow, nearest first, at least as far as
-        ``MOUTH_TOLERANCE_M`` below it (fewer where the flow ends): where the mouth
-        rule (D3) may move the point.
+        The cells below ``place`` along the flow, nearest first, as far as
+        MOUTH_TOLERANCE_M below it (fewer where the flow ends): where N3 may move
+        the point down.
+    upstream : tuple[Place, ...]
+        The cells above ``place`` up its unit's stream, nearest first, as far as the
+        unit's head cell and no farther than MOUTH_TOLERANCE_M above it (fewer where
+        the stream of the request's network ends): where N3 may move the point up.
     """
 
     point_id: str
     place: Place
     path: tuple[Place, ...] = ()
+    upstream: tuple[Place, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -150,28 +154,27 @@ class UnitHead:
 
 @dataclass(frozen=True)
 class Subcatchment:
-    """An element of the network: a headwater, a tributary or a przyrzecze.
+    """An element of the network: a headwater or a przyrzecze.
 
     Attributes
     ----------
     id : str
-        ``Z1``, ``Z2``, … in the order of D15.
+        ``Z1``, ``Z2``, … numbered from the closing section up (N8).
     number : int
         Its value in the element raster: 1 for ``Z1``.
     kind : ElementKind
-        ``headwater``, ``tributary`` or ``intermediate`` (the przyrzecze of a reach).
+        ``headwater`` (a river that enters its node with no reach) or
+        ``intermediate`` (the przyrzecze of a reach).
     to : str
-        The node it flows into: a junction, or the reach below a point's subcatchment.
+        The node it flows into.
     point : str or None
-        The id of the control point it ends at; None for a headwater above a
-        confluence and for a river that joins a junction, also one that ends at the
-        junction's control point and holds its own cells (D5).
+        The id in the request of the control point of that node; None at a
+        confluence the network makes.
     reach : str or None
         The reach of a przyrzecze.
-    at_mouth : bool
-        It ends at a point that the mouth rule moved (D3).
     outlet : Place or UnitOutlet
-        Its outlet cell.
+        Its outlet cell: the cell of a ``P``, or the outlet cell of its unit above a
+        ``J`` (N5).
     """
 
     id: str
@@ -180,7 +183,6 @@ class Subcatchment:
     to: str
     point: str | None
     reach: str | None
-    at_mouth: bool
     outlet: Place | UnitOutlet
 
 
@@ -191,17 +193,16 @@ class Reach:
     Attributes
     ----------
     id : str
-        ``R1``, ``R2``, … in the order of D15.
+        ``R1``, ``R2``, … numbered from the closing section up (N8).
     from_node : str
-        The node it receives: the junction of its upper node, or the subcatchment of
-        a point with no point above it.
+        The node it receives.
     to : str
-        The junction it flows into.
+        The node it flows into.
     upper, lower : Place or UnitHead
         The cells of its ends.
     intermediate : str or None
-        Its przyrzecze; None when that has no cells (D5: an edge from a point at the
-        outlet cell of the unit above its junction).
+        Its przyrzecze; None when that has no cells (D5: an edge from a ``P`` at the
+        outlet cell of the unit above the node below it).
     """
 
     id: str
@@ -214,25 +215,23 @@ class Reach:
 
 @dataclass(frozen=True)
 class Junction:
-    """A junction of the network.
+    """A node of the network: a control point, or a confluence the network makes.
 
     Attributes
     ----------
     id : str
-        ``J1``, ``J2``, … in the order of D15.
+        ``J1``, ``J2``, … at a confluence, ``P1``, ``P2``, … elsewhere, each counted
+        on its own from the closing section up (N1, N8).
     kind : JunctionKind
-        ``confluence``, ``point`` (a point with points above it) or ``outlet`` (A's).
+        ``confluence`` (made by the network), ``point`` (a point of the request) or
+        ``outlet`` (the closing section's, which flows into ``OUTLET_ID``).
     point : str or None
-        The id of its control point.
+        The id in the request of its control point.
     place : Place or UnitHead
         Its cell.
     inflows : tuple[str, ...]
         The nodes it receives: the trunk's first, then the branches in descending
         order of the accumulation of their last cell.
-    tributaries : tuple[str, ...]
-        The control points of the branches that join it from the side, not along a
-        trunk, in the order of ``inflows``: on each branch the nearest point above,
-        or the points that meet below it on that branch (B1).
     """
 
     id: str
@@ -240,7 +239,6 @@ class Junction:
     point: str | None
     place: Place | UnitHead
     inflows: tuple[str, ...]
-    tributaries: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -252,32 +250,33 @@ class PointNode:
     point_id : str
         Its id in the request.
     place : Place
-        Its cell, after the mouth rule.
-    at_mouth : bool
-        The mouth rule moved it (D3).
+        Its cell, after N3.
+    at_node : bool
+        It lies at a node of the network (N2): N3 drew it there, also from the
+        node's own cell, and its node is a ``J``.
     node : str
-        Its subcatchment when no point lies above it, else its junction.
+        Its node.
     """
 
     point_id: str
     place: Place
-    at_mouth: bool
+    at_node: bool
     node: str
 
 
 @dataclass(frozen=True)
 class SplitUnit:
-    """A unit with a control point inside: its outlets and their elements (D6).
+    """A unit with a ``P`` inside: its outlets and their elements (D6).
 
     Attributes
     ----------
     unit : int
         Internal graph index of the unit.
     outlets : tuple[tuple[Place or UnitOutlet, int], ...]
-        In the order of the flow: each control point in it and, unless one lies at
-        its outlet cell, its outlet cell, with the element number each cell above
-        it (and below the outlet above) takes; 0 outside the network (the part of
-        A's unit below A).
+        In the order of the flow: each ``P`` in it and, unless one lies at its
+        outlet cell, its outlet cell, with the element number each cell above it
+        (and below the outlet above) takes; 0 outside the network (the part of the
+        closing section's unit below it).
     """
 
     unit: int
@@ -291,23 +290,27 @@ class NetworkTree:
     Attributes
     ----------
     points : tuple[PointNode, ...]
-        A, then the points in the order of the request.
+        The closing section, then the points in the order of the request.
     subcatchments : tuple[Subcatchment, ...]
         ``Z1``, ``Z2``, …
     reaches : tuple[Reach, ...]
         ``R1``, ``R2``, …
     junctions : tuple[Junction, ...]
-        ``J1``, ``J2``, …
+        Every node in the order of their numbers (N8): the closing section's first,
+        every node before the nodes above it.
     order : tuple[str, ...]
         Every node in the order of D15, each after every node it receives,
         ``OUTLET_ID`` last.
     units : np.ndarray
-        A's catchment: the internal indices of the units (``upstream_tree``).
+        The closing section's catchment: the internal indices of the units
+        (``upstream_tree`` of its unit, which comes first).
     below : np.ndarray
         The internal index of the unit each unit of ``units`` drains into; -1 for
-        A's.
+        the closing section's.
     unit_elements : np.ndarray
-        The element number of each unit of ``units``; 0 for a split unit.
+        The element number of each unit of ``units``; 0 for a split unit and for the
+        units outside the network (the closing section's at a node, with the streams
+        below the threshold that join at its cell).
     splits : tuple[SplitUnit, ...]
         The units the raster splits.
     """
@@ -329,34 +332,29 @@ class _Element:
 
     kind: ElementKind
     outlet: Place | UnitOutlet
-    point: str | None = None
-    at_mouth: bool = False
     reach: "_Edge | None" = None
     id: str = ""
     number: int = 0
     to: str = ""
+    point: str | None = None
 
 
 @dataclass(eq=False)
 class _Node:
-    """A node that can receive branches: a control point or a confluence."""
+    """A node while the tree is built: a control point or a confluence."""
 
     place: Place | UnitHead
     kind: JunctionKind
     point: str | None = None
-    at_mouth: bool = False
-    off_trunk: bool = False
+    # A control point at a node of the network (N3)
+    at_node: bool = False
     branches: list["_Branch"] = field(default_factory=list)
-    # A control point's element, the one that ends at its cell
-    element: _Element | None = None
     id: str = ""
 
-    def node_id(self) -> str:
-        """Its junction when it receives branches, else its subcatchment."""
-        if self.branches:
-            return self.id
-        assert self.element is not None
-        return self.element.id
+    @property
+    def at_confluence(self) -> bool:
+        """Whether it lies at a node of the network: a ``J`` (N1)."""
+        return isinstance(self.place, UnitHead) or self.at_node
 
 
 @dataclass(eq=False)
@@ -371,7 +369,7 @@ class _Edge:
 
 @dataclass(eq=False)
 class _Branch:
-    """What a node receives from one side: an edge, a headwater or a point at a mouth.
+    """What a node receives from one side: an edge or a headwater.
 
     ``unit`` is the last unit of the branch above the node, whose accumulation
     orders the branches after the trunk's.
@@ -382,7 +380,6 @@ class _Branch:
     accumulation_km2: float
     edge: _Edge | None = None
     headwater: _Element | None = None
-    mouth: _Node | None = None
 
 
 @dataclass(frozen=True)
@@ -398,26 +395,31 @@ class _Link:
 
 
 class _Catchment:
-    """A's catchment on the graph: the units below and above each unit, the trunks."""
+    """The catchment of a unit on the graph: the units below and above each, the trunks.
 
-    def __init__(
-        self,
-        cg: CatchmentGraph,
-        units: np.ndarray,
-        below: np.ndarray,
-        threshold_m2: int,
-    ):
+    Parameters
+    ----------
+    cg : CatchmentGraph
+        The loaded graph.
+    unit : int
+        Internal index of the unit at its outlet.
+    threshold_m2 : int
+        The network the points snapped to [m²]: its rivers.
+    """
+
+    def __init__(self, cg: CatchmentGraph, unit: int, threshold_m2: int):
         self.cg = cg
-        self.units = units
+        self.units, below = cg.upstream_tree(unit)
+        self.below_array = below
         self.threshold_m2 = threshold_m2
         self.below: dict[int, int] = dict(
-            zip(units.tolist(), below.tolist(), strict=True)
+            zip(self.units.tolist(), below.tolist(), strict=True)
         )
         # The units that drain into the head cell of each unit
         self.above: dict[int, list[int]] = defaultdict(list)
-        for unit, down in self.below.items():
+        for upper, down in self.below.items():
             if down >= 0:
-                self.above[down].append(unit)
+                self.above[down].append(upper)
         self._trunks: dict[int, tuple[list[int], dict[int, int]]] = {}
 
     def trunk(self, unit: int) -> tuple[list[int], dict[int, int]]:
@@ -448,6 +450,14 @@ class _Catchment:
             and self.accumulation_km2(side) * M2_PER_KM2 >= self.threshold_m2
         ]
 
+    def is_node(self, unit: int) -> bool:
+        """Whether the head cell of a unit is a node of the network (N2).
+
+        Two or more rivers end there; the units of 1 ha that join below the
+        threshold do not count.
+        """
+        return len(self.rivers(unit, ())) >= 2
+
 
 def build_network_tree(
     cg: CatchmentGraph,
@@ -455,19 +465,20 @@ def build_network_tree(
     points: Sequence[ControlPoint],
     threshold_m2: int,
 ) -> NetworkTree:
-    """Build the network of a closing section and its points (D3 to D5, D15).
+    """Build the network of a closing section and its points (N1 to N8, D4, D5, D15).
 
     Parameters
     ----------
     cg : CatchmentGraph
         The loaded graph of the units (``DEFAULT_THRESHOLD_M2``).
     outlet : ControlPoint
-        The closing section A.
+        The closing section.
     points : Sequence[ControlPoint]
-        The points of the request, ids unique without regard to case.
+        The points of the request, ids unique without regard to case; possibly none.
     threshold_m2 : int
-        The network the points snapped to [m²]: a river of it that joins at a
-        junction's cell without a point is a subcatchment of its own.
+        The network the points snapped to [m²]: its confluences are the nodes the
+        control points move to (N2, N3), and a river of it that joins at a node
+        without a point is a headwater of its own.
 
     Returns
     -------
@@ -478,60 +489,53 @@ def build_network_tree(
     ------
     InvalidRequestError
         ``validation_error``: ``network_point_outside`` for a point that does not
-        drain to A; ``network_points_coincide`` for points, or a point and A, on one
-        cell after the snapping or after the mouth rule.
+        drain to the closing section; ``network_points_coincide`` for control points
+        on one cell after N3, in practice on one node (N6).
     """
-    units, below = cg.upstream_tree(outlet.place.unit)
-    catchment = _Catchment(cg, units, below, threshold_m2)
-    _require_inside(catchment, outlet, points)
-    controls = {c.point_id: c for c in (outlet, *points)}
+    # The units the closing section can move into, with all above them: a point that
+    # drains to the closing section moves among these
+    lowest = outlet.path[-1].unit if outlet.path else outlet.place.unit
+    around = _Catchment(cg, lowest, threshold_m2)
+    drawn = {c.point_id: _drawn(around, c) for c in (outlet, *points)}
+    controls = {
+        point_id: ControlPoint(point_id, place)
+        for point_id, (place, _) in drawn.items()
+    }
+    closing = controls[outlet.point_id]
+    catchment = (
+        around
+        if closing.place.unit == lowest
+        else _Catchment(cg, closing.place.unit, threshold_m2)
+    )
+    _require_inside(catchment, closing, [controls[p.point_id] for p in points])
     _require_apart(controls.values())
 
-    # The mouth rule on the links of the snapped points, then the links again
     links = _links(catchment, controls, outlet.point_id)
-    moved = _mouths(catchment, controls, links)
-    if moved:
-        for point_id, place in moved.items():
-            controls[point_id] = replace(controls[point_id], place=place, path=())
-        _require_apart(controls.values())
-        links = _links(catchment, controls, outlet.point_id)
-
     nodes = {
         point_id: _Node(
             place=control.place,
             kind="outlet" if point_id == outlet.point_id else "point",
             point=point_id,
-            at_mouth=point_id in moved,
-            off_trunk=point_id in links and links[point_id].entry is not None,
+            at_node=drawn[point_id][1],
         )
         for point_id, control in controls.items()
     }
     children: dict[str, list[str]] = defaultdict(list)
     for point_id, link in links.items():
         children[link.parent].append(point_id)
-    for parent_id, kids in children.items():
-        _wire_trunk(catchment, nodes, links, nodes[parent_id], kids)
-    for node in nodes.values():
-        if node.element is None:
-            assert isinstance(node.place, Place)
-            node.element = _Element(
-                kind="tributary" if node.off_trunk else "headwater",
-                outlet=node.place,
-                point=node.point,
-                at_mouth=node.at_mouth,
-            )
+    for point_id, node in nodes.items():
+        _wire_trunk(catchment, nodes, links, node, children[point_id])
 
-    elements, order = _number(nodes[outlet.point_id])
-    junction_nodes = [n for n in _walk_nodes(nodes[outlet.point_id]) if n.branches]
-    reaches, junctions = _connect(junction_nodes)
+    elements, numbered, order = _number(nodes[outlet.point_id])
+    reaches, junctions = _connect(numbered)
     unit_elements, splits = _unit_elements(catchment, elements)
     return NetworkTree(
         points=tuple(
             PointNode(
                 point_id=point_id,
                 place=controls[point_id].place,
-                at_mouth=node.at_mouth,
-                node=node.node_id(),
+                at_node=node.at_node,
+                node=node.id,
             )
             for point_id, node in nodes.items()
         ),
@@ -543,25 +547,64 @@ def build_network_tree(
                 to=el.to,
                 point=el.point,
                 reach=el.reach.id if el.reach is not None else None,
-                at_mouth=el.at_mouth,
                 outlet=el.outlet,
             )
             for el in elements
         ),
-        reaches=tuple(sorted(reaches, key=lambda r: int(r.id[1:]))),
-        junctions=tuple(sorted(junctions, key=lambda j: int(j.id[1:]))),
+        reaches=tuple(reaches),
+        junctions=tuple(junctions),
         order=tuple(order),
-        units=units,
-        below=below,
+        units=catchment.units,
+        below=catchment.below_array,
         unit_elements=unit_elements,
         splits=splits,
     )
 
 
+def _drawn(catchment: _Catchment, control: ControlPoint) -> tuple[Place, bool]:
+    """Where N3 moves a control point, and whether that is a node of the network.
+
+    The node is its own cell when that is one, else the first node on its flow path
+    at most MOUTH_TOLERANCE_M below it or the head cell of its own unit at most
+    MOUTH_TOLERANCE_M above it, the nearer by flow distance, the lower on a tie.
+    Without one it keeps its cell.
+    """
+    place = control.place
+    if place.at_head and catchment.is_node(place.unit):
+        return place, True
+    fd = place.flow_dist_m
+    down = next(
+        (
+            cell
+            for cell in control.path
+            if fd - cell.flow_dist_m <= MOUTH_TOLERANCE_M
+            and cell.at_head
+            and catchment.is_node(cell.unit)
+        ),
+        None,
+    )
+    head = control.upstream[-1] if control.upstream else None
+    up = (
+        head
+        if head is not None
+        and head.at_head
+        and head.flow_dist_m - fd <= MOUTH_TOLERANCE_M
+        and catchment.is_node(head.unit)
+        else None
+    )
+    if down is not None and (
+        up is None or fd - down.flow_dist_m <= up.flow_dist_m - fd
+    ):
+        return down, True
+    if up is not None:
+        return up, True
+    return place, False
+
+
 def _require_inside(
     catchment: _Catchment, outlet: ControlPoint, points: Sequence[ControlPoint]
 ) -> None:
-    """Refuse a point whose unit is not in A's catchment or that lies below A."""
+    """Refuse a point outside the catchment or below the closing section in its unit."""
     for point in points:
         place = point.place
         below_outlet = (
@@ -579,7 +622,7 @@ def _require_inside(
 
 
 def _require_apart(controls: Iterable[ControlPoint]) -> None:
-    """Refuse control points on one cell, naming the first group of them."""
+    """Refuse control points on one cell, naming the first group of them (N6)."""
     by_cell: dict[tuple[int, int], list[str]] = defaultdict(list)
     for control in controls:
         by_cell[control.place.cell].append(control.point_id)
@@ -667,116 +710,6 @@ def _branch_groups(
     return on_trunk, groups
 
 
-def _branch_junctions(
-    catchment: _Catchment, units: Sequence[int], above: int
-) -> set[int]:
-    """Return the confluences of a branch and of the branches above it, by unit.
-
-    The points of ``units`` form the branch that flows through the unit ``above``
-    (``_group_branch``); a junction lies at the head cell of each trunk unit the path
-    of a point enters, on the branch's trunk or on the trunk of a branch of it.
-    """
-    _, groups = _branch_groups(catchment, units, above)
-    junctions = {unit for unit, _ in groups}
-    for (_, side), members in groups.items():
-        junctions |= _branch_junctions(catchment, [units[i] for i in members], side)
-    return junctions
-
-
-def _mouths(
-    catchment: _Catchment, controls: dict[str, ControlPoint], links: dict[str, _Link]
-) -> dict[str, Place]:
-    """Where the mouth rule moves the points (D3), by point id.
-
-    The junctions below a point are those of its parent's trunk: off the trunk, the
-    head cell of the trunk unit its path enters (or the parent's cell at a
-    confluence) and the confluences of the branch it belongs to, where its path
-    enters the trunk of that branch or of a branch of it (``_branch_junctions``); on
-    the trunk, the confluences below it where the paths of points enter the trunk,
-    and the parent's cell where another branch of the network joins the trunk
-    (``_confluence_at``).
-    """
-    kids: dict[str, list[str]] = defaultdict(list)
-    for point_id, link in links.items():
-        kids[link.parent].append(point_id)
-    mouths = {}
-    for parent_id, members in kids.items():
-        parent = controls[parent_id].place
-        # The points off the trunk by the junction they enter, as _wire_trunk groups
-        # them, each with its trunk unit; the trunk units they enter at confluences
-        groups: dict[tuple[int | None, int], list[tuple[str, int]]] = defaultdict(list)
-        confluences: set[int] = set()
-        for kid in members:
-            entry = links[kid].entry
-            if entry is None:
-                continue
-            trunk_unit, above = entry
-            at_parent = trunk_unit == parent.unit and parent.at_head
-            groups[(None if at_parent else trunk_unit, above)].append((kid, trunk_unit))
-            if not at_parent:
-                confluences.add(trunk_unit)
-        # The parent's cell, where another branch of the network joins its trunk, is
-        # a junction of the gauge too
-        at_cell = [above for unit, above in groups if unit is None]
-        if _confluence_at(catchment, parent, at_cell):
-            confluences.add(parent.unit)
-        for (_, above), group in groups.items():
-            junctions = _branch_junctions(
-                catchment, [controls[kid].place.unit for kid, _ in group], above
-            )
-            for kid, trunk_unit in group:
-                mouth = _mouth(
-                    controls[kid], parent, junctions | {trunk_unit}, trunk_unit
-                )
-                if mouth is not None:
-                    mouths[kid] = mouth
-        for kid in members:
-            if links[kid].entry is None:
-                mouth = _mouth(controls[kid], parent, confluences, None)
-                if mouth is not None:
-                    mouths[kid] = mouth
-    return mouths
-
-
-def _confluence_at(catchment: _Catchment, place: Place, branches: list[int]) -> bool:
-    """Whether another branch of the network joins a control point's trunk at its cell.
-
-    ``branches`` are the units through which the branches of its points enter its
-    cell; a river that joins there (``_Catchment.rivers``) is another branch too.
-    """
-    if not place.at_head:
-        return False
-    trunk, _ = catchment.trunk(place.unit)
-    return len(trunk) > 1 and bool(branches or catchment.rivers(place.unit, trunk[1:2]))
-
-
-def _mouth(
-    control: ControlPoint, parent: Place, junctions: set[int], last: int | None
-) -> Place | None:
-    """Where the mouth rule moves a point, if it does (D3).
-
-    Its path enters a unit of ``junctions`` at the unit's head cell, a junction;
-    the point moves to the cell above the lowest such junction at most
-    MOUTH_TOLERANCE_M below it, the outlet cell of the last unit above the junction
-    on its branch. The path is followed no further than the unit ``last`` (a point
-    off the trunk, to its junction on the trunk) or, with None, than the first
-    junction (a point on the trunk), and never past the parent's cell.
-    """
-    cells = (control.place, *control.path)
-    mouth = None
-    for i in range(1, len(cells)):
-        if control.place.flow_dist_m - cells[i].flow_dist_m > MOUTH_TOLERANCE_M:
-            break
-        entered = cells[i].unit != cells[i - 1].unit
-        if entered and cells[i].unit in junctions:
-            mouth = cells[i - 1]
-            if last is None:
-                break
-        if cells[i].unit == last or cells[i].cell == parent.cell:
-            break
-    return mouth
-
-
 def _wire_trunk(
     catchment: _Catchment,
     nodes: dict[str, _Node],
@@ -784,19 +717,20 @@ def _wire_trunk(
     parent: _Node,
     kids: list[str],
 ) -> None:
-    """Give a control point with points above it its trunk, junctions and branches.
+    """Give a control point its branches: its trunk and, at a node, all joining there.
 
-    A gauge that the mouth rule moved to the outlet cell of the trunk's unit above
-    the point's cell enters it directly (D3), and the point's own cells go to a
-    branch beside the trunk (``_own_cells``); a river that joins at the point's cell
-    or at a confluence of the trunk enters there (``_add_rivers``).
+    The points of ``kids`` join the trunk at the confluences where their paths enter
+    it, or lie on it (D4). A ``P`` receives the trunk alone, whose element ends at its
+    cell; a ``J`` receives the trunk, the branches of points that join at its cell
+    and every river without a point that joins there, each ending at the outlet cell
+    of its unit above the node (N4, N5).
     """
     place = parent.place
     assert isinstance(place, Place)
     trunk, position = catchment.trunk(place.unit)
     gauges = [nodes[kid] for kid in kids if links[kid].entry is None]
     assert len(gauges) <= 1, "two gauges cannot share a parent"
-    # The children off the trunk by the junction they enter (None: the parent's own
+    # The children off the trunk by the confluence they enter (None: the parent's own
     # cell, at the head of its unit) and the last unit of their path above it
     groups: dict[tuple[int | None, int], list[str]] = defaultdict(list)
     for kid in kids:
@@ -811,34 +745,29 @@ def _wire_trunk(
         trunk, position, (unit for unit, _ in groups if unit is not None)
     )
     trunk_nodes = [*confluences.values(), *gauges]
-    if (
-        trunk_nodes
-        and place.at_head
-        and len(trunk) > 1
-        and _at_mouth(trunk_nodes[0], trunk[1])
-    ):
+    if parent.at_node:
+        # The trunk enters the node at its head cell from the unit above it
         parent.branches.append(
             _branch(catchment, trunk_nodes[0], parent, trunk[1], trunk=True)
+            if trunk_nodes
+            else _headwater(catchment, trunk[1], trunk=True)
         )
     elif trunk_nodes:
-        edge = _edge(trunk_nodes[0], parent, place)
-        parent.element = edge.intermediate
-        parent.branches.append(
-            _Branch(trunk=True, unit=place.unit, accumulation_km2=0.0, edge=edge)
-        )
-    else:
-        parent.element = _Element(
-            kind="headwater",
-            outlet=place,
-            point=parent.point,
-            at_mouth=parent.at_mouth,
-        )
         parent.branches.append(
             _Branch(
                 trunk=True,
                 unit=place.unit,
                 accumulation_km2=0.0,
-                headwater=parent.element,
+                edge=_edge(trunk_nodes[0], parent, place),
+            )
+        )
+    else:
+        parent.branches.append(
+            _Branch(
+                trunk=True,
+                unit=place.unit,
+                accumulation_km2=0.0,
+                headwater=_Element(kind="headwater", outlet=place),
             )
         )
     if trunk_nodes:
@@ -851,14 +780,12 @@ def _wire_trunk(
         )
     for unit, confluence in confluences.items():
         _add_rivers(catchment, confluence, [side for at, side in groups if at == unit])
-    if place.at_head:
+    if parent.at_node:
         _add_rivers(catchment, parent, [side for at, side in groups if at is None])
-    if parent.element is None:
-        _own_cells(parent)
 
 
 def _add_rivers(catchment: _Catchment, node: _Node, branches: list[int]) -> None:
-    """Let the rivers that join at a junction's cell enter it, each a headwater (D5).
+    """Let the rivers that join at a node's cell enter it, each a headwater (N4).
 
     ``branches`` are the units through which the branches of points enter the cell;
     the trunk's unit above the cell is left out too. A smaller stream stays in the
@@ -870,53 +797,7 @@ def _add_rivers(catchment: _Catchment, node: _Node, branches: list[int]) -> None
         trunk, _ = catchment.trunk(node.place.unit)
         beside = [*trunk[1:2], *branches]
     for side in catchment.rivers(node.place.unit, beside):
-        node.branches.append(
-            _Branch(
-                trunk=False,
-                unit=side,
-                accumulation_km2=catchment.accumulation_km2(side),
-                headwater=_Element(kind="headwater", outlet=UnitOutlet(side)),
-            )
-        )
-
-
-def _own_cells(parent: _Node) -> None:
-    """Give a control point whose trunk enters it at its mouth an element at its cell.
-
-    Its own cells (its cell, the cells that drain into it from the side and the
-    smaller streams that join there) go to the largest branch beside the trunk that
-    ends in an element: a river, or the przyrzecze of the edge of a branch of points,
-    which then ends at its cell. Without one they are an element of their own, which
-    enters its junction as a river does (D5).
-    """
-    assert isinstance(parent.place, Place)
-    element = None
-    for branch in sorted(parent.branches, key=_branch_key):
-        element = None if branch.trunk else _end_element(branch)
-        if element is not None:
-            break
-    if element is None:
-        element = _Element(kind="headwater", outlet=parent.place)
-        parent.branches.append(
-            _Branch(
-                trunk=False,
-                unit=parent.place.unit,
-                accumulation_km2=0.0,
-                headwater=element,
-            )
-        )
-    element.outlet = parent.place
-    if element.kind == "intermediate":
-        element.point = parent.point
-        element.at_mouth = parent.at_mouth
-    parent.element = element
-
-
-def _end_element(branch: _Branch) -> _Element | None:
-    """Return the element that ends a branch at its node: a headwater, a przyrzecze."""
-    if branch.headwater is not None:
-        return branch.headwater
-    return branch.edge.intermediate if branch.edge is not None else None
+        node.branches.append(_headwater(catchment, side, trunk=False))
 
 
 def _confluences(
@@ -940,8 +821,9 @@ def _wire_along(
 ) -> None:
     """Join the nodes of a trunk, from the bottom up, by the edges between them.
 
-    The trunk above the top node is a headwater that enters it when the node is a
-    confluence; a point there ends the trunk.
+    The lower node of every edge is a confluence. The trunk above the top node is a
+    headwater that enters it when the node is a confluence; a point there receives
+    its own trunk (``_wire_trunk``).
     """
     for lower, upper in pairwise(nodes):
         above = trunk[position[lower.place.unit] + 1]
@@ -949,40 +831,24 @@ def _wire_along(
     top = nodes[-1]
     if top.point is None:
         above = trunk[position[top.place.unit] + 1]
-        top.branches.append(
-            _Branch(
-                trunk=True,
-                unit=above,
-                accumulation_km2=catchment.accumulation_km2(above),
-                headwater=_Element(kind="headwater", outlet=UnitOutlet(above)),
-            )
-        )
+        top.branches.append(_headwater(catchment, above, trunk=True))
 
 
 def _edge(upper: _Node, lower: _Node, end: Place | UnitOutlet) -> _Edge:
     """Make an edge and its przyrzecze, which ends at ``end``.
 
-    The przyrzecze has no cells when the upper node is a control point at the
-    outlet cell it would end at (D5: an edge between two neighbouring cells).
+    The przyrzecze has no cells when the upper node is a ``P`` at the outlet cell it
+    would end at (D5: an edge between two neighbouring cells); a ``J`` there gives it
+    its own cell (N5).
     """
     empty = (
         isinstance(end, UnitOutlet)
         and isinstance(upper.place, Place)
-        and upper.point is not None
+        and not upper.at_node
         and upper.place.unit == end.unit
         and upper.place.at_outlet
     )
-    point = lower.point if isinstance(end, Place) else None
-    intermediate = (
-        None
-        if empty
-        else _Element(
-            kind="intermediate",
-            outlet=end,
-            point=point,
-            at_mouth=lower.at_mouth if point is not None else False,
-        )
-    )
+    intermediate = None if empty else _Element(kind="intermediate", outlet=end)
     edge = _Edge(upper=upper, lower=lower, intermediate=intermediate)
     if intermediate is not None:
         intermediate.reach = edge
@@ -992,45 +858,42 @@ def _edge(upper: _Node, lower: _Node, end: Place | UnitOutlet) -> _Edge:
 def _branch(
     catchment: _Catchment, upper: _Node, lower: _Node, above: int, *, trunk: bool
 ) -> _Branch:
-    """Make the branch from ``upper`` into ``lower`` through the unit ``above``.
+    """Make the branch from ``upper`` into the node ``lower`` through ``above``.
 
-    A control point that the mouth rule moved to the outlet cell of ``above`` enters
-    ``lower`` directly (D3); any other node by an edge whose przyrzecze ends there.
+    An edge whose przyrzecze ends at the outlet cell of ``above``, the last unit of
+    the branch above the node (N5).
     """
-    accumulation = catchment.accumulation_km2(above)
-    if _at_mouth(upper, above):
-        return _Branch(
-            trunk=trunk, unit=above, accumulation_km2=accumulation, mouth=upper
-        )
     return _Branch(
         trunk=trunk,
         unit=above,
-        accumulation_km2=accumulation,
+        accumulation_km2=catchment.accumulation_km2(above),
         edge=_edge(upper, lower, UnitOutlet(above)),
     )
 
 
-def _at_mouth(node: _Node, above: int) -> bool:
-    """Whether the mouth rule moved a control point to the outlet cell of ``above``."""
-    return (
-        node.at_mouth
-        and isinstance(node.place, Place)
-        and node.place.unit == above
-        and node.place.at_outlet
+def _headwater(catchment: _Catchment, unit: int, *, trunk: bool) -> _Branch:
+    """Make the branch of a river without a point that enters a node through ``unit``.
+
+    A headwater that ends at the outlet cell of ``unit`` (N5).
+    """
+    return _Branch(
+        trunk=trunk,
+        unit=unit,
+        accumulation_km2=catchment.accumulation_km2(unit),
+        headwater=_Element(kind="headwater", outlet=UnitOutlet(unit)),
     )
 
 
 def _group_branch(
     catchment: _Catchment, members: list[_Node], above: int, target: _Node
 ) -> _Branch:
-    """Make the branch of the points whose paths enter a junction through one unit.
+    """Make the branch of the points whose paths enter a node through one unit.
 
     The branch has a trunk of its own, the main river from ``above`` up (B1, B2):
     the point on it, if any, is its uppermost node, and the others join it at the
     confluences where their paths enter it, each group of them a branch of the
-    branch, the rivers beside them each a headwater. The lowest node enters the
-    junction by an edge whose przyrzecze ends at the outlet cell of ``above``, or
-    directly (a point at the mouth, D3).
+    branch, the rivers beside them each a headwater. The lowest node enters the node
+    ``target`` by an edge whose przyrzecze ends at the outlet cell of ``above``.
     """
     trunk, position = catchment.trunk(above)
     on_trunk, groups = _branch_groups(
@@ -1057,100 +920,100 @@ def _branch_key(branch: _Branch) -> tuple[bool, float, int]:
     return (not branch.trunk, -branch.accumulation_km2, branch.unit)
 
 
-def _number(root: _Node) -> tuple[list[_Element], list[str]]:
-    """Walk the tree from A, each node after all it receives, and number it (D15)."""
+def _number(root: _Node) -> tuple[list[_Element], list[_Node], list[str]]:
+    """Give the nodes and elements their numbers from the closing section up (N8).
+
+    A walk from the closing section, each node before the branches it receives, in
+    the order of ``_branch_key``: a branch that is an edge brings its reach and its
+    przyrzecze, then the node above it with everything that node receives. Each kind
+    (``J``, ``P``, ``Z``, ``R``) is counted on its own, so the closing section is
+    ``J1`` or ``P1`` and the numbers grow upstream. The order of the hand-off lists
+    every node after every node it receives: at a node, each branch's nodes, its
+    reach and its przyrzecze, then the node itself; ``OUTLET_ID`` last.
+
+    Returns
+    -------
+    tuple[list[_Element], list[_Node], list[str]]
+        The elements by their numbers, the nodes by their numbers (the closing
+        section first) and the order of the hand-off.
+    """
+    counts: dict[str, int] = defaultdict(int)
     elements: list[_Element] = []
+    nodes: list[_Node] = []
     order: list[str] = []
-    counts = {"Z": 0, "R": 0, "J": 0}
 
     def name(prefix: str) -> str:
         counts[prefix] += 1
-        order.append(f"{prefix}{counts[prefix]}")
-        return order[-1]
+        return f"{prefix}{counts[prefix]}"
 
     def element(item: _Element) -> None:
         item.id = name("Z")
         item.number = counts["Z"]
         elements.append(item)
 
-    def upper(node: _Node) -> None:
-        if node.branches:
-            walk(node)
-        else:
-            assert node.element is not None
-            element(node.element)
-
-    def walk(node: _Node) -> None:
-        for branch in sorted(node.branches, key=_branch_key):
+    def number(node: _Node) -> None:
+        node.id = name("J" if node.at_confluence else "P")
+        nodes.append(node)
+        node.branches.sort(key=_branch_key)
+        for branch in node.branches:
             if branch.edge is not None:
-                upper(branch.edge.upper)
                 branch.edge.id = name("R")
                 if branch.edge.intermediate is not None:
                     element(branch.edge.intermediate)
-            elif branch.headwater is not None:
-                element(branch.headwater)
+                number(branch.edge.upper)
             else:
-                assert branch.mouth is not None
-                upper(branch.mouth)
-        node.id = name("J")
+                assert branch.headwater is not None
+                element(branch.headwater)
 
-    walk(root)
-    order.append(OUTLET_ID)
-    return elements, order
-
-
-def _walk_nodes(root: _Node) -> list[_Node]:
-    """Every node of the tree, from A up."""
-    found = [root]
-    for node in found:
+    def walk(node: _Node) -> None:
         for branch in node.branches:
             if branch.edge is not None:
-                found.append(branch.edge.upper)
-            elif branch.mouth is not None:
-                found.append(branch.mouth)
-    return found
+                walk(branch.edge.upper)
+                order.append(branch.edge.id)
+                if branch.edge.intermediate is not None:
+                    order.append(branch.edge.intermediate.id)
+            else:
+                assert branch.headwater is not None
+                order.append(branch.headwater.id)
+        order.append(node.id)
+
+    number(root)
+    walk(root)
+    order.append(OUTLET_ID)
+    return elements, nodes, order
 
 
-def _connect(junction_nodes: list[_Node]) -> tuple[list[Reach], list[Junction]]:
+def _connect(nodes: list[_Node]) -> tuple[list[Reach], list[Junction]]:
     """Make the reaches and junctions, and set the node each element flows into."""
     reaches = []
     junctions = []
-    for node in junction_nodes:
+    for node in nodes:
         inflows: list[str] = []
-        tributaries: list[str] = []
-        for branch in sorted(node.branches, key=_branch_key):
-            if not branch.trunk and branch.headwater is None:
-                tributaries.extend(_points_up(_upper_node(branch)))
+        for branch in node.branches:
             if branch.edge is not None:
                 edge = branch.edge
-                if not edge.upper.branches:
-                    assert edge.upper.element is not None
-                    edge.upper.element.to = edge.id
                 inflows.append(edge.id)
                 intermediate_id = None
                 if edge.intermediate is not None:
                     edge.intermediate.to = node.id
+                    edge.intermediate.point = node.point
                     intermediate_id = edge.intermediate.id
                     inflows.append(intermediate_id)
                 reaches.append(
                     Reach(
                         id=edge.id,
-                        from_node=edge.upper.node_id(),
+                        from_node=edge.upper.id,
                         to=node.id,
                         upper=edge.upper.place,
                         lower=node.place,
                         intermediate=intermediate_id,
                     )
                 )
-            elif branch.headwater is not None:
-                branch.headwater.to = node.id
-                inflows.append(branch.headwater.id)
             else:
-                assert branch.mouth is not None
-                if not branch.mouth.branches:
-                    assert branch.mouth.element is not None
-                    branch.mouth.element.to = node.id
-                inflows.append(branch.mouth.node_id())
+                assert branch.headwater is not None
+                branch.headwater.to = node.id
+                branch.headwater.point = node.point
+                inflows.append(branch.headwater.id)
         junctions.append(
             Junction(
                 id=node.id,
@@ -1158,38 +1021,19 @@ def _connect(junction_nodes: list[_Node]) -> tuple[list[Reach], list[Junction]]:
                 point=node.point,
                 place=node.place,
                 inflows=tuple(inflows),
-                tributaries=tuple(tributaries),
             )
         )
-    return reaches, junctions
-
-
-def _upper_node(branch: _Branch) -> _Node:
-    """Return the node a branch that is not a headwater comes from."""
-    upper = branch.edge.upper if branch.edge is not None else branch.mouth
-    assert upper is not None
-    return upper
-
-
-def _points_up(node: _Node) -> list[str]:
-    """List the nearest control points from a node up: itself, or its branches'."""
-    if node.point is not None:
-        return [node.point]
-    return [
-        point
-        for branch in sorted(node.branches, key=_branch_key)
-        if branch.headwater is None
-        for point in _points_up(_upper_node(branch))
-    ]
+    return sorted(reaches, key=lambda r: int(r.id[1:])), junctions
 
 
 def _unit_elements(
     catchment: _Catchment, elements: list[_Element]
 ) -> tuple[np.ndarray, tuple[SplitUnit, ...]]:
-    """Give every unit its element, and list the units with a control point (D5, D6).
+    """Give every unit its element, and list the units split by a ``P`` (D5, D6).
 
-    One pass from A up: a unit takes the element of the first element outlet on its
-    segment from its head, else the element its unit below receives at its head.
+    One pass from the closing section up: a unit takes the element of the first
+    element outlet on its segment from its head, else the element its unit below
+    receives at its head; the closing section's unit without one lies outside (0).
     """
     at_points: dict[int, list[tuple[Place, int]]] = defaultdict(list)
     at_outlets: dict[int, int] = {}
@@ -1202,12 +1046,13 @@ def _unit_elements(
 
     at_head: dict[int, int] = {}
     for unit in catchment.units.tolist():
+        below = catchment.below[unit]
         if unit in at_points:
             at_head[unit] = max(at_points[unit], key=lambda p: p[0].flow_dist_m)[1]
         elif unit in at_outlets:
             at_head[unit] = at_outlets[unit]
         else:
-            at_head[unit] = at_head[catchment.below[unit]]
+            at_head[unit] = at_head[below] if below >= 0 else 0
 
     splits = []
     split_units = set()

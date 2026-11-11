@@ -6,7 +6,8 @@ its points while the person places them, in a fraction of a second. The points s
 for the full run (``core.network_delineation.snap_point``: the windows of the rasters
 within some 160 m of each click) and ``core.network_tree`` builds the same tree, so the
 ids, kinds and inflows of the elements and the places of the points and junctions are
-those ``delineate_network`` gives. No window over A's catchment is read:
+those ``delineate_network`` gives. No window over the closing section's catchment is
+read:
 
 - the area of an element is the cells of its units (the graph's ``area_km2``), the
   parts of a unit that a point splits counted from the accumulation at the points
@@ -18,9 +19,9 @@ those ``delineate_network`` gives. No window over A's catchment is read:
   (``stream_catchments``) on a grid of PREVIEW_GRID_M, drawn wherever possible with the
   largest unit of a coarser threshold that the element holds whole: a few hundred
   polygons instead of the tens of thousands of units of 1 ha. A unit that a point
-  splits goes whole to the element with most of its cells, so the outlines of the
-  elements at such a point are approximate until the full run splits the unit by the
-  raster.
+  away from a node splits goes whole to the element with most of its cells, so the
+  outlines of the elements at such a point are approximate until the full run splits
+  the unit by the raster; a point at a node splits no unit (N5).
 """
 
 import logging
@@ -100,16 +101,16 @@ _STREAM_LINES = text(
 
 @dataclass(frozen=True)
 class PreviewPoint:
-    """A control point where it snapped, and whether a raster splits its unit.
+    """A control point where it lies, and whether a raster splits its unit.
 
     Attributes
     ----------
     point : NetworkPoint
         Its place and node, as ``delineate_network`` gives them.
     inside_unit : bool
-        It lies inside its unit, not at the unit's outlet cell: the full run splits
-        the unit by the raster, and the preview's outlines of the elements on both
-        sides follow the whole unit.
+        It lies inside its unit away from a node, not at the unit's outlet cell: the
+        full run splits the unit by the raster, and the preview's outlines of the
+        elements on both sides follow the whole unit.
     """
 
     point: NetworkPoint
@@ -170,17 +171,17 @@ class NetworkPreview:
     threshold_m2 : int
         The network the points snapped to [m²].
     area_km2 : float
-        A's catchment, the sum of the elements [km², 6 decimals].
+        The closing section's catchment, the sum of the elements [km², 6 decimals].
     points : tuple[PreviewPoint, ...]
-        A, then the points in the order of the request.
+        The closing section, then the points in the order of the request.
     subcatchments : tuple[PreviewSubcatchment, ...]
         ``Z1``, ``Z2``, …
     reaches : tuple[PreviewReach, ...]
         ``R1``, ``R2``, …
     junctions : tuple[NetworkJunction, ...]
-        ``J1``, ``J2``, …
+        Every node in the order of their numbers, the closing section's first (N8).
     order : tuple[str, ...]
-        The nodes in the order of the full run's hand-off, ``OUT`` last.
+        The nodes in the order of the full run's hand-off, ``O`` last.
     reach_notices : tuple[ReachNotice, ...]
         The reaches shorter than SHORT_REACH_M or of the minimum slope, as the full
         run gives them: the slope from the NMT at the same end cells.
@@ -197,14 +198,15 @@ class NetworkPreview:
 
 
 class UnitIndex:
-    """The positions of the units of A's catchment in ``tree.units``.
+    """The positions of the units of the closing section's catchment in ``tree.units``.
 
     Attributes
     ----------
     tree : NetworkTree
         The tree whose units are indexed.
     below_pos : np.ndarray
-        For each unit, the position of the unit it drains into; -1 for A's.
+        For each unit, the position of the unit it drains into; -1 for the closing
+        section's.
     """
 
     def __init__(self, tree: NetworkTree):
@@ -217,7 +219,7 @@ class UnitIndex:
         ).astype(np.int64)
 
     def position(self, unit: int) -> int:
-        """Return the position of a unit of A's catchment in ``tree.units``."""
+        """Return the position of a unit of the catchment in ``tree.units``."""
         return int(self._order[np.searchsorted(self._sorted, unit)])
 
 
@@ -238,9 +240,9 @@ def preview_network(
     db : Session
         Database session: the polygons of the units and their stream lines.
     outlet : Click
-        The closing section A.
+        The closing section.
     points : Sequence[Click]
-        The points of the request, ids unique without regard to case.
+        The points of the request, ids unique without regard to case; possibly none.
     threshold_m2 : int
         The network the points snap to [m²], at least ``DEFAULT_THRESHOLD_M2``.
     settings : Settings, optional
@@ -289,8 +291,8 @@ def preview_network(
     element_cells = np.bincount(
         whole, weights=unit_cells, minlength=len(tree.subcatchments) + 1
     ).astype(np.int64)
-    # The split units have element 0 in the table: their parts count instead, and the
-    # part of A's unit below A (0) stays outside
+    # The split units have element 0 in the table: their parts count instead, and what
+    # lies outside the network (0: the closing section's unit below it) stays out
     element_cells[0] = 0
     outline_element = whole.copy()
     for unit, counts in parts.items():
@@ -316,7 +318,7 @@ def preview_network(
         points=tuple(
             PreviewPoint(
                 point=_network_point(transform, point, clicks[point.point_id]),
-                inside_unit=not point.place.at_outlet,
+                inside_unit=not (point.at_node or point.place.at_outlet),
             )
             for point in tree.points
         ),
@@ -371,8 +373,8 @@ def split_parts(
     drain to its uppermost point are the accumulation there less the cells of the
     units above; each point below adds its accumulation less that of the point above
     it, and the last outlet (the unit's outlet cell, or a point at it) takes the rest
-    of the unit. The element number 0 counts the part of A's unit below A, outside
-    the network.
+    of the unit. The element number 0 counts the part of the closing section's unit
+    below it, outside the network.
 
     Parameters
     ----------
@@ -424,11 +426,11 @@ def outline_cover(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Choose the polygons that draw the elements, and the element of each.
 
-    Every unit of A's catchment is drawn by the largest unit of a coarser threshold
-    that holds it and that one element holds whole, else by itself. A unit of a
-    coarser threshold is made of the units of 1 ha above its outlet cell
+    Every unit of the closing section's catchment is drawn by the largest unit of a
+    coarser threshold that holds it and that one element holds whole, else by itself.
+    A unit of a coarser threshold is made of the units of 1 ha above its outlet cell
     (``CatchmentGraph.coarser_at_outlets``) down to the next such outlet below; it is
-    taken when all of them lie in A's catchment (their cells add up to its own) and
+    taken when all of them lie in the catchment (their cells add up to its own) and
     belong to one element whole.
 
     Parameters
@@ -436,7 +438,7 @@ def outline_cover(
     cg : CatchmentGraph
         The loaded graph.
     tree : NetworkTree
-        The tree: A's units.
+        The tree: the units of the closing section's catchment.
     index : UnitIndex
         The positions of the units of ``tree``.
     unit_cells : np.ndarray
@@ -562,10 +564,10 @@ def _stream_lines(
 def _reach_units(index: UnitIndex, reach: Reach) -> list[int]:
     """Return the units a reach runs through, from its upper end down.
 
-    Down to the unit of its lower end when that is a control point inside it, else
-    (a junction at the head of a unit, or a control point on that head cell, A at a
-    confluence) to the unit above it on the reach's branch, whose stream line ends
-    at the head cell.
+    Down to the unit of its lower end when that is a control point inside it, else (a
+    confluence at the head of a unit, or a control point on that head cell, a ``J``)
+    to the unit above it on the reach's branch, whose stream line ends at the head
+    cell.
     """
     units = index.tree.units
     last = reach.lower.unit
@@ -723,7 +725,7 @@ def _network_point(transform: Affine, point: PointNode, click: Click) -> Network
         latitude=latitude,
         longitude=longitude,
         snap_distance_m=round(float(np.hypot(x - click.x, y - click.y)), 1),
-        at_mouth=point.at_mouth,
+        at_node=point.at_node,
         node=point.node,
     )
 

@@ -1,21 +1,23 @@
 """
 A network of subcatchments, reaches and junctions delineated at control points.
 
-ADR-080 and the plan ``docs/plans/2026-11-10-network-delineation.md`` (D2, D6 to
-D11); the tree of the network is ``core.network_tree``'s. The closing section A and
-the points of the request snap to the nearest stream cell of the request's network
-within NETWORK_SNAP_M (D2). Their tree names the elements, made of the units of the
-catchment graph (``DEFAULT_THRESHOLD_M2``) and of the parts of the units that hold a
-control point. One window of the saved rasters over A's catchment (D7, at most
-NETWORK_MAX_WINDOW_CELLS cells) gives the element raster: the labels of the units
-through a table unit -> element, the units of the control points split by pyflwdir
-basins with an outlet at each control point and at the unit's outlet cell (D6). The
-elements must add up to A's catchment counted from the graph (D11). Each element is
-measured from its cells with ``core.cell_parameters``, giving the panel's parameters
-(a ``WatershedResponse``, D8); the boundaries are one coverage of all elements
-simplified together (D9); each reach gets the difference of the flow distances of its
-ends as its length, the NMT at its ends for its slope and a check length along the
-BDOT10k lines (D10). No flow directions are computed: the rasters are the pipeline's.
+ADR-080 and the plans ``docs/plans/2026-11-10-network-delineation.md`` (D2, D6 to
+D11) and ``docs/plans/2026-11-11-network-nodes.md``; the tree of the network is
+``core.network_tree``'s. The closing section and the points of the request snap to the
+nearest stream cell of the request's network within NETWORK_SNAP_M (D2), and the tree
+moves each to a node of the network within 50 m (N3). The tree names the elements,
+made of the units of the catchment graph (``DEFAULT_THRESHOLD_M2``) and of the parts of
+the units that hold a control point away from a node. One window of the saved rasters
+over the closing section's catchment (D7, at most NETWORK_MAX_WINDOW_CELLS cells) gives
+the element raster: the labels of the units through a table unit -> element, the units
+of those control points split by pyflwdir basins with an outlet at each of them and at
+the unit's outlet cell (D6). The elements must add up to the closing section's
+catchment counted from the graph (D11). Each element is measured from its cells with
+``core.cell_parameters``, giving the panel's parameters (a ``WatershedResponse``, D8);
+the boundaries are one coverage of all elements simplified together (D9); each reach
+gets the difference of the flow distances of its ends as its length, the NMT at its
+ends for its slope and a check length along the BDOT10k lines (D10). No flow
+directions are computed: the rasters are the pipeline's.
 """
 
 import logging
@@ -75,6 +77,7 @@ from core.network_tree import (
     Junction,
     NetworkTree,
     Place,
+    PointNode,
     Reach,
     Subcatchment,
     UnitHead,
@@ -106,9 +109,9 @@ logger = logging.getLogger(__name__)
 # A point snaps to the nearest stream cell of the request's network within this
 # distance of the click (D2) [m]
 NETWORK_SNAP_M = 100.0
-# Largest window of the rasters over A's catchment [cells] (D7): 22 bytes a cell for
-# the six rasters and 2 for the element raster, about 1.4 GB; production's whole grid
-# has 58.6 M cells
+# Largest window of the rasters over the closing section's catchment [cells] (D7): 22
+# bytes a cell for the six rasters and 2 for the element raster, about 1.4 GB;
+# production's whole grid has 58.6 M cells
 NETWORK_MAX_WINDOW_CELLS = 60_000_000
 # The slope of a reach whose NMT does not fall (D10): Hydrolog refuses a slope that
 # is not positive [m/m]
@@ -124,8 +127,8 @@ REACH_SAMPLE_M = 10.0
 # with its boundary simplified by 20 m (api.endpoints.watershed)
 _LAND_COVER_SIMPLIFY_ABOVE_KM2 = 5.0
 _LAND_COVER_SIMPLIFY_M = 20.0
-# A side of the window that A's catchment touches moves out by half the size of the
-# window, by at least this many cells (as core.raster_service does)
+# A side of the window that the closing section's catchment touches moves out by half
+# the size of the window, by at least this many cells (as core.raster_service does)
 _MIN_GROWTH_CELLS = 64
 # The rasters of D7, by their name in PipelineRasters, and the NMT of the reaches
 _RASTERS = {
@@ -159,27 +162,27 @@ class Click:
 
 @dataclass(frozen=True)
 class NetworkPoint:
-    """A control point where it snapped (D2) and its node.
+    """A control point where it lies (D2, N3) and its node.
 
     Attributes
     ----------
     point_id : str
         Its id in the request.
     latitude, longitude : float
-        Centre of its cell, after the mouth rule (WGS84).
+        Centre of its cell, after N3 (WGS84).
     snap_distance_m : float
         Distance from the click to that centre [m].
-    at_mouth : bool
-        The mouth rule moved it (D3).
+    at_node : bool
+        It lies at a node of the network, where N3 drew it: its node is a ``J``.
     node : str
-        Its subcatchment when no point lies above it, else its junction.
+        Its node: ``J<n>`` at a confluence, ``P<n>`` elsewhere (N1).
     """
 
     point_id: str
     latitude: float
     longitude: float
     snap_distance_m: float
-    at_mouth: bool
+    at_node: bool
     node: str
 
 
@@ -241,7 +244,7 @@ class NetworkReach:
 
 @dataclass(frozen=True)
 class NetworkJunction:
-    """A junction and the centre of its cell (WGS84)."""
+    """A node of the network and the centre of its cell (WGS84)."""
 
     junction: Junction
     latitude: float
@@ -261,14 +264,15 @@ class ReachNotice:
     slope_minimum : bool
         Its NMT does not fall: its slope is MIN_REACH_SLOPE_M_PER_M.
     upper_point : str or None
-        The control point at its upper end; None at a confluence.
+        The id in the request of the control point at its upper node; None at a
+        confluence the network makes.
     lower : str
-        The junction it flows into.
+        The node it flows into.
     move_to : tuple[float, float] or None
-        Latitude and longitude of the centre of the cell above that junction on the
-        reach's branch (WGS84): the upper point placed there is at the mouth (D3) and
-        enters the junction directly. None unless the upper end is a control point
-        and the junction a confluence.
+        Latitude and longitude of the centre of the cell above that node on the
+        reach's branch (WGS84): the upper point placed there moves to the node (N3)
+        and is that confluence, so the reach goes. None unless the upper node is a
+        control point and the lower one a confluence the network makes.
     """
 
     reach: str
@@ -288,22 +292,24 @@ class Network:
     threshold_m2 : int
         The network the points snapped to [m²].
     area_km2 : float
-        A's catchment from the graph's units, less the part of A's unit below A
-        (D11) [km², 6 decimals].
+        The closing section's catchment from the graph's units, less what lies
+        outside the network: the part of its unit below it, or at a node all of
+        that unit and the streams below the threshold that join there (D11, N5)
+        [km², 6 decimals].
     elements_km2 : float
         The cells of the elements [km², 6 decimals]: equal to ``area_km2``.
     boundary_2180 : BaseGeometry
-        A's boundary, the union of the elements (EPSG:2180).
+        The closing section's boundary, the union of the elements (EPSG:2180).
     points : tuple[NetworkPoint, ...]
-        A, then the points in the order of the request.
+        The closing section, then the points in the order of the request.
     subcatchments : tuple[NetworkSubcatchment, ...]
         ``Z1``, ``Z2``, …
     reaches : tuple[NetworkReach, ...]
         ``R1``, ``R2``, …
     junctions : tuple[NetworkJunction, ...]
-        ``J1``, ``J2``, …
+        Every node in the order of their numbers, the closing section's first (N8).
     order : tuple[str, ...]
-        The nodes in the order of D15, the outlet ``OUT`` last.
+        The nodes in the order of D15, the outlet ``O`` last.
     reach_notices : tuple[ReachNotice, ...]
         The reaches shorter than SHORT_REACH_M or of the minimum slope (D10a).
     """
@@ -338,9 +344,9 @@ def delineate_network(
         Database session: the extent of the units, the BDOT10k flags and lines,
         the land cover, the soil groups and the PMAXTP grid.
     outlet : Click
-        The closing section A.
+        The closing section.
     points : Sequence[Click]
-        The points of the request, ids unique without regard to case.
+        The points of the request, ids unique without regard to case; possibly none.
     threshold_m2 : int
         The network the points snap to [m²], at least ``DEFAULT_THRESHOLD_M2``.
     settings : Settings, optional
@@ -359,12 +365,13 @@ def delineate_network(
     InvalidRequestError
         ``network_point_outside``, ``network_points_coincide`` (core.network_tree).
     UnsupportedError
-        ``network_window_too_large``: A's catchment needs a window of more than
-        NETWORK_MAX_WINDOW_CELLS cells.
+        ``network_window_too_large``: the closing section's catchment needs a window
+        of more than NETWORK_MAX_WINDOW_CELLS cells.
     StoreUnavailableError
         ``network_rasters_missing``, ``raster_grids_differ``.
     InternalError
-        ``network_area_mismatch``: the elements do not add up to A's catchment.
+        ``network_area_mismatch``: the elements do not add up to the closing
+        section's catchment.
     """
     started = time.perf_counter()
     with open_network_rasters(settings or get_settings()) as (rasters, nmt):
@@ -516,7 +523,9 @@ def snap_point(
     The cell is the nearest one within NETWORK_SNAP_M of the click, by its centre,
     whose accumulation reaches ``threshold_m2``, the larger accumulation on a tie.
     Such a cell is a stream cell of the units too, on its unit's segment. Its path
-    runs down the flow as far as MOUTH_TOLERANCE_M below it, for the mouth rule.
+    runs down the flow as far as MOUTH_TOLERANCE_M below it, and its cells upstream
+    up its unit's stream as far as the unit's head cell within MOUTH_TOLERANCE_M:
+    where the tree moves it to a node of the network (N3, ``core.network_tree``).
 
     Parameters
     ----------
@@ -596,7 +605,25 @@ def snap_point(
             break
         path.append(below_place)
         current = below
-    return ControlPoint(point_id=click.point_id, place=place, path=tuple(path))
+    upstream: list[Place] = []
+    cell, last = (row, col), place
+    while not last.at_head:
+        above = cells.above(cell[0], cell[1], threshold_cells)
+        above_place = None if above is None else cells.place(*above)
+        if (
+            above is None
+            or above_place is None
+            or above_place.flow_dist_m - place.flow_dist_m > MOUTH_TOLERANCE_M
+        ):
+            break
+        upstream.append(above_place)
+        cell, last = above, above_place
+    return ControlPoint(
+        point_id=click.point_id,
+        place=place,
+        path=tuple(path),
+        upstream=tuple(upstream),
+    )
 
 
 @dataclass(frozen=True)
@@ -618,6 +645,30 @@ class _SnapCells:
         r, c = row + step[0], col + step[1]
         nrows, ncols = self.labels.shape
         return (r, c) if 0 <= r < nrows and 0 <= c < ncols else None
+
+    def above(self, row: int, col: int, min_cells: int) -> tuple[int, int] | None:
+        """Return the cell of a cell's unit that drains into it on the stream.
+
+        The cell of the largest accumulation among those of the same unit that
+        drain into it, when that accumulation reaches ``min_cells``; None at the
+        head cell of the unit, where the stream comes from other units, and where
+        the stream of ``min_cells`` ends.
+        """
+        label = self.labels[row, col]
+        nrows, ncols = self.labels.shape
+        found = None
+        for code, (drow, dcol) in D8_DIRECTIONS.items():
+            r, c = row - drow, col - dcol
+            if (
+                0 <= r < nrows
+                and 0 <= c < ncols
+                and self.fdir[r, c] == code
+                and self.labels[r, c] == label
+                and self.acc[r, c] >= min_cells
+                and (found is None or self.acc[r, c] > self.acc[found])
+            ):
+                found = (r, c)
+        return found
 
     def place(self, row: int, col: int) -> Place | None:
         """Return the place of a cell of a unit; None without a unit of the graph."""
@@ -654,7 +705,7 @@ class _SnapCells:
 def catchment_window(
     rasters: PipelineRasters, cg: CatchmentGraph, db: Session, tree: NetworkTree
 ) -> Window:
-    """Find the window of the rasters over A's catchment (D7).
+    """Find the window of the rasters over the closing section's catchment (D7).
 
     The extent of the units (``catchments_bounds``) and of the control points with
     WINDOW_MARGIN_M, within the rasters, grown as the precise mode grows its window
@@ -734,7 +785,7 @@ def _grown(
 
 
 class NetworkGrid:
-    """The window of the rasters over A's catchment and the cells of the tree's places.
+    """The window of the rasters over a catchment and the cells of the tree's places.
 
     Attributes
     ----------
@@ -832,7 +883,8 @@ def element_raster(
     tuple[np.ndarray, dict[int, np.ndarray], int]
         The element raster (int16, 0 outside the network); the count of the stream
         cells of the units of each split unit in each element (by unit, indexed by
-        element); the cells of A's unit below A.
+        element); the cells of the closing section's unit below it, when it splits
+        that unit.
     """
     cells = grid.cells
     labels = cells.labels
@@ -970,16 +1022,18 @@ def area_check(
     outside: int,
     cellsize_m: float,
 ) -> tuple[float, float]:
-    """Check that the elements add up to A's catchment (D11, B5).
+    """Check that the elements add up to the closing section's catchment (D11, B5).
 
-    The cells of the element raster against the cells of A's catchment counted
-    from the graph: the sum over its units of ``round(area_km2 / cell area)``, less
-    the cells of A's unit below A.
+    The cells of the element raster against the cells of the catchment counted from
+    the graph: the sum over its units in the network of ``round(area_km2 / cell
+    area)``, less the cells of the closing section's unit below it. A closing section
+    at a node leaves all of its unit outside, and the streams below the threshold
+    that join at its cell: the sum is that of the branches that meet there (N5).
 
     Returns
     -------
     tuple[float, float]
-        A's catchment and the elements [km², 6 decimals], equal.
+        The catchment and the elements [km², 6 decimals], equal.
 
     Raises
     ------
@@ -987,12 +1041,16 @@ def area_check(
         ``network_area_mismatch`` when they differ.
     """
     cell_km2 = cellsize_m * cellsize_m / M2_PER_KM2
-    areas = cg.get_area_km2(tree.units).astype(np.float64)
+    # A unit of no element that the raster does not split lies outside the network
+    inside = (tree.unit_elements > 0) | np.isin(
+        tree.units, [split.unit for split in tree.splits]
+    )
+    areas = cg.get_area_km2(tree.units[inside]).astype(np.float64)
     watershed_cells = int(np.rint(areas / cell_km2).sum()) - outside
     elements_cells = int(np.count_nonzero(elements))
     if elements_cells != watershed_cells:
         logger.error(
-            "Network: the elements hold %d cells, A's catchment %d",
+            "Network: the elements hold %d cells, the catchment %d",
             elements_cells,
             watershed_cells,
         )
@@ -1358,14 +1416,14 @@ def reach_notice(
     -------
     ReachNotice
         The notice; ``move_to`` is the outlet cell of the last unit of the reach's
-        branch above its junction, where its przyrzecze ends, when the reach runs
-        from a control point into a confluence: the point placed there is at the
-        mouth (D3), so the reach and its przyrzecze disappear.
+        branch above its lower node, where its przyrzecze ends, when the reach runs
+        from a control point into a confluence the network makes: the point placed
+        there moves to that node (N3) and is the confluence, so the reach and its
+        przyrzecze disappear.
     """
-    lower = next(j for j in tree.junctions if j.id == reach.to)
-    points = {s.id: s.point for s in tree.subcatchments}
-    points.update({j.id: j.point for j in tree.junctions})
-    upper_point = points.get(reach.from_node)
+    nodes = {j.id: j for j in tree.junctions}
+    lower = nodes[reach.to]
+    upper_point = nodes[reach.from_node].point
     end = next((s.outlet for s in tree.subcatchments if s.reach == reach.id), None)
     move_to = (
         outlet_lat_lon(end.unit)
@@ -1474,7 +1532,7 @@ def _lat_lon(grid: NetworkGrid, cell: tuple[int, int]) -> tuple[float, float]:
     return lat, lon
 
 
-def _network_point(grid: NetworkGrid, point: Any, click: Click) -> NetworkPoint:
+def _network_point(grid: NetworkGrid, point: PointNode, click: Click) -> NetworkPoint:
     """Place a control point where it lies, with its distance from its click."""
     cell = grid.local(point.place.cell)
     x, y = grid.centre(cell)
@@ -1484,7 +1542,7 @@ def _network_point(grid: NetworkGrid, point: Any, click: Click) -> NetworkPoint:
         latitude=latitude,
         longitude=longitude,
         snap_distance_m=round(math.hypot(x - click.x, y - click.y), 1),
-        at_mouth=point.at_mouth,
+        at_node=point.at_node,
         node=point.node,
     )
 
