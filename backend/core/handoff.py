@@ -544,7 +544,9 @@ def build_network_handoff(
             nodes.append(_reach_node(reaches[node_id]))
             node_provenance[node_id] = {"node": _reach_origin(reaches[node_id])}
         elif node_id in junctions:
-            nodes.append(_junction_node(junctions[node_id], names, subcatchments))
+            nodes.append(
+                _junction_node(junctions[node_id], names, subcatchments, reaches)
+            )
             node_provenance[node_id] = {"node": _junction_origin(junctions[node_id])}
         else:
             nodes.append({"id": node_id, "type": "outlet", "from": [outlet_junction]})
@@ -704,11 +706,13 @@ def _junction_node(
     item: "NetworkJunction",
     names: Mapping[str, str],
     subcatchments: Mapping[str, "NetworkSubcatchment"],
+    reaches: Mapping[str, "NetworkReach"],
 ) -> dict[str, Any]:
     """Return a junction of the payload: its inflows and a text.
 
     A confluence names the points of the tributaries that enter it, the point of a
-    headwater included: that is a tributary to the person too (_element_title).
+    headwater included, directly or by its reach: that is a tributary to the person too
+    (_element_title).
     """
     junction = item.junction
     if junction.kind == "outlet":
@@ -719,9 +723,7 @@ def _junction_node(
         headwater_points = [
             point
             for node in junction.inflows
-            if node in subcatchments
-            and subcatchments[node].subcatchment.kind == "headwater"
-            and (point := subcatchments[node].subcatchment.point) is not None
+            if (point := _headwater_point(node, subcatchments, reaches)) is not None
         ]
         text = "Zbieg: " + ", ".join(
             f"dopływ {_point_label(point, names)}"
@@ -733,6 +735,20 @@ def _junction_node(
         "from": list(junction.inflows),
         "description": _description(text),
     }
+
+
+def _headwater_point(
+    node: str,
+    subcatchments: Mapping[str, "NetworkSubcatchment"],
+    reaches: Mapping[str, "NetworkReach"],
+) -> str | None:
+    """The point of a headwater an inflow of a junction brings, itself or by its reach."""
+    if node in reaches:
+        node = reaches[node].reach.from_node
+    element = subcatchments.get(node)
+    if element is None or element.subcatchment.kind != "headwater":
+        return None
+    return element.subcatchment.point
 
 
 def _junction_origin(item: "NetworkJunction") -> dict[str, Any]:
