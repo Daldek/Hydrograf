@@ -492,6 +492,34 @@ def test_a_split_unit_gives_the_elements_their_parts(run, graph, db, settings):
     assert Point(run.cell_centre_xy(100, 85)).within(headwater.boundary_2180.buffer(5))
 
 
+def test_a_tributary_without_a_point_at_its_mouth_has_a_headwater_on_its_main_river(
+    run, graph, db, settings
+):
+    # No point at T1's mouth: P1 30 m above the corner where T1a joins T1's main river,
+    # the arm from the north (0.80 km² there, T1a 0.32 km²), as on the author's
+    # Kaczawa of 2026-11-11. The arm is the corner's headwater, not a part of the
+    # przyrzecze of a reach from P1 down to the main river
+    tree, grid, elements, _ = elements_of(
+        graph, db, settings, click(run, "A", OUTLET), click(run, "P1", (159, 47))
+    )
+
+    z = {s.id: s for s in tree.subcatchments}
+    (p1,) = [s for s in tree.subcatchments if s.point == "P1"]
+    assert (p1.kind, p1.at_mouth) == ("tributary", True)
+    (corner,) = [j for j in tree.junctions if j.id == p1.to]
+    headwater = z[corner.inflows[0]]
+    assert (headwater.kind, headwater.point) == ("headwater", None)
+    assert corner.inflows == (headwater.id, p1.id)
+    (reach,) = [r for r in tree.reaches if r.from_node == corner.id]
+    # The north arm, T1a above P1 and T1 below the corner
+    cells = ((100, 49), (159, 40), (159, 70))
+    assert [elements[grid.local(cell)] for cell in cells] == [
+        headwater.number,
+        p1.number,
+        z[reach.intermediate].number,
+    ]
+
+
 class TestTheWindow:
     def test_it_grows_while_the_catchment_touches_its_sides(
         self, run, graph, db, settings, monkeypatch

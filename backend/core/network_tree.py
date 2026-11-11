@@ -12,24 +12,29 @@ to a stream cell (``core.network_delineation``), form a tree along their flow pa
   segment, then up the units ``CatchmentGraph.trace_main_channel`` chooses (ADR-046);
 - a point joins its parent's trunk at itself when its unit is on the trunk (a gauge on
   the main river), else at the head cell of the trunk unit its path enters, a
-  confluence: its junction. Points whose paths enter the trunk through the same unit
-  first meet where their paths merge, a confluence that is a junction too (B1);
-- the nodes of a trunk are the junctions and the point it carries; its edges run
-  between consecutive nodes and from the lowest node to the control point, and a
-  point off the trunk adds the edge from it to its junction, along its branch. Every
-  edge is a reach with its intermediate catchment (przyrzecze); the trunk above its
-  uppermost node, when that node is a junction, is a headwater subcatchment (ending at
-  the control point when no node lies on its trunk); a point with no point above it is
-  a subcatchment, a tributary when it lies off its parent's trunk, the headwater when
-  on it;
+  confluence: its junction;
+- the points whose paths enter a trunk through the same unit form a branch, and a
+  branch has a trunk of its own: the main river from that unit up, by the same rule.
+  Each point of a branch joins the branch's trunk as a point joins its parent's trunk,
+  at itself or at the confluence where its path enters it, and the points whose paths
+  enter the branch's trunk through one unit form a branch of the branch (B1). So every
+  edge runs along a main river, and the main river of a branch without a point at its
+  mouth is a headwater above its uppermost junction, not a part of a przyrzecze (B2);
+- the nodes of a trunk are its junctions and the point it carries; its edges run
+  between consecutive nodes and from the lowest node to the control point, or to the
+  junction the branch enters. Every edge is a reach with its intermediate catchment
+  (przyrzecze); the trunk above its uppermost node, when that node is a junction, is a
+  headwater subcatchment (ending at the control point when no node lies on its trunk);
+  a point with no point above it is a subcatchment, a tributary when it lies off its
+  parent's trunk, the headwater when on it;
 - a point at most MOUTH_TOLERANCE_M above a junction along the flow, where its path
   meets another branch of the network, moves to the outlet cell of the last unit
   above that junction on its branch (D3): its subcatchment, or its junction, enters
   the junction directly. A point off its parent's trunk takes the lowest such junction
   on its way to the trunk (its junction on the trunk, or a confluence where its path
-  merges with the path of another point), a point on the trunk the first confluence
-  below it where a point's path enters the trunk; a point whose path runs down the
-  trunk into its parent without such a confluence keeps its place.
+  enters the trunk of a branch), a point on the trunk the first confluence below it
+  where a point's path enters the trunk; a point whose path runs down the trunk into
+  its parent without such a confluence keeps its place.
 
 The elements are made of the units of the graph (``DEFAULT_THRESHOLD_M2``): every
 element ends at one outlet cell, a control point's cell or the outlet cell of the unit
@@ -399,13 +404,6 @@ class _Catchment:
             self._trunks[unit] = trunk, {u: i for i, u in enumerate(trunk)}
         return self._trunks[unit]
 
-    def path_down(self, unit: int, last: int) -> list[int]:
-        """Units from ``unit`` down to ``last``, both included."""
-        path = [unit]
-        while path[-1] != last:
-            path.append(self.below[path[-1]])
-        return path
-
     def accumulation_km2(self, unit: int) -> float:
         """Upstream area at the end of a unit's segment [km²]; 0 when not loaded."""
         area = self.cg.get_upstream_area_km2(unit)
@@ -562,13 +560,7 @@ def _links(
             continue
         parent = _parent(catchment, by_unit, control)
         _, position = catchment.trunk(parent.place.unit)
-        unit = control.place.unit
-        entry = None
-        if unit not in position:
-            above, unit = unit, catchment.below[unit]
-            while unit not in position:
-                above, unit = unit, catchment.below[unit]
-            entry = (unit, above)
+        entry = _entry(catchment, control.place.unit, position)
         links[point_id] = _Link(parent=parent.point_id, entry=entry)
     return links
 
@@ -593,6 +585,59 @@ def _parent(
     raise AssertionError(f"{control.point_id} has no control point below it")
 
 
+def _entry(
+    catchment: _Catchment, unit: int, position: dict[int, int]
+) -> tuple[int, int] | None:
+    """Where the path down from a unit enters a trunk, by the positions of its units.
+
+    None when the unit lies on the trunk, else the trunk unit the path enters at its
+    head cell, a confluence, and the unit of the path above it.
+    """
+    if unit in position:
+        return None
+    above, unit = unit, catchment.below[unit]
+    while unit not in position:
+        above, unit = unit, catchment.below[unit]
+    return unit, above
+
+
+def _branch_groups(
+    catchment: _Catchment, units: Sequence[int], above: int
+) -> tuple[list[int], dict[tuple[int, int], list[int]]]:
+    """Split the units of points by where their paths enter the trunk of a branch (D4).
+
+    The branch flows through the unit ``above``; its trunk is the main river from
+    ``above`` up. Returns the positions in ``units`` of the units on the trunk, and
+    those of the others by their entry (``_entry``).
+    """
+    _, position = catchment.trunk(above)
+    on_trunk: list[int] = []
+    groups: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for i, unit in enumerate(units):
+        entry = _entry(catchment, unit, position)
+        if entry is None:
+            on_trunk.append(i)
+        else:
+            groups[entry].append(i)
+    return on_trunk, groups
+
+
+def _branch_junctions(
+    catchment: _Catchment, units: Sequence[int], above: int
+) -> set[int]:
+    """Return the confluences of a branch and of the branches above it, by unit.
+
+    The points of ``units`` form the branch that flows through the unit ``above``
+    (``_group_branch``); a junction lies at the head cell of each trunk unit the path
+    of a point enters, on the branch's trunk or on the trunk of a branch of it.
+    """
+    _, groups = _branch_groups(catchment, units, above)
+    junctions = {unit for unit, _ in groups}
+    for (_, side), members in groups.items():
+        junctions |= _branch_junctions(catchment, [units[i] for i in members], side)
+    return junctions
+
+
 def _mouths(
     catchment: _Catchment, controls: dict[str, ControlPoint], links: dict[str, _Link]
 ) -> dict[str, Place]:
@@ -600,9 +645,9 @@ def _mouths(
 
     The junctions below a point are those of its parent's trunk: off the trunk, the
     head cell of the trunk unit its path enters (or the parent's cell at a
-    confluence) and the head cells where its path merges with the path of another
-    point that enters the trunk through the same unit (``_group_branch``); on the
-    trunk, the confluences below it where the paths of points enter the trunk.
+    confluence) and the confluences of the branch it belongs to, where its path
+    enters the trunk of that branch or of a branch of it (``_branch_junctions``); on
+    the trunk, the confluences below it where the paths of points enter the trunk.
     """
     kids: dict[str, list[str]] = defaultdict(list)
     for point_id, link in links.items():
@@ -624,12 +669,13 @@ def _mouths(
             if not at_parent:
                 confluences.add(trunk_unit)
         for (_, above), group in groups.items():
-            entering = _entering(
-                catchment.path_down(controls[kid].place.unit, above) for kid, _ in group
+            junctions = _branch_junctions(
+                catchment, [controls[kid].place.unit for kid, _ in group], above
             )
-            merges = {unit for unit, uppers in entering.items() if len(uppers) > 1}
             for kid, trunk_unit in group:
-                mouth = _mouth(controls[kid], parent, merges | {trunk_unit}, trunk_unit)
+                mouth = _mouth(
+                    controls[kid], parent, junctions | {trunk_unit}, trunk_unit
+                )
                 if mouth is not None:
                     mouths[kid] = mouth
         for kid in members:
@@ -677,7 +723,7 @@ def _wire_trunk(
     """Give a control point with points above it its trunk, junctions and branches."""
     assert isinstance(parent.place, Place)
     trunk, position = catchment.trunk(parent.place.unit)
-    gauges = [kid for kid in kids if links[kid].entry is None]
+    gauges = [nodes[kid] for kid in kids if links[kid].entry is None]
     assert len(gauges) <= 1, "two gauges cannot share a parent"
     # The children off the trunk by the junction they enter (None: the parent's own
     # cell, at the head of its unit) and the last unit of their path above it
@@ -690,36 +736,17 @@ def _wire_trunk(
         at_parent = trunk_unit == parent.place.unit and parent.place.at_head
         groups[(None if at_parent else trunk_unit, above)].append(kid)
 
-    confluences = {
-        unit: _Node(
-            place=UnitHead(unit=unit, above=trunk[position[unit] + 1]),
-            kind="confluence",
-        )
-        for unit in sorted(
-            {unit for unit, _ in groups if unit is not None}, key=position.__getitem__
-        )
-    }
-    trunk_nodes = list(confluences.values()) + [nodes[kid] for kid in gauges]
+    confluences = _confluences(
+        trunk, position, (unit for unit, _ in groups if unit is not None)
+    )
+    trunk_nodes = [*confluences.values(), *gauges]
     if trunk_nodes:
         edge = _edge(trunk_nodes[0], parent, parent.place)
         parent.element = edge.intermediate
         parent.branches.append(
             _Branch(trunk=True, unit=parent.place.unit, accumulation_km2=0.0, edge=edge)
         )
-        for lower, upper in pairwise(trunk_nodes):
-            above = trunk[position[lower.place.unit] + 1]
-            lower.branches.append(_branch(catchment, upper, lower, above, trunk=True))
-        top = trunk_nodes[-1]
-        if top.point is None:
-            above = trunk[position[top.place.unit] + 1]
-            top.branches.append(
-                _Branch(
-                    trunk=True,
-                    unit=above,
-                    accumulation_km2=catchment.accumulation_km2(above),
-                    headwater=_Element(kind="headwater", outlet=UnitOutlet(above)),
-                )
-            )
+        _wire_along(catchment, trunk, position, trunk_nodes)
     else:
         assert isinstance(parent.place, Place)
         parent.element = _Element(
@@ -741,6 +768,46 @@ def _wire_trunk(
         target = parent if junction_unit is None else confluences[junction_unit]
         target.branches.append(
             _group_branch(catchment, [nodes[m] for m in members], above, target)
+        )
+
+
+def _confluences(
+    trunk: list[int], position: dict[int, int], units: Iterable[int]
+) -> dict[int, _Node]:
+    """Make a confluence at the head cell of each trunk unit, from the bottom up."""
+    return {
+        unit: _Node(
+            place=UnitHead(unit=unit, above=trunk[position[unit] + 1]),
+            kind="confluence",
+        )
+        for unit in sorted(set(units), key=position.__getitem__)
+    }
+
+
+def _wire_along(
+    catchment: _Catchment,
+    trunk: list[int],
+    position: dict[int, int],
+    nodes: list[_Node],
+) -> None:
+    """Join the nodes of a trunk, from the bottom up, by the edges between them.
+
+    The trunk above the top node is a headwater that enters it when the node is a
+    confluence; a point there ends the trunk.
+    """
+    for lower, upper in pairwise(nodes):
+        above = trunk[position[lower.place.unit] + 1]
+        lower.branches.append(_branch(catchment, upper, lower, above, trunk=True))
+    top = nodes[-1]
+    if top.point is None:
+        above = trunk[position[top.place.unit] + 1]
+        top.branches.append(
+            _Branch(
+                trunk=True,
+                unit=above,
+                accumulation_km2=catchment.accumulation_km2(above),
+                headwater=_Element(kind="headwater", outlet=UnitOutlet(above)),
+            )
         )
 
 
@@ -800,54 +867,33 @@ def _branch(
     )
 
 
-def _entering(paths: Iterable[Sequence[int]]) -> dict[int, set[int]]:
-    """Map each unit that paths of units enter to the units they enter it from."""
-    entering: dict[int, set[int]] = defaultdict(set)
-    for path in paths:
-        for upper, unit in pairwise(path):
-            entering[unit].add(upper)
-    return entering
-
-
 def _group_branch(
     catchment: _Catchment, members: list[_Node], above: int, target: _Node
 ) -> _Branch:
     """Make the branch of the points whose paths enter a junction through one unit.
 
-    One point brings its edge, or itself at the mouth. Several points meet where
-    their paths merge, at the head cells of the units their paths enter from two or
-    more units: confluences joined by edges (or entered by a point at the mouth),
-    the lowest one by the edge to the junction (B1).
+    The branch has a trunk of its own, the main river from ``above`` up (B1, B2):
+    the point on it, if any, is its uppermost node, and the others join it at the
+    confluences where their paths enter it, each group of them a branch of the
+    branch. The lowest node enters the junction by an edge whose przyrzecze ends at
+    the outlet cell of ``above``, or directly (a point at the mouth, D3).
     """
-    if len(members) == 1:
-        return _branch(catchment, members[0], target, above, trunk=False)
-
-    paths = []
-    for member in members:
-        assert isinstance(member.place, Place)
-        paths.append((member, catchment.path_down(member.place.unit, above)))
-    confluences = {
-        unit: _Node(place=UnitHead(unit=unit, above=min(ups)), kind="confluence")
-        for unit, ups in _entering(path for _, path in paths).items()
-        if len(ups) > 1
-    }
-    wired: set[tuple[int, int]] = set()
-    lowest: _Node | None = None
-    for member, path in paths:
-        upper = member
-        for upper_unit, unit in pairwise(path):
-            node = confluences.get(unit)
-            if node is None:
-                continue
-            if (id(upper), unit) not in wired:
-                wired.add((id(upper), unit))
-                node.branches.append(
-                    _branch(catchment, upper, node, upper_unit, trunk=False)
-                )
-            upper = node
-        lowest = upper
-    assert lowest is not None and lowest.point is None
-    return _branch(catchment, lowest, target, above, trunk=False)
+    trunk, position = catchment.trunk(above)
+    on_trunk, groups = _branch_groups(
+        catchment, [member.place.unit for member in members], above
+    )
+    # A second point on the trunk would lie on the path of the first: its parent
+    assert len(on_trunk) <= 1, "two points of a branch on its trunk"
+    confluences = _confluences(trunk, position, (unit for unit, _ in groups))
+    nodes = [*confluences.values(), *(members[i] for i in on_trunk)]
+    _wire_along(catchment, trunk, position, nodes)
+    for (unit, side), indices in groups.items():
+        confluences[unit].branches.append(
+            _group_branch(
+                catchment, [members[i] for i in indices], side, confluences[unit]
+            )
+        )
+    return _branch(catchment, nodes[0], target, above, trunk=False)
 
 
 def _branch_key(branch: _Branch) -> tuple[bool, float, int]:

@@ -710,9 +710,9 @@ def _junction_node(
 ) -> dict[str, Any]:
     """Return a junction of the payload: its inflows and a text.
 
-    A confluence names the points of the tributaries that enter it, the point of a
-    headwater included, directly or by its reach: that is a tributary to the person too
-    (_element_title).
+    A confluence names the point at the top of its trunk, whose subcatchment the trunk
+    brings directly or by its reach, and the points of the branches that enter it from
+    the side: each is a tributary to the person (_element_title).
     """
     junction = item.junction
     if junction.kind == "outlet":
@@ -720,14 +720,10 @@ def _junction_node(
     elif junction.kind == "point":
         text = f"Punkt {_point_label(junction.point or '', names)}"
     else:
-        headwater_points = [
-            point
-            for node in junction.inflows
-            if (point := _headwater_point(node, subcatchments, reaches)) is not None
-        ]
+        top = _trunk_top_point(junction.inflows[0], subcatchments, reaches)
         text = "Zbieg: " + ", ".join(
             f"dopływ {_point_label(point, names)}"
-            for point in [*headwater_points, *junction.tributaries]
+            for point in [*([top] if top is not None else []), *junction.tributaries]
         )
     return {
         "id": junction.id,
@@ -737,16 +733,22 @@ def _junction_node(
     }
 
 
-def _headwater_point(
+def _trunk_top_point(
     node: str,
     subcatchments: Mapping[str, "NetworkSubcatchment"],
     reaches: Mapping[str, "NetworkReach"],
 ) -> str | None:
-    """Return the point of a headwater an inflow of a junction brings, or None."""
+    """Return the point whose subcatchment a junction's trunk brings, or None.
+
+    ``node`` is the junction's first inflow, the trunk's. It brings a point's
+    subcatchment, directly or by its reach, when the point is the uppermost node of
+    the trunk with no point above it: the headwater of its parent's trunk, or a
+    tributary on the main river of a branch without a point at its mouth.
+    """
     if node in reaches:
         node = reaches[node].reach.from_node
     element = subcatchments.get(node)
-    if element is None or element.subcatchment.kind != "headwater":
+    if element is None or element.subcatchment.kind == "intermediate":
         return None
     return element.subcatchment.point
 

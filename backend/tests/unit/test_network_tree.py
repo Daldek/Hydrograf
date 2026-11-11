@@ -9,6 +9,7 @@ along the segments; a point's path runs down them.
 """
 
 import random
+from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -19,8 +20,8 @@ from core.errors import InvalidRequestError
 from core.network_tree import (
     MOUTH_TOLERANCE_M,
     ControlPoint,
-    NetworkTree,
     Place,
+    UnitHead,
     UnitOutlet,
     build_network_tree,
 )
@@ -135,7 +136,32 @@ def river():
 
 
 def build(river, outlet, *points):
-    return build_network_tree(river.graph, outlet, list(points))
+    """Build the tree of the points; every reach must run down a main river."""
+    tree = build_network_tree(river.graph, outlet, list(points))
+    assert_no_przyrzecze_holds_a_larger_river(river, tree)
+    return tree
+
+
+def assert_no_przyrzecze_holds_a_larger_river(river, tree):
+    """No przyrzecze holds a river larger than the one its reach brings (D4).
+
+    A unit that joins a reach from the side at a confluence inside it, below its
+    upper end and above its lower end, lies in the reach's przyrzecze with all above
+    it (it carries no point, else its point would have a junction there): it drains
+    no more than the unit the reach comes down to that confluence.
+    """
+    area = river.graph.get_upstream_area_km2
+    for reach in tree.reaches:
+        path = [river.name(reach.upper.unit)]
+        while path[-1] != river.name(reach.lower.unit):
+            path.append(river.below[path[-1]])
+        if isinstance(reach.lower, UnitHead) or reach.lower.at_head:
+            path.pop()  # its lower end is that unit's head cell
+        for above, unit in pairwise(path):
+            for side in river.upstream[unit]:
+                assert side == above or area(river.index[side]) <= area(
+                    river.index[above]
+                ), f"{reach.id} holds {side}, larger than {above} at the head of {unit}"
 
 
 def unit_elements(river, tree):
@@ -505,7 +531,9 @@ def test_two_points_moved_to_one_merge_of_paths_are_refused():
     assert raised.value.details["point_ids"] == ["P1", "P2"]
 
 
-def test_points_on_two_branches_of_a_tributary_meet_where_their_paths_merge(river):
+def test_points_on_two_branches_of_a_tributary_meet_on_its_main_river(river):
+    # No point at T2's mouth: P1 lies on its main river (T2c), P2 on S, which joins
+    # it at the fork
     tree = build(
         river,
         river.point("A", "M0", 500),
@@ -519,13 +547,13 @@ def test_points_on_two_branches_of_a_tributary_meet_where_their_paths_merge(rive
     assert len(merge) == 1 and merge[0].kind == "confluence"
     (down,) = [r for r in tree.reaches if r.from_node == merge[0].id]
     assert river.name(j[down.to].place.unit) == "M4"
-    # Into the merge: P1's branch (the larger upstream area) first, then P2's
+    # Into the fork: P1's reach down the main river first, then P2's from the side
     first, _, second, _ = merge[0].inflows
     z = by_id(tree.subcatchments)
     assert z[reaches[first].from_node].point == "P1"
     assert z[reaches[second].from_node].point == "P2"
-    # Both points join the merge from the side, and through it the trunk's confluence
-    assert merge[0].tributaries == ("P1", "P2")
+    # P2 joins the fork from the side, both points the trunk's confluence
+    assert merge[0].tributaries == ("P2",)
     assert j[down.to].tributaries == ("P1", "P2")
     elements = unit_elements(river, tree)
     assert elements["T2b"] == elements["T2a"] == reaches[down.id].intermediate
@@ -536,9 +564,10 @@ def test_points_on_two_branches_of_a_tributary_meet_where_their_paths_merge(rive
     ]
 
 
-def test_a_point_at_most_50_m_above_the_merge_of_its_path_enters_it(river):
-    # P2 lies 30 m above the fork of T2 where its path merges with P1's, far above
-    # their junction on A's trunk: its tributary enters the fork with no reach
+def test_a_point_at_most_50_m_above_the_fork_of_its_path_enters_it(river):
+    # P2 lies 30 m above the fork of T2 where its path enters T2's main river, on
+    # which P1 lies, far above their junction on A's trunk: its tributary enters the
+    # fork with no reach
     tree = build(
         river,
         river.point("A", "M0", 500),
@@ -553,13 +582,78 @@ def test_a_point_at_most_50_m_above_the_merge_of_its_path_enters_it(river):
     z = {s.point: s for s in tree.subcatchments if s.point is not None}
     assert (z["P2"].kind, z["P2"].to) == ("tributary", merge.id)
     assert [r for r in tree.reaches if r.from_node == z["P2"].id] == []
-    # P1's reach and its przyrzecze first (the larger branch), then P2's tributary
+    # P1's reach down the main river and its przyrzecze first, then P2's tributary
     reach, _, tributary = merge.inflows
     assert by_id(tree.reaches)[reach].from_node == z["P1"].id
     assert tributary == z["P2"].id
-    assert merge.tributaries == ("P1", "P2")
+    assert merge.tributaries == ("P2",)
     elements = unit_elements(river, tree)
     assert elements["Sa"] == elements["Sb"] == z["P2"].id
+
+
+def test_a_tributary_without_a_point_at_its_mouth_has_a_headwater_on_its_main_river():
+    # The Kaczawa of the author's network (2026-11-11): T2 enters A's trunk with no
+    # point at its mouth; P1 lies on S 10 m above its mouth into T2's main river, whose
+    # part above the fork (T2c) is larger than S and carries no point; Q lies 10 m
+    # above the mouth of U, lower on T2. T2c is the headwater of the fork, and the
+    # reach from the fork runs down T2: no reach from P1 whose przyrzecze holds T2c
+    river = River(extra_units={"U": ("T2a", 1.0, 500.0)})
+    tree = build(
+        river,
+        river.point("A", "M0", 500),
+        river.point("P1", "Sa", 6010),
+        river.point("Q", "U", 5510),
+    )
+
+    assert tree.order == (
+        *("Z1", "Z2", "Z3", "J1", "R1", "Z4", "Z5", "J2", "R2", "Z6", "J3", "R3"),
+        *("Z7", "J4", "OUT"),
+    )
+    z = by_id(tree.subcatchments)
+    assert [(z[f"Z{i}"].kind, z[f"Z{i}"].point) for i in range(1, 8)] == [
+        ("headwater", None),
+        ("headwater", None),
+        ("tributary", "P1"),
+        ("intermediate", None),
+        ("tributary", "Q"),
+        ("intermediate", None),
+        ("intermediate", "A"),
+    ]
+    assert z["Z3"].at_mouth and z["Z5"].at_mouth
+    j = by_id(tree.junctions)
+    assert [river.name(j[i].place.unit) for i in ("J1", "J2", "J3")] == [
+        "T2b",
+        "T2a",
+        "M4",
+    ]
+    assert [j[i].inflows for i in ("J1", "J2", "J3", "J4")] == [
+        ("Z2", "Z3"),
+        ("R1", "Z4", "Z5"),
+        ("Z1", "R2", "Z6"),
+        ("R3", "Z7"),
+    ]
+    assert [j[i].tributaries for i in ("J1", "J2", "J3")] == [
+        ("P1",),
+        ("Q",),
+        ("P1", "Q"),
+    ]
+    assert [(r.from_node, r.to, r.intermediate) for r in tree.reaches] == [
+        ("J1", "J2", "Z4"),
+        ("J2", "J3", "Z6"),
+        ("J3", "J4", "Z7"),
+    ]
+    elements = unit_elements(river, tree)
+    assert elements.pop("M0") == [(500.0, "Z7"), ("outlet", None)]
+    assert elements == {
+        **dict.fromkeys(("M5", "M6", "M7", "T3a"), "Z1"),
+        "T2c": "Z2",
+        "Sa": "Z3",
+        "Sb": "Z3",
+        "T2b": "Z4",
+        "U": "Z5",
+        "T2a": "Z6",
+        **dict.fromkeys(("M4", "M3", "M2", "M1", "T1a", "T1b"), "Z7"),
+    }
 
 
 def test_a_tributary_entering_at_the_cell_of_a_enters_its_junction(river):
@@ -632,22 +726,41 @@ def test_a_point_30_m_above_the_point_below_it_on_one_river_keeps_its_place(rive
     )
 
 
-def test_the_same_points_in_another_order_give_the_same_network(river):
-    points = [
-        river.point("P1", "T1a", 3020),
-        river.point("P2", "Sb", 6700),
-        river.point("P3", "M5", 5500),
-        river.point("P4", "T2c", 6500),
-        river.point("P5", "T3a", 7300),
-    ]
-    first = build(river, river.point("A", "M0", 500), *points)
-    shuffled = points[:]
-    random.Random(7).shuffle(shuffled)
-    second = build(river, river.point("A", "M0", 500), *shuffled)
+@pytest.mark.parametrize(
+    ("extra_units", "points"),
+    [
+        (
+            {},
+            [
+                ("P1", "T1a", 3020),
+                ("P2", "Sb", 6700),
+                ("P3", "M5", 5500),
+                ("P4", "T2c", 6500),
+                ("P5", "T3a", 7300),
+            ],
+        ),
+        # Branches of a branch: T2 without a point at its mouth, P2 at the mouth of S
+        # into its main river with R above it, Q on U lower on T2
+        (
+            {"U": ("T2a", 1.0, 500.0)},
+            [
+                ("P1", "T1a", 3020),
+                ("P2", "Sa", 6010),
+                ("P3", "M5", 5500),
+                ("P5", "T3a", 7300),
+                ("Q", "U", 5700),
+                ("R", "Sb", 6700),
+            ],
+        ),
+    ],
+    ids=["a gauge on a tributary", "branches of a branch"],
+)
+def test_the_same_points_in_another_order_give_the_same_network(extra_units, points):
+    river = River(extra_units=extra_units)
+    controls = [river.point(*point) for point in points]
 
-    assert shuffled != points
-
-    def network(tree: NetworkTree):
+    def network(order):
+        tree = build(river, river.point("A", "M0", 500), *order)
         return (
             tree.order,
             tree.subcatchments,
@@ -658,5 +771,11 @@ def test_the_same_points_in_another_order_give_the_same_network(river):
             sorted(tree.points, key=lambda p: p.point_id),
         )
 
-    assert network(first) == network(second)
-    assert first.order[-1] == "OUT"
+    first = network(controls)
+    rng = random.Random(7)
+    orders = [rng.sample(controls, len(controls)) for _ in range(10)]
+    orders.append(controls[::-1])
+    assert all(order != controls for order in orders)
+    for order in orders:
+        assert network(order) == first, [c.point_id for c in order]
+    assert first[0][-1] == "OUT"
