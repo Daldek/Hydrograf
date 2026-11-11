@@ -14,11 +14,16 @@
         currentStream: null,
         clickLat: null,
         clickLng: null,
+        // 'browse', 'profile', 'identify' or one of the two of „Wybierz zlewnię”:
+        // 'select' („Jedna zlewnia”) and 'network' („Sieć zlewni”)
         clickMode: 'browse',
+        // The option of „Wybierz zlewnię” chosen last in this page ('select' or
+        // 'network'); the mode returns to it
+        selectTarget: 'select',
         // Number of the latest watershed selection; answers to older ones are dropped
         selection: 0,
-        // What the panel and the map serve: 'watershed' (every mode but „Sieć zlewni”)
-        // or 'network' (js/network.js)
+        // What the panel and the map serve: 'watershed' (every mode but the option
+        // „Sieć zlewni” of „Wybierz zlewnię”) or 'network' (js/network.js)
         view: 'watershed',
         // The parameter sections show the watershed (false after a network element)
         sectionsShowWatershed: true,
@@ -336,8 +341,8 @@
     /**
      * Clear the selection: the result, the error and the map overlays, then
      * close the panel. Used by the clear button and a double Escape; the ×
-     * of the panel only hides it, so the result stays. In „Sieć zlewni” the
-     * bin removes the points and the network instead (js/network.js).
+     * of the panel only hides it, so the result stays. In the option „Sieć zlewni”
+     * the bin removes the points and the network instead (js/network.js).
      */
     function closeResults() {
         if (state.view === 'network') {
@@ -363,10 +368,10 @@
     }
 
     /**
-     * Switch what the panel and the map serve: the network in „Sieć zlewni”, the
-     * watershed in the other modes. Each view keeps its loading state, error and
-     * result; the sections of the parameters return to the watershed when an
-     * element of the network had them.
+     * Switch what the panel and the map serve: the network in the option „Sieć
+     * zlewni” of „Wybierz zlewnię”, the watershed otherwise. Each view keeps its
+     * loading state, error and result; the sections of the parameters return to
+     * the watershed when an element of the network had them.
      * @param {'watershed'|'network'} view
      */
     function setView(view) {
@@ -486,7 +491,7 @@
             lng >= BOUNDS.lngMin && lng <= BOUNDS.lngMax;
         var outside = 'Kliknij w granicach Polski (49–55°N, 14–24.2°E).';
 
-        // Network mode — the click places the closing section or the next point (js/network.js)
+        // „Wybierz zlewnię” → „Sieć zlewni”: the click places the closing section or the next point (js/network.js)
         if (state.clickMode === 'network') {
             if (!inPoland) setNetworkStatus({ error: outside });
             else if (Hydrograf.network) Hydrograf.network.addPoint(lat, lng);
@@ -660,7 +665,21 @@
     };
 
     /**
+     * Show a radio of a segmented control as checked or not (roving tabindex).
+     * @param {HTMLElement} btn
+     * @param {boolean} on
+     */
+    function checkRadio(btn, on) {
+        btn.classList.toggle('on', on);
+        btn.setAttribute('aria-checked', String(on));
+        btn.tabIndex = on ? 0 : -1;
+    }
+
+    /**
      * Switch click mode between 'browse', 'select', 'network', 'profile' and 'identify'.
+     * 'select' and 'network' are the options „Jedna zlewnia” and „Sieć zlewni” of the
+     * mode „Wybierz zlewnię”: its button is on for both, the tools over the map
+     * (#select-tools) choose between them and the mode remembers the last one.
      */
     function setClickMode(mode) {
         state.clickMode = mode;
@@ -668,14 +687,14 @@
             Hydrograf.diagnostics.log('mode_change', { mode: mode });
         }
 
-        // Segmented control (radio group with roving tabindex)
-        ['browse', 'select', 'network', 'profile', 'identify'].forEach(function (m) {
-            var btn = document.getElementById('mode-' + m);
-            var on = m === mode;
-            btn.classList.toggle('on', on);
-            btn.setAttribute('aria-checked', String(on));
-            btn.tabIndex = on ? 0 : -1;
+        var picking = mode === 'select' || mode === 'network';
+        if (picking) state.selectTarget = mode;
+        ['browse', 'select', 'profile', 'identify'].forEach(function (m) {
+            checkRadio(document.getElementById('mode-' + m), m === mode || (m === 'select' && picking));
         });
+        checkRadio(els.selectWatershed, state.selectTarget === 'select');
+        checkRadio(els.selectNetwork, state.selectTarget === 'network');
+        els.selectTools.hidden = !picking;
         els.hint.textContent = MODE_HINTS[mode];
         els.mapWrap.dataset.mode = mode;
 
@@ -689,7 +708,7 @@
             Hydrograf.identify.close();
         }
 
-        // The panel and the map serve the network in its mode, the watershed in the others
+        // The panel and the map serve the network in its option, the watershed otherwise
         setView(mode === 'network' ? 'network' : 'watershed');
 
         // Panels: browsing frees the map, selecting a watershed or a network shows
@@ -697,7 +716,7 @@
         // that would cover the profile drawer or the point card.
         if (mode === 'browse') {
             Hydrograf.shell.close('right');
-        } else if (mode === 'select' || mode === 'network') {
+        } else if (picking) {
             if (!Hydrograf.shell.isPhone()) Hydrograf.shell.open('right');
         } else if (Hydrograf.shell.isPhone()) {
             Hydrograf.shell.close('left');
@@ -747,6 +766,9 @@
             title: document.getElementById('results-title'),
             openResults: document.getElementById('open-results'),
             loadingText: document.getElementById('panel-loading-text'),
+            selectTools: document.getElementById('select-tools'),
+            selectWatershed: document.getElementById('select-watershed'),
+            selectNetwork: document.getElementById('select-network'),
         };
         els.panel.dataset.view = state.view;
 
@@ -755,9 +777,12 @@
             setClickMode('browse');
         });
         document.getElementById('mode-select').addEventListener('click', function () {
+            setClickMode(state.selectTarget);
+        });
+        els.selectWatershed.addEventListener('click', function () {
             setClickMode('select');
         });
-        document.getElementById('mode-network').addEventListener('click', function () {
+        els.selectNetwork.addEventListener('click', function () {
             setClickMode('network');
         });
         document.getElementById('mode-profile').addEventListener('click', enterProfileMode);
@@ -776,7 +801,7 @@
 
         // Escape: cancel drawing first, then close the point card, then
         // single = hide panel, double = clear result (like the clear button);
-        // in „Sieć zlewni” it only hides the panel: the points stay
+        // in the option „Sieć zlewni” it only hides the panel: the points stay
         var _escTimer = null;
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
@@ -845,7 +870,7 @@
             Hydrograf.identify.init();
         }
 
-        // Init the mode „Sieć zlewni” (its points, network and panel section)
+        // Init the option „Sieć zlewni” of „Wybierz zlewnię” (its points, network and panel section)
         if (Hydrograf.network) {
             Hydrograf.network.init();
         }

@@ -4,7 +4,8 @@
 **Status:** accepted (the author's decisions B1 to B7 of 2026-11-10; the details by delegation);
 amended 2026-11-11 (the mouth rule at every junction; the preview of ADR-081; short and flat
 reaches, D10a; two kinds of subcatchment for the person; the trunk of a branch; a node at a
-confluence; every control point a node, named by where it lies)
+confluence; every control point a node, named by where it lies); noted 2026-11-11 (the network
+an option of „Wybierz zlewnię”)
 
 > **Amended 2026-11-11 (the coordinator, after the smoke S5):** the mouth rule of decision 2
 > applies wherever the paths of two control points merge, at every junction, not only where a
@@ -118,6 +119,13 @@ confluence; every control point a node, named by where it lies)
 > outlet is `O` (was `OUT`). On the author's network P1 is refused beside A; without it the closing
 > section is `J1`, which the Nysa Szalona and the Kaczawa enter. The plan records the rules and
 > amends D3, D4, D5, D11, D12, D14 and D15 of the plan `2026-11-10-network-delineation.md`.
+
+> **Noted 2026-11-11 (the author):** „Sieć zlewni” is no longer a mode of its own on the mode bar
+> but an option of the mode „Wybierz zlewnię”: while that mode is on, the radio group „Co
+> wyznaczyć” over the map chooses „Jedna zlewnia” (the default) or „Sieć zlewni”, and the mode
+> returns to the option chosen last in the page. The delineation, the preview of ADR-081, the
+> panel and the hand-off do not change; where this ADR and ADR-081 say „the mode „Sieć zlewni””
+> or „the map mode”, read this option.
 
 ## Context
 

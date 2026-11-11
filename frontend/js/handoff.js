@@ -4,11 +4,11 @@
  * The API writes the current watershed as a hand-off nogat-handoff/1: the delineation
  * without rainfall and result (`handoff` of POST /api/delineate-watershed), each
  * hydrograph with its rainfall, runoff and result for comparison (`handoff` of POST
- * /api/generate-hydrograph), and the network of the mode „Sieć zlewni” without
- * rainfall and the sections of its reaches (`handoff` of POST /api/delineate-network).
- * The section serves the view the panel shows: the network in „Sieć zlewni”, the
- * watershed in the other modes. "Kopiuj do Hydrologa" puts the hand-off of what the
- * panel shows on the clipboard and "Plik przekazania" downloads it as
+ * /api/generate-hydrograph), and the network of „Wybierz zlewnię” → „Sieć zlewni”
+ * without rainfall and the sections of its reaches (`handoff` of POST
+ * /api/delineate-network). The section serves the view the panel shows: the network
+ * in the option „Sieć zlewni”, the watershed otherwise. "Kopiuj do Hydrologa" puts the
+ * hand-off of what the panel shows on the clipboard and "Plik przekazania" downloads it as
  * <name>.handoff.json; Hydrolog opens both with "Wczytaj z Hydrografa", a network in
  * „Sieć i trasowanie”. Without the Clipboard API (plain HTTP outside localhost) the
  * copy goes through a selected text field, which stays open for Ctrl+C when the

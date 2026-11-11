@@ -282,14 +282,15 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
     position: absolute; left: var(--space-3); right: var(--space-3); bottom: var(--space-3); z-index: 4;
     background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
 }
-.draw-tools {
+/* Tools over the top of the map: drawing a profile (map.js), what „Wybierz zlewnię” delineates (app.js) */
+.map-tools {
     position: absolute; top: var(--space-3); left: 50%; transform: translateX(-50%); z-index: 5;
     display: flex; align-items: center; gap: var(--space-2); max-width: calc(100% - 2 * var(--space-3));
     padding: var(--space-1) var(--space-2); background: var(--surface); border: 1px solid var(--line);
     border-radius: var(--radius-md); box-shadow: var(--shadow);
 }
-.draw-tools[hidden] { display: none; }
-.draw-tools .draw-count { color: var(--text-2); font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.map-tools[hidden] { display: none; }
+.map-tools .draw-count { color: var(--text-2); font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .profile-drawer .panel-head { min-height: 40px; }
 .profile-drawer .panel-head h2 { font-size: var(--text-base); }
 .profile-drawer .chart { margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); }
@@ -579,7 +580,7 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
     .handoff-fallback textarea { font-size: var(--text-site); }
 }
 
-/* ---------- Mode „Sieć zlewni”: its section of the results panel and its map labels (network.js) ---------- */
+/* ---------- „Wybierz zlewnię” → „Sieć zlewni”: its section of the results panel and its map labels (network.js) ---------- */
 /* The network view hides the parts of the watershed; the sections of the parameters
    show only for a selected element (app.js: data-view, data-element) */
 #results-panel[data-view="network"] #panel-instruction,
@@ -755,11 +756,11 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
     /* A finger-sized target around the thin handle */
     .grip::before { content: ""; position: absolute; inset: -6px -14px -8px; }
 
-    /* Two rows: the sheet buttons, then the five modes across the full width */
+    /* Two rows: the sheet buttons, then the four modes across the full width */
     .map-bar { row-gap: 6px; padding: 6px 10px; }
     .map-bar .hint { display: none; }
     .map-bar .end { margin-left: auto; }
-    #mode-toolbar { order: 1; flex: 1 0 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    #mode-toolbar { order: 1; flex: 1 0 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
     #mode-toolbar button {
         height: auto; min-height: 36px; padding: 3px var(--space-1);
         justify-content: center; text-align: center; white-space: normal; line-height: 1.15;
@@ -768,8 +769,9 @@ dialog.modal::backdrop { background: color-mix(in srgb, var(--code-bg) 45%, tran
     /* Attribution wraps to two lines here (base map + MZP or NMT); legends stay above it */
     .map-wrap .leaflet-bottom.leaflet-left { bottom: 36px; }
     .profile-drawer { left: var(--space-2); right: var(--space-2); bottom: var(--space-2); }
-    .draw-tools { top: var(--space-2); left: var(--space-2); right: var(--space-2); transform: none; max-width: none; flex-wrap: wrap; justify-content: center; }
-    .draw-tools .draw-count { flex-basis: 100%; text-align: center; white-space: normal; }
+    .map-tools { top: var(--space-2); left: var(--space-2); right: var(--space-2); transform: none; max-width: none; flex-wrap: wrap; justify-content: center; }
+    .map-tools .seg.full { flex: 1; }
+    .map-tools .draw-count { flex-basis: 100%; text-align: center; white-space: normal; }
 
     .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .layer { grid-template-columns: 18px minmax(0, 1fr) 40px; grid-template-rows: var(--control) 22px; }

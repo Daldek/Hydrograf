@@ -1,8 +1,8 @@
 /**
- * Hydrograf mode „Sieć zlewni” (ADR-080, ADR-081; plans docs/plans/2026-11-10-network-delineation.md
- * and docs/plans/2026-11-11-network-nodes.md).
+ * Hydrograf „Sieć zlewni”, an option of the mode „Wybierz zlewnię” (ADR-080, ADR-081;
+ * plans docs/plans/2026-11-10-network-delineation.md and docs/plans/2026-11-11-network-nodes.md).
  *
- * The first click of the mode places the closing section, the next ones the control
+ * The first click of the option places the closing section, the next ones the control
  * points above it (tributaries at their mouths, gauges): markers that drag (also by
  * touch), listed in the panel with a name field and „Usuń”. Every point is a node of
  * the network, named by where it lies (N1): `J` at a confluence, `P` elsewhere. A
@@ -36,7 +36,7 @@
  * the characteristics its parameters show (an element's in the sections of „Wybierz
  * zlewnię”, js/app.js, a reach's in a table of its own), in the preview a short summary.
  * Clicks on the map always place points, so a gauge can be placed on a drawn reach.
- * Leaving the mode takes the network off the map and „Wyczyść” removes the points, the
+ * Leaving the option takes the network off the map and „Wyczyść” removes the points, the
  * preview and the characteristics.
  */
 (function () {
@@ -66,7 +66,7 @@
         'aby przekazać sieć do Hydrologa z nowymi nazwami.';
 
     var state = {
-        active: false,      // the mode is on
+        active: false,      // the option is on
         outlet: null,       // the closing section: { id, lat, lng, name, marker, snap, row }
         points: [],         // the points above it: the same, in the order of their ids (byId)
         result: null,       // the characteristics (POST /api/delineate-network)
@@ -373,7 +373,7 @@
     // ===== Editing the points =====
 
     /**
-     * A click of the mode: the closing section first, then the points; at most
+     * A click of the option: the closing section first, then the points; at most
      * MAX_POINTS points besides the closing section. A new point shows the first free
      * `P<n>` until an answer names its node. Nothing changes while the characteristics
      * are computed.
@@ -1370,7 +1370,7 @@
         if (state.selected) select(state.selected);
     }
 
-    /** Leaving the mode: its layers leave the map and its section the panel; nothing is lost. */
+    /** Leaving the option: its layers leave the map and its section the panel; nothing is lost. */
     function leave() {
         state.active = false;
         els.section.hidden = true;

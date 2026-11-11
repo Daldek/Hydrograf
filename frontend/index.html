@@ -26,7 +26,7 @@
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
     <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
-    <link rel="stylesheet" href="css/app.css?v=04ff64a5d9">
+    <link rel="stylesheet" href="css/app.css?v=5ec5d5cbb6">
 </head>
 <body>
 <div class="shell">
@@ -110,7 +110,6 @@
                     <div class="seg" id="mode-toolbar" role="radiogroup" aria-label="Tryb pracy">
                         <button type="button" id="mode-browse" role="radio" aria-checked="true" class="on">Przeglądanie</button>
                         <button type="button" id="mode-select" role="radio" aria-checked="false">Wybierz zlewnię</button>
-                        <button type="button" id="mode-network" role="radio" aria-checked="false">Sieć zlewni</button>
                         <button type="button" id="mode-profile" role="radio" aria-checked="false">Profil terenu</button>
                         <button type="button" id="mode-identify" role="radio" aria-checked="false">Identyfikuj</button>
                     </div>
@@ -126,7 +125,13 @@
 
                 <div class="map-wrap" id="map-wrap" data-mode="browse">
                     <div id="map"></div>
-                    <div class="draw-tools" id="draw-tools" role="toolbar" aria-label="Rysowanie profilu terenu" hidden>
+                    <div class="map-tools" id="select-tools" hidden>
+                        <div class="seg full" id="select-target" role="radiogroup" aria-label="Co wyznaczyć">
+                            <button type="button" id="select-watershed" role="radio" aria-checked="true" class="on">Jedna zlewnia</button>
+                            <button type="button" id="select-network" role="radio" aria-checked="false">Sieć zlewni</button>
+                        </div>
+                    </div>
+                    <div class="map-tools" id="draw-tools" role="toolbar" aria-label="Rysowanie profilu terenu" hidden>
                         <span class="draw-count" id="draw-count" aria-live="polite"></span>
                         <button class="btn sm" type="button" id="draw-undo">Cofnij</button>
                         <button class="btn sm primary" type="button" id="draw-finish" title="Narysuj profil terenu wzdłuż wskazanej linii">Rysuj profil</button>
@@ -178,9 +183,9 @@
                 </div>
                 <div class="view-panel-body" id="results-body">
                     <!-- Instruction -->
-                    <p id="panel-instruction" class="muted">Wybierz tryb „Wybierz zlewnię” i kliknij na mapie w pobliżu linii spływu, aby wyznaczyć zlewnię.</p>
+                    <p id="panel-instruction" class="muted">Wybierz tryb „Wybierz zlewnię” i kliknij na mapie w pobliżu linii spływu, aby wyznaczyć zlewnię. Sieć zlewni powyżej kilku punktów wyznaczysz w tym samym trybie, wybierając nad mapą „Sieć zlewni”.</p>
 
-                    <!-- Network of the mode „Sieć zlewni” (js/network.js) -->
+                    <!-- Network of „Wybierz zlewnię” → „Sieć zlewni” (js/network.js) -->
                     <section class="network" id="network" aria-label="Sieć zlewni" hidden>
                         <p class="network-intro">Kliknij przekrój zamykający na cieku, potem punkty powyżej niego (najwyżej 30): ujścia dopływów i wodowskazy. Punkt do 50 m od zbiegu cieków przechodzi do zbiegu i jest węzłem J, który dzieli zlewnię na cieki łączące się w nim – także przekrój zamykający, więc drugi punkt w tym zbiegu nie jest potrzebny; punkt poza zbiegiem jest węzłem P. Znaczniki przeciągniesz myszą lub palcem. Po każdej zmianie punktów mapa pokazuje podgląd sieci, a znaczniki – identyfikatory swoich węzłów; „Oblicz charakterystyki” poda CN, spadki i parametry zlewni oraz przekazanie do Hydrologa.</p>
                         <p class="network-snap" id="network-snap"></p>
@@ -625,9 +630,9 @@
 
 <!-- Application modules -->
 <script defer src="js/diagnostics.js?v=490048c9c6"></script>
-<script defer src="js/api.js?v=b02c04e187"></script>
+<script defer src="js/api.js?v=83b893658e"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
-<script defer src="js/map.js?v=a8f218c0ab"></script>
+<script defer src="js/map.js?v=71de73a7b9"></script>
 <script defer src="js/coords.js?v=38cf3b9025"></script>
 <script defer src="js/charts.js?v=9cf3876f81"></script>
 <script defer src="js/layers.js?v=e7ffddf7e5"></script>
@@ -645,8 +650,8 @@
 <script defer src="js/instance.js?v=04b557b531"></script>
 <script defer src="js/welcome.js?v=79a0c2304e"></script>
 <script defer src="js/identify.js?v=b89f4b64cf"></script>
-<script defer src="js/handoff.js?v=1c553fc17c"></script>
-<script defer src="js/network.js?v=88640df87f"></script>
-<script defer src="js/app.js?v=c92861a2c4"></script>
+<script defer src="js/handoff.js?v=29fad1831b"></script>
+<script defer src="js/network.js?v=dda978abcf"></script>
+<script defer src="js/app.js?v=2de6b98330"></script>
 </body>
 </html>
