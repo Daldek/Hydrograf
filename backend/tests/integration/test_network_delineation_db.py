@@ -1,12 +1,15 @@
-"""POST /api/delineate-network over PostGIS: the real queries of the measures (ADR-080).
+"""The network endpoints over PostGIS: the real queries (ADR-080, ADR-081).
 
 The synthetic DEM of the network tests (``tests.fixtures.pipeline_run``,
 ``river_network_dem``: a main river along column 85 with three tributaries) is
-processed by ``process_dem`` into a private migrated database, with its rasters saved;
-the land cover and soil groups of the unit tests and two BDOT10k stretches of the main
-river are inserted into ``land_cover``, ``soil_hsg`` and ``bdot_streams``. The endpoint
-runs on that database as the API does: ``get_db``, ``loaded_catchment_graph`` and every
-query of the measures are the real ones. Plan tests 19 to 21.
+processed by ``process_dem`` into a private migrated database, with its rasters saved
+and sub-catchments of 1 ha and of the 20 ha the points snap to; the land cover and
+soil groups of the unit tests and two BDOT10k stretches of the main river are inserted
+into ``land_cover``, ``soil_hsg`` and ``bdot_streams``. The endpoints run on that
+database as the API does: ``get_db``, ``loaded_catchment_graph`` and every query of the
+measures and of the preview are the real ones. Plan tests 19 to 21 of
+``2026-11-10-network-delineation.md``, and the preview of
+``2026-11-11-network-preview.md`` through the real union of the sub-catchments.
 """
 
 import json
@@ -68,6 +71,7 @@ NETWORK = Draft202012Validator(
     )
 )
 URL = "/api/delineate-network"
+PREVIEW_URL = "/api/delineate-network/preview"
 OUTLET = (219, 85)  # A: the outlet cell of the grid, on the main river
 # The last cell of each tributary above its confluence with the main river, (row,
 # column): a click there moves to the mouth (D3)
@@ -223,37 +227,63 @@ def run_dir(engine: Engine, tmp_path_factory: pytest.TempPathFactory) -> Path:
         save_intermediates=True,
         output_dir=directory,
         clear_existing=True,
-        thresholds=[NETWORK_UNIT_THRESHOLD_M2],
+        thresholds=[NETWORK_UNIT_THRESHOLD_M2, NETWORK_SNAP_THRESHOLD_M2],
     )
     with database.get_db_session() as db:
         update_stream_real_flags_all(db, [NETWORK_UNIT_THRESHOLD_M2])
     return directory
 
 
-@pytest.fixture(scope="module")
-def mouths(run_dir: Path) -> dict[str, Any]:
-    """The network of A at the outlet and P1 to P3 at the mouths of T1 to T3."""
-    request = {
-        "outlet": point("A", OUTLET, "Rzeka"),
-        "points": [
-            point("P1", T1_MOUTH, "Pierwszy"),
-            point("P2", T2_MOUTH),
-            point("P3", T3_MOUTH, "Trzeci"),
-        ],
-        "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
-    }
+def _post(run_dir: Path, url: str, request: dict[str, Any]) -> dict[str, Any]:
+    """POST a request to an endpoint of the API on the database and its run."""
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("DEM_DIR", str(run_dir))
         # The graph of another database must not answer for this one
         patch.setattr(cg_module, "_catchment_graph", None)
         get_settings.cache_clear()
         try:
-            response = TestClient(app).post(URL, json=request)
+            response = TestClient(app).post(url, json=request)
         finally:
             get_settings.cache_clear()
     assert response.status_code == 200, response.text
     body: dict[str, Any] = response.json()
     return body
+
+
+MOUTHS = {
+    "outlet": point("A", OUTLET, "Rzeka"),
+    "points": [
+        point("P1", T1_MOUTH, "Pierwszy"),
+        point("P2", T2_MOUTH),
+        point("P3", T3_MOUTH, "Trzeci"),
+    ],
+    "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
+}
+# A gauge between two junctions and a point up a tributary, inside their units
+INSIDE_UNITS = {
+    "outlet": point("A", OUTLET),
+    "points": [
+        point("P1", T1_MOUTH),
+        point("G", (140, 85)),
+        point("P2", (123, 110)),
+    ],
+    "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
+}
+
+
+@pytest.fixture(scope="module")
+def mouths(run_dir: Path) -> dict[str, Any]:
+    """The network of A at the outlet and P1 to P3 at the mouths of T1 to T3."""
+    return _post(run_dir, URL, MOUTHS)
+
+
+@pytest.fixture(scope="module", params=["mouths", "inside units"])
+def full_and_preview(
+    request: pytest.FixtureRequest, run_dir: Path
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A network delineated and previewed."""
+    body = MOUTHS if request.param == "mouths" else INSIDE_UNITS
+    return _post(run_dir, URL, body), _post(run_dir, PREVIEW_URL, body)
 
 
 def _layout_areas(
@@ -394,3 +424,67 @@ class TestTheHandoff:
         assert set(handoff["node_provenance"]) == set(elements)
         assert "OUT" in {n["id"] for n in nodes}
         assert "OUT" not in handoff["node_provenance"]
+
+
+def _structure(body: dict[str, Any]) -> dict[str, Any]:
+    """The tree of a response: what the ids name and how the nodes join."""
+    return {
+        "points": [(p["id"], p["node"], p["at_mouth"]) for p in body["points"]],
+        "subcatchments": [
+            (s["id"], s["kind"], s["to"], s["point"], s["reach"])
+            for s in body["subcatchments"]
+        ],
+        "reaches": [(r["id"], r["from"], r["to"]) for r in body["reaches"]],
+        "junctions": [
+            (j["id"], j["kind"], j["point"], j["inflows"]) for j in body["junctions"]
+        ],
+    }
+
+
+class TestThePreviewOverPostgis:
+    """The preview through the real union of the sub-catchments and stream lines."""
+
+    def test_it_is_the_network_of_the_full_run(self, full_and_preview):
+        full, preview = full_and_preview
+        areas = {
+            node["id"]: node["watershed"]["area_km2"]
+            for node in full["handoff"]["payload"]["nodes"]
+            if "watershed" in node
+        }
+
+        assert _structure(preview) == _structure(full)
+        assert {s["id"]: s["area_km2"] for s in preview["subcatchments"]} == areas
+        assert {r["id"]: r["length_km"] for r in preview["reaches"]} == {
+            r["id"]: r["length_km"] for r in full["reaches"]
+        }
+        # The junctions at a confluence lie at the end of the stream line above it
+        for ours, theirs in zip(preview["junctions"], full["junctions"], strict=True):
+            assert ours["latitude"] == pytest.approx(theirs["latitude"], abs=1e-9)
+            assert ours["longitude"] == pytest.approx(theirs["longitude"], abs=1e-9)
+
+    def test_its_outlines_and_reaches_follow_those_of_the_full_run(
+        self, full_and_preview
+    ):
+        full, preview = full_and_preview
+        boundaries = {
+            s["id"]: to_2180(s["watershed"]["boundary_geojson"]["geometry"])
+            for s in full["subcatchments"]
+        }
+        lines = {r["id"]: to_2180(r["geojson"]["geometry"]) for r in full["reaches"]}
+
+        for element in preview["subcatchments"]:
+            if element["boundary_geojson"] is None:
+                assert element["outline_approximate"], element["id"]
+                continue
+            ours = to_2180(element["boundary_geojson"]["geometry"])
+            theirs = boundaries[element["id"]]
+            overlap = ours.intersection(theirs).area / ours.union(theirs).area
+            assert overlap > (0.75 if element["outline_approximate"] else 0.9), (
+                element["id"],
+                overlap,
+            )
+        for reach in preview["reaches"]:
+            line = to_2180(reach["geojson"]["geometry"])
+            assert line.hausdorff_distance(lines[reach["id"]]) < NETWORK_CELL_M, reach[
+                "id"
+            ]

@@ -529,6 +529,7 @@ def snap_point(
         labels=read_window(rasters.labels, window).data,
         fdir=read_window(rasters.fdir, window).data,
         flow_dist=read_window(rasters.flow_dist, window).data,
+        acc=acc.data,
         offset=(int(window.row_off), int(window.col_off)),
         cg=cg,
     )
@@ -552,11 +553,12 @@ def snap_point(
 
 @dataclass(frozen=True)
 class _SnapCells:
-    """The labels, flow directions and distances around a click."""
+    """The labels, flow directions, distances and accumulation around a click."""
 
     labels: np.ndarray
     fdir: np.ndarray
     flow_dist: np.ndarray
+    acc: np.ndarray
     offset: tuple[int, int]
     cg: CatchmentGraph
 
@@ -597,6 +599,7 @@ class _SnapCells:
             flow_dist_m=float(self.flow_dist[row, col]),
             at_head=at_head,
             at_outlet=below is None or int(self.labels[below]) != label,
+            accumulation_cells=int(self.acc[row, col]),
         )
 
 

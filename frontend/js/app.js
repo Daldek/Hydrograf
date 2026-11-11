@@ -37,7 +37,7 @@
             clear: 'Wyczyść wynik zlewni', close: 'Schowaj panel zlewni (wynik zostaje)',
         },
         network: {
-            title: 'Sieć zlewni', sheet: 'Sieć', loading: 'Wyznaczanie sieci…',
+            title: 'Sieć zlewni', sheet: 'Sieć', loading: 'Obliczanie charakterystyk…',
             clear: 'Wyczyść punkty i sieć', close: 'Schowaj panel sieci (punkty i wynik zostają)',
         },
     };

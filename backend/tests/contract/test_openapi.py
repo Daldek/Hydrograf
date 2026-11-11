@@ -66,3 +66,15 @@ def test_delineate_network_documents_the_problems_of_its_route():
     ]
 
     assert {"400", "404", "422", "500", "503"} <= set(operation["responses"])
+
+
+def test_delineate_network_preview_documents_the_problems_of_its_route():
+    (operation,) = [
+        op
+        for _, _, op in OPERATIONS
+        if op["operationId"] == "delineate_network_preview"
+    ]
+
+    # The preview reads no window of the rasters, so no 422 for a large one
+    assert {"400", "404", "500", "503"} <= set(operation["responses"])
+    assert "422" not in operation["responses"]

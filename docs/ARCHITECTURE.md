@@ -147,7 +147,7 @@ backend/
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
 │       ├── identify.py            # GET /identify-point (core/point_info.py)
-│       ├── network.py             # POST /delineate-network (ADR-080): the network at control points and its hand-off, one network at a time per worker
+│       ├── network.py             # POST /delineate-network (ADR-080): the network at control points and its hand-off, one network at a time per worker; POST /delineate-network/preview (ADR-081): the same network composed on the catchment graph
 │       ├── tiles.py               # GET /tiles/streams|catchments|landcover|sewer/{z}/{x}/{y}.pbf, GET /layers
 │       └── watershed.py           # POST /delineate-watershed (precomputed + precise modes), POST /delineate-watershed/preview
 │
@@ -168,6 +168,7 @@ backend/
 │   ├── morphometry.py             # Shape indices (calculate_shape_indices)
 │   ├── morphometry_raster.py      # Slope, aspect, TWI, Strahler (raster)
 │   ├── network_delineation.py     # Network at control points on the rasters (ADR-080): snapping, the window of A's catchment, the element raster and its splits, the area check, the measures of the elements, their coverage, the reaches
+│   ├── network_preview.py         # The network composed on the catchment graph (ADR-081): the full run's snapping and tree, areas exact to the cell, reach lengths, outlines from a cover of the sub-catchment polygons
 │   ├── network_tree.py            # Network at control points on the catchment graph (ADR-080): parents, trunks, junctions, elements of the units, ids in the order of the hand-off
 │   ├── precipitation.py           # Precipitation queries
 │   ├── raster_io.py               # Raster I/O (ASC, VRT, GeoTIFF); cells_window + read_window: a window around a query (the API)
@@ -376,7 +377,42 @@ Errors (application/problem+json; details.point_id or details.point_ids name the
 
 The network of a closing section A and the control points above it (plan `docs/plans/2026-11-10-network-delineation.md`; `api/endpoints/network.py`, `core/network_tree.py`, `core/network_delineation.py`, §2.4.10). Each point, A included, snaps to the nearest stream cell of `threshold_m2` within 100 m; a point at most 50 m above a junction where its path meets another branch of the network (its tributary's mouth, the merge of its path with another point's, the confluence below a gauge) moves to that junction (`at_mouth`). `points[].node` is a point's subcatchment when no point lies above it, else its junction. `subcatchments[].kind` is `headwater`, `tributary` or `intermediate` (the przyrzecze of the reach `reach`); `reaches[].from` is the JSON name of the field `from_node`, and `slope_method` is `minimum` where the NMT does not fall between the ends of a reach (0.0001); `junctions[].kind` is `confluence`, `point` or `outlet` (A's, which flows into `OUT`). `notices` lists `over_scs_cn_limit` (the subcatchments whose `hydrograph_available` is false, above 250 km²) and `reach_slope_minimum` (the reaches of the minimum slope), each only when it has ids; the front end words them. `handoff` is one `nogat-handoff/1` with `node_provenance` around one `hydrolog-network/1` (`build_network_handoff`, `docs/integrations/HYDROLOG.md`).
 
-A network reads the saved rasters of A's whole catchment and holds at most 21 bytes a cell of them (the slope only for the statistics of the elements, the labels only until the element raster: about 1.3 GB at the cap of 60 M cells; production's whole grid of 58.6 M cells peaks at 1.77 GB with the interpreter), so each worker process delineates one network at a time: the route holds a `threading.Lock` of its process, and a request waits for it at most `NETWORK_LOCK_WAIT_S` (15 s), then gets 503 `network_delineation_busy`. With production's two workers at most two networks run at once. The route registers the problems 404, 422 and 503 of the watershed routes besides 400 and 500; any exception that is not a `HydrografError` is logged and becomes 500 `network_delineation_failed`.
+A network reads the saved rasters of A's whole catchment and holds at most 21 bytes a cell of them (the slope only for the statistics of the elements, the labels only until the element raster: about 1.3 GB at the cap of 60 M cells; production's whole grid of 58.6 M cells peaks at 1.77 GB with the interpreter), so each worker process delineates one network at a time: the route holds a `threading.Lock` of its process, and a request waits for it at most `NETWORK_LOCK_WAIT_S` (15 s), then gets 503 `network_delineation_busy`. With production's two workers at most two networks run at once. The router registers the problems 404 and 503 of the watershed routes and the route its 422, besides 400 and 500; any exception that is not a `HydrografError` is logged and becomes 500 `network_delineation_failed`.
+
+#### 2.2.2c Network Preview (ADR-081)
+```
+POST /api/delineate-network/preview
+Content-Type: application/json
+
+Request: the request of POST /api/delineate-network (§2.2.2b)
+
+Response: 200 OK
+{
+  "threshold_m2": 100000,
+  "unit_threshold_m2": 10000,
+  "area_km2": 240.328025,      // A's catchment, exact to the cell: the full run's
+  "points": [                  // as the full run's, and whether a raster splits the point's unit
+    {"id": "A", "name": "Kaczawa", "latitude": 51.12801, "longitude": 15.90897,
+     "snap_distance_m": 11.8, "at_mouth": false, "node": "J5", "inside_unit": true}, ...
+  ],
+  "subcatchments": [           // the full run's ids, kinds and nodes
+    {"id": "Z1", "kind": "headwater", "to": "J1", "point": null, "reach": null,
+     "area_km2": 71.87555,     // exact to the cell: the full run's
+     "outline_approximate": false,   // it holds a part of a unit that a point splits
+     "boundary_geojson": {"type": "Feature", ...}}   // null without a polygon of its own
+  ],
+  "reaches": [                 // the full run's length; the stream lines between its ends
+    {"id": "R1", "from": "J1", "to": "J2", "length_km": 1.2969, "geojson": {"type": "Feature", ...}}
+  ],
+  "junctions": [...],          // as the full run's
+  "notices": [{"code": "over_scs_cn_limit", "ids": ["Z1"]}]
+}
+
+Errors: those of POST /api/delineate-network but 422 and network_delineation_busy (no window,
+no lock); any other failure is 500 internal_error (network_preview_failed)
+```
+
+The mode „Sieć zlewni” asks for it after every change of its points (ADR-081, plan `docs/plans/2026-11-11-network-preview.md`; `core/network_preview.py`, §2.4.10). The points snap as for the full run (`snap_point`, the windows around the clicks) and `build_network_tree` builds the same tree, so the ids, the places of the points and junctions and the errors of the composition are the full run's. The areas are the cells of the units, a unit split by a point counted from the accumulation at the point; the reach lengths are the differences of the flow distances; the outlines unite on a grid of 10 m the largest sub-catchment of any threshold that one element holds whole, the units of 1 ha only around the outlets of the elements (production's whole area: 91 polygons); a unit split by a point goes whole to the element with most of its cells (`inside_unit`, `outline_approximate`). No window of A's catchment is read and no lock is taken: on production 0.08 s for the Kamiennik and 0.37 s for the whole area of 792 km².
 
 #### 2.2.3 Generate Hydrograph
 ```
@@ -668,13 +704,14 @@ def determine_cn(boundary, db, config_cn=None, default_cn=75, use_kartograf=True
     """CN by the hierarchy configuration → database → Kartograf → default (scripts/analyze_watershed.py)."""
 ```
 
-#### 2.4.10 Network delineation: `core/network_tree.py`, `core/network_delineation.py`, `core/handoff.py` (ADR-080)
+#### 2.4.10 Network delineation: `core/network_tree.py`, `core/network_delineation.py`, `core/network_preview.py`, `core/handoff.py` (ADR-080, ADR-081)
 **Responsibilities:**
 - `core/network_tree.py` (pure, on the catchment graph): the parent of each control point, the trunk of each control point by `trace_main_channel` (ADR-046), the junctions, the mouth rule, the element of every unit of A's catchment (`CatchmentGraph.upstream_tree`), the units split by points, the ids `Z…`, `R…`, `J…`, `OUT` in the order of the hand-off; a `Junction` carries its `inflows` and the `tributaries`, the control points of the branches that join it from the side
 - `core/network_delineation.py` (`delineate_network(cg, db, outlet, points, threshold_m2, settings=None) -> Network`): snapping in a window of 100 m, one window of the six saved rasters over A's catchment (at most 60 M cells), the element raster with the split units (pyflwdir basins), the area check in cells (B5), the measures of every element from its cells (`core/cell_parameters.py`, a `WatershedResponse` each), the boundaries as one coverage simplified at 5 m, the reaches (length from the flow distances, slope from the NMT, the BDOT10k check length from `bdot_streams`)
+- `core/network_preview.py` (`preview_network(cg, db, outlet, points, threshold_m2, settings=None) -> NetworkPreview`, ADR-081): the snapping and the tree of the full run, the areas of the elements from the cells of their units (a split unit from the accumulation at its points, `Place.accumulation_cells`), the reach lengths from the flow distances and their lines from `stream_network`, the outlines from a cover of A's catchment by the largest sub-catchment of any threshold that one element holds whole (`outline_cover`, `CatchmentGraph.coarser_at_outlets`) united by element on a grid of 10 m in PostGIS; no window of A's catchment
 - `core/handoff.py`: `build_handoff` writes the hand-off of a watershed (ADR-068), `build_network_handoff(network, names, created_at=None)` that of a network: one `nogat-handoff/1` with `node_provenance` around one `hydrolog-network/1`, no rainfall, time step, result or reach sections (`docs/integrations/HYDROLOG.md`)
 
-The steps and their reasons: `docs/COMPUTATION_PIPELINE.md` (Phase 7) and the plan `docs/plans/2026-11-10-network-delineation.md` (D1–D15).
+The steps and their reasons: `docs/COMPUTATION_PIPELINE.md` (Phase 7) and the plans `docs/plans/2026-11-10-network-delineation.md` (D1–D15) and `docs/plans/2026-11-11-network-preview.md` (P1–P6).
 
 ---
 
@@ -1067,7 +1104,7 @@ frontend/
     ├── sewer.js              # Storm-sewer layer (MVT overlay; only when GET /api/layers reports data)
     ├── results.js            # External analysis results (e.g. SFINCS of Hydraulik) from the manifest /data/results/index.json: tiles, legend, (i)
     ├── identify.js           # Mode „Identyfikuj”: marker and point card (GET /api/identify-point)
-    ├── network.js            # Mode „Sieć zlewni”: points A, P1…, POST /api/delineate-network, the network on the map, its tree and selection in the panel (ADR-080)
+    ├── network.js            # Mode „Sieć zlewni”: points A, P1…, the preview (POST /api/delineate-network/preview) after every change, the characteristics (POST /api/delineate-network), the network on the map, its tree and selection in the panel (ADR-080, ADR-081)
     ├── diagnostics.js        # Session event log (ADR-053)
     ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>)
     ├── instance.js           # The area of the instance from /data/instance.json (also on /instrukcja: [data-instance-area])
@@ -1099,7 +1136,7 @@ The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 - **Navigation rail** — Mapa, Instrukcja (`/instrukcja/`, the same tab) and Logowanie (`/admin`), on every page (a bottom bar on phones); on the main page „Instrukcja” opens the welcome dialog again (a click with Ctrl/Shift or the middle button still opens the guide). The terrain profile is a mode of the map bar.
 - **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
 - **Centre** — the map with the mode bar Przeglądanie / Wybierz zlewnię / Sieć zlewni / Profil terenu / Identyfikuj; the terrain profile opens in a bottom drawer over the map, the point card of „Identyfikuj” (`identify.js`, `GET /api/identify-point`, §2.2.5a) in the top right corner of the map (a sheet at the bottom of the map on phones). The cursor coordinates (`coords.js`) sit in the bottom left corner, under the legends, in the system chosen there (WGS84, PL-1992 or PL-2000, kept in localStorage); screens without a hovering pointer do not show them.
-- **Mode „Sieć zlewni”** (`network.js`, ADR-080, §2.2.2b) — clicks place A, then P1…P30 as draggable markers; „Wyznacz sieć” calls `POST /api/delineate-network` with the threshold of „Linie spływu”, moves the markers to their snapped cells and draws the elements by kind, the reaches, the junctions, A's boundary and the legend „Sieć zlewni”. The right panel serves the view of the mode (`app.js`: `data-view="network"` on `#results-panel`, each view with its own loading state, error and bin): the points with their names, the check of B5, the notices and the tree from A upward; an element chosen in the tree or by its label on the map fills the parameter sections (without the hietogram and the hydrograph), a reach its own table; `handoff.js` hands off the network. The watershed of „Wybierz zlewnię” leaves the map in the mode (`map.setWatershedShown`) and returns, with its sections, after it.
+- **Mode „Sieć zlewni”** (`network.js`, ADR-080, ADR-081, §2.2.2b, §2.2.2c) — clicks place A, then P1…P30 as draggable markers. 300 ms after every change of the points (added, removed, dropped) or of the threshold of „Linie spływu”, `POST /api/delineate-network/preview` (`api.previewNetwork`, an `AbortController` cancels the request on its way and an answer to older points is dropped) moves the markers to their snapped cells and draws the preview: the elements by kind, dashed where the outline is approximate (a point inside its unit has a dashed marker with „≈”), the reaches, the junctions and the legend „Podgląd sieci”; the names are not sent and change no preview. While a preview is on its way, or when it failed, the network drawn before stays, faded; a failed preview shows its error under the buttons (`#network-error`) and marks the points it names, and an error of the composition disables the run. „Oblicz charakterystyki” calls `POST /api/delineate-network` with the names and draws A's boundary and the legend „Sieć zlewni”; the characteristics show while they answer the snapped places and the threshold, after any change of these the preview returns with the notice that they are outdated; that notice (with its own text) and a disabled hand-off also follow a renamed point, whose name the hand-off carries, until they are computed again or the points come back. The right panel serves the view of the mode (`app.js`: `data-view="network"` on `#results-panel`, each view with its own loading state, error and bin): the points with their names, the check of B5, the notices and the tree from A upward (in the preview the area and the length, „—” for CN and slope); an element chosen in the tree or by its label on the map fills the parameter sections (without the hietogram and the hydrograph), a reach its own table, in the preview a short summary; `handoff.js` hands off the network. The watershed of „Wybierz zlewnię” leaves the map in the mode (`map.setWatershedShown`) and returns, with its sections, after it.
 - **Right panel „Zlewnia”** — key values (tiles) and `<details>` sections: basic parameters, shape indices, relief, river network, land cover, HSG groups, hietogram, hydrograph. The × of its head hides the panel and keeps the result on the map (the button „Zlewnia” of the map bar brings it back); the button with the bin („Wyczyść wynik”, disabled while the panel shows only its instruction) clears the result. Esc once hides the panel, twice clears the result.
 - **(i) explanations** — `info.js` adds (i) markers in the sections Parametry podstawowe, Wskaźniki kształtu, Rzeźba terenu, Sieć rzeczna, Hietogram and Hydrogram, and in the mode „Sieć zlewni” at the kinds of the network's elements and the rows of a reach; one shared panel opens on a click or a tap of the (i), or on Enter or Space when it has the focus, never on hover or focus (`aria-expanded` on the button), and closes with the same (i), Esc, a click or tap outside it or a move of the focus to another control. The 76 entries of `info-texts.js` keyed by an API field, a form control id or a kind of the network's elements (the other 11 belong to the options of the UH model, Tc method and Nash estimation selects) hold: a description, a formula (built as MathML through the DOM, without libraries), the list „gdzie:” of the variables with their units, the unit of the result, a separate block „Znaczenie dla analizy”, the range of applicability and a note. The texts rest on Hydrolog and the backend (e.g. the hydrograph limit of 250 km², `HYDROGRAPH_AREA_LIMIT_KM2`). The applicability notes under Model UH, Metoda Tc and Estymacja Nash follow the choice. The API returns no applicability warnings, so the GUI shows none.
 - **Hietogram: AMC and rainfall source** — the field „Uwilgotnienie początkowe (AMC)” I / II / III (`amc` in the request, II by default); the balance shows the CN used with one decimal place and the AMC class. The switch „Źródło opadu” PMAXTP / Własna seria (`custom-rain.js`): „Czas trwania [min]” and „Krok czasowy [min]” build a table of steps with an editable depth [mm]; a column pasted from a spreadsheet fills the following rows; „Importuj CSV” takes 1 column (depth, at the current step) or 2 columns (time, depth; an even step sets the step and the duration); „Wczytaj z bieżącego hietogramu” copies the PMAXTP series. The series goes to `custom_precipitation`, and the PMAXTP hietogram is then skipped.
@@ -2034,11 +2071,12 @@ jobs:
 
 ---
 
-**Document version:** 2.11
-**Date of the last update:** 2026-11-10
+**Document version:** 2.12
+**Date of the last update:** 2026-11-11
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.12 (2026-11-11): the network preview (ADR-081, plan `2026-11-11-network-preview`): §2.1 `core/network_preview.py` and the second route of `api/endpoints/network.py`; §2.2.2c `POST /api/delineate-network/preview`; §2.2.2b the 422 is the route's, 404 and 503 the router's; §2.4.10 `core/network_preview.py`; §4 the mode „Sieć zlewni” in two stages, the preview after every change of the points and „Oblicz charakterystyki”
 - 2.11 (2026-11-10): network delineation at control points (ADR-080, plan `2026-11-10-network-delineation`): §2.1 `api/endpoints/network.py` and `core/handoff.py` in the module map; §2.2.2b `POST /api/delineate-network` (request, response, errors, one network at a time per worker); §2.4.10 `core/network_tree.py`, `core/network_delineation.py` and `build_network_handoff` of `core/handoff.py`; §5.1 `GDAL_CACHEMAX: "64"` in the environment of the API
 - 2.10 (2026-11-03): §2.2.1 and §7.3 — `/health` reports Hydrograf's version from `core/version.py` (it was a constant `1.0.0`), as does the admin dashboard
 - 2.9 (2026-11-02): §2.2.8 — the admin endpoints address resources: `DELETE /api/admin/sewer` (was `DELETE /api/admin/sewer/delete`), `PUT /api/admin/sewer/config` (was `POST`), `PATCH /api/admin/feedback/{id}` with `{"is_read": bool}` (was `POST /api/admin/feedback/{id}/read`); the feedback endpoints are listed; CORS allows `PUT` and `PATCH`

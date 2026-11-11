@@ -26,7 +26,7 @@
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
     <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
-    <link rel="stylesheet" href="css/app.css?v=61d9bb95d3">
+    <link rel="stylesheet" href="css/app.css?v=5378260926">
 </head>
 <body>
 <div class="shell">
@@ -182,18 +182,24 @@
 
                     <!-- Network of the mode „Sieć zlewni” (js/network.js) -->
                     <section class="network" id="network" aria-label="Sieć zlewni" hidden>
-                        <p class="network-intro">Kliknij przekrój zamykający A na cieku, potem punkty powyżej niego: dopływy przy ujściach i wodowskazy (najwyżej 30). Znaczniki przeciągniesz myszą lub palcem.</p>
+                        <p class="network-intro">Kliknij przekrój zamykający A na cieku, potem punkty powyżej niego: dopływy przy ujściach i wodowskazy (najwyżej 30). Znaczniki przeciągniesz myszą lub palcem. Po każdej zmianie punktów mapa pokazuje podgląd sieci; „Oblicz charakterystyki” poda CN, spadki i parametry zlewni oraz przekazanie do Hydrologa.</p>
                         <p class="network-snap" id="network-snap"></p>
                         <ol class="network-points" id="network-points" aria-label="Punkty sieci"></ol>
                         <div class="network-actions">
-                            <button class="btn sm primary" type="button" id="network-run" disabled>Wyznacz sieć</button>
+                            <button class="btn sm primary" type="button" id="network-run" disabled>Oblicz charakterystyki</button>
                             <button class="btn sm" type="button" id="network-clear" disabled>Wyczyść</button>
+                            <span class="network-pending" id="network-pending" hidden><span class="spinner" aria-hidden="true"></span>Podgląd sieci…</span>
                         </div>
+                        <p class="notice bad d-none" id="network-error" role="alert">
+                            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.5v4M8 11v.01"/></svg>
+                            <span><strong>Błąd:</strong> <span id="network-error-text"></span></span>
+                        </p>
                         <p class="notice warn d-none" id="network-outdated" role="status">
                             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z"/><path d="M8 6.5v3M8 11.5v.01"/></svg>
-                            <span>Punkty zmieniły się po wyznaczeniu sieci: wynik poniżej jest nieaktualny. Wyznacz sieć ponownie.</span>
+                            <span id="network-outdated-text"></span>
                         </p>
                         <div class="network-result d-none" id="network-result">
+                            <p class="network-stage" id="network-stage" hidden>Podgląd sieci: powierzchnie zlewni i długości odcinków. CN, spadki i parametry zlewni poda „Oblicz charakterystyki”.</p>
                             <div class="summary" id="network-summary"></div>
                             <p class="notice" id="network-check"></p>
                             <div id="network-notices"></div>
@@ -619,7 +625,7 @@
 
 <!-- Application modules -->
 <script defer src="js/diagnostics.js?v=490048c9c6"></script>
-<script defer src="js/api.js?v=a48ff730dc"></script>
+<script defer src="js/api.js?v=b02c04e187"></script>
 <script defer src="js/shell.js?v=2b97414afd"></script>
 <script defer src="js/map.js?v=a8f218c0ab"></script>
 <script defer src="js/coords.js?v=38cf3b9025"></script>
@@ -639,8 +645,8 @@
 <script defer src="js/instance.js?v=04b557b531"></script>
 <script defer src="js/welcome.js?v=79a0c2304e"></script>
 <script defer src="js/identify.js?v=b89f4b64cf"></script>
-<script defer src="js/handoff.js?v=3ec8ccc46b"></script>
-<script defer src="js/network.js?v=be8ae7c92c"></script>
-<script defer src="js/app.js?v=89e0a7c43a"></script>
+<script defer src="js/handoff.js?v=1c553fc17c"></script>
+<script defer src="js/network.js?v=c8ee45ac9c"></script>
+<script defer src="js/app.js?v=0105ed1d8a"></script>
 </body>
 </html>
