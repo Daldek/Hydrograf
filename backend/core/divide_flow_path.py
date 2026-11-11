@@ -29,6 +29,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import numba
 import numpy as np
 import rasterio
 from rasterio.transform import Affine
@@ -86,27 +87,6 @@ class WatershedFlowPaths:
 
 
 NO_FLOW_PATHS = WatershedFlowPaths(longest=None, divide=None)
-
-
-def boundary_mask(member: np.ndarray) -> np.ndarray:
-    """Cells of ``member`` with a 4-neighbour outside it or beyond the array.
-
-    Parameters
-    ----------
-    member : np.ndarray
-        Cells of the watershed (bool, 2-D).
-
-    Returns
-    -------
-    np.ndarray
-        Boundary cells of the watershed (bool, same shape).
-    """
-    padded = np.pad(member, 1, constant_values=False)
-    interior: np.ndarray = (
-        padded[:-2, 1:-1] & padded[2:, 1:-1] & padded[1:-1, :-2] & padded[1:-1, 2:]
-    )
-    boundary: np.ndarray = member & ~interior
-    return boundary
 
 
 def trace_flow_path(
@@ -239,14 +219,78 @@ def path_coords(
     return coords
 
 
-def _farthest(starts: np.ndarray, flow_dist: np.ndarray) -> tuple[int, int] | None:
-    """Cell of ``starts`` farthest from the outlet, None without one."""
-    if not starts.any():
-        return None
-    row, col = np.unravel_index(
-        int(np.argmax(np.where(starts, flow_dist, -np.inf))), starts.shape
+def _farthest_heads(
+    member: np.ndarray, flow_dist: np.ndarray, nodata: float | None
+) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+    """Cells of a watershed farthest from the outlet, overall and on its boundary.
+
+    The candidates are the cells of ``member`` with a flow distance (not
+    ``nodata``), and of them the cells with a 4-neighbour outside ``member`` or
+    beyond the array; each cell is ``np.argmax`` of the flow distances with -inf
+    at the other cells, in one pass and without a mask of the window.
+
+    Returns
+    -------
+    tuple[tuple[int, int] | None, tuple[int, int] | None]
+        Row and column of each, None without a candidate.
+    """
+    longest, divide = _farthest_flat(
+        member,
+        flow_dist,
+        np.nan if nodata is None else np.result_type(flow_dist, nodata).type(nodata),
+        nodata is not None,
     )
-    return int(row), int(col)
+    ncols = member.shape[1]
+    return (
+        None if longest < 0 else (longest // ncols, longest % ncols),
+        None if divide < 0 else (divide // ncols, divide % ncols),
+    )
+
+
+@numba.njit(cache=True)
+def _farthest_flat(
+    member: np.ndarray, flow_dist: np.ndarray, nodata: float, has_nodata: bool
+) -> tuple[int, int]:
+    """Flat indices of _farthest_heads, -1 without a candidate.
+
+    Each is the ``np.argmax`` of its values (the flow distance at a candidate,
+    -inf elsewhere): the first largest in the order of the flat indices, the first
+    NaN before any number.
+    """
+    nrows, ncols = member.shape
+    longest = divide = 0
+    longest_value = divide_value = -np.inf
+    any_start = any_boundary = False
+    for row in range(nrows):
+        for col in range(ncols):
+            k = row * ncols + col
+            start = member[row, col] and (
+                not has_nodata or flow_dist[row, col] != nodata
+            )
+            boundary = start and (
+                row == 0
+                or row == nrows - 1
+                or col == 0
+                or col == ncols - 1
+                or not member[row - 1, col]
+                or not member[row + 1, col]
+                or not member[row, col - 1]
+                or not member[row, col + 1]
+            )
+            any_start |= start
+            any_boundary |= boundary
+            value = flow_dist[row, col] if start else -np.inf
+            if k == 0 or (
+                not np.isnan(longest_value)
+                and (np.isnan(value) or value > longest_value)
+            ):
+                longest, longest_value = k, value
+            value = flow_dist[row, col] if boundary else -np.inf
+            if k == 0 or (
+                not np.isnan(divide_value) and (np.isnan(value) or value > divide_value)
+            ):
+                divide, divide_value = k, value
+    return (longest if any_start else -1), (divide if any_boundary else -1)
 
 
 def _flow_path(
@@ -369,13 +413,11 @@ def watershed_flow_paths(
     WatershedFlowPaths
         As ``compute_flow_paths``.
     """
-    starts = member if nodata is None else member & (flow_dist != nodata)
-    longest_head = _farthest(starts, flow_dist)
+    longest_head, divide_head = _farthest_heads(member, flow_dist, nodata)
     if longest_head is None:
         return NO_FLOW_PATHS
     longest_cells = trace_flow_path(longest_head, member, fdir, flow_dist)
     longest = _flow_path(longest_cells, flow_dist, baseline_m, transform)
-    divide_head = _farthest(starts & boundary_mask(member), flow_dist)
     if divide_head is None:
         return WatershedFlowPaths(longest=longest, divide=None)
     if divide_head == longest_head:
