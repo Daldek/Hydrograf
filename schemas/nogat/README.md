@@ -17,8 +17,8 @@ And, outside the standard, from commit `8848c26` of Nogat (item 6 of Nogat's
 `docs/plans/2026-11-01-nogat-gui-platform.md`, with the optional `node_provenance` of step 1
 of its `docs/plans/2026-11-10-node-provenance-in-handoff.md`: the origin of each node of a
 network; SHA-256 `84c6856d1148acdc08bf79600c8cdab03674e81fe1f30eb7abeb66629b5742ed`.
-Hydrolog reads the copy of `8727f6e` until its own step 3, which takes the same documents,
-`node_provenance` as an unknown field):
+The pinned Hydrolog `930915d` reads the copy of `8727f6e`, `node_provenance` as an unknown
+field; its step 3, `cead00a` on Hydrolog's `develop` after the pin, takes this copy):
 
 - `handoff-1.schema.json` (Nogat `schemas/exchange/handoff-1.schema.json`): the envelope
   `nogat-handoff/1` of data handed between the GUIs of the ecosystem. The API writes the

@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-11-10 (the hand-off of a network, ADR-080; Hydrolog `930915d` of `develop`, the release set candidate-3 of Nogat; was `759d7ef` of candidate-2, before it `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production and Hydroni still run)
+**Ostatnia aktualizacja:** 2026-11-11 (Hydroni runs `930915d` with `develop` `824bebd`; 2026-11-10: the hand-off of a network, ADR-080; Hydrolog `930915d` of `develop`, the release set candidate-3 of Nogat; was `759d7ef` of candidate-2, before it `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production still runs)
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -193,9 +193,10 @@ change.
 
 The pin: Hydrolog `930915d` (Nogat's release set candidate-3, `b0ac85b`) has the
 `description` (and `position`) of every node in `hydrolog-network/1`, which a network's
-hand-off needs (Hydrolog `46c743f` or later). Until its own step 3 of the Nogat plan
-`2026-11-10-node-provenance-in-handoff`, Hydrolog reads the envelope copy of Nogat
-`8727f6e` and takes `node_provenance` as an unknown field.
+hand-off needs (Hydrolog `46c743f` or later). The pinned Hydrolog reads the envelope copy of
+Nogat `8727f6e` and takes `node_provenance` as an unknown field; its step 3 of the Nogat plan
+`2026-11-10-node-provenance-in-handoff` (`cead00a`, in Hydrolog's `develop` after `930915d`)
+copies `8848c26`.
 `backend/tests/unit/test_network_endpoint.py` and
 `backend/tests/integration/test_network_delineation_db.py` validate the hand-off against
 the envelope copy and the pinned Hydrolog's `hydrolog-network/1`.

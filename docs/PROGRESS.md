@@ -14,12 +14,12 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | API (FastAPI + PostGIS) | done | Routes in ARCHITECTURE §2.2; errors are `application/problem+json` with the codes of the Nogat registry and texts by `Accept-Language` (ADR-059). Delineation precomputed on the in-memory catchment graph (ADR-021, ADR-050), escalated over the thresholds of the graph above 300 sub-catchments, and precise; every worker reloads the graph when the network in the database changes (`07112ce`). „Identyfikuj” (`GET /api/identify-point`), terrain profile with the water of the analysis results, MVT tiles, admin routes. |
 | Hydrographs | done | SCS-CN (AMC I–III, own rainfall series), SCS, Snyder and Nash (Lutz, urban regression) unit hydrographs of Hydrolog; tc only from Hydrolog on the inputs each method defines (C and N from the user); the hand-off to Hydrolog (ADR-068); PMAXTP design depth as the Thiessen mean of the watershed (ADR-069); limit 250 km². |
 | DEM preprocessing | done | pyflwdir on one raster or by PGW units (ADR-071, opt-in `--units`, one fill of the whole grid); F1–F7 memory fixes (`652eec6`); stream burning with the directions of ADR-077; enclosed nodata filled on request (ADR-073); the bootstrap refuses NMT sheets that leave the area uncovered (ADR-076); thresholds 10 000, 100 000, 1 000 000 and 10 000 000 m²; flow path heads and channel sources measured (ADR-070). |
-| Land cover, soils, CN | done | Land cover from the BDOT10k partition by its attributes (ADR-074), the soil under the wetlands is group D and the lawns of KUSK/KUKO are open space (ADR-078); the soil groups of the least permeable SoilGrids layer of 0–100 cm by default, `soil.hsg_depth_rule` (ADR-079, `feat/hsg-profile`, not merged; the instances keep the 0–5 cm groups until step 5 runs again); the CN is that of the soil-cover complexes from Hydrolog's TR-55 table, computed at query time (ADR-075 and its amendments of 2026-11-09; migration 006 dropped `land_cover.cn_value`). The export of catchment parameters gives CN AMC I/II/III and the control columns of the weighted runoff. |
-| Producers | done | The branch `feat/network-delineation-api` pins Nogat's release set candidate-3: Hydrolog `930915d`; Kartograf `d0990c8`, Obserwator `f9f4ee7` as in candidate-2, which `develop` pins (`01ab00a`); not deployed; production and Hydroni run Kartograf `9deaa31`, Obserwator `1ee5457`, Hydrolog `4fad769`. A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
-| Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię / Sieć zlewni / Profil terenu / Identyfikuj („Sieć zlewni” on `feat/network-delineation-ui`, not merged: Next 10), the welcome text and the guide (33 slides) name the data area from `frontend/data/instance.json`, the results of external analyses from `frontend/data/results/index.json` (SFINCS), the MZP overlay, `?v=` asset versions. |
+| Land cover, soils, CN | done | Land cover from the BDOT10k partition by its attributes (ADR-074), the soil under the wetlands is group D and the lawns of KUSK/KUKO are open space (ADR-078); the soil groups of the least permeable SoilGrids layer of 0–100 cm by default, `soil.hsg_depth_rule` (ADR-079, in `develop` since `b38b657`; Hydroni's run 4 has them, production keeps the 0–5 cm groups until its step 5 runs again); the CN is that of the soil-cover complexes from Hydrolog's TR-55 table, computed at query time (ADR-075 and its amendments of 2026-11-09; migration 006 dropped `land_cover.cn_value`). The export of catchment parameters gives CN AMC I/II/III and the control columns of the weighted runoff. |
+| Producers | done | `develop` pins Nogat's release set candidate-3: Hydrolog `930915d`; Kartograf `d0990c8`, Obserwator `f9f4ee7` as in candidate-2. Hydroni runs them (`824bebd`, 2026-11-11); production runs Kartograf `9deaa31`, Obserwator `1ee5457`, Hydrolog `4fad769`. A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
+| Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię / Sieć zlewni / Profil terenu / Identyfikuj („Sieć zlewni” since `824bebd`: Next 10), the welcome text and the guide (33 slides) name the data area from `frontend/data/instance.json`, the results of external analyses from `frontend/data/results/index.json` (SFINCS), the MZP overlay, `?v=` asset versions. |
 | Admin panel | done | `/admin`: dashboard, bootstrap, resources, cleanup, storm sewer, feedback (ADR-034, ADR-051). |
 | Storm sewer | done | ADR-051, ADR-052; no data source yet (BACKLOG). |
-| Tests and gate | done | `scripts/gate.sh` on `6b986b0` (candidate-2): 1,970 passed, 159 deselected, coverage 85.60 % (floor 80); `db` tests on `b5e1154`: 158 passed, 1 skipped. CI in `.github/workflows/ci.yml`. |
+| Tests and gate | done | `scripts/gate.sh` on `7dc958d` (the tree of `824bebd`): 2,088 passed, 166 deselected, coverage 86.65 % (floor 80); `db` tests on `b5e1154`: 158 passed, 1 skipped. CI in `.github/workflows/ci.yml`. |
 | Documentation | in progress | Nogat standard 2.1 in English; the documents still in Polish are listed in Next 7. |
 | Release v0.5.0 | in progress | `develop` carries 0.5.0.dev0, `main` v0.4.0 (2026-03-03). The next release is v0.5.0 (the author, 2026-11-03); the author extends the candidate and sets the tag himself (2026-11-05). |
 | Hydraulik integration | blocked | Paused by the author until Hydraulik works well enough (BACKLOG). |
@@ -34,10 +34,10 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 
 ### Hydroni instance
 
-- **Code and stack:** worktree `~/workspace/Hydrograf-hydroni` detached at `894810c` (image `hydroni-api` built 2026-11-10 04:35 CET), compose project `hydroni` (`hydroni_db`, `hydroni_api`, `hydroni_nginx`) run by `~/data/hydrograf-hydroni/dc` (system Docker, base file, prod overlay and `compose.instance.yml`); `127.0.0.1:8081`, public `https://hydrograf-hydroni.debever.pl`. Configuration outside the repository in `~/data/hydrograf-hydroni/` (README with the update and reprocessing steps, `bootstrap.sh`, `config.yaml`, `hydroni.env`, `secrets/`).
+- **Code and stack:** worktree `~/workspace/Hydrograf-hydroni` detached at `824bebd` since 2026-11-11 (image `hydroni-api` rebuilt from it 2026-11-11 02:09 CET), compose project `hydroni` (`hydroni_db`, `hydroni_api`, `hydroni_nginx`) run by `~/data/hydrograf-hydroni/dc` (system Docker, base file, prod overlay and `compose.instance.yml`); `127.0.0.1:8081`, public `https://hydrograf-hydroni.debever.pl`. Configuration outside the repository in `~/data/hydrograf-hydroni/` (README with the update and reprocessing steps, `bootstrap.sh`, `config.yaml`, `hydroni.env`, `secrets/`).
 - **Storage:** `data` and `frontend/data` on the NAS (`/mnt/magazyn/agent-tmp/Hydroni/hydrograf/`, CIFS: the API and nginx run as uid 2001 because the share forces 2001/0640, and SQLite or GeoPackage files are written locally, then copied); the tiles, the cache and `data/hydro` on the local disk in `~/data/hydrograf-hydroni/`; the database in the volume `hydroni_postgres_data`.
-- **Data:** area h07 (2,940.7 km²), Archiwista project `h07`, closed set `2026-3` (728 pins; `2026-2` plus the sheet N-33-118-B-a-4-2 that ADR-076 asked for). Settings: `--units` with the 223 h07 catchments (27 units), `dem.stream_burning: main`, `--waterbody-mode none` (the author: no lake is endorheic), no buildings, no inflow from outside the area (the author). Active run 3, bootstrapped on `545f109` on 2026-11-10 00:54–03:15 CET (`bootstrap-20261110-run.log`): 710 sheets (20 delivered as 1 m grids and averaged to 5 m), 201,195 segments at 0.01 / 0.1 / 1 / 10 km², 92.01 km² of wetlands made group D, 73 burned lines reversed by ADR-077.
-- **Exports for the author** (parameters of the 223 catchments): v4 `/mnt/magazyn/agent-tmp/Hydroni/h07_parametry_zlewni.gpkg` (2026-11-10, with the runoff control columns), v3 `h07_parametry_zlewni_v3_2026-11-08.gpkg` beside it, v1 and v2 in `~/data/hydrograf-hydroni/cache/`.
+- **Data:** area h07 (2,940.7 km²), Archiwista project `h07`, closed set `2026-4` (728 pins; `2026-3` with the soil-group raster of ADR-079; `2026-3` is `2026-2` plus the sheet N-33-118-B-a-4-2 that ADR-076 asked for). Settings: `--units` with the 223 h07 catchments (27 units), `dem.stream_burning: main`, `--waterbody-mode none` (the author: no lake is endorheic), no buildings, no inflow from outside the area (the author). Active run 4, bootstrapped on 2026-11-10 10:08–12:33 CET (`bootstrap-20261110-run4.log`; run 3 from `2026-3`: `bootstrap-20261110-run.log`): 710 sheets (20 delivered as 1 m grids and averaged to 5 m), 201,195 segments at 0.01 / 0.1 / 1 / 10 km², the soil groups of ADR-079 with 92.00 km² of wetlands made group D, 73 burned lines reversed by ADR-077.
+- **Exports for the author** (parameters of the 223 catchments): v5 `/mnt/magazyn/agent-tmp/Hydroni/h07_parametry_zlewni.gpkg` (2026-11-10, set `2026-4`, with the runoff control columns), v4 `h07_parametry_zlewni_v4_2026-11-10.gpkg` (set `2026-3`) and v3 `h07_parametry_zlewni_v3_2026-11-08.gpkg` beside it, v1 and v2 in `~/data/hydrograf-hydroni/cache/`.
 
 ### Other places
 
@@ -48,11 +48,12 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 
 ## Next
 
-1. **Deploy `develop` to production and Hydroni** when the coordinator schedules it: the
-   candidate-2 pins need new images only (no migration, no data change; the calls of Hydrograf
+1. **Deploy `develop` to production** when the author decides: Hydroni runs `824bebd` since
+   2026-11-11 (Next 10); production still runs `894810c` with the rasters re-cut on 2026-11-10 at
+   23:53. The pins need a new image only (no migration, no data change; the calls of Hydrograf
    are unchanged, CHANGELOG). The Hydroni README `~/data/hydrograf-hydroni/README` still asks for
-   `./dc restart api` after a bootstrap (step 2) and dates the image 2026-11-09: since `894810c`
-   the API reloads its graph by itself.
+   `./dc restart api` after a bootstrap (step 2): since `894810c` the API reloads its graph by
+   itself.
 2. **Leftovers of the delineation fix** (`07112ce`, 2026-11-10):
    - `POST /api/generate-hydrograph` without `morphometry` merges the sub-catchments at
      10 000 m² with no cascade, up to the 250 km² limit (`api/endpoints/hydrograph.py`); the GUI
@@ -154,10 +155,10 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     coverage, reaches) with the plan's tests 1–14. Production's database and label rasters
     disagreed on 108 units of 1 ha (the plan's Results) until the re-cut of 2026-11-10 23:53
     (Production, Data); since then every unit equals its labels. S3
-    (`feat/network-delineation-api`, pushed, not merged): the endpoint, its lock per worker,
+    (`feat/network-delineation-api`, merged with `824bebd`): the endpoint, its lock per worker,
     `build_network_handoff` with Nogat's `node_provenance` (envelope `8848c26`), Hydrolog
     `930915d` of Nogat's release set candidate-3, `GDAL_CACHEMAX=64` for the API, the plan's
-    tests 15–21. S4 (`feat/network-delineation-ui`, on S3's branch, pushed, not merged): the mode
+    tests 15–21. S4 (`feat/network-delineation-ui`, on S3's branch, merged with `824bebd`): the mode
     „Sieć zlewni”, its six (i) and their sources, chapter 06 of the guide. S5 (on S4's branch,
     2026-11-11, the plan's Results), on production's data read only: both Kaczawa networks pass
     B5 to the cell and hand off to Hydrolog (`read_network`, `route schematic --structure-only`);
@@ -166,9 +167,11 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     neither the slope nor the labels of the window (`87bb51a`: 0.92 GB and 1.77 GB peak, 4.9 s
     and 13.8 s on the same host, responses bit-equal), and the mouth rule applies at every
     junction where the paths of two points merge (D3 and ADR-080 amended: network 2 loses its
-    reach of 34 m). Next: the coordinator merges S3 and S4 into `develop` after the gate; Nogat
-    adds the registry edge of its D10 when S3 is in `develop`. No release is cut for this work
-    now; networks above 60 M cells stay refused.
+    reach of 34 m). The gate passed on the merged tree (2,088 tests); Hydroni runs `824bebd` since
+    2026-11-11, where a network of 250.39 km² passed B5 with 4 subcatchments, 2 reaches and 2
+    junctions in 16.6 s warm; production is not redeployed (Next 1). Next: Nogat adds the registry
+    edge of its D10 (its step 4). No release is cut for this work now; networks above 60 M cells
+    stay refused.
 11. **Production, at its next rebuild: land cover and soil groups beyond the boundary.** The basin
     of the tables and rasters (792.009 km²) holds 1.608 km² beyond the boundary, among them the
     block of 1.604 km² at 50.901 N 15.959 E, which has no `land_cover` or `soil_hsg` (cut to the

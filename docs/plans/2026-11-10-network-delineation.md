@@ -675,11 +675,11 @@ merge when green, S3 and S4 merge into `develop` in the usual way after S5.
 | Stage | Branch | Content | Needs | Merged |
 |---|---|---|---|---|
 | S0 | `plan/network-delineation` | this plan, ADR-080 | — | fast-forward, 2026-11-10 |
-| S1 | `refactor/cell-parameters` | `core/cell_parameters.py` (D8), the export and `process_dem` importing it; no change of behaviour | — | when green |
-| S2 | `feat/network-delineation-core` | `core/network_tree.py` (pure, on the graph: D3–D5, D15), `core/network_delineation.py` (snapping D2, window D7, splits D6, element raster, B5, measures D8, coverage D9, reaches D10), `CatchmentGraph.upstream_tree`; tests 1–14 | S1 | when green (no change users see) |
-| S3 | `feat/network-delineation-api` | endpoint, models, messages, `build_network_handoff`, the envelope's copy, the Hydrolog pin, tests 15–21, ARCHITECTURE, COMPUTATION_PIPELINE, SCOPE, HYDROLOG, CHANGELOG | S2; Nogat's step 1 merged; a Nogat release set with Hydrolog at or after its W2 | with S4, after S5 |
-| S4 | `feat/network-delineation-ui` | front end, guide, (i) texts and their sources, CHANGELOG | S3 | after S5 |
-| S5 | on S4's branch | the smoke, Results, PROGRESS | S4 | with S4 |
+| S1 | `refactor/cell-parameters` | `core/cell_parameters.py` (D8), the export and `process_dem` importing it; no change of behaviour | — | `ca5a0bb`, 2026-11-10 |
+| S2 | `feat/network-delineation-core` | `core/network_tree.py` (pure, on the graph: D3–D5, D15), `core/network_delineation.py` (snapping D2, window D7, splits D6, element raster, B5, measures D8, coverage D9, reaches D10), `CatchmentGraph.upstream_tree`; tests 1–14 | S1 | `30e7295`, 2026-11-10 (no change users see) |
+| S3 | `feat/network-delineation-api` | endpoint, models, messages, `build_network_handoff`, the envelope's copy, the Hydrolog pin, tests 15–21, ARCHITECTURE, COMPUTATION_PIPELINE, SCOPE, HYDROLOG, CHANGELOG | S2; Nogat's step 1 merged; a Nogat release set with Hydrolog at or after its W2 | with S4, `824bebd`, 2026-11-11 |
+| S4 | `feat/network-delineation-ui` | front end, guide, (i) texts and their sources, CHANGELOG | S3 | `824bebd`, 2026-11-11 |
+| S5 | on S4's branch | the smoke, Results, PROGRESS | S4 | with S4, `824bebd`, 2026-11-11 |
 
 Deploying is the coordinator's: a new image, no migration and no data change. After S3 is in
 `develop`, Nogat adds the registry edge of its D10.
@@ -876,6 +876,15 @@ S5: the memory budget stands, and the mouth rule applies at every junction).
   reach.
 
 Accepted: both networks are now within the memory and the time of the Tests section.
+
+**Merged and deployed** (2026-11-11): S3, S4 and S5 entered `develop` with the merge `824bebd`
+of `feat/network-delineation-ui`, whose tree is that of the branch's head `7dc958d`, on which
+`scripts/gate.sh` passed (2,088 tests passed, 166 deselected, coverage 86.65 %). The Hydroni
+instance (`127.0.0.1:8081`) runs `824bebd` since 2026-11-11 (its image rebuilt from it); its
+smoke there: a network of 250.39 km² whose elements equal A's catchment (B5), 4 subcatchments,
+2 reaches and 2 junctions, in 16.6 s warm. Production (`127.0.0.1:8080`) is not redeployed: it
+still runs `894810c` with the rasters re-cut on 2026-11-10 at 23:53 CET, and its deployment
+waits for the author's decision.
 
 ## Not in this plan
 
