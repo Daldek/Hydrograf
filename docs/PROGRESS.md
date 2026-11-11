@@ -34,7 +34,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 
 ### Hydroni instance
 
-- **Code and stack:** worktree `~/workspace/Hydrograf-hydroni` detached at `824bebd` since 2026-11-11 (image `hydroni-api` rebuilt from it 2026-11-11 02:09 CET), compose project `hydroni` (`hydroni_db`, `hydroni_api`, `hydroni_nginx`) run by `~/data/hydrograf-hydroni/dc` (system Docker, base file, prod overlay and `compose.instance.yml`); `127.0.0.1:8081`, public `https://hydrograf-hydroni.debever.pl`. Configuration outside the repository in `~/data/hydrograf-hydroni/` (README with the update and reprocessing steps, `bootstrap.sh`, `config.yaml`, `hydroni.env`, `secrets/`).
+- **Code and stack:** worktree `~/workspace/Hydrograf-hydroni` detached at the merge of `fix/short-reaches` into `develop` since 2026-11-11 (image `hydroni-api` rebuilt from it; its README's `Code:` line names the commit), compose project `hydroni` (`hydroni_db`, `hydroni_api`, `hydroni_nginx`) run by `~/data/hydrograf-hydroni/dc` (system Docker, base file, prod overlay and `compose.instance.yml`); `127.0.0.1:8081`, public `https://hydrograf-hydroni.debever.pl`. Configuration outside the repository in `~/data/hydrograf-hydroni/` (README with the update and reprocessing steps, `bootstrap.sh`, `config.yaml`, `hydroni.env`, `secrets/`).
 - **Storage:** `data` and `frontend/data` on the NAS (`/mnt/magazyn/agent-tmp/Hydroni/hydrograf/`, CIFS: the API and nginx run as uid 2001 because the share forces 2001/0640, and SQLite or GeoPackage files are written locally, then copied); the tiles, the cache and `data/hydro` on the local disk in `~/data/hydrograf-hydroni/`; the database in the volume `hydroni_postgres_data`.
 - **Data:** area h07 (2,940.7 km²), Archiwista project `h07`, closed set `2026-4` (728 pins; `2026-3` with the soil-group raster of ADR-079; `2026-3` is `2026-2` plus the sheet N-33-118-B-a-4-2 that ADR-076 asked for). Settings: `--units` with the 223 h07 catchments (27 units), `dem.stream_burning: main`, `--waterbody-mode none` (the author: no lake is endorheic), no buildings, no inflow from outside the area (the author). Active run 4, bootstrapped on 2026-11-10 10:08–12:33 CET (`bootstrap-20261110-run4.log`; run 3 from `2026-3`: `bootstrap-20261110-run.log`): 710 sheets (20 delivered as 1 m grids and averaged to 5 m), 201,195 segments at 0.01 / 0.1 / 1 / 10 km², the soil groups of ADR-079 with 92.00 km² of wetlands made group D, 73 burned lines reversed by ADR-077.
 - **Exports for the author** (parameters of the 223 catchments): v5 `/mnt/magazyn/agent-tmp/Hydroni/h07_parametry_zlewni.gpkg` (2026-11-10, set `2026-4`, with the runoff control columns), v4 `h07_parametry_zlewni_v4_2026-11-10.gpkg` (set `2026-3`) and v3 `h07_parametry_zlewni_v3_2026-11-08.gpkg` beside it, v1 and v2 in `~/data/hydrograf-hydroni/cache/`.
@@ -176,8 +176,13 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     `POST /api/delineate-network/preview` on the catchment graph (`99f770c`; 0.08 s, 0.18 s and
     0.37 s on production's three networks, equal to the full run in the tree, places, areas and
     lengths) and the mode in two stages, the preview after every change of the points and
-    „Oblicz charakterystyki” (`b6f3fa6`), the plan's Results. Next: the gate on the branch, then
-    merge `feat/network-preview` into `develop`.
+    „Oblicz charakterystyki” (`b6f3fa6`), the plan's Results; merged into `develop` with
+    `97498bb`. **Short and flat reaches** (ADR-080 D10a, branch `fix/short-reaches`, 2026-11-11):
+    the author's kaczawa2 network stopped in Hydrolog at a reach of 50.4 m of the minimum slope
+    (P2 50 m above a confluence), which Muskingum-Cunge refuses at any time step. The preview and
+    the full run give `reach_short_or_flat` for every reach under 200 m or flat, with „Przesuń P…
+    do zbiegu” for a point above a confluence, and a flat reach is a `lag` in the hand-off
+    (`method_reason: "flat"`). Deployed to kaczawa2 and Hydroni with its merge.
 11. **Production, at its next rebuild: land cover and soil groups beyond the boundary.** The basin
     of the tables and rasters (792.009 km²) holds 1.608 km² beyond the boundary, among them the
     block of 1.604 km² at 50.901 N 15.959 E, which has no `land_cover` or `soil_hsg` (cut to the

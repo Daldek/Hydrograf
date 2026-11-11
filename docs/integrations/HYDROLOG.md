@@ -164,15 +164,19 @@ Nogat `8848c26` with the optional `node_provenance` (`schemas/nogat/README.md`).
   (6 decimals), so the subcatchments sum to A in Hydrolog too; `runoff`
   `{"model": "curve-number"}` with Hydrolog's defaults.
 - **Reach** (`R…`): `method` `muskingum-cunge`, `from` (one node), `length_km` (the
-  difference of the flow distances of its ends), `slope_m_per_m` (the NMT at its ends,
-  0.0001 where it does not fall); no section.
+  difference of the flow distances of its ends), `slope_m_per_m` (the NMT at its ends);
+  no section. A reach whose NMT does not fall (slope 0.0001, „minimum”) is `method`
+  `lag`, `from`, `lag_min` = max(1, round(1000 · `length_km` / 0.5 / 60)) instead (ADR-080
+  D10a): Hydrolog's Muskingum-Cunge refuses a flat reach at any time step
+  (`unstable_timestep`).
 - **Junction** (`J…`): `from`, its inflows, the trunk first. **Outlet** `OUT`: `from` A's
   junction.
 - **Descriptions** (Polish, at most 500 characters; control characters but the line feed
   become spaces): headwater „Zlewnia górna powyżej J1” or „Zlewnia górna do punktu P3
   (name)”; tributary „Dopływ do punktu P1 (name)”, at its mouth „Dopływ do ujścia przy P1
   (name)”; przyrzecze „Przyrzecze odcinka R1”, each followed by its area; reach „Odcinek od
-  J1 do J2: 5,07 km, spadek 0,98 ‰ (NMT)” or „(minimalny)”; junction „Zbieg: dopływ P1
+  J1 do J2: 5,07 km, spadek 0,98 ‰ (NMT)” or „(minimalny)”, a lag followed by „Opóźnienie
+  2 min (długość przy 0,5 m/s) zamiast Muskingum-Cunge, …”; junction „Zbieg: dopływ P1
   (name), …” (the points of the branches that join it from the side,
   `Junction.tributaries`), „Punkt P3 (name)” or „Przekrój zamykający A (name)”.
 
@@ -182,14 +186,14 @@ Nogat `8848c26` with the optional `node_provenance` (`schemas/nogat/README.md`).
 | Node | Input | Origin parameters |
 |---|---|---|
 | subcatchment | `watershed` | `element` (`headwater`, `tributary`, `intermediate`), `point` (the id of the point it ends at, if any), `reach` (of a przyrzecze), `at_mouth` (only when true: the point moved to the junction below it, its tributary's mouth or the confluence below a gauge), `latitude`, `longitude` (its outlet) |
-| reach | `node` | `element` `"reach"`, `length` `"flow_distance"`, `slope` `"nmt"` or `"minimum"`, `upstream_elevation_m` and `downstream_elevation_m` (the NMT at its ends, when known), `vector_length_km` with `vector_source` `"bdot10k"` (when the reach has a BDOT10k check length) |
+| reach | `node` | `element` `"reach"`, `length` `"flow_distance"`, `slope` `"nmt"` or `"minimum"`, `upstream_elevation_m` and `downstream_elevation_m` (the NMT at its ends, when known), `vector_length_km` with `vector_source` `"bdot10k"` (when the reach has a BDOT10k check length); a lag (slope `"minimum"`) also `length_km`, `slope_m_per_m`, `method` `"lag"`, `method_reason` `"flat"` and `lag_celerity_m_per_s` 0.5 |
 | junction | `node` | `element` (`confluence`, `point`, `outlet` for A's), `point` (its point's id, if any), `latitude`, `longitude` |
 
 The hand-off carries no `rainfall`, `timestep_min`, `result`, reach section or `position`.
-In Sieć the person sets the rainfall of the network (step „Sieć”) and gives each reach its
-section (Manning's n, width) before the network is routed; Sieć lays the network out from
-its structure. The hand-offs of `delineate-watershed` and `generate-hydrograph` do not
-change.
+In Sieć the person sets the rainfall of the network (step „Sieć”) and gives each
+Muskingum-Cunge reach its section (Manning's n, width) before the network is routed; Sieć
+lays the network out from its structure. The hand-offs of `delineate-watershed` and
+`generate-hydrograph` do not change.
 
 The pin: Hydrolog `930915d` (Nogat's release set candidate-3, `b0ac85b`) has the
 `description` (and `position`) of every node in `hydrolog-network/1`, which a network's

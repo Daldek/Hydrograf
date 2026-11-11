@@ -656,14 +656,16 @@ Every element is measured from its cells by the functions of `core/cell_paramete
 | Value | Source |
 |---|---|
 | `length_km` | (fd(upper end) − fd(lower end)) / 1000, fd from `04b_stream_distance` (the graph's `outlet_flow_dist_m` at junctions) |
-| `slope_m_per_m` | fall of the NMT (`01_dem`) between the two end cells / length; `MIN_REACH_SLOPE_M_PER_M` = 0.0001 where it is not positive (`slope_method` `minimum`, notice `reach_slope_minimum`) |
+| `slope_m_per_m` | fall of the NMT (`01_dem`) between the two end cells / length; `MIN_REACH_SLOPE_M_PER_M` = 0.0001 where it is not positive (`slope_method` `minimum`) |
 | `vector_length_km` | check length: the reach's D8 line sampled every `REACH_SAMPLE_M` (10 m), each sample on its nearest `bdot_streams` line within `BDOT_BUFFER_M` (25 m); null when a sample has none |
 
 No cross-section: Hydrolog's Muskingum–Cunge needs Manning's n and a width, which the person gives in Hydrolog.
 
+A reach shorter than `SHORT_REACH_M` (200 m) or of the minimum slope is a notice `reach_short_or_flat` (D10a), in the preview too (its slope from the NMT at the same end cells): Muskingum–Cunge may find no division of it that keeps its weights non-negative at a usable time step (Hydrolog's `unstable_timestep`). A reach from a point into a confluence carries `move_to`, the outlet cell of the last unit above the confluence on its branch (the end of its przyrzecze; in the preview the cell of the largest accumulation of that unit within two cells of the junction): the point placed there is at the mouth (D3). A reach of the minimum slope is handed off as a lag of `lag_min` = max(1, round(1000 · `length_km` / 0.5 / 60)) min.
+
 ### 7.7 The hand-off (D14)
 
-`build_network_handoff` writes one `nogat-handoff/1` around one `hydrolog-network/1`: the nodes in the order of 7.2, each with a Polish `description`; subcatchments with the `watershed` of their morphometry (the area exact to the cell, so they sum to A) and the `curve-number` runoff with Hydrolog's defaults; Muskingum–Cunge reaches with length and slope and no section; junctions; `OUT`. No rainfall, time step or result. `provenance.watershed` names A's snapped place and `threshold_m2`, `node_provenance` the origin of every subcatchment, reach and junction (`docs/integrations/HYDROLOG.md`).
+`build_network_handoff` writes one `nogat-handoff/1` around one `hydrolog-network/1`: the nodes in the order of 7.2, each with a Polish `description`; subcatchments with the `watershed` of their morphometry (the area exact to the cell, so they sum to A) and the `curve-number` runoff with Hydrolog's defaults; Muskingum–Cunge reaches with length and slope and no section, a reach of the minimum slope a `lag` (`node_provenance`: its length and slope, `method_reason` `flat`); junctions; `OUT`. No rainfall, time step or result. `provenance.watershed` names A's snapped place and `threshold_m2`, `node_provenance` the origin of every subcatchment, reach and junction (`docs/integrations/HYDROLOG.md`).
 
 ### 7.8 The preview on the catchment graph (ADR-081)
 

@@ -1,7 +1,14 @@
 # ADR-081: The network composed on the catchment graph, its characteristics on confirmation
 
 **Date:** 2026-11-11
-**Status:** accepted (the author's design of 2026-11-11; the details by delegation)
+**Status:** accepted (the author's design of 2026-11-11; the details by delegation); amended
+2026-11-11 (the notices of short and flat reaches)
+
+> **Amended 2026-11-11 (ADR-080, D10a):** the preview also gives the full run's notices
+> `reach_short_or_flat` (a reach shorter than 200 m or of the minimum slope, with `move_to` and
+> `lag_min`): it samples the NMT at the end cells of each reach, the junctions at the ends of the
+> stream lines it draws, and finds the outlet cell of a branch above its confluence in a window of
+> two cells of the rasters around the junction. The map's „Przesuń P… do zbiegu” acts on them.
 
 ## Context
 

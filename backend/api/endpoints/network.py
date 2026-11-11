@@ -25,10 +25,10 @@ from sqlalchemy.orm import Session
 from api.errors import problem_responses
 from core import network_delineation, network_preview
 from core.catchment_graph import loaded_catchment_graph
-from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2
+from core.constants import DEFAULT_THRESHOLD_M2, HYDROGRAPH_AREA_LIMIT_KM2, M_PER_KM
 from core.database import get_db
 from core.errors import HydrografError, InternalError, StoreUnavailableError
-from core.handoff import build_network_handoff
+from core.handoff import build_network_handoff, flat_reach_lag_min
 from models.schemas import (
     DelineateNetworkPreviewResponse,
     DelineateNetworkRequest,
@@ -36,12 +36,14 @@ from models.schemas import (
     NetworkAreaCheck,
     NetworkJunctionInfo,
     NetworkNotice,
+    NetworkPlace,
     NetworkPoint,
     NetworkPointInfo,
     NetworkPreviewPointInfo,
     NetworkPreviewReachInfo,
     NetworkPreviewSubcatchmentInfo,
     NetworkReachInfo,
+    NetworkReachNotice,
     NetworkSubcatchmentInfo,
 )
 from utils.geometry import transform_geometry_pl1992_to_wgs84, transform_wgs84_to_pl1992
@@ -171,24 +173,15 @@ def _response(
     boundary = transform_geometry_pl1992_to_wgs84(network.boundary_2180)
     if boundary.geom_type == "Polygon":
         boundary = MultiPolygon([boundary])
-    notices = [
-        NetworkNotice(code=code, ids=ids)
-        for code, ids in (
-            (
-                "over_scs_cn_limit",
-                [
-                    e.subcatchment.id
-                    for e in network.subcatchments
-                    if not e.watershed.hydrograph_available
-                ],
-            ),
-            (
-                "reach_slope_minimum",
-                [r.reach.id for r in network.reaches if r.slope_method == "minimum"],
-            ),
-        )
-        if ids
+    over_limit = [
+        e.subcatchment.id
+        for e in network.subcatchments
+        if not e.watershed.hydrograph_available
     ]
+    notices = (
+        [NetworkNotice(code="over_scs_cn_limit", ids=over_limit)] if over_limit else []
+    )
+    notices += _reach_notices(network.reach_notices)
     return DelineateNetworkResponse(
         threshold_m2=network.threshold_m2,
         unit_threshold_m2=DEFAULT_THRESHOLD_M2,
@@ -337,7 +330,35 @@ def _preview_response(
             )
             for item in preview.junctions
         ],
-        notices=[NetworkNotice(code="over_scs_cn_limit", ids=over_limit)]
-        if over_limit
-        else [],
+        notices=(
+            [NetworkNotice(code="over_scs_cn_limit", ids=over_limit)]
+            if over_limit
+            else []
+        )
+        + _reach_notices(preview.reach_notices),
     )
+
+
+def _reach_notices(
+    items: tuple[network_delineation.ReachNotice, ...],
+) -> list[NetworkNotice]:
+    """One notice per reach shorter than 200 m or of the minimum slope (D10a)."""
+    return [
+        NetworkNotice(
+            code="reach_short_or_flat",
+            ids=[item.reach],
+            reach=NetworkReachNotice(
+                length_m=item.length_m,
+                slope_minimum=item.slope_minimum,
+                upper_point=item.upper_point,
+                lower=item.lower,
+                move_to=None
+                if item.move_to is None
+                else NetworkPlace(latitude=item.move_to[0], longitude=item.move_to[1]),
+                lag_min=flat_reach_lag_min(item.length_m / M_PER_KM)
+                if item.slope_minimum
+                else None,
+            ),
+        )
+        for item in items
+    ]

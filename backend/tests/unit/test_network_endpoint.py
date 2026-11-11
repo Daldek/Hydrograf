@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from hydrolog.operations import route_schematic
+from hydrolog.operations import route_network, route_schematic
 from hydrolog.routing.document import read_network
 from jsonschema import Draft202012Validator
 
@@ -45,7 +45,7 @@ from tests.fixtures.pipeline_run import (
     run_pipeline,
     soil_layout,
 )
-from utils.geometry import transform_pl1992_to_wgs84
+from utils.geometry import transform_pl1992_to_wgs84, transform_wgs84_to_pl1992
 
 _ROOT = Path(__file__).resolve().parents[3]
 ENVELOPE = Draft202012Validator(
@@ -327,29 +327,160 @@ class TestTheResponse:
         assert reach["geojson"]["geometry"]["type"] == "LineString"
         assert mouths["notices"] == []
 
-    def test_a_reach_of_the_minimum_slope_is_a_notice(self, client, run, monkeypatch):
-        real = core.network_delineation._measure_reach
 
-        def flat_first_reach(grid, cg, db, nmt, reach):
-            measured = real(grid, cg, db, nmt, reach)
-            if reach.id != "R1":
-                return measured
-            return replace(
-                measured, slope_m_per_m=MIN_REACH_SLOPE_M_PER_M, slope_method="minimum"
-            )
+# A point on T2 ten cells (100 m) above its mouth: beyond the mouth rule's 50 m, so
+# its subcatchment reaches the confluence by a reach of some 100 m
+T2_ABOVE_THE_MOUTH = (123, 96)
 
-        monkeypatch.setattr(
-            core.network_delineation, "_measure_reach", flat_first_reach
+
+def above_a_confluence(run):
+    """P1 and P3 at their mouths, P2 100 m up T2."""
+    body = at_the_mouths(run)
+    body["points"][1] = point(run, "P2", T2_ABOVE_THE_MOUTH)
+    return body
+
+
+def flat(reach_id):
+    """A _measure_reach that gives the reach the minimum slope, as a flat NMT does."""
+    real = core.network_delineation._measure_reach
+
+    def measure(grid, cg, db, nmt, reach):
+        measured = real(grid, cg, db, nmt, reach)
+        if reach.id != reach_id:
+            return measured
+        return replace(
+            measured, slope_m_per_m=MIN_REACH_SLOPE_M_PER_M, slope_method="minimum"
         )
+
+    return measure
+
+
+def reach_notices(body):
+    return {
+        n["ids"][0]: n["reach"]
+        for n in body["notices"]
+        if n["code"] == "reach_short_or_flat"
+    }
+
+
+class TestShortAndFlatReaches:
+    """D10a: a reach shorter than 200 m or of the minimum slope is a notice."""
+
+    def test_a_point_100_m_above_a_confluence_gets_its_move_to_the_mouth(
+        self, client, run
+    ):
+        response = client.post(URL, json=above_a_confluence(run))
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        p2 = next(p for p in body["points"] if p["id"] == "P2")
+        assert p2["at_mouth"] is False
+        reach = next(r for r in body["reaches"] if r["from"] == p2["node"])
+        junction = next(j for j in body["junctions"] if j["id"] == reach["to"])
+        assert junction["kind"] == "confluence"
+        notice = reach_notices(body)[reach["id"]]
+        assert notice["length_m"] == pytest.approx(reach["length_km"] * 1000)
+        assert 50 < notice["length_m"] < 200
+        assert notice["upper_point"] == "P2"
+        assert notice["lower"] == junction["id"]
+        assert notice["slope_minimum"] is False
+        assert notice["lag_min"] is None
+        # The cell above the confluence on T2, one cell from the junction's
+        assert notice["move_to"] is not None
+        assert run_cell(notice["move_to"]) == T2_MOUTH
+
+    def test_the_point_moved_there_enters_the_confluence_without_a_reach(
+        self, client, run
+    ):
+        first = client.post(URL, json=above_a_confluence(run)).json()
+        reach_id = next(
+            r for r in first["reaches"] if r["from"] == first["points"][2]["node"]
+        )["id"]
+        move_to = reach_notices(first)[reach_id]["move_to"]
+        body = above_a_confluence(run)
+        body["points"][1].update(move_to)
+
+        response = client.post(URL, json=body)
+
+        assert response.status_code == 200, response.text
+        moved = response.json()
+        p2 = next(p for p in moved["points"] if p["id"] == "P2")
+        assert p2["at_mouth"] is True
+        assert not [r for r in moved["reaches"] if r["from"] == p2["node"]]
+        assert reach_notices(moved) == {}
+
+    def test_a_flat_reach_is_a_notice_and_a_lag_in_the_handoff(
+        self, client, run, monkeypatch
+    ):
+        monkeypatch.setattr(core.network_delineation, "_measure_reach", flat("R1"))
 
         response = client.post(URL, json=at_the_mouths(run))
 
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["notices"] == [{"code": "reach_slope_minimum", "ids": ["R1"]}]
-        r1 = next(n for n in body["handoff"]["payload"]["nodes"] if n["id"] == "R1")
-        assert r1["slope_m_per_m"] == MIN_REACH_SLOPE_M_PER_M
-        assert body["handoff"]["node_provenance"]["R1"]["node"]["slope"] == "minimum"
+        r1 = next(r for r in body["reaches"] if r["id"] == "R1")
+        lag_min = max(1, round(r1["length_km"] * 1000 / 0.5 / 60))
+        # R1 runs from confluence J1 to confluence J2: no point to move
+        assert reach_notices(body) == {
+            "R1": {
+                "length_m": pytest.approx(r1["length_km"] * 1000),
+                "slope_minimum": True,
+                "upper_point": None,
+                "lower": "J2",
+                "move_to": None,
+                "lag_min": lag_min,
+            }
+        }
+        handoff = body["handoff"]
+        node = next(n for n in handoff["payload"]["nodes"] if n["id"] == "R1")
+        assert node["method"] == "lag"
+        assert node["lag_min"] == lag_min
+        assert node["from"] == ["J1"]
+        assert "Opóźnienie" in node["description"]
+        origin = handoff["node_provenance"]["R1"]["node"]
+        assert origin["slope"] == "minimum"
+        assert origin["method"] == "lag"
+        assert origin["method_reason"] == "flat"
+        assert origin["length_km"] == r1["length_km"]
+        assert [e.message for e in ENVELOPE.iter_errors(handoff)] == []
+        assert [e.message for e in NETWORK.iter_errors(handoff["payload"])] == []
+
+    def test_hydrolog_routes_a_handoff_with_a_lag_once_given_rainfall_and_sections(
+        self, client, run, monkeypatch
+    ):
+        monkeypatch.setattr(core.network_delineation, "_measure_reach", flat("R1"))
+        payload = client.post(URL, json=at_the_mouths(run)).json()["handoff"]["payload"]
+        completed = {
+            **payload,
+            "timestep_min": 5,
+            "rainfall": {
+                "kind": "design",
+                "hietogram_type": "block",
+                "total_mm": 60.0,
+                "duration_min": 120.0,
+            },
+            "nodes": [
+                {**n, "manning_n": 0.04, "bottom_width_m": 5.0}
+                if n.get("method") == "muskingum-cunge"
+                else n
+                for n in payload["nodes"]
+            ],
+        }
+
+        routed = route_network(network=completed).result.to_dict()
+
+        peaks = {n["id"]: n["peak_m3s"] for n in routed["nodes"]}
+        assert peaks["OUT"] > 0
+        assert peaks["R1"] == pytest.approx(peaks["J1"], rel=0.05)
+
+
+def run_cell(place):
+    """The cell of the grid that a place of a response lies in, (row, column)."""
+    xy = transform_wgs84_to_pl1992(place["latitude"], place["longitude"])
+    return (
+        int((NETWORK_Y1 - xy.y) // NETWORK_CELL_M),
+        int((xy.x - NETWORK_X0) // NETWORK_CELL_M),
+    )
 
 
 class TestProblems:

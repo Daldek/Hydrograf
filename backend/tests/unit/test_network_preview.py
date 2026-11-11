@@ -143,6 +143,12 @@ NETWORKS = {
         (190, 85),
         {"P1": (123, 110), "P2": T3_MOUTH},
     ),
+    # A point 100 m up a tributary, beyond the mouth rule: a short reach to the
+    # confluence, with the move of the point to its mouth
+    "a point 100 m above its confluence": (
+        OUTLET,
+        {"P1": T1_MOUTH, "P2": (123, 96), "P3": T3_MOUTH},
+    ),
 }
 
 
@@ -225,6 +231,11 @@ class TestThePreviewIsTheNetworkOfTheFullRun:
         assert {r["id"]: r["length_km"] for r in preview["reaches"]} == {
             r["id"]: r["length_km"] for r in full["reaches"]
         }
+
+    def test_its_notices_are_those_of_the_full_run(self, client, run, network):
+        full, preview = full_and_preview(client, request(run, network[0], **network[1]))
+
+        assert preview["notices"] == full["notices"]
 
 
 class TestTheOutlines:
@@ -332,7 +343,30 @@ class TestComposition:
 
         large = [s["id"] for s in preview["subcatchments"] if s["area_km2"] > 0.5]
         assert large
-        assert preview["notices"] == [{"code": "over_scs_cn_limit", "ids": large}]
+        assert preview["notices"] == [
+            {"code": "over_scs_cn_limit", "ids": large, "reach": None}
+        ]
+
+    def test_a_flat_reach_is_a_notice_with_the_lag_of_the_handoff(
+        self, client, run, monkeypatch
+    ):
+        outlet, points = NETWORKS["at the mouths"]
+        monkeypatch.setattr(
+            core.network_preview,
+            "reach_slope",
+            lambda *_args: (0.0001, "minimum", None, None),
+        )
+
+        preview = client.post(PREVIEW, json=request(run, outlet, **points)).json()
+
+        notices = {n["ids"][0]: n["reach"] for n in preview["notices"]}
+        assert set(notices) == {r["id"] for r in preview["reaches"]}
+        for reach in preview["reaches"]:
+            notice = notices[reach["id"]]
+            assert notice["slope_minimum"] is True
+            assert notice["lag_min"] == max(
+                1, round(reach["length_km"] * 1000 / 0.5 / 60)
+            )
 
     def test_any_other_failure_is_a_failed_preview(self, client, run, monkeypatch):
         def broken(*_args, **_kwargs):

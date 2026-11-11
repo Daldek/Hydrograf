@@ -2,7 +2,8 @@
 
 **Date:** 2026-11-10
 **Status:** accepted (the author's decisions B1 to B7 of 2026-11-10; the details by delegation);
-amended 2026-11-11 (the mouth rule at every junction; the preview of ADR-081)
+amended 2026-11-11 (the mouth rule at every junction; the preview of ADR-081; short and flat
+reaches, D10a)
 
 > **Amended 2026-11-11 (the coordinator, after the smoke S5):** the mouth rule of decision 2
 > applies wherever the paths of two control points merge, at every junction, not only where a
@@ -19,6 +20,21 @@ amended 2026-11-11 (the mouth rule at every junction; the preview of ADR-081)
 > every change of the points, and runs this delineation on „Oblicz charakterystyki” (formerly
 > „Wyznacz sieć”); only its result gives the parameters and the hand-off (decision 8), and a
 > change of the points makes it stale.
+
+> **Amended 2026-11-11 (the coordinator, after the author's report on kaczawa2; D10a):** a point
+> 50.4 m above the confluence where another point's tributary joins made a reach of 50 m at the
+> minimum slope (the NMT rose 400.11 → 400.58 m) and a przyrzecze of 0.0012 km², which Hydrolog's
+> Muskingum-Cunge refuses at any time step (`unstable_timestep`: no division of the reach keeps its
+> weights non-negative). The points still move only by the 50 m mouth rule; instead the preview
+> and the full run give the notice `reach_short_or_flat` for every reach shorter than 200 m
+> (`SHORT_REACH_M`) or of the minimum slope, the preview with the full run's slope (the NMT at
+> the same end cells). A reach from a point into a confluence carries `move_to`, the outlet cell
+> of the last unit above the confluence on its branch, and the map mode offers „Przesuń P… do
+> zbiegu”: the point goes there, the preview runs again and the mouth rule takes it into the
+> confluence without the reach. The hand-off keeps short reaches, but a reach of the minimum slope
+> is written as `method: "lag"` with `lag_min` = max(1, round(length / 0.5 m/s / 60)), its
+> length and slope in `node_provenance` with `method: "lag"` and `method_reason: "flat"`, since
+> Muskingum-Cunge cannot route a flat reach. The notice `reach_slope_minimum` is replaced.
 
 ## Context
 

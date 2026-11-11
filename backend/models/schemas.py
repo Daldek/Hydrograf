@@ -703,15 +703,51 @@ class NetworkJunctionInfo(BaseModel):
     )
 
 
+class NetworkPlace(BaseModel):
+    """A place on the map."""
+
+    latitude: float = Field(..., description="WGS84 [°]")
+    longitude: float = Field(..., description="WGS84 [°]")
+
+
+class NetworkReachNotice(BaseModel):
+    """A reach shorter than 200 m or of the minimum slope (reach_short_or_flat)."""
+
+    length_m: float = Field(..., gt=0, description="Its length [m]")
+    slope_minimum: bool = Field(
+        ..., description="Its NMT does not fall: its slope is the minimum, 0.0001"
+    )
+    upper_point: str | None = Field(
+        None, description="The point at its upper end; null at a confluence"
+    )
+    lower: str = Field(..., description="The junction it flows into")
+    move_to: NetworkPlace | None = Field(
+        None,
+        description="The centre of the cell above that junction on the reach's "
+        "branch: the upper point placed there is at the mouth and enters the "
+        "junction directly, with no reach. Only from a point into a confluence",
+    )
+    lag_min: int | None = Field(
+        None,
+        description="The lag the hand-off routes a reach of the minimum slope by, "
+        "max(1, round(length / 0.5 m/s / 60)) [min]: Muskingum-Cunge cannot route "
+        "a flat reach. Null for a reach that falls",
+    )
+
+
 class NetworkNotice(BaseModel):
     """Elements of a network that need the person's attention."""
 
-    code: Literal["over_scs_cn_limit", "reach_slope_minimum"] = Field(
+    code: Literal["over_scs_cn_limit", "reach_short_or_flat"] = Field(
         ...,
         description="over_scs_cn_limit: subcatchments above 250 km2; "
-        "reach_slope_minimum: reaches whose NMT does not fall",
+        "reach_short_or_flat: one reach shorter than 200 m or whose NMT does not "
+        "fall, which Muskingum-Cunge may not route",
     )
     ids: list[str] = Field(..., min_length=1, description="The ids of the elements")
+    reach: NetworkReachNotice | None = Field(
+        None, description="The reach of reach_short_or_flat"
+    )
 
 
 class DelineateNetworkResponse(BaseModel):
@@ -733,7 +769,9 @@ class DelineateNetworkResponse(BaseModel):
     reaches: list[NetworkReachInfo] = Field(...)
     junctions: list[NetworkJunctionInfo] = Field(...)
     notices: list[NetworkNotice] = Field(
-        ..., description="Subcatchments above 250 km2, reaches of the minimum slope"
+        ...,
+        description="Subcatchments above 250 km2, reaches shorter than 200 m or of "
+        "the minimum slope",
     )
     handoff: dict[str, Any] = Field(
         ...,
@@ -820,7 +858,9 @@ class DelineateNetworkPreviewResponse(BaseModel):
     reaches: list[NetworkPreviewReachInfo] = Field(...)
     junctions: list[NetworkJunctionInfo] = Field(...)
     notices: list[NetworkNotice] = Field(
-        ..., description="Subcatchments above 250 km2 (over_scs_cn_limit)"
+        ...,
+        description="Subcatchments above 250 km2, reaches shorter than 200 m or of "
+        "the minimum slope (the slope from the NMT at the ends, as the full run's)",
     )
 
 

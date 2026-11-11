@@ -28,6 +28,7 @@ import time
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import numba
 import numpy as np
@@ -40,14 +41,20 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from core.catchment_graph import CatchmentGraph
+from core.cell_parameters import PipelineRasters
 from core.config import Settings, get_settings
 from core.constants import DEFAULT_THRESHOLD_M2, M2_PER_KM2, M_PER_KM
 from core.network_delineation import (
     Click,
     NetworkJunction,
     NetworkPoint,
+    ReachNotice,
+    is_short_or_flat,
     open_network_rasters,
+    reach_notice,
+    reach_slope,
     snap_point,
+    unit_outlet_near,
 )
 from core.network_tree import (
     NetworkTree,
@@ -174,6 +181,9 @@ class NetworkPreview:
         ``J1``, ``J2``, …
     order : tuple[str, ...]
         The nodes in the order of the full run's hand-off, ``OUT`` last.
+    reach_notices : tuple[ReachNotice, ...]
+        The reaches shorter than SHORT_REACH_M or of the minimum slope, as the full
+        run gives them: the slope from the NMT at the same end cells.
     """
 
     threshold_m2: int
@@ -183,6 +193,7 @@ class NetworkPreview:
     reaches: tuple[PreviewReach, ...]
     junctions: tuple[NetworkJunction, ...]
     order: tuple[str, ...]
+    reach_notices: tuple[ReachNotice, ...]
 
 
 class UnitIndex:
@@ -250,14 +261,23 @@ def preview_network(
         ``network_rasters_missing``, ``raster_grids_differ``.
     """
     started = time.perf_counter()
-    with open_network_rasters(settings or get_settings()) as (rasters, _nmt):
+    with open_network_rasters(settings or get_settings()) as (rasters, nmt):
         snapped = [
             snap_point(rasters, cg, click, threshold_m2) for click in (outlet, *points)
         ]
         transform = rasters.filled_dem.transform
         cellsize_m = rasters.cellsize_m
-    tree = build_network_tree(cg, snapped[0], snapped[1:])
-    index = UnitIndex(tree)
+        tree = build_network_tree(cg, snapped[0], snapped[1:])
+        index = UnitIndex(tree)
+        reach_units = {reach.id: _reach_units(index, reach) for reach in tree.reaches}
+        vertices = _stream_lines(
+            cg,
+            db,
+            {unit for units in reach_units.values() for unit in units}
+            | {j.place.above for j in tree.junctions if isinstance(j.place, UnitHead)},
+        )
+        lengths = {reach.id: _length_km(cg, reach) for reach in tree.reaches}
+        notices = _reach_notices(tree, lengths, rasters, nmt, cg, vertices, transform)
     built = time.perf_counter()
 
     cell_km2 = cellsize_m * cellsize_m / M2_PER_KM2
@@ -286,13 +306,6 @@ def preview_network(
     outlines = element_outlines(cg, db, nodes, elements)
     outlined = time.perf_counter()
 
-    reach_units = {reach.id: _reach_units(index, reach) for reach in tree.reaches}
-    vertices = _stream_lines(
-        cg,
-        db,
-        {unit for units in reach_units.values() for unit in units}
-        | {j.place.above for j in tree.junctions if isinstance(j.place, UnitHead)},
-    )
     approximate = {
         number for split in tree.splits for _, number in split.outlets if number > 0
     }
@@ -319,7 +332,7 @@ def preview_network(
         reaches=tuple(
             PreviewReach(
                 reach=reach,
-                length_km=_length_km(cg, reach),
+                length_km=lengths[reach.id],
                 line_2180=_reach_line(
                     reach, reach_units[reach.id], vertices, transform
                 ),
@@ -333,10 +346,11 @@ def preview_network(
             for junction in tree.junctions
         ),
         order=tree.order,
+        reach_notices=notices,
     )
     logger.info(
         "Network preview: %d points, %d units and %d elements in %.3f s (the tree "
-        "%.3f s, the outlines of %d polygons %.3f s)",
+        "and its reaches %.3f s, the outlines of %d polygons %.3f s)",
         len(tree.points),
         tree.units.size,
         len(tree.subcatchments),
@@ -655,6 +669,46 @@ def _lat_lon(xy: tuple[float, float]) -> tuple[float, float]:
     """Latitude and longitude of a place given in EPSG:2180."""
     lon, lat = transform_pl1992_to_wgs84(*xy)
     return lat, lon
+
+
+def _reach_notices(
+    tree: NetworkTree,
+    lengths: dict[str, float | None],
+    rasters: PipelineRasters,
+    nmt: Any,
+    cg: CatchmentGraph,
+    vertices: dict[int, np.ndarray],
+    transform: Affine,
+) -> tuple[ReachNotice, ...]:
+    """Return the reaches shorter than SHORT_REACH_M or of the minimum slope (D10a).
+
+    The slope is the full run's: the NMT at the centres of the end cells (a
+    junction's at the end of the stream line of the unit above it) over the length.
+    """
+    junctions = {j.id: j for j in tree.junctions}
+    found = []
+    for reach in tree.reaches:
+        length_km = lengths[reach.id]
+        if length_km is None:
+            continue
+        _, method, _, _ = reach_slope(
+            nmt,
+            _junction_xy(reach.upper, vertices, transform),
+            _junction_xy(reach.lower, vertices, transform),
+            length_km,
+        )
+        if not is_short_or_flat(length_km, method):
+            continue
+        near = _junction_xy(junctions[reach.to].place, vertices, transform)
+
+        def outlet_lat_lon(
+            unit: int, near: tuple[float, float] = near
+        ) -> tuple[float, float] | None:
+            cell = unit_outlet_near(rasters, cg, unit, near)
+            return None if cell is None else _lat_lon(_centre(transform, cell))
+
+        found.append(reach_notice(tree, reach, length_km, method, outlet_lat_lon))
+    return tuple(found)
 
 
 def _network_point(transform: Affine, point: PointNode, click: Click) -> NetworkPoint:

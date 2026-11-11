@@ -21,7 +21,7 @@ BDOT10k lines (D10). No flow directions are computed: the rasters are the pipeli
 import logging
 import math
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Literal
@@ -113,6 +113,9 @@ NETWORK_MAX_WINDOW_CELLS = 60_000_000
 # The slope of a reach whose NMT does not fall (D10): Hydrolog refuses a slope that
 # is not positive [m/m]
 MIN_REACH_SLOPE_M_PER_M = 0.0001
+# A reach shorter than this is a notice (ADR-080, D10a): Muskingum-Cunge may find no
+# division of it that keeps its weights non-negative at a usable time step [m]
+SHORT_REACH_M = 200.0
 # Tolerance of the simplification of the coverage of the elements (D9) [m]
 COVERAGE_TOLERANCE_M = 5.0
 # Spacing of the samples of a reach's line for its BDOT10k check length (D10) [m]
@@ -246,6 +249,37 @@ class NetworkJunction:
 
 
 @dataclass(frozen=True)
+class ReachNotice:
+    """A reach shorter than SHORT_REACH_M or of the minimum slope (D10a).
+
+    Attributes
+    ----------
+    reach : str
+        Its id.
+    length_m : float
+        Its length [m].
+    slope_minimum : bool
+        Its NMT does not fall: its slope is MIN_REACH_SLOPE_M_PER_M.
+    upper_point : str or None
+        The control point at its upper end; None at a confluence.
+    lower : str
+        The junction it flows into.
+    move_to : tuple[float, float] or None
+        Latitude and longitude of the centre of the cell above that junction on the
+        reach's branch (WGS84): the upper point placed there is at the mouth (D3) and
+        enters the junction directly. None unless the upper end is a control point
+        and the junction a confluence.
+    """
+
+    reach: str
+    length_m: float
+    slope_minimum: bool
+    upper_point: str | None
+    lower: str
+    move_to: tuple[float, float] | None
+
+
+@dataclass(frozen=True)
 class Network:
     """A network of subcatchments, reaches and junctions (ADR-080).
 
@@ -270,6 +304,8 @@ class Network:
         ``J1``, ``J2``, …
     order : tuple[str, ...]
         The nodes in the order of D15, the outlet ``OUT`` last.
+    reach_notices : tuple[ReachNotice, ...]
+        The reaches shorter than SHORT_REACH_M or of the minimum slope (D10a).
     """
 
     threshold_m2: int
@@ -281,6 +317,7 @@ class Network:
     reaches: tuple[NetworkReach, ...]
     junctions: tuple[NetworkJunction, ...]
     order: tuple[str, ...]
+    reach_notices: tuple[ReachNotice, ...]
 
 
 def delineate_network(
@@ -393,6 +430,17 @@ def delineate_network(
                 for junction in tree.junctions
             ),
             order=tree.order,
+            reach_notices=tuple(
+                reach_notice(
+                    tree,
+                    item.reach,
+                    item.length_km,
+                    item.slope_method,
+                    lambda unit: _lat_lon(grid, grid.cell_of(UnitOutlet(unit))),
+                )
+                for item in reaches
+                if is_short_or_flat(item.length_km, item.slope_method)
+            ),
         )
 
 
@@ -1249,6 +1297,113 @@ def _centroid_flow_path_km(
     return round((distance - baseline) / M_PER_KM, 4)
 
 
+def reach_slope(
+    nmt: Any,
+    upper_xy: tuple[float, float],
+    lower_xy: tuple[float, float],
+    length_km: float,
+) -> tuple[float, Literal["nmt", "minimum"], float | None, float | None]:
+    """Return the slope of a reach from the NMT at the centres of its end cells (D10).
+
+    Returns
+    -------
+    tuple
+        The slope [m/m], ``nmt`` or ``minimum`` (MIN_REACH_SLOPE_M_PER_M where the
+        NMT does not fall or has no data), and the NMT at the upper and the lower
+        end [m], None without data.
+    """
+    up, down = (
+        None if value == nmt.nodata else round(float(value), 2)
+        for (value,) in nmt.sample([upper_xy, lower_xy])
+    )
+    slope = (
+        round((up - down) / (length_km * M_PER_KM), 6)
+        if up is not None and down is not None
+        else 0.0
+    )
+    if slope <= 0:
+        return MIN_REACH_SLOPE_M_PER_M, "minimum", up, down
+    return slope, "nmt", up, down
+
+
+def is_short_or_flat(length_km: float | None, slope_method: str | None) -> bool:
+    """Tell a reach shorter than SHORT_REACH_M or of the minimum slope (D10a)."""
+    short = length_km is not None and length_km * M_PER_KM < SHORT_REACH_M
+    return short or slope_method == "minimum"
+
+
+def reach_notice(
+    tree: NetworkTree,
+    reach: Reach,
+    length_km: float,
+    slope_method: str | None,
+    outlet_lat_lon: Callable[[int], tuple[float, float] | None],
+) -> ReachNotice:
+    """Return the notice of a reach shorter than SHORT_REACH_M or flat (D10a).
+
+    Parameters
+    ----------
+    tree : NetworkTree
+        The tree of the reach.
+    reach : Reach
+        The reach.
+    length_km : float
+        Its length [km].
+    slope_method : {"nmt", "minimum"} or None
+        Where its slope comes from; None when unknown.
+    outlet_lat_lon : Callable
+        The latitude and longitude of the outlet cell of a unit, None when not found.
+
+    Returns
+    -------
+    ReachNotice
+        The notice; ``move_to`` is the outlet cell of the last unit of the reach's
+        branch above its junction, where its przyrzecze ends, when the reach runs
+        from a control point into a confluence: the point placed there is at the
+        mouth (D3), so the reach and its przyrzecze disappear.
+    """
+    lower = next(j for j in tree.junctions if j.id == reach.to)
+    points = {s.id: s.point for s in tree.subcatchments}
+    points.update({j.id: j.point for j in tree.junctions})
+    upper_point = points.get(reach.from_node)
+    end = next((s.outlet for s in tree.subcatchments if s.reach == reach.id), None)
+    move_to = (
+        outlet_lat_lon(end.unit)
+        if upper_point is not None
+        and lower.kind == "confluence"
+        and isinstance(end, UnitOutlet)
+        else None
+    )
+    return ReachNotice(
+        reach=reach.id,
+        length_m=round(length_km * M_PER_KM, 1),
+        slope_minimum=slope_method == "minimum",
+        upper_point=upper_point,
+        lower=lower.id,
+        move_to=move_to,
+    )
+
+
+def unit_outlet_near(
+    rasters: PipelineRasters, cg: CatchmentGraph, unit: int, xy: tuple[float, float]
+) -> tuple[int, int] | None:
+    """Return the outlet cell of a unit within two cells of a place, None if none.
+
+    The outlet cell of a unit is its cell of the largest accumulation, the cell
+    next to the head cell of the unit below at a junction.
+    """
+    window = cells_window(
+        rasters.filled_dem.transform, (*xy, *xy), 2 * rasters.cellsize_m
+    )
+    labels = read_window(rasters.labels, window).data
+    acc = read_window(rasters.acc, window).data
+    member = np.flatnonzero(labels.ravel() == cg.get_segment_idx(unit))
+    if member.size == 0:
+        return None
+    row, col = divmod(int(member[np.argmax(acc.ravel()[member])]), labels.shape[1])
+    return int(window.row_off) + row, int(window.col_off) + col
+
+
 def _measure_reach(
     grid: NetworkGrid, cg: CatchmentGraph, db: Session, nmt: Any, reach: Reach
 ) -> NetworkReach:
@@ -1271,19 +1426,9 @@ def _measure_reach(
             raise ValueError(f"Reach {reach.id} does not reach its lower end")
         cells.append(below)
     line = path_coords(cells, grid.cells.transform)
-    elevations = [
-        None if value == nmt.nodata else round(float(value), 2)
-        for (value,) in nmt.sample([grid.centre(upper), grid.centre(lower)])
-    ]
-    up, down = elevations
-    slope = (
-        round((up - down) / (length_km * M_PER_KM), 6)
-        if up is not None and down is not None
-        else 0.0
+    slope, method, up, down = reach_slope(
+        nmt, grid.centre(upper), grid.centre(lower), length_km
     )
-    method: Literal["nmt", "minimum"] = "nmt"
-    if slope <= 0:
-        slope, method = MIN_REACH_SLOPE_M_PER_M, "minimum"
     streams = [
         shapely.from_wkb(bytes(row.geom))
         for row in db.execute(
