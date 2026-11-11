@@ -162,10 +162,13 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     2026-11-11, the plan's Results), on production's data read only: both Kaczawa networks pass
     B5 to the cell and hand off to Hydrolog (`read_network`, `route schematic --structure-only`);
     240.3 km² in 8.1 s and 1.04 GB, 792.0 km² (58.6 M cells) in 24.2 s and 2.30 GB, above the
-    plan's 1 GB and 2 GB. Next: the coordinator decides on that memory (accept the measured
-    figures or cut the peak of the measures) and merges S3 and S4 into `develop` after the gate;
-    Nogat adds the registry edge of its D10 when S3 is in `develop`. No release is cut for this
-    work now; networks above 60 M cells stay refused.
+    plan's 1 GB and 2 GB. After S5 (the coordinator's decisions, 2026-11-11): the measures hold
+    neither the slope nor the labels of the window (`87bb51a`: 0.92 GB and 1.77 GB peak, 4.9 s
+    and 13.8 s on the same host, responses bit-equal), and the mouth rule applies at every
+    junction where the paths of two points merge (D3 and ADR-080 amended: network 2 loses its
+    reach of 34 m). Next: the coordinator merges S3 and S4 into `develop` after the gate; Nogat
+    adds the registry edge of its D10 when S3 is in `develop`. No release is cut for this work
+    now; networks above 60 M cells stay refused.
 11. **Production, at its next rebuild: land cover and soil groups beyond the boundary.** The basin
     of the tables and rasters (792.009 km²) holds 1.608 km² beyond the boundary, among them the
     block of 1.604 km² at 50.901 N 15.959 E, which has no `land_cover` or `soil_hsg` (cut to the
