@@ -334,6 +334,14 @@ For the edge from node n down to node m:
 - The line of the reach is the centres of its D8 cells (`path_coords`).
 - No section (B4); `"method": "muskingum-cunge"` in the hand-off.
 
+*Amended 2026-11-11 (ADR-080 D10a, after the author's report on kaczawa2):* a reach shorter than
+`SHORT_REACH_M` (200 m) or of the minimum slope gives the notice `reach_short_or_flat`, in the
+preview too, with `move_to` (the outlet cell of the last unit above the confluence on the point's
+branch) for a reach from a point into a confluence; a reach of the minimum slope is handed off as
+`"method": "lag"` with `lag_min` = max(1, round(1000 · `length_km` / 0.5 / 60)) and
+`method_reason` `"flat"` in `node_provenance` (D14), since Muskingum-Cunge cannot route it. The
+notice `reach_slope_minimum` is replaced.
+
 ### D11. The check of B5
 
 The cells of the elements (the element raster) must equal the cells of A's catchment counted from
@@ -424,6 +432,13 @@ constants (ADR-068):
 No `position`: Sieć lays a network without positions out from its structure (Hydrolog plan, D7,
 D8). The single-watershed hand-offs of `delineate-watershed` and `generate-hydrograph` do not
 change (Nogat D7).
+
+*Amended 2026-11-11 (ADR-080 amended: two kinds of subcatchment for the person; D10a):* a
+headwater is named as a tributary, „Dopływ do punktu P3 (name)”, „Dopływ do ujścia przy P3
+(name)”, without a point „Dopływ powyżej J1” and at A's junction „Dopływ do przekroju A (name)”;
+a confluence names the point at the top of its trunk, whose subcatchment the trunk brings directly
+or by its reach, before the points of its side branches („Zbieg: dopływ P1, dopływ P2”); a reach
+of the minimum slope is a `lag` (D10). The `element` `"headwater"` of `node_provenance` stays.
 
 ### D15. Ids and order
 
@@ -930,6 +945,21 @@ waits for the author's decision. Nogat added the registry edge of its D10 the sa
 step 4, `fa56e90`: Hydrograf → Hydrolog by `file` with `hydrolog-network/1`, and the route of
 `POST /api/delineate-network`), which closes its plan of `node_provenance`.
 
+**Short and flat reaches** (2026-11-11, `fix/short-reaches`, merged with `add1a9f`; D10 amended):
+the author's kaczawa2 network stopped in Hydrolog at a reach of 50.4 m of the minimum slope, P2
+50 m above the confluence where another point's tributary joins (the NMT rose 400.11 → 400.58 m),
+which Hydrolog's Muskingum-Cunge refuses at any time step (`unstable_timestep`). The notices and
+the lag of D10's amendment; the gate on `2aaca26`: 2,122 passed, 170 deselected, coverage
+86.98 %.
+
+**Two kinds of subcatchment for the person** (2026-11-11, the author's decision after reviewing
+kaczawa2; `feat/network-two-kinds`, merged with `a2e5d88`, and `fix/confluence-headwater-point`,
+merged with `eb3b7d4`; D14 amended): which of the headwater and the uppermost tributary of a
+junction is the headwater follows the larger upstream area, often not the river the person
+expects, and changes nothing in the computation; the map, its legend, the tree, the (i) and the
+hand-off's names know dopływ and przyrzecze, A's catchment is outlined only as a whole („Zlewnia
+A (całość)”), and the kind `headwater` of the API stays.
+
 **After the author's report on kaczawa2** (2026-11-11, `fix/network-tree-trunk`, D4 amended):
 the network of A at the confluence of the Nysa Szalona and the Kaczawa (51.15636° N, 16.07643° E,
 747.27 km²) with nine points, threshold 10 ha. A's trunk runs up the Nysa Szalona (430.72 km² at
@@ -946,7 +976,8 @@ to the cell (747.265675 km²), the preview equal to the full run (ids, kinds, ar
 lengths). The same points in 10 random orders and reversed gave the tree of the request's order
 both before and after: the order of the points was not the cause. No przyrzecze of the network
 holds a river larger than the one its reach brings to it (the largest such river: 28.75 km² into
-R1, which brings 123.86 km² there).
+R1, which brings 123.86 km² there). Merged with `15e72e8`; the gate on `cbe6ad2`: 2,133 passed,
+170 deselected, coverage 86.99 %.
 
 **A node at a confluence** (2026-11-11, `fix/network-node-confluence`, D3 and D5 amended): the
 author's network of A at the confluence of the Nysa Szalona and the Kaczawa with one point, P1,
@@ -964,7 +995,10 @@ junction at its mouth and A's own cells join the przyrzecze of the Kaczawa's rea
 (103.1775 → 103.1779 km²); 18 subcatchments, 8 reaches and 10 junctions (19, 9 and 10 before),
 the other elements as they were. Two units enter the cell of every junction of both networks,
 so the only river of D5 is the Kaczawa at A in the network of one point; the same points in 10
-random orders and reversed gave the same trees.
+random orders and reversed gave the same trees. Merged with `a46adb4`; the gate on `864f69d`, the
+same tree: 2,155 passed, 170 deselected, coverage 87.09 %. Hydroni (`127.0.0.1:8081`) and the
+review instance kaczawa2 (`127.0.0.1:8082`) run `a46adb4` since 2026-11-11 (their images rebuilt
+from it); production still runs `894810c` until the author has reviewed kaczawa2.
 
 ## Not in this plan
 

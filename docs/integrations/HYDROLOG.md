@@ -1,7 +1,7 @@
 # Integracja Hydrograf ↔ Hydrolog
 
 **Data utworzenia:** 2026-01-20
-**Ostatnia aktualizacja:** 2026-11-11 (Hydroni runs `930915d` with `develop` `824bebd`; 2026-11-10: the hand-off of a network, ADR-080; Hydrolog `930915d` of `develop`, the release set candidate-3 of Nogat; was `759d7ef` of candidate-2, before it `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production still runs)
+**Ostatnia aktualizacja:** 2026-11-11 (Hydroni and kaczawa2 run `930915d` with `develop` `a46adb4`; the names of the network hand-off after the two kinds of ADR-080, and Hydrolog's `3aab136`; 2026-11-10: the hand-off of a network, ADR-080; Hydrolog `930915d` of `develop`, the release set candidate-3 of Nogat; was `759d7ef` of candidate-2, before it `4fad769`, the TR-55 rows of Hydrograf's covers and water at CN 98, which production still runs)
 **Status:** ✅ Zaimplementowane (CP3+)
 
 ---
@@ -167,17 +167,21 @@ Nogat `8848c26` with the optional `node_provenance` (`schemas/nogat/README.md`).
   difference of the flow distances of its ends), `slope_m_per_m` (the NMT at its ends);
   no section. A reach whose NMT does not fall (slope 0.0001, „minimum”) is `method`
   `lag`, `from`, `lag_min` = max(1, round(1000 · `length_km` / 0.5 / 60)) instead (ADR-080
-  D10a): Hydrolog's Muskingum-Cunge refuses a flat reach at any time step
-  (`unstable_timestep`).
+  D10a): the pinned Hydrolog's Muskingum-Cunge refuses a flat reach at any time step
+  (`unstable_timestep`). Hydrolog's `develop` since `3aab136` (its ADR-0026) routes a reach
+  that Muskingum-Cunge cannot grid as linear reservoirs with the warning
+  `diffusion_dominated` instead; the pin `930915d` predates it.
 - **Junction** (`J…`): `from`, its inflows, the trunk first. **Outlet** `OUT`: `from` A's
   junction.
 - **Descriptions** (Polish, at most 500 characters; control characters but the line feed
-  become spaces): headwater „Zlewnia górna powyżej J1” or „Zlewnia górna do punktu P3
-  (name)”; tributary „Dopływ do punktu P1 (name)”, at its mouth „Dopływ do ujścia przy P1
-  (name)”; przyrzecze „Przyrzecze odcinka R1”, each followed by its area; reach „Odcinek od
+  become spaces): a headwater is named as a tributary (ADR-080, amended 2026-11-11: two
+  kinds for the person), „Dopływ do punktu P1 (name)”, at its mouth „Dopływ do ujścia przy
+  P1 (name)”, without a point „Dopływ powyżej J1” or, at A's junction, „Dopływ do przekroju
+  A (name)”; przyrzecze „Przyrzecze odcinka R1”, each followed by its area; reach „Odcinek od
   J1 do J2: 5,07 km, spadek 0,98 ‰ (NMT)” or „(minimalny)”, a lag followed by „Opóźnienie
   2 min (długość przy 0,5 m/s) zamiast Muskingum-Cunge, …”; junction „Zbieg: dopływ P1
-  (name), …” (the points of the branches that join it from the side,
+  (name), …” (the point at the top of its trunk, whose subcatchment the trunk brings directly
+  or by its reach, then the points of the branches that join it from the side,
   `Junction.tributaries`), „Punkt P3 (name)” or „Przekrój zamykający A (name)”.
 
 `node_provenance` has an entry for every subcatchment, reach and junction and none for

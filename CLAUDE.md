@@ -96,11 +96,12 @@ Tunnel (`cloudflared tunnel --url http://localhost:8080`).
 
 ```
 backend/                 # the Python project: pyproject.toml, uv.lock, .venv (not a package)
-├── api/                 # FastAPI: main.py, endpoints/ (watershed, hydrograph, tiles, profile,
-│                        #   depressions, feedback, health, admin), dependencies/ (admin key)
-├── core/                # business logic: watershed, catchment_graph, hydrology, morphometry,
-│                        #   cn_calculator, raster_service, sewer_*, config, database,
-│                        #   errors, messages (error texts), _errors (generated registry)
+├── api/                 # FastAPI: main.py, endpoints/ (watershed, network, hydrograph, tiles,
+│                        #   profile, identify, depressions, feedback, health, admin),
+│                        #   dependencies/ (admin key)
+├── core/                # business logic: watershed, catchment_graph, network_* (tree,
+│                        #   delineation, preview), handoff, hydrology, morphometry, cn_calculator,
+│                        #   raster_service, sewer_*, config, database, errors, messages, _errors
 ├── models/schemas.py    # Pydantic request and response models
 ├── scripts/             # preprocessing CLI (bootstrap.py is the orchestrator), README.md
 ├── utils/               # geometry, raster and sheet-lookup helpers

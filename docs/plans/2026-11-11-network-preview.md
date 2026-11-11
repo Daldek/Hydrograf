@@ -108,7 +108,7 @@ ADR-081 and its row in `docs/DECISIONS.md`, the amendment note of ADR-080; `docs
 ## Stages
 
 One branch, `feat/network-preview` from `develop` `c5e0bb8`: this plan and ADR-081, the route,
-the front end. Merged when the author or the coordinator schedules it, after the gate.
+the front end. Merged with `97498bb` on 2026-11-11, after the gate.
 
 ## Results
 
@@ -136,6 +136,13 @@ went to its neighbour) has no label on the map and is selected from the tree; (5
 keeps the characteristics on the map and in the panel (it is not a change of the points, ADR-081
 decision 1) and disables only the hand-off, which carries the names, with a notice of its own. The
 guide's slides 27 and 28, the presentation twin and the picture of the mode show the two stages.
+
+**Merged and deployed** (2026-11-11): `feat/network-preview` entered `develop` with the merge
+`97498bb`, whose tree is that of the branch's head `fefb1e2`, on which `scripts/gate.sh` passed
+(2,111 passed, 170 deselected). ADR-081 was amended the same day (ADR-080 D10a): the preview also
+gives the notices `reach_short_or_flat` of the full run (`fix/short-reaches`, `add1a9f`). Hydroni
+(`127.0.0.1:8081`) and the review instance kaczawa2 (`127.0.0.1:8082`) run `develop` `a46adb4`,
+which holds the preview; production (`127.0.0.1:8080`) still runs `894810c`. The plan is closed.
 
 ## Not in this plan
 

@@ -1051,3 +1051,17 @@ them.
   a throwaway copy of the tables with the reproduced rasters, it gave the rasters of 23:53 bit for
   bit in 65 s. §5 gained the row of `units.py`, which on the rasters cut to the boundary reports
   the 108 / 43 / 29 / 14 units and 31 / 15 / 10 / 3 labels.
+
+### The review instance kaczawa2 (2026-11-11, 03:03–03:31 CET)
+
+The runbook ran once more, beside production and only reading it, for the review copy kaczawa2
+(`127.0.0.1:8082`, PROGRESS, kaczawa2 instance): the inputs of §4.9 from before the cut, the
+`develop` of `c5e0bb8`, and the boundary taken from the run's kept units instead of the polygon
+of 2026-11-01, so the land cover, the soil groups (ADR-079), `bdot_streams` and the presented
+layers cover the 1.6 km² block above. Its steps K0–K13, their times and checks are not in the
+repository: they live in `~/data/hydrograf-kaczawa2/README`, with the helpers in
+`~/data/hydrograf-kaczawa2/scripts/` (`cut.py`, `compare.sql`, `probe.py`, `flowacc.py` and
+`units.py` those of this runbook unchanged; `soil.py` and `clip.py` changed for the HSG raster
+and the boundary; `boundary.py`, `vectors.py`, `overlays.py`, `next11.py`, `probe2.py` and
+`jcwp.py` new) and one log per step in `logs/`. Production waits for the author's review of
+kaczawa2 (PROGRESS, Next 1).
