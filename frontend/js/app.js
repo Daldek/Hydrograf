@@ -486,7 +486,7 @@
             lng >= BOUNDS.lngMin && lng <= BOUNDS.lngMax;
         var outside = 'Kliknij w granicach Polski (49–55°N, 14–24.2°E).';
 
-        // Network mode — the click places A or the next point (js/network.js)
+        // Network mode — the click places the closing section or the next point (js/network.js)
         if (state.clickMode === 'network') {
             if (!inPoland) setNetworkStatus({ error: outside });
             else if (Hydrograf.network) Hydrograf.network.addPoint(lat, lng);
@@ -654,7 +654,7 @@
     var MODE_HINTS = {
         browse: 'Przesuwaj i przybliżaj mapę',
         select: 'Kliknij na mapie w pobliżu cieku',
-        network: 'Kliknij przekrój zamykający A na cieku, potem punkty: dopływy przy ujściach i wodowskazy.',
+        network: 'Kliknij przekrój zamykający na cieku, potem punkty: ujścia dopływów i wodowskazy.',
         profile: 'Kliknij na mapie, aby zacząć rysować profil',
         identify: 'Kliknij na mapie, aby odczytać dane o punkcie',
     };

@@ -26,7 +26,7 @@
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
     <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
-    <link rel="stylesheet" href="css/app.css?v=68bf02f1c0">
+    <link rel="stylesheet" href="css/app.css?v=04ff64a5d9">
 </head>
 <body>
 <div class="shell">
@@ -182,7 +182,7 @@
 
                     <!-- Network of the mode „Sieć zlewni” (js/network.js) -->
                     <section class="network" id="network" aria-label="Sieć zlewni" hidden>
-                        <p class="network-intro">Kliknij przekrój zamykający A na cieku, potem punkty powyżej niego: dopływy przy ujściach i wodowskazy (najwyżej 30). Znaczniki przeciągniesz myszą lub palcem. Po każdej zmianie punktów mapa pokazuje podgląd sieci; „Oblicz charakterystyki” poda CN, spadki i parametry zlewni oraz przekazanie do Hydrologa.</p>
+                        <p class="network-intro">Kliknij przekrój zamykający na cieku, potem punkty powyżej niego (najwyżej 30): ujścia dopływów i wodowskazy. Punkt do 50 m od zbiegu cieków przechodzi do zbiegu i jest węzłem J, który dzieli zlewnię na cieki łączące się w nim – także przekrój zamykający, więc drugi punkt w tym zbiegu nie jest potrzebny; punkt poza zbiegiem jest węzłem P. Znaczniki przeciągniesz myszą lub palcem. Po każdej zmianie punktów mapa pokazuje podgląd sieci, a znaczniki – identyfikatory swoich węzłów; „Oblicz charakterystyki” poda CN, spadki i parametry zlewni oraz przekazanie do Hydrologa.</p>
                         <p class="network-snap" id="network-snap"></p>
                         <ol class="network-points" id="network-points" aria-label="Punkty sieci"></ol>
                         <div class="network-actions">
@@ -205,7 +205,7 @@
                             <div id="network-notices"></div>
                             <ul class="network-kinds" id="network-kinds" aria-label="Rodzaje elementów"></ul>
                             <table class="network-tree">
-                                <caption>Drzewo sieci od przekroju zamykającego A w górę</caption>
+                                <caption>Drzewo sieci od przekroju zamykającego w górę</caption>
                                 <thead><tr><th scope="col">Element</th><th scope="col" colspan="2">Powierzchnia, długość</th><th scope="col" colspan="2">CN, spadek</th></tr></thead>
                                 <tbody id="network-tree"></tbody>
                             </table>
@@ -632,7 +632,7 @@
 <script defer src="js/charts.js?v=9cf3876f81"></script>
 <script defer src="js/layers.js?v=e7ffddf7e5"></script>
 <script defer src="js/profile.js?v=adf70f4108"></script>
-<script defer src="js/info-texts.js?v=e775809efd"></script>
+<script defer src="js/info-texts.js?v=29065e8392"></script>
 <script defer src="js/info.js?v=778110a063"></script>
 <script defer src="js/hydrograph.js?v=fe04bea933"></script>
 <script defer src="js/rain-export.js?v=83c1ad12e6"></script>
@@ -646,7 +646,7 @@
 <script defer src="js/welcome.js?v=79a0c2304e"></script>
 <script defer src="js/identify.js?v=b89f4b64cf"></script>
 <script defer src="js/handoff.js?v=1c553fc17c"></script>
-<script defer src="js/network.js?v=41f91fa60a"></script>
-<script defer src="js/app.js?v=0105ed1d8a"></script>
+<script defer src="js/network.js?v=0d78b965b8"></script>
+<script defer src="js/app.js?v=c92861a2c4"></script>
 </body>
 </html>

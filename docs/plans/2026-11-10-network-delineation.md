@@ -141,6 +141,15 @@ a river of the request's network (D5, amended) joins its trunk there; a gauge on
 takes the parent's cell as a junction of the mouth rule. Two points within 50 m on one river,
 with no such confluence at the lower one, keep their places and the reach (D5).
 
+*Amended 2026-11-11 by plan [`2026-11-11-network-nodes.md`](2026-11-11-network-nodes.md), N2 and
+N3 (the author, after his kaczawa2 network with P1 7 m above A at a confluence):* this decision
+and its two amendments are superseded. A node of the network is a stream cell of `threshold_m2`
+into which two or more streams of `threshold_m2` drain. After D2 every control point, the closing
+section included, moves to the nearest node along the stream within `MOUTH_TOLERANCE_M` (50 m of
+flow distance): the first node below it, or the head cell of its own unit when that cell is a
+node above it; on both the nearer, on a tie the lower. A point drawn to a node is that node (a
+`J`), any node counts with or without other points, and the response's `at_mouth` is `at_node`.
+
 ### D4. The tree: each control point's trunk takes the junctions of the points above it
 
 1. The parent of a point is the first control point on its flow path downstream: the nearest
@@ -181,6 +190,16 @@ river of the branch above the uppermost of them fell into the przyrzecze of the 
 it inside its przyrzecze drains no more than the river the reach brings to that confluence
 (`tests/unit/test_network_tree.py` checks it on every network it builds).
 
+*Amended 2026-11-11 by plan `2026-11-11-network-nodes.md`, N4:* every control point is a node of
+the tree, whether points lie above it or not. A point not at a node (`P<n>`) splits its river: the
+element above it (a headwater, or the reach from the next node up with its przyrzecze) enters it,
+and it enters the next node down by a reach with its przyrzecze. A point at a node (`J<n>`) is
+that confluence: every branch that joins there enters it, the main river first; a branch without
+a point is a headwater with no reach, a branch with points enters through its lowest node and a
+reach. 2 and the trunk of a branch stand (its junction is a `J` the network makes); 4's tributary
+is gone (N7); 5's outlet is `O` (N1). The closing section alone is a network (`points` may be
+empty): at a node one headwater per branch into its `J`, elsewhere one headwater into its `P`.
+
 ### D5. The cells of each element
 
 Every element ends at one outlet cell and holds the cells whose first element outlet downstream
@@ -219,6 +238,15 @@ the point, a river does not); without one they are an element of their own, a he
 a point that enters the junction. Every reach still runs down a main river, and no przyrzecze
 holds a river that joins at a junction (`tests/unit/test_network_tree.py` checks both on every
 network it builds).
+
+*Amended 2026-11-11 by plan `2026-11-11-network-nodes.md`, N5 (the author's variant 1):* a point
+at a node takes the place of the confluence junction: each branch's element ends at the outlet
+cell of its unit above the node, and the node's own cell and the cells that drain into it from
+the side belong to the element below it (the przyrzecze of its reach down); no unit is split by a
+point at a node (D6 applies only to a point inside a unit). For the closing section at a node the
+network ends at those outlets, and its own cell and side cells lie outside it. The amendment
+above that gives a control point's own cells to the largest branch beside the trunk is
+superseded. A river without a point that joins a reach between its ends stays in the przyrzecze.
 
 ### D6. A unit with a control point inside is split by pyflwdir (B3)
 
@@ -352,6 +380,10 @@ sums (`area_check`). Why: two independent counts, the preprocessing's unit areas
 window's labels, catch a unit missing from the window and a label missing from the graph;
 compared in cells, since the graph keeps `area_km2` as float32.
 
+*Amended 2026-11-11 by plan `2026-11-11-network-nodes.md`, N5:* for the closing section at a
+node the cells of the elements are compared with the sum of the cells of the branches that enter
+it (the units above the node's cell): its own cell and side cells lie outside the network.
+
 ### D12. Errors
 
 Problem documents of the registry's codes (ADR-059); the new message IDs with English and Polish
@@ -374,6 +406,14 @@ marks it.
 Points on the same unit are no error (D6). An element above 250 km² is no error: its
 `hydrograph_available` is false and a notice names it, since SCS-CN's limit applies to each
 subcatchment, not to the network.
+
+*Amended 2026-11-11 by plan `2026-11-11-network-nodes.md`, N1, N4 and N6:* `points` may be empty
+(0 to 30; the closing section alone is a network); `outlet.id` has no default `A` and is required.
+The ids of the request are the client's handles: unique, of the pattern above, named in
+`details` (`point_id`, `point_ids`) and never in the hand-off. Two points on one cell after N3,
+in practice two drawn to one node, are refused with `network_points_coincide`: „Punkty
+{point_ids} trafiają w ten sam węzeł sieci: jeden punkt w węźle już dzieli zlewnię na cieki,
+które się w nim łączą. Usuń jeden z nich albo przesuń go dalej niż 50 m od węzła.”
 
 ### D13. One network at a time per worker
 
@@ -440,6 +480,21 @@ a confluence names the point at the top of its trunk, whose subcatchment the tru
 or by its reach, before the points of its side branches („Zbieg: dopływ P1, dopływ P2”); a reach
 of the minimum slope is a `lag` (D10). The `element` `"headwater"` of `node_provenance` stays.
 
+*Amended 2026-11-11 by plan `2026-11-11-network-nodes.md`, N1 and N7:* the kind `tributary`
+goes: every point is a node, so a subcatchment is a `headwater` („Dopływ”) or an `intermediate`
+(„Przyrzecze”). The outlet is `O` (was `OUT`), `from` the closing section's node, and
+`provenance.watershed.point` is that node's id (`J1` or `P1`); no id of the request reaches the
+hand-off. Names: „Dopływ do J4 (ciek główny)” for the main river's headwater into a node,
+„Dopływ do J4” for another branch, „Dopływ do P3” above a `P`, with the name of the node's point
+after its id („Dopływ do J4 (Paszówka), ciek główny”, „Dopływ do P3 (Nysa Mała)”), „Przyrzecze
+odcinka R4”; a node „Zbieg: Paszówka” (a point drawn to a confluence; „Zbieg” without a name or
+made by the network), „Punkt: Nysa Mała” (a `P`), „Przekrój zamykający: Kaczawa” (the closing
+section, at a node or not; „Punkt”, „Przekrój zamykający” without a name). In `node_provenance` a
+subcatchment has `element` `"headwater"` or `"intermediate"` and `point` = the id of the node of a
+person's point it enters; `at_mouth` is no longer written. A node keeps `element` (`"confluence"`
+for one the network made, `"point"` for a person's point, `"outlet"` for the closing section),
+adds `name` when its point has one and `at_node: true` when N3 moved it, and has no `point`.
+
 ### D15. Ids and order
 
 A walk of the tree from A, each node after everything it receives: at a node the incoming
@@ -452,6 +507,14 @@ outlet is `OUT`. The hand-off lists the nodes in that order, so a node follows e
 receives from; for one tributary at its mouth: `Z1` (headwater), `Z2` (tributary), `J1`, `R1`,
 `Z3` (its przyrzecze), `J2` (at A), `OUT`, the order of Nogat's example. The same points in any
 order give the same network.
+
+*Amended 2026-11-11 by plan `2026-11-11-network-nodes.md`, N1 and N8:* the hand-off keeps this
+order (each node after every node it receives), but the numbers are given by a walk from the
+closing section upward, each node before the branches it receives (the trunk first, then by
+descending accumulation), each kind counted on its own: the closing section is `J1` or `P1`,
+nodes are `J<n>` at a confluence and `P<n>` elsewhere, and the outlet is `O`. For the closing
+section alone at a confluence: `Z1` (the main river), `Z2`, `J1`, `O`. The same points in any
+order still give the same ids.
 
 ## The algorithm, in order
 
@@ -538,6 +601,11 @@ Response (`DelineateNetworkResponse`, 200):
 - `notices[]`: `over_scs_cn_limit` (subcatchments above 250 km²) and `reach_slope_minimum`, with
   the ids; the front end words them.
 - `handoff`: D14.
+
+*Amended 2026-11-11 by plan `2026-11-11-network-nodes.md`:* `outlet.id` is required, `points`
+holds 0 to 30; `points[]` lists the closing section first, each with `at_node` (was `at_mouth`)
+and its `node` (`J<n>` or `P<n>`); `subcatchments[].kind` is `headwater` or `intermediate`;
+`junctions[]` are the nodes, each with `name` (its point's, or null).
 
 ## Front end
 

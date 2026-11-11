@@ -621,7 +621,7 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .network-kinds { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: 0 0 var(--space-2); padding: 0; list-style: none; font-size: var(--text-sm); }
 .net-kind-item { display: inline-flex; align-items: center; gap: 6px; }
 .net-swatch { width: 16px; height: 10px; flex: none; border: 1.5px solid; border-radius: 2px; }
-.net-swatch.tributary, .net-id.tributary, .net-label.tributary { --kind: var(--warn); }
+.net-swatch.headwater, .net-id.headwater, .net-label.headwater { --kind: var(--warn); }
 .net-swatch.intermediate, .net-id.intermediate, .net-label.intermediate { --kind: var(--tool-hydraulik); }
 .net-id.reach, .net-label.reach { --kind: var(--info); }
 .net-id.junction { --kind: var(--text-3); }
@@ -659,14 +659,15 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .network-selection .params:has(tbody:empty) { display: none; }
 .net-kind { font-weight: var(--weight-bold); color: var(--text); }
 
-/* Point markers (A, P1, …) and the labels of the elements and reaches */
+/* Point markers (the closing section, J1, P1, …) and the labels of the elements and reaches */
 .net-marker span {
     display: grid; place-items: center; width: 28px; height: 28px; box-sizing: border-box;
     border: 2px solid var(--text); border-radius: var(--radius-pill); background: var(--surface);
     box-shadow: var(--shadow); font: var(--weight-bold) var(--text-xs)/1 var(--font-sans); color: var(--text);
 }
 .net-marker.is-outlet span { border-color: var(--surface); background: var(--accent); color: var(--accent-ink); }
-.net-marker.at-mouth span { border-style: double; border-width: 4px; }
+/* A point drawn to a node of the network (N3) */
+.net-marker.at-node span { border-style: double; border-width: 4px; }
 .net-marker.is-bad span { border-color: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 45%, transparent); }
 /* A point inside its unit in the preview: the outline of its elements follows the whole unit */
 .net-marker.inside-unit span { border-style: dashed; }
