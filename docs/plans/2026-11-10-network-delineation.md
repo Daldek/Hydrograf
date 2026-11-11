@@ -112,8 +112,23 @@ directly, with no reach between (B2: „each tributary gets its catchment to its
 click at a mouth lands some cells above the confluence, and each tributary would bring a reach
 of a few metres and a przyrzecze of a few cells; 50 m is the accuracy of a click at the zoom
 the rivers are drawn at. The point moved is a unit boundary, so it needs no raster (B3); the
-response marks it (`at_mouth`). A point on a trunk keeps its place: a gauge a few metres above a
-junction gets a short reach.
+response marks it (`at_mouth`). ~~A point on a trunk keeps its place: a gauge a few metres above
+a junction gets a short reach.~~
+
+*Amended 2026-11-11 (the coordinator, after S5):* the rule applies wherever the paths of two
+control points merge, at every junction, not only where a point enters its parent's trunk. A
+point at most 50 m along the flow above a junction where its path meets another branch of the
+network moves to the outlet cell of the last unit above that junction on its own branch, and
+enters it directly: a point off its parent's trunk takes the lowest such junction on its way to
+the trunk (its junction on the trunk, as above, or a confluence where its path merges with the
+path of another point of the same parent, S2's decision 1); a point on its parent's trunk (a
+gauge) the first confluence below it where the path of a point enters the trunk. Two points
+moved to one cell are refused (`network_points_coincide`, test 6). A point whose path runs down
+its parent's trunk into the parent with no such confluence between (two points within 50 m on
+one river) keeps its place and its reach, which carries the parent's own cells (D5). Why: S5's
+network 2 had a reach of 34 m and a przyrzecze of 0.0004 km² where a point 34 m above the mouth
+of its tributary met the path of a gauge on the Kaczawa, off A's trunk; a gauge clicked a few
+metres above a confluence gave the same.
 
 ### D4. The tree: each control point's trunk takes the junctions of the points above it
 
@@ -189,6 +204,15 @@ element and overwritten by D6 for the split units. A window of more than
 make about 1.4 GB at the cap, the precise mode's budget at its 40 M cells of 35 bytes; 60 M take
 production's whole grid (58.6 M); pyflwdir runs only on the split units, and no flow directions
 are computed: the rasters are the pipeline's, as for the precise mode and the flow paths.
+
+*Amended 2026-11-11 (the coordinator, after S5, which measured 2.30 GB for the whole grid):*
+the window holds the slope only while the terrain statistics of all elements are taken (one
+`zonal_summary`) and the labels only until the element raster holds them; the main channels
+take their labels from the labels of the stream cells of the units, kept apart (about 1 M cells
+of the whole grid). Each element is measured in its frame of views of the window, and no
+measure copies a frame or takes a mask per candidate cell. So a network holds 17 bytes a cell
+(the window and the element raster), 21 while the labels or the slope are held; the budget of
+the Performance section stands (Results, after S5).
 
 ### D8. Each element is measured from its cells
 
@@ -379,7 +403,8 @@ order give the same network.
 2. Snap A and each point (D2) in a window of 100 m around each click; their units and fd.
 3. A's catchment: `upstream_tree` of A's unit. Each point's unit must be in it, and a point in
    A's unit above A by fd, else `network_point_outside`.
-4. The mouth rule (D3) for every point off the trunk of the first control point below it; then,
+4. The mouth rule (D3, amended) for every point at most 50 m above a junction of the trunk of
+   the first control point below it or of the merge of its path with another point's; then,
    on the moved points and from A upward, the parents, the trunks (`trace_main_channel` of each
    control point with points above it), the junctions and the nodes and edges of every trunk
    (D4); points on one cell → `network_points_coincide`.
@@ -534,7 +559,10 @@ units with three tributaries, one of them with a tributary of its own:
    a reach and its przyrzecze between junctions and down to A, A's junction and `OUT`; every unit
    in exactly one element; the ids and order of D15 (Nogat's example for one tributary).
 2. A point 200 m up a tributary: the edge to the mouth is a reach with its przyrzecze; at 40 m it
-   moves to the mouth (D3), no reach.
+   moves to the mouth (D3), no reach. *Amended 2026-11-11:* 30 m above the merge of its path
+   with another point's, far from the trunk, it moves to that merge; a gauge 5 m or 40 m above
+   the confluence where a point's path enters the trunk moves to it, 60 m above keeps its place;
+   a point 30 m above the point below it on one river keeps its place and its reach.
 3. A gauge on the main river between two junctions: a junction of kind `point` splits the reach;
    a gauge above every junction: the headwater ends at the gauge.
 4. Points on a tributary's tributary and at the tributary's mouth: the tributary's own trunk,
@@ -543,7 +571,8 @@ units with three tributaries, one of them with a tributary of its own:
    confluence is a tributary, on the larger a gauge.
 6. Two points in one unit, and a point in A's unit: the split specifications (the outlets of each
    unit in the order of the flow); a point that does not reach A → `network_point_outside`; two
-   points on one cell, or two moved to one mouth → `network_points_coincide`.
+   points on one cell, or two moved to one mouth → `network_points_coincide` (also two moved to
+   one merge of their paths, D3 amended).
 7. The same points in another order give the same network.
 
 Stage S2, unit, synthetic rasters (`tests/unit/test_network_delineation.py`): a synthetic DEM of
@@ -708,6 +737,145 @@ rasters kept the labels of 31 deleted units. Production's rasters were re-cut to
 the database on 2026-11-10 (runbook 2026-11-10, §11): since then every unit equals its labels
 at the four thresholds. With the check bypassed in a throwaway script the same network took
 6.1 s for a window of 5,324 × 3,482 cells, 1.30 GB peak (0.94 GB with `GDAL_CACHEMAX=64`).
+
+**S3** (`feat/network-delineation-api`): `POST /api/delineate-network` (`api/endpoints/network.py`,
+the models in `models/schemas.py`) runs `delineate_network` under a `threading.Lock` of the worker
+(D13: a request waits 15 s, then 503 `network_delineation_busy` with `details.wait_s`; a failure
+that is not a Hydrograf error is 500 `network_delineation_failed`) and answers as the section API
+gives it; `core/handoff.py::build_network_handoff` writes the hand-off of D14 in the order of D15.
+The envelope is the copy of Nogat `8848c26` (SHA-256 `84c6856d…42ed`), Hydrolog is pinned at
+`930915d` of Nogat's release set candidate-3 (`b0ac85b`), which has the `description` of a node.
+Decided in S3, beyond the text of the plan: (1) the subject puts the count in parentheses,
+„Kaczawa, sieć (3 zlewnie)”: „sieć 3 zlewnie” is not Polish, and the subject names the hand-off's
+file (S4), where a colon is not allowed; (2) a confluence's description names the points of the
+branches that join it from the side (`Junction.tributaries` of `core/network_tree.py`), not a gauge
+on the trunk above it; (3) `at_mouth` is in a subcatchment's origin only when true, the NMT at an
+end of a reach only where it has data; (4) the network's `description` gives the counts
+of its subcatchments, reaches and junctions and says that the rainfall and the sections are given
+in Hydrolog; the names of the points refuse control characters (400), and a description above 500
+characters (a confluence of many named points) is cut there; (5) the API's environment caps
+GDAL's block cache at 64 MB (`GDAL_CACHEMAX` in `docker-compose.yml`), so a network does not keep
+the rasters it read a second time (S2's measure above), within D13's two networks in 8 GB. Tests
+15–18 in `tests/unit/test_network_endpoint.py` and `tests/contract/test_openapi.py`: the hand-off
+validates against the copied envelope and Hydrolog's `hydrolog-network/1`; Hydrolog's
+`read_network` reads its payload once a rainfall and a section of every reach are added (what the
+person gives in Sieć), and `route_schematic` with `structure_only` lays it out as it is handed off;
+the problems of D12 in both languages; a request waits for the lock, then gets 503. Tests 19–21 in
+`tests/integration/test_network_delineation_db.py`, on a scratch PostGIS with the land cover, the
+soil groups and BDOT10k lines inserted: the elements' land cover sums to A's within 0.1 %; a reach
+along a straight BDOT10k line gets 0.36 km as its check length, the line between its ends and its
+36 cells; a reach across a gap of 60 m in the lines gets none. On the synthetic DEM, A at the outlet
+with three tributary mouths and a gauge clicked 20 m beside the main river give 8 subcatchments, 4
+reaches and 5 junctions, B5 to the cell (3.74 km²), in 0.14 s; Hydrolog's command line
+(`hydrolog route schematic --structure-only`) lays out its payload. Not measured in S3: production's
+networks (S5).
+
+**S4** (`feat/network-delineation-ui`, on S3's branch): the mode „Sieć zlewni” after „Wybierz
+zlewnię” (`js/network.js`, the views of the panel in `js/app.js`, `delineateNetwork` in
+`js/api.js`, the network's hand-off in `js/handoff.js`), the six (i) of the element kinds and of
+a reach's length, slope and check length with the section „Sieć zlewni” of
+`docs/INFO_TEXTS_SOURCES.md` (87 rows, all verified), and in the guide and the presentation the
+chapter 06 „Sieć zlewni” (slides 27–28 of 33) and a fifth card on slide 9. Decided in
+S4, beyond the text of the plan: (1) a click on the map always places a point; an element or a
+reach is selected by its label on the map or its row in the tree, so a point can be placed inside
+an element already drawn; (2) the watershed of „Wybierz zlewnię” leaves the map in the mode and
+comes back after it, with its hydrograph; (3) the panel keeps the loading state, the error and the
+bin of each view, so a network delineated in the mode survives a visit to another mode; (4) Esc
+only hides the panel in the mode (it does not clear the points); (5) the hand-off is disabled while
+the result is outdated (a point added, removed or dragged after the run); (6) after a run the
+markers take their snapped places; (7) a reach's table names „Źródło spadku” (the NMT at its
+ends, or the minimum of 0.1 ‰). Checked in a browser on production's data (the Kamiennik, read
+only): the steps of the Front end section on a desktop and an iPhone 13, the mode switch both
+ways, the download and the copy of the hand-off, which validate against both schemas.
+
+**S5** (on S4's branch, 2026-11-11), on production's Kaczawa after the re-cut of its rasters,
+read only. Instead of the stack of the Tests section (an image and a restored dump), the branch's
+API ran from the worktree under uvicorn on production's `hydro_db` in a session with
+`default_transaction_read_only=on`, with production's `data/nmt` and `frontend/data`,
+`GDAL_CACHEMAX=64` and one worker, and the branch's front end in an nginx container on a free
+port; both were removed afterwards. Peak memory is the `VmHWM` of a fresh API process, which holds
+0.43 GB (423,344 KiB) with the graph before the request. The points: P1 the Kamiennik at
+51.01538° N, 15.890496° E; P2 and P3 the next two largest tributaries of the Kaczawa above A
+(32.78 km² at 51.087537° N, 15.876802° E and 25.45 km² at 51.009992° N, 15.903832° E, clicked 30 m
+up from their mouths); G a gauge on the Kaczawa between P2's and P1's mouths (51.048992° N,
+15.873931° E); threshold 10 ha.
+
+- Network 1, A at the Kaczawa node (51.128° N, 15.909° E, snapped 11.8 m): 240.328025 km², B5 to
+  the cell (elements 240.328025 km²), 8 subcatchments, 4 reaches and 5 junctions; P1, P2 and P3
+  moved to their mouths (D3), G on the Kaczawa. A window of 5,324 × 3,482 cells, 6.6–8.1 s in
+  three runs (the rasters read in 2.6–3.5 s), 1.04 GB peak (1,018,904–1,020,000 KiB, 0.97 GiB),
+  a response of 1.53 MB. The Kamiennik's element is 37.2250 km², as the precise delineation of
+  its snapped point; P2's and P3's elements equal theirs too (32.7831 and 25.4462 km²). CN
+  60.9–69.8, flow paths 4.2–20.4 km; the reaches 1.30, 5.71, 5.95 and 7.04 km with slopes of
+  5.79, 4.49, 4.03 and 3.42 ‰ from the NMT, their BDOT10k check lengths 5.3–7.1 % shorter.
+- Network 2, A at the outlet of the area (51.222825° N, 16.179380° E, snapped 1.4 m): 792.008925
+  km² (the basin of the tables), B5 to the cell, 11 subcatchments, 6 reaches and 6 junctions, the
+  notice `over_scs_cn_limit` on the headwater of 430.72 km². A window of 8,143 × 7,194 cells
+  (58.6 M), 22.6–24.2 s in two runs (the rasters read in 6.7–8.7 s, the elements and their
+  coverage by 10.8–11.8 s, the measures by 22.3–24.0 s), **2.30 GB peak** (2,246,688–2,247,004
+  KiB, 2.14 GiB; sampled, the resident size passes 2 GB as the measures start, after the
+  coverage), a response of 3.07 MB. The request adds 1.83 GB to the process, 31 bytes a cell of
+  the window, against the 22 of the Performance budget. The Kaczawa above J5 is the smaller branch
+  (the headwater of 430.72 km² is the larger), so A's trunk does not run up it: G and P2 both
+  hang on A's trunk, their paths meet at the confluence of P2's tributary (S2's decision 1), and
+  the mouth rule, relative to A's trunk, leaves P2 where it was clicked: a reach of 34 m (16.4 ‰)
+  from P2 to that confluence and a przyrzecze of 0.0004 km². P1 and P3 moved to their mouths as
+  in network 1, and the elements above G are those of network 1.
+- The hand-offs of both networks validate against the copied envelope and Hydrolog's
+  `hydrolog-network/1`, `node_provenance` names every node but `OUT`; Hydrolog `930915d` reads
+  them with `read_network` once a rainfall (beta, 50 mm in 120 min) and the section of each reach
+  (n 0.035, 4 m) are added (18 and 24 nodes), and `hydrolog route schematic --network-file …
+  --structure-only` lays them out as handed off (8 lines on a grid of 10 × 2, 11 lines on 15 × 5).
+- The front end against that stack, network 1 placed at zoom 17 (at the zoom that shows the
+  whole network a click is some 30 m wide: there P1 snapped 80 m above its mouth and P3 onto the
+  Kaczawa), on a desktop (1544 × 1055) and an iPhone 13: the points, „Wyznacz sieć” (5.6 s), the
+  same 8 subcatchments, 4 reaches and 5 junctions, the Kamiennik's element and the reach R2
+  selected by their rows, „Plik przekazania” (`Kaczawa, sieć (8 zlewni).handoff.json`, 14,088
+  bytes) and „Kopiuj do Hydrologa” (14,040 characters), both valid against both schemas and read
+  by `read_network`; on the phone the bottom sheet „Sieć” runs it.
+
+Accepted as the Tests section asks, except memory: network 1 takes 1.04 GB of its 1 GB (within
+1 GiB) and network 2 2.30 GB of its 2 GB; both are well within their times (8.1 s of 30 s, 24.2 s
+of 75 s), and two networks at once (D13) stay within the 8 GB of the host. P2's reach of 34 m in
+network 2 follows the rules of S2 and is not refused.
+
+**After S5** (on S4's branch, 2026-11-11, the coordinator's decisions on the two open points of
+S5: the memory budget stands, and the mouth rule applies at every junction).
+
+- Memory (`87bb51a`, D7 amended): the window is read without the slope, which is read for the
+  one `zonal_summary` of all elements and dropped; the labels are dropped once the element
+  raster holds them, the labels of the stream cells of the units kept for the main channels;
+  each element is measured in its frame of views of the window; the flow paths find their heads
+  overall and on the boundary in one numba pass with `np.argmax`'s choice of ties and NaN (no
+  mask per candidate cell, no float copy of a frame), the overland segment reads the DEM at its
+  two ends, `d8_from_saved_flowdir` holds one mask at a time. The responses of both networks
+  and of six synthetic ones are bit-equal to those of `c8f4346`. Measured with the stack of S5
+  (a fresh uvicorn process per request, production's data read only, `GDAL_CACHEMAX=64`,
+  VmHWM; 0.42 GB before the request), `c8f4346` and the new code side by side, twice each:
+  network 1 1,019,768–1,020,072 → 899,576–899,940 KiB (1.04 → 0.92 GB), 4.9 s both; network 2
+  2,247,532–2,248,656 → 1,728,548–1,728,680 KiB (2.30 → 1.77 GB), 15.4–15.6 → 13.8 s. Its peak
+  now lies at the element raster and the zonal summary (21 bytes a cell held), not in the
+  measures. The host was less loaded than at S5 (the same code took 6.6–8.1 s and 22.6–24.2 s
+  then).
+- The mouth rule (D3 amended): network 1 is unchanged (bit-equal). In network 2 P2 moves to the
+  mouth of its tributary (23.0 m from the click, `at_mouth`), so the reach of 34 m and the
+  przyrzecze of 0.0004 km² are gone: 10 subcatchments, 5 reaches and 6 junctions, B5 to the cell
+  (792.008925 km²). J4, the confluence of P2's tributary with the Kaczawa, receives R3 (from G's
+  J3, 5.95 km), Z7 (its przyrzecze, 12.76 km²) and Z8 (P2's tributary at its mouth, 32.78 km², as
+  in network 1); the final confluence J5, where the Kaczawa joins the larger branch, receives
+  Z1 (the headwater, 430.72 km², `over_scs_cn_limit`), R4 (from J4, 23.36 km, 3.12 ‰) and Z9
+  (its przyrzecze, 103.18 km²); A's J6 receives R5 (14.11 km) and Z10 (44.74 km²). Both
+  hand-offs validate against both schemas; `read_network` reads them (18 and 22 nodes) and
+  `route schematic --structure-only` lays them out.
+- Tests: the flow paths of a frame of 1 M cells take less than 2 bytes a cell
+  (`test_cell_parameters.py`; 6.1 MB with `c8f4346`); the heads equal `np.argmax`'s on 24
+  random watersheds with ties, NaN and nodata (`test_divide_flow_path.py`); in
+  `test_network_tree.py` a point 30 m above the merge of its path with another point's enters
+  it, two points moved to one merge are refused, a gauge 5 m or 40 m above a confluence enters
+  it (60 m: it keeps its place), a point 30 m above the point below it on one river keeps its
+  reach.
+
+Accepted: both networks are now within the memory and the time of the Tests section.
 
 ## Not in this plan
 

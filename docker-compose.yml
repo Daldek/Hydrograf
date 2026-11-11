@@ -59,6 +59,9 @@ services:
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
       NUMBA_CACHE_DIR: /tmp/numba_cache
+      # GDAL's block cache [MB]: a network reads up to 1.4 GB of rasters once
+      # (ADR-080), which the default cache (5 % of the RAM) would keep a second time
+      GDAL_CACHEMAX: "64"
     logging:
       driver: json-file
       options:

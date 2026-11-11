@@ -3,9 +3,12 @@
  *
  * Keys are API/morphometry field names (result rows), form control ids
  * (form fields), free keys used with data-info or Hydrograf.info.attach
- * (custom-rain, bdot_coverage) and '<selectId>:<value>' for the options of
- * the UH model, Tc method and Nash estimation selects. Every entry is an
- * object with these optional fields:
+ * (custom-rain, bdot_coverage and, for the network of „Sieć zlewni”
+ * (js/network.js), network-headwater, network-tributary,
+ * network-intermediate, reach_length_km, reach_slope_m_per_m and
+ * reach_vector_length_km) and '<selectId>:<value>' for the options of the UH
+ * model, Tc method and Nash estimation selects. Every entry is an object
+ * with these optional fields:
  *
  *   title       name of the quantity (the label of the row when missing)
  *   symbol      its symbol, in the formula notation below
@@ -33,12 +36,14 @@
  * Every formula, unit and statement about what Hydrograf computes follows
  * the code: Hydrograf backend (core/catchment_graph.py,
  * core/watershed_service.py, core/morphometry.py, core/land_cover.py,
- * core/precipitation.py, api/endpoints/hydrograph.py) and Hydrolog, the
- * version the backend pins (docs/INFO_TEXTS_SOURCES.md, "Wersja Hydrologu";
- * time/concentration.py, morphometry/watershed_params.py, runoff/*.py,
- * precipitation/hietogram.py). Hydrological statements rest on the
- * literature in `sources`; every claim, its verdict and the place where the
- * source was checked are listed in docs/INFO_TEXTS_SOURCES.md.
+ * core/precipitation.py, api/endpoints/hydrograph.py; the network:
+ * core/network_tree.py, core/network_delineation.py, core/handoff.py) and
+ * Hydrolog, the version the backend pins (docs/INFO_TEXTS_SOURCES.md,
+ * "Wersja Hydrologu"; time/concentration.py, morphometry/watershed_params.py,
+ * runoff/*.py, precipitation/hietogram.py, routing/cunge.py). Hydrological
+ * statements rest on the literature in `sources`; every claim, its verdict
+ * and the place where the source was checked are listed in
+ * docs/INFO_TEXTS_SOURCES.md.
  */
 (function () {
     'use strict';
@@ -447,6 +452,72 @@
             unit: '%',
             meaning: 'Pokazuje, jaka część cieku głównego z NMT ma odpowiednik w BDOT10k. Podział drogi wody na stok i koryto zmienia czas koncentracji: spływ po stoku jest wolniejszy niż korytem, a wzór Kerby’ego opracowano dla dróg spływu po stoku do ok. 0,37 km.\nW Hydrografie to wartość informacyjna – nie wchodzi do obliczeń $T_c$ ani hydrogramu. W metodzie Kerby-Kirpich stok od koryta oddziela sieć cieków z NMT („Spływ powierzchniowy – długość”), a nie BDOT10k.',
             sources: 'Roussel i in. 2005; USDA-SCS 1986 (TR-55)',
+        },
+
+        // ── Sieć zlewni ────────────────────────────────────────────────
+        'network-headwater': {
+            title: 'Zlewnia górna',
+            definition: 'Element sieci zlewni: zlewnia rzeki głównej powyżej najwyższego węzła na niej – zbiegu z dopływem, na którym leży punkt, albo punktu na tej rzece (np. wodowskazu). Rzeka główna punktu, powyżej którego leżą inne punkty (także przekroju zamykającego A), biegnie od niego w górę, na każdym rozwidleniu w stronę dopływu o większej powierzchni zlewni – jak ciek główny zlewni. Zlewnia górna kończy się tuż nad zbiegiem albo w punkcie.',
+            meaning: 'Zlewnia cząstkowa (w HEC-HMS element „subbasin”) przekształca opad w hydrogram odpływu w swoim ujściu: odejmuje straty i liczy odpływ. Fala zlewni górnej płynie potem w dół sieci – odcinki przesuwają ją w czasie i spłaszczają – a w węzłach dodają się do niej dopływy; szczyt w przekroju A zależy od tego, jak te fale nałożą się w czasie.\nW Hydrografie zlewnia górna dostaje parametry wyznaczonej zlewni (powierzchnia, CN, pokrycie terenu, grupy glebowe, morfometria, wagi PMAXTP), zmierzone z jej własnych komórek. Do Hydrologa trafia jako zlewnia cząstkowa z modelem odpływu SCS-CN w domyślnych ustawieniach Hydrologu; hydrogramy elementów i całej sieci liczy Hydrolog.',
+            note: 'Swoją rzekę główną ma każdy punkt, powyżej którego leżą inne punkty – także punkt na dopływie – więc sieć może mieć kilka zlewni górnych.',
+            sources: 'USACE 2000 (HEC-HMS); USDA-NRCS 2014 (NEH 630-17); KZGW 2017',
+        },
+        'network-tributary': {
+            title: 'Dopływ',
+            definition: 'Element sieci zlewni: zlewnia punktu na dopływie – poza rzeką główną najbliższego punktu poniżej – gdy powyżej niego nie ma innych punktów. Punkt leżący najwyżej 50 m (wzdłuż spływu) nad zbiegiem z tą rzeką albo z drogą spływu innego punktu przenosi się do ujścia dopływu: zlewnia dopływu kończy się wtedy tuż nad zbiegiem i wpływa do węzła na zbiegu bezpośrednio. Zlewnia punktu położonego wyżej kończy się w punkcie, a od niego do węzła na zbiegu biegnie odcinek z własnym przyrzeczem.',
+            meaning: 'W węźle hydrogram dopływu dodaje się do fali rzeki głównej. Szczyt poniżej zbiegu zależy od tego, jak w czasie nałożą się szczyty obu fal, a to zależy od czasu przepływu fal przez odcinki.\nW Hydrografie dopływ dostaje parametry wyznaczonej zlewni, zmierzone z jego własnych komórek; punkt przeniesiony do ujścia ma dopisek „przy ujściu dopływu”. Do Hydrologa dopływ trafia jako zlewnia cząstkowa z modelem odpływu SCS-CN, opisana jako „Dopływ do punktu …”, a po przeniesieniu do ujścia – „Dopływ do ujścia przy …”.',
+            note: 'Próg 50 m odpowiada dokładności kliknięcia przy powiększeniu, w którym widać cieki: bez przeniesienia kliknięcie przy ujściu dawałoby odcinek długości kilku metrów i przyrzecze z kilku komórek. Tak samo przenosi się punkt na rzece głównej (np. wodowskaz) leżący najwyżej 50 m nad zbiegiem z dopływem, na którym leży punkt; na miejscu zostaje tylko punkt tuż nad innym punktem na tej samej rzece i dostaje krótki odcinek. Najpierw każdy punkt przesuwa się do najbliższej komórki cieku w promieniu 100 m, a dopiero potem sprawdza się jego odległość od zbiegu.',
+            sources: 'USACE 2000 (HEC-HMS); USDA-NRCS 2014 (NEH 630-17)',
+        },
+        'network-intermediate': {
+            title: 'Przyrzecze',
+            definition: 'Element sieci zlewni: obszar, z którego woda spływa do odcinka rzeki między jego końcami – zlewnia dolnego końca odcinka bez elementów, które wpływają do jego górnego końca (zlewni górnej, dopływów, wyższych odcinków z ich przyrzeczami). Należą do niego m.in. dopływy bez punktów, uchodzące do odcinka. Każdy odcinek ma swoje przyrzecze, poza odcinkiem między dwiema sąsiednimi komórkami NMT.',
+            meaning: 'Przyrzecze to dopływ boczny odcinka, rozłożony wzdłuż niego. W modelach NRCS (WinTR-20) dopływ boczny nie wchodzi do równań trasowania – dodaje się go na górnym albo dolnym końcu odcinka; dodany na dolnym końcu omija przesunięcie i spłaszczenie fali w odcinku.\nW Hydrografie przyrzecze wpływa bezpośrednio do węzła na dolnym końcu odcinka, obok odpływu z odcinka. Jego najdłuższa droga spływu, z której Hydrolog liczy czas koncentracji (domyślnie metodą Kirpicha), jest mierzona w jego granicach i kończy się u dolnego końca odcinka. Przyrzecze dostaje parametry wyznaczonej zlewni, zmierzone z jego komórek; powierzchnie wszystkich elementów sumują się co do komórki do powierzchni zlewni przekroju A.',
+            note: 'Ciek główny przyrzecza, od którego zależą jego długość i spadek cieku głównego, biegnie w górę jego odcinka.',
+            sources: 'USDA-NRCS 2014 (NEH 630-17); Ponce 2014; USACE 2000 (HEC-HMS)',
+        },
+        reach_length_km: {
+            title: 'Długość odcinka',
+            symbol: 'L_o',
+            definition: 'Długość odcinka rzeki od górnego do dolnego końca: różnica odległości spływu jego końców do ujścia obszaru danych, liczonych po kierunkach spływu z NMT. To długość linii odcinka na mapie – łamanej przez środki jego komórek. Kierunki spływu wyznaczono z NMT z wpalonymi ciekami BDOT10k, więc tam, gdzie jest ciek BDOT10k, linia odcinka biegnie wzdłuż niego.',
+            formula: f`L_o = \frac{d_g - d_d}{1000}`,
+            variables: [
+                ['d_g', 'odległość spływu z komórki górnego końca odcinka do ujścia obszaru danych', 'm'],
+                ['d_d', 'odległość spływu z komórki dolnego końca odcinka do ujścia obszaru danych', 'm'],
+            ],
+            unit: 'km',
+            meaning: 'W metodzie Muskingum–Cunge długość odcinka wyznacza czas przepływu fali ($K = L_o/c$, gdzie $c$ – prędkość fali), a razem z przekrojem – objętość wody magazynowanej w odcinku: dłuższy odcinek opóźnia szczyt i bardziej go spłaszcza.\nW Hydrografie to długość odcinka przekazywana do Hydrologa (metoda Muskingum–Cunge). Hydrograf nie trasuje fali: przekrój odcinka (n Manninga, szerokość) podaje się w Hydrologu, w sekcji „Sieć i trasowanie”, przed obliczeniem sieci.',
+            note: 'Na rzece meandrującej koryto bywa znacznie dłuższe od doliny, a w trasowaniu dłuższe koryto to więcej wody w odcinku i większe spłaszczenie fali. Długość zależy więc od tego, czy linia odcinka biegnie korytem – sprawdza to „Długość wzdłuż BDOT10k”.',
+            sources: 'Ponce 2014; USDA-NRCS 2014 (NEH 630-17); USACE 2000 (HEC-HMS)',
+        },
+        reach_slope_m_per_m: {
+            title: 'Spadek odcinka',
+            symbol: 'I_o',
+            definition: 'Różnica wysokości NMT w komórkach górnego i dolnego końca odcinka podzielona przez jego długość (źródło „NMT”). Gdy wysokość na dolnym końcu nie jest niższa niż na górnym albo na którymś końcu brak danych NMT, przyjmuje się spadek minimalny 0,0001 m/m, czyli 0,1‰ (źródło „minimalny”).',
+            formula: f`I_o = \frac{H_g - H_d}{1000 · L_o}`,
+            variables: [
+                ['H_g', 'wysokość NMT w komórce górnego końca odcinka', 'm n.p.m.'],
+                ['H_d', 'wysokość NMT w komórce dolnego końca odcinka', 'm n.p.m.'],
+                ['L_o', 'długość odcinka', 'km'],
+            ],
+            unit: 'm/m (w panelu w ‰)',
+            meaning: 'W metodzie Muskingum–Cunge spadek odcinka (spadek tarcia, przybliżany spadkiem dna) razem z przekrojem i szorstkością wyznacza prędkość fali i jej spłaszczanie: dyfuzyjność hydrauliczna $Q/(2 T S_0)$ ($Q$ – przepływ, $T$ – szerokość zwierciadła, $S_0$ – spadek) rośnie, gdy spadek maleje. Na łagodnym odcinku fala płynie więc wolniej i bardziej się spłaszcza, na stromym – szybciej i prawie bez spłaszczenia.\nW Hydrografie to spadek odcinka przekazywany do Hydrologa (metoda Muskingum–Cunge). Spadek minimalny wynika stąd, że Hydrolog nie przyjmuje spadku, który nie jest dodatni; panel sieci pokazuje wtedy uwagę z listą takich odcinków.',
+            note: 'Spadek liczy się z dwóch komórek NMT na końcach odcinka, a nie jako spadek wyrównany całego odcinka. Wysokości pochodzą z NMT bez wpalenia cieków i wypełnienia zagłębień: NMT z wypełnionymi zagłębieniami jest na ciekach BDOT10k obniżony o 2 m, co przy jednym końcu na takim cieku zmieniłoby różnicę wysokości o 2 m. Gdy spadek wzdłuż rzeki wyraźnie się zmienia, według HEC-HMS może być potrzebnych kilka odcinków o różnych spadkach – odcinek dzieli punkt postawiony na rzece głównej (np. wodowskaz).',
+            sources: 'Ponce 2014; USACE 2000 (HEC-HMS); USDA-NRCS 2014 (NEH 630-17)',
+        },
+        reach_vector_length_km: {
+            title: 'Długość odcinka wzdłuż cieków BDOT10k',
+            symbol: 'L_{o,BDOT}',
+            definition: 'Kontrolna długość odcinka mierzona wzdłuż linii cieków BDOT10k (rzek i strumieni, kanałów, rowów). Linię odcinka z NMT próbkuje się co 10 m od górnego końca i w dolnym końcu; każdą próbkę przypisuje się do najbliższej linii BDOT10k w promieniu 25 m. Długość to suma odległości między kolejnymi próbkami: wzdłuż linii, gdy obie trafiły na tę samą, a gdy na różne – między ich rzutami na te linie.',
+            formula: f`L_{o,BDOT} = \frac{1}{1000} ∑_{k=1}^{n-1} s_k`,
+            variables: [
+                ['s_k', 'odległość między k-tą a następną próbką: wzdłuż wspólnej linii BDOT10k albo między rzutami próbek na ich linie', 'm'],
+                ['n', 'liczba próbek', '–'],
+            ],
+            unit: 'km',
+            meaning: 'Długość odcinka decyduje o czasie przepływu fali i jej spłaszczeniu („Długość odcinka”); zwykle szacuje się ją w GIS, a do dokładnego wyznaczenia mogą być potrzebne pomiary terenowe. Długość wzdłuż linii cieków BDOT10k pozwala sprawdzić, czy linia odcinka z NMT biegnie korytem.\nW Hydrografie to wartość kontrolna: Hydrolog dostaje długość z odległości spływu („Długość odcinka”), a długość wzdłuż BDOT10k jest w przekazaniu tylko informacją o pochodzeniu odcinka.',
+            note: 'Brak wartości – co najmniej jedna próbka nie ma linii BDOT10k w promieniu 25 m (odcinek biegnie przerwą w liniach albo ciekiem, którego nie ma w BDOT10k) albo przy odcinku nie ma żadnej linii. Linia z NMT biegnie po środkach komórek w ośmiu kierunkach, więc bywa nieco dłuższa od linii wektorowej (prosta ukośna – do ok. 8%); na Kamienniku długości kontrolne wyszły o 4–6% krótsze od długości odcinków. Wskazówka do odczytu: w kryteriach odbioru sieci (plan wdrożenia) długość kontrolna, gdy jest, ma się mieścić w 15% długości odcinka.',
+            sources: 'USACE 2000 (HEC-HMS); USDA-NRCS 2014 (NEH 630-17)',
         },
 
         // ── Hietogram: formularz ───────────────────────────────────────

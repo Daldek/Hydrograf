@@ -1,7 +1,17 @@
 # ADR-080: A network of subcatchments, reaches and junctions delineated at control points
 
 **Date:** 2026-11-10
-**Status:** accepted (the author's decisions B1 to B7 of 2026-11-10; the details by delegation)
+**Status:** accepted (the author's decisions B1 to B7 of 2026-11-10; the details by delegation);
+amended 2026-11-11 (the mouth rule at every junction)
+
+> **Amended 2026-11-11 (the coordinator, after the smoke S5):** the mouth rule of decision 2
+> applies wherever the paths of two control points merge, at every junction, not only where a
+> point enters its parent's trunk. A point at most 50 m above such a junction (its tributary's
+> mouth, the merge of its path with another point's, the confluence below a gauge on the trunk)
+> moves to the outlet cell of the last unit above the junction on its own branch and enters it
+> directly; two points moved to one cell are refused. S5's network 2 had a reach of 34 m and a
+> przyrzecze of 0.0004 km² where a point near its tributary's mouth met a gauge's path off A's
+> trunk. The plan's D3 records the rule.
 
 ## Context
 
@@ -104,8 +114,10 @@ Option C of 1 and 3 and the options in bold of 2 and 4 to 7:
    przyrzecze; the trunk above its uppermost junction is a headwater subcatchment; a point with
    no point above it is a subcatchment (a tributary, or the headwater when it lies on its
    parent's trunk); a point off its parent's trunk at most 50 m above its junction is taken at
-   its mouth and enters the junction directly. Every junction, every control point with points
-   above it and A are junctions of the network; A's flows into the outlet.
+   its mouth and enters the junction directly (*amended 2026-11-11:* any point at most 50 m above
+   a junction where its path meets another branch of the network, above). Every junction, every
+   control point with points above it and A are junctions of the network; A's flows into the
+   outlet.
 3. **Cells.** An element holds the cells whose first element outlet downstream is its own: a
    control point's cell for the element that reaches it along its trunk, the outlet cell of the
    unit above a junction for an element that reaches the junction on a branch. A unit with a

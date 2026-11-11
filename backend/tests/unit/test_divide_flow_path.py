@@ -6,7 +6,7 @@ import rasterio
 from rasterio.transform import from_origin
 from shapely.geometry import LineString
 
-from core.divide_flow_path import compute_flow_paths
+from core.divide_flow_path import _farthest_heads, compute_flow_paths
 from core.hydrology import D8_DIRECTIONS
 
 CELL = 10.0
@@ -242,3 +242,36 @@ def test_labels_not_in_the_raster_give_no_paths(rasters):
 
     assert paths.longest is None
     assert paths.divide is None
+
+
+@pytest.mark.parametrize("seed", range(24))
+def test_the_heads_are_the_cells_argmax_finds(seed):
+    # The heads as the masks of the candidates found them (the reference): the
+    # first of equal distances, a NaN before any number, no cell of nodata; the
+    # boundary is the cells with a 4-neighbour outside the watershed or the array
+    rng = np.random.default_rng(seed)
+    shape = (int(rng.integers(1, 9)), int(rng.integers(1, 9)))
+    member = rng.random(shape) < 0.75
+    flow_dist = rng.integers(0, 4, shape).astype(np.float32) * CELL
+    flow_dist[rng.random(shape) < 0.15] = -1.0
+    if seed % 3 == 0:
+        flow_dist[rng.random(shape) < 0.1] = np.nan
+    if seed % 2:  # a frame of a larger window, as the network measures an element
+        window = np.zeros((shape[0] + 2, shape[1] + 2), dtype=np.float32)
+        window[1:-1, 1:-1] = flow_dist
+        flow_dist = window[1:-1, 1:-1]
+    nodata = None if seed % 4 == 1 else -1.0
+    starts = member if nodata is None else member & (flow_dist != nodata)
+    padded = np.pad(member, 1)
+    inside = padded[:-2, 1:-1] & padded[2:, 1:-1] & padded[1:-1, :-2] & padded[1:-1, 2:]
+
+    def farthest(candidates):
+        if not candidates.any():
+            return None
+        flat = np.argmax(np.where(candidates, flow_dist, -np.inf))
+        return tuple(int(i) for i in np.unravel_index(flat, shape))
+
+    assert _farthest_heads(member, flow_dist, nodata) == (
+        farthest(starts),
+        farthest(starts & ~inside),
+    )

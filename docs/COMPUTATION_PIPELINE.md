@@ -1,6 +1,6 @@
 # Procedura obliczeniowa — Hydrograf
 
-> Wersja: 1.5 | Data: 2026-11-10
+> Wersja: 1.6 | Data: 2026-11-10
 
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
@@ -15,8 +15,9 @@ Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preproc
 5. [Faza 4: Dane opadowe](#faza-4-dane-opadowe)
 6. [Faza 5: Krzywa CN](#faza-5-krzywa-cn)
 7. [Faza 6: Generowanie hydrogramu](#faza-6-generowanie-hydrogramu)
-8. [Schemat bazy danych](#schemat-bazy-danych)
-9. [Wydajność](#wydajność)
+8. [Phase 7: Network delineation at control points (runtime)](#phase-7-network-delineation-at-control-points-runtime)
+9. [Schemat bazy danych](#schemat-bazy-danych)
+10. [Wydajność](#wydajność)
 
 ---
 
@@ -622,6 +623,50 @@ Generowane kombinatorycznie:
 
 ---
 
+## Phase 7: Network delineation at control points (runtime)
+
+**Endpoint:** `POST /api/delineate-network` (`backend/api/endpoints/network.py`)
+**Modules:** `core/network_tree.py` (the tree on the catchment graph), `core/network_delineation.py` (the rasters), `core/cell_parameters.py` (the measures), `core/handoff.py` (`build_network_handoff`)
+**Decision:** ADR-080; the details and their reasons: plan `docs/plans/2026-11-10-network-delineation.md` (D1–D15)
+
+A closing section A and up to 30 control points above it become a network of HEC-HMS elements: subcatchments (`headwater`, `tributary`, `intermediate`, the last the przyrzecze of a reach), reaches and junctions, with A's junction flowing into `OUT`. The elements are made of the units, the sub-catchments of the graph at `DEFAULT_THRESHOLD_M2` (1 ha), so every confluence is a unit boundary and needs no raster.
+
+### 7.1 Snapping (D1–D3)
+
+Each point, A included, moves to the centre of the nearest cell within `NETWORK_SNAP_M` (100 m) whose accumulation reaches the request's `threshold_m2` (the streams of the map), the larger accumulation on a tie; none → 404 `network_point_off_stream`. A point at most `MOUTH_TOLERANCE_M` (50 m) along the flow above a junction where its path meets another branch of the network moves to the outlet cell of the last unit above that junction on its branch (`at_mouth`) and enters it with no reach: a point off its parent's trunk takes the lowest such junction on its way to the trunk (its junction there, or a confluence where its path merges with another point's), a point on the trunk (a gauge) the first confluence below it where a point's path enters the trunk. Two points moved to one cell → 400 `network_points_coincide`; a point whose path runs down the trunk into the point below it with no such confluence between keeps its place.
+
+### 7.2 The tree (D4, D15)
+
+The parent of a point is the first control point on its flow path downstream (A at the latest; a path that misses A → 400 `network_point_outside`). The trunk of a control point is its main river by `trace_main_channel` (ADR-046); a point joins its parent's trunk at itself when it lies on it, else at the confluence where its path enters it. The nodes of a trunk bound its edges, each a reach with its przyrzecze; the trunk above its uppermost junction is a headwater; a point with no point above it is a subcatchment. Points on one cell → 400 `network_points_coincide`. The ids `Z…`, `R…`, `J…` follow a walk from A in which every node comes after the nodes it receives (the trunk first, then the branches by accumulation), the order of the hand-off; the same points in any order give the same network.
+
+### 7.3 The cells of the elements (D5–D7)
+
+An element holds the cells whose first element outlet downstream is its own. A whole unit takes its element from the graph in one pass from A upward (`CatchmentGraph.upstream_tree`); a unit with a control point inside is split by `pyflwdir` basins with an outlet at each of its points and at its outlet cell. One window of the six saved rasters covers A's catchment (grown as the precise mode grows its window, at most `NETWORK_MAX_WINDOW_CELLS` = 60 M cells, else 422 `network_window_too_large`), and the element raster (int16) is built in it from the unit labels. The window is read without the slope, which is read for the one `zonal_summary` of all elements and dropped; the labels are dropped once the element raster holds them, keeping those of the stream cells of the units for the main channels: a network holds 17 bytes a cell, 21 while the labels or the slope are held.
+
+### 7.4 The area check, B5 (D11)
+
+The cells of the element raster must equal the cells of A's catchment counted from the graph (the units' `area_km2` in cells, less the cells of A's unit below A). Any difference is a defect: 500 `internal_error`, reason `network_area_mismatch`; the response gives both sums (`area_check`).
+
+### 7.5 The measures of an element (D8, D9)
+
+Every element is measured from its cells by the functions of `core/cell_parameters.py`, those of `scripts/export_catchment_parameters.py`: the terrain by `zonal_summary` (area exact to the cell, elevations, slope, hypsometry), the outlet, the flow paths closed downstream (Phases 3 and 6.2), the main channel up the element's own stream cells, the drainage indices of its units, the shape indices, the land cover and CN, the soil groups and the PMAXTP Thiessen weights of its boundary (Phases 4 and 5). The result is a `WatershedResponse` per element, the panel's parameters at 1 ha; `hydrograph_available` is false above 250 km² (notice `over_scs_cn_limit`), and the network is not refused. The boundaries are vectorized once, noded into one coverage and simplified together at `COVERAGE_TOLERANCE_M` (5 m, `shapely.coverage_simplify`), so they tile A without gaps or overlaps.
+
+### 7.6 Reaches (D10)
+
+| Value | Source |
+|---|---|
+| `length_km` | (fd(upper end) − fd(lower end)) / 1000, fd from `04b_stream_distance` (the graph's `outlet_flow_dist_m` at junctions) |
+| `slope_m_per_m` | fall of the NMT (`01_dem`) between the two end cells / length; `MIN_REACH_SLOPE_M_PER_M` = 0.0001 where it is not positive (`slope_method` `minimum`, notice `reach_slope_minimum`) |
+| `vector_length_km` | check length: the reach's D8 line sampled every `REACH_SAMPLE_M` (10 m), each sample on its nearest `bdot_streams` line within `BDOT_BUFFER_M` (25 m); null when a sample has none |
+
+No cross-section: Hydrolog's Muskingum–Cunge needs Manning's n and a width, which the person gives in Hydrolog.
+
+### 7.7 The hand-off (D14)
+
+`build_network_handoff` writes one `nogat-handoff/1` around one `hydrolog-network/1`: the nodes in the order of 7.2, each with a Polish `description`; subcatchments with the `watershed` of their morphometry (the area exact to the cell, so they sum to A) and the `curve-number` runoff with Hydrolog's defaults; Muskingum–Cunge reaches with length and slope and no section; junctions; `OUT`. No rainfall, time step or result. `provenance.watershed` names A's snapped place and `threshold_m2`, `node_provenance` the origin of every subcatchment, reach and junction (`docs/integrations/HYDROLOG.md`).
+
+---
+
 ## Schemat bazy danych
 
 ### ~~flow_network~~ — USUNIETA (ADR-028, migracja 015)
@@ -749,3 +794,7 @@ CREATE TABLE land_cover (
 | Parametr | Wartość | Lokalizacja |
 |----------|---------|-------------|
 | HYDROGRAPH_AREA_LIMIT_KM2 | 250.0 | hydrograph.py (SCS-CN) |
+| NETWORK_MAX_POINTS | 30 | models/schemas.py (points besides A) |
+| NETWORK_SNAP_M | 100.0 | core/network_delineation.py |
+| NETWORK_MAX_WINDOW_CELLS | 60 000 000 | core/network_delineation.py |
+| NETWORK_LOCK_WAIT_S | 15.0 | api/endpoints/network.py (one network at a time per worker) |

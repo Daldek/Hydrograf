@@ -22,9 +22,14 @@ to a stream cell (``core.network_delineation``), form a tree along their flow pa
   the control point when no node lies on its trunk); a point with no point above it is
   a subcatchment, a tributary when it lies off its parent's trunk, the headwater when
   on it;
-- a point off its parent's trunk at most MOUTH_TOLERANCE_M above its junction along
-  the flow moves to the outlet cell of the last unit above the junction on its
-  branch (D3): its subcatchment, or its junction, enters the junction directly.
+- a point at most MOUTH_TOLERANCE_M above a junction along the flow, where its path
+  meets another branch of the network, moves to the outlet cell of the last unit
+  above that junction on its branch (D3): its subcatchment, or its junction, enters
+  the junction directly. A point off its parent's trunk takes the lowest such junction
+  on its way to the trunk (its junction on the trunk, or a confluence where its path
+  merges with the path of another point), a point on the trunk the first confluence
+  below it where a point's path enters the trunk; a point whose path runs down the
+  trunk into its parent without such a confluence keeps its place.
 
 The elements are made of the units of the graph (``DEFAULT_THRESHOLD_M2``): every
 element ends at one outlet cell, a control point's cell or the outlet cell of the unit
@@ -48,8 +53,8 @@ import numpy as np
 from core.catchment_graph import CatchmentGraph
 from core.errors import InvalidRequestError
 
-# A point off its parent's trunk at most this far above its junction along the flow
-# is taken at the mouth of its tributary (D3) [m]
+# A point at most this far above a junction of the network along the flow is taken
+# at that junction (D3) [m]
 MOUTH_TOLERANCE_M = 50.0
 # The id of the outlet of the network, into which A's junction flows
 OUTLET_ID = "OUT"
@@ -202,6 +207,10 @@ class Junction:
     inflows : tuple[str, ...]
         The nodes it receives: the trunk's first, then the branches in descending
         order of the accumulation of their last cell.
+    tributaries : tuple[str, ...]
+        The control points of the branches that join it from the side, not along a
+        trunk, in the order of ``inflows``: on each branch the nearest point above,
+        or the points that meet below it on that branch (B1).
     """
 
     id: str
@@ -209,6 +218,7 @@ class Junction:
     point: str | None
     place: Place | UnitHead
     inflows: tuple[str, ...]
+    tributaries: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -427,11 +437,7 @@ def build_network_tree(
 
     # The mouth rule on the links of the snapped points, then the links again
     links = _links(catchment, controls, outlet.point_id)
-    moved: dict[str, Place] = {}
-    for point_id, link in links.items():
-        mouth = _mouth(controls[point_id], link)
-        if mouth is not None:
-            moved[point_id] = mouth
+    moved = _mouths(catchment, controls, links)
     if moved:
         for point_id, place in moved.items():
             controls[point_id] = replace(controls[point_id], place=place, path=())
@@ -577,23 +583,78 @@ def _parent(
     raise AssertionError(f"{control.point_id} has no control point below it")
 
 
-def _mouth(control: ControlPoint, link: _Link) -> Place | None:
-    """Where the mouth rule moves a point off its parent's trunk, if it does (D3).
+def _mouths(
+    catchment: _Catchment, controls: dict[str, ControlPoint], links: dict[str, _Link]
+) -> dict[str, Place]:
+    """Where the mouth rule moves the points (D3), by point id.
 
-    The junction is the first cell of the path in the trunk unit it enters; the
-    point moves to the cell above it, the outlet cell of the last unit above the
-    junction on its branch, when the junction lies at most MOUTH_TOLERANCE_M below.
+    The junctions below a point are those of its parent's trunk: off the trunk, the
+    head cell of the trunk unit its path enters (or the parent's cell at a
+    confluence) and the head cells where its path merges with the path of another
+    point that enters the trunk through the same unit (``_group_branch``); on the
+    trunk, the confluences below it where the paths of points enter the trunk.
     """
-    if link.entry is None:
-        return None
-    trunk_unit, _ = link.entry
+    kids: dict[str, list[str]] = defaultdict(list)
+    for point_id, link in links.items():
+        kids[link.parent].append(point_id)
+    mouths = {}
+    for parent_id, members in kids.items():
+        parent = controls[parent_id].place
+        # The points off the trunk by the junction they enter, as _wire_trunk groups
+        # them, each with its trunk unit; the trunk units they enter at confluences
+        groups: dict[tuple[int | None, int], list[tuple[str, int]]] = defaultdict(list)
+        confluences: set[int] = set()
+        for kid in members:
+            entry = links[kid].entry
+            if entry is None:
+                continue
+            trunk_unit, above = entry
+            at_parent = trunk_unit == parent.unit and parent.at_head
+            groups[(None if at_parent else trunk_unit, above)].append((kid, trunk_unit))
+            if not at_parent:
+                confluences.add(trunk_unit)
+        for (_, above), group in groups.items():
+            entering = _entering(
+                catchment.path_down(controls[kid].place.unit, above) for kid, _ in group
+            )
+            merges = {unit for unit, uppers in entering.items() if len(uppers) > 1}
+            for kid, trunk_unit in group:
+                mouth = _mouth(controls[kid], parent, merges | {trunk_unit}, trunk_unit)
+                if mouth is not None:
+                    mouths[kid] = mouth
+        for kid in members:
+            if links[kid].entry is None:
+                mouth = _mouth(controls[kid], parent, confluences, None)
+                if mouth is not None:
+                    mouths[kid] = mouth
+    return mouths
+
+
+def _mouth(
+    control: ControlPoint, parent: Place, junctions: set[int], last: int | None
+) -> Place | None:
+    """Where the mouth rule moves a point, if it does (D3).
+
+    Its path enters a unit of ``junctions`` at the unit's head cell, a junction;
+    the point moves to the cell above the lowest such junction at most
+    MOUTH_TOLERANCE_M below it, the outlet cell of the last unit above the junction
+    on its branch. The path is followed no further than the unit ``last`` (a point
+    off the trunk, to its junction on the trunk) or, with None, than the first
+    junction (a point on the trunk), and never past the parent's cell.
+    """
     cells = (control.place, *control.path)
+    mouth = None
     for i in range(1, len(cells)):
         if control.place.flow_dist_m - cells[i].flow_dist_m > MOUTH_TOLERANCE_M:
-            return None
-        if cells[i].unit == trunk_unit:
-            return cells[i - 1]
-    return None
+            break
+        entered = cells[i].unit != cells[i - 1].unit
+        if entered and cells[i].unit in junctions:
+            mouth = cells[i - 1]
+            if last is None:
+                break
+        if cells[i].unit == last or cells[i].cell == parent.cell:
+            break
+    return mouth
 
 
 def _wire_trunk(
@@ -637,14 +698,7 @@ def _wire_trunk(
         )
         for lower, upper in pairwise(trunk_nodes):
             above = trunk[position[lower.place.unit] + 1]
-            lower.branches.append(
-                _Branch(
-                    trunk=True,
-                    unit=above,
-                    accumulation_km2=catchment.accumulation_km2(above),
-                    edge=_edge(upper, lower, UnitOutlet(above)),
-                )
-            )
+            lower.branches.append(_branch(catchment, upper, lower, above, trunk=True))
         top = trunk_nodes[-1]
         if top.point is None:
             above = trunk[position[top.place.unit] + 1]
@@ -710,6 +764,41 @@ def _edge(upper: _Node, lower: _Node, end: Place | UnitOutlet) -> _Edge:
     return edge
 
 
+def _branch(
+    catchment: _Catchment, upper: _Node, lower: _Node, above: int, *, trunk: bool
+) -> _Branch:
+    """Make the branch from ``upper`` into ``lower`` through the unit ``above``.
+
+    A control point that the mouth rule moved to the outlet cell of ``above`` enters
+    ``lower`` directly (D3); any other node by an edge whose przyrzecze ends there.
+    """
+    accumulation = catchment.accumulation_km2(above)
+    if (
+        upper.at_mouth
+        and isinstance(upper.place, Place)
+        and upper.place.unit == above
+        and upper.place.at_outlet
+    ):
+        return _Branch(
+            trunk=trunk, unit=above, accumulation_km2=accumulation, mouth=upper
+        )
+    return _Branch(
+        trunk=trunk,
+        unit=above,
+        accumulation_km2=accumulation,
+        edge=_edge(upper, lower, UnitOutlet(above)),
+    )
+
+
+def _entering(paths: Iterable[Sequence[int]]) -> dict[int, set[int]]:
+    """Map each unit that paths of units enter to the units they enter it from."""
+    entering: dict[int, set[int]] = defaultdict(set)
+    for path in paths:
+        for upper, unit in pairwise(path):
+            entering[unit].add(upper)
+    return entering
+
+
 def _group_branch(
     catchment: _Catchment, members: list[_Node], above: int, target: _Node
 ) -> _Branch:
@@ -717,34 +806,19 @@ def _group_branch(
 
     One point brings its edge, or itself at the mouth. Several points meet where
     their paths merge, at the head cells of the units their paths enter from two or
-    more units: confluences joined by edges, the lowest one by the edge to the
-    junction (B1).
+    more units: confluences joined by edges (or entered by a point at the mouth),
+    the lowest one by the edge to the junction (B1).
     """
-    accumulation = catchment.accumulation_km2(above)
     if len(members) == 1:
-        (member,) = members
-        if member.at_mouth:
-            return _Branch(
-                trunk=False, unit=above, accumulation_km2=accumulation, mouth=member
-            )
-        return _Branch(
-            trunk=False,
-            unit=above,
-            accumulation_km2=accumulation,
-            edge=_edge(member, target, UnitOutlet(above)),
-        )
+        return _branch(catchment, members[0], target, above, trunk=False)
 
     paths = []
     for member in members:
         assert isinstance(member.place, Place)
         paths.append((member, catchment.path_down(member.place.unit, above)))
-    entering: dict[int, set[int]] = defaultdict(set)
-    for _, path in paths:
-        for upper_unit, unit in pairwise(path):
-            entering[unit].add(upper_unit)
     confluences = {
         unit: _Node(place=UnitHead(unit=unit, above=min(ups)), kind="confluence")
-        for unit, ups in entering.items()
+        for unit, ups in _entering(path for _, path in paths).items()
         if len(ups) > 1
     }
     wired: set[tuple[int, int]] = set()
@@ -758,22 +832,12 @@ def _group_branch(
             if (id(upper), unit) not in wired:
                 wired.add((id(upper), unit))
                 node.branches.append(
-                    _Branch(
-                        trunk=False,
-                        unit=upper_unit,
-                        accumulation_km2=catchment.accumulation_km2(upper_unit),
-                        edge=_edge(upper, node, UnitOutlet(upper_unit)),
-                    )
+                    _branch(catchment, upper, node, upper_unit, trunk=False)
                 )
             upper = node
         lowest = upper
     assert lowest is not None and lowest.point is None
-    return _Branch(
-        trunk=False,
-        unit=above,
-        accumulation_km2=accumulation,
-        edge=_edge(lowest, target, UnitOutlet(above)),
-    )
+    return _branch(catchment, lowest, target, above, trunk=False)
 
 
 def _branch_key(branch: _Branch) -> tuple[bool, float, int]:
@@ -841,7 +905,10 @@ def _connect(junction_nodes: list[_Node]) -> tuple[list[Reach], list[Junction]]:
     junctions = []
     for node in junction_nodes:
         inflows: list[str] = []
+        tributaries: list[str] = []
         for branch in sorted(node.branches, key=_branch_key):
+            if not branch.trunk:
+                tributaries.extend(_points_up(_upper_node(branch)))
             if branch.edge is not None:
                 edge = branch.edge
                 if not edge.upper.branches:
@@ -879,9 +946,29 @@ def _connect(junction_nodes: list[_Node]) -> tuple[list[Reach], list[Junction]]:
                 point=node.point,
                 place=node.place,
                 inflows=tuple(inflows),
+                tributaries=tuple(tributaries),
             )
         )
     return reaches, junctions
+
+
+def _upper_node(branch: _Branch) -> _Node:
+    """Return the node a branch that is not a headwater comes from."""
+    upper = branch.edge.upper if branch.edge is not None else branch.mouth
+    assert upper is not None
+    return upper
+
+
+def _points_up(node: _Node) -> list[str]:
+    """List the nearest control points from a node up: itself, or its branches'."""
+    if node.point is not None:
+        return [node.point]
+    return [
+        point
+        for branch in sorted(node.branches, key=_branch_key)
+        if branch.headwater is None
+        for point in _points_up(_upper_node(branch))
+    ]
 
 
 def _unit_elements(

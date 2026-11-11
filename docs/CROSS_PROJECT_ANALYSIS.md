@@ -1,7 +1,7 @@
 # Cross-Project Analysis
 
 **Date:** 2026-01-21
-**Last update:** 2026-11-10 (the pins follow the release set candidate-2 of Nogat, `587c909`: Obserwator `f9f4ee7`, Kartograf `d0990c8`, Hydrolog `759d7ef`; production and Hydroni still run `894810c` with Obserwator `1ee5457`, Kartograf `9deaa31` and Hydrolog `4fad769`, the `develop` of 2026-11-09 with the TR-55 rows of ADR-075's amendment; the branch table names Obserwator; 2026-11-05: Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
+**Last update:** 2026-11-10 (Hydrolog pinned to `930915d` of the release set candidate-3 of Nogat, `b0ac85b`; earlier that day the pins follow the release set candidate-2 of Nogat, `587c909`: Obserwator `f9f4ee7`, Kartograf `d0990c8`, Hydrolog `759d7ef`; production and Hydroni still run `894810c` with Obserwator `1ee5457`, Kartograf `9deaa31` and Hydrolog `4fad769`, the `develop` of 2026-11-09 with the TR-55 rows of ADR-075's amendment; the branch table names Obserwator; 2026-11-05: Hydrolog pinned to `1ffcd6b` of `develop`, the official inputs of tc, Nogat plan `2026-11-05-official-tc-inputs`; 2026-11-04: Obserwator pinned to `1ee5457`, 3.0.0.dev0 of the release set; the repository of Obserwator is `Daldek/Obserwator`; 2026-11-03: the pins follow the release set of Nogat: Kartograf `9deaa31`, Obserwator `ea158dc`, Hydrolog `2eb8bd0`, and Hydrograf imports the package `obserwator`; earlier that day IMGWTools was named Obserwator from its v3.0.0; 2026-11-02: Kartograf pinned to `eab8612`, the head Archiwista pins; 2026-10-25: the three producers on their heads, ADR-060, ADR-061; the document is in English)
 **Author:** Claude Code (analysis session)
 **Projects:** Hydrograf, Hydrolog, Kartograf, Obserwator (IMGWTools until its v3.0.0)
 
@@ -19,7 +19,7 @@
 │                                                                         │
 │  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐              │
 │  │  Obserwator   │   │   Kartograf   │   │   Hydrolog    │              │
-│  │  f9f4ee7      │   │   d0990c8     │   │   759d7ef     │              │
+│  │  f9f4ee7      │   │   d0990c8     │   │   930915d     │              │
 │  │  (IMGW data)  │   │  (GIS data)   │   │ (calculations)│              │
 │  └───────────────┘   └───────────────┘   └───────────────┘              │
 │                                                                         │
@@ -32,20 +32,20 @@
 |---------|-----------|--------------------|---------|
 | **Hydrograf** | Obserwator (package `obserwator`) | direct (pyproject.toml) | commit f9f4ee7 (3.0.0.dev0) |
 | **Hydrograf** | Kartograf | direct (pyproject.toml) | commit d0990c8 (0.8.0.dev0) |
-| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 759d7ef (1.0.0.dev0) |
+| **Hydrograf** | Hydrolog | direct (pyproject.toml) | commit 930915d (1.0.0.dev0) |
 | **Hydrolog** | Kartograf | none (the `[spatial]` extra is gone; Hydrolog reads files that Kartograf wrote) | - |
 
 **Note:** Hydrolog no longer depends on IMGWTools (removed in v0.5.2).
 
 ### Installing the dependencies (`backend/pyproject.toml`, versions in `backend/uv.lock`)
 
-The three producers are pinned by the commits of the release set of Nogat (candidate-2, Nogat `587c909`: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag:
+The three producers are pinned by the commits of the release set of Nogat (candidate-3, Nogat `b0ac85b`: the heads of their `develop`) until their tags exist (REL-5.3, ADR-060, ADR-061); the release replaces each commit with its tag:
 
 ```toml
 # [tool.uv.sources]
 obserwator = { git = "https://github.com/Daldek/Obserwator.git", rev = "f9f4ee7927ba520d3e82d3e289872090ae24e2ec" }
 kartograf = { git = "https://github.com/Daldek/Kartograf.git", rev = "d0990c89da88e73b9081fe33a151ba9d27b4f820" }
-hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "759d7ef0e99b654c4aff172d69439a6d8df42db2" }
+hydrolog = { git = "https://github.com/Daldek/Hydrolog.git", rev = "930915d5eee94ece17682e288fbab64c7f7cc5c1" }
 ```
 
 ---

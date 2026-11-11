@@ -289,9 +289,12 @@ def diagnose_polygon(
     exits, drained = polygon_exits(d8, cells.member, receivers, outlet)
     # Mean slope of the cells that leave through each exit (the slope raster's
     # nodata is negative)
-    sloped = cells.member & (cells.slope >= 0)
+    slope = cells.slope
+    if slope is None:
+        raise ValueError("The window holds no slope")
+    sloped = cells.member & (slope >= 0)
     slope_sum = np.bincount(
-        drained[sloped], weights=cells.slope[sloped], minlength=len(exits) + 1
+        drained[sloped], weights=slope[sloped], minlength=len(exits) + 1
     )
     slope_count = np.bincount(drained[sloped], minlength=len(exits) + 1)
 

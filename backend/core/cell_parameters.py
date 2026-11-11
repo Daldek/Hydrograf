@@ -16,6 +16,7 @@ with overland_segments, a walk along the D8 directions that needs no pyflwdir ob
 """
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -89,8 +90,13 @@ def d8_from_saved_flowdir(
         pyflwdir D8 flow directions (uint8).
     """
     d8 = fdir.astype(np.uint8)
-    d8[valid & (flow_dist_m == 0)] = 0
-    d8[~valid] = D8_NO_FLOW
+    # One mask at a time beside the grid: these windows can hold tens of millions of
+    # cells
+    cells = flow_dist_m == 0
+    cells &= valid
+    d8[cells] = 0
+    np.logical_not(valid, out=cells)
+    d8[cells] = D8_NO_FLOW
     return d8
 
 
@@ -132,8 +138,13 @@ class CellWindow:
 
     Attributes
     ----------
-    dem, slope, acc, fdir, flow_dist, labels : np.ndarray
+    dem, acc, fdir, flow_dist : np.ndarray
         The window of each raster; cells beyond a raster hold its nodata.
+    slope, labels : np.ndarray or None
+        The windows of the slope and of the labels, None where they are not kept:
+        the network delineation reads the slope only for the statistics of all its
+        elements at once and keeps the labels of the stream cells only, for the
+        channels (core.network_delineation).
     dem_nodata, flow_dist_nodata : float | None
         Nodata of the filled DEM and of the flow distances.
     transform : Affine
@@ -146,11 +157,11 @@ class CellWindow:
     """
 
     dem: np.ndarray
-    slope: np.ndarray
+    slope: np.ndarray | None
     acc: np.ndarray
     fdir: np.ndarray
     flow_dist: np.ndarray
-    labels: np.ndarray
+    labels: np.ndarray | None
     dem_nodata: float | None
     flow_dist_nodata: float | None
     transform: Affine
@@ -181,7 +192,9 @@ def read_cell_window(
     return read_cells(rasters, cells_window(rasters.filled_dem.transform, bounds))
 
 
-def read_cells(rasters: PipelineRasters, window: Window) -> CellWindow:
+def read_cells(
+    rasters: PipelineRasters, window: Window, *, slope: bool = True
+) -> CellWindow:
     """Read the rasters in a window of whole cells (it may reach beyond them).
 
     Parameters
@@ -190,6 +203,8 @@ def read_cells(rasters: PipelineRasters, window: Window) -> CellWindow:
         Open rasters.
     window : Window
         Rows and columns of the rasters.
+    slope : bool
+        Read the slope too; without it ``CellWindow.slope`` is None.
 
     Returns
     -------
@@ -205,7 +220,7 @@ def read_cells(rasters: PipelineRasters, window: Window) -> CellWindow:
     )
     return CellWindow(
         dem=dem.data,
-        slope=read_window(rasters.slope, window).data,
+        slope=read_window(rasters.slope, window).data if slope else None,
         acc=read_window(rasters.acc, window).data,
         fdir=read_window(rasters.fdir, window).data,
         flow_dist=flow_dist.data,
@@ -223,7 +238,14 @@ def terrain(cells: CellWindow, cellsize_m: float) -> tuple[dict[str, Any], float
 
     The statistics of process_dem's sub-catchments (polygonize_subcatchments), with
     the cells measured as the only label.
+
+    Raises
+    ------
+    ValueError
+        When the window holds no slope.
     """
+    if cells.slope is None:
+        raise ValueError("The window holds no slope")
     summary = zonal_summary(
         cells.member.astype(np.int32),
         cells.dem,
@@ -345,11 +367,12 @@ def flow_path_parameters(
     slope = (_elevation(cells, head) - _elevation(cells, outlet)) / (length_km * 1000)
     if slope > 0:
         result["flow_path_slope_m_per_m"] = round(slope, 6)
-    stream = (cells.acc >= threshold_cells) & cells.valid
+    stream = cells.acc >= threshold_cells
+    stream &= cells.valid
     lengths, drops = overland_segments(
         np.array([np.ravel_multi_index(head, d8.shape)], dtype=np.intp),
         stream,
-        cells.dem.ravel(),
+        cells.dem,
         cells.transform,
         d8=d8,
     )
@@ -364,7 +387,7 @@ def flow_path_parameters(
 def overland_segments(
     head_idxs: np.ndarray,
     stream_mask: np.ndarray,
-    flat_dem: np.ndarray,
+    dem: np.ndarray,
     transform: Affine,
     *,
     d8: np.ndarray | None = None,
@@ -385,8 +408,9 @@ def overland_segments(
         Flat indices of the head cells.
     stream_mask : np.ndarray
         2-D stream mask of the threshold (bool).
-    flat_dem : np.ndarray
-        Flattened filled DEM.
+    dem : np.ndarray
+        Filled DEM on the grid of ``stream_mask``, flattened or not: it is read at
+        the flat indices of the cells, without a copy of a window.
     transform : Affine
         Transform of the grid, whose cell sides measure the steps.
     d8 : np.ndarray, optional
@@ -429,7 +453,7 @@ def overland_segments(
             drops.append(None)
             continue
         lengths.append(round(float(dist), 1))
-        drops.append(round(float(flat_dem[head]) - float(flat_dem[end]), 2))
+        drops.append(round(float(dem.flat[head]) - float(dem.flat[end]), 2))
     return lengths, drops
 
 
@@ -586,14 +610,24 @@ def channel_parameters(
     -------
     dict[str, Any]
         As channel_measures.
+
+    Raises
+    ------
+    ValueError
+        When the window holds no labels.
     """
+    if cells.labels is None:
+        raise ValueError("The window holds no labels")
     stream = (cells.acc >= rasters.threshold_cells) & cells.valid
-    return channel_measures(cells, main_channel(cells, outlet, stream), rasters, db)
+    path = main_channel(cells, outlet, stream)
+    labels = [int(cells.labels[cell]) for cell in path]
+    return channel_measures(cells, path, labels, rasters, db)
 
 
 def channel_measures(
     cells: CellWindow,
     path: list[tuple[int, int]],
+    labels: Sequence[int],
     rasters: PipelineRasters,
     db: Session,
 ) -> dict[str, Any]:
@@ -613,6 +647,8 @@ def channel_measures(
         The window.
     path : list[tuple[int, int]]
         Cells of the channel, its outlet first (main_channel).
+    labels : Sequence[int]
+        The label of each cell of ``path``: its segment.
     rasters : PipelineRasters
         Open rasters: the threshold of the labels and the cell size.
     db : Session
@@ -634,13 +670,12 @@ def channel_measures(
     outlet = path[0]
     segment_idxs: list[int] = []  # from the outlet up
     raw_lengths_m: list[float] = []
-    for i, cell in enumerate(path):
+    for i, (cell, label) in enumerate(zip(path, labels, strict=True)):
         below = path[i - 1] if i else _downstream(cells, outlet)
         step_m = 0.0
         if below is not None:
             diagonal = below[0] != cell[0] and below[1] != cell[1]
             step_m = rasters.cellsize_m * (math.sqrt(2.0) if diagonal else 1.0)
-        label = int(cells.labels[cell])
         if segment_idxs and segment_idxs[-1] == label:
             raw_lengths_m[-1] += step_m
         else:

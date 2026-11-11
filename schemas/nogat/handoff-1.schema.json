@@ -20,10 +20,17 @@
       "minLength": 1
     },
     "provenance": {
-      "description": "Where the inputs of the payload came from, one entry per input (`rainfall`, `watershed`, ...); empty when nothing is known. The values the payload holds are not repeated here, only what produced them (e.g. the PMAXTP probability and duration of a design depth)",
+      "description": "Where the inputs of the payload came from, one entry per input (`rainfall`, `watershed`, ...); empty when nothing is known. The values the payload holds are not repeated here, only what produced them (e.g. the PMAXTP probability and duration of a design depth). True for the whole payload; `node_provenance` refines it per node",
       "type": "object",
       "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
       "additionalProperties": {"$ref": "#/$defs/origin"}
+    },
+    "node_provenance": {
+      "description": "Where the inputs of each node of the payload came from, keyed by the `id` of the node (a payload with nodes, such as `hydrolog-network/1`); each value is keyed like `provenance`, by input (`watershed`, `runoff`, `rainfall` of a subcatchment, `node` for the node's own fields and place). An entry here takes precedence over `provenance` for its node and input; a node or input without one takes `provenance`. A key that names no node of the payload is left out by the consumer with a notice (docs/plans/2026-11-10-node-provenance-in-handoff.md)",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"minLength": 1},
+      "additionalProperties": {"$ref": "#/$defs/node_inputs"}
     },
     "payload": {"$ref": "#/$defs/payload"},
     "result": {"$ref": "#/$defs/result"}
@@ -55,6 +62,13 @@
       "properties": {
         "source": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"}
       }
+    },
+    "node_inputs": {
+      "description": "The origins of the inputs of one node, one entry per input",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+      "additionalProperties": {"$ref": "#/$defs/origin"}
     },
     "payload": {
       "description": "The domain document handed off, `<tool>-<kind>/<n>` (AGI-4.1), validated by the consumer against its owner's schema. Known payloads: `hydrolog-network/1` (Hydrolog, `src/hydrolog/schemas/hydrolog-network-1.schema.json`): one watershed is one `subcatchment` with the values used and the `outlet`, joined sub-catchments are more nodes",
@@ -139,6 +153,83 @@
         "peak_discharge_m3s": 57.8786,
         "time_to_peak_min": 400.0,
         "total_volume_m3": 1046712.9
+      }
+    },
+    {
+      "schema": "nogat-handoff/1",
+      "created_at": "2026-11-12T09:30:00Z",
+      "producer": {"tool": "hydrograf", "version": "0.5.0.dev0"},
+      "subject": "Kamiennik — Świerzawa, sieć 3 zlewni",
+      "provenance": {
+        "watershed": {"source": "hydrograf", "latitude": 51.0154, "longitude": 15.89},
+        "rainfall": {
+          "source": "pmaxtp",
+          "probability_percent": 1,
+          "duration_min": 720,
+          "latitude": 51.0154,
+          "longitude": 15.89,
+          "interpolation": "thiessen"
+        }
+      },
+      "node_provenance": {
+        "Z1": {"watershed": {"source": "hydrograf", "element": "headwater", "latitude": 51.0391, "longitude": 15.8436}},
+        "Z2": {"watershed": {"source": "hydrograf", "element": "tributary", "point": "P1", "latitude": 51.0402, "longitude": 15.8459}},
+        "J1": {"node": {"source": "hydrograf", "element": "confluence", "latitude": 51.0391, "longitude": 15.8436}},
+        "R1": {
+          "node": {
+            "source": "hydrograf",
+            "element": "reach",
+            "length": "flow-distance",
+            "slope": "nmt",
+            "vector_length_km": 5.12,
+            "vector_source": "mphp"
+          }
+        },
+        "Z3": {"watershed": {"source": "hydrograf", "element": "intermediate", "reach": "R1"}}
+      },
+      "payload": {
+        "schema": "hydrolog-network/1",
+        "name": "Kamiennik — Świerzawa, sieć 3 zlewni",
+        "timestep_min": 10,
+        "rainfall": {
+          "kind": "design",
+          "hietogram_type": "beta",
+          "total_mm": 105.0,
+          "duration_min": 720.0,
+          "alpha": 2.0,
+          "beta": 5.0
+        },
+        "nodes": [
+          {
+            "id": "Z1",
+            "type": "subcatchment",
+            "watershed": {"area_km2": 20.1, "cn": 63, "flow_path_length_km": 9.84, "flow_path_slope_m_per_m": 0.0187},
+            "runoff": {"model": "curve-number", "tc_method": "kirpich", "amc": "II", "uh_model": "scs"}
+          },
+          {
+            "id": "Z2",
+            "type": "subcatchment",
+            "watershed": {"area_km2": 12.4, "cn": 68, "flow_path_length_km": 7.21, "flow_path_slope_m_per_m": 0.0236},
+            "runoff": {"model": "curve-number", "tc_method": "kirpich", "amc": "II", "uh_model": "scs"}
+          },
+          {"id": "J1", "type": "junction", "from": ["Z1", "Z2"]},
+          {
+            "id": "R1",
+            "type": "reach",
+            "method": "muskingum-cunge",
+            "from": ["J1"],
+            "length_km": 5.07,
+            "slope_m_per_m": 0.0098
+          },
+          {
+            "id": "Z3",
+            "type": "subcatchment",
+            "watershed": {"area_km2": 4.72, "cn": 66, "flow_path_length_km": 3.35, "flow_path_slope_m_per_m": 0.0311},
+            "runoff": {"model": "curve-number", "tc_method": "kirpich", "amc": "II", "uh_model": "scs"}
+          },
+          {"id": "J2", "type": "junction", "from": ["R1", "Z3"]},
+          {"id": "OUT", "type": "outlet", "from": ["J2"]}
+        ]
       }
     }
   ]

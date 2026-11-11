@@ -1,5 +1,5 @@
 """
-The hand-off of a watershed to Hydrolog's GUI (ADR-068).
+The hand-off of a watershed or a network to Hydrolog's GUI (ADR-068, ADR-080).
 
 ``nogat-handoff/1`` is Nogat's envelope of the data handed between the GUIs of the
 ecosystem (``schemas/nogat/handoff-1.schema.json``, a verbatim copy); its payload is
@@ -10,16 +10,30 @@ hydrograph of POST /api/generate-hydrograph adds the runoff and the rainfall the
 computation used and its result, which Hydrolog recomputes and shows beside its own.
 The values are the computation's own, never rounded, so the same version of Hydrolog
 gives the same result; the provenance names where the inputs came from.
+
+A network of POST /api/delineate-network (``build_network_handoff``) is its
+subcatchments, reaches, junctions and outlet in one payload, without rainfall, time
+step, result and the sections of the reaches, which the person gives in Hydrolog's
+„Sieć i trasowanie”; ``node_provenance`` gives the origin of every node but the outlet.
 """
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import cache
 from importlib.metadata import version
-from typing import Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from core.version import get_version
+
+if TYPE_CHECKING:
+    from core.network_delineation import (
+        Network,
+        NetworkJunction,
+        NetworkReach,
+        NetworkSubcatchment,
+    )
 
 HANDOFF_SCHEMA: Final = "nogat-handoff/1"
 PAYLOAD_SCHEMA: Final = "hydrolog-network/1"
@@ -448,3 +462,263 @@ def build_handoff(
     if hydrograph:
         document["result"] = hydrograph.result
     return document
+
+
+# The longest description of a node or a network that Hydrolog takes
+# (hydrolog-network/1, $defs/description)
+DESCRIPTION_MAX_CHARS: Final = 500
+# How the length of a reach is measured: the difference of the flow distances of its
+# ends (ADR-080, D10)
+REACH_LENGTH_METHOD: Final = "flow_distance"
+# The lines of the check length of a reach (bdot_streams)
+REACH_VECTOR_SOURCE: Final = "bdot10k"
+# A reach without a section is routed by Muskingum-Cunge once the person gives one
+REACH_METHOD: Final = "muskingum-cunge"
+_SLOPE_WORDS: Final = {"nmt": "NMT", "minimum": "minimalny"}
+
+
+def build_network_handoff(
+    network: "Network",
+    names: Mapping[str, str],
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Return the hand-off ``nogat-handoff/1`` of a network (ADR-080, D14).
+
+    Parameters
+    ----------
+    network : Network
+        The delineated network (``core.network_delineation.delineate_network``).
+    names : Mapping[str, str]
+        The names of the points that have one, by the id of the point.
+    created_at : datetime, optional
+        When the hand-off is written (now).
+
+    Returns
+    -------
+    dict[str, Any]
+        The document: the payload ``hydrolog-network/1`` with every node in the order
+        of the network (each after the nodes it receives) and a Polish description
+        of each; subcatchments with the ``watershed`` of their morphometry (the area
+        exact to the cell) and the ``curve-number`` runoff with Hydrolog's defaults,
+        Muskingum-Cunge reaches with a length and a slope and no section, junctions
+        and the outlet ``OUT``; no rainfall, time step or result. ``provenance``
+        names A's snapped place, ``node_provenance`` the origin of every
+        subcatchment, reach and junction.
+    """
+    moment = created_at or datetime.now(UTC)
+    outlet = network.points[0]
+    subcatchments = {item.subcatchment.id: item for item in network.subcatchments}
+    reaches = {item.reach.id: item for item in network.reaches}
+    junctions = {item.junction.id: item for item in network.junctions}
+    (outlet_junction,) = [
+        item.junction.id for item in network.junctions if item.junction.kind == "outlet"
+    ]
+    name = names.get(outlet.point_id) or watershed_name(
+        outlet.latitude, outlet.longitude
+    )
+    # „Kaczawa, sieć (3 zlewnie)”: the count in parentheses reads as Polish, and the
+    # subject names the hand-off's file, where a colon is not allowed
+    subject = (
+        f"{name}, sieć ({_count(len(subcatchments), 'zlewnia', 'zlewnie', 'zlewni')})"
+    )
+    nodes: list[dict[str, Any]] = []
+    node_provenance: dict[str, dict[str, Any]] = {}
+    for node_id in network.order:
+        if node_id in subcatchments:
+            nodes.append(_subcatchment_node(subcatchments[node_id], names))
+            node_provenance[node_id] = {
+                "watershed": _subcatchment_origin(subcatchments[node_id])
+            }
+        elif node_id in reaches:
+            nodes.append(_reach_node(reaches[node_id]))
+            node_provenance[node_id] = {"node": _reach_origin(reaches[node_id])}
+        elif node_id in junctions:
+            nodes.append(_junction_node(junctions[node_id], names))
+            node_provenance[node_id] = {"node": _junction_origin(junctions[node_id])}
+        else:
+            nodes.append({"id": node_id, "type": "outlet", "from": [outlet_junction]})
+    description = (
+        "Sieć zlewni do przekroju zamykającego "
+        f"{_point_label(outlet.point_id, names)}, wyznaczona w Hydrografie: "
+        f"{_count(len(subcatchments), 'zlewnia', 'zlewnie', 'zlewni')}, "
+        f"{_count(len(reaches), 'odcinek', 'odcinki', 'odcinków')}, "
+        f"{_count(len(junctions), 'węzeł', 'węzły', 'węzłów')}. Opad sieci i przekroje "
+        "odcinków (n Manninga, szerokość) podaje się w Hydrologu."
+    )
+    return {
+        "schema": HANDOFF_SCHEMA,
+        "created_at": moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "producer": {"tool": PRODUCER, "version": get_version()},
+        "subject": subject,
+        "provenance": {
+            "watershed": {
+                "source": PRODUCER,
+                "point": outlet.point_id,
+                "latitude": outlet.latitude,
+                "longitude": outlet.longitude,
+                "threshold_m2": network.threshold_m2,
+            }
+        },
+        "node_provenance": node_provenance,
+        "payload": {
+            "schema": PAYLOAD_SCHEMA,
+            "name": subject,
+            "description": _description(description),
+            "nodes": nodes,
+        },
+    }
+
+
+def _subcatchment_node(
+    element: "NetworkSubcatchment", names: Mapping[str, str]
+) -> dict[str, Any]:
+    """Return a subcatchment of the payload: its watershed, the runoff and a text."""
+    morphometry = element.watershed.morphometry
+    title = _element_title(element, names)
+    watershed = watershed_parameters(
+        morphometry.model_dump(exclude_none=True) if morphometry is not None else {},
+        title,
+    )
+    # Exact to the cell, so the subcatchments add up to A in Hydrolog too
+    watershed["area_km2"] = element.area_km2
+    return {
+        "id": element.subcatchment.id,
+        "type": "subcatchment",
+        "watershed": watershed,
+        "runoff": {"model": "curve-number"},
+        "description": _description(f"{title}: {_area(element.area_km2)}"),
+    }
+
+
+def _element_title(element: "NetworkSubcatchment", names: Mapping[str, str]) -> str:
+    """Say what an element is, in Polish: „Dopływ do ujścia przy P1 (Kamiennik)”."""
+    item = element.subcatchment
+    if item.kind == "intermediate":
+        return f"Przyrzecze odcinka {item.reach}"
+    if item.point is None:
+        return f"Zlewnia górna powyżej {item.to}"
+    point = _point_label(item.point, names)
+    if item.kind == "headwater":
+        return f"Zlewnia górna do punktu {point}"
+    if item.at_mouth:
+        return f"Dopływ do ujścia przy {point}"
+    return f"Dopływ do punktu {point}"
+
+
+def _subcatchment_origin(element: "NetworkSubcatchment") -> dict[str, Any]:
+    """Where a subcatchment comes from: its kind, its point and reach, its outlet."""
+    item = element.subcatchment
+    origin: dict[str, Any] = {"source": PRODUCER, "element": item.kind}
+    if item.point is not None:
+        origin["point"] = item.point
+    if item.reach is not None:
+        origin["reach"] = item.reach
+    if item.at_mouth:
+        origin["at_mouth"] = True
+    origin["latitude"] = element.watershed.outlet.latitude
+    origin["longitude"] = element.watershed.outlet.longitude
+    return origin
+
+
+def _reach_node(item: "NetworkReach") -> dict[str, Any]:
+    """Return a reach of the payload: its length and slope, no section, a text."""
+    reach = item.reach
+    return {
+        "id": reach.id,
+        "type": "reach",
+        "method": REACH_METHOD,
+        "from": [reach.from_node],
+        "length_km": item.length_km,
+        "slope_m_per_m": item.slope_m_per_m,
+        "description": _description(
+            f"Odcinek od {reach.from_node} do {reach.to}: "
+            f"{_decimal(item.length_km, 2)} km, spadek "
+            f"{_decimal(item.slope_m_per_m * 1000, 2)} ‰ "
+            f"({_SLOPE_WORDS[item.slope_method]})"
+        ),
+    }
+
+
+def _reach_origin(item: "NetworkReach") -> dict[str, Any]:
+    """Where a reach's length and slope come from, with the NMT and the check length."""
+    origin: dict[str, Any] = {
+        "source": PRODUCER,
+        "element": "reach",
+        "length": REACH_LENGTH_METHOD,
+        "slope": item.slope_method,
+    }
+    if item.upstream_elevation_m is not None:
+        origin["upstream_elevation_m"] = item.upstream_elevation_m
+    if item.downstream_elevation_m is not None:
+        origin["downstream_elevation_m"] = item.downstream_elevation_m
+    if item.vector_length_km is not None:
+        origin["vector_length_km"] = item.vector_length_km
+        origin["vector_source"] = REACH_VECTOR_SOURCE
+    return origin
+
+
+def _junction_node(item: "NetworkJunction", names: Mapping[str, str]) -> dict[str, Any]:
+    """Return a junction of the payload: its inflows and a text."""
+    junction = item.junction
+    if junction.kind == "outlet":
+        text = f"Przekrój zamykający {_point_label(junction.point or '', names)}"
+    elif junction.kind == "point":
+        text = f"Punkt {_point_label(junction.point or '', names)}"
+    else:
+        text = "Zbieg: " + ", ".join(
+            f"dopływ {_point_label(point, names)}" for point in junction.tributaries
+        )
+    return {
+        "id": junction.id,
+        "type": "junction",
+        "from": list(junction.inflows),
+        "description": _description(text),
+    }
+
+
+def _junction_origin(item: "NetworkJunction") -> dict[str, Any]:
+    """Where a junction comes from: its kind, its point and its place."""
+    junction = item.junction
+    origin: dict[str, Any] = {"source": PRODUCER, "element": junction.kind}
+    if junction.point is not None:
+        origin["point"] = junction.point
+    origin["latitude"] = item.latitude
+    origin["longitude"] = item.longitude
+    return origin
+
+
+def _point_label(point_id: str, names: Mapping[str, str]) -> str:
+    """Name a point by its id and, when it has one, its name: „P1 (Kamiennik)”."""
+    name = names.get(point_id)
+    return f"{point_id} ({name})" if name else point_id
+
+
+def _decimal(value: float, decimals: int) -> str:
+    """Write a number with a decimal comma, as the interface does."""
+    return f"{value:.{decimals}f}".replace(".", ",")
+
+
+def _area(area_km2: float) -> str:
+    """Write an area in km², with 4 decimals below 0.1 km² so that it is not 0."""
+    return f"{_decimal(area_km2, 2 if area_km2 >= 0.1 else 4)} km²"
+
+
+def _count(count: int, one: str, few: str, many: str) -> str:
+    """Write a count with the Polish plural: 1 zlewnia, 3 zlewnie, 5 zlewni."""
+    if count == 1:
+        return f"{count} {one}"
+    if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
+        return f"{count} {few}"
+    return f"{count} {many}"
+
+
+# Characters a description of Hydrolog refuses: the control characters but line feed
+_CONTROL = re.compile(r"[\x00-\x09\x0b-\x1f\x7f-\x9f]")
+
+
+def _description(text: str) -> str:
+    """Make a text one Hydrolog takes: no control character, at most 500 characters."""
+    text = _CONTROL.sub(" ", text)
+    if len(text) <= DESCRIPTION_MAX_CHARS:
+        return text
+    return text[: DESCRIPTION_MAX_CHARS - 1] + "…"

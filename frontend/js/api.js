@@ -263,6 +263,26 @@
     }
 
     /**
+     * Network of subcatchments, reaches and junctions at a closing section and
+     * the points above it (mode „Sieć zlewni”, POST /api/delineate-network).
+     *
+     * @param {Object} body - { outlet: { id, latitude, longitude, name? },
+     *     points: [{ id, latitude, longitude, name? }], threshold_m2 }
+     * @returns {Promise<Object>} { area_km2, area_check, boundary_geojson, points,
+     *     subcatchments, reaches, junctions, notices, handoff }
+     */
+    async function delineateNetwork(body) {
+        const response = await apiFetch('/api/delineate-network', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) await handleError(response);
+        return response.json();
+    }
+
+    /**
      * What Hydrograf knows at a point (mode "Identyfikuj").
      *
      * @param {number} lat - Latitude (WGS84)
@@ -314,6 +334,7 @@
         getDepressions: getDepressions,
         delineateWatershed: delineateWatershed,
         previewWatershed: previewWatershed,
+        delineateNetwork: delineateNetwork,
         identifyPoint: identifyPoint,
         submitFeedback: submitFeedback,
     };

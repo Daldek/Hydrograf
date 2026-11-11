@@ -1,14 +1,18 @@
 /**
- * Hydrograf hand-off to Hydrolog (results panel, ADR-068).
+ * Hydrograf hand-off to Hydrolog (results panel, ADR-068, ADR-080).
  *
  * The API writes the current watershed as a hand-off nogat-handoff/1: the delineation
  * without rainfall and result (`handoff` of POST /api/delineate-watershed), each
  * hydrograph with its rainfall, runoff and result for comparison (`handoff` of POST
- * /api/generate-hydrograph). "Kopiuj do Hydrologa" puts the hand-off of what the panel
- * shows on the clipboard and "Plik przekazania" downloads it as <name>.handoff.json;
- * Hydrolog opens both with "Wczytaj z Hydrografa". Without the Clipboard API (plain
- * HTTP outside localhost) the copy goes through a selected text field, which stays open
- * for Ctrl+C when the browser refuses that too.
+ * /api/generate-hydrograph), and the network of the mode „Sieć zlewni” without
+ * rainfall and the sections of its reaches (`handoff` of POST /api/delineate-network).
+ * The section serves the view the panel shows: the network in „Sieć zlewni”, the
+ * watershed in the other modes. "Kopiuj do Hydrologa" puts the hand-off of what the
+ * panel shows on the clipboard and "Plik przekazania" downloads it as
+ * <name>.handoff.json; Hydrolog opens both with "Wczytaj z Hydrografa", a network in
+ * „Sieć i trasowanie”. Without the Clipboard API (plain HTTP outside localhost) the
+ * copy goes through a selected text field, which stays open for Ctrl+C when the
+ * browser refuses that too.
  */
 (function () {
     'use strict';
@@ -19,10 +23,14 @@
 
     var _watershed = null;  // delineation response the hand-off belongs to
     var _hydrograph = null; // hand-off of the hydrograph the panel shows for it
+    var _network = null;    // hand-off of the network of „Sieć zlewni”
+    var _networkStale = false; // the points changed after the network was delineated
+    var _view = 'watershed';
     var els = {};
 
-    /** The hand-off of what the panel shows: the hydrograph, else the watershed. */
+    /** The hand-off of what the panel shows: the network, the hydrograph or the watershed. */
     function current() {
+        if (_view === 'network') return _networkStale ? null : _network;
         if (_hydrograph) return _hydrograph;
         return (_watershed && _watershed.handoff) || null;
     }
@@ -55,8 +63,23 @@
         return String(minutes / 60).replace('.', ',') + ' h';
     }
 
+    /** What the hand-off of a network holds, in words (counts of its nodes but the outlet). */
+    function networkContents(doc) {
+        var count = { subcatchment: 0, reach: 0, junction: 0 };
+        doc.payload.nodes.forEach(function (node) {
+            if (node.type in count) count[node.type] += 1;
+        });
+        return 'Zawiera sieć: ' +
+            count.subcatchment + ' ' + plural(count.subcatchment, 'zlewnia', 'zlewnie', 'zlewni') + ', ' +
+            count.reach + ' ' + plural(count.reach, 'odcinek', 'odcinki', 'odcinków') + ', ' +
+            count.junction + ' ' + plural(count.junction, 'węzeł', 'węzły', 'węzłów') +
+            ', bez opadu (opad sieci ustawisz w Hydrologu, w kroku „Sieć”) i bez przekrojów ' +
+            'odcinków (n Manninga i szerokość uzupełnisz w Hydrologu).';
+    }
+
     /** What the hand-off holds, in words. */
     function contents(doc) {
+        if (_view === 'network') return networkContents(doc);
         var subcatchment = doc.payload.nodes[0];
         var origin = doc.provenance.watershed || {};
         var changed = origin.changed ? origin.changed.length : 0;
@@ -90,16 +113,28 @@
     function render() {
         if (!els.section) return;
         var doc = current();
-        els.section.hidden = !_watershed;
+        els.section.hidden = _view === 'network' ? !_network : !_watershed;
         els.copy.disabled = !doc;
         els.file.disabled = !doc;
-        els.note.textContent = doc ? contents(doc) : '';
+        if (doc) {
+            els.note.textContent = contents(doc);
+        } else {
+            els.note.textContent = _view === 'network' && _network
+                ? 'Punkty zmieniły się po wyznaczeniu sieci: wyznacz ją ponownie, by ją przekazać.'
+                : '';
+        }
         setStatus('');
         hideFallback();
     }
 
+    /** Where Hydrolog opens the hand-off: a network in „Sieć i trasowanie”. */
+    function hydrologPath(item) {
+        return 'W Hydrologu: ' + (_view === 'network' ? '„Sieć i trasowanie” → ' : '') +
+            '„Wczytaj z Hydrografa” → „' + item + '”.';
+    }
+
     function copied() {
-        setStatus('Skopiowano przekazanie. W Hydrologu: „Wczytaj z Hydrografa” → „Wklej ze schowka”.');
+        setStatus('Skopiowano przekazanie. ' + hydrologPath('Wklej ze schowka'));
     }
 
     /**
@@ -147,7 +182,7 @@
         link.remove();
         setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         hideFallback();
-        setStatus('Pobrano plik „' + name + '”. W Hydrologu: „Wczytaj z Hydrografa” → „Plik przekazania…”.');
+        setStatus('Pobrano plik „' + name + '”. ' + hydrologPath('Plik przekazania…'));
     }
 
     /** A new selection: its delineation response, null when there is none. */
@@ -165,6 +200,23 @@
     function showHydrograph(data, handoff) {
         if (data !== _watershed) return;
         _hydrograph = handoff || null;
+        render();
+    }
+
+    /**
+     * The network of „Sieć zlewni” (js/network.js): its hand-off, null when there is
+     * none; `stale` when the points changed after it was delineated, so it is not
+     * handed off.
+     */
+    function showNetwork(handoff, stale) {
+        _network = handoff || null;
+        _networkStale = !!stale;
+        render();
+    }
+
+    /** The view the panel serves: 'network' in „Sieć zlewni”, else 'watershed'. */
+    function showView(view) {
+        _view = view;
         render();
     }
 
@@ -188,5 +240,7 @@
     window.Hydrograf.handoff = {
         showWatershed: showWatershed,
         showHydrograph: showHydrograph,
+        showNetwork: showNetwork,
+        showView: showView,
     };
 })();

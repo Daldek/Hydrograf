@@ -23,6 +23,7 @@ from api.endpoints import (
     health,
     hydrograph,
     identify,
+    network,
     profile,
     tiles,
     watershed,
@@ -158,6 +159,12 @@ app.include_router(
     watershed.router,
     prefix="/api",
     tags=["Watershed"],
+    responses=problem_responses(404, 422, 503),
+)
+app.include_router(
+    network.router,
+    prefix="/api",
+    tags=["Network"],
     responses=problem_responses(404, 422, 503),
 )
 app.include_router(hydrograph.router, prefix="/api", tags=["Hydrograph"])

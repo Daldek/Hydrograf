@@ -23,7 +23,7 @@ import math
 import time
 from collections.abc import Iterator, Sequence
 from contextlib import ExitStack, contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Literal
 
 import numba
@@ -91,7 +91,7 @@ from core.watershed_service import (
     compute_watershed_length,
     flow_path_geojson,
 )
-from core.zonal_stats import zonal_summary
+from core.zonal_stats import ZonalSummary, zonal_summary
 from models.schemas import (
     HypsometricPoint,
     MorphometricParameters,
@@ -343,23 +343,29 @@ def delineate_network(
             time.perf_counter() - started,
         )
         window = catchment_window(rasters, cg, db, tree)
-        cells = read_cells(rasters, window)
+        # Each array of the window takes 1 to 4 bytes a cell: the slope is read for
+        # the statistics of the elements only, the labels are dropped once the
+        # element raster holds them (D7)
+        grid = NetworkGrid(read_cells(rasters, window, slope=False), window, rasters)
         logger.info(
             "Network: window of %d x %d cells read in %.2f s",
             window.height,
             window.width,
             time.perf_counter() - started,
         )
-        grid = NetworkGrid(cells, window, rasters)
         elements, streams, outside = element_raster(grid, cg, tree)
+        grid.keep_stream_labels()
         check = area_check(cg, tree, elements, outside, rasters.cellsize_m)
-        boundaries = element_coverage(elements, cells.transform, COVERAGE_TOLERANCE_M)
+        summary = element_summary(grid, elements)
+        boundaries = element_coverage(
+            elements, grid.cells.transform, COVERAGE_TOLERANCE_M
+        )
         logger.info(
             "Network: elements and their coverage in %.2f s",
             time.perf_counter() - started,
         )
         subcatchments = _measure_elements(
-            grid, cg, db, tree, elements, streams, boundaries
+            grid, cg, db, tree, elements, streams, summary, boundaries
         )
         reaches = tuple(
             _measure_reach(grid, cg, db, nmt, reach) for reach in tree.reaches
@@ -682,7 +688,11 @@ class NetworkGrid:
     Attributes
     ----------
     cells : CellWindow
-        The rasters in the window.
+        The rasters in the window; delineate_network reads it without the slope
+        (element_summary reads that) and drops its labels after the element raster
+        (keep_stream_labels).
+    window : Window
+        The window, in the rows and columns of the rasters.
     rasters : PipelineRasters
         The open rasters.
     unit_outlets : dict[int, tuple[int, int]]
@@ -692,9 +702,39 @@ class NetworkGrid:
 
     def __init__(self, cells: CellWindow, window: Window, rasters: PipelineRasters):
         self.cells = cells
+        self.window = window
         self.rasters = rasters
         self.row0, self.col0 = int(window.row_off), int(window.col_off)
         self.unit_outlets: dict[int, tuple[int, int]] = {}
+        # The stream cells of the units (flat, ascending) and their labels
+        self._stream_cells = np.empty(0, dtype=np.int64)
+        self._stream_labels = np.empty(0, dtype=np.int64)
+
+    def keep_stream_labels(self) -> None:
+        """Keep the labels of the stream cells of the units only (D8).
+
+        The window of the labels gives the element raster; after it the measures
+        need the label of each cell of a main channel, which runs on the stream cells
+        of the units (``main_channel``), so the window of the labels is dropped.
+        """
+        labels = self.cells.labels
+        if labels is None:
+            raise ValueError("The window holds no labels")
+        self._stream_cells = _stream_cells(self.cells.acc, self.rasters.threshold_cells)
+        self._stream_labels = labels.ravel()[self._stream_cells]
+        self.cells = replace(self.cells, labels=None)
+
+    def stream_labels(self, cells: Sequence[tuple[int, int]]) -> list[int]:
+        """Return the labels of stream cells of the window (keep_stream_labels)."""
+        ncols = self.cells.acc.shape[1]
+        flat = np.array([row * ncols + col for row, col in cells], dtype=np.int64)
+        at = np.searchsorted(self._stream_cells, flat)
+        inside = at < self._stream_cells.size
+        found = np.zeros(flat.size, dtype=bool)
+        found[inside] = self._stream_cells[at[inside]] == flat[inside]
+        if not found.all():
+            raise ValueError("A cell of a channel is not a stream cell of the units")
+        return [int(label) for label in self._stream_labels[at]]
 
     def local(self, cell: tuple[int, int]) -> tuple[int, int]:
         """Return a cell of the rasters in the window."""
@@ -744,15 +784,18 @@ def element_raster(
         element); the cells of A's unit below A.
     """
     cells = grid.cells
+    labels = cells.labels
+    if labels is None:
+        raise ValueError("The window holds no labels")
     segments = np.array(
         cg.get_segment_indices(tree.units, DEFAULT_THRESHOLD_M2), dtype=np.int64
     )
     if segments.size != tree.units.size:
         raise ValueError("The units of the catchment are not all of the unit threshold")
     segment_of = dict(zip(tree.units.tolist(), segments.tolist(), strict=True))
-    table = np.zeros(max(int(cells.labels.max()), int(segments.max())) + 1, np.int16)
+    table = np.zeros(max(int(labels.max()), int(segments.max())) + 1, np.int16)
     table[segments] = tree.unit_elements
-    elements = table[cells.labels]
+    elements = table[labels]
 
     # The outlet cell of every unit a place of the tree names, and the extent of the
     # split units: one pass over the labels
@@ -771,9 +814,9 @@ def element_raster(
     for k, unit in enumerate(named_units):
         slot[segment_of[unit]] = k
     flat, row_min, row_max, col_min, col_max = _extents(
-        cells.labels, slot, cells.acc, len(named_units)
+        labels, slot, cells.acc, len(named_units)
     )
-    ncols = cells.labels.shape[1]
+    ncols = labels.shape[1]
     for k, unit in enumerate(named_units):
         if flat[k] < 0:
             raise ValueError(f"Unit {unit} has no cells in the window")
@@ -783,12 +826,12 @@ def element_raster(
     n_elements = len(tree.subcatchments)
     streams: dict[int, np.ndarray] = {}
     outside = 0
-    nrows = cells.labels.shape[0]
+    nrows = labels.shape[0]
     for split in tree.splits:
         k = named_units.index(split.unit)
         rows = slice(max(int(row_min[k]) - 1, 0), min(int(row_max[k]) + 2, nrows))
         cols = slice(max(int(col_min[k]) - 1, 0), min(int(col_max[k]) + 2, ncols))
-        unit_cells = cells.labels[rows, cols] == segment_of[split.unit]
+        unit_cells = labels[rows, cols] == segment_of[split.unit]
         d8 = d8_from_saved_flowdir(
             cells.fdir[rows, cols], cells.flow_dist[rows, cols], cells.valid[rows, cols]
         )
@@ -846,6 +889,29 @@ def _extents(
     return flat, row_min, row_max, col_min, col_max
 
 
+@numba.njit(cache=True)
+def _stream_cells(acc: np.ndarray, threshold_cells: int) -> np.ndarray:
+    """Flat indices of the cells of an accumulation of at least the threshold.
+
+    In ascending order, as ``np.flatnonzero(acc >= threshold_cells)`` gives them,
+    without a mask of the window.
+    """
+    nrows, ncols = acc.shape
+    count = 0
+    for row in range(nrows):
+        for col in range(ncols):
+            if acc[row, col] >= threshold_cells:
+                count += 1
+    cells = np.empty(count, dtype=np.int64)
+    k = 0
+    for row in range(nrows):
+        for col in range(ncols):
+            if acc[row, col] >= threshold_cells:
+                cells[k] = row * ncols + col
+                k += 1
+    return cells
+
+
 def area_check(
     cg: CatchmentGraph,
     tree: NetworkTree,
@@ -888,6 +954,21 @@ def area_check(
     return round(watershed_cells * cell_km2, 6), round(elements_cells * cell_km2, 6)
 
 
+def element_summary(grid: NetworkGrid, elements: np.ndarray) -> ZonalSummary:
+    """Give the terrain statistics of every element in one pass (D8).
+
+    ``zonal_summary`` of the element raster over the filled DEM and the slope; the
+    window of the slope is read for it alone.
+    """
+    cells = grid.cells
+    return zonal_summary(
+        elements,
+        cells.dem,
+        read_window(grid.rasters.slope, grid.window).data,
+        cells.dem_nodata if cells.dem_nodata is not None else np.nan,
+    )
+
+
 def _measure_elements(
     grid: NetworkGrid,
     cg: CatchmentGraph,
@@ -895,20 +976,14 @@ def _measure_elements(
     tree: NetworkTree,
     elements: np.ndarray,
     streams: dict[int, np.ndarray],
+    summary: ZonalSummary,
     boundaries: dict[int, BaseGeometry],
 ) -> tuple[NetworkSubcatchment, ...]:
     """Measure every element from its cells (D8)."""
-    cells = grid.cells
-    summary = zonal_summary(
-        elements,
-        cells.dem,
-        cells.slope,
-        cells.dem_nodata if cells.dem_nodata is not None else np.nan,
-    )
     count = len(tree.subcatchments) + 1
     slot = np.arange(count, dtype=np.int64)
     flat, row_min, row_max, col_min, col_max = _extents(
-        elements, slot, cells.acc, count
+        elements, slot, grid.cells.acc, count
     )
     nrows, ncols = elements.shape
     measured = []
@@ -918,19 +993,6 @@ def _measure_elements(
             raise ValueError(f"Element {item.id} has no cells")
         rows = slice(max(int(row_min[e]) - 1, 0), min(int(row_max[e]) + 2, nrows))
         cols = slice(max(int(col_min[e]) - 1, 0), min(int(col_max[e]) + 2, ncols))
-        own = CellWindow(
-            dem=cells.dem[rows, cols],
-            slope=cells.slope[rows, cols],
-            acc=cells.acc[rows, cols],
-            fdir=cells.fdir[rows, cols],
-            flow_dist=cells.flow_dist[rows, cols],
-            labels=cells.labels[rows, cols],
-            dem_nodata=cells.dem_nodata,
-            flow_dist_nodata=cells.flow_dist_nodata,
-            transform=cells.transform * Affine.translation(cols.start, rows.start),
-            valid=cells.valid[rows, cols],
-            member=elements[rows, cols] == e,
-        )
         outlet = (int(flat[e] // ncols) - rows.start, int(flat[e] % ncols) - cols.start)
         terrain, area_km2 = terrain_of(summary, e, grid.rasters.cellsize_m)
         units = tree.units[tree.unit_elements == e]
@@ -945,15 +1007,15 @@ def _measure_elements(
                 area_km2=area_km2,
                 boundary_2180=boundaries[e],
                 watershed=_element_watershed(
-                    own,
+                    grid,
+                    (rows, cols),
+                    elements[rows, cols] == e,
                     outlet,
-                    grid.rasters,
                     terrain,
                     area_km2,
                     summary.histograms.get(e),
                     _drainage(cg, units, parts, area_km2),
                     boundaries[e],
-                    grid,
                     db,
                 ),
             )
@@ -996,15 +1058,15 @@ def _drainage(
 
 
 def _element_watershed(
-    cells: CellWindow,
+    grid: NetworkGrid,
+    frame: tuple[slice, slice],
+    member: np.ndarray,
     outlet: tuple[int, int],
-    rasters: PipelineRasters,
     terrain: dict[str, Any],
     area_km2: float,
     histogram: dict[str, Any] | None,
     drainage: dict[str, Any],
     boundary: BaseGeometry,
-    grid: NetworkGrid,
     db: Session,
 ) -> WatershedResponse:
     """Measure the panel's parameters of an element from its cells (D8).
@@ -1014,15 +1076,42 @@ def _element_watershed(
     accumulation, the drainage indices of its units, and from its boundary the
     perimeter, the shape indices, the land cover, the soil groups and the PMAXTP
     weights, as ``build_morph_dict_from_graph`` and the response builder of
-    ``POST /api/delineate-watershed`` put them together.
+    ``POST /api/delineate-watershed`` put them together. The cells are measured in
+    ``frame``, the rows and columns of the window around them, where ``member``
+    holds them and ``outlet`` lies; the arrays of the frame are freed on return.
     """
+    window, rasters = grid.cells, grid.rasters
+    rows, cols = frame
+    cells = CellWindow(
+        dem=window.dem[rows, cols],
+        slope=None,
+        acc=window.acc[rows, cols],
+        fdir=window.fdir[rows, cols],
+        flow_dist=window.flow_dist[rows, cols],
+        labels=None,
+        dem_nodata=window.dem_nodata,
+        flow_dist_nodata=window.flow_dist_nodata,
+        transform=window.transform * Affine.translation(cols.start, rows.start),
+        valid=window.valid[rows, cols],
+        member=member,
+    )
     d8 = d8_from_saved_flowdir(cells.fdir, cells.flow_dist, cells.valid)
     d8[outlet] = 0
     flow, paths = flow_path_parameters(cells, d8, outlet, rasters.threshold_cells)
-    channel_cells = main_channel(
-        cells, outlet, (cells.acc >= rasters.threshold_cells) & cells.member
+    del d8
+    stream = cells.acc >= rasters.threshold_cells
+    stream &= member
+    channel_cells = main_channel(cells, outlet, stream)
+    del stream
+    channel = channel_measures(
+        cells,
+        channel_cells,
+        grid.stream_labels(
+            [(row + rows.start, col + cols.start) for row, col in channel_cells]
+        ),
+        rasters,
+        db,
     )
-    channel = channel_measures(cells, channel_cells, rasters, db)
     outlet_x, outlet_y = cells.transform * (outlet[1] + 0.5, outlet[0] + 0.5)
     outlet_lon, outlet_lat = transform_pl1992_to_wgs84(outlet_x, outlet_y)
     elev_min, elev_max = terrain["elevation_min_m"], terrain["elevation_max_m"]
