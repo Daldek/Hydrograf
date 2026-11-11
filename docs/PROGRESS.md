@@ -16,7 +16,7 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
 | DEM preprocessing | done | pyflwdir on one raster or by PGW units (ADR-071, opt-in `--units`, one fill of the whole grid); F1–F7 memory fixes (`652eec6`); stream burning with the directions of ADR-077; enclosed nodata filled on request (ADR-073); the bootstrap refuses NMT sheets that leave the area uncovered (ADR-076); thresholds 10 000, 100 000, 1 000 000 and 10 000 000 m²; flow path heads and channel sources measured (ADR-070). |
 | Land cover, soils, CN | done | Land cover from the BDOT10k partition by its attributes (ADR-074), the soil under the wetlands is group D and the lawns of KUSK/KUKO are open space (ADR-078); the soil groups of the least permeable SoilGrids layer of 0–100 cm by default, `soil.hsg_depth_rule` (ADR-079, `feat/hsg-profile`, not merged; the instances keep the 0–5 cm groups until step 5 runs again); the CN is that of the soil-cover complexes from Hydrolog's TR-55 table, computed at query time (ADR-075 and its amendments of 2026-11-09; migration 006 dropped `land_cover.cn_value`). The export of catchment parameters gives CN AMC I/II/III and the control columns of the weighted runoff. |
 | Producers | done | The branch `feat/network-delineation-api` pins Nogat's release set candidate-3: Hydrolog `930915d`; Kartograf `d0990c8`, Obserwator `f9f4ee7` as in candidate-2, which `develop` pins (`01ab00a`); not deployed; production and Hydroni run Kartograf `9deaa31`, Obserwator `1ee5457`, Hydrolog `4fad769`. A Kartograf store shared with Archiwista is read only through closed Archiwista sets (ADR-067). |
-| Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię / Profil terenu / Identyfikuj, the welcome text and the guide (31 slides) name the data area from `frontend/data/instance.json`, the results of external analyses from `frontend/data/results/index.json` (SFINCS), the MZP overlay, `?v=` asset versions. |
+| Front end | done | Nogat visual identity and Archiwista's shell (ADR-065), modes Przeglądanie / Wybierz zlewnię / Sieć zlewni / Profil terenu / Identyfikuj („Sieć zlewni” on `feat/network-delineation-ui`, not merged: Next 10), the welcome text and the guide (33 slides) name the data area from `frontend/data/instance.json`, the results of external analyses from `frontend/data/results/index.json` (SFINCS), the MZP overlay, `?v=` asset versions. |
 | Admin panel | done | `/admin`: dashboard, bootstrap, resources, cleanup, storm sewer, feedback (ADR-034, ADR-051). |
 | Storm sewer | done | ADR-051, ADR-052; no data source yet (BACKLOG). |
 | Tests and gate | done | `scripts/gate.sh` on `6b986b0` (candidate-2): 1,970 passed, 159 deselected, coverage 85.60 % (floor 80); `db` tests on `b5e1154`: 158 passed, 1 skipped. CI in `.github/workflows/ci.yml`. |
@@ -153,14 +153,19 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     the graph) and `core/network_delineation.py` (snapping, window, element raster, B5, measures,
     coverage, reaches) with the plan's tests 1–14. Production's database and label rasters
     disagreed on 108 units of 1 ha (the plan's Results) until the re-cut of 2026-11-10 23:53
-    (Production, Data); since then every unit equals its labels, so B5 no longer refuses the
-    Kaczawa networks of S5 for that (checked unit by unit; the S2 smoke was not run again). S3
+    (Production, Data); since then every unit equals its labels. S3
     (`feat/network-delineation-api`, pushed, not merged): the endpoint, its lock per worker,
     `build_network_handoff` with Nogat's `node_provenance` (envelope `8848c26`), Hydrolog
     `930915d` of Nogat's release set candidate-3, `GDAL_CACHEMAX=64` for the API, the plan's
-    tests 15–21. Next: S4 (the front end, on S3's branch), then S5 (the smoke on production's
-    data); S3 and S4 merge after S5, and Nogat adds the registry edge of its D10 when S3 is in
-    `develop`. No release is cut for this work now; networks above 60 M cells stay refused.
+    tests 15–21. S4 (`feat/network-delineation-ui`, on S3's branch, pushed, not merged): the mode
+    „Sieć zlewni”, its six (i) and their sources, chapter 06 of the guide. S5 (on S4's branch,
+    2026-11-11, the plan's Results), on production's data read only: both Kaczawa networks pass
+    B5 to the cell and hand off to Hydrolog (`read_network`, `route schematic --structure-only`);
+    240.3 km² in 8.1 s and 1.04 GB, 792.0 km² (58.6 M cells) in 24.2 s and 2.30 GB, above the
+    plan's 1 GB and 2 GB. Next: the coordinator decides on that memory (accept the measured
+    figures or cut the peak of the measures) and merges S3 and S4 into `develop` after the gate;
+    Nogat adds the registry edge of its D10 when S3 is in `develop`. No release is cut for this
+    work now; networks above 60 M cells stay refused.
 11. **Production, at its next rebuild: land cover and soil groups beyond the boundary.** The basin
     of the tables and rasters (792.009 km²) holds 1.608 km² beyond the boundary, among them the
     block of 1.604 km² at 50.901 N 15.959 E, which has no `land_cover` or `soil_hsg` (cut to the

@@ -741,6 +741,75 @@ reaches and 5 junctions, B5 to the cell (3.74 km²), in 0.14 s; Hydrolog's comma
 (`hydrolog route schematic --structure-only`) lays out its payload. Not measured in S3: production's
 networks (S5).
 
+**S4** (`feat/network-delineation-ui`, on S3's branch): the mode „Sieć zlewni” after „Wybierz
+zlewnię” (`js/network.js`, the views of the panel in `js/app.js`, `delineateNetwork` in
+`js/api.js`, the network's hand-off in `js/handoff.js`), the six (i) of the element kinds and of
+a reach's length, slope and check length with the section „Sieć zlewni” of
+`docs/INFO_TEXTS_SOURCES.md` (87 rows, all verified), and in the guide and the presentation the
+chapter 06 „Sieć zlewni” (slides 27–28 of 33) and a fifth card on slide 9. Decided in
+S4, beyond the text of the plan: (1) a click on the map always places a point; an element or a
+reach is selected by its label on the map or its row in the tree, so a point can be placed inside
+an element already drawn; (2) the watershed of „Wybierz zlewnię” leaves the map in the mode and
+comes back after it, with its hydrograph; (3) the panel keeps the loading state, the error and the
+bin of each view, so a network delineated in the mode survives a visit to another mode; (4) Esc
+only hides the panel in the mode (it does not clear the points); (5) the hand-off is disabled while
+the result is outdated (a point added, removed or dragged after the run); (6) after a run the
+markers take their snapped places; (7) a reach's table names „Źródło spadku” (the NMT at its
+ends, or the minimum of 0.1 ‰). Checked in a browser on production's data (the Kamiennik, read
+only): the steps of the Front end section on a desktop and an iPhone 13, the mode switch both
+ways, the download and the copy of the hand-off, which validate against both schemas.
+
+**S5** (on S4's branch, 2026-11-11), on production's Kaczawa after the re-cut of its rasters,
+read only. Instead of the stack of the Tests section (an image and a restored dump), the branch's
+API ran from the worktree under uvicorn on production's `hydro_db` in a session with
+`default_transaction_read_only=on`, with production's `data/nmt` and `frontend/data`,
+`GDAL_CACHEMAX=64` and one worker, and the branch's front end in an nginx container on a free
+port; both were removed afterwards. Peak memory is the `VmHWM` of a fresh API process, which holds
+0.43 GB (423,344 KiB) with the graph before the request. The points: P1 the Kamiennik at
+51.01538° N, 15.890496° E; P2 and P3 the next two largest tributaries of the Kaczawa above A
+(32.78 km² at 51.087537° N, 15.876802° E and 25.45 km² at 51.009992° N, 15.903832° E, clicked 30 m
+up from their mouths); G a gauge on the Kaczawa between P2's and P1's mouths (51.048992° N,
+15.873931° E); threshold 10 ha.
+
+- Network 1, A at the Kaczawa node (51.128° N, 15.909° E, snapped 11.8 m): 240.328025 km², B5 to
+  the cell (elements 240.328025 km²), 8 subcatchments, 4 reaches and 5 junctions; P1, P2 and P3
+  moved to their mouths (D3), G on the Kaczawa. A window of 5,324 × 3,482 cells, 6.6–8.1 s in
+  three runs (the rasters read in 2.6–3.5 s), 1.04 GB peak (1,018,904–1,020,000 KiB, 0.97 GiB),
+  a response of 1.53 MB. The Kamiennik's element is 37.2250 km², as the precise delineation of
+  its snapped point; P2's and P3's elements equal theirs too (32.7831 and 25.4462 km²). CN
+  60.9–69.8, flow paths 4.2–20.4 km; the reaches 1.30, 5.71, 5.95 and 7.04 km with slopes of
+  5.79, 4.49, 4.03 and 3.42 ‰ from the NMT, their BDOT10k check lengths 5.3–7.1 % shorter.
+- Network 2, A at the outlet of the area (51.222825° N, 16.179380° E, snapped 1.4 m): 792.008925
+  km² (the basin of the tables), B5 to the cell, 11 subcatchments, 6 reaches and 6 junctions, the
+  notice `over_scs_cn_limit` on the headwater of 430.72 km². A window of 8,143 × 7,194 cells
+  (58.6 M), 22.6–24.2 s in two runs (the rasters read in 6.7–8.7 s, the elements and their
+  coverage by 10.8–11.8 s, the measures by 22.3–24.0 s), **2.30 GB peak** (2,246,688–2,247,004
+  KiB, 2.14 GiB; sampled, the resident size passes 2 GB as the measures start, after the
+  coverage), a response of 3.07 MB. The request adds 1.83 GB to the process, 31 bytes a cell of
+  the window, against the 22 of the Performance budget. The Kaczawa above J5 is the smaller branch
+  (the headwater of 430.72 km² is the larger), so A's trunk does not run up it: G and P2 both
+  hang on A's trunk, their paths meet at the confluence of P2's tributary (S2's decision 1), and
+  the mouth rule, relative to A's trunk, leaves P2 where it was clicked: a reach of 34 m (16.4 ‰)
+  from P2 to that confluence and a przyrzecze of 0.0004 km². P1 and P3 moved to their mouths as
+  in network 1, and the elements above G are those of network 1.
+- The hand-offs of both networks validate against the copied envelope and Hydrolog's
+  `hydrolog-network/1`, `node_provenance` names every node but `OUT`; Hydrolog `930915d` reads
+  them with `read_network` once a rainfall (beta, 50 mm in 120 min) and the section of each reach
+  (n 0.035, 4 m) are added (18 and 24 nodes), and `hydrolog route schematic --network-file …
+  --structure-only` lays them out as handed off (8 lines on a grid of 10 × 2, 11 lines on 15 × 5).
+- The front end against that stack, network 1 placed at zoom 17 (at the zoom that shows the
+  whole network a click is some 30 m wide: there P1 snapped 80 m above its mouth and P3 onto the
+  Kaczawa), on a desktop (1544 × 1055) and an iPhone 13: the points, „Wyznacz sieć” (5.6 s), the
+  same 8 subcatchments, 4 reaches and 5 junctions, the Kamiennik's element and the reach R2
+  selected by their rows, „Plik przekazania” (`Kaczawa, sieć (8 zlewni).handoff.json`, 14,088
+  bytes) and „Kopiuj do Hydrologa” (14,040 characters), both valid against both schemas and read
+  by `read_network`; on the phone the bottom sheet „Sieć” runs it.
+
+Accepted as the Tests section asks, except memory: network 1 takes 1.04 GB of its 1 GB (within
+1 GiB) and network 2 2.30 GB of its 2 GB; both are well within their times (8.1 s of 30 s, 24.2 s
+of 75 s), and two networks at once (D13) stay within the 8 GB of the host. P2's reach of 34 m in
+network 2 follows the rules of S2 and is not refused.
+
 ## Not in this plan
 
 - Routing, the reach sections and a hydrograph of the network or of an element in Hydrograf:
