@@ -695,7 +695,10 @@ def _compute_lc_along_channel(
     """Compute Lc along the main channel (Snyder method).
 
     Queries stream geometries from DB, merges into a LineString, and
-    projects the watershed centroid onto it to get along-channel distance.
+    projects the watershed centroid onto it to get the distance along the
+    channel from the outlet. The stored stream lines run from their upstream
+    end, so the distance is measured from the end of the merged line that
+    lies nearer the outlet.
 
     Returns Lc in km, or None on failure.
     """
@@ -735,8 +738,13 @@ def _compute_lc_along_channel(
         if merged.geom_type != "LineString" or merged.is_empty:
             return None
 
-        # Project centroid onto the merged channel
+        # Project centroid onto the merged channel, from its outlet end
         lc_m = merged.project(centroid)
+        outlet = Point(outlet_x, outlet_y)
+        if Point(merged.coords[-1]).distance(outlet) < Point(merged.coords[0]).distance(
+            outlet
+        ):
+            lc_m = merged.length - lc_m
         return float(round(lc_m / 1000, 4))
 
     except Exception as e:

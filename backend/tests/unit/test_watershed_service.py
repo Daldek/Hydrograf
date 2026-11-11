@@ -917,3 +917,41 @@ class TestCascadeEscalate:
         )
 
         assert result["_main_channel_nodes"] == [outlet]
+
+
+class TestLcAlongTheChannel:
+    """Lc is measured along the main channel from the outlet (Snyder)."""
+
+    def test_from_the_outlet_on_lines_stored_from_upstream(self):
+        """The stored stream lines run from their upstream end down.
+
+        A channel of 10 km from (0, 10 000) down to the outlet at (0, 0), in two
+        segments; the centroid lies beside it 3 km above the outlet, so Lc is
+        3 km, not the 7 km from the source.
+        """
+        from shapely.geometry import LineString, Point
+
+        from core.watershed_service import _compute_lc_along_channel
+
+        upper = LineString([(0, 10_000), (0, 5_000)])
+        lower = LineString([(0, 5_000), (0, 0)])
+        rows = [
+            SimpleNamespace(segment_idx=1, geom=wkb.dumps(upper)),
+            SimpleNamespace(segment_idx=2, geom=wkb.dumps(lower)),
+        ]
+        db = MagicMock()
+        db.execute.return_value.fetchall.return_value = rows
+        cg = MagicMock()
+        cg.get_segment_idx.side_effect = lambda node: node
+
+        lc_km = _compute_lc_along_channel(
+            db,
+            cg,
+            {"main_channel_nodes": [2, 1]},
+            100_000,
+            Point(400, 3_000),
+            0.0,
+            0.0,
+        )
+
+        assert lc_km == pytest.approx(3.0)
