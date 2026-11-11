@@ -188,9 +188,9 @@ client's handles and never reach the hand-off.
   its type and labels the nodes by their ids, so its canvas shows `J…`, `P…` and `O`.
 - **Descriptions** (Polish, at most 500 characters; control characters but the line feed
   become spaces): a headwater „Dopływ do J4 (ciek główny)” (the main river into a node),
-  „Dopływ do J4” (another branch) or „Dopływ do P3” (above a `P`), with the name of the
-  node's point after its id („Dopływ do J4 (Paszówka), ciek główny”, „Dopływ do P3 (Nysa
-  Mała)”); przyrzecze „Przyrzecze odcinka R4”, each followed by its area; reach „Odcinek od
+  „Dopływ do J4” (another branch) or „Dopływ do P3” (above a `P`), by the node's id only (the
+  name of the node's point is the node's own description); przyrzecze „Przyrzecze odcinka R4”,
+  each followed by its area; reach „Odcinek od
   J1 do J2: 5,07 km, spadek 0,98 ‰ (NMT)” or „(minimalny)”, a lag followed by „Opóźnienie
   2 min (długość przy 0,5 m/s) zamiast Muskingum-Cunge, …”; a node „Zbieg: Paszówka” (a point
   drawn to a confluence; „Zbieg” without a name or made by the network), „Punkt: Nysa Mała”

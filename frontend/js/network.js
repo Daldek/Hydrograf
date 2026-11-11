@@ -833,16 +833,14 @@
 
     /**
      * An element as the hand-off names it (backend/core/handoff.py, N7): a headwater by
-     * the node it enters, with the name of that node's point, the main river of a
-     * confluence (its first inflow) as such: „Dopływ do J4 (Paszówka), ciek główny”.
+     * the id of the node it enters, the main river of a confluence (its first inflow)
+     * as such: „Dopływ do J4 (ciek główny)”; the name of the node's point is the node's.
      */
     function elementText(s, data) {
         if (s.kind === 'intermediate') return 'Przyrzecze odcinka ' + s.reach;
         var into = data.junctions.filter(function (j) { return j.id === s.to; })[0];
         var main = s.to.charAt(0) === 'J' && !!into && into.inflows[0] === s.id;
-        var label = pointLabel(s.to);
-        if (!main) return 'Dopływ do ' + label;
-        return label === s.to ? 'Dopływ do ' + s.to + ' (ciek główny)' : 'Dopływ do ' + label + ', ciek główny';
+        return 'Dopływ do ' + s.to + (main ? ' (ciek główny)' : '');
     }
 
     function reachText(r) {

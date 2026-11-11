@@ -415,10 +415,10 @@ NAMES = {
             "Z1": "Przyrzecze odcinka R1",
             "Z2": "Przyrzecze odcinka R2",
             "Z3": "Przyrzecze odcinka R3",
-            "Z4": "Dopływ do J3 (Trzeci), ciek główny",
-            "Z5": "Dopływ do J3 (Trzeci)",
+            "Z4": "Dopływ do J3 (ciek główny)",
+            "Z5": "Dopływ do J3",
             "Z6": "Dopływ do J2",
-            "Z7": "Dopływ do J1 (Pierwszy)",
+            "Z7": "Dopływ do J1",
             "P1": "Przekrój zamykający: Rzeka",
             "J1": "Zbieg: Pierwszy",
             "J2": "Zbieg",
@@ -432,7 +432,7 @@ NAMES = {
             "Z1": "Przyrzecze odcinka R1",
             "Z2": "Dopływ do J1 (ciek główny)",
             "Z3": "Przyrzecze odcinka R2",
-            "Z4": "Dopływ do P2 (Nysa Mała)",
+            "Z4": "Dopływ do P2",
             "P1": "Przekrój zamykający: Rzeka",
             "J1": "Zbieg",
             "P2": "Punkt: Nysa Mała",
@@ -505,9 +505,7 @@ class TestTheNames:
         ]
         assert gauge["inflows"][-1] == river["id"]
         nodes = {n["id"]: n for n in network["handoff"]["payload"]["nodes"]}
-        assert nodes[river["id"]]["watershed"]["name"] == (
-            f"Dopływ do {gauge['id']} (Wodowskaz)"
-        )
+        assert nodes[river["id"]]["watershed"]["name"] == f"Dopływ do {gauge['id']}"
         assert nodes[gauge["id"]]["description"] == "Zbieg: Wodowskaz"
 
 

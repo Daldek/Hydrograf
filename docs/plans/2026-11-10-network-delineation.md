@@ -485,8 +485,8 @@ goes: every point is a node, so a subcatchment is a `headwater` („Dopływ”) 
 („Przyrzecze”). The outlet is `O` (was `OUT`), `from` the closing section's node, and
 `provenance.watershed.point` is that node's id (`J1` or `P1`); no id of the request reaches the
 hand-off. Names: „Dopływ do J4 (ciek główny)” for the main river's headwater into a node,
-„Dopływ do J4” for another branch, „Dopływ do P3” above a `P`, with the name of the node's point
-after its id („Dopływ do J4 (Paszówka), ciek główny”, „Dopływ do P3 (Nysa Mała)”), „Przyrzecze
+„Dopływ do J4” for another branch, „Dopływ do P3” above a `P`, by the node's id only (the name of
+the node's point is the node's own description), „Przyrzecze
 odcinka R4”; a node „Zbieg: Paszówka” (a point drawn to a confluence; „Zbieg” without a name or
 made by the network), „Punkt: Nysa Mała” (a `P`), „Przekrój zamykający: Kaczawa” (the closing
 section, at a node or not; „Punkt”, „Przekrój zamykający” without a name). In `node_provenance` a

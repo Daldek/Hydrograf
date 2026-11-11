@@ -539,9 +539,7 @@ def build_network_handoff(
     node_provenance: dict[str, dict[str, Any]] = {}
     for node_id in network.order:
         if node_id in subcatchments:
-            nodes.append(
-                _subcatchment_node(subcatchments[node_id], names, junctions, at_node)
-            )
+            nodes.append(_subcatchment_node(subcatchments[node_id], junctions, at_node))
             node_provenance[node_id] = {
                 "watershed": _subcatchment_origin(subcatchments[node_id])
             }
@@ -591,13 +589,12 @@ def build_network_handoff(
 
 def _subcatchment_node(
     element: "NetworkSubcatchment",
-    names: Mapping[str, str],
     junctions: Mapping[str, "NetworkJunction"],
     at_node: set[str],
 ) -> dict[str, Any]:
     """Return a subcatchment of the payload: its watershed, the runoff and a text."""
     morphometry = element.watershed.morphometry
-    title = _element_title(element, names, junctions, at_node)
+    title = _element_title(element, junctions, at_node)
     watershed = watershed_parameters(
         morphometry.model_dump(exclude_none=True) if morphometry is not None else {},
         title,
@@ -615,16 +612,16 @@ def _subcatchment_node(
 
 def _element_title(
     element: "NetworkSubcatchment",
-    names: Mapping[str, str],
     junctions: Mapping[str, "NetworkJunction"],
     at_node: set[str],
 ) -> str:
-    """Say what an element is, in Polish: „Dopływ do J4 (Paszówka), ciek główny” (N7).
+    """Say what an element is, in Polish: „Dopływ do J4 (ciek główny)” (N7).
 
-    A headwater is a dopływ of the node it enters, named by the node's id and the
-    name of its point; at a confluence the main river's, the node's first inflow,
-    says so: which branch is the main river follows the larger upstream area and
-    changes nothing in the computation. A przyrzecze is its reach's.
+    A headwater is a dopływ of the node it enters, named by the node's id only: the
+    name of the node's point belongs to the node („Zbieg: Paszówka”), not to one of
+    its branches. At a confluence the main river's, the node's first inflow, says
+    so: which branch is the main river follows the larger upstream area and changes
+    nothing in the computation. A przyrzecze is its reach's.
     """
     item = element.subcatchment
     if item.kind == "intermediate":
@@ -632,11 +629,6 @@ def _element_title(
     title = f"Dopływ do {item.to}"
     node = junctions[item.to].junction
     main = _at_confluence(node, at_node) and node.inflows[0] == item.id
-    name = _point_name(item.point, names)
-    if name is not None and main:
-        return f"{title} ({name}), ciek główny"
-    if name is not None:
-        return f"{title} ({name})"
     return f"{title} (ciek główny)" if main else title
 
 
