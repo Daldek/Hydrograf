@@ -328,9 +328,10 @@ class TestTheResponse:
         assert mouths["notices"] == []
 
 
-# A gauge on the main river 20 m above T3's confluence: on A's trunk with no point
-# above it, its subcatchment is the headwater, moved to the confluence (D3)
-GAUGE_ABOVE_T3 = (73, 85)
+# A gauge on the main river above T3's confluence, on A's trunk with no point above
+# it, so its subcatchment is the headwater: 20 m above, the mouth rule moves it to the
+# confluence (D3); 100 m above, it keeps its place and a reach runs to the confluence
+GAUGE_AT_T3, GAUGE_ABOVE_T3 = (73, 85), (65, 85)
 
 
 class TestTheHeadwaterIsHandedOffAsATributary:
@@ -351,13 +352,21 @@ class TestTheHeadwaterIsHandedOffAsATributary:
         assert nodes[headwater["id"]]["watershed"]["name"] == name
         assert nodes[headwater["id"]]["description"].startswith(f"{name}: ")
 
+    @pytest.mark.parametrize(
+        ("cell", "name"),
+        [
+            (GAUGE_AT_T3, "Dopływ do ujścia przy G (Wodowskaz)"),
+            (GAUGE_ABOVE_T3, "Dopływ do punktu G (Wodowskaz)"),
+        ],
+        ids=["at-the-confluence", "a-reach-above-it"],
+    )
     def test_a_headwater_and_a_tributary_at_one_confluence_are_both_tributaries(
-        self, client, run
+        self, client, run, cell, name
     ):
         body = {
             "outlet": point(run, "A", OUTLET, "Rzeka"),
             "points": [
-                point(run, "G", GAUGE_ABOVE_T3, "Wodowskaz"),
+                point(run, "G", cell, "Wodowskaz"),
                 point(run, "P3", T3_MOUTH, "Trzeci"),
             ],
             "threshold_m2": NETWORK_SNAP_THRESHOLD_M2,
@@ -370,16 +379,13 @@ class TestTheHeadwaterIsHandedOffAsATributary:
         by_point = {s["point"]: s for s in network["subcatchments"] if s["point"]}
         gauge, tributary = by_point["G"], by_point["P3"]
         assert (gauge["kind"], tributary["kind"]) == ("headwater", "tributary")
-        assert gauge["to"] == tributary["to"]
         handoff = network["handoff"]
         nodes = {n["id"]: n for n in handoff["payload"]["nodes"]}
-        assert nodes[gauge["id"]]["watershed"]["name"] == (
-            "Dopływ do ujścia przy G (Wodowskaz)"
-        )
+        assert nodes[gauge["id"]]["watershed"]["name"] == name
         assert nodes[tributary["id"]]["watershed"]["name"] == (
             "Dopływ do ujścia przy P3 (Trzeci)"
         )
-        assert nodes[gauge["to"]]["description"] == (
+        assert nodes[tributary["to"]]["description"] == (
             "Zbieg: dopływ G (Wodowskaz), dopływ P3 (Trzeci)"
         )
         origins = handoff["node_provenance"]
