@@ -25,7 +25,7 @@
 
     <!-- Nogat design tokens, shell chrome, then the app -->
     <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
-    <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
+    <link rel="stylesheet" href="css/chrome.css?v=46a0b28957">
     <link rel="stylesheet" href="css/app.css?v=5ec5d5cbb6">
 </head>
 <body>
@@ -46,6 +46,10 @@
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v10H8.5L5 17v-3H3z"/></svg>
                 <span class="label">Zgłoś uwagę</span>
             </button>
+            <a class="btn ghost" href="/instrukcja/" id="top-guide" aria-label="Instrukcja" title="Instrukcja" aria-haspopup="dialog" aria-controls="welcome-modal">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5z"/><path d="M4 16.5V4.5M7.5 6.5h5"/></svg>
+                <span class="label">Instrukcja</span>
+            </a>
             <div class="seg" role="group" aria-label="Motyw">
                 <button type="button" id="theme-auto" aria-pressed="true" title="Motyw systemowy">
                     <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor"/></svg>
@@ -68,10 +72,6 @@
         <a class="rail-item active" href="#" aria-current="page" id="rail-map">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>
             Mapa
-        </a>
-        <a class="rail-item" href="/instrukcja/" id="rail-guide" aria-haspopup="dialog" aria-controls="welcome-modal">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.5h5.5A3.5 3.5 0 0 1 12 8v12a2.5 2.5 0 0 0-2.5-2.5H3z"/><path d="M21 4.5h-5.5A3.5 3.5 0 0 0 12 8v12a2.5 2.5 0 0 1 2.5-2.5H21z"/></svg>
-            Instrukcja
         </a>
         <a class="rail-item" href="/admin">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>
@@ -581,7 +581,7 @@
     </div>
 </dialog>
 
-<!-- Welcome dialog: on the first visit and from the Instrukcja item of the rail -->
+<!-- Welcome dialog: on the first visit and from the top-bar guide button -->
 <dialog class="modal welcome" id="welcome-modal" aria-labelledby="welcome-title" aria-describedby="welcome-text">
     <div class="panel-head">
         <h2 id="welcome-title">Witaj w Hydrografie</h2>
@@ -648,10 +648,10 @@
 <script defer src="js/results.js?v=73398284b4"></script>
 <script defer src="js/feedback.js?v=8ce70a740a"></script>
 <script defer src="js/instance.js?v=04b557b531"></script>
-<script defer src="js/welcome.js?v=79a0c2304e"></script>
+<script defer src="js/welcome.js?v=54f8061114"></script>
 <script defer src="js/identify.js?v=b89f4b64cf"></script>
 <script defer src="js/handoff.js?v=29fad1831b"></script>
 <script defer src="js/network.js?v=dda978abcf"></script>
-<script defer src="js/app.js?v=2de6b98330"></script>
+<script defer src="js/app.js?v=ec237cd623"></script>
 </body>
 </html>
