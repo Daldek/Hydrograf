@@ -621,7 +621,6 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .network-kinds { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: 0 0 var(--space-2); padding: 0; list-style: none; font-size: var(--text-sm); }
 .net-kind-item { display: inline-flex; align-items: center; gap: 6px; }
 .net-swatch { width: 16px; height: 10px; flex: none; border: 1.5px solid; border-radius: 2px; }
-.net-swatch.headwater, .net-id.headwater, .net-label.headwater { --kind: var(--accent-green); }
 .net-swatch.tributary, .net-id.tributary, .net-label.tributary { --kind: var(--warn); }
 .net-swatch.intermediate, .net-id.intermediate, .net-label.intermediate { --kind: var(--tool-hydraulik); }
 .net-id.reach, .net-label.reach { --kind: var(--info); }

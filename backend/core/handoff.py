@@ -544,7 +544,7 @@ def build_network_handoff(
             nodes.append(_reach_node(reaches[node_id]))
             node_provenance[node_id] = {"node": _reach_origin(reaches[node_id])}
         elif node_id in junctions:
-            nodes.append(_junction_node(junctions[node_id], names))
+            nodes.append(_junction_node(junctions[node_id], names, subcatchments))
             node_provenance[node_id] = {"node": _junction_origin(junctions[node_id])}
         else:
             nodes.append({"id": node_id, "type": "outlet", "from": [outlet_junction]})
@@ -602,15 +602,18 @@ def _subcatchment_node(
 
 
 def _element_title(element: "NetworkSubcatchment", names: Mapping[str, str]) -> str:
-    """Say what an element is, in Polish: „Dopływ do ujścia przy P1 (Kamiennik)”."""
+    """Say what an element is, in Polish: „Dopływ do ujścia przy P1 (Kamiennik)”.
+
+    A headwater is named as a tributary: which branch of a confluence goes on as the
+    main river follows the larger upstream area, not the river a person knows, and it
+    changes nothing in the computation.
+    """
     item = element.subcatchment
     if item.kind == "intermediate":
         return f"Przyrzecze odcinka {item.reach}"
     if item.point is None:
-        return f"Zlewnia górna powyżej {item.to}"
+        return f"Dopływ powyżej {item.to}"
     point = _point_label(item.point, names)
-    if item.kind == "headwater":
-        return f"Zlewnia górna do punktu {point}"
     if item.at_mouth:
         return f"Dopływ do ujścia przy {point}"
     return f"Dopływ do punktu {point}"
@@ -697,16 +700,32 @@ def _reach_origin(item: "NetworkReach") -> dict[str, Any]:
     return origin
 
 
-def _junction_node(item: "NetworkJunction", names: Mapping[str, str]) -> dict[str, Any]:
-    """Return a junction of the payload: its inflows and a text."""
+def _junction_node(
+    item: "NetworkJunction",
+    names: Mapping[str, str],
+    subcatchments: Mapping[str, "NetworkSubcatchment"],
+) -> dict[str, Any]:
+    """Return a junction of the payload: its inflows and a text.
+
+    A confluence names the points of the tributaries that enter it, the point of a
+    headwater included: that is a tributary to the person too (_element_title).
+    """
     junction = item.junction
     if junction.kind == "outlet":
         text = f"Przekrój zamykający {_point_label(junction.point or '', names)}"
     elif junction.kind == "point":
         text = f"Punkt {_point_label(junction.point or '', names)}"
     else:
+        headwater_points = [
+            point
+            for node in junction.inflows
+            if node in subcatchments
+            and subcatchments[node].subcatchment.kind == "headwater"
+            and (point := subcatchments[node].subcatchment.point) is not None
+        ]
         text = "Zbieg: " + ", ".join(
-            f"dopływ {_point_label(point, names)}" for point in junction.tributaries
+            f"dopływ {_point_label(point, names)}"
+            for point in [*headwater_points, *junction.tributaries]
         )
     return {
         "id": junction.id,

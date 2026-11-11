@@ -182,7 +182,13 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     (P2 50 m above a confluence), which Muskingum-Cunge refuses at any time step. The preview and
     the full run give `reach_short_or_flat` for every reach under 200 m or flat, with „Przesuń P…
     do zbiegu” for a point above a confluence, and a flat reach is a `lag` in the hand-off
-    (`method_reason: "flat"`). Deployed to kaczawa2 and Hydroni with its merge.
+    (`method_reason: "flat"`). Deployed to kaczawa2 and Hydroni with its merge. **Two kinds of
+    subcatchment for the person** (the author's decision of 2026-11-11, ADR-080 amended, branch
+    `feat/network-two-kinds`): the headwater shows and is handed off as a dopływ („Dopływ powyżej
+    J1”, „Dopływ do punktu P2”), A only as a whole (the outline „Zlewnia A (całość)” and the area
+    in its closing section's row); the kind `headwater` of the API stays. The guide's picture of
+    the mode was taken again; `docs/Hydrograf-prezentacja.pdf` still predates chapter 06 (printed
+    2026-11-05) and was not printed again.
 11. **Production, at its next rebuild: land cover and soil groups beyond the boundary.** The basin
     of the tables and rasters (792.009 km²) holds 1.608 km² beyond the boundary, among them the
     block of 1.604 km² at 50.901 N 15.959 E, which has no `land_cover` or `soil_hsg` (cut to the

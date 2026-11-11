@@ -3,7 +3,7 @@
 **Date:** 2026-11-10
 **Status:** accepted (the author's decisions B1 to B7 of 2026-11-10; the details by delegation);
 amended 2026-11-11 (the mouth rule at every junction; the preview of ADR-081; short and flat
-reaches, D10a)
+reaches, D10a; two kinds of subcatchment for the person)
 
 > **Amended 2026-11-11 (the coordinator, after the smoke S5):** the mouth rule of decision 2
 > applies wherever the paths of two control points merge, at every junction, not only where a
@@ -35,6 +35,15 @@ reaches, D10a)
 > is written as `method: "lag"` with `lag_min` = max(1, round(length / 0.5 m/s / 60)), its
 > length and slope in `node_provenance` with `method: "lag"` and `method_reason: "flat"`, since
 > Muskingum-Cunge cannot route a flat reach. The notice `reach_slope_minimum` is replaced.
+
+> **Amended 2026-11-11 (the author, after reviewing kaczawa2):** the headwater and the uppermost
+> tributary meet in one junction, and which of them is the headwater follows the larger upstream
+> area, often not the river the person expects; it changes nothing in the computation. The map,
+> its legend, the tree, the (i) texts and the hand-off's Polish names therefore know two kinds,
+> dopływ and przyrzecze: a headwater shows and is named as a dopływ („Dopływ do punktu P2”,
+> „Dopływ powyżej J1”), and a confluence's description names its point too. A's catchment is
+> marked only as a whole, its outline „Zlewnia A (całość)” and the area in the tree's row of its
+> closing section. The kind `headwater` of the API and of `node_provenance` stays.
 
 ## Context
 
