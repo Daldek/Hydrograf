@@ -2,10 +2,10 @@
 
 run_pipeline runs process_dem over a DEM array with its rasters saved and the
 database replaced by recorders of the rows it would insert; catchment_graph builds
-the catchment graph of one threshold from those rows as CatchmentGraph.load builds
-it from the database; FakeDatabase answers, from the same rows and a synthetic land
-cover and soil layout, the queries of the watershed panel, of the export of
-catchment parameters and of catchments_bounds.
+the catchment graph of one or more thresholds from those rows as CatchmentGraph.load
+builds it from the database; FakeDatabase answers, from the same rows and a synthetic
+land cover and soil layout, the queries of the watershed panel, of the export of
+catchment parameters, of catchments_bounds and of the network preview.
 
 river_network_dem builds the DEM of the network tests: a main river with three
 tributaries, one of which has a tributary of its own, all draining to one outlet
@@ -258,26 +258,27 @@ def run_pipeline(
     )
 
 
-def catchment_graph(run: PipelineRun, threshold_m2: int) -> CatchmentGraph:
-    """The catchment graph of a threshold, as CatchmentGraph.load builds it.
+def catchment_graph(run: PipelineRun, *thresholds_m2: int) -> CatchmentGraph:
+    """The catchment graph of one or more thresholds, as CatchmentGraph.load builds it.
 
     BDOT10k flags come from is_real, segment lengths from line_length_m.
     """
-    catchments = run.catchments[threshold_m2]
-    segments = run.segments[threshold_m2]
-    n = len(catchments)
+    rows = [
+        (threshold_m2, c, run.segments[threshold_m2][c["segment_idx"] - 1])
+        for threshold_m2 in sorted(thresholds_m2)
+        for c in run.catchments[threshold_m2]
+    ]
+    catchments = [c for _, c, _ in rows]
+    n = len(rows)
 
     def column(key, dtype=np.float32):
         values = [np.nan if c.get(key) is None else c[key] for c in catchments]
         return np.array(values, dtype=dtype)
 
-    def segment(c):
-        return segments[c["segment_idx"] - 1]
-
     cg = CatchmentGraph()
     cg._n = n
     cg._segment_idx = np.array([c["segment_idx"] for c in catchments], np.int32)
-    cg._threshold_m2 = np.full(n, threshold_m2, np.int32)
+    cg._threshold_m2 = np.array([t for t, _, _ in rows], np.int32)
     cg._area_km2 = column("area_km2")
     cg._elev_min = column("elevation_min_m")
     cg._elev_max = column("elevation_max_m")
@@ -295,15 +296,15 @@ def catchment_graph(run: PipelineRun, threshold_m2: int) -> CatchmentGraph:
     cg._histograms = [c["elev_histogram"] for c in catchments]
     cg._is_real_stream = np.array([is_real(c["segment_idx"]) for c in catchments])
     cg._segment_length_km = np.array(
-        [line_length_m(segment(c)) / 1000.0 for c in catchments]
+        [line_length_m(segment) / 1000.0 for _, _, segment in rows]
     )
     cg._upstream_area_km2 = np.array(
-        [segment(c)["upstream_area_km2"] for c in catchments]
+        [segment["upstream_area_km2"] for _, _, segment in rows]
     )
-    cg._lookup = {(threshold_m2, c["segment_idx"]): i for i, c in enumerate(catchments)}
+    cg._lookup = {(t, c["segment_idx"]): i for i, (t, c, _) in enumerate(rows)}
     links = [
-        (i, cg._lookup[(threshold_m2, c["downstream_segment_idx"])])
-        for i, c in enumerate(catchments)
+        (i, cg._lookup[(t, c["downstream_segment_idx"])])
+        for i, (t, c, _) in enumerate(rows)
         if c.get("downstream_segment_idx") is not None
     ]
     upstream, downstream = zip(*links, strict=True)
@@ -315,7 +316,7 @@ def catchment_graph(run: PipelineRun, threshold_m2: int) -> CatchmentGraph:
 
 
 class FakeDatabase:
-    """Answers the queries of the panel, the export and catchments_bounds.
+    """Answers the queries of the panel, the export, catchments_bounds and the preview.
 
     Parameters
     ----------
@@ -430,6 +431,37 @@ class FakeDatabase:
             segments = self.run.segments[self._threshold(params)]
             x, y = segments[params["seg_idx"] - 1]["coords"][-1]
             return self._result(row=SimpleNamespace(x=x, y=y))
+        if "AS p(threshold_m2, segment_idx, element)" in sql:
+            # The outlines of the preview: the polygons of the chosen sub-catchments
+            # united by element on the grid of the query
+            polygons = {
+                (threshold_m2, c["segment_idx"]): wkt.loads(c["wkt"])
+                for threshold_m2, rows in self.run.catchments.items()
+                for c in rows
+            }
+            by_element: dict[int, list[BaseGeometry]] = {}
+            for key in zip(
+                params["thresholds"],
+                params["segments"],
+                params["elements"],
+                strict=True,
+            ):
+                by_element.setdefault(key[2], []).append(polygons[key[:2]])
+            return self._result(
+                SimpleNamespace(
+                    element=element,
+                    geom=shapely.union_all(parts, grid_size=params["grid_m"]).wkb,
+                )
+                for element, parts in by_element.items()
+            )
+        if "FROM stream_network" in sql and "ST_AsBinary(geom)" in sql:
+            segments = self.run.segments[self._threshold(params)]
+            return self._result(
+                SimpleNamespace(
+                    segment_idx=i, geom=LineString(segments[i - 1]["coords"]).wkb
+                )
+                for i in params["idxs"]
+            )
         if "EXISTS" in sql:
             return self._result(scalar=True)
         return self._result()

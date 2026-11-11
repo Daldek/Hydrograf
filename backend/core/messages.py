@@ -286,6 +286,10 @@ MESSAGES: Final[dict[str, Message]] = {
         "The network could not be delineated.",
         "Nie udało się wyznaczyć sieci.",
     ),
+    "network_preview_failed": Message(
+        "The preview of the network could not be built.",
+        "Nie udało się zbudować podglądu sieci.",
+    ),
     "lutz_parameters_missing": Message(
         "The Lutz method needs channel_length_km, length_to_centroid_km and "
         "channel_slope_m_per_m.",

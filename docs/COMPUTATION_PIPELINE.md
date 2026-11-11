@@ -1,6 +1,6 @@
 # Procedura obliczeniowa — Hydrograf
 
-> Wersja: 1.6 | Data: 2026-11-10
+> Wersja: 1.7 | Data: 2026-11-11
 
 Kompletny opis pipeline'u obliczeniowego backendu: od surowego NMT przez preprocessing, wyznaczanie zlewni, parametry fizjograficzne, aż po generowanie hydrogramu.
 
@@ -664,6 +664,18 @@ No cross-section: Hydrolog's Muskingum–Cunge needs Manning's n and a width, wh
 ### 7.7 The hand-off (D14)
 
 `build_network_handoff` writes one `nogat-handoff/1` around one `hydrolog-network/1`: the nodes in the order of 7.2, each with a Polish `description`; subcatchments with the `watershed` of their morphometry (the area exact to the cell, so they sum to A) and the `curve-number` runoff with Hydrolog's defaults; Muskingum–Cunge reaches with length and slope and no section; junctions; `OUT`. No rainfall, time step or result. `provenance.watershed` names A's snapped place and `threshold_m2`, `node_provenance` the origin of every subcatchment, reach and junction (`docs/integrations/HYDROLOG.md`).
+
+### 7.8 The preview on the catchment graph (ADR-081)
+
+`POST /api/delineate-network/preview` (`core/network_preview.py`, plan `docs/plans/2026-11-11-network-preview.md`) composes the same network while the person places the points, without the window of 7.3: the snapping of 7.1 (the windows around the clicks) and the tree of 7.2, so the ids, the places and the errors of the composition are those of the full run.
+
+| Value | Source |
+|---|---|
+| `area_km2` of an element | the cells of its units (`area_km2` in cells, as 7.4 counts them); in a unit split by a point the accumulation at the uppermost point less the cells of the units above the unit (they enter at its head), the next point the difference of the accumulations, the unit's outlet the rest; A's part of its unit ends at A. Exact to the cell, the full run's |
+| `length_km` of a reach | as in 7.6; its line the stream lines of its units (`stream_network`) cut at its control points, simplified at 1 m |
+| outline of an element | the union, on a grid of 10 m (`ST_Simplify`, `ST_ReducePrecision`, `ST_Union`), of the largest sub-catchment of any threshold that the element holds whole (matched to the unit of 1 ha that ends at its outlet cell by `outlet_flow_dist_m` and `upstream_area_km2`, taken when its units add up to its cells and share the element), else of the units; a unit split by a point goes whole to the element with most of its cells (`outline_approximate`), holes and parts narrower than 30 m dropped |
+
+No measure of 7.5, no check of 7.4 (the areas add up by construction), no hand-off: those come with „Oblicz charakterystyki”, the full run.
 
 ---
 

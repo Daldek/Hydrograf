@@ -167,6 +167,9 @@ class CatchmentGraph:
         # Elevation histograms: list of dicts per node (variable size)
         self._histograms: list[dict[str, Any] | None] = []
 
+        # coarser_at_outlets(): by threshold, computed once per loaded graph
+        self._coarser: dict[int, dict[int, np.ndarray]] = {}
+
     @property
     def loaded(self) -> bool:
         """Whether the graph has been loaded from the database."""
@@ -523,6 +526,12 @@ class CatchmentGraph:
             raise RuntimeError("Catchment graph not loaded")
         return int(self._segment_idx[internal_idx])
 
+    def get_threshold_m2(self, internal_idx: int) -> int:
+        """Flow accumulation threshold [m²] of a node by its internal graph index."""
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        return int(self._threshold_m2[internal_idx])
+
     def get_max_flow_dist_m(self, internal_idx: int) -> float:
         """Get max_flow_dist_m for a node by its internal graph index."""
         if not self._loaded:
@@ -557,6 +566,72 @@ class CatchmentGraph:
         if not self._loaded:
             raise RuntimeError("Catchment graph not loaded")
         return [int(t) for t in np.unique(self._threshold_m2)]
+
+    def coarser_at_outlets(self, threshold_m2: int) -> dict[int, np.ndarray]:
+        """Return the node of each coarser threshold that ends where a node ends.
+
+        A confluence of a coarser network is a confluence of a finer one, so a
+        sub-catchment of a coarser threshold is made of whole sub-catchments of
+        ``threshold_m2``, the lowest of which ends at its outlet cell. The two are
+        matched by the flow distance and the upstream area at that cell
+        (``outlet_flow_dist_m``, ``upstream_area_km2``), which both networks take
+        from it; a pair of values that two nodes of one threshold share stays
+        unmatched. Computed once per loaded graph.
+
+        Parameters
+        ----------
+        threshold_m2 : int
+            The finer threshold [m²].
+
+        Returns
+        -------
+        dict[int, np.ndarray]
+            By each threshold of the graph above ``threshold_m2``: for every node,
+            the internal index of the node of that threshold whose segment ends at
+            the outlet cell of the node's segment when the node is of
+            ``threshold_m2``, else -1.
+        """
+        if not self._loaded:
+            raise RuntimeError("Catchment graph not loaded")
+        if threshold_m2 not in self._coarser:
+            self._coarser[threshold_m2] = self._match_outlets(threshold_m2)
+        return self._coarser[threshold_m2]
+
+    def _match_outlets(self, threshold_m2: int) -> dict[int, np.ndarray]:
+        """Match the outlet cells of the thresholds (coarser_at_outlets)."""
+        if self._outlet_flow_dist_m is None or self._upstream_area_km2 is None:
+            return {}
+        flow_dist = self._outlet_flow_dist_m
+        area = self._upstream_area_km2
+        measured = ~(np.isnan(flow_dist) | np.isnan(area))
+
+        def by_outlet(threshold: int) -> dict[tuple[float, float], int]:
+            """Map the nodes of a threshold by the values at their outlet cell."""
+            nodes = np.flatnonzero((self._threshold_m2 == threshold) & measured)
+            found: dict[tuple[float, float], int] = {}
+            shared: set[tuple[float, float]] = set()
+            for node, key in zip(
+                nodes.tolist(),
+                zip(flow_dist[nodes].tolist(), area[nodes].tolist(), strict=True),
+                strict=True,
+            ):
+                if key in found:
+                    shared.add(key)
+                found[key] = node
+            return {key: node for key, node in found.items() if key not in shared}
+
+        finer = by_outlet(threshold_m2)
+        matched = {}
+        for coarser in self.thresholds_m2():
+            if coarser <= threshold_m2:
+                continue
+            at_outlet = np.full(self._n, -1, dtype=np.int64)
+            for key, node in by_outlet(coarser).items():
+                fine = finer.get(key)
+                if fine is not None:
+                    at_outlet[fine] = node
+            matched[coarser] = at_outlet
+        return matched
 
     def verify_graph(self, db: Session | None = None) -> dict[str, Any]:
         """Verify graph integrity. Returns diagnostic dict."""
@@ -991,9 +1066,14 @@ class CatchmentGraph:
         upstream_set = set(upstream_indices.tolist())
         path = [outlet_idx]
         current = outlet_idx
+        # The upstream neighbours of a node are its row of the CSR matrix: sliced
+        # from its arrays, not by indexing the matrix, which builds a matrix per
+        # step (thousands of steps up the main river of a large catchment)
+        indptr = self._upstream_adj.indptr
+        indices = self._upstream_adj.indices
 
         while True:
-            neighbors = self._upstream_adj[current].indices
+            neighbors = indices[indptr[current] : indptr[current + 1]].tolist()
             # Filter to nodes within this watershed
             candidates = [n for n in neighbors if n in upstream_set]
             if not candidates:

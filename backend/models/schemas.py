@@ -743,6 +743,87 @@ class DelineateNetworkResponse(BaseModel):
     )
 
 
+class NetworkPreviewPointInfo(NetworkPointInfo):
+    """A control point of a previewed network where it snapped and its node."""
+
+    inside_unit: bool = Field(
+        ...,
+        description=(
+            "It lies inside its sub-catchment of 1 ha, not at its outlet: the "
+            "characteristics split that sub-catchment by the raster, the preview's "
+            "outlines of the elements on both sides follow the whole of it"
+        ),
+    )
+
+
+class NetworkPreviewSubcatchmentInfo(BaseModel):
+    """A subcatchment of a previewed network: its place in the tree and its area."""
+
+    id: str = Field(..., description="Z1, Z2, … as the characteristics name it")
+    kind: Literal["headwater", "tributary", "intermediate"] = Field(
+        ...,
+        description="headwater (the main river above its first node), tributary (a "
+        "point's catchment) or intermediate (the przyrzecze of a reach)",
+    )
+    to: str = Field(..., description="The node it flows into")
+    point: str | None = Field(None, description="Id of the point it ends at")
+    reach: str | None = Field(None, description="The reach of a przyrzecze")
+    area_km2: float = Field(
+        ...,
+        ge=0,
+        description="Its area, exact to the cell, as the characteristics give it [km2]",
+    )
+    outline_approximate: bool = Field(
+        ...,
+        description="It holds a part of a sub-catchment that a point splits: its "
+        "outline follows the whole sub-catchment or leaves it out",
+    )
+    boundary_geojson: dict[str, Any] | None = Field(
+        None,
+        description="Its outline from the sub-catchment polygons as a GeoJSON Feature "
+        "(WGS84); null when it holds none (only a part of a split sub-catchment)",
+    )
+
+
+class NetworkPreviewReachInfo(BaseModel):
+    """A reach of a previewed network."""
+
+    model_config = ConfigDict(validate_by_name=True)
+
+    id: str = Field(..., description="R1, R2, … as the characteristics name it")
+    from_node: str = Field(..., alias="from", description="The node it receives")
+    to: str = Field(..., description="The junction it flows into")
+    length_km: float | None = Field(
+        None,
+        description="Flow distance of its upper end less its lower end's, as the "
+        "characteristics give it; null without the flow distances of the graph",
+    )
+    geojson: dict[str, Any] | None = Field(
+        None,
+        description="The stream lines of its sub-catchments between its ends as a "
+        "GeoJSON Feature (WGS84), upper end first; null where one is missing",
+    )
+
+
+class DelineateNetworkPreviewResponse(BaseModel):
+    """A network composed on the catchment graph, before it is measured (ADR-081)."""
+
+    threshold_m2: int = Field(..., description="The network the points snapped to")
+    unit_threshold_m2: int = Field(
+        ..., description="The sub-catchments the elements are made of [m2]"
+    )
+    area_km2: float = Field(..., description="A's catchment, exact to the cell [km2]")
+    points: list[NetworkPreviewPointInfo] = Field(
+        ..., description="A, then the points in the order of the request"
+    )
+    subcatchments: list[NetworkPreviewSubcatchmentInfo] = Field(...)
+    reaches: list[NetworkPreviewReachInfo] = Field(...)
+    junctions: list[NetworkJunctionInfo] = Field(...)
+    notices: list[NetworkNotice] = Field(
+        ..., description="Subcatchments above 250 km2 (over_scs_cn_limit)"
+    )
+
+
 # ===================== HYDROGRAPH MODELS =====================
 
 

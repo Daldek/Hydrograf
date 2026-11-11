@@ -1,8 +1,8 @@
 # SCOPE.md - Project Scope
 ## Hydrological Analysis System
 
-**Version:** 1.15
-**Date:** 2026-11-10
+**Version:** 1.16
+**Date:** 2026-11-11
 **Status:** Approved
 
 ---
@@ -247,6 +247,7 @@ This document defines precisely:
 
 **✅ In scope:**
 - `POST /api/delineate-network`: a closing section A and 1–30 control points above it (tributaries at their mouths, gauges), snapped to the streams of the map's threshold within 100 m
+- `POST /api/delineate-network/preview` (ADR-081): the same network composed on the catchment graph after every change of the points, in a fraction of a second: the snapped points, the ids of the elements, their areas and outlines, the reach lengths and the errors of the composition, before „Oblicz charakterystyki” runs the delineation
 - The network of HEC-HMS elements: subcatchments (headwater, tributaries, the przyrzecze of each reach), reaches and junctions, made of the 1 ha sub-catchments, split where a point lies inside one; the areas of the elements sum to A's catchment, checked to the cell
 - Each subcatchment with the parameters of a delineated watershed (area, CN, land cover, soil groups, morphometry, PMAXTP weights); each reach with its length (the difference of the flow distances of its ends), its slope (the NMT at its ends) and a BDOT10k check length
 - The hand-off of the whole network to Hydrolog's „Sieć i trasowanie”: one `nogat-handoff/1` with one `hydrolog-network/1` and the origin of every node (`node_provenance`)
@@ -963,13 +964,14 @@ PHASE 3: Hydrograph generation
 
 ---
 
-**Document version:** 1.15
-**Date of the last update:** 2026-11-10
+**Document version:** 1.16
+**Date of the last update:** 2026-11-11
 **Current version:** v0.4.0 (CP4 finished, 899 tests, 19 endpoints, 49 ADRs)
 **Planned MVP version:** v1.0.0 (CP5)
 **Status:** Approved — the project is in active development
 
 **Change history:**
+- 1.16 (2026-11-11): the network preview is in scope (2.1.7, ADR-081: `POST /api/delineate-network/preview`; the mode computes the characteristics on confirmation)
 - 1.15 (2026-11-10): the network delineation at control points is in scope (2.1.7, ADR-080: `POST /api/delineate-network` and the hand-off of a network to Hydrolog); routing stays out (2.2.1)
 - 1.14 (2026-11-10): Hydrolog follows the release set candidate-3 of Nogat (`b0ac85b`): `930915d`
 - 1.13 (2026-11-10): the soil groups of the least permeable SoilGrids layer of 0-100 cm (3.1.5; ADR-079)

@@ -80,6 +80,10 @@ class Place:
         confluence.
     at_outlet : bool
         The cell is the outlet cell of its unit: it drains out of the unit.
+    accumulation_cells : int
+        Cells that drain through the cell, itself included (``04_flowacc``): the
+        preview counts the parts of a unit split by a point with it
+        (``core.network_preview``).
     """
 
     cell: tuple[int, int]
@@ -87,6 +91,7 @@ class Place:
     flow_dist_m: float
     at_head: bool = False
     at_outlet: bool = False
+    accumulation_cells: int = 0
 
 
 @dataclass(frozen=True)
@@ -281,6 +286,9 @@ class NetworkTree:
         ``OUTLET_ID`` last.
     units : np.ndarray
         A's catchment: the internal indices of the units (``upstream_tree``).
+    below : np.ndarray
+        The internal index of the unit each unit of ``units`` drains into; -1 for
+        A's.
     unit_elements : np.ndarray
         The element number of each unit of ``units``; 0 for a split unit.
     splits : tuple[SplitUnit, ...]
@@ -293,6 +301,7 @@ class NetworkTree:
     junctions: tuple[Junction, ...]
     order: tuple[str, ...]
     units: np.ndarray
+    below: np.ndarray
     unit_elements: np.ndarray
     splits: tuple[SplitUnit, ...]
 
@@ -500,6 +509,7 @@ def build_network_tree(
         junctions=tuple(sorted(junctions, key=lambda j: int(j.id[1:]))),
         order=tuple(order),
         units=units,
+        below=below,
         unit_elements=unit_elements,
         splits=splits,
     )

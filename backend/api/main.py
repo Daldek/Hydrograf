@@ -165,7 +165,8 @@ app.include_router(
     network.router,
     prefix="/api",
     tags=["Network"],
-    responses=problem_responses(404, 422, 503),
+    # The window cap (422) is the full run's alone: the route documents it
+    responses=problem_responses(404, 503),
 )
 app.include_router(hydrograph.router, prefix="/api", tags=["Hydrograph"])
 app.include_router(tiles.router, prefix="/api", tags=["Tiles"])

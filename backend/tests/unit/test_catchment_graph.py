@@ -854,6 +854,48 @@ class TestGetSegmentIdx:
             cg.get_segment_idx(0)
 
 
+class TestCoarserAtOutlets:
+    """A sub-catchment of a coarser threshold ends where one of the finer ends."""
+
+    @staticmethod
+    def two_thresholds(fine_keys, coarse_keys):
+        """Nodes of 1 ha, then of 10 ha, by their (outlet flow distance, area)."""
+        keys = list(fine_keys) + list(coarse_keys)
+        cg = CatchmentGraph()
+        cg._n = len(keys)
+        cg._threshold_m2 = np.array(
+            [10000] * len(fine_keys) + [100000] * len(coarse_keys), dtype=np.int32
+        )
+        cg._outlet_flow_dist_m = np.array([k[0] for k in keys], dtype=np.float64)
+        cg._upstream_area_km2 = np.array([k[1] for k in keys], dtype=np.float64)
+        cg._loaded = True
+        return cg
+
+    def test_each_coarser_node_is_found_at_the_node_that_ends_at_its_outlet(self):
+        cg = self.two_thresholds(
+            [(7500.0, 5.0), (7500.0, 3.0), (4000.0, 16.0), (0.0, 26.0)],
+            [(4000.0, 16.0), (0.0, 26.0)],
+        )
+
+        at_outlets = cg.coarser_at_outlets(10000)
+
+        assert list(at_outlets) == [100000]
+        assert at_outlets[100000].tolist() == [-1, -1, 4, 5, -1, -1]
+
+    def test_values_that_two_nodes_share_match_neither(self):
+        cg = self.two_thresholds(
+            [(7500.0, 5.0), (7500.0, 5.0), (0.0, 26.0)],
+            [(7500.0, 5.0), (0.0, 26.0)],
+        )
+
+        assert cg.coarser_at_outlets(10000)[100000].tolist() == [-1, -1, 4, -1, -1]
+
+    def test_a_node_without_its_flow_distance_matches_nothing(self):
+        cg = self.two_thresholds([(np.nan, 5.0), (0.0, 26.0)], [(np.nan, 5.0)])
+
+        assert cg.coarser_at_outlets(10000)[100000].tolist() == [-1, -1, -1]
+
+
 class TestHydraulicLength:
     """Tests for hydraulic_length_km in aggregate_stats.
 
