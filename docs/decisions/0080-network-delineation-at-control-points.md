@@ -3,7 +3,8 @@
 **Date:** 2026-11-10
 **Status:** accepted (the author's decisions B1 to B7 of 2026-11-10; the details by delegation);
 amended 2026-11-11 (the mouth rule at every junction; the preview of ADR-081; short and flat
-reaches, D10a; two kinds of subcatchment for the person; the trunk of a branch)
+reaches, D10a; two kinds of subcatchment for the person; the trunk of a branch; a node at a
+confluence)
 
 > **Amended 2026-11-11 (the coordinator, after the smoke S5):** the mouth rule of decision 2
 > applies wherever the paths of two control points merge, at every junction, not only where a
@@ -67,6 +68,28 @@ reaches, D10a; two kinds of subcatchment for the person; the trunk of a branch)
 > not depend on the order of the points, before or after. A point with no point above it at the
 > top of a branch's trunk is a tributary (it lies off its parent's trunk), and a confluence of the
 > hand-off names it as it names the point of a headwater. The plan's D4 records the rule.
+
+> **Amended 2026-11-11 (the coordinator, after the author's report on kaczawa2: a reach of 7 m from
+> P1 to A at a confluence):** a point at most 50 m above a node whose cell is a confluence of the
+> network (A, a control point with points above it, any junction) moves to the outlet cell of the
+> last unit above that confluence on its own branch and enters the node directly, as a tributary
+> does, also when no other point's path enters there: no reach is made. A control point's cell is
+> such a confluence when a branch of points or a river joins its trunk there; a river is a stream of
+> the request's `threshold_m2` (its upstream area reaches it). Every river without a point that
+> joins at a junction's cell, beside the trunk and the branches of points, is a subcatchment of its
+> own (kind `headwater`; „Dopływ do przekroju A” at A, „Dopływ powyżej J…” at another junction) that
+> enters the junction, instead of falling into the przyrzecze of a reach; a smaller stream stays in
+> the element its cells drain to. When the trunk enters a control point at its mouth, no przyrzecze
+> ends at the point's cell, so its own cells (the cell, those draining into it from the side and the
+> smaller streams joining there) go to the largest branch beside the trunk that ends in a river or
+> in the przyrzecze of an edge, which then ends at that cell; without one they are an element of
+> their own. On the author's network (A at the confluence of the Nysa Szalona and the Kaczawa, P1
+> 7.1 m above A on the Nysa Szalona, A's trunk, no point on the Kaczawa; threshold 10 ha) the tree
+> was Z1 „Dopływ do punktu P1” (430.72 km²), the reach R1 of 7.1 m from P1 to A and its przyrzecze
+> Z2 of 316.55 km², the whole Kaczawa with A's own cells; it is now Z1 „Dopływ do ujścia przy P1”
+> (430.72 km²) and Z2 „Dopływ do przekroju A” (316.55 km², the Kaczawa with A's own 14 cells), both
+> entering J1 = A, no reach. The tree tests check on every network they build that each such river
+> enters its junction alone. The plan's D3 and D5 record the rule.
 
 ## Context
 
@@ -172,13 +195,17 @@ Option C of 1 and 3 and the options in bold of 2 and 4 to 7:
    subcatchment (a tributary, or the headwater when it lies on its parent's trunk); a point off
    its parent's trunk at most 50 m above its junction is taken at its mouth and enters the
    junction directly (*amended 2026-11-11:* any point at most 50 m above a junction where its
-   path meets another branch of the network, above). Every junction, every control point with
-   points above it and A are junctions of the network; A's flows into the outlet.
+   path meets another branch of the network, also above a control point at a confluence of the
+   network, above). Every junction, every control point with points above it and A are
+   junctions of the network; A's flows into the outlet (*amended 2026-11-11:* a river without a
+   point that joins at a junction's cell enters it as a subcatchment of its own, above).
 3. **Cells.** An element holds the cells whose first element outlet downstream is its own: a
-   control point's cell for the element that reaches it along its trunk, the outlet cell of the
-   unit above a junction for an element that reaches the junction on a branch. A unit with a
-   point inside is split by pyflwdir basins with an outlet at each of its points and at its
-   outlet cell; any number of points per unit, two points on one cell refused.
+   control point's cell for the element that reaches it along its trunk (*amended 2026-11-11:*
+   or, when the trunk enters it at its mouth, the largest branch beside the trunk that ends in a
+   river or a przyrzecze, above), the outlet cell of the unit above a junction for an element
+   that reaches the junction on a branch. A unit with a point inside is split by pyflwdir basins
+   with an outlet at each of its points and at its outlet cell; any number of points per unit,
+   two points on one cell refused.
 4. **One window** of the six saved rasters over A's catchment, at most 60 M cells; the element
    raster from the labels through a table unit → element. No flow directions are computed.
 5. **Measures.** Every element from its cells with the export's measures, moved into

@@ -195,7 +195,16 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     mouth; such a branch now has a trunk of its own (the larger upstream area), the upper Kaczawa
     is the headwater of a junction at the Bukowica's mouth, and every reach runs down a main
     river (`test_network_tree.py` checks it on every network). The tree never depended on the
-    order of the points. Deployed to kaczawa2 and Hydroni with its merge.
+    order of the points. Deployed to kaczawa2 and Hydroni with its merge. **A node at a
+    confluence** (the author's report on kaczawa2, ADR-080 and the plan's D3 and D5 amended,
+    branch `fix/network-node-confluence`): A at the confluence of the Nysa Szalona and the
+    Kaczawa with P1 7.1 m above it gave a reach of 7.1 m whose przyrzecze held the whole Kaczawa;
+    a gauge at most 50 m above a control point at a confluence now enters it at its mouth, and a
+    river of the request's threshold without a point that joins at a junction is a dopływ of its
+    own („Dopływ do przekroju A” at A), so the network is two dopływy into A with no reach.
+    `build_network_tree` takes the threshold. Not done: the map mode offers „Przesuń P… do
+    zbiegu” only for a reach into a confluence junction, not for one into a control point at a
+    confluence 50–200 m below. Deployed to kaczawa2 and Hydroni with its merge.
 11. **Production, at its next rebuild: land cover and soil groups beyond the boundary.** The basin
     of the tables and rasters (792.009 km²) holds 1.608 km² beyond the boundary, among them the
     block of 1.604 km² at 50.901 N 15.959 E, which has no `land_cover` or `soil_hsg` (cut to the

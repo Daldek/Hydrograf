@@ -27,6 +27,9 @@ from core.network_tree import (
 )
 
 STEP_M = 5.0
+# The network the points snapped to: a river of at least 1 km² joining at a junction's
+# cell beside its branches of points is a subcatchment of its own
+THRESHOLD_M2 = 1_000_000
 # name: (unit below, local area [km²], segment length [m])
 UNITS = {
     "M0": (None, 3.0, 1000.0),
@@ -136,9 +139,10 @@ def river():
 
 
 def build(river, outlet, *points):
-    """Build the tree of the points; every reach must run down a main river."""
-    tree = build_network_tree(river.graph, outlet, list(points))
+    """Build the tree of the points and check the invariants of every network."""
+    tree = build_network_tree(river.graph, outlet, list(points), THRESHOLD_M2)
     assert_no_przyrzecze_holds_a_larger_river(river, tree)
+    assert_each_river_at_a_junction_enters_it_alone(river, tree)
     return tree
 
 
@@ -162,6 +166,52 @@ def assert_no_przyrzecze_holds_a_larger_river(river, tree):
                 assert side == above or area(river.index[side]) <= area(
                     river.index[above]
                 ), f"{reach.id} holds {side}, larger than {above} at the head of {unit}"
+
+
+def assert_each_river_at_a_junction_enters_it_alone(river, tree):
+    """A river without a point that joins at a junction's cell is a dopływ of its own.
+
+    Every unit of at least THRESHOLD_M2 that drains into the cell of a junction (a
+    confluence, or a control point at the head of its unit) beside the trunk, with no
+    control point in it or above it, ends in a headwater without a point that enters
+    the junction and holds no other unit of THRESHOLD_M2 joining there: no przyrzecze
+    holds it (the coordinator's decision of 2026-11-11).
+    """
+    area = river.graph.get_upstream_area_km2
+    elements = unit_elements(river, tree)
+    z = by_id(tree.subcatchments)
+    pointed = {river.name(p.place.unit) for p in tree.points}
+
+    def at_outlet(name):
+        element = elements[name]
+        return element[-1][1] if isinstance(element, list) else element
+
+    def carries_a_point(name):
+        return name in pointed or any(map(carries_a_point, river.upstream[name]))
+
+    for junction in tree.junctions:
+        place = junction.place
+        if isinstance(place, Place) and not place.at_head:
+            continue
+        joining = river.upstream[river.name(place.unit)]
+        trunk = (
+            river.name(place.above)
+            if isinstance(place, UnitHead)
+            else max(joining, key=lambda name: area(river.index[name]))
+        )
+        rivers = [n for n in joining if area(river.index[n]) * 1e6 >= THRESHOLD_M2]
+        for name in rivers:
+            if name == trunk or carries_a_point(name):
+                continue
+            element = z[at_outlet(name)]
+            assert (element.kind, element.point, element.to) == (
+                "headwater",
+                None,
+                junction.id,
+            ), f"{name}, joining at {junction.id}, is in {element.id}"
+            assert element.id not in {at_outlet(n) for n in rivers if n != name}, (
+                f"{element.id} holds {name} and another river at {junction.id}"
+            )
 
 
 def unit_elements(river, tree):
@@ -726,6 +776,146 @@ def test_a_point_30_m_above_the_point_below_it_on_one_river_keeps_its_place(rive
     )
 
 
+# The units above M3, in the headwater of a gauge on M3 below every junction
+ABOVE_M3 = ("M4", "M5", "M6", "M7", "T2a", "T2b", "T2c", "Sa", "Sb", "T3a")
+
+
+@pytest.mark.parametrize("fd", [3005, 3030, 3060])
+def test_a_gauge_at_most_50_m_above_a_at_a_confluence_enters_it(river, fd):
+    # The author's network of 2026-11-11: A at the confluence of the Nysa Szalona and
+    # the Kaczawa, P1 7 m above it on the Nysa Szalona (A's trunk), no point on the
+    # Kaczawa. Here A lies at the head of M2, where T1 (2 km², a river of the network)
+    # joins M3, and the gauge on M3 above it
+    outlet = river.point("A", "M2", 3000)
+    assert outlet.place.at_head
+    tree = build(river, outlet, river.point("G", "M3", fd))
+
+    z = by_id(tree.subcatchments)
+    (a,) = tree.junctions
+    (g,) = [p for p in tree.points if p.point_id == "G"]
+    elements = unit_elements(river, tree)
+    assert elements.pop("M2") == [(3000.0, "Z2"), ("outlet", None)]
+    if fd - 3000 <= MOUTH_TOLERANCE_M:
+        # G moves to the outlet cell of M3 and enters A with no reach; T1 enters A as
+        # a dopływ of its own, which ends at A's cell and holds A's own cells
+        assert (g.at_mouth, g.place, g.node) == (True, river.place("M3", 3005), "Z1")
+        assert tree.order == ("Z1", "Z2", "J1", "OUT")
+        assert tree.reaches == ()
+        assert a.inflows == ("Z1", "Z2")
+        assert (z["Z1"].kind, z["Z1"].point, z["Z1"].at_mouth) == (
+            "headwater",
+            "G",
+            True,
+        )
+        assert (z["Z2"].kind, z["Z2"].point, z["Z2"].to, z["Z2"].outlet) == (
+            "headwater",
+            None,
+            "J1",
+            outlet.place,
+        )
+        assert elements == {
+            "M3": "Z1",
+            "T1a": "Z2",
+            "T1b": "Z2",
+            **dict.fromkeys(ABOVE_M3, "Z1"),
+        }
+    else:
+        # 60 m above, G keeps its reach, whose przyrzecze ends at A's cell; T1 still
+        # enters A on its own
+        assert not g.at_mouth
+        assert tree.order == ("Z1", "R1", "Z2", "Z3", "J1", "OUT")
+        assert a.inflows == ("R1", "Z2", "Z3")
+        assert (z["Z2"].kind, z["Z2"].outlet) == ("intermediate", outlet.place)
+        assert (z["Z3"].kind, z["Z3"].point, z["Z3"].outlet) == (
+            "headwater",
+            None,
+            UnitOutlet(river.index["T1a"]),
+        )
+        assert elements == {
+            "M3": [(float(fd), "Z1"), ("outlet", "Z2")],
+            "T1a": "Z3",
+            "T1b": "Z3",
+            **dict.fromkeys(ABOVE_M3, "Z1"),
+        }
+    # T1 brings no point
+    assert a.tributaries == ()
+
+
+def test_a_river_without_a_point_at_a_confluence_enters_it_on_its_own():
+    # V (2.5 km²) and W (0.5 km²) join M3 and T1 at the head of M2, where P1's
+    # tributary meets A's trunk: V, a river of the network, enters the junction as a
+    # dopływ of its own; W, below the threshold, stays in the przyrzecze below it
+    river = River(extra_units={"V": ("M2", 2.5, 400.0), "W": ("M2", 0.5, 300.0)})
+    tree = build(river, river.point("A", "M0", 500), river.point("P1", "T1a", 3020))
+
+    assert tree.order == ("Z1", "Z2", "Z3", "J1", "R1", "Z4", "J2", "OUT")
+    z = by_id(tree.subcatchments)
+    j = by_id(tree.junctions)
+    assert j["J1"].inflows == ("Z1", "Z2", "Z3")
+    assert j["J1"].tributaries == ("P1",)
+    assert (z["Z2"].kind, z["Z2"].point, z["Z2"].outlet) == (
+        "headwater",
+        None,
+        UnitOutlet(river.index["V"]),
+    )
+    assert (z["Z3"].kind, z["Z3"].point) == ("tributary", "P1")
+    assert by_id(tree.reaches)["R1"].intermediate == "Z4"
+    elements = unit_elements(river, tree)
+    assert elements["V"] == "Z2"
+    assert elements["W"] == elements["M2"] == elements["M1"] == "Z4"
+
+
+def test_a_river_at_the_cell_of_a_gauge_enters_its_junction(river):
+    # G lies at the head of M4, where T2 (7 km², no point) joins M5; Q lies on M6
+    gauge = river.point("G", "M4", 5000)
+    assert gauge.place.at_head
+    tree = build(
+        river, river.point("A", "M0", 500), gauge, river.point("Q", "M6", 6500)
+    )
+
+    (g,) = [j for j in tree.junctions if j.point == "G"]
+    z = by_id(tree.subcatchments)
+    reach, przyrzecze, t2 = g.inflows
+    assert by_id(tree.reaches)[reach].intermediate == przyrzecze
+    assert z[przyrzecze].outlet == gauge.place
+    assert (z[t2].kind, z[t2].point, z[t2].outlet) == (
+        "headwater",
+        None,
+        UnitOutlet(river.index["T2a"]),
+    )
+    assert g.tributaries == ()
+    elements = unit_elements(river, tree)
+    assert {elements[name] for name in ("T2a", "T2b", "T2c", "Sa", "Sb")} == {t2}
+    assert elements["M5"] == przyrzecze
+
+
+@pytest.mark.parametrize(
+    ("fd", "order", "own"),
+    [
+        (3200, ("Z1", "Z2", "R1", "Z3", "J1", "OUT"), ("intermediate", "A", "R1")),
+        (3020, ("Z1", "Z2", "Z3", "J1", "OUT"), ("headwater", None, None)),
+    ],
+    ids=["a reach up the tributary", "every branch at its mouth"],
+)
+def test_a_trunk_at_its_mouth_leaves_the_cells_of_a_to_a_branch_beside_it(
+    river, fd, order, own
+):
+    # G enters A at its mouth and T1 brings P1, so no river without a point takes A's
+    # own cells: the przyrzecze of P1's reach does, which then ends at A's cell, or,
+    # with P1 at its mouth too, an element of their own
+    outlet = river.point("A", "M2", 3000)
+    tree = build(
+        river, outlet, river.point("G", "M3", 3005), river.point("P1", "T1a", fd)
+    )
+
+    assert tree.order == order
+    z = by_id(tree.subcatchments)
+    assert (z["Z3"].kind, z["Z3"].point, z["Z3"].reach) == own
+    assert (z["Z3"].to, z["Z3"].outlet) == ("J1", outlet.place)
+    assert by_id(tree.junctions)["J1"].inflows[-1] == "Z3"
+    assert unit_elements(river, tree)["M2"] == [(3000.0, "Z3"), ("outlet", None)]
+
+
 @pytest.mark.parametrize(
     ("extra_units", "points"),
     [
@@ -752,8 +942,22 @@ def test_a_point_30_m_above_the_point_below_it_on_one_river_keeps_its_place(rive
                 ("R", "Sb", 6700),
             ],
         ),
+        # Rivers at junctions and a gauge at a confluence: V joins at the head of M2,
+        # where P1's tributary enters A's trunk, and W at the head of M4, where P3
+        # lies; P2 lies 30 m above P3's cell on T2a and Q 10 m above it on M5, below
+        # P5's confluence
+        (
+            {"V": ("M2", 2.5, 400.0), "W": ("M4", 1.5, 300.0)},
+            [
+                ("P1", "T1a", 3020),
+                ("P2", "T2a", 5030),
+                ("P3", "M4", 5000),
+                ("P5", "T3a", 7300),
+                ("Q", "M5", 5010),
+            ],
+        ),
     ],
-    ids=["a gauge on a tributary", "branches of a branch"],
+    ids=["a gauge on a tributary", "branches of a branch", "rivers at junctions"],
 )
 def test_the_same_points_in_another_order_give_the_same_network(extra_units, points):
     river = River(extra_units=extra_units)

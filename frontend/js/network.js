@@ -678,7 +678,7 @@
             drawn.elements[s.id] = { layer: layer, kind: kind, approximate: approximate };
             drawn.group.addLayer(layer);
             var at = labelPoint(boundary.geometry);
-            if (at) addLabel(s.id, kind, at, s.id + ': ' + elementText(s));
+            if (at) addLabel(s.id, kind, at, s.id + ': ' + elementText(s, data));
         });
         if (drawn.boundary) drawn.group.addLayer(drawn.boundary);
         data.reaches.forEach(function (r) {
@@ -801,10 +801,16 @@
         return !!(p && p.snap && p.snap.at_mouth);
     }
 
-    /** A headwater is named as a dopływ, as in the hand-off (backend/core/handoff.py). */
-    function elementText(s) {
+    /**
+     * A headwater is named as a dopływ, as in the hand-off (backend/core/handoff.py);
+     * one without a point names the junction it enters, A's as the closing section.
+     */
+    function elementText(s, data) {
         if (s.kind === 'intermediate') return 'Przyrzecze odcinka ' + s.reach;
-        if (!s.point) return 'Dopływ powyżej ' + s.to;
+        if (!s.point) {
+            var into = data.junctions.filter(function (j) { return j.id === s.to; })[0];
+            return into && into.kind === 'outlet' ? 'Dopływ do przekroju ' + pointLabel(into.point) : 'Dopływ powyżej ' + s.to;
+        }
         return (atMouth(s.point) ? 'Dopływ do ujścia przy ' : 'Dopływ do punktu ') + pointLabel(s.point);
     }
 
@@ -1165,7 +1171,7 @@
                 var btn = el('button', 'net-row-btn');
                 btn.type = 'button';
                 btn.appendChild(id);
-                var text = row.type === 'element' ? elementText(row.item) : reachText(row.item);
+                var text = row.type === 'element' ? elementText(row.item, d.data) : reachText(row.item);
                 btn.appendChild(document.createTextNode(' ' + text));
                 btn.setAttribute('aria-pressed', 'false');
                 btn.addEventListener('click', function () {
@@ -1219,7 +1225,7 @@
         els.selectionKind.textContent = '';
         els.reach.textContent = '';
         if (element) {
-            els.selectionTitle.textContent = element.id + ' · ' + elementText(element);
+            els.selectionTitle.textContent = element.id + ' · ' + elementText(element, d.data);
             var shown = shownKind(element.kind);
             var kind = el('span', 'net-kind ' + shown, KIND_LABELS[shown]);
             els.selectionKind.appendChild(kind);

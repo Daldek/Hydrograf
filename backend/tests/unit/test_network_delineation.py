@@ -126,7 +126,7 @@ def elements_of(graph, db, settings, outlet, *points):
     """The tree, the window and the element raster of a network."""
     with open_network_rasters(settings) as (rasters, _):
         snapped = [snap_point(rasters, graph, c, SNAP) for c in (outlet, *points)]
-        tree = build_network_tree(graph, snapped[0], snapped[1:])
+        tree = build_network_tree(graph, snapped[0], snapped[1:], SNAP)
         window = catchment_window(rasters, graph, db, tree)
         grid = NetworkGrid(read_cells(rasters, window), window, rasters)
         elements, _, outside = element_raster(grid, graph, tree)
@@ -259,7 +259,7 @@ class TestTheElementsAddUpToA:
     def test_a_unit_missing_from_the_window_is_a_defect(self, run, graph, db, settings):
         with open_network_rasters(settings) as (rasters, _):
             snapped = [snap_point(rasters, graph, c, SNAP) for c in at_the_mouths(run)]
-            tree = build_network_tree(graph, snapped[0], snapped[1:])
+            tree = build_network_tree(graph, snapped[0], snapped[1:], SNAP)
             window = catchment_window(rasters, graph, db, tree)
             cells = read_cells(rasters, window)
             grid = NetworkGrid(cells, window, rasters)
