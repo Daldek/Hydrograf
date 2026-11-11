@@ -1167,27 +1167,66 @@
     // ===== The tree, from the closing section upward =====
 
     /**
-     * The rows of the tree: at a node the branches joining from the side come first,
-     * one step in, then the trunk goes on at the same depth, so the main river reads
-     * down the list from the closing section to its top. A node entered without a reach
-     * carries the node it enters (`into`).
+     * The rows of the tree, from the closing section upward. The inflows of a node form
+     * its branches: a reach with its przyrzecze and the node above it, a dopływ, or a
+     * node entered without a reach. Each branch reads the same way, przyrzecze, reach,
+     * then the node above it with everything that node receives, so one branch is
+     * listed whole before the next. At a node the branches joining from the side come
+     * first, one step in, then the trunk (the branch of the node's first inflow, the
+     * main river) goes on at the same depth. A node entered without a reach carries the
+     * node it enters (`into`).
      */
     function treeRows(data) {
         var items = {};
         data.subcatchments.forEach(function (s) { items[s.id] = { type: 'element', item: s }; });
         data.reaches.forEach(function (r) { items[r.id] = { type: 'reach', item: r }; });
         data.junctions.forEach(function (j) { items[j.id] = { type: 'junction', item: j }; });
+        // The przyrzecze of each reach, which enters the reach's lower node beside it
+        var przyrzecze = {};
+        data.subcatchments.forEach(function (s) {
+            if (s.kind === 'intermediate' && s.reach) przyrzecze[s.reach] = s.id;
+        });
         var rows = [];
-        function walk(id, depth, into) {
-            var node = items[id];
-            if (!node) return;
-            rows.push({ id: id, type: node.type, item: node.item, depth: depth, into: into });
-            if (node.type === 'junction') {
-                node.item.inflows.slice(1).forEach(function (branch) { walk(branch, depth + 1, id); });
-                if (node.item.inflows.length) walk(node.item.inflows[0], depth, id);
-            } else if (node.type === 'reach') {
-                walk(node.item.from, depth, null);
+        function row(id, depth, into) {
+            rows.push({ id: id, type: items[id].type, item: items[id].item, depth: depth, into: into || null });
+        }
+        function branch(id, depth, node) {
+            var it = items[id];
+            if (!it) return;
+            if (it.type === 'reach') {
+                if (przyrzecze[id]) row(przyrzecze[id], depth);
+                row(id, depth);
+                walk(it.item.from, depth, null);
+            } else if (it.type === 'junction') {
+                walk(id, depth, node);
+            } else {
+                row(id, depth);
             }
+        }
+        function walk(id, depth, into) {
+            var it = items[id];
+            if (!it) return;
+            if (it.type !== 'junction') {
+                branch(id, depth, null);
+                return;
+            }
+            row(id, depth, into);
+            // A przyrzecze goes with its reach, not as a branch of its own
+            var inflows = it.item.inflows.filter(function (inflow) {
+                var s = items[inflow];
+                return !(s && s.type === 'element' && s.item.kind === 'intermediate' && s.item.reach && items[s.item.reach]);
+            });
+            if (!inflows.length) return;
+            var trunk = inflows.indexOf(it.item.inflows[0]) >= 0 ? it.item.inflows[0] : trunkOf(it.item.inflows[0], inflows);
+            inflows.forEach(function (inflow) {
+                if (inflow !== trunk) branch(inflow, depth + 1, id);
+            });
+            branch(trunk, depth, id);
+        }
+        // A node's first inflow is a przyrzecze only beside its reach: the reach is the trunk
+        function trunkOf(first, inflows) {
+            var s = items[first];
+            return s && s.item.reach && inflows.indexOf(s.item.reach) >= 0 ? s.item.reach : inflows[0];
         }
         var outlet = data.junctions.filter(function (j) { return j.kind === 'outlet'; })[0];
         if (outlet) walk(outlet.id, 0, null);
