@@ -24,7 +24,7 @@
           crossorigin="anonymous">
 
     <!-- Shell chrome, then the admin page -->
-    <link rel="stylesheet" href="css/chrome.css?v=71eb63c310">
+    <link rel="stylesheet" href="css/chrome.css?v=46a0b28957">
     <link rel="stylesheet" href="css/admin.css?v=1c4870df37">
 </head>
 <body>
@@ -41,6 +41,10 @@
         </nav>
         <span id="nav-status-badge" class="badge badge-idle" role="status" aria-live="polite">Sprawdzanie usług…</span>
         <div class="top-actions">
+            <a class="btn btn-ghost guide-link" href="/instrukcja/" aria-label="Instrukcja" title="Instrukcja">
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5z"/><path d="M4 16.5V4.5M7.5 6.5h5"/></svg>
+                <span class="label">Instrukcja</span>
+            </a>
             <div class="seg" role="group" aria-label="Motyw">
                 <button type="button" id="theme-auto" aria-pressed="true" title="Motyw systemowy">
                     <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor"/></svg>
@@ -63,10 +67,6 @@
         <a class="rail-item" href="/">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg>
             Mapa
-        </a>
-        <a class="rail-item" href="/instrukcja/">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.5h5.5A3.5 3.5 0 0 1 12 8v12a2.5 2.5 0 0 0-2.5-2.5H3z"/><path d="M21 4.5h-5.5A3.5 3.5 0 0 0 12 8v12a2.5 2.5 0 0 1 2.5-2.5H21z"/></svg>
-            Instrukcja
         </a>
         <a class="rail-item active" href="/admin" aria-current="page">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/></svg>

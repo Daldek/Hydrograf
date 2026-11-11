@@ -895,7 +895,7 @@
             Hydrograf.feedback.init();
         }
 
-        // Welcome dialog (first visit, Instrukcja in the rail)
+        // Welcome dialog (first visit, Instrukcja in the top bar)
         if (Hydrograf.welcome) {
             Hydrograf.welcome.init();
         }
