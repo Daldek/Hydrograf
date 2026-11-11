@@ -884,7 +884,9 @@ instance (`127.0.0.1:8081`) runs `824bebd` since 2026-11-11 (its image rebuilt f
 smoke there: a network of 250.39 km² whose elements equal A's catchment (B5), 4 subcatchments,
 2 reaches and 2 junctions, in 16.6 s warm. Production (`127.0.0.1:8080`) is not redeployed: it
 still runs `894810c` with the rasters re-cut on 2026-11-10 at 23:53 CET, and its deployment
-waits for the author's decision.
+waits for the author's decision. Nogat added the registry edge of its D10 the same day (its
+step 4, `fa56e90`: Hydrograf → Hydrolog by `file` with `hydrolog-network/1`, and the route of
+`POST /api/delineate-network`), which closes its plan of `node_provenance`.
 
 ## Not in this plan
 

@@ -169,9 +169,9 @@ scheduled in [BACKLOG.md](BACKLOG.md) and [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)
     junction where the paths of two points merge (D3 and ADR-080 amended: network 2 loses its
     reach of 34 m). The gate passed on the merged tree (2,088 tests); Hydroni runs `824bebd` since
     2026-11-11, where a network of 250.39 km² passed B5 with 4 subcatchments, 2 reaches and 2
-    junctions in 16.6 s warm; production is not redeployed (Next 1). Next: Nogat adds the registry
-    edge of its D10 (its step 4). No release is cut for this work now; networks above 60 M cells
-    stay refused.
+    junctions in 16.6 s warm; production is not redeployed (Next 1). Nogat added the registry
+    edge of its D10 (its step 4, `fa56e90`). No release is cut for this work now; networks above
+    60 M cells stay refused.
 11. **Production, at its next rebuild: land cover and soil groups beyond the boundary.** The basin
     of the tables and rasters (792.009 km²) holds 1.608 km² beyond the boundary, among them the
     block of 1.604 km² at 50.901 N 15.959 E, which has no `land_cover` or `soil_hsg` (cut to the
