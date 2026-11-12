@@ -1101,4 +1101,11 @@ Different: `bdot_streams`, `depressions`, `land_cover`, `soil_hsg`; in `frontend
   dialog names „zlewnia Kaczawy (ok. 792 km²)”; the HSG layer shows the groups C of ADR-079; the
   public host answers. The HSG raster of the rebuild was copied to production's
   `cache/soil_hsg/`.
-- Rollback and the removal after acceptance: PROGRESS, Production, Backup and rollback.
+- Accepted by the author on 2026-11-12. Then removed: the database `hydro_db_pre_2026_11_12`,
+  `frontend/tiles.pre-2026-11-12` and `frontend/data/.dem_tiles.pre-2026-11-12` (both partly
+  uid 999, so removed by a root one-off container of `hydrograf-api:latest`), and kaczawa2
+  (`./dc down -v`, its image, its worktree, `~/data/hydrograf-kaczawa2`) after its README,
+  `scripts/`, `logs/`, `env.sh`, `dc`, `compose.instance.yml` and the `SHA256SUMS` of its inputs
+  were copied to `/data/nmt/hydrograf-backup-2026-11-12/kaczawa2/`; the paths of
+  `~/data/hydrograf-kaczawa2/` above now live there. The rollback from the backup: PROGRESS,
+  Production, Backup and rollback.
