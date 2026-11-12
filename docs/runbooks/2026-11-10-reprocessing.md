@@ -1063,5 +1063,42 @@ repository: they live in `~/data/hydrograf-kaczawa2/README`, with the helpers in
 `~/data/hydrograf-kaczawa2/scripts/` (`cut.py`, `compare.sql`, `probe.py`, `flowacc.py` and
 `units.py` those of this runbook unchanged; `soil.py` and `clip.py` changed for the HSG raster
 and the boundary; `boundary.py`, `vectors.py`, `overlays.py`, `next11.py`, `probe2.py` and
-`jcwp.py` new) and one log per step in `logs/`. Production waits for the author's review of
-kaczawa2 (PROGRESS, Next 1).
+`jcwp.py` new) and one log per step in `logs/`.
+
+### Production on kaczawa2's data (2026-11-12, 08:29–08:35 CET)
+
+At the author's request production took kaczawa2's data instead of running K0–K13 again: the
+runs are the same steps on the same inputs, and the comparison found production and kaczawa2
+differing only where the rebuild was meant to change them. Equal: the 20 rasters of `data/nmt`
+(sha256), `stream_network`, `stream_catchments`, `precipitation_data`, `feedback` (30 rows, max
+id 40) and the empty sewer and processing tables (md5 of every row), `frontend/data/results/`.
+Different: `bdot_streams`, `depressions`, `land_cover`, `soil_hsg`; in `frontend/data`
+`bdot_lakes.geojson`, `bdot_streams.geojson`, `dem.json`, `dem.png`, `dem_tiles/`,
+`dem_tiles.json`, `depressions.png`, `instance.json`, `soil_hsg.geojson`, `streams.png`; the
+`.mbtiles` and `streams_10000/` of the tiles; `data/hydro/hydro_merged.gpkg`; the new
+`data/boundary/zlewnia_kaczawy_jednostki.gpkg`. The code stayed `a1b5f86` with its image.
+
+- Preparation 08:29–08:34, production only read, under `umask 022`: the backup of §3 in
+  `/data/nmt/hydrograf-backup-2026-11-12/` (production's dump, `frontend_data.tar.zst`, `env`,
+  `git-head.txt`, `tiles_metadata.json`, the old `hydro_merged.gpkg`, `SHA256SUMS`); kaczawa2's
+  `hydro_db` dumped and restored as `hydro_db_1112` in `hydro_db`'s server; kaczawa2's tiles
+  copied to `frontend/tiles.new`, its changed files of `frontend/data` to `frontend-data-new/`.
+- Switch 08:34:29–08:35:13 from a script that checked its preconditions first (`switch-2026-11-12.log`
+  in the backup): the user and empty tables of `hydro_db_1112` equal to production's, its data
+  tables and both stream tables equal to kaczawa2's. **Downtime 08:34:59–08:35:13, 14.5 s:**
+  `docker compose stop api`; `hydro_db` renamed `hydro_db_pre_2026_11_12` and `hydro_db_1112`
+  renamed `hydro_db`; `frontend/tiles` renamed `tiles.pre-2026-11-12` and `tiles.new` into
+  place; the old `frontend/data/dem_tiles` renamed `.dem_tiles.pre-2026-11-12` beside it (it
+  belongs to uid 999 and cannot leave its directory), the 9 other files moved to
+  `frontend-data-pre/`, the new ones copied; `hydro_merged.gpkg` and the boundary copied;
+  `docker compose start api` (graph of 46,608 nodes in 1.3 s), `docker compose restart nginx`,
+  which mounts the renamed tile directory again.
+- Checks: `probe2.py` against 8080 gives the 8 lines of 8082 (Kaczawa outlet CN 67.8, before
+  67.0; the land cover shares of the Kamiennik and Złotoryja moved by 0.1–0.2 points);
+  `compare.sql` on `hydro_db` equals kaczawa2's `logs/compare-after.txt`; `next11.py` in a
+  one-off container equals kaczawa2's `logs/next11.log`; the watershed of 747.92 km² at
+  51.15636 N 16.07643 E at 100 000 m² has its main channel (55.36 km, Lc 48.21 km); the welcome
+  dialog names „zlewnia Kaczawy (ok. 792 km²)”; the HSG layer shows the groups C of ADR-079; the
+  public host answers. The HSG raster of the rebuild was copied to production's
+  `cache/soil_hsg/`.
+- Rollback and the removal after acceptance: PROGRESS, Production, Backup and rollback.
