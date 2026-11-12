@@ -23,10 +23,11 @@
           integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V"
           crossorigin="anonymous">
 
-    <!-- Nogat design tokens, shell chrome, then the app -->
-    <link rel="stylesheet" href="css/tokens.css?v=d620ffee72">
+    <!-- Nogat design tokens, shell chrome, the kit's app menu, then the app -->
+    <link rel="stylesheet" href="css/tokens.css?v=6f713b17c3">
     <link rel="stylesheet" href="css/chrome.css?v=46a0b28957">
-    <link rel="stylesheet" href="css/app.css?v=5ec5d5cbb6">
+    <link rel="stylesheet" href="nogat/nogat-app-menu.css?v=8bb318a9a6">
+    <link rel="stylesheet" href="css/app.css?v=16d93d161c">
 </head>
 <body>
 <div class="shell">
@@ -50,6 +51,8 @@
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v12H5.5A1.5 1.5 0 0 0 4 16.5z"/><path d="M4 16.5V4.5M7.5 6.5h5"/></svg>
                 <span class="label">Instrukcja</span>
             </a>
+            <!-- The app menu „Aplikacje” of Nogat's kit (js/nogat.js); not drawn without HYDROGRAF_GUI -->
+            <nogat-app-menu current="hydrograf" marks="nogat/marks/"></nogat-app-menu>
             <div class="seg" role="group" aria-label="Motyw">
                 <button type="button" id="theme-auto" aria-pressed="true" title="Motyw systemowy">
                     <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor"/></svg>
@@ -526,17 +529,18 @@
                         <div class="handoff-actions">
                             <button class="btn sm" type="button" id="handoff-copy" title="Skopiuj przekazanie nogat-handoff/1 do schowka; w Hydrologu: „Wczytaj z Hydrografa” → „Wklej ze schowka”" disabled>
                                 <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>
-                                Kopiuj do Hydrologa
+                                <span class="handoff-label">Kopiuj do Hydrologa</span>
                             </button>
                             <button class="btn sm" type="button" id="handoff-file" title="Pobierz przekazanie jako plik &lt;nazwa&gt;.handoff.json; w Hydrologu: „Wczytaj z Hydrografa” → „Plik przekazania…”" disabled>
                                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 16h12"/></svg>
-                                Plik przekazania
+                                <span class="handoff-label">Plik przekazania</span>
                             </button>
                         </div>
                         <p class="handoff-status" id="handoff-status" role="status"></p>
-                        <div class="handoff-fallback d-none" id="handoff-fallback">
-                            <label for="handoff-text">Przeglądarka nie dała dostępu do schowka. Tekst przekazania jest zaznaczony: skopiuj go (Ctrl+C) i wklej w Hydrologu („Wczytaj z Hydrografa” → „Wklej ze schowka”).</label>
-                            <textarea id="handoff-text" rows="6" readonly spellcheck="false"></textarea>
+                        <!-- The copy by hand: the kit fills, shows and selects the field, the box follows it -->
+                        <div class="handoff-fallback" id="handoff-fallback">
+                            <label for="handoff-text">Tekst przekazania</label>
+                            <textarea id="handoff-text" rows="6" readonly spellcheck="false" hidden></textarea>
                             <button class="btn sm ghost" type="button" id="handoff-fallback-close">Zamknij</button>
                         </div>
                     </section>
@@ -650,7 +654,8 @@
 <script defer src="js/instance.js?v=04b557b531"></script>
 <script defer src="js/welcome.js?v=54f8061114"></script>
 <script defer src="js/identify.js?v=b89f4b64cf"></script>
-<script defer src="js/handoff.js?v=29fad1831b"></script>
+<script type="module" src="js/nogat.js?v=1a75bf5331"></script>
+<script defer src="js/handoff.js?v=53ec91cd4b"></script>
 <script defer src="js/network.js?v=dda978abcf"></script>
 <script defer src="js/app.js?v=ec237cd623"></script>
 </body>

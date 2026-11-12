@@ -5,14 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hydrograf — instrukcja</title>
 <link rel="icon" type="image/svg+xml" href="../img/hydrograf.svg">
-<link rel="stylesheet" href="../css/tokens.css?v=d620ffee72">
+<link rel="stylesheet" href="../css/tokens.css?v=6f713b17c3">
 <link rel="stylesheet" href="../css/chrome.css?v=46a0b28957">
+<link rel="stylesheet" href="../nogat/nogat-app-menu.css?v=8bb318a9a6">
 <link rel="stylesheet" href="instrukcja.css?v=3d6dcf576c">
 </head>
 <body>
 <a class="skip" href="#tresc">Przejdź do treści</a>
 <header class="topbar"><a class="brand" href="../" aria-label="Hydrograf: wróć do aplikacji"><img src="../img/hydrograf.svg" alt=""><span class="name">Hydrograf</span></a><nav class="crumbs" aria-label="Kontekst"><strong>Instrukcja</strong>
-</nav><div class="top-actions"><a class="btn ghost" href="../" aria-label="Wróć do aplikacji"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5L7 10l5.5 5.5"></path></svg><span class="label">Wróć do aplikacji</span></a><div class="seg" role="group" aria-label="Motyw">
+</nav><div class="top-actions"><a class="btn ghost" href="../" aria-label="Wróć do aplikacji"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5L7 10l5.5 5.5"></path></svg><span class="label">Wróć do aplikacji</span></a><nogat-app-menu current="hydrograf" marks="../nogat/marks/"></nogat-app-menu><div class="seg" role="group" aria-label="Motyw">
       <button type="button" id="theme-auto" aria-pressed="true" title="Motyw systemowy">
         <svg class="icon-svg" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"></circle><path d="M10 3.5v13a6.5 6.5 0 0 0 0-13z" fill="currentColor"></path></svg>
         <span class="label">Auto</span>
@@ -131,7 +132,7 @@
   <div class="split">
     <figure class=""><a href="Hydrograf-v2-zlewnia.png"><img class="app-shot wide-shot" src="Hydrograf-v2-zlewnia.png" width="1800" height="1125" alt="Widok aplikacji po wyznaczeniu zlewni Kamiennika: cztery tryby nad mapą, granica zlewni i panel z powierzchnią 37,23 km²."></a><figcaption>Co jest na ekranie?. Kliknij obraz, aby powiększyć.</figcaption></figure>
     <div class="stack">
-      <div class="card"><span class="label">Górny pasek</span><p>Nazwa aplikacji i kontekst („Mapa / Zlewnia … km²”), przycisk „Zgłoś uwagę”, przycisk „Instrukcja” (otwiera najpierw okno powitalne) i motyw Auto · Jasny · Ciemny.</p></div>
+      <div class="card"><span class="label">Górny pasek</span><p>Nazwa aplikacji i kontekst („Mapa / Zlewnia … km²”), przycisk „Zgłoś uwagę”, przycisk „Instrukcja” (otwiera najpierw okno powitalne), „Aplikacje” i motyw Auto · Jasny · Ciemny. „Aplikacje” to lista innych aplikacji ekosystemu (np. Hydrologa, Archiwisty), gdy ta instalacja Hydrografa je zna; każda otwiera się we własnej karcie.</p></div>
       <div class="card"><span class="label">Panele</span><p>Po lewej szyna Mapa · Logowanie i panel „Warstwy”, po prawej panel „Zlewnia” z wynikami; w trybie sieci po prawej panel „Sieć zlewni”.</p></div>
       <div class="card"><span class="label">Nad mapą</span><p>Tryby pracy i podpowiedź; w trybie „Wybierz zlewnię” u góry mapy także wybór „Jedna zlewnia” · „Sieć zlewni”. Przy zwiniętym panelu pojawia się tu przycisk „Warstwy” lub „Zlewnia”.</p></div>
     </div>
@@ -441,7 +442,7 @@
   <div class="grid four">
     <div class="step"><span class="number">01</span><strong>Wyznacz zlewnię</strong><p>Pod sekcjami panelu „Zlewnia” jest część „Przekazanie do Hydrologa”. Opisuje, co przekaże: parametry zlewni, a gdy hydrogram jest obliczony — także opad, model i wynik.</p></div>
     <div class="step"><span class="number">02</span><strong>Kopiuj albo zapisz</strong><p>„Kopiuj do Hydrologa” kładzie przekazanie (JSON <code>nogat-handoff/1</code>) do schowka, „Plik przekazania” pobiera je jako plik <code>&lt;nazwa&gt;.handoff.json</code>. Idzie to, co pokazuje panel, także zmiany trybu zaawansowanego.</p></div>
-    <div class="step"><span class="number">03</span><strong>Wczytaj w Hydrologu</strong><p>W „Hydrogramie zlewni” Hydrologa: „Wczytaj z Hydrografa”, a w nim „Wklej ze schowka” albo „Plik przekazania…”. Opad PMAXTP otwiera się z punktem i wysokością z Hydrografa.</p></div>
+    <div class="step"><span class="number">03</span><strong>Wczytaj w Hydrologu</strong><p>W „Hydrogramie zlewni” Hydrologa: „Wczytaj z Hydrografa”, a w nim „Wklej ze schowka” albo „Plik przekazania…”. Gdy ta instalacja zna adres Hydrologa, komunikat po skopiowaniu lub zapisie ma link „Otwórz Hydrologa”. Opad PMAXTP otwiera się z punktem i wysokością z Hydrografa.</p></div>
     <div class="step"><span class="number">04</span><strong>Porównaj wynik</strong><p>Hydrolog liczy hydrogram sam i stawia Qmax, czas do szczytu i objętość obok wyniku Hydrografa, z wersją Hydrologa, którą liczył każdy z nich.</p></div>
   </div>
   <p class="hint">Gdy przeglądarka nie daje dostępu do schowka (strona otwarta przez zwykłe HTTP), pojawia się pole z zaznaczonym tekstem przekazania: skopiuj go <kbd>Ctrl</kbd>+<kbd>C</kbd>. Czas koncentracji przechodzi jako liczba, bo Hydrograf liczy go po najdłuższej drodze spływu. Samą zlewnię, bez obliczonego hydrogramu, Hydrolog na razie odrzuca („nie ma opadu”). Całą sieć z „Wybierz zlewnię” → „Sieć zlewni” przekazują te same przyciski — <a href="#siec-wynik">więcej tutaj</a>.</p>
@@ -539,7 +540,7 @@
   <div class="split">
     <figure class="portrait"><a href="Hydrograf-v2-telefon.png"><img class="app-shot fit-shot" src="Hydrograf-v2-telefon.png" width="488" height="1055" alt="Widok aplikacji na telefonie: ikona Instrukcja w górnym pasku, cztery tryby, panel zlewni i dolna nawigacja Mapa oraz Logowanie."></a><figcaption>Na telefonie i po zmroku. Kliknij obraz, aby powiększyć.</figcaption></figure>
     <div class="stack">
-      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Przy szerokości do 860 px szyna nawigacji Mapa · Logowanie staje się dolnym paskiem. W górnym pasku pozostają ikony: „Zgłoś uwagę”, „Instrukcja” (okno powitalne) i przełącznik motywu.</p></div>
+      <div class="card"><span class="label">Do 860&nbsp;px szerokości</span><p>Przy szerokości do 860 px szyna nawigacji Mapa · Logowanie staje się dolnym paskiem. W górnym pasku pozostają ikony: „Zgłoś uwagę”, „Instrukcja” (okno powitalne), „Aplikacje” (lista rozwija się pod paskiem) i przełącznik motywu.</p></div>
       <div class="card"><span class="label">Arkusze</span><p>„Warstwy” i „Zlewnia” (w „Sieci zlewni” — „Sieć”) wysuwają się od dołu, zawsze jeden naraz. Otwierają je przyciski na pasku nad mapą, zamyka uchwyt u góry arkusza; po wyznaczeniu zlewni arkusz „Zlewnia” otwiera się sam.</p></div>
       <div class="card"><span class="label">Dotyk</span><p>Przy 390 px cztery tryby mieszczą się nad mapą w dwóch wierszach. Podpowiedzi trybu są ukryte. Profil narysujesz, dotykając kolejnych punktów linii; sieć zlewni — wskazując przekrój zamykający i potem punkty powyżej.</p></div>
       <div class="card"><span class="label">Motyw</span><p>Auto (jak w systemie), Jasny lub Ciemny — linie na mapie, legendy i wykresy zmieniają kolory razem z motywem. Przeglądarka zapamięta wybór, także dla administracji i tej instrukcji.</p></div>
@@ -566,6 +567,7 @@
 <section class="part" id="problemy"><p class="kicker">11 · Pomoc</p><h2>Gdy coś nie działa</h2><dl class="defs"><div><dt>„Nie znaleziono zlewni cząstkowej w tym punkcie”</dt><dd>Sprawdź obszar danych i włącz „Linie spływu” w panelu „Warstwy”. Przybliż mapę, a potem kliknij bliżej widocznej linii.</dd></div><div><dt>Dwa punkty sieci w tym samym węźle</dt><dd>Węzeł J już dzieli zlewnię na cieki, które się w nim łączą. Usuń drugi punkt albo przesuń go dalej niż 50 m od zbiegu; dotyczy to także przekroju zamykającego.</dd></div><div><dt>Charakterystyki sieci nieaktualne</dt><dd>Po przesunięciu, dodaniu lub usunięciu punktu oraz po zmianie progu spływu mapa wraca do podglądu. Naciśnij ponownie „Oblicz charakterystyki”, aby uaktualnić wynik i przekazanie.</dd></div><div><dt>Brak hietogramu i hydrogramu</dt><dd>Te sekcje powstają tylko dla zlewni do 250 km². Dla większej zlewni odczytaj pozostałe parametry lub wybierz mniejszą.</dd></div><div><dt>Nieprawidłowa własna seria opadu</dt><dd>Popraw pole lub wiersz wskazany czerwonym komunikatem: czas trwania ma być wielokrotnością kroku, wysokości opadu nie mogą być ujemne, a suma musi być dodatnia. Do poprawy hydrogram się nie przeliczy.</dd></div><div><dt>Mapa głębokości wody nie wygląda jak oficjalna mapa zagrożenia</dt><dd>Warstwa SFINCS to osobna symulacja dla Kamiennika, opadu 24 h i p = 1%, a nie mapa MZP Wód Polskich. Przeczytaj (i) przy nazwie warstwy i porównaj scenariusze przed wyciągnięciem wniosków.</dd></div><div><dt>Coś nadal działa źle?</dt><dd>Przycisk „Zgłoś uwagę” na górnym pasku otwiera formularz; podaj miejsce, kroki i oczekiwany wynik. Przed wysłaniem możesz sprawdzić i odznaczyć dane diagnostyczne.</dd></div></dl><p class="back"><a href="#toc-title">↑ Spis treści</a></p></section></div></main>
 <script defer="" src="../js/theme-switch.js?v=b1e53f98a8"></script>
 <script defer="" src="../js/instance.js?v=04b557b531"></script>
+<script type="module" src="../js/nogat.js?v=1a75bf5331"></script>
 
 
 

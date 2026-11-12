@@ -58,6 +58,8 @@ services:
       DEM_DIR: ${DEM_DIR:-/data/nmt}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
+      # The ecosystem's GUIs for the menu „Aplikacje” (ADR-082); empty, no menu
+      HYDROGRAF_GUI: ${HYDROGRAF_GUI:-}
       NUMBA_CACHE_DIR: /tmp/numba_cache
       # GDAL's block cache [MB]: a network reads up to 1.4 GB of rasters once
       # (ADR-080), which the default cache (5 % of the RAM) would keep a second time

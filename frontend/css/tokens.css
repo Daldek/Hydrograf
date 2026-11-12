@@ -1,4 +1,4 @@
-/* Copied from Nogat design/tokens.css at commit 29e7e1c (DEV-15.3). Do not edit here:
+/* Copied from Nogat design/tokens.css at commit 7786271 (DEV-15.3). Do not edit here:
    change Nogat, then copy again. */
 /*
  * Nogat ecosystem: shared design tokens.
@@ -56,7 +56,7 @@
   --tool-archiwista: #4a776c;
   --tool-hydrograf: #12708a;
   --tool-kartograf: #8a5a1c;
-  --tool-imgwtools: #3b5bab;
+  --tool-obserwator: #3b5bab;
   --tool-hydrolog: #3f7a3a;
   --tool-hydraulik: #5e4fa2;
   --tool-retman: #a4472f;
@@ -168,7 +168,7 @@
     --tool-archiwista: #7fbfae;
     --tool-hydrograf: #4cc3e0;
     --tool-kartograf: #d9a35f;
-    --tool-imgwtools: #8fa9f5;
+    --tool-obserwator: #8fa9f5;
     --tool-hydrolog: #7cc474;
     --tool-hydraulik: #b0a3f0;
     --tool-retman: #f0907a;
@@ -231,7 +231,7 @@
   --tool-archiwista: #7fbfae;
   --tool-hydrograf: #4cc3e0;
   --tool-kartograf: #d9a35f;
-  --tool-imgwtools: #8fa9f5;
+  --tool-obserwator: #8fa9f5;
   --tool-hydrolog: #7cc474;
   --tool-hydraulik: #b0a3f0;
   --tool-retman: #f0907a;

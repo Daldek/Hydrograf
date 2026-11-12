@@ -124,6 +124,7 @@ Summary of the key ADRs:
 | ADR-060 | Pin the Hydrolog and IMGWTools heads by commit | The producers are pinned by the commit of their head until their tags exist (REL-5.3); Kartograf joins them by ADR-061 |
 | ADR-061 | Kartograf data output | The store `cache/kartograf/` for the NMT, BDOT10k and the HSG raster of Poland; plain files for the HSG raster of one analysis |
 | [ADR-065](decisions/0065-nogat-visual-identity-and-archiwista-shell.md) | Nogat visual identity and the Archiwista shell | A consistent GUI across the ecosystem (ECO-055) instead of glassmorphism panels; Bootstrap only in `/admin` |
+| [ADR-082](decisions/0082-nogat-kit-menu-and-handoff.md) | Nogat's app menu and hand-off | The ecosystem's GUIs from `HYDROGRAF_GUI` (`GET /api/gui`) in the kit's menu „Aplikacje”; the hand-off through the kit's module, which the IIFE scripts reach through `js/nogat.js` |
 
 ---
 
@@ -143,6 +144,7 @@ backend/
 │       ├── __init__.py
 │       ├── admin.py               # 13 /api/admin/* endpoints (dashboard, resources, cleanup, bootstrap, sewer)
 │       ├── depressions.py         # GET /depressions
+│       ├── gui.py                 # GET /gui: the ecosystem's GUIs of the deployment (HYDROGRAF_GUI) for the app menu (ADR-082)
 │       ├── health.py              # GET /health
 │       ├── hydrograph.py          # POST /generate-hydrograph
 │       ├── profile.py             # POST /terrain-profile
@@ -158,7 +160,7 @@ backend/
 │   ├── cell_parameters.py         # Parameters measured from the cells of a watershed on the saved rasters (area, elevations, flow paths, overland segment, main channel): the export of catchment parameters, process_dem's overland segments
 │   ├── cn_calculator.py           # Kartograf HSG-based CN calculation
 │   ├── cn_tables.py               # CN lookup tables (HSG × land cover)
-│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049)
+│   ├── config.py                  # YAML config loading (load_config(), get_settings(), resolve_dem_path() — DEM auto-discovery ADR-049), gui_table() of HYDROGRAF_GUI (ADR-082)
 │   ├── constants.py               # Project-wide constants (CRS, unit conversions, limits)
 │   ├── database.py                # Database connection pool
 │   ├── db_bulk.py                 # Bulk INSERT via COPY, timeout mgmt
@@ -248,6 +250,17 @@ Response: 200 OK
 }
 ```
 `version` is Hydrograf's version, `get_version()` of `core/version.py` (declared in `backend/pyproject.toml` only, REL-1.1); the admin dashboard (`GET /api/admin/dashboard`) reports the same.
+
+#### 2.2.1a The Ecosystem's GUIs (ADR-082)
+```
+GET /api/gui
+Response: 200 OK
+{
+  "hydrolog": "http://127.0.0.1:8070/",
+  "archiwista": "http://127.0.0.1:8090/"
+}
+```
+The table `gui` of `[nogat]` (Nogat DEV-15.4, DEV-18.1) that the deployment sets in `HYDROGRAF_GUI` (`docker-compose.yml`, `.env.example`): a registry name in lower case to an http or https URL or a path from `/` on this host; `{}` without it. The settings refuse any other value when they load (`gui_table()` of `core/config.py`), so the API does not start with it. `js/nogat.js` sets the table as the `apps` of the app menu of every page (§4.2.0).
 
 #### 2.2.2 Delineate Watershed (ADR-050)
 ```
@@ -1082,13 +1095,19 @@ frontend/
 ├── admin.html               # Admin panel (ADR-034) — shell + Bootstrap 5.3.3 (grid, modal dialogs)
 ├── img/
 │   └── hydrograf.svg         # Hydrograf mark (top bar, favicon)
+├── nogat/                    # Copies of Nogat's GUI kit 0.1.0 (design/kit/, ADR-082) — do NOT edit, copy them again
+│   ├── nogat-app-menu.js     # <nogat-app-menu>: the menu „Aplikacje” of the deployment's GUIs (ES module)
+│   ├── nogat-app-menu.css    # Its styles, in the tokens
+│   ├── nogat-handoff.js      # The hand-off: labels, <subject>.handoff.json, text, clipboard with its fallback, download (ES module)
+│   ├── nogat-kit.json        # Kit version and SHA-256 of each file
+│   └── marks/                # The marks of the four GUIs (Nogat design/marks/): archiwista, hydrograf, hydrolog, obserwator
 ├── instrukcja/
 │   ├── index.html            # Scrolling user guide (/instrukcja/) with TOC and chapters
 │   ├── instrukcja.css        # Guide layout; chrome and colours come from shared CSS
 │   ├── prezentacja.css       # Separate layout for docs/Hydrograf-prezentacja.html slides
 │   └── Hydrograf-*.png       # Shared 256-colour screenshots for guide and presentation
 ├── css/
-│   ├── tokens.css            # Copy of Nogat's design/tokens.css (commit 29e7e1c) — do NOT edit, copy it again
+│   ├── tokens.css            # Copy of Nogat's design/tokens.css (commit 7786271) — do NOT edit, copy it again
 │   ├── chrome.css            # Shared shell: top bar, rail, panels, buttons (index, admin, instrukcja)
 │   ├── app.css               # Main page: map, Warstwy/Zlewnia panels, profile drawer, phone layout
 │   └── admin.css             # Admin panel (Bootstrap recoloured with the tokens)
@@ -1113,6 +1132,8 @@ frontend/
     ├── results.js            # External analysis results (e.g. SFINCS of Hydraulik) from the manifest /data/results/index.json: tiles, legend, (i)
     ├── identify.js           # Mode „Identyfikuj”: marker and point card (GET /api/identify-point)
     ├── network.js            # „Wybierz zlewnię” → „Sieć zlewni”: the closing section, then the points, each marker labelled by its node's id (J<n>, P<n>) after every preview (POST /api/delineate-network/preview), the characteristics (POST /api/delineate-network), the network on the map, its tree and selection in the panel (ADR-080, ADR-081)
+    ├── handoff.js            # „Przekazanie do Hydrologa”: the hand-off of the watershed or of the network through the kit's nogat-handoff.js (ADR-068, ADR-080, ADR-082)
+    ├── nogat.js              # ES module (index, admin, instrukcja): imports the kit, sets GET /api/gui as the apps of <nogat-app-menu>, puts the hand-off module on window.Hydrograf.nogat (ADR-082)
     ├── diagnostics.js        # Session event log (ADR-053)
     ├── feedback.js           # „Zgłoś uwagę” form (native <dialog>)
     ├── instance.js           # The area of the instance from /data/instance.json (also on /instrukcja: [data-instance-area])
@@ -1127,7 +1148,7 @@ frontend/
         └── admin-app.js      # Admin panel orchestrator
 ```
 
-`js/` holds 27 modules on `window.Hydrograf` (IIFE), 21 for the main page and 6 in `admin/`; `theme-init.js` and `theme-switch.js` stay outside the namespace. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
+`js/` holds 30 IIFE modules on `window.Hydrograf`, 24 for the main page and 6 in `admin/`, and one ES module, `nogat.js`, which imports Nogat's kit (`nogat/`) and puts it on `window.Hydrograf.nogat` (ADR-082); `theme-init.js` and `theme-switch.js` stay outside the namespace. ADR-065 removed `css/glass.css`, `css/style.css` and `js/draggable.js`.
 
 The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the pattern is in Nogat's `design/`, the mockup in `design/mockups/hydrograf/`. Colours, fonts, radii and shadows only through the variables of `css/tokens.css`; a change of the palette is made in Nogat and ends with copying the file again.
 
@@ -1139,7 +1160,8 @@ The visual identity comes from Nogat (standard DEV-15.3, ECO-055, ADR-065): the 
 
 The main page uses the Archiwista shell (`chrome.css` + `app.css` + `shell.js`):
 
-- **Top bar** — the mark `img/hydrograf.svg`, the buttons „Zgłoś uwagę” and „Instrukcja” (in that order), and the theme switch Auto/Jasny/Ciemny (`data-theme` on `<html>`, the choice in `localStorage` `nogat-theme`; `theme-init.js` sets it before the first paint, so the light theme does not flash). On the main page the guide button opens the welcome dialog, whose link opens `/instrukcja/` in a new tab; a modified click opens the guide directly. On `/admin` it links straight to the guide. The service status („Usługi działają”) is only in the top bar of `/admin` (`admin-app.js`: `GET /health` when the page opens, then the dashboard refresh).
+- **Top bar** — the mark `img/hydrograf.svg`, the buttons „Zgłoś uwagę” and „Instrukcja” (in that order), the app menu „Aplikacje” and the theme switch Auto/Jasny/Ciemny (`data-theme` on `<html>`, the choice in `localStorage` `nogat-theme`; `theme-init.js` sets it before the first paint, so the light theme does not flash). On the main page the guide button opens the welcome dialog, whose link opens `/instrukcja/` in a new tab; a modified click opens the guide directly. On `/admin` it links straight to the guide. The service status („Usługi działają”) is only in the top bar of `/admin` (`admin-app.js`: `GET /health` when the page opens, then the dashboard refresh).
+- **App menu „Aplikacje”** (ADR-082, Nogat DEV-15.4) — the kit's `<nogat-app-menu current="hydrograf">` left of the theme switch on `/`, `/admin` and `/instrukcja/`: a button with a grid icon (the icon alone on phones) that opens the list of the GUIs of `GET /api/gui` (§2.2.1a), each with its mark (`nogat/marks/`), name and one line; Hydrograf marked „Ta aplikacja” and not a link, every other GUI opening in its tab `nogat-<name>`. Without `HYDROGRAF_GUI`, or with Hydrograf alone in it, the button is not drawn. After a copy or a download the hand-off's status links „Otwórz Hydrologa” to the same address and tab.
 - **Welcome dialog** — `welcome.js`, a native `<dialog>` like „Zgłoś uwagę”: on the first visit two plain-language paragraphs (what Hydrograf is, that the results are estimates and not a flood forecast, the area of the data) and the buttons „Otwórz instrukcję” (new tab) and „Przejdź do mapy”. The box „Nie pokazuj ponownie” stores the choice in `localStorage` (`hydrograf-welcome-hidden`). The area of the data comes from `/data/instance.json` (`instance.js`; `frontend/data/instance.json`, served by `location ^~ /data/`, written by the bootstrap or `scripts/write_instance_info.py`): „Obszar danych: <area.name> (ok. <area_km2> km²); NMT <nmt.resolution_m> m, zestaw danych „<set.name>” (zamknięty <set.closed_at>)”. Without the file (404) or with another schema the neutral text remains.
 - **Navigation rail** — Mapa and Logowanie (`/admin`); on phones it becomes a bottom bar. The terrain profile is a mode of the map bar; „Instrukcja” belongs only to the top bar.
 - **Left panel „Warstwy”** — basemaps (with the overlay „Mapa zagrożenia powodziowego”), overlays with an opacity slider and one button that zooms to the extent of the layers that are on.
@@ -1383,6 +1405,7 @@ services:
       DEM_DIR: ${DEM_DIR:-/data/nmt}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ADMIN_API_KEY_FILE: ${ADMIN_API_KEY_FILE:-}
+      HYDROGRAF_GUI: ${HYDROGRAF_GUI:-}
       # GDAL's block cache [MB]: a network reads up to 1.4 GB of rasters once
       # (ADR-080), which the default cache (5 % of the RAM) would keep a second time
       GDAL_CACHEMAX: "64"
@@ -1555,7 +1578,7 @@ http {
 **Front-end asset cache.** Cloudflare (a tunnel) stands in front of nginx; it caches the `.js`/`.css` files at the edge (`cf-cache-status: HIT`) and extends the browsers' `max-age` to 4 h (the Browser Cache TTL of the zone). Therefore:
 - the HTML pages (`/`, `/admin`, `/instrukcja/`, the SPA fallback to `index.html`) are sent with `Cache-Control: no-cache` and an ETag: the browser and Cloudflare ask nginx at every visit (usually 304), and Cloudflare does not cache them (`DYNAMIC`);
 - the pages reference their own JS/CSS by a URL with the version `?v=<10 characters of the SHA-256 of the content>`; a changed file gets a new URL (a new cache key of Cloudflare and of the browser), so a deployment is visible from the first reload without clearing a cache. Unchanged files keep their URL and their cache;
-- the versions are set by `python3 scripts/bump_asset_versions.py` (no build step): run it after a change of JS/CSS; `scripts/gate.sh` and the CI job `frontend-assets` check them with `--check`. The CDN libraries carry their version in the URL and SRI; the script does not touch them.
+- the versions are set by `python3 scripts/bump_asset_versions.py` (no build step): run it after a change of JS/CSS; `scripts/gate.sh` and the CI job `frontend-assets` check them with `--check`. The relative imports of an own ES module (`js/nogat.js` imports the kit of `nogat/`) get the same `?v=`, written before the pages, so a new copy of the kit changes the URLs of the kit and of `js/nogat.js` (ADR-082). The CDN libraries carry their version in the URL and SRI; the script does not touch them.
 
 ---
 
@@ -2080,11 +2103,12 @@ jobs:
 
 ---
 
-**Document version:** 2.14
-**Date of the last update:** 2026-11-11
+**Document version:** 2.15
+**Date of the last update:** 2026-11-12
 **Status:** Approved for implementation
 
 **Change history:**
+- 2.15 (2026-11-12): Nogat's GUI kit (ADR-082, plan `2026-11-12-nogat-kit`): §1.2 ADR-082; §2.1 `api/endpoints/gui.py` and `gui_table()` of `core/config.py`; §2.2.1a `GET /api/gui`; §4.1 `nogat/` (the kit and the marks), `js/nogat.js`, `js/handoff.js`, `tokens.css` of Nogat `7786271`; §4.2.0 the app menu „Aplikacje”; §5.1 `HYDROGRAF_GUI` in the environment of the API; §5.2 the versions of the imports of an ES module
 - 2.14 (2026-11-11): §4 „Sieć zlewni” is an option of the mode „Wybierz zlewnię” (the author's decision, ADR-080 note): four modes on the mode bar, the radio group „Co wyznaczyć” over the map, the module map and the phone layout
 - 2.13 (2026-11-11): every control point a node of the network (ADR-080 amended, plan `2026-11-11-network-nodes`): §2.1 `core/network_tree.py` draws the points to the nodes; §2.2.2b and §2.2.2c `outlet.id` required without the default `A`, `points` 0 to 30, `at_node` instead of `at_mouth`, `points[].node` and the junctions as nodes `J<n>` and `P<n>` numbered from the closing section upward, `junctions[].name`, the kinds `headwater` and `intermediate`, the outlet `O`, the new text of `network_points_coincide`; §2.4.10 the nodes and the ids of `core/network_tree.py`, the outlet `O` of `build_network_handoff`; §4 the mode „Sieć zlewni” without A, the markers labelled by their nodes' ids
 - 2.12 (2026-11-11): the network preview (ADR-081, plan `2026-11-11-network-preview`): §2.1 `core/network_preview.py` and the second route of `api/endpoints/network.py`; §2.2.2c `POST /api/delineate-network/preview`; §2.2.2b the 422 is the route's, 404 and 503 the router's; §2.4.10 `core/network_preview.py`; §4 the mode „Sieć zlewni” in two stages, the preview after every change of the points and „Oblicz charakterystyki”
