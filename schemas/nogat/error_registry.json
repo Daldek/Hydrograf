@@ -1,6 +1,6 @@
 {
   "schema": "nogat-error-registry/1",
-  "standard_version": "2.1",
+  "standard_version": "1.0",
   "outcomes": [
     {"status": "ok", "exit_code": 0, "meaning": "Operation completed for every unit."},
     {"status": "partial", "exit_code": 10, "meaning": "Batch operation completed for some units; per-unit status in items[]."},

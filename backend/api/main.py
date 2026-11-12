@@ -20,6 +20,7 @@ from api.endpoints import (
     admin,
     depressions,
     feedback,
+    gui,
     health,
     hydrograph,
     identify,
@@ -184,6 +185,7 @@ app.include_router(
 )
 app.include_router(depressions.router, prefix="/api", tags=["Depressions"])
 app.include_router(feedback.router, prefix="/api", tags=["Feedback"])
+app.include_router(gui.router, prefix="/api", tags=["Ecosystem"])
 app.include_router(
     feedback.admin_router,
     prefix="/api/admin",

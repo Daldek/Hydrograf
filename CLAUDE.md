@@ -57,13 +57,16 @@ Introduction: [README.md](README.md). The Nogat standard 2.1 is in
 - Front end: the look is the Nogat visual identity (ADR-065). Colours, fonts, radii and
   shadows come only from the variables of `frontend/css/tokens.css`, a copy of Nogat's
   `design/tokens.css` that is never edited here (change it in Nogat, then copy it again).
+  The app menu „Aplikacje” and the hand-off are Nogat's GUI kit, copied byte for byte with
+  the marks into `frontend/nogat/` and never edited here either (DEV-15.6); `js/nogat.js`
+  hands it to the IIFE scripts, and the menu lists the GUIs of `HYDROGRAF_GUI` (ADR-082).
   Libraries from a CDN always carry SRI (`integrity` + `crossorigin`). Own JS and CSS files
   in `index.html`, `admin.html` and `instrukcja/index.html` are referenced with
   `?v=<content hash>`, the only way a deployment gets through the caches of Cloudflare and
   of the browsers: after changing a JS or CSS file or adding a `<script>` or `<link>`, run
   `python3 scripts/bump_asset_versions.py` before the commit (reference a new file without
-  `?v=`, the script adds it); the gate and the CI job `frontend-assets` run it with
-  `--check`.
+  `?v=`, the script adds it; it versions the imports of `js/nogat.js` too); the gate and the
+  CI job `frontend-assets` run it with `--check`.
 - A change that users see ships with its `docs/CHANGELOG.md` entry in the same commit
   (DOC-7.2); `docs/PROGRESS.md` is updated before the last commit of a session (DEV-17.3).
 
@@ -107,7 +110,8 @@ backend/                 # the Python project: pyproject.toml, uv.lock, .venv (n
 ├── utils/               # geometry, raster and sheet-lookup helpers
 ├── migrations/          # Alembic
 └── tests/               # unit, integration, contract, performance, fixtures
-frontend/                # static HTML, CSS and vanilla JS (IIFE modules on window.Hydrograf)
+frontend/                # static HTML, CSS and vanilla JS (IIFE modules on window.Hydrograf);
+                         #   nogat/ the copies of Nogat's GUI kit and marks (ADR-082)
 docker/ docker-compose*.yml   # nginx configuration, PostGIS, API and web containers
 scripts/                 # gate.sh, check-commits.sh, verify_cdn_hashes.sh, bump_asset_versions.py
 docs/                    # documentation
@@ -183,8 +187,9 @@ heads, which follow the standard 2.1 (ADR-060, ADR-061).
 - DEV-12.3: about two thirds of the 720 log calls use f-strings; new log calls use
   `%`-style arguments.
 - DEV-14.2, DEV-15.1: the front end, nginx files and shell scripts use 4-space indentation;
-  the JavaScript is IIFE modules on `window.Hydrograf`, not ES modules, and about 70 lines
-  exceed 100 columns.
+  the JavaScript is IIFE modules on `window.Hydrograf`, not ES modules, but for
+  `js/nogat.js`, which imports Nogat's kit (ADR-082), and the kit's copies in
+  `frontend/nogat/`, which keep Nogat's 2 spaces; about 70 lines exceed 100 columns.
 - DEV-15.2: the Polish UI text is inline in the JavaScript and HTML, not in translation
   resources.
 - DEV-16.2: `docs/CLA.md` is missing until the author supplies the text.

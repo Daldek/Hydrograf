@@ -1,5 +1,5 @@
 /**
- * Hydrograf hand-off to Hydrolog (results panel, ADR-068, ADR-080).
+ * Hydrograf hand-off to Hydrolog (results panel, ADR-068, ADR-080, ADR-082).
  *
  * The API writes the current watershed as a hand-off nogat-handoff/1: the delineation
  * without rainfall and result (`handoff` of POST /api/delineate-watershed), each
@@ -9,17 +9,24 @@
  * /api/delineate-network). The section serves the view the panel shows: the network
  * in the option „Sieć zlewni”, the watershed otherwise. "Kopiuj do Hydrologa" puts the
  * hand-off of what the panel shows on the clipboard and "Plik przekazania" downloads it as
- * <name>.handoff.json; Hydrolog opens both with "Wczytaj z Hydrografa", a network in
- * „Sieć i trasowanie”. Without the Clipboard API (plain HTTP outside localhost) the
- * copy goes through a selected text field, which stays open for Ctrl+C when the
- * browser refuses that too.
+ * <subject>.handoff.json; Hydrolog opens both with "Wczytaj z Hydrografa", a network in
+ * „Sieć i trasowanie”. The labels, the file name, the text, the clipboard and the
+ * download are those of Nogat's kit, the same in every GUI (DEV-15.5: nogat-handoff.js,
+ * window.Hydrograf.nogat.handoff of js/nogat.js): without the Clipboard API (plain HTTP
+ * outside localhost), or when the browser refuses it, the text goes selected into a
+ * field for Ctrl+C. After a copy or a download the status links „Otwórz Hydrologa” when
+ * the deployment names Hydrolog's address (HYDROGRAF_GUI).
  */
 (function () {
     'use strict';
 
     window.Hydrograf = window.Hydrograf || {};
 
+    var TARGET = 'hydrolog';    // the GUI the hand-off goes to
+    var PRODUCER = 'hydrograf'; // this GUI, as the labels of Hydrolog name it
     var UH_MODELS = { scs: 'SCS', nash: 'Nasha', snyder: 'Snydera' };
+
+    var kit = null; // the kit's hand-off module, window.Hydrograf.nogat.handoff
 
     var _watershed = null;  // delineation response the hand-off belongs to
     var _hydrograph = null; // hand-off of the hydrograph the panel shows for it
@@ -33,20 +40,6 @@
         if (_view === 'network') return _networkStale ? null : _network;
         if (_hydrograph) return _hydrograph;
         return (_watershed && _watershed.handoff) || null;
-    }
-
-    /** The document as Hydrolog writes it: indented JSON and a final newline. */
-    function documentText(doc) {
-        return JSON.stringify(doc, null, 2) + '\n';
-    }
-
-    /** "<subject>.handoff.json" without the characters a file name cannot hold. */
-    function fileName(subject) {
-        var base = String(subject || '')
-            .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-')
-            .replace(/\s+/g, ' ')
-            .trim();
-        return (base || 'hydrograf') + '.handoff.json';
     }
 
     /** Polish plural: 1 pole, 2–4 pola, 5+ pól. */
@@ -100,13 +93,30 @@
             ' i wynik (Qmax, tp, V) do porównania w Hydrologu.';
     }
 
+    /**
+     * The status after a copy or a download: its text and, when the deployment names
+     * Hydrolog's address, the link „Otwórz Hydrologa” to the tab the app menu opens it in.
+     */
     function setStatus(text) {
         els.status.textContent = text;
+        var address = text && window.Hydrograf.nogat.address(TARGET);
+        if (!address) return;
+        var link = document.createElement('a');
+        link.href = address;
+        link.target = 'nogat-' + TARGET;
+        link.textContent = kit.TEXTS.open(TARGET);
+        els.status.append(' ', link);
     }
 
+    /** Hide the field of the copy by hand (the kit shows it; the CSS follows the field). */
     function hideFallback() {
-        els.fallback.classList.add('d-none');
+        els.text.hidden = true;
         els.text.value = '';
+    }
+
+    function closeFallback() {
+        hideFallback();
+        setStatus('');
     }
 
     /** Show the hand-off of the current state: its contents, the buttons, no old status. */
@@ -130,59 +140,26 @@
     /** Where Hydrolog opens the hand-off: a network in „Sieć i trasowanie”. */
     function hydrologPath(item) {
         return 'W Hydrologu: ' + (_view === 'network' ? '„Sieć i trasowanie” → ' : '') +
-            '„Wczytaj z Hydrografa” → „' + item + '”.';
+            '„' + kit.TEXTS.loadFrom(PRODUCER) + '” → „' + item + '”.';
     }
 
-    function copied() {
-        setStatus('Skopiowano przekazanie. ' + hydrologPath('Wklej ze schowka'));
-    }
-
-    /**
-     * Copy through the text field of the panel, selected; when the browser refuses
-     * the copy the field stays open, selected, for Ctrl+C.
-     */
-    function copyThroughField(text) {
-        els.text.value = text;
-        els.fallback.classList.remove('d-none');
-        els.text.focus();
-        els.text.select();
-        var ok = false;
-        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-        if (ok) {
-            hideFallback();
-            copied();
-        } else {
-            setStatus('');
-        }
-    }
-
+    /** The clipboard, else the field of the panel, selected for Ctrl+C (the kit's copy). */
     function copy() {
         var doc = current();
         if (!doc) return;
-        var text = documentText(doc);
         hideFallback();
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(copied, function () { copyThroughField(text); });
-        } else {
-            copyThroughField(text);
-        }
+        kit.copyHandoff(doc, els.text).then(function (where) {
+            var done = where === 'clipboard' ? kit.TEXTS.copied : kit.TEXTS.copyByHand;
+            setStatus(done + ' ' + hydrologPath(kit.TEXTS.paste));
+        });
     }
 
     function download() {
         var doc = current();
         if (!doc) return;
-        var name = fileName(doc.subject);
-        var url = URL.createObjectURL(new Blob([documentText(doc)], { type: 'application/json' }));
-        var link = document.createElement('a');
-        link.href = url;
-        link.download = name;
-        link.hidden = true;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         hideFallback();
-        setStatus('Pobrano plik „' + name + '”. ' + hydrologPath('Plik przekazania…'));
+        var name = kit.downloadHandoff(doc);
+        setStatus(kit.TEXTS.saved(name) + ' ' + hydrologPath(kit.TEXTS.openFile));
     }
 
     /** A new selection: its delineation response, null when there is none. */
@@ -221,17 +198,21 @@
     }
 
     function init() {
-        els.section = document.getElementById('handoff');
-        if (!els.section) return;
+        var section = document.getElementById('handoff');
+        // Without the kit (js/nogat.js not loaded) the section stays hidden
+        if (!section || !window.Hydrograf.nogat) return;
+        kit = window.Hydrograf.nogat.handoff;
+        els.section = section;
         els.note = document.getElementById('handoff-note');
         els.copy = document.getElementById('handoff-copy');
         els.file = document.getElementById('handoff-file');
         els.status = document.getElementById('handoff-status');
-        els.fallback = document.getElementById('handoff-fallback');
         els.text = document.getElementById('handoff-text');
+        els.copy.querySelector('.handoff-label').textContent = kit.TEXTS.copyTo(TARGET);
+        els.file.querySelector('.handoff-label').textContent = kit.TEXTS.file;
         els.copy.addEventListener('click', copy);
         els.file.addEventListener('click', download);
-        document.getElementById('handoff-fallback-close').addEventListener('click', hideFallback);
+        document.getElementById('handoff-fallback-close').addEventListener('click', closeFallback);
         render();
     }
 

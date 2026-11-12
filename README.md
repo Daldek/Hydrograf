@@ -131,7 +131,9 @@ Every variable is listed in
 manifest of the analysis results), the admin key
 (`ADMIN_API_KEY` or `ADMIN_API_KEY_FILE`), the IMGW preprocessing (`IMGW_GRID_SPACING_KM`,
 `IMGW_RATE_LIMIT_DELAY_S`), the shared Kartograf store (`HYDROGRAF_KARTOGRAF_ROOT`, read only
-through a closed set of an Archiwista project, `bootstrap --project --set`) and Docker Compose
+through a closed set of an Archiwista project, `bootstrap --project --set`), the other GUIs of
+the ecosystem that the top bar's „Aplikacje” lists (`HYDROGRAF_GUI`, a JSON object such as
+`{"hydrolog": "http://127.0.0.1:8070/"}`; without it there is no menu) and Docker Compose
 (`HYDROGRAF_PORT`, `SERVER_NAME`, `SECRETS_DIR`, and the names and host paths of an instance:
 `HYDROGRAF_CONTAINER_PREFIX`, `HYDROGRAF_*_PATH`). Secrets are read from the environment only
 and `.env` is not committed.
@@ -182,6 +184,7 @@ part of this Compose project and is not covered by this rotation.
 | Vector tiles of streams, catchments, land cover, sewer network | `GET /tiles/{layer}/{z}/{x}/{y}.pbf`, `GET /tiles/thresholds` | preprocessed data |
 | Closed depressions of the terrain | `GET /depressions` | DEM (GUGiK) |
 | Feedback from testers | `POST /feedback` | none |
+| The other GUIs of the ecosystem that this deployment runs, for the top bar's menu „Aplikacje” | `GET /gui` | `HYDROGRAF_GUI` |
 | Administration (pipeline, data cleanup, sewer network upload, feedback list) | `/admin/*` with the `X-Admin-Key` header | none |
 
 The background maps of the interface are OpenFreeMap (vector, drawn by MapLibre GL), the
@@ -190,7 +193,8 @@ Polskie is an overlay from their WMS service. The results of external analyses (
 example SFINCS runs of Hydraulik) are tile layers listed in the manifest
 `frontend/data/results/index.json` (schema `hydrograf-results/1`). The interface is static
 vanilla JS with Leaflet, MapLibre GL and Chart.js in the Nogat visual identity
-(`frontend/css/tokens.css`); Bootstrap 5 is used only in `/admin`. Hydrograf uses
+(`frontend/css/tokens.css`) with Nogat's GUI kit (`frontend/nogat/`: the menu „Aplikacje” and
+the hand-off); Bootstrap 5 is used only in `/admin`. Hydrograf uses
 [Hydrolog](https://github.com/Daldek/Hydrolog) for the
 calculations, [Kartograf](https://github.com/Daldek/Kartograf) for the spatial data and
 [Obserwator](https://github.com/Daldek/Obserwator) for the precipitation (IMGWTools until its

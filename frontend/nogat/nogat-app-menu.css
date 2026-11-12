@@ -1,0 +1,142 @@
+/*
+ * Nogat GUI kit: the app menu (DEV-15.4). Tokens of design/tokens.css with fallbacks, so a
+ * GUI that has not adopted the tokens yet shows it too. Copy byte for byte (DEV-15.6).
+ */
+
+nogat-app-menu {
+  position: relative;
+  display: inline-flex;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+nogat-app-menu[hidden] {
+  display: none;
+}
+
+.nogat-app-menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  height: var(--control, 32px);
+  padding: 0 var(--space-3, 12px);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: var(--text, #2b2b2b);
+  font: var(--weight-medium, 500) var(--text-base, 13px) / 1 var(--font-sans, system-ui, sans-serif);
+  cursor: pointer;
+  transition: background var(--transition, 0.2s ease);
+}
+
+.nogat-app-menu-button:hover,
+.nogat-app-menu-button[aria-expanded="true"] {
+  background: var(--surface-2, #f4f1f1);
+}
+
+.nogat-app-menu-button:focus-visible,
+.nogat-app-menu-item:focus-visible {
+  outline: 2px solid var(--focus, #284b63);
+  outline-offset: 2px;
+}
+
+.nogat-app-menu-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+.nogat-app-menu-list {
+  position: absolute;
+  top: calc(100% + var(--space-1, 4px));
+  right: 0;
+  z-index: 1000;
+  width: 300px;
+  padding: var(--space-1, 4px);
+  border: 1px solid var(--line, #e5e5e5);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--surface, #ffffff);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(16, 24, 40, 0.16));
+}
+
+.nogat-app-menu-list[hidden] {
+  display: none;
+}
+
+.nogat-app-menu-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nogat-app-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  padding: var(--space-2, 8px);
+  border-radius: var(--radius-md, 8px);
+  color: var(--text, #2b2b2b);
+  text-decoration: none;
+}
+
+a.nogat-app-menu-item:hover {
+  background: var(--surface-2, #f4f1f1);
+}
+
+.nogat-app-menu-item.current {
+  background: var(--accent-soft, #e4ecf1);
+}
+
+.nogat-app-menu-item img {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+.nogat-app-menu-words {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nogat-app-menu-words strong {
+  font-size: var(--text-base, 13px);
+  font-weight: var(--weight-bold, 700);
+}
+
+.nogat-app-menu-words small {
+  color: var(--text-3, #6b6565);
+  font-size: var(--text-sm, 12px);
+}
+
+/* Phone: the list is a sheet under the top bar, the button keeps only its icon. */
+@media (max-width: 860px) {
+  nogat-app-menu {
+    position: static;
+  }
+
+  .nogat-app-menu-label {
+    display: none;
+  }
+
+  .nogat-app-menu-button {
+    width: var(--control-touch, 44px);
+    height: var(--control-touch, 44px);
+    justify-content: center;
+    padding: 0;
+  }
+
+  .nogat-app-menu-list {
+    position: fixed;
+    top: 48px;
+    right: var(--space-2, 8px);
+    left: var(--space-2, 8px);
+    width: auto;
+  }
+
+  .nogat-app-menu-item {
+    min-height: var(--control-touch, 44px);
+  }
+}

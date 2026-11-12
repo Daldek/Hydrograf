@@ -5,19 +5,73 @@ Loads settings from environment variables with sensible defaults.
 Supports YAML configuration file for pipeline customization.
 """
 
+import json
 import logging
 import os
+import re
 from copy import deepcopy
 from functools import lru_cache
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.active_run import active_run_raster
 from utils.kartograf_store import DEFAULT_HSG_DEPTH_RULE
 
 logger = logging.getLogger(__name__)
+
+# A registry name of the ecosystem in lower case, a key of the table `gui` (DEV-15.4)
+_GUI_NAME = re.compile(r"[a-z][a-z0-9-]*")
+
+
+def _is_gui_address(address: str) -> bool:
+    """Whether an address is an http or https URL or a path from / on this host."""
+    if address.startswith("/"):
+        return not address.startswith("//")
+    parts = urlsplit(address)
+    return parts.scheme in ("http", "https") and bool(parts.netloc)
+
+
+def gui_table(text: str) -> dict[str, str]:
+    """Return the GUIs of the deployment from the value of HYDROGRAF_GUI (ADR-082).
+
+    The value is the table ``gui`` of ``[nogat]`` in ``nogat.toml`` (DEV-15.4,
+    DEV-18.1) as a JSON object, e.g. ``{"hydrolog": "http://127.0.0.1:8070/"}``: a
+    registry name in lower case to the address of that GUI, an http or https URL or
+    a path from ``/`` on this host. An empty value is an empty table, so the app menu
+    of the top bar is not drawn.
+
+    Raises
+    ------
+    ValueError
+        When the value is not such an object.
+    """
+    if not text.strip():
+        return {}
+    try:
+        table = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"HYDROGRAF_GUI is not JSON: {error}") from error
+    if not isinstance(table, dict):
+        raise ValueError(
+            "HYDROGRAF_GUI must be a JSON object of GUI names and addresses"
+        )
+    gui: dict[str, str] = {}
+    for name, address in table.items():
+        if not _GUI_NAME.fullmatch(name):
+            raise ValueError(
+                f"HYDROGRAF_GUI: {name!r} is not a registry name in lower case"
+            )
+        if not isinstance(address, str) or not _is_gui_address(address):
+            raise ValueError(
+                f"HYDROGRAF_GUI: the address of {name!r} must be an http or https URL "
+                "or a path from /"
+            )
+        gui[name] = address
+    return gui
 
 
 class Settings(BaseSettings):
@@ -67,6 +121,18 @@ class Settings(BaseSettings):
     # Frontend data served by nginx under /data/ (mounted in the API container);
     # holds the analysis results manifest results/index.json
     frontend_data_dir: str = "/frontend/data"
+
+    # The GUIs of the deployment that the app menu of the top bar lists (ADR-082): the
+    # table `gui` of `[nogat]` in nogat.toml (DEV-15.4, DEV-18.1) as a JSON object,
+    # read by gui_table(); empty, no menu
+    hydrograf_gui: str = ""
+
+    @field_validator("hydrograf_gui")
+    @classmethod
+    def _check_gui(cls, value: str) -> str:
+        """Refuse a table the menu cannot use when the settings load."""
+        gui_table(value)
+        return value
 
     def resolve_dem_path(self) -> str | None:
         """Find the best available DEM raster, checking candidates in order.

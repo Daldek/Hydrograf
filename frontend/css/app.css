@@ -571,7 +571,10 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .handoff-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .handoff-status { margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--ok-ink); }
 .handoff-status:empty { display: none; }
+.handoff-status a { color: var(--accent); }
 .handoff-fallback { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+/* The kit's copy shows and hides the field; its box follows it */
+.handoff-fallback:has(> textarea[hidden]) { display: none; }
 .handoff-fallback label { font-size: var(--text-sm); color: var(--text-2); }
 .handoff-fallback textarea { width: 100%; font-family: var(--font-mono); font-size: var(--text-xs); }
 .handoff-fallback .btn { justify-self: start; }
